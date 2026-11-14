@@ -69,7 +69,6 @@ public enum CompilerFunctionKind : byte
     Clone,
     TestTempDirectory,
     TextWriter,
-    BuiltinFormat,
     BuiltinEquals,
     BuiltinCompare,
     BuiltinArithmetic,
@@ -123,13 +122,8 @@ internal enum IntrinsicId : byte
     TestTempDirectory,
     StaticEnsure, // SPEC 22.4.3.
     [Transitional("R8", Reason = "R8 replaces this temporary intrinsic with Kimigayo representation and library code.")]
-    FormatBuffer, // Temporary (owner, 2026-10-11) until R8 writes the internal adapter in Kimigayo: the owning interpolation's private buffer of
-    // the capacity its instance estimates.
-    [Transitional("R8", Reason = "R8 replaces this temporary intrinsic with Kimigayo representation and library code.")]
-    FormatSegment, // One step per write position, the hint of the later literal bytes and values, then the literal segment's text ("" at a
-    // value's; R5-M133).
-    [Transitional("R8", Reason = "R8 replaces this temporary intrinsic with Kimigayo representation and library code.")]
-    FormatFinish, // The adapter's end into the string (SPEC 22.10.5, 22.10.3).
+    FormatSegment, // Temporary (owner, 2026-10-11) until R8 writes the internal adapter in Kimigayo: one step per write position, the hint
+    // of the later literal bytes and values (R5-M133; a literal's text is a library call since R8-W2 c1, its end since c3a).
 }
 
 /// <summary>How A4 classifies a call without a MIR body (SPEC 8.11.2; TyCtxt.Bodyless), the effect column of the intrinsic table.</summary>
@@ -153,7 +147,7 @@ internal enum DispositionKind : byte
 {
     Body, // A Kimigayo body: the declaration's own, or for a compiler function the body R8 writes, which until then the backend serves from the legacy runtime helpers.
     Intrinsic, // An IntrinsicId; Fail carries its fixed SPEC 22.5.2 code.
-    Shim, // A built-in witness (formatting, equality, comparison, arithmetic), whose body the backend generates for its instance.
+    Shim, // A built-in witness (equality, comparison, arithmetic), whose body the backend generates for its instance.
 }
 
 /// <summary>The intrinsic table (plan 5.8): the one disposition of each <see cref="CompilerFunctionKind"/>.</summary>
@@ -165,7 +159,7 @@ internal readonly record struct IntrinsicDisposition(DispositionKind Kind, Intri
     internal static IntrinsicDisposition Of(CompilerFunctionKind kind) => kind switch
     {
         CompilerFunctionKind.None or CompilerFunctionKind.WriteLine => default,
-        CompilerFunctionKind.BuiltinFormat or CompilerFunctionKind.BuiltinEquals or CompilerFunctionKind.BuiltinCompare or CompilerFunctionKind.BuiltinArithmetic => new(DispositionKind.Shim),
+        CompilerFunctionKind.BuiltinEquals or CompilerFunctionKind.BuiltinCompare or CompilerFunctionKind.BuiltinArithmetic => new(DispositionKind.Shim),
         CompilerFunctionKind.Abort => Intrinsic(IntrinsicId.Abort),
         CompilerFunctionKind.MakeObj => Intrinsic(IntrinsicId.MakeObj),
         CompilerFunctionKind.MakeRc => Intrinsic(IntrinsicId.MakeRc),
@@ -196,12 +190,12 @@ internal readonly record struct IntrinsicDisposition(DispositionKind Kind, Intri
     // SPEC 8.11.2: the effect class of each compiler function. The Storage and Raw families act only on their inputs and the allocator
     // (SPEC 5.6, 22.2), so they are classified as families; a storage kind that obtained environment authority would have to be split
     // out of its family. Console output and the test temporary directory are environment effects. Text.writer and the
-    // built-in items (BuiltinFormat alone formats) act on their inputs: the formatting operations are bodies (R8-W1), so None alone is unclassified.
+    // built-in items act on their inputs: the formatting operations are bodies (R8-W1), so None alone is unclassified.
     internal static CompilerFunctionEffect Effect(CompilerFunctionKind kind) => kind switch
     {
         CompilerFunctionKind.WriteLine or CompilerFunctionKind.ConsoleWriteStdout or CompilerFunctionKind.TestTempDirectory => CompilerFunctionEffect.Environment,
         >= CompilerFunctionKind.Abort and <= CompilerFunctionKind.Clone or CompilerFunctionKind.TextWriter or
-            >= CompilerFunctionKind.BuiltinFormat and <= CompilerFunctionKind.BuiltinArithmetic => CompilerFunctionEffect.Inputs,
+            >= CompilerFunctionKind.BuiltinEquals and <= CompilerFunctionKind.BuiltinArithmetic => CompilerFunctionEffect.Inputs,
         _ when KimiLibraryCatalog.IsStorageOperation(kind) || KimiLibraryCatalog.IsRawOperation(kind) => CompilerFunctionEffect.Inputs,
         _ => CompilerFunctionEffect.Unclassified,
     };

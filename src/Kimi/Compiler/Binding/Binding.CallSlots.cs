@@ -193,10 +193,12 @@ public sealed partial class Binding
         if (pattern.Kind == BoundTypeKind.TargetProjection && pattern.Symbol is { } projected &&
             ContainerSlot(function, projected) is >= 0 and var projectionSlot)
         {
-            // The target alone does not determine a pair's Semantics. Once another input, an explicit argument or the
-            // result fixes the whole Type, match its direct target; final candidate fitting checks a still-open projection.
+            // The target alone does not determine a pair's Semantics; final candidate fitting checks a still-open projection. Once another
+            // input, an explicit argument or the result fixes the whole Type, its direct target is the target's binding: evidence agrees
+            // with it in structure and Semantics (SPEC 10.8; Origins are judged after selection). A binding is the caller's Type and never a
+            // pattern: in a recursive call or a construction of the enclosing structure its symbols are the callee's own slots.
             return projectionSlot < arguments.Length && (arguments[projectionSlot] is not { } whole ||
-                this.Infer(this.DirectTarget(whole), actual, function, frame, inferOrigins, lengths, commonOrigins, structural, evidence, relateLater, invariant));
+                (this.DirectTarget(whole) is var target && (ReferenceEquals(target, actual) || (FitsStructuralPart(actual, target) && FitsStructuralPart(target, actual)))));
         }
 
         if (pattern.Kind == BoundTypeKind.SemanticsApplication && pattern.Symbol is { } selector &&

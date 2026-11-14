@@ -28,7 +28,7 @@ public sealed partial class Binding
                 nodes = Math.Max(nodes, capacity.Nodes);
                 edges = Math.Max(edges, capacity.Edges);
                 retains |= environment.Closure.RetainsOrigins || environment.Nodes.Count != 0 || environment.Types.Count != 0 || environment.Results.Count != 0 ||
-                    environment.Resolvers.Count != 0 || environment.Use is not null || environment.Scope is not null ||
+                    environment.Resolvers.Count != 0 || environment.Use is not null ||
                     environment.Comparison.Expected is not null || environment.Shorter is not null;
             }
 
@@ -132,11 +132,15 @@ public sealed partial class Binding
         return false;
     }
 
+    // Whether a request can rent the next nesting level's environment now (RentPremises' condition), asked before a request by a reader
+    // that answers Provisional instead of failing where the construction would depend on itself (Binding.TypeIdentity's Origin attribute).
+    private bool OriginPremisesAvailable => this.originPremiseDepth < MaxOriginPremiseDepth;
+
     // The environment of the next nesting level for a request at `use`, returned with ReturnPremises; null beyond MaxOriginPremiseDepth,
     // where the request's construction depends on itself and the requester fails.
     private OriginPremiseEnvironment? RentPremises(Koto use)
     {
-        if (this.originPremiseDepth == MaxOriginPremiseDepth)
+        if (!this.OriginPremisesAvailable)
         {
             return null;
         }
@@ -407,9 +411,9 @@ public sealed partial class Binding
     }
 
     // SPEC 15.3.4, 15.3.7, 8.1.1: a well-formed input Type's own clauses substituted with its Origin arguments, and the Origins stored
-    // below each borrow or slice layer outliving that layer's Origin. In the admitted borrow cases a pair layer is a borrow of its
-    // target within its outer-Origin slot, whose well-formedness makes the target's Origins outlive that slot; in the value cases no
-    // Type denotes the slot, so those edges hold only in the borrow cases (SPEC 15.6.5, PairSlotCondition). The stored Origins include
+    // below each well-formedness layer (WellFormedLayer) outliving that layer's Origin. In the admitted borrow cases a pair layer is a
+    // borrow of its target within its outer-Origin slot, whose well-formedness makes the target's Origins outlive that slot; in the value
+    // cases no Type denotes the slot, so those edges hold only in the borrow cases (SPEC 15.6.5, PairSlotCondition). The stored Origins include
     // the implicit `o` of an original pair layer below a borrow layer (StoresOrigin). Each Type is visited once per environment. A nested
     // Function Type adds none. Its inputs' well-formedness is that signature's premise, proven at each call (RequireInputPremises;
     // DECISIONS R4-M137). Its result is judged where it is written, under the enclosing premises and its own inputs (SPEC 15.3.4, 15.6.1;
@@ -436,28 +440,20 @@ public sealed partial class Binding
             }
         }
 
-        if (TryPairLayer(type, out var whole, out var target))
+        if (this.WellFormedLayer(type, environment.Use, environment.Comparison) is { Target.StoresOrigin: true } layer)
         {
-            if (target.StoresOrigin && this.OuterOrigin(type) is { } slot &&
-                (this.AdmittedSemantics(whole, AdmittedScope(whole.Symbol!, environment.Scope ??= this.RelationScope(environment.Use, environment.Comparison))) & SemanticsMask.Borrow) != 0 &&
-                this.PairSlotCondition(type, environment.Use, environment.Comparison) is { } condition)
-            {
-                this.AddStoredPremises(environment, target, this.PremiseNode(environment, slot), rule, false, condition);
-            }
+            this.AddStoredPremises(environment, layer.Target, this.PremiseNode(environment, layer.Outer), rule, false, layer.Condition);
+        }
 
+        if (TryPairLayer(type, out _, out var target))
+        {
             this.AddTypePremises(environment, target, rule);
             return;
         }
 
         for (var i = 0; i < type.Components.Count; i++)
         {
-            var inner = type.Components[i];
-            if (inner.StoresOrigin && (IsBorrow(type.Semantics) || type.Kind == BoundTypeKind.Slice) && type.Origin is { } outer)
-            {
-                this.AddStoredPremises(environment, inner, this.PremiseNode(environment, outer), rule, false);
-            }
-
-            this.AddTypePremises(environment, inner, rule);
+            this.AddTypePremises(environment, type.Components[i], rule);
         }
     }
 
@@ -533,8 +529,6 @@ public sealed partial class Binding
 
         internal Koto Use { get; set; } = null!;
 
-        internal BindingScope? Scope { get; set; }
-
         // The Callable comparison the request is made in (ProvesOriginOutlives), default for any other request.
         internal CallableInstance Comparison { get; set; }
 
@@ -559,7 +553,6 @@ public sealed partial class Binding
             this.Results.Clear();
             this.Resolvers.Clear();
             this.Use = null!;
-            this.Scope = null;
             this.Comparison = default;
             this.Shorter = null;
             this.Places.Clear();

@@ -293,11 +293,6 @@ public sealed partial class Binding
             return contract.Declaration.BindingState == BindingState.Invalid ? ConstraintProof.Error : ConstraintProof.Proven;
         }
 
-        if (this.contractHeadersReady && contract.LibraryDeclaration == KimiDeclarationId.Utf8Format && FormattingTypes.IsBuiltin(type))
-        {
-            return contract.Declaration.BindingState == BindingState.Invalid ? ConstraintProof.Error : ConstraintProof.Proven;
-        }
-
         // SPEC 4.6.1, 8.7, 22.1: a conformance the library witness table records for a built-in Type.
         if (this.contractHeadersReady && WitnessGroup(type, contract.LibraryDeclaration) is not null)
         {
@@ -449,7 +444,9 @@ public sealed partial class Binding
             return ConstraintProof.Proven;
         }
 
-        if (premises.Parent?.BindingState == BindingState.Invalid)
+        // The conditional conformance's own failure, as its owner decides it: a premise error keeps the context (SPEC 8.2.3), so the
+        // conditions are judged and the error is the scope's one record, not the target's again.
+        if (premises.Parent is { } conditional && this.InvalidDeclarationCause(conditional) is not null)
         {
             return ConstraintProof.Error;
         }

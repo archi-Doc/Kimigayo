@@ -100,13 +100,11 @@ public class UseLookupTest
     [InlineData("contract C\n    func m(self: ref/Self) -> i32\ngroup G\n    struct C\n    struct S\n        Self is C\n        func m(self: ref/Self) -> i32 => 0", "UnsatisfiedConstraint_Kd Self is C")]
     // Object View Target (9.2): every Contract is eligible, so the nearer Contract is selected and Type legality rejects it (n06).
     [InlineData(CoreX + NearerContract + "    func f(v: obj/X) -> i32 => 0", "InvalidTypeFormation_Kd X")]
-    // A parenthesized name before `.` at a parameter Type forms no member access (the parser stops there), so `(G)` and `(C)` are
-    // asked in Core's row, where a group or a Contract alone is unresolved (d01, d02). A projection's parenthesized left is a Contract
-    // Reference (9.2, 8.5.2): a struct there is not the projection's base (h01, h02), which the unparenthesized spelling is (h03).
+    // A parenthesized name before `.` at a parameter Type forms no member access (the parser stops there: a plain group is no F.5
+    // PathQualifier), so `(G)` and `(C)` are asked in Core's row, where a group or a Contract alone is unresolved (d01, d02). A
+    // projection's base is spelled without the group (h03); `(P).(C).Item` is a syntax error (RequirementTypeParsingTest).
     [InlineData("group G\n    public struct S\n        public let n: i32 = 0\nfunc f(v: (G).S) -> i32 => 0", "UnresolvedBinding_Kd G")]
     [InlineData("contract C\n    associate Item\nfunc f(v: (C).Item) -> i32 => 0", "UnresolvedBinding_Kd C")]
-    [InlineData(Projected + "func f(v: (P).(C).Item) -> i32 => v", "UnresolvedBinding_Kd P")]
-    [InlineData("contract C\n    associate Item\ncontract P\n    associate Item\ngroup G\n    struct P\n        Self is C\n        associate C.Item is i32\n    func f(v: (P).(C).Item) -> i32 => v", "UnresolvedBinding_Kd (P).(C)")]
     [InlineData(Projected + "func f(v: P.(C).Item) -> i32 => v", "")]
     public void ARoleFollowsItsPosition(string source, string records) => this.AUseIsResolvedOnceInItsRow(source, records);
 
@@ -117,10 +115,11 @@ public class UseLookupTest
     // an unresolved walk records at its failing step (x09: the head, a middle step, a parenthesized head). `L.(C)` is a projection
     // whatever Type its left is, a built-in, an array or a tuple included (SPEC F.5), the base bound with its own records: a missing
     // Contract records at its step, a missing member at the path, a tuple without the conformance is unproven (no tuple conforms to a
-    // Contract with an associated Type, so that shape has no valid twin).
+    // Contract with an associated Type, so that shape has no valid twin). A fixed array's entry is no member, so the array's row starts
+    // its iterator through a Constraint (SPEC 22.1, PLAN G776-b).
     [Theory]
     [InlineData("func f(x: i32.(Addable<i32>).Output) -> i32 => x", "")]
-    [InlineData("func f() -> [2 of i32].(IntoIterable).IteratorType\n    let a: [2 of i32] = [1, 2]\n    return a.intoIterator()", "")]
+    [InlineData(FixedArrayEntryTest.Entries + "func f() -> [2 of i32].(IntoIterable).IteratorType\n    let a: [2 of i32] = [1, 2]\n    return E.into(a@move)", "")]
     [InlineData("func f(x: i32.(Missing).Output) -> i32 => 0", "UnresolvedBinding_Kd i32.(Missing)")]
     [InlineData("func f(x: i32.(Addable<i32>).Missing) -> i32 => 0", "UnresolvedBinding_Kd i32.(Addable<i32>).Missing")]
     [InlineData("func f(x: (i32, u8).(Addable<i32>).Output) -> i32 => 0", "UnprovenConstraint_Kd (i32, u8).(Addable<i32>).Output")]

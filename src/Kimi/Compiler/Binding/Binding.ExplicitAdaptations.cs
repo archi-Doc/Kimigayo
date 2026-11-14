@@ -101,6 +101,11 @@ public sealed partial class Binding
         }
 
         this.PairBinders(conversion, this.caseBinders ??= new()); // A row selects at most one case of each binder in scope.
+        if (PairBinder.CaseProduct(this.caseBinders) == 0)
+        {
+            return this.RestOnEmptiedSet(conversion, scope); // SPEC 8.3.4: no case, so no row; the binders' definition has none either.
+        }
+
         uint operations = 0;
         BoundType? creationSource = null;
         BoundType? creationTarget = null;

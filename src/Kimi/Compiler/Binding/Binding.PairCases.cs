@@ -190,8 +190,9 @@ public sealed partial class Binding
     /// <param name="type">A Type, such as a pattern's layer or its substitution at a use.</param>
     /// <param name="use">The use whose binders give the condition's bits.</param>
     /// <param name="condition">The Semantics case of the storage, 0 for every case.</param>
+    /// <param name="comparison">The comparison the relation belongs to.</param>
     /// <returns>The stored outer Origin, or null when no case stores one.</returns>
-    internal BoundOrigin? StoredSlot(BoundType type, Koto use, out ulong condition)
+    internal BoundOrigin? StoredSlot(BoundType type, Koto use, out ulong condition, in CallableInstance comparison = default)
     {
         condition = 0;
         if (!type.ContainsPairLayer)
@@ -199,13 +200,41 @@ public sealed partial class Binding
             return type.Origin;
         }
 
-        if (this.PairSlotCondition(type, use) is not { } slot)
+        if (this.PairSlotCondition(type, use, comparison) is not { } slot)
         {
             return null;
         }
 
         condition = slot;
         return this.OuterOrigin(type);
+    }
+
+    /// <summary>Gets the layer a Type forms for well-formedness at a use (SPEC 15.6.1, 8.1.2, 15.6.5), whose target's stored Origins
+    /// outlive its outer Origin: a safe borrow or a Slice in every case, and a pair layer within its stored slot (<see cref="StoredSlot"/>)
+    /// in its binder's borrow cases. The condition is the raw <see cref="PairSlotCondition"/>: each consumer applies its own contract to
+    /// <see cref="ulong.MaxValue"/>.</summary>
+    /// <param name="type">A Type.</param>
+    /// <param name="use">The use whose binders give the condition's bits.</param>
+    /// <param name="comparison">The comparison the relation belongs to.</param>
+    /// <returns>The layer's target, its outer Origin and the Semantics case it exists in, or null when no case forms a layer.</returns>
+    internal (BoundType Target, BoundOrigin Outer, ulong Condition)? WellFormedLayer(BoundType type, Koto use, in CallableInstance comparison = default)
+    {
+        BoundType target;
+        if (IsBorrow(type.Semantics) || type.Kind == BoundTypeKind.Slice)
+        {
+            if (type.Components.Count == 0)
+            {
+                return null;
+            }
+
+            target = type.Components[0];
+        }
+        else if (!TryPairLayer(type, out _, out target))
+        {
+            return null;
+        }
+
+        return this.StoredSlot(type, use, out var condition, comparison) is { } outer ? (target, outer, condition) : null;
     }
 
     /// <summary>Forms the complete Type a Type takes in one Semantics case (SPEC 8.15): every pair layer of a binder in

@@ -90,9 +90,9 @@ public sealed partial class Binding
         {
             this.AddRetentionAtom(new(index, RetentionKind.Value, Writable: false, outer, null, null), callable: false);
             var place = exclusive ? RetentionPlace.None : RetentionPlace.Shared;
-            var written = declared is null ? null : this.BorrowReferent(declared, out _, out _);
+            var written = Below(declared, declared is null ? null : this.BorrowReferent(declared, out _, out _));
             var content = new RetentionAtom(index, RetentionKind.Content, exclusive, null, null, outer, place, written);
-            var captured = content with { Place = place | RetentionPlace.Captured, Signature = null };
+            var captured = content with { Place = place | RetentionPlace.Captured, Signature = Below(written, null) };
             var variance = exclusive ? OriginVariance.Invariant : OriginVariance.Covariant;
             if (outer is { Kind: OriginKind.Projection, Slot: ClosureValueSlot, Binder: FunctionKoto receiver })
             {
@@ -166,7 +166,7 @@ public sealed partial class Binding
             var slot = this.OuterOrigin(type);
             this.AddRetentionAtom(here with { Origin = slot }, callable);
             var inner = ComposeVariance(variance, exclusive ? OriginVariance.Invariant : OriginVariance.Covariant);
-            var written = at.Signature is not null && TryPairLayer(at.Signature, out _, out var declaredTarget) ? declaredTarget : null;
+            var written = this.SignaturePast(at.Signature, type, default);
             var below = at with { Writable = here.Writable || (at.Writable && exclusive), Layer = slot ?? at.Layer, Signature = written };
             this.RetentionWalk(target, below, inner, callable);
             return;
@@ -195,7 +195,7 @@ public sealed partial class Binding
     // none past one, 5.2.1).
     private void RetentionParts(BoundType type, RetentionAtom at, OriginVariance variance, bool callable)
     {
-        at = type.Kind == BoundTypeKind.Closure ? at with { Place = at.Place | RetentionPlace.Captured, Signature = null } : at;
+        at = type.Kind == BoundTypeKind.Closure ? at with { Place = at.Place | RetentionPlace.Captured, Signature = Below(at.Signature, null) } : at;
         type = type.Kind == BoundTypeKind.Closure ? this.ClosureEnvironment(type) : type;
         var writable = at.Writable && variance == OriginVariance.Invariant;
         var layer = this.BorrowReferent(type, out var outer, out _) is not null ? outer ?? at.Layer : at.Layer;
@@ -219,7 +219,7 @@ public sealed partial class Binding
 
         for (var i = 0; i < type.Components.Count; i++)
         {
-            var component = below with { Signature = DeclaredComponent(at.Signature, type, i) };
+            var component = below with { Signature = Below(at.Signature, DeclaredComponent(at.Signature, type, i)) };
             this.RetentionWalk(type.Components[i], component, ComposeVariance(variance, ComponentVariance(type, i, this)), inside);
         }
     }
