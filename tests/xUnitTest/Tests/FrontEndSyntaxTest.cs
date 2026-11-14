@@ -138,6 +138,90 @@ public class FrontEndSyntaxTest
         }
     }
 
+    // SPEC F.6.1 BaseClause := ":" InheritanceReference and F.6.2 ContractParentList := ":" InheritanceReference
+    // ("," InheritanceReference)*, with InheritanceReference := NamedReference | ContainerPath BorrowOrigin and F.5 NamedReference :=
+    // ContainerPath OriginBindingSet?: a base or a Contract parent written as any other Type is one grammar record over it, the same in
+    // selected and excluded syntax (SPEC 19.4), and nothing of it is left to the header.
+    [Theory]
+    [InlineData("ref/N")]
+    [InlineData("ref/::N")]
+    [InlineData("owner/N")]
+    [InlineData("(N)")]
+    [InlineData("((N))")]
+    [InlineData("N?")]
+    [InlineData("(N, i32)")]
+    [InlineData("()")]
+    [InlineData("[2 of N]")]
+    [InlineData("(N) -> i32")]
+    [InlineData("N(a)")]
+    public void ABaseOrParentOutsideAnInheritanceReferenceIsOneRecordInEverySelection(string reference)
+    {
+        foreach (var format in (string[])["struct D : R\n    var d: i32 = 0\n", "contract D : R\n    associate A\n", "contract D : M, R\n    associate A\n"])
+        {
+            foreach (var excluded in (bool[])[false, true])
+            {
+                var declaration = format.Replace("R", reference, StringComparison.Ordinal);
+                var source = "open struct N\ncontract M\n" + (excluded ? "#if false\n    " + declaration.Replace("\n    ", "\n        ", StringComparison.Ordinal) : declaration);
+                var diagnostic = Assert.Single(TestDiagnostics.Of(Parse(source)));
+                Assert.Equal("ExpectedSyntax_Kd", diagnostic.Code);
+                Assert.Contains("inheritance reference", diagnostic.Message, StringComparison.Ordinal);
+                Assert.Equal(source.LastIndexOf(reference, StringComparison.Ordinal), diagnostic.Span.Start);
+                Assert.Equal(reference.Length, diagnostic.Span.Length);
+            }
+        }
+    }
+
+    // The valid twins: a path, a root name, Type arguments, a binding set or a BorrowOrigin, and a PathQualifier with its PathSuffixes
+    // (what the reference names, and the slot count a BorrowOrigin binds, are Binding's).
+    [Theory]
+    [InlineData("N")]
+    [InlineData("::N")]
+    [InlineData("Api.N")]
+    [InlineData("N<i32>")]
+    [InlineData("N{k}")]
+    [InlineData("::Api.N<i32>{k}")]
+    [InlineData("N during a")]
+    [InlineData("::Api.N<i32> during a")]
+    [InlineData("(S{k}).Item")]
+    [InlineData("(S during a).(C).Item")]
+    [InlineData("(i32, u8).(C).Item")]
+    [InlineData("[2 of u8].Element")]
+    [InlineData("N.(C).Item")]
+    [InlineData("Self")]
+    public void ABaseOrParentInsideAnInheritanceReferenceHasNoRecordInEverySelection(string reference)
+    {
+        foreach (var format in (string[])["struct D : R\n    var d: i32 = 0\n", "contract D : R\n    associate A\n", "contract D : M, R\n    associate A\n"])
+        {
+            var declaration = format.Replace("R", reference, StringComparison.Ordinal);
+            ParseSuccess(declaration);
+            ParseSuccess("#if false\n    " + declaration.Replace("\n    ", "\n        ", StringComparison.Ordinal));
+        }
+    }
+
+    // SPEC 23.1.2: a written Type outside its position's grammar (a base or parent that is no InheritanceReference, F.6.1; a group or a
+    // fixed array after "::", F.5; an adaptation target's bound Container qualifier or borrow-layer Origin, 13.5.1; the Type after a
+    // move/copy prefix or a legacy borrow prefix) stays bound beside its syntax record, so a failure inside it that its repair leaves
+    // keeps its own record: the unresolved Name, the repeated set name.
+    [Theory]
+    [InlineData("struct D : (Missing)", "1*ExpectedSyntax_Kd 1*UnresolvedBinding_Kd")]
+    [InlineData("struct D : ref/Missing", "1*ExpectedSyntax_Kd 1*UnresolvedBinding_Kd")]
+    [InlineData("struct D : Missing?", "1*ExpectedSyntax_Kd 1*UnresolvedBinding_Kd")]
+    [InlineData("struct D : GB<Missing>?", "1*ExpectedSyntax_Kd 1*UnresolvedBinding_Kd")]
+    [InlineData("struct D : (B0, Missing)", "1*ExpectedSyntax_Kd 1*UnresolvedBinding_Kd")]
+    [InlineData("struct D {b}: (Base{b})", "1*DuplicateBinding_Kd 1*ExpectedSyntax_Kd")]
+    [InlineData("func f(v: ::(Missing)) => ()", "1*ExpectedSyntax_Kd 1*UnresolvedBinding_Kd")]
+    [InlineData("func f(v: ::[2 of Missing]) => ()", "1*ExpectedSyntax_Kd 1*UnresolvedBinding_Kd")]
+    [InlineData("struct D : ::(Missing)", "1*ExpectedSyntax_Kd 1*UnresolvedBinding_Kd")] // The base's own rule reads the recovered Type: no record.
+    [InlineData("func f(x: i32) -> i32 => x@((Missing{k}).Item)", "1*MisplacedSyntax_Kd 1*UnresolvedBinding_Kd")]
+    [InlineData("func f(x: i32, z: i32)\n    let y = x@(ref/Missing during z)", "1*MisplacedSyntax_Kd 1*UnresolvedBinding_Kd")]
+    [InlineData("func f(x: i32, z: i32)\n    let y = x@(uniq/Missing during z)", "1*MisplacedSyntax_Kd 1*UnresolvedBinding_Kd")]
+    [InlineData("func f(x: i32, z: i32)\n    let y = x@(ref/((Missing{k}).Item) during z)", "2*MisplacedSyntax_Kd 1*UnresolvedBinding_Kd")] // Each form of the chain.
+    [InlineData("func f(v: move/Missing) => ()", "1*MisplacedSyntax_Kd 1*UnresolvedBinding_Kd")] // SPEC 13.5.1: move and copy are operations.
+    [InlineData("func f(x: i32)\n    let y = x@copy/Missing", "1*MisplacedSyntax_Kd 1*UnresolvedBinding_Kd")]
+    [InlineData("func f(a: i32, v: ref{a}/Missing) => ()", "1*LegacyBorrowOrigin_Kd 1*UnresolvedBinding_Kd")]
+    public void AFailureInsideAWrittenTypeOutsideItsGrammarKeepsItsRecord(string declaration, string records)
+        => Assert.Equal(records, DiagnosticCorpus.RecordProfile("open struct B0\nopen struct GB<T>\nopen struct Base {a}\n    public let value: ref/i32 during a\n    public init(value: ref/i32 during a) => self.value = value\n" + declaration + "\n"));
+
     [Theory]
     [InlineData("let require = 1")]
     [InlineData("    let a = 1")]

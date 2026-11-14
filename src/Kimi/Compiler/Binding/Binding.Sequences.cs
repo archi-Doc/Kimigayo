@@ -224,7 +224,7 @@ public sealed partial class Binding
         var nominal = library || (subject.Symbol is { Declaration: StructKoto or EnumKoto } owner && this.ConformanceByDeclaration(owner, entry, out _) is not null &&
                 this.ProveConstraint(this.InternConstraint(new(ConstraintKind.Contract, subject, contract: entry)), scope) is var proof &&
                 (proof == ConstraintProof.Proven || (proof != ConstraintProof.Refuted && !IsRangeShape(subject))));
-        if (!nominal && !this.HasContractFact(subject, entry, scope))
+        if (!nominal && !this.PremiseRefines(subject, entry, scope))
         {
             return false;
         }
@@ -310,7 +310,7 @@ public sealed partial class Binding
     {
         if (target.Declaration is FunctionKoto { IsRequirement: true })
         {
-            return target.Scope.Owner is ContractKoto owner && RefinesDeclaration(contract, owner);
+            return target.Scope.Owner is ContractKoto { BoundSymbol: { } owner } && IsRefinement(contract, owner);
         }
 
         if (WitnessGroup(self, contract.LibraryDeclaration) is { } group)
@@ -338,7 +338,7 @@ public sealed partial class Binding
                 for (var w = 0; w < path.WitnessStorage.Count; w++)
                 {
                     var witness = path.WitnessStorage[w];
-                    if (ReferenceEquals(witness.Implementation, target) && witness.Requirement.Scope.Owner is ContractKoto declaration && RefinesDeclaration(contract, declaration))
+                    if (ReferenceEquals(witness.Implementation, target) && witness.Requirement.Scope.Owner is ContractKoto { BoundSymbol: { } declaration } && IsRefinement(contract, declaration))
                     {
                         return true;
                     }
