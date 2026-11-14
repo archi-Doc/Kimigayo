@@ -320,9 +320,10 @@ public sealed partial class Binding
             }
 
             var definition = (FunctionKoto)original!.Declaration;
-            // SPEC 8.13.2: the original's Attributes are inherited. The implementation Attributes (IMPL 21.3.4) are the original's own
-            // facts, which the library's registration gives the function and so each specialization of it; any other is not inherited yet.
-            if (HasInheritedAttributes(definition) || HasParameterAttributes(definition))
+            // SPEC 8.13.2: the original's Attributes are inherited. An implementation Attribute (IMPL 21.3.4) is a fact of the original
+            // declaration, and a specialization is no declaration of its own (SPEC 8.13.3): each reader of such a fact resolves the
+            // function to its original first (TyCtxt.Original), so a specialization has it. Any other Attribute is not inherited yet.
+            if (HasUninheritedAttributes(definition) || HasParameterAttributes(definition))
             {
                 this.Fail(function, BindingFailure.Unsupported, true);
                 continue;
@@ -508,7 +509,9 @@ public sealed partial class Binding
                 (ReferenceEquals(binder, function) ? origin.Occurrence is { } at && IsWithin(at, argument) : IsWithin(binder, argument));
         }
 
-        static bool HasInheritedAttributes(FunctionKoto function)
+        // True when the original carries an Attribute whose inheritance is not provided yet: any but an implementation Attribute, which
+        // every reader takes from the original (TyCtxt.Original).
+        static bool HasUninheritedAttributes(FunctionKoto function)
         {
             for (var attribute = function.AttributeChain; attribute is not null; attribute = attribute.AttributeChain)
             {
