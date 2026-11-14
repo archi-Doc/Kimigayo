@@ -424,9 +424,10 @@ public sealed partial class Binding
         if (context is { Position: TypePosition.Parameter, Direct: false, Owner: FunctionKoto { IsSpecialization: true } })
         {
             // SPEC 8.13.2, 15.4.2 (PLAN G863): an omitted borrow layer in a specialization's Type argument, or nested in a restated
-            // input (where only T puts one), is the original's T-Origin as well, which the input row above cannot give (an input's
-            // nested layer is an error): a located limit until a Type argument position of its own completes it. A restated input
-            // whose target is found inherits the layer instead (CompleteImplementationOrigins rebinds it).
+            // input (where T's binding or the original's written layer puts one, which this probe cannot read before the target), is
+            // the inherited contract's, which the input row above cannot give (an input's nested layer is an error): a located limit
+            // until a Type argument position of its own completes it. A restated input whose target is found inherits the layer
+            // instead (CompleteImplementationOrigins rebinds it).
             this.Fail(use, BindingFailure.Unsupported);
             return null;
         }
@@ -489,7 +490,9 @@ public sealed partial class Binding
             if (InSpecializationArgument(context.Owner))
             {
                 // SPEC 8.13.2, 15.4.2 (PLAN G863): a Function Type result in a specialization's Type argument that no input of its own
-                // gives is the call's T-Origin, not a default (the key excludes Origins): the borrow layer's located limit above.
+                // gives is the call's T-Origin, not a default (the key excludes Origins): the borrow layer's located limit above. Removed
+                // with it when the Type argument has a TypePosition of its own (PLAN G863's remainder), which TypeContext decides once
+                // instead of this syntax walk (InSpecializationArgument).
                 this.Fail(use, BindingFailure.Unsupported);
                 return null;
             }

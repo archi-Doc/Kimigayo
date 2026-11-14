@@ -333,7 +333,10 @@ public sealed partial class Binding
             if (constraints == ConstraintProof.Unknown && !EveryOrigin(arguments, function, null, static (origin, header, _) => !ReferenceEquals(origin.Binder, header)))
             {
                 // SPEC 8.13.2 (PLAN G863): the original admits only the bindings its Constraints allow, so an undecided Constraint over
-                // the header's universal Origins is a premise of the body, which nothing states yet: a located limit.
+                // the header's universal Origins is a premise of the body, which nothing states yet: a located limit. The gate reads
+                // the arguments, not the proof: an Unknown proof publishes no fact naming the Origin it rests on (only a Callable
+                // comparison's CallableUnknown), so an Unknown of another cause at such an argument is the limit too (still rejected,
+                // without its Proof evidence) until the proof names its cause or the Constraint becomes a premise (G863's remainder).
                 _ = this.TakeUnknownFact();
                 this.Fail(function, BindingFailure.Unsupported);
                 continue;
