@@ -60,6 +60,17 @@ public sealed partial class Binding
     // (PartHolder), else the result target it is a source of (ResultTarget: a selection body, a transfer's operand, a `do` body).
     private static Koto? PartParent(Koto node) => PartHolder(node) ?? ResultTarget(node);
 
+    // Whether the part path up from a part (PartParent) ends at a call's argument (IsCallArgument) without passing a function body.
+    private static bool InCallArgument(Koto node)
+    {
+        while (PartParent(node) is { } parent and not FunctionKoto)
+        {
+            node = parent;
+        }
+
+        return IsCallArgument(node);
+    }
+
     // The form delivering the part or the aggregate literal whose part it is (AggregateParts), or null.
     private static Koto? PartHolder(Koto node)
         => node.Parent is { } parent && (ReferenceEquals(DeliveredOperand(parent), node) || new AggregateParts(parent).Exist) ? parent : null;

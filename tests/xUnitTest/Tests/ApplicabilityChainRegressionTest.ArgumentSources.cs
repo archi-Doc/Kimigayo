@@ -172,11 +172,15 @@ public partial class ApplicabilityChainRegressionTest
     [InlineData("guard", "o39", Sources + SourcesBody + "    let t = identity([(x, [x, 1]), (1, [2])])\n    return r\n", "")]
     // The owner's O-267 (a) (M2; SPEC 10.2.1, 14.9.2 step 3): an empty collection literal among a call's join sources has no Type and no
     // default and takes its position's, so the join fits its candidate by its other sources in every order and at `match` (m01 to m03);
-    // the array twin keeps its located limit at `[]` (m04).
+    // the array twin keeps its located limit at `[]` (m04). Only a call takes it so (the owner's O-280 (b)): a join outside a call whose
+    // sources are empty literals forms no Type and keeps its record (SPEC 14.9.2 step 4; m05 to m07, at `match` and nested).
     [InlineData("guard", "m01", Sources + SourcesBody + "    r = fd(if c => [1: x] else => [:])\n    return r\n", "")]
     [InlineData("guard", "m02", Sources + SourcesBody + "    r = fd(if c => [:] else => [1: x])\n    return r\n", "")]
     [InlineData("guard", "m03", Sources + SourcesBody + "    r = fd(match d\n        true => [1: x]\n        false => [:]\n    )\n    return r\n", "")]
     [InlineData("guard", "m04", Sources + SourcesBody + "    r = fai(if c => [1] else => [])\n    return r\n", "Unsupported_Kd: r = fai(if c => [1] else => [])")]
+    [InlineData("guard", "m05", Sources + SourcesBody + "    let j = if c => [:] else => [:]\n    return r\n", "PrerequisiteUnavailable_Kd: let j = if c => [:] else => [:]")]
+    [InlineData("guard", "m06", Sources + SourcesBody + "    let j = match d\n        true => [:]\n        false => [:]\n    return r\n", "PrerequisiteUnavailable_Kd: let j = match d")]
+    [InlineData("guard", "m07", Sources + SourcesBody + "    let j = if c => [x: [:]] else => [x: [:]]\n    return r\n", "PrerequisiteUnavailable_Kd: let j = if c => [x: [:]] else => [x: [:]]")]
     // SPEC 14.9.2 step 1, 10.2: a fixed expectation, an explicit Type argument's or a parameter's, fits each source, a reference at a value element
     // position value-read. A source conflict only makes the argument wait for the selected candidate (SPEC 10.5.1).
     [InlineData("guard", "e10", Sources + SourcesBody + "    r = g<Array<i32>>([u@ref])\n    return r\n", "")]
