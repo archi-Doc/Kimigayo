@@ -311,28 +311,32 @@ internal sealed partial class MirBorrows
         return result;
     }
 
-    // Whether a raw Place of a Type, or one within it, is of a raw pointer Type (SPEC 5.2: its Fields and elements, transitively;
-    // TyCtxt.RawPlaces): where a punned read through a raw layer of that pointee takes a pointer from the bytes (W's first step). An
-    // enum's payload is no raw Place of it (Empty: the owner's O-223 (B')), an array of no element has none (Sized), and an abstract
-    // part with no published row may be one.
-    private bool RawPointer(BoundType type)
+    // The raw pointer rows of a raw Place of key `at`, appended to `into`: the raw Place itself and each raw Place within it that is of
+    // a raw pointer Type (SPEC 5.2: its Fields and elements, transitively; TyCtxt.RawPlaces, each row's key read again, so a part's
+    // written Type and holder stay): where a punned read through a raw layer of that pointee takes a pointer from the bytes, each row
+    // a layer of its own, read at its own key (W's first step, MirBorrows.Reach). An enum's payload is no raw Place of it and a
+    // Function value has none within (Empty: the owner's O-223 (B')), an array of no element has none (Sized), and a part with no
+    // published row (Undecided: an abstract part) may be one, so it is a row, read at its own key.
+    private void RawPointers(PlaceKey at, List<PlaceKey> into)
     {
-        if (type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Raw })
+        var type = cases.Type(at.Type!);
+        var start = this.punRaw.Count;
+        if (type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Raw } ||
+            (types.RawPlaces(at, this.punRaw) == RawPlacesAnswer.Undecided && this.punRaw.Count == start))
         {
-            return true;
+            into.Add(at);
+            return;
         }
 
-        var start = this.punRaw.Count;
-        var answer = types.RawPlaces(PlaceKey.Root(type), this.punRaw);
-        var found = answer == RawPlacesAnswer.Undecided && this.punRaw.Count == start;
-        for (var i = start; !found && i < this.punRaw.Count; i++)
+        for (var i = start; i < this.punRaw.Count; i++)
         {
-            found = this.punRaw[i] is { Key.Type: { } row } raw && (!raw.Element || Sized(type) != Extent.None) &&
-                this.RawPointer(cases.Type(row));
+            if (this.punRaw[i] is { Key: { Type: not null } row, Element: var element } && (!element || Sized(type) != Extent.None))
+            {
+                this.RawPointers(row, into);
+            }
         }
 
         this.punRaw.RemoveRange(start, this.punRaw.Count - start);
-        return found;
     }
 
     // Whether a raw Place of a Type, or one within it, has a punnable Type holding a Scalar.

@@ -7,7 +7,8 @@ namespace Kimi.Compiler.Mir;
 // A5's Call transfer (A3 5, Calls; E14, E16; DECISIONS R4-M154): a Call's plan (MirBorrows.CallRows) carries its inputs' values into its
 // result by the result's record, and into each holder an argument's store reaches (W, MirBorrows.Reach) by the record of the storage it
 // is: a local W reaches at its first step (the argument's direct Loans or addresses name it) the output's root (Own), E reached there its
-// root and everything past it (Own and Reached.All), E reached past a holder Reached.All, and a local reached past a holder the Reached
+// root and everything past it (Own and Reached.All), E reached past a holder Reached.All (through a punned reading's layers alone,
+// their pointee's Reached entry: MirBorrows.Reach's Punned), and a local reached past a holder the Reached
 // entry whose Type, in the view's case and Origin-erased, is that of the Place the reaching Loan names (PastEntry, ReachedEntry;
 // Reached.All where none names it, never the Abstract entry), joined over the ways the walk reached it. A Closure
 // callee's call receiver is its input at position call.Count, the callee operand, read before the Moves, and a store into it takes W as
@@ -167,17 +168,13 @@ internal sealed partial class MirBorrows
 
     // The value a holder W reached receives through one output (DECISIONS R4-M154): each input's value by its kinds in the records of the
     // ways the walk reached the holder (Keep's), their pairs judged (Solved), {Φ_E} besides where the output is untied. Past another
-    // holder, the record is the Reached entry of the storage the reaching Loan's Place names (PastEntry; Revision 8), E's All.
+    // holder, the record is the Reached entry of the storage the reaching Loan's Place names (PastEntry; Revision 8); E's is All, but
+    // the Reached entry of a punned reading's layers' pointee where the walk reached E only through them (Punned; Written).
     private int Received(ulong[] state, in MirTerminator call, OutputRetention written, int target, bool checks)
     {
         var via = this.writingVia[target];
         var own = (via & ViaRoot) != 0 ? written.Own : null;
-        var past = (target, via & ViaPast) switch
-        {
-            (Escaped, _) => written.All,
-            (_, not 0) => this.PastEntry(written, target),
-            _ => null,
-        };
+        var past = target == Escaped || (via & ViaPast) != 0 ? this.PastEntry(written, target) : null;
         var value = this.sets.Union(this.RecordValue(state, call, own, checks), this.RecordValue(state, call, past, checks));
         return (own ?? past)!.Untied ? this.sets.Union(value, this.escapedSet) : value;
     }
@@ -276,7 +273,8 @@ internal sealed partial class MirBorrows
 
     // The record a holder W reached past another holder receives (DECISIONS R4-M154, Revision 8): a written storage is the Place a Loan
     // reaching the holder names, the holder its root, so the holder takes the Reached entry of that Place's Type (ReachedEntry); All
-    // where none names it, or where Loans naming Places of several Types reach it (All joins every entry, so it bounds their join).
+    // where none names it, or where Loans naming Places of several Types reach it (All joins every entry, so it bounds their join). E
+    // takes All (Written counts each of its reaches with no record as several) but through a punned reading's layers (Punned).
     private StorageRetention PastEntry(OutputRetention written, int target)
         => this.writingPlace[target] is (BoundType place, false) ? this.ReachedEntry(written, place) ?? written.All : written.All;
 
