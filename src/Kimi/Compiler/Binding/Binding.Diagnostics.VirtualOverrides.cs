@@ -54,17 +54,13 @@ public sealed partial class Binding
         var cause = this.virtualDeclarationFailures![function];
         var note = cause switch
         {
-            VirtualDeclarationCause.Combined => "virtual and override cannot be combined",
             VirtualDeclarationCause.NotStructFunction => "virtual and override require a direct struct instance function",
-            VirtualDeclarationCause.Unsafe => "virtual and override functions must be safe",
             VirtualDeclarationCause.OwnGenericParameters => "a virtual slot has no function-owned generic parameters; enclosing Type parameters remain allowed",
             VirtualDeclarationCause.Receiver => "the receiver must be objref/Self or objuniq/Self; bare self means ref/Self",
             VirtualDeclarationCause.NoBody => "a virtual or override function requires a body",
             VirtualDeclarationCause.NotOpen => "an original virtual slot requires an open struct",
             VirtualDeclarationCause.Private => "an original virtual slot cannot be private; omitted accessibility is private",
-            VirtualDeclarationCause.RedeclaredHeader =>
-                "an override inherits access, attributes, the named-argument boundary and constraints; do not redeclare them",
-            VirtualDeclarationCause.RedeclaredParameter => "an override inherits parameter defaults and attributes; do not redeclare them",
+            VirtualDeclarationCause.RedeclaredConstraints => "an override inherits constraints; do not redeclare them",
             _ => throw new UnreachableException(),
         };
         (string, Koto, string?)[] related = [("declaration", function, "the virtual or override declaration")];
