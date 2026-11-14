@@ -151,7 +151,7 @@ public sealed partial class Binding
             var position = actual.Kind == BoundTypeKind.Constructed && actual.Symbol?.Schema is { } schema && i < schema.GenericSlots.Count
                 ? schema.GenericSlots[i].OriginVariance : OriginVariance.Covariant;
             var part = failure;
-            if (this.CheckTypeUseCore(actual.Components[i], expected.Components[i], use, IsInvariantLayer(actual, this) ? OriginVariance.Invariant : ComposeVariance(polarity, position), ref part))
+            if (this.CheckTypeUseCore(actual.Components[i], expected.Components[i], use, IsInvariantLayer(actual, this, use, default) ? OriginVariance.Invariant : ComposeVariance(polarity, position), ref part))
             {
                 continue;
             }

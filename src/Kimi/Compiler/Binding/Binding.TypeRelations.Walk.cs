@@ -149,10 +149,10 @@ public sealed partial class Binding
             var (outer, longer, shorter) = (OuterOriginFit.None, BoundOrigin.Static, BoundOrigin.Static);
             if (!skipOrigin)
             {
-                outer = FitOuterOrigins(actual, expected, this.binding, this.use, out longer, out shorter);
+                outer = FitOuterOrigins(actual, expected, this.binding, this.use, out longer, out shorter, instance);
             }
 
-            var condition = outer == OuterOriginFit.Relation && !structural ? SlotCondition(actual, this.binding, this.use) : 0;
+            var condition = outer == OuterOriginFit.Relation && !structural ? SlotCondition(actual, this.binding, this.use, instance) : 0;
             if (outer == OuterOriginFit.Mismatch)
             {
                 return this.End(instance);
@@ -199,7 +199,7 @@ public sealed partial class Binding
                 // position the two Function Types relate both ways (SPEC 3.8, 15.3.5): a Callable comparison is oriented (it instantiates
                 // only the implementation's per-call inputs and judges only its well-formedness, SPEC 10.7), so the comparison as written
                 // is followed by the one with the sides exchanged, whose members relate one way since the first related them both ways.
-                var comparison = Comparison(actual, own, expected, instance.Enclosing);
+                var comparison = Comparison(actual, own, expected, instance);
                 if (this.FunctionFits(actual, expected, invariant, comparison) &&
                     (!invariant || ReferenceEquals(actual, expected) || this.FunctionFits(expected, actual, false, comparison.Exchanged)))
                 {
@@ -230,7 +230,7 @@ public sealed partial class Binding
                     continue;
                 }
 
-                if (!this.Fits(a, b, invariant || IsInvariantLayer(actual, this.binding), instance: instance))
+                if (!this.Fits(a, b, invariant || IsInvariantLayer(actual, this.binding, this.use, instance), instance: instance))
                 {
                     holds = false;
                     if (!this.Goes(instance))
