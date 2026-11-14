@@ -27,6 +27,7 @@ public sealed partial class InstanceCollectorTest
     // method's) and a getter's; a constructor after a Field; a getter's body declaring a function; a closed struct's Field initializer with
     // a Closure.
     private const string FieldHead = "struct Box<T>\n    var v: isize = ";
+    private const string GroupStaticHead = "struct Box<T>\n    public init() => ()\n    public group G\n        public let s = ";
     private const string NestedHead = "struct Outer<T>\n    public struct Inner\n        var v: isize = ";
     private const string Plain = "struct Box<T>\n    var v: isize\n    public init() => self.v = ";
     private const string GetterHead = Plain + "0\n    public computed size: isize\n        get() -> isize";
@@ -147,6 +148,18 @@ public sealed partial class InstanceCollectorTest
         => Assert.Equal(
             $"Unsupported_Kd let s = {closure}; Unsupported_Kd Box<i32>.G.s; Unsupported_Kd Box<i32>.G.s()",
             CheckRecords($"struct Box<T>\n    public init() => ()\n    public group G\n        public let s = {closure}\nlet n = Box<i32>.G.s()\n"));
+
+    // SPEC 11.8, DECISIONS R5-M183: a static that Binding rejects (its Type is not Owned) publishes no body of a Closure in its initializer,
+    // and a call of that Closure, through the failed access or through a function reference initialized from it, is checked as a request
+    // (the EnclosingInstance gap, as AGroupStaticsClosureIsTheGap's call) and then rests on Binding's record (InstanceCollector.Callee;
+    // before: CheckFaulted_Kd, a null body read).
+    [Theory]
+    [InlineData("let n = Box<i32>.G.s.1()", "Unsupported_Kd Box<i32>.G.s.1; Unsupported_Kd Box<i32>.G.s.1()")]
+    [InlineData("let f = Box<i32>.G.s.1\nlet n = f()", "Unsupported_Kd f()")]
+    public void ACallOfAClosureBindingDidNotPublishRestsOnBindingsRecord(string use, string records)
+        => Assert.Equal(
+            $"UnprovenConstraint_Kd let s = (Array<T>.init(capacity: 4), {Four}); {records}",
+            CheckRecords($"{GroupStaticHead}(Array<T>.init(capacity: 4), {Four})\n{use}\n"));
 
     // SPEC 3, 6.1.3 (DECISIONS BU-60, the owner's (a)): one producer forms a held closure's context from the instance modulo Origins, none
     // in the owner's own frame (the identity test), so every read of one instance has one Closure Type and two instances never share one.
