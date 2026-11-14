@@ -76,6 +76,28 @@ public partial class TypeDagScalingTest
         }
     }
 
+    // R7-C2c2 c2-2 (design review N1): an extension round per identity row a walk records, the key changing between rounds. M3's clause
+    // `Self.(Tree).Child.(Tree).Alias is Self.(Tree).Child`, supplied at every `T.(Tree).Child...` link, joins each `.(Tree).Alias` of the
+    // demand `T` + n times `.(Tree).Child.(Tree).Alias` to a shorter chain, so each round keys the demand to a new Type and walks its
+    // links: at most one round per `.(Tree).Child.(Tree).Alias` of the demand (measured n / 2: 2, 4, 8). Valid (SPEC 8.2.3 grounds, 8.3.2): the
+    // demand is `T` + n times `.(Tree).Child`, which is M3, so Copy.
+    [Fact]
+    public void ExtensionRoundsAreLinearInTheKeyChanges()
+    {
+        var (w4, w8, w16) = (Rounds(4), Rounds(8), Rounds(16));
+        Assert.True(w4 <= 4 && w8 <= 8 && w16 <= 16 && w16 <= 4 * w4, $"{w4} at 4, {w8} at 8, {w16} at 16");
+
+        static long Rounds(int n)
+        {
+            var demand = "T" + string.Concat(Enumerable.Repeat(".(Tree).Child.(Tree).Alias", n));
+            var c = MinimalEmissionTest.Analyze("contract Tree\n    associate Child is Tree\n    associate Alias is Tree\ncontract M3: Tree, Copy\n" +
+                "    Self.(Tree).Child is M3\n    Self.(Tree).Child.(Tree).Alias is Self.(Tree).Child\n" +
+                $"func twice<T>(value: {demand}) -> ({demand}, {demand})\n    T is M3\n    return (value, value)\npublic func main() -> ()\n    return\n");
+            Assert.True(CompilationTestHelper.PublishedErrors(c).Length == 0, MinimalEmissionTest.Describe(c));
+            return c.Binding.IdentityRounds;
+        }
+    }
+
     private static string KeySource(string shape, int n)
     {
         const string Copies = "contract Tree\n    associate Child is Tree\ncontract CopyTree: Tree, Copy\n    Self.(Tree).Child is CopyTree\n";
