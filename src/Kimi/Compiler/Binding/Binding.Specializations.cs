@@ -326,6 +326,14 @@ public sealed partial class Binding
                 valid &= function.Parameters[p].ExternalName == definition.Parameters[p].ExternalName;
             }
 
+            // SPEC 8.13.2: a Type argument's Origins are the ones each call of the original supplies, the header's universal input
+            // Origins at that argument (TypeContext); a written one adds an Origin restriction (independent of the Origin's own
+            // well-formedness, SPEC 15.2.3).
+            for (var i = 0; i < arguments.Length; i++)
+            {
+                valid &= arguments[i] is not { } argument || Universal(argument, function, function.GenericArguments[i]);
+            }
+
             if (!valid)
             {
                 if (originMismatch is { } contract)
@@ -395,6 +403,35 @@ public sealed partial class Binding
             }
 
             return true;
+        }
+
+        static bool Universal(BoundType type, FunctionKoto function, Koto argument)
+        {
+            if (type.Origin is { } origin && !Own(origin))
+            {
+                return false;
+            }
+
+            for (var i = 0; i < type.OriginArguments.Count; i++)
+            {
+                if (!Own(type.OriginArguments[i]))
+                {
+                    return false;
+                }
+            }
+
+            for (var i = 0; i < type.Components.Count; i++)
+            {
+                if (!Universal(type.Components[i], function, argument))
+                {
+                    return false;
+                }
+            }
+
+            return true;
+
+            bool Own(BoundOrigin origin)
+                => origin is { Kind: OriginKind.Input, Occurrence: { } at } && ReferenceEquals(origin.Binder, function) && IsWithin(at, argument);
         }
 
         static bool HasParameterAttributes(FunctionKoto function)
