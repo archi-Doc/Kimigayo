@@ -7,7 +7,7 @@ namespace Kimi.Compiler;
 public sealed partial class Binding
 {
     private readonly Dictionary<(BindingScope Parent, BindingSymbol Left, BindingSymbol Right), BindingScope> contractOverlapScopes = new();
-    private readonly List<BoundConstraint> associatedOverlapChecks = new();
+    private readonly List<(BoundConstraint A, BoundConstraint B)> associatedOverlapPairs = new();
     private Dictionary<Koto, ContractAgreementFailure>? contractAgreementFailures;
 
     private readonly record struct ContractAgreementFailure(BindingSymbol Left, BindingSymbol Right, BoundType? AssociatedLeft = null, BoundType? AssociatedRight = null, BindingSymbol? Associated = null);
@@ -94,36 +94,53 @@ public sealed partial class Binding
             return;
         }
 
-        this.associatedOverlapChecks.Clear();
-        foreach (var fact in environment.Facts)
+        // SPEC 8.9.2: the pairs are the scope's available identities of one projection, each with those before it: a bucket of
+        // Closure(view)'s TypeIdentity row of this scope (its key is the projection's declaration and receiver). The judgment below
+        // proves, and nothing proves while an entry is read (ContractSolver's Readers), so the pairs are taken first.
+        this.associatedOverlapPairs.Clear();
+        ViewIndex? index = null;
+        try
         {
-            if (fact is { Kind: ConstraintKind.TypeIdentity, Subject.Kind: BoundTypeKind.AssociatedProjection, RequiredType: not null } && this.AvailableConstraintFact(environment, fact, out _))
+            foreach (var a in environment.Facts)
             {
-                this.associatedOverlapChecks.Add(fact);
-            }
-        }
-
-        for (var i = 0; i < this.associatedOverlapChecks.Count; i++)
-        {
-            var a = this.associatedOverlapChecks[i];
-            var x = a.Subject!;
-            for (var j = 0; j < i; j++)
-            {
-                var b = this.associatedOverlapChecks[j];
-                var y = b.Subject!;
-                if (!ReferenceEquals(x.Symbol, y.Symbol) || !ReferenceEquals(x.Components[0], y.Components[0]) ||
-                    !((BoundOrigin[])x.OriginArguments).AsSpan().SequenceEqual((BoundOrigin[])y.OriginArguments) ||
-                    this.AssociatedIdentity(x) is not { } left || this.AssociatedIdentity(y) is not { } right ||
-                    this.ContractOverlapScope(scope, left.Contract, right.Contract) is not { } overlap || this.RefutedOverlapInputs(scope, overlap))
+                if (a is not { Kind: ConstraintKind.TypeIdentity, Subject: { Kind: BoundTypeKind.AssociatedProjection } x, RequiredType: not null } ||
+                    !this.AvailableConstraintFact(environment, a, out _) ||
+                    (index ??= this.BeginClosureRead(scope)).Buckets.GetValueOrDefault((scope, ConstraintKind.TypeIdentity, SubjectKey(x).Symbol, SubjectKey(x).Type)) is not { } bucket)
                 {
                     continue;
                 }
 
-                if (!this.SameConformanceType(a.RequiredType, b.RequiredType, overlap))
+                for (var j = 0; j < bucket.Count && !ReferenceEquals(bucket[j].Raw, a); j++)
                 {
-                    environment.Fail(scope.Owner);
-                    this.FailExplained(ref this.contractAgreementFailures, scope.Owner, BindingFailure.InvalidAssociatedType, new(left.Contract, right.Contract, a.RequiredType, b.RequiredType, x.Symbol));
+                    if (bucket[j].Raw is { RequiredType: not null } b && this.AvailableConstraintFact(environment, b, out _))
+                    {
+                        this.associatedOverlapPairs.Add((a, b));
+                    }
                 }
+            }
+        }
+        finally
+        {
+            if (index is not null)
+            {
+                this.EndClosureRead();
+            }
+        }
+
+        foreach (var (a, b) in this.associatedOverlapPairs)
+        {
+            var (x, y) = (a.Subject!, b.Subject!);
+            if (!((BoundOrigin[])x.OriginArguments).AsSpan().SequenceEqual((BoundOrigin[])y.OriginArguments) ||
+                this.AssociatedIdentity(x) is not { } left || this.AssociatedIdentity(y) is not { } right ||
+                this.ContractOverlapScope(scope, left.Contract, right.Contract) is not { } overlap || this.RefutedOverlapInputs(scope, overlap))
+            {
+                continue;
+            }
+
+            if (!this.SameConformanceType(a.RequiredType, b.RequiredType, overlap))
+            {
+                environment.Fail(scope.Owner);
+                this.FailExplained(ref this.contractAgreementFailures, scope.Owner, BindingFailure.InvalidAssociatedType, new(left.Contract, right.Contract, a.RequiredType, b.RequiredType, x.Symbol));
             }
         }
     }
