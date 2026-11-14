@@ -1043,12 +1043,19 @@ public sealed partial class MirBorrowsTest
     // parameter reaches it from any local holder that keeps it, and a call storing x's Loan through the holder keeps it there: a raw local,
     // a Tuple, and a Tuple beside a direct part (whose own Loan the call may store there too, SPEC 15.6.4's per-argument letter, and
     // with it the Loan on y two reads through the Tuple's borrow, `t@uniq` -> t -> w, which 15.6.4's chain clause keeps, so y's storage
-    // end conflicts too). Valid twins: the same holders with the pointer formed to a local holder that is dead after the call, and a
-    // value with no Loan of the body stored through the pointer read.
+    // end conflicts too). Valid: a value with no Loan of the body stored through the pointer read (noLoan). The twins with the pointer
+    // formed to a local holder that is dead after the call (formedLocal, formedTuple, formedMixed) are invalid too (A5 value redesign
+    // U3c): the written storage (c2, t.0) is a raw layer without an Origin, so the call may write its own pointer there and store x
+    // through it in storage the body does not own (SPEC 15.6.4's composition, example twoLayers; 5.7 Calls: also as a Tuple element),
+    // with what a chain of reads through the argument carries (the storage ends of v, w and y). Dev accepted them.
     [Fact]
     public void APointerReadFromStorageTheBodyDoesNotOwnReachesIt()
         => Assert.Equal(
-            ["viaUniqLocal: x = 5", "viaUniqTuple: x = 5", "viaUniqMixed: x = 5", "viaUniqMixed: var w: ref/i32 = y@ref", "viaUniqMixed: var y: i32 = 2"],
+            [
+                "viaUniqLocal: x = 5", "viaUniqTuple: x = 5", "viaUniqMixed: x = 5", "viaUniqMixed: var w: ref/i32 = y@ref", "viaUniqMixed: var y: i32 = 2",
+                "formedLocal: x = 5", "formedLocal: var v: i32 = 2", "formedTuple: x = 5", "formedTuple: var v: i32 = 2", "formedMixed: x = 5",
+                "formedMixed: var w: ref/i32 = y@ref", "formedMixed: var v: i32 = 3", "formedMixed: var y: i32 = 2",
+            ],
             Problems(RawShapes + """
                 func storeThrough(c: uniq/(raw/(ref/i32 during a)), x: ref/i32 during a)
                     unsafe => Raw.initialize(c@follow, x)
@@ -1315,13 +1322,18 @@ public sealed partial class MirBorrowsTest
     // after the call: a result two raw layers below the argument (also through a reference), a raw slot written from them, the written
     // argument read through itself, a lent result three raw layers deep, a popped, exchanged or swapped pointer whose pointee is replaced
     // after the call (SPEC 15.6.4's transfer rule keeps the chain), and a chain through E, the storage the body does not own, where an
-    // earlier store left a holder's address (Φ_E read at a later step). Valid twins: each with the result's use before `y = 5`, and viaEOk
-    // without the store.
+    // earlier store left a holder's address (Φ_E read at a later step). Valid twins: the others with the result's use before `y = 5`,
+    // and viaEOk without the store. Four such twins (getRRROk, fRRROk, unlinkROk, lend3Ok) are invalid too (A5 value redesign U3c): the
+    // written storage (h2, h1, h3) is a raw layer without an Origin, so the call may write its own pointer there and store through it, in storage the body does not
+    // own, what a chain of reads through the argument carries (SPEC 15.6.4: "may retain every argument with what any chain of reads
+    // through it carries"; example twoLayers), which is used after every point, whatever the result's use; lend3's other argument
+    // (z@ref) is kept there as well, so z's storage end conflicts. Dev accepted them.
     [Fact]
     public void AChainRowCarriesWhatAnyChainOfReadsThroughItsArgumentCarries()
         => Assert.Equal(
-            ["getRRRRepl: y = 5", "getRFRRepl: y = 5", "fRRRRepl: y = 5", "unlinkRBad: y = 5", "lend3Repl: y = 5", "popLateBad: y = 5",
-                "popLateBadX: y = 5", "exchangeTwoBadX: y = 5", "swapTwoBad: y = 5", "viaEBad: y = 5"],
+            ["getRRRRepl: y = 5", "getRRROk: y = 5", "getRFRRepl: y = 5", "fRRRRepl: y = 5", "fRRROk: y = 5", "unlinkRBad: y = 5",
+                "unlinkROk: y = 5", "lend3Repl: y = 5", "lend3Repl: var z: i32 = 0", "lend3Ok: y = 5", "lend3Ok: var z: i32 = 0",
+                "popLateBad: y = 5", "popLateBadX: y = 5", "exchangeTwoBadX: y = 5", "swapTwoBad: y = 5", "viaEBad: y = 5"],
             Problems(RawShapes + ChainShapes + ChainForms));
 
     // SPEC 23.1.2: the chain's error stands beside an unrelated error.

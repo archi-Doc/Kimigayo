@@ -14,8 +14,9 @@ namespace Kimi.Compiler.Mir;
 // a holder at a reading key (Keyed, ReadAt, ReadPart; SPEC 15.6 Holders: every element with every layer of the key the holder was reached
 // at): there each element is typed, punned or read nothing at each layer, and a holder it writes takes the record of that layer's
 // storage and is read on at the key past it, at that Type's guard; a call input's key is the called function's parameter key (InputKey),
-// so a layer its own Type parameters' bindings hide adds no reach. At the first step the
-// reading path's Type is the input's pointee or referent (SPEC 15.6 Holders, 5.7 Calls): a holder whose Place it does not designate
+// so a layer its own Type parameters' bindings hide adds no reach; a holder that may afterwards hold the call's own pointer at such a
+// layer reaches storage the body does not own (OwnPointer; SPEC 15.6.4's composition), and a key with a part that is no layer the
+// walked Type expression writes keeps the declared step (PunKey.Declared; SPEC 5.7 Calls). At the first step the reading path's Type is the input's pointee or referent (SPEC 15.6 Holders, 5.7 Calls): a holder whose Place it does not designate
 // (MirBorrows.PunTypes' Designates) is read punned (SPEC 5.2), its state read at that Type's guard as well, and storage the body
 // does not own is reached where that guard steps over an `owner` Scalar's byte (Punned). No element carries a Type.
 // A read keeps Φ_W only from a holder reached through no shared Loan, and from E where the set read carries Φ_W (SPEC 15.6.4: what is
@@ -32,10 +33,12 @@ internal sealed partial class MirBorrows
     private const int HoldingCapacity = 384;
 
     // How a W walk reached a holder (writingVia, DECISIONS R4-M154): at its first step (ViaRoot) (the argument's direct Loans or addresses name it, or
-    // E there), past another holder, or both; and whether at the first step by an element the reading Type does not designate (ViaPun).
+    // E there), past another holder, or both; whether at the first step by an element the reading Type does not designate (ViaPun); and
+    // whether a step of it at a reading key was left out, its guard Deep (ViaDeep; ReadAt).
     private const byte ViaRoot = 1;
     private const byte ViaPast = 2;
     private const byte ViaPun = 4;
+    private const byte ViaDeep = 8;
 
     private readonly List<int> targets = []; // The holders a reference's value refers to (refs), or a call's store writes (W).
     private readonly List<int> targetRoots = []; // The targets' root locals, -1 for E: Refs', and W's (the Type a holder's state is read at).
@@ -47,7 +50,8 @@ internal sealed partial class MirBorrows
     private readonly List<Hold> holds = []; // HoldsLoans' scratch for the entries it reads.
     // Holding's memo: each case Type's answer for the program version holdingVersion names, by reference.
     private readonly Dictionary<BoundType, (bool Holds, MirWrites Writes)> holding = new(HoldingCapacity, ReferenceEqualityComparer.Instance);
-    private readonly List<(int Slot, BoundType Type, int Key)> nodes = []; // W's reading nodes: a holder read on at a reading Type's key.
+    // W's reading nodes: a holder (with its root local) read on at a reading Type's key.
+    private readonly List<(int Slot, int Root, BoundType Type, int Key)> nodes = [];
     private readonly HashSet<(int Slot, int Key)> nodeSeen = []; // The walk's nodes, each once.
     private readonly HashSet<(int Part, int Key)> nodeParts = []; // The walk's state parts read at a key, each once.
     private (int Content, int Chain)[] reads = []; // By set: its content and its chain at the location, each plus 1 (0: not read there).
@@ -408,7 +412,9 @@ internal sealed partial class MirBorrows
             this.ReadHolder(held, pun);
             for (; n < this.nodes.Count; n++)
             {
-                limited |= this.ReadAt(state, this.nodes[n]) == MirWrites.Limit;
+                var read = this.ReadAt(state, this.nodes[n]);
+                limited |= read == MirWrites.Limit;
+                deeps |= read == MirWrites.Deep;
             }
         }
 
@@ -416,8 +422,7 @@ internal sealed partial class MirBorrows
         for (var i = 0; deeps && i < this.targets.Count && !deep; i++)
         {
             var held = state[this.targets[i]];
-            deep = (this.Guard(this.targetRoots[i]) == MirWrites.Deep || this.PunGuard(this.targets[i], punned) == MirWrites.Deep) &&
-                (this.Changes(Placed(held)) || this.Changes(Shared(held)));
+            deep = this.LeftOut(i, punned) && (this.Changes(Placed(held)) || this.Changes(Shared(held)));
         }
 
         return (limited, deep);
@@ -467,10 +472,16 @@ internal sealed partial class MirBorrows
     // The guard a holder's state is read at by the first step's punned reading: the reading Type's where the walk reached it so (ViaPun).
     private MirWrites PunGuard(int slot, MirWrites punned) => (this.writingVia[slot] & ViaPun) != 0 ? punned : MirWrites.None;
 
+    // Whether the walk left out a step of a target, its guard Deep (R4-M153): the guard of its own root Type, of the first step's punned
+    // reading, or of a reading key it was read on at (ViaDeep).
+    private bool LeftOut(int target, MirWrites punned)
+        => this.Guard(this.targetRoots[target]) == MirWrites.Deep || this.PunGuard(this.targets[target], punned) == MirWrites.Deep ||
+            (this.writingVia[this.targets[target]] & ViaDeep) != 0;
+
     // The reading key past the first step (SPEC 15.6 Holders, 5.7 Calls, 15.6.4): a holder the argument's entry names at a Place the input's
     // pointee or referent designates (Designates) is read on at that Type's key, the one key past the input's own layer at the input's
     // key (InputKey: a parameter key marks what the callee's Type parameters hide), never by the declared step (Writes). An input whose
-    // key has no single layer, or no known layers, keeps the declared step.
+    // key has no single layer, or keeps the declared step (PunKey.Declared: a layer stating an Origin is Cover's), keeps it.
     private void Keyed(int set, BoundType input, BoundType? referent, in MirTerminator call, int position)
     {
         if (referent is null || input is not { Kind: BoundTypeKind.Semantics })
@@ -479,7 +490,7 @@ internal sealed partial class MirBorrows
         }
 
         var facts = this.punKeys[this.Key(this.InputKey(call, position, input))];
-        if (facts.FirstUnknown || facts.Unsupported || facts.PastCount != 1)
+        if (facts.Declared || facts.PastCount != 1)
         {
             return;
         }
@@ -489,41 +500,54 @@ internal sealed partial class MirBorrows
         foreach (var element in this.sets.Elements(set))
         {
             if (this.PunEntry(element) is var entry and >= 0 && cases.TypeOf(this.loans[entry].Place) is var place &&
-                (this.Designates(place, reading, on) || (raw && this.RawPointer(reading) && this.Pointered(place) != Extent.None)))
+                (this.Designates(place, reading, on) || (raw && this.PunsPointer(place, reading))))
             {
-                this.Node(this.loans[entry].Named, reading, key);
+                this.Node(this.loans[entry].Named, GuardRoot(this.loans[entry]), reading, key);
             }
         }
     }
 
-    // A holder read on at a reading key, once per walk; its read-on is the key's (ReadAt), not the declared step's.
-    private void Node(int slot, BoundType type, int key)
+    // Whether a read through a layer whose pointee or referent is `type`, which does not designate a Place of Type `place`, is a punned
+    // read that may take a raw pointer from the Place's bytes (SPEC 5.2, 15.6 Holders; U3b's arm, Punned): `type` has a raw pointer raw
+    // Place within, the Place may hold a raw pointer's byte, and it is no safe reference, whose bytes a punned write may not change and no
+    // raw pointer wrote (the owner's O-223 (B')).
+    private bool PunsPointer(BoundType place, BoundType type)
+        => place is not { Kind: BoundTypeKind.Semantics, Semantics: Parsing.SemanticsKind.Ref or Parsing.SemanticsKind.Uniq } &&
+            this.RawPointer(type) && this.Pointered(place) != Extent.None;
+
+    // A holder read on at a reading key, once per walk; its read-on is the key's (ReadAt), not the declared step's, unless the key keeps
+    // the declared step (PunKey.Declared).
+    private void Node(int slot, int root, BoundType type, int key)
     {
         if (this.nodeSeen.Add((slot, key)))
         {
-            this.nodes.Add((slot, type, key));
-            this.keyedBy[slot] = this.walks;
+            this.nodes.Add((slot, root, type, key));
+            this.keyedBy[slot] = this.punKeys[key].Declared ? this.keyedBy[slot] : this.walks;
         }
     }
 
     // A holder's state read on at its reading Type's key (SPEC 15.6 Holders: every element with every layer of the key the holder was
     // reached at), at that Type's guard (MirTypes.HoldsLoans; U3b's reading of a punned holder): at each raw layer and exclusive borrow
     // layer the key's Type holds at its own address (the key table, TyCtxt.OwnLayers; a hidden layer has none), each part of the state
-    // once per (part, layer key). A key whose layers are unknown (an abstract part) or unsupported reads the holder by the declared
-    // step at that guard. The guard, whose Limit counts as the walk's (Writes); a Deep one leaves the step out, as the declared walk's
-    // (R4-M153: the targets' Changes decides whether that is undecided).
-    private MirWrites ReadAt(ulong[] state, (int Slot, BoundType Type, int Key) node)
+    // once per (part, layer key); and E where the holder may afterwards hold the call's own pointer at a raw layer (OwnPointer: the read-on
+    // through that layer; SPEC 15.6.4's composition). A key with a part that is no layer the walked Type expression writes (a
+    // declaration's own layer, a layer stating an Origin, an own step, an abstract or unknown part: PunKey.Declared; SPEC 5.7 Calls) reads
+    // the holder by the declared step at its own root Type's guard, as the walk's targets do. The guard, whose Limit counts as the walk's
+    // (Writes); where it, or the holder's own root Type's, is Deep the step is left out, as the declared walk's (R4-M153: the targets'
+    // Changes decides whether that is undecided, ViaDeep).
+    private MirWrites ReadAt(ulong[] state, (int Slot, int Root, BoundType Type, int Key) node)
     {
-        var guard = this.Guard(node.Type);
         var facts = this.punKeys[node.Key];
-        if (facts.FirstUnknown || facts.Unsupported)
+        if (facts.Declared)
         {
-            this.ReadHolder(state[node.Slot], guard);
-            return guard;
+            this.ReadHolder(state[node.Slot], this.Guard(node.Root)); // Its Limit and Deep are the target's (Writes).
+            return MirWrites.None;
         }
 
+        var guard = this.Guard(node.Root) == MirWrites.Deep ? MirWrites.Deep : this.Guard(node.Type);
         if (guard is not (MirWrites.Through or MirWrites.Named))
         {
+            this.writingVia[node.Slot] |= guard == MirWrites.Deep ? ViaDeep : (byte)0;
             return guard;
         }
 
@@ -542,17 +566,22 @@ internal sealed partial class MirBorrows
             this.ReadPart(Shared(state[node.Slot]), guard, type, raw, key);
         }
 
+        if (guard == MirWrites.Through && this.OwnPointer(node.Key))
+        {
+            this.Written(Escaped, -1, ViaPast, null);
+        }
+
         return guard;
     }
 
     // One state part read at one layer of a reading key, the layer's pointee or referent `type` and the key past it (SPEC 15.6 Holders, 5.2,
     // 5.7's table, 15.6.4): E where the part carries Φ_E (Φ_W past a Named guard); each holder a non-shared direct Loan or address names,
-    // typed where `type` designates its Place (Designates) and punned where the layer is raw, `type` has a raw pointer raw Place within
-    // (RawPointer) and the Place may hold a raw pointer's byte (Pointered), or a borrow layer's referent is punnable: written with the record
-    // of `type`'s storage (Written's place: the reading layer's, in place of R4-M154 Revision 8's Place Type of the reaching Loan; for a
-    // borrow of a Place's own Type the two agree), read on at the key past the layer, and E reached where that storage may hold the call's
-    // own pointer (OwnPointer); at no other layer (none: the layer reads nothing there). Past a holder an element's Position is not known
-    // (R4-M198's Position is the argument value's; U5's per-element markers), so every row of its Place's leading chain may be designated.
+    // typed where `type` designates its Place (Designates) and punned where it may take a raw pointer from the Place's bytes (PunsPointer),
+    // through a borrow layer only where the referent is punnable: written with the record of `type`'s storage (Written's place: the
+    // reading layer's, in place of R4-M154 Revision 8's Place Type of the reaching Loan; for a borrow of a Place's own Type the two
+    // agree) and read on at the key past the layer (Node, ReadAt); at no other layer (none: the layer reads nothing there). Past a holder
+    // an element's Position is not known (R4-M198's Position is the argument value's; U5's per-element markers), so every row of its
+    // Place's leading chain may be designated.
     private void ReadPart(int part, MirWrites guard, BoundType type, bool raw, int key)
     {
         if (part == 0 || !this.nodeParts.Add((part, key)))
@@ -578,23 +607,19 @@ internal sealed partial class MirBorrows
                 }
 
                 var place = cases.TypeOf(loan.Place);
-                if (this.Designates(place, type, true) ||
-                    (raw ? this.RawPointer(type) && this.Pointered(place) != Extent.None : types.Punnable(type)))
+                if (this.Designates(place, type, true) || ((raw || types.Punnable(type)) && this.PunsPointer(place, type)))
                 {
                     this.Written(loan.Named, GuardRoot(loan), ViaPast, types.Erase(type));
-                    this.Node(loan.Named, type, key);
-                    if (!named && this.OwnPointer(key))
-                    {
-                        this.Written(Escaped, -1, ViaPast, null);
-                    }
+                    this.Node(loan.Named, GuardRoot(loan), type, key);
                 }
             }
         }
     }
 
     // Whether storage the call writes, read at `key`, holds a raw layer without an Origin past which a value that may carry a Loan is
-    // stored (SPEC 15.6.4's composition, example twoLayers: the call may write its own pointer at that layer, which may address storage the
-    // body does not own, and store through it at the next one): rule 4, past a holder.
+    // stored (SPEC 15.6.4's composition, example twoLayers; 5.7 Calls: the call may write its own pointer at that layer, also as a Tuple
+    // element, which may address storage the body does not own, and store through it at the next one), at the first step and past a
+    // holder alike (ReadAt).
     private bool OwnPointer(int key)
     {
         var facts = this.punKeys[key];
@@ -632,8 +657,9 @@ internal sealed partial class MirBorrows
 
     // Whether W's step from a set past a holder whose guard is Deep, which W leaves out (Writes), would change what the store writes, by
     // Written's ways (R4-M153, R4-M154): reach a holder W does not, one W reaches only at its first step, or one past a holder by another
-    // Place's Type; E, which takes Reached.All by either way, only where W does not reach it. A shared Loan names no holder the step
-    // writes (R4-M177).
+    // record than the Type of the Place the step's Loan names (what the declared step, or a reading layer of the Place's own Type,
+    // records; W's record is the reading layer's where it read the holder at a key, ReadPart); E, which takes Reached.All by either way,
+    // only where W does not reach it. A shared Loan names no holder the step writes (R4-M177).
     private bool Changes(int set)
     {
         this.Work += this.sets.Count(set);

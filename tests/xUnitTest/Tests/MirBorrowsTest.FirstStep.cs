@@ -731,7 +731,7 @@ public sealed partial class MirBorrowsTest
     [InlineData("pPlainDeclOk", "pPlainDeclOk: kk = 2")] // I, typed: as dev
     [InlineData("lChainH3Bad", "lChainH3Bad: kk = 2")] // I, past a holder: rejected from U3c (MirBorrowsTest.PastHolder)
     [InlineData("qTwoHopBad", "qTwoHopBad: kk = 2")] // I, past a holder: rejected from U3c (MirBorrowsTest.PastHolder)
-    [InlineData("pPlainPastBad", "")] // I, past a holder: still accepted at U3c (a declaration's raw Field past a punned holder: not reached)
+    [InlineData("pPlainPastBad", "pPlainPastBad: kk = 2")] // I, past a holder: rejected from U3c (hp may hold the call's own pointer; 15.6.4's composition)
     public void TheFirstStepReadsAtTheReadingPathsType(string form, string expected)
     {
         var c = MirBuildTest.Compile(FirstStepShapes + FirstStepForms[form] + "\npublic func main() => ()\n");

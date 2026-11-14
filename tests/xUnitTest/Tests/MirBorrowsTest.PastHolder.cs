@@ -591,9 +591,9 @@ public sealed partial class MirBorrowsTest
             """,
     };
 
-    // The coverage table's rows (U3c; the state file a5v-u3c-state.md, sections 1 and 4). The four environment rows need the Front's
-    // A5-F (row 2 (i) and (ii): an environment's raw layers stated, a `let` binding's own layer marked); until it lands they give
-    // the records below, which are not their labels' (condition: A5-F).
+    // The coverage table's rows (U3c; the state file a5v-u3c-state.md, sections 1 and 4). Three environment rows (d4OriMixedBad,
+    // d4UniqRefLetBad, letRefLeafUseBad) need the Front's A5-F (row 2 (i) and (ii): an environment's raw layers stated, a `let`
+    // binding's own layer marked); until it lands they give the records below, which are not their labels' (condition: A5-F).
     [Theory]
     [InlineData("zPairLayerBad", "zPairLayer: y = 5")] // I
     [InlineData("zPairLayerOk", "")] // V
@@ -607,11 +607,11 @@ public sealed partial class MirBorrowsTest
     [InlineData("oriRefLeafOk", "")] // V
     [InlineData("d4UniqRefLetBad", "")] // I by SPEC; accepted until the Front's A5-F lands (its condition)
     [InlineData("d4UniqRefLetOk", "")] // V
-    [InlineData("d4NestVarBad", "")] // I by SPEC; accepted until the Front's A5-F lands (its condition)
+    [InlineData("d4NestVarBad", "d4NestVarBad: kk = 2; d4NestVarBad: var x: u8 = 0")] // I: the `var` binding inner may hold the call's own pointer
     [InlineData("d4NestLetOk", "")] // V
     [InlineData("d4AggGenOk", "")] // V
     [InlineData("d4AggGenUseOk", "d4AggGenUseOk: kk = 2")] // V by SPEC; rejected as on dev: a hidden part's addresses are read by the named step (the reading of section 5)
-    [InlineData("aggGenShownBad", "")] // I by SPEC; accepted: rule 4 at a layer shown beside a hidden part is not reached
+    [InlineData("aggGenShownBad", "aggGenShownBad: kk = 2")] // I: a raw layer shown beside the hidden part may hold the call's own pointer
     [InlineData("letRefLeafUseBad", "")] // I by SPEC; accepted until the Front's A5-F lands (its condition)
     [InlineData("letRefLeafOk", "")] // V
     [InlineData("dDeepOk", "f: value = 99; f: var d = (r.0@raw@raw/u32, n2@uniq); f: var n2 = ((((((((((((((((((((((((((((((((((((((((0, 0), 1), 2), 3), 4), 5), 6), 7), 8), 9), 10), 11), 12), 13), 14), 15), 16), 17), 18), 19), 20), 21), 22), 23), 24), 25), 26), 27), 28), 29), 30), 31), 32), 33), 34), 35), 36), 37), 38), 39); f: var n1 = ((((((((((((((((((((((((((((((((((((((((0, 0), 1), 2), 3), 4), 5), 6), 7), 8), 9), 10), 11), 12), 13), 14), 15), 16), 17), 18), 19), 20), 21), 22), 23), 24), 25), 26), 27), 28), 29), 30), 31), 32), 33), 34), 35), 36), 37), 38), 39); f: var x = 1")] // V by SPEC; records beside the depth limit: E's record by the reading layer (R3d.5) is not in this unit
@@ -625,7 +625,7 @@ public sealed partial class MirBorrowsTest
     [InlineData("rAliasCleanNoEntryBad", "")] // V
     [InlineData("rAliasCleanNoCallOk", "")] // V
     [InlineData("hPunWriteOk", "")] // V
-    [InlineData("n13ParamBad", "")] // I by SPEC; accepted: rule 4 past a parameter's Origin layer is not reached
+    [InlineData("n13ParamBad", "n13ParamBad: kk = 2; n13ParamBad: var hop2: raw/(raw/u8) = null")] // I: hop2 may hold the call's own pointer
     [InlineData("n13ParamOk", "")] // V
     [InlineData("n13LensBad", "n13LensBad: kk = 2; n13LensBad: var hop2: raw/(raw/u8) = null")] // I
     [InlineData("n13LensSharedOk", "")] // V

@@ -8,6 +8,7 @@ namespace Kimi.Compiler.Mir;
 // Place's key (TyCtxt.OwnLayers), folded once per program version (R4-M140): whether a raw layer is at the Place's own address, what
 // its layers state (Stated; AnyStated, which A5's storing rule reads at a store's destination, MirBorrows.Storing), the Types a write through
 // them writes and the keys past them, each past key with whether its layer is raw, a hidden layer (OwnLayer.Hidden) with neither;
+// whether W reads a holder at the key by the declared step (Declared: a part there is no layer the walked Type expression writes);
 // a Place's key (KeyOf: TyCtxt.Select, TyCtxt.Base along its steps), an entry's once per run; a call input's key (InputKey);
 // the call walk's gate (Below). Must not: decide a pun (MirBorrows.PunTypes' judge).
 internal sealed partial class MirBorrows
@@ -95,12 +96,17 @@ internal sealed partial class MirBorrows
 
         this.punLayers.Clear();
         var complete = types.OwnLayers(key, this.punLayers);
-        var facts = new PunKey { RawInline = !complete, Stated = complete, FirstUnknown = !complete };
+        var facts = new PunKey { RawInline = !complete, Stated = complete, FirstUnknown = !complete, Declared = !complete };
         var start = this.punViewTypes.Count;
         var pastStart = this.punPastKeys.Count;
         foreach (var own in this.punLayers)
         {
             var (layer, step, past) = own;
+
+            // What W reads layer by layer (SPEC 5.7 Calls: a layer the walked Type expression writes bounds a store to its pointee): a raw
+            // layer stating no Origin that no declaration states (TyCtxt.RawStated) and a borrow; any other part keeps the declared step.
+            var its = layer is not null ? step == HoldStep.Address && !TyCtxt.RawStated(layer) : step is HoldStep.Exclusive or HoldStep.Shared;
+            facts = facts with { Declared = facts.Declared || !its };
             if (layer is not null)
             {
                 var origin = step is HoldStep.Own or HoldStep.Shared or HoldStep.Exclusive; // A stated Origin other than `static`.
@@ -203,6 +209,11 @@ internal sealed partial class MirBorrows
         internal bool FirstUnknown { get; init; }
 
         internal bool Hidden { get; init; } // A part hidden in a called function's own Type parameter's binding (OwnLayer.Hidden).
+
+        // Whether W reads a holder at the key by the declared step, not layer by layer (MirBorrows.Reach): a part there is neither a raw
+        // layer the walked Type expression writes without an Origin nor a borrow (a declaration's own layer, a layer stating an Origin,
+        // an own step, an abstract or unbound part), or the layers are not all known.
+        internal bool Declared { get; init; }
 
         internal byte Below { get; init; } // 0 not computed, 1 false, 2 true: whether a write past the key may write a Scalar or is unknown.
 

@@ -1117,7 +1117,11 @@ public sealed partial class MirBorrowsTest
     // erred at `z = 5`. The exclusive routes still write: the exclusive part's holder read after (ss8m, ss8vb), an exclusive and a shared
     // Loan on parts of one holder (ss8g, by value ss8gv; shared at the first step and exclusive past h, r1a), w's plain address (ss8a; one
     // level down through r1cv's callee, r1c), an exclusive Loan past a holder beside a shared one (ss8c) and the holder a second argument
-    // reaches exclusively (ss8two); a write while s's Loan lives errs (ss8w).
+    // reaches exclusively (ss8two); a write while s's Loan lives errs (ss8w). r1cv, whose q addresses another holder, is invalid too (A5
+    // value redesign U3c): t.0, a `raw/(ref/i32 during a)`, is a raw layer without an Origin in storage stp writes, so stp may write its
+    // own pointer there and store v through it in storage the body does not own, used after every point (SPEC 15.6.4's composition,
+    // example twoLayers; 5.7 Calls: also as a Tuple element; dev accepted it), and that storage keeps what a chain of reads through t
+    // carries, so the storage ends of the holders it names conflict (r1c's and r1cv's; SPEC 23.1.2).
     [Fact]
     public void AStoreWritesNoHolderOnlyASharedLoanNames()
     {
@@ -1301,7 +1305,10 @@ public sealed partial class MirBorrowsTest
         Assert.Equal(
             [
                 "ss8m: z = 5", "ss8m: inspect(v)", "ss8vb: z = 5", "ss8g: z = 5", "ss8g: g", "ss8gv: z = 5", "ss8a: z = 5",
-                "ss8c: z = 5", "ss8c: inspect(v)", "ss8two: z = 5", "r1a: z = 5", "r1a: g", "r1c: z = 5", "ss8w: w = y@ref",
+                "ss8c: z = 5", "ss8c: inspect(v)", "ss8two: z = 5", "r1a: z = 5", "r1a: g", "r1c: z = 5",
+                "r1c: var q: (raw/(ref/i32), i32) = (w@raw, 0)", "r1c: var w: ref/i32 = x@ref", "r1c: var x = 1", "r1cv: z = 5",
+                "r1cv: var q: (raw/(ref/i32), i32) = (u@raw, 0)", "r1cv: var w: ref/i32 = x@ref", "r1cv: var y = 2", "r1cv: var x = 1",
+                "ss8w: w = y@ref",
             ],
             Problems(c, Analyze(c), [.. LoanCodes, DiagnosticCode.Unsupported_Kd]));
     }
