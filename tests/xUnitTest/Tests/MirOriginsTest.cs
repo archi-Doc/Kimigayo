@@ -451,6 +451,32 @@ public sealed partial class MirOriginsTest
         Assert.Equal((true, false), (origins.Outlives(body, 0, c, b, site), origins.Outlives(body, 0, b, c, site)));
     }
 
+    // PLAN G824 (SPEC 15.6.1, 15.6.5; MirOrigins.Fixed's contract): an Inferred Origin is Fixed under a run's views where its class's
+    // edges reach one Fixed node from it and back, neither path through another Fixed node. r's referent slot equals a (uniq's invariance)
+    // and b reaches it too: Fixed, but not under no view. s and t lie on one cycle through two Fixed nodes (a -> s -> b -> t -> a), each
+    // between a and b: not Fixed. a reaches w, which reaches no Fixed node: not Fixed. Each is a reassignable local's Inferred atom (a
+    // `let` local takes its initializer's Type).
+    [Fact]
+    public void AnInferredOriginIsFixedOnACycleThroughOneFixedNode()
+    {
+        const string Source = "func f(p: uniq/(ref/i32 during a) during u, o: uniq/(ref/i32 during b) during v, q: ref/i32 during a, " +
+            "y: ref/i32 during b) -> i32\n    var s = q\n    o@follow = s\n    var t = y\n    p@follow = t\n    var w = q\n    let lb = 1\n" +
+            "    var r = p@move\n    r@follow = o@follow\n    r@follow = lb@ref\n    return w@follow\n";
+        var (origins, body, c) = Judged(Source, "f");
+        var (rows, views, locals) = (c.Types.OriginRows(body.Key.Body), MirCases.Every(body), body.Locals.ToArray());
+        bool Fixed(string name, bool referent, ulong under)
+        {
+            var local = locals.Single(x => x.Name == name);
+            var (type, site) = (referent ? local.Type.Components[0] : local.Type, body.Subject(local.Source));
+            Assert.Equal(OriginAtomKind.Inferred, rows.Atoms[c.Types.OriginAtom(body.Key.Body, type.Origin!, site)].Kind);
+            return origins.Fixed(type, site, under);
+        }
+
+        Assert.Equal(
+            (true, false, false, false, false),
+            (Fixed("r", true, views), Fixed("r", true, 0), Fixed("s", false, views), Fixed("t", false, views), Fixed("w", false, views)));
+    }
+
     // V16 "F4 Refuted" (2a0-D §6.4): N finite Borrows into one chain into one fixed Origin keep the work within c·(N_o + E_o·⌈Fin/64⌉), one
     // problem per source.
     [Fact]
