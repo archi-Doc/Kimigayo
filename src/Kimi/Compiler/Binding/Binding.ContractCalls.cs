@@ -215,41 +215,4 @@ public sealed partial class Binding
         /// <summary>Gets or sets a value indicating whether a Property requirement matched the name.</summary>
         internal bool PropertyRequirement { get; set; }
     }
-
-    private readonly struct CallCandidates(BindingSymbol first, RequirementGroup? requirements, List<BindingSymbol>? imports)
-    {
-        public Enumerator GetEnumerator() => new(first, requirements, imports);
-
-        internal struct Enumerator(BindingSymbol first, RequirementGroup? requirements, List<BindingSymbol>? imports)
-        {
-            private BindingSymbol? next = first;
-            private int index;
-
-            public BindingSymbol Current { get; private set; } = null!;
-
-            public bool MoveNext()
-            {
-                var members = requirements?.Members ?? (imports is { Count: > 0 } ? imports : null);
-                if (members is not null)
-                {
-                    if (this.index == members.Count)
-                    {
-                        return false;
-                    }
-
-                    this.Current = members[this.index++];
-                    return true;
-                }
-
-                if (this.next is null)
-                {
-                    return false;
-                }
-
-                this.Current = this.next;
-                this.next = this.next.Next;
-                return true;
-            }
-        }
-    }
 }
