@@ -138,8 +138,10 @@ internal sealed partial class MirBorrows
     {
         var position = this.slotPositions[written.Output];
         var stored = this.referentStores.AsSpan(0, this.referentCount).Contains(position);
+        // The input's layer and its pointee or referent, the Type the store writes through it at: W's first step reads the Places the
+        // argument names at it (Writes; SPEC 5.7 Calls, 15.6.4), and each holder receives at it (Arrive).
         var input = cases.TypeOf(this.Input(call, position));
-        BoundType? referent = this.wCount > 0 && input is { Kind: BoundTypeKind.Semantics, Components: [var to, ..] } ? to : null;
+        BoundType? referent = input is { Kind: BoundTypeKind.Semantics, Components: [var to, ..] } ? to : null;
         if (this.covering.Count > 0 && this.argValues[position] == 0)
         {
             this.BeginWalk();
@@ -150,7 +152,7 @@ internal sealed partial class MirBorrows
             this.Referents(this.argValues[position]);
         }
 
-        var (limited, deepHolder) = stored ? default : this.Writes(state, this.argValues[position]);
+        var (limited, deepHolder) = stored ? default : this.Writes(state, this.argValues[position], input, referent);
         this.limit |= limited && checks;
         this.deep |= deepHolder && checks;
         for (var t = 0; t < this.targets.Count; t++)

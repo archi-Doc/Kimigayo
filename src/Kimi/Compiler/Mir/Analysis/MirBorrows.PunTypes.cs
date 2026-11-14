@@ -207,6 +207,12 @@ internal sealed partial class MirBorrows
             ? this.Leads(place, cases.Type(to), grid: true) : field == 0 && part is not null;
     }
 
+    // Whether a Type designates a Place of Type `place` at a Position (`on`: where the Place's leading chain starts): the Place's own
+    // Type, or, on, a row of its chain (SPEC 5.2, 4.1). The judge's typed arm (Designated), which W's first step reads at the input's
+    // pointee or referent too (MirBorrows.Reach).
+    private bool Designates(BoundType place, BoundType type, bool on)
+        => types.SameStructure(place, type) || (on && this.Leads(place, type, grid: false));
+
     // The one designation judge (SPEC 5.2, 5.2.1 condition 1, 5.3, 4.1; IMPL 21.1): what a write of Type `write`, punnable and holding a
     // Scalar, does at a Place of Type `place`, `on` whether its address is one where the Place's leading chain starts. The Place's own
     // Type (off the Place's address it leaves the Place's storage, undefined), or, on, a chain row's: typed. Else a pun only where the
@@ -217,7 +223,7 @@ internal sealed partial class MirBorrows
     // overlap, the owner's O-205 (a)). Else undecided: the layout, or a length that is no constant, decides what it covers.
     private PunWrite Designated(BoundType place, BoundType write, bool on)
     {
-        if (types.SameStructure(place, write) || (on && this.Leads(place, write, grid: false)))
+        if (this.Designates(place, write, on))
         {
             return PunWrite.Typed;
         }
@@ -303,6 +309,30 @@ internal sealed partial class MirBorrows
 
         this.punHolds.RemoveRange(start, this.punHolds.Count - start);
         return result;
+    }
+
+    // Whether a raw Place of a Type, or one within it, is of a raw pointer Type (SPEC 5.2: its Fields and elements, transitively;
+    // TyCtxt.RawPlaces): where a punned read through a raw layer of that pointee takes a pointer from the bytes (W's first step). An
+    // enum's payload is no raw Place of it (Empty: the owner's O-223 (B')), an array of no element has none (Sized), and an abstract
+    // part with no published row may be one.
+    private bool RawPointer(BoundType type)
+    {
+        if (type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Raw })
+        {
+            return true;
+        }
+
+        var start = this.punRaw.Count;
+        var answer = types.RawPlaces(PlaceKey.Root(type), this.punRaw);
+        var found = answer == RawPlacesAnswer.Undecided && this.punRaw.Count == start;
+        for (var i = start; !found && i < this.punRaw.Count; i++)
+        {
+            found = this.punRaw[i] is { Key.Type: { } row } raw && (!raw.Element || Sized(type) != Extent.None) &&
+                this.RawPointer(cases.Type(row));
+        }
+
+        this.punRaw.RemoveRange(start, this.punRaw.Count - start);
+        return found;
     }
 
     // Whether a raw Place of a Type, or one within it, has a punnable Type holding a Scalar.

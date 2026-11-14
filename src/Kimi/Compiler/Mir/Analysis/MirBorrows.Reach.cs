@@ -10,7 +10,10 @@ namespace Kimi.Compiler.Mir;
 // chain (SPEC 15.6.4's "what any chain of reads through it carries", a Chain row's measure), the least fixed point of a read from it,
 // each holder read once per closure. W is one walk over state parts: each part of a reached holder's state is read once per walk at
 // its reading, the guard of the holder's own root Type (Read; Through's reading covers Named's; MirBorrows.States' mark), each holder
-// taking the Reached entry of the Type of the Place the reaching Loan names (DECISIONS R4-M154, Revision 8).
+// taking the Reached entry of the Type of the Place the reaching Loan names (DECISIONS R4-M154, Revision 8). At the first step the
+// reading path's Type is the input's pointee or referent (SPEC 15.6 Holders, 5.7 Calls): a holder whose Place it does not designate
+// (MirBorrows.PunTypes' Designates) is read punned (SPEC 5.2), its state read at that Type's guard as well, and storage the body
+// does not own is reached where that guard steps over an `owner` Scalar's byte (Punned). No element carries a Type.
 // A read keeps Φ_W only from a holder reached through no shared Loan, and from E where the set read carries Φ_W (SPEC 15.6.4: what is
 // reached through a shared layer is read-only; DECISIONS R4-M170), and W writes no holder that only a shared Loan names, at any step
 // (SPEC 15.6.4 item 1, 5.2.1 condition 3; DECISIONS R4-M177).
@@ -25,9 +28,10 @@ internal sealed partial class MirBorrows
     private const int HoldingCapacity = 384;
 
     // How a W walk reached a holder (writingVia, DECISIONS R4-M154): at its first step (ViaRoot) (the argument's direct Loans or addresses name it, or
-    // E there), past another holder, or both.
+    // E there), past another holder, or both; and whether at the first step by an element the reading Type does not designate (ViaPun).
     private const byte ViaRoot = 1;
     private const byte ViaPast = 2;
+    private const byte ViaPun = 4;
 
     private readonly List<int> targets = []; // The holders a reference's value refers to (refs), or a call's store writes (W).
     private readonly List<int> targetRoots = []; // The targets' root locals, -1 for E: Refs', and W's (the Type a holder's state is read at).
@@ -262,14 +266,13 @@ internal sealed partial class MirBorrows
 
     // The guard of a holder's own root Type, the Type the walk reads its state at (Writes, Read): what a call that writes its storage
     // may write past it (Holds); none for E and a static, which a call writes as storage the body does not own.
-    private MirWrites Guard(int root)
-    {
-        if (root < 0)
-        {
-            return MirWrites.None;
-        }
+    private MirWrites Guard(int root) => root < 0 ? MirWrites.None : this.Guard(cases.Type(this.body.Locals[root].Type));
 
-        _ = this.Holds(cases.Type(this.body.Locals[root].Type), out var writes);
+    // The guard of the Type a holder's state is read at, its root Type or the first step's reading Type (Punned): what a call that
+    // writes through a value of it may write past it (Holds).
+    private MirWrites Guard(BoundType type)
+    {
+        _ = this.Holds(type, out var writes);
         return writes;
     }
 
@@ -358,44 +361,98 @@ internal sealed partial class MirBorrows
     // holder h ≠ E of W whose root Type passes the guard (MirWrites.Through), the holder each direct Loan not shared or address of σ(h)
     // names, and E where σ(h) carries Φ_E; from one whose guard is Named (an abstract part, SPEC 15.6.4's provenance list), those holders
     // and E where σ(h) carries Φ_W (the named step). One walk: each holder it reaches is asked its guard once, and each part of its state
-    // is a node read once per walk at that reading (Read). The two facts that leave the store undecided, which the call's location
+    // is a node read once per walk at that reading (Read); a holder the first step reads punned is read at the reading Type's guard too
+    // (Punned), whose Limit and Deep count as its own guard's. The two facts that leave the store undecided, which the call's location
     // records (MirBorrows.Calls, .Locations): whether W reached a holder the guard leaves undecided (MirWrites.Limit, R4-M147), and
     // whether, at W's fixed point, the step from a holder whose guard is Deep would change what W writes (Changes, R4-M153; that step
     // is left out, and a Deep holder whose step changes nothing decides nothing). Every store path (a Call's rows, its untied stores
     // among them; A5-F7's capture stores, unit 2c; A5-F6's desc(c) stores, 2f) takes W here, except a 4.6 to 4.9 operation's referent
     // store, which takes W's first step alone, its row's destruction composed at the call (Referents; MirBorrows.Destructions;
     // DECISIONS R4-M150).
-    private (bool Limit, bool Deep) Writes(ulong[] state, int set)
+    private (bool Limit, bool Deep) Writes(ulong[] state, int set, BoundType input, BoundType? referent)
     {
         this.Write(set, ViaRoot, MirWrites.Through); // The first step again, by the walk (Referents put its holders in the targets).
-        foreach (var input in this.covering)
+        foreach (var covered in this.covering)
         {
-            this.Write(this.argValues[input], ViaRoot, MirWrites.Through);
+            this.Write(this.argValues[covered], ViaRoot, MirWrites.Through);
         }
 
+        var punned = this.Punned(set, input, referent);
         var (limited, deeps) = (false, false);
         this.Step(); // Written is idempotent, so a state part read again at its reading writes nothing more.
         for (var i = 0; i < this.targets.Count; i++)
         {
-            var guard = this.Guard(this.targetRoots[i]);
+            var (guard, pun) = (this.Guard(this.targetRoots[i]), this.PunGuard(this.targets[i], punned));
             var held = state[this.targets[i]];
-            limited |= guard == MirWrites.Limit;
-            deeps |= guard == MirWrites.Deep;
-            if (guard is MirWrites.Through or MirWrites.Named)
-            {
-                this.Read(Placed(held), guard);
-                this.Read(Shared(held), guard);
-            }
+            limited |= guard == MirWrites.Limit || pun == MirWrites.Limit;
+            deeps |= guard == MirWrites.Deep || pun == MirWrites.Deep;
+            this.ReadHolder(held, guard);
+            this.ReadHolder(held, pun);
         }
 
         var deep = false;
         for (var i = 0; deeps && i < this.targets.Count && !deep; i++)
         {
             var held = state[this.targets[i]];
-            deep = this.Guard(this.targetRoots[i]) == MirWrites.Deep && (this.Changes(Placed(held)) || this.Changes(Shared(held)));
+            deep = (this.Guard(this.targetRoots[i]) == MirWrites.Deep || this.PunGuard(this.targets[i], punned) == MirWrites.Deep) &&
+                (this.Changes(Placed(held)) || this.Changes(Shared(held)));
         }
 
         return (limited, deep);
+    }
+
+    // W's first step read at the reading path's Type (SPEC 15.6 Holders: a holder is read at the Type of the path that reads it; 5.7 Calls,
+    // 15.6.4: the input's pointee or referent): each Place an entry of the argument names (PunEntry) that the Type does not designate at
+    // the value's Position (Designates, OffGrid) is read punned (SPEC 5.2) where the Type has a raw pointer raw Place within (RawPointer;
+    // through a borrow layer only a punnable referent puns) and the Place is no safe reference (the owner's O-223 (B')): over a raw
+    // pointer's byte (Pointered) the punned pointer has the provenance written there, so the holder's state is read at the reading Type's
+    // guard beside its own (Writes: dev's declared reading stays); where that guard steps over an `owner` Scalar's byte (Scalared), the
+    // pointer reaches storage the body does not own (SPEC 15.6 Holders, 5.5): E, past the holder. The guard, where a holder is punned.
+    private MirWrites Punned(int set, BoundType input, BoundType? referent)
+    {
+        var raw = input is { Kind: BoundTypeKind.Semantics, Semantics: Parsing.SemanticsKind.Raw };
+        var borrow = input is { Kind: BoundTypeKind.Semantics, Semantics: Parsing.SemanticsKind.Ref or Parsing.SemanticsKind.Uniq };
+        var reading = referent is null || !(raw || borrow) ? null : cases.Type(referent);
+        if (reading is null || (borrow && !types.Punnable(reading)) || !this.RawPointer(reading))
+        {
+            return MirWrites.None;
+        }
+
+        var (on, guard, punned) = (!this.OffGrid(set), this.Guard(reading), false);
+        this.Work += this.sets.Count(set);
+        foreach (var element in this.sets.Elements(set))
+        {
+            if (this.PunEntry(element) is var entry and >= 0 && cases.TypeOf(this.loans[entry].Place) is var place &&
+                place is not { Kind: BoundTypeKind.Semantics, Semantics: Parsing.SemanticsKind.Ref or Parsing.SemanticsKind.Uniq } &&
+                !this.Designates(place, reading, on))
+            {
+                if (this.Pointered(place) != Extent.None)
+                {
+                    punned = true;
+                    this.writingVia[this.loans[entry].Named] |= ViaPun;
+                }
+
+                if (guard is MirWrites.Through or MirWrites.Named && this.Scalared(place))
+                {
+                    this.Written(Escaped, -1, ViaPast, null);
+                }
+            }
+        }
+
+        return punned ? guard : MirWrites.None;
+    }
+
+    // The guard a holder's state is read at by the first step's punned reading: the reading Type's where the walk reached it so (ViaPun).
+    private MirWrites PunGuard(int slot, MirWrites punned) => (this.writingVia[slot] & ViaPun) != 0 ? punned : MirWrites.None;
+
+    // A reached holder's state read at one guard: its two parts, each a node of the walk, where the guard steps (Through, Named).
+    private void ReadHolder(ulong held, MirWrites guard)
+    {
+        if (guard is MirWrites.Through or MirWrites.Named)
+        {
+            this.Read(Placed(held), guard);
+            this.Read(Shared(held), guard);
+        }
     }
 
     // A node of the walk: a part of a reached holder's state, read at its reading, the holder's guard, once per walk (MirBorrows.States'
