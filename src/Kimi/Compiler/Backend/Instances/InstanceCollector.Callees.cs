@@ -108,8 +108,9 @@ internal sealed partial class InstanceCollector
     // SPEC 22.6 (DECISIONS R8-M19): what a call of a function without a MIR body that is no compiler function runs, its direct call or a
     // requirement's or requirement Item's whose witness it is (Called; Binding rejects its own Item): a #LibraryImport function's item
     // (TyCtxt.Bodyless: a foreign function), keyed by the function alone (an import is never generic), with no target; code generation
-    // calls it by its C signature (FunctionCodegen.Calls' Witness). None for a definition Binding rejected, that error's dependent (no
-    // record); any other, a compiler function taken as a witness included, is a broken contract.
+    // calls it by its C signature (FunctionCodegen.Calls' Witness). None for a definition Binding rejected or whose Body the parser
+    // recorded missing, that error's dependent (TyCtxt.Bodyless: Dependent; no record); any other, a compiler function taken as a witness
+    // included, is a broken contract.
     private int Imported(int item, SourceRef subject, BindingSymbol function)
     {
         switch (TyCtxt.Bodyless(function))
