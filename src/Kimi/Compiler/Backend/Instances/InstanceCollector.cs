@@ -168,6 +168,14 @@ internal sealed partial class InstanceCollector
     /// <returns>The Type in the instance, or null when its storage is not Prepared (a site maps the verdict, In).</returns>
     internal BoundType? TypeOf(int item, BoundType type) => this.Instance(item, type) is ({ } closed, Binding.StorageOutcome.Prepared) ? closed : null;
 
+    /// <summary>Gets a length of an item's body in the item's instance (SPEC 4.4.1: a Length constant's value), TypeOf's rule for a length:
+    /// the length itself for a closed item, else its instance under the representative (TyCtxt.InstanceLength).</summary>
+    /// <param name="item">The item.</param>
+    /// <param name="length">A length of its body.</param>
+    /// <returns>The length in the instance, or null where the representative does not complete it.</returns>
+    internal BoundLength? LengthOf(int item, BoundLength length)
+        => this.Set.Items[item].Representative is { } representative ? this.types.InstanceLength(length, representative) : length;
+
     /// <summary>Gets whether a storage verdict of TyCtxt makes the instance a site requests, the collector's one reading of it (DECISIONS
     /// BU-36, BU-38, R5-M37): Prepared does; Rejected rests on a part Binding rejected, a broken contract (Report); Limit is the
     /// storage-nesting gap (PLAN G128) at the site.</summary>
