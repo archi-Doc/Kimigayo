@@ -88,6 +88,10 @@ public enum SyntaxForm : ushort
     /// modifier (SPEC F.3.3).</summary>
     SecondModifier,
 
+    /// <summary>An access word after <c>unsafe</c>, <c>virtual</c> or <c>override</c>: the access specification precedes the modifier
+    /// (SPEC F.3.3).</summary>
+    AccessAfterModifier,
+
     /// <summary>A receiver parameter that is repeated, renamed, defaulted or declared outside a struct or Contract.</summary>
     ReceiverParameter,
 
@@ -115,6 +119,10 @@ public enum SyntaxForm : ushort
 
     /// <summary>The base list of a struct with other than one base.</summary>
     BaseList,
+
+    /// <summary>The InheritanceReference of a base clause or a Contract parent (SPEC F.6.1, F.6.2, F.5): a Container path and at most a
+    /// binding set or a BorrowOrigin.</summary>
+    InheritanceReference,
 
     /// <summary>An extension declaration, which the language does not introduce.</summary>
     ExtensionDeclaration,
@@ -194,11 +202,17 @@ public enum SyntaxForm : ushort
     /// <summary>An Origin annotation on the borrow layer of an adaptation target.</summary>
     AdaptationOrigin,
 
+    /// <summary>A bound Container qualifier as the head of an adaptation target's own path (SPEC 13.5.1, F.5).</summary>
+    AdaptationQualifier,
+
     /// <summary>An Origin annotation anywhere in a runtime Type-test target.</summary>
     RuntimeTypeTestOrigin,
 
     /// <summary>A 'during' annotation after an ungrouped adaptation target.</summary>
     AdaptationDuring,
+
+    /// <summary>A postfix suffix after an open adaptation target (SPEC F.9.4): the adaptation is grouped first.</summary>
+    OpenTargetSuffix,
 
     /// <summary>An if expression nested directly in the body of an if.</summary>
     NestedIfExpression,
