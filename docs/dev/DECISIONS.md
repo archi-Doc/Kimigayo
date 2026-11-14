@@ -399,7 +399,7 @@ Entries were compacted under G420 (the owner's 「規則 A」, 2026-11-05); the 
     and implements Front-designed units; the Back takes P7 and T1 and lends implementers to Front-designed units after R8's W family.
 - **Q19 No line, character or size limits** (2026-11-14, the owner in K's dialog, verbatim
   「行数・文字数の上限は、全て撤廃します。各種文書を修正してください。PLAN、コミットメッセージの上限も撤廃します。」 and, for the 60-statement member limit, 「Remove it too」; AGENTS,
-  WORKFLOW, COMPILER_ARCHITECTURE).
+  WORKFLOW, COMPILER_ARCHITECTURE, STYLE, GUIDE).
   - Removed: statements per member (60), tokens per file (5,000, with the generated data files' exemption from it), the line length
     and the code rules' density (160 characters or UTF-16 units per line), the Kimi sources' 120 columns (STYLE), PLAN's 500
     lines and the commit message's about 2,000 characters.
