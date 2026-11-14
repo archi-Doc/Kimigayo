@@ -155,7 +155,7 @@ Layout is implementation-defined unless `#Layout("C")` applies ([§6.7.1](#671-l
 
 A structure is **sealed** unless `open` precedes `struct`; a sealed structure cannot be a base. Openness is independent of access and is not inherited; an ObjectPayload opt-out ([§8.7.3](08-generics-constraints-and-contracts.md#873-objectpayload)) is inherited.
 
-A structure names at most one direct base with `: BaseType` after its Name, generic parameters and Origin list. The base must be an accessible `open struct` Core; a generic parameter, a Semantics-applied Type, a group, an enum or a contract is not a base. Inheritance cycles, including through different constructions of one generic declaration, are errors. The base's Constraints must hold, and its access must cover the derived Type's effective access domain ([§9.4.4](09-names-signatures-and-access.md#944-api-signature-accessibility)).
+A structure names at most one direct base with `: BaseType` after its Name, generic parameters and Origin list. Like a named Type, a base or Contract parent ([§8.4.3](08-generics-constraints-and-contracts.md#843-refinement)) may carry a binding set, as in `: Base{b}`, or the single-slot binding `: Base during b`, under the rules of [§15.3.1](15-ownership-and-lifetime-analysis.md#1531-borrow-annotations-and-binding-sets). The base must be an accessible `open struct` Core; a generic parameter, a Semantics-applied Type, a group, an enum or a contract is not a base. Inheritance cycles, including through different constructions of one generic declaration, are errors. The base's Constraints must hold, and its access must cover the derived Type's effective access domain ([§9.4.4](09-names-signatures-and-access.md#944-api-signature-accessibility)).
 
 ```kimi
 public open struct Base

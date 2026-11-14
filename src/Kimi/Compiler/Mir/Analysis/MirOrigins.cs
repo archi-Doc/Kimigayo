@@ -6,12 +6,14 @@
 // and row, at the cost of its operands' walks plus its choices, in Work and the arena; MirOrigins.Meets.cs, BU-104), the Refuted and
 // Unknown chains through it and the relations between two fixed Origins (MirOrigins.Chains.cs), and the located limit at an end the view
 // leaves unclassed or at a failing chain with an enclosing body's call region (the nested-body limit); and, for the Loan stratum's rule W,
-// each Ref's causes and a receiving Type's class (MirOrigins.Causes.cs, R4-M132).
+// each Ref's causes and whether a receiving Type's Origins are Fixed, an Inferred one where every class of the run's views makes it equal
+// to a Fixed one (MirOrigins.Causes.cs, R4-M132; PLAN G824).
 // - Inputs: a validated body and the views A1 and A2 completed (MirDropTable.ViewsOf); MirCases (a view's borrow binders and case Types);
 //   MirSteps (a Ref's classed steps); the C1-F4 view (TyCtxt.OriginRows, OriginAtom, MeetAtom, an atom's part and whether it is an
 //   enclosing body's call region), keyed by MirDefKey.Body, its
 //   fixed-fixed oracles (TyCtxt.UniversalRelations: the body's, and its layer's for the layer's part) and its layer units with rows
-//   (TyCtxt.OriginLayers), beside the program's constructor bodies; the view throws at a broken contract (DECISIONS BU-102).
+//   (TyCtxt.OriginLayers), beside the program's constructor bodies; the view throws at a broken contract (DECISIONS BU-102); after Judge,
+//   its queries (Outlives, Fixed) re-form a class's edges from these (IndexClass).
 // - Outputs, which Judge adds at its end with each class's views, before the Loan stratum (R4-M132): UnsatisfiedOriginRelation_Kd
 //   (Ownership.UnprovenOrigin) at a chain's last edge's site (a row's Site, or the Ref's statement for a containment edge), with Reason
 //   (finite source, fixed end, false) of the view's
@@ -72,7 +74,8 @@ internal sealed partial class MirOrigins(TyCtxt types, MirCases cases)
     private Binding.OriginRowSet slice = null!;
 
     /// <summary>Gets the work of the last <see cref="Judge"/> (2a0-D §6.4): node visits, edge steps, bitset and mask words, and the
-    /// oracle's Close and Outlives calls, summed over its classes.</summary>
+    /// oracle's Close and Outlives calls, summed over its classes; and, of the queries on its body since (Outlives, Fixed), the rows, edges
+    /// and nodes of the classes they re-form and index and their walks' node visits and edge steps.</summary>
     internal long Work => this.work + this.chains.Work;
 
     /// <summary>Gets the classes of views the last <see cref="Judge"/> formed (V16's 64-view body).</summary>
@@ -90,7 +93,7 @@ internal sealed partial class MirOrigins(TyCtxt types, MirCases cases)
     {
         (this.body, this.classCount, this.containedCount, this.work, this.refCount, this.causeCount) = (body, 0, 0, 0, 0, 0);
         this.chains.Work = 0;
-        this.edgesClass = -1;
+        (this.edgesClass, this.pinnedClasses, this.pinnedNodes) = (-1, 0, 0);
         this.pending.Clear();
         this.pendingFacts.Clear();
         if (views == 0)
