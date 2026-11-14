@@ -65,6 +65,34 @@ public sealed partial class Binding
         return origin.Binder is { } binder && OriginOwner(binder) is FieldKoto;
     }
 
+    // SPEC 8.13.1: whether a node is one of a `specialize func` header's Type arguments.
+    private static bool IsSpecializationArgument(FunctionKoto function, Koto node)
+    {
+        for (var i = 0; function.IsSpecialization && i < function.GenericArguments.Count; i++)
+        {
+            if (ReferenceEquals(function.GenericArguments[i], node))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    // Whether a node lies in a `specialize func` header's Type argument (the nearest enclosing function's).
+    private static bool InSpecializationArgument(Koto node)
+    {
+        for (var current = node; current.Parent is { } parent; current = parent)
+        {
+            if (parent is FunctionKoto function)
+            {
+                return IsSpecializationArgument(function, current);
+            }
+        }
+
+        return false;
+    }
+
     private BoundType? BoundInputType(Koto owner, int index)
         => ReferenceEquals(owner, this.closureHeader) && InputType(owner, index) is SyntaxFormKoto { Akind: KotoKind.InferredType }
             ? this.closureHeaderInputs!.Components[index]
@@ -103,17 +131,9 @@ public sealed partial class Binding
 
                 // SPEC 8.13.2, 15.4.2 ("Accessor or specialization: the inherited contract first"): a specialization's Type argument
                 // is the original's T, whose Origins each call supplies: an omitted aggregate slot is the header's universal input
-                // Origin, which the restated contract then inherits (CompleteImplementationOrigins); none is written (UniversalArgument).
-                // It is no parameter: InputIndex stays -1.
-                for (var i = 0; function.IsSpecialization && i < function.GenericArguments.Count; i++)
-                {
-                    if (ReferenceEquals(function.GenericArguments[i], current))
-                    {
-                        return new(TypePosition.Parameter, function, -1);
-                    }
-                }
-
-                return new(TypePosition.Explicit, function);
+                // Origin, which the restated contract then inherits (CompleteImplementationOrigins); none is written
+                // (PrepareSpecializations' Unwritten). It is no parameter: InputIndex stays -1.
+                return IsSpecializationArgument(function, current) ? new(TypePosition.Parameter, function, -1) : new(TypePosition.Explicit, function);
             }
 
             if (parent is VariableKoto variable)
@@ -464,6 +484,14 @@ public sealed partial class Binding
 
                 return !guaranteedBorrow && aggregateSlot >= 0 && OwnedWithoutConditionalBorrows() is not ConstraintProof.Proven and var unowned
                     ? this.MissingOrigin(use, unowned) : meet;
+            }
+
+            if (InSpecializationArgument(context.Owner))
+            {
+                // SPEC 8.13.2, 15.4.2 (PLAN G863): a Function Type result in a specialization's Type argument that no input of its own
+                // gives is the call's T-Origin, not a default (the key excludes Origins): the borrow layer's located limit above.
+                this.Fail(use, BindingFailure.Unsupported);
+                return null;
             }
 
             if (requirement != LoanRequirement.Uniq)
