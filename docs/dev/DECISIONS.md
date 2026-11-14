@@ -20368,6 +20368,9 @@ R8-M* and R9-M* by the stage of the recording unit.
     (its FormatFinish half here, its A1 half at c3b) with its "Removed at R8-W2 c (FormatFinish deleted)"; the Code generation
     bullet's "FormatFinish's 4 → 1" (the intrinsic is deleted). One vocabulary entry removed (`IntrinsicId.FormatFinish`); no new
     representation or component.
+  - Amended by R8-M41 (R8-W2 c2a): a term an instance decides branches on `Length(L) > 0`, the term's value as a
+    `MirConstKind.Length` constant, not on `Len(region) > 0`. `Len` reads a Place's length, which equalled the term only because
+    `Line` sized the region from it: a second form of one fact (plan Revision 1, B1). The region keeps L as its Type's length.
 - **R8-M25 The operator table's domain is one statement, `MirTypes.Operates`, over the root statements** (Middle, 2026-11-10; PLAN
   G662's remainder; Major; design review 1 REVISE (B1-B3), the Back's C-203 REVISE (B1), design review 2 ACCEPT; implementation
   review REVISE (B1, structure limits), repeated review ACCEPT; the Front's C-208; on R8-M20, R5-M126) SPEC 13.2, 13.3.1-13.3.3,
@@ -21155,6 +21158,28 @@ R8-M* and R9-M* by the stage of the recording unit.
   - Rejected: a refold arm per site (R8-M21); a second walk for the hint (C-307); folding closed values into `Value` (a1 keeps the
     producer's Tuple); re-pointing codegen's `Estimate` to `HintBound` at c2t (c2b replaces the operand whole); `Refold` in
     `ContractLength` (`ContractSolver.cs`'s W4 list, R7-C2's hunk).
+- **R8-M41 `MirConstKind.Length`: an instance-decided length's one MIR value form** (Middle, 2026-11-14; R8-W2 c2a revision 1;
+  Major; plan `back\w2c\plan.md` D1/R1, Revisions 1-2, C-267 (a)-(f), the owner's O-214 (a) with R3-N3; the Back's design review
+  C-306 REVISE (B1, N1, N2), then the revision; contains G149-w (R8-W2's B1, v9); RP8 T-256 no stop). SPEC 4.4.1.
+  - The form. SPEC 4.4.1's length-slot read and every MIR read of a length's value is one constant, `MirConstKind.Length` (Value: a
+    `BoundLength`; Type: `isize`). `MirBuilder.LengthOperand` is its one producer: a closed term is an `Integer`, so a Length always
+    has a slot or Type the body leaves open.
+  - The producers. A length slot's Name is a row of `NamedConstant` beside FnItem's. a2's direct-line branch is `Length(L) > 0`
+    (B1). An inline default's copy folds a template's Length under the call's substitution (`TyCtxt.InstanceLength`): an Integer
+    under a closed caller, a Length of the caller's slot under a generic one; a call without a substitution copies a Length
+    unchanged, as `FoldType` keeps its Type (N2).
+  - The checks. `MirValidator.Holds` alone checks it: isize; not constant; each slot and value-Type parameter declared by the body's
+    definition or an enclosing declaration; otherwise a Const finding. A closed item's body holds no `Length`: G149-w's
+    `CarriesInstance` refuses a declaring-Type carrier for an enclosing declaration with a length slot, so no builder, validator or
+    codegen check decides what the collector publishes (B1).
+  - Codegen. The instance's value comes from `InstanceCollector.LengthOf` -> `TyCtxt.InstanceLength` -> `Binding.InstanceLength`
+    (R3-N3: the one length statement). A non-closed or negative result is `InternalInvariant_Kd`.
+  - The analyses. A4 and A5 read it as any Const operand (no Place, no Origin).
+  - Staged. FormatSegment's (Integer, TypeToken) estimate is a second form of an instance-decided value until c2b, which makes the
+    hint operand `LengthOperand`'s (RN2; PLAN G828).
+  - Rejected: a `[L of ()]` Place (R3: a fixed array as a carrier of a number); a narrowed estimate intrinsic (R2); a direct
+    `Subst.Lengths` read, or an entry over `SubstituteLength` (R3-N3); Binding publishing a Name's term in a HIR column (a Binding
+    change for one form).
 - **R9-M1 A check's phase sequence is `Compilation.Check`** (2026-11-08; R9-F5; Major, behavior-preserving; review 1 REVISE, then
   review 2). SPEC 23.1.2, 23.2.2; IMPL 20.6.1. Supersedes in part R5-M65 (`Project` reads `Accepts`) and R5-M77 (`Project` discovers
   the test catalog after acceptance and owns it).
