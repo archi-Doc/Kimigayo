@@ -480,7 +480,7 @@ public sealed partial class Binding
             }
 
             var owned = ConstraintProof.Proven;
-            foreach (var (part, _, _) in new CapabilityParts(work.Type))
+            foreach (var (part, _, _) in new CapabilityParts(work.Type, this.types))
             {
                 owned = part is null ? owned : CombineProof(owned, this.RequestCapability(part, work.Intrinsic, work.Scope), true);
             }
@@ -495,7 +495,7 @@ public sealed partial class Binding
 
         // Owned records each part that is not Proven with its member and Origin (CapabilityWork.Parts, R4-M161).
         var result = ConstraintProof.Proven;
-        var parts = new CapabilityParts(work.Type);
+        var parts = new CapabilityParts(work.Type, this.types);
         while (parts.MoveNext())
         {
             var (part, origin, argument) = parts.Current;
