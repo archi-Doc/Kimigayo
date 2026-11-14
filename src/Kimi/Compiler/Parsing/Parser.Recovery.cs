@@ -6,10 +6,11 @@ using Kimi.Diagnostics;
 
 namespace Kimi.Compiler;
 
-// What a failure skips, after the Error is reported: a list item before skipped text (RecoverItem), and a declaration no header introduces,
-// with its line and body (OmitDeclaration, SkipDeclarationLine, SkipUnavailableDeclaration).
-// Input: a reader at the failure and the key of the Error. Output: a recovery or omission record, so a check over the item or the member set
-// rests on the Error (DIAGNOSTICS.md §4.3, §4.4); the reader at the line boundary, with the pending header cleared.
+// What a failure skips or keeps, after the Error is reported: a list item before skipped text (RecoverItem), a written Type outside its
+// position's grammar (RecoverWrittenType), and a declaration no header introduces, with its line and body (OmitDeclaration,
+// SkipDeclarationLine, SkipUnavailableDeclaration).
+// Input: a reader at the failure and the key of the Error. Output: a recovery or omission record, so a check over the item, the Type or the
+// member set rests on the Error (DIAGNOSTICS.md §4.3, §4.4); the reader at the line boundary, with the pending header cleared.
 // Invariants: it reports nothing, and excluded syntax records no omission (SPEC 19.4).
 // Prohibitions: skipping an item that may be a directive is SkipItemForRecovery's, in Parser.Directives, which reads directive syntax.
 public static partial class Parser
@@ -65,4 +66,32 @@ public static partial class Parser
             reader.CodeContext.RecordRecovery(item, recovery);
         }
     }
+
+    // A written Type outside its position's grammar, after its record: a Type after a rejected prefix (RecoverRejectedPrefix); an
+    // adaptation target's borrow layer with an Origin or its Core's path headed by a bound Container qualifier (13.5.1); a base or
+    // Contract parent that is no InheritanceReference (F.6.1, F.6.2). The one recovery of each such position: the Type stays where it was written and is bound, so
+    // every independent failure inside it keeps its record (SPEC 23.1.2); the Type is a recovery, so a check that consults it
+    // (IsRecoveredType, Binding's prerequisites) rests on the record. A group that is no PathQualifier (ContinuesGroupedType) is no such
+    // Type: it is a complete Type whose end is the grammar's, and the record at the "." is the enclosing construct's.
+    private static Koto RecoverWrittenType(ref TokenReader reader, Koto type, DiagnosticKey? cause)
+    {
+        if (cause is { } key)
+        {
+            reader.CodeContext.RecordRecovery(type, key);
+        }
+
+        return type;
+    }
+
+    // A prefix the grammar rejects before a complete Type, after its record: "::" before a group, a fixed array or a second "::"
+    // (SPEC F.5), a move or copy prefix (13.5.1), a legacy borrow prefix X{a}/. The written Type is the prefix and the Type: it stays
+    // as a transparent layer over the Type, recovered (RecoverWrittenType), so the Type and its parts bind and keep their own records
+    // while the prefix's meaning is dropped.
+    private static Koto RecoverRejectedPrefix(ref TokenReader reader, int start, Koto type, DiagnosticKey? cause)
+        => RecoverWrittenType(ref reader, new TypeSemanticsKoto(ref reader, SourceSpan.FromBounds(start, type.Span.End), type), cause);
+
+    // Whether a Type is an Error or a written Type outside its grammar (RecoverWrittenType): a check of a production over it reads a
+    // failed input and adds no record of its own (SPEC 23.1.2).
+    private static bool IsRecoveredType(ref TokenReader reader, Koto type)
+        => type is ErrorKoto || reader.CodeContext.RecoveryCause(type) is not null;
 }
