@@ -21,6 +21,14 @@ public sealed class MirInitTest
     private const string Take = "func take(a: string, b: string) -> i32 => 1\nfunc once(a: string) -> i32 => 1\n";
     private const string Pair = "struct P\n    public var a: i32 = 1\n    public init() => ()\nfunc make(a: string, b: string) -> P => P.init()\n";
 
+    // Receivers of each aggregate kind, nested ones included, and two returns of an incomplete Array, valid on the assumed path.
+    private const string Components = "func fail() -> Never => $abort(\"no\")\nfunc takeA(a: Array<i32>) => ()\nfunc takeF(a: [2 of i32]) => ()\n" +
+        "func takeT(t: (i32, i32)) => ()\nfunc takeE(e: E) => ()\nfunc takeOA(o: Option<Array<i32>>) => ()\nfunc takeTA(t: (i32, Array<i32>)) => ()\n" +
+        "func takeAT(a: Array<(i32, i32)>) => ()\nfunc takeAA(a: Array<Array<i32>>) => ()\nfunc takeFA(a: [2 of Array<i32>]) => ()\n" +
+        "func takeS(s: S) => ()\nfunc takeAS(a: Array<string>) => ()\nfunc h2a(a: Array<i32>, b: Array<i32>) => ()\nenum E\n    Two(i32, i32)\n" +
+        "struct S\n    public let a: Array<i32>\n    public init(a: Array<i32>) => self.a = a@move\nfunc r1() -> Array<i32> => [fail()]\n" +
+        "func r2() -> Array<i32>\n    return [5, fail()]\npublic func main() -> ()\n    let y: i32 = 5\n    let c: bool = y > 2\n";
+
     // SPEC 15.1.1: a use needs its Place initialized on every incoming runtime path.
     [Fact]
     public void AUseNeedsInitializationOnEveryPath()
@@ -418,6 +426,41 @@ public sealed class MirInitTest
         "UninitializedPlace_Kd y 1 | UninitializedPlace_Kd y 1")]
     public void ANeverReadPlacesNothing(string source, string expected)
         => Assert.Equal(expected.Split(" | "), Problems(source));
+
+    // SPEC 15.1.2, 15.1.3, 14.10.3 (DECISIONS R4-M175, R4-M188; PLAN D-661): a construction places each component and nothing into one
+    // whose operand is the Never value, also where every operand is, an Array literal's element as a fixed array's: on its assumed path
+    // the value is incomplete, so a whole use of it (a call's argument, a nested component, a Move, an accessor, a read through a runtime
+    // index) is UninitializedPlace_Kd, of a temp too, while a placed part's read, a real path, a whole replacement, a call taking the
+    // Never value itself and the whole returned value (r1, r2) stay valid. Fail-before: dev accepted every invalid row here (an Array
+    // literal's element had no component path, and a construction of Never values only was not built, its temp holding nothing).
+    [Theory]
+    [InlineData("takeA([fail()])", "UninitializedPlace_Kd takeA([fail()]) 1")]
+    [InlineData("takeA([y, fail()])", "UninitializedPlace_Kd takeA([y, fail()]) 1")]
+    [InlineData("takeA([fail(), y])", "UninitializedPlace_Kd takeA([fail(), y]) 1")]
+    [InlineData("h2a([y], [fail()])", "UninitializedPlace_Kd h2a([y], [fail()]) 1")]
+    [InlineData("takeT((fail(), fail()))", "UninitializedPlace_Kd takeT((fail(), fail())) 1")]
+    [InlineData("takeF([fail(), fail()])", "UninitializedPlace_Kd takeF([fail(), fail()]) 1")]
+    [InlineData("takeE(E.Two(fail(), fail()))", "UninitializedPlace_Kd takeE(E.Two(fail(), fail())) 1")]
+    [InlineData("takeS(S.init([fail()]))", "UninitializedPlace_Kd S.init([fail()]) 1")]
+    [InlineData("takeOA(Option.Some([fail()]))", "UninitializedPlace_Kd takeOA(Option.Some([fail()])) 1")]
+    [InlineData("takeTA((y, [fail()]))", "UninitializedPlace_Kd takeTA((y, [fail()])) 1")]
+    [InlineData("takeAT([(y, fail())])", "UninitializedPlace_Kd takeAT([(y, fail())]) 1")]
+    [InlineData("takeAA([[fail()]])", "UninitializedPlace_Kd takeAA([[fail()]]) 1")]
+    [InlineData("takeFA([[fail()], [y]])", "UninitializedPlace_Kd takeFA([[fail()], [y]]) 1")]
+    [InlineData("takeAS([\"a\", fail()])", "UninitializedPlace_Kd takeAS([\"a\", fail()]) 1")]
+    [InlineData("var s: Array<i32> = [y]\n    s = [fail()]\n    takeA(s@move)", "UninitializedPlace_Kd s 1")]
+    [InlineData("var t: (i32, i32) = (y, y)\n    t = (fail(), fail())\n    takeT(t)", "UninitializedPlace_Kd takeT(t) 1")]
+    [InlineData("let s: Array<i32> = [y, fail()]\n    _ = s[0]", "UninitializedPlace_Kd s[0] 1")]
+    [InlineData("_ = [y, fail()].length", "UninitializedPlace_Kd [y, fail()].length 1")]
+    [InlineData("let i: isize = 0\n    _ = [y, fail()][i]", "UninitializedPlace_Kd [y, fail()][i] 1")]
+    [InlineData("return\n    takeA([fail()])", "UninitializedPlace_Kd takeA([fail()]) 1")]
+    [InlineData("takeA(if c => [fail()] else => [y, fail()])", "UninitializedPlace_Kd takeA(if c => [fail()] 1")]
+    [InlineData("if c\n        fail()\n        takeA([fail()])", "UninitializedPlace_Kd takeA([fail()]) 1")]
+    [InlineData("takeA([y])\n    takeAA([[y]])\n    takeAT([(y, y)])\n    takeS(S.init(fail()))\n    _ = r1()\n    _ = r2()\n    _ = (y, fail()).0", "")]
+    [InlineData("takeA(if c => [y] else => [fail()])\n    let s: Array<i32> = if c => [y] else => [fail()]\n    takeA(s@move)", "")]
+    [InlineData("var s: Array<i32> = [y]\n    s = [fail()]\n    s = [y]\n    takeA(s@move)\n    let t: Array<string> = [\"a\", fail()]", "")]
+    public void AConstructionPlacesNothingIntoItsNeverComponents(string body, string expected)
+        => Assert.Equal(expected.Length == 0 ? [] : [expected], Problems(Components + "    " + body + "\n"));
 
     // Plan 5.6.1, SPEC 13.5.5: a PairLayer is the Place itself in the owner case and a Deref in a reference case, so writing through an
     // unset pair layer is a problem in the uniq view only; a body whose accesses no view decides is analyzed once, for every view.
