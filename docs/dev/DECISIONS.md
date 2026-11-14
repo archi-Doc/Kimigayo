@@ -13393,7 +13393,8 @@ resumed by R4-M86 (2026-10-20).
     well-formedness readers (`WellFormedLayer`, `StoredSlot`) read the admitted set at the same point: the premise environment's
     layer and stored parts (`AddTypePremises`, `StoredPremisePart`) and the input and result premise visit's layer and stored slot
     (`WellFormedPart`, `VisitStoredPremises`) pass their comparison; the comparison is a required parameter, so every caller states
-    it (`default` written out where none exists: associated formation, a written Type's retention). A property requirement's
+    it (`default` written out where none exists: associated formation, a written Type's retention). Inside a comparison a stored
+    slot is read at the relation's scope like the layer it belongs to; the use's scope gives only the bits. A property requirement's
     standard-access bridges (SPEC 11.9.2: `set` of a `var`, Copy) are requirement comparisons too: `MatchPropertyOperation` forms
     the comparison through the one producer `RequirementComparison(inputs, result, binder, scope)`, which `CompareCallableContracts`
     also uses, and asks `IsSubtypeAt`; the Binding-less `IsSubtype` it called read no scope (an invalid `set` bridge was accepted
@@ -13406,7 +13407,8 @@ resumed by R4-M86 (2026-10-20).
     or conformance under it is used only where it is proven (BU-172's argument).
   - Amends BU-3: its sentence "the admitted set is the binder's, from its declaring scope, read by `LayerAdmitted` for this and
     `InvariantAdmitted`" holds for call retention's per-declaration contract only; the reason that no longer holds for the relation
-    is that 7.5 and 8.8.1 put premises on a Type's binder below its declaring scope. Extends BU-93 (the requirement comparison
+    is that SPEC 7.5, 8.8.1 (a conformance's condition) and 8.8.2 (its verification and use under that condition) put premises on
+    a Type's binder below its declaring scope. Extends BU-93 (the requirement comparison
     carries its scope as well as its required signature) and BU-172 (the same point, in the relation).
   - Readings: a local named function's body reads its enclosing member's clauses, Semantics premises included, as it already read
     its Constraints (SPEC 7.5, 8.2.1, 8.15.2; the Middle's C3, F's reading). A property requirement's borrow bridge (SPEC 11.9.2, a
