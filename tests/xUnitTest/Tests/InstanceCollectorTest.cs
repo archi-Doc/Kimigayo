@@ -1506,7 +1506,8 @@ public sealed partial class InstanceCollectorTest
         Assert.Empty(program.Records(MirRecordClass.Collection));
         const string WriteI32 = "library Fn write in struct Utf8Writer [Utf8Writer, i32]";
         const string WriteBox = "library Fn write in struct Utf8Writer [Utf8Writer, Box]";
-        const string Failure = "library Fn init in struct BufferFull"; // The body's two failure results.
+        const string Status = "library Fn status in struct Utf8Writer"; // The body's guard, the recorded failure (R8-W2 b1).
+        const string Failure = "library Fn init in struct BufferFull"; // The body's failure recording.
         const string WideFormat = "library Fn format in group IntegerFormat"; // u128's specialization (R8-S2b2).
         const string ShowI32 = "library Fn toString in group Text [Text, i32]";
         const string ShowBox = "library Fn toString in group Text [Text, Box]";
@@ -1520,15 +1521,15 @@ public sealed partial class InstanceCollectorTest
         Assert.Equal([Heap, WriteI32, Finish, IntoString], Calls(program, set, ShowI32));
         Assert.Equal([WriteI32], Calls(program, set, "Fn format"));
         const string FormatI32 = "library Fn format in group IntegerFormat [i32]";
-        Assert.Equal([FormatI32, Failure, Failure], Calls(program, set, WriteI32));
+        Assert.Equal([Status, FormatI32, Failure], Calls(program, set, WriteI32));
         Assert.Contains("library Fn writeUtf8 in struct Utf8Writer", Calls(program, set, FormatI32));
         Assert.Equal([FillBox], Calls(program, set, "Fn fill [Box]"));
         Assert.Equal(["library Fn fixed in group Text [Text, ]", WriteBox, "library Fn intoText in struct FixedBuffer"], Calls(program, set, FillBox));
         Assert.Equal([WriteBox], Calls(program, set, "Fn emit [Box]"));
-        Assert.Equal(["Fn format", Failure, Failure], Calls(program, set, WriteBox));
+        Assert.Equal([Status, "Fn format", Failure], Calls(program, set, WriteBox));
         Assert.Equal([WriteI32], Calls(program, set, "Fn emit [i32]"));
         var (wide, wideSet) = Collect("func emitWide(writer: uniq/Utf8Writer, x: u128) -> Result<(), BufferFull> => writer.write(x)\n");
-        Assert.Equal([WideFormat, Failure, Failure], Calls(wide, wideSet, "library Fn write in struct Utf8Writer [Utf8Writer, u128]"));
+        Assert.Equal([Status, WideFormat, Failure], Calls(wide, wideSet, "library Fn write in struct Utf8Writer [Utf8Writer, u128]"));
         Assert.Contains("library Fn writeUtf8 in struct Utf8Writer", Calls(wide, wideSet, WideFormat));
     }
 
@@ -2380,6 +2381,27 @@ public sealed partial class InstanceCollectorTest
         main.AddLocal(main.Locals.ToArray().Single(static x => x.Name == "x") with { Type = slot });
         var set = new InstanceCollector(c.Types, c.Layout).Run(program, 1);
         Assert.Equal([(DiagnosticCode.InternalInvariant_Kd, "let x = 1")], program.Records(MirRecordClass.Collection).Select(x => (x.Code, c.SyntaxOf(x.Subject).ToString())));
+    }
+
+    // PLAN G867 (DECISIONS R5-M151): a complete compilation rejected no declaration, so a called Closure Type without a body is a broken
+    // contract, InternalInvariant_Kd at the call, never a silent refusal or a fault. Binding and the builder never give one, so the test
+    // forges it: the call's operand becomes a local of a Closure Type on `plain`, which has no Closure body (MirValidatorTest's forged
+    // Closure aggregate).
+    [Fact]
+    public void ACalledClosureWithoutABodyIsABrokenContractInACompleteCompilation()
+    {
+        var c = MirBuildTest.Compile("func plain() -> isize => 4\npublic func main() -> ()\n    let f = func [] () -> isize => 4\n    let n = f()\n    return\n");
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
+        var program = c.BuildMir();
+        var main = program.Bodies.ToArray().Single(static x => x.Key.Decl?.Name == "main");
+        var plain = program.Bodies.ToArray().Single(static x => x.Key.Decl?.Name == "plain").Key.Decl!;
+        var block = Enumerable.Range(0, main.Blocks.Length).Single(b => main.Blocks[b].Terminator is { Kind: MirTerminatorKind.Call, Callee.Kind: MirCalleeKind.Value });
+        var call = main.Blocks[block].Terminator;
+        Assert.Equal(0, call.Operand.Place.Projection);
+        var forged = main.AddLocal(main.Locals[call.Operand.Place.Root] with { Type = c.Types.Intern(BoundTypeKind.Closure, plain, SemanticsKind.Owner, []) });
+        main.Terminate(block, call with { Operand = call.Operand with { Place = new(forged) } });
+        new InstanceCollector(c.Types, c.Layout).Run(program, 1);
+        Assert.Equal([(DiagnosticCode.InternalInvariant_Kd, "f()")], program.Records(MirRecordClass.Collection).Select(x => (x.Code, c.SyntaxOf(x.Subject).ToString())));
     }
 
     // X19, DECISIONS R5-M170 (superseding K 4.6's depth 128): a chain of 130 distinct generic functions has no growth, so no limit; the

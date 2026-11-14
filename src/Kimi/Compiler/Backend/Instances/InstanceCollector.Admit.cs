@@ -68,7 +68,7 @@ internal sealed partial class InstanceCollector
         => this.types.EnclosingDeclaration(definition) is not { } enclosing || !this.types.Instantiates(enclosing) ||
             ReferenceEquals(subst.Target, enclosing) || (ReferenceEquals(subst.Declaring?.Symbol, enclosing) && !HasLengthSlot(enclosing));
 
-    // The checks of a body's request that read only the request, the definition and its substitution, never its body (DECISIONS R5-M183);
+    // The checks of a body's request that read only the request, its definition and substitution, never its body (DECISIONS R5-M183);
     // false when one refused it with its record. `erased` is the substitution's erased form, null for a definition that does not
     // instantiate.
     private bool Requested(SourceRef site, BindingSymbol? definition, Subst? subst, out Subst? erased)
@@ -96,8 +96,8 @@ internal sealed partial class InstanceCollector
     // definition and, when it instantiates, its erased substitution, represented by the substitution itself (KD3). A definition whose
     // substitution does not carry the instance it instantiates in (CarriesInstance) is a capability gap, and a new key's instance needs its
     // local Types (Instantiable); one past a limit is GenerationResourceLimit_Kd; a representative that leaves its body open is a broken
-    // contract. A target with a finding is refused without a record after the checks that read only the request: what reads its body
-    // rests on the finding (DECISIONS R5-M183). -1 when refused.
+    // contract. A target with a finding is refused without a record after the checks that read only the request (Requested): what reads its
+    // body rests on the finding (DECISIONS R5-M183). -1 when refused.
     private int Admit(int parent, SourceRef site, MirBody target, Subst? subst)
     {
         var set = this.Set;
