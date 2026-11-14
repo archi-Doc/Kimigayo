@@ -75,7 +75,7 @@ Entries were compacted under G420 (the owner's 「規則 A」, 2026-11-05); the 
 - **Q2 Code Rules Analyzer** (2026-10-11, owner; its enforcement retired by CR-R1). The
   [proposal](../../draft/Changes/2026-10-11%20Code%20Rules%20Analyzer.md) §9: rules KR1xxx–KR3xxx and the built-in unused-code
   rules as build errors over a shrinking baseline, units A0–A8 after R3 and before R4. The limits are in
-  COMPILER_ARCHITECTURE (structure limits).
+  COMPILER_ARCHITECTURE (structure limits). Superseded in part by Q19: the statement, token and line-length limits are removed.
 - **Q3 Compiler allocations** (2026-10-11, owner, AGENTS `8071549f`). An allocation in the compiler is allowed when it
   makes equivalent work faster or reduces compiler code with a reasonable increase in memory, measured and recorded.
   Supersedes plan §18 P11 and §14-8. Native allocation counts and O2 run time may not regress.
@@ -117,7 +117,7 @@ Entries were compacted under G420 (the owner's 「規則 A」, 2026-11-05); the 
     process; (2) the units of one group such a design names may share one review in place of their own, merging into dev or main
     only after it passes; (3) documentation that only records decided or verified facts (PLAN, STATUS, CODEMAP,
     PLAN_HISTORY, VERIFICATION evidence and tooling-matched procedures) needs no independent review. Every commit message
-    stays within about 2,000 characters, including Q5's net size change.
+    stays within about 2,000 characters, including Q5's net size change (the length superseded by Q19: no limit).
   - Kept: R4's exit adds a final end-to-end review of A5 and A6 (R4-M35).
   - Supersedes: R4-M35's OD6 scope ("review and records as plan §9.3", A5 only), which the owner broadened, and Q1's
     deferral of lighter commit records. Q5's review rule stands, with these forms added.
@@ -144,7 +144,8 @@ Entries were compacted under G420 (the owner's 「規則 A」, 2026-11-05); the 
     planning session schedules restructurings.
   - Supersedes: Q7; the A5 step 2 plan's PD21 (R4-M74), its §3.7 schedule, its count-triggered units 2x-R4, 2x-R7 and 2d-1 and
     the PD21 clauses of its design packages (2a0-D, 2b-D, 2e-D), except PD21's no-growth clause for Binding files over the
-    token limit with its counts in the commit, which applies COMPILER_ARCHITECTURE's limits; the R5 and R6 plan's count
+    token limit with its counts in the commit, which applies COMPILER_ARCHITECTURE's limits (that clause superseded by Q19:
+    no token limit); the R5 and R6 plan's count
     trigger for G1 ("before its fourth change"), G1 staying a split by the responsibilities it names; and the due states and
     next-change conditions in R4-M92, R4-M96, R4-M97 (with its refusal of a second no-split ruling and 2g-6's wait for 2x-R7
     and a `MirDrops.cs` response), R4-M98, R4-M101, R4-M102, R4-M106, BU-24, R5-M63, R5-M92, R5-M93 and R5-M102, each marked
@@ -396,6 +397,19 @@ Entries were compacted under G420 (the owner's 「規則 A」, 2026-11-05); the 
   - Rule 3 (seats): the Front has three implementer seats; the Back drops to one once R8's W family no longer needs two (plan §3.3).
   - Division (plan revision 50): the Front designs and reviews R7's cores (C2, C3, D2 d3, I2, P3); the Middle takes Y2-Y5, O1-O3 and P5
     and implements Front-designed units; the Back takes P7 and T1 and lends implementers to Front-designed units after R8's W family.
+- **Q19 No line, character or size limits** (2026-11-14, the owner in K's dialog, verbatim
+  「行数・文字数の上限は、全て撤廃します。各種文書を修正してください。PLAN、コミットメッセージの上限も撤廃します。」 and, for the 60-statement member limit, 「Remove it too」; AGENTS,
+  WORKFLOW, COMPILER_ARCHITECTURE, STYLE, GUIDE).
+  - Removed: statements per member (60), tokens per file (5,000, with the generated data files' exemption from it), the line length
+    and the code rules' density (160 characters or UTF-16 units per line), the Kimi sources' 120 columns (STYLE), PLAN's 500
+    lines and the commit message's about 2,000 characters.
+  - Kept: the parameter limits (6, of which at most 2 optional, 1 `out` and 1 `bool`; CR-R2), `bool` literal arguments by name, no
+    failure text through `out string`, control-statement nesting (4, the one limit `CodeRuleException` may exceed with its reason
+    and bound), operands in one logical or pattern chain (4), no nested conditional expression; Q5's net size change in every commit
+    message; PLAN's merging of rows of one cause and removal of closed rows; AGENTS' structure rules (a responsibility's code in its
+    owner's files, splitting by responsibility, no mechanical splitting).
+  - Effect: a review finding that rests only on a removed limit is dropped; PLAN rows that rest only on one close (G438).
+  - Supersedes in part Q2 (the limits it put in COMPILER_ARCHITECTURE), Q6 (the commit message's length) and Q9 (PD21's no-growth clause for Binding files over the token limit).
 
 ## Code rules (2026-10-12)
 
@@ -1055,7 +1069,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
   for a call through a value, a second copy judged under the target's premises instead of the use's); an agreement walk over a Callable
   input's premises (a third enumeration of the Callable facts beside `SelectValueCall` and `TryCallable`; carrying the selected
   signature in MIR is the general fix and changes a shared MIR form); one bounds function with a null-callee mode (two contracts in one
-  signature). `Bodyless`' composite clause is refined by R4-M28.
+  signature). `Bodyless`' composite clause is refined by R4-M28. Its `Dependent` class is amended by R8-M42 (a Body the
+  parser recorded missing).
 - **R4-M24** (2026-10-12) A5-1, regions and Loans: superseded by R4-M33 (2026-10-16); full text: 0d989e685.
 - **R4-M9b** (2026-10-12; superseded R4-M9's view list and placement) Binding views built by their first reader: superseded by
   R4-M33 (2026-10-16), its view list where it applies by R4-M94's C1-F4 view; full text: 0d9492185.
@@ -6387,6 +6402,22 @@ and migration obligations remain in force; no numeric cap changes are authorized
   - Rejected: a second gather to place the record (the replay's entries at E already name the operation); the site record only where
     no store exists (B7: it loses the result's failure); the result's fact by the closure from the result's holder (it finds what a
     store put in storage the body does not own: twoLoansBad); a requirement `DefaultArgumentStore` (N22).
+- **R4-M204 A5's step rule reads a nonnull Option's Some payload as Leading's one step** (2026-11-14; the A5 value redesign's unit
+  U2; the owner's O-209; G808 design review N4; Middle, A5; Major, 0 moves; implementation review ACCEPT WITH NOTES). IMPL 21.1.2,
+  21.1.3; SPEC 4.1, 5.3; BU-195, R4-M198.
+  - `MirBorrows.Step`, the one step rule, keeps a Position at component 0 of the part `TyCtxt.Leading` places at a Type's address: a
+    C-layout struct's first Field (MIR's Field 0) and, since G808, a nonnull Option's Some payload, which MIR reaches by a Downcast
+    and a Field.
+  - One reading of a walk step (`MirBorrows.Puns.Selected`, for a seen store's steps and an address formed past a raw Deref) judges
+    the Downcast with the Field after it, from the enum, and gives that Field no step of its own; a Downcast with no Field after it
+    (the payload Tuple alone) keeps none, IMPL placing no payload Tuple by itself. The pair is not tested against the Some ordinal:
+    the nonnull Option's one Case with a component is Some, so a Field after its Downcast is Some's, as G808's design states the
+    step (`Step(enum, 0)`).
+  - Correction to BU-195's N4 bullet: no source form reaches the pair past a raw Deref, the shared-mode in-place match included: a
+    match binding borrows through its Subject Place's Deref (`&((*_s) as case k).j`), so the rule moves no program on dev and is
+    shown by a MIR-level row (a body whose binding borrows the payload in place).
+  - Rejected: the Downcast's own step reading Leading (a pending Position at the payload Tuple would hold for an enum Leading places
+    nothing in); an A5 test of the Case ordinal (TyCtxt.Leading's fact; BU-195's unnamed-fact rule).
 - **Owner decisions, only when triggered:** O1 a MIR vocabulary member or `IntrinsicId`; O2 a total cap above 142,000;
   O3 an acceptance change outside plan Appendix B (C1–C6 and X1–X3 with a SPEC clause; T1–T4 belong to R7), any rejection
   of a milestone or library program, or a row reopening a SETTLED entry; O4 a general SPEC rule left Unsupported at the R4
@@ -12870,7 +12901,7 @@ resumed by R4-M86 (2026-10-20).
   - Not decided here (review N4): MIR's step rule keeps judging a Downcast off (`Step(of, -1)`), while `Leading` places the Some
     payload at the Option's address. Only a shared-mode in-place match on a raw Place reaches that path on dev, its bindings without
     write authority (SPEC 15.1.6, 5.2.1 condition 3), so no valid program observes it. Condition for A5's revision 3 (the Middle;
-    C-287): the Downcast(Some), Field(0) pair reads `Leading` as its one step.
+    C-287): the Downcast(Some), Field(0) pair reads `Leading` as its one step. Decided by R4-M204.
   - Rejected: a Case-key chain (A5 steps Types as roots, the Case would be lost), a `RawPlaces` row for the payload (SPEC 5.2), the
     located `Unsupported_Kd` for payload-alone writes (IMPL fixes the offset), the literal ordinals Some 0 and None 1 (unnamed
     facts).
@@ -13319,6 +13350,23 @@ resumed by R4-M86 (2026-10-20).
     (excluded syntax must reject both); six context clauses in the Type parser for (6); a second name or reader for (6)'s
     BorrowOrigin alternative; for (7) an Error per site, a recovery node per site, keeping the root path's `::` node around the
     recovered Type, and a Binding change.
+- **BU-208 A specialization's Type argument is an input position of its header (PLAN G863)** (2026-11-14; Front, designed and
+  implemented at the Back's seat for R8-W2 b2-1; Q17 class 3; the Front's ruling C-319 and review; the Middle's consent C-331). SPEC
+  8.1.1, 8.13.1-8.13.3, 15.4.2.
+  - `TypeContext` gives a `specialize func` header's Type argument the input row: each omitted aggregate slot is the header's
+    universal input Origin (`OriginKind.Input`, `Occurrence` the slot, `InputIndex` -1), the call's `T`-Origin, which
+    `CompleteImplementationOrigins` then gives the restated inputs and result through the substituted contract.
+  - `PrepareSpecializations` rejects an Origin the header wrote in a Type argument (8.13.2: it restricts the admitted bindings) with
+    `IncompatibleContractImplementation_Kd`; Origins bound inside the argument pass.
+  - Located `Unsupported_Kd` until the argument has a `TypePosition` of its own: an omitted borrow layer of T's binding (argument or
+    restated input), a Function Type result in the argument that no input of its own gives, and an undecided inherited Constraint
+    over the universal Origins. The key is unchanged.
+  - Rejected: fixing the slot to `static` (narrows; `uniq` has none); a fresh body Origin per argument (a binding no caller
+    supplies); completing the argument from the first restated input that mentions `T` (a written restated slot would become the
+    argument's and hide its restriction); a second pass binding the arguments after the target (a mode); checking the inherited
+    Constraint as an obligation at the universal Origin (a premise turned into an unprovable obligation).
+  - Coverage: the Back's `spec-origin\spec-origin-design.md` §7 table (its rows are `SpecializationBindingTest` rows named by table
+    id).
 - **G209-1** (2026-10-24; structural unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source
   aliases their selected container and environment before ordinary lookup merges imports. These responsibilities were embedded in the
   general expression parser and `Binding.Types.Lookup`, with alias resolution beside Type formation. `Parser.RuntimeTypeTests` now
@@ -21250,6 +21298,37 @@ R8-M* and R9-M* by the stage of the recording unit.
   - Rejected: a `[L of ()]` Place (R3: a fixed array as a carrier of a number); a narrowed estimate intrinsic (R2); a direct
     `Subst.Lengths` read, or an entry over `SubstituteLength` (R3-N3); Binding publishing a Name's term in a HIR column (a Binding
     change for one form).
+- **R8-M42 `TyCtxt.Bodyless`' `Dependent` class covers a Body the parser recorded missing (PLAN G890)** (Back, 2026-11-14; the
+  owner's O-300 (a); amends R4-M23; review ACCEPT WITH NOTES after one REVISE; the Front's consent C-334). SPEC 14.2.1, 23.1.2.
+  - The rule. R4-M23's `Dependent` class of `TyCtxt.Bodyless` ("a definition Binding rejected (its parts are not published,
+    R4-M18)") also covers a function, constructor or `drop` whose Body the parser recorded missing (`FunctionKoto.MissingBody`, set
+    only with its syntax record, SPEC 14.2.1): a call or destruction of it rests on that record (SPEC 23.1.2), so A4 reads Derived
+    and the instance collector adds nothing.
+  - The owner. `Bodyless`' class is Binding's publication itself, evaluated on demand from facts fixed when Binding is final
+    (`CompilerFunction`, `BindingState`, the parser's flag); there is no stored copy, and no phase after Binding reads the flag. Its
+    collector readers are `Imported` (a call, a witness, a value, a VTable slot) and `Declared` (a compiler-named target: a struct's
+    declared destructor, a cataloged library function, whose missing body stays a broken contract).
+  - Rejected: failing the declaration in Binding (a new `BindingFailure`, a second "calls still checked" rule); a recovery on the
+    declaration (derives its independent failures); a collector arm reading syntax; extending R5-M151's premise to any Error through
+    Binding's partition (it widens R5-M151's stated cost and still leaves A4's Limit to `Bodyless`).
+  - Follow-up (the Front's C-334 N1): one owner of a definition's failure, Binding's declaration state carrying the recorded missing
+    body, would let `Bodyless` keep one arm.
+- **R8-M43 Program output equality: `Test-KimiExpectedOutput` compares bytes ordinally (PLAN G894)** (Back, 2026-11-14; D-654;
+  verification tooling; review ACCEPT WITH NOTES, notes folded).
+  - The owner. `Test-KimiExpectedOutput` (`src/backend/windows-x64/expected-output.ps1`) owns the rule "a program's output equals
+    its expectation": it compares two `byte[]` values ordinally and rejects any other argument. Its scope: equality of a whole
+    captured stdout/stderr stream, of a stream's suffix (the last N captured bytes, after the build lines a `kimi run` prints), and
+    of a written file with its expected bytes (an unchanged record, a normalization's idempotence, a fixture file of two runs in
+    `compare-fixtures`). Presence checks in output mixed with build lines (ordinal `Contains`, `-match`) are a different rule and
+    stay ordinal containment.
+  - Representation. Output is captured as bytes (`BaseStream.CopyToAsync`), sidecars read with `ReadAllBytes`; the native runner's
+    expectation carries `byte[]` streams and its output violations record `expectedHex`/`actualHex` (formerly the decoded
+    `expected`/`actual`); the milestone report records `stderrHex` beside `stdoutHex` (formerly the decoded `stderr`); the native
+    reuse environment key includes `expected-output.ps1`, so an owner change re-executes every fixture.
+  - Reason. PowerShell string equality is culture-sensitive (a NUL, ignorable code points and normalization forms compare equal) and
+    text reads drop BOMs or replace bytes.
+  - Rejected: `[string]::Equals(..., Ordinal)` on decoded text (keeps the lossy decoding), hex strings with `-ceq` (correct only by
+    argument, a second rule), `[byte[]]`-typed parameters (PowerShell converts a numeric string).
 - **R9-M1 A check's phase sequence is `Compilation.Check`** (2026-11-08; R9-F5; Major, behavior-preserving; review 1 REVISE, then
   review 2). SPEC 23.1.2, 23.2.2; IMPL 20.6.1. Supersedes in part R5-M65 (`Project` reads `Accepts`) and R5-M77 (`Project` discovers
   the test catalog after acceptance and owns it).

@@ -7,10 +7,12 @@ param(
 )
 $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'toolchain.ps1')
+. (Join-Path $PSScriptRoot 'expected-output.ps1')
 $ToolchainRoot = Resolve-KimiToolchainRoot $ToolchainRoot
 if (-not $LlvmBin) { $LlvmBin = $ToolchainRoot }
 $repo = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../../..'))
 $compiler = Join-Path $repo "src/Kimi/bin/$Configuration/net10.0/Kimi.dll"
+$utf8 = [Text.UTF8Encoding]::new($false)
 $work = Join-Path $repo ('artifacts/verify/cli-tests/' + [guid]::NewGuid().ToString('N') + '/project with spaces')
 New-Item -ItemType Directory -Path $work -Force | Out-Null
 $project = Join-Path $work 'Hello.kimiproj'
@@ -37,12 +39,15 @@ function Invoke-Kimi([string[]] $Arguments, [int] $ExitCode = 0) {
     if (-not $NativeCompiler) { $start.ArgumentList.Add($compiler) }
     foreach ($argument in $Arguments) { $start.ArgumentList.Add($argument) }
     $process = [Diagnostics.Process]::Start($start)
-    $stdout = $process.StandardOutput.ReadToEndAsync()
-    $stderr = $process.StandardError.ReadToEndAsync()
+    $stdout = [IO.MemoryStream]::new()
+    $stderr = [IO.MemoryStream]::new()
+    $copies = @($process.StandardOutput.BaseStream.CopyToAsync($stdout), $process.StandardError.BaseStream.CopyToAsync($stderr))
     if (-not $process.WaitForExit(60000)) { $process.Kill($true); $process.WaitForExit(); throw 'CLI timed out' }
-    $script:childStdout = $stdout.GetAwaiter().GetResult()
-    $script:childStderr = $stderr.GetAwaiter().GetResult()
-    $output = $script:childStdout + $script:childStderr
+    foreach ($copy in $copies) { $null = $copy.GetAwaiter().GetResult() }
+    # The captured bytes are the CLI's (and a run child's) output; messages are read from their UTF-8 text.
+    $script:childStdout = $stdout.ToArray()
+    $script:childStderr = $stderr.ToArray()
+    $output = $utf8.GetString($script:childStdout) + $utf8.GetString($script:childStderr)
     $actual = $process.ExitCode
     $process.Dispose()
     if ($actual -ne $ExitCode) { throw "CLI exit $actual, expected $ExitCode`: $($Arguments -join ' ')`n$output" }
@@ -64,9 +69,9 @@ Write-Project 'O2' 'missing LLVM directory'
 '::Kimi.Console.writeLine("Hello, world!")' | Set-Content -LiteralPath $source -Encoding utf8
 $ir = Join-Path $work 'bin/x86_64-pc-windows-msvc/Hello.ll'
 $recordPath = [IO.Path]::ChangeExtension($ir, '.link.build.json')
-$previousRecord = [IO.File]::ReadAllText($recordPath)
+$previousRecord = [IO.File]::ReadAllBytes($recordPath)
 $output = Invoke-Kimi @('emit', $project)
-if (-not (Test-Path $ir) -or [IO.File]::ReadAllText($recordPath) -cne $previousRecord) { throw 'emit must only publish LLVM inputs' }
+if (-not (Test-Path $ir) -or -not (Test-KimiExpectedOutput $previousRecord ([IO.File]::ReadAllBytes($recordPath)))) { throw 'emit must only publish LLVM inputs' }
 $output = Invoke-Kimi @('build', $project) 1
 $output = Invoke-Kimi @('run', $project, '--no-build') 1
 foreach ($level in @('O0', 'O2')) {
@@ -83,7 +88,9 @@ foreach ($level in @('O0', 'O2')) {
     if (-not $output.Contains("Hello, world!")) { throw 'Run did not forward stdout' }
     if ((Get-Item $recordPath).LastWriteTimeUtc -ne $before) { throw 'Run --no-build rewrote build metadata' }
     $output = Invoke-Kimi @('run', $exe)
-    if ($output.Trim() -cne 'Hello, world!') { throw 'Direct binary execution stdout mismatch' }
+    if (-not (Test-KimiExpectedOutput $utf8.GetBytes("Hello, world!`n") $childStdout) -or -not (Test-KimiExpectedOutput ([byte[]]@()) $childStderr)) {
+        throw 'Direct binary execution stdout mismatch'
+    }
     '::Kimi.Console.writeLine("Updated source")' | Set-Content -LiteralPath $source -Encoding utf8
     $output = Invoke-Kimi @('run', $project, '--LlvmBin', $LlvmBin)
     if ($output -notmatch '(?m)^Updated source\r?$' -or $output -match '(?m)^Hello, world!\r?$') { throw 'Run did not build the current source' }
@@ -163,10 +170,10 @@ if ($singleRecord.optimization -cne 'O2' -or $singleRecord.status -cne 'linked')
 '::Kimi.Console.writeLine("Updated single source")' | Set-Content -LiteralPath $singleSource -Encoding utf8
 $output = Invoke-Kimi @('run', $singleSource)
 if ($output -notmatch '(?m)^Updated single source\r?$') { throw 'Implicit run did not rebuild changed source' }
-$singleBefore = [IO.File]::ReadAllText($singleRecordPath)
+$singleBefore = [IO.File]::ReadAllBytes($singleRecordPath)
 'let broken =' | Set-Content -LiteralPath $singleSource -Encoding utf8
 $output = Invoke-Kimi @('run', $singleSource, '--no-build')
-if ($output -notmatch '(?m)^Updated single source\r?$' -or [IO.File]::ReadAllText($singleRecordPath) -cne $singleBefore) { throw 'Source run --no-build must not read or rebuild changed source' }
+if ($output -notmatch '(?m)^Updated single source\r?$' -or -not (Test-KimiExpectedOutput $singleBefore ([IO.File]::ReadAllBytes($singleRecordPath)))) { throw 'Source run --no-build must not read or rebuild changed source' }
 $output = Invoke-Kimi @('run', $singleSource) 1
 if ($output -match '(?m)^Updated single source\r?$') { throw 'Implicit run executed a stale binary after build failure' }
 $output = Invoke-Kimi @('run', $singleSource, '--no-build') 1
@@ -194,12 +201,15 @@ $abortSource = Join-Path $abortDirectory 'Abort.kimi'
 $abortProject = Join-Path $abortDirectory 'Abort.kimiproj'
 '::Kimi.Console.writeLine("before abort")', '$abort("cli abort")' | Set-Content -LiteralPath $abortSource -Encoding utf8
 "Targets=`n  `"x86_64-pc-windows-msvc`"`nOutputKind=`"Application`"" | Set-Content -LiteralPath $abortProject -Encoding utf8
+$abortStdout = $utf8.GetBytes("before abort`n")
+$abortStderr = $utf8.GetBytes("Abort.kimi:2:1: abort KIMI_E_ABORT: cli abort`n")
+# A source or project run may print build lines first, so its stdout ends with the child's.
 $output = Invoke-Kimi @('run', $abortSource) 1
-if (-not $childStdout.EndsWith("before abort`n") -or $childStderr -cne "Abort.kimi:2:1: abort KIMI_E_ABORT: cli abort`n") { throw "Source run lost child output/error: $output" }
+if (-not (Test-KimiExpectedOutput $abortStdout ([Linq.Enumerable]::ToArray([Linq.Enumerable]::TakeLast($childStdout, $abortStdout.Length)))) -or -not (Test-KimiExpectedOutput $abortStderr $childStderr)) { throw "Source run lost child output/error: $output" }
 $output = Invoke-Kimi @('run', $abortProject, '--no-build') 1
-if (-not $childStdout.EndsWith("before abort`n") -or $childStderr -cne "Abort.kimi:2:1: abort KIMI_E_ABORT: cli abort`n") { throw "Project run lost child output/error: $output" }
+if (-not (Test-KimiExpectedOutput $abortStdout ([Linq.Enumerable]::ToArray([Linq.Enumerable]::TakeLast($childStdout, $abortStdout.Length)))) -or -not (Test-KimiExpectedOutput $abortStderr $childStderr)) { throw "Project run lost child output/error: $output" }
 $output = Invoke-Kimi @('run', (Join-Path $abortDirectory 'bin/x86_64-pc-windows-msvc/Abort.O2.exe'), '--no-build') 1
-if ($childStdout -cne "before abort`n" -or $childStderr -cne "Abort.kimi:2:1: abort KIMI_E_ABORT: cli abort`n") { throw "Executable run lost child output/error: $output" }
+if (-not (Test-KimiExpectedOutput $abortStdout $childStdout) -or -not (Test-KimiExpectedOutput $abortStderr $childStderr)) { throw "Executable run lost child output/error: $output" }
 # A self-targeted static supply links #LibraryImport calls with mixed scalar arguments (SPEC 20.4, 22.6).
 $foreignDirectory = Join-Path $work 'foreign supply'
 $foreignNative = Join-Path $foreignDirectory 'native'
