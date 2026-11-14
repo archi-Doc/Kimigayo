@@ -125,9 +125,10 @@ public sealed partial class Binding
         }
     }
 
-    // What an expression awaits its position for (SPEC 14.9.2 step 3): the Type of a part of Type Never, the Type or default of a literal
-    // that waits unbound, the Type of a part that awaits its call (Call: AwaitsCall, whatever its kind; SPEC 10.5.1; DECISIONS BU-43), or
-    // several; a literal bound once, or a part its call completed, is decided.
+    // What an expression awaits its position for (SPEC 14.9.2 step 3): the Type of a part of Type Never or of an empty collection literal
+    // (no Type and no default, SPEC 10.2.1), the Type or default of a literal that waits unbound, the Type of a part that awaits its call
+    // (Call: AwaitsCall, whatever its kind; SPEC 10.5.1; DECISIONS BU-43), or several; a literal bound once, or a part its call completed,
+    // is decided.
     [Flags]
     private enum Awaiting : byte
     {
@@ -153,6 +154,9 @@ public sealed partial class Binding
 
         return node switch
         {
+            // SPEC 10.2.1, 14.9.2 step 3 (the owner's O-267 (a), M2): an empty collection literal waiting unbound has no Type of its own and
+            // no default; it takes its position's, as a part of Type Never does.
+            ArrayLiteralKoto { Elements.Count: 0, FillLength: null, BoundType: null } or DictionaryLiteralKoto { Entries.Count: 0, BoundType: null } => Awaiting.Never,
             TupleLiteralKoto tuple => this.PartsAwait(tuple.Elements),
             ArrayLiteralKoto array => this.PartsAwait(array.Elements),
             DictionaryLiteralKoto dictionary => this.EntriesAwait(dictionary.Entries),

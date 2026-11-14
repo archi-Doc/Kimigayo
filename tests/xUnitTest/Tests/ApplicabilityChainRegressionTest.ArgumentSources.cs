@@ -168,6 +168,13 @@ public partial class ApplicabilityChainRegressionTest
     [InlineData("guard", "o37", Sources + SourcesBody + "    let t = identity([[1: [2]], [x: [x, 1]]])\n    return r\n", "")]
     [InlineData("guard", "o38", Sources + SourcesBody + "    let t = identity([(1, [2]), (x, [x, 1])])\n    return r\n", "")]
     [InlineData("guard", "o39", Sources + SourcesBody + "    let t = identity([(x, [x, 1]), (1, [2])])\n    return r\n", "")]
+    // The owner's O-267 (a) (M2; SPEC 10.2.1, 14.9.2 step 3): an empty collection literal among a call's join sources has no Type and no
+    // default and takes its position's, so the join fits its candidate by its other sources in every order and at `match` (m01 to m03);
+    // the array twin keeps its located limit at `[]` (m04).
+    [InlineData("guard", "m01", Sources + SourcesBody + "    r = fd(if c => [1: x] else => [:])\n    return r\n", "")]
+    [InlineData("guard", "m02", Sources + SourcesBody + "    r = fd(if c => [:] else => [1: x])\n    return r\n", "")]
+    [InlineData("guard", "m03", Sources + SourcesBody + "    r = fd(match d\n        true => [1: x]\n        false => [:]\n    )\n    return r\n", "")]
+    [InlineData("guard", "m04", Sources + SourcesBody + "    r = fai(if c => [1] else => [])\n    return r\n", "Unsupported_Kd: r = fai(if c => [1] else => [])")]
     // SPEC 14.9.2 step 1, 10.2: a fixed expectation, an explicit Type argument's or a parameter's, fits each source, a reference at a value element
     // position value-read. A source conflict only makes the argument wait for the selected candidate (SPEC 10.5.1).
     [InlineData("guard", "e10", Sources + SourcesBody + "    r = g<Array<i32>>([u@ref])\n    return r\n", "")]
