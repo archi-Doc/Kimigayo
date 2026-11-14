@@ -19,6 +19,12 @@ public class NormalizedConstraintProofBindingTest
     private const string Moved = "func twice<T>(value: T.(Tree).Child) -> (T.(Tree).Child, T.(Tree).Child)\n    T is CopyTree\n" +
         "    let x: T.(Tree).Child = value\n    let y = (x, x)\n    return (x, x)\n";
 
+    private const string Validated = "contract K<X>\n    associate E\nfunc f<T, U, V>(t: T, u: U, v: V)\n    T is K<U>\n    T is K<V>\n    T is K<i32>\n" +
+        "    T.(K<U>).E is i32\n    T.(K<V>).E is i32\n    T.(K<i32>).E is i32\n    ()\n" +
+        "contract P<E>\n    func read(self: ref/Self, value: ref/E) -> i32\ncontract Left: P<i32>\ncontract Right<U>: P<U>\n" +
+        "struct S<U, T>\n    Self is Left when T is i32\n    Self is Right<U> when T is string\n" +
+        "    public func read(self: ref/Self, value: ref/i32) -> i32 => 1\n    public func read(self: ref/Self, value: ref/U) -> i32 => 2\n";
+
     private const string Derived = "func both<T, U>(a: U.(Tree).Child, b: U.(Tree).Child.(Tree).Child) -> (U.(Tree).Child, U.(Tree).Child, " +
         "U.(Tree).Child.(Tree).Child, U.(Tree).Child.(Tree).Child)\n    T is U\n    T is CopyTree\n    T is K\n    return (a, a, b, b)\n";
 
@@ -63,10 +69,10 @@ public class NormalizedConstraintProofBindingTest
     // DECISIONS R7-C2e2-1: the pairs the entries index for Moved (the fill moves its view: the entry is formed again at the new serial)
     // and Derived (an identity view whose table the derived identity fact of `T is K` keeps Provisional: its class keys are not final,
     // so its entry stays the request's and each request forms it again, R7-C2c2 c2-1's lifetime), less the library's: exact. An entry
-    // read across its serial indexes fewer (1,245); one Kept under a table that is not Final indexes 162.
+    // read across its serial indexes fewer (1,411); one Kept under a table that is not Final indexes 192. Every row counts (R7-C2e2-2).
     [Fact]
     public void AViewsIndexIsFormedAtEachSerialUntilComplete()
-        => Assert.Equal(1250, ClosureWork(Trees + Moved + Derived) - ClosureWork(Trees));
+        => Assert.Equal(1416, ClosureWork(Trees + Moved + Derived) - ClosureWork(Trees));
 
     // DECISIONS R7-C2e2-1, R7-M20 (implementation review 2's twins): `(a, a)` is an in-region Copy request, which keeps the view's entry
     // with readings; `Box<U>.(K).X` then normalizes through `Box<T>: K when T is C`, whose condition is proven by premise inside that
@@ -81,10 +87,35 @@ public class NormalizedConstraintProofBindingTest
 
     // The pairs x1's entries index over the library's, exact (a fact of the identity view also under its class key; the table is Final,
     // so the entry is Kept): the request inside the normalization indexes the view again, so reading the Kept entry there, without
-    // IndexOf's rebuild branch, indexes 64, as does an entry Kept with readings that were not kept.
+    // IndexOf's rebuild branch, indexes 68, as does an entry Kept with readings that were not kept.
     [Fact]
     public void ARequestInsideANormalizationIndexesItsViewAgain()
-        => Assert.Equal(92, ClosureWork(Boxed("    U is C\n")) - ClosureWork(string.Empty));
+        => Assert.Equal(98, ClosureWork(Boxed("    U is C\n")) - ClosureWork(string.Empty));
+
+    // DECISIONS R7-C2e2-2: a closure validator's read forms its view's entry when it has a fact to pair, and the entry goes back when
+    // the read ends. The agreement reads f's view (three identities of one projection through K<U>, K<V> and K<i32>, SPEC 8.9.2);
+    // disjointness reads the scopes of S's two conditional conformances (`T is i32` against `T is string`, SPEC 8.9.1). The pairs their
+    // entries and the requests' index over the library's: exact.
+    [Fact]
+    public void AValidatorsReadIndexesItsViewOncePerRead()
+        => Assert.Equal(89, ClosureWork(Validated) - ClosureWork(string.Empty));
+
+    // DECISIONS R7-C2e2-2 (the read's lifetime): the entry a validator's read forms goes back when the read ends. Three paths to P<i32>
+    // (SPEC 8.9.1): pair (1, 0)'s disjointness read forms L1's view's entry, which holds no class-key pairs (a read has no request's
+    // classes); pair (2, 0) then proves L3's conditions in L1's scope, an outermost request whose classes join T and U, so it forms
+    // that view's entry again with its class-key pairs. Kept until that request returned, the read's entry is reused without them:
+    // 4 fewer pairs on l2 (the struct's `U is C` met by L1's `T is U`), 3 on l2r (the roles swapped). The pairs over the library's: exact.
+    [Theory]
+    [InlineData("T", "U", 22)]
+    [InlineData("U", "T", 20)]
+    public void AValidatorsReadEntryGoesBackWhenTheReadEnds(string joined, string premised, int pairs)
+    {
+        var source = "contract C\ncontract P<E>\n    func read(self: ref/Self, value: ref/E) -> i32\ncontract L1: P<i32>\ncontract L2: P<i32>\n" +
+            $"contract L3: P<i32>\nstruct S<T, U>\n    {premised} is C\n    Self is L1 when {joined} is {premised}, {joined} is i32\n" +
+            $"    Self is L2 when {joined} is string\n    Self is L3 when {joined} is C\n" +
+            "    public func read(self: ref/Self, value: ref/i32) -> i32 => 1\n";
+        Assert.Equal(pairs, ClosureWork(source) - ClosureWork(string.Empty));
+    }
 
     [Trait("Purpose", "Allocation")]
     [Fact]
