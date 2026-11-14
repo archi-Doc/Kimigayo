@@ -100,6 +100,23 @@ public class NormalizedConstraintProofBindingTest
     public void AValidatorsReadIndexesItsViewOncePerRead()
         => Assert.Equal(89, ClosureWork(Validated) - ClosureWork(string.Empty));
 
+    // DECISIONS R7-C2e2-2 (the read's lifetime): the entry a validator's read forms goes back when the read ends. Three paths to P<i32>
+    // (SPEC 8.9.1): pair (1, 0)'s disjointness read forms L1's view's entry, which holds no class-key pairs (a read has no request's
+    // classes); pair (2, 0) then proves L3's conditions in L1's scope, an outermost request whose classes join T and U, so it forms
+    // that view's entry again with its class-key pairs. Kept until that request returned, the read's entry is reused without them:
+    // 4 fewer pairs on l2 (the struct's `U is C` met by L1's `T is U`), 3 on l2r (the roles swapped). The pairs over the library's: exact.
+    [Theory]
+    [InlineData("T", "U", 22)]
+    [InlineData("U", "T", 20)]
+    public void AValidatorsReadEntryGoesBackWhenTheReadEnds(string joined, string premised, int pairs)
+    {
+        var source = "contract C\ncontract P<E>\n    func read(self: ref/Self, value: ref/E) -> i32\ncontract L1: P<i32>\ncontract L2: P<i32>\n" +
+            $"contract L3: P<i32>\nstruct S<T, U>\n    {premised} is C\n    Self is L1 when {joined} is {premised}, {joined} is i32\n" +
+            $"    Self is L2 when {joined} is string\n    Self is L3 when {joined} is C\n" +
+            "    public func read(self: ref/Self, value: ref/i32) -> i32 => 1\n";
+        Assert.Equal(pairs, ClosureWork(source) - ClosureWork(string.Empty));
+    }
+
     [Trait("Purpose", "Allocation")]
     [Fact]
     public void AWarmRebindThatRebuildsAViewsIndexAllocatesNothing()
