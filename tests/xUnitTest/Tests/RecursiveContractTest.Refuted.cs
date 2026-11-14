@@ -175,6 +175,26 @@ public sealed partial class RecursiveContractTest
     public void AMemberContradictingAPremiseIsTheDeclarationsError(string form, string program, string records)
         => CompilationTestHelper.AssertRecordsAtLines($"{form} [N9]", program + "()", records);
 
+    // O-296 (a): R7-C2e2-2's l2 and l2r (NormalizedConstraintProofBindingTest's programs before it took t-q): the struct's premise on
+    // one parameter against L1's conditions joining it with the other and with i32, which is not C in the closed world, is N9's premise
+    // error in L1's conformance scope (SPEC 8.8.1, 8.2.3): three InvalidConstraint_Kd records on L1's conformance line, at `Self`,
+    // `Self is L1` and the whole clause (dev's t-direct shape, `Self is L1 when U is i32`, with UnsatisfiedConstraint_Kd at the first
+    // two); accepted on dev.
+    [Theory]
+    [InlineData("l2", "T", "U")]
+    [InlineData("l2r", "U", "T")]
+    public void AConditionAgainstAStructPremiseIsTheConformancesError(string form, string joined, string premised)
+    {
+        var clause = $"Self is L1 when {joined} is {premised}, {joined} is i32";
+        var source = "contract C\ncontract P<E>\n    func read(self: ref/Self, value: ref/E) -> i32\ncontract L1: P<i32>\ncontract L2: P<i32>\n" +
+            $"contract L3: P<i32>\nstruct S<T, U>\n    {premised} is C\n    {clause}\n    Self is L2 when {joined} is string\n" +
+            $"    Self is L3 when {joined} is C\n    public func read(self: ref/Self, value: ref/i32) -> i32 => 1\npublic func main() => ()\n";
+        var records = CompilationTestHelper.PublishedErrors(MinimalEmissionTest.Analyze(source))
+            .Select(x => $"{x.Code}: {source.Substring(x.Span.Start, x.Span.Length)}").Order(StringComparer.Ordinal).ToArray();
+        string[] expected = ["InvalidConstraint_Kd: Self", "InvalidConstraint_Kd: Self is L1", $"InvalidConstraint_Kd: {clause}"];
+        Assert.True(expected.SequenceEqual(records), $"{form} [N9]: found [{string.Join(" | ", records)}]");
+    }
+
     // SPEC's expectation for rows a later unit decides, Explicit until then: N9's guards (design R3.7) n9r-neg
     // (valid: U identical with Leaf makes `U is not Mark` Proven, a member's Refuted as evidence, R7-C2c2 c2-4's direction) and
     // n9t-optq-or (invalid: `T is Option<U>` with `T is Mark or Mark2`, which Option<U> declares neither of, D-589's class 1, PLAN
