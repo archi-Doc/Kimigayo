@@ -13,7 +13,7 @@
 // lies in a constructor's Field placed once (SPEC 15.1.1, 11.7).
 // Each Assign's Never parts: the components of its destination that its construction leaves unplaced, as their operand is the Never value
 // (SPEC 14.10.3; DECISIONS R4-M175), which A1's definition applies, and its carries, the paths of a temp it takes whole that A1 copies onto
-// the destination's component on each path.
+// the destination's component on each path. An Array literal's element is such a component (ConstIndex), a path no Place names.
 // Must not decide initialization, copy a body per view, intern projections or change the body.
 
 #pragma warning disable SA1402 // The path record belongs to the paths.
@@ -243,13 +243,14 @@ internal sealed class MirMoveData
     // them. A Never part is a component of its aggregate whose operand is the Never value (a temp of Type Never), each element's for a
     // Fill. A carry pairs each tracked path below the temp Place an operand or a Use takes (whole or a part) with the same path at the
     // component, so A1 copies the temp's state there on each path. A temp's tracked paths are those its Never parts and carries created
-    // (its runs): structure only; a Closure environment or an Array buffer has no component path.
+    // (its runs): structure only; a Closure environment has no component path. An Array literal's element has one, as a fixed array's,
+    // which no Place names (an Array's Index ends the path), so a whole use or an indexed one sees it (SPEC 15.1.2, 15.1.3).
     private void Nevers(int statement, MirPlace destination, in MirRvalue rvalue)
     {
         var kind = (MirAggregateKind)rvalue.Op;
         var found = destination.IsStatic ? NoPath : this.Resolve(destination);
         if ((found & 3) != Direct || rvalue.Kind is not (MirRvalueKind.Aggregate or MirRvalueKind.Use) ||
-            (rvalue.Kind == MirRvalueKind.Aggregate && kind is MirAggregateKind.Closure or MirAggregateKind.Array))
+            (rvalue.Kind == MirRvalueKind.Aggregate && kind == MirAggregateKind.Closure))
         {
             return;
         }
@@ -362,13 +363,13 @@ internal sealed class MirMoveData
         return -1;
     }
 
-    // The path of an aggregate's component (its operand at position i, or a Fill's element i): a Tuple's Field, a fixed array's ConstIndex,
+    // The path of an aggregate's component (its operand at position i, or a Fill's element i): a Tuple's Field, an array's ConstIndex,
     // an enum Case's payload Field under its Downcast (the aggregate's ordinal), a struct's base (its first operand where it has one) or own
     // Field.
     private int Component(int path, in MirRvalue aggregate, int i) => (MirAggregateKind)aggregate.Op switch
     {
         MirAggregateKind.Tuple => this.Child(path, MirProjectionKind.Field, i),
-        MirAggregateKind.FixedArray or MirAggregateKind.Fill => this.Child(path, MirProjectionKind.ConstIndex, i),
+        MirAggregateKind.FixedArray or MirAggregateKind.Fill or MirAggregateKind.Array => this.Child(path, MirProjectionKind.ConstIndex, i),
         _ when AdtDef.IsEnum(aggregate.Type) => this.Child(this.Child(path, MirProjectionKind.Downcast, aggregate.Arg), MirProjectionKind.Field, i),
         _ when AdtDef.Base(aggregate.Type!) is not null => this.Child(path, i == 0 ? MirProjectionKind.Base : MirProjectionKind.Field, i == 0 ? 1 : i - 1),
         _ => this.Child(path, MirProjectionKind.Field, i),

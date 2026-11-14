@@ -21,7 +21,7 @@ public sealed partial class Binding
     }
 
     private bool HasArithmeticPremise(BoundType type, KimiDeclarationId id, BindingScope scope)
-        => this.Library.GetSymbol(id) is { } contract && this.HasContractFact(type, contract, scope);
+        => this.Library.GetSymbol(id) is { } contract && this.PremiseRefines(type, contract, scope);
 
     private bool ArithmeticNumericDomain(BoundType type, BindingScope scope)
     {
