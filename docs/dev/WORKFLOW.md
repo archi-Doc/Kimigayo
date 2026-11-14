@@ -39,8 +39,8 @@ This document owns who plans, designs, reviews, implements and lands a change. P
 
 | Class | Definition | Flow |
 | --- | --- | --- |
-| **Minor** | A local change: it stays in one owning component, keeps its contract and invariants, adds no branch, parameter, state or table, and a search finds no other site with the same cause. Its commit states the rule and the search. | Implementation → review |
-| **Major** | Every other change. | Design → design review where [Design](#design) step 4 requires one → implementation → review |
+| **Minor** | A local change: it stays in one owning component, keeps its contract and invariants, adds no branch, parameter, state or code table, and a search finds no other site with the same cause. Its commit states the rule and the search. | Implementation → review |
+| **Major** | Every other change. | Design → design review where [Design](#design) step 5 requires one → implementation → review |
 
 - Work prototype first (DECISIONS R7-M3 RP13): iterate an implementation against the tests, then write the design from it. A
   required design review judges that design before the implementation is completed.
@@ -54,12 +54,37 @@ This document owns who plans, designs, reviews, implements and lands a change. P
    representation lacks or wrongly allows → the owning component that decides it → what becomes unnecessary. It lists the sites
    sharing the cause ([CODEMAP](CODEMAP.md)), the options (at least a fix inside the owning component and a change of shared
    structure), the deletions and the expected size and speed.
-4. A design review is required for a change to a shared representation or across phases. Another Major change gets one only when a
+   It also states three things:
+   - **Owner.** For each decision the change makes, the component that owns it, and whether the design reads that owner, moves the
+     decision into it or creates it; a new owner names what it replaces.
+   - **Exposure.** The programs the base rejects only through another limit or defect on the paths the change touches (a false
+     error, an unrelated `Unsupported_Kd` or limit record), found by probing those paths on the base before the first prototype;
+     each is a row of the coverage table (step 4), and the design decides what the change gives it.
+   - **Readings.** Each SPEC reading the design relies on that the text does not state word for word, with the sentence it reads, or
+     the DECISIONS entry or owner answer that settled it.
+4. A change, Minor or Major, that moves acceptance ([Windows](#windows), Moves) or changes the code that decides a SPEC clause's
+   condition, the forms it governs or its record gets a **coverage table**, on the base, before its first prototype:
+   - a row per SPEC clause or table row the change decides, per form or position the rule governs, and per boundary where the rule
+     stops applying, each naming its section;
+   - each row a valid program and, where the condition can fail, an invalid one, differing only in the row's condition, labelled
+     from SPEC before any build's output is read, with the invalid one's expected independent record and both programs' results on
+     the base and expected on the change;
+   - a Minor change's table includes its exposure programs (step 3);
+   - the rows become test rows in their owning test classes, at the lowest public layer that observes them; rows that earlier units
+     wrote for the same SPEC text are reused by name, not written again.
+   The change passes every row before its first implementation review. A Minor change keeps its table in its tests; its commit names
+   the rows by section.
+5. A design review is required for a change to a shared representation or across phases. Another Major change gets one only when a
    design issue must be settled before the implementation is completed, for example: the cause is still a hypothesis; the options
    differ in owning component or representation; the design departs from a DECISIONS or SETTLED entry; the sites sharing the cause
    span several components. The planning session states the reason in the design. Otherwise the one review before completion covers
    the design (DECISIONS Q5).
-5. A delegated prompt carries the request, the design, the completion conditions and the checks.
+   Every design review, and where none is held the one review, checks the coverage table against the SPEC text it cites, searches
+   for another component that decides each listed decision, probes the touched paths for exposure programs, and reads each reading
+   against its sentence. Blocking besides [Review](#review)'s list: an exposure program without a decision, and a disputed reading.
+   A disputed reading goes to the owner before the implementation continues ([Owner decisions](#owner-decisions)), except one about
+   record selection, which the planning session decides (DECISIONS Q13).
+6. A delegated prompt carries the request, the design, the coverage table, the completion conditions and the checks.
 
 ## Implementation
 
@@ -88,8 +113,8 @@ A unit's design phase and its implementation phase each stop when the agents' wo
     after it. A behavior-preserving restructuring shows unchanged results
     ([VERIFICATION](VERIFICATION.md#behavior-preserving-commits)) and comes first.
   - If a unit would make an invalid program valid until a later unit lands, the two merge into dev together.
-  - The plan names the earlier blocking findings each unit inherits; a later blocking finding that repeats an inherited finding's
-    cause shares a cause with it.
+  - The plan names the earlier blocking findings and coverage rows each unit inherits; a later blocking finding that repeats an
+    inherited finding's cause shares a cause with it.
 - **Approval.** Stops count over a unit and every unit split from it. After the first stop, the planning session reports the stop
   and the split plan to the owner ([Owner decisions](#owner-decisions)) and starts the split units at once; the owner may stop them.
   After the second stop, it starts them only on the owner's GO. A third stop means the unit does not converge.
@@ -133,6 +158,9 @@ blocking findings above stand:
 
 - A fix starts from the reviewed design or change but never keeps a wrong structure for that reason: reuse the reproducer, valid
   tests and unaffected code, and replace the structure the finding concerns where needed.
+- The reviewer first runs the coverage table ([Design](#design) step 4). It reports each missing row with its programs and label,
+  and the implementer adds the row to the table and the tests in the same unit; a missing row blocks only when the change gets its
+  program wrong. Then the reviewer probes beyond the table.
 - The first review presents together every blocking finding it can check. A blocking defect found later is still reported, marked
   as missed earlier, introduced by a fix, a departure from the design, or a newly established fact (such as a constraint the
   implementation revealed).
@@ -160,7 +188,7 @@ blocking findings above stand:
 
 At any point, suspend the unit and ask the owner on finding:
 
-- a contradiction in the specification;
+- a contradiction in the specification, or a reading a design relies on that a reviewer disputes ([Design](#design) step 5);
 - a significant measured slowdown of compilation or generated code;
 - a way to make the specification simpler and cleaner by unifying concepts;
 - a unit that does not converge, except on record selection: about diagnostics the owner is asked only acceptance, soundness and SPEC
