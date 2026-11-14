@@ -6401,6 +6401,22 @@ and migration obligations remain in force; no numeric cap changes are authorized
   - Rejected: a second gather to place the record (the replay's entries at E already name the operation); the site record only where
     no store exists (B7: it loses the result's failure); the result's fact by the closure from the result's holder (it finds what a
     store put in storage the body does not own: twoLoansBad); a requirement `DefaultArgumentStore` (N22).
+- **R4-M204 A5's step rule reads a nonnull Option's Some payload as Leading's one step** (2026-11-14; the A5 value redesign's unit
+  U2; the owner's O-209; G808 design review N4; Middle, A5; Major, 0 moves; implementation review ACCEPT WITH NOTES). IMPL 21.1.2,
+  21.1.3; SPEC 4.1, 5.3; BU-195, R4-M198.
+  - `MirBorrows.Step`, the one step rule, keeps a Position at component 0 of the part `TyCtxt.Leading` places at a Type's address: a
+    C-layout struct's first Field (MIR's Field 0) and, since G808, a nonnull Option's Some payload, which MIR reaches by a Downcast
+    and a Field.
+  - One reading of a walk step (`MirBorrows.Puns.Selected`, for a seen store's steps and an address formed past a raw Deref) judges
+    the Downcast with the Field after it, from the enum, and gives that Field no step of its own; a Downcast with no Field after it
+    (the payload Tuple alone) keeps none, IMPL placing no payload Tuple by itself. The pair is not tested against the Some ordinal:
+    the nonnull Option's one Case with a component is Some, so a Field after its Downcast is Some's, as G808's design states the
+    step (`Step(enum, 0)`).
+  - Correction to BU-195's N4 bullet: no source form reaches the pair past a raw Deref, the shared-mode in-place match included: a
+    match binding borrows through its Subject Place's Deref (`&((*_s) as case k).j`), so the rule moves no program on dev and is
+    shown by a MIR-level row (a body whose binding borrows the payload in place).
+  - Rejected: the Downcast's own step reading Leading (a pending Position at the payload Tuple would hold for an enum Leading places
+    nothing in); an A5 test of the Case ordinal (TyCtxt.Leading's fact; BU-195's unnamed-fact rule).
 - **Owner decisions, only when triggered:** O1 a MIR vocabulary member or `IntrinsicId`; O2 a total cap above 142,000;
   O3 an acceptance change outside plan Appendix B (C1–C6 and X1–X3 with a SPEC clause; T1–T4 belong to R7), any rejection
   of a milestone or library program, or a row reopening a SETTLED entry; O4 a general SPEC rule left Unsupported at the R4
@@ -12884,7 +12900,7 @@ resumed by R4-M86 (2026-10-20).
   - Not decided here (review N4): MIR's step rule keeps judging a Downcast off (`Step(of, -1)`), while `Leading` places the Some
     payload at the Option's address. Only a shared-mode in-place match on a raw Place reaches that path on dev, its bindings without
     write authority (SPEC 15.1.6, 5.2.1 condition 3), so no valid program observes it. Condition for A5's revision 3 (the Middle;
-    C-287): the Downcast(Some), Field(0) pair reads `Leading` as its one step.
+    C-287): the Downcast(Some), Field(0) pair reads `Leading` as its one step. Decided by R4-M204.
   - Rejected: a Case-key chain (A5 steps Types as roots, the Case would be lost), a `RawPlaces` row for the payload (SPEC 5.2), the
     located `Unsupported_Kd` for payload-alone writes (IMPL fixes the offset), the literal ordinals Some 0 and None 1 (unnamed
     facts).
@@ -13285,6 +13301,71 @@ resumed by R4-M86 (2026-10-20).
   - **Moved from Binding:** `VirtualDeclarationCause.Combined`, `Unsafe` and `RedeclaredParameter` are removed; `RedeclaredHeader`
     becomes `RedeclaredConstraints`. Rejected: the specialization's list flag for the override's `!` (a second record and the
     recovery anyway); a clause per qualifier form; the header span for SecondModifier (every other F.3.3 record is at its word).
+- **BU-206 PB2: the grammar owner decides each Parsing form; one recovery for a written Type outside its position's grammar**
+  (Front, 2026-11-14; PB2, the Front's second Parsing bundle; PLAN G857, G860, G865, G489's `::` part and D-609 (1) (G868); plan
+  revision 69 (B) class 1, (C) one bundle per component; Major; design review ACCEPT WITH NOTES, implementation reviews ACCEPT WITH
+  NOTES and REVISE (B2-1), the diff check ACCEPT; the Middle's C-328 CONSENT WITH CONDITIONS; the owner's O-272 (a), O-285 (a)).
+  SPEC F.3.2, F.3.3, F.5, F.6.1, F.6.2, F.9.4, 13.5.1.
+  - (1) SPEC F.9.4's `Adapted := Prefix ("@" (ClosedTarget PostfixSuffix* | OpenTarget))*` is decided by the expression parser's `@`
+    branch where it has read the target: a bare operation target is closed; any other target is closed exactly when a
+    DelimitedTarget's closer (`)` or `]`) ends it, since every OpenTarget ends at a Name, a `>`, a binding set's `}` or a `?`. A
+    PostfixSuffix after an OpenTarget is one `SyntaxForm.OpenTargetSuffix` record at the suffix's first token; the suffix is read
+    over the adaptation (the grouping SPEC's repair writes), with no recovery node. The fact is the written form's last token, so no
+    Koto-shape test re-derives it.
+  - (2) The keywords `wrap` and `bits` (SPEC F.3.2) are read by the same branch before any Type parse: the word and its adjacent
+    Type arguments, nothing else; the target is an OpenTarget by (1). `ConversionOperationTarget` (re-forming a parsed generic Type
+    into an operation target) is removed.
+  - (3) SPEC F.3.3's order is completed in the modifier reader: the first access word read after `unsafe`, `virtual` or `override`
+    is one `SyntaxForm.AccessAfterModifier` record at that word, and the word is kept (the declaration has the access it wrote).
+  - (4) SPEC F.5's `"::"? TypeSegment PathSuffix*` is read by `ParseTypeHead`'s `::` branch itself: a TypeName, then the PathSuffix
+    loop; any other token is `ExpectedSyntax_Kd` (`Name`) there, and a group, a fixed array or a second `::` written there is read
+    as the Error's recovery. `TypeContext.RootPath` and `TargetRootPath` are removed.
+  - (5) SPEC 13.5.1's rule that a bound Container qualifier never heads the written path of the Core or View Target a target reaches
+    (O-285 (a); F.5's note) is judged by the `@` branch's target check (`CheckAdaptationTarget`, the walk that reads 13.5.1's outer
+    chain "even through grouping"): at the target's Core, a path whose grouped head is no Function Type is a BoundContainerQualifier
+    path, one `SyntaxForm.AdaptationQualifier` record at the qualifier, the target resting on it; Types nested in the Core keep the
+    form. The fact is the node kind the Type parser published for the PathQualifier.
+  - (6) A struct base (F.6.1 `BaseClause`) and a Contract parent (F.6.2 `ContractParentList`) are read by
+    `ParseInheritanceReference` (Parser.ContainerReferences), the reader of
+    `InheritanceReference := NamedReference | ContainerPath BorrowOrigin` (O-272 (a)): what is written is read as the Type it
+    writes, and it is an InheritanceReference only if, under at most a binding set or a BorrowOrigin, its path's head is a TypeName
+    or a root name, or a PathQualifier that PathSuffixes continue; any other Type is one `SyntaxForm.InheritanceReference` record
+    (`ExpectedSyntax_Kd`) over it, and the reference is (7)'s recovery. The BorrowOrigin alternative's slot count is Binding's (SPEC
+    15.3.1). `ContainerPathHead` is shared by (5) and (6). A conformance clause and a ConstraintClause keep their own readers.
+  - (7) One recovery for a written Type outside its position's grammar (`RecoverWrittenType`, Parser.Recovery; the Middle's C-328
+    B1): after its syntax record the Type stays where it was written and is recorded as a recovery (DIAGNOSTICS §4.3), so Binding
+    binds its parts and a failure inside it that its repair leaves keeps its own record (SPEC 23.1.2). Parsing's production checks
+    consult the recovery through `IsRecoveredType` (`ParseInheritanceReference` and `CheckAdaptationTarget` add no record over one),
+    Binding's checks through their prerequisites; Binding's own verdict at a node inside the recovered Type does not consult it. For
+    a prefix the grammar rejects before a complete Type (`::` before a group, a fixed array or a second `::`; a `move/` or `copy/`
+    prefix; a legacy borrow prefix `X{a}/`) the written prefix and Type are a transparent layer over the Type
+    (`RecoverRejectedPrefix`), so the Type and its parts bind and the prefix's meaning is dropped. In an adaptation target each form
+    of the target's own chain is its own record. A recovered head takes no PathSuffix, while a `?` and a BorrowOrigin still attach
+    to it. It replaces every Error node that stood for a complete written Type at those sites; sites with another contract keep
+    their Errors (an Origin parameter that is no Name, a qualified Type whose member Name failed, a Type expected where none is
+    written, a `?` after a bare Semantics operation word).
+  - Rejected: the Type parser publishing Closed/Open through three signatures; a Koto-shape test for (1); a recovery node for the
+    suffix; dropping the misplaced access word; a parser mark or a Type context for (5); Binding as the owner of (5) or (6)
+    (excluded syntax must reject both); six context clauses in the Type parser for (6); a second name or reader for (6)'s
+    BorrowOrigin alternative; for (7) an Error per site, a recovery node per site, keeping the root path's `::` node around the
+    recovered Type, and a Binding change.
+- **BU-208 A specialization's Type argument is an input position of its header (PLAN G863)** (2026-11-14; Front, designed and
+  implemented at the Back's seat for R8-W2 b2-1; Q17 class 3; the Front's ruling C-319 and review; the Middle's consent C-331). SPEC
+  8.1.1, 8.13.1-8.13.3, 15.4.2.
+  - `TypeContext` gives a `specialize func` header's Type argument the input row: each omitted aggregate slot is the header's
+    universal input Origin (`OriginKind.Input`, `Occurrence` the slot, `InputIndex` -1), the call's `T`-Origin, which
+    `CompleteImplementationOrigins` then gives the restated inputs and result through the substituted contract.
+  - `PrepareSpecializations` rejects an Origin the header wrote in a Type argument (8.13.2: it restricts the admitted bindings) with
+    `IncompatibleContractImplementation_Kd`; Origins bound inside the argument pass.
+  - Located `Unsupported_Kd` until the argument has a `TypePosition` of its own: an omitted borrow layer of T's binding (argument or
+    restated input), a Function Type result in the argument that no input of its own gives, and an undecided inherited Constraint
+    over the universal Origins. The key is unchanged.
+  - Rejected: fixing the slot to `static` (narrows; `uniq` has none); a fresh body Origin per argument (a binding no caller
+    supplies); completing the argument from the first restated input that mentions `T` (a written restated slot would become the
+    argument's and hide its restriction); a second pass binding the arguments after the target (a mode); checking the inherited
+    Constraint as an obligation at the universal Origin (a premise turned into an unprovable obligation).
+  - Coverage: the Back's `spec-origin\spec-origin-design.md` §7 table (its rows are `SpecializationBindingTest` rows named by table
+    id).
 - **G209-1** (2026-10-24; structural unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source
   aliases their selected container and environment before ordinary lookup merges imports. These responsibilities were embedded in the
   general expression parser and `Binding.Types.Lookup`, with alias resolution beside Type formation. `Parser.RuntimeTypeTests` now
