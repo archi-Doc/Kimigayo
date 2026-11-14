@@ -12982,6 +12982,8 @@ resumed by R4-M86 (2026-10-20).
   - Superseded in part by R7-M25 (R7-C2c2 c2-1, 2026-11-13): item 5's completeness "modulo identity of supplied subjects", for
     identity premises.
 
+  - Superseded in part by R7-M28 (R7-C2e2 e2-1, 2026-11-14): the index is a view's, kept for the pass when Complete with final class
+    keys, else owned by the outermost request.
 - **BU-196 A solve's bound carries the Semantics cases it is required in (PLAN G809)** (2026-11-13; Front, Binding; Major with
   design reviews 1-3, implementation review ACCEPT WITH NOTES; the Middle's C-299 consent; the owner's O-233 (C)) SPEC 15.6.5; for
   comparisons SPEC 15.3.6's sentence and 15.3.7; for calls SPEC 8.15.2, with the limit of PLAN G834.
@@ -19248,7 +19250,8 @@ R8-M* and R9-M* by the stage of the recording unit.
     Type's key until its next Open; a key never leaves the supply.
   - Each request, nested ones included, keys its subject, its view's facts and the walk's comparisons by its own view's classes; the
     written subject is walked beside the key. `Reading` stays until c2-4 (its binding completion); `IsRecursive` moves to C2e2's
-    `Closure`.
+    `Closure`. Superseded for `IsRecursive` by R7-M29 (R7-C2e2 e2-2c): `Closure(view)` is a view's index by subject, which
+    `IsRecursive` does not read; it moves to R7-C2c3 with its input, the eager derivation's `DerivedFacts`.
   - Supersedes BU-199's item 5, completeness "modulo identity of supplied subjects", for identity premises.
   - Rejected: a Final-table gate (R7-M20's W6 makes views with derived identity facts never Final), a gate on the view's own
     premises (drops enclosing scopes'), a memo beside the table, normalizing by `NormalizeProofType`, a second index per spelling, a
@@ -19286,12 +19289,97 @@ R8-M* and R9-M* by the stage of the recording unit.
   - Nothing under an extension is kept, so answers are functions of (subject, view). A kept entry records whether its request's walk
     recorded an identity row, and a kept hit answers only when its rows refine the Contract or neither the subject's entry nor its
     key's records one; otherwise the request walks and extends as if nothing were kept, so no answer depends on which check asks
-    first (SPEC 8.3.3). At R7-C2e2 e2-1's merge, index entries built under an extension stay request-owned, never admitted.
+    first (SPEC 8.3.3). Under an extension the view's index entry is the request's, never Kept (R7-M28).
   - Rows (1) and (2) take a clause's Contract at the subject's Origin arguments (`RowContract`, SPEC 8.5.4; c1''s row (2) part, plan
     revision 74), behaviour-preserving until c2-3's readers read the rows. Rows of other kinds are read by their owners in c2-3; the
     arithmetic built-ins move to c2-3.
   - Rejected: a pass-level or view-level table of supplied identities (order-dependent), a fixed-depth eager identity expansion, a
     re-key inside the walk.
+- **R7-M28 `Closure(view)`: a view's index of its Contract facts by subject key is the view's value, kept with e1's readings**
+  (Front, 2026-11-13; R7-C2e2 part 1 (e2-1), design revision 1, F's rulings 6-11, 13, 21 and 31; Major, behaviour-preserving; C2's
+  group reviewer: design reviews 1-2, implementation reviews 1-2, merge reviews with c2-1 and c2-2 ACCEPT WITH NOTES). Supersedes in
+  part BU-199 (R7-C2a1) "Enumerate's request tables ... live for one outermost request" for the index: its reason, that only the
+  request knew the view's state, no longer holds, since the serial names it (R7-M20). The memo, the row pools and the kept rows are
+  unchanged (the rows join the closure at e2-3).
+  - One table (`ContractSolver`'s `enumerateIndex`): an entry per (view scope, requirement Contract) formed at the view's serial and
+    rebuilt in place when the serial moves (C3a's shape), with buckets by (chain scope, `SubjectKey`) of (fact as written, fact as
+    read). A written Contract fact is filed under its subject and under its class key in the view (R7-C2c2 c2-1's `ClassKey`, under
+    the forming request's classes, which are the view's); a reading under its own subject. The entry carries its admission: Kept
+    (kept for the pass, emptied in `ResetCapabilities`) or owned by the outermost request (formed by a preparation that was not
+    Complete or by a nested demand; dropped when that request returns). Entries and their lists are pooled. Every reader reads the
+    entry; a nested demand reads its written pairs alone (a1's leaf rule), so it reads any entry.
+  - An entry is Kept when its content is Complete: written pairs in every phase (a function of the chain's environments, which the
+    serial counts); readings only where R7-M20's `KeptRegion` kept them (the one rule for what may be kept): its preparation formed
+    as many readings as it stored. A Kept entry's readings are read only in `KeptRegion`: outside it (an associated normalization,
+    an identity expansion) an outermost request forms its own readings, as R7-M20 says, and the entry again in place; a nested
+    demand reads written pairs alone.
+  - An entry is Kept only when its class keys are final too: the view has no identity premise or its identity table is Final (W7),
+    the one rule the kept rows ask too. A table that is not Final is rebuilt per read, so its entry stays owned by the outermost
+    request and is formed per request (c2-1's lifetime, dev's own cost): a view holding a derived identity fact (W6: its
+    availability is Provisional) gets none of the kept index's gain. Removal condition: R7-C2e2's part e2-3 (Completion carried by
+    the judgments' answers raises such an availability to Complete where it is final in an epoch), which also recovers c2-1's kept
+    rows and the identity table's per-read rebuild for the same views.
+  - Under an extension (R7-C2c2 c2-2, R7-M27) the entry is the request's. The extension files the view's written facts again under
+    its extended keys, through the entry's own filing (`IndexWritten`); its table is never Final (the rows are Provisional), so by
+    the finality rule the entry is not Kept: a Kept entry is reopened as owned by the outermost request before a pair goes in, never
+    written into, and dropped when that request returns; a later request forms it again. Row: `RecursiveContractTest`'s
+    `AnExtensionReopensTheViewsKeptEntryAsItsOwn` (exact 66 pairs; 46 when the extension writes into the Kept entry).
+  - Retained memory: at most one entry per (view scope, requirement Contract) per pass; pooled entries keep the largest buckets and
+    lists any view gave them (the high-water bound), flat across warm rebinds (warm 0 B); RP8 reports retained bytes min-max (the
+    pool's assignment order). The measure: `ClosureIndexWork` counts each pair an entry indexes (as written, under its class key, as
+    read).
+  - Cost (RP8 T-217 passed; T-240 and T-241 stop on Milestone26's cold median, one more background GC per 20 runs, with warm and
+    cold minimum equal and PremiseList faster): +189 KB per cold Bind in the per-view index, accepted for its reuse by the owner's
+    O-281 (a), as O-266 (a) for c2-2; the Front's later slots add a GC column (GC-free and GC runs apart) as a record.
+  - Rejected: a second table for kept entries (one contract at two Completions); a per-environment index (two tables and two keys
+    for one concept); an entry per serial; readings before the capability phase (R7-M20's exclusion stands; its audit belongs to the
+    unit that would lift it).
+  - Temporary: the readings (the "as read" half, formed by `Reading`) go when R7-C2c2 c2-4 removes `Reading`'s binding completion;
+    c2-1 added the class keys beside them and kept `Reading`.
+- **R7-M29 `Closure(view)` has a row per fact kind its readers read by subject; the closure validators read it; SPEC 8.2.3's premise
+  error has one owner** (Front, 2026-11-14; R7-C2e2 part e2-2, parts e2-2b then e2-2a, and e2-2c closed by its design; Major; C2's
+  group reviewer: design, implementation and the c2-2 merge reviews; the Middle's C-329 CONSENT, records only) SPEC 8.2.3, 8.9.1,
+  8.9.2.
+  - **Rows.** A view's entry (R7-M28) buckets by (chain scope, kind, subject key). A kind has a row when a reader reads it by
+    subject: Contract (`Enumerate`'s walk), TypeIdentity (`ValidateAssociatedOverlapAgreement`, `DisjointConformanceFacts`) and
+    Semantics (`DisjointConformanceFacts`). The other kinds are not indexed (no reader: a row formed for nothing on every request).
+  - **Not readers (e2-2c).** No other walk reads a view's written facts of a kind by subject under the rows' contract:
+    `RefutedOverlapInputs` judges each written premise of a generic input (`DirectFacts`, every kind) in the overlap scope (SPEC
+    8.9.2), a per-fact judgment as `ValidateConstraintEnvironments`' is, and stays; `IsRecursive` (SPEC 8.3.3) is a worklist over a
+    synthetic scope's derived facts, an existential over every projection, and goes with `DerivedFacts` in R7-C2c3, reading
+    `ContractSupply`; `HandedSignatures` hands every Callable and Contract premise of any subject (R4-M52, R4-M154) and reads
+    `FirstRows` of the Types its contract reaches (R7-C2c2 c2-3c); `ValidateArithmeticDirections`' inner loop asks whether the
+    premises supply the opposite direction for one operand pair (SPEC 13.3.4), which SPEC 8.2.3 makes a question up to identity, so
+    it reads the rows keyed by identity class in R7-C2c2 c2-3's arithmetic part, not the written facts a validator's read holds.
+    `ProjectionUseOf` was deleted with G721 (BU-184).
+  - **The merge with R7-C2c2 c2-1.** The class-key copies are the Contract row's alone. The TypeIdentity and Semantics rows hold
+    each fact as written under its written subject key, with no class key and no reading, so a reader that pairs by bucket pairs
+    facts of one written subject key only (the agreement's former `Symbol`/receiver equality is the key's).
+  - **Readers.** A request (`PremiseRefines`) and a closure validator's read (`BeginClosureRead` .. `EndClosureRead`), which is
+    outside any request. Whoever holds an entry starts no request (a request's return drops the entries it does not keep):
+    `PremiseRefines` entered from a walk or from a validator's read is InternalInvariant, so a validator takes what it needs before
+    it judges (the agreement copies its pairs; `DisjointConformanceFacts` calls only `AvailableConstraintFact`, `DependentType`,
+    `SameCompleteType`).
+  - **Lifetime of an entry a validator's read forms** (F's ruling 20). It is the read's: formed outside a request, its Contract row
+    has no class keys and no readings, so no request may read it; it goes back to the pool when the read ends. A Kept entry serves a
+    read as it is. This replaces the prototype's lifetime (owned until the next outermost request returns, then prepared by that
+    request), which is not sound on c2-1's keys: a request reusing the entry would miss its view's class-key pairs.
+  - **One owner of SPEC 8.2.3's premise error.** `ValidateContractDeclarations`' identity comparison and `associatedIdentityChecks`
+    go. C3a's identity classes (R7-M24) record the error in one scope as across the chain: one `InvalidConstraint_Kd` at the
+    declaration, the environment staying valid (an erroneous class publishes no member), where base gave `InvalidAssociatedType_Kd`
+    at the declaration plus `InvalidConstraint_Kd` at each clause's projection (and a `TypeMismatch_Kd` at a use). The code move is
+    F's e2 ruling 5 (class 4: one rule under two codes); the vanished clause and use records rested on the premise error (Q13's rule
+    W). SPEC 8.9.2's own disagreement keeps `InvalidAssociatedType_Kd`. Records over the commit's 10 programs (a1n, a1r, a1t, a2n,
+    a4n, a5n, a6n, a9n, a11n, t473): `InvalidAssociatedType_Kd` 10 -> 0, `InvalidConstraint_Kd` 25 -> 10, `TypeMismatch_Kd` 1 -> 0;
+    all invalid on both builds; no acceptance moves (the review's q1n, q1r, q2n, q3n, q4n move the same way).
+  - **Deleted.** `associatedIdentityChecks`, `associatedOverlapChecks`, the agreement's pairwise filter, `DisjointConformanceFacts`'
+    facts-by-facts loop (O(n·m) per scope pair, now O(n) lookups).
+  - **Measure.** `ClosureIndexWork` counts every pair an entry indexes: each row's written facts, the Contract row's class-key
+    copies and readings; the validators' entries are counted. RP8 T-247 (RecursiveContract's cold minimum B/A' 1.032, every other
+    row inside, warm 0 B) accepted by the owner's O-278 (b).
+  - **Rejected.** A case per validator in the index (a second representation); keeping the comparison and making C3a skip it (two
+    owners of one rule); a per-validator cache of the scope's facts by subject (the side table the index already is); indexing every
+    kind with a subject (rows without a reader); keeping a validator-formed entry for the next request (above).
 - **R8-M1 The representation structs and their Place contract** (owner, 2026-11-07, verbatim 「推奨の内容でOKです。処理を継続してください。」,
   on O-41 (a) and O-43 (A); R8-R1a; prototype R8-L0p; supersedes the two plan rows below) IMPL 21.1.3, SPEC 5.2, 5.5, 5.7.
   - Adopted: `Storage.ArrayRepr<T>`, `Storage.SliceRepr<T>` and `Storage.StringRepr`, internal `#Layout("C")` structs of the Kimi
@@ -21235,3 +21323,31 @@ R8-M* and R9-M* by the stage of the recording unit.
   - Landed: commit 0e3893e16 (one behavior-preserving commit; +87/-54 in 46 files, the renames counted: 32 modified, 14 renamed).
   - Amended by G781 (2026-11-12): Documentation no longer reads `PropertyAccessorKoto`; the arm was unreachable (SPEC 2.3 makes no
     accessor a documentation target).
+- **R9-M8 One function header form** (2026-11-12; R9-F6-12; Major, behavior-preserving; plan §5.3 F6; PLAN G594, G557; the Middle's
+  design review 2 and the Front's review ACCEPT WITH NOTES, C-273; the owner's O-222 (b)) SPEC F.6.2, F.6.3, F.9.1, 6.4.1, 8.13.2.
+  - **Rule.** `Parser.ParseFuncDeclaration(reader, FunctionForm)` reads every function header. `FunctionForm` is the closed list of
+    the header productions with a parameter list: Function (F.6.3 FunctionHeader, with or without a body), Override (F.6.3
+    OverrideDeclaration, 6.4.1; the owner's O-222 (b)), Requirement (F.6.2 FunctionRequirement), Constructor (F.6.3
+    ConstructorDeclaration), Specialization (F.6.3 SpecializationDeclaration) and Expression (F.9.1 FunctionExpression). The caller
+    names the production of its position; the header's one other selector is the prefix's `override`, read once, which turns a
+    Function into an Override. Each reader of a header part tests the row where it reads the part: the attribute prefix, the
+    captures, the Name, the generic list's production (R9-F6-11's `ParseSpecializationArguments` or `ParseGenericParameters`), the
+    `!` boundary, an AnonymousParameter, the receiver shorthand, what follows the list and the node's form facts. A new header
+    production adds a row.
+  - **Judged elsewhere, each with its owner and removal.** A RequirementParameter's default and attribute:
+    `Parser.ParseRequirementBody`, under the Requirement row. A SpecializationParameter's attribute and default:
+    `Binding.Specializations`. PB1 (BU-205) judges the override's Access, Type parameters, `!`, defaults and parameter attributes in
+    this header (OverrideHeader) and F.3.3's second modifier (SecondModifier); they test `overrides`, the prefix's `override` under
+    a header that is no Constructor, Specialization or Expression, read with the form's one read of `override`: the Override row and
+    a Requirement under `override` (PLAN G557: F.6.2 admits none; the Front's). PLAN G557's parameter part (the Front) makes the
+    requirement's rules, the specialization's default and every parameter attribute row tests of the parameter readers.
+  - **Removes.** `ParseFuncDeclaration`'s three optional bools and their copies in the Name, list and parameter readers (ten bool
+    parameters); the list's three `out` (one `ParameterList` return value); the requirement's late `IsRequirement` and the second
+    Contract test.
+  - **Kept.** `FunctionKoto`'s form bools, set from the form in one initializer (Binding reads them; one form on the node,
+    `IsAnonymous`, `IsConstructor`, `IsRequirement`, `IsSpecialization` and `IsDestructor` with `Definition` read as `Function`, is
+    a candidate for a Front unit).
+  - **Rejected:** a context record of admitted parts (bools under a name, combinations no production has; R9-M2's reason); a column
+    table per form (each column has one reader today); a second enum for the parameter production (a function of the form); one
+    entry member per production (the headers share the whole frame); the override as a modifier read beside the form in the list
+    reader (G557's rule would need two selectors).
