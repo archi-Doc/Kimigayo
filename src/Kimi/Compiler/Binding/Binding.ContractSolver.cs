@@ -60,17 +60,25 @@
 //   subject, its view's facts and the walk's comparisons by its own view's classes (ClassKey, Binding.TypeIdentity's: a class's least
 //   parameter or projection; an erroneous or incomplete class keys nothing), whatever the table's finality, which decides only kept
 //   rows. The written subject is walked beside its key and both refine, so a key only adds rows; each link's projection mates
-//   (row (5)) add the clause instances their own chains supply, which no index holds. The implementation's limit, not SPEC's rule: a
-//   mate whose chain holds a link open in the walk (a cycle through a projection, `T.(Cy2).X.(Mid).Next is T`, SPEC 8.2.3 Cycles)
-//   is not walked, and a request that skipped one keeps no rows: through a cycle a link lacks what returns through the cut (cy2,
-//   valid, rejected; hcy2, invalid, accepted: a class 1), and an answer may depend on the spelling asked (cy2x accepted) until
-//   PLAN G881b. A key never leaves the supply: no
+//   (row (5)) add the clause instances their own chains supply, which no index holds. A mate whose chain holds a link open in the
+//   walk (a cycle through a projection, `T.(Cy2).X.(Mid).Next is T`, SPEC 8.2.3 Cycles) is not walked from there, so no chain is
+//   ever walked through a link whose rows are not yet formed: it supplies its rows of the request's last round (none in the
+//   first), and the request walks it from the top once its own chains are closed, then walks again until no link's rows differ
+//   from its own last round's (EnumerateClosed, PLAN G881b). The links a round walks are decided by chains and classes, never by
+//   rows, and each link's rows are monotone in the rows it reads, so the rounds rise from no rows to the least fixpoint of the
+//   links' equations: a function of (link, view), whichever link a request entered first or spelled (SPEC 8.3.3: a fact that depends
+//   on its own judgment supplies nothing; no coinduction), in at most the (link, row) pairs plus one rounds. A key never leaves the supply: no
 //   reader receives it as a Type (on a class match AppliedAssociatedContract reads the fact's own subject). Not yet supplied: a
 //   subject only a binding completes beyond Reading's one level (ProjectionSpecification; c2-4), a Callable fact whose subject
 //   only its reading, not its class, makes the subject (IndexNormalized reads Contract facts; c2-4), and the clause kinds without a
 //   leaf row at depth (the eager supply's one level until c2-3c and d); a missing row only rejects.
 // - Extension (R7-C2c2 c2-2; SPEC 8.2.3's grounds include the identity Constraints a Contract premise supplies at every depth): the
-//   walk records the TypeIdentity clause instances of its available Contract rows; an outermost refinement request (PremiseRefines)
+//   walk records the TypeIdentity clause instances of its available Contract rows, but a deferred mate's walk (PLAN G881b: a
+//   cycle's mate, walked from the top) records none, so an extension rests on the chains a request walks without a cycle, as
+//   before G881b: a cycle's mate is deeper than the link it is identical with, and under a recursive Contract whose clause
+//   identifies a deeper projection with a shallower one (`Self.(Mk).Next.(Mk).Up is Self`) each of its links supplies one more
+//   identity, so rows recorded there would never end. The implementation's limit, not SPEC's rule: an identity a Contract supplies
+//   only at a prefix of a cycle's mate joins no extension. An outermost refinement request (PremiseRefines)
 //   whose walk is not positive for its demanded Contract and recorded rows builds its own classes over the view's premises and
 //   those rows (ExtendedClassesOf: request-local, the rows Provisional),
 //   re-keys its subject and its view's facts and walks again while a round adds a row. Nothing computed under an extension is kept (no
@@ -151,7 +159,8 @@
 // Kept rows (DECISIONS R7-C2a1, the owner's O-206 (a)). Temporary: R7-C2e2's part 3 joins a view's rows to Closure(view) and deletes
 // enumerateKept, its pool, KeepRows and the kept region's part of PremiseRefines and FirstRows.
 // - What and key: the rows of each link an outermost request walked, per (link, view scope, serial, requirement Contract), with
-//   whether that walk recorded an identity row (c2-2: such rows answer only a refinement among them), and a Contract's head depth.
+//   whether that walk recorded an identity row or deferred a mate (c2-2, PLAN G881b: such rows answer only a refinement among
+//   them), and a Contract's head depth.
 // - Where: the kept region (KeptRegion, R7-M20's rule, which Reading and PremiseRefines both ask), an outermost request, a
 //   preparation that formed no reading, a view with no identity premise or a Final identity table (its keys are then a function of
 //   the view and the pass; a view with a derived identity fact keeps none until R7-C2e2): each fact of its index was a kept, Complete
@@ -291,6 +300,19 @@ public sealed partial class Binding
         list.Add(row);
     }
 
+    // A link's rows as EnumerateClosed's stop test reads them: its rows, an available one twice. A link's rows and their
+    // availability only grow from round to round, so equal weights are equal rows.
+    private static int RowWeight(List<PremiseRow>? rows)
+    {
+        var weight = 0;
+        for (var r = 0; rows is not null && r < rows.Count; r++)
+        {
+            weight += rows[r].Available ? 2 : 1;
+        }
+
+        return weight;
+    }
+
     private EvidenceView ViewOf(BindingScope scope) => new(scope);
 
     // The kept tables' one phase fact: whether a table may outlive an outermost request. The capability phase (capabilitiesReady,
@@ -385,8 +407,9 @@ public sealed partial class Binding
     private readonly List<BoundType> enumerateMates = new();
 
     // The rows of `subject` in the view (the contract above): its chain is walked from the root up, each link once per request and
-    // view; a link's rows are final before a taller link reads them, and a prefix stays active while its height plus its rows' head
-    // depth reaches the link. A link demanded again while open supplies nothing (SPEC 8.3.3).
+    // view and round; a link's rows are closed before a taller link reads them, and a prefix stays active while its height plus its
+    // rows' head depth reaches the link. No chain holding an open link is walked (row (5) defers such a mate), so a link is never
+    // demanded while open. A link that closes with rows that are not its last round's is noted (EnumerateClosed's stop test).
     private List<PremiseRow>? Enumerate(BoundType subject, EvidenceView view, ViewIndex index)
     {
         var serial = index.Serial;
@@ -417,9 +440,10 @@ public sealed partial class Binding
 
                 if (!this.enumerateMemo.TryGetValue((link, view, serial), out var rows))
                 {
-                    this.enumerateMemo[(link, view, serial)] = null; // Open: a re-entry supplies nothing.
+                    this.enumerateMemo[(link, view, serial)] = null; // Open: row (5) walks no chain holding it.
                     rows = this.EnumerateLink(link, view, index, activeStart);
                     this.enumerateMemo[(link, view, serial)] = rows;
+                    this.enumerateMoved |= this.enumerateSeed.Count == 0 ? rows.Count != 0 : RowWeight(rows) != RowWeight(this.enumerateSeed.GetValueOrDefault((link, view, serial)));
                 }
 
                 if (rows is { Count: > 0 })
@@ -519,9 +543,10 @@ public sealed partial class Binding
 
                 foreach (var (_, _, premise) in new ContractSupply(this, shape, root, view.Premises))
                 {
-                    // An identity row is an available row's clause: an unavailable Contract premise supplies no ground (SPEC 8.3.1).
+                    // An identity row is an available row's clause: an unavailable Contract premise supplies no ground (SPEC 8.3.1). A
+                    // deferred mate's walk records none (the class header's Extension).
                     if (premise is { Kind: ConstraintKind.TypeIdentity, Subject: { } left, RequiredType: { } right } && this.enumerateDepth == 1 &&
-                        prefix[i].Available && !this.enumerateIdentities.Contains((left, right)))
+                        !this.enumerateDeferring && prefix[i].Available && !this.enumerateIdentities.Contains((left, right)))
                     {
                         this.enumerateIdentities.Add((left, right)); // c2-2: an identity row (SPEC 8.2.3 grounds), for the request's classes
                     }
@@ -545,10 +570,10 @@ public sealed partial class Binding
         // are the link's. The class-key index gives the link every member's facts where the link or its key is walked; what no index
         // holds is a projection member's rows (2), the clause instances of its own chain's prefixes (`U is T.(A).Next.(B).Next`: T's
         // chain supplies `T.(A).Next.(B).Next is C`), so each projection mate's walk adds its rows, in Order, never premise order. A
-        // mate whose chain holds a link open in this walk (a cycle, `T.(Cy2).X.(Mid).Next is T`) is not walked: it would read the open
-        // link as empty and leave that partial answer in the memo. A request that skipped one keeps no rows. The implementation's
-        // limit, not SPEC's rule (PLAN G881b): through such a cycle the link lacks what returns through the cut (cy2 rejected, hcy2
-        // accepted: a class 1). A constructed link (`Leaf` under `T.(Holder).Item is Leaf`) takes no mate's rows: its conformance is ResolveConformance's
+        // mate whose chain holds a link open in this walk (a cycle, `T.(Cy2).X.(Mid).Next is T`; SPEC 8.2.3 Cycles) is not walked from
+        // here: it would read the open link as empty and leave that partial answer in the memo. It is deferred: it adds its rows of
+        // the request's last round, and EnumerateClosed walks it once the request's chains are closed and walks again until no link's
+        // rows move (the least fixpoint, PLAN G881b). A constructed link (`Leaf` under `T.(Holder).Item is Leaf`) takes no mate's rows: its conformance is ResolveConformance's
         // (the class header's Identity; ClassKey keys it to itself), so a premise contradicting it stays the premise's error (d09y).
         if (this.enumerateClasses is { } classes && subject.Kind is BoundTypeKind.Parameter or BoundTypeKind.AssociatedProjection)
         {
@@ -565,14 +590,22 @@ public sealed partial class Binding
                         continue;
                     }
 
+                    List<PremiseRow>? mateRows;
                     if (this.HoldsOpenLink(mate, view, index.Serial))
                     {
-                        this.EnumerateSkips++;
-                        continue;
+                        if (!this.enumerateDeferred.Contains(mate))
+                        {
+                            this.enumerateDeferred.Add(mate);
+                        }
+
+                        mateRows = this.enumerateSeed.GetValueOrDefault((mate, view, index.Serial));
+                    }
+                    else
+                    {
+                        this.IdentityMateWork++;
+                        mateRows = this.Enumerate(mate, view, index);
                     }
 
-                    this.IdentityMateWork++;
-                    var mateRows = this.Enumerate(mate, view, index);
                     for (var r = 0; mateRows is not null && r < mateRows.Count; r++)
                     {
                         AddRow(rows, 0, mateRows[r]);

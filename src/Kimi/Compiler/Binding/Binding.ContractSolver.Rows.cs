@@ -11,10 +11,6 @@ namespace Kimi.Compiler;
 // walk the requests start (Enumerate and what it calls) is the entry file's.
 public sealed partial class Binding
 {
-    // Enumerate's request tables, owned by one outermost request (emptied, capacity kept, when it returns) and keyed by the view value:
-    // the rows of a link of the subject's chain in a view (null while the link is open) and the pooled lists.
-    private readonly Dictionary<(BoundType, EvidenceView, int), List<PremiseRow>?> enumerateMemo = new();
-
     // Closure(view) (the class header's): the entry of each (view scope, requirement Contract), the entries the outermost request formed
     // (dropped when it returns unless Kept), and the free entries, each with its lists and their capacity.
     private readonly Dictionary<(EvidenceView, BindingSymbol?), ViewIndex> enumerateIndex = new();
@@ -31,10 +27,19 @@ public sealed partial class Binding
     private readonly List<List<PremiseRow>> enumeratePool = new();
     private readonly List<PremiseRow> premiseRows = new(); // FirstRows' and PremiseRows' readers' rows, a stack of ranges
     private readonly List<(BoundType A, BoundType B)> enumerateIdentities = new(); // c2-2: the outermost walk's identity rows
+    private readonly List<BoundType> enumerateDeferred = new(); // PLAN G881b: the round's mates row (5) did not walk (a cycle)
+
+    // Enumerate's request tables, owned by one outermost request (emptied, capacity kept, when it returns) and keyed by the view value:
+    // the rows of a link of the subject's chain in a view (null while the link is open), each link's rows of the request's last round
+    // (EnumerateClosed's seed; the two tables change places between rounds) and, above, the pooled lists.
+    private Dictionary<(BoundType, EvidenceView, int), List<PremiseRow>?> enumerateMemo = new();
+    private Dictionary<(BoundType, EvidenceView, int), List<PremiseRow>?> enumerateSeed = new();
     private int enumeratePoolNext;
     private int enumerateDepth;
     private int enumerateWalking;
     private int enumerateKeptPoolNext;
+    private bool enumerateMoved; // PLAN G881b: a link of the round closed with rows that are not its last round's
+    private bool enumerateDeferring; // PLAN G881b: EnumerateClosed is walking the round's deferred mates
     private IdentityClasses? enumerateClasses; // R7-C2c2: the current request's view's identity classes, or null
 
     // The scaling rows' measure: the pairs Closure(view)'s entries indexed in this compilation, in every row (a fact of a row kind,
@@ -45,8 +50,8 @@ public sealed partial class Binding
     // R7-C2c2 c2-2: the extension rounds of this compilation (the scaling rows' measure of the loop's bound).
     internal int IdentityRounds { get; private set; }
 
-    // PLAN G881: the class mates Row (5) did not walk (an open link in their chain); a request that skipped one keeps no rows.
-    internal int EnumerateSkips { get; private set; }
+    // PLAN G881b: the rounds EnumerateClosed walked again (a request through a cycle; the scaling rows' measure of its bound).
+    internal int EnumerateRounds { get; private set; }
 
     // PLAN G881: row (5)'s work, the class members ProjectionMembers scanned and the mates walked (the scaling rows' measure).
     internal long IdentityMateWork { get; private set; }
@@ -127,9 +132,8 @@ public sealed partial class Binding
             try
             {
                 this.enumerateIdentities.Clear();
-                var skips = this.EnumerateSkips;
-                var refines = RowsRefine(this.Enumerate(subject, view, index), contract);
-                refines |= !ReferenceEquals(key, subject) && RowsRefine(this.Enumerate(key, view, index), contract);
+                var (rows, keyRows) = this.EnumerateClosed(subject, key, view, index);
+                var refines = RowsRefine(rows, contract) || RowsRefine(keyRows, contract);
 
                 // R7-C2c2 c2-2: the identity rows the walk recorded join the request's own classes, and the walk runs again under
                 // them while a round records a row the last extension did not hold. Bound: rows only grow, and each is a clause
@@ -154,12 +158,12 @@ public sealed partial class Binding
                     index.Kept &= extended.Final;
                     this.enumerateOwned.Add((view, this.activeRequirementContract));
                     this.IndexWritten(index, view);
-                    refines = RowsRefine(this.Enumerate(subject, view, index), contract);
-                    refines |= !ReferenceEquals(key, subject) && RowsRefine(this.Enumerate(key, view, index), contract);
+                    (rows, keyRows) = this.EnumerateClosed(subject, key, view, index);
+                    refines = RowsRefine(rows, contract) || RowsRefine(keyRows, contract);
                     this.IdentityRounds++;
                 }
 
-                if (keep && skips == this.EnumerateSkips)
+                if (keep)
                 {
                     this.KeepRows(view, serial);
                 }
@@ -174,6 +178,48 @@ public sealed partial class Binding
         finally
         {
             this.LeaveRows(enclosing);
+        }
+    }
+
+    // PLAN G881b (SPEC 8.2.3 Cycles, 8.3.3): the rows of a request's subject and of its class key as the walk's least fixpoint, the
+    // requests' one entry to the walk. A round walks the subject and its key, then each mate row (5) deferred (its chain held an
+    // open link: a cycle), from the top, where no link is open; a deferred mate's walk may defer others and records no identity row.
+    // A round that deferred a mate is walked again, its links' rows the seed a deferred mate supplies, until no link closes with
+    // rows that are not its own last round's (the per-link stop test: Enumerate compares each link with its own seed). A round
+    // that deferred none is exact, so a request through no cycle walks once. Each round visits the same links in the same order and
+    // each link's rows are monotone in what it reads, so a link's rows only grow from round to round and the last round is the least
+    // fixpoint of the links' equations: its rows are a function of (link, view) and are kept as a single walk's (KeepRows). Bound:
+    // the (link, row) pairs of the request plus one.
+    private (List<PremiseRow>? Rows, List<PremiseRow>? KeyRows) EnumerateClosed(BoundType subject, BoundType key, EvidenceView view, ViewIndex index)
+    {
+        while (true)
+        {
+            this.enumerateMoved = false;
+            this.enumerateDeferred.Clear();
+            var rows = this.Enumerate(subject, view, index);
+            var keyRows = ReferenceEquals(key, subject) ? null : this.Enumerate(key, view, index);
+            this.enumerateDeferring = true;
+            try
+            {
+                for (var d = 0; d < this.enumerateDeferred.Count; d++)
+                {
+                    this.Enumerate(this.enumerateDeferred[d], view, index);
+                }
+            }
+            finally
+            {
+                this.enumerateDeferring = false;
+            }
+
+            if (this.enumerateDeferred.Count == 0 || !this.enumerateMoved)
+            {
+                this.enumerateSeed.Clear();
+                return (rows, keyRows);
+            }
+
+            (this.enumerateSeed, this.enumerateMemo) = (this.enumerateMemo, this.enumerateSeed);
+            this.enumerateMemo.Clear();
+            this.EnumerateRounds++;
         }
     }
 
@@ -224,10 +270,8 @@ public sealed partial class Binding
             try
             {
                 this.enumerateIdentities.Clear();
-                var skips = this.EnumerateSkips;
-                var rows = this.Enumerate(subject, view, index);
-                var keyRows = ReferenceEquals(key, subject) ? null : this.Enumerate(key, view, index);
-                if (keep && skips == this.EnumerateSkips)
+                var (rows, keyRows) = this.EnumerateClosed(subject, key, view, index);
+                if (keep)
                 {
                     this.KeepRows(view, serial);
                 }
@@ -327,6 +371,7 @@ public sealed partial class Binding
         if (--this.enumerateDepth == 0)
         {
             this.enumerateMemo.Clear();
+            this.enumerateSeed.Clear();
             this.DropOwnedEntries();
             this.enumeratePoolNext = 0;
             if (!this.KeepsAcrossRequests)
@@ -337,7 +382,8 @@ public sealed partial class Binding
     }
 
     // The outermost walk's rows of the view, kept for the epoch under the request's requirement Contract (pooled copies), each marked
-    // with whether the walk recorded an identity row: a link's own walk records a subset of its request's.
+    // with whether the walk recorded an identity row: a link's own walk records a subset of its request's. A request that deferred a
+    // mate (PLAN G881b) marks them too: a deferred walk records none, so a link only it walked may record one in its own request.
     private void KeepRows(EvidenceView view, int serial)
     {
         foreach (var ((link, linkView, linkSerial), rows) in this.enumerateMemo)
@@ -362,7 +408,7 @@ public sealed partial class Binding
             }
 
             copy.AddRange(rows);
-            this.enumerateKept[(link, view, serial, this.activeRequirementContract)] = (copy, this.enumerateIdentities.Count != 0);
+            this.enumerateKept[(link, view, serial, this.activeRequirementContract)] = (copy, this.enumerateIdentities.Count != 0 || this.enumerateDeferred.Count != 0);
         }
     }
 
