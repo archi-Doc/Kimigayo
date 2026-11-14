@@ -97,7 +97,7 @@ internal sealed partial class TyCtxt
         CallRetention retention;
         if (owner is null)
         {
-            retention = binding.RetainsErased(use, inputs, signature.Components[1], Binding.FunctionTypeBinder(signature));
+            retention = binding.RetainsErased(use, inputs, signature.Components[1], signature.Binder);
         }
         else
         {
