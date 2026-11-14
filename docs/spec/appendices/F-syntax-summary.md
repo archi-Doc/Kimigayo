@@ -410,6 +410,8 @@ AssociatedTypeSpecification := "associate" AssociatedTypeName OriginParameters?
 AssociatedTypeName   := Name | ContractSelector "." Name
 AssociatedTypeReference := TypeQualifier "." Name OriginApplication?
                          | TypeQualifier "." "(" ContractReference ")" "." Name OriginApplication?
+                         // as a ConstraintSubject: where its TypeQualifier writes Type arguments, Name names an associated Type
+                         // ([§8.5.2](../08-generics-constraints-and-contracts.md#852-projections)), never a nested Type ([§9.7.3](../09-names-signatures-and-access.md#973-nested-types-and-associated-projections))
 TypeQualifier        := ContainerPath | PathQualifier
 ConditionalConformance := "Self" "is" ContractReference "when" ConformanceConditions
                           IndentedList<ConditionalImplementationItem>?
