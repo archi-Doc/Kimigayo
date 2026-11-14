@@ -1,5 +1,7 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using System.Reflection;
+using System.Reflection.Emit;
 using System.Text.RegularExpressions;
 using Kimi.Compiler.Lexing;
 using Microsoft.CodeAnalysis;
@@ -47,7 +49,8 @@ public class ArchitectureRulesTest
     private const string UseLookups = "NamePath|TypeName|LookupAdaptationTarget";
 
     private const string UseLookupSites = "Binding.Aliases.cs=1;Binding.AssociatedTypes.cs=3;" +
-        "Binding.Constraints.cs=3;Binding.ContainerReferences.cs=1;Binding.Contracts.cs=1;Binding.Conversions.cs=1;Binding.Diagnostics.cs=2;Binding.EffectDeclarations.cs=1;" +
+        "Binding.Constraints.Requirements.cs=1;Binding.Constraints.cs=2;Binding.ContainerReferences.cs=1;Binding.Contracts.cs=1;" +
+        "Binding.Conversions.cs=1;Binding.Diagnostics.cs=2;Binding.EffectDeclarations.cs=1;" +
         "Binding.Lengths.cs=1;Binding.MemberLookup.cs=2;Binding.OriginDeclarations.cs=1;Binding.Patterns.cs=1;Binding.ResolvePath.cs=2;" +
         "Binding.Structs.cs=1;Binding.Types.cs=3";
 
@@ -91,6 +94,15 @@ public class ArchitectureRulesTest
     private const string ReplacedByWitnessTable = @"\w*FixedArrayEntry\b|" +
         @"\b(?:FixedArrayWitness|RentFixedArrayArguments|ReturnFixedArrayArguments|FixedArraySlots)\b|" +
         @"\b(?:Is|Instantiate)IntegerPosition\b|\bIntegerPosition(?:Witness|Slot)\b|(?:Kind|TyCtxt|this)\.IntegerPosition\b|\bComparisonTypes\.IsBuiltin\b";
+
+    // PLAN G609 (InterfaceEnumerationsStayAtTheirSites): the compiler's cold interface enumerations, by top-level type and method.
+    private const string InterfaceEnumerationSites = "DeclarationContainerKoto.TryParsePropertyOrFunction=1;DeclarationContainerKoto.WriteAsBlockItem=2;" +
+        "FunctionKoto.WriteDeclarationTo=2;Koto.CopyDocumentation=1;Kotonoha.AddSources=2;Kotonoha.CheckNames=1;Kotonoha.ReplaceDocumentation=1;" +
+        "MirDump.Write=2;Parser.ParseRequirementBody=1;Parser.ValidateReceiverParameters=1";
+
+    // The IL opcodes by value (InterfaceEnumerationsStayAtTheirSites).
+    private static readonly Dictionary<short, OpCode> OpCodesByValue = typeof(OpCodes).GetFields(BindingFlags.Public | BindingFlags.Static)
+        .Select(static x => (OpCode)x.GetValue(null)!).ToDictionary(static x => x.Value);
 
     [Theory]
     [InlineData("Emission failure strings", "src/Kimi/Build", "*.cs", @"\bFail\(\$?""", 0)]
@@ -139,7 +151,6 @@ public class ArchitectureRulesTest
     [InlineData("FormattingTypes reads of Koto semantic slots", "src/Kimi/Compiler", "FormattingTypes.cs", SemanticSlotReads, 0)]
     [InlineData("ReferenceTypes reads of Koto semantic slots", "src/Kimi/Compiler", "ReferenceTypes.cs", SemanticSlotReads, 0)]
     [InlineData("ScalarTypes reads of Koto semantic slots", "src/Kimi/Compiler", "ScalarTypes.cs", SemanticSlotReads, 0)]
-    [InlineData("SharedReadTypes reads of Koto semantic slots", "src/Kimi/Compiler", "SharedReadTypes.cs", SemanticSlotReads, 0)]
     [InlineData("SlotTypes reads of Koto semantic slots", "src/Kimi/Compiler", "SlotTypes.cs", SemanticSlotReads, 0)]
     [InlineData("StrictBestCandidate reads of Koto semantic slots", "src/Kimi/Compiler", "StrictBestCandidate.cs", SemanticSlotReads, 0)]
     [InlineData("Documentation reads of Koto semantic slots", "src/Kimi/Documentation", "*.cs", SemanticSlotReads, 0)]
@@ -225,7 +236,8 @@ public class ArchitectureRulesTest
     // DECISIONS R7-C2e1: Completion's zero is Provisional and only the whitelist's members (W1-W6, the ContractSolver header) give
     // Complete, so a new route is Provisional until a reviewed row joins them: a further site fails here. Every spelling of Complete is
     // counted (an assignment, a return, an arm, an argument, a cast), the comparison in Reading included.
-    [InlineData("Answers given Complete", "src/Kimi/Compiler", @"\bCompletion\.Complete\b|\(Completion\)", "Binding/Binding.AssociatedTypes.Specification.cs=1;Binding/Binding.BoundContracts.cs=2;Binding/Binding.BuiltinArithmetic.cs=1;Binding/Binding.Constraints.cs=2;Binding/Binding.ContractSolver.cs=2;Binding/Binding.ContractTypes.cs=3;Binding/Binding.FixedArrays.cs=1;Binding/Binding.TypeIdentity.cs=2")]
+    // R7-C3a: W7, the identity classes' Completion member (DECISIONS R7-M20's amendment).
+    [InlineData("Answers given Complete", "src/Kimi/Compiler", @"\bCompletion\.Complete\b|\(Completion\)", "Binding/Binding.AssociatedTypes.Specification.cs=1;Binding/Binding.BoundContracts.cs=2;Binding/Binding.BuiltinArithmetic.cs=1;Binding/Binding.Constraints.cs=2;Binding/Binding.ContractSolver.cs=2;Binding/Binding.ContractTypes.cs=3;Binding/Binding.FixedArrays.cs=1;Binding/Binding.TypeIdentity.Classes.cs=1;Binding/Binding.TypeIdentity.cs=2")]
     // H11b-0 B0 (RP6): an Origin declaration's state is private; its formation alone names `Forming`, file by file, each occurrence
     // forming the declaration it names (the type's file: the member and its contract's three mentions). Every other read is one of
     // OriginDeclaration's read members, so the readers of a declaration, a failed one included, are those members' callers.
@@ -373,6 +385,55 @@ public class ArchitectureRulesTest
         }).FirstOrDefault(static x => x is not null) ?? string.Empty;
     }
 
+    // PLAN G609 (RP6): the compiler reads a published list by index and a node's children through the one walk (Koto.VisitChildren), so a
+    // warm rebind allocates nothing: `foreach` over an interface calls its GetEnumerator, which boxes a List<T>'s enumerator or allocates
+    // an array's whenever the list is nonempty. The compiler's IL calls an interface's GetEnumerator only at these cold sites (parsing and
+    // printing syntax, adding sources, dumping MIR), counted by top-level type and method, a lambda's, local function's or state machine's
+    // in its declaring method's; every other Kimi.Compiler method calls none (52dc76fd1's site was Compilation's pipeline, not Binding).
+    // Not seen: an enumeration a library method makes for the compiler (LINQ over an interface, AddRange, string.Join or a constructor
+    // over an IEnumerable<T>); review reads those.
+    [Theory]
+    [InlineData("Kimi.Compiler", InterfaceEnumerationSites)]
+    public void InterfaceEnumerationsStayAtTheirSites(string prefix, string sites)
+    {
+        var actual = typeof(Kimi.Compiler.Compilation).Assembly.GetTypes().Where(x => x.Namespace?.StartsWith(prefix, StringComparison.Ordinal) == true)
+            .SelectMany(InterfaceEnumerations).GroupBy(static x => x, StringComparer.Ordinal).Select(static x => $"{x.Key}={x.Count()}")
+            .Order(StringComparer.Ordinal).ToArray();
+        Assert.True(sites.Split(';').Order(StringComparer.Ordinal).SequenceEqual(actual), $"Interface enumerations: {string.Join(";", actual)}; the sites are {sites}.");
+    }
+
+    // R7-C2a: Enumerate is a leaf of the judgment graph (Binding.ContractSolver.cs's contract). The members of its walk call exactly
+    // the names listed here, none of which proves, resolves a binding, normalizes or requests a capability (ProveConformance,
+    // ProveConstraint, ResolveAssociated, NormalizeProof*, SubstituteIdentity, RequestCapability), and the two callees that can
+    // normalize are told not to. A new callee is read for judgments before it joins the list. PremiseRefines and the indexes are the
+    // request boundary, not the walk; a walk that reaches PremiseRefines fails at run time (InternalInvariant). R7-C2c2: the walk's class
+    // keys (SameClass, and ClassKey and CongruentKey in Binding.TypeIdentity.Keys.cs) are walk members too, so no judgment is reached from
+    // a key: they read the built table (KeyOf, Representative) and intern (Rebuild).
+    [Fact]
+    public void EnumeratesWalkCallsNoJudgment()
+    {
+        string[] walk = ["Enumerate", "EnumerateLink", "HeadDepth", "ClauseHeads", "AvailableContractPremise", "AvailableConstraintFact", "ContractSupply", "SameClass", "ClassKey", "CongruentKey"];
+        string[] allowed =
+        [
+            "Add", "AppliedAssociatedContract", "AsSpan", "AssociatedIdentityMatches", "AvailableConstraintFact", "AvailableContractPremise", "ClassKey", "ClauseHeads",
+            "Clear", "CongruentKey", "Contains", "ContractConstraint", "DependentConstraint", "EnumerateLink", "FactStates", "GetValueOrDefault", "HeadDepth", "Heads",
+            "InstantiatedAncestor", "InstantiatedContract", "InvalidDeclarationContext", "IsContractSelf", "KeyOf", "Max", "ReadSourceState", "Rebuild",
+            "ReferenceEquals", "RemoveAt", "RemoveRange", "RentTypes", "Representative", "Return", "SameClass", "SetKey", "SubjectKey", "TryGetValue",
+            "UnresolvedTypeDeclarationContext",
+        ];
+        var members = new[] { "Binding.ContractSolver.cs", "Binding.TypeIdentity.Keys.cs" }
+            .Select(static x => File.ReadAllText(Path.Combine(Repository.Root, "src/Kimi/Compiler/Binding", x)))
+            .SelectMany(static source => CSharpSyntaxTree.ParseText(source, new CSharpParseOptions(LanguageVersion.Preview), cancellationToken: TestContext.Current.CancellationToken).GetRoot(TestContext.Current.CancellationToken).DescendantNodes())
+            .Where(x => (x is MethodDeclarationSyntax method && walk.Contains(method.Identifier.Text)) || (x is StructDeclarationSyntax type && walk.Contains(type.Identifier.Text))).ToArray();
+        Assert.Equal(walk.Length, members.Length);
+        var calls = members.SelectMany(static x => x.DescendantNodes().OfType<InvocationExpressionSyntax>()).ToArray();
+        var actual = calls.Select(static x => CalledName(x.Expression)).Distinct().Order(StringComparer.Ordinal).ToArray();
+        Assert.True(allowed.SequenceEqual<string?>(actual), $"Enumerate's walk calls: {string.Join(", ", actual)}.");
+        Assert.All(
+            calls.Where(static x => CalledName(x.Expression) is "InstantiatedContract" or "ContractConstraint"),
+            static x => Assert.Equal("false", x.ArgumentList.Arguments[3].Expression.ToString()));
+    }
+
     // Any receiver: a nested visitor calls its Binding by a field (`binding.TypeName`), which a `this.`-only match missed (round 2).
     private static string? CalledName(ExpressionSyntax called) => called switch
     {
@@ -380,6 +441,46 @@ public class ArchitectureRulesTest
         IdentifierNameSyntax name => name.Identifier.Text,
         _ => null,
     };
+
+    // The calls of an interface's GetEnumerator in a type's own method bodies, read from their IL, one `TopLevelType.Method` each.
+    private static IEnumerable<string> InterfaceEnumerations(Type type)
+    {
+        const BindingFlags Declared = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.Static | BindingFlags.DeclaredOnly;
+        var top = type;
+        while (top.DeclaringType is { } outer)
+        {
+            top = outer;
+        }
+
+        foreach (var method in type.GetMethods(Declared).Concat<MethodBase>(type.GetConstructors(Declared)))
+        {
+            // A compiler-generated member (<Name>b__0, <Name>g__Local|0) or state machine (<Name>d__0.MoveNext) names its declaring method.
+            var name = method.Name.StartsWith('<') ? method.Name : type.Name.StartsWith('<') && !type.Name.StartsWith("<>", StringComparison.Ordinal) ? type.Name : method.Name;
+            name = name.StartsWith('<') ? name[1..name.IndexOf('>')] : name;
+            var il = method.GetMethodBody()?.GetILAsByteArray() ?? [];
+            for (var i = 0; i < il.Length;)
+            {
+                var code = OpCodesByValue[il[i] == 0xFE ? (short)(0xFE00 | il[i + 1]) : il[i]];
+                i += code.Size;
+                if (code.OperandType == OperandType.InlineMethod && type.Module.ResolveMethod(
+                    BitConverter.ToInt32(il, i), type.IsGenericType ? type.GetGenericArguments() : null, method.IsGenericMethod ? method.GetGenericArguments() : null)
+                    is { Name: "GetEnumerator", DeclaringType.IsInterface: true })
+                {
+                    yield return $"{top.Name}.{name}";
+                }
+
+                i += code.OperandType switch
+                {
+                    OperandType.InlineNone => 0,
+                    OperandType.ShortInlineBrTarget or OperandType.ShortInlineI or OperandType.ShortInlineVar => 1,
+                    OperandType.InlineVar => 2,
+                    OperandType.InlineI8 or OperandType.InlineR => 8,
+                    OperandType.InlineSwitch => 4 + (4 * BitConverter.ToInt32(il, i)),
+                    _ => 4,
+                };
+            }
+        }
+    }
 
     // A directory that does not exist (deleted, or not yet created) has no files.
     private static IEnumerable<string> SourceFiles(string directory, string pattern)

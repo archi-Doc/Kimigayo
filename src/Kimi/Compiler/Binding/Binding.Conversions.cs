@@ -230,9 +230,14 @@ public sealed partial class Binding
             if (TryPairLayer(reference, out _, out _))
             {
                 // SPEC 13.5.5: a pair layer is followed only when its admitted set lies in value or valueborrow.
-                if (this.FollowablePair(reference, scope, out var pairTarget) is var admitted && admitted == SemanticsMask.None)
+                if (this.FollowablePair(reference, scope, out var pairTarget) is not { } admitted)
                 {
                     return this.Fail(conversion, BindingFailure.UnprovenConstraint);
+                }
+
+                if (admitted == SemanticsMask.None)
+                {
+                    return this.RestOnEmptiedSet(conversion, scope);
                 }
 
                 this.pairFollows[conversion] = admitted;
@@ -500,6 +505,14 @@ public sealed partial class Binding
             return Complete(conversion, BoundType.Never);
         }
 
+        // SPEC 13.5.2: the operand of a numeric conversion, or of an Identity Acquisition to a read Type, is a read position, so
+        // safe value-reference layers ending in a read Type supply its value, a qualifying pair layer included: such an operand is
+        // read in every case and selects no case. Borrow, follow and object targets took the reference above.
+        if (plain && target.HandleMode is null && !TryAdaptationSelector(target, out _))
+        {
+            source = this.ReadReferent(conversion.Left, source)!;
+        }
+
         if (TryAdaptationSelector(target, out _) || TryAdaptationSelector(source, out _))
         {
             return this.BindCaseAdaptation(conversion, scope, source, target);
@@ -508,13 +521,6 @@ public sealed partial class Binding
         if (target.HandleMode is not null)
         {
             return this.BindObjectAdaptation(conversion, scope, source, target);
-        }
-
-        // SPEC 13.5.2: the operand of a numeric conversion, or of an Identity Acquisition to a read Type, is a read position, so
-        // safe reference layers ending in a read Type supply its value; borrow, follow and object targets took the reference above.
-        if (plain)
-        {
-            source = this.ReadReferent(conversion.Left, source)!;
         }
 
         if (ReferenceTypes.IsPointer(source) || ReferenceTypes.IsPointer(target))

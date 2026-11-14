@@ -26,7 +26,7 @@ internal sealed partial class TyCtxt
     // HandedCallables' answers per interned Type, kept as the retentions are, and its walk's scratch.
     private readonly Dictionary<BoundType, BoundType[]> handedCallables = new(ReferenceEqualityComparer.Instance);
     private readonly List<BoundType> handedFound = new();
-    private readonly HashSet<BoundType> handedSeen = new(ReferenceEqualityComparer.Instance);
+    private readonly Dictionary<BoundType, int> handedSeen = new(ReferenceEqualityComparer.Instance); // Each part's shallowest depth (Binding.Enters).
 
     // SPEC 15.6.4: a callee's retention under a call's Subst (a Fn, Requirement or Virtual MIR callee, the function the Subst targets, or an
     // Intrinsic one's library declaration; its default templates are A5's), called in `definition`.
@@ -55,8 +55,9 @@ internal sealed partial class TyCtxt
     // accessor, else its Property), into `signatures`; whether every one substitutes (false: CallRetention.Limit).
     internal bool RequirementSignatures(BoundType self, BindingSymbol contract, List<Binding.ErasedSignature> signatures)
     {
-        foreach (var requirement in contract.Contract!.Requirements)
+        for (var i = 0; i < contract.Contract!.Requirements.Count; i++)
         {
+            var requirement = contract.Contract!.Requirements[i];
             var subst = requirement.Contract.Type is { } reference ? this.Synthesized(requirement.Symbol, self, reference)
                 : this.Intern(requirement.Symbol, self, null, [], [], [], []);
             var substituted = requirement.Symbol.Property is { } property
@@ -389,15 +390,23 @@ internal sealed partial class TyCtxt
         return true;
     }
 
-    // HandedCallables' walk: each part once, to the depth bound past which a growing recursive Type's parts are a Limit Held reports.
+    // HandedCallables' walk, to the depth bound past which a growing recursive Type's parts are a Limit Held reports: each part entered at
+    // the shallowest depth it is met at (Binding.Enters, PLAN G571), so a callable within the bound is found whatever route meets its holder
+    // first; each callable found once.
     private void Handed(BoundType? type, int depth)
     {
-        if (type is null || depth > HandedBound || !this.handedSeen.Add(type))
+        if (type is null || depth > HandedBound)
         {
             return;
         }
 
-        if (type.Kind == BoundTypeKind.Function)
+        ref var shallowest = ref CollectionsMarshal.GetValueRefOrAddDefault(this.handedSeen, type, out var met);
+        if (!Binding.Enters(ref shallowest, met, depth))
+        {
+            return;
+        }
+
+        if (type.Kind == BoundTypeKind.Function && !met)
         {
             this.handedFound.Add(type);
         }

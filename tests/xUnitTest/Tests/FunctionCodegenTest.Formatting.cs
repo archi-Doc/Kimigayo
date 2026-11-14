@@ -11,11 +11,12 @@ namespace XunitTest;
 // The formatting of MIR code generation (R5 C9a, C9b; SPEC 22.7, 22.9, 22.10.1, 22.10.2, 22.10.5; DECISIONS R5-M128, R5-M130; R8-W1): the
 // Text operations, the buffers, the windows, the adapter's write, the conversions and writeLine of a view are bodies, called with their
 // operands, result slot and, for a CallerLocation row, the caller's location, at a direct call, an Item's Value call and an adapter's
-// entry; the formatting runtime is written once on request; a user formatter runs through the bodies; a BuiltinFormat item is the built-in
-// witness; Text.writer gives its destination's writer kind and dispatch word; natively. The kinds are the formatting runtime's own numbering.
+// entry; the formatting runtime is written once on request; a user formatter runs through the bodies; every built-in Type's witness is a
+// witness table body (the BuiltinFormat shim is gone since R8-S2d2); Text.writer gives its destination's writer kind and dispatch word;
+// natively. The kinds are the formatting runtime's own numbering.
 public sealed partial class FunctionCodegenTest
 {
-    // A Library without a formatting row: the fixed and heap buffers' and the windows' operations, the Text bodies (fixed, heap, utf8,
+    // A Library without the formatting runtime: the fixed and heap buffers' and the windows' operations, the Text bodies (fixed, heap, utf8,
     // validateUtf8), writeLine of a view (a body), a writer's status, Text.fixed's Item called and erased.
     private const string Buffers =
         "func fxRun(storage: uniq/[8 of u8]) -> Result<isize, BufferFull>\n    var buffer = Text.fixed(storage)\n" +
@@ -33,8 +34,9 @@ public sealed partial class FunctionCodegenTest
         "func itFixed(storage: uniq/[4 of u8]) -> isize\n    let f = Text.fixed<4>\n    return f(storage).capacity\n" +
         "func itErasedFixed() -> (uniq/[4 of u8]) -> Text.FixedBuffer => Text.fixed<4>\n";
 
-    // A Library formatting built-in values: written, converted and formatted into an array (their BuiltinFormat items admitted and
-    // defined, R5-M130), toString's Item called.
+    // A Library formatting built-in values: written, converted and formatted into an array, toString's Item called. Every integer write
+    // reaches the IntegerFormat body, i128's and u128's its specializations (R8-S2b1, R8-S2b2), generation coverage that no assertion here
+    // reads.
     private const string Formats =
         "func ctWriteI64(writer: uniq/Utf8Writer, n: i64) -> Result<(), BufferFull> => writer.write(n)\n" +
         "func ctWriteU8(writer: uniq/Utf8Writer, n: u8) -> Result<(), BufferFull> => writer.write(n)\n" +
@@ -43,6 +45,8 @@ public sealed partial class FunctionCodegenTest
         "func ctWriteI16(writer: uniq/Utf8Writer, n: i16) -> Result<(), BufferFull> => writer.write(n)\n" +
         "func ctWriteU16(writer: uniq/Utf8Writer, n: u16) -> Result<(), BufferFull> => writer.write(n)\n" +
         "func ctWriteU32(writer: uniq/Utf8Writer, n: u32) -> Result<(), BufferFull> => writer.write(n)\n" +
+        "func ctWriteI128(writer: uniq/Utf8Writer, n: i128) -> Result<(), BufferFull> => writer.write(n)\n" +
+        "func ctWriteU128(writer: uniq/Utf8Writer, n: u128) -> Result<(), BufferFull> => writer.write(n)\n" +
         "func ctText(n: u16) -> string => Text.toString(n)\n" +
         "func ctTry(n: i32, bytes: uniq/[4 of u8]) -> bool\n    match Text.tryFormat(n, bytes)@move\n        .Ok(_) => return true\n" +
         "        .Err(_) => return false\n" +
@@ -59,19 +63,16 @@ public sealed partial class FunctionCodegenTest
         "func usItem(s: ref/Shown) -> string\n    let show = Text.toString<Shown>\n    return show(s)\n" +
         "func usErased() -> (ref/Shown) -> string => Text.toString<Shown>\n";
 
-    // A Library calling the format requirement on built-in Types: a generic body's Requirement call at six Selves and a requirement Item's
-    // Value call at i32.
+    // A Library calling the format requirement at i128 and u128: a generic body's Requirement call at both and a requirement Item's Value
+    // call at i128, which reach IntegerFormat's specializations (R8-S2b2); GenerationIsDeterministic and WarmGenerationAllocatesNothing
+    // (FunctionCodegenTest.cs) generate it, so it covers the specializations' warm generation path.
     private const string FormatShims =
         "func apAppend<T>(value: ref/T, writer: uniq/Utf8Writer) -> Result<(), BufferFull>\n    T is Utf8Format\n    return value.format(writer)\n" +
         "func apItem<T>(value: ref/T, writer: uniq/Utf8Writer) -> Result<(), BufferFull>\n    T is Utf8Format\n    let show = T.format\n" +
         "    return show(value, writer)\n" +
-        "func apI32(n: ref/i32, w: uniq/Utf8Writer) -> Result<(), BufferFull> => apAppend(n, w)\n" +
-        "func apTiny(n: ref/i8, w: uniq/Utf8Writer) -> Result<(), BufferFull> => apAppend(n, w)\n" +
-        "func apShort(n: ref/i16, w: uniq/Utf8Writer) -> Result<(), BufferFull> => apAppend(n, w)\n" +
-        "func apWord(n: ref/u32, w: uniq/Utf8Writer) -> Result<(), BufferFull> => apAppend(n, w)\n" +
-        "func apLong(n: ref/u64, w: uniq/Utf8Writer) -> Result<(), BufferFull> => apAppend(n, w)\n" +
+        "func apHuge(n: ref/i128, w: uniq/Utf8Writer) -> Result<(), BufferFull> => apAppend(n, w)\n" +
         "func apWide(x: ref/u128, w: uniq/Utf8Writer) -> Result<(), BufferFull> => apAppend(x, w)\n" +
-        "func apItemOf(n: ref/i32, w: uniq/Utf8Writer) -> Result<(), BufferFull> => apItem(n, w)\n";
+        "func apItemOf(n: ref/i128, w: uniq/Utf8Writer) -> Result<(), BufferFull> => apItem(n, w)\n";
 
     // A user BufferWriter witness (Text.writer's row reserves through it).
     private const string Sink = "struct Sink\n    Self is BufferWriter\n    public var count: i32 = 0\n" +
@@ -138,10 +139,10 @@ public sealed partial class FunctionCodegenTest
     public void FormattingProgramsRun(string name, string source, string stdout, int exit, string stderr)
         => ScalarEmissionTest.EmitFixture(name, source, stdout, exit, stderr);
 
-    // SPEC 22.7, 22.9 (DECISIONS R5-M89): the program calls no formatting row: writeLine of a view and the buffer, window and Text
-    // operations are bodies (R8-W1a, W1b, W1c), which take an in-memory Copy operand through its own copy slot.
+    // SPEC 22.7, 22.9 (DECISIONS R5-M89): the program requests no formatting runtime: writeLine of a view and the buffer, window and
+    // Text operations are bodies (R8-W1a, W1b, W1c), which take an in-memory Copy operand through its own copy slot.
     [Fact]
-    public void FormattingRowsCallTheirRoutine()
+    public void BufferWindowTextAndViewOperationsAreBodies()
     {
         var c = Analyze(Buffers, OutputKind.Library);
         var text = Generate(c);
@@ -254,27 +255,6 @@ public sealed partial class FunctionCodegenTest
         }
     }
 
-    // SPEC 22.10.1-22.10.2 (DECISIONS R5-M128; R8-W1b-4): a write calls Utf8Writer.write's instance at the value's Type, whose BuiltinFormat
-    // shim gives the runtime's built-in routine the Self's kind. The module is written (each BuiltinFormat item defined, R5-M130), and the
-    // definitions are read directly.
-    [Fact]
-    public void ABuiltinWriteGivesItsValuesKind()
-    {
-        var c = Analyze(Formats, OutputKind.Library);
-        var text = Generate(c);
-        var ir = GeneratedIr.Parse(text);
-        var (writes, shims) = (FunctionsOf(ir, c, "write"), ShimsOf(ir, text));
-        foreach (var (name, kind) in new[]
-        {
-            ("ctWriteI64", 7), ("ctWriteU8", 2), ("ctWriteI8", 1), ("ctWriteI32", 5), ("ctWriteI16", 3), ("ctWriteU16", 4), ("ctWriteU32", 6),
-        })
-        {
-            var write = Assert.Single(CalleesOf(Assert.Single(FunctionsOf(ir, c, name))), writes.Contains);
-            var shim = Assert.Single(CalleesOf(write), shims.Contains);
-            Assert.Contains($", i32 {kind}, ptr %", Assert.Single(CallsOf(shim)).Shape, StringComparison.Ordinal);
-        }
-    }
-
     // SPEC 22.9.2, 22.5.1 (R8-W1c): the conversions are bodies with CallerLocation rows: a direct call and an Item's Value call pass their
     // result slot, their operands (the value, tryFormat's array) and their own location, nothing else (no kind, no capacity), and each
     // body forwards the location it received, its last two parameters, to its write (R8-W1b-4's CallerLocation row), so an Abort inside
@@ -300,72 +280,57 @@ public sealed partial class FunctionCodegenTest
         }
     }
 
-    // SPEC 22.10.1-22.10.2, 22.5.1 (DECISIONS R5-M126, R5-M130): a BuiltinFormat item's function is the built-in formatting witness: its own
-    // parameters forwarded to the BuiltinFormat routine with its Self's kind, nothing else; a generic body's Requirement call passes its own
-    // location, and a requirement Item's Value call calls the same function.
-    [Fact]
-    public void BuiltinFormatShimsForwardToTheBuiltinRoutine()
+    // SPEC 22.10.1-22.10.2, 22.5.1, 7.7.4, 8.13.3 (R8-S2b1, implementation review I-N1; R8-S2b2): at an integer, a generic body's
+    // Requirement call (apAppend<T>) and a requirement Item's Value call (apItem<T>, `let show = T.format`) reach the same IntegerFormat
+    // instance, i128's its specialization, each call with its own location pair, and the body forwards the location it received to the leaf
+    // writeUtf8 (fail-before: both reach the Type's BuiltinFormat shim; at i128 until R8-S2b2).
+    [Theory]
+    [InlineData("i32")]
+    [InlineData("i128")]
+    public void ARequirementItemAtAnIntegerReachesItsTableBody(string type)
     {
-        var c = Analyze(FormatShims, OutputKind.Library);
+        var source = "func apAppend<T>(value: ref/T, writer: uniq/Utf8Writer) -> Result<(), BufferFull>\n    T is Utf8Format\n" +
+            "    return value.format(writer)\n" +
+            "func apItem<T>(value: ref/T, writer: uniq/Utf8Writer) -> Result<(), BufferFull>\n    T is Utf8Format\n    let show = T.format\n" +
+            "    return show(value, writer)\n" +
+            $"func apOne(n: ref/{type}, w: uniq/Utf8Writer) -> Result<(), BufferFull> => apAppend(n, w)\n" +
+            $"func apItemOf(n: ref/{type}, w: uniq/Utf8Writer) -> Result<(), BufferFull> => apItem(n, w)\n";
+        var c = Analyze(source, OutputKind.Library);
         var text = Generate(c);
         var ir = GeneratedIr.Parse(text);
-        var routine = ir.Function(Routines(CompilerFunctionKind.BuiltinFormat)[0]);
-        var shims = ShimsOf(ir, text);
-        var kinds = shims.Select(x =>
-        {
-            var call = Assert.Single(CallsOf(x));
-            Assert.Same(routine, call.Callee);
-            Assert.Equal(x.Parameters, call.Operands); // The result slot, the value, the writer and the received location.
-            Assert.Equal(["call", "ret"], x.Instructions.Select(static y => y.Opcode));
-            var kind = Regex.Match(call.Shape, @"^call void @\(ptr %, ptr %, ptr %, i32 (\d+), ptr %, i64 %\)$").Groups[1].Value;
-            return int.Parse(kind, CultureInfo.InvariantCulture);
-        });
-        Assert.Equal([1, 3, 5, 6, 8, 10], kinds.Order()); // i8, i16, i32, u32, u64, u128 (string, the view: R8-S2d1's body and member).
-        var location = $", ptr @, i64 {Located(FormatShims, "value.format(writer)")})"; // After the value's and the writer's pointers.
-        Assert.All(
-            FunctionsOf(ir, c, "apAppend"),
-            x => Assert.EndsWith(location, Assert.Single(CallsOf(x), y => y.Callee is { } f && shims.Contains(f)).Shape, StringComparison.Ordinal));
-        var i32 = Assert.Single(shims, x => CallsOf(x)[0].Shape.Contains("i32 5,", StringComparison.Ordinal));
-        var callers = ir.Functions.Where(x => CalleesOf(x).Contains(i32)).ToArray();
-        Assert.Equal(2, callers.Length); // apAppend<i32> and apItem<i32>, the requirement Item's Value call.
-        Assert.Contains(Assert.Single(FunctionsOf(ir, c, "apItem")), callers);
+        Assert.Empty(ShimsOf(ir, text));
+        var body = Assert.Single(FunctionsOf(ir, c, "format"));
+        var direct = Assert.Single(CallsOf(Assert.Single(FunctionsOf(ir, c, "apAppend"))), x => x.Callee == body);
+        Assert.EndsWith($", ptr @, i64 {Located(source, "value.format(writer)")})", direct.Shape, StringComparison.Ordinal);
+        var item = Assert.Single(CallsOf(Assert.Single(FunctionsOf(ir, c, "apItem"))), x => x.Callee == body);
+        Assert.EndsWith($", ptr @, i64 {Located(source, "show(value, writer)")})", item.Shape, StringComparison.Ordinal);
+        var leaf = Assert.Single(FunctionsOf(ir, c, "writeUtf8"));
+        var leafCalls = CallsOf(body).Where(x => x.Callee == leaf).ToArray();
+        Assert.NotEmpty(leafCalls);
+        Assert.All(leafCalls, x => Assert.Equal(body.Parameters.TakeLast(2), x.Operands.TakeLast(2)));
     }
 
-    // SPEC 22.10.1 (DECISIONS R5-M130): a module whose only formatting is one direct write of an i32 through a writer adapter reaches the i32
-    // BuiltinFormat item once (K row 2's Builtin target) and defines its function once, with no record.
+    // SPEC 22.5.1, 22.10.1 (R8-W1b-4; DECISIONS R8-M18; R8-S2b2): Utf8Writer.write has a CallerLocation row, so an interpolated value's
+    // write passes the user's location, and the instance forwards the location it received, its last two parameters, to its value's format
+    // witness, i128's specialization, which reserves and Aborts there (the direct write: ATableBodyWriteReportsItsCallersLocation).
     [Fact]
-    public void ADirectBuiltinWriteDefinesItsItemOnce()
+    public void AnInterpolatedWriteReportsItsCallersLocation()
     {
-        var text = Generate(Analyze("func one(writer: uniq/Utf8Writer) -> Result<(), BufferFull> => writer.write(1)\n", OutputKind.Library));
-        var shim = Assert.Single(ShimsOf(GeneratedIr.Parse(text), text));
-        Assert.Equal("call void @(ptr %, ptr %, ptr %, i32 5, ptr %, i64 %)", Assert.Single(CallsOf(shim)).Shape);
-    }
-
-    // SPEC 22.5.1, 22.10.1 (R8-W1b-4; DECISIONS R8-M18): Utf8Writer.write has a CallerLocation row, so a direct write and an interpolated
-    // value's write pass the user's location, and the instance forwards the location it received, its last two parameters, to its value's
-    // format witness, whose built-in formatting reserves and Aborts there (fail-before: a Formatting.kimi location).
-    [Fact]
-    public void ABuiltinWriteReportsItsCallersLocation()
-    {
-        const string Source = "func wlDirect(writer: uniq/Utf8Writer, n: i64) -> Result<(), BufferFull> => writer.write(n)\n" +
-            "func wlValue(n: i64) -> string => \"n=\\(n)\"\n";
+        const string Source = "func wlValue(n: i128) -> string => \"n=\\(n)\"\n";
         var c = Analyze(Source, OutputKind.Library);
-        var text = Generate(c);
-        var ir = GeneratedIr.Parse(text);
+        var ir = GeneratedIr.Parse(Generate(c));
         var write = Assert.Single(FunctionsOf(ir, c, "write"));
-        var shim = Assert.Single(ShimsOf(ir, text));
-        Assert.Equal(write.Parameters.TakeLast(2), Assert.Single(CallsOf(write), x => x.Callee == shim).Operands.TakeLast(2));
-        foreach (var (name, site) in new[] { ("wlDirect", "writer.write(n)"), ("wlValue", "\"n=") })
-        {
-            var call = Assert.Single(CallsOf(Assert.Single(FunctionsOf(ir, c, name))), x => x.Callee == write);
-            Assert.EndsWith($", ptr @, i64 {Located(Source, site)})", call.Shape, StringComparison.Ordinal);
-        }
+        var body = Assert.Single(FunctionsOf(ir, c, "format"));
+        Assert.Equal(write.Parameters.TakeLast(2), Assert.Single(CallsOf(write), x => x.Callee == body).Operands.TakeLast(2));
+        var call = Assert.Single(CallsOf(Assert.Single(FunctionsOf(ir, c, "wlValue"))), x => x.Callee == write);
+        Assert.EndsWith($", ptr @, i64 {Located(Source, "\"n=")})", call.Shape, StringComparison.Ordinal);
     }
 
-    // SPEC 22.5.1, 22.10.2 (R8-S2a, R8-S2c, R8-S2d1): bool's, char's, Unit's, f32's, f64's and string's format witnesses are the witness
-    // table's bodies, and the view's its declared member, each with a CallerLocation row, so the write instance forwards the location it
-    // received, its last two parameters, to the body, and the body forwards its own to the leaf writeUtf8, whose reservation Aborts there
-    // (fail-before: no body instance; without the rows, no location pair).
+    // SPEC 22.5.1, 22.10.2, 8.13.2 (R8-S2a, R8-S2c, R8-S2d1, R8-S2b1, R8-S2b2): bool's, char's, Unit's, f32's, f64's, string's, a view's
+    // and an integer's format witnesses are the witness table's bodies, i128's and u128's IntegerFormat's specializations, which keep its
+    // CallerLocation (TyCtxt.Original), each with a CallerLocation row, so the write instance forwards
+    // the location it received, its last two parameters, to the body, and the body forwards its own to the leaf writeUtf8, whose
+    // reservation Aborts there (fail-before: no body instance; without the rows, or a specialization's original, no location pair).
     [Theory]
     [InlineData("bool")]
     [InlineData("char")]
@@ -374,6 +339,11 @@ public sealed partial class FunctionCodegenTest
     [InlineData("f64")]
     [InlineData("string")]
     [InlineData("Text.Utf8Slice")]
+    [InlineData("i64")]
+    [InlineData("u8")]
+    [InlineData("isize")]
+    [InlineData("i128")]
+    [InlineData("u128")]
     public void ATableBodyWriteReportsItsCallersLocation(string type)
     {
         var source = $"func wlDirect(writer: uniq/Utf8Writer, v: {type}) -> Result<(), BufferFull> => writer.write(v)\n";
@@ -392,7 +362,8 @@ public sealed partial class FunctionCodegenTest
 
     // SPEC 22.5.1, 3.1.1 (R8-S2d1): Wrapping<u8>'s format witness is the witness table's WrappingFormat body with a CallerLocation row: the
     // write instance at Wrapping<u8> forwards its received location to the body, and the body forwards its own to its write of the u8,
-    // whose instance passes it to u8's BuiltinFormat shim until R8-S2b1 (fail-before: no body; the write calls the shim directly).
+    // whose instance passes it to the IntegerFormat body at u8 (R8-S2b1), which forwards it to the leaf writeUtf8. The two `format` bodies
+    // are told apart by their callers (fail-before: no body; then u8's BuiltinFormat shim, R8-S2d1).
     [Fact]
     public void AWrappingBodyForwardsItsCallersLocationToItsInteger()
     {
@@ -400,15 +371,22 @@ public sealed partial class FunctionCodegenTest
         var c = Analyze(source, OutputKind.Library);
         var text = Generate(c);
         var ir = GeneratedIr.Parse(text);
-        var body = Assert.Single(FunctionsOf(ir, c, "format"));
-        var shim = Assert.Single(ShimsOf(ir, text));
+        var bodies = FunctionsOf(ir, c, "format").ToArray();
         var writes = FunctionsOf(ir, c, "write").ToArray();
-        var outer = Assert.Single(writes, x => CallsOf(x).Any(y => y.Callee == body));
-        var inner = Assert.Single(writes, x => CallsOf(x).Any(y => y.Callee == shim));
+        var outer = Assert.Single(CallsOf(Assert.Single(FunctionsOf(ir, c, "wlDirect"))), x => writes.Contains(x.Callee!)).Callee!;
+        var body = Assert.Single(CallsOf(outer), x => bodies.Contains(x.Callee!)).Callee!;
+        var inner = Assert.Single(CallsOf(body), x => writes.Contains(x.Callee!)).Callee!;
+        var integer = Assert.Single(CallsOf(inner), x => bodies.Contains(x.Callee!)).Callee!;
+        Assert.Equal(2, bodies.Length);
+        Assert.NotSame(body, integer);
+        Assert.Empty(ShimsOf(ir, text));
         Assert.Equal(outer.Parameters.TakeLast(2), Assert.Single(CallsOf(outer), x => x.Callee == body).Operands.TakeLast(2));
         Assert.Equal(body.Parameters.TakeLast(2), Assert.Single(CallsOf(body), x => x.Callee == inner).Operands.TakeLast(2));
-        Assert.Equal(inner.Parameters.TakeLast(2), Assert.Single(CallsOf(inner), x => x.Callee == shim).Operands.TakeLast(2));
-        Assert.Contains(", i32 2, ptr %", Assert.Single(CallsOf(shim)).Shape, StringComparison.Ordinal); // u8's kind.
+        Assert.Equal(inner.Parameters.TakeLast(2), Assert.Single(CallsOf(inner), x => x.Callee == integer).Operands.TakeLast(2));
+        var leaf = Assert.Single(FunctionsOf(ir, c, "writeUtf8"));
+        var leafCalls = CallsOf(integer).Where(x => x.Callee == leaf).ToArray();
+        Assert.NotEmpty(leafCalls);
+        Assert.All(leafCalls, x => Assert.Equal(integer.Parameters.TakeLast(2), x.Operands.TakeLast(2)));
     }
 
     // SPEC 22.10.1, 22.9.2, 7.7.4 (R8-W1b-4, W1c): a user formatter runs through the write body and the conversion bodies, a direct write, a
@@ -453,7 +431,7 @@ public sealed partial class FunctionCodegenTest
         var c = Analyze(Writers, OutputKind.Library);
         var text = Generate(c);
         var ir = GeneratedIr.Parse(text);
-        var routine = Routines(CompilerFunctionKind.TextWriter)[0];
+        var routine = RuntimeAbi.TextWriter.Name;
         foreach (var (name, words) in new[]
         {
             ("wrFixed", "i64 0, ptr null"), ("wrHeap", "i64 1, ptr null"), ("wrUser", "i64 2, ptr @"), ("wrItem", "i64 2, ptr @"),
@@ -474,8 +452,9 @@ public sealed partial class FunctionCodegenTest
         Assert.DoesNotContain(ir.Functions, x => CalleesOf(x).Contains(ir.Function(reserve)));
     }
 
-    // DECISIONS R5-M30, R5-M128: the formatting runtime is written once, only in a module that calls a formatting row, and is the text the
-    // old generator wrote.
+    // DECISIONS R5-M30, R5-M128: the formatting runtime is written once, only in a module whose Text.writer or owning interpolation's
+    // steps request it (HelperNeeds.FormattingRuntime), and is the text the old generator wrote; a module without formatting defines
+    // none of its routines (FormatSegment's hint routine's definition the marker).
     [Fact]
     public void TheFormattingRuntimeIsWrittenOnRequest()
     {
@@ -485,7 +464,9 @@ public sealed partial class FunctionCodegenTest
         var at = text.IndexOf(runtime.ToString(), StringComparison.Ordinal);
         Assert.True(at >= 0);
         Assert.Equal(at, text.LastIndexOf(runtime.ToString(), StringComparison.Ordinal));
-        Assert.DoesNotContain("@" + LegacyRuntimeHelpers.FormatFixed.Name + "(", Generate(Analyze("func one() -> i32 => 1\n", OutputKind.Library)));
+        var hint = "define internal void @" + LegacyRuntimeHelpers.FormatHint.Name + "(";
+        Assert.Contains(hint, runtime.ToString(), StringComparison.Ordinal);
+        Assert.DoesNotContain(hint, Generate(Analyze("func one() -> i32 => 1\n", OutputKind.Library)), StringComparison.Ordinal);
     }
 
     // R8-W1b-2: the erased writer's kept runtime (Text.writer's adapter and the reserve through its dispatch word) is a module part of its
@@ -495,7 +476,7 @@ public sealed partial class FunctionCodegenTest
     {
         using var formatting = new StringWriter();
         LegacyRuntimeHelpers.WriteFormattingRuntime(formatting);
-        string[] definitions = ["define internal void @" + Routines(CompilerFunctionKind.TextWriter)[0] + "(", "define internal void @__kimi_erased_reserve("];
+        string[] definitions = ["define internal void @" + RuntimeAbi.TextWriter.Name + "(", "define internal void @__kimi_erased_reserve("];
         var text = Generate(Analyze(Writers, OutputKind.Library));
         var at = text.IndexOf(LlvmModuleText.ErasedWriterRuntime, StringComparison.Ordinal);
         Assert.True(at >= 0);
@@ -511,20 +492,23 @@ public sealed partial class FunctionCodegenTest
     }
 
     // R8-W1b-3: a Requested row's call requests its own routine's module part (IntrinsicRow.Requests): ErasedReserve's routine is the kept
-    // runtime's, defined there once, so its call needs no other requester; the storage byte primitives keep their pair; every other row
-    // requests nothing. A module without formatting writes neither the kept runtime nor its reserve routine.
+    // runtime's, defined there once, so its call needs no other requester; FormatFloat's and FormatInteger128's are their own parts' (R8-S2c,
+    // R8-S2b2; fail-before: FormatInteger128 Unproduced); the storage byte primitives keep their pair; every other row requests nothing. A module without formatting writes neither the kept runtime nor its reserve routine.
     [Fact]
     public void ARequestedRowRequestsItsRoutinesModulePart()
     {
         var reserve = IntrinsicRows.Of(IntrinsicId.ErasedReserve);
         Assert.Equal((IntrinsicWriter.Requested, ModuleCodegen.Needs.ErasedWriter), (reserve.Writer, reserve.Requests));
-        Assert.Contains(reserve.Routine!, LlvmModuleText.ErasedWriterDefinitions);
         Assert.Single(Regex.Matches(LlvmModuleText.ErasedWriterRuntime, @"(?m)^define internal void @__kimi_erased_reserve\(ptr %ret, ptr %writer, i64 %amount\)"));
         Assert.Single(Regex.Matches(LlvmModuleText.ErasedWriterRuntime, @"(?m)^declare void @llvm\.memset\.p0\.i64\("));
         var format = IntrinsicRows.Of(IntrinsicId.FormatFloat); // R8-S2c: the float formatting part, which declares nothing.
         Assert.Equal((IntrinsicWriter.Requested, ModuleCodegen.Needs.FormatFloat), (format.Writer, format.Requests));
         Assert.Single(Regex.Matches(LlvmModuleText.FormatFloatRuntime, @"(?m)^define internal i64 @__kimi_format_float\(i64 %bits, i1 %narrow, ptr %\w+\)"));
         Assert.DoesNotMatch(@"(?m)^declare ", LlvmModuleText.FormatFloatRuntime);
+        var wide = IntrinsicRows.Of(IntrinsicId.FormatInteger128); // R8-S2b2: the 128-bit integer formatting part, which declares nothing.
+        Assert.Equal((IntrinsicWriter.Requested, ModuleCodegen.Needs.FormatInteger128), (wide.Writer, wide.Requests));
+        Assert.Single(Regex.Matches(LlvmModuleText.FormatInteger128Runtime, @"(?m)^define internal i64 @__kimi_format_integer128\(i128 %value, ptr %\w+\)"));
+        Assert.DoesNotMatch(@"(?m)^declare ", LlvmModuleText.FormatInteger128Runtime);
         foreach (var id in Enum.GetValues<IntrinsicId>().Where(static x => x != IntrinsicId.None))
         {
             var row = IntrinsicRows.Of(id);
@@ -532,6 +516,7 @@ public sealed partial class FunctionCodegenTest
             {
                 IntrinsicId.ErasedReserve => ModuleCodegen.Needs.ErasedWriter,
                 IntrinsicId.FormatFloat => ModuleCodegen.Needs.FormatFloat,
+                IntrinsicId.FormatInteger128 => ModuleCodegen.Needs.FormatInteger128,
                 IntrinsicId.TryAllocateBytes or IntrinsicId.MoveBytes => ModuleCodegen.Needs.StorageBytes | ModuleCodegen.Needs.Memory,
                 _ => ModuleCodegen.Needs.None,
             };
@@ -541,15 +526,20 @@ public sealed partial class FunctionCodegenTest
         Assert.DoesNotContain("@__kimi_erased_reserve(", Generate(Analyze("func one() -> i32 => 1\n", OutputKind.Library)), StringComparison.Ordinal);
     }
 
-    // R8-W1b-3 (R8-M18), R8-S2a: the leaf writeUtf8 reserves through Utf8Writer.reserve, whose ErasedReserve call requests the kept runtime:
-    // a module whose one write is a table body's defines it once, without the formatting runtime, the other requester (a module without a
-    // write defines neither: ARequestedRowRequestsItsRoutinesModulePart).
-    [Fact]
-    public void ALeafWriteDefinesTheKeptRuntimeOnce()
+    // R8-W1b-3 (R8-M18), R8-S2a, R8-S2b1, R8-S2b2: the leaf writeUtf8 reserves through Utf8Writer.reserve, whose ErasedReserve call requests
+    // the kept runtime: a module whose one write, through a writer it receives, is a table body's (bool's; an integer's) defines it once,
+    // without the formatting runtime, the other requester (a module without a write defines neither:
+    // ARequestedRowRequestsItsRoutinesModulePart; fail-before for the integers: the shim's BuiltinFormat row requested it, at i128 until
+    // R8-S2b2).
+    [Theory]
+    [InlineData("true")]
+    [InlineData("-12345@i64")]
+    [InlineData("1@i128")]
+    public void ALeafWriteDefinesTheKeptRuntimeOnce(string value)
     {
         using var formatting = new StringWriter();
         LegacyRuntimeHelpers.WriteFormattingRuntime(formatting);
-        var c = Analyze("func wlBool(writer: uniq/Utf8Writer) -> Result<(), BufferFull> => writer.write(true)\n", OutputKind.Library);
+        var c = Analyze($"func wlOne(writer: uniq/Utf8Writer) -> Result<(), BufferFull> => writer.write({value})\n", OutputKind.Library);
         var text = Generate(c);
         Assert.Single(FunctionsOf(GeneratedIr.Parse(text), c, "writeUtf8"));
         Assert.Single(Regex.Matches(text, @"(?m)^define internal void @__kimi_erased_reserve\("));
@@ -557,45 +547,60 @@ public sealed partial class FunctionCodegenTest
         Assert.DoesNotContain(formatting.ToString(), text, StringComparison.Ordinal);
     }
 
-    // R8-S2c: the float formatting part (the FormatFloat routine and Ryu) is requested by a FormatFloat call only: a module writing an f32
-    // and an f64 defines the routine and each Ryu entry once, without the formatting runtime; one writing only an integer defines none of
-    // them (fail-before: the formatting runtime held them, so both modules did).
+    // PLAN G779 (O-195 (a)): the writer's reservation, Utf8Writer.reserve, the leaf's one library caller's callee, is the module's one
+    // definition kept out of line (KimiLibraryCatalog.KeepsOutOfLine, `noinline`), so O2 cannot fold it into the leaf and the leaf stays
+    // small enough to inline at its callers; the leaf, the format bodies and every other definition carry no `noinline` (fail-before:
+    // no definition carries it).
     [Fact]
-    public void AFloatWriteDefinesTheFloatPartOnce()
+    public void OnlyTheWritersReservationIsKeptOutOfLine()
+    {
+        const string Source = "func wlTwo(writer: uniq/Utf8Writer) -> Result<(), BufferFull>\n    try writer.write(\"a\")\n    return writer.write(true)\n";
+        var c = Analyze(Source, OutputKind.Library);
+        var ir = GeneratedIr.Parse(Generate(c));
+        var leaf = Assert.Single(FunctionsOf(ir, c, "writeUtf8"));
+        var reserve = Assert.Single(FunctionsOf(ir, c, "reserve"), x => CallsOf(leaf).Any(y => y.Callee == x));
+        Assert.Same(reserve, Assert.Single(ir.Functions, static x => x.Attributes.Contains("noinline")));
+    }
+
+    // R8-S2c, R8-S2b2: each formatting intrinsic's module part is requested by its own call only: a module whose writes are an f32's and an
+    // f64's defines the FormatFloat routine and each Ryu entry once, one whose writes are an i128's and a u128's the FormatInteger128 routine
+    // and its division by ten once, each without the formatting runtime and without the other part (fail-before: the formatting runtime
+    // held the routines; an i128's or u128's write requested it until R8-S2b2).
+    [Theory]
+    [InlineData("f32", "f64", "__kimi_format_float __kimi_ryu32 __kimi_ryu64")]
+    [InlineData("i128", "u128", "__kimi_format_integer128 __kimi_decimal_div10")]
+    public void AFormattingWriteDefinesItsPartOnce(string narrow, string wide, string routines)
     {
         using var formatting = new StringWriter();
         LegacyRuntimeHelpers.WriteFormattingRuntime(formatting);
-        var floats = Generate(Analyze(
-            "func wfNarrow(writer: uniq/Utf8Writer, x: f32) -> Result<(), BufferFull> => writer.write(x)\n" +
-            "func wfWide(writer: uniq/Utf8Writer, x: f64) -> Result<(), BufferFull> => writer.write(x)\n",
+        var text = Generate(Analyze(
+            $"func wfNarrow(writer: uniq/Utf8Writer, x: {narrow}) -> Result<(), BufferFull> => writer.write(x)\n" +
+            $"func wfWide(writer: uniq/Utf8Writer, x: {wide}) -> Result<(), BufferFull> => writer.write(x)\n",
             OutputKind.Library));
-        foreach (var routine in new[] { "__kimi_format_float", "__kimi_ryu32", "__kimi_ryu64" })
+        foreach (var routine in routines.Split(' '))
         {
-            Assert.Single(Regex.Matches(floats, $@"(?m)^define internal \w+ @{routine}\("));
+            Assert.Single(Regex.Matches(text, $@"(?m)^define internal [^@]+ @{routine}\("));
         }
 
-        Assert.Contains(LlvmModuleText.FormatFloatRuntime, floats, StringComparison.Ordinal);
-        Assert.DoesNotContain(formatting.ToString(), floats, StringComparison.Ordinal);
-        var integer = Generate(Analyze("func wiInt(writer: uniq/Utf8Writer, n: i32) -> Result<(), BufferFull> => writer.write(n)\n", OutputKind.Library));
-        Assert.Contains(formatting.ToString(), integer, StringComparison.Ordinal);
-        Assert.DoesNotContain("@__kimi_format_float(", integer, StringComparison.Ordinal);
-        Assert.DoesNotContain("@__kimi_ryu64(", integer, StringComparison.Ordinal);
+        var floats = narrow == "f32";
+        Assert.Contains(floats ? LlvmModuleText.FormatFloatRuntime : LlvmModuleText.FormatInteger128Runtime, text, StringComparison.Ordinal);
+        Assert.DoesNotContain(floats ? LlvmModuleText.FormatInteger128Runtime : LlvmModuleText.FormatFloatRuntime, text, StringComparison.Ordinal);
+        Assert.DoesNotContain(formatting.ToString(), text, StringComparison.Ordinal);
     }
 
-    // SPEC 22.10.2: an integer's kind by its width and signedness (a wrapping integer's by its argument, an isize's as i64's), then f32, f64,
-    // char, bool, Unit and string; -1 exactly for a Type FormattingTypes.IsBuiltin does not answer, the Types whose Utf8Format conformance the
-    // compiler states (a declared one, as the view's since R8-S2d1, has no kind).
+    // R8-S2b2: a module that interpolates an i32 still writes the formatting runtime (the owning adapter's, until R8-W2), which holds no
+    // integer routine or division by ten any more, and neither formatting part (fail-before: the formatting runtime defined
+    // __kimi_format_integer and __kimi_decimal_div10).
     [Fact]
-    public void FormatKindsAreTheRuntimesNumbering()
+    public void AnInterpolationsRuntimeHoldsNoIntegerRoutine()
     {
-        string[] names = ["i8", "u8", "i16", "u16", "i32", "u32", "i64", "u64", "i128", "u128", "isize", "usize", "f32", "f64", "char"];
-        Assert.Equal([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 7, 8, 11, 12, 13], names.Select(static x => LegacyRuntimeHelpers.FormatKind(BoundType.Primitives[x])));
-        Assert.Equal([14, 15, 16], new[] { BoundType.Boolean, BoundType.Unit, BoundType.String }.Select(LegacyRuntimeHelpers.FormatKind));
-        Assert.Equal(2, LegacyRuntimeHelpers.FormatKind(BoundType.WrappingOf(BoundType.Primitives["u8"])));
-        Assert.Equal(-1, LegacyRuntimeHelpers.FormatKind(BoundType.Range));
-        Assert.All(
-            BoundType.Primitives.Values.Concat(BoundType.WrappingScalars.Values),
-            static x => Assert.Equal(FormattingTypes.IsBuiltin(x), LegacyRuntimeHelpers.FormatKind(x) >= 0));
+        using var formatting = new StringWriter();
+        LegacyRuntimeHelpers.WriteFormattingRuntime(formatting);
+        var text = Generate(Analyze("func wiText(n: i32) -> string => \"n=\\(n)\"\n", OutputKind.Library));
+        Assert.Contains(formatting.ToString(), text, StringComparison.Ordinal);
+        Assert.DoesNotMatch(@"(?m)^define internal [^@]+ @__kimi_(decimal_div10|format_integer)", text);
+        Assert.DoesNotContain(LlvmModuleText.FormatFloatRuntime, text, StringComparison.Ordinal);
+        Assert.DoesNotContain(LlvmModuleText.FormatInteger128Runtime, text, StringComparison.Ordinal);
     }
 
     // SPEC 22.10.5 (the old utf8-formatting §5.1; DECISIONS R5-M131): a bounded value's maximum encoded bytes (FormattingTypes.Bound), a
@@ -611,9 +616,6 @@ public sealed partial class FunctionCodegenTest
         BoundType[] others = [BoundType.Boolean, BoundType.Unit, BoundType.String, BoundType.Range, BoundType.WrappingOf(BoundType.Primitives["u8"])];
         Assert.Equal([5, 2, -1, -1, 3], others.Select(FormattingTypes.Bound));
     }
-
-    // The routine symbols of formatting rows (P1d's FormattingRow), in order.
-    private static string[] Routines(params CompilerFunctionKind[] kinds) => [.. kinds.Select(static x => LegacyRuntimeHelpers.FormattingRow(x)!.Abi.Name)];
 
     // The byte length of a site's location text (SPEC 22.5.1).
     private static int Located(string source, string site) => LocationText(source, site).Length;

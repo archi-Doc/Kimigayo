@@ -984,6 +984,29 @@ public sealed partial class InstanceCollectorTest
         Assert.All(set.Items.ToArray(), x => Assert.True(Closed(c, program, x), Label(program, x)));
     }
 
+    // SPEC 4.4.1, 9 (PLAN G149-w): a declaring Type holds no length argument (Binding.SelfType), so a call of a function nested in a
+    // length-generic function does not carry the enclosing instance: the EnclosingInstance gap at the call, whether its parameter, its
+    // result, a local or nothing names the slot, and for a nested function generic in a length of its own (before: one item for both
+    // instances of outer, its lengths open, so the parameter form printed 0 0). A Type slot's declaring Type carries its instance
+    // (NestedFunctionsNeedTheirEnclosingInstance's OneLevel).
+    [Theory]
+    [InlineData("    func inner(v: [N of i32]) -> isize => v.length\n    return inner(values)\n", "inner(values)")]
+    [InlineData("    func inner(v: [N of i32]) -> [N of i32] => v\n    return inner(values).length\n", "inner(values)")]
+    [InlineData("    func inner() -> isize\n        let a: [N of u8] = [N of 0]\n        return a.length\n    return inner()\n", "inner()")]
+    [InlineData("    func inner() -> isize => 1\n    return inner()\n", "inner()")]
+    [InlineData("    func inner<length M>(v: [M of i32]) -> isize => v.length\n    return inner(values)\n", "inner(values)")]
+    public void FunctionsNestedInALengthGenericFunctionAreTheEnclosingInstanceGap(string nested, string refused)
+    {
+        var c = MirBuildTest.Compile("func outer<length N>(values: [N of i32]) -> isize\n" + nested +
+            "require outer([1, 2, 3]) == 3 and outer([1, 2]) == 2 else => $abort(\"w5\")\n");
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
+        var program = c.BuildMir();
+        var set = new InstanceCollector(c.Types, c.Layout).Run(program, 1);
+        Assert.Equal(2, set.Items.ToArray().Count(x => Label(program, x).StartsWith("Fn outer [", StringComparison.Ordinal)));
+        Assert.DoesNotContain(set.Items.ToArray(), x => Label(program, x).StartsWith("Fn inner", StringComparison.Ordinal));
+        Assert.Equal([(DiagnosticCode.Unsupported_Kd, refused)], program.Records(MirRecordClass.Collection).Select(x => (x.Code, c.SyntaxOf(x.Subject).ToString())));
+    }
+
     // K 4.5 rows 5, 11 and 12, DECISIONS R5-M43: a Closure of an instance is an instance of its body under the instance's substitution,
     // where its environment is made (also when it is never called) and where it is called, one per enclosing instance and a Closure in a
     // Closure among them; a function item constant and an Item called through a Callable parameter are their function's instances.
@@ -1421,7 +1444,7 @@ public sealed partial class InstanceCollectorTest
         Assert.Equal(["Builtin i32 BuiltinArithmetic"], Targets(program, set, "Fn add [i32]"));
         Assert.Equal(["Builtin i32 BuiltinEquals"], Targets(program, set, "Fn same [i32]"));
         Assert.Equal(
-            ["library Fn iterate in group FixedArray [i32, ]", "library Fn next in struct ArrayIterator [ArrayIterator<i32>]"],
+            ["library Fn iterate in group FixedArrayEntries [i32, ]", "library Fn next in struct ArrayIterator [ArrayIterator<i32>]"],
             Targets(program, set, "Fn count [[3 of i32]]"));
         Assert.Equal(["library Fn tryResolve in group IntegerPosition"], Targets(program, set, "Fn at [i32]"));
         var shims = set.Items.ToArray().Where(static x => x.Key.Kind is MonoKind.Builtin or MonoKind.PropertyWitness).ToArray();
@@ -1463,9 +1486,11 @@ public sealed partial class InstanceCollectorTest
     }
 
     // K 4.5 row 2, DECISIONS R5-M30, R5-M70, R8-M18: Utf8Writer.write is a body (R8-W1b-4): one instance per value Type, shared by its
-    // callers, whose requirement call is its Type's Utf8Format witness in the instance: a user Type's format body, a built-in Type's
-    // BuiltinFormat shim, keyed by its compiler function and the erased Type, which calls no witness. Text.toString and Text.tryFormat are
-    // bodies (R8-W1c-2): one instance per value Type, whose interpolation or write calls that write instance.
+    // callers, whose requirement call is its Type's Utf8Format witness in the instance: a user Type's format body, an integer's the witness
+    // table's IntegerFormat body at its Type (R8-S2b1), i128's and u128's its specialization, which writes through the leaf (R8-S2b2;
+    // fail-before: the BuiltinFormat shim, which called no witness). Text.toString and Text.tryFormat are bodies (R8-W1c-2): one instance per value Type, whose
+    // interpolation or write calls that write instance, the interpolation after Text.heap, its buffer's body (R8-W2 c3b), and before its
+    // end's bodies, Utf8Writer.finish and HeapBuffer.intoString (R8-W2 c3a; before: the FormatFinish intrinsic).
     [Fact]
     public void AFormattingCallIsItsValuesFormatWitness()
     {
@@ -1474,25 +1499,34 @@ public sealed partial class InstanceCollectorTest
         const string WriteI32 = "library Fn write in struct Utf8Writer [Utf8Writer, i32]";
         const string WriteBox = "library Fn write in struct Utf8Writer [Utf8Writer, Box]";
         const string Failure = "library Fn init in struct BufferFull"; // The body's two failure results.
+        const string WideFormat = "library Fn format in group IntegerFormat"; // u128's specialization (R8-S2b2).
         const string ShowI32 = "library Fn toString in group Text [Text, i32]";
         const string ShowBox = "library Fn toString in group Text [Text, Box]";
         const string FillBox = "library Fn tryFormat in group Text [Text, Box, ]";
+        const string Heap = "library Fn heap in group Text"; // An owning interpolation's buffer (R8-W2 c3b; before: the FormatBuffer intrinsic).
+        const string Finish = "library Fn finish in struct Utf8Writer";
+        const string IntoString = "library Fn intoString in struct HeapBuffer";
         Assert.Equal([ShowBox], Calls(program, set, "Fn show [Box]"));
         Assert.Equal([ShowI32], Calls(program, set, "Fn show [i32]"));
-        Assert.Equal([WriteBox], Calls(program, set, ShowBox));
-        Assert.Equal([WriteI32], Calls(program, set, ShowI32));
+        Assert.Equal([Heap, WriteBox, Finish, IntoString], Calls(program, set, ShowBox));
+        Assert.Equal([Heap, WriteI32, Finish, IntoString], Calls(program, set, ShowI32));
         Assert.Equal([WriteI32], Calls(program, set, "Fn format"));
-        Assert.Equal(["Builtin i32 BuiltinFormat", Failure, Failure], Calls(program, set, WriteI32));
+        const string FormatI32 = "library Fn format in group IntegerFormat [i32]";
+        Assert.Equal([FormatI32, Failure, Failure], Calls(program, set, WriteI32));
+        Assert.Contains("library Fn writeUtf8 in struct Utf8Writer", Calls(program, set, FormatI32));
         Assert.Equal([FillBox], Calls(program, set, "Fn fill [Box]"));
         Assert.Equal(["library Fn fixed in group Text [Text, ]", WriteBox, "library Fn intoText in struct FixedBuffer"], Calls(program, set, FillBox));
         Assert.Equal([WriteBox], Calls(program, set, "Fn emit [Box]"));
         Assert.Equal(["Fn format", Failure, Failure], Calls(program, set, WriteBox));
         Assert.Equal([WriteI32], Calls(program, set, "Fn emit [i32]"));
-        Assert.Empty(Targets(program, set, "Builtin i32 BuiltinFormat"));
+        var (wide, wideSet) = Collect("func emitWide(writer: uniq/Utf8Writer, x: u128) -> Result<(), BufferFull> => writer.write(x)\n");
+        Assert.Equal([WideFormat, Failure, Failure], Calls(wide, wideSet, "library Fn write in struct Utf8Writer [Utf8Writer, u128]"));
+        Assert.Contains("library Fn writeUtf8 in struct Utf8Writer", Calls(wide, wideSet, WideFormat));
     }
 
-    // SPEC 22.10.2 (R8-S2a, R8-S2c, R8-S2d1): bool's, char's, Unit's, f32's, f64's and string's format witness is the witness table's
-    // library body, not the BuiltinFormat routine, and the body writes through the writer's leaf (fail-before: Builtin <Type> BuiltinFormat).
+    // SPEC 22.10.2, 8.13.3 (R8-S2a, R8-S2c, R8-S2d1, R8-S2b1, R8-S2b2): bool's, char's, Unit's, f32's, f64's, string's and an integer's
+    // format witness is the witness table's library body, i128's and u128's IntegerFormat's specialization (which declares no slot), not
+    // the BuiltinFormat routine, and the body writes through the writer's leaf (fail-before: Builtin <Type> BuiltinFormat).
     [Theory]
     [InlineData("bool", "BoolFormat")]
     [InlineData("char", "CharFormat")]
@@ -1500,6 +1534,11 @@ public sealed partial class InstanceCollectorTest
     [InlineData("f32", "F32Format")]
     [InlineData("f64", "F64Format")]
     [InlineData("string", "StringWitness")]
+    [InlineData("i32", "IntegerFormat [i32]")]
+    [InlineData("u8", "IntegerFormat [u8]")]
+    [InlineData("isize", "IntegerFormat [isize]")]
+    [InlineData("i128", "IntegerFormat")]
+    [InlineData("u128", "IntegerFormat")]
     public void ABuiltinFormatCallIsItsTablesBody(string type, string group)
     {
         var (program, set) = Collect($"func emit(writer: uniq/Utf8Writer, value: {type}) -> Result<(), BufferFull> => writer.write(value)\n");
@@ -1509,27 +1548,27 @@ public sealed partial class InstanceCollectorTest
         Assert.Contains("library Fn writeUtf8 in struct Utf8Writer", Calls(program, set, body));
     }
 
-    // SPEC 22.10.2, 3.1.1, 8.6.4 (R8-S2d1): a view's format witness is its declared member, written, called directly and called through a
-    // `T is Utf8Format` body, each on the writer's leaf; Wrapping<u8>'s is the witness table's WrappingFormat body at u8, which writes its
-    // integer, the BuiltinFormat routine until R8-S2b1 (fail-before: Builtin Utf8Slice and Builtin Wrapping<u8> BuiltinFormat).
+    // SPEC 22.10.2, 3.1.1, 8.6.4 (R8-S2d1): a view's format witness is the witness table's Utf8SliceFormat body, written and called
+    // through a `T is Utf8Format` body, each on the writer's leaf; Wrapping<u8>'s is the witness table's WrappingFormat body at u8, which
+    // writes its integer through the IntegerFormat body at u8 (R8-S2b1; fail-before: Builtin Utf8Slice and Builtin Wrapping<u8>
+    // BuiltinFormat, then Builtin u8 BuiltinFormat; the view's then its declared member).
     [Fact]
     public void AViewAndAWrappingIntegerFormatThroughTheirWitnesses()
     {
         var (program, set) = Collect(
             "func emit(writer: uniq/Utf8Writer, view: Text.Utf8Slice, wrapped: Wrapping<u8>) -> Result<(), BufferFull>\n" +
-            "    try writer.write(view)\n    try view.format(writer)\n    try show(view, writer)\n    return writer.write(wrapped)\n" +
+            "    try writer.write(view)\n    try show(view, writer)\n    return writer.write(wrapped)\n" +
             "func show<T>(value: ref/T, writer: uniq/Utf8Writer) -> Result<(), BufferFull>\n    T is Utf8Format\n" +
             "    return value.format(writer)\n");
         Assert.Empty(program.Records(MirRecordClass.Collection));
-        const string View = "library Fn format in struct Utf8Slice";
+        const string View = "library Fn format in group Utf8SliceFormat";
         Assert.Contains(View, Calls(program, set, "library Fn write in struct Utf8Writer [Utf8Writer, Utf8Slice]"));
-        Assert.Contains(View, Calls(program, set, "Fn emit"));
         Assert.Contains(View, Calls(program, set, "Fn show [Utf8Slice]"));
         Assert.Contains("library Fn writeUtf8 in struct Utf8Writer", Calls(program, set, View));
         const string Wrapped = "library Fn format in group WrappingFormat [u8]";
         Assert.Equal([Wrapped], Calls(program, set, "library Fn write in struct Utf8Writer [Utf8Writer, Wrapping<u8>]").Where(static x => x.Contains("format", StringComparison.OrdinalIgnoreCase)));
         Assert.Contains("library Fn write in struct Utf8Writer [Utf8Writer, u8]", Calls(program, set, Wrapped));
-        Assert.Contains("Builtin u8 BuiltinFormat", Calls(program, set, "library Fn write in struct Utf8Writer [Utf8Writer, u8]"));
+        Assert.Contains("library Fn format in group IntegerFormat [u8]", Calls(program, set, "library Fn write in struct Utf8Writer [Utf8Writer, u8]"));
     }
 
     // K 4.5 row 6, SPEC 22.10.1: an erased writer over a user BufferWriter is the item of its destination's reserve witness; one over a

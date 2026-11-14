@@ -193,6 +193,37 @@ public sealed partial class MirBuildTest
             body.Operands[statement.Rvalue.Start].Kind == MirOperandKind.PairAcquire;
     }
 
+    // PLAN G703 (SPEC 3.5.3, 10.2; the Middle's C-219 N2 and condition 1): a value read through qualifying pair layers at an annotated
+    // let, an argument, an operand and a result, through one layer and through 17 and 18, is a Copy of the projection that takes every
+    // layer in the one body every Semantics case shares, and forms no reference.
+    [Theory]
+    [InlineData("    let v: i32 = x\n    return v\n", 1)]
+    [InlineData("    return h(x)\n", 1)]
+    [InlineData("    return x\n", 1)]
+    [InlineData("    let v: i32 = x\n    return v + h(x) + x\n", 17)]
+    [InlineData("    let v: i32 = x\n    return v + h(x) + x\n", 18)]
+    public void AValueReadThroughAPairLayerCopiesItsProjection(string read, int layers)
+    {
+        var body = Body($"func h(v: i32) -> i32 => v\nfunc f<s/T>(x: {TypeDagScalingTest.PairLayers(layers, "i32")}, m: s/T) -> i32\n    s is value or valueborrow\n" + read, "f");
+        Assert.DoesNotContain(body.Statements.ToArray(), static x => x is { Kind: MirStatementKind.Assign, Rvalue.Kind: MirRvalueKind.Ref });
+        Assert.Contains(body.Operands.ToArray(), x => x.Kind == MirOperandKind.Copy && PairLayerSteps(x.Place.Projection) == layers);
+
+        // The steps of a projection chain that takes only pair layers, else -1.
+        int PairLayerSteps(int projection)
+        {
+            var steps = 0;
+            for (var id = projection; id != 0; id = body.Projections[id].Prefix, steps++)
+            {
+                if (body.Projections[id].Kind != MirProjectionKind.PairLayer)
+                {
+                    return -1;
+                }
+            }
+
+            return steps;
+        }
+    }
+
     // A3 E13 (4): a pair-layer acquisition is always the whole rvalue of its own Assign to a local, marked with the Reborrow its exclusive
     // case makes: TwoPhaseUniq where it produces an invocation's input, else Uniq (a local's initializer, a tuple's element, a capture);
     // an Adapt that produces an input has its input bit, so its exclusive case is a two-phase borrow there (MirCases.Adapt).
@@ -481,7 +512,7 @@ public sealed partial class MirBuildTest
             steps);
     }
 
-    // SPEC 22.10.4, 22.10.1 (PLAN G157 (35), DECISIONS R5-M131): a $tryWrite evaluates an embedded expression only after a test that its
+    // SPEC 22.10.4, 22.10.1 (PLAN G157 (35)): a $tryWrite evaluates an embedded expression only after a test that its
     // adapter is healthy: a first segment that is an expression follows the adapter's status, and a text's write returns the recorded failure
     // itself, so a text first needs none (fail-before: next() ran first, on an adapter that may have failed already).
     [Theory]
@@ -538,47 +569,58 @@ public sealed partial class MirBuildTest
                 .Select(x => $"{x.Code} {c.SyntaxOf(x.Subject)}"));
     }
 
-    // SPEC 22.10.3, 22.10.5 (DECISIONS R5-M133): an owning interpolation is one FormatSegment step per write position, the later literal bytes
-    // and values' Types its hint: a literal segment's text is its step's operand and no write, and so is an embedded string literal's (as if
-    // written: a constant has no effect); a value's position has the empty text and its write follows. The block a failed write goes to exists
-    // only where a write is tested, so text alone builds without validator findings (fail-before: each literal was a write<string> after
-    // FormatHint; then text alone left that block unreachable). A $tryWrite's text stays a write (above).
+    // SPEC 22.10.3, 22.10.5 (DECISIONS R5-M133; R8-W2 c1): an owning interpolation is one FormatSegment step per write position, the later
+    // literal bytes and values' Types its hint, then the position's write: a value's is its write; a literal segment's is no write but
+    // its text's constant record through the library, Utf8Writer.deferLiteral where a value follows in the template, else string's
+    // built-in format, and so is an embedded string literal's (as if written: a constant has no effect). Each is tested, so text alone
+    // has the failed block too (fail-before: the text was its FormatSegment's operand, written by the formatting runtime; before
+    // R5-M133 each literal was a write<string>). A $tryWrite's text stays a write (above).
     [Theory]
     [InlineData(
         "func f(n: i32) -> string => \"n=\\(n)!\"\n",
-        new[] { "FormatBuffer", "ErasedWriter", "FormatSegment \"n=\" 1 1", "FormatSegment \"\" 1 0", "write", "FormatSegment \"!\" 0 0", "FormatFinish" })]
+        new[] { "heap", "ErasedWriter", "FormatSegment 1 1", "deferLiteral \"n=\"", "FormatSegment 1 0", "write", "FormatSegment 0 0", "format \"!\"", "finish", "intoString" })]
     [InlineData(
         "func f(n: i32) -> string => \"\\(\"lit\")\\(n)\"\n",
-        new[] { "FormatBuffer", "ErasedWriter", "FormatSegment \"lit\" 0 1", "FormatSegment \"\" 0 0", "write", "FormatFinish" })]
-    [InlineData("func f() -> string => \"\\(\"only\")\"\n", new[] { "FormatBuffer", "ErasedWriter", "FormatSegment \"only\" 0 0", "FormatFinish" })]
+        new[] { "heap", "ErasedWriter", "FormatSegment 0 1", "deferLiteral \"lit\"", "FormatSegment 0 0", "write", "finish", "intoString" })]
+    [InlineData(
+        "func f() -> string => \"\\(\"only\")\"\n",
+        new[] { "heap", "ErasedWriter", "FormatSegment 0 0", "format \"only\"", "finish", "intoString" })]
     [InlineData(
         "func f() -> string => \"x\\(\"y\")z\"\n",
-        new[] { "FormatBuffer", "ErasedWriter", "FormatSegment \"x\" 2 0", "FormatSegment \"y\" 1 0", "FormatSegment \"z\" 0 0", "FormatFinish" })]
-    public void AnOwningInterpolationsLiteralTextIsItsSegmentStep(string source, string[] steps)
+        new[] { "heap", "ErasedWriter", "FormatSegment 2 0", "format \"x\"", "FormatSegment 1 0", "format \"y\"", "FormatSegment 0 0", "format \"z\"", "finish", "intoString" })]
+    [InlineData(
+        "func f(n: i32) -> string => \"a\\(\"b\")\\(n)\"\n",
+        new[] { "heap", "ErasedWriter", "FormatSegment 1 1", "deferLiteral \"a\"", "FormatSegment 0 1", "deferLiteral \"b\"", "FormatSegment 0 0", "write", "finish", "intoString" })]
+    public void AnOwningInterpolationsLiteralTextIsALibraryCall(string source, string[] steps)
         => Assert.Equal(steps, HealthyPath(Body(source, "f"), int.MaxValue));
 
     // SPEC 22.7, 22.10.3, rule L (R8-W2 a2; consents C-180): a direct line is one expansion over one writer local of Binding's plan writer
     // Type. A constant term builds one form: the fixed one, a zero-filled region of exactly the literal bytes and the values' bounds
-    // (2 + 11), Text.fixed, its writer, the writes, text() and writeLine(Utf8Slice); or the owning one (an unbounded value), FormatBuffer,
-    // its writer, the writes, FormatFinish and writeLine(ref/string). A generic body's term (Len of the region) branches twice: both
+    // (2 + 11), Text.fixed, its writer, the writes, text() and writeLine(Utf8Slice); or the owning one (an unbounded value), Text.heap,
+    // its writer, the writes, finish, intoString and writeLine(ref/string). A generic body's term (Len of the region) branches twice: both
     // buffers' calls and both ends, each once, around writes built once (fail-before: the stack form was FormatBuffer's region home, and
     // a generic line's MIR had no fixed form). The owning path is the healthy path here (the test's 0 arm).
     [Theory]
     [InlineData(
         "func f(n: i32) => Console.writeLine(\"n=\\(n)\")\n",
         "[13 of u8]",
-        new[] { "fixed", "ErasedWriter", "FormatSegment \"n=\" 0 1", "FormatSegment \"\" 0 0", "write", "text", "writeLine" },
-        new[] { "ErasedWriter", "FormatSegment", "FormatSegment", "fixed", "text", "write", "writeLine" })]
+        new[] { "fixed", "ErasedWriter", "FormatSegment 0 1", "deferLiteral \"n=\"", "FormatSegment 0 0", "write", "text", "writeLine" },
+        new[] { "ErasedWriter", "FormatSegment", "FormatSegment", "deferLiteral", "fixed", "text", "write", "writeLine" })]
     [InlineData(
         "func f(s: ref/string) => Console.writeLine(\"s=\\(s)\")\n",
         null,
-        new[] { "FormatBuffer", "ErasedWriter", "FormatSegment \"s=\" 0 1", "FormatSegment \"\" 0 0", "write", "FormatFinish", "writeLine" },
-        new[] { "ErasedWriter", "FormatBuffer", "FormatFinish", "FormatSegment", "FormatSegment", "write", "writeLine" })]
+        new[] { "heap", "ErasedWriter", "FormatSegment 0 1", "deferLiteral \"s=\"", "FormatSegment 0 0", "write", "finish", "intoString", "writeLine" },
+        new[] { "ErasedWriter", "FormatSegment", "FormatSegment", "deferLiteral", "finish", "heap", "intoString", "write", "writeLine" })]
+#pragma warning disable SA1118 // The generic line's healthy path, wrapped at the 160-character line limit.
     [InlineData(
         "func f<T>(v: ref/T)\n    T is Utf8Format\n    Console.writeLine(\"v=\\(v)\")\n",
         "[(2 + bound(T)) of u8]",
-        new[] { "FormatBuffer", "ErasedWriter", "FormatSegment \"v=\" 0 1", "FormatSegment \"\" 0 0", "write", "FormatFinish", "writeLine" },
-        new[] { "ErasedWriter", "ErasedWriter", "FormatBuffer", "FormatFinish", "FormatSegment", "FormatSegment", "fixed", "text", "write", "writeLine", "writeLine" })]
+        new[]
+        {
+            "fixed", "heap", "ErasedWriter", "FormatSegment 0 1", "deferLiteral \"v=\"", "FormatSegment 0 0", "write", "finish", "intoString", "writeLine",
+        },
+        new[] { "ErasedWriter", "ErasedWriter", "FormatSegment", "FormatSegment", "deferLiteral", "finish", "fixed", "heap", "intoString", "text", "write", "writeLine", "writeLine" })]
+#pragma warning restore SA1118
     public void ADirectLineIsOneExpansionOverOneWriter(string source, string? region, string[] healthy, string[] calls)
     {
         var body = Body(source, "f");
@@ -590,6 +632,82 @@ public sealed partial class MirBuildTest
         var writers = Enumerable.Range(0, body.Locals.Length).Where(x => body.Locals[x].Type.Symbol?.LibraryDeclaration == KimiDeclarationId.Utf8Writer);
         Assert.Single(writers); // One writer local, both arms' (consent 1).
     }
+
+    // SPEC 22.10.5 (DECISIONS R8-M24 as amended at R8-W2 c3b): an owning interpolation's buffer is the plan's first call, Text.heap, of the
+    // constant capacity 0. A generic direct line makes both buffers before its first branch, Text.fixed over the region, whose Len the
+    // branch's test read first, then Text.heap, and each arm makes only the writer; so each end reads a buffer initialized on every path,
+    // and the owning buffer's one Drop is MirDrops' ordinary flagged one, since the owning end's intoString moves it (R8-W2 c3a; at c3b
+    // Keep, with no flag) (fail-before: FormatBuffer of the instance's estimate; each buffer made in its arm, the fixed end's read
+    // accepted by A1's rule for a temp).
+    [Fact]
+    public void AGenericLinesBuffersAreMadeBeforeItsFirstBranch()
+    {
+        var program = Compile("func f<T>(v: ref/T)\n    T is Utf8Format\n    Console.writeLine(\"v=\\(v)\")\n").BuildMir();
+        Assert.Empty(program.Findings);
+        Assert.Empty(program.Problems.All.ToArray());
+        var body = program.Bodies.ToArray().Single(static x => x.Key is { Kind: MirBodyKind.Fn } && x.Key.Decl?.Name == "f");
+        int Next(int block, List<string> calls)
+        {
+            for (; body.Blocks[block].Terminator is { Kind: MirTerminatorKind.Call or MirTerminatorKind.Goto } terminator; block = terminator.Target)
+            {
+                if (terminator.Kind == MirTerminatorKind.Call)
+                {
+                    calls.Add(Step(body, terminator));
+                }
+            }
+
+            return block;
+        }
+
+        var before = new List<string>();
+        var branch = body.Blocks[Next(0, before)].Terminator;
+        Assert.Equal(MirTerminatorKind.SwitchInt, branch.Kind);
+        Assert.Equal(["fixed", "heap"], before);
+        var heap = body.Blocks.ToArray().Single(x => x.Terminator is { Kind: MirTerminatorKind.Call, Callee.Symbol.Name: "heap" }).Terminator;
+        Assert.Equal(MirConstKind.Integer, body.Consts[body.Operands[heap.Start].Arg].Kind);
+        Assert.Equal(Int128.Zero, body.Consts[body.Operands[heap.Start].Arg].Bits);
+        foreach (var arm in new[] { Assert.Single(body.Cases.Slice(branch.Start, branch.Count).ToArray()).Target, branch.Target })
+        {
+            var calls = new List<string>();
+            _ = Next(arm, calls);
+            Assert.Equal("ErasedWriter", calls[0]); // Each arm makes only the writer; the writes follow their join.
+        }
+
+        var lines = MirDumpTest.Unsited(program, body).Split('\n').Select(static x => x.TrimStart(' ', '*')).ToArray();
+        Assert.Equal(["flags 1"], lines.Where(static x => x.StartsWith("flags", StringComparison.Ordinal)));
+        Assert.Single(lines, x => x.StartsWith($"drop _{heap.Place.Root} ", StringComparison.Ordinal) && x.Contains("[flag f0]", StringComparison.Ordinal));
+    }
+
+    // SPEC 22.10.3, 22.9.3 (R8-W2 c3a): an owning interpolation's end is Utf8Writer.finish, the writer's last use, so its Loan on the buffer
+    // ends there, then HeapBuffer.intoString of the moved buffer. Rows labelled from SPEC before running, none with a Binding issue: valid,
+    // so accepted (22.10.3), an owning interpolation in a let, a generic body's owning instance and a nested one in a direct line; the
+    // builder's shape written out (EndShape), the writer's status for its finish: valid with the writer's last use before intoString, and
+    // exactly one Loan conflict with intoString moving the buffer while the writer is used after it, by its status or by a write. A guard,
+    // not a fail-before row: rows 1-3, the interpolations, call FormatFinish on the base, which took the writer by move and gave no
+    // problem, and only the three EndShape rows call no FormatFinish, so every row passes before c3a.
+    [Theory]
+    [InlineData("func f(x: i32) -> string\n    let t = \"a\\(x)b\"\n    return t@move\n", null)]
+    [InlineData("func g<T>(v: ref/T) -> string\n    T is Utf8Format\n    return \"v=\\(v)\"\nfunc f() -> string => g(\"abc\")\n", null)]
+    [InlineData("func f(x: i32) => Console.writeLine(\"o\\(\"i\\(x)\")\")\n", null)]
+    [InlineData(EndShape + "    _ = writer.status()\n    let taken = (buffer@move).intoString()\n" + EndTaken, null)]
+    [InlineData(EndShape + "    let taken = (buffer@move).intoString()\n    _ = writer.status()\n" + EndTaken, DiagnosticCode.ComparisonLoanConflict_Kd)]
+    [InlineData(EndShape + "    let taken = (buffer@move).intoString()\n    _ = (writer@uniq).write(n)\n" + EndTaken, DiagnosticCode.ComparisonLoanConflict_Kd)]
+    public void AnOwningEndTakesTheBufferAfterTheWritersLastUse(string source, DiagnosticCode? conflict)
+    {
+        var c = Compile(source);
+        Assert.Empty(c.Binding.Issues);
+        var program = c.BuildMir();
+        Assert.Empty(program.Findings);
+        Assert.Equal(conflict is { } code ? [code] : [], program.Problems.All.ToArray().Select(static x => x.Code));
+    }
+
+    // The builder's owning end written out (AnOwningEndTakesTheBufferAfterTheWritersLastUse): the buffer, its writer, a `var` for the
+    // writer's uniq/Self methods (SPEC 7.3.3), and one write.
+    private const string EndShape =
+        "func f(n: i32) -> string\n    var buffer = Text.heap(0)\n    var writer = Text.writer(buffer@uniq)\n    _ = (writer@uniq).write(n)\n";
+
+    // The owning end's string taken from intoString's Result (AnOwningEndTakesTheBufferAfterTheWritersLastUse).
+    private const string EndTaken = "    match taken@move\n        .Ok(let s) => return s@move\n        .Err(_) => $abort(\"invalid\")\n";
 
     // DECISIONS R5-M133: an interpolation of text alone leaves the program analyzable, so a true error elsewhere in it is still reported
     // (fail-before: its unreachable failure block was a validator finding, and the analyses ran on no body).
@@ -604,8 +722,8 @@ public sealed partial class MirBuildTest
     }
 
     // The calls on a body's healthy path from its entry, at most count: a call's, a goto's or a Drop's target and a Result test's Ok arm
-    // continue it. An intrinsic is named by its id, a FormatSegment with its text, later bytes and later values' count; another call by its
-    // function's name.
+    // continue it. An intrinsic is named by its id, a FormatSegment with its later bytes and later values' count; another call by its
+    // function's name, with the text of a constant record among its operands (a literal position's).
     private static List<string> HealthyPath(MirBody body, int count)
     {
         var path = new List<string>();
@@ -628,19 +746,20 @@ public sealed partial class MirBuildTest
         return path;
     }
 
-    // A call's step (HealthyPath): an intrinsic by its id, a FormatSegment with its text, later bytes and later values' count; another call
-    // by its function's name.
+    // A call's step (HealthyPath): an intrinsic by its id, a FormatSegment with its later bytes and later values' count; another call by
+    // its function's name, with the text of a constant record among its operands.
     private static string Step(MirBody body, in MirTerminator call)
     {
+        var operands = body.Operands.Slice(call.Start, call.Count).ToArray();
         if (call.Callee.Kind != MirCalleeKind.Intrinsic)
         {
-            return call.Callee.Symbol!.Name;
+            var records = operands.Where(x => x.Kind == MirOperandKind.Const && body.Consts[x.Arg].IsRecord).Select(x => $" \"{body.Consts[x.Arg].Value}\"");
+            return call.Callee.Symbol!.Name + string.Concat(records);
         }
 
         var id = (IntrinsicId)call.Callee.Arg;
-        var operands = body.Operands.Slice(call.Start, call.Count);
         return id != IntrinsicId.FormatSegment ? id.ToString()
-            : $"{id} \"{body.Consts[operands[1].Arg].Value}\" {body.Consts[operands[2].Arg].Bits} {body.Consts[operands[3].Arg].Type.Components.Count}";
+            : $"{id} {body.Consts[operands[1].Arg].Bits} {body.Consts[operands[2].Arg].Type.Components.Count}";
     }
 
     // A function f of the temporaries' program that runs a statement, built without validator findings.

@@ -9,11 +9,12 @@ namespace Kimi.Compiler.Mir;
 // slot step of MirSteps.Walk), so a Borrow of the slot forms a Loan of the template; a Place is slot-rooted when it is rooted at a PreparedInput,
 // passes that step and no raw pointer's referent after it (D2; SPEC 15.6.2, 5.2.1: a raw Place has its own anchor), which both rules read.
 // - R26-borrow: at each Return of the checks replay, one gather with the checks' Based pass and closure from E and _0's holder (the result
-//   and storage the body does not own); each slot-rooted Loan it finds is DefaultArgumentBorrow_Kd at the Loan's site, once per Loan and
-//   view.
+//   and storage the body does not own); each slot-rooted Loan it finds, its tier there joined over the view's Returns (Candidate.Outcome),
+//   is after the replay DefaultArgumentBorrow_Kd at the Loan's site where decided, else the located Unsupported_Kd there (a set carrying
+//   Φ_U: R4-M198's undecided class) unless R26-access reports it, once per Loan and view.
 // - R26-access: a write to a slot-rooted Place is DefaultArgumentAccess_Kd at the write, found where the location's accesses are listed
 //   (every destination, before the borrowed-root filter; MirBorrows.Accesses); after the replay, each exclusive slot-rooted Loan R26-borrow
-//   did not report is DefaultArgumentAccess_Kd at its site, one code per failure. The replay reaches every Loan's issue: MirValidator rejects
+//   did not decide is DefaultArgumentAccess_Kd at its site, one code per failure. The replay reaches every Loan's issue: MirValidator rejects
 //   a block runtime and check edges do not reach, so the forward solve reaches every head.
 // - The copy disposition (D11, D12): a failure found in an inline default copy is its template's when every event taking part lies in one
 //   evaluation of one copy (Covered): the copy B, the innermost Inlined scope holding the operation's scope and the issues of its Loan and
@@ -22,8 +23,8 @@ namespace Kimi.Compiler.Mir;
 //   once per entry location in the checks replay (Entering), before its plan, at the entries the pre-pass finds (Entries: each copy's
 //   first location in the replay's order, which dominates the copy; MirValidator's Entry rule, R5-M90).
 // Input: the view's Loans with their steps and issue locations, the checks replay's state and live bits, the location's writes. Output:
-// each R26 record with the parameter, the PreparedInput's own location (its Type node, R4-M90 D6), as its Anchor fact, through Record;
-// Covered, which the conflicts relation's selection, err(ended) and R3 read (MirBorrows.Checks,
+// each R26 record with the parameter, the PreparedInput's own location (its Type node, R4-M90 D6), as its Anchor fact, through Record, and
+// R26-borrow's limit record through Limit; Covered, which the conflicts relation's selection, err(ended) and R3 read (MirBorrows.Checks,
 // MirBorrows.Effects).
 // Invariants: Covered holds only where a copy's template reports the failure in the view its case selects (the package's 5.6); a copy
 // that issues no Loan gets no gather, and a body without one pays one scan of its scopes.
@@ -31,7 +32,7 @@ namespace Kimi.Compiler.Mir;
 // under both codes; or record a failure (MirBorrows.Reports).
 internal sealed partial class MirBorrows
 {
-    private bool[] defaulted = []; // By Loan: whether R26-borrow reported it in the view; R26-access's pass reads and clears it.
+    private MirOutcome[] defaulted = []; // By Loan: R26-borrow's verdict in the view, joined over its Returns; DefaultAccesses records and clears it.
     private int[] entrySet = []; // By scope: an issuing copy's Entry(B) (0 until its gather), -1 for a copy that issues no Loan.
     private int[] entryAt = []; // By scope: an Inlined scope's entry location, -1 before the pre-pass reaches it.
     private bool[] entering = []; // By location: whether an issuing copy is entered there.
@@ -58,8 +59,9 @@ internal sealed partial class MirBorrows
 
     private bool SlotRooted(int loan) => this.SlotRooted(this.loans[loan].Root, this.loanSteps.AsSpan(this.loans[loan].Start, this.loans[loan].Count));
 
-    // R26-borrow (D3) at a Return of a template view: the slot-rooted Loans in the closure of σ(_0) ∪ σ(E), each the first time the view finds
-    // it. The gather's Stored pass has nothing to read: a Return stores nothing.
+    // R26-borrow (D3) at a Return of a template view: the slot-rooted Loans in the closure of σ(_0) ∪ σ(E), each joined with its tier there
+    // (Candidate.Outcome; the check takes no value, TakesStores), recorded after the replay (DefaultAccesses). The gather's Stored pass has
+    // nothing to read: a Return stores nothing.
     private void DefaultBorrows(ulong[] state)
     {
         if (this.body.Key.Kind != MirBodyKind.DefaultTemplate)
@@ -82,10 +84,9 @@ internal sealed partial class MirBorrows
         for (var c = 0; c < this.candidateCount; c++)
         {
             var loan = this.candidates[c].Loan;
-            if (!this.defaulted[loan] && this.SlotRooted(loan))
+            if (!this.defaulted[loan].IsDecided && this.SlotRooted(loan))
             {
-                this.defaulted[loan] = true;
-                this.Default(DiagnosticCode.DefaultArgumentBorrow_Kd, OwnershipRequirement.DefaultArgumentBorrow, this.Site(loan), this.loans[loan].Root);
+                this.defaulted[loan] = this.defaulted[loan].Join(this.candidates[c].Outcome(TakesStores));
             }
         }
 
@@ -95,14 +96,15 @@ internal sealed partial class MirBorrows
     // R26-access (D4 (1)): a write to a slot-rooted Place, an Assign's or a Call's destination, at the write.
     private void DefaultWrite(MirPlace place, MirLocation at)
     {
-        if (MirSteps.Prepared(this.body, place.Root) && this.placeSteps.Walk(this.body, place, reborrow: false, ref this.walk) is var count &&
+        if (MirSteps.Prepared(this.body, place.Root) && this.placeSteps.Walk(place, reborrow: false, ref this.walk) is var count &&
             this.SlotRooted(place.Root, this.walk.AsSpan(0, count)))
         {
             this.Default(DiagnosticCode.DefaultArgumentAccess_Kd, OwnershipRequirement.DefaultArgumentAccess, this.Subject(at), place.Root);
         }
     }
 
-    // R26-access (D4 (2)) after the replay of a template view: an exclusive slot-rooted Loan that R26-borrow did not report, at its site.
+    // After the replay of a template view, at each Loan's site: R26-borrow's decided verdict; else R26-access (D4 (2)) for an exclusive
+    // slot-rooted Loan, whose failure holds in every layout; else R26-borrow's undecided verdict, the limit record (R4-M198's class).
     private void DefaultAccesses()
     {
         if (this.body.Key.Kind != MirBodyKind.DefaultTemplate)
@@ -113,13 +115,19 @@ internal sealed partial class MirBorrows
         MirDataflow.Grow(ref this.defaulted, this.loanCount);
         for (var loan = 0; loan < this.loanCount; loan++)
         {
-            if (this.defaulted[loan])
+            var found = this.defaulted[loan];
+            this.defaulted[loan] = MirOutcome.None;
+            if (found.IsDecided)
             {
-                this.defaulted[loan] = false;
+                this.Default(DiagnosticCode.DefaultArgumentBorrow_Kd, OwnershipRequirement.DefaultArgumentBorrow, this.Site(loan), this.loans[loan].Root);
             }
             else if (this.loans[loan].Mode is MirRefKind.Uniq or MirRefKind.TwoPhaseUniq && this.SlotRooted(loan))
             {
                 this.Default(DiagnosticCode.DefaultArgumentAccess_Kd, OwnershipRequirement.DefaultArgumentAccess, this.Site(loan), this.loans[loan].Root);
+            }
+            else if (!found.IsNone)
+            {
+                this.Limit(this.Site(loan), found);
             }
         }
 

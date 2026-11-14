@@ -106,6 +106,10 @@
     Description="the declaration takes no modifier"
     Phrase="modifier"
 
+  + Name="Syntax.SecondModifier"
+    Description="a function header writes at most one of unsafe, virtual and override"
+    Phrase="second function modifier"
+
   + Name="Syntax.ReceiverParameter"
     Description="the receiver parameter is declared once, as self, without rename or default, in a struct or Contract"
     Phrase="receiver parameter"
@@ -134,6 +138,10 @@
     Description="the specialization names Type arguments and takes no modifier"
     Phrase="specialization header"
 
+  + Name="Syntax.OverrideHeader"
+    Description="the override names its parameters, result Type and body only"
+    Phrase="override header"
+
   + Name="Syntax.BaseList"
     Description="the struct names one base"
     Phrase="base list with other than one base"
@@ -145,6 +153,10 @@
   + Name="Syntax.ContainerDeclaration"
     Description="a Container is declared where Containers nest"
     Phrase="Container declaration"
+
+  + Name="Syntax.SpecializationDeclaration"
+    Description="a specialization is declared at the source root or in a group, struct or enum body"
+    Phrase="specialization declaration"
 
   + Name="Syntax.CompileTimeDirective"
     Description="a compile-time directive selects whole items"

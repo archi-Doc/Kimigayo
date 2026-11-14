@@ -14,8 +14,8 @@
 // Dictionary's (R5-M124)),
 // ClosureErasure and ItemAdapter (__kimi_erase<item>, its entry under its target Function Type's erased signature, its table and its
 // heap environment's release, written by FunctionCodegen; R5-M108), the Builtin shims
-// (__kimi_builtin<item>, a comparison's, an arithmetic operation's or a built-in formatting's function under its requirement's signature,
-// Shim, written by FunctionCodegen.Shims; R5-M126, R5-M130), the property witnesses (__kimi_witness<item>, a standard property witness's
+// (__kimi_builtin<item>, a comparison's or an arithmetic operation's function under its requirement's signature,
+// Shim, written by FunctionCodegen.Shims; R5-M126), the property witnesses (__kimi_witness<item>, a standard property witness's
 // function under its key's signature, Shim, written by FunctionCodegen.Shims; R5-M141), K8's ObjectDescriptor items (the module's runtime
 // identities, a descriptor's constants, payload destructor and factory through ObjectRuntime, ModuleCodegen.Objects; R5-M110) and VTable
 // items, whose text is their descriptors' virtual tables (R5-M114).
@@ -52,7 +52,8 @@ internal sealed partial class ModuleCodegen
     private readonly LlvmConstantPool constants = new();
     private readonly HashSet<Problem> reported = new();
     private readonly FunctionCodegen bodies;
-    private readonly TyCtxt types; // Its erasure and Copy proofs, which the object descriptors read (ModuleCodegen.Objects).
+    private readonly TyCtxt types; // Its erasure and Copy proofs, which the object descriptors read (ModuleCodegen.Objects), and a
+    // specialization's original, whose ABI its body keeps (Signature).
     private readonly IReadOnlyList<LibraryImport> imports; // Binding's validated #LibraryImport declarations (F2b).
     private readonly List<ExternalFunction> externals = []; // The imports the latest Write's definitions call, one per symbol (Import).
     private int writes; // The number of Writes.

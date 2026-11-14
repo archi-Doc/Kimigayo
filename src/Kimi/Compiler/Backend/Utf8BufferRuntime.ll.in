@@ -2,49 +2,6 @@
 ; Result has i32 tag (Ok=0, Err=1), with nonempty aligned payload at byte 8.
 ; The adapter's routine __kimi_text_writer is the kept ErasedWriterRuntime.ll.in's.
 
-{{__kimi_text_fixed}}
-entry:
-  store ptr %self, ptr %ret, align 8
-  %cap = getelementptr i8, ptr %ret, i64 8
-  %len = getelementptr i8, ptr %ret, i64 16
-  %valid = getelementptr i8, ptr %ret, i64 24
-  store i64 %capacity, ptr %cap, align 8
-  store i64 0, ptr %len, align 8
-  store i64 0, ptr %valid, align 8
-  ret void
-}
-
-{{__kimi_text_heap}}
-entry:
-  %negative = icmp slt i64 %capacity, 0
-  br i1 %negative, label %invalid, label %check
-check:
-  %empty = icmp eq i64 %capacity, 0
-  br i1 %empty, label %done, label %allocate
-allocate:
-  %allocated = call ptr @__kimi_alloc(i64 %capacity, ptr %location, i64 %location_length)
-  br label %done
-done:
-  %data = phi ptr [ null, %check ], [ %allocated, %allocate ]
-  call void @__kimi_text_fixed(ptr %ret, ptr %data, i64 %capacity)
-  ret void
-invalid:
-  call void @__kimi_abort(i32 {{reason_argument_range}}, ptr %location, i64 %location_length, i64 {{no_os_error}})
-  unreachable
-}
-
-; The committed bytes as a Slice, for the formatting adapter's end (__kimi_format_take_string) until W2.
-define internal void @__kimi_buffer_bytes(ptr %ret, ptr %self) #0 {
-entry:
-  %data = load ptr, ptr %self, align 8
-  %len = getelementptr i8, ptr %self, i64 16
-  %length = load i64, ptr %len, align 8
-  store ptr %data, ptr %ret, align 8
-  %outlen = getelementptr i8, ptr %ret, i64 8
-  store i64 %length, ptr %outlen, align 8
-  ret void
-}
-
 ; Hints affect growth only. Fixed buffers fail without changing committed bytes or length.
 define internal void @__kimi_buffer_reserve(ptr %ret, ptr %self, i64 %amount, i1 %heap, i64 %hint, ptr %location, i64 %location_length) #0 {
 entry:

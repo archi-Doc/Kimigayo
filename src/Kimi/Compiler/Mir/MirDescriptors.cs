@@ -183,7 +183,9 @@ internal static class MirDescriptors
         // The bits, the width flag and the destination, the one operand written, through its `uniq` borrow (R8-S2c).
         IntrinsicId.FormatFloat => Intrinsic(MirEffect.None, 3),
         IntrinsicId.ErasedReserve => Intrinsic(MirEffect.None, 2), // The adapter and the minimum; A4 reads the kind's Inputs.
-        IntrinsicId.FormatInteger128 => Intrinsic(MirEffect.None, arity: -1),
+        // The value and the destination, the one operand written, through its `uniq` borrow (R8-S2b2); the routine neither allocates nor
+        // Aborts.
+        IntrinsicId.FormatInteger128 => Intrinsic(MirEffect.None, 2),
         IntrinsicId.Abort => Intrinsic(MirEffect.Abort, 1) with { Diverges = true },
         IntrinsicId.Fail => Intrinsic(MirEffect.Abort, 1) with { Diverges = true },
         IntrinsicId.TestRequireAbort => Intrinsic(MirEffect.Abort, 2) with { Diverges = true }, // The issue and the site's location.
@@ -193,11 +195,8 @@ internal static class MirDescriptors
         IntrinsicId.TestObserve => Intrinsic(MirEffect.Environment, 2), // The condition and the site's id (plan 5.6.7).
         IntrinsicId.TestTempDirectory => Intrinsic(MirEffect.Environment | MirEffect.Allocation, 0), // The path's copy on the heap.
         IntrinsicId.StaticEnsure => Intrinsic(MirEffect.StaticInit | MirEffect.Abort, 1), // The static's slot (plan 5.6.6).
-        IntrinsicId.FormatBuffer => Intrinsic(MirEffect.Allocation | MirEffect.Abort, 2), // The literal bytes and the values' Types' token.
-        // The adapter and the position's literal text ("" at a value's), then the later literal bytes and values' Types' token; the text's write
-        // may reserve and Abort, as FormatFinish's flush (DECISIONS R5-M133).
-        IntrinsicId.FormatSegment => Intrinsic(MirEffect.Allocation | MirEffect.Abort, 4),
-        IntrinsicId.FormatFinish => Intrinsic(MirEffect.Allocation | MirEffect.Abort, 1), // The adapter.
+        // The adapter, then the later literal bytes and values' Types' token: its hint (R8-W2 c1: a literal position's text is a library call).
+        IntrinsicId.FormatSegment => Intrinsic(MirEffect.None, 3),
         _ => default,
     };
 

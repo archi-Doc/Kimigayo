@@ -15,13 +15,14 @@ namespace Kimi.Compiler.Mir;
 // designation judge, the step rule); a key's layer facts are MirBorrows.PunKeys'. This file holds the rule at its two sites and
 // Position's dataflow.
 // Inputs: A5's sets and entries (G667a), the stored Place's steps (MirSteps), Binding's Place facts through TyCtxt (PlaceKey, Select,
-// Base, Leading, OwnLayers, SameStructure, NoStore; C-189, C-211) under the case view.
+// Base, Leading, OwnLayers, SameStructure, NoStore; C-189, C-211) under the case view, and SPEC 5.2's punnable set (TyCtxt.Punnable).
 // Outputs: the holder's markers. A pun: {Φ_E, Φ_W}. An undecided write (the layout, a length that is no constant, or a layer with no
 // stated-Origin answer decides what it covers) may be a pun: {Φ_E, Φ_W, Φ_M}, and what rests on that Φ_E carries Φ_U: a value stored
 // into E through a set carrying Φ_M or Φ_U, and what a read through one gives (Rested). A gather tags what it finds in a set carrying
-// Φ_U apart (MirBorrows.Candidates), so a check only such finds meet is a Limit, the located Unsupported_Kd at its subject (R4-M153's
-// path), and an undecided write no check rests on records nothing. Δ marks a pointer displaced by a stride that is no grid row, or an
-// address formed past a raw Deref through a component step other than a C-layout first Field (Step, the one step rule).
+// Φ_U apart (MirBorrows.Candidates), and what it reaches only through such a set, the holders it names and their stores
+// (MirBorrows.CheckSets' read keys, PLAN G775), so a check only such finds meet is a Limit, the located Unsupported_Kd at its subject
+// (R4-M153's path), and an undecided write no check rests on records nothing. Δ marks a pointer displaced by a stride that is no grid
+// row, or an address formed past a raw Deref through a component step other than a C-layout first Field (Step, the one step rule).
 // The sites: a seen store writes the stored Place, typed where a raw Place from its last Deref to it is designated; a call, through
 // each input its contract may store through (TyCtxt.NoStore), every raw Place within the Types its input's layers lead to
 // (TyCtxt.OwnLayers at the input's root key), then, past each holder its entries name, within those the parameter's next layers lead
@@ -75,12 +76,12 @@ internal sealed partial class MirBorrows
     // The pun rule at a store to `place` through the pointer set `pointer`, what its last Deref goes through.
     private void Punning(int pointer, MirPlace place)
     {
-        if (Punnable(cases.TypeOf(place)).Scalar == Extent.None)
+        if (this.Scalar(cases.TypeOf(place)) == Extent.None)
         {
             return;
         }
 
-        var (count, last) = (this.placeSteps.Walk(this.body, place, reborrow: false, ref this.walk), -1);
+        var (count, last) = (this.placeSteps.Walk(place, reborrow: false, ref this.walk), -1);
         for (var i = 0; i < count; i++)
         {
             last = this.walk[i].Class is MirStepClass.Shared or MirStepClass.Uniq or MirStepClass.Raw ? i : last;

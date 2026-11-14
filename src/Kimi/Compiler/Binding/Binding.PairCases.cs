@@ -174,6 +174,33 @@ public sealed partial class Binding
         return this.OuterOrigin(type);
     }
 
+    /// <summary>Gets the layer a Type forms for well-formedness in a use's scope (SPEC 15.6.1, 8.1.2, 15.6.5), whose target's stored Origins
+    /// outlive its outer Origin: a safe borrow or a Slice in every case, and a pair layer within its stored slot (<see cref="StoredSlot"/>)
+    /// in its binder's borrow cases. The condition is the raw <see cref="PairSlotCondition"/>: each consumer applies its own contract to
+    /// <see cref="ulong.MaxValue"/>.</summary>
+    /// <param name="type">A Type.</param>
+    /// <param name="scope">The constraint scope of the use, whose binders give the condition's bits.</param>
+    /// <returns>The layer's target, its outer Origin and the Semantics case it exists in, or null when no case forms a layer.</returns>
+    internal (BoundType Target, BoundOrigin Outer, ulong Condition)? WellFormedLayer(BoundType type, BindingScope scope)
+    {
+        BoundType target;
+        if (IsBorrow(type.Semantics) || type.Kind == BoundTypeKind.Slice)
+        {
+            if (type.Components.Count == 0)
+            {
+                return null;
+            }
+
+            target = type.Components[0];
+        }
+        else if (!TryPairLayer(type, out _, out target))
+        {
+            return null;
+        }
+
+        return this.StoredSlot(type, scope, out var condition) is { } outer ? (target, outer, condition) : null;
+    }
+
     /// <summary>Forms the complete Type a Type takes in one Semantics case (SPEC 8.15): every pair layer of a binder in
     /// <paramref name="cases"/> becomes the Type of that binder's Semantics over its direct target with the layer's outer-Origin
     /// slot (<c>U</c> for owner, <c>s/U during o</c> for a borrow, <c>s/U</c> otherwise), other Types map their components, and

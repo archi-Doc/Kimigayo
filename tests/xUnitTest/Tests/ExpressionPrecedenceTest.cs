@@ -73,6 +73,20 @@ public class ExpressionPrecedenceTest
     [InlineData("builder@move.finish()", "(builder@move).finish()")]
     [InlineData("values@ref[0]", "(values@ref)[0]")]
     [InlineData("holder@uniq.items.append(1)", "((holder@uniq).items).append(1)")]
+
+    // SPEC F.9.4: a group or a fixed array after "@" is a DelimitedTarget, so its "." is the adapted value's PostfixSuffix (F.9.1), on a
+    // chain line too (F.4.6); a BoundContainerQualifier is no target, and a projection target is grouped (F.5's notes).
+    [InlineData("pair@(i32, u8).0", "(pair@(i32, u8)).0")]
+    [InlineData("pair@(i32, u8)\n    .0", "(pair@(i32, u8)).0")]
+    [InlineData("pair@ref/(i32, u8).0", "(pair@ref/(i32, u8)).0")]
+    [InlineData("pair@(i32, u8).(C).Item", "(pair@(i32, u8)).(C).Item")]
+    [InlineData("pair@().(C).Item", "(pair@()).(C).Item")]
+    [InlineData("pair@(S{k}).Item", "(pair@(S{k})).Item")]
+    [InlineData("pair@((i32, u8).(C).Item).0", "(pair@((i32, u8).(C).Item)).0")]
+    [InlineData("items@[2 of i32].length", "(items@[2 of i32]).length")]
+    [InlineData("items@[2 of i32]\n    .length", "(items@[2 of i32]).length")]
+    [InlineData("items@ref/[2 of i32].length", "(items@ref/[2 of i32]).length")]
+    [InlineData("items@[2 of i32].0", "(items@[2 of i32]).0")]
     [InlineData("try pending@move * 2", "(try (pending@move)) * 2")]
     [InlineData("try prepare() + 1", "(try prepare()) + 1")]
     [InlineData("try prepare().count", "try (prepare().count)")]
@@ -233,7 +247,7 @@ public class ExpressionPrecedenceTest
             return Describe(parentheses.Operand);
         }
 
-        var children = koto.ChildNodes.ToArray();
+        var children = koto.Children().ToArray();
         return children.Length == 0
             ? $"{koto.Akind}:{koto}"
             : $"{koto.Akind}({string.Join(", ", children.Select(Describe))})";

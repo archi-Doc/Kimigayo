@@ -230,7 +230,7 @@ public sealed partial class Binding
                     return false;
                 }
 
-                if (IsObjectSemantics(actual.Semantics) && required.Semantics != SemanticsKind.Ref)
+                if (this.ObjectCases(actual, scope, out _) != SemanticsMask.None && required.Semantics != SemanticsKind.Ref)
                 {
                     this.Fail(node, BindingFailure.Unsupported, true);
                     return false;

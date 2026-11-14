@@ -33,7 +33,7 @@ internal enum MirViolation : byte
     Place, // A root or a projection chain out of range.
     Projection, // A projection its base Type does not admit, or a chain out of order.
     Const, // A constant id out of range, or an Integer constant Holds rejects: of a Type outside its family or not a value of it (G620, G644).
-    Binder, // A PairAcquire of a binder out of range or other than its Place's pair layer, or more cases than PairBinder.CaseBound.
+    Binder, // A PairAcquire of a binder out of range or other than its Place's pair layer, or a case count outside 1 to PairBinder.CaseBound.
     OperandRange,
     Arity, // An rvalue's or a Call's operands disagree with its kind, its Type or its callee.
     Callee, // A Fn, Requirement or Virtual callee without its function, a Value one without its signature, a misdeclared or diverging intrinsic;
@@ -95,9 +95,9 @@ internal sealed partial class MirValidator(TyCtxt types)
     internal void Validate(MirBody body, List<MirFinding> findings)
     {
         var count = findings.Count;
-        if (MirCases.Count(body) > PairBinder.CaseBound)
+        if (MirCases.Count(body) is < 1 or > PairBinder.CaseBound)
         {
-            findings.Add(new(MirViolation.Binder, body.Source)); // Binding binds no part of a definition beyond the bound.
+            findings.Add(new(MirViolation.Binder, body.Source)); // Binding publishes no part of a definition beyond the bound or with no case.
             body.HasFinding = findings.Count > count;
             return; // Nor are its views resolved.
         }
@@ -193,7 +193,7 @@ internal sealed partial class MirValidator(TyCtxt types)
         private bool At(in SourceInfo source)
         {
             this.at = source;
-            if (source.Scope >= body.Scopes.Length)
+            if ((uint)source.Scope >= (uint)body.Scopes.Length)
             {
                 this.Report(MirViolation.Scope);
                 return false;

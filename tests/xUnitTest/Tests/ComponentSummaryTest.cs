@@ -213,9 +213,10 @@ public class ComponentSummaryTest
 
     // The closure of F5 (a) (DECISIONS BU-22): a projection of more than 64 steps (a conformance binding can lengthen a projection with
     // no projection link) makes its summary a site, which only yields the located Unsupported_Kd at its stored Type, never a verdict; a
-    // shorter one is judged (a stored projection of several steps stays Unknown, as before), and many short projections stay exact.
+    // shorter one is judged (each step is `Deep`, hence Owned, by SPEC 8.3.2's refinement row: R7-C2a1), and many short projections stay
+    // exact.
     [Theory]
-    [InlineData(64, 1, "Unknown", "UnprovenConstraint_Kd")]
+    [InlineData(64, 1, "Proven", "")]
     [InlineData(65, 1, "Error", "Unsupported_Kd")]
     [InlineData(1, 65, "Proven", "")]
     public void ProjectionsPastTheBoundAreASite(int steps, int fields, string owned, string record)
@@ -303,8 +304,8 @@ public class ComponentSummaryTest
     [InlineData("guard", "g201n", OwnerPair + "struct DP<X>\n    X is Has\n    let e: EP<X>\n", "UnprovenConstraint_Kd: let e: EP<X>")]
 
     // SPEC 15.2.3, 8.3.2: `contract Deep: Owned` proves every step of a stored projection of the formal; without it the step is Unknown.
-    [InlineData("C6", "g208-2", "contract Deep: Owned\n    associate Next is Deep\n" + ManyWide + "    let field1: T.(Many).A1.(Deep).Next\n" + Need + InspectWide, "", Explicit = true)]
-    [InlineData("C6", "g208-8", "contract Deep: Owned\n    associate Next is Deep\n" + ManyWide + "    let field1: T.(Many).A1.(Deep).Next.(Deep).Next.(Deep).Next.(Deep).Next.(Deep).Next.(Deep).Next.(Deep).Next\n" + Need + InspectWide, "", Explicit = true)]
+    [InlineData("C6", "g208-2", "contract Deep: Owned\n    associate Next is Deep\n" + ManyWide + "    let field1: T.(Many).A1.(Deep).Next\n" + Need + InspectWide, "")]
+    [InlineData("C6", "g208-8", "contract Deep: Owned\n    associate Next is Deep\n" + ManyWide + "    let field1: T.(Many).A1.(Deep).Next.(Deep).Next.(Deep).Next.(Deep).Next.(Deep).Next.(Deep).Next.(Deep).Next\n" + Need + InspectWide, "")]
     [InlineData("guard", "g208n", "contract Deep\n    associate Next is Deep\n" + ManyWide + "    let field1: T.(Many).A1.(Deep).Next\n" + Need + InspectWide, "UnprovenConstraint_Kd: need(x@move)")]
     public void LimitsAndStoredProjectionsHaveTheirVerdicts(string unit, string form, string program, string records)
         => CompilationTestHelper.AssertRecordsAtLines($"{form} [{unit}]", program + "()", records);

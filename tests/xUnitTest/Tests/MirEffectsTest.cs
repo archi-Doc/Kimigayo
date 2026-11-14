@@ -22,6 +22,11 @@ public sealed partial class MirEffectsTest(ITestOutputHelper output)
 
     private const string Failed = "IncompatibleContractImplementation_Kd Self is Sink 1";
 
+    // A generic's put and, in a put's body, a writer over a fixed buffer of 64 bytes.
+    private const string Put = "    public func put(self: uniq/Self, value: i32) -> Result<(), BufferFull>\n";
+
+    private const string Writer = "        var bytes = [64 of 0@u8]\n        var buffer = Text.fixed(bytes@uniq)\n        var writer = Text.writer(buffer@uniq)\n";
+
     // A generic Type's method with an i32 specialization that destroys an Option<T>, and a pair-binder Container's (O-109 (a)).
     private const string Box = "struct Box<T>\n    public var item: Option<T> = .None\n    public func clear<U>(self: uniq/Self) => ()\n" +
         "    specialize func clear<i32>(self: uniq/Self) => self.item = .None\n";
@@ -338,19 +343,20 @@ public sealed partial class MirEffectsTest(ITestOutputHelper output)
                 $"    public func eat<T>(self: ref/Self, item: T)\n{premise}        ()\n"));
 
     // SPEC 4.9.6 (R8-A1d): an owning iterator's destruction, Array or fixed array, destroys its elements through destroyValues, which reports the
-    // same Drop of `E` the bodies' loops did: a loud element fails a confined bound, a cleanup-free one does not.
+    // same Drop of `E` the bodies' loops did: a loud element fails a confined bound, a cleanup-free one does not. A fixed array's owning
+    // iterator is its loop's (SPEC 22.1: its entry is no member; PLAN G776-b).
     [Theory]
-    [InlineData("Loud", "Array<Loud> = []", "IncompatibleContractImplementation_Kd Self is Make 1")]
-    [InlineData("Loud", "[1 of Loud] = [Loud.init()]", "IncompatibleContractImplementation_Kd Self is Make 1")]
-    [InlineData("i32", "Array<i32> = []", "")]
-    [InlineData("i32", "[1 of i32] = [1]", "")]
-    public void AnOwningIteratorsDestructionDropsItsElements(string element, string declaration, string expected)
+    [InlineData("Loud", "Array<Loud> = []", "let it = a@move.intoIterator()", "IncompatibleContractImplementation_Kd Self is Make 1")]
+    [InlineData("Loud", "[1 of Loud] = [Loud.init()]", "for _ in a@move => exit", "IncompatibleContractImplementation_Kd Self is Make 1")]
+    [InlineData("i32", "Array<i32> = []", "let it = a@move.intoIterator()", "")]
+    [InlineData("i32", "[1 of i32] = [1]", "for _ in a@move => exit", "")]
+    public void AnOwningIteratorsDestructionDropsItsElements(string element, string declaration, string entry, string expected)
     {
         _ = element;
         Assert.Equal(
             Expected(expected),
             Problems(Loud + "contract Make\n    func make(self: ref/Self) -> i32\n        effect confined\nstruct M\n    Self is Make\n" +
-                $"    public func make(self: ref/Self) -> i32\n        var a: {declaration}\n        let it = a@move.intoIterator()\n        return 0\n"));
+                $"    public func make(self: ref/Self) -> i32\n        var a: {declaration}\n        {entry}\n        return 0\n"));
     }
 
     // R4-M6a: a Drop destroys what A2's verdicts leave in the view: a moved value nothing (Elide), a partly moved one its remaining parts
@@ -651,24 +657,60 @@ public sealed partial class MirEffectsTest(ITestOutputHelper output)
             (TyCtxt.Bodyless(library.Function(CompilerFunctionKind.StorageFormatFloat)!), (descriptor.Effects, descriptor.Arity)));
     }
 
-    // SPEC 8.11.2, 22.9.1 (R8-S2a, C-188): a confined caller's write(true) runs BoolFormat's body, whose leaf write reaches
+    // SPEC 8.11.2, 22.10.2 (R8-S2b2, C-258): A4 classes a Storage.formatInteger128 call, FormatInteger128's producer, by its kind's family,
+    // Inputs; its descriptor states no effect of its own over its two operands (the value and the destination: the routine neither
+    // allocates nor Aborts), and its signature's `uniq` destination states the one write (fail-before: the kind did not exist, the
+    // descriptor's arity was -1).
+    [Fact]
+    public void AFormatInteger128CallIsClassedByItsStorageFamily()
+    {
+        var library = Compilation.CreateForTest().Library;
+        var descriptor = MirDescriptors.Of(IntrinsicId.FormatInteger128);
+        Assert.Equal(
+            (CompilerFunctionEffect.Inputs, (MirEffect.None, (sbyte)2)),
+            (TyCtxt.Bodyless(library.Function(CompilerFunctionKind.StorageFormatInteger128)!), (descriptor.Effects, descriptor.Arity)));
+    }
+
+    // SPEC 8.11.2, 22.9.1 (R8-S2a, C-188; R8-S2b1, C-254): a confined caller's write(true) runs BoolFormat's body and its write of an i64
+    // the IntegerFormat body at i64, whose comparison and conversions on its I are built-in operators, no calls; each leaf write reaches
     // Storage.erasedReserve; the erased reserve is checked against BufferWriter.reserve's own confined bound (SPEC 22.9.1), and
-    // Allocation and Abort are permitted under confined (SPEC 8.11.2), so the caller reports nothing over either buffer.
+    // Allocation and Abort are permitted under confined (SPEC 8.11.2), so the caller reports nothing over either buffer; an i128's and a
+    // u128's write runs IntegerFormat's specialization, whose Storage.formatInteger128 call is classed Inputs (R8-S2b2) (pins: the i64
+    // rows pass through builtinFormat before R8-S2b1, the 128-bit rows before R8-S2b2).
     [Theory]
     // A growing writer, Text.heap(0): allocation permitted (SPEC 8.11.2), nothing reported.
-    [InlineData("        var buffer = Text.heap(0)\n")]
-    // A fixed buffer of 3 bytes, which the reserve of 4 fails with BufferFull (SPEC 22.9.4): nothing reported.
-    [InlineData("        var bytes = [3 of 0@u8]\n        var buffer = Text.fixed(bytes@uniq)\n")]
-    public void AConfinedLeafWriteReportsNothing(string buffer)
-        => Assert.Empty(Problems(Sink + Loud + Witness + buffer + "        var writer = Text.writer(buffer@uniq)\n        _ = writer.write(true)\n        return .Ok(())\n"));
+    [InlineData("        var buffer = Text.heap(0)\n", "true")]
+    // A fixed buffer of 3 bytes, which the reserve of 4 (6) fails with BufferFull (SPEC 22.9.4): nothing reported.
+    [InlineData("        var bytes = [3 of 0@u8]\n        var buffer = Text.fixed(bytes@uniq)\n", "true")]
+    [InlineData("        var buffer = Text.heap(0)\n", "-12345@i64")]
+    [InlineData("        var bytes = [3 of 0@u8]\n        var buffer = Text.fixed(bytes@uniq)\n", "-12345@i64")]
+    [InlineData("        var buffer = Text.heap(0)\n", "-170141183460469231731687303715884105728@i128")]
+    [InlineData("        var bytes = [3 of 0@u8]\n        var buffer = Text.fixed(bytes@uniq)\n", "-170141183460469231731687303715884105728@i128")]
+    [InlineData("        var buffer = Text.heap(0)\n", "340282366920938463463374607431768211455@u128")]
+    [InlineData("        var bytes = [3 of 0@u8]\n        var buffer = Text.fixed(bytes@uniq)\n", "340282366920938463463374607431768211455@u128")]
+    public void AConfinedLeafWriteReportsNothing(string buffer, string value)
+        => Assert.Empty(Problems(Sink + Loud + Witness + buffer + $"        var writer = Text.writer(buffer@uniq)\n        _ = writer.write({value})\n        return .Ok(())\n"));
 
-    // SPEC 4.9.6, 8.11.3: a formatting function's row runs the value's Utf8Format witness: built-in for i32, the witness table's bodies
-    // for bool, char and Unit (R8-S2a), for f32 and f64 (R8-S2c: their Storage.formatFloat call has no effect, and the leaf's
-    // Allocation and Abort are permitted under confined, SPEC 8.11.2, so no record) and for string and Wrapping<i32> (R8-S2d1), the view's
-    // declared one (R8-S2d1; the view of a local string, since a temporary's ends with its statement, SPEC 3.6), Shown's printing one,
-    // also in an interpolation (fail-before: the earlier rows, a limit; R8-S2d1's rows pass before too, through builtinFormat).
+    // SPEC 4.9.6, 8.11.3: a formatting function's row runs the value's Utf8Format witness: the witness table's bodies for the integers
+    // (R8-S2b1: the IntegerFormat body's comparison and conversions on its I are built-in operators, no calls, so its summary is the same
+    // at every instance; R8-S2b2: the summary also holds the i128 and u128 specializations, SPEC 15.6.4, whose Storage.formatInteger128
+    // call is classed Inputs; pins, which pass through builtinFormat before them), for bool, char and Unit (R8-S2a), for f32 and f64
+    // (R8-S2c: their Storage.formatFloat call has no effect, and the leaf's Allocation and Abort are permitted under confined, SPEC 8.11.2,
+    // so no record) and for string, the view and Wrapping<i32> (R8-S2d1; the view of a local string, since a
+    // temporary's ends with its statement, SPEC 3.6), Shown's printing one, also in an interpolation (fail-before: the earlier rows, a
+    // limit; R8-S2d1's and R8-S2b1's rows pass before too, through builtinFormat).
     [Theory]
     [InlineData("        _ = Text.toString(42)\n        _ = \"\\(value)\"\n", "")]
+    [InlineData("        _ = Text.toString(7@u8)\n", "")]
+    [InlineData("        let small = 9@u8\n        _ = \"\\(small)\"\n", "")]
+    [InlineData("        _ = Text.toString(-5@i64)\n", "")]
+    [InlineData("        let long = value@i64\n        _ = \"\\(long)\"\n", "")]
+    [InlineData("        _ = Text.toString(-3@isize)\n", "")]
+    [InlineData("        let index = value@isize\n        _ = \"\\(index)\"\n", "")]
+    [InlineData("        _ = Text.toString(9@usize)\n", "")]
+    [InlineData("        let size = 9@usize\n        _ = \"\\(size)\"\n", "")]
+    [InlineData("        _ = Text.toString(-7@i128)\n        let huge = value@i128\n        _ = \"\\(huge)\"\n", "")]
+    [InlineData("        _ = Text.toString(7@u128)\n        let wide = value@u128\n        _ = \"\\(wide)\"\n", "")]
     [InlineData("        _ = Text.toString(true)\n        let flag = value == 1\n        _ = \"\\(flag)\"\n", "")]
     [InlineData("        _ = Text.toString('x')\n        let letter = 'é'\n        _ = \"\\(letter)\"\n", "")]
     [InlineData("        _ = Text.toString(())\n        let unit = ()\n        _ = \"\\(unit)\"\n", "")]
@@ -685,17 +727,20 @@ public sealed partial class MirEffectsTest(ITestOutputHelper output)
             Problems(Sink + Loud + "struct Shown\n    Self is Utf8Format\n    public func format(self: ref/Self, writer: uniq/Utf8Writer) -> Result<(), BufferFull>\n" +
                 "        Console.writeLine(\"format\")\n        return .Ok(())\n" + Witness + body + "        return .Ok(())\n"));
 
-    // SPEC 8.11.3, 8.11.2, 3.1.1 (R8-S2d1, C-252): a generic's confined put that formats an abstract Wrapping<T> runs the witness table's
-    // WrappingFormat body at T, whose call of T's format has no known callee and Utf8Format bounds no effect, so its environment effect is
-    // unknown, a conflict at the conformance, the record a bare T gives (fail-before for the first three: Unsupported_Kd Self is Sink 1, a
-    // limit); without formatting, or at a concrete Wrapping<u8>, nothing; a printing formatter still reports.
+    // SPEC 8.11.3, 8.7.5, 4.6.1, 3.1.1 (PLAN G771): Position bounds format with confined and a proven PrimitiveInteger supplies Position
+    // (SPEC 8.7.4), so a generic's confined put may format its abstract T: through a formatting function's row or called directly, and
+    // as an abstract Wrapping<T>, whose WrappingFormat body runs T's format under the bounds guaranteed for T; without formatting, or at
+    // a concrete Wrapping<u8>, nothing either. A printing formatter beside it still reports (SPEC 8.11.2). The rows through write, an
+    // interpolation and toString compose format at the caller by SPEC 22.10.1's published effects; the direct call on T resolves through
+    // member lookup's Position clause (PLAN G776).
     [Theory]
-    [InlineData("        let w: Wrapping<T> = 7\n        return writer.write(w)\n", Failed)]
-    [InlineData("        let w: Wrapping<T> = 7\n        _ = \"\\(w)\"\n        return .Ok(())\n", Failed)]
-    [InlineData("        let w: Wrapping<T> = 7\n        _ = Text.toString(w)\n        return .Ok(())\n", Failed)]
-    [InlineData("        let v: T = 7\n        return writer.write(v)\n", Failed)]
-    [InlineData("        let v: T = 7\n        _ = \"\\(v)\"\n        return .Ok(())\n", Failed)]
-    [InlineData("        let v: T = 7\n        _ = Text.toString(v)\n        return .Ok(())\n", Failed)]
+    [InlineData("        let w: Wrapping<T> = 7\n        return writer.write(w)\n", "")]
+    [InlineData("        let w: Wrapping<T> = 7\n        _ = \"\\(w)\"\n        return .Ok(())\n", "")]
+    [InlineData("        let w: Wrapping<T> = 7\n        _ = Text.toString(w)\n        return .Ok(())\n", "")]
+    [InlineData("        let v: T = 7\n        return writer.write(v)\n", "")]
+    [InlineData("        let v: T = 7\n        _ = \"\\(v)\"\n        return .Ok(())\n", "")]
+    [InlineData("        let v: T = 7\n        _ = Text.toString(v)\n        return .Ok(())\n", "")]
+    [InlineData("        let v: T = 7\n        return v.format(writer@uniq)\n", "")]
     [InlineData("        let v: T = 7\n        let x = v + v\n        return .Ok(())\n", "")]
     [InlineData("        let w: Wrapping<u8> = 7\n        _ = Text.toString(w)\n        _ = \"\\(w)\"\n        return writer.write(w)\n", "")]
     [InlineData("        let w: Wrapping<T> = 7\n        _ = writer.write(w)\n        return writer.write(Loudly.init())\n", Failed)]
@@ -704,9 +749,58 @@ public sealed partial class MirEffectsTest(ITestOutputHelper output)
             Expected(expected),
             Problems(Sink + "struct Loudly\n    Self is Utf8Format\n    public init() => ()\n" +
                 "    public func format(self: ref/Self, writer: uniq/Utf8Writer) -> Result<(), BufferFull>\n        Console.writeLine(\"format\")\n" +
-                "        return .Ok(())\nstruct G<T>\n    T is PrimitiveInteger\n    Self is Sink\n" +
-                "    public func put(self: uniq/Self, value: i32) -> Result<(), BufferFull>\n        var bytes = [64 of 0@u8]\n" +
-                "        var buffer = Text.fixed(bytes@uniq)\n        var writer = Text.writer(buffer@uniq)\n" + body));
+                "        return .Ok(())\nstruct G<T>\n    T is PrimitiveInteger\n    Self is Sink\n" + Put + Writer + body));
+
+    // SPEC 8.11.3, 8.11.1, 4.6.1, 4.6.3 (PLAN G771): a requirement call of format on an abstract P takes the bound of the Contract its
+    // premise proves: confined under Position or PositionRange, and none under Utf8Format, which declares no bound (any formatter may
+    // bind P); each called directly and through a formatting function's row (write, an interpolation, toString), which composes format
+    // at the caller by SPEC 22.10.1's published effects. The bound covers format alone: a call of Plain's put, which bounds nothing,
+    // beside a bounded format keeps its unknown environment effect.
+    [Theory]
+    [InlineData("Position", "        return writer.write(self.p)\n", "")]
+    [InlineData("Position", "        _ = \"\\(self.p)\"\n        return .Ok(())\n", "")]
+    [InlineData("Position", "        _ = Text.toString(self.p)\n        return .Ok(())\n", "")]
+    [InlineData("Position", "        return self.p.format(writer@uniq)\n", "")]
+    [InlineData("PositionRange", "        return writer.write(self.p)\n", "")]
+    [InlineData("PositionRange", "        return self.p.format(writer@uniq)\n", "")]
+    [InlineData("Utf8Format", "        return writer.write(self.p)\n", Failed)]
+    [InlineData("Utf8Format", "        _ = \"\\(self.p)\"\n        return .Ok(())\n", Failed)]
+    [InlineData("Utf8Format", "        _ = Text.toString(self.p)\n        return .Ok(())\n", Failed)]
+    [InlineData("Utf8Format", "        return self.p.format(writer@uniq)\n", Failed)]
+    [InlineData("Position", "        _ = self.p.format(writer@uniq)\n        return self.inner.put(value)\n", Failed)]
+    public void AnAbstractPositionFormatsUnderItsContractsBound(string premise, string body, string expected)
+        => Assert.Equal(
+            Expected(expected),
+            Problems(Sink + "contract Plain\n    func put(self: uniq/Self, value: i32) -> Result<(), BufferFull>\n" +
+                $"struct H<P, U>\n    P is {premise}\n    U is Plain\n    Self is Sink\n    var p: P\n    var inner: U\n" + Put + Writer + body));
+
+    // SPEC 15.6.4, 8.11.3 (PLAN G771): a generic function's summary is computed once under its own premises, so its call at u8 from a
+    // confined put is valid where the premise bounds format (PrimitiveInteger, through Position; the member call on T resolves through
+    // member lookup's Position clause, PLAN G776) and a conflict where it is Utf8Format.
+    [Theory]
+    [InlineData("PrimitiveInteger", "")]
+    [InlineData("Utf8Format", Failed)]
+    public void AGenericFormatterIsJudgedUnderItsOwnPremise(string premise, string expected)
+        => Assert.Equal(
+            Expected(expected),
+            Problems(Sink + Loud + "group Show\n    public func show<T>(value: ref/T, writer: uniq/Utf8Writer) -> Result<(), BufferFull>\n" +
+                $"        T is {premise}\n        return value.format(writer)\n" + Witness + Writer +
+                "        let n = 7@u8\n        return Show.show(n@ref, writer@uniq)\n"));
+
+    // SPEC 15.6, 8.11.3 (PLAN G771): the bound makes the format call confined, not its borrow valid: borrowing the writer `uniq` while a
+    // shared Loan of it lives stays a Loan conflict at the call, the program's only problem (the member call on T resolves through
+    // member lookup's Position clause, PLAN G776).
+    [Fact]
+    public void AConfinedFormatCallKeepsItsLoanConflict()
+    {
+        var c = MinimalEmissionTest.Analyze(
+            Sink + "group Look\n    public func at(writer: ref/Utf8Writer) => ()\nstruct G<T>\n    T is PrimitiveInteger\n    Self is Sink\n" + Put + Writer +
+            "        let v: T = 7\n        let held = writer@ref\n        let result = v.format(writer@uniq)\n        Look.at(held)\n        return result\n" +
+            "public func main() => ()\n");
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
+        Assert.Empty(c.Binding.Issues);
+        Assert.Equal("CallActivationConflict_Kd v.format(writer@uniq)", MinimalEmissionTest.Problems(c));
+    }
 
     // SPEC 8.11.3 (R8-S2d1, C-252): a generic with no effect bound that formats an abstract Wrapping<T> keeps no record.
     [Fact]

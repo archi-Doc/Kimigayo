@@ -19,6 +19,8 @@ public class Utf8FormatTest
     [InlineData("I128Min", "-170141183460469231731687303715884105728@i128", "-170141183460469231731687303715884105728")]
     [InlineData("U128Max", "340282366920938463463374607431768211455@u128", "340282366920938463463374607431768211455")]
     [InlineData("Zero", "0@isize", "0")]
+    [InlineData("IsizeMin", "-9223372036854775808@isize", "-9223372036854775808")]
+    [InlineData("UsizeMax", "18446744073709551615@usize", "18446744073709551615")]
     [InlineData("True", "true", "true")]
     [InlineData("False", "false", "false")]
     [InlineData("Unit", "()", "()")]
@@ -34,20 +36,11 @@ public class Utf8FormatTest
 
     [Trait("Purpose", "Allocation")]
     [Theory]
-    [InlineData("Number", "(123).format(writer@uniq)", "123")]
-    [InlineData("String", "\"abc\".format(writer@uniq)", "abc")]
-    [InlineData("Unit", "().format(writer@uniq)", "()")]
-    [InlineData("View", "Text.utf8(\"a君\").format(writer@uniq)", "a君")]
-    [InlineData("Wrapping", "((-5@i32)@Wrapping<i32>).format(writer@uniq)", "-5")]
-    public void DirectFormatCallsUseTheSameEncoder(string name, string expression, string expected)
-        => NativeAllocationAudit.WriteFixture("Utf8FormatDirect" + name, Program("try " + expression), 0, 0, 0, expected + "\n");
-
-    [Trait("Purpose", "Allocation")]
-    [Theory]
     [InlineData("Integer", "123", "123")]
     [InlineData("String", "\"abc\"", "abc")]
     [InlineData("View", "Text.utf8(\"君\")", "君")]
     [InlineData("Unit", "()", "()")]
+    [InlineData("Wrapping", "(-5@i32)@Wrapping<i32>", "-5")]
     public void GenericRequirementUsesTheBuiltinWitness(string name, string value, string expected)
     {
         const string Prefix = """
@@ -89,25 +82,29 @@ public class Utf8FormatTest
 
     // SPEC 22.10.1 (design review 2, R2-B2; R8-S2d1): a direct `format` has no failure test of its own, only the adapter `write` has, so
     // on a failed writer an empty string's and an empty view's `format` reserve nothing and return Ok, while a non-empty one's
-    // reservation returns the recorded failure (a pin: the BuiltinFormat routine gave the same before R8-S2d1).
+    // reservation returns the recorded failure (a pin: the BuiltinFormat routine gave the same before R8-S2d1). A string's and the view's
+    // `format` are called through `T is Utf8Format` (SPEC 22.10.2: a built-in conformance adds no member).
     [Trait("Purpose", "Allocation")]
     [Fact]
     public void ADirectFormatOfEmptyOutputOnAFailedWriterReturnsOk()
     {
         const string Source = """
+            func put<T>(value: ref/T, writer: uniq/Utf8Writer) -> Result<(), BufferFull>
+                T is Utf8Format
+                return value.format(writer)
             var bytes = [1 of 0@u8]
             var buffer = Text.fixed(bytes@uniq)
             var writer = Text.writer(buffer@uniq)
             match (writer@uniq).write("ab")@move
                 .Ok(_) => $abort("fits")
                 .Err(_) => ()
-            match "".format(writer@uniq)@move
+            match put("", writer@uniq)@move
                 .Ok(_) => ()
                 .Err(_) => $abort("empty string")
-            match Text.utf8("").format(writer@uniq)@move
+            match put(Text.utf8(""), writer@uniq)@move
                 .Ok(_) => ()
                 .Err(_) => $abort("empty view")
-            match "x".format(writer@uniq)@move
+            match put("x", writer@uniq)@move
                 .Ok(_) => $abort("non-empty")
                 .Err(_) => ()
             match writer.status()@move

@@ -112,10 +112,11 @@ public class PairCaseTypeTest
     [InlineData("s is value or valueborrow\n    T is Copy", SemanticsMask.None, SemanticsMask.Uniq)]
     [InlineData("s is owner or rc\n    T is Copy", SemanticsMask.Rc, SemanticsMask.None)]
     [InlineData("s is objref or objuniq", SemanticsMask.None, SemanticsMask.ObjUniq)]
-    [InlineData("s is objref or objuniq", SemanticsMask.None, SemanticsMask.ObjUniq, true)]
+    [InlineData("s is uniq or objuniq", SemanticsMask.None, SemanticsMask.Uniq | SemanticsMask.ObjUniq, true)]
     public void BareAcquisitionPlansEachAdmittedCase(string premises, SemanticsMask failing, SemanticsMask reborrow, bool family = false)
     {
-        // A family row plans the body local `y = p@s`, an adaptation family (SPEC 13.5.5; PLAN G755): each case is its complete child.
+        // A family row plans the body local `y = p@s`, an adaptation family (SPEC 13.5.5; PLAN G755): each case is its complete child;
+        // its uniq case borrows the handle's slot, so no application has its cases (PLAN G759).
         var c = Parse(family
             ? Node + $"func f<s/T>(value: s/T, o: obj/Node) -> ()\n    {premises}\n    var p = o@move\n    let y = p@s\n    ()"
             : $"func f<s/T>(value: s/T) -> ()\n    {premises}\n    ()");
@@ -156,6 +157,18 @@ public class PairCaseTypeTest
         Assert.Equal(3, binders.Count);
         Assert.Equal("H", binders[0].Target.Name);
         Assert.Equal("T", binders[1].Target.Name);
+    }
+
+    // SPEC 8.3.4, 8.15 (PLAN G750, C-285): a binder that admits no case makes the product 0, read before any division, even after the
+    // product saturated; the product of the others saturates as before.
+    [Fact]
+    public void CaseProductIsZeroWhenABinderAdmitsNoCase()
+    {
+        var none = new PairBinder(null!, SemanticsMask.None);
+        var all = none with { Admitted = SemanticsMask.All };
+        Assert.Equal(0, PairBinder.CaseProduct([all, none, all]));
+        Assert.Equal(0, PairBinder.CaseProduct([.. Enumerable.Repeat(all, 30), none]));
+        Assert.Equal(long.MaxValue, PairBinder.CaseProduct([.. Enumerable.Repeat(all, 30)]));
     }
 
     // SPEC 8.1.1, 15.6.1: in the admitted borrow cases a pair layer is a borrow of its target within its outer-Origin slot, so the

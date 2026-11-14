@@ -82,7 +82,8 @@ public class RequirementTypeParsingTest
         Assert.True(c.Binding.Result.IsComplete == valid, MinimalEmissionTest.Describe(c));
         if (!valid)
         {
-            Assert.Contains(c.Binding.Issues, x => x.Code == DiagnosticCode.NoApplicableOverload_Kd);
+            // SPEC 10.2.1 (PLAN G680): the Literals bind T only by their defaults, after selection; the refuted clause is the call's record.
+            Assert.Contains(c.Binding.Issues, x => x.Code == DiagnosticCode.UnsatisfiedConstraint_Kd);
             Assert.False(c.Generate(TextWriter.Null));
         }
     }
@@ -139,9 +140,9 @@ public class RequirementTypeParsingTest
 
     // SPEC F.5: one decision covers the whole qualifier, so the same Type parses in every requirement and Type position (a
     // specification, a `when` condition, a local, a parameter, a result, a Field, after a Semantics prefix, in a Type argument and an
-    // alias target), and a form outside F does not (G250 (3)'s note). A Contract-qualified projection keeps any grouped base (SPEC
-    // 8.5.2: the base may be a Core). An OriginApplication follows the projection in each position (NamedType := NamedReference
-    // OriginApplication?; PLAN G459).
+    // alias target), and a form outside F does not (G250 (3)'s note). Only a PathQualifier takes a PathSuffix: a BoundContainerQualifier,
+    // a Unit or Tuple Type or a grouped Function Type, so `(i32).(C).Item` and `((i32, u8)).(C).Item` end the Type at the "." (PLAN
+    // G489 D1). An OriginApplication follows the projection in each position (NamedType := NamedReference OriginApplication?; PLAN G459).
     [Theory]
     [InlineData("struct W {w}\n    associate Item is TYPE\n")]
     [InlineData("struct W<T>\n    Self is C when T is TYPE\n")]
@@ -155,12 +156,14 @@ public class RequirementTypeParsingTest
     public void QualifiersParseInEveryTypePosition(string format)
     {
         foreach (var type in (string[])["(S{k}).Item", "(S during y).Item", "(S during y).(C).Item", "(S during (y and z)).Item", "(i32, u8).(C).Item",
-            "(S{k}).Item(y)", "(S during y).Item(y)", "(S during y).(C).Item(y)", "(i32, u8).(C).Item(y)"])
+            "(S{k}).Item(y)", "(S during y).Item(y)", "(S during y).(C).Item(y)", "(i32, u8).(C).Item(y)",
+            "().(C).Item", "(i32, u8).Item", "().Item"])
         {
             Assert.Contains(type, ParseTestHelper.Unparse(ParseTestHelper.ParseSuccess(format.Replace("TYPE", type, StringComparison.Ordinal))));
         }
 
-        foreach (var type in (string[])["(S{k}?).Item", "(S{k} during y).Item", "(S?).Item", "(ref/S during y).Item", "(S).Item", "(S during y).Item()"])
+        foreach (var type in (string[])["(S{k}?).Item", "(S{k} during y).Item", "(S?).Item", "(ref/S during y).Item", "(S).Item", "(S during y).Item()",
+            "(S).(C).Item", "(i32).(C).Item", "(S?).(C).Item", "(ref/S).(C).Item", "((i32, u8)).(C).Item", "([2 of i32]).(C).Item", "(S{k}?).(C).Item"])
         {
             Assert.True(ParseTestHelper.Parse(format.Replace("TYPE", type, StringComparison.Ordinal)).Compilation.Diagnostics.HasErrors, type);
         }
@@ -260,7 +263,7 @@ public class RequirementTypeParsingTest
                 kinds.Add(node.GetType());
             }
 
-            foreach (var child in node.ChildNodes)
+            foreach (var child in node.Children())
             {
                 Visit(child);
             }
@@ -278,7 +281,7 @@ public class RequirementTypeParsingTest
 
     private static void AssertParents(Koto node)
     {
-        foreach (var child in node.ChildNodes)
+        foreach (var child in node.Children())
         {
             Assert.Same(node, child.Parent);
             AssertParents(child);

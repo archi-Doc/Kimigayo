@@ -1348,7 +1348,10 @@ public sealed partial class TyCtxtTest
     // DECISIONS R5-M61 (F package 4.5): every requirement call in a generic body, in the instance a closed call of that body makes, resolves
     // under Witness to a Body, Builtin or Storage target, over every such call of the generic library and the milestones and over
     // WitnessSource's kinds; a bound Contract reference is the substitution's declaring Type. The corpus's string, view and wrapping
-    // integer format calls resolve to bodies since R8-S2d1 (114 of them: Builtin 173 -> 59, Body 38 -> 152).
+    // integer format calls resolve to bodies since R8-S2d1 (114 of them: Builtin 173 -> 59, Body 38 -> 152), and the integers' up to 64
+    // bits since R8-S2b1 (56 more: Builtin 59 -> 3, Body 152 -> 208), and u128's since R8-S2b2 (Builtin 3 -> 2, Body 208 -> 209). The 3
+    // left are a tuple's Comparable (Milestone25), f64's Equatable in Milestone25's contractEqual (G776-a: its specialization no longer
+    // calls `equals` as a member, Builtin 2 -> 3) and Wrapping<u8>'s Equatable (Milestone31).
     [Fact]
     public void WitnessResolvesEveryRequirementCallOfTheCorpus()
     {
@@ -1366,7 +1369,7 @@ public sealed partial class TyCtxtTest
         WitnessProblems(direct, direct.Kotonoha, "direct", kinds, problems);
         var counts = $"corpus {Counts(corpus)}; direct {Counts(kinds)}";
         Assert.True(
-            problems.Count == 0 && counts == "corpus Body 152, Builtin 59, Storage 1, bound 3; direct Body 11, Builtin 2, Storage 3, bound 3",
+            problems.Count == 0 && counts == "corpus Body 209, Builtin 3, Storage 1, bound 3; direct Body 11, Builtin 2, Storage 3, bound 3",
             $"{counts}; {problems.Count} differ:\n{string.Join('\n', problems.Take(40))}");
 
         static string Counts(SortedDictionary<string, int> kinds) => string.Join(", ", kinds.Select(static x => $"{x.Key} {x.Value}"));
@@ -1556,7 +1559,8 @@ public sealed partial class TyCtxtTest
 
     // SPEC 8.11.3, 8.13.3, 22.1 (PLAN G589, G663): a requirement on a Type of the library witness table runs the group's function at the
     // Self's arguments, the instance A4 is given (Witnesses), and that closed instance selects the specialization its key names, the
-    // original elsewhere: IntegerPosition's tryResolve at i32 and isize its specializations, at u8 its original (fail-before: no target).
+    // original elsewhere: IntegerPosition's tryResolve at i32 and isize its specializations, at u8 its original (fail-before: no target);
+    // each one's Original is the target, whose call contract and ABI it keeps (R8-S2b2; fail-before: no Original).
     [Theory]
     [InlineData("i32", true)]
     [InlineData("isize", true)]
@@ -1574,6 +1578,7 @@ public sealed partial class TyCtxtTest
         var selected = c.Types.Implementation(target, instance, 0)!;
         Assert.Equal(specialized, selected.Declaration is FunctionKoto { IsSpecialization: true });
         Assert.Equal(specialized, !ReferenceEquals(selected, target));
+        Assert.Same(target, c.Types.Original(selected)); // SPEC 8.13.2: the call contract and ABI a specialization's body keeps (R8-S2b2).
         Assert.Null(c.Types.Implementation(target, instance, 1));
     }
 

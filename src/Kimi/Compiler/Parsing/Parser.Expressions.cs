@@ -43,6 +43,17 @@ public static partial class Parser
         var left = IsLabelPrefix(ref reader)
             ? ParseLabeledExpression(ref reader)
             : ParsePrefixExpression(ref reader, minBindingPower);
+        return ContinueExpression(ref reader, left, minBindingPower);
+    }
+
+    /// <summary>Continues an expression from its parsed left operand: its postfix and infix operators down to the binding power, the one
+    /// loop of <see cref="ParseExpression(ref TokenReader, int)"/>.</summary>
+    /// <param name="reader">The token reader after the left operand.</param>
+    /// <param name="left">The parsed left operand.</param>
+    /// <param name="minBindingPower">The minimum accepted binding power.</param>
+    /// <returns>The parsed expression.</returns>
+    private static Koto ContinueExpression(ref TokenReader reader, Koto left, int minBindingPower)
+    {
         while (true)
         {
             var tokenKind = reader.CurrentTokenKind;
@@ -189,8 +200,7 @@ public static partial class Parser
         // Directive conditions reject every is test separately; do not report it twice as a chain.
         var runtimeIs = !reader.IsParsingCompileTimeCondition;
         return (tokenKind != TokenKind.Is || runtimeIs) &&
-            (left is BinaryKoto { Akind: KotoKind.LessThan or KotoKind.LessThanEquals or KotoKind.GreaterThan or KotoKind.GreaterThanEquals or KotoKind.EqualsEquals or KotoKind.ExclamationEquals } ||
-            (runtimeIs && left is IsKoto));
+            ((left is BinaryKoto comparison && IsComparisonKind[(int)comparison.Akind]) || (runtimeIs && left is IsKoto));
     }
 
     /// <summary>

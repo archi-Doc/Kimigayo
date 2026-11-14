@@ -11,6 +11,7 @@ public contract PrimitiveInteger
 public contract Position: Equatable, Utf8Format
     Self is Copy
     Self is Owned
+    effect Utf8Format.format confined
 
     /// Resolves this position against `length`, or returns `None` when `length < 0` or the position lies outside
     /// `[0, length]`.
@@ -22,6 +23,7 @@ public contract Position: Equatable, Utf8Format
 public contract PositionRange: Equatable, Utf8Format
     Self is Copy
     Self is Owned
+    effect Utf8Format.format confined
 
     /// Resolves this range against `length`, or returns `None` when `length < 0`, a boundary does not resolve or the
     /// resolved boundaries are reversed.

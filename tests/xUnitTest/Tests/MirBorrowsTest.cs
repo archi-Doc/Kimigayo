@@ -2642,6 +2642,9 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
     // write every layer (A3 E16), each accumulating every call's Loan, which the next call's walk scans: dense too (R4-M73). N addressed
     // holders read through their live pointers across N writes (each write scans the live holders, the addressed ones among them) and a
     // raw chain of depth N (each pointer addressing the one before, read through at the end) stay within the dense bound (R4-M116, B §7).
+    // The gather's Limit read keys (PLAN G775) keep it there: N holders whose addresses a rested store put in E, each read at Limit through
+    // E and decidedly by its own later borrow, and N vias whose own states carry Φ_U over one Shared set beside a decided one (cc), each
+    // Shared set read in full by two vias per tier (MirBorrows.States' Scanned).
     [Theory]
     [InlineData("    var x = 1\n    let r = x@ref\n", "    var x{0} = {0}\n    let r{0} = x{0}@ref\n    inspect(r{0})\n", "", true)]
     [InlineData("    var x = 1\n    let r = x@ref\n", "    var x{0} = {0}\n    let r{0} = x{0}@ref\n", "    inspect(r{0})\n", true)]
@@ -2664,6 +2667,17 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
     [InlineData(
         "    var y = 1\n    var z = 0\n", "    var w{0}: ref/i32 = y@ref\n    let p{0} = w{0}@raw\n    z = {0}\n", "    unsafe => inspect(*p{0})\n", true)]
     [InlineData("    var y = 1\n    var w: ref/i32 = y@ref\n    let p0 = w@raw\n", "    let p{1} = p{0}@raw\n", "    _ = p{1} == null\n", true)]
+    [InlineData(
+        "    var kk: u8 = 1\n    let r = kk@uniq\n    var spare: raw/u8 = r@follow@raw\n    var w: raw/u8 = null\n    var h: (u64, raw/(raw/u8)) = (0, w@raw)\n" +
+        "    let tp = h@raw@raw/u16\n    unsafe => *tp = 7\n    let hp = h.1\n",
+        "    var o{0}: raw/u8 = spare\n    unsafe => *hp = o{0}@raw@raw/u8\n",
+        "    inspect(o{0}@ref)\n",
+        true)]
+    [InlineData(
+        "    var kk: u8 = 1\n    let r = kk@uniq\n    var spare: raw/u8 = r@follow@raw\n    var cc: raw/u8 = null\n    var p: raw/(raw/u8) = cc@raw\n",
+        "    var w{0}: raw/u8 = null\n    var g{0}: (u64, raw/(raw/u8)) = (0, w{0}@raw)\n    let t{0} = g{0}@raw@raw/u16\n    unsafe => *t{0} = 7\n    let gp{0} = g{0}.1\n    var a{0}: raw/u8 = null\n    unsafe => a{0} = *gp{0}\n    if flag\n        p = a{0}@raw\n    unsafe => *p = spare\n",
+        "    inspect(a{0}@ref)\n    inspect(cc@ref)\n",
+        true)]
     public void TheWorkScalesWithTheProgram(string head, string each, string after, bool dense, string operand = "")
     {
         var (work, bytes) = this.Scaled(head, each, after, operand);
@@ -2984,6 +2998,10 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
         }
 
         internal MirBorrows Borrows { get; }
+
+        internal MirOrigins Origins => this.origins;
+
+        internal bool ViewDependent => this.moves.ViewDependent; // False: MirBorrows' one run of the body covers every view.
 
         internal void Run(MirProgram program)
         {

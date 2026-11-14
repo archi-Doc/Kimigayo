@@ -8,7 +8,6 @@ public sealed partial class Binding
 {
     [Transitional("R7", Reason = "The legacy comparison composition's leaves (A-12, else R7).")]
     private readonly Dictionary<(BindingSymbol Site, BoundType Type, KimiDeclarationId Contract, string? Name), (ulong Version, CallPlan Call)> requirementCalls = new();
-    private BindingSymbol? builtinFormat;
     private BindingSymbol? builtinEquals;
     private BindingSymbol? builtinCompare;
 
@@ -122,12 +121,7 @@ public sealed partial class Binding
             return Prepared(contract.LibraryDeclaration == KimiDeclarationId.Equatable ? this.builtinEquals : this.builtinCompare);
         }
 
-        // The witness table (WitnessGroup) is the one statement of which built-in Types format through a library body (bool, char and Unit,
-        // R8-S2a; f32 and f64, R8-S2c; string and Wrapping<T>, R8-S2d1; Utf8Slice declares its own). The integers still take builtinFormat
-        // until their stage moves them: up to 64 bits (S2b1), i128 and u128 (S2b2); S2d2 removes this narrowing with the shim.
-        return self is not null && FormattingTypes.IsBuiltin(self) && WitnessGroup(self, KimiDeclarationId.Utf8Format) is null &&
-            selected.Scope.Owner.BoundSymbol?.LibraryDeclaration == KimiDeclarationId.Utf8Format
-            ? Prepared(this.builtinFormat) : selected;
+        return selected;
 
         // A built-in target exists from the first pass's PrepareBuiltinTargets on; no requirement is resolved before it.
         static BindingSymbol Prepared(BindingSymbol? target)
@@ -140,7 +134,6 @@ public sealed partial class Binding
     {
         Prepare(ref this.builtinEquals, KimiDeclarationId.Equatable, CompilerFunctionKind.BuiltinEquals);
         Prepare(ref this.builtinCompare, KimiDeclarationId.Comparable, CompilerFunctionKind.BuiltinCompare);
-        Prepare(ref this.builtinFormat, KimiDeclarationId.Utf8Format, CompilerFunctionKind.BuiltinFormat);
         for (var id = KimiDeclarationId.Addable; id <= KimiDeclarationId.Negatable; id++)
         {
             if (!ArithmeticContracts.IsLeft(id))

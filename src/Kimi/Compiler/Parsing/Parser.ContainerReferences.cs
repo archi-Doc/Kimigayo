@@ -21,10 +21,12 @@ public static partial class Parser
         return QualifierDot(ref reader, 0, ref borrowOrigin) > 0;
     }
 
-    // SPEC F.5 and 8.5.2: whether the "." after a grouped Type continues it: any PathSuffix after a BoundContainerQualifier, and only a
-    // Contract-qualified projection .(C).Name after another group.
-    private static bool ContinuesGroupedType(ref TokenReader reader, bool qualifier)
-        => reader.CurrentTokenKind == TokenKind.Dot && (qualifier || reader.PeekKind() == TokenKind.OpenParenthesis);
+    // SPEC F.5: whether the "." after a grouped Type continues it, ContainerPath := PathQualifier PathSuffix+: the group is a
+    // PathQualifier, a BoundContainerQualifier (qualifier, which the scan decided before the group was read), a Unit or Tuple Type, or a
+    // grouped Function Type, and either PathSuffix follows. No other group is a PathQualifier: `(S).Item` and `(S?).(C).Item` end the Type
+    // at the ".", which the enclosing construct reports.
+    private static bool ContinuesGroupedType(ref TokenReader reader, Koto group, bool qualifier)
+        => reader.CurrentTokenKind == TokenKind.Dot && (qualifier || group is TupleTypeKoto or ParenthesizedTypeKoto { Type: FunctionTypeKoto });
 
     // The offset of the PathSuffix "." after the qualifier whose "(" is at the offset, or -1.
     private static int QualifierDot(ref TokenReader reader, int offset, ref bool borrowOrigin)

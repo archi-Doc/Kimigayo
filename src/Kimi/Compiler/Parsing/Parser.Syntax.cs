@@ -253,7 +253,7 @@ public static partial class Parser
                 continue;
             }
 
-            if (!IsTypeConstraintStart(ref reader, declarationContext: true))
+            if (!IsTypeConstraintStart(ref reader))
             {
                 reader.Expect(SyntaxForm.Constraint);
                 reader.SkipUntil(TokenKind.Separator, TokenKind.EndBlock);
@@ -357,13 +357,29 @@ public static partial class Parser
     // Types and fill literals use the same surface grammar (SPEC 4.2); Binding checks constant eligibility and value.
     private static void CheckArrayLengthSyntax(ref TokenReader reader, Koto length)
     {
-        if (length is not (NumberLiteralKoto { IsInteger: true } or IdentifierNameKoto or MemberAccessKoto or
-            SyntaxFormKoto { Akind: KotoKind.RootName } or ParenthesizedKoto or ErrorKoto) &&
-            length.CodeContext.RecoveryCause(length) is null)
+        if (!IsArrayLength(length) && length.CodeContext.RecoveryCause(length) is null)
         {
             RecoverItem(ref reader, length, length.Unexpected(SyntaxForm.CompoundArrayLength));
         }
     }
+
+    // ArrayLength := "_" | IntegerLiteral | ConstantName | "(" LengthExpression ")" (F.5). "_" is read before the length, and an Error is a
+    // length that failed where it was read.
+    private static bool IsArrayLength(Koto length)
+        => length is NumberLiteralKoto { IsInteger: true } or ParenthesizedKoto or ErrorKoto || IsConstantName(length);
+
+    // ConstantName := "::"? Name ("." Name)* (F.5).
+    private static bool IsConstantName(Koto length)
+        => length is IdentifierNameKoto or MemberAccessKoto or SyntaxFormKoto { Akind: KotoKind.RootName };
+
+    // LengthExpression's operators with their binding powers (F.5 LengthExpression, LengthProduct); 0 for any other token.
+    private static int LengthOperatorPower(TokenKind kind)
+        => kind switch
+        {
+            TokenKind.Plus or TokenKind.Minus => 10,
+            TokenKind.Asterisk or TokenKind.Slash or TokenKind.Percent => 20,
+            _ => 0,
+        };
 
     private static Koto ParseArrayLength(ref TokenReader reader, int precedence = 0, bool expression = false)
     {
@@ -413,8 +429,7 @@ public static partial class Parser
 
         while (expression)
         {
-            var kind = reader.CurrentTokenKind;
-            var power = kind is TokenKind.Plus or TokenKind.Minus ? 10 : kind is TokenKind.Asterisk or TokenKind.Slash or TokenKind.Percent ? 20 : 0;
+            var power = LengthOperatorPower(reader.CurrentTokenKind);
             if (power == 0 || power < precedence)
             {
                 break;
@@ -427,6 +442,8 @@ public static partial class Parser
         return left;
     }
 
+    // GenericArgument := Type | ArrayLength (F.5): whether a grouped argument is "(" LengthExpression ")", by the first token in the group
+    // that decides it. A group that closes without one is read as a Type; Binding classifies it by the declared slot (SPEC 4.4).
     private static bool IsLengthExpression(ref TokenReader reader)
     {
         if (reader.CurrentTokenKind != TokenKind.OpenParenthesis)
@@ -446,16 +463,27 @@ public static partial class Parser
             {
                 return false;
             }
-            else if (kind is TokenKind.NumericLiteral or TokenKind.Plus or TokenKind.Minus or TokenKind.Asterisk or TokenKind.Percent ||
-                (kind == TokenKind.Slash && i >= 2 && reader.PeekKind(i - 2) == TokenKind.Dot))
+            else if (kind == TokenKind.Slash)
+            {
+                // A slash after a Name is a Semantics separator (ref/T); only one after a qualified ConstantName divides.
+                if (i >= 2 && reader.PeekKind(i - 2) == TokenKind.Dot)
+                {
+                    return true;
+                }
+            }
+            else if (kind == TokenKind.NumericLiteral || LengthOperatorPower(kind) != 0)
             {
                 return true;
             }
-            else if (kind is TokenKind.OpenBracket or TokenKind.Comma or TokenKind.MinusGreaterThan or TokenKind.EndBlock or TokenKind.Invalid)
+            else if (kind is TokenKind.OpenBracket or TokenKind.Comma or TokenKind.MinusGreaterThan)
             {
-                // A bracket starts a fixed-array Type, not a length expression. Its numeric
-                // length must not classify an enclosing grouped Type argument as a value.
+                // A Type's own tokens. A bracket starts a fixed-array Type, not a length expression: its numeric length must not
+                // classify an enclosing grouped Type argument as a value.
                 return false;
+            }
+            else if (kind is TokenKind.EndBlock or TokenKind.Invalid)
+            {
+                return false; // The group does not close.
             }
         }
 
@@ -469,68 +497,85 @@ public static partial class Parser
         return new SyntaxFormKoto(ref reader, SourceSpan.FromBounds(start, name.Span.End), KotoKind.InferredCase, ".", [name]);
     }
 
+    // Pattern := "_" | LiteralPattern | BindingPattern | CasePattern | UnitPattern | TuplePattern | GroupedPattern (F.10.3): the first token
+    // selects the alternative. A token that starts none is read as a CasePattern, which reports the Name it expects there.
     private static Koto ParsePattern(ref TokenReader reader)
+        => reader.CurrentTokenKind switch
+        {
+            TokenKind.Underscore => new IdentifierNameKoto(ref reader, reader.Read(), "_"),
+            TokenKind.Let or TokenKind.Var => ParseBindingPattern(ref reader),
+            TokenKind.OpenParenthesis => ParseGroupedPattern(ref reader),
+            var kind when kind.IsLiteralToken() || kind is TokenKind.True or TokenKind.False or TokenKind.Minus => ParseLiteralPattern(ref reader),
+            _ => ParseCasePattern(ref reader),
+        };
+
+    // BindingPattern := ("let" | "var") Name (F.10.3).
+    private static Koto ParseBindingPattern(ref TokenReader reader)
+    {
+        var token = reader.Read();
+        var name = ParseName(ref reader);
+        if (name is ErrorKoto)
+        {
+            // '_' is not a Name (SPEC 2.5): 'let _' and 'var _' are reported as a missing Name, and the arm's Pattern rests on it.
+            return name;
+        }
+
+        return new SyntaxFormKoto(ref reader, SourceSpan.FromBounds(token.Span.Start, name.Span.End), KotoKind.BindingPattern, token.Kind.ToText(), [name]);
+    }
+
+    // UnitPattern := "(" ")", GroupedPattern := "(" Pattern ")" and TuplePattern := "(" Pattern "," TrailingList<Pattern>? ")" (F.10.3): the
+    // Patterns that start with "(", told apart by the number of Patterns read and by a "," after one.
+    private static Koto ParseGroupedPattern(ref TokenReader reader)
+    {
+        var token = reader.Read();
+        var items = default(TemporaryKotoList);
+        var comma = false;
+        while (reader.CanRead && reader.CurrentTokenKind != TokenKind.CloseParenthesis)
+        {
+            items.Add(ParsePattern(ref reader));
+            if (!reader.TryConsume(TokenKind.Comma))
+            {
+                break;
+            }
+
+            comma = true;
+        }
+
+        reader.ExpectCloser(TokenKind.CloseParenthesis, out var close);
+        var children = items.ToArray();
+        var end = Math.Max(token.Span.End, Math.Max(close.End, children.Length == 0 ? 0 : children[^1].Span.End));
+        var span = SourceSpan.FromBounds(token.Span.Start, end);
+        if (children.Length == 0)
+        {
+            return new UnitLiteralKoto(ref reader, span);
+        }
+
+        return children.Length == 1 && !comma
+            ? new ParenthesizedKoto(ref reader, span, children[0])
+            : new SyntaxFormKoto(ref reader, span, KotoKind.TuplePattern, "(", children, suffix: children.Length == 1 ? ",)" : ")");
+    }
+
+    // LiteralPattern := "true" | "false" | "-"? IntegerLiteral | CharLiteral | NonInterpolatedString (F.10.3). A number that is no
+    // IntegerLiteral, and a "-" before anything else, is read to its end and reported.
+    private static Koto ParseLiteralPattern(ref TokenReader reader)
     {
         var token = reader.CurrentToken;
-        if (token.Kind is TokenKind.Let or TokenKind.Var)
+        var negative = reader.TryConsume(TokenKind.Minus);
+        var literal = ParsePrimaryExpression(ref reader);
+        if ((negative && literal is not NumberLiteralKoto { IsInteger: true }) || literal is NumberLiteralKoto { IsInteger: false })
         {
-            reader.Advance();
-            var name = ParseName(ref reader);
-            if (name is ErrorKoto)
-            {
-                // '_' is not a Name (SPEC 2.5): 'let _' and 'var _' are reported as a missing Name, and the arm's Pattern rests on it.
-                return name;
-            }
-
-            return new SyntaxFormKoto(ref reader, SourceSpan.FromBounds(token.Span.Start, name.Span.End), KotoKind.BindingPattern, token.Kind.ToText(), [name]);
+            // The value matches nothing; the arm's Pattern rests on the Error.
+            var span = SourceSpan.FromBounds(token.Span.Start, literal.Span.End);
+            return new ErrorKoto(ref reader, span) { Cause = reader.Expect(SyntaxForm.PatternLiteral, token) };
         }
 
-        if (reader.TryConsume(TokenKind.OpenParenthesis))
-        {
-            var items = default(TemporaryKotoList);
-            var comma = false;
-            while (reader.CanRead && reader.CurrentTokenKind != TokenKind.CloseParenthesis)
-            {
-                items.Add(ParsePattern(ref reader));
-                if (!reader.TryConsume(TokenKind.Comma))
-                {
-                    break;
-                }
+        return negative ? KotoHelper.NewUnaryKoto(ref reader, token, literal) : literal;
+    }
 
-                comma = true;
-            }
-
-            reader.ExpectCloser(TokenKind.CloseParenthesis, out var close);
-            var children = items.ToArray();
-            var span = SourceSpan.FromBounds(token.Span.Start, Math.Max(token.Span.End, Math.Max(close.End, children.Length == 0 ? 0 : children[^1].Span.End)));
-            if (children.Length == 0)
-            {
-                return new UnitLiteralKoto(ref reader, span);
-            }
-
-            return children.Length == 1 && !comma
-                ? new ParenthesizedKoto(ref reader, span, children[0])
-                : new SyntaxFormKoto(ref reader, span, KotoKind.TuplePattern, "(", children, suffix: children.Length == 1 ? ",)" : ")");
-        }
-
-        if (token.Kind is TokenKind.True or TokenKind.False or TokenKind.CharLiteral or TokenKind.StringLiteral or TokenKind.NumericLiteral or TokenKind.Minus)
-        {
-            var negative = reader.TryConsume(TokenKind.Minus);
-            var literal = ParsePrimaryExpression(ref reader);
-            if ((negative && literal is not NumberLiteralKoto { IsInteger: true }) || literal is NumberLiteralKoto { IsInteger: false })
-            {
-                // The value matches nothing; the arm's Pattern rests on the Error.
-                return new ErrorKoto(ref reader, SourceSpan.FromBounds(token.Span.Start, literal.Span.End)) { Cause = reader.Expect(SyntaxForm.PatternLiteral, token) };
-            }
-
-            return negative ? KotoHelper.NewUnaryKoto(ref reader, token, literal) : literal;
-        }
-
-        if (reader.CurrentTokenKind == TokenKind.Underscore)
-        {
-            return new IdentifierNameKoto(ref reader, reader.Read(), "_");
-        }
-
+    // CasePattern := CaseReference ("(" TrailingList<Pattern> ")")?, CaseReference := PlainContainerPath "." Name | "." Name (F.10.3).
+    private static Koto ParseCasePattern(ref TokenReader reader)
+    {
+        var token = reader.CurrentToken;
         Koto reference;
         DiagnosticKey? cause = null; // A malformed case Pattern is read to its end and then rests on the Error.
         if (token.Kind == TokenKind.Dot)
@@ -588,7 +633,8 @@ public static partial class Parser
         }
 
         reader.ExpectCloser(TokenKind.CloseParenthesis, out var end);
-        var payload = new SyntaxFormKoto(ref reader, SourceSpan.FromBounds(token.Span.Start, Math.Max(token.Span.End, end.End)), KotoKind.TuplePattern, "(", patterns.ToArray(), suffix: ")");
+        var span = SourceSpan.FromBounds(token.Span.Start, Math.Max(token.Span.End, end.End));
+        var payload = new SyntaxFormKoto(ref reader, span, KotoKind.TuplePattern, "(", patterns.ToArray(), suffix: ")");
         return cause is { } malformed
             ? new ErrorKoto(ref reader, payload.Span) { Cause = malformed }
             : new SyntaxFormKoto(ref reader, payload.Span, KotoKind.CasePattern, string.Empty, [reference, payload], separator: string.Empty);

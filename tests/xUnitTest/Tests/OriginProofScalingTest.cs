@@ -1,5 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using System.Globalization;
 using System.Text;
 using Kimi;
 using Kimi.Compiler;
@@ -8,7 +9,7 @@ using Xunit;
 
 namespace XunitTest;
 
-public class OriginProofScalingTest
+public class OriginProofScalingTest(ITestOutputHelper output)
 {
     public static TheoryData<string, string?> Families
     {
@@ -114,6 +115,81 @@ public class OriginProofScalingTest
         var small = DeclarationChainWork(3);
         var large = DeclarationChainWork(12);
         Assert.True(large <= (4 * small) + 8, $"declaration chain work {small} at 3 binders, {large} at 12");
+    }
+
+    // PLAN G824 (SPEC 15.6.1, 15.6.5; its design review's B1): rule W reads a slot the body's relations make equal to a fixed Origin as
+    // Fixed. N slots reborrow p's referent (each equal to a by uniq's invariance) and each receives a copy of the one before, from a
+    // local's borrow (a covariant chain: each slot reaches the chain's start), in a body whose one run covers two classes (a pair binder's
+    // masked row). Each size is invalid with one conflict, derived. MirOrigins.Work, with the classes' edges re-formed and indexed for its
+    // queries, grows linearly at N = 32 to 256: a walk per slot and a re-index per slot and class made it quadratic.
+    [Fact]
+    public void RuleWsEqualityIsLinearInTheChainAndItsClasses()
+    {
+        var rows = new[] { 32, 64, 128, 256 }.Select(static n => MirBorrowsTest.RuleW(
+            "func shape<s/T>(p: uniq/(ref/i32 during a) during u, m: s/T)\n    s is owner or ref\n" +
+            "    let w: Option<s/(ref/i32 during a) during u> = .None\n    var x = 0\n    var t0 = x@ref\n" +
+            string.Concat(Enumerable.Range(0, n).Select(static i => $"    var t{i + 1} = t{i}\n    var r{i} = p@follow@uniq\n    r{i}@follow = t{i + 1}\n")))).ToArray();
+        var work = rows.Select(static x => x.Origins).ToArray();
+        output.WriteLine($"N 32, 64, 128, 256: origins {string.Join(", ", work)}");
+        Assert.All(rows, static x => Assert.Equal((2, true, 1), (x.Classes, x.OneRun, x.Derived)));
+        Assert.True(MirBorrowsTest.Grows(work[..3], 2.5) && MirBorrowsTest.Grows(work[1..], 2.5), $"origins {string.Join(", ", work)}");
+    }
+
+    // PLAN G824 (its re-review's R1): Fixed's equality costs per class (1 + F') x (E + N), F' the class's Fixed nodes with in- and
+    // out-edges, each walked both ways up to the next Fixed node; so it is linear in the body at a fixed signature and in separate cycles,
+    // not in F' (P Fixed Origins sharing a chain of 4P copies grow as P x 4P). Here MirOrigins.Work is linear in K, 16 Fixed Origins
+    // joined through one covariant chain of K copies (K = 64 to 512), and in P, each of P Fixed Origins on a cycle of its own (P = 4 to
+    // 32: past 64 Fixed sources Judge's own fixed pass, components x their words (TyCtxt.OriginChains), takes a second word). Each program
+    // is invalid with one conflict, derived: a local's borrow stored through p's reborrowed referent, equal to a0 (SPEC 15.6.1, 15.6.5);
+    // the premises z{i} make every a{i} equal, so no other relation fails.
+    [Theory]
+    [InlineData(new[] { 16, 16, 16, 16 }, new[] { 64, 128, 256, 512 })]
+    [InlineData(new[] { 4, 8, 16, 32 }, new[] { 0, 0, 0, 0 })]
+    public void RuleWsEqualityIsLinearInTheBodyAndInSeparateCycles(int[] fixedCounts, int[] chains)
+    {
+        var rows = fixedCounts.Select((p, i) => MirBorrowsTest.RuleW(FixedNodes(p, chains[i]))).ToArray();
+        var work = rows.Select(static x => x.Origins).ToArray();
+        output.WriteLine($"P {string.Join(", ", fixedCounts)}, K {string.Join(", ", chains)}: origins {string.Join(", ", work)}");
+        Assert.All(rows, static x => Assert.Equal((1, true, 1), (x.Classes, x.OneRun, x.Derived)));
+        Assert.True(MirBorrowsTest.Grows(work[..3], 2.5) && MirBorrowsTest.Grows(work[1..], 2.5), $"origins {string.Join(", ", work)}");
+    }
+
+    // P Fixed Origins a{i}, equal by the premises z{i} (SPEC 15.3.3), each with an in- and an out-edge: all joined through one covariant
+    // chain of K copies (each q{i} into t0, t{K} into each o{i}.*), or, at K = 0, each through a copy of its own; before them, a local's
+    // borrow stored through p's reborrowed referent (a Refuted relation, rule W's query).
+    private static string FixedNodes(int fixedCount, int chain)
+    {
+        var text = new StringBuilder("func shape(p: uniq/(ref/i32 during a0) during u");
+        for (var i = 0; i < fixedCount; i++)
+        {
+            text.Append(CultureInfo.InvariantCulture, $", q{i}: ref/i32 during a{i}, o{i}: uniq/(ref/i32 during a{i}) during w{i}");
+            text.Append(CultureInfo.InvariantCulture, $", z{i}: ref/(ref/i32 during a{i}) during a{(i + 1) % fixedCount}");
+        }
+
+        text.Append(")\n    var x = 0\n    var r = p@move\n    r@follow = x@ref\n");
+        for (var i = 0; i < fixedCount; i++)
+        {
+            if (chain == 0)
+            {
+                text.Append(CultureInfo.InvariantCulture, $"    var s{i} = q{i}\n    o{i}@follow = s{i}\n");
+            }
+            else
+            {
+                text.Append(CultureInfo.InvariantCulture, $"    {(i == 0 ? "var " : string.Empty)}t0 = q{i}\n");
+            }
+        }
+
+        for (var k = 0; k < chain; k++)
+        {
+            text.Append(CultureInfo.InvariantCulture, $"    var t{k + 1} = t{k}\n");
+        }
+
+        for (var i = 0; chain > 0 && i < fixedCount; i++)
+        {
+            text.Append(CultureInfo.InvariantCulture, $"    o{i}@follow = t{chain}\n");
+        }
+
+        return text.ToString();
     }
 
     private static long DeclarationChainWork(int binders)

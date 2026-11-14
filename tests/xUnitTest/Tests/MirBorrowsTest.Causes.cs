@@ -96,6 +96,20 @@ public sealed partial class MirBorrowsTest
         ["pair-application-null"] = "func write<T>(target: uniq/T during a, q: raw/T during a, v: T) => ()\n" +
             "func pn<s/U>(x: s/i32 during b, m: s/U, t: uniq/(ref/(s/i32 during b) during c) during a)\n" +
             "    s is owner or ref\n    var local = x@copy\n    write(t, null, local@ref)\n",
+        ["inv-var-bad"] = "func g(p: uniq/(ref/i32 during a) during u) -> i32\n    let b = 1\n    var r = p@move\n    r@follow = b@ref\n    return 0\n",
+        ["tup-var-bad"] = "func g(p: uniq/(ref/i32 during a, i32) during u) -> i32\n    let b = 1\n    var r = p@move\n    r@follow.0 = b@ref\n" +
+            "    return 0\n",
+        ["fld-var-bad"] = "struct Holder<T>\n    public var value: T\n    public init(value: T) => self.value = value@move\n" +
+            "func g(p: uniq/Holder<ref/i32 during a> during u) -> i32\n    let b = 1\n    var r = p@move\n    r@follow.value = b@ref\n    return 0\n",
+        ["call-store-var"] = "func put(t: uniq/(ref/i32 during c) during w, v: ref/i32 during c)\n    t@follow = v\n" +
+            "func g(p: uniq/(ref/i32 during a) during u) -> i32\n    let b = 1\n    var r = p@move\n    put(r@move, b@ref)\n    return 0\n",
+        ["pair-views-slot"] = "func pw<s/T>(p: uniq/(ref/i32 during a) during u, m: s/T) -> i32\n    s is owner or ref\n" +
+            "    let w: Option<s/(ref/i32 during a) during u> = .None\n    let b = 1\n    var r = p@move\n    r@follow = b@ref\n    return 0\n",
+        ["g786-four-causes"] = "func put(p: raw/(ref/i32 during a), v: ref/i32 during a)\n    unsafe => *p = v\n" +
+            "func shape(c: i32, target: uniq/(ref/i32 during a), q: ref/i32 during a)\n    var local: i32 = 1\n    var x0: ref/i32 during a = q\n" +
+            "    var x1: ref/i32 during a = q\n    var x2: ref/i32 during a = q\n    var x3: ref/i32 during a = q\n    var p = x0@raw\n" +
+            "    if c == 1 => p = x1@raw\n    if c == 2 => p = x2@raw\n    if c == 3 => p = x3@raw\n    var r = local@ref\n    put(p, r)\n" +
+            "    target@follow = x0\n    local = 2\n",
         // pins
         ["m-write"] = "func w(p: ref/i32) -> ref/i32 during p\n    var x = 1\n    let r = x@ref\n    x = 1\n    return r\n",
         ["m-write-var"] = "func w(p: ref/i32) -> ref/i32 during p\n    var x = 1\n    var r = x@ref\n    x = 1\n    return r\n",
@@ -167,6 +181,7 @@ public sealed partial class MirBorrowsTest
             "    var r = local@ref\n    inspect(r)\n",
         ["g526-agg-arg"] = Optional + "func g(q: ref/i32) -> H2 during q\n    let v: i32 = 1\n    let h = mk(.Some(v@ref))\n    return h@move\n",
         ["g526-borrow-arg-v"] = Optional + "func g(q: ref/i32) -> H2 during q\n    let v: i32 = 1\n    let h: H2 during q = mkr(v@ref)\n    return h@move\n",
+        ["inv-var-gen"] = "func g<T>(p: uniq/(ref/T during a) during u, y: T) -> i32\n    var r = p@move\n    r@follow = y@ref\n    return 0\n",
     };
 
     // SPEC 15.6.5 (R4-M122's text; DECISIONS R4-M132): a conflict whose Loan every carrier past the access keeps only in the result in
@@ -180,8 +195,13 @@ public sealed partial class MirBorrowsTest
     // pair binder's view, a pair application in the receiving Type (judged in its cases, SPEC 8.15.2: Fixed meets `i32` and
     // `ref/i32 during b`, never the dependent term, which it fails closed on as BoundType.IsAbstract; a pin), the same through a call's
     // store into what a `null` argument's stated raw layer covers (its constant's Type taken in the case too, MirCases.TypeOf; PLAN G723;
-    // fail-before: independent), and a conflict-free branch's write beside a derived end (keepA). Fail-before: no Cause fact exists
-    // (chain-retention: no conflict at `local`, a Chain row read as one read).
+    // fail-before: independent), a conflict-free branch's write beside a derived end (keepA), and a conflict with more causes than the
+    // record's first fact buffer holds (four raw addresses joined into p, each a Refuted relation; PLAN G786, fail-before: an exception),
+    // and a store through a reassignable local whose region slot the body's relations make equal to a fixed Origin (`var r = p@move`,
+    // invariant under uniq, SPEC 15.6.1): into the referent, a Tuple part, a Field, by a call's store, and under a pair binder whose
+    // masked row puts the run's two views in two classes (PLAN G824: Fixed's Inferred atom equal to a Fixed one in every class; fail-before:
+    // independent).
+    // Fail-before: no Cause fact exists (chain-retention: no conflict at `local`, a Chain row read as one read).
     [Theory]
     [InlineData("j-region", "bad: let local = 5 <- view")]
     [InlineData("j-bad-v", "bad: let local: i32 = 1 <- r")]
@@ -216,6 +236,12 @@ public sealed partial class MirBorrowsTest
     [InlineData("two-views", "pp: let local = 1 <- r")]
     [InlineData("pair-application-part", "pa: var local = x@copy <- local@ref")]
     [InlineData("pair-application-null", "pn: var local = x@copy <- local@ref")]
+    [InlineData("g786-four-causes", "shape: local = 2 <- x0@raw; x1@raw; x2@raw; x3@raw")]
+    [InlineData("inv-var-bad", "g: let b = 1 <- p@move")]
+    [InlineData("tup-var-bad", "g: let b = 1 <- p@move")]
+    [InlineData("fld-var-bad", "g: let b = 1 <- p@move")]
+    [InlineData("call-store-var", "g: let b = 1 <- p@move")]
+    [InlineData("pair-views-slot", "pw: let b = 1 <- p@move")]
     public void AConflictCausedOnlyByRefutedRelationsIsDerived(string name, string expected)
         => Assert.Equal(expected, string.Join(" | ", Caused(CausedSources[name])));
 
@@ -225,7 +251,8 @@ public sealed partial class MirBorrowsTest
     // `.Some(v@ref)`, R4-M104), a call result read by part, a conflict with no Refuted relation, a report of one key both derived and
     // direct (one direct problem, R4-M96 per report), a Content or a Chain row's read through E, the storage the body does not own (B's
     // read-through clause; one rule for both, R4-M138: Chain's read of E's state unmarked fails chain-through-e); the twins' literal forms
-    // report the relation only (until R7, R4-M122) and a repair loses the conflict. Pins: each passes before.
+    // report the relation only (until R7, R4-M122) and a repair loses the conflict; a store through an equated slot into a Type parameter's
+    // part (`ref/T during a`: Fixed fails closed on an abstract part, R4-M132; PLAN G824 leaves it). Pins: each passes before.
     [Theory]
     [InlineData("m-write", "w: x = 1")]
     [InlineData("m-write-var", "w: x = 1")]
@@ -259,6 +286,7 @@ public sealed partial class MirBorrowsTest
     [InlineData("m-write4", "")]
     [InlineData("j-bad-v.r1", "")]
     [InlineData("m-store-v.r1", "")]
+    [InlineData("inv-var-gen", "g: T")]
     public void AConflictAnotherCarrierKeepsStaysIndependent(string name, string expected)
         => Assert.Equal(expected, string.Join(" | ", Caused(CausedSources[name])));
 
@@ -292,7 +320,19 @@ public sealed partial class MirBorrowsTest
         }
 
         Assert.Equal(["noncfl-candidate-v"], shared);
-        Assert.Equal(37, causes);
+        Assert.Equal(46, causes);
+    }
+
+    // PLAN G824: pair-views-slot's one run covers both views (no view decides a check), which its masked row (the pair layer's
+    // well-formedness, the ref case only) puts in two classes, so Fixed reads the slot's equality in each.
+    [Fact]
+    public void AnEquatedSlotsRunCoversTwoClasses()
+    {
+        var c = MirBuildTest.Compile(CausedSources["pair-views-slot"] + "public func main() => ()\n");
+        var program = c.BuildMir();
+        var stratum = new Stratum(c.Types);
+        stratum.Run(program, Body(program, "pw"));
+        Assert.Equal((2, false), (stratum.Origins.Classes, stratum.ViewDependent));
     }
 
     // SPEC 7.2.3 (R26; 2g-5's PreparedInput grouping): a default template's Borrow its result keeps is DefaultArgumentBorrow_Kd, a
@@ -307,17 +347,19 @@ public sealed partial class MirBorrowsTest
 
     // V16 (DECISIONS R4-M132; the design review's A-B1): rule W keeps A5 within its dense bound where every stored Loan is a W element: N
     // locals borrowed and stored through a parameter, stored on one branch (joined), read through the parameter after each store (A-B1's
-    // shape: one marker added at a time made its bytes cubic), held in an aggregate read by part and copied out of it; each conflict is
-    // derived.
+    // shape: one marker added at a time made its bytes cubic), held in an aggregate read by part and copied out of it, or stored through a
+    // local reborrowing the parameter's referent, whose region slot MirOrigins.Fixed's walk finds equal to a (PLAN G824; its steps are
+    // MirOrigins.Work's, once per slot); each conflict is derived.
     [Theory]
     [InlineData("    var x{0} = {0}\n    var r{0} = x{0}@ref\n    p@follow = r{0}\n")]
+    [InlineData("    var x{0} = {0}\n    var r{0} = p@follow@uniq\n    r{0}@follow = x{0}@ref\n")]
     [InlineData("    var x{0} = {0}\n    var r{0} = x{0}@ref\n    if flag => p@follow = r{0}\n")]
     [InlineData("    var x{0} = {0}\n    var r{0} = x{0}@ref\n    p@follow = r{0}\n    inspect(p@follow)\n")]
     [InlineData("    var x{0} = {0}\n    var r{0} = x{0}@ref\n    p@follow = r{0}\n    var t{0} = (p@follow, {0})\n    inspect(t{0}.0)\n")]
     [InlineData("    var x{0} = {0}\n    var r{0} = x{0}@ref\n    p@follow = r{0}\n    var k{0} = p@follow\n    inspect(k{0})\n")]
     public void RuleWScalesWithTheProgram(string each)
     {
-        var (sizes, work, bytes) = (new[] { 32, 64, 128 }, new long[3], new long[3]);
+        var (sizes, work, bytes, judged) = (new[] { 32, 64, 128 }, new long[3], new long[3], new long[3]);
         for (var i = 0; i < sizes.Length; i++)
         {
             var text = new StringBuilder(Prelude).Append("func shape(flag: bool, p: uniq/(ref/i32 during a))\n");
@@ -333,12 +375,42 @@ public sealed partial class MirBorrowsTest
             stratum.Run(program, Body(program, "shape"));
             Assert.Equal(sizes[i], program.Problems.All.ToArray().Count(static x => LoanCodes.Contains(x.Code)));
             Assert.Equal(sizes[i], DerivedProblems(program).Length);
-            (work[i], bytes[i]) = (stratum.Borrows.Work, stratum.Borrows.Bytes);
+            (work[i], bytes[i], judged[i]) = (stratum.Borrows.Work, stratum.Borrows.Bytes, stratum.Origins.Work);
         }
 
-        output.WriteLine($"N {string.Join(", ", sizes)}: work {string.Join(", ", work)}, bytes {string.Join(", ", bytes)}");
+        output.WriteLine($"N {string.Join(", ", sizes)}: work {string.Join(", ", work)}, bytes {string.Join(", ", bytes)}, origins {string.Join(", ", judged)}");
         Assert.True(Grows(work, 5), $"work {string.Join(", ", work)}");
         Assert.True(Grows(bytes, 5), $"bytes {string.Join(", ", bytes)}");
+        Assert.True(Grows(judged, 5), $"origins {string.Join(", ", judged)}");
+    }
+
+    // PLAN G824: k reassignable locals, each moved into the next (`var r{n + 1} = r{n}@move`) after storing a local's borrow through its
+    // slot, so every slot is equal to a and to each other (SPEC 15.6.1); each conflict is derived. MirOrigins.Fixed's equality is formed
+    // once per class from its Fixed nodes, so MirOrigins.Work grows within the factor 3 of MirOriginsTest's TheRefutedWorkScalesWithTheChain
+    // (a walk per slot made it quadratic, 3.9). OriginProofScalingTest.RuleWsEqualityIsLinearInTheChainAndItsClasses is its scaling row.
+    [Fact]
+    public void AChainOfEquatedSlotsIsWalkedOnce()
+    {
+        var (sizes, work, bytes, judged) = (new[] { 32, 64, 128 }, new long[3], new long[3], new long[3]);
+        for (var i = 0; i < sizes.Length; i++)
+        {
+            var text = new StringBuilder(Prelude).Append("func shape(p: uniq/(ref/i32 during a))\n    var r0 = p@move\n");
+            for (var n = 0; n < sizes[i]; n++)
+            {
+                text.Append(System.Globalization.CultureInfo.InvariantCulture, $"    var x{n} = {n}\n    r{n}@follow = x{n}@ref\n    var r{n + 1} = r{n}@move\n");
+            }
+
+            var c = MirBuildTest.Compile(text.ToString());
+            var program = c.BuildMir();
+            Assert.Empty(program.Findings);
+            var stratum = new Stratum(c.Types);
+            stratum.Run(program, Body(program, "shape"));
+            Assert.Equal(sizes[i], DerivedProblems(program).Length);
+            (work[i], bytes[i], judged[i]) = (stratum.Borrows.Work, stratum.Borrows.Bytes, stratum.Origins.Work);
+        }
+
+        output.WriteLine($"k {string.Join(", ", sizes)}: work {string.Join(", ", work)}, bytes {string.Join(", ", bytes)}, origins {string.Join(", ", judged)}");
+        Assert.True(Grows(judged, 3), $"origins {string.Join(", ", judged)}");
     }
 
     // V16 (DECISIONS R4-M132; G:A5-F4's group review N2, after the 2a-2 review's A-B1): rule W's Bytes stay within a constant c times the
@@ -399,19 +471,31 @@ public sealed partial class MirBorrowsTest
     }
 
     // V16: rule W on a program version it checked before allocates nothing: its elements, markers, memo and causes keep their storage,
-    // over derived conflicts of every kind of carrier (a return, two paths, a loop, err(ended), a read-through, a container, a write-through)
-    // and a Chain row's read through E.
+    // over derived conflicts of every kind of carrier (a return, two paths, a loop, err(ended), a read-through, a container, a write-through),
+    // a Chain row's read through E and a store through a slot Fixed's equality reads in two classes (Pin's marks; PLAN G824).
     [Trait("Purpose", "Allocation")]
     [Fact]
     public void AWarmRuleWAllocatesNothing()
     {
         string[] names = ["j-region", "two-flows-v", "loop-store-v", "rv-g-param-i", "content-retention", "f02fb5c218bc", "d4a09871a00b", "merge-two-paths-v",
-            "chain-through-e"];
+            "chain-through-e", "pair-views-slot"];
         var c = MirBuildTest.Compile(string.Concat(names.Select(static x => CausedSources[x])) + "public func main() => ()\n");
         var program = c.BuildMir();
         var stratum = new Stratum(c.Types);
         Assert.Equal(0, AllocationMeasurement.Measure(() => stratum.Run(program)));
-        Assert.Equal(9, DerivedProblems(program).Length);
+        Assert.Equal(10, DerivedProblems(program).Length);
+    }
+
+    // Rule W on a program's body `shape` after the Prelude: MirOrigins.Work (Judge's and its queries' since), its classes, whether one
+    // run covers every view, and the conflicts rule W derived.
+    internal static (long Origins, int Classes, bool OneRun, int Derived) RuleW(string source)
+    {
+        var c = MirBuildTest.Compile(Prelude + source);
+        var program = c.BuildMir();
+        Assert.Empty(program.Findings);
+        var stratum = new Stratum(c.Types);
+        stratum.Run(program, Body(program, "shape"));
+        return (stratum.Origins.Work, stratum.Origins.Classes, !stratum.ViewDependent, DerivedProblems(program).Length);
     }
 
     // A program's Loan problems as rule W reads them: function, the subject's first line, the code unless a comparison's, and its causes'

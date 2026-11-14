@@ -17,6 +17,12 @@ public class AssociatedIdentityTest(ITestOutputHelper output)
 
     private const string CyclicBaseA = "open struct BaseA\n    Self is HasItem\n    associate HasItem.Item is BaseA.Item\n";
     private const string CyclicBaseG = "open struct BaseG<T>\n    Self is HasItem\n    associate HasItem.Item is BaseG<T>.Item\n    var t: T\n";
+    private const string Candidates = "contract C<E>\n    associate Item is E\ncontract Q<U>: C<i32>, C<U>\nstruct Gx<A>\n    Self is Q<A>\n" +
+        "contract Box<K>\n    associate Item\ncontract UBox<K>: Box<K>\nstruct Map<K>\n    Self is UBox<K>\n    associate Item is u8\n" +
+        "struct Two\n    Self is Box<i64>\n    Self is Box<i32>\n    associate Box<i64>.Item is u8\n    associate Box<i32>.Item is u8\n" +
+        "struct G<A>\n    Self is Box<A>\n    Self is Box<Option<A>>\n    associate Box<A>.Item is u8\n    associate Box<Option<A>>.Item is u8\n" +
+        "struct Bag<K>\n    Self is Box<K>\n    associate Item is u8\n    public struct Item\n        public init() => ()\n";
+
     private const string ConditionalInit = "struct HC<S>\n    S is Addable<S>\n    public var x: S.Output\n    public var y: S\n    public init(a: S)\n        S is PrimitiveInteger\n";
 
     [Theory]
@@ -101,6 +107,33 @@ public class AssociatedIdentityTest(ITestOutputHelper output)
         var source = "contract C<E>\n    associate Item(a)\ncontract Q: C<i32>, C<i64>\n    associate C<i32>.Item(a) is Copy\n" +
             "func copy<T>(value: T.(C<" + projected + ">).Item(a), marker: ref/T during a)\n    T is Q\n    let duplicate = value\nlet present = 1";
         var c = MinimalEmissionTest.Analyze(source);
+        Assert.Equal(records, string.Join("|", c.Binding.Issues.Select(static x => $"{x.Code} {x.Node}")));
+        Assert.True(records.Length != 0 || c.Analysis.IsVerified, MinimalEmissionTest.Describe(c));
+    }
+
+    [Theory]
+    // SPEC 9.7.3, 8.4.3 (PLAN G798): a conformance is one associated candidate at the receiver's arguments, whether a premise added by
+    // an earlier projection or the conformance table reaches it (the PLAN row, a generic Key, a user Contract); `Gx<i32>`'s two paths
+    // reach one `C<i32>.Item`. The twins stay ambiguous: `Gx<i64>`'s two paths, two distinct conformances (`Two`, `G<i64>`) and a
+    // nested Type named like the associated one (`Bag<i64>`, 9.7.3 both ways).
+    [InlineData("()\n    let a: Dictionary<i64, u8>.(Indexable<i64>).Element = 7\n    let b: Dictionary<i64, u8>.Element = 7", "")]
+    [InlineData("()\n    let a: Dictionary<i64, u8>.(Indexable<i64>).Element = 7\n    let b: Dictionary<i64, u8>.(UniqIndexable<i64>).Element = 7\n    let c: Dictionary<i64, u8>.Element = 7", "")]
+    [InlineData("()\n    let a: Dictionary<i64, u8>.Element = 7\n    let b: Dictionary<i64, u8>.(UniqIndexable<i64>).Element = 7", "")]
+    [InlineData(
+        "<P>(d: ref/Dictionary<P, u8>, v: Dictionary<P, u8>.(Indexable<P>).Element) -> Dictionary<P, u8>.Element\n    P is Equatable\n" +
+            "    let a: Dictionary<P, u8>.(UniqIndexable<P>).Element = 7\n    let b: Dictionary<P, u8>.Element = 7\n    return v@move",
+        "")]
+    [InlineData("()\n    let a: Map<i64>.(Box<i64>).Item = 7\n    let b: Map<i64>.(UBox<i64>).Item = 7\n    let c: Map<i64>.Item = 7", "")]
+    [InlineData("()\n    let a: Gx<i32>.Item = 7", "")]
+    [InlineData("()\n    let a: Gx<i32>.(C<i32>).Item = 7\n    let b: Gx<i32>.Item = 7", "")]
+    [InlineData("()\n    let a: Gx<i64>.Item = 7", "AmbiguousBinding_Kd Gx<i64>.Item")]
+    [InlineData("()\n    let a: Gx<i64>.(C<i64>).Item = 7\n    let b: Gx<i64>.Item = 7", "AmbiguousBinding_Kd Gx<i64>.Item")]
+    [InlineData("()\n    let a: Two.(Box<i64>).Item = 7\n    let b: Two.Item = 7", "AmbiguousBinding_Kd Two.Item")]
+    [InlineData("()\n    let a: G<i64>.(Box<i64>).Item = 7\n    let b: G<i64>.Item = 7", "AmbiguousBinding_Kd G<i64>.Item")]
+    [InlineData("()\n    let a: Bag<i64>.(Box<i64>).Item = 7\n    let b: Bag<i64>.Item = 7", "AmbiguousBinding_Kd Bag<i64>.Item")]
+    public void AConformanceIsOneCandidateAtTheReceiversArguments(string probe, string records)
+    {
+        var c = MinimalEmissionTest.Analyze(Candidates + "func probe" + probe + "\nlet present = 1");
         Assert.Equal(records, string.Join("|", c.Binding.Issues.Select(static x => $"{x.Code} {x.Node}")));
         Assert.True(records.Length != 0 || c.Analysis.IsVerified, MinimalEmissionTest.Describe(c));
     }
@@ -213,9 +246,10 @@ public class AssociatedIdentityTest(ITestOutputHelper output)
         const string Source = "contract C<E>\n    associate Item\nfunc f<U>(x: i32) -> i32\n    U is C<i32>\n    U is C<i64>\n    U.Item is Missing\n    return x\nlet wrong: i32 = true";
         var c = MinimalEmissionTest.Analyze(Source);
         c.Binding.ReportDiagnostics();
-        // A requirement name may denote either a Type or a Contract, so a missing one is UnresolvedBinding. The clause adds its own
-        // InvalidConstraint_Kd over the ambiguous subject (the Constraint owner's record on this form).
-        Assert.Equal(["AmbiguousBinding_Kd", "InvalidConstraint_Kd", "UnresolvedBinding_Kd", "TypeMismatch_Kd"], TestDiagnostics.Of(c).Select(static x => x.Code));
+        // A requirement name may denote either a Type or a Contract, so a missing one is UnresolvedBinding. The clause's verdict over
+        // its failed (ambiguous) subject rests on that subject's record (SPEC 23.1.2; G507, the owner's O-169 (a): one record per
+        // invalid subject); the requirement's and the expression's records are independent.
+        Assert.Equal(["AmbiguousBinding_Kd", "UnresolvedBinding_Kd", "TypeMismatch_Kd"], TestDiagnostics.Of(c).Select(static x => x.Code));
     }
 
     [Trait("Purpose", "Allocation")]
@@ -319,9 +353,9 @@ public class AssociatedIdentityTest(ITestOutputHelper output)
     // and bound by a Pattern, a Field written, and `T.(HasItem).Item is i32`'s premise, also as a conditional constructor's `self.x`
     // (SPEC 7.5: written, read, under the identity premise); closed instances read as before. Before, each was TypeMismatch_Kd ("found
     // T.Output", "expected S.Output"). Read without the premise (`T is Addable<T>`), or a read, write, payload, Pattern binding or
-    // constructor write as bool, stays TypeMismatch_Kd. Since the MIR decides acceptance (R6-check H5), the constructor whose `self.x`
-    // write Binding rejects also has A1's UninitializedPlace_Kd at that write and at the constructor, since the rejected write initializes
-    // nothing (PLAN G105): published directly until A6's 2g-1 (DECISIONS R5-M184; H3b T51, class 4).
+    // constructor write as bool, stays TypeMismatch_Kd. The constructor's `self.x` write Binding rejects for its value still places a
+    // value derived from that failure (DECISIONS R5-M195), so A1 records nothing there (Q13: the two dependent UninitializedPlace_Kd at that
+    // write and at the constructor, PLAN G105's, went).
     [Theory]
     [InlineData("func f<T>(a: T) -> T\n    T is PrimitiveInteger\n    let h = HAd<T>.init(x: a + a)\n    return h.x\n", "let v = f(3@i32)", "")]
     [InlineData("func f<T>(a: Wrapping<T>) -> Wrapping<T>\n    T is PrimitiveInteger\n    let h = HAd<Wrapping<T>>.init(x: a + a)\n    return h.x\n", "let v = f(3@Wrapping<i32>)", "")]
@@ -341,7 +375,7 @@ public class AssociatedIdentityTest(ITestOutputHelper output)
     [InlineData("func f<T>(h: uniq/HAd<T>, a: T) -> ()\n    T is PrimitiveInteger\n    h.x = true\n    return\n", "var h = HAd<i32>.init(x: 1)\n    f(h@uniq, 2)", "h.x = true")]
     [InlineData("func f<T>(a: T) -> EW<T>\n    T is PrimitiveInteger\n    return EW<T>.A(true)\n", "let v = f(3@i32)", "EW<T>.A(true)")]
     [InlineData("func f<T>(e: EW<T>, a: T) -> bool\n    T is PrimitiveInteger\n    return match e@move\n        .A(let v) => v\n        .B => true\n", "let v = f(EW<i32>.A(3), 1)", "match e@move")]
-    [InlineData(ConditionalInit + "        self.x = true\n        self.y = a\n", "let h = HC<i32>.init(a: 3)", "self.x = true", "UninitializedPlace_Kd self.x = true", "UninitializedPlace_Kd public init(a: S)")]
+    [InlineData(ConditionalInit + "        self.x = true\n        self.y = a\n", "let h = HC<i32>.init(a: 3)", "self.x = true")]
     public void AStoredPartIsReadInItsUseScope(string declarations, string use, string mismatch, params string[] problems)
     {
         const string Holders = """

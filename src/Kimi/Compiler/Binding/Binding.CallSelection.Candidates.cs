@@ -374,7 +374,7 @@ public sealed partial class Binding
                                     // SPEC 10.8: every other piece of evidence is in, so a slot of S that is still unbound stays unsolved; the
                                     // candidate stays applicable on its other checks, and the header parts it writes were matched by
                                     // InferClosureHeader. Anything else S lacks keeps the candidate pending.
-                                    if (!MentionsSlots(required, CallSlotOwner(function), UnboundTypeSlots(function, frame.Types, ref unboundSlots)))
+                                    if (!MentionsSlots(required, CallSlotOwner(function), UnboundSlots(function, frame.Types, frame.Lengths, ref unboundSlots)))
                                     {
                                         return CandidateApplicability.Pending;
                                     }
@@ -399,7 +399,7 @@ public sealed partial class Binding
                         if (this.PartDefault(argument, scope) is not { } shape)
                         {
                             if (this.KindOf(argument) != PartKind.Literal &&
-                                MentionsSlots(pattern, CallSlotOwner(function), UnboundTypeSlots(function, frame.Types, ref unboundSlots)))
+                                MentionsSlots(pattern, CallSlotOwner(function), UnboundSlots(function, frame.Types, frame.Lengths, ref unboundSlots)))
                             {
                                 // SPEC 10.8: an argument that supplies no evidence, such as an omitted header at `(T) -> i32` or `.None` at
                                 // Option<T>, at a parameter Type that holds a slot no evidence binds: the position stays open and the
@@ -437,7 +437,7 @@ public sealed partial class Binding
                         type = solution.Type(pattern);
                         if (type is null)
                         {
-                            if (MentionsSlots(pattern, CallSlotOwner(function), UnboundTypeSlots(function, frame.Types, ref unboundSlots)))
+                            if (MentionsSlots(pattern, CallSlotOwner(function), UnboundSlots(function, frame.Types, frame.Lengths, ref unboundSlots)))
                             {
                                 // A Literal waits for its default, which cannot invert a projection or an unresolved selector either.
                                 open.Add(i);
@@ -465,20 +465,13 @@ public sealed partial class Binding
                     {
                         return applicability;
                     }
-
-                    // SPEC 10.2: a borrowed literal temporary's Place Origin binds the parameter's input Origin like any other borrowed temporary.
-                    if (operation is { Kind: ArgumentOperationKind.Borrow, AdaptedType: not null } && argument.BoundType is null &&
-                        !solution.InferInput(pattern, operation.SourceType!, argument))
-                    {
-                        return CandidateApplicability.Inapplicable;
-                    }
                 }
             }
 
             // Fitted literals can add Origin evidence after the first contextual pass.
             // Publish only the final substituted parameter Types, never preliminary binders.
             if (solution.OriginInference is not null &&
-                !this.SolveCallOriginInference(function, solution.OriginInference, origins, inputs, call, declaringType, select: true))
+                !this.SolveCallOriginInference(function, solution.OriginInference, origins, inputs, declaringType, select: true))
             {
                 return CandidateApplicability.Inapplicable;
             }
@@ -486,18 +479,17 @@ public sealed partial class Binding
             // SPEC 15.3.6: an Origin without a candidate is a local region of the call.
             this.OpenUnsolvedOrigins(call, origins.AsSpan(0, function.Origins.Count), inputs.AsSpan(0, Math.Min(inputs.Length, InputOriginCount(function))));
 
-            // SPEC 10.8: required structural slots remain rankable. An unresolved length or an
-            // open position closed by a later literal default still keeps the candidate pending.
-            this.UnsolvedSlots(call, function, frame.Types, frame.Lengths, mapping, ref unsolvedSlots, out var unrepresentable);
+            // SPEC 10.8: required structural slots, length slots included, remain rankable. An open position closed by a later literal
+            // default, or a slot an environment result left without evidence, still keeps the candidate pending.
+            this.UnsolvedSlots(call, function, frame.Types, frame.Lengths, mapping, ref unsolvedSlots);
             var environment = this.EnvironmentJudgment(function, unsolvedSlots);
-            unrepresentable |= environment is not null;
             if ((!open.IsEmpty || !openSignatures.IsEmpty) &&
-                (unrepresentable || !this.OpenPositionsHold(solution, mapping, open, openSignatures, unsolvedSlots)))
+                (environment is not null || !this.OpenPositionsHold(solution, mapping, open, openSignatures, unsolvedSlots)))
             {
                 return this.PendingOnEnvironment(environment);
             }
 
-            if (unrepresentable)
+            if (environment is not null)
             {
                 unsolvedSlots.Clear();
             }
@@ -551,7 +543,7 @@ public sealed partial class Binding
             constraintFailure = proof == ConstraintProof.Unknown ? failure : null; // SPEC 8.3: a Pending candidate's explanation.
 
             if (waitingCallables && proof == ConstraintProof.Unknown &&
-                this.ResolvedClauseUnknown(function.TypeConstraints, function, frame.Types[..CallSlotCount(function)], scope, self, function.IsConstructor ? null : declaringType, frame.Lengths[..CallOwnSlots(function).Count], slotOwner: CallSlotOwner(function)))
+                this.ResolvedClauseUnknown(function.TypeConstraints, solution.Substitution(frame.Types[..CallSlotCount(function)]), scope, self))
             {
                 // SPEC 10.5, 8.3: a Constraint that no waiting argument leaves open, such as a Callable clause on an F that an independent
                 // argument binds, waits on nothing; Unknown proves neither applicability nor negation, so another candidate is never
@@ -563,7 +555,7 @@ public sealed partial class Binding
             {
                 // Only the concrete Types of waiting anonymous arguments may remain open. A body cannot solve an outer input/result slot,
                 // even if its inferred signature would happen to provide that Type: such a slot is unsolved (SPEC 10.8).
-                if (unrepresentable)
+                if (environment is not null)
                 {
                     return CandidateApplicability.Pending;
                 }
@@ -583,7 +575,7 @@ public sealed partial class Binding
                 constraintFailure = failure;
             }
 
-            unsolved = proof is ConstraintProof.Proven or ConstraintProof.Unknown && !unsolvedSlots.IsEmpty;
+            unsolved = proof is ConstraintProof.Proven or ConstraintProof.Unknown or ConstraintProof.Refuted && !unsolvedSlots.IsEmpty; // Refuted: CheckDefaulted's selected candidate.
             premiseUnknown = proof == ConstraintProof.Unknown; // SPEC 8.3.3: every argument and result check has passed.
             return proof switch
             {
@@ -647,7 +639,7 @@ public sealed partial class Binding
                 }
             }
 
-            return this.SolveCallOriginInference(function, inference, solution.Origins, solution.Inputs, call, solution.DeclaringType, select: true);
+            return this.SolveCallOriginInference(function, inference, solution.Origins, solution.Inputs, solution.DeclaringType, select: true);
         }
         finally
         {

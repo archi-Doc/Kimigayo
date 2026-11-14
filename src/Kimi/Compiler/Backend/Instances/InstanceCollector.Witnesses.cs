@@ -151,8 +151,8 @@ internal sealed partial class InstanceCollector
         bool Same(BoundType? declared, BoundType? key) => declared is not null && key is not null && ReferenceEquals(this.types.Erase(declared), key);
     }
 
-    // K 4.3: a shim's targets, at its default site: a comparison item's are its direct parts' (Parts); a formatting or arithmetic shim's
-    // scalar Self calls no witness (FormattingTypes.IsBuiltin, ArithmeticContracts.Supports); a setter's property witness drops the Field's
+    // K 4.3: a shim's targets, at its default site: a comparison item's are its direct parts' (Parts); an arithmetic shim's scalar Self
+    // calls no witness (ArithmeticContracts.Supports); a setter's property witness drops the Field's
     // old value (its glue), the Field Agrees found in the representative Self at admission, so a Self without it is a broken contract.
     private void Shim(MirProgram program, int item, SourceRef site, in MonoKey key, BoundType self)
     {
@@ -178,7 +178,7 @@ internal sealed partial class InstanceCollector
             case CompilerFunctionKind.BuiltinEquals or CompilerFunctionKind.BuiltinCompare:
                 this.Parts(program, item, site, key, self);
                 return;
-            case CompilerFunctionKind.BuiltinFormat or CompilerFunctionKind.BuiltinArithmetic:
+            case CompilerFunctionKind.BuiltinArithmetic:
                 return;
             default:
                 throw new InvalidOperationException($"The shim {key.Symbol.CompilerFunction} has no target row.");

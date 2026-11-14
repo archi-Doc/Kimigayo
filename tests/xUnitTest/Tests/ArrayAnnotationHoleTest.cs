@@ -71,7 +71,7 @@ public class ArrayAnnotationHoleTest
     public void RebindingAndReloadPreserveWrittenHolesAndRecomputeTheirTypes(string source)
     {
         var compilation = MinimalEmissionTest.Analyze(source);
-        var variable = compilation.Kotonoha.GeneratedFunction!.Body!.ChildNodes.OfType<VariableKoto>().Single();
+        var variable = compilation.Kotonoha.GeneratedFunction!.Body!.Children().OfType<VariableKoto>().Single();
         var shape = Assert.IsType<FixedArrayTypeKoto>(variable.TypeKoto);
         Assert.Equal(2, shape.TypeOf()!.Length);
         Assert.Equal(1, shape.TypeOf()!.Components[0].Length);

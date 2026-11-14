@@ -37,7 +37,8 @@ public sealed partial class Binding
     /// <summary>
     /// Computes the admitted set of a Semantics binding from every available premise on it (SPEC 8.3):
     /// names and categories contribute their members, and/or/not intersect, unite and complement,
-    /// separate clauses intersect, and no premise admits all nine Semantics.
+    /// separate clauses intersect, and no premise admits all nine Semantics. An Invalid environment's Semantics premises stay premises
+    /// (a failed clause's fact is an Error, never a Semantics premise), so None is the 8.3.4 Error: the binder admits no case.
     /// </summary>
     /// <param name="whole">The pair's whole Type.</param>
     /// <param name="scope">The scope whose premises apply.</param>
@@ -47,7 +48,7 @@ public sealed partial class Binding
         var admitted = SemanticsMask.All;
         for (var current = scope; current is not null; current = current.Parent)
         {
-            if (current.Constraints is not { Invalid: false } environment)
+            if (current.Constraints is not { } environment)
             {
                 continue;
             }
@@ -195,6 +196,52 @@ public sealed partial class Binding
         }
 
         this.ClearCapabilityResults();
+    }
+
+    // A later run judges the source environments only: the Kimi library's environments are fixed and valid, and the first run
+    // already judged them.
+    private bool ValidateConstraintEnvironments(BindingMode mode, bool sourcesOnly = false)
+    {
+        var changed = false;
+        foreach (var scope in this.scopes.Values)
+        {
+            if (scope.Constraints is not { } environment || (sourcesOnly && this.IsLibraryDeclaration(scope.Owner)))
+            {
+                continue;
+            }
+
+            if (!environment.Invalid && !this.ValidateArithmeticDirections(scope, environment))
+            {
+                environment.Fail(scope.Owner); // ValidateArithmeticDirections failed the owner.
+                changed = true;
+                continue;
+            }
+
+            changed |= this.RecordIdentityPremiseError(scope, mode); // SPEC 8.2.3: once per pass, so the certificate rounds terminate.
+            foreach (var fact in environment.Facts)
+            {
+                // The environment's judgment is its owner's, the node its record names: the proof runs in the owner's frame.
+                this.failedCause = null;
+                var frame = this.BeginConsultation(scope.Owner);
+                var proof = this.ProveConstraint(fact, scope);
+                if (proof != ConstraintProof.Error)
+                {
+                    this.DropConsultation(frame);
+                    continue;
+                }
+
+                var previous = scope.Owner.BindingState;
+                changed |= !environment.Invalid;
+                environment.Fail(scope.Owner);
+                // Other input facts can have independent contradictions. Record a
+                // sole missing-name cause only when this is the entire environment.
+                this.RequireConstraintInFrame(scope.Owner, proof, mode, frame, environment.Facts.Count == 1 ? this.FindConformanceDiagnosticCause(scope.Owner, fact) : null);
+                changed |= previous != scope.Owner.BindingState;
+                break;
+            }
+        }
+
+        return changed;
     }
 
     private bool ValidateDeclarationProjectionInputs(BindingMode mode)
@@ -349,12 +396,12 @@ public sealed partial class Binding
                 this.RequireConstraintInFrame(clause, this.ProveConstraint(constraint, this.ConstraintScope(clause)), mode, frame);
             }
 
-            if (node.BoundType is { Kind: BoundTypeKind.Constructed or BoundTypeKind.Dictionary, Symbol.Declaration: DeclarationContainerKoto container } type && container.ConstraintNodes.Count != 0 && !this.inferredConstructorTargets.Contains(node) &&
+            if (node.BoundType is { Kind: BoundTypeKind.Constructed or BoundTypeKind.Dictionary, Symbol.Declaration: DeclarationContainerKoto container } type && container.ConstraintNodes.Count != 0 && !this.inferredConstructionTargets.Contains(node) &&
                 (type.Kind != BoundTypeKind.Dictionary || type.Components.Count != 0))
             {
                 var scope = this.ConstraintScope(node);
                 var frame = this.BeginConsultation(node);
-                var result = this.CheckConstraints(container.ConstraintNodes, container, (BoundType[])type.Components, scope, origins: (BoundOrigin[])type.OriginArguments);
+                var result = this.CheckConstraints(container.ConstraintNodes, new CallSubstitution(container, (BoundType[])type.Components, origins: (BoundOrigin[])type.OriginArguments), scope);
                 this.RequireConstraintInFrame(node, result, mode, frame);
                 if (node.BindingState == BindingState.Invalid)
                 {
@@ -613,11 +660,13 @@ public sealed partial class Binding
 
         // SPEC 8.1.1, 8.1.2: every admitted Semantics of `s` must form a valid Type with `U`; object-family bindings additionally need `U`
         // to be an Object Target.
+        // An empty set is the 8.3.4 Error of the environment that emptied it, its one record (ValidateConstraintEnvironments): no case
+        // forms here, so the occurrence has no cause of its own.
         var admitted = this.AdmittedSemantics(whole, scope);
         const SemanticsMask objectFamily = SemanticsMask.Object | SemanticsMask.ObjectBorrow;
         if (admitted == SemanticsMask.None)
         {
-            return TypeRoleCause.Role;
+            return TypeRoleCause.None;
         }
 
         var causes = TypeRoleCause.None;
