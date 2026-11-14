@@ -6,7 +6,8 @@ namespace Kimi.Compiler;
 
 // The Type relation's one walk (SPEC 3.8, 10.7, 15.6.1).
 // - Responsibility: whether `actual` is a subtype of `expected`, part by part, and a Function Type by one Callable comparison
-//   (FunctionFits), whose implementation conditions it judges at every nesting when it has a Binding.
+//   (FunctionFits), two at an invariant position, one each way (SPEC 3.8, 15.3.5), whose implementation conditions it judges at every
+//   nesting when it has a Binding.
 // - Inputs: the query: the Binding and use whose premises and Origins the Origin part reads (none: the relation as written), and which
 //   Origin bindings count (OriginPart).
 // - Outputs: whether the relation holds and, when it does not, its first failure where the walk found it (ComparisonFailure), which the

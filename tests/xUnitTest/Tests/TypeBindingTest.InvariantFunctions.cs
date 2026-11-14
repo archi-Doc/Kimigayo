@@ -882,6 +882,456 @@ public partial class TypeBindingTest
             """,
             "UnprovenOriginContract_Kd r0@move|UnprovenOriginRelation_Kd let r: C2<uniq/((ref/i32) -> i32) during q, uniq/(ref/i32 during d) during q> = r0@move|Unsupported_Kd uniq/((ref/i32) -> i32) during q"
         },
+        // rn3g (invalid twice, review): rn3k at an argument.
+        {
+            "rn3g",
+            """
+            struct R2<T, U>
+                public let call: (T, U) -> i32
+                public init(call: (T, U) -> i32) => self.call = call@move
+
+            func g(e: ref/i32, d: ref/i32, q: ref/i32, r: R2<uniq/((ref/i32 during e) -> i32) during q, uniq/(ref/i32 during d) during q>) -> i32 => 0
+
+            func f(b: ref/i32, c: ref/i32, d: ref/i32, p: ref/i32, q: ref/i32, r0: R2<uniq/((ref/i32) -> i32) during p, uniq/(ref/i32 during c) during p>) -> i32
+                origin q outlives p
+                origin b outlives q
+                origin d outlives q
+                return g(b, d, q, r0@move)
+
+            public func main() => ()
+            """,
+            "UnprovenOriginContract_Kd r0@move|UnprovenOriginRelation_Kd d"
+        },
+        // rn3h (invalid twice, review): rn3k at an assignment.
+        {
+            "rn3h",
+            """
+            struct R2<T, U>
+                public let call: (T, U) -> i32
+                public init(call: (T, U) -> i32) => self.call = call@move
+
+            func f(b: ref/i32, c: ref/i32, d: ref/i32, p: ref/i32, q: ref/i32, r0: R2<uniq/((ref/i32) -> i32) during p, uniq/(ref/i32 during c) during p>, r1: R2<uniq/((ref/i32 during b) -> i32) during q, uniq/(ref/i32 during d) during q>) -> i32
+                origin q outlives p
+                origin b outlives q
+                origin d outlives q
+                var r: R2<uniq/((ref/i32 during b) -> i32) during q, uniq/(ref/i32 during d) during q> = r1@move
+                r = r0@move
+                return 0
+
+            public func main() => ()
+            """,
+            "UnprovenOriginContract_Kd r0@move|UnprovenOriginRelation_Kd r0@move"
+        },
+        // ro1i (invalid, review): Option<uniq/F during p>, an enum Case payload; PC against FX(c).
+        {
+            "ro1i",
+            """
+            func g(c: ref/i32, q: ref/i32, r: Option<uniq/((ref/i32 during c) -> i32) during q>) -> i32 => 0
+
+            func f(b: ref/i32, p: ref/i32, q: ref/i32, r0: Option<uniq/((ref/i32) -> i32) during p>) -> i32
+                origin p outlives q
+                origin b outlives q
+                return g(b, q, r0@move)
+
+            public func main() => ()
+            """,
+            "UnprovenOriginContract_Kd r0@move"
+        },
+        // ro1v (valid, review): ro1i's twin, FX(b) against FX(c).
+        {
+            "ro1v",
+            """
+            func g(c: ref/i32, q: ref/i32, r: Option<uniq/((ref/i32 during c) -> i32) during q>) -> i32 => 0
+
+            func f(b: ref/i32, p: ref/i32, q: ref/i32, r0: Option<uniq/((ref/i32 during b) -> i32) during p>) -> i32
+                origin p outlives q
+                return g(b, q, r0@move)
+
+            public func main() => ()
+            """,
+            string.Empty
+        },
+        // rk1i (invalid, review): a user enum E<T> Case payload.
+        {
+            "rk1i",
+            """
+            enum E<T>
+                Some(T)
+                Empty
+
+            func g(c: ref/i32, q: ref/i32, r: E<uniq/((ref/i32 during c) -> i32) during q>) -> i32 => 0
+
+            func f(b: ref/i32, p: ref/i32, q: ref/i32, r0: E<uniq/((ref/i32) -> i32) during p>) -> i32
+                origin p outlives q
+                origin b outlives q
+                return g(b, q, r0@move)
+
+            public func main() => ()
+            """,
+            "UnprovenOriginContract_Kd r0@move"
+        },
+        // rk1v (valid, review): rk1i's twin.
+        {
+            "rk1v",
+            """
+            enum E<T>
+                Some(T)
+                Empty
+
+            func g(c: ref/i32, q: ref/i32, r: E<uniq/((ref/i32 during c) -> i32) during q>) -> i32 => 0
+
+            func f(b: ref/i32, p: ref/i32, q: ref/i32, r0: E<uniq/((ref/i32 during b) -> i32) during p>) -> i32
+                origin p outlives q
+                return g(b, q, r0@move)
+
+            public func main() => ()
+            """,
+            string.Empty
+        },
+        // ry1i (invalid, review): Array<uniq/F during p> element.
+        {
+            "ry1i",
+            """
+            func g(c: ref/i32, q: ref/i32, r: Array<uniq/((ref/i32 during c) -> i32) during q>) -> i32 => 0
+
+            func f(b: ref/i32, p: ref/i32, q: ref/i32, r0: Array<uniq/((ref/i32) -> i32) during p>) -> i32
+                origin p outlives q
+                origin b outlives q
+                return g(b, q, r0@move)
+
+            public func main() => ()
+            """,
+            "UnprovenOriginContract_Kd r0@move"
+        },
+        // ry1v (valid, review): ry1i's twin.
+        {
+            "ry1v",
+            """
+            func g(c: ref/i32, q: ref/i32, r: Array<uniq/((ref/i32 during c) -> i32) during q>) -> i32 => 0
+
+            func f(b: ref/i32, p: ref/i32, q: ref/i32, r0: Array<uniq/((ref/i32 during b) -> i32) during p>) -> i32
+                origin p outlives q
+                return g(b, q, r0@move)
+
+            public func main() => ()
+            """,
+            string.Empty
+        },
+        // rw1i (invalid, review): struct W<T> with a var Field, under uniq/.
+        {
+            "rw1i",
+            """
+            struct W<T>
+                public var item: T
+                public init(item: T) => self.item = item@move
+
+            func g(c: ref/i32, q: ref/i32, r: W<uniq/((ref/i32 during c) -> i32) during q>) -> i32 => 0
+
+            func f(b: ref/i32, p: ref/i32, q: ref/i32, r0: W<uniq/((ref/i32) -> i32) during p>) -> i32
+                origin p outlives q
+                origin b outlives q
+                return g(b, q, r0@move)
+
+            public func main() => ()
+            """,
+            "UnprovenOriginContract_Kd r0@move"
+        },
+        // rw1v (valid, review): rw1i's twin.
+        {
+            "rw1v",
+            """
+            struct W<T>
+                public var item: T
+                public init(item: T) => self.item = item@move
+
+            func g(c: ref/i32, q: ref/i32, r: W<uniq/((ref/i32 during c) -> i32) during q>) -> i32 => 0
+
+            func f(b: ref/i32, p: ref/i32, q: ref/i32, r0: W<uniq/((ref/i32 during b) -> i32) during p>) -> i32
+                origin p outlives q
+                return g(b, q, r0@move)
+
+            public func main() => ()
+            """,
+            string.Empty
+        },
+        // rw2v (valid, review): W<PC> to W<FX(c)>: a var Field is storage, covariant, no invariant layer.
+        {
+            "rw2v",
+            """
+            struct W<T>
+                public var item: T
+                public init(item: T) => self.item = item@move
+
+            func g(c: ref/i32, r: W<(ref/i32 during c) -> i32>) -> i32 => 0
+
+            func f(b: ref/i32, r0: W<(ref/i32) -> i32>) -> i32
+                return g(b, r0@move)
+
+            public func main() => ()
+            """,
+            string.Empty
+        },
+        // ru1i (invalid, review): UniqSlice<T>, a library invariant slot.
+        {
+            "ru1i",
+            """
+            func g(c: ref/i32, s: UniqSlice<(ref/i32 during c) -> i32>) -> i32 => 0
+
+            func f(b: ref/i32, s0: UniqSlice<(ref/i32) -> i32>) -> i32
+                return g(b, s0@move)
+
+            public func main() => ()
+            """,
+            "UnprovenOriginContract_Kd s0@move"
+        },
+        // ru1v (valid, review): ru1i's twin.
+        {
+            "ru1v",
+            """
+            func g(c: ref/i32, s: UniqSlice<(ref/i32 during c) -> i32>) -> i32 => 0
+
+            func f(b: ref/i32, s0: UniqSlice<(ref/i32 during b) -> i32>) -> i32
+                return g(b, s0@move)
+
+            public func main() => ()
+            """,
+            string.Empty
+        },
+        // rr1i (invalid, review): a result over the per-call input, (ref/i32) -> ref/i32 against a fixed one.
+        {
+            "rr1i",
+            """
+            func g(c: ref/i32, u: uniq/((ref/i32 during c) -> ref/i32 during c)) -> i32 => 0
+
+            func f(b: ref/i32, u0: uniq/((ref/i32) -> ref/i32)) -> i32
+                return g(b, u0@move)
+
+            public func main() => ()
+            """,
+            "UnprovenOriginContract_Kd u0@move"
+        },
+        // rr1j (invalid, review): rr1i's other orientation.
+        {
+            "rr1j",
+            """
+            func g(u: uniq/((ref/i32) -> ref/i32)) -> i32 => 0
+
+            func f(b: ref/i32, u0: uniq/((ref/i32 during b) -> ref/i32 during b)) -> i32
+                return g(u0@move)
+
+            public func main() => ()
+            """,
+            "UnprovenOriginContract_Kd u0@move"
+        },
+        // rr1v (valid, review): two spellings of (ref/i32) -> ref/i32.
+        {
+            "rr1v",
+            """
+            func g(u: uniq/((ref/i32) -> ref/i32)) -> i32 => 0
+
+            func f(u0: uniq/((ref/i32) -> ref/i32)) -> i32
+                return g(u0@move)
+
+            public func main() => ()
+            """,
+            string.Empty
+        },
+        // rt2i (invalid, review): a generic caller g<T>(x: T, y: T), uniq/PC then uniq/FX(b).
+        {
+            "rt2i",
+            """
+            func g<T>(x: T, y: T) -> i32 => 0
+
+            func f(b: ref/i32, q: ref/i32, x0: uniq/((ref/i32) -> i32) during q, y0: uniq/((ref/i32 during b) -> i32) during q) -> i32
+                origin b outlives q
+                return g(x0@move, y0@move)
+
+            public func main() => ()
+            """,
+            "UnprovenOriginContract_Kd y0@move"
+        },
+        // rt2j (invalid, review): rt2i with FX(b) first.
+        {
+            "rt2j",
+            """
+            func g<T>(x: T, y: T) -> i32 => 0
+
+            func f(b: ref/i32, q: ref/i32, x0: uniq/((ref/i32 during b) -> i32) during q, y0: uniq/((ref/i32) -> i32) during q) -> i32
+                origin b outlives q
+                return g(x0@move, y0@move)
+
+            public func main() => ()
+            """,
+            "UnprovenOriginContract_Kd y0@move"
+        },
+        // rt2v (valid, review): two spellings of uniq/PC.
+        {
+            "rt2v",
+            """
+            func g<T>(x: T, y: T) -> i32 => 0
+
+            func f(q: ref/i32, x0: uniq/((ref/i32) -> i32) during q, y0: uniq/((ref/i32) -> i32) during q) -> i32
+                return g(x0@move, y0@move)
+
+            public func main() => ()
+            """,
+            string.Empty
+        },
+        // ra6v (valid, review): a6i's assignment with equal targets.
+        {
+            "ra6v",
+            """
+            struct R<T>
+                public let call: (T) -> i32
+                public init(call: (T) -> i32) => self.call = call@move
+
+            func f(b: ref/i32, p: ref/i32, q: ref/i32, r0: R<uniq/((ref/i32 during b) -> i32) during p>, r1: R<uniq/((ref/i32 during b) -> i32) during q>) -> i32
+                origin q outlives p
+                origin b outlives q
+                var r: R<uniq/((ref/i32 during b) -> i32) during q> = r1@move
+                r = r0@move
+                return 0
+
+            public func main() => ()
+            """,
+            string.Empty
+        },
+        // ra7v (valid, review): PC and PC at the contravariant slot.
+        {
+            "ra7v",
+            """
+            struct R<T>
+                public let call: (T) -> i32
+                public init(call: (T) -> i32) => self.call = call@move
+
+            func g(q: ref/i32, r: R<uniq/((ref/i32) -> i32) during q>) -> i32 => 0
+
+            func f(p: ref/i32, q: ref/i32, r0: R<uniq/((ref/i32) -> i32) during p>) -> i32
+                origin q outlives p
+                return g(q, r0@move)
+
+            public func main() => ()
+            """,
+            string.Empty
+        },
+        // rf1w (valid, review): f1i's named function with uniq/PC required.
+        {
+            "rf1w",
+            """
+            func h(u: uniq/((ref/i32) -> i32)) -> i32 => 0
+
+            func f() -> i32
+                let k: (uniq/((ref/i32) -> i32)) -> i32 = h
+                return 0
+
+            public func main() => ()
+            """,
+            string.Empty
+        },
+        // rf2w (valid, review): a Closure with uniq/PC required.
+        {
+            "rf2w",
+            """
+            func f() -> i32
+                let k: (uniq/((ref/i32) -> i32)) -> i32 = func (u: uniq/((ref/i32) -> i32)) => 0
+                return 0
+
+            public func main() => ()
+            """,
+            string.Empty
+        },
+        // rp1v (valid, review): a per-call input with a fixed inner Origin at an argument (the declared side's well-formedness under the exchange).
+        {
+            "rp1v",
+            """
+            func g(c: ref/i32, u: uniq/((uniq/(ref/i32 during c)) -> i32)) -> i32 => 0
+
+            func f(b: ref/i32, u0: uniq/((uniq/(ref/i32 during b)) -> i32)) -> i32
+                return g(b, u0@move)
+
+            public func main() => ()
+            """,
+            string.Empty
+        },
+        // rp1i (invalid, review): rp1v's invalid twin at a declared local.
+        {
+            "rp1i",
+            """
+            func f(a: ref/i32, b: ref/i32, u0: uniq/((uniq/(ref/i32 during a)) -> i32)) -> i32
+                origin a outlives b
+                let u: uniq/((uniq/(ref/i32 during b)) -> i32) = u0@move
+                return 0
+
+            public func main() => ()
+            """,
+            "UnprovenOriginContract_Kd u0@move|UnprovenOriginRelation_Kd uniq/((uniq/(ref/i32 during b)) -> i32)|Unsupported_Kd uniq/((uniq/(ref/i32 during b)) -> i32)"
+        },
+        // rp1w (valid, review): Exposure: rp1v at a declared local, rejected only by the located limit at the declared Type (base and head).
+        {
+            "rp1w",
+            """
+            func f(b: ref/i32, u0: uniq/((uniq/(ref/i32 during b)) -> i32)) -> i32
+                let u: uniq/((uniq/(ref/i32 during b)) -> i32) = u0@move
+                return 0
+
+            public func main() => ()
+            """,
+            "Unsupported_Kd uniq/((uniq/(ref/i32 during b)) -> i32)"
+        },
+        // rp2v (valid, review): Exposure: as rp1w.
+        {
+            "rp2v",
+            """
+            func f(a: ref/i32, b: ref/i32, u0: uniq/((uniq/(ref/i32 during a)) -> i32)) -> i32
+                origin a == b
+                let u: uniq/((uniq/(ref/i32 during b)) -> i32) = u0@move
+                return 0
+
+            public func main() => ()
+            """,
+            "Unsupported_Kd uniq/((uniq/(ref/i32 during b)) -> i32)"
+        },
+        // ri2v (valid, review): i1i's twin: a local region on both sides.
+        {
+            "ri2v",
+            """
+            func g(c: ref/i32, u: uniq/((ref/i32 during c) -> i32)) -> i32 => 0
+
+            func keep(x: ref/i32) -> i32 => 0
+
+            func mk(c: ref/i32) -> (ref/i32 during c) -> i32
+                return keep
+
+            func f() -> i32
+                let local = 1
+                var k = mk(local@ref)
+                return g(local@ref, k@uniq)
+
+            public func main() => ()
+            """,
+            string.Empty
+        },
+        // ri2w (valid, review): as ri2v.
+        {
+            "ri2w",
+            """
+            func g(c: ref/i32, u: uniq/((ref/i32 during c) -> i32)) -> i32 => 0
+
+            func keep(x: ref/i32) -> i32 => 0
+
+            func mk(c: ref/i32) -> (ref/i32 during c) -> i32
+                return keep
+
+            func f() -> i32
+                let local = 1
+                let r = local@ref
+                var k = mk(r)
+                return g(r, k@uniq)
+
+            public func main() => ()
+            """,
+            string.Empty
+        },
     };
 
     [Theory]
