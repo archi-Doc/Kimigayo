@@ -19,18 +19,42 @@ namespace Kimi.Compiler;
 // Invariants: a source is identified by its path (Revision 10): the layers it is formed through but those the premise catalog's
 // well-formedness rule relates to the layer above (Related), each of which a fit needs, so a Type is walked once per path; a fit compares
 // Origin-erased Types (TyCtxt.Erase), a pair layer by its admitted cases; an abstract part, a part Binding did not bind and raw storage a
-// value holds (DECISIONS BU-91) hold any; the input fold's walks and the fits stop at the depth bound (StorageBound), Occurs where the Type ends.
+// value holds (DECISIONS BU-91) hold any; the input fold's walks and the fits stop at the depth bound (StorageBound), each entering a
+// state at the shallowest depth it is met at (Enters), Occurs where the Type ends.
 // Must not: judge an Origin relation (the premise closure's), walk a value itself (the walk's), or read the call's arguments.
 public sealed partial class Binding
 {
     // The Value sources of the computation by node, their layer paths (each a run of retentionPaths) and the path being walked, and the
-    // parts Holds has met; reused.
+    // parts Holds has met, each at its shallowest depth (Enters), reused. retentionParts holds two contracts, Holds' depths and
+    // Instantiation's parts (once each, value 0), never in one query: split it if either changes.
     private readonly List<RetentionSource> retentionSources = new();
     private readonly List<int> retentionPaths = new();
     private readonly List<int> retentionPath = new();
     private readonly Dictionary<(int Path, int Layer), int> retentionPathIds = new(); // The paths walked, each by its prefix and last layer.
-    private readonly HashSet<BoundType> retentionParts = new(ReferenceEqualityComparer.Instance);
+    private readonly Dictionary<BoundType, int> retentionParts = new(ReferenceEqualityComparer.Instance);
     private readonly Dictionary<(BoundType Type, BoundType? Written, BoundType? Holder), int> retentionWalked = new(); // Enters' depths, reused.
+
+    // The one visit rule of the walks that stop at a depth bound and key their visits (G416, PLAN G571). A search of every depth bound in
+    // Binding and TyCtxt finds four: three at StorageBound and TyCtxt.Handed at HandedBound. A walk enters a state at the shallowest depth
+    // it is met at, and again where it is met shallower. So what it reaches below a state is a function of the state, not of the route
+    // that met it first: within the bound it is the routes' answer, in at most bound + 1 entries per state (G416: a branching recursion
+    // has 2^(depth/2) routes). `shallowest` is the state's entry in its walk's own table (`met`: it had one), a reference the caller reads
+    // no more once its walk may insert (a resize moves the entry). Each walk keys its own state, all that decides what lies below it: the
+    // borrow fit's (Type, Written, Holder) (Borrows, retentionWalked), the hold fit's storage Type, its asked entry fixed per query and its
+    // run read with neither (Holds, retentionParts), and the handed-callable walk's Type (TyCtxt.Handed, handedSeen). The storage walk's
+    // StorageAt leaves out the layer above, the Written Type and the holder (StorageWalk): meetings that differ only in those count as one
+    // state (the layer above changes no fit, Revision 10; the other two steer raw steps, and a shallower meeting walks below with its own:
+    // PLAN G571's design, N1). Holds runs inside Borrows' walk, so their tables stay apart.
+    internal static bool Enters(ref int shallowest, bool met, int depth)
+    {
+        if (met && shallowest <= depth)
+        {
+            return false;
+        }
+
+        shallowest = depth;
+        return true;
+    }
 
     // Whether an unconditional `Input` premise edge relates a layer's node to the layer above's (`above`, -1: none), or the two are one
     // node: then the layer adds nothing to a fit, being reached whenever the layer above is (DECISIONS R4-M154, Revision 10). Such edges
@@ -145,26 +169,17 @@ public sealed partial class Binding
         return source.Through is { } referent && this.Borrows(position, null, null, referent, 0);
     }
 
-    // Whether a query's walk enters a part: each (Type, Written, Holder), which alone decide what lies below it, at the shallowest depth it is
-    // met at, again where it is met shallower. So the answer is a function of the part, not of the path to it: within the bound it is the
-    // paths' answer, in work linear in the parts (G416: a branching recursion has 2^(depth/2) paths).
-    private bool Enters(BoundType type, BoundType? written, BoundType? holder, int depth)
-    {
-        ref var shallowest = ref CollectionsMarshal.GetValueRefOrAddDefault(this.retentionWalked, (type, written, holder), out var met);
-        if (met && shallowest <= depth)
-        {
-            return false;
-        }
-
-        shallowest = depth;
-        return true;
-    }
-
     // Whether a position, or a part it carries (Holds), is a borrow of a part a referent holds by value: one formed through a source's
     // layer.
     private bool Borrows(BoundType? position, BoundType? written, BoundType? holder, BoundType referent, int depth)
     {
-        if (position is null || depth > StorageBound || !this.Enters(position, written, holder, depth))
+        if (position is null || depth > StorageBound)
+        {
+            return false;
+        }
+
+        ref var walked = ref CollectionsMarshal.GetValueRefOrAddDefault(this.retentionWalked, (position, written, holder), out var met);
+        if (!Enters(ref walked, met, depth))
         {
             return false;
         }
@@ -203,7 +218,13 @@ public sealed partial class Binding
             return true;
         }
 
-        if (depth > StorageBound || !this.retentionParts.Add(storage))
+        if (depth > StorageBound)
+        {
+            return false;
+        }
+
+        ref var entered = ref CollectionsMarshal.GetValueRefOrAddDefault(this.retentionParts, storage, out var met);
+        if (!Enters(ref entered, met, depth))
         {
             return false;
         }
