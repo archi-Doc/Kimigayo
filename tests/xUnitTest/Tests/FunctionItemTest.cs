@@ -95,7 +95,7 @@ public class FunctionItemTest
     [InlineData("y1fnsig", "func h(anchor0: ref/u8 during a) -> i32\n    if true\n        func pk(f: (ref/u8 during a) -> i32) -> i32 => 0\n        return need(pk)\n    return 0\n", "need(pk)")]
     [InlineData("y3fnsigT", "func h<T>(x: ref/T) -> i32\n    if true\n        func pk(f: (T) -> i32) -> i32 => 0\n        return need(pk)\n    return 0\n", "need(pk)")]
     [InlineData("y5local", "func h(anchor0: ref/u8 during a) -> i32\n    let r: ref/u8 = anchor0\n    if true\n        func pk(x: ref/u8 during r) -> i32 => 0\n        return need(pk)\n    return 0\n", "need(pk)")]
-    [InlineData("o8eraT", "func h<T>(x: T) -> i32\n    if true\n        func pk(y: T) -> i32 => 0\n        let g: (T) -> i32 = pk\n        return g(x@move)\n    return 0\n", null)]
+    [InlineData("o8eraT", "func h<T>(x: T) -> i32\n    if true\n        func pk(y: T) -> i32 => 0\n        let g: (T) -> i32 = pk\n        return g(x@move)\n    return 0\n", "pk\n        return g")]
     [InlineData("e4hide", "func h(anchor0: ref/u8 during a) -> i32\n    if true\n        func pk(x: ref/u8 during a) -> i32 => 0\n        let g: (ref/u8 during static) -> i32 = pk\n        return need(g@move)\n    return 0\n", null)]
     [InlineData("e5hidec", "func h(anchor0: ref/u8 during a) -> i32\n    let g: (ref/u8 during static) -> i32 = func (x: ref/u8 during a) -> i32 => 0\n    return need(g@move)\n", null)]
     [InlineData("x3fnnest", "func h(anchor0: ref/u8 during a) -> i32\n    if true\n        func pk<U>(y: U) -> i32 => 0\n        return need(pk<(ref/u8) -> i32>)\n    return 0\n", null)]
@@ -139,6 +139,28 @@ public class FunctionItemTest
     public void ARootFunctionsItemInheritsTheExecutionScopesOrigins(string id, string function, string? at)
         => AssertOwnedRecord(id, Need + "var cell: u8 = 1\nlet r = cell@ref\n" + function + "let n = need(top)\n", at);
 
+    // SPEC 6.1.3 ("even an unused one"), 15.2.3, 3.2.1, 7.7.4 (PLAN G826b; the owner's O-249 Q4 (a)): an Item of a function nested in a
+    // body is Owned, and erased, only when every enclosing parameter is, used or not: each generic slot of the functions enclosing its body
+    // and the nearest enclosing Container's generic and Origin slots, two levels and through a Closure body too. A function has no Origin
+    // parameter list (SPEC 15.3), so an enclosing function's Origin counts only when named (k13fnorigin).
+    [Theory]
+    [InlineData("j09bunused", Need + "func h<T>(t: T) -> i32\n    if true\n        func pk() -> i32 => 0\n        return need(pk)\n    return 0\n", "need(pk)")]
+    [InlineData("j14bunused", "func h<T>(t: T) -> i32\n    if true\n        func pk(v: i32) -> i32 => v\n        let e: (i32) -> i32 = pk\n        return e(0)\n    return 0\n", "pk\n        return e")]
+    [InlineData("j18callableowned", "func callOwned<F>(f: F) -> i32\n    F is Callable<() -> i32>\n    F is Owned\n    return f()\nfunc h<T>(t: T) -> i32\n    if true\n        func pk() -> i32 => 0\n        return callOwned(pk)\n    return 0\n", "callOwned(pk)")]
+    [InlineData("j21genmethod", GroupNeed + "struct B2<T>\n    public func m() -> i32\n        if true\n            func pk() -> i32 => 0\n            return N.need(pk)\n        return 0\n", "N.need(pk)")]
+    [InlineData("k01own", Need + "func h<T>(t: T) -> i32\n    T is Owned\n    if true\n        func pk() -> i32 => 0\n        return need(pk)\n    return 0\n", null)]
+    [InlineData("k02eraseown", "func h<T>(t: T) -> i32\n    T is Owned\n    if true\n        func pk(v: i32) -> i32 => v\n        let e: (i32) -> i32 = pk\n        return e(0)\n    return 0\n", null)]
+    [InlineData("k06twoq", Need + "func h() -> i32\n    if true\n        func q<U>(u: U) -> i32\n            if true\n                func pk() -> i32 => 0\n                return need(pk)\n            return 0\n        return q(1)\n    return 0\n", "need(pk)")]
+    [InlineData("k09genfnok", Need + "func h<T, U>(t: T, u: U) -> i32\n    T is Owned\n    U is Owned\n    if true\n        func pk(x: T) -> i32 => 0\n        return need(pk)\n    return 0\n", null)]
+    [InlineData("k08genfn", Need + "func h<T, U>(t: T, u: U) -> i32\n    T is Owned\n    if true\n        func pk(x: T) -> i32 => 0\n        return need(pk)\n    return 0\n", "need(pk)")]
+    [InlineData("k11slot", GroupNeed + "struct C2 {s}\n    public let r: ref/i32 during s\n    public init(r: ref/i32 during s) => self.r = r\n    public func m(self: ref/Self) -> i32\n        if true\n            func pk() -> i32 => 0\n            return N.need(pk)\n        return 0\n", "N.need(pk)")]
+    [InlineData("k13fnorigin", Need + "func h(anchor0: ref/u8 during a) -> i32\n    if true\n        func pk() -> i32 => 0\n        return need(pk)\n    return 0\n", null)]
+    [InlineData("k16eraslot", "struct C2 {s}\n    public let r: ref/i32 during s\n    public init(r: ref/i32 during s) => self.r = r\n    public func m(self: ref/Self) -> i32\n        if true\n            func pk(x: ref/i32 during s) -> i32 => 0\n            let e: (ref/i32 during s) -> i32 = pk\n            return 0\n        return 0\n", "pk\n            return 0")]
+    [InlineData("k20deep", GroupNeed + "struct Outer<T>\n    public struct Inner\n        public let n: i32\n        public init(n: i32) => self.n = n\n        public func m(self: ref/Self) -> i32\n            if true\n                func pk() -> i32 => 0\n                return N.need(pk)\n            return 0\n", "N.need(pk)")]
+    [InlineData("k23clobody", Need + "func h<T>(t: T) -> i32\n    let c = func () -> i32\n        if true\n            func pk() -> i32 => 0\n            return need(pk)\n        return 0\n    return c()\n", "need(pk)")]
+    public void AnItemOfANestedFunctionInheritsEveryEnclosingParameter(string id, string program, string? at)
+        => AssertOwnedRecord(id, program + "public func main() -> () => ()\n", at);
+
     [Fact]
     public void CliAndLspExplainAnItemTypeMismatch()
     {
@@ -177,7 +199,7 @@ public class FunctionItemTest
     [InlineData("func h(anchor0: ref/u8 during a, mid: ref/u8 during c, other: ref/u8 during b) -> i32\n    origin b outlives c\n    origin c outlives a\n    if true\n        func pk(x: ref/u8 during a) -> i32 => 0\n        let f: (ref/u8 during b) -> i32 = pk\n        return f(other)\n    return 0")]
     [InlineData("func h(anchor0: ref/u8 during a, mid: ref/u8 during c, other: ref/u8 during b) -> i32\n    origin b outlives a\n    origin a outlives c\n    if true\n        func pk(x: ref/u8 during a) -> ref/u8 during a => x\n        let f: (ref/u8 during b) -> ref/u8 during c = pk\n        let r = f(other)\n        return 0\n    return 0")]
     [InlineData("func apply(g: (ref/u8 during q) -> i32, r: ref/u8 during q) -> i32 => 0\nfunc h(anchor0: ref/u8 during a, other: ref/u8 during b) -> i32\n    origin b outlives a\n    if true\n        func pk(x: ref/u8 during a) -> i32 => 0\n        return apply(pk, other)\n    return 0")]
-    [InlineData("func h<T>(x: ref/T during a, o: ref/T during b) -> i32\n    origin b outlives a\n    if true\n        func pk(y: ref/T during a) -> i32 => 0\n        let f: (ref/T during b) -> i32 = pk\n        return f(o)\n    return 0")]
+    [InlineData("func h<T>(x: ref/T during a, o: ref/T during b) -> i32\n    T is Owned\n    origin b outlives a\n    if true\n        func pk(y: ref/T during a) -> i32 => 0\n        let f: (ref/T during b) -> i32 = pk\n        return f(o)\n    return 0")]
     [InlineData("func h(anchor0: ref/u8 during a, other: ref/u8 during b) -> i32\n    origin b outlives a\n    if true\n        func pk<U>(y: ref/U during a) -> i32 => 0\n        let f: (ref/u8 during b) -> i32 = pk\n        return f(other)\n    return 0")]
     [InlineData("func fb(x: ref/u8 during q) -> i32 => 0\nfunc h(anchor0: ref/u8 during a, other: ref/u8 during b) -> i32\n    origin b outlives a\n    var f: (ref/u8 during b) -> i32 = fb\n    if true\n        func pk(x: ref/u8 during a) -> i32 => 0\n        f = pk\n    return f(other)")]
     [InlineData("func both<T>(g: (T) -> i32, k: (T) -> i32, v: T) -> i32 => 0\nfunc h(anchor0: ref/u8 during a, other: ref/u8 during b) -> i32\n    origin b outlives a\n    if true\n        func pk(x: ref/u8 during a) -> i32 => 0\n        return both(func (x: ref/u8) => 0, pk, other)\n    return 0")]

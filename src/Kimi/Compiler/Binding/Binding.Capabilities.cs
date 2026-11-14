@@ -167,20 +167,6 @@ public sealed partial class Binding
     private static bool Inherited(Koto binder, FunctionKoto function, Koto body)
         => !IsWithin(binder, function) && !(IsWithin(function, binder) && !IsWithin(body, binder));
 
-    // The declaration a Type parameter's syntax belongs to (a function or a Container, a Contract's Self included).
-    private static Koto DeclaringNode(Koto declaration)
-    {
-        for (var current = declaration; current is not null; current = current.Parent)
-        {
-            if (current is DeclarationKoto)
-            {
-                return current;
-            }
-        }
-
-        return declaration;
-    }
-
     // The body a declaration is nested in: its nearest enclosing function or accessor, the execution scope's generated function for a root
     // function (which lies there with the top-level bindings, SPEC 6.1.1); null outside every body (a Container's member).
     private static Koto? EnclosingBody(Koto declaration)
@@ -556,12 +542,13 @@ public sealed partial class Binding
         }
     }
 
-    // SPEC 15.3.4 (last bullet), 15.2.3: what a named function nested in a body (a root function in the execution scope's) inherits, read
-    // from its declaration as its Item is formed: the Origins and Type parameters its declared signature names whose binder lies outside it
-    // and is no Container it is a member of below that body (whose slots its bound arguments instantiate), as one environment Tuple
-    // (EnvironmentTuple). Atoms bound inside its declaration (its own Origins, a Constraint set's slot, a nested Function Type's inputs)
-    // are per-call, and a Type a projection or a bound argument derives from them is never judged itself (15.2.3 counts the arguments).
-    // Null when a declared Type did not bind.
+    // SPEC 15.3.4 (last bullet), 15.2.3: what a named function nested in a body (a root function in the execution scope's) depends on by
+    // naming it, beyond its inherited parameters (CapabilityParts' environment parts, SPEC 6.1.3), read from its declaration as its Item is
+    // formed: the Origins its declared signature names whose binder lies outside it and is no Container it is a member of below that body,
+    // an enclosing Container's Origin slot excepted (an inherited parameter), as one environment Tuple (EnvironmentTuple): an enclosing
+    // function's Origins (SPEC 15.3: no function Origin parameter list) and a local's. Atoms bound inside its declaration (its own Origins,
+    // a Constraint set's slot, a nested Function Type's inputs) are per-call, and a Type a projection or a bound argument derives from them
+    // is never judged itself (15.2.3 counts the arguments). Null when a declared Type did not bind.
     private BoundType? InheritedEnvironment(FunctionKoto function, Koto body)
     {
         if (function.BoundSymbol?.Type is not { } result)
@@ -587,18 +574,15 @@ public sealed partial class Binding
             var signature = this.types.Tuple(declared.AsSpan(0, count + 1));
             var summary = this.SummaryOf(signature);
             var origins = this.originScratch.Rent(summary.Nodes.Length + summary.RawNodes.Length);
-            var types = this.RentTypes(this.InheritedParameters(signature, function, body, null, 0, this.visitedParts.Begin(this.storageVersion)));
             try
             {
                 var o = InheritedOrigins(summary.Nodes, function, body, origins, 0);
                 o = InheritedOrigins(summary.RawNodes, function, body, origins, o);
-                var t = this.InheritedParameters(signature, function, body, types, 0, this.visitedParts.Begin(this.storageVersion));
-                return this.EnvironmentTuple(types.AsSpan(0, t), origins.AsSpan(0, o));
+                return this.EnvironmentTuple([], origins.AsSpan(0, o));
             }
             finally
             {
                 this.originScratch.Return(origins, clearArray: true);
-                this.typeScratch.Return(types, clearArray: true);
             }
         }
         finally
@@ -610,7 +594,8 @@ public sealed partial class Binding
         {
             for (var i = 0; i < nodes.Length; i++)
             {
-                if (nodes[i] is { Kind: not (OriginKind.Static or OriginKind.Intersection), Binder: { } binder } atom && Inherited(binder, function, body))
+                if (nodes[i] is { Kind: not (OriginKind.Static or OriginKind.Intersection), Binder: { } binder } atom && Inherited(binder, function, body) &&
+                    !(atom.Kind == OriginKind.Parameter && binder is DeclarationContainerKoto))
                 {
                     into[count++] = atom;
                 }
@@ -618,36 +603,6 @@ public sealed partial class Binding
 
             return count;
         }
-    }
-
-    // The Type parameters a declared signature inherits, each part visited once per walk (DECISIONS BU-19): counted, or written into `into`.
-    private int InheritedParameters(BoundType type, FunctionKoto function, Koto body, BoundType[]? into, int count, uint query)
-    {
-        if (type.Kind == BoundTypeKind.Parameter)
-        {
-            if (type.Symbol?.Declaration is { } declaration && Inherited(DeclaringNode(declaration), function, body))
-            {
-                if (into is not null)
-                {
-                    into[count] = type;
-                }
-
-                count++;
-            }
-
-            return count;
-        }
-
-        for (var i = 0; i < type.Components.Count; i++)
-        {
-            var part = type.Components[i];
-            if (part.HasAbstractPart && this.FirstVisit(part, query))
-            {
-                count = this.InheritedParameters(part, function, body, into, count, query);
-            }
-        }
-
-        return count;
     }
 
     // Copy's derivation over the stored Types of a declaration's Self (SPEC 3.5.2); Owned reads component summaries.
