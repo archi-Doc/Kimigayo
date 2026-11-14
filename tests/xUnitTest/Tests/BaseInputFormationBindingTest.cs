@@ -175,6 +175,42 @@ public class BaseInputFormationBindingTest
         }
     }
 
+    // PLAN G578 rx4 (SPEC 9.5): a value name's lookup that saw a base clause not ready is an early read as a Type name's, so the layer
+    // that stops it is found once the projected base is bound: a length constant in a conformance declaration (rx4; written before
+    // its base's declarations), through `Source.Parent`, in a nested struct (stage 3), in a member's Constraint, in an associated
+    // specification, under a generic base and at the second layer. Each was accepted, selecting G.n; each valid twin (Q declares m)
+    // selects G.n, and a later Bind of the unchanged program reports what the first reported.
+    [Theory]
+    [InlineData(Rx4Contracts + Rx4Source + Rx4Q + Rx4G + Rx4T)]
+    [InlineData(Rx4Contracts + Rx4G + Rx4T + Rx4Q + Rx4Source)]
+    [InlineData(Rx4Contracts + Rx4Source + Rx4Q + Rx4G + "    struct T: Source.Parent\n        Self is K<[n of i32]>\n        public init(): base() => ()\n")]
+    [InlineData(Rx4Contracts + Rx4Source + Rx4Q + Rx4G + "    struct T: Source.(HasBase).Parent\n        public init(): base() => ()\n        struct U\n            Self is K<[n of i32]>\n")]
+    [InlineData(Rx4Contracts + Rx4Source + Rx4Q + Rx4G + "    struct T: Source.(HasBase).Parent\n        public init(): base() => ()\n        func h<X>(self, x: ref/X) -> i32\n            X is K<[n of i32]>\n            return 1\n")]
+    [InlineData("contract HasItem\n    associate Item\n" + Rx4Contracts + Rx4Source + Rx4Q + Rx4G + "    struct T: Source.(HasBase).Parent\n        Self is HasItem\n        associate HasItem.Item is [n of i32]\n        public init(): base() => ()\n")]
+    [InlineData(Rx4Contracts + "struct Source<A>\n    Self is HasBase\n    associate HasBase.Parent is Q\n" + Rx4Q + Rx4G + "    struct T<A>: Source<A>.(HasBase).Parent\n        Self is K<[n of i32]>\n        public init(): base() => ()\n")]
+    [InlineData(Rx4Contracts + "struct Source\n    Self is HasBase\n    associate HasBase.Parent is Mid\nstruct Source2\n    Self is HasBase\n    associate HasBase.Parent is Q\nopen struct Mid: Source2.(HasBase).Parent\n    public init(): base() => ()\n" + Rx4Q + Rx4G + Rx4T)]
+    public void AValueNameStopsAtAProjectedBasesLayer(string source)
+    {
+        var c = MinimalEmissionTest.Analyze(source);
+        Assert.False(c.Binding.Result.IsComplete);
+        Assert.Single(c.Binding.Issues, static x => x.Code == DiagnosticCode.QualificationRequired_Kd);
+        var fresh = Records(c);
+        Assert.False(c.Bind().IsComplete);
+        Assert.Equal(fresh, Records(c));
+        var valid = MinimalEmissionTest.Analyze(source.Replace("public let n: isize = 3", "public let m: isize = 3"));
+        Assert.True(valid.Binding.Result.IsComplete, MinimalEmissionTest.Describe(valid));
+    }
+
+    private const string Rx4Contracts = "contract K<T>\ncontract HasBase\n    associate Parent\n";
+
+    private const string Rx4Source = "struct Source\n    Self is HasBase\n    associate HasBase.Parent is Q\n";
+
+    private const string Rx4Q = "open struct Q\n    public let n: isize = 3\n    public init() => ()\n";
+
+    private const string Rx4G = "group G\n    public let n: isize = 2\n";
+
+    private const string Rx4T = "    struct T: Source.(HasBase).Parent\n        Self is K<[n of i32]>\n        public init(): base() => ()\n";
+
     private const string Paradox = "contract HasBase\n    associate Parent\nopen struct Q: R\n    protected open struct N\n        public init() => ()\n    public init() => ()\nopen struct R\n    private open struct N: Q\n        public init(): base() => ()\n    public init() => ()\n    struct T: T.S.(HasBase).Parent\n        public init(): base() => ()\n        struct S\n            Self is HasBase\n            associate HasBase.Parent is Q.N";
 
     private const string Prefix = "open struct Base\ncontract Origin\n    associate Item\nstruct Source<T>\n    T is i32\n    Self is Origin\n    associate Origin.Item is Base\n";
