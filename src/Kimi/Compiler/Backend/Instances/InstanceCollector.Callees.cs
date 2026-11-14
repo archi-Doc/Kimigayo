@@ -14,8 +14,8 @@
 // Invariants: the substitution admitted is the one the body runs under, so Admit keys and represents it; a Closure's body is the
 // program's where a read body creates the Closure (the validator's program pass, MirValidator.Program, G191); a called Closure without
 // one is a Closure of a declaration Binding rejected, its request checked and then resting on Binding's record (Callee; PLAN G867).
-// Must not: read a site or a template, or record anything itself (Admit, the layout verdict, the witness and glue rows do) but a
-// declared callee without a body, a bodyless function that is neither a compiler function nor an import and, in a complete compilation,
+// Must not: read a site or a template, or record anything itself (Admit, Requested, the layout verdict, the witness and glue rows do) but
+// a declared callee without a body, a bodyless function that is neither a compiler function nor an import and, in a complete compilation,
 // a called Closure without a body, broken contracts.
 
 using Kimi.Compiler.Mir;
@@ -133,8 +133,9 @@ internal sealed partial class InstanceCollector
 
     // X4 (DECISIONS R5-M124, R8-A1d, R8-K1c): the one owner of a target the compiler names: the body of a cataloged library function (a
     // Dictionary from none's initialize; a nonempty Array literal's growArray; a collection glue's destroyArray, destroyDictionary or
-    // releaseDictionary), admitted for a site under the substitution given (a generic one's; null for one that does not instantiate); a
-    // declared callee without a body is a broken contract.
+    // releaseDictionary) or of a struct's declared destructor (Destructor), admitted for a site under the substitution given (a generic
+    // one's; null for one that does not instantiate); a declared callee without a body is a broken contract, which Report keeps in a
+    // complete compilation: in another it is a declaration Binding rejected, that error's dependent (DECISIONS R5-M151).
     private int Declared(MirProgram program, int item, SourceRef site, BindingSymbol function, Subst? subst)
     {
         if (program[new(function, MirBodyKind.Fn)] is { } body)

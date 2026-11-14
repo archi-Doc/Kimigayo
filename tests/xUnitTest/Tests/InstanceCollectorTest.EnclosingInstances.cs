@@ -150,13 +150,16 @@ public sealed partial class InstanceCollectorTest
             CheckRecords($"struct Box<T>\n    public init() => ()\n    public group G\n        public let s = {closure}\nlet n = Box<i32>.G.s()\n"));
 
     // SPEC 11.8, DECISIONS R5-M183: a static that Binding rejects (its Type is not Owned) publishes no body of a Closure in its initializer,
-    // and a call of that Closure through the failed access is checked as a request (the EnclosingInstance gap, as
-    // AGroupStaticsClosureIsTheGap's call) and then rests on Binding's record (InstanceCollector.Callee; before: CheckFaulted_Kd, a null
-    // body read).
+    // and a call of that Closure, through the failed access or through a function reference initialized from it, is checked as a request
+    // (the EnclosingInstance gap, as AGroupStaticsClosureIsTheGap's call) and then rests on Binding's record (InstanceCollector.Callee;
+    // before: CheckFaulted_Kd, a null body read).
     [Theory]
-    [InlineData(GroupStaticHead + "(Array<T>.init(capacity: 4), " + Four + ")\nlet n = Box<i32>.G.s.1()\n", "UnprovenConstraint_Kd let s = (Array<T>.init(capacity: 4), " + Four + "); Unsupported_Kd Box<i32>.G.s.1; Unsupported_Kd Box<i32>.G.s.1()")]
-    public void ADefinitionOutsideABodyNeedsItsContainersParametersOwned(string source, string records)
-        => Assert.Equal(records, CheckRecords(source));
+    [InlineData("let n = Box<i32>.G.s.1()", "Unsupported_Kd Box<i32>.G.s.1; Unsupported_Kd Box<i32>.G.s.1()")]
+    [InlineData("let f = Box<i32>.G.s.1\nlet n = f()", "Unsupported_Kd f()")]
+    public void ACallOfAClosureBindingDidNotPublishRestsOnBindingsRecord(string use, string records)
+        => Assert.Equal(
+            $"UnprovenConstraint_Kd let s = (Array<T>.init(capacity: 4), {Four}); {records}",
+            CheckRecords($"{GroupStaticHead}(Array<T>.init(capacity: 4), {Four})\n{use}\n"));
 
     // SPEC 3, 6.1.3 (DECISIONS BU-60, the owner's (a)): one producer forms a held closure's context from the instance modulo Origins, none
     // in the owner's own frame (the identity test), so every read of one instance has one Closure Type and two instances never share one.

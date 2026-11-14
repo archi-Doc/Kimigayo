@@ -2374,6 +2374,27 @@ public sealed partial class InstanceCollectorTest
         Assert.Equal([(DiagnosticCode.InternalInvariant_Kd, "let x = 1")], program.Records(MirRecordClass.Collection).Select(x => (x.Code, c.SyntaxOf(x.Subject).ToString())));
     }
 
+    // PLAN G867 (DECISIONS R5-M151): a complete compilation rejected no declaration, so a called Closure Type without a body is a broken
+    // contract, InternalInvariant_Kd at the call, never a silent refusal or a fault. Binding and the builder never give one, so the test
+    // forges it: the call's operand becomes a local of a Closure Type on `plain`, which has no Closure body (MirValidatorTest's forged
+    // Closure aggregate).
+    [Fact]
+    public void ACalledClosureWithoutABodyIsABrokenContractInACompleteCompilation()
+    {
+        var c = MirBuildTest.Compile("func plain() -> isize => 4\npublic func main() -> ()\n    let f = func [] () -> isize => 4\n    let n = f()\n    return\n");
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
+        var program = c.BuildMir();
+        var main = program.Bodies.ToArray().Single(static x => x.Key.Decl?.Name == "main");
+        var plain = program.Bodies.ToArray().Single(static x => x.Key.Decl?.Name == "plain").Key.Decl!;
+        var block = Enumerable.Range(0, main.Blocks.Length).Single(b => main.Blocks[b].Terminator is { Kind: MirTerminatorKind.Call, Callee.Kind: MirCalleeKind.Value });
+        var call = main.Blocks[block].Terminator;
+        Assert.Equal(0, call.Operand.Place.Projection);
+        var forged = main.AddLocal(main.Locals[call.Operand.Place.Root] with { Type = c.Types.Intern(BoundTypeKind.Closure, plain, SemanticsKind.Owner, []) });
+        main.Terminate(block, call with { Operand = call.Operand with { Place = new(forged) } });
+        new InstanceCollector(c.Types, c.Layout).Run(program, 1);
+        Assert.Equal([(DiagnosticCode.InternalInvariant_Kd, "f()")], program.Records(MirRecordClass.Collection).Select(x => (x.Code, c.SyntaxOf(x.Subject).ToString())));
+    }
+
     // X19, DECISIONS R5-M170 (superseding K 4.6's depth 128): a chain of 130 distinct generic functions has no growth, so no limit; the
     // 1,025th item of one definition is GenerationResourceLimit_Kd at its call.
     [Fact]
