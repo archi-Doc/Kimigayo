@@ -57,7 +57,8 @@ public partial class TypeDagScalingTest
     // class, n = 8, 32, 128. Linear in a chain of n parameter identities (one class of n + 1 members) and in the same class with a
     // Contract fact on each member (each member keyed, the class scanned once: 214, 286, 574; 342, 1,398, 17,142 while Representative
     // scanned per Type). A demand n projections deep under `U is T` is quadratic, the bound asserted (276, 912, 9,216): each prefix's fill moves the view's
-    // serial, and the rebuilt table re-keys every fact the request indexes; R7-C2c3's fills and R7-C2e2 e2-1's index remove that term
+    // serial, and the table and the view's entry are rebuilt at each serial, re-keying every fact the request indexes; R7-C2c3's fills
+    // remove that term, and R7-C2e2 e2-1's kept entry does not: the same 276, 912 and 9,216 with it
     // (cubic while ClassKey kept no key: 11,285 at 8, 11,849,545 at 128). The programs are valid (SPEC 8.2.3, 8.3.2): CopyTree supplies Copy.
     [Theory]
     [InlineData("parameters", 4)]
