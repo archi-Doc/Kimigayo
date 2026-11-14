@@ -21,9 +21,20 @@ public partial class ModuleBindingTest
     private const string APrivate = "group A\n    private func pick(value: i32) -> i32 => 1\n";
     private const string AOne = "group A\n    public func pick(value: i32) -> i32 => value\n";
     private const string ABoth = "group A\n    public func pick(value: bool) -> i32 => 1\n    public func pick(value: i32) -> i32 => value\n";
+    private const string APrivateFirst = "group A\n    private func pick(value: bool) -> i32 => 1\n    public func pick(value: i32) -> i32 => value\n";
+    private const string APrivateLast = "group A\n    public func pick(value: i32) -> i32 => value\n    private func pick(value: bool) -> i32 => 1\n";
+    private const string ASpec = "group A\n    public func pick<T>(value: T) -> T => value@move\n    specialize func pick<i32>(value: i32) -> i32 => value + 1\n";
+    private const string ASpecFixed = "group A\n    public func pick<T>(value: T) -> i32 => 0\n    specialize func pick<i32>(value: i32) -> i32 => 1\n";
+    private const string ATwice = "group A\n    public func apply(action: (bool) -> i32, value: bool) -> i32 => action(value)\n    public func twice(value: bool) -> i32 => 1\n";
+    private const string BTwice = "group B\n    public func apply(action: (i32) -> i32, value: i32) -> i32 => action(value)\n    public func twice(value: i32) -> i32 => value\n";
+    private const string RootSpec = "func pick<T>(value: T) -> i32 => 0\nspecialize func pick<i32>(value: i32) -> i32 => 1\n";
+    private const string Twice = "func twice(value: i32) -> i32 => value\nfunc twice(value: bool) -> i32 => 1\n";
+    private const string UseValue = "func use<T>(value: ref/T) -> i32\n";
+    private const string SecondApply = "contract Second\n    func apply(self, action: (i32) -> i32, value: i32) -> i32\n";
     private const string BI32 = "group B\n    public func pick(value: i32) -> i32 => value\n";
     private const string BBool = "group B\n    public func pick(value: bool) -> i32 => 1\n";
     private const string BGen = "group B\n    public func pick<T>(value: T) -> T => value@move\n";
+    private const string BGenFixed = "group B\n    public func pick<U>(value: U) -> i32 => 0\n";
     private const string BUniq = "group B\n    public func pick(value: uniq/i32) -> i32 => 2\n";
     private const string BUnsafe = "group B\n    public unsafe func pick(value: i32) -> i32 => value\n";
     private const string BVar = "group B\n    public var pick: i32 = 3\n";
@@ -34,6 +45,7 @@ public partial class ModuleBindingTest
     private const string Identity = "func identity<T>(value: T) -> T => value@move\n";
     private const string Run = "func run<F>(action: F, value: i32) -> i32\n    F is Callable<(i32) -> i32>\n    return action(value)\n";
     private const string Keep = "func keep<F>(action: F) -> i32 => 0\n";
+    private const string Open = "func use<T>(action: (T) -> i32) -> i32 => 0\nlet n = use(pick)";
     private const string Call = "let n = pick(7)";
     private const string Reference = "let f: (i32) -> i32 = pick";
     private const string Item = "let f = pick";
@@ -45,6 +57,8 @@ public partial class ModuleBindingTest
     private const string NoneApplies = nameof(DiagnosticCode.NoApplicableOverload_Kd);
     private const string Mismatch = nameof(DiagnosticCode.TypeMismatch_Kd);
     private const string Unsupported = nameof(DiagnosticCode.Unsupported_Kd);
+    private const string Duplicate = nameof(DiagnosticCode.DuplicateBinding_Kd);
+    private const string Unbound = nameof(DiagnosticCode.UnboundTypeArgument_Kd);
 
     // A family: its name, the aliases whose every order is a row, the declarations and the use, and the Error codes SPEC gives in
     // every order (none for a valid program).
@@ -59,6 +73,11 @@ public partial class ModuleBindingTest
         ("cp2", "A B", ABool + BI32 + "let n = (pick)(7)", string.Empty),
         ("cg2", "A B", ABool + BGen + "let n = pick<i32>(7)", string.Empty),
         ("cs2", "A B", AI32 + BUniq + Call, Shape),
+        ("csg2", "A B", AGen + BUniq + "let n = pick<i32>(7)", Shape),
+        ("mac2", "A", APrivateFirst + Call, string.Empty),
+        ("euc2", "A Box<i32>", ABool + GenericBox + Call, string.Empty),
+        ("fr-pg", "A B", ABool + BGen + "let n = (pick<i32>)(7)", string.Empty),
+        ("fr-spc", "A B", ASpecFixed + BBool + Call, string.Empty), // SPEC 8.13.3: a specialization in a gathered source is no candidate.
 
         // References under a fixed Function Type S (SPEC 10.5.3).
         ("r1", "A", ABoth + Reference, string.Empty),
@@ -82,6 +101,12 @@ public partial class ModuleBindingTest
         ("tu2", "A B", ABool + BI32 + "let t: ((i32) -> i32, i32) = (pick, 1)", string.Empty),
         ("cf2", "A B", ABool + BI32 + "let flag = true\nlet f: (i32) -> i32 = if flag => pick else => pick", string.Empty),
         ("ms2", "A Box", ABool + Box + Reference, string.Empty),
+        ("mar", "A", APrivateLast + Reference, string.Empty),
+        ("mar2", "A", APrivateFirst + Reference, string.Empty),
+        ("du1x", "A", AUnsafe + Reference, DirectCall),
+        ("spg2", "A B", ASpec + BBool + Reference + "\nlet n = f(5)", string.Empty), // SPEC 8.13.3: A.pick<T> is the one applicable candidate.
+        ("fr-spr", "A B", ASpecFixed + BBool + Reference, string.Empty),
+        ("r2s2", "A B", AI32 + BUniq + Reference + "\nlet g = pick", Shape + "," + Shape), // One record for each use.
 
         // Function items: a reference without S (SPEC 10.5.3).
         ("i1", "A", AOne + Item, string.Empty),
@@ -92,6 +117,10 @@ public partial class ModuleBindingTest
         ("ig3", "A B C", ABool + BGen + CStr + GenericItem, string.Empty),
         ("ig2t", "A B", AGen + BGen + GenericItem, Ambiguous),
         ("is2", "A B", AI32 + BUniq + Item, Shape),
+        ("isg2", "A B", AGen + BUniq + GenericItem, Shape),
+        ("ma", "A", APrivateLast + Item, string.Empty),
+        ("spgi2", "A B", ASpec + BBool + Item, Ambiguous),
+        ("fr-spi", "A B", ASpecFixed + BBool + Item, Ambiguous),
 
         // Reference arguments (SPEC 10.5.1, 10.5.2).
         ("a2", "A B", ABool + BI32 + Apply + Argument, string.Empty),
@@ -102,11 +131,16 @@ public partial class ModuleBindingTest
         ("ac2", "A B", ABool + BI32 + Run + "let n = run(pick, 3)", string.Empty),
         ("xr2", "A B", ABool + BGen + Run + "let n = run(pick<i32>, 3)", string.Empty),
         ("as2", "A B", AI32 + BUniq + Apply + Argument, Shape),
+        ("cfas2", "A B", AI32 + BUniq + Apply + "let flag = true\nlet n = apply(if flag => pick else => pick, 3)", Shape + "," + Shape),
+        ("ise2", "A B", AI32 + BUniq + Identity + "let g = identity(pick)", Shape),
+        ("fr-bg", "A B", ATwice + BTwice + "let n = apply(twice, 3)", string.Empty), // The callee and its reference argument both gathered.
         ("ae1", "A", AOne + Identity + "let g = identity(pick)", string.Empty),
         ("ae1o", "A", ABoth + Identity + "let g = identity(pick)", Ambiguous),
         ("ae2", "A B", ABool + BI32 + Identity + "let g = identity(pick)", Ambiguous),
         ("kp2", "A B", ABool + BI32 + Keep + "let n = keep(pick)", Ambiguous),
-        ("tc2", "A B", "group A\n    public func apply(value: bool) -> i32 => 0\ngroup B\n    public func apply(action: (i32) -> i32, value: i32) -> i32 => action(value)\nfunc twice(value: i32) -> i32 => value\nfunc twice(value: bool) -> i32 => 1\nlet n = apply(twice, 3)", string.Empty),
+        ("n8a", "A B", ABool + BI32 + Open, Unbound), // SPEC 10.5.1, 10.8: the gathered reference waits, so the open S binds no T.
+        ("n8g", "A B", ABool + BGenFixed + Open, Unbound),
+        ("tc2", "A B", "group A\n    public func apply(value: bool) -> i32 => 0\ngroup B\n    public func apply(action: (i32) -> i32, value: i32) -> i32 => action(value)\n" + Twice + "let n = apply(twice, 3)", string.Empty),
 
         // Lookup's own rules (SPEC 9.5), which the group reads and never decides.
         ("lk", "A B", ABool + BVar + Reference, Unsupported + "," + Ambiguous),
@@ -114,7 +148,27 @@ public partial class ModuleBindingTest
         ("lai", "A B", APrivate + BI32 + Item, string.Empty),
 
         // An opened generic Container's member beside a group: the reference reader's limit, in every order.
+        ("eu1", "Box<i32>", GenericBox + Reference, Unsupported),
         ("eu2", "A Box<i32>", ABool + GenericBox + Reference, Unsupported),
+    ];
+
+    // SPEC 9.6: a member gathered from two Constraints is one group in either clause order. Each row: its name, the Contracts and other
+    // declarations, the function header the clauses follow, its body and the Error codes.
+    private static readonly (string Name, string Declarations, string Header, string Body, string Codes)[] ConstraintFamilies =
+    [
+        // The reference argument waits for the Function Type of the one requirement that applies (SPEC 10.1, 10.5.1-10.5.3).
+        ("tcq", "contract First\n    func apply(self, value: bool) -> i32\n" + SecondApply + Twice, UseValue, "return value.apply(twice, 3)", string.Empty),
+        ("tcqx", "contract First\n    func apply(self, value: bool) -> i32\n" + SecondApply + Twice, UseValue, "return value.apply(twice, true)", NoneApplies),
+        ("tcq2", "contract First\n    func apply(self, action: (bool) -> i32) -> i32\n" + SecondApply + Twice, UseValue, "return value.apply(twice, 3)", string.Empty),
+
+        // SPEC 8.6.4: a call that matches several requirements is ambiguous.
+        ("fr-tcx", "contract First\n    func apply(self, action: (bool) -> i32, value: i32) -> i32\n" + SecondApply + Twice, UseValue, "return value.apply(twice, 3)", Ambiguous),
+
+        // SPEC 7.4.4, 9.6: the Constraint group's own check, read through the group.
+        ("tqs", "contract First\n    func apply(self, value: i32) -> i32\ncontract Second\n    func apply(self, value: uniq/i32) -> i32\n", UseValue, "return value.apply(3)", Shape),
+
+        // SPEC 10.5.3: a requirement reference without S over two requirements.
+        ("fr-tci", "contract First\n    func twice(value: bool) -> i32\ncontract Second\n    func twice(value: i32) -> i32\n", "func use<T>() -> i32\n", "let f = T.twice\n    return 0", Ambiguous),
     ];
 
     public static TheoryData<string, string, string, string> GatheredGroups
@@ -148,11 +202,21 @@ public partial class ModuleBindingTest
             rows.Add("qa-x", "alias A\nalias B\n" + ABool + BI32 + "let f: (i32) -> i32 = A.pick", string.Empty, Mismatch);
             rows.Add("st56", "alias A\npublic " + ABool + "public " + BI32 + Reference, "B", Mismatch);
 
-            // SPEC 9.6: a callee gathered from two Constraints is one group in either clause order, so its reference argument waits
-            // for the Function Type of the requirement that takes one.
+            // One declaration through two aliases, one source's duplicates, and a specialization beside its original (SPEC 9.5.1,
+            // 8.13.3): no gathered group, the same reader.
+            rows.Add("i2d-AA", "alias A\nalias A\n" + AOne + Item, string.Empty, string.Empty);
+            rows.Add("r1t", "func pick(value: i32) -> i32 => 1\nfunc pick(value: i32) -> i32 => value\n" + Reference, string.Empty, Duplicate + "," + Ambiguous);
+            rows.Add("sp-r", RootSpec + Reference, string.Empty, string.Empty);
+            rows.Add("sp-i", RootSpec + Item, string.Empty, Unbound);
+            rows.Add("n8s", "func pick<U>(value: U) -> i32 => 0\nspecialize func pick<i32>(value: i32) -> i32 => 1\n" + Open, string.Empty, Unbound);
+            rows.Add("n8o", "func pick(value: bool) -> i32 => 1\nfunc pick(value: i32) -> i32 => value\n" + Open, string.Empty, Unbound);
+
             foreach (var (order, clauses) in new[] { ("FS", "    T is First\n    T is Second\n"), ("SF", "    T is Second\n    T is First\n") })
             {
-                rows.Add("tcq-" + order, "contract First\n    func apply(self, value: bool) -> i32\ncontract Second\n    func apply(self, action: (i32) -> i32, value: i32) -> i32\nfunc twice(value: i32) -> i32 => value\nfunc twice(value: bool) -> i32 => 1\nfunc use<T>(value: ref/T) -> i32\n" + clauses + "    return value.apply(twice, 3)", string.Empty, string.Empty);
+                foreach (var family in ConstraintFamilies)
+                {
+                    rows.Add(family.Name + "-" + order, family.Declarations + family.Header + clauses + "    " + family.Body, string.Empty, family.Codes);
+                }
             }
 
             return rows;
@@ -175,6 +239,25 @@ public partial class ModuleBindingTest
         c.Check();
         var errors = TestDiagnostics.Of(c).Where(static x => x.Severity == DiagnosticSeverity.Error).ToArray();
         Assert.True(codes == string.Join(',', errors.Select(static x => x.Code)), name + ": " + string.Join("; ", errors.Select(static x => x.ToString())));
+    }
+
+    // SPEC 10.4 step 3: a reference under S selects the non-generic declaration of a gathered group in either alias order. Acceptance
+    // alone does not observe the selection (both candidates apply), so the selected declaration is read at Binding's own layer.
+    [Theory]
+    [InlineData("alias A\nalias B\n")]
+    [InlineData("alias B\nalias A\n")]
+    public void AGatheredReferenceSelectsTheMoreSpecificDeclaration(string aliases)
+    {
+        var c = Compilation.CreateForTest();
+        c.Project.ProjectFile.OutputKind = OutputKind.Application;
+        Assert.True(c.Prepare(WindowsProfile.Target));
+        c.Kotonoha.AddSource(new SourceDocument("Main.kimi", aliases + AGen + BI32 + Reference + "\nConsole.writeLine(\"ok\")\n"));
+        c.Check();
+        Assert.DoesNotContain(TestDiagnostics.Of(c), static x => x.Severity == DiagnosticSeverity.Error);
+        var nodes = KotoTree.Walk(c.Kotonoha.RootKoto).ToArray();
+        var use = nodes.Last(static x => x.ToString() == "pick");
+        var expected = nodes.OfType<FunctionKoto>().Single(static x => x.ToString().Contains("pick(value: i32)", StringComparison.Ordinal));
+        Assert.Same(expected, HirTables.Of(use).Symbols[use.SyntaxId]?.Declaration);
     }
 
     private static IEnumerable<string[]> Orders(string[] items)

@@ -12,19 +12,25 @@ namespace Kimi.Compiler;
 // Output: FunctionGroup, enumerated as the requirement members, or every source's declarations, or the head's chain; and the verdict
 //   of the check SPEC 7.4.4 and 9.5.1 give a group gathered at the alias stage (GatheredGroupFails).
 // Invariants: GroupOf is the one constructor for a use, and the only reader of the gathered table; FunctionGroup.Of is the one for a
-//   declaration's own chain, which has no use (a scope's init chain). The head is lookup's published head, never a selection: a
-//   selected declaration would enumerate a suffix of its chain. An explicit specialization is never yielded (SPEC 8.13.3:
-//   specializations are never candidates). The order of enumeration never decides acceptance or selection (SPEC 10.4). No reader
-//   walks BindingSymbol.Next from a use's symbol.
+//   declaration's own chain, which has no use (a scope's init chain). ReferenceRequirements is the one decision that a use is a
+//   requirement reference (its Name a member access whose lookup gathered an active group from Constraints): GroupOf enumerates by
+//   it and the reference and item binders route by it, so no other reader decides it from the requirement table. The head is
+//   lookup's published head, never a selection: a selected declaration would enumerate a suffix of its chain. A null head is
+//   allowed only where lookup published a group for the use: the Constraint group's own check (RequirementMember) reads
+//   GroupOf(member, null) after it stored the group and set Active; with a null head and nothing published the group is empty,
+//   and a check over it passes. An explicit specialization is never yielded (SPEC 8.13.3: specializations are never candidates).
+//   The order of enumeration never decides acceptance or selection (SPEC 10.4). No reader walks BindingSymbol.Next from a use's
+//   symbol.
 // Prohibitions: no lookup, no gathering, no access or applicability judgment, no report.
 public sealed partial class Binding
 {
     private FunctionGroup GroupOf(Koto use, BindingSymbol? head)
-    {
-        var name = ReferenceName(use);
-        var requirements = name is MemberAccessKoto member && this.requirementGroups.TryGetValue(member, out var found) && found.Active ? found : null;
-        return new(head, requirements, this.gatheredGroups?.GetValueOrDefault(name));
-    }
+        => new(head, this.ReferenceRequirements(use), this.gatheredGroups?.GetValueOrDefault(ReferenceName(use)));
+
+    // SPEC 9.6: the active group lookup gathered from Constraints for the use's member access, or none. A requirement reference
+    // retains the requirement declaration, the conforming Self and its bound declaring Contract (Binding.RequirementItems.cs).
+    private RequirementGroup? ReferenceRequirements(Koto use)
+        => ReferenceName(use) is MemberAccessKoto member && this.requirementGroups.TryGetValue(member, out var group) && group.Active ? group : null;
 
     // SPEC 7.4.4, 9.5.1: a function group gathered at the alias stage from several declaration sources is checked at every use,
     // whatever its arguments. Every use passes one of two binders, which IsValueUse separates: the callee (BindCallCore) and the value
