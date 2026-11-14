@@ -192,9 +192,11 @@ internal sealed partial class MirBorrows
         return type;
     }
 
-    // The one step rule (SPEC 4.1, 5.3; IMPL 21.1.2): whether a step keeps a Position on the leading chain of `place`: a displacement of
-    // a pointer of Type `of`, or an element step of a raw Place of Type `of` (a fixed array), where the stride's Type is a grid row of
-    // `place`; the first Field (`field` 0) of a C-layout `of`: its address is its base's; no other step (`field` -1: none of a Field).
+    // The one step rule (SPEC 4.1, 5.3; IMPL 21.1.2, 21.1.3): whether a step keeps a Position on the leading chain of `place`: a
+    // displacement of a pointer of Type `of`, or an element step of a raw Place of Type `of` (a fixed array), where the stride's Type is
+    // a grid row of `place`; component 0 (`field` 0) of the part Leading places at the address of `of`: a C-layout struct's first Field
+    // (MIR's Field 0), or a nonnull Option's Some payload, its Downcast and Field read as one step from the Option (Selected; the Option's
+    // one Case with a component); no other step (`field` -1: none of a Field, a Downcast alone).
     private bool Step(BoundType place, BoundType of, int field)
     {
         var part = this.Lead(of, out var element);
