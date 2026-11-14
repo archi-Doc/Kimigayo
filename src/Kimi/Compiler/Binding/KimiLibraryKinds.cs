@@ -25,7 +25,8 @@ public enum IntrinsicKind : byte
 // The intrinsic Contract table (SPEC 8.7.1; DECISIONS R4-M89, package 2b-D §3.4): how Binding decides each compiler-intrinsic Contract.
 // Input: an IntrinsicKind. Output: its row, which ProveConstraint, a Contract's Self clause, a struct's or enum's Self clause (plain
 // or conditional), conformance verification and inheritance (VerifyConformance, InheritedConformances, VerifyInheritedConformance) and
-// KimiLibrary's registration (the judged intrinsics' empty shapes, which make them refinement parents) read.
+// KimiLibrary's registration (the judged intrinsics' shapes without members, with their Parents as ancestors, which make them
+// refinement parents) read.
 // Invariants: one row per IntrinsicKind, None (a declared Contract) included; a new intrinsic adds a row, never a case at a reader.
 // Must not: judge a capability (the capability engine's) or decide a conformance's members (contract matching's).
 
@@ -43,6 +44,12 @@ internal readonly record struct IntrinsicContract
     /// <summary>Gets a value indicating whether a Contract's <c>Self is K</c> is a requirement and a premise (SPEC 8.7.1, 8.7.3).</summary>
     internal bool SelfRequirement { get; init; }
 
+    /// <summary>Gets the judged intrinsics a premise <c>T is K</c> supplies by refinement (SPEC 8.3.2, 8.7.4: PrimitiveInteger's
+    /// Copy and Owned), the registered shape's ancestors; null when none.</summary>
+    internal IntrinsicKind[]? Parents { get; init; }
+
+    private static readonly IntrinsicKind[] CopyAndOwned = [IntrinsicKind.Copy, IntrinsicKind.Owned];
+
     internal static IntrinsicContract Of(IntrinsicKind kind) => kind switch
     {
         IntrinsicKind.None => default,
@@ -51,7 +58,7 @@ internal readonly record struct IntrinsicContract
         IntrinsicKind.Callable => new() { Declaration = BindingFailure.InvalidConstraint }, // Bound as a Callable Constraint, never a Contract one.
         IntrinsicKind.Sealed => new() { Judged = true, Declaration = BindingFailure.InvalidConstraint },
         IntrinsicKind.ObjectPayload => new() { Judged = true, Declaration = BindingFailure.InvalidSelfClause, SelfRequirement = true }, // Never granted.
-        IntrinsicKind.PrimitiveInteger => new() { Judged = true, Declaration = BindingFailure.ClosedContractConformance }, // Twelve integer Types (8.7.4).
+        IntrinsicKind.PrimitiveInteger => new() { Judged = true, Declaration = BindingFailure.ClosedContractConformance, Parents = CopyAndOwned }, // Twelve integer Types (8.7.4).
         _ => throw new ArgumentOutOfRangeException(nameof(kind)),
     };
 }

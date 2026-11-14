@@ -33,7 +33,7 @@ public static partial class Parser
 
         if (supportsGenerics && reader.CurrentTokenKind == TokenKind.LessThan)
         {
-            genericArguments = ParseGenericArguments(ref reader);
+            genericArguments = ParseGenericParameters(ref reader);
         }
 
         if (supportsOrigins)

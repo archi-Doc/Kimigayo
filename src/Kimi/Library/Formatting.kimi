@@ -108,14 +108,14 @@ public struct Utf8Writer {target}
     let logicalLength: isize
     let loan: Loan<uniq/u8 during target>
 
-    /// The recorded failure without formatting; otherwise `value`'s `format` once, the first failure it returns or a
-    /// nested write recorded being recorded and returned (SPEC 22.10.1).
+    /// The recorded failure (`status`) without formatting; otherwise `value`'s `format` once, the first failure it
+    /// returns or a nested write recorded being recorded and returned (SPEC 22.10.1).
     ///
     /// - abort: a built-in `format`'s reservation exceeds the maximum object size or cannot allocate, at the caller
     ///   (SPEC 22.5.1).
     public func write<T>(self: uniq/Self, value: ref/T) -> Result<(), BufferFull>
         T is Utf8Format
-        if self.failed => return .Err(BufferFull.init())
+        try self.status()
         var healthy = false
         match value.format(self)@move
             .Ok(_) => healthy = not self.failed
@@ -130,7 +130,7 @@ public struct Utf8Writer {target}
         return .Ok(())
 
     /// Writes `text` with one exact reservation, none when it is empty, and records a failed reservation
-    /// (SPEC 22.10.1). It has no failure test of its own: only the adapter `write` has that guard.
+    /// (SPEC 22.10.1). It has no failure test of its own: a non-empty text reaches the guard (`status`) via `reserve`.
     internal func writeUtf8(self: uniq/Self, text: Text.Utf8Slice) -> Result<(), BufferFull>
         let bytes = text.bytes()
         if bytes.length == 0 => return .Ok(())
@@ -155,19 +155,18 @@ public struct Utf8Writer {target}
             self.pendingLength = (*repr).length
         return .Ok(())
 
-    /// Ends an owning interpolation's writes (SPEC 22.10.3): the recorded failure; else a deferred literal still held,
-    /// which no reservation wrote because the values after it wrote no bytes, written through the shared tail
-    /// (`settled`) and committed. The compiler's owning interpolation is the only caller.
+    /// Ends an owning interpolation's writes (SPEC 22.10.3): the recorded failure (`status`); else a deferred literal
+    /// still held, which no reservation wrote because the values after it wrote no bytes, written through the shared
+    /// tail (`settled`) and committed. The compiler's owning interpolation is the only caller.
     ///
     /// - abort: the deferred literal exceeds the maximum object size or cannot allocate.
     internal func finish(self: uniq/Self) -> Result<(), BufferFull>
-        if self.failed => return .Err(BufferFull.init())
-        if self.pendingLength == 0 => return .Ok(())
+        if self.pendingLength == 0 => return self.status()
         let window = try self.reserve(0)
         (window@move).commitUtf8()
         return .Ok(())
 
-    /// The adapter's reservation of `amount` bytes (SPEC 22.9.4, 22.10.1): `BufferFull` when a failure is recorded;
+    /// The adapter's reservation of `amount` bytes (SPEC 22.9.4, 22.10.1): the recorded failure (`status`);
     /// else the destination's window for `amount` and the deferred literal, which it writes first, or a recorded
     /// `BufferFull`. Pending may sit on an adapter of any kind; the shared tail prepends it; only the kind-1 arm reads
     /// the hint, which a buffer that must grow adds unless the sum exceeds the maximum object size. The caller's
@@ -176,7 +175,7 @@ public struct Utf8Writer {target}
     ///
     /// - abort: `amount` and the deferred literal exceed the maximum object size.
     internal func reserve(self: uniq/Self, amount: isize) -> Result<WriteWindow during target, BufferFull>
-        if self.failed => return .Err(BufferFull.init())
+        try self.status()
         let largest: isize = 9223372036854775807
         // The adapter keeps `0 <= pendingLength`, which bounds the difference; the guard `amount <= available`
         // bounds the sum.

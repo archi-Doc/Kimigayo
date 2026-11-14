@@ -166,10 +166,11 @@ internal sealed partial class InstanceCollector
     }
 
     // R4-M6b, SPEC 16.3.2: the Body of a struct's declared destructor in the struct's instance (TyCtxt.Synthesized), which destroys the
-    // struct's Fields and base itself; a destructor without a body is one Binding rejected, so the edge derives from that error.
+    // struct's Fields and base itself; a destructor without a body is one Binding rejected, so the edge derives from that error, and in a
+    // complete compilation a broken contract (Declared).
     private int Destructor(MirProgram program, int item, SourceRef site, BoundType type)
     {
         var destructor = AdtDef.DestructorSymbol(type)!;
-        return program[new(destructor, MirBodyKind.Fn)] is { } body ? this.Admit(item, site, body, this.types.Synthesized(destructor, type, [], [])) : -1;
+        return this.Declared(program, item, site, destructor, this.types.Synthesized(destructor, type, [], []));
     }
 }

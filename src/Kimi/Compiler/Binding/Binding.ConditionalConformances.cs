@@ -9,46 +9,61 @@ public sealed partial class Binding
     private readonly HashSet<(BoundType Type, BindingSymbol Contract, BindingScope Scope)> conformanceQueries = new();
     private readonly Dictionary<(BoundConformancePath Left, BoundConformancePath Right), BindingScope> conformanceOverlapScopes = new();
 
+    // SPEC 8.9.1: two conformances' conditions exclude each other when a's chain and b's hold facts of one subject that cannot both
+    // hold: identities to different complete Types, or Semantics sets that share no member. Each TypeIdentity or Semantics fact of a's
+    // chain meets b's facts of its kind and subject key in Closure(view of b)'s row (ContractSolver's Readers: nothing here proves).
     private bool DisjointConformanceFacts(BindingScope a, BindingScope b)
     {
-        for (var left = a; left is not null; left = left.Parent)
+        ViewIndex? index = null;
+        try
         {
-            if (left.Constraints is not { Invalid: false } x)
+            for (var left = a; left is not null; left = left.Parent)
             {
-                continue;
-            }
-
-            for (var right = b; right is not null; right = right.Parent)
-            {
-                if (right.Constraints is not { Invalid: false } y)
+                if (left.Constraints is not { Invalid: false } x)
                 {
                     continue;
                 }
 
-                foreach (var p in x.Facts)
+                for (var right = b; right is not null; right = right.Parent)
                 {
-                    foreach (var q in y.Facts)
+                    if (right.Constraints is not { Invalid: false } y)
                     {
-                        if (p.Subject is null || !ReferenceEquals(p.Subject, q.Subject) || !this.AvailableConstraintFact(x, p, out _) || !this.AvailableConstraintFact(y, q, out _))
+                        continue;
+                    }
+
+                    foreach (var p in x.Facts)
+                    {
+                        if (p is not { Kind: ConstraintKind.TypeIdentity or ConstraintKind.Semantics, Subject: { } subject } ||
+                            (index ??= this.BeginClosureRead(b)).Buckets.GetValueOrDefault((right, p.Kind, SubjectKey(subject).Symbol, SubjectKey(subject).Type)) is not { } bucket)
                         {
                             continue;
                         }
 
-                        // Substitute explicit identities, then compare determined concrete atoms.
-                        // No case splitting, contrapositive, or general satisfiability solver.
-                        if (p.Kind == ConstraintKind.TypeIdentity && q.Kind == ConstraintKind.TypeIdentity &&
-                            p.RequiredType is { } pt && q.RequiredType is { } qt &&
-                            !this.DependentType(pt) && !this.DependentType(qt) && !this.SameCompleteType(pt, qt))
+                        foreach (var (q, _) in bucket)
                         {
-                            return true;
-                        }
+                            if (!ReferenceEquals(subject, q.Subject) || !this.AvailableConstraintFact(x, p, out _) || !this.AvailableConstraintFact(y, q, out _))
+                            {
+                                continue;
+                            }
 
-                        if (p.Kind == ConstraintKind.Semantics && q.Kind == ConstraintKind.Semantics && (p.Mask & q.Mask) == 0)
-                        {
-                            return true;
+                            // Substitute explicit identities, then compare determined concrete atoms.
+                            // No case splitting, contrapositive, or general satisfiability solver.
+                            if (p.Kind == ConstraintKind.TypeIdentity ?
+                                p.RequiredType is { } pt && q.RequiredType is { } qt && !this.DependentType(pt) && !this.DependentType(qt) && !this.SameCompleteType(pt, qt) :
+                                (p.Mask & q.Mask) == 0)
+                            {
+                                return true;
+                            }
                         }
                     }
                 }
+            }
+        }
+        finally
+        {
+            if (index is not null)
+            {
+                this.EndClosureRead();
             }
         }
 

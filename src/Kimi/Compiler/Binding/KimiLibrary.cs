@@ -535,6 +535,20 @@ public sealed partial class KimiLibrary
             if (IntrinsicContract.Of(entry.Intrinsic).Judged)
             {
                 symbol.Contract = new(symbol) { State = 2 }; // SPEC 8.4.3, 8.7.1: a refinement parent without members.
+                foreach (var parent in IntrinsicContract.Of(entry.Intrinsic).Parents ?? [])
+                {
+                    // SPEC 8.7.4: the shape's ancestors are its row's parents, which the catalog registers before it.
+                    BindingSymbol? registered = null;
+                    foreach (var candidate in this.registeredSymbols)
+                    {
+                        if (candidate.Intrinsic == parent)
+                        {
+                            registered = candidate;
+                        }
+                    }
+
+                    symbol.Contract.AncestorStorage.Add(registered ?? throw new InvalidOperationException($"The parent {parent} of {entry.Id} is not registered before it (InternalInvariant; R7-C2b)."));
+                }
             }
 
             declaration.BoundSymbol = symbol;
