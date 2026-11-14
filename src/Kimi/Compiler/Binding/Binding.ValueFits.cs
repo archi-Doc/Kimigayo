@@ -141,27 +141,23 @@ public sealed partial class Binding
             }
         }
 
+        // SPEC 23.1.2: a part the obligations cannot take (a Function component's failed condition) is the fit's failure, the first such
+        // part's; the parts after it still leave their positions as obligations, each an independent record of the fit.
+        var holds = true;
         for (var i = 0; i < actual.Components.Count; i++)
         {
-            if (IsInvariantLayer(actual, this))
-            {
-                if (!this.CheckTypeUseCore(actual.Components[i], expected.Components[i], use, OriginVariance.Invariant, ref failure))
-                {
-                    return false;
-                }
-
-                continue;
-            }
-
             var position = actual.Kind == BoundTypeKind.Constructed && actual.Symbol?.Schema is { } schema && i < schema.GenericSlots.Count
                 ? schema.GenericSlots[i].OriginVariance : OriginVariance.Covariant;
-            if (!this.CheckTypeUseCore(actual.Components[i], expected.Components[i], use, ComposeVariance(polarity, position), ref failure))
+            var part = default(ComparisonFailure);
+            if (!this.CheckTypeUseCore(actual.Components[i], expected.Components[i], use, IsInvariantLayer(actual, this) ? OriginVariance.Invariant : ComposeVariance(polarity, position), ref part) &&
+                holds)
             {
-                return false;
+                holds = false;
+                failure = part;
             }
         }
 
-        return true;
+        return holds;
     }
 
     // One Origin position of a fit by its variance: `actual` outlives `expected` at a covariant position, the reverse at a contravariant

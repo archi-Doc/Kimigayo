@@ -76,7 +76,7 @@ public sealed partial class Binding
     // records (RecordOriginChains). A position the relation judge fails records every failed chain; a position that is only unproven is
     // recorded when an end is unresolved and is otherwise Unsupported, unless a failed Origin environment explains it. A record at a
     // body chain (2a0-D D1, ends resolved at the use) gives every position of the fit, fixed-fixed ones included, a row of its body for
-    // A5 (CheckTypeUse's obligations, up to its first differing Function Type component); the records stay Binding's until R7
+    // A5 (CheckTypeUse's obligations, which go on past a differing Function Type component); the records stay Binding's until R7
     // (DECISIONS R4-M108).
     private bool RecordOriginFitFailure(Koto node, Koto at, BoundType actual, BoundType expected)
     {
