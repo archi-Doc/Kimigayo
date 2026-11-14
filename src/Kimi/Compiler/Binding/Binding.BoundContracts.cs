@@ -418,19 +418,9 @@ public sealed partial class Binding
             return true; // Residual terms are not injective constructors.
         }
 
-        if (a.Kind != b.Kind || a.Symbol != b.Symbol || a.Semantics != b.Semantics || a.Components.Count != b.Components.Count || a.LengthArguments.Length != b.LengthArguments.Length ||
-            (a.Kind == BoundTypeKind.Primitive && a.Name != b.Name) ||
-            (a.Kind == BoundTypeKind.FixedArray && a.LengthExpression is null && b.LengthExpression is null && a.Length != b.Length))
+        if (HeadsDiffer(a, b))
         {
             return false;
-        }
-
-        for (var i = 0; i < a.LengthArguments.Length; i++)
-        {
-            if (a.LengthArguments[i] is { IsConstant: true } x && b.LengthArguments[i] is { IsConstant: true } y && !ReferenceEquals(x, y))
-            {
-                return false;
-            }
         }
 
         for (var i = 0; i < a.Components.Count; i++)
