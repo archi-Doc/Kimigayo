@@ -268,8 +268,8 @@ public static partial class Parser
 
     /// <summary>Judges an adaptation target read as a Type by SPEC 13.5.1's two rules of its own chain, through grouping and Semantics
     /// layers down to its Core: no Origin annotation on a borrow layer, and no bound Container qualifier as the head of the Core's
-    /// path (F.5). Types nested in the Core keep both forms. The first form written is one record, and the Type it writes, the
-    /// annotated layer or the Core's path, is a written Type outside its grammar (RecoverWrittenType); a recovered part ends the walk.</summary>
+    /// path (F.5). Types nested in the Core keep both forms. Each form written is one record, and the Type it writes, the annotated
+    /// layer or the Core's path, is a written Type outside its grammar (RecoverWrittenType); a recovered part ends the walk.</summary>
     /// <param name="reader">The token reader.</param>
     /// <param name="type">The parsed target.</param>
     private static void CheckAdaptationTarget(ref TokenReader reader, Koto type)
@@ -287,7 +287,6 @@ public static partial class Parser
                 if (!layer.IsTransparentWrapper && layer.HasOrigin && !(outer && layer is { SemanticsKind: SemanticsKind.Raw, SemanticsParameter: null }))
                 {
                     RecoverWrittenType(ref reader, layer, layer.Unexpected(SyntaxForm.AdaptationOrigin));
-                    return;
                 }
 
                 outer &= layer.IsTransparentWrapper;
@@ -341,8 +340,7 @@ public static partial class Parser
             reader.Diagnostic.Add(origin.Span, DiagnosticCode.LegacyBorrowOrigin_Kd);
             var cause = reader.Diagnostic.LastError;
             reader.Advance(); // The slash belongs to the malformed Type, not to its enclosing parameter list.
-            var target = ParseType(ref reader, TypeContext.Type);
-            return new ErrorKoto(ref reader, SourceSpan.FromBounds(type.Span.Start, Math.Max(origin.Span.End, target.Span.End))) { Cause = cause };
+            return RecoverRejectedPrefix(ref reader, type.Span.Start, ParseType(ref reader, TypeContext.Type), cause);
         }
 
         return annotated;
