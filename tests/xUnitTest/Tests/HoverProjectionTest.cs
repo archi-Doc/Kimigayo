@@ -249,6 +249,23 @@ public sealed class HoverProjectionTest
         Assert.Contains("Premise: T is Right effect confined", info.Effects);
     }
 
+    // R7-C2c2 c2-3b (SPEC 8.2.3, 8.3.3): two parameters of one identity class each state the Contract; the evidence of a requirement
+    // call names the premise on the conforming Type as written, whatever the order of the premises. The call's conforming Type is T
+    // for a receiver of either parameter (U is read through `U is T`).
+    [Theory]
+    [InlineData("T", "    T is Reader\n    U is Reader\n    U is T\n")]
+    [InlineData("T", "    U is Reader\n    T is Reader\n    U is T\n")]
+    [InlineData("U", "    T is Reader\n    U is Reader\n    U is T\n")]
+    [InlineData("U", "    U is Reader\n    T is Reader\n    U is T\n")]
+    public void ARequirementsEvidenceNamesTheWrittenPremiseInEitherOrder(string receiver, string premises)
+    {
+        var text = $"contract Reader\n    func read(self: ref/Self) -> i32\n        effect confined\nfunc readOne<T, U>(x: ref/{receiver}) -> i32\n{premises}    return x.read()\n";
+        var info = At(Project(text), text.LastIndexOf("read()", StringComparison.Ordinal));
+        Assert.Contains("Available bound: confined", info.Effects);
+        string[] expected = ["Premise: T is Reader effect confined (in readOne)"];
+        Assert.Equal(expected, info.Effects!.Split('\n').Select(static x => x.Trim()).Where(static x => x.StartsWith("Premise:", StringComparison.Ordinal)));
+    }
+
     // SPEC 8.11.3, 8.7.4, 4.6.1: under `T is PrimitiveInteger` the bound of a format call is the item Position declares, and its evidence
     // is the PrimitiveInteger premise that supplies Position; `T is Utf8Format` proves no Contract that bounds format, so no evidence.
     [Theory]

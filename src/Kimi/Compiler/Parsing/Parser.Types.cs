@@ -45,12 +45,6 @@ public static partial class Parser
 
         /// <summary>A SemanticsOperand inside a Target.</summary>
         TargetOperand,
-
-        /// <summary>The ContainerPath after <c>::</c>, whose Origin and <c>?</c> belong to the enclosing Type (SPEC 3.2.3, 3.3.2).</summary>
-        RootPath,
-
-        /// <summary>A RootPath inside a Target.</summary>
-        TargetRootPath,
     }
 
     /// <summary>Parses a Type in the grammar context of its position (SPEC F.5: Type := FunctionType | AnnotatedType).</summary>
@@ -102,7 +96,7 @@ public static partial class Parser
     private static Koto ParseAnnotatedType(ref TokenReader reader, TypeContext context, out bool parameterList)
     {
         var start = reader.CurrentTokenRange.Start;
-        var target = context is TypeContext.Target or TypeContext.TargetOperand or TypeContext.TargetRootPath;
+        var target = context is TypeContext.Target or TypeContext.TargetOperand;
         Koto type;
         parameterList = false;
         var grouped = reader.CurrentTokenKind == TokenKind.OpenParenthesis;
@@ -124,8 +118,9 @@ public static partial class Parser
         }
         else
         {
+            // A written Type outside its grammar (RecoverWrittenType) read its own suffixes, so the rest is the enclosing construct's.
             type = ParseTypeHead(ref reader, target);
-            if (type is not ErrorKoto && !delimitedTarget)
+            if (!IsRecoveredType(ref reader, type) && !delimitedTarget)
             {
                 type = ParseTypeSuffixes(ref reader, type, target);
             }
@@ -141,11 +136,6 @@ public static partial class Parser
         if (type is not (TypeKoto or ErrorKoto))
         {
             type = new TypeSemanticsKoto(ref reader, SourceSpan.FromBounds(start, type.Span.End), type);
-        }
-
-        if (context is TypeContext.RootPath or TypeContext.TargetRootPath)
-        {
-            return type;
         }
 
         var annotated = ParseTypeOrigin(ref reader, type, reportLegacyBorrow: !target);
@@ -167,9 +157,31 @@ public static partial class Parser
     {
         if (reader.CurrentTokenKind == TokenKind.ColonColon)
         {
-            // A root-qualified Type is the path after '::'; its Origin and '?' belong to the enclosing Type (SPEC 3.2.3, 3.3.2).
+            // SPEC F.5, F.9.4: "::"? TypeSegment PathSuffix*: only a TypeSegment follows '::', never a group, a fixed array, a second
+            // '::' or a Semantics prefix. The path's Origin and '?' belong to the enclosing Type (SPEC 3.2.3, 3.3.2).
             var rootStart = reader.Read().Span.Start;
-            var path = ParseAnnotatedType(ref reader, target ? TypeContext.TargetRootPath : TypeContext.RootPath, out _);
+            var name = reader.CurrentToken;
+            if (!(name.Kind.IsPrimitiveType() || name.Kind.IsIdentifierOrContextualKeyword() || name.Kind == TokenKind.Self))
+            {
+                var cause = reader.Expect(SyntaxForm.Name);
+                if (name.Kind is not (TokenKind.OpenParenthesis or TokenKind.OpenBracket or TokenKind.ColonColon))
+                {
+                    return new ErrorKoto(ref reader, reader.InsertionSpan) { Cause = cause };
+                }
+
+                // A group, a fixed array or a second '::' written there is read as the Type it writes, so nothing of it is left to the
+                // enclosing construct, and that Type is a written Type outside its grammar: '::' roots only a TypeSegment.
+                var written = ParseAnnotatedType(ref reader, target ? TypeContext.TargetOperand : TypeContext.SemanticsOperand, out _);
+                return RecoverRejectedPrefix(ref reader, rootStart, written, cause);
+            }
+
+            reader.Advance();
+            var path = ParseTypeSuffixes(ref reader, new TypeSemanticsKoto(ref reader, name), target);
+            if (path is not (TypeKoto or ErrorKoto))
+            {
+                path = new TypeSemanticsKoto(ref reader, path.Span, path);
+            }
+
             return new SyntaxFormKoto(ref reader, SourceSpan.FromBounds(rootStart, path.Span.End), KotoKind.RootName, "::", [path]);
         }
 
@@ -204,7 +216,8 @@ public static partial class Parser
             {
                 if (semantics.SequenceEqual(Constants.MoveOperation) || semantics.SequenceEqual(Constants.CopyOperation))
                 {
-                    // @move and @copy are operations, never Semantics prefixes (SPEC §13.5.1); the Type rests on the Error.
+                    // @move and @copy are operations, never Semantics prefixes (SPEC §13.5.1); the Type after the prefix is a written
+                    // Type outside its grammar.
                     cause = reader.Unexpected(SyntaxForm.OperationAsSemanticsPrefix, token.Span);
                 }
 
@@ -215,7 +228,7 @@ public static partial class Parser
             var type = ParseAnnotatedType(ref reader, target ? TypeContext.TargetOperand : TypeContext.SemanticsOperand, out _);
             if (cause is { } operationCause)
             {
-                return new ErrorKoto(ref reader, SourceSpan.FromBounds(token.Span.Start, type.Span.End)) { Cause = operationCause };
+                return RecoverRejectedPrefix(ref reader, token.Span.Start, type, operationCause);
             }
 
             if (type is TypeSemanticsKoto
