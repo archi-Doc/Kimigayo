@@ -7,7 +7,6 @@ namespace Kimi.Compiler;
 public sealed partial class Binding
 {
     private readonly ScratchBuffers<ConstraintProof> conformanceProofScratch = new();
-    private readonly Dictionary<BoundType, BoundType> associatedIdentityChecks = new(ReferenceEqualityComparer.Instance);
     private readonly List<(Koto Use, BoundType Type, BindingSymbol Contract)> projectionUses = new();
     private readonly List<(ForKoto Loop, BoundType Subject, BoundType Iterator, BindingSymbol Entry)> userIterations = new();
     private bool contractHeadersReady;
@@ -564,28 +563,7 @@ public sealed partial class Binding
             }
 
             var scope = this.scopes[this.nodes[n]];
-            this.ValidateAssociatedOverlapAgreement(scope);
-            if (scope.Constraints is { } environment)
-            {
-                this.associatedIdentityChecks.Clear();
-                foreach (var a in environment.Facts)
-                {
-                    if (a is not { Kind: ConstraintKind.TypeIdentity, Subject.Kind: BoundTypeKind.AssociatedProjection, RequiredType: { } ta } ||
-                        this.DependentType(ta))
-                    {
-                        continue;
-                    }
-
-                    if (this.associatedIdentityChecks.TryGetValue(a.Subject, out var previous) && !this.SameCompleteType(ta, previous))
-                    {
-                        environment.Fail(scope.Owner);
-                        this.Fail(scope.Owner, BindingFailure.InvalidAssociatedType);
-                    }
-
-                    this.associatedIdentityChecks[a.Subject] = ta;
-                }
-            }
-
+            this.ValidateAssociatedOverlapAgreement(scope); // SPEC 8.2.3's premise error is the identity classes' (Binding.TypeIdentity).
             if (scope.Owner is not ContractKoto contract || contract.BoundSymbol!.Contract is not { } shape)
             {
                 continue;
