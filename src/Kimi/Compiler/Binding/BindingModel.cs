@@ -433,7 +433,7 @@ public sealed record BoundType
     private readonly bool carriesOriginOrSlot;
     private readonly bool containsParameter;
     private readonly bool containsPairLayer;
-    private readonly bool containsClosure;
+    private readonly bool containsNested;
     private readonly bool hasAbstractPart;
     private readonly int height;
 
@@ -469,7 +469,7 @@ public sealed record BoundType
         var pair = this.IsPairLayer;
         var stores = found || original;
         var abstractPart = this.IsAbstract;
-        var closure = kind == BoundTypeKind.Closure;
+        var nested = kind == BoundTypeKind.Closure || (kind == BoundTypeKind.FunctionItem && symbol is { Scope.Owner: not DeclarationContainerKoto });
         var height = instanceContext is null ? 0 : instanceContext.Height + 1;
         for (var i = 0; components is not null && i < components.Length; i++)
         {
@@ -479,7 +479,7 @@ public sealed record BoundType
             slot |= components[i].carriesOriginOrSlot;
             parameter |= components[i].containsParameter;
             pair |= components[i].containsPairLayer;
-            closure |= components[i].containsClosure;
+            nested |= components[i].containsNested;
             abstractPart |= components[i].hasAbstractPart;
             height = Math.Max(height, components[i].height + 1);
         }
@@ -511,7 +511,7 @@ public sealed record BoundType
 
         this.containsParameter = parameter;
         this.containsPairLayer = pair;
-        this.containsClosure = closure;
+        this.containsNested = nested;
         this.hasAbstractPart = abstractPart;
         this.height = height;
     }
@@ -656,8 +656,9 @@ public sealed record BoundType
     internal bool IsPairLayer => this.Kind is BoundTypeKind.SemanticsApplication or BoundTypeKind.SemanticsAdaptation ||
         (this.Kind == BoundTypeKind.Parameter && this.Symbol?.Kind == BindingSymbolKind.SemanticsTarget);
 
-    // Whether this subtree contains a Closure Type, which an instance closes (Binding.CloseNestedTypes).
-    internal bool ContainsClosure => this.containsClosure;
+    // Whether this subtree contains a nested definition's Type, a Closure Type or the Item of a function declared in a body, which an
+    // instance closes (Binding.CloseNestedTypes; DECISIONS BU-60, PLAN G846).
+    internal bool ContainsNested => this.containsNested;
 
     /// <summary>Gets a value indicating whether this is an integer or wrapping integer Type with a signed representation (SPEC 3.1;
     /// <c>Wrapping&lt;T&gt;</c> has T's, SPEC 3.1.1); false for every other Type.</summary>

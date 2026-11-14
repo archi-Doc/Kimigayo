@@ -11,9 +11,12 @@ public sealed partial class Binding
 
     private readonly record struct ReferenceConstraintFailure(IsKoto Clause, BoundConstraint Constraint, ConstraintProof Proof, BindingSymbol? Declaration = null);
 
-    // The declaring Type of a member of a generic container follows the bound function arguments as the last Component.
+    // The declaring Type of an Item: a generic container member's follows the bound function arguments as the last Component; the Item of
+    // a function declared in a body holds the Type instance it was formed in in its context (TyCtxt.HeldType; SPEC 3.2.1, 6.1.3, DECISIONS
+    // BU-60), as its readers see it (TyCtxt.NestedInstance: none with an Origin position, PLAN G300).
     internal static BoundType? ItemDeclaringType(BoundType item, FunctionKoto function)
-        => !function.IsRequirement && item.Components.Count > ItemTypeArgumentCount(function) ? item.Components[^1] : null;
+        => function.IsRequirement ? null : item.Components.Count > ItemTypeArgumentCount(function) ? item.Components[^1]
+            : TyCtxt.NestedInstance(item) is not null ? TyCtxt.HeldType(item) : null;
 
     // The Item layout (SPEC 7.3, 10.5; FunctionItemType and BindRequirementItem form it): an Item's first Components are its function's own
     // Type arguments, one per generic slot that is no length slot, in slot order, and a generic member's declaring Type follows them
@@ -188,7 +191,7 @@ public sealed partial class Binding
             return this.ContractType(this.SubstituteContractReference(type, this.BoundContractReference(reference), out _), this.ConstraintScope(function), self);
         }
 
-        if (item.Components.Count == 0 && item.LengthArguments.Length == 0)
+        if (item.Components.Count == 0 && item.LengthArguments.Length == 0 && item.InstanceContext is null)
         {
             return type;
         }
