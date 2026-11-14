@@ -13249,6 +13249,54 @@ resumed by R4-M86 (2026-10-20).
   - **Moved from Binding:** `VirtualDeclarationCause.Combined`, `Unsafe` and `RedeclaredParameter` are removed; `RedeclaredHeader`
     becomes `RedeclaredConstraints`. Rejected: the specialization's list flag for the override's `!` (a second record and the
     recovery anyway); a clause per qualifier form; the header span for SecondModifier (every other F.3.3 record is at its word).
+- **BU-206 PB2: the grammar owner decides each Parsing form; one recovery for a written Type outside its position's grammar**
+  (Front, 2026-11-14; PB2, the Front's second Parsing bundle; PLAN G857, G860, G865, G489's `::` part and D-609 (1) (G868); plan
+  revision 69 (B) class 1, (C) one bundle per component; Major; design review ACCEPT WITH NOTES, implementation reviews ACCEPT WITH
+  NOTES and REVISE (B2-1), the diff check ACCEPT; the Middle's C-328 CONSENT WITH CONDITIONS; the owner's O-272 (a), O-285 (a)).
+  SPEC F.3.2, F.3.3, F.5, F.6.1, F.6.2, F.9.4, 13.5.1.
+  - (1) SPEC F.9.4's `Adapted := Prefix ("@" (ClosedTarget PostfixSuffix* | OpenTarget))*` is decided by the expression parser's `@`
+    branch where it has read the target: a bare operation target is closed; any other target is closed exactly when a
+    DelimitedTarget's closer (`)` or `]`) ends it, since every OpenTarget ends at a Name, a `>`, a binding set's `}` or a `?`. A
+    PostfixSuffix after an OpenTarget is one `SyntaxForm.OpenTargetSuffix` record at the suffix's first token; the suffix is read
+    over the adaptation (the grouping SPEC's repair writes), with no recovery node. The fact is the written form's last token, so no
+    Koto-shape test re-derives it.
+  - (2) The keywords `wrap` and `bits` (SPEC F.3.2) are read by the same branch before any Type parse: the word and its adjacent
+    Type arguments, nothing else; the target is an OpenTarget by (1). `ConversionOperationTarget` (re-forming a parsed generic Type
+    into an operation target) is removed.
+  - (3) SPEC F.3.3's order is completed in the modifier reader: the first access word read after `unsafe`, `virtual` or `override`
+    is one `SyntaxForm.AccessAfterModifier` record at that word, and the word is kept (the declaration has the access it wrote).
+  - (4) SPEC F.5's `"::"? TypeSegment PathSuffix*` is read by `ParseTypeHead`'s `::` branch itself: a TypeName, then the PathSuffix
+    loop; any other token is `ExpectedSyntax_Kd` (`Name`) there, and a group, a fixed array or a second `::` written there is read
+    as the Error's recovery. `TypeContext.RootPath` and `TargetRootPath` are removed.
+  - (5) SPEC 13.5.1's rule that a bound Container qualifier never heads the written path of the Core or View Target a target reaches
+    (O-285 (a); F.5's note) is judged by the `@` branch's target check (`CheckAdaptationTarget`, the walk that reads 13.5.1's outer
+    chain "even through grouping"): at the target's Core, a path whose grouped head is no Function Type is a BoundContainerQualifier
+    path, one `SyntaxForm.AdaptationQualifier` record at the qualifier, the target resting on it; Types nested in the Core keep the
+    form. The fact is the node kind the Type parser published for the PathQualifier.
+  - (6) A struct base (F.6.1 `BaseClause`) and a Contract parent (F.6.2 `ContractParentList`) are read by
+    `ParseInheritanceReference` (Parser.ContainerReferences), the reader of
+    `InheritanceReference := NamedReference | ContainerPath BorrowOrigin` (O-272 (a)): what is written is read as the Type it
+    writes, and it is an InheritanceReference only if, under at most a binding set or a BorrowOrigin, its path's head is a TypeName
+    or a root name, or a PathQualifier that PathSuffixes continue; any other Type is one `SyntaxForm.InheritanceReference` record
+    (`ExpectedSyntax_Kd`) over it, and the reference is (7)'s recovery. The BorrowOrigin alternative's slot count is Binding's (SPEC
+    15.3.1). `ContainerPathHead` is shared by (5) and (6). A conformance clause and a ConstraintClause keep their own readers.
+  - (7) One recovery for a written Type outside its position's grammar (`RecoverWrittenType`, Parser.Recovery; the Middle's C-328
+    B1): after its syntax record the Type stays where it was written and is recorded as a recovery (DIAGNOSTICS §4.3), so Binding
+    binds its parts and a failure inside it that its repair leaves keeps its own record (SPEC 23.1.2). Parsing's production checks
+    consult the recovery through `IsRecoveredType` (`ParseInheritanceReference` and `CheckAdaptationTarget` add no record over one),
+    Binding's checks through their prerequisites; Binding's own verdict at a node inside the recovered Type does not consult it. For
+    a prefix the grammar rejects before a complete Type (`::` before a group, a fixed array or a second `::`; a `move/` or `copy/`
+    prefix; a legacy borrow prefix `X{a}/`) the written prefix and Type are a transparent layer over the Type
+    (`RecoverRejectedPrefix`), so the Type and its parts bind and the prefix's meaning is dropped. In an adaptation target each form
+    of the target's own chain is its own record. A recovered head takes no PathSuffix, while a `?` and a BorrowOrigin still attach
+    to it. It replaces every Error node that stood for a complete written Type at those sites; sites with another contract keep
+    their Errors (an Origin parameter that is no Name, a qualified Type whose member Name failed, a Type expected where none is
+    written, a `?` after a bare Semantics operation word).
+  - Rejected: the Type parser publishing Closed/Open through three signatures; a Koto-shape test for (1); a recovery node for the
+    suffix; dropping the misplaced access word; a parser mark or a Type context for (5); Binding as the owner of (5) or (6)
+    (excluded syntax must reject both); six context clauses in the Type parser for (6); a second name or reader for (6)'s
+    BorrowOrigin alternative; for (7) an Error per site, a recovery node per site, keeping the root path's `::` node around the
+    recovered Type, and a Binding change.
 - **G209-1** (2026-10-24; structural unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source
   aliases their selected container and environment before ordinary lookup merges imports. These responsibilities were embedded in the
   general expression parser and `Binding.Types.Lookup`, with alias resolution beside Type formation. `Parser.RuntimeTypeTests` now
