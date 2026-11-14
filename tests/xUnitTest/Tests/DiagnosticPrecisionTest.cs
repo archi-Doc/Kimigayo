@@ -368,6 +368,7 @@ public class DiagnosticPrecisionTest
     [InlineData("#Intrinsic(\"Abort\")\nfunc f() -> i32\n", "UnresolvedBinding_Kd 1:2", "MissingSyntax_Kd 2:16")]
     [InlineData("#Unsupported\nfunc f() -> i32\n", "UnresolvedBinding_Kd 1:2", "MissingSyntax_Kd 2:16")]
     [InlineData("struct S\n    public let x: i32\n    #Lang(\"X\")\n    public init(x: i32)\n        self.x = x\n", "MisplacedSyntax_Kd 3:5")]
+    [InlineData("struct S\n    public let x: i32\n    #Layout(\"C\")\n    public init(x: i32)\n        self.x = x\n", "MisplacedSyntax_Kd 3:5")]
     [InlineData("contract C\n    #Lang(\"Equatable\")\n    func c(self: ref/Self) -> i32\n", "MisplacedSyntax_Kd 2:5")]
     public void UnrecognizedAttributesPublishTheirOwnRecords(string source, params string[] expected)
     {

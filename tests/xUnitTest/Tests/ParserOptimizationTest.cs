@@ -207,6 +207,8 @@ public class ParserOptimizationTest
     [InlineData("#Unsupported", "Unsupported", 0)]
     [InlineData("#Layout(\"C\")", "", 1)]
     [InlineData("#Test", "", 1)]
+    [InlineData("#Foo", "", 1)]
+    [InlineData("#LibraryImport(\"k\", \"s\")", "", 1)]
     [InlineData("#CallerLocation\n    #Test\n    #Lang(\"ArrayInit\")", "CallerLocation Lang", 1)]
     public void ALibraryConstructorTakesOnlyTheImplementationAttributes(string attributes, string taken, int misplaced)
     {
