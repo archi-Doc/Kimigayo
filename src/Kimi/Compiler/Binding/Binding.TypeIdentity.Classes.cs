@@ -299,9 +299,9 @@ public sealed partial class Binding
         // per-call inputs, SPEC 8.10, 15.4.3): quantification structure (8.2.3's Function row).
         private static bool Quantifies(BoundOrigin? origin)
             => origin is { Kind: OriginKind.Input or OriginKind.Parameter, Binder: FunctionTypeKoto } ||
-                (origin is { Kind: OriginKind.Intersection } && HoldsQuantified(origin));
+                (origin is { Kind: OriginKind.Intersection } && HasQuantifiedOperand(origin));
 
-        private static bool HoldsQuantified(BoundOrigin meet)
+        private static bool HasQuantifiedOperand(BoundOrigin meet)
         {
             for (var i = 0; i < meet.Operands.Count; i++)
             {
@@ -318,7 +318,7 @@ public sealed partial class Binding
 
         private static BoundOrigin Operand(BoundOrigin origin, int i) => origin.Kind == OriginKind.Intersection ? origin.Operands[i] : origin;
 
-        private static bool Holds(BoundOrigin meet, BoundOrigin operand)
+        private static bool HasOperand(BoundOrigin meet, BoundOrigin operand)
         {
             for (var i = 0; i < OperandCount(meet); i++)
             {
@@ -767,7 +767,7 @@ public sealed partial class Binding
             }
 
             this.parts.Add((target, component));
-            return Math.Max(head, binding.OriginsAgree(pair.Origin, other.Origin, this.scope!.Owner, ref this.meetProvisional) ? One : Unproven);
+            return Math.Max(head, this.OriginMeet(pair.Origin, other.Origin));
         }
 
         // A constructor pair outside a Function pair: its components are its parts, its Origins and length compared by their domains.
@@ -778,27 +778,27 @@ public sealed partial class Binding
                 this.parts.Add((x.Components[i], y.Components[i]));
             }
 
-            if (!ReferenceEquals(x.LengthExpression, y.LengthExpression) ||
-                !binding.OriginsAgree(x.Origin, y.Origin, this.scope!.Owner, ref this.meetProvisional))
+            var meet = ReferenceEquals(x.LengthExpression, y.LengthExpression) ? this.OriginMeet(x.Origin, y.Origin) : Unproven;
+            for (var i = 0; i < x.OriginArguments.Count && meet != Unproven; i++)
             {
-                return Unproven;
+                meet = Math.Max(meet, this.OriginMeet(x.OriginArguments[i], y.OriginArguments[i]));
             }
 
-            for (var i = 0; i < x.OriginArguments.Count; i++)
-            {
-                if (!binding.OriginsAgree(x.OriginArguments[i], y.OriginArguments[i], this.scope!.Owner, ref this.meetProvisional))
-                {
-                    return Unproven;
-                }
-            }
-
-            return One;
+            return meet;
         }
+
+        // Two Origin slots by the Origin domain's rule (SPEC 8.2.3's compared attributes, 15.6.5): One where proven to agree, else
+        // Unproven. An Origin quantified in a Function Type is quantification structure, which only the Function row's correspondence
+        // compares (Pair); outside it (a pair application's layer at a Function position) it is no form of that domain: Unsupported.
+        private byte OriginMeet(BoundOrigin? a, BoundOrigin? b)
+            => Quantifies(a) || Quantifies(b) ? Unsupported
+                : binding.OriginsAgree(a, b, this.scope!.Owner, ref this.meetProvisional) ? One : Unproven;
 
         // A Function pair walked position by position under its own correspondence: every Origin slot pairs a quantified Origin with one
         // other only (else the structures differ), a meet of them operand by operand; fixed Origins agree by their domain; abstract
         // positions are its parts, where a quantified Origin would be carried out of its Function Type (Refuted); a pair application
-        // against a constructor carrying one is judged by the pair row's head rule (PairMeet), its parts never joined.
+        // against a constructor carrying one is judged by the pair row's head rule (PairMeet), its parts never joined and its quantified
+        // Origin never by the Origin domain (OriginMeet): where the heads agree it stays Unsupported.
         private byte Correspond(BoundType x, BoundType y)
         {
             var paired = x.IsPairLayer || y.IsPairLayer;
@@ -842,7 +842,7 @@ public sealed partial class Binding
 
             if (!Quantifies(a))
             {
-                return binding.OriginsAgree(a, b, this.scope!.Owner, ref this.meetProvisional) ? One : Unproven;
+                return this.OriginMeet(a, b);
             }
 
             return a!.Kind == OriginKind.Intersection || b!.Kind == OriginKind.Intersection ? this.PairMeets(a, b!) : this.PairOne(a, b!);
@@ -850,7 +850,7 @@ public sealed partial class Binding
 
         // SPEC 8.2.3's Function row over two meets: a different number of quantified operands is a different structure; each quantified
         // operand of `a` meets its partner in the correspondence, or the first unpaired quantified operand of `b`; fixed operands agree by
-        // their domain, position by position.
+        // their domain, position by position (OriginMeet).
         private byte PairMeets(BoundOrigin a, BoundOrigin b)
         {
             var (count, quantified) = (OperandCount(a), 0);
@@ -875,13 +875,12 @@ public sealed partial class Binding
                 var x = Operand(a, i);
                 if (!Quantifies(x))
                 {
-                    var agreed = i < OperandCount(b) && binding.OriginsAgree(x, Operand(b, i), this.scope!.Owner, ref this.meetProvisional);
-                    meet = Math.Max(meet, agreed ? One : Unproven);
+                    meet = Math.Max(meet, i < OperandCount(b) ? this.OriginMeet(x, Operand(b, i)) : Unproven);
                     continue;
                 }
 
                 var y = this.Partner(x) ?? this.Unpaired(b);
-                meet = y is null || !Holds(b, y) ? Conflict : Math.Max(meet, this.PairOne(x, y));
+                meet = y is null || !HasOperand(b, y) ? Conflict : Math.Max(meet, this.PairOne(x, y));
             }
 
             return meet;
