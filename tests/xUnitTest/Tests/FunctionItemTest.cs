@@ -164,6 +164,18 @@ public class FunctionItemTest
     public void AnItemOfANestedFunctionInheritsEveryEnclosingParameter(string id, string program, string? at)
         => AssertOwnedRecord(id, program + "public func main() -> () => ()\n", at);
 
+    // SPEC 15.2.3, 6.1.3 (PLAN G826b): an erasure's inherited parameter is named in the record's Note: a Type parameter as not proven
+    // Owned, a Container's Origin slot as not static.
+    [Theory]
+    [InlineData("func h<T>(t: T) -> i32\n    if true\n        func pk(v: i32) -> i32 => v\n        let e: (i32) -> i32 = pk\n        return e(0)\n    return 0\n", "the inherited Type parameter `T` is not proven Owned")]
+    [InlineData("struct C2 {s}\n    public let r: ref/i32 during s\n    public init(r: ref/i32 during s) => self.r = r\n    public func m(self: ref/Self) -> i32\n        if true\n            func pk(x: ref/i32 during s) -> i32 => 0\n            let e: (ref/i32 during s) -> i32 = pk\n            return 0\n        return 0\n", "the inherited Origin `s` is not static")]
+    public void AnErasuresInheritedParameterIsNamed(string program, string note)
+    {
+        var error = Assert.Single(DiagnosticCorpus.Check(program + "public func main() -> () => ()\n").Diagnostics);
+        Assert.Equal(nameof(DiagnosticCode.UnprovenConstraint_Kd), error.Code);
+        Assert.Contains(note, error.Note, StringComparison.Ordinal);
+    }
+
     [Fact]
     public void CliAndLspExplainAnItemTypeMismatch()
     {

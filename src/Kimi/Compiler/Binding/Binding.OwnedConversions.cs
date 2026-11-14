@@ -66,7 +66,8 @@ public sealed partial class Binding
         var captures = BoundClosure.Of(implementation)?.Captures;
         // ErasureSubject's member i, in the callable's own numbering (CapabilityParts): a Closure's capture i; an Item's bound argument,
         // its Contract reference's Type and Origin arguments being that reference's, and an inherited parameter (member Components.Count,
-        // SPEC 6.1.3) named by its parameter.
+        // SPEC 6.1.3) named by its parameter. An inherited Origin has no Type: its member Type is the subject itself, which the report
+        // reads as an Origin that is not static (SPEC 15.2.3).
         var (part, partOrigin, index) = CapabilityParts.At(implementation, i, this.types);
         var inherited = captures is null && index == implementation.Components.Count;
         var member = inherited ? part ?? implementation : implementation.Components[index];
@@ -163,9 +164,10 @@ public sealed partial class Binding
 
     // SPEC 7.7.4, 15.2.3 (DECISIONS BU-73): an erasure's subject, its callable's complete environment, its parts (CapabilityParts) as one
     // environment Tuple (EnvironmentTuple): a Closure's captures, whose members are their indices, or a Function Item's bound arguments, a
-    // requirement Item's Contract-reference Origin arguments included. Its call signature, and what a nested function's Item inherits, are
-    // the required Function Type's to state, never a part of the proof. A callable without parts has the empty environment, Unit, which no
-    // work needs to judge, also before the engine judges (an inferred Field's header, SPEC 11.6).
+    // requirement Item's Contract-reference Origin arguments and a nested function's inherited parameters included (SPEC 6.1.3). Its call
+    // signature, and an enclosing function's Origin that a nested function's signature names (InheritedEnvironment), are the required
+    // Function Type's to state, never a part of the proof. A callable without parts has the empty environment, Unit, which no work needs to
+    // judge, also before the engine judges (an inferred Field's header, SPEC 11.6).
     private BoundType ErasureSubject(BoundType callable)
     {
         if (callable.Kind is not (BoundTypeKind.Closure or BoundTypeKind.FunctionItem))
