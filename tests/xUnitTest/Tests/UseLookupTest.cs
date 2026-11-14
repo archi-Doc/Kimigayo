@@ -22,6 +22,14 @@ public class UseLookupTest
     private const string Inherited = HasItem + "open struct Base\n    public struct N\n        Self is HasItem\n        associate HasItem.Item is i32\n";
     private const string Opened = "alias A\nalias B\ncontract HasItem\n    associate Item\ngroup A\n    public group X\n        public func z() -> i32 => 0\n";
 
+    private const string Conditional = "contract C\n    associate Item\ncontract D\nstruct P\n    public init() => ()\nstruct S<T>\n    public struct Item\n        public init() => ()\n    Self is C when T is D\n        associate C.Item is P\n";
+
+    private const string ConditionalGeneric = "contract C\n    associate Item\ncontract D\nstruct P\n    public init() => ()\nstruct S<T>\n    public struct Item<X>\n        public init() => ()\n    Self is C when T is D\n        associate C.Item is P\n";
+
+    private const string InheritedConformance = "contract C\n    associate Item\ncontract K<X>\nstruct P\n    public init() => ()\n";
+
+    private const string InheritingItem = "struct S: Base\n    public struct Item\n        public init() => ()\n    public init(): base() => ()\n";
+
     private const string BothWays = "contract C\n    associate Item\nstruct P\n    public init() => ()\nstruct S\n    Self is C\n    associate C.Item is P\n" +
         "    public struct Item\n        public init() => ()\n";
 
@@ -61,7 +69,7 @@ public class UseLookupTest
     {
         var c = CompilationTestHelper.Parse(source);
         Assert.Equal(records.Length == 0, c.Bind().IsComplete);
-        Assert.Equal(records, string.Join('|', c.Binding.Issues.Select(static x => $"{x.Code} {x.Node}").Order(StringComparer.Ordinal)));
+        Assert.Equal(records, Records(c));
     }
 
     [Theory]
@@ -100,13 +108,11 @@ public class UseLookupTest
     [InlineData("contract C\n    func m(self: ref/Self) -> i32\ngroup G\n    struct C\n    struct S\n        Self is C\n        func m(self: ref/Self) -> i32 => 0", "UnsatisfiedConstraint_Kd Self is C")]
     // Object View Target (9.2): every Contract is eligible, so the nearer Contract is selected and Type legality rejects it (n06).
     [InlineData(CoreX + NearerContract + "    func f(v: obj/X) -> i32 => 0", "InvalidTypeFormation_Kd X")]
-    // A parenthesized name before `.` at a parameter Type forms no member access (the parser stops there), so `(G)` and `(C)` are
-    // asked in Core's row, where a group or a Contract alone is unresolved (d01, d02). A projection's parenthesized left is a Contract
-    // Reference (9.2, 8.5.2): a struct there is not the projection's base (h01, h02), which the unparenthesized spelling is (h03).
+    // A parenthesized name before `.` at a parameter Type forms no member access (the parser stops there: a plain group is no F.5
+    // PathQualifier), so `(G)` and `(C)` are asked in Core's row, where a group or a Contract alone is unresolved (d01, d02). A
+    // projection's base is spelled without the group (h03); `(P).(C).Item` is a syntax error (RequirementTypeParsingTest).
     [InlineData("group G\n    public struct S\n        public let n: i32 = 0\nfunc f(v: (G).S) -> i32 => 0", "UnresolvedBinding_Kd G")]
     [InlineData("contract C\n    associate Item\nfunc f(v: (C).Item) -> i32 => 0", "UnresolvedBinding_Kd C")]
-    [InlineData(Projected + "func f(v: (P).(C).Item) -> i32 => v", "UnresolvedBinding_Kd P")]
-    [InlineData("contract C\n    associate Item\ncontract P\n    associate Item\ngroup G\n    struct P\n        Self is C\n        associate C.Item is i32\n    func f(v: (P).(C).Item) -> i32 => v", "UnresolvedBinding_Kd (P).(C)")]
     [InlineData(Projected + "func f(v: P.(C).Item) -> i32 => v", "")]
     public void ARoleFollowsItsPosition(string source, string records) => this.AUseIsResolvedOnceInItsRow(source, records);
 
@@ -214,12 +220,16 @@ public class UseLookupTest
     // Type of that name with conformance evidence resolves both ways: ambiguous where its reference is formed, in a Type position, as a
     // construction qualifier, inherited, under `::` and as a nested enum's qualifier (r14b, r14, y01, y02, y16); the twins name it one
     // way (r14n, the nested Type alone; r14w, the parenthesized projection; y16n). A conditional conformance whose condition is refuted
-    // for the written arguments is no evidence (y04, valid). Read before the conformances register, the judgment is G621's located
-    // Unsupported_Kd (x01). Also over `Self` (y03), as a longer path's qualifier and an expression qualifier (x06, x07), with two
-    // associated Types of the name (y07, one record), in pass 0 (x02, y08) and as a base clause (y14: its Type is ambiguous, and the
-    // clause, the constructor's base and the declaration rest on it; y14n, the nested Type alone). The named limit (PLAN G728): a conditional
-    // conformance whose condition holds, named only in a signature or a header (y04x, y17), is accepted, since every proof is Unknown
-    // before the conformances are validated.
+    // for the written arguments is no evidence (y04, valid). Also over `Self` (y03), as a longer path's qualifier and an expression
+    // qualifier (x06, x07), with two associated Types of the name (y07, one record), in pass 0 (x02, y08) and as a base clause (y14: its
+    // Type is ambiguous, and the clause, the constructor's base and the declaration rest on it; y14n, the nested Type alone). A judgment
+    // read before its evidence is complete (the conformances registered, the proofs answering) is judged again then, with the same record:
+    // before the conformances register (x01, x02, y08; under `::` and of a generic nested Type, x01r, x01g), and for a conditional or
+    // inherited conformance named in a signature or a header before the proofs answer (y04x, y17; a result, a Field, a requirement, a
+    // conformance declaration, a condition proven through another conditional conformance or a Type's premise; under `::`, of a generic
+    // nested Type, a nested enum, two conditions, a requirement's result; inh2, inh3, an inherited conditional one; a member of the
+    // conditional block, whose condition is its premise (SPEC 7.5, 8.8.1), and an opening alias's target). Each such row was accepted or
+    // reported Unsupported_Kd (PLAN G728); a refuted condition stays no evidence, and a later Bind reports the same records.
     [Theory]
     [InlineData(BothWays + "func g(x: S.Item) -> i32 => 0", "AmbiguousBinding_Kd S.Item")]
     [InlineData(BothWays + "func g() -> i32\n    let x = S.Item.init()\n    return 0", "AmbiguousBinding_Kd S.Item")]
@@ -245,7 +255,20 @@ public class UseLookupTest
     [InlineData(
         "contract C<T>\n    associate Item\ncontract D<T>\nstruct P\n    public init() => ()\nstruct S\n    Self is C<i32>\n    associate C<i32>.Item is P\n" +
             "    public struct Item\n        public init() => ()\nstruct T\n    Self is D<S.Item>",
-        "Unsupported_Kd S.Item")]
+        "AmbiguousBinding_Kd S.Item")]
+    [InlineData(BothWays + "contract K<X>\nstruct T\n    Self is K<::S.Item>", "AmbiguousBinding_Kd S.Item")]
+    [InlineData(
+        "contract C\n    associate Elem\nstruct P\n    public init() => ()\nstruct S\n    Self is C\n    associate C.Elem is P\n" +
+            "    public struct Item\n        public init() => ()\ncontract K<X>\nstruct T\n    Self is K<::S.Item>",
+        "")]
+    [InlineData(
+        "contract C\n    associate Item\nstruct P\n    public init() => ()\nstruct S\n    Self is C\n    associate C.Item is P\n" +
+            "    public struct Item<X>\n        public init() => ()\ncontract K<X>\nstruct T\n    Self is K<S.Item<i32>>",
+        "AmbiguousBinding_Kd S.Item")]
+    [InlineData(
+        "contract C\n    associate Elem\nstruct P\n    public init() => ()\nstruct S\n    Self is C\n    associate C.Elem is P\n" +
+            "    public struct Item<X>\n        public init() => ()\ncontract K<X>\nstruct T\n    Self is K<S.Item<i32>>",
+        "")]
     [InlineData(
         "contract C\n    associate Item\nstruct P\n    public init() => ()\nstruct S\n    Self is C\n" +
             "    associate C.Item is P\n    public struct Item\n        public init() => ()\n" +
@@ -273,14 +296,14 @@ public class UseLookupTest
             "struct S\n    Self is C<i32>\n    associate C<i32>.Item is P\n    associate C<i32>.Elem is P\n" +
             "    public struct Item\n        public init() => ()\nfunc f<U>(u: U) -> i32\n    U is D<S.Item>\n" +
             "    return 0",
-        "Unsupported_Kd S.Item")]
+        "AmbiguousBinding_Kd S.Item")]
     [InlineData(
         "contract C<T>\n    associate Item\ncontract D<T>\nstruct P\n    public init() => ()\n" +
             "    public struct Inner\n        public init() => ()\nstruct S\n    Self is C<i32>\n" +
             "    associate C<i32>.Item is P\n    public struct Item\n        public init() => ()\n" +
             "        public struct Inner\n            public init() => ()\nstruct T\n    Self is D<S.Item.Inner>\n" +
             "func f<U>(u: U) -> i32\n    U is D<S.Item.Inner>\n    return 0",
-        "Unsupported_Kd S.Item|Unsupported_Kd S.Item")]
+        "AmbiguousBinding_Kd S.Item|AmbiguousBinding_Kd S.Item")]
     [InlineData(
         "contract C\n    associate Item\nopen struct P\n    public init() => ()\nstruct S\n    Self is C\n" +
             "    associate C.Item is P\n    public open struct Item\n        public init() => ()\nstruct T : S.Item\n" +
@@ -295,13 +318,79 @@ public class UseLookupTest
         "contract C\n    associate Item\ncontract D\nstruct P\n    public init() => ()\nstruct Q\n    Self is D\n" +
             "struct S<T>\n    public struct Item\n        public init() => ()\n    Self is C when T is D\n" +
             "        associate C.Item is P\nfunc g(x: S<Q>.Item) -> i32\n    return 0",
-        "")]
+        "AmbiguousBinding_Kd S<Q>.Item")]
     [InlineData(
         "contract C\n    associate Item\ncontract D\nstruct P\n    public init() => ()\nstruct S<T>\n" +
             "    public struct Item\n        public init() => ()\n    Self is C when T is D\n" +
             "        associate C.Item is P\nfunc f<U>(x: S<U>.Item) -> i32\n    U is D\n    return 0",
+        "AmbiguousBinding_Kd S<U>.Item")]
+    [InlineData(Conditional + "struct Q\n    public init() => ()\nfunc g(x: S<Q>.Item) -> i32\n    return 0", "")]
+    [InlineData(Conditional + "func f<U>(x: S<U>.Item) -> i32\n    U is not D\n    return 0", "")]
+    [InlineData("func g() -> Option<S<Q>.Item>\n    return .None\n" + Conditional + "struct Q\n    Self is D", "AmbiguousBinding_Kd S<Q>.Item")]
+    [InlineData(Conditional + "struct Q\n    Self is D\nstruct H\n    public var f: Option<S<Q>.Item> = .None", "AmbiguousBinding_Kd S<Q>.Item")]
+    [InlineData(Conditional + "struct Q\n    Self is D\ncontract R\n    func take(self: ref/Self, x: S<Q>.Item) -> i32", "AmbiguousBinding_Kd S<Q>.Item")]
+    [InlineData(Conditional + "struct Q\n    Self is D\ncontract K<X>\nstruct H\n    Self is K<S<Q>.Item>", "AmbiguousBinding_Kd S<Q>.Item")]
+    [InlineData(Conditional + "struct Q\n    public init() => ()\ncontract K<X>\nstruct H\n    Self is K<S<Q>.Item>", "")]
+    [InlineData(Conditional + "struct Q\n    Self is D\nstruct W<A>\n    Self is D when A is D\nfunc g(x: S<W<Q>>.Item) -> i32\n    return 0", "AmbiguousBinding_Kd S<W<Q>>.Item")]
+    [InlineData(Conditional + "struct Q\n    public init() => ()\nstruct W<A>\n    Self is D when A is D\nfunc g(x: S<W<Q>>.Item) -> i32\n    return 0", "")]
+    [InlineData(Conditional + "struct H<U>\n    U is D\n    public func take(self: ref/Self, x: S<U>.Item) -> i32 => 0", "AmbiguousBinding_Kd S<U>.Item")]
+    [InlineData(Conditional + "struct Q\n    Self is D\nfunc g(x: ::S<Q>.Item) -> i32\n    return 0", "AmbiguousBinding_Kd S<Q>.Item")]
+    [InlineData(Conditional + "struct Q\n    public init() => ()\nfunc g(x: ::S<Q>.Item) -> i32\n    return 0", "")]
+    [InlineData(Conditional + "struct Q\n    Self is D\nfunc g() -> i32\n    let v: Option<::S<Q>.Item> = .None\n    return 0", "AmbiguousBinding_Kd S<Q>.Item")]
+    [InlineData(Conditional + "struct Q\n    Self is D\ncontract K<X>\nstruct H\n    Self is K<::S<Q>.Item>", "AmbiguousBinding_Kd S<Q>.Item")]
+    [InlineData(Conditional + "struct Q\n    public init() => ()\ncontract K<X>\nstruct H\n    Self is K<::S<Q>.Item>", "")]
+    [InlineData(ConditionalGeneric + "struct Q\n    Self is D\nfunc g(x: S<Q>.Item<i32>) -> i32\n    return 0", "AmbiguousBinding_Kd S<Q>.Item")]
+    [InlineData(ConditionalGeneric + "struct Q\n    public init() => ()\nfunc g(x: S<Q>.Item<i32>) -> i32\n    return 0", "")]
+    [InlineData(ConditionalGeneric + "struct Q\n    Self is D\nfunc g() -> i32\n    let v: Option<S<Q>.Item<i32>> = .None\n    return 0", "AmbiguousBinding_Kd S<Q>.Item")]
+    [InlineData(ConditionalGeneric + "struct Q\n    Self is D\ncontract K<X>\nstruct H\n    Self is K<S<Q>.Item<i32>>", "AmbiguousBinding_Kd S<Q>.Item")]
+    [InlineData(ConditionalGeneric + "struct Q\n    public init() => ()\ncontract K<X>\nstruct H\n    Self is K<S<Q>.Item<i32>>", "")]
+    [InlineData(Conditional + "struct Q\n    Self is D\ncontract R\n    func take(self: ref/Self) -> S<Q>.Item", "AmbiguousBinding_Kd S<Q>.Item")]
+    [InlineData(Conditional + "struct Q\n    public init() => ()\ncontract R\n    func take(self: ref/Self) -> S<Q>.Item", "")]
+    [InlineData(Conditional + "        public func f(self: ref/Self, x: S<T>.Item) -> i32 => 0", "AmbiguousBinding_Kd S<T>.Item")]
+    [InlineData(Conditional + "        public func f<U>(self: ref/Self, u: U) -> i32\n            U is K<S<T>.Item>\n            return 0\ncontract K<X>", "AmbiguousBinding_Kd S<T>.Item")]
+    [InlineData(
+        "contract C\n    associate Elem\ncontract D\nstruct P\n    public init() => ()\nstruct S<T>\n    public struct Item\n        public init() => ()\n" +
+            "    Self is C when T is D\n        associate C.Elem is P\n        public func f(self: ref/Self, x: S<T>.Item) -> i32 => 0",
         "")]
-    public void ANestedTypeNamedBothWaysIsAmbiguous(string source, string records) => this.AUseIsResolvedOnceInItsRow(source, records);
+    [InlineData("alias S<Q>.Item\n" + Conditional + "struct Q\n    Self is D", "AmbiguousBinding_Kd S<Q>.Item")]
+    [InlineData("alias S<Q>.Item\n" + Conditional + "struct Q\n    public init() => ()", "")]
+    [InlineData(
+        "contract C\n    associate Item\ncontract D\nstruct P\n    public init() => ()\nstruct Q\n    Self is D\nstruct S<T, U>\n    public struct Item\n" +
+            "        public init() => ()\n    Self is C when T is D, U is D\n        associate C.Item is P\nfunc g(x: S<Q, Q>.Item) -> i32\n    return 0",
+        "AmbiguousBinding_Kd S<Q, Q>.Item")]
+    [InlineData(
+        "contract C\n    associate Item\ncontract D\nstruct P\n    public init() => ()\nstruct Q\n    public init() => ()\nstruct S<T, U>\n    public struct Item\n" +
+            "        public init() => ()\n    Self is C when T is D, U is D\n        associate C.Item is P\nfunc g(x: S<Q, Q>.Item) -> i32\n    return 0",
+        "")]
+    [InlineData(
+        "contract C\n    associate Item\ncontract D\nstruct P\n    public init() => ()\nstruct Q\n    Self is D\nstruct S<T>\n    public enum Item\n        A\n" +
+            "    Self is C when T is D\n        associate C.Item is P\nfunc g(x: S<Q>.Item) -> i32\n    return 0",
+        "AmbiguousBinding_Kd S<Q>.Item")]
+    [InlineData(
+        "contract C\n    associate Item\ncontract D\nstruct P\n    public init() => ()\nstruct Q\n    public init() => ()\nstruct S<T>\n    public enum Item\n        A\n" +
+            "    Self is C when T is D\n        associate C.Item is P\nfunc g(x: S<Q>.Item) -> i32\n    return 0",
+        "")]
+    [InlineData(InheritedConformance + "open struct Base\n    Self is C\n    associate C.Item is P\n    public init() => ()\n" + InheritingItem + "struct H\n    Self is K<S.Item>", "AmbiguousBinding_Kd S.Item")]
+    [InlineData(InheritedConformance + "open struct Base\n    public init() => ()\n" + InheritingItem + "struct H\n    Self is K<S.Item>", "")]
+    [InlineData(InheritedConformance + "open struct Base\n    Self is C\n    associate C.Item is P\n    public init() => ()\n" + InheritingItem + "func f<U>(u: U) -> i32\n    U is K<S.Item>\n    return 0", "AmbiguousBinding_Kd S.Item")]
+    [InlineData(InheritedConformance + "open struct Base\n    public init() => ()\n" + InheritingItem + "func f<U>(u: U) -> i32\n    U is K<S.Item>\n    return 0", "")]
+    [InlineData(
+        "contract D\nstruct Q\n    Self is D\n" + InheritedConformance + "open struct Base<T>\n    public init() => ()\n    Self is C when T is D\n        associate C.Item is P\n" +
+            "struct S: Base<Q>\n    public struct Item\n        public init() => ()\n    public init(): base() => ()\nfunc g(x: S.Item) -> i32\n    return 0",
+        "AmbiguousBinding_Kd S.Item")]
+    [InlineData(
+        "contract D\nstruct Q\n    public init() => ()\n" + InheritedConformance + "open struct Base<T>\n    public init() => ()\n    Self is C when T is D\n        associate C.Item is P\n" +
+            "struct S: Base<Q>\n    public struct Item\n        public init() => ()\n    public init(): base() => ()\nfunc g(x: S.Item) -> i32\n    return 0",
+        "")]
+    public void ANestedTypeNamedBothWaysIsAmbiguous(string source, string records)
+    {
+        var c = CompilationTestHelper.Parse(source);
+        for (var bind = 0; bind < 2; bind++)
+        {
+            Assert.Equal(records.Length == 0, c.Bind().IsComplete);
+            Assert.Equal(records, Records(c));
+        }
+    }
 
     // PLAN G701 (SPEC 6.1.5, 8.4, 9.1, 9.2, 9.7): what a written `Self` selects is decided where names resolve. A Contract's `Self` is
     // its Self Type parameter, the conforming-Type binder, so it is no Contract reference at a projection's Contract, a parent or a
@@ -424,4 +513,6 @@ public class UseLookupTest
         Assert.Equal(PathEnd.Selected, published);
         return (qualifier, published, Assert.IsType<BindingSymbol>(HirTables.Symbol(qualifier)));
     }
+
+    private static string Records(Compilation c) => string.Join('|', c.Binding.Issues.Select(static x => $"{x.Code} {x.Node}").Order(StringComparer.Ordinal));
 }
