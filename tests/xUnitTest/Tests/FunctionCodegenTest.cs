@@ -138,11 +138,18 @@ public sealed partial class FunctionCodegenTest
     };
 
     // The first programs (R5 C0b2, C0c): console output through writeLine, one line, several lines, an empty line and non-ASCII text: the
-    // literal, its borrow, the call and the temporary's destruction (DECISIONS R5-M73, R5-M78).
+    // literal, its borrow, the call and the temporary's destruction (DECISIONS R5-M73, R5-M78). S3 (SPEC 22.7; R8-W2 d's coverage table):
+    // every byte as written, NUL, a CR LF inside the text and an unnormalized combining sequence, each line ending in one LF.
     public static TheoryData<string, string, string> Hellos => new()
     {
         { "HelloWorld", "Console.writeLine(\"Hello, world!\")\n", "Hello, world!\n" },
         { "HelloLines", "Console.writeLine(\"one\")\nConsole.writeLine(\"\")\nConsole.writeLine(\"日本語\")\n", "one\n\n日本語\n" },
+        {
+            "S3HelloBytes",
+            "Console.writeLine(\"one\")\nConsole.writeLine(\"\")\nConsole.writeLine(\"日本語\")\nConsole.writeLine(\"a\\0b\")\n" +
+            "Console.writeLine(\"c\\r\\nd\")\nConsole.writeLine(\"e\\u(301)\")\n",
+            "one\n\n日本語\na\0b\nc\r\nd\ne\u0301\n"
+        },
     };
 
     // The operator rows' programs (R5 C1a; DECISIONS R5-M76): each tests its results and divides by zero when one is wrong, so a normal exit
@@ -630,6 +637,20 @@ public sealed partial class FunctionCodegenTest
         Assert.Equal(
             "store %kimi.string { ptr null, i64 0, i8 0 }, ptr %, align 8",
             Assert.Single(ir.Single("internal void (ptr, i1)").Instructions, static x => x.Opcode == "store" && x.Shape.Contains("kimi.string")).Shape);
+    }
+
+    // D5/L1 (SPEC 9, 22.7; R8-W2 d's coverage table): a user function writeLine(text: ref/string), the string overload's name and
+    // parameters, is the program's own function. LineOf finds each overload's body by its cataloged declaration beside it, and the startup
+    // calls the user's function, then the string overload's body.
+    [Fact]
+    public void D5AUserWriteLineOfTheStringOverloadsParametersIsItsOwnFunction()
+    {
+        var c = Analyze("func writeLine(text: ref/string) => Console.writeLine(\"user \\(text)\")\nwriteLine(\"x\")\nConsole.writeLine(\"lib\")\n");
+        var ir = GeneratedIr.Parse(Generate(c));
+        var line = LineOf(ir, c, view: false);
+        var writers = FunctionsOf(ir, c, "writeLine");
+        var user = Assert.Single(writers.Except([line, LineOf(ir, c, view: true)]));
+        Assert.Equal([user, line], ir.Startup.Instructions.Select(static x => x.Callee).Where(x => x is not null && writers.Contains(x)));
     }
 
     // The operator rows (R5 C1a; DECISIONS R5-M76; SPEC 13.3.1, IMPL 21.3.3): a checked integer operation is its overflow intrinsic, whose
