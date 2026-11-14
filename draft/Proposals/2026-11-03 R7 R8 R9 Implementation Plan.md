@@ -400,7 +400,7 @@ routes it (a row is deleted only after every reader it feeds is routed; c3, d an
 
 | Unit | Closes or re-records |
 | --- | --- |
-| D1–D3 | G144's first half (its depth half is covered by G444 U1 and U2a, inferred, not run), G348, G438; D2: G411 and G448 (d2) |
+| D1–D3 | G144's first half (its depth half is covered by G444 U1 and U2a, inferred, not run), G348; D2: G411 and G448 (d2) |
 | N1–N7 | G365 (N7), G317, G324, G325, G52's remaining parts (the `yield` shape landed, W-17), G155's "each requirement its own record" (with E1), G488 (N1: `ResolvePath` evaluates both paths before either publishes; BU-117's interim `Unsupported_Kd` ends there) |
 | V1–V5 | G373, G214, G556 |
 | I0–I4 | revision B and B3a (held by the owner, PLAN 5b1777f34; absorbed into I2), G383 (held with them; U6 never ran, so its targets are on dev and its deletions stay with I2), G443 and G360 (I2 d; I1 takes r3b and q3), G394, G399 (G335 U1's follow-up), G159 (2) (3), G152, G356, G378, G275 (2), G159's SPEC questions reported |
@@ -635,7 +635,7 @@ post-flip rows that R6-check's H3b names class 2 or 5 come first.
   the view hold); RZ3 (the HIR discard classification and the builder; the back's in-place Drop); G318 (the chain core below both phases, one unit,
   R4 with BU; R5-M194); G289 (5) (N11's Mir sites: 8 nested conditionals, 3 pattern chains, 20 computed deconstructions, two `out` parameters
   at `MirBorrows.Addresses.cs:218`, two `bool` parameters at `MirForms.cs:96`, optional ones at `MirDescriptors.cs:194` and
-  `MirBuilder.Places.cs:208`, `MirBuilder.Values.cs:135`'s 171 characters; R5-M194); G157 (39) (`MirValidator.SharedPaths`' `Cases` restating Binding's
+  `MirBuilder.Places.cs:208`; R5-M194); G157 (39) (`MirValidator.SharedPaths`' `Cases` restating Binding's
   `CaseOf`/`CaseAdmitted`: one `PairCase` owner; R5-M194); P42's MIR, A4 and A5 parts (RQ5).
 - **G396's items in the owner's order (R4-M165):** A5-F7's last units 2c-6 and 2c-7; A5-F8 and A5-F10; A6's 2g units with G105 (2g-1 also makes
   H3-2's interim records derived; 2g-5 and 2g-6 are narrowed: R4-M104, and G126's cleanups landed); the 25 `Unsupported_Kd` producers without a
@@ -1060,3 +1060,4 @@ frozen.
 | 80 | 2026-11-14 | R9-F6 batch D's landing (the Middle's D-640; Q-418; DECISIONS R9-M8) | §5.3's F6 row: batch D (F6-11 generic lists, F6-12 the function header form) done. |
 | 81 | 2026-11-14 | R7-C2e2 e2-2's landing and e2-2c's close (the Front's D-641 and D-633; DECISIONS R7-M29) | §5.0's C2 row: e2-2 in three parts (e2-2b, e2-2a, e2-2c closed by its design), c2's arithmetic part, c3 takes `IsRecursive`; §5.0's C2 table: `IsRecursive` c3, `RefutedOverlapInputs` stays, `ProjectionUseOf` deleted. |
 | 82 | 2026-11-14 | R8-W3's design census (the Back's D-649; `w3-design.md` §1.5, §2) | §5.6's R8-W3 hold row names the files W3 edits (`MirBuilder.Expansions.cs`, not `MirBuilder.Control.cs`; with `ExpansionPlan.cs` also `Binding.Sequences.cs`, `Binding.Hir.Adjust.cs`, `HirVocabulary.cs`); §5.2's W3 row: no `ResolvedRange` loop in the Iterators kernel (W3 adds one, benchmark-only, first) and about −70 in src (was −150); RP20: three shim witnesses on dev (Equals, Compare, Arithmetic; found by R8-G1's design), not four. |
+| 83 | 2026-11-14 | The owner's removal of every line, character and size limit (DECISIONS Q19) | The statement (60), token (5,000) and line-length (160) limits are gone, and so are PLAN's 500 lines and the commit message's length. §5.3's F6 and M1 rows record work done under the old limits, their remaining members being over kept limits (F6-13's `bool` parameters; `IsTypeConstraintStart` and `AsConstraintSubject`'s chains, G489; M1 part 3's `IsWhitespace` chain, G818); D1-D3 no longer absorbs G438 (closed); X1's "structure limits hold for the moved files" means the remaining ones (parameters, nesting, logical chains). §5.4's G289 (5) drops `MirBuilder.Values.cs:135`'s 171 characters. No unit is added or removed. |
