@@ -82,13 +82,15 @@ public sealed partial class TyCtxtTest
     // receiver's referent, so each raw layer without an Origin their Types write states Unstated (U: RawStated, Holdings' Any) at every
     // depth: below a borrow layer (r's referent), below a layer stating an Origin (p's pointee) and in a nested Closure's environment
     // (k3, k4); a layer stating an Origin keeps it (p's own). The Closure's body's Types are its environment unmarked (no MIR local
-    // states Unstated; DECISIONS BU-50).
+    // states Unstated; DECISIONS BU-50). Row 2 (ii): Let (L) marks a part in `let` bindings only: q, r, p, and k3's qa inside its `let`
+    // k1a; never a `var` binding's (v, va) nor anything in a `var` Closure binding (k4's qb), nor a part at a key whose Type is no
+    // Closure (each pointee's key here).
     [Theory]
-    [InlineData("q", "raw/raw/u8 Address U {raw/u8 Address U}, raw/u8 Address U")]
-    [InlineData("r", "- Exclusive - {raw/u8 Address U}, raw/raw/u8 Exclusive - {raw/u8 Address U}")]
-    [InlineData("k1a", "raw/raw/u8 Address U {raw/u8 Address U}, raw/u8 Address U")]
-    [InlineData("k1b", "raw/raw/u8 Address U {raw/u8 Address U}, raw/u8 Address U")]
-    public void AClosureKeyStatesItsEnvironmentsRawLayers(string first, string expected)
+    [InlineData("q", "raw/raw/u8 Address UL {raw/u8 Address U-}, raw/u8 Address U-")]
+    [InlineData("r", "- Exclusive -L {raw/u8 Address U-}, raw/raw/u8 Exclusive -L {raw/u8 Address U-}")]
+    [InlineData("k1a", "raw/raw/u8 Address UL {raw/u8 Address U-}, raw/u8 Address U-")]
+    [InlineData("k1b", "raw/raw/u8 Address U- {raw/u8 Address U-}, raw/u8 Address U-")]
+    public void AClosureKeyStatesItsEnvironmentsRawLayersAndMarksItsLetBindings(string first, string expected)
     {
         var c = MinimalEmissionTest.Analyze(EnvironmentsSource);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
@@ -96,6 +98,25 @@ public sealed partial class TyCtxtTest
         Assert.Equal(expected, Stating(c.Types, PlaceKey.Root(closure), 0));
         Assert.False(TyCtxt.StatesUnstated(BoundClosure.Of(closure)!.EnvironmentType!, []));
         Assert.Equal(first is "q" or "r", TyCtxt.StatesUnstated(c.Types.ClosureEnvironment(closure)!, [])); // A nested one's own reading.
+    }
+
+    // SPEC 15.8.2 (PLAN A5-F row 2 (ii), review B1): Let speaks only of a call of the key's own Closure, at a root, Select or Past key
+    // whose Type is that Closure. Past k2's captured `let r = k1@uniq`, k1's key reads its `let q` as L, though k2's call may write `*r`
+    // whole; Select(k7, 0) reads k6's `let qb` as L, while k7's root, whose call may replace its `var k6`, reads it unmarked; k5's `let`
+    // Tuple t holds k1 as k1's own key reads it. Select (-1: the root key, else the component Select takes).
+    [Theory]
+    [InlineData("r", -1, "- Exclusive -L {raw/raw/u8 Address UL, raw/u8 Address U-}")]
+    [InlineData("r", 0, "- Exclusive -- {raw/raw/u8 Address UL, raw/u8 Address U-}")]
+    [InlineData("k6", -1, "raw/raw/u8 Address U- {raw/u8 Address U-}")]
+    [InlineData("k6", 0, "raw/raw/u8 Address UL {raw/u8 Address U-}")]
+    [InlineData("t", -1, "raw/raw/u8 Address UL {raw/u8 Address U-}, raw/u8 Address U-")]
+    public void AClosureKeysLetSpeaksOfItsOwnClosuresCall(string first, int select, string expected)
+    {
+        var c = MinimalEmissionTest.Analyze(LetKeysSource);
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
+        var closure = LocalTypes(c).First(x => x is { Kind: BoundTypeKind.Closure } && BoundClosure.Of(x)!.Captures[0].Environment.Name == first)!;
+        var key = select < 0 ? PlaceKey.Root(closure) : c.Types.Select(PlaceKey.Root(closure), select);
+        Assert.Equal(expected, Stating(c.Types, key, 0));
     }
 
     // The contract: a warm read of a Closure key's OwnLayers and of each Past key, its stated environment included, allocates nothing.
@@ -161,6 +182,12 @@ public sealed partial class TyCtxtTest
         "    let qa: raw/(raw/u8) = null\n    var va: raw/u8 = null\n    let k1a = func [qa, var va] () => ()\n    let k3 = func [k1a@move] () => ()\n    k3()\n" +
         "    let qb: raw/(raw/u8) = null\n    var vb: raw/u8 = null\n    let k1b = func [qb, var vb] () => ()\n    let k4 = func [var k1b@move] () => ()\n    k4()\n" +
         "    return ()\npublic func main() => ()\n";
+
+    private const string LetKeysSource =
+        "func f()\n    let q: raw/(raw/u8) = null\n    var v: raw/u8 = null\n    var k1 = func [q, var v] () => ()\n    let r = k1@uniq\n" +
+        "    var k2 = func [r] () => r()\n    k2()\n    let t = (k1@move, 1)\n    let k5 = func [t@move] () => ()\n    k5()\n" +
+        "    let qb: raw/(raw/u8) = null\n    let k6 = func [qb] () => ()\n    let k7 = func [var k6@move] () => ()\n    k7()\n    return ()\n" +
+        "public func main() => ()\n";
 
     private const string ParameterKeysSource =
         "struct Wrap<T>\n    internal let value: T\n" +
@@ -367,14 +394,14 @@ public sealed partial class TyCtxtTest
         }));
     }
 
-    // The keys' layers with their step and whether each states Unstated, and each Past key's nested (two keys deep).
+    // The keys' layers with their step, whether each states Unstated and its Let bit, and each Past key's nested (two keys deep).
     private static string Stating(TyCtxt types, PlaceKey key, int depth)
     {
         var into = new List<OwnLayer>();
         Assert.True(types.OwnLayers(key, into));
         return string.Join(", ", into.Select(x =>
         {
-            var row = $"{(x.Layer is null ? "-" : Binding.DiagnosticTypeName(x.Layer))} {x.Step} {(x.Layer is not null && TyCtxt.RawStated(x.Layer) ? "U" : "-")}";
+            var row = $"{(x.Layer is null ? "-" : Binding.DiagnosticTypeName(x.Layer))} {x.Step} {(x.Layer is not null && TyCtxt.RawStated(x.Layer) ? "U" : "-")}{(x.Let ? "L" : "-")}";
             var below = depth < 1 && x.Past.Type is not null ? Stating(types, x.Past, depth + 1) : string.Empty;
             return below.Length == 0 ? row : $"{row} {{{below}}}";
         }));
