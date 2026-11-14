@@ -332,7 +332,9 @@ public class ConditionalConformanceBindingTest
     // SPEC 11.9.1, 11.9.2, 8.8.2, 15.3.5 (PLAN G801, the Middle's C2): a stored Field's `set` bridge is the requirement's comparison
     // too: the required input fits the Field's Type in the conformance scope, whose Semantics premises give the admitted set. A `when`
     // (or the struct's own clause) that leaves only `ref` makes the pair layer covariant; `uniq` left admitted keeps its target
-    // invariant (accepted before this row's fix: the bridge compared without the scope); covariance never reverses the fit.
+    // invariant (accepted before this row's fix: the bridge compared without the scope); covariance never reverses the fit. A `when`
+    // naming `owner` leaves the plain borrows (SPEC 8.1.2; the Middle's s-owner-v); without it `uniq` is admitted (s-owner-nowhen-i,
+    // accepted before).
     [Theory]
     [InlineData("ref or uniq", " when s is ref", "static", "a", "clean")]
     [InlineData("ref or uniq", "", "static", "a", "1*IncompatibleContractImplementation_Kd")]
@@ -341,6 +343,8 @@ public class ConditionalConformanceBindingTest
     [InlineData("ref", "", "static", "a", "clean")]
     [InlineData("ref", "", "a", "static", "1*IncompatibleContractImplementation_Kd")]
     [InlineData("ref or uniq", "", "a", "a", "clean")]
+    [InlineData("ref or uniq or owner", " when s is owner", "static", "a", "clean")]
+    [InlineData("ref or uniq or owner", "", "static", "a", "1*IncompatibleContractImplementation_Kd")]
     public void AStoredFieldsSetBridgeIsComparedUnderItsConformanceScopesAdmittedSet(string admitted, string condition, string input, string field, string records)
         => Assert.Equal(records, DiagnosticCorpus.RecordProfile(
             "contract L<G, P>\n    property item: ref/G\n        get() -> ref/G\n        set(value: P) -> ()\n" +
@@ -378,6 +382,148 @@ public class ConditionalConformanceBindingTest
         => Assert.Equal(records, DiagnosticCorpus.RecordProfile(
             "contract R<G>\n    property item: G has get\n" +
             $"{header}    Self is R<{result}>{condition}\n    public var item: {field}\n    var other: ref/i32 during a\n"));
+
+    // SPEC 11.9.2, 8.3.4, 8.8.2, 15.3.5 (PLAN G801; the Front review's R8, R9): the `set` bridge reads each binder's admitted set at the
+    // conformance scope: a `when` on another binder leaves the Field's own binder admitting `uniq` (accepted before C2).
+    [Theory]
+    [InlineData("u", "1*IncompatibleContractImplementation_Kd")]
+    [InlineData("s", "clean")]
+    public void AStoredFieldsBridgeConditionNarrowsOnlyTheBinderItNames(string named, string records)
+        => Assert.Equal(records, DiagnosticCorpus.RecordProfile(
+            "contract L<G, P>\n    property item: ref/G\n        get() -> ref/G\n        set(value: P) -> ()\n" +
+            "struct H<s/T, u/U> {a}\n    s is ref or uniq\n    u is ref or uniq\n" +
+            $"    Self is L<s/(ref/i32 during a) during a, s/(ref/i32 during static) during a> when {named} is ref\n" +
+            "    public var item: s/(ref/i32 during a) during a\n    var w: u/(ref/i32 during a) during a\n"));
+
+    // SPEC 11.9.2, 8.3.4, 8.8.2, 15.3.5 (PLAN G801; the Middle's s-nest-both, s-nest-s, s-nest-u, the Front review's R10-R12): under
+    // nested pair binders the `set` bridge's innermost target is covariant only when the `when` narrows both (one `when` alone was
+    // accepted before C2).
+    [Theory]
+    [InlineData(" when s is ref, u is ref", "clean")]
+    [InlineData(" when s is ref", "1*IncompatibleContractImplementation_Kd")]
+    [InlineData(" when u is ref", "1*IncompatibleContractImplementation_Kd")]
+    public void AStoredFieldsSetBridgeReadsEachNestedBindersAdmittedSet(string condition, string records)
+        => Assert.Equal(records, DiagnosticCorpus.RecordProfile(
+            "contract L<G, P>\n    property item: ref/G\n        get() -> ref/G\n        set(value: P) -> ()\n" +
+            "struct H<s/T, u/V> {a}\n    s is ref or uniq\n    u is ref or uniq\n" +
+            "    Self is L<s/(u/(ref/i32 during a) during a) during a, s/(u/(ref/i32 during static) during a) during a>" + condition +
+            "\n    public var item: s/(u/(ref/i32 during a) during a) during a\n"));
+
+    // SPEC 11.9.2, 8.3.4, 8.8.2, 15.3.5 (PLAN G801; the Middle's k-nest-both, k-nest-s, k-nest-u): the Copy bridge under nested pair
+    // binders alike (`when s is ref` alone was accepted before C2; under `when u is ref` the fit fails before the Copy proof, so
+    // the conformance's record is the fit's, where it was `UnprovenConstraint_Kd`).
+    [Theory]
+    [InlineData(" when s is ref, u is ref", "clean")]
+    [InlineData(" when s is ref", "1*IncompatibleContractImplementation_Kd")]
+    [InlineData(" when u is ref", "1*IncompatibleContractImplementation_Kd")]
+    public void AStoredFieldsCopyBridgeReadsEachNestedBindersAdmittedSet(string condition, string records)
+        => Assert.Equal(records, DiagnosticCorpus.RecordProfile(
+            "contract R<G>\n    property item: G has get\n" +
+            "struct H<s/T, u/V> {a}\n    s is ref or uniq\n    u is ref or uniq\n" +
+            $"    Self is R<s/(u/(ref/i32 during a) during a) during a>{condition}\n" +
+            "    public var item: s/(u/(ref/i32 during static) during a) during a\n"));
+
+    // SPEC 11.9.2, 3.8, 8.8.2, 15.3.5 (PLAN G801; the Middle's s-fn-v, s-fn-i): a Function Type through the `set` bridge reverses the
+    // fit under the same admitted set: the required `(A) -> ()` fits the Field's `(S) -> ()` only while the layer is covariant
+    // (accepted without the `when` before C2).
+    [Theory]
+    [InlineData(" when s is ref", "clean")]
+    [InlineData("", "1*IncompatibleContractImplementation_Kd")]
+    public void AStoredFieldsSetBridgeReversesAFunctionTypesInput(string condition, string records)
+        => Assert.Equal(records, DiagnosticCorpus.RecordProfile(
+            "contract L<G, P>\n    property item: ref/G\n        get() -> ref/G\n        set(value: P) -> ()\n" +
+            "struct H<s/T> {a}\n    s is ref or uniq\n" +
+            $"    Self is L<(s/(ref/i32 during static) during a) -> (), (s/(ref/i32 during a) during a) -> ()>{condition}\n" +
+            "    public var item: (s/(ref/i32 during static) during a) -> ()\n"));
+
+    // SPEC 11.9.2, 8.1.2, 8.8.2, 15.3.5 (PLAN G801; the Middle's k-owner-v, k-uniq-i): the Copy bridge reads the case its `when`
+    // names: `owner` leaves the plain `ref/i32`, Copy and covariant; `uniq` is invariant and not Copy.
+    [Theory]
+    [InlineData("ref or uniq or owner", " when s is owner", "clean")]
+    [InlineData("ref or uniq", " when s is uniq", "1*IncompatibleContractImplementation_Kd")]
+    public void AStoredFieldsCopyBridgeReadsItsConditionsCase(string admitted, string condition, string records)
+        => Assert.Equal(records, DiagnosticCorpus.RecordProfile(
+            "contract R<G>\n    property item: G has get\n" +
+            $"struct H<s/T> {{a}}\n    s is {admitted}\n    Self is R<s/(ref/i32 during a) during a>{condition}\n" +
+            "    public var item: s/(ref/i32 during static) during a\n"));
+
+    // SPEC 11.9.2, 8.8.2, 15.2 (PLAN G801; the Middle's MR5: k-eq-when, k-eq-nowhen): where the conformance scope's `origin a == b`
+    // proves the fit in any variance (rejected before C2: the bridge compared without premises), the Copy proof decides: `when s is
+    // ref` proves it; without the `when` Copy is unproven, so the conformance's one record is `UnprovenConstraint_Kd` at the same
+    // location (the move opposite to the invariant rows', whose fit now fails first).
+    [Theory]
+    [InlineData(" when s is ref", "clean")]
+    [InlineData("", "1*UnprovenConstraint_Kd")]
+    public void ACopyBridgeWhoseFitHoldsIsDecidedByItsCopyProof(string condition, string records)
+        => Assert.Equal(records, DiagnosticCorpus.RecordProfile(
+            "contract R<G>\n    property item: G has get\n" +
+            "struct H<s/T> {a, b}\n    s is ref or uniq\n    origin a == b\n" +
+            $"    Self is R<s/(ref/i32 during a) during a>{condition}\n" +
+            "    public var item: s/(ref/i32 during b) during a\n    var other: ref/i32 during b\n"));
+
+    // SPEC 11.6, 11.9.2, 15.3.7, 15.6.1 (PLAN G801; the Middle's MR4: k-self-v, k-selfset-i): a required getter's result elided to
+    // the receiver needs the Field's `a` to outlive the receiver's Origin, which the receiver's own well-formedness gives; the bridge's
+    // comparison assumes it as every requirement comparison does (rejected before C2). A `set` input's independent per-call Origin has
+    // no such premise into the Field.
+    [Theory]
+    [InlineData("get", "clean")]
+    [InlineData("get, set", "1*IncompatibleContractImplementation_Kd")]
+    public void AStoredFieldsBridgeAssumesTheRequiredReceiversWellFormedness(string accessors, string records)
+        => Assert.Equal(records, DiagnosticCorpus.RecordProfile(
+            $"contract V\n    property item: ref/i32 has {accessors}\n" +
+            "struct H {a}\n    Self is V\n    public var item: ref/i32 during a\n"));
+
+    // SPEC 3.3.2, 15.6.1, 15.3.7, 23.1.2 (PLAN G801; the Front review's R19, R20): a conformance argument ill formed in D keeps its
+    // formation record, and the comparison, which assumes the required signature's well-formedness, adds no dependent conformance
+    // record: the stored Field's bridge (which added `IncompatibleContractImplementation_Kd` before C2) reports as its computed twin.
+    [Theory]
+    [InlineData("    public var item: ref/(ref/i32 during a) during a\n    var other: ref/i32 during b\n")]
+    [InlineData("    var store: ref/(ref/i32 during a) during a\n    var other: ref/i32 during b\n    public computed item: ref/(ref/(ref/i32 during a) during a)\n        get() -> ref/(ref/(ref/i32 during a) during a) => self.store@ref\n        set(value: ref/(ref/i32 during a) during a) -> () => self.store = value\n")]
+    public void AStoredFieldsBridgeAssumesTheRequiredInputsWellFormednessAsAComputedSetterDoes(string members)
+        => Assert.Equal("1*UnprovenOriginRelation_Kd", DiagnosticCorpus.RecordProfile(
+            "contract L<G, P>\n    property item: ref/G\n        get() -> ref/G\n        set(value: P) -> ()\n" +
+            "struct H {a, b}\n    Self is L<ref/(ref/i32 during a) during a, ref/(ref/i32 during b) during a>\n" + members));
+
+    // SPEC 6.2.2, 11.9.2, 8.8.2 (PLAN G801; the Middle's MR7: inh-v, inh-base-i): an inherited conformance's bridge is compared under
+    // the derived Type's premises: `origin y outlives x` proves the base's fit through the path (rejected before C2); without it only
+    // the base clause fails, and the Base's own valid conformance keeps no record (it had one before C2).
+    [Theory]
+    [InlineData("    origin y outlives x\n", "clean")]
+    [InlineData("", "1*InvalidTypeFormation_Kd 1*UnprovenConstraint_Kd")]
+    public void AnInheritedConformancesBridgeIsComparedUnderTheDerivedTypesPremises(string premise, string records)
+        => Assert.Equal(records, DiagnosticCorpus.RecordProfile(
+            "contract L<G, P>\n    property item: ref/G\n        get() -> ref/G\n        set(value: P) -> ()\n" +
+            "open struct Base {a, b}\n    origin b outlives a\n    Self is L<ref/i32 during a, ref/i32 during b>\n" +
+            "    public var item: ref/i32 during a\n    public var other: ref/i32 during b\n" +
+            "struct D {x, y} : Base{v}\n    origin v.a == x\n    origin v.b == y\n" + premise));
+
+    // SPEC 8.8.2, 11.9.2 (PLAN G801; the Middle's MR7: g-copy-v, g-copy-i): a generic caller of a Copy-bridge conformance proves its
+    // `when` at the call; a caller whose binder still admits `uniq` fails only that proof.
+    [Theory]
+    [InlineData("ref", "clean")]
+    [InlineData("ref or uniq", "1*UnprovenConstraint_Kd")]
+    public void AGenericCallerOfACopyBridgeConformanceProvesItsCondition(string clause, string records)
+        => Assert.Equal(records, DiagnosticCorpus.RecordProfile(
+            "contract R<G>\n    property item: G has get\n" +
+            "struct H<s/T> {a}\n    s is ref or uniq\n    Self is R<s/(ref/i32 during a) during a> when s is ref\n" +
+            "    public var item: s/(ref/i32 during static) during a\n" +
+            "func read<X, G>(x: ref/X) -> G\n    X is R<G>\n    return x.item\n" +
+            $"func g<s/T>(h: ref/(H<s/T> during b)) -> s/(ref/i32 during b) during b\n    s is {clause}\n" +
+            "    return read<H<s/T> during b, s/(ref/i32 during b) during b>(h)\n"));
+
+    // SPEC 8.8.2, 11.9.2 (PLAN G801; the Middle's MR7: g-set-v, g-set-i): the same through a `set`-bridge conformance.
+    [Theory]
+    [InlineData("ref", "clean")]
+    [InlineData("ref or uniq", "1*UnprovenConstraint_Kd")]
+    public void AGenericCallerOfASetBridgeConformanceProvesItsCondition(string clause, string records)
+        => Assert.Equal(records, DiagnosticCorpus.RecordProfile(
+            "contract L<G, P>\n    property item: ref/G\n        get() -> ref/G\n        set(value: P) -> ()\n" +
+            "struct H<s/T> {a}\n    s is ref or uniq\n" +
+            "    Self is L<s/(ref/i32 during a) during a, s/(ref/i32 during static) during a> when s is ref\n" +
+            "    public var item: s/(ref/i32 during a) during a\n" +
+            "func put<X, G, P>(x: uniq/X, v: P) -> ()\n    X is L<G, P>\n    x.item = v@move\n" +
+            $"func g<s/T>(h: uniq/(H<s/T> during b), v: s/(ref/i32 during static) during b) -> ()\n    s is {clause}\n" +
+            "    put<H<s/T> during b, s/(ref/i32 during b) during b, s/(ref/i32 during static) during b>(h, v@move)\n"));
 
     // SPEC 8.8.2, 15.3.7, 15.3.5 (PLAN G801): a requirement's result is compared in the same conformance scope, in the result's
     // direction (the written result fits the required one): covariant under `when s is ref`, invariant without it, never reversed.
