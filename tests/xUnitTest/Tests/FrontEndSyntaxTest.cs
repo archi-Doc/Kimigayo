@@ -151,7 +151,6 @@ public class FrontEndSyntaxTest
     [InlineData("(N, i32)")]
     [InlineData("()")]
     [InlineData("[2 of N]")]
-    [InlineData("N during a")]
     [InlineData("(N) -> i32")]
     [InlineData("N(a)")]
     public void ABaseOrParentOutsideANamedReferenceIsOneRecordInEverySelection(string reference)

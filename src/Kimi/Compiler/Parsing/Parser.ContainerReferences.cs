@@ -203,15 +203,15 @@ public static partial class Parser
 
     // SPEC F.5: NamedReference := ContainerPath OriginBindingSet?, the reference of a BaseClause and of a ContractReference (F.6.1,
     // F.6.2): a path from a TypeSegment or a root name, or a PathQualifier with its PathSuffixes, and at most a binding set; no Semantics
-    // prefix, bare group, Tuple, fixed array, '?', BorrowOrigin, OriginApplication or Function Type. What is written there is read as
-    // the Type it writes, so nothing of it is left to the enclosing construct; a Type that is no NamedReference is one record over it,
-    // and the reference rests on the Error.
+    // prefix, bare group, Tuple, fixed array, '?', OriginApplication or Function Type. What is written there is read as the Type it
+    // writes, so nothing of it is left to the enclosing construct; a Type that is no NamedReference is one record over it, and the
+    // reference rests on the Error. A single-slot `during` binding on the path (SPEC 15.3.1) is not judged here: it reads as before.
     private static Koto ParseNamedReference(ref TokenReader reader)
     {
         var type = ParseType(ref reader, TypeContext.Type);
-        var path = type is TypeSemanticsKoto { IsTransparentWrapper: true, IsSlotBinding: false, Type: { } wrapped } ? wrapped : type;
+        var path = type is TypeSemanticsKoto { IsTransparentWrapper: true, Type: { } wrapped } ? wrapped : type;
         var head = ContainerPathHead(path);
-        if (type is ErrorKoto || head is TypeSemanticsKoto { Type: null, IsSlotBinding: false } or SyntaxFormKoto { Akind: KotoKind.RootName } ||
+        if (type is ErrorKoto || head is TypeSemanticsKoto { Type: null } or SyntaxFormKoto { Akind: KotoKind.RootName } ||
             (!ReferenceEquals(head, path) && head is ParenthesizedTypeKoto or TupleTypeKoto or FixedArrayTypeKoto))
         {
             return type;
