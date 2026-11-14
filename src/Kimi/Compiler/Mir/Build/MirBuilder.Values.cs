@@ -403,10 +403,11 @@ internal sealed partial class MirBuilder
     // only the checks continue (assumed completion, SPEC 14.10.3; DECISIONS R4-M62). Nothing is built that has no value: an rvalue that
     // has an input (an operand, or the Place of a kind that has one, MirDescriptor.HasPlace) whose every input is the Never value (never
     // an Adapt, whose token is a constant), or a value assigned to the Never value, since a node of Type Never makes none (but its Opaque
-    // value, which stands for its syntax, of its Type).
+    // value, which stands for its syntax, of its Type). A construction is a value whatever its operands: it places each component and
+    // nothing into one whose operand is the Never value (MirMoveData's Never parts; SPEC 15.1.2, 14.10.3, DECISIONS R4-M175).
     private void Set(MirPlace destination, in MirRvalue rvalue, Koto node)
     {
-        var never = MirDescriptors.Of(rvalue.Kind).HasPlace ? this.IsNeverValue(rvalue.Place) : rvalue.Count > 0;
+        var never = rvalue.Kind != MirRvalueKind.Aggregate && (MirDescriptors.Of(rvalue.Kind).HasPlace ? this.IsNeverValue(rvalue.Place) : rvalue.Count > 0);
         for (var i = 0; never && i < rvalue.Count; i++)
         {
             never = this.body.Operands[rvalue.Start + i] is { Kind: not MirOperandKind.Const } operand && this.IsNeverValue(operand.Place);
