@@ -14110,6 +14110,8 @@ structure is recorded here by the unit that first implements it.
   no rows (C9a would read the old Emission's table); rows per wrapper kind (the collector never sees a wrapper); a
   `FormattingWitness` row bit (a third statement of the published `Formats` rows); wrappers written only under the runtime flag
   (G133).
+  - Superseded in part by R8-W2 c4 (2026-11-15): no formatting runtime text is left, so `HelperNeeds` and its member
+    `FormattingRuntime` are deleted; Text.writer's routine is the kept file's (`ErasedWriterRuntime.ll.in`, R8-M18).
 - **R5-M31 HIR lints** (2026-10-18; under R5-M23 and PD31) A permanent canonical Binding component, `Binding/Binding.Lints.cs`:
   Binding's checks that never fail a node, one row per code in a lint table (code; derived from `FailureCauses`; rests on a
   guessed completion), the row number being its records' condition; a row whose check rests on a Binding failure or a guess
@@ -16541,6 +16543,9 @@ structure is recorded here by the unit that first implements it.
     - re-pointing the old lowering to the map (D5).
   - Superseded in part by R8-M22 (R8-W1c-1 to W1c-2b): its formatting rows are Kimigayo bodies or gone, and the `Formatting` writer,
     `LegacyRow.Needs`, the measured capacity Context (`Measure`) and `WitnessKind` are deleted.
+  - Superseded in part by R8-W2 c4 (2026-11-15): no formatting runtime text is left. `ModuleCodegen.Request(HelperNeeds)` and
+    `Needs.Formatting` are deleted, so "The runtime is written once, after the Array runtime and before the helpers" ends;
+    Text.writer's routine is the kept file's (R8-M18).
 - **R5-M129 The Array literal is one MIR aggregate (alit)** (2026-10-26; the owner's 「a) 設計して直す お願いします」 (2026-10-26, on G:library-2's held
   review: design and fix) and 「いずれも承認します」 (2026-10-26, to "MIR の語彙に新しい集約の種類 MirAggregateKind.Array を加えてよいですか？"); G:library-2's B1; partly
   supersedes R5-M121 and R3-5's interim mapping for the Array literal)
@@ -20044,7 +20049,9 @@ R8-M* and R9-M* by the stage of the recording unit.
       adapter cannot, per W1b's design and `Utf8InterpolationTest.NestedReservationsRetainTheOuterHint`), together with `Dispatch`'s kind
       0/1 arm;
     - the second statement of HeapBuffer growth, `__kimi_buffer_reserve` beside `HeapBuffer.reserve`: removed with the adapter's kind 0/1
-      arms (W2), census 2a (precedent: R8-M2's `__kimi_array_grow`);
+      arms (W2), census 2a (precedent: R8-M2's `__kimi_array_grow`); done, R8-W2 c4, which deletes the runtime's arms
+      (`__kimi_writer_reserve` and `__kimi_buffer_reserve`); the Kimigayo arms (`Utf8Writer.reserve`'s kind 0/1, reserving through
+      `FixedBuffer.reserve` and the heap hint's growth) stay, part b's subject;
     - `__kimi_buffer_bytes` as a plain define: removed with its last caller (`{{text_try_format}}` and `WriteFormattingConversion` at W1c,
       `format_take_string` at W2);
     - `__kimi_utf8_valid`: removed with `{{text_validate_utf8}}` (W1c); done, R8-M22 (W1c-1).
@@ -20061,6 +20068,8 @@ R8-M* and R9-M* by the stage of the recording unit.
     instance); D (a `BufferRepr` pun for the buffers' own operations: their Fields are already ordinary Places).
   - Amended by R8-M18 (the W1b chain's RP8 fix): `Text.validUtf8`'s guard-bounded steps wrap under R8-M2's rule, and the six
     validated-suffix copies of `text`, `validate`, `intoText` and `intoString` are one internal `Text.validSuffix`.
+  - Amended by R8-W2 c4 (2026-11-15): the "Option A" bullet's kind 0/1 arms are the Kimigayo ones (`Utf8Writer.reserve`'s) since
+    c4, which deleted the runtime's arms.
 - **R8-M10 A Drop that destroys nothing asks no drop glue** (Back, 2026-11-08; OI-1a, PLAN G641 kinds 1-3; Major; the Middle's C-160
   YES with B1 and B2) SPEC 8.15.3, 14.10.3, 16.2.1, 16.2.2. Supersedes in part R5-M60 (its clause "A2's verdicts do not narrow the
   checked set") and R4-M6a (its clause "a Drop only check edges reach has no row; check-only code is not judged").
@@ -20300,6 +20309,22 @@ R8-M* and R9-M* by the stage of the recording unit.
     those instances before O2); re-measured in T-91 (rows on Q-233). The rule's remaining sites are PLAN G693.
   - Amended by R8-W2 b1 (2026-11-14): `write`, `reserve` and `finish` guard by `status`, the writer's one failure guard (four
     statements become one; the failure recording in `write` and `settled` stays).
+  - Amended by R8-W2 c4 (2026-11-15), which deletes the dead formatting runtime (`Utf8FormatRuntime.ll.in`,
+    `Utf8BufferRuntime.ll.in`):
+    - Temporaries closed: `Request(HelperNeeds.FormattingRuntime)` implying `Needs.ErasedWriter` (`HelperNeeds` is deleted;
+      `Text.writer` requests `Needs.ErasedWriter` itself); `__kimi_writer_reserve`'s user arm and its restatement of the adapter's
+      reservation (deleted); the formatting runtime's expansion skipping the kept file's definitions (the expansion is deleted);
+      `utf8_commit`'s restated commit; `window_address` and `window_advance` (deleted).
+    - `BufferRepr`'s pairing with the runtime's offsets is closed: no runtime reads a buffer at fixed offsets. What lasts is the
+      library's equal layouts, the prefix pun of the "`Storage.BufferRepr` is lasting" bullet, which `RuntimeLayoutsAreFixed`'s
+      FixedBuffer, HeapBuffer and BufferRepr rows pin.
+    - Three phrases end with them: the need column's "the formatting runtime, which also calls it, is written only with the kept
+      file until W2"; the window invariant's "and, until W2, the runtime's own windows (`__kimi_writer_reserve`'s arms)"; the kept
+      runtime's "after the formatting runtime" and "and by `Request(HelperNeeds.FormattingRuntime)`".
+    - Kept: the reservation's kind switch restating `WriterKind` (until b2-1), the kept file's `llvm.memset` (b2-1 supersedes it)
+      and the lasting `destination`/`dispatch` layout pair.
+    - Counts: `ModuleCodegen.Needs` loses `Formatting` (bit 64 is free); `HelperNeeds` 1 -> 0 (deleted); `IntrinsicId`,
+      `CompilerFunctionKind` and `KimiDeclarationId` unchanged.
 
   - R8-M2's rule beyond `Formatting.kimi`, with its RP8 exception until R8-L1: R8-M2's Scope sub-bullet (PLAN G693, the owner's
     O-150 (a)).
@@ -21520,7 +21545,8 @@ R8-M* and R9-M* by the stage of the recording unit.
       writing or reading `writer.hint` stays `InaccessibleBinding_Kd` (the review's two invalid twins).
   - **Closes:** R8-M41's Staged (RN2: the estimate beside `Length`; PLAN G828 (7)) and R8-M40's Staged (`FormatEstimate` beside
     `HintBound`; PLAN G876).
-    **Staged:** the dead formatting runtime until c4 (PLAN G828 (3): no routine of it has a caller). PLAN G828 (2) is not closed
+    **Staged:** the dead formatting runtime until c4 (PLAN G828 (3): no routine of it has a caller); closed by R8-W2 c4, which
+    deletes it (R8-M18's c4 amendment). PLAN G828 (2) is not closed
     (B's Q2; the Middle's C-267): its cause, a record made by re-typing an already-stored constant (`Text`'s
     `Viewed(Literal(...))` and the comparison path), is the Middle's `Literal`/`Viewed`.
   - **Rejected:**
