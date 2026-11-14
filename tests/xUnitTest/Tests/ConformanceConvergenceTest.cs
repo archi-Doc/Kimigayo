@@ -391,6 +391,44 @@ public class ConformanceConvergenceTest(ITestOutputHelper output)
         Assert.Equal(k, DiagnosticCorpus.RecordProfile(source) == "clean");
     }
 
+    // B1's ring family (R7-C2e2 e2-5a, design-engine): k declarations' Copy works and Owned works on one cycle, each order, with and without a use.
+    public static TheoryData<int, string, bool, int> RingRows
+        => [.. from k in new[] { 1, 2, 3, 4, 5 }
+               from variant in new[] { "copy", "copy-bad", "copy-free", "owned", "owned-bad" }
+               from use in new[] { false, true }
+               from order in new[] { 0, 1, 2 }
+               select (k, variant, use, order)];
+
+    // SPEC 8.3.3 Recursion and Limits, 15.3.5 (R7-C2e2 e2-5a, the capability engine's termination): D stores H<C1>, C1 .. Ck store the
+    // next, Ck stores S<D>, whose formation asks D is Owned. Through Copy works (copy) the cycle supplies no evidence (O-78 (a)), so the
+    // program is invalid, and invalid with D's bad Field too; with S's Constraint gone (copy-free) nothing cycles; through Owned works alone
+    // (owned) the cycle is Owned's structure, a greatest fixed point, and holds. Every row answers in every order, within a deadline.
+    [Theory]
+    [MemberData(nameof(RingRows))]
+    public async Task ACycleOfCopyAndOwnedWorksEndsInEveryOrder(int k, string variant, bool use, int order)
+    {
+        var owned = variant.StartsWith("owned", StringComparison.Ordinal);
+        var blocks = new List<string>
+        {
+            "struct S<U>\n" + (variant == "copy-free" ? string.Empty : "    U is Owned\n") + (owned ? string.Empty : "    Self is Copy\n") + "    public init() => ()\n",
+            owned ? "struct H<A>\n    A is Owned\n    public init() => ()\n" : "struct H<A>\n    A is Copy\n    public init() => ()\n",
+            "struct BoxK<A>\n    A is K\n    public init() => ()\ncontract K\n",
+            "struct D\n    let h: H<C1>\n" + (variant.EndsWith("-bad", StringComparison.Ordinal) ? "    let bad: BoxK<i32>\n" : string.Empty),
+        };
+        for (var i = 1; i <= k; i++)
+        {
+            var next = i < k ? $"C{i + 1}" : "S<D>";
+            blocks.Add($"struct C{i}\n{(owned ? string.Empty : "    Self is Copy\n")}    public var x: {next}\n    public init() => self.x = {next}.init()\n");
+        }
+
+        var ordered = order switch { 0 => blocks, 1 => Enumerable.Reverse(blocks).ToList(), _ => [.. blocks.Skip(3), .. blocks.Take(3)] };
+        var source = string.Concat(ordered) + (use ? "func needOwned<V>(v: ref/V)\n    V is Owned\n    ()\nfunc use1(d: ref/D) -> ()\n    needOwned(d)\n" : string.Empty);
+        var cancel = TestContext.Current.CancellationToken;
+        var run = Task.Run(() => DiagnosticCorpus.RecordProfile(source), cancel);
+        Assert.Same(run, await Task.WhenAny(run, Task.Delay(TimeSpan.FromSeconds(30), cancel)));
+        Assert.Equal(variant is "copy-free" or "owned", await run == "clean");
+    }
+
     // SPEC 6.2, the owner's O-70 (a) (DECISIONS BU-128): a binding-only inline cycle is invalid at the binding, a Language record, never a
     // Resource one, used or not. These rows assert their records: each fails if S3 (VerifyConformance's formation of a binding, R7-C2 (b))
     // goes without that judge, which leaves them clean or Resource records.

@@ -12,6 +12,11 @@ public sealed partial class Binding
     private readonly HashSet<(CapabilityWork Source, CapabilityWork Consumer)> capabilityEdges = new();
     private readonly Queue<CapabilityWork> capabilityQueue = new();
     private readonly List<CapabilityWork> pendingCapabilities = []; // The works a request's evaluations left Pending.
+    private readonly List<CapabilityWork> capabilityEvaluated = []; // The outermost request's evaluations: the coinductive step's candidates.
+    private readonly Queue<CapabilityWork> assumptionQueue = new();
+    private bool assuming; // The coinductive step is evaluating (AssumeResidual).
+    private bool assumptionVoid; // It read a work never evaluated.
+    private int assumptionDepth; // The open obligations when its evaluation began: an assumption is not read through a newer one.
     private CapabilityWork? capabilityConsumer;
     private bool capabilitiesReady;
     private BindingMode capabilityMode;
@@ -257,6 +262,9 @@ public sealed partial class Binding
         this.capabilityQueue.Clear();
         this.capabilityEdges.Clear();
         this.pendingCapabilities.Clear();
+        this.capabilityEvaluated.Clear();
+        this.assumptionQueue.Clear();
+        this.assuming = false;
         this.capabilityConsumer = null;
         foreach (var work in this.capabilityNodes.Values)
         {
@@ -335,6 +343,18 @@ public sealed partial class Binding
                 work.Dependents.Add(consumer);
             }
 
+            if (this.assuming)
+            {
+                if (!work.Evaluated)
+                {
+                    this.assumptionVoid = true; // Queued above: the inductive step evaluates it, then the step runs again.
+                }
+                else if (work.Assumed && consumer.Assumed && this.openObligations.Count == this.assumptionDepth)
+                {
+                    return ConstraintProof.Proven;
+                }
+            }
+
             this.ScopeReads.Origin ??= work.Result == ConstraintProof.Proven ? null : work.Origin;
             return this.ReadVerdict(work.Result, work.Cause, work.Fact);
         }
@@ -342,38 +362,17 @@ public sealed partial class Binding
         this.BeginProof();
         try
         {
-            while (this.capabilityQueue.TryDequeue(out var next))
+            do
             {
-                next.Queued = false;
-                next.Evaluated = true;
-                this.capabilityConsumer = next;
-                this.ScopeReads = default;
-                next.Parts?.Clear();
-                var reads = this.reentryReads;
-                var result = this.ComputeCapability(next);
-                next.Pending = this.reentryReads != reads;
-                if (next.Pending)
-                {
-                    this.pendingCapabilities.Add(next);
-                }
-
-                var cause = this.ProofCause(result);
-                next.Fact = this.ProofFact(result); // Payload of the final iteration, outside the fixpoint's equality.
-                next.Origin = result == ConstraintProof.Proven ? null : this.ScopeReads.Origin;
-                if (result == next.Result && ReferenceEquals(cause, next.Cause))
-                {
-                    continue;
-                }
-
-                var rose = result == ConstraintProof.Proven && next.Result != ConstraintProof.Proven;
-                next.Result = result;
-                next.Cause = cause;
-                this.RequeueDependents(next, rose);
+                this.EvaluateCapabilities();
             }
+            while (this.AssumeResidual());
         }
         finally
         {
             this.capabilityConsumer = null;
+            this.assuming = false;
+            this.capabilityEvaluated.Clear();
         }
 
         this.ScopeReads = default;
@@ -383,28 +382,159 @@ public sealed partial class Binding
         return verdict;
     }
 
-    // A changed work's readers are judged again. Where it rose to Proven (a work that starts Unknown, read before its own evaluation),
-    // each reader that starts Proven and settled below returns to its start first, with its own readers: recursive Owned structure is
-    // the greatest fixed point from the optimistic start (SPEC 15.3.5), which a cycle of works that read the earlier verdict would
-    // otherwise never regain. Each work restarts at most once per rise.
-    private void RequeueDependents(CapabilityWork work, bool rose)
+    // The inductive step (SPEC 8.3.3): the worklist from the committed verdicts. Every work starts Unknown and each evaluation is
+    // monotone in the information order (Unknown below Proven and Refuted, Error above both), so a verdict only rises, at most twice.
+    private void EvaluateCapabilities()
+    {
+        while (this.capabilityQueue.TryDequeue(out var next))
+        {
+            next.Queued = false;
+            next.Evaluated = true;
+            this.capabilityEvaluated.Add(next);
+            this.capabilityConsumer = next;
+            this.ScopeReads = default;
+            next.Parts?.Clear();
+            var reads = this.reentryReads;
+            var result = this.ComputeCapability(next);
+            next.Pending = this.reentryReads != reads;
+            if (next.Pending)
+            {
+                this.pendingCapabilities.Add(next);
+            }
+
+            var cause = this.ProofCause(result);
+            next.Fact = this.ProofFact(result); // Payload of the final iteration, outside the fixpoint's equality.
+            next.Origin = result == ConstraintProof.Proven ? null : this.ScopeReads.Origin;
+            if (result == next.Result && ReferenceEquals(cause, next.Cause))
+            {
+                continue;
+            }
+
+            next.Result = result;
+            next.Cause = cause;
+            this.RequeueDependents(next);
+        }
+
+        this.capabilityConsumer = null;
+    }
+
+    private void RequeueDependents(CapabilityWork work)
     {
         for (var i = 0; i < work.Dependents.Count; i++)
         {
             var dependent = work.Dependents[i];
-            if (rose && dependent.Evaluated && dependent.Result != ConstraintProof.Proven && dependent.StartsProven)
-            {
-                dependent.Result = ConstraintProof.Proven;
-                dependent.Cause = null;
-                this.RequeueDependents(dependent, true);
-            }
-
             if (!dependent.Queued)
             {
                 dependent.Queued = true;
                 this.capabilityQueue.Enqueue(dependent);
             }
         }
+    }
+
+    // The coinductive step (SPEC 15.3.5: Owned's structure is a greatest fixed point; SPEC 8.3.3: a nominal or Copy judgment assumes no
+    // coinduction). The residual, this request's coinductive works the inductive step left Unknown, is assumed Proven: each is evaluated
+    // again with the residual's verdicts read as Proven by residual works alone, never through another work or an obligation opened in
+    // the evaluation; one that is not Proven so leaves the residual, and its residual readers are evaluated again. What stays is the
+    // greatest such set, whatever the order (a Proven verdict survives more assumptions); it is committed Proven, an information rise,
+    // and the inductive step resumes. A read of a work never evaluated voids the step: the inductive step evaluates it, then the step
+    // runs again. Returns whether the inductive step must run; the rises bound the rounds, the works the voids.
+    private bool AssumeResidual()
+    {
+        var evaluated = this.capabilityEvaluated;
+        for (var i = 0; i < evaluated.Count; i++)
+        {
+            var work = evaluated[i];
+            if (work.Coinductive && work.Result == ConstraintProof.Unknown && !work.Pending && !work.Assumed && work.Evaluated)
+            {
+                work.Assumed = true;
+                work.Queued = true;
+                this.assumptionQueue.Enqueue(work);
+            }
+        }
+
+        if (this.assumptionQueue.Count == 0)
+        {
+            evaluated.Clear();
+            return false;
+        }
+
+        this.assuming = true;
+        this.assumptionVoid = false;
+        while (!this.assumptionVoid && this.assumptionQueue.TryDequeue(out var next))
+        {
+            next.Queued = false;
+            if (!next.Assumed)
+            {
+                continue;
+            }
+
+            this.capabilityConsumer = next;
+            this.ScopeReads = default;
+            next.Parts?.Clear();
+            var reads = this.reentryReads;
+            this.assumptionDepth = this.openObligations.Count;
+            var result = this.ComputeCapability(next);
+            this.capabilityConsumer = null;
+            if (result != ConstraintProof.Proven || this.reentryReads != reads)
+            {
+                next.Assumed = false;
+                for (var i = 0; i < next.Dependents.Count; i++)
+                {
+                    if (next.Dependents[i] is { Assumed: true, Queued: false } reader)
+                    {
+                        reader.Queued = true;
+                        this.assumptionQueue.Enqueue(reader);
+                    }
+                }
+            }
+        }
+
+        this.assuming = false;
+        var committed = false;
+        foreach (var work in this.assumptionQueue)
+        {
+            work.Queued = false;
+        }
+
+        this.assumptionQueue.Clear();
+        for (var i = 0; i < evaluated.Count; i++)
+        {
+            var work = evaluated[i];
+            if (!work.Coinductive || work.Result != ConstraintProof.Unknown || work.Pending)
+            {
+                continue;
+            }
+
+            if (work.Assumed && !this.assumptionVoid)
+            {
+                work.Assumed = false;
+                work.Result = ConstraintProof.Proven;
+                work.Cause = null;
+                work.Origin = null;
+                work.Fact = null;
+                committed = true;
+                this.RequeueDependents(work);
+                continue;
+            }
+
+            // Its payload is the step's: the inductive step judges it again from the committed verdicts.
+            work.Assumed = false;
+            if (!work.Queued)
+            {
+                work.Queued = true;
+                this.capabilityQueue.Enqueue(work);
+            }
+        }
+
+        if (!committed && !this.assumptionVoid)
+        {
+            // Nothing holds by coinduction: the residual is final at Unknown; one more inductive pass restores its payloads.
+            this.EvaluateCapabilities();
+            evaluated.Clear();
+            return false;
+        }
+
+        return true;
     }
 
     // SPEC 8.3.3 Finality (R7-C2e2 e2-5a): an evaluation that read an open obligation (reentryReads) supplied no evidence there, and
