@@ -107,7 +107,8 @@ public sealed partial class Binding
         internal bool Queued { get; set; }
 
         // Whether its last evaluation read an open obligation, or a work that did (SPEC 8.3.3 Finality): no fact past the outermost
-        // request, which returns it to its initial state (Binding.ForgetPendingCapabilities).
+        // request, which returns it to its initial state (Binding.ForgetPendingCapabilities). Temporary carrier with reentryReads;
+        // removal: R7-C2e2 e2-5b, with e2-3's Completion on the answer.
         internal bool Pending { get; set; }
 
         internal CapabilityWork? Parent { get; set; }

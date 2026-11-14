@@ -51,6 +51,44 @@ public partial class TypeDagScalingTest
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
     }
 
+    // SPEC 15.3.5 Fixed points, 8.3.3 (R7-C2e2 e2-5a, Revision 2's chain row): a chain of N declarations, each storing a constrained
+    // instance of the next (S<D(i+1)>, S needing its argument Owned), open or closed into a ring of Owned works, is formed once per
+    // declaration: the capability evaluations per added declaration stay flat from N = 16 to 256 and the coinductive steps do not grow
+    // (the engine's bound is O(N (N + M)) per request), and the program is valid either way (a ring of Owned works alone is Owned's
+    // greatest fixed point).
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task AChainOfStoredInstancesIsFormedOncePerDeclaration(bool ring)
+    {
+        var cancel = TestContext.Current.CancellationToken;
+        var counts = new List<(int N, int Evaluations, int Steps)>();
+        foreach (var n in new[] { 16, 64, 256 })
+        {
+            var source = "struct S<U>\n    U is Owned\n    public var u: U\n" +
+                string.Concat(Enumerable.Range(0, n).Select(i => i + 1 < n || ring ? $"struct D{i}\n    let next: Array<S<D{(i + 1) % n}>>\n" : $"struct D{i}\n    let x: i32\n")) +
+                "func needOwned<V>(v: ref/V)\n    V is Owned\n    ()\nfunc use1(d: ref/D0) -> ()\n    needOwned(d)\n";
+            var run = Task.Run(
+                () =>
+                {
+                    var c = CompilationTestHelper.ParseSuccess(source);
+                    Assert.True(c.Bind().IsComplete, string.Join('\n', c.Binding.Issues));
+                    return (n, c.Binding.CapabilityEvaluationWork, c.Binding.CoinductiveStepWork);
+                },
+                cancel);
+            Assert.Same(run, await Task.WhenAny(run, Task.Delay(TimeSpan.FromSeconds(60), cancel)));
+            counts.Add(await run);
+        }
+
+        var text = string.Join(", ", counts.Select(static x => $"N {x.N}: {x.Evaluations} evaluations, {x.Steps} coinductive steps"));
+        TestContext.Current.TestOutputHelper?.WriteLine(text);
+        // Per added declaration (the library's fixed part cancels): 15 evaluations from N = 16 to 64 and from 64 to 256 on 6b91a1305.
+        var low = (counts[1].Evaluations - counts[0].Evaluations) / 48.0;
+        var high = (counts[2].Evaluations - counts[1].Evaluations) / 192.0;
+        Assert.True(high <= low * 1.5, text);
+        Assert.True(counts[0].Steps == counts[2].Steps, text);
+    }
+
     // Binding's walks: the instance Types of a Tuple chain (TyCtxt.Apply, from the checked set), the capability proofs of HIR publication
     // over inferred shared Tuples, closed and generic, through the MIR, its analyses and the checked set.
     [Theory]

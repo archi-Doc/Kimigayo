@@ -237,6 +237,27 @@ public class ComponentSummaryTest
         Assert.Equal(records.Length, records.Count(static x => x.Code is "Unsupported_Kd" or "UnprovenConstraint_Kd"));
     }
 
+    // SPEC 8.3.3 Limits, 23.1.2 (R7-C2e2 e2-5a, DECISIONS BU-22): a work that reaches two located limits, a Tuple of two instances whose
+    // summaries are each past the projection bound, rests on the least by key (the earlier stored Type), whichever Tuple order reads them
+    // first (dev rested on the first one read, so the record moved with the order).
+    [Fact]
+    public void AWorkReachingTwoLimitsRestsOnTheLeastInEveryOrder()
+    {
+        var next = string.Concat(Enumerable.Repeat(".(Deep).Next", 64));
+        var declarations = "contract Deep: Owned\n    associate Next is Deep\ncontract Many\n    associate A1 is Deep\n    associate A2 is Deep\n" +
+            $"struct Wide1<T>\n    T is Many\n    let field1: T.(Many).A1{next}\nstruct Wide2<T>\n    T is Many\n    let field2: T.(Many).A2{next}\n" + Need;
+        Assert.Equal(Records("(Wide1<U>, Wide2<U>)"), Records("(Wide2<U>, Wide1<U>)"));
+        Assert.Equal(["Unsupported_Kd T.(Many).A1" + next], Records("(Wide1<U>, Wide2<U>)"));
+
+        string[] Records(string tuple)
+        {
+            var c = CompilationTestHelper.ParseSuccess(declarations + $"func inspect<U>(x: {tuple})\n    U is Many and Owned\n    need(x@move)\n");
+            Assert.False(c.Bind().IsComplete);
+            c.Binding.ReportDiagnostics();
+            return [.. TestDiagnostics.Of(c).Select(static x => x.Code + " " + x.Text)];
+        }
+    }
+
     // The closure of F5 (a) (DECISIONS BU-22): a projection of more than 64 steps (a conformance binding can lengthen a projection with
     // no projection link) makes its summary a site, which only yields the located Unsupported_Kd at its stored Type, never a verdict; a
     // shorter one is judged (each step is `Deep`, hence Owned, by SPEC 8.3.2's refinement row: R7-C2a1), and many short projections stay

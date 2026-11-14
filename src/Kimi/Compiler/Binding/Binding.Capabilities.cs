@@ -11,7 +11,7 @@ public sealed partial class Binding
 
     private readonly HashSet<(CapabilityWork Source, CapabilityWork Consumer)> capabilityEdges = new();
     private readonly Queue<CapabilityWork> capabilityQueue = new();
-    private readonly List<CapabilityWork> pendingCapabilities = []; // The works a request's evaluations left Pending.
+    private readonly List<CapabilityWork> pendingCapabilities = []; // The works left Pending (a temporary carrier; removal: R7-C2e2 e2-5b).
     private readonly List<CapabilityWork> capabilityEvaluated = []; // The outermost request's evaluations: the coinductive step's candidates.
     private readonly Queue<CapabilityWork> assumptionQueue = new();
     private bool assuming; // The coinductive step is evaluating (AssumeResidual).
@@ -20,6 +20,12 @@ public sealed partial class Binding
     private CapabilityWork? capabilityConsumer;
     private bool capabilitiesReady;
     private BindingMode capabilityMode;
+
+    /// <summary>Gets the capability evaluations (both steps) run in this compilation, which the scaling rows read.</summary>
+    internal int CapabilityEvaluationWork { get; private set; }
+
+    /// <summary>Gets the coinductive steps (AssumeResidual with a residual) run in this compilation, which the scaling rows read.</summary>
+    internal int CoinductiveStepWork { get; private set; }
 
     /// <summary>Queries compiler-intrinsic Copy for a complete Type under lexical Constraints.</summary>
     /// <param name="type">The complete Type.</param>
@@ -400,6 +406,7 @@ public sealed partial class Binding
             next.Parts?.Clear();
             next.Reads.Clear();
             var reads = this.reentryReads;
+            this.CapabilityEvaluationWork++;
             var result = this.ComputeCapability(next);
             next.Pending = this.reentryReads != reads;
             if (next.Pending)
@@ -547,6 +554,7 @@ public sealed partial class Binding
 
         this.assuming = true;
         this.assumptionVoid = false;
+        this.CoinductiveStepWork++;
         while (!this.assumptionVoid && this.assumptionQueue.TryDequeue(out var next))
         {
             next.Queued = false;
@@ -561,6 +569,7 @@ public sealed partial class Binding
             next.Reads.Clear();
             var reads = this.reentryReads;
             this.assumptionDepth = this.ObligationDepth;
+            this.CapabilityEvaluationWork++;
             var result = this.ComputeCapability(next);
             this.capabilityConsumer = null;
             if (result != ConstraintProof.Proven || this.reentryReads != reads)
@@ -627,7 +636,9 @@ public sealed partial class Binding
     // SPEC 8.3.3 Finality (R7-C2e2 e2-5a): an evaluation that read an open obligation (reentryReads) supplied no evidence there, and
     // that obligation's proof may still hold; so it, and every work that read its verdict, is no fact once that proof ends. None is kept
     // past the outermost request, which has answered its requester inside that proof: each returns to its initial state and is
-    // evaluated again when next requested. A work whose last evaluation read none stays, unless it read one that did.
+    // evaluated again when next requested. A work whose last evaluation read none stays, unless it read one that did. A forgotten work
+    // stays in its sources' Dependents and edges: a later change of a source evaluates it again with no Parent, which only the growth
+    // guard reads (no verdict depends on it). Temporary carrier with reentryReads; removal: R7-C2e2 e2-5b, with e2-3's Completion.
     private void ForgetPendingCapabilities()
     {
         var pending = this.pendingCapabilities;
