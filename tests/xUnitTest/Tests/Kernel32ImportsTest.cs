@@ -44,7 +44,8 @@ public sealed class Kernel32ImportsTest
         }
     }
 
-    // PLAN G137: every runtime template splices each shared ABI definition at exactly one marker and keeps no unexpanded marker; a broken template fails closed. Every `{{` opens a marker (G358), so `{{{` fails.
+    // PLAN G137: every runtime template splices each shared ABI definition at exactly one marker and keeps no unexpanded marker;
+    // a broken template fails closed. Every `{{` opens a marker (G358), so `{{{` fails.
     [Theory]
     [InlineData("; no marker\n")]
     [InlineData("{{__kimi_exit}}\n{{__kimi_exit}}\n")]
