@@ -12,11 +12,13 @@ namespace Kimi.Compiler;
 // - Inputs: the engine's evaluations (Binding.Capabilities: RequestCapability's dequeue loop writes a work's verdict and payload; the
 //   Origin slot of the proof scope in progress, ProofReads.Origin of the channel-owned stack through ScopeReads,
 //   Binding.ConstraintValidation.Proofs).
-// - Outputs: a work's Result and Cause, which the fixpoint compares, and its payload, which no decision reads (the selection of a record
-//   reads it). A part's Origin is kept only when the part is not Proven, so premises that prove a part leave none.
-// - Determinism: a dependent is queued again whenever a part's Result or Cause changes, so the final evaluation sees each part's final
-//   verdict; a part's Origin can still change without a re-queue, and the Owned iteration only descends, so a copied Origin still fails
-//   (it may not be the first), as for the U fact; the queue order is deterministic.
+// - Outputs: a work's Result, which the fixpoint compares, its Cause, settled after the verdicts as a function of them, and its payload,
+//   which no decision reads (the selection of a record reads it). A part's Origin is kept only when the part is not Proven, so premises
+//   that prove a part leave none.
+// - Determinism: a dependent is queued again whenever a part's Result changes, so the final evaluation sees each part's final
+//   verdict; a part's Origin can still change without a re-queue, and a Result only rises in the information order (every work starts
+//   Unknown; Binding.Capabilities), so a copied Origin still fails (it may not be the first), as for the U fact; the queue order is
+//   deterministic.
 // - Invariants: a payload is the final evaluation's, written beside the Result and outside the fixpoint's equality; Reset returns a work
 //   to its initial verdict for a new pass; an OwnedOrigins Origin that is null or not proven to outlive `static` is Unknown, and each
 //   caller keeps its own absence rule (a missing outer Origin is Proven).
@@ -91,8 +93,14 @@ public sealed partial class Binding
 
         internal bool Derivation { get; } = derivation;
 
-        // Recursive Owned structure starts optimistically; everything else starts unknown.
-        internal ConstraintProof Result { get; set; } = InitialResult(intrinsic, type);
+        // Every work starts with no evidence (SPEC 8.3.3: no coinduction is assumed); its value only rises in the information order.
+        internal ConstraintProof Result { get; set; } = ConstraintProof.Unknown;
+
+        // Owned of a Type with structure (SPEC 15.3.5): a cycle of such works alone is coinductive (Binding.AssumeResidual).
+        internal bool Coinductive { get; } = intrinsic.Intrinsic == IntrinsicKind.Owned && !type.IsAbstract;
+
+        // In the coinductive step, read as Proven by the other assumed works (Binding.AssumeResidual).
+        internal bool Assumed { get; set; }
 
         internal bool Evaluated { get; set; }
 
@@ -104,8 +112,15 @@ public sealed partial class Binding
 
         internal CapabilityWork? Parent { get; set; }
 
-        // What its Unknown (a limit, L) or Error rests on (DECISIONS BU-22): a component summary's site or Error, or a child's it read.
+        // What its Unknown (a limit, L) or Error rests on (DECISIONS BU-22): a component summary's site or Error, or a child's it read;
+        // settled after the verdicts (Binding.SettleCauses), the least by CauseKey of its own and those of the works it read at its verdict.
         internal ICheckCause? Cause { get; set; }
+
+        // The Cause its last evaluation read from anything but a work; and the works it read (Binding.SettleCauses' inputs). The list is
+        // kept across passes, so a warm rebind allocates nothing.
+        internal ICheckCause? OwnCause { get; set; }
+
+        internal List<CapabilityWork> Reads { get; } = new();
 
         // The U fact its Unknown rests on, from the final iteration; never compared (design-r2 Amendment 4).
         internal CallableUnknown? Fact { get; set; }
@@ -124,14 +139,17 @@ public sealed partial class Binding
 
         internal void Reset()
         {
-            this.Result = InitialResult(this.Intrinsic, this.Type);
+            this.Result = ConstraintProof.Unknown;
+            this.Assumed = false;
             this.Evaluated = false;
             this.Queued = false;
             this.Pending = false;
             this.Parent = null;
             this.Cause = null;
+            this.OwnCause = null;
             this.Origin = null;
             this.Parts?.Clear();
+            this.Reads.Clear();
             this.Dependents.Clear();
         }
 
@@ -146,11 +164,6 @@ public sealed partial class Binding
             (this.Parts ??= new()).Add(new(member, origin));
             return first ?? origin;
         }
-
-        private static ConstraintProof InitialResult(BindingSymbol intrinsic, BoundType type)
-            => intrinsic.Intrinsic == IntrinsicKind.Owned && !type.IsAbstract
-                ? ConstraintProof.Proven
-                : ConstraintProof.Unknown;
     }
 
     // An Owned part that is not Proven: its member (a Components index; a requirement reference's arguments are member 1; a Closure's
