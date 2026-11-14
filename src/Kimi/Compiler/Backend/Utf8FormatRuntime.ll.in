@@ -1,13 +1,6 @@
 ; UTF-8 formatting uses one erased adapter and one checked reservation per nonempty builtin.
 ; Adapter offsets: destination 0, dispatch 8, kind 16, hint 24, pending 32/40, logical length 48, failed 56.
 
-define internal void @__kimi_format_hint(ptr %writer, i64 %hint) #0 {
-entry:
-  %hintp = getelementptr i8, ptr %writer, i64 24
-  store i64 %hint, ptr %hintp, align 8
-  ret void
-}
-
 define internal void @__kimi_writer_fail(ptr %ret, ptr %self) #0 {
 entry:
   %failed = getelementptr i8, ptr %self, i64 56

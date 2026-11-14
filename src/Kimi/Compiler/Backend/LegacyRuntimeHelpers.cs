@@ -1,14 +1,13 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 // Owns the legacy runtime helpers of the generated LLVM text until Kimigayo library code replaces them at R8 (plan PD2, P1a-P2b;
-// DECISIONS R5-M16): the formatting runtime with its routines' ABIs (LegacyRuntimeHelpers.Formatting.cs). MIR code generation writes the
-// helpers through this static component (promoted, never copied).
-// Input: a Text.writer destination, whose writer kind it gives (WriterKind); an owning interpolation's literal bytes and values'
-// bounds, summed by its estimate (FormatEstimate); the runtime templates (.ll.in); a writer, LLVM SSA names and sizes.
+// DECISIONS R5-M16): the formatting runtime (LegacyRuntimeHelpers.Formatting.cs). MIR code generation writes the helpers through this
+// static component (promoted, never copied).
+// Input: a Text.writer destination, whose writer kind it gives (WriterKind); the runtime templates (.ll.in); a writer, LLVM SSA names and
+// sizes.
 // Output: LLVM text written to the writer; per helper kind one row, readable by kind before any representation exists (X4); the
-// formatting runtime's routine ABIs, whose callers request its text (HelperNeeds.FormattingRuntime), and which call no library
-// function; the kind Context of Text.writer's destination is the runtime's own number (WriterKind); a bounded Type's maximum is
-// FormattingTypes.Bound's, which an owning interpolation's estimate sums for its hints (FormatEstimate; R3-10).
+// formatting runtime's text, which Text.writer requests (HelperNeeds.FormattingRuntime) and which calls no library function; the kind
+// Context of Text.writer's destination is the runtime's own number (WriterKind).
 // The one map from a compiler function of the Body disposition to the runtime routine MIR code generation calls for it (Row, S2-S4
 // X39; DECISIONS R5-M116): writeLine's, the one such kind left (the formatting kinds are bodies, R8-W1a to W1c).
 // Invariants: a new helper kind adds a row; a kind without a row fails, a Body-disposition compiler function's included; the
