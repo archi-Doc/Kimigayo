@@ -28,9 +28,10 @@ namespace Kimi.Compiler;
 //   completed or slot-free Type, stated at the call), so the build names every reader of the adaptation entry. A candidate's part
 //   adapts, and its Function signature is read, at one pattern (SlotSolution.AdaptationPattern): Of over FittedPattern's, each
 //   structured application among its outer layers formed under the binder its sources fixed and an exact source unformed (the owner's
-//   O-283 (a)); the call-shape collection (CheckCallShapeContracts) adapts at Of alone, since no source has fixed a binder there and
-//   it enters no application. Completeness under the fixed bindings is read from the solution's frame before any evidence, where an
-//   open slot is unbound (a Case's settled payloads): substituting FixedSlots leaves an open slot's own parameter, which looks complete.
+//   O-283 (a)), every pair layer formed for a Literal, which is no evidence (O-294 (b)); the call-shape collection
+//   (CheckCallShapeContracts) adapts at Of alone, since no source has fixed a binder there and it enters no application.
+//   Completeness under the fixed bindings is read from the solution's frame before any evidence, where an open slot is unbound (a
+//   Case's settled payloads): substituting FixedSlots leaves an open slot's own parameter, which looks complete.
 // - Prohibitions: no Origin relation is judged and no applicability decided here (SPEC 15.6.1): the callers judge the solution; no
 //   reader adapts at a pattern whose fixed slots are left open, and no FixedPattern is made but by Of or Open.
 public sealed partial class Binding
@@ -236,17 +237,25 @@ public sealed partial class Binding
     // SPEC 10.1 step 5, 10.2, 10.8 (the owner's O-283 (a)): the pattern an argument part adapts at (SlotSolution.AdaptationPattern): each
     // structured application among its outer layers formed under the binder a source has fixed (ApplySemantics, as FormedApplication), a
     // parameter Type the argument fits by the common adaptation as any argument fits its parameter. The adaptation reaches only the outer
-    // layers, so nothing below them is formed; an exact source (IsExactSource) is kept, since its evidence is its own outer Semantics,
-    // never converted (IsSource), so owner and ref evidence still conflict in any order.
-    private BoundType FittedPattern(BoundType pattern, Koto function, SlotFrame frame)
+    // layers, so nothing below them is formed. For a part that is evidence, an exact source (IsExactSource) is kept, since its evidence is
+    // its own outer Semantics, never converted (IsSource), so owner and ref evidence still conflict in any order. A Literal is no evidence
+    // (SPEC 10.5.1, 10.2.1; the owner's O-294 (b)): its default fits every pair layer whose binder evidence fixed, an exact source and
+    // an occurrence of the original whose Type is still open alike (a borrowed temporary under ref), and binds only what no evidence binds.
+    private BoundType FittedPattern(BoundType pattern, Koto function, SlotFrame frame, bool evidence)
     {
+        if (!evidence && pattern is { Kind: BoundTypeKind.Parameter, Symbol: { Kind: BindingSymbolKind.SemanticsTarget, Type: { } original } pair } &&
+            ContainerSlot(function, pair) is >= 0 and var own && own < frame.Types.Length && frame.Types[own] is null && frame.Selectors[own] is { } fixedBy)
+        {
+            return this.ApplySemantics(fixedBy, original, pattern.Origin);
+        }
+
         if (pattern is not { Kind: BoundTypeKind.SemanticsApplication or BoundTypeKind.Semantics, HasAbstractPart: true, Components: [var target] })
         {
             return pattern;
         }
 
-        var fitted = this.FittedPattern(target, function, frame);
-        if (pattern.Kind == BoundTypeKind.SemanticsApplication && !IsExactSource(pattern, function) &&
+        var fitted = this.FittedPattern(target, function, frame, evidence);
+        if (pattern.Kind == BoundTypeKind.SemanticsApplication && (!evidence || !IsExactSource(pattern, function)) &&
             ContainerSlot(function, pattern.Symbol!) is >= 0 and var slot && Selector(frame, slot) is { } whole)
         {
             return this.ApplySemantics(whole, fitted, pattern.Origin);
