@@ -23,10 +23,17 @@ public sealed partial class Binding
 
     internal bool AvailableCallableEffects(BoundType type, BoundType signature, SemanticsKind receiver, BindingScope scope, List<EffectEvidence>? evidence = null)
     {
+        // SPEC 8.11.4: the evidence is a premise on the Type with the signature, an equal or stronger receiver and the bound: the
+        // Type's available Callable rows whose Source is a written premise (a Contract-wide clause carries no bound list), each
+        // with the bounds its clause declares in the scope stating it (ContractSolver's FirstRows).
         var confined = false;
-        for (var current = scope; current is not null; current = current.Parent)
+        var required = this.CallableContractType(signature, scope);
+        var start = this.premiseRows.Count;
+        this.FirstRows(this.CallableContractType(type, scope), scope, this.premiseRows);
+        for (var r = start; r < this.premiseRows.Count; r++)
         {
-            if (current.Constraints is not { Invalid: false } environment)
+            if (this.premiseRows[r] is not { Available: true, Clause: { Kind: ConstraintKind.Callable } fact, Raw: { } raw, Stated: { } stated } ||
+                !SameCallableSignature(this.CallableContractType(fact.RequiredType!, scope), required) || !ReceiverCovers(fact.Mask, receiver))
             {
                 continue;
             }
@@ -34,11 +41,7 @@ public sealed partial class Binding
             for (var i = 0; i < this.callableEffectClauses.Count; i++)
             {
                 var clause = this.callableEffectClauses[i];
-                if (!ReferenceEquals(clause.Parent, current.Owner) || clause.BoundConstraint is not { Kind: ConstraintKind.Callable } fact ||
-                    !this.AvailableConstraintFact(environment, fact, out _) ||
-                    !ReferenceEquals(this.CallableContractType(fact.Subject!, scope), this.CallableContractType(type, scope)) ||
-                    !SameCallableSignature(this.CallableContractType(fact.RequiredType!, scope), this.CallableContractType(signature, scope)) ||
-                    !ReceiverCovers(fact.Mask, receiver))
+                if (!ReferenceEquals(clause.Parent, stated.Owner) || !ReferenceEquals(clause.BoundConstraint, raw))
                 {
                     continue;
                 }
@@ -52,11 +55,12 @@ public sealed partial class Binding
                     }
 
                     confined = true;
-                    evidence?.Add(new(effect, current.Owner, fact, clause));
+                    evidence?.Add(new(effect, stated.Owner, raw, clause));
                 }
             }
         }
 
+        this.premiseRows.RemoveRange(start, this.premiseRows.Count - start);
         return confined;
     }
 

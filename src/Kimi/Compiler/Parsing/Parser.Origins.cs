@@ -266,14 +266,16 @@ public static partial class Parser
         return list.Count == 0 ? null : list;
     }
 
-    /// <summary>Reports an Origin annotation on a borrow layer of an adaptation target.</summary>
+    /// <summary>Judges an adaptation target read as a Type by SPEC 13.5.1's two rules of its own chain, through grouping and Semantics
+    /// layers down to its Core: no Origin annotation on a borrow layer, and no bound Container qualifier as the head of the Core's
+    /// path (F.5). Types nested in the Core keep both forms. Each form written is one record, and the Type it writes, the annotated
+    /// layer or the Core's path, is a written Type outside its grammar (RecoverWrittenType); a recovered part ends the walk.</summary>
+    /// <param name="reader">The token reader.</param>
     /// <param name="type">The parsed target.</param>
-    /// <returns>The key of the first Error, or <see langword="null"/> when every layer is unannotated.</returns>
-    private static DiagnosticKey? CheckAdaptationOrigins(Koto type)
+    private static void CheckAdaptationTarget(ref TokenReader reader, Koto type)
     {
-        DiagnosticKey? cause = null;
         var outer = true;
-        while (true)
+        while (!IsRecoveredType(ref reader, type))
         {
             if (type is ParenthesizedTypeKoto grouped)
             {
@@ -284,7 +286,7 @@ public static partial class Parser
                 // SPEC 13.5.1: an outer raw layer states its Origin, a fit or a claim (SPEC 5.7); the chain's other Origins are inferred.
                 if (!layer.IsTransparentWrapper && layer.HasOrigin && !(outer && layer is { SemanticsKind: SemanticsKind.Raw, SemanticsParameter: null }))
                 {
-                    cause ??= layer.Unexpected(SyntaxForm.AdaptationOrigin);
+                    RecoverWrittenType(ref reader, layer, layer.Unexpected(SyntaxForm.AdaptationOrigin));
                 }
 
                 outer &= layer.IsTransparentWrapper;
@@ -294,7 +296,15 @@ public static partial class Parser
             {
                 // Stop at a Core. Payloads and function contracts contain independent
                 // complete Types; their annotations do not prescribe this operation's borrow.
-                return cause;
+                // SPEC 13.5.1, F.5: a bound Container qualifier is unavailable as the head of the target's own path, even through
+                // grouping. A path's grouped head that is no Function Type is one (ContinuesGroupedType; a Tuple or Unit head is its own node).
+                var head = ContainerPathHead(type);
+                if (!ReferenceEquals(head, type) && head is ParenthesizedTypeKoto { Type: not FunctionTypeKoto })
+                {
+                    RecoverWrittenType(ref reader, type, head.Unexpected(SyntaxForm.AdaptationQualifier));
+                }
+
+                return;
             }
         }
     }
@@ -330,8 +340,7 @@ public static partial class Parser
             reader.Diagnostic.Add(origin.Span, DiagnosticCode.LegacyBorrowOrigin_Kd);
             var cause = reader.Diagnostic.LastError;
             reader.Advance(); // The slash belongs to the malformed Type, not to its enclosing parameter list.
-            var target = ParseType(ref reader, TypeContext.Type);
-            return new ErrorKoto(ref reader, SourceSpan.FromBounds(type.Span.Start, Math.Max(origin.Span.End, target.Span.End))) { Cause = cause };
+            return RecoverRejectedPrefix(ref reader, type.Span.Start, ParseType(ref reader, TypeContext.Type), cause);
         }
 
         return annotated;
