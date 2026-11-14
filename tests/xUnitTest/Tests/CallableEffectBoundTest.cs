@@ -423,6 +423,17 @@ public class CallableEffectBoundTest
     public void ConfinedCallbacksRunNatively()
         => ScalarEmissionTest.EmitFixture("CallableEffectsConfined", Apply + "let f = func [] () -> i32 => 19\nrequire apply(f@ref) == 19 else => $abort(\"callback\")\n", string.Empty);
 
+    // R7-C2c2 c2-3b (SPEC 8.11.4, 8.3.2): a Contract's Callable clause at an unspelled depth proves the callee's Constraint and
+    // carries no bound list, so the bound alone is unsatisfied, as at depth 1 (kdpc2; before c2-3b the proof failed too).
+    [Fact]
+    public void AContractWideClauseAtDepthProvesTheConstraintWithoutItsBound()
+    {
+        const string Program = Apply + "contract Holder\n    associate Next is Holder\n    associate F\n    Self.(Holder).F is Callable<() -> i32>\n" +
+            "    func deep(self: ref/Self) -> ref/Self.(Holder).Next.(Holder).F\n" +
+            "func probe<T>(t: ref/T) -> i32\n    T is Holder\n    let g = t.deep()\n    return apply(g)\npublic func main() => ()\n";
+        CompilationTestHelper.AssertRecordsAtLines("kdpc2", Program, "UnsatisfiedEffectBound_Kd: return apply(g)");
+    }
+
     // A generic function that takes a first result through a Callable value, then makes a second call.
     internal static string Replacing(string second)
         => "func twice<S,F>(source: uniq/S, one: F, two: F) -> (S.Item, S.Item)\n    S is Source\n    F is Callable<uniq, (uniq/S) -> S.Item>\n    var f = one@move\n    let first = f(source)\n" +

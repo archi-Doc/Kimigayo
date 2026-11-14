@@ -3,14 +3,15 @@
 namespace Kimi.Compiler;
 
 // Binding.ContractSolver's request boundary (the entry file states the contract; split from it without a change, R7-C2c2 c2-3b):
-// the two requests for Enumerate's rows (PremiseRefines, SPEC 8.3.2's refinement row; PremiseRows, the candidate readers' rows),
+// the requests for Enumerate's rows (PremiseRefines, SPEC 8.3.2's refinement row; FirstRows, the first walk's rows, which the
+// Callable and effect-bound readers read; PremiseRows, the candidate readers' rows over them; PremiseCallable, SPEC 8.10's row),
 // their shared frame (RowsRequest, PrepareRows, LeaveRows), the view's index of facts by subject key (IndexWritten,
 // IndexNormalized, IndexFact) and the tables a request owns or keeps (the request tables; the kept rows: KeepRows,
 // ClearKeptRows). The walk the requests start (Enumerate and what it calls) is the entry file's.
 public sealed partial class Binding
 {
     // Enumerate's request tables, owned by one outermost request (emptied, capacity kept, when it returns) and keyed by the view value:
-    // the rows of a link of the subject's chain in a view (null while the link is open), the view's Contract facts by subject key
+    // the rows of a link of the subject's chain in a view (null while the link is open), the view's row-giving facts by subject key
     // (IndexWritten, IndexNormalized), the views indexed, and the pooled lists.
     private readonly Dictionary<(BoundType, EvidenceView, int), List<PremiseRow>?> enumerateMemo = new();
 
@@ -27,7 +28,7 @@ public sealed partial class Binding
     private readonly Dictionary<(BoundType, EvidenceView, int, BindingSymbol?), (List<PremiseRow> Rows, bool Extends)> enumerateKept = new();
     private readonly List<List<PremiseRow>> enumerateKeptPool = new();
     private readonly List<List<PremiseRow>> enumeratePool = new();
-    private readonly List<PremiseRow> premiseRows = new(); // PremiseRows' readers' rows, a stack of ranges
+    private readonly List<PremiseRow> premiseRows = new(); // FirstRows' and PremiseRows' readers' rows, a stack of ranges
     private readonly List<List<(BoundConstraint Raw, BoundConstraint Fact)>> enumerateFactPool = new();
     private readonly List<(BoundType A, BoundType B)> enumerateIdentities = new(); // c2-2: the outermost walk's identity rows
     private int enumeratePoolNext;
@@ -45,7 +46,7 @@ public sealed partial class Binding
     {
         for (var i = 0; rows is not null && i < rows.Count; i++)
         {
-            if (rows[i].Available && IsRefinement(rows[i].Symbol, contract))
+            if (rows[i] is { Available: true, Symbol: { } row } && IsRefinement(row, contract))
             {
                 return true;
             }
@@ -54,49 +55,31 @@ public sealed partial class Binding
         return false;
     }
 
-    // A walk's rows appended to a candidate reader's range, each reference once (the strongest availability). Rows whose Contract
-    // references are one Type in the request's classes are one Contract (SPEC 8.2.3: `Getter<U>` and `Getter<S>` under `U is S`),
-    // by the canonical judge's Proven (IdentityClasses.Same: decomposition and constructed members included; ClassKey is the supply's
-    // index of subjects and keys a constructed member to itself, so it cannot answer this). One of them is published non-Alias, the
-    // more determined spelling: a closed one first (its members' signatures need no identity reading), then Binding.TypeIdentity's
-    // total Order; never premise order (SPEC 8.3.3). Without classes, by reference alone.
-    private static void AddRows(List<PremiseRow> into, int start, List<PremiseRow>? rows, IdentityClasses? classes)
+    // The Alias column of a candidate reader's range (R7-C2c2 c2-3a). Rows whose Contract references are one Type in the request's
+    // classes are one Contract (SPEC 8.2.3: `Getter<U>` and `Getter<S>` under `U is S`), by the canonical judge's Proven
+    // (IdentityClasses.Same: decomposition and constructed members included; ClassKey is the supply's index of subjects and keys a
+    // constructed member to itself, so it cannot answer this). One of them stays non-Alias, the more determined spelling: a closed
+    // one first (its members' signatures need no identity reading), then Binding.TypeIdentity's total Order; never premise order
+    // (SPEC 8.3.3). Without classes, each reference is its own Contract. A leaf row has no reference and is never Alias.
+    private static void FormAliases(List<PremiseRow> rows, int start, IdentityClasses? classes)
     {
-        for (var r = 0; rows is not null && r < rows.Count; r++)
+        for (var r = start; classes is not null && r < rows.Count; r++)
         {
-            var row = rows[r];
-            var same = start;
-            while (same < into.Count && !ReferenceEquals(into[same].Symbol, row.Symbol))
+            if (rows[r].Symbol?.Type is not { } type)
             {
-                same++;
-            }
-
-            if (same < into.Count)
-            {
-                into[same] = into[same] with { Available = into[same].Available || row.Available };
                 continue;
             }
 
-            var type = row.Symbol.Type;
             var i = start;
-            while (classes is not null && type is not null && i < into.Count &&
-                (into[i].Alias || into[i].Symbol.Type is not { } other || !classes.Same(type, other)))
+            while (i < r && (rows[i].Alias || rows[i].Symbol?.Type is not { } other || !classes.Same(type, other)))
             {
                 i++;
             }
 
-            if (classes is null || type is null || i == into.Count)
+            if (i < r)
             {
-                into.Add(row);
-            }
-            else if (Spelling(type, into[i].Symbol.Type!) < 0)
-            {
-                into[i] = into[i] with { Alias = true };
-                into.Add(row);
-            }
-            else
-            {
-                into.Add(row with { Alias = true });
+                var alias = Spelling(type, rows[i].Symbol!.Type!) < 0 ? i : r;
+                rows[alias] = rows[alias] with { Alias = true };
             }
         }
 
@@ -176,12 +159,30 @@ public sealed partial class Binding
         }
     }
 
-    // R7-C2c2 c2-3a: the candidate readers' request boundary (name discovery: FindAssociated, RequirementMember): the rows of `subject`
-    // and of its class key under the premises of `scope`, appended to `into`, whatever their availability (a lookup is not a proof:
-    // the use is judged, SPEC 9.6, 8.5.2), one non-Alias row per Contract (AddRows). They are the first walk's rows, a function of
-    // (subject, view): a candidate reader demands no Contract, so it never extends (the class header's Extension), and a kept hit
-    // reads the kept rows, which are a first walk's.
-    private void PremiseRows(BoundType subject, BindingScope scope, List<PremiseRow> into)
+    // R7-C2c2 c2-3b: SPEC 8.10's row for a Callable atom `S is Callable<r, Sig>`, normalized by its caller (Supply's): the premises
+    // of `scope` supply an available Callable row of S with the atom's receiver and signature (SameProofPremise's tests of two
+    // Callable atoms; the subject is the rows'). A row's signature is read as the Callable selection reads it.
+    private bool PremiseCallable(BoundConstraint atom, BindingScope scope)
+    {
+        var start = this.premiseRows.Count;
+        this.FirstRows(atom.Subject!, scope, this.premiseRows);
+        var supplied = false;
+        for (var i = start; !supplied && i < this.premiseRows.Count; i++)
+        {
+            supplied = this.premiseRows[i] is { Available: true, Clause: { Kind: ConstraintKind.Callable } clause } && clause.Mask == atom.Mask &&
+                SameCallableSignature(this.CallableContractType(clause.RequiredType!, scope), atom.RequiredType!);
+        }
+
+        this.premiseRows.RemoveRange(start, this.premiseRows.Count - start);
+        return supplied;
+    }
+
+    // R7-C2c2 c2-3b: the request boundary of a reader that demands no Contract: the rows of `subject` and of its class key under
+    // the premises of `scope`, appended to `into`, each row once (AddRow), whatever their availability and kind. They are the first
+    // walk's rows, a function of (subject, view): such a reader never extends (the class header's Extension), and a kept hit reads
+    // the kept rows, which are a first walk's. No row is Alias and no identity is judged here (the walk's class keys alone).
+    // Returns the request's identity classes, in which PremiseRows forms its column.
+    private IdentityClasses? FirstRows(BoundType subject, BindingScope scope, List<PremiseRow> into)
     {
         var (view, serial, classes, key, keep) = this.RowsRequest(subject, scope);
         var start = into.Count;
@@ -189,9 +190,9 @@ public sealed partial class Binding
         if (keep && this.enumerateKept.TryGetValue((subject, view, serial, this.activeRequirementContract), out var kept) &&
             (ReferenceEquals(key, subject) || this.enumerateKept.TryGetValue((key, view, serial, this.activeRequirementContract), out keyed)))
         {
-            AddRows(into, start, kept.Rows, classes);
-            AddRows(into, start, keyed.Rows, classes);
-            return;
+            Append(into, start, kept.Rows);
+            Append(into, start, keyed.Rows);
+            return classes;
         }
 
         var enclosing = this.enumerateClasses;
@@ -211,8 +212,8 @@ public sealed partial class Binding
                     this.KeepRows(view, serial);
                 }
 
-                AddRows(into, start, rows, classes);
-                AddRows(into, start, keyRows, classes);
+                Append(into, start, rows);
+                Append(into, start, keyRows);
             }
             finally
             {
@@ -223,9 +224,28 @@ public sealed partial class Binding
         {
             this.LeaveRows(enclosing);
         }
+
+        return classes;
+
+        static void Append(List<PremiseRow> into, int start, List<PremiseRow>? rows)
+        {
+            for (var r = 0; rows is not null && r < rows.Count; r++)
+            {
+                AddRow(into, start, rows[r]);
+            }
+        }
     }
 
-    // A request's terms (PremiseRefines' and PremiseRows'): its view, the view's identity classes, the subject's key in them and
+    // R7-C2c2 c2-3a: the candidate readers' rows (name discovery: FindAssociated, RequirementMember): FirstRows' rows, whatever
+    // their availability (a lookup is not a proof: the use is judged, SPEC 9.6, 8.5.2), with one non-Alias row per Contract
+    // (FormAliases). A candidate reader demands no Contract, so it never extends.
+    private void PremiseRows(BoundType subject, BindingScope scope, List<PremiseRow> into)
+    {
+        var start = into.Count;
+        FormAliases(into, start, this.FirstRows(subject, scope, into));
+    }
+
+    // A request's terms (PremiseRefines' and FirstRows'): its view, the view's identity classes, the subject's key in them and
     // whether its rows may be kept. R7-C2c2: a request keys its subject and its view's facts by the view's identity classes (SPEC
     // 8.2.3), whatever the table's finality; finality decides only whether the rows may be kept for a later request.
     private (EvidenceView View, int Serial, IdentityClasses? Classes, BoundType Key, bool Keep) RowsRequest(BoundType subject, BindingScope scope)
@@ -325,7 +345,7 @@ public sealed partial class Binding
         this.enumerateHeads.Clear();
     }
 
-    // The view's Contract facts by subject key, as written.
+    // The view's row-giving facts (RowKind) by subject key, as written.
     private void IndexWritten(EvidenceView view, int serial)
     {
         for (var scope = view.Premises; scope is not null; scope = scope.Parent)
@@ -337,7 +357,7 @@ public sealed partial class Binding
 
             foreach (var fact in environment.Facts)
             {
-                if (fact is { Kind: ConstraintKind.Contract, Subject: not null, Contract: not null })
+                if (fact.Subject is not null && RowKind(fact))
                 {
                     this.IndexFact(view, serial, scope, fact, fact, fact.Subject);
                     if (this.enumerateClasses is { } classes && this.ClassKey(fact.Subject, classes) is var key && !ReferenceEquals(key, fact.Subject))
@@ -349,7 +369,8 @@ public sealed partial class Binding
         }
     }
 
-    // The outermost request's view, under a parameter identity: each fact as the view reads it (Reading, every reader's), added after
+    // The outermost request's view, under a parameter identity: each Contract fact as the view reads it (Reading, every reader's; a
+    // leaf kind's fact is indexed as written and by its class key alone, the class header's Identity), added after
     // all are read. A reading's own demands are nested, so they read written facts alone: the index does not depend on the order of the
     // facts.
     private int IndexNormalized(EvidenceView view, int serial)
@@ -388,7 +409,9 @@ public sealed partial class Binding
     }
 
     // One fact of an environment of the view under its subject key (a projection's declaration and receiver, else the Type): `raw` as
-    // the environment holds it (its availability), `fact` as the index reads it.
+    // the environment holds it (its availability), `fact` as the index reads it. A list keeps one order whatever the premises'
+    // (the class header's Invariants: a row's Source): a fact whose own subject has the list's key before one under its class key
+    // or its reading's subject, then Binding.TypeIdentity's Order of the facts' subjects; equal subjects keep their arrival.
     private void IndexFact(EvidenceView view, int serial, BindingScope scope, BoundConstraint raw, BoundConstraint fact, BoundType at)
     {
         var key = (view, serial, scope, SubjectKey(at).Symbol, SubjectKey(at).Type);
@@ -409,6 +432,26 @@ public sealed partial class Binding
             this.enumerateIndex[key] = list;
         }
 
-        list.Add((raw, fact));
+        var index = 0;
+        for (var end = list.Count; index < end;)
+        {
+            var middle = (index + end) >> 1;
+            if (Before(raw.Subject!, list[middle].Raw.Subject!, at))
+            {
+                end = middle;
+            }
+            else
+            {
+                index = middle + 1;
+            }
+        }
+
+        list.Insert(index, (raw, fact));
+
+        static bool Before(BoundType subject, BoundType other, BoundType at)
+            => Own(subject, at) != Own(other, at) ? Own(subject, at) : Order(subject, other) < 0;
+
+        static bool Own(BoundType subject, BoundType at)
+            => ReferenceEquals(SubjectKey(subject).Symbol, SubjectKey(at).Symbol) && ReferenceEquals(SubjectKey(subject).Type, SubjectKey(at).Type);
     }
 }

@@ -43,49 +43,42 @@ public sealed partial class Binding
     private BoundType? SelectValueCall(InvocationKoto call, BindingScope scope, BoundType type, BoundType? expected)
     {
         var owner = this.CallableContractType(type.Kind == BoundTypeKind.Semantics ? type.Components[0] : type, scope);
-        var capacity = 0;
-        for (var current = scope; current is not null; current = current.Parent)
-        {
-            capacity += current.Constraints?.Facts.Count ?? 0;
-        }
 
-        var candidates = this.callableCandidateScratch.Rent(capacity);
+        // The candidates are the callee's available Callable rows (TryCallable's), one per normalized signature with its weakest
+        // receiver; a failure names a candidate's first row by its Source (the written premise, or the clause and its scope).
+        var start = this.premiseRows.Count;
+        this.FirstRows(owner, scope, this.premiseRows);
+        var rows = this.premiseRows.Count - start;
+        var candidates = this.callableCandidateScratch.Rent(rows);
         var count = 0;
         try
         {
-            for (var current = scope; current is not null; current = current.Parent)
+            for (var r = start; r < start + rows; r++)
             {
-                if (current.Constraints is not { } environment)
+                if (this.premiseRows[r] is not { Available: true, Clause: { Kind: ConstraintKind.Callable } fact } row)
                 {
                     continue;
                 }
 
-                foreach (var fact in environment.Facts)
+                var signature = this.CallableContractType(fact.RequiredType!, scope);
+                var receiver = CallableReceiver(fact.Mask);
+                var index = 0;
+                while (index < count && !SameCallableSignature(candidates[index].Signature, signature))
                 {
-                    if (fact.Kind != ConstraintKind.Callable || !ReferenceEquals(this.CallableContractType(fact.Subject!, scope), owner) || !this.AvailableConstraintFact(environment, fact, out _))
-                    {
-                        continue;
-                    }
+                    index++;
+                }
 
-                    var signature = this.CallableContractType(fact.RequiredType!, scope);
-                    var receiver = CallableReceiver(fact.Mask);
-                    var index = 0;
-                    while (index < count && !SameCallableSignature(candidates[index].Signature, signature))
-                    {
-                        index++;
-                    }
-
-                    if (index == count)
-                    {
-                        candidates[count++] = new(signature, receiver, fact, current.Owner);
-                    }
-                    else
-                    {
-                        candidates[index] = candidates[index] with { Receiver = WeakestReceiver(candidates[index].Receiver, receiver) };
-                    }
+                if (index == count)
+                {
+                    candidates[count++] = new(signature, receiver, row.Raw ?? fact, (row.Stated ?? scope).Owner);
+                }
+                else
+                {
+                    candidates[index] = candidates[index] with { Receiver = WeakestReceiver(candidates[index].Receiver, receiver) };
                 }
             }
 
+            this.premiseRows.RemoveRange(start, rows);
             var choices = candidates.AsSpan(0, count);
             for (var a = 0; a < count; a++)
             {

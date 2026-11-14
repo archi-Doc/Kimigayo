@@ -1,10 +1,13 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 // ContractSolver (PlanB §4.1; DECISIONS BU-29, R7-C2a): premise derivation and evidence availability (SPEC 8.3): what the premises supply
-// for a proposition and its negation (Supply) under the request's view (ViewOf, the one derivation point); the Contract rows they
-// supply for a subject (Enumerate) and their two readers: SPEC 8.3.2's refinement row over them (PremiseRefines, the row's one
-// predicate: ProveConformance, SymbolicCapability, and the declaration queries of a parameter's indexing, iteration and arithmetic)
-// and the candidate readers' rows (PremiseRows: name discovery, R7-C2c2 c2-3a); until C3 the eager derivation too
+// for a proposition and its negation (Supply) under the request's view (ViewOf, the one derivation point); the rows they supply
+// for a subject (Enumerate) and their readers: SPEC 8.3.2's refinement row over them (PremiseRefines, the row's one
+// predicate: ProveConformance, SymbolicCapability, and the declaration queries of a parameter's indexing, iteration and arithmetic),
+// the first walk's rows (FirstRows, R7-C2c2 c2-3b: a value call's Callable Constraints, TryCallable and SelectValueCall; the bounds
+// of a Callable premise and of a requirement call, AvailableCallableEffects and AvailableEffectBounds; SPEC 8.10's row for a
+// Callable atom, PremiseCallable, which Supply reads) and, over them, the candidate readers' rows (PremiseRows: name discovery,
+// R7-C2c2 c2-3a); until C3 the eager derivation too
 // (ExpandContractPremises, ExpandScopeContractPremises, AddContractPremises over a Contract premise's supply, ContractSupply, which
 // retention's handed signatures read too) and the availability of a fact (AvailableConstraintFact).
 // - Inputs: the view's scope chain (ConstraintEnvironments), derived facts' source Contracts, published source states (BU-59).
@@ -15,7 +18,13 @@
 //   is the subject or of its class; (3) a Contract's own Self; (4) a row's ancestors. Rows (1) and (2) take the Contract at the
 //   subject's Origin arguments (RowContract; SPEC 8.5.1, 8.5.4: application substitutes Origin atoms positionally). A row carries
 //   whether it is available (R7-C2c2 c2-3a): its fact and its Contract are, for a clause or an ancestor its source row too; the
-//   strongest of its derivations wins. Refinement reads the available rows (SPEC 8.3.1: only evidence proves); a candidate reader
+//   strongest of its derivations wins. A constraint of another kind with a reader (RowKind; R7-C2c2 c2-3b: Callable) gives a leaf
+//   row under (1) and (2): its proposition (Clause) and no Contract, so the closure (3), (4), head depths and active prefixes read
+//   Contract rows alone. A leaf row is one per proposition and stating scope, never merged and never Alias: SPEC 8.10's weakest
+//   receiver and 8.11.4's bound list are each premise's, and merging by signature is the Callable selection's rule. Every row
+//   carries its Source: the written fact its derivation starts from, as its environment holds it (Raw; none for a clause instance
+//   or an ancestor), and the scope stating it (Stated; a clause instance's and an ancestor's are their Contract row's, a
+//   Contract's own Self row has none). Refinement reads the available rows (SPEC 8.3.1: only evidence proves); a candidate reader
 //   reads every row (a lookup is not a proof: the use is judged), one per Contract: rows whose Contract references are one Type in
 //   the request's classes are published as one non-Alias row, the closed spelling first, then Binding.TypeIdentity's Order, never
 //   premise order. Whether two references are one Type is the identity judge's question (IdentityClasses.Same); ClassKey is the
@@ -25,7 +34,7 @@
 //   (FactStates, AssociatedIdentityMatches) and their class keys (SameClass: ClassKey reads a built table and interns) and calls no
 //   judgment, so a request demands only while it prepares its view (ClassesOf, IndexNormalized); a demand made there is a request
 //   over its own view, with its own classes (restored on return), and reads that view's written facts and keys alone; a request
-//   (PremiseRefines, PremiseRows) entered from a walk is InternalInvariant.
+//   (PremiseRefines, FirstRows) entered from a walk is InternalInvariant.
 //   Enumerate's request tables (memo, index, pools) live for one outermost request and are keyed by the view value (the scope and
 //   its serial, taken once per request), so a scope re-parented within a request is another view; a preparation that moves its own
 //   view is InternalInvariant. The walk reads the requirement Contract (ContractSupply's rewrites substitute
@@ -34,7 +43,15 @@
 //   below). The caller of Reading holds its view's serial: a loop that writes the chain only
 //   through Reading (Supply's, IndexNormalized's) passes its last observation and a formation takes it again; a loop with other
 //   writes (SymbolicCapability's judgments) takes one per fact. A write added to such a loop outside Reading breaks this.
-//   Rows depend on neither the order of facts or clauses nor on which check asked first (SPEC 8.3.3).
+//   Rows depend on neither the order of facts or clauses nor on which check asked first (SPEC 8.3.3). Neither does a row's Source
+//   (R7-C2c2 c2-3b): it is the first available derivation's, else the first one's, in this order: the walk's steps (the
+//   Contract's own Self, the facts, the prefixes' clause instances, the ancestors); the facts innermost scope first and, in one
+//   environment, a fact on the subject as written before a class mate's or a reading's, then Binding.TypeIdentity's Order of the
+//   facts' subjects (IndexFact keeps each list of the index so); the subject's rows before its key's. Two facts of one
+//   environment on one subject give two rows or are one fact. A Contract row's Source decides no verdict: its one reader is the
+//   editor's evidence (AvailableEffectBounds). A leaf row's Source is its own premise's, never a choice (the row is one per
+//   stating premise): AvailableCallableEffects reads it for the premise's bound list (SPEC 8.11.4) and SelectValueCall for a
+//   failed selection's related locations.
 // - Identity (R7-C2c2 c2-1; SPEC 8.2.3): a premise's supply reaches every parameter and projection of its identity class; a
 //   constructed member's conformance is ResolveConformance's. That is the implementation's limit, not SPEC's rule: where it is
 //   Unknown, a premise is not yet read as evidence for that member (SPEC 8.2.3), so valid programs such as d09c stay rejected, as on
@@ -43,8 +60,9 @@
 //   parameter or projection; an erroneous or incomplete class keys nothing), whatever the table's finality, which decides only kept
 //   rows. The written subject is walked beside its key and both refine, so a key only adds rows. A key never leaves the supply: no
 //   reader receives it as a Type (on a class match AppliedAssociatedContract reads the fact's own subject). Not yet supplied: a
-//   subject only a binding completes beyond Reading's one level (ProjectionSpecification; c2-4), and other clause kinds at depth (the
-//   eager supply's one level until c2-3b, c and d); a missing row only rejects.
+//   subject only a binding completes beyond Reading's one level (ProjectionSpecification; c2-4), a Callable fact whose subject
+//   only its reading, not its class, makes the subject (IndexNormalized reads Contract facts; c2-4), and the clause kinds without a
+//   leaf row at depth (the eager supply's one level until c2-3c and d); a missing row only rejects.
 // - Extension (R7-C2c2 c2-2; SPEC 8.2.3's grounds include the identity Constraints a Contract premise supplies at every depth): the
 //   walk records the TypeIdentity clause instances of its available Contract rows; an outermost refinement request (PremiseRefines)
 //   whose walk is not positive for its demanded Contract and recorded rows builds its own classes over the view's premises and
@@ -61,11 +79,15 @@
 //   reading formed inside a preparation (a nested request) may differ from one formed through Supply, which joins note B's
 //   Completion row (R7-C2e2 e2-3).
 // - Prohibitions: no judgment, lookup, normalization or inference rule here but the request boundary's normalization of a fact, which
-//   only Reading calls (temporary until R7-C2c2 c2-4 removes its binding completion); Enumerate's walk and what it calls never
+//   only Reading calls (temporary until R7-C2c2 c2-4 removes its binding completion), and of a Callable row's signature, which only
+//   PremiseCallable calls, as the Callable selection reads it (CallableContractType; its identity normalization is c2-4's row);
+//   Enumerate's walk and what it calls never
 //   reach ProveConformance, ProveConstraint, ResolveAssociated, NormalizeProof*, SubstituteIdentity or RequestCapability
 //   (ArchitectureRulesTest); no mode or bool parameter; no answer kept across requests but a Complete reading and the kept rows,
 //   each in the kept region alone (both below); no second scheduler; no read sets. From C3 (C1 §5), broken until then by the
-//   eager derivation moved here: no Binding writes, syntax-triggered supply, DerivedFacts or fallback scan.
+//   eager derivation moved here: no Binding writes, syntax-triggered supply, DerivedFacts or fallback scan. Staged (R7-C2c2 c2-3b):
+//   Supply's fact scan keeps its two Callable gate terms for a `not Callable` premise, which the rows do not hold, until c2-5's
+//   Not rows; c2-5 removes them after its probes show the scan's positive adds nothing over the rows.
 //
 // The view and its closure (DECISIONS R7-C2e1). ViewOf names the state of a scope's chain: the serial changes when an environment's
 // Version, a scope's LinkVersion or the parent's serial does (each counted at its writer). Reading is the one caller of the request
@@ -137,9 +159,20 @@ public sealed partial class Binding
     // inadmissible bindings here, in ViewOf (BU-29); a source's state and its check under way stay on the source (SourceStates, BU-59).
     private readonly record struct EvidenceView(BindingScope Premises);
 
-    // One of Enumerate's rows: a Contract the premises supply for the subject and whether its derivation is available (the strongest
-    // of its derivations'). Alias is the candidate readers' column, formed by PremiseRows alone: another spelling of a published row.
-    private readonly record struct PremiseRow(BindingSymbol Symbol, bool Available, bool Alias = false);
+    // One of Enumerate's rows: a Contract the premises supply for the subject (Symbol), or the proposition of another kind they
+    // supply for it (Clause, a leaf row: Symbol is null), and whether its derivation is available (the strongest of its
+    // derivations'). Raw and Stated are its Source (the class header's Outputs and Invariants). Alias is the candidate readers'
+    // column, formed by PremiseRows alone: another spelling of a published row.
+    private readonly record struct PremiseRow(BindingSymbol? Symbol, bool Available)
+    {
+        internal bool Alias { get; init; }
+
+        internal BoundConstraint? Clause { get; init; }
+
+        internal BoundConstraint? Raw { get; init; }
+
+        internal BindingScope? Stated { get; init; }
+    }
 
     // Supply's answer: whether the premises supply the proposition (Positive) and its negation (Negative). Invalid (temporary, BU-29;
     // removed at C3 when B 3.10's declaration validation answers a request reaching a premise error): the chain's Invalid environment,
@@ -179,6 +212,34 @@ public sealed partial class Binding
 
     private static (BindingSymbol? Symbol, BoundType Type) SubjectKey(BoundType type)
         => type.Kind == BoundTypeKind.AssociatedProjection ? (type.Symbol, type.Components[0]) : (null, type);
+
+    // The constraints that give a row, the one list the index and the walk's two sources read: a Contract constraint, and each kind
+    // with a reader of its own, a leaf row (R7-C2c2 c2-3b: Callable). A later kind with a reader joins the list here alone.
+    private static bool RowKind(BoundConstraint constraint)
+        => constraint.Kind == ConstraintKind.Callable || constraint is { Kind: ConstraintKind.Contract, Contract: not null };
+
+    // A row joins `list` from `start`: one row per Contract reference, and per proposition and stating scope for a leaf row. A row
+    // derived again keeps the strongest availability with that derivation's Source, the earlier derivation's where they are equal
+    // (the class header's Invariants give the order).
+    private static void AddRow(List<PremiseRow> list, int start, PremiseRow row)
+    {
+        for (var i = start; i < list.Count; i++)
+        {
+            var same = list[i];
+            if (ReferenceEquals(same.Symbol, row.Symbol) && ReferenceEquals(same.Clause, row.Clause) &&
+                (row.Clause is null || ReferenceEquals(same.Stated, row.Stated)))
+            {
+                if (row.Available && !same.Available)
+                {
+                    list[i] = row;
+                }
+
+                return;
+            }
+        }
+
+        list.Add(row);
+    }
 
     private EvidenceView ViewOf(BindingScope scope) => new(scope);
 
@@ -259,6 +320,11 @@ public sealed partial class Binding
             }
         }
 
+        // R7-C2c2 c2-3b: a Callable atom's premise evidence is the subject's Callable rows (SPEC 8.3.2: a clause at every depth,
+        // whatever its spelling), for the proposition and, under `not`, for its negation. A `not Callable` premise stays a fact
+        // match above (the class header's Prohibitions: staged until c2-5).
+        positive = positive || (proposition is { Kind: ConstraintKind.Callable, Subject: not null } && this.PremiseCallable(proposition, view.Premises));
+        negative = negative || (negation is { Kind: ConstraintKind.Callable, Subject: not null } && this.PremiseCallable(negation, view.Premises));
         return new() { Positive = positive, Negative = negative };
     }
 
@@ -308,7 +374,7 @@ public sealed partial class Binding
                     var head = 0;
                     for (var r = 0; r < rows.Count; r++)
                     {
-                        head = Math.Max(head, this.HeadDepth(rows[r].Symbol));
+                        head = rows[r].Symbol is { } contract ? Math.Max(head, this.HeadDepth(contract)) : head; // A leaf row has no clause.
                     }
 
                     this.enumerateActive.Add((link, head == int.MaxValue ? int.MaxValue : height + head));
@@ -341,7 +407,7 @@ public sealed partial class Binding
 
         if (IsContractSelf(subject) && subject.Symbol!.SelfOf is { } self)
         {
-            Add(rows, new(self, this.AvailableContractPremise(self)));
+            AddRow(rows, 0, new(self, this.AvailableContractPremise(self)));
         }
 
         for (var current = view.Premises; current is not null; current = current.Parent)
@@ -351,7 +417,8 @@ public sealed partial class Binding
                 continue;
             }
 
-            // A fact is indexed by subject key, as written and as normalized in the view: FactStates confirms a match.
+            // A fact is indexed by subject key, as written and as normalized in the view: FactStates confirms a match. Each is a
+            // row with its Source: a Contract fact its Contract's, a fact of another kind (RowKind) a leaf row.
             if (this.enumerateIndex.GetValueOrDefault((view, serial, current, SubjectKey(subject).Symbol, SubjectKey(subject).Type)) is not { } facts)
             {
                 continue;
@@ -363,8 +430,12 @@ public sealed partial class Binding
                 var states = this.FactStates(fact, subject, out _);
                 if (states || this.SameClass(fact.Subject!, subject))
                 {
-                    var available = this.AvailableConstraintFact(environment, raw, out _) && this.AvailableContractPremise(fact.Contract!);
-                    Add(rows, new(this.RowContract(fact, subject, states), available));
+                    var contract = fact.Kind == ConstraintKind.Contract;
+                    var available = this.AvailableConstraintFact(environment, raw, out _) && (!contract || this.AvailableContractPremise(fact.Contract!));
+                    PremiseRow row = contract
+                        ? new(this.RowContract(fact, subject, states), available) { Raw = raw, Stated = current }
+                        : new(null, available) { Clause = fact, Raw = raw, Stated = current };
+                    AddRow(rows, 0, row);
                 }
             }
         }
@@ -379,7 +450,7 @@ public sealed partial class Binding
 
             for (var i = 0; i < prefix.Count; i++)
             {
-                if (prefix[i].Symbol.Contract is not { } shape)
+                if (prefix[i].Symbol?.Contract is not { } shape)
                 {
                     continue;
                 }
@@ -393,10 +464,16 @@ public sealed partial class Binding
                         this.enumerateIdentities.Add((left, right)); // c2-2: an identity row (SPEC 8.2.3 grounds), for the request's classes
                     }
 
-                    if (premise is { Kind: ConstraintKind.Contract, Subject: { } stated, Contract: { } symbol } &&
+                    // A clause instance stating the subject or a Type of its class is a row whose Source is its prefix row's scope.
+                    if (premise is { Subject: { } stated } && RowKind(premise) &&
                         ((AssociatedIdentityMatches(stated, subject) is var states && states) || this.SameClass(stated, subject)))
                     {
-                        Add(rows, new(this.RowContract(premise, subject, states), prefix[i].Available && this.AvailableContractPremise(symbol)));
+                        var contract = premise.Kind == ConstraintKind.Contract;
+                        var available = prefix[i].Available && (!contract || this.AvailableContractPremise(premise.Contract!));
+                        PremiseRow row = contract
+                            ? new(this.RowContract(premise, subject, states), available) { Stated = prefix[i].Stated }
+                            : new(null, available) { Clause = premise, Stated = prefix[i].Stated };
+                        AddRow(rows, 0, row);
                     }
                 }
             }
@@ -404,7 +481,7 @@ public sealed partial class Binding
 
         for (var i = 0; i < rows.Count; i++)
         {
-            if (rows[i].Symbol.Contract is not { } shape)
+            if (rows[i].Symbol?.Contract is not { } shape)
             {
                 continue;
             }
@@ -413,26 +490,11 @@ public sealed partial class Binding
             var supply = new ContractSupply(this, shape, subject, view.Premises);
             for (var a = 0; a < supply.AncestorCount; a++)
             {
-                Add(rows, new(supply.InstantiatedAncestor(a).Symbol, rows[i].Available));
+                AddRow(rows, 0, new(supply.InstantiatedAncestor(a).Symbol, rows[i].Available) { Stated = rows[i].Stated });
             }
         }
 
         return rows;
-
-        // A row's availability is the strongest of its derivations'.
-        static void Add(List<PremiseRow> list, PremiseRow row)
-        {
-            for (var i = 0; i < list.Count; i++)
-            {
-                if (ReferenceEquals(list[i].Symbol, row.Symbol))
-                {
-                    list[i] = new(row.Symbol, list[i].Available || row.Available);
-                    return;
-                }
-            }
-
-            list.Add(row);
-        }
     }
 
     // A row's Contract from the constraint stating it, for rows (1) and (2) alike (R7-C2c2 c2-2, the owner's O-248 (b)): a use's Origin
