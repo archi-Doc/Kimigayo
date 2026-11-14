@@ -115,11 +115,13 @@ public sealed partial class Binding
         return null;
     }
 
-    // SPEC 10.8 ("collected together"; traversal order never chooses; every source of a binder, an application included, fixes it before
-    // the expected result fills): an input whose pattern holds an application of a binder no source has fixed waits. A waiting input
-    // that no longer holds one is inferred; when none can be, every waiting input not yet a source is inferred once as one (its originals
-    // bind, and its applications give selector evidence for, its own binders), and those it formed are inferred again. Called before the
-    // expected result and after it (for a binder only the expected result fixes); one still open keeps its open parts unbound.
+    // SPEC 10.8 ("collected together"; traversal order never chooses; every exact source of a binder, an application of a bare slot
+    // included, fixes it before the expected result fills): an input whose pattern holds an application of a binder no source has
+    // fixed waits. A waiting input that no longer holds one is inferred; when none can be, every waiting input not yet a source is
+    // inferred once as one (its exact sources fix its own binders; a structured application of a binder still unfixed supplies
+    // nothing), and those it formed are inferred again. Called before the expected result, after it (for a binder only the
+    // expected result fixes) and after the late pass (for one only a Literal's default fixes); one still open keeps its open parts
+    // unbound.
     private bool SettleWaiting(ref SlotSolution solution, int[] mapping, ref SlotSet waiting, ref SlotSet sourced)
     {
         var call = solution.Call;
@@ -147,7 +149,7 @@ public sealed partial class Binding
                 continue;
             }
 
-            var bound = BoundSlots(solution.Frame);
+            var bound = SourcedSlots(solution.Frame);
             for (var i = 0; i < call.ArgumentNodes.Count; i++)
             {
                 if (waiting.Contains(i) && !sourced.Contains(i))
@@ -160,7 +162,7 @@ public sealed partial class Binding
                 }
             }
 
-            if (BoundSlots(solution.Frame) == bound)
+            if (SourcedSlots(solution.Frame) == bound)
             {
                 return true;
             }
@@ -171,18 +173,6 @@ public sealed partial class Binding
         static bool InferWaiting(ref SlotSolution solution, FunctionKoto function, int[] mapping, int i)
             => solution.Pattern(function.Parameters[mapping[i]].Type.BoundType!) is { } evidencePattern
                 ? solution.InferArgument(evidencePattern, solution.Call.ArgumentNodes[i], late: false) : solution.Call.ArgumentNodes[i].BoundType is null;
-
-        // The slots a source has fixed: bound, or a pair binder known by its selector evidence.
-        static int BoundSlots(SlotFrame frame)
-        {
-            var count = 0;
-            for (var i = 0; i < frame.Types.Length; i++)
-            {
-                count += (frame.Types[i] is null ? 0 : 1) + (frame.Selectors[i] is null ? 0 : 1);
-            }
-
-            return count;
-        }
     }
 
     // SPEC 10.1 step 4, 15.6.1: the expected result fills a candidate's still-unbound slots by its structure, and its Origins are
@@ -203,7 +193,21 @@ public sealed partial class Binding
         // An abstract container binder must not become a rigid call-site lifetime constraint.
         var self = solution.Self;
         returnPattern = this.CallMemberPattern(self is null ? returnPattern : this.ContractType(returnPattern, solution.Scope, self), function, declaringType)!;
-        var structure = this.Infer(returnPattern, expected, CallSlotOwner(function), solution.Frame, true, true);
+
+        // SPEC 10.8 (two phases): a structured application in the result is formed after the result's own exact sources, so a pattern
+        // that held an open application is inferred again while a pass fixed something, whatever the order its parts are written in.
+        var owner = CallSlotOwner(function);
+        bool structure;
+        bool open;
+        int sourced;
+        do
+        {
+            open = this.HasOpenApplication(returnPattern, owner, solution.Frame);
+            sourced = SourcedSlots(solution.Frame);
+            structure = this.Infer(returnPattern, expected, owner, solution.Frame, true, true);
+        }
+        while (structure && open && SourcedSlots(solution.Frame) != sourced);
+
         this.MatchResultOrigins(returnPattern, expected, function, solution.Origins, solution.Inputs);
         if (returnPattern.CarriesOrigin)
         {
@@ -392,7 +396,7 @@ public sealed partial class Binding
                 DefaultSlots(function, mapping.AsSpan(0, call.ArgumentNodes.Count), receiverSlot, ref defaults);
             }
 
-            if (!this.SolveLate(ref solution, mapping, defaults))
+            if (!this.SolveLate(ref solution, mapping, defaults, ref waiting, ref sourced))
             {
                 return CandidateApplicability.Inapplicable;
             }
@@ -689,7 +693,7 @@ public sealed partial class Binding
     // candidate's Origins, which the well-formedness of each Signature position (F1, R4-M164: each leaf row of an argument,
     // CollectPositionPremises, and each default it uses, `defaults`, DefaultSlots) shortens as an Evidence part's does (InferAdapted);
     // false when the candidate is inapplicable.
-    private bool SolveLate(ref SlotSolution solution, int[] mapping, in SlotSet defaults)
+    private bool SolveLate(ref SlotSolution solution, int[] mapping, in SlotSet defaults, ref SlotSet waiting, ref SlotSet sourced)
     {
         var call = solution.Call;
         var function = solution.Function;
@@ -700,6 +704,12 @@ public sealed partial class Binding
             {
                 return false;
             }
+        }
+
+        // SPEC 10.8, 10.2.1: a Literal's default is the last exact source of a binder; an input formed only now is inferred now.
+        if (!this.SettleWaiting(ref solution, mapping, ref waiting, ref sourced))
+        {
+            return false;
         }
 
         solution.Contribute(mapping);

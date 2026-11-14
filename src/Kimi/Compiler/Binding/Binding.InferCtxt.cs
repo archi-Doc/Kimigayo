@@ -8,8 +8,9 @@ namespace Kimi.Compiler;
 // InferCtxt (SPEC 10.8; DECISIONS R7-I2): the owner of every solve's slot frames, with an undo log and snapshots.
 // - Responsibility: the slot frames (a solve's Type slots and length slots: a call candidate's, a Case construction's, a fixed
 //   construction's re-check, an implicit constructor's, a function reference's), held privately, with each pair slot's selector
-//   evidence (SPEC 8.1.2, 10.8: the first source's Type whose outer Semantics fixes s while W is still unbound) and the solve's node;
-//   their writes, each logged while a snapshot is open; Snapshot and Rollback.
+//   evidence (SPEC 8.1.2, 10.8: the first source's Type, whose outer Semantics every other source of the slot's binder must have;
+//   none for a slot fixed before any evidence) and the solve's node; their writes, each logged while a snapshot is open; Snapshot
+//   and Rollback.
 // - Inputs: Rent and Return from the solve that owns a frame; writes through a SlotFrame (SetType, SetLength, ClearTypes, ClearLengths,
 //   CopyTypes, CopyLengths) from the unifier (Infer, InferLength, InferArrayLength), a candidate's seeding and clearing, a trial's
 //   write-back, the selected candidate's restore and an open Origin's instantiation.
@@ -43,7 +44,8 @@ public sealed partial class Binding
 
         internal ReadOnlySpan<BoundLength?> Lengths => this.store.Lengths(this.id);
 
-        // SPEC 8.1.2, 10.8: per pair slot, the first source whose outer Semantics fixes its binder while the slot itself is unbound.
+        // SPEC 8.1.2, 10.8: per pair slot, the first source of its binder (an occurrence of the original or an application), the
+        // evidence every other source is compared with (Binding.IsSource); none for a slot fixed before any evidence.
         internal ReadOnlySpan<BoundType?> Selectors => this.store.Selectors(this.id);
 
         // The node of the solve the frame belongs to (a call, a reference's use, a construction), whose open regions it keys.

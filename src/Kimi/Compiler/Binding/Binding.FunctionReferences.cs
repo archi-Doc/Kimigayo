@@ -360,18 +360,48 @@ public sealed partial class Binding
             frame.ClearLengths(function.GenericArguments.Count);
         }
 
+        // SPEC 10.8 (two phases): a structured application of a pair binder is formed after the binder's exact sources, wherever S
+        // writes them, so the signature is matched again while a pass that met an open application fixed something.
         var parameters = required.Components[0];
-        for (var i = 0; i < function.Parameters.Count; i++)
+        bool open;
+        int sourced;
+        do
         {
-            if (function.Parameters[i].Type.BoundType is not { } written || this.MemberType(written, container) is not { } parameter ||
-                !this.Infer(parameter, parameters.Components[i], function, frame, inferOrigins: true, lengths: lengths, commonOrigins: commonOrigins, structural: true))
+            open = false;
+            sourced = SourcedSlots(frame);
+            for (var i = 0; i < function.Parameters.Count; i++)
             {
-                return false;
+                if (function.Parameters[i].Type.BoundType is not { } written || this.MemberType(written, container) is not { } parameter)
+                {
+                    return false;
+                }
+
+                open |= this.HasOpenApplication(parameter, function, frame);
+                if (!this.Infer(
+                    parameter, parameters.Components[i], function, frame, inferOrigins: true, lengths: lengths, commonOrigins: commonOrigins, structural: true))
+                {
+                    return false;
+                }
+            }
+
+            if (result)
+            {
+                if (symbol.Type is not { } writtenResult || this.MemberType(writtenResult, container) is not { } bound)
+                {
+                    return false;
+                }
+
+                open |= this.HasOpenApplication(bound, function, frame);
+                if (!this.Infer(
+                    bound, required.Components[1], function, frame, inferOrigins: true, lengths: lengths, commonOrigins: commonOrigins, structural: true))
+                {
+                    return false;
+                }
             }
         }
+        while (open && SourcedSlots(frame) != sourced);
 
-        return !result || (symbol.Type is { } writtenResult && this.MemberType(writtenResult, container) is { } bound &&
-            this.Infer(bound, required.Components[1], function, frame, inferOrigins: true, lengths: lengths, commonOrigins: commonOrigins, structural: true));
+        return true;
     }
 
     // SPEC 10.5: explicit Type arguments agree with the binding from S when they are the same normalized Type: identical, or equivalent
