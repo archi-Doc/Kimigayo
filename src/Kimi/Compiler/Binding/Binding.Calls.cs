@@ -105,7 +105,8 @@ public sealed partial class Binding
             }
         }
 
-        var unknownArgument = !this.PrepareCallArguments(call, scope, group);
+        var candidates = this.GroupOf(callee, group);
+        var unknownArgument = !this.PrepareCallArguments(call, scope, candidates);
 
         if (group is null)
         {
@@ -126,9 +127,7 @@ public sealed partial class Binding
             return this.BindReference(callee, group, scope) is null ? Complete(call, null) : this.Fail(call, BindingFailure.NotCallable);
         }
 
-        var candidates = this.GroupOf(callee, group);
         var requirementGroup = candidates.Requirements;
-        var imports = candidates.Gathered;
         var self = requirementGroup?.Self ?? (callee as RequirementCalleeKoto)?.Self;
         var shape = MeasureCandidates(candidates, self is not null || group.Scope.Owner is StructKoto or EnumKoto);
 
@@ -142,9 +141,8 @@ public sealed partial class Binding
 
         callee.BoundSymbol = group;
         callee.BindingState = BindingState.Resolved;
-        if (imports is { Count: > 1 } && this.CheckGatheredParameterShapes(callee, imports, aliasStage: true))
+        if (this.GatheredGroupFails(callee, candidates))
         {
-            // SPEC 7.4, 9.5.1: a function group gathered at the alias stage from several declaration sources is checked at the use.
             return Complete(call, null);
         }
 

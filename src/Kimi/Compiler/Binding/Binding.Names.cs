@@ -95,10 +95,19 @@ public sealed partial class Binding
         if (symbol.Kind == BindingSymbolKind.Function)
         {
             this.BindHeader(symbol);
-            if (symbol.Next is null && symbol.Declaration is FunctionKoto { IsAnonymous: false } named && DirectCallOnly(named) && IsValueUse(node))
+            if (IsValueUse(node))
             {
-                // SPEC 7.6, 22.6: such a function supports direct calls only. An overload group is checked after selection.
-                return this.Fail(node, BindingFailure.DirectCallFunctionValue);
+                var group = this.GroupOf(node, symbol);
+                if (this.GatheredGroupFails(node, group))
+                {
+                    return null;
+                }
+
+                if (group.Single is { Declaration: FunctionKoto { IsAnonymous: false } named } && DirectCallOnly(named))
+                {
+                    // SPEC 7.6, 22.6: such a function supports direct calls only. An overload group is checked after selection.
+                    return this.Fail(node, BindingFailure.DirectCallFunctionValue);
+                }
             }
 
             // A function group is resolved for call selection, but not an inferred first-class value.

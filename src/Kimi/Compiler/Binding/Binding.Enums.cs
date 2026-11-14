@@ -416,7 +416,7 @@ public sealed partial class Binding
                 settled.Add(i);
                 _ = this.RecordsWaitingForm(solution.Call.ArgumentNodes[i]); // Recorded as a named call's argument is (P1), unbound.
             }
-            else if (!this.PrepareArgument(solution.Call.ArgumentNodes[i], solution.Scope, null, callableContext: true))
+            else if (!this.PrepareArgument(solution.Call.ArgumentNodes[i], solution.Scope, default, callableContext: true))
             {
                 Complete(use, null); // The payload's own failure, on which the construction rests.
                 return false;

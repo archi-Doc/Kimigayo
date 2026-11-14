@@ -342,6 +342,17 @@ public class SpecializationBindingTest
         Assert.All(c.Binding.Issues, x => Assert.Equal(Kimi.DiagnosticCode.IncompatibleContractImplementation_Kd, x.Code));
     }
 
+    // SPEC 8.13.3: a call that no candidate fits counts the original alone; its specialization is no candidate.
+    [Fact]
+    public void ASpecializationIsNoCandidateOfAFailedCall()
+    {
+        var c = MinimalEmissionTest.Analyze(Ordinary + "specialize func weight<i32>(value: ref/i32) -> i32 => 2\nlet n = weight(1, 2)");
+        c.Binding.ReportDiagnostics();
+        var error = Assert.Single(TestDiagnostics.Of(c), static x => x.Severity == Kimi.Diagnostics.DiagnosticSeverity.Error);
+        Assert.Equal(nameof(Kimi.DiagnosticCode.NoApplicableOverload_Kd), error.Code);
+        Assert.Equal("none of 1 candidates applies", error.Label);
+    }
+
     // SPEC 8.13.1: diagnostics distinguish no target, an input-structure mismatch, multiple targets and a contract mismatch.
     [Theory]
     [InlineData("specialize func missing<i32>(value: ref/i32) -> i32 => 2", Kimi.DiagnosticCode.MissingSpecializationTarget_Kd)]

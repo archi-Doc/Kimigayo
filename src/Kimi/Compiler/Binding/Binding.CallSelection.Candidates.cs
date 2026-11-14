@@ -156,12 +156,6 @@ public sealed partial class Binding
                 return CandidateApplicability.Inapplicable;
             }
 
-            // SPEC 8.13.3: specializations never enter the candidate set, so an invalid one cannot fail a call.
-            if (function.IsSpecialization)
-            {
-                return CandidateApplicability.Inapplicable;
-            }
-
             if (this.InvalidDeclarationContext(function))
             {
                 return CandidateApplicability.Error;
