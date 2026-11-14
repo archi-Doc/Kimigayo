@@ -226,10 +226,8 @@ public sealed partial class Binding
             // stay direct. Everything below needs the declaration scope or a target: the selection key's arguments and their
             // closedness (8.13.1 "outer generic parameter"), the target search and the target's checks. The arguments' Names are
             // still resolved with the declaration's other Types, so their own records stay.
-            if (function.Placement is { } placement)
+            if (RestsOn(function, function.Placement))
             {
-                this.partPrerequisites[function] = placement;
-                this.Fail(function, BindingFailure.Unsupported, true);
                 continue;
             }
 
@@ -405,6 +403,7 @@ public sealed partial class Binding
         // SPEC 23.1.2: the first failed part of a header syntax that formed no Type; a header verdict reading it rests on its record.
         Koto? FailedPart(Koto syntax) => syntax.BoundType is null ? (this.failedSignaturePartVisitor ??= new()).Find(syntax, invalidState: true) : null;
 
+        // The header's failure rests on a part's record (IsDerived): its placement Error, or an argument or input that formed no Type.
         bool RestsOn(FunctionKoto function, Koto? part)
         {
             if (part is null)

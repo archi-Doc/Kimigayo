@@ -173,22 +173,42 @@ public class SpecializationBindingTest
     }
 
     // SPEC 8.13.2, 15.4.2 (PLAN G863): a Type argument's omitted Origin slots are the original's, each call's, and the restated
-    // inputs and result inherit them: a ref, Slice and uniq slot, a nested one, one argument in two inputs or only in the result.
+    // inputs and result inherit them: a ref, Slice and uniq slot, one nested in a Type argument, Tuple, array or Slice element, a
+    // related pair, one argument in several inputs or only in the result, a method original, a restated binder; Origins bound
+    // inside a Function Type argument (and their meet) restrict nothing; an Origin-free argument meets `T is Owned`; outside a
+    // header's Type arguments the limits below do not apply. Rows are named by G863's coverage table (row and program).
     private const string Box = "struct Box {source}\n    public let value: ref/i32 during source\n    public init(value: ref/i32 during source) => self.value = value\nstruct W {source}\n    public let data: uniq/i32 during source\n    public init(data: uniq/i32 during source) => self.data = data\nstruct Wrap<T>\n    public let inner: T\n    public init(inner: T) => self.inner = inner@move\nfunc f<T>(x: ref/T) -> i32 => 0\n";
 
     [Theory]
-    [InlineData("specialize func f<Box>(x: ref/Box) -> i32 => 1")]
-    [InlineData("func g<T>(x: T) -> i32 => 0\nspecialize func g<Slice<u8>>(x: Slice<u8>) -> i32 => 1")]
-    [InlineData("func w<T>(d: uniq/T) -> i32 => 0\nspecialize func w<W>(d: uniq/W) -> i32 => 1")]
-    [InlineData("specialize func f<Wrap<Box>>(x: ref/Wrap<Box>) -> i32 => 1")]
-    [InlineData("func two<T>(x: ref/T, y: Option<T>) -> i32 => 0\nspecialize func two<Box>(x: ref/Box, y: Option<Box>) -> i32 => 1")]
-    [InlineData("func make<T>(x: i32) -> Option<T> => .None\nspecialize func make<Box>(x: i32) -> Option<Box> => .None")]
-    [InlineData("func apply<T>(f: T) -> i32 => 0\nspecialize func apply<(i32) -> i32>(f: (i32) -> i32) -> i32 => 1")]
-    public void ArgumentOriginsAreInheritedFromTheOriginal(string specialization)
+    [InlineData("C1 v1", "specialize func f<Box>(x: ref/Box) -> i32 => 1")]
+    [InlineData("C2 v2", "func g<T>(x: T) -> i32 => 0\nspecialize func g<Slice<u8>>(x: Slice<u8>) -> i32 => 1")]
+    [InlineData("C3 v3", "func w<T>(d: uniq/T) -> i32 => 0\nspecialize func w<W>(d: uniq/W) -> i32 => 1")]
+    [InlineData("C4 v5", "specialize func f<Wrap<Box>>(x: ref/Wrap<Box>) -> i32 => 1")]
+    [InlineData("C4 r01", "specialize func f<Option<Box>>(x: ref/Option<Box>) -> i32 => 1")]
+    [InlineData("C5 r02", "specialize func f<(Box, Box)>(x: ref/(Box, Box)) -> i32 => 1")]
+    [InlineData("C6 n01", "specialize func f<[2 of Box]>(x: ref/[2 of Box]) -> i32 => 1")]
+    [InlineData("C7 r09", "specialize func f<Slice<Box>>(x: ref/Slice<Box>) -> i32 => 1")]
+    [InlineData("C8 r03", "struct Related {first, second}\n    origin first outlives second\n    public let left: ref/i32 during first\n    public let right: ref/i32 during second\n    public init(left: ref/i32 during first, right: ref/i32 during second)\n        self.left = left\n        self.right = right\nspecialize func f<Related>(x: ref/Related) -> i32 => 1")]
+    [InlineData("C9 r11", "func p<A, B>(x: ref/A, y: ref/B) -> i32 => 0\nspecialize func p<Box, i32>(x: ref/Box, y: ref/i32) -> i32 => 1")]
+    [InlineData("C10 two", "func two<T>(x: ref/T, y: Option<T>) -> i32 => 0\nspecialize func two<Box>(x: ref/Box, y: Option<Box>) -> i32 => 1")]
+    [InlineData("C10 v6", "func k<T>(x: Option<T>) -> i32 => 0\nspecialize func k<Box>(x: Option<Box>) -> i32 => 1\nfunc two<T>(x: ref/T, y: ref/T) -> i32 => 0\nspecialize func two<Box>(x: ref/Box, y: ref/Box) -> i32 => 1")]
+    [InlineData("C10 r04b", "func pick<T>(x: Option<T>, y: Option<T>) -> Option<T> => x@move\nspecialize func pick<Box>(x: Option<Box>, y: Option<Box>) -> Option<Box> => y@move")]
+    [InlineData("C11 v9", "func make<T>(x: i32) -> Option<T> => .None\nspecialize func make<Box>(x: i32) -> Option<Box> => .None")]
+    [InlineData("C11 r10", "func mk<T>(n: i32) -> Option<T> => .None\nspecialize func mk<Option<W>>(n: i32) -> Option<Option<W>> => .None")]
+    [InlineData("C12 v7", "struct Holder\n    public let n: i32\n    public init(n: i32) => self.n = n\n    public func m<T>(self: ref/Self, x: ref/T) -> i32 => 0\n    specialize func m<Box>(self: ref/Self, x: ref/Box) -> i32 => 1")]
+    [InlineData("C14 n10", "func first<T>(values: ref/[3 of T] during source) -> i32 => 0\nspecialize func first<Box>(values: ref/[3 of Box] during source) -> i32 => 1")]
+    [InlineData("C16 n04", "func size<T>() -> i32 => 0\nspecialize func size<(ref/i32) -> i32>() -> i32 => 1")]
+    [InlineData("C16 n05", "func size<T>() -> i32 => 0\nspecialize func size<(ref/i32, ref/i32) -> ref/i32>() -> i32 => 1")]
+    [InlineData("C16 r18", "func apply<T>(f: T) -> i32 => 0\nspecialize func apply<(i32) -> i32>(f: (i32) -> i32) -> i32 => 1")]
+    [InlineData("C18 s25", "func o<T>(x: ref/T) -> i32\n    T is Owned\n    return 0\nspecialize func o<i32>(x: ref/i32) -> i32 => 1")]
+    [InlineData("C21 s33", "func g(f: () -> ref/i32) -> i32 => 0")]
+    [InlineData("C21 s34", "specialize func f<i32>(x: ref/i32) -> i32\n    var h: Option<() -> ref/i32> = .None\n    return 1")]
+    [InlineData("C21 s35", "func apply<T>(f: Option<T>) -> i32 => 0\nlet n = apply<() -> ref/i32>(.None)")]
+    public void ArgumentOriginsAreInheritedFromTheOriginal(string row, string specialization)
     {
         var c = MinimalEmissionTest.Analyze(Box + specialization + "\n()");
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
-        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c));
+        Assert.True(c.Binding.Result.IsComplete, row + ": " + MinimalEmissionTest.Describe(c));
+        Assert.True(c.Analysis.IsVerified, row + ": " + MinimalEmissionTest.Describe(c));
     }
 
     // SPEC 8.13.3: the key excludes Origins, so the specialization runs for a local Box and W, at a direct call and after substitution.
@@ -199,32 +219,73 @@ public class SpecializationBindingTest
             Box + "specialize func f<Box>(x: ref/Box) -> i32 => 1\nfunc relay<T>(x: ref/T) -> i32 => f(x)\nfunc w<T>(d: uniq/T) -> i32 => 0\nspecialize func w<W>(d: uniq/W) -> i32 => 1\nfunc local() -> i32\n    let n = 5\n    let b = Box.init(n)\n    var m = 6\n    var u = W.init(m@uniq)\n    return f(b) + relay(b) * 10 + w(u@uniq) * 100\nrequire local() == 111 else => $abort(\"the generic body ran\")\nConsole.writeLine(\"ok\")",
             "ok\n");
 
-    // SPEC 8.13.2: the header writes no Origin of the inherited contract: a Type argument's slot written static, as a parameter's
-    // Origin or inside a nested argument, and a restated input's slot written static restrict the bindings the original admits (the
-    // second of two one-key specializations included). Each row lists its records' nodes in source order.
+    // SPEC 8.13.3 (coverage C22 r16): an `Option<Box>` argument's specialization runs for a Box of a parameter's Origin, directly and
+    // forwarded.
+    [Fact]
+    public void InheritedArgumentOriginsSelectAtAParameterOrigin()
+        => ScalarEmissionTest.EmitFixture(
+            "SpecializationInheritedOptionArgumentOrigins",
+            Box + "specialize func f<Option<Box>>(x: ref/Option<Box>) -> i32 => 1\nfunc fwd<T>(x: ref/T) -> i32 => f(x)\nfunc local(r: ref/i32) -> i32\n    let o: Option<Box> = .Some(Box.init(r))\n    return f(o@ref) + fwd(o@ref) * 10\nlet n: i32 = 3\nrequire local(n@ref) == 11 else => $abort(\"the generic body ran\")\nConsole.writeLine(\"ok\")",
+            "ok\n");
+
+    // SPEC 8.13.1-8.13.3: the header writes no Origin of the inherited contract: a Type argument's slot written static, as a
+    // parameter's Origin, as the original's or an added binder, inside a nested argument, a Tuple element or a pair's outer layer,
+    // in a method original, and a restated input's slot written static restrict the bindings the original admits (the second of two
+    // one-key specializations included); an Origin-carrying argument still meets the target search, the inherited Constraints and
+    // the one key. Each row lists its records' nodes in source order.
     [Theory]
-    [InlineData("specialize func f<Box during static>(x: ref/Box) -> i32 => 1", "specialize func f<Box during static>(x: ref/Box) -> i32 => 1", Kimi.DiagnosticCode.IncompatibleContractImplementation_Kd)]
-    [InlineData("specialize func f<Box during x>(x: ref/Box) -> i32 => 1", "specialize func f<Box during x>(x: ref/Box) -> i32 => 1", Kimi.DiagnosticCode.IncompatibleContractImplementation_Kd)]
-    [InlineData("specialize func f<Option<Box during static>>(x: ref/Option<Box>) -> i32 => 1", "specialize func f<Option<Box during static>>(x: ref/Option<Box>) -> i32 => 1", Kimi.DiagnosticCode.IncompatibleContractImplementation_Kd)]
-    [InlineData("specialize func f<Box>(x: ref/(Box during static)) -> i32 => 1", "specialize func f<Box>(x: ref/(Box during static)) -> i32 => 1", Kimi.DiagnosticCode.UnprovenOriginContract_Kd)]
-    [InlineData("specialize func f<Box>(x: ref/Box) -> i32 => 1\nspecialize func f<Box during static>(x: ref/Box) -> i32 => 2", "specialize func f<Box during static>(x: ref/Box) -> i32 => 2", Kimi.DiagnosticCode.IncompatibleContractImplementation_Kd)]
-    [InlineData("specialize func f<Box>(x: ref/Box) -> i32 => 1\nspecialize func f<Box>(x: ref/Box) -> i32 => 2", "specialize func f<Box>(x: ref/Box) -> i32 => 1|specialize func f<Box>(x: ref/Box) -> i32 => 2", Kimi.DiagnosticCode.DuplicateBinding_Kd)]
-    public void RejectsWrittenArgumentOrigins(string specialization, string located, Kimi.DiagnosticCode code)
-        => AssertRecords(specialization, located, code);
+    [InlineData("C1 i2", "specialize func f<Box during static>(x: ref/Box) -> i32 => 1", "specialize func f<Box during static>(x: ref/Box) -> i32 => 1", Kimi.DiagnosticCode.IncompatibleContractImplementation_Kd)]
+    [InlineData("C4 r13", "specialize func f<Option<Box during static>>(x: ref/Option<Box>) -> i32 => 1", "specialize func f<Option<Box during static>>(x: ref/Option<Box>) -> i32 => 1", Kimi.DiagnosticCode.IncompatibleContractImplementation_Kd)]
+    [InlineData("C5 s36", "specialize func f<(Box during static, i32)>(x: ref/(Box, i32)) -> i32 => 1", "specialize func f<(Box during static, i32)>(x: ref/(Box, i32)) -> i32 => 1", Kimi.DiagnosticCode.IncompatibleContractImplementation_Kd)]
+    [InlineData("C12 n03", "struct Holder\n    public let n: i32\n    public init(n: i32) => self.n = n\n    public func m<T>(self: ref/Self, x: ref/T) -> i32 => 0\n    specialize func m<Box during static>(self: ref/Self, x: ref/Box) -> i32 => 1", "specialize func m<Box during static>(self: ref/Self, x: ref/Box) -> i32 => 1", Kimi.DiagnosticCode.IncompatibleContractImplementation_Kd)]
+    [InlineData("C13 i3", "specialize func f<Box>(x: ref/i32) -> i32 => 1", "specialize func f<Box>(x: ref/i32) -> i32 => 1", Kimi.DiagnosticCode.SpecializationInputMismatch_Kd)]
+    [InlineData("C14 r12", "specialize func f<Box during x>(x: ref/Box) -> i32 => 1", "specialize func f<Box during x>(x: ref/Box) -> i32 => 1", Kimi.DiagnosticCode.IncompatibleContractImplementation_Kd)]
+    [InlineData("C14 n09", "func first<T>(values: ref/[3 of T] during source) -> i32 => 0\nspecialize func first<Box during source>(values: ref/[3 of Box] during source) -> i32 => 1", "specialize func first<Box during source>(values: ref/[3 of Box] during source) -> i32 => 1", Kimi.DiagnosticCode.IncompatibleContractImplementation_Kd)]
+    [InlineData("C14 n02", "func p<s/T>(x: s/T) -> i32 => 0\nspecialize func p<ref/Box during static>(x: ref/Box) -> i32 => 1", "specialize func p<ref/Box during static>(x: ref/Box) -> i32 => 1", Kimi.DiagnosticCode.IncompatibleContractImplementation_Kd)]
+    [InlineData("C14 i1", "specialize func f<Box during source>(x: ref/(Box during source)) -> i32 => 1", "specialize func f<Box during source>(x: ref/(Box during source)) -> i32 => 1", Kimi.DiagnosticCode.IncompatibleContractImplementation_Kd)]
+    [InlineData("C15 i7", "specialize func f<Box>(x: ref/(Box during static)) -> i32 => 1", "specialize func f<Box>(x: ref/(Box during static)) -> i32 => 1", Kimi.DiagnosticCode.UnprovenOriginContract_Kd)]
+    [InlineData("C16 s27", "func apply<T>(f: T) -> i32 => 0\nspecialize func apply<(ref/i32) -> ref/i32 during static>(f: (ref/i32) -> ref/i32 during static) -> i32 => 1", "specialize func apply<(ref/i32) -> ref/i32 during static>(f: (ref/i32) -> ref/i32 during static) -> i32 => 1", Kimi.DiagnosticCode.UnprovenOriginContract_Kd)]
+    [InlineData("C18 n08", "func c<T>(x: ref/T) -> i32\n    T is Copy\n    return 0\nspecialize func c<W>(x: ref/W) -> i32 => 1", "specialize func c<W>(x: ref/W) -> i32 => 1", Kimi.DiagnosticCode.UnsatisfiedConstraint_Kd)]
+    [InlineData("C23 i4", "specialize func f<Box>(x: ref/Box) -> i32 => 1\nspecialize func f<Box during static>(x: ref/Box) -> i32 => 2", "specialize func f<Box during static>(x: ref/Box) -> i32 => 2", Kimi.DiagnosticCode.IncompatibleContractImplementation_Kd)]
+    [InlineData("C23 i6", "specialize func f<Box>(x: ref/Box) -> i32 => 1\nspecialize func f<Box>(x: ref/Box) -> i32 => 2", "specialize func f<Box>(x: ref/Box) -> i32 => 1|specialize func f<Box>(x: ref/Box) -> i32 => 2", Kimi.DiagnosticCode.DuplicateBinding_Kd)]
+    public void RejectsWrittenArgumentOrigins(string row, string specialization, string located, Kimi.DiagnosticCode code)
+        => AssertRecords(row, specialization, located.Split('|').Select(x => (x, code)));
 
     // SPEC 8.13.2, 15.4.2 (PLAN G863): an omitted Origin of T's binding that no row completes yet is one located Unsupported_Kd per
-    // occurrence, and the header rests on it: a borrow layer in a Type argument or nested in a restated input, a Function Type result
-    // that no input of its own gives, and an undecided inherited Constraint over the header's universal Origins (`T is Owned`).
+    // occurrence, and the header rests on it: a borrow layer in a Type argument (outer, uniq, nested in a Type argument, Tuple,
+    // borrow target or Option, a pair's outer layer) or nested in a restated input, a Function Type result that no input of its own
+    // gives (a borrow, an aggregate, nested in an Option or a Function Type's input), and an undecided inherited Constraint over the
+    // header's universal Origins (`T is Owned`).
     [Theory]
-    [InlineData("func h<T>(x: T) -> i32 => 0\nspecialize func h<ref/i32>(x: ref/i32) -> i32 => 1", "ref/i32")]
-    [InlineData("func h<T>(x: T) -> i32 => 0\nspecialize func h<uniq/i32>(x: uniq/i32) -> i32 => 1", "uniq/i32")]
-    [InlineData("func h<T>(x: T) -> i32 => 0\nspecialize func h<Wrap<ref/i32>>(x: Wrap<ref/i32>) -> i32 => 1", "ref/i32|ref/i32")]
-    [InlineData("func g<T>(x: Option<ref/T during a>) -> i32 => 0\nspecialize func g<i32>(x: Option<ref/i32>) -> i32 => 1", "ref/i32")]
-    [InlineData("func apply<T>(f: ref/T) -> i32 => 0\nspecialize func apply<() -> ref/i32>(f: ref/(() -> ref/i32)) -> i32 => 1", "ref/i32")]
-    [InlineData("func apply<T>(f: T) -> i32 => 0\nspecialize func apply<() -> ref/i32>(f: () -> ref/i32) -> i32 => 1", "ref/i32")]
-    [InlineData("func o<T>(x: ref/T) -> i32\n    T is Owned\n    return 0\nspecialize func o<Box>(x: ref/Box) -> i32 => 1", "specialize func o<Box>(x: ref/Box) -> i32 => 1")]
-    public void UncompletedArgumentOriginsAreALocatedLimit(string specialization, string located)
-        => AssertRecords(specialization, located, Kimi.DiagnosticCode.Unsupported_Kd);
+    [InlineData("C19 v10", "func h<T>(x: T) -> i32 => 0\nspecialize func h<ref/i32>(x: ref/i32) -> i32 => 1", "ref/i32")]
+    [InlineData("C19 v13", "func h<T>(x: T) -> i32 => 0\nspecialize func h<uniq/i32>(x: uniq/i32) -> i32 => 1", "uniq/i32")]
+    [InlineData("C19 v12", "func h<T>(x: T) -> i32 => 0\nspecialize func h<Wrap<ref/i32>>(x: Wrap<ref/i32>) -> i32 => 1", "ref/i32|ref/i32")]
+    [InlineData("C19 v14", "func h<T>(x: T) -> i32 => 0\nspecialize func h<(ref/i32, i32)>(x: (ref/i32, i32)) -> i32 => 1", "ref/i32|ref/i32")]
+    [InlineData("C19 v15", "func h<T>(x: T) -> i32 => 0\nspecialize func h<ref/(ref/i32)>(x: ref/(ref/i32)) -> i32 => 1", "ref/i32|ref/i32")]
+    [InlineData("C19 v16", "specialize func f<ref/i32>(x: ref/(ref/i32)) -> i32 => 1", "ref/i32|ref/i32")]
+    [InlineData("C19 v17", "func g<T>(x: Option<ref/T during a>) -> i32 => 0\nspecialize func g<i32>(x: Option<ref/i32>) -> i32 => 1", "ref/i32")]
+    [InlineData("C19 r14", "func h<T>(x: T) -> i32 => 0\nspecialize func h<Option<ref/i32>>(x: Option<ref/i32>) -> i32 => 1", "ref/i32|ref/i32")]
+    [InlineData("C19 r15", "func p<s/T>(x: s/T) -> i32 => 0\nspecialize func p<ref/Box>(x: ref/Box) -> i32 => 1", "ref/Box")]
+    [InlineData("C20 r08", "func apply<T>(f: ref/T) -> i32 => 0\nspecialize func apply<() -> ref/i32>(f: ref/(() -> ref/i32)) -> i32 => 1", "ref/i32")]
+    [InlineData("C20 r20", "func apply<T>(f: T) -> i32 => 0\nspecialize func apply<() -> ref/i32>(f: () -> ref/i32) -> i32 => 1", "ref/i32")]
+    [InlineData("C20 s23", "func apply<T>(f: T) -> i32 => 0\nspecialize func apply<() -> Box>(f: () -> Box) -> i32 => 1", "Box")]
+    [InlineData("C20 s24", "func apply<T>(f: ref/T) -> i32 => 0\nspecialize func apply<Option<() -> ref/i32>>(f: ref/Option<() -> ref/i32>) -> i32 => 1", "ref/i32")]
+    [InlineData("C20 s32", "func apply<T>(f: T) -> i32 => 0\nspecialize func apply<(() -> ref/i32) -> i32>(f: (() -> ref/i32) -> i32) -> i32 => 1", "ref/i32")]
+    [InlineData("C18 r06", "func o<T>(x: ref/T) -> i32\n    T is Owned\n    return 0\nspecialize func o<Box>(x: ref/Box) -> i32 => 1", "specialize func o<Box>(x: ref/Box) -> i32 => 1")]
+    public void UncompletedArgumentOriginsAreALocatedLimit(string row, string specialization, string located)
+        => AssertRecords(row, specialization, located.Split('|').Select(x => (x, Kimi.DiagnosticCode.Unsupported_Kd)));
+
+    // SPEC 23.1.2 (PLAN G863): independent records of one header, each at its node, in source order: `static` cannot supply a uniq
+    // slot beside the restriction (C3 i5); no target beside the limit of the restated nested layer (C19 i8); the Function Type
+    // result's limit beside the restated result's pre-existing missing Origin (C20 v18, G863's remainder (c)); a local borrow as the
+    // call's Origin in the body (C10 r05; Binding records it once, the CLI's report shows it twice as for its ordinary twin: G56's row).
+    [Theory]
+    [InlineData("C3 i5", "func w<T>(d: uniq/T) -> i32 => 0\nspecialize func w<W during static>(d: uniq/W) -> i32 => 1", "IncompatibleContractImplementation_Kd: specialize func w<W during static>(d: uniq/W) -> i32 => 1|InvalidOriginBinding_Kd: W during static|InvalidOriginBinding_Kd: W")]
+    [InlineData("C19 i8", "specialize func missing<i32>(x: Option<ref/i32>) -> i32 => 1", "MissingSpecializationTarget_Kd: specialize func missing<i32>(x: Option<ref/i32>) -> i32 => 1|Unsupported_Kd: ref/i32")]
+    [InlineData("C20 v18", "func apply<T>(f: T) -> i32 => 0\nspecialize func apply<() -> uniq/i32>(f: () -> uniq/i32) -> i32 => 1", "Unsupported_Kd: uniq/i32|MissingOriginBinding_Kd: uniq/i32")]
+    [InlineData("C10 r05", "func make<T>(x: i32) -> Option<T> => .None\nspecialize func make<Box>(x: i32) -> Option<Box>\n    let n: i32 = 1\n    return .Some(Box.init(n@ref))", "UnsatisfiedOriginRelation_Kd: Box.init(n@ref)")]
+    public void ReportsEveryIndependentHeaderRecord(string row, string specialization, string records)
+        => AssertRecords(row, specialization, records.Split('|').Select(x => (x[(x.IndexOf(": ", StringComparison.Ordinal) + 2)..], Enum.Parse<Kimi.DiagnosticCode>(x[..x.IndexOf(": ", StringComparison.Ordinal)]))));
 
     // SPEC 8.13.3: specializations never enter the candidate set; an invalid one does not fail calls to the original.
     [Fact]
@@ -291,12 +352,11 @@ public class SpecializationBindingTest
         Assert.Contains(c.Binding.Issues, x => x.Code == Kimi.DiagnosticCode.UnprovenOriginContract_Kd);
     }
 
-    private static void AssertRecords(string specialization, string located, Kimi.DiagnosticCode code)
+    // A rejecting row's records as (node, code) pairs in source order.
+    private static void AssertRecords(string row, string specialization, IEnumerable<(string Node, Kimi.DiagnosticCode Code)> records)
     {
         var c = MinimalEmissionTest.Analyze(Box + specialization + "\n()");
-        Assert.False(c.Binding.Result.IsComplete);
-        var issues = c.Binding.Issues.OrderBy(x => x.Node.Span.Start).ToArray();
-        Assert.Equal(located.Split('|'), issues.Select(x => x.Node.ToString()));
-        Assert.All(issues, x => Assert.Equal(code, x.Code));
+        Assert.False(c.Binding.Result.IsComplete, row);
+        Assert.Equal(records, c.Binding.Issues.OrderBy(x => x.Node.Span.Start).Select(x => (x.Node.ToString(), x.Code)));
     }
 }
