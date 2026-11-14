@@ -16,9 +16,11 @@ public sealed partial class Binding
 {
     private readonly ImplTable impls = new();
 
-    // Projections over a declared struct or enum that found no associated Type before this pass's conformance declarations registered
-    // (VerifyEarlyProjections). Temporary (G621): removed when R7-D2 d3 reads conformance declarations by demand.
-    private readonly List<(MemberAccessKoto Use, BoundType Type, BindingScope Scope, string Name, BindingSymbol? Qualifier)> earlyProjections = new();
+    // Early reads of the conformances (VerifyEarlyProjections), each with the path end its producer formed (End): a Projection over a
+    // declared struct or enum that found no associated Type before this pass's conformance declarations registered (NoteEarlyProjection),
+    // and a Selected nested Type whose 9.7.3 judgment found no evidence before the proofs answer (AlsoAssociated). Temporary (G621, G728):
+    // removed when R7-D2 d3 reads conformance declarations by demand.
+    private readonly List<(MemberAccessKoto Use, PathEnd End, BoundType Type, BindingScope Scope, string Name, BindingSymbol? Qualifier)> earlyProjections = new();
 
     // Object forms over a concrete Type formed before the opt-outs are published (VerifyEarlyObjectForms).
     private List<(Koto Use, BoundType Target)>? earlyObjectForms;
@@ -92,14 +94,24 @@ public sealed partial class Binding
     // its conformance declaration bound before the table filled, which is an analysis limit: a located Unsupported_Kd that stays
     // unresolved, so the clause and the Type rest on it, never a missing member. One that still finds none keeps its missing-Type
     // record, which VerifyEarlyReads may read again. A qualified projection searches its Contract, so it finds an existing member before
-    // registration. A nested Type selected over a declared Type before registration (its 9.7.3 judgment, AlsoAssociated, found no
-    // candidates) is judged again by AlsoAssociated: one that resolves both ways now bound its users on the nested Type, the same limit.
+    // registration. A nested Type whose 9.7.3 judgment (AlsoAssociated) found no evidence is judged again by AlsoAssociated, here and
+    // once the proofs answer (BindDeclarations, after ValidateConformances): one that resolves both ways is ambiguous, the record its
+    // timely judgment gives (BindContainerReference), though its users were bound on the nested Type; one still without evidence before
+    // the proofs answer notes itself again. The note says which judgment it is (End), never where the path's lookup was published.
     private void VerifyEarlyProjections()
     {
-        foreach (var (use, type, scope, name, qualifier) in this.earlyProjections)
+        var noted = this.earlyProjections.Count; // A judgment still early notes itself again, behind these.
+        for (var i = 0; i < noted; i++)
         {
-            if (HirTables.LookupOf(use) == PathEnd.Selected ? this.AlsoAssociated(type, name, use, scope) :
-                use.BindingFailure is BindingFailure.MissingName or BindingFailure.MissingType && this.FindAssociated(type, scope, name, qualifier, use) is not null)
+            var (use, end, type, scope, name, qualifier) = this.earlyProjections[i];
+            if (end == PathEnd.Selected)
+            {
+                if (this.AlsoAssociated(type, name, use, scope))
+                {
+                    this.Fail(use, BindingFailure.Ambiguous, unresolved: true); // SPEC 9.7.3: it resolves both ways.
+                }
+            }
+            else if (use.BindingFailure is BindingFailure.MissingName or BindingFailure.MissingType && this.FindAssociated(type, scope, name, qualifier, use) is not null)
             {
                 use.BindingFailure = BindingFailure.None;
                 this.prerequisites.Remove(use);
@@ -107,7 +119,7 @@ public sealed partial class Binding
             }
         }
 
-        this.earlyProjections.Clear();
+        this.earlyProjections.RemoveRange(0, noted);
     }
 
     // SPEC 8.7.3: derived structs inherit the opt-out. Nominal bases are read here, before headers bind, so that every later object
