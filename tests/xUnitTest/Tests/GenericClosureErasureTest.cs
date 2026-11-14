@@ -26,8 +26,18 @@ public class GenericClosureErasureTest
     [Fact]
     public void EmptyGenericEnvironmentErasesItsSubstitutedInputAndResult()
     {
-        const string Source = "func make<T>(value: T) -> (T) -> T\n    let action = func [] (inner: T) -> T => inner@move\n    return action\nlet integer = make(1)\nlet text = make(\"first\")\nrequire integer(7) == 7 else => $abort(\"input\")\nConsole.writeLine(text(\"second\"))";
+        const string Source = "func make<T>(value: T) -> (T) -> T\n    T is Owned\n    let action = func [] (inner: T) -> T => inner@move\n    return action\nlet integer = make(1)\nlet text = make(\"first\")\nrequire integer(7) == 7 else => $abort(\"input\")\nConsole.writeLine(text(\"second\"))";
         ScalarEmissionTest.EmitFixture("GenericClosureErasureEmpty", Source, "second\n");
+    }
+
+    // SPEC 3.2.1, 6.1.3, 15.2.3, 7.7.4 (the owner's O-249 Q4 (a); PLAN G846, G856): the same erasure without `T is Owned` is invalid, the
+    // Closure's instantiation holding make's T (EmptyGenericEnvironmentErasesItsSubstitutedInputAndResult's program until G856).
+    [Fact]
+    public void AnEmptyGenericEnvironmentsErasureNeedsTheEnclosingParameterOwned()
+    {
+        const string Source = "func make<T>(value: T) -> (T) -> T\n    let action = func [] (inner: T) -> T => inner@move\n    return action\nlet integer = make(1)\n";
+        var error = Assert.Single(DiagnosticCorpus.Check(Source).Diagnostics);
+        Assert.Equal(("UnprovenConstraint_Kd", "action"), (error.Code, Source.Substring(error.Span!.Value.Start, error.Span.Value.Length)));
     }
 
     [Fact]

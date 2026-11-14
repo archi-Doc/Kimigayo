@@ -349,7 +349,19 @@ public sealed partial class Binding
             return;
         }
 
-        foreach (var (part, _, _) in new CapabilityParts(type, this.types))
+        // A nested definition's inherited arguments are parts (InheritedArguments); a withheld instance is the located limit at the
+        // stored Type. A definition this declaration's own instance holds, in its identity (a Field initializer's Closure, which names
+        // no Origin but the declaration's own slots and static, SPEC 6.3.3), inherits the instance's own Type and Origin arguments,
+        // which Owned judges with the instance: storage adds nothing beyond them.
+        var own = type is { Kind: BoundTypeKind.Closure or BoundTypeKind.FunctionItem, InstanceContext: null, Symbol: { } nested } &&
+            ReferenceEquals(this.types.EnclosingDeclaration(nested), summary.Declaration);
+        if ((own ? BoundType.Unit : this.InheritedArguments(type)) is not { } inherited)
+        {
+            this.AddSite(summary, stored);
+            return;
+        }
+
+        foreach (var (part, _, _) in new CapabilityParts(type, inherited))
         {
             if (part is not null)
             {

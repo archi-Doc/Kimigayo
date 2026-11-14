@@ -480,7 +480,7 @@ public sealed partial class Binding
             }
 
             var owned = ConstraintProof.Proven;
-            foreach (var (part, _, _) in new CapabilityParts(work.Type, this.types))
+            foreach (var (part, _, _) in new CapabilityParts(work.Type, BoundType.Unit))
             {
                 owned = part is null ? owned : CombineProof(owned, this.RequestCapability(part, work.Intrinsic, work.Scope), true);
             }
@@ -495,7 +495,19 @@ public sealed partial class Binding
 
         // Owned records each part that is not Proven with its member and Origin (CapabilityWork.Parts, R4-M161).
         var result = ConstraintProof.Proven;
-        var parts = new CapabilityParts(work.Type, this.types);
+        // A nested definition's inherited arguments are OwnedOrigins' parts (SPEC 15.2.3), so Owned reads them; Copy reads a Closure's
+        // captures only (SPEC 3.2.1). An unreadable instance (InheritedArguments) answers BU-22's limit with the definition as the site.
+        var inherited = work.Intrinsic.Intrinsic == IntrinsicKind.Owned ? this.InheritedArguments(work.Type) : BoundType.Unit;
+        if (inherited is null)
+        {
+            var saved = this.ScopeReads.Origin;
+            this.ScopeReads.Origin = null;
+            var proof = this.ReadVerdict(ConstraintProof.Unknown, work.Site ??= new(this.neededSites) { Use = work.Type.Symbol!.Declaration }, null);
+            result = CombineProof(result, proof, true);
+            this.ScopeReads.Origin = work.Part(work.Type.Components.Count, proof, this.ScopeReads.Origin, saved);
+        }
+
+        var parts = new CapabilityParts(work.Type, inherited ?? BoundType.Unit);
         while (parts.MoveNext())
         {
             var (part, origin, argument) = parts.Current;

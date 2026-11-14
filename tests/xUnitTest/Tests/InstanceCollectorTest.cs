@@ -1068,13 +1068,21 @@ public sealed partial class InstanceCollectorTest
         Assert.All(set.Items.ToArray(), x => Assert.True(Closed(c, program, x), Label(program, x)));
     }
 
+    // SPEC 3.2.1, 6.1.3, 15.2.3, 7.7.4 (the owner's O-249 Q4 (a); PLAN G856): a Closure erased in `adder<T>` holds T in its instantiation,
+    // so `T is Copy` alone leaves the erasure invalid (AnErasureIsItsAdapterItem's program until G856, accepted then).
+    [Fact]
+    public void AnErasureInAGenericFunctionNeedsItsParameterOwned()
+        => Assert.Equal(
+            "UnprovenConstraint_Kd f",
+            CheckRecords("func adder<T>(x: T) -> T\n    T is Copy\n    let f = func [] (y: T) -> T => y\n    let e: (T) -> T = f\n    return e(x)\nrequire adder(1) == 1 else => $abort(\"erasure\")\n"));
+
     // K 4.5 row 13: an erasure of a Closure or function item to its Function Type is its ClosureErasure or ItemAdapter item, keyed by the
     // erased Type and the erased Function Type (DECISIONS R5-M108) and represented by the first Type that requests it, whose target is the
     // body the Closure or Item runs; a call of the Function Type value has no target.
     [Fact]
     public void AnErasureIsItsAdapterItem()
     {
-        var c = MirBuildTest.Compile("func adder<T>(x: T) -> T\n    T is Copy\n    let f = func [] (y: T) -> T => y\n    let e: (T) -> T = f\n" +
+        var c = MirBuildTest.Compile("func adder<T>(x: T) -> T\n    T is Copy and Owned\n    let f = func [] (y: T) -> T => y\n    let e: (T) -> T = f\n" +
             "    return e(x)\n" +
             "func pick<T>(value: T) -> T => value@move\nlet h: (i32) -> i32 = pick<i32>\nrequire adder(1) == 1 and h(2) == 2 else => $abort(\"erasure\")\n");
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
