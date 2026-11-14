@@ -157,16 +157,16 @@ public static partial class Parser
         if (IsCompileTimeSwitchStart(ref reader))
         {
             var arms = CompileTimeSwitchArms.Begin(ref reader);
-            while (arms.TryNext(ref reader, out var selected, out var header, out var invalidItems))
+            while (arms.TryNext(ref reader, out var arm))
             {
-                if (invalidItems)
+                if (arm.Kind == CompileTimeSwitchArmKind.InvalidItems)
                 {
                     list.EnterExcluded(ref reader);
                     var start = BeginInvalidSwitchItems(ref reader);
                     ParseItems(ref reader, ref list, stopAtCaseGroupBoundary: true);
                     EndInvalidSwitchItems(ref reader, start);
                 }
-                else if (selected)
+                else if (arm.Kind == CompileTimeSwitchArmKind.Selected)
                 {
                     reader.Advance(); // StartBlock
                     ParseItems(ref reader, ref list);
@@ -174,7 +174,7 @@ public static partial class Parser
                 else
                 {
                     list.EnterExcluded(ref reader);
-                    var region = BeginExcludedRegion(ref reader, header, header.Start);
+                    var region = BeginExcludedRegion(ref reader, arm.Header, arm.Header.Start);
                     reader.Advance(); // StartBlock
                     ParseItems(ref reader, ref list);
                     EndExcludedRegion(ref reader, region);
@@ -344,7 +344,7 @@ public static partial class Parser
     /// <returns><see langword="true"/> for a Container declaration.</returns>
     internal static bool IsContainerDeclarationStart(ref TokenReader reader)
     {
-        if (reader.CurrentTokenKind is not (TokenKind.Group or TokenKind.Struct or TokenKind.Enum or TokenKind.Extension or TokenKind.Contract))
+        if (HeaderWords[(byte)reader.CurrentTokenKind] != HeaderWord.ContainerIntroducer)
         {
             return false;
         }
@@ -358,10 +358,23 @@ public static partial class Parser
         };
     }
 
+    // Whether a declaration follows an executable item's modifiers: the header table's introducers (Appendix F.6.1), a Container
+    // word and `func` only where their declaration starts, and a SpecializationDeclaration's `specialize func` (F.6.3).
+    // `alias` and `rootgroup` are answered apart from the table, as before R9-F6-10: the table holds `rootgroup` and not `alias`,
+    // this reader the reverse. SPEC F.3.2 makes both declaration introducers; the two arms go when both readers read one set.
     private static bool IntroducesDeclaration(ref TokenReader reader)
-        => IsContainerDeclarationStart(ref reader) ||
-            reader.CurrentTokenKind is TokenKind.Let or TokenKind.Var or TokenKind.Init or TokenKind.Drop or TokenKind.Computed or TokenKind.Property or TokenKind.Associate or TokenKind.Alias ||
-            IsFunctionDefinitionStart(ref reader) || IsSpecializationStart(ref reader);
+        => reader.CurrentTokenKind switch
+        {
+            TokenKind.Func => IsFunctionDefinitionStart(ref reader),
+            TokenKind.Alias => true,
+            TokenKind.RootGroup => false,
+            var kind => HeaderWords[(byte)kind] switch
+            {
+                HeaderWord.ContainerIntroducer => IsContainerDeclarationStart(ref reader),
+                HeaderWord.DeclarationIntroducer => true,
+                _ => IsSpecializationStart(ref reader),
+            },
+        };
 
     /// <summary>Whether a SpecializationDeclaration starts here (SPEC F.6.3): the contextual keyword <c>specialize</c> before <c>func</c>.</summary>
     /// <param name="reader">The token reader.</param>
@@ -401,7 +414,7 @@ public static partial class Parser
     internal static FunctionKoto? ParseFunctionItem(ref TokenReader reader)
     {
         reader.Advance();
-        var function = ParseFuncDeclaration(ref reader);
+        var function = ParseFuncDeclaration(ref reader, FunctionForm.Function);
         if (function is null)
         {
             return null;

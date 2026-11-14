@@ -227,15 +227,8 @@ public static partial class Parser
         var accessorToken = header.Keyword;
         var accessorKind = header.Kind;
         RejectCallableOriginList(ref reader);
-        var hasSignature = reader.CurrentTokenKind == TokenKind.OpenParenthesis;
-
-        Koto? receiverType = null;
-        Koto? valueType = null;
-        var signatureEnd = accessorToken.Span.End;
-        if (hasSignature)
-        {
-            ParseAccessorParameters(ref reader, accessorKind, out receiverType, out valueType, out signatureEnd);
-        }
+        AccessorParameters? parameters = reader.CurrentTokenKind == TokenKind.OpenParenthesis ? ParseAccessorParameters(ref reader, accessorKind) : null;
+        var hasSignature = parameters is not null;
 
         var returnType = ParseAccessorReturnType(ref reader);
         if (hasSignature && returnType is null)
@@ -253,14 +246,14 @@ public static partial class Parser
 
         var accessor = new PropertyAccessorKoto(
             ref reader,
-            SourceSpan.FromBounds(header.Start, Math.Max(signatureEnd, returnType?.Span.End ?? accessorToken.Span.End)),
+            SourceSpan.FromBounds(header.Start, Math.Max(parameters?.End ?? accessorToken.Span.End, returnType?.Span.End ?? accessorToken.Span.End)),
             header.Modifier,
             accessorKind,
             null,
             returnType,
             hasSignature,
-            receiverType,
-            valueType);
+            parameters?.ReceiverType,
+            parameters?.ValueType);
         Koto? body = default;
         if (reader.CurrentTokenKind == TokenKind.EqualsGreaterThan)
         {
@@ -273,7 +266,8 @@ public static partial class Parser
         }
 
         // An accessor that needs a signature, or that carries a result Type or a body, lacks its parameter list right after the keyword.
-        if (!hasSignature && (returnType is not null || body is not null || property.IsContractRequirement || property.DeclarationKind == PropertyDeclarationKind.Computed))
+        if (!hasSignature &&
+            (returnType is not null || body is not null || property.IsContractRequirement || property.DeclarationKind == PropertyDeclarationKind.Computed))
         {
             reader.Missing(SyntaxForm.AccessorParameters, accessorToken.Span.End);
         }
@@ -305,16 +299,19 @@ public static partial class Parser
         }
     }
 
-    private static void ParseAccessorParameters(
-        ref TokenReader reader,
-        PropertyAccessorKind kind,
-        out Koto? receiverType,
-        out Koto? valueType,
-        out int end)
+    /// <summary>The parameter list of a GetterSignature or a SetterSignature (SPEC F.7).</summary>
+    /// <param name="ReceiverType">The Type of the AccessorReceiver, <c>self: Type</c>, or <see langword="null"/> without one.</param>
+    /// <param name="ValueType">The Type of a setter's <c>value: Type</c>, or <see langword="null"/> without one.</param>
+    /// <param name="End">The end of the list: its closer, or the last part read before a missing one.</param>
+    private readonly record struct AccessorParameters(Koto? ReceiverType, Koto? ValueType, int End);
+
+    // SPEC F.7: "(" AccessorReceiver? ")" of a GetterSignature, "(" (AccessorReceiver ",")? "value" ":" Type ")" of a SetterSignature; the
+    // reader stands at "(".
+    private static AccessorParameters ParseAccessorParameters(ref TokenReader reader, PropertyAccessorKind kind)
     {
-        end = reader.Read().Span.End;
-        receiverType = null;
-        valueType = null;
+        var end = reader.Read().Span.End;
+        Koto? receiverType = null;
+        Koto? valueType = null;
         if (reader.IsCurrentIdentifier("self"))
         {
             reader.Advance();
@@ -354,7 +351,7 @@ CloseParameters:
         // Whatever remains of the list is skipped after the one report at its first token.
         reader.ExpectCloser(TokenKind.CloseParenthesis, out var close);
 
-        end = Math.Max(end, close.End);
+        return new(receiverType, valueType, Math.Max(end, close.End));
     }
 
     private static Koto? ParseAccessorReturnType(ref TokenReader reader)
