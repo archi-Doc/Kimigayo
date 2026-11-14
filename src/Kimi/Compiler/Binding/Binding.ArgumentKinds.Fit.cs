@@ -271,9 +271,28 @@ public sealed partial class Binding
             valueType,
             type,
             borrow ? ArgumentOperationKind.Borrow : ArgumentOperationKind.Value,
-            borrow ? ArgumentAdaptation.CrossSemanticsBorrow : ArgumentAdaptation.Literal,
+            this.CompositeClass(type),
             Positions: first..this.positionClasses.Count);
         return result;
+    }
+
+    // SPEC 10.2.2 (the Literal fitting row): a composite argument's own class at `type`, Literal by value and the borrowed temporary's
+    // CrossSemanticsBorrow at `ref/U`. An instance member: static fails SA1204 (member order) here.
+    private ArgumentAdaptation CompositeClass(BoundType type)
+        => type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref } ? ArgumentAdaptation.CrossSemanticsBorrow : ArgumentAdaptation.Literal;
+
+    // SPEC 10.4 step 1, 10.5.1, 10.8 (the owner's O-267 (a), M1): the class of an argument that supplies no evidence at a parameter Type
+    // whose slot no evidence binds (TryCandidate's open row; the position stays open). An aggregate literal or a join formed part by part
+    // that the slot takes whole (`T`, `ref/T`) ranks by its own fit's class there (CompositeClass, as FitComposite at a closed Type), so
+    // no position within it ranks and step 2 decides, as for a Literal at an open slot (SPEC 10.2.1's `f(1)`); a waiting function at a
+    // Function Type by its erasure; any other part (`.None` at `Option<T>`, an omitted header at `(T) -> i32`) is Exact. A literal at a
+    // pattern that holds the slot inside it (`(T, i32)`, `Dictionary<K, V>`) is Exact too: ranking its positions there is PLAN G814's
+    // open-pattern walk (R7-I2, the owner's O-251 (a)).
+    private ArgumentAdaptation OpenClass(Koto argument, BoundType pattern)
+    {
+        var value = pattern is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref } ? pattern.Components[0] : pattern;
+        return value.Kind == BoundTypeKind.Parameter && this.KindOf(argument) is PartKind.Aggregate or PartKind.Join ? this.CompositeClass(pattern)
+            : pattern.Kind == BoundTypeKind.Function && this.IsWaitingCallable(argument) ? ArgumentAdaptation.Erasure : ArgumentAdaptation.Exact;
     }
 
     // SPEC 10.2 row 2, 12.3.1, 14.9.2 step 3 (PLAN G585; the owner's O-201 (1) (a), (2) (a)): the Type U of the owner temporary that a
