@@ -138,9 +138,10 @@ public class ScalarTemporaryBorrowTest
     // SPEC 10.2 row 2, 10.2.1, 3.5.3, 4.3.3, 4.6.2 (PLAN G585's residue, DECISIONS BU-187's K2, K3): a fill or mixed range at `ref/U`
     // is completed at `ref/U` itself, at a call as at a let, so a waiting part (`idf(1)`), a part needing a value read (`wr`) and a join
     // formed part by part take nothing from U: the argument of a function, a method, a construction, a labelled or explicitly
-    // instantiated call, at any depth and in either declaration order. Its misfit is the fill's own record (the call's verdict over it
-    // is dependent: `...`). A waiting part is no evidence for a Type argument (10.8); a fill inside a Tuple literal argument is at the
-    // Tuple's element Type; a function value's call and a mixed range's waiting boundary are decided before the call is selected.
+    // instantiated call, at any depth and in either declaration order. Its misfit is the fill's own record, the only one; a later use
+    // of the failed variable evaluates its call again, and what that reports beside it is dependent (join-call-use: `...`). A waiting
+    // part is no evidence for a Type argument (10.8); a fill inside a Tuple literal argument is at the Tuple's element Type; a function
+    // value's call and a mixed range's waiting boundary are decided before the call is selected.
     [Theory]
     [InlineData("wait-call", Fills + "    let r = kf([2 of idf(1)])\n", "TypeMismatch_Kd: let r = kf([2 of idf(1)])")]
     [InlineData("wait-let", Fills + "    let x: ref/[2 of i64] = [2 of idf(1)]\n", "TypeMismatch_Kd: let x: ref/[2 of i64] = [2 of idf(1)]")]
@@ -148,7 +149,8 @@ public class ScalarTemporaryBorrowTest
     [InlineData("wait32-let", Fills + "    let x: ref/[2 of i32] = [2 of idf(1)]\n", "")]
     [InlineData("read-call", Fills + "    let r = kf([2 of wr])\n", "TypeMismatch_Kd: let r = kf([2 of wr])")]
     [InlineData("read-let", Fills + "    let x: ref/[2 of i64] = [2 of wr]\n", "TypeMismatch_Kd: let x: ref/[2 of i64] = [2 of wr]")]
-    [InlineData("join-call", Fills + "    let r = kft([2 of if c => (1, 2) else => (3, 4)])\n", "TypeMismatch_Kd: let r = kft([2 of if c => (1, 2) else => (3, 4)]) | ...")]
+    [InlineData("join-call", Fills + "    let r = kft([2 of if c => (1, 2) else => (3, 4)])\n", "TypeMismatch_Kd: let r = kft([2 of if c => (1, 2) else => (3, 4)])")]
+    [InlineData("join-call-use", Fills + "    let r = kft([2 of if c => (1, 2) else => (3, 4)])\n    let u: i32 = r\n", "TypeMismatch_Kd: let r = kft([2 of if c => (1, 2) else => (3, 4)]) | ...")]
     [InlineData("join-let", Fills + "    let x: ref/[2 of (i64, i64)] = [2 of if c => (1, 2) else => (3, 4)]\n", "TypeMismatch_Kd: let x: ref/[2 of (i64, i64)] = [2 of if c => (1, 2) else => (3, 4)]")]
     [InlineData("join32-call", Fills + "    let r = kft32([2 of if c => (1, 2) else => (3, 4)])\n", "")]
     [InlineData("wait-meth", Fills + "    let r = s.kf([2 of idf(1)])\n", "TypeMismatch_Kd: let r = s.kf([2 of idf(1)])")]
