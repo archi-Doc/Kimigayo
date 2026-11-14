@@ -75,7 +75,7 @@ Entries were compacted under G420 (the owner's 「規則 A」, 2026-11-05); the 
 - **Q2 Code Rules Analyzer** (2026-10-11, owner; its enforcement retired by CR-R1). The
   [proposal](../../draft/Changes/2026-10-11%20Code%20Rules%20Analyzer.md) §9: rules KR1xxx–KR3xxx and the built-in unused-code
   rules as build errors over a shrinking baseline, units A0–A8 after R3 and before R4. The limits are in
-  COMPILER_ARCHITECTURE (structure limits).
+  COMPILER_ARCHITECTURE (structure limits). Superseded in part by Q19: the statement, token and line-length limits are removed.
 - **Q3 Compiler allocations** (2026-10-11, owner, AGENTS `8071549f`). An allocation in the compiler is allowed when it
   makes equivalent work faster or reduces compiler code with a reasonable increase in memory, measured and recorded.
   Supersedes plan §18 P11 and §14-8. Native allocation counts and O2 run time may not regress.
@@ -117,7 +117,7 @@ Entries were compacted under G420 (the owner's 「規則 A」, 2026-11-05); the 
     process; (2) the units of one group such a design names may share one review in place of their own, merging into dev or main
     only after it passes; (3) documentation that only records decided or verified facts (PLAN, STATUS, CODEMAP,
     PLAN_HISTORY, VERIFICATION evidence and tooling-matched procedures) needs no independent review. Every commit message
-    stays within about 2,000 characters, including Q5's net size change.
+    stays within about 2,000 characters, including Q5's net size change (the length superseded by Q19: no limit).
   - Kept: R4's exit adds a final end-to-end review of A5 and A6 (R4-M35).
   - Supersedes: R4-M35's OD6 scope ("review and records as plan §9.3", A5 only), which the owner broadened, and Q1's
     deferral of lighter commit records. Q5's review rule stands, with these forms added.
@@ -396,6 +396,19 @@ Entries were compacted under G420 (the owner's 「規則 A」, 2026-11-05); the 
   - Rule 3 (seats): the Front has three implementer seats; the Back drops to one once R8's W family no longer needs two (plan §3.3).
   - Division (plan revision 50): the Front designs and reviews R7's cores (C2, C3, D2 d3, I2, P3); the Middle takes Y2-Y5, O1-O3 and P5
     and implements Front-designed units; the Back takes P7 and T1 and lends implementers to Front-designed units after R8's W family.
+- **Q19 No line, character or size limits** (2026-11-14, the owner in K's dialog, verbatim
+  「行数・文字数の上限は、全て撤廃します。各種文書を修正してください。PLAN、コミットメッセージの上限も撤廃します。」 and, for the 60-statement member limit, 「Remove it too」; AGENTS,
+  WORKFLOW, COMPILER_ARCHITECTURE).
+  - Removed: statements per member (60), tokens per file (5,000, with the generated data files' exemption from it), the line length
+    and the code rules' density (160 characters or UTF-16 units per line), PLAN's 500 lines and the commit message's about 2,000
+    characters.
+  - Kept: the parameter limits (6, of which at most 2 optional, 1 `out` and 1 `bool`; CR-R2), `bool` literal arguments by name, no
+    failure text through `out string`, control-statement nesting (4, the one limit `CodeRuleException` may exceed with its reason
+    and bound), operands in one logical or pattern chain (4), no nested conditional expression; Q5's net size change in every commit
+    message; PLAN's merging of rows of one cause and removal of closed rows; AGENTS' structure rules (a responsibility's code in its
+    owner's files, splitting by responsibility, no mechanical splitting).
+  - Effect: a review finding that rests only on a removed limit is dropped; PLAN rows that rest only on one close (G438).
+  - Supersedes in part Q2 (the limits it put in COMPILER_ARCHITECTURE) and Q6 (the commit message's length).
 
 ## Code rules (2026-10-12)
 
