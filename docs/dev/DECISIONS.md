@@ -5678,6 +5678,7 @@ and migration obligations remain in force; no numeric cap changes are authorized
     one. Measured alternative, rejected: placing the parts as Field writes in `Set` makes A1's
     ancestor rule (SPEC 15.1.1) report every placement into a `let`, and telling the two apart needs a new statement kind. A dynamic
     `Array`'s element has no Place (its buffer is read through `Index`), so its Never element stays placed: the stated limit (STATUS).
+    Superseded for the Array literal by R4-M205.
   - A construct that is no Never form and that no edge joins breaks the HIR contract (BU-101 publishes a construct with no source as a
     Never form): `InternalInvariant_Kd` at the construct, its ends joined so the body stays valid.
   - Effect: an assumed completion initializes nothing.
@@ -5945,7 +5946,7 @@ and migration obligations remain in force; no numeric cap changes are authorized
   - Kept: the whole returned value after a return stays accepted (14.10.3, 16.2.2 and 3.5's table use nothing on the assumed path: no
     delivery, and securing a bare temporary transfers it with no extra Copy or Move); a returned part is reported. A Dictionary literal's
     storage has no component path, so a Dictionary received whole while an entry is incomplete is accepted, as for the Array literal
-    (STATUS's Unreachable code row).
+    (STATUS's Unreachable code row). Superseded for the Array literal by R4-M205.
   - Rejected: an allowlist of callees in A1; an Assign through placeEntry's raw slot (A5 moves; `proto/m-g442a`@97ae29924); a
     `MirLocalRole` on key and value (also vocabulary; the key's lookup borrow weakens its contract; 219f17968); a new `MirCalleeKind` or
     `IntrinsicId` (reverses R8-M11); a sixth lane correlating a root's presence with a part's absence (decides nothing the part check does
@@ -6420,6 +6421,23 @@ and migration obligations remain in force; no numeric cap changes are authorized
     shown by a MIR-level row (a body whose binding borrows the payload in place).
   - Rejected: the Downcast's own step reading Leading (a pending Position at the payload Tuple would hold for an enum Leading places
     nothing in); an A5 test of the Case ordinal (TyCtxt.Leading's fact; BU-195's unnamed-fact rule).
+- **R4-M205 A construction places nothing into its Never components, an Array literal's element included (PLAN G901)** (Middle,
+  2026-11-15; MIR build and A1; Minor; the owner's O-308 (a); amends R4-M175's Array sentence and R4-M188's "as for the Array
+  literal"; review ACCEPT WITH NOTES). SPEC 15.1.2, 15.1.3, 14.10.3, 4.9.
+  - Rule: `MirBuilder.Set` builds every construction (an aggregate), also one whose every operand is the Never value; its all-Never
+    skip stays for operations, whose value would be none. `MirMoveData` publishes the Never parts of every aggregate kind but a
+    Closure, an Array literal's element i as the component path ConstIndex i below its destination, as a fixed array's.
+  - Why R4-M175's reason no longer holds ("a dynamic Array's element has no Place ..., so its Never element stays placed"): the
+    component path is a construction record, not a Move Path: no Place names it (an Array's Index ends the path at its prefix), so a
+    whole use and an indexed use of the Array check it (15.1.3: an element without a Move Path needs the whole array complete), and
+    A2 judges it Flag (Keep in a check-only group), never Open. And a construction of Never values only was not built, so its temp
+    read as the Never value (R4-M188's own-bit exclusion), hiding the Tuple, fixed-array and Case forms too.
+  - Kept: the whole returned value, a placed part's read, a call taking the Never value itself (R4-M188, R4-M175).
+  - Not covered: a Dictionary literal's entry and a construction written where no Move Path exists (an indexed element, a Dictionary
+    value), PLAN G909; a Closure capturing the Never value: SPEC does not say whether such a Closure is incomplete (7.7.2, 15.1.2),
+    unchanged (review N4).
+  - Cost: an Array literal's Never parts cost what a fixed array's do; about 10,000 Never-call elements reach
+    `OwnershipStorageLimit_Kd` as the fixed-array literal already did (review N6).
 - **Owner decisions, only when triggered:** O1 a MIR vocabulary member or `IntrinsicId`; O2 a total cap above 142,000;
   O3 an acceptance change outside plan Appendix B (C1–C6 and X1–X3 with a SPEC clause; T1–T4 belong to R7), any rejection
   of a milestone or library program, or a row reopening a SETTLED entry; O4 a general SPEC rule left Unsupported at the R4
