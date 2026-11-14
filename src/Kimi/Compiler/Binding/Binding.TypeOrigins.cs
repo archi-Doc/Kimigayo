@@ -284,7 +284,8 @@ public sealed partial class Binding
             return;
         }
 
-        if (this.StoredSlot(inner, use, out var slot) is { } origin && !OriginOutlives(origin, outer))
+        // A written Type's retention at its use, in no comparison (default).
+        if (this.StoredSlot(inner, use, out var slot, default) is { } origin && !OriginOutlives(origin, outer))
         {
             this.AddObligation(new(BindingObligationKind.OriginOutlives, use, BindingDeadline.BodyOrigins, inner, origin, outer, WellFormed: true, Discharge: discharge, Condition: condition | RequiredCondition(slot)));
         }

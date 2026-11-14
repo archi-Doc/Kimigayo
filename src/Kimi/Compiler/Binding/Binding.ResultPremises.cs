@@ -581,8 +581,9 @@ public sealed partial class Binding
             }
         }
 
-        // The layer the substituted part forms at the use (WellFormedLayer), its pair layer's slot in the borrow cases its binder has there.
-        if (pattern.Components.Count != 0 && pattern.Origin is { } outer && this.WellFormedLayer(result, visit.Use) is { } layer)
+        // The layer the substituted part forms at the use (WellFormedLayer), its pair layer's slot in the borrow cases its binder has in
+        // the visit's relation (its comparison's scope, else the use's: RelationScope).
+        if (pattern.Components.Count != 0 && pattern.Origin is { } outer && this.WellFormedLayer(result, visit.Use, visit.Comparison) is { } layer)
         {
             var stored = visit with { Query = this.storedParts.Begin(this.storageVersion), Condition = RequiredCondition(layer.Condition) };
             if (!this.VisitStoredPremises(pattern.Components[0], layer.Target, actual?.Components[0], outer, layer.Outer, stored))
@@ -642,7 +643,7 @@ public sealed partial class Binding
         // SPEC 8.1.1, 8.1.2, 15.6.5: a pair layer's slot, the implicit `o` of an original `s/T` included, is stored only in its binder's
         // borrow cases. At a use it is the slot its substitution stores: a borrow's Origin, a caller's pair slot in that pair's borrow
         // cases, and none for a value binding, which leaves the relation vacuous.
-        if (this.OuterOrigin(pattern) is { } origin && this.StoredSlot(result, visit.Use, out var slot) is { } value &&
+        if (this.OuterOrigin(pattern) is { } origin && this.StoredSlot(result, visit.Use, out var slot, visit.Comparison) is { } value &&
             !this.VisitWellFormedPremise(origin, outer, result, value, actual is null ? null : this.OuterOrigin(actual), substituted, visit, RequiredCondition(slot)))
         {
             return false;

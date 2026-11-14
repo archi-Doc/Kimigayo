@@ -494,7 +494,7 @@ public sealed partial class Binding
             return;
         }
 
-        if (this.StoredSlot(type, environment.Use, out var slot) is { } origin)
+        if (this.StoredSlot(type, environment.Use, out var slot, environment.Comparison) is { } origin)
         {
             AddPremiseEdge(environment, this.PremiseNode(environment, origin), shorter, rule, condition | slot);
         }

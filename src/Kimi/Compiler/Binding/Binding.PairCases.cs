@@ -190,9 +190,10 @@ public sealed partial class Binding
     /// <param name="type">A Type, such as a pattern's layer or its substitution at a use.</param>
     /// <param name="use">The use whose binders give the condition's bits.</param>
     /// <param name="condition">The Semantics case of the storage, 0 for every case.</param>
-    /// <param name="comparison">The comparison the relation belongs to.</param>
+    /// <param name="comparison">The comparison the relation belongs to, whose scope gives the admitted set (<see cref="RelationScope"/>);
+    /// every caller states it, <c>default</c> for a relation outside any comparison.</param>
     /// <returns>The stored outer Origin, or null when no case stores one.</returns>
-    internal BoundOrigin? StoredSlot(BoundType type, Koto use, out ulong condition, in CallableInstance comparison = default)
+    internal BoundOrigin? StoredSlot(BoundType type, Koto use, out ulong condition, in CallableInstance comparison)
     {
         condition = 0;
         if (!type.ContainsPairLayer)
@@ -215,9 +216,9 @@ public sealed partial class Binding
     /// <see cref="ulong.MaxValue"/>.</summary>
     /// <param name="type">A Type.</param>
     /// <param name="use">The use whose binders give the condition's bits.</param>
-    /// <param name="comparison">The comparison the relation belongs to.</param>
+    /// <param name="comparison">The comparison the relation belongs to, as <see cref="StoredSlot"/> takes it; every caller states it.</param>
     /// <returns>The layer's target, its outer Origin and the Semantics case it exists in, or null when no case forms a layer.</returns>
-    internal (BoundType Target, BoundOrigin Outer, ulong Condition)? WellFormedLayer(BoundType type, Koto use, in CallableInstance comparison = default)
+    internal (BoundType Target, BoundOrigin Outer, ulong Condition)? WellFormedLayer(BoundType type, Koto use, in CallableInstance comparison)
     {
         BoundType target;
         if (IsBorrow(type.Semantics) || type.Kind == BoundTypeKind.Slice)

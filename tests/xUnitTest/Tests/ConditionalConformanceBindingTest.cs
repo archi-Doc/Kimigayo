@@ -246,6 +246,36 @@ public class ConditionalConformanceBindingTest
             "    var store: s/i32 during a\n    var other: s/i32 during b\n" +
             "    public func put(self: uniq/Self, value: s/i32 during a) -> () => self.store = value@move\n"));
 
+    // SPEC 8.1.2, 8.8.2, 15.6.1, 15.3.7 (PLAN G801): an implementation input's well-formedness needs a pair layer's slot only in the
+    // borrow cases the conformance scope admits: under `when s is owner` the input stores no `a`, as the layer itself or as a borrow's
+    // target, so it needs no premise (rejected before G801's merge fix); without the `when` the ref case needs `p outlives a` (or
+    // `a outlives p`), which no premise of the requirement gives.
+    [Theory]
+    [InlineData(" when s is owner", "s/(ref/i32 during static) during a", "s/(ref/i32 during p) during a", "clean")]
+    [InlineData("", "s/(ref/i32 during static) during a", "s/(ref/i32 during p) during a", "1*IncompatibleContractImplementation_Kd")]
+    [InlineData(" when s is owner", "ref/(s/(ref/i32 during static) during static) during static", "ref/(s/(ref/i32 during static) during a) during p", "clean")]
+    [InlineData("", "ref/(s/(ref/i32 during static) during static) during static", "ref/(s/(ref/i32 during static) during a) during p", "1*IncompatibleContractImplementation_Kd")]
+    public void AnImplementationInputsPairSlotNeedsAPremiseOnlyInTheConformanceScopesBorrowCases(string condition, string required, string written, string records)
+        => Assert.Equal(records, DiagnosticCorpus.RecordProfile(
+            "contract M<P>\n    func put(self: uniq/Self, p: ref/i32, value: P) -> i32\n" +
+            $"struct H<s/T> {{a}}\n    s is owner or ref\n    Self is M<{required}>{condition}\n" +
+            "    var store: s/(ref/i32 during static) during a\n" +
+            $"    public func put(self: uniq/Self, p: ref/i32, value: {written}) -> i32\n        return 0\n"));
+
+    // SPEC 8.1.2, 8.8.2, 15.6.1, 15.3.7 (PLAN G801): a required input's pair slot is a premise of the comparison in the borrow cases the
+    // conformance scope admits: under `when s is ref` the required `w` gives `a outlives p` in every case, which the written `value`
+    // needs (rejected before G801's merge fix); without the `when` the owner case has no such premise.
+    [Theory]
+    [InlineData(" when s is ref", "clean")]
+    [InlineData("", "1*IncompatibleContractImplementation_Kd")]
+    public void ARequiredInputsPairSlotIsAPremiseInTheConformanceScopesBorrowCases(string condition, string records)
+        => Assert.Equal(records, DiagnosticCorpus.RecordProfile(
+            "contract M<P>\n    func put(self: uniq/Self, p: ref/i32, w: ref/P during p, value: ref/(ref/i32 during static) during p) -> i32\n" +
+            $"struct H<s/T> {{a}}\n    s is owner or ref\n    Self is M<s/(ref/i32 during static) during a>{condition}\n" +
+            "    var store: s/(ref/i32 during static) during a\n" +
+            "    public func put(self: uniq/Self, p: ref/i32, w: ref/(s/(ref/i32 during static) during a) during p, " +
+            "value: ref/(ref/i32 during a) during p) -> i32\n        return 0\n"));
+
     // SPEC 7.5, 8.3.4, 15.3.5 (PLAN G801): a fit in a conditional member's body reads the admitted set at its use, the member's clauses
     // and an enclosing `when` included: under `s is ref` the longer target fits the stored one, directly or through a local (rejected
     // before G801); without the clause, or under `s is uniq`, the target stays invariant.
