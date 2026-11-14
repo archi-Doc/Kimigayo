@@ -659,6 +659,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
   - `FormatHint` is renamed `FormatSegment`, which carries the segment's literal text beside the estimates that "take the literal byte
     count and a TypeToken of the values' Types", and a literal segment is no write, so "the failure check reads each write's own Result"
     holds for value writes: R5-M133.
+  - Amended by R8-M44 (R8-W2 c2b): "R8 removes all three" is done. `FormatHint`/`FormatSegment` went at R8-W2 c2b, after
+    `FormatBuffer` (c3b) and `FormatFinish` (c3a; R8-M24's amendments).
 
 ## R4 (accepted 2026-10-11)
 
@@ -16844,6 +16846,7 @@ structure is recorded here by the unit that first implements it.
     the adapter's two-phase `uniq` borrow and a tested Result, while its record still has no Place, Loan or Drop; (3) its Descriptor
     bullet `Row(None, Allocation | Abort, 4)`: the row is arity 3, effect None, and the Allocation and Abort effects are the two
     library bodies', which A4 reads.
+  - Superseded by R8-M44 (R8-W2 c2b): FormatSegment is deleted; the hint is the writer's Field store.
 - **R5-M134 The owner confirms C9d's departure (i)** (owner, 2026-10-27, on the choice between C9d's two designs; verbatim 「C9d の逸脱 2
   件（R3-10 の FormatHint を FormatSegment に改名して区間のリテラル本文を持たせること、遅延規則 (a) により固定されていないプログラムで割り当て回数が旧生成器より少なくなり得ること）を承認します。」) Departure (i) is
   confirmed: R3-10's temporary intrinsic FormatHint is renamed `FormatSegment`, and the owning interpolation's per-segment step carries
@@ -21395,6 +21398,9 @@ R8-M* and R9-M* by the stage of the recording unit.
   - RP8 (R7-M21 (2)): T-169 (11-13 10:49-11:14): the O2 and O0 corpus A/B shows no slowdown and the warm compile cost is within;
     cold Bind shifts per program, which deterministic GC counts per phase attribute to the collector's cadence; T-186 reads the
     timing GC-free (`artifacts/benchmarks/r8-k1a-20261113-111107`).
+  - Amended by R8-M44 (R8-W2 c2b): "FormatSegment keeps only the hint (arity 3, effect None) until c2b" is closed: FormatSegment
+    is deleted, and the hint is the writer's Field store. The Staged bullet's unreferenced String constant is not removed by c2b
+    (its "(c2b, which replaces the estimate)"): PLAN G828 (2) stays.
 - **R8-M40 The interpolation-hint term: a second value-Type term row and one refold** (Back, 2026-11-13; R8-W2 c2t, Major; in the
   Front's files, designed and implemented by the Back with the Front's review, C-307: ACCEPT WITH NOTES; part c's plan §3 c2t,
   Revision 1 B6, N2; O-214 (a) R3-N4). SPEC 22.10.5. Amends R8-M21.
@@ -21415,7 +21421,8 @@ R8-M* and R9-M* by the stage of the recording unit.
     `Refold` substitutes declared parameter patterns only, and a term forms only in MIR build. If an open substitution ever reaches
     this arm (G814's rule, folded into R7-I2), an unbound slot must keep itself there (R1, C-307).
   - Spelling: `(L + hint(Types))`. Relations are R8-M21's: a hint and a bound over the same values and literal intern apart.
-  - Staged (PLAN G876): until c2b, `FormatEstimate` states the hint's rule beside `HintBound`; c2b deletes it.
+  - Staged (PLAN G876): until c2b, `FormatEstimate` states the hint's rule beside `HintBound`; c2b deletes it. Closed by R8-M44
+    (R8-W2 c2b): `FormatEstimate` is deleted, and `HintBound` is the rule's one statement.
   - Moves: none (unused until c2b). RP8 (R7-M21 (2)): T-205 (11-14 11:29-11:32): the compile cost within A'/A's noise, warm 0 B
     (`artifacts/benchmarks/r8-k1a-20261114-112931`).
   - Rejected: a refold arm per site (R8-M21); a second walk for the hint (C-307); folding closed values into `Value` (a1 keeps the
@@ -21439,7 +21446,8 @@ R8-M* and R9-M* by the stage of the recording unit.
     (R3-N3: the one length statement). A non-closed or negative result is `InternalInvariant_Kd`.
   - The analyses. A4 and A5 read it as any Const operand (no Place, no Origin).
   - Staged. FormatSegment's (Integer, TypeToken) estimate is a second form of an instance-decided value until c2b, which makes the
-    hint operand `LengthOperand`'s (RN2; PLAN G828).
+    hint operand `LengthOperand`'s (RN2; PLAN G828). Closed by R8-M44 (R8-W2 c2b): FormatSegment is deleted, and the hint's store
+    takes `LengthOperand`'s operand (PLAN G828 (7)).
   - Rejected: a `[L of ()]` Place (R3: a fixed array as a carrier of a number); a narrowed estimate intrinsic (R2); a direct
     `Subst.Lengths` read, or an entry over `SubstituteLength` (R3-N3); Binding publishing a Name's term in a HIR column (a Binding
     change for one form).
@@ -21474,6 +21482,55 @@ R8-M* and R9-M* by the stage of the recording unit.
     text reads drop BOMs or replace bytes.
   - Rejected: `[string]::Equals(..., Ordinal)` on decoded text (keeps the lossy decoding), hex strings with `-ceq` (correct only by
     argument, a second rule), `[byte[]]`-typed parameters (PowerShell converts a numeric string).
+- **R8-M44 An owning interpolation's hint is the adapter's `hint` Field, stored before each write position** (Back, 2026-11-13;
+  R8-W2 c2b; Major, prototype first by the owner's O-214 (a); B's rulings Q1-Q7; the Middle's C-267: CONSENT, hunk review ACCEPT
+  WITH NOTES; the Front's C-345: CONSENT; B's implementation review ACCEPT WITH NOTES; on R3-10, R5-M133, R8-M39, R8-M40 and
+  R8-M41). SPEC 22.10.5, 11.2, 11.3.2.
+  - **Rule.** Before each write position of an owning interpolation (literal ones included), `MirBuilder.Writes` stores, into the
+    writer's Field `Utf8Writer.hint` (by name, `AdtDef.IndexOf`), the term of the later literal bytes and values' Types
+    (`TyCtxt.InterpolationHint`). The store is in the length's one form (`MirBuilder.LengthOperand`): an Integer where it folds, a
+    `Length` constant its instance decides otherwise. Code generation writes the Field's store.
+  - **The set.** `internal var hint: isize` with `private get`. The standard set is Place access (SPEC 11.2), writable by the
+    library's Kotonoha, the compiler's expansion included; its one reader, `reserve`'s kind-1 arm, is private.
+    - The plan's `var` with `internal set` would broaden a private Property's accessor, an error (SPEC 11.3.2).
+    - No function, catalog row or `KimiDeclarationId` (+0; part c's total is +2, not the plan's +3), and no `CallerLocation` (a
+      standard set cannot Abort).
+  - **Moved.** The hint's value moved from code generation (`FormatEstimate` over the step's Integer and TypeToken) to the term,
+    folded at build or refolded in the instance; its store moved from a runtime routine to MIR. One statement of the rule remains,
+    `FormattingTypes.HintBound`.
+  - **Deleted.**
+    - `IntrinsicId.FormatSegment` (28 -> 27, `None` included), the last of R3-10's temporary intrinsics (the owner, 2026-10-11).
+    - Its descriptor row; the validator's `Constants`, `Steps`, `Fits` and `EstimateConstants`; `IntrinsicWriter.Segment` and its
+      row; `FunctionCodegen.Interpolation.cs`; `LegacyRuntimeHelpers.FormatEstimate` and `FormatHint`; `__kimi_format_hint`.
+    - The builder's Unit temp and per-position borrow.
+  - **Validation and analyses: no new rule.** The store is an Assign the existing rules check (its Type; c2a's `Length` row).
+    A4 composes nothing. A5 sees a write of a Scalar Field of a local and one Loan fewer per position. Generated gate: W-204, 0
+    record differences.
+  - **Counts unchanged** (SPEC 22.10.5): NestedReservations 2/2/22, BoundedGrowsByItsHint 1/9, Kernel 2/60. A generic non-direct
+    `"\(a)\(b)"` (b: T) at T = i32 allocates once.
+  - **The three checks** (WORKFLOW's Owner, Exposure and Readings).
+    - Owner: the hint's value is the term's (`TyCtxt.InterpolationHint`, folded by `FormattingTypes.HintBound`; R8-M40), its MIR
+      form `MirBuilder.LengthOperand`'s (R8-M41), its position and store `MirBuilder.Writes`'. c2b reads the first two and deletes
+      the second statement of the value (`FormatEstimate`).
+    - Exposure: none found. B's implementation review ran 14 valid twins on the base and the head (closed, generic, nested,
+      direct-line, `$tryWrite`, Closure and default-parameter interpolations): both accept each with the same output, exit code
+      and allocation counts, and none gives `Unsupported_Kd` or `InternalInvariant_Kd`.
+    - Readings: none beyond the text. SPEC 11.2 (a standard `set` "initializes or replaces the storage") and 11.3.2 ("A repeated
+      or broader modifier is an error"; "`set` access need not be contained in `get` access") are read word for word. User code
+      writing or reading `writer.hint` stays `InaccessibleBinding_Kd` (the review's two invalid twins).
+  - **Closes:** R8-M41's Staged (RN2: the estimate beside `Length`; PLAN G828 (7)) and R8-M40's Staged (`FormatEstimate` beside
+    `HintBound`; PLAN G876).
+    **Staged:** the dead formatting runtime until c4 (PLAN G828 (3): no routine of it has a caller). PLAN G828 (2) is not closed
+    (B's Q2; the Middle's C-267): its cause, a record made by re-typing an already-stored constant (`Text`'s
+    `Viewed(Literal(...))` and the comparison path), is the Middle's `Literal`/`Viewed`.
+  - **Rejected:**
+    - A custom setter with a catalog row: a wrapper without semantics, plus a call, a block and a borrow per position.
+    - `setHint`: the one name is `Utf8Writer.hint` (the plan's N7).
+    - An internal getter: broader than its one reader (the fallback if Binding had lacked a narrowed `get`).
+    - FormatSegment kept with a `Length` operand: a temporary intrinsic for a store.
+    - A library `hinted<length H>`: one instance per distinct hint, a2 review 2's R2-N2.
+    - Skipping the store on a fixed-only line: a mode in `Writes`.
+  - **RP8:** T-218.
 - **R9-M1 A check's phase sequence is `Compilation.Check`** (2026-11-08; R9-F5; Major, behavior-preserving; review 1 REVISE, then
   review 2). SPEC 23.1.2, 23.2.2; IMPL 20.6.1. Supersedes in part R5-M65 (`Project` reads `Accepts`) and R5-M77 (`Project` discovers
   the test catalog after acceptance and owns it).
