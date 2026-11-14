@@ -134,6 +134,20 @@ public sealed class RecursiveContractTest
     public void CopyReachesAProjectionWhateverItsSpelling(string unit, string form, string program, string records)
         => CompilationTestHelper.AssertRecordsAtLines($"{form} [{unit}]", program + "()", records);
 
+    // DECISIONS R7-C2e2-1 at c2-2's merge (N3 of its merge review): o1's view has no identity premise, so its Tree request keeps the
+    // view's entry; the Copy request extends, filing the facts again under its extended keys, so it reopens the entry as its own and
+    // writes nothing into the Kept entry; `T.(Tree).Other`, asked last, forms the entry again. The pairs indexed over Orders', exact: an
+    // extension writing into the Kept entry leaves it Kept for the last request, which then indexes nothing (46).
+    [Fact]
+    public void AnExtensionReopensTheViewsKeptEntryAsItsOwn()
+    {
+        var probe = "func probe<T>(r: ref/T.(Tree).Child.(Tree).Alias, o: ref/T.(Tree).Other)\n    T is AT2\n" +
+            "    needsTree<T.(Tree).Child.(Tree).Alias>(r)\n    needsCopy<T.(Tree).Child.(Tree).Alias>(r)\n    needsTree<T.(Tree).Other>(o)\n";
+        Assert.Equal(66, Work(Orders + probe) - Work(Orders));
+
+        static int Work(string source) => Bind(source).Binding.ClosureIndexWork;
+    }
+
     [Theory]
     // SPEC 8.3.2 (the refinement row), 8.3.3 (Finality): a Contract premise supplies each conformance its refinement clauses state, at any
     // depth, in any order of declarations and premises, through Contracts that supply each other, inside a Tuple or an Option, through an

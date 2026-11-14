@@ -10,6 +10,128 @@ public class NormalizedConstraintProofBindingTest
 {
     private const string Head = "public contract Origin\n    associate Item\npublic struct Source\n    Self is Origin\n    associate Origin.Item is i32\n";
 
+    private const string Trees = "contract Tree\n    associate Child is Tree\ncontract CopyTree: Tree, Copy\n    Self.(Tree).Child is CopyTree\n" +
+        "contract K\n    associate X\n    Self.(K).X is i32\n";
+
+    // R7-C2e2-1's valid twins: `Moved`, a projection's body use, whose fill writes its scope's premises between requests (the view's
+    // entry is rebuilt at the new serial); `Derived`, a view whose identity table a derived identity fact keeps Provisional (`T is K`
+    // supplies `T.(K).X is i32`): its class keys are not final, so the entry stays the request's.
+    private const string Moved = "func twice<T>(value: T.(Tree).Child) -> (T.(Tree).Child, T.(Tree).Child)\n    T is CopyTree\n" +
+        "    let x: T.(Tree).Child = value\n    let y = (x, x)\n    return (x, x)\n";
+
+    private const string Validated = "contract K<X>\n    associate E\nfunc f<T, U, V>(t: T, u: U, v: V)\n    T is K<U>\n    T is K<V>\n    T is K<i32>\n" +
+        "    T.(K<U>).E is i32\n    T.(K<V>).E is i32\n    T.(K<i32>).E is i32\n    ()\n" +
+        "contract P<E>\n    func read(self: ref/Self, value: ref/E) -> i32\ncontract Left: P<i32>\ncontract Right<U>: P<U>\n" +
+        "struct S<U, T>\n    Self is Left when T is i32\n    Self is Right<U> when T is string\n" +
+        "    public func read(self: ref/Self, value: ref/i32) -> i32 => 1\n    public func read(self: ref/Self, value: ref/U) -> i32 => 2\n";
+
+    private const string Derived = "func both<T, U>(a: U.(Tree).Child, b: U.(Tree).Child.(Tree).Child) -> (U.(Tree).Child, U.(Tree).Child, " +
+        "U.(Tree).Child.(Tree).Child, U.(Tree).Child.(Tree).Child)\n    T is U\n    T is CopyTree\n    T is K\n    return (a, a, b, b)\n";
+
+    // DECISIONS R7-C2e2-1: Closure(view) forms a view's index once per view value, not once per request. n Copy requests in one view of
+    // n written premises read one entry, so each added premise adds a fact to each of a few views' entries; a per-request index walks the
+    // n facts once per request (4,800 more facts from 8 to 16 premises). No projection: a fill moves the view at each use.
+    [Fact]
+    public void AViewsIndexIsFormedOncePerViewNotPerRequest()
+    {
+        var (small, large) = (Work(8), Work(16));
+        Assert.True(large - small <= 16 * 8, $"{small} at 8, {large} at 16");
+
+        static int Work(int n)
+        {
+            var range = Enumerable.Range(0, n);
+            var parameters = string.Join(", ", range.Select(static i => $"T{i}"));
+            var values = string.Join(", ", range.Select(static i => $"v{i}: T{i}"));
+            var results = string.Join(", ", range.Select(static i => $"T{i}, T{i}"));
+            var premises = string.Concat(range.Select(static i => $"    T{i} is CopyTree\n"));
+            var copies = string.Join(", ", range.Select(static i => $"v{i}, v{i}"));
+            var c = MinimalEmissionTest.Analyze(Trees + $"func f<{parameters}>({values}) -> ({results})\n{premises}    return ({copies})\n" +
+                "public func main() -> ()\n    return\n");
+            Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
+            return c.Binding.ClosureIndexWork;
+        }
+    }
+
+    // DECISIONS R7-C2e2-1: an entry is its view's at the serial it was formed at (Moved), and Kept only when its class keys are final
+    // (Derived: a Provisional identity table; the readings' admission is x1's count row below). Each with its invalid twin: `T is Tree`
+    // supplies no Copy.
+    [Theory]
+    [InlineData(Moved, "clean")]
+    [InlineData(Derived, "clean")]
+    [InlineData(Moved, "invalid")]
+    [InlineData(Derived, "invalid")]
+    public void AViewsIndexIsTheViewsAtItsSerialAndCompletion(string function, string records)
+    {
+        var twin = records == "clean" ? function : function.Replace("T is CopyTree", "T is Tree", StringComparison.Ordinal);
+        Assert.Equal(records, DiagnosticCorpus.RecordProfile(Trees + twin + "public func main() => ()\n") == "clean" ? "clean" : "invalid");
+    }
+
+    // DECISIONS R7-C2e2-1: the pairs the entries index for Moved (the fill moves its view: the entry is formed again at the new serial)
+    // and Derived (an identity view whose table the derived identity fact of `T is K` keeps Provisional: its class keys are not final,
+    // so its entry stays the request's and each request forms it again, R7-C2c2 c2-1's lifetime), less the library's: exact. An entry
+    // read across its serial indexes fewer (1,411); one Kept under a table that is not Final indexes 192. Every row counts (R7-C2e2-2).
+    [Fact]
+    public void AViewsIndexIsFormedAtEachSerialUntilComplete()
+        => Assert.Equal(1416, ClosureWork(Trees + Moved + Derived) - ClosureWork(Trees));
+
+    // DECISIONS R7-C2e2-1, R7-M20 (implementation review 2's twins): `(a, a)` is an in-region Copy request, which keeps the view's entry
+    // with readings; `Box<U>.(K).X` then normalizes through `Box<T>: K when T is C`, whose condition is proven by premise inside that
+    // associated normalization, an outermost request outside KeptRegion: it forms the entry again with its own readings. The condition
+    // holds by `U is C` (x1) or through the identity by `T is C` (x2); without it (x1n) `Box<U>` is not K.
+    [Theory]
+    [InlineData("x1", "    U is C\n", "")]
+    [InlineData("x2", "    T is C\n", "")]
+    [InlineData("x1n", "", "UnprovenConstraint_Kd: let y: Box<U>.(K).X = b")]
+    public void AKeptEntrysReadingsAreNotReadInsideANormalization(string form, string premise, string records)
+        => CompilationTestHelper.AssertRecordsAtLines(form, Boxed(premise) + "public func main() => ()\n", records);
+
+    // The pairs x1's entries index over the library's, exact (a fact of the identity view also under its class key; the table is Final,
+    // so the entry is Kept): the request inside the normalization indexes the view again, so reading the Kept entry there, without
+    // IndexOf's rebuild branch, indexes 68, as does an entry Kept with readings that were not kept.
+    [Fact]
+    public void ARequestInsideANormalizationIndexesItsViewAgain()
+        => Assert.Equal(98, ClosureWork(Boxed("    U is C\n")) - ClosureWork(string.Empty));
+
+    // DECISIONS R7-C2e2-2: a closure validator's read forms its view's entry when it has a fact to pair, and the entry goes back when
+    // the read ends. The agreement reads f's view (three identities of one projection through K<U>, K<V> and K<i32>, SPEC 8.9.2);
+    // disjointness reads the scopes of S's two conditional conformances (`T is i32` against `T is string`, SPEC 8.9.1). The pairs their
+    // entries and the requests' index over the library's: exact.
+    [Fact]
+    public void AValidatorsReadIndexesItsViewOncePerRead()
+        => Assert.Equal(89, ClosureWork(Validated) - ClosureWork(string.Empty));
+
+    // DECISIONS R7-C2e2-2 (the read's lifetime): the entry a validator's read forms goes back when the read ends. Three paths to P<i32>
+    // (SPEC 8.9.1): pair (1, 0)'s disjointness read forms L1's view's entry, which holds no class-key pairs (a read has no request's
+    // classes); pair (2, 0) then proves L3's conditions in L1's scope, an outermost request whose classes join T and U, so it forms
+    // that view's entry again with its class-key pairs. Kept until that request returned, the read's entry is reused without them:
+    // 4 fewer pairs on l2 (the struct's `U is C` met by L1's `T is U`), 3 on l2r (the roles swapped). The pairs over the library's: exact.
+    [Theory]
+    [InlineData("T", "U", 22)]
+    [InlineData("U", "T", 20)]
+    public void AValidatorsReadEntryGoesBackWhenTheReadEnds(string joined, string premised, int pairs)
+    {
+        var source = "contract C\ncontract P<E>\n    func read(self: ref/Self, value: ref/E) -> i32\ncontract L1: P<i32>\ncontract L2: P<i32>\n" +
+            $"contract L3: P<i32>\nstruct S<T, U>\n    {premised} is C\n    Self is L1 when {joined} is {premised}, {joined} is i32\n" +
+            $"    Self is L2 when {joined} is string\n    Self is L3 when {joined} is C\n" +
+            "    public func read(self: ref/Self, value: ref/i32) -> i32 => 1\n";
+        Assert.Equal(pairs, ClosureWork(source) - ClosureWork(string.Empty));
+    }
+
+    [Trait("Purpose", "Allocation")]
+    [Fact]
+    public void AWarmRebindThatRebuildsAViewsIndexAllocatesNothing()
+    {
+        var c = MinimalEmissionTest.Analyze(Trees + Moved + Derived + "public func main() => ()\n");
+        Assert.True(c.Bind().IsComplete);
+        Assert.Equal(0, AllocationMeasurement.Measure(() =>
+        {
+            if (!c.Bind().IsComplete)
+            {
+                throw new InvalidOperationException("The rebind failed.");
+            }
+        }));
+    }
+
     [Theory]
     [InlineData("Source.(Origin).Item", "i32", ConstraintProof.Proven)]
     [InlineData("i32", "Source.(Origin).Item", ConstraintProof.Proven)]
@@ -146,6 +268,20 @@ public class NormalizedConstraintProofBindingTest
                 throw new InvalidOperationException("Normalized constraint proof failed.");
             }
         }));
+    }
+
+    private static string Boxed(string premise)
+        => "contract Tree\n    associate Child is Tree\ncontract CopyTree: Tree, Copy\n    Self.(Tree).Child is CopyTree\ncontract C\n" +
+            "contract K\n    associate X\nstruct Box<T>\n    public let v: i32\n    Self is K when T is C\n        associate K.X is i32\n" +
+            "func f<T, U>(a: U.(Tree).Child, b: i32) -> (U.(Tree).Child, U.(Tree).Child)\n    T is U\n    T is CopyTree\n" + premise +
+            "    let p = (a, a)\n    let y: Box<U>.(K).X = b\n    return p\n";
+
+    // Closure(view)'s pairs indexed by a compilation of `source` (the class's scaling measure).
+    private static int ClosureWork(string source)
+    {
+        var c = MinimalEmissionTest.Analyze(source + "public func main() => ()\n");
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
+        return c.Binding.ClosureIndexWork;
     }
 
     private static void AssertProof(Compilation c, ConstraintProof expected)

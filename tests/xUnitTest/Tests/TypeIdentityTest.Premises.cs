@@ -10,6 +10,7 @@ namespace XunitTest;
 public partial class TypeIdentityTest
 {
     private const string Ref3 = "func f<T>(first: ref/i32 during a, mid: ref/i32 during b, second: ref/i32 during c, value: T) -> i32\n";
+    private const string CE = "contract C\n    associate E\n";
     private const string Pair3 = "func f<s/W, U, V>(x: s/W, first: ref/i32 during a, u: U, v: V) -> i32\n";
 
     [Theory]
@@ -68,6 +69,31 @@ public partial class TypeIdentityTest
     [InlineData("    Self is Flag when A is Option<B>, A is Array<B>\n    Self is Mark when A is Option<B>\n", "InvalidConstraint_Kd@4")]
     public void AConditionsPremiseErrorIsOneRecord(string conformances, string records)
         => Assert.Equal(records, PremiseRecords("contract Flag\ncontract Mark\nstruct Either<A, B>\n" + conformances + "    var value: A\n"));
+
+    // R7-C2e2-2, SPEC 8.2.3: two identity premises of one projection to different complete Types are the table's premise error like
+    // any other: one record at the declaration whose premises form it and none at the clauses' projections or at a use. The forms: a
+    // function (the Contract before or after it, two or three premises), a struct, a Contract's own clauses, a requirement the premise
+    // `T is D` supplies against a written one, a nested projection, fixed arrays of different lengths, and the projection used in the
+    // signature and the body. Each with its valid twin.
+    [Theory]
+    [InlineData(CE + "func f<T>(v: T)\n    T is C\n    T.(C).E is i32\n    T.(C).E is i32\n    ()\n", "")]
+    [InlineData(CE + "func f<T>(v: T)\n    T is C\n    T.(C).E is i32\n    T.(C).E is string\n    ()\n", "InvalidConstraint_Kd@3")]
+    [InlineData("func f<T>(v: T)\n    T is C\n    T.(C).E is string\n    T.(C).E is i32\n    ()\n" + CE, "InvalidConstraint_Kd@1")]
+    [InlineData(CE + "func f<T>(v: T)\n    T is C\n    T.(C).E is i32\n    T.(C).E is i32\n    T.(C).E is string\n    ()\n", "InvalidConstraint_Kd@3")]
+    [InlineData(CE + "struct S<T>\n    T is C\n    T.(C).E is i32\n    T.(C).E is i32\n    var v: T\n", "")]
+    [InlineData(CE + "struct S<T>\n    T is C\n    T.(C).E is i32\n    T.(C).E is string\n    var v: T\n", "InvalidConstraint_Kd@3")]
+    [InlineData("contract D\n    associate E\n    Self.(D).E is i32\n    Self.(D).E is i32\n", "")]
+    [InlineData("contract D\n    associate E\n    Self.(D).E is i32\n    Self.(D).E is string\n", "InvalidConstraint_Kd@1")]
+    [InlineData("contract D\n    associate E is i32\nfunc f<T>(v: T)\n    T is D\n    T.(D).E is i32\n    ()\n", "")]
+    [InlineData("contract D\n    associate E is i32\nfunc f<T>(v: T)\n    T is D\n    T.(D).E is string\n    ()\n", "InvalidConstraint_Kd@3")]
+    [InlineData(CE + "contract D\n    associate F\nfunc f<T>(v: T)\n    T is C\n    T.(C).E is D\n    T.(C).E.(D).F is i32\n    T.(C).E.(D).F is i32\n    ()\n", "")]
+    [InlineData(CE + "contract D\n    associate F\nfunc f<T>(v: T)\n    T is C\n    T.(C).E is D\n    T.(C).E.(D).F is i32\n    T.(C).E.(D).F is string\n    ()\n", "InvalidConstraint_Kd@5")]
+    [InlineData(CE + "func f<T>(v: T)\n    T is C\n    T.(C).E is [(2 + 2) of i32]\n    T.(C).E is [4 of i32]\n    ()\n", "")]
+    [InlineData(CE + "func f<T>(v: T)\n    T is C\n    T.(C).E is [4 of i32]\n    T.(C).E is [5 of i32]\n    ()\n", "InvalidConstraint_Kd@3")]
+    [InlineData(CE + "func f<T>(v: T.(C).E) -> i32\n    T is C\n    T.(C).E is i32\n    T.(C).E is i32\n    return v\n", "")]
+    [InlineData(CE + "func f<T>(v: T.(C).E) -> i32\n    T is C\n    T.(C).E is i32\n    T.(C).E is string\n    return v\n", "InvalidConstraint_Kd@3")]
+    public void AProjectionsPremiseErrorIsOneRecordAtItsDeclaration(string source, string records)
+        => Assert.Equal(records, PremiseRecords(source));
 
     private static string PremiseRecords(string source)
         => string.Join(' ', DiagnosticCorpus.Check(source, "Library").Diagnostics
