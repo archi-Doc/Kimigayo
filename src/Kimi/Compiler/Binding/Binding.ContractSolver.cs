@@ -63,12 +63,16 @@
 // formation (the caller's, above), for one pass (ResetCapabilities), when its derivation is Complete. Any other request forms its
 // readings itself.
 // - Completion (C1 §5's, without Resource until f): each function of the normalization gives its answer with one; its zero is
-//   Provisional, a composite rule's answer is the meet of its parts', and only these members give Complete (W1-W6;
+//   Provisional, a composite rule's answer is the meet of its parts', and only these members give Complete (W1-W8;
 //   ArchitectureRulesTest): NormalizeProofConstraint, NormalizeProofType (W1); SubstituteIdentity (W2); IdentityPremise (W3);
 //   ContractType, ContractPart, ContractTypeCore, ContractLength, ApplyContractEnvironment, SubstituteContractReference (W4);
 //   ProjectionSpecification, ResolveAssociated(receiver), BuiltinArithmeticOutput's and FixedArrayIteratorType's gates (W5);
-//   AvailableConstraintFact (W6). Provisional is a conservative superset of C1's: the derivation took a route not shown final in the
-//   pass (a derived fact's availability; a projection route past its gate; the batched route; a Callable fact; StoredType's null).
+//   AvailableConstraintFact and AvailableContractPremise (W6: the meet of every source state read, a failed declaration context
+//   Provisional); the identity classes' Completion (W7); ReadSourceState (W8, SourceStates': a published Proven or Refuted); and
+//   PremiseRefines' outermost walk (the meet of its availability reads, which admits its rows; R7-C2e2 e2-3a). Provisional is a
+//   conservative superset of C1's: the derivation took a route not shown final in the publication (a source read Pending or in
+//   Error; a projection route past its gate; the batched route; a Callable fact; StoredType's null). Complete is final within one
+//   publication of the source states (SourceStates resets them at each), so every table kept here lives one publication.
 // - Within a member an unthreaded call counts as Complete, so a member calls only these besides the members above, each pure or
 //   final in the capability phase; each change to a member is reviewed against this list: the view's reads (HasParameterIdentity,
 //   EnclosingContractSelf, a chain environment's sets), FactStates, NegateConstraint, InternConstraint, interning and Type rewriting
@@ -76,9 +80,9 @@
 //   they return a Type), the static gates (ArithmeticContracts.IsArithmetic, WitnessGroup), SubstituteStoredOrigins (declared
 //   Origins), ConformanceByDeclaration (final after the InheritedConformances query, Binding.cs's RegisterInheritedConformances),
 //   and the PrepareTypeStorage memo (per storageVersion).
-// - PremiseRefines' answer may rest on a Provisional identity table (a view holding a derived identity fact, W6, W7) and reaches its
-//   callers unthreaded, as Complete, as its availability reads do; carrying it is R7-C2e2's (Completion carried by the judgments'
-//   answers). No such table is known to grow after the read within a pass.
+// - PremiseRefines' answer reaches its callers unthreaded, as Complete; its walk's Completion decides only what is kept here, and
+//   carrying it to the judgments' answers is R7-C2e2 e2-3b's (after e2-5a). No Provisional table is known to grow after the read
+//   within a publication.
 //
 // Closure(view) (DECISIONS R7-C2e2-1, R7-C2e2-2): a view's index of its facts by kind and subject is one table, an entry per (view
 // scope, requirement Contract) formed at the view's serial and rebuilt in place when the serial moves, its buckets by (chain scope,
@@ -93,7 +97,8 @@
 //   the serial counts), their class keys when the view has no identity premise or its identity table is Final (W7, the rule the kept
 //   rows ask: a table that is not is rebuilt per read), readings where KeptRegion kept them (the one rule), so an entry whose keys
 //   are not final or whose preparation formed a reading that was not kept stays owned by its outermost request and goes when that
-//   returns. A Kept entry lasts the pass (ClearClosure, in ResetCapabilities) and spares a later outermost request its preparation;
+//   returns. A Kept entry lasts its publication (forgotten in place at the next one's start, ForgetKeptTables; emptied by ClearClosure
+//   in ResetCapabilities) and spares a later outermost request its preparation;
 //   its readings are read only in KeptRegion, so outside it an outermost request forms its own (R7-M20) and the entry again. A
 //   nested demand reads an entry's written facts and their keys alone (the leaf rule), so it reads any entry. An extension (R7-C2c2
 //   c2-2) files the written facts again under its extended keys; its table is never Final (the rows are Provisional), so by the same
@@ -106,8 +111,8 @@
 //   its Contract row has no class key and no reading, so no request may read it, and it goes back to the pool when the read ends. A
 //   Kept entry serves a read as it is.
 // - Retained memory is the pool's high water: an entry keeps the largest buckets and lists any view gave it, flat across warm
-//   rebinds. Temporary: the readings go when R7-C2c2 c2-4 removes Reading's binding completion; a view whose identity table is not
-//   Final (a derived identity fact, W6) has its entry formed per request, c2-1's lifetime, until R7-C2e2's part 3 carries Completion.
+//   rebinds. Temporary: the readings go when R7-C2c2 c2-4 removes Reading's binding completion. A view whose identity table is not
+//   Final (a derived identity fact whose sources are not all final in the publication, W6) has its entry formed per request.
 //
 // Kept rows (DECISIONS R7-C2a1, the owner's O-206 (a)), a column of the view's Kept entry in Closure(view) (R7-C2e2 e2-3a).
 // - What and key: the rows of each link an outermost request walked, in the entry of its (view scope, requirement Contract) at the
@@ -115,30 +120,24 @@
 //   and, in a table of their own, a Contract's head depth. Rows are kept only in a Kept entry (both need final keys and every reading
 //   kept), so a row lives no longer than its entry.
 // - Where: the kept region (KeptRegion, R7-M20's rule, which Reading and PremiseRefines both ask), an outermost request, a
-//   preparation that formed no reading, a view with no identity premise or a Final identity table (its keys are then a function of
-//   the view and the pass; a view with a derived identity fact keeps none until R7-C2e2): each fact of its index was a kept, Complete
-//   reading, so the index is a function of the key and the pass. Nested demands never read or fill the rows.
-// - Lifetime: one epoch (KeepsAcrossRequests, the one phase fact; ClearKeptRows, the one clear). In the capability phase it is the
-//   capability epoch, which ClearCapabilityResults ends with the capability results and the component summaries; before the phase it
-//   is one outermost request (a Contract's clauses are still being bound, so not even a head depth outlives it).
-// - Inputs outside the key, and what covers a write to each inside an epoch: Contract clause storage (HeadDepth, ContractSupply):
-//   bound before the phase, none. The availability reads (AvailableConstraintFact, AvailableContractPremise): an environment's fact
-//   sets and its Invalid (in the serial); a published source state, which only leaves Pending and is written as each check of a
-//   publication round ends; a Contract's declaration context, which the validations only fail (ValidateConstraintEnvironments;
-//   ValidateClosedTypeConstraints in InvalidateProjectionCertificates' loop). A kept row may be read across such a write until
-//   the epoch ends, exactly as a capability result may: a round or a loop iteration that wrote one is followed by a clear and
-//   another, a declaration left Pending is checked again in a fresh epoch, and the last round and the last iteration write none,
-//   so what outlives them read final states (SourceStates: no answer computed from a Pending read outlives its round). A row read
-//   across a write is a Pending read's (the row of a Contract proven since is absent) or names a Contract that has failed since,
-//   whose own record rejects the program and whose failure makes each environment naming it Invalid, another serial. Only a
-//   premise-bearing subject has rows (one rooted in a generic input or a Contract's Self: a closed proposition is never a
-//   premise), so a closed clause's own requests, over closed subjects, have empty rows on every walk; what a non-final round does
-//   not redo is a proof step that asked such a subject in another declaration's scope before a state it read changed (a
-//   hypothesis the capability results share: a node is keyed by proposition and scope).
-// - Not replayed: a kept answer skips the walk's per-check effects, which a capability result replays from its payload:
-//   InvalidDeclarationContext's Consulted (SPEC 23.1.2), ReadSourceState's join of a limit, a U fact or a cause (BU-22) and, outside
-//   a proof scope, its frame. They exist only where a source is not valid, whose own record is reported: what can differ is the
-//   dependence or the cause of a failing check's record in a rejected program, never an acceptance (DECISIONS Q13).
+//   preparation that formed no reading, final keys (no identity premise, or a Final identity table), and a Complete walk: every
+//   availability read it made was Complete (W6, W8). Nested demands never read or fill the rows.
+// - Lifetime: the entry's, the publication, in the capability phase (KeepsAcrossRequests, the one phase fact); before it one
+//   outermost request (a Contract's clauses are still being bound, so not even a head depth outlives it).
+// - Inputs outside the key, and what covers a change to each inside a publication: Contract clause storage (HeadDepth,
+//   ContractSupply): bound before the phase, none. An environment's fact sets and its Invalid: the serial. A published source state:
+//   a Complete walk read only Proven or Refuted ones, final in the publication. A Contract's declaration context (and an ancestor's
+//   or an enclosing declaration's), which validations fail between publications (ValidateConstraintEnvironments after the phase's
+//   first publication; ValidateCopyDeclarations, ValidateApiAccess, ValidateBaseDeclarations and ValidateProperties before the
+//   after-bodies one; InvalidateProjectionCertificates' validations before its loop's): a valid context only fails, and (i) the
+//   failure's own record rejects the program, so an answer kept across it differs only in a rejected program's dependent records
+//   (Q13, record selection); (ii) where the failed Contract is named by an environment, that environment goes Invalid, another
+//   serial (not shown for an ancestor's or an enclosing declaration's failure: (i) carries the argument). The same holds for every
+//   table kept for the publication (readings, entries, identity tables).
+// - Not replayed: a kept answer skips the walk's per-check effects, which a capability result replays from its payload. A Complete
+//   walk read only Proven or Refuted states and valid contexts, so two are left, both records only (Q13): a read outside every
+//   proof scope opens and closes its own frame (ReadSourceState at proofNesting 0), and a context failed after the walk would
+//   have been consulted (SPEC 23.1.2), the dependent record of (i) above.
 
 using Kimi.Compiler.Parsing;
 
@@ -316,6 +315,7 @@ public sealed partial class Binding
     private int enumeratePoolNext;
     private int enumerateDepth;
     private int enumerateWalking;
+    private Completion enumerateCompletion; // the outermost walk's: the meet of its availability reads (the class header's Kept rows)
     private int readingFormations;
     private int readingStores;
     private IdentityClasses? enumerateClasses; // R7-C2c2: the current request's view's identity classes, or null
@@ -386,6 +386,7 @@ public sealed partial class Binding
             try
             {
                 this.enumerateIdentities.Clear();
+                this.enumerateCompletion = Completion.Complete;
                 var refines = RowsRefine(this.Enumerate(subject, view, index), contract);
                 refines |= !ReferenceEquals(key, subject) && RowsRefine(this.Enumerate(key, view, index), contract);
 
@@ -417,7 +418,7 @@ public sealed partial class Binding
                     this.IdentityRounds++;
                 }
 
-                if (keep)
+                if (keep && this.enumerateCompletion == Completion.Complete)
                 {
                     this.KeepRows(index, view, serial);
                 }
@@ -439,7 +440,7 @@ public sealed partial class Binding
                 this.enumeratePoolNext = 0;
                 if (!this.KeepsAcrossRequests)
                 {
-                    this.ClearKeptRows(); // Before the capability phase the epoch is this request.
+                    this.enumerateHeads.Clear(); // Before the capability phase the head depths live for this request.
                 }
             }
         }
@@ -458,14 +459,17 @@ public sealed partial class Binding
         }
     }
 
-    // The kept rows' epoch ended: the capability epoch (ClearCapabilityResults) or, before the phase, the outermost request.
-    private void ClearKeptRows()
+    // A publication of the source states starts (PublishSourceStates, their one writer): every table kept in the capability phase
+    // may rest on a published state, so each is forgotten, the entries and identity tables in place (the same entry per view, warm 0 B).
+    private void ForgetKeptTables()
     {
+        this.readings.Clear();
         foreach (var index in this.enumerateIndex.Values)
         {
-            index.ClearRows();
+            index.Forget();
         }
 
+        this.ForgetIdentityClasses();
         this.enumerateHeads.Clear();
     }
 
@@ -561,7 +565,7 @@ public sealed partial class Binding
         this.enumerateOwned.Clear();
     }
 
-    // The pass ended (ResetCapabilities): every entry goes back to the pool.
+    // The pass ended (ResetCapabilities): every entry goes back to the pool, and the head depths go.
     private void ClearClosure()
     {
         foreach (var index in this.enumerateIndex.Values)
@@ -570,6 +574,7 @@ public sealed partial class Binding
         }
 
         this.enumerateIndex.Clear();
+        this.enumerateHeads.Clear();
     }
 
     // The outermost request's view, under a parameter identity: each fact as the view reads it (Reading, every reader's), added after
@@ -685,7 +690,7 @@ public sealed partial class Binding
             this.enumeratePoolNext++;
         }
 
-        if (IsContractSelf(subject) && subject.Symbol!.SelfOf is { } self && this.AvailableContractPremise(self))
+        if (IsContractSelf(subject) && subject.Symbol!.SelfOf is { } self && this.WalkAvailable(this.AvailableContractPremise(self, out var selfRead), selfRead))
         {
             Add(rows, self);
         }
@@ -713,8 +718,8 @@ public sealed partial class Binding
                 }
 
                 var states = this.FactStates(fact, subject, out _);
-                if ((states || this.SameClass(fact.Subject!, subject)) && this.AvailableConstraintFact(environment, raw, out _) &&
-                    this.AvailableContractPremise(fact.Contract!))
+                if ((states || this.SameClass(fact.Subject!, subject)) && this.WalkAvailable(this.AvailableConstraintFact(environment, raw, out var factRead), factRead) &&
+                    this.WalkAvailable(this.AvailableContractPremise(fact.Contract!, out var contractRead), contractRead))
                 {
                     Add(rows, this.RowContract(fact, subject, states));
                 }
@@ -746,7 +751,7 @@ public sealed partial class Binding
 
                     if (premise is { Kind: ConstraintKind.Contract, Subject: { } stated, Contract: { } symbol } &&
                         ((AssociatedIdentityMatches(stated, subject) is var states && states) || this.SameClass(stated, subject)) &&
-                        this.AvailableContractPremise(symbol))
+                        this.WalkAvailable(this.AvailableContractPremise(symbol, out var premiseRead), premiseRead))
                     {
                         Add(rows, this.RowContract(premise, subject, states));
                     }
@@ -812,6 +817,9 @@ public sealed partial class Binding
         // The kept rows (the class header's Kept rows): a link's rows and whether its walk recorded an identity row.
         internal Dictionary<BoundType, (List<BindingSymbol> Rows, bool Extends)> Rows { get; } = new(ReferenceEqualityComparer.Instance);
 
+        // A publication started: the entry is formed again in place at its view's next read.
+        internal void Forget() => this.Serial = -1;
+
         internal void Open(int serial)
         {
             this.Serial = serial;
@@ -819,11 +827,6 @@ public sealed partial class Binding
             this.Readings = false;
             this.Buckets.Clear();
             this.used = 0;
-            this.ClearRows();
-        }
-
-        internal void ClearRows()
-        {
             this.Rows.Clear();
             this.rowsUsed = 0;
         }
@@ -930,15 +933,24 @@ public sealed partial class Binding
     }
 
     // A Contract premise is available when the Contract and each ancestor (the deduplicated transitive closure) are valid sources: its
-    // declaration context and its published source state (Binding.SourceStates).
-    private bool AvailableContractPremise(BindingSymbol contract)
+    // declaration context and its published source state (Binding.SourceStates). W6: the meet of the states it read (W8); a failed or
+    // unresolved context is Provisional (its read consults the failure, which a kept answer would not replay).
+    private bool AvailableContractPremise(BindingSymbol contract, out Completion completion)
     {
+        completion = Completion.Complete;
         var ancestors = contract.Contract?.Ancestors;
         for (var i = -1; i < (ancestors?.Count ?? 0); i++)
         {
             var source = i < 0 ? contract : ancestors![i];
-            if (this.InvalidDeclarationContext(source.Declaration) || UnresolvedTypeDeclarationContext(source.Declaration) ||
-                this.ReadSourceState(source) != ConstraintProof.Proven)
+            if (this.InvalidDeclarationContext(source.Declaration) || UnresolvedTypeDeclarationContext(source.Declaration))
+            {
+                completion = Completion.Provisional;
+                return false;
+            }
+
+            var state = this.ReadSourceState(source, out var read);
+            completion = Meet(completion, read);
+            if (state != ConstraintProof.Proven)
             {
                 return false;
             }
@@ -947,7 +959,15 @@ public sealed partial class Binding
         return true;
     }
 
-    // W6: Complete when the fact is not in the environment or is direct; a derived fact's availability reads its sources' states.
+    // An availability read of the outermost walk: its Completion joins the walk's (the class header's Kept rows).
+    private bool WalkAvailable(bool available, Completion completion)
+    {
+        this.enumerateCompletion = Meet(this.enumerateCompletion, completion);
+        return available;
+    }
+
+    // W6: Complete when the fact is not in the environment or is direct; a derived fact found available is the meet of every source it
+    // read (R7-M20's composite rule), and one not found is Provisional (a Pending source may still supply it).
     private bool AvailableConstraintFact(ConstraintEnvironment environment, BoundConstraint fact, out Completion completion)
     {
         completion = Completion.Complete;
@@ -961,16 +981,23 @@ public sealed partial class Binding
             return true;
         }
 
-        completion = Completion.Provisional;
+        var read = Completion.Complete;
         for (var i = 0; i < environment.DerivedFacts.Count; i++)
         {
             var derived = environment.DerivedFacts[i];
-            if (ReferenceEquals(derived.Fact, fact) && this.AvailableContractPremise(derived.Source))
+            if (ReferenceEquals(derived.Fact, fact))
             {
-                return true;
+                var available = this.AvailableContractPremise(derived.Source, out var source);
+                read = Meet(read, source);
+                if (available)
+                {
+                    completion = read;
+                    return true;
+                }
             }
         }
 
+        completion = Completion.Provisional;
         return false;
     }
 

@@ -10,6 +10,8 @@ public class NormalizedConstraintProofBindingTest
 {
     private const string Head = "public contract Origin\n    associate Item\npublic struct Source\n    Self is Origin\n    associate Origin.Item is i32\n";
 
+    private const string Takes = "group G\n    func take<T>()\n        T is Copy\n        ()\n";
+
     private const string Trees = "contract Tree\n    associate Child is Tree\ncontract CopyTree: Tree, Copy\n    Self.(Tree).Child is CopyTree\n" +
         "contract K\n    associate X\n    Self.(K).X is i32\n";
 
@@ -67,12 +69,38 @@ public class NormalizedConstraintProofBindingTest
     }
 
     // DECISIONS R7-C2e2-1: the pairs the entries index for Moved (the fill moves its view: the entry is formed again at the new serial)
-    // and Derived (an identity view whose table the derived identity fact of `T is K` keeps Provisional: its class keys are not final,
-    // so its entry stays the request's and each request forms it again, R7-C2c2 c2-1's lifetime), less the library's: exact. An entry
-    // read across its serial indexes fewer (1,411); one Kept under a table that is not Final indexes 192. Every row counts (R7-C2e2-2).
+    // and Derived (an identity view with the derived identity fact of `T is K`: K's state is Proven, so the fact's availability is
+    // Complete (W6, R7-C2e2 e2-3a), the table Final and the entry Kept; 1,416 while W6 kept every derived fact Provisional and each
+    // request formed the entry again), less the library's: exact, over the publications that form the entries again. Every row counts.
     [Fact]
     public void AViewsIndexIsFormedAtEachSerialUntilComplete()
-        => Assert.Equal(1416, ClosureWork(Trees + Moved + Derived) - ClosureWork(Trees));
+        => Assert.Equal(220, ClosureWork(Trees + Moved + Derived) - ClosureWork(Trees));
+
+    // R7-C2e2 e2-3a's coverage rows (`coverage-e23.md`): a published read's Completion (W8), W6 the meet of every source read, the
+    // walk's Completion admitting its rows, every kept table for one publication. Each program's records, exact (equal under dev's
+    // rules). dv1 is valid by SPEC 8.2.3 (`T is K` makes `T.(K).X` an `i32`) and rejected on dev too: an identity in a value position,
+    // not this unit's (F's PLAN row). m1e's first source is in Error because its clause is a syntax error (an applied Type is no
+    // ConstraintSubject). Not constructed: the admission's fail-first row (a later round reusing a walk that read a source Pending in an
+    // earlier round of the same publication) and a record row for W8's final Unknown (unverified; design review 2's counts).
+    [Theory]
+    [InlineData("dv1", "public contract Origin\npublic struct Source\n    Self is Origin\ncontract K\n    associate X\n    Self.(K).X is i32\n    Source is Origin\nfunc f<T>(v: T.(K).X) -> i32\n    T is K\n    return v\n", "1*TypeMismatch_Kd")]
+    [InlineData("dv1n", "public contract Origin\npublic struct Source\ncontract K\n    associate X\n    Self.(K).X is i32\n    Source is Origin\nfunc f<T>(v: T.(K).X) -> i32\n    T is K\n    return v\n", "1*InvalidConstraint_Kd 1*TypeMismatch_Kd 2*UnprovenConstraint_Kd 2*UnsatisfiedConstraint_Kd")]
+    [InlineData("dv2", "public contract Origin\npublic struct Source\n    Self is Origin\ncontract K\n    associate X\n    Self.(K).X is i32\n    Source is Origin\nfunc g<T>(v: T.(K).X) -> (T.(K).X, T.(K).X)\n    T is K\n    return (v, v)\nfunc h<T>(v: T.(K).X) -> (T.(K).X, T.(K).X)\n    T is K\n    return (v, v)\n", "clean")]
+    [InlineData("dv2n", "public contract Origin\npublic struct Source\n    Self is Origin\ncontract K\n    associate X\n    Source is Origin\nfunc g<T>(v: T.(K).X) -> (T.(K).X, T.(K).X)\n    T is K\n    return (v, v)\nfunc h<T>(v: T.(K).X) -> (T.(K).X, T.(K).X)\n    T is K\n    return (v, v)\n", "4*TransferRequired_Kd")]
+    [InlineData("m1v", "public contract Origin\npublic struct Source\n    Self is Origin\npublic contract A: Copy\n    Source is Origin\npublic contract B: Copy\n" + Takes + "    func caller<T>(value: T)\n        T is A\n        T is B\n        take<T>()\n", "clean")]
+    [InlineData("m1u", "public contract Origin\npublic struct Source\npublic contract A: Copy\n    Source is Origin\npublic contract B: Copy\n" + Takes + "    func caller<T>(value: T)\n        T is A\n        T is B\n        take<T>()\n", "2*InvalidConstraint_Kd 2*UnsatisfiedConstraint_Kd")]
+    [InlineData("m1e", "public struct Box<T>\n    T is Copy\npublic contract A: Copy\n    Box<string> is Copy\npublic contract B: Copy\n" + Takes + "    func caller<T>(value: T)\n        T is A\n        T is B\n        take<T>()\n", "1*ExpectedSyntax_Kd")]
+    [InlineData("m2", "public contract M: Copy\n    Self is not Copy\n" + Takes + "    func caller<T>(value: T)\n        T is M\n        take<T>()\n", "2*InvalidConstraint_Kd")]
+    [InlineData("m2r", Takes + "    func caller<T>(value: T)\n        T is M\n        take<T>()\npublic contract M: Copy\n    Self is not Copy\n", "3*InvalidConstraint_Kd")]
+    [InlineData("m2v", "public contract M: Copy\n" + Takes + "    func caller<T>(value: T)\n        T is M\n        take<T>()\n", "clean")]
+    [InlineData("m4", "public contract Origin\npublic struct Source\npublic contract Pending: Copy\n    Source is Origin\n" + Takes + "    func caller<T>(value: T)\n        T is Pending\n        take<T>()\n", "2*InvalidConstraint_Kd 2*UnsatisfiedConstraint_Kd")]
+    [InlineData("c12s", "public contract C\npublic contract Marker: Copy\n    string is Copy\npublic struct Target<T>\n    T is Marker\n    Self is C\n", "2*InvalidConstraint_Kd 2*UnsatisfiedConstraint_Kd")]
+    [InlineData("c12r", "public contract C\npublic struct Target<T>\n    T is Marker\n    Self is C\npublic contract Marker: Copy\n    string is Copy\n", "2*InvalidConstraint_Kd 2*UnsatisfiedConstraint_Kd")]
+    [InlineData("c12e", "public contract C\npublic contract Marker: Copy\n    string is Copy\npublic enum Target<T>\n    T is Marker\n    Self is C\n    A\n", "2*InvalidConstraint_Kd 2*UnsatisfiedConstraint_Kd")]
+    [InlineData("c12v", "public contract C\npublic contract Marker: Copy\n    i32 is Copy\npublic struct Target<T>\n    T is Marker\n    Self is C\n", "clean")]
+    [InlineData("c12c", "public contract Marker: Copy\n    string is Copy\n" + Takes + "    func caller<T>(value: T)\n        T is Marker\n        take<T>()\n", "2*InvalidConstraint_Kd 2*UnsatisfiedConstraint_Kd")]
+    public void APublishedReadIsKeptOnlyWhereItIsFinal(string row, string program, string records)
+        => Assert.True(records == DiagnosticCorpus.RecordProfile(program), $"{row}: {DiagnosticCorpus.RecordProfile(program)}");
 
     // DECISIONS R7-C2e2-1, R7-M20 (implementation review 2's twins): `(a, a)` is an in-region Copy request, which keeps the view's entry
     // with readings; `Box<U>.(K).X` then normalizes through `Box<T>: K when T is C`, whose condition is proven by premise inside that
@@ -90,7 +118,7 @@ public class NormalizedConstraintProofBindingTest
     // IndexOf's rebuild branch, indexes 68, as does an entry Kept with readings that were not kept.
     [Fact]
     public void ARequestInsideANormalizationIndexesItsViewAgain()
-        => Assert.Equal(98, ClosureWork(Boxed("    U is C\n")) - ClosureWork(string.Empty));
+        => Assert.Equal(108, ClosureWork(Boxed("    U is C\n")) - ClosureWork(string.Empty)); // 98 before e2-3a's publication lifetime
 
     // DECISIONS R7-C2e2-2: a closure validator's read forms its view's entry when it has a fact to pair, and the entry goes back when
     // the read ends. The agreement reads f's view (three identities of one projection through K<U>, K<V> and K<i32>, SPEC 8.9.2);
@@ -98,7 +126,7 @@ public class NormalizedConstraintProofBindingTest
     // entries and the requests' index over the library's: exact.
     [Fact]
     public void AValidatorsReadIndexesItsViewOncePerRead()
-        => Assert.Equal(89, ClosureWork(Validated) - ClosureWork(string.Empty));
+        => Assert.Equal(97, ClosureWork(Validated) - ClosureWork(string.Empty)); // 89 before e2-3a's publication lifetime
 
     // DECISIONS R7-C2e2-2 (the read's lifetime): the entry a validator's read forms goes back when the read ends. Three paths to P<i32>
     // (SPEC 8.9.1): pair (1, 0)'s disjointness read forms L1's view's entry, which holds no class-key pairs (a read has no request's
@@ -106,8 +134,8 @@ public class NormalizedConstraintProofBindingTest
     // that view's entry again with its class-key pairs. Kept until that request returned, the read's entry is reused without them:
     // 4 fewer pairs on l2 (the struct's `U is C` met by L1's `T is U`), 3 on l2r (the roles swapped). The pairs over the library's: exact.
     [Theory]
-    [InlineData("T", "U", 22)]
-    [InlineData("U", "T", 20)]
+    [InlineData("T", "U", 28)] // 22 and 20 before e2-3a: each publication forms the entries again
+    [InlineData("U", "T", 26)]
     public void AValidatorsReadEntryGoesBackWhenTheReadEnds(string joined, string premised, int pairs)
     {
         var source = "contract C\ncontract P<E>\n    func read(self: ref/Self, value: ref/E) -> i32\ncontract L1: P<i32>\ncontract L2: P<i32>\n" +
