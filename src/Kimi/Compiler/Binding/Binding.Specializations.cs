@@ -328,7 +328,7 @@ public sealed partial class Binding
 
             // SPEC 8.13.2: the original's generic Constraints are inherited; the closed arguments must satisfy them.
             var constraints = this.CheckConstraints(definition.TypeConstraints, new CallSubstitution(definition, arguments, lengths), scope);
-            if (constraints == ConstraintProof.Unknown && !EveryOrigin(arguments, function, null, static (origin, header, _) => !ReferenceEquals(origin.Binder, header)))
+            if (constraints == ConstraintProof.Unknown && NamesHeaderOrigin(arguments, function))
             {
                 // SPEC 8.13.2 (PLAN G863): the original admits only the bindings its Constraints allow, so an undecided Constraint over
                 // the header's universal Origins is a premise of the body, which nothing states yet: a located limit. The gate reads
@@ -355,11 +355,14 @@ public sealed partial class Binding
 
             // SPEC 8.13.2: a Type argument's Origins are the ones each call of the original supplies, the header's universal input
             // Origins at that argument (TypeContext), or ones bound inside it; a written one adds an Origin restriction (independent of
-            // the Origin's own well-formedness, SPEC 15.2.3).
+            // the Origin's own well-formedness, SPEC 15.2.3), a raw layer's too (SPEC 5.7: it states which storage the pointer addresses).
             for (var i = 0; i < arguments.Length; i++)
             {
-                valid &= arguments[i] is not { } argument ||
-                    EveryOrigin([argument], function, function.GenericArguments[i], static (origin, header, at) => Unwritten(origin, header, at!));
+                if (arguments[i] is { } argument)
+                {
+                    var summary = this.SummaryOf(argument);
+                    valid &= Unwritten(summary.Nodes, function, function.GenericArguments[i]) && Unwritten(summary.RawNodes, function, function.GenericArguments[i]);
+                }
             }
 
             if (!valid)
@@ -449,61 +452,43 @@ public sealed partial class Binding
             return true;
         }
 
-        // Whether every Origin of the Types passes a test: each Type's own, its Origin arguments and its components'. The test takes the
-        // header and an argument's syntax, so no closure is formed (PrepareSpecializations visits every node).
-        static bool EveryOrigin(ReadOnlySpan<BoundType?> types, FunctionKoto function, Koto? syntax, Func<BoundOrigin, FunctionKoto, Koto?, bool> test)
+        // Whether an argument's Origins (its Origin summary's nodes) name one of the header's: a universal input or a parameter's Origin.
+        bool NamesHeaderOrigin(BoundType?[] arguments, FunctionKoto function)
         {
-            foreach (var type in types)
+            foreach (var argument in arguments)
             {
-                if (type is null)
+                if (argument is null)
                 {
                     continue;
                 }
 
-                if (type.Origin is { } origin && !test(origin, function, syntax))
+                foreach (var origin in this.SummaryOf(argument).Nodes)
+                {
+                    if (ReferenceEquals(origin.Binder, function))
+                    {
+                        return true;
+                    }
+                }
+            }
+
+            return false;
+        }
+
+        // SPEC 8.13.2: whether no header wrote an Origin node of a Type argument: each is the header's universal input Origin at the
+        // argument, one bound inside it (a Function Type's per-call input) or their meet (whose operands are nodes too). Any other
+        // (static, a parameter's, a binder's) is written.
+        static bool Unwritten(BoundOrigin[] nodes, FunctionKoto function, Koto argument)
+        {
+            foreach (var origin in nodes)
+            {
+                if (origin.Kind != OriginKind.Intersection && !(origin is { Kind: OriginKind.Input, Binder: { } binder } &&
+                    (ReferenceEquals(binder, function) ? origin.Occurrence is { } at && IsWithin(at, argument) : IsWithin(binder, argument))))
                 {
                     return false;
-                }
-
-                for (var i = 0; i < type.OriginArguments.Count; i++)
-                {
-                    if (!test(type.OriginArguments[i], function, syntax))
-                    {
-                        return false;
-                    }
-                }
-
-                for (var i = 0; i < type.Components.Count; i++)
-                {
-                    if (!EveryOrigin([type.Components[i]], function, syntax, test))
-                    {
-                        return false;
-                    }
                 }
             }
 
             return true;
-        }
-
-        // SPEC 8.13.2: an Origin of a Type argument that no header wrote: the header's universal input Origin at the argument, one bound
-        // inside it (a Function Type's per-call input) or their meet. Any other (static, a parameter's, a binder's) is written.
-        static bool Unwritten(BoundOrigin origin, FunctionKoto function, Koto argument)
-        {
-            if (origin.Kind == OriginKind.Intersection)
-            {
-                for (var i = 0; i < origin.Operands.Count; i++)
-                {
-                    if (!Unwritten(origin.Operands[i], function, argument))
-                    {
-                        return false;
-                    }
-                }
-
-                return true;
-            }
-
-            return origin is { Kind: OriginKind.Input, Binder: { } binder } &&
-                (ReferenceEquals(binder, function) ? origin.Occurrence is { } at && IsWithin(at, argument) : IsWithin(binder, argument));
         }
 
         static bool HasParameterAttributes(FunctionKoto function)
