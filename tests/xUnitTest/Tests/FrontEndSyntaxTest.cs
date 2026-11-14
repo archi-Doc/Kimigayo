@@ -198,6 +198,24 @@ public class FrontEndSyntaxTest
         }
     }
 
+    // SPEC 23.1.2: a written Type outside its position's grammar (a base or parent that is no InheritanceReference, F.6.1; a group or a
+    // fixed array after "::", F.5; an adaptation target's bound Container qualifier or borrow-layer Origin, 13.5.1) stays bound beside its
+    // syntax record, so a failure inside it that its repair leaves keeps its own record: the unresolved Name, the repeated set name.
+    [Theory]
+    [InlineData("struct D : (Missing)", "1*ExpectedSyntax_Kd 1*UnresolvedBinding_Kd")]
+    [InlineData("struct D : ref/Missing", "1*ExpectedSyntax_Kd 1*UnresolvedBinding_Kd")]
+    [InlineData("struct D : Missing?", "1*ExpectedSyntax_Kd 1*UnresolvedBinding_Kd")]
+    [InlineData("struct D : GB<Missing>?", "1*ExpectedSyntax_Kd 1*UnresolvedBinding_Kd")]
+    [InlineData("struct D : (B0, Missing)", "1*ExpectedSyntax_Kd 1*UnresolvedBinding_Kd")]
+    [InlineData("struct D {b}: (Base{b})", "1*DuplicateBinding_Kd 1*ExpectedSyntax_Kd")]
+    [InlineData("func f(v: ::(Missing)) => ()", "1*ExpectedSyntax_Kd 1*UnresolvedBinding_Kd")]
+    [InlineData("func f(v: ::[2 of Missing]) => ()", "1*ExpectedSyntax_Kd 1*UnresolvedBinding_Kd")]
+    [InlineData("func f(x: i32) -> i32 => x@((Missing{k}).Item)", "1*MisplacedSyntax_Kd 1*UnresolvedBinding_Kd")]
+    [InlineData("func f(x: i32, z: i32)\n    let y = x@(ref/Missing during z)", "1*MisplacedSyntax_Kd 1*UnresolvedBinding_Kd")]
+    [InlineData("func f(x: i32, z: i32)\n    let y = x@(uniq/Missing during z)", "1*MisplacedSyntax_Kd 1*UnresolvedBinding_Kd")]
+    public void AFailureInsideAWrittenTypeOutsideItsGrammarKeepsItsRecord(string declaration, string records)
+        => Assert.Equal(records, DiagnosticCorpus.RecordProfile("open struct B0\nopen struct GB<T>\nopen struct Base {a}\n    public let value: ref/i32 during a\n    public init(value: ref/i32 during a) => self.value = value\n" + declaration + "\n"));
+
     [Theory]
     [InlineData("let require = 1")]
     [InlineData("    let a = 1")]

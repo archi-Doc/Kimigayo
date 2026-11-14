@@ -70,7 +70,16 @@ public static partial class Parser
     // A written Type outside its position's grammar, after its record: a root path whose "::" a group, a fixed array or a second "::"
     // follows (SPEC F.5), an adaptation target with an Origin on a borrow layer or a bound Container qualifier heading its path
     // (13.5.1), a base or Contract parent that is no InheritanceReference (F.6.1, F.6.2). The one recovery of each such position: the
-    // Type is replaced by an Error over its span, which every check reading the Type rests on.
+    // Type stays where it was written and is bound, so every independent failure inside it keeps its record (SPEC 23.1.2), as a group
+    // that is no PathQualifier stays the Type before the enclosing construct's record (ContinuesGroupedType); the Type is a recovery,
+    // so every check reading it rests on the record.
     private static Koto RecoverWrittenType(ref TokenReader reader, Koto type, DiagnosticKey? cause)
-        => new ErrorKoto(ref reader, type.Span) { Cause = cause };
+    {
+        if (cause is { } key)
+        {
+            reader.CodeContext.RecordRecovery(type, key);
+        }
+
+        return type;
+    }
 }

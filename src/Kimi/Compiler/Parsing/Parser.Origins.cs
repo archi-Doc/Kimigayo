@@ -268,12 +268,12 @@ public static partial class Parser
 
     /// <summary>Judges an adaptation target read as a Type by SPEC 13.5.1's two rules of its own chain, through grouping and Semantics
     /// layers down to its Core: no Origin annotation on a borrow layer, and no bound Container qualifier as the head of the Core's
-    /// path (F.5). Types nested in the Core keep both forms.</summary>
+    /// path (F.5). Types nested in the Core keep both forms. The first form written is one record, and the Type it writes, the
+    /// annotated layer or the Core's path, is a written Type outside its grammar (RecoverWrittenType).</summary>
+    /// <param name="reader">The token reader.</param>
     /// <param name="type">The parsed target.</param>
-    /// <returns>The key of the first Error, or <see langword="null"/> when the chain writes neither form.</returns>
-    private static DiagnosticKey? CheckAdaptationTarget(Koto type)
+    private static void CheckAdaptationTarget(ref TokenReader reader, Koto type)
     {
-        DiagnosticKey? cause = null;
         var outer = true;
         while (true)
         {
@@ -286,7 +286,8 @@ public static partial class Parser
                 // SPEC 13.5.1: an outer raw layer states its Origin, a fit or a claim (SPEC 5.7); the chain's other Origins are inferred.
                 if (!layer.IsTransparentWrapper && layer.HasOrigin && !(outer && layer is { SemanticsKind: SemanticsKind.Raw, SemanticsParameter: null }))
                 {
-                    cause ??= layer.Unexpected(SyntaxForm.AdaptationOrigin);
+                    RecoverWrittenType(ref reader, layer, layer.Unexpected(SyntaxForm.AdaptationOrigin));
+                    return;
                 }
 
                 outer &= layer.IsTransparentWrapper;
@@ -301,10 +302,10 @@ public static partial class Parser
                 var head = ContainerPathHead(type);
                 if (!ReferenceEquals(head, type) && head is ParenthesizedTypeKoto { Type: not FunctionTypeKoto })
                 {
-                    cause ??= head.Unexpected(SyntaxForm.AdaptationQualifier);
+                    RecoverWrittenType(ref reader, type, head.Unexpected(SyntaxForm.AdaptationQualifier));
                 }
 
-                return cause;
+                return;
             }
         }
     }

@@ -118,8 +118,9 @@ public static partial class Parser
         }
         else
         {
+            // A written Type outside its grammar (RecoverWrittenType) read its own suffixes, so the rest is the enclosing construct's.
             type = ParseTypeHead(ref reader, target);
-            if (type is not ErrorKoto && !delimitedTarget)
+            if (type is not ErrorKoto && !delimitedTarget && reader.CodeContext.RecoveryCause(type) is null)
             {
                 type = ParseTypeSuffixes(ref reader, type, target);
             }
@@ -169,9 +170,9 @@ public static partial class Parser
                 }
 
                 // A group, a fixed array or a second '::' written there is read as the Type it writes, so nothing of it is left to the
-                // enclosing construct, and the root path is a written Type outside its grammar.
+                // enclosing construct, and that Type is a written Type outside its grammar: '::' roots only a TypeSegment.
                 var written = ParseAnnotatedType(ref reader, target ? TypeContext.TargetOperand : TypeContext.SemanticsOperand, out _);
-                return RecoverWrittenType(ref reader, new SyntaxFormKoto(ref reader, SourceSpan.FromBounds(rootStart, written.Span.End), KotoKind.RootName, "::", [written]), cause);
+                return RecoverWrittenType(ref reader, written, cause);
             }
 
             reader.Advance();
