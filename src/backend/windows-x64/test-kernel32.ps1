@@ -5,6 +5,7 @@ $ErrorActionPreference = 'Stop'
 $ToolchainRoot = Resolve-KimiToolchainRoot $ToolchainRoot
 if (-not $LlvmBin) { $LlvmBin = $ToolchainRoot }
 . (Join-Path $PSScriptRoot 'kernel32.ps1')
+. (Join-Path $PSScriptRoot 'expected-output.ps1')
 function Expect-Failure([scriptblock] $Action, [string] $Message) {
     try { & $Action | Out-Null } catch {
         if ($_.Exception.Message -notlike "*$Message*") { throw }
@@ -36,7 +37,7 @@ $output = Join-Path $root 'previous.lib'
 [IO.File]::WriteAllText($output, 'previous output')
 $broken = @{ 'llvm-dlltool' = $tools['llvm-readobj']; 'llvm-readobj' = $tools['llvm-readobj'] }
 Expect-Failure { New-KimiKernel32Library $broken $output 2>$null } 'generation failed'
-if ([IO.File]::ReadAllText($output) -cne 'previous output' -or @(Get-ChildItem -LiteralPath $root -Directory -Filter 'previous.lib-*').Count) { throw 'Failed generation damaged output or left staging files' }
+if (-not (Test-KimiExpectedOutput ([Text.Encoding]::UTF8.GetBytes('previous output')) ([IO.File]::ReadAllBytes($output))) -or @(Get-ChildItem -LiteralPath $root -Directory -Filter 'previous.lib-*').Count) { throw 'Failed generation damaged output or left staging files' }
 Expect-Failure { Get-KimiDlltoolIdentity $tools['llvm-readobj'] } 'SHA-256 mismatch'
 $warnings = @()
 $unverified = Get-KimiDlltoolIdentity $tools['llvm-readobj'] -AllowUnpinnedToolchain -WarningVariable warnings -WarningAction SilentlyContinue
