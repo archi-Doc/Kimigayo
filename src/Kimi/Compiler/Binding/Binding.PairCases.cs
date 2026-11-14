@@ -106,15 +106,16 @@ public sealed partial class Binding
     /// Semantics, and null when no admitted case is a borrow, so the slot never exists. A binder that is not in scope, or beyond the 64th, is <see cref="ulong.MaxValue"/>: a premise under it is never
     /// usable, and a relation required under it is judged unconditionally.</summary>
     /// <param name="layer">A Type; only a pair layer has a condition.</param>
-    /// <param name="scope">The constraint scope of the use, whose binders give the bits.</param>
+    /// <param name="use">The use whose binders give the bits; only a pair layer finds its scope.</param>
     /// <returns>The condition, or null when the slot never exists.</returns>
-    internal ulong? PairSlotCondition(BoundType layer, BindingScope scope)
+    internal ulong? PairSlotCondition(BoundType layer, ref UseScope use)
     {
         if (!TryPairLayer(layer, out var whole, out _))
         {
             return 0;
         }
 
+        var scope = use.Scope(this);
         var admitted = this.AdmittedSemantics(whole, scope);
         if ((admitted & SemanticsMask.Borrow) == 0)
         {
@@ -154,10 +155,10 @@ public sealed partial class Binding
     /// slot, the implicit <c>o</c> of an original <c>s/T</c> included, in its binder's borrow cases (<see cref="PairSlotCondition"/>), and
     /// any other Type's written Origin in every case.</summary>
     /// <param name="type">A Type, such as a pattern's layer or its substitution at a use.</param>
-    /// <param name="scope">The constraint scope of the use, whose binders give the condition's bits.</param>
+    /// <param name="use">The use whose binders give the condition's bits.</param>
     /// <param name="condition">The Semantics case of the storage, 0 for every case.</param>
     /// <returns>The stored outer Origin, or null when no case stores one.</returns>
-    internal BoundOrigin? StoredSlot(BoundType type, BindingScope scope, out ulong condition)
+    internal BoundOrigin? StoredSlot(BoundType type, ref UseScope use, out ulong condition)
     {
         condition = 0;
         if (!type.ContainsPairLayer)
@@ -165,7 +166,7 @@ public sealed partial class Binding
             return type.Origin;
         }
 
-        if (this.PairSlotCondition(type, scope) is not { } slot)
+        if (this.PairSlotCondition(type, ref use) is not { } slot)
         {
             return null;
         }
@@ -174,14 +175,14 @@ public sealed partial class Binding
         return this.OuterOrigin(type);
     }
 
-    /// <summary>Gets the layer a Type forms for well-formedness in a use's scope (SPEC 15.6.1, 8.1.2, 15.6.5), whose target's stored Origins
+    /// <summary>Gets the layer a Type forms for well-formedness at a use (SPEC 15.6.1, 8.1.2, 15.6.5), whose target's stored Origins
     /// outlive its outer Origin: a safe borrow or a Slice in every case, and a pair layer within its stored slot (<see cref="StoredSlot"/>)
     /// in its binder's borrow cases. The condition is the raw <see cref="PairSlotCondition"/>: each consumer applies its own contract to
     /// <see cref="ulong.MaxValue"/>.</summary>
     /// <param name="type">A Type.</param>
-    /// <param name="scope">The constraint scope of the use, whose binders give the condition's bits.</param>
+    /// <param name="use">The use whose binders give the condition's bits.</param>
     /// <returns>The layer's target, its outer Origin and the Semantics case it exists in, or null when no case forms a layer.</returns>
-    internal (BoundType Target, BoundOrigin Outer, ulong Condition)? WellFormedLayer(BoundType type, BindingScope scope)
+    internal (BoundType Target, BoundOrigin Outer, ulong Condition)? WellFormedLayer(BoundType type, ref UseScope use)
     {
         BoundType target;
         if (IsBorrow(type.Semantics) || type.Kind == BoundTypeKind.Slice)
@@ -198,7 +199,7 @@ public sealed partial class Binding
             return null;
         }
 
-        return this.StoredSlot(type, scope, out var condition) is { } outer ? (target, outer, condition) : null;
+        return this.StoredSlot(type, ref use, out var condition) is { } outer ? (target, outer, condition) : null;
     }
 
     /// <summary>Forms the complete Type a Type takes in one Semantics case (SPEC 8.15): every pair layer of a binder in
@@ -476,5 +477,25 @@ public sealed partial class Binding
         {
             this.caseScratch.Return(scratch, clearArray: true);
         }
+    }
+
+    /// <summary>A use whose constraint scope (<see cref="ConstraintScope"/>) a pair layer's slot condition reads: found when the first
+    /// pair layer at the use needs it and kept for the Types its holder judges there, since every other Type's slot is the same in
+    /// every scope (SPEC 15.6.5; PLAN G778).</summary>
+    internal struct UseScope
+    {
+        private BindingScope? scope;
+
+        /// <summary>Initializes a new instance of the <see cref="UseScope"/> struct.</summary>
+        /// <param name="use">The use.</param>
+        internal UseScope(Koto use) => this.Use = use;
+
+        /// <summary>Gets the use.</summary>
+        internal Koto Use { get; }
+
+        /// <summary>Gets the use's constraint scope, found on the first call.</summary>
+        /// <param name="binding">The Binding whose scopes the use is in.</param>
+        /// <returns>The scope.</returns>
+        internal BindingScope Scope(Binding binding) => this.scope ??= binding.ConstraintScope(this.Use);
     }
 }

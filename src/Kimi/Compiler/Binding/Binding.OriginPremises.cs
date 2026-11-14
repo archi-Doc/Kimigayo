@@ -38,7 +38,7 @@ public sealed partial class Binding
                     edges = Math.Max(edges, capacity.Edges);
                     retains |= environment.Closure.RetainsOrigins || environment.Nodes.Count != 0 || environment.Types.Count != 0 ||
                         environment.Results.Count != 0 || environment.Resolvers.Count != 0 || environment.Use is not null ||
-                        environment.Scope is not null || environment.Comparison.Expected is not null || environment.Shorter is not null;
+                        environment.Comparison.Expected is not null || environment.Shorter is not null;
                 }
             }
         }
@@ -559,7 +559,7 @@ public sealed partial class Binding
             }
         }
 
-        if (this.WellFormedLayer(type, this.PremiseScope(environment)) is { Target.StoresOrigin: true } layer)
+        if (this.WellFormedLayer(type, ref environment.At) is { Target.StoresOrigin: true } layer)
         {
             this.AddStoredPremises(environment, layer.Target, this.PremiseNode(environment, layer.Outer), rule, false, layer.Condition);
         }
@@ -613,7 +613,7 @@ public sealed partial class Binding
             return;
         }
 
-        if (this.StoredSlot(type, this.PremiseScope(environment), out var slot) is { } origin)
+        if (this.StoredSlot(type, ref environment.At, out var slot) is { } origin)
         {
             AddPremiseEdge(environment, this.PremiseNode(environment, origin), shorter, rule, condition | slot);
         }
@@ -632,13 +632,13 @@ public sealed partial class Binding
         }
     }
 
-    // The constraint scope of the environment's use, found once per environment.
-    private BindingScope PremiseScope(OriginPremiseEnvironment environment) => environment.Scope ??= this.ConstraintScope(environment.Use);
-
     // The storage of one proof request: its graph and closure, the resolved endpoint of each premise Origin, the Types already
     // visited and the resolving declarations. Clear releases every reference and keeps the capacity.
     private sealed class OriginPremiseEnvironment
     {
+        // The request's use, whose constraint scope the environment's pair layers find once (UseScope).
+        private UseScope at;
+
         internal OriginPremiseClosure Closure { get; } = new();
 
         internal Dictionary<BoundOrigin, int> Nodes { get; } = new(ReferenceEqualityComparer.Instance);
@@ -649,9 +649,9 @@ public sealed partial class Binding
 
         internal List<OriginDeclaration> Resolvers { get; } = new();
 
-        internal Koto Use { get; set; } = null!;
+        internal Koto Use { get => this.at.Use; set => this.at = new(value); }
 
-        internal BindingScope? Scope { get; set; }
+        internal ref UseScope At => ref this.at;
 
         // The Callable comparison the request is made in (ProvesOriginOutlives), default for any other request.
         internal CallableInstance Comparison { get; set; }
@@ -683,7 +683,6 @@ public sealed partial class Binding
             this.Results.Clear();
             this.Resolvers.Clear();
             this.Use = null!;
-            this.Scope = null;
             this.Comparison = default;
             this.Shorter = null;
             this.Places.Clear();
