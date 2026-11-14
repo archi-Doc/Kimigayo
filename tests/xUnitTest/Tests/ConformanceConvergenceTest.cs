@@ -415,6 +415,38 @@ public class ConformanceConvergenceTest(ITestOutputHelper output)
         Assert.All(records, static x => Assert.Contains(x.Code, (string[])["UnprovenConstraint_Kd", "InvalidConstraint_Kd"]));
     }
 
+    // The coverage table's rows without a theory of their own (R7-C2e2 e2-5a, `coverage.md`, reused by name): SPEC 8.3.3 Recursion's
+    // boundary (C states no Constraint, so S is C holds alone and Box<S> is formed), 15.3.5 Fixed points and 8.3.1 (a constrained
+    // instance behind a storage hop is formed once in its declaration's formals, F1's six invalid, the controls valid; non-regular
+    // recursive storage valid, R1's five) and 8.3.3 Finality (a stored instance judged under the declaration's premises).
+    [Theory]
+    [InlineData("f2-own-v", "contract C\nstruct Box<T>\n    T is C\n    public init() => ()\nstruct S\n    Self is Owned\n    Self is C\n    public var b: Box<S>\n    public init() => self.b = Box<S>.init()\n", true)]
+    [InlineData("h-other-first-v", "contract C\nstruct Box<T>\n    T is C\n    public init() => ()\nstruct T\n    Self is Owned\n    public var b: Box<S>\n    public init() => self.b = Box<S>.init()\nstruct S\n    Self is C\n    public var b: Box<S>\n    public init() => self.b = Box<S>.init()\n", true)]
+    [InlineData("f2-assoc-v", "contract C\n    associate Item\nstruct Box<T>\n    T is C\n    public init() => ()\nstruct S\n    Self is Owned\n    Self is C\n    associate C.Item is S\n    public var b: Box<S>\n    public init() => self.b = Box<S>.init()\n", true)]
+    [InlineData("f2-gen-v", "contract C\nstruct Box<T>\n    T is C\n    public init() => ()\nstruct G<T>\n    T is Owned\n    Self is Owned\n    Self is C\n    public var b: Box<G<T>>\n", true)]
+    [InlineData("a1o-hop2-n", "contract C\n    associate Item is Owned\nstruct Box<T>\n    T is C\nstruct P\n    public var b: Box<S>\nstruct Q\n    public var p: P\nstruct S\n    Self is C\n    associate C.Item is Q\n", false)]
+    [InlineData("a1o-hop2-gen-n", "contract C\n    associate Item is Owned\nstruct Box<T>\n    T is C\nstruct P\n    public var b: Box<S>\nstruct Q<X>\n    public var p: P\nstruct S\n    Self is C\n    associate C.Item is Q<i32>\n", false)]
+    [InlineData("a1o-hop2-opt-n", "contract C\n    associate Item is Owned\nstruct Box<T>\n    T is C\nstruct P\n    public var b: Box<S>\nstruct Q\n    public var p: Option<P>\nstruct S\n    Self is C\n    associate C.Item is Q\n", false)]
+    [InlineData("w-wrap-owned-n", "contract C\n    Self is Owned\nstruct Box<T>\n    T is C\n    public init() => ()\nstruct Wrap<T>\n    public var b: Box<S>\n    public init() => self.b = Box<S>.init()\nstruct S\n    Self is C\n    public var w: Wrap<i32>\n    public init() => self.w = Wrap<i32>.init()\n", false)]
+    [InlineData("w-wrap-owned-plain-n", "contract C\n    Self is Owned\nstruct Box<T>\n    T is C\n    public init() => ()\nstruct Wrap\n    public var b: Box<S>\n    public init() => self.b = Box<S>.init()\nstruct S\n    Self is C\n    public var w: Wrap\n    public init() => self.w = Wrap.init()\n", false)]
+    [InlineData("w-enum-owned-n", "contract C\n    Self is Owned\nstruct Box<T>\n    T is C\n    public init() => ()\nenum E\n    A(Box<S>)\n    B\nstruct S\n    Self is C\n    public var e: E\n    public init() => self.e = .B\n", false)]
+    [InlineData("f1-hop2-v", "contract C\n    associate Item is Owned\nstruct Box<T>\n    T is C\nstruct P\n    public var b: Box<S>\nstruct Q\n    public var p: P\nstruct S\n    Self is C\n    associate C.Item is i32\nfunc needOwned<V>(v: ref/V)\n    V is Owned\n    ()\nfunc use1(q: ref/Q) -> ()\n    needOwned(q)\n", true)]
+    [InlineData("f1-hop2-rev-v", "func needOwned<V>(v: ref/V)\n    V is Owned\n    ()\nfunc use1(q: ref/Q) -> ()\n    needOwned(q)\nstruct Q\n    public var p: P\nstruct P\n    public var b: Box<S>\nstruct S\n    Self is C\n    associate C.Item is i32\nstruct Box<T>\n    T is C\ncontract C\n    associate Item is Owned\n", true)]
+    [InlineData("f1-ork-v-o00", "struct Box<T>\n    T is C\nstruct P\n    public var b: Box<S>\nstruct Wrap\n    Self is K\n    public var p: P\nstruct S\n    Self is C\n    associate C.Item is Wrap\ncontract K\ncontract C\n    associate Item is Owned or K\nfunc needOwned<V>(v: ref/V)\n    V is Owned\n    ()\nfunc use1(w: ref/Wrap) -> ()\n    needOwned(w)\n", true)]
+    [InlineData("f1-ork-n-o00", "struct Box<T>\n    T is C\nstruct P\n    public var b: Box<S>\nstruct Wrap\n    public var p: P\nstruct S\n    Self is C\n    associate C.Item is Wrap\ncontract K\ncontract C\n    associate Item is Owned or K\nfunc needOwned<V>(v: ref/V)\n    V is Owned\n    ()\nfunc use1(w: ref/Wrap) -> ()\n    needOwned(w)\n", false)]
+    [InlineData("g1-nouse", "struct S<U>\n    U is Owned\n    public var u: U\nstruct Wrap<A>\n    public var a: A\nstruct R<T>\n    T is Owned\n    let next: Array<S<R<Wrap<T>>>>\n", true)]
+    [InlineData("g1-param", "struct S<U>\n    U is Owned\n    public var u: U\nstruct Wrap<A>\n    public var a: A\nstruct R<T>\n    T is Owned\n    let next: Array<S<R<Wrap<T>>>>\nfunc take(r: ref/R<i32>) -> () => ()\n", true)]
+    [InlineData("g2-wrap2", "struct S<U>\n    U is Owned\n    public var u: U\nstruct Wrap<A>\n    public var a: A\nstruct R<T>\n    T is Owned\n    let next: Array<S<R<Wrap<Wrap<T>>>>>\n", true)]
+    [InlineData("g3-deep", "struct S<U>\n    U is Owned\n    public var u: U\nstruct Wrap<A>\n    public var a: A\nstruct Hold2<A>\n    public var a: A\nstruct R<T>\n    T is Owned\n    let next: Array<Hold2<S<R<Wrap<T>>>>>\n", true)]
+    [InlineData("g5-gendef", "struct S<U>\n    U is Owned\n    public var u: U\nstruct Wrap<A>\n    public var a: A\nstruct R<T>\n    T is Owned\n    let next: Array<S<R<Wrap<T>>>>\nfunc needOwned<V>(v: ref/V)\n    V is Owned\n    ()\nfunc f<X>(r: ref/R<X>) -> ()\n    X is Owned\n    needOwned(r)\n", true)]
+    [InlineData("r2-prem-v", "contract K\nstruct S<U>\n    U is K\n    public var u: U\nstruct A\n    Self is K\nstruct R<T>\n    T is K\n    let next: Array<S<T>>\nfunc needOwned<V>(v: ref/V)\n    V is Owned\n    ()\nfunc use1(r: ref/R<A>) -> ()\n    needOwned(r)\n", true)]
+    [InlineData("r2-prem-n", "contract K\nstruct S<U>\n    U is K\n    public var u: U\nstruct A\n    Self is K\nstruct R<T>\n    let next: Array<S<T>>\nfunc needOwned<V>(v: ref/V)\n    V is Owned\n    ()\nfunc use1(r: ref/R<A>) -> ()\n    needOwned(r)\n", false)]
+    [InlineData("r2-closed-v", "contract K\nstruct S<U>\n    U is K\n    public var u: U\nstruct A\n    Self is K\nstruct R<T>\n    let t: T\n    let next: Array<S<A>>\nfunc needOwned<V>(v: ref/V)\n    V is Owned\n    ()\nfunc use1(r: ref/R<i32>) -> ()\n    needOwned(r)\n", true)]
+    [InlineData("r2-closed-n", "contract K\nstruct S<U>\n    U is K\n    public var u: U\nstruct B\n    public var x: i32\nstruct R<T>\n    let t: T\n    let next: Array<S<B>>\nfunc needOwned<V>(v: ref/V)\n    V is Owned\n    ()\nfunc use1(r: ref/R<i32>) -> ()\n    needOwned(r)\n", false)]
+    [InlineData("r2-enum-v", "struct S<U>\n    U is Owned\n    public var u: U\nstruct Wrap<A>\n    public var a: A\nenum R<T>\n    T is Owned\n    A(Array<S<R<Wrap<T>>>>)\n    B\n", true)]
+    public void AnEngineCoverageRowKeepsItsLabel(string id, string source, bool valid)
+        => Assert.True(valid == (DiagnosticCorpus.RecordProfile(source) == "clean"), id);
+
     // B1's ring family (R7-C2e2 e2-5a, design-engine): k declarations' Copy works and Owned works on one cycle, each order, with and without a use.
     public static TheoryData<int, string, bool, int> RingRows
         => [.. from k in new[] { 1, 2, 3, 4, 5 }
