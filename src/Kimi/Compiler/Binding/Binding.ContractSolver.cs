@@ -128,7 +128,7 @@
 //   source can differ from a fresh walk only inside the publication round that settles the source: outside a round a Pending
 //   state stays as it is until the next publication's start, which forgets the row. Inside a round the difference exists (under
 //   `admit`, ClosedConformancePrerequisiteBindingTest's cap10 with X before R answers `T is Copy` from the stale rows after R
-//   settled; n3b and n3d likewise), but no record moves: Supply's one-level eager derivation answers the same proposition. That
+//   settled; n3b likewise in both orders), but no record moves: Supply's one-level eager derivation answers the same proposition. That
 //   derivation goes at C3, and from then on the admission alone keeps such rows out. Under `w8` no admission changes: a walk
 //   that reads a Contract Pending also reads the derived facts the eager derivation filed from it, not found and so Provisional
 //   by W6. Measured on 48 programs (the 16 coverage rows, Hello, Milestone26; cap6, cap6n, cap3b, cap9, cap10, n3b, n3c, n3d
