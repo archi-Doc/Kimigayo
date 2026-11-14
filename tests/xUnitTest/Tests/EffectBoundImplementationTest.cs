@@ -145,7 +145,7 @@ public partial class EffectBoundImplementationTest
             var expected = kind switch
             {
                 CompilerFunctionKind.None => CompilerFunctionEffect.Unclassified,
-                CompilerFunctionKind.WriteLine or CompilerFunctionKind.ConsoleWriteStdout or CompilerFunctionKind.TestTempDirectory => CompilerFunctionEffect.Environment,
+                CompilerFunctionKind.ConsoleWriteStdout or CompilerFunctionKind.TestTempDirectory => CompilerFunctionEffect.Environment,
                 _ => CompilerFunctionEffect.Inputs,
             };
             Assert.True(expected == IntrinsicDisposition.Effect(kind), kind.ToString());

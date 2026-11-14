@@ -603,16 +603,23 @@ public sealed partial class FunctionCodegenTest
     public void RawProgramsRun(string name, string source, string stderr)
         => ScalarEmissionTest.EmitFixture(name, source, string.Empty, stderr.Length == 0 ? 0 : 1, stderr);
 
-    // The console writeLine is a compiler function's legacy runtime row (RuntimeAbi.WriteLine): the routine is called with the string borrow
-    // loaded from its local and the call site's location text (SPEC 22.5.1), a header constant. A string constant is stored whole into its
-    // local, its bytes a header constant and its release kind Static (IMPL 21.1.3); the empty string has no bytes.
+    // SPEC 22.7 (R8-W2 d): the console writeLine of a string is a Kimigayo body with a CallerLocation row: it is called with the string
+    // borrow loaded from its local and the call site's location text (SPEC 22.5.1), a header constant, and views the string's bytes for
+    // the view overload at the location it received (fail-before: the runtime routine __kimi_write_line, a legacy row). A string
+    // constant is stored whole into its local, its bytes a header constant and its release kind Static (IMPL 21.1.3); the empty string
+    // has no bytes.
     [Fact]
-    public void WriteLineCallsTheConsoleRuntimeRow()
+    public void WriteLineCallsTheConsoleBody()
     {
-        var text = Generate(Analyze(Strings, OutputKind.Library));
+        var c = Analyze(Strings, OutputKind.Library);
+        var text = Generate(c);
         var ir = GeneratedIr.Parse(text);
         var call = Assert.Single(ir.Single("internal void (ptr noundef nonnull align 8 dereferenceable(24))").Instructions, static x => x.Opcode == "call");
-        Assert.Same(ir.Function("__kimi_write_line"), call.Callee);
+        var line = LineOf(ir, c, view: false);
+        Assert.Same(line, call.Callee);
+        var view = Assert.Single(CallsOf(line), x => x.Callee == LineOf(ir, c, view: true));
+        Assert.Equal(line.Parameters.TakeLast(2), view.Operands.TakeLast(2));
+        Assert.DoesNotContain("__kimi_write_line", text, StringComparison.Ordinal);
         Assert.Equal("call void @(ptr noundef nonnull align 8 dereferenceable(24) %, ptr @, i64 15)", call.Shape);
         Assert.Equal("load ptr, ptr %, align 8", Assert.Single(call.Operands).Shape);
         Assert.Contains(Constant("Hello.kimi:1:32"), text);
@@ -1823,6 +1830,13 @@ public sealed partial class FunctionCodegenTest
             return writer.ToString();
         })];
     }
+
+    // Console.writeLine's function in a module by overload (SPEC 22.7; R8-W2 d): the string's body takes a string borrow, the view's its
+    // view's copy slot, each with its call's location.
+    internal static IrFunction LineOf(GeneratedIr ir, Compilation c, bool view)
+        => Assert.Single(
+            FunctionsOf(ir, c, "writeLine"),
+            x => (x.Signature == "internal void (ptr noundef nonnull align 8 dereferenceable(24), ptr, i64)") != view);
 
     // The functions of a definition's body items, one per instance (ItemTexts).
     internal static IrFunction[] FunctionsOf(GeneratedIr ir, Compilation c, string name)

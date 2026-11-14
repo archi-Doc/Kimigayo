@@ -38,7 +38,7 @@ internal readonly record struct ExpansionPlan(ExpansionKind Kind, CallPlan? Firs
                 return new(ExpansionKind.Try);
             case HirOp.Interpolation:
                 var output = node.Parent as InvocationKoto;
-                return new(ExpansionKind.Format, Direct: node is InterpolatedStringKoto && output is { ArgumentNodes: [var text], BoundCall.Target.CompilerFunction: CompilerFunctionKind.WriteLine } && ReferenceEquals(text, node));
+                return new(ExpansionKind.Format, Direct: node is InterpolatedStringKoto && output is { ArgumentNodes: [var text], BoundCall.Target.LibraryDeclaration: KimiDeclarationId.WriteLine } && ReferenceEquals(text, node));
             case HirOp.DictionaryLiteral:
                 return new(ExpansionKind.DictionaryLiteral);
             case HirOp.Range:

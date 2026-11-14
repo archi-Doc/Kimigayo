@@ -112,8 +112,8 @@ public sealed class Kernel32ImportsTest
 
     // PLAN G366: a runtime is a template, so a definition marker line it lacks or repeats fails it.
     [Theory]
-    [InlineData("{{__kimi_write_line}}\n", "")]
-    [InlineData("{{__kimi_write_line}}\n", "{{__kimi_write_line}}\n{{__kimi_write_line}}\n")]
+    [InlineData("{{__kimi_destroy_string}}\n", "")]
+    [InlineData("{{__kimi_destroy_string}}\n", "{{__kimi_destroy_string}}\n{{__kimi_destroy_string}}\n")]
     public void ABrokenMarkerLineOfTheRuntimeFails(string marker, string replacement)
     {
         var repo = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "../../../../.."));

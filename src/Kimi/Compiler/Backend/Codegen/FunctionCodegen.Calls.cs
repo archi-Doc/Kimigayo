@@ -5,9 +5,9 @@ using Kimi.Compiler.Mir;
 namespace Kimi.Compiler.Backend;
 
 // The Call terminator of FunctionCodegen (R5 package C 3.2 I8, plan C3a, C3b, C8a, C5a, C6c, C8b, C8d, C8e, C9a, C9b; DECISIONS R5-M89,
-// R5-M92, R5-M93, R5-M102, R5-M114, R5-M116, R5-M121, R5-M124, R5-M128, R5-M130): a callee by its kind's row (a Value callee's in FunctionCodegen.Closures, a
-// compiler function's of the Body disposition by its legacy row's writer, Legacy), the collector's targets read by one forward cursor, each
-// once in its site's order, and the one call writer, which the legacy rows, the intrinsic rows, the glue items and the module's entry call
+// R5-M92, R5-M93, R5-M102, R5-M114, R5-M116, R5-M121, R5-M124, R5-M128, R5-M130): a callee by its kind's row (a Value callee's in
+// FunctionCodegen.Closures), the collector's targets read by one forward cursor, each once in its site's order, and the one call
+// writer, which the intrinsic rows, the glue items and the module's entry call
 // too; each argument is FunctionCodegen.Arguments' (its parameter's kind, a copy slot). A call that dispatches (SPEC 6.4.3, 6.4.6) runs
 // through a virtual slot, which only makes the callee value it writes (EntryOf): a Virtual callee, without a target (X5), under its slot's
 // signature (ModuleCodegen.Slot); a body target that implements a slot, a requirement's virtual witness (BodyRun); a Builtin or
@@ -26,17 +26,13 @@ internal sealed partial class FunctionCodegen
         _ = this.WriteCall(startup, default);
     }
 
-    // A Call by its callee's row: a compiler function of the Body disposition (KimiLibraryKinds' published IntrinsicDisposition) by its
-    // legacy row, any other Fn callee and a Requirement by its target (Function), an intrinsic by its row's writer
+    // A Call by its callee's row: a Fn callee and a Requirement by its target (Function), an intrinsic by its row's writer
     // (FunctionCodegen.Intrinsics), a Value or Virtual callee by its own row.
     private void Call(in MirTerminator call)
     {
         var callee = call.Callee;
         switch (callee.Kind)
         {
-            case MirCalleeKind.Fn when LegacyRuntimeHelpers.Row(callee.Symbol!.CompilerFunction) is { } row:
-                this.Legacy(call, row);
-                return;
             case MirCalleeKind.Fn or MirCalleeKind.Requirement:
                 this.Function(call);
                 return;
@@ -228,12 +224,6 @@ internal sealed partial class FunctionCodegen
 
         this.Branch(call.Target);
     }
-
-    // A compiler function the backend serves from its legacy row until R8 writes its body (the Body disposition; LegacyRuntimeHelpers.Row,
-    // DECISIONS R5-M116), at its direct call and at its Item's Value call (SPEC 7.7.4): the row's runtime routine through the one call
-    // writer (Invoke), the call's operands at its parameters' slots placed by the call's own key and the call site's location.
-    private void Legacy(in MirTerminator call, LegacyRow row)
-        => this.Invoke(call, row.Routine, new(call.Callee.Symbol, MirBodyKind.Fn));
 
     // A call of a routine, each argument with its parameter's Type and attributes (the O2 parity list's `noundef nonnull ...` at every call,
     // value calls included, package C row 14); its value, or null for a void result. Its callee is one value: the routine's symbol, or an

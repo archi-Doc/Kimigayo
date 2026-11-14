@@ -14,7 +14,7 @@ public class EmissionPlanTest
     {
         var c = MinimalEmissionTest.Analyze("Console.writeLine(\"a\")");
         var ir = CompilationTestHelper.WriteIr(c);
-        foreach (var abi in new[] { RuntimeAbi.Exit, RuntimeAbi.WriteLine, RuntimeAbi.DestroyString })
+        foreach (var abi in new[] { RuntimeAbi.Exit, RuntimeAbi.DestroyString })
         {
             Assert.Equal(2, ir.Split(abi.GetDefinition(exported: false)).Length); // Exactly one definition, no same-name declare.
         }

@@ -67,8 +67,7 @@ internal sealed partial class FunctionCodegen
     // reached Call passes to an OwnedSlot parameter (DECISIONS R5-M92 narrowed R5-M89's every operand): a body's callee takes a value in
     // memory by pointer, so every in-memory operand of a Fn, Requirement, Value or Virtual call; an intrinsic only through its row's routine
     // (Raw.release, $abort) or a creation's factory (its payload, DECISIONS R5-M110), so a Fail's code or Raw.initialize's value gets none;
-    // a compiler function of the Body disposition, called directly or as an Item's Value call, by its legacy row's routine (DECISIONS
-    // R5-M116); and the payload of a creating adaptation, a statement whose factory call passes it as a creation call does (CreationSlot;
+    // and the payload of a creating adaptation, a statement whose factory call passes it as a creation call does (CreationSlot;
     // DECISIONS R5-M111). A Value call's callee operand passed by value is its environment, which a Consuming body owns (SPEC 7.7.3: a
     // Consuming call Copies a Copy Closure; DECISIONS R5-M102): its slot is numbered after the body's operands by its block (CalleeCopy),
     // since a block's terminator is its one call.
@@ -116,12 +115,6 @@ internal sealed partial class FunctionCodegen
     // The copy slots of a Call's operands that an OwnedSlot parameter takes (Copies), and of a Value callee's operand.
     private void CopySlots(in MirTerminator call, int block)
     {
-        if (LegacyRuntimeHelpers.Row(this.CompilerFunction(call)) is { } legacy)
-        {
-            this.RoutineSlots(call, legacy.Routine); // A fixed-symbol routine's OwnedSlot parameters (DECISIONS R5-M128).
-            return;
-        }
-
         if (call.Callee.Kind != MirCalleeKind.Intrinsic)
         {
             this.OperandSlots(call, block);
@@ -140,24 +133,6 @@ internal sealed partial class FunctionCodegen
                 this.RoutineSlots(call, row.Routine);
                 return;
         }
-    }
-
-    // The compiler function a Call calls: a Fn callee's, or the function Item a Value callee's operand holds below its reference layer (the
-    // collector's Callable rule, FunctionCodegen.Closures' ValueCall); None for any other.
-    private CompilerFunctionKind CompilerFunction(in MirTerminator call)
-    {
-        if (call.Callee.Kind == MirCalleeKind.Fn)
-        {
-            return call.Callee.Symbol!.CompilerFunction;
-        }
-
-        if (call.Callee.Kind != MirCalleeKind.Value || this.InstanceType(call.Operand) is not { } type)
-        {
-            return CompilerFunctionKind.None;
-        }
-
-        _ = TyCtxt.Layer(type, out var callable, out _);
-        return callable is { Kind: BoundTypeKind.FunctionItem, Symbol: { } function } ? function.CompilerFunction : CompilerFunctionKind.None;
     }
 
     // The copy slots of a call whose callee takes its in-memory operands by pointer, a body's (Copies): each Copy or string constant operand's,

@@ -79,14 +79,16 @@ public sealed partial class FunctionCodegenTest
     [Fact]
     public void EachInitializedStringIsDestroyedOnce()
     {
-        var ir = GeneratedIr.Parse(Generate(Drops));
+        var c = Analyze(Drops);
+        var ir = GeneratedIr.Parse(Generate(c));
+        var line = LineOf(ir, c, view: false);
         var body = ir.Startup;
         var strings = body.Instructions.Where(static x => x.Shape == "alloca %kimi.string, align 8").ToArray();
         var literals = body.Instructions.Where(static x => x.Opcode == "store" && x.Shape.StartsWith("store %kimi.string", StringComparison.Ordinal))
             .Select(static x => Assert.Single(x.Operands)).ToArray();
         var borrows = body.Instructions.Where(static x => x.Shape == "store ptr %, ptr %, align 8").Select(static x => x.Operands[0]).ToArray();
-        var writes = body.Instructions.Where(x => x.Opcode == "call" && x.Callee == ir.Function("__kimi_write_line")).ToArray();
-        var drops = body.Instructions.Where(x => x.Opcode == "call" && x.Callee != ir.Function("__kimi_write_line")).ToArray();
+        var writes = body.Instructions.Where(x => x.Opcode == "call" && x.Callee == line).ToArray();
+        var drops = body.Instructions.Where(x => x.Opcode == "call" && x.Callee != line).ToArray();
         Assert.Equal(3, strings.Length);
         Assert.Equal(2, literals.Distinct().Count());
         Assert.Equal(literals, borrows);
