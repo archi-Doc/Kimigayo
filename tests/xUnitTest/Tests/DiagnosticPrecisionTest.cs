@@ -210,6 +210,13 @@ public class DiagnosticPrecisionTest
     [InlineData("func f() -> i32\nfunc g(a: i32 = f()) -> i32\nlet y = g()", "MissingSyntax_Kd,MissingSyntax_Kd")]
     [InlineData("open struct Base\n    public init()\n        ()\n    public func helper(self: objref/Self) -> i32\n    public virtual func score(self: objref/Self) -> i32\n        effect confined\n        return self.helper()\nlet y = 1", "MissingSyntax_Kd")]
     [InlineData("func f() -> i32\nlet x = f(1)", "MissingSyntax_Kd,NoApplicableOverload_Kd")]
+
+    // The same through a requirement's witness, a VTable slot and a struct's destructor (SPEC 14.2.1: drop has a Body); the confined
+    // check's own failure beside a resting callee stays independent.
+    [InlineData("contract Describe\n    func describe(self: ref/Self) -> i32\nstruct S\n    Self is Describe\n    public let x: i32\n    public init(x: i32)\n        self.x = x\n    public func describe(self: ref/Self) -> i32\nfunc show<T>(value: ref/T) -> i32\n    T is Describe\n    return value.describe()\nlet s = S.init(x: 1)\nlet y = show(s@ref)", "MissingSyntax_Kd")]
+    [InlineData("open struct Base\n    public virtual func score(self: objref/Self) -> i32\nlet b = Base.init()@obj\nlet a = b.score()", "MissingSyntax_Kd")]
+    [InlineData("struct S\n    public let x: i32\n    public init(x: i32)\n        self.x = x\n    drop\nlet s = S.init(x: 1)\nlet y = s.x", "MissingSyntax_Kd")]
+    [InlineData("open struct Base\n    public init()\n        ()\n    public func helper(self: objref/Self) -> i32\n    public virtual func score(self: objref/Self) -> i32\n        effect confined\n        Console.writeLine(\"x\")\n        return self.helper()\nlet y = 1", "MissingSyntax_Kd,UnsatisfiedEffectBound_Kd")]
     public void RecoveredSyntaxExplainsItsDependents(string source, string codes)
         => Assert.Equal(codes.Split(','), CompilationTestHelper.PublishedErrors(MinimalEmissionTest.Analyze(source)).Select(static x => x.Code).Order(StringComparer.Ordinal));
 
