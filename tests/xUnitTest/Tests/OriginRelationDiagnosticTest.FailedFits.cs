@@ -142,8 +142,7 @@ public partial class OriginRelationDiagnosticTest
     // adaptation rules bridge in neither direction: i64 against bool at the join's position (n1_ov), as an element (f2_ov) and at a
     // child position (e3_ov), Option<i64> against Option<bool> in a nested join (g238, g238g), Option<T> against Array<U> (rh_head) and
     // [2 of i64] against [3 of i64] (rl_len), whose typed twins are valid. Every other ambiguity is reported: i64 against i64 (h3e,
-    // h3, h3b), own slots (h8, perm, p1, p2, sel3_order, sel3_swap, sel6; cnt, whose join an unbound T takes whole ranks by its own fit
-    // as at the plain candidate since the owner's O-267 (a), so step 2 decides), an evidence-fixed slot (pe1: y fixes T, so the name cannot
+    // h3, h3b), own slots (h8, perm, p1, p2, sel3_order, sel3_swap, sel6), an evidence-fixed slot (pe1: y fixes T, so the name cannot
     // separate them; pe3), clauses, which are not compared (c1-c4, c7_chain, c9_mixed), and a Function Type, whose value's own header
     // decides its fit (fe: a generic reference fits both); literal-only joins (b3f) too. Each twin is Ambiguous, but pe1's typed
     // twins: their join at x is an extra source in g<T> only, so the call contract fails first (SPEC 7.4.4, G512). Toward reporting, a
@@ -211,7 +210,7 @@ public partial class OriginRelationDiagnosticTest
     [InlineData("U1.6 cert", "rl_len_t", IdentityT + GLengths + "func k(c: bool, a: [2 of i64]) -> i32\n    return g(if c => a else => identity([1, 2]), .None)\n", "")]
     [InlineData("U1.6 cert", "inc_pair", IdentityT + GIncPairs + KHead + "    return g(if c => undefinedName else => (identity(3), identity(4)), .None)\n", "AmbiguousBinding_Kd g(if c => undefinedName else => (identity(3), identity(4)), .None); UnresolvedBinding_Kd undefinedName")]
     [InlineData("U1.6 cert", "inc_pair_t", IdentityT + GIncPairs + KHead + "    return g((3, true), .None)\n", "")]
-    [InlineData("U1.6 cert", "cnt", IdentityT + GCounts + GNameCall, GNameAmbiguous)]
+    [InlineData("U1.6 cert", "cnt", IdentityT + GCounts + GNameCall, "UnboundTypeArgument_Kd g(if c => undefinedName else => identity(3), .None); UnresolvedBinding_Kd undefinedName")]
     [InlineData("U1.6 cert", "cnt_t", IdentityT + GCounts + KHead + "    return g(true, .None)\n", "")]
     public void AnAmbiguityRestsOnlyWhereTheKeptCandidatesDifferAtAFailedPart(string unit, string form, string body, string records)
         => AssertRecords($"{form} [{unit}]", body, records, null);

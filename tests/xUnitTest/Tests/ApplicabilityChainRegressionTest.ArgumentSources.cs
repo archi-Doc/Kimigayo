@@ -50,7 +50,7 @@ public partial class ApplicabilityChainRegressionTest
 
     private const string HeldDeclarations = "func identity<T>(v: T) -> T => v@move\nfunc f(x: i64) -> i32 => 0\nfunc ft(x: (i64, i32)) -> i32 => 0\nfunc fa(x: Array<i64>) -> i32 => 0\nfunc fd(x: Dictionary<string, i64>) -> i32 => 0\nfunc k(c: bool, d: bool) -> i32\n";
 
-    private const string OpenWhole = "func fu(a: Array<i32>) -> i32 => 0\nfunc fu<T>(a: T) -> bool => true\nfunc ftu(t: (i32, i32)) -> i32 => 0\nfunc ftu<T>(t: T) -> bool => true\nfunc fdw(d: Dictionary<i32, i32>) -> i32 => 0\nfunc fdw<T>(d: T) -> bool => true\nfunc fur(a: ref/Array<i32>) -> i32 => 0\nfunc fur<T>(a: ref/T) -> bool => true\nfunc fw(p: (ref/i32 during a, i32)) -> i32 => 0\nfunc fw<T>(p: (T, i32)) -> bool => true\nfunc fwd(p: (ref/Dictionary<i32, i32> during a, i32)) -> i32 => 0\nfunc fwd<T>(p: (T, i32)) -> bool => true\nfunc k(c: bool, n: i32, v: i32) -> i32\n";
+    private const string OpenWhole = "func fu(a: Array<i32>) -> i32 => 0\nfunc fu<T>(a: T) -> bool => true\nfunc ftu(t: (i32, i32)) -> i32 => 0\nfunc ftu<T>(t: T) -> bool => true\nfunc fdw(d: Dictionary<i32, i32>) -> i32 => 0\nfunc fdw<T>(d: T) -> bool => true\nfunc fur(a: ref/Array<i32>) -> i32 => 0\nfunc fur<T>(a: ref/T) -> bool => true\nfunc fw(p: (ref/i32 during a, i32)) -> i32 => 0\nfunc fw<T>(p: (T, i32)) -> bool => true\nfunc fwd(p: (ref/Dictionary<i32, i32> during a, i32)) -> i32 => 0\nfunc fwd<T>(p: (T, i32)) -> bool => true\nfunc gk<K, V>(d: Dictionary<K, V>) -> i32\n    K is Equatable\n    return 0\nfunc gk<T>(d: T) -> bool => true\nfunc gq<T>(a: ref/Array<T>) -> i32 => 0\nfunc gq<T>(a: ref/T) -> bool => true\nfunc k(c: bool, n: i32, v: i32) -> i32\n";
 
     // A row is (unit, form, program, records). Its verdict comes from SPEC, never from a build: records is empty for a valid program, which
     // also generates, and otherwise lists each expected Error as `Code: source line` (see CompilationTestHelper.AssertRecordsAtLines). unit
@@ -481,24 +481,27 @@ public partial class ApplicabilityChainRegressionTest
     public void AHeldJoinKeepsItsVerdictThroughWhatDeliversIt(string unit, string form, string program, string records)
         => CompilationTestHelper.AssertRecordsAtLines($"{form} [{unit}]", program + "()", records);
 
-    // SPEC 10.5.1, 10.4 steps 1-2, 10.2.1's `f(1)` (the owner's O-267 (a), M1): a Tuple, array or Dictionary literal, or a join formed
-    // part by part, that an unbound slot takes whole (`T`, `ref/T`) leaves that slot unbound while candidates are compared unless every
-    // element is evidence, so it ranks by its own fit's class there, no position within it ranks, and step 2 makes the generic and the
-    // plain candidate incomparable (w1 to w8; the Middle's k01, k03, k04, k06, s03, s05, s07, s10, s12, s13 and the a rows). Their twins
-    // whose every element is evidence bind the slot, step 2 finds identical Types and step 3 prefers the plain candidate (the t rows,
-    // i32 result). A slot inside the pattern keeps its positions ranked: `fw((1, v))` beside `(ref/i32, i32)` and its Dictionary twin
-    // select the generic, the Literal at T beating the borrowed temporary (n1, n2; G814's design review 1). G814's remainder, a literal at
-    // a pattern holding the slots at its positions (`fdu([1: 2])` at `Dictionary<K, V>` beside `Dictionary<i32, i32>`), is PLAN G814's
-    // open-pattern walk (R7-I2, the owner's O-251 (a)): no row here.
+    // SPEC 10.5.1, 10.4 steps 1-2, 10.2.1's `f(1)`: a Tuple, array or Dictionary literal, or a join formed part by part, that an unbound
+    // slot takes whole (`T`, `ref/T`) leaves that slot unbound while candidates are compared unless every element is evidence, so no
+    // position within it ranks and step 2 makes the generic and the plain candidate incomparable (w1 to w8, the Middle's C-320 M1). The
+    // open row (TryCandidate) still gives such an argument Exact, so the generic is selected: PLAN G814's remainder, its open-pattern walk
+    // (R7-I2, the owner's O-251 (a) and O-280 (b)), which also ranks a literal at a pattern holding the slots at its positions
+    // (`fdu([1: 2])` at `Dictionary<K, V>`). Beside another generic whose pattern holds the slot inside (gk, gq: `Dictionary<K, V>` or
+    // `ref/Array<T>` beside `T` or `ref/T`) both candidates take the argument at the open row and stay incomparable today. The twins whose
+    // every element is evidence bind the slot, step 2 finds identical Types and step 3 prefers the plain candidate (the t rows, i32
+    // result). A slot inside the pattern keeps its positions ranked: `fw((1, v))` beside `(ref/i32, i32)` and its Dictionary twin select
+    // the generic, the Literal at T beating the borrowed temporary (n1, n2; G814's design review 1).
     [Theory]
-    [InlineData("guard", "w1", OpenWhole + "    let q = fu([1])\n    return 0\n", "AmbiguousBinding_Kd: let q = fu([1])")]
-    [InlineData("guard", "w2", OpenWhole + "    let q = fu([1@i32, 2])\n    return 0\n", "AmbiguousBinding_Kd: let q = fu([1@i32, 2])")]
-    [InlineData("guard", "w3", OpenWhole + "    let q = ftu((1, 2))\n    return 0\n", "AmbiguousBinding_Kd: let q = ftu((1, 2))")]
-    [InlineData("guard", "w4", OpenWhole + "    let q = ftu((1@i32, 2))\n    return 0\n", "AmbiguousBinding_Kd: let q = ftu((1@i32, 2))")]
-    [InlineData("guard", "w5", OpenWhole + "    let q = fdw([1: 2])\n    return 0\n", "AmbiguousBinding_Kd: let q = fdw([1: 2])")]
-    [InlineData("guard", "w6", OpenWhole + "    let q = fu(if c => [1] else => [2])\n    return 0\n", "AmbiguousBinding_Kd: let q = fu(if c => [1] else => [2])")]
-    [InlineData("guard", "w7", OpenWhole + "    let q = fur([1])\n    return 0\n", "AmbiguousBinding_Kd: let q = fur([1])")]
-    [InlineData("guard", "w8", OpenWhole + "    let q = fu([])\n    return 0\n", "AmbiguousBinding_Kd: let q = fu([])")]
+    [InlineData("I2", "w1", OpenWhole + "    let q = fu([1])\n    return 0\n", "AmbiguousBinding_Kd: let q = fu([1])", Explicit = true)]
+    [InlineData("I2", "w2", OpenWhole + "    let q = fu([1@i32, 2])\n    return 0\n", "AmbiguousBinding_Kd: let q = fu([1@i32, 2])", Explicit = true)]
+    [InlineData("I2", "w3", OpenWhole + "    let q = ftu((1, 2))\n    return 0\n", "AmbiguousBinding_Kd: let q = ftu((1, 2))", Explicit = true)]
+    [InlineData("I2", "w4", OpenWhole + "    let q = ftu((1@i32, 2))\n    return 0\n", "AmbiguousBinding_Kd: let q = ftu((1@i32, 2))", Explicit = true)]
+    [InlineData("I2", "w5", OpenWhole + "    let q = fdw([1: 2])\n    return 0\n", "AmbiguousBinding_Kd: let q = fdw([1: 2])", Explicit = true)]
+    [InlineData("I2", "w6", OpenWhole + "    let q = fu(if c => [1] else => [2])\n    return 0\n", "AmbiguousBinding_Kd: let q = fu(if c => [1] else => [2])", Explicit = true)]
+    [InlineData("I2", "w7", OpenWhole + "    let q = fur([1])\n    return 0\n", "AmbiguousBinding_Kd: let q = fur([1])", Explicit = true)]
+    [InlineData("I2", "w8", OpenWhole + "    let q = fu([])\n    return 0\n", "AmbiguousBinding_Kd: let q = fu([])", Explicit = true)]
+    [InlineData("guard", "g03", OpenWhole + "    let q = gk([1: 2])\n    return 0\n", "AmbiguousBinding_Kd: let q = gk([1: 2])")]
+    [InlineData("guard", "g05", OpenWhole + "    let q = gq([1])\n    return 0\n", "AmbiguousBinding_Kd: let q = gq([1])")]
     [InlineData("guard", "w1t", OpenWhole + "    let q = fu([n])\n    let z: i32 = q\n    return z\n", "")]
     [InlineData("guard", "w3t", OpenWhole + "    let q = ftu((n, v))\n    let z: i32 = q\n    return z\n", "")]
     [InlineData("guard", "w5t", OpenWhole + "    let q = fdw([n: v])\n    let z: i32 = q\n    return z\n", "")]
