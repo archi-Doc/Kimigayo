@@ -165,8 +165,8 @@ public sealed partial class Binding
 
         // SPEC 10.5.1, 10.2.1: before its default applies, a Literal fits a position that holds an unbound slot only by the slot-free
         // structure its default would have; it binds no slot, and it is no evidence, so it meets the position as its default will
-        // (FittedPattern for no evidence: every pair layer whose binder evidence fixed formed; the owner's O-294 (b)).
-        internal readonly bool FitsLiteralShape(BoundType pattern, BoundType shape)
+        // (FittedPattern of the Literal part: every pair layer whose binder evidence fixed formed; the owner's O-294 (b)).
+        internal readonly bool FitsLiteralShape(BoundType pattern, BoundType shape, Koto literal)
         {
             var binding = this.Binding;
             if (this.Pattern(pattern) is not { } memberPattern)
@@ -177,7 +177,7 @@ public sealed partial class Binding
             var trial = binding.infer.Snapshot();
             try
             {
-                var formed = binding.FittedPattern(memberPattern, this.SlotOwner, this.Frame, evidence: false);
+                var formed = binding.FittedPattern(memberPattern, this.SlotOwner, this.Frame, literal);
                 return binding.Infer(LiteralInputType(formed), shape, this.SlotOwner, this.Frame);
             }
             finally
@@ -294,7 +294,7 @@ public sealed partial class Binding
         private readonly FixedPattern AdaptationPattern(BoundType pattern, Koto? source)
             => FixedPattern.Of(
                 this.Binding,
-                this.Binding.FittedPattern(pattern, this.SlotOwner, this.Frame, evidence: source is null || this.Binding.KindOf(source) != PartKind.Literal),
+                this.Binding.FittedPattern(pattern, this.SlotOwner, this.Frame, source),
                 this.Fixed);
 
         // SPEC 10.5.1, 14.9.2 step 2, 10.2 (DECISIONS BU-43 as amended by G729): a typed position of several parts is one control-flow
