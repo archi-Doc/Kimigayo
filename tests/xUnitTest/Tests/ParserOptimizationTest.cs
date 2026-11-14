@@ -197,6 +197,36 @@ public class ParserOptimizationTest
     public void TheLibraryClassifiesTheImplementationAttributes(string source, AttributeKind expected)
         => Assert.Equal(expected, ParseAttribute(Compilation.CreateForTest().Library.Kotonoha, source).Kind);
 
+    // SPEC 6.7 (R8-G1 row L7 and row L6's rule): a constructor parsed into the Kimi library also takes the implementation Attributes,
+    // in their order; every other Attribute before init is misplaced and attaches to nothing. Before a user init each one is
+    // misplaced (the syntax corpus' attribute-on-constructor, DiagnosticPrecisionTest.UnrecognizedAttributesPublishTheirOwnRecords).
+    [Theory]
+    [InlineData("#Lang(\"ArrayInit\")", "Lang", 0)]
+    [InlineData("#Intrinsic(\"Abort\")", "Intrinsic", 0)]
+    [InlineData("#CallerLocation", "CallerLocation", 0)]
+    [InlineData("#Unsupported", "Unsupported", 0)]
+    [InlineData("#Layout(\"C\")", "", 1)]
+    [InlineData("#Test", "", 1)]
+    [InlineData("#CallerLocation\n    #Test\n    #Lang(\"ArrayInit\")", "CallerLocation Lang", 1)]
+    public void ALibraryConstructorTakesOnlyTheImplementationAttributes(string attributes, string taken, int misplaced)
+    {
+        var c = Compilation.CreateForTest();
+        var library = c.Library.Kotonoha;
+        library.CreateCodeContext().Parse(library.RootKoto, $"public struct Probe\n    public let x: i32\n    {attributes}\n    public init(x: i32)\n        self.x = x\n");
+        var probe = Assert.Single(library.RootKoto.NestedContainers, static x => x is StructKoto { Name: "Probe" });
+        var init = Assert.Single(probe.Members.OfType<FunctionKoto>(), static x => x.IsConstructor);
+        var chain = new List<string>();
+        for (var attribute = init.AttributeChain; attribute is not null; attribute = attribute.AttributeChain)
+        {
+            chain.Insert(0, attribute.Kind.ToString());
+        }
+
+        Assert.Equal(taken, string.Join(' ', chain));
+        ParseTestHelper.VerifyParents(init);
+        Assert.Equal(misplaced, TestDiagnostics.Of(c).Count(static x => x.Code == nameof(Kimi.DiagnosticCode.MisplacedSyntax_Kd)));
+        Assert.Equal(misplaced, TestDiagnostics.Of(c).Length);
+    }
+
     // The re-classification after an edit (Koto.ReplaceChild) reads the same mark: the node's own Kotonoha.
     [Fact]
     public void AReplacedNameIsClassifiedByItsKotonoha()

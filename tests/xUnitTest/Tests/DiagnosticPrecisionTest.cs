@@ -379,4 +379,14 @@ public class DiagnosticPrecisionTest
         });
         Assert.Equal(expected.Order(StringComparer.Ordinal), records.Order(StringComparer.Ordinal));
     }
+
+    // SPEC 6.7, 19.4 (R8-G1 row A6): excluded syntax is checked syntactically only, so an implementation Attribute there is not
+    // resolved: a user source with one is accepted without a record.
+    [Fact]
+    public void A6AnExcludedImplementationAttributePublishesNoRecord()
+    {
+        var output = DiagnosticCorpus.Check("#if false\n#Lang(\"Option\")\nfunc f() => ()\n", "Library");
+        Assert.True(output.Accepted);
+        Assert.Empty(output.Diagnostics);
+    }
 }

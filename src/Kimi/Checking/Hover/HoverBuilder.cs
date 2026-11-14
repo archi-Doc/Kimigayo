@@ -489,7 +489,7 @@ internal sealed partial class HoverBuilder(SemanticQuery query)
 
     private HoverPlacement Placement(Kotonoha module)
     {
-        if (ReferenceEquals(module, query.Library.Kotonoha))
+        if (module.Syntax.IsLibrary)
         {
             return HoverPlacement.Unsupported;
         }
