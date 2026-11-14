@@ -110,7 +110,7 @@ internal sealed partial class MirBorrows
             return;
         }
 
-        var index = this.Key(PlaceKey.Root(input));
+        var index = this.Key(this.InputKey(call, position, input));
         if (!this.Below(index))
         {
             return;

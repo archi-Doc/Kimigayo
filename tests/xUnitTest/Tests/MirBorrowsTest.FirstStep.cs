@@ -717,7 +717,7 @@ public sealed partial class MirBorrowsTest
     [InlineData("zFnViewOk", "")] // V, must stay accepted
     [InlineData("zLeafViewOk", "")] // V, must stay accepted
     [InlineData("zBorrowAloneOk", "")] // V, must stay accepted
-    [InlineData("zBorrowMixBad", "zBorrowMixBad: kk = 2")] // I, design review 1's B1
+    [InlineData("zBorrowMixBad", "zBorrowMixBad: kk = 2; zBorrowMixBad: var x3: raw/(raw/u8) = null")] // I, design review 1's B1; U3c adds x3's storage end (E may hold x3's Loan: an independent failure, Q13)
     [InlineData("zPunReadBad", "zPunReadBad: kk = 2")] // I, design review 1's B1
     [InlineData("zRawMixBad", "zRawMixBad: kk = 2")] // I, design review 1's B1
     [InlineData("gPunReadPtrBad", "gPunReadPtrBad: kk = 2")] // I, G667a's (R)
@@ -729,9 +729,9 @@ public sealed partial class MirBorrowsTest
     [InlineData("pPlainViewDeclBad", "pPlainViewDeclBad: kk = 2")] // I, typed: as dev
     [InlineData("pPlainDeclBad", "pPlainDeclBad: kk = 2")] // I, typed: as dev
     [InlineData("pPlainDeclOk", "pPlainDeclOk: kk = 2")] // I, typed: as dev
-    [InlineData("lChainH3Bad", "")] // I, past a holder: U3c's fail-before row, accepted until U3c
-    [InlineData("qTwoHopBad", "")] // I, past a holder: U3c's fail-before row, accepted until U3c
-    [InlineData("pPlainPastBad", "")] // I, past a holder: U3c's fail-before row, accepted until U3c
+    [InlineData("lChainH3Bad", "lChainH3Bad: kk = 2")] // I, past a holder: rejected from U3c (MirBorrowsTest.PastHolder)
+    [InlineData("qTwoHopBad", "qTwoHopBad: kk = 2")] // I, past a holder: rejected from U3c (MirBorrowsTest.PastHolder)
+    [InlineData("pPlainPastBad", "")] // I, past a holder: still accepted at U3c (a declaration's raw Field past a punned holder: not reached)
     public void TheFirstStepReadsAtTheReadingPathsType(string form, string expected)
     {
         var c = MirBuildTest.Compile(FirstStepShapes + FirstStepForms[form] + "\npublic func main() => ()\n");
