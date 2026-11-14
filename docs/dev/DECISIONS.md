@@ -5023,6 +5023,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
     declaration (at most 18%) and the rows (28%); form (a) is rejected for the reasons above. Warm step 4 of the Loan stratum stays 0
     B.
   - Amended by R4-M181 (PLAN G416 U2): A5 no longer reads `Binding.SelfAdmitted` through TyCtxt; `TyCtxt.SelfAdmitted` goes, and A5 reads row 13's entries.
+  - Rule 3's parenthesis is superseded in part by R7-M32 (the clauses of every kind, at every depth, of the Types the contract or
+    its handed signatures reach).
 - **R4-M155 A failed comparison's record reads the comparison's one fact, produced once where it is judged (G216 (a) U2.1)**
   (2026-10-31; superseded in part by R4-M162; amended by R4-M161; design round 2 and design-r2 Amendments 1-5; the owner, verbatim:
   「すべて推奨の内容でお願いします」 for round 2's design and s4, 「U2.1 の設計を条件つきで実装に進めてよい」, and 「すべて推奨の内容でお願いします」 for the e1a split) SPEC 10.7, 15.3.5,
@@ -19459,8 +19461,11 @@ R8-M* and R9-M* by the stage of the recording unit.
   group reviewer: design, implementation and the c2-2 merge reviews; the Middle's C-329 CONSENT, records only) SPEC 8.2.3, 8.9.1,
   8.9.2.
   - **Rows.** A view's entry (R7-M28) buckets by (chain scope, kind, subject key). A kind has a row when a reader reads it by
-    subject: Contract (`Enumerate`'s walk), TypeIdentity (`ValidateAssociatedOverlapAgreement`, `DisjointConformanceFacts`) and
-    Semantics (`DisjointConformanceFacts`). The other kinds are not indexed (no reader: a row formed for nothing on every request).
+    subject: each row kind (Contract, and R7-C2c2 c2-3b's leaf kind Callable; `Enumerate`'s walk), TypeIdentity
+    (`ValidateAssociatedOverlapAgreement`, `DisjointConformanceFacts`) and Semantics (`DisjointConformanceFacts`). A row kind's fact
+    is filed under its subject and its class key in the request's view and keeps the Sources' order (c2-3b); a TypeIdentity or
+    Semantics fact under its written subject alone, in its environment's order. The other kinds are not indexed (no reader: a row
+    formed for nothing on every request).
   - **Not readers (e2-2c).** No other walk reads a view's written facts of a kind by subject under the rows' contract:
     `RefutedOverlapInputs` judges each written premise of a generic input (`DirectFacts`, every kind) in the overlap scope (SPEC
     8.9.2), a per-fact judgment as `ValidateConstraintEnvironments`' is, and stays; `IsRecursive` (SPEC 8.3.3) is a worklist over a
@@ -19473,8 +19478,8 @@ R8-M* and R9-M* by the stage of the recording unit.
   - **The merge with R7-C2c2 c2-1.** The class-key copies are the Contract row's alone. The TypeIdentity and Semantics rows hold
     each fact as written under its written subject key, with no class key and no reading, so a reader that pairs by bucket pairs
     facts of one written subject key only (the agreement's former `Symbol`/receiver equality is the key's).
-  - **Readers.** A request (`PremiseRefines`) and a closure validator's read (`BeginClosureRead` .. `EndClosureRead`), which is
-    outside any request. Whoever holds an entry starts no request (a request's return drops the entries it does not keep):
+  - **Readers.** A request (`PremiseRefines`, `FirstRows`) and a closure validator's read (`BeginClosureRead` .. `EndClosureRead`),
+    which is outside any request. Whoever holds an entry starts no request (a request's return drops the entries it does not keep):
     `PremiseRefines` entered from a walk or from a validator's read is InternalInvariant, so a validator takes what it needs before
     it judges (the agreement copies its pairs; `DisjointConformanceFacts` calls only `AvailableConstraintFact`, `DependentType`,
     `SameCompleteType`).
@@ -19498,6 +19503,63 @@ R8-M* and R9-M* by the stage of the recording unit.
   - **Rejected.** A case per validator in the index (a second representation); keeping the comparison and making C3a skip it (two
     owners of one rule); a per-validator cache of the scope's facts by subject (the side table the index already is); indexing every
     kind with a subject (rows without a reader); keeping a validator-formed entry for the next request (above).
+  - Amended by R7-M31 (R7-C2c2 c2-3's landing): Rows gains its row kinds (Callable, a leaf kind), and Readers `FirstRows`.
+- **R7-M30 Name discovery reads `Enumerate`'s rows, one candidate per Contract** (Front, 2026-11-14; R7-C2c2 c2-3a; design-c23.md
+  §11, review-c23.md, F's ruling 34; amended with c2-3b in the same window, review-c23a-impl N6, ruling 44). SPEC 8.2.3, 8.3.2,
+  8.5.2, 9.6.
+  - A row carries its availability (the strongest derivation's). `FirstRows` is the plain first walk's boundary: the rows of the
+    subject and of its class key, each once, whatever their availability; c2-3b's five readers (`TryCallable`, `SelectValueCall`,
+    `AvailableCallableEffects`, `AvailableEffectBounds`, `PremiseCallable`) read it as it is. `PremiseRows`, the candidate readers'
+    boundary (`FindAssociated`, `RequirementMember`: a lookup is not a proof), is `FirstRows` with the Alias column: one non-Alias
+    row for the rows whose Contract references are one Type in the request's classes (the identity judge's Proven,
+    `IdentityClasses.Same`; `ClassKey` is the supply's index of subjects only), the more determined spelling (closed first, then
+    `Order`), never by premise order.
+  - `PremiseRefines` reads the available rows, and c2-2's extension stays its alone: only a request whose demanded Contract is not
+    proven extends, so a candidate reader never does (ruling 34 C1) and the Alias column is formed for candidate readers only (C3).
+  - Deleted: `HasContractFact` (a parameter's indexing, iteration and arithmetic premises ask `PremiseRefines`), discovery's
+    written-fact scans, `RefinesDeclaration` (its witness sites ask `IsRefinement`).
+  - Rejected: a question or mode parameter on `PremiseRows` (discovery extending to a fixpoint is a new rule and a steering
+    parameter), a per-reader identity predicate (c1''s B1/B3), a dedupe in the walk (refinement reads references).
+  - Semantics and arithmetic readers follow in c2-3e and d (Callable and effect-bound readers: R7-M31).
+- **R7-M31 `Enumerate`'s rows are every kind's with a reader, and carry their Source** (Front, 2026-11-14; R7-C2c2 c2-3b;
+  design-c23b.md §11, review-c23b.md C1-C6 and N2, F's rulings 37, 38 and 40). SPEC 8.3.2, 8.10, 8.11.3, 8.11.4, 10.5.5.
+  - A Contract row is one per reference. A constraint of another kind with a reader (`RowKind`, the one list the index and the
+    walk's two sources read: Callable) gives a leaf row, from a fact or a prefix's clause instance: one per stating premise, never
+    merged and never Alias (8.10's weakest receiver and 8.11.4's bound list are the premise's; merging by signature is the Callable
+    selection's rule), and outside the closure (head depths, active prefixes and ancestors read Contract rows).
+  - The Source is the written fact a derivation starts from and the scope stating it. It is evidence only: its readers are the
+    editor's evidence and a failed selection's related locations, and no verdict reads it. It is chosen independently of premise
+    order: the first available derivation in the walk's steps, facts innermost scope first and, in one environment, a fact on the
+    subject as written before a class mate's or a reading's, then `Order` of the facts' subjects (the index keeps each list so).
+  - `FirstRows` is the request boundary of a reader that demands no Contract: the first walk's rows of the subject and its key, each
+    once, no extension, no Alias, no identity judged; `PremiseRows` (name discovery, R7-M30) forms its Alias column over it.
+    `TryCallable`, `SelectValueCall`, `AvailableCallableEffects`, `AvailableEffectBounds` and the premise evidence of a Callable
+    atom (`PremiseCallable`, read by `Supply` for the proposition and, under `not`, its negation) read `FirstRows`' available rows
+    instead of scanning the scope's facts, so their answers no longer depend on which projections the scope's syntax wrote.
+  - Staged: `Supply`'s fact scan keeps its two Callable gate terms for a `not Callable` premise until R7-C2c2 c2-5's Not rows; c2-5
+    removes them after its probes show that the scan's positive adds nothing over the rows (`IndexNormalized` reads Contract facts
+    only).
+  - Rejected: a depth or identity rule per reader, merging Callable rows by signature, a side table of effect clauses, a kind
+    argument or a mode on the rows' request, a second walk inside `Supply`, a Source rule in the walk (the index's order gives it).
+  - `HandedSignatures` reads the scope's closure and moves to R7-C2e2 (e2-2c) (superseded by R7-M32, c2-3c: it reads `FirstRows`).
+    The signature's and the subject's identity normalization at these readers (`CallableContractType`) is c2-4's row.
+- **R7-M32 Retention's handed callables are read from the rows of the Types a contract reaches** (Front, 2026-11-14; R7-C2c2 c2-3c;
+  design-c23c.md, the owner's O-279 (a), F's ruling 51; supersedes in part R4-M154's rule 3). SPEC 8.3.2, 8.10, 15.6.4.
+  - `HandedSignatures` hands each available Callable and Contract fact of the scope chain, any subject, as before, and then reads
+    `FirstRows` of each Type the contract reaches: each available Contract row's requirement signatures and each Callable clause
+    row's signature, at any depth and in any premise order, through the identities `FirstRows` reaches (limit, PLAN G881: a
+    parameter identified with a two-link projection, `U is T.(A).Next.(B).Next`, gets no available Contract row, so U's requirement
+    signatures and the clauses below them are not handed; a class 1 the rows own).
+  - The contract reaches its signature's Types and those of every signature it hands (a body holds a value of a Type only from
+    them); a Type reached only through a handed signature whose projection chain repeats an associated declaration is not walked, a
+    subject just below an own recursing Type included (an own `T.(Mk).Next.(Mk).Next` skips `T.(Mk).Next.(Mk).Next.(Mk).F`; its rows
+    are its first occurrence's, Self one link deeper), so the walk is finite (probed for raw writers; an Origin writer at such a
+    level is unprobed).
+  - Removed: `HandedContract`'s walk of `ContractSupply` (retention no longer reads the supply).
+  - Supersedes in part R4-M154 rule 3's parenthesis "(with the clauses of its Contract on associated Types the contract's Types
+    reach)": the clauses of every kind, at every depth, of the Types the contract or its handed signatures reach.
+  - Rejected: a Callable case in the supply walk (a second copy of the depth rule, still spelling-dependent: h3bad); the signature's
+    Types only (h3bad, h4bad); a fixed depth; a per-clause handed set with Self abstracted (a new representation).
 - **R8-M1 The representation structs and their Place contract** (owner, 2026-11-07, verbatim 「推奨の内容でOKです。処理を継続してください。」,
   on O-41 (a) and O-43 (A); R8-R1a; prototype R8-L0p; supersedes the two plan rows below) IMPL 21.1.3, SPEC 5.2, 5.5, 5.7.
   - Adopted: `Storage.ArrayRepr<T>`, `Storage.SliceRepr<T>` and `Storage.StringRepr`, internal `#Layout("C")` structs of the Kimi
