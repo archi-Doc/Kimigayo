@@ -15,8 +15,9 @@
 // program's where a read body creates the Closure (the validator's program pass, MirValidator.Program, G191); a called Closure without
 // one is a Closure of a declaration Binding rejected, its request checked and then resting on Binding's record (Callee; PLAN G867).
 // Must not: read a site or a template, or record anything itself (Admit, Requested, the layout verdict, the witness and glue rows do) but
-// a declared callee without a body, a bodyless function that is neither a compiler function nor an import and, in a complete compilation,
-// a called Closure without a body, broken contracts.
+// broken contracts: a declared callee without a body and a bodyless function that is neither a compiler function nor an import, each
+// unless its definition rests on a recorded error (TyCtxt.Bodyless: Dependent), and, in a complete compilation, a called Closure without
+// a body.
 
 using Kimi.Compiler.Mir;
 
@@ -108,8 +109,9 @@ internal sealed partial class InstanceCollector
     // SPEC 22.6 (DECISIONS R8-M19): what a call of a function without a MIR body that is no compiler function runs, its direct call or a
     // requirement's or requirement Item's whose witness it is (Called; Binding rejects its own Item): a #LibraryImport function's item
     // (TyCtxt.Bodyless: a foreign function), keyed by the function alone (an import is never generic), with no target; code generation
-    // calls it by its C signature (FunctionCodegen.Calls' Witness). None for a definition Binding rejected, that error's dependent (no
-    // record); any other, a compiler function taken as a witness included, is a broken contract.
+    // calls it by its C signature (FunctionCodegen.Calls' Witness). None for a definition Binding rejected or whose Body the parser
+    // recorded missing, that error's dependent (TyCtxt.Bodyless: Dependent; no record); any other, a compiler function taken as a witness
+    // included, is a broken contract.
     private int Imported(int item, SourceRef subject, BindingSymbol function)
     {
         switch (TyCtxt.Bodyless(function))
@@ -134,8 +136,9 @@ internal sealed partial class InstanceCollector
     // X4 (DECISIONS R5-M124, R8-A1d, R8-K1c): the one owner of a target the compiler names: the body of a cataloged library function (a
     // Dictionary from none's initialize; a nonempty Array literal's growArray; a collection glue's destroyArray, destroyDictionary or
     // releaseDictionary) or of a struct's declared destructor (Destructor), admitted for a site under the substitution given (a generic
-    // one's; null for one that does not instantiate); a declared callee without a body is a broken contract, which Report keeps in a
-    // complete compilation: in another it is a declaration Binding rejected, that error's dependent (DECISIONS R5-M151).
+    // one's; null for one that does not instantiate). A declared callee without a body whose definition rests on a recorded error
+    // (TyCtxt.Bodyless: Dependent; one Binding rejected, or a drop whose Body the parser recorded missing) is that error's dependent (no
+    // record); any other is a broken contract, which Report keeps in a complete compilation (DECISIONS R5-M151; PLAN G890).
     private int Declared(MirProgram program, int item, SourceRef site, BindingSymbol function, Subst? subst)
     {
         if (program[new(function, MirBodyKind.Fn)] is { } body)
@@ -143,7 +146,11 @@ internal sealed partial class InstanceCollector
             return this.Admit(item, site, body, subst);
         }
 
-        this.Report(DiagnosticCode.InternalInvariant_Kd, site);
+        if (TyCtxt.Bodyless(function) != CompilerFunctionEffect.Dependent)
+        {
+            this.Report(DiagnosticCode.InternalInvariant_Kd, site);
+        }
+
         return -1;
     }
 }
