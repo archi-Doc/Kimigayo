@@ -144,7 +144,8 @@ Entries were compacted under G420 (the owner's 「規則 A」, 2026-11-05); the 
     planning session schedules restructurings.
   - Supersedes: Q7; the A5 step 2 plan's PD21 (R4-M74), its §3.7 schedule, its count-triggered units 2x-R4, 2x-R7 and 2d-1 and
     the PD21 clauses of its design packages (2a0-D, 2b-D, 2e-D), except PD21's no-growth clause for Binding files over the
-    token limit with its counts in the commit, which applies COMPILER_ARCHITECTURE's limits; the R5 and R6 plan's count
+    token limit with its counts in the commit, which applies COMPILER_ARCHITECTURE's limits (that clause superseded by Q19:
+    no token limit); the R5 and R6 plan's count
     trigger for G1 ("before its fourth change"), G1 staying a split by the responsibilities it names; and the due states and
     next-change conditions in R4-M92, R4-M96, R4-M97 (with its refusal of a second no-split ruling and 2g-6's wait for 2x-R7
     and a `MirDrops.cs` response), R4-M98, R4-M101, R4-M102, R4-M106, BU-24, R5-M63, R5-M92, R5-M93 and R5-M102, each marked
@@ -400,15 +401,15 @@ Entries were compacted under G420 (the owner's 「規則 A」, 2026-11-05); the 
   「行数・文字数の上限は、全て撤廃します。各種文書を修正してください。PLAN、コミットメッセージの上限も撤廃します。」 and, for the 60-statement member limit, 「Remove it too」; AGENTS,
   WORKFLOW, COMPILER_ARCHITECTURE).
   - Removed: statements per member (60), tokens per file (5,000, with the generated data files' exemption from it), the line length
-    and the code rules' density (160 characters or UTF-16 units per line), PLAN's 500 lines and the commit message's about 2,000
-    characters.
+    and the code rules' density (160 characters or UTF-16 units per line), the Kimi sources' 120 columns (STYLE), PLAN's 500
+    lines and the commit message's about 2,000 characters.
   - Kept: the parameter limits (6, of which at most 2 optional, 1 `out` and 1 `bool`; CR-R2), `bool` literal arguments by name, no
     failure text through `out string`, control-statement nesting (4, the one limit `CodeRuleException` may exceed with its reason
     and bound), operands in one logical or pattern chain (4), no nested conditional expression; Q5's net size change in every commit
     message; PLAN's merging of rows of one cause and removal of closed rows; AGENTS' structure rules (a responsibility's code in its
     owner's files, splitting by responsibility, no mechanical splitting).
   - Effect: a review finding that rests only on a removed limit is dropped; PLAN rows that rest only on one close (G438).
-  - Supersedes in part Q2 (the limits it put in COMPILER_ARCHITECTURE) and Q6 (the commit message's length).
+  - Supersedes in part Q2 (the limits it put in COMPILER_ARCHITECTURE), Q6 (the commit message's length) and Q9 (PD21's no-growth clause for Binding files over the token limit).
 
 ## Code rules (2026-10-12)
 
