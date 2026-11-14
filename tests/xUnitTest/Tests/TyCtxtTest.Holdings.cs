@@ -105,8 +105,8 @@ public sealed partial class TyCtxtTest
         Assert.Equal("- Inline Any", Shown(Entries(c, null, null, null)));
     }
 
-    // A Closure's environment bindings as its body sees them; a captured raw layer no declaration wrote is row 11 (`RawStated` false), dev's
-    // answer, which a Closure's Type keeps, since Unstated marks only kept parts.
+    // A Closure Type's own components, its environment bindings as its body sees them: a captured raw layer no declaration wrote is row 11
+    // (`RawStated` false), which a Closure's Type keeps; a contract reads them through ClosureEnvironment, stated (OwnLayers' test).
     [Fact]
     public void AClosuresBindingsAreItsParts()
     {

@@ -184,7 +184,7 @@ public sealed partial class Binding
             return false;
         }
 
-        var run = this.BodyRun(position, written, holder, out _);
+        var run = this.ContractRun(position, written, holder, out _);
         var borrows = false;
         if (this.Referent(run, out _) is { } target)
         {
@@ -235,7 +235,7 @@ public sealed partial class Binding
         }
 
         var stored = asked.Step == HoldStep.Inline;
-        var run = this.BodyRun(storage, null, null, out _);
+        var run = this.ContractRun(storage, null, null, out _);
         var holds = false;
         for (var i = run.Start; !holds && i < run.End; i++)
         {

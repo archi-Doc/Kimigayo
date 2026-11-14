@@ -7,7 +7,7 @@ namespace Kimi.Compiler;
 
 // Call retention, atoms (SPEC 15.6.4 steps 1-4; contract in TyCtxt.Retention.cs): each input's and the result's Origin atoms and
 // carriers (RetentionInput, RetentionWalk), a Closure contract's call receiver input (ClosureReceiver) and every Closure part read as
-// its body sees it (ClosureEnvironment; DECISIONS R4-M148), the content a raw layer's Origin lets the call write (RawContent) and the
+// a contract reads it (ClosureEnvironment; DECISIONS R4-M148), the content a raw layer's Origin lets the call write (RawContent) and the
 // borrow a Type refers through (BorrowReferent); Binding.Retention.cs reads them into premises, Binding.Retention.Rows.cs into rows.
 public sealed partial class Binding
 {
@@ -30,7 +30,7 @@ public sealed partial class Binding
     }
 
     // SPEC 15.8.2 (DECISIONS R4-M148): a Closure contract's input 0, its call receiver as its body is checked against it: `R/Env during ρ`,
-    // R the strongest receiver (BoundClosure.Receiver), Env the callee's Closure Type, whose environment the walk reads as the body sees it
+    // R the strongest receiver (BoundClosure.Receiver), Env the callee's Closure Type, whose environment the walk reads as a contract reads it
     // (TyCtxt.ClosureEnvironment), and ρ its receiver atom (ClosureValueSlot); Env by value under `owner/Self`. The MIR body's receiver
     // local has the same Type over the definition's environment, without ρ (MirBuilder).
     internal BoundType ClosureReceiver(FunctionKoto closure, BoundType callee)
@@ -189,7 +189,7 @@ public sealed partial class Binding
 
     // The walk below a Type's own layer at a position of `variance` (RetentionWalk): its components, writable, shared and past a raw
     // layer's step as RetentionWalk states, and the content a raw layer's Origin lets the call write (RawContent); a Closure's components
-    // are its environment as its body sees it (TyCtxt.ClosureEnvironment, DECISIONS R4-M148; one that does not substitute is the
+    // are its environment as a contract reads it (TyCtxt.ClosureEnvironment, DECISIONS R4-M148; one that does not substitute is the
     // contract's Limit). A raw input's walk starts here, past its own layer's atom (RetentionInput). A raw layer of an input not past a
     // shared layer is one of its raw sources (retentionRawSources; SPEC 15.6.4 at the raw source, DECISIONS BU-66; a call writes through
     // none past one, 5.2.1).
@@ -224,7 +224,7 @@ public sealed partial class Binding
         }
     }
 
-    // A Closure part of a contract input as its body sees it (TyCtxt.ClosureEnvironment, DECISIONS R4-M148): its environment, read at every
+    // A Closure part of a contract input as a contract reads it (TyCtxt.ClosureEnvironment, DECISIONS R4-M148): its environment, read at every
     // Closure part, the call receiver's (RetentionInput) and a nested one's (RetentionParts); one that does not substitute is the
     // contract's Limit.
     private BoundType ClosureEnvironment(BoundType closure)
@@ -258,10 +258,11 @@ public sealed partial class Binding
         this.rawMembers.RemoveRange(start, end - start);
     }
 
-    // An Origin occurrence; a Function Type's per-call Origin, bound by its own syntax, belongs to no value of it (SPEC 15.3.4).
+    // An Origin occurrence; a Function Type's per-call Origin, bound by its own syntax, belongs to no value of it (SPEC 15.3.4), and Unstated,
+    // a contract Closure environment's mark (ClosureEnvironment), is no Origin of a value, as the storage walk skips it (no premise names it).
     private void AddRetentionAtom(RetentionAtom atom, bool callable)
     {
-        if (atom.Origin is { } origin && !(callable && origin is { Kind: OriginKind.Input, Binder: FunctionTypeKoto }))
+        if (atom.Origin is { Kind: not OriginKind.Unstated } origin && !(callable && origin is { Kind: OriginKind.Input, Binder: FunctionTypeKoto }))
         {
             this.retentionAtoms.Add(atom with { Signature = null }); // A position's declared counterpart is no part of its atom.
         }

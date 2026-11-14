@@ -80,8 +80,8 @@ public sealed partial class Binding
     private readonly List<BoundType> viewMembers = new(); // View's scratch: an identity class's members.
 
     // SPEC 5.2.1 Retained dependencies, 5.7 Calls, 15.6.4 (PLAN G583, G598, C-189; contract in TyCtxt.Raw.cs): the parts the value at a
-    // Place's key holds at its own address, by ByValue at any holder, each part as the body sees it (BodySees, as the storage walk's
-    // BodyRun): a raw layer met there with its step at the Place (LayerStep), not gone past; any other part that reaches storage with no
+    // Place's key holds at its own address, by ByValue at any holder, each part as a contract reads it (ContractReading, as the storage
+    // walk's ContractRun): a raw layer met there with its step at the Place (LayerStep), not gone past; any other part that reaches storage with no
     // layer; nothing for a part with no entry or a Type argument. A Case key walks the payload's components with the Case's written Types,
     // as Holdings does. False at Binding's Limit, the storage walk's.
     internal bool OwnLayers(PlaceKey at, List<OwnLayer> into)
@@ -135,8 +135,8 @@ public sealed partial class Binding
 
         if (type.Kind is BoundTypeKind.Tuple or BoundTypeKind.FixedArray or BoundTypeKind.Closure)
         {
-            var sees = this.BodySees(type); // A Closure's part as OwnLayers reads it (R4-M148), one reading.
-            var inline = sees is null ? null : InlinePart(sees, part) ?? ((uint)part < (uint)sees.Components.Count ? sees.Components[part] : null);
+            var read = this.ContractReading(type); // A Closure's part as OwnLayers reads it (R4-M148), one reading.
+            var inline = read is null ? null : InlinePart(read, part) ?? ((uint)part < (uint)read.Components.Count ? read.Components[part] : null);
             var signature = Below(declared, type.Kind != BoundTypeKind.Closure && Same(declared, type) ? InlinePart(declared, part) : null);
             return at with { Type = inline, Written = InlinePart(at.Written, part), Signature = signature };
         }
@@ -184,8 +184,8 @@ public sealed partial class Binding
             return true;
         }
 
-        var (start, sees, hidden) = (this.retentionHeld.Count, this.BodySees(type), Hides(signature));
-        var complete = sees is not null && this.Holdings(sees, written, holder, this.retentionHeld);
+        var (start, read, hidden) = (this.retentionHeld.Count, this.ContractReading(type), Hides(signature));
+        var complete = read is not null && this.Holdings(read, written, holder, this.retentionHeld);
         var run = new HeldRange(start, this.retentionHeld.Count);
         var raw = start < run.End && (this.retentionHeld[start].Flags & HoldFlags.Raw) != 0 && !TryPairLayer(type, out _, out _);
         if (raw && complete)

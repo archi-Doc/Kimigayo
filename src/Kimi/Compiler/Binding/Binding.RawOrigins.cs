@@ -26,7 +26,8 @@ namespace Kimi.Compiler;
 // - Invariants: Holder only in declared Field and payload Types, which every read replaces, and in an instance's kept parts, whose
 //   readers read a raw layer by its step only (TyCtxt.StoredParts, DECISIONS BU-41), never in AdtDef's stored Types; Unstated in
 //   relations and their records and, marking a layer its declaration writes without `during`, on raw layers of an instance's kept parts
-//   (Binding.WithUnstatedOrigins, the one producer, DECISIONS BU-46), whose readers read it by its step and TyCtxt.RawStated, never in
+//   and of a Closure environment as a contract reads it (Binding.WithUnstatedOrigins, the one producer, DECISIONS BU-46; its entry
+//   Binding.StatedEnvironment), whose readers read it by its step and TyCtxt.RawStated, never in
 //   any other Type (MirValidator's Local row checks a MIR local's), so no premise, obligation or row names Holder or Unstated
 //   (design-final §13 A2). A formed raw Origin is the Origin it is formed with; every step is total and never Shared by default, and only
 //   retention and the TyCtxt views read one, after Binding's last pass.

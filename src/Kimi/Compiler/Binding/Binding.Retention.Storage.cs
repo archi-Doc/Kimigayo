@@ -146,7 +146,7 @@ public sealed partial class Binding
             }
         }
 
-        var run = this.BodyRun(type, at.Written, at.Holder, out var complete);
+        var run = this.ContractRun(type, at.Written, at.Holder, out var complete);
         this.retentionLimit |= !complete && at.Storage != NoStorage;
         if (source && !met)
         {
@@ -642,17 +642,18 @@ public sealed partial class Binding
         return new(start, this.retentionHeld.Count);
     }
 
-    // HeldRun of a value a contract reads as its body sees it (BodySees); a Closure whose environment does not substitute is the Limit.
-    private HeldRange BodyRun(BoundType type, BoundType? written, BoundType? holder, out bool complete)
+    // HeldRun of a value as a contract reads it (ContractReading); a Closure whose environment does not substitute is the Limit.
+    private HeldRange ContractRun(BoundType type, BoundType? written, BoundType? holder, out bool complete)
     {
-        var sees = this.BodySees(type);
-        this.retentionLimit |= sees is null;
-        return this.HeldRun(sees ?? type, written, holder, out complete);
+        var read = this.ContractReading(type);
+        this.retentionLimit |= read is null;
+        return this.HeldRun(read ?? type, written, holder, out complete);
     }
 
-    // A part of a contract input as the contract's body sees it (DECISIONS R4-M148, one rule): a Closure's environment
-    // (TyCtxt.ClosureEnvironment), null where it does not substitute; any other Type itself. The storage walk (BodyRun) and OwnLayers read it.
-    private BoundType? BodySees(BoundType type) => type.Kind == BoundTypeKind.Closure ? this.types.ClosureEnvironment(type) : type;
+    // A part of a contract input as a contract reads it (DECISIONS R4-M148, one rule): a Closure's environment, its raw layers stated
+    // (TyCtxt.ClosureEnvironment), null where it does not substitute; any other Type itself. The storage walk (ContractRun) and OwnLayers
+    // read it.
+    private BoundType? ContractReading(BoundType type) => type.Kind == BoundTypeKind.Closure ? this.types.ClosureEnvironment(type) : type;
 
     // Whether a value of a Type has an entry at its own address or past an own step: no dereference, raw step, or erased or abstract part.
     // A Type argument has no address (SPEC 15.3.5), but a Loan<T>'s until U3a (G416 D4; row 10). The one by-value criterion, at any holder:

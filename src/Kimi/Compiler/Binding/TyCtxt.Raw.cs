@@ -10,7 +10,8 @@ namespace Kimi.Compiler;
 // address (Leading; C-189, C-211), which A5's pun rule reads, whether a declaration states a
 // layer without an Origin (RawStated, Binding's), the stored parts through which a walk reaches the instance storing it
 // (StoredParts, retention's), the Type a declaration writes at a stored part's inline positions (WrittenAt, DECISIONS BU-58, A5's
-// addresses), whether a Type states Unstated (StatesUnstated), which only a kept part does (MirValidator's Local row), and SPEC 5.2's
+// addresses), whether a Type states Unstated (StatesUnstated), which only a kept part and a contract's Closure environment do (MirValidator's
+// Local row), and SPEC 5.2's
 // punnable set (Punnable, its one owner), which A5's pun rule reads.
 internal sealed partial class TyCtxt
 {
@@ -18,7 +19,8 @@ internal sealed partial class TyCtxt
     private readonly List<Hold> rawForm = []; // Decided's Holdings scratch, a stack.
 
     // SPEC 5.7 Calls, Fits (DECISIONS BU-46): whether a declaration states a raw layer without an Origin: true exactly for a layer a Field,
-    // Case payload or base clause writes without `during`, which an instance's kept parts (StoredParts) state as Unstated at any depth
+    // Case payload or base clause writes without `during`, or a Closure environment binding's Type does (O-254 Q1 D: the bindings are
+    // Fields of the receiver's referent; ClosureEnvironment), which an instance's kept parts (StoredParts) state as Unstated at any depth
     // below them, through every nested instance, Type argument, pair slot's argument, element and `during self` pointee they reach; false
     // for a layer the walk's own Type writes (a parameter's or local's Type expression, a Type argument or pair argument it supplies) and
     // for one stating an Origin. A read of the layer Type; total; allocates nothing.
@@ -181,7 +183,7 @@ internal sealed partial class TyCtxt
     // holder: Tuple and fixed-array elements, a struct's Fields and base, an enum's Case payloads (a Case key: its payload's components with
     // the Case's written Types), a Closure's environment bindings, a pair layer's owner case, an own step's payload or elements (`obj/T`,
     // Array, Dictionary, `string`) and a `Loan<T>`'s argument; any other Type argument adds nothing. Each part is read once per call through
-    // Holdings as the contract's body sees it (a Closure part by ClosureEnvironment, DECISIONS R4-M148). Output, appended to `into` in walk
+    // Holdings as a contract reads it (a Closure part by ClosureEnvironment, DECISIONS R4-M148). Output, appended to `into` in walk
     // order: (layer, step, Past) for each raw layer met there, not gone past, its step that at the Place: DeclaredStep under its holding
     // instance, except that a `during self` layer, where the key's path dereferences, has the step of the Origin reading it gives (SPEC 5.7
     // Writing a Field), and Unsupported through a U2 path; (null, step, Past) for each other part that reaches storage (a borrow or pair

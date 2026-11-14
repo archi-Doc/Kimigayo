@@ -5,8 +5,8 @@
 // Callable signature it declares (CallPlan.DeclaredSignature, DECISIONS R4-M41), or a destroyed part whose `drop` is unknown; the calling
 // definition (null: top-level statements).
 // A Closure callee's contract has its call receiver at input 0 (HasReceiverInput; SPEC 15.8.2, DECISIONS R4-M148): `R/Env during ρ`, `Env`
-// by value under `owner/Self`, its `let` bindings never written (D1); every Closure part of an input is read as its body sees it, its
-// definition's environment under its closure context (ClosureEnvironment), one that does not substitute a CallRetention.Limit. A local
+// by value under `owner/Self`, its `let` bindings never written (D1); every Closure part of an input is read as a contract reads it, its
+// definition's environment, its raw layers stated, under its closure context (ClosureEnvironment), one that does not substitute a CallRetention.Limit. A local
 // region is one form in signature and environment, and reaches the meet of its sources (Binding.AddRegionMeet; DECISIONS: G570).
 // A destruction retains as a call of each `drop` it runs (SPEC 15.6.4, 16.3.1; DECISIONS BU-47): a `drop`'s contract has its destruction
 // receiver at input 0, though it declares no parameter (Signature numbers none), `uniq/Self` over the layer the Subst's declaring Type
