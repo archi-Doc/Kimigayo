@@ -50,7 +50,7 @@ public partial class ApplicabilityChainRegressionTest
 
     private const string HeldDeclarations = "func identity<T>(v: T) -> T => v@move\nfunc f(x: i64) -> i32 => 0\nfunc ft(x: (i64, i32)) -> i32 => 0\nfunc fa(x: Array<i64>) -> i32 => 0\nfunc fd(x: Dictionary<string, i64>) -> i32 => 0\nfunc k(c: bool, d: bool) -> i32\n";
 
-    private const string FixedPair = "struct Res\n    public var home: usize = 0\nfunc put<T>(a: T, b: T) -> () => ()\n";
+    private const string FixedPair = "struct Res\n    public var home: usize = 0\nfunc put<T>(a: T, b: T) -> () => ()\nfunc put3<T>(a: T, b: T, c: T) -> () => ()\nfunc putr<T>(a: ref/T, b: ref/T) -> () => ()\nfunc id<T>(value: T) -> T => value@move\nfunc opt<T>(o: Option<T>) -> () => ()\nfunc fail() -> Never => $abort(\"no\")\n";
 
     private const string OpenWhole = "func fu(a: Array<i32>) -> i32 => 0\nfunc fu<T>(a: T) -> bool => true\nfunc ftu(t: (i32, i32)) -> i32 => 0\nfunc ftu<T>(t: T) -> bool => true\nfunc fdw(d: Dictionary<i32, i32>) -> i32 => 0\nfunc fdw<T>(d: T) -> bool => true\nfunc fur(a: ref/Array<i32>) -> i32 => 0\nfunc fur<T>(a: ref/T) -> bool => true\nfunc fw(p: (ref/i32 during a, i32)) -> i32 => 0\nfunc fw<T>(p: (T, i32)) -> bool => true\nfunc fwd(p: (ref/Dictionary<i32, i32> during a, i32)) -> i32 => 0\nfunc fwd<T>(p: (T, i32)) -> bool => true\nfunc gk<K, V>(d: Dictionary<K, V>) -> i32\n    K is Equatable\n    return 0\nfunc gk<T>(d: T) -> bool => true\nfunc gq<T>(a: ref/Array<T>) -> i32 => 0\nfunc gq<T>(a: ref/T) -> bool => true\nfunc k(c: bool, n: i32, v: i32) -> i32\n";
 
@@ -539,6 +539,22 @@ public partial class ApplicabilityChainRegressionTest
     [InlineData("f06", FixedPair + "public func main()\n    let y: i32 = 1\n    let f: [2 of i32] = [1, 2]\n    put([y, y], f)\n", "")]
     [InlineData("f07", FixedPair + "public func main()\n    let y: i32 = 1\n    let f: [2 of i32] = [1, 2]\n    put(f, [y, y, y])\n", "NoApplicableOverload_Kd: put(f, [y, y, y])")]
     [InlineData("f08", FixedPair + "public func main()\n    let y: i64 = 1\n    let f: [2 of i32] = [1, 2]\n    put(f, [y, y])\n", "NoApplicableOverload_Kd: put(f, [y, y])")]
+    // The owner's O-292 (a), SPEC 10.1 steps 3-4: the literal binds at the end of the argument evidence, so the expected result fills
+    // nothing it bound (f11, r03) and a construction holding it is solved before its nested-call check (f04). The other forms beside a
+    // fixed array: at `ref/T` (p07), three arguments (p03m), Literal elements (p01), fills (p08, p09), a join of literals (j01) or of
+    // evidence (j02, 14.9.2 step 2: its sources supply Array<i32>), a moved Array (f14), a Never source in a join (n01).
+    [InlineData("f11", FixedPair + "public func main()\n    let y: i32 = 1\n    let r: [2 of i32] = id([y, y])\n", "*: let r: [2 of i32] = id([y, y])")]
+    [InlineData("r03", FixedPair + "public func main()\n    let y: i32 = 1\n    let yr = y@ref\n    let r: Array<i32> = id([yr, yr])\n", "*: let r: Array<i32> = id([yr, yr])")]
+    [InlineData("f04", FixedPair + "public func main()\n    let v: i64 = 7\n    opt(Option.Some([v]))\n", "")]
+    [InlineData("p07", FixedPair + "public func main()\n    let y: i32 = 1\n    let f: [2 of i32] = [1, 2]\n    putr(f@ref, [y, y])\n", "")]
+    [InlineData("p03m", FixedPair + "public func main()\n    let y: i32 = 1\n    let f: [2 of i32] = [1, 2]\n    put3([y, y], f, [y, y])\n", "")]
+    [InlineData("p01", FixedPair + "public func main()\n    let f: [2 of i32] = [1, 2]\n    put([1, 2], f)\n", "")]
+    [InlineData("p08", FixedPair + "public func main()\n    let y: i32 = 1\n    let f: [2 of i32] = [1, 2]\n    put(f, [2 of y])\n", "")]
+    [InlineData("p09", FixedPair + "public func main()\n    let y: i32 = 1\n    let f: [2 of i32] = [1, 2]\n    put(f, [3 of y])\n", "*: put(f, [3 of y])")]
+    [InlineData("j01", FixedPair + "public func main()\n    let c: bool = true\n    let f: [2 of i32] = [1, 2]\n    put(f, if c => [1, 2] else => [3, 4])\n", "")]
+    [InlineData("j02", FixedPair + "public func main()\n    let c: bool = true\n    let y: i32 = 1\n    let f: [2 of i32] = [1, 2]\n    put(f, if c => [y, y] else => [y, y])\n", "*: put(f, if c => [y, y] else => [y, y])")]
+    [InlineData("f14", FixedPair + "public func main()\n    let y: i32 = 1\n    let f: Array<i32> = [1, 2]\n    put(f@move, [y, y])\n", "")]
+    [InlineData("n01", FixedPair + "public func main()\n    let c: bool = true\n    let y: i32 = 1\n    put([y], if c => [y] else => fail())\n", "")]
     public void AnArrayLiteralAtABareSlotAgreesWithAFixedArrayOfItsCount(string form, string program, string records)
         => CompilationTestHelper.AssertRecordsAtLines(form, program, records);
 

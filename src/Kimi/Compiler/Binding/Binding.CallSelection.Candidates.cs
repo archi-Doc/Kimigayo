@@ -270,6 +270,11 @@ public sealed partial class Binding
                 }
             }
 
+            if (!solution.BindWaitedWholes())
+            {
+                return CandidateApplicability.Inapplicable;
+            }
+
             if (!solution.InferCallableSignatures(mapping, operations))
             {
                 return CandidateApplicability.Inapplicable;

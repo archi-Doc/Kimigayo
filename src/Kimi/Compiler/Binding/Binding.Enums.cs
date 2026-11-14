@@ -531,6 +531,12 @@ public sealed partial class Binding
             }
         }
 
+        if (!late && !solution.BindWaitedWholes())
+        {
+            this.Fail(use, BindingFailure.TypeMismatch);
+            return false;
+        }
+
         return true;
     }
 

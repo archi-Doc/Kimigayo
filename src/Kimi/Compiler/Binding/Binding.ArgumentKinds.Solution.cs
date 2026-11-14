@@ -72,6 +72,12 @@ public sealed partial class Binding
         internal BoundOrigin[] Origins;
         internal BoundOrigin[] Inputs;
         internal bool FixedConstruction;
+
+        // SPEC 10.1 step 3, 10.8 (the owner's O-292 (a)): whether the argument evidence is complete (BindWaitedWholes), and the number
+        // of this solution's arguments whose whole array literal waited for it (waitedWholes); WholeWaits marks the argument in its walk.
+        internal bool ArgumentsDone;
+        internal bool WholeWaits;
+        internal int WaitedWholes;
         internal OriginInference? OriginInference;
 
         // F1 (R4-M164): each argument's root row for this candidate's call (Contribute; Binding.ArgumentKinds.Rows.cs), a slice of the

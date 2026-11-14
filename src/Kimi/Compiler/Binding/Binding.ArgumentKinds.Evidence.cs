@@ -10,6 +10,10 @@ public sealed partial class Binding
     // (FixedPattern.Of, AdaptInput) runs an evidence walk, so no InferAdaptedParts re-enters between its Add calls and SelectCommonType.
     private readonly List<BoundType> adaptedPartTypes = new();
 
+    // The scratch of the arguments whose whole array literal waits for the end of the argument evidence (SlotSolution.BindWaitedWholes),
+    // each with its pattern; no evidence walk runs inside another's early pass, so a solution's entries are the last it added.
+    private readonly List<(BoundType Pattern, Koto Part)> waitedWholes = new();
+
     // SPEC 10.5.1, 10.3, 15.6.4 step 3 (DECISIONS R4-M164): what a filled slot's position contributes to its selected call, which
     // decides where the call proves the position's instantiated parameter Type well formed (RequireInputPremises). At a Signature
     // position whose pattern is a slot, the slot's solution is its contributor's (the premise visits stop there; DECISIONS BU-99); at an
@@ -87,7 +91,32 @@ public sealed partial class Binding
             var start = this.Binding.OpenPosition(part);
             var inferred = this.InferPosition(pattern, start, late);
             this.Binding.ClosePosition(start);
+            if (this.WholeWaits)
+            {
+                this.WholeWaits = false;
+                this.Binding.waitedWholes.Add((pattern, part));
+                this.WaitedWholes++;
+            }
+
             return inferred;
+        }
+
+        // SPEC 10.1 step 3, 10.8 (the owner's O-292 (a)): at the end of the argument evidence, before the expected result (step 4), the
+        // arguments whose whole array literal waited are walked once more, so the literal agrees with the slot's bindings in either
+        // order (InferComposite). False when one conflicts.
+        internal bool BindWaitedWholes()
+        {
+            this.ArgumentsDone = true;
+            var waited = this.Binding.waitedWholes;
+            var bound = true;
+            for (var i = waited.Count - this.WaitedWholes; bound && i < waited.Count; i++)
+            {
+                bound = this.InferArgument(waited[i].Pattern, waited[i].Part, late: false);
+            }
+
+            waited.Clear();
+            this.WaitedWholes = 0;
+            return bound;
         }
 
         // SPEC 10.8: an argument's (or the receiver's) Type as evidence for the slots of its parameter's declared Type.
@@ -448,15 +477,17 @@ public sealed partial class Binding
                 // with the slot's other evidence whatever their order; a literal holding a part that is no evidence yet, or at a slot an
                 // explicit Type argument fixed (kept, 10.8), fits its parts at the slot's binding.
                 // An array literal is fitted per candidate (SPEC 4.3.1, 4.4.1; F's ruling 23): its whole Type is the Array/[N of] pair. A
-                // slot that another argument binds to a fixed array takes it part by part there, in either order (in the early pass it
-                // waits while the slot is unbound), and it binds Array<E> only when no other evidence fixes the slot, in the late pass.
+                // slot that another argument binds to a fixed array takes it part by part there, in either order: while the slot is
+                // unbound it waits for the end of the argument evidence (BindWaitedWholes; SPEC 10.1 step 3, the owner's O-292 (a)), and
+                // then binds Array<E>, before the expected result fills anything (step 4).
                 if (FixedPattern.Of(binding, pattern, this.Fixed).Type.Kind == BoundTypeKind.Parameter &&
                     binding.IndependentPositionType(start, late) is { } inferred)
                 {
                     var pair = inferred.Kind == BoundTypeKind.Array && new AggregateParts(source).Exist;
                     var bound = pair ? binding.SubstituteType(pattern, this.SlotOwner, this.Types, this.Lengths) : null;
-                    if (pair && bound is null && !late)
+                    if (pair && bound is null && !late && !this.ArgumentsDone)
                     {
+                        this.WholeWaits = true;
                         return true;
                     }
 
