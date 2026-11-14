@@ -12089,6 +12089,8 @@ resumed by R4-M86 (2026-10-20).
   - Rejected: substituting the fixed bindings in `SlotSolution.Pattern` (moves the R4-M164 position rows; R7-P3's normalization);
     reading the referent in `Infer` at a bound slot (a second copy of the value-read rule; misses the borrow rows); skipping the
     evidence of a bare slot that a written argument binds (G731's prototype: a clause for one form, beside the entry).
+  - Amended by BU-207 (PLAN G812, the owner's O-283 (a)): an open slot stays a slot for Type slots, while a structured application
+    of a pair binder follows the binder its exact sources fixed and its argument fits the formed Type (SPEC 10.8's second phase).
 - **BU-173 An effect target's group is a grouped Contract reference (PLAN G740)** (2026-11-11; Front, Parsing and Binding; Major;
   design review 1 REVISE (B1), design review 2 ACCEPT, implementation review ACCEPT; the owner's O-160 (a); commit 6d91ceb9a on
   `claude/f-g740`; extends BU-162) SPEC F.6.2, F.5, 8.11.1.
@@ -13297,6 +13299,42 @@ resumed by R4-M86 (2026-10-20).
     (excluded syntax must reject both); six context clauses in the Type parser for (6); a second name or reader for (6)'s
     BorrowOrigin alternative; for (7) an Error per site, a recovery node per site, keeping the root path's `::` node around the
     recovered Type, and a Binding change.
+- **BU-207 Pair binders: one formation rule and a two-phase source rule (PLAN G812)** (Front, 2026-11-14; G812; Major; design
+  reviews 4 and 5 REVISE (the owner's questions), 6 ACCEPT WITH NOTES; the Middle's C-293 CONSENT WITH CONDITIONS; the owner's O-243
+  (a), O-263 (a), O-276 (a), O-283 (a)). SPEC 8.1.2, 10.2, 10.8. Amends BU-163.
+  - **Formation.** `ApplySemantics` (Binding.SemanticsAdaptations.cs) owns the Type `s/U` forms under a pair's binding (SPEC 8.1.2);
+    `PairApplication` gives the pair's own target as its original (a plain type parameter's binding, which has no whole, an
+    application) and `AnnotatedOriginal` the annotated original, read by substitution, inference and `FamilyApplication`. Call-slot
+    inference forms a pattern by the same rule (`FormedApplication`, at every depth; formation continues only into an owner
+    binding's target), and one test, `SamePairLayer`, decides whether a formed layer meets the actual's layer of the same pair, for
+    `InferLayer` and `MatchInputOrigins`.
+  - **Sources** (O-263 (a), O-276 (a)). A pair binder has two kinds of pattern layer. Its exact sources are an occurrence of the
+    original and an application whose target is a bare Type slot being inferred (`IsExactSource`, Binding.CallSlots.cs: an own slot
+    of the slot owner, the only kind the solve's fixed bindings leave open; an enclosing slot a construction fixes is never one).
+    Every other application (`s/(ref/i32)`, `s/Option<U>`, `s/V` over a fixed slot) is formed under the binder the exact sources
+    fixed, or with none the expected result, never evidence.
+  - **Evidence.** The slot frames (InferCtxt) hold per pair slot its selector evidence, the first exact source's Type, logged,
+    cleared and restored with the Type slots as one solution's state; one rule, `IsSource`, reads every exact source, the expected
+    result's included: every other must form the same layer over one target as the first (`ApplySemantics`), owner included,
+    whichever comes first. A slot bound with no selector evidence was fixed before any evidence: nothing is compared, and `owner/U`
+    is `U`. An input, a result pattern or a reference's signature that held an application of an unfixed binder is inferred again
+    while a pass fixes something (`SettleWaiting`, `InferExpectedResult`, `InferReferenceSlots`), so no order chooses there.
+  - **Fit** (O-283 (a)). The formed Type is a parameter Type its argument fits by SPEC 10.2's adaptation, as any argument fits its
+    parameter: a candidate's argument part adapts at its pattern with each structured application among the pattern's outer layers
+    formed (`FittedPattern`, read by `SlotSolution.AdaptationPattern`, the one pattern `AdaptPart` and the Function signature read),
+    then infers from the adapted Type as every part does. An exact source is never adapted to a formed layer: its evidence is the
+    argument's own outer Semantics, so owner and ref evidence still conflict in any order.
+  - An annotated occurrence leaves W's outer Origin to other evidence (an open region keyed by `SlotFrame.Node`, which every solve
+    gives at Rent).
+  - Closes dev's own class 1 of the same rule: an original fixing `s = owner` first let a later application's target absorb a
+    borrowed or abstract actual (`put<s/W, V>(m: s/W, y: s/V)` as `put(a@move, b@ref)`; the Middle's B1 family, C-293). Remainder:
+    PLAN G886 (the second phase's missing drivers; p3/p3s); ol1s joins G794.
+  - Rejected: `Semantics: Parameter` on a pair original (a shared representation change); a solve-level mode field for the region;
+    the expected result as "the last source"; every application as evidence (rejects dev's PairFollowTest programs); a structured
+    application as the first source (order-dependent); comparing the formed Type with the argument's own Type (`put(5, rr)` rejected
+    while `put<i32>(5, rr)` is accepted); forming every application, exact sources included, at the adaptation (an implicit borrow
+    would turn owner evidence into ref and hide 10.8's conflict in one order); leaving the formed Type to the fit after selection
+    alone (a slot only the formed Type binds stays unbound: o9x).
 - **G209-1** (2026-10-24; structural unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source
   aliases their selected container and environment before ordinary lookup merges imports. These responsibilities were embedded in the
   general expression parser and `Binding.Types.Lookup`, with alias resolution beside Type formation. `Parser.RuntimeTypeTests` now
