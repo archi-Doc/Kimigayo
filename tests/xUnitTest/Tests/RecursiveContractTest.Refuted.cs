@@ -39,6 +39,9 @@ public sealed partial class RecursiveContractTest
     private const string G866Closure = "func needNotCallI<F>(f: ref/F)\n    F is not Callable<(i32) -> i32>\n    ()\n";
     private const string N9Guards = "contract Holder\n    associate Item\ncontract Mark\nfunc needMark<V>(v: ref/V)\n    V is Mark\n    ()\n";
     private const string G866Quantified = "contract Conv<X>\nfunc needNotConv<V, X>(v: ref/V)\n    V is not Conv<X>\n    ()\nstruct LeafQ\n    Self is Conv<(ref/i32) -> ref/i32>\n    public var v: i32\n    public init(v: i32) => self.v = v\nfunc g(x: ref/LeafQ)\n    needNotConv<LeafQ, (ref/i32) -> ref/i32 during static>(x)\n";
+    private const string G866Quantification = "contract Conv<X>\nfunc needNotConv<V, X>(v: ref/V)\n    V is not Conv<X>\n    ()\nstruct LeafQ\n    Self is Conv<(ref/i32) -> ref/i32>\n    public var v: i32\n    public init(v: i32) => self.v = v\n";
+    private const string G866QuantifiedCall = "contract Mark\ncontract Mark2\ncontract Sub: Mark\ncontract Conv<X>\ncontract H\n    associate Item\nstruct Leaf\n    public var v: i32\n    public init(v: i32) => self.v = v\nstruct LM\n    Self is Mark\n    public var v: i32\n    public init(v: i32) => self.v = v\nstruct LS\n    Self is Sub\n    public var v: i32\n    public init(v: i32) => self.v = v\nstruct LC\n    Self is Conv<i32>\n    public var v: i32\n    public init(v: i32) => self.v = v\nstruct BoxM<A>\n    Self is Mark when A is Mark\n    public var n: i32\nfunc needConv<V, X>(v: ref/V)\n    V is Conv<X>\n    ()\nfunc needNotConv<V, X>(v: ref/V)\n    V is not Conv<X>\n    ()\nfunc needCallN<F, X>(f: ref/F)\n    F is Callable<(X) -> i32>\n    ()\nfunc needNotCallN<F, X>(f: ref/F)\n    F is not Callable<(X) -> i32>\n    ()\nstruct LQ\n    Self is Conv<(ref/i32) -> i32>\n    public var v: i32\nfunc g(x: ref/LQ, y: ref/i32 during a)\n    needNotConv<LQ, (ref/i32 during a) -> i32>(x)\n";
+    private const string G866QuantifiedArgs = "contract Conv<X>\ncontract D<U>\nfunc needConv<V, X>(v: ref/V)\n    V is Conv<X>\n    ()\nfunc needNotConv<V, X>(v: ref/V)\n    V is not Conv<X>\n    ()\nstruct LQ\n    Self is Conv<(ref/i32) -> i32>\n    public var v: i32\nstruct LQ2\n    Self is Conv<(ref/i32, ref/i32) -> i32>\n    public var v: i32\nstruct LQO\n    Self is Conv<Option<(ref/i32) -> i32>>\n    public var v: i32\nstruct S2\n    Self is D<(ref/i32) -> i32>\n    public var v: i32\nstruct Box<A, B>\n    A is not D<B>\n    public var n: i32\n";
 
     [Theory]
     [InlineData("r3-nconvq", G866Judges + "func g<W>(x: ref/LeafC)\n    needNotConv<LeafC, W>(x)\n", "UnprovenConstraint_Kd: needNotConv<LeafC, W>(x)")]
@@ -126,6 +129,17 @@ public sealed partial class RecursiveContractTest
     [InlineData("k-prem2u", G866TwoBinders + "func h<s/A, r/B, T>(x: ref/T)\n    s is obj or rc\n    r is obj or rc\n    T is Option<s/Leaf>\n    T is Option<r/Leaf>\n    ()\n", "UnprovenConstraint_Kd: func h<s/A, r/B, T>(x: ref/T)")]
     [InlineData("r10-clov", G866Closure + "func g()\n    let c = func (x: i64) => x\n    needNotCallI(c)\n", "")]
     [InlineData("r10-clox", G866Closure + "func g()\n    let c = func (x: i32) => x\n    needNotCallI(c)\n", "NoApplicableOverload_Kd: needNotCallI(c)")]
+    [InlineData("r11-qa", G866Quantification + "struct LeafS\n    Self is Conv<(ref/i32) -> ref/i32 during static>\n    public var v: i32\n    public init(v: i32) => self.v = v\nfunc g(x: ref/LeafS)\n    needNotConv<LeafS, (ref/i32) -> ref/i32>(x)\n", "")]
+    [InlineData("r11-qb", G866Quantification + "func g<W>(x: ref/LeafQ)\n    needNotConv<LeafQ, (ref/W) -> ref/W during static>(x)\n", "")]
+    [InlineData("r11-qc", G866Quantification + "func g<W>(x: ref/LeafQ)\n    needNotConv<LeafQ, (ref/W) -> ref/W>(x)\n", "UnprovenConstraint_Kd: needNotConv<LeafQ, (ref/W) -> ref/W>(x)")]
+    [InlineData("r11-qd", G866Quantification + "struct LeafP\n    Self is Conv<(ref/i32) -> i32>\n    public var v: i32\n    public init(v: i32) => self.v = v\nfunc g(x: ref/LeafP)\n    needNotConv<LeafP, (ref/i32 during static) -> i32>(x)\n", "")]
+    [InlineData("r11-qe", G866Quantification + "func g(x: ref/LeafQ)\n    needNotConv<LeafQ, (ref/i32) -> ref/i32>(x)\n", "NoApplicableOverload_Kd: needNotConv<LeafQ, (ref/i32) -> ref/i32>(x)")]
+    [InlineData("r11-qf", G866Quantification + "func g(x: ref/LeafQ)\n    needNotConv<LeafQ, (ref/i64) -> ref/i32 during static>(x)\n", "")]
+    [InlineData("b06v-qcontract", G866QuantifiedCall + "", "")]
+    [InlineData("c01v-two", G866QuantifiedArgs + "func g(x: ref/LQ2, y: ref/i32 during a)\n    needNotConv<LQ2, (ref/i32 during a, ref/i32 during a) -> i32>(x)\n", "")]
+    [InlineData("c02v-opt", G866QuantifiedArgs + "func g(x: ref/LQO, y: ref/i32 during a)\n    needNotConv<LQO, Option<(ref/i32 during a) -> i32>>(x)\n", "")]
+    [InlineData("c07v-box", G866QuantifiedArgs + "func h(x: ref/Box<S2, (ref/i32 during a) -> i32>, y: ref/i32 during a) -> ()\n    ()\n", "")]
+    [InlineData("r10-qorc", G866Quantified + "", "")]
     public void AJudgeRefutesOnlyByTheIdentityTable(string form, string program, string records)
         => CompilationTestHelper.AssertRecordsAtLines($"{form} [G866]", program + "()", records);
 
@@ -161,15 +175,13 @@ public sealed partial class RecursiveContractTest
     public void AMemberContradictingAPremiseIsTheDeclarationsError(string form, string program, string records)
         => CompilationTestHelper.AssertRecordsAtLines($"{form} [N9]", program + "()", records);
 
-    // SPEC's expectation for rows a later unit or a stated limit decides, Explicit until then: N9's guards (design R3.7) n9r-neg
+    // SPEC's expectation for rows a later unit decides, Explicit until then: N9's guards (design R3.7) n9r-neg
     // (valid: U identical with Leaf makes `U is not Mark` Proven, a member's Refuted as evidence, R7-C2c2 c2-4's direction) and
     // n9t-optq-or (invalid: `T is Option<U>` with `T is Mark or Mark2`, which Option<U> declares neither of, D-589's class 1, PLAN
-    // G853); G866's r10-qorc (valid: Contract arguments differing only in a Function Type's quantification structure, 8.2.3's
-    // compared attribute, which IdentityClasses.Refuted does not read, the stated limit; accepted on dev, rejected with G866).
+    // G853).
     [Theory(Explicit = true)]
     [InlineData("n9r-neg", N9Guards + "func needNotMark<V>(v: ref/V)\n    V is not Mark\n    ()\nstruct Leaf\n    public var v: i32\n    public init(v: i32) => self.v = v\nstruct Leaf2\n    Self is Mark\n    public var v: i32\n    public init(v: i32) => self.v = v\nstruct Box<A>\n    public var a: A\nstruct BoxC<A>\n    public var a: A\n    Self is Mark when A is Mark\nfunc f<T, U>(xu: ref/U)\n    T is Option<U>\n    T is Option<Leaf>\n    needNotMark(xu)\n", "")]
     [InlineData("n9t-optq-or", N9Guards + "contract Mark2\ncontract SubMark: Mark\ncontract Conv<X>\nfunc needEither<V>(v: ref/V)\n    V is Mark or Mark2\n    ()\nfunc needNotCopy<V>(v: ref/V)\n    V is not Copy\n    ()\nstruct Leaf\n    public var v: i32\n    public init(v: i32) => self.v = v\nstruct Leaf2\n    Self is Mark\n    public var v: i32\n    public init(v: i32) => self.v = v\nstruct Leaf3\n    Self is SubMark\n    public var v: i32\n    public init(v: i32) => self.v = v\nstruct LeafC\n    Self is Conv<i32>\n    public var v: i32\n    public init(v: i32) => self.v = v\nstruct P\n    Self is Copy\n    public var v: i32\n    public init(v: i32) => self.v = v\nstruct Box<A>\n    public var a: A\nstruct BoxC<A>\n    public var a: A\n    Self is Mark when A is Mark\nfunc f<T, U>(xu: ref/U)\n    T is Option<U>\n    T is Mark or Mark2\n    ()\n", "InvalidConstraint_Kd: func f<T, U>(xu: ref/U)")]
-    [InlineData("r10-qorc", G866Quantified + "", "")]
-    public void ARowAwaitsItsUnitOrLimit(string form, string program, string records)
+    public void ARowAwaitsItsUnit(string form, string program, string records)
         => CompilationTestHelper.AssertRecordsAtLines($"{form} [awaits]", program + "()", records);
 }

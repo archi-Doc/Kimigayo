@@ -216,8 +216,10 @@ public sealed partial class Binding
             if (!ReferenceTypes.StorageMatches(proposition.RequiredType, signature) || HasOpenOrigin(proposition.RequiredType!))
             {
                 // SPEC 8.3.2, 10.7: only a known difference from the required signature, as compatibility compares it (a Never result
-                // fits any), refutes; a stand-in decides an open region's (PerCallCallables).
-                return ReferenceTypes.StorageMatches(proposition.RequiredType, signature) || this.IdentityRefuted(this.CompatibleSignature(signature, proposition.RequiredType!), signature, scope, null)
+                // fits any; Origins by subtyping, 15.6.1, never a difference, so both sides with every Origin static), refutes; a
+                // stand-in decides an open region's (PerCallCallables).
+                return ReferenceTypes.StorageMatches(proposition.RequiredType, signature) ||
+                    this.IdentityRefuted(this.types.Erase(this.CompatibleSignature(signature, proposition.RequiredType!)), this.types.Erase(signature), scope, null)
                     ? ConstraintProof.Refuted : ConstraintProof.Unknown;
             }
 

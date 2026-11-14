@@ -213,10 +213,9 @@ public sealed partial class Binding
         // SPEC 8.2.3's Refuted (PLAN G866), read by the one table the premise meets read (Meet): a parameter or projection bound by a
         // premise stands for its class's complete member; one class is no difference; an abstract Type (IsAbstractType) differs only as
         // a proper part; two constructors differ where their meet conflicts or a pair of their parts differs, or as a proper part.
-        // Origins are never a known difference (8.2.3, 3.8): a Function pair decomposes as any constructor pair does, its quantified
-        // Origins not paired (Correspond), and an attribute's Unproven decides nothing. So a pair whose only difference is a Function
-        // Type's quantification structure, which 8.2.3 compares, stays Unknown for the Contract judge too (a limit, with a pair's own
-        // `s/T` being no constructor node in premise meets and SameHead reading no length arguments).
+        // The meet is the premises' own: a Function pair's quantification structure is a compared attribute (Correspond), while an
+        // attribute's Unproven (Origins whose agreement is not proven) decides nothing. Limits: a pair's own `s/T` is no constructor
+        // node in premise meets, and SameHead reads no length arguments.
         internal bool Refuted(BoundType a, BoundType b)
         {
             (a, b) = (this.Target(a), this.Target(b));
@@ -237,8 +236,7 @@ public sealed partial class Binding
             this.reading++;
             try
             {
-                meet = a.Kind is BoundTypeKind.Function or BoundTypeKind.FunctionItem or BoundTypeKind.Closure && SameHead(a, b)
-                    ? this.Decompose(a, b) : this.Meet(a, b);
+                meet = this.Meet(a, b);
             }
             finally
             {
