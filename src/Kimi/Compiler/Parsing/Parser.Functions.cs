@@ -15,15 +15,15 @@ namespace Kimi.Compiler;
 // Input: a reader after the function keyword with the item's prefix pending; the production of the caller's position as a FunctionForm.
 // Output: a FunctionKoto without its body, which takes the prefix, or null when nothing of the header can be kept.
 // Invariants: a declaration whose header failed is omitted with its body; a function expression leaves the rest to its expression. A
-// specialization publishes no modifier: each it wrote is reported here. An override's header elements F.6.3 omits are one
-// OverrideHeader record, and the override rests on it. The form selects what these readers judge: the attribute prefix, the
-// captures, the Name, the generic list's production, the `!` boundary, an AnonymousParameter, the receiver shorthand, what follows
-// the list and the node's form facts; their one other selector, the prefix's `override` read once, turns a Function into F.6.3's
-// OverrideDeclaration and selects the override's rules (no Access, OverrideHeader) for every header under it that is no
-// Constructor, Specialization or Expression, so for a Requirement under `override` too (PLAN G557: F.6.2 admits none). Judged
+// specialization publishes no modifier: each it wrote is reported here. An override's Type parameters, `!` boundary and parameter
+// defaults or attributes are one OverrideHeader record, and the override rests on it. The form selects what these readers judge: the
+// attribute prefix, the captures, the Name, the generic list's production, the `!` boundary, an AnonymousParameter, the receiver
+// shorthand, what follows the list and the node's form facts; their one other selector, the prefix's `override` read once, turns a
+// Function into F.6.3's OverrideDeclaration and selects the override's rules (no Access, OverrideHeader) for every header under it that
+// is no Constructor, Specialization or Expression, so for a Requirement under `override` too (PLAN G557: F.6.2 admits none). Judged
 // elsewhere: a RequirementParameter's default and attribute (Parser.ParseRequirementBody); a SpecializationParameter's attribute and
-// default (Binding.Specializations, SPEC 8.13.2). PLAN G557's parameter part makes the requirement's rules, the specialization's
-// default and every parameter attribute row tests here.
+// default (Binding.Specializations, SPEC 8.13.2). PLAN G557's parameter part makes the requirement's rules, the specialization's default
+// and every parameter attribute row tests here.
 // Prohibitions: a body's items belong to Parser.Blocks, the clauses after a header to Parser.Syntax.
 public static partial class Parser
 {
@@ -35,9 +35,9 @@ public static partial class Parser
         /// ParameterList&lt;Parameter&gt;.</summary>
         Function,
 
-        /// <summary>OverrideDeclaration (F.6.3, 6.4.1; the owner's O-222 (b)): read as a FunctionHeader, whose elements the production
-        /// omits are one OverrideHeader record. The header reads a Function under the prefix's modifier as this row; it takes no attribute
-        /// prefix (DECISIONS R9-M4).</summary>
+        /// <summary>OverrideDeclaration (F.6.3, 6.4.1; the owner's O-222 (b)): read as a FunctionHeader, whose Type parameters, <c>!</c>
+        /// boundary and parameter defaults or attributes are one OverrideHeader record. The header reads a Function under the prefix's
+        /// modifier as this row; it takes no attribute prefix (DECISIONS R9-M4).</summary>
         Override,
 
         /// <summary>FunctionRequirement (F.6.2): ParameterList&lt;RequirementParameter&gt;, whose defaults and attributes
