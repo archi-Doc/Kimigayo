@@ -64,7 +64,7 @@ internal readonly record struct ExpansionPlan(ExpansionKind Kind, CallPlan? Firs
 /// the receiver's MIR length minus x.</summary>
 internal enum ExpansionKind : byte
 {
-    Iteration, // A for loop: a user loop's entry and step calls with its Some/None Pattern plan; a ResolvedRange loop has none and binds each isize position.
+    Iteration, // A for loop: its entry and step calls with its Some/None Pattern plan (SPEC 14.6.2).
     Try, // Its Pattern plan's arms: the payload, or the failure the generated return transfers (SPEC 17.3).
     Format, // An interpolation's buffer and adapter calls, then its writes; a $tryWrite's writes, then its status (SPEC 22.10).
     DictionaryLiteral, // Its key lookup (SPEC 12.4.3), for each entry before its insertion.

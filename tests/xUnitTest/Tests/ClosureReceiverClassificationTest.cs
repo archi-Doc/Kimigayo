@@ -137,6 +137,19 @@ public class ClosureReceiverClassificationTest
     public void AnExclusiveUseOfAPlaceReachedFromACaptureIsAnExclusiveCall(string body, bool exclusive)
         => AssertCallReceiver(Places + body + "        return 0\n    let v = f()\n", exclusive);
 
+    // R8-W3's coverage rows c1 and cx1 (SPEC 7.7.3, 14.6.2; DECISIONS R4-M130) and their Range twins c1r and cx1r: a captured
+    // `uniq/ResolvedRange` taken as a bare `for` Subject is Exclusive (its entry iterateUniq), so a `var` Closure runs, called twice, and
+    // the call of a `let` one is invalid.
+    [Theory]
+    [InlineData("c1", "var r = (0..3).resolve(3)\nlet rv = r@uniq\n")]
+    [InlineData("c1r", "var q: Range<isize, isize> = 0..3\nlet rv = q@uniq\n")]
+    public void ACapturedRangeTakenAsAForSubjectIsAnExclusiveCall(string row, string head)
+    {
+        const string Closure = "f = func [rv] () -> isize\n    var k: isize = 0\n    for i in rv\n        k += i\n    return k\nlet first = f()\n";
+        ScalarEmissionTest.EmitFixture("ClosureReceiverRow_" + row, head + "var " + Closure + "let second = f()\nConsole.writeLine(\"\\(first) \\(second)\")\n", "3 3\n");
+        Assert.Equal("InvalidAssignment_Kd f", Records(head + "let " + Closure));
+    }
+
     // SPEC 7.7.3, 5.2.1 condition 3, 5.3, 5.4 (DECISIONS R4-M134; PLAN G251 (1); the owner's O-76 (c) (i)): an access that needs write
     // capability through a raw pointer read from the environment, through a raw Place it reaches included, or a pointer derived from one
     // (a displacement, a raw pointer conversion), a write, a Take or an in-place destruction, makes the call Exclusive; a read leaves it

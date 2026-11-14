@@ -437,7 +437,7 @@ public sealed partial class HirFormsTest
 
     // SPEC 4.7.1, 11.6, 13.4, SPEC 22.7: a Property update names its getter and its setter, which takes the computed value; a user
     // index its selected index or indexUniq call, a view its element or slice call; a key resolution reads the evaluated receiver's length;
-    // an interpolation passed directly to writeLine is marked; a ResolvedRange loop Copies its positions.
+    // an interpolation passed directly to writeLine is marked; a ResolvedRange loop names its entry and step (SPEC 4.6.4, 14.6.2).
     [Fact]
     public void ExpansionPlansNameTheirCalls()
     {
@@ -465,8 +465,8 @@ public sealed partial class HirFormsTest
         ];
         Assert.Equal(expected, plans);
         var loop = Reachable(c.Kotonoha).OfType<ForKoto>().Single();
-        Assert.Null(BoundMatch.Of(loop));
-        Assert.Equal(new HirAdjust(HirAcquire.Copy, HirAdaptation.None), HirTables.AdjustOf(loop.Bindings[0]));
+        Assert.NotNull(BoundMatch.Of(loop));
+        Assert.Equal(("intoIterator", "next"), (CallPlan.Of(loop)!.Target.Name, CallPlan.Of(loop, 1)!.Target.Name));
     }
 
     // SPEC 4.7.1, 4.7.2, 5.2, 7.3, 10.2, 13.5.5, 15.6.2 (DECISIONS BU-8): a user index whose element Place's use needs write or exclusive

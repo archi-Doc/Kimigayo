@@ -190,13 +190,7 @@ public sealed partial class Binding
                 break;
             case ForKoto loop:
                 uses.Use(loop.Iterable);
-                var decomposition = BoundMatch.Of(loop);
-                for (var i = 0; decomposition is null && i < loop.Bindings.Count; i++)
-                {
-                    uses.FixAdjust(loop.Bindings[i], new(HirAcquire.Copy, HirAdaptation.None)); // SPEC 4.6.4: a ResolvedRange loop binds isize positions.
-                }
-
-                Bindings(decomposition, ref uses);
+                Bindings(BoundMatch.Of(loop), ref uses);
                 break;
             case MacroKoto { Formatting.Acquisition.BoundCall.ArgumentOperations: [var writer, ..] }:
                 uses.Use(writer.Source, writer); // A $tryWrite acquires its writer operand (SPEC 22.10.4).
