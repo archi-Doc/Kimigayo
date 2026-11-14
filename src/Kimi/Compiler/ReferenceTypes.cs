@@ -44,7 +44,7 @@ internal static class ReferenceTypes
 
     internal static bool IsBorrow(BoundType? type) => IsStorage(type) || type is { IsObjectBorrow: true };
 
-    // SPEC 4.6.2: the library ResolvedRange struct, which the compiler produces for indices and iterates directly.
+    // SPEC 4.6.2: the library ResolvedRange struct, which the compiler produces for indices and a key site applies without a resolve call.
     internal static bool IsResolvedRange(BoundType? type) => type is { Kind: BoundTypeKind.Nominal, Symbol.LibraryDeclaration: KimiDeclarationId.ResolvedRange };
 
     // SPEC 3.4: a safe ref/T or uniq/T, whatever its referent and representation as an argument.

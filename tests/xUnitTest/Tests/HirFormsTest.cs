@@ -469,6 +469,28 @@ public sealed partial class HirFormsTest
         Assert.Equal(("intoIterator", "next"), (CallPlan.Of(loop)!.Target.Name, CallPlan.Of(loop, 1)!.Target.Name));
     }
 
+    // SPEC 4.6.4, 14.6.2: a ResolvedRange Subject's mode selects its entry, as every Iterable's: a Shared Subject (a Place, a
+    // ref/ResolvedRange value) calls iterate and an Exclusive one (`r@uniq`, a uniq/ResolvedRange value) iterateUniq. The Subject is
+    // acquired as SPEC 15.1.6 states (a Place borrowed in place, an `@uniq` value as it is, a stored reference Reborrowed in its own
+    // mode: a ref/ copied, a uniq/ Reborrowed) and the entry's receiver by reference-path selection (SPEC 3.4.3), so a stored
+    // reference's referent is not read first. Each row: the entry, the step, whether the Subject reads its referent, its Adjust.
+    [Theory]
+    [InlineData("let r = (0..2).resolve(2)\nfor i in r\n    total += i\n", "iterate next False None/SharedBorrow")]
+    [InlineData("var r = (0..2).resolve(2)\nfor i in r@uniq\n    total += i\n", "iterateUniq next False Temporary/None")]
+    [InlineData("let r = (0..2).resolve(2)\nlet w = r@ref\nfor i in w\n    total += i\n", "iterate next False Copy/None")]
+    [InlineData("var r = (0..2).resolve(2)\nlet u = r@uniq\nfor i in u\n    total += i\n", "iterateUniq next False Reborrow/None")]
+    public void AResolvedRangeSubjectsModeSelectsItsEntry(string body, string expected)
+    {
+        var c = MinimalEmissionTest.Analyze("var total: isize = 0\n" + body);
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
+        HirTables.Publish(c);
+        Assert.Empty(Problems(c.Kotonoha));
+        var loop = Reachable(c.Kotonoha).OfType<ForKoto>().Single();
+        var subject = HirTables.AdjustOf(loop.Iterable);
+        Assert.Equal(expected, $"{CallPlan.Of(loop)?.Target.Name} {CallPlan.Of(loop, 1)?.Target.Name} {c.Binding.ReadsReferent(loop.Iterable)} {subject.Acquire}/{subject.Adaptation}");
+        Assert.NotNull(BoundMatch.Of(loop));
+    }
+
     // SPEC 4.7.1, 4.7.2, 5.2, 7.3, 10.2, 13.5.5, 15.6.2 (DECISIONS BU-8): a user index whose element Place's use needs write or exclusive
     // capability selects indexUniq: a write, an update or an exclusive borrow through a follow of the stored reference, an exclusive
     // Reborrow of it (an argument, a bare acquisition, a Subject) and an exclusive receiver of a method or a setter, by its parameter Type
