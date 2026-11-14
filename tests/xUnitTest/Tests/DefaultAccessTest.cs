@@ -16,7 +16,7 @@ public class DefaultAccessTest
     private static readonly Dictionary<string, string> Explanations = new()
     {
         [nameof(DiagnosticCode.DefaultArgumentAccess_Kd)] = "A default expression cannot modify or exclusively access a preceding prepared argument or its owned contents",
-        [nameof(DiagnosticCode.DefaultArgumentBorrow_Kd)] = "A default result cannot retain a new Borrow or Reborrow of a preceding prepared argument",
+        [nameof(DiagnosticCode.DefaultArgumentBorrow_Kd)] = "A default cannot keep a new Borrow or Reborrow of a preceding prepared argument in its result or in storage it does not own",
     };
 
     [Theory]

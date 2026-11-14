@@ -645,7 +645,7 @@
     Description="the default expression only shares prepared arguments temporarily"
 
   + Name="Ownership.DefaultArgumentBorrow"
-    Description="the default result retains no new loan of a prepared argument"
+    Description="no new loan of a prepared argument outlives the default"
 
   + Name="Ownership.Internal"
     Description="the analysis keeps its invariants"
