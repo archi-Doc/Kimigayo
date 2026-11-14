@@ -1332,6 +1332,116 @@ public partial class TypeBindingTest
             """,
             string.Empty
         },
+        // s1 (invalid twice, re-review): N6: a Type mismatch (slot 1) before c == d: no Origin relation forms after the mismatch (SPEC 15.6.1); as dev.
+        {
+            "s1",
+            """
+            func f(c: ref/i32, d: ref/i32, p: ref/i32, q: ref/i32, r0: (uniq/i32 during p, uniq/(ref/i32 during c) during p)) -> i32
+                origin p outlives q
+                origin c outlives q
+                origin d outlives q
+                let r: (uniq/i64 during q, uniq/(ref/i32 during d) during q) = r0@move
+                return 0
+
+            public func main() => ()
+            """,
+            "TypeMismatch_Kd r0@move"
+        },
+        // s2 (invalid twice, re-review): N6: c == d before the Type mismatch: its obligation formed before the mismatch; as dev.
+        {
+            "s2",
+            """
+            func f(c: ref/i32, d: ref/i32, p: ref/i32, q: ref/i32, r0: (uniq/(ref/i32 during c) during p, uniq/i32 during p)) -> i32
+                origin p outlives q
+                origin c outlives q
+                origin d outlives q
+                let r: (uniq/(ref/i32 during d) during q, uniq/i64 during q) = r0@move
+                return 0
+
+            public func main() => ()
+            """,
+            "TypeMismatch_Kd r0@move|UnprovenOriginRelation_Kd let r: (uniq/(ref/i32 during d) during q, uniq/i64 during q) = r0@move"
+        },
+        // s3 (invalid twice, re-review): N6: a Function part, then a Type mismatch, then c == d: the mismatch ends the decomposition; as dev.
+        {
+            "s3",
+            """
+            func f(b: ref/i32, c: ref/i32, d: ref/i32, p: ref/i32, q: ref/i32, r0: (uniq/((ref/i32) -> i32) during p, uniq/i32 during p, uniq/(ref/i32 during c) during p)) -> i32
+                origin p outlives q
+                origin b outlives q
+                origin c outlives q
+                origin d outlives q
+                let r: (uniq/((ref/i32 during b) -> i32) during q, uniq/i64 during q, uniq/(ref/i32 during d) during q) = r0@move
+                return 0
+
+            public func main() => ()
+            """,
+            "TypeMismatch_Kd r0@move"
+        },
+        // c3bn (invalid, re-review): N6 (G492-a (i)'s c3bn): one Type mismatch, no Origin relation after it; as dev.
+        {
+            "c3bn",
+            """
+            func f(p: ref/i64, q: ref/i64, b: bool) -> (i32, ref/i64 during p)
+                var t = (b, q)
+                return t
+            public func main() => ()
+            """,
+            "TypeMismatch_Kd t"
+        },
+        // k1 (invalid twice, re-review): the H11 move (BU's fncomp): (g, local@ref) at return t has the row and A5's twin that k2 has on dev.
+        {
+            "k1",
+            """
+            func f(x: ref/i32, y: ref/i32, g: ref/((ref/i32 during y) -> i32)) -> (ref/((ref/i32 during x) -> i32), ref/i32 during x)
+                let local = 1
+                let t = (g, local@ref)
+                return t
+
+            public func main() => ()
+            """,
+            "UnprovenOriginContract_Kd t|UnsatisfiedOriginRelation_Kd return t|UnsatisfiedOriginRelation_Kd t"
+        },
+        // k2 (invalid twice, re-review): (local@ref, g) at return t: unchanged.
+        {
+            "k2",
+            """
+            func f(x: ref/i32, y: ref/i32, g: ref/((ref/i32 during y) -> i32)) -> (ref/i32 during x, ref/((ref/i32 during x) -> i32))
+                let local = 1
+                let t = (local@ref, g)
+                return t
+
+            public func main() => ()
+            """,
+            "UnprovenOriginContract_Kd t|UnsatisfiedOriginRelation_Kd return t|UnsatisfiedOriginRelation_Kd t"
+        },
+        // k3 (invalid twice, re-review): the H11 move: two body chains after g.
+        {
+            "k3",
+            """
+            func f(x: ref/i32, y: ref/i32, g: ref/((ref/i32 during y) -> i32)) -> (ref/((ref/i32 during x) -> i32), ref/i32 during x, ref/i32 during x)
+                let local = 1
+                let t = (g, local@ref, local@ref)
+                return t
+
+            public func main() => ()
+            """,
+            "UnprovenOriginContract_Kd t|UnsatisfiedOriginRelation_Kd return t|UnsatisfiedOriginRelation_Kd t"
+        },
+        // k6 (invalid twice, re-review): the H11 move: a declared local after t.
+        {
+            "k6",
+            """
+            func f(x: ref/i32, y: ref/i32, g: ref/((ref/i32 during y) -> i32)) -> i32
+                let local = 1
+                let t = (g, local@ref)
+                let u: (ref/((ref/i32 during x) -> i32), ref/i32 during x) = t@move
+                return 0
+
+            public func main() => ()
+            """,
+            "UnprovenOriginContract_Kd t@move|UnprovenOriginRelation_Kd ref/((ref/i32 during x) -> i32)|UnsatisfiedOriginRelation_Kd let u: (ref/((ref/i32 during x) -> i32), ref/i32 during x) = t@move"
+        },
     };
 
     [Theory]

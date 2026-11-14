@@ -142,15 +142,27 @@ public sealed partial class Binding
         }
 
         // SPEC 23.1.2: a part the obligations cannot take (a Function component's failed condition) is the fit's failure, the first such
-        // part's; the parts after it still leave their positions as obligations, each an independent record of the fit.
+        // part's; the parts after it still leave their positions as obligations, each an independent record of the fit. SPEC 15.6.1: a
+        // structural failure is a Type mismatch, after which no Origin relation forms: it is the fit's failure and ends the
+        // decomposition, as it ends the walk.
         var holds = true;
         for (var i = 0; i < actual.Components.Count; i++)
         {
             var position = actual.Kind == BoundTypeKind.Constructed && actual.Symbol?.Schema is { } schema && i < schema.GenericSlots.Count
                 ? schema.GenericSlots[i].OriginVariance : OriginVariance.Covariant;
-            var part = default(ComparisonFailure);
-            if (!this.CheckTypeUseCore(actual.Components[i], expected.Components[i], use, IsInvariantLayer(actual, this) ? OriginVariance.Invariant : ComposeVariance(polarity, position), ref part) &&
-                holds)
+            var part = failure;
+            if (this.CheckTypeUseCore(actual.Components[i], expected.Components[i], use, IsInvariantLayer(actual, this) ? OriginVariance.Invariant : ComposeVariance(polarity, position), ref part))
+            {
+                continue;
+            }
+
+            if (part.Kind == ComparisonFailureKind.Shape)
+            {
+                failure = part;
+                return false;
+            }
+
+            if (holds)
             {
                 holds = false;
                 failure = part;
