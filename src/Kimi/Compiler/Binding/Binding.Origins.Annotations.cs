@@ -101,6 +101,18 @@ public sealed partial class Binding
                     }
                 }
 
+                // SPEC 8.13.2, 15.4.2 ("Accessor or specialization: the inherited contract first"): a specialization's Type argument
+                // is the original's T, whose Origins each call supplies: an omitted aggregate slot is the header's universal input
+                // Origin, which the restated contract then inherits (CompleteImplementationOrigins); none is written (UniversalArgument).
+                // It is no parameter: InputIndex stays -1.
+                for (var i = 0; function.IsSpecialization && i < function.GenericArguments.Count; i++)
+                {
+                    if (ReferenceEquals(function.GenericArguments[i], current))
+                    {
+                        return new(TypePosition.Parameter, function, -1);
+                    }
+                }
+
                 return new(TypePosition.Explicit, function);
             }
 
@@ -346,7 +358,9 @@ public sealed partial class Binding
     {
         if (this.inheritedOriginTypes.TryGetValue(use, out var inherited))
         {
-            var origin = aggregateSlot < 0 ? inherited.Origin : aggregateSlot < inherited.OriginArguments.Count ? inherited.OriginArguments[aggregateSlot] : null;
+            // A Slice's aggregate slot 0 is its Origin (CompleteOrigins).
+            var origin = aggregateSlot < 0 || inherited.Kind == BoundTypeKind.Slice ? inherited.Origin
+                : aggregateSlot < inherited.OriginArguments.Count ? inherited.OriginArguments[aggregateSlot] : null;
             if (origin is not null)
             {
                 return origin;

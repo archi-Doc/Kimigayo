@@ -172,6 +172,47 @@ public class SpecializationBindingTest
         Assert.Empty(output.ToString());
     }
 
+    // SPEC 8.13.2, 15.4.2 (PLAN G863): a Type argument's omitted Origin slots are the original's, each call's, and the restated
+    // inputs and result inherit them: a ref, Slice and uniq slot, a nested one, one argument in two inputs or only in the result.
+    private const string Box = "struct Box {source}\n    public let value: ref/i32 during source\n    public init(value: ref/i32 during source) => self.value = value\nstruct W {source}\n    public let data: uniq/i32 during source\n    public init(data: uniq/i32 during source) => self.data = data\nstruct Wrap<T>\n    public let inner: T\n    public init(inner: T) => self.inner = inner@move\nfunc f<T>(x: ref/T) -> i32 => 0\n";
+
+    [Theory]
+    [InlineData("specialize func f<Box>(x: ref/Box) -> i32 => 1")]
+    [InlineData("func g<T>(x: T) -> i32 => 0\nspecialize func g<Slice<u8>>(x: Slice<u8>) -> i32 => 1")]
+    [InlineData("func w<T>(d: uniq/T) -> i32 => 0\nspecialize func w<W>(d: uniq/W) -> i32 => 1")]
+    [InlineData("specialize func f<Wrap<Box>>(x: ref/Wrap<Box>) -> i32 => 1")]
+    [InlineData("func two<T>(x: ref/T, y: Option<T>) -> i32 => 0\nspecialize func two<Box>(x: ref/Box, y: Option<Box>) -> i32 => 1")]
+    [InlineData("func make<T>(x: i32) -> Option<T> => .None\nspecialize func make<Box>(x: i32) -> Option<Box> => .None")]
+    public void ArgumentOriginsAreInheritedFromTheOriginal(string specialization)
+    {
+        var c = MinimalEmissionTest.Analyze(Box + specialization + "\n()");
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
+        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c));
+    }
+
+    // SPEC 8.13.3: the key excludes Origins, so the specialization runs for a local Box and W, at a direct call and after substitution.
+    [Fact]
+    public void InheritedArgumentOriginsSelectTheSpecialization()
+        => ScalarEmissionTest.EmitFixture(
+            "SpecializationInheritedArgumentOrigins",
+            Box + "specialize func f<Box>(x: ref/Box) -> i32 => 1\nfunc relay<T>(x: ref/T) -> i32 => f(x)\nfunc w<T>(d: uniq/T) -> i32 => 0\nspecialize func w<W>(d: uniq/W) -> i32 => 1\nfunc local() -> i32\n    let n = 5\n    let b = Box.init(n)\n    var m = 6\n    var u = W.init(m@uniq)\n    return f(b) + relay(b) * 10 + w(u@uniq) * 100\nrequire local() == 111 else => $abort(\"the generic body ran\")\nConsole.writeLine(\"ok\")",
+            "ok\n");
+
+    // SPEC 8.13.2: the header writes no Origin of the inherited contract: a Type argument's or a restated input's slot written
+    // static restricts the bindings the original admits (the second of two one-key specializations included).
+    [Theory]
+    [InlineData("specialize func f<Box during static>(x: ref/Box) -> i32 => 1", Kimi.DiagnosticCode.IncompatibleContractImplementation_Kd)]
+    [InlineData("specialize func f<Box>(x: ref/(Box during static)) -> i32 => 1", Kimi.DiagnosticCode.UnprovenOriginContract_Kd)]
+    [InlineData("specialize func f<Box>(x: ref/Box) -> i32 => 1\nspecialize func f<Box during static>(x: ref/Box) -> i32 => 2", Kimi.DiagnosticCode.IncompatibleContractImplementation_Kd)]
+    [InlineData("specialize func f<Box>(x: ref/Box) -> i32 => 1\nspecialize func f<Box>(x: ref/Box) -> i32 => 2", Kimi.DiagnosticCode.DuplicateBinding_Kd)]
+    public void RejectsWrittenArgumentOrigins(string specialization, Kimi.DiagnosticCode code)
+    {
+        var c = MinimalEmissionTest.Analyze(Box + specialization + "\n()");
+        Assert.False(c.Binding.Result.IsComplete);
+        Assert.NotEmpty(c.Binding.Issues);
+        Assert.All(c.Binding.Issues, x => Assert.Equal(code, x.Code));
+    }
+
     // SPEC 8.13.3: specializations never enter the candidate set; an invalid one does not fail calls to the original.
     [Fact]
     public void InvalidSpecializationDoesNotCascadeIntoCalls()
