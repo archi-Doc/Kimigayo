@@ -92,6 +92,13 @@ public sealed partial class MirBorrowsTest
             public init()
                 self.link = .Has(OBoxP.init(v: 0)@obj)
                 self.next = null
+        #Layout("C")
+        struct NodeH
+            public var h: obj/OBoxP
+            public var next: raw/(raw/u8)
+            public init()
+                self.h = OBoxP.init(v: 0)@obj
+                self.next = null
         func setV(h: raw/(obj/OBoxP))
             unsafe => (*h).v = 7
         func storePunBad()
@@ -993,6 +1000,36 @@ public sealed partial class MirBorrowsTest
                         _ => ()
             stash(n.next, spare)
             kk = 2
+        func hOptMatch(flag: bool)
+            var kk: u8 = 1
+            let r = kk@uniq
+            var spare: raw/u8 = r@follow@raw
+            var other: raw/u8 = null
+            var n = NodeH.init()
+            n.next = other@raw
+            let p = n@raw@raw/(Option<obj/OBoxP>)
+            if flag
+                unsafe
+                    match (*p)@uniq
+                        .Some(let b) => b.v = 7
+                        .None => ()
+            stash(n.next, spare)
+            kk = 2
+        func hEnumMatch(flag: bool)
+            var kk: u8 = 1
+            let r = kk@uniq
+            var spare: raw/u8 = r@follow@raw
+            var other: raw/u8 = null
+            var n = NodeH.init()
+            n.next = other@raw
+            let p = n@raw@raw/OE
+            if flag
+                unsafe
+                    match (*p)@uniq
+                        .Has(let b) => b.v = 7
+                        .Nil => ()
+            stash(n.next, spare)
+            kk = 2
         func wholeTupleLoanOk()
             var kk: u8 = 1
             let r = kk@uniq
@@ -1683,7 +1720,29 @@ public sealed partial class MirBorrowsTest
         var c = MirBuildTest.Compile(Prelude + PunForms[..PunForms.IndexOf("func storePunBad(", StringComparison.Ordinal)] + Form(PunForms, form));
         var program = c.BuildMir();
         program.Problems.Clear();
-        new Stratum(c.Types).Run(program, Validated(c, InPlace(Body(program, form))));
+        var built = Body(program, form);
+        new Stratum(c.Types).Run(program, Validated(c, InPlace(built, Binding(built).Rvalue.Place.Root)));
+        var problems = Problems(c, Sound(program), [.. LoanCodes, DiagnosticCode.Unsupported_Kd]).Order(StringComparer.Ordinal);
+        Assert.Equal($"{form}: [{expected}]", $"{form}: [{string.Join("; ", problems)}]");
+    }
+
+    // The step rule's other reader (StoreWrite; U2's implementation review, U2-N1): a seen store whose own Place passes the pair past its
+    // last Deref. No source form stores through that Place (a binding's store goes through the binding's reference), so each uniq-Subject
+    // form's body is copied with its Subject and then its binding rebased onto the Place each borrows (InPlace): the store `b.v = 7` is
+    // `(*(((*p) as case 0).0)).v = 7`, typed through `Option<obj/OBoxP>` cast at a C first Field `obj/OBoxP` (hOptMatch: undecided while the
+    // Downcast kept no Position), undecided through an enum that is no nonnull Option (hEnumMatch: A5's Limit; the write past the handle's
+    // own step is the object's, SPEC 5.2). The binding's Ref stays, a borrow no store goes through, so each verdict is the store's.
+    [Theory]
+    [InlineData("hOptMatch", "hOptMatch: kk = 2")]
+    [InlineData("hEnumMatch", "hEnumMatch: kk = 2 Unsupported_Kd")]
+    public void APayloadStoredInPlacePastARawDerefKeepsLeadingsStep(string form, string expected)
+    {
+        var c = MirBuildTest.Compile(Prelude + PunForms[..PunForms.IndexOf("func storePunBad(", StringComparison.Ordinal)] + Form(PunForms, form));
+        var program = c.BuildMir();
+        program.Problems.Clear();
+        var built = Body(program, form);
+        var subject = InPlace(built, Binding(built).Rvalue.Place.Root);
+        new Stratum(c.Types).Run(program, Validated(c, InPlace(subject, Binding(subject).Place.Root)));
         var problems = Problems(c, Sound(program), [.. LoanCodes, DiagnosticCode.Unsupported_Kd]).Order(StringComparer.Ordinal);
         Assert.Equal($"{form}: [{expected}]", $"{form}: [{string.Join("; ", problems)}]");
     }
@@ -1725,28 +1784,14 @@ public sealed partial class MirBorrowsTest
         Assert.Contains("pastPunBad: kk = 2", Problems(c, program!, LoanCodes));
     }
 
-    // A copy of a body whose match Subject `_s = &X` borrows a Place in place (Copied), each Place `(*_s)...` of it rebased onto X (the
-    // Subject's bindings, discriminant and reads), every other row as built.
-    private static MirBody InPlace(MirBody built)
+    // A copy of a body with each Place `(*_x)...` of the local `_x` rebased onto the Place X its Ref `_x = &X` borrows (Copied), every other
+    // row as built: a match Subject's (its bindings, discriminant and reads), or a binding's (its stores).
+    private static MirBody InPlace(MirBody built, int local)
     {
-        var subject = built.Statements.ToArray()
-            .First(x => x.Rvalue is { Kind: MirRvalueKind.Ref, Place.Projection: > 0 } && Payload(x.Rvalue.Place.Projection)).Rvalue.Place.Root;
-        var borrowed = built.Statements.ToArray().Single(x => x.Place == new MirPlace(subject) && x.Rvalue.Kind == MirRvalueKind.Ref).Rvalue.Place;
+        var borrowed = built.Statements.ToArray().Single(x => x.Place == new MirPlace(local) && x.Rvalue.Kind == MirRvalueKind.Ref).Rvalue.Place;
         return Copied(built, body => place => Map(body, place));
 
-        // Whether a projection chain passes a Downcast past a Deref of its root: a binding of a borrowed Subject's payload.
-        bool Payload(int id)
-        {
-            var cast = false;
-            for (; built.Projections[id].Prefix > 0; id = built.Projections[id].Prefix)
-            {
-                cast |= built.Projections[id].Kind == MirProjectionKind.Downcast;
-            }
-
-            return cast && built.Projections[id].Kind == MirProjectionKind.Deref;
-        }
-
-        // The Place's projections, root first, re-made in the copy; past the Subject's Deref, onto the borrowed Place.
+        // The Place's projections, root first, re-made in the copy; past the local's Deref, onto the borrowed Place.
         MirPlace Map(MirBody body, MirPlace place)
         {
             var chain = new List<int>();
@@ -1755,7 +1800,7 @@ public sealed partial class MirBorrowsTest
                 chain.Insert(0, id);
             }
 
-            var rebased = place.Root == subject && chain.Count > 0 && built.Projections[chain[0]].Kind == MirProjectionKind.Deref;
+            var rebased = place.Root == local && chain.Count > 0 && built.Projections[chain[0]].Kind == MirProjectionKind.Deref;
             var at = rebased ? Map(body, borrowed) : new MirPlace(place.Root);
             foreach (var id in chain.Skip(rebased ? 1 : 0))
             {
@@ -1763,6 +1808,23 @@ public sealed partial class MirBorrowsTest
             }
 
             return at;
+        }
+    }
+
+    // A body's first match binding of a borrowed payload: the first Ref whose Place passes a Downcast past a Deref of its root, the Subject.
+    private static MirStatement Binding(MirBody body)
+    {
+        return body.Statements.ToArray().First(x => x.Rvalue is { Kind: MirRvalueKind.Ref, Place.Projection: > 0 } && Payload(x.Rvalue.Place.Projection));
+
+        bool Payload(int id)
+        {
+            var cast = false;
+            for (; body.Projections[id].Prefix > 0; id = body.Projections[id].Prefix)
+            {
+                cast |= body.Projections[id].Kind == MirProjectionKind.Downcast;
+            }
+
+            return cast && body.Projections[id].Kind == MirProjectionKind.Deref;
         }
     }
 }
