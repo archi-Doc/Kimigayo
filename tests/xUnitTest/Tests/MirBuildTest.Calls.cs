@@ -765,8 +765,8 @@ public sealed partial class MirBuildTest
         return call.Callee.Symbol!.Name + string.Concat(records);
     }
 
-    // A block's stores of an owning interpolation's hint (R8-W2 c2b), the writer's Field Utf8Writer.hint, each as `hint` and its operand: an
-    // Integer's value, or a Length's term as diagnostics spell it.
+    // A block's stores of an owning interpolation's hint (R8-W2 c2b), the writer's Field Utf8Writer.hint, each a Use of a Const (asserted)
+    // as `hint` and its constant: an Integer's value, or a Length's term as diagnostics spell it.
     private static IEnumerable<string> Hints(MirBody body, MirBlock block)
     {
         foreach (var statement in body.Statements.Slice(block.Start, block.Count).ToArray())
@@ -776,7 +776,10 @@ public sealed partial class MirBuildTest
                 body.Locals[place.Root].Type is { Symbol.LibraryDeclaration: KimiDeclarationId.Utf8Writer } writer &&
                 field.Arg == AdtDef.IndexOf(writer, "hint"))
             {
-                var constant = body.Consts[body.Operands[statement.Rvalue.Start].Arg];
+                Assert.Equal(MirRvalueKind.Use, statement.Rvalue.Kind);
+                var operand = body.Operands[statement.Rvalue.Start];
+                Assert.Equal(MirOperandKind.Const, operand.Kind);
+                var constant = body.Consts[operand.Arg];
                 yield return "hint " + (constant.Kind == MirConstKind.Length ? TyCtxt.Name((BoundLength)constant.Value!) : $"{constant.Bits}");
             }
         }

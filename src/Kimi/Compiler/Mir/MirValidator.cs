@@ -75,11 +75,11 @@ internal readonly record struct MirFinding(MirViolation Rule, SourceRef Subject)
 /// staticEnsure names and the body each default template's call and each created Closure names (G191), before any analysis reads it.
 /// It keeps its scratch, so a warm run allocates nothing.</summary>
 /// <remarks>An intrinsic's operands are checked by its row's arity (its declaration's parameters come first, a fact of the table,
-/// MirValidatorTest), staticEnsure's also as its static's slot (DECISIONS R5-M71) and an owning interpolation's steps' as their constants,
-/// a Value callee's against its Type's signature where
-/// that Type is a Function Type, else by its declared signature's arity only, and every Call's whole-local inputs by one write of an input
-/// that reserves and that a Ref or an Adapt writes (DECISIONS R5-M72). A write, an in-place destruction or an exclusive acquisition
-/// passes no shared layer; a Move is A1's (DECISIONS R5-M123, R5-M139).</remarks>
+/// MirValidatorTest), staticEnsure's also as its static's slot (DECISIONS R5-M71) and testRecordValue's recorded value as a Scalar, a Value
+/// callee's against its Type's signature where that Type is a Function Type, else by its declared signature's arity only, and every Call's
+/// whole-local inputs by one write of an input that reserves and that a Ref or an Adapt writes (DECISIONS R5-M72). An owning interpolation's
+/// hint is a store of its writer's Field, an Assign checked by its Type. A write, an in-place destruction or an exclusive acquisition passes
+/// no shared layer; a Move is A1's (DECISIONS R5-M123, R5-M139).</remarks>
 /// <param name="types">The Type context of the bodies, which interns their case Types.</param>
 internal sealed partial class MirValidator(TyCtxt types)
 {
