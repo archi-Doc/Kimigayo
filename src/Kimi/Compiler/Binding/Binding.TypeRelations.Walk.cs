@@ -194,8 +194,13 @@ public sealed partial class Binding
 
             if (actual.Kind == BoundTypeKind.Function && actual.Components.Count == 2)
             {
-                // A Function component is one comparison: its first failure is one fact of the walk that reached it.
-                if (this.FunctionFits(actual, expected, invariant, Comparison(actual, own, expected, instance.Enclosing)))
+                // A Function component is one comparison: its first failure is one fact of the walk that reached it. At an invariant
+                // position the two Function Types relate both ways (SPEC 3.8, 15.3.5): a Callable comparison is oriented (it instantiates
+                // only the implementation's per-call inputs and judges only its well-formedness, SPEC 10.7), so the comparison as written
+                // is followed by the one with the sides exchanged, whose members relate one way since the first related them both ways.
+                var comparison = Comparison(actual, own, expected, instance.Enclosing);
+                if (this.FunctionFits(actual, expected, invariant, comparison) &&
+                    (!invariant || ReferenceEquals(actual, expected) || this.FunctionFits(expected, actual, false, comparison.Exchanged)))
                 {
                     return holds;
                 }
