@@ -444,8 +444,8 @@ internal sealed partial class MirBorrows
     // W's first step read at the reading path's Type (SPEC 15.6 Holders: a holder is read at the Type of the path that reads it; 5.7 Calls,
     // 15.6.4: the input's pointee or referent): each Place an entry of the argument names (PunEntry) that the Type does not designate at
     // the value's Position (Designates, OffGrid) is read punned (SPEC 5.2) through the Type's raw pointer raw Places (Reading; through a
-    // borrow layer only a punnable referent puns) where the Place is no safe reference (the owner's O-223 (B')): over a raw pointer's
-    // byte (Pointered) the punned pointer has the provenance written there, so the holder's state is read at those layers' guard beside
+    // borrow layer only a punnable referent puns): over a raw pointer's byte (Pointered: a safe reference and a handle hold none, the
+    // owner's O-223 (B')) the punned pointer has the provenance written there, so the holder's state is read at those layers' guard beside
     // its own (Writes: dev's declared reading stays); where that guard steps over an `owner` Scalar's byte (Scalared), the pointer
     // reaches storage the body does not own (SPEC 15.6 Holders, 5.5): E, past the holder, with those layers' record. The guard, where a
     // holder is punned.
@@ -465,7 +465,6 @@ internal sealed partial class MirBorrows
         foreach (var element in this.sets.Elements(set))
         {
             if (this.PunEntry(element) is var entry and >= 0 && cases.TypeOf(this.loans[entry].Place) is var place &&
-                place is not { Kind: BoundTypeKind.Semantics, Semantics: Parsing.SemanticsKind.Ref or Parsing.SemanticsKind.Uniq } &&
                 !this.Designates(place, reading, on))
             {
                 if (this.Pointered(place) != Extent.None)
@@ -573,13 +572,12 @@ internal sealed partial class MirBorrows
 
     // Whether a read through a layer whose pointee or referent, at key `at`, does not designate a Place of Type `place` is a punned
     // read that may take a raw pointer from the Place's bytes (SPEC 5.2, 15.6 Holders; U3b's arm, Punned): the pointee has a raw pointer
-    // raw Place within (PunTypes.RawPointers: its rows, left in readingRows for PunNodes), the Place may hold a raw pointer's byte, and
-    // it is no safe reference, whose bytes a punned write may not change and no raw pointer wrote (the owner's O-223 (B')).
+    // raw Place within (PunTypes.RawPointers: its rows, left in readingRows for PunNodes) and the Place may hold a raw pointer's byte
+    // (Pointered: a safe reference and a handle hold none; the owner's O-223 (B')).
     private bool PunRows(BoundType place, PlaceKey at)
     {
         this.readingRows.Clear();
-        if (place is not { Kind: BoundTypeKind.Semantics, Semantics: Parsing.SemanticsKind.Ref or Parsing.SemanticsKind.Uniq } &&
-            this.Pointered(place) != Extent.None)
+        if (this.Pointered(place) != Extent.None)
         {
             this.RawPointers(at, this.readingRows);
         }

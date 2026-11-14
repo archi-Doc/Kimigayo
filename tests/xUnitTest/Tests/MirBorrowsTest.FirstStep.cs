@@ -827,13 +827,156 @@ public sealed partial class MirBorrowsTest
                 kk = 2
                 usep(cell)
             """,
+        ["fObjPtrOk"] = """
+            struct Cel
+                public var v: i32 = 0
+                public init() => ()
+            func keepT(slot: raw/((raw/u8, u64)), value: raw/u8) => ()
+            func fObjPtrOk()
+                var kk: u8 = 1
+                let r = kk@uniq
+                var spare: raw/u8 = r@follow@raw
+                var x: u8 = 0
+                var item = Cel.init()@obj
+                var h = (x@raw, item@objref)
+                keepT(h@raw@raw/((raw/u8, u64)), spare)
+                kk = 2
+            """,
+        ["fObjPtrBad"] = """
+            struct Cel
+                public var v: i32 = 0
+                public init() => ()
+            func keepT(slot: raw/((raw/u8, u64)), value: raw/u8) => ()
+            func fObjPtrBad()
+                var kk: u8 = 1
+                let r = kk@uniq
+                var spare: raw/u8 = r@follow@raw
+                var x: u8 = 0
+                var item = Cel.init()@obj
+                var h = (x@raw, item@objref)
+                keepT(h@raw@raw/((raw/u8, u64)), spare)
+                kk = 2
+                usep(h.0)
+            """,
+        ["fRcPtrOk"] = """
+            struct Cel
+                public var v: i32 = 0
+                public init() => ()
+            func keepT(slot: raw/((raw/u8, u64)), value: raw/u8) => ()
+            func fRcPtrOk()
+                var kk: u8 = 1
+                let r = kk@uniq
+                var spare: raw/u8 = r@follow@raw
+                var x: u8 = 0
+                var h = (x@raw, Cel.init()@rc)
+                keepT(h@raw@raw/((raw/u8, u64)), spare)
+                kk = 2
+            """,
+        ["fRcPtrBad"] = """
+            struct Cel
+                public var v: i32 = 0
+                public init() => ()
+            func keepT(slot: raw/((raw/u8, u64)), value: raw/u8) => ()
+            func fRcPtrBad()
+                var kk: u8 = 1
+                let r = kk@uniq
+                var spare: raw/u8 = r@follow@raw
+                var x: u8 = 0
+                var h = (x@raw, Cel.init()@rc)
+                keepT(h@raw@raw/((raw/u8, u64)), spare)
+                kk = 2
+                usep(h.0)
+            """,
+        ["fObjPtrStoreBad"] = """
+            struct Cel
+                public var v: i32 = 0
+                public init() => ()
+            func keep2(slot: raw/(raw/(raw/u8)), value: raw/u8) => ()
+            func fObjPtrStoreBad()
+                var kk: u8 = 1
+                let r = kk@uniq
+                var spare: raw/u8 = r@follow@raw
+                var x: u8 = 0
+                var item = Cel.init()@obj
+                var h = (x@raw, item@objref)
+                keep2(h@raw@raw/(raw/(raw/u8)), spare)
+                kk = 2
+            """,
+        ["fObjUniqOnlyOk"] = """
+            struct Cel
+                public var v: i32 = 0
+                public init() => ()
+            func keep1(slot: raw/(raw/u8), value: raw/u8) => ()
+            func fObjUniqOnlyOk()
+                var kk: u8 = 1
+                let r = kk@uniq
+                var spare: raw/u8 = r@follow@raw
+                var item = Cel.init()@obj
+                var h = item@objuniq
+                keep1(h@raw@raw/(raw/u8), spare)
+                kk = 2
+            """,
+        ["fObjUniqOnlyBad"] = """
+            struct Cel
+                public var v: i32 = 0
+                public init() => ()
+            func keep2(slot: raw/(raw/(raw/u8)), value: raw/u8) => ()
+            func fObjUniqOnlyBad()
+                var kk: u8 = 1
+                let r = kk@uniq
+                var spare: raw/u8 = r@follow@raw
+                var item = Cel.init()@obj
+                var h = item@objuniq
+                keep2(h@raw@raw/(raw/(raw/u8)), spare)
+                kk = 2
+            """,
+        ["fObjRefOnlyBad"] = """
+            struct Cel
+                public var v: i32 = 0
+                public init() => ()
+            func keep2(slot: raw/(raw/(raw/u8)), value: raw/u8) => ()
+            func fObjRefOnlyBad()
+                var kk: u8 = 1
+                let r = kk@uniq
+                var spare: raw/u8 = r@follow@raw
+                var item = Cel.init()@obj
+                var h = item@objref
+                keep2(h@raw@raw/(raw/(raw/u8)), spare)
+                kk = 2
+            """,
+        ["fRefOnlyBad"] = """
+            func keep2(slot: raw/(raw/(raw/u8)), value: raw/u8) => ()
+            func fRefOnlyBad()
+                var kk: u8 = 1
+                let r = kk@uniq
+                var spare: raw/u8 = r@follow@raw
+                var y: i32 = 5
+                var h = y@ref
+                keep2(h@raw@raw/(raw/(raw/u8)), spare)
+                kk = 2
+            """,
+        ["fRcOnlyBad"] = """
+            struct Cel
+                public var v: i32 = 0
+                public init() => ()
+            func keep2(slot: raw/(raw/(raw/u8)), value: raw/u8) => ()
+            func fRcOnlyBad()
+                var kk: u8 = 1
+                let r = kk@uniq
+                var spare: raw/u8 = r@follow@raw
+                var h = Cel.init()@rc
+                keep2(h@raw@raw/(raw/(raw/u8)), spare)
+                kk = 2
+            """,
     };
 
     // The coverage table's rows (U3b): the 17 forms the first step's reading newly rejects (12 of PLAN G784's 13, pPlainViewBad, F2 unit
     // B's four) and pPlainFirstBad, the two P3 forms (invalid), the Ok twins and the valid views that must stay accepted, design review
     // 1's B1 three and G667a's four (rejected as on dev), the typed controls, and the rows past a holder that U3c moves; and the
     // implementation review's F1 rows: a reading Type with a part that is no raw Place beside a raw pointer whose pointee admits no
-    // Loan (four valid forms, their control and invalid twins), a row whose pointee admits the argument, a row stating an Origin.
+    // Loan (four valid forms, their control and invalid twins), a row whose pointee admits the argument, a row stating an Origin;
+    // and its F2 rows: a safe reference or a handle beside a raw pointer, and a Place that is one alone (three forms invalid by SPEC
+    // 15.6's example punnedRef are accepted, as on dev, until storage the body does not own is reached over a reference's bytes).
     [Theory]
     [InlineData("fMixedPunChainBad", "fMixedPunChainBad: kk = 2; fMixedPunChainBad: var z: u8 = 5")] // I, PLAN G784
     [InlineData("qIntChainMixedBad", "qIntChainMixedBad: kk = 2")] // I, PLAN G784
@@ -895,6 +1038,16 @@ public sealed partial class MirBorrowsTest
     [InlineData("kStatedPtrOk", "kStatedPtrOk: kk = 2; kStatedPtrOk: var cell: raw/u8 = null")] // I, a row stating an Origin over Scalar bytes (15.6 Holders)
     [InlineData("kStatedVOk", "kStatedVOk: kk = 2; kStatedVOk: var cell: raw/u8 = null")] // I, as kStatedPtrOk, v used after
     [InlineData("kStatedPtrBad", "kStatedPtrBad: kk = 2; kStatedPtrBad: usep(cell); kStatedPtrBad: var cell: raw/u8 = null")] // I, cell used after
+    [InlineData("fObjPtrOk", "")] // V, review F2: a safe reference beside a raw pointer; the row raw/u8 stores only a u8
+    [InlineData("fObjPtrBad", "fObjPtrBad: kk = 2")] // I, review F2: the first step's own write, h used after
+    [InlineData("fRcPtrOk", "")] // V, review F2: a handle beside a raw pointer; its destruction observes nothing (15.6.6)
+    [InlineData("fRcPtrBad", "fRcPtrBad: kk = 2")] // I, review F2: the first step's own write, h used after
+    [InlineData("fObjPtrStoreBad", "fObjPtrStoreBad: kk = 2; fObjPtrStoreBad: var item = Cel.init()@obj")] // I, a stepping row over h's pointer bytes: the call's own pointer (15.6.4's composition); item's Loan is kept there too
+    [InlineData("fObjUniqOnlyOk", "")] // V, review F2: a row raw/u8 over a reference's bytes stores only a u8
+    [InlineData("fObjUniqOnlyBad", "")] // I by SPEC (15.6 Holders, example punnedRef); accepted as on dev: storage the body does not own over a reference's bytes (PLAN G785's row) is not in this unit
+    [InlineData("fObjRefOnlyBad", "")] // I by SPEC, as fObjUniqOnlyBad; accepted as on dev
+    [InlineData("fRefOnlyBad", "")] // I by SPEC: 15.6's example punnedRef itself; accepted as on dev (PLAN G785's row)
+    [InlineData("fRcOnlyBad", "fRcOnlyBad: kk = 2")] // I, a handle's bytes: rejected as on dev
     public void TheFirstStepReadsAtTheReadingPathsType(string form, string expected)
     {
         var c = MirBuildTest.Compile(FirstStepShapes + FirstStepForms[form] + "\npublic func main() => ()\n");

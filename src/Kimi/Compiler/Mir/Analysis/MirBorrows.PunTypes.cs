@@ -106,13 +106,16 @@ internal sealed partial class MirBorrows
     // How much of a raw pointer's byte a Place of a Type holds inline, by the Type's own structure and the one reading of a length
     // (Sized): the bytes a Place has (SPEC 4.1, 5.2), which is not what its value carries: Binding's holdings state the Loans and layers
     // carried, and an array of no element keeps its element's (SPEC 4.3.3: `[0 of v]` keeps v's Loans), so RawInline is true of a Place
-    // with no byte. None: a Scalar. Positive (it surely has one): a raw pointer. A fixed array has its element's, by its own extent at
-    // most; a Tuple, a struct (its Fields and its base, AdtDef) and an enum (its Cases' payloads) their parts' most. Open (it may have
-    // one: Binding's layer fact stands, nothing establishes the byte): any other Type (an abstract part, a Closure, an own step), a part
-    // Binding did not bind and a declaration on an inline cycle (an error at its container).
+    // with no byte. None: a Scalar, and a safe reference or an object handle (`ref`, `uniq`, `objref`, `objuniq`: MirTypes.IsBorrow;
+    // `obj`, `rc`, `arc`: BoundType.HandleMode), whose bytes no raw pointer wrote and a punned write may not change (SPEC 5.2, 15.6
+    // Holders; the owner's O-223 (B')), so they are no target of a punned write and nothing is read on from them. Positive (it surely
+    // has one): a raw pointer. A fixed array has its element's, by its own extent at most; a Tuple, a struct (its Fields and its base,
+    // AdtDef) and an enum (its Cases' payloads) their parts' most. Open (it may have one: Binding's layer fact stands, nothing
+    // establishes the byte): any other Type (an abstract part, a Closure, a Slice), a part Binding did not bind and a declaration on
+    // an inline cycle (an error at its container).
     private Extent Pointered(BoundType type)
     {
-        if (ScalarTypes.Supports(type))
+        if (ScalarTypes.Supports(type) || (type.Kind == BoundTypeKind.Semantics && (MirTypes.IsBorrow(type.Semantics) || type.HandleMode is not null)))
         {
             return Extent.None;
         }
