@@ -19231,6 +19231,25 @@ R8-M* and R9-M* by the stage of the recording unit.
   - Rejected: a parent list in Core.kimi (never bound: dead text, and with the arm gone no PrimitiveInteger was Copy), a column read
     by `Enumerate` alone (a second representation of refinement), a `PremiseRefines` read per kind in the capability engine, the
     nominal supplies as parents.
+- **R7-M27 A supplied identity clause is an identity ground** (Front, 2026-11-14; R7-C2c2 c2-2, the plan's §5.0 C2 part c2; Major
+  with a design review ACCEPT WITH NOTES, an implementation review ACCEPT and a final-head diff review ACCEPT by C2's group
+  reviewer; RP17: the Middle's C-313 consent, round 2; RP8: T-219's one stop, Extension16's cold median, accepted by the owner's
+  O-266 (a), verbatim 「質問の回答は、すべて推奨どおりでお願いします」) SPEC 8.2.3, 8.3.2, 8.3.3.
+  - The rule: `Enumerate`'s walk records the TypeIdentity clause instances of its Contract rows; an outermost request whose walk is
+    not positive builds its own classes over the view's premises and those rows (`ExtendedClassesOf`: request-local, never the
+    view's table, the rows Provisional; a constructed member keys to itself over its components' keys as in the view's table, so no
+    parameter's premise rows reach it: R7-M25), re-keys and walks again while a round adds a row.
+  - Bound: each row is a clause instance at a distinct link Type some round walked (the prefixes of the subject and of its
+    successive keys, none deeper than the subject), so the rounds are at most those pairs plus one.
+  - Nothing under an extension is kept, so answers are functions of (subject, view). A kept entry records whether its request's walk
+    recorded an identity row, and a kept hit answers only when its rows refine the Contract or neither the subject's entry nor its
+    key's records one; otherwise the request walks and extends as if nothing were kept, so no answer depends on which check asks
+    first (SPEC 8.3.3). At R7-C2e2 e2-1's merge, index entries built under an extension stay request-owned, never admitted.
+  - Rows (1) and (2) take a clause's Contract at the subject's Origin arguments (`RowContract`, SPEC 8.5.4; c1''s row (2) part, plan
+    revision 74), behaviour-preserving until c2-3's readers read the rows. Rows of other kinds are read by their owners in c2-3; the
+    arithmetic built-ins move to c2-3.
+  - Rejected: a pass-level or view-level table of supplied identities (order-dependent), a fixed-depth eager identity expansion, a
+    re-key inside the walk.
 - **R8-M1 The representation structs and their Place contract** (owner, 2026-11-07, verbatim 「推奨の内容でOKです。処理を継続してください。」,
   on O-41 (a) and O-43 (A); R8-R1a; prototype R8-L0p; supersedes the two plan rows below) IMPL 21.1.3, SPEC 5.2, 5.5, 5.7.
   - Adopted: `Storage.ArrayRepr<T>`, `Storage.SliceRepr<T>` and `Storage.StringRepr`, internal `#Layout("C")` structs of the Kimi
