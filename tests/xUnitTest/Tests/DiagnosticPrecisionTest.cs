@@ -336,6 +336,12 @@ public class DiagnosticPrecisionTest
     [InlineData("#Layout(\"bad\")", "InvalidLayoutAttribute_Kd", "#Layout(\"bad\")")]
     [InlineData("#Unknown", "UnresolvedBinding_Kd", "Unknown")]
     [InlineData("#LibraryImport(\"library\", \"symbol\")", "UnresolvedBinding_Kd", "LibraryImport")]
+    // SPEC 6.7: outside the Kimi library an implementation Attribute is an unrecognized one (rows A1-A4, A7; no same-named declaration).
+    [InlineData("#Lang(\"Option\")", "UnresolvedBinding_Kd", "Lang")]
+    [InlineData("#Intrinsic(\"Abort\")", "UnresolvedBinding_Kd", "Intrinsic")]
+    [InlineData("#Intrinsic(\"Fail\", \"KIMI_E_INDEX_BOUNDS\")", "UnresolvedBinding_Kd", "Intrinsic")]
+    [InlineData("#CallerLocation", "UnresolvedBinding_Kd", "CallerLocation")]
+    [InlineData("#Unsupported", "UnresolvedBinding_Kd", "Unsupported")]
     public void RejectedAttributesPublishOnlyTheirOwnFailure(string attribute, string code, string token)
     {
         foreach (var testBuild in new[] { false, true })
@@ -351,5 +357,26 @@ public class DiagnosticPrecisionTest
             Assert.Equal(code, error.Code);
             Assert.Equal(token, error.Text);
         }
+    }
+
+    // SPEC 6.7, 23.1.2: outside the Kimi library the implementation Attributes are unrecognized, each Name failing on its own beside
+    // every other independent failure, such as a missing Body (SPEC 14.2.1), and placed as any other Attribute is: a user constructor
+    // and a Contract requirement take none (rows A8, A11, A12, B2, B3, B5; Names with no same-named declaration).
+    [Theory]
+    [InlineData("#Lang(\"Option\")\n#Lang(\"Result\")\nfunc f() => ()\n", "UnresolvedBinding_Kd 1:2", "UnresolvedBinding_Kd 2:2")]
+    [InlineData("#Lang(\"Option\")\nenum E\n    A\n#Unsupported\ncontract C\n    func c(self: ref/Self) -> i32\n", "UnresolvedBinding_Kd 1:2", "UnresolvedBinding_Kd 4:2")]
+    [InlineData("#Intrinsic(\"Abort\")\nfunc f() -> i32\n", "UnresolvedBinding_Kd 1:2", "MissingSyntax_Kd 2:16")]
+    [InlineData("#Unsupported\nfunc f() -> i32\n", "UnresolvedBinding_Kd 1:2", "MissingSyntax_Kd 2:16")]
+    [InlineData("struct S\n    public let x: i32\n    #Lang(\"X\")\n    public init(x: i32)\n        self.x = x\n", "MisplacedSyntax_Kd 3:5")]
+    [InlineData("contract C\n    #Lang(\"Equatable\")\n    func c(self: ref/Self) -> i32\n", "MisplacedSyntax_Kd 2:5")]
+    public void UnrecognizedAttributesPublishTheirOwnRecords(string source, params string[] expected)
+    {
+        var records = DiagnosticCorpus.Check(source, "Library").Diagnostics.Where(static x => x.Severity == Kimi.Diagnostics.DiagnosticSeverity.Error).Select(x =>
+        {
+            var start = x.Span!.Value.Start;
+            var line = source.AsSpan(0, start).Count('\n');
+            return $"{x.Code} {line + 1}:{start - (start == 0 ? 0 : source.LastIndexOf('\n', start - 1) + 1) + 1}";
+        });
+        Assert.Equal(expected.Order(StringComparer.Ordinal), records.Order(StringComparer.Ordinal));
     }
 }

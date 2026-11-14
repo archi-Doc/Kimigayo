@@ -369,6 +369,14 @@ public sealed partial class Kotonoha
         }
     }
 
+    /// <summary>Creates the Kimi library's Kotonoha, whose syntax table is the library's from its creation
+    /// (<see cref="SyntaxTable.ForLibrary"/>), so its sources parse under the library mark (SPEC 6.7).</summary>
+    /// <param name="compilation">The owning compilation.</param>
+    /// <param name="url">The library's URL.</param>
+    /// <returns>The Kotonoha, before any source is parsed into it.</returns>
+    internal static Kotonoha ForKimiLibrary(Compilation compilation, string url)
+        => new(compilation, "Kimi", url) { Syntax = SyntaxTable.ForLibrary() };
+
     /// <summary>Records a document parsed into the root for subsequent serialization.</summary>
     /// <param name="sourceDocument">The original source document.</param>
     /// <param name="modId">The generating Mod, or null.</param>

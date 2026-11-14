@@ -214,7 +214,7 @@ public class ArchitectureRulesTest
     // R7-N4 (RP6): the parser classifies an attribute by its Name once, so AttributeKoto.Classify is the one read of the Name, and Binding
     // names no attribute by string (its two hits are the Kimi.Test group's Name). A Name the compiler reads joins the second pattern.
     [InlineData("Reads of an attribute's Name", "src/Kimi/Compiler", @"\bIdentifierKoto\b", "Parsing/Koto/Expressions/UnaryKoto.cs=2")]
-    [InlineData("Attribute Name strings in Binding", "src/Kimi/Compiler/Binding", @"""(?:Layout|LibraryImport|Test)""", "KimiLibrary.cs=2")]
+    [InlineData("Attribute Name strings in Binding", "src/Kimi/Compiler/Binding", @"""(?:Layout|LibraryImport|Test|Lang|Intrinsic|CallerLocation|Unsupported)""", "KimiLibrary.cs=2")]
     // R7-N2a (RP6): a struct has one base clause (SPEC 6.2.2), read through StructKoto.BaseClause. `.Bases` stays only where the container may
     // be an enum, which keeps its whole list until PrepareStorage fails it, or a Contract, whose refinements are many (BuildContract).
     [InlineData("A container's base clauses", "src/Kimi/Compiler/Binding", @"\.Bases\b|\{ Bases\b", "Binding.Contracts.cs=2;Binding.Expressions.cs=2;Binding.OriginProof.cs=2;Binding.Storage.cs=3")]

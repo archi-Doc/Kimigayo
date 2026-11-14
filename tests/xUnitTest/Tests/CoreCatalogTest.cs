@@ -26,6 +26,20 @@ public class CoreCatalogTest
         }
     }
 
+    // R8-G1: the library's table is numbered LibraryModule at its creation, so its sources parse under the mark (SPEC 6.7); a source
+    // module's table never reads as the library's, before or after Binding numbers it.
+    [Fact]
+    public void TheLibraryTableIsMarkedBeforeTheFirstBind()
+    {
+        var c = Compilation.CreateForTest();
+        Assert.Equal(SyntaxTable.LibraryModule, c.Library.Kotonoha.Syntax.Module);
+        Assert.True(c.Library.Kotonoha.Syntax.IsLibrary);
+        Assert.False(c.Kotonoha.Syntax.IsLibrary);
+        Assert.True(c.Bind().IsComplete);
+        Assert.True(c.Library.Kotonoha.Syntax.IsLibrary);
+        Assert.False(c.Kotonoha.Syntax.IsLibrary);
+    }
+
     [Fact]
     public void EmbeddedSourcesKeepFileLocationsAndShareOnlyText()
     {

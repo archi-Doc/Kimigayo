@@ -20,7 +20,7 @@ public sealed partial class KimiLibrary
 
     internal KimiLibrary(Compilation compilation)
     {
-        this.Kotonoha = new(compilation, "Kimi", "compiler://Kimi/" + Compilation.CurrentLanguageVersion);
+        this.Kotonoha = Kotonoha.ForKimiLibrary(compilation, "compiler://Kimi/" + Compilation.CurrentLanguageVersion);
         this.Scope = new(this.Kotonoha.RootKoto);
         this.Module = new("Kimi", BindingSymbolKind.Container, this.Kotonoha.RootKoto, this.Scope);
         var context = new TokenContext(null, ModifierKind.Public, false);

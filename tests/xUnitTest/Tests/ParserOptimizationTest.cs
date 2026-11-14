@@ -172,11 +172,44 @@ public class ParserOptimizationTest
     [InlineData("#LibraryImport(\"a\", \"b\") func f()", AttributeKind.LibraryImport)]
     [InlineData("#Other func f() => ()", AttributeKind.Unknown)]
     [InlineData("#Layout(\"C\")(1) struct S", AttributeKind.Unknown)]
+    // SPEC 6.7: the implementation Attributes are recognized only in the Kimi library's own sources (rows A1-A4).
+    [InlineData("#Lang(\"Option\") func f() => ()", AttributeKind.Unknown)]
+    [InlineData("#Intrinsic(\"Abort\") func f() => ()", AttributeKind.Unknown)]
+    [InlineData("#CallerLocation func f() => ()", AttributeKind.Unknown)]
+    [InlineData("#Unsupported func f() => ()", AttributeKind.Unknown)]
     public void ParserClassifiesAnAttributeByItsName(string source, AttributeKind expected)
     {
         var kotonoha = Compilation.CreateForTest().Kotonoha;
         kotonoha.CreateCodeContext().Parse(kotonoha.RootKoto, source);
         Assert.Equal(expected, Assert.Single(KotoTree.Walk(kotonoha.RootKoto).OfType<AttributeKoto>()).Kind);
+    }
+
+    // SPEC 6.7, IMPL 21.3.4: a source parsed into the Kimi library, whose table is the library's from its creation, classifies the
+    // implementation Attributes; every other Name stays as in a user source.
+    [Theory]
+    [InlineData("#Lang(\"Option\") struct S", AttributeKind.Lang)]
+    [InlineData("#Intrinsic(\"Abort\") struct S", AttributeKind.Intrinsic)]
+    [InlineData("#Intrinsic(\"Fail\", \"KIMI_E_INDEX_BOUNDS\") struct S", AttributeKind.Intrinsic)]
+    [InlineData("#CallerLocation struct S", AttributeKind.CallerLocation)]
+    [InlineData("#Unsupported struct S", AttributeKind.Unsupported)]
+    [InlineData("#Layout(\"C\") struct S", AttributeKind.Layout)]
+    [InlineData("#Other struct S", AttributeKind.Unknown)]
+    public void TheLibraryClassifiesTheImplementationAttributes(string source, AttributeKind expected)
+        => Assert.Equal(expected, ParseAttribute(Compilation.CreateForTest().Library.Kotonoha, source).Kind);
+
+    // The re-classification after an edit (Koto.ReplaceChild) reads the same mark: the node's own Kotonoha.
+    [Fact]
+    public void AReplacedNameIsClassifiedByItsKotonoha()
+    {
+        var c = Compilation.CreateForTest();
+        foreach (var (kotonoha, expected) in new[] { (c.Library.Kotonoha, AttributeKind.Unsupported), (c.Kotonoha, AttributeKind.Unknown) })
+        {
+            var attribute = ParseAttribute(kotonoha, "#Test(1) struct S");
+            Assert.Equal(AttributeKind.Test, attribute.Kind);
+            var call = Assert.IsType<InvocationKoto>(attribute.Operand);
+            Assert.True(KotoHelper.Replace(call, call.Method, new IdentifierNameKoto(call, "Unsupported")));
+            Assert.Equal(expected, attribute.Kind);
+        }
     }
 
     [Fact]
@@ -275,5 +308,13 @@ public class ParserOptimizationTest
         Assert.Equal(span, replacement.Span);
         Assert.Equal(version, tree.Syntax.Version);
         ParseTestHelper.VerifyParents(tree.RootKoto);
+    }
+
+    // The one attribute a parse of the source adds to the Kotonoha's tree.
+    private static AttributeKoto ParseAttribute(Kotonoha kotonoha, string source)
+    {
+        var before = KotoTree.Walk(kotonoha.RootKoto).OfType<AttributeKoto>().ToHashSet();
+        kotonoha.CreateCodeContext().Parse(kotonoha.RootKoto, source);
+        return Assert.Single(KotoTree.Walk(kotonoha.RootKoto).OfType<AttributeKoto>(), x => !before.Contains(x));
     }
 }
