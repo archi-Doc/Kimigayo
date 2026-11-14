@@ -136,6 +136,52 @@ public partial class TypeDagScalingTest
         }
     }
 
+    // PLAN G881 (design review B3): ContractSolver's row (5) work (IdentityMateWork: a class's members scanned once per table, mates
+    // walked) over c2-1's `members` shape (one class of n + 1 parameters, no projection mate), n projection mates of one parameter
+    // (`Ti.(Outer3).Next.(Mid).Next is U`) and n chained two-link identities (`V{i-1}.(R).A.(R2).B is Vi`, each link's rows from its
+    // mate, whose root's from its own: the walk nests n deep). Valid (SPEC 8.2.3, 8.3.2): U is Inner, Vn is R. A parameter-only class
+    // costs one scan per table (linear). With projection mates the measured term is quadratic (mates 158, 1,154, 16,658; chained 126,
+    // 642, 8,466 at 4, 16, 64): each of the O(n) requests through the class walks its n mates, since before the capability phase a
+    // request keeps no rows; R7-C2e2's Closure(scope), which holds a view's rows across requests, removes the requests factor.
+    [Theory]
+    [InlineData("members", 4)]
+    [InlineData("mates", 16)]
+    [InlineData("chained", 16)]
+    public void MateWorkIsLinearInTheClassAndQuadraticInMatesAndChains(string shape, int factor)
+    {
+        var (w4, w16, w64) = (Work(shape, 4), Work(shape, 16), Work(shape, 64));
+        Assert.True(w16 <= factor * w4 && w64 <= factor * w16, $"{shape}: {w4} at 4, {w16} at 16, {w64} at 64");
+
+        static long Work(string shape, int n)
+        {
+            var c = MinimalEmissionTest.Analyze(MateSource(shape, n));
+            Assert.True(CompilationTestHelper.PublishedErrors(c).Length == 0, MinimalEmissionTest.Describe(c));
+            return c.Binding.IdentityMateWork;
+        }
+    }
+
+    private static string MateSource(string shape, int n)
+    {
+        if (shape == "members")
+        {
+            return KeySource(shape, n);
+        }
+
+        if (shape == "mates")
+        {
+            var roots = string.Join(", ", Enumerable.Range(0, n).Select(static i => $"T{i}"));
+            var premises = string.Concat(Enumerable.Range(0, n).Select(static i => $"    T{i} is Outer3\n    T{i}.(Outer3).Next.(Mid).Next is U\n"));
+            return "contract Inner\n    associate F\ncontract Mid\n    associate Next is Inner\ncontract Outer3\n    associate Next is Mid\n" +
+                "func need<X>(x: ref/X)\n    X is Inner\n    return\n" +
+                $"func f<{roots}, U>(u: ref/U)\n{premises}    need(u)\npublic func main() -> ()\n    return\n";
+        }
+
+        var parameters = string.Join(", ", Enumerable.Range(0, n + 1).Select(static i => $"V{i}"));
+        var chain = string.Concat(Enumerable.Range(1, n).Select(static i => $"    V{i - 1}.(R).A.(R2).B is V{i}\n"));
+        return "contract R\n    associate A is R2\ncontract R2\n    associate B is R\nfunc needR<X>(x: ref/X)\n    X is R\n    return\n" +
+            $"func f<{parameters}>(v: ref/V{n})\n    V0 is R\n{chain}    needR(v)\npublic func main() -> ()\n    return\n";
+    }
+
     private static string KeySource(string shape, int n)
     {
         const string Copies = "contract Tree\n    associate Child is Tree\ncontract CopyTree: Tree, Copy\n    Self.(Tree).Child is CopyTree\n";

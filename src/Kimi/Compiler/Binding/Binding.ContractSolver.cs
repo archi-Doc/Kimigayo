@@ -15,7 +15,8 @@
 //   Enumerate's rows, the least set of Contracts `subject is R` closed under: (1) a direct Contract fact of the view stating
 //   the subject or a Type of its identity class, as written and, under a parameter identity, as the view reads it (Reading); (2) a
 //   Self-dependent clause of a row of a proper prefix of the subject's projection chain, Self being that prefix, whose stated subject
-//   is the subject or of its class; (3) a Contract's own Self; (4) a row's ancestors. Rows (1) and (2) take the Contract at the
+//   is the subject or of its class; (3) a Contract's own Self; (4) a row's ancestors; (5) at each link, the rows of each projection
+//   of its identity class in the request's classes, by that projection's own walk (PLAN G881). Rows (1) and (2) take the Contract at the
 //   subject's Origin arguments (RowContract; SPEC 8.5.1, 8.5.4: application substitutes Origin atoms positionally). A row carries
 //   whether it is available (R7-C2c2 c2-3a): its fact and its Contract are, for a clause or an ancestor its source row too; the
 //   strongest of its derivations wins. A constraint of another kind with a reader (RowKind; R7-C2c2 c2-3b: Callable) gives a leaf
@@ -58,7 +59,12 @@
 //   base, until c2-4 (a constructed member's conformance with premises for its arguments). Each request keys its
 //   subject, its view's facts and the walk's comparisons by its own view's classes (ClassKey, Binding.TypeIdentity's: a class's least
 //   parameter or projection; an erroneous or incomplete class keys nothing), whatever the table's finality, which decides only kept
-//   rows. The written subject is walked beside its key and both refine, so a key only adds rows. A key never leaves the supply: no
+//   rows. The written subject is walked beside its key and both refine, so a key only adds rows; each link's projection mates
+//   (row (5)) add the clause instances their own chains supply, which no index holds. The implementation's limit, not SPEC's rule: a
+//   mate whose chain holds a link open in the walk (a cycle through a projection, `T.(Cy2).X.(Mid).Next is T`, SPEC 8.2.3 Cycles)
+//   is not walked, and a request that skipped one keeps no rows: through a cycle a link lacks what returns through the cut (cy2,
+//   valid, rejected; hcy2, invalid, accepted: a class 1), and an answer may depend on the spelling asked (cy2x accepted) until
+//   PLAN G881b. A key never leaves the supply: no
 //   reader receives it as a Type (on a class match AppliedAssociatedContract reads the fact's own subject). Not yet supplied: a
 //   subject only a binding completes beyond Reading's one level (ProjectionSpecification; c2-4), a Callable fact whose subject
 //   only its reading, not its class, makes the subject (IndexNormalized reads Contract facts; c2-4), and the clause kinds without a
@@ -373,9 +379,10 @@ public sealed partial class Binding
         return new() { Positive = positive, Negative = negative };
     }
 
-    // The walk's stacks: the chain of the subject being walked and its active prefixes (Enumerate).
+    // The walk's stacks: the chain of the subject being walked, its active prefixes and its links' class mates (Enumerate).
     private readonly List<BoundType> enumerateChain = new();
     private readonly List<(BoundType Prefix, int Reach)> enumerateActive = new();
+    private readonly List<BoundType> enumerateMates = new();
 
     // The rows of `subject` in the view (the contract above): its chain is walked from the root up, each link once per request and
     // view; a link's rows are final before a taller link reads them, and a prefix stays active while its height plus its rows' head
@@ -534,6 +541,50 @@ public sealed partial class Binding
             }
         }
 
+        // Row (5) (PLAN G881; SPEC 8.2.3): the link is one Type with each member of its class in the request's classes, so their rows
+        // are the link's. The class-key index gives the link every member's facts where the link or its key is walked; what no index
+        // holds is a projection member's rows (2), the clause instances of its own chain's prefixes (`U is T.(A).Next.(B).Next`: T's
+        // chain supplies `T.(A).Next.(B).Next is C`), so each projection mate's walk adds its rows, in Order, never premise order. A
+        // mate whose chain holds a link open in this walk (a cycle, `T.(Cy2).X.(Mid).Next is T`) is not walked: it would read the open
+        // link as empty and leave that partial answer in the memo. A request that skipped one keeps no rows. The implementation's
+        // limit, not SPEC's rule (PLAN G881b): through such a cycle the link lacks what returns through the cut (cy2 rejected, hcy2
+        // accepted: a class 1). A constructed link (`Leaf` under `T.(Holder).Item is Leaf`) takes no mate's rows: its conformance is ResolveConformance's
+        // (the class header's Identity; ClassKey keys it to itself), so a premise contradicting it stays the premise's error (d09y).
+        if (this.enumerateClasses is { } classes && subject.Kind is BoundTypeKind.Parameter or BoundTypeKind.AssociatedProjection)
+        {
+            var mates = this.enumerateMates.Count;
+            classes.ProjectionMembers(subject, this.enumerateMates);
+            var end = this.enumerateMates.Count; // A nested walk's mates are above it and gone when it returns.
+            try
+            {
+                for (var m = mates; m < end; m++)
+                {
+                    var mate = this.enumerateMates[m];
+                    if (ReferenceEquals(mate, subject))
+                    {
+                        continue;
+                    }
+
+                    if (this.HoldsOpenLink(mate, view, index.Serial))
+                    {
+                        this.EnumerateSkips++;
+                        continue;
+                    }
+
+                    this.IdentityMateWork++;
+                    var mateRows = this.Enumerate(mate, view, index);
+                    for (var r = 0; mateRows is not null && r < mateRows.Count; r++)
+                    {
+                        AddRow(rows, 0, mateRows[r]);
+                    }
+                }
+            }
+            finally
+            {
+                this.enumerateMates.RemoveRange(mates, this.enumerateMates.Count - mates);
+            }
+        }
+
         for (var i = 0; i < rows.Count; i++)
         {
             if (rows[i].Symbol?.Contract is not { } shape)
@@ -558,6 +609,23 @@ public sealed partial class Binding
     // the application.
     private BindingSymbol RowContract(BoundConstraint stating, BoundType subject, bool states)
         => this.AppliedAssociatedContract(stating, states ? subject : stating.Subject!);
+
+    // Whether a link of `type`'s chain is open in this walk (Row (5)'s guard).
+    private bool HoldsOpenLink(BoundType type, EvidenceView view, int serial)
+    {
+        for (var link = type; ; link = link.Components[0])
+        {
+            if (this.enumerateMemo.TryGetValue((link, view, serial), out var rows) && rows is null)
+            {
+                return true;
+            }
+
+            if (link.Kind != BoundTypeKind.AssociatedProjection)
+            {
+                return false;
+            }
+        }
+    }
 
     // R7-C2c2: the walk's identity: two Types of one class of the request's view (ClassKey).
     private bool SameClass(BoundType a, BoundType b)

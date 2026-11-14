@@ -45,6 +45,12 @@ public sealed partial class Binding
     // R7-C2c2 c2-2: the extension rounds of this compilation (the scaling rows' measure of the loop's bound).
     internal int IdentityRounds { get; private set; }
 
+    // PLAN G881: the class mates Row (5) did not walk (an open link in their chain); a request that skipped one keeps no rows.
+    internal int EnumerateSkips { get; private set; }
+
+    // PLAN G881: row (5)'s work, the class members ProjectionMembers scanned and the mates walked (the scaling rows' measure).
+    internal long IdentityMateWork { get; private set; }
+
     // SPEC 8.3.2's refinement row over Enumerate's rows: an available one is a refinement of `contract`.
     private static bool RowsRefine(List<PremiseRow>? rows, BindingSymbol contract)
     {
@@ -121,6 +127,7 @@ public sealed partial class Binding
             try
             {
                 this.enumerateIdentities.Clear();
+                var skips = this.EnumerateSkips;
                 var refines = RowsRefine(this.Enumerate(subject, view, index), contract);
                 refines |= !ReferenceEquals(key, subject) && RowsRefine(this.Enumerate(key, view, index), contract);
 
@@ -152,7 +159,7 @@ public sealed partial class Binding
                     this.IdentityRounds++;
                 }
 
-                if (keep)
+                if (keep && skips == this.EnumerateSkips)
                 {
                     this.KeepRows(view, serial);
                 }
@@ -217,9 +224,10 @@ public sealed partial class Binding
             try
             {
                 this.enumerateIdentities.Clear();
+                var skips = this.EnumerateSkips;
                 var rows = this.Enumerate(subject, view, index);
                 var keyRows = ReferenceEquals(key, subject) ? null : this.Enumerate(key, view, index);
-                if (keep)
+                if (keep && skips == this.EnumerateSkips)
                 {
                     this.KeepRows(view, serial);
                 }
