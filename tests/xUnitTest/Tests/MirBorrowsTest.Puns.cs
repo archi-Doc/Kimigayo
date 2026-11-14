@@ -1725,61 +1725,14 @@ public sealed partial class MirBorrowsTest
         Assert.Contains("pastPunBad: kk = 2", Problems(c, program!, LoanCodes));
     }
 
-    // A copy of a body whose match Subject `_s = &X` borrows a Place in place, each Place `(*_s)...` of it rebased onto X (the Subject's
-    // bindings, discriminant and reads), every other row as built; the body has no static and no opaque or must-not-complete site.
+    // A copy of a body whose match Subject `_s = &X` borrows a Place in place (Copied), each Place `(*_s)...` of it rebased onto X (the
+    // Subject's bindings, discriminant and reads), every other row as built.
     private static MirBody InPlace(MirBody built)
     {
-        Assert.True(built.Statics.Length == 0 && built.OpaqueSites.Length == 0 && built.MustNotComplete.Length == 0);
         var subject = built.Statements.ToArray()
             .First(x => x.Rvalue is { Kind: MirRvalueKind.Ref, Place.Projection: > 0 } && Payload(x.Rvalue.Place.Projection)).Rvalue.Place.Root;
         var borrowed = built.Statements.ToArray().Single(x => x.Place == new MirPlace(subject) && x.Rvalue.Kind == MirRvalueKind.Ref).Rvalue.Place;
-        var body = new MirBody();
-        body.Reset(built.Key, built.Source);
-        body.Ordinal = built.Ordinal;
-        body.Binders.AddRange(built.Binders);
-        foreach (var scope in built.Scopes[1..])
-        {
-            body.AddScope(scope.Outer, scope.Kind, scope.Source);
-        }
-
-        foreach (var local in built.Locals)
-        {
-            body.AddLocal(local);
-        }
-
-        foreach (var constant in built.Consts)
-        {
-            body.Const(constant);
-        }
-
-        foreach (var operand in built.Operands)
-        {
-            body.AddOperand(operand with { Place = Map(operand.Place) });
-        }
-
-        foreach (var item in built.Cases)
-        {
-            body.AddCase(item.Value, item.Target);
-        }
-
-        foreach (var block in built.Blocks)
-        {
-            _ = body.AddBlock();
-        }
-
-        for (var b = 0; b < built.Blocks.Length; b++)
-        {
-            foreach (var statement in built.Statements.Slice(built.Blocks[b].Start, built.Blocks[b].Count))
-            {
-                body.Push(b, statement with { Place = Map(statement.Place), Rvalue = statement.Rvalue with { Place = Map(statement.Rvalue.Place) } });
-            }
-
-            var terminator = built.Blocks[b].Terminator;
-            body.Terminate(
-                b, terminator with { Place = Map(terminator.Place), Operand = terminator.Operand with { Place = Map(terminator.Operand.Place) } });
-        }
-
-        return body;
+        return Copied(built, body => place => Map(body, place));
 
         // Whether a projection chain passes a Downcast past a Deref of its root: a binding of a borrowed Subject's payload.
         bool Payload(int id)
@@ -1794,7 +1747,7 @@ public sealed partial class MirBorrowsTest
         }
 
         // The Place's projections, root first, re-made in the copy; past the Subject's Deref, onto the borrowed Place.
-        MirPlace Map(MirPlace place)
+        MirPlace Map(MirBody body, MirPlace place)
         {
             var chain = new List<int>();
             for (var id = place.Projection; id > 0; id = built.Projections[id].Prefix)
@@ -1803,7 +1756,7 @@ public sealed partial class MirBorrowsTest
             }
 
             var rebased = place.Root == subject && chain.Count > 0 && built.Projections[chain[0]].Kind == MirProjectionKind.Deref;
-            var at = rebased ? Map(borrowed) : new MirPlace(place.Root);
+            var at = rebased ? Map(body, borrowed) : new MirPlace(place.Root);
             foreach (var id in chain.Skip(rebased ? 1 : 0))
             {
                 at = body.Project(at, built.Projections[id].Kind, built.Projections[id].Arg);
