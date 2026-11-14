@@ -241,8 +241,7 @@ public sealed partial class FunctionCodegenTest
 
     // SPEC 7.7.4, 22.5.1 (DECISIONS R5-M108): an erased compiler function's Item runs its direct call's routine row from its entry, with the
     // entry's own parameters, the row's slot-less values and the location the entry received (the erased call's): Raw.allocate's count, its
-    // element's stride and the location; the console writeLine's Item, a body's since R8-W2 d, its body with the borrowed string and the
-    // location.
+    // element's stride and the location.
     [Fact]
     public void AnErasedCompilerFunctionItemRunsItsRoutine()
     {
@@ -255,6 +254,17 @@ public sealed partial class FunctionCodegenTest
         Assert.Same(ir.Function("__kimi_raw_allocate"), call.Callee);
         Assert.Equal("call ptr @(i64 %, i64 1, ptr %, i64 %)", call.Shape);
         Assert.Equal([allocate.Parameters[1], allocate.Parameters[3], allocate.Parameters[4]], call.Operands);
+    }
+
+    // SPEC 7.7.4, 22.5.1, 22.7 (R8-W2 d): an erased caller-location body's Item runs its body from its entry, with the entry's own
+    // parameters and the location the entry received (the erased call's): the console writeLine's borrowed string and the location, so
+    // KIMI_E_STDOUT reports the call through the value.
+    [Fact]
+    public void AnErasedCallerLocationBodyItemRunsItsBodyAtTheCallsLocation()
+    {
+        var c = Analyze(Erasures, OutputKind.Library);
+        var text = Generate(c);
+        var ir = GeneratedIr.Parse(text);
         var write = ir.Function(TableOf(text, Assert.Single(ItemTexts(c, "wl"))).Entry);
         var line = Assert.Single(CallsOf(write));
         Assert.Same(LineOf(ir, c, view: false), line.Callee);

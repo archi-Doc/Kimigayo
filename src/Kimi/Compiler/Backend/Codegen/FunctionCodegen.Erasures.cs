@@ -35,14 +35,13 @@ internal sealed partial class FunctionCodegen
     private static readonly TypeLayout PointerLayout = RuntimeAbi.StringReference.Layout;
 
     /// <summary>Gets whether an adapter's own parameter passes what a callee's parameter of the same logical index takes (Forward; DECISIONS
-    /// R5-M121): one of the same kind, or a SharedReference and a Value of the same Type when that Type is a pointer, since a SharedReference
-    /// is a Value with attributes (<see cref="AbiParameter.Attributes"/>), so both lower to the same pointer (a string borrow at a legacy
-    /// helper's by-value pointer input). One rule for every adapter; a Value of another Type or an OwnedSlot is not passed so.</summary>
+    /// R5-M121): one of the same kind. One rule for every adapter: a parameter's kind is its Type's (<see cref="Abi.Kind"/>) in the entry's
+    /// signature and in every callee's, a body's, a slot's and a shim's, and no hand-written routine takes a string borrow by value since
+    /// the formatting helpers and writeLine are bodies (R8-W1c, R8-W2 d), so no callee takes a SharedReference's pointer as a Value.</summary>
     /// <param name="own">The adapter's parameter.</param>
     /// <param name="parameter">The callee's parameter.</param>
     /// <returns>Whether the one passes the other.</returns>
-    internal static bool Passes(in AbiParameter own, in AbiParameter parameter)
-        => own.Kind == parameter.Kind || (own.Type == parameter.Type && own.Type == PointerLayout.StorageType && ByValue(own.Kind) && ByValue(parameter.Kind));
+    internal static bool Passes(in AbiParameter own, in AbiParameter parameter) => own.Kind == parameter.Kind;
 
     /// <summary>Writes the table and functions of a ClosureErasure or ItemAdapter item, or records why not.</summary>
     /// <param name="collector">The collector of the checked set.</param>
@@ -98,9 +97,6 @@ internal sealed partial class FunctionCodegen
             this.Release(item, glue);
         }
     }
-
-    // Whether a parameter of a kind passes its value itself, a Value or a SharedReference (a Value with attributes).
-    private static bool ByValue(AbiParameterKind kind) => kind is AbiParameterKind.Value or AbiParameterKind.SharedReference;
 
     // An environment of more than 8 bytes or of an alignment above 8 is allocated (IMPL 21.1.3).
     private static bool Heap(TypeLayout environment) => environment.Size > 8 || environment.Alignment > 8;

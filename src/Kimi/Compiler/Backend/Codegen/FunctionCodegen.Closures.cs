@@ -5,17 +5,16 @@ using Kimi.Compiler.Mir;
 namespace Kimi.Compiler.Backend;
 
 // The value calls of FunctionCodegen (R5 plans C5a, C5b, C5c, C6c and C8b, package C 3.2 I8 and row 14; SPEC 6.4.3, 7.7.3, 7.7.4, 8.10,
-// IMPL 21.1.3; DECISIONS R5-M102, R5-M104, R5-M108, R5-M114, R5-M116):
+// IMPL 21.1.3; DECISIONS R5-M102, R5-M104, R5-M108, R5-M114):
 // a Value callee by its value's Type in the item's instance below its reference layer (TyCtxt.Layer, the collector's Callable rule), a closed
 // vocabulary. A Closure calls its body, the collector's target, under its signature (Abi's ConcreteClosure: the environment pointer first, the
 // context last): the environment is the referent of a borrowed operand, or an owned operand's storage (a Move's Place, a Copy's copy slot), the
 // context null. A function Item calls what its call runs (Runs, also an ItemAdapter's entry's callee), decided by its function: a compiler
 // function's its direct call's row (SPEC 7.7.4), whatever targets the row needs, an intrinsic's when it is one runtime routine
-// (Routine); any other
-// function's its body target, its function's body or a requirement Item's witness (through its slot when it implements one, BodyRun); a
-// virtual function's Item, which has no target (X5), its slot (SPEC 6.4.3); a requirement Item's whose witness is a #LibraryImport
-// function, its Import target (SPEC 22.6; DECISIONS R8-M19); any other is a broken contract (an unsafe function, an import or an internal
-// compiler function has no Item; SPEC 7.6, 22.6; DECISIONS R5-M146). The slot only makes the callee
+// (Routine); any other function's its body target, its function's body or a requirement Item's witness (through its slot when it
+// implements one, BodyRun); a virtual function's Item, which has no target (X5), its slot (SPEC 6.4.3); a requirement Item's whose
+// witness is a #LibraryImport function, its Import target (SPEC 22.6; DECISIONS R8-M19); any other is a broken contract (an unsafe
+// function, an import or an internal compiler function has no Item; SPEC 7.6, 22.6; DECISIONS R5-M146). The slot only makes the callee
 // value the call writes (EntryOf), so an Item's call and its adapter's entry dispatch through the one call writer, and the adapter's entry
 // is the erased virtual Item's thunk. A common Function value (IMPL 21.1.3: its environment word, then its table) calls its table's entry
 // with its environment word and its table's context under its Type's erased signature (ModuleCodegen.Erased). A Value call's operands are its

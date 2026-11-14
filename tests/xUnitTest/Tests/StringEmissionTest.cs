@@ -49,8 +49,18 @@ public class StringEmissionTest
     public void TransfersAndCleanupExecuteOnce(string name, string source, string stdout, string destructions)
     {
         var ir = ScalarEmissionTest.EmitFixture(name, source, stdout);
-        Assert.DoesNotContain("llvm.memcpy", ir);
+        AssertTransfersCopyNoMemory(source);
         WriteAuditedFixture(name, ir, stdout, destructions);
+    }
+
+    // The check's twin: a program whose own code copies a value in memory (a fixed array's Copy, a memcpy) fails it, a function of the
+    // program failing the per-function assertion (AllException), beside the same string line that passes it in every row above.
+    [Fact]
+    public void TheTransferCheckFailsOnACopyInTheProgramsOwnCode()
+    {
+        AssertTransfersCopyNoMemory("Console.writeLine(\"ok\")");
+        Assert.Throws<Xunit.Sdk.AllException>(
+            static () => AssertTransfersCopyNoMemory("let a: [4 of i64] = [1, 2, 3, 4]\nlet b = a\nConsole.writeLine(\"ok\")"));
     }
 
     [Theory]
@@ -142,5 +152,15 @@ public class StringEmissionTest
             return (Symbol: constants.GetValueOrDefault(text), Length: Encoding.UTF8.GetByteCount(text), Count: count);
         }).ToArray();
         ScalarEmissionTest.WriteFixture(name + "Audit", StringLifetimeAudit.Instrument(ir, entries, order: order), stdout, exit, stderr);
+    }
+
+    // A string transfer copies no value in memory. The module now carries the library's writeLine bodies (R8-W2 d), whose view copies
+    // are memcpy at O0; the assertion's subject is the program's own transfers, so it reads the functions defined from the program's
+    // source (FunctionCodegenTest.ProgramTexts), not the module's text.
+    private static void AssertTransfersCopyNoMemory(string source)
+    {
+        var texts = FunctionCodegenTest.ProgramTexts(MinimalEmissionTest.Analyze(source));
+        Assert.NotEmpty(texts);
+        Assert.All(texts, static x => Assert.DoesNotContain("llvm.memcpy", x));
     }
 }
