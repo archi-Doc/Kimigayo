@@ -138,7 +138,7 @@ public sealed class RecursiveContractTest
     // view's entry; the Copy request extends, filing the facts again under its extended keys, so it reopens the entry as its own and
     // writes nothing into the Kept entry; `T.(Tree).Other`, asked last, forms the entry again. The pairs indexed over Orders', exact: an
     // extension writing into the Kept entry leaves it Kept, with its kept rows (R7-C2e2 e2-3a: a column of the entry), for the later
-    // requests, which then index less (66; 46 before e2-3a, when the kept rows outlived their entry and the count was 66).
+    // requests, which then index fewer pairs (66). Before e2-3a the kept rows had a table of their own: 66, and 46 under the mutation.
     [Fact]
     public void AnExtensionReopensTheViewsKeptEntryAsItsOwn()
     {
