@@ -6665,6 +6665,8 @@ resumed by R4-M86 (2026-10-20).
   drop erred; a concrete `uniq/T` input gives `0 Content store 0`, which A5 accepts, and now the pair does too. Rejected: no store row
   at all (the exclusive case may write the referent); a retention per Semantics case (one view per instantiation, R4-M51). Not
   temporary.
+  - Amended by BU-209 (PLAN G801): the declaring-scope sentence holds for call retention's per-declaration contract only; a relation
+    reads the admitted set at the binder's point (`Binding.AdmittedScope`).
 - **BU-4** (2026-10-18; superseded in part by BU-9 and BU-43; PLAN G129, whose later units extend this entry) G129 U1: Never's
   capabilities per SPEC 3.1.3. Never is Copy and Owned, Proven by `TryLeafCapability`'s Primitive row (its Never row, which answered
   Unknown, is deleted), so a Type storing Never is decided by its structure (`(i32, Never)`, `[2 of Never]` and `Option<Never>` Copy
@@ -10187,6 +10189,8 @@ resumed by R4-M86 (2026-10-20).
     Middle's C-300 twins: 32 valid programs newly accepted across argument, Closure capture, `Owned`, Callable and stored uses, no
     invalid one). b6gen's acceptance rests on the erasure's environment carrying the enclosing function's clauses (the reading
     G811-o (G826) states in its own DECISIONS line); until G826 lands this line names that reading as G827's assumption.
+  - Extended by BU-209 (PLAN G801): the requirement comparison carries its scope (`CallableInstance.Scope`) as well as its required
+    signature.
 
 - **BU-94 The position row is what an argument position is to its call** (2026-11-05; G216 (a) U1, the Position Rows proposal
   `draft/Proposals/2026-11-03 G216 (a) Position Rows.md` §4-§6; the planning session's design `artifacts\verify\g216a-oracle\
@@ -12022,6 +12026,8 @@ resumed by R4-M86 (2026-10-20).
     one silently gives every case).
   - Kept: `SubstituteFamily` re-keys a family by the substituted binder's declared set intersected with the mask (no point exists in
     a substitution); `LayerAdmitted` (BU-3) and the AssociatedOrigins support gate are declaration facts by contract.
+  - Extended by BU-209 (PLAN G801): the same point, in the relation: a relation reads a pair binder's admitted set at the binder's
+    own point.
 
 - **BU-161 A Binding refusal records at its frame; an Invalid environment names its cause (PLAN G651 U1)** (2026-11-11; Front,
   Binding; Major; design reviews 1-3, implementation review ACCEPT; the owner's O-152 (b) now, with (a) its removal condition, and
@@ -13367,6 +13373,62 @@ resumed by R4-M86 (2026-10-20).
     Constraint as an obligation at the universal Origin (a premise turned into an unprovable obligation).
   - Coverage: the Back's `spec-origin\spec-origin-design.md` §7 table (its rows are `SpecializationBindingTest` rows named by table
     id).
+- **BU-209 A relation reads a pair binder's admitted set at its own point (PLAN G801)** (Front, 2026-11-15; Binding; Major; design
+  reviews 1-2, implementation review ACCEPT, the merge-resolution review and the C2 diff review ACCEPT; the Middle's consent C-333
+  and its C2 re-check; the owner's O-302 (a)). SPEC 7.5, 8.3.4, 8.8.2, 8.1.2, 15.3.5.
+  - Cause: the admitted set a relation read depended on the reader: the layer variance (`IsInvariantLayer` -> `InvariantAdmitted`)
+    read the binder's declaring scope, slot activity, the slot condition and the premise environment read `ConstraintScope(use)`,
+    and a requirement comparison's use is the Contract's requirement, so none read the conformance scope (D, P and the requirement's
+    premises). A `when` or a conditional member's clause that narrows a Type's binder was not seen: valid fits were rejected as
+    invariant, and a slot no admitted case stores was related.
+  - Decision (the point is per binder): a relation has one scope (`Binding.RelationScope(use, comparison)`): the scope of the
+    whole-contract comparison it belongs to (`CallableInstance.Scope`, produced by the requirement comparison for every witness kind
+    and inherited by nested Callable comparisons), else the scope of its use, none for a declaration's own relation. A binder's
+    point (`Binding.AdmittedScope(binder, relationScope)`) is that scope when the binder is in scope there (its declaring scope on
+    the chain), else the binder's declaring scope: a requirement's own binder, an implementation's own before correspondence and a
+    callee's binder are read at their own signature's clauses. Readers: `RelationWalk` and the use-keyed walks that compose its
+    variance (`CheckTypeUse`, `FailedOriginRelation`, `CollectCallRelations`); `CollectOriginInference` (in a requirement comparison
+    under the comparison's scope; at a call with no relation scope, so the declaring scope, as slot unification's `Infer`);
+    `InactiveOuterOrigin`; `PairSlotCondition`'s admitted set (its bit keeps the use's binder order); `AddTypePremises`. G831's
+    well-formedness readers (`WellFormedLayer`, `StoredSlot`) read the admitted set at the same point: the premise environment's
+    layer and stored parts (`AddTypePremises`, `StoredPremisePart`) and the input and result premise visit's layer and stored slot
+    (`WellFormedPart`, `VisitStoredPremises`) pass their comparison; the comparison is a required parameter, so every caller states
+    it (`default` written out where none exists: associated formation, a written Type's retention). A property requirement's
+    standard-access bridges (SPEC 11.9.2: `set` of a `var`, Copy) are requirement comparisons too: `MatchPropertyOperation` forms
+    the comparison through the one producer `RequirementComparison(inputs, result, binder, scope)`, which `CompareCallableContracts`
+    also uses, and asks `IsSubtypeAt`; the Binding-less `IsSubtype` it called read no scope (an invalid `set` bridge was accepted
+    while the binder admitted `uniq`; the Type's own Origin relation proved nothing, coverage rows G8 and G13, and neither did the
+    required receiver's well-formedness, 15.3.7, the newly accepted valid kind k-self-v). The conformance's one record follows the
+    first failed obligation in both directions: Copy's `UnprovenConstraint_Kd` yields to `IncompatibleContractImplementation_Kd`
+    where the fit now fails first (coverage row G19), and the reverse where the fit now holds by a premise (k-eq-nowhen). The borrow
+    bridge compares by identity and is unchanged. The requirement comparison is formed before its bounds are collected.
+    `InvariantAdmitted`'s declaring-scope sentence is deleted. Sound because a premise only narrows along the scope chain and a body
+    or conformance under it is used only where it is proven (BU-172's argument).
+  - Amends BU-3: its sentence "the admitted set is the binder's, from its declaring scope, read by `LayerAdmitted` for this and
+    `InvariantAdmitted`" holds for call retention's per-declaration contract only; the reason that no longer holds for the relation
+    is that 7.5 and 8.8.1 put premises on a Type's binder below its declaring scope. Extends BU-93 (the requirement comparison
+    carries its scope as well as its required signature) and BU-172 (the same point, in the relation).
+  - Readings: a local named function's body reads its enclosing member's clauses, Semantics premises included, as it already read
+    its Constraints (SPEC 7.5, 8.2.1, 8.15.2; the Middle's C3, F's reading). A property requirement's borrow bridge (SPEC 11.9.2, a
+    shared receiver -> `ref/F`) keeps the identity reading: the required result's target is the Field's Type itself; the `set` and
+    Copy bridges read "compatible with F" (11.9.1). The conservative reading the code had; R17/R18 (`rv-c2\rv.py`) are rejected on
+    every build.
+  - Cost: cold Bind allocates +5,184 B on Milestone26 and +6,576 B on the generated PairRelations workload, all from the 8-byte
+    `CallableInstance.Scope` field (each `OriginInference` kept per call embeds the struct twice); warm bytes unchanged; within the
+    allocation policy (the carrier of a correctness fix, no pinned allocation regression moves).
+  - Rejected: a scope parameter on `IsSubtypeAt` for the conformance caller (a parameter steering the relation, and it misses the
+    solve and the premise environment); `ConstraintScope` answering the witness scope during a comparison (an ambient mode);
+    narrowing `LayerAdmitted` for every reader (its other readers are per-declaration or per-Type facts without a use); keeping the
+    optional `= default` on the well-formedness readers' comparison (B1 was that silent default: dev's G831 reader auto-merged
+    without a decision); a `Binding`-taking overload of `IsSubtype` for the bridge with a scope parameter (design section 6's first
+    rejected option); proving the Field's own well-formedness in the bridge (`ProvesInputPremises`): the Field's Type is well formed
+    by its declaration in every instance, so the proof could only fail by incompleteness.
+  - Kept: slot unification (`Infer`) and a call's `CollectOriginInference` read a callee's declared pattern, whose binders are not
+    in scope at the call: the declaring scope, exact for the callee's own binder and a superset for its enclosing Type's binder
+    under a conditional member's clause, which is observable (PLAN G903, m-call-v: two arguments of one per-call Origin are bound by
+    equality where the use admits only `ref`); the fix is that row's. `CommonOriginType` is not a reader of this point: SPEC 14.9.2
+    forms a join by the structural part only, so its invariant read belongs to the join formation's departure (PLAN G394, G443) and
+    stays until that row's rule replaces it.
 - **G209-1** (2026-10-24; structural unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source
   aliases their selected container and environment before ordinary lookup merges imports. These responsibilities were embedded in the
   general expression parser and `Binding.Types.Lookup`, with alias resolution beside Type formation. `Parser.RuntimeTypeTests` now
