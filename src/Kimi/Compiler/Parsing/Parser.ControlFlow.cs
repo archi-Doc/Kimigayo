@@ -408,6 +408,8 @@ public static partial class Parser
         => reader.IsCurrentIdentifier("label") && reader.PeekKind(1).IsIdentifierOrContextualKeyword() &&
             reader.PeekKind(2) == TokenKind.Colon && reader.SameLine(reader.CurrentTokenRange.End, reader.PeekToken(2).Span.Start);
 
+    // SPEC F.9.1's `LabelPrefix LabelableConstruct`, from the label: the target is a LabelableConstruct on the label's line (F.10.2).
+    // Anything else is reported, and another item on that line is read in the target's place.
     private static Koto ParseLabeledExpression(ref TokenReader reader)
     {
         if (reader.HeaderRegion)
@@ -422,7 +424,7 @@ public static partial class Parser
         var sameLine = reader.CanRead && reader.SameLine(colon.Span.End, reader.CurrentTokenRange.Start);
         DiagnosticKey? recovery = null;
         Koto target;
-        if (!sameLine || reader.CurrentTokenKind is not (TokenKind.For or TokenKind.While or TokenKind.Loop or TokenKind.If or TokenKind.Match or TokenKind.Do))
+        if (!sameLine || !IsLabelableConstruct[(byte)reader.CurrentTokenKind])
         {
             recovery = reader.ReportOnce(sameLine ? reader.CurrentTokenRange : new SourceSpan(colon.Span.End, 0), DiagnosticCode.LabelTargetExpected_Kd);
             target = new ErrorKoto(ref reader, colon.Span) { Cause = recovery };
@@ -433,15 +435,8 @@ public static partial class Parser
         }
         else
         {
-            target = reader.CurrentTokenKind switch
-            {
-                TokenKind.For => ParseForExpression(ref reader),
-                TokenKind.While => ParseWhileExpression(ref reader),
-                TokenKind.Loop => ParseLoopExpression(ref reader),
-                TokenKind.If => ParseIfExpression(ref reader),
-                TokenKind.Match => ParseMatchExpression(ref reader),
-                _ => ParseDoExpression(ref reader),
-            };
+            // Primary reads the construct by its first word (SPEC F.9.1: LabelPrefix? LabelableConstruct).
+            target = ParsePrimaryExpression(ref reader);
         }
 
         var result = new LabeledKoto(ref reader, SourceSpan.FromBounds(introducer.Span.Start, target.Span.End), label ?? string.Empty, target);
