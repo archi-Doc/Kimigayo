@@ -13,15 +13,15 @@ namespace Kimi.Compiler.Mir;
 // undecided past a walk's bound (MirBorrows.Calls), each OwnershipDepthLimit_Kd (R4-M153), a Value call whose contract is broken (G136,
 // MirBorrows.CallRows' Broken) InternalInvariant_Kd, the
 // location's activations (MirBorrows.Activations), its own-step departures (MirBorrows.OwnSteps), its
-// effects (MirBorrows.Effects, whose keys select other case views) and at a default template's Return R26-borrow.
+// effects (MirBorrows.Effects, whose keys select other case views), a default template's stores in E and at its Return R26-borrow.
 // Must not decide whether an access meets a Loan (MirBorrows.Checks) or which problem a conflict becomes (MirBorrows.Reports).
 internal sealed partial class MirBorrows
 {
     private MirStep[] accessSteps = [];
 
     // The checks at a location (A3 5, E13 (1)): its accesses of borrowed roots, a guard candidate's EndBorrow, its activations, its
-    // own-step departures and its effects, on the check sets of one gather; the first conflicting Loan of each access is its problem; at a
-    // Return, R26-borrow on its own gather.
+    // own-step departures and its effects, on the check sets of one gather; the first conflicting Loan of each access is its problem; a
+    // default template's stores in E (R26-borrow's place); at a Return, R26-borrow on its own gather.
     private void Check(ulong[] state, int block, int index, int location)
     {
         this.accessCount = 0;
@@ -93,6 +93,7 @@ internal sealed partial class MirBorrows
             this.Effects(at, this.accesses[accessed].Taking);
         }
 
+        this.DefaultStores(location);
         if (index == this.body.Blocks[block].Count && this.body.Blocks[block].Terminator.Kind == MirTerminatorKind.Return)
         {
             this.DefaultBorrows(state);
