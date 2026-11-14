@@ -19,6 +19,9 @@ namespace Kimi.Compiler;
 // - Prohibitions: a Type-to-Type comparison calls the relation's entries (IsSubtype, IsSubtypeAt, FitsStructuralPart), not these.
 public sealed partial class Binding
 {
+    // CheckTypeUse's walk's parts (RelationWalk.FitPart), read in walk order and truncated back by the root that appended them (warm 0 B).
+    private readonly List<FitPart> fitParts = new();
+
     /// <summary>Proves the implemented structural subtype rules without performing a value operation.</summary>
     /// <param name="actual">The supplied complete type.</param>
     /// <param name="expected">The required complete type.</param>
@@ -76,11 +79,13 @@ public sealed partial class Binding
     // (RecordOriginFitFailure; DECISIONS R4-M133): this is the one entry to the positions' obligations (CheckTypeUseCore recurses only into
     // itself, RelationWalk forms none), so the entries appended before it returns are exactly this fit's.
     // `failure` is the failure of the walk at which the fit failed: the root's, or a component's that the obligations could not take.
+    // The relation is walked once, at the root (G492-a (i)), and its parts (FitPart) answer each part as a walk rooted there in this
+    // fit's orientation would; the facts left for a record (RecordComparisonFacts) are the last part's, as that part's own walk leaves them.
     private bool CheckTypeUse(BoundType actual, BoundType expected, Koto use, out ComparisonFailure failure)
     {
         var pending = this.pendingRelations.Count;
         failure = default;
-        var fits = NeverFits(actual) || this.CheckTypeUseCore(actual, expected, use, OriginVariance.Covariant, ref failure);
+        var fits = NeverFits(actual) || this.CheckTypeUseWalk(actual, expected, use, ref failure);
         for (var i = pending; i < this.pendingRelations.Count; i++)
         {
             this.pendingRelations[i] = this.pendingRelations[i] with { Destination = expected };
@@ -89,30 +94,83 @@ public sealed partial class Binding
         return fits;
     }
 
+    // The relation collects open initializer bounds even beside a local region; regional fits also publish their source edges. Until the
+    // facts are trimmed to the last part's range, only this fit's own walks append to comparisonFacts (at its end), so a read range stays.
+    private bool CheckTypeUseWalk(BoundType actual, BoundType expected, Koto use, ref ComparisonFailure failure)
+    {
+        var facts = this.comparisonFacts;
+        facts.Clear();
+        this.fitRested = false;
+        var last = (From: 0, To: 0);
+        var fits = this.CheckTypeUseParts(actual, expected, use, OriginVariance.Covariant, ref last, ref failure);
+        facts.RemoveRange(last.To, facts.Count - last.To);
+        facts.RemoveRange(0, last.From);
+        return fits;
+    }
+
+    // SPEC 15.3.5, 10.7: one walk of a part in this fit's orientation, decomposed: the root's, and an invariant part's that the relation
+    // walks reversed (an invariant layer or slot under a contravariant one): `polarity` makes the part `==` without its orientation, and
+    // a Function Type there is one oriented comparison (its per-call inputs and well-formedness are the implementation side's), so the
+    // part is walked as the fit composes it, once for the part and everything in it.
+    private bool CheckTypeUseParts(BoundType actual, BoundType expected, Koto use, OriginVariance polarity, ref (int From, int To) last, ref ComparisonFailure failure)
+    {
+        var parts = this.fitParts;
+        var start = parts.Count;
+        _ = new RelationWalk(this, use, this.comparisonFacts, parts).Fits(actual, expected, polarity == OriginVariance.Invariant);
+        var next = start;
+        var fits = this.CheckTypeUseCore(actual, expected, use, polarity, ref next, ref last, ref failure);
+        parts.RemoveRange(start, parts.Count - start);
+        return fits;
+    }
+
     // `polarity` is the variance of the compared position within the fitted Type (SPEC 15.3.5), composed as RelationWalk composes it: a
     // contravariant position reverses the relation, and an invariant or unused one makes it `==`, also for every position nested in it,
-    // such as the slots of a Type argument stored through `uniq/T` or read by `(T) -> i32`.
-    private bool CheckTypeUseCore(BoundType actual, BoundType expected, Koto use, OriginVariance polarity, ref ComparisonFailure failure)
+    // such as the slots of a Type argument stored through `uniq/T` or read by `(T) -> i32`. `next` is the walk's next part and `last`
+    // the facts of the last part read (none for a part identity discharges, which has no position and no fact).
+    private bool CheckTypeUseCore(BoundType actual, BoundType expected, Koto use, OriginVariance polarity, ref int next, ref (int From, int To) last, ref ComparisonFailure failure)
     {
-        // The relation collects open initializer bounds even beside a local region; regional fits also publish their source edges.
-        this.comparisonFacts.Clear();
-        this.fitRested = false;
-        var walk = new RelationWalk(this, use, this.comparisonFacts);
-        var fits = polarity == OriginVariance.Contravariant ? walk.Fits(expected, actual) : walk.Fits(actual, expected, polarity == OriginVariance.Invariant);
+        if (ReferenceEquals(actual, expected))
+        {
+            last = (0, 0);
+            return true;
+        }
 
+        var part = this.fitParts[next];
+        var (a, b) = polarity == OriginVariance.Contravariant ? (expected, actual) : (actual, expected);
+        if (polarity == OriginVariance.Invariant && ReferenceEquals(part.Actual, b) && ReferenceEquals(part.Expected, a))
+        {
+            next = part.End;
+            return this.CheckTypeUseParts(actual, expected, use, polarity, ref last, ref failure);
+        }
+
+        if (!ReferenceEquals(part.Actual, a) || !ReferenceEquals(part.Expected, b))
+        {
+            throw new InvalidOperationException($"CheckTypeUse's part `{actual}` into `{expected}` is not its walk's next part (G492-a (i)).");
+        }
+
+        last = (part.FactStart, part.FactEnd);
+        next++;
+        var fits = this.CheckTypeUsePart(actual, expected, use, polarity, part, ref next, ref last, ref failure);
+        next = part.End;
+        return fits;
+    }
+
+    private bool CheckTypeUsePart(BoundType actual, BoundType expected, Koto use, OriginVariance polarity, in FitPart part, ref int next, ref (int From, int To) last, ref ComparisonFailure failure)
+    {
         // SPEC 23.1.2 (PLAN G739): a walk that held by a resting position forms the rows its shape gives, and its answer stays the walk's
         // where the shape gives none (`rested`).
-        var rested = fits && this.fitRested;
+        var fits = part.Holds;
+        var rested = fits && part.Rested;
         if (!fits)
         {
-            failure = walk.Failure;
+            failure = part.Failure;
         }
         else if (!rested && !this.HasLocalRegion(actual) && !this.HasLocalRegion(expected))
         {
             return true;
         }
 
-        if (actual.Kind != expected.Kind || actual.Semantics != expected.Semantics || actual.Symbol != expected.Symbol || actual.Length != expected.Length || !ReferenceEquals(actual.LengthExpression, expected.LengthExpression) || !actual.LengthArguments.AsSpan().SequenceEqual(expected.LengthArguments) || actual.Components.Count != expected.Components.Count || actual.OriginArguments.Count != expected.OriginArguments.Count || actual.Kind == BoundTypeKind.Primitive)
+        if (!part.Shaped || actual.Kind != expected.Kind || actual.Semantics != expected.Semantics || actual.Symbol != expected.Symbol || actual.Length != expected.Length || !ReferenceEquals(actual.LengthExpression, expected.LengthExpression) || !actual.LengthArguments.AsSpan().SequenceEqual(expected.LengthArguments) || actual.Components.Count != expected.Components.Count || actual.OriginArguments.Count != expected.OriginArguments.Count || actual.Kind == BoundTypeKind.Primitive)
         {
             return rested;
         }
@@ -145,7 +203,7 @@ public sealed partial class Binding
         {
             if (IsInvariantLayer(actual, this))
             {
-                if (!this.CheckTypeUseCore(actual.Components[i], expected.Components[i], use, OriginVariance.Invariant, ref failure))
+                if (!this.CheckTypeUseCore(actual.Components[i], expected.Components[i], use, OriginVariance.Invariant, ref next, ref last, ref failure))
                 {
                     return false;
                 }
@@ -155,7 +213,7 @@ public sealed partial class Binding
 
             var position = actual.Kind == BoundTypeKind.Constructed && actual.Symbol?.Schema is { } schema && i < schema.GenericSlots.Count
                 ? schema.GenericSlots[i].OriginVariance : OriginVariance.Covariant;
-            if (!this.CheckTypeUseCore(actual.Components[i], expected.Components[i], use, ComposeVariance(polarity, position), ref failure))
+            if (!this.CheckTypeUseCore(actual.Components[i], expected.Components[i], use, ComposeVariance(polarity, position), ref next, ref last, ref failure))
             {
                 return false;
             }
