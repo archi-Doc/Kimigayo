@@ -636,7 +636,8 @@ public sealed partial class Binding
     // visited and the resolving declarations. Clear releases every reference and keeps the capacity.
     private sealed class OriginPremiseEnvironment
     {
-        // The request's use, whose constraint scope the environment's pair layers find once (UseScope).
+        // The use the environment is built for (a request's use, or a premise session's anchor), whose constraint scope the
+        // environment's pair layers find once (UseScope).
         private UseScope at;
 
         internal OriginPremiseClosure Closure { get; } = new();
