@@ -12,9 +12,10 @@ namespace Kimi.Compiler;
 // - Inputs: the engine's evaluations (Binding.Capabilities: RequestCapability's dequeue loop writes a work's verdict and payload; the
 //   Origin slot of the proof scope in progress, ProofReads.Origin of the channel-owned stack through ScopeReads,
 //   Binding.ConstraintValidation.Proofs).
-// - Outputs: a work's Result and Cause, which the fixpoint compares, and its payload, which no decision reads (the selection of a record
-//   reads it). A part's Origin is kept only when the part is not Proven, so premises that prove a part leave none.
-// - Determinism: a dependent is queued again whenever a part's Result or Cause changes, so the final evaluation sees each part's final
+// - Outputs: a work's Result, which the fixpoint compares, its Cause, settled after the verdicts as a function of them, and its payload,
+//   which no decision reads (the selection of a record reads it). A part's Origin is kept only when the part is not Proven, so premises
+//   that prove a part leave none.
+// - Determinism: a dependent is queued again whenever a part's Result changes, so the final evaluation sees each part's final
 //   verdict; a part's Origin can still change without a re-queue, and a Result only rises in the information order (every work starts
 //   Unknown; Binding.Capabilities), so a copied Origin still fails (it may not be the first), as for the U fact; the queue order is
 //   deterministic.
@@ -111,8 +112,15 @@ public sealed partial class Binding
 
         internal CapabilityWork? Parent { get; set; }
 
-        // What its Unknown (a limit, L) or Error rests on (DECISIONS BU-22): a component summary's site or Error, or a child's it read.
+        // What its Unknown (a limit, L) or Error rests on (DECISIONS BU-22): a component summary's site or Error, or a child's it read;
+        // settled after the verdicts (Binding.SettleCauses), the least by CauseKey of its own and those of the works it read at its verdict.
         internal ICheckCause? Cause { get; set; }
+
+        // The Cause its last evaluation read from anything but a work; and the works it read (Binding.SettleCauses' inputs). The list is
+        // kept across passes, so a warm rebind allocates nothing.
+        internal ICheckCause? OwnCause { get; set; }
+
+        internal List<CapabilityWork> Reads { get; } = new();
 
         // The U fact its Unknown rests on, from the final iteration; never compared (design-r2 Amendment 4).
         internal CallableUnknown? Fact { get; set; }
@@ -138,8 +146,10 @@ public sealed partial class Binding
             this.Pending = false;
             this.Parent = null;
             this.Cause = null;
+            this.OwnCause = null;
             this.Origin = null;
             this.Parts?.Clear();
+            this.Reads.Clear();
             this.Dependents.Clear();
         }
 

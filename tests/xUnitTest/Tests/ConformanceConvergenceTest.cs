@@ -391,6 +391,18 @@ public class ConformanceConvergenceTest(ITestOutputHelper output)
         Assert.Equal(k, DiagnosticCorpus.RecordProfile(source) == "clean");
     }
 
+    // SPEC 8.3.3 Recursion, O-78 (a) (PLAN G629's F2, R7-C2e2 e2-5a's engine step): `S is C` needs `S is Owned` (C's Constraint), whose
+    // storage writes Box<S>, formed only by `S is C`: the conformance being proven. A nominal proof never reads Owned's coinductive
+    // assumption (it is read only between assumed Owned works, through no newly opened obligation), so each is invalid, whichever is
+    // asked first (the Owned declaration, another Type storing Box<S>, an associated binding, a generic Self).
+    [Theory]
+    [InlineData("contract C\n    Self is Owned\nstruct Box<T>\n    T is C\n    public init() => ()\nstruct S\n    Self is Owned\n    Self is C\n    public var b: Box<S>\n    public init() => self.b = Box<S>.init()\n")]
+    [InlineData("contract C\n    Self is Owned\nstruct Box<T>\n    T is C\n    public init() => ()\nstruct T\n    Self is Owned\n    public var b: Box<S>\n    public init() => self.b = Box<S>.init()\nstruct S\n    Self is C\n    public var b: Box<S>\n    public init() => self.b = Box<S>.init()\n")]
+    [InlineData("contract C\n    associate Item is Owned\nstruct Box<T>\n    T is C\n    public init() => ()\nstruct S\n    Self is Owned\n    Self is C\n    associate C.Item is S\n    public var b: Box<S>\n    public init() => self.b = Box<S>.init()\n")]
+    [InlineData("contract C\n    Self is Owned\nstruct Box<T>\n    T is C\n    public init() => ()\nstruct G<T>\n    T is Owned\n    Self is Owned\n    Self is C\n    public var b: Box<G<T>>\n")]
+    public void ANominalProofReadsNoCoinductiveAssumption(string source)
+        => Assert.False(CompilationTestHelper.ParseSuccess(source).Bind().IsComplete);
+
     // B1's ring family (R7-C2e2 e2-5a, design-engine): k declarations' Copy works and Owned works on one cycle, each order, with and without a use.
     public static TheoryData<int, string, bool, int> RingRows
         => [.. from k in new[] { 1, 2, 3, 4, 5 }

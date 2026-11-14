@@ -16,7 +16,7 @@ public sealed partial class Binding
     private readonly Queue<CapabilityWork> assumptionQueue = new();
     private bool assuming; // The coinductive step is evaluating (AssumeResidual).
     private bool assumptionVoid; // It read a work never evaluated.
-    private int assumptionDepth; // The open obligations when its evaluation began: an assumption is not read through a newer one.
+    private int assumptionDepth; // ObligationDepth when its evaluation began: an assumption is not read through a newer obligation.
     private CapabilityWork? capabilityConsumer;
     private bool capabilitiesReady;
     private BindingMode capabilityMode;
@@ -343,20 +343,22 @@ public sealed partial class Binding
                 work.Dependents.Add(consumer);
             }
 
+            consumer.Reads.Add(work);
             if (this.assuming)
             {
                 if (!work.Evaluated)
                 {
                     this.assumptionVoid = true; // Queued above: the inductive step evaluates it, then the step runs again.
                 }
-                else if (work.Assumed && consumer.Assumed && this.openObligations.Count == this.assumptionDepth)
+                else if (work.Assumed && consumer.Assumed && this.ObligationDepth == this.assumptionDepth)
                 {
                     return ConstraintProof.Proven;
                 }
             }
 
+            // The verdict alone: what the reader's own Cause rests on is settled after the verdicts (SettleCauses).
             this.ScopeReads.Origin ??= work.Result == ConstraintProof.Proven ? null : work.Origin;
-            return this.ReadVerdict(work.Result, work.Cause, work.Fact);
+            return this.ReadVerdict(work.Result, null, work.Fact);
         }
 
         this.BeginProof();
@@ -367,6 +369,7 @@ public sealed partial class Binding
                 this.EvaluateCapabilities();
             }
             while (this.AssumeResidual());
+            this.SettleCauses();
         }
         finally
         {
@@ -394,6 +397,7 @@ public sealed partial class Binding
             this.capabilityConsumer = next;
             this.ScopeReads = default;
             next.Parts?.Clear();
+            next.Reads.Clear();
             var reads = this.reentryReads;
             var result = this.ComputeCapability(next);
             next.Pending = this.reentryReads != reads;
@@ -402,20 +406,98 @@ public sealed partial class Binding
                 this.pendingCapabilities.Add(next);
             }
 
-            var cause = this.ProofCause(result);
-            next.Fact = this.ProofFact(result); // Payload of the final iteration, outside the fixpoint's equality.
+            next.OwnCause = this.ProofCause(result); // Payload of the final iteration, outside the fixpoint's equality, as Fact.
+            next.Fact = this.ProofFact(result);
             next.Origin = result == ConstraintProof.Proven ? null : this.ScopeReads.Origin;
-            if (result == next.Result && ReferenceEquals(cause, next.Cause))
+            if (result == next.Result)
             {
                 continue;
             }
 
             next.Result = result;
-            next.Cause = cause;
             this.RequeueDependents(next);
         }
 
         this.capabilityConsumer = null;
+    }
+
+    // The nominal obligations open (the open set's and the conformance verifications in progress, the two guards of SPEC 8.3.3
+    // Recursion): an assumption is not read through one opened during the evaluation that reads it (AssumeResidual).
+    private int ObligationDepth => this.openObligations.Count + this.conformanceChecks;
+
+    // SPEC 8.3.3 Limits, 23.1.1 (DECISIONS BU-22): each Unknown or Error work of the request rests on the least Cause by CauseKey among
+    // its own (what its last evaluation read from anything but a work) and those of the works it read that settled at its verdict.
+    // The verdicts are settled, so this is a function of them: every work starts at its own Cause and only falls, at most once per
+    // Cause it can reach, and the least reachable one is the same in any order. A change re-queues only this pass's readers.
+    private void SettleCauses()
+    {
+        var evaluated = this.capabilityEvaluated;
+        for (var i = 0; i < evaluated.Count; i++)
+        {
+            var work = evaluated[i];
+            var rests = work.Result is ConstraintProof.Unknown or ConstraintProof.Error;
+            work.Cause = rests ? work.OwnCause : null;
+            if (rests && !work.Queued)
+            {
+                work.Queued = true;
+                this.capabilityQueue.Enqueue(work);
+            }
+        }
+
+        while (this.capabilityQueue.TryDequeue(out var next))
+        {
+            next.Queued = false;
+            var cause = next.Cause;
+            for (var i = 0; i < next.Reads.Count; i++)
+            {
+                var read = next.Reads[i];
+                if (read.Result == next.Result && CauseKey.Less(read.Cause, cause))
+                {
+                    cause = read.Cause;
+                }
+            }
+
+            if (ReferenceEquals(cause, next.Cause))
+            {
+                continue;
+            }
+
+            next.Cause = cause;
+            for (var i = 0; i < next.Dependents.Count; i++)
+            {
+                if (next.Dependents[i] is { Queued: false } reader && reader.Result == next.Result)
+                {
+                    reader.Queued = true;
+                    this.capabilityQueue.Enqueue(reader);
+                }
+            }
+        }
+    }
+
+    // A fixed total order on Causes (SettleCauses): by the source of the syntax a record rests on, its position, its syntax and the kind
+    // of Cause; a missing Cause is above every Cause.
+    private static class CauseKey
+    {
+        internal static bool Less(ICheckCause? left, ICheckCause? right)
+        {
+            if (left is null || ReferenceEquals(left, right))
+            {
+                return false;
+            }
+
+            if (right is null)
+            {
+                return true;
+            }
+
+            var order = string.CompareOrdinal(left.Use.CodeContext.SourceName, right.Use.CodeContext.SourceName);
+            order = order != 0 ? order : left.Use.Span.Start.CompareTo(right.Use.Span.Start);
+            order = order != 0 ? order : left.Use.SyntaxId.CompareTo(right.Use.SyntaxId);
+            return (order != 0 ? order : Kind(left).CompareTo(Kind(right))) < 0;
+        }
+
+        private static int Kind(ICheckCause cause)
+            => cause switch { ComponentSite => 0, ComponentSummary => 1, BoundConformancePath => 2, ResolutionHops => 3, _ => 4 };
     }
 
     private void RequeueDependents(CapabilityWork work)
@@ -454,7 +536,6 @@ public sealed partial class Binding
 
         if (this.assumptionQueue.Count == 0)
         {
-            evaluated.Clear();
             return false;
         }
 
@@ -471,8 +552,9 @@ public sealed partial class Binding
             this.capabilityConsumer = next;
             this.ScopeReads = default;
             next.Parts?.Clear();
+            next.Reads.Clear();
             var reads = this.reentryReads;
-            this.assumptionDepth = this.openObligations.Count;
+            this.assumptionDepth = this.ObligationDepth;
             var result = this.ComputeCapability(next);
             this.capabilityConsumer = null;
             if (result != ConstraintProof.Proven || this.reentryReads != reads)
@@ -530,7 +612,6 @@ public sealed partial class Binding
         {
             // Nothing holds by coinduction: the residual is final at Unknown; one more inductive pass restores its payloads.
             this.EvaluateCapabilities();
-            evaluated.Clear();
             return false;
         }
 
