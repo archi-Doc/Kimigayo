@@ -104,19 +104,6 @@ internal static class RuntimeAbi
         Unit.ComputationType,
         [new("ptr", "destination", AbiParameterKind.Value, 0), new("ptr", "source", AbiParameterKind.Value, 1), new("i64", "size", AbiParameterKind.Value, 2)]);
 
-    // SPEC 22.9.2, 22.9.4: Text.writer's adapter over its destination, given the destination's writer kind and the dispatch word of its
-    // reserve witness (FunctionCodegen.Writer): the ErasedWriter intrinsic's routine, defined by the kept ErasedWriterRuntime.ll.in.
-    internal static readonly FunctionAbi TextWriter = new(
-        "__kimi_text_writer",
-        Unit.ComputationType,
-        [
-            new("ptr", "ret", AbiParameterKind.ResultSlot), new("ptr", "self", LogicalIndex: 0), new("i64", "kind", AbiParameterKind.Context),
-            new("ptr", "dispatch", AbiParameterKind.Context),
-        ])
-    {
-        ResultSlot = true,
-    };
-
     // SPEC 22.9.4, 22.10.1: a user Writer's reservation through an adapter's dispatch word, its window checked (written 0, remaining at
     // least the minimum; tag 1 on a violation): the ErasedReserve intrinsic's routine, defined by the kept ErasedWriterRuntime.ll.in.
     internal static readonly FunctionAbi ErasedReserve = new(

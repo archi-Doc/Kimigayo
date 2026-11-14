@@ -189,6 +189,7 @@ public enum KimiDeclarationId : byte
     StorageGrowArray,
     StorageDestroyValues,
     StorageErasedReserve,
+    StorageReserveDispatch,
     StorageFormatFloat,
     StorageFormatInteger128,
     StorageShrinkArray,

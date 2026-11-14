@@ -61,7 +61,6 @@ public partial class KimiLibraryShapeTest
         (KimiDeclarationId.Clone, "public func clone<s/T>(value: ref/(s/T)) -> s/T\ns is rc or arc"),
         (KimiDeclarationId.ArrayWithCapacity, "public init(! capacity: isize)"),
         (KimiDeclarationId.ArrayRepeating, "public init(! repeating: T, count: isize)\nT is Copy"),
-        (KimiDeclarationId.TextWriter, "public func writer<W>(destination: uniq/W) -> Utf8Writer\nW is BufferWriter"),
         (KimiDeclarationId.StorageMissingDictionaryKey, "internal func missingDictionaryKey() -> Never"),
         (KimiDeclarationId.StorageCountOverflow, "internal func countOverflow() -> Never"),
         (KimiDeclarationId.StorageAllocationSizeExceeded, "internal func allocationSizeExceeded() -> Never"),
@@ -71,6 +70,7 @@ public partial class KimiLibraryShapeTest
         (KimiDeclarationId.StorageDestroyValues, "internal unsafe func destroyValues<T>(storage: raw/u8, count: isize)"),
         (KimiDeclarationId.StorageErasedReserve,
             "internal func erasedReserve(writer: uniq/Utf8Writer, minimum: isize) -> Result<WriteWindow during writer.target, BufferFull>"),
+        (KimiDeclarationId.StorageReserveDispatch, "internal func reserveDispatch<W>() -> raw/u8 during static\nW is BufferWriter"),
         (KimiDeclarationId.StorageFormatFloat, "internal func formatFloat(bits: u64 ! narrow: bool, destination: uniq/[24 of u8]) -> isize"),
         (KimiDeclarationId.StorageFormatInteger128, "internal func formatInteger128(value: u128 ! destination: uniq/[40 of u8]) -> isize"),
         (KimiDeclarationId.RawAllocate, "public func allocate<T>(count: isize) -> raw/T"),
@@ -117,8 +117,9 @@ public partial class KimiLibraryShapeTest
         Assert.Null(c.Library.Kotonoha.GeneratedFunction);
         // Text.fixed and FixedBuffer.text, a direct line's (R8-W2 a2); Never (G704); bool, char, Unit format (R8-S2a); f32, f64 format,
         // formatFloat (R8-S2c); string, view and Wrapping<T> format (R8-S2d1); the integers' format (R8-S2b1); formatInteger128 (R8-S2b2);
-        // Utf8Writer.deferLiteral, an owning interpolation's literal before a value (R8-W2 c1); Utf8Writer.finish, its end (R8-W2 c3a).
-        Assert.Equal(194, KimiLibraryCatalog.Entries.Length);
+        // Utf8Writer.deferLiteral, an owning interpolation's literal before a value (R8-W2 c1); Utf8Writer.finish, its end (R8-W2 c3a);
+        // Storage.reserveDispatch, a user Writer's adapter's dispatch word (R8-W2 b2-1).
+        Assert.Equal(195, KimiLibraryCatalog.Entries.Length);
         var unsourced = new List<KimiDeclarationId>();
         foreach (var entry in KimiLibraryCatalog.Entries)
         {
@@ -444,6 +445,7 @@ public partial class KimiLibraryShapeTest
     [InlineData(KimiDeclarationId.StorageArrayCapacity, "internal func arrayCapacity<E>(value: ref/Array<E> during a) -> isize")]
     [InlineData(KimiDeclarationId.DictionaryStorageCapacity, "internal func capacity<K, V>(value: ref/Dictionary<K, V> during a) -> isize")]
     [InlineData(KimiDeclarationId.TextHeap, "public func heap(capacity: isize) -> HeapBuffer")]
+    [InlineData(KimiDeclarationId.TextWriter, "public func writer<W>(destination: uniq/W) -> Utf8Writer\nW is BufferWriter")] // R8-W2 b2-1.
     [InlineData(KimiDeclarationId.TextToString, "public func toString<T>(value: ref/T) -> string\nT is Utf8Format")]
     [InlineData(KimiDeclarationId.TextTryFormat, "public func tryFormat<T, length N>(\nvalue: ref/T, destination: uniq/[N of u8]\n) -> Result<Utf8Slice during destination, BufferFull>\nT is Utf8Format")]
     [InlineData(KimiDeclarationId.WriteLineUtf8, "public func writeLine(text: Text.Utf8Slice)")]
@@ -538,7 +540,7 @@ public partial class KimiLibraryShapeTest
     [InlineData("Wrapping", "public struct Wrapping<T>")]
     [InlineData("BufferFull", "public struct BufferFull")]
     [InlineData("WriteWindow", "public struct WriteWindow {source}\nlet state: raw/u8 during source\nlet start: isize\npublic var written: isize\npublic var remaining: isize\nlet loan: Loan<uniq/u8 during source>")]
-    [InlineData("Utf8Writer", "public struct Utf8Writer {target}\nlet destination: raw/u8 during target\nlet dispatch: raw/u8 during static\nlet kind: isize\nvar failed: bool\ninternal var hint: isize\nvar pending: raw/u8 during static\nvar pendingLength: isize\nlet logicalLength: isize\nlet loan: Loan<uniq/u8 during target>")]
+    [InlineData("Utf8Writer", "public struct Utf8Writer {target}\nlet destination: raw/u8 during target\nlet dispatch: raw/u8 during static\nlet kind: WriterDestination\nvar failed: bool\ninternal var hint: isize\nvar pending: raw/u8 during static\nvar pendingLength: isize\nlet logicalLength: isize\nlet loan: Loan<uniq/u8 during target>")]
     [InlineData("Text.FixedBuffer", "public struct FixedBuffer {source}\nlet data: raw/u8 during source\npublic let capacity: isize\npublic var length: isize\nvar validated: isize\nlet loan: Loan<uniq/u8 during source>")]
     [InlineData("Text.HeapBuffer", "public struct HeapBuffer\nvar data: raw/u8 during self\npublic var capacity: isize\npublic var length: isize\nvar validated: isize\ndrop")]
     [InlineData("Text.Utf8Slice", "public struct Utf8Slice {source}\nlet value: Slice<u8> during source")]
@@ -607,11 +609,11 @@ public partial class KimiLibraryShapeTest
     }
 
     // Layouts read at fixed offsets, each row by its reader: Utf8Writer's by the kept runtime (ErasedWriterRuntime.ll.in:
-    // __kimi_text_writer zeroes its size and stores destination, dispatch and kind; __kimi_erased_reserve loads destination and dispatch);
+    // __kimi_erased_reserve loads destination and dispatch; the others pin the layout the R8-W2 b2-1 prototype fixed);
     // WriteWindow's by __kimi_erased_reserve (written and remaining, in the Result's payload at byte 8); FixedBuffer's and HeapBuffer's
     // equal Storage.BufferRepr's, as which the library reads a window's state (Formatting.kimi, WriteWindow.commit, commitUtf8 and next).
     [Theory]
-    [InlineData("Utf8Writer", 64, "destination", 0, "dispatch", 8, "kind", 16, "hint", 24, "pending", 32, "pendingLength", 40, "logicalLength", 48, "failed", 56)]
+    [InlineData("Utf8Writer", 56, "destination", 0, "dispatch", 8, "hint", 16, "pending", 24, "pendingLength", 32, "logicalLength", 40, "kind", 48, "failed", 52)]
     [InlineData("Text.FixedBuffer", 32, "data", 0, "capacity", 8, "length", 16, "validated", 24)]
     [InlineData("Text.HeapBuffer", 32, "data", 0, "capacity", 8, "length", 16, "validated", 24)]
     [InlineData("WriteWindow", 32, "state", 0, "start", 8, "written", 16, "remaining", 24)]
@@ -626,9 +628,9 @@ public partial class KimiLibraryShapeTest
         }
     }
 
-    // The kept runtime's routines are glue over the library's named layouts (plan Q5, B4's guard): __kimi_text_writer zeroes
-    // Utf8Writer's size and stores destination, dispatch and kind at their offsets; __kimi_erased_reserve loads destination and dispatch
-    // and checks the window's written and remaining in the Result's payload at byte 8.
+    // The kept runtime's routine is glue over the library's named layouts (plan Q5, B4's guard): __kimi_erased_reserve loads destination
+    // and dispatch (R8-M18's lasting pair) and checks the window's written and remaining in the Result's payload at byte 8. Since R8-W2
+    // b2-1 Text.writer's body stores the adapter (fail-before: __kimi_text_writer zeroed its size and stored destination, dispatch, kind).
     [Fact]
     public void RuntimeGlueMatchesTheNamedLayouts()
     {
@@ -647,12 +649,9 @@ public partial class KimiLibraryShapeTest
         var (writer, writerType) = Layout("Utf8Writer");
         var (window, windowType) = Layout("WriteWindow");
         int At(TypeLayout layout, BoundType type, string field) => layout.FieldOffsets.Span[AdtDef.IndexOf(type, field)];
-        Assert.Equal(0, At(writer, writerType, "destination")); // Stored and loaded at the adapter's address.
+        Assert.Equal(0, At(writer, writerType, "destination")); // Loaded at the adapter's address.
         foreach (var glue in new[]
         {
-            $"  call void @llvm.memset.p0.i64(ptr %ret, i8 0, i64 {writer.Size}, i1 false)\n  store ptr %self, ptr %ret, align 8\n",
-            $"  %dispatchp = getelementptr i8, ptr %ret, i64 {At(writer, writerType, "dispatch")}\n" +
-                $"  %kindp = getelementptr i8, ptr %ret, i64 {At(writer, writerType, "kind")}\n",
             $"  %destination = load ptr, ptr %writer, align 8\n  %functionp = getelementptr i8, ptr %writer, i64 {At(writer, writerType, "dispatch")}\n",
             $"  %writtenp = getelementptr i8, ptr %ret, i64 {8 + At(window, windowType, "written")}\n" +
                 $"  %remainingp = getelementptr i8, ptr %ret, i64 {8 + At(window, windowType, "remaining")}\n",

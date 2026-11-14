@@ -37,7 +37,7 @@ fn bounded @4
       StorageDead(_6) @10
       StorageLive(_7) @10
       _7 = &uniq two-phase _4: uniq/FixedBuffer @10
-      _5 = intrinsic ErasedWriter<FixedBuffer>(move _7) -> bb2 @10
+      _5 = writer<FixedBuffer>(move _7) -> bb2 @10
   bb2:
       StorageDead(_7) @10
       _5.4 = const 11_isize @10
@@ -119,7 +119,7 @@ fn owning @14
   bb1:
       StorageLive(_5) @21
       _5 = &uniq two-phase _3: uniq/HeapBuffer @21
-      _4 = intrinsic ErasedWriter<HeapBuffer>(move _5) -> bb2 @21
+      _4 = writer<HeapBuffer>(move _5) -> bb2 @21
   bb2:
       StorageDead(_5) @21
       _4.4 = const 0_isize @21
@@ -241,7 +241,7 @@ fn line @25
   bb3:
       StorageLive(_11) @37 s1
       _11 = &uniq two-phase _5: uniq/HeapBuffer @37 s1
-      _6 = intrinsic ErasedWriter<HeapBuffer>(move _11) -> bb7 @37 s1
+      _6 = writer<HeapBuffer>(move _11) -> bb7 @37 s1
   bb4:
       _6.4 = const length (0 + hint(T)) @37 s1
       StorageLive(_12) @37 s1
@@ -252,7 +252,7 @@ fn line @25
   bb5:
       StorageLive(_10) @37 s1
       _10 = &uniq two-phase _4: uniq/FixedBuffer @37 s1
-      _6 = intrinsic ErasedWriter<FixedBuffer>(move _10) -> bb6 @37 s1
+      _6 = writer<FixedBuffer>(move _10) -> bb6 @37 s1
   bb6:
       StorageDead(_10) @37 s1
       goto bb4 @37 s1
@@ -484,7 +484,7 @@ fn attempt @62
   bb3:
       StorageLive(_13) @81 s1
       _13 = &uniq two-phase _7: uniq/HeapBuffer @81 s1
-      _8 = intrinsic ErasedWriter<HeapBuffer>(move _13) -> bb7 @81 s1
+      _8 = writer<HeapBuffer>(move _13) -> bb7 @81 s1
   bb4:
       _8.4 = const length (6 + hint(T, i32, i32)) @81 s1
       StorageLive(_14) @81 s1
@@ -495,7 +495,7 @@ fn attempt @62
   bb5:
       StorageLive(_12) @81 s1
       _12 = &uniq two-phase _6: uniq/FixedBuffer @81 s1
-      _8 = intrinsic ErasedWriter<FixedBuffer>(move _12) -> bb6 @81 s1
+      _8 = writer<FixedBuffer>(move _12) -> bb6 @81 s1
   bb6:
       StorageDead(_12) @81 s1
       goto bb4 @81 s1

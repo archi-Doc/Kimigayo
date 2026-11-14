@@ -1,6 +1,5 @@
-// UTF-8 formatting declarations (SPEC 22.9, 22.10). Text.writer, the erased adapter, is a compiler implementation
-// (Text.kimi); the buffers, windows, the other Text operations and Console.writeLine of a view are bodies here, each
-// raw Field's storage where its Origin states (SPEC 5.7).
+// UTF-8 formatting declarations (SPEC 22.9, 22.10): the buffers, windows, the adapter, the Text operations and
+// Console.writeLine of a view are bodies here, each raw Field's storage where its Origin states (SPEC 5.7).
 public struct BufferFull
     Self is Copy
     public init() => ()
@@ -89,19 +88,28 @@ public struct WriteWindow {source}
     func next(self: ref/Self) -> raw/u8
         unsafe => return (*(self.state@raw/Storage.BufferRepr)).data + self.end()
 
+/// What an adapter's destination is, which selects its reservation (`Utf8Writer.reserve`). `Text.writer` states it
+/// once, by its destination Type (SPEC 22.9.2).
+internal enum WriterDestination
+    Self is Copy
+    Fixed
+    Heap
+    Erased
+
 public struct Utf8Writer {target}
     Self is not ObjectPayload
     // `destination` and `dispatch` are the adapter's first two words, which the kept runtime's `__kimi_erased_reserve`
     // reads (`RuntimeLayoutsAreFixed` pins them).
     let destination: raw/u8 during target
-    // The selected `reserve` implementation's code, or null: nothing reads or writes through it.
+    // The code of a user Writer's `reserve` implementation (`Storage.reserveDispatch`), or null for a standard
+    // buffer: nothing reads or writes through it.
     let dispatch: raw/u8 during static
-    // The destination's writer kind, `LegacyRuntimeHelpers.WriterKind`'s closed numbering until R8-W2: 0 a
-    // `Text.FixedBuffer`, 1 a `Text.HeapBuffer`, 2 a user Writer, reserved through `dispatch`.
-    let kind: isize
+    // What `destination` addresses: a `Text.FixedBuffer`, a `Text.HeapBuffer`, or a user Writer, reserved through
+    // `dispatch`.
+    let kind: WriterDestination
     var failed: bool
     // An owning interpolation's growth hint: its later literal bytes and values (SPEC 22.10.5), which the compiler
-    // stores before each write position (the internal set); 0 elsewhere. Only `reserve`'s kind-1 arm reads it.
+    // stores before each write position (the internal set); 0 elsewhere. Only `reserve`'s `Heap` arm reads it.
     internal var hint: isize
         private get
     // A deferred string literal's bytes, which are static storage (SPEC 3.1.2).
@@ -109,6 +117,21 @@ public struct Utf8Writer {target}
     var pendingLength: isize
     let logicalLength: isize
     let loan: Loan<uniq/u8 during target>
+
+    /// An adapter over the Writer at `destination`, without a failure, a hint or a deferred literal. The caller's
+    /// obligations, which the signature cannot state: `destination` addresses, in what `target` covers and with write
+    /// authority, the Writer `kind` names (SPEC 5.2.1, 22.9.2); for `Erased`, `dispatch` is the code of that Writer's
+    /// `reserve` implementation (`Storage.reserveDispatch`), which no other kind reads.
+    internal init(destination: raw/u8 during target, dispatch: raw/u8 during static, kind: WriterDestination)
+        self.destination = destination
+        self.dispatch = dispatch
+        self.kind = kind
+        self.failed = false
+        self.hint = 0
+        self.pending = null
+        self.pendingLength = 0
+        self.logicalLength = 0
+        self.loan = Loan<uniq/u8 during target>.init()
 
     /// The recorded failure without formatting; otherwise `value`'s `format` once, the first failure it returns or a
     /// nested write recorded being recorded and returned (SPEC 22.10.1).
@@ -171,7 +194,7 @@ public struct Utf8Writer {target}
 
     /// The adapter's reservation of `amount` bytes (SPEC 22.9.4, 22.10.1): `BufferFull` when a failure is recorded;
     /// else the destination's window for `amount` and the deferred literal, which it writes first, or a recorded
-    /// `BufferFull`. Pending may sit on an adapter of any kind; the shared tail prepends it; only the kind-1 arm reads
+    /// `BufferFull`. Pending may sit on an adapter of any kind; the shared tail prepends it; only the `Heap` arm reads
     /// the hint, which a buffer that must grow adds unless the sum exceeds the maximum object size. The caller's
     /// obligation, which the signature cannot state: it commits or drops the window before the next reservation of
     /// this adapter, since the window's Origin is the destination's, not this borrow's.
@@ -185,25 +208,26 @@ public struct Utf8Writer {target}
         let available = (largest@Wrapping<isize> - self.pendingLength@Wrapping<isize>)@isize
         if amount > available => Storage.allocationSizeExceeded()
         var minimum = (amount@Wrapping<isize> + self.pendingLength@Wrapping<isize>)@isize
-        unsafe
-            if self.kind == 0
-                let fixed = self.destination@raw/(Text.FixedBuffer during target)
-                return self.settled(((*fixed)@uniq).reserve(minimum))
-            if self.kind == 1
-                let heap = self.destination@raw/Text.HeapBuffer
-                let length = (*heap).length
-                // The buffer keeps `0 <= length <= capacity`, which bounds both differences.
-                let unused = ((*heap).capacity@Wrapping<isize> - length@Wrapping<isize>)@isize
-                let room = (largest@Wrapping<isize> - length@Wrapping<isize>)@isize
-                if minimum > unused and minimum <= room
-                    // The guard `unused < minimum <= room` bounds the difference, and `hint <= spare` the sum.
-                    let spare = (room@Wrapping<isize> - minimum@Wrapping<isize>)@isize
-                    if self.hint <= spare => minimum = (minimum@Wrapping<isize> + self.hint@Wrapping<isize>)@isize
-                return self.settled(((*heap)@uniq).reserve(minimum))
-        if self.kind == 2
-            let reserved = Storage.erasedReserve(self, minimum)
-            return self.settled(reserved@move)
-        $abort("Utf8Writer: writer kind outside 0, 1 and 2")
+        match self.kind
+            .Fixed
+                unsafe
+                    let fixed = self.destination@raw/(Text.FixedBuffer during target)
+                    return self.settled(((*fixed)@uniq).reserve(minimum))
+            .Heap
+                unsafe
+                    let heap = self.destination@raw/Text.HeapBuffer
+                    let length = (*heap).length
+                    // The buffer keeps `0 <= length <= capacity`, which bounds both differences.
+                    let unused = ((*heap).capacity@Wrapping<isize> - length@Wrapping<isize>)@isize
+                    let room = (largest@Wrapping<isize> - length@Wrapping<isize>)@isize
+                    if minimum > unused and minimum <= room
+                        // The guard `unused < minimum <= room` bounds the difference, and `hint <= spare` the sum.
+                        let spare = (room@Wrapping<isize> - minimum@Wrapping<isize>)@isize
+                        if self.hint <= spare => minimum = (minimum@Wrapping<isize> + self.hint@Wrapping<isize>)@isize
+                    return self.settled(((*heap)@uniq).reserve(minimum))
+            .Erased
+                let reserved = Storage.erasedReserve(self, minimum)
+                return self.settled(reserved@move)
 
     // Every kind's shared tail (SPEC 22.10.1): a failure recorded; else the deferred literal written first.
     func settled(self: uniq/Self, reserved: Result<WriteWindow during target, BufferFull>)
@@ -399,6 +423,19 @@ public group Text
         // An empty buffer grows to exactly `capacity` (SPEC 22.9.4), its one allocation.
         if capacity != 0 => _ = (buffer@uniq).reserve(capacity)
         return buffer@move
+
+    /// An adapter over `destination`, which erases its Type and calls only its `reserve` (SPEC 22.9.1, 22.9.2): a user
+    /// Writer's through the code of its `reserve` implementation. `FixedBuffer` and `HeapBuffer` run the
+    /// specializations below, whose buffers the adapter reserves itself.
+    public func writer<W>(destination: uniq/W) -> Utf8Writer
+        W is BufferWriter
+        return Utf8Writer.init(destination@follow@raw@raw/u8, Storage.reserveDispatch<W>(), .Erased)
+
+    specialize func writer<FixedBuffer>(destination: uniq/FixedBuffer) -> Utf8Writer
+        return Utf8Writer.init(destination@follow@raw@raw/u8, null, .Fixed)
+
+    specialize func writer<HeapBuffer>(destination: uniq/HeapBuffer) -> Utf8Writer
+        return Utf8Writer.init(destination@follow@raw@raw/u8, null, .Heap)
 
     /// Views the string's bytes, which are valid UTF-8 (SPEC 3.1.2, 22.9.2).
     public func utf8(text: ref/string) -> Utf8Slice

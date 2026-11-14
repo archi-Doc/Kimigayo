@@ -580,22 +580,22 @@ public sealed partial class MirBuildTest
     [Theory]
     [InlineData(
         "func f(n: i32) -> string => \"n=\\(n)!\"\n",
-        new[] { "heap", "ErasedWriter", "hint 12", "deferLiteral \"n=\"", "hint 1", "write", "hint 0", "format \"!\"", "finish", "intoString" })]
+        new[] { "heap", "writer", "hint 12", "deferLiteral \"n=\"", "hint 1", "write", "hint 0", "format \"!\"", "finish", "intoString" })]
     [InlineData(
         "func f(n: i32) -> string => \"\\(\"lit\")\\(n)\"\n",
-        new[] { "heap", "ErasedWriter", "hint 11", "deferLiteral \"lit\"", "hint 0", "write", "finish", "intoString" })]
+        new[] { "heap", "writer", "hint 11", "deferLiteral \"lit\"", "hint 0", "write", "finish", "intoString" })]
     [InlineData(
         "func f() -> string => \"\\(\"only\")\"\n",
-        new[] { "heap", "ErasedWriter", "hint 0", "format \"only\"", "finish", "intoString" })]
+        new[] { "heap", "writer", "hint 0", "format \"only\"", "finish", "intoString" })]
     [InlineData(
         "func f() -> string => \"x\\(\"y\")z\"\n",
-        new[] { "heap", "ErasedWriter", "hint 2", "format \"x\"", "hint 1", "format \"y\"", "hint 0", "format \"z\"", "finish", "intoString" })]
+        new[] { "heap", "writer", "hint 2", "format \"x\"", "hint 1", "format \"y\"", "hint 0", "format \"z\"", "finish", "intoString" })]
     [InlineData(
         "func f(n: i32) -> string => \"a\\(\"b\")\\(n)\"\n",
-        new[] { "heap", "ErasedWriter", "hint 12", "deferLiteral \"a\"", "hint 11", "deferLiteral \"b\"", "hint 0", "write", "finish", "intoString" })]
+        new[] { "heap", "writer", "hint 12", "deferLiteral \"a\"", "hint 11", "deferLiteral \"b\"", "hint 0", "write", "finish", "intoString" })]
     [InlineData(
         "func f<T>(a: ref/string, b: ref/T) -> string\n    T is Utf8Format\n    return \"\\(a)\\(b)\"\n",
-        new[] { "heap", "ErasedWriter", "hint (0 + hint(T))", "write", "hint 0", "write", "finish", "intoString" })]
+        new[] { "heap", "writer", "hint (0 + hint(T))", "write", "hint 0", "write", "finish", "intoString" })]
     public void AnOwningInterpolationsLiteralTextIsALibraryCall(string source, string[] steps)
         => Assert.Equal(steps, HealthyPath(Body(source, "f"), int.MaxValue));
 
@@ -609,22 +609,22 @@ public sealed partial class MirBuildTest
     [InlineData(
         "func f(n: i32) => Console.writeLine(\"n=\\(n)\")\n",
         "[13 of u8]",
-        new[] { "fixed", "ErasedWriter", "hint 11", "deferLiteral \"n=\"", "hint 0", "write", "text", "writeLine" },
-        new[] { "ErasedWriter", "deferLiteral", "fixed", "text", "write", "writeLine" })]
+        new[] { "fixed", "writer", "hint 11", "deferLiteral \"n=\"", "hint 0", "write", "text", "writeLine" },
+        new[] { "deferLiteral", "fixed", "text", "write", "writeLine", "writer" })]
     [InlineData(
         "func f(s: ref/string) => Console.writeLine(\"s=\\(s)\")\n",
         null,
-        new[] { "heap", "ErasedWriter", "hint 0", "deferLiteral \"s=\"", "hint 0", "write", "finish", "intoString", "writeLine" },
-        new[] { "ErasedWriter", "deferLiteral", "finish", "heap", "intoString", "write", "writeLine" })]
+        new[] { "heap", "writer", "hint 0", "deferLiteral \"s=\"", "hint 0", "write", "finish", "intoString", "writeLine" },
+        new[] { "deferLiteral", "finish", "heap", "intoString", "write", "writeLine", "writer" })]
 #pragma warning disable SA1118 // The generic line's healthy path, wrapped at the 160-character line limit.
     [InlineData(
         "func f<T>(v: ref/T)\n    T is Utf8Format\n    Console.writeLine(\"v=\\(v)\")\n",
         "[(2 + bound(T)) of u8]",
         new[]
         {
-            "fixed", "heap", "ErasedWriter", "hint (0 + hint(T))", "deferLiteral \"v=\"", "hint 0", "write", "finish", "intoString", "writeLine",
+            "fixed", "heap", "writer", "hint (0 + hint(T))", "deferLiteral \"v=\"", "hint 0", "write", "finish", "intoString", "writeLine",
         },
-        new[] { "ErasedWriter", "ErasedWriter", "deferLiteral", "finish", "fixed", "heap", "intoString", "text", "write", "writeLine", "writeLine" })]
+        new[] { "deferLiteral", "finish", "fixed", "heap", "intoString", "text", "write", "writeLine", "writeLine", "writer", "writer" })]
 #pragma warning restore SA1118
     public void ADirectLineIsOneExpansionOverOneWriter(string source, string? region, string[] healthy, string[] calls)
     {
@@ -675,7 +675,7 @@ public sealed partial class MirBuildTest
         {
             var calls = new List<string>();
             _ = Next(arm, calls);
-            Assert.Equal("ErasedWriter", calls[0]); // Each arm makes only the writer; the writes follow their join.
+            Assert.Equal("writer", calls[0]); // Each arm makes only the writer (Text.writer's call, R8-W2 b2-1); the writes follow their join.
         }
 
         var lines = MirDumpTest.Unsited(program, body).Split('\n').Select(static x => x.TrimStart(' ', '*')).ToArray();

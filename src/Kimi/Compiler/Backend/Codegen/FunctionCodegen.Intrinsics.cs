@@ -8,16 +8,15 @@ namespace Kimi.Compiler.Backend;
 // an intrinsic by its row's writer (IntrinsicRows' writer column), over the closed IntrinsicWriter vocabulary: a routine row (Routine: a runtime routine
 // through the one call writer, Invoke, with its slot-less values; Raw.release, $abort, tryAllocateBytes and transferBytes, whose routines the module
 // defines on request (Requested; DECISIONS R5-M145), Raw.allocate with its element stride, a creation's factory with its control value and a clone's
-// retain, FunctionCodegen.Objects, Text.writer's routine with its destination's writer kind and dispatch word,
-// FunctionCodegen.Formatting), which a compiler function's Value call and adapter entry also call by its disposition (Routine by kind), a Fail's Abort reason,
+// retain, FunctionCodegen.Objects), which a compiler function's Value call and adapter entry also call by its disposition (Routine by kind), a Fail's Abort reason,
 // Raw.initialize's copy, Raw.slice's record, a staticEnsure's state test (FunctionCodegen.Statics), a runtime Type test
-// (FunctionCodegen.Objects) and a verification's compared value, which the test runtime holds for its observation (Record; DECISIONS R5-M136). Each takes
+// (FunctionCodegen.Objects), a reserve witness's code address (FunctionCodegen.Formatting) and a verification's compared value, which the test runtime holds for its observation (Record; DECISIONS R5-M136). Each takes
 // its operands at its declaration's slots (ArgumentPosition) and ends through Finish; a call whose row's Target column names an item carries the
 // collector's target, read once by the cursor (I8) and given to the row's writer; a call of a row no MIR producer makes (Unproduced) is a broken contract
 // at the call (DECISIONS R5-M146). In a caller-location body a location is C3b's row (Location).
 internal sealed partial class FunctionCodegen
 {
-    private readonly Value[] slotless = new Value[2]; // A routine row's slot-less values (Routine): Text.writer's two.
+    private readonly Value[] slotless = new Value[1]; // A routine row's slot-less value (Routine): an allocation's stride, a creation's control.
 
     private void Intrinsic(in MirTerminator call, in IntrinsicRow row)
     {
@@ -54,7 +53,10 @@ internal sealed partial class FunctionCodegen
             case IntrinsicWriter.Record:
                 this.Record(call, row.Routine!);
                 return;
-            case IntrinsicWriter.Create or IntrinsicWriter.Clone or IntrinsicWriter.Writer:
+            case IntrinsicWriter.Address:
+                this.Dispatch(call, target);
+                return;
+            case IntrinsicWriter.Create or IntrinsicWriter.Clone:
                 return; // A broken contract, recorded by Routine.
             case IntrinsicWriter.Unproduced:
                 this.Report(DiagnosticCode.InternalInvariant_Kd, call.Source); // No MIR producer makes its call (IntrinsicRows).
@@ -82,8 +84,8 @@ internal sealed partial class FunctionCodegen
     }
 
     // A routine row, a call that is one runtime routine: its routine, after its module request (Requested's), and its slot-less values in
-    // order into `given`, from the call's result Type, its Type argument in the item's instance where the row reads one (TypeArgument, of
-    // the call's substitution or an Item's own) and the target it carries (-1: none). Raw.allocate<T>(count) (SPEC 5.6) is
+    // order into `given`, from the call's result Type, its substitution (the call's or an Item's own) where the row needs its Type
+    // argument's layout and the target it carries (-1: none). Raw.allocate<T>(count) (SPEC 5.6) is
     // __kimi_raw_allocate, which checks the count and the byte size and gives a nonnull aligned address for zero bytes, with T's stride; no
     // Layout alignment exceeds the heap's 16 (DECISIONS R5-M92), so no T is refused. A creation is its target descriptor's factory and a
     // clone its handle's retain (FunctionCodegen.Objects). Null for any other writer, and after a broken contract's record. A T without its
@@ -91,7 +93,6 @@ internal sealed partial class FunctionCodegen
     private FunctionAbi? Routine(IntrinsicRow row, BoundType? result, Subst? subst, int target, out ReadOnlySpan<Value> given)
     {
         given = default;
-        var argument = this.TypeArgument(row, subst);
         switch (row.Writer)
         {
             case IntrinsicWriter.Routine:
@@ -107,18 +108,10 @@ internal sealed partial class FunctionCodegen
                 return this.Create(result, target, out given);
             case IntrinsicWriter.Clone:
                 return this.Retain(result);
-            case IntrinsicWriter.Writer:
-                return this.Writer(row, argument, target, out given);
             default:
                 return null;
         }
     }
-
-    // K package 4.5 rows 6-9 (DECISIONS R5-M74, R5-M136): an intrinsic's Type argument in the item's instance, the one operand form its rows
-    // read, as the collector reads it for the row's target (InstanceCollector.Intrinsic): a call's substitution's or an Item's own
-    // (SubstOfItem), read only where the row reads one (IntrinsicRow.ReadsTypeArgument), whose function has it; null for another row.
-    private BoundType? TypeArgument(in IntrinsicRow row, Subst? subst)
-        => row.ReadsTypeArgument && subst!.Types[0] is { } first ? this.collector.TypeOf(this.item, first) : null;
 
     // SPEC 17.4, 22.5.2: a Fail Aborts through the runtime Abort with its fixed code's reason (AbortReasons.Of; its one operand, the code,
     // names a reason or the MIR is broken) and no OS error (RuntimeAbi.NoOsError), the routine's slot-less parameters, at the call's

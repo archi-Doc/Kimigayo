@@ -68,7 +68,6 @@ public enum CompilerFunctionKind : byte
     MakeArc,
     Clone,
     TestTempDirectory,
-    TextWriter,
     BuiltinEquals,
     BuiltinCompare,
     BuiltinArithmetic,
@@ -81,6 +80,7 @@ public enum CompilerFunctionKind : byte
     StorageIndexBounds,
     StorageDestroyValues,
     StorageErasedReserve,
+    StorageReserveDispatch,
     StorageFormatFloat,
     StorageFormatInteger128,
     StorageStride,
@@ -106,8 +106,8 @@ internal enum IntrinsicId : byte
     Abort, // $abort (SPEC 17.4).
     Fail, // A fixed SPEC 22.5.2 code.
     WriteStdout, // SPEC 22.1, 22.5.
-    FormatFloat, // Formatting (SPEC 22.9.1): Ryu, the erased entry Text.writer makes, the erased reserve, i128 until Kimigayo formats it.
-    ErasedWriter,
+    FormatFloat, // Formatting (SPEC 22.9.1): Ryu, the code of a Writer's reserve, the erased reserve through it, i128 until Kimigayo formats it.
+    ReserveDispatch,
     ErasedReserve,
     FormatInteger128,
     MakeObj, // Handles (IMPL 21.1.3, SPEC 13.6); the Weak operations come with P41.
@@ -163,12 +163,12 @@ internal readonly record struct IntrinsicDisposition(DispositionKind Kind, Intri
         CompilerFunctionKind.MakeArc => Intrinsic(IntrinsicId.MakeArc),
         CompilerFunctionKind.Clone => Intrinsic(IntrinsicId.Clone),
         CompilerFunctionKind.TestTempDirectory => Intrinsic(IntrinsicId.TestTempDirectory),
-        CompilerFunctionKind.TextWriter => Intrinsic(IntrinsicId.ErasedWriter),
         CompilerFunctionKind.ConsoleWriteStdout => Intrinsic(IntrinsicId.WriteStdout),
         CompilerFunctionKind.StorageTryAllocateBytes => Intrinsic(IntrinsicId.TryAllocateBytes),
         CompilerFunctionKind.StorageTransferBytes => Intrinsic(IntrinsicId.MoveBytes),
         CompilerFunctionKind.StorageDestroyValues => Intrinsic(IntrinsicId.DestroyValues),
         CompilerFunctionKind.StorageErasedReserve => Intrinsic(IntrinsicId.ErasedReserve),
+        CompilerFunctionKind.StorageReserveDispatch => Intrinsic(IntrinsicId.ReserveDispatch),
         CompilerFunctionKind.StorageFormatFloat => Intrinsic(IntrinsicId.FormatFloat),
         CompilerFunctionKind.StorageFormatInteger128 => Intrinsic(IntrinsicId.FormatInteger128),
         CompilerFunctionKind.StorageStride => Intrinsic(IntrinsicId.Stride),
@@ -186,12 +186,12 @@ internal readonly record struct IntrinsicDisposition(DispositionKind Kind, Intri
 
     // SPEC 8.11.2: the effect class of each compiler function. The Storage and Raw families act only on their inputs and the allocator
     // (SPEC 5.6, 22.2), so they are classified as families; a storage kind that obtained environment authority would have to be split
-    // out of its family. Console output and the test temporary directory are environment effects. Text.writer and the
-    // built-in items act on their inputs: the formatting operations are bodies (R8-W1), so None alone is unclassified.
+    // out of its family. Console output and the test temporary directory are environment effects. The built-in items act
+    // on their inputs: the formatting operations are bodies (R8-W1, R8-W2), so None alone is unclassified.
     internal static CompilerFunctionEffect Effect(CompilerFunctionKind kind) => kind switch
     {
         CompilerFunctionKind.WriteLine or CompilerFunctionKind.ConsoleWriteStdout or CompilerFunctionKind.TestTempDirectory => CompilerFunctionEffect.Environment,
-        >= CompilerFunctionKind.Abort and <= CompilerFunctionKind.Clone or CompilerFunctionKind.TextWriter or
+        >= CompilerFunctionKind.Abort and <= CompilerFunctionKind.Clone or
             >= CompilerFunctionKind.BuiltinEquals and <= CompilerFunctionKind.BuiltinArithmetic => CompilerFunctionEffect.Inputs,
         _ when KimiLibraryCatalog.IsStorageOperation(kind) || KimiLibraryCatalog.IsRawOperation(kind) => CompilerFunctionEffect.Inputs,
         _ => CompilerFunctionEffect.Unclassified,
