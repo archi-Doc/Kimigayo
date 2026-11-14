@@ -247,13 +247,14 @@ public sealed partial class MirBorrowsTest
     // storage the body does not own; the slot step (A3 E17) makes such a Borrow a Loan of the template, found at its Return in the closure
     // of σ(_0) and σ(E): DefaultAccessTest's :27 (fc) and :29–:32 (a local, a Tuple, `shared(x)`'s and `choose`'s results), a Reborrow
     // stored through a raw pointer (round 19's dt-raw-borrow, whose `p[0] = x@ref` of an i32 slot Binding rejects, UnsatisfiedOriginRelation_Kd:
-    // the Binding-valid Reborrow of a reserved input instead) and a nested copy's result (dt-nested-bad: inner's value keeps x's Reborrow).
+    // the Binding-valid Reborrow of a reserved input instead; recorded at the store, SPEC 7.2.3 as clarified by the owner's O-254 Q2 A) and a
+    // nested copy's result (dt-nested-bad: inner's value keeps x's Reborrow).
     [Fact]
     public void ATemplateKeepsNoNewBorrowOfASlot()
         => Assert.Equal(
             [
                 "fc: x DefaultArgumentBorrow_Kd", "flet: x DefaultArgumentBorrow_Kd", "ftuple: x DefaultArgumentBorrow_Kd",
-                "fshared: x DefaultArgumentBorrow_Kd", "fchoose: x DefaultArgumentBorrow_Kd", "keepRaw: z DefaultArgumentBorrow_Kd",
+                "fshared: x DefaultArgumentBorrow_Kd", "fchoose: x DefaultArgumentBorrow_Kd", "keepRaw: p[0] = z DefaultArgumentBorrow_Kd",
                 "outer: x DefaultArgumentBorrow_Kd",
             ],
             AllProblems("""
@@ -280,13 +281,14 @@ public sealed partial class MirBorrowsTest
     // checks, D5), a bare capture entry Reborrowing an exclusive input (SPEC 7.7.2; round 19's dt-cap-uniq), and a write that stores a
     // Reborrow of another slot into storage the body does not own,
     // both failures kept (dt-twice, whose `x@follow = z@ref` of an i32 slot Binding rejects, UnsatisfiedOriginRelation_Kd: the Reborrow of a
-    // reserved input instead). A Loan R26-borrow reports is not an Access too (ExclusiveCase below).
+    // reserved input instead; R26-borrow's record at the write, SPEC 7.2.3 as clarified by O-254 Q2 A). A Loan R26-borrow reports at its
+    // site is not an Access there too (ExclusiveCase below).
     [Fact]
     public void ATemplateNeitherWritesNorExclusivelyBorrowsASlot()
         => Assert.Equal(
             [
                 "fa: x DefaultArgumentAccess_Kd", "fb: x@follow = 9 DefaultArgumentAccess_Kd", ": func [x]() => x@follow DefaultArgumentAccess_Kd",
-                "twice: x@follow = z DefaultArgumentAccess_Kd", "twice: z DefaultArgumentBorrow_Kd",
+                "twice: x@follow = z DefaultArgumentAccess_Kd", "twice: x@follow = z DefaultArgumentBorrow_Kd",
             ],
             AllProblems("""
                 func increment(x: uniq/i32) -> i32
@@ -311,12 +313,15 @@ public sealed partial class MirBorrowsTest
     // environment's pointer reaches storage the body does not own only where a u16 written at the Closure's address (its layout is not
     // promised, IMPL 21.1.2) puns that pointer (SPEC 5.2), so the verdict rests on the write, the located Unsupported_Kd at its site (keepU);
     // a second Reborrow the result keeps is decided beside it (keepB), as is the one Loan the result also keeps (keepS); an exclusive Borrow
-    // of the slot fails R26-access in every layout (keepX). Controls: no write (keepN) and a store through a parameter (keepE).
+    // of the slot fails R26-access in every layout (keepX). Controls: no write (keepN) and a store through a parameter (keepE), whose
+    // record is at the store (SPEC 7.2.3 as clarified by O-254 Q2 A). keepN is invalid by O-254 Q1 D (the let capture's pointee layer is
+    // the Closure's own) and stays accepted until A5's rule W reads that (U3c); its record will then be at the call `c(rz@follow@raw)`,
+    // placed as keepECall's below.
     [Fact]
     public void ATemplateVerdictRestingOnAnUndecidedWriteIsTheLimit()
         => Assert.Equal(
             [
-                "keepU: z Unsupported_Kd", "keepE: z DefaultArgumentBorrow_Kd", "keepB: z Unsupported_Kd", "keepB: z DefaultArgumentBorrow_Kd",
+                "keepU: z Unsupported_Kd", "keepE: *p = rz@follow@raw DefaultArgumentBorrow_Kd", "keepB: z Unsupported_Kd", "keepB: z DefaultArgumentBorrow_Kd",
                 "keepS: z DefaultArgumentBorrow_Kd", "keepX: z@follow@uniq DefaultArgumentAccess_Kd",
             ],
             AllProblems("""
@@ -383,6 +388,164 @@ public sealed partial class MirBorrowsTest
                     unsafe => *tp = 7
                     let rz: uniq/i32 = z@follow@uniq
                     c(rz@follow@raw)
+                    exit to w 0
+                ) => ()
+                """));
+
+    // R26-borrow's place (SPEC 7.2.3 as clarified by the owner's O-254 Q2 A: a default that stores a value carrying an inspection Loan into
+    // storage the body does not own, by a write or a call that may store it there, is invalid "with the error at that operation"; SPEC
+    // 23.1.2): one record at each storing operation, and one at the Loan's site where the result's own value keeps the Loan ("Its result
+    // cannot keep a new Borrow or Reborrow of a preceding argument"), both when both hold: the result alone (keptOnly), a store or a call
+    // through a parameter (storedCopy, whose result is a Copy; keepECall: sink's pointee raw/i32 admits v, 5.7 Calls), two stores
+    // (keepETwice), a store or a call and the result (keepBoth, bothCall, keepBoth2), two Loans (twoLoans: rz stored, rw kept), the result
+    // read back from the stored storage, a Tuple holding rz, or a Reborrow through it (readBack, resultTuple, reborrowChain, whose exclusive
+    // Borrow is one subject: its record names the Borrow), a result that only addresses that storage (resultAddr: the store alone); an
+    // exclusive Borrow of the slot, stored, is R26-access's at the Borrow beside the store's (uniqStored, SPEC 15.6.7). Valid: a null
+    // store (keepENull), a Copy result (keepR) and a let capture whose pointee holds no pointer (keepNLeaf: the Loan stays in w, a local).
+    [Fact]
+    public void EachOperationKeepingANewBorrowPastEntryIsItsOwnFailure()
+        => Assert.Equal(
+            [
+                "keptOnly: z DefaultArgumentBorrow_Kd", "storedCopy: *p = rz@follow@raw DefaultArgumentBorrow_Kd",
+                "keepECall: sink(p, rz@follow@raw) DefaultArgumentBorrow_Kd",
+                "keepETwice: *p = rz@follow@raw DefaultArgumentBorrow_Kd", "keepETwice: *s = rz@follow@raw DefaultArgumentBorrow_Kd",
+                "keepBoth: *p = rz@follow@raw DefaultArgumentBorrow_Kd", "keepBoth: z DefaultArgumentBorrow_Kd",
+                "bothCall: sink(p, rz@follow@raw) DefaultArgumentBorrow_Kd", "bothCall: z DefaultArgumentBorrow_Kd",
+                "keepBoth2: *p = rz@follow@raw DefaultArgumentBorrow_Kd", "keepBoth2: *s = rz@follow@raw DefaultArgumentBorrow_Kd",
+                "keepBoth2: z DefaultArgumentBorrow_Kd",
+                "twoLoans: *p = rz@follow@raw DefaultArgumentBorrow_Kd", "twoLoans: z DefaultArgumentBorrow_Kd",
+                "readBack: *p = rz@follow@raw DefaultArgumentBorrow_Kd", "readBack: z DefaultArgumentBorrow_Kd",
+                "resultAddr: *p = rz@follow@raw DefaultArgumentBorrow_Kd",
+                "resultTuple: *p = rz@follow@raw DefaultArgumentBorrow_Kd", "resultTuple: z DefaultArgumentBorrow_Kd",
+                "reborrowChain: *p = rz@follow@raw DefaultArgumentBorrow_Kd", "reborrowChain: z DefaultArgumentBorrow_Kd",
+                "uniqStored: *p = rz@follow@raw DefaultArgumentBorrow_Kd", "uniqStored: z@follow@uniq DefaultArgumentAccess_Kd",
+            ],
+            AllProblems("""
+                func sink(p: raw/(raw/i32), v: raw/i32) => ()
+                func keptOnly(z: uniq/i32 during a, y: ref/i32 during a = label w: do
+                    let rz: ref/i32 during a = z
+                    exit to w rz
+                ) => ()
+                func storedCopy(z: uniq/i32 during a, p: raw/(raw/i32), y: i32 = label w: do
+                    let rz: ref/i32 during a = z
+                    unsafe => *p = rz@follow@raw
+                    exit to w rz@follow
+                ) => ()
+                func keepECall(z: uniq/i32 during a, p: raw/(raw/i32), y: i32 = label w: do
+                    let rz: ref/i32 = z
+                    sink(p, rz@follow@raw)
+                    exit to w 0
+                ) => ()
+                func keepETwice(z: uniq/i32 during a, p: raw/(raw/i32), s: raw/(raw/i32), y: i32 = label w: do
+                    let rz: ref/i32 = z
+                    unsafe => *p = rz@follow@raw
+                    unsafe => *s = rz@follow@raw
+                    exit to w 0
+                ) => ()
+                func keepBoth(z: uniq/i32 during a, p: raw/(raw/i32), y: ref/i32 during a = label w: do
+                    let rz: ref/i32 during a = z
+                    unsafe => *p = rz@follow@raw
+                    exit to w rz
+                ) => ()
+                func bothCall(z: uniq/i32 during a, p: raw/(raw/i32), y: ref/i32 during a = label w: do
+                    let rz: ref/i32 during a = z
+                    sink(p, rz@follow@raw)
+                    exit to w rz
+                ) => ()
+                func keepBoth2(z: uniq/i32 during a, p: raw/(raw/i32), s: raw/(raw/i32), y: ref/i32 during a = label w: do
+                    let rz: ref/i32 during a = z
+                    unsafe => *p = rz@follow@raw
+                    unsafe => *s = rz@follow@raw
+                    exit to w rz
+                ) => ()
+                func twoLoans(z: uniq/i32 during a, p: raw/(raw/i32), y: ref/i32 during a = label w: do
+                    let rz: ref/i32 = z
+                    unsafe => *p = rz@follow@raw
+                    let rw: ref/i32 during a = z
+                    exit to w rw
+                ) => ()
+                func readBack(z: uniq/i32 during a, p: raw/(raw/i32), y: raw/i32 = label w: do
+                    let rz: ref/i32 during a = z
+                    unsafe => *p = rz@follow@raw
+                    var back: raw/i32 = null
+                    unsafe => back = *p
+                    exit to w back
+                ) => ()
+                func resultAddr(z: uniq/i32 during a, p: raw/(raw/i32), y: raw/(raw/i32) = label w: do
+                    let rz: ref/i32 during a = z
+                    unsafe => *p = rz@follow@raw
+                    exit to w p
+                ) => ()
+                func resultTuple(z: uniq/i32 during a, p: raw/(raw/i32), y: (ref/i32 during a, i32) = label w: do
+                    let rz: ref/i32 during a = z
+                    unsafe => *p = rz@follow@raw
+                    exit to w (rz, 1)
+                ) => ()
+                func reborrowChain(z: uniq/i32 during a, p: raw/(raw/i32), y: uniq/i32 during a = label w: do
+                    let rz: uniq/i32 during a = z
+                    unsafe => *p = rz@follow@raw
+                    exit to w rz@follow@uniq
+                ) => ()
+                func uniqStored(z: uniq/i32 during a, p: raw/(raw/i32), y: i32 = label w: do
+                    let rz: uniq/i32 = z@follow@uniq
+                    unsafe => *p = rz@follow@raw
+                    exit to w 0
+                ) => ()
+                func keepENull(z: uniq/i32 during a, p: raw/(raw/i32), y: i32 = label w: do
+                    let rz: ref/i32 = z
+                    unsafe => *p = null
+                    exit to w 0
+                ) => ()
+                func keepR(z: uniq/i32 during a, y: i32 = label w: do
+                    let rz: ref/i32 during a = z
+                    exit to w rz@follow
+                ) => ()
+                func keepNLeaf(z: uniq/i32 during a, y: i32 = label w0: do
+                    var x: i32 = 0
+                    var w: ref/i32 = x@ref
+                    let n: u64 = 3
+                    let q: raw/(ref/i32) = w@raw
+                    var c = func [n, q] (v: raw/i32)
+                        unsafe => *q = *q
+                    let rz: ref/i32 = z
+                    c(rz@follow@raw)
+                    exit to w0 0
+                ) => ()
+                """));
+
+    // R26-borrow's place at a destruction (SPEC 7.2.3 as clarified by O-254 Q2 A, "or destruction that may store it there"; 15.6.4: a
+    // destruction retains as a call of its drop would): the old x's drop, by the reassignment (keepDA2) or at the block's end (keepDE2,
+    // whose subject is the declaration), stores x.q, which carries rz's Loan by a Field write, through x.p into storage the body does not
+    // own. keepDA2's record at `var x` is the reconstructed x's scope end, whose holder state joins the Field writes (dependent, DECISIONS Q13).
+    [Fact]
+    public void ATemplateDestructionStoringANewBorrowIsTheFailure()
+        => Assert.Equal(
+            [
+                "keepDA2: x = WriterI.init(q: null) DefaultArgumentBorrow_Kd", "keepDA2: var x = WriterI.init(q: null) DefaultArgumentBorrow_Kd",
+                "keepDE2: var x = WriterI.init(q: null) DefaultArgumentBorrow_Kd",
+            ],
+            AllProblems("""
+                struct WriterI
+                    public var p: raw/(raw/i32)
+                    public var q: raw/i32
+                    public init(q: raw/i32)
+                        self.p = null
+                        self.q = q
+                    drop
+                        unsafe => *self.p = self.q
+                func keepDA2(z: uniq/i32 during a, p: raw/(raw/i32), y: i32 = label w: do
+                    let rz: ref/i32 = z
+                    var x = WriterI.init(q: null)
+                    x.q = rz@follow@raw
+                    x.p = p
+                    x = WriterI.init(q: null)
+                    exit to w 0
+                ) => ()
+                func keepDE2(z: uniq/i32 during a, p: raw/(raw/i32), y: i32 = label w: do
+                    let rz: ref/i32 = z
+                    var x = WriterI.init(q: null)
+                    x.q = rz@follow@raw
+                    x.p = p
                     exit to w 0
                 ) => ()
                 """));

@@ -630,7 +630,7 @@
 
   + Name="DefaultArgumentBorrow_Kd"
     Category="Language"
-    Message="A default result cannot retain a new Borrow or Reborrow of a preceding prepared argument"
+    Message="A default cannot keep a new Borrow or Reborrow of a preceding prepared argument in its result or in storage it does not own"
     Evidence="case:Text"
 
   + Name="TransferRequired_Kd"
