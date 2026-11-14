@@ -394,14 +394,26 @@ public class ConformanceConvergenceTest(ITestOutputHelper output)
     // SPEC 8.3.3 Recursion, O-78 (a) (PLAN G629's F2, R7-C2e2 e2-5a's engine step): `S is C` needs `S is Owned` (C's Constraint), whose
     // storage writes Box<S>, formed only by `S is C`: the conformance being proven. A nominal proof never reads Owned's coinductive
     // assumption (it is read only between assumed Owned works, through no newly opened obligation), so each is invalid, whichever is
-    // asked first (the Owned declaration, another Type storing Box<S>, an associated binding, a generic Self).
+    // asked first (the Owned declaration, another Type storing Box<S>, an associated binding, a generic Self) and in the other declaration
+    // order: the judgments on the cycle (`Self is Owned`, `Self is C`, the stored Box<S>) are unproven at their lines, and every other
+    // record is a dependent InvalidConstraint_Kd.
     [Theory]
-    [InlineData("contract C\n    Self is Owned\nstruct Box<T>\n    T is C\n    public init() => ()\nstruct S\n    Self is Owned\n    Self is C\n    public var b: Box<S>\n    public init() => self.b = Box<S>.init()\n")]
-    [InlineData("contract C\n    Self is Owned\nstruct Box<T>\n    T is C\n    public init() => ()\nstruct T\n    Self is Owned\n    public var b: Box<S>\n    public init() => self.b = Box<S>.init()\nstruct S\n    Self is C\n    public var b: Box<S>\n    public init() => self.b = Box<S>.init()\n")]
-    [InlineData("contract C\n    associate Item is Owned\nstruct Box<T>\n    T is C\n    public init() => ()\nstruct S\n    Self is Owned\n    Self is C\n    associate C.Item is S\n    public var b: Box<S>\n    public init() => self.b = Box<S>.init()\n")]
-    [InlineData("contract C\n    Self is Owned\nstruct Box<T>\n    T is C\n    public init() => ()\nstruct G<T>\n    T is Owned\n    Self is Owned\n    Self is C\n    public var b: Box<G<T>>\n")]
-    public void ANominalProofReadsNoCoinductiveAssumption(string source)
-        => Assert.False(CompilationTestHelper.ParseSuccess(source).Bind().IsComplete);
+    [InlineData("h-own-first-n", "contract C\n    Self is Owned\nstruct Box<T>\n    T is C\n    public init() => ()\nstruct S\n    Self is Owned\n    Self is C\n    public var b: Box<S>\n    public init() => self.b = Box<S>.init()\n", "7 8 9")]
+    [InlineData("k-a1o-own-n", "contract C\n    Self is Owned\nstruct Box<T>\n    T is C\n    public init() => ()\nstruct S\n    Self is C\n    Self is Owned\n    public var b: Box<S>\n    public init() => self.b = Box<S>.init()\n", "7 9")]
+    [InlineData("h-other-first-n", "contract C\n    Self is Owned\nstruct Box<T>\n    T is C\n    public init() => ()\nstruct T\n    Self is Owned\n    public var b: Box<S>\n    public init() => self.b = Box<S>.init()\nstruct S\n    Self is C\n    public var b: Box<S>\n    public init() => self.b = Box<S>.init()\n", "7 8 11 12")]
+    [InlineData("h-other-last-n", "contract C\n    Self is Owned\nstruct Box<T>\n    T is C\n    public init() => ()\nstruct S\n    Self is C\n    public var b: Box<S>\n    public init() => self.b = Box<S>.init()\nstruct T\n    Self is Owned\n    public var b: Box<S>\n    public init() => self.b = Box<S>.init()\n", "7 8 12")]
+    [InlineData("h-own-first-assoc-n", "contract C\n    associate Item is Owned\nstruct Box<T>\n    T is C\n    public init() => ()\nstruct S\n    Self is Owned\n    Self is C\n    associate C.Item is S\n    public var b: Box<S>\n    public init() => self.b = Box<S>.init()\n", "7 8 10")]
+    [InlineData("h-own-first-gen-n", "contract C\n    Self is Owned\nstruct Box<T>\n    T is C\n    public init() => ()\nstruct G<T>\n    T is Owned\n    Self is Owned\n    Self is C\n    public var b: Box<G<T>>\n", "8 9 10")]
+    public void ANominalProofReadsNoCoinductiveAssumption(string id, string source, string unproven)
+    {
+        var c = CompilationTestHelper.ParseSuccess(source);
+        Assert.False(c.Bind().IsComplete, id);
+        c.Binding.ReportDiagnostics();
+        var records = TestDiagnostics.Of(c);
+        var lines = records.Where(static x => x.Code == "UnprovenConstraint_Kd").Select(x => source.AsSpan(0, x.Span.Start).Count('\n') + 1).Order();
+        Assert.Equal(unproven, string.Join(' ', lines));
+        Assert.All(records, static x => Assert.Contains(x.Code, (string[])["UnprovenConstraint_Kd", "InvalidConstraint_Kd"]));
+    }
 
     // B1's ring family (R7-C2e2 e2-5a, design-engine): k declarations' Copy works and Owned works on one cycle, each order, with and without a use.
     public static TheoryData<int, string, bool, int> RingRows

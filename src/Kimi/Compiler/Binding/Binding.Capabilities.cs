@@ -475,25 +475,30 @@ public sealed partial class Binding
     }
 
     // A fixed total order on Causes (SettleCauses): by the source of the syntax a record rests on, its position, its syntax and the kind
-    // of Cause; a missing Cause is above every Cause.
+    // of Cause, then by the same key along what a record lists beside it, its next candidates and its re-entry site (DECISIONS BU-76), so
+    // two hop chains of one path differ by key; a missing Cause is above every Cause. Causes equal by key rest on the same nodes.
     private static class CauseKey
     {
-        internal static bool Less(ICheckCause? left, ICheckCause? right)
+        internal static bool Less(ICheckCause? left, ICheckCause? right) => Compare(left, right) < 0;
+
+        private static int Compare(ICheckCause? left, ICheckCause? right)
         {
-            if (left is null || ReferenceEquals(left, right))
+            if (ReferenceEquals(left, right))
             {
-                return false;
+                return 0;
             }
 
-            if (right is null)
+            if (left is null || right is null)
             {
-                return true;
+                return left is null ? 1 : -1;
             }
 
             var order = string.CompareOrdinal(left.Use.CodeContext.SourceName, right.Use.CodeContext.SourceName);
             order = order != 0 ? order : left.Use.Span.Start.CompareTo(right.Use.Span.Start);
             order = order != 0 ? order : left.Use.SyntaxId.CompareTo(right.Use.SyntaxId);
-            return (order != 0 ? order : Kind(left).CompareTo(Kind(right))) < 0;
+            order = order != 0 ? order : Kind(left).CompareTo(Kind(right));
+            order = order != 0 ? order : Compare(left.Next, right.Next);
+            return order != 0 ? order : Compare(left.ReentrySite, right.ReentrySite);
         }
 
         private static int Kind(ICheckCause cause)
