@@ -22,7 +22,8 @@ namespace Kimi.Compiler;
 //   Representative, or the Type over its components' keys; a constructed member keys to itself, its conformance being
 //   ResolveConformance's alone), which relates only what Proven relates (a class in state One with complete meets, whatever the
 //   table's finality) and which only ContractSolver's supply reads: no reader receives a key as a Type; such a class's complete
-//   constructed member (CompleteMember, the same scan), which IdentityRefuted reads (a parameter bound by a premise); whether two Types are known to differ at a corresponding position (IdentityRefuted: the classes'
+//   constructed member (CompleteMember, the same scan), which IdentityRefuted (a parameter bound by a premise) and ProveProposition's
+//   contradiction check (N9) read; whether two Types are known to differ at a corresponding position (IdentityRefuted: the classes'
 //   Refuted, SPEC 8.2.3's Refuted read by the one table their premise meets read, Meet; an abstract Type by proper parts, up to
 //   structure; a conformance's instance in the conforming Type's terms, the required side in the scope's), which the Contract
 //   judge's paths and the Callable judge's signature read before they refute (PLAN G866).

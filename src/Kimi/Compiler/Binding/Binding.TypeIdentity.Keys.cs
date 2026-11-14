@@ -133,8 +133,8 @@ public sealed partial class Binding
 
         // N9 (SPEC 8.2.3, 8.3.2): the complete constructed member (no parameter in it) of the same class, least by Order (the members
         // agree, so any one decides a proposition by the closed world); null otherwise. With Representative it is the one fact c2-1's
-        // rule rests on: a constructed member's conformance is ResolveConformance's alone. Its reader: IdentityRefuted (a parameter or
-        // projection bound by a premise, G866). The table's Completion is
+        // rule rests on: a constructed member's conformance is ResolveConformance's alone. Its readers: IdentityRefuted (a parameter or
+        // projection bound by a premise, G866) and ProveProposition's contradiction check (MemberVerdict, N9). The table's Completion is
         // not read: until R7-C2e2 threads Completion through the
         // judgments' answers, the answer is that of the pass it is asked in, as every judgment's.
         internal BoundType? CompleteMember(BoundType type) => this.Scanned(type).Complete;

@@ -32,7 +32,6 @@ public class ProjectedConstraintCallBindingTest
     [InlineData("Source.(Origin).Item", "string")]
     [InlineData("(Source.(Origin).Item, i32)", "(i32, string)")]
     [InlineData("[2 of Source.(Origin).Item]", "[3 of i32]")]
-    [InlineData("Source.(Origin).Item and string", "i32")]
     [InlineData("not Source.(Origin).Item", "i32")]
     public void RefutedProjectionConstraintRejectsCall(string requirement, string argument)
     {
@@ -44,6 +43,21 @@ public class ProjectedConstraintCallBindingTest
         var restored = CompilationTestHelper.Reload(c);
         Assert.False(restored.Bind().IsComplete);
         AssertCall(restored, false);
+    }
+
+    // SPEC 8.3.2, 8.2.3: an available `P and Q` supplies both, so a projection naming i32 that is also string makes i32 and string one
+    // Type: the premise error at the declaration, never at the call (N9's class 1, PLAN G851).
+    [Theory]
+    [InlineData("Source.(Origin).Item and string", "i32")]
+    public void ContradictoryProjectionPremiseFailsAtItsDeclaration(string requirement, string argument)
+    {
+        var c = MinimalEmissionTest.Analyze(Source(requirement, argument));
+        Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
+        Assert.False(c.Binding.Result.IsComplete);
+        Assert.Contains(c.Binding.Issues, x => x.Node.FailureOf() == BindingFailure.InvalidConstraint);
+        Assert.DoesNotContain(c.Binding.Issues, x => x.Node.FailureOf() == BindingFailure.NoApplicableCandidate);
+        var restored = CompilationTestHelper.Reload(c);
+        Assert.False(restored.Bind().IsComplete);
     }
 
     [Theory]
