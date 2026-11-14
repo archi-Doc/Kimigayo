@@ -212,7 +212,7 @@ public static partial class Parser
         var type = ParseType(ref reader, TypeContext.Type);
         var path = type is TypeSemanticsKoto { IsTransparentWrapper: true, Type: { } wrapped } ? wrapped : type;
         var head = ContainerPathHead(path);
-        if (type is ErrorKoto || head is TypeSemanticsKoto { Type: null } or SyntaxFormKoto { Akind: KotoKind.RootName } ||
+        if (IsRecoveredType(ref reader, type) || head is TypeSemanticsKoto { Type: null } or SyntaxFormKoto { Akind: KotoKind.RootName } ||
             (!ReferenceEquals(head, path) && head is ParenthesizedTypeKoto or TupleTypeKoto or FixedArrayTypeKoto))
         {
             return type;

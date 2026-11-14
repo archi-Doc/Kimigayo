@@ -210,6 +210,7 @@ public class FrontEndSyntaxTest
     [InlineData("struct D {b}: (Base{b})", "1*DuplicateBinding_Kd 1*ExpectedSyntax_Kd")]
     [InlineData("func f(v: ::(Missing)) => ()", "1*ExpectedSyntax_Kd 1*UnresolvedBinding_Kd")]
     [InlineData("func f(v: ::[2 of Missing]) => ()", "1*ExpectedSyntax_Kd 1*UnresolvedBinding_Kd")]
+    [InlineData("struct D : ::(Missing)", "1*ExpectedSyntax_Kd 1*UnresolvedBinding_Kd")] // The base's own rule reads the recovered Type: no record.
     [InlineData("func f(x: i32) -> i32 => x@((Missing{k}).Item)", "1*MisplacedSyntax_Kd 1*UnresolvedBinding_Kd")]
     [InlineData("func f(x: i32, z: i32)\n    let y = x@(ref/Missing during z)", "1*MisplacedSyntax_Kd 1*UnresolvedBinding_Kd")]
     [InlineData("func f(x: i32, z: i32)\n    let y = x@(uniq/Missing during z)", "1*MisplacedSyntax_Kd 1*UnresolvedBinding_Kd")]

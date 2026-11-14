@@ -269,13 +269,13 @@ public static partial class Parser
     /// <summary>Judges an adaptation target read as a Type by SPEC 13.5.1's two rules of its own chain, through grouping and Semantics
     /// layers down to its Core: no Origin annotation on a borrow layer, and no bound Container qualifier as the head of the Core's
     /// path (F.5). Types nested in the Core keep both forms. The first form written is one record, and the Type it writes, the
-    /// annotated layer or the Core's path, is a written Type outside its grammar (RecoverWrittenType).</summary>
+    /// annotated layer or the Core's path, is a written Type outside its grammar (RecoverWrittenType); a recovered part ends the walk.</summary>
     /// <param name="reader">The token reader.</param>
     /// <param name="type">The parsed target.</param>
     private static void CheckAdaptationTarget(ref TokenReader reader, Koto type)
     {
         var outer = true;
-        while (true)
+        while (!IsRecoveredType(ref reader, type))
         {
             if (type is ParenthesizedTypeKoto grouped)
             {

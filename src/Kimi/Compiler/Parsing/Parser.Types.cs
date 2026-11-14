@@ -120,7 +120,7 @@ public static partial class Parser
         {
             // A written Type outside its grammar (RecoverWrittenType) read its own suffixes, so the rest is the enclosing construct's.
             type = ParseTypeHead(ref reader, target);
-            if (type is not ErrorKoto && !delimitedTarget && reader.CodeContext.RecoveryCause(type) is null)
+            if (!IsRecoveredType(ref reader, type) && !delimitedTarget)
             {
                 type = ParseTypeSuffixes(ref reader, type, target);
             }

@@ -82,4 +82,9 @@ public static partial class Parser
 
         return type;
     }
+
+    // Whether a Type is an Error or a written Type outside its grammar (RecoverWrittenType): a check of a production over it reads a
+    // failed input and adds no record of its own (SPEC 23.1.2).
+    private static bool IsRecoveredType(ref TokenReader reader, Koto type)
+        => type is ErrorKoto || reader.CodeContext.RecoveryCause(type) is not null;
 }
