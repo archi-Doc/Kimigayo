@@ -40,7 +40,7 @@ public sealed partial class Binding
     }
 
     /// <summary>Gets the point whose Semantics premises give one pair binder's admitted set where a relation is judged (SPEC 8.3.4,
-    /// 8.8.2; PLAN G801): the relation's scope (<see cref="RelationScope"/>) when the binder is in scope there, its declaring scope on
+    /// 8.8.2; PLAN G801): the relation's scope (<see cref="RelationScope(ref UseScope, in CallableInstance)"/>) when the binder is in scope there, its declaring scope on
     /// that scope's chain (a conforming Type's binder in its conformance scope, a body's or its Type's binder at a use). Any other
     /// binder a relation meets belongs to another signature (a requirement's own, an implementation's own before correspondence, a
     /// callee's), whose clauses are all its premises: its declaring scope. A declaration's own relation has no scope and reads that
@@ -93,12 +93,28 @@ public sealed partial class Binding
     }
 
     /// <summary>Gets the scope a relation is judged in (SPEC 8.3.4, 8.8.2; PLAN G801): its comparison's own (a conformance scope),
-    /// else its use's; none for a declaration's own relation.</summary>
+    /// else its use's, which the holder of the use finds once (<see cref="UseScope"/>).</summary>
+    /// <param name="use">The use the relation is judged at.</param>
+    /// <param name="comparison">The comparison the relation belongs to.</param>
+    /// <returns>The relation's scope.</returns>
+    internal BindingScope RelationScope(ref UseScope use, in CallableInstance comparison)
+        => comparison.Scope ?? use.Scope(this);
+
+    /// <summary>Gets the scope a relation is judged in (<see cref="RelationScope(ref UseScope, in CallableInstance)"/>) for a use held
+    /// as syntax; a declaration's own relation has no use, so only its comparison's scope, if any.</summary>
     /// <param name="use">The use the relation is judged at; none for a declaration's own relation.</param>
     /// <param name="comparison">The comparison the relation belongs to.</param>
     /// <returns>The relation's scope, or null.</returns>
     internal BindingScope? RelationScope(Koto? use, in CallableInstance comparison)
-        => comparison.Scope ?? (use is null ? null : this.ConstraintScope(use));
+    {
+        if (use is null)
+        {
+            return comparison.Scope;
+        }
+
+        var at = new UseScope(use);
+        return this.RelationScope(ref at, comparison);
+    }
 
     /// <summary>Gets the admitted set of a pair layer's binder (SPEC 8.3), from its declaring scope, which every occurrence of the layer
     /// shares; None for another Type.</summary>
@@ -140,7 +156,8 @@ public sealed partial class Binding
     /// usable, and a relation required under it is judged unconditionally.</summary>
     /// <param name="layer">A Type; only a pair layer has a condition.</param>
     /// <param name="use">The use whose binders give the bits; only a pair layer finds its scope.</param>
-    /// <param name="comparison">The comparison the relation belongs to, whose scope gives the admitted set (<see cref="RelationScope"/>);
+    /// <param name="comparison">The comparison the relation belongs to, whose scope gives the admitted set
+    /// (<see cref="RelationScope(ref UseScope, in CallableInstance)"/>);
     /// every caller states it, <c>default</c> for a relation outside any comparison.</param>
     /// <returns>The condition, or null when the slot never exists.</returns>
     internal ulong? PairSlotCondition(BoundType layer, ref UseScope use, in CallableInstance comparison)
@@ -150,8 +167,8 @@ public sealed partial class Binding
             return 0;
         }
 
-        // The relation's scope gives the admitted set (RelationScope: the comparison's, else the use's); the use's scope the bits.
-        var admitted = this.AdmittedSemantics(whole, AdmittedScope(whole.Symbol!, comparison.Scope ?? use.Scope(this)));
+        // The relation's scope gives the admitted set; the use's scope the bits.
+        var admitted = this.AdmittedSemantics(whole, AdmittedScope(whole.Symbol!, this.RelationScope(ref use, comparison)));
         if ((admitted & SemanticsMask.Borrow) == 0)
         {
             return null;
