@@ -39,6 +39,7 @@ public contract PositionRange: Equatable, Utf8Format
 
 // SPEC 4.6.1, 8.7: the built-in integer conformance to Position. The compiler binds an integer's `tryResolve`
 // requirement to this receiver function; integers gain no members.
+#Lang("IntegerPosition")
 internal group IntegerPosition
     /// Returns `self` as an isize boundary when `0 <= self <= length`, or None; no wide value is truncated first.
     public func tryResolve<I>(self: I, length: isize) -> Option<isize>
@@ -453,6 +454,7 @@ public struct ClosedRangeIterator<T>
 // SPEC 4.6.1-4.6.4: prefix `^` and range syntax construct their Types through these functions, and a position or range
 // key of a built-in sequence selection that the compiler does not apply directly resolves through them. The compiler
 // calls them by declaration, so neither a same-named source declaration nor the source's access rules affect them.
+#Lang("PositionSyntax")
 internal group PositionSyntax
     /// Constructs `^offset`.
     internal func fromEnd<T>(offset: T) -> FromEnd<T>
@@ -581,6 +583,7 @@ public struct ResolvedRange
 // SPEC 13.4.1, 22.10.2, 22.1: the bodies of string's built-in conformances to Equatable, Comparable and Utf8Format: the
 // witness table's String row selects them (Binding.WitnessGroup), and every comparison and write of a string calls them;
 // string gains no members.
+#Lang("StringWitness")
 internal group StringWitness
     func equals(self: ref/string, other: ref/string) -> bool
         unsafe

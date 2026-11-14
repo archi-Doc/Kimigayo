@@ -325,6 +325,7 @@ internal group Storage
     // declaration and Types have no length slots (SPEC 4.4), so its members are these receiver functions, generic over
     // `E` and `length N`. The compiler looks them up for fixed-array receivers, where they are public; the entry
     // conformances' witnesses are FixedArrayEntries, which no lookup exposes.
+    #Lang("FixedArray")
     internal group FixedArray
         /// Borrows the complete contiguous storage without copying elements.
         public func slice<E, length N>(self: ref/[N of E] during source) -> Slice<E> during source
@@ -387,6 +388,7 @@ internal group Storage
 
     // SPEC 22.1, 22.2.1, 14.6.2 (PLAN G32, G776): the witnesses of the built-in fixed array's entry conformances (Iterable,
     // UniqIterable, IntoIterable), which the witness table's FixedArrayEntries row selects; a fixed array gains no members from them.
+    #Lang("FixedArrayEntries")
     internal group FixedArrayEntries
         /// Starts a shared enumeration of the elements in index order.
         public func iterate<E, length N>(self: ref/[N of E] during source) -> ArrayIterator<E> during source

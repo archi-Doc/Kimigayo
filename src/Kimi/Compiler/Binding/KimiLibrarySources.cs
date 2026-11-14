@@ -168,7 +168,7 @@ public sealed partial class KimiLibrary
     private DeclarationContainerKoto? FormattingContainer(KimiLibraryContainer kind)
         => kind == KimiLibraryContainer.Text ? this.Text :
             kind is KimiLibraryContainer.FixedBuffer or KimiLibraryContainer.HeapBuffer
-                ? FindDeclaration(this.Text, kind.ToString(), false) as DeclarationContainerKoto : null;
+                ? FindDeclaration(this.Text, kind.ToString()) : null;
 
     private void LoadSources()
     {
@@ -179,10 +179,10 @@ public sealed partial class KimiLibrary
                 KimiLibraryContainer.Console => this.Console,
                 KimiLibraryContainer.Intrinsics => this.Intrinsics,
                 KimiLibraryContainer.Test => this.Test,
-                KimiLibraryContainer.Array => FindDeclaration(this.Kotonoha.RootKoto, "Array", false) as DeclarationContainerKoto, // Array.kimi is read first.
-                KimiLibraryContainer.Dictionary => FindDeclaration(this.Kotonoha.RootKoto, "Dictionary", false) as DeclarationContainerKoto,
-                KimiLibraryContainer.Storage => FindDeclaration(this.Kotonoha.RootKoto, "Storage", false) as DeclarationContainerKoto, // Storage.kimi is read first.
-                KimiLibraryContainer.Raw => FindDeclaration(this.Kotonoha.RootKoto, "Raw", false) as DeclarationContainerKoto, // Raw.kimi is read first.
+                KimiLibraryContainer.Array => FindDeclaration(this.Kotonoha.RootKoto, "Array"), // Array.kimi is read first.
+                KimiLibraryContainer.Dictionary => FindDeclaration(this.Kotonoha.RootKoto, "Dictionary"),
+                KimiLibraryContainer.Storage => FindDeclaration(this.Kotonoha.RootKoto, "Storage"), // Storage.kimi is read first.
+                KimiLibraryContainer.Raw => FindDeclaration(this.Kotonoha.RootKoto, "Raw"), // Raw.kimi is read first.
                 KimiLibraryContainer.Root => this.Kotonoha.RootKoto,
                 _ => this.FormattingContainer(source.Container),
             };

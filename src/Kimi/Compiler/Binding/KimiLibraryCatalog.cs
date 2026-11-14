@@ -36,6 +36,9 @@ internal static partial class KimiLibraryCatalog
     // (TyCtxt.Original), never a specialization's.
     internal static bool RequiresCallerLocation(BindingSymbol? symbol) => symbol is { CallerLocation: true };
 
+    // The number of lang items, the KimiDeclarationId members.
+    internal static int LangItemCount => LangItems.Count;
+
     // The lang item a `#Lang` Name names, or null when the Name is no KimiDeclarationId member.
     internal static KimiDeclarationId? LangItem(string name) => LangItems.TryGetValue(name, out var id) ? id : null;
 

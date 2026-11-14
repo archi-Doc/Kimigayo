@@ -11,8 +11,9 @@ namespace XunitTest;
 // registration reads `#Lang` and `#CallerLocation` (G1-3a); `#Intrinsic` still equals the catalog's Function column.
 public partial class KimiLibraryShapeTest
 {
-    // Row L1: `#Lang("Name")` names a KimiDeclarationId member and sits on the one declaration the catalog registers under it; each Name
-    // is declared once, a declaration carries one Name, and every lang item the library declares in source carries its Name.
+    // Row L1: `#Lang("Name")` names a KimiDeclarationId member and sits on the one declaration the library reads under it: the symbol the
+    // catalog registers, or one of the 17 internal declarations the compiler reads through a KimiLibrary member (the owner's O-307 (a));
+    // each Name is declared once, a declaration carries one Name, and every lang item the library declares in source carries its Name.
     [Fact]
     public void EachLangItemIsDeclaredOnce()
     {
@@ -23,21 +24,21 @@ public partial class KimiLibraryShapeTest
             var name = Assert.Single(Texts(attribute));
             Assert.True(Enum.TryParse<KimiDeclarationId>(name, out var id) && id.ToString() == name, name);
             Assert.True(declared.TryAdd(id, target), name);
-            Assert.Same(library.GetSymbol(id)?.Declaration, target);
+            Assert.Same(library.GetSymbol(id)?.Declaration ?? PrivateDeclaration(library, id), target);
         }
 
         var sourced = new List<KimiDeclarationId>();
-        foreach (var entry in KimiLibraryCatalog.Entries)
+        foreach (var id in Enum.GetValues<KimiDeclarationId>())
         {
-            if (library.GetSymbol(entry.Id) is not null)
+            if (library.GetSymbol(id) is not null || PrivateDeclaration(library, id) is not null)
             {
-                sourced.Add(entry.Id);
+                sourced.Add(id);
             }
         }
 
         Assert.Equal(sourced.Order(), declared.Keys.Order());
         Assert.Equal(declared.Count, declared.Values.Distinct().Count());
-        Assert.Equal(189, declared.Count);
+        Assert.Equal((189, 206), (declared.Keys.Count(x => library.GetSymbol(x) is not null), declared.Count));
     }
 
     // Row L3: `#Intrinsic("Name")` names an IntrinsicId member, the disposition the intrinsic table gives the declaration's compiler
@@ -144,6 +145,29 @@ public partial class KimiLibraryShapeTest
     // An implementation Attribute's arguments: non-interpolated string literals (IMPL 21.3.4).
     private static string[] Texts(AttributeKoto attribute)
         => attribute.Operand is InvocationKoto call ? call.ArgumentNodes.Select(static x => Assert.IsType<StringLiteralKoto>(x).Literal).ToArray() : [];
+
+    // The internal declarations KimiLibrary reads by their `#Lang` into its members, not into catalog symbols.
+    private static Koto? PrivateDeclaration(KimiLibrary library, KimiDeclarationId id) => id switch
+    {
+        KimiDeclarationId.DictionaryStorageUnlink => library.DictionaryUnlink,
+        KimiDeclarationId.DictionaryStorageAppendSlot => library.DictionaryAppendSlot,
+        KimiDeclarationId.DictionaryStorageClearLinks => library.DictionaryClearLinks,
+        KimiDeclarationId.DictionaryStorageCompact => library.DictionaryCompact,
+        KimiDeclarationId.FixedArray => library.Members(WitnessMembers.FixedArray),
+        KimiDeclarationId.FixedArrayEntries => library.Members(WitnessMembers.FixedArrayEntries),
+        KimiDeclarationId.IntegerPosition => library.Members(WitnessMembers.IntegerPosition),
+        KimiDeclarationId.StringWitness => library.Members(WitnessMembers.String),
+        KimiDeclarationId.BoolFormat => library.Members(WitnessMembers.BoolFormat),
+        KimiDeclarationId.CharFormat => library.Members(WitnessMembers.CharFormat),
+        KimiDeclarationId.UnitFormat => library.Members(WitnessMembers.UnitFormat),
+        KimiDeclarationId.Utf8SliceFormat => library.Members(WitnessMembers.Utf8SliceFormat),
+        KimiDeclarationId.F32Format => library.Members(WitnessMembers.F32Format),
+        KimiDeclarationId.F64Format => library.Members(WitnessMembers.F64Format),
+        KimiDeclarationId.WrappingFormat => library.Members(WitnessMembers.WrappingFormat),
+        KimiDeclarationId.IntegerFormat => library.Members(WitnessMembers.IntegerFormat),
+        KimiDeclarationId.PositionSyntax => library.PositionSyntax,
+        _ => null,
+    };
 
     private static string? LangName(Koto declaration)
         => declaration.FindAttribute(AttributeKind.Lang) is { } attribute ? Assert.Single(Texts(attribute)) : null;

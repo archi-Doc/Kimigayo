@@ -227,6 +227,7 @@ group DictionaryStorage
 
     // The caller allocates memory before calling; failure leaves the old handle
     // intact. Transfer does not acquire or destroy entries or call user code.
+    #Lang("DictionaryStorageCompact")
     unsafe func compact(handle: raw/Handle, memory: raw/u8, stride: isize) -> raw/u8
         unsafe
             let buffer = (*handle).buffer
@@ -267,6 +268,7 @@ group DictionaryStorage
 
     // Links are slot index + 1; zero denotes no slot. The caller has already
     // secured capacity for needed entries before appendSlot changes any links.
+    #Lang("DictionaryStorageAppendSlot")
     unsafe func appendSlot(handle: raw/Handle, stride: isize, needed: isize) -> raw/u8
         unsafe
             let buffer = (*handle).buffer
@@ -298,6 +300,7 @@ group DictionaryStorage
             (*handle).length = needed
             return slot
 
+    #Lang("DictionaryStorageClearLinks")
     unsafe func clearLinks(handle: raw/Handle)
         unsafe
             (*handle).used = 0
@@ -313,6 +316,7 @@ group DictionaryStorage
             (*handle).capacity = 0
             clearLinks(handle)
 
+    #Lang("DictionaryStorageUnlink")
     unsafe func unlink(handle: raw/Handle, stride: isize, link: isize)
         unsafe
             let buffer = (*handle).buffer

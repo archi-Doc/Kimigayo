@@ -36,7 +36,9 @@ public sealed partial class KimiLibrary
         this.TextScope = new(this.Text) { Parent = this.Scope };
         this.TextSymbol = new("Text", BindingSymbolKind.Container, this.Text, this.Scope);
         this.LoadSources();
-        this.FindPrivateDeclarations();
+        var declarations = new Koto?[KimiLibraryCatalog.LangItemCount]; // By KimiDeclarationId.
+        FindLangItems(this.Kotonoha.RootKoto, declarations);
+        this.ReadPrivateDeclarations(declarations);
         var entries = KimiLibraryCatalog.Entries;
         this.symbols = new BindingSymbol?[entries.Length];
         // The four containers, then the catalog's symbols in catalog order.
@@ -44,7 +46,7 @@ public sealed partial class KimiLibrary
         {
             this.ConsoleSymbol, this.IntrinsicsSymbol, this.TestSymbol, this.TextSymbol,
         };
-        this.RegisterCatalog();
+        this.RegisterCatalog(declarations);
 
         this.Copy = this.GetSymbol(KimiDeclarationId.Copy)!;
         this.Owned = this.GetSymbol(KimiDeclarationId.Owned)!;
@@ -366,73 +368,30 @@ public sealed partial class KimiLibrary
         this.Kotonoha.RootKoto.BindingState = BindingState.Resolved;
     }
 
-    private static Koto? FindDeclaration(DeclarationContainerKoto container, string name, bool function)
+    // The one nested declaration container of a name, or null: the containers LoadSources parses a source into (until G1-5).
+    private static DeclarationContainerKoto? FindDeclaration(DeclarationContainerKoto container, string name)
     {
-        Koto? found = null;
-        if (function)
+        DeclarationContainerKoto? found = null;
+        for (var i = 0; i < container.NestedContainers.Count; i++)
         {
-            // DeclarationContainerKoto exposes read-only list interfaces. Their backing
-            // lists are not mutated during recognition; spans avoid virtual access in
-            // this small, frequently repeated scan without copying or caching positions.
-            var members = container.Members is List<Koto> memberList ? CollectionsMarshal.AsSpan(memberList) : default;
-            foreach (var node in members)
+            var declaration = container.NestedContainers[i];
+            if (declaration.Name == name)
             {
-                if (Visit(node))
+                if (found is not null)
                 {
-                    return found;
+                    return null;
                 }
-            }
-        }
-        else
-        {
-            var declarations = container.NestedContainers is List<DeclarationContainerKoto> declarationList ? CollectionsMarshal.AsSpan(declarationList) : default;
-            foreach (var declaration in declarations)
-            {
-                if (declaration.Name == name)
-                {
-                    if (found is not null)
-                    {
-                        return null;
-                    }
 
-                    found = declaration;
-                }
+                found = declaration;
             }
         }
 
         return found;
-
-        // SPEC 8.13.3: an explicit specialization has no name, so it is never the declaration a name finds.
-        bool Visit(Koto node)
-        {
-            if (node is FunctionKoto { IsSpecialization: false } member && member.Name == name)
-            {
-                if (found is not null)
-                {
-                    found = null;
-                    return true; // Several declarations: none is the one the name finds.
-                }
-
-                found = member;
-            }
-            else if (node is SyntaxFormKoto { Akind: KotoKind.ConditionalConformance, Operands: [_, _, CodeBlockKoto block] })
-            {
-                for (var i = 0; i < block.Items.Count; i++)
-                {
-                    if (Visit(block.Items[i]))
-                    {
-                        return true;
-                    }
-                }
-            }
-
-            return false;
-        }
     }
 
-    // IMPL 21.3.4: each declaration the library marks `#Lang("Name")`, at its entry's catalog index, read from the syntax by the
-    // Attribute's Kind (the Attribute's own BindingState is not read). A Name that is no cataloged lang item, a second declaration of one
-    // Name or a `#Lang` without its one string is a defect of the compiler build, whose embedded library KimiLibraryShapeTest checks.
+    // IMPL 21.3.4: each declaration the library marks `#Lang("Name")`, by KimiDeclarationId, read from the syntax by the Attribute's
+    // Kind (the Attribute's own BindingState is not read). A Name that is no lang item, a second declaration of one Name or a `#Lang`
+    // without its one string is a defect of the compiler build, whose embedded library KimiLibraryShapeTest checks.
     private static void FindLangItems(DeclarationContainerKoto container, Koto?[] declarations)
     {
         Add(container);
@@ -469,12 +428,12 @@ public sealed partial class KimiLibrary
             }
 
             if (attribute.Operand is not InvocationKoto { ArgumentNodes: [StringLiteralKoto literal] } call || call.GetArgumentLabel(0) is not null ||
-                KimiLibraryCatalog.LangItem(literal.Literal) is not { } id || KimiLibraryCatalog.Index(id) is not (>= 0 and var index) || declarations[index] is not null)
+                KimiLibraryCatalog.LangItem(literal.Literal) is not { } id || declarations[(int)id] is not null)
             {
-                throw new InvalidOperationException($"The embedded Kimi library's #Lang at {attribute.Span} names no cataloged lang item once (InternalInvariant).");
+                throw new InvalidOperationException($"The embedded Kimi library's #Lang at {attribute.Span} names no lang item once (InternalInvariant).");
             }
 
-            declarations[index] = declaration;
+            declarations[(int)id] = declaration;
         }
     }
 
@@ -491,41 +450,37 @@ public sealed partial class KimiLibrary
         return (DeclarationContainerKoto)node;
     }
 
-    // The library's private declarations the compiler reads directly: the Dictionary storage functions, the witness table's groups
-    // (R8-M4) and the position syntax group.
+    // The library's private declarations the compiler reads directly, each by its `#Lang`: the Dictionary storage functions, the
+    // witness table's groups (R8-M4) and the position syntax group.
     [MemberNotNull(nameof(DictionaryUnlink), nameof(DictionaryAppendSlot), nameof(DictionaryClearLinks), nameof(DictionaryCompact))]
-    private void FindPrivateDeclarations()
+    private void ReadPrivateDeclarations(Koto?[] declarations)
     {
-        this.DictionaryUnlink = (FunctionKoto)FindDeclaration((DeclarationContainerKoto)FindDeclaration(this.Kotonoha.RootKoto, "DictionaryStorage", false)!, "unlink", true)!;
-        var dictionaryStorage = (DeclarationContainerKoto)this.DictionaryUnlink.Parent!;
-        this.DictionaryAppendSlot = (FunctionKoto)FindDeclaration(dictionaryStorage, "appendSlot", true)!;
-        this.DictionaryClearLinks = (FunctionKoto)FindDeclaration(dictionaryStorage, "clearLinks", true)!;
-        this.DictionaryCompact = (FunctionKoto)FindDeclaration(dictionaryStorage, "compact", true)!;
-        var storage = FindDeclaration(this.Kotonoha.RootKoto, "Storage", false) as DeclarationContainerKoto;
-        this.FixedArrayMembers = storage is null ? null : FindDeclaration(storage, "FixedArray", false) as DeclarationContainerKoto;
-        this.FixedArrayEntryMembers = storage is null ? null : FindDeclaration(storage, "FixedArrayEntries", false) as DeclarationContainerKoto;
-        this.IntegerPositionMembers = FindDeclaration(this.Kotonoha.RootKoto, "IntegerPosition", false) as DeclarationContainerKoto;
-        this.StringWitnessMembers = FindDeclaration(this.Kotonoha.RootKoto, "StringWitness", false) as DeclarationContainerKoto;
-        this.BoolFormatMembers = FindDeclaration(this.Kotonoha.RootKoto, "BoolFormat", false) as DeclarationContainerKoto;
-        this.CharFormatMembers = FindDeclaration(this.Kotonoha.RootKoto, "CharFormat", false) as DeclarationContainerKoto;
-        this.UnitFormatMembers = FindDeclaration(this.Kotonoha.RootKoto, "UnitFormat", false) as DeclarationContainerKoto;
-        this.Utf8SliceFormatMembers = FindDeclaration(this.Kotonoha.RootKoto, "Utf8SliceFormat", false) as DeclarationContainerKoto;
-        this.F32FormatMembers = FindDeclaration(this.Kotonoha.RootKoto, "F32Format", false) as DeclarationContainerKoto;
-        this.F64FormatMembers = FindDeclaration(this.Kotonoha.RootKoto, "F64Format", false) as DeclarationContainerKoto;
-        this.WrappingFormatMembers = FindDeclaration(this.Kotonoha.RootKoto, "WrappingFormat", false) as DeclarationContainerKoto;
-        this.IntegerFormatMembers = FindDeclaration(this.Kotonoha.RootKoto, "IntegerFormat", false) as DeclarationContainerKoto;
-        this.PositionSyntax = FindDeclaration(this.Kotonoha.RootKoto, "PositionSyntax", false) as DeclarationContainerKoto;
+        this.DictionaryUnlink = (FunctionKoto)declarations[(int)KimiDeclarationId.DictionaryStorageUnlink]!;
+        this.DictionaryAppendSlot = (FunctionKoto)declarations[(int)KimiDeclarationId.DictionaryStorageAppendSlot]!;
+        this.DictionaryClearLinks = (FunctionKoto)declarations[(int)KimiDeclarationId.DictionaryStorageClearLinks]!;
+        this.DictionaryCompact = (FunctionKoto)declarations[(int)KimiDeclarationId.DictionaryStorageCompact]!;
+        this.FixedArrayMembers = declarations[(int)KimiDeclarationId.FixedArray] as DeclarationContainerKoto;
+        this.FixedArrayEntryMembers = declarations[(int)KimiDeclarationId.FixedArrayEntries] as DeclarationContainerKoto;
+        this.IntegerPositionMembers = declarations[(int)KimiDeclarationId.IntegerPosition] as DeclarationContainerKoto;
+        this.StringWitnessMembers = declarations[(int)KimiDeclarationId.StringWitness] as DeclarationContainerKoto;
+        this.BoolFormatMembers = declarations[(int)KimiDeclarationId.BoolFormat] as DeclarationContainerKoto;
+        this.CharFormatMembers = declarations[(int)KimiDeclarationId.CharFormat] as DeclarationContainerKoto;
+        this.UnitFormatMembers = declarations[(int)KimiDeclarationId.UnitFormat] as DeclarationContainerKoto;
+        this.Utf8SliceFormatMembers = declarations[(int)KimiDeclarationId.Utf8SliceFormat] as DeclarationContainerKoto;
+        this.F32FormatMembers = declarations[(int)KimiDeclarationId.F32Format] as DeclarationContainerKoto;
+        this.F64FormatMembers = declarations[(int)KimiDeclarationId.F64Format] as DeclarationContainerKoto;
+        this.WrappingFormatMembers = declarations[(int)KimiDeclarationId.WrappingFormat] as DeclarationContainerKoto;
+        this.IntegerFormatMembers = declarations[(int)KimiDeclarationId.IntegerFormat] as DeclarationContainerKoto;
+        this.PositionSyntax = declarations[(int)KimiDeclarationId.PositionSyntax] as DeclarationContainerKoto;
     }
 
     // SPEC 22.1: the catalog's symbols in catalog order, each bound to the declaration its `#Lang` marks, in the scope of the container
     // that declares it: the root's, a signature-only group's or Text's own scope, else one scope per container whose parent is its
     // declaring container's (indexing later gives a member's symbol its container's ordinary member scope). A symbol carries its
     // declaration's `#CallerLocation`.
-    private void RegisterCatalog()
+    private void RegisterCatalog(Koto?[] declarations)
     {
         var entries = KimiLibraryCatalog.Entries;
-        var declarations = new Koto?[entries.Length];
-        FindLangItems(this.Kotonoha.RootKoto, declarations);
         var scopes = new Dictionary<Koto, BindingScope>(ReferenceEqualityComparer.Instance)
         {
             [this.Kotonoha.RootKoto] = this.Scope,
@@ -538,7 +493,7 @@ public sealed partial class KimiLibrary
         {
             ref readonly var entry = ref entries[i];
             // SPEC 22.1: a missing required declaration is a defect of the compiler build, whose embedded library KimiLibraryShapeTest checks.
-            if (declarations[i] is not { } declaration)
+            if (declarations[(int)entry.Id] is not { } declaration)
             {
                 if (entry.SourceExpected)
                 {

@@ -200,4 +200,23 @@ public enum KimiDeclarationId : byte
     DictionaryStorageInitialize,
     DictionaryStorageHandle,
     Never,
+
+    // R8-G1 (the owner's O-307 (a)): the internal declarations the compiler reads through KimiLibrary's members, not a catalog symbol.
+    DictionaryStorageUnlink,
+    DictionaryStorageAppendSlot,
+    DictionaryStorageClearLinks,
+    DictionaryStorageCompact,
+    FixedArray,
+    FixedArrayEntries,
+    IntegerPosition,
+    StringWitness,
+    BoolFormat,
+    CharFormat,
+    UnitFormat,
+    Utf8SliceFormat,
+    F32Format,
+    F64Format,
+    WrappingFormat,
+    IntegerFormat,
+    PositionSyntax,
 }

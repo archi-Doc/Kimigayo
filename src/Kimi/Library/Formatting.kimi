@@ -534,6 +534,7 @@ public group Console
 // StringWitness's (Core.kimi).
 // Each writes its text once through the writer's leaf, writeUtf8, or Wrapping<T>'s through a write of its integer; its
 // catalog row's CallerLocation passes the user's location on (SPEC 22.5.1, until G1).
+#Lang("BoolFormat")
 internal group BoolFormat
     #Lang("BoolFormatFormat")
     #CallerLocation
@@ -541,6 +542,7 @@ internal group BoolFormat
         if self@follow => return writer.writeUtf8(Text.utf8("true"))
         return writer.writeUtf8(Text.utf8("false"))
 
+#Lang("CharFormat")
 internal group CharFormat
     /// Writes the scalar's UTF-8 encoding: one to four bytes, encoded into a local array.
     #Lang("CharFormatFormat")
@@ -572,11 +574,13 @@ internal group CharFormat
             bytes[3] = (128 | (scalar & 63))@u8
         return writer.writeUtf8(Text.Utf8Slice.init(bytes.slice(..count)))
 
+#Lang("UnitFormat")
 internal group UnitFormat
     #Lang("UnitFormatFormat")
     #CallerLocation
     func format(self: ref/(), writer: uniq/Utf8Writer) -> Result<(), BufferFull> => writer.writeUtf8(Text.utf8("()"))
 
+#Lang("Utf8SliceFormat")
 internal group Utf8SliceFormat
     /// Writes the view's bytes: one exact reservation, none when empty.
     #Lang("Utf8SliceFormatFormat")
@@ -584,6 +588,7 @@ internal group Utf8SliceFormat
     func format(self: ref/Text.Utf8Slice, writer: uniq/Utf8Writer) -> Result<(), BufferFull>
         return writer.writeUtf8(self@follow)
 
+#Lang("F32Format")
 internal group F32Format
     /// Writes the shortest round-trip text of the binary32 value, formatted from its IEEE 754 encoding (SPEC 13.5.4)
     /// into a local array.
@@ -594,6 +599,7 @@ internal group F32Format
         let count = Storage.formatFloat((self@follow@bits<u32>)@u64, narrow: true, destination: bytes@uniq)
         return writer.writeUtf8(Text.Utf8Slice.init(bytes.slice(..count)))
 
+#Lang("F64Format")
 internal group F64Format
     /// Writes the shortest round-trip text of the binary64 value, formatted from its IEEE 754 encoding (SPEC 13.5.4)
     /// into a local array.
@@ -604,6 +610,7 @@ internal group F64Format
         let count = Storage.formatFloat(self@follow@bits<u64>, narrow: false, destination: bytes@uniq)
         return writer.writeUtf8(Text.Utf8Slice.init(bytes.slice(..count)))
 
+#Lang("WrappingFormat")
 internal group WrappingFormat
     /// Writes the wrapping integer as its argument (SPEC 3.1.1): its bits read as `I` (SPEC 13.5.4), written as that
     /// integer, as FromEnd writes its offset.
@@ -614,6 +621,7 @@ internal group WrappingFormat
         let value = self@follow@I
         return writer.write(value)
 
+#Lang("IntegerFormat")
 internal group IntegerFormat
     /// Writes the integer in ASCII decimal, `-` only before a negative value (SPEC 22.10.2): its digits produced into a
     /// local array from the end, then written once at their exact length (SPEC 22.10.5). The comparison and conversions
