@@ -14,8 +14,8 @@ public class NormalizedConstraintProofBindingTest
         "contract K\n    associate X\n    Self.(K).X is i32\n";
 
     // R7-C2e2-1's valid twins: `Moved`, a projection's body use, whose fill writes its scope's premises between requests (the view's
-    // entry is rebuilt at the new serial); `Derived`, readings from a derived identity fact, which are not kept (the entry stays the
-    // request's).
+    // entry is rebuilt at the new serial); `Derived`, a view whose identity table a derived identity fact keeps Provisional (`T is K`
+    // supplies `T.(K).X is i32`): its class keys are not final, so the entry stays the request's.
     private const string Moved = "func twice<T>(value: T.(Tree).Child) -> (T.(Tree).Child, T.(Tree).Child)\n    T is CopyTree\n" +
         "    let x: T.(Tree).Child = value\n    let y = (x, x)\n    return (x, x)\n";
 
@@ -46,8 +46,9 @@ public class NormalizedConstraintProofBindingTest
         }
     }
 
-    // DECISIONS R7-C2e2-1: an entry is its view's at the serial it was formed at (Moved), and Kept only when every reading it formed was
-    // kept (Derived). Each with its invalid twin: `T is Tree` supplies no Copy.
+    // DECISIONS R7-C2e2-1: an entry is its view's at the serial it was formed at (Moved), and Kept only when its class keys are final
+    // (Derived: a Provisional identity table; the readings' admission is x1's count row below). Each with its invalid twin: `T is Tree`
+    // supplies no Copy.
     [Theory]
     [InlineData(Moved, "clean")]
     [InlineData(Derived, "clean")]

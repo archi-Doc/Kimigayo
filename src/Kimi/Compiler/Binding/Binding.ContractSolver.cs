@@ -80,7 +80,9 @@
 // ResetCapabilities) and spares a later outermost request its preparation; its readings are read only in KeptRegion, so outside it
 // an outermost request forms its own (R7-M20) and the entry again. A nested demand reads an entry's written facts and their keys
 // alone (the leaf rule), so it reads any entry. Retained memory is the pool's high water: an entry keeps the largest buckets and
-// lists any view gave it, flat across warm rebinds. Temporary: the readings go when R7-C2c2 c2-4 removes Reading's binding completion.
+// lists any view gave it, flat across warm rebinds. Temporary: the readings go when R7-C2c2 c2-4 removes Reading's binding completion;
+// a view whose identity table is not Final (a derived identity fact, W6) has its entry formed per request, c2-1's lifetime, until
+// R7-C2e2's part 3 carries Completion.
 //
 // Kept rows (DECISIONS R7-C2a1, the owner's O-206 (a)). Temporary: R7-C2e2's part 3 joins a view's rows to Closure(view) and deletes
 // enumerateKept, its pool, KeepRows and the kept region's part of PremiseRefines.
