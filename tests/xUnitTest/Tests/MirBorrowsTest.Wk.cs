@@ -375,6 +375,24 @@ public sealed partial class MirBorrowsTest
             WkForm("makeRawOk", "<T>() -> ()\n    T is MakeW\n", WkRawMake + "consume(t@move)\ny = 5") +
             WkForm("fillRawBad", "<T>(x: T) -> ()\n    T is MakeW\n", WkRawFill("fillRaw") + "y = 5\nconsume(t@move)") +
             WkForm("fillBareLate", "<T>(x: T) -> ()\n", WkRawFill("fillBare") + "y = 5\nconsume(t@move)"),
+        ["rawDepth"] = "contract Inner\n    associate F\n    Self.(Inner).F is Callable<(raw/u8) -> Self>\n    func get(self: ref/Self) -> ref/Self.(Inner).F\n" +
+            "contract Inner0\n    associate F\n    func get(self: ref/Self) -> ref/Self.(Inner0).F\n" +
+            "contract Outer\n    associate Next is Inner\n    func deep(self: ref/Self) -> ref/Self.(Outer).Next.(Inner).F\n" +
+            "contract Outer0\n    associate Next is Inner0\ncontract Mid\n    associate Next is Inner\ncontract Outer3\n    associate Next is Mid\n" +
+            "contract Mk\n    associate Next is Mk\n    associate F\n    Self.(Mk).F is Callable<(raw/u8) -> Self>\n    func next(self: ref/Self) -> ref/Self.(Mk).Next\n" +
+            "contract Mk0\n    associate Next is Mk0\n    func next(self: ref/Self) -> ref/Self.(Mk0).Next\n" +
+            WkDepth("r", "<T>", "T.(Mk).Next.(Mk).Next", "T is Mk") + WkDepth("rBare", "<T>", "T.(Mk0).Next.(Mk0).Next", "T is Mk0") +
+            WkDepth("d1", "<T>", "T", "T is Inner") + WkDepth("h3", "<T>", "T.(Outer).Next", "T is Outer") +
+            WkDepth("h3s", "<T>", "T.(Outer).Next", "T is Outer", ", z: ref/T.(Outer).Next.(Inner).F", ", z") +
+            WkDepth("h4", "<T>", "T.(Outer).Next", "T is Outer", ", src: ref/T", ", src", "let g = src.deep()\ndst@follow = g(p)") +
+            WkDepth("d3", "<T>", "T.(Outer3).Next.(Mid).Next", "T is Outer3") +
+            WkForm("filli3", "<T, U>(dst: uniq/U, p: raw/u8)\n    T is Outer\n    U is T.(Outer).Next\n", "return") +
+            WkForm("filli3o", "<T, U>(dst: uniq/U, p: raw/u8)\n    U is T.(Outer).Next\n    T is Outer\n", "return") +
+            WkForm("filli4", "<T, U>(dst: uniq/U, p: raw/u8, src: ref/T)\n    T is Outer\n    U is T.(Outer).Next\n", "let g = src.deep()\ndst@follow = g(p)") +
+            WkForm("i3Bad", "<T>(x: T.(Outer).Next) -> ()\n    T is Outer\n", WkRawFill("filli3<T, T.(Outer).Next>") + "y = 5\nconsume(t@move)") +
+            WkForm("i3oBad", "<T>(x: T.(Outer).Next) -> ()\n    T is Outer\n", WkRawFill("filli3o<T, T.(Outer).Next>") + "y = 5\nconsume(t@move)") +
+            WkForm("i4Bad", "<T>(x: T.(Outer).Next, src: ref/T) -> ()\n    T is Outer\n", WkRawFill("filli4<T, T.(Outer).Next>", "u8", ", src") + "y = 5\nconsume(t@move)") +
+            WkDepth("h3Bare", "<T>", "T.(Outer0).Next", "T is Outer0"),
         ["rawCast"] = "func usep(p: raw/u8) => ()\n" + WkCastHolder("S8", "u8") + WkCastHolder("S32", "i32") +
             WkCastTwins("cast8", "S8", "u8", "raw/i32", "p@raw/u8") + WkCastTwins("same8", "S8", "u8", "raw/u8", "p") +
             WkCastTwins("cast32", "S32", "i32", "raw/i32", "p@raw/u8") + WkCastTwins("same32", "S32", "i32", "raw/u8", "p"),
@@ -555,6 +573,10 @@ public sealed partial class MirBorrowsTest
     // belongs to would; 5.4: a raw cast keeps the address; DECISIONS BU-66, R4's P2): cast8 and cast32 store `p: raw/i32` as a `raw/u8`
     // into `s.q`, as same8 and same32 store a `raw/u8`. Fails on dev and fd7058a42 (R4's probe): cast8Bad and cast32Bad valid.
     [InlineData("rawCast", "cast32Bad: y = 5 1|cast8Bad: y = 5 1|same32Bad: y = 5 1|same8Bad: y = 5 1")]
+    // R7-C2c2 c2-3c (SPEC 8.3.2, 8.2.3): a Callable clause at any depth is a callable the premises hand, whatever the signature spells, by
+    // the rows of the Types the contract reaches (its signature's and its handed signatures'), behind an identity in either premise order;
+    // the bare twins are handed nothing with a raw input. Fails on 570e37947 (c2-3b): d3Bad, h3Bad, h4Bad, i3Bad, i3oBad and i4Bad valid.
+    [InlineData("rawDepth", "d1Bad: y = 5 1|d3Bad: y = 5 1|h3Bad: y = 5 1|h3sBad: y = 5 1|h4Bad: y = 5 1|i3Bad: y = 5 1|i3oBad: y = 5 1|i4Bad: y = 5 1|rBad: y = 5 1")]
     public void ACallableTheContractHandsTheBodyLetsAnAbstractTypeHoldTheArgument(string row, string expected)
         => Assert.Equal(WkExpected(expected), WkRecords(row));
 
@@ -606,6 +628,12 @@ public sealed partial class MirBorrowsTest
                 $"var z: {anchor} = 0\nvar y: i32 = 1\nlet w = y@ref\nlet bw = w@ref\nvar s = {holder}.init(z@ref)\n{name}(s@uniq, bw@follow@raw@{pointer})",
                 "usep(s.q)",
                 "y = 5");
+
+    // A depth row's pair (R7-C2c2 c2-3c): fill{name} under `premises` takes `dst: uniq/{target}` and `p: raw/u8` (and `more`), with
+    // `body`; {name}Bad moves an x of that Type into t, fills it from a raw pointer to `w`, which refers to `y`, writes `y = 5`, then uses t.
+    private static string WkDepth(string name, string parameters, string target, string premises, string more = "", string pass = "", string body = "return")
+        => WkForm($"fill{name}", $"{parameters}(dst: uniq/{target}, p: raw/u8{more})\n    {premises}\n", body) +
+            WkForm($"{name}Bad", $"{parameters}(x: {target}{more}) -> ()\n    {premises}\n", WkRawFill($"fill{name}{parameters}", "u8", pass) + "y = 5\nconsume(t@move)");
 
     private static string WkRawFill(string callee, string pointee = "u8", string more = "")
         => $"var t = x@move\nvar y: i32 = 1\nvar w: ref/i32 = y@ref\n{callee}(t@uniq, w@raw@raw/{pointee}{more})\n";

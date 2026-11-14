@@ -6,10 +6,10 @@
 // predicate: ProveConformance, SymbolicCapability, and the declaration queries of a parameter's indexing, iteration and arithmetic),
 // the first walk's rows (FirstRows, R7-C2c2 c2-3b: a value call's Callable Constraints, TryCallable and SelectValueCall; the bounds
 // of a Callable premise and of a requirement call, AvailableCallableEffects and AvailableEffectBounds; SPEC 8.10's row for a
-// Callable atom, PremiseCallable, which Supply reads) and, over them, the candidate readers' rows (PremiseRows: name discovery,
-// R7-C2c2 c2-3a); until C3 the eager derivation too
-// (ExpandContractPremises, ExpandScopeContractPremises, AddContractPremises over a Contract premise's supply, ContractSupply, which
-// retention's handed signatures read too) and the availability of a fact (AvailableConstraintFact).
+// Callable atom, PremiseCallable, which Supply reads; the callables a contract hands its body, retention's HandedSignatures, R7-C2c2
+// c2-3c) and, over them, the candidate readers' rows (PremiseRows: name discovery, R7-C2c2 c2-3a); until C3 the eager derivation
+// too (ExpandContractPremises, ExpandScopeContractPremises, AddContractPremises over a Contract premise's supply, ContractSupply)
+// and the availability of a fact (AvailableConstraintFact).
 // - Inputs: the view's scope chain (ConstraintEnvironments), derived facts' source Contracts, published source states (BU-59).
 // - Outputs: Evidence (Positive, Negative; Invalid, temporary until C3: the chain's Invalid environment, the cause it names);
 //   Enumerate's rows, the least set of Contracts `subject is R` closed under: (1) a direct Contract fact of the view stating
@@ -690,7 +690,7 @@ public sealed partial class Binding
     // `self` and the shape make it (InstantiatedContract: the declaration's Self is `self`, the shape's arguments keep theirs; G180), each
     // first as itself (Premise null: its own facts, an ancestor's `self is A` and the arithmetic premises, AddContractPremises'), then each
     // of its clause constraints that depends on the Contract's Self (DependentConstraint) as `self`, `scope` and that reference make it
-    // (ContractConstraint, not normalized), evaluated when reached. Read by AddContractPremises and by retention's HandedContract.
+    // (ContractConstraint, not normalized), evaluated when reached. Read by AddContractPremises and Enumerate's walk.
     private ref struct ContractSupply(Binding binding, BoundContract shape, BoundType self, BindingScope scope)
     {
         private int ancestor = -1;

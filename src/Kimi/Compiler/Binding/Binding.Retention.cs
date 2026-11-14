@@ -53,10 +53,11 @@ public sealed partial class Binding
     // erased callee, RetainsErased, at any part); the hold walk reads them (HoldsRaw). Reused.
     private readonly List<BoundType?> retentionFills = new();
 
-    // The (subject, Contract) premises whose requirement signatures HandedSignatures has listed, and the Types the contract's own Types
-    // reach (Reach), reused.
+    // The (subject, Contract) premises whose requirement signatures HandedSignatures has listed, and the Types the contract reaches
+    // (Reach), as a set and in the order reached (the walk's list: the signature's first), reused.
     private readonly HashSet<(BoundType Subject, BindingSymbol Contract)> retentionContracts = new();
     private readonly HashSet<BoundType> retentionReached = new(ReferenceEqualityComparer.Instance);
+    private readonly List<BoundType> retentionWalk = new();
 
     // The inputs (and declaring Type) of the contract or erased signature being walked, whose borrows a raw layer's Origin belongs to
     // (RawContent), reused, and how many of them are a callee's own signature inputs (none for an erased signature, a Function Type's or
@@ -143,23 +144,28 @@ public sealed partial class Binding
         }
     }
 
-    // SPEC 8.10, 8.4, 15.6.4 (β′; DECISIONS R4-M52, R4-M154): the callables the premises at `use` hand its body, in its constraint scope and
-    // those enclosing it, each one erased callable: each Callable bound's signature, and each requirement signature of each Contract premise
-    // on its subject (TyCtxt.RequirementSignatures, a refinement's inherited requirements included), then of the Contract premises its
-    // supply states on the subject's associated Types (ContractSupply, as a requirement call's resolution adds them, AddContractPremises)
-    // that the contract's own Types reach (`signature`, its declared inputs and result: a projection
-    // occurring in them or its base; a recursive clause, `associate Child is Branch`, grows no further), each (subject, Contract) once;
-    // whether each substitutes (false: CallRetention.Limit).
+    // SPEC 8.10, 8.4, 15.6.4 (β′; DECISIONS R4-M52, R4-M154): the callables the premises at `use` hand its body, each one erased callable:
+    // in its constraint scope and those enclosing it, each available Callable fact's signature and each requirement signature of each
+    // available Contract fact on its subject (TyCtxt.RequirementSignatures, a refinement's inherited requirements included), any
+    // subject; then, by the premises' rows (FirstRows; R7-C2c2 c2-3c), of each Type the contract reaches: each available Contract row's
+    // requirement signatures there and each available Callable row's signature (SPEC 8.3.2: a clause at every depth, through
+    // identities, in any premise order: the rows' contract; a row of a written fact is the fact's, listed above). The contract reaches
+    // its own Types (`signature`, its declared inputs and result) and those of each signature it hands, each component at any depth
+    // (Reach): a body holds a value of a Type only from them. A Type reached only through a handed signature whose projection chain
+    // repeats an associated declaration (Recurs: `associate Next is Mk`) is not walked: its rows are those of its first occurrence,
+    // Self one link deeper, so the walk is finite. Each (subject, Contract) once; whether each substitutes (false: CallRetention.Limit).
     internal bool HandedSignatures(Koto use, ReadOnlySpan<BoundType> signature, List<ErasedSignature> handed)
     {
         handed.Clear();
         this.retentionContracts.Clear();
         this.retentionReached.Clear();
+        this.retentionWalk.Clear();
         foreach (var type in signature)
         {
             this.Reach(type);
         }
 
+        var own = this.retentionWalk.Count;
         var scope = this.ConstraintScope(use);
         for (var current = scope; current is not null; current = current.Parent)
         {
@@ -172,13 +178,46 @@ public sealed partial class Binding
             {
                 if (fact.Kind == ConstraintKind.Callable && this.AvailableConstraintFact(constraints, fact, out _))
                 {
-                    handed.Add(new(fact.RequiredType!, FunctionTypeBinder(fact.RequiredType!)));
+                    this.Hand(fact.RequiredType!, handed);
                 }
                 else if (fact is { Kind: ConstraintKind.Contract, Subject: { } subject, Contract: { } contract } &&
-                    this.AvailableConstraintFact(constraints, fact, out _) && !this.HandedContract(subject, contract, scope, handed))
+                    this.AvailableConstraintFact(constraints, fact, out _) && !this.HandedContract(subject, contract, handed))
                 {
                     return false;
                 }
+            }
+        }
+
+        for (var i = 0; i < this.retentionWalk.Count; i++)
+        {
+            var type = this.retentionWalk[i];
+            if (!type.ContainsParameter || (i >= own && Recurs(type)))
+            {
+                continue; // A Type rooted in no parameter has no row (a closed proposition is never a premise).
+            }
+
+            var start = this.premiseRows.Count;
+            this.FirstRows(type, scope, this.premiseRows);
+            var end = this.premiseRows.Count; // A nested request's range is above it and gone when the request returns.
+            try
+            {
+                for (var r = start; r < end; r++)
+                {
+                    var row = this.premiseRows[r];
+                    if (row is { Available: true, Symbol: { } contract } && !this.HandedContract(type, contract, handed))
+                    {
+                        return false;
+                    }
+
+                    if (row is { Available: true, Raw: null, Clause: { Kind: ConstraintKind.Callable, RequiredType: { } callable } })
+                    {
+                        this.Hand(callable, handed);
+                    }
+                }
+            }
+            finally
+            {
+                this.premiseRows.RemoveRange(start, this.premiseRows.Count - start);
             }
         }
 
@@ -191,35 +230,51 @@ public sealed partial class Binding
         => atom.Carrier is not null || (atom.Origin is { Kind: not OriginKind.Static } origin &&
             !(origin.Kind is OriginKind.Input or OriginKind.Parameter && binder is not null && ReferenceEquals(origin.Binder, binder)));
 
-    // A Contract premise's requirement signatures (HandedSignatures), then those of the Contract premises its supply states on its subject's
-    // associated Types that the contract's own Types reach (ContractSupply); whether each substitutes.
-    private bool HandedContract(BoundType subject, BindingSymbol contract, BindingScope scope, List<ErasedSignature> handed)
+    // Whether a projection's chain repeats an associated declaration (HandedSignatures' bound on the Types it walks).
+    private static bool Recurs(BoundType type)
     {
-        if (contract.Contract is not { } shape || !this.retentionContracts.Add((subject, contract)))
+        for (var link = type; link.Kind == BoundTypeKind.AssociatedProjection; link = link.Components[0])
+        {
+            for (var below = link.Components[0]; below.Kind == BoundTypeKind.AssociatedProjection; below = below.Components[0])
+            {
+                if (ReferenceEquals(below.Symbol, link.Symbol))
+                {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    // A Contract premise's requirement signatures on its subject (HandedSignatures), once per (subject, Contract), each reached;
+    // whether each substitutes.
+    private bool HandedContract(BoundType subject, BindingSymbol contract, List<ErasedSignature> handed)
+    {
+        if (contract.Contract is null || !this.retentionContracts.Add((subject, contract)))
         {
             return true;
         }
 
+        var start = handed.Count;
         if (!this.types.RequirementSignatures(subject, contract, handed))
         {
             return false;
         }
 
-        foreach (var (_, _, premise) in new ContractSupply(this, shape, subject, scope))
+        for (var i = start; i < handed.Count; i++)
         {
-            if (premise is not { Kind: ConstraintKind.Contract, Subject: { } associated, Contract: { } required })
-            {
-                continue;
-            }
-
-            var reached = ReferenceEquals(associated, subject) || this.retentionReached.Contains(associated);
-            if (reached && !this.HandedContract(associated, required, scope, handed))
-            {
-                return false;
-            }
+            this.Reach(handed[i].Signature);
         }
 
         return true;
+    }
+
+    // A Callable premise's signature (HandedSignatures), reached.
+    private void Hand(BoundType callable, List<ErasedSignature> handed)
+    {
+        handed.Add(new(callable, FunctionTypeBinder(callable)));
+        this.Reach(callable);
     }
 
     // Begins a retention computation at `use`: resets the per-computation fields, registers each input's atoms and the result's atoms,
@@ -403,11 +458,13 @@ public sealed partial class Binding
         }
     }
 
-    // The Types a contract's Type reaches, each component at any depth (a projection's base among them), into retentionReached.
+    // The Types a contract's Type reaches, each component at any depth (a projection's base among them), into retentionReached and the
+    // walk's list (HandedSignatures).
     private void Reach(BoundType type)
     {
         if (this.retentionReached.Add(type))
         {
+            this.retentionWalk.Add(type);
             for (var i = 0; i < type.Components.Count; i++)
             {
                 var component = type.Components[i];
