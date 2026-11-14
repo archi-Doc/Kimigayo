@@ -151,6 +151,11 @@ internal sealed partial class TyCtxt
     internal Subst Synthesized(BindingSymbol requirement, BoundType self, BoundType reference)
         => this.Intern(requirement, self, ReferenceEquals(reference.Symbol?.Type, reference) ? null : reference, [], [], [], []);
 
+    // SPEC 4.4.1, 8.1.3: a length in the instance a substitution makes, Binding.InstanceLength, the one statement of an instance's length
+    // (Compose's lengths), which a default's copy and code generation's Length constant read (MirBuilder.Inline, InstanceCollector.LengthOf);
+    // the identity keeps it; null where the substitution does not complete it.
+    internal BoundLength? InstanceLength(BoundLength length, Subst subst) => subst.IsIdentity ? length : binding.InstanceLength(length, subst);
+
     // SPEC 8.1.3, 8.15.1: a declared Type in the instance a substitution makes whose storage is Prepared (Instance); null otherwise.
     internal BoundType? Apply(BoundType type, Subst subst) => this.Instance(type, subst) is ({ } instance, Binding.StorageOutcome.Prepared) ? instance : null;
 

@@ -1,6 +1,5 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
-using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using Kimi.Compiler.Lexing;
 using Kimi.Compiler.Parsing;
@@ -94,7 +93,7 @@ public static partial class Parser
         {
             malformed = ParseForTupleBindings(ref reader, bindings, ref mutableSlots);
         }
-        else if (TryParseForBinding(ref reader, out var binding, out var mutable))
+        else if (ParseForSlot(ref reader, out var mutable) is { } binding)
         {
             bindings.Add(binding);
             mutableSlots = mutable ? [true] : null;
@@ -145,7 +144,7 @@ public static partial class Parser
                 // An empty list, a trailing comma or a list cut short: a ForBinding needs a slot here (SPEC F.10).
                 malformed ??= reader.Expect(SyntaxForm.Name);
             }
-            else if (TryParseForBinding(ref reader, out var binding, out var mutable))
+            else if (ParseForSlot(ref reader, out var mutable) is { } binding)
             {
                 if (mutable)
                 {
@@ -187,9 +186,10 @@ public static partial class Parser
         }
     }
 
-    // SPEC 14.6.1: ForSlot := Name | "var" Name | "_"; a bare Name is an immutable let binding.
+    // SPEC 14.6.1, F.10.2: ForSlot := Name | "var" Name | "_"; a bare Name is an immutable let binding. Returns the slot's Name, or
+    // null where no slot stands (nothing is reported for it; a "var" before it is consumed); mutable is whether "var" was written.
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static bool TryParseForBinding(ref TokenReader reader, [NotNullWhen(true)] out IdentifierNameKoto? binding, out bool mutable)
+    private static IdentifierNameKoto? ParseForSlot(ref TokenReader reader, out bool mutable)
     {
         mutable = false;
         if (reader.CurrentTokenKind == TokenKind.Var)
@@ -204,19 +204,17 @@ public static partial class Parser
 
         if (reader.CurrentTokenKind == TokenKind.Underscore)
         {
-            binding = new IdentifierNameKoto(ref reader, reader.Read(), "_");
-            return true;
+            return new IdentifierNameKoto(ref reader, reader.Read(), "_");
         }
 
         if (reader.CurrentTokenKind == TokenKind.In ||
             !reader.CurrentTokenKind.IsIdentifierOrContextualKeyword())
         {
-            binding = default;
-            return false;
+            return null;
         }
 
         var token = reader.Read();
-        return IdentifierNameKoto.TryCreate(ref reader, token, out binding);
+        return IdentifierNameKoto.TryCreate(ref reader, token, out var slot) ? slot : null;
     }
 
     private static MatchKoto ParseMatchExpression(ref TokenReader reader)
