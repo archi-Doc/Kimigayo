@@ -124,9 +124,10 @@
 //   availability read it made was Complete (W6, W8). Nested demands never read or fill the rows.
 // - Not pinned by a row (located invariants; R7-C2e2 e2-3a's implementation review, mutations `admit`: rows kept whatever the
 //   walk's Completion, and `w8`: an Unknown read Complete): the admission (PremiseRefines' test of enumerateCompletion) and W8's
-//   Provisional for a Pending state (ReadSourceState) decide only what is kept, and a row kept from a walk that read a Pending
-//   source can differ from a fresh walk only inside the publication round that settles the source: outside a round a Pending
-//   state stays as it is until the next publication's start, which forgets the row. Inside a round the difference exists (under
+//   Provisional for a Pending state (ReadSourceState) decide only what is kept, and only a walk inside a publication round can
+//   keep a row that differs from a fresh walk's: outside a round a Pending state stays as it is until the next publication's
+//   start, which forgets the row. Such a row is stale from the source's settling until that start: in the rest of its round,
+//   in the later rounds and in the checks that follow the rounds. The difference exists (under
 //   `admit`, ClosedConformancePrerequisiteBindingTest's cap10 with X before R answers `T is Copy` from the stale rows after R
 //   settled; n3b likewise in both orders), but no record moves: Supply's one-level eager derivation answers the same proposition. That
 //   derivation goes at C3, and from then on the admission alone keeps such rows out. Under `w8` no admission changes: a walk
