@@ -2514,6 +2514,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
   - Amended by R4-M200 (PLAN G793, 2026-11-12): D3's slot-rooted Loan is `DefaultArgumentBorrow_Kd` only where its tier is decided,
     recorded after the replay; D4 (2) takes an exclusive Loan that R26-borrow did not decide; any other Loan found is the located
     `Unsupported_Kd` (R4-M198's undecided class).
+  - Superseded in part by R4-M203 (the A5 value redesign U9, 2026-11-14): D3's record is at each storing operation and at the site
+    the result keeps; D4 (2) takes an exclusive Loan that R26-borrow does not report at its site.
 - **R4-M99 Closure calls follow the receiver rules** (integrated by R4-M123 with the owner's D1, D2 and F3) (owner, 2026-10-21, on the
   proposal written at the owner's instruction 「候補1（クロージャを受け手つき呼び出しとして定義）と候補3（派生失敗の定義）を、2c-D・2g-D の前に判断できるよう draft/Proposals
   に提案書として書いてください。」; answers OQ-C1 (a) and OQ-C2 (a)) The proposal is `draft/Changes/2026-10-21 Closure Calls as Receiver Calls.md`.
@@ -6344,6 +6346,25 @@ and migration obligations remain in force; no numeric cap changes are authorized
     a CLI `check` allocates +0.76 to +0.81% on the 44 milestone programs; the `Purpose=Allocation` tests are unchanged.
   - Rejected: an IMPL A.4 scopes-per-body limit (a Resource record; it would refuse valid programs at a bound three orders below the
     other body tables); both the limit and the wider index.
+- **R4-M203 R26-borrow records each storing operation and the site the result keeps (the A5 value redesign U9)** (2026-11-14;
+  Middle, A5; Major, records only; the owner's O-254 Q2 (a) and O-274 (a), SPEC 7.2.3 as clarified; design review 4 and its
+  re-review ACCEPT WITH NOTES, implementation review ACCEPT WITH NOTES). Supersedes in part R4-M98 (D3) and (D4 (2)).
+  - Rule: the verdict is unchanged (the Returns' gather). R26-borrow's records are one at each operation that stores the Loan in
+    storage the body does not own (a write, a call or a destruction; the checks replay's entries at E) and one at the Loan's site
+    wherever the default's result keeps the Loan (its own value at a Return) or no such store places it, both when both hold (the
+    Middle's decision under Q13 on design review 4's B7; SPEC 23.1.2); a store that rests (Φ_U, Φ_M) places none.
+  - (D4 (2)): an exclusive slot-rooted Loan has R26-access's record at its site also where R26-borrow reports the Loan only at
+    stores, so "that R26-borrow did not decide" becomes "that R26-borrow does not report at that site"; the component contract's
+    "the same Loan under both codes" becomes "... at one subject".
+  - The reason that no longer holds: R4-M98 placed every R26 record at the Loan's site, where two codes named one failure; 7.2.3 as
+    clarified puts the store's error at the store, so the exclusive Borrow and the kept Loan are two operations.
+  - No new requirement entry: `Ownership.DefaultArgumentBorrow` and the code's Message are reworded to cover a store (DIAGNOSTICS §2
+    rule 2; the re-review's N22).
+  - Limits: a store whose set rests beside the Loan records only the site, as dev does (restBeside, restStoreOnly; PLAN G599 (b));
+    the gather also reads Returns reached only over check edges (PLAN G874).
+  - Rejected: a second gather to place the record (the replay's entries at E already name the operation); the site record only where
+    no store exists (B7: it loses the result's failure); the result's fact by the closure from the result's holder (it finds what a
+    store put in storage the body does not own: twoLoansBad); a requirement `DefaultArgumentStore` (N22).
 - **Owner decisions, only when triggered:** O1 a MIR vocabulary member or `IntrinsicId`; O2 a total cap above 142,000;
   O3 an acceptance change outside plan Appendix B (C1–C6 and X1–X3 with a SPEC clause; T1–T4 belong to R7), any rejection
   of a milestone or library program, or a row reopening a SETTLED entry; O4 a general SPEC rule left Unsupported at the R4
