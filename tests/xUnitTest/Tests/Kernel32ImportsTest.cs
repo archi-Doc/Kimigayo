@@ -44,8 +44,7 @@ public sealed class Kernel32ImportsTest
         }
     }
 
-    // PLAN G137: every runtime template, the formatting runtime's included, splices each shared ABI definition at exactly one
-    // marker and keeps no unexpanded marker; a broken template fails closed. Every `{{` opens a marker (G358), so `{{{` fails.
+    // PLAN G137: every runtime template splices each shared ABI definition at exactly one marker and keeps no unexpanded marker; a broken template fails closed. Every `{{` opens a marker (G358), so `{{{` fails.
     [Theory]
     [InlineData("; no marker\n")]
     [InlineData("{{__kimi_exit}}\n{{__kimi_exit}}\n")]
@@ -69,9 +68,8 @@ public sealed class Kernel32ImportsTest
     public void RuntimeTemplateSplicesEachDefinitionOnce(string template, string body)
         => Assert.Equal(RuntimeAbi.Exit.GetDefinition(exported: false) + body, LlvmModuleText.ExpandRuntime(template, [RuntimeAbi.Exit]));
 
-    // PLAN G371: what the runtime templates read without a marker. A buffer's string takes its release kind as `zext i1 %heap to i8`
-    // (__kimi_buffer_into_string, __kimi_format_take_string), so Static is false's 0 and Heap true's 1; the zero-sized buffer lies below
-    // the unmapped bound, so __kimi_free never releases it.
+    // PLAN G371: what is read without a marker. HeapBuffer.intoString (Formatting.kimi) gives its string the release kind 0 or 1 as a
+    // literal, so Static is 0 and Heap 1; the zero-sized buffer lies below the unmapped bound, so __kimi_free never releases it.
     [Fact]
     public void TheRuntimeTemplatesUnmarkedFactsHold()
     {
@@ -125,9 +123,9 @@ public sealed class Kernel32ImportsTest
     }
 
     // PLAN G358, G371: a process's first code generation builds its runtime texts once, the test runtime's among them, each read,
-    // expanded in one scan and kept: about 10 bytes per char of the texts (1,768,896 B for 178,644 chars on .NET 10, R8-S1e). The bound, 11
-    // bytes per char, admits no further whole copy of the formatting runtime (77% of the chars); the per-marker whole-text copies G358
-    // removed cost 51 bytes per char.
+    // expanded in one scan and kept: about 10 bytes per char of the texts (1,768,896 B for 178,644 chars on .NET 10, R8-S1e, the deleted
+    // formatting runtime then included). The bound is 11 bytes per char; the per-marker whole-text copies G358 removed cost 51 bytes per
+    // char.
     [Trait("Purpose", "Allocation")]
     [Fact]
     public Task AFreshProcessBuildsTheRuntimeTextsOnce()
@@ -141,17 +139,14 @@ public sealed class Kernel32ImportsTest
     {
         RuntimeHelpers.RunClassConstructor(typeof(RuntimeAbi).TypeHandle);
         RuntimeHelpers.RunClassConstructor(typeof(AbortReasons).TypeHandle);
-        RuntimeHelpers.RunClassConstructor(typeof(LegacyRuntimeHelpers).TypeHandle);
         var allocated = AllocationMeasurement.MeasureOnce(static () =>
         {
             LlvmModuleText.WriteRuntime(TextWriter.Null, null);
-            LegacyRuntimeHelpers.WriteFormattingRuntime(TextWriter.Null);
             LlvmModuleText.WriteRuntime(TextWriter.Null, TestRuntime.Text);
         });
         var texts = new StringWriter();
         LlvmModuleText.WriteRuntime(texts, null);
         LlvmModuleText.WriteRuntime(texts, TestRuntime.Text);
-        LegacyRuntimeHelpers.WriteFormattingRuntime(texts);
         texts.Write(LlvmModuleText.TryAllocate + LlvmModuleText.TransferBytes);
         var chars = texts.GetStringBuilder().Length;
         Assert.True(allocated <= 11L * chars, $"runtime texts allocation {allocated} for {chars} chars");
