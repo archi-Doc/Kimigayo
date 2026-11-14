@@ -60,9 +60,7 @@ public sealed partial class Binding
 
             // SPEC 15.3.7, 15.6.1, the owner's (a): a whole-contract comparison; each of its proofs, its solve's too, assumes the own
             // well-formedness of the requirement as substituted (Self, the Type's arguments), as 10.7's does (ContractFits).
-            var demandedInputs = count == 0 ? BoundType.Unit : this.types.Tuple(demanded.AsSpan(0, count));
-            var signature = this.types.Intern(BoundTypeKind.Function, null, SemanticsKind.Owner, [demandedInputs, expected ?? BoundType.Unit]);
-            var comparison = new CallableInstance(null, null, signature, requirement.Binder, null) { Scope = scope };
+            var comparison = this.RequirementComparison(demanded.AsSpan(0, count), expected, requirement.Binder, scope);
             inference.Comparison = comparison;
 
             // The comparison is formed before any of its judgments, the bounds its solve collects included (PLAN G801).
@@ -141,6 +139,17 @@ public sealed partial class Binding
             substituted = this.SubstituteStoredOrigins(substituted, implementation.Binder, origins.AsSpan(0, implementation.OriginCount), inputs.AsSpan(0, InputOriginCount(implementation.Binder)), requirement.Binder);
             return this.ContractType(substituted, scope, self);
         }
+    }
+
+    // SPEC 8.8.2, 15.3.7: the whole-contract comparison of one requirement as substituted, its required inputs `inputs` and result
+    // `result`, judged in the conformance scope `scope` of D, P and the requirement's premises, which gives its relations their
+    // premises and its pair binders their admitted sets (Binding.RelationScope; PLAN G801). The one producer of a comparison's scope:
+    // a callable implementation's comparison (CompareCallableContracts) and a stored Field's bridge (MatchPropertyOperation) form theirs here.
+    private CallableInstance RequirementComparison(ReadOnlySpan<BoundType> inputs, BoundType? result, Koto binder, BindingScope scope)
+    {
+        var demanded = inputs.Length == 0 ? BoundType.Unit : this.types.Tuple(inputs);
+        var signature = this.types.Intern(BoundTypeKind.Function, null, SemanticsKind.Owner, [demanded, result ?? BoundType.Unit]);
+        return new(null, null, signature, binder, null) { Scope = scope };
     }
 
     private BoundType? ProjectCallableType(BoundType type, BoundType? declaringType)

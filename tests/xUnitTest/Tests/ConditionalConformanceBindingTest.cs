@@ -251,16 +251,18 @@ public class ConditionalConformanceBindingTest
             $"{implementationClause}        return 0\n"));
 
     // SPEC 8.1.2, 8.8.2 (PLAN G801): a pair layer's outer-Origin slot is active only in the borrow cases the conformance scope admits:
-    // under `when s is owner` the slots' difference is no relation (rejected before G801).
+    // under `when s is owner` the slots' difference is no relation (rejected before G801), inside an `Option` argument too.
     [Theory]
     [InlineData(" when s is owner", "clean")]
     [InlineData("", "1*IncompatibleContractImplementation_Kd")]
-    public void ARequirementsPairSlotIsActiveOnlyInItsConformanceScopesBorrowCases(string condition, string records)
+    [InlineData(" when s is owner", "clean", "Option<", ">")]
+    [InlineData("", "1*IncompatibleContractImplementation_Kd", "Option<", ">")]
+    public void ARequirementsPairSlotIsActiveOnlyInItsConformanceScopesBorrowCases(string condition, string records, string open = "", string close = "")
         => Assert.Equal(records, DiagnosticCorpus.RecordProfile(
             "contract M<P>\n    func put(self: uniq/Self, value: P) -> ()\n" +
-            $"struct H<s/T> {{a, b}}\n    s is owner or ref\n    Self is M<s/i32 during b>{condition}\n" +
-            "    var store: s/i32 during a\n    var other: s/i32 during b\n" +
-            "    public func put(self: uniq/Self, value: s/i32 during a) -> () => self.store = value@move\n"));
+            $"struct H<s/T> {{a, b}}\n    s is owner or ref\n    Self is M<{open}s/i32 during b{close}>{condition}\n" +
+            $"    var store: {open}s/i32 during a{close}\n    var other: s/i32 during b\n" +
+            $"    public func put(self: uniq/Self, value: {open}s/i32 during a{close}) -> () => self.store = value@move\n"));
 
     // SPEC 8.1.2, 8.8.2, 15.6.1, 15.3.7 (PLAN G801): an implementation input's well-formedness needs a pair layer's slot only in the
     // borrow cases the conformance scope admits: under `when s is owner` the input stores no `a`, as the layer itself or as a borrow's
@@ -295,7 +297,10 @@ public class ConditionalConformanceBindingTest
     // SPEC 7.5, 8.3.4, 15.3.5 (PLAN G801): a fit in a conditional member's body reads the admitted set at its use, the member's clauses
     // and an enclosing `when` included: under `s is ref` the longer target fits the stored one, directly or through a local (rejected
     // before G801); without the clause, or under `s is uniq`, the target stays invariant; covariance never reverses the fit (the shorter
-    // target into a stored longer one under `s is ref`).
+    // target into a stored longer one under `s is ref`). The clause's forms narrow alike (`not uniq`, a second clause intersecting
+    // the Type's), and every position of the body reads it: a Closure, a return, a call argument, a generic caller that proves the
+    // clause (one that does not fails only that proof), and a local named function, whose body reads its enclosing member's clauses
+    // as it reads the enclosing `T is Copy` (SPEC 7.5, 8.2.1, 8.15.2; the Middle's C3, F's reading).
     [Theory]
     [InlineData("    public func put(self: uniq/Self, value: V) -> ()\n        s is ref\n        self.store = value@move\n", "clean")]
     [InlineData("    Self is K when s is ref\n        public func touch(self: ref/Self) -> i32\n            return 0\n        public func put(self: uniq/Self, value: V) -> ()\n            self.store = value@move\n", "clean")]
@@ -304,11 +309,194 @@ public class ConditionalConformanceBindingTest
     [InlineData("    public func put(self: uniq/Self, value: V) -> ()\n        s is uniq\n        self.store = value@move\n", "1*UnprovenOriginRelation_Kd")]
     [InlineData("    public func put(self: uniq/Self, value: V) -> ()\n        let held: s/(ref/i32 during a) during a = value@move\n        self.store = held@move\n", "1*UnprovenOriginRelation_Kd")]
     [InlineData("    var other: V\n    public func put(self: uniq/Self, value: s/(ref/i32 during a) during a) -> ()\n        s is ref\n        self.other = value@move\n", "1*UnprovenOriginRelation_Kd")]
+    [InlineData("    public func put(self: uniq/Self, value: V) -> ()\n        s is not uniq\n        self.store = value@move\n", "clean")]
+    [InlineData("    public func put(self: uniq/Self, value: V) -> ()\n        s is not ref\n        self.store = value@move\n", "1*UnprovenOriginRelation_Kd")]
+    [InlineData("    public func put(self: uniq/Self, value: V) -> ()\n        s is ref or owner\n        self.store = value@move\n", "clean")]
+    [InlineData("    public func put(self: uniq/Self, value: V) -> ()\n        s is ref or uniq\n        self.store = value@move\n", "1*UnprovenOriginRelation_Kd")]
+    [InlineData("    public func put(self: uniq/Self, value: V) -> ()\n        s is ref\n        let f = func (v: V) -> s/(ref/i32 during a) during a => v@move\n        self.store = f(value@move)\n", "clean")]
+    [InlineData("    public func put(self: uniq/Self, value: V) -> ()\n        let f = func (v: V) -> s/(ref/i32 during a) during a => v@move\n        self.store = f(value@move)\n", "1*UnprovenOriginRelation_Kd")]
+    [InlineData("    public func conv(self: ref/Self, value: V) -> s/(ref/i32 during a) during a\n        s is ref\n        return value@move\n", "clean")]
+    [InlineData("    public func conv(self: ref/Self, value: V) -> s/(ref/i32 during a) during a\n        return value@move\n", "1*UnprovenOriginRelation_Kd")]
+    [InlineData("    public func take(self: uniq/Self, v: s/(ref/i32 during a) during a) -> () => self.store = v@move\n    public func put(self: uniq/Self, value: V) -> ()\n        s is ref\n        self.take(value@move)\n", "clean")]
+    [InlineData("    public func take(self: uniq/Self, v: s/(ref/i32 during a) during a) -> () => self.store = v@move\n    public func put(self: uniq/Self, value: V) -> ()\n        self.take(value@move)\n", "1*UnprovenOriginRelation_Kd")]
+    [InlineData("    public func put(self: uniq/Self, value: V) -> ()\n        s is ref\n        func conv(v: V) -> s/(ref/i32 during a) during a => v@move\n        self.store = conv(value@move)\n", "clean")]
+    [InlineData("    public func put(self: uniq/Self, value: V) -> ()\n        func conv(v: V) -> s/(ref/i32 during a) during a => v@move\n        self.store = conv(value@move)\n", "1*UnprovenOriginRelation_Kd")]
+    [InlineData("    public func put(self: uniq/Self, value: V) -> ()\n        s is ref\n        self.store = value@move\nfunc g<s/T>(h: uniq/(H<s/T> during b), v: s/(ref/i32 during static) during b) -> ()\n    s is ref\n    h.put(v@move)\n", "clean")]
+    [InlineData("    public func put(self: uniq/Self, value: V) -> ()\n        s is ref\n        self.store = value@move\nfunc g<s/T>(h: uniq/(H<s/T> during b), v: s/(ref/i32 during static) during b) -> ()\n    s is ref or uniq\n    h.put(v@move)\n", "1*UnprovenConstraint_Kd")]
     public void AFitInAConditionalMembersBodyReadsTheAdmittedSetAtItsUse(string member, string records)
         => Assert.Equal(records, DiagnosticCorpus.RecordProfile(
             "contract K\n    func touch(self: ref/Self) -> i32\n" +
             "struct H<s/T> {a}\n    s is ref or uniq\n    var store: s/(ref/i32 during a) during a\n" +
             member.Replace("V", "s/(ref/i32 during static) during a")));
+
+    // SPEC 11.9.1, 11.9.2, 8.8.2, 15.3.5 (PLAN G801, the Middle's C2): a stored Field's `set` bridge is the requirement's comparison
+    // too: the required input fits the Field's Type in the conformance scope, whose Semantics premises give the admitted set. A `when`
+    // (or the struct's own clause) that leaves only `ref` makes the pair layer covariant; `uniq` left admitted keeps its target
+    // invariant (accepted before this row's fix: the bridge compared without the scope); covariance never reverses the fit.
+    [Theory]
+    [InlineData("ref or uniq", " when s is ref", "static", "a", "clean")]
+    [InlineData("ref or uniq", "", "static", "a", "1*IncompatibleContractImplementation_Kd")]
+    [InlineData("ref or uniq", " when s is uniq", "static", "a", "1*IncompatibleContractImplementation_Kd")]
+    [InlineData("ref or uniq", " when s is ref", "a", "static", "1*IncompatibleContractImplementation_Kd")]
+    [InlineData("ref", "", "static", "a", "clean")]
+    [InlineData("ref", "", "a", "static", "1*IncompatibleContractImplementation_Kd")]
+    [InlineData("ref or uniq", "", "a", "a", "clean")]
+    public void AStoredFieldsSetBridgeIsComparedUnderItsConformanceScopesAdmittedSet(string admitted, string condition, string input, string field, string records)
+        => Assert.Equal(records, DiagnosticCorpus.RecordProfile(
+            "contract L<G, P>\n    property item: ref/G\n        get() -> ref/G\n        set(value: P) -> ()\n" +
+            $"struct H<s/T> {{a}}\n    s is {admitted}\n" +
+            $"    Self is L<s/(ref/i32 during {field}) during a, s/(ref/i32 during {input}) during a>{condition}\n" +
+            $"    public var item: s/(ref/i32 during {field}) during a\n"));
+
+    // SPEC 11.9.1, 11.9.2, 8.8.2, 15.2 (PLAN G801, the Middle's C2): the `set` bridge's fit is proven from the conformance scope's
+    // premises: the Type's own `origin b outlives a` lets the required input `during b` fit the Field `during a` (rejected before:
+    // the bridge compared without premises); without it, or with the reverse relation, the fit is unproven.
+    [Theory]
+    [InlineData("    origin b outlives a\n", "b", "clean")]
+    [InlineData("", "b", "1*IncompatibleContractImplementation_Kd")]
+    [InlineData("    origin a outlives b\n", "b", "1*IncompatibleContractImplementation_Kd")]
+    [InlineData("", "static", "clean")]
+    [InlineData("", "a", "clean")]
+    public void AStoredFieldsSetBridgeIsProvenFromItsConformanceScopesPremises(string premise, string input, string records)
+        => Assert.Equal(records, DiagnosticCorpus.RecordProfile(
+            "contract L<G, P>\n    property item: ref/G\n        get() -> ref/G\n        set(value: P) -> ()\n" +
+            $"struct H {{a, b}}\n{premise}    Self is L<ref/i32 during a, ref/i32 during {input}>\n" +
+            "    public var item: ref/i32 during a\n    var other: ref/i32 during b\n"));
+
+    // SPEC 11.9.1, 11.9.2, 8.8.2, 15.3.5 (PLAN G801, the Middle's C2): the Copy bridge compares the Field's Type with the required
+    // result in the same conformance scope: its premises prove the fit (rejected before), and its admitted set decides the pair
+    // layer's variance and Copy; the reverse fit, and a layer whose binder still admits `uniq`, stay rejected.
+    [Theory]
+    [InlineData("struct H {a, b}\n    origin b outlives a\n", "", "ref/i32 during a", "ref/i32 during b", "clean")]
+    [InlineData("struct H {a, b}\n", "", "ref/i32 during a", "ref/i32 during b", "1*IncompatibleContractImplementation_Kd")]
+    [InlineData("struct H {a, b}\n    origin a outlives b\n", "", "ref/i32 during a", "ref/i32 during b", "1*IncompatibleContractImplementation_Kd")]
+    [InlineData("struct H<s/T> {a}\n    s is ref\n", "", "s/(ref/i32 during a) during a", "s/(ref/i32 during static) during a", "clean")]
+    [InlineData("struct H<s/T> {a}\n    s is ref or uniq\n", " when s is ref", "s/(ref/i32 during a) during a", "s/(ref/i32 during static) during a", "clean")]
+    [InlineData("struct H<s/T> {a}\n    s is ref\n", "", "s/(ref/i32 during static) during a", "s/(ref/i32 during a) during a", "1*IncompatibleContractImplementation_Kd")]
+    [InlineData("struct H<s/T> {a}\n    s is ref or uniq\n", "", "s/(ref/i32 during a) during a", "s/(ref/i32 during static) during a", "1*IncompatibleContractImplementation_Kd")]
+    public void AStoredFieldsCopyBridgeIsComparedInItsConformanceScope(string header, string condition, string result, string field, string records)
+        => Assert.Equal(records, DiagnosticCorpus.RecordProfile(
+            "contract R<G>\n    property item: G has get\n" +
+            $"{header}    Self is R<{result}>{condition}\n    public var item: {field}\n    var other: ref/i32 during a\n"));
+
+    // SPEC 8.8.2, 15.3.7, 15.3.5 (PLAN G801): a requirement's result is compared in the same conformance scope, in the result's
+    // direction (the written result fits the required one): covariant under `when s is ref`, invariant without it, never reversed.
+    [Theory]
+    [InlineData(" when s is ref", "a", "static", "clean")]
+    [InlineData("", "a", "static", "1*IncompatibleContractImplementation_Kd")]
+    [InlineData(" when s is ref", "static", "a", "1*IncompatibleContractImplementation_Kd")]
+    public void ARequirementsResultIsComparedUnderItsConformanceScopesAdmittedSet(string condition, string required, string written, string records)
+        => Assert.Equal(records, DiagnosticCorpus.RecordProfile(
+            "contract M<P>\n    func get(self: ref/Self) -> P\n" +
+            $"struct H<s/T> {{a}}\n    s is ref or uniq\n    Self is M<s/(ref/i32 during {required}) during a>{condition}\n" +
+            "    var store: s/(ref/i32 during a) during a\n" +
+            $"    public func get(self: ref/Self) -> s/(ref/i32 during {written}) during a => $abort(\"x\")\n"));
+
+    // SPEC 8.8.2, 15.3.5, 15.3.7 (PLAN G801): a Function Type input reverses the fit under the same admitted set: the written
+    // `f` takes the longer target, which the required `f`'s input fits only while the layer is covariant.
+    [Theory]
+    [InlineData(" when s is ref", "a", "static", "clean")]
+    [InlineData("", "a", "static", "1*IncompatibleContractImplementation_Kd")]
+    [InlineData(" when s is ref", "static", "a", "1*IncompatibleContractImplementation_Kd")]
+    public void ARequirementsFunctionTypeInputIsComparedUnderItsConformanceScopesAdmittedSet(string condition, string required, string written, string records)
+        => Assert.Equal(records, DiagnosticCorpus.RecordProfile(
+            "contract M<P>\n    func apply(self: uniq/Self, f: (P) -> ()) -> ()\n" +
+            $"struct H<s/T> {{a}}\n    s is ref or uniq\n    Self is M<s/(ref/i32 during {required}) during a>{condition}\n" +
+            "    var store: s/(ref/i32 during a) during a\n" +
+            $"    public func apply(self: uniq/Self, f: (s/(ref/i32 during {written}) during a) -> ()) -> () => ()\n"));
+
+    // SPEC 8.3.4, 8.8.2, 15.3.5 (PLAN G801): each of two nested pair layers reads its own binder's admitted set: the innermost target
+    // is covariant only when the `when` narrows both binders.
+    [Theory]
+    [InlineData(" when s is ref, u is ref", "clean")]
+    [InlineData(" when s is ref", "1*IncompatibleContractImplementation_Kd")]
+    [InlineData(" when u is ref", "1*IncompatibleContractImplementation_Kd")]
+    public void NestedPairLayersEachReadTheirBindersAdmittedSetInTheConformanceScope(string condition, string records)
+        => Assert.Equal(records, DiagnosticCorpus.RecordProfile(
+            "contract M<P>\n    func put(self: uniq/Self, value: P) -> ()\n" +
+            "struct H<s/T, u/V> {a}\n    s is ref or uniq\n    u is ref or uniq\n" +
+            $"    Self is M<s/(u/(ref/i32 during static) during a) during a>{condition}\n" +
+            "    var store: s/(u/(ref/i32 during a) during a) during a\n" +
+            "    public func put(self: uniq/Self, value: s/(u/(ref/i32 during a) during a) during a) -> () => self.store = value@move\n"));
+
+    // SPEC 8.8.2, 8.8.3, 15.3.5 (PLAN G801): a parent Contract's requirement, reached through the child's conformance, is compared in
+    // that conformance's scope.
+    [Theory]
+    [InlineData(" when s is ref", "clean")]
+    [InlineData("", "1*IncompatibleContractImplementation_Kd")]
+    public void AParentsRequirementIsComparedUnderTheChildConformancesScope(string condition, string records)
+        => Assert.Equal(records, DiagnosticCorpus.RecordProfile(
+            "contract M<P>\n    func put(self: uniq/Self, value: P) -> ()\ncontract N<P>: M<P>\n    func touch(self: ref/Self) -> i32\n" +
+            $"struct H<s/T> {{a}}\n    s is ref or uniq\n    Self is N<s/(ref/i32 during static) during a>{condition}\n" +
+            "    var store: s/(ref/i32 during a) during a\n" +
+            "    public func put(self: uniq/Self, value: s/(ref/i32 during a) during a) -> () => self.store = value@move\n" +
+            "    public func touch(self: ref/Self) -> i32 => 0\n"));
+
+    // SPEC 8.6.3, 8.8.2, 15.3.5 (PLAN G801): one implementation compared for two conformances reads each conformance's own scope, in
+    // either declaration order: only the conformance without the `when` fails.
+    [Theory]
+    [InlineData("M", " when s is ref", "N", "", "1*IncompatibleContractImplementation_Kd")]
+    [InlineData("N", "", "M", " when s is ref", "1*IncompatibleContractImplementation_Kd")]
+    [InlineData("M", " when s is ref", "N", " when s is ref", "clean")]
+    public void OneImplementationIsComparedInEachConformancesOwnScope(string first, string firstCondition, string second, string secondCondition, string records)
+        => Assert.Equal(records, DiagnosticCorpus.RecordProfile(
+            "contract M<P>\n    func put(self: uniq/Self, value: P) -> ()\ncontract N<P>\n    func put(self: uniq/Self, value: P) -> ()\n" +
+            "struct H<s/T> {a}\n    s is ref or uniq\n" +
+            $"    Self is {first}<s/(ref/i32 during static) during a>{firstCondition}\n" +
+            $"    Self is {second}<s/(ref/i32 during static) during a>{secondCondition}\n" +
+            "    var store: s/(ref/i32 during a) during a\n" +
+            "    public func put(self: uniq/Self, value: s/(ref/i32 during a) during a) -> () => self.store = value@move\n"));
+
+    // SPEC 8.8.1, 8.8.2, 7.5, 15.3.5 (PLAN G801): a conditional block's member has the block's condition as a premise of its
+    // comparison and of its body; the same body outside the block keeps its own signature (D only), so its fit stays invariant.
+    [Theory]
+    [InlineData("        ", "a", "clean")]
+    [InlineData("        ", "static", "clean")]
+    [InlineData("    ", "static", "1*UnprovenOriginRelation_Kd")]
+    public void AConditionalBlocksMemberReadsTheBlocksConditionAndAnOutsideMemberDoesNot(string indent, string written, string records)
+        => Assert.Equal(records, DiagnosticCorpus.RecordProfile(
+            "contract M<P>\n    func put(self: uniq/Self, value: P) -> ()\n" +
+            "struct H<s/T> {a}\n    s is ref or uniq\n    var store: s/(ref/i32 during a) during a\n" +
+            "    Self is M<s/(ref/i32 during static) during a> when s is ref\n" +
+            $"{indent}public func put(self: uniq/Self, value: s/(ref/i32 during {written}) during a) -> () => self.store = value@move\n"));
+
+    // SPEC 8.6.3, 8.8.2, 7.5 (PLAN G801): an implementation's own clause `s is ref` is proven by the conformance's `when`; without the
+    // `when` the conformance scope leaves `uniq` admitted and the comparison fails.
+    [Theory]
+    [InlineData(" when s is ref", "clean")]
+    [InlineData("", "1*IncompatibleContractImplementation_Kd")]
+    public void AnImplementationsOwnClauseIsProvenByTheConformancesCondition(string condition, string records)
+        => Assert.Equal(records, DiagnosticCorpus.RecordProfile(
+            "contract M<P>\n    func put(self: uniq/Self, value: P) -> ()\n" +
+            $"struct H<s/T> {{a}}\n    s is ref or uniq\n    Self is M<s/(ref/i32 during static) during a>{condition}\n" +
+            "    var store: s/(ref/i32 during a) during a\n" +
+            "    public func put(self: uniq/Self, value: s/(ref/i32 during a) during a) -> ()\n        s is ref\n        self.store = value@move\n"));
+
+    // SPEC 8.3.4, 8.8.2, 15.3.5 (PLAN G801): a requirement's own binder `t` over the conforming Type's `s` layer: `t` is read at its
+    // signature's clauses and `s` at the conformance scope, so the fit needs both covariant.
+    [Theory]
+    [InlineData("ref", " when s is ref", "clean")]
+    [InlineData("ref", "", "1*IncompatibleContractImplementation_Kd")]
+    [InlineData("ref or uniq", " when s is ref", "1*IncompatibleContractImplementation_Kd")]
+    public void ARequirementsOwnBinderOverTheConformingTypesLayerReadsEachBinderAtItsPoint(string admitted, string condition, string records)
+        => Assert.Equal(records, DiagnosticCorpus.RecordProfile(
+            $"contract M<P>\n    func put<t/U>(self: uniq/Self, r: ref/i32, value: t/P during r) -> i32\n        t is {admitted}\n" +
+            $"struct H<s/T> {{a}}\n    s is ref or uniq\n    Self is M<s/(ref/i32 during static) during a>{condition}\n" +
+            "    var store: s/(ref/i32 during a) during a\n" +
+            "    public func put<t/U>(self: uniq/Self, r: ref/i32, value: t/(s/(ref/i32 during a) during a) during r) -> i32\n" +
+            $"        t is {admitted}\n        return 0\n"));
+
+    // SPEC 23.1.2, 15.3.5 (PLAN G801): an invalid member keeps its record beside its Type's conformance, valid or invalid.
+    [Theory]
+    [InlineData(" when s is ref", "1*UnprovenOriginRelation_Kd")]
+    [InlineData("", "1*IncompatibleContractImplementation_Kd 1*UnprovenOriginRelation_Kd")]
+    public void AnInvalidMemberKeepsItsRecordBesideItsTypesConformance(string condition, string records)
+        => Assert.Equal(records, DiagnosticCorpus.RecordProfile(
+            "contract M<P>\n    func put(self: uniq/Self, value: P) -> ()\n" +
+            $"struct H<s/T> {{a}}\n    s is ref or uniq\n    Self is M<s/(ref/i32 during static) during a>{condition}\n" +
+            "    var store: s/(ref/i32 during a) during a\n" +
+            "    public func put(self: uniq/Self, value: s/(ref/i32 during a) during a) -> () => self.store = value@move\n" +
+            "    public func put2(self: uniq/Self, value: s/(ref/i32 during static) during a) -> ()\n        self.store = value@move\n"));
 
     // SPEC 15.6.1, 15.6.5, 15.3.7 (PLAN G809): a bound of the comparison's solve that a pair layer's slot requires exists only in its
     // binder's borrow cases, so a premise of those cases proves it: the requirement's `x` gives `p outlives q` in the `ref` (or `uniq`)
