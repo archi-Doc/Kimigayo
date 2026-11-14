@@ -81,7 +81,7 @@ public static partial class Parser
                     // A function expression spans from its keyword, so its captures belong to it.
                     var start = reader.CurrentToken.Span.Start;
                     reader.Advance();
-                    var function = ParseFuncDeclaration(ref reader, anonymous: true);
+                    var function = ParseFuncDeclaration(ref reader, FunctionForm.Expression);
                     if (function is null)
                     {
                         return reader.NewErrorKoto();

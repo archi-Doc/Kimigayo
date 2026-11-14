@@ -41,9 +41,9 @@ public class ArchitectureRulesTest
     private const string DocumentationReaders = "Checking/Hover/HoverBuilder.cs;Checking/HoverFacts.cs;Checking/HoverPlacement.cs;Lsp/HoverRenderer.cs";
 
     // R7-N1e2-1R (LookupEntriesStayAtTheirSites): the evaluation entries and their sites, the use entries and theirs (the census).
-    private const string NameEvaluations = "ResolvePath|ResolveName|ResolveMember|ResolveRootPath|ResolveAdaptationTarget|ProbePath|PublishPath";
+    private const string NameEvaluations = "ResolvePath|ResolveName|ResolveMember|ResolveRootPath|ResolveAdaptationTarget|ProbePath|ReadAgain|PublishPath";
 
-    private const string NameEvaluationSites = "Binding.BaseLayers.cs=3;Binding.Calls.cs=1;Binding.Qualification.cs=2;Binding.ResolvePath.cs=17;" +
+    private const string NameEvaluationSites = "Binding.BaseLayers.cs=3;Binding.Calls.cs=1;Binding.Qualification.cs=2;Binding.ResolvePath.cs=19;" +
         "Binding.Types.cs=2";
 
     private const string UseLookups = "NamePath|TypeName|LookupAdaptationTarget";
@@ -346,7 +346,7 @@ public class ArchitectureRulesTest
             "Parsing/Parser.Functions.cs|TryParseFunctionName|\"init\"",
 
             // The discard Name (SPEC 14.8.1).
-            "Parsing/Parser.ControlFlow.cs|TryParseForBinding|\"_\"",
+            "Parsing/Parser.ControlFlow.cs|ParseForSlot|\"_\"",
             "Parsing/Parser.Syntax.cs|ParsePattern|\"_\"",
 
             // The Origin names static and _ (SPEC 15.2.1, 15.2.3).
@@ -412,13 +412,13 @@ public class ArchitectureRulesTest
     [Fact]
     public void EnumeratesWalkCallsNoJudgment()
     {
-        string[] walk = ["Enumerate", "EnumerateLink", "HeadDepth", "ClauseHeads", "AvailableContractPremise", "AvailableConstraintFact", "ContractSupply", "SameClass", "ClassKey", "CongruentKey"];
+        string[] walk = ["Enumerate", "EnumerateLink", "HeadDepth", "ClauseHeads", "AvailableContractPremise", "AvailableConstraintFact", "ContractSupply", "SameClass", "ClassKey", "CongruentKey", "RowContract"];
         string[] allowed =
         [
             "Add", "AppliedAssociatedContract", "AsSpan", "AssociatedIdentityMatches", "AvailableConstraintFact", "AvailableContractPremise", "ClassKey", "ClauseHeads",
             "Clear", "CongruentKey", "Contains", "ContractConstraint", "DependentConstraint", "EnumerateLink", "FactStates", "GetValueOrDefault", "HeadDepth", "Heads",
             "InstantiatedAncestor", "InstantiatedContract", "InvalidDeclarationContext", "IsContractSelf", "KeyOf", "Max", "ReadSourceState", "Rebuild",
-            "ReferenceEquals", "RemoveAt", "RemoveRange", "RentTypes", "Representative", "Return", "SameClass", "SetKey", "SubjectKey", "TryGetValue",
+            "ReferenceEquals", "RemoveAt", "RemoveRange", "RentTypes", "Representative", "Return", "RowContract", "SameClass", "SetKey", "SubjectKey", "TryGetValue",
             "UnresolvedTypeDeclarationContext",
         ];
         var members = new[] { "Binding.ContractSolver.cs", "Binding.TypeIdentity.Keys.cs" }

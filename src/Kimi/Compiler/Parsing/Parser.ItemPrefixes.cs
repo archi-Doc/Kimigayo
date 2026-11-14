@@ -32,6 +32,11 @@ public static partial class Parser
         /// <summary>A word that introduces a declaration.</summary>
         DeclarationIntroducer,
 
+        /// <summary>A contextual Container word (SPEC F.3.2): the introducer of a GroupDeclaration, StructureDeclaration,
+        /// EnumDeclaration or ContractDeclaration (Appendix F.6.1), or the unavailable <c>extension</c>. It introduces a declaration
+        /// where <see cref="IsContainerDeclarationStart"/> holds, and on a modifier header line.</summary>
+        ContainerIntroducer,
+
         /// <summary>A word that introduces an accessor (<c>get</c>, <c>set</c>).</summary>
         AccessorIntroducer,
     }
@@ -168,6 +173,13 @@ public static partial class Parser
                         reader.DispatchModifierSpan = reader.CurrentTokenRange;
                     }
 
+                    // F.3.3: the word that writes a second function modifier, which the function header reports.
+                    if ((reader.ModifierKind & ~flag & (ModifierKind.Unsafe | ModifierKind.Virtual | ModifierKind.Override)) != 0 &&
+                        reader.SecondModifierSpan == default)
+                    {
+                        reader.SecondModifierSpan = reader.CurrentTokenRange;
+                    }
+
                     ReadModifierFlag(ref reader, flag);
                     continue;
                 }
@@ -260,6 +272,7 @@ public static partial class Parser
             reader.ModifierKind = ModifierKind.NoModifier;
             reader.DispatchModifierSpan = default;
             reader.AccessModifierSpan = default;
+            reader.SecondModifierSpan = default;
         }
 
         reader.Advance();
@@ -290,6 +303,7 @@ public static partial class Parser
             reader.ModifierKind = ModifierKind.NoModifier;
             reader.DispatchModifierSpan = default;
             reader.AccessModifierSpan = default;
+            reader.SecondModifierSpan = default;
         }
 
         if (allowCompileTimeDirectives && reader.PeekKind(1) == TokenKind.If)
@@ -427,7 +441,8 @@ public static partial class Parser
                 continue;
             }
 
-            if (word != introducer)
+            // On a header line a Container word is a declaration introducer, whatever follows it (SPEC F.3.3).
+            if (word != introducer && (word != HeaderWord.ContainerIntroducer || introducer != HeaderWord.DeclarationIntroducer))
             {
                 return HeaderScan.Ordinary;
             }

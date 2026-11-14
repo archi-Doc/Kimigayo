@@ -214,7 +214,7 @@ public sealed partial class Binding
 
             // SPEC 8.13.2: a specialization header inherits the original's access, boundary, defaults and
             // Constraints; it redeclares none of them. The parser judges its modifiers, publishing none (ParseFuncDeclaration),
-            // and its `!` boundary (TryParseParameterList).
+            // and its `!` boundary (ParseParameterList).
             if (function.TypeConstraints.Count != 0 || HasParameterDefaults(function))
             {
                 this.Fail(function, BindingFailure.IncompatibleImplementation);
