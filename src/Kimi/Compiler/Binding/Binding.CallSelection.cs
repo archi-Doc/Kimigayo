@@ -216,6 +216,32 @@ public sealed partial class Binding
         return (winner < 0 ? CallSelection.Ambiguous : CallSelection.Selected, winner);
     }
 
+    // SPEC 10.4 steps 1-2, 10.5.1 (the owner's O-284 (a); PLAN G814): the array literal argument that the selected candidate took at its
+    // open row (TryCandidate's operation with no Types: no evidence binds the slot, and the slot takes the literal whole, `T` or `ref/T`)
+    // while another candidate was applicable, or null. Ranking such a position is G814's open-pattern walk; the open row's Exact chose
+    // the candidate instead, so the call reports this located limit (on dev G725's limit rejected these calls; G267fd closed it).
+    // Tuple, Dictionary and control-flow arguments keep the open row's choice, as on dev. Removal: R7-I2's open-pattern walk.
+    private Koto? OpenWholeArray(in CallEvaluation evaluation, int winner)
+    {
+        if (evaluation.Applicable < 2)
+        {
+            return null;
+        }
+
+        var parameters = ((FunctionKoto)evaluation.Evaluated[winner].Symbol!.Declaration).Parameters;
+        foreach (ref readonly var operation in evaluation.Operations.AsSpan(winner * evaluation.OperationStride, evaluation.Call.ArgumentNodes.Count))
+        {
+            if (operation is { SourceType: null, ParameterType: null, Adaptation: ArgumentAdaptation.Exact, Source: { } source, ParameterIndex: >= 0 } &&
+                PartCore(source) is ArrayLiteralKoto && parameters[operation.ParameterIndex].Type.BoundType is { } pattern &&
+                (pattern is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref } ? pattern.Components[0] : pattern).Kind == BoundTypeKind.Parameter)
+            {
+                return source;
+            }
+        }
+
+        return null;
+    }
+
     private struct CandidateShape
     {
         internal int Count;

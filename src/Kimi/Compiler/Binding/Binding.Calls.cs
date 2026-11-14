@@ -375,6 +375,14 @@ public sealed partial class Binding
                 return this.CompleteAmbiguous(evaluation);
             }
 
+            if (this.OpenWholeArray(evaluation, winnerIndex) is { } open)
+            {
+                // SPEC 23.1.1 (the owner's O-284 (a); PLAN G814, R7-I2): the open row's choice is not ranked yet; one located limit at the
+                // argument, on which the call rests.
+                this.Fail(open, BindingFailure.Unsupported);
+                return this.CompleteDependent(call, open);
+            }
+
             var winner = evaluated[winnerIndex].Symbol!;
             var selected = (FunctionKoto)winner.Declaration;
             this.activeRequirementContract = requirementGroup?.Contracts[winnerIndex] ?? (callee as RequirementCalleeKoto)?.Contract; // Reset by the finally block.

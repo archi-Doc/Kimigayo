@@ -513,6 +513,14 @@ public partial class ApplicabilityChainRegressionTest
     [InlineData("guard", "w7t", OpenWhole + "    let q = fur([n])\n    let z: i32 = q\n    return z\n", "")]
     [InlineData("guard", "n1", OpenWhole + "    let q = fw((1, v))\n    let z: bool = q\n    return 0\n", "")]
     [InlineData("guard", "n2", OpenWhole + "    let q = fwd(([1: 2], v))\n    let z: bool = q\n    return 0\n", "")]
+    // Until G814's walk an array literal the open row took for the selected candidate beside another applicable one is a located limit
+    // at the argument (the owner's O-284 (a): u1 to u4, w1, w2, w7, w8's forms); with no other applicable candidate the open row's
+    // candidate is the only one and the program is valid (u5: `[1]` fits no i32), and an argument that binds the slot is evidence (w1t).
+    [InlineData("guard", "u1", OpenWhole + "    let q = fu([1])\n    return 0\n", "Unsupported_Kd: let q = fu([1])")]
+    [InlineData("guard", "u2", OpenWhole + "    let q = fu([1@i32, 2])\n    return 0\n", "Unsupported_Kd: let q = fu([1@i32, 2])")]
+    [InlineData("guard", "u3", OpenWhole + "    let q = fur([1])\n    return 0\n", "Unsupported_Kd: let q = fur([1])")]
+    [InlineData("guard", "u4", OpenWhole + "    let q = fu([])\n    return 0\n", "Unsupported_Kd: let q = fu([])")]
+    [InlineData("guard", "u5", OpenWhole + "    let q = fu([[1]])\n    let z: bool = q\n    return 0\n", "")]
     public void ALiteralThatAnUnboundSlotTakesWholeRanksByItsOwnFit(string unit, string form, string program, string records)
         => CompilationTestHelper.AssertRecordsAtLines($"{form} [{unit}]", program + "()", records);
 
