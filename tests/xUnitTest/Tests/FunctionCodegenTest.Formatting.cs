@@ -79,13 +79,14 @@ public sealed partial class FunctionCodegenTest
         "    public func reserve(self: uniq/Self, minimum: isize) -> Result<WriteWindow, BufferFull>\n        self.count += 1\n" +
         "        return .Err(BufferFull.init())\n";
 
-    // A Library creating writers over a FixedBuffer, a HeapBuffer and a user Writer (Sink), Text.writer's Item called and erased, and a
-    // user generic forwarding to Text.writer, at a FixedBuffer only (plan R1 N7's row).
+    // A Library creating writers over a FixedBuffer, a HeapBuffer and a user Writer (Sink), Text.writer's Item called (at Sink and a
+    // FixedBuffer) and erased, and a user generic forwarding to Text.writer, at a FixedBuffer only (plan R1 N7's row).
     private const string Writers = Sink +
         "func wrFixed(buffer: uniq/Text.FixedBuffer)\n    _ = Text.writer(buffer)\n" +
         "func wrHeap(buffer: uniq/Text.HeapBuffer)\n    _ = Text.writer(buffer)\n" +
         "func wrUser(sink: uniq/Sink)\n    _ = Text.writer(sink)\n" +
         "func wrItem(sink: uniq/Sink)\n    let make = Text.writer<Sink>\n    _ = make(sink)\n" +
+        "func wrItemFixed(buffer: uniq/Text.FixedBuffer)\n    let make = Text.writer<Text.FixedBuffer>\n    _ = make(buffer)\n" +
         "func wrErased() -> (uniq/Sink) -> Utf8Writer => Text.writer<Sink>\n" +
         "func wrErasedHeap() -> (uniq/Text.HeapBuffer) -> Utf8Writer => Text.writer<Text.HeapBuffer>\n" +
         "func wrWrap<W>(w: uniq/W) -> Utf8Writer\n    W is BufferWriter\n    return Text.writer(w)\n" +
@@ -422,10 +423,12 @@ public sealed partial class FunctionCodegenTest
     // Utf8Writer.init stores: a FixedBuffer's and a HeapBuffer's are their specializations', the tags Fixed (0) and Heap (1) with a null
     // dispatch word, a user Writer's the generic body's, the tag Erased (2) with the code address of its reserve witness (ReserveDispatch),
     // at its call, its Item's Value call and its erased adapters (SPEC 7.7.4: Text.writer is not its row's witness, so its Item runs its
-    // row); a user generic forwarding to it at a FixedBuffer runs the direct call's specialization instance (SPEC 8.13.3: selection after
-    // substitution), so no instance at a FixedBuffer or a HeapBuffer stores a dispatch word; writer<Sink>'s two instances, its call's
-    // and its Item's, each store its witness's; the witness is never called here (the runtime calls it through the word) (fail-before:
-    // each site called __kimi_text_writer with LegacyRuntimeHelpers.WriterKind's number and the dispatch word).
+    // row); a user generic forwarding to it at a FixedBuffer and the FixedBuffer Item's Value call (coverage S6, `ref`) run the direct
+    // call's specialization instance (SPEC 8.13.3: selection after substitution and for function references), so no instance at a
+    // FixedBuffer or a HeapBuffer stores a dispatch word; the witness is never called here (the runtime calls it through the word)
+    // (fail-before: each site called __kimi_text_writer with LegacyRuntimeHelpers.WriterKind's number and the dispatch word). writer<Sink>'s
+    // call and Item get two identical instances, each storing the dispatch word: PLAN G883's pre-existing duplicate of a generic group
+    // member's Item key, not this contract; its fix reads 4 -> 3 writers and 2 -> 1 dispatch stores.
     [Fact]
     public void TextWriterGivesItsDestinationsKindAndDispatch()
     {
@@ -437,7 +440,7 @@ public sealed partial class FunctionCodegenTest
         foreach (var (name, adapter) in new[]
         {
             ("wrFixed", Standard + "0, ptr %, align 4"), ("wrHeap", Standard + "1, ptr %, align 4"), ("wrUser", Erased), ("wrItem", Erased),
-            ("wrWrap", Standard + "0, ptr %, align 4"),
+            ("wrWrap", Standard + "0, ptr %, align 4"), ("wrItemFixed", Standard + "0, ptr %, align 4"),
         })
         {
             Assert.Equal(adapter, Adapter(ir, c, Assert.Single(FunctionsOf(ir, c, name))));
@@ -451,9 +454,10 @@ public sealed partial class FunctionCodegenTest
         var writers = FunctionsOf(ir, c, "writer");
         IrFunction Callee(string name) => Assert.Single(CalleesOf(Assert.Single(FunctionsOf(ir, c, name))), writers.Contains);
         Assert.Same(Callee("wrFixed"), Callee("wrWrap"));
-        Assert.Equal(4, writers.Length); // writer<FixedBuffer>, writer<HeapBuffer>, writer<Sink>'s call's and Item's.
+        Assert.Same(Callee("wrFixed"), Callee("wrItemFixed"));
+        Assert.Equal(4, writers.Length); // writer<FixedBuffer>, writer<HeapBuffer>, writer<Sink>'s call's and Item's (PLAN G883: 3 when fixed).
         var reserve = Regex.Match(Assert.Single(ItemTexts(c, "reserve")), @"define internal \S+ @(__kimi_f\d+)\(").Groups[1].Value;
-        Assert.Equal(2, Regex.Matches(text, $@"store ptr @{reserve}, ptr %\S+, align 8").Count);
+        Assert.Equal(2, Regex.Matches(text, $@"store ptr @{reserve}, ptr %\S+, align 8").Count); // writer<Sink>'s two (PLAN G883: 1 when fixed).
         Assert.DoesNotContain(ir.Functions, x => CalleesOf(x).Contains(ir.Function(reserve)));
         Assert.DoesNotContain("__kimi_text_writer", text, StringComparison.Ordinal);
     }

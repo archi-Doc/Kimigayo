@@ -8,12 +8,12 @@ namespace Kimi.Compiler.Backend;
 // an intrinsic by its row's writer (IntrinsicRows' writer column), over the closed IntrinsicWriter vocabulary: a routine row (Routine: a runtime routine
 // through the one call writer, Invoke, with its slot-less values; Raw.release, $abort, tryAllocateBytes and transferBytes, whose routines the module
 // defines on request (Requested; DECISIONS R5-M145), Raw.allocate with its element stride, a creation's factory with its control value and a clone's
-// retain, FunctionCodegen.Objects), which a compiler function's Value call and adapter entry also call by its disposition (Routine by kind), a Fail's Abort reason,
-// Raw.initialize's copy, Raw.slice's record, a staticEnsure's state test (FunctionCodegen.Statics), a runtime Type test
-// (FunctionCodegen.Objects), a reserve witness's code address (FunctionCodegen.Formatting) and a verification's compared value, which the test runtime holds for its observation (Record; DECISIONS R5-M136). Each takes
-// its operands at its declaration's slots (ArgumentPosition) and ends through Finish; a call whose row's Target column names an item carries the
-// collector's target, read once by the cursor (I8) and given to the row's writer; a call of a row no MIR producer makes (Unproduced) is a broken contract
-// at the call (DECISIONS R5-M146). In a caller-location body a location is C3b's row (Location).
+// retain, FunctionCodegen.Objects), which a compiler function's Value call and adapter entry also call by its disposition (Routine by kind), a Fail's Abort
+// reason, Raw.initialize's copy, Raw.slice's record, a staticEnsure's state test (FunctionCodegen.Statics), a runtime Type test (FunctionCodegen.Objects), a
+// reserve witness's code address (FunctionCodegen.Formatting) and a verification's compared value, which the test runtime holds for its observation (Record;
+// DECISIONS R5-M136). Each takes its operands at its declaration's slots (ArgumentPosition) and ends through Finish; a call whose row's Target column names
+// an item carries the collector's target, read once by the cursor (I8) and given to the row's writer; a call of a row no MIR producer makes (Unproduced) is a
+// broken contract at the call (DECISIONS R5-M146). In a caller-location body a location is C3b's row (Location).
 internal sealed partial class FunctionCodegen
 {
     private readonly Value[] slotless = new Value[1]; // A routine row's slot-less value (Routine): an allocation's stride, a creation's control.

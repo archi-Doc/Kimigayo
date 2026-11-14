@@ -608,10 +608,12 @@ public partial class KimiLibraryShapeTest
         Assert.Equal(2, ordinal);
     }
 
-    // Layouts read at fixed offsets, each row by its reader: Utf8Writer's by the kept runtime (ErasedWriterRuntime.ll.in:
-    // __kimi_erased_reserve loads destination and dispatch; the others pin the layout the R8-W2 b2-1 prototype fixed);
-    // WriteWindow's by __kimi_erased_reserve (written and remaining, in the Result's payload at byte 8); FixedBuffer's and HeapBuffer's
-    // equal Storage.BufferRepr's, as which the library reads a window's state (Formatting.kimi, WriteWindow.commit, commitUtf8 and next).
+    // Layouts read at fixed offsets, each row by its reader: Utf8Writer's destination and dispatch by the kept runtime
+    // (ErasedWriterRuntime.ll.in: __kimi_erased_reserve loads them), its hint at 16 by FunctionCodegenTest.Interpolation's Hint helper,
+    // and its other offsets, which no runtime reads, are pinned so that R8-W2 b2-2's layout change (logicalLength deleted, 56 -> 48) is
+    // checked against them; WriteWindow's by __kimi_erased_reserve (written and remaining, in the Result's payload at byte 8);
+    // FixedBuffer's and HeapBuffer's equal Storage.BufferRepr's, as which the library reads a window's state (Formatting.kimi,
+    // WriteWindow.commit, commitUtf8 and next).
     [Theory]
     [InlineData("Utf8Writer", 56, "destination", 0, "dispatch", 8, "hint", 16, "pending", 24, "pendingLength", 32, "logicalLength", 40, "kind", 48, "failed", 52)]
     [InlineData("Text.FixedBuffer", 32, "data", 0, "capacity", 8, "length", 16, "validated", 24)]
