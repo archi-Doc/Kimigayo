@@ -137,13 +137,14 @@ public sealed class RecursiveContractTest
     // DECISIONS R7-C2e2-1 at c2-2's merge (N3 of its merge review): o1's view has no identity premise, so its Tree request keeps the
     // view's entry; the Copy request extends, filing the facts again under its extended keys, so it reopens the entry as its own and
     // writes nothing into the Kept entry; `T.(Tree).Other`, asked last, forms the entry again. The pairs indexed over Orders', exact: an
-    // extension writing into the Kept entry leaves it Kept for the last request, which then indexes nothing (46).
+    // extension writing into the Kept entry leaves it Kept, with its kept rows (R7-C2e2 e2-3a: a column of the entry), for the later
+    // requests, which then index less (66; 46 before e2-3a, when the kept rows outlived their entry and the count was 66).
     [Fact]
     public void AnExtensionReopensTheViewsKeptEntryAsItsOwn()
     {
         var probe = "func probe<T>(r: ref/T.(Tree).Child.(Tree).Alias, o: ref/T.(Tree).Other)\n    T is AT2\n" +
             "    needsTree<T.(Tree).Child.(Tree).Alias>(r)\n    needsCopy<T.(Tree).Child.(Tree).Alias>(r)\n    needsTree<T.(Tree).Other>(o)\n";
-        Assert.Equal(66, Work(Orders + probe) - Work(Orders));
+        Assert.Equal(86, Work(Orders + probe) - Work(Orders));
 
         static int Work(string source) => Bind(source).Binding.ClosureIndexWork;
     }
