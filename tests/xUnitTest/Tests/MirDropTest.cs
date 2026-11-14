@@ -303,15 +303,15 @@ public sealed partial class MirDropTest
 
     // SPEC 16.2-16.3, 14.10.3 (the owner's O-334 (a), O-342 Q1 (a)): a component no Place names has no path, so A2 has no row for it and
     // destroys it by its parent's own bit, whether a construction left it unplaced (A1's Unplaced lane, which A2 never reads) or not. Against
-    // dev, whose construction records had rows: a check-only group (a5) and bodies that need a Never value (a1-a4) lose a record's row or
-    // flag; a runnable Open group whose record came through a Never-form arm (a8) loses its record's flag, which equalled the parent's on
+    // dev, whose construction records had rows: a check-only group (a5) and bodies that need a Never value (a1-a4, whose Drops follow
+    // the Never parameter's read, which ends its block: check-only groups too) lose a record's row or flag; a runnable Open group whose record came through a Never-form arm (a8) loses its record's flag, which equalled the parent's on
     // every runtime path. A Tuple holding a Dictionary literal or a join operand, initialized on some paths and partly moved (ro1, ro5-ro8,
     // the B1 fix's wrong-code shapes), keeps dev's group: its component follows the own bit, so it is destroyed only where the Tuple was.
     [Theory]
-    [InlineData("func g1(x: Never) -> i32\n    let t: (ResA, ResB) = (ResA.init(1), x)\n    return 5\n", "g1", "drop _2 -> bb6 [keep]")]
-    [InlineData("func g2(x: Never) -> i32\n    let t: (ResA, ResB, ResA) = (ResA.init(1), x, ResA.init(3))\n    keep(t.0@move)\n    return 5\n", "g2", "drop _2 -> bb10 [open (.0 elide)]")]
-    [InlineData("func g3(x: Never) -> i32\n    let s: Array<ResB> = [ResB.init(1), x]\n    return 5\n", "g3", "drop _2 -> bb6 [keep]")]
-    [InlineData("func g4(x: Never) -> i32\n    let t: (ResA, (ResB, ResB)) = (ResA.init(1), (ResB.init(2), x))\n    keep(t.0@move)\n    return 5\n", "g4", "drop _2 -> bb11 [open (.0 elide)]")]
+    [InlineData("func g1(x: Never) -> i32\n    let t: (ResA, ResB) = (ResA.init(1), x)\n    return 5\n", "g1", "drop _2 -> bb7 [keep]")]
+    [InlineData("func g2(x: Never) -> i32\n    let t: (ResA, ResB, ResA) = (ResA.init(1), x, ResA.init(3))\n    keep(t.0@move)\n    return 5\n", "g2", "drop _2 -> bb11 [open (.0 elide)]")]
+    [InlineData("func g3(x: Never) -> i32\n    let s: Array<ResB> = [ResB.init(1), x]\n    return 5\n", "g3", "drop _2 -> bb7 [keep]")]
+    [InlineData("func g4(x: Never) -> i32\n    let t: (ResA, (ResB, ResB)) = (ResA.init(1), (ResB.init(2), x))\n    keep(t.0@move)\n    return 5\n", "g4", "drop _2 -> bb12 [open (.0 elide)]")]
     [InlineData("func g5(c: bool) -> i32\n    if c\n        fail()\n        let t: (ResA, ResB, ResA) = (ResA.init(1), fail(), ResA.init(3))\n        keep(t.0@move)\n    return 5\n", "g5", "drop _5 -> bb12 [open (.0 elide)]")]
     [InlineData("func g6(c: bool) -> i32\n    if c\n        fail()\n        let s: Array<ResB> = [ResB.init(1), fail()]\n    return 5\n", "g6", "drop _5 -> bb8 [keep]")]
     [InlineData("func g7(c: bool) -> i32\n    let t: (ResA, ResB, ResA) = (ResA.init(1), ResB.init(2), ResA.init(3))\n    keep(t.0@move)\n    return 5\n", "g7", "drop _2 -> bb12 [open (.0 elide)]")]

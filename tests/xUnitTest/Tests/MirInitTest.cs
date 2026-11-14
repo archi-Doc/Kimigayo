@@ -44,6 +44,15 @@ public sealed class MirInitTest
         "    public var b: i32\n    public init(d: Dictionary<i32, i32>)\n        self.d = d@move\n        self.b = 3\n" +
         "public func main() -> ()\n    let y: i32 = 5\n    let c: bool = y > 2\n";
 
+    // The declarations before a function g that reads a Place of Type Never (CodeAfterANeverPlaceReadIsCheckedOnTheAssumedPaths).
+    private const string Reads = "func fail() -> Never => $abort(\"no\")\nfunc use(n: i32) -> () => ()\nfunc useR(r: ref/i32) -> () => ()\n" +
+        "func takeA(a: Array<i32>) -> () => ()\nfunc takeT(t: (i32, i32)) -> () => ()\nfunc takeS(s: string) -> () => ()\n" +
+        "func pass(a: Never) -> () => ()\nfunc pass2(a: Never, b: Array<i32>) -> () => ()\nfunc passM(a: Never, b: Never) -> () => ()\n" +
+        "func h(a: Array<i32>, b: Never) -> i32 => 1\nfunc hs(a: string, b: Never) -> i32 => 1\n" +
+        "func keep(a: ref/i32, b: Never) -> ref/i32 during a => a\nstruct SN\n    public let v: Never\n    public let w: i32\n" +
+        "enum RN\n    Ok(i32)\n    Err(Never)\nstruct Box\n    public var value: string\n" +
+        "    public init(value: string) => self.value = value@move\n    drop => ()\n";
+
     // SPEC 15.1.1: a use needs its Place initialized on every incoming runtime path.
     [Fact]
     public void AUseNeedsInitializationOnEveryPath()
@@ -444,6 +453,28 @@ public sealed class MirInitTest
         Assert.DoesNotContain(program.Problems.All.ToArray(), static x => x.Subject.Module == 0);
     }
 
+    // SPEC 14.9.3, 14.10.3: a read of a named Never Place does not complete, so the block that writes its Never temp ends there,
+    // Unreachable with its check-only continuation, and no runtime edge reaches the code after it (fail-before: the block went on to
+    // the call).
+    [Fact]
+    public void ANeverPlaceReadEndsItsBlock()
+    {
+        var c = MirBuildTest.Compile("func k() -> i32 => 1\nfunc absurd(x: Never)\n    let n = x\n    _ = k()\n");
+        var program = c.BuildMir();
+        Assert.Empty(program.Findings);
+        var body = program.Bodies.ToArray().Single(static x => x.Key.Decl?.Name == "absurd");
+        var blocks = body.Blocks.ToArray();
+        var call = Array.FindIndex(blocks, static x => x.Terminator.Callee.Symbol?.Name == "k");
+        Assert.True(blocks[0].Terminator is { Kind: MirTerminatorKind.Unreachable, CheckTarget: > 0 });
+        var reach = new MirReach();
+        reach.Clear(blocks.Length);
+        reach.Walk(body, 0, checks: false);
+        Assert.True(call > 0 && !reach[call]);
+        reach.Clear(blocks.Length);
+        reach.Walk(body, 0, checks: true);
+        Assert.True(reach[call]);
+    }
+
     // SPEC 3.8, 15.6.2 (DECISIONS R5-M38, the owner's choice): a pattern binding of a Never payload borrows the subject in place as Binding
     // publishes it, a `ref/Never` that keeps its Loan, so the program is valid (no finding, no problem).
     [Theory]
@@ -594,6 +625,127 @@ public sealed class MirInitTest
     [InlineData("var d: Dictionary<i32, i32> = [1: y]\n    var i: i32 = 0\n    while i < 3\n        refD(d)\n        i = i + 1\n        if c\n            fail()\n            d = [fail(): y]\n    takeD(d@move)", "")]
     public void ADictionaryLiteralInsertsNoEntryWithoutAValue(string body, string expected)
         => Assert.Equal(expected.Length == 0 ? [] : [expected], Problems(Entries + "    " + body + "\n"));
+
+    // SPEC 14.9.3, 14.10.3 (DECISIONS R5-M38, R4-M175): a read or an unadapted acquisition of a Place of Type Never does not
+    // complete (a parameter read bare, placed at another Type, discarded, by @move, @copy or @Never, as a call's argument, a
+    // construction's, an assignment's or an operator's operand, a condition or a match Subject; a Field, a Tuple, Array or
+    // fixed-array element; a by-value binding of a Never payload and @follow of a ref/Never; a: T under T is Never), so no real
+    // path continues after it and what follows is checked on the join of the assumed paths: a let a value absent on the else arm
+    // initializes stays uninitialized there (UninitializedPlace_Kd at its use), a value Moved on that arm is Moved (MovedPlace_Kd),
+    // a Loan formed on it is live (the conflict at the write), in a nested block and a loop too. The table's aggregate tails (rpa,
+    // rma, raa, rfa, raea, rarg) and its let placed later (tn) wait for the aggregate-operand rule, as after a Never call or a
+    // return (the redesign's unit 2). Both arms placing, a read of a non-Never Place, a real path into the code (an omitted else, a while's false
+    // path), a copy of a ref/Never binding and an explicit borrow stay valid. A statement if whose else arm ends in a Never call
+    // (rows sx-sy1) does not continue to its join, after a Never read as after a Never call (SPEC 14.10.3: assumed paths add no
+    // implicit result; R4-M175). A require's failure body that ends in such a read does not continue (SPEC 14.11), and a layer
+    // with its own drop left incomplete after it has no runtime Drop (R4-M6a). Fail-before: the block went on after the read, so
+    // the joins after it took only the arms that complete (every invalid row but tn3, tx and the boundary rows bf-bla, xq3, xdn
+    // was accepted) and xq1, xq2 and xd were rejected.
+    [Theory]
+    [InlineData("func g(x: Never, y: i32, c: bool)\n    let n = x\n    let q: i32 = if c => y else => fail()\n    use(q)\n", "UninitializedPlace_Kd use(q) 1")] // rp
+    [InlineData("func g(x: Never, y: i32, c: bool)\n    let n = x\n    let q: i32 = if c => y else => y\n    use(q)\n", "")] // rpv
+    [InlineData("func g(x: Never, y: i32, c: bool)\n    let n: i32 = x\n    let q: i32 = if c => y else => fail()\n    use(q)\n", "UninitializedPlace_Kd use(q) 1")] // rpi
+    [InlineData("func g(x: Never, y: i32, c: bool)\n    let n: i32 = x\n    let q: i32 = if c => y else => y\n    use(q)\n", "")] // rpiv
+    [InlineData("func g(x: Never, y: i32, c: bool)\n    _ = x\n    let q: i32 = if c => y else => fail()\n    use(q)\n", "UninitializedPlace_Kd use(q) 1")] // rd
+    [InlineData("func g(x: Never, y: i32, c: bool)\n    _ = x\n    let q: i32 = if c => y else => y\n    use(q)\n", "")] // rdv
+    [InlineData("func g(x: Never, y: i32, c: bool)\n    _ = x@move\n    let q: i32 = if c => y else => fail()\n    use(q)\n", "UninitializedPlace_Kd use(q) 1")] // rm
+    [InlineData("func g(x: Never, y: i32, c: bool)\n    _ = x@move\n    let q: i32 = if c => y else => y\n    use(q)\n", "")] // rmv
+    [InlineData("func g(x: Never, y: i32, c: bool)\n    _ = x@copy\n    let q: i32 = if c => y else => fail()\n    use(q)\n", "UninitializedPlace_Kd use(q) 1")] // rc
+    [InlineData("func g(x: Never, y: i32, c: bool)\n    _ = x@copy\n    let q: i32 = if c => y else => y\n    use(q)\n", "")] // rcv
+    [InlineData("func g(x: Never, y: i32, c: bool)\n    _ = x@Never\n    let q: i32 = if c => y else => fail()\n    use(q)\n", "UninitializedPlace_Kd use(q) 1")] // rn
+    [InlineData("func g(x: Never, y: i32, c: bool)\n    _ = x@Never\n    let q: i32 = if c => y else => y\n    use(q)\n", "")] // rnv
+    [InlineData("func g(x: Never, y: i32, c: bool)\n    pass(x)\n    let q: i32 = if c => y else => fail()\n    use(q)\n", "UninitializedPlace_Kd use(q) 1")] // ra
+    [InlineData("func g(x: Never, y: i32, c: bool)\n    pass(x)\n    let q: i32 = if c => y else => y\n    use(q)\n", "")] // rav
+    [InlineData("func g(x: Never, y: i32, c: bool)\n    use(x)\n    let q: i32 = if c => y else => fail()\n    use(q)\n", "UninitializedPlace_Kd use(q) 1")] // ru
+    [InlineData("func g(x: Never, y: i32, c: bool)\n    use(x)\n    let q: i32 = if c => y else => y\n    use(q)\n", "")] // ruv
+    [InlineData("func g(x: Never, y: i32, c: bool)\n    _ = (y, x)\n    let q: i32 = if c => y else => fail()\n    use(q)\n", "UninitializedPlace_Kd use(q) 1")] // rt
+    [InlineData("func g(x: Never, y: i32, c: bool)\n    _ = (y, x)\n    let q: i32 = if c => y else => y\n    use(q)\n", "")] // rtv
+    [InlineData("func g(x: Never, y: i32, c: bool)\n    var z: i32 = 1\n    z = x\n    let q: i32 = if c => y else => fail()\n    use(q)\n", "UninitializedPlace_Kd use(q) 1")] // rs
+    [InlineData("func g(x: Never, y: i32, c: bool)\n    var z: i32 = 1\n    z = x\n    let q: i32 = if c => y else => y\n    use(q)\n", "")] // rsv
+    [InlineData("func g(x: Never, y: i32, c: bool)\n    let z = x + y\n    let q: i32 = if c => y else => fail()\n    use(q)\n", "UninitializedPlace_Kd use(q) 1")] // ro
+    [InlineData("func g(x: Never, y: i32, c: bool)\n    let z = x + y\n    let q: i32 = if c => y else => y\n    use(q)\n", "")] // rov
+    [InlineData("func g(s: SN, y: i32, c: bool)\n    let n = s.v\n    let q: i32 = if c => y else => fail()\n    use(q)\n", "UninitializedPlace_Kd use(q) 1")] // rf
+    [InlineData("func g(s: SN, y: i32, c: bool)\n    let n = s.v\n    let q: i32 = if c => y else => y\n    use(q)\n", "")] // rfv
+    [InlineData("func g(t: (i32, Never), y: i32, c: bool)\n    let n = t.1\n    let q: i32 = if c => y else => fail()\n    use(q)\n", "UninitializedPlace_Kd use(q) 1")] // rtf
+    [InlineData("func g(t: (i32, Never), y: i32, c: bool)\n    let n = t.1\n    let q: i32 = if c => y else => y\n    use(q)\n", "")] // rtfv
+    [InlineData("func g(a: Array<Never>, y: i32, c: bool)\n    let n = a[0]\n    let q: i32 = if c => y else => fail()\n    use(q)\n", "UninitializedPlace_Kd use(q) 1")] // rae
+    [InlineData("func g(a: Array<Never>, y: i32, c: bool)\n    let n = a[0]\n    let q: i32 = if c => y else => y\n    use(q)\n", "")] // raev
+    [InlineData("func g(f: [2 of Never], y: i32, c: bool)\n    let n = f[0]\n    let q: i32 = if c => y else => fail()\n    use(q)\n", "UninitializedPlace_Kd use(q) 1")] // rfe
+    [InlineData("func g(f: [2 of Never], y: i32, c: bool)\n    let n = f[0]\n    let q: i32 = if c => y else => y\n    use(q)\n", "")] // rfev
+    [InlineData("func g(r: RN, y: i32, c: bool)\n    match r\n        .Ok(let v) => use(v)\n        .Err(let e)\n            let n = e\n            let q: i32 = if c => y else => fail()\n            use(q)\n", "")] // rmb
+    [InlineData("func g(r: RN, y: i32, c: bool)\n    match r\n        .Ok(let v) => use(v)\n        .Err(let e)\n            let n = e\n            let q: i32 = if c => y else => y\n            use(q)\n", "")] // rmbv
+    [InlineData("func g(r: RN, y: i32, c: bool)\n    match r\n        .Ok(let v) => use(v)\n        .Err(let e)\n            let n = e@follow\n            let q: i32 = if c => y else => fail()\n            use(q)\n", "UninitializedPlace_Kd use(q) 1")] // rmbf
+    [InlineData("func g(r: RN, y: i32, c: bool)\n    match r\n        .Ok(let v) => use(v)\n        .Err(let e)\n            let n = e@follow\n            let q: i32 = if c => y else => y\n            use(q)\n", "")] // rmbfv
+    [InlineData("func g(r: RN, y: i32, c: bool)\n    match r@move\n        .Ok(let v) => use(v)\n        .Err(let e)\n            let n = e\n            let q: i32 = if c => y else => fail()\n            use(q)\n", "UninitializedPlace_Kd use(q) 1")] // rmbm
+    [InlineData("func g(r: RN, y: i32, c: bool)\n    match r@move\n        .Ok(let v) => use(v)\n        .Err(let e)\n            let n = e\n            let q: i32 = if c => y else => y\n            use(q)\n", "")] // rmbmv
+    [InlineData("func g(o: Option<Never>, y: i32, c: bool)\n    match o\n        .None => ()\n        .Some(let e)\n            let n = e\n            let q: i32 = if c => y else => fail()\n            use(q)\n", "")] // rob
+    [InlineData("func g(o: Option<Never>, y: i32, c: bool)\n    match o\n        .None => ()\n        .Some(let e)\n            let n = e\n            let q: i32 = if c => y else => y\n            use(q)\n", "")] // robv
+    [InlineData("func g(o: Option<Never>, y: i32, c: bool)\n    match o\n        .None => ()\n        .Some(let e)\n            let n = e@follow\n            let q: i32 = if c => y else => fail()\n            use(q)\n", "UninitializedPlace_Kd use(q) 1")] // robf
+    [InlineData("func g(o: Option<Never>, y: i32, c: bool)\n    match o\n        .None => ()\n        .Some(let e)\n            let n = e@follow\n            let q: i32 = if c => y else => y\n            use(q)\n", "")] // robfv
+    [InlineData("func g(o: Option<Never>, y: i32, c: bool)\n    match o@move\n        .None => ()\n        .Some(let e)\n            let n = e\n            let q: i32 = if c => y else => fail()\n            use(q)\n", "UninitializedPlace_Kd use(q) 1")] // robm
+    [InlineData("func g(o: Option<Never>, y: i32, c: bool)\n    match o@move\n        .None => ()\n        .Some(let e)\n            let n = e\n            let q: i32 = if c => y else => y\n            use(q)\n", "")] // robmv
+    [InlineData("func g<T>(x: T, y: i32, c: bool) -> ()\n    T is Never\n    let n = x\n    let q: i32 = if c => y else => fail()\n    use(q)\n", "UninitializedPlace_Kd use(q) 1")] // rg
+    [InlineData("func g<T>(x: T, y: i32, c: bool) -> ()\n    T is Never\n    let n = x\n    let q: i32 = if c => y else => y\n    use(q)\n", "")] // rgv
+    [InlineData("func g(x: Never, y: i32, c: bool)\n    let n = x\n    takeA([y, if c => y else => y])\n", "")] // rpav
+    [InlineData("func g(x: Never, y: i32, c: bool)\n    _ = x@move\n    takeA([y, if c => y else => y])\n", "")] // rmav
+    [InlineData("func g(x: Never, y: i32, c: bool)\n    pass(x)\n    takeA([y, if c => y else => y])\n", "")] // raav
+    [InlineData("func g(s: SN, y: i32, c: bool)\n    let n = s.v\n    takeA([y, if c => y else => y])\n", "")] // rfav
+    [InlineData("func g(a: Array<Never>, y: i32, c: bool)\n    let n = a[0]\n    takeA([y, if c => y else => y])\n", "")] // raeav
+    [InlineData("func g(x: Never, y: i32, c: bool)\n    pass2(x, [y, if c => y else => y])\n", "")] // rargv
+    [InlineData("func g(x: Never, y: i32, c: bool)\n    let n = y\n    let q: i32 = if c => y else => fail()\n    use(q)\n", "")] // tv0
+    [InlineData("func g(x: Never, y: i32, c: bool)\n    let n = y\n    takeA([y, if c => y else => fail()])\n", "")] // ta0
+    [InlineData("func g(x: Never, y: i32, c: bool)\n    let s: Array<i32> = [y]\n    let n = x\n    use(if c => y else => h(s@move, fail()))\n    takeA(s@move)\n", "MovedPlace_Kd s 1")] // tm
+    [InlineData("func g(x: Never, y: i32, c: bool)\n    let s: Array<i32> = [y]\n    let n = y\n    use(if c => y else => h(s@move, fail()))\n    takeA(s@move)\n", "")] // tm0
+    [InlineData("func g(x: Never, y: i32, c: bool)\n    var v: i32 = 1\n    var w: i32 = 2\n    let n = x\n    let r: ref/i32 = if c => w@ref else => keep(v@ref, fail())\n    v = 3\n    useR(r)\n", "ComparisonLoanConflict_Kd v = 3 1")] // tb
+    [InlineData("func g(x: Never, y: i32, c: bool)\n    var v: i32 = 1\n    var w: i32 = 2\n    let n = y\n    let r: ref/i32 = if c => w@ref else => keep(v@ref, fail())\n    v = 3\n    useR(r)\n", "")] // tb0
+    [InlineData("func g(x: Never, y: i32, c: bool)\n    let s: string = \"a\"\n    let n = x\n    use(if c => y else => hs(s@move, fail()))\n    takeS(s@move)\n", "MovedPlace_Kd s 1")] // td
+    [InlineData("func g(x: Never, y: i32, c: bool)\n    let s: string = \"a\"\n    let n = y\n    use(if c => y else => hs(s@move, fail()))\n    takeS(s@move)\n", "")] // td0
+    [InlineData("func g(x: Never, y: i32, c: bool)\n    let s: string = \"a\"\n    let n = x\n    use(if c => y else => hs(s@move, fail()))\n", "")] // tdd
+    [InlineData("func g(x: Never, y: i32, c: bool)\n    let s: string = \"a\"\n    let n = y\n    use(if c => y else => hs(s@move, fail()))\n", "")] // tdd0
+    [InlineData("func g(x: Never, y: i32, c: bool)\n    let q: i32\n    do\n        let n = y\n        q = if c => y else => fail()\n    use(q)\n", "")] // tn0
+    [InlineData("func g(x: Never, y: i32, c: bool)\n    if c\n        let n = x\n    let q: i32 = if c => y else => fail()\n    use(q)\n", "")] // tn2
+    [InlineData("func g(x: Never, y: i32, c: bool)\n    if c\n        let n = x\n    else\n        let m = x\n    let q: i32 = if c => y else => fail()\n    use(q)\n", "UninitializedPlace_Kd use(q) 1")] // tn3
+    [InlineData("func g(x: Never, y: i32, c: bool)\n    if c\n        let n = x\n        let q: i32 = if y > 2 => y else => fail()\n        use(q)\n", "UninitializedPlace_Kd use(q) 1")] // tn4
+    [InlineData("func g(x: Never, y: i32, c: bool)\n    let n = x\n    loop\n        let q: i32 = if c => y else => fail()\n        use(q)\n        exit\n", "UninitializedPlace_Kd use(q) 1")] // tl
+    [InlineData("func g(x: Never, y: i32, c: bool)\n    let n = y\n    loop\n        let q: i32 = if c => y else => fail()\n        use(q)\n        exit\n", "")] // tl0
+    [InlineData("func g(x: Never, y: i32, c: bool)\n    loop\n        let n = x\n        let q: i32 = if c => y else => fail()\n        use(q)\n        exit\n", "UninitializedPlace_Kd use(q) 1")] // tl2
+    [InlineData("func g(x: Never, y: i32, c: bool)\n    while c\n        let n = x\n    let q: i32 = if c => y else => fail()\n    use(q)\n", "")] // tl3
+    [InlineData("func g(x: Never, y: i32, c: bool) -> i32\n    let n = x\n    return y\n", "")] // tr1
+    [InlineData("func g(x: Never, y: i32, c: bool) -> i32\n    let n = x\n", "")] // tr2
+    [InlineData("func g(x: Never, y: i32, c: bool) -> i32 => x\n", "")] // tr3
+    [InlineData("func g(x: Never, y: i32, c: bool)\n    passM(x@move, x)\n", "MovedPlace_Kd x 1")] // tx
+    [InlineData("func g(x: Never, y: i32, c: bool)\n    let n = x\n    use(y)\n    let k: i32 = y\n    use(k)\n    takeA([y, if c => y else => y])\n", "")] // tu
+    [InlineData("func g(x: Never, y: i32, c: bool)\n    let n = x\n    var p: i32\n    if c\n        p = 1\n    else\n        fail()\n    use(p)\n", "")] // sx
+    [InlineData("func g(x: Never, y: i32, c: bool)\n    let n = x\n    var p: i32\n    if c => p = 1 else => fail()\n    use(p)\n", "")] // sx1
+    [InlineData("func g(x: Never, y: i32, c: bool)\n    fail()\n    var p: i32\n    if c\n        p = 1\n    else\n        fail()\n    use(p)\n", "")] // sf
+    [InlineData("func g(x: Never, y: i32, c: bool)\n    fail()\n    var p: i32\n    if c => p = 1 else => fail()\n    use(p)\n", "")] // sf1
+    [InlineData("func g(x: Never, y: i32, c: bool)\n    return\n    var p: i32\n    if c\n        p = 1\n    else\n        fail()\n    use(p)\n", "")] // sr
+    [InlineData("func g(x: Never, y: i32, c: bool)\n    return\n    var p: i32\n    if c => p = 1 else => fail()\n    use(p)\n", "")] // sr1
+    [InlineData("func g(x: Never, y: i32, c: bool)\n    let n = y\n    var p: i32\n    if c\n        p = 1\n    else\n        fail()\n    use(p)\n", "")] // sy
+    [InlineData("func g(x: Never, y: i32, c: bool)\n    let n = y\n    var p: i32\n    if c => p = 1 else => fail()\n    use(p)\n", "")] // sy1
+    [InlineData("func g(x: Never, y: i32, c: bool)\n    fail()\n    let q: i32 = if c => y else => fail()\n    use(q)\n", "UninitializedPlace_Kd use(q) 1")] // bf
+    [InlineData("func g(x: Never, y: i32, c: bool)\n    fail()\n    let q: i32 = if c => y else => y\n    use(q)\n", "")] // bfv
+    [InlineData("func g(x: Never, y: i32, c: bool)\n    return\n    let q: i32 = if c => y else => fail()\n    use(q)\n", "UninitializedPlace_Kd use(q) 1")] // br
+    [InlineData("func g(x: Never, y: i32, c: bool)\n    return\n    let q: i32 = if c => y else => y\n    use(q)\n", "")] // brv
+    [InlineData("func g(x: Never, y: i32, c: bool)\n    $abort(\"no\")\n    let q: i32 = if c => y else => fail()\n    use(q)\n", "UninitializedPlace_Kd use(q) 1")] // ba
+    [InlineData("func g(x: Never, y: i32, c: bool)\n    $abort(\"no\")\n    let q: i32 = if c => y else => y\n    use(q)\n", "")] // bav
+    [InlineData("func g(x: Never, y: i32, c: bool)\n    let n = fail()\n    let q: i32 = if c => y else => fail()\n    use(q)\n", "UninitializedPlace_Kd use(q) 1")] // bl
+    [InlineData("func g(x: Never, y: i32, c: bool)\n    let n = fail()\n    let q: i32 = if c => y else => y\n    use(q)\n", "")] // blv
+    [InlineData("func g(x: Never, y: i32, c: bool)\n    loop => ()\n    let q: i32 = if c => y else => fail()\n    use(q)\n", "UninitializedPlace_Kd use(q) 1")] // bw
+    [InlineData("func g(x: Never, y: i32, c: bool)\n    loop => ()\n    let q: i32 = if c => y else => y\n    use(q)\n", "")] // bwv
+    [InlineData("func g(x: Never, y: i32, c: bool)\n    let n = fail()\n    let m = n\n    let q: i32 = if c => y else => fail()\n    use(q)\n", "UninitializedPlace_Kd n 1 | UninitializedPlace_Kd use(q) 1")] // bla
+    [InlineData("func g(x: Never, y: i32, c: bool)\n    require c else\n        let n = x\n    use(y)\n", "")] // xq1
+    [InlineData("func g(x: Never, y: i32, c: bool)\n    require c else => pass(x)\n    use(y)\n", "")] // xq2
+    [InlineData("func g(x: Never, y: i32, c: bool)\n    require c else\n        let n = y\n    use(y)\n", "RequireFallthrough_Kd let n = y 1")] // xq3
+    [InlineData("func g(x: Never, y: i32, c: bool)\n    var box = Box.init(\"a\")\n    let n = x\n    takeS(box.value@move)\n", "")] // xd
+    [InlineData("func g(x: Never, y: i32, c: bool)\n    var box = Box.init(\"a\")\n    return\n    takeS(box.value@move)\n", "")] // xdr
+    [InlineData("func g(x: Never, y: i32, c: bool)\n    var box = Box.init(\"a\")\n    let n = y\n    takeS(box.value@move)\n", "MovedPlace_Kd var box = Box.init(\"a\") 1")] // xdn
+    [InlineData("func g(x: Never, y: i32, c: bool)\n    if x => use(y)\n    let q: i32 = if c => y else => fail()\n    use(q)\n", "UninitializedPlace_Kd use(q) 1")] // xif
+    [InlineData("func g(x: Never, y: i32, c: bool)\n    match x\n        _ => ()\n    let q: i32 = if c => y else => fail()\n    use(q)\n", "UninitializedPlace_Kd use(q) 1")] // xms
+    [InlineData("func g(r: ref/Never, y: i32, c: bool)\n    let n = r@follow\n    let q: i32 = if c => y else => fail()\n    use(q)\n", "UninitializedPlace_Kd use(q) 1")] // xrr
+    [InlineData("func g(x: Never, y: i32, c: bool)\n    let b = x@ref\n    let q: i32 = if c => y else => fail()\n    use(q)\n", "")] // xrb
+    public void CodeAfterANeverPlaceReadIsCheckedOnTheAssumedPaths(string function, string expected)
+        => Assert.Equal(expected.Length == 0 ? [] : expected.Split(" | "), Problems(Reads + function));
 
     // Plan 5.6.1, SPEC 13.5.5: a PairLayer is the Place itself in the owner case and a Deref in a reference case, so writing through an
     // unset pair layer is a problem in the uniq view only; a body whose accesses no view decides is analyzed once, for every view.
