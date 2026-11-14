@@ -37,6 +37,11 @@ public partial class PropertyBindingTest
     private const string AtPk = "Unsupported_Kd: pk(x: ref/i32 during source) -> i32";
     private const string GroupNeed = "group N\n    public func need<T>(x: T) -> i32\n        T is Owned\n        return 0\n";
 
+    // `S<T>` and `Outer<T>.Inner` whose Field Closure names T, and a generic user.
+    private const string SFieldT = GroupNeed + "struct S<T>\n    public let p = func (x: T) -> i32 => 0\n    public init() => ()\n";
+    private const string InnerT = GroupNeed + "struct Outer<T>\n    public struct Inner\n        public let p = func (x: T) -> i32 => 0\n        public init() => ()\n";
+    private const string UseT = "group U\n    public func use<T>(t: T) -> i32\n";
+
     private const string BoxOf = "struct Box<T>\n    public let v: T\n    public let cb = func (x: T) => ()\n    public init(v: T) => self.v = v@move\n\n";
     private const string Local = "func f(r: ref/i32) -> i32\n    let view = View.init(r)\n";
     private const string Static = "func f(r: ref/i32 during static) -> i32\n    let view = View.init(r)\n";
@@ -79,6 +84,14 @@ public partial class PropertyBindingTest
     [InlineData("O5", "struct Outer {source}\n    public let data: ref/i32 during source\n    public init(data: ref/i32 during source) => self.data = data\n    struct Inner\n        public let cb = func (y: ref/i32 during source) => ()\n", AtLiteral)]
     [InlineData("O1a", ViewHead + "t = (func () => 1, Option<ref/i32 during source>.None)" + ViewInit + Static + "    return need(view@move)", null)]
     [InlineData("O1c", ViewHead + "t = Option<ref/i32 during source>.None" + ViewInit + Static + "    return need(view@move)", null)]
+    [InlineData("C16 s1bcloT", SFieldT + UseT + "        return N.need(S<T>.init())", "UnprovenConstraint_Kd: N.need(S<T>.init())")]
+    [InlineData("C16 s1cowned", SFieldT + UseT + "        T is Owned\n        return N.need(S<T>.init())", null)]
+    [InlineData("C16 s3holder", SFieldT + "struct H\n    public let s: S<i32>\n    public init() => self.s = S<i32>.init()\ngroup U\n    public func use() -> i32\n        return N.need(H.init())", null)]
+    [InlineData("C16 s3bholderT", SFieldT + "struct H<T>\n    public let s: S<T>\n    public init() => self.s = S<T>.init()\n" + UseT + "        return N.need(H<T>.init())", "UnprovenConstraint_Kd: N.need(H<T>.init())")]
+    [InlineData("C16 n1binnerT", InnerT + UseT + "        return N.need(Outer<T>.Inner.init())", "UnprovenConstraint_Kd: N.need(Outer<T>.Inner.init())")]
+    [InlineData("C16 n1cinnerTowned", InnerT + UseT + "        T is Owned\n        return N.need(Outer<T>.Inner.init())", null)]
+    [InlineData("C16 n1dinnerCloT", InnerT + UseT + "        let i = Outer<T>.Inner.init()\n        return N.need(i.p)", "UnprovenConstraint_Kd: N.need(i.p)")]
+    [InlineData("C16 n1einnerUnusedT", GroupNeed + "struct Outer<T>\n    public struct Inner\n        public let p = func () -> i32 => 0\n        public init() => ()\n" + UseT + "        return N.need(Outer<T>.Inner.init())", "UnprovenConstraint_Kd: N.need(Outer<T>.Inner.init())")]
     [InlineData("O3", ViewHead + "cb = func (y: ref/i32 during static) => ()" + ViewInit + Local + "    return need(view.cb)", "Unsupported_Kd: (y: ref/i32 during static)")]
     [InlineData("O3static", ViewHead + "cb = func (y: ref/i32 during static) => ()" + ViewInit + Static + "    return need(view.cb)", "Unsupported_Kd: (y: ref/i32 during static)")]
     [InlineData("O4", ViewHead + "cb = func (y: ref/i32) => ()" + ViewInit + Local + "    view.cb(r)\n    return need(view.cb)", "Unsupported_Kd: (y: ref/i32)")]
@@ -91,6 +104,7 @@ public partial class PropertyBindingTest
     [InlineData("x3bpkstatic", PkView + "func f(v: ref/(View during static)) -> i32 => need(v.p())", AtPk)]
     [InlineData("x5pk", GroupNeed + ViewHead + PkField + "\n    public func m(self: ref/Self) -> i32 => N.need(self.p())" + ViewInit, AtPk)]
     [InlineData("x9pk", PkView + "func f(v: ref/(View during a)) -> i32\n    let e: (ref/i32 during a) -> i32 = v.p()\n    return 0", AtPk)]
+    [InlineData("C17 w13fieldItemRaw", GroupNeed + "struct S<T>\n    public let p = func ()\n        func pk() -> i32 => 0\n        return pk\n    public init() => ()\ngroup U\n    public func use(s: ref/S<raw/u8>) -> i32\n        let f = s.p()\n        return N.need(f)", "Unsupported_Kd: pk() -> i32", "Unsupported_Kd: s.p()")]
     [InlineData("x1", ViewHead + "cb = missingName" + ViewInit + Local + "    view.cb(r)\n    return 1", "UnresolvedBinding_Kd: missingName")]
     // The owner's O-262 (a) (2026-11-14; PLAN G846, G856, removed by G300): O3, O4 and their static twins need a Field Closure of
     // `View {source}` Owned. Its instantiation holds the instance's `source` (SPEC 3.2.1, 15.2.3), but a held instance is formed modulo
@@ -103,6 +117,12 @@ public partial class PropertyBindingTest
     // UnprovenConstraint_Kd (x9: UnprovenOriginContract_Kd) at the use: record selection, as the use reads a Type the limited
     // definition does not form (the owner's O-277 (a)). Their valid twin x3bpkstatic (`View during static`: the inherited `source` and
     // pk's fixed signature Origin are static) is O-262 (a)'s same limit, where dev's UnprovenConstraint_Kd at the use was false.
+    // The coverage table's rows (PLAN G846, G856; named by row): C16, a Container's summary, where its own Field Closure adds nothing
+    // beyond the Container's arguments, also stored in a holder, and a nested Container's Closure inherits the outer T, used or not
+    // (SPEC 15.2.3, 6.1.3; s1cloT and n1innerT, the concrete twins of s1cowned and n1cinnerTowned under the same summary, are merged
+    // into them). C17 w13fieldItemRaw (PLAN G300): pk's Item read through `S<raw/u8>`, a held instance with an Origin position, is
+    // withheld with its signature, the limit at `func pk` beside the gap at `s.p()` dev reports, never a Language record (the prototype
+    // reported UnprovenConstraint_Kd beside them until a withheld signature's nested definitions were closed under its instance).
     public void AFieldClosureNamingItsContainersOriginIsTheLocatedLimit(string id, string declarations, string? record, string? mir = null)
         => Assert.Equal([id, .. new[] { record, mir }.OfType<string>()], [id, .. RawPointerSyntaxTest.Records(ConcreteClosureTest.NeedOwned + declarations)]);
 

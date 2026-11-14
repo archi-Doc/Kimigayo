@@ -113,7 +113,8 @@ public class FunctionItemTest
     // or a bound argument derives (p1projgen, r2reqok, p7selfreq, x1fnarg, x2fnoptarg, x4assocfn) or its own Constraint set's slot
     // (b8setk); Copy reads no Origin (a1copy). An erasure judges the environment's parts, the Contract's inherited Origin included
     // (w3era, w6unusedera, w9eraneed, w12setform), in their one numbering (q1era2: a requirement Item's second Contract-reference Type
-    // argument).
+    // argument). A member's Item holds its declaring Type's arguments, an unused one too (m1memberUnused); a root function's Item read
+    // in a generic body holds none of the body's (k22btop).
     [Theory]
     [InlineData("a1copy", "func needc<T>(x: T) -> i32\n    T is Copy\n    return 0\nfunc h(anchor0: ref/u8 during a) -> i32\n    if true\n        func pk(x: ref/u8 during a) -> i32 => 0\n        return needc(pk)\n    return 0\n", null)]
     [InlineData("a2copyown", "func needco<T>(x: T) -> i32\n    T is Copy and Owned\n    return 0\nfunc h(anchor0: ref/u8 during a) -> i32\n    if true\n        func pk(x: ref/u8 during a) -> i32 => 0\n        return needco(pk)\n    return 0\n", "needco(pk)")]
@@ -132,6 +133,8 @@ public class FunctionItemTest
     [InlineData("w3era", "struct S {source}\n    public let v: ref/u8 during source\n    public init(v: ref/u8 during source) => self.v = v\n    public contract C\n        func read(self: ref/Self, x: ref/u8 during source) -> i32\nfunc r<T>(x: ref/T, anchor: ref/u8 during a) -> i32\n    T is (S during a).C and Owned\n    let op: (ref/T, ref/u8 during a) -> i32 = T.read\n    return op(x, anchor)\n", "T.read")]
     [InlineData("w9eraneed", Need + ViewC2 + "func r<T>(x: ref/T, anchor: ref/u8 during a) -> i32\n    T is (S during a).C2 and Owned\n    let op: (ref/T) -> i32 = T.get\n    return need(op@move)\n", "T.get")]
     [InlineData("w12setform", ViewC2 + "func r<T>(x: ref/T, anchor: ref/u8 during a) -> i32\n    origin k.source == a\n    T is (S{k}).C2 and Owned\n    let op: (ref/T) -> i32 = T.get\n    return op(x)\n", "T.get")]
+    [InlineData("A13 k22btop", Need + "func top() -> i32 => 0\nfunc h<T>(t: T) -> i32\n    return need(top)\n", null)]
+    [InlineData("A13 m1memberUnused", GroupNeed + "struct B2<T>\n    public func mk() -> i32 => 0\ngroup U\n    public func use<T>(t: T) -> i32\n        return N.need(B2<T>.mk)\n", "N.need(B2<T>.mk)")]
     public void AnItemsOwnedPartsAreItsBoundAndInheritedArguments(string id, string program, string? at)
         => AssertOwnedRecord(id, program + "public func main() -> () => ()\n", at);
 
@@ -152,17 +155,22 @@ public class FunctionItemTest
     [InlineData("j09bunused", Need + "func h<T>(t: T) -> i32\n    if true\n        func pk() -> i32 => 0\n        return need(pk)\n    return 0\n", "need(pk)")]
     [InlineData("j14bunused", "func h<T>(t: T) -> i32\n    if true\n        func pk(v: i32) -> i32 => v\n        let e: (i32) -> i32 = pk\n        return e(0)\n    return 0\n", "pk\n        return e")]
     [InlineData("j18callableowned", "func callOwned<F>(f: F) -> i32\n    F is Callable<() -> i32>\n    F is Owned\n    return f()\nfunc h<T>(t: T) -> i32\n    if true\n        func pk() -> i32 => 0\n        return callOwned(pk)\n    return 0\n", "callOwned(pk)")]
+    [InlineData("A3 j18own", "func callOwned<F>(f: F) -> i32\n    F is Callable<() -> i32>\n    F is Owned\n    return f()\nfunc h<T>(t: T) -> i32\n    T is Owned\n    if true\n        func pk() -> i32 => 0\n        return callOwned(pk)\n    return 0\n", null)]
     [InlineData("j21genmethod", GroupNeed + "struct B2<T>\n    public func m() -> i32\n        if true\n            func pk() -> i32 => 0\n            return N.need(pk)\n        return 0\n", "N.need(pk)")]
+    [InlineData("A6 k10methodok", GroupNeed + "struct B2<T>\n    T is Owned\n    public func m() -> i32\n        if true\n            func pk() -> i32 => 0\n            return N.need(pk)\n        return 0\n", null)]
     [InlineData("k01own", Need + "func h<T>(t: T) -> i32\n    T is Owned\n    if true\n        func pk() -> i32 => 0\n        return need(pk)\n    return 0\n", null)]
     [InlineData("k02eraseown", "func h<T>(t: T) -> i32\n    T is Owned\n    if true\n        func pk(v: i32) -> i32 => v\n        let e: (i32) -> i32 = pk\n        return e(0)\n    return 0\n", null)]
     [InlineData("k06twoq", Need + "func h() -> i32\n    if true\n        func q<U>(u: U) -> i32\n            if true\n                func pk() -> i32 => 0\n                return need(pk)\n            return 0\n        return q(1)\n    return 0\n", "need(pk)")]
     [InlineData("k09genfnok", Need + "func h<T, U>(t: T, u: U) -> i32\n    T is Owned\n    U is Owned\n    if true\n        func pk(x: T) -> i32 => 0\n        return need(pk)\n    return 0\n", null)]
     [InlineData("k08genfn", Need + "func h<T, U>(t: T, u: U) -> i32\n    T is Owned\n    if true\n        func pk(x: T) -> i32 => 0\n        return need(pk)\n    return 0\n", "need(pk)")]
     [InlineData("k11slot", GroupNeed + "struct C2 {s}\n    public let r: ref/i32 during s\n    public init(r: ref/i32 during s) => self.r = r\n    public func m(self: ref/Self) -> i32\n        if true\n            func pk() -> i32 => 0\n            return N.need(pk)\n        return 0\n", "N.need(pk)")]
+    [InlineData("A8 k12plainok", GroupNeed + "struct C2\n    public let r: i32\n    public init(r: i32) => self.r = r\n    public func m(self: ref/Self) -> i32\n        if true\n            func pk() -> i32 => 0\n            return N.need(pk)\n        return 0\n", null)]
     [InlineData("k13fnorigin", Need + "func h(anchor0: ref/u8 during a) -> i32\n    if true\n        func pk() -> i32 => 0\n        return need(pk)\n    return 0\n", null)]
     [InlineData("k16eraslot", "struct C2 {s}\n    public let r: ref/i32 during s\n    public init(r: ref/i32 during s) => self.r = r\n    public func m(self: ref/Self) -> i32\n        if true\n            func pk(x: ref/i32 during s) -> i32 => 0\n            let e: (ref/i32 during s) -> i32 = pk\n            return 0\n        return 0\n", "pk\n            return 0")]
     [InlineData("k20deep", GroupNeed + "struct Outer<T>\n    public struct Inner\n        public let n: i32\n        public init(n: i32) => self.n = n\n        public func m(self: ref/Self) -> i32\n            if true\n                func pk() -> i32 => 0\n                return N.need(pk)\n            return 0\n", "N.need(pk)")]
+    [InlineData("A7 k20deepok", GroupNeed + "struct Outer<T>\n    T is Owned\n    public struct Inner\n        public let n: i32\n        public init(n: i32) => self.n = n\n        public func m(self: ref/Self) -> i32\n            if true\n                func pk() -> i32 => 0\n                return N.need(pk)\n            return 0\n", null)]
     [InlineData("k23clobody", Need + "func h<T>(t: T) -> i32\n    let c = func () -> i32\n        if true\n            func pk() -> i32 => 0\n            return need(pk)\n        return 0\n    return c()\n", "need(pk)")]
+    [InlineData("A9 k23clobodyok", Need + "func h<T>(t: T) -> i32\n    T is Owned\n    let c = func () -> i32\n        if true\n            func pk() -> i32 => 0\n            return need(pk)\n        return 0\n    return c()\n", null)]
     [InlineData("v12cloarg", Need + "func apply<F>(f: F) -> i32\n    F is Callable<() -> i32>\n    return f()\nfunc h() -> i32\n    let r = apply(func () -> i32\n        if true\n            func pk() -> i32 => 0\n            return need(pk)\n        return 0\n    )\n    return r\n", null)]
     [InlineData("v12g", "func apply<F>(f: F) -> i32\n    F is Callable<() -> i32>\n    return f()\nfunc h() -> i32\n    let r = apply(func () -> i32\n        if true\n            func pk(v: i32) -> i32 => v\n            let e: (i32) -> i32 = pk\n            return e(0)\n        return 0\n    )\n    return r\n", null)]
     [InlineData("v12i", "group N\n    public func need<T>(v: T) -> i32\n        T is Owned\n        return 0\n    public func apply<F>(f: F) -> i32\n        F is Callable<() -> i32>\n        return f()\nstruct P\n    public func m() -> i32\n        let r = N.apply(func () -> i32\n            if true\n                func pk() -> i32 => 0\n                return N.need(pk)\n            return 0\n        )\n        return r\n", null)]
@@ -185,8 +193,8 @@ public class FunctionItemTest
     // of a function declared in a body, carries the instance it was formed in, and its inherited arguments are read through it: a
     // Field Closure and the Item it returns, read through `S<A>`, are judged with A (dev judged nothing; w4fieldItemTok and
     // w8innerUowned are valid, w7innerTowned shared `self.p()`'s Type), in S's own body with S's T; a captureless Closure in `h<T>`
-    // follows the same rule (k18clo, k19cloera, accepted on dev). o8eraT is NestedItemsAreErasedUnderTheEnclosingFunctionsClauses' row
-    // without `T is Owned`, invalid by the owner's O-249 Q4 (a).
+    // follows the same rule (k18clo, k19cloera, accepted on dev), and in non-generic code holds nothing (k24clonongen). o8eraT is
+    // NestedItemsAreErasedUnderTheEnclosingFunctionsClauses' row without `T is Owned`, invalid by the owner's O-249 Q4 (a).
     [Theory]
     [InlineData("w2fieldItemT", ItemField + "group U\n    public func use<T>(s: ref/S<T>) -> i32\n        let f = s.p()\n        return N.need(f)\n", "N.need(f)")]
     [InlineData("w4fieldItemTok", ItemField + "group U\n    public func use<T>(s: ref/S<T>) -> i32\n        T is Owned\n        let f = s.p()\n        return N.need(f)\n", null)]
@@ -204,13 +212,16 @@ public class FunctionItemTest
     [InlineData("w3blocalItemT", GroupNeed + "func h<T>(t: T) -> i32\n    let f = func ()\n        func pk() -> i32 => 0\n        return pk\n    return N.need(f())\n", "N.need(f())")]
     [InlineData("k18clo", GroupNeed + "func h<T>(t: T) -> i32\n    let c = func () -> i32 => 0\n    return N.need(c)\n", "N.need(c)")]
     [InlineData("k18clook", GroupNeed + "func h<T>(t: T) -> i32\n    T is Owned\n    let c = func () -> i32 => 0\n    return N.need(c)\n", null)]
+    [InlineData("B3 k24clonongen", GroupNeed + "func h(t: i32) -> i32\n    let c = func () -> i32 => 0\n    return N.need(c)\n", null)]
     [InlineData("k19cloera", "func h<T>(t: T) -> i32\n    let c = func (v: i32) -> i32 => v\n    let e: (i32) -> i32 = c\n    return e(0)\n", "c\n    return e(0)")]
     [InlineData("k19cloeraok", "func h<T>(t: T) -> i32\n    T is Owned\n    let c = func (v: i32) -> i32 => v\n    let e: (i32) -> i32 = c\n    return e(0)\n", null)]
     [InlineData("c2fieldclo", ClosureField + "group U\n    public func use(s: ref/S<i32>) -> i32\n        return N.need(s.p)\n", null)]
     [InlineData("c3fieldcloT", ClosureField + "group U\n    public func use<T>(s: ref/S<T>) -> i32\n        return N.need(s.p)\n", "N.need(s.p)")]
+    [InlineData("C9 c3bfieldcloTok", ClosureField + "group U\n    public func use<T>(s: ref/S<T>) -> i32\n        T is Owned\n        return N.need(s.p)\n", null)]
     [InlineData("c4innercloT", ClosureField + "    public func m<U>(self: ref/Self, other: ref/S<U>) -> i32\n        T is Owned\n        return N.need(other.p)\n", "N.need(other.p)")]
     [InlineData("c4binnercloU", ClosureField + "    public func m<U>(self: ref/Self, other: ref/S<U>) -> i32\n        U is Owned\n        return N.need(other.p)\n", null)]
     [InlineData("c5selfclo", ClosureField + "    public func m(self: ref/Self) -> i32\n        return N.need(self.p)\n", "N.need(self.p)")]
+    [InlineData("C11 c5bselfclook", ClosureField + "    public func m(self: ref/Self) -> i32\n        T is Owned\n        return N.need(self.p)\n", null)]
     [InlineData("c6fieldcloera", ClosureField + "group U\n    public func use<T>(s: ref/S<T>) -> i32\n        let e: () -> i32 = s.p\n        return e()\n", "s.p\n        return e()")]
     public void ANestedDefinitionsInheritedArgumentsAreReadThroughItsInstance(string id, string program, string? at)
         => AssertOwnedRecord(id, program + "public func main() -> () => ()\n", at);
@@ -302,7 +313,8 @@ public class FunctionItemTest
         Assert.True(valid, MinimalEmissionTest.Describe(c));
     }
 
-    // The check's records as (id, code, start), against one UnprovenConstraint_Kd at `at` or none.
+    // The check's records as (id, code, start), against one UnprovenConstraint_Kd at `at` or none. An id added from the coverage table
+    // (PLAN G846, G856) starts with its table row.
     private static void AssertOwnedRecord(string id, string source, string? at)
     {
         var errors = DiagnosticCorpus.Check(source).Diagnostics;
