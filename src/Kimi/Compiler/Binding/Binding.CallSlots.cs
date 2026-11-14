@@ -85,13 +85,17 @@ public sealed partial class Binding
     }
 
     // SPEC 10.8 (the owner's reading, O-263 (a)): whether an application is an exact source of its binder, as an occurrence of the
-    // original is: its target is a bare Type slot of the solve (`s/V`), which has no layer of its own, so the evidence's outer
-    // Semantics is the binder's alone. Any other target (`s/(ref/i32)`, `s/(t/i32)`, `s/Option<U>`) has its own layer or structure:
-    // that application is formed under the binder its exact sources fixed and then compared (SourcedLayer), never evidence, so an
-    // owner binding of the outer layer is no layer, even above a reference.
+    // original is: its target is a bare Type slot being inferred (`s/V`), which has no layer of its own, so the evidence's outer
+    // Semantics is the binder's alone. The pattern is classified under the solve's fixed bindings (FixedSlots), where only an own
+    // slot of the slot owner stays open, as its own parameter: an enclosing slot is always a fixed binding (OpenConstructionSlot;
+    // SPEC 9.7.1), so `s/V` over one is `s/(its binding)` on every path, a constructor's or a Case's as a method's, whose pattern has
+    // it substituted; explicit Type arguments or a construction Type that fix the own slots fix the binder too. Any other target
+    // (`s/(ref/i32)`, `s/(t/i32)`, `s/Option<U>`) has its own layer or structure: that application is formed under the binder its
+    // exact sources fixed and then compared (SourcedLayer), never evidence, so an owner binding of the outer layer is no layer, even
+    // above a reference.
     private static bool IsExactSource(BoundType application, Koto function)
         => application.Components[0] is { Kind: BoundTypeKind.Parameter, Symbol: { Kind: not BindingSymbolKind.SemanticsTarget } bare } &&
-            ContainerSlot(function, bare) >= 0;
+            ReferenceEquals(bare.Scope.Owner, function);
 
     // SPEC 8.1.2: whether a formed pattern is a layer over the callee's `target` (a pair's application or original, a Semantics layer),
     // matched by LayerTarget, rather than a Type matched as it is (an owner binding's target, a family, case by case).
