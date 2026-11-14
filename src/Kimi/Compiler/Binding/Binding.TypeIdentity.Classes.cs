@@ -295,7 +295,41 @@ public sealed partial class Binding
         private static bool IsConstructor(BoundType type)
             => type.Kind is not (BoundTypeKind.Parameter or BoundTypeKind.AssociatedProjection or BoundTypeKind.TargetProjection);
 
-        private static bool Quantifies(BoundOrigin? origin) => origin is { Kind: OriginKind.Input or OriginKind.Parameter, Binder: FunctionTypeKoto };
+        // An Origin quantified in a Function Type, or a meet with one among its operands (a result's omitted Origin is the meet of the
+        // per-call inputs, SPEC 8.10, 15.4.3): quantification structure (8.2.3's Function row).
+        private static bool Quantifies(BoundOrigin? origin)
+            => origin is { Kind: OriginKind.Input or OriginKind.Parameter, Binder: FunctionTypeKoto } ||
+                (origin is { Kind: OriginKind.Intersection } && HoldsQuantified(origin));
+
+        private static bool HoldsQuantified(BoundOrigin meet)
+        {
+            for (var i = 0; i < meet.Operands.Count; i++)
+            {
+                if (Quantifies(meet.Operands[i]))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private static int OperandCount(BoundOrigin origin) => origin.Kind == OriginKind.Intersection ? origin.Operands.Count : 1;
+
+        private static BoundOrigin Operand(BoundOrigin origin, int i) => origin.Kind == OriginKind.Intersection ? origin.Operands[i] : origin;
+
+        private static bool Holds(BoundOrigin meet, BoundOrigin operand)
+        {
+            for (var i = 0; i < OperandCount(meet); i++)
+            {
+                if (ReferenceEquals(Operand(meet, i), operand))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
 
         // Whether a Type holds an Origin quantified in a Function Type, in any Origin slot.
         private static bool Carries(BoundType type)
@@ -762,12 +796,12 @@ public sealed partial class Binding
         }
 
         // A Function pair walked position by position under its own correspondence: every Origin slot pairs a quantified Origin with one
-        // other only (else the structures differ); fixed Origins agree by their domain; abstract positions are its parts, where a
-        // quantified Origin would be carried out of its Function Type (Refuted; a pair application there is no form this rule covers).
+        // other only (else the structures differ), a meet of them operand by operand; fixed Origins agree by their domain; abstract
+        // positions are its parts, where a quantified Origin would be carried out of its Function Type (Refuted); a pair application
+        // against a constructor carrying one is judged by the pair row's head rule (PairMeet), its parts never joined.
         private byte Correspond(BoundType x, BoundType y)
         {
-            var paired = x.Kind is BoundTypeKind.SemanticsApplication or BoundTypeKind.SemanticsAdaptation ||
-                y.Kind is BoundTypeKind.SemanticsApplication or BoundTypeKind.SemanticsAdaptation;
+            var paired = x.IsPairLayer || y.IsPairLayer;
             var structural = IsConstructor(x) && IsConstructor(y) && !paired;
             if (!structural && !(x.Kind == y.Kind && ReferenceEquals(x.Symbol, y.Symbol) && x.Kind != BoundTypeKind.Parameter))
             {
@@ -777,7 +811,7 @@ public sealed partial class Binding
                     return One;
                 }
 
-                return paired ? Unsupported : Conflict;
+                return !paired ? Conflict : x.IsAbstractType || y.IsAbstractType ? Unsupported : Math.Max(this.PairMeet(x, y), Unsupported);
             }
 
             if (!SameHead(x, y))
@@ -811,6 +845,91 @@ public sealed partial class Binding
                 return binding.OriginsAgree(a, b, this.scope!.Owner, ref this.meetProvisional) ? One : Unproven;
             }
 
+            return a!.Kind == OriginKind.Intersection || b!.Kind == OriginKind.Intersection ? this.PairMeets(a, b!) : this.PairOne(a, b!);
+        }
+
+        // SPEC 8.2.3's Function row over two meets: a different number of quantified operands is a different structure; each quantified
+        // operand of `a` meets its partner in the correspondence, or the first unpaired quantified operand of `b`; fixed operands agree by
+        // their domain, position by position.
+        private byte PairMeets(BoundOrigin a, BoundOrigin b)
+        {
+            var (count, quantified) = (OperandCount(a), 0);
+            for (var i = 0; i < count; i++)
+            {
+                quantified += Quantifies(Operand(a, i)) ? 1 : 0;
+            }
+
+            for (var i = 0; i < OperandCount(b); i++)
+            {
+                quantified -= Quantifies(Operand(b, i)) ? 1 : 0;
+            }
+
+            if (quantified != 0)
+            {
+                return Conflict;
+            }
+
+            var meet = count == OperandCount(b) ? One : Unproven;
+            for (var i = 0; i < count && meet != Conflict; i++)
+            {
+                var x = Operand(a, i);
+                if (!Quantifies(x))
+                {
+                    var agreed = i < OperandCount(b) && binding.OriginsAgree(x, Operand(b, i), this.scope!.Owner, ref this.meetProvisional);
+                    meet = Math.Max(meet, agreed ? One : Unproven);
+                    continue;
+                }
+
+                var y = this.Partner(x) ?? this.Unpaired(b);
+                meet = y is null || !Holds(b, y) ? Conflict : Math.Max(meet, this.PairOne(x, y));
+            }
+
+            return meet;
+        }
+
+        private BoundOrigin? Partner(BoundOrigin x)
+        {
+            foreach (var (p, q) in this.correspondence)
+            {
+                if (ReferenceEquals(p, x))
+                {
+                    return q;
+                }
+            }
+
+            return null;
+        }
+
+        private BoundOrigin? Unpaired(BoundOrigin meet)
+        {
+            for (var i = 0; i < OperandCount(meet); i++)
+            {
+                var y = Operand(meet, i);
+                if (Quantifies(y) && !this.PairedRight(y))
+                {
+                    return y;
+                }
+            }
+
+            return null;
+        }
+
+        private bool PairedRight(BoundOrigin y)
+        {
+            foreach (var (_, q) in this.correspondence)
+            {
+                if (ReferenceEquals(q, y))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        // One quantified Origin paired with one other only (else the structures differ).
+        private byte PairOne(BoundOrigin a, BoundOrigin b)
+        {
             foreach (var (p, q) in this.correspondence)
             {
                 if (ReferenceEquals(p, a) || ReferenceEquals(q, b))
