@@ -310,7 +310,7 @@ internal sealed partial class MirBorrows
     }
 
     // What a call writing at Types an abstract part leaves unknown does at the Place entry `entry` names: a pun through a raw address
-    // where the Place surely holds a raw pointer's byte (Pointered: Positive), undecided where it only may (Open: under a length that is
+    // where the Place surely holds a raw pointer's byte (PlaceBytes: Pointer Positive), undecided where it only may (Open: under a length that is
     // no constant, or in a part the Type's structure does not state), as the Place's layers keep it; none through a safe borrow, which
     // designates its Place at its own Type.
     private PunWrite UnknownWrite(int entry)
@@ -320,16 +320,16 @@ internal sealed partial class MirBorrows
             return PunWrite.Typed;
         }
 
-        return PunAt(this.Pointered(place) == Extent.Positive ? PunWrite.Pun : PunWrite.Undecided, facts);
+        return PunAt(this.PlaceBytes(place).Pointer == Extent.Positive ? PunWrite.Pun : PunWrite.Undecided, facts);
     }
 
     // The Type of the Place entry `entry` names where a write there may pun a raw pointer, else null: a raw layer at the Place's own
-    // address (the key's facts: Binding's layers there) in a Place that holds a raw pointer's byte (Pointered; SPEC 4.1, 5.2: an array
+    // address (the key's facts: Binding's layers there) in a Place that holds a raw pointer's byte (PlaceBytes; SPEC 4.1, 5.2: an array
     // of no element holds none; a write at its address lies outside it, undefined when it runs and no compile-time error, SPEC 1.3).
     private BoundType? Holder(int entry, out PunKey facts)
     {
         facts = this.punKeys[this.EntryKey(entry)];
-        return facts.RawInline && cases.TypeOf(this.loans[entry].Place) is var place && this.Pointered(place) != Extent.None ? place : null;
+        return facts.RawInline && cases.TypeOf(this.loans[entry].Place) is var place && this.PlaceBytes(place).Pointer != Extent.None ? place : null;
     }
 
     // A displacement of a raw pointer (SPEC 5.3) by its pointee's stride.

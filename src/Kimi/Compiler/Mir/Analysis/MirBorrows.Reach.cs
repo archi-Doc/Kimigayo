@@ -20,7 +20,8 @@ namespace Kimi.Compiler.Mir;
 // the input's pointee or referent (SPEC 15.6 Holders, 5.7 Calls): a holder whose Place it does not designate
 // (MirBorrows.PunTypes' Designates) is read punned (SPEC 5.2), its state read as well at the guard of that Type's raw pointer raw
 // Places, each a layer read at its own key (Reading; never the whole Type's guard: a part that is no raw Place is not read), and
-// storage the body does not own is reached, with those layers' record, where that guard steps over an `owner` Scalar's byte (Punned).
+// storage the body does not own is reached, with those layers' record, where that guard steps over an `owner` Scalar's byte or a byte
+// that a punned write may not change, a reference's or a handle's (Punned; MirBorrows.PunTypes' PlaceBytes).
 // No element carries a Type.
 // A read keeps Φ_W only from a holder reached through no shared Loan, and from E where the set read carries Φ_W (SPEC 15.6.4: what is
 // reached through a shared layer is read-only; DECISIONS R4-M170), and W writes no holder that only a shared Loan names, at any step
@@ -444,11 +445,11 @@ internal sealed partial class MirBorrows
     // W's first step read at the reading path's Type (SPEC 15.6 Holders: a holder is read at the Type of the path that reads it; 5.7 Calls,
     // 15.6.4: the input's pointee or referent): each Place an entry of the argument names (PunEntry) that the Type does not designate at
     // the value's Position (Designates, OffGrid) is read punned (SPEC 5.2) through the Type's raw pointer raw Places (Reading; through a
-    // borrow layer only a punnable referent puns): over a raw pointer's byte (Pointered: a safe reference and a handle hold none, the
+    // borrow layer only a punnable referent puns): over a raw pointer's byte (PlaceBytes: a safe reference and a handle hold none, the
     // owner's O-223 (B')) the punned pointer has the provenance written there, so the holder's state is read at those layers' guard beside
-    // its own (Writes: dev's declared reading stays); where that guard steps over an `owner` Scalar's byte (Scalared), the pointer
-    // reaches storage the body does not own (SPEC 15.6 Holders, 5.5): E, past the holder, with those layers' record. The guard, where a
-    // holder is punned.
+    // its own (Writes: dev's declared reading stays); where that guard steps over an `owner` Scalar's byte or a byte that a punned
+    // write may not change, the pointer reaches storage the body does not own (Unowned): E, past the holder, with those layers'
+    // record. The guard, where a holder is punned.
     private MirWrites Punned(int set, BoundType input, BoundType? referent)
     {
         var raw = input is { Kind: BoundTypeKind.Semantics, Semantics: Parsing.SemanticsKind.Raw };
@@ -467,20 +468,30 @@ internal sealed partial class MirBorrows
             if (this.PunEntry(element) is var entry and >= 0 && cases.TypeOf(this.loans[entry].Place) is var place &&
                 !this.Designates(place, reading, on))
             {
-                if (this.Pointered(place) != Extent.None)
+                if (this.PlaceBytes(place).Pointer != Extent.None)
                 {
                     punned = true;
                     this.writingVia[this.loans[entry].Named] |= ViaPun;
                 }
 
-                if (guard is MirWrites.Through or MirWrites.Named && this.Scalared(place))
-                {
-                    this.Written(Escaped, -1, ViaPast, rows.Record);
-                }
+                this.Unowned(rows, place);
             }
         }
 
         return punned ? guard : MirWrites.None;
+    }
+
+    // Storage the body does not own under a punned reading (SPEC 15.6 Holders, example punnedRef; 5.5; 15.6.4's composition): a raw
+    // pointer read at the reading's rows (Reading) over a Place of Type `place` reaches it, with the rows' record, where a Loan may
+    // be stored through a row (their guard steps) and a byte of the Place may be an `owner` Scalar's (Scalared: no raw pointer need
+    // have written it) or one that a punned write may not change (PlaceBytes: a reference's, a handle's; none can have), whatever
+    // else the holder carries; at the first step (Punned) and past a holder (ReadPart) alike.
+    private void Unowned((MirWrites Guard, BoundType? Record) rows, BoundType place)
+    {
+        if (rows.Guard is MirWrites.Through or MirWrites.Named && (this.PlaceBytes(place).Fixed != Extent.None || this.Scalared(place)))
+        {
+            this.Written(Escaped, -1, ViaPast, rows.Record);
+        }
     }
 
     // A punned reading at a Type (SPEC 5.2, 15.6 Holders; the owner's O-223 (B')): a read through a raw layer of that pointee takes a
@@ -573,11 +584,11 @@ internal sealed partial class MirBorrows
     // Whether a read through a layer whose pointee or referent, at key `at`, does not designate a Place of Type `place` is a punned
     // read that may take a raw pointer from the Place's bytes (SPEC 5.2, 15.6 Holders; U3b's arm, Punned): the pointee has a raw pointer
     // raw Place within (PunTypes.RawPointers: its rows, left in readingRows for PunNodes) and the Place may hold a raw pointer's byte
-    // (Pointered: a safe reference and a handle hold none; the owner's O-223 (B')).
+    // (PlaceBytes: a safe reference and a handle hold none; the owner's O-223 (B')).
     private bool PunRows(BoundType place, PlaceKey at)
     {
         this.readingRows.Clear();
-        if (this.Pointered(place) != Extent.None)
+        if (this.PlaceBytes(place).Pointer != Extent.None)
         {
             this.RawPointers(at, this.readingRows);
         }
@@ -660,7 +671,8 @@ internal sealed partial class MirBorrows
     // typed where `type` designates its Place (Designates) and punned where it may take a raw pointer from the Place's bytes (PunRows),
     // through a borrow layer only where the referent is punnable: written with the record of `type`'s storage (Written's place: the
     // reading layer's, in place of R4-M154 Revision 8's Place Type of the reaching Loan; for a borrow of a Place's own Type the two
-    // agree) and read on at the key past the layer (Node, ReadAt), a punned one at its raw pointer rows' keys (PunNodes); at no other
+    // agree) and read on at the key past the layer (Node, ReadAt), a punned one at its raw pointer rows' keys (PunNodes), and storage
+    // the body does not own where the punned read is over a byte no raw pointer need or can have written (Unowned); at no other
     // layer (none: the layer reads nothing there). Past a holder
     // an element's Position is not known (R4-M198's Position is the argument value's; U5's per-element markers), so every row of its
     // Place's leading chain may be designated.
@@ -695,10 +707,15 @@ internal sealed partial class MirBorrows
                     this.Written(loan.Named, GuardRoot(loan), ViaPast, types.Erase(type));
                     this.Node(loan.Named, GuardRoot(loan), type, key);
                 }
-                else if ((raw || types.Punnable(type)) && this.PunRows(place, past))
+                else if (raw || types.Punnable(type))
                 {
-                    this.Written(loan.Named, GuardRoot(loan), ViaPast, types.Erase(type));
-                    this.PunNodes(loan.Named, GuardRoot(loan));
+                    if (this.PunRows(place, past))
+                    {
+                        this.Written(loan.Named, GuardRoot(loan), ViaPast, types.Erase(type));
+                        this.PunNodes(loan.Named, GuardRoot(loan));
+                    }
+
+                    this.Unowned(this.Reading(type), place);
                 }
             }
         }
