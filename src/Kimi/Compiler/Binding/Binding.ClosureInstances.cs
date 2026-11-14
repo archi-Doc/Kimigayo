@@ -1,7 +1,8 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
-// A Closure Type's call signature, its Origin arguments and its instances (SPEC 3.2.1, 6.1.3, 7.7.3, 15.3.4, 15.3.5, 15.6.4, 15.8.2;
-// DECISIONS R5-M63, R4-M152, R4-M159).
+// A Closure Type's call signature and Origin arguments, and the instance of a nested definition's Type, a Closure Type or the Item of
+// a function declared in a body (SPEC 3.2.1, 6.1.3, 7.7.3, 15.3.4, 15.3.5, 15.6.4, 15.8.2; DECISIONS R5-M63, R4-M152, R4-M159, BU-60;
+// PLAN G846).
 // - Responsibility: ClosureType, a definition's Type with its Origin arguments: the atoms of enclosing Closures its signature names (a receiver,
 //   an environment binding, a call result or an input, in any Origin position, raw layers included), which its own Type carries, so
 //   every walk that images a Type's Origins (a maker's call, P8's publication, an instantiation, erasure) images them with its
@@ -9,13 +10,18 @@
 //   BU-73); ClosureSignature, a Closure Type's call signature as its value reads it: its definition's under its closure context,
 //   each definition argument replaced by the Type's; ClosureDefinitionSignature, the definition's under the context, which a call
 //   declares (CallPlan.DeclaredSignature) and retention reads; ClosureArgumentVariance, an argument's variance by its occurrences in the
-//   definition's signature; CloseNestedTypes, the closures an instance makes closed.
-// - Inputs: the definition (BoundClosure.Of), its published signature and its Type (EnvironmentType).
+//   definition's signature; CloseNestedTypes, the nested definitions' Types an instance makes closed, each holding that instance as
+//   its context (BoundType.InstanceContext: a function's instance, or TyCtxt.HeldContext of the enclosing Container's instance).
+// - Inputs: the definition (BoundClosure.Of), its published signature and its Type (EnvironmentType); for the closing step, the
+//   declaration whose instance a nested definition holds (TyCtxt.EnclosingDeclaration).
 // - Outputs: interned Types and Origin arguments.
 // - Invariants: a definition naming no enclosing Closure's atom has no argument, so a flat Closure's Type is unchanged; a Type's
 //   arguments are positionally its definition's images; no atom of a Closure that does not enclose a use reaches the use's Types through
-//   a Type that passed its maker's call (SPEC 15.3.4).
-// - Prohibitions: no second substitution (SubstituteStoredOrigins' PerCallImages); no judgment of a relation.
+//   a Type that passed its maker's call (SPEC 15.3.4); a nested definition's Type without a context is read in its enclosing
+//   declaration's frame, or through an instance equal to that frame modulo Origins (BU-60), which every reader treats as withheld
+//   when the declaration's identity has an Origin position (TyCtxt.NestedInstance, InheritedArguments; PLAN G300).
+// - Prohibitions: no second substitution (SubstituteStoredOrigins' PerCallImages); no judgment of a relation; no second producer of a
+//   nested definition's context.
 
 using Kimi.Compiler.Parsing;
 

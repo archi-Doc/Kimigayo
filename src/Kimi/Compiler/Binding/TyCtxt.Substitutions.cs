@@ -36,17 +36,18 @@ internal sealed partial class TyCtxt
     // Compose) met in a complete compilation is a broken contract, the premise of Readable's guard and the C1-F4 view's (BU-102).
     internal bool BindingComplete => binding.Result.IsComplete;
 
-    // DECISIONS BU-60: the Type instance a Closure Type's context holds (HeldContext); null for a context a function's instance made, and
-    // for none.
-    internal static BoundType? HeldType(BoundType closure)
-        => closure.InstanceContext is { Declaring: { } held } context && ReferenceEquals(context.Target, closure.Symbol) ? held : null;
+    // DECISIONS BU-60: the Type instance a nested definition's Type (a Closure Type, the Item of a function declared in a body) holds
+    // as its context (HeldContext); null for a context a function's instance made, and for none.
+    internal static BoundType? HeldType(BoundType nested)
+        => nested.InstanceContext is { Declaring: { } held } context && ReferenceEquals(context.Target, nested.Symbol) ? held : null;
 
-    // SPEC 6.1.3, 15.8.2 (DECISIONS BU-60): the substitution a Closure Type's readers apply, the one view of its context that its signature
-    // (Binding.ClosureDefinitionSignature), its environment (ClosureEnvironment) and its body (SubstOfClosure) read: the context, except a
+    // SPEC 6.1.3, 15.8.2 (DECISIONS BU-60): the substitution a nested definition's Type's readers apply, the one view of its context that
+    // a Closure's signature (Binding.ClosureDefinitionSignature), environment (ClosureEnvironment) and body (SubstOfClosure), an Item's
+    // declaring Type (Binding.ItemDeclaringType) and the inherited arguments (Binding.InheritedArguments) read: the context, except a
     // held instance with an Origin position (HasOriginPosition), which is closed in no instance, the EnclosingInstance gap until PLAN G300's
     // per-use opening. A reader reads a Type after its closing step, so the gate is decided on the closed, normalized instance.
-    internal static Subst? NestedInstance(BoundType closure)
-        => HeldType(closure) is { } held && HasOriginPosition(held) ? null : closure.InstanceContext;
+    internal static Subst? NestedInstance(BoundType nested)
+        => HeldType(nested) is { } held && HasOriginPosition(held) ? null : nested.InstanceContext;
 
     // Whether a reader of an instance may read a Type whose storage has this verdict (Binding.Readable; DECISIONS BU-36, R4-M139):
     // Prepared or Rejected, not a Limit; Rejected in a complete compilation throws, a broken contract.

@@ -75,8 +75,9 @@ public class FunctionItemTest
     // SPEC 15.3.4 (last bullet), 15.2.3, 8.15 (PLAN G826): an Item is Owned when its bound arguments and what its declared signature
     // inherits from an enclosing body are: an enclosing Origin (a parameter's, a meet's, a local's) or Type parameter that the signature
     // names anywhere (a parameter, the result, a Function Type parameter) and that is not proven static or Owned fails at the use, also
-    // through a generic call, an Option or a forwarding function (o1blk was accepted). An erasure judges its bound arguments alone, and
-    // the required Function Type states the signature (SPEC 7.7.4; o8era, o8eraT, e4hide and its Closure twin e5hidec stay valid). A
+    // through a generic call, an Option or a forwarding function (o1blk was accepted). An erasure judges its bound and inherited
+    // arguments (the owner's O-249 Q4 (a)), and the required Function Type states the signature (SPEC 7.7.4; o8era, e4hide and its
+    // Closure twin e5hidec stay valid; o8eraT, whose inherited T is not Owned, is the record at the erased value). A
     // nested function's own Type parameter bound to a Function Type is never an inherited atom (x3fnnest). The function sits in an inner
     // block (G811's limit covers one written directly in the body).
     [Theory]

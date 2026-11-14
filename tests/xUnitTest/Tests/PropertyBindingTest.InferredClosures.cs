@@ -12,7 +12,8 @@ namespace XunitTest;
 // L2j, L2k, N1, N3, N3c (f4b), N3e (f4c), R2, R3 and h2 were accepted (valid, now Unsupported_Kd), L2g, m2 and the f4m rows were
 // accepted unsoundly, L2i, N1b, N3d, f4d, R1, h1, m1, v1 and v2 had other records. A generic holder's Closure (N4, N4b) is Binding's
 // located limit at the literal (before, the collector's at the whole literal). The guards keep dev's verdicts: a Closure naming no
-// container Origin (O1a, O1c, O3, O4) and an unresolved initializer (x1). Since the MIR decides (R6-check H5; H3b T51, class 4: records
+// container Origin (O1a, O1c; O3 and O4 are the owner's O-262 (a) limit, below) and an unresolved initializer (x1). Since the MIR
+// decides (R6-check H5; H3b T51, class 4: records
 // added on a program Binding rejects, published directly until A6 2g-1, R5-M184), `mir` is the MIR's record beside Binding's: A5's
 // UnprovenOriginRelation_Kd at m1's, v1's and v2's container fit; x1's constructor has none, as its Field has no stored Type (SPEC
 // 23.1.2; PLAN G105, G522; DECISIONS Q13).
@@ -26,6 +27,15 @@ public partial class PropertyBindingTest
     private const string CbOnlyView = "struct View {source}\n    public let cb = func (y: ref/i32 during source) => ()\n    public init(data: ref/i32 during source) => ()\n\n";
     private const string HolderView = "struct Holder<T>\n    public let value: T\n    public init(value: T) => self.value = value@move\n\n" +
         ViewHead + "h = Holder.init(func (y: ref/i32 during source) => ())" + ViewInit;
+
+    private const string OuterInner = "struct Outer {source}\n    public let data: ref/i32 during source\n" +
+        "    public init(data: ref/i32 during source) => self.data = data\n" +
+        "    public struct Inner\n        public let cb = func () -> i32 => 0\n        public init() => ()\n\n";
+
+    private const string PkField = "p = func [] ()\n        func pk(x: ref/i32 during source) -> i32 => 0\n        return pk";
+    private const string PkView = ViewHead + PkField + ViewInit;
+    private const string AtPk = "Unsupported_Kd: pk(x: ref/i32 during source) -> i32";
+    private const string GroupNeed = "group N\n    public func need<T>(x: T) -> i32\n        T is Owned\n        return 0\n";
 
     private const string BoxOf = "struct Box<T>\n    public let v: T\n    public let cb = func (x: T) => ()\n    public init(v: T) => self.v = v@move\n\n";
     private const string Local = "func f(r: ref/i32) -> i32\n    let view = View.init(r)\n";
@@ -73,11 +83,24 @@ public partial class PropertyBindingTest
     [InlineData("O3static", ViewHead + "cb = func (y: ref/i32 during static) => ()" + ViewInit + Static + "    return need(view.cb)", "Unsupported_Kd: (y: ref/i32 during static)")]
     [InlineData("O4", ViewHead + "cb = func (y: ref/i32) => ()" + ViewInit + Local + "    view.cb(r)\n    return need(view.cb)", "Unsupported_Kd: (y: ref/i32)")]
     [InlineData("O4static", ViewHead + "cb = func (y: ref/i32) => ()" + ViewInit + Static + "    view.cb(r)\n    return need(view.cb)", "Unsupported_Kd: (y: ref/i32)")]
+    [InlineData("n2", OuterInner + "func f(r: ref/i32, i: Outer.Inner during r) -> i32\n    return need(i.cb)", "Unsupported_Kd: () -> i32")]
+    [InlineData("n2b", OuterInner + "func f(i: Outer.Inner during static) -> i32\n    return need(i.cb)", "Unsupported_Kd: () -> i32")]
+    [InlineData("n1static", OuterInner + "func f(i: ref/(Outer during static).Inner) -> i32 => need(i.cb)", "Unsupported_Kd: () -> i32")]
+    [InlineData("x1pk", PkView + "func f() -> i32\n    let x: i32 = 1\n    let view = View.init(x@ref)\n    return need(view.p())", AtPk)]
+    [InlineData("x3pk", PkView + "func f(v: ref/(View during a)) -> i32 => need(v.p())", AtPk)]
+    [InlineData("x5pk", GroupNeed + ViewHead + PkField + "\n    public func m(self: ref/Self) -> i32 => N.need(self.p())" + ViewInit, AtPk)]
+    [InlineData("x9pk", PkView + "func f(v: ref/(View during a)) -> i32\n    let e: (ref/i32 during a) -> i32 = v.p()\n    return 0", AtPk)]
     [InlineData("x1", ViewHead + "cb = missingName" + ViewInit + Local + "    view.cb(r)\n    return 1", "UnresolvedBinding_Kd: missingName")]
     // The owner's O-262 (a) (2026-11-14; PLAN G846, G856, removed by G300): O3, O4 and their static twins need a Field Closure of
     // `View {source}` Owned. Its instantiation holds the instance's `source` (SPEC 3.2.1, 15.2.3), but a held instance is formed modulo
     // Origins (DECISIONS BU-60), so the Closure's Type cannot say which instance it came from: BU-22's located Unsupported_Kd at the
-    // definition, for the invalid programs (a local view, accepted on dev) and the valid ones (a static view) alike.
+    // definition, for the invalid programs (a local view, accepted on dev) and the valid ones (a static view) alike. n2, n2b and
+    // n1static (the Middle's n1_static_need): a Container nested in `Outer {source}` inherits Outer's Origin slot (SPEC 6.1.3), so its
+    // Field Closure is the same limit (n2, a per-call Origin, invalid and accepted on dev; n2b and n1static, `static`, valid). x1pk,
+    // x3pk, x5pk and x9pk (the Middle's x1, x3, x5, x9; invalid: the inherited `source` and pk's signature are not static, SPEC 15.2.3,
+    // 7.7.4): the Item of a function declared in the Field Closure, needed Owned or erased, is the limit at `func pk`, where dev reported
+    // UnprovenConstraint_Kd (x9: UnprovenOriginContract_Kd) at the use: record selection, as the use reads a Type the limited
+    // definition does not form (the owner's O-277 (a)).
     public void AFieldClosureNamingItsContainersOriginIsTheLocatedLimit(string id, string declarations, string? record, string? mir = null)
         => Assert.Equal([id, .. new[] { record, mir }.OfType<string>()], [id, .. RawPointerSyntaxTest.Records(ConcreteClosureTest.NeedOwned + declarations)]);
 

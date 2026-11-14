@@ -656,8 +656,9 @@ public sealed record BoundType
     internal bool IsPairLayer => this.Kind is BoundTypeKind.SemanticsApplication or BoundTypeKind.SemanticsAdaptation ||
         (this.Kind == BoundTypeKind.Parameter && this.Symbol?.Kind == BindingSymbolKind.SemanticsTarget);
 
-    // Whether this subtree contains a nested definition's Type, a Closure Type or the Item of a function declared in a body, which an
-    // instance closes (Binding.CloseNestedTypes; DECISIONS BU-60, PLAN G846).
+    // Whether this subtree may contain a nested definition's Type, which an instance closes (Binding.CloseNestedTypes; DECISIONS BU-60,
+    // PLAN G846): a Closure Type, or the Item of a function that is no Container's member. A gate, a superset of the Items
+    // TyCtxt.EnclosingDeclaration gives an enclosing declaration: a root function's Item passes it and the closing step leaves it as it is.
     internal bool ContainsNested => this.containsNested;
 
     /// <summary>Gets a value indicating whether this is an integer or wrapping integer Type with a signed representation (SPEC 3.1;

@@ -20,7 +20,10 @@ namespace Kimi.Compiler;
 // Invariants: storage is walked in the declaration's formals and never instantiated; a summary's projection is based at a formal or the
 // pair target of its declaration; a summary belongs to one capability epoch (ClearCapabilityResults ends it); the declarations one solve
 // reaches are iterated together from no exclusion to their least fixed point, which a family cut keeps finite; a warm rebind allocates
-// nothing.
+// nothing; a nested definition's inherited arguments are parts (InheritedArguments), except for a definition the declaration D's own
+// instance holds, read in D's formals: it inherits only D's slots and static (SPEC 6.3.3), which the instance's own arguments already
+// are, so storage adds nothing for them (InheritedArguments' withheld answer is for a Type read outside its frame, which a summary's walk
+// in D's formals never is).
 // Must not instantiate storage, decide Copy, re-derive a leaf rule, record a Language error or cap a result silently.
 public sealed partial class Binding
 {
@@ -350,9 +353,7 @@ public sealed partial class Binding
         }
 
         // A nested definition's inherited arguments are parts (InheritedArguments); a withheld instance is the located limit at the
-        // stored Type. A definition this declaration's own instance holds, in its identity (a Field initializer's Closure, which names
-        // no Origin but the declaration's own slots and static, SPEC 6.3.3), inherits the instance's own Type and Origin arguments,
-        // which Owned judges with the instance: storage adds nothing beyond them.
+        // stored Type. A definition this declaration's own instance holds, in its identity, adds nothing (the contract's invariant).
         var own = type is { Kind: BoundTypeKind.Closure or BoundTypeKind.FunctionItem, InstanceContext: null, Symbol: { } nested } &&
             ReferenceEquals(this.types.EnclosingDeclaration(nested), summary.Declaration);
         if ((own ? BoundType.Unit : this.InheritedArguments(type)) is not { } inherited)
