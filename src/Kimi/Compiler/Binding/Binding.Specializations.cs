@@ -243,6 +243,7 @@ public sealed partial class Binding
             Array.Clear(arguments);
             Array.Clear(lengths);
             var closed = true;
+            Koto? failed = null;
             var scope = this.scopes[function];
             for (var i = 0; i < arguments.Length; i++)
             {
@@ -256,7 +257,13 @@ public sealed partial class Binding
                 {
                     arguments[i] = this.BindType(function.GenericArguments[i], scope);
                     closed &= arguments[i] is { } type && Closed(type);
+                    failed ??= FailedPart(function.GenericArguments[i]);
                 }
+            }
+
+            if (RestsOn(function, failed))
+            {
+                continue; // SPEC 23.1.2: the closedness verdict over an argument that failed to bind.
             }
 
             if (!closed)
@@ -299,8 +306,18 @@ public sealed partial class Binding
 
             if (matches != 1)
             {
+                // SPEC 23.1.2: an input-structure mismatch over a restated input that failed to bind rests on the input's record.
+                for (var p = 0; failed is null && matches == 0 && candidates != 0 && p < function.Parameters.Count; p++)
+                {
+                    failed = FailedPart(function.Parameters[p].Type);
+                }
+
                 // SPEC 8.13.1: no target, an input-structure mismatch and multiple targets are distinct diagnostics.
-                this.Fail(function, matches > 1 ? BindingFailure.Ambiguous : candidates == 0 ? BindingFailure.MissingSpecializationTarget : BindingFailure.SpecializationInputMismatch);
+                if (!RestsOn(function, failed))
+                {
+                    this.Fail(function, matches > 1 ? BindingFailure.Ambiguous : candidates == 0 ? BindingFailure.MissingSpecializationTarget : BindingFailure.SpecializationInputMismatch);
+                }
+
                 continue;
             }
 
@@ -370,6 +387,21 @@ public sealed partial class Binding
                 this.specializations.Add(function, entry);
                 siblings.Add(function);
             }
+        }
+
+        // SPEC 23.1.2: the first failed part of a header syntax that formed no Type; a header verdict reading it rests on its record.
+        Koto? FailedPart(Koto syntax) => syntax.BoundType is null ? (this.failedSignaturePartVisitor ??= new()).Find(syntax, invalidState: true) : null;
+
+        bool RestsOn(FunctionKoto function, Koto? part)
+        {
+            if (part is null)
+            {
+                return false;
+            }
+
+            this.partPrerequisites[function] = part;
+            this.Fail(function, BindingFailure.Unsupported, true);
+            return true;
         }
 
         // SPEC 8.13.1: every slot is supplied with its original kind, in declaration order.

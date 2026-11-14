@@ -401,6 +401,16 @@ public sealed partial class Binding
             return origin;
         }
 
+        if (context is { Position: TypePosition.Parameter, Direct: false, Owner: FunctionKoto { IsSpecialization: true } })
+        {
+            // SPEC 8.13.2, 15.4.2 (PLAN G863): an omitted borrow layer in a specialization's Type argument, or nested in a restated
+            // input (where only T puts one), is the original's T-Origin as well, which the input row above cannot give (an input's
+            // nested layer is an error): a located limit until a Type argument position of its own completes it. A restated input
+            // whose target is found inherits the layer instead (CompleteImplementationOrigins rebinds it).
+            this.Fail(use, BindingFailure.Unsupported);
+            return null;
+        }
+
         if (context.Position == TypePosition.Parameter && context.Direct)
         {
             var origin = this.OriginAtom(context.Owner, OriginKind.Input, context.Slot);

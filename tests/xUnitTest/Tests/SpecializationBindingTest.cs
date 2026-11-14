@@ -213,6 +213,21 @@ public class SpecializationBindingTest
         Assert.All(c.Binding.Issues, x => Assert.Equal(code, x.Code));
     }
 
+    // SPEC 8.13.2, 15.4.2 (PLAN G863): an omitted borrow layer of T's binding, in a Type argument or nested in a restated input, is
+    // the original's T-Origin too, which no row completes yet: one located Unsupported_Kd per occurrence, and the header rests on it.
+    [Theory]
+    [InlineData("func h<T>(x: T) -> i32 => 0\nspecialize func h<ref/i32>(x: ref/i32) -> i32 => 1", 1)]
+    [InlineData("func h<T>(x: T) -> i32 => 0\nspecialize func h<uniq/i32>(x: uniq/i32) -> i32 => 1", 1)]
+    [InlineData("func h<T>(x: T) -> i32 => 0\nspecialize func h<Wrap<ref/i32>>(x: Wrap<ref/i32>) -> i32 => 1", 2)]
+    [InlineData("func g<T>(x: Option<ref/T during a>) -> i32 => 0\nspecialize func g<i32>(x: Option<ref/i32>) -> i32 => 1", 1)]
+    public void BorrowLayersOfTheArgumentAreALocatedLimit(string specialization, int records)
+    {
+        var c = MinimalEmissionTest.Analyze(Box + specialization + "\n()");
+        Assert.False(c.Binding.Result.IsComplete);
+        Assert.Equal(records, c.Binding.Issues.Count);
+        Assert.All(c.Binding.Issues, x => Assert.Equal(Kimi.DiagnosticCode.Unsupported_Kd, x.Code));
+    }
+
     // SPEC 8.13.3: specializations never enter the candidate set; an invalid one does not fail calls to the original.
     [Fact]
     public void InvalidSpecializationDoesNotCascadeIntoCalls()
