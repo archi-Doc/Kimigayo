@@ -158,7 +158,7 @@ public class UnboundCallSlotTest(ITestOutputHelper output)
     [InlineData("func k3(m: ref/i32, y: ref/i32) -> bool => true\nfunc k3<V>(m: ref/V, y: ref/V) -> i64 => 0\n", "k3(5@i32, 6)", "bool")]
     public void AnOpenLiteralIsRankedByTheBorrowItsPatternNeeds(string group, string call, string selected)
     {
-        var source = "struct Node\n    public var n: i32 = 0\n" + group + "func use(x: uniq/(uniq/Node during p) during q) -> ()\n    let r = " + call + "\n    let t: " + selected + " = r\n";
+        var source = "struct Node\n    public var n: i32 = 0\n" + group + "func use(x: uniq/(uniq/Node during p) during q) -> ()\n    let r = " + call + "\n    let t: " + selected + " = r\npublic func main() -> () => ()\n";
         Assert.Empty(DiagnosticCorpus.Check(source).Diagnostics);
     }
 
