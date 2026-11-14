@@ -515,6 +515,33 @@ public sealed partial class MirBorrowsTest
 
                 """));
 
+    // A static's direct Loan as the written argument of a call (SPEC 15.6, 15.6.4; the A5 value redesign's U3a): the Loan names E, which
+    // no local's Type guards, so the store lands in E and the write after the call meets the stored Loan (putStatic), also where the
+    // same call writes a local holder (putStaticTwo: the array may keep the Loan of z that t carries, so z's storage end meets it too).
+    // Failed on U3a's first commit by an internal fault: rule W's first step gave E the static's key as a root local.
+    [Fact]
+    public void AStaticsLoanAtAWrittenArgumentNamesERooted()
+        => Assert.Equal(
+            ["putStatic: y = 2", "putStaticTwo: y = 2", "putStaticTwo: var z = 0"],
+            RootedEffects("""
+                    public func put(a: uniq/Array<ref/i32 during p>, v: ref/i32 during p) => ()
+                    public func put2(a: uniq/Array<ref/i32 during p>, b: uniq/(ref/i32 during p), v: ref/i32 during p) => ()
+                    public func putStatic()
+                        var y = 1
+                        var sr = Root.refs()
+                        State.put(sr@uniq, y@ref)
+                        y = 2
+                    public func putStaticTwo()
+                        var y = 1
+                        var z = 0
+                        var t: ref/i32 = z@ref
+                        var sr = Root.refs()
+                        State.put2(sr@uniq, t@uniq, y@ref)
+                        y = 2
+                        inspect(t)
+
+                """));
+
     // R4-M92, R-a on rooted bodies: an effect conflict is a Loan problem at its call, also after a generic loop whose iterator's store the
     // per-part guard decides (e17, a located Unsupported_Kd under P13's body hold until R4-M147); a static Loan a default's copy keeps meets
     // the call's unknown effect (copied).
