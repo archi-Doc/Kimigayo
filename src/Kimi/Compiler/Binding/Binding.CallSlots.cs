@@ -14,7 +14,7 @@ namespace Kimi.Compiler;
 //   construction, a structure's or a Case's (SPEC 9.7), leaves open (OpenConstructionSlot); the adaptation entry's only input, a
 //   pattern under those bindings (FixedPattern); a constructor's constructed Type (ConstructionType); the structural matching of a
 //   pattern over the owner's slots against an actual Type, binding each slot it reaches (Infer), and an s/U whose s is bound, matched as
-//   the Type it forms (FormedApplication).
+//   the Type it forms (FormedApplication) and, a structured one, adapted at as a parameter Type (FittedPattern).
 // - Inputs: the callee's declaration and declaring Type; the call's explicit Types and lengths; a pattern, the actual Type at its position
 //   and one solution's slot and length arrays (a candidate's SlotSolution, a Case construction's, a function reference's or a Callable
 //   proof's), with the evidence flags.
@@ -91,8 +91,8 @@ public sealed partial class Binding
     // SPEC 9.7.1), so `s/V` over one is `s/(its binding)` on every path, a constructor's or a Case's as a method's, whose pattern has
     // it substituted; explicit Type arguments or a construction Type that fix the own slots fix the binder too. Any other target
     // (`s/(ref/i32)`, `s/(t/i32)`, `s/Option<U>`) has its own layer or structure: that application is formed under the binder its
-    // exact sources fixed and then compared (SourcedLayer), never evidence, so an owner binding of the outer layer is no layer, even
-    // above a reference.
+    // exact sources fixed, a parameter Type its argument fits (FittedPattern) and is then compared with (SourcedLayer), never evidence,
+    // so an owner binding of the outer layer is no layer, even above a reference.
     private static bool IsExactSource(BoundType application, Koto function)
         => application.Components[0] is { Kind: BoundTypeKind.Parameter, Symbol: { Kind: not BindingSymbolKind.SemanticsTarget } bare } &&
             ReferenceEquals(bare.Scope.Owner, function);
@@ -228,6 +228,28 @@ public sealed partial class Binding
         {
             this.typeScratch.Return(components, clearArray: true);
         }
+    }
+
+    // SPEC 10.1 step 5, 10.2, 10.8 (the owner's O-283 (a)): the pattern an argument part adapts at (SlotSolution.AdaptationPattern): each
+    // structured application among its outer layers formed under the binder a source has fixed (ApplySemantics, as FormedApplication), a
+    // parameter Type the argument fits by the common adaptation as any argument fits its parameter. The adaptation reaches only the outer
+    // layers, so nothing below them is formed; an exact source (IsExactSource) is kept, since its evidence is its own outer Semantics,
+    // never converted (IsSource), so owner and ref evidence still conflict in any order.
+    private BoundType FittedPattern(BoundType pattern, Koto function, SlotFrame frame)
+    {
+        if (pattern is not { Kind: BoundTypeKind.SemanticsApplication or BoundTypeKind.Semantics, HasAbstractPart: true, Components: [var target] })
+        {
+            return pattern;
+        }
+
+        var fitted = this.FittedPattern(target, function, frame);
+        if (pattern.Kind == BoundTypeKind.SemanticsApplication && !IsExactSource(pattern, function) &&
+            ContainerSlot(function, pattern.Symbol!) is >= 0 and var slot && Selector(frame, slot) is { } whole)
+        {
+            return this.ApplySemantics(whole, fitted, pattern.Origin);
+        }
+
+        return ReferenceEquals(fitted, target) ? pattern : this.types.Rebuild(pattern, [fitted], pattern.Origin, (BoundOrigin[])pattern.OriginArguments);
     }
 
     // SPEC 10.8: whether a pattern still holds an application whose pair binder no source has fixed, read as FormedApplication forms

@@ -276,16 +276,17 @@ public sealed partial class Binding
             => this.AdaptPart(pattern, actual, source, path, receiver) is { } adapted &&
                 this.InferFrom(pattern, adapted, new(source, this.Binding.PartContribution(source), this.Binding.WasDeferred(source)));
 
-        // SPEC 10.2.2 step 1, 10.8, 6.5.2 step 2: one argument part's Type adapted at its pattern under the bindings fixed before any
-        // evidence (FixedPattern); a slot that evidence binds stays a slot, so no argument's adaptation follows another's binding. Null
-        // where it does not adapt.
+        // SPEC 10.2.2 step 1, 10.8, 6.5.2 step 2: one argument part's Type adapted at its pattern (AdaptationPattern); a Type slot that
+        // evidence binds stays a slot, so no argument's adaptation follows another's Type binding. Null where it does not adapt.
         private readonly BoundType? AdaptPart(BoundType pattern, BoundType actual, Koto source, BoundMemberPath? path = null, bool receiver = false)
-        {
-            var fixedPattern = FixedPattern.Of(this.Binding, pattern, this.Fixed);
-            return this.Binding.AdaptInput(
-                source, fixedPattern, actual, this.Scope, path, this.DeclaringType, out var adapted, out _, out _, receiver: receiver, deferAcquisition: true)
+            => this.Binding.AdaptInput(
+                source, this.AdaptationPattern(pattern), actual, this.Scope, path, this.DeclaringType, out var adapted, out _, out _, receiver: receiver, deferAcquisition: true)
                 ? adapted : null;
-        }
+
+        // SPEC 10.2, 10.8, 6.5.2 step 2: the pattern a part adapts at: under the bindings fixed before any evidence (FixedPattern), with each
+        // structured application of its outer layers formed under the binder its sources fixed (FittedPattern; the owner's O-283 (a)).
+        private readonly FixedPattern AdaptationPattern(BoundType pattern)
+            => FixedPattern.Of(this.Binding, this.Binding.FittedPattern(pattern, this.SlotOwner, this.Frame), this.Fixed);
 
         // SPEC 10.5.1, 14.9.2 step 2, 10.2 (DECISIONS BU-43 as amended by G729): a typed position of several parts is one control-flow
         // argument whose sources are its parts. Each typed part (those PositionType takes; a part awaiting its call has no supplied Type,
@@ -324,7 +325,7 @@ public sealed partial class Binding
             var binding = this.Binding;
             var binder = this.Binder;
             var callee = actual;
-            actual = binding.SignatureAtFunction(FixedPattern.Of(binding, pattern, this.Fixed).Type, actual);
+            actual = binding.SignatureAtFunction(this.AdaptationPattern(pattern).Type, actual);
 
             // SPEC 8.1.2, 10.8: Origins are matched at the formed pattern only (OriginPattern); Infer forms the pattern itself.
             var matched = this.OriginPattern(pattern);
