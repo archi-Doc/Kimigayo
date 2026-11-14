@@ -60,8 +60,8 @@
 // Version, a scope's LinkVersion or the parent's serial does (each counted at its writer). Reading is the one caller of the request
 // boundary's normalization of a fact (NormalizeProofConstraint): in the capability phase, with normalizingAssociated and
 // identityExpansions empty, it keeps the reading per (view scope, fact, requirement Contract) under the serial taken before the
-// formation (the caller's, above), for one pass (ResetCapabilities), when its derivation is Complete. Any other request forms its
-// readings itself.
+// formation (the caller's, above), for one publication of the source states (forgotten at the next one's start, ForgetKeptTables;
+// emptied by ResetCapabilities), when its derivation is Complete. Any other request forms its readings itself.
 // - Completion (C1 §5's, without Resource until f): each function of the normalization gives its answer with one; its zero is
 //   Provisional, a composite rule's answer is the meet of its parts', and only these members give Complete (W1-W8;
 //   ArchitectureRulesTest): NormalizeProofConstraint, NormalizeProofType (W1); SubstituteIdentity (W2); IdentityPremise (W3);
@@ -122,6 +122,17 @@
 // - Where: the kept region (KeptRegion, R7-M20's rule, which Reading and PremiseRefines both ask), an outermost request, a
 //   preparation that formed no reading, final keys (no identity premise, or a Final identity table), and a Complete walk: every
 //   availability read it made was Complete (W6, W8). Nested demands never read or fill the rows.
+// - Not pinned by a row (located invariants; R7-C2e2 e2-3a's implementation review, mutations `admit`: rows kept whatever the
+//   walk's Completion, and `w8`: an Unknown read Complete): the admission (PremiseRefines' test of enumerateCompletion) and W8's
+//   Provisional for a Pending state (ReadSourceState) decide only what is kept, and a row kept from a walk that read a Pending
+//   source can differ from a fresh walk only inside the publication round that settles the source: outside a round a Pending
+//   state stays as it is until the next publication's start, which forgets the row. Inside a round the difference exists (under
+//   `admit`, ClosedConformancePrerequisiteBindingTest's cap10 with X before R answers `T is Copy` from the stale rows after R
+//   settled; n3b and n3d likewise), but no record moves: Supply's one-level eager derivation answers the same proposition. That
+//   derivation goes at C3, and from then on the admission alone keeps such rows out. Under `w8` no admission changes: a walk
+//   that reads a Contract Pending also reads the derived facts the eager derivation filed from it, not found and so Provisional
+//   by W6. Measured on 48 programs (the 16 coverage rows, Hello, Milestone26; cap6, cap6n, cap3b, cap9, cap10, n3b, n3c, n3d
+//   and cyc1 in both orders; twelve probes) and the Unit's classes: no record and no test differs under either mutation.
 // - Lifetime: the entry's, the publication, in the capability phase (KeepsAcrossRequests, the one phase fact); before it one
 //   outermost request (a Contract's clauses are still being bound, so not even a head depth outlives it).
 // - Inputs outside the key, and what covers a change to each inside a publication: Contract clause storage (HeadDepth,
@@ -145,7 +156,8 @@ namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
-    // The closure's kept readings (Reading), emptied with the capability results each pass (ResetCapabilities), capacity kept.
+    // The closure's kept readings (Reading), emptied at each publication's start in the capability phase (ForgetKeptTables) and each
+    // pass (ResetCapabilities), capacity kept.
     private readonly Dictionary<(BindingScope View, BoundConstraint Fact, BindingSymbol? Requirement), (int Serial, BoundConstraint Reading)> readings = new();
 
     private BoundConstraint[] contractFactScratch = [];
@@ -214,8 +226,11 @@ public sealed partial class Binding
     private EvidenceView ViewOf(BindingScope scope) => new(scope);
 
     // The kept tables' one phase fact: whether a table may outlive an outermost request. The capability phase (capabilitiesReady,
-    // raised once per pass after every Contract clause is bound) keeps readings for the pass and rows and head depths for the
-    // capability epoch; before it an epoch is one request (the class header's Kept rows).
+    // raised once per pass after every Contract clause is bound) keeps readings, entries with their rows, identity tables and head
+    // depths for one publication of the source states: PublishSourceStates asks this fact and forgets them in place at each
+    // publication's start (ForgetKeptTables). Before the phase no reading, row or head depth outlives an outermost request (the
+    // class header's Kept rows); what else was kept before it (a Kept entry's written facts and keys, a Complete identity table)
+    // the phase's first publication forgets.
     private bool KeepsAcrossRequests => this.capabilitiesReady;
 
     // R7-M20's kept region, the one rule every kept table asks (Reading's readings, PremiseRefines' rows): a table may outlive the
@@ -305,7 +320,8 @@ public sealed partial class Binding
     private readonly Stack<ViewIndex> enumerateIndexPool = new();
     private readonly List<(BindingScope Scope, BoundConstraint Raw, BoundConstraint Fact)> enumerateNormalized = new();
 
-    // A Contract's head depth (the class header's Kept rows), emptied by ClearKeptRows as its epoch ends, capacity kept; the rows
+    // A Contract's head depth (the class header's Kept rows), emptied at each publication's start in the capability phase
+    // (ForgetKeptTables), by each outermost request's return before it and each pass (ClearClosure), capacity kept; the rows
     // themselves are their entry's (ViewIndex.Rows).
     private readonly Dictionary<BindingSymbol, int> enumerateHeads = new(ReferenceEqualityComparer.Instance);
     private readonly List<List<BindingSymbol>> enumeratePool = new();

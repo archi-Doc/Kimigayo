@@ -136,9 +136,10 @@ public sealed class RecursiveContractTest
 
     // DECISIONS R7-C2e2-1 at c2-2's merge (N3 of its merge review): o1's view has no identity premise, so its Tree request keeps the
     // view's entry; the Copy request extends, filing the facts again under its extended keys, so it reopens the entry as its own and
-    // writes nothing into the Kept entry; `T.(Tree).Other`, asked last, forms the entry again. The pairs indexed over Orders', exact: an
-    // extension writing into the Kept entry leaves it Kept, with its kept rows (R7-C2e2 e2-3a: a column of the entry), for the later
-    // requests, which then index fewer pairs (66). Before e2-3a the kept rows had a table of their own: 66, and 46 under the mutation.
+    // writes nothing into the Kept entry; `T.(Tree).Other`, asked last, forms the entry again. The pairs indexed over Orders', exact:
+    // 86, of which 20 are the views formed again after a publication's start (R7-C2e2 e2-3a's forget, ForgetKeptTables: 10 by the
+    // capability phase's first publication, 10 by the after-bodies one; 66 without the forget, as before e2-3a). An extension
+    // writing into the Kept entry leaves it Kept for the later requests, which then index 20 fewer pairs (66; 46 before e2-3a).
     [Fact]
     public void AnExtensionReopensTheViewsKeptEntryAsItsOwn()
     {

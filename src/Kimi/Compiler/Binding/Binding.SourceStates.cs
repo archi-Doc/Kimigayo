@@ -83,7 +83,7 @@ public sealed partial class Binding
     // one proof scope, so a check's answer keeps its cause instead of becoming its own Error (EndProof).
     private void PublishSourceStates()
     {
-        if (this.capabilitiesReady)
+        if (this.KeepsAcrossRequests)
         {
             this.ForgetKeptTables();
         }

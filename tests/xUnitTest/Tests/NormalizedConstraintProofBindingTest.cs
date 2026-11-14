@@ -80,8 +80,9 @@ public class NormalizedConstraintProofBindingTest
     // walk's Completion admitting its rows, every kept table for one publication. Each program's records, exact (equal under dev's
     // rules). dv1 is valid by SPEC 8.2.3 (`T is K` makes `T.(K).X` an `i32`) and rejected on dev too: an identity in a value position,
     // not this unit's (F's PLAN row). m1e's first source is in Error because its clause is a syntax error (an applied Type is no
-    // ConstraintSubject). Not constructed: the admission's fail-first row (a later round reusing a walk that read a source Pending in an
-    // earlier round of the same publication) and a record row for W8's final Unknown (unverified; design review 2's counts).
+    // ConstraintSubject). Not pinned by a row: the walk's admission and W8's Provisional for a Pending state; ContractSolver's Kept
+    // rows states them as located invariants with the mutations' evidence (a stale row inside a round moves no record while the
+    // eager derivation answers the same proposition).
     [Theory]
     [InlineData("dv1", "public contract Origin\npublic struct Source\n    Self is Origin\ncontract K\n    associate X\n    Self.(K).X is i32\n    Source is Origin\nfunc f<T>(v: T.(K).X) -> i32\n    T is K\n    return v\n", "1*TypeMismatch_Kd")]
     [InlineData("dv1n", "public contract Origin\npublic struct Source\ncontract K\n    associate X\n    Self.(K).X is i32\n    Source is Origin\nfunc f<T>(v: T.(K).X) -> i32\n    T is K\n    return v\n", "1*InvalidConstraint_Kd 1*TypeMismatch_Kd 2*UnprovenConstraint_Kd 2*UnsatisfiedConstraint_Kd")]
