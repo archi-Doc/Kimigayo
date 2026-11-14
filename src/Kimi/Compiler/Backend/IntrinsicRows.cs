@@ -18,7 +18,7 @@ namespace Kimi.Compiler.Backend;
 internal enum IntrinsicTarget : byte
 {
     None,
-    Witness, // The body of the user's writer witness (ErasedWriter, K6b).
+    Witness, // The body of the user's writer witness (ReserveDispatch, K6b).
     StaticInit, // The initializer body of the static (StaticEnsure, K7).
     Descriptor, // The object descriptor of the created payload (MakeObj, MakeRc, MakeArc; K8, DECISIONS R5-M74).
     Glue, // The drop glue of the element (DestroyValues, K7).
@@ -40,7 +40,7 @@ internal enum IntrinsicWriter : byte
     Clone, // clone: Routine's, the runtime's retain of the result handle's counting (FunctionCodegen.Objects).
     Test, // A runtime Type test: its target's number in the module through the runtime's test, or false (FunctionCodegen.Objects).
     Destroy, // destroyValues: T's glue over the values, from the last, or nothing for a T without one (FunctionCodegen.Arrays).
-    Writer, // Text.writer: P1d's TextWriter routine, given its destination's writer kind and its reserve witness (FunctionCodegen.Formatting).
+    Address, // Storage.reserveDispatch: the code address of its target, its Writer's reserve witness (FunctionCodegen.Formatting).
     Record, // TestRecordValue: the test runtime holds the value for its observation: its kind, width and bits (FunctionCodegen.Intrinsics).
 }
 
@@ -94,12 +94,7 @@ internal static class IntrinsicRows
             IntrinsicWriter.Requested,
             RuntimeAbi.FormatFloat,
             ModuleCodegen.Needs.FormatFloat), // Storage.formatFloat (R8-S2c).
-        new(
-            IntrinsicId.ErasedWriter,
-            IntrinsicTarget.Witness,
-            LayoutNeed.None,
-            IntrinsicWriter.Writer,
-            RuntimeAbi.TextWriter),
+        new(IntrinsicId.ReserveDispatch, IntrinsicTarget.Witness, LayoutNeed.None, IntrinsicWriter.Address, null), // Storage.reserveDispatch (R8-W2 b2-1).
         new(
             IntrinsicId.ErasedReserve,
             IntrinsicTarget.None,

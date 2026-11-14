@@ -29,6 +29,11 @@ internal unsafe func destroyValues<T>(storage: raw/u8, count: isize)
 /// (SPEC 22.9.4). It records nothing and reads no writer kind. The caller's obligation, which the signature cannot
 /// state: `writer` is a user Writer's adapter, and its caller commits or drops the window before the next reservation.
 internal func erasedReserve(writer: uniq/Utf8Writer, minimum: isize) -> Result<WriteWindow during writer.target, BufferFull>
+/// The code of `W`'s `reserve` implementation (the ReserveDispatch intrinsic): the word a user Writer's adapter holds
+/// as its `dispatch`, which `erasedReserve` calls through. Nothing reads or writes through it, and it is no function
+/// value, which is a pair of words (IMPL 21.1.3).
+internal func reserveDispatch<W>() -> raw/u8 during static
+    W is BufferWriter
 /// Writes the shortest round-trip text of a float (the FormatFloat intrinsic; SPEC 22.10.2) at the start of
 /// `destination` and returns its length: fixed notation for `-4 <= e < 16`, else scientific; `NaN`, `Infinity`,
 /// `-Infinity`, `0` and `-0`. `bits` is an f64's IEEE 754 encoding, or with `narrow` an f32's in its low 32 bits, of

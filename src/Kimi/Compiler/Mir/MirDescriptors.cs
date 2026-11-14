@@ -176,7 +176,7 @@ internal static class MirDescriptors
         IntrinsicId.RawSlice => Intrinsic(MirEffect.None, 3) with { Retained = 2 }, // The storage, the length and the backing (DECISIONS R4-M40).
         IntrinsicId.MoveBytes => Intrinsic(MirEffect.None, 3),
         IntrinsicId.Stride => Intrinsic(MirEffect.None, 0),
-        IntrinsicId.ErasedWriter => Intrinsic(MirEffect.None, 1),
+        IntrinsicId.ReserveDispatch => Intrinsic(MirEffect.None, 0), // The code address of its Type argument's reserve witness.
         IntrinsicId.Clone => Intrinsic(MirEffect.Abort, 1), // A count at its maximum (KIMI_E_REF_COUNT).
         IntrinsicId.TypeTest => Intrinsic(MirEffect.None, 2), // The payload's shared view and the target Type's token (SPEC 13.6.4).
         IntrinsicId.DestroyValues => Intrinsic(MirEffect.None, 2), // The storage and the count; A4 reads its destruction (MirEffects).

@@ -1,62 +1,37 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
-using static Kimi.Compiler.Backend.LlvmModuleText;
+using Kimi.Compiler.Mir;
 
 namespace Kimi.Compiler.Backend;
 
-// Text.writer in FunctionCodegen (R5 plans C9a and C9b; SPEC 22.7, 22.9.2, 22.9.4; DECISIONS R5-M128, R5-M130): the ErasedWriter
-// intrinsic's row (K package 4.5 row 6) calls the kept runtime's TextWriter routine (RuntimeAbi.TextWriter) with the writer kind of its
-// destination and the dispatch word of its reserve witness (Writer). The Text operations, the buffers, the window, the adapter's write
-// and Console.writeLine of a view are bodies (R8-W1a, W1b, W1c), so no other compiler function's call is a formatting routine's.
+// Storage.reserveDispatch in FunctionCodegen (SPEC 22.9.1, 22.9.4, 22.10.1; DECISIONS R5-M130, R8-M18): the ReserveDispatch intrinsic's
+// row (K package 4.5 row 6) is the code address of its target, the reserve witness of the call's Type argument, the word Text.writer's
+// body stores in a user Writer's adapter and the kept runtime calls through. Text.writer, the buffers, the window, the adapter's write
+// and Console.writeLine of a view are bodies (R8-W1a to W1c, R8-W2), so no compiler function's call is a formatting routine's.
 internal sealed partial class FunctionCodegen
 {
-    // SPEC 22.9.2, 22.9.4, 22.10.1 (K package 4.5 row 6; DECISIONS R5-M130): Text.writer's call, its Item's Value call and its adapter's entry:
-    // the TextWriter routine, given its two Context words: the writer kind of its destination W, the call's Type argument
-    // (LegacyRuntimeHelpers.WriterKind), and the dispatch word: null for a FixedBuffer or a HeapBuffer, whose reserve Utf8Writer.reserve's
-    // kind arm calls (the collector takes no target for them until WriterKind goes, InstanceCollector.Edges), else the function of W's
-    // reserve witness, the call's Body target, whose signature is the kept runtime's dispatch call (Dispatch). Any other pairing is a
-    // broken contract: Binding admits no virtual reserve witness (a virtual function's receiver is objref/Self or objuniq/Self, which
-    // Binding rejects or leaves Unsupported there). Null after a record.
-    private FunctionAbi? Writer(IntrinsicRow row, BoundType? destination, int target, out ReadOnlySpan<Value> given)
+    // SPEC 22.9.4, 22.10.1 (K package 4.5 row 6; DECISIONS R5-M130): Storage.reserveDispatch's result, the function of its Body target, one
+    // without a virtual slot that the kept runtime calls as its Writer's reserve (__kimi_erased_reserve's `void (ptr ret, ptr destination,
+    // i64 amount)`). Any other target is a broken contract, recorded once (BodyRun's, else this one): the collector targets the reserve
+    // witness of the call's Type argument, and Binding admits no virtual one (a virtual function's receiver is objref/Self or
+    // objuniq/Self, which Binding rejects or leaves Unsupported there).
+    private void Dispatch(in MirTerminator call, int target)
     {
-        given = default;
-        var kind = destination is null ? -1 : LegacyRuntimeHelpers.WriterKind(destination);
-        if (this.Dispatch(kind, target) is not { } entry)
-        {
-            return null; // Recorded.
-        }
-
-        this.module.Request(ModuleCodegen.Needs.ErasedWriter);
-        (this.slotless[0], this.slotless[1]) = (new('\0', kind), entry);
-        given = this.slotless.AsSpan(0, 2);
-        return row.Routine;
-    }
-
-    // Text.writer's dispatch word (Writer): null for a FixedBuffer's or a HeapBuffer's writer kind without a target; for a user Writer's,
-    // its Body target, a function without a virtual slot the kept runtime calls as its reserve (__kimi_erased_reserve's `void (ptr ret,
-    // ptr destination, i64 amount)`). Null after one record of a broken contract: BodyRun's, else this one.
-    private Value? Dispatch(int kind, int target)
-    {
-        if (target < 0 && kind is 0 or 1)
-        {
-            return new Value('n', 0);
-        }
-
-        if (target >= 0 && kind == 2 && this.collector.Set.Items[target].Key.Kind == MonoKind.Body)
+        if (target >= 0 && this.collector.Set.Items[target].Key.Kind == MonoKind.Body)
         {
             if (this.BodyRun(target) is not { } run)
             {
-                return null; // Recorded.
+                return; // Recorded.
             }
 
             if (run is { Slot: null, Signature: { Result: "void", NoReturn: false, ResultSlot: true } signature } &&
                 signature.Parameters is [{ Kind: AbiParameterKind.ResultSlot }, { Type: "ptr" }, { Type: "i64" }])
             {
-                return new Value('e', target);
+                this.Finish(call, new Value('e', target));
+                return;
             }
         }
 
-        this.Report(DiagnosticCode.InternalInvariant_Kd, default); // The collector targets a user Writer's reserve witness (K 4.5 row 6).
-        return null;
+        this.Report(DiagnosticCode.InternalInvariant_Kd, call.Source);
     }
 }

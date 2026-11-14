@@ -12,8 +12,8 @@ namespace XunitTest;
 // Text operations, the buffers, the windows, the adapter's write, the conversions and writeLine of a view are bodies, called with their
 // operands, result slot and, for a CallerLocation row, the caller's location, at a direct call, an Item's Value call and an adapter's
 // entry; no runtime text formats (R8-W2 c4); a user formatter runs through the bodies; every built-in Type's witness is a witness table
-// body (the BuiltinFormat shim is gone since R8-S2d2); Text.writer gives its destination's writer kind and dispatch word; natively. The
-// kinds are LegacyRuntimeHelpers.WriterKind's numbering.
+// body (the BuiltinFormat shim is gone since R8-S2d2); Text.writer is a body whose specializations and generic body store its
+// destination's tag and dispatch word (R8-W2 b2-1); natively.
 public sealed partial class FunctionCodegenTest
 {
     // A Library of bodies only: the fixed and heap buffers' and the windows' operations, the Text bodies (fixed, heap, utf8,
@@ -74,19 +74,22 @@ public sealed partial class FunctionCodegenTest
         "func apWide(x: ref/u128, w: uniq/Utf8Writer) -> Result<(), BufferFull> => apAppend(x, w)\n" +
         "func apItemOf(n: ref/i128, w: uniq/Utf8Writer) -> Result<(), BufferFull> => apItem(n, w)\n";
 
-    // A user BufferWriter witness (Text.writer's row reserves through it).
+    // A user BufferWriter witness (the adapter Text.writer's generic body makes reserves through it).
     private const string Sink = "struct Sink\n    Self is BufferWriter\n    public var count: i32 = 0\n" +
         "    public func reserve(self: uniq/Self, minimum: isize) -> Result<WriteWindow, BufferFull>\n        self.count += 1\n" +
         "        return .Err(BufferFull.init())\n";
 
-    // A Library creating writers over a FixedBuffer, a HeapBuffer and a user Writer (Sink), Text.writer's Item called and erased.
+    // A Library creating writers over a FixedBuffer, a HeapBuffer and a user Writer (Sink), Text.writer's Item called and erased, and a
+    // user generic forwarding to Text.writer, at a FixedBuffer only (plan R1 N7's row).
     private const string Writers = Sink +
         "func wrFixed(buffer: uniq/Text.FixedBuffer)\n    _ = Text.writer(buffer)\n" +
         "func wrHeap(buffer: uniq/Text.HeapBuffer)\n    _ = Text.writer(buffer)\n" +
         "func wrUser(sink: uniq/Sink)\n    _ = Text.writer(sink)\n" +
         "func wrItem(sink: uniq/Sink)\n    let make = Text.writer<Sink>\n    _ = make(sink)\n" +
         "func wrErased() -> (uniq/Sink) -> Utf8Writer => Text.writer<Sink>\n" +
-        "func wrErasedHeap() -> (uniq/Text.HeapBuffer) -> Utf8Writer => Text.writer<Text.HeapBuffer>\n";
+        "func wrErasedHeap() -> (uniq/Text.HeapBuffer) -> Utf8Writer => Text.writer<Text.HeapBuffer>\n" +
+        "func wrWrap<W>(w: uniq/W) -> Utf8Writer\n    W is BufferWriter\n    return Text.writer(w)\n" +
+        "func wrForward(buffer: uniq/Text.FixedBuffer)\n    _ = wrWrap(buffer)\n";
 
     // SPEC 22.7, 22.9 (DECISIONS R5-M128): the buffers, windows, views, validation and a view's writeLine natively,
     // with Text.fixed's and Text.heap's Items called and a window's limit Aborting at the invoking expression.
@@ -415,55 +418,63 @@ public sealed partial class FunctionCodegenTest
         Assert.Contains(CalleesOf(ir.Function(TableOf(text, Assert.Single(ItemTexts(c, "usErased"))).Entry)), FunctionsOf(ir, c, "toString").Contains);
     }
 
-    // SPEC 22.9.2, 22.9.4, 7.7.4 (K package 4.5 row 6; DECISIONS R5-M130): Text.writer calls its routine with its destination's writer kind and
-    // dispatch word: a FixedBuffer's 0 and a HeapBuffer's 1 with none, a user Writer's 2 with its reserve witness's function, at its call, its
-    // Item's Value call and its erased adapters (SPEC 7.7.4: Text.writer is not its row's witness, so its Item runs its row); the witness is
-    // never called here (the runtime calls it through the word).
+    // SPEC 22.9.2, 22.9.4, 8.13.3, 7.7.4 (K package 4.5 row 6; DECISIONS R5-M130; R8-W2 b2-1): Text.writer is a body whose adapter
+    // Utf8Writer.init stores: a FixedBuffer's and a HeapBuffer's are their specializations', the tags Fixed (0) and Heap (1) with a null
+    // dispatch word, a user Writer's the generic body's, the tag Erased (2) with the code address of its reserve witness (ReserveDispatch),
+    // at its call, its Item's Value call and its erased adapters (SPEC 7.7.4: Text.writer is not its row's witness, so its Item runs its
+    // row); a user generic forwarding to it at a FixedBuffer runs the direct call's specialization instance (SPEC 8.13.3: selection after
+    // substitution), so no instance at a FixedBuffer or a HeapBuffer stores a dispatch word; writer<Sink>'s two instances, its call's
+    // and its Item's, each store its witness's; the witness is never called here (the runtime calls it through the word) (fail-before:
+    // each site called __kimi_text_writer with LegacyRuntimeHelpers.WriterKind's number and the dispatch word).
     [Fact]
     public void TextWriterGivesItsDestinationsKindAndDispatch()
     {
         var c = Analyze(Writers, OutputKind.Library);
         var text = Generate(c);
         var ir = GeneratedIr.Parse(text);
-        var routine = RuntimeAbi.TextWriter.Name;
-        foreach (var (name, words) in new[]
+        const string Standard = "call void @(ptr %, ptr %, ptr null, ptr %) store i32 ";
+        const string Erased = "call void @(ptr %, ptr %, ptr %, ptr %) store i32 2, ptr %, align 4";
+        foreach (var (name, adapter) in new[]
         {
-            ("wrFixed", "i64 0, ptr null"), ("wrHeap", "i64 1, ptr null"), ("wrUser", "i64 2, ptr @"), ("wrItem", "i64 2, ptr @"),
+            ("wrFixed", Standard + "0, ptr %, align 4"), ("wrHeap", Standard + "1, ptr %, align 4"), ("wrUser", Erased), ("wrItem", Erased),
+            ("wrWrap", Standard + "0, ptr %, align 4"),
         })
         {
-            var call = Assert.Single(CallsOf(Assert.Single(FunctionsOf(ir, c, name))), x => x.Callee == ir.Function(routine));
-            Assert.Equal($"call void @(ptr %, ptr %, {words})", call.Shape);
+            Assert.Equal(adapter, Adapter(ir, c, Assert.Single(FunctionsOf(ir, c, name))));
         }
 
-        foreach (var (name, words) in new[] { ("wrErased", "i64 2, ptr @"), ("wrErasedHeap", "i64 1, ptr null") })
+        foreach (var (name, adapter) in new[] { ("wrErased", Erased), ("wrErasedHeap", Standard + "1, ptr %, align 4") })
         {
-            var entry = ir.Function(TableOf(text, Assert.Single(ItemTexts(c, name))).Entry);
-            Assert.Equal($"call void @(ptr %, ptr %, {words})", Assert.Single(CallsOf(entry), x => x.Callee == ir.Function(routine)).Shape);
+            Assert.Equal(adapter, Adapter(ir, c, ir.Function(TableOf(text, Assert.Single(ItemTexts(c, name))).Entry)));
         }
 
+        var writers = FunctionsOf(ir, c, "writer");
+        IrFunction Callee(string name) => Assert.Single(CalleesOf(Assert.Single(FunctionsOf(ir, c, name))), writers.Contains);
+        Assert.Same(Callee("wrFixed"), Callee("wrWrap"));
+        Assert.Equal(4, writers.Length); // writer<FixedBuffer>, writer<HeapBuffer>, writer<Sink>'s call's and Item's.
         var reserve = Regex.Match(Assert.Single(ItemTexts(c, "reserve")), @"define internal \S+ @(__kimi_f\d+)\(").Groups[1].Value;
-        Assert.Equal(3, Regex.Matches(text, $@"call void @{routine}\(ptr %\S+, ptr %\S+, i64 2, ptr @{reserve}\)").Count);
+        Assert.Equal(2, Regex.Matches(text, $@"store ptr @{reserve}, ptr %\S+, align 8").Count);
         Assert.DoesNotContain(ir.Functions, x => CalleesOf(x).Contains(ir.Function(reserve)));
+        Assert.DoesNotContain("__kimi_text_writer", text, StringComparison.Ordinal);
     }
 
-    // R8-W1b-2: the erased writer's kept runtime (Text.writer's adapter and the reserve through its dispatch word) is a module part of its
-    // own, written once in a module that calls Text.writer and in none without formatting. R8-W2 c4: the module defines no routine of the
-    // deleted formatting runtime (fail-before: every module with Text.writer defined them, without a caller since R8-W2 c3a).
+    // R8-W1b-2: the erased writer's kept runtime (the reserve through an adapter's dispatch word) is a module part of its own, written once
+    // in a module that writes through an adapter and in none without a write: since R8-W2 b2-1 Text.writer is a body, so a module that
+    // only makes adapters requests it no more (fail-before: Text.writer's call requested it, with its __kimi_text_writer). R8-W2 c4: the
+    // module defines no routine of the deleted formatting runtime (fail-before: every module with Text.writer defined them, without a
+    // caller since R8-W2 c3a).
     [Fact]
     public void TheErasedWriterRuntimeIsWrittenOnRequest()
     {
-        string[] definitions = ["define internal void @" + RuntimeAbi.TextWriter.Name + "(", "define internal void @__kimi_erased_reserve("];
-        var text = Generate(Analyze(Writers, OutputKind.Library));
+        const string Definition = "define internal void @__kimi_erased_reserve(";
+        var write = "func wrWrite(sink: uniq/Sink) -> Result<(), BufferFull>\n    var writer = Text.writer(sink)\n    return (writer@uniq).write(1)\n";
+        var text = Generate(Analyze(Writers + write, OutputKind.Library));
         var at = text.IndexOf(LlvmModuleText.ErasedWriterRuntime, StringComparison.Ordinal);
         Assert.True(at >= 0);
         Assert.Equal(at, text.LastIndexOf(LlvmModuleText.ErasedWriterRuntime, StringComparison.Ordinal));
-        var none = Generate(Analyze("func one() -> i32 => 1\n", OutputKind.Library));
-        foreach (var definition in definitions)
-        {
-            Assert.Equal(at, text.IndexOf(definition, StringComparison.Ordinal) - LlvmModuleText.ErasedWriterRuntime.IndexOf(definition, StringComparison.Ordinal));
-            Assert.Equal(text.IndexOf(definition, StringComparison.Ordinal), text.LastIndexOf(definition, StringComparison.Ordinal));
-            Assert.DoesNotContain(definition, none, StringComparison.Ordinal);
-        }
+        Assert.Equal(at, text.IndexOf(Definition, StringComparison.Ordinal) - LlvmModuleText.ErasedWriterRuntime.IndexOf(Definition, StringComparison.Ordinal));
+        Assert.Equal(text.IndexOf(Definition, StringComparison.Ordinal), text.LastIndexOf(Definition, StringComparison.Ordinal));
+        Assert.DoesNotContain(Definition, Generate(Analyze(Writers, OutputKind.Library)), StringComparison.Ordinal);
 
         Assert.DoesNotMatch(@"(?m)^define internal [^@]+ @__kimi_(writer_reserve|writer_fail|utf8_commit|buffer_reserve|window_address|window_advance)\(", text);
     }
@@ -477,7 +488,7 @@ public sealed partial class FunctionCodegenTest
         var reserve = IntrinsicRows.Of(IntrinsicId.ErasedReserve);
         Assert.Equal((IntrinsicWriter.Requested, ModuleCodegen.Needs.ErasedWriter), (reserve.Writer, reserve.Requests));
         Assert.Single(Regex.Matches(LlvmModuleText.ErasedWriterRuntime, @"(?m)^define internal void @__kimi_erased_reserve\(ptr %ret, ptr %writer, i64 %amount\)"));
-        Assert.Single(Regex.Matches(LlvmModuleText.ErasedWriterRuntime, @"(?m)^declare void @llvm\.memset\.p0\.i64\("));
+        Assert.DoesNotMatch(@"(?m)^declare ", LlvmModuleText.ErasedWriterRuntime); // R8-W2 b2-1: __kimi_text_writer's memset went with it.
         var format = IntrinsicRows.Of(IntrinsicId.FormatFloat); // R8-S2c: the float formatting part, which declares nothing.
         Assert.Equal((IntrinsicWriter.Requested, ModuleCodegen.Needs.FormatFloat), (format.Writer, format.Requests));
         Assert.Single(Regex.Matches(LlvmModuleText.FormatFloatRuntime, @"(?m)^define internal i64 @__kimi_format_float\(i64 %bits, i1 %narrow, ptr %\w+\)"));
@@ -585,4 +596,14 @@ public sealed partial class FunctionCodegenTest
 
     // The byte length of a site's location text (SPEC 22.5.1).
     private static int Located(string source, string site) => LocationText(source, site).Length;
+
+    // The adapter a function's one Text.writer call makes (R8-W2 b2-1): the shape of the callee's Utf8Writer.init call and of the store of
+    // the tag it passes.
+    private static string Adapter(GeneratedIr ir, Compilation c, IrFunction caller)
+    {
+        var writer = Assert.Single(CalleesOf(caller), FunctionsOf(ir, c, "writer").Contains);
+        var inits = FunctionsOf(ir, c, "init");
+        var init = Assert.Single(CallsOf(writer), x => inits.Contains(x.Callee!));
+        return $"{init.Shape} {Assert.Single(writer.Instructions, x => x.Opcode == "store" && x.Operands[^1] == init.Operands[^1]).Shape}";
+    }
 }

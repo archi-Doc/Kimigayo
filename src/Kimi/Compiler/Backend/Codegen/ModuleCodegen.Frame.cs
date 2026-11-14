@@ -55,8 +55,8 @@ internal sealed partial class ModuleCodegen
         /// (its row's Requests; R8-S2c).</summary>
         FormatFloat = 16,
 
-        /// <summary>The erased writer's kept runtime (LlvmModuleText.ErasedWriterRuntime: Text.writer's adapter and the reserve through
-        /// its dispatch word), for Text.writer and an ErasedReserve call (its row's Requests).</summary>
+        /// <summary>The erased writer's kept runtime (LlvmModuleText.ErasedWriterRuntime: the reserve through an adapter's dispatch
+        /// word), for an ErasedReserve call (its row's Requests).</summary>
         ErasedWriter = 32,
 
         /// <summary>The 128-bit overflow intrinsics' declarations (LlvmModuleText.WideOverflowDeclarations), for a checked 128-bit operation

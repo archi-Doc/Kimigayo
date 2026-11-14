@@ -632,15 +632,17 @@ public sealed partial class MirEffectsTest(ITestOutputHelper output)
                 "    public init(key: K) => self.key = key@move\n    public func put(self: uniq/Self, value: i32) -> Result<(), BufferFull>\n" +
                 "        _ = self.table.tryGet(self.key)\n        return .Ok(())\n"));
 
-    // SPEC 8.11.2, 22.9.1 (R8-W1b-3, C-188): A4 classes a Storage.erasedReserve call, ErasedReserve's producer (MirDescriptors: no
-    // effect of its own), by its kind's family, Inputs, as Text.writer's ErasedWriter: the Writer's reserve it runs is checked against
-    // its confined bound where Text.writer erases it. S2a's built-in bodies are its first callers (AConfinedLeafWriteReportsNothing).
+    // SPEC 8.11.2, 22.9.1 (R8-W1b-3, C-188; R8-W2 b2-1): A4 classes a Storage.erasedReserve call, ErasedReserve's producer (MirDescriptors:
+    // no effect of its own), by its kind's family, Inputs, as Storage.reserveDispatch's, the call of Text.writer's body that erases the
+    // Writer's reserve: the reserve it runs is checked against its confined bound where Text.writer erases it. S2a's built-in bodies are
+    // its first callers (AConfinedLeafWriteReportsNothing).
     [Fact]
     public void AnErasedReserveCallIsClassedByItsStorageFamily()
     {
         var library = Compilation.CreateForTest().Library;
         Assert.Equal(CompilerFunctionEffect.Inputs, TyCtxt.Bodyless(library.Function(CompilerFunctionKind.StorageErasedReserve)!));
-        Assert.Equal(TyCtxt.Bodyless(library.Function(CompilerFunctionKind.TextWriter)!), TyCtxt.Bodyless(library.Function(CompilerFunctionKind.StorageErasedReserve)!));
+        Assert.Equal(TyCtxt.Bodyless(library.Function(CompilerFunctionKind.StorageReserveDispatch)!), TyCtxt.Bodyless(library.Function(CompilerFunctionKind.StorageErasedReserve)!));
+        Assert.Equal((MirEffect.None, (sbyte)0), (MirDescriptors.Of(IntrinsicId.ReserveDispatch).Effects, MirDescriptors.Of(IntrinsicId.ReserveDispatch).Arity));
         Assert.Equal((MirEffect.None, (sbyte)2), (MirDescriptors.Of(IntrinsicId.ErasedReserve).Effects, MirDescriptors.Of(IntrinsicId.ErasedReserve).Arity));
     }
 

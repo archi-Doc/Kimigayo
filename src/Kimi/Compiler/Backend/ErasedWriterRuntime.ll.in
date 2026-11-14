@@ -1,19 +1,6 @@
-; The erased writer's kept runtime (SPEC 22.9.2, 22.9.4, 22.10.1): Text.writer's adapter (ErasedWriter) and the call of a
-; Writer's reserve through the adapter's dispatch word with the window check (ErasedReserve). Adapter offsets: destination 0,
-; dispatch 8, kind 16 (Utf8Writer's Fields). A Result has an i32 tag (Ok=0, Err=1) and its window {state, start, written,
-; remaining} at byte 8. It declares llvm.memset, which it calls.
-declare void @llvm.memset.p0.i64(ptr nocapture writeonly, i8, i64, i1 immarg)
-
-{{__kimi_text_writer}}
-entry:
-  call void @llvm.memset.p0.i64(ptr %ret, i8 0, i64 64, i1 false)
-  store ptr %self, ptr %ret, align 8
-  %dispatchp = getelementptr i8, ptr %ret, i64 8
-  %kindp = getelementptr i8, ptr %ret, i64 16
-  store ptr %dispatch, ptr %dispatchp, align 8
-  store i64 %kind, ptr %kindp, align 8
-  ret void
-}
+; The erased writer's kept runtime (SPEC 22.9.4, 22.10.1): the call of a Writer's reserve through the adapter's dispatch word
+; with the window check (ErasedReserve). Adapter offsets: destination 0, dispatch 8 (Utf8Writer's first two Fields, which
+; Text.writer's body stores). A Result has an i32 tag (Ok=0, Err=1) and its window {state, start, written, remaining} at byte 8.
 
 ; A window from the Writer's reserve is accepted only with written == 0 and remaining >= amount; otherwise the result is
 ; BufferFull, and the caller records the failure.

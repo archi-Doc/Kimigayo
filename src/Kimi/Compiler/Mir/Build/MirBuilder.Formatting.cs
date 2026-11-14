@@ -204,7 +204,8 @@ internal sealed partial class MirBuilder
         var scope = this.OpenScope(block: false);
         var at = this.arguments.Count;
         this.arguments.Add(this.Borrow(SemanticsKind.Uniq, fixedBuffer, node));
-        this.Serve(writer, CompilerFunctionKind.TextWriter, null, [this.body.TypeOf(fixedBuffer)], at, node);
+        var make = compilation.Library.GetSymbol(KimiDeclarationId.TextWriter)!; // A body since R8-W2 b2-1; its FixedBuffer specialization runs.
+        this.Invoke(writer, new(MirCalleeKind.Fn, make, compilation.Types.Synthesized(make, null, [this.body.TypeOf(fixedBuffer)], [])), at, node);
         this.CloseScope(scope);
     }
 
