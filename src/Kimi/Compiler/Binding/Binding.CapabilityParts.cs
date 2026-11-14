@@ -8,7 +8,9 @@
 //   read through its held instance; EnvironmentTuple, the one form of an environment's parts as a Type, which CapabilityParts reads back.
 // - Inputs: complete Types: a judgment's subject, an erasure's callable; a nested definition's chain of enclosing declarations
 //   (TyCtxt.EnclosingDeclaration) and its held instance as its readers see it (TyCtxt.NestedInstance).
-// - Outputs: the parts in one numbering with their members; interned environment Tuples.
+// - Outputs: the parts in one numbering with their members; interned environment Tuples; InheritedArguments' null where the instance
+//   is withheld (PLAN G300, the owner's O-262 (a)) or an image does not complete, which each reader answers with BU-22's located limit:
+//   at the withheld definition (StructuralCapability; ErasureSubject through it), at the stored Type (the component summaries' walk).
 // - Invariants: the erasure and the Owned proof read one numbering (DECISIONS BU-73: a Closure's capture index); an environment Tuple
 //   is the only Tuple with Origin arguments, a capability subject and never a value's Type.
 // - Prohibitions: no judgment here (StructuralCapability, ErasureSubject and the component summaries' walk judge the parts); no second

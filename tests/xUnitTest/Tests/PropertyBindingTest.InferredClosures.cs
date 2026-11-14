@@ -88,6 +88,7 @@ public partial class PropertyBindingTest
     [InlineData("n1static", OuterInner + "func f(i: ref/(Outer during static).Inner) -> i32 => need(i.cb)", "Unsupported_Kd: () -> i32")]
     [InlineData("x1pk", PkView + "func f() -> i32\n    let x: i32 = 1\n    let view = View.init(x@ref)\n    return need(view.p())", AtPk)]
     [InlineData("x3pk", PkView + "func f(v: ref/(View during a)) -> i32 => need(v.p())", AtPk)]
+    [InlineData("x3bpkstatic", PkView + "func f(v: ref/(View during static)) -> i32 => need(v.p())", AtPk)]
     [InlineData("x5pk", GroupNeed + ViewHead + PkField + "\n    public func m(self: ref/Self) -> i32 => N.need(self.p())" + ViewInit, AtPk)]
     [InlineData("x9pk", PkView + "func f(v: ref/(View during a)) -> i32\n    let e: (ref/i32 during a) -> i32 = v.p()\n    return 0", AtPk)]
     [InlineData("x1", ViewHead + "cb = missingName" + ViewInit + Local + "    view.cb(r)\n    return 1", "UnresolvedBinding_Kd: missingName")]
@@ -100,7 +101,8 @@ public partial class PropertyBindingTest
     // x3pk, x5pk and x9pk (the Middle's x1, x3, x5, x9; invalid: the inherited `source` and pk's signature are not static, SPEC 15.2.3,
     // 7.7.4): the Item of a function declared in the Field Closure, needed Owned or erased, is the limit at `func pk`, where dev reported
     // UnprovenConstraint_Kd (x9: UnprovenOriginContract_Kd) at the use: record selection, as the use reads a Type the limited
-    // definition does not form (the owner's O-277 (a)).
+    // definition does not form (the owner's O-277 (a)). Their valid twin x3bpkstatic (`View during static`: the inherited `source` and
+    // pk's fixed signature Origin are static) is O-262 (a)'s same limit, where dev's UnprovenConstraint_Kd at the use was false.
     public void AFieldClosureNamingItsContainersOriginIsTheLocatedLimit(string id, string declarations, string? record, string? mir = null)
         => Assert.Equal([id, .. new[] { record, mir }.OfType<string>()], [id, .. RawPointerSyntaxTest.Records(ConcreteClosureTest.NeedOwned + declarations)]);
 
