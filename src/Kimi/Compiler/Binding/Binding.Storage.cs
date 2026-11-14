@@ -45,6 +45,20 @@ public sealed partial class Binding
     // producer's Type (KeptType, its projections completed); null where it does not substitute.
     internal BoundType? StoredType(Koto syntax, BoundType owner) => WrittenType(syntax) is { } written ? this.PartType(written, owner) : null;
 
+    // SPEC 5.7 Calls (the owner's O-254 Q1 D), 15.8.2, 7.7.2 (PLAN A5-F row 2 (i)): a Closure definition's environment Type as a contract
+    // reads it (TyCtxt.ClosureEnvironment, its one reader): its environment bindings are Fields of its call receiver's referent, so each
+    // raw layer their Types write without `during` states Unstated at any depth, by WithUnstatedOrigins' rule for a declaration's parts
+    // (below a borrow layer and below a layer stating an Origin included); a nested Closure binding is read by its own environment again,
+    // and a layer a Type argument of the closure context supplies carries that argument's mark. The Closure's body reads the definition's
+    // environment, unmarked (BoundClosure.EnvironmentType; DECISIONS BU-50). A function of the environment Type.
+    internal BoundType StatedEnvironment(BoundType environment)
+    {
+        var bindings = this.types.Tuple((BoundType[])environment.Components);
+        var marked = this.WithUnstatedOrigins(bindings);
+        return ReferenceEquals(marked, bindings) ? environment
+            : this.types.Rebuild(environment, (BoundType[])marked.Components, environment.Origin, (BoundOrigin[])environment.OriginArguments);
+    }
+
     // SPEC 15.3.2, 5.7: the struct or enum whose storage contains a node: a stored Field's Type, an enum Case's payload or a base
     // clause, read from OriginOwner and the owners' published members; null for any other position, such as an accessor signature or
     // an attached relation. The one storage predicate: the raw `self` test and the storage Origin checks read it.

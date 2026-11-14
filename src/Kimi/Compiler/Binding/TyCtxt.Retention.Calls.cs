@@ -28,6 +28,9 @@ internal sealed partial class TyCtxt
     private readonly List<BoundType> handedFound = new();
     private readonly Dictionary<BoundType, int> handedSeen = new(ReferenceEqualityComparer.Instance); // Each part's shallowest depth (Binding.Enters).
 
+    // ClosureEnvironment's stated environment per definition's environment Type, a function of the interned Type (kept like the interning).
+    private readonly Dictionary<BoundType, BoundType> statedEnvironments = new(ReferenceEqualityComparer.Instance);
+
     // SPEC 15.6.4: a callee's retention under a call's Subst (a Fn, Requirement or Virtual MIR callee, the function the Subst targets, or an
     // Intrinsic one's library declaration; its default templates are A5's), called in `definition`.
     internal CallRetention Retains(BindingSymbol callee, Subst? subst, BindingSymbol? definition)
@@ -140,11 +143,15 @@ internal sealed partial class TyCtxt
     internal BoundType? CalledItem(BoundType callee)
         => Binding.CallableCore(callee) is { Kind: BoundTypeKind.FunctionItem, Symbol.Declaration: FunctionKoto } item ? item : null;
 
-    // SPEC 15.8.2 (DECISIONS R4-M148): the environment a Closure Type's value holds as its body sees it, the one reading of every Closure
-    // part of a contract input (a Closure callee's receiver, Binding.RetentionInput; one nested in an input, RetentionParts): its definition's
-    // environment Type under the Type's closure context (ReadableInstance, DECISIONS BU-36, R4-M139; null where it does not substitute,
-    // CallRetention.Limit). A Closure Type a local's initializer inferred names the local's regions, not the Origins its signature and its
-    // body name. A Closure whose definition Binding did not bind is read as it is, a dependent of Binding's rejection.
+    // SPEC 15.8.2, 5.7 Calls (DECISIONS R4-M148; the owner's O-254 Q1 D, PLAN A5-F row 2 (i)): the environment a Closure Type's value holds
+    // as a contract reads it, the one reading of every Closure part of a contract input (a Closure callee's receiver,
+    // Binding.RetentionInput; one nested in an input, RetentionParts) and of a Closure key (Binding.OwnLayers, Select): its definition's
+    // environment Type with each raw layer its binding Types write without `during` stating Unstated at any depth (Binding.StatedEnvironment:
+    // the bindings are Fields of the call receiver's referent, so Holdings answers HoldContent.Any there, TyCtxt.RawStated), under the
+    // Type's closure context (ReadableInstance, DECISIONS BU-36, R4-M139; null where it does not substitute, CallRetention.Limit). A Closure
+    // Type a local's initializer inferred names the local's regions, not the Origins its signature and its body name. A Closure whose
+    // definition Binding did not bind is read as it is, a dependent of Binding's rejection. Must not: give the Closure's body its
+    // environment (the body reads BoundClosure.EnvironmentType, unmarked: no MIR local states Unstated; DECISIONS BU-50).
     internal BoundType? ClosureEnvironment(BoundType closure)
     {
         if (BoundClosure.Of(closure)?.EnvironmentType is not { } environment)
@@ -152,7 +159,13 @@ internal sealed partial class TyCtxt
             return closure;
         }
 
-        return ClosureInstance(closure) is { } context ? this.ReadableInstance(environment, context) : environment;
+        if (!this.statedEnvironments.TryGetValue(environment, out var stated))
+        {
+            stated = binding.StatedEnvironment(environment);
+            this.statedEnvironments.Add(environment, stated);
+        }
+
+        return ClosureInstance(closure) is { } context ? this.ReadableInstance(stated, context) : stated;
     }
 
     // SPEC 7.7.3 (DECISIONS R4-M128, R4-M148): the call receiver a Closure Type's case admits, given a case Type of a view or the

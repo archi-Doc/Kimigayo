@@ -35,7 +35,8 @@ public enum OriginKind : byte
 
     // SPEC 5.7 (DECISIONS BU-24, BU-46): the Origin a raw layer without `during` counts as stating, which every Origin outlives; in
     // relations and their records (Binding.UnstatedRelation), and on a kept part's raw layer its declaration writes without `during`
-    // (Binding.WithUnstatedOrigins), never in any other Type.
+    // (Binding.WithUnstatedOrigins) and on a Closure environment's as a contract reads it (Binding.StatedEnvironment), never in any other
+    // Type.
     Unstated,
 
     // SPEC 15.3.4 (DECISIONS BU-100): the Origin of a slot of a binding set that a Constraint names, that its declaration holds and that

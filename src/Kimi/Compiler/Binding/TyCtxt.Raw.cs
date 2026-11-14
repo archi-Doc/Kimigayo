@@ -18,7 +18,8 @@ internal sealed partial class TyCtxt
     private readonly List<Hold> rawForm = []; // Decided's Holdings scratch, a stack.
 
     // SPEC 5.7 Calls, Fits (DECISIONS BU-46): whether a declaration states a raw layer without an Origin: true exactly for a layer a Field,
-    // Case payload or base clause writes without `during`, which an instance's kept parts (StoredParts) state as Unstated at any depth
+    // Case payload or base clause writes without `during`, or a Closure environment binding's Type does (O-254 Q1 D: the bindings are
+    // Fields of the receiver's referent; ClosureEnvironment), which an instance's kept parts (StoredParts) state as Unstated at any depth
     // below them, through every nested instance, Type argument, pair slot's argument, element and `during self` pointee they reach; false
     // for a layer the walk's own Type writes (a parameter's or local's Type expression, a Type argument or pair argument it supplies) and
     // for one stating an Origin. A read of the layer Type; total; allocates nothing.

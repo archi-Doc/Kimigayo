@@ -6,12 +6,14 @@ namespace Kimi.Compiler;
 // TyCtxt.Raw.cs). Responsibility: the one step of a Place's path (Select, Base), from a root's key (PlaceKey.Root, or a called
 // function's parameter key, TyCtxt.ParameterKey), and the parts the value at a key holds at its own address with each raw layer's step at
 // the Place (OwnLayers, over OwnParts: the storage walk's by-value criterion, ByValue); on a parameter path, each key's declared
-// counterpart (Signature) and whether a part lies in a binding the declaration does not show (OwnLayer.Hidden, SPEC 15.6.4; PLAN G823).
+// counterpart (Signature) and whether a part lies in a binding the declaration does not show (OwnLayer.Hidden, SPEC 15.6.4; PLAN G823);
+// at a Closure's key, whether a part lies in `let` environment bindings only, which no call replaces (OwnLayer.Let, SPEC 15.8.2; A5-F).
 // Inputs: Holdings' entries and the stored parts Binding's instances keep (Instance, WrittenAt); a path's dereference is PathOrigin's one
 // rule (Dereferenced over Reached, Binding.PlaceAuthority.Raw.cs), a `during self` layer read as ReadHolder reads it (ReplaceHolder); the
 // declaring function's identity classes (Binding.TypeIdentity, the one judge: View).
-// Outputs: a key per Place (Types only), and per key its layers with their steps, their Hidden bit and the key past each; rows are listed
-// once per (Type, Written, Holder, Signature), so a parameter key may list a part a root key of the same Type lists once.
+// Outputs: a key per Place (Types only), and per key its layers with their steps, their Hidden and Let bits and the key past each; rows
+// are listed once per (Type, Written, Holder, Signature, Let), so a parameter key may list a part a root key of the same Type lists once,
+// and a Closure key lists a part held in a `let` and in a `var` binding twice, once with each Let.
 // Invariants: a function of the key (and of the selected part); every producer of a key (Select, Base, Leading, a Past key) steps the
 // Signature by the one rule (View, then Binding.Retention.Declared.cs's pairing and Below); Hidden only where the declared counterpart, in the declaring
 // function's view, is an abstract Type of that function itself; total over what Binding accepts (an unbound part: Type null, one
@@ -72,11 +74,18 @@ internal readonly record struct OwnLayer(BoundType? Layer, HoldStep Step, PlaceK
     /// such a raw layer or reference reaches is the reader's (15.6.4: a raw layer adds no reach of its own; a safe reference keeps the
     /// routes).</summary>
     internal bool Hidden { get; init; }
+
+    /// <summary>Gets a value indicating whether, at a Closure's key, the part lies in a `let` binding of that Closure's environment and,
+    /// below it, in a `let` binding of every nested Closure's environment its path enters (SPEC 15.8.2, 7.7.2: no Closure body can
+    /// replace its environment; an Exclusive call may retain an argument in its `var` bindings only, and a `var` binding's value may be
+    /// replaced whole, its nested `let` bindings with it; PLAN A5-F row 2 (ii)). False at every other key and part. What a call writes
+    /// through such a part is the reader's (A5's rule 4).</summary>
+    internal bool Let { get; init; }
 }
 
 public sealed partial class Binding
 {
-    private readonly HashSet<(BoundType Type, BoundType? Written, BoundType? Holder, BoundType? Signature)> ownSeen = new(); // OwnLayers' walked keys, reused.
+    private readonly HashSet<(BoundType Type, BoundType? Written, BoundType? Holder, BoundType? Signature, bool Let)> ownSeen = new(); // OwnLayers' walked keys, reused.
     private readonly List<BoundType> viewMembers = new(); // View's scratch: an identity class's members.
 
     // SPEC 5.2.1 Retained dependencies, 5.7 Calls, 15.6.4 (PLAN G583, G598, C-189; contract in TyCtxt.Raw.cs): the parts the value at a
@@ -98,10 +107,10 @@ public sealed partial class Binding
         for (var j = 0; at.Case >= 0 && complete && j < at.Type.Components.Count; j++)
         {
             var signature = Below(payload, DeclaredComponent(payload, at.Type, j));
-            complete = this.OwnParts(at.Type.Components[j], WrittenAt(at.Holder!, at.Case, [j], out _), at.Holder, signature, at, into);
+            complete = this.OwnParts(at.Type.Components[j], WrittenAt(at.Holder!, at.Case, [j], out _), at.Holder, signature, false, at, into);
         }
 
-        return at.Case >= 0 ? complete : this.OwnParts(at.Type, at.Written, at.Holder, at.Signature, at, into);
+        return at.Case >= 0 ? complete : this.OwnParts(at.Type, at.Written, at.Holder, at.Signature, at.Type.Kind == BoundTypeKind.Closure, at, into);
     }
 
     // SPEC 5.7 (C-189): the key of the Place `part` selects from `at`'s Place, one step of a path, `part` numbered as MIR numbers it (a
@@ -174,12 +183,13 @@ public sealed partial class Binding
 
     // OwnLayers from a part (Type, Written, Holder) and the Type the called function's declaration writes there (Signature, read in the
     // function's view, View; paired by the storage walk's rule, DeclaredRun and SignaturePast; kept inside a hidden binding, Below), each
-    // (Type, Written, Holder, Signature) once per call; retentionHeld is read as a stack (each run removed). It reads Holdings only, never
-    // HeldRun, so it sets no storage-walk state (retentionLimit).
-    private bool OwnParts(BoundType type, BoundType? written, BoundType? holder, BoundType? signature, in PlaceKey at, List<OwnLayer> into)
+    // (Type, Written, Holder, Signature, Let) once per call; retentionHeld is read as a stack (each run removed). `let`: the part lies in
+    // `let` bindings at every Closure environment from the key's Closure down (OwnLayer.Let; a Closure's entries are its bindings in
+    // capture order, Holdings' InlineParts). It reads Holdings only, never HeldRun, so it sets no storage-walk state (retentionLimit).
+    private bool OwnParts(BoundType type, BoundType? written, BoundType? holder, BoundType? signature, bool let, in PlaceKey at, List<OwnLayer> into)
     {
         signature = this.View(signature);
-        if (!this.ownSeen.Add((type, written, holder, signature)))
+        if (!this.ownSeen.Add((type, written, holder, signature, let)))
         {
             return true;
         }
@@ -192,21 +202,23 @@ public sealed partial class Binding
         {
             var layer = this.retentionHeld[start];
             var past = new PlaceKey(layer.Part, layer.Written, layer.Holder, -1, this.PastThrough(type, layer, at), this.SignaturePast(signature, type, layer));
-            into.Add(new(type, this.LayerStep(layer.Step, at), past) { Hidden = hidden });
+            into.Add(new(type, this.LayerStep(layer.Step, at), past) { Hidden = hidden, Let = let });
         }
 
         var declared = raw || !complete ? default : this.DeclaredRun(signature, type, run);
+        var captures = type.Kind == BoundTypeKind.Closure ? BoundClosure.Of(type)?.Captures : null;
         for (var i = start; !raw && complete && i < run.End; i++)
         {
             var entry = this.retentionHeld[i];
             if (this.ByValue(type, entry) && entry.Part is { } part)
             {
-                complete = this.OwnParts(part, entry.Written, entry.Holder, this.DeclaredPart(signature, declared, run, i), at, into);
+                var fixedPart = let && (type.Kind != BoundTypeKind.Closure || (captures is { } bound && !bound[i - start].Environment.MutableCapture));
+                complete = this.OwnParts(part, entry.Written, entry.Holder, this.DeclaredPart(signature, declared, run, i), fixedPart, at, into);
             }
             else if (entry.Step != HoldStep.Loan || entry.Part is null)
             {
                 var (through, reached) = (this.PastThrough(type, entry, at), this.SignaturePast(signature, type, entry));
-                into.Add(new(null, entry.Step, new(entry.Part, entry.Written, entry.Holder, -1, through, reached)) { Hidden = hidden });
+                into.Add(new(null, entry.Step, new(entry.Part, entry.Written, entry.Holder, -1, through, reached)) { Hidden = hidden, Let = let });
             }
         }
 
