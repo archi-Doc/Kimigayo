@@ -179,8 +179,8 @@ public partial class KimiLibraryShapeTest
         Assert.True(set.RootCount > 50 && set.Items.Length > set.RootCount, $"{set.RootCount} roots, {set.Items.Length} items");
     }
 
-    // Recognition finds each cataloged declaration once in its container, at its overload position, with the body kind
-    // its role requires.
+    // Registration binds each cataloged entry to the one declaration whose `#Lang` names it (row L1), under that declaration's name and
+    // kind, in its declaring container's scope, with the body kind its role requires.
     [Theory]
     [MemberData(nameof(CatalogEntries))]
     public void CatalogEntriesResolveExactlyOnce(KimiDeclarationId id)
@@ -195,21 +195,13 @@ public partial class KimiLibraryShapeTest
         }
 
         var declaration = symbol.Declaration;
-        var container = Container(declaration);
-        var path = entry.Owner ?? entry.Container switch
-        {
-            KimiLibraryContainer.Root => string.Empty,
-            KimiLibraryContainer.FixedBuffer or KimiLibraryContainer.HeapBuffer => "Text." + entry.Container,
-            KimiLibraryContainer.FixedArray => "Storage.FixedArray",
-            _ => entry.Container.ToString(),
-        };
-        Assert.Equal(path, Path(container));
-        var same = Declarations(container, entry.Name, entry.IsFunction);
-        Assert.Same(declaration, entry.Overload < 0 ? Assert.Single(same) : same[entry.Overload]);
+        Assert.Equal(id.ToString(), LangName(declaration));
+        Assert.Equal(declaration is FunctionKoto function ? (function.Name, BindingSymbolKind.Function) : (((DeclarationContainerKoto)declaration).Name, BindingSymbolKind.Type), (symbol.Name, symbol.Kind));
+        Assert.Same(Container(declaration), Assert.IsAssignableFrom<DeclarationContainerKoto>(symbol.Scope.Owner));
         if (entry.Intrinsic != IntrinsicKind.None)
         {
             Assert.Equal(entry.Intrinsic, symbol.Intrinsic);
-            Assert.Equal("public contract " + entry.Name, Shape(declaration));
+            Assert.Equal("public contract " + symbol.Name, Shape(declaration));
         }
 
         if (entry.Function != CompilerFunctionKind.None || entry.Implementation is not null)
@@ -217,20 +209,22 @@ public partial class KimiLibraryShapeTest
             Assert.Equal(entry.Function, symbol.CompilerFunction);
             Assert.False(HasBody(declaration));
         }
-
-        if (entry.SourceFunction)
+        else if (declaration is FunctionKoto)
         {
             Assert.Equal(CompilerFunctionKind.None, symbol.CompilerFunction);
             Assert.True(HasBody(declaration));
         }
 
-        // SPEC 22.1: a linked public declaration is defined by an internal source function of the same container.
+        // SPEC 22.1: a linked public declaration is defined by an internal source function of the same container, which carries the
+        // caller location (SPEC 22.5.1).
         if (entry.Implementation is { } implementation)
         {
-            var linked = Assert.IsType<FunctionKoto>(c.Library.GetSymbol(implementation)!.Declaration);
+            var linkedSymbol = c.Library.GetSymbol(implementation)!;
+            var linked = Assert.IsType<FunctionKoto>(linkedSymbol.Declaration);
             Assert.Equal(ModifierKind.Internal, linked.Modifier);
             Assert.True(HasBody(linked));
             Assert.Same(declaration.Parent, linked.Parent);
+            Assert.True(KimiLibraryCatalog.RequiresCallerLocation(linkedSymbol));
         }
     }
 

@@ -19,7 +19,8 @@ public partial class KimiLibraryShapeTest
     [InlineData("clear")]
     public void ArrayTruncateAndRemoveAllCarryTheirRows(string name)
     {
-        var entry = Assert.Single(KimiLibraryCatalog.Entries.ToArray(), x => x.Container == KimiLibraryContainer.Array && x.Name == name);
+        var library = Library.Value.Library;
+        var entry = Assert.Single(KimiLibraryCatalog.Entries.ToArray(), x => library.GetSymbol(x.Id) is { } symbol && symbol.Name == name && ReferenceEquals(symbol.Declaration.Parent, library.DynamicArray.Declaration));
         Assert.True(entry.Row.HasValue, $"{name}: no row");
         Assert.Equal((0, false), ((int)entry.Row.Value.Destroys, entry.Row.Value.InPlace));
     }

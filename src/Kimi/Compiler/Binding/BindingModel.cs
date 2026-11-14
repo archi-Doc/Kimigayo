@@ -335,6 +335,10 @@ public sealed class BindingSymbol
 
     internal KimiDeclarationId? LibraryDeclaration { get; init; }
 
+    // SPEC 22.5.1, IMPL 21.3.4: whether this library function's declaration carries `#CallerLocation`, set by the library's registration
+    // on the original declaration's symbol only; a specialization has it through its original (TyCtxt.Original).
+    internal bool CallerLocation { get; init; }
+
     internal List<BoundOrigin>? AggregateInputOrigins { get; set; }
 
     internal BoundType? WholeType { get; set; }

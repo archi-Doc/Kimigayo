@@ -23,14 +23,21 @@ internal enum KimiLibraryContainer : byte
 /// out of line in KimiLibraryCatalog.Rows.cs.</summary>
 internal static partial class KimiLibraryCatalog
 {
+    // IMPL 21.3.4: a `#Lang("Name")` names the KimiDeclarationId member of that Name, compared ordinally.
+    private static readonly Dictionary<string, KimiDeclarationId> LangItems = Enum.GetValues<KimiDeclarationId>().ToDictionary(static x => x.ToString(), StringComparer.Ordinal);
+
     internal static ReadOnlySpan<Entry> Entries => Definitions;
 
     internal static bool IsStorageOperation(CompilerFunctionKind kind) => kind is >= CompilerFunctionKind.StorageMissingDictionaryKey and <= CompilerFunctionKind.StorageStride;
 
     internal static bool IsRawOperation(CompilerFunctionKind kind) => kind is >= CompilerFunctionKind.RawAllocate and <= CompilerFunctionKind.RawSlice;
 
-    internal static bool RequiresCallerLocation(BindingSymbol? symbol)
-        => symbol?.LibraryDeclaration is { } id && Index(id) is >= 0 and var index && Definitions[index].CallerLocation;
+    // SPEC 22.5.1: the private caller-location ABI, the original declaration's `#CallerLocation`; a reader passes the original's symbol
+    // (TyCtxt.Original), never a specialization's.
+    internal static bool RequiresCallerLocation(BindingSymbol? symbol) => symbol is { CallerLocation: true };
+
+    // The lang item a `#Lang` Name names, or null when the Name is no KimiDeclarationId member.
+    internal static KimiDeclarationId? LangItem(string name) => LangItems.TryGetValue(name, out var id) ? id : null;
 
     // SPEC 22.1: a Kimi Type whose representation the compiler manages has exactly the constructors its declaration declares.
     internal static bool ManagesRepresentation(BindingSymbol? symbol)
@@ -61,21 +68,18 @@ internal static partial class KimiLibraryCatalog
         return false;
     }
 
+    // An entry's declaration is the one whose `#Lang` names its Id (IMPL 21.3.4), which the library's registration reads. Name and
+    // Container belong only to the entries whose SourceExpected is false: the spelling and container IsUnsourced matches, since such a
+    // declaration has no source to carry a `#Lang`. A temporary structure: G1-3b-2 writes the five declarations `#Unsupported` and
+    // removes Name, Container, SourceExpected and IsUnsourced.
     internal readonly record struct Entry(
         KimiDeclarationId Id,
-        string Name,
-        KimiLibraryContainer Container = KimiLibraryContainer.Root,
         IntrinsicKind Intrinsic = IntrinsicKind.None,
         CompilerFunctionKind Function = CompilerFunctionKind.None,
         bool SourceExpected = true,
-        int Overload = -1,
-        bool SourceFunction = false,
-        bool CallerLocation = false,
-        string? Owner = null,
+        string? Name = null,
+        KimiLibraryContainer Container = KimiLibraryContainer.Root,
         bool ManagedRepresentation = false,
         PublishedRow? Row = null,
-        KimiDeclarationId? Implementation = null)
-    {
-        internal bool IsFunction => this.SourceFunction || this.Function != CompilerFunctionKind.None || this.Container == KimiLibraryContainer.Intrinsics || this.Implementation is not null;
-    }
+        KimiDeclarationId? Implementation = null);
 }

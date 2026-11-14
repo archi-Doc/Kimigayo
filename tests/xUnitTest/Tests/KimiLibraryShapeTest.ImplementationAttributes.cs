@@ -7,8 +7,8 @@ using Xunit;
 namespace XunitTest;
 
 // The implementation Attributes the library's sources state (IMPL 21.3.4; R8-G1 rows L1, L3, L4 and L5; row L2 is
-// BodilessFunctionsAreCompilerFunctions, row L6 ParserOptimizationTest.TheLibrarysLinkedConstructorsCarryLang). Each row holds the
-// Attributes equal to the catalog's columns, which still register the declarations.
+// BodilessFunctionsAreCompilerFunctions, row L6 ParserOptimizationTest.TheLibrarysLinkedConstructorsCarryLang). The library's
+// registration reads `#Lang` and `#CallerLocation` (G1-3a); `#Intrinsic` still equals the catalog's Function column.
 public partial class KimiLibraryShapeTest
 {
     // Row L1: `#Lang("Name")` names a KimiDeclarationId member and sits on the one declaration the catalog registers under it; each Name
@@ -91,28 +91,32 @@ public partial class KimiLibraryShapeTest
         Assert.Equal(36, rows);
     }
 
-    // Row L5: the functions carrying `#CallerLocation` (SPEC 22.5.1) are exactly the catalog's CallerLocation column, whose private ABI
-    // ModuleCodegen reads (KimiLibraryCatalog.RequiresCallerLocation); the Attribute takes no argument.
+    // Row L5: the functions carrying `#CallerLocation` (SPEC 22.5.1) are exactly the cataloged symbols whose private ABI ModuleCodegen
+    // reads (KimiLibraryCatalog.RequiresCallerLocation), so no `#CallerLocation` sits on a declaration registration does not read; the
+    // Attribute takes no argument.
     [Fact]
-    public void TheCallerLocationAttributesAreTheCatalogsColumn()
+    public void TheCallerLocationAttributesAreTheRegisteredFlags()
     {
+        var library = Library.Value.Library;
         var declared = new List<KimiDeclarationId>();
         foreach (var (attribute, target) in LibraryAttributes(AttributeKind.CallerLocation))
         {
             Assert.Empty(Texts(attribute));
-            declared.Add(Assert.IsType<FunctionKoto>(target).SymbolOf()!.LibraryDeclaration!.Value);
+            var id = Assert.IsType<FunctionKoto>(target).SymbolOf()!.LibraryDeclaration!.Value;
+            Assert.Same(library.GetSymbol(id)!.Declaration, target);
+            declared.Add(id);
         }
 
-        var column = new List<KimiDeclarationId>();
+        var flagged = new List<KimiDeclarationId>();
         foreach (var entry in KimiLibraryCatalog.Entries)
         {
-            if (entry.CallerLocation)
+            if (KimiLibraryCatalog.RequiresCallerLocation(library.GetSymbol(entry.Id)))
             {
-                column.Add(entry.Id);
+                flagged.Add(entry.Id);
             }
         }
 
-        Assert.Equal(column.Order(), declared.Order());
+        Assert.Equal(flagged.Order(), declared.Order());
         Assert.Equal(81, declared.Count);
     }
 
