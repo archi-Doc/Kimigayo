@@ -6335,6 +6335,28 @@ and migration obligations remain in force; no numeric cap changes are authorized
   - Cost: one Join per slot-rooted candidate at a Return; `defaulted` keeps its array, one byte per Loan; no new walk.
   - Rejected: recording at each Return (a template has a check Return per non-value end, so a Limit then a decided sighting of one
     Loan would give two records and the reverse order one).
+- **R4-M201 A5's rule W reads each state part once per walk at its reading, and asks the guard of the reading Type** (the A5 value
+  redesign's unit U3a; the owner's O-209 and O-220 (a); Middle, A5; Major, behaviour-preserving; the redesign's design reviews 1-3,
+  implementation review REVISE (U3a-B1) then ACCEPT WITH NOTES). SPEC 15.6.4 item 1, 5.7 Calls; R4-M73, R4-M140, R4-M147, R4-M153,
+  R4-M154 Revision 8, R4-M160.
+  - `MirBorrows.Reach`'s W is one walk whose nodes are the parts (Placed, Shared) of the states of the holders it reaches. A node's
+    reading is the guard of the Type the holder's state is read at: `MirTypes.HoldsLoans`' `MirWrites`, from the holding memo; in
+    this unit that Type is the holder's own root Type, as before.
+  - A static's direct Loan names E and keeps the static's key as its Root; E has no root local, so its guard is `None` on every
+    route (`MirBorrows.GuardRoot`, the one statement through which `Refs`, `FirstStep` and `Write` record a target's root).
+  - Each (part id, reading) is read once per walk through `MirBorrows.States`' mark by set and level (Through's reading covers
+    Named's, since Φ_W is always beside Φ_E: `escapedSet` is its one producer): R4-M160 marked the Shared part only, and the mark
+    now serves the Placed part too. Each reached holder is asked its guard once; Limit (R4-M147) and Deep (R4-M153, `Changes`) are
+    that guard's answers; a holder past another still takes the Reached entry of the Type of the Place the reaching Loan names
+    (Revision 8).
+  - Removed: the per-local guard table (`writable`) and its per-slot per-walk copy (`writingKind`). Reason: the guard is a function
+    of the Type a state is read at, not a property of a local, so a later unit can read a holder at another Type (a callee's layer)
+    through the same guard instead of adding a second one (the unit's design review 2, R2.6 item 1: the key table lists layers and
+    is no guard).
+  - Bound: R4-M160's (a walk reads each distinct part id at most once per level); Work can only fall. RP8 T-237: no stop.
+  - Rejected: a node keyed by the root Type itself (two root Types with one guard would read a shared part twice: the many-Types row
+    holdKSd); a per-run memo of W's reads in this unit (it has no second reader before the redesign's later units); the guard table
+    kept under another index.
 - **R4-M202 A location's scope is the scope table's `int` index (PLAN G796)** (2026-11-12; Middle, MIR build; Major, small; a shared
   representation; design and implementation review ACCEPT WITH NOTES) IMPL A.4.
   - Rule: `SourceInfo.Scope` is the scope table's `int` index, no longer a `ushort` narrowed unchecked at five builder sites (a body
@@ -20368,6 +20390,9 @@ R8-M* and R9-M* by the stage of the recording unit.
     (its FormatFinish half here, its A1 half at c3b) with its "Removed at R8-W2 c (FormatFinish deleted)"; the Code generation
     bullet's "FormatFinish's 4 → 1" (the intrinsic is deleted). One vocabulary entry removed (`IntrinsicId.FormatFinish`); no new
     representation or component.
+  - Amended by R8-M41 (R8-W2 c2a): a term an instance decides branches on `Length(L) > 0`, the term's value as a
+    `MirConstKind.Length` constant, not on `Len(region) > 0`. `Len` reads a Place's length, which equalled the term only because
+    `Line` sized the region from it: a second form of one fact (plan Revision 1, B1). The region keeps L as its Type's length.
 - **R8-M25 The operator table's domain is one statement, `MirTypes.Operates`, over the root statements** (Middle, 2026-11-10; PLAN
   G662's remainder; Major; design review 1 REVISE (B1-B3), the Back's C-203 REVISE (B1), design review 2 ACCEPT; implementation
   review REVISE (B1, structure limits), repeated review ACCEPT; the Front's C-208; on R8-M20, R5-M126) SPEC 13.2, 13.3.1-13.3.3,
@@ -21155,6 +21180,28 @@ R8-M* and R9-M* by the stage of the recording unit.
   - Rejected: a refold arm per site (R8-M21); a second walk for the hint (C-307); folding closed values into `Value` (a1 keeps the
     producer's Tuple); re-pointing codegen's `Estimate` to `HintBound` at c2t (c2b replaces the operand whole); `Refold` in
     `ContractLength` (`ContractSolver.cs`'s W4 list, R7-C2's hunk).
+- **R8-M41 `MirConstKind.Length`: an instance-decided length's one MIR value form** (Middle, 2026-11-14; R8-W2 c2a revision 1;
+  Major; plan `back\w2c\plan.md` D1/R1, Revisions 1-2, C-267 (a)-(f), the owner's O-214 (a) with R3-N3; the Back's design review
+  C-306 REVISE (B1, N1, N2), then the revision; contains G149-w (R8-W2's B1, v9); RP8 T-256 no stop). SPEC 4.4.1.
+  - The form. SPEC 4.4.1's length-slot read and every MIR read of a length's value is one constant, `MirConstKind.Length` (Value: a
+    `BoundLength`; Type: `isize`). `MirBuilder.LengthOperand` is its one producer: a closed term is an `Integer`, so a Length always
+    has a slot or Type the body leaves open.
+  - The producers. A length slot's Name is a row of `NamedConstant` beside FnItem's. a2's direct-line branch is `Length(L) > 0`
+    (B1). An inline default's copy folds a template's Length under the call's substitution (`TyCtxt.InstanceLength`): an Integer
+    under a closed caller, a Length of the caller's slot under a generic one; a call without a substitution copies a Length
+    unchanged, as `FoldType` keeps its Type (N2).
+  - The checks. `MirValidator.Holds` alone checks it: isize; not constant; each slot and value-Type parameter declared by the body's
+    definition or an enclosing declaration; otherwise a Const finding. A closed item's body holds no `Length`: G149-w's
+    `CarriesInstance` refuses a declaring-Type carrier for an enclosing declaration with a length slot, so no builder, validator or
+    codegen check decides what the collector publishes (B1).
+  - Codegen. The instance's value comes from `InstanceCollector.LengthOf` -> `TyCtxt.InstanceLength` -> `Binding.InstanceLength`
+    (R3-N3: the one length statement). A non-closed or negative result is `InternalInvariant_Kd`.
+  - The analyses. A4 and A5 read it as any Const operand (no Place, no Origin).
+  - Staged. FormatSegment's (Integer, TypeToken) estimate is a second form of an instance-decided value until c2b, which makes the
+    hint operand `LengthOperand`'s (RN2; PLAN G828).
+  - Rejected: a `[L of ()]` Place (R3: a fixed array as a carrier of a number); a narrowed estimate intrinsic (R2); a direct
+    `Subst.Lengths` read, or an entry over `SubstituteLength` (R3-N3); Binding publishing a Name's term in a HIR column (a Binding
+    change for one form).
 - **R9-M1 A check's phase sequence is `Compilation.Check`** (2026-11-08; R9-F5; Major, behavior-preserving; review 1 REVISE, then
   review 2). SPEC 23.1.2, 23.2.2; IMPL 20.6.1. Supersedes in part R5-M65 (`Project` reads `Accepts`) and R5-M77 (`Project` discovers
   the test catalog after acceptance and owns it).

@@ -16,6 +16,10 @@ namespace XunitTest;
 /// verifications' comparison records, an Abort's location and an InlineStorage's destructor.</summary>
 public sealed partial class MirBuildTest
 {
+    // A default reading its function's length slot, omitted by a closed and by a generic caller (ALengthSlotsNameIsItsValue).
+    private const string Count = "func count<length N>(values: [N of i32], n: isize = N) -> isize => n\n" +
+        "func outer<length M>(values: [M of i32]) -> isize => count(values)\nlet c = count([1, 2])\n";
+
     // Plan 6.2: a form without a building rule is one record at its location, however many times a body meets it (a defer body, built at
     // each way out of its scope), and an Opaque value naming the locals its syntax touches. A node the lexer or Binding rejected is a derived
     // Opaque without a record (SPEC 23.1.2): Binding's Error, a use of a local whose rejected declaration has no Type (one with a Type is
@@ -130,6 +134,33 @@ public sealed partial class MirBuildTest
             Assert.DoesNotContain(statements, x => value.Kind != MirOperandKind.Const && x is { Kind: MirStatementKind.Assign, Rvalue.Kind: MirRvalueKind.Use } &&
                 x.Place == value.Place);
         }
+    }
+
+    // SPEC 4.4.1, 7.2.3, 7.7.2 (R8-W2 c2a): a length slot's Name is its value, one constant form per length (condition (a)): a Length
+    // constant where the body leaves the slot open (a function's body, a Closure's, a default's template, and a default's copy whose call
+    // binds the slot to the caller's own), an Integer where the copy's call closes it; no record, finding or Opaque value (fail-before: an
+    // Unsupported record at each Name).
+    [Theory]
+    [InlineData("func size<length N>(values: [N of i32]) -> isize => N\nlet n = size([1, 2, 3])\n", "Fn", "size", "const length N")]
+    [InlineData("func f<length N>(a: [(N + 1) of u8])\n    let k: isize = N + 1\n    let b: [k of u8] = a\nf<1>([2 of 0])\n", "Fn", "f", "const length N")]
+    [InlineData("func size<length N>(values: [N of i32]) -> isize\n    let read = func () -> isize => N\n    return read()\n", "Closure", null, "const length N")]
+    [InlineData(Count, "DefaultTemplate", "count", "const length N")]
+    [InlineData(Count, "Fn", "outer", "const length M")]
+    [InlineData(Count, "Fn", null, "const 2_isize")]
+    public void ALengthSlotsNameIsItsValue(string source, string bodyKind, string? name, string constant)
+    {
+        var kind = Enum.Parse<MirBodyKind>(bodyKind);
+        var c = Compile(source);
+        Assert.Empty(c.Binding.Issues);
+        var program = c.BuildMir();
+        Assert.Empty(program.Findings);
+        Assert.Empty(program.Records(MirRecordClass.Construction));
+        var body = program.Bodies.ToArray().Single(x => x.Key.Kind == kind && x.Key.Decl?.Name == (kind == MirBodyKind.Closure ? x.Key.Decl?.Name : name) &&
+            x.Source.Module == 0);
+        Assert.False(body.HasOpaque);
+        var text = MirDumpTest.Unsited(program, body);
+        Assert.Contains(constant, text, StringComparison.Ordinal);
+        Assert.Equal(constant.StartsWith("const length", StringComparison.Ordinal), text.Contains("const length", StringComparison.Ordinal));
     }
 
     // SPEC 4.3.1, 4.9.5, 12.2, 12.4.1 (DECISIONS R5-M129): an Array literal is one Array aggregate of its elements in source order, `[]` one
