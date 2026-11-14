@@ -13319,6 +13319,23 @@ resumed by R4-M86 (2026-10-20).
     (excluded syntax must reject both); six context clauses in the Type parser for (6); a second name or reader for (6)'s
     BorrowOrigin alternative; for (7) an Error per site, a recovery node per site, keeping the root path's `::` node around the
     recovered Type, and a Binding change.
+- **BU-208 A specialization's Type argument is an input position of its header (PLAN G863)** (2026-11-14; Front, designed and
+  implemented at the Back's seat for R8-W2 b2-1; Q17 class 3; the Front's ruling C-319 and review; the Middle's consent C-331). SPEC
+  8.1.1, 8.13.1-8.13.3, 15.4.2.
+  - `TypeContext` gives a `specialize func` header's Type argument the input row: each omitted aggregate slot is the header's
+    universal input Origin (`OriginKind.Input`, `Occurrence` the slot, `InputIndex` -1), the call's `T`-Origin, which
+    `CompleteImplementationOrigins` then gives the restated inputs and result through the substituted contract.
+  - `PrepareSpecializations` rejects an Origin the header wrote in a Type argument (8.13.2: it restricts the admitted bindings) with
+    `IncompatibleContractImplementation_Kd`; Origins bound inside the argument pass.
+  - Located `Unsupported_Kd` until the argument has a `TypePosition` of its own: an omitted borrow layer of T's binding (argument or
+    restated input), a Function Type result in the argument that no input of its own gives, and an undecided inherited Constraint
+    over the universal Origins. The key is unchanged.
+  - Rejected: fixing the slot to `static` (narrows; `uniq` has none); a fresh body Origin per argument (a binding no caller
+    supplies); completing the argument from the first restated input that mentions `T` (a written restated slot would become the
+    argument's and hide its restriction); a second pass binding the arguments after the target (a mode); checking the inherited
+    Constraint as an obligation at the universal Origin (a premise turned into an unprovable obligation).
+  - Coverage: the Back's `spec-origin\spec-origin-design.md` §7 table (its rows are `SpecializationBindingTest` rows named by table
+    id).
 - **G209-1** (2026-10-24; structural unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source
   aliases their selected container and environment before ordinary lookup merges imports. These responsibilities were embedded in the
   general expression parser and `Binding.Types.Lookup`, with alias resolution beside Type formation. `Parser.RuntimeTypeTests` now
