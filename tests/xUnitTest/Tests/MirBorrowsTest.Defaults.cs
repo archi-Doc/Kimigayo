@@ -316,13 +316,16 @@ public sealed partial class MirBorrowsTest
     // of the slot fails R26-access in every layout (keepX). Controls: no write (keepN) and a store through a parameter (keepE), whose
     // record is at the store (SPEC 7.2.3 as clarified by O-254 Q2 A). keepN is invalid by O-254 Q1 D (the let capture's pointee layer is
     // the Closure's own) and stays accepted until A5's rule W reads that (U3c); its record will then be at the call `c(rz@follow@raw)`,
-    // placed as keepECall's below.
+    // placed as keepECall's below. Today's records, a known limit (PLAN G599 (b): Φ_U is a set's, not an entry's): a decided store of rz
+    // beside `other`, which rests on the u16 write, places no record, so restBeside (invalid twice, SPEC 7.2.3 with 23.1.2: the store and
+    // the result) has the result's site record alone, and restStoreOnly (invalid at the store) the limit record at the site.
     [Fact]
     public void ATemplateVerdictRestingOnAnUndecidedWriteIsTheLimit()
         => Assert.Equal(
             [
                 "keepU: z Unsupported_Kd", "keepE: *p = rz@follow@raw DefaultArgumentBorrow_Kd", "keepB: z Unsupported_Kd", "keepB: z DefaultArgumentBorrow_Kd",
-                "keepS: z DefaultArgumentBorrow_Kd", "keepX: z@follow@uniq DefaultArgumentAccess_Kd",
+                "keepS: z DefaultArgumentBorrow_Kd", "keepX: z@follow@uniq DefaultArgumentAccess_Kd", "restBeside: z DefaultArgumentBorrow_Kd",
+                "restStoreOnly: z Unsupported_Kd",
             ],
             AllProblems("""
                 func keepU(z: uniq/i32 during a, y: i32 = label w: do
@@ -390,6 +393,34 @@ public sealed partial class MirBorrowsTest
                     c(rz@follow@raw)
                     exit to w 0
                 ) => ()
+                func restBeside(z: uniq/i32 during a, p: raw/((raw/i32, raw/i32)), y: ref/i32 during a = label w: do
+                    var other: raw/i32 = null
+                    let n: u64 = 3
+                    let q: raw/(raw/i32) = other@raw
+                    var c = func [n, q] (v: raw/i32)
+                        unsafe => *q = v
+                    let tp = c@raw@raw/u16
+                    unsafe => *tp = 7
+                    var spare: i32 = 0
+                    c(spare@raw)
+                    let rz: ref/i32 during a = z
+                    unsafe => *p = (rz@follow@raw, other)
+                    exit to w rz
+                ) => ()
+                func restStoreOnly(z: uniq/i32 during a, p: raw/((raw/i32, raw/i32)), y: i32 = label w: do
+                    var other: raw/i32 = null
+                    let n: u64 = 3
+                    let q: raw/(raw/i32) = other@raw
+                    var c = func [n, q] (v: raw/i32)
+                        unsafe => *q = v
+                    let tp = c@raw@raw/u16
+                    unsafe => *tp = 7
+                    var spare: i32 = 0
+                    c(spare@raw)
+                    let rz: ref/i32 = z
+                    unsafe => *p = (rz@follow@raw, other)
+                    exit to w 0
+                ) => ()
                 """));
 
     // R26-borrow's place (SPEC 7.2.3 as clarified by the owner's O-254 Q2 A: a default that stores a value carrying an inspection Loan into
@@ -401,7 +432,8 @@ public sealed partial class MirBorrowsTest
     // read back from the stored storage, a Tuple holding rz, or a Reborrow through it (readBack, resultTuple, reborrowChain, whose exclusive
     // Borrow is one subject: its record names the Borrow), a result that only addresses that storage (resultAddr: the store alone); an
     // exclusive Borrow of the slot, stored, is R26-access's at the Borrow beside the store's (uniqStored, SPEC 15.6.7). Valid: a null
-    // store (keepENull), a Copy result (keepR) and a let capture whose pointee holds no pointer (keepNLeaf: the Loan stays in w, a local).
+    // store (keepENull), a Copy result (keepR), a let capture whose pointee holds no pointer (keepNLeaf: the Loan stays in w, a local)
+    // and a store from which no path completes the default normally (storeAbort: the owner's O-274 (a), it keeps no Loan live past entry).
     [Fact]
     public void EachOperationKeepingANewBorrowPastEntryIsItsOwnFailure()
         => Assert.Equal(
@@ -510,6 +542,13 @@ public sealed partial class MirBorrowsTest
                     let rz: ref/i32 = z
                     c(rz@follow@raw)
                     exit to w0 0
+                ) => ()
+                func storeAbort(z: uniq/i32 during a, p: raw/(raw/i32), c: bool, y: i32 = label w: do
+                    let rz: ref/i32 = z
+                    if c
+                        unsafe => *p = rz@follow@raw
+                        $abort("stop")
+                    exit to w 0
                 ) => ()
                 """));
 
@@ -665,19 +704,32 @@ public sealed partial class MirBorrowsTest
         Assert.True(Grows(rules, 2), $"the rules' work {string.Join(", ", rules)}");
     }
 
-    // V16: the template rules allocate nothing on a program version A5 checked before.
+    // V16: the template rules allocate nothing on a program version A5 checked before, R26-borrow's stores in E included (keepBoth2's
+    // two stores beside the kept result, keepDA2's destructions; EachOperationKeepingANewBorrowPastEntryIsItsOwnFailure and
+    // ATemplateDestructionStoringANewBorrowIsTheFailure).
     [Trait("Purpose", "Allocation")]
     [Fact]
     public void ATemplatesWarmRunAllocatesNothing()
     {
         var c = MirBuildTest.Compile(Prelude + "func fc(x: uniq/i32 during a, y: ref/i32 during a = x) => ()\n" +
             "func fb(x: uniq/i32, y: i32 = label work: do\n    x@follow = 9\n    exit to work 1\n) => ()\n" +
-            "func excl<s/T>(x: s/T, y: s/T = x) -> ()\n    s is owner or ref or uniq\n    T is Copy\n    return\n");
+            "func excl<s/T>(x: s/T, y: s/T = x) -> ()\n    s is owner or ref or uniq\n    T is Copy\n    return\n" +
+            "func keepBoth2(z: uniq/i32 during a, p: raw/(raw/i32), s: raw/(raw/i32), y: ref/i32 during a = label w: do\n" +
+            "    let rz: ref/i32 during a = z\n    unsafe => *p = rz@follow@raw\n    unsafe => *s = rz@follow@raw\n    exit to w rz\n) => ()\n" +
+            "struct WriterI\n    public var p: raw/(raw/i32)\n    public var q: raw/i32\n    public init(q: raw/i32)\n        self.p = null\n" +
+            "        self.q = q\n    drop\n        unsafe => *self.p = self.q\n" +
+            "func keepDA2(z: uniq/i32 during a, p: raw/(raw/i32), y: i32 = label w: do\n    let rz: ref/i32 = z\n" +
+            "    var x = WriterI.init(q: null)\n    x.q = rz@follow@raw\n    x.p = p\n    x = WriterI.init(q: null)\n    exit to w 0\n) => ()\n");
         var program = c.BuildMir();
         var stratum = new Stratum(c.Types);
         Assert.Equal(0, AllocationMeasurement.Measure(() => stratum.Run(program)));
         Assert.Equal(
-            ["fc: x DefaultArgumentBorrow_Kd", "fb: x@follow = 9 DefaultArgumentAccess_Kd", "excl: x DefaultArgumentBorrow_Kd"],
+            [
+                "fc: x DefaultArgumentBorrow_Kd", "fb: x@follow = 9 DefaultArgumentAccess_Kd", "excl: x DefaultArgumentBorrow_Kd",
+                "keepBoth2: *p = rz@follow@raw DefaultArgumentBorrow_Kd", "keepBoth2: *s = rz@follow@raw DefaultArgumentBorrow_Kd",
+                "keepBoth2: z DefaultArgumentBorrow_Kd",
+                "keepDA2: x = WriterI.init(q: null) DefaultArgumentBorrow_Kd", "keepDA2: var x = WriterI.init(q: null) DefaultArgumentBorrow_Kd",
+            ],
             Problems(c, program, DefaultCodes));
     }
 
