@@ -52,9 +52,6 @@ internal sealed partial class FunctionCodegen
             case IntrinsicWriter.Destroy:
                 this.DestroyValues(call, target);
                 return;
-            case IntrinsicWriter.Segment:
-                this.FormatSegment(call, row);
-                return;
             case IntrinsicWriter.Record:
                 this.Record(call, row.Routine!);
                 return;

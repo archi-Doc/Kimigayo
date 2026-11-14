@@ -569,28 +569,33 @@ public sealed partial class MirBuildTest
                 .Select(x => $"{x.Code} {c.SyntaxOf(x.Subject)}"));
     }
 
-    // SPEC 22.10.3, 22.10.5 (DECISIONS R5-M133; R8-W2 c1): an owning interpolation is one FormatSegment step per write position, the later
-    // literal bytes and values' Types its hint, then the position's write: a value's is its write; a literal segment's is no write but
-    // its text's constant record through the library, Utf8Writer.deferLiteral where a value follows in the template, else string's
-    // built-in format, and so is an embedded string literal's (as if written: a constant has no effect). Each is tested, so text alone
-    // has the failed block too (fail-before: the text was its FormatSegment's operand, written by the formatting runtime; before
-    // R5-M133 each literal was a write<string>). A $tryWrite's text stays a write (above).
+    // SPEC 22.10.3, 22.10.5 (DECISIONS R5-M133; R8-W2 c1, c2b): before each write position an owning interpolation stores its hint, the
+    // term of the later literal bytes and values' Types, into the writer's Field Utf8Writer.hint: an Integer where it folds, as in every
+    // closed body, else a Length its instance decides (the generic row); then the position's write: a value's is its write; a literal
+    // segment's is no write but its text's constant record through the library, Utf8Writer.deferLiteral where a value follows in the
+    // template, else string's built-in format, and so is an embedded string literal's (as if written: a constant has no effect). Each is
+    // tested, so text alone has the failed block too (fail-before: each hint was a FormatSegment step over the later bytes and a token of
+    // the later values' Types; before c1 the text was its operand too; before R5-M133 each literal was a write<string>). A $tryWrite's text
+    // stays a write (above).
     [Theory]
     [InlineData(
         "func f(n: i32) -> string => \"n=\\(n)!\"\n",
-        new[] { "heap", "ErasedWriter", "FormatSegment 1 1", "deferLiteral \"n=\"", "FormatSegment 1 0", "write", "FormatSegment 0 0", "format \"!\"", "finish", "intoString" })]
+        new[] { "heap", "ErasedWriter", "hint 12", "deferLiteral \"n=\"", "hint 1", "write", "hint 0", "format \"!\"", "finish", "intoString" })]
     [InlineData(
         "func f(n: i32) -> string => \"\\(\"lit\")\\(n)\"\n",
-        new[] { "heap", "ErasedWriter", "FormatSegment 0 1", "deferLiteral \"lit\"", "FormatSegment 0 0", "write", "finish", "intoString" })]
+        new[] { "heap", "ErasedWriter", "hint 11", "deferLiteral \"lit\"", "hint 0", "write", "finish", "intoString" })]
     [InlineData(
         "func f() -> string => \"\\(\"only\")\"\n",
-        new[] { "heap", "ErasedWriter", "FormatSegment 0 0", "format \"only\"", "finish", "intoString" })]
+        new[] { "heap", "ErasedWriter", "hint 0", "format \"only\"", "finish", "intoString" })]
     [InlineData(
         "func f() -> string => \"x\\(\"y\")z\"\n",
-        new[] { "heap", "ErasedWriter", "FormatSegment 2 0", "format \"x\"", "FormatSegment 1 0", "format \"y\"", "FormatSegment 0 0", "format \"z\"", "finish", "intoString" })]
+        new[] { "heap", "ErasedWriter", "hint 2", "format \"x\"", "hint 1", "format \"y\"", "hint 0", "format \"z\"", "finish", "intoString" })]
     [InlineData(
         "func f(n: i32) -> string => \"a\\(\"b\")\\(n)\"\n",
-        new[] { "heap", "ErasedWriter", "FormatSegment 1 1", "deferLiteral \"a\"", "FormatSegment 0 1", "deferLiteral \"b\"", "FormatSegment 0 0", "write", "finish", "intoString" })]
+        new[] { "heap", "ErasedWriter", "hint 12", "deferLiteral \"a\"", "hint 11", "deferLiteral \"b\"", "hint 0", "write", "finish", "intoString" })]
+    [InlineData(
+        "func f<T>(a: ref/string, b: ref/T) -> string\n    T is Utf8Format\n    return \"\\(a)\\(b)\"\n",
+        new[] { "heap", "ErasedWriter", "hint (0 + hint(T))", "write", "hint 0", "write", "finish", "intoString" })]
     public void AnOwningInterpolationsLiteralTextIsALibraryCall(string source, string[] steps)
         => Assert.Equal(steps, HealthyPath(Body(source, "f"), int.MaxValue));
 
@@ -604,22 +609,22 @@ public sealed partial class MirBuildTest
     [InlineData(
         "func f(n: i32) => Console.writeLine(\"n=\\(n)\")\n",
         "[13 of u8]",
-        new[] { "fixed", "ErasedWriter", "FormatSegment 0 1", "deferLiteral \"n=\"", "FormatSegment 0 0", "write", "text", "writeLine" },
-        new[] { "ErasedWriter", "FormatSegment", "FormatSegment", "deferLiteral", "fixed", "text", "write", "writeLine" })]
+        new[] { "fixed", "ErasedWriter", "hint 11", "deferLiteral \"n=\"", "hint 0", "write", "text", "writeLine" },
+        new[] { "ErasedWriter", "deferLiteral", "fixed", "text", "write", "writeLine" })]
     [InlineData(
         "func f(s: ref/string) => Console.writeLine(\"s=\\(s)\")\n",
         null,
-        new[] { "heap", "ErasedWriter", "FormatSegment 0 1", "deferLiteral \"s=\"", "FormatSegment 0 0", "write", "finish", "intoString", "writeLine" },
-        new[] { "ErasedWriter", "FormatSegment", "FormatSegment", "deferLiteral", "finish", "heap", "intoString", "write", "writeLine" })]
+        new[] { "heap", "ErasedWriter", "hint 0", "deferLiteral \"s=\"", "hint 0", "write", "finish", "intoString", "writeLine" },
+        new[] { "ErasedWriter", "deferLiteral", "finish", "heap", "intoString", "write", "writeLine" })]
 #pragma warning disable SA1118 // The generic line's healthy path, wrapped at the 160-character line limit.
     [InlineData(
         "func f<T>(v: ref/T)\n    T is Utf8Format\n    Console.writeLine(\"v=\\(v)\")\n",
         "[(2 + bound(T)) of u8]",
         new[]
         {
-            "fixed", "heap", "ErasedWriter", "FormatSegment 0 1", "deferLiteral \"v=\"", "FormatSegment 0 0", "write", "finish", "intoString", "writeLine",
+            "fixed", "heap", "ErasedWriter", "hint (0 + hint(T))", "deferLiteral \"v=\"", "hint 0", "write", "finish", "intoString", "writeLine",
         },
-        new[] { "ErasedWriter", "ErasedWriter", "FormatSegment", "FormatSegment", "deferLiteral", "finish", "fixed", "heap", "intoString", "text", "write", "writeLine", "writeLine" })]
+        new[] { "ErasedWriter", "ErasedWriter", "deferLiteral", "finish", "fixed", "heap", "intoString", "text", "write", "writeLine", "writeLine" })]
 #pragma warning restore SA1118
     public void ADirectLineIsOneExpansionOverOneWriter(string source, string? region, string[] healthy, string[] calls)
     {
@@ -721,14 +726,14 @@ public sealed partial class MirBuildTest
         Assert.Contains(program.Problems.All.ToArray(), static x => x.Code == DiagnosticCode.ComparisonLoanConflict_Kd);
     }
 
-    // The calls on a body's healthy path from its entry, at most count: a call's, a goto's or a Drop's target and a Result test's Ok arm
-    // continue it. An intrinsic is named by its id, a FormatSegment with its later bytes and later values' count; another call by its
-    // function's name, with the text of a constant record among its operands (a literal position's).
+    // The steps on a body's healthy path from its entry, at most count: a call's, a goto's or a Drop's target and a Result test's Ok arm
+    // continue it. A block's hint stores (Hints) come before its call (Step).
     private static List<string> HealthyPath(MirBody body, int count)
     {
         var path = new List<string>();
         for (var block = 0; block >= 0 && path.Count < count;)
         {
+            path.AddRange(Hints(body, body.Blocks[block]));
             var terminator = body.Blocks[block].Terminator;
             if (terminator.Kind == MirTerminatorKind.Call)
             {
@@ -746,20 +751,35 @@ public sealed partial class MirBuildTest
         return path;
     }
 
-    // A call's step (HealthyPath): an intrinsic by its id, a FormatSegment with its later bytes and later values' count; another call by
-    // its function's name, with the text of a constant record among its operands.
+    // A call's step (HealthyPath): an intrinsic by its id; another call by its function's name, with the text of a constant record among
+    // its operands (a literal position's).
     private static string Step(MirBody body, in MirTerminator call)
     {
-        var operands = body.Operands.Slice(call.Start, call.Count).ToArray();
-        if (call.Callee.Kind != MirCalleeKind.Intrinsic)
+        if (call.Callee.Kind == MirCalleeKind.Intrinsic)
         {
-            var records = operands.Where(x => x.Kind == MirOperandKind.Const && body.Consts[x.Arg].IsRecord).Select(x => $" \"{body.Consts[x.Arg].Value}\"");
-            return call.Callee.Symbol!.Name + string.Concat(records);
+            return ((IntrinsicId)call.Callee.Arg).ToString();
         }
 
-        var id = (IntrinsicId)call.Callee.Arg;
-        return id != IntrinsicId.FormatSegment ? id.ToString()
-            : $"{id} {body.Consts[operands[1].Arg].Bits} {body.Consts[operands[2].Arg].Type.Components.Count}";
+        var records = body.Operands.Slice(call.Start, call.Count).ToArray().Where(x => x.Kind == MirOperandKind.Const && body.Consts[x.Arg].IsRecord)
+            .Select(x => $" \"{body.Consts[x.Arg].Value}\"");
+        return call.Callee.Symbol!.Name + string.Concat(records);
+    }
+
+    // A block's stores of an owning interpolation's hint (R8-W2 c2b), the writer's Field Utf8Writer.hint, each as `hint` and its operand: an
+    // Integer's value, or a Length's term as diagnostics spell it.
+    private static IEnumerable<string> Hints(MirBody body, MirBlock block)
+    {
+        foreach (var statement in body.Statements.Slice(block.Start, block.Count).ToArray())
+        {
+            if (statement is { Kind: MirStatementKind.Assign, Place: { Projection: > 0 } place } &&
+                body.Projections[place.Projection] is { Kind: MirProjectionKind.Field, Prefix: 0 } field &&
+                body.Locals[place.Root].Type is { Symbol.LibraryDeclaration: KimiDeclarationId.Utf8Writer } writer &&
+                field.Arg == AdtDef.IndexOf(writer, "hint"))
+            {
+                var constant = body.Consts[body.Operands[statement.Rvalue.Start].Arg];
+                yield return "hint " + (constant.Kind == MirConstKind.Length ? TyCtxt.Name((BoundLength)constant.Value!) : $"{constant.Bits}");
+            }
+        }
     }
 
     // A function f of the temporaries' program that runs a statement, built without validator findings.
