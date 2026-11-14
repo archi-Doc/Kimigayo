@@ -225,7 +225,7 @@ public sealed partial class Binding
             return EnclosingBody(definition) is { } body ? (this.InheritedEnvironment(definition, body), definition) : null;
         }
 
-        return (type.ClosureContext is not null && TyCtxt.ClosureInstance(type) is null ? null : this.ClosureSignature(type), definition);
+        return (type.InstanceContext is not null && TyCtxt.NestedInstance(type) is null ? null : this.ClosureSignature(type), definition);
     }
 
     private void ResetCapabilities(BindingMode mode)

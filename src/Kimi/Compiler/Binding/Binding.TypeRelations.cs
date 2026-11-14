@@ -322,7 +322,7 @@ public sealed partial class Binding
         }
 
         // DECISIONS BU-60: the Type instance a closure's context holds is a part of the Closure Type.
-        var context = type.ClosureContext;
+        var context = type.InstanceContext;
         if (TyCtxt.HeldType(type) is { } held)
         {
             if (this.SubstitutePart(held, substitution, query) is not { } image)
@@ -360,7 +360,7 @@ public sealed partial class Binding
                 }
             }
 
-            var changed = length != type.Length || !ReferenceEquals(expression, type.LengthExpression) || !ReferenceEquals(context, type.ClosureContext);
+            var changed = length != type.Length || !ReferenceEquals(expression, type.LengthExpression) || !ReferenceEquals(context, type.InstanceContext);
             for (var i = 0; i < type.LengthArguments.Length; i++)
             {
                 var argument = type.LengthArguments[i];

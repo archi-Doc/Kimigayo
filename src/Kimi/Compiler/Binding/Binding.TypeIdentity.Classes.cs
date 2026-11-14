@@ -283,7 +283,7 @@ public sealed partial class Binding
 
         private static bool SameHead(BoundType x, BoundType y)
             => x.Kind == y.Kind && ReferenceEquals(x.Symbol, y.Symbol) && x.Semantics == y.Semantics && x.Components.Count == y.Components.Count &&
-            ReferenceEquals(x.ClosureContext, y.ClosureContext) && (x.Kind != BoundTypeKind.Primitive || ReferenceEquals(x, y)) &&
+            ReferenceEquals(x.InstanceContext, y.InstanceContext) && (x.Kind != BoundTypeKind.Primitive || ReferenceEquals(x, y)) &&
             x.OriginArguments.Count == y.OriginArguments.Count &&
             (x.LengthExpression is not null || y.LengthExpression is not null || x.Length == y.Length);
 
@@ -323,7 +323,7 @@ public sealed partial class Binding
         private int Signature(int n)
         {
             var type = this.types[n];
-            var hash = HashCode.Combine(type.Kind, type.Symbol, type.Semantics, type.Length, type.LengthExpression, type.Origin, type.ClosureContext);
+            var hash = HashCode.Combine(type.Kind, type.Symbol, type.Semantics, type.Length, type.LengthExpression, type.Origin, type.InstanceContext);
             for (var i = 0; i < type.OriginArguments.Count; i++)
             {
                 hash = HashCode.Combine(hash, type.OriginArguments[i]);
@@ -505,7 +505,7 @@ public sealed partial class Binding
         {
             if (x.Kind != y.Kind || !ReferenceEquals(x.Symbol, y.Symbol) || x.Components.Count != y.Components.Count || !ReferenceEquals(x.Origin, y.Origin) ||
                 !ReferenceEquals(x.LengthExpression, y.LengthExpression) || x.Length != y.Length || x.Semantics != y.Semantics ||
-                !ReferenceEquals(x.ClosureContext, y.ClosureContext) || x.OriginArguments.Count != y.OriginArguments.Count)
+                !ReferenceEquals(x.InstanceContext, y.InstanceContext) || x.OriginArguments.Count != y.OriginArguments.Count)
             {
                 return false;
             }

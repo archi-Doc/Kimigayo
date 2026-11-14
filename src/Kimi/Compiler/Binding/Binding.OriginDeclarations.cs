@@ -648,7 +648,7 @@ public sealed partial class Binding
                 origin = this.ResolveOrigin(raw, declaration);
             }
 
-            return this.types.Intern(type.Kind, type.Symbol, type.Semantics, components.AsSpan(0, type.Components.Count), type.Length, origin, arguments.AsSpan(0, type.OriginArguments.Count), type.LengthExpression, type.ClosureContext, type.LengthArguments);
+            return this.types.Intern(type.Kind, type.Symbol, type.Semantics, components.AsSpan(0, type.Components.Count), type.Length, origin, arguments.AsSpan(0, type.OriginArguments.Count), type.LengthExpression, type.InstanceContext, type.LengthArguments);
         }
         finally
         {

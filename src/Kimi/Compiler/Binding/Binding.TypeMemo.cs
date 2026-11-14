@@ -21,7 +21,7 @@ public sealed partial class Binding
     private readonly TypeMemo<BoundType, BoundType?> substitutedParts = new(
         KimiLibrarySize.KeyedCapacity(KimiLibrarySize.Stated.SubstitutedParts)); // SubstituteType's images.
 
-    private readonly TypeMemo<BoundType, BoundType?> closedParts = new(); // CloseClosureTypes' images.
+    private readonly TypeMemo<BoundType, BoundType?> closedParts = new(); // CloseNestedTypes' images.
 
     // The images of the leaf rewrites, WithoutRawOrigins, WithUnstatedOrigins, WithoutUnstated, SubstituteStoredOrigins and PublishedResult
     // (DECISIONS BU-58, BU-63): none calls a user of this table while it walks, so a query never begins inside another and evicts nothing

@@ -371,7 +371,7 @@ public sealed partial class Binding
             }
 
             // DECISIONS BU-60: the Type instance a closure's context holds is substituted with the Closure Type.
-            var context = type.ClosureContext;
+            var context = type.InstanceContext;
             if (TyCtxt.HeldType(type) is { } held)
             {
                 var image = this.SubstituteIdentity(held, scope, parametersOnly, out var heldPart);
@@ -379,7 +379,7 @@ public sealed partial class Binding
                 context = ReferenceEquals(image, held) ? context : this.types.HeldContext(type.Symbol!, image);
             }
 
-            if (!changed && ReferenceEquals(context, type.ClosureContext))
+            if (!changed && ReferenceEquals(context, type.InstanceContext))
             {
                 return type;
             }

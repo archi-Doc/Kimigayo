@@ -173,8 +173,8 @@ public class GenericClosureIdentityTest
         var call = nodes.OfType<InvocationKoto>().First(static x => x.CallOf()?.Target.Name == "pair").CallOf()!;
         var closures = nodes.OfType<FunctionKoto>().Where(static x => x.IsAnonymous).Select(x => c.Binding.InstantiateStorageType(x.ClosureOf()!.EnvironmentType!, call)!).ToArray();
         Assert.Equal(2, closures.Length);
-        Assert.Same(closures[0].ClosureContext, closures[1].ClosureContext);
-        Assert.Same(c.Types.SubstOf(call), closures[0].ClosureContext);
+        Assert.Same(closures[0].InstanceContext, closures[1].InstanceContext);
+        Assert.Same(c.Types.SubstOf(call), closures[0].InstanceContext);
         ScalarEmissionTest.EmitFixture("GenericClosureIdentityTwo", TwoClosures, string.Empty);
     }
 

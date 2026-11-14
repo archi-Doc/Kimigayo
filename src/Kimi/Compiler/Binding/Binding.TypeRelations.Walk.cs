@@ -243,7 +243,7 @@ public sealed partial class Binding
         {
             var inferredLength = expected.Kind == BoundTypeKind.FixedArray && expected.Length < 0;
             return actual.Kind == expected.Kind && actual.Semantics == expected.Semantics && ReferenceEquals(actual.Symbol, expected.Symbol) &&
-                ReferenceEquals(actual.ClosureContext, expected.ClosureContext) && actual.LengthArguments.AsSpan().SequenceEqual(expected.LengthArguments) &&
+                ReferenceEquals(actual.InstanceContext, expected.InstanceContext) && actual.LengthArguments.AsSpan().SequenceEqual(expected.LengthArguments) &&
                 (inferredLength || (actual.Length == expected.Length && ReferenceEquals(actual.LengthExpression, expected.LengthExpression))) &&
                 actual.Components.Count == expected.Components.Count && actual.OriginArguments.Count == expected.OriginArguments.Count;
         }

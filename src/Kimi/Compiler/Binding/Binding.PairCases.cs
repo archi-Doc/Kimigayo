@@ -228,7 +228,7 @@ public sealed partial class Binding
 
         // DECISIONS BU-60: the Type instance a closure's context holds takes the cases with the Closure Type.
         var context = TyCtxt.HeldType(type) is { } held && this.CaseType(held, cases) is var image && !ReferenceEquals(image, held)
-            ? this.types.HeldContext(type.Symbol!, image) : type.ClosureContext;
+            ? this.types.HeldContext(type.Symbol!, image) : type.InstanceContext;
         if (type.Components.Count == 0)
         {
             return this.WithContext(type, context);

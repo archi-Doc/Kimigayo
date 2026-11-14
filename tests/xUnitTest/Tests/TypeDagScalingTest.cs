@@ -166,7 +166,7 @@ public partial class TypeDagScalingTest
             Assert.Same(closed[i].Components[0], closed[i].Components[1]);
             var parts = closed[i].Components[0].Components[0].Components;
             Assert.Equal(environments.Select(x => c.Types.Apply(x, calls[i])!), parts);
-            Assert.All(parts, x => Assert.Same(calls[i], x.ClosureContext));
+            Assert.All(parts, x => Assert.Same(calls[i], x.InstanceContext));
         }
 
         Assert.NotSame(closed[0], closed[1]);

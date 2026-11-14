@@ -112,7 +112,7 @@ internal sealed partial class TyCtxt
 
     // The declaration whose instance a definition's instance holds (SPEC 6.1.3, 9.3): that of the scope declaring it; null for a member or a
     // top-level declaration, a definition other than a Closure that a container declares, whose own substitution is its instance. The
-    // instance collector requires a nested definition's substitution to carry it, and a Closure takes it as its context (ClosureContext).
+    // instance collector requires a nested definition's substitution to carry it, and a Closure takes it as its context (InstanceContext).
     internal BindingSymbol? EnclosingDeclaration(BindingSymbol definition)
         => definition.Scope.Owner is DeclarationContainerKoto && definition.Declaration is not FunctionKoto { IsAnonymous: true }
             ? null : this.EnclosingDeclaration(definition.Scope);
@@ -154,7 +154,7 @@ internal sealed partial class TyCtxt
     // A Type with its parts erased; a closure context's binder instantiates, so the context erases to its erased bindings.
     private BoundType EraseParts(BoundType type)
     {
-        if (type.Components.Count + type.OriginArguments.Count == 0 && type.ClosureContext is null && !HasOwnOrigin(type))
+        if (type.Components.Count + type.OriginArguments.Count == 0 && type.InstanceContext is null && !HasOwnOrigin(type))
         {
             return type;
         }
@@ -165,7 +165,7 @@ internal sealed partial class TyCtxt
             components[i] = this.Erase(type.Components[i]);
         }
 
-        var context = type.ClosureContext is { } closing ? this.EraseBindings(closing) : null;
+        var context = type.InstanceContext is { } closing ? this.EraseBindings(closing) : null;
         return this.Intern(
             type.Kind,
             type.Symbol,
