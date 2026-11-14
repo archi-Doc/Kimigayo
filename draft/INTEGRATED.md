@@ -1374,6 +1374,7 @@ on the round's F3, 「以下で決定します。(b) BU-28 を SPEC の読みに
 - Revision 78 (2026-11-14, plan §14; the Middle's D-638, with R9-F6 batch B): §5.3's F6 row marks batch B done. Nothing frozen.
 - Revision 79 (2026-11-14, plan §14; the Middle's D-639, with R9-F6 batch C): §5.3's F6 row marks batch C done. Nothing frozen.
 - Revision 80 (2026-11-14, plan §14; the Middle's D-640, with R9-F6 batch D): §5.3's F6 row marks batch D done. Nothing frozen.
+- Revision 81 (2026-11-14, plan §14; the Front's D-641 and D-633, with R7-C2e2 e2-2): §5.0's e2 entry (e2-2 in three parts, e2-2c closed), c2's arithmetic part, c3's `IsRecursive`, the C2 table's rows. Nothing frozen.
 - Revision 16 (2026-11-07, plan §14; the owner's O-41 and O-43, verbatim 「推奨の内容でOKです。処理を継続してください。」): R1 splits into R1a, R1b and R1c, and the structs' contract is IMPL §21.1.3's (DECISIONS
   R8-M1). Nothing frozen.
 - Revision 17 (2026-11-07, plan §14; the Front's D-64): C1 done; C2 takes G563; G187 closed. Nothing frozen.
