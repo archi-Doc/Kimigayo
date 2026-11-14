@@ -263,7 +263,7 @@
     Phrase="Origin annotation on an adaptation's borrow layer"
 
   + Name="Syntax.AdaptationQualifier"
-    Description="a bound Container qualifier is a Type-side form, unavailable in an adaptation target"
+    Description="a bound Container qualifier is a Type-side form, unavailable as the head of an adaptation target's path"
     Phrase="bound Container qualifier in an adaptation target"
 
   + Name="Syntax.RuntimeTypeTestOrigin"

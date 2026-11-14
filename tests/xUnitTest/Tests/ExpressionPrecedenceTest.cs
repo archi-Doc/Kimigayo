@@ -299,6 +299,7 @@ public class ExpressionPrecedenceTest
     [InlineData("p@(P)(1)")]
     [InlineData("a@[2 of i32][0]")]
     [InlineData("a@(Array<i32>)[0]")]
+    [InlineData("x@(S{k}).Item")] // F.9.4: (x@(S{k})).Item, a ClosedTarget and the value's selection.
     [InlineData("x@(i32?)[0]")]
     [InlineData("x@(i64)++")]
     [InlineData("p@(P)@follow")]
@@ -328,7 +329,6 @@ public class ExpressionPrecedenceTest
     [InlineData("x@([2 of i32].(C).Item)")]
     [InlineData("x@(S.Item)")]
     [InlineData("x@(S{k})")]
-    [InlineData("x@(S{k}).Item")]
     [InlineData("x@Option<(S{k}).Item>")]
     [InlineData("x@((S{k}).Item)?")]
     [InlineData("x@((S{k}).Item, i32)")]
