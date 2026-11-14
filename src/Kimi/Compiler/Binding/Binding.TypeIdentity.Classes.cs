@@ -83,7 +83,7 @@ public sealed partial class Binding
             this.cycle.Clear();
             this.stack.Clear();
             this.keys.Clear();
-            this.least.Clear();
+            this.scanned.Clear();
         }
 
         internal void Premise(BoundType a, BoundType b, Completion availability)
@@ -210,6 +210,51 @@ public sealed partial class Binding
             return same;
         }
 
+        // SPEC 8.2.3's Refuted (PLAN G866), read by the one table the premise meets read (Meet): a parameter or projection bound by a
+        // premise stands for its class's complete member; one class is no difference; an abstract Type (IsAbstractType) differs only as
+        // a proper part; two constructors differ where their meet conflicts or a pair of their parts differs, or as a proper part.
+        // Origins are never a known difference (8.2.3, 3.8): a Function pair decomposes as any constructor pair does, its quantified
+        // Origins not paired (Correspond), and an attribute's Unproven decides nothing. So a pair whose only difference is a Function
+        // Type's quantification structure, which 8.2.3 compares, stays Unknown for the Contract judge too (a limit, with a pair's own
+        // `s/T` being no constructor node in premise meets and SameHead reading no length arguments).
+        internal bool Refuted(BoundType a, BoundType b)
+        {
+            (a, b) = (this.Target(a), this.Target(b));
+            (a, b) = (this.CompleteMember(a) ?? a, this.CompleteMember(b) ?? b);
+            if (ReferenceEquals(a, b) ||
+                (this.node.TryGetValue(a, out var x) && this.node.TryGetValue(b, out var y) && this.Find(x) == this.Find(y)))
+            {
+                return false;
+            }
+
+            if (a.IsAbstractType || b.IsAbstractType)
+            {
+                return this.ProperPart(a, b) || this.ProperPart(b, a);
+            }
+
+            var start = this.parts.Count;
+            byte meet;
+            this.reading++;
+            try
+            {
+                meet = a.Kind is BoundTypeKind.Function or BoundTypeKind.FunctionItem or BoundTypeKind.Closure && SameHead(a, b)
+                    ? this.Decompose(a, b) : this.Meet(a, b);
+            }
+            finally
+            {
+                this.reading--;
+            }
+
+            var refuted = meet == Conflict;
+            for (var i = start; !refuted && i < this.parts.Count; i++)
+            {
+                refuted = this.Refuted(this.parts[i].A, this.parts[i].B);
+            }
+
+            this.parts.RemoveRange(start, this.parts.Count - start);
+            return refuted || this.ProperPart(a, b) || this.ProperPart(b, a);
+        }
+
         // Applies every premise, joins congruent nodes, and meets each class's constructor pairs, whose agreeing parts join, to a fixpoint:
         // the round that joins nothing judged the final classes, so its meets are the states. Each round is linear in the nodes plus the
         // class sizes' squares (constructors of one class only).
@@ -286,6 +331,60 @@ public sealed partial class Binding
             ReferenceEquals(x.ClosureContext, y.ClosureContext) && (x.Kind != BoundTypeKind.Primitive || ReferenceEquals(x, y)) &&
             x.OriginArguments.Count == y.OriginArguments.Count &&
             (x.LengthExpression is not null || y.LengthExpression is not null || x.Length == y.Length);
+
+        // Whether `part` is `type` up to structure or is reached from it by steps into components, a pair layer's target included; an
+        // abstract Type and a family end a route (ProperPart's walk).
+        private static bool Reaches(BoundType part, BoundType type)
+        {
+            if (SameStructure(part, type))
+            {
+                return true;
+            }
+
+            if (TryPairLayer(type, out _, out var target))
+            {
+                return Reaches(part, target);
+            }
+
+            if (type.IsAbstractType || type.Kind == BoundTypeKind.SemanticsAdaptation)
+            {
+                return false;
+            }
+
+            for (var i = 0; i < type.Components.Count; i++)
+            {
+                if (Reaches(part, type.Components[i]))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        // SPEC 8.2.3, 3.8: two Types of one structure, their Origins aside (SameExceptOrigins at every layer).
+        private static bool SameStructure(BoundType a, BoundType b)
+        {
+            if (ReferenceEquals(a, b))
+            {
+                return true;
+            }
+
+            if (!a.SameExceptOrigins(b))
+            {
+                return false;
+            }
+
+            for (var i = 0; i < a.Components.Count; i++)
+            {
+                if (!SameStructure(a.Components[i], b.Components[i]))
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
 
         // The class's constructor pairs (an owner-only pair application is no constructor): an agreeing pair's parts join, and the state
         // is the worst meet. A "no" that more premises may turn marks the class incomplete.
@@ -532,14 +631,14 @@ public sealed partial class Binding
         // Two constructors' meet, each compared attribute by its domain's rule; an agreeing pair leaves its parts (Same, MeetMembers).
         private byte Meet(BoundType x, BoundType y)
         {
-            if (x.Kind == BoundTypeKind.SemanticsApplication || y.Kind == BoundTypeKind.SemanticsApplication)
-            {
-                return this.PairMeet(x, y);
-            }
-
             if (x.Kind is BoundTypeKind.SemanticsAdaptation || y.Kind is BoundTypeKind.SemanticsAdaptation)
             {
-                return Unsupported;
+                return Unsupported; // A family is no form of 8.2.3's table.
+            }
+
+            if (x.IsPairLayer || y.IsPairLayer)
+            {
+                return this.PairMeet(x, y);
             }
 
             if (!SameHead(x, y))
@@ -559,34 +658,84 @@ public sealed partial class Binding
             return this.Decompose(x, y);
         }
 
-        // SPEC 8.2.3's pair application: its head is the admitted set's one Semantics (8.3.4); disjoint from the other's outer Semantics
-        // it differs, and a set whose truth varies is the Proof row. An application admitting exactly `owner` never meets (Add).
+        // SPEC 8.2.3's pair row (8.3.4's admitted sets). Applications of one `s` share their head. A pair admitting `owner` may be its
+        // target itself and meets every form, and so does one admitting none (8.3.4's Error): the truth varies (Unproven). Otherwise
+        // disjoint outer Semantics (`owner` for a Type that is no Semantics layer, another pair's admitted set) differ; where the heads
+        // may agree the components decide in that case: one head on both sides decomposes, and a head that varies compares them too
+        // while the identity stays Unproven (the premise-error row 4). An application admitting exactly `owner` never meets (Add).
+        // Premises reach it with applications only (a pair's own `s/T` is no constructor node); Refuted with both.
         private byte PairMeet(BoundType x, BoundType y)
         {
-            if (x.Kind == y.Kind && ReferenceEquals(x.Symbol, y.Symbol))
-            {
-                return this.Decompose(x, y); // Applications of one `s` share their head.
-            }
-
-            var (pair, other) = x.Kind == BoundTypeKind.SemanticsApplication ? (x, y) : (y, x);
-            if (other.Kind == BoundTypeKind.SemanticsApplication || !TryPairLayer(pair, out _, out _))
+            var (pair, other) = x.IsPairLayer ? (x, y) : (y, x);
+            if (!TryPairLayer(pair, out var whole, out var target))
             {
                 return Unsupported;
             }
 
-            var admitted = this.Admitted(pair);
-            var outer = other.Kind == BoundTypeKind.Semantics ? other.Semantics.ToMask() : SemanticsMask.Owner;
+            var paired = TryPairLayer(other, out var otherWhole, out var otherTarget);
+            if (paired && ReferenceEquals(whole, otherWhole))
+            {
+                return this.PairParts(pair, target, other, otherTarget, One);
+            }
+
+            var admitted = binding.AdmittedSemantics(whole, this.scope!);
+            var outer = paired ? binding.AdmittedSemantics(otherWhole, this.scope!)
+                : other.Kind == BoundTypeKind.Semantics ? other.Semantics.ToMask() : SemanticsMask.Owner;
+            if (((admitted | (paired ? outer : SemanticsMask.None)) & SemanticsMask.Owner) != 0 || admitted == SemanticsMask.None ||
+                outer == SemanticsMask.None)
+            {
+                return Unproven;
+            }
+
             if ((admitted & outer) == 0)
             {
                 return Conflict;
             }
 
-            if (admitted != outer)
+            var component = paired ? otherTarget : other is { Kind: BoundTypeKind.Semantics, Components: [var inner] } ? inner : null;
+            return component is null ? Unsupported
+                : this.PairParts(pair, target, other, component, admitted == outer && admitted.IsSingle() ? One : Unproven);
+        }
+
+        // SPEC 8.2.3 (Refuted, Cycles): whether `part` is a proper part of `whole` up to structure (Origins are never a known
+        // difference): a route of steps into constructors' components, a pair layer's target included, with one step that is no pair
+        // admitting `owner` or none (`s/V` may be V itself), as the class graph's cycle edges count it (MarkCycleEdges); an abstract
+        // Type and a family end a route (Reaches).
+        private bool ProperPart(BoundType part, BoundType whole)
+        {
+            if (whole.IsAbstractType || whole.Kind == BoundTypeKind.SemanticsAdaptation)
             {
-                return Unproven; // The truth varies by Semantics case: SPEC 8.2.3's premise-error row 4.
+                return false;
             }
 
-            return other.Kind == BoundTypeKind.Semantics && other.Components.Count == pair.Components.Count ? this.Decompose(pair, other) : Unsupported;
+            if (TryPairLayer(whole, out _, out var target))
+            {
+                return this.Admitted(whole) is var admitted && ((admitted & SemanticsMask.Owner) != 0 || admitted == SemanticsMask.None)
+                    ? this.ProperPart(part, target) : Reaches(part, target);
+            }
+
+            for (var i = 0; i < whole.Components.Count; i++)
+            {
+                if (Reaches(part, whole.Components[i]))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        // A pair layer's target and the other side's component as the meet's part, its Origin compared as Decompose compares one; a
+        // pair's own `s/T` holds its target apart from its components (TryPairLayer). `head` is the heads' meet.
+        private byte PairParts(BoundType pair, BoundType target, BoundType other, BoundType component, byte head)
+        {
+            if (pair.Components.Count == 1 && other.Components.Count == 1)
+            {
+                return Math.Max(head, this.Decompose(pair, other));
+            }
+
+            this.parts.Add((target, component));
+            return Math.Max(head, binding.OriginsAgree(pair.Origin, other.Origin, this.scope!.Owner, ref this.meetProvisional) ? One : Unproven);
         }
 
         // A constructor pair outside a Function pair: its components are its parts, its Origins and length compared by their domains.

@@ -358,7 +358,7 @@ public sealed partial class Binding
 
         if (identity is null || identity.PathStorage.Count == 0)
         {
-            return !this.DependentType(type) && this.capabilityMode == BindingMode.Final ? ConstraintProof.Refuted : ConstraintProof.Unknown;
+            return !this.DependentType(type) && this.capabilityMode == BindingMode.Final && !this.PathNotRuledOut(type, symbol, contract, scope) ? ConstraintProof.Refuted : ConstraintProof.Unknown;
         }
 
         if (identity.Invalid)
@@ -407,6 +407,48 @@ public sealed partial class Binding
             }
 
             return this.EndProof(result);
+        }
+        finally
+        {
+            this.conformanceQueries.Remove(key);
+        }
+    }
+
+    // SPEC 8.3.2's closed world before ResolveConformance refutes: a conformance to the required reference's Contract declaration is a
+    // path not ruled out unless its reference, in the conforming Type's terms, is known to differ from the required one, in the
+    // scope's (IdentityRefuted), or each of its paths' own conditions is Refuted (PLAN G866). A query already open on the Type rules
+    // out nothing.
+    private bool PathNotRuledOut(BoundType type, BindingSymbol symbol, BindingSymbol contract, BindingScope scope)
+    {
+        if (contract.Type is not { } required || ReferenceEquals(required.Symbol, contract) || this.ConformancesOf(symbol) is not { } bindings)
+        {
+            return false;
+        }
+
+        var key = (type, contract, scope);
+        if (!this.conformanceQueries.Add(key))
+        {
+            return true;
+        }
+
+        try
+        {
+            for (var i = 0; i < bindings.Count; i++)
+            {
+                if (bindings[i].Contract.Type is { } formal && ReferenceEquals(formal.Symbol, required.Symbol) && this.StoredType(formal, type) is { } instance &&
+                    !this.IdentityRefuted(instance, required, scope, type))
+                {
+                    for (var p = 0; p < bindings[i].PathStorage.Count; p++)
+                    {
+                        if (this.ProveConformanceConditions(bindings[i].PathStorage[p], type, scope) != ConstraintProof.Refuted)
+                        {
+                            return true;
+                        }
+                    }
+                }
+            }
+
+            return false;
         }
         finally
         {

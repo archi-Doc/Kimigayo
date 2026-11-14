@@ -215,7 +215,10 @@ public sealed partial class Binding
 
             if (!ReferenceTypes.StorageMatches(proposition.RequiredType, signature) || HasOpenOrigin(proposition.RequiredType!))
             {
-                return ConstraintProof.Refuted;
+                // SPEC 8.3.2, 10.7: only a known difference from the required signature, as compatibility compares it (a Never result
+                // fits any), refutes; a stand-in decides an open region's (PerCallCallables).
+                return ReferenceTypes.StorageMatches(proposition.RequiredType, signature) || this.IdentityRefuted(this.CompatibleSignature(signature, proposition.RequiredType!), signature, scope, null)
+                    ? ConstraintProof.Refuted : ConstraintProof.Unknown;
             }
 
             this.ScopeReads.Unknown ??= new(subject, proposition.RequiredType!, failure) { Epoch = this.frameEpoch };

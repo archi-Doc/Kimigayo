@@ -10,7 +10,7 @@ namespace XunitTest;
 /// <summary>The recursive-base view (SPEC 8.3.3, 15.6.4; docs/dev/DECISIONS.md R4-M87): <c>TyCtxt.RecursiveBase</c>, whether one of a
 /// projection's bases is proven under a definition's premises to conform to a recursive Contract, observed on the Type of a probe
 /// function's parameter under the probe's premises.</summary>
-public sealed class RecursiveContractTest
+public sealed partial class RecursiveContractTest
 {
     private const string Tree = "contract Tree\n    associate Child is Tree\n";
 

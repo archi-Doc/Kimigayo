@@ -21,7 +21,11 @@ namespace Kimi.Compiler;
 //   Type's key in a table (ClassKey: a parameter's or projection's class's least parameter or projection by a total structural order,
 //   Representative, or the Type over its components' keys; a constructed member keys to itself, its conformance being
 //   ResolveConformance's alone), which relates only what Proven relates (a class in state One with complete meets, whatever the
-//   table's finality) and which only ContractSolver's supply reads: no reader receives a key as a Type.
+//   table's finality) and which only ContractSolver's supply reads: no reader receives a key as a Type; such a class's complete
+//   constructed member (CompleteMember, the same scan), which IdentityRefuted reads (a parameter bound by a premise); whether two Types are known to differ at a corresponding position (IdentityRefuted: the classes'
+//   Refuted, SPEC 8.2.3's Refuted read by the one table their premise meets read, Meet; an abstract Type by proper parts, up to
+//   structure; a conformance's instance in the conforming Type's terms, the required side in the scope's), which the Contract
+//   judge's paths and the Callable judge's signature read before they refute (PLAN G866).
 // - Invariants: the classes are a function of the premise set (union by the smaller index, states from the round that joins nothing);
 //   one finality rule per class (final unless a meet rests on an Origin "no" while a declaration it read is not complete or the
 //   premise environment cannot be rented); only a Complete table is memoized, by SerialOf, for one pass, and a table that is not is
@@ -199,6 +203,15 @@ public sealed partial class Binding
     // erroneous or provisional class proves nothing.
     private bool IdentityProven(BoundType a, BoundType b, BindingScope scope)
         => this.SameCompleteType(a, b) || (HasTypeIdentity(scope) && this.ClassesOf(scope, out _) is { } classes && classes.Same(a, b));
+
+    // SPEC 8.2.3 (Refuted), 8.3.2 ("absence of proof is not enough"; "Unbound Types ... are never negative results"): whether two
+    // Types are known to differ at a corresponding position in the view, `a` in the terms of the conforming Type `self` (a
+    // conformance's instance: a Contract's Self is `self`, SPEC 8.4) and `b` in the scope's (a required reference: a Contract's Self is
+    // the scope's own), completed projections first (ContractType); the view's classes judge it by their one table (Refuted). A judge
+    // refutes two Types' agreement only so; a pair with no known difference that it cannot prove is Unknown (the Contract judge's
+    // paths, the Callable judge's signature), and so is any pair while the view's table is being built.
+    private bool IdentityRefuted(BoundType a, BoundType b, BindingScope scope, BoundType? self)
+        => this.ClassesOf(scope, out _) is { } classes && classes.Refuted(this.ContractType(a, scope, self), this.ContractType(b, scope));
 
     // SPEC 8.2.3 ("an abstract Type ... takes the form its binding, a completed projection or its admitted set fixes"): the members of a
     // Type's identity class in the view, appended to `into`; none without a premise or where the class is erroneous or provisional. The
