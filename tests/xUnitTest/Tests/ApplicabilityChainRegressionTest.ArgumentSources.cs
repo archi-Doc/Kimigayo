@@ -50,6 +50,8 @@ public partial class ApplicabilityChainRegressionTest
 
     private const string HeldDeclarations = "func identity<T>(v: T) -> T => v@move\nfunc f(x: i64) -> i32 => 0\nfunc ft(x: (i64, i32)) -> i32 => 0\nfunc fa(x: Array<i64>) -> i32 => 0\nfunc fd(x: Dictionary<string, i64>) -> i32 => 0\nfunc k(c: bool, d: bool) -> i32\n";
 
+    private const string FixedPair = "struct Res\n    public var home: usize = 0\nfunc put<T>(a: T, b: T) -> () => ()\n";
+
     private const string OpenWhole = "func fu(a: Array<i32>) -> i32 => 0\nfunc fu<T>(a: T) -> bool => true\nfunc ftu(t: (i32, i32)) -> i32 => 0\nfunc ftu<T>(t: T) -> bool => true\nfunc fdw(d: Dictionary<i32, i32>) -> i32 => 0\nfunc fdw<T>(d: T) -> bool => true\nfunc fur(a: ref/Array<i32>) -> i32 => 0\nfunc fur<T>(a: ref/T) -> bool => true\nfunc fw(p: (ref/i32 during a, i32)) -> i32 => 0\nfunc fw<T>(p: (T, i32)) -> bool => true\nfunc fwd(p: (ref/Dictionary<i32, i32> during a, i32)) -> i32 => 0\nfunc fwd<T>(p: (T, i32)) -> bool => true\nfunc gk<K, V>(d: Dictionary<K, V>) -> i32\n    K is Equatable\n    return 0\nfunc gk<T>(d: T) -> bool => true\nfunc gq<T>(a: ref/Array<T>) -> i32 => 0\nfunc gq<T>(a: ref/T) -> bool => true\nfunc k(c: bool, n: i32, v: i32) -> i32\n";
 
     // A row is (unit, form, program, records). Its verdict comes from SPEC, never from a build: records is empty for a valid program, which
@@ -523,6 +525,22 @@ public partial class ApplicabilityChainRegressionTest
     [InlineData("guard", "u5", OpenWhole + "    let q = fu([[1]])\n    let z: bool = q\n    return 0\n", "")]
     public void ALiteralThatAnUnboundSlotTakesWholeRanksByItsOwnFit(string unit, string form, string program, string records)
         => CompilationTestHelper.AssertRecordsAtLines($"{form} [{unit}]", program + "()", records);
+
+    // SPEC 4.3.1, 4.4.1, 10.8 (F's ruling 23): an array literal that a bare slot takes whole is fitted per candidate, so its evidence is
+    // the Array/[N of] pair: a fixed-array binding of its count and element Type from another argument agrees with it in either order
+    // (f01 to f03 at `raw/T`, f05 and f06 at `T`), and it binds Array<E> when nothing else fixes the slot (f04). A count or element that
+    // the fixed array does not have conflicts (f07, f08).
+    [Theory]
+    [InlineData("f01", FixedPair + "public func main()\n    let q = Raw.allocate<[2 of Res]>(1)\n    unsafe => Raw.initialize(q, [Res.init(), Res.init()])\n    unsafe => Raw.release(q)\n", "")]
+    [InlineData("f02", FixedPair + "public func main()\n    let q = Raw.allocate<[1 of Res]>(1)\n    unsafe => Raw.initialize(q, [Res.init()])\n    unsafe => Raw.release(q)\n", "")]
+    [InlineData("f03", FixedPair + "public func main()\n    let q = Raw.allocate<[2 of [2 of Res]]>(1)\n    unsafe => Raw.initialize(q, [[Res.init(), Res.init()], [Res.init(), Res.init()]])\n    unsafe => Raw.release(q)\n", "")]
+    [InlineData("f04", FixedPair + "public func main()\n    let q = Raw.allocate<Array<Res>>(1)\n    unsafe => Raw.initialize(q, [Res.init()])\n    unsafe => Raw.release(q)\n", "")]
+    [InlineData("f05", FixedPair + "public func main()\n    let y: i32 = 1\n    let f: [2 of i32] = [1, 2]\n    put(f, [y, y])\n", "")]
+    [InlineData("f06", FixedPair + "public func main()\n    let y: i32 = 1\n    let f: [2 of i32] = [1, 2]\n    put([y, y], f)\n", "")]
+    [InlineData("f07", FixedPair + "public func main()\n    let y: i32 = 1\n    let f: [2 of i32] = [1, 2]\n    put(f, [y, y, y])\n", "NoApplicableOverload_Kd: put(f, [y, y, y])")]
+    [InlineData("f08", FixedPair + "public func main()\n    let y: i64 = 1\n    let f: [2 of i32] = [1, 2]\n    put(f, [y, y])\n", "NoApplicableOverload_Kd: put(f, [y, y])")]
+    public void AnArrayLiteralAtABareSlotAgreesWithAFixedArrayOfItsCount(string form, string program, string records)
+        => CompilationTestHelper.AssertRecordsAtLines(form, program, records);
 
     // SPEC 10.4 step 1 (the owner's O-162 (A), PLAN G743): a Tuple or array literal argument is ranked by each element position as an argument
     // there, recursively, beside its own fit (receivers excluded, named arguments by source, before defaults, across the Array and [N of]

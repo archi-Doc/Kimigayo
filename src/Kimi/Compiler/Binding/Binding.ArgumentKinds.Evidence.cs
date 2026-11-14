@@ -447,10 +447,23 @@ public sealed partial class Binding
                 // SPEC 10.8 (PLAN G378, G725; G267fd): at a bare slot the whole literal is one piece of evidence, which agrees or conflicts
                 // with the slot's other evidence whatever their order; a literal holding a part that is no evidence yet, or at a slot an
                 // explicit Type argument fixed (kept, 10.8), fits its parts at the slot's binding.
+                // An array literal is fitted per candidate (SPEC 4.3.1, 4.4.1; F's ruling 23): its whole Type is the Array/[N of] pair. A
+                // slot that another argument binds to a fixed array takes it part by part there, in either order (in the early pass it
+                // waits while the slot is unbound), and it binds Array<E> only when no other evidence fixes the slot, in the late pass.
                 if (FixedPattern.Of(binding, pattern, this.Fixed).Type.Kind == BoundTypeKind.Parameter &&
                     binding.IndependentPositionType(start, late) is { } inferred)
                 {
-                    return binding.Infer(pattern, inferred, this.SlotOwner, this.Frame, lengths: true);
+                    var pair = inferred.Kind == BoundTypeKind.Array && new AggregateParts(source).Exist;
+                    var bound = pair ? binding.SubstituteType(pattern, this.SlotOwner, this.Types, this.Lengths) : null;
+                    if (pair && bound is null && !late)
+                    {
+                        return true;
+                    }
+
+                    if (bound is not { Kind: BoundTypeKind.FixedArray })
+                    {
+                        return binding.Infer(pattern, inferred, this.SlotOwner, this.Frame, lengths: true);
+                    }
                 }
 
                 if (binding.SubstituteType(pattern, this.SlotOwner, this.Types, this.Lengths) is { } fixedType)
