@@ -204,7 +204,7 @@ public sealed partial class Binding
         var path = this.ResolvePath(use, scope, role, arity);
         if (reads != this.notReadyReads)
         {
-            (this.earlyReads ??= new(ReferenceEqualityComparer.Instance))[use] = new(scope, role, arity, path.Symbol);
+            (this.earlyReads ??= new(ReferenceEqualityComparer.Instance))[use] = new(scope, role, arity, path.Symbol, null);
         }
 
         var symbol = this.PublishPath(path, mark);
@@ -212,12 +212,20 @@ public sealed partial class Binding
         return path with { Symbol = symbol };
     }
 
-    // An unqualified value name (SPEC 9.5 in the Value namespace), for a form that selects now. It takes no early-read note (BaseLayers):
-    // a value use need not spell its name (a capture's source is looked up at its function), and the note is evaluated again by syntax.
+    // An unqualified value name (SPEC 9.5 in the Value namespace), for a form that selects now. A lookup that saw a base clause not
+    // ready is an early read, noted as NamePath's (BaseLayers) with its name: a value use need not spell it (a capture's source is
+    // looked up at its function).
     private BindingSymbol? Lookup(string name, BindingScope scope, Koto use)
     {
         var mark = this.nameSteps.Count;
-        return this.PublishPath(this.ResolveName(name, scope, use, LookupRole.Value, 0), mark);
+        var reads = this.notReadyReads;
+        var path = this.ResolveName(name, scope, use, LookupRole.Value, 0);
+        if (reads != this.notReadyReads)
+        {
+            (this.earlyReads ??= new(ReferenceEqualityComparer.Instance))[use] = new(scope, LookupRole.Value, 0, path.Symbol, name);
+        }
+
+        return this.PublishPath(path, mark);
     }
 
     // SPEC 13.5.1: each role fixes its own first eligible lookup stage before the two roles are compared.
@@ -336,6 +344,11 @@ public sealed partial class Binding
         this.nameSteps.RemoveRange(mark, this.nameSteps.Count - mark);
         return path.Symbol;
     }
+
+    // An early read (BaseLayers) evaluated again as it was read, publishing nothing: a value name by its name (Lookup's ResolveName), a
+    // Type name by its syntax (NamePath's ResolvePath).
+    private BindingSymbol? ReadAgain(Koto use, in EarlyRead read)
+        => read.Name is { } name ? this.ProbePath(name, read.Scope, use, read.Role) : this.ProbePath(use, read.Scope, read.Role, read.Arity);
 
     // SPEC 6.1.5, 9.1, 9.3: what a written Self selects, decided here for every reader. The first enclosing Container that is no group
     // is its context: a Contract's Self is the Contract's Self Type parameter (the conforming-Type binder), never the Contract; a

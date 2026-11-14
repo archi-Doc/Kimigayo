@@ -57,7 +57,8 @@ public partial class TypeDagScalingTest
     // class, n = 8, 32, 128. Linear in a chain of n parameter identities (one class of n + 1 members) and in the same class with a
     // Contract fact on each member (each member keyed, the class scanned once: 214, 286, 574; 342, 1,398, 17,142 while Representative
     // scanned per Type). A demand n projections deep under `U is T` is quadratic, the bound asserted (276, 912, 9,216): each prefix's fill moves the view's
-    // serial, and the rebuilt table re-keys every fact the request indexes; R7-C2c3's fills and R7-C2e2 e2-1's index remove that term
+    // serial, and the table and the view's entry are rebuilt at each serial, re-keying every fact the request indexes; R7-C2c3's fills
+    // remove that term, and R7-C2e2 e2-1's kept entry does not: the same 276, 912 and 9,216 with it
     // (cubic while ClassKey kept no key: 11,285 at 8, 11,849,545 at 128). The programs are valid (SPEC 8.2.3, 8.3.2): CopyTree supplies Copy.
     [Theory]
     [InlineData("parameters", 4)]
@@ -73,6 +74,65 @@ public partial class TypeDagScalingTest
             var c = MinimalEmissionTest.Analyze(KeySource(shape, n));
             Assert.True(CompilationTestHelper.PublishedErrors(c).Length == 0, MinimalEmissionTest.Describe(c));
             return c.Binding.IdentityKeyWork;
+        }
+    }
+
+    // R7-C2e2-2 (implementation review N3): a closure validator's read forms its view's entry over the scope's whole chain, once per
+    // read. The agreement (SPEC 8.9.2) reads each scope with a projection identity premise: a struct with m Contract premises and n
+    // methods, each with `T.(C).E is i32`, forms n + 1 entries of about m pairs, linear in n and in m (173, 333, 653 at n = 8, 16, 32;
+    // 173, 309, 581 at m = 8, 16, 32). Disjointness (SPEC 8.9.1) reads b's view once per pair of 4 paths whose conditions name
+    // distinct Types, over m identity premises: linear in m (94, 174, 334); an entry formed per fact of a's chain is quadratic in m.
+    // The pairs over the library's; the programs are valid (SPEC 8.2.3, 8.9.1).
+    [Theory]
+    [InlineData("methods")]
+    [InlineData("premises")]
+    [InlineData("paths")]
+    public void AClosureValidatorsReadIsLinearInItsChain(string grown)
+    {
+        var (w8, w16, w32) = (Work(grown, 8), Work(grown, 16), Work(grown, 32));
+        Assert.True(w16 <= 2 * w8 && w32 <= 2 * w16, $"{grown}: {w8} at 8, {w16} at 16, {w32} at 32");
+
+        static int Work(string grown, int n)
+        {
+            var (methods, premises) = grown == "methods" ? (n, 8) : (8, n);
+            var parameters = string.Concat(Enumerable.Range(0, premises).Select(static i => $", A{i}"));
+            var chain = string.Concat(Enumerable.Range(0, premises).Select(i => $"    A{i} is {(grown == "paths" ? "i32" : "C")}\n"));
+            var body = grown == "paths" ?
+                string.Concat(new[] { "i32", "string", "bool", "u8" }.Select(static (x, i) => $"    Self is L{i} when T is {x}\n")) +
+                "    public func read(self: ref/Self, value: ref/i32) -> i32 => 1\n" :
+                "    T is C\n" + string.Concat(Enumerable.Range(0, methods).Select(static i => $"    public func f{i}(self: ref/Self) -> ()\n        T.(C).E is i32\n        ()\n"));
+            return Closure("contract C\n    associate E\ncontract P<X>\n    func read(self: ref/Self, value: ref/X) -> i32\n" +
+                string.Concat(Enumerable.Range(0, 4).Select(static i => $"contract L{i}: P<i32>\n")) +
+                $"struct W<T{parameters}>\n{chain}    var v: T\n{body}") - Closure(string.Empty);
+        }
+
+        static int Closure(string source)
+        {
+            var c = MinimalEmissionTest.Analyze(source + "public func main() -> ()\n    return\n");
+            Assert.True(CompilationTestHelper.PublishedErrors(c).Length == 0, MinimalEmissionTest.Describe(c));
+            return c.Binding.ClosureIndexWork;
+        }
+    }
+
+    // R7-C2c2 c2-2 (design review N1): an extension round per identity row a walk records, the key changing between rounds. M3's clause
+    // `Self.(Tree).Child.(Tree).Alias is Self.(Tree).Child`, supplied at every `T.(Tree).Child...` link, joins each `.(Tree).Alias` of the
+    // demand `T` + n times `.(Tree).Child.(Tree).Alias` to a shorter chain, so each round keys the demand to a new Type and walks its
+    // links: at most one round per `.(Tree).Child.(Tree).Alias` of the demand (measured n / 2: 2, 4, 8). Valid (SPEC 8.2.3 grounds, 8.3.2): the
+    // demand is `T` + n times `.(Tree).Child`, which is M3, so Copy.
+    [Fact]
+    public void ExtensionRoundsAreLinearInTheKeyChanges()
+    {
+        var (w4, w8, w16) = (Rounds(4), Rounds(8), Rounds(16));
+        Assert.True(w4 <= 4 && w8 <= 8 && w16 <= 16 && w16 <= 4 * w4, $"{w4} at 4, {w8} at 8, {w16} at 16");
+
+        static long Rounds(int n)
+        {
+            var demand = "T" + string.Concat(Enumerable.Repeat(".(Tree).Child.(Tree).Alias", n));
+            var c = MinimalEmissionTest.Analyze("contract Tree\n    associate Child is Tree\n    associate Alias is Tree\ncontract M3: Tree, Copy\n" +
+                "    Self.(Tree).Child is M3\n    Self.(Tree).Child.(Tree).Alias is Self.(Tree).Child\n" +
+                $"func twice<T>(value: {demand}) -> ({demand}, {demand})\n    T is M3\n    return (value, value)\npublic func main() -> ()\n    return\n");
+            Assert.True(CompilationTestHelper.PublishedErrors(c).Length == 0, MinimalEmissionTest.Describe(c));
+            return c.Binding.IdentityRounds;
         }
     }
 

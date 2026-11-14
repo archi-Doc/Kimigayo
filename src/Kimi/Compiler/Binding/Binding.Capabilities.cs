@@ -243,6 +243,7 @@ public sealed partial class Binding
         this.capabilitiesReady = false;
         this.capabilityMode = mode;
         this.readings.Clear();
+        this.ClearClosure();
         this.ResetIdentityClasses();
         this.ClearNeededSites();
         this.ClearProofScopes();
@@ -723,10 +724,6 @@ public sealed partial class Binding
                 if (fact.Kind == ConstraintKind.TypeIdentity && stated is { } required)
                 {
                     evidence = this.ProveConstraint(this.InternConstraint(new(ConstraintKind.Contract, required, contract: work.Intrinsic)), work.Scope);
-                }
-                else if (fact.Kind == ConstraintKind.Contract && fact.Contract!.Intrinsic == IntrinsicKind.PrimitiveInteger && work.Intrinsic.Intrinsic is IntrinsicKind.Copy or IntrinsicKind.Owned)
-                {
-                    evidence = ConstraintProof.Proven; // SPEC 8.7.4: every admitted integer Type is Copy and Owned.
                 }
                 else if (fact.Kind == ConstraintKind.Semantics)
                 {

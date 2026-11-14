@@ -9,6 +9,11 @@ namespace XunitTest;
 
 public class ConstraintBindingTest
 {
+    private const string NestedSubjects = "contract K\ncontract HasItem\n    associate Item\nstruct W<T>\n    public struct Inner\n        Self is K\n        Self is HasItem\n        associate HasItem.Item is i32\n        public init() => ()\n    public struct Mid\n        public struct Inner2\n            public init() => ()\nstruct N\n    public struct Inner\n        Self is K\n        public init() => ()\nstruct D<T>\n    Self is HasItem\n    associate HasItem.Item is T\n    public init() => ()\nstruct S<Z>\n";
+
+    // Declarations a row adds after S: a nested generic B, and Containers with an Origin header for a BoundContainerQualifier.
+    private const string BoundSubjects = "struct A\n    public struct B<U>\n        public struct C\n            Self is K\n            public init() => ()\nstruct Outer<T> {a}\n    public struct Cell\n        Self is K\n        public init() => ()\nstruct Plain {a}\n    public struct Cell\n        Self is K\n        public init() => ()\nstruct DO<T> {a}\n    Self is HasItem\n    associate HasItem.Item is T\n    public init() => ()\n";
+
     private const string LateClause = """
         contract Z
             func z(self: ref/Self) -> i32
@@ -369,6 +374,33 @@ public class ConstraintBindingTest
     [InlineData("func f<T>(a: T) -> ()\n    T is Never<i32>\n    ()", "1*InvalidConstraint_Kd 1*InvalidTypeFormation_Kd")]
     [InlineData("func f<Never, T>(a: T, b: Never) -> ()\n    T is Never\n    ()\nfunc use() -> () => f<string, i32>(1, \"s\")", "1*NoApplicableOverload_Kd")]
     public void NeverInARequirementIsFoundByOrdinaryLookup(string source, string records) => Assert.Equal(records, DiagnosticCorpus.RecordProfile(source));
+
+    // PLAN G567-a (the owner's O-249 Q2 (a)): SPEC 8.2.1: a subject whose path writes Type arguments is a Constraint subject only as an
+    // associated-Type projection; a nested Type reached through Type arguments written on any segment of its path or inside a
+    // BoundContainerQualifier, in any region that admits the subject, is none (InvalidConstraint_Kd at the clause; these were accepted,
+    // and the clause's record is the only one: a5, s3use). A nested Type written without Type arguments (Inner, Self.Inner, N.Inner,
+    // (Plain{o}).Cell) and every projection stay subjects.
+    [Theory]
+    [InlineData(NestedSubjects + "    W<Z>.Inner is K\n    public init() => ()", "1*InvalidConstraint_Kd")] // s1
+    [InlineData(NestedSubjects + "    W<i32>.Inner is K\n    public init() => ()", "1*InvalidConstraint_Kd")] // t1, closed
+    [InlineData(NestedSubjects + "    W<Z>.Mid.Inner2 is K\n    public init() => ()", "1*InvalidConstraint_Kd")] // t3
+    [InlineData("contract K\nstruct W<T>\n    W<T>.Inner is K\n    public struct Inner\n        public init() => ()", "1*InvalidConstraint_Kd")] // t7, in W's own region
+    [InlineData(NestedSubjects + "    W<Z>.Inner is W<i32>.Inner\n    public init() => ()\n    public func get(z: Z) -> i32 => z@move", "1*InvalidConstraint_Kd 1*TypeMismatch_Kd")] // s3: its subject record and the body's own
+    [InlineData(NestedSubjects + "    (Outer<Z>{o}).Cell is K\n    public init() => ()\n" + BoundSubjects, "1*InvalidConstraint_Kd")] // a11, through a BoundContainerQualifier
+    [InlineData(NestedSubjects + "    (Outer<i32>{o}).Cell is K\n    public init() => ()\n" + BoundSubjects, "1*InvalidConstraint_Kd")] // a18, closed
+    [InlineData(NestedSubjects + "    A.B<Z>.C is K\n    public init() => ()\n" + BoundSubjects, "1*InvalidConstraint_Kd")] // a2, Type arguments on a middle segment
+    [InlineData(NestedSubjects + "    public init() => ()\ncontract C2\n    W<Self>.Inner is K", "1*InvalidConstraint_Kd")] // a8, Contract-wide
+    [InlineData(NestedSubjects + "    W<Z>.Inner is not K\n    public init() => ()", "1*InvalidConstraint_Kd")] // a5: the clause's record alone, none at S
+    [InlineData(NestedSubjects + "    W<Z>.Inner is W<i32>.Inner\n    public init() => ()\nfunc use() => S<i64>.init()", "1*InvalidConstraint_Kd")] // s3use: the use rests on the clause
+    [InlineData("contract K\nstruct W<T>\n    Inner is K\n    public struct Inner\n        public init() => ()", "clean")] // v1
+    [InlineData("contract K\nstruct W<T>\n    Self.Inner is K\n    public struct Inner\n        public init() => ()", "clean")] // v2
+    [InlineData(NestedSubjects + "    N.Inner is K\n    public init() => ()", "clean")] // v3
+    [InlineData(NestedSubjects + "    D<i32>.Item is Copy\n    public init() => ()", "clean")] // p5, a projection whose value is known
+    [InlineData(NestedSubjects + "    D<W<Z>.Inner>.Item is K\n    public init() => ()", "clean")] // p8
+    [InlineData(NestedSubjects + "    (Plain{o}).Cell is K\n    public init() => ()\n" + BoundSubjects, "clean")] // g1, a qualifier binding Origins only
+    [InlineData(NestedSubjects + "    (DO<Z>{o}).Item is K\n    public init() => ()\n" + BoundSubjects, "clean")] // g2, a projection through a BoundContainerQualifier
+    public void ANestedTypeThroughWrittenTypeArgumentsIsNoSubject(string source, string records)
+        => Assert.Equal(records, DiagnosticCorpus.RecordProfile(source));
 
     // PLAN G615 (the owner's O-141 (a)): invalid by SPEC 8.2.3 "Premise errors" (a Refuted identity between two premises). R7-C3a's identity
     // classes make the class a Conflict: one premise error at f in either order, and a body using both adds no record resting on it.
