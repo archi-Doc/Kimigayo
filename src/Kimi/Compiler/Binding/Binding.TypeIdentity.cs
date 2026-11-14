@@ -98,9 +98,9 @@ public sealed partial class Binding
         return false;
     }
 
-    // IdentityRefuted's walk, a complete member standing for its class's parameter or projection. An abstract position (a parameter,
-    // a Contract's Self among them, a projection, a pair application) differs only from a Type it is a proper part of; elsewhere the
-    // heads (HeadsDiffer) and then each pair of components decide.
+    // IdentityRefuted's walk, a complete member standing for its class's parameter or projection. An abstract position (IsAbstract: a
+    // parameter, a Contract's Self among them, a projection, a pair application) differs only from a Type it is a proper part of;
+    // elsewhere the heads (HeadsDiffer) and then each pair of components decide.
     private static bool Differs(BoundType a, BoundType b, IdentityClasses? classes)
     {
         a = classes?.CompleteMember(a) ?? a;
@@ -110,7 +110,7 @@ public sealed partial class Binding
             return false;
         }
 
-        if (IsAbstractPosition(a) || IsAbstractPosition(b))
+        if (a.IsAbstract || b.IsAbstract)
         {
             return IsProperPart(a, b) || IsProperPart(b, a);
         }
@@ -131,14 +131,11 @@ public sealed partial class Binding
         return false;
     }
 
-    private static bool IsAbstractPosition(BoundType type)
-        => type.Kind is BoundTypeKind.Parameter or BoundTypeKind.AssociatedProjection or BoundTypeKind.TargetProjection or BoundTypeKind.SemanticsApplication or BoundTypeKind.SemanticsAdaptation;
-
     // SPEC 8.2.3: `part` is a proper part of `whole` through constructed heads alone; a projection or pair application between them
     // decides nothing (a pair admitting `owner` may be its target).
     private static bool IsProperPart(BoundType part, BoundType whole)
     {
-        if (IsAbstractPosition(whole))
+        if (whole.IsAbstract)
         {
             return false;
         }
