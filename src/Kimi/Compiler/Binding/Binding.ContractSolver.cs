@@ -35,19 +35,19 @@
 //   judgment, so a request demands only while it prepares its view (ClassesOf, IndexNormalized); a demand made there is a request
 //   over its own view, with its own classes (restored on return), and reads that view's written facts and keys alone; a request
 //   (PremiseRefines, FirstRows) entered from a walk is InternalInvariant.
-//   Enumerate's request tables (memo, index, pools) live for one outermost request and are keyed by the view value (the scope and
-//   its serial, taken once per request), so a scope re-parented within a request is another view; a preparation that moves its own
+//   Enumerate's request tables (memo, pools) live for one outermost request and are keyed by the view value (the scope and its
+//   serial, taken once per request), so a scope re-parented within a request is another view; a preparation that moves its own
 //   view is InternalInvariant. The walk reads the requirement Contract (ContractSupply's rewrites substitute
 //   activeRequirementContract), which is constant over a request (its writers bind calls, reached from no normalization and no
-//   walk): the request tables need no call context in their keys, and the kept rows, which outlive a request, key it (Kept rows,
-//   below). The caller of Reading holds its view's serial: a loop that writes the chain only
+//   walk): the request tables need no call context in their keys, and the view's index and the kept rows, which outlive a request,
+//   key it (Closure(view) and Kept rows, below). The caller of Reading holds its view's serial: a loop that writes the chain only
 //   through Reading (Supply's, IndexNormalized's) passes its last observation and a formation takes it again; a loop with other
 //   writes (SymbolicCapability's judgments) takes one per fact. A write added to such a loop outside Reading breaks this.
 //   Rows depend on neither the order of facts or clauses nor on which check asked first (SPEC 8.3.3). Neither does a row's Source
 //   (R7-C2c2 c2-3b): it is the first available derivation's, else the first one's, in this order: the walk's steps (the
 //   Contract's own Self, the facts, the prefixes' clause instances, the ancestors); the facts innermost scope first and, in one
 //   environment, a fact on the subject as written before a class mate's or a reading's, then Binding.TypeIdentity's Order of the
-//   facts' subjects (IndexFact keeps each list of the index so); the subject's rows before its key's. Two facts of one
+//   facts' subjects (ViewIndex.Add keeps each row kind's bucket so); the subject's rows before its key's. Two facts of one
 //   environment on one subject give two rows or are one fact. A Contract row's Source decides no verdict: its one reader is the
 //   editor's evidence (AvailableEffectBounds). A leaf row's Source is its own premise's, never a choice (the row is one per
 //   stating premise): AvailableCallableEffects reads it for the premise's bound list (SPEC 8.11.4) and SelectValueCall for a
@@ -73,9 +73,8 @@
 //   (whether a walk extends depends on the Contract asked, the rows do not). So an answer is a function of (subject, view) (SPEC
 //   8.3.3). A candidate reader (PremiseRows) demands no Contract, so it never extends: it reads the first walk's rows, kept or
 //   fresh, also a function of (subject, view). The implementation's limit, not SPEC's rule: a member or an associated Type that only
-//   an identity clause at depth gives its subject is not found (dm1), as on base, until R7-C2e2's Closure(scope) holds the view's
-//   identity closure. At R7-C2e2 e2-1's merge,
-//   index entries built under an extension stay request-owned, never admitted to the view's index. Only depth-1 requests extend: a
+//   an identity clause at depth gives its subject is not found (dm1), as on base, until R7-C2e2's Closure(view) holds the view's
+//   identity closure. Under an extension the view's entry is the request's (Closure(view) below). Only depth-1 requests extend: a
 //   reading formed inside a preparation (a nested request) may differ from one formed through Supply, which joins note B's
 //   Completion row (R7-C2e2 e2-3).
 // - Prohibitions: no judgment, lookup, normalization or inference rule here but the request boundary's normalization of a fact, which
@@ -84,10 +83,10 @@
 //   Enumerate's walk and what it calls never
 //   reach ProveConformance, ProveConstraint, ResolveAssociated, NormalizeProof*, SubstituteIdentity or RequestCapability
 //   (ArchitectureRulesTest); no mode or bool parameter; no answer kept across requests but a Complete reading and the kept rows,
-//   each in the kept region alone (both below); no second scheduler; no read sets. From C3 (C1 §5), broken until then by the
-//   eager derivation moved here: no Binding writes, syntax-triggered supply, DerivedFacts or fallback scan. Staged (R7-C2c2 c2-3b):
-//   Supply's fact scan keeps its two Callable gate terms for a `not Callable` premise, which the rows do not hold, until c2-5's
-//   Not rows; c2-5 removes them after its probes show the scan's positive adds nothing over the rows.
+//   each in the kept region alone, and the view's index when Complete (all below); no second scheduler; no read sets. From C3
+//   (C1 §5), broken until then by the eager derivation moved here: no Binding writes, syntax-triggered supply, DerivedFacts or
+//   fallback scan. Staged (R7-C2c2 c2-3b): Supply's fact scan keeps its two Callable gate terms for a `not Callable` premise, which
+//   the rows do not hold, until c2-5's Not rows; c2-5 removes them after its probes show the scan's positive adds nothing over the rows.
 //
 // The view and its closure (DECISIONS R7-C2e1). ViewOf names the state of a scope's chain: the serial changes when an environment's
 // Version, a scope's LinkVersion or the parent's serial does (each counted at its writer). Reading is the one caller of the request
@@ -113,8 +112,38 @@
 //   callers unthreaded, as Complete, as its availability reads do; carrying it is R7-C2e2's (Completion carried by the judgments'
 //   answers). No such table is known to grow after the read within a pass.
 //
-// Kept rows (DECISIONS R7-C2a1, the owner's O-206 (a)). Temporary: R7-C2e2's Closure(scope) holds a view's rows with its index and
-// readings and deletes enumerateKept, its pool, KeepRows and the kept region's part of PremiseRefines and PremiseRows.
+// Closure(view) (DECISIONS R7-C2e2-1, R7-C2e2-2): a view's index of its facts by kind and subject is one table, an entry per (view
+// scope, requirement Contract) formed at the view's serial and rebuilt in place when the serial moves, its buckets by (chain scope,
+// kind, SubjectKey).
+// - Rows: a kind has a row when a reader reads it by subject: each row kind (RowKinds: Contract, and R7-C2c2 c2-3b's leaf kind
+//   Callable; Enumerate's walk), TypeIdentity (ValidateAssociatedOverlapAgreement, DisjointConformanceFacts) and Semantics
+//   (DisjointConformanceFacts). A row kind's row holds each fact as written, under its subject and its class key in the view (R7-C2c2
+//   c2-1: the forming request's classes, which are the view's), in the Sources' order (the Invariants above), and the Contract row,
+//   under a parameter identity, each fact as the view reads it (Reading) too. The TypeIdentity and Semantics rows hold each fact as
+//   written under its written subject alone, in its environment's order, with no class key and no reading: a bucket of theirs holds
+//   the facts of one written subject key, so a reader that pairs by bucket pairs no other subject's fact.
+// - Kept: an entry is Kept when its content is Complete: written facts in every phase (a function of the chain's environments, which
+//   the serial counts), their class keys when the view has no identity premise or its identity table is Final (W7, the rule the kept
+//   rows ask: a table that is not is rebuilt per read), readings where KeptRegion kept them (the one rule), so an entry whose keys
+//   are not final or whose preparation formed a reading that was not kept stays owned by its outermost request and goes when that
+//   returns. A Kept entry lasts the pass (ClearClosure, in ResetCapabilities) and spares a later outermost request its preparation;
+//   its readings are read only in KeptRegion, so outside it an outermost request forms its own (R7-M20) and the entry again. A
+//   nested demand reads an entry's written facts and their keys alone (the leaf rule), so it reads any entry. An extension (R7-C2c2
+//   c2-2) files the written facts again under its extended keys; its table is never Final (the rows are Provisional), so by the same
+//   rule the entry is then the request's: a Kept entry is reopened as owned by the outermost request before a pair goes in, never
+//   written into, and a later request forms it again (N3 of e2-1's merge review).
+// - Readers: a request (PremiseRefines, FirstRows) and a closure validator's read (BeginClosureRead to EndClosureRead), which is
+//   outside any request and reads the TypeIdentity and Semantics rows. Whoever holds an entry starts no request, since a request's
+//   return drops the entries it does not keep: a request entered from a walk or from a validator's read is InternalInvariant, so a
+//   validator takes what it needs from the entry before it judges. An entry a validator's read forms is the read's: formed outside a
+//   request, its row kinds' rows have no class key and no reading, so no request may read it, and it goes back to the pool when the
+//   read ends. A Kept entry serves a read as it is.
+// - Retained memory is the pool's high water: an entry keeps the largest buckets and lists any view gave it, flat across warm
+//   rebinds. Temporary: the readings go when R7-C2c2 c2-4 removes Reading's binding completion; a view whose identity table is not
+//   Final (a derived identity fact, W6) has its entry formed per request, c2-1's lifetime, until R7-C2e2's part 3 carries Completion.
+//
+// Kept rows (DECISIONS R7-C2a1, the owner's O-206 (a)). Temporary: R7-C2e2's part 3 joins a view's rows to Closure(view) and deletes
+// enumerateKept, its pool, KeepRows and the kept region's part of PremiseRefines and FirstRows.
 // - What and key: the rows of each link an outermost request walked, per (link, view scope, serial, requirement Contract), with
 //   whether that walk recorded an identity row (c2-2: such rows answer only a refinement among them), and a Contract's head depth.
 // - Where: the kept region (KeptRegion, R7-M20's rule, which Reading and PremiseRefines both ask), an outermost request, a
@@ -149,11 +178,17 @@ namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
+    // The kinds whose constraints give a row, the one list the index and the walk's two sources read (RowKind; each kind its own row
+    // of Closure(view), R7-C2e2-2): Contract, and each kind with a reader of its own, a leaf row (R7-C2c2 c2-3b: Callable). A later
+    // kind with a reader joins the list here alone.
+    private static readonly ConstraintKind[] RowKinds = [ConstraintKind.Contract, ConstraintKind.Callable];
+
     // The closure's kept readings (Reading), emptied with the capability results each pass (ResetCapabilities), capacity kept.
     private readonly Dictionary<(BindingScope View, BoundConstraint Fact, BindingSymbol? Requirement), (int Serial, BoundConstraint Reading)> readings = new();
 
     private BoundConstraint[] contractFactScratch = [];
     private int readingFormations;
+    private int readingStores;
 
     // The premises a request reads: the scope its consumer holds. C3 adds the definition whose collection is active and the
     // inadmissible bindings here, in ViewOf (BU-29); a source's state and its check under way stay on the source (SourceStates, BU-59).
@@ -213,10 +248,19 @@ public sealed partial class Binding
     private static (BindingSymbol? Symbol, BoundType Type) SubjectKey(BoundType type)
         => type.Kind == BoundTypeKind.AssociatedProjection ? (type.Symbol, type.Components[0]) : (null, type);
 
-    // The constraints that give a row, the one list the index and the walk's two sources read: a Contract constraint, and each kind
-    // with a reader of its own, a leaf row (R7-C2c2 c2-3b: Callable). A later kind with a reader joins the list here alone.
+    // A constraint that gives a row: one of RowKinds, a Contract constraint naming its Contract.
     private static bool RowKind(BoundConstraint constraint)
-        => constraint.Kind == ConstraintKind.Callable || constraint is { Kind: ConstraintKind.Contract, Contract: not null };
+    {
+        foreach (var kind in RowKinds)
+        {
+            if (constraint.Kind == kind)
+            {
+                return kind != ConstraintKind.Contract || constraint.Contract is not null;
+            }
+        }
+
+        return false;
+    }
 
     // A row joins `list` from `start`: one row per Contract reference, and per proposition and stating scope for a leaf row. A row
     // derived again keeps the strongest availability with that derivation's Source, the earlier derivation's where they are equal
@@ -277,6 +321,7 @@ public sealed partial class Binding
         if (completion == Completion.Complete && serial == before)
         {
             this.readings[key] = (before, reading);
+            this.readingStores++;
         }
 
         return reading;
@@ -335,8 +380,9 @@ public sealed partial class Binding
     // The rows of `subject` in the view (the contract above): its chain is walked from the root up, each link once per request and
     // view; a link's rows are final before a taller link reads them, and a prefix stays active while its height plus its rows' head
     // depth reaches the link. A link demanded again while open supplies nothing (SPEC 8.3.3).
-    private List<PremiseRow>? Enumerate(BoundType subject, EvidenceView view, int serial)
+    private List<PremiseRow>? Enumerate(BoundType subject, EvidenceView view, ViewIndex index)
     {
+        var serial = index.Serial;
         var chainStart = this.enumerateChain.Count;
         var activeStart = this.enumerateActive.Count;
         for (var link = subject; ; link = link.Components[0])
@@ -365,7 +411,7 @@ public sealed partial class Binding
                 if (!this.enumerateMemo.TryGetValue((link, view, serial), out var rows))
                 {
                     this.enumerateMemo[(link, view, serial)] = null; // Open: a re-entry supplies nothing.
-                    rows = this.EnumerateLink(link, view, serial, activeStart);
+                    rows = this.EnumerateLink(link, view, index, activeStart);
                     this.enumerateMemo[(link, view, serial)] = rows;
                 }
 
@@ -390,7 +436,7 @@ public sealed partial class Binding
         return this.enumerateMemo[(subject, view, serial)];
     }
 
-    private List<PremiseRow> EnumerateLink(BoundType subject, EvidenceView view, int serial, int activeStart)
+    private List<PremiseRow> EnumerateLink(BoundType subject, EvidenceView view, ViewIndex index, int activeStart)
     {
         List<PremiseRow> rows;
         if (this.enumeratePoolNext < this.enumeratePool.Count)
@@ -417,25 +463,34 @@ public sealed partial class Binding
                 continue;
             }
 
-            // A fact is indexed by subject key, as written and as normalized in the view: FactStates confirms a match. Each is a
-            // row with its Source: a Contract fact its Contract's, a fact of another kind (RowKind) a leaf row.
-            if (this.enumerateIndex.GetValueOrDefault((view, serial, current, SubjectKey(subject).Symbol, SubjectKey(subject).Type)) is not { } facts)
+            // A fact is indexed in its kind's row by subject key, as written and as normalized in the view: FactStates confirms a
+            // match. A nested demand reads the written facts alone (the leaf rule), so an entry an outermost request prepared serves it
+            // too. Each is a row with its Source: a Contract fact its Contract's, a fact of another row kind (RowKinds) a leaf row.
+            foreach (var kind in RowKinds)
             {
-                continue;
-            }
-
-            for (var f = 0; f < facts.Count; f++)
-            {
-                var (raw, fact) = facts[f];
-                var states = this.FactStates(fact, subject, out _);
-                if (states || this.SameClass(fact.Subject!, subject))
+                if (index.Buckets.GetValueOrDefault((current, kind, SubjectKey(subject).Symbol, SubjectKey(subject).Type)) is not { } facts)
                 {
-                    var contract = fact.Kind == ConstraintKind.Contract;
-                    var available = this.AvailableConstraintFact(environment, raw, out _) && (!contract || this.AvailableContractPremise(fact.Contract!));
-                    PremiseRow row = contract
-                        ? new(this.RowContract(fact, subject, states), available) { Raw = raw, Stated = current }
-                        : new(null, available) { Clause = fact, Raw = raw, Stated = current };
-                    AddRow(rows, 0, row);
+                    continue;
+                }
+
+                for (var f = 0; f < facts.Count; f++)
+                {
+                    var (raw, fact) = facts[f];
+                    if (this.enumerateDepth != 1 && !ReferenceEquals(raw, fact))
+                    {
+                        continue; // A nested demand reads the written facts and their keys alone.
+                    }
+
+                    var states = this.FactStates(fact, subject, out _);
+                    if (states || this.SameClass(fact.Subject!, subject))
+                    {
+                        var contract = fact.Kind == ConstraintKind.Contract;
+                        var available = this.AvailableConstraintFact(environment, raw, out _) && (!contract || this.AvailableContractPremise(fact.Contract!));
+                        PremiseRow row = contract
+                            ? new(this.RowContract(fact, subject, states), available) { Raw = raw, Stated = current }
+                            : new(null, available) { Clause = fact, Raw = raw, Stated = current };
+                        AddRow(rows, 0, row);
+                    }
                 }
             }
         }
@@ -443,7 +498,7 @@ public sealed partial class Binding
         for (var a = activeStart; a < this.enumerateActive.Count; a++)
         {
             var root = this.enumerateActive[a].Prefix;
-            if (this.enumerateMemo.GetValueOrDefault((root, view, serial)) is not { } prefix)
+            if (this.enumerateMemo.GetValueOrDefault((root, view, index.Serial)) is not { } prefix)
             {
                 continue;
             }

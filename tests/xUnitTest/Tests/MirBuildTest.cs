@@ -132,6 +132,37 @@ public sealed partial class MirBuildTest(ITestOutputHelper output)
         }
     }
 
+    // SPEC 14.8.1, 22.10.1 (R8-W2 N3): a case test, a Case position's or a synthesized call's Result's, is MirBuilder.CaseTest's: its
+    // discriminant's StorageLive, its one write and the SwitchInt that reads it lie in one block, over the goldens' programs. A guard, not a
+    // fail-before row (N3 changed MIR text only), so that a re-blessed golden cannot bring back a discriminant held across its call's operands
+    // or shared by two tests.
+    [Fact]
+    public void ACaseTestsDiscriminantIsWrittenOnceInTheBlockThatReadsIt()
+    {
+        foreach (var name in MirDumpTest.Programs.Select(static x => x.Data))
+        {
+            foreach (var body in MirDumpTest.Compile(name).BuildMir().Bodies)
+            {
+                var statements = body.Statements.ToArray();
+                foreach (var block in body.Blocks)
+                {
+                    for (var i = block.Start; i < block.Start + block.Count; i++)
+                    {
+                        if (statements[i] is { Kind: MirStatementKind.Assign, Rvalue.Kind: MirRvalueKind.Discriminant, Place: var place })
+                        {
+                            var live = Array.FindIndex(
+                                statements, block.Start, i - block.Start, x => x.Kind == MirStatementKind.StorageLive && x.Place == place);
+                            Assert.True(
+                                block.Terminator is { Kind: MirTerminatorKind.SwitchInt, Operand.Place: var read } && read == place && live >= 0 &&
+                                statements.Count(x => x.Kind == MirStatementKind.Assign && x.Place.Root == place.Root) == 1,
+                                $"{name}: {body.Key.Decl?.Name}'s _{place.Root} is not one write in the block that reads it");
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     [Fact]
     public void OneIntegerValueIsOneConstant()
     {

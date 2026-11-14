@@ -5,20 +5,21 @@ namespace Kimi.Compiler;
 // Binding.ContractSolver's request boundary (the entry file states the contract; split from it without a change, R7-C2c2 c2-3b):
 // the requests for Enumerate's rows (PremiseRefines, SPEC 8.3.2's refinement row; FirstRows, the first walk's rows, which the
 // Callable and effect-bound readers read; PremiseRows, the candidate readers' rows over them; PremiseCallable, SPEC 8.10's row),
-// their shared frame (RowsRequest, PrepareRows, LeaveRows), the view's index of facts by subject key (IndexWritten,
-// IndexNormalized, IndexFact) and the tables a request owns or keeps (the request tables; the kept rows: KeepRows,
-// ClearKeptRows). The walk the requests start (Enumerate and what it calls) is the entry file's.
+// their shared frame (RowsRequest, PrepareRows, LeaveRows), the view's index, Closure(view) (IndexOf, IndexWritten,
+// IndexNormalized, ViewIndex; a closure validator's read, BeginClosureRead to EndClosureRead; DropOwnedEntries, ClearClosure;
+// R7-C2e2-1, R7-C2e2-2) and the tables a request owns or keeps (the request tables; the kept rows: KeepRows, ClearKeptRows). The
+// walk the requests start (Enumerate and what it calls) is the entry file's.
 public sealed partial class Binding
 {
     // Enumerate's request tables, owned by one outermost request (emptied, capacity kept, when it returns) and keyed by the view value:
-    // the rows of a link of the subject's chain in a view (null while the link is open), the view's row-giving facts by subject key
-    // (IndexWritten, IndexNormalized), the views indexed, and the pooled lists.
+    // the rows of a link of the subject's chain in a view (null while the link is open) and the pooled lists.
     private readonly Dictionary<(BoundType, EvidenceView, int), List<PremiseRow>?> enumerateMemo = new();
 
-    private readonly Dictionary<(EvidenceView, int, BindingScope, BindingSymbol?, BoundType), List<(BoundConstraint Raw, BoundConstraint Fact)>>
-        enumerateIndex = new();
-
-    private readonly HashSet<(EvidenceView, int)> enumeratePrepared = new();
+    // Closure(view) (the class header's): the entry of each (view scope, requirement Contract), the entries the outermost request formed
+    // (dropped when it returns unless Kept), and the free entries, each with its lists and their capacity.
+    private readonly Dictionary<(EvidenceView, BindingSymbol?), ViewIndex> enumerateIndex = new();
+    private readonly List<(EvidenceView, BindingSymbol?)> enumerateOwned = new();
+    private readonly Stack<ViewIndex> enumerateIndexPool = new();
     private readonly List<(BindingScope Scope, BoundConstraint Raw, BoundConstraint Fact)> enumerateNormalized = new();
 
     // The kept tables (the class header's Kept rows), emptied by ClearKeptRows as their epoch ends, capacity and pooled lists kept:
@@ -29,14 +30,17 @@ public sealed partial class Binding
     private readonly List<List<PremiseRow>> enumerateKeptPool = new();
     private readonly List<List<PremiseRow>> enumeratePool = new();
     private readonly List<PremiseRow> premiseRows = new(); // FirstRows' and PremiseRows' readers' rows, a stack of ranges
-    private readonly List<List<(BoundConstraint Raw, BoundConstraint Fact)>> enumerateFactPool = new();
     private readonly List<(BoundType A, BoundType B)> enumerateIdentities = new(); // c2-2: the outermost walk's identity rows
     private int enumeratePoolNext;
-    private int enumerateFactPoolNext;
     private int enumerateDepth;
     private int enumerateWalking;
     private int enumerateKeptPoolNext;
     private IdentityClasses? enumerateClasses; // R7-C2c2: the current request's view's identity classes, or null
+
+    // The scaling rows' measure: the pairs Closure(view)'s entries indexed in this compilation, in every row (a fact of a row kind,
+    // TypeIdentity or Semantics as written; a row kind's fact under its class key and a Contract fact as read), the validators' entries
+    // included.
+    internal int ClosureIndexWork { get; private set; }
 
     // R7-C2c2 c2-2: the extension rounds of this compilation (the scaling rows' measure of the loop's bound).
     internal int IdentityRounds { get; private set; }
@@ -92,7 +96,7 @@ public sealed partial class Binding
     // this predicate's alone (the class header's Extension): only a request whose demanded Contract is not proven extends.
     private bool PremiseRefines(BoundType subject, BindingSymbol contract, BindingScope scope)
     {
-        var (view, serial, classes, key, keep) = this.RowsRequest(subject, scope);
+        var (view, serial, classes, key, final, keep) = this.RowsRequest(subject, scope);
 
         // Kept rows answer only where they decide (the class header's Extension): a refinement among them, or no identity row recorded.
         var keyed = default((List<PremiseRow> Rows, bool Extends));
@@ -111,13 +115,14 @@ public sealed partial class Binding
         this.enumerateDepth++;
         try
         {
-            keep &= this.PrepareRows(subject, view, serial);
+            var (index, prepared) = this.PrepareRows(subject, view, serial, final);
+            keep &= prepared;
             this.enumerateWalking++;
             try
             {
                 this.enumerateIdentities.Clear();
-                var refines = RowsRefine(this.Enumerate(subject, view, serial), contract);
-                refines |= !ReferenceEquals(key, subject) && RowsRefine(this.Enumerate(key, view, serial), contract);
+                var refines = RowsRefine(this.Enumerate(subject, view, index), contract);
+                refines |= !ReferenceEquals(key, subject) && RowsRefine(this.Enumerate(key, view, index), contract);
 
                 // R7-C2c2 c2-2: the identity rows the walk recorded join the request's own classes, and the walk runs again under
                 // them while a round records a row the last extension did not hold. Bound: rows only grow, and each is a clause
@@ -135,9 +140,15 @@ public sealed partial class Binding
                     this.enumerateClasses = classes = extended;
                     key = this.ClassKey(subject, extended);
                     this.enumerateMemo.Clear();
-                    this.IndexWritten(view, serial); // The facts under the extended keys; a repeated entry adds no row.
-                    refines = RowsRefine(this.Enumerate(subject, view, serial), contract);
-                    refines |= !ReferenceEquals(key, subject) && RowsRefine(this.Enumerate(key, view, serial), contract);
+
+                    // The facts under the extended keys (N3 of e2-1's merge review): an entry is Kept only with final keys, and an
+                    // extended table is never Final (its rows are Provisional), so a Kept entry is reopened as the outermost request's
+                    // before a pair goes in, never written into; a repeated pair adds no row.
+                    index.Kept &= extended.Final;
+                    this.enumerateOwned.Add((view, this.activeRequirementContract));
+                    this.IndexWritten(index, view);
+                    refines = RowsRefine(this.Enumerate(subject, view, index), contract);
+                    refines |= !ReferenceEquals(key, subject) && RowsRefine(this.Enumerate(key, view, index), contract);
                     this.IdentityRounds++;
                 }
 
@@ -184,7 +195,7 @@ public sealed partial class Binding
     // Returns the request's identity classes, in which PremiseRows forms its column.
     private IdentityClasses? FirstRows(BoundType subject, BindingScope scope, List<PremiseRow> into)
     {
-        var (view, serial, classes, key, keep) = this.RowsRequest(subject, scope);
+        var (view, serial, classes, key, final, keep) = this.RowsRequest(subject, scope);
         var start = into.Count;
         var keyed = default((List<PremiseRow> Rows, bool Extends));
         if (keep && this.enumerateKept.TryGetValue((subject, view, serial, this.activeRequirementContract), out var kept) &&
@@ -200,13 +211,14 @@ public sealed partial class Binding
         this.enumerateDepth++;
         try
         {
-            keep &= this.PrepareRows(subject, view, serial);
+            var (index, prepared) = this.PrepareRows(subject, view, serial, final);
+            keep &= prepared;
             this.enumerateWalking++;
             try
             {
                 this.enumerateIdentities.Clear();
-                var rows = this.Enumerate(subject, view, serial);
-                var keyRows = ReferenceEquals(key, subject) ? null : this.Enumerate(key, view, serial);
+                var rows = this.Enumerate(subject, view, index);
+                var keyRows = ReferenceEquals(key, subject) ? null : this.Enumerate(key, view, index);
                 if (keep)
                 {
                     this.KeepRows(view, serial);
@@ -245,61 +257,70 @@ public sealed partial class Binding
         FormAliases(into, start, this.FirstRows(subject, scope, into));
     }
 
-    // A request's terms (PremiseRefines' and FirstRows'): its view, the view's identity classes, the subject's key in them and
-    // whether its rows may be kept. R7-C2c2: a request keys its subject and its view's facts by the view's identity classes (SPEC
-    // 8.2.3), whatever the table's finality; finality decides only whether the rows may be kept for a later request.
-    private (EvidenceView View, int Serial, IdentityClasses? Classes, BoundType Key, bool Keep) RowsRequest(BoundType subject, BindingScope scope)
+    // A request's terms (PremiseRefines' and FirstRows'): its view, the view's identity classes, the subject's key in them, whether
+    // those keys are final (a function of the view and the pass) and whether its rows may be kept. R7-C2c2: a request keys its
+    // subject and its view's facts by the view's identity classes (SPEC 8.2.3), whatever the table's finality; finality decides
+    // only whether the rows and the view's entry may be kept for a later request.
+    private (EvidenceView View, int Serial, IdentityClasses? Classes, BoundType Key, bool Final, bool Keep) RowsRequest(BoundType subject, BindingScope scope)
     {
         if (this.enumerateWalking > 0)
         {
-            throw new InvalidOperationException($"A request for the rows of `{subject}` entered from Enumerate's walk (InternalInvariant; R7-C2a).");
+            throw new InvalidOperationException($"A request for the rows of `{subject}` entered from Enumerate's walk or a closure validator's read (InternalInvariant; R7-C2a).");
         }
 
         var classes = HasTypeIdentity(scope) ? this.ClassesOf(scope, out _) : null;
         var key = classes is null ? subject : this.ClassKey(subject, classes);
         var view = this.ViewOf(scope);
         var serial = SerialOf(scope);
-        return (view, serial, classes, key, this.enumerateDepth == 0 && this.KeptRegion && (classes is null ? !HasTypeIdentity(scope) : classes.Final));
+        var final = classes is null ? !HasTypeIdentity(scope) : classes.Final;
+        return (view, serial, classes, key, final, this.enumerateDepth == 0 && this.KeptRegion && final);
     }
 
-    // An entered request's preparation: the view's index. Returns whether every reading it formed was a kept one (the rows may then
-    // be kept).
-    private bool PrepareRows(BoundType subject, EvidenceView view, int serial)
+    // An entered request's preparation: the view's entry in Closure(view) and, for an outermost request whose entry is not Kept, the
+    // view's readings in it, after which the entry is Kept when every reading the preparation formed was kept and the request's class
+    // keys are `final` (R7-C2e2-1's N1). Returns the entry and whether the preparation formed no reading (the rows may then be kept:
+    // every reading it read was a kept one).
+    private (ViewIndex Index, bool Keep) PrepareRows(BoundType subject, EvidenceView view, int serial, bool final)
     {
-        if (this.enumeratePrepared.Add((view, serial)))
-        {
-            this.IndexWritten(view, serial);
-        }
+        var index = this.IndexOf(view, serial);
 
         // The walk demands nothing, so a nested demand comes from the outermost request's preparation: it reads the written facts
         // alone, and the rows it left are dropped before the outermost walk reads the whole index. The request's premises are the
-        // view it took: a demand of its preparation that moved them is a builder's broken contract.
+        // view it took: a demand of its preparation that moved them is a builder's broken contract. A Kept entry needs no preparation.
         if (this.enumerateDepth != 1)
         {
-            return true;
+            return (index, true);
         }
 
-        var formations = this.readingFormations;
-        if (this.IndexNormalized(view, serial) != serial)
+        var keep = true;
+        if (!index.Kept)
         {
-            throw new InvalidOperationException($"The preparation of the request for `{subject}` moved its own view (InternalInvariant; R7-C2a).");
+            var (formations, stores) = (this.readingFormations, this.readingStores);
+            if (this.IndexNormalized(index, view) != serial)
+            {
+                throw new InvalidOperationException($"The preparation of the request for `{subject}` moved its own view (InternalInvariant; R7-C2a).");
+            }
+
+            keep = formations == this.readingFormations; // Every reading of the preparation was a kept one.
+
+            // Every reading it formed was kept, and its class keys are final (R7-C2e2-1's N1).
+            index.Kept = final && this.readingFormations - formations == this.readingStores - stores;
         }
 
         this.enumerateMemo.Clear();
-        return formations == this.readingFormations;
+        return (index, keep);
     }
 
-    // A request returns: its enclosing request's classes are back, and the outermost one empties the request tables.
+    // A request returns: its enclosing request's classes are back, and the outermost one empties the request tables and drops the
+    // entries it formed unless Kept.
     private void LeaveRows(IdentityClasses? enclosing)
     {
         this.enumerateClasses = enclosing;
         if (--this.enumerateDepth == 0)
         {
             this.enumerateMemo.Clear();
-            this.enumerateIndex.Clear();
-            this.enumeratePrepared.Clear();
+            this.DropOwnedEntries();
             this.enumeratePoolNext = 0;
-            this.enumerateFactPoolNext = 0;
             if (!this.KeepsAcrossRequests)
             {
                 this.ClearKeptRows(); // Before the capability phase the epoch is this request.
@@ -345,8 +366,30 @@ public sealed partial class Binding
         this.enumerateHeads.Clear();
     }
 
-    // The view's row-giving facts (RowKind) by subject key, as written.
-    private void IndexWritten(EvidenceView view, int serial)
+    // The entry of the view value in Closure(view): when the view has none at its serial, its entry is formed in place with the written
+    // facts, owned by the outermost request until Kept. A Kept entry's readings are read only in KeptRegion (R7-M20): outside it an
+    // outermost request forms its own readings, so it forms the entry again (a nested demand reads written facts alone).
+    private ViewIndex IndexOf(EvidenceView view, int serial)
+    {
+        var key = (view, this.activeRequirementContract);
+        if (this.enumerateIndex.TryGetValue(key, out var index) && index.Serial == serial &&
+            (!index.Readings || this.enumerateDepth != 1 || this.KeptRegion))
+        {
+            return index;
+        }
+
+        index ??= this.enumerateIndexPool.Count != 0 ? this.enumerateIndexPool.Pop() : new();
+        index.Open(serial);
+        this.enumerateIndex[key] = index;
+        this.enumerateOwned.Add(key);
+        this.IndexWritten(index, view);
+        return index;
+    }
+
+    // The view's facts as written into its entry, each row's under its subject and a fact of a row kind (RowKind) also under its class
+    // key in the request's view. An extension's re-filing repeats the other rows' pairs in an entry no validator reads (the request's,
+    // dropped when it returns).
+    private void IndexWritten(ViewIndex index, EvidenceView view)
     {
         for (var scope = view.Premises; scope is not null; scope = scope.Parent)
         {
@@ -359,23 +402,80 @@ public sealed partial class Binding
             {
                 if (fact.Subject is not null && RowKind(fact))
                 {
-                    this.IndexFact(view, serial, scope, fact, fact, fact.Subject);
-                    if (this.enumerateClasses is { } classes && this.ClassKey(fact.Subject, classes) is var key && !ReferenceEquals(key, fact.Subject))
+                    index.Add(scope, fact, fact, fact.Subject);
+                    this.ClosureIndexWork++;
+
+                    // R7-C2c2 c2-1 meets R7-C2e2-2 here: the class-key copy is the row kinds' alone (c2-3b: a leaf kind's fact too). The
+                    // other rows keep written subjects, so the validators, which pair facts by bucket, never meet a fact of another
+                    // written subject.
+                    if (this.enumerateClasses is { } classes && this.ClassKey(fact.Subject, classes) is var at && !ReferenceEquals(at, fact.Subject))
                     {
-                        this.IndexFact(view, serial, scope, fact, fact, key); // R7-C2c2: also under its class key in the request's view
+                        index.Add(scope, fact, fact, at); // also under its class key in the request's view
+                        this.ClosureIndexWork++;
                     }
+                }
+                else if (fact is { Kind: ConstraintKind.TypeIdentity or ConstraintKind.Semantics, Subject: not null })
+                {
+                    index.Add(scope, fact, fact, fact.Subject);
+                    this.ClosureIndexWork++;
                 }
             }
         }
     }
 
-    // The outermost request's view, under a parameter identity: each Contract fact as the view reads it (Reading, every reader's; a
-    // leaf kind's fact is indexed as written and by its class key alone, the class header's Identity), added after
-    // all are read. A reading's own demands are nested, so they read written facts alone: the index does not depend on the order of the
-    // facts.
-    private int IndexNormalized(EvidenceView view, int serial)
+    // A closure validator's read of the view `scope` denotes (the class header's Readers): outside any request, and until
+    // EndClosureRead nothing may start one. The entry is a Kept one or the read's own.
+    private ViewIndex BeginClosureRead(BindingScope scope)
     {
-        int? after = serial; // The loop writes nothing but through Reading.
+        if (this.enumerateDepth != 0 || this.enumerateWalking != 0)
+        {
+            throw new InvalidOperationException("A closure validator's read was entered from a request or another read (InternalInvariant; R7-C2e2-2).");
+        }
+
+        var index = this.IndexOf(this.ViewOf(scope), SerialOf(scope));
+        this.enumerateWalking++;
+        return index;
+    }
+
+    // The read ended: an entry it formed goes back to the pool.
+    private void EndClosureRead()
+    {
+        this.enumerateWalking--;
+        this.DropOwnedEntries();
+    }
+
+    // The outermost request returned: the entries it formed go back to the pool unless Kept.
+    private void DropOwnedEntries()
+    {
+        foreach (var key in this.enumerateOwned)
+        {
+            if (this.enumerateIndex.TryGetValue(key, out var index) && !index.Kept)
+            {
+                this.enumerateIndex.Remove(key);
+                this.enumerateIndexPool.Push(index);
+            }
+        }
+
+        this.enumerateOwned.Clear();
+    }
+
+    // The pass ended (ResetCapabilities): every entry goes back to the pool.
+    private void ClearClosure()
+    {
+        foreach (var index in this.enumerateIndex.Values)
+        {
+            this.enumerateIndexPool.Push(index);
+        }
+
+        this.enumerateIndex.Clear();
+    }
+
+    // The outermost request's view, under a parameter identity: each Contract fact as the view reads it (Reading, every reader's; a
+    // leaf kind's fact is indexed as written and by its class key alone, the class header's Identity), added after all are read. A
+    // reading's own demands are nested, so they read written facts alone: the index does not depend on the order of the facts.
+    private int IndexNormalized(ViewIndex index, EvidenceView view)
+    {
+        int? after = index.Serial; // The loop writes nothing but through Reading.
         if (HasParameterIdentity(view.Premises))
         {
             var start = this.enumerateNormalized.Count;
@@ -399,59 +499,84 @@ public sealed partial class Binding
             for (var i = start; i < this.enumerateNormalized.Count; i++)
             {
                 var (scope, raw, fact) = this.enumerateNormalized[i];
-                this.IndexFact(view, serial, scope, raw, fact, fact.Subject!);
+                index.Add(scope, raw, fact, fact.Subject!);
             }
 
+            this.ClosureIndexWork += this.enumerateNormalized.Count - start;
             this.enumerateNormalized.RemoveRange(start, this.enumerateNormalized.Count - start);
         }
 
         return after ?? SerialOf(view.Premises);
     }
 
-    // One fact of an environment of the view under its subject key (a projection's declaration and receiver, else the Type): `raw` as
-    // the environment holds it (its availability), `fact` as the index reads it. A list keeps one order whatever the premises'
-    // (the class header's Invariants: a row's Source): a fact whose own subject has the list's key before one under its class key
-    // or its reading's subject, then Binding.TypeIdentity's Order of the facts' subjects; equal subjects keep their arrival.
-    private void IndexFact(EvidenceView view, int serial, BindingScope scope, BoundConstraint raw, BoundConstraint fact, BoundType at)
+    // An entry of Closure(view) (the class header's): the serial it was formed at, whether it is Kept, and its buckets by (chain scope,
+    // kind, SubjectKey). Its lists stay with it, capacity kept.
+    private sealed class ViewIndex
     {
-        var key = (view, serial, scope, SubjectKey(at).Symbol, SubjectKey(at).Type);
-        if (!this.enumerateIndex.TryGetValue(key, out var list))
+        private readonly List<List<(BoundConstraint Raw, BoundConstraint Fact)>> lists = new();
+        private int used;
+
+        internal int Serial { get; private set; }
+
+        internal bool Kept { get; set; }
+
+        internal bool Readings { get; private set; }
+
+        internal Dictionary<(BindingScope Scope, ConstraintKind Kind, BindingSymbol? Symbol, BoundType Type), List<(BoundConstraint Raw, BoundConstraint Fact)>> Buckets { get; }
+            = new();
+
+        internal void Open(int serial)
         {
-            if (this.enumerateFactPoolNext < this.enumerateFactPool.Count)
+            this.Serial = serial;
+            this.Kept = false;
+            this.Readings = false;
+            this.Buckets.Clear();
+            this.used = 0;
+        }
+
+        // One fact of an environment of the view in its kind's row under the subject key of `at` (a projection's declaration and
+        // receiver, else the Type; the fact's subject or its class key): `raw` as the environment holds it (its availability), `fact`
+        // as the index reads it. A row kind's bucket (RowKind) keeps one order whatever the premises' (the class header's Invariants:
+        // a row's Source): a fact whose own subject has the bucket's key before one under its class key or its reading's subject, then
+        // Binding.TypeIdentity's Order of the facts' subjects; equal subjects keep their arrival. Another kind's bucket keeps its
+        // environment's order, which its readers' pairs read (ValidateAssociatedOverlapAgreement: each identity with those before it).
+        internal void Add(BindingScope scope, BoundConstraint raw, BoundConstraint fact, BoundType at)
+        {
+            var key = (scope, fact.Kind, SubjectKey(at).Symbol, SubjectKey(at).Type);
+            if (!this.Buckets.TryGetValue(key, out var list))
             {
-                list = this.enumerateFactPool[this.enumerateFactPoolNext++];
+                if (this.used == this.lists.Count)
+                {
+                    this.lists.Add(new());
+                }
+
+                list = this.lists[this.used++];
                 list.Clear();
-            }
-            else
-            {
-                list = new();
-                this.enumerateFactPool.Add(list);
-                this.enumerateFactPoolNext++;
+                this.Buckets[key] = list;
             }
 
-            this.enumerateIndex[key] = list;
+            var position = RowKind(fact) ? 0 : list.Count;
+            for (var end = list.Count; position < end;)
+            {
+                var middle = (position + end) >> 1;
+                if (Before(raw.Subject!, list[middle].Raw.Subject!, at))
+                {
+                    end = middle;
+                }
+                else
+                {
+                    position = middle + 1;
+                }
+            }
+
+            list.Insert(position, (raw, fact));
+            this.Readings |= !ReferenceEquals(raw, fact);
+
+            static bool Before(BoundType subject, BoundType other, BoundType at)
+                => Own(subject, at) != Own(other, at) ? Own(subject, at) : Order(subject, other) < 0;
+
+            static bool Own(BoundType subject, BoundType at)
+                => ReferenceEquals(SubjectKey(subject).Symbol, SubjectKey(at).Symbol) && ReferenceEquals(SubjectKey(subject).Type, SubjectKey(at).Type);
         }
-
-        var index = 0;
-        for (var end = list.Count; index < end;)
-        {
-            var middle = (index + end) >> 1;
-            if (Before(raw.Subject!, list[middle].Raw.Subject!, at))
-            {
-                end = middle;
-            }
-            else
-            {
-                index = middle + 1;
-            }
-        }
-
-        list.Insert(index, (raw, fact));
-
-        static bool Before(BoundType subject, BoundType other, BoundType at)
-            => Own(subject, at) != Own(other, at) ? Own(subject, at) : Order(subject, other) < 0;
-
-        static bool Own(BoundType subject, BoundType at)
-            => ReferenceEquals(SubjectKey(subject).Symbol, SubjectKey(at).Symbol) && ReferenceEquals(SubjectKey(subject).Type, SubjectKey(at).Type);
     }
 }

@@ -114,9 +114,7 @@ internal sealed partial class MirBuilder
         }
         else if (position is { Kind: BoundPatternKind.Case, Case.Ordinal: var ordinal })
         {
-            var discriminant = this.Temp(BoundType.ISize, position.Source);
-            this.Set(discriminant, MirRvalue.Discriminant(place), position.Source);
-            this.Pass(MirOperand.Copy(discriminant), ordinal, next, position.Source);
+            this.CaseTest(place, ordinal, next, position.Source);
             (place, tested) = (this.body.Project(place, MirProjectionKind.Downcast, ordinal), true);
         }
 
@@ -165,6 +163,16 @@ internal sealed partial class MirBuilder
         }
 
         this.Pass(MirOperand.Copy(this.Made(value)), 1, next, position.Source);
+    }
+
+    // SPEC 14.8.1, 22.10.1: the one test of a Place's case, a Case position's or a call's Result's (Ok, case 0): its discriminant in a temp
+    // made where it is read, so that its StorageLive, write and read lie in one block (A1 numbers it chain-local); building goes on in a new
+    // block where it is the ordinal, else at next.
+    private void CaseTest(MirPlace place, long ordinal, int next, Koto node)
+    {
+        var discriminant = this.Temp(BoundType.ISize, node);
+        this.Set(discriminant, MirRvalue.Discriminant(place), node);
+        this.Pass(MirOperand.Copy(discriminant), ordinal, next, node);
     }
 
     // A test's branch: on in a new block where the value is the expected one, else to the next arm.

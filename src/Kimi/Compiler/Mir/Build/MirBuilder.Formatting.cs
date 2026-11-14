@@ -225,15 +225,10 @@ internal sealed partial class MirBuilder
     private void View(MirPlace destination, Koto node, MirPlace fixedBuffer, int done)
     {
         var scope = this.OpenScope(block: false);
-        var view = compilation.Library.GetSymbol(KimiDeclarationId.FixedBufferText)!;
-        var subst = compilation.Types.Synthesized(view, this.body.TypeOf(fixedBuffer), [], []);
-        var result = this.Temp(TyCtxt.Signature(view, subst, -1, out _)!, node);
         var at = this.arguments.Count;
         this.arguments.Add(this.Borrow(SemanticsKind.Ref, fixedBuffer, node));
-        this.Invoke(result, new(MirCalleeKind.Fn, view, subst), at, node);
-        var discriminant = this.Temp(BoundType.ISize, node);
-        this.Set(discriminant, MirRvalue.Discriminant(result), node);
-        this.Pass(MirOperand.Copy(discriminant), 0, done, node);
+        var result = this.Synthesized(KimiDeclarationId.FixedBufferText, this.body.TypeOf(fixedBuffer), at, node);
+        this.CaseTest(result, 0, done, node);
         at = this.arguments.Count;
         this.arguments.Add(MirOperand.Copy(this.body.Project(this.body.Project(result, MirProjectionKind.Downcast, 0), MirProjectionKind.Field, 0)));
         var line = compilation.Library.GetSymbol(KimiDeclarationId.WriteLineUtf8)!; // A body since R8-W1c-3.
@@ -335,18 +330,13 @@ internal sealed partial class MirBuilder
     // (MirValidator.ConstantRecords): no temporary, Loan or destruction. The call's Result is tested as a write's.
     private void Text(CallPlan write, MirPlace writer, bool deferred, int done, Koto node)
     {
-        var target = compilation.Library.GetSymbol(deferred ? KimiDeclarationId.WriterDeferLiteral : KimiDeclarationId.StringWitnessFormat)!;
-        var subst = compilation.Types.Synthesized(target, deferred ? this.body.TypeOf(writer) : null, [], []);
-        var result = this.Hold(TyCtxt.Signature(target, subst, -1, out _)!, node);
-        var discriminant = this.Hold(BoundType.ISize, node);
         var record = this.Viewed(this.Literal(write.ArgumentOperations[1].Source!), BoundType.String, node);
         var adapter = this.Borrow(SemanticsKind.Uniq, writer, node);
         var at = this.arguments.Count;
         this.arguments.Add(deferred ? adapter : record); // deferLiteral(self, text); format(self: ref/string, writer).
         this.arguments.Add(deferred ? record : adapter);
-        this.Invoke(result, new(MirCalleeKind.Fn, target, subst), at, node);
-        this.Set(discriminant, MirRvalue.Discriminant(this.Made(result)), node);
-        this.Pass(MirOperand.Copy(this.Made(discriminant)), 0, done, node);
+        var target = deferred ? KimiDeclarationId.WriterDeferLiteral : KimiDeclarationId.StringWitnessFormat;
+        this.CaseTest(this.Synthesized(target, deferred ? this.body.TypeOf(writer) : null, at, node), 0, done, node);
     }
 
     // An owning interpolation's failed writes' block, made by the first branch to it, failing with KIMI_E_FORMAT.
@@ -366,23 +356,13 @@ internal sealed partial class MirBuilder
     private void Finish(MirPlace destination, MirPlace writer, MirPlace buffer, int done, Koto node)
     {
         var scope = this.OpenScope(block: false);
-        var finish = compilation.Library.GetSymbol(KimiDeclarationId.WriterFinish)!;
-        var subst = compilation.Types.Synthesized(finish, this.body.TypeOf(writer), [], []);
-        var ended = this.Hold(TyCtxt.Signature(finish, subst, -1, out _)!, node);
         var at = this.arguments.Count;
         this.arguments.Add(this.Borrow(SemanticsKind.Uniq, writer, node));
-        this.Invoke(ended, new(MirCalleeKind.Fn, finish, subst), at, node);
-        var discriminant = this.Temp(BoundType.ISize, node);
-        this.Set(discriminant, MirRvalue.Discriminant(this.Made(ended)), node);
-        this.Pass(MirOperand.Copy(discriminant), 0, done, node);
-        var take = compilation.Library.GetSymbol(KimiDeclarationId.HeapBufferIntoString)!;
-        subst = compilation.Types.Synthesized(take, this.body.TypeOf(buffer), [], []);
-        var result = this.Hold(TyCtxt.Signature(take, subst, -1, out _)!, node);
+        this.CaseTest(this.Synthesized(KimiDeclarationId.WriterFinish, this.body.TypeOf(writer), at, node), 0, done, node);
         at = this.arguments.Count;
         this.arguments.Add(MirOperand.Move(buffer));
-        this.Invoke(result, new(MirCalleeKind.Fn, take, subst), at, node);
-        this.Set(discriminant, MirRvalue.Discriminant(this.Made(result)), node);
-        this.Pass(MirOperand.Copy(discriminant), 0, done, node);
+        var result = this.Synthesized(KimiDeclarationId.HeapBufferIntoString, this.body.TypeOf(buffer), at, node);
+        this.CaseTest(result, 0, done, node);
         this.Use(destination, MirOperand.Move(this.body.Project(this.body.Project(result, MirProjectionKind.Downcast, 0), MirProjectionKind.Field, 0)), node);
         this.CloseScope(scope);
     }
@@ -390,15 +370,25 @@ internal sealed partial class MirBuilder
     // The block a branch leaves to, made by the first branch.
     private int Done(ref int done) => done >= 0 ? done : done = this.body.AddBlock();
 
+    // A call the builder synthesizes of a library declaration on the operands pushed since at, under the substitution of its declaring
+    // Type's instance (null: none), into a new temp of its signature's result, made once the call writes it (Hold: destroyed before the
+    // operands' temporaries, SPEC 3.6). Its Place, whose Result CaseTest tests.
+    private MirPlace Synthesized(KimiDeclarationId id, BoundType? declaring, int at, Koto node)
+    {
+        var function = compilation.Library.GetSymbol(id)!;
+        var subst = compilation.Types.Synthesized(function, declaring, [], []);
+        var result = this.Hold(TyCtxt.Signature(function, subst, -1, out _)!, node);
+        this.Invoke(result, new(MirCalleeKind.Fn, function, subst), at, node);
+        return this.Made(result);
+    }
+
     // A write's or a $tryWrite's status call (SPEC 22.10.1, 22.10.4), its Result tested: Ok continues, a failure goes to done. An owning
     // interpolation's write takes its adapter, an exclusive borrow of the internal adapter at its storage's argument.
     private void Tested(CallPlan call, int done, Koto node, Koto? storage, MirPlace adapter)
     {
         var result = this.Hold(call.ReturnType, node);
-        var discriminant = this.Hold(BoundType.ISize, node);
         this.Call(result, call, node, null, storage, storage is null ? default : this.Borrow(SemanticsKind.Uniq, adapter, node));
-        this.Set(discriminant, MirRvalue.Discriminant(this.Made(result)), node);
-        this.Pass(MirOperand.Copy(this.Made(discriminant)), 0, done, node);
+        this.CaseTest(this.Made(result), 0, done, node);
     }
 
     // An owning interpolation's FormatSegment on the adapter pushed at at, then its estimate (SPEC 22.10.5): the literal bytes and a token

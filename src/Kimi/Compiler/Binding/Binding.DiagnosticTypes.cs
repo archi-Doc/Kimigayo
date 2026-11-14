@@ -385,8 +385,15 @@ public sealed partial class Binding
         }
         else if (length.Values is { } values)
         {
-            // An interpolation-bound term has no source form (R8-W2): the MIR dump writes its literal bytes and its value Types.
-            text.Append('(').Append(length.Value.ToString(System.Globalization.CultureInfo.InvariantCulture)).Append(" + bound").Append(DiagnosticTypeName(values)).Append(')');
+            // An interpolation term has no source form (R8-W2): the MIR dump writes its literal bytes, its kind and its value Types.
+            var kind = length.Operation switch
+            {
+                LengthOperation.InterpolationBound => " + bound",
+                LengthOperation.InterpolationHint => " + hint",
+                _ => throw new ArgumentOutOfRangeException(nameof(length)),
+            };
+            text.Append('(').Append(length.Value.ToString(System.Globalization.CultureInfo.InvariantCulture))
+                .Append(kind).Append(DiagnosticTypeName(values)).Append(')');
         }
         else
         {
