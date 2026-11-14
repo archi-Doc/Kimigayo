@@ -20053,7 +20053,7 @@ R8-M* and R9-M* by the stage of the recording unit.
       (`__kimi_writer_reserve` and `__kimi_buffer_reserve`); the Kimigayo arms (`Utf8Writer.reserve`'s kind 0/1, reserving through
       `FixedBuffer.reserve` and the heap hint's growth) stay, part b's subject;
     - `__kimi_buffer_bytes` as a plain define: removed with its last caller (`{{text_try_format}}` and `WriteFormattingConversion` at W1c,
-      `format_take_string` at W2);
+      `format_take_string` at W2); done, R8-W2 c3a (211191c9e removed its last text).
     - `__kimi_utf8_valid`: removed with `{{text_validate_utf8}}` (W1c); done, R8-M22 (W1c-1).
   - Moves: acceptance, the buffer half of `BodylessWitness` (a `BufferWriter` requirement call or requirement Item at either buffer is
     accepted; no corpus program uses it, R5-M146; diagnostic snapshot 0 differences); `.ll`: 546 of 6,139 fixtures move, 84 in the
@@ -20234,7 +20234,7 @@ R8-M* and R9-M* by the stage of the recording unit.
     until W2) and `__kimi_erased_reserve(ret, writer, amount)`: a Writer's `reserve` through the adapter's dispatch word, then the
     window check (`written == 0`, `remaining >= amount`, else `BufferFull`), the plan contract of `ErasedReserve`. `LlvmModuleText`
     owns its text (`ErasedWriterRuntime`, expanded once on first use); `ModuleCodegen` writes it after the formatting runtime when
-    `Needs.ErasedWriter` (bit 32; bit 16 stays free) was requested: by `Text.writer` (FunctionCodegen.Formatting's `Writer`) and by
+    `Needs.ErasedWriter` (bit 32; bit 16 is `Needs.FormatFloat` since R8-S2c; bit 64 is free after R8-W2 c4) was requested: by `Text.writer` (FunctionCodegen.Formatting's `Writer`) and by
     `Request(HelperNeeds.FormattingRuntime)`.
   - **The window's bodies** (W1b-1): `WriteWindow.push`, `append`, `limit`, `commit` and `Utf8Writer.status` are Kimigayo bodies in
     `Formatting.kimi` (SPEC 22.9.4, 22.10.1); `written` and `remaining` are `public var` with `private set` (a user write is
