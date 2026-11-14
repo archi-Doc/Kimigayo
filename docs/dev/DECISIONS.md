@@ -19821,6 +19821,8 @@ R8-M* and R9-M* by the stage of the recording unit.
     order in `CompareLength`; three term arms at the substitution sites instead of one in `SubstituteLength`.
   - Amended by R8-M24 (R8-W2 a2): `FormatEstimate.Stack` is deleted; `FormattingTypes.StackLimit` is read by the interpolation-bound
     term alone (rule L).
+  - Amended by R8-M40 (R8-W2 c2t): two term rows; both value-Type sites refold through `TyCtxt.Refold` (`ContractLength` keeps its
+    own, PLAN G875); `StackBound` reads `Measure`.
 - **R8-M18 The write window, the writer's leaf and its reservation are Kimigayo bodies; the erased writer's routines are a kept
   runtime** (Back, 2026-11-09; R8-W1b-2, W1b-1 and W1b-3, plan §5.2 W1 b; Major each; the W1 family reviewer: W1b design reviews 1
   REVISE, 2 ACCEPT, W1b-3's design reviews 1-3, implementation reviews ACCEPT; the owner's O-108 (a); the Middle's C-188; on R8-M1,
@@ -21000,6 +21002,32 @@ R8-M* and R9-M* by the stage of the recording unit.
   - RP8 (R7-M21 (2)): T-169 (11-13 10:49-11:14): the O2 and O0 corpus A/B shows no slowdown and the warm compile cost is within;
     cold Bind shifts per program, which deterministic GC counts per phase attribute to the collector's cadence; T-186 reads the
     timing GC-free (`artifacts/benchmarks/r8-k1a-20261113-111107`).
+- **R8-M40 The interpolation-hint term: a second value-Type term row and one refold** (Back, 2026-11-13; R8-W2 c2t, Major; in the
+  Front's files, designed and implemented by the Back with the Front's review, C-307: ACCEPT WITH NOTES; part c's plan §3 c2t,
+  Revision 1 B6, N2; O-214 (a) R3-N4). SPEC 22.10.5. Amends R8-M21.
+  - The term: `LengthOperation.InterpolationHint`.
+    - `Value` is an owning interpolation's later literal bytes at a write position; `Values` is the erased Tuple of the later value
+      Types.
+    - Its one producer is `TyCtxt.InterpolationHint(values, literal)` (R8-W2 c2b's builder; no producer until then).
+    - It folds through `FormattingTypes.HintBound`: the literal bytes plus each bounded value's `Bound`, an unbounded value counted
+      0, and a sum past the maximum object size (2^63 − 1) 0 (R3-10's rule). The result is a constant when the value Types decide
+      it, else the term. It is compiler-made, so SPEC 4.2's overflow error does not apply.
+  - One fact: `StackBound` and `HintBound` read one walk of the value Types (`FormattingTypes.Measure`). Only their rules differ:
+    rule L gives the region 0 for any unbounded value or more than 1,024 bytes, and the hint counts an unbounded value 0 with no
+    limit.
+  - One refold: a substitution or an instance folds a term again by its own operation (`TyCtxt.Refold`), at both value-Type sites
+    (`Binding.SubstituteLength`'s term arm, `Binding.InstanceLength`). `ContractLength` keeps `InterpolationBound`, since a fixed
+    array's length is only the bound term (its own refold stays until PLAN G875). A hint is only a MIR value (c2b's operand; c2a's
+    `Length` constant), never a Type's length or an Item's length argument. A term's rebuilt slots carry no open substitution:
+    `Refold` substitutes declared parameter patterns only, and a term forms only in MIR build. If an open substitution ever reaches
+    this arm (G814's rule, folded into R7-I2), an unbound slot must keep itself there (R1, C-307).
+  - Spelling: `(L + hint(Types))`. Relations are R8-M21's: a hint and a bound over the same values and literal intern apart.
+  - Staged (PLAN G876): until c2b, `FormatEstimate` states the hint's rule beside `HintBound`; c2b deletes it.
+  - Moves: none (unused until c2b). RP8 (R7-M21 (2)): T-205 (11-14 11:29-11:32): the compile cost within A'/A's noise, warm 0 B
+    (`artifacts/benchmarks/r8-k1a-20261114-112931`).
+  - Rejected: a refold arm per site (R8-M21); a second walk for the hint (C-307); folding closed values into `Value` (a1 keeps the
+    producer's Tuple); re-pointing codegen's `Estimate` to `HintBound` at c2t (c2b replaces the operand whole); `Refold` in
+    `ContractLength` (`ContractSolver.cs`'s W4 list, R7-C2's hunk).
 - **R9-M1 A check's phase sequence is `Compilation.Check`** (2026-11-08; R9-F5; Major, behavior-preserving; review 1 REVISE, then
   review 2). SPEC 23.1.2, 23.2.2; IMPL 20.6.1. Supersedes in part R5-M65 (`Project` reads `Accepts`) and R5-M77 (`Project` discovers
   the test catalog after acceptance and owns it).
