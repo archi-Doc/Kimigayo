@@ -13,14 +13,14 @@ internal enum KimiLibraryContainer : byte
     Text,
     FixedBuffer,
     HeapBuffer,
-    Utf8Slice,
     Storage,
     Raw,
     FixedArray,
 }
 
 /// <summary>Immutable recognition rules, shared across compilations. Stable IDs are independent of catalog and syntax order. The entries
-/// are in KimiLibraryCatalog.Definitions.cs, the rows an operation publishes beyond its signature in KimiLibraryCatalog.Rows.cs.</summary>
+/// are in KimiLibraryCatalog.Definitions.cs, the rows an operation publishes beyond its signature and the functions code generation keeps
+/// out of line in KimiLibraryCatalog.Rows.cs.</summary>
 internal static partial class KimiLibraryCatalog
 {
     internal static ReadOnlySpan<Entry> Entries => Definitions;

@@ -130,12 +130,13 @@ internal sealed partial class HoverBuilder(SemanticQuery query)
                 continue;
             }
 
-            if (node is IdentifierNameKoto identifier &&
-                source.SourceText.AsSpan(node.Span.Start, node.Span.Length).SequenceEqual(identifier.IdentifierName))
+            // A synthesized call (a loop's entry and step, a range's or a formatting write's call) names no token: its name spans its
+            // consumer, which owns no hover of its own.
+            if (node is IdentifierNameKoto identifier && Written(source, identifier))
             {
                 this.Add(source, node.Span, Effective(node), 1);
             }
-            else if (node is InvocationKoto call && Name(call.Method) is { } name)
+            else if (node is InvocationKoto call && Name(call.Method) is { } name && (name is not IdentifierNameKoto named || Written(source, named)))
             {
                 this.Add(source, name.Span, call, 3);
             }
@@ -189,6 +190,9 @@ internal sealed partial class HoverBuilder(SemanticQuery query)
         OriginApplicationKoto application => Name(application.Type),
         _ => null,
     };
+
+    private static bool Written(SourceDocument source, IdentifierNameKoto name)
+        => source.SourceText.AsSpan(name.Span.Start, name.Span.Length).SequenceEqual(name.IdentifierName);
 
     private static Koto Effective(Koto syntax)
     {

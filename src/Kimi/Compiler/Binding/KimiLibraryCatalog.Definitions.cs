@@ -7,12 +7,11 @@ namespace Kimi.Compiler;
 // declaration (KimiLibraryCatalog.cs reads them).
 internal static partial class KimiLibraryCatalog
 {
-    // The published rows (SPEC 4.9.6) the entries name: no user code beyond the input accesses; `K` equality; the destruction of the
-    // target in place (`replace`) or of its elements (the `clear`s, `truncate`); the calls of the Callable input (parameter 1), then the
-    // destruction of the target's removed elements (`removeAll`, SPEC 4.9.7: after the last call) and of the Callable input it consumes
-    // (DECISIONS BU-70); a formatting of the value (first parameter, or
-    // second after a writer). Every initializer the entries and indices read is in this file, in order: the order of static initializers
-    // across partial files is not defined.
+    // The published rows (SPEC 4.9.6, 22.10.1) the entries name: no user code beyond the input accesses; `K` equality; the destruction
+    // of the target in place (`replace`) or of its elements (the `clear`s, `truncate`); the calls of the Callable input (parameter 1),
+    // then the destruction of the target's removed elements (`removeAll`, SPEC 4.9.7: after the last call) and of the Callable input it
+    // consumes (DECISIONS BU-70); a formatting of the value (first parameter, or second after a writer). Every initializer the entries
+    // and indices read is in this file, in order: the order of static initializers across partial files is not defined.
     private static readonly PublishedRow None = new(Runs: null); // Not `default`, which skips the parameter defaults (On 0, Destroys 0).
     private static readonly PublishedRow Equality = new(KimiDeclarationId.Equatable, On: 1);
     private static readonly PublishedRow Replace = new(Destroys: 0, InPlace: true);
@@ -118,6 +117,8 @@ internal static partial class KimiLibraryCatalog
         new(KimiDeclarationId.WriterStatus, "status", SourceFunction: true, Owner: "Utf8Writer"),
         new(KimiDeclarationId.WriterReserve, "reserve", SourceFunction: true, CallerLocation: true, Owner: "Utf8Writer"),
         new(KimiDeclarationId.WriterWriteUtf8, "writeUtf8", SourceFunction: true, CallerLocation: true, Owner: "Utf8Writer"),
+        new(KimiDeclarationId.WriterDeferLiteral, "deferLiteral", SourceFunction: true, CallerLocation: true, Owner: "Utf8Writer"), // SPEC 22.5.1 until G1.
+        new(KimiDeclarationId.WriterFinish, "finish", SourceFunction: true, CallerLocation: true, Owner: "Utf8Writer"), // SPEC 22.5.1 until G1.
         new(KimiDeclarationId.WriteLineUtf8, "writeLine", KimiLibraryContainer.Console, SourceFunction: true, CallerLocation: true, Overload: 0),
         new(KimiDeclarationId.BoolFormatFormat, "format", SourceFunction: true, CallerLocation: true, Owner: "BoolFormat"), // SPEC 22.5.1 until G1.
         new(KimiDeclarationId.CharFormatFormat, "format", SourceFunction: true, CallerLocation: true, Owner: "CharFormat"), // SPEC 22.5.1 until G1.
@@ -125,7 +126,7 @@ internal static partial class KimiLibraryCatalog
         new(KimiDeclarationId.F32FormatFormat, "format", SourceFunction: true, CallerLocation: true, Owner: "F32Format"), // SPEC 22.5.1 until G1.
         new(KimiDeclarationId.F64FormatFormat, "format", SourceFunction: true, CallerLocation: true, Owner: "F64Format"), // SPEC 22.5.1 until G1.
         new(KimiDeclarationId.StringWitnessFormat, "format", SourceFunction: true, CallerLocation: true, Owner: "StringWitness"), // SPEC 22.5.1 until G1.
-        new(KimiDeclarationId.Utf8SliceFormat, "format", KimiLibraryContainer.Utf8Slice, SourceFunction: true, CallerLocation: true), // SPEC 22.5.1 until G1.
+        new(KimiDeclarationId.Utf8SliceFormatFormat, "format", SourceFunction: true, CallerLocation: true, Owner: "Utf8SliceFormat"), // SPEC 22.5.1 until G1.
         new(KimiDeclarationId.WrappingFormatFormat, "format", SourceFunction: true, CallerLocation: true, Owner: "WrappingFormat"), // SPEC 22.5.1 until G1.
         new(KimiDeclarationId.IntegerFormatFormat, "format", SourceFunction: true, CallerLocation: true, Owner: "IntegerFormat"), // SPEC 22.5.1 until G1.
         new(KimiDeclarationId.DictionaryReserve, "reserve", KimiLibraryContainer.Dictionary, SourceFunction: true, CallerLocation: true, Row: None),
@@ -176,6 +177,7 @@ internal static partial class KimiLibraryCatalog
         new(KimiDeclarationId.StorageDestroyValues, "destroyValues", KimiLibraryContainer.Storage, Function: CompilerFunctionKind.StorageDestroyValues),
         new(KimiDeclarationId.StorageErasedReserve, "erasedReserve", KimiLibraryContainer.Storage, Function: CompilerFunctionKind.StorageErasedReserve),
         new(KimiDeclarationId.StorageFormatFloat, "formatFloat", KimiLibraryContainer.Storage, Function: CompilerFunctionKind.StorageFormatFloat),
+        new(KimiDeclarationId.StorageFormatInteger128, "formatInteger128", KimiLibraryContainer.Storage, Function: CompilerFunctionKind.StorageFormatInteger128),
         new(KimiDeclarationId.StorageShrinkArray, "shrinkArray", KimiLibraryContainer.Storage, SourceFunction: true, CallerLocation: true),
         new(KimiDeclarationId.StorageDestroyArray, "destroyArray", KimiLibraryContainer.Storage, SourceFunction: true, CallerLocation: true),
         new(KimiDeclarationId.StorageDestroyDictionary, "destroyDictionary", KimiLibraryContainer.Storage, SourceFunction: true, CallerLocation: true),

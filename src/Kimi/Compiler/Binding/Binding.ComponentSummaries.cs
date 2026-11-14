@@ -349,9 +349,12 @@ public sealed partial class Binding
             return;
         }
 
-        foreach (var (part, _) in new CapabilityParts(type))
+        foreach (var (part, _, _) in new CapabilityParts(type))
         {
-            this.Walk(summary, part, stored, query);
+            if (part is not null)
+            {
+                this.Walk(summary, part, stored, query); // An Origin part is judged by the capability proof (StaticOrigin), not summarized.
+            }
         }
     }
 

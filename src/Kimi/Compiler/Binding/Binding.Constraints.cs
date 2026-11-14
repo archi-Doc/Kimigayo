@@ -75,6 +75,19 @@ public sealed partial class Binding
     private static bool IsSelfConstraint(IsKoto clause)
         => clause.Left is IdentifierNameKoto { IdentifierName: "Self" };
 
+    // SPEC 7.5, 8.5.2: the base of a subject's projection chain (`T` of `T.(C).X.(D).Y`), below transparent wrappers; the subject itself
+    // when it is no projection. Its published symbol is the root of a subject that formed no Type.
+    private static Koto SubjectBase(Koto subject)
+    {
+        var node = UnwrapTransparentType(subject)!;
+        while (node is MemberAccessKoto projection)
+        {
+            node = UnwrapTransparentType(projection.Left)!;
+        }
+
+        return node;
+    }
+
     private static bool IsSelfRequirement(BoundConstraint constraint)
         => (constraint.Contract is { } contract && IntrinsicContract.Of(contract.Intrinsic).SelfRequirement) ||
         (constraint.Kind == ConstraintKind.Not && constraint.Left?.Contract?.Intrinsic == IntrinsicKind.ObjectPayload);
@@ -163,7 +176,7 @@ public sealed partial class Binding
 
         if (proposition.Kind == ConstraintKind.TypeIdentity)
         {
-            if (this.SameCompleteType(proposition.Subject!, proposition.RequiredType!))
+            if (this.IdentityProven(proposition.Subject!, proposition.RequiredType!, scope))
             {
                 return ConstraintProof.Proven;
             }
@@ -374,51 +387,6 @@ public sealed partial class Binding
         return false;
     }
 
-    // A later run judges the source environments only: the Kimi library's environments are fixed and valid, and the first run
-    // already judged them.
-    private bool ValidateConstraintEnvironments(BindingMode mode, bool sourcesOnly = false)
-    {
-        var changed = false;
-        foreach (var scope in this.scopes.Values)
-        {
-            if (scope.Constraints is not { } environment || (sourcesOnly && this.IsLibraryDeclaration(scope.Owner)))
-            {
-                continue;
-            }
-
-            if (!environment.Invalid && !this.ValidateArithmeticDirections(scope, environment))
-            {
-                environment.Fail(scope.Owner); // ValidateArithmeticDirections failed the owner.
-                changed = true;
-                continue;
-            }
-
-            foreach (var fact in environment.Facts)
-            {
-                // The environment's judgment is its owner's, the node its record names: the proof runs in the owner's frame.
-                this.failedCause = null;
-                var frame = this.BeginConsultation(scope.Owner);
-                var proof = this.ProveConstraint(fact, scope);
-                if (proof != ConstraintProof.Error)
-                {
-                    this.DropConsultation(frame);
-                    continue;
-                }
-
-                var previous = scope.Owner.BindingState;
-                changed |= !environment.Invalid;
-                environment.Fail(scope.Owner);
-                // Other input facts can have independent contradictions. Record a
-                // sole missing-name cause only when this is the entire environment.
-                this.RequireConstraintInFrame(scope.Owner, proof, mode, frame, environment.Facts.Count == 1 ? this.FindConformanceDiagnosticCause(scope.Owner, fact) : null);
-                changed |= previous != scope.Owner.BindingState;
-                break;
-            }
-        }
-
-        return changed;
-    }
-
     private void BindConstraint(IsKoto clause, BindingScope scope)
     {
         if (IsRecovery(clause, out _))
@@ -453,7 +421,15 @@ public sealed partial class Binding
         // supplies none: the requirement binds against no subject, and a rejecting verdict rests on the subject.
         var failedSubject = subject is null &&
             (clause.BindingFailure != BindingFailure.None || clause.Left.BindingState == BindingState.Invalid || this.HasFailureCauses(clause.Left));
-        var unresolvedSubject = subject is null && scope.Owner is StructKoto or EnumKoto or ContractKoto && this.HasUnresolvedConstraintSyntax(clause.Left);
+        // Closed subjects are valid in a struct's, an enum's and, Self apart, a Contract's region.
+        var closedScope = scope.Owner is StructKoto or EnumKoto || (scope.Owner is ContractKoto && !IsSelfConstraint(clause));
+        // A subject that formed nothing for a missing name is pending when a later source can complete it into a subject valid here,
+        // as a formed one is below: its root (RootedInput) is the base its projection chain published (SPEC 7.5, 8.8.1: `T.(D).Item`,
+        // D missing), and whether it is closed is not known yet, so any subject is pending where closed subjects are valid. A root no
+        // source can make an input (`U is Copy` in a function) is decided now.
+        var pendingRoot = subject is null ? SubjectBase(clause.Left).BoundSymbol : null;
+        var unresolvedSubject = subject is null && this.HasUnresolvedConstraintSyntax(clause.Left) &&
+            (RootedInput(pendingRoot is { IsGenericInput: true }, pendingRoot) || closedScope);
         // A failed selector supplies no subject. Check the independent requirement syntax, then discard the provisional
         // proposition; its valid Type or Contract must not become another failure merely because the selector failed.
         var requirement = this.BindRequirement(clause.Right, unresolvedSubject || failedSubject ? BoundType.Unit : subject, semantics, bindingScope);
@@ -489,12 +465,9 @@ public sealed partial class Binding
         var input = symbol is { IsGenericInput: true } || (subject?.Kind == BoundTypeKind.AssociatedProjection && root?.Kind is BoundTypeKind.Parameter or BoundTypeKind.TargetProjection);
         input |= scope.Owner is StructKoto or EnumKoto && !IsSelfConstraint(clause) && this.DependentConstraint(requirement);
         input |= contractSelfClause;
-        var closedSubject = (scope.Owner is StructKoto or EnumKoto || (scope.Owner is ContractKoto && !IsSelfConstraint(clause))) && subject is not null &&
-            !this.DependentType(subject, unresolvedProjection: false);
-
-        // SPEC 7.5: a function's subject is rooted in its own parameter or in one of its declaring Type, the Container whose scope the
-        // member is declared in (Indexing; a conditional block's member included), never a local function's enclosing function.
-        var validSubject = subject is not null && (scope.Owner is FunctionKoto member ? input && (ReferenceEquals((root?.Symbol ?? symbol)?.Scope, scope) || ((root?.Symbol ?? symbol)?.Scope is { Owner: DeclarationContainerKoto } declaring && ReferenceEquals(declaring, member.BoundSymbol?.Scope))) : input || closedSubject || (IsSelfConstraint(clause) && scope.Owner is DeclarationContainerKoto and not (GroupKoto or ContractKoto)));
+        var closedSubject = closedScope && subject is not null && !this.DependentType(subject, unresolvedProjection: false);
+        var validSubject = subject is not null && (RootedInput(input, root?.Symbol ?? symbol) || closedSubject ||
+            (IsSelfConstraint(clause) && scope.Owner is DeclarationContainerKoto and not (GroupKoto or ContractKoto)));
         if (!validSubject && !unresolvedSubject)
         {
             requirement = this.InternConstraint(new(ConstraintKind.Error));
@@ -530,6 +503,14 @@ public sealed partial class Binding
                 this.AddPrerequisite(scope.Owner, clause);
             }
         }
+
+        // A subject's root valid here, the one statement for a formed subject and a pending one: an input, and (SPEC 7.5) in a function
+        // its own parameter or one of its declaring Type, the Container whose scope the member is declared in (Indexing; a conditional
+        // block's member included), never a local function's enclosing function. A closed subject is the other valid subject, where
+        // closed subjects are valid (closedScope: never a function).
+        bool RootedInput(bool input, BindingSymbol? rootSymbol)
+            => input && (scope.Owner is not FunctionKoto member || ReferenceEquals(rootSymbol?.Scope, scope) ||
+                (rootSymbol?.Scope is { Owner: DeclarationContainerKoto } declaring && ReferenceEquals(declaring, member.BoundSymbol?.Scope)));
 
         // Self clauses remain implementation obligations, never assumptions.
     }

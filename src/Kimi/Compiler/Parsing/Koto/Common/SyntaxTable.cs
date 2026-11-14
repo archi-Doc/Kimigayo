@@ -4,6 +4,7 @@
 // Input: parsed children and Binding's synthetic nodes. Output: SyntaxIds and their indexed storage.
 // Parsed nodes use pre-order ids; zero means no node; renumbering moves only this module's semantic rows with their nodes.
 // A module's ordinal is its position among the source modules; the Kimi library's is LibraryModule in every compilation, above them all.
+// A compilation has at most LibraryModule source modules (IMPL A.4): Compilation.PrepareModules refuses more before one is numbered.
 // Must not decide Binding facts or let consumers assign independent ids.
 
 using System.Buffers;

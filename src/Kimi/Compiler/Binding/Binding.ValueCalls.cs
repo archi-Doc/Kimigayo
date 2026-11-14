@@ -248,7 +248,8 @@ public sealed partial class Binding
     private bool TryCallable(BoundType type, BindingScope scope, out BoundType signature, out SemanticsKind receiver, out bool several)
     {
         several = false;
-        var owner = type.Kind == BoundTypeKind.Semantics ? type.Components[0] : type;
+        // SPEC 7.3, 3.4.3: a callee is called through one layer: a concrete one, or an object layer in every case (ObjectCases).
+        var owner = type.Kind == BoundTypeKind.Semantics ? type.Components[0] : this.ObjectCases(type, scope, out var view) != SemanticsMask.None ? view : type;
         if (this.FunctionItemSignature(owner) is { } itemSignature)
         {
             signature = this.ContractType(itemSignature, scope);
@@ -325,8 +326,10 @@ public sealed partial class Binding
     {
         operation = default;
         var handleType = this.ContractType(handle.BoundType!, scope);
-        var shared = handleType.HandleMode is { PayloadAuthority: LoanRequirement.Ref } || handleType.Semantics == SemanticsKind.ObjRef || ReachedThroughShared(handle);
-        var view = handleType.Semantics is SemanticsKind.ObjRef or SemanticsKind.ObjUniq;
+        // The handle's or view's cases (ObjectCases; a pair layer's too) and the authority of its own layer and path (PlaceAuthority).
+        var objects = this.ObjectCases(handleType, scope, out var payload);
+        var shared = SharesOwnLayer(handle) || ReachedThroughShared(handle);
+        var view = (objects & ~SemanticsMask.ObjectBorrow) == 0;
         if (receiver != SemanticsKind.Ref && shared)
         {
             this.FailObjectAuthority(call, call.Method);
@@ -340,7 +343,6 @@ public sealed partial class Binding
         }
 
         var unsupported = IndirectObjectCallee(handle) || (!view && !this.LendsHandle(handle, scope, receiver == SemanticsKind.Uniq, out _));
-        var payload = handleType.Components[0];
         var adapted = (BoundType?)null;
         if (!unsupported && receiver == SemanticsKind.Ref)
         {
@@ -371,7 +373,7 @@ public sealed partial class Binding
     {
         var receiverType = call.Method.BoundType!;
         receiverOperation = default;
-        var handle = receiverType.Kind == BoundTypeKind.Semantics && IsObjectSemantics(receiverType.Semantics) ? call.Method
+        var handle = this.ObjectCases(receiverType, scope, out _) != SemanticsMask.None ? call.Method
             : receiver != SemanticsKind.Owner && KotoHelper.UnwrapParentheses(call.Method) is ConversionKoto { ConversionBinding: ConversionBinding.PayloadFollow } follow ? follow.Left : null;
         if (handle is not null)
         {
@@ -497,7 +499,7 @@ public sealed partial class Binding
                     this.SubstituteStoredOrigins(declared, ownBinder, origins.AsSpan(0, originCount), argumentOrigins.AsSpan(0, inputCount));
                 if (operations[i].AdaptedType is null)
                 {
-                    this.AcquireValueCallPart(call, i, parameter, scope, IsUnfittedLiteral(call.ArgumentNodes[i]), operations, instantiated, ref formed);
+                    this.AcquireValueCallPart(call, i, parameter, scope, operations, instantiated, ref formed);
                 }
                 else
                 {
@@ -618,7 +620,6 @@ public sealed partial class Binding
         {
             var source = call.ArgumentNodes[i];
             var parameter = parameters.Components[i];
-            var literal = IsUnfittedLiteral(source);
             if (!this.PrepareArgument(source, scope, null, callableContext: true))
             {
                 formed = false;
@@ -633,30 +634,30 @@ public sealed partial class Binding
                 }
                 else
                 {
-                    this.AcquireValueCallPart(call, i, parameter, scope, literal, operations, instantiated, ref formed);
+                    this.AcquireValueCallPart(call, i, parameter, scope, operations, instantiated, ref formed);
                 }
             }
         }
     }
 
     // SPEC 15.6.4, 15.1.5: a prepared argument of a value call completed at `parameter` (CompleteValueCallPart) and adapted to it: its
-    // operation and the Type it acquires, which the call's substitution then instantiates; `literal` tells whether it was an unfitted
-    // literal before its preparation. An acquisition is deferred, as a payload's is (CompletePayloads): where the argument fits
-    // structurally, a bare Place without its spelling is recorded at the call (the first, SPEC 15.1.5) with the Type it supplies kept.
-    // A part that fails, or misfits (the call's record), takes no operation (rule W). `formed` turns false unless the part is taken and
-    // acquired.
+    // operation and the Type it acquires, which the call's substitution then instantiates; an unfitted literal, which waits for the
+    // solve (WaitsForValueCallSolve), adapts as a Literal. An acquisition is deferred, as a payload's is (CompletePayloads): where the
+    // argument fits structurally, a bare Place without its spelling is recorded at the call (the first, SPEC 15.1.5) with the Type it
+    // supplies kept. A part that fails, or misfits (the call's record), takes no operation (rule W). `formed` turns false unless the
+    // part is taken and acquired.
     private void AcquireValueCallPart(
         InvocationKoto call,
         int i,
         BoundType parameter,
         BindingScope scope,
-        bool literal,
         Span<BoundArgumentOperation> operations,
         Span<BoundType> instantiated,
         ref bool formed)
     {
         var source = call.ArgumentNodes[i];
         operations[i] = default;
+        var literal = IsUnfittedLiteral(source);
         var actual = this.CompleteValueCallPart(source, parameter, scope);
         if (actual is null || source.BindingState != BindingState.Resolved)
         {

@@ -633,7 +633,7 @@ let small = sum(1..5@u8)   // 10
 
 ### 8.7.5. Closed Contracts
 
-`Kimi.Position` and `Kimi.PositionRange` are **closed**: their conforming Types are fixed by [§22.1](22-core-execution-and-foreign-functions.md#221-required-kimi-declarations). `Position` is satisfied by the twelve integer Types, `FromEnd<T>`, `Start` and `End`; `PositionRange` by `Range<S, E>`, `ClosedRange<S, E>` and `ResolvedRange` ([§4.6.1](04-arrays-indexing-and-slices.md#461-positions), [§4.6.3](04-arrays-indexing-and-slices.md#463-resolution)). A conformance to them in any other Type is an error. Integers gain no members, and every implementation reads only its boundaries and the length and has no other effect.
+`Kimi.Position` and `Kimi.PositionRange` are **closed**: their conforming Types are fixed by [§22.1](22-core-execution-and-foreign-functions.md#221-required-kimi-declarations). `Position` is satisfied by the twelve integer Types, `FromEnd<T>`, `Start` and `End`; `PositionRange` by `Range<S, E>`, `ClosedRange<S, E>` and `ResolvedRange` ([§4.6.1](04-arrays-indexing-and-slices.md#461-positions), [§4.6.3](04-arrays-indexing-and-slices.md#463-resolution)). A conformance to them in any other Type is an error. Integers gain no members. Every `tryResolve` implementation reads only its boundaries and the length and has no other effect. Both Contracts bound `format` with `confined` ([§8.11.1](#8111-declarations)); a requirement call of `format` on a position or a range uses that bound ([§8.11.3](#8113-checking-and-use)), also where the position's Type is a `T` with `T is PrimitiveInteger` ([§8.7.4](#874-primitiveinteger)).
 
 ```kimi
 struct Offset
@@ -906,6 +906,28 @@ struct Countdown
 ```
 
 ```kimi
+contract Report
+    func report(self, writer: uniq/Utf8Writer) -> Result<(), BufferFull>
+        effect confined
+
+struct Meter<T>
+    T is Position
+    Self is Report
+    var reading: T
+
+    public func report(self, writer: uniq/Utf8Writer) -> Result<(), BufferFull>
+        return self.reading.format(writer)   // Valid: Position bounds format with confined.
+
+struct Echo<T>
+    T is Utf8Format
+    Self is Report
+    var item: T
+
+    public func report(self, writer: uniq/Utf8Writer) -> Result<(), BufferFull>
+        return self.item.format(writer)      // Error: Utf8Format declares no bound, so the call has unknown effects.
+```
+
+```kimi
 // Take is the contract of §8.11.1.
 func takeTwo<S>(source: uniq/S) -> (Option<S.Item>, Option<S.Item>)
     S is Take
@@ -985,7 +1007,7 @@ specialize func inspect<i32>(value: i32) -> () => ()
 
 ### 8.13.2. Inherited contract
 
-The header restates the original's substituted receiver shape ([§7.3](07-functions-and-callable-values.md#73-receivers)), parameters and result without adaptation, and its external names; internal names may change with `external => internal: Type`. Access, defaults, the `!` boundary, Constraints, Attributes, Safety, effect bounds and Origin binders are inherited and never written. Callers keep the original's defaults: `find<i32>(10)` evaluates the original default, then runs the specialization. The body must work for every Origin binding the original admits. A specialization cannot add Origin restrictions, narrow applicability or replace a required proof; it may leave ObjectCallCompatible ([§12.7.2](12-expressions.md#1272-implementation-families)) NotProven. Override headers follow the same discipline ([§6.4.1](06-declarations-and-containers.md#641-declarations)).
+The header restates the original's substituted receiver shape ([§7.3](07-functions-and-callable-values.md#73-receivers)), parameters and result without adaptation, and its external names; internal names may change with `external => internal: Type`. Access, defaults, the `!` boundary, Constraints, Attributes, Safety, effect bounds and Origin binders are inherited and never written. Callers keep the original's defaults: `find<i32>(10)` evaluates the original default, then runs the specialization. The body must work for every Origin binding the original admits. A specialization cannot add Origin restrictions, narrow applicability or replace a required proof; it may leave ObjectCallCompatible ([§12.7.2](12-expressions.md#1272-implementation-families)) NotProven. Override headers follow the same discipline, except that they may restate Origin annotations and relations ([§6.4.1](06-declarations-and-containers.md#641-declarations)).
 
 ### 8.13.3. Selection
 

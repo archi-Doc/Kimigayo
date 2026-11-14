@@ -13,7 +13,7 @@ public sealed partial class Binding
 
     private BoundType? BindRequirementItem(Koto use, RequirementGroup group, BindingScope scope, BoundType? required = null, bool erase = false)
     {
-        if (!group.TypeAccess)
+        if (this.MemberSideOf((MemberAccessKoto)ReferenceName(use)) != MemberSide.Type)
         {
             return this.Fail(use, BindingFailure.BoundMethodValue);
         }

@@ -45,7 +45,7 @@ func fill()
 
 ### 4.3.1. Array literals and annotation holes
 
-With an expected fixed-array Type, an array literal constructs that Type and must have exactly `N` elements, acquired in source order ([§3.5](03-types-and-values.md#35-copy-and-move)). Otherwise an independent array literal constructs `Array<T>`, and a call-argument literal is fitted per candidate ([§4.4.1](#441-declaration-and-inference)). An empty literal needs a known element Type.
+With an expected fixed-array Type, an array literal constructs that Type and must have exactly `N` elements, acquired in source order ([§3.5](03-types-and-values.md#35-copy-and-move)). Otherwise an independent array literal constructs `Array<T>`, and a call-argument literal is fitted per candidate ([§4.4.1](#441-declaration-and-inference)). For an independent literal without an expected element Type, the element Type is the common Type of its elements, found as [§14.9.2](14-control-flow.md#1492-target-result-type-and-expression-type) step 2 finds one for result sources: with `n: ref/i32`, `[n, 1]` constructs `Array<i32>`, `n` value-read ([§3.5.3](03-types-and-values.md#353-value-read)). An empty literal needs a known element Type.
 
 An initialized local `let` or `var` may write `_` for the length, the element Type or both in a fixed-array annotation, at any depth of written fixed-array structure. The initializer alone must determine every hole: a length hole takes the literal's element count or the initializer's fixed-array length; an element hole follows ordinary element evidence and numeric defaults, and an inner literal without a written fixed-array expectation constructs `Array<T>`. All elements must agree; a mismatch is an error, never a fallback to `Array<T>`. A written part of the annotation is an expectation for the initializer, also for inference through a callee's signature. Holes are forbidden in uninitialized declarations, signatures, Fields, static storage and explicit generic arguments.
 
@@ -179,6 +179,7 @@ A **position** denotes a boundary of a target of length `L` and resolves to an i
 public contract Position: Equatable, Utf8Format
     Self is Copy
     Self is Owned
+    effect Utf8Format.format confined
     func tryResolve(self: Self, length: isize) -> Option<isize>
 ```
 
@@ -237,6 +238,7 @@ let f = (0..3) == (0..=2)     // Error: different range Types.
 public contract PositionRange: Equatable, Utf8Format
     Self is Copy
     Self is Owned
+    effect Utf8Format.format confined
     func tryResolve(self: Self, length: isize) -> Option<ResolvedRange>
 ```
 
@@ -569,7 +571,7 @@ The exclusive receiver is reserved before later arguments and activated at entry
 | Dictionary `clear`, destruction and owning-iterator destruction | Destruction of `V` and `K` |
 | Every other operation of [§4.6](#46-positions-and-ranges) to [§4.9](#49-dynamic-collections): construction, `append`, `insert`, `pop`, `remove`, `swap`, `swapRemove`, `reverse`, `appendAll`, `appendCopies`, Array, fixed-array and Slice access, view, position, metadata and capacity operations | None |
 
-A row, with the dependency rules above, allocation, Abort and the accesses through the operation's inputs, is the operation's complete published effect. Callers use it, never a library body, and the library implementation must stay within it. Calls of a Callable argument are composed at the caller through the actual argument ([§8.11.4](08-generics-constraints-and-contracts.md#8114-callable-effect-bounds)). A concrete instantiation such as `Array<i32>` uses the row directly. Parameter-dependent destruction is composed at callers for Loan checking, unless [§15.6.4](15-ownership-and-lifetime-analysis.md#1564-calls) widens it; bound verification ([§8.11.3](08-generics-constraints-and-contracts.md#8113-checking-and-use)) substitutes the definition's own bindings, and destruction that still depends on an abstract Type is unclassifiable there. A generic body checks such a destruction against its own Loans under [§16.3.3](16-scope-exit-and-destruction.md#1633-handles-and-object-release).
+A row, with the dependency rules above, allocation, Abort and the accesses through the operation's inputs, is the operation's complete published effect. Callers use it, never a library body, and the library implementation must stay within it. Calls of a Callable argument are composed at the caller through the actual argument ([§8.11.4](08-generics-constraints-and-contracts.md#8114-callable-effect-bounds)). A concrete instantiation such as `Array<i32>` uses the row directly. Parameter-dependent destruction is composed at callers for Loan checking, unless [§15.6.4](15-ownership-and-lifetime-analysis.md#1564-calls) widens it; bound verification ([§8.11.3](08-generics-constraints-and-contracts.md#8113-checking-and-use)) substitutes the definition's own bindings, and destruction that still depends on an abstract Type is unclassifiable there. A generic body checks such a destruction against its own Loans under [§16.3.3](16-scope-exit-and-destruction.md#1633-handles-and-object-release). A row's requirement on a Type still abstract is, in bound verification and in the generic body's own Loan checks, a requirement call without a known concrete callee, with the bounds that the Contracts proven by the definition's premises declare; the body's summary still keeps it for its callers to compose ([§15.6.4](15-ownership-and-lifetime-analysis.md#1564-calls)).
 
 ```kimi
 var values: Array<i32> = [3, 1, 2]

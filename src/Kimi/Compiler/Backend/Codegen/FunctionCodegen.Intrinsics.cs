@@ -18,7 +18,7 @@ namespace Kimi.Compiler.Backend;
 // (DECISIONS R5-M146). In a caller-location body a location is C3b's row (Location).
 internal sealed partial class FunctionCodegen
 {
-    private readonly Value[] slotless = new Value[2]; // A routine row's slot-less values (Routine): a formatting row's kind, Text.writer's two.
+    private readonly Value[] slotless = new Value[2]; // A routine row's slot-less values (Routine): Text.writer's two.
 
     private void Intrinsic(in MirTerminator call, in IntrinsicRow row)
     {
@@ -52,14 +52,8 @@ internal sealed partial class FunctionCodegen
             case IntrinsicWriter.Destroy:
                 this.DestroyValues(call, target);
                 return;
-            case IntrinsicWriter.Buffer:
-                this.FormatBuffer(call, row);
-                return;
             case IntrinsicWriter.Segment:
                 this.FormatSegment(call, row);
-                return;
-            case IntrinsicWriter.Finish:
-                this.FormatFinish(call, row);
                 return;
             case IntrinsicWriter.Record:
                 this.Record(call, row.Routine!);

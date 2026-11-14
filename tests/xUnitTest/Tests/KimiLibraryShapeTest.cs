@@ -20,14 +20,18 @@ public partial class KimiLibraryShapeTest
         return c;
     });
 
+    // PLAN G776-b (the owner's O-194 (a): a built-in conformance adds no member): the receiver groups no witness-table row names, the
+    // fixed array's member group (SPEC 22.1).
+    private static readonly WitnessMembers[] ReceiverOnlyGroups = [WitnessMembers.FixedArray];
+
     // R8-S1 C1: what a witness group declares for each Contract it serves: the Contract's own requirement by name, with the group's `self`.
     private static readonly (WitnessMembers Group, KimiDeclarationId Contract, string Header)[] WitnessRequirements =
     [
-        (WitnessMembers.FixedArray, KimiDeclarationId.Iterable,
+        (WitnessMembers.FixedArrayEntries, KimiDeclarationId.Iterable,
             "public func iterate<E, length N>(self: ref/[N of E] during source) -> ArrayIterator<E> during source"),
-        (WitnessMembers.FixedArray, KimiDeclarationId.UniqIterable,
+        (WitnessMembers.FixedArrayEntries, KimiDeclarationId.UniqIterable,
             "public func iterateUniq<E, length N>(self: uniq/[N of E] during source) -> ArrayUniqIterator<E> during source"),
-        (WitnessMembers.FixedArray, KimiDeclarationId.IntoIterable,
+        (WitnessMembers.FixedArrayEntries, KimiDeclarationId.IntoIterable,
             "public func intoIterator<E, length N>(self: [N of E]) -> FixedArrayOwningIterator<E, [N of E]>"),
         (WitnessMembers.IntegerPosition, KimiDeclarationId.Position, "public func tryResolve<I>(self: I, length: isize) -> Option<isize>"),
         (WitnessMembers.String, KimiDeclarationId.Equatable, "func equals(self: ref/string, other: ref/string) -> bool"),
@@ -35,6 +39,8 @@ public partial class KimiLibraryShapeTest
         (WitnessMembers.BoolFormat, KimiDeclarationId.Utf8Format, "func format(self: ref/bool, writer: uniq/Utf8Writer) -> Result<(), BufferFull>"),
         (WitnessMembers.CharFormat, KimiDeclarationId.Utf8Format, "func format(self: ref/char, writer: uniq/Utf8Writer) -> Result<(), BufferFull>"),
         (WitnessMembers.UnitFormat, KimiDeclarationId.Utf8Format, "func format(self: ref/(), writer: uniq/Utf8Writer) -> Result<(), BufferFull>"),
+        (WitnessMembers.Utf8SliceFormat, KimiDeclarationId.Utf8Format,
+            "func format(self: ref/Text.Utf8Slice, writer: uniq/Utf8Writer) -> Result<(), BufferFull>"),
         (WitnessMembers.F32Format, KimiDeclarationId.Utf8Format, "func format(self: ref/f32, writer: uniq/Utf8Writer) -> Result<(), BufferFull>"),
         (WitnessMembers.F64Format, KimiDeclarationId.Utf8Format, "func format(self: ref/f64, writer: uniq/Utf8Writer) -> Result<(), BufferFull>"),
         (WitnessMembers.String, KimiDeclarationId.Utf8Format, "func format(self: ref/string, writer: uniq/Utf8Writer) -> Result<(), BufferFull>"),
@@ -66,6 +72,7 @@ public partial class KimiLibraryShapeTest
         (KimiDeclarationId.StorageErasedReserve,
             "internal func erasedReserve(writer: uniq/Utf8Writer, minimum: isize) -> Result<WriteWindow during writer.target, BufferFull>"),
         (KimiDeclarationId.StorageFormatFloat, "internal func formatFloat(bits: u64 ! narrow: bool, destination: uniq/[24 of u8]) -> isize"),
+        (KimiDeclarationId.StorageFormatInteger128, "internal func formatInteger128(value: u128 ! destination: uniq/[40 of u8]) -> isize"),
         (KimiDeclarationId.RawAllocate, "public func allocate<T>(count: isize) -> raw/T"),
         (KimiDeclarationId.RawRelease, "public unsafe func release<T>(storage: raw/T)"),
         (KimiDeclarationId.RawInitialize, "public unsafe func initialize<T>(storage: raw/T, value: T)"),
@@ -109,8 +116,9 @@ public partial class KimiLibraryShapeTest
         Assert.False(c.Diagnostics.HasSyntaxErrors(c.Library.Kotonoha));
         Assert.Null(c.Library.Kotonoha.GeneratedFunction);
         // Text.fixed and FixedBuffer.text, a direct line's (R8-W2 a2); Never (G704); bool, char, Unit format (R8-S2a); f32, f64 format,
-        // formatFloat (R8-S2c); string, view and Wrapping<T> format (R8-S2d1); the integers' format (R8-S2b1).
-        Assert.Equal(191, KimiLibraryCatalog.Entries.Length);
+        // formatFloat (R8-S2c); string, view and Wrapping<T> format (R8-S2d1); the integers' format (R8-S2b1); formatInteger128 (R8-S2b2);
+        // Utf8Writer.deferLiteral, an owning interpolation's literal before a value (R8-W2 c1); Utf8Writer.finish, its end (R8-W2 c3a).
+        Assert.Equal(194, KimiLibraryCatalog.Entries.Length);
         var unsourced = new List<KimiDeclarationId>();
         foreach (var entry in KimiLibraryCatalog.Entries)
         {
@@ -191,7 +199,7 @@ public partial class KimiLibraryShapeTest
         var path = entry.Owner ?? entry.Container switch
         {
             KimiLibraryContainer.Root => string.Empty,
-            KimiLibraryContainer.FixedBuffer or KimiLibraryContainer.HeapBuffer or KimiLibraryContainer.Utf8Slice => "Text." + entry.Container,
+            KimiLibraryContainer.FixedBuffer or KimiLibraryContainer.HeapBuffer => "Text." + entry.Container,
             KimiLibraryContainer.FixedArray => "Storage.FixedArray",
             _ => entry.Container.ToString(),
         };
@@ -276,8 +284,8 @@ public partial class KimiLibraryShapeTest
     }
 
     // Plan 5.8: the intrinsic table gives every compiler function one disposition; an intrinsic serves at most one of them, except Fail,
-    // which carries a fixed SPEC 22.5.2 code; there are at most 30 intrinsics, and the temporary Capacity, FormatBuffer, FormatSegment and
-    // FormatFinish (owner approvals 2026-10-11; FormatHint renamed FormatSegment, R5-M133) until R8.
+    // which carries a fixed SPEC 22.5.2 code; there are at most 28 intrinsics, and the temporary Capacity and FormatSegment (owner
+    // approvals 2026-10-11; FormatHint renamed FormatSegment, R5-M133; FormatBuffer went at R8-W2 c3b, FormatFinish at c3a) until R8.
     [Fact]
     public void EveryCompilerFunctionHasOneDisposition()
     {
@@ -372,7 +380,8 @@ public partial class KimiLibraryShapeTest
 
     // SPEC 4.9.6, 4.8 (DECISIONS BU-42): CallRetention.ReferentStores takes a 4.6 to 4.8 view's referent as its own handle, sound only
     // while no 4.6 to 4.8 operation writes an element through a view. The 4.6 to 4.8 operations the fact covers (a library function with
-    // a referent store, not a member of Array, Dictionary or the fixed array) are exactly these, each lending or advancing its receiver,
+    // a referent store, not a member of Array or Dictionary, nor of the fixed array's two groups) are exactly these, each lending or
+    // advancing its receiver,
     // and none retains another input in its receiver's storage, so an operation that would store a value through a view, or a parameter
     // added to one of these, fails here first.
     [Fact]
@@ -384,7 +393,7 @@ public partial class KimiLibraryShapeTest
         {
             var symbol = function.SymbolOf()!;
             var retention = c.Types.Retains(symbol, null, null);
-            if (retention.ReferentStores.IsEmpty || ReferenceEquals(function.Parent, c.Library.FixedArrayMembers) ||
+            if (retention.ReferentStores.IsEmpty || (function.Parent is { } parent && c.Library.MembersOf(parent) is WitnessMembers.FixedArray or WitnessMembers.FixedArrayEntries) ||
                 function.Parent?.SymbolOf()?.LibraryDeclaration is KimiDeclarationId.Array or KimiDeclarationId.Dictionary)
             {
                 continue;
@@ -496,8 +505,8 @@ public partial class KimiLibraryShapeTest
     [InlineData(KimiDeclarationId.Iterable, "public contract Iterable\nassociate IteratorType(source) is ::Kimi.LendingIterator for ref/Self during source\nfunc iterate(self: ref/Self during source) -> Self.IteratorType(source)")]
     [InlineData(KimiDeclarationId.UniqIterable, "public contract UniqIterable\nassociate IteratorType(source) is ::Kimi.LendingIterator for uniq/Self during source\nfunc iterateUniq(self: uniq/Self during source) -> Self.IteratorType(source)")]
     [InlineData(KimiDeclarationId.IntoIterable, "public contract IntoIterable\nassociate IteratorType is ::Kimi.LendingIterator\nfunc intoIterator(self: Self) -> Self.IteratorType")]
-    [InlineData(KimiDeclarationId.Position, "public contract Position: Equatable, Utf8Format\nSelf is Copy\nSelf is Owned\nfunc tryResolve(self: Self, length: isize) -> Option<isize>")]
-    [InlineData(KimiDeclarationId.PositionRange, "public contract PositionRange: Equatable, Utf8Format\nSelf is Copy\nSelf is Owned\nfunc tryResolve(self: Self, length: isize) -> Option<ResolvedRange>")]
+    [InlineData(KimiDeclarationId.Position, "public contract Position: Equatable, Utf8Format\nSelf is Copy\nSelf is Owned\neffect Utf8Format.format confined\nfunc tryResolve(self: Self, length: isize) -> Option<isize>")]
+    [InlineData(KimiDeclarationId.PositionRange, "public contract PositionRange: Equatable, Utf8Format\nSelf is Copy\nSelf is Owned\neffect Utf8Format.format confined\nfunc tryResolve(self: Self, length: isize) -> Option<ResolvedRange>")]
     [InlineData(KimiDeclarationId.Utf8Format, "public contract Utf8Format\nfunc format(self: ref/Self, writer: uniq/Utf8Writer) -> Result<(), BufferFull>")]
     [InlineData(KimiDeclarationId.BufferWriter, "public contract BufferWriter\nfunc reserve(self: uniq/Self, minimum: isize) -> Result<WriteWindow, BufferFull>")]
     public void ContractShapesAreFixed(KimiDeclarationId id, string shape)
@@ -529,7 +538,7 @@ public partial class KimiLibraryShapeTest
     [InlineData("Wrapping", "public struct Wrapping<T>")]
     [InlineData("BufferFull", "public struct BufferFull")]
     [InlineData("WriteWindow", "public struct WriteWindow {source}\nlet state: raw/u8 during source\nlet start: isize\npublic var written: isize\npublic var remaining: isize\nlet loan: Loan<uniq/u8 during source>")]
-    [InlineData("Utf8Writer", "public struct Utf8Writer {target}\nlet destination: raw/u8 during target\nlet dispatch: raw/u8 during static\nlet kind: isize\nvar failed: bool\nlet hint: isize\nlet pending: raw/u8 during static\nvar pendingLength: isize\nlet logicalLength: isize\nlet loan: Loan<uniq/u8 during target>")]
+    [InlineData("Utf8Writer", "public struct Utf8Writer {target}\nlet destination: raw/u8 during target\nlet dispatch: raw/u8 during static\nlet kind: isize\nvar failed: bool\nlet hint: isize\nvar pending: raw/u8 during static\nvar pendingLength: isize\nlet logicalLength: isize\nlet loan: Loan<uniq/u8 during target>")]
     [InlineData("Text.FixedBuffer", "public struct FixedBuffer {source}\nlet data: raw/u8 during source\npublic let capacity: isize\npublic var length: isize\nvar validated: isize\nlet loan: Loan<uniq/u8 during source>")]
     [InlineData("Text.HeapBuffer", "public struct HeapBuffer\nvar data: raw/u8 during self\npublic var capacity: isize\npublic var length: isize\nvar validated: isize\ndrop")]
     [InlineData("Text.Utf8Slice", "public struct Utf8Slice {source}\nlet value: Slice<u8> during source")]
@@ -639,12 +648,19 @@ public partial class KimiLibraryShapeTest
     }
 
     // R8-S1 C1: a group with a wrong signature fails here, not at a use, and a new group needs its rows. The signature is the first
-    // line before an expression body's `=>` (STYLE: a short single-item body).
+    // line before an expression body's `=>` (STYLE: a short single-item body). The row groups are every group but the receiver-only
+    // ones, and no row names a receiver-only group (PLAN G776-b).
     [Fact]
     public void EachWitnessGroupDeclaresItsContractsRequirements()
     {
         var library = Library.Value.Library;
-        Assert.Equal(Enum.GetValues<WitnessMembers>(), WitnessRequirements.Select(static x => x.Group).Distinct());
+        Assert.Equal(Enum.GetValues<WitnessMembers>().Except(ReceiverOnlyGroups), WitnessRequirements.Select(static x => x.Group).Distinct());
+        var fixedArray = Library.Value.Types.Intern(BoundTypeKind.FixedArray, null, SemanticsKind.Owner, [BoundType.I32], 2);
+        foreach (var self in BoundType.Primitives.Values.Concat([fixedArray, BoundType.String, BoundType.Boolean, BoundType.Unit]))
+        {
+            Assert.All(Enum.GetValues<KimiDeclarationId>(), x => Assert.False(Binding.WitnessGroup(self, x) is { } row && ReceiverOnlyGroups.Contains(row.Members)));
+        }
+
         foreach (var (group, contract, header) in WitnessRequirements)
         {
             var requirement = library.GetSymbol(contract)!.Contract!.OwnRequirement()!;
@@ -699,7 +715,8 @@ public partial class KimiLibraryShapeTest
     }
 
     // The same-named functions of a container, including those of its conditional conformance blocks, or its same-named
-    // nested declarations, in source order (the order of catalog overload positions).
+    // nested declarations, in source order (the order of catalog overload positions); an explicit specialization has no name
+    // (SPEC 8.13.3), so it is none of them, as in KimiLibrary.FindDeclaration.
     private static List<Koto> Declarations(DeclarationContainerKoto container, string name, bool function)
     {
         var found = new List<Koto>();
@@ -718,7 +735,7 @@ public partial class KimiLibraryShapeTest
 
         void Visit(Koto node)
         {
-            if (node is FunctionKoto member && member.Name == name)
+            if (node is FunctionKoto { IsSpecialization: false } member && member.Name == name)
             {
                 found.Add(member);
             }
