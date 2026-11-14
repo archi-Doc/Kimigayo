@@ -7,8 +7,7 @@ namespace Kimi.Compiler;
 // Owns the per-declaration component summaries (SPEC 15.2.3, 15.3.5; DECISIONS BU-22): for each struct or enum, what its storage adds,
 // in its own formals, to an instance's Owned beyond the instance's Type and Origin arguments (unit 2b-4 adds Transferable's half), as the
 // least fixed point over the declarations one solve reaches; Owned's judgment of a nominal instance through it; the sites of the located
-// Unsupported_Kd a summary decides (a projection family, F5 (a); the bound; the owner's option 2 for a pair parameter; an instance
-// family, a stored instance whose formation at a use the capability engine's growth guard cut), each a limit (L)
+// Unsupported_Kd a summary decides (a projection family, F5 (a); the bound; the owner's option 2 for a pair parameter), each a limit (L)
 // a proof carries until its answer is settled (EndProof), and the cause a summary's Error rests on (ICheckCause): the stored Type it
 // reads that failed, that Type's failed operand context, or the hops of a conformance resolution that re-entered itself (SPEC 8.3.3;
 // the steps tested are those the hops resolved, so a step resolved through an identity premise is walked, never a re-entry; DECISIONS
@@ -16,9 +15,9 @@ namespace Kimi.Compiler;
 // Input: a declaration's stored shape (AdtDef.Types) with its Binding states; the Owned leaves (TryLeafCapability); the summaries of the
 // declarations its storage names; ContractType's answer and hops, each with the step it resolved, for a mapped projection whose base is
 // not abstract.
-// Output: Summary; SummaryCapability, Owned of D<A, o>, which also proves the formation of each constrained instance D's storage writes
-// (InstanceFormation); the sites a settled proof needed, which Binding.Check publishes (FailNeededSites,
-// PublishSites).
+// Output: Summary; SummaryCapability, Owned of D<A, o>, which rests on StorageFormation, the formation of the constrained instances D's
+// storage writes and names, judged once per declaration in its formals (InstanceFormation); the sites a settled proof needed, which
+// Binding.Check publishes (FailNeededSites, PublishSites).
 // Invariants: storage is walked in the declaration's formals and never instantiated; a summary's projection is based at a formal or the
 // pair target of its declaration; a summary belongs to one capability epoch (ClearCapabilityResults ends it); the declarations one solve
 // reaches are iterated together from no exclusion to their least fixed point, which a family cut keeps finite; a warm rebind allocates
@@ -84,19 +83,38 @@ public sealed partial class Binding
             result = CombineProof(result, proof, true);
         }
 
-        for (var i = 0; result == ConstraintProof.Proven && i < summary.Instances.Count; i++)
+        if (result == ConstraintProof.Proven)
         {
-            // The engine's second consuming site of InstanceFormation, as InstanceCapability is at a node (SPEC 8.6.1, 8.3.3). An instance
-            // family (each use forms a larger instance of its own declaration, which the engine's growth guard cuts, DECISIONS BU-22) is
-            // a limit, never an unproven Constraint (SPEC 8.3.3 Limits): the located Unsupported_Kd at the stored Type that writes it.
-            var (written, stored) = summary.Instances[i];
-            var cuts = this.growthCuts;
-            var formed = this.StoredType(written, work.Type) is { } instance ? this.InstanceFormation(instance, work.Scope) : ConstraintProof.Unknown;
-            result = CombineProof(result, formed == ConstraintProof.Unknown && this.growthCuts != cuts ? this.ReadVerdict(formed, this.OwnSite(summary, stored), null) : formed, true);
+            // The declaration's stored instances are formed once, in its formals (StorageFormation). The instance judged adds only its own
+            // formation (InstanceCapability), which proves the declaration's Constraints at its arguments (SPEC 8.6.1, 8.3.3 Finality).
+            result = this.RequestCapability(this.SelfType(symbol), work.Intrinsic, this.ConstraintScope(container), derivation: true);
         }
 
         return summary.Sites.Count != 0 && result is ConstraintProof.Proven or ConstraintProof.Unknown
             ? this.ReadVerdict(ConstraintProof.Unknown, summary.Sites[0], null) : result;
+    }
+
+    // Owned's derivation work of a declaration, as Copy's is its declaration's (ComputeCapability): the formation of each constrained
+    // instance its storage writes, as written, under its own premises, and that of each declaration its storage names (SPEC 15.3.5
+    // Fixed points: once per declaration, in its own Type parameters, never by expanding instantiations; SPEC 8.3.1: storage that
+    // writes a Type not shown valid is no evidence). The engine's fixed point covers recursive storage, non-regular included, and an
+    // instance whose formation reads an open obligation leaves the work Pending (SPEC 8.3.3).
+    private ConstraintProof StorageFormation(CapabilityWork work, BindingSymbol declaration)
+    {
+        var summary = this.Summary(declaration);
+        var result = ConstraintProof.Proven;
+        for (var i = 0; i < summary.Instances.Count; i++)
+        {
+            result = CombineProof(result, this.InstanceFormation(summary.Instances[i], work.Scope), true);
+        }
+
+        for (var i = 0; i < summary.Components.Count; i++)
+        {
+            var component = summary.Components[i].Declaration;
+            result = CombineProof(result, this.RequestCapability(this.SelfType(component), work.Intrinsic, this.ConstraintScope(component.Declaration), derivation: true), true);
+        }
+
+        return result;
     }
 
     // SPEC 23.1.1 (DECISIONS BU-76, BU-81): each site a settled proof needed fails its stored Type: in Binding.Check's Final prologue,
@@ -360,7 +378,7 @@ public sealed partial class Binding
 
             if (type.Components.Count != 0 && type.Symbol!.Declaration is DeclarationContainerKoto { ConstraintNodes.Count: > 0 })
             {
-                summary.AddInstance(type, stored);
+                summary.AddInstance(type);
             }
 
             this.WalkComponent(summary, type, stored, query);
@@ -390,6 +408,11 @@ public sealed partial class Binding
         for (var i = 0; i < component.Sites.Count; i++)
         {
             summary.AddSite(component.Sites[i]);
+        }
+
+        if (!ReferenceEquals(component, summary) && !summary.Components.Contains(component))
+        {
+            summary.Components.Add(component);
         }
 
         for (var i = 0; i < type.Components.Count; i++)
@@ -557,11 +580,11 @@ public sealed partial class Binding
 
         internal List<BoundType> Projections { get; } = [];
 
-        // The instances of generic declarations with Constraints that its own storage writes, in its formals, each with the first stored
-        // Type that writes it: a use proves each one's formation (InstanceFormation, SPEC 8.6.1). A component's instances are not mapped
-        // in: they are formed under that component's own Constraints (SPEC 8.2.3), which its own instance here already proves, so the list
-        // is finite and needs no bound; a formation that grows at each use is that stored Type's site (SummaryCapability).
-        internal List<(BoundType Type, int Stored)> Instances { get; } = [];
+        // The instances of generic declarations with Constraints that its storage writes, in its formals, and the declarations its
+        // storage names: what its storage's formation is judged over, once (StorageFormation). Nothing is mapped in from a component.
+        internal List<BoundType> Instances { get; } = [];
+
+        internal List<ComponentSummary> Components { get; } = [];
 
         // Its own sites and those of the summaries it reads, in the order met; a requiring check rests on the first.
         internal List<ComponentSite> Sites { get; } = [];
@@ -590,17 +613,12 @@ public sealed partial class Binding
             }
         }
 
-        internal void AddInstance(BoundType type, int stored)
+        internal void AddInstance(BoundType type)
         {
-            foreach (var (known, _) in this.Instances)
+            if (!this.Instances.Contains(type))
             {
-                if (known.Equals(type))
-                {
-                    return;
-                }
+                this.Instances.Add(type);
             }
-
-            this.Instances.Add((type, stored));
         }
 
         internal void AddSite(ComponentSite site)
@@ -620,13 +638,13 @@ public sealed partial class Binding
             this.Family = false;
             this.Projections.Clear();
             this.Instances.Clear();
+            this.Components.Clear();
             this.Sites.Clear();
             this.Links.Clear();
         }
     }
 
-    // A stored Type whose summary is unsupported (a projection family, the bound, the owner's option 2, an instance family); one
-    // Unsupported_Kd at Use.
+    // A stored Type whose summary is unsupported (a projection family, the bound, the owner's option 2); one Unsupported_Kd at Use.
     private sealed class ComponentSite(List<ComponentSite> needed) : ICheckCause
     {
         public Koto Use { get; set; } = null!;

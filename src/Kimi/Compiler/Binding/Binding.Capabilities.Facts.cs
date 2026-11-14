@@ -94,6 +94,8 @@ public sealed partial class Binding
         // Recursive Owned structure starts optimistically; everything else starts unknown.
         internal ConstraintProof Result { get; set; } = InitialResult(intrinsic, type);
 
+        internal bool StartsProven => InitialResult(this.Intrinsic, this.Type) == ConstraintProof.Proven;
+
         internal bool Evaluated { get; set; }
 
         internal bool Queued { get; set; }

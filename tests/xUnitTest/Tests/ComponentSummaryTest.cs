@@ -211,21 +211,21 @@ public class ComponentSummaryTest
         Assert.DoesNotContain(records, static x => x.StartsWith("Unsupported_Kd", StringComparison.Ordinal));
     }
 
-    // SPEC 8.3.3 Limits, 8.6.1 (R7-C2e2 e2-5a, DECISIONS BU-22): an instance family. R<T> stores S<R<Wrap<T>>> and S needs its argument
-    // Owned, so each use of R forms a larger instance of R without end; the engine's growth guard cuts it, and the cut is the stored
-    // Type's limit: one located Unsupported_Kd there, on which the declaration's own formation and every use rest, never an unproven
-    // Constraint, used or not. Growth through two declarations is each one's limit. Without the Owned premise the stored Types' own
-    // formation is unproven (SPEC 15.2.3) beside the limit a use needs; a recursion that does not grow (S<R<T>>) is no family.
+    // SPEC 15.3.5 Fixed points, 8.3.3 Finality (R7-C2e2 e2-5a): an instance family. R<T> stores S<R<Wrap<T>>> and S needs its argument
+    // Owned. The stored instance is formed once, in R's formals under R's premises, never at an instance of R, so nothing grows: the
+    // declaration is valid, used or not, and Binding judges a use without a limit (an expansion a later phase cannot represent is that
+    // phase's located Unsupported_Kd at the use). Without the Owned premise the stored Types' own formation is unproven (SPEC 15.2.3)
+    // and Owned of an instance, which rests on it, is unproven at a use; a recursion that does not grow (S<R<T>>) is judged the same way.
     [Theory]
-    [InlineData("rf3o", "struct R<T>\n    T is Owned\n    let next: Array<S<R<Wrap<T>>>>\n", true, "Array<S<R<Wrap<T>>>>", 0)]
-    [InlineData("rf3o-nouse", "struct R<T>\n    T is Owned\n    let next: Array<S<R<Wrap<T>>>>\n", false, "Array<S<R<Wrap<T>>>>", 0)]
-    [InlineData("rf4o", "struct R<T>\n    T is Owned\n    let next: Array<S<R<Wrap<T>>>>\n    let other: Array<S<R<Pair2<T>>>>\n", true, "Array<S<R<Wrap<T>>>>", 0)]
-    [InlineData("rf-mut-o", "struct R<T>\n    T is Owned\n    let next: Array<S<Q<Wrap<T>>>>\nstruct Q<U>\n    U is Owned\n    let back: Array<S<R<U>>>\n", true, "Array<S<Q<Wrap<T>>>> | Array<S<R<U>>>", 0)]
-    [InlineData("rf3", "struct R<T>\n    let next: Array<S<R<Wrap<T>>>>\n", true, "Array<S<R<Wrap<T>>>>", 3)]
+    [InlineData("rf3o", "struct R<T>\n    T is Owned\n    let next: Array<S<R<Wrap<T>>>>\n", true, "", 0)]
+    [InlineData("rf3o-nouse", "struct R<T>\n    T is Owned\n    let next: Array<S<R<Wrap<T>>>>\n", false, "", 0)]
+    [InlineData("rf4o", "struct R<T>\n    T is Owned\n    let next: Array<S<R<Wrap<T>>>>\n    let other: Array<S<R<Pair2<T>>>>\n", true, "", 0)]
+    [InlineData("rf-mut-o", "struct R<T>\n    T is Owned\n    let next: Array<S<Q<Wrap<T>>>>\nstruct Q<U>\n    U is Owned\n    let back: Array<S<R<U>>>\n", true, "", 0)]
+    [InlineData("rf3", "struct R<T>\n    let next: Array<S<R<Wrap<T>>>>\n", true, "", 4)]
     [InlineData("rf3-nouse", "struct R<T>\n    let next: Array<S<R<Wrap<T>>>>\n", false, "", 3)]
     [InlineData("regular", "struct R<T>\n    T is Owned\n    let next: Array<S<R<T>>>\n", true, "", 0)]
-    [InlineData("regular-n", "struct R<T>\n    let next: Array<S<R<T>>>\n", true, "", 3)]
-    public void AnInstanceFamilyIsItsStoredTypesLimit(string id, string declarations, bool use, string limits, int unproven)
+    [InlineData("regular-n", "struct R<T>\n    let next: Array<S<R<T>>>\n", true, "", 4)]
+    public void AnInstanceFamilyIsFormedOnce(string id, string declarations, bool use, string limits, int unproven)
     {
         var c = CompilationTestHelper.ParseSuccess(Prelude + "struct S<U>\n    U is Owned\n    public var u: U\nstruct Wrap<A>\n    public var a: A\n" + declarations +
             "func needOwned<V>(v: ref/V)\n    V is Owned\n    ()\n" + (use ? "func use1(r: ref/R<i32>) -> ()\n    needOwned(r)\n" : string.Empty));

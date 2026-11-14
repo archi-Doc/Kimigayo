@@ -16,10 +16,6 @@ public sealed partial class Binding
     private bool capabilitiesReady;
     private BindingMode capabilityMode;
 
-    // The growth guard's cuts (RequestCapability). A component summary reads the count around the formation of a stored instance and
-    // answers a cut there with that stored Type's site (SummaryCapability). Removal: with the guard (PLAN G200).
-    private int growthCuts;
-
     /// <summary>Queries compiler-intrinsic Copy for a complete Type under lexical Constraints.</summary>
     /// <param name="type">The complete Type.</param>
     /// <param name="context">The use site providing assumptions.</param>
@@ -307,7 +303,6 @@ public sealed partial class Binding
                     {
                         if (growing)
                         {
-                            this.growthCuts++;
                             return ConstraintProof.Unknown;
                         }
 
@@ -370,17 +365,10 @@ public sealed partial class Binding
                     continue;
                 }
 
+                var rose = result == ConstraintProof.Proven && next.Result != ConstraintProof.Proven;
                 next.Result = result;
                 next.Cause = cause;
-                for (var i = 0; i < next.Dependents.Count; i++)
-                {
-                    var dependent = next.Dependents[i];
-                    if (!dependent.Queued)
-                    {
-                        dependent.Queued = true;
-                        this.capabilityQueue.Enqueue(dependent);
-                    }
-                }
+                this.RequeueDependents(next, rose);
             }
         }
         finally
@@ -393,6 +381,30 @@ public sealed partial class Binding
         var verdict = this.EndProof(this.ReadVerdict(work.Result, work.Cause, work.Fact));
         this.ForgetPendingCapabilities();
         return verdict;
+    }
+
+    // A changed work's readers are judged again. Where it rose to Proven (a work that starts Unknown, read before its own evaluation),
+    // each reader that starts Proven and settled below returns to its start first, with its own readers: recursive Owned structure is
+    // the greatest fixed point from the optimistic start (SPEC 15.3.5), which a cycle of works that read the earlier verdict would
+    // otherwise never regain. Each work restarts at most once per rise.
+    private void RequeueDependents(CapabilityWork work, bool rose)
+    {
+        for (var i = 0; i < work.Dependents.Count; i++)
+        {
+            var dependent = work.Dependents[i];
+            if (rose && dependent.Evaluated && dependent.Result != ConstraintProof.Proven && dependent.StartsProven)
+            {
+                dependent.Result = ConstraintProof.Proven;
+                dependent.Cause = null;
+                this.RequeueDependents(dependent, true);
+            }
+
+            if (!dependent.Queued)
+            {
+                dependent.Queued = true;
+                this.capabilityQueue.Enqueue(dependent);
+            }
+        }
     }
 
     // SPEC 8.3.3 Finality (R7-C2e2 e2-5a): an evaluation that read an open obligation (reentryReads) supplied no evidence there, and
@@ -482,6 +494,11 @@ public sealed partial class Binding
         }
         else
         {
+            if (work.Derivation)
+            {
+                return this.StorageFormation(work, type.Symbol!);
+            }
+
             var origin = OwnedOrigin(type) is not { } owned ? ConstraintProof.Proven : this.StaticOrigin(owned, work.Scope);
             return this.InstanceCapability(work, CombineProof(origin, this.StructuralCapability(work), true));
         }
