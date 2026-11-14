@@ -12,9 +12,11 @@
 // intrinsic's row or an Import item), or -1 for a virtual slot's Item (X5), a Function Type value (its erasure's adapter carries it), a
 // compiler function without a row or a refused edge.
 // Invariants: the substitution admitted is the one the body runs under, so Admit keys and represents it; a Closure's body is the
-// program's, read unchecked (the validator's program pass guarantees it, MirValidator.Program, G191).
-// Must not: read a site or a template, or record anything itself (Admit, the layout verdict, the witness and glue rows do) but a
-// declared callee without a body and a bodyless function that is neither a compiler function nor an import, broken contracts.
+// program's where a read body creates the Closure (the validator's program pass, MirValidator.Program, G191); a called Closure without
+// one is a Closure of a declaration Binding rejected, its request checked and then resting on Binding's record (Callee; PLAN G867).
+// Must not: read a site or a template, or record anything itself (Admit, Requested, the layout verdict, the witness and glue rows do) but
+// a declared callee without a body, a bodyless function that is neither a compiler function nor an import and, in a complete compilation,
+// a called Closure without a body, broken contracts.
 
 using Kimi.Compiler.Mir;
 
@@ -31,7 +33,23 @@ internal sealed partial class InstanceCollector
     {
         if (callable is { Kind: BoundTypeKind.Closure, Symbol: { } closure })
         {
-            return this.Admit(item, subject, program[new(closure, MirBodyKind.Closure)]!, this.types.SubstOfClosure(callable));
+            var subst = this.types.SubstOfClosure(callable);
+            if (program[new(closure, MirBodyKind.Closure)] is { } body)
+            {
+                return this.Admit(item, subject, body, subst);
+            }
+
+            // The program has no body of a Closure whose literal Binding did not publish, one in a declaration it rejected (a static whose
+            // Type is not Owned): the validator names a Closure's body only where a read body creates it (MirValidator.Program), and this
+            // call reads its value from a failed access. Its request is checked as any other (Requested) and then rests on Binding's
+            // record, as a target with a finding does (DECISIONS R5-M183): Report keeps the broken contract of a complete compilation,
+            // which rejected no declaration.
+            if (this.Requested(subject, closure, subst, out _))
+            {
+                this.Report(DiagnosticCode.InternalInvariant_Kd, subject);
+            }
+
+            return -1;
         }
 
         if (callable is not { Kind: BoundTypeKind.FunctionItem, Symbol: { } symbol })
@@ -115,8 +133,9 @@ internal sealed partial class InstanceCollector
 
     // X4 (DECISIONS R5-M124, R8-A1d, R8-K1c): the one owner of a target the compiler names: the body of a cataloged library function (a
     // Dictionary from none's initialize; a nonempty Array literal's growArray; a collection glue's destroyArray, destroyDictionary or
-    // releaseDictionary), admitted for a site under the substitution given (a generic one's; null for one that does not instantiate); a
-    // declared callee without a body is a broken contract.
+    // releaseDictionary) or of a struct's declared destructor (Destructor), admitted for a site under the substitution given (a generic
+    // one's; null for one that does not instantiate); a declared callee without a body is a broken contract, which Report keeps in a
+    // complete compilation: in another it is a declaration Binding rejected, that error's dependent (DECISIONS R5-M151).
     private int Declared(MirProgram program, int item, SourceRef site, BindingSymbol function, Subst? subst)
     {
         if (program[new(function, MirBodyKind.Fn)] is { } body)
