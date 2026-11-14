@@ -12485,16 +12485,21 @@ resumed by R4-M86 (2026-10-20).
     occurrence once per case when a Semantics family's slot is the declaring Type's; a warm Bind allocates nothing.
   - Kept two-step reads, none a call's substitution and none a model for a new site, each named in the file's contract: pattern
     reads before the callee's slots have images (the trial's `CallMemberPattern`, OriginInference's `Project`, PropertyCalls'
-    `Signature`, FunctionReferences' `InferReferenceSlots`), a function item's signature (FunctionItems' `SubstitutedItemType`,
-    FunctionReferences' `Formed`), signature comparisons (`ContractFits`' `Bound`, CallableContracts' `Translate`,
+    `Signature`, FunctionReferences' `InferReferenceSlots` and `PerCallReferenceSlot`'s result read, rechecked by the one-pass
+    `Bound`), signature comparisons (the Origin step of `ContractFits`' `Bound` (PLAN G457 (R2)), CallableContracts' `Translate`,
     ContractMatching's parameter read, `BindContractType` / `BindContractOrigin`) and an associated Type's formation
-    (AssociatedOrigins). The pattern reads and the function item's signature are open under PLAN G457 (R1).
+    (AssociatedOrigins). The pattern reads are open under PLAN G457 (R1).
   - Rejected: per-site columns (the first design: the inputs stay out and the second pass in); one order at every site (still two
     passes, so the signature's capture would hold for clauses too); renaming the callee's atoms apart (a second representation of a
     binder, an allocation per candidate); interning the value per candidate (a hash and array copies for candidates that mostly
     lose; `Subst` stays the interned form after selection).
   - Closes PLAN G707 and G700 (`proto/f-o2s1` is not needed). Not in the unit: Fr1, a function reference's clause at `ContractFits`
     (a SPEC reading, 10.7 with 15.3.7), kept on PLAN G457 (R1).
+  - Amended by plan revision 69 bundle 3a (PLAN G457 (b), G585) (Q-433, 873052b8e, 2026-11-15; Major): the function-item entry is
+    removed from the kept two-step reads: FunctionItems' `SubstitutedItemType`, FunctionReferences' `Formed` and the Type part of
+    FunctionTypes' `ContractFits.Bound` (with a slot frame) apply the one `CallSubstitution`; `Bound`'s Origin step stays (PLAN G457
+    (R2)); `InferReferenceSlots` and `PerCallReferenceSlot`'s result read stay two-step pattern reads, rechecked by the one-pass
+    `Bound`.
 
 - **BU-180 A list is read by index, a node's children by the one walk (PLAN G609)** (2026-11-11; Front, Binding and Parsing; Major;
   redesigned one level up by its first review's B1; design `front\G609\design-r2.md` and its review ACCEPT, implementation review
@@ -12724,7 +12729,9 @@ resumed by R4-M86 (2026-10-20).
     No fit test and no Type gate: each source is fitted to `U` as at an expected `U`, so a misfit is its own record at `U` (K1). A
     form delivering its operand (a label, an expression body) passes the position on. Readers: `FitLiteral` (it tests the fit on
     top: the applicability of a call); `FitComposite`: a fill or mixed range at `ref/U` is no temporary of `U` (`TemporaryTarget`
-    gives none), so it is typed with no expected Type, as binding it at a let types it, and fits only where that Type is `U`.
+    gives none), so it is typed with no expected Type, as binding it at a let types it, and fits only where that Type is `U`; the
+    selected call completes it at `ref/U` itself (no source Type: `CompleteArguments` binds it at the parameter), so the binder
+    decides every part and the fit only filters candidates.
     `HasTypeWithoutExpectation` reads this after the probe fitted the shape: a Literal part at any depth keeps its default
     (`PartDefault`: a Tuple's or nested fill's elements, a literal join), a literal-only boundary takes its other boundary's Type,
     `T` for `FromEnd<T>`, else `i32` (`OtherBoundaryType`, SPEC 4.6.2 rules 2 and 3, the function the late default of a mixed range
@@ -12735,17 +12742,23 @@ resumed by R4-M86 (2026-10-20).
     composite and a Literal at a fixed position; `SolveValueCallOrigins` adds the same bound (`AddTemporaryBound`) for the root row
     and every child row that waits at `ref/U during a` as a borrowed temporary: an Aggregate part (a Tuple or array literal, a fill,
     a mixed range: `InferComposite`'s key for such a part) or a source the rule names (`InferLiteral`'s key). A part of Join kind at
-    `ref/(...)`, which `InferComposite` borrows too (**The one exception**, PLAN G729), is no key of a value call: whether a value
-    call takes it is the question of a temporary carried out of its arm (review 2 N8's owner question).
+    `ref/U` (a Tuple or array result), which `InferComposite` borrows too (**The one exception**, PLAN G729), is no key of a value
+    call: whether a value call takes it is the question of a temporary carried out of its arm (review 2 N8's owner question).
   - **Raw.** `AdaptInput` borrows a `raw/U` value as an owner's (raw is no reference or handle slot, 10.2): `null` at
     `ref/(raw/i32)` (K4); a raw Place at `ref/(raw/U)` is borrowed too.
   - **The one exception.** `FitComposite` and `InferComposite` also borrow a join its call classifies part by part (PartKind Join)
-    at `ref/(...)`, with the join's Place Origin as the bound: that join is G729's (R7-I2 d), not this rule's.
+    at `ref/U` (a Tuple or array result), with the join's Place Origin as the bound: that join is G729's (R7-I2 d), not this rule's.
+    A source of such a join that is no temporary of `U` (a fill, a mixed range, a waiting call) still takes `U`'s parts: PLAN G910
+    (class 1, its own unit).
   - **Deleted.** `FailBorrowedElements` (BU-165's interim) and its call; `CallSelection.Candidates`' root-only `InferInput` for a
     borrowed Literal; FitLiteral's copy of the Type gate.
   - **Rejected:** `ConstructedAt` in `ChildPattern` (BU-165 B1); a per-element operation table (a side table); a fits-gated join row
     (K1); one temporary per arm (O-201 (2) (b)); two per-form arms in the fit (`FitsOwnTypeAt`: a fill's direct literal element, a
     range with `S == E`; review 1 B1); a bound only for `TemporaryTarget` leaves of a value call (review 1 B2).
+  - Amended by plan revision 69 bundle 3a (PLAN G457 (b), G585) (Q-433, 440a601c7, 2026-11-15; Major; closes PLAN G585's residue):
+    the Rule's `FitComposite` sentence (the selected call completes a fill or mixed range at `ref/U` itself, as at a let); the
+    Input's and the one exception's `ref/(...)` is `ref/U` (a Tuple or array result: `InferComposite` borrows a Join at any `ref/`
+    pattern); the one exception names PLAN G910 for a source of such a join that is no temporary of `U`.
 
 - **BU-188 A specialization's placement is judged by the item list that reads it** (2026-11-13; Front, Parsing and Binding; Major,
   an acceptance mover; PLAN G807; design review 3 ACCEPT, implementation review ACCEPT WITH NOTES; the owner approved
