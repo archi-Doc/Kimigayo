@@ -207,6 +207,19 @@ public class ConditionalConformanceBindingTest
             $"    var store: s/(ref/i32 during {written}) during a\n" +
             $"    public func put(self: uniq/Self, value: s/(ref/i32 during {written}) during a) -> () => self.store = value@move\n"));
 
+    // SPEC 8.3.4, 8.8.2, 15.3.5 (PLAN G801): a conformance's `when` narrows only the binder it names: `when u is ref` makes the layer
+    // over `u` covariant in its target (rejected before G801); `when s is ref` leaves `u` admitting `uniq`, so its target stays invariant.
+    [Theory]
+    [InlineData("u", "clean")]
+    [InlineData("s", "1*IncompatibleContractImplementation_Kd")]
+    public void AConformanceConditionNarrowsOnlyTheBinderItNames(string named, string records)
+        => Assert.Equal(records, DiagnosticCorpus.RecordProfile(
+            "contract M<P>\n    func put(self: uniq/Self, value: P) -> ()\n" +
+            "struct H<s/T, u/V> {a}\n    s is ref or uniq\n    u is ref or uniq\n" +
+            $"    Self is M<u/(ref/i32 during static) during a> when {named} is ref\n" +
+            "    var store: u/(ref/i32 during a) during a\n" +
+            "    public func put(self: uniq/Self, value: u/(ref/i32 during a) during a) -> () => self.store = value@move\n"));
+
     // SPEC 8.3.4, 8.8.2, 15.3.5 (PLAN G801): a property setter's requirement is compared in the same conformance scope: under
     // `when s is ref` the written setter accepts the required input (rejected before G801); without the `when` it stays invariant.
     [Theory]
@@ -278,7 +291,8 @@ public class ConditionalConformanceBindingTest
 
     // SPEC 7.5, 8.3.4, 15.3.5 (PLAN G801): a fit in a conditional member's body reads the admitted set at its use, the member's clauses
     // and an enclosing `when` included: under `s is ref` the longer target fits the stored one, directly or through a local (rejected
-    // before G801); without the clause, or under `s is uniq`, the target stays invariant.
+    // before G801); without the clause, or under `s is uniq`, the target stays invariant; covariance never reverses the fit (the shorter
+    // target into a stored longer one under `s is ref`).
     [Theory]
     [InlineData("    public func put(self: uniq/Self, value: V) -> ()\n        s is ref\n        self.store = value@move\n", "clean")]
     [InlineData("    Self is K when s is ref\n        public func touch(self: ref/Self) -> i32\n            return 0\n        public func put(self: uniq/Self, value: V) -> ()\n            self.store = value@move\n", "clean")]
@@ -286,6 +300,7 @@ public class ConditionalConformanceBindingTest
     [InlineData("    public func put(self: uniq/Self, value: V) -> ()\n        self.store = value@move\n", "1*UnprovenOriginRelation_Kd")]
     [InlineData("    public func put(self: uniq/Self, value: V) -> ()\n        s is uniq\n        self.store = value@move\n", "1*UnprovenOriginRelation_Kd")]
     [InlineData("    public func put(self: uniq/Self, value: V) -> ()\n        let held: s/(ref/i32 during a) during a = value@move\n        self.store = held@move\n", "1*UnprovenOriginRelation_Kd")]
+    [InlineData("    var other: V\n    public func put(self: uniq/Self, value: s/(ref/i32 during a) during a) -> ()\n        s is ref\n        self.other = value@move\n", "1*UnprovenOriginRelation_Kd")]
     public void AFitInAConditionalMembersBodyReadsTheAdmittedSetAtItsUse(string member, string records)
         => Assert.Equal(records, DiagnosticCorpus.RecordProfile(
             "contract K\n    func touch(self: ref/Self) -> i32\n" +
