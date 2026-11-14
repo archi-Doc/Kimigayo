@@ -20,7 +20,7 @@ public sealed partial class MirBorrowsTest
     // referent keeps that value's Loan in the referent (directStoreBad, directStoreTypedBad: PLAN G269's class B), where the dev MIR
     // accepted them all; a store past a captured exclusive reference also stores the receiver's own content (rule G's self-store, OQ-F7-3
     // (a)), so the read of `holder` or `slot` after the call errs.
-    // A Closure captured into another Closure is read as its body sees it too (nestedVarStoreBad: the `var` local's own Type names the
+    // A Closure captured into another Closure is read as a contract reads it too (nestedVarStoreBad: the `var` local's own Type names the
     // Origins its initializer infers, so its store into `last` was lost on the dev MIR and at 5c5d47ff2; BU's review B1).
     // A `let` binding (letOk, updateOk), a read before the write (exchangeOk), a referent no later use reads (directStoreOk,
     // directStoreTypedOk) and a Closure no later use reads (setOk, nestedVarStoreOk) are valid: the
@@ -264,7 +264,7 @@ public sealed partial class MirBorrowsTest
     // argument (signatureResultBad) or a capture the Origin or a premise relates to it (signatureCaptureBad, signaturePremiseBad): the
     // receiver's atoms are its environment's parts, and a Loan a fixed signature Origin carries reaches the result through those rows
     // (DECISIONS R4-M148; the Closure Type's fixed signature Origins, SPEC 15.2.3, are F1's); a Closure captured into another, from a `var`
-    // local whose Type names its initializer's inferred Origins, is read as its body sees it (nestedVarResultBad, which the dev MIR's
+    // local whose Type names its initializer's inferred Origins, is read as a contract reads it (nestedVarResultBad, which the dev MIR's
     // temporary rule rejected and 5c5d47ff2 accepted, BU's review B1), also through a Consuming receiver, by value (nestedConsumingBad,
     // likewise). A Function value keeps C8's contract, with no receiver input (functionBad, functionOk).
     [Fact]

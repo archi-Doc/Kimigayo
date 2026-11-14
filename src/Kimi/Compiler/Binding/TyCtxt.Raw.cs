@@ -20,10 +20,11 @@ internal sealed partial class TyCtxt
 
     // SPEC 5.7 Calls, Fits (DECISIONS BU-46): whether a declaration states a raw layer without an Origin: true exactly for a layer a Field,
     // Case payload or base clause writes without `during`, or a Closure environment binding's Type does (O-254 Q1 D: the bindings are
-    // Fields of the receiver's referent; ClosureEnvironment), which an instance's kept parts (StoredParts) state as Unstated at any depth
-    // below them, through every nested instance, Type argument, pair slot's argument, element and `during self` pointee they reach; false
-    // for a layer the walk's own Type writes (a parameter's or local's Type expression, a Type argument or pair argument it supplies) and
-    // for one stating an Origin. A read of the layer Type; total; allocates nothing.
+    // Fields of the receiver's referent), stated as Unstated at any depth below them, through every nested instance, Type argument, pair
+    // slot's argument, element and `during self` pointee they reach: a declaration's layers by an instance's kept parts (StoredParts), an
+    // environment's only by a contract's reading of its Closure (ClosureEnvironment; StoredParts never marks an environment); false for a
+    // layer the walk's own Type writes (a parameter's or local's Type expression, a Type argument or pair argument it supplies) and for one
+    // stating an Origin. A read of the layer Type; total; allocates nothing.
     internal static bool RawStated(BoundType layer) => layer.RawOrigin?.Kind == OriginKind.Unstated;
 
     // SPEC 5.2, 4.7.1, 15.1.5 (PLAN G672, G806): whether a part of a raw Place of this Type is itself a raw Place (RawPlaces' rows
