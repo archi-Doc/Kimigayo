@@ -455,9 +455,9 @@ public sealed partial class Binding
         }
 
         // Whether an argument's Origins (its Origin summary's nodes) name one of the header's: a universal input or a parameter's Origin.
-        // Raw layers' nodes stay out: an identity Constraint does read a raw layer's Origin, but its verdict is Proven or Unsatisfied,
-        // and no Unknown verdict rests on one; a raw node of a header's argument is never the call's (SPEC 15.4.2 completes no raw
-        // Origin), so that header is rejected whichever record the gate selects.
+        // Raw layers' nodes stay out, though a Constraint may be undecided over one (`T is Owned` reads a raw layer's Origin, SPEC
+        // 15.2.3): the limit stands for a header that may be valid, and a raw node of a header's argument is never the call's (SPEC
+        // 15.4.2 completes no raw Origin), so that header is invalid whichever record is selected and keeps the Constraint's.
         bool NamesHeaderOrigin(BoundType?[] arguments, FunctionKoto function)
         {
             foreach (var argument in arguments)
