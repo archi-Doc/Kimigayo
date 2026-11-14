@@ -109,10 +109,11 @@
 //   rebinds. Temporary: the readings go when R7-C2c2 c2-4 removes Reading's binding completion; a view whose identity table is not
 //   Final (a derived identity fact, W6) has its entry formed per request, c2-1's lifetime, until R7-C2e2's part 3 carries Completion.
 //
-// Kept rows (DECISIONS R7-C2a1, the owner's O-206 (a)). Temporary: R7-C2e2's part 3 joins a view's rows to Closure(view) and deletes
-// enumerateKept, its pool, KeepRows and the kept region's part of PremiseRefines.
-// - What and key: the rows of each link an outermost request walked, per (link, view scope, serial, requirement Contract), with
-//   whether that walk recorded an identity row (c2-2: such rows answer only a refinement among them), and a Contract's head depth.
+// Kept rows (DECISIONS R7-C2a1, the owner's O-206 (a)), a column of the view's Kept entry in Closure(view) (R7-C2e2 e2-3a).
+// - What and key: the rows of each link an outermost request walked, in the entry of its (view scope, requirement Contract) at the
+//   entry's serial, per link, with whether that walk recorded an identity row (c2-2: such rows answer only a refinement among them);
+//   and, in a table of their own, a Contract's head depth. Rows are kept only in a Kept entry (both need final keys and every reading
+//   kept), so a row lives no longer than its entry.
 // - Where: the kept region (KeptRegion, R7-M20's rule, which Reading and PremiseRefines both ask), an outermost request, a
 //   preparation that formed no reading, a view with no identity premise or a Final identity table (its keys are then a function of
 //   the view and the pass; a view with a derived identity fact keeps none until R7-C2e2): each fact of its index was a kept, Complete
@@ -305,12 +306,9 @@ public sealed partial class Binding
     private readonly Stack<ViewIndex> enumerateIndexPool = new();
     private readonly List<(BindingScope Scope, BoundConstraint Raw, BoundConstraint Fact)> enumerateNormalized = new();
 
-    // The kept tables (the class header's Kept rows), emptied by ClearKeptRows as their epoch ends, capacity and pooled lists kept:
-    // a Contract's head depth, and the rows an outermost request walked in the kept region per link, view value and requirement
-    // Contract, with whether that walk recorded an identity row (an extension may then supply what the rows lack).
+    // A Contract's head depth (the class header's Kept rows), emptied by ClearKeptRows as its epoch ends, capacity kept; the rows
+    // themselves are their entry's (ViewIndex.Rows).
     private readonly Dictionary<BindingSymbol, int> enumerateHeads = new(ReferenceEqualityComparer.Instance);
-    private readonly Dictionary<(BoundType, EvidenceView, int, BindingSymbol?), (List<BindingSymbol> Rows, bool Extends)> enumerateKept = new();
-    private readonly List<List<BindingSymbol>> enumerateKeptPool = new();
     private readonly List<List<BindingSymbol>> enumeratePool = new();
     private readonly List<BoundType> enumerateChain = new();
     private readonly List<(BoundType Prefix, int Reach)> enumerateActive = new();
@@ -318,7 +316,6 @@ public sealed partial class Binding
     private int enumeratePoolNext;
     private int enumerateDepth;
     private int enumerateWalking;
-    private int enumerateKeptPoolNext;
     private int readingFormations;
     private int readingStores;
     private IdentityClasses? enumerateClasses; // R7-C2c2: the current request's view's identity classes, or null
@@ -346,8 +343,8 @@ public sealed partial class Binding
 
         // Kept rows answer only where they decide (the class header's Extension): a refinement among them, or no identity row recorded.
         var keyed = default((List<BindingSymbol> Rows, bool Extends));
-        if (keep && this.enumerateKept.TryGetValue((subject, view, serial, this.activeRequirementContract), out var kept) &&
-            (ReferenceEquals(key, subject) || this.enumerateKept.TryGetValue((key, view, serial, this.activeRequirementContract), out keyed)))
+        if (keep && this.enumerateIndex.TryGetValue((view, this.activeRequirementContract), out var entry) && entry.Serial == serial &&
+            entry.Rows.TryGetValue(subject, out var kept) && (ReferenceEquals(key, subject) || entry.Rows.TryGetValue(key, out keyed)))
         {
             var answer = RowsRefine(kept.Rows, contract) || RowsRefine(keyed.Rows, contract);
             if (answer || !(kept.Extends || keyed.Extends))
@@ -422,7 +419,7 @@ public sealed partial class Binding
 
                 if (keep)
                 {
-                    this.KeepRows(view, serial);
+                    this.KeepRows(index, view, serial);
                 }
 
                 return refines;
@@ -448,41 +445,27 @@ public sealed partial class Binding
         }
     }
 
-    // The outermost walk's rows of the view, kept for the epoch under the request's requirement Contract (pooled copies), each marked
-    // with whether the walk recorded an identity row: a link's own walk records a subset of its request's.
-    private void KeepRows(EvidenceView view, int serial)
+    // The outermost walk's rows of the view, kept in its Kept entry (pooled copies), each marked with whether the walk recorded an
+    // identity row: a link's own walk records a subset of its request's.
+    private void KeepRows(ViewIndex index, EvidenceView view, int serial)
     {
         foreach (var ((link, linkView, linkSerial), rows) in this.enumerateMemo)
         {
-            if (rows is null || linkView != view || linkSerial != serial ||
-                this.enumerateKept.ContainsKey((link, view, serial, this.activeRequirementContract)))
+            if (rows is not null && linkView == view && linkSerial == serial)
             {
-                continue;
+                index.KeepRow(link, rows, this.enumerateIdentities.Count != 0);
             }
-
-            List<BindingSymbol> copy;
-            if (this.enumerateKeptPoolNext < this.enumerateKeptPool.Count)
-            {
-                copy = this.enumerateKeptPool[this.enumerateKeptPoolNext++];
-                copy.Clear();
-            }
-            else
-            {
-                copy = new(rows.Count);
-                this.enumerateKeptPool.Add(copy);
-                this.enumerateKeptPoolNext++;
-            }
-
-            copy.AddRange(rows);
-            this.enumerateKept[(link, view, serial, this.activeRequirementContract)] = (copy, this.enumerateIdentities.Count != 0);
         }
     }
 
-    // The kept tables' epoch ended: the capability epoch (ClearCapabilityResults) or, before the phase, the outermost request.
+    // The kept rows' epoch ended: the capability epoch (ClearCapabilityResults) or, before the phase, the outermost request.
     private void ClearKeptRows()
     {
-        this.enumerateKept.Clear();
-        this.enumerateKeptPoolNext = 0;
+        foreach (var index in this.enumerateIndex.Values)
+        {
+            index.ClearRows();
+        }
+
         this.enumerateHeads.Clear();
     }
 
@@ -808,12 +791,14 @@ public sealed partial class Binding
     private bool SameClass(BoundType a, BoundType b)
         => this.enumerateClasses is { } classes && ReferenceEquals(this.ClassKey(a, classes), this.ClassKey(b, classes));
 
-    // An entry of Closure(view) (the class header's): the serial it was formed at, whether it is Kept, and its buckets by (chain scope,
-    // kind, SubjectKey). Its lists stay with it, capacity kept.
+    // An entry of Closure(view) (the class header's): the serial it was formed at, whether it is Kept, its buckets by (chain scope,
+    // kind, SubjectKey) and its kept rows by link. Its lists stay with it, capacity kept.
     private sealed class ViewIndex
     {
         private readonly List<List<(BoundConstraint Raw, BoundConstraint Fact)>> lists = new();
+        private readonly List<List<BindingSymbol>> rowLists = new();
         private int used;
+        private int rowsUsed;
 
         internal int Serial { get; private set; }
 
@@ -824,6 +809,9 @@ public sealed partial class Binding
         internal Dictionary<(BindingScope Scope, ConstraintKind Kind, BindingSymbol? Symbol, BoundType Type), List<(BoundConstraint Raw, BoundConstraint Fact)>> Buckets { get; }
             = new();
 
+        // The kept rows (the class header's Kept rows): a link's rows and whether its walk recorded an identity row.
+        internal Dictionary<BoundType, (List<BindingSymbol> Rows, bool Extends)> Rows { get; } = new(ReferenceEqualityComparer.Instance);
+
         internal void Open(int serial)
         {
             this.Serial = serial;
@@ -831,6 +819,32 @@ public sealed partial class Binding
             this.Readings = false;
             this.Buckets.Clear();
             this.used = 0;
+            this.ClearRows();
+        }
+
+        internal void ClearRows()
+        {
+            this.Rows.Clear();
+            this.rowsUsed = 0;
+        }
+
+        // A link's rows, copied into a pooled list; a link already kept keeps its first copy.
+        internal void KeepRow(BoundType link, List<BindingSymbol> rows, bool extends)
+        {
+            if (this.Rows.ContainsKey(link))
+            {
+                return;
+            }
+
+            if (this.rowsUsed == this.rowLists.Count)
+            {
+                this.rowLists.Add(new(rows.Count));
+            }
+
+            var copy = this.rowLists[this.rowsUsed++];
+            copy.Clear();
+            copy.AddRange(rows);
+            this.Rows.Add(link, (copy, extends));
         }
 
         // One fact of an environment of the view in its kind's row under the subject key of `at` (a projection's declaration and
