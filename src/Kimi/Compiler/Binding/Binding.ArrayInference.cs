@@ -333,8 +333,9 @@ public sealed partial class Binding
     // BindDictionaryLiteral at one, ArrayElementEvidence at an annotation hole, DefaultWaitingPart for the parts that waited) and the
     // whole-literal evidence at a bare slot (LiteralElementType) share. A typed part agrees as it is with the Type the typed parts
     // established (AgreeElement: null when they do not agree); a part whose Type only literals supply adopts that Type, and without
-    // one such parts agree among themselves, the first kept on a conflict (AgreeAwaiting); the literal's element Type is the
-    // established one, else the awaiting parts'.
+    // one such parts agree among themselves; the literal's element Type is the established one, else the awaiting parts'. A binder
+    // keeps the first awaiting Type on a conflict (AgreeAwaiting), so binding the parts at it reports the conflict at the part; the
+    // whole-literal evidence, which binds no part, has no Type then.
     private BoundType? AgreeElement(BoundType? established, BoundType type, out ComparisonFailure failure)
     {
         failure = default;

@@ -569,7 +569,7 @@ public sealed partial class Binding
     }
 
     // The independent Type of the parts at a position (Binding.ArgumentKinds.Positions.cs): an aggregate literal's (AggregateParts; a
-    // fill's only of a known count; LiteralElementType), a join's or a join position's from its children; with `fitLiterals`, a
+    // fill's only of a known count; LiteralType), a join's or a join position's from its children; with `fitLiterals`, a
     // Literal part gives its default once DefaultArguments applied it. A part of Type Never, also a position Never in every source,
     // gives none (SPEC 10.8; DECISIONS BU-2 U3's D6).
     private BoundType? IndependentPositionType(int position, bool fitLiterals)
@@ -609,17 +609,9 @@ public sealed partial class Binding
             return this.types.Intern(BoundTypeKind.Constructed, symbol, SemanticsKind.Owner, [start, last]);
         }
 
-        if (new AggregateParts(source) is { Exist: true } parts && source is not ArrayLiteralKoto { FillLength: not null, FillCount: null })
+        if (this.WholeLiteralShape(source))
         {
-            for (var i = 0; i < parts.Count; i++)
-            {
-                if (ReferenceEquals(KotoHelper.UnwrapParentheses(parts[i]).BoundType, BoundType.Never))
-                {
-                    return null; // SPEC 10.8: a Never part is no evidence, even for a slot that takes the whole literal holding it.
-                }
-            }
-
-            return this.IndependentShapeType(position, end, source, fitLiterals); // SPEC 4.3.1, 12.4.1 (PLAN G725): as its binder forms it.
+            return this.LiteralType(position, source, fitLiterals, out _); // SPEC 4.3.1, 12.4.1 (PLAN G725): as its binder forms it.
         }
 
         if (this.ComposedJoin(source) is not null)
@@ -630,9 +622,9 @@ public sealed partial class Binding
         return fitLiterals ? this.DefaultOf(source) : null;
     }
 
-    // The independent Type an aggregate shape forms from its child positions' (ShapeType; an array's one element position, a
-    // Dictionary's key and value, AddPartsAt), none when one has none: a join's sources at a position by its kind (SPEC 14.9.2 step 2),
-    // one literal's parts as its own binder agrees them (LiteralElementType; SPEC 4.3.1, 12.4.1).
+    // The independent Type the aggregate parts of a join position form from their child positions' (ShapeType; an array's one element
+    // position, a Dictionary's key and value, AddPartsAt), none when one has none: the sources at a position by its kind (SPEC 14.9.2
+    // step 2). One literal's parts are its binder's (LiteralType).
     private BoundType? IndependentShapeType(int start, int end, Koto shape, bool fitLiterals)
     {
         var count = ShapeChildren(shape);
@@ -643,7 +635,7 @@ public sealed partial class Binding
             {
                 var position = this.positionParts.Count;
                 this.AddPartsAt(start, end, i);
-                var child = end - start == 1 ? this.LiteralElementType(position, fitLiterals) : this.IndependentPositionType(position, fitLiterals);
+                var child = this.IndependentPositionType(position, fitLiterals);
                 this.ClosePosition(position);
                 if (child is null)
                 {
@@ -661,31 +653,103 @@ public sealed partial class Binding
         }
     }
 
-    // SPEC 10.5.1, 4.3.1, 12.4.1, 10.8 (PLAN G725, G378): the Type at one child position of a single aggregate literal, as its own
-    // binder types it with no expected Type, by the binder's element agreement (AgreeElement, AgreeAwaiting): a part with a Type and
-    // no literal default is typed; a part whose Type only literals supply (an unfitted literal, an aggregate holding one) adopts the
-    // typed parts' Type. Before the defaults every part must be typed (10.5.1: the whole literal is evidence only when every part is);
-    // after them a literal-supplied part gives its defaulted Type, which counts only without a typed part. None when a part gives none
-    // (it waits for its call, or is Never) or the typed parts do not agree, the literal's own record once it is bound.
-    private BoundType? LiteralElementType(int start, bool fitLiterals)
+    // A Tuple, array or Dictionary literal whose Type its own parts form (AggregateParts; a fill only of a known count). An instance
+    // member: static fails SA1204 (member order) here.
+    private bool WholeLiteralShape(Koto source)
+        => new AggregateParts(source).Exist && source is not ArrayLiteralKoto { FillLength: not null, FillCount: null };
+
+    // SPEC 4.3.1, 12.4.1, 10.5.1, 10.8 (PLAN G725, G378; the owner's O-267 (a)): one aggregate literal's Type as its own binder forms it
+    // with no expected Type, each child position by the binder's element rule (LiteralElementType), and whether it fixes that Type
+    // itself (`fixes`), as its binder decides: a nested literal is deferred unless each of its child positions holds a part that fixes its
+    // Type (BindIndependentArrayLiteral, IndependentDictionaryType, BindTuple), so inside an enclosing literal one that fixes its Type
+    // establishes the element Type and any other adopts it. A Never part makes it none (10.8: a Never part is no evidence, even for a slot
+    // that takes the whole literal holding it).
+    private BoundType? LiteralType(int position, Koto literal, bool fitLiterals, out bool fixes)
     {
-        BoundType? established = null;
-        BoundType? awaiting = null;
-        for (var i = start; i < this.positionParts.Count; i++)
+        fixes = false;
+        var parts = new AggregateParts(literal);
+        for (var i = 0; i < parts.Count; i++)
         {
-            var position = this.OpenPosition(this.positionParts[i]);
-            var typed = this.IndependentPositionType(position, fitLiterals: false);
-            var own = typed is null && fitLiterals ? this.IndependentPositionType(position, fitLiterals: true) : null;
-            this.ClosePosition(position);
-            if (typed is not null ? (established = this.AgreeElement(established, typed, out _)) is null : own is null)
+            if (ReferenceEquals(KotoHelper.UnwrapParentheses(parts[i]).BoundType, BoundType.Never))
             {
                 return null;
             }
-
-            awaiting = own is null ? awaiting : this.AgreeAwaiting(awaiting, own);
         }
 
-        return established ?? awaiting;
+        var count = ShapeChildren(literal);
+        var children = this.RentTypes(count);
+        try
+        {
+            fixes = true;
+            for (var i = 0; i < count; i++)
+            {
+                var child = this.positionParts.Count;
+                this.AddPartsAt(position, position + 1, i);
+                var type = this.LiteralElementType(child, fitLiterals, out var established);
+                this.ClosePosition(child);
+                if (type is null)
+                {
+                    fixes = false;
+                    return null;
+                }
+
+                fixes &= established;
+                children[i] = type;
+            }
+
+            return this.ShapeType(literal, children.AsSpan(0, count));
+        }
+        finally
+        {
+            this.typeScratch.Return(children, clearArray: true);
+        }
+    }
+
+    // SPEC 10.5.1, 4.3.1, 12.4.1, 10.8 (PLAN G725, G378; O-267 (a)): the Type at one child position of a single aggregate literal by its
+    // binder's element rule with no expected Type: a part that fixes its Type (a typed part; a nested literal by LiteralType) establishes
+    // it, the established Types agreeing (AgreeElement); any other part (an unfitted literal, a nested literal its binder defers) adopts
+    // it, and without one such parts agree among themselves, whatever their order (10.8), or give none, a conflict its binder reports at
+    // the part. Before the defaults every part must have its Type (10.5.1: the whole literal is evidence only when every part is); after
+    // them a part that does not fix its Type gives its defaulted one. None when a part gives none (it waits for its call, or is Never) or
+    // the established Types do not agree, the literal's own record once it is bound; `established` tells whether a part fixes the Type.
+    private BoundType? LiteralElementType(int start, bool fitLiterals, out bool established)
+    {
+        BoundType? typed = null;
+        BoundType? awaiting = null;
+        var agreeing = true;
+        for (var i = start; i < this.positionParts.Count; i++)
+        {
+            var source = KotoHelper.UnwrapParentheses(this.positionParts[i]);
+            var position = this.OpenPosition(this.positionParts[i]);
+            bool fixes;
+            BoundType? type;
+            if (source.BoundType is null && this.WholeLiteralShape(source))
+            {
+                type = this.LiteralType(position, source, fitLiterals, out fixes);
+            }
+            else
+            {
+                type = this.IndependentPositionType(position, fitLiterals: false);
+                fixes = type is not null;
+                type ??= fitLiterals ? this.IndependentPositionType(position, fitLiterals: true) : null;
+            }
+
+            this.ClosePosition(position);
+            if (type is null || (fixes && (typed = this.AgreeElement(typed, type, out _)) is null))
+            {
+                established = false;
+                return null;
+            }
+
+            if (!fixes && agreeing)
+            {
+                awaiting = this.AgreeElement(awaiting, type, out _);
+                agreeing = awaiting is not null;
+            }
+        }
+
+        established = typed is not null;
+        return typed ?? awaiting;
     }
 
     // The independent Type of child position `index` of [start, end).

@@ -159,6 +159,15 @@ public partial class ApplicabilityChainRegressionTest
     [InlineData("guard", "o31", Sources + SourcesBody + "    let t = identity([[y], [1]])\n    return r\n", "")]
     [InlineData("guard", "o32", Sources + SourcesBody + "    let t = identity([[1], [y]])\n    return r\n", "")]
     [InlineData("guard", "o33", Sources + SourcesBody + "    let t = identity([[y], [x]])\n    return r\n", "*: let t = identity([[y], [x]]) | ...")]
+    // The owner's O-267 (a) (M3): a nested literal is typed by its binder's element rule, so one that fixes its Type (each child position
+    // holding evidence, `[x, 1]`) establishes the element Type and the others adopt it, in every order (o34 to o39: arrays, depth 3, a
+    // Dictionary value, a Tuple).
+    [InlineData("guard", "o34", Sources + SourcesBody + "    let t = identity([[1], [x, 1]])\n    return r\n", "")]
+    [InlineData("guard", "o35", Sources + SourcesBody + "    let t = identity([[x, 1], [1]])\n    return r\n", "")]
+    [InlineData("guard", "o36", Sources + SourcesBody + "    let t = identity([[[1]], [[x, 1]]])\n    return r\n", "")]
+    [InlineData("guard", "o37", Sources + SourcesBody + "    let t = identity([[1: [2]], [x: [x, 1]]])\n    return r\n", "")]
+    [InlineData("guard", "o38", Sources + SourcesBody + "    let t = identity([(1, [2]), (x, [x, 1])])\n    return r\n", "")]
+    [InlineData("guard", "o39", Sources + SourcesBody + "    let t = identity([(x, [x, 1]), (1, [2])])\n    return r\n", "")]
     // SPEC 14.9.2 step 1, 10.2: a fixed expectation, an explicit Type argument's or a parameter's, fits each source, a reference at a value element
     // position value-read. A source conflict only makes the argument wait for the selected candidate (SPEC 10.5.1).
     [InlineData("guard", "e10", Sources + SourcesBody + "    r = g<Array<i32>>([u@ref])\n    return r\n", "")]
