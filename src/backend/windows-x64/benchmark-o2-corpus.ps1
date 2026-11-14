@@ -18,6 +18,7 @@ param(
 )
 $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'toolchain.ps1')
+. (Join-Path $PSScriptRoot 'expected-output.ps1')
 $ToolchainRoot = Resolve-KimiToolchainRoot $ToolchainRoot
 $repo = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../../..'))
 $roots = [ordered]@{
@@ -45,7 +46,8 @@ function Get-Busy {
     return @(Get-Process | Where-Object ProcessName -Match $pattern | ForEach-Object { "$($_.ProcessName) $($_.Id) $([Math]::Round($_.TotalProcessorTime.TotalSeconds, 1)) s" })
 }
 
-# Wall seconds and the child's CPU seconds: wall time well above CPU time shows that the run waited or was preempted.
+# Wall seconds, the child's CPU seconds and its stdout/stderr bytes: wall time well above CPU time shows that the run
+# waited or was preempted.
 function Invoke-Timed([string] $File, [string[]] $Arguments = @(), [string[]] $Environment = @()) {
     $start = [Diagnostics.ProcessStartInfo]::new($File)
     $start.UseShellExecute = $false
@@ -56,11 +58,13 @@ function Invoke-Timed([string] $File, [string[]] $Arguments = @(), [string[]] $E
     $watch = [Diagnostics.Stopwatch]::StartNew()
     $process = [Diagnostics.Process]::Start($start)
     try {
-        $stdout = $process.StandardOutput.ReadToEndAsync()
-        $stderr = $process.StandardError.ReadToEndAsync()
+        $stdout = [IO.MemoryStream]::new()
+        $stderr = [IO.MemoryStream]::new()
+        $copies = @($process.StandardOutput.BaseStream.CopyToAsync($stdout), $process.StandardError.BaseStream.CopyToAsync($stderr))
         if (-not $process.WaitForExit(600000)) { $process.Kill($true); throw "Timed out: $File" }
         $seconds = $watch.Elapsed.TotalSeconds
-        return @{ seconds = $seconds; cpuSeconds = $process.TotalProcessorTime.TotalSeconds; stdout = $stdout.GetAwaiter().GetResult(); stderr = $stderr.GetAwaiter().GetResult(); exitCode = $process.ExitCode }
+        foreach ($copy in $copies) { $null = $copy.GetAwaiter().GetResult() }
+        return @{ seconds = $seconds; cpuSeconds = $process.TotalProcessorTime.TotalSeconds; stdout = $stdout.ToArray(); stderr = $stderr.ToArray(); exitCode = $process.ExitCode }
     }
     finally { $process.Dispose() }
 }
@@ -101,7 +105,7 @@ function Build-Kernel($Source, [string] $Variant, $Checkout) {
     $project = Join-Path $directory "$($Source.BaseName).kimiproj"
     [IO.File]::WriteAllText($project, "Targets=`n  `"x86_64-pc-windows-msvc`"`nOutputKind=`"Application`"`nOptimization=`"$Optimization`"`n", $utf8)
     $build = Invoke-Timed $dotnet @($Checkout.compiler, 'build', $project, '--ToolchainRoot', $ToolchainRoot) $Checkout.environment
-    if ($build.exitCode -ne 0) { throw "Build failed: $Variant $($Source.Name)`n$($build.stdout)$($build.stderr)" }
+    if ($build.exitCode -ne 0) { throw "Build failed: $Variant $($Source.Name)`n$($utf8.GetString($build.stdout))$($utf8.GetString($build.stderr))" }
     $bin = Join-Path $directory 'bin/x86_64-pc-windows-msvc'
     $exe = Join-Path $bin "$($Source.BaseName).$Optimization.exe"
     $stream = [IO.File]::OpenRead($exe)
@@ -122,7 +126,9 @@ function Build-Kernel($Source, [string] $Variant, $Checkout) {
 
 function Invoke-Checked([string] $Exe, [string] $Kernel) {
     $run = Invoke-Timed $Exe
-    if ($run.exitCode -ne 0 -or $run.stderr -cne '' -or $run.stdout -cne "$($expected[$Kernel])`n") { throw "Wrong result: $Exe (exit $($run.exitCode)): $($run.stdout)$($run.stderr)" }
+    if ($run.exitCode -ne 0 -or -not (Test-KimiExpectedOutput ([byte[]]@()) $run.stderr) -or -not (Test-KimiExpectedOutput $utf8.GetBytes("$($expected[$Kernel])`n") $run.stdout)) {
+        throw "Wrong result: $Exe (exit $($run.exitCode)): stdout=$([Convert]::ToHexString($run.stdout)) stderr=$([Convert]::ToHexString($run.stderr))"
+    }
     return $run
 }
 
@@ -189,10 +195,10 @@ try {
         foreach ($variant in $(if ($i -lt $PipelineRuns) { 'A', 'B' } else { 'A' })) {
             $run = Invoke-Timed $dotnet @($conditions.checkouts[$variant].benchmark, '--compiler-pipeline') $conditions.checkouts[$variant].environment
             $path = Join-Path $root "pipeline-$variant-$($pipeline[$variant].Count + 1)"
-            [IO.File]::WriteAllText("$path.json", $run.stdout, $utf8)
-            [IO.File]::WriteAllText("$path.stderr.log", $run.stderr, $utf8)
+            [IO.File]::WriteAllBytes("$path.json", $run.stdout)
+            [IO.File]::WriteAllBytes("$path.stderr.log", $run.stderr)
             if ($run.exitCode -ne 0) { throw "Pipeline measurement failed: $variant" }
-            $report = $run.stdout | ConvertFrom-Json
+            $report = $utf8.GetString($run.stdout) | ConvertFrom-Json
             if ($pipeline.A.Count -gt 0) { Assert-Comparable $report $pipeline.A[0] }
             $pipeline[$variant].Add($report)
         }

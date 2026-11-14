@@ -233,7 +233,7 @@ public sealed partial class Binding
             this.JudgeCallPosition(context.At, longer, shorter, invariant, pattern is null ? null : this.OuterOrigin(pattern), null, context: context, slot: slot, condition: SlotCondition(actual, this, context.At));
         }
 
-        var exclusive = IsInvariantLayer(actual, this);
+        var exclusive = IsInvariantLayer(actual, this, context.At, default);
         for (var i = 0; i < actual.Components.Count && actual.Kind is BoundTypeKind.Semantics or BoundTypeKind.SemanticsApplication; i++)
         {
             this.CollectCallRelations(actual.Components[i], expected.Components[i], pattern?.Components[i], invariant || exclusive, context, slot);

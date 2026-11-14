@@ -108,13 +108,14 @@ public sealed partial class Binding
             {
                 kind = PropertyWitnessKind.StorageSet;
                 proof = input is not null && implementation.Property.Declaration.DeclarationKind == PropertyDeclarationKind.Var &&
-                    SignatureEquals(input, field, requirement.Binder, implementation.Binder) && IsSubtype(input, field) && SameType(result, BoundType.Unit) ?
+                    SignatureEquals(input, field, requirement.Binder, implementation.Binder) &&
+                    this.IsSubtypeAt(input, field, requirement.Binder, Bridge()) && SameType(result, BoundType.Unit) ?
                     ConstraintProof.Proven : ConstraintProof.Refuted;
             }
             else if (SignatureEquals(field, result, implementation.Binder, requirement.Binder))
             {
                 kind = PropertyWitnessKind.StorageCopy;
-                proof = IsSubtype(field, result) ? this.ProveCopy(field, scope) : ConstraintProof.Refuted;
+                proof = this.IsSubtypeAt(field, result, requirement.Binder, Bridge()) ? this.ProveCopy(field, scope) : ConstraintProof.Refuted;
             }
             else if (result is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref, Origin: { } resultOrigin } && SameType(result.Components[0], field) && receiver.Origin is { } receiverOrigin && OriginOutlives(receiverOrigin, resultOrigin))
             {
@@ -143,5 +144,10 @@ public sealed partial class Binding
         }
 
         return proof;
+
+        // SPEC 11.9.1, 8.8.2: a bridge is compared as a function requirement is, in the conformance scope: the Field's Type against
+        // the required input or result under that scope's premises and admitted sets (PLAN G801). The Field's Type is well formed
+        // wherever its Type is, so a bridge adds no input premise of its own.
+        CallableInstance Bridge() => this.RequirementComparison(input is null ? [receiver] : [receiver, input], result, requirement.Binder, scope);
     }
 }
