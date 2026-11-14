@@ -82,6 +82,15 @@ public sealed partial class RetentionTest
     // A struct whose Field a Type argument supplies (SPEC 5.7 Calls' `Wrap`).
     private const string Wrap = "struct Wrap<E>\n    internal var value: E\n";
 
+    // PLAN G571's two uses of an `R` whose Fields reach P's borrow of x, `{write}` where the write goes: the input fold (a call that may store
+    // d's borrow in *slot) and the hold fit (a result borrowed through d, of a part R holds by value; SPEC 15.6.4, 15.6.3).
+    private const string StoreUse = "func make(x: ref/i32 during q) -> R during q => $abort(\"x\")\nfunc f(dst: uniq/(ref/i32 during q), d: R during q) => ()\n" +
+        "func g()\n    var x = 1\n    var y = 2\n    var slot = y@ref\n    var d = make(x@ref)\n    f(slot@uniq, d@move)\n{write}    let k = slot@follow\n";
+
+    private const string ThroughUse = "func make(x: ref/i32 during q) -> R during q => $abort(\"x\")\n" +
+        "func entry(d: ref/(R during c) during o) -> ref/(i32, ref/i32 during c) during o => $abort(\"x\")\n" +
+        "func g()\n    var x = 1\n    var r = make(x@ref)\n    let k = entry(r@ref)\n{write}    let z = k@follow\n";
+
     // The row of `f(target: uniq/(raw/u8) during a, q: …)` where q holds a layer stating `a` by value: through it, target's referent (PLAN G583).
     private const string HeldLayerRow =
         "store 0: own {0 Chain, 1 Value Chain}, reached {0 Chain, 1 Value Chain} untied, store 1: own {0 Value Chain, 1 Chain}, reached {0 Value Chain, 1 Chain} untied";
@@ -328,6 +337,46 @@ public sealed partial class RetentionTest
     [InlineData("(i32, ", ")", 33, "")]
     public void TheBoundCountsEntries(string open, string close, int levels, string records)
         => Assert.Equal(records, NestRecords(string.Concat(Enumerable.Repeat(open, levels)) + "ref/i32 during q" + string.Concat(Enumerable.Repeat(close, levels))));
+
+    // PLAN G571 (SPEC 15.6.4): the walks that stop at the bound enter a part at the shallowest depth it is met at (Enters), so what lies
+    // below it does not depend on the route that meets it first: the input fold's (`Store`, StoreUse) and the hold fit's (`Through`,
+    // ThroughUse). Each Field is P at its depth: `long` 30 Tuple levels down, where P's borrow lies past the bound, `mid` 20 and `short`
+    // 0, within it; Field order decides nothing. Each valid twin writes nothing while the borrow is used.
+    [Theory]
+    [InlineData("long short", "Store", "    x = 3\n", "ComparisonLoanConflict_Kd x = 3")]
+    [InlineData("short long", "Store", "    x = 3\n", "ComparisonLoanConflict_Kd x = 3")]
+    [InlineData("long short", "Store", "", "")]
+    [InlineData("long short", "Through", "    r = make(x@ref)\n", "ComparisonLoanConflict_Kd r = make(x@ref)")]
+    [InlineData("short long", "Through", "    r = make(x@ref)\n", "ComparisonLoanConflict_Kd r = make(x@ref)")]
+    [InlineData("long mid", "Through", "    r = make(x@ref)\n", "ComparisonLoanConflict_Kd r = make(x@ref)")]
+    [InlineData("long short", "Through", "", "")]
+    public void APartIsWalkedAtTheShallowestDepthItIsMetAt(string fields, string use, string write, string records)
+    {
+        var levels = new Dictionary<string, int> { ["long"] = 30, ["mid"] = 20, ["short"] = 0 };
+        var shapes = "struct P {s}\n    public var tag: (i32, (i32, (i32, (i32, (i32, ref/i32 during s)))))\nstruct R {s}\n" + string.Concat(fields.Split(' ').Select(
+            x => $"    public var {x}: {string.Concat(Enumerable.Repeat("(i32, ", levels[x]))}P during s{new string(')', levels[x])}\n"));
+        Assert.Equal(records, MirBorrowsTest.Records(shapes + (use == "Store" ? StoreUse : ThroughUse).Replace("{write}", write, StringComparison.Ordinal) + "public func main() => ()\n"));
+    }
+
+    // PLAN G571, the handed-callable walk (TyCtxt.Handed; SPEC 15.6.4: a callable an input holds is handed to the callee's body): `h` holds
+    // CB's callable on two routes, `f30` (the Function Type 34 entries down, past HandedBound) and `f0` (4 down); the deep Field first
+    // decides nothing. w's address may be stored where t reaches, so y's write while t lives conflicts (15.6); `zok` writes z, which no
+    // Loan names (the Middle's C-314 twins).
+    [Theory]
+    [InlineData("f30 f0", "bad", "ComparisonLoanConflict_Kd y = 5")]
+    [InlineData("f0 f30", "bad", "ComparisonLoanConflict_Kd y = 5")]
+    [InlineData("f30 f0", "zok", "")]
+    public void AHandedCallableIsFoundAtTheShallowestDepthItIsMetAt(string fields, string body, string records)
+    {
+        var shapes = "struct CB<T>\n    public var x: (i32, (i32, (raw/u8) -> T))\nstruct H<T>\n" + string.Concat(fields.Split(' ').Select(
+            x => $"    public var {x}: {string.Concat(Enumerable.Repeat("(i32, ", x == "f30" ? 30 : 0))}CB<T>{new string(')', x == "f30" ? 30 : 0)}\n"));
+        var use = body == "bad"
+            ? "    var y: i32 = 1\n    var w: ref/i32 = y@ref\n    useH(t@uniq, w@raw@raw/i32, h@move)\n    y = 5\n    consume(t@move)\n"
+            : "    var z: i32 = 1\n    useH(t@uniq, z@raw, h@move)\n    consume(t@move)\n    z = 5\n";
+        Assert.Equal(records, MirBorrowsTest.Records(
+            shapes + "func consume<T>(x: T) => ()\nfunc useH<T>(dst: uniq/T, p: raw/i32, h: H<T>) => ()\n" +
+            $"func {body}<T>(x: T, h: H<T>) -> ()\n    var t = x@move\n" + use + "public func main() => ()\n"));
+    }
 
     // The recorded limit (the owner's O-47 and O-49 (a); PLAN G408's class; the Front's, Binding's `StorageBound`): a storage nest past 32 entries,
     // however few Dictionaries it holds: one under 31 others is enough. These invalid programs are newly accepted, each with no Language record, a
