@@ -24,6 +24,15 @@ public class GenericClosureIdentityTest
 
     private static readonly string[] TaggedBox = [.. Tagged, "struct Box<T>", "    T is Tag", "    public var n = func [] () -> isize => T.tag()", "    public init() => ()"];
 
+    // A struct whose stored Field initializer's Closure returns the Item of a function declared in it, which returns T's tag and takes
+    // a ref/T; each instance's Item called, and one erased.
+    private static readonly string[] HeldItem =
+    [
+        .. Tagged, "struct Box<T>", "    T is Tag", "    public let p = func ()", "        func pk(x: ref/T) -> isize => T.tag()", "        return pk", "    public init() => ()",
+        "let a = A.init()", "let b = B.init()", "let f = Box<A>.init().p()", "let g = Box<B>.init().p()", "let e: (ref/B) -> isize = Box<B>.init().p()",
+        "require f(a@ref) * 100 + g(b@ref) * 10 + e(b@ref) == 122 else => $abort(\"item\")", Ok,
+    ];
+
     // The form and its program lines.
     public static TheoryData<string, string[]> HeldCases => new()
     {
@@ -215,6 +224,13 @@ public class GenericClosureIdentityTest
         var error = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics);
         Assert.Equal(("UnprovenConstraint_Kd", at), (error.Code, source.Substring(error.Span!.Value.Start, error.Span.Value.Length)));
     }
+
+    // SPEC 3.2.1, 6.1.3, 8.13.3 (PLAN G846; the owner's O-258 (a)): the Item of a function declared in a Field initializer's Closure
+    // holds its Type's instance: read through Box<A> and Box<B> it runs A's and B's bodies and takes an A and a B, called and erased
+    // (before: the EnclosingInstance gap, and TypeMismatch_Kd for the signature read with Box's formal T).
+    [Fact]
+    public void AFieldInitializersFunctionItemRunsInItsTypesInstance()
+        => ScalarEmissionTest.EmitFixture("GenericClosureHeldItem", string.Join('\n', HeldItem) + "\n", "ok\n");
 
     [Trait("Purpose", "Allocation")]
     [Fact]

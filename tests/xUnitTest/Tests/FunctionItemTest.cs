@@ -199,6 +199,8 @@ public class FunctionItemTest
     [InlineData("w10innererase", ItemField + "    public func m<U>(self: ref/Self, other: ref/S<U>) -> i32\n        U is Owned\n        let e: () -> i32 = other.p()\n        return e()\n", null)]
     [InlineData("w10binnereraseU", ItemField + "    public func m<U>(self: ref/Self, other: ref/S<U>) -> i32\n        T is Owned\n        let e: () -> i32 = other.p()\n        return e()\n", "other.p()\n        return e()")]
     [InlineData("o8eraT", "func h<T>(x: ref/T during a, o: ref/T during b) -> i32\n    origin b outlives a\n    if true\n        func pk(y: ref/T during a) -> i32 => 0\n        let f: (ref/T during b) -> i32 = pk\n        return f(o)\n    return 0\n", "pk\n        return f(o)")]
+    [InlineData("w3localItem", GroupNeed + "func h<T>(t: T) -> i32\n    T is Owned\n    let f = func ()\n        func pk() -> i32 => 0\n        return pk\n    return N.need(f())\n", null)]
+    [InlineData("w3blocalItemT", GroupNeed + "func h<T>(t: T) -> i32\n    let f = func ()\n        func pk() -> i32 => 0\n        return pk\n    return N.need(f())\n", "N.need(f())")]
     [InlineData("k18clo", GroupNeed + "func h<T>(t: T) -> i32\n    let c = func () -> i32 => 0\n    return N.need(c)\n", "N.need(c)")]
     [InlineData("k18clook", GroupNeed + "func h<T>(t: T) -> i32\n    T is Owned\n    let c = func () -> i32 => 0\n    return N.need(c)\n", null)]
     [InlineData("k19cloera", "func h<T>(t: T) -> i32\n    let c = func (v: i32) -> i32 => v\n    let e: (i32) -> i32 = c\n    return e(0)\n", "c\n    return e(0)")]
