@@ -415,8 +415,9 @@ public sealed partial class Binding
     }
 
     // SPEC 8.3.2's closed world before ResolveConformance refutes: a conformance to the required reference's Contract declaration is a
-    // path not ruled out unless its reference, in the conforming Type's terms, is known to differ from the required one
-    // (IdentityRefuted) or each of its paths' own conditions is Refuted (PLAN G866). A query already open on the Type rules out nothing.
+    // path not ruled out unless its reference, in the conforming Type's terms, is known to differ from the required one, in the
+    // scope's (IdentityRefuted), or each of its paths' own conditions is Refuted (PLAN G866). A query already open on the Type rules
+    // out nothing.
     private bool PathNotRuledOut(BoundType type, BindingSymbol symbol, BindingSymbol contract, BindingScope scope)
     {
         if (contract.Type is not { } required || ReferenceEquals(required.Symbol, contract) || this.ConformancesOf(symbol) is not { } bindings)

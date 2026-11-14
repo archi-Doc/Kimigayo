@@ -101,7 +101,8 @@ public sealed partial class Binding
         // erroneous or provisional class fixes no form); nothing for a Type outside the classes (PLAN G823's key walk reads them).
         internal void Members(BoundType type, List<BoundType> into)
         {
-            if (!this.node.TryGetValue(this.Target(type), out var n) || this.state[this.Find(n)] != One || this.incompleteClass[this.Find(n)])
+            if (!this.node.TryGetValue(binding.PairTarget(type, this.scope!), out var n) || this.state[this.Find(n)] != One ||
+                this.incompleteClass[this.Find(n)])
             {
                 return;
             }
@@ -164,7 +165,7 @@ public sealed partial class Binding
         // Verdict's Proven: one final class in state One, or one head and agreeing attributes over Proven parts.
         internal bool Same(BoundType a, BoundType b)
         {
-            (a, b) = (this.Target(a), this.Target(b));
+            (a, b) = (binding.PairTarget(a, this.scope!), binding.PairTarget(b, this.scope!));
             if (ReferenceEquals(a, b))
             {
                 return true;
@@ -680,17 +681,6 @@ public sealed partial class Binding
         private SemanticsMask Admitted(BoundType application)
             => TryPairLayer(application, out var whole, out _) ? binding.AdmittedSemantics(whole, this.scope!) : SemanticsMask.All;
 
-        // SPEC 8.2.3's pair row: with exactly `owner` admitted, `s/V` is `V` itself.
-        private BoundType Target(BoundType type)
-        {
-            while (type.Kind == BoundTypeKind.SemanticsApplication && this.Admitted(type) == SemanticsMask.Owner)
-            {
-                type = type.Components[0];
-            }
-
-            return type;
-        }
-
         // A node is added with its subterms; an application admitting exactly `owner` is its target from the start: joined with it,
         // and no constructor (no head, no proper part, no cycle edge).
         private int Add(BoundType type)
@@ -710,7 +700,7 @@ public sealed partial class Binding
             this.types.Add(type);
             this.parent.Add(n);
             this.incompleteClass.Add(false);
-            var target = this.Target(type);
+            var target = binding.PairTarget(type, this.scope!);
             this.transparent.Add(!ReferenceEquals(target, type));
             if (!ReferenceEquals(target, type))
             {

@@ -24,8 +24,10 @@ namespace Kimi.Compiler;
 //   table's finality) and which only ContractSolver's supply reads: no reader receives a key as a Type; such a class's complete
 //   constructed member (CompleteMember, the same scan), which IdentityRefuted (a parameter bound by a premise) and ProveProposition's
 //   contradiction check (N9) read; whether two Types are known to differ at a corresponding position (IdentityRefuted, SPEC 8.2.3's
-//   Refuted read positionally over the abstract Types, in the conforming Type's terms; HeadsDiffer, the head rule it shares with the
-//   collision check), which the Contract judge's paths and the Callable judge's signature read before they refute (PLAN G866).
+//   Refuted read positionally over its table: abstract Types, IsAbstractType, by proper parts; pair layers by their admitted sets,
+//   an application admitting exactly `owner` being its target, PairTarget, the rule the classes share; HeadsDiffer, the head rule
+//   it shares with the collision check; a conformance's instance in the conforming Type's terms, the required side in the
+//   scope's), which the Contract judge's paths and the Callable judge's signature read before they refute (PLAN G866).
 // - Invariants: the classes are a function of the premise set (union by the smaller index, states from the round that joins nothing);
 //   one finality rule per class (final unless a meet rests on an Origin "no" while a declaration it read is not complete or the
 //   premise environment cannot be rented); only a Complete table is memoized, by SerialOf, for one pass, and a table that is not is
@@ -99,51 +101,28 @@ public sealed partial class Binding
         return false;
     }
 
-    // IdentityRefuted's walk, a complete member standing for its class's parameter or projection. An abstract position (IsAbstract: a
-    // parameter, a Contract's Self among them, a projection, a pair application) differs only from a Type it is a proper part of;
-    // elsewhere the heads (HeadsDiffer) and then each pair of components decide.
-    private static bool Differs(BoundType a, BoundType b, IdentityClasses? classes)
+    // SPEC 8.2.3 (Cycles): whether `part` is `type` or reached from it by steps into components, a pair layer's target included; a
+    // route ends at an abstract Type (no projection's subject or arguments) and at a family, whose cases are no components.
+    private static bool Reaches(BoundType part, BoundType type)
     {
-        a = classes?.CompleteMember(a) ?? a;
-        b = classes?.CompleteMember(b) ?? b;
-        if (ReferenceEquals(a, b))
-        {
-            return false;
-        }
-
-        if (a.IsAbstract || b.IsAbstract)
-        {
-            return IsProperPart(a, b) || IsProperPart(b, a);
-        }
-
-        if (HeadsDiffer(a, b))
+        if (ReferenceEquals(part, type))
         {
             return true;
         }
 
-        for (var i = 0; i < a.Components.Count; i++)
+        if (TryPairLayer(type, out _, out var target))
         {
-            if (Differs(a.Components[i], b.Components[i], classes))
-            {
-                return true;
-            }
+            return Reaches(part, target);
         }
 
-        return false;
-    }
-
-    // SPEC 8.2.3: `part` is a proper part of `whole` through constructed heads alone; a projection or pair application between them
-    // decides nothing (a pair admitting `owner` may be its target).
-    private static bool IsProperPart(BoundType part, BoundType whole)
-    {
-        if (whole.IsAbstract)
+        if (type.IsAbstractType || type.Kind == BoundTypeKind.SemanticsAdaptation)
         {
             return false;
         }
 
-        for (var i = 0; i < whole.Components.Count; i++)
+        for (var i = 0; i < type.Components.Count; i++)
         {
-            if (ReferenceEquals(whole.Components[i], part) || IsProperPart(part, whole.Components[i]))
+            if (Reaches(part, type.Components[i]))
             {
                 return true;
             }
@@ -277,16 +256,134 @@ public sealed partial class Binding
 
     // SPEC 8.2.3: `a is b` holds in the view when the two are one complete Type, or its classes make them one (Verdict's Proven); an
     // erroneous or provisional class proves nothing.
-    // SPEC 8.2.3 (Refuted), 8.3.2 ("absence of proof is not enough"; "Unbound Types ... are never negative results"): whether two
-    // Types are known to differ at a corresponding position, in the view and in the terms of the conforming Type `self` (a Contract's
-    // Self is `self`, SPEC 8.4; completed projections first, ContractType). A judge refutes two Types' agreement only so; a pair with no
-    // known difference that it cannot prove is Unknown (the Contract judge's paths, the Callable judge's signature). Sound, not
-    // complete: an admitted set or a proper part through a class is not read, so such a pair stays Unknown.
-    private bool IdentityRefuted(BoundType a, BoundType b, BindingScope scope, BoundType? self)
-        => Differs(this.ContractType(a, scope, self), this.ContractType(b, scope, self), HasTypeIdentity(scope) ? this.ClassesOf(scope, out _) : null);
-
     private bool IdentityProven(BoundType a, BoundType b, BindingScope scope)
         => this.SameCompleteType(a, b) || (HasTypeIdentity(scope) && this.ClassesOf(scope, out _) is { } classes && classes.Same(a, b));
+
+    // SPEC 8.2.3 (Refuted), 8.3.2 ("absence of proof is not enough"; "Unbound Types ... are never negative results"): whether two
+    // Types are known to differ at a corresponding position in the view, `a` in the terms of the conforming Type `self` (a
+    // conformance's instance: a Contract's Self is `self`, SPEC 8.4) and `b` in the scope's (a required reference: a Contract's Self is
+    // the scope's own), completed projections first (ContractType). A judge refutes two Types' agreement only so; a pair with no known
+    // difference that it cannot prove is Unknown (the Contract judge's paths, the Callable judge's signature). Sound, not complete: a
+    // proper part through a class is not read, so such a pair stays Unknown.
+    private bool IdentityRefuted(BoundType a, BoundType b, BindingScope scope, BoundType? self)
+        => this.Differs(this.ContractType(a, scope, self), this.ContractType(b, scope), scope, HasTypeIdentity(scope) ? this.ClassesOf(scope, out _) : null);
+
+    // IdentityRefuted's walk over SPEC 8.2.3's table, a pair layer admitting exactly `owner` read as its target (PairTarget) and a
+    // complete member standing for its class's parameter or projection. An abstract Type (IsAbstractType) differs only from a Type it
+    // is a proper part of. Where a side is a pair layer the pair row decides: applications of one `s` share their head; otherwise
+    // disjoint outer Semantics differ (OuterSemantics), one Semantics on both sides decomposes, and any other pair differs only as a
+    // proper part. Elsewhere the heads (HeadsDiffer) and then each pair of components decide.
+    private bool Differs(BoundType a, BoundType b, BindingScope scope, IdentityClasses? classes)
+    {
+        a = this.PairTarget(a, scope);
+        b = this.PairTarget(b, scope);
+        a = classes?.CompleteMember(a) ?? a;
+        b = classes?.CompleteMember(b) ?? b;
+        if (ReferenceEquals(a, b))
+        {
+            return false;
+        }
+
+        if (a.IsAbstractType || b.IsAbstractType)
+        {
+            return this.IsProperPart(a, b, scope) || this.IsProperPart(b, a, scope);
+        }
+
+        if (a.IsPairLayer || b.IsPairLayer)
+        {
+            var p = this.OuterSemantics(a, scope, out var x);
+            var q = this.OuterSemantics(b, scope, out var y);
+            if (TryPairLayer(a, out var pair, out _) && TryPairLayer(b, out var other, out _) && ReferenceEquals(pair, other))
+            {
+                return this.Differs(x!, y!, scope, classes);
+            }
+
+            // One Semantics on both sides is one head, so the components decide (`s/V` with `s is ref` against `ref/W`).
+            if ((p & q) == 0 ||
+                (p == q && System.Numerics.BitOperations.IsPow2((uint)p) && (x, y) is ({ } u, { } v) && this.Differs(u, v, scope, classes)))
+            {
+                return true;
+            }
+
+            return this.IsProperPart(a, b, scope) || this.IsProperPart(b, a, scope);
+        }
+
+        if (HeadsDiffer(a, b))
+        {
+            return true;
+        }
+
+        for (var i = 0; i < a.Components.Count; i++)
+        {
+            if (this.Differs(a.Components[i], b.Components[i], scope, classes))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    // SPEC 8.2.3's pair row: the outer Semantics a Type may have where a pair layer is compared, with the layer's component. A pair
+    // layer has its admitted set (8.3.4) and its target, or every Semantics where it admits `owner` (`s/V` may be V itself and meets
+    // every form) or none (8.3.4's Error); a family has every Semantics; a Semantics layer has its own and its target; any other Type
+    // is no Semantics layer: `owner`.
+    private SemanticsMask OuterSemantics(BoundType type, BindingScope scope, out BoundType? component)
+    {
+        if (TryPairLayer(type, out var whole, out var target))
+        {
+            component = target;
+            var admitted = this.AdmittedSemantics(whole, scope);
+            return (admitted & SemanticsMask.Owner) != 0 || admitted == SemanticsMask.None ? SemanticsMask.All : admitted;
+        }
+
+        component = type is { Kind: BoundTypeKind.Semantics, Components: [var inner] } ? inner : null;
+        return type.Kind switch
+        {
+            BoundTypeKind.SemanticsAdaptation => SemanticsMask.All,
+            BoundTypeKind.Semantics => type.Semantics.ToMask(),
+            _ => SemanticsMask.Owner,
+        };
+    }
+
+    // SPEC 8.2.3's pair row: an application whose admitted set is exactly `owner` is its target (`owner/V` is V). The identity classes
+    // join such an application with its target (IdentityClasses.Add) and IdentityRefuted reads it as its target.
+    private BoundType PairTarget(BoundType type, BindingScope scope)
+    {
+        while (type.Kind == BoundTypeKind.SemanticsApplication && TryPairLayer(type, out var whole, out var target) &&
+            this.AdmittedSemantics(whole, scope) == SemanticsMask.Owner)
+        {
+            type = target;
+        }
+
+        return type;
+    }
+
+    // SPEC 8.2.3 (Refuted, Cycles): whether `part` is a proper part of `whole` by a route with a step into a constructed Type or into a
+    // pair layer that admits no `owner`; a pair layer admitting `owner` is no step (`s/V` may be V itself), and a route ends at an
+    // abstract Type and at a family (Reaches).
+    private bool IsProperPart(BoundType part, BoundType whole, BindingScope scope)
+    {
+        if (TryPairLayer(whole, out _, out var target))
+        {
+            return this.OuterSemantics(whole, scope, out _) == SemanticsMask.All ? this.IsProperPart(part, target, scope) : Reaches(part, target);
+        }
+
+        if (whole.IsAbstractType || whole.Kind == BoundTypeKind.SemanticsAdaptation)
+        {
+            return false;
+        }
+
+        for (var i = 0; i < whole.Components.Count; i++)
+        {
+            if (Reaches(part, whole.Components[i]))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
 
     // SPEC 8.2.3 ("an abstract Type ... takes the form its binding, a completed projection or its admitted set fixes"): the members of a
     // Type's identity class in the view, appended to `into`; none without a premise or where the class is erroneous or provisional. The
