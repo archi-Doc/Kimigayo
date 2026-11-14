@@ -99,9 +99,14 @@ public static partial class Parser
 
         Mark(
             HeaderWords,
+            [TokenKind.Group, TokenKind.Struct, TokenKind.Enum, TokenKind.Contract, TokenKind.Extension],
+            HeaderWord.ContainerIntroducer);
+
+        Mark(
+            HeaderWords,
             [
-                TokenKind.RootGroup, TokenKind.Group, TokenKind.Struct, TokenKind.Enum, TokenKind.Contract, TokenKind.Extension, TokenKind.Func,
-                TokenKind.Init, TokenKind.Drop, TokenKind.Let, TokenKind.Var, TokenKind.Computed, TokenKind.Property, TokenKind.Associate,
+                TokenKind.RootGroup, TokenKind.Func, TokenKind.Init, TokenKind.Drop, TokenKind.Let, TokenKind.Var, TokenKind.Computed,
+                TokenKind.Property, TokenKind.Associate,
             ],
             HeaderWord.DeclarationIntroducer);
 
