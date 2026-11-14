@@ -107,7 +107,38 @@ internal static partial class MirTypes
         BoundType? type, TyCtxt types, Dictionary<MirHoldingKey, MirModeDepths> seen, List<RawMember> members, List<Hold> entries, out MirWrites writes)
     {
         seen.Clear();
-        var found = new Holding(types, seen, members, entries).Holds(type, null, null, Own, 0);
+        var found = Bounded(new Holding(types, seen, members, entries).Holds(type, null, null, Own, 0), seen);
+        writes = found.Loan ? Guard(found) : MirWrites.None;
+        return found.Loan;
+    }
+
+    /// <summary>Gets what a call may write past the values at Places' keys, the one walk of <see cref="HoldsLoans"/> entered at each
+    /// key (its Type, the Type its declaration writes there and its holding instance, as <see cref="TyCtxt.Holdings"/> reads a stored
+    /// part), the keys' facts joined: a raw layer's is its own entry's at that key (SPEC 5.7 Calls: what the layer admits), not that of
+    /// the Type holding it. A5 reads it at the raw pointer raw Places of a punned reading (MirBorrows.Reach).</summary>
+    /// <param name="keys">The keys.</param>
+    /// <param name="types">The Type context.</param>
+    /// <param name="seen">Scratch for the depth each key was entered at in each mode, cleared first.</param>
+    /// <param name="members">Scratch for a stored layer's members, used in stack order and left as given.</param>
+    /// <param name="entries">Scratch for the entries the walk is reading, used in stack order and left as given.</param>
+    /// <returns>What a call may write past them.</returns>
+    internal static MirWrites WritesPast(
+        ReadOnlySpan<PlaceKey> keys, TyCtxt types, Dictionary<MirHoldingKey, MirModeDepths> seen, List<RawMember> members, List<Hold> entries)
+    {
+        seen.Clear();
+        var (holding, found) = (new Holding(types, seen, members, entries), default(Facts));
+        foreach (var key in keys)
+        {
+            found = found.Join(holding.Holds(key.Type, key.Written, key.Holder, Own, 0));
+        }
+
+        found = Bounded(found, seen);
+        return found.Loan ? Guard(found) : MirWrites.None;
+    }
+
+    // A walk's answer with what its parts past the bound give (Beyond): those whose key the walk never entered within the bound.
+    private static Facts Bounded(Facts found, Dictionary<MirHoldingKey, MirModeDepths> seen)
+    {
         foreach (var modes in seen.Values)
         {
             for (var mode = Own; mode <= LoanOnly; mode++)
@@ -117,8 +148,7 @@ internal static partial class MirTypes
             }
         }
 
-        writes = found.Loan ? Guard(found) : MirWrites.None;
-        return found.Loan;
+        return found;
     }
 
     // What a part past the bound gives in a mode (DECISIONS R4-M153): Loan in the value's own storage, and Deep where the mode reads the

@@ -6,8 +6,9 @@ namespace XunitTest;
 
 /// <summary>A5's W reads its first step at the reading path's Type, the input's pointee or referent (SPEC 15.6 Holders, 5.7 Calls,
 /// 15.6.4; the A5 value redesign's unit U3b, the owner's O-209): a Place that Type does not designate (SPEC 5.2, 4.1) is read punned
-/// where the Type has a raw pointer raw Place within, the holder's state at the reading Type's guard beside its own, and storage the
-/// body does not own where that guard steps over an `owner` Scalar's byte. The rows are the unit's coverage table, each labelled from
+/// through the Type's raw pointer raw Places, each a layer of its own (the owner's O-223 (B'): no other part of it is read), the
+/// holder's state at those layers' guard beside its own, and storage the body does not own, with those layers' record, where that
+/// guard steps over an `owner` Scalar's byte. The rows are the unit's coverage table, each labelled from
 /// SPEC (I invalid, V valid; P3: RESULT.md batch 1's settled label), the record each invalid one gives (SPEC 23.1.2).</summary>
 public sealed partial class MirBorrowsTest
 {
@@ -678,11 +679,161 @@ public sealed partial class MirBorrowsTest
                 kk = 2
                 usep(v)
             """,
+        ["zEnumTupPtrOk"] = """
+            func viaTO(slot: raw/((raw/u8, Option<raw/(raw/u8)>)), value: raw/u8) => ()
+            func zEnumTupPtrOk()
+                var kk: u8 = 1
+                let r = kk@uniq
+                var spare: raw/u8 = r@follow@raw
+                var x: raw/u8 = null
+                var h: (raw/u64, raw/u64, raw/u64) = (x@raw@raw/u64, null, null)
+                viaTO(h@raw@raw/((raw/u8, Option<raw/(raw/u8)>)), spare)
+                kk = 2
+                usep(x)
+            """,
+        ["zFnTupPtrOk"] = """
+            func viaTF(slot: raw/((raw/u8, () -> ())), value: raw/u8) => ()
+            func zFnTupPtrOk()
+                var kk: u8 = 1
+                let r = kk@uniq
+                var spare: raw/u8 = r@follow@raw
+                var x: raw/u8 = null
+                var h: (raw/u64, raw/u64, raw/u64) = (x@raw@raw/u64, null, null)
+                viaTF(h@raw@raw/((raw/u8, () -> ())), spare)
+                kk = 2
+                usep(x)
+            """,
+        ["zEnumTupMixOk"] = """
+            func viaTO(slot: raw/((raw/u8, Option<raw/(raw/u8)>)), value: raw/u8) => ()
+            func zEnumTupMixOk()
+                var kk: u8 = 1
+                let r = kk@uniq
+                var spare: raw/u8 = r@follow@raw
+                var x: raw/u8 = null
+                var w: (raw/u64, u64, u64) = (x@raw@raw/u64, 0@u64, 0@u64)
+                viaTO(w@raw@raw/((raw/u8, Option<raw/(raw/u8)>)), spare)
+                kk = 2
+            """,
+        ["zFnTupMixOk"] = """
+            func viaTF(slot: raw/((raw/u8, () -> ())), value: raw/u8) => ()
+            func zFnTupMixOk()
+                var kk: u8 = 1
+                let r = kk@uniq
+                var spare: raw/u8 = r@follow@raw
+                var x: raw/u8 = null
+                var w: (raw/u64, u64, u64) = (x@raw@raw/u64, 0@u64, 0@u64)
+                viaTF(w@raw@raw/((raw/u8, () -> ())), spare)
+                kk = 2
+            """,
+        ["zTupPtrOnlyOk"] = """
+            func viaTU(slot: raw/((raw/u8, u64)), value: raw/u8) => ()
+            func zTupPtrOnlyOk()
+                var kk: u8 = 1
+                let r = kk@uniq
+                var spare: raw/u8 = r@follow@raw
+                var x: raw/u8 = null
+                var w: (raw/u64, u64, u64) = (x@raw@raw/u64, 0@u64, 0@u64)
+                viaTU(w@raw@raw/((raw/u8, u64)), spare)
+                kk = 2
+                usep(x)
+            """,
+        ["zEnumTupPtrBad"] = """
+            func viaTO(slot: raw/((raw/u8, Option<raw/(raw/u8)>)), value: raw/u8) => ()
+            func zEnumTupPtrBad()
+                var kk: u8 = 1
+                let r = kk@uniq
+                var spare: raw/u8 = r@follow@raw
+                var x: raw/u8 = null
+                var h: (raw/u64, raw/u64, raw/u64) = (x@raw@raw/u64, null, null)
+                viaTO(h@raw@raw/((raw/u8, Option<raw/(raw/u8)>)), spare)
+                kk = 2
+                let z = h
+            """,
+        ["zEnumTupMixBad"] = """
+            func viaTO(slot: raw/((raw/u8, Option<raw/(raw/u8)>)), value: raw/u8) => ()
+            func zEnumTupMixBad()
+                var kk: u8 = 1
+                let r = kk@uniq
+                var spare: raw/u8 = r@follow@raw
+                var x: raw/u8 = null
+                var w: (raw/u64, u64, u64) = (x@raw@raw/u64, 0@u64, 0@u64)
+                viaTO(w@raw@raw/((raw/u8, Option<raw/(raw/u8)>)), spare)
+                kk = 2
+                let z = w
+            """,
+        ["zEnumTupScalarBad"] = """
+            func viaTO(slot: raw/((raw/u8, Option<raw/(raw/u8)>)), value: raw/u8) => ()
+            func zEnumTupScalarBad()
+                var kk: u8 = 1
+                let r = kk@uniq
+                var spare: raw/u8 = r@follow@raw
+                var x: [4 of u64] = [0@u64, 0@u64, 0@u64, 0@u64]
+                viaTO(x@raw@raw/((raw/u8, Option<raw/(raw/u8)>)), spare)
+                kk = 2
+                let z = x
+            """,
+        ["zRecMixBad"] = """
+            func keepP(slot: raw/(raw/((raw/u8, u64))), a: ref/u8, value: raw/u8) => ()
+            func zRecMixBad(a: ref/u8)
+                var kk: u8 = 1
+                let r = kk@uniq
+                var spare: raw/u8 = r@follow@raw
+                var x: raw/u8 = null
+                var w: (raw/u64, u64, u64) = (x@raw@raw/u64, 0@u64, 0@u64)
+                keepP(w@raw@raw/(raw/((raw/u8, u64))), a, spare)
+                kk = 2
+            """,
+        ["kStatedPtrOk"] = """
+            func keepS(slot: raw/((raw/(raw/u8) during a, u64)), a: uniq/(raw/u8), value: raw/u8) => ()
+            func kStatedPtrOk()
+                var kk: u8 = 1
+                let r = kk@uniq
+                var spare: raw/u8 = r@follow@raw
+                var cell: raw/u8 = null
+                var v: raw/u8 = null
+                var h: (raw/u16, u64) = (v@raw@raw/u16, 0@u64)
+                let r2 = cell@uniq
+                let p = h@raw@raw/((raw/(raw/u8) during r2, u64))
+                keepS(p, r2, spare)
+                kk = 2
+            """,
+        ["kStatedVOk"] = """
+            func keepS(slot: raw/((raw/(raw/u8) during a, u64)), a: uniq/(raw/u8), value: raw/u8) => ()
+            func kStatedVOk()
+                var kk: u8 = 1
+                let r = kk@uniq
+                var spare: raw/u8 = r@follow@raw
+                var cell: raw/u8 = null
+                var v: raw/u8 = null
+                var h: (raw/u16, u64) = (v@raw@raw/u16, 0@u64)
+                let r2 = cell@uniq
+                let p = h@raw@raw/((raw/(raw/u8) during r2, u64))
+                keepS(p, r2, spare)
+                kk = 2
+                usep(v)
+            """,
+        ["kStatedPtrBad"] = """
+            func keepS(slot: raw/((raw/(raw/u8) during a, u64)), a: uniq/(raw/u8), value: raw/u8) => ()
+            func kStatedPtrBad()
+                var kk: u8 = 1
+                let r = kk@uniq
+                var spare: raw/u8 = r@follow@raw
+                var cell: raw/u8 = null
+                var v: raw/u8 = null
+                var h: (raw/u16, u64) = (v@raw@raw/u16, 0@u64)
+                let r2 = cell@uniq
+                let p = h@raw@raw/((raw/(raw/u8) during r2, u64))
+                keepS(p, r2, spare)
+                kk = 2
+                usep(cell)
+            """,
     };
 
     // The coverage table's rows (U3b): the 17 forms the first step's reading newly rejects (12 of PLAN G784's 13, pPlainViewBad, F2 unit
     // B's four) and pPlainFirstBad, the two P3 forms (invalid), the Ok twins and the valid views that must stay accepted, design review
-    // 1's B1 three and G667a's four (rejected as on dev), the typed controls, and the rows past a holder that U3c moves.
+    // 1's B1 three and G667a's four (rejected as on dev), the typed controls, and the rows past a holder that U3c moves; and the
+    // implementation review's F1 rows: a reading Type with a part that is no raw Place beside a raw pointer whose pointee admits no
+    // Loan (four valid forms, their control and invalid twins), a row whose pointee admits the argument, a row stating an Origin.
     [Theory]
     [InlineData("fMixedPunChainBad", "fMixedPunChainBad: kk = 2; fMixedPunChainBad: var z: u8 = 5")] // I, PLAN G784
     [InlineData("qIntChainMixedBad", "qIntChainMixedBad: kk = 2")] // I, PLAN G784
@@ -732,6 +883,18 @@ public sealed partial class MirBorrowsTest
     [InlineData("lChainH3Bad", "")] // I, past a holder: U3c's fail-before row, accepted until U3c
     [InlineData("qTwoHopBad", "")] // I, past a holder: U3c's fail-before row, accepted until U3c
     [InlineData("pPlainPastBad", "")] // I, past a holder: U3c's fail-before row, accepted until U3c
+    [InlineData("zEnumTupPtrOk", "")] // V, review F1: an Option part is no raw Place; the row raw/u8 stores only a u8
+    [InlineData("zFnTupPtrOk", "")] // V, review F1: a Function part designates nothing
+    [InlineData("zEnumTupMixOk", "")] // V, review F1: no storage the body does not own through the row raw/u8
+    [InlineData("zFnTupMixOk", "")] // V, review F1
+    [InlineData("zTupPtrOnlyOk", "")] // V, review F1's control: no part but raw Places
+    [InlineData("zEnumTupPtrBad", "zEnumTupPtrBad: kk = 2")] // I, review F1: the first step's own write, h used after
+    [InlineData("zEnumTupMixBad", "zEnumTupMixBad: kk = 2")] // I, review F1: the first step's own write, w used after
+    [InlineData("zEnumTupScalarBad", "zEnumTupScalarBad: kk = 2")] // I, review F1: the first step's own write, x used after
+    [InlineData("zRecMixBad", "zRecMixBad: kk = 2")] // I, a row whose pointee admits the argument: storage the body does not own keeps it
+    [InlineData("kStatedPtrOk", "kStatedPtrOk: kk = 2; kStatedPtrOk: var cell: raw/u8 = null")] // I, a row stating an Origin over Scalar bytes (15.6 Holders)
+    [InlineData("kStatedVOk", "kStatedVOk: kk = 2; kStatedVOk: var cell: raw/u8 = null")] // I, as kStatedPtrOk, v used after
+    [InlineData("kStatedPtrBad", "kStatedPtrBad: kk = 2; kStatedPtrBad: usep(cell); kStatedPtrBad: var cell: raw/u8 = null")] // I, cell used after
     public void TheFirstStepReadsAtTheReadingPathsType(string form, string expected)
     {
         var c = MirBuildTest.Compile(FirstStepShapes + FirstStepForms[form] + "\npublic func main() => ()\n");
