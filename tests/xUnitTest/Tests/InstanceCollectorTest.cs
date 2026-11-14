@@ -986,13 +986,15 @@ public sealed partial class InstanceCollectorTest
 
     // SPEC 4.4.1, 9 (PLAN G149-w): a declaring Type holds no length argument (Binding.SelfType), so a call of a function nested in a
     // length-generic function does not carry the enclosing instance: the EnclosingInstance gap at the call, whether its parameter, its
-    // result, a local or nothing names the slot, and for a nested function generic in a length of its own (before: one item for both
-    // instances of outer, its lengths open, so the parameter form printed 0 0). A Type slot's declaring Type carries its instance
+    // result, a local, its body's read of the slot's value (R8-W2 c2a's v9, SPEC 4.4.1) or nothing names the slot, and for a nested
+    // function generic in a length of its own (before: one item for both instances of outer, its lengths open, so the parameter form
+    // printed 0 0 and the value read was InternalInvariant_Kd in code generation). A Type slot's declaring Type carries its instance
     // (NestedFunctionsNeedTheirEnclosingInstance's OneLevel).
     [Theory]
     [InlineData("    func inner(v: [N of i32]) -> isize => v.length\n    return inner(values)\n", "inner(values)")]
     [InlineData("    func inner(v: [N of i32]) -> [N of i32] => v\n    return inner(values).length\n", "inner(values)")]
     [InlineData("    func inner() -> isize\n        let a: [N of u8] = [N of 0]\n        return a.length\n    return inner()\n", "inner()")]
+    [InlineData("    func inner() -> isize => N\n    return inner()\n", "inner()")]
     [InlineData("    func inner() -> isize => 1\n    return inner()\n", "inner()")]
     [InlineData("    func inner<length M>(v: [M of i32]) -> isize => v.length\n    return inner(values)\n", "inner(values)")]
     public void FunctionsNestedInALengthGenericFunctionAreTheEnclosingInstanceGap(string nested, string refused)

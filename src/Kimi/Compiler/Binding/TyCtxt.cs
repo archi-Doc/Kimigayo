@@ -69,6 +69,9 @@ internal sealed partial class TyCtxt(Binding binding, KimiLibrary library)
     // SPEC 23.1: a Type as diagnostics spell it, which the MIR dump writes.
     internal static string Name(BoundType type) => Binding.DiagnosticTypeName(type);
 
+    // SPEC 23.1: a length as diagnostics spell it, which the MIR dump writes.
+    internal static string Name(BoundLength length) => Binding.DiagnosticLengthName(length);
+
     // SPEC 7.3, 6.3.2: a function's parameter Type at a slot as it declares it (an accessor's self and value included), or at -1 the Type
     // its call gives (a constructor's: its object), under a call's substitution; null past its parameters or where the substitution does
     // not instantiate it. The MIR validator checks calls and bodies by it.
@@ -263,11 +266,21 @@ internal sealed partial class TyCtxt(Binding binding, KimiLibrary library)
     internal BoundType Tuple(ReadOnlySpan<BoundType> elements) => this.Intern(BoundTypeKind.Tuple, null, SemanticsKind.Owner, elements);
 
     // SPEC 22.10.5 and rule L (FormattingTypes.StackLimit): the interpolation-bound term of a direct interpolation with these value Types
-    // (a Tuple) and literal bytes, its stack region's size: the constant FormattingTypes.StackBound decides, else the term over the erased
-    // value Types (so Erase keeps it, keyed by them), which a substitution folds again (Binding.SubstituteLength). R8-W2 a2's builder forms it.
-    internal BoundLength InterpolationBound(BoundType values, long literal)
-        => FormattingTypes.StackBound(values, literal) is var bound and >= 0 ? binding.InternLength(LengthOperation.Constant, bound)
-            : binding.InternLength(LengthOperation.InterpolationBound, literal, values: this.Erase(values));
+    // (a Tuple) and literal bytes, its stack region's size: the constant FormattingTypes.StackBound decides, else the term (Term), which a
+    // substitution folds again (Refold). R8-W2 a2's builder forms it.
+    internal BoundLength InterpolationBound(BoundType values, long literal) => this.Term(LengthOperation.InterpolationBound, values, literal);
+
+    // SPEC 22.10.5 (R8-W2 c2t): the interpolation-hint term of an owning interpolation's write position with the later value Types (a
+    // Tuple) and the later literal bytes, the bytes its adapter's later writes may still reserve: the constant FormattingTypes.HintBound
+    // decides, else the term (Term), which a substitution folds again (Refold). R8-W2 c2b's builder forms it; until then nothing does.
+    internal BoundLength InterpolationHint(BoundType values, long literal) => this.Term(LengthOperation.InterpolationHint, values, literal);
+
+    // An interpolation term over its value Types' image, as a substitution or an instance makes them (Binding.SubstituteLength,
+    // Binding.InstanceLength): the term of its own operation and literal bytes, folded again.
+    internal BoundLength Refold(BoundLength term, BoundType values) => this.Term(term.Operation, values, term.Value);
+
+    // SPEC 4.4.1: a length slot's term, the value its Name reads (MirConstKind.Length), as Binding binds the slot in a length.
+    internal BoundLength SlotLength(BindingSymbol slot) => binding.InternLength(LengthOperation.Parameter, parameter: slot);
 
     // R4-M51: every view's memos, which hold across passes with no edit (retentions, instance classes, requirement targets, Copy facts),
     // discarded together at an edit (Binding.Invalidate; DECISIONS R5-M61, BU-88).
@@ -327,5 +340,18 @@ internal sealed partial class TyCtxt(Binding binding, KimiLibrary library)
         }
 
         return bound.IsEmpty ? components : bound;
+    }
+
+    // The one fold and interning of an interpolation term: the constant its operation's FormattingTypes rule gives, else the term over the
+    // erased value Types (so Erase keeps it, keyed by them). Only the two term rows carry value Types.
+    private BoundLength Term(LengthOperation operation, BoundType values, long literal)
+    {
+        var folded = operation switch
+        {
+            LengthOperation.InterpolationBound => FormattingTypes.StackBound(values, literal),
+            LengthOperation.InterpolationHint => FormattingTypes.HintBound(values, literal),
+            _ => throw new ArgumentOutOfRangeException(nameof(operation)),
+        };
+        return folded >= 0 ? binding.InternLength(LengthOperation.Constant, folded) : binding.InternLength(operation, literal, values: this.Erase(values));
     }
 }

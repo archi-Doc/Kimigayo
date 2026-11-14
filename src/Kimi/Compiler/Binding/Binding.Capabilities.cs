@@ -219,6 +219,7 @@ public sealed partial class Binding
         this.capabilitiesReady = false;
         this.capabilityMode = mode;
         this.readings.Clear();
+        this.ClearClosure();
         this.ResetIdentityClasses();
         this.ClearNeededSites();
         this.ClearProofScopes();

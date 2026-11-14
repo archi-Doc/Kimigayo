@@ -125,21 +125,19 @@ public sealed partial class Binding
                 Search(own);
             }
 
-            for (var current = scope; current is not null; current = current.Parent)
+            // SPEC 8.3.2, 8.5.2, 9.6: the Contracts the premises supply for the Type, one per identity class (each non-Alias row of Enumerate's
+            // rows: the use is judged).
+            var start = this.premiseRows.Count;
+            this.PremiseRows(type, scope, this.premiseRows);
+            for (var i = start; i < this.premiseRows.Count; i++)
             {
-                if (current.Constraints is not { Invalid: false } environment)
+                if (this.premiseRows[i] is { Alias: false, Symbol.Contract: { } shape })
                 {
-                    continue;
-                }
-
-                foreach (var fact in environment.Facts)
-                {
-                    if (fact.Kind == ConstraintKind.Contract && AssociatedIdentityMatches(fact.Subject, type) && fact.Contract?.Contract is not null)
-                    {
-                        Search(this.AppliedAssociatedContract(fact, type).Contract!);
-                    }
+                    Search(shape);
                 }
             }
+
+            this.premiseRows.RemoveRange(start, this.premiseRows.Count - start);
 
             // SPEC 9.7.3: a conformance is a candidate as the receiver sees it, its bound reference at the receiver's arguments, the
             // terms a premise's reference is in, so one conformance reached both ways is one candidate (PLAN G798).
@@ -184,42 +182,44 @@ public sealed partial class Binding
     // SPEC 9.7.3, 8.5.2, 8.8.2: a nested Type named through a Core qualifier also resolves as an associated Type when the qualifier's
     // applied Type has one of that name with conformance evidence: a premise, or a conformance with a declared path without premises,
     // holds for every binding (8.8.1); a conditional one only where its condition is proven for the written arguments ("Refuted: No
-    // conformance from this path"; before the Contract headers are ready every proof is Unknown: PLAN G728's remainder). Judged where the
-    // qualifier is applied (9.7.1 step 3), the one former of every nested Type's reference; the path's selection stands.
+    // conformance from this path"). Judged where the qualifier is applied (9.7.1 step 3), the one former of every nested Type's
+    // reference; the path's selection stands. The evidence is complete once the proofs answer (contractHeadersReady: the declared,
+    // conditional and inherited conformances are registered and a condition can be proven); a judgment that found none before that is
+    // an early read, noted and judged again by VerifyEarlyProjections (G621's list; PLAN G728).
     private bool AlsoAssociated(BoundType qualifier, string name, MemberAccessKoto path, BindingScope scope)
     {
         var search = this.SearchAssociated(qualifier, scope, name, null);
-        if (search.Found is not { } associated)
+        var both = search.Found is { } associated && (search.Alternative is not null || search.Source is not { } source || Unconditional(source) ||
+            this.ProveConstraint(this.InternConstraint(new(ConstraintKind.Contract, qualifier, contract: search.Reference ?? associated.Scope.Owner.BoundSymbol!)), scope) == ConstraintProof.Proven);
+        if (!both && !this.contractHeadersReady)
         {
-            this.NoteEarlyProjection(path, qualifier, scope, name, null);
+            this.earlyProjections.Add((path, PathEnd.Selected, qualifier, scope, name, null));
+        }
+
+        return both;
+
+        static bool Unconditional(BoundConformance source)
+        {
+            for (var i = 0; i < source.Paths.Count; i++)
+            {
+                if (source.Paths[i].Premises is null)
+                {
+                    return true;
+                }
+            }
+
             return false;
         }
-
-        if (search.Alternative is not null || search.Source is not { } source)
-        {
-            return true;
-        }
-
-        for (var i = 0; i < source.Paths.Count; i++)
-        {
-            if (source.Paths[i].Premises is null)
-            {
-                return true;
-            }
-        }
-
-        var evidence = search.Reference ?? associated.Scope.Owner.BoundSymbol!;
-        return this.ProveConstraint(this.InternConstraint(new(ConstraintKind.Contract, qualifier, contract: evidence)), scope) == ConstraintProof.Proven;
     }
 
     // G621: before the conformance declarations register, an unqualified name over a declared Type has no associated candidates yet (they
-    // come from the conformance table; a qualified one searches its Contract): a projection that found none and a nested Type judged
-    // without them are judged again once they register (VerifyEarlyProjections).
+    // come from the conformance table; a qualified one searches its Contract): a projection that found none is judged again once they
+    // register (VerifyEarlyProjections).
     private void NoteEarlyProjection(MemberAccessKoto use, BoundType type, BindingScope scope, string name, BindingSymbol? qualifier)
     {
         if (!this.conformancesRegistered && type.Symbol?.Declaration is StructKoto or EnumKoto)
         {
-            this.earlyProjections.Add((use, type, scope, name, qualifier));
+            this.earlyProjections.Add((use, PathEnd.Projection, type, scope, name, qualifier));
         }
     }
 

@@ -32,6 +32,11 @@ public static partial class Parser
         /// <summary>A word that introduces a declaration.</summary>
         DeclarationIntroducer,
 
+        /// <summary>A contextual Container word (SPEC F.3.2): the introducer of a GroupDeclaration, StructureDeclaration,
+        /// EnumDeclaration or ContractDeclaration (Appendix F.6.1), or the unavailable <c>extension</c>. It introduces a declaration
+        /// where <see cref="IsContainerDeclarationStart"/> holds, and on a modifier header line.</summary>
+        ContainerIntroducer,
+
         /// <summary>A word that introduces an accessor (<c>get</c>, <c>set</c>).</summary>
         AccessorIntroducer,
     }
@@ -359,6 +364,13 @@ public static partial class Parser
         var acc = reader.ModifierKind.ExtractAccessibilityModifiers();
         if (acc == default)
         {
+            // F.3.3: the access specification precedes the modifier. An access word after unsafe, virtual or override is misplaced where
+            // it stands and kept, so the declaration has the access it wrote; open's order is OpenModifier's, and static is no modifier.
+            if ((reader.ModifierKind & (ModifierKind.Unsafe | ModifierKind.Virtual | ModifierKind.Override)) != 0)
+            {
+                reader.Unexpected(SyntaxForm.AccessAfterModifier);
+            }
+
             reader.ModifierKind |= kind;
             reader.AccessModifierSpan = reader.CurrentTokenRange;
         }
@@ -436,7 +448,8 @@ public static partial class Parser
                 continue;
             }
 
-            if (word != introducer)
+            // On a header line a Container word is a declaration introducer, whatever follows it (SPEC F.3.3).
+            if (word != introducer && (word != HeaderWord.ContainerIntroducer || introducer != HeaderWord.DeclarationIntroducer))
             {
                 return HeaderScan.Ordinary;
             }

@@ -134,6 +134,20 @@ public sealed class RecursiveContractTest
     public void CopyReachesAProjectionWhateverItsSpelling(string unit, string form, string program, string records)
         => CompilationTestHelper.AssertRecordsAtLines($"{form} [{unit}]", program + "()", records);
 
+    // DECISIONS R7-C2e2-1 at c2-2's merge (N3 of its merge review): o1's view has no identity premise, so its Tree request keeps the
+    // view's entry; the Copy request extends, filing the facts again under its extended keys, so it reopens the entry as its own and
+    // writes nothing into the Kept entry; `T.(Tree).Other`, asked last, forms the entry again. The pairs indexed over Orders', exact: an
+    // extension writing into the Kept entry leaves it Kept for the last request, which then indexes nothing (46).
+    [Fact]
+    public void AnExtensionReopensTheViewsKeptEntryAsItsOwn()
+    {
+        var probe = "func probe<T>(r: ref/T.(Tree).Child.(Tree).Alias, o: ref/T.(Tree).Other)\n    T is AT2\n" +
+            "    needsTree<T.(Tree).Child.(Tree).Alias>(r)\n    needsCopy<T.(Tree).Child.(Tree).Alias>(r)\n    needsTree<T.(Tree).Other>(o)\n";
+        Assert.Equal(66, Work(Orders + probe) - Work(Orders));
+
+        static int Work(string source) => Bind(source).Binding.ClosureIndexWork;
+    }
+
     [Theory]
     // SPEC 8.3.2 (the refinement row), 8.3.3 (Finality): a Contract premise supplies each conformance its refinement clauses state, at any
     // depth, in any order of declarations and premises, through Contracts that supply each other, inside a Tuple or an Option, through an
@@ -214,6 +228,15 @@ public sealed class RecursiveContractTest
     // Without AT3's identity clause the subject is only Tree (SPEC 8.3.1: a required Constraint succeeds only when Proven): the kept
     // Tree row never answers Copy (o1's invalid twin).
     [InlineData("C2c22", "o1-tree-copyn", OrdersHead + OrdersTail + "func probe<T>(r: ref/T.(Tree).Child.(Tree).Alias, value: T.(Tree).Child.(Tree).Alias)\n    T is AT2\n    needsTree<T.(Tree).Child.(Tree).Alias>(r)\n    needsCopy<T.(Tree).Child.(Tree).Alias>(r)\n", "UnprovenConstraint_Kd: needsCopy<T.(Tree).Child.(Tree).Alias>(r)")]
+    // R7-C2c2 c2-3a: an identity row the walk records that does not reach the subject (AT3 states Other, not Alias) marks the kept
+    // rows as extensible, and the extension proves nothing: the same record in both orders (the Extends entry's invalid twins).
+    [InlineData("C2c23a", "o1n2-tree-copy", OrdersHead + "    Self.(Tree).Other is Self.(Tree).Child\n" + OrdersTail + "func probe<T>(r: ref/T.(Tree).Child.(Tree).Alias, value: T.(Tree).Child.(Tree).Alias)\n    T is AT2\n    needsTree<T.(Tree).Child.(Tree).Alias>(r)\n    needsCopy<T.(Tree).Child.(Tree).Alias>(r)\n", "UnprovenConstraint_Kd: needsCopy<T.(Tree).Child.(Tree).Alias>(r)")]
+    [InlineData("C2c23a", "o2n2-copy-tree", OrdersHead + "    Self.(Tree).Other is Self.(Tree).Child\n" + OrdersTail + "func probe<T>(r: ref/T.(Tree).Child.(Tree).Alias, value: T.(Tree).Child.(Tree).Alias)\n    T is AT2\n    needsCopy<T.(Tree).Child.(Tree).Alias>(r)\n    needsTree<T.(Tree).Child.(Tree).Alias>(r)\n", "UnprovenConstraint_Kd: needsCopy<T.(Tree).Child.(Tree).Alias>(r)")]
+    // SPEC 8.2.3, 8.6.4: the identity clause at depth makes the subject an MT, so Named's `name` is its member: valid. The
+    // implementation's limit (ContractSolver's Extension): name discovery reads the first walk's rows and demands no Contract, so it
+    // never extends and the member is not found, as on base, until R7-C2e2's Closure(scope); without the clause it is no member.
+    [InlineData("C2e2", "dm1-discovery-depth", "contract Tree\n    associate Child is Tree\n    associate Alias is Tree\ncontract Named\n    func name(self: ref/Self) -> i32\ncontract MT: Tree, Named\n    Self.(Tree).Child is MT\n    Self.(Tree).Alias is Self.(Tree).Child\nfunc probe<T>(v: ref/T.(Tree).Child.(Tree).Alias) -> i32\n    T is MT\n    return v.name()\n", "", Explicit = true)]
+    [InlineData("guard", "dm1n-discovery-depth", "contract Tree\n    associate Child is Tree\n    associate Alias is Tree\ncontract Named\n    func name(self: ref/Self) -> i32\ncontract MT: Tree, Named\n    Self.(Tree).Child is MT\nfunc probe<T>(v: ref/T.(Tree).Child.(Tree).Alias) -> i32\n    T is MT\n    return v.name()\n", "UnresolvedBinding_Kd: return v.name()")]
     // The group review's twins (q1, q2 are idd1, idd2): premise order under `U is T`, mutual Contracts, demand order, a clause
     // joining a deeper Type to a shallower one (q6, eager at depth 1).
     [InlineData("C2c22", "q3a-premorder", "contract Tree\n    associate Child is Tree\n    associate Alias is Tree\ncontract MTI: Tree, Copy\n    Self.(Tree).Child is MTI\n    Self.(Tree).Alias is Self.(Tree).Child\nfunc twice<T, U>(value: U.(Tree).Child.(Tree).Alias) -> (U.(Tree).Child.(Tree).Alias, U.(Tree).Child.(Tree).Alias)\n    U is T\n    T is MTI\n    return (value, value)\n", "")]

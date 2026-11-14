@@ -33,7 +33,7 @@ public static partial class Parser
 
         if (supportsGenerics && reader.CurrentTokenKind == TokenKind.LessThan)
         {
-            genericArguments = ParseGenericArguments(ref reader);
+            genericArguments = ParseGenericParameters(ref reader);
         }
 
         if (supportsOrigins)
@@ -46,7 +46,7 @@ public static partial class Parser
             var types = default(TemporaryKotoList);
             do
             {
-                types.Add(ParseType(ref reader, TypeContext.Type));
+                types.Add(ParseInheritanceReference(ref reader)); // SPEC F.6.1 BaseClause, F.6.2 ContractParentList.
             }
             while (reader.TryConsume(TokenKind.Comma));
             bases = types.ToArray();

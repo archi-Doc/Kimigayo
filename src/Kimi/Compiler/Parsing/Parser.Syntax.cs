@@ -166,7 +166,7 @@ public static partial class Parser
         // A specialization takes no access word (SPEC 8.13.2, F.6.1): it is rejected here, before the header takes the prefix.
         RejectAccessWord(ref reader);
         reader.Advance(2);
-        var function = ParseFuncDeclaration(ref reader, specialization: true);
+        var function = ParseFuncDeclaration(ref reader, FunctionForm.Specialization);
         if (function is not null)
         {
             ParseNamedFunctionBody(ref reader, function);
@@ -206,7 +206,6 @@ public static partial class Parser
 
     internal static void ParseRequirementBody(ref TokenReader reader, FunctionKoto function)
     {
-        function.IsRequirement = true;
         foreach (var parameter in function.Parameters)
         {
             if (parameter.DefaultValue is not null || parameter.AttributeChain is not null)

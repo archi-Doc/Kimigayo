@@ -131,9 +131,19 @@ New-Fixture $mixed 'missing-sidecar'
 Remove-Item -LiteralPath (Join-Path $mixed 'missing-sidecar.stderr')
 New-Fixture $mixed 'returned-divergence'
 [IO.File]::WriteAllText((Join-Path $mixed 'returned-divergence.observation'), '100', $utf8)
-$records = Invoke-Case 'mixed-failures' (Join-Path $mixed '*.ll') 4 -expected $false -count 8 -deadline 30000
+# Output equals its expectation only byte for byte: a missing NUL, another normalization form or a BOM is a mismatch.
+New-Fixture $mixed 'nul-output' -stdout "日`0`n"
+New-Fixture $mixed 'normalized-error' -source ($ir.Replace('\E6\97\A5', 'e\CC\81')) -stdout "e$([char]0x301)`n" -stderr "$([char]0xE9)`n"
+New-Fixture $mixed 'bom-output' -stdout "$([char]0xFEFF)日`n"
+$records = Invoke-Case 'mixed-failures' (Join-Path $mixed '*.ll') 4 -expected $false -count 11 -deadline 30000
 if (@($records | Where-Object status -CEQ 'passed').Count -ne 1 -or ($records | Where-Object fixture -eq 'valid.ll').status -cne 'passed') {
     throw 'Failures were lost or affected an independent fixture.'
+}
+foreach ($case in @(@('nul-output.ll', 'stdout'), @('normalized-error.ll', 'stderr'), @('bom-output.ll', 'stdout'))) {
+    $violations = @(($records | Where-Object fixture -CEQ $case[0]).executions[0].result.violations)
+    if ($violations.Count -ne 1 -or $violations[0].kind -cne 'output' -or $violations[0].stream -cne $case[1]) {
+        throw "An output differing only by a NUL, normalization or BOM lost its mismatch: $($case[0])"
+    }
 }
 $returned = $records | Where-Object fixture -CEQ 'returned-divergence.ll'
 if ($returned.status -cne 'failed' -or $returned.executions[0].result.termination -cne 'exited') { throw 'Unexpected natural exit was not a failure.' }
@@ -170,9 +180,16 @@ foreach ($workers in @(1, 4)) {
 # Real sleeping native processes exercise scheduling delay without adding imports to the production profile.
 . (Join-Path $repo 'src/backend/windows-x64/toolchain.ps1')
 . (Join-Path $repo 'src/backend/windows-x64/test-scalar-process.ps1')
+# The output owner takes byte[] only: a numeric string, an object[] of bytes or $null is rejected, never converted.
+foreach ($argument in @('65', [object[]]@(65), $null)) {
+    $rejected = $false
+    try { $null = Test-KimiExpectedOutput $argument ([byte[]]@(65)) }
+    catch [ArgumentException] { $rejected = $true }
+    if (-not $rejected) { throw "Test-KimiExpectedOutput converted a non-byte[] argument: $argument" }
+}
 $tools = Resolve-KimiToolchainRoot $ToolchainRoot
 $missing = Invoke-KimiFixtureProcess (Join-Path $work 'missing') @{
-    stdout = ''; stderr = ''; exit = 0; observationMilliseconds = 0
+    stdout = [byte[]]@(); stderr = [byte[]]@(); exit = 0; observationMilliseconds = 0
 } 30000
 if ($missing.status -cne 'incomplete' -or $missing.termination -cne 'notStarted' -or
     $null -ne $missing.cpuMilliseconds -or $null -ne $missing.processId -or
@@ -294,19 +311,19 @@ foreach ($level in @('O0', 'O2')) {
         if ($LASTEXITCODE -ne 0) { throw 'Cannot compile delayed probe.' }
         & (Join-Path $tools 'lld-link.exe') "$target.obj" "$probe.lib" /entry:__kimi_start /subsystem:console /nodefaultlib "/out:$target.exe"
         if ($LASTEXITCODE -ne 0) { throw 'Cannot link delayed probe.' }
-        $expectation = @{ stdout = 'begin' + [char]10; stderr = ''; exit = 0; observationMilliseconds = 100 }
+        $expectation = @{ stdout = $utf8.GetBytes("begin`n"); stderr = [byte[]]@(); exit = 0; observationMilliseconds = 100 }
         if ($delay -eq 400) {
             $sample = Invoke-KimiFixtureProcess $target $expectation 30000
             if ($sample.status -cne 'passed' -or $sample.termination -cne 'observed' -or $sample.cpuMilliseconds -lt 100) {
                 throw 'Delay consumed the CPU observation budget.'
             }
-            $expectation.stdout = 'wrong'
+            $expectation.stdout = $utf8.GetBytes('wrong')
             $wrong = Invoke-KimiFixtureProcess $target $expectation 30000
             if ($wrong.status -cne 'failed') { throw 'Sufficient observation hid a mismatch.' }
         }
         else {
             foreach ($output in @(('begin' + [char]10), '')) {
-                $expectation.stdout = $output
+                $expectation.stdout = $utf8.GetBytes($output)
                 $sample = Invoke-KimiFixtureProcess $target $expectation 100
                 if ($sample.status -cne 'incomplete' -or $sample.termination -cne 'deadline') { throw 'Sleeping process became a success or mismatch.' }
                 $results.Add(@{ name = "delayed-$level-$($output.Length)"; passed = $true; records = @($sample) })

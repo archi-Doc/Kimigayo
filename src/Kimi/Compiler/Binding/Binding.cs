@@ -250,6 +250,7 @@ public sealed partial class Binding
         this.PrepareEffectBounds();
         this.capabilitiesReady = true;
         this.ValidateConformances(mode, false);
+        this.VerifyEarlyProjections(); // The proofs answer from here on (contractHeadersReady).
         this.ValidateConstraintEnvironments(mode);
         this.PrepareSpecializations();
         this.CompleteImplicitConstructors();
