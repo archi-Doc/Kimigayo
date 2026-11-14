@@ -64,7 +64,7 @@ internal sealed partial class FunctionCodegen
         }
     }
 
-    // SPEC 7.7.4 (DECISIONS R5-M108, R5-M116): a compiler function's routine row by its disposition, what its Item's adapter entry calls
+    // SPEC 7.7.4 (DECISIONS R5-M108): a compiler function's routine row by its disposition, what its Item's adapter entry calls
     // (FunctionCodegen.Closures' Runs) with the target it carries, and its Item's Value call: an intrinsic's routine row (below) with the
     // Item's Type argument (its own substitution's, TyCtxt.SubstOfItem); null for any other row, which is not one routine call (a
     // Shim's, an instruction writer's, an Unproduced row's), and after a broken contract's record (an intrinsic row's, below).

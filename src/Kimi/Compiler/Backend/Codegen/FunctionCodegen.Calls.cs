@@ -5,14 +5,14 @@ using Kimi.Compiler.Mir;
 namespace Kimi.Compiler.Backend;
 
 // The Call terminator of FunctionCodegen (R5 package C 3.2 I8, plan C3a, C3b, C8a, C5a, C6c, C8b, C8d, C8e, C9a, C9b; DECISIONS R5-M89,
-// R5-M92, R5-M93, R5-M102, R5-M114, R5-M116, R5-M121, R5-M124, R5-M128, R5-M130): a callee by its kind's row (a Value callee's in
+// R5-M92, R5-M93, R5-M102, R5-M114, R5-M121, R5-M124, R5-M128, R5-M130): a callee by its kind's row (a Value callee's in
 // FunctionCodegen.Closures), the collector's targets read by one forward cursor, each once in its site's order, and the one call
-// writer, which the intrinsic rows, the glue items and the module's entry call
-// too; each argument is FunctionCodegen.Arguments' (its parameter's kind, a copy slot). A call that dispatches (SPEC 6.4.3, 6.4.6) runs
-// through a virtual slot, which only makes the callee value it writes (EntryOf): a Virtual callee, without a target (X5), under its slot's
-// signature (ModuleCodegen.Slot); a body target that implements a slot, a requirement's virtual witness (BodyRun); a Builtin or
-// PropertyWitness target its shim's function (FunctionCodegen.Shims; DECISIONS R5-M126, R5-M130, R5-M141); an Import target, a
-// #LibraryImport function's direct call or a requirement's whose witness it is, the import by its C signature (DECISIONS R8-M19).
+// writer, which the intrinsic rows, the glue items and the module's entry call too; each argument is FunctionCodegen.Arguments' (its
+// parameter's kind, a copy slot). A call that dispatches (SPEC 6.4.3, 6.4.6) runs through a virtual slot, which only makes the callee
+// value it writes (EntryOf): a Virtual callee, without a target (X5), under its slot's signature (ModuleCodegen.Slot); a body target
+// that implements a slot, a requirement's virtual witness (BodyRun); a Builtin or PropertyWitness target its shim's function
+// (FunctionCodegen.Shims; DECISIONS R5-M126, R5-M130, R5-M141); an Import target, a #LibraryImport function's direct call or a
+// requirement's whose witness it is, the import by its C signature (DECISIONS R8-M19).
 internal sealed partial class FunctionCodegen
 {
     private int cursor; // The item's first target not passed yet (I8).

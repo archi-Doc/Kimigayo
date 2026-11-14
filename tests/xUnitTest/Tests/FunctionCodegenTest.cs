@@ -1820,27 +1820,23 @@ public sealed partial class FunctionCodegenTest
     // The definitions of a definition's body items (null: the top-level statements), each written directly whatever records the module's
     // other items make: an instance a call names (the call is C3a's row) or a body beside a broken one. Every body item is an output
     // root.
-    internal static string[] ItemTexts(Compilation c, string? name)
+    internal static string[] ItemTexts(Compilation c, string? name) => ItemTexts(c, (_, definition) => definition?.Name == name);
+
+    // The program's own body items, those whose MIR body is defined from the program's source and not from the library's (MirBody.Source,
+    // SourceRef.IsLibrary), written as ItemTexts writes them: the subject of a check on what the program's code does, whatever library
+    // bodies its module carries.
+    internal static string[] ProgramTexts(Compilation c) => ItemTexts(c, static (body, _) => !body.Source.IsLibrary);
+
+    // Console.writeLine's function in a module by overload (SPEC 22.7; R8-W2 d), the body item of the cataloged declaration: the string
+    // overload's or the view overload's.
+    internal static IrFunction LineOf(GeneratedIr ir, Compilation c, bool view)
     {
-        var (program, collector, module, bodies) = WrittenModule(c);
-        return [.. bodies.Where(x => collector.Set.Items[x].Key.Body.Def.Decl?.Name == name).Select(x =>
-        {
-            using var writer = new StringWriter();
-            new FunctionCodegen(module, c.Types).Write(program, collector, x, writer);
-            return writer.ToString();
-        })];
+        var id = view ? KimiDeclarationId.WriteLineUtf8 : KimiDeclarationId.WriteLine;
+        return Assert.Single(Functions(ir, ItemTexts(c, (_, definition) => definition?.LibraryDeclaration == id)));
     }
 
-    // Console.writeLine's function in a module by overload (SPEC 22.7; R8-W2 d): the string's body takes a string borrow, the view's its
-    // view's copy slot, each with its call's location.
-    internal static IrFunction LineOf(GeneratedIr ir, Compilation c, bool view)
-        => Assert.Single(
-            FunctionsOf(ir, c, "writeLine"),
-            x => (x.Signature == "internal void (ptr noundef nonnull align 8 dereferenceable(24), ptr, i64)") != view);
-
     // The functions of a definition's body items, one per instance (ItemTexts).
-    internal static IrFunction[] FunctionsOf(GeneratedIr ir, Compilation c, string name)
-        => [.. ItemTexts(c, name).Select(x => ir.Function(Regex.Match(x, @"define internal \S+ @(__kimi_f\d+)\(").Groups[1].Value))];
+    internal static IrFunction[] FunctionsOf(GeneratedIr ir, Compilation c, string name) => Functions(ir, ItemTexts(c, name));
 
     // DECISIONS R8-M2: each named definition has a written body, and none of them checks an arithmetic step.
     internal static void AssertNoCheckedArithmetic(Compilation c, params string[] names)
@@ -1852,6 +1848,23 @@ public sealed partial class FunctionCodegenTest
             Assert.All(texts, x => Assert.DoesNotContain("with.overflow", x));
         }
     }
+
+    // The body items a selection takes, by each item's MIR body and its definition's symbol (null: top-level statements), each written
+    // directly (ItemTexts).
+    private static string[] ItemTexts(Compilation c, Func<MirBody, BindingSymbol?, bool> selects)
+    {
+        var (program, collector, module, bodies) = WrittenModule(c);
+        return [.. bodies.Where(x => selects(program.Body(collector.Set.Items[x].BodyOrdinal), collector.Set.Items[x].Key.Body.Def.Decl)).Select(x =>
+        {
+            using var writer = new StringWriter();
+            new FunctionCodegen(module, c.Types).Write(program, collector, x, writer);
+            return writer.ToString();
+        })];
+    }
+
+    // The module's functions that body items' texts define.
+    private static IrFunction[] Functions(GeneratedIr ir, string[] items)
+        => [.. items.Select(x => ir.Function(Regex.Match(x, @"define internal \S+ @(__kimi_f\d+)\(").Groups[1].Value))];
 
     // A program analyzed for an output form; a source that declares a test is a test build's test-only source, its catalog discovered
     // after acceptance as `Compilation.Check` discovers it.
