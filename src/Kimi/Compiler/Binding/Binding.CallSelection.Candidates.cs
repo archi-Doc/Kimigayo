@@ -423,7 +423,7 @@ public sealed partial class Binding
                             return solution.IsComplete() ? CandidateApplicability.Inapplicable : CandidateApplicability.Pending;
                         }
 
-                        if (!solution.FitsLiteralShape(pattern, shape))
+                        if (!solution.FitsLiteralShape(pattern, shape, out var met))
                         {
                             if (DifferentRangeShapes(shape, pattern))
                             {
@@ -439,9 +439,13 @@ public sealed partial class Binding
                         {
                             if (MentionsSlots(pattern, CallSlotOwner(function), UnboundSlots(function, frame.Types, frame.Lengths, ref unboundSlots)))
                             {
-                                // A Literal waits for its default, which cannot invert a projection or an unresolved selector either.
+                                // A Literal waits for its default, which cannot invert a projection or an unresolved selector either. SPEC
+                                // 10.2.2's Literal row, 10.2.1 (PLAN G915): the open position is ranked by the operation the pattern it meets
+                                // needs whatever the slot binds: the borrow of its temporary under a ref layer (TemporaryTarget, as FitLiteral
+                                // ranks a closed one), else the Literal fit; so it ties with a candidate that fits the Literal, and step 2 decides.
                                 open.Add(i);
-                                operations[i] = new(call.ArgumentNodes[i], null, null, ArgumentOperationKind.Value, ArgumentAdaptation.Literal, ParameterIndex: mapping[i]);
+                                var adaptation = this.TemporaryTarget(argument, met, scope) is null ? ArgumentAdaptation.Literal : ArgumentAdaptation.CrossSemanticsBorrow;
+                                operations[i] = new(call.ArgumentNodes[i], null, null, ArgumentOperationKind.Value, adaptation, ParameterIndex: mapping[i]);
                                 continue;
                             }
 
