@@ -179,8 +179,9 @@ public sealed partial class Binding
                 var discharge = context is { Position: TypePosition.Parameter, Direct: true, Owner: FunctionKoto function } &&
                     origin is { Kind: OriginKind.Input } && ReferenceEquals(origin.Binder, function) && origin.Slot == context.Slot &&
                     (ReferenceTypes.IsStruct(type) || TryPairLayer(type, out _, out _)) ? OriginDischarge.CallBorrows : OriginDischarge.Judgment;
+                // A written Type's own layer at its use, in no comparison (default), as its retention below.
                 var formation = new UseScope(use);
-                this.RetainInnerOutlives(type.Components[0], origin, ref formation, discharge, RequiredCondition(this.PairSlotCondition(type, ref formation)));
+                this.RetainInnerOutlives(type.Components[0], origin, ref formation, discharge, RequiredCondition(this.PairSlotCondition(type, ref formation, default)));
             }
         }
         else if (type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Raw })

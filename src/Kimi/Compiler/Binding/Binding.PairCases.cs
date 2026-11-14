@@ -140,9 +140,10 @@ public sealed partial class Binding
     /// usable, and a relation required under it is judged unconditionally.</summary>
     /// <param name="layer">A Type; only a pair layer has a condition.</param>
     /// <param name="use">The use whose binders give the bits; only a pair layer finds its scope.</param>
-    /// <param name="comparison">The comparison the relation belongs to.</param>
+    /// <param name="comparison">The comparison the relation belongs to, whose scope gives the admitted set (<see cref="RelationScope"/>);
+    /// every caller states it, <c>default</c> for a relation outside any comparison.</param>
     /// <returns>The condition, or null when the slot never exists.</returns>
-    internal ulong? PairSlotCondition(BoundType layer, ref UseScope use, in CallableInstance comparison = default)
+    internal ulong? PairSlotCondition(BoundType layer, ref UseScope use, in CallableInstance comparison)
     {
         if (!TryPairLayer(layer, out var whole, out _))
         {
@@ -191,8 +192,7 @@ public sealed partial class Binding
     /// <param name="type">A Type, such as a pattern's layer or its substitution at a use.</param>
     /// <param name="use">The use whose binders give the condition's bits.</param>
     /// <param name="condition">The Semantics case of the storage, 0 for every case.</param>
-    /// <param name="comparison">The comparison the relation belongs to, whose scope gives the admitted set (<see cref="RelationScope"/>);
-    /// every caller states it, <c>default</c> for a relation outside any comparison.</param>
+    /// <param name="comparison">The comparison the relation belongs to, as <see cref="PairSlotCondition"/> takes it; every caller states it.</param>
     /// <returns>The stored outer Origin, or null when no case stores one.</returns>
     internal BoundOrigin? StoredSlot(BoundType type, ref UseScope use, out ulong condition, in CallableInstance comparison)
     {
