@@ -1069,7 +1069,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
   for a call through a value, a second copy judged under the target's premises instead of the use's); an agreement walk over a Callable
   input's premises (a third enumeration of the Callable facts beside `SelectValueCall` and `TryCallable`; carrying the selected
   signature in MIR is the general fix and changes a shared MIR form); one bounds function with a null-callee mode (two contracts in one
-  signature). `Bodyless`' composite clause is refined by R4-M28.
+  signature). `Bodyless`' composite clause is refined by R4-M28. Its `Dependent` class is amended by R8-M42 (a Body the
+  parser recorded missing).
 - **R4-M24** (2026-10-12) A5-1, regions and Loans: superseded by R4-M33 (2026-10-16); full text: 0d989e685.
 - **R4-M9b** (2026-10-12; superseded R4-M9's view list and placement) Binding views built by their first reader: superseded by
   R4-M33 (2026-10-16), its view list where it applies by R4-M94's C1-F4 view; full text: 0d9492185.
@@ -21297,6 +21298,37 @@ R8-M* and R9-M* by the stage of the recording unit.
   - Rejected: a `[L of ()]` Place (R3: a fixed array as a carrier of a number); a narrowed estimate intrinsic (R2); a direct
     `Subst.Lengths` read, or an entry over `SubstituteLength` (R3-N3); Binding publishing a Name's term in a HIR column (a Binding
     change for one form).
+- **R8-M42 `TyCtxt.Bodyless`' `Dependent` class covers a Body the parser recorded missing (PLAN G890)** (Back, 2026-11-14; the
+  owner's O-300 (a); amends R4-M23; review ACCEPT WITH NOTES after one REVISE; the Front's consent C-334). SPEC 14.2.1, 23.1.2.
+  - The rule. R4-M23's `Dependent` class of `TyCtxt.Bodyless` ("a definition Binding rejected (its parts are not published,
+    R4-M18)") also covers a function, constructor or `drop` whose Body the parser recorded missing (`FunctionKoto.MissingBody`, set
+    only with its syntax record, SPEC 14.2.1): a call or destruction of it rests on that record (SPEC 23.1.2), so A4 reads Derived
+    and the instance collector adds nothing.
+  - The owner. `Bodyless`' class is Binding's publication itself, evaluated on demand from facts fixed when Binding is final
+    (`CompilerFunction`, `BindingState`, the parser's flag); there is no stored copy, and no phase after Binding reads the flag. Its
+    collector readers are `Imported` (a call, a witness, a value, a VTable slot) and `Declared` (a compiler-named target: a struct's
+    declared destructor, a cataloged library function, whose missing body stays a broken contract).
+  - Rejected: failing the declaration in Binding (a new `BindingFailure`, a second "calls still checked" rule); a recovery on the
+    declaration (derives its independent failures); a collector arm reading syntax; extending R5-M151's premise to any Error through
+    Binding's partition (it widens R5-M151's stated cost and still leaves A4's Limit to `Bodyless`).
+  - Follow-up (the Front's C-334 N1): one owner of a definition's failure, Binding's declaration state carrying the recorded missing
+    body, would let `Bodyless` keep one arm.
+- **R8-M43 Program output equality: `Test-KimiExpectedOutput` compares bytes ordinally (PLAN G894)** (Back, 2026-11-14; D-654;
+  verification tooling; review ACCEPT WITH NOTES, notes folded).
+  - The owner. `Test-KimiExpectedOutput` (`src/backend/windows-x64/expected-output.ps1`) owns the rule "a program's output equals
+    its expectation": it compares two `byte[]` values ordinally and rejects any other argument. Its scope: equality of a whole
+    captured stdout/stderr stream, of a stream's suffix (the last N captured bytes, after the build lines a `kimi run` prints), and
+    of a written file with its expected bytes (an unchanged record, a normalization's idempotence, a fixture file of two runs in
+    `compare-fixtures`). Presence checks in output mixed with build lines (ordinal `Contains`, `-match`) are a different rule and
+    stay ordinal containment.
+  - Representation. Output is captured as bytes (`BaseStream.CopyToAsync`), sidecars read with `ReadAllBytes`; the native runner's
+    expectation carries `byte[]` streams and its output violations record `expectedHex`/`actualHex` (formerly the decoded
+    `expected`/`actual`); the milestone report records `stderrHex` beside `stdoutHex` (formerly the decoded `stderr`); the native
+    reuse environment key includes `expected-output.ps1`, so an owner change re-executes every fixture.
+  - Reason. PowerShell string equality is culture-sensitive (a NUL, ignorable code points and normalization forms compare equal) and
+    text reads drop BOMs or replace bytes.
+  - Rejected: `[string]::Equals(..., Ordinal)` on decoded text (keeps the lossy decoding), hex strings with `-ceq` (correct only by
+    argument, a second rule), `[byte[]]`-typed parameters (PowerShell converts a numeric string).
 - **R9-M1 A check's phase sequence is `Compilation.Check`** (2026-11-08; R9-F5; Major, behavior-preserving; review 1 REVISE, then
   review 2). SPEC 23.1.2, 23.2.2; IMPL 20.6.1. Supersedes in part R5-M65 (`Project` reads `Accepts`) and R5-M77 (`Project` discovers
   the test catalog after acceptance and owns it).
