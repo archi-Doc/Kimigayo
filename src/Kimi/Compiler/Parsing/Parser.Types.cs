@@ -169,9 +169,9 @@ public static partial class Parser
                 }
 
                 // A group, a fixed array or a second '::' written there is read as the Type it writes, so nothing of it is left to the
-                // enclosing construct, and the root path rests on the Error.
+                // enclosing construct, and the root path is a written Type outside its grammar.
                 var written = ParseAnnotatedType(ref reader, target ? TypeContext.TargetOperand : TypeContext.SemanticsOperand, out _);
-                return new ErrorKoto(ref reader, SourceSpan.FromBounds(rootStart, written.Span.End)) { Cause = cause };
+                return RecoverWrittenType(ref reader, new SyntaxFormKoto(ref reader, SourceSpan.FromBounds(rootStart, written.Span.End), KotoKind.RootName, "::", [written]), cause);
             }
 
             reader.Advance();

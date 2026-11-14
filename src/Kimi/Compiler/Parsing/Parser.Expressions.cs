@@ -95,6 +95,7 @@ public static partial class Parser
                 }
                 else
                 {
+                    DiagnosticKey? rejected = null;
                     if (IsConversionOperationTarget(ref reader))
                     {
                         // SPEC F.9.4: OpenTarget := "wrap" TypeArguments | "bits" TypeArguments; the keyword is read before any Type.
@@ -104,15 +105,15 @@ public static partial class Parser
                     {
                         // Direct borrow Origins are inferred. Complete payload Types retain their own annotations.
                         typeKoto = ParseType(ref reader, TypeContext.Target);
-                        if (CheckAdaptationTarget(typeKoto) is { } annotated)
+                        if ((rejected = CheckAdaptationTarget(typeKoto)) is { } annotated)
                         {
-                            typeKoto = new ErrorKoto(ref reader, typeKoto.Span) { Cause = annotated }; // The target rests on the Error.
+                            typeKoto = RecoverWrittenType(ref reader, typeKoto, annotated);
                         }
                     }
 
                     // SPEC F.9.4: a target read here is a ClosedTarget exactly when a DelimitedTarget's closer ends it; every
                     // OpenTarget ends at a Name, a '>', a binding set's '}' or a '?'. A failed target judges nothing.
-                    open = typeKoto is not ErrorKoto && reader.PeekKind(-1) is not (TokenKind.CloseParenthesis or TokenKind.CloseBracket);
+                    open = rejected is null && typeKoto is not ErrorKoto && reader.PeekKind(-1) is not (TokenKind.CloseParenthesis or TokenKind.CloseBracket);
                 }
 
                 if (reader.IsCurrentIdentifier("during"))
