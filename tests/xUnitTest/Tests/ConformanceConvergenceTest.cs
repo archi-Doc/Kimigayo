@@ -418,7 +418,9 @@ public class ConformanceConvergenceTest(ITestOutputHelper output)
     // The coverage table's rows without a theory of their own (R7-C2e2 e2-5a, `coverage.md`, reused by name): SPEC 8.3.3 Recursion's
     // boundary (C states no Constraint, so S is C holds alone and Box<S> is formed), 15.3.5 Fixed points and 8.3.1 (a constrained
     // instance behind a storage hop is formed once in its declaration's formals, F1's six invalid, the controls valid; non-regular
-    // recursive storage valid, R1's five), 8.3.3 Finality (a stored instance judged under the declaration's premises), the boundary
+    // recursive storage valid, R1's five, with two growing Fields or two declarations growing into each other), 8.3.3 Finality (a stored
+    // instance judged under the declaration's premises; a conditional conformance on an Owned cycle, `C1<D> is K when D is Owned` with D
+    // storing HK<C1<D>>, holds only with itself held pending, in either declaration order, and holds when unconditional), the boundary
     // of 15.3.5 (Owned of an abstract Type is judged by premises, never assumed: abstract-owned-*) and a growth-guard cut (PLAN G200).
     [Theory]
     [InlineData("f2-own-v", "contract C\nstruct Box<T>\n    T is C\n    public init() => ()\nstruct S\n    Self is Owned\n    Self is C\n    public var b: Box<S>\n    public init() => self.b = Box<S>.init()\n", true)]
@@ -449,6 +451,11 @@ public class ConformanceConvergenceTest(ITestOutputHelper output)
     [InlineData("abstract-owned-bound-n", "contract C\n    associate Item is Owned\nstruct S<U>\n    U is Owned\n    public var u: U\nstruct R<T>\n    T is C\n    let next: Array<S<T.(C).Item>>\nstruct Q\n    Self is C\n    associate C.Item is R<Q>\nfunc needOwned<V>(v: ref/V)\n    V is Owned\n    ()\nfunc use1(r: ref/R<Q>) -> ()\n    needOwned(r)\n", false)]
     [InlineData("abstract-owned-v", "contract C\n    associate Item\nstruct S<U>\n    U is Owned\n    public var u: U\nstruct R<T>\n    T is C\n    T.(C).Item is Owned\n    let next: Array<S<T.(C).Item>>\nstruct Q\n    Self is C\n    associate C.Item is R<Q>\nfunc needOwned<V>(v: ref/V)\n    V is Owned\n    ()\nfunc use1(r: ref/R<Q>) -> ()\n    needOwned(r)\n", true)]
     [InlineData("g200-copy-growth-v", "contract Has\n    associate Out\nstruct W<X>\n    Self is Has\n    associate Has.Out is G<W<(X, X)>>\nstruct G<T>\n    Self is Copy when T is Has, T.(Has).Out is Copy\nfunc inspect(x: G<W<i32>>) => ()\n", true)]
+    [InlineData("g-rf4o-nouse", "struct S<U>\n    U is Owned\n    public var u: U\nstruct Wrap<A>\n    public var a: A\nstruct Pair<A>\n    public var a: A\nstruct R<T>\n    T is Owned\n    let next: Array<S<R<Wrap<T>>>>\n    let other: Array<S<R<Pair<T>>>>\nfunc needOwned<V>(v: ref/V)\n    V is Owned\n    ()\n", true)]
+    [InlineData("g-two-decl", "struct S<U>\n    U is Owned\n    public var u: U\nstruct Wrap<A>\n    public var a: A\nstruct R1<T>\n    T is Owned\n    let next: Array<S<R2<Wrap<T>>>>\nstruct R2<T>\n    T is Owned\n    let next: Array<S<R1<Wrap<T>>>>\nfunc needOwned<V>(v: ref/V)\n    V is Owned\n    ()\n", true)]
+    [InlineData("k8-condring-n", "contract K\nstruct HK<A>\n    A is K\n    public init() => ()\nstruct C1<X>\n    Self is K when X is Owned\n    public init() => ()\nstruct D\n    let h: HK<C1<D>>\n", false)]
+    [InlineData("k8-condring-rev-n", "struct D\n    let h: HK<C1<D>>\ncontract K\nstruct HK<A>\n    A is K\n    public init() => ()\nstruct C1<X>\n    Self is K when X is Owned\n    public init() => ()\n", false)]
+    [InlineData("k8-condring-free-v", "contract K\nstruct HK<A>\n    A is K\n    public init() => ()\nstruct C1<X>\n    Self is K\n    public init() => ()\nstruct D\n    let h: HK<C1<D>>\n", true)]
     public void AnEngineCoverageRowKeepsItsLabel(string id, string source, bool valid)
         => Assert.True(valid == (DiagnosticCorpus.RecordProfile(source) == "clean"), id);
 

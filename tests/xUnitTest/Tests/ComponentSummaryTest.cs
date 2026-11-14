@@ -237,6 +237,30 @@ public class ComponentSummaryTest
         Assert.Equal(records.Length, records.Count(static x => x.Code is "Unsupported_Kd" or "UnprovenConstraint_Kd"));
     }
 
+    // SPEC 23.1.2, 8.6.1 (R7-C2e2 e2-5a, the Middle's B3): one stored Type S2<R<Wrap<T>>, T> holds an instance family (U is Owned) and a
+    // Proof that fails on its own (V is K without `T is K`, or Wrap stating no K). The failed Proof is an independent record at the
+    // stored Type, kept beside the family, with a use or not, and in the controls without recursion; any other record is the use's,
+    // resting on R's failed Field. The valid twin (T is K, Wrap is K) has no Language record: only a later phase's located
+    // Unsupported_Kd at the use, as on dev.
+    [Theory]
+    [InlineData("g-mix-n", "contract K\nstruct S2<U, V>\n    U is Owned\n    V is K\n    public var u: U\nstruct Wrap<A>\n    public var a: A\nstruct R<T>\n    T is Owned\n    let next: Array<S2<R<Wrap<T>>, T>>\nfunc needOwned<V>(v: ref/V)\n    V is Owned\n    ()\nfunc use1(r: ref/R<i32>) -> ()\n    needOwned(r)\npublic func main() => ()\n", 10, 3, 15)]
+    [InlineData("g-mix2-n", "contract K\nstruct S2<U, V>\n    U is Owned\n    V is K\n    public var u: U\nstruct Wrap<A>\n    public var a: A\nstruct R<T>\n    T is Owned\n    let next: Array<S2<R<Wrap<T>>, Wrap<T>>>\nfunc needOwned<V>(v: ref/V)\n    V is Owned\n    ()\nfunc use1(r: ref/R<i32>) -> ()\n    needOwned(r)\npublic func main() => ()\n", 10, 3, 15)]
+    [InlineData("g-mix3-n", "contract K\nstruct S2<U, V>\n    U is Owned\n    V is K\n    public var u: U\nstruct Wrap<A>\n    Self is K\n    public var a: A\nstruct R<T>\n    T is Owned\n    let next: Array<S2<R<Wrap<T>>, T>>\nfunc needOwned<V>(v: ref/V)\n    V is Owned\n    ()\npublic func main() => ()\n", 11, 3, 0)]
+    [InlineData("g-mix3-use-n", "contract K\nstruct S2<U, V>\n    U is Owned\n    V is K\n    public var u: U\nstruct Wrap<A>\n    Self is K\n    public var a: A\nstruct R<T>\n    T is Owned\n    let next: Array<S2<R<Wrap<T>>, T>>\nfunc needOwned<V>(v: ref/V)\n    V is Owned\n    ()\nfunc use1(r: ref/R<i32>) -> ()\n    needOwned(r)\npublic func main() => ()\n", 11, 3, 16)]
+    [InlineData("g-mix-ctl-n", "contract K\nstruct S2<U, V>\n    U is Owned\n    V is K\n    public var u: U\nstruct Wrap<A>\n    Self is K\n    public var a: A\nstruct R<T>\n    T is Owned\n    let next: Array<S2<Wrap<T>, T>>\nfunc needOwned<V>(v: ref/V)\n    V is Owned\n    ()\npublic func main() => ()\n", 11, 3, 0)]
+    [InlineData("g-mix-ctl0-n", "contract K\nstruct S2<U, V>\n    U is Owned\n    V is K\n    public var u: U\nstruct Wrap<A>\n    public var a: A\nstruct R<T>\n    T is Owned\n    let next: Array<S2<Wrap<T>, T>>\nfunc needOwned<V>(v: ref/V)\n    V is Owned\n    ()\npublic func main() => ()\n", 10, 3, 0)]
+    [InlineData("g-mix-r", "contract K\nstruct S2<U, V>\n    U is Owned\n    V is K\n    public var u: U\nstruct Wrap<A>\n    Self is K\n    public var a: A\nstruct R<T>\n    T is Owned\n    T is K\n    let next: Array<S2<R<Wrap<T>>, T>>\nfunc needOwned<V>(v: ref/V)\n    V is Owned\n    ()\nfunc use1(r: ref/R<Wrap<Wrap<i32>>>) -> ()\n    needOwned(r)\npublic func main() => ()\n", 12, 0, 17)]
+    public void AnIndependentRecordBesideAnInstanceFamilyIsKept(string id, string source, int stored, int unproven, int use)
+    {
+        var records = DiagnosticCorpus.Check(source).Diagnostics.Select(x => (x.Code, Line: source.AsSpan(0, x.Span!.Value.Start).Count('\n') + 1)).ToArray();
+        Assert.Equal(unproven, records.Count(x => x == ("UnprovenConstraint_Kd", stored)));
+        Assert.All(records, x => Assert.True(x == ("UnprovenConstraint_Kd", stored) || x.Line == use, $"{id}: {x.Code}@{x.Line}"));
+        if (unproven == 0)
+        {
+            Assert.Equal(("Unsupported_Kd", use), Assert.Single(records));
+        }
+    }
+
     // SPEC 8.3.3 Limits, 23.1.2 (R7-C2e2 e2-5a, DECISIONS BU-22): a work that reaches two located limits, a Tuple of two instances whose
     // summaries are each past the projection bound, rests on the least by key (the earlier stored Type), whichever Tuple order reads them
     // first (dev rested on the first one read, so the record moved with the order).
