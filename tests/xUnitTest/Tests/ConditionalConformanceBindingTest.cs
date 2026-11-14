@@ -235,12 +235,15 @@ public class ConditionalConformanceBindingTest
 
     // SPEC 8.3.4, 8.8.2, 15.3.5 (PLAN G801): a requirement's own pair binder, and the implementation's own, are not in scope of the
     // conformance scope's chain; each is read at its own signature's clauses, as before G801 (these rows keep that answer). `ref` on
-    // both makes the target covariant; an invariant Semantics on both, or no clause on the requirement, keeps it invariant.
+    // both makes the target covariant; an invariant Semantics on both, or no clause on the requirement, keeps it invariant. A signature
+    // is formed under its own clauses (the owner's O-302 (a)): an implementation without the requirement's clause fails at its own
+    // input Type, before the comparison.
     [Theory]
     [InlineData("        t is ref\n", "        t is ref\n", "static", "clean")]
     [InlineData("        t is ref\n", "        t is ref\n", "r", "clean")]
     [InlineData("        t is ref or uniq\n", "        t is ref or uniq\n", "static", "1*IncompatibleContractImplementation_Kd")]
     [InlineData("", "        t is ref\n", "static", "1*IncompatibleContractImplementation_Kd 1*UnprovenConstraint_Kd")]
+    [InlineData("        t is ref\n", "", "static", "1*IncompatibleContractImplementation_Kd 1*UnprovenConstraint_Kd")]
     public void ARequirementsOwnBinderIsReadAtItsSignaturesClauses(string requirementClause, string implementationClause, string required, string records)
         => Assert.Equal(records, DiagnosticCorpus.RecordProfile(
             $"contract M\n    func put<t/U>(self: uniq/Self, r: ref/i32, value: t/(ref/i32 during {required}) during r) -> i32\n{requirementClause}" +
