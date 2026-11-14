@@ -354,8 +354,10 @@ public sealed partial class Binding
             }
 
             // SPEC 8.13.2: a Type argument's Origins are the ones each call of the original supplies, the header's universal input
-            // Origins at that argument (TypeContext), or ones bound inside it; a written one adds an Origin restriction (independent of
-            // the Origin's own well-formedness, SPEC 15.2.3), a raw layer's too (SPEC 5.7: it states which storage the pointer addresses).
+            // Origins at that argument (TypeContext), or ones bound inside it; any other Origin the argument's bound Type states adds
+            // an Origin restriction (independent of the Origin's own well-formedness, SPEC 15.2.3): a raw layer's too (SPEC 5.7: it
+            // states which storage the pointer addresses), in any variance position (a Function Type's input included) and whatever
+            // spells it (one reached through a completed projection included).
             for (var i = 0; i < arguments.Length; i++)
             {
                 if (arguments[i] is { } argument)
@@ -453,6 +455,9 @@ public sealed partial class Binding
         }
 
         // Whether an argument's Origins (its Origin summary's nodes) name one of the header's: a universal input or a parameter's Origin.
+        // Raw layers' nodes stay out: an identity Constraint does read a raw layer's Origin, but its verdict is Proven or Unsatisfied,
+        // and no Unknown verdict rests on one; a raw node of a header's argument is never the call's (SPEC 15.4.2 completes no raw
+        // Origin), so that header is rejected whichever record the gate selects.
         bool NamesHeaderOrigin(BoundType?[] arguments, FunctionKoto function)
         {
             foreach (var argument in arguments)
@@ -474,9 +479,9 @@ public sealed partial class Binding
             return false;
         }
 
-        // SPEC 8.13.2: whether no header wrote an Origin node of a Type argument: each is the header's universal input Origin at the
+        // SPEC 8.13.2: whether every Origin node of a Type argument is the call's: the header's universal input Origin at the
         // argument, one bound inside it (a Function Type's per-call input) or their meet (whose operands are nodes too). Any other
-        // (static, a parameter's, a binder's) is written.
+        // (static, a parameter's, a binder's; written in the header or stated by what the argument names) restricts the original.
         static bool Unwritten(BoundOrigin[] nodes, FunctionKoto function, Koto argument)
         {
             foreach (var origin in nodes)
