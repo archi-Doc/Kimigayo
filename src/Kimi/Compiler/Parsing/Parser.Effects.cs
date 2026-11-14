@@ -80,7 +80,7 @@ public static partial class Parser
         DiagnosticKey? cause = null;
         if (reader.CurrentTokenKind is TokenKind.OpenParenthesis or TokenKind.ColonColon || reader.PeekKind(1) is TokenKind.Dot or TokenKind.LessThan)
         {
-            ParseEffectTarget(ref reader, out selector, out name);
+            selector = ParseEffectTarget(ref reader, out name);
             cause = (name as ErrorKoto)?.Cause;
         }
 
@@ -152,8 +152,8 @@ public static partial class Parser
     // ContractSelector "." Name, where ContractSelector is a ContainerPath or "(" ContractReference ")" (Appendix F). The group holds
     // one reference, so its Type and closer are read in every position (an empty group or a list is a syntax Error there), and it is
     // the node of every grouped Contract reference; Binding reads the reference in it (WrittenReference). The last segment of the
-    // path is the requirement Name.
-    private static void ParseEffectTarget(ref TokenReader reader, out Koto selector, out Koto name)
+    // path is the requirement Name. Returns the ContractSelector; name is the requirement Name, an Error where the path names none.
+    private static Koto ParseEffectTarget(ref TokenReader reader, out Koto name)
     {
         Koto? group = null;
         if (reader.CurrentTokenKind == TokenKind.OpenParenthesis)
@@ -184,14 +184,13 @@ public static partial class Parser
 
         if (path is MemberAccessKoto member)
         {
-            selector = member.Left;
             name = member.Right;
-            return;
+            return member.Left;
         }
 
         // The selector names no requirement; the Name is missing where the bound would follow.
-        selector = path;
         reader.Expect(SyntaxForm.Name);
         name = reader.NewErrorKoto();
+        return path;
     }
 }

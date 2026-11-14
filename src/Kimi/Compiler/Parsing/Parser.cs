@@ -52,6 +52,9 @@ public static partial class Parser
 
     private static readonly bool[] IsExpressionBoundaryKind = new bool[TokenHelper.MaxTokens];
 
+    // The first words of SPEC F.10.2's LabelableConstruct: a label's targets and, with `func`, the body-bearing expressions of F.4.4.
+    private static readonly bool[] IsLabelableConstruct = new bool[TokenHelper.MaxTokens];
+
     private static readonly HeaderWord[] HeaderWords = new HeaderWord[TokenHelper.MaxTokens];
 
     static Parser()
@@ -93,15 +96,25 @@ public static partial class Parser
             true);
 
         Mark(
+            IsLabelableConstruct,
+            [TokenKind.If, TokenKind.Match, TokenKind.For, TokenKind.While, TokenKind.Loop, TokenKind.Do],
+            true);
+
+        Mark(
             HeaderWords,
             [TokenKind.Public, TokenKind.Internal, TokenKind.Private, TokenKind.Protected, TokenKind.Open, TokenKind.Static],
             HeaderWord.Modifier);
 
         Mark(
             HeaderWords,
+            [TokenKind.Group, TokenKind.Struct, TokenKind.Enum, TokenKind.Contract, TokenKind.Extension],
+            HeaderWord.ContainerIntroducer);
+
+        Mark(
+            HeaderWords,
             [
-                TokenKind.RootGroup, TokenKind.Group, TokenKind.Struct, TokenKind.Enum, TokenKind.Contract, TokenKind.Extension, TokenKind.Func,
-                TokenKind.Init, TokenKind.Drop, TokenKind.Let, TokenKind.Var, TokenKind.Computed, TokenKind.Property, TokenKind.Associate,
+                TokenKind.RootGroup, TokenKind.Func, TokenKind.Init, TokenKind.Drop, TokenKind.Let, TokenKind.Var, TokenKind.Computed,
+                TokenKind.Property, TokenKind.Associate,
             ],
             HeaderWord.DeclarationIntroducer);
 

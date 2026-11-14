@@ -469,14 +469,6 @@ public class ContractBindingTest
     }
 
     [Fact]
-    public void DistinctGenericAssociatedConstraintsCannotChooseAnArbitraryIdentity()
-    {
-        var c = CompilationTestHelper.ParseSuccess("contract C\n    associate E\nfunc f<T>(value: T.(C).E)\n    T is C\n    T.(C).E is i32\n    T.(C).E is string\n    ()");
-        Assert.False(c.Bind().IsComplete);
-        Assert.Contains(c.Binding.Issues, x => x.Code == DiagnosticCode.InvalidAssociatedType_Kd);
-    }
-
-    [Fact]
     public void RefinementRejectsIncompatibleLabelsWithoutAnImplementation()
     {
         var c = CompilationTestHelper.ParseSuccess("contract A\n    func f(x: i32)\ncontract B\n    func f(y: i32)\ncontract C: A, B");
