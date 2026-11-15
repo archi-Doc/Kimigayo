@@ -236,9 +236,10 @@ public static partial class Parser
             (IsPathLeaf(head) || (!ReferenceEquals(head, path) && head is ParenthesizedTypeKoto or TupleTypeKoto or FixedArrayTypeKoto));
     }
 
-    // SPEC F.5 PathSuffix := "." TypeSegment | "." "(" ContractReference ")" "." Name: a grouped Contract after "." is one suffix with its
-    // ". Name", read by F.5's suffix loop (ParseTypeSuffixes) and, until G489 merges it into that loop, ParseConstraintSubject's. Without
-    // the Name, the path read so far is a written Type outside its grammar: one record at the group, the path recovered.
+    // SPEC F.5 PathSuffix := "." TypeSegment | "." "(" ContractReference ")" "." Name (F.9.1's PostfixSuffix the same): a grouped Contract
+    // after "." is one suffix with its ". Name", the one rule of every reader of it: F.5's suffix loop (ParseTypeSuffixes), the
+    // expression's PostfixSuffix (TryParsePostfixExpression) and, until G489 merges it into F.5's loop, ParseConstraintSubject's. Without
+    // the Name, the path read so far is written outside its grammar: one record at the group, the path recovered.
     private static bool ContinuesContractMember(ref TokenReader reader, ref Koto path, Koto group)
     {
         if (reader.CurrentTokenKind == TokenKind.Dot && reader.PeekKind(1).IsIdentifierOrContextualKeyword())

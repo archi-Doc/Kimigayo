@@ -424,7 +424,8 @@ ProcessPrefix:
                     var operatorRange = reader.CurrentTokenRange;
                     reader.Advance();
 
-                    // SPEC F.9.1: PostfixSuffix "." "(" ContractReference ")" "." Name, the grouped Contract's one reader.
+                    // SPEC F.9.1: PostfixSuffix "." "(" ContractReference ")" "." Name (also a BoundContainerExpression's), the grouped
+                    // Contract's one reader and F.5's one ".(C).Name" rule: a grouped Contract carries its ". Name".
                     var accessor = reader.CurrentTokenKind == TokenKind.OpenParenthesis
                         ? ParseContractGroup(ref reader)
                         : ParseMemberName(ref reader);
@@ -433,6 +434,11 @@ ProcessPrefix:
                         SourceSpan.FromBounds(left.Span.Start, Math.Max(operatorRange.End, accessor.Span.End)),
                         left,
                         accessor);
+                    if (accessor is ParenthesizedTypeKoto)
+                    {
+                        _ = ContinuesContractMember(ref reader, ref left, accessor);
+                    }
+
                     return true;
                 }
 

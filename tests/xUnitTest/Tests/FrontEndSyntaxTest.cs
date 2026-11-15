@@ -592,15 +592,18 @@ public class FrontEndSyntaxTest
         ParseSuccess("#if false\n    " + declaration.Replace("\n", "\n    ", StringComparison.Ordinal) + "\n");
     }
 
-    // SPEC F.5 PathSuffix := "." TypeSegment | "." "(" ContractReference ")" "." Name: a grouped Contract after "." is one suffix with its
-    // ". Name", in F.5's one suffix loop and every reader that reads it (a Type, a subject, a requirement, a selector head, a runtime type
-    // test's target): a lone grouped Contract is one record at the group; a selector split before the PathSuffix's own Name is none.
+    // SPEC F.5 PathSuffix := "." TypeSegment | "." "(" ContractReference ")" "." Name (F.9.1's PostfixSuffix the same): a grouped Contract
+    // after "." is one suffix with its ". Name", in every reader of it (a Type, a subject, a requirement, a selector head, a runtime type
+    // test's target, an expression's PostfixSuffix and BoundContainerExpression): a lone grouped Contract is one record at the group; a
+    // selector split before the PathSuffix's own Name is none.
     [Theory]
     [InlineData("func f(v: K.(Y)) -> i32 => 0", "(Y)", "grouped Contract followed by its member Name")]
     [InlineData("func f<U>(u: U) -> i32\n    U.(K) is Copy\n    return 0", "(K)", "grouped Contract followed by its member Name")]
     [InlineData("func f<T, U>(v: T) -> i32\n    T is U.(K)\n    return 0", "(K)", "grouped Contract followed by its member Name")]
     [InlineData("func f(x: i32) -> bool => x is K.(Y)", "(Y)", "grouped Contract followed by its member Name")]
     [InlineData("contract E\n    func h(self: ref/Self)\n    effect X.(Y) confined", "(Y)", "grouped Contract followed by its member Name")]
+    [InlineData("func f(v: Api.N) -> i32\n    let r = v.(Y)\n    return 0", "(Y)", "grouped Contract followed by its member Name")]
+    [InlineData("func f(z: i32) -> i32\n    let r = (Api.N{z}).(Y)\n    return 0", "(Y)", "grouped Contract followed by its member Name")]
     [InlineData("struct A\n    associate X.(Y).Item is i32", "X.(Y)", "contract reference")]
     [InlineData("contract E\n    func h(self: ref/Self)\n    effect X.(Y).h confined", "X.(Y)", "contract reference")]
     public void AGroupedContractWithoutItsMemberNameIsOneRecordInEverySelection(string declaration, string at, string phrase)
@@ -621,6 +624,8 @@ public class FrontEndSyntaxTest
     [InlineData("func f<T, U>(v: T) -> i32\n    T is U.(K).Item\n    return 0")]
     [InlineData("struct A\n    associate X.(Y).Item.Z is i32")]
     [InlineData("contract E\n    func h(self: ref/Self)\n    effect K.(Y).Item.h confined")]
+    [InlineData("func f(v: Api.N) -> i32\n    let r = v.(Y).m\n    return 0")]
+    [InlineData("func f(z: i32) -> i32\n    let r = (Api.N{z}).(Y).m\n    return 0")]
     public void AGroupedContractWithItsMemberNameHasNoRecordInEverySelection(string declaration)
     {
         ParseSuccess(declaration + "\n");
