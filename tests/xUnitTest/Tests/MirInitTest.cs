@@ -26,7 +26,7 @@ public sealed class MirInitTest
         "func takeT(t: (i32, i32)) => ()\nfunc takeE(e: E) => ()\nfunc takeOA(o: Option<Array<i32>>) => ()\nfunc takeTA(t: (i32, Array<i32>)) => ()\n" +
         "func takeAT(a: Array<(i32, i32)>) => ()\nfunc takeAA(a: Array<Array<i32>>) => ()\nfunc takeFA(a: [2 of Array<i32>]) => ()\n" +
         "func takeS(s: S) => ()\nfunc takeAS(a: Array<string>) => ()\nfunc h2a(a: Array<i32>, b: Array<i32>) => ()\n" +
-        "func takeRA(a: ref/Array<i32>) => ()\nenum E\n    Two(i32, i32)\n" +
+        "func takeRA(a: ref/Array<i32>) => ()\nfunc takeG<T>(t: T) => ()\nenum E\n    Two(i32, i32)\n" +
         "struct S\n    public let a: Array<i32>\n    public init(a: Array<i32>) => self.a = a@move\nfunc r1() -> Array<i32> => [fail()]\n" +
         "func r2() -> Array<i32>\n    return [5, fail()]\npublic func main() -> ()\n    let y: i32 = 5\n    let c: bool = y > 2\n";
 
@@ -52,6 +52,8 @@ public sealed class MirInitTest
         "func takeAS(a: Array<string>) => ()\nfunc takeSI(s: SI) => ()\nfunc h2a(a: Array<i32>, b: Array<i32>) => ()\nfunc h2<T>(a: T, b: T) => ()\n" +
         "enum E\n    Two(i32, i32)\nstruct SI\n    public let v: i32\n    public init(v: i32) => self.v = v\n" +
         "func rw(c: bool, y: i32) -> Array<i32>\n    return [y]\n    return [y, if c => y else => fail()]\n" +
+        "func takeF1(a: [1 of i32]) => ()\nfunc takeF3(a: [3 of i32]) => ()\nfunc takeFL(a: [10000 of i32]) => ()\n" +
+        "func takeTF(t: (i32, [2 of i32])) => ()\nfunc takeFT(a: [2 of (i32, i32)]) => ()\nfunc takeFLT(a: [10000 of (i32, i32)]) => ()\n" +
         "public func main() -> ()\n    let y: i32 = 5\n    let c: bool = y > 2\n";
 
     // The declarations before a function g that reads a Place of Type Never (CodeAfterANeverPlaceReadIsCheckedOnTheAssumedPaths).
@@ -287,6 +289,20 @@ public sealed class MirInitTest
         Assert.Equal(2, moves.Paths.ToArray().Count(x => x.Local == array));
     }
 
+    // SPEC 4.3.3, 15.1.3: a Fill forms a path for each element a Place names alone and none for the others, whose facts are its own
+    // path's Unplaced lane, so its paths and facts do not grow with its length (an input-size property of MirMoveData): a Fill of the
+    // Never value (a: a, a[3]), one whose operand may hold nothing (b: b, b[3]), and one whose operand temp has a part a join may leave
+    // unplaced (t: t), whose Tuple temp gains no path either (a carry onto the Fill's own path names no source part). Its base formed
+    // a fact per element (the most Never parts and carries of one Assign grew with the length), and the held 2ca3e8945 a path more for
+    // the others (3 paths for a and for b).
+    [Fact]
+    public void AFillFormsThePathsOfTheElementsAPlaceNames()
+    {
+        var large = FillShape(10000);
+        Assert.Equal((2, 2, 1, 1), (large.A, large.B, large.T, large.Tuples));
+        Assert.Equal(FillShape(4), large);
+    }
+
     // SPEC 15.1.3 (DECISIONS R4-M21, R4-M146): Build empties the paths of a large body whole and a small body's entry by entry (MirTable),
     // and a body after either gets the paths a fresh instance gives: the paths, the flow paths and each Place's path, so no child or Place
     // of an earlier body, keyed by indices that restart, answers for it.
@@ -506,7 +522,8 @@ public sealed class MirInitTest
     // (SPEC 15.1.6), and a loop whose assumed back edge stores an incomplete Array while the head and the later Move have real paths.
     // Then the redesign's review rows (nc): a placed part of a nested component and of a let stays readable beside an unplaced one,
     // which no Place names, so its owner lacks a part (A1's Unplaced lane): a read of the Never part, a whole read of the incomplete
-    // part and a whole Copy are errors; a join operand that has a value on both assumed paths is complete.
+    // part and a whole Copy are errors; a join operand that has a value on both assumed paths is complete. Last, a Fill of the Never
+    // value (fnv, fnvL, fnvc, fnv0): every element is a Never part at any length; length 0 has none.
     [Theory]
     [InlineData("takeA([fail()])", "UninitializedPlace_Kd takeA([fail()]) 1")]
     [InlineData("takeA([y, fail()])", "UninitializedPlace_Kd takeA([y, fail()]) 1")]
@@ -545,6 +562,10 @@ public sealed class MirInitTest
     [InlineData("let t: (i32, (i32, i32, i32)) = (y, (y, if c => y else => y, fail()))\n    use3(t.1)\nfunc use3(t: (i32, i32, i32)) => ()", "UninitializedPlace_Kd use3(t.1) 1")]
     [InlineData("let a: (i32, i32) = (y, fail())\n    let b: (i32, i32) = a", "UninitializedPlace_Kd a 1")]
     [InlineData("return\n    let t: (i32, (i32, i32)) = (y, (y, if c => y else => y))\n    takeT(t.1)\n    let u: (i32, (i32, i32)) = (y, (y, if c => y else => fail()))\n    _ = u.1.0", "")]
+    [InlineData("return\n    let f = [2 of fail()]\n    takeG(f)", "UninitializedPlace_Kd takeG(f) 1")] // fnv
+    [InlineData("return\n    let f = [10000 of fail()]\n    takeG(f)", "UninitializedPlace_Kd takeG(f) 1")] // fnvL
+    [InlineData("return\n    let f = [2 of fail()]\n    let n = f[1]", "UninitializedPlace_Kd f[1] 1")] // fnvc
+    [InlineData("return\n    let f = [0 of fail()]\n    takeG(f)", "")] // fnv0
     public void AConstructionPlacesNothingIntoItsNeverComponents(string body, string expected)
         => Assert.Equal(expected.Length == 0 ? [] : expected.Split(" | "), Problems(Components + "    " + body + "\n"));
 
@@ -641,7 +662,13 @@ public sealed class MirInitTest
     // counterpart of each destination's Move Path is one too: a complete x.0 or u.0 is accepted and the incomplete x.1 or u.1 is
     // UninitializedPlace_Kd, whether the incomplete part is a Never part, a construction's lacking entry or a join operand, and
     // for a deeper Move Path; the last four reach a let placed later through the arm's temp, whose complete sibling no own carry
-    // tracks (the first and the third were rejected without the closure's walk, the last two by unit 1 alone).
+    // tracks (the first and the third were rejected without the closure's walk, the last two by unit 1 alone). Then a Fill (fl1 to
+    // flwr, named as in the Fill unit's table t1): it places such a value into every element (SPEC 4.3.3), at any length, so a whole
+    // use, a read of any element at a constant index, a runtime index and a Fill below another construction are UninitializedPlace_Kd,
+    // and writing every element restores it (SPEC 15.1.2); length 0, a real path and an unused Fill stay valid. Last, the table t2
+    // (smf1 to smf5): a temp holding such a Fill that holds nothing on another assumed path is the Never value there (smf3 was
+    // accepted on the base). Fail-before: the base accepted every invalid Fill row but flt and flLt (a Tuple's tracked part was
+    // mirrored into every element).
     [Theory]
     [InlineData("return\n    takeA([if c => y else => fail()])", "UninitializedPlace_Kd takeA([if c => y 1")]
     [InlineData("return\n    takeT((y, if c => y else => fail()))", "UninitializedPlace_Kd takeT((y, if c => y 1")]
@@ -712,6 +739,30 @@ public sealed class MirInitTest
     [InlineData("return\n    let x: (i32, (i32, i32))\n    x = if c => (fail(), (y, if c => y else => y)) else => (y, (y, y))\n    use(x.0)", "UninitializedPlace_Kd use(x.0) 1")]
     [InlineData("return\n    let x: (i32, (i32, Dictionary<i32, i32>))\n    x = if c => (fail(), (y, [1: y])) else => (y, (y, [1: y]))\n    takeTD(x.1@move)", "")]
     [InlineData("return\n    let u: (Dictionary<i32, i32>, Dictionary<i32, i32>)\n    u = if c => ([1: y], [2: fail()]) else => ([1: y], [2: y])\n    takeD(u.0@move)", "")]
+    [InlineData("return\n    takeF1([1 of if c => y else => fail()])", "UninitializedPlace_Kd takeF1([1 of if c => y 1")] // fl1
+    [InlineData("return\n    takeF([2 of if c => y else => fail()])", "UninitializedPlace_Kd takeF([2 of if c => y 1")] // afl
+    [InlineData("return\n    takeFL([10000 of if c => y else => fail()])", "UninitializedPlace_Kd takeFL([10000 of if c => y 1")] // flL
+    [InlineData("return\n    takeF([2 of (match c\n        true => y\n        false => fail()\n    )])", "UninitializedPlace_Kd takeF([2 of ( 1")] // flm
+    [InlineData("return\n    takeF([2 of (label w: do\n        defer => use(y)\n        if c => exit to w y\n        exit to w fail()\n    )])", "UninitializedPlace_Kd takeF([2 of ( 1")] // flx
+    [InlineData("return\n    let f: [2 of i32] = [2 of if c => y else => fail()]\n    takeF(f)", "UninitializedPlace_Kd takeF(f) 1")] // flw
+    [InlineData("return\n    let f: [2 of i32] = [2 of if c => y else => fail()]\n    use(f[0])", "UninitializedPlace_Kd use(f[0]) 1")] // flc0
+    [InlineData("return\n    let f: [2 of i32] = [2 of if c => y else => fail()]\n    use(f[1])", "UninitializedPlace_Kd use(f[1]) 1")] // flc1
+    [InlineData("return\n    let f: [3 of i32] = [3 of if c => y else => fail()]\n    use(f[2])", "UninitializedPlace_Kd use(f[2]) 1")] // flc2
+    [InlineData("return\n    let i: isize = 0\n    let f: [2 of i32] = [2 of if c => y else => fail()]\n    use(f[i])", "UninitializedPlace_Kd f[i] 1")] // fli
+    [InlineData("return\n    use([2 of if c => y else => fail()][0])", "UninitializedPlace_Kd use([2 of if c => y 1")] // flct
+    [InlineData("return\n    var f: [2 of i32] = [2 of if c => y else => fail()]\n    f[0] = y\n    takeF(f)", "UninitializedPlace_Kd takeF(f) 1")] // flre1
+    [InlineData("return\n    var f: [3 of i32] = [3 of if c => y else => fail()]\n    f[0] = y\n    f[2] = y\n    takeF3(f)", "UninitializedPlace_Kd takeF3(f) 1")] // flre3
+    [InlineData("return\n    var f: [10000 of i32] = [10000 of if c => y else => fail()]\n    f[0] = y\n    takeFL(f)", "UninitializedPlace_Kd takeFL(f) 1")] // flLre
+    [InlineData("return\n    takeTF((y, [2 of if c => y else => fail()]))", "UninitializedPlace_Kd takeTF((y, [2 of if c => y 1")] // fln
+    [InlineData("return\n    takeFT([2 of (y, if c => y else => fail())])", "UninitializedPlace_Kd takeFT([2 of (y, if c => y 1")] // flt
+    [InlineData("return\n    takeFLT([10000 of (y, if c => y else => fail())])", "UninitializedPlace_Kd takeFLT([10000 of (y, if c => y 1")] // flLt
+    [InlineData("return\n    takeFT([2 of if c => (y, y) else => fail()])", "UninitializedPlace_Kd takeFT([2 of if c => (y, y) 1")] // flTt
+    [InlineData("takeFL([10000 of if c => y else => fail()])\n    takeFLT([10000 of (y, if c => y else => fail())])\n    return\n    takeF([2 of if c => y else => y])\n    takeFL([10000 of if c => y else => y])\n    takeF([2 of (label w: do\n        defer => use(y)\n        if c => exit to w y\n        exit to w y\n    )])\n    takeTF((y, [2 of if c => y else => y]))", "")] // flLr, flLtr, flv, flLv, flxv, flnv
+    [InlineData("return\n    let f: [2 of i32] = [2 of if c => y else => y]\n    takeF(f)\n    use(f[1])\n    let i: isize = 0\n    use(f[i])\n    let u: [2 of i32] = [2 of if c => y else => fail()]\n    _ = [2 of if c => y else => fail()]\n    let w: [10000 of i32] = [10000 of if c => y else => fail()]", "")] // flwv, flcv, fliv, flu, fld, flLu
+    [InlineData("return\n    var f: [2 of i32] = [2 of if c => y else => fail()]\n    f[0] = y\n    f[1] = y\n    takeF(f)\n    var g: [3 of i32] = [3 of if c => y else => fail()]\n    g[0] = y\n    g[1] = y\n    g[2] = y\n    takeF3(g)\n    var h: [2 of i32] = [2 of if c => y else => fail()]\n    h = [y, y]\n    takeF(h)", "")] // flre, flre3v, flwr
+    [InlineData("takeF(if c => [2 of if c => y else => y] else => fail())\n    return\n    takeF(if c => [2 of if c => y else => y] else => fail())\n    takeTF(if c => (y, [2 of if c => y else => y]) else => fail())", "")] // smf5, smf1, smf2
+    [InlineData("return\n    takeF(if c => [2 of if c => y else => fail()] else => fail())", "UninitializedPlace_Kd takeF(if c => [2 of if c => y 1")] // smf3
+    [InlineData("return\n    let f: [2 of i32] = if c => [2 of if c => y else => y] else => fail()\n    takeF(f)", "UninitializedPlace_Kd takeF(f) 1")] // smf4
     public void AnOperandWithoutAValuePlacesNothingIntoItsComponent(string body, string expected)
         => Assert.Equal(expected.Length == 0 ? [] : [expected], Problems(Operands + "    " + body + "\n"));
 
@@ -1229,6 +1280,25 @@ public sealed class MirInitTest
     // The problems of a source's own bodies: code, the first line of the subject, the views and a storage limit's arguments.
     internal static string[] Problems(string source)
         => Problems(MirBuildTest.Compile(source));
+
+    // The paths of a, b and t, those of the Tuple temps, and the most Never parts and carries of one Assign, in a body whose Fills have
+    // a length (AFillFormsThePathsOfTheElementsAPlaceNames).
+    private static (int A, int B, int T, int Tuples, int Parts, int Carried) FillShape(int length)
+    {
+        var c = MirBuildTest.Compile("func fail() -> Never => $abort(\"no\")\nfunc use(n: i32) => ()\nfunc f(c: bool, y: i32)\n    return\n" +
+            $"    let a = [{length} of fail()]\n    let n = a[3]\n    let b: [{length} of i32] = [{length} of if c => y else => fail()]\n" +
+            $"    use(b[3])\n    let t: [{length} of (i32, i32)] = [{length} of (y, if c => y else => fail())]\n");
+        var body = c.BuildMir().Bodies.ToArray().Single(static x => x.Key.Decl?.Name == "f");
+        var (flow, moves) = (new MirDataflow(new MirReach()), new MirMoveData());
+        flow.Begin(body);
+        moves.Build(body, flow);
+        var locals = body.Locals.ToArray();
+        var paths = moves.Paths.ToArray();
+        int Of(string name) => paths.Count(x => x.Local == Array.FindIndex(locals, l => l.Name == name));
+        var tuples = paths.Count(x => locals[x.Local] is { Kind: MirLocalKind.Temp, Type.Kind: BoundTypeKind.Tuple });
+        var parts = Enumerable.Range(0, body.Statements.Length).Max(i => moves.NeverParts(i).Length);
+        return (Of("a"), Of("b"), Of("t"), tuples, parts, moves.MaxCarried);
+    }
 
     private static string[] Problems(Compilation c)
     {
