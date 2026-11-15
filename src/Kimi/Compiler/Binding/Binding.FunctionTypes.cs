@@ -498,7 +498,7 @@ public sealed partial class Binding
         BoundType? Bound(BoundType type)
         {
             var bound = item is not null ? this.ItemType(type, item, function)
-                : this.MemberType(type, container) is not { } member ? null : frame is not { } slots ? member : this.SubstituteType(member, function, slots.Types[..generic], slots.Lengths[..generic]);
+                : frame is not { } slots ? this.MemberType(type, container) : this.Substitute(type, SubstitutionOf(function, container, slots.Types[..generic], slots.Lengths[..generic]));
             return bound is null ? null : this.ContractType(bound, this.ConstraintScope(use));
         }
 

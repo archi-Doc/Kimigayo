@@ -162,7 +162,7 @@ public sealed partial class Binding
         var here = at with { Writable = at.Writable && variance == OriginVariance.Invariant };
         if (TryPairLayer(type, out _, out var target))
         {
-            var exclusive = IsInvariantLayer(type, this);
+            var exclusive = IsInvariantLayer(type, this, null, default);
             var slot = this.OuterOrigin(type);
             this.AddRetentionAtom(here with { Origin = slot }, callable);
             var inner = ComposeVariance(variance, exclusive ? OriginVariance.Invariant : OriginVariance.Covariant);

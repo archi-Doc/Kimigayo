@@ -142,7 +142,8 @@ internal enum CompilerFunctionEffect : byte
     /// <summary>The function obtains authority from the environment, which confined excludes.</summary>
     Environment,
 
-    /// <summary>A definition Binding rejected, whose parts are not published (DECISIONS R4-M18): its effects are a dependent of that error.</summary>
+    /// <summary>A definition Binding rejected, whose parts are not published (DECISIONS R4-M18), or whose Body the parser recorded missing
+    /// (SPEC 14.2.1): its effects are a dependent of that error.</summary>
     Dependent,
 }
 
