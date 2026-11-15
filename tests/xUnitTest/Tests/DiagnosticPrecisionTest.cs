@@ -430,6 +430,7 @@ public class DiagnosticPrecisionTest
     [InlineData("h09v", "alias Mine\nalias Kimi.Intrinsics\ngroup Mine\n    public func downgrade(value: i32) -> i32 => value\nlet n = downgrade(1)\nConsole.writeLine(\"ok\")\n")]
     [InlineData("i03v", "alias Kimi.Intrinsics\nalias Mine\ngroup Mine\n    public func downgrade(value: i32) -> i32 => value\nlet f: (i32) -> i32 = downgrade\nConsole.writeLine(\"ok\")\n")]
     [InlineData("i04v", "alias Mine\nalias Kimi.Intrinsics\ngroup Mine\n    public func downgrade(value: i32) -> i32 => value\nlet f: (i32) -> i32 = downgrade\nConsole.writeLine(\"ok\")\n")]
+    [InlineData("i07v", "alias A\nalias B\ngroup A\n    public func pick(value: bool) -> i32 => 1\ngroup B\n    public func pick(value: i32) -> i32 => value\nlet f: (i32) -> i32 = pick\nConsole.writeLine(\"ok\")\n")]
     [InlineData("i08v", "alias B\nalias A\ngroup A\n    public func pick(value: bool) -> i32 => 1\ngroup B\n    public func pick(value: i32) -> i32 => value\nlet f: (i32) -> i32 = pick\nConsole.writeLine(\"ok\")\n")]
     [InlineData("i10v", "alias Kimi.Intrinsics\nalias Mine\ngroup Mine\n    public func makeRcCyclic(build: (i32) -> i32) -> i32 => build(1)\nlet n = makeRcCyclic(func [] (x: i32) -> i32 => x)\nConsole.writeLine(\"ok\")\n")]
     [InlineData("i12v", "alias Mine\nalias Kimi.Intrinsics\ngroup Mine\n    public func makeRcCyclic(build: (i32) -> i32) -> i32 => build(1)\nlet n = makeRcCyclic(func [] (x: i32) -> i32 => x)\nConsole.writeLine(\"ok\")\n")]
@@ -466,10 +467,9 @@ public class DiagnosticPrecisionTest
     [InlineData("t01x", "func f(x: Kimi.Intrinsics.downgrade) -> i32 => 1\nConsole.writeLine(\"ok\")\n", "Unsupported_Kd 1:11")]
     [InlineData("w01x", "func work<length N>() -> i32 => 1\nlet n = work<Kimi.Intrinsics.downgrade>()\nConsole.writeLine(\"ok\")\n", "NoApplicableOverload_Kd 2:9", "Unsupported_Kd 2:14")]
     [InlineData("w02x", "func work<length N>() -> i32 => 1\nlet f: () -> i32 = work<Kimi.Intrinsics.downgrade>\nConsole.writeLine(\"ok\")\n", "Unsupported_Kd 2:25")]
-    // Recorded as the base has them: h06x's `InvalidConstraint_Kd` pair and i07v's rejection are open issues of their own (a
-    // constraint over a failed requirement Name; a gathered group read by a reference); h12x's other records are its own errors.
+    // Recorded as the base has them: h06x's `InvalidConstraint_Kd` pair is an open issue of its own (a constraint over a failed
+    // requirement Name); h12x's other records are its own errors.
     [InlineData("h06x", "func f<T>(x: T) -> i32\n    T is Weak<rc/i32>\n    return 1\nConsole.writeLine(\"ok\")\n", "InvalidConstraint_Kd 1:6", "Unsupported_Kd 2:10", "InvalidConstraint_Kd 2:10")]
-    [InlineData("i07v", "alias A\nalias B\ngroup A\n    public func pick(value: bool) -> i32 => 1\ngroup B\n    public func pick(value: i32) -> i32 => value\nlet f: (i32) -> i32 = pick\nConsole.writeLine(\"ok\")\n", "TypeMismatch_Kd 7:23")]
     [InlineData("h12x", "func ident<T>(x: T) -> T => x\nlet n = Kimi.Intrinsics.makeRcCyclic(ident)\n", "TransferRequired_Kd 1:29", "Unsupported_Kd 2:9", "UnboundTypeArgument_Kd 2:38")]
     public void UnsupportedDeclarationUsesAreLocated(string row, string source, params string[] expected)
     {
