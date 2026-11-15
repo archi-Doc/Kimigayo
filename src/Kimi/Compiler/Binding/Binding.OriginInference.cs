@@ -69,7 +69,7 @@ public sealed partial class Binding
         for (var i = 0; i < Math.Min(pattern.OriginArguments.Count, actual.OriginArguments.Count); i++)
         {
             var variance = OriginArgumentVariance(pattern, i, this);
-            Add(pattern.OriginArguments[i], actual.OriginArguments[i], Compose(polarity, variance), 0);
+            Add(pattern.OriginArguments[i], actual.OriginArguments[i], ComposePolarity(polarity, variance), 0);
         }
 
         // SPEC 15.3.4, 10.7: inside a Function Type pair, each side's own per-call Origins (an Input Origin of its BoundType.Binder) are
@@ -88,15 +88,13 @@ public sealed partial class Binding
                 pattern.Kind == BoundTypeKind.Function && i == 0 ? -polarity : polarity;
             if (pattern.Kind == BoundTypeKind.Constructed && pattern.Symbol?.Schema is { } schema)
             {
-                sign = Compose(polarity, schema.GenericSlots[i].OriginVariance);
+                sign = ComposePolarity(polarity, schema.GenericSlots[i].OriginVariance);
             }
 
             this.CollectOriginInference(pattern.Components[i], actual.Components[i], inference, sign, result, known);
         }
 
         inference.Quantifiers.RemoveRange(enclosing, inference.Quantifiers.Count - enclosing);
-
-        static int Compose(int sign, OriginVariance variance) => variance == OriginVariance.Covariant ? sign : variance == OriginVariance.Contravariant ? -sign : 0;
 
         void Add(BoundOrigin parameter, BoundOrigin value, int sign, ulong condition)
         {
@@ -395,7 +393,8 @@ public sealed partial class Binding
         // J2 (SPEC 15.3.6; the owner's O-362 (a)): a covariant variable that an evidence position and a position without evidence both
         // name (WaitingNamed) is a variable the waiting part's check bounds too, which the solve does not see: it takes no evidence-only
         // candidate or representative but the region of the call, judged after selection by each fit at its source.
-        bool Waited((BoundOrigin Origin, int Polarity) variable) => variable.Polarity == 1 && inference.WaitingNamed.Contains(variable.Origin);
+        bool Waited((BoundOrigin Origin, int Polarity) variable)
+            => variable is { Polarity: 1, Origin.Kind: OriginKind.Parameter } && ReferenceEquals(variable.Origin.Binder, binder) && inference.WaitingNamed.Contains(variable.Origin.Slot);
 
         BoundOrigin Project(BoundOrigin origin) => declaringType?.Symbol is { } owner ?
             this.SubstituteStoredOrigin(origin, owner.Declaration, (BoundOrigin[])declaringType.OriginArguments) : origin;
@@ -487,11 +486,11 @@ public sealed partial class Binding
         // position fixes this Origin" fact: U4's Decided column takes it over (its removal condition).
         internal List<BoundOrigin> PremiseSolved { get; } = new();
 
-        // J2 (SPEC 15.3.6; the owner's O-362 (a); PLAN G936): the callee's own Origins that an evidence position and a position without
-        // evidence both name (SlotSolution.OpenWaited, the one writer, a candidate's late solve only): the solve gives a covariant one no
+        // J2 (SPEC 15.3.6; the owner's O-362 (a); PLAN G936): the slots of the callee's own Origin parameters that an evidence position
+        // and a position without evidence both name (SlotSolution.OpenWaited, the one writer, a candidate's late solve only): the solve gives a covariant one no
         // candidate but the call's region (CallRegion), which the waiting part's check bounds as the evidence's fit does; empty for any
         // other solve.
-        internal HashSet<BoundOrigin> WaitingNamed { get; } = new(ReferenceEqualityComparer.Instance);
+        internal HashSet<int> WaitingNamed { get; } = new();
 
         // SPEC 15.3.4: the per-call binders (BoundType.Binder) of the Function Types the collection is inside, on either side
         // (CollectOriginInference, the one writer); empty between collections.

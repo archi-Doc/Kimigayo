@@ -16,11 +16,11 @@ public sealed partial class Binding
     // The top of the keys of a call's regions for its Type slots' Origins (SlotRegion), below UnsolvedKey / 2.
     private const int SlotRegionKey = (UnsolvedKey / 2) - 1;
 
+    // J2: the polarity of a position inside a Function Type (SlotComponentPolarity), beside 1, -1 and 0.
+    private const int ContractPolarity = 2;
+
     // One open region per argument and per Origin the argument's known call signature quantifies (Input slot, or -1 - Parameter slot).
     private readonly Dictionary<(Koto Source, int Key), BoundOrigin> openOrigins = new();
-
-    // The callee's Origin parameters a waiting position names, while SlotSolution.OpenWaited reads them (its one user).
-    private readonly HashSet<BoundOrigin> waitingOrigins = new(ReferenceEqualityComparer.Instance);
 
     // SPEC 15.3.6: a selected call whose slot only an argument's own per-call Origin would satisfy, with that argument and the slot.
     private Dictionary<Koto, PerCallOriginFact>? perCallOrigins;
@@ -153,6 +153,14 @@ public sealed partial class Binding
     // Whether an Origin is a call's own region (OpenUnsolvedOrigins), keyed from UnsolvedKey, far from every argument evidence key.
     private static bool IsCallRegion(BoundOrigin origin) => origin is { Kind: OriginKind.Inference, Open: true } && origin.Slot < UnsolvedKey / 2;
 
+    // J2: the polarity of Origin argument `index` of `type` at `polarity` (SlotComponentPolarity's), by its variance.
+    private static int OriginArgumentPolarity(BoundType type, int index, int polarity, Binding binding)
+        => polarity == ContractPolarity ? ContractPolarity : ComposePolarity(polarity, OriginArgumentVariance(type, index, binding));
+
+    // The polarity of a position of `variance` at `polarity` (1, -1 or 0), the one composition of an Origin solve's walks.
+    private static int ComposePolarity(int polarity, OriginVariance variance)
+        => variance == OriginVariance.Covariant ? polarity : variance == OriginVariance.Contravariant ? -polarity : 0;
+
     // Whether OpenSlotOrigins opens `origin`: a fixed Origin the evidence supplied (static, a parameter's or an input's, a local's
     // region, a borrow's), or a meet of such Origins.
     private static bool OpensAsSlotRegion(BoundOrigin origin)
@@ -231,7 +239,7 @@ public sealed partial class Binding
     // Constraint set's slot) and a meet holding one, and a raw layer's Origin.
     private BoundType OpenSlotOrigins(BoundType type, Koto call, int slot, int polarity, ref int ordinal)
     {
-        if (!type.CarriesOrigin || polarity <= 0)
+        if (!type.CarriesOrigin || polarity != 1)
         {
             return type;
         }
@@ -244,7 +252,7 @@ public sealed partial class Binding
             var changed = !ReferenceEquals(origin, type.Origin);
             for (var i = 0; i < type.OriginArguments.Count; i++)
             {
-                var covariant = OriginArgumentVariance(type, i, this) == OriginVariance.Covariant;
+                var covariant = OriginArgumentPolarity(type, i, polarity, this) == 1;
                 origins[i] = covariant && OpensAsSlotRegion(type.OriginArguments[i]) ? this.SlotRegion(call, slot, ordinal++) : type.OriginArguments[i];
                 changed |= !ReferenceEquals(origins[i], type.OriginArguments[i]);
             }
@@ -264,24 +272,23 @@ public sealed partial class Binding
         }
     }
 
-    // J2: the variance of component `index` of `type` at `polarity` (1 covariant, -1 contravariant, 0 invariant), as an Origin solve
-    // collects it (CollectOriginInference: an invariant layer 0, a Constructed Type's slot by its schema), except that a Function
-    // Type's components are 0: a fit compares its Origins as a contract (SPEC 15.3.7: the required Origins are rigid), never by
-    // 15.3.6's rows. Shared by the solution's walk (OpenSlotOrigins) and the evidence's (CollectCovariantEvidence).
+    // J2: the polarity of component `index` of `type` at `polarity` (1 covariant, -1 contravariant, 0 invariant), as an Origin solve
+    // collects it (CollectOriginInference: an invariant layer 0, a Constructed Type's slot by its schema), except that inside a Function
+    // Type it is ContractPolarity: a fit compares its Origins as a contract (SPEC 15.3.7: the required Origins are rigid), never by
+    // 15.3.6's rows. Shared by the solution's walk (OpenSlotOrigins) and the positions' (CollectPositionNames).
     private int SlotComponentPolarity(BoundType type, int index, int polarity)
     {
-        if (type.Kind == BoundTypeKind.Function || IsInvariantLayer(type, this, null, default))
+        if (polarity == ContractPolarity || type.Kind == BoundTypeKind.Function)
+        {
+            return ContractPolarity;
+        }
+
+        if (IsInvariantLayer(type, this, null, default))
         {
             return 0;
         }
 
-        if (type.Kind == BoundTypeKind.Constructed && type.Symbol?.Schema is { } schema)
-        {
-            var variance = schema.GenericSlots[index].OriginVariance;
-            return variance == OriginVariance.Covariant ? polarity : variance == OriginVariance.Contravariant ? -polarity : 0;
-        }
-
-        return polarity;
+        return type.Kind == BoundTypeKind.Constructed && type.Symbol?.Schema is { } schema ? ComposePolarity(polarity, schema.GenericSlots[index].OriginVariance) : polarity;
     }
 
     private BoundOrigin OpenOrigin(Koto source, int key, bool localInput = false)

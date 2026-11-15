@@ -187,15 +187,15 @@ public sealed partial class Binding
             }
         }
 
-        // J2 (SPEC 10.5.1, 10.8, 15.3.6; the owner's O-358 (a), O-362 (a); PLAN G936): a callee variable that covariant evidence binds
-        // and a position without evidence names (CollectWaitingNames) is an Origin variable that the waiting part's check bounds as well
-        // as the evidence's fit, so the call opens it as its region; each relation is then judged after selection at its own source
-        // (JudgeSelectedCall, the waiting part's completion, the uses of the result) and ownership analysis solves the region with the
-        // body's other regions: with covariant uses exactly the meet of the bounds (SPEC 15.2.2). A Type slot that evidence names only at
-        // covariant positions (CollectCovariantEvidence), bound without an invariant binding and fixed by no explicit or declaring Type,
-        // takes its solution with the Origins at its covariant positions opened (OpenSlotOrigins); its structure and Semantics stay the
-        // evidence's, so applicability and ranking are unchanged and no candidate is solved twice. An Origin parameter that an evidence
-        // position names is published to the solve (OriginInference.WaitingNamed), which gives a covariant one no candidate but the
+        // J2 (SPEC 10.5.1, 10.8, 15.3.6; the owner's O-358 (a), O-362 (a), F's ruling 3; PLAN G936): a callee variable that evidence
+        // names only at covariant positions and a position without evidence also names, neither inside a Function Type
+        // (CollectPositionNames), is an Origin variable that the waiting part's check bounds as well as the evidence's fit, so the call
+        // opens it as its region; each relation is then judged after selection at its own source (JudgeSelectedCall, the waiting part's
+        // completion, the uses of the result) and ownership analysis solves the region with the body's other regions: with covariant
+        // uses exactly the meet of the bounds (SPEC 15.2.2). Such a Type slot, bound without an invariant binding and fixed by no
+        // explicit or declaring Type, takes its solution with the Origins at its covariant positions opened (OpenSlotOrigins); its
+        // structure and Semantics stay the evidence's, so applicability and ranking are unchanged and no candidate is solved twice. Such
+        // an Origin parameter is published to the solve (OriginInference.WaitingNamed), which gives a covariant one no candidate but the
         // call's region (CallRegion). A candidate without a Signature row reads nothing more.
         internal readonly void OpenWaited()
         {
@@ -211,23 +211,16 @@ public sealed partial class Binding
             }
 
             var binding = this.Binding;
-            var slots = binding.RentSlotSet(CallSlotCount(this.Binder));
-            var covariant = binding.RentSlotSet(CallSlotCount(this.Binder));
-            var other = binding.RentSlotSet(CallSlotCount(this.Binder));
-            var origins = binding.waitingOrigins;
+            var slots = CallSlotCount(this.Binder);
+            var waiting = binding.RentSlotSet(slots + this.OriginCount);
+            var covariant = binding.RentSlotSet(slots + this.OriginCount);
+            var blocked = binding.RentSlotSet(slots + this.OriginCount);
             try
             {
-                origins.Clear();
-                binding.CollectWaitingNames(this, ref slots, origins);
-                if (!slots.IsEmpty)
+                binding.CollectPositionNames(this, ref waiting, ref covariant, ref blocked);
+                for (var g = 0; g < CallOwnSlots(this.Function).Count; g++)
                 {
-                    binding.CollectCovariantEvidence(this, ref covariant, ref other);
-                }
-
-                var own = CallOwnSlots(this.Function).Count;
-                for (var g = 0; g < own && !covariant.IsEmpty; g++)
-                {
-                    if (slots.Contains(g) && covariant.Contains(g) && !other.Contains(g) && this.Types[g] is { CarriesOrigin: true } solution &&
+                    if (Opens(g, waiting, covariant, blocked) && this.Types[g] is { CarriesOrigin: true } solution &&
                         !binding.invariantSlots.Contains(g) && !this.FixedSlot(g))
                     {
                         var ordinal = 0;
@@ -235,21 +228,23 @@ public sealed partial class Binding
                     }
                 }
 
-                foreach (var origin in origins)
+                for (var k = 0; this.OriginInference is not null && k < this.OriginCount; k++)
                 {
-                    if (this.OriginInference is { } inference && this.EvidenceNamed.Contains(origin.Slot))
+                    if (Opens(slots + k, waiting, covariant, blocked))
                     {
-                        inference.WaitingNamed.Add(origin);
+                        this.OriginInference.WaitingNamed.Add(k);
                     }
                 }
             }
             finally
             {
-                origins.Clear();
-                binding.ReturnSlotSet(other);
+                binding.ReturnSlotSet(blocked);
                 binding.ReturnSlotSet(covariant);
-                binding.ReturnSlotSet(slots);
+                binding.ReturnSlotSet(waiting);
             }
+
+            static bool Opens(int index, in SlotSet waiting, in SlotSet covariant, in SlotSet blocked)
+                => waiting.Contains(index) && covariant.Contains(index) && !blocked.Contains(index);
         }
 
         // Each operation's parameter Type with the solution substituted, where it is complete.
