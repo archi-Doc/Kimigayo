@@ -46,14 +46,15 @@ public sealed partial class MirOriginsTest
     // The nested-body limit (U3-design.md's N4): an enclosing body's call region is Fixed in a Closure's body, where only the enclosing
     // body's rows decide it, so a failing chain with such an end is the located Unsupported_Kd at the chain's site: Refuted at a target
     // region (a literal's Borrow through pick into the Closure's result), Unknown at a target region (a captured parameter returned) and
-    // Unknown at a source region (hole9_ok's `a outlives static`, valid, the owner's (i)), accepted since J2 (the owner's O-362 (a), PLAN
-    // G936: its `d`, which the evidence x and the waiting w name, is a region of the call; Unsupported_Kd at v before).
+    // Unknown at a source region (hole9_ok's `a outlives static`, valid, the owner's (i), here with `d` and `e` also named inside a
+    // Function Type, `h`, so that J2 leaves them to the evidence: hole9_ok itself is accepted since J2, the owner's O-362 (a), PLAN G936,
+    // a CallOriginRelationTest row).
     [Theory]
     [InlineData(RegionMk + "func pick(x: ref/i32 during s, y: ref/i32 during s) -> ref/i32 during s => x\nfunc k(t: ref/i32, u: ref/i32) -> i32\n    return mk(.None, t, func [] (v) => pick(v, 7@ref))\n", "Unsupported_Kd pick(v, 7@ref)")]
     [InlineData(RegionMk + "func k(t: ref/i32, u: ref/i32) -> i32\n    return mk(.None, t, func [u] (v) => u)\n", "Unsupported_Kd u")]
-    [InlineData("func mk(p: Option<ref/(ref/i32 during a) during b>, u: Option<ref/(ref/i32 during e) during a>, w: Option<ref/(ref/i32 during d) during b>, y: ref/i32 during b, z: ref/i32 during e, x: ref/i32 during (a and d), g: (ref/i32 during b) -> i32, f: (ref/i32 during a, bool) -> i32) -> i32 => 0\nfunc k(c: bool, s: ref/i32 during static) -> i32\n    let short = 2\n    let sr = short@ref\n    return mk(if c => .None else => .None, if c => .None else => .None, if c => .None else => .None, s, s, s, func [] (t: ref/i32) => 0, func [s] (v, c2) => mk(if c2 => .None else => .None, if c2 => .None else => .None, if c2 => .None else => .None, s, s, v, func [] (t: ref/i32 during static) => 0, func [] (v2, c3) => 0))\n")]
-    public void AFailingChainAtAnEnclosingCallRegionIsTheLocatedLimit(string source, params string[] problems)
-        => Assert.Equal(problems, Origins(MirBuildTest.Compile(source + Main)));
+    [InlineData("func mk(p: Option<ref/(ref/i32 during a) during b>, u: Option<ref/(ref/i32 during e) during a>, w: Option<ref/(ref/i32 during d) during b>, y: ref/i32 during b, z: ref/i32 during e, x: ref/i32 during (a and d), g: (ref/i32 during b) -> i32, f: (ref/i32 during a, bool) -> i32, h: (ref/i32 during d, ref/i32 during e) -> i32) -> i32 => 0\nfunc k(c: bool, s: ref/i32 during static) -> i32\n    let short = 2\n    let sr = short@ref\n    return mk(if c => .None else => .None, if c => .None else => .None, if c => .None else => .None, s, s, s, func [] (t: ref/i32) => 0, func [s] (v, c2) => mk(if c2 => .None else => .None, if c2 => .None else => .None, if c2 => .None else => .None, s, s, v, func [] (t: ref/i32 during static) => 0, func [] (v2, c3) => 0, func [] (t2: ref/i32, t4: ref/i32) => 0), func [] (t3: ref/i32, t5: ref/i32) => 0)\n", "Unsupported_Kd v")]
+    public void AFailingChainAtAnEnclosingCallRegionIsTheLocatedLimit(string source, string problem)
+        => Assert.Equal([problem], Origins(MirBuildTest.Compile(source + Main)));
 
     // The law's cost (MirOrigins.Meets.cs): Work grows linearly in a close's choices, the product of its operands' bound counts (the
     // product row, C-49 re-check N1: `a` with k bounds and `d` with 8, so 8k choices); in the calls with a meet argument in one body; and

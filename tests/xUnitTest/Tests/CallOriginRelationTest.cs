@@ -621,6 +621,8 @@ public class CallOriginRelationTest(ITestOutputHelper output)
     [InlineData("func keep<T>(x: Option<ref/T during c>, y: ref/T during c) -> T => $abort(\"no\")\nfunc use() -> i32\n    var x = 5\n    var y = 6\n    let a = x@ref\n    let b = y@ref\n    let r = keep(.Some(a@ref), b@ref)\n    let s = r\n    y = 7\n    return 0\n")]
     // fn1v
     [InlineData("func fun<T>(x: Option<T>, y: T) => ()\nfunc use(p: ref/i32) -> i32\n    let g: (ref/i32 during p) -> () = func (v) => ()\n    let h: (ref/i32 during p) -> () = func (v) => ()\n    fun(.Some(h@move), g@move)\n    return 0\n")]
+    // hole9_ok (MirOriginsTest's, valid, the owner's (i)): `d`, named by the evidence x and the waiting w, is a region of the call
+    [InlineData("func mk(p: Option<ref/(ref/i32 during a) during b>, u: Option<ref/(ref/i32 during e) during a>, w: Option<ref/(ref/i32 during d) during b>, y: ref/i32 during b, z: ref/i32 during e, x: ref/i32 during (a and d), g: (ref/i32 during b) -> i32, f: (ref/i32 during a, bool) -> i32) -> i32 => 0\nfunc k(c: bool, s: ref/i32 during static) -> i32\n    let short = 2\n    let sr = short@ref\n    return mk(if c => .None else => .None, if c => .None else => .None, if c => .None else => .None, s, s, s, func [] (t: ref/i32) => 0, func [s] (v, c2) => mk(if c2 => .None else => .None, if c2 => .None else => .None, if c2 => .None else => .None, s, s, v, func [] (t: ref/i32 during static) => 0, func [] (v2, c3) => 0))\n")]
     public void AWaitingArgumentAlsoBoundsTheVariableItsEvidenceBinds(string body)
     {
         var check = DiagnosticCorpus.Check(body + Main);
