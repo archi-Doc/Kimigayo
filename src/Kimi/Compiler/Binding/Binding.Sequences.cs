@@ -73,22 +73,11 @@ public sealed partial class Binding
         var followed = this.PairSubject(source.Iterable, iterable, scope);
         iterable = followed ?? iterable;
         source.Mode = this.SubjectModeOf(source.Iterable, iterable);
-        if (iterable is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components: [{ Kind: BoundTypeKind.Nominal, Symbol.LibraryDeclaration: KimiDeclarationId.ResolvedRange }] })
-        {
-            // SPEC 14.6.2, 3.4.3: the iteration entry is selected through the reference; the Copy interval is the
-            // entry receiver and is read once for the loop.
-            this.adaptations[source.Iterable] = new(ExpectedAdaptationKind.ReferentRead, iterable.Components[0]);
-            iterable = iterable.Components[0];
-        }
 
-        // Dynamic Array, Dictionary, fixed-array and Slice loops use their Kimigayo entries and iterators (SPEC 14.6.2,
-        // 22.1.2.5). SPEC 4.6.4: a ResolvedRange loop yields the isize positions of its RangeIterator<isize> entries
-        // directly; a validated interval never Aborts, so no iterator value is formed.
-        var view = iterable;
-        var element = view is not null && ReferenceTypes.IsResolvedRange(view) ? BoundType.ISize : null;
-
-        var userEntry = element is null && iterable is not null &&
-            this.BindUserIteration(source, scope, iterable, out element);
+        // Every loop uses its Subject's Kimigayo entry, selected by the Subject mode, and iterator: a Dynamic Array's, Dictionary's,
+        // fixed array's and Slice's (SPEC 14.6.2, 22.1.2.5) and a ResolvedRange's RangeIterator<isize> (SPEC 4.6.4) included.
+        BoundType? element = null;
+        var userEntry = iterable is not null && this.BindUserIteration(source, scope, iterable, out element);
 
         // SPEC 14.6.2, 15.1.6: Some delivers one owned item, independently of the entry mode, which the ordinary match plan
         // decomposes: a parenthesized binding by the item's Tuple position and one Binding position per slot, each selected by the
@@ -116,7 +105,7 @@ public sealed partial class Binding
                 ? this.SelectLayers(decomposition, slot, structural: false, scope, ref slotReach, out slotLayers) : slot;
             var symbol = name.BoundSymbol!;
             symbol.Type = selected is null ? null : this.BindingTypeOf(selected, slotReach, name);
-            symbol.BindsReference = slotReach.Access != PatternAccessMode.Owned || (!userEntry && source.Mode != SubjectMode.ByValue);
+            symbol.BindsReference = slotReach.Access != PatternAccessMode.Owned;
             if (iterable is null)
             {
                 // SPEC 23.1.2: a binding of a failed iterable rests on it, as a local rests on a failed initializer (BindReference).
@@ -160,7 +149,7 @@ public sealed partial class Binding
             return Complete(source, null);
         }
 
-        if (!userEntry && !ReferenceTypes.IsResolvedRange(view))
+        if (!userEntry)
         {
             return this.FailIterationSubject(source, scope, iterable);
         }

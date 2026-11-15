@@ -3650,7 +3650,7 @@ and migration obligations remain in force; no numeric cap changes are authorized
     resolved operations; a read-only use writes `view@ref`); a write through a captured raw pointer, `*p` or `p[n]`, is Exclusive
     (5.2.1 (3): a pointer read past a shared layer has no write authority, so under a Shared call the write would always be undefined).
     The mode is the Subject's, so a ResolvedRange Subject through a captured `uniq` (mode Exclusive, its interval read once by
-    14.6.2) is Exclusive too. A `let` Closure's call of such a Closure is `InvalidAssignment_Kd`; its `var` form is valid.
+    14.6.2 (superseded in part by R8-M47: the entry reads the interval)) is Exclusive too. A `let` Closure's call of such a Closure is `InvalidAssignment_Kd`; its `var` form is valid.
   - Open (PLAN): the receiver/Subject-mode order and 7.7.3's "mutates" for read-only Exclusive causes, which the later SPEC session
     states; the general Note's wording for read-only causes (DIAGNOSTICS); `NeedsExclusively`, HIR's `ExclusiveUse` and
     EffectBounds' `PlaceAccess` decide one meaning at three times (a duplication candidate, cross-phase, full process).
@@ -16661,6 +16661,8 @@ structure is recorded here by the unit that first implements it.
   - Superseded in part by R8-W2 c4 (2026-11-15): no formatting runtime text is left. `ModuleCodegen.Request(HelperNeeds)` and
     `Needs.Formatting` are deleted, so "The runtime is written once, after the Array runtime and before the helpers" ends;
     Text.writer's routine is the kept file's (R8-M18).
+  - Superseded in part by R8-M46 (R8-W2 b2-1): `Text.writer` is a Kimigayo body with specializations for `FixedBuffer` and
+    `HeapBuffer`; the kept file holds `__kimi_erased_reserve` only.
 - **R5-M129 The Array literal is one MIR aggregate (alit)** (2026-10-26; the owner's 「a) 設計して直す お願いします」 (2026-10-26, on G:library-2's held
   review: design and fix) and 「いずれも承認します」 (2026-10-26, to "MIR の語彙に新しい集約の種類 MirAggregateKind.Array を加えてよいですか？"); G:library-2's B1; partly
   supersedes R5-M121 and R3-5's interim mapping for the Array literal)
@@ -16801,6 +16803,9 @@ structure is recorded here by the unit that first implements it.
   - Superseded in part by R8-M22 (R8-W1c-2, after R8-M18's W1b-4): its Wrappers bullet: the write wrapper,
     `WriteFormattingConversion`, `FormatHealthy` and `ModuleCodegen.Formatting` are deleted; a Body formatter is called by the
     `write<T>` body's instance, and `toString` and `tryFormat` are bodies.
+  - Superseded in part by R8-M46 (R8-W2 b2-1): its Erased writer bullet: `Text.writer` is a Kimigayo body, not the ErasedWriter
+    intrinsic; the intrinsic is `ReserveDispatch`, the reserve witness's code address; `LegacyRuntimeHelpers.WriterKind`,
+    `IntrinsicWriter.Writer` (now `Address`) and `__kimi_text_writer` are gone.
 - **R5-M131 The owning interpolation's buffer, hints and end in MIR code generation (C9c)** (2026-10-27; under R3-10, R5-M18 form 2
   (G:format), R5-M30, R5-M128, R5-M130 and R5-M132; PLAN G157 (35))
   - Estimate: code generation writes R3-10's three temporary intrinsics from each call's own operands, the literal bytes, the values'
@@ -19173,6 +19178,8 @@ R8-M* and R9-M* by the stage of the recording unit.
     - Amended by R7-M21 (the owner, 2026-11-11): an open-issue fix books no timing slot; timing stays for a fix that changes a
       hot path's complexity or per-use work, a back unit's generated code and a plan unit; a checkpoint every fifth landed
       window watches the sum.
+    - Amended by R7-M36 (the owner, 2026-11-15): a timed unit is measured in its window's one slot on the window's merge, alone only
+      beyond a bound.
   - RP13: prototype first for every unit; a Minor or deletion unit's prototype is its reproducer.
   - RP14: a unit that changes an A5 verdict, or adds or changes a library body, runs the full mir ledger before its review and adds no
     blocking row (until H10); after H10 the generated gate, the A5 class set and `MirCensusTest`.
@@ -19496,6 +19503,8 @@ R8-M* and R9-M* by the stage of the recording unit.
   - Amended 2026-11-14 (the owner's O-270 (a)): the pending checkpoints (3's confirmation and 4-7, W-179 to W-204) run as one
     cumulative checkpoint, A = W-179's 3f391cb35, B = W-208's 3bcbe1ed6, with (3)'s harness and RP8's bounds; a stop is bisected
     with the per-checkpoint pairs; the cadence then returns to one slot after every fifth landed window.
+  - Amended by R7-M36 (the owner, 2026-11-15): (2)'s timing is the window's one slot on its merge; a unit is timed alone only when
+    the window is beyond a bound, in one slot shared with the window's other timed units.
 - **R7-M22 A behaviour-preserving R7 unit rests on the deterministic checks and the checkpoints** (owner, 2026-11-12, in the
   Coordinator's dialog, verbatim 「C. 動作を変えない R7 単位は、単位ごとの RP8 計時をやめる。のみ適用お願いします。」, adopting option C alone of the Coordinator's four
   proposals for R7 after R8 and R9; amends R7-M21 (2); plan revision 63).
@@ -19512,6 +19521,8 @@ R8-M* and R9-M* by the stage of the recording unit.
   - Not adopted (the owner chose C alone): the streams of R7 per session, the delegation of R7 design beyond Q18, the seat caps
     after R8 and R9, and a first Binding-file split stage.
   - With the decision no booked slot was released: the one booked R7 slot, T-168 (R7-C3a), is R7's core and changes behaviour.
+  - Amended by R7-M36 (the owner, 2026-11-15): the Kept per-unit timing of R7's behaviour-changing units and of R8's and R9's units
+    is the window's one slot on its merge.
 - **R7-M23 `UnionCovered` reads SPEC 9.4.2's empty intersections** (2026-11-12; R7 open-issue lane, PLAN G610; Major; no design
   review, F's ruling; extends R7-M10 and R7-M15, supersedes neither) SPEC 9.4.1, 9.4.2, 9.4.6.
   - Rule: `Access(a) ∩ Access(b)` is inside a union U of the member when one level of a's or b's chain has every atom in U (R7-M10),
@@ -19812,6 +19823,64 @@ R8-M* and R9-M* by the stage of the recording unit.
     an expanding argument in the summary's walk (one form; growth through two declarations escapes it); a located limit for a growing
     stored instance (a proof exists: the formation in the formals); R2.3's restart (it rotates, review-r2 B2); the first Cause read
     (rotates after the verdicts settle, review 3 B1); a tie-break by creation order (depends on the check order).
+- **R7-M34 A judge refutes two Types' agreement only by SPEC 8.2.3's Refuted, read by the identity classes' one table** (Front,
+  2026-11-15; R7-C2c2 N9's commit 1, PLAN G866 (closed by it); design-n9.md R3, C1, C2; review-n9.md "Diff review: commit 1
+  revision 4"; the owner's O-289 (a), O-293 (a), O-304 (a), O-315 (a) and O-337 (a), the last on the Middle's C-332 round 3, R3-B1
+  and R3-B2). SPEC 8.1.2, 8.2.3, 8.3.2, 10.7, 15.6.1.
+  - The rule (8.3.2: absence of proof is not enough): `IdentityClasses.Refuted`, the mirror of `Same`, reads the meets the premises
+    read (`Meet`, `SameHead`, `PairMeet`, `Decompose`): a bound parameter stands for its class's complete member, one class is no
+    difference, an abstract Type differs only as a proper part (up to structure, a step that is no `owner`-admitting pair making it
+    proper), two constructors differ where their meet conflicts or a pair of parts is Refuted; the meet is the premises' own, so a
+    Function pair's quantification structure is a compared attribute (the owner's O-293 (a): one table, no reader mode), and an
+    Origin whose agreement is unproven decides nothing. `PairMeet` compares the components where the heads may agree, reads two
+    binders' admitted sets and lets an `owner`-admitting pair meet every form.
+  - At a Function position every layer's outer-Origin slot is compared one way, `SlotMeet` over the correspondence's `Pair`: a pair
+    layer's slot is its `OuterOrigin` (the original `s/T`'s `o` included), present only in its admitted borrow cases (SPEC 8.1.2),
+    so a difference in only some cases varies; the pair row's head is one function, `PairHead`, read by the premise meets
+    (`PairMeet`) and by the Function walk (`CorrespondPair`, where an application admitting exactly `owner` is its target and an
+    agreeing pair layer stays Unsupported) (the owner's O-337 (a)).
+  - Readers: the Contract judge's refutation (a same-declaration conformance whose instance, in the conforming Type's terms, is not
+    Refuted against the required reference, in the scope's, and whose paths' conditions are not all Refuted is a path not ruled out:
+    Unknown) and the Callable judge (a storage mismatch refutes only where 10.7's `CompatibleSignature` is Refuted, both sides with
+    every Origin static: 10.7 compares Origins by subtyping, 15.6.1, never as a difference).
+  - Rejected: a second refutation walk beside the table (each round missed one more row: Self, lengths, conditions, admitted sets,
+    proper parts, components under a varying head, quantification structures); refuting by assuming the identity; a reader mode on
+    the table; comparing a pair layer's slot by the Origin domain at a Function position (two rules for one slot).
+  - Limits: a pair's own `s/T` is no constructor node in premise meets; `SameHead` reads no length arguments.
+- **R7-M35 Evidence for a proposition against its result for the complete constructed Type identical with its subject is
+  contradictory evidence** (Front, 2026-11-15; R7-C2c2 N9, PLAN G851; design-n9.md R3.6). SPEC 8.2.3, 8.3.2.
+  - `Binding.TypeIdentity` publishes a class's complete constructed member from its key's scan (`CompleteMember`, `Representative`:
+    one rule, one table). `ProveProposition`, the owner of the polarity rule, judges the proposition over the member
+    (`MemberVerdict`: the atom judge and the rows for `and`, `or`, `not`; every form) and reads it only to detect the other
+    polarity, never as evidence.
+  - Rejected: the check inside `ProveConformance`.
+  - A member with an argument decides nothing until c2-4 (G853, N7).
+- **R7-M36 RP8 per window: one slot measures a window's merge, and a unit is timed alone only beyond a bound** (owner, 2026-11-15,
+  in the Coordinator's dialog, verbatim 「計時スロットの改善策 1と2と3の適用をお願いします。」, adopting options 1-3 of the Coordinator's four; amends
+  R7-M3's RP8, R7-M21 (2) and R7-M22's Kept per-unit timing; plan revision 86).
+  - Rule: a unit that R7-M21 (2) times (a fix whose design review names a hot path's complexity change or added per-use work, a back
+    unit that changes generated code, a behaviour-changing unit of the R7, R8 or R9 plan) books no slot of its own. After a window's
+    merge and before its Session and A5 oracle (a unit beyond a bound then leaves the window before the Session runs), K runs one
+    slot on the merge: A = the window's dev base, B = the merge, A′ = A's byte copy, with the standard suite (the O2 corpus A/B with
+    R5-M147's address-matched control; the O0 record; Bind, Analyze and Generate, cold and warm, on Hello, Milestone26 and
+    Interpolation; cold and warm bytes) and every unit-specific kernel its units' Q rows name. RP8's bounds apply to the window:
+    within them every unit of the window passes; beyond one, the window's timed units are measured one by one in one slot that
+    shares A and A′, and the unit beyond the bound leaves the window or goes to the owner as RP8 states.
+  - Shared slots (option 3): units measured separately (a window beyond a bound, a unit-specific A/B) share one slot's A and A′.
+  - Order (option 1): W-228 opened before the remaining booked slots, right after T-274 (R8-W2 b2-2's RP8, already started); its
+    slot measures R8-W3 alone (A = the window's merge before W3, B = the merge with it), the window's other units having been
+    measured before the decision.
+  - Kept: RP8's bounds; R7-M21 (1)'s deterministic gates and (3)'s checkpoint after every fifth landed window; a unit measured
+    before this decision keeps its result (G800 T-260, G881 T-272, b2-1 T-273, e2-3a T-277, G891 T-267, b2-2 T-274).
+  - Reason: per-unit slots ran back to back (seven from 17:11 to 19:48, twelve more booked before W-228, about four to five hours),
+    and `quiet_guard.py` refuses every build while a slot is pending or started, so implementers and windows waited behind them; in
+    this turn two units reached a bound (b2-1, accepted by the owner's O-354 (a); W3's borderline cold Bind).
+  - Risk accepted: a unit's gain can hide another's loss in one window; the checkpoint and the stage exit's comparison (plan §10.1
+    item 3) see the sum.
+  - With the decision the sessions released their booked unit-RP8 slots: the Front T-284, T-285, T-287, T-288, T-289, T-294; the
+    Middle T-281, T-290; the Back its own (the board's T rows of 2026-11-15 20:2x).
+  - Rejected: builds during a slot on separate cores (option 4: memory bandwidth and cache interference would widen the A′/A spread,
+    unmeasured); keeping per-unit slots (above).
 - **R8-M1 The representation structs and their Place contract** (owner, 2026-11-07, verbatim 「推奨の内容でOKです。処理を継続してください。」,
   on O-41 (a) and O-43 (A); R8-R1a; prototype R8-L0p; supersedes the two plan rows below) IMPL 21.1.3, SPEC 5.2, 5.5, 5.7.
   - Adopted: `Storage.ArrayRepr<T>`, `Storage.SliceRepr<T>` and `Storage.StringRepr`, internal `#Layout("C")` structs of the Kimi
@@ -20231,6 +20300,10 @@ R8-M* and R9-M* by the stage of the recording unit.
     validated-suffix copies of `text`, `validate`, `intoText` and `intoString` are one internal `Text.validSuffix`.
   - Amended by R8-W2 c4 (2026-11-15): the "Option A" bullet's kind 0/1 arms are the Kimigayo ones (`Utf8Writer.reserve`'s) since
     c4, which deleted the runtime's arms.
+  - Superseded in part by R8-M46 (R8-W2 b2-1): the Temporary collector clause
+    (`IntrinsicTarget.Witness when WriterKind(argument) is 0 or 1 => -1`) is removed with `WriterKind` and `Dispatch`'s kind 0/1
+    arm; Option A's sentence ends: the standard buffers' adapters are Kimigayo specializations of `Text.writer`, and `Dispatch` has
+    one arm. Rejected B keeps its reasons.
 - **R8-M10 A Drop that destroys nothing asks no drop glue** (Back, 2026-11-08; OI-1a, PLAN G641 kinds 1-3; Major; the Middle's C-160
   YES with B1 and B2) SPEC 8.15.3, 14.10.3, 16.2.1, 16.2.2. Supersedes in part R5-M60 (its clause "A2's verdicts do not narrow the
   checked set") and R4-M6a (its clause "a Drop only check edges reach has no row; check-only code is not judged").
@@ -20486,6 +20559,11 @@ R8-M* and R9-M* by the stage of the recording unit.
       and the lasting `destination`/`dispatch` layout pair.
     - Counts: `ModuleCodegen.Needs` loses `Formatting` (bit 64 is free); `HelperNeeds` 1 -> 0 (deleted); `IntrinsicId`,
       `CompilerFunctionKind` and `KimiDeclarationId` unchanged.
+  - Superseded in part by R8-M46 (R8-W2 b2-1): the Temporary "the reservation's kind switch restating `WriterKind`'s 0/1/2, the hint
+    arm and the unreachable kind Abort" ends: the numbering and the Abort go; the switch is an exhaustive match over the enum tag
+    `WriterDestination` and the hint arm is lasting (SPEC 22.10.5), a departure by name (part b's plan §2 P1/P6). The need column's
+    "`llvm.memset` is declared by its lasting user, the kept file (`__kimi_text_writer` zeroes the adapter)" ends: no runtime builds
+    the adapter. The lasting pair is unchanged.
 
   - R8-M2's rule beyond `Formatting.kimi`, with its RP8 exception until R8-L1: R8-M2's Scope sub-bullet (PLAN G693, the owner's
     O-150 (a)).
@@ -21577,7 +21655,7 @@ R8-M* and R9-M* by the stage of the recording unit.
     the signature's Arity finding alone, and a constant id out of range the walk's Const finding (each fault is reported once).
   - Temporaries removed: R8-M18's `WriteBuiltin` (`__kimi_writer_write_builtin`), R8-M30's temporary 5 (`StringFormatKind`), and
     R5-M133's routines (`__kimi_format_literal`, `__kimi_format_bytes`, `__kimi_format_builtin`).
-  - Staged (PLAN G828): `__kimi_format_check` (c3a); `Utf8Writer.logicalLength`'s writer (part b); one unreferenced String constant
+  - Staged (PLAN G828): `__kimi_format_check` (c3a); `Utf8Writer.logicalLength` (part b): deleted at R8-W2 b2-2 (no reader; b2-1's init was its only writer); one unreferenced String constant
     per literal position in a body's constant table (`Literal` makes it for `Bytes`, `Viewed` interns the record beside it; no IR is
     written from it), removed when a later unit of part c touches `Bytes` (c2b, which replaces the estimate).
   - Rejected: the name `defer` (a keyword); a Unit result for the deferral (its flush arm can fail; SPEC 22.10.5 forbids a delayed
@@ -21719,6 +21797,77 @@ R8-M* and R9-M* by the stage of the recording unit.
     - A library `hinted<length H>`: one instance per distinct hint, a2 review 2's R2-N2.
     - Skipping the store on a fixed-only line: a mode in `Writes`.
   - **RP8:** T-218.
+- **R8-M46 The adapter built in Kimigayo** (Back, 2026-11-15; R8-W2 b2-1; Major; the owner's O-239 (a), verbatim 「推奨どおりでお願いします」; B's
+  independent review ACCEPT WITH NOTES; the Middle's C-330: hunk review ACCEPT WITH NOTES; the Front's C-367: CONSENT; the owner's
+  O-354 (a), verbatim 「O-354 a」, for its Bind cost; on PLAN G863 as landed, DECISIONS BU-208). SPEC 8.13.1-8.13.3, 22.9.1, 22.9.2,
+  22.10.5; IMPL 21.1.3.
+  - **Rule.** `Text.writer<W>` (`W is BufferWriter`) is a body in `Formatting.kimi`'s `group Text`, with explicit specializations
+    for `Text.FixedBuffer` and `Text.HeapBuffer`. One internal `Utf8Writer.init(destination, dispatch, kind)` stores the adapter,
+    every Field. Its destination tag is the internal enum `WriterDestination` (`Fixed`, `Heap`, `Erased`), which
+    `Utf8Writer.reserve` matches exhaustively; the hint arm is lasting (SPEC 22.10.5).
+  - **The one inexpressible word.** The code address of a user Writer's `reserve` is `Storage.reserveDispatch<W>()`,
+    `IntrinsicId.ReserveDispatch` (renamed from `ErasedWriter`; row `(ReserveDispatch, Witness, LayoutNeed.None, Address, null)`). A
+    function value is IMPL 21.1.3's pair, not the word `__kimi_erased_reserve` calls through.
+  - **MIR and code generation.** `MirBuilder.Line`'s fixed arm (`Erase`) calls `writer<FixedBuffer>` as a `MirCalleeKind.Fn` call,
+    the original with its substitution (the collector selects the specialization), replacing `intrinsic ErasedWriter<FixedBuffer>`;
+    R8-M24's one erased writer stays. `MirDescriptors`: `ReserveDispatch => Intrinsic(MirEffect.None, 0)`.
+    `FunctionCodegen.Formatting.cs` is one `Dispatch` (the user arm; any other target `InternalInvariant_Kd`); the collector's
+    `IntrinsicTarget.Witness` is always `Runs(BufferWriter, W)`; `ErasedWriterRuntime.ll.in` keeps `__kimi_erased_reserve` only.
+    `Utf8Writer` is 56 bytes (was 64).
+  - **Deleted:** `LegacyRuntimeHelpers.WriterKind` (with `LegacyRuntimeHelpers.Formatting.cs`), W1a's collector clause, `Dispatch`'s
+    kind 0/1 arm, `{{__kimi_text_writer}}` and its `llvm.memset` declare, `RuntimeAbi.TextWriter`, `Text.kimi`.
+  - **Counts** (RQ9): `KimiDeclarationId` +1 (`StorageReserveDispatch`; `TextWriter` keeps its id); `CompilerFunctionKind` 29 -> 29
+    with `None` (-`TextWriter`, +`StorageReserveDispatch` inside the Storage range, so `IsStorageOperation` covers it);
+    `IntrinsicId` 27 -> 27 with `None`; `IntrinsicWriter.Writer` -> `Address`, the same count.
+  - **Moves:** no acceptance move; diagnostic snapshot 0 differences. One record move outside the snapshot (the Front's C-367 N2):
+    the invalid `Utf8Writer.init(null, null, .Heap)` gets `NoApplicableOverload_Kd` (was `UnresolvedBinding_Kd`), the record
+    `WriteWindow`'s internal init already gives. Generated gate T-286: 1,109 programs, 0 differences in exit, records and IR
+    written; 664 `P.ll` move, each where the base holds the writer-kind Abort text and `__kimi_text_writer`; user MIR
+    `intrinsic ErasedWriter<B>(` -> `writer<B>(`; library MIR 303 -> 307 bodies. A5 (C-330): records 31/31 equal.
+  - **RP8** (T-273): O2 unchanged (every kernel inside its A=A by R5-M135's address-matched control). Bind B/A′: warm Hello 1.006,
+    Milestone26 1.017, Interpolation 1.033; cold Milestone26 1.052 (A′/A 0.993), above RP8's 1.03: the adapter's bodies join the
+    library's fixed bind cost, accepted by the owner's O-354 (a). Cold bytes +95 to +118 KB, warm 0 B, recorded for the stage exit's
+    comparison.
+  - **Supersedes in part:** R8-M16 (its Temporary collector clause and Option A's kind 0/1 sentence); R8-M18 (the kind switch's
+    numbering and Abort, and the memset sentence); R5-M128 and R5-M130 (`Text.writer`'s intrinsic row). R8-M18's lasting pair
+    (destination 0, dispatch 8, `__kimi_erased_reserve`) is unchanged.
+  - **Rejected:** an intrinsic original with body specializations (SPEC 8.13.1); an adapter-building intrinsic kept for a user
+    Writer; one init per destination with an `isize` tag.
+  - **Lands after** PLAN G863 as landed (DECISIONS BU-208: a specialization argument's omitted Origins are inherited from the
+    original, SPEC 8.13.2, 15.4.2), which makes the two specializations' headers bind.
+- **R8-M47 A ResolvedRange `for` is an ordinary Iterable loop (R8-W3)** (Back, 2026-11-15; R8-W3; Major; design revision 1 and its
+  reviews; B's rulings I-N1 to I-N4; the Middle's C-338 CONSENT WITH CONDITIONS; hold H-87; supersedes in part R4-M130) SPEC 14.6.2,
+  4.6.4, 15.1.6, 15.6.
+  - Rule: `Binding.Sequences`' `BindUserIteration` selects a ResolvedRange Subject's entry by the Subject mode (`intoIterator`,
+    `iterate`, `iterateUniq`) and binds `next`; the MIR builder's `For` lowers it, and `RangeIterator<isize>`'s Kimigayo `next`
+    alone decides the positions. Every successful loop has a plan, an entry and a step, and `For` requires them: a plan-less
+    resolved `For` fails HIR's completion fact and `MirBuilder.Module` reports it as a located `InternalInvariant_Kd` (R4-M61).
+  - Deleted: the counted lowering (`MirBuilder.Count`, `Iteration`'s plan-less arm); HIR's Copy Adjust for plan-less loops; HIR
+    Facts' plan-less Complete arm for `HirOp.For` with its `Declared`, a second copy of which loops have no plan; Binding's
+    ResolvedRange cases in `BindIteration` (the referent read, the `isize` element, `BindsReference`'s `!userEntry` clause, the
+    `IsResolvedRange` test). In its own first commit, `ExpansionKind.Range`, an empty second name of `HirOp.Range` that no code read
+    (RP18; `ExpansionKind` 7 -> 6); `HirOp.Range` stays the direct key's Op.
+  - Supersedes R4-M130's clause "its interval read once by 14.6.2": the interval is now read by the entry the Subject mode selects
+    (`iterateUniq` for a captured `uniq`). R4-M130's rule, that such a Closure is Exclusive and its `let` call is
+    `InvalidAssignment_Kd`, stands (rows c1, cx1).
+  - Moves (the Middle's C-338). (C1) Invalid programs newly rejected: a Subject that stores `uniq/ResolvedRange` is Exclusive
+    (15.1.6), so a shared Reborrow of its referent live across the loop conflicts with the entry, `CallActivationConflict_Kd` at the
+    `for` (the reservation at the Subject), the record its `Range<isize, isize>` twin gives on both builds: rows b2x (a
+    `uniq/ResolvedRange` parameter), b5x (a top-level `let u = r@uniq`), b6x (a `var` Closure capturing `rv`, R4-M130's case) and
+    their twins b2xr, b5xr, b6xr; the valid b4 and b4r stay accepted. No valid program is newly rejected and no invalid one newly
+    accepted. (C2) A record move (Q13): an explicit `r@uniq` Subject while a shared Loan of `r` is live (a3x; b1x through a Field)
+    goes from `ComparisonLoanConflict_Kd` at the Subject's `@uniq` to `CallActivationConflict_Kd` at the `for`, with the reservation
+    at the Subject as a related location (rows a3x, a3xr).
+  - Generated code: O2 inlining gives the counted loop back. The B-vs-A O2 IR per entry (iterate, iterateUniq, a `ref/` and a Field
+    Subject, intoIterator) and for `appendCopies` and `firstIndex` is one loop of the same instruction count with no call and no
+    Option; the step loses `nuw nsw` in the Shared and Exclusive loops, and `firstIndex`'s loop is rotated (an `smax` bound). RP8:
+    T-269 (O2 inside A=A by the address-matched control; warm Bind and Analyze +2 %, Generate +5 % on the Iterators kernel), and
+    Milestone26's cold Bind read again in its window's slot (R7-M36; the landing commit records it).
+  - Reason: one owner for the loop, for its plan-less rule and for the positions.
+  - Rejected: a counted lowering published as a library fact (a new vocabulary entry without a measured O2 need); a counted loop at
+    O0 only (a mode steering the builder).
+  - The three checks: Exposure, G416's generic Iterable rows, unchanged; Readings, none disputed (the library's unresolved-key
+    sentinel `ResolvedRange.init(start: 0, end: -1)` is never iterated).
 - **R9-M1 A check's phase sequence is `Compilation.Check`** (2026-11-08; R9-F5; Major, behavior-preserving; review 1 REVISE, then
   review 2). SPEC 23.1.2, 23.2.2; IMPL 20.6.1. Supersedes in part R5-M65 (`Project` reads `Accepts`) and R5-M77 (`Project` discovers
   the test catalog after acceptance and owns it).
