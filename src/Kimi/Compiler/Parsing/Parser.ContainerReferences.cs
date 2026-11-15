@@ -128,7 +128,8 @@ public static partial class Parser
     }
 
     // SPEC F.5: a Type head's PathSuffixes, Type arguments and OriginApplication (NamedType := NamedReference OriginApplication?), the
-    // one loop for every head; a grouped head enters it only where ContinuesGroupedType holds. A Semantics prefix's Type has read its
+    // one loop for every head, the requirement reader's head word included (an IdentifierNameKoto leaf); a grouped head enters it only
+    // where ContinuesGroupedType holds. A Semantics prefix's Type has read its
     // own suffixes, so a "." after it belongs to the enclosing construct.
     private static Koto ParseTypeSuffixes(ref TokenReader reader, Koto left, bool disambiguateGenerics)
     {
@@ -171,9 +172,11 @@ public static partial class Parser
                 left = ParseGenericsPostfix(ref reader, left);
             }
             else if (tokenKind == TokenKind.OpenParenthesis && !disambiguateGenerics &&
-                left is TypeSemanticsKoto { Type: null } or MemberAccessKoto or GenericsKoto or SyntaxFormKoto { Akind: KotoKind.RootName })
+                left is TypeSemanticsKoto { Type: null } or IdentifierNameKoto or MemberAccessKoto or GenericsKoto or SyntaxFormKoto { Akind: KotoKind.RootName })
             {
-                left = ParseOriginApplication(ref reader, left);
+                // SPEC F.5, F.8: NamedType := NamedReference OriginApplication?: the OriginApplication is the NamedType's last part, so
+                // no PathSuffix, Type arguments or second application follows it; what does is the enclosing construct's.
+                return ParseOriginApplication(ref reader, left);
             }
             else
             {

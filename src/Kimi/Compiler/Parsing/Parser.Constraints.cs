@@ -276,36 +276,17 @@ public static partial class Parser
                 return ParseType(ref reader, TypeContext.Type);
             }
 
-            var name = ParseConstraintSubject(ref reader);
-            while (true)
+            // SPEC F.6.2 RequirementAtom: the head word (a Name, a Semantics word, a SemanticsCategory, Callable: Binding classifies it,
+            // with the subject reader's dotted path, such as I.(LendingIterator).LentItem, SPEC 8.5), then F.5's NamedType suffixes through
+            // their one owner (ParseTypeSuffixes: Type arguments, PathSuffixes, the OriginApplication that ends it), then AnnotatedType's tail.
+            var name = ParseTypeSuffixes(ref reader, ParseConstraintSubject(ref reader), disambiguateGenerics: false);
+            name = ParseTypeOrigin(ref reader, name);
+            if (name is not TypeSemanticsKoto && (reader.CurrentTokenKind == TokenKind.Question || reader.IsCurrentIdentifier("during") || reader.IsCurrentIdentifier("from")))
             {
-                if (reader.CurrentTokenKind == TokenKind.LessThan)
-                {
-                    name = ParseGenericsPostfix(ref reader, name);
-                }
-                else if (reader.CurrentTokenKind == TokenKind.OpenParenthesis)
-                {
-                    name = ParseOriginApplication(ref reader, name);
-                }
-                else if (reader.TryConsume(TokenKind.Dot))
-                {
-                    // SPEC 8.5: a requirement Type may be a Contract-qualified projection such as I.(LendingIterator).LentItem(step).
-                    var member = reader.CurrentTokenKind == TokenKind.OpenParenthesis
-                        ? ParseContractGroup(ref reader)
-                        : ParseName(ref reader);
-                    name = new MemberAccessKoto(ref reader, SourceSpan.FromBounds(name.Span.Start, member.Span.End), name, member);
-                }
-                else
-                {
-                    name = ParseTypeOrigin(ref reader, name);
-                    if (name is not TypeSemanticsKoto && (reader.CurrentTokenKind == TokenKind.Question || reader.IsCurrentIdentifier("during") || reader.IsCurrentIdentifier("from")))
-                    {
-                        name = new TypeSemanticsKoto(ref reader, name.Span, name);
-                    }
-
-                    return ParseOptionalSuffix(ref reader, name, parseBorrowOrigin: true);
-                }
+                name = new TypeSemanticsKoto(ref reader, name.Span, name);
             }
+
+            return ParseOptionalSuffix(ref reader, name, parseBorrowOrigin: true);
         }
     }
 

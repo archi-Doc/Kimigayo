@@ -527,6 +527,63 @@ public class FrontEndSyntaxTest
         ParseSuccess("#if false\n    " + declaration.Replace("\n", "\n    ", StringComparison.Ordinal) + "\n");
     }
 
+    // SPEC F.5 NamedType := NamedReference OriginApplication? (F.8: "never a call, Tuple or grouping"): the OriginApplication ends the
+    // NamedType, so a PathSuffix, Type arguments or a second application after it is the enclosing construct's syntax error, in every
+    // Type position, a selector head and a requirement (whose suffixes F.5's one loop reads), the same in selected and excluded syntax.
+    [Theory]
+    [InlineData("func f(v: Y(a).Item) -> i32 => 0", ".Item")]
+    [InlineData("func f() -> i32\n    let x: Y(a).Item = 0\n    return 0", ".Item")]
+    [InlineData("func f(v: Option<Y(a).Item>) -> i32 => 0", ".Item")]
+    [InlineData("func f<T>(v: T.Item(a).Z) -> i32 => 0", ".Z")]
+    [InlineData("func f(v: Y(a).(K).Item) -> i32 => 0", ".(K)")]
+    [InlineData("func f(v: Y(a)<i32>) -> i32 => 0", "<i32>")]
+    [InlineData("func f(v: Missing(a).Item) -> i32 => 0", ".Item")]
+    [InlineData("struct A\n    associate Y(a).Item is i32", ".Item")]
+    [InlineData("func f<T>(v: T) -> i32\n    T is Y(a).Item\n    return 0", ".Item")]
+    [InlineData("func f<T>(v: T) -> i32\n    T is K.Item(a).Z\n    return 0", ".Z")]
+    [InlineData("func f<T>(v: T) -> i32\n    T is Y(a)(b)\n    return 0", "(b)")]
+    [InlineData("func f<T>(v: T) -> i32\n    T is Y(a)<i32>\n    return 0", "<i32>")]
+    [InlineData("struct T<V>\n    Self is Y(a).Item when V is Copy", ".Item")]
+    public void AnOriginApplicationEndsANamedTypeInEverySelection(string declaration, string at)
+    {
+        foreach (var excluded in (bool[])[false, true])
+        {
+            var source = excluded ? "#if false\n    " + declaration.Replace("\n", "\n    ", StringComparison.Ordinal) + "\n" : declaration + "\n";
+            var diagnostics = TestDiagnostics.Of(Parse(source));
+            Assert.Contains(diagnostics, x => x.Span.Start == source.LastIndexOf(at, StringComparison.Ordinal));
+            Assert.All(diagnostics, static x => Assert.Contains(x.Code, (string[])["ExpectedSyntax_Kd", "MissingSyntax_Kd"]));
+        }
+    }
+
+    // The valid twins: an application closing an associated-Type name (in a Type, a subject, a requirement, a declaration), the Type
+    // continuing around it (an argument, '?', a Semantics prefix), and the requirement atoms F.5's loop now reads after the head word.
+    [Theory]
+    [InlineData("func f<T>(v: T.Item(a)) -> i32 => 0")]
+    [InlineData("func f<T>(v: Option<T.Item(a)>) -> i32 => 0")]
+    [InlineData("func f<T>(v: T.Item(a)?) -> i32 => 0")]
+    [InlineData("func f<T>(v: ref/T.Item(a)) -> i32 => 0")]
+    [InlineData("func f(v: Y(a)) -> i32 => 0")]
+    [InlineData("func f(v: S{a}) -> i32 => 0")]
+    [InlineData("contract D\n    associate Item(a) is K")]
+    [InlineData("func f<U>(v: U) -> i32\n    U.Item(a) is K\n    return 0")]
+    [InlineData("func f<T, U>(v: T) -> i32\n    T is U.Item(a)\n    return 0")]
+    [InlineData("func f<T, U>(v: T) -> i32\n    T is U.(K).Item(a)\n    return 0")]
+    [InlineData("func f<T, U>(v: T) -> i32\n    T is U.Item(a)?\n    return 0")]
+    [InlineData("func f<T>(v: T) -> i32\n    T is Y(a)\n    return 0")]
+    [InlineData("func f<T>(v: T) -> i32\n    T is Array<i32>\n    return 0")]
+    [InlineData("func f<T>(v: T) -> i32\n    T is Option<i32>?\n    return 0")]
+    [InlineData("func f<T>(v: T) -> i32\n    T is G<i32>.Item\n    return 0")]
+    [InlineData("func f<T>(v: T) -> i32\n    T is Callable<(i32) -> i32>\n    return 0")]
+    [InlineData("func f<T>(v: T) -> i32\n    T is value\n    return 0")]
+    [InlineData("func f<T>(v: T) -> i32\n    T is ref\n    return 0")]
+    [InlineData("func f<T>(v: T) -> i32\n    T is K and Y\n    return 0")]
+    [InlineData("func f<T>(v: T) -> i32\n    T is not K\n    return 0")]
+    public void AnOriginApplicationClosingANamedTypeHasNoRecordInEverySelection(string declaration)
+    {
+        ParseSuccess(declaration + "\n");
+        ParseSuccess("#if false\n    " + declaration.Replace("\n", "\n    ", StringComparison.Ordinal) + "\n");
+    }
+
     // The positions of F.6.2's ContractReference, R the reference.
     private static string[] ContractReferencePositions() =>
     [
