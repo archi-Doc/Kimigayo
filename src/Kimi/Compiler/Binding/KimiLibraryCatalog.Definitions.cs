@@ -26,8 +26,8 @@ internal static partial class KimiLibraryCatalog
         new(KimiDeclarationId.Owned, Intrinsic: IntrinsicKind.Owned),
         new(KimiDeclarationId.Callable, Intrinsic: IntrinsicKind.Callable),
         new(KimiDeclarationId.WriteLine),
-        new(KimiDeclarationId.ConsoleWriteStdout, Function: CompilerFunctionKind.ConsoleWriteStdout),
-        new(KimiDeclarationId.TestTempDirectory, Function: CompilerFunctionKind.TestTempDirectory),
+        new(KimiDeclarationId.ConsoleWriteStdout),
+        new(KimiDeclarationId.TestTempDirectory),
         new(KimiDeclarationId.Option),
         new(KimiDeclarationId.Result),
         new(KimiDeclarationId.Never, ManagedRepresentation: true),
@@ -64,10 +64,10 @@ internal static partial class KimiLibraryCatalog
         new(KimiDeclarationId.Replace, Row: Replace),
         new(KimiDeclarationId.Exchange, Row: None),
         new(KimiDeclarationId.Swap, Row: None),
-        new(KimiDeclarationId.MakeObj, Function: CompilerFunctionKind.MakeObj),
-        new(KimiDeclarationId.MakeRc, Function: CompilerFunctionKind.MakeRc),
-        new(KimiDeclarationId.MakeArc, Function: CompilerFunctionKind.MakeArc),
-        new(KimiDeclarationId.Clone, Function: CompilerFunctionKind.Clone),
+        new(KimiDeclarationId.MakeObj),
+        new(KimiDeclarationId.MakeRc),
+        new(KimiDeclarationId.MakeArc),
+        new(KimiDeclarationId.Clone),
         new(KimiDeclarationId.Downgrade, SourceExpected: false, Name: "downgrade", Container: KimiLibraryContainer.Intrinsics),
         new(KimiDeclarationId.Upgrade, SourceExpected: false, Name: "upgrade", Container: KimiLibraryContainer.Intrinsics),
         new(KimiDeclarationId.MakeRcCyclic, SourceExpected: false, Name: "makeRcCyclic", Container: KimiLibraryContainer.Intrinsics),
@@ -100,7 +100,7 @@ internal static partial class KimiLibraryCatalog
         new(KimiDeclarationId.InvalidUtf8),
         new(KimiDeclarationId.TextFixed), // A direct line's region (R8-W2).
         new(KimiDeclarationId.TextHeap),
-        new(KimiDeclarationId.TextWriter, Function: CompilerFunctionKind.TextWriter),
+        new(KimiDeclarationId.TextWriter),
         new(KimiDeclarationId.TextToString, Row: Formats),
         new(KimiDeclarationId.TextTryFormat, Row: Formats),
         new(KimiDeclarationId.FixedBufferReserve),
@@ -154,18 +154,18 @@ internal static partial class KimiLibraryCatalog
         new(KimiDeclarationId.End),
         new(KimiDeclarationId.DictionaryIndex),
         new(KimiDeclarationId.DictionaryIndexUniq, Row: Equality),
-        new(KimiDeclarationId.StorageMissingDictionaryKey, Function: CompilerFunctionKind.StorageMissingDictionaryKey),
+        new(KimiDeclarationId.StorageMissingDictionaryKey),
         // SPEC 22.2: private primitives that hold no collection logic, used by the DictionaryStorage capacity bodies.
-        new(KimiDeclarationId.StorageCountOverflow, Function: CompilerFunctionKind.StorageCountOverflow),
-        new(KimiDeclarationId.StorageAllocationSizeExceeded, Function: CompilerFunctionKind.StorageAllocationSizeExceeded),
-        new(KimiDeclarationId.StorageTryAllocateBytes, Function: CompilerFunctionKind.StorageTryAllocateBytes),
-        new(KimiDeclarationId.StorageTransferBytes, Function: CompilerFunctionKind.StorageTransferBytes),
-        new(KimiDeclarationId.StorageStride, Function: CompilerFunctionKind.StorageStride),
+        new(KimiDeclarationId.StorageCountOverflow),
+        new(KimiDeclarationId.StorageAllocationSizeExceeded),
+        new(KimiDeclarationId.StorageTryAllocateBytes),
+        new(KimiDeclarationId.StorageTransferBytes),
+        new(KimiDeclarationId.StorageStride),
         new(KimiDeclarationId.StorageGrowArray),
-        new(KimiDeclarationId.StorageDestroyValues, Function: CompilerFunctionKind.StorageDestroyValues),
-        new(KimiDeclarationId.StorageErasedReserve, Function: CompilerFunctionKind.StorageErasedReserve),
-        new(KimiDeclarationId.StorageFormatFloat, Function: CompilerFunctionKind.StorageFormatFloat),
-        new(KimiDeclarationId.StorageFormatInteger128, Function: CompilerFunctionKind.StorageFormatInteger128),
+        new(KimiDeclarationId.StorageDestroyValues),
+        new(KimiDeclarationId.StorageErasedReserve),
+        new(KimiDeclarationId.StorageFormatFloat),
+        new(KimiDeclarationId.StorageFormatInteger128),
         new(KimiDeclarationId.StorageShrinkArray),
         new(KimiDeclarationId.StorageDestroyArray),
         new(KimiDeclarationId.StorageDestroyDictionary),
@@ -182,13 +182,13 @@ internal static partial class KimiLibraryCatalog
         new(KimiDeclarationId.DictionaryStorageShrinkToFit),
         new(KimiDeclarationId.DictionaryStorageFindEntry, Row: Equality), // SPEC 12.4.3.
         // SPEC 5.6: the public raw storage operations.
-        new(KimiDeclarationId.RawAllocate, Function: CompilerFunctionKind.RawAllocate),
-        new(KimiDeclarationId.RawRelease, Function: CompilerFunctionKind.RawRelease),
-        new(KimiDeclarationId.RawInitialize, Function: CompilerFunctionKind.RawInitialize),
-        new(KimiDeclarationId.RawSlice, Function: CompilerFunctionKind.RawSlice),
+        new(KimiDeclarationId.RawAllocate),
+        new(KimiDeclarationId.RawRelease),
+        new(KimiDeclarationId.RawInitialize),
+        new(KimiDeclarationId.RawSlice),
         // SPEC 15.3.5: the zero-sized dependency Field Core.
         new(KimiDeclarationId.Loan, ManagedRepresentation: true),
-        new(KimiDeclarationId.StorageArgumentOutOfRange, Function: CompilerFunctionKind.StorageArgumentOutOfRange),
+        new(KimiDeclarationId.StorageArgumentOutOfRange),
         new(KimiDeclarationId.FromEndResolve),
         new(KimiDeclarationId.StartResolve),
         new(KimiDeclarationId.EndResolve),
@@ -205,7 +205,7 @@ internal static partial class KimiLibraryCatalog
         new(KimiDeclarationId.ClosedRangeIteratorStarting),
         new(KimiDeclarationId.DictionaryStorageClearEntries),
         new(KimiDeclarationId.StorageDestroyDictionaryEntries),
-        new(KimiDeclarationId.StorageIndexBounds, Function: CompilerFunctionKind.StorageIndexBounds),
+        new(KimiDeclarationId.StorageIndexBounds),
         new(KimiDeclarationId.UniqSliceIndex),
         new(KimiDeclarationId.UniqSliceIndexUniq),
         new(KimiDeclarationId.UniqSliceIndexPosition),
@@ -239,9 +239,9 @@ internal static partial class KimiLibraryCatalog
     // The public declaration of each linked implementation, by catalog index; -1 elsewhere.
     private static readonly int[] Presentations = CreatePresentations();
 
-    // A link joins a public declaration served by no compiler function to one implementation; no implementation is linked twice or
-    // linked onward. That the implementation is an internal source function of the same container carrying `#CallerLocation` is the
-    // library's source, which KimiLibraryShapeTest checks (DECISIONS BU-112).
+    // A link joins a public declaration to one implementation; no implementation is linked twice or linked onward. That neither is an
+    // intrinsic (their Definitions are Body) and that the implementation is an internal source function of the same container carrying
+    // `#CallerLocation` is the library's source, which KimiLibraryShapeTest checks (DECISIONS BU-112).
     private static int[] CreatePresentations()
     {
         var result = new int[Definitions.Length];
@@ -254,8 +254,7 @@ internal static partial class KimiLibraryCatalog
             }
 
             var target = Indices[(int)implementation];
-            if (target < 0 || result[target] >= 0 || Definitions[i].Function != CompilerFunctionKind.None ||
-                Definitions[target] is not { Function: CompilerFunctionKind.None, Implementation: null })
+            if (target < 0 || result[target] >= 0 || Definitions[target].Implementation is not null)
             {
                 throw new InvalidOperationException("Invalid Kimi implementation link.");
             }

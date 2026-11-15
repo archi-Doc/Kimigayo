@@ -203,14 +203,13 @@ public partial class KimiLibraryShapeTest
             Assert.Equal("public contract " + symbol.Name, Shape(declaration));
         }
 
-        if (entry.Function != CompilerFunctionKind.None || entry.Implementation is not null)
+        if (symbol.Definition.Kind == DispositionKind.Intrinsic || entry.Implementation is not null)
         {
-            Assert.Equal(entry.Function, symbol.CompilerFunction);
             Assert.False(HasBody(declaration));
         }
         else if (declaration is FunctionKoto)
         {
-            Assert.Equal(CompilerFunctionKind.None, symbol.CompilerFunction);
+            Assert.Equal(DispositionKind.Body, symbol.Definition.Kind);
             Assert.True(HasBody(declaration));
         }
 
@@ -219,6 +218,7 @@ public partial class KimiLibraryShapeTest
         if (entry.Implementation is { } implementation)
         {
             var linkedSymbol = c.Library.GetSymbol(implementation)!;
+            Assert.Equal((DispositionKind.Body, DispositionKind.Body), (symbol.Definition.Kind, linkedSymbol.Definition.Kind));
             var linked = Assert.IsType<FunctionKoto>(linkedSymbol.Declaration);
             Assert.Equal(ModifierKind.Internal, linked.Modifier);
             Assert.True(HasBody(linked));
@@ -241,9 +241,7 @@ public partial class KimiLibraryShapeTest
             Assert.All(group.Members, member => Assert.Contains(Assert.IsType<FunctionKoto>(member).SymbolOf()!, c.Library.RegisteredSymbols.ToArray()));
         }
 
-        var legacy = new List<KimiDeclarationId>();
         Visit(c.Library.Kotonoha.RootKoto);
-        Assert.Empty(legacy);
         Assert.Empty(LibraryAttributes(AttributeKind.Unsupported));
 
         void Visit(DeclarationContainerKoto container)
@@ -265,12 +263,8 @@ public partial class KimiLibraryShapeTest
                 var symbol = function.SymbolOf();
                 Assert.True(symbol?.LibraryDeclaration is { } id && ReferenceEquals(c.Library.GetSymbol(id), symbol) && LangName(function) == id.ToString(), Line(function));
                 var served = symbol!.Definition.Kind == DispositionKind.Intrinsic;
-                var linked = function.IsConstructor && symbol.CompilerFunction == CompilerFunctionKind.None && KimiLibraryCatalog.ImplementationOf(symbol.LibraryDeclaration!.Value) is not null;
-                Assert.True(intrinsic == served && (served || linked || symbol.CompilerFunction != CompilerFunctionKind.None), Line(function));
-                if (!served && !linked)
-                {
-                    legacy.Add(symbol.LibraryDeclaration!.Value);
-                }
+                var linked = function.IsConstructor && symbol.Definition.Kind == DispositionKind.Body && KimiLibraryCatalog.ImplementationOf(symbol.LibraryDeclaration!.Value) is not null;
+                Assert.True(intrinsic == served && (served || linked), Line(function));
             }
 
             foreach (var nested in container.NestedContainers)
@@ -286,7 +280,7 @@ public partial class KimiLibraryShapeTest
         var expected = new List<KimiDeclarationId>();
         foreach (var entry in KimiLibraryCatalog.Entries)
         {
-            if ((entry.Function != CompilerFunctionKind.None || entry.Implementation is not null) && entry.SourceExpected)
+            if (entry.SourceExpected && (Library.Value.Library.GetSymbol(entry.Id)!.Definition.Kind == DispositionKind.Intrinsic || entry.Implementation is not null))
             {
                 expected.Add(entry.Id);
             }
@@ -311,25 +305,12 @@ public partial class KimiLibraryShapeTest
             var coded = row.Code is null ? row.Id != IntrinsicId.Fail
                 : row.Id == IntrinsicId.Fail && (spec.Contains($"{row.Code} (", StringComparison.Ordinal) || spec.Contains($"`{row.Code}: ", StringComparison.Ordinal));
             Assert.True((row.Kind == DispositionKind.Intrinsic) == (row.Id != IntrinsicId.None) && row.Kind != DispositionKind.Shim && coded, symbol.Name);
-            Assert.True(symbol.CompilerFunction != CompilerFunctionKind.None || row == default, symbol.Name);
         }
 
         var served = symbols.Select(static x => x.Definition.Id).Where(static x => x is not (IntrinsicId.None or IntrinsicId.Fail)).ToArray();
         Assert.Equal(served.Distinct(), served);
         Assert.Equal(new IntrinsicDisposition(DispositionKind.Intrinsic, IntrinsicId.Abort), library.Abort.Definition);
         Assert.True(Enum.GetValues<IntrinsicId>().Length <= 34);
-    }
-
-    // R8-G1: the catalog's Function column, which TyCtxt.Bodyless (IntrinsicDisposition.Effect) and the compiler-function keys still read,
-    // agrees with `#Intrinsic` (Definition): a library function or $abort has a kind other than None exactly when its Definition is
-    // Intrinsic. It stays until G1-4c deletes BindingSymbol.CompilerFunction.
-    [Fact]
-    public void FunctionColumnAgreesWithDefinitionPresence()
-    {
-        var library = Library.Value.Library;
-        Assert.All(
-            library.RegisteredSymbols.ToArray().Append(library.Abort),
-            static x => Assert.True((x.CompilerFunction != CompilerFunctionKind.None) == (x.Definition.Kind == DispositionKind.Intrinsic), x.Name));
     }
 
     // R3 decision 5: the MIR builder serves a built-in form (a slicing, a direct line's fixed arm) by a library function it names by its

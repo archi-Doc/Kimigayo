@@ -15,7 +15,7 @@
 // program's where a read body creates the Closure (the validator's program pass, MirValidator.Program, G191); a called Closure without
 // one is a Closure of a declaration Binding rejected, its request checked and then resting on Binding's record (Callee; PLAN G867).
 // Must not: read a site or a template, or record anything itself (Admit, Requested, the layout verdict, the witness and glue rows do) but
-// broken contracts: a declared callee without a body and a bodyless function that is neither a compiler function nor an import, each
+// broken contracts: a declared callee without a body and a bodyless function that is no intrinsic, shim or import, each
 // unless its definition rests on a recorded error (TyCtxt.Bodyless: Dependent), and, in a complete compilation, a called Closure without
 // a body.
 
@@ -79,21 +79,20 @@ internal sealed partial class InstanceCollector
         return program.Callee(new(MirCalleeKind.Fn, implementation));
     }
 
-    // K 4.5 row 8 (DECISIONS R5-M30, R5-M74): a callee without a MIR body: the function of an intrinsic, reached by its Item (a call of
-    // it is an Intrinsic callee), the target its row names under the Item's Type argument, a part of the Item Type its site made (In), read
-    // only for a row that reads one (IntrinsicRow.ReadsTypeArgument, as at an intrinsic call's site, Edge; DECISIONS R5-M136); -1 for
-    // another (an intrinsic whose row reads no Type argument); a function the compiler does not serve (the Body disposition), its import's
-    // item (Imported). An intrinsic row whose need is
-    // TypeArguments (IntrinsicRow.Need) makes each of the call's Type arguments a use at the call first (K 4.8; DECISIONS R5-M108, R5-M149).
+    // K 4.5 row 8 (DECISIONS R5-M30, R5-M74): a callee without a MIR body, by Binding's category of it (TyCtxt.Bodyless): an intrinsic,
+    // reached by its Item (a call of it is an Intrinsic callee), the target its row names under the Item's Type argument, a part of the
+    // Item Type its site made (In), read only for a row that reads one (IntrinsicRow.ReadsTypeArgument, as at an intrinsic call's site,
+    // Edge; DECISIONS R5-M136), else -1; a shim, -1; any other, what Imported makes of it.
+    // An intrinsic row whose need is TypeArguments (IntrinsicRow.Need) makes each of the call's Type arguments a use at the call first
+    // (K 4.8; DECISIONS R5-M108, R5-M149).
     private int Bodyless(MirProgram program, int item, SourceRef subject, BindingSymbol function, Subst? subst)
     {
-        if (function.Definition.Kind == DispositionKind.Body)
+        if (TyCtxt.Bodyless(function) is not BodylessKind.Intrinsic and var kind)
         {
-            return this.Imported(item, subject, function);
+            return kind == BodylessKind.Shim ? -1 : this.Imported(item, subject, function);
         }
 
-        if (function.Definition is not { Kind: DispositionKind.Intrinsic, Id: var id } ||
-            IntrinsicRows.Of(id) is not { ReadsTypeArgument: true } row)
+        if (IntrinsicRows.Of(function.Definition.Id) is not { ReadsTypeArgument: true } row)
         {
             return -1; // An intrinsic whose row reads no Type argument (Test.tempDirectory's has none to read).
         }
@@ -106,19 +105,18 @@ internal sealed partial class InstanceCollector
         return this.Intrinsic(program, item, subject, row, subst!.Types[0]);
     }
 
-    // SPEC 22.6 (DECISIONS R8-M19): what a call of a function without a MIR body that is no compiler function runs, its direct call or a
-    // requirement's or requirement Item's whose witness it is (Called; Binding rejects its own Item): a #LibraryImport function's item
-    // (TyCtxt.Bodyless: a foreign function), keyed by the function alone (an import is never generic), with no target; code generation
-    // calls it by its C signature (FunctionCodegen.Calls' Witness). None for a definition Binding rejected or whose Body the parser
-    // recorded missing, that error's dependent (TyCtxt.Bodyless: Dependent; no record); any other, a compiler function taken as a witness
-    // included, is a broken contract.
+    // SPEC 22.6 (DECISIONS R8-M19): what a call of a function without a MIR body that is no intrinsic or shim runs, its direct call or a
+    // requirement's or requirement Item's whose witness it is (Called; Binding rejects its own Item): an import's item (TyCtxt.Bodyless:
+    // Import), keyed by the function alone (an import is never generic), with no target; code generation calls it by its C signature
+    // (FunctionCodegen.Calls' Witness). None for a dependent of a recorded error (TyCtxt.Bodyless: Dependent; no record); any other, an
+    // intrinsic or a shim taken as a witness included, is a broken contract.
     private int Imported(int item, SourceRef subject, BindingSymbol function)
     {
         switch (TyCtxt.Bodyless(function))
         {
-            case CompilerFunctionEffect.Dependent:
+            case BodylessKind.Dependent:
                 return -1;
-            case CompilerFunctionEffect.Environment when function.Definition.Kind == DispositionKind.Body:
+            case BodylessKind.Import:
                 var key = new MonoKey(MonoKind.Import, default, null, function, 0, null);
                 if (this.Set.Find(key) is >= 0 and var found)
                 {
@@ -146,7 +144,7 @@ internal sealed partial class InstanceCollector
             return this.Admit(item, site, body, subst);
         }
 
-        if (TyCtxt.Bodyless(function) != CompilerFunctionEffect.Dependent)
+        if (TyCtxt.Bodyless(function) != BodylessKind.Dependent)
         {
             this.Report(DiagnosticCode.InternalInvariant_Kd, site);
         }

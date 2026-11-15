@@ -313,8 +313,6 @@ public sealed class BindingSymbol
 
     public IntrinsicKind Intrinsic { get; internal init; }
 
-    public CompilerFunctionKind CompilerFunction { get; internal init; }
-
     public Koto Declaration { get; }
 
     public BoundType? Type { get; internal set; }

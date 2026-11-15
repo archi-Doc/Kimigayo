@@ -149,11 +149,15 @@ internal sealed partial class MirEffects(TyCtxt types, MirCases cases, MirDatafl
         return below;
     }
 
-    private static byte Class(CompilerFunctionEffect effect) => effect switch
+    // SPEC 8.11.2: the class of a call of a function without a MIR body, by Binding's category of it (TyCtxt.Bodyless): an intrinsic's
+    // from MIR's own row of it (MirDescriptors: an environment effect where the row has one, else its inputs alone), a shim's its
+    // inputs, an import's an environment effect, a dependent's Derived, any other a limit.
+    private static byte Class(BindingSymbol function) => TyCtxt.Bodyless(function) switch
     {
-        CompilerFunctionEffect.Inputs => 0,
-        CompilerFunctionEffect.Environment => Environment,
-        CompilerFunctionEffect.Dependent => Derived,
+        BodylessKind.Intrinsic => (MirDescriptors.Of(function.Definition.Id).Effects & MirEffect.Environment) != 0 ? Environment : (byte)0,
+        BodylessKind.Shim => 0,
+        BodylessKind.Import => Environment,
+        BodylessKind.Dependent => Derived,
         _ => Limit,
     };
 

@@ -190,7 +190,7 @@ public class StartupBindingTest
         var call = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>()).CallOf()!;
         Assert.Same(c.Library.WriteLine, call.Target);
         Assert.Equal(KimiDeclarationId.WriteLine, call.Target.LibraryDeclaration);
-        Assert.Equal(CompilerFunctionKind.None, call.Target.CompilerFunction); // A Kimigayo body (R8-W2 d).
+        Assert.Equal(DispositionKind.Body, call.Target.Definition.Kind); // A Kimigayo body (R8-W2 d).
         Assert.Null(call.Receiver);
         Assert.Equal("()", call.ReturnType.Name);
         Assert.Equal(new[] { 0 }, call.ArgumentToParameter.ToArray());
@@ -225,7 +225,7 @@ public class StartupBindingTest
         var target = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>()).CallOf()!.Target;
         Assert.NotSame(c.Library.WriteLine, target);
         Assert.Null(target.LibraryDeclaration);
-        Assert.Equal(CompilerFunctionKind.None, target.CompilerFunction);
+        Assert.Equal(DispositionKind.Body, target.Definition.Kind);
     }
 
     [Fact]
@@ -319,7 +319,7 @@ public class StartupBindingTest
         var c = Parse("alias Core\ngroup Core\n    public func writeLine(text: string) => ()\nCore.writeLine(\"user\")\n::Kimi.Console.writeLine(\"compiler\")\nwriteLine(\"alias\")");
         Assert.True(c.Bind().IsComplete, Describe(c));
         var calls = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>().ToArray();
-        Assert.Equal(CompilerFunctionKind.None, calls[0].CallOf()!.Target.CompilerFunction);
+        Assert.Equal(DispositionKind.Body, calls[0].CallOf()!.Target.Definition.Kind);
         Assert.Same(c.Library.WriteLine, calls[1].CallOf()!.Target);
         Assert.Same(calls[0].CallOf()!.Target, calls[2].CallOf()!.Target);
     }

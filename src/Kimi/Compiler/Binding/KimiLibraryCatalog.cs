@@ -24,10 +24,6 @@ internal static partial class KimiLibraryCatalog
 
     internal static ReadOnlySpan<Entry> Entries => Definitions;
 
-    internal static bool IsStorageOperation(CompilerFunctionKind kind) => kind is >= CompilerFunctionKind.StorageMissingDictionaryKey and <= CompilerFunctionKind.StorageStride;
-
-    internal static bool IsRawOperation(CompilerFunctionKind kind) => kind is >= CompilerFunctionKind.RawAllocate and <= CompilerFunctionKind.RawSlice;
-
     // SPEC 22.5.1: the private caller-location ABI, the original declaration's `#CallerLocation`; a reader passes the original's symbol
     // (TyCtxt.Original), never a specialization's.
     internal static bool RequiresCallerLocation(BindingSymbol? symbol) => symbol is { CallerLocation: true };
@@ -75,7 +71,6 @@ internal static partial class KimiLibraryCatalog
     internal readonly record struct Entry(
         KimiDeclarationId Id,
         IntrinsicKind Intrinsic = IntrinsicKind.None,
-        CompilerFunctionKind Function = CompilerFunctionKind.None,
         bool SourceExpected = true,
         string? Name = null,
         KimiLibraryContainer Container = KimiLibraryContainer.Root,

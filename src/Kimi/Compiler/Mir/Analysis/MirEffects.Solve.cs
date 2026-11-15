@@ -268,7 +268,7 @@ internal sealed partial class MirEffects
 
         if (body is null)
         {
-            this.found |= Class(TyCtxt.Bodyless(symbol));
+            this.found |= Class(symbol);
             return;
         }
 

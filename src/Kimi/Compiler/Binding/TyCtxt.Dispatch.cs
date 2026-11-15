@@ -3,7 +3,8 @@
 // Owns the requirement dispatch facts in MIR terms (DECISIONS R5-M61, R5-M70; R5 package F 4.1, 4.5, S2-S4 X1, X16, X28): what a
 // requirement call runs under a closed substitution (Witness), from the requirement-witness core (Binding.ResolveRequirementWitness, R5-M22)
 // under the library root's premises and the Contract reference the call selected as its Self conforms to it (Binding.InstanceContract,
-// shared with the CallPlan materializer). ResetDispatch discards the dispatch views' memos together at an edit: Witness's, Comparison's
+// shared with the CallPlan materializer), and a built-in target's Contract by its lang item (ShimContract), the one read of what a shim
+// runs, for Binding's comparison plans and the Backend's shim readers. ResetDispatch discards the dispatch views' memos together at an edit: Witness's, Comparison's
 // (TyCtxt.Comparison.cs) and Applies' (TyCtxt.Virtuals.cs).
 // Input: a requirement, the Contract reference its call recorded (MirCallee.Contract; null for none) and the call's closed substitution
 // (TyCtxt.Compose with a representative), whose Self is the conforming Type and whose declaring Type holds the instantiated bound
@@ -60,8 +61,8 @@ internal sealed partial class TyCtxt
 
     // SPEC 8.6.1: a shim's Contract (Binding.PrepareBuiltinTargets) by its lang item, which names what the shim runs: Equatable's or
     // Comparable's comparison, or an arithmetic Contract's operation (ArithmeticContracts.IsArithmetic); null for a function of another
-    // disposition. Its readers are the Backend's shim targets (InstanceCollector.Witnesses' Shim), capability gaps
-    // (InstanceCollector.Capabilities) and bodies (FunctionCodegen.Shims).
+    // disposition. Its readers are Binding's comparison plans (Binding.RequirementInstances' Witnesses) and the Backend's shim targets
+    // (InstanceCollector.Witnesses' Shim), capability gaps (InstanceCollector.Capabilities) and bodies (FunctionCodegen.Shims).
     internal static KimiDeclarationId? ShimContract(BindingSymbol function)
         => function.Definition.Kind == DispositionKind.Shim ? Contract(function).LibraryDeclaration : null;
 

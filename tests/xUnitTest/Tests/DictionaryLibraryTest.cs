@@ -57,7 +57,7 @@ public class DictionaryLibraryTest
         Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c));
         var function = c.Library.GetSymbol(KimiDeclarationId.DictionaryRemove);
         Assert.NotNull(function);
-        Assert.Equal(CompilerFunctionKind.None, function.CompilerFunction);
+        Assert.Equal(DispositionKind.Body, function.Definition.Kind);
         var (sel, generated) = FunctionCodegenTest.GeneratedDefinitions(Source);
         Assert.Contains(sel.Library.GetSymbol(KimiDeclarationId.DictionaryRemove)!.Declaration, generated);
         var ir = CompilationTestHelper.WriteIr(c);
@@ -72,7 +72,7 @@ public class DictionaryLibraryTest
         Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c));
         var function = c.Library.GetSymbol(KimiDeclarationId.DictionaryClear);
         Assert.NotNull(function);
-        Assert.Equal(CompilerFunctionKind.None, function.CompilerFunction);
+        Assert.Equal(DispositionKind.Body, function.Definition.Kind);
         var (sel, generated) = FunctionCodegenTest.GeneratedDefinitions(Source);
         Assert.Contains(sel.Library.GetSymbol(KimiDeclarationId.DictionaryClear)!.Declaration, generated);
         ScalarEmissionTest.WriteFixture("DictionaryLibrarySourceClear", CompilationTestHelper.WriteIr(c), string.Empty);
@@ -87,7 +87,7 @@ public class DictionaryLibraryTest
         Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c));
         var function = c.Library.GetSymbol(KimiDeclarationId.DictionaryTryGet);
         Assert.NotNull(function);
-        Assert.Equal(CompilerFunctionKind.None, function.CompilerFunction);
+        Assert.Equal(DispositionKind.Body, function.Definition.Kind);
         var (sel, generated) = FunctionCodegenTest.GeneratedDefinitions(Source);
         Assert.Contains(sel.Library.GetSymbol(KimiDeclarationId.DictionaryTryGet)!.Declaration, generated);
         var ir = CompilationTestHelper.WriteIr(c);
@@ -105,7 +105,7 @@ public class DictionaryLibraryTest
         Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c));
         var function = c.Library.GetSymbol(id);
         Assert.NotNull(function);
-        Assert.Equal(CompilerFunctionKind.None, function.CompilerFunction);
+        Assert.Equal(DispositionKind.Body, function.Definition.Kind);
         var (sel, generated) = FunctionCodegenTest.GeneratedDefinitions(program);
         Assert.Contains(sel.Library.GetSymbol(id)!.Declaration, generated);
         Assert.Contains(sel.Library.GetSymbol(KimiDeclarationId.DictionaryStoragePlaceEntry)!.Declaration, generated);
@@ -124,7 +124,7 @@ public class DictionaryLibraryTest
         Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c));
         var function = c.Library.GetSymbol(id);
         Assert.NotNull(function);
-        Assert.Equal(CompilerFunctionKind.None, function.CompilerFunction);
+        Assert.Equal(DispositionKind.Body, function.Definition.Kind);
         var (sel, generated) = FunctionCodegenTest.GeneratedDefinitions(program);
         Assert.Contains(sel.Library.GetSymbol(id)!.Declaration, generated);
         // SPEC 22.2, 22.5.1: the capacity decisions are DictionaryStorage source over located primitives; the compiler builds
@@ -305,7 +305,7 @@ public class DictionaryLibraryTest
         Assert.DoesNotContain(texts.Library.GetSymbol(KimiDeclarationId.DictionaryStorageClearEntries)!.Declaration, dropped);
         Assert.DoesNotContain(sel.Library.DictionaryCompact, generated);
         Assert.DoesNotContain(sel.Library.GetSymbol(KimiDeclarationId.DictionaryStorageShrinkToFit)!.Declaration, generated);
-        Assert.Equal(CompilerFunctionKind.None, c.Library.DictionaryUnlink.SymbolOf()!.CompilerFunction);
+        Assert.Equal(DispositionKind.Body, c.Library.DictionaryUnlink.SymbolOf()!.Definition.Kind);
         Assert.Contains("DictionaryStorage.kimi", c.Library.DictionaryUnlink.CodeContext.SourceDocument!.Path);
         ScalarEmissionTest.WriteFixture("DictionaryLibraryRemoval", outputIr, string.Empty);
     }

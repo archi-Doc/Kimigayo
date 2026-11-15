@@ -2667,25 +2667,6 @@ public sealed partial class InstanceCollectorTest
     private static string[] Targets(MirProgram program, CheckedSet set, string label)
         => set.Targets(Item(program, set, label)).ToArray().Select(x => Label(program, set.Items[x.Item]) + (x.Runtime ? string.Empty : " (check)")).ToArray();
 
-    // The targets at each call site of an item's body whose callee is a compiler function or a value, joined (empty: none).
-    private static string[] AtCalls(MirProgram program, CheckedSet set, string label)
-    {
-        var item = Item(program, set, label);
-        var body = program.Body(set.Items[item].BodyOrdinal);
-        var sites = new List<string>();
-        for (var b = 0; b < body.Blocks.Length; b++)
-        {
-            if (body.Blocks[b].Terminator is { Kind: MirTerminatorKind.Call } call &&
-                (call.Callee.Kind == MirCalleeKind.Value || call.Callee.Symbol?.CompilerFunction is not (null or CompilerFunctionKind.None)))
-            {
-                var at = new MirLocation(b, body.Blocks[b].Count);
-                sites.Add(string.Join(", ", set.Targets(item).ToArray().Where(x => x.At == at).Select(x => Label(program, set.Items[x.Item]))));
-            }
-        }
-
-        return [.. sites];
-    }
-
     // An item's targets but the glue of the values its body drops.
     private static string[] Calls(MirProgram program, CheckedSet set, string label)
         => Targets(program, set, label).Where(static x => !x.StartsWith("DropGlue ", StringComparison.Ordinal)).ToArray();

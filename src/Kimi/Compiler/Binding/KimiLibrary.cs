@@ -498,7 +498,6 @@ public sealed partial class KimiLibrary
             var symbol = new BindingSymbol(name, function is null ? BindingSymbolKind.Type : BindingSymbolKind.Function, declaration, ScopeOf(DeclaringContainer(declaration)))
             {
                 Intrinsic = entry.Intrinsic,
-                CompilerFunction = entry.Function,
                 LibraryDeclaration = entry.Id,
                 CallerLocation = declaration.FindAttribute(AttributeKind.CallerLocation) is not null,
                 Definition = DefinitionOf(declaration),
@@ -558,7 +557,7 @@ public sealed partial class KimiLibrary
             var function = new FunctionKoto(ref reader, new(null, ModifierKind.Public, false), default, "$abort", null, [new("text", "text", type, null)], null);
             type.BoundType = BoundType.String;
             type.BindingState = BindingState.Resolved;
-            var symbol = new BindingSymbol("$abort", BindingSymbolKind.Function, function, this.Scope) { CompilerFunction = CompilerFunctionKind.Abort, Definition = new(DispositionKind.Intrinsic, IntrinsicId.Abort), Type = BoundType.Never };
+            var symbol = new BindingSymbol("$abort", BindingSymbolKind.Function, function, this.Scope) { Definition = new(DispositionKind.Intrinsic, IntrinsicId.Abort), Type = BoundType.Never };
             function.BoundSymbol = symbol;
             function.BoundType = BoundType.Never;
             function.BindingState = BindingState.Resolved;

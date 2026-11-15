@@ -645,19 +645,42 @@ public sealed partial class MirEffectsTest(ITestOutputHelper output)
             Expected(expected),
             Problems("open struct Base\n    public virtual func read(self: objref/Self) -> i32\n        effect confined\n" + body + "        return 1\n"));
 
+    // SPEC 8.11.2, 22.1's Test row (R8-G1 row D3): Test.tempDirectory, the case's temporary directory from the environment, is an
+    // environment effect, so a confined slot of a test-only source in a test build that calls it fails its bound: one record at the slot;
+    // its twin without the call reports none.
+    [Theory]
+    [InlineData("        let path = Test.tempDirectory()\n", "UnsatisfiedEffectBound_Kd public virtual func read(self: objref/Self) -> i32 1")]
+    [InlineData("        let path = \"x\"\n", "")]
+    public void AConfinedTestSlotOwesTheTemporaryDirectorysClass(string body, string expected)
+    {
+        var c = Compilation.CreateForTest();
+        c.IsTestBuild = true;
+        Assert.True(c.Prepare(WindowsProfile.Target));
+        c.Kotonoha.AddSource(new SourceDocument(
+            "Tests.kimi",
+            "open struct Base\n    public virtual func read(self: objref/Self) -> i32\n        effect confined\n" + body + "        return 1\n#Test\nfunc sample() => ()\n",
+            isTestOnly: true));
+        Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c));
+        Assert.True(c.Binding.CheckTestStartup().IsComplete, MinimalEmissionTest.Describe(c));
+        Assert.Equal(Expected(expected), Problems(c, c.BuildMir()));
+    }
+
     // SPEC 8.11.2, 22.9.1 (R8-W1b-3, C-188): A4 classes a Storage.erasedReserve call, ErasedReserve's producer (MirDescriptors: no
-    // effect of its own), by its kind's family, Inputs, as Text.writer's ErasedWriter: the Writer's reserve it runs is checked against
+    // effect of its own), as an intrinsic (TyCtxt.Bodyless) by that row, Inputs, as Text.writer's ErasedWriter: the Writer's reserve it runs is checked against
     // its confined bound where Text.writer erases it. S2a's built-in bodies are its first callers (AConfinedLeafWriteReportsNothing).
     [Fact]
     public void AnErasedReserveCallIsClassedByItsStorageFamily()
     {
         var library = Compilation.CreateForTest().Library;
-        Assert.Equal(CompilerFunctionEffect.Inputs, TyCtxt.Bodyless(library.GetSymbol(KimiDeclarationId.StorageErasedReserve)!));
-        Assert.Equal(TyCtxt.Bodyless(library.GetSymbol(KimiDeclarationId.TextWriter)!), TyCtxt.Bodyless(library.GetSymbol(KimiDeclarationId.StorageErasedReserve)!));
+        var reserve = library.GetSymbol(KimiDeclarationId.StorageErasedReserve)!;
+        var writer = library.GetSymbol(KimiDeclarationId.TextWriter)!;
+        Assert.Equal((BodylessKind.Intrinsic, IntrinsicId.ErasedReserve), (TyCtxt.Bodyless(reserve), reserve.Definition.Id));
+        Assert.Equal((BodylessKind.Intrinsic, IntrinsicId.ErasedWriter), (TyCtxt.Bodyless(writer), writer.Definition.Id));
+        Assert.Equal(MirDescriptors.Of(IntrinsicId.ErasedWriter).Effects, MirDescriptors.Of(IntrinsicId.ErasedReserve).Effects);
         Assert.Equal((MirEffect.None, (sbyte)2), (MirDescriptors.Of(IntrinsicId.ErasedReserve).Effects, MirDescriptors.Of(IntrinsicId.ErasedReserve).Arity));
     }
 
-    // SPEC 8.11.2, 22.10.2 (R8-S2c, C-244): A4 classes a Storage.formatFloat call, FormatFloat's producer, by its kind's family, Inputs; its
+    // SPEC 8.11.2, 22.10.2 (R8-S2c, C-244): A4 classes a Storage.formatFloat call, FormatFloat's producer, as an intrinsic by its row, Inputs; its
     // descriptor states no effect of its own over its three operands (the bits, the width flag and the destination), and its signature's
     // `uniq` destination states the one write (fail-before: the descriptor's arity was -1, the kind did not exist).
     [Fact]
@@ -666,12 +689,12 @@ public sealed partial class MirEffectsTest(ITestOutputHelper output)
         var library = Compilation.CreateForTest().Library;
         var descriptor = MirDescriptors.Of(IntrinsicId.FormatFloat);
         Assert.Equal(
-            (CompilerFunctionEffect.Inputs, (MirEffect.None, (sbyte)3)),
-            (TyCtxt.Bodyless(library.GetSymbol(KimiDeclarationId.StorageFormatFloat)!), (descriptor.Effects, descriptor.Arity)));
+            (BodylessKind.Intrinsic, IntrinsicId.FormatFloat, (MirEffect.None, (sbyte)3)),
+            (TyCtxt.Bodyless(library.GetSymbol(KimiDeclarationId.StorageFormatFloat)!), library.GetSymbol(KimiDeclarationId.StorageFormatFloat)!.Definition.Id, (descriptor.Effects, descriptor.Arity)));
     }
 
-    // SPEC 8.11.2, 22.10.2 (R8-S2b2, C-258): A4 classes a Storage.formatInteger128 call, FormatInteger128's producer, by its kind's family,
-    // Inputs; its descriptor states no effect of its own over its two operands (the value and the destination: the routine neither
+    // SPEC 8.11.2, 22.10.2 (R8-S2b2, C-258): A4 classes a Storage.formatInteger128 call, FormatInteger128's producer, as an intrinsic by its
+    // row, Inputs; its descriptor states no effect of its own over its two operands (the value and the destination: the routine neither
     // allocates nor Aborts), and its signature's `uniq` destination states the one write (fail-before: the kind did not exist, the
     // descriptor's arity was -1).
     [Fact]
@@ -680,8 +703,8 @@ public sealed partial class MirEffectsTest(ITestOutputHelper output)
         var library = Compilation.CreateForTest().Library;
         var descriptor = MirDescriptors.Of(IntrinsicId.FormatInteger128);
         Assert.Equal(
-            (CompilerFunctionEffect.Inputs, (MirEffect.None, (sbyte)2)),
-            (TyCtxt.Bodyless(library.GetSymbol(KimiDeclarationId.StorageFormatInteger128)!), (descriptor.Effects, descriptor.Arity)));
+            (BodylessKind.Intrinsic, IntrinsicId.FormatInteger128, (MirEffect.None, (sbyte)2)),
+            (TyCtxt.Bodyless(library.GetSymbol(KimiDeclarationId.StorageFormatInteger128)!), library.GetSymbol(KimiDeclarationId.StorageFormatInteger128)!.Definition.Id, (descriptor.Effects, descriptor.Arity)));
     }
 
     // SPEC 8.11.2, 22.9.1 (R8-S2a, C-188; R8-S2b1, C-254): a confined caller's write(true) runs BoolFormat's body and its write of an i64

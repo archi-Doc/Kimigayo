@@ -2,8 +2,8 @@
 
 // Owns compiler/library identities, the vocabulary of how a call is served (IntrinsicDisposition, which a function's symbol publishes as
 // BindingSymbol.Definition) and the intrinsic Contract table.
-// Input: CompilerFunctionKind; IntrinsicId; IntrinsicKind. Output: a compiler function's effect class; an intrinsic's written inputs; an
-// intrinsic Contract's row.
+// Input: IntrinsicId; IntrinsicKind. Output: an intrinsic's written inputs; an intrinsic Contract's row; the categories of a function
+// without a MIR body (BodylessKind, which TyCtxt.Bodyless gives).
 // Each function has one disposition, set where its symbol is made (the library's registration from `#Intrinsic`, $abort's,
 // Binding.PrepareBuiltinTargets' shims), and each intrinsic Contract one row; temporary intrinsics keep their recorded removal stage.
 // Must not create a second intrinsic allowlist or hand-written library path.
@@ -64,39 +64,6 @@ internal readonly record struct IntrinsicContract
     };
 }
 
-/// <summary>Identifies a compiler-provided language function implementation.</summary>
-public enum CompilerFunctionKind : byte
-{
-    None,
-    ConsoleWriteStdout,
-    Abort,
-    MakeObj,
-    MakeRc,
-    MakeArc,
-    Clone,
-    TestTempDirectory,
-    TextWriter,
-    BuiltinEquals,
-    BuiltinCompare,
-    BuiltinArithmetic,
-    StorageMissingDictionaryKey,
-    StorageArgumentOutOfRange,
-    StorageCountOverflow,
-    StorageAllocationSizeExceeded,
-    StorageTryAllocateBytes,
-    StorageTransferBytes,
-    StorageIndexBounds,
-    StorageDestroyValues,
-    StorageErasedReserve,
-    StorageFormatFloat,
-    StorageFormatInteger128,
-    StorageStride,
-    RawAllocate,
-    RawRelease,
-    RawInitialize,
-    RawSlice,
-}
-
 /// <summary>A compiler intrinsic (plan 5.8): an operation Kimigayo cannot express, which MIR calls as an <c>Intrinsic</c> callee and the
 /// backend generates. <see cref="IntrinsicKind"/> is another concept, the compiler-known Contracts.</summary>
 internal enum IntrinsicId : byte
@@ -130,27 +97,31 @@ internal enum IntrinsicId : byte
     StaticEnsure, // SPEC 22.4.3.
 }
 
-/// <summary>How A4 classifies a call without a MIR body (SPEC 8.11.2; TyCtxt.Bodyless), the effect column of the intrinsic table.</summary>
-internal enum CompilerFunctionEffect : byte
+/// <summary>What a function without a MIR body is (SPEC 8.11.2, 22.1, 22.6; TyCtxt.Bodyless), Binding's one category of it, which A4
+/// turns into its effect class and the instance collector into what its call runs.</summary>
+internal enum BodylessKind : byte
 {
-    /// <summary>The kind names no compiler function, or one this table does not classify.</summary>
+    /// <summary>None of the others: A4's limit, and a broken contract for the instance collector (since PLAN G890).</summary>
     Unclassified,
 
-    /// <summary>The function acts only on its acquired inputs and the allocator, and may Abort.</summary>
-    Inputs,
+    /// <summary>A library declaration's `#Intrinsic` (its Definition's IntrinsicId), whose effects are MIR's row of it.</summary>
+    Intrinsic,
 
-    /// <summary>The function obtains authority from the environment, which confined excludes.</summary>
-    Environment,
+    /// <summary>A built-in target (Binding.PrepareBuiltinTargets), which acts only on its inputs.</summary>
+    Shim,
+
+    /// <summary>A `#LibraryImport` foreign function, an environment effect.</summary>
+    Import,
 
     /// <summary>A definition Binding rejected, whose parts are not published (DECISIONS R4-M18), or whose Body the parser recorded missing
-    /// (SPEC 14.2.1): its effects are a dependent of that error.</summary>
+    /// (SPEC 14.2.1): a dependent of that error.</summary>
     Dependent,
 }
 
 /// <summary>How a call of a compiler function is served (plan 5.8).</summary>
 internal enum DispositionKind : byte
 {
-    Body, // A Kimigayo body, the declaration's own: no compiler function's (None alone, since R8-W2 d).
+    Body, // A Kimigayo body, the declaration's own.
     Intrinsic, // An IntrinsicId; Fail carries its fixed SPEC 22.5.2 code.
     Shim, // A built-in witness (equality, comparison, arithmetic), whose body the backend generates for its instance.
 }
@@ -162,19 +133,6 @@ internal enum DispositionKind : byte
 /// <param name="Code">The SPEC 22.5.2 code of <see cref="IntrinsicId.Fail"/>.</param>
 internal readonly record struct IntrinsicDisposition(DispositionKind Kind, IntrinsicId Id = IntrinsicId.None, string? Code = null)
 {
-    // SPEC 8.11.2: the effect class of each compiler function. The Storage and Raw families act only on their inputs and the allocator
-    // (SPEC 5.6, 22.2), so they are classified as families; a storage kind that obtained environment authority would have to be split
-    // out of its family. Console output and the test temporary directory are environment effects. Text.writer and the
-    // built-in items act on their inputs: the formatting operations are bodies (R8-W1), so None alone is unclassified.
-    internal static CompilerFunctionEffect Effect(CompilerFunctionKind kind) => kind switch
-    {
-        CompilerFunctionKind.ConsoleWriteStdout or CompilerFunctionKind.TestTempDirectory => CompilerFunctionEffect.Environment,
-        >= CompilerFunctionKind.Abort and <= CompilerFunctionKind.Clone or CompilerFunctionKind.TextWriter or
-            >= CompilerFunctionKind.BuiltinEquals and <= CompilerFunctionKind.BuiltinArithmetic => CompilerFunctionEffect.Inputs,
-        _ when KimiLibraryCatalog.IsStorageOperation(kind) || KimiLibraryCatalog.IsRawOperation(kind) => CompilerFunctionEffect.Inputs,
-        _ => CompilerFunctionEffect.Unclassified,
-    };
-
     // SPEC 5.2, 7.7.3 (the owner's O-21 (ii)): the written inputs, whether an intrinsic's contract performs an access that needs
     // write capability through the raw pointer it takes as a parameter: a construction at `storage`, a relocation's destination and source
     // (the source as a Take) and an in-place destruction; a Dictionary entry's placement is the DictionaryStorage.placeEntry body.
