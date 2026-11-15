@@ -28,7 +28,9 @@ public sealed partial class Binding
 {
     // CheckTypeConstraints' and CheckDeclaredTypeConstraints' proofs of a Type's parts in one query, each with the cause it rests on
     // (DECISIONS BU-55), the clause fact it hands on (G354 (2); none in the declaration walk) and whether its computation read only
-    // settled verdicts (a nested per-use call's condition; the declaration walk's entries are read by their own walk only).
+    // settled verdicts (a nested per-use call's condition; the declaration walk's entries are read by their own walk only): neither
+    // ProvisionalReads nor unsettledReads grew over its computation. Settled goes with ProvisionalReads (removal: R7-C2e2 e2-5b, the
+    // answer's Completion).
     private readonly TypeMemo<BoundType, (ConstraintProof Proof, ICheckCause? Cause, CallableUnknown? Fact, ClauseFact? Clause, bool Settled)> formedParts = new();
 
     // The walks the SignatureVerdict row ran in this pass.
@@ -41,6 +43,7 @@ public sealed partial class Binding
     private (BindingScope? Scope, uint Query) openFormation;
 
     // The reads of a part not decided on settled verdicts: a part whose computation read one rests on a provisional verdict through it.
+    // Temporary with Settled and ProvisionalReads; removal: R7-C2e2 e2-5b (a part's Completion meets its parts').
     private int unsettledReads;
 
     // The per-use walk over an instantiated Type. A part's proof and the cause it rests on depend on the part alone in one query (its
