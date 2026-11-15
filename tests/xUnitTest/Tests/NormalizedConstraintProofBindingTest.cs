@@ -131,13 +131,14 @@ public class NormalizedConstraintProofBindingTest
 
     // R7-C2c2 c2-3b at R7-C2e2-2's merge (merge review N1): a Callable fact is a row kind's fact, so a request's entry files it under its
     // subject and its class key, and a validator's read (no classes) under its subject alone. In f's view (`U is T`, whose class key is T)
-    // the entry is formed by two outermost requests and by the agreement's one read (SPEC 8.9.2, `T.(K).E is i32`): the fact on the
-    // class mate U adds 2 + 2 + 1 pairs, on the key T 1 + 1 + 1 (no class-key copy), on U without the projection identity 2 + 2 (no
-    // read). The pairs the fact adds, exact; valid without the fact too (`(a, a)` is a Copy request through T, SPEC 8.2.3).
+    // the entry is formed by three outermost requests (one more since R7-C2e2 e2-3a: a publication's start forgets the Kept entry, so
+    // a request after it forms the entry again) and by the agreement's one read (SPEC 8.9.2, `T.(K).E is i32`): the fact on the class
+    // mate U adds 2 + 2 + 2 + 1 pairs, on the key T 1 + 1 + 1 + 1 (no class-key copy), on U without the projection identity 2 + 2 + 2
+    // (no read). The pairs the fact adds, exact; valid without the fact too (`(a, a)` is a Copy request through T, SPEC 8.2.3).
     [Theory]
-    [InlineData("U", true, 5)]
-    [InlineData("T", true, 3)]
-    [InlineData("U", false, 4)]
+    [InlineData("U", true, 7)] // 5, 3 and 4 before e2-3a's publication lifetime (with ForgetKeptTables skipped)
+    [InlineData("T", true, 4)]
+    [InlineData("U", false, 6)]
     public void ACallableFactIsFiledUnderItsClassKeyOnlyInARequestsEntry(string subject, bool read, int pairs)
     {
         var head = "contract K\n    associate E\nfunc f<T, U>(a: U, b: T.(K).E) -> (U, U)\n    U is T\n    T is Copy\n    T is K\n" + (read ? "    T.(K).E is i32\n" : string.Empty);
