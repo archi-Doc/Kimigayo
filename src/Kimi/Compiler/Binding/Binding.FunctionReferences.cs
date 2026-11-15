@@ -314,7 +314,7 @@ public sealed partial class Binding
 
         proof = this.ReferenceArgumentProof(function, frame.Types, scope, container, frame.Lengths);
         var parameters = required.Components[0];
-        var binder = FunctionTypeBinder(required);
+        var binder = required.Binder;
         for (var i = 0; i < count; i++)
         {
             if (function.GenericArguments[i] is LengthParameterKoto)
@@ -462,7 +462,7 @@ public sealed partial class Binding
     private (int Slot, ulong Parameters)? PerCallReferenceSlot(Koto use, BindingSymbol symbol, FunctionKoto function, BoundType required, BindingScope scope, GenericsKoto? explicitReference, BoundType? container)
     {
         var count = function.GenericArguments.Count;
-        var binder = FunctionTypeBinder(required);
+        var binder = required.Binder;
         if (binder is null)
         {
             return null;
