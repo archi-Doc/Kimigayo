@@ -12,7 +12,8 @@ namespace XunitTest;
 // its own at every instance). Each invalid row has one record at the converted function or the call. The rows under an invariant
 // layer (`uniq/`, `raw/`) also need PLAN G900's two-way comparison and join this table when both rules are on one base. The rows
 // marked PLAN G913 (SPEC 15.3.4) cover the call's bounds: a nested Function Type's own per-call Origins are never a bound of the
-// call's Origins, with `b` or the caller's Origin at slot 0 or 1, at depths 0 to 3, in both orders, at a local, a call and a generic.
+// call's Origins, with `b` or the caller's Origin at slot 0 or 1, at depths 0 to 3, in both orders, at a local, a call and a generic,
+// in a mixed nested Type, a result meet and with an Origin introduced by the result.
 public partial class TypeBindingTest
 {
     public static TheoryData<string, string, string> PerCallBinderRows => new()
@@ -734,6 +735,78 @@ public partial class TypeBindingTest
             func h(x: i32, b: ref/i32, u: (ref/i32 during b) -> i32) -> i32 => 0
 
             func f() -> i32 => g<(ref/i32) -> i32>(h)
+            """,
+            string.Empty
+        },
+        // ra2v (valid, SPEC 10.7, 3.8, 8.10; PLAN G913): a mixed nested Type MX(b) = (ref/i32, ref/i32 during b) -> i32 at d = 2, b at slot 0: its own per-call input beside the solved Origin.
+        {
+            "ra2v",
+            """
+            func h(b: ref/i32, u: (((ref/i32, ref/i32 during b) -> i32) -> i32) -> i32) -> i32 => 0
+
+            func f() -> i32
+                let k: (ref/i32, (((ref/i32, ref/i32) -> i32) -> i32) -> i32) -> i32 = h
+                return 0
+            """,
+            string.Empty
+        },
+        // rm0w (valid, SPEC 15.4, 10.7, 3.8; PLAN G913): a result meet holding a nested own per-call Origin and the solved one: u: (ref/i32, ref/i32 during b) -> ref/i32, b at slot 1.
+        {
+            "rm0w",
+            """
+            func h(x: i32, b: ref/i32, u: (ref/i32, ref/i32 during b) -> ref/i32) -> i32 => 0
+
+            func f() -> i32
+                let k: (i32, ref/i32, (ref/i32, ref/i32) -> ref/i32) -> i32 = h
+                return 0
+            """,
+            string.Empty
+        },
+        // rg1j (invalid, SPEC 10.7, 8.10, 3.8, 10.8; PLAN G913): q1i1 as a generic implementation h<T>(x: T, ...) (T := i32).
+        {
+            "rg1j",
+            """
+            func h<T>(x: T, b: ref/i32, u: ((ref/i32 during b) -> i32) -> i32) -> i32 => 0
+
+            func f() -> i32
+                let k: (i32, ref/i32, ((ref/i32) -> i32) -> i32) -> i32 = h
+                return 0
+            """,
+            "UnprovenOriginContract_Kd h"
+        },
+        // rg2w (valid, SPEC 10.7, 8.10, 3.8, 10.8; PLAN G913): rg1j at d = 2.
+        {
+            "rg2w",
+            """
+            func h<T>(x: T, b: ref/i32, u: (((ref/i32 during b) -> i32) -> i32) -> i32) -> i32 => 0
+
+            func f() -> i32
+                let k: (i32, ref/i32, (((ref/i32) -> i32) -> i32) -> i32) -> i32 = h
+                return 0
+            """,
+            string.Empty
+        },
+        // rg3j (invalid, SPEC 10.7, 8.10, 3.8, 10.8; PLAN G913): n3j as a generic implementation, the nested Type over ref/T (T := i32).
+        {
+            "rg3j",
+            """
+            func h<T>(x: i32, b: ref/T, u: ((((ref/T during b) -> i32) -> i32) -> i32) -> i32) -> i32 => 0
+
+            func f() -> i32
+                let k: (i32, ref/i32, ((((ref/i32) -> i32) -> i32) -> i32) -> i32) -> i32 = h
+                return 0
+            """,
+            "UnprovenOriginContract_Kd h"
+        },
+        // ru4v (valid, SPEC 15.3.4, 10.7, 3.8; PLAN G913): o introduced by the result and named inside a nested Type at d = 2: bounded only at the result (o := c).
+        {
+            "ru4v",
+            """
+            func h(u: (((ref/i32 during o) -> i32) -> i32) -> i32) -> ref/i32 during o => $abort("no")
+
+            func f(c: ref/i32) -> i32
+                let k: ((((ref/i32) -> i32) -> i32) -> i32) -> ref/i32 during c = h
+                return 0
             """,
             string.Empty
         },
