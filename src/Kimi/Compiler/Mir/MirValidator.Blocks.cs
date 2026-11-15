@@ -299,6 +299,11 @@ internal sealed partial class MirValidator
                 return false;
             }
 
+            if (terminator is { Kind: MirTerminatorKind.Call, Places: true } && !this.Placed(location.Block, terminator))
+            {
+                this.Report(MirViolation.Operation); // PLAN G442: a construction's insertion transfers whole temps into it.
+            }
+
             this.calling = terminator.Kind == MirTerminatorKind.Call;
             MirUses.ForEach(body, location, ref this);
             this.calling = false;

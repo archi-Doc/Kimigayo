@@ -1809,12 +1809,14 @@ public sealed class MirValidatorTest(ITestOutputHelper output)
     }
 
     // PLAN G442 (the owner's O-97 (a)): Places marks a Dictionary literal entry's placeEntry Call, the construction's insertion: a Fn callee
-    // each of whose operands is a Move of a whole Temp. The builder's is valid; a copied operand, an operand moving a Var, and the attribute
-    // on a Goto are Operation findings.
+    // each of whose operands is a Move of a whole Temp, the first the construction's exclusive borrow, formed in the Call's block
+    // (MirBody.Construction, which MirMoveData reads). The builder's is valid; a copied operand, an operand moving a Var, a first operand
+    // whose borrow the Call's block does not form, and the attribute on a Goto are Operation findings.
     [Theory]
     [InlineData(null)]
     [InlineData("copy")]
     [InlineData("var")]
+    [InlineData("elsewhere")]
     [InlineData("goto")]
     public void APlacesCallMovesWholeTemps(string? broken)
     {
@@ -1832,6 +1834,11 @@ public sealed class MirValidatorTest(ITestOutputHelper output)
             case "var":
                 var local = Array.FindIndex(body.Locals.ToArray(), static x => x.Kind == MirLocalKind.Var);
                 Unsafe.AsRef(in body.Operands[value]) = body.Operands[value] with { Place = new(local) };
+                break;
+            case "elsewhere": // The block's borrow goes to another temp of its Type, so the Call's first operand has none.
+                var borrow = Array.FindLastIndex(body.Statements.ToArray(), blocks[call].Start + blocks[call].Count - 1, static x => x.Rvalue.Kind == MirRvalueKind.Ref);
+                var fresh = body.AddLocal(body.Locals[body.Statements[borrow].Place.Root]);
+                Unsafe.AsRef(in body.Statements[borrow]) = body.Statements[borrow] with { Place = new(fresh) };
                 break;
             case "goto":
                 var other = Array.FindIndex(blocks, static x => x.Terminator.Kind == MirTerminatorKind.Goto);

@@ -141,29 +141,9 @@ internal sealed class MirInit(MirDataflow flow, MirMoveData moves, MirCases case
                 }
                 else if (statement.Kind != MirStatementKind.EndBorrow)
                 {
-                    // SPEC 14.10.3 (R4-M175): a construction places nothing into its Never parts, and a temp taken whole gives its
-                    // component what this path left of it, read before its uses take it.
-                    var carries = statement.Kind == MirStatementKind.Assign ? moves.Carries(data.Start + i) : default;
-                    for (var k = 0; k < carries.Length; k += 2)
-                    {
-                        this.Held[k >> 1] = MirDataflow.Any(state, Lanes, Uninit, carries[k], moves.Paths[carries[k]].End);
-                    }
-
-                    this.placing = statement.Kind == MirStatementKind.Assign && statement.Rvalue.Kind is MirRvalueKind.Use or MirRvalueKind.Aggregate;
-                    MirUses.ForEach(cases, this.at, ref this);
-                    this.placing = false;
-                    foreach (var part in statement.Kind == MirStatementKind.Assign ? moves.NeverParts(data.Start + i) : default)
-                    {
-                        this.Unplaced(part);
-                    }
-
-                    for (var k = 0; k < carries.Length; k += 2)
-                    {
-                        if (this.Held[k >> 1])
-                        {
-                            this.Unplaced(carries[k + 1]);
-                        }
-                    }
+                    var assign = statement.Kind == MirStatementKind.Assign;
+                    this.placing = assign && statement.Rvalue.Kind is MirRvalueKind.Use or MirRvalueKind.Aggregate;
+                    this.Uses(assign ? moves.Carries(data.Start + i) : default, assign ? moves.NeverParts(data.Start + i) : default);
                 }
             }
 
@@ -171,8 +151,7 @@ internal sealed class MirInit(MirDataflow flow, MirMoveData moves, MirCases case
             {
                 (this.subject, this.scope, this.at) = (body.Subject(data.Terminator.Source), data.Terminator.Source.Scope, new(block, data.Count));
                 this.placing = data.Terminator.Places;
-                MirUses.ForEach(cases, this.at, ref this);
-                this.placing = false;
+                this.Uses(default, default);
             }
         }
 
@@ -242,6 +221,32 @@ internal sealed class MirInit(MirDataflow flow, MirMoveData moves, MirCases case
             else
             {
                 this.Check(path, this.subject);
+            }
+        }
+
+        // The location's uses under the view, with its carries and Never parts where it places (SPEC 14.10.3, R4-M175): a construction
+        // places nothing into its Never parts, and a temp taken whole gives its component what this path left of it, read before its
+        // uses take it.
+        private void Uses(ReadOnlySpan<int> carries, ReadOnlySpan<int> parts)
+        {
+            for (var k = 0; k < carries.Length; k += 2)
+            {
+                this.Held[k >> 1] = MirDataflow.Any(state, Lanes, Uninit, carries[k], moves.Paths[carries[k]].End);
+            }
+
+            MirUses.ForEach(cases, this.at, ref this);
+            this.placing = false;
+            foreach (var part in parts)
+            {
+                this.Unplaced(part);
+            }
+
+            for (var k = 0; k < carries.Length; k += 2)
+            {
+                if (this.Held[k >> 1])
+                {
+                    this.Unplaced(carries[k + 1]);
+                }
             }
         }
 

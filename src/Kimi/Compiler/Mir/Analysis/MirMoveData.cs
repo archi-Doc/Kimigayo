@@ -261,7 +261,7 @@ internal sealed class MirMoveData
         for (var i = 0; i < rvalue.Count; i++)
         {
             var taken = this.Taken(rvalue, i);
-            var never = taken >= 0 && taken < this.body.Locals.Length && ReferenceEquals(this.body.Locals[taken].Type, BoundType.Never);
+            var never = taken >= 0 && taken < this.body.Locals.Length && this.Never(taken);
             for (var k = 0; never && k < copies; k++)
             {
                 this.Push(rvalue.Kind == MirRvalueKind.Aggregate ? this.Component(found >> 2, rvalue, fill ? k : i) : found >> 2);
@@ -299,17 +299,7 @@ internal sealed class MirMoveData
         }
 
         carries = this.Close(carries);
-        if (parts >= 0)
-        {
-            this.nevers.Add(statement, parts);
-        }
-
-        if (carries >= 0)
-        {
-            this.carried.Add(statement, carries);
-            this.MaxCarried = Math.Max(this.MaxCarried, this.runs[carries] >> 1);
-        }
-
+        this.Publish(statement, parts, carries);
         if ((parts >= 0 || carries >= 0) && destination.Projection == 0 && this.body.Locals[destination.Root].Kind == MirLocalKind.Temp)
         {
             var tracked = this.Open();
@@ -323,10 +313,33 @@ internal sealed class MirMoveData
                 this.Push(this.runs[at]);
             }
 
-            tracked = this.Close(tracked);
-            ref var newest = ref this.nevers.Entry(~destination.Root, out var exists);
-            (this.runs[tracked + 1], newest) = (exists ? newest : -1, tracked);
+            this.Track(destination.Root, this.Close(tracked));
         }
+    }
+
+    // Whether a local is the Never value, a temp of Type Never: an operand that places nothing (SPEC 14.10.3).
+    private bool Never(int local) => ReferenceEquals(this.body.Locals[local].Type, BoundType.Never);
+
+    // A placing location's Never parts and carries by its key (runs, -1 for none).
+    private void Publish(int location, int parts, int carries)
+    {
+        if (parts >= 0)
+        {
+            this.nevers.Add(location, parts);
+        }
+
+        if (carries >= 0)
+        {
+            this.carried.Add(location, carries);
+            this.MaxCarried = Math.Max(this.MaxCarried, this.runs[carries] >> 1);
+        }
+    }
+
+    // A run of paths joins a temp's tracked runs, the newest first.
+    private void Track(int temp, int run)
+    {
+        ref var newest = ref this.nevers.Entry(~temp, out var exists);
+        (this.runs[run + 1], newest) = (exists ? newest : -1, run);
     }
 
     // The path of the temp's Place, whole or a part, that an aggregate's or a Use's operand at a position takes, -1 for any other operand.
