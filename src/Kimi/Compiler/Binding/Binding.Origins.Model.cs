@@ -407,6 +407,10 @@ internal readonly struct CallableInstance
     // A signature that carries no Origin has no well-formedness, so it adds no node.
     internal ComparisonPremises? Enclosing => this.expected is { CarriesOrigin: true } required ? new(required, this.outer) : this.outer;
 
+    // The comparison with its sides exchanged, nested in the same comparisons and judged in the same scope: the second half of an
+    // invariant position's two-way relation (SPEC 3.8, 15.3.5; RelationWalk.Fits).
+    internal CallableInstance Exchanged => new(this.expected, this.expectedBinder, this.actual, this.actualBinder, this.outer) { Scope = this.Scope };
+
     // A direct input whose outer Origin the implementation binds at that input's own position.
     internal bool IsQuantifiedInput(BoundType input, int position)
         => this.actualBinder is not null && Binding.IsBorrow(input.Semantics) && input is { Kind: BoundTypeKind.Semantics, Components.Count: 1, OriginArguments.Count: 0, Origin: { Kind: OriginKind.Input, Occurrence: null } origin } &&
