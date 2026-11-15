@@ -210,17 +210,10 @@ public sealed partial class Binding
                 continue;
             }
 
-            // SPEC 23.1.2: the direction contradiction and the identity premise error are independent; both are judged on the valid
-            // environment, the premise error once per pass, so the certificate rounds terminate (SPEC 8.2.3).
+            // SPEC 23.1.2: the direction contradiction, the identity premise error (once per pass, so the certificate rounds terminate;
+            // SPEC 8.2.3) and the facts' proofs are independent: all are judged on the valid environment, which fails after them.
             var contradiction = !environment.Invalid && !this.ValidateArithmeticDirections(scope);
             changed |= this.RecordIdentityPremiseError(scope, mode);
-            if (contradiction)
-            {
-                environment.Fail(scope.Owner); // ValidateArithmeticDirections failed the owner.
-                changed = true;
-                continue;
-            }
-
             foreach (var fact in environment.Facts)
             {
                 // The environment's judgment is its owner's, the node its record names: the proof runs in the owner's frame.
@@ -234,13 +227,27 @@ public sealed partial class Binding
                 }
 
                 var previous = scope.Owner.BindingState;
+                var restsOnFailure = this.failedCause is not null; // The proof read a failed input (SPEC 23.1.2), which RequireConstraint takes.
                 changed |= !environment.Invalid;
                 environment.Fail(scope.Owner);
                 // Other input facts can have independent contradictions. Record a
                 // sole missing-name cause only when this is the entire environment.
                 this.RequireConstraintInFrame(scope.Owner, proof, mode, frame, environment.Facts.Count == 1 ? this.FindConformanceDiagnosticCause(scope.Owner, fact) : null);
+                if (contradiction && !restsOnFailure)
+                {
+                    // The contradiction holds the owner's slot (its facts need it): the proof's own failure is a problem of its own beside
+                    // it, as the premise error's (DIAGNOSTICS 4.3).
+                    this.Record(scope.Owner, BindingFailure.InvalidConstraint, []);
+                }
+
                 changed |= previous != scope.Owner.BindingState;
                 break;
+            }
+
+            if (contradiction)
+            {
+                environment.Fail(scope.Owner); // ValidateArithmeticDirections failed the owner.
+                changed = true;
             }
         }
 
