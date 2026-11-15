@@ -107,8 +107,10 @@ public struct Utf8Writer {target}
     // `Text.FixedBuffer`, 1 a `Text.HeapBuffer`, 2 a user Writer, reserved through `dispatch`.
     let kind: isize
     var failed: bool
-    // An owning interpolation's growth hint: its later literal bytes and values (SPEC 22.10.5); 0 elsewhere.
-    let hint: isize
+    // An owning interpolation's growth hint: its later literal bytes and values (SPEC 22.10.5), which the compiler
+    // stores before each write position (the internal set); 0 elsewhere. Only `reserve`'s kind-1 arm reads it.
+    internal var hint: isize
+        private get
     // A deferred string literal's bytes, which are static storage (SPEC 3.1.2).
     var pending: raw/u8 during static
     var pendingLength: isize
@@ -533,7 +535,7 @@ public group Console
 // F32Format, F64Format, WrappingFormat and IntegerFormat rows select (Binding.WitnessGroup); string's is
 // StringWitness's (Core.kimi).
 // Each writes its text once through the writer's leaf, writeUtf8, or Wrapping<T>'s through a write of its integer; its
-// catalog row's CallerLocation passes the user's location on (SPEC 22.5.1, until G1).
+// `#CallerLocation` passes the user's location on (SPEC 22.5.1, via its private ABI).
 #Lang("BoolFormat")
 internal group BoolFormat
     #Lang("BoolFormatFormat")
