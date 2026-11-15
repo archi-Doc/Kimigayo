@@ -571,6 +571,16 @@ func punnedRef(y: uniq/i32)
     // y@follow = 5                                 // Error: keep may store value in storage the body does not own.
 ```
 
+A borrow of a temporary cannot outlive it, wherever the temporary belongs ([§3.6](03-types-and-values.md#36-temporaries)):
+
+```kimi
+// idf<T>(value: T) -> T; kf32(x: ref/[2 of i32]); pk(x: ref/[2 of i32]) -> ref/[2 of i32]; kw(x: ref/i64); pkw(x: ref/i64) -> ref/i64.
+kf32(if ready => [2 of idf(1)] else => [2 of idf(2)])       // The Loan on the argument temporary ends with the call.
+let r = pk(if ready => [2 of idf(1)] else => [2 of idf(2)]) // r carries the Loan on pk's argument temporary.
+// kf32(r)                                                  // Error: that temporary ended with the statement above.
+// kw(if ready => pkw(idf(1)) else => pkw(idf(2)))          // Error: each source's value borrows its own temporary.
+```
+
 ### 15.6.1. Origin relations and well-formedness
 
 **Liveness.** If a value whose Type contains Origin `o` may be used after P, then P belongs to `region(o)`. A raw layer's Origin is exempt: it constrains no region ([§5.7](05-raw-pointers-and-unsafe-memory.md#57-raw-pointer-origins)).

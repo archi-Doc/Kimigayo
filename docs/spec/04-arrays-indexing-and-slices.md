@@ -45,7 +45,7 @@ func fill()
 
 ### 4.3.1. Array literals and annotation holes
 
-With an expected fixed-array Type, an array literal constructs that Type and must have exactly `N` elements, acquired in source order ([§3.5](03-types-and-values.md#35-copy-and-move)). Otherwise an independent array literal constructs `Array<T>`, and a call-argument literal is fitted per candidate ([§4.4.1](#441-declaration-and-inference)). For an independent literal without an expected element Type, the element Type is the common Type of its elements, found as [§14.9.2](14-control-flow.md#1492-target-result-type-and-expression-type) step 2 finds one for result sources: with `n: ref/i32`, `[n, 1]` constructs `Array<i32>`, `n` value-read ([§3.5.3](03-types-and-values.md#353-value-read)). An empty literal needs a known element Type.
+With an expected fixed-array Type, an array literal constructs that Type and must have exactly `N` elements, acquired in source order ([§3.5](03-types-and-values.md#35-copy-and-move)). Otherwise an independent array literal constructs `Array<T>`, and a call-argument literal is fitted per candidate ([§4.4.1](#441-declaration-and-inference)). An expected element Type is the expected Type of every element ([§12.3.1](12-expressions.md#1231-expected-types-and-defaults)), also the one an expected `ref/U` gives through `U` and the one each candidate gives at a position of a call argument ([§10.5.1](10-overload-resolution-and-inference.md#1051-argument-kinds)). For an independent literal without an expected element Type, the element Type is the common Type of its elements, found as [§14.9.2](14-control-flow.md#1492-target-result-type-and-expression-type) step 2 finds one for result sources: with `n: ref/i32`, `[n, 1]` constructs `Array<i32>`, `n` value-read ([§3.5.3](03-types-and-values.md#353-value-read)). An empty literal needs a known element Type.
 
 An initialized local `let` or `var` may write `_` for the length, the element Type or both in a fixed-array annotation, at any depth of written fixed-array structure. The initializer alone must determine every hole: a length hole takes the literal's element count or the initializer's fixed-array length; an element hole follows ordinary element evidence and numeric defaults, and an inner literal without a written fixed-array expectation constructs `Array<T>`. All elements must agree; a mismatch is an error, never a fallback to `Array<T>`. A written part of the annotation is an expectation for the initializer, also for inference through a callee's signature. Holes are forbidden in uninitialized declarations, signatures, Fields, static storage and explicit generic arguments.
 
@@ -63,6 +63,11 @@ let ragged: [_ of [_ of _]] = [[1], [2, 3]] // Error: conflicting inner lengths.
 let wrong: [3 of i32] = [1, 2]              // Error: element count.
 ```
 
+```kimi
+// idf<T>(value: T) -> T; ka(x: ref/Array<i64>).
+ka(if ready => [idf(1), 2] else => [idf(3)]) // Every element of each source is checked against i64: idf<i64>.
+```
+
 ### 4.3.2. Initial construction
 
 An annotation-only declaration stays Uninitialized; there is no zero fill. A whole-array initializer or assignment constructs it; part-wise writes before construction are errors ([§15.1.2](15-ownership-and-lifetime-analysis.md#1512-construction-and-completeness)).
@@ -75,7 +80,7 @@ pending = [1, 2]
 
 ### 4.3.3. Fill construction
 
-`[Length of value]` constructs a fixed array; an `Array<T>` expectation is a mismatch. `Length` follows [§4.2](#42-length-expressions), and the element Type must be Copy. `value` is evaluated and acquired exactly once, even for length zero, and copied into every element. The array carries `value`'s Loans ([§15.6](15-ownership-and-lifetime-analysis.md#156-borrow-checking)) at every length, so `[0 of v]` keeps them too.
+`[Length of value]` constructs a fixed array; an `Array<T>` expectation is a mismatch. `Length` follows [§4.2](#42-length-expressions), and the element Type must be Copy. Where an expected element Type exists, `value` is checked against it ([§12.3.1](12-expressions.md#1231-expected-types-and-defaults)), an expected `ref/U` giving the element Type of `U`; otherwise `value`'s own Type is the element Type. `value` is evaluated and acquired exactly once, even for length zero, and copied into every element. The array carries `value`'s Loans ([§15.6](15-ownership-and-lifetime-analysis.md#156-borrow-checking)) at every length, so `[0 of v]` keeps them too.
 
 ```kimi
 let zeros: [64 of u8] = [64 of 0]
@@ -84,6 +89,13 @@ var x = 1
 let none = [0 of x@ref]  // [0 of ref/i32] carries x's Loan.
 // x = 2                 // Error: none is used below.
 inspect(none)
+```
+
+```kimi
+// idf<T>(value: T) -> T; kf(x: ref/[2 of i64]); kg<V>(x: ref/[2 of V]); wr: ref/i64.
+kf([2 of idf(1)])        // The fill value is checked against i64: idf<i64>; one temporary, borrowed.
+kf([2 of wr])            // wr is value-read as i64.
+// kg([2 of idf(1)])     // Error: V is unbound, so idf(1) has no expected Type and is no evidence.
 ```
 
 ### 4.3.4. `noinit`
@@ -214,7 +226,7 @@ A **range** is an interval of positions with the same meaning whether stored, pa
 | `..b` / `..=b` | `Range<Start, E>` / `ClosedRange<Start, E>` |
 | `..` | `Range<Start, End>` |
 
-Syntax alone fixes the shape. Construction checks nothing; a reversed range is a valid value. Each boundary is a value of a `Position` Type, read through references ([§3.5.3](03-types-and-values.md#353-value-read)), and the two boundary Types are independent. A boundary that is not literal-only ([§12.3](12-expressions.md#123-literal-typing)) needs its own known Type. A literal-only boundary (`^a` is literal-only when `a` is) takes its Type from the first applicable rule, and a mismatch never retries a later one:
+Syntax alone fixes the shape. Construction checks nothing; a reversed range is a valid value. Each boundary is a value of a `Position` Type, read through references ([§3.5.3](03-types-and-values.md#353-value-read)), and the two boundary Types are independent. A boundary that is not literal-only ([§12.3](12-expressions.md#123-literal-typing)) is checked against the `S` or `E` of the range's expected Type ([§12.3.1](12-expressions.md#1231-expected-types-and-defaults); an expected `ref/U` gives those of `U`), and without one needs its own known Type. A literal-only boundary (`^a` is literal-only when `a` is) takes its Type from the first applicable rule, and a mismatch never retries a later one:
 
 1. The `S` or `E` of the range's expected Type.
 2. The established integer Type of the other boundary (`T` for `FromEnd<T>`).
@@ -230,6 +242,11 @@ let c = 0@i32..2@i64          // Range<i32, i64>: resolvable, not iterable.
 let n: i64 = 2
 let d: Range<i64, u8> = n..10 // 10 is u8 from the expected Type.
 let f = (0..3) == (0..=2)     // Error: different range Types.
+```
+
+```kimi
+// idf<T>(value: T) -> T; kr(x: ref/Range<i64, i64>).
+kr(idf(1)..3)                 // Both boundaries are checked against i64: idf<i64>.
 ```
 
 ### 4.6.3. Resolution
