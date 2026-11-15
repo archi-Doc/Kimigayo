@@ -566,56 +566,9 @@ public sealed partial class Binding
             }
         }
 
-        // Row (5) (PLAN G881; SPEC 8.2.3): the link is one Type with each member of its class in the request's classes, so their rows
-        // are the link's. The class-key index gives the link every member's facts where the link or its key is walked; what no index
-        // holds is a projection member's rows (2), the clause instances of its own chain's prefixes (`U is T.(A).Next.(B).Next`: T's
-        // chain supplies `T.(A).Next.(B).Next is C`), so each projection mate's walk adds its rows, in Order, never premise order. A
-        // mate whose chain holds a link open in this walk (a cycle, `T.(Cy2).X.(Mid).Next is T`; SPEC 8.2.3 Cycles) is not walked from
-        // here: it would read the open link as empty and leave that partial answer in the memo. It is deferred: it adds its rows of
-        // the request's last round, and EnumerateClosed walks it once the request's chains are closed and walks again until no link's
-        // rows move (the least fixpoint, PLAN G881b). A constructed link (`Leaf` under `T.(Holder).Item is Leaf`) takes no mate's rows: its conformance is ResolveConformance's
-        // (the class header's Identity; ClassKey keys it to itself), so a premise contradicting it stays the premise's error (d09y).
         if (this.enumerateClasses is { } classes && subject.Kind is BoundTypeKind.Parameter or BoundTypeKind.AssociatedProjection)
         {
-            var mates = this.enumerateMates.Count;
-            classes.ProjectionMembers(subject, this.enumerateMates);
-            var end = this.enumerateMates.Count; // A nested walk's mates are above it and gone when it returns.
-            try
-            {
-                for (var m = mates; m < end; m++)
-                {
-                    var mate = this.enumerateMates[m];
-                    if (ReferenceEquals(mate, subject))
-                    {
-                        continue;
-                    }
-
-                    List<PremiseRow>? mateRows;
-                    if (this.HoldsOpenLink(mate, view, index.Serial))
-                    {
-                        if (!this.enumerateDeferred.Contains(mate))
-                        {
-                            this.enumerateDeferred.Add(mate);
-                        }
-
-                        mateRows = this.enumerateSeed.GetValueOrDefault((mate, view, index.Serial));
-                    }
-                    else
-                    {
-                        this.IdentityMateWork++;
-                        mateRows = this.Enumerate(mate, view, index);
-                    }
-
-                    for (var r = 0; mateRows is not null && r < mateRows.Count; r++)
-                    {
-                        AddRow(rows, 0, mateRows[r]);
-                    }
-                }
-            }
-            finally
-            {
-                this.enumerateMates.RemoveRange(mates, this.enumerateMates.Count - mates);
-            }
+            this.EnumerateMates(subject, classes, view, index, rows); // Row (5).
         }
 
         for (var i = 0; i < rows.Count; i++)
@@ -634,6 +587,59 @@ public sealed partial class Binding
         }
 
         return rows;
+    }
+
+    // Row (5) (PLAN G881; SPEC 8.2.3): the link is one Type with each member of its class in the request's classes, so their rows
+    // are the link's. The class-key index gives the link every member's facts where the link or its key is walked; what no index
+    // holds is a projection member's rows (2), the clause instances of its own chain's prefixes (`U is T.(A).Next.(B).Next`: T's
+    // chain supplies `T.(A).Next.(B).Next is C`), so each projection mate's walk adds its rows, in Order, never premise order. A
+    // mate whose chain holds a link open in this walk (a cycle, `T.(Cy2).X.(Mid).Next is T`; SPEC 8.2.3 Cycles) is not walked from
+    // here: it would read the open link as empty and leave that partial answer in the memo. It is deferred: it adds its rows of
+    // the request's last round, and EnumerateClosed walks it once the request's chains are closed and walks again until no link's
+    // rows move (the least fixpoint, PLAN G881b). A constructed link (`Leaf` under `T.(Holder).Item is Leaf`) takes no mate's rows: its conformance is ResolveConformance's
+    // (the class header's Identity; ClassKey keys it to itself), so a premise contradicting it stays the premise's error (d09y).
+    // Its own member, so EnumerateLink's body, walked for every link, holds no try region.
+    private void EnumerateMates(BoundType subject, IdentityClasses classes, EvidenceView view, ViewIndex index, List<PremiseRow> rows)
+    {
+        var mates = this.enumerateMates.Count;
+        classes.ProjectionMembers(subject, this.enumerateMates);
+        var end = this.enumerateMates.Count; // A nested walk's mates are above it and gone when it returns.
+        try
+        {
+            for (var m = mates; m < end; m++)
+            {
+                var mate = this.enumerateMates[m];
+                if (ReferenceEquals(mate, subject))
+                {
+                    continue;
+                }
+
+                List<PremiseRow>? mateRows;
+                if (this.HoldsOpenLink(mate, view, index.Serial))
+                {
+                    if (!this.enumerateDeferred.Contains(mate))
+                    {
+                        this.enumerateDeferred.Add(mate);
+                    }
+
+                    mateRows = this.enumerateSeed.GetValueOrDefault((mate, view, index.Serial));
+                }
+                else
+                {
+                    this.IdentityMateWork++;
+                    mateRows = this.Enumerate(mate, view, index);
+                }
+
+                for (var r = 0; mateRows is not null && r < mateRows.Count; r++)
+                {
+                    AddRow(rows, 0, mateRows[r]);
+                }
+            }
+        }
+        finally
+        {
+            this.enumerateMates.RemoveRange(mates, this.enumerateMates.Count - mates);
+        }
     }
 
     // A row's Contract from the constraint stating it, for rows (1) and (2) alike (R7-C2c2 c2-2, the owner's O-248 (b)): a use's Origin
