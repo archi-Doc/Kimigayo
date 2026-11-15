@@ -13622,6 +13622,37 @@ resumed by R4-M86 (2026-10-20).
     rejected; no valid program newly rejected, no invalid one newly accepted. Open on dev and the head: c0v (PLAN G905), and s5v,
     m0v-m3v, b0v, b1v, n0j (valid, rejected) with n3j (invalid, accepted) in PLAN G913.
   - Rejected: arity or instance tests on the Type; the enclosing comparisons' binders in the walk; `binder.BoundType == signature`.
+- **BU-216 The use-site fit walks the Type relation once (PLAN G492-a unit (i))** (Front, 2026-11-16; Binding; Major,
+  behavior-preserving; the owner's O-264 (a), O-297 (a), O-310 (a); after G900, BU-211) SPEC 15.6.1.
+  - Decision: `CheckTypeUse` (SPEC 15.6.1's use-site fit) walks the Type relation once, at its root. The walk publishes one result
+    per part it enters outside every Callable comparison (`RelationWalk.FitPart`: the pair, verdict, resting, own shape, first
+    failure, fact range, end), and `CheckTypeUseCore` decomposes those parts in walk order (`FitCursor`) to form the position
+    obligations, instead of walking each part again.
+  - Orientation: each part is read from a walk in the fit's own orientation. The root walk is that walk for every part except an
+    invariant part the relation meets reversed (an invariant layer or slot under a contravariant slot). That part is walked once
+    more, as the fit composes it, for itself and everything in it, because its Function comparisons are oriented (the owner's O-310
+    (a)). So the decision includes one extra walk per reversed invariant subtree, never nested: below an invariant part the variance
+    stays invariant.
+  - Precondition, stated in `CheckTypeUseCore`'s contract: a reversed part's structure does not depend on the orientation, so the
+    root walk does not end inside such a part while the fit's own walk of it holds; a part read past the walk's parts, or a pair
+    that is not the walk's next part, is a broken contract (`InternalInvariant_Kd`). With G900 the precondition also covers the
+    exchanged comparison: a reversed invariant Function part is compared both ways, so an orientation-dependent end in the exchanged
+    direction, under a fit direction that fails as a condition, would end the root walk where the part's own walk does not; no such
+    form is known (x4, x5, y4, y6o are test rows), and the contract's throw guards it.
+  - With G900 (BU-211) the decomposition goes on past a failed Function part, the first failed part's failure and facts being the
+    fit's, and stops at a structural failure, where the walk ended, so it reads no part after the walk's end.
+  - Reason: the per-part walk repeated every position at every enclosing part (d+1 times; per path on a Type DAG), the cost G492-a
+    unit (ii)'s on-demand slots cannot carry. Each part's answer is the one dev's per-part walk at it gives, checked with dev's
+    per-part walks run beside every part (no difference on the coverage rows, the Unit's classes and the design review's programs),
+    so records and verdicts are unchanged.
+  - Rejected: a second obligation path in `LocalBorrowType`; one fact per pair of parts (moves records); obligations formed inside
+    the walk (a mode in the relation's walk); walking the relation itself in the fit's orientation (moves `FitsTypeAt`'s records,
+    e3fr's "a == b" and the root's verdict, so the root's early exit forms other obligations); swapping a part's fact ends (exact
+    only at Origin positions, not at a Function comparison, whose verdict is oriented); a mode or flag on `RelationWalk` that makes
+    it walk a reversed invariant part in the fit's orientation (AGENTS: a bool or mode steering a function).
+  - Kept, with its removal condition: `CheckTypeUseCore`'s own shape test (a second copy of `SameShape`, differing on Closure
+    contexts and inferred lengths); a part whose walk ended at the pair itself stops the decomposition. Removal: the unit that
+    rewrites the fit path's shape decision (PLAN G940).
 - **G209-1** (2026-10-24; structural unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source
   aliases their selected container and environment before ordinary lookup merges imports. These responsibilities were embedded in the
   general expression parser and `Binding.Types.Lookup`, with alias resolution beside Type formation. `Parser.RuntimeTypeTests` now
