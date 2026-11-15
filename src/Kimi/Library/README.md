@@ -104,7 +104,8 @@ Subscripts, direct calls and generic Contract calls share these bodies; catalog 
 physical ABI so the missing-key primitive reports the access rather than the embedded source.
 The same catalog metadata and private ABI carry the caller context through Position/range `resolve`, integer range
 iteration entries and their `starting` helpers, and Array `truncate`. Their Kimigayo bodies choose the failure;
-`Storage.argumentOutOfRange` only reports its canonical code at the forwarded location. Ordinary user `$abort` is unchanged.
+`Storage.indexBounds` reports every failure of an aborting position or range operation and `Storage.argumentOutOfRange` only a
+numeric argument out of range; both at the forwarded location. Ordinary user `$abort` is unchanged.
 `tryInsert` and `insertOrReplace` search through the shared storage remainder in ordinary source. The private
 `DictionaryStorage.placeEntry` appends one slot and places the acquired pair, carrying the standard operation's caller location
 for growth failure; `DictionaryStorage.replaceValue` moves a live entry's value out through `DictionaryStorage.valueAt` and

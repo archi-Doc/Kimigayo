@@ -105,7 +105,7 @@ internal static partial class KimiLibraryCatalog
         new(KimiDeclarationId.InvalidUtf8, "InvalidUtf8", KimiLibraryContainer.Text),
         new(KimiDeclarationId.TextFixed, "fixed", KimiLibraryContainer.Text, SourceFunction: true), // A direct line's region (R8-W2).
         new(KimiDeclarationId.TextHeap, "heap", KimiLibraryContainer.Text, SourceFunction: true, CallerLocation: true),
-        new(KimiDeclarationId.TextWriter, "writer", KimiLibraryContainer.Text, Function: CompilerFunctionKind.TextWriter),
+        new(KimiDeclarationId.TextWriter, "writer", KimiLibraryContainer.Text, SourceFunction: true), // A formatting plan's adapter (R8-W2 b2-1).
         new(KimiDeclarationId.TextToString, "toString", KimiLibraryContainer.Text, SourceFunction: true, CallerLocation: true, Row: Formats),
         new(KimiDeclarationId.TextTryFormat, "tryFormat", KimiLibraryContainer.Text, SourceFunction: true, CallerLocation: true, Row: Formats),
         new(KimiDeclarationId.FixedBufferReserve, "reserve", KimiLibraryContainer.FixedBuffer, SourceFunction: true, CallerLocation: true),
@@ -176,6 +176,11 @@ internal static partial class KimiLibraryCatalog
         new(KimiDeclarationId.StorageGrowArray, "growArray", KimiLibraryContainer.Storage, SourceFunction: true, CallerLocation: true),
         new(KimiDeclarationId.StorageDestroyValues, "destroyValues", KimiLibraryContainer.Storage, Function: CompilerFunctionKind.StorageDestroyValues),
         new(KimiDeclarationId.StorageErasedReserve, "erasedReserve", KimiLibraryContainer.Storage, Function: CompilerFunctionKind.StorageErasedReserve),
+        new(
+            KimiDeclarationId.StorageReserveDispatch,
+            "reserveDispatch",
+            KimiLibraryContainer.Storage,
+            Function: CompilerFunctionKind.StorageReserveDispatch),
         new(KimiDeclarationId.StorageFormatFloat, "formatFloat", KimiLibraryContainer.Storage, Function: CompilerFunctionKind.StorageFormatFloat),
         new(KimiDeclarationId.StorageFormatInteger128, "formatInteger128", KimiLibraryContainer.Storage, Function: CompilerFunctionKind.StorageFormatInteger128),
         new(KimiDeclarationId.StorageShrinkArray, "shrinkArray", KimiLibraryContainer.Storage, SourceFunction: true, CallerLocation: true),
