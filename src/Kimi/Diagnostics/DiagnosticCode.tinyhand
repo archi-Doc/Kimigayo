@@ -797,6 +797,11 @@
     Message="A Type formed here is higher than the implementation limit of {0}"
     Arguments="limit:Number"
 
+  + Name="PremiseClosureLimit_Kd"
+    Category="Resource"
+    Message="The identities the premises supply for a Type judged here are not closed within the implementation limit of {0} rounds"
+    Arguments="limit:Number"
+
   + Name="ExpansionLimit_Kd"
     Category="Resource"
     Message="This expansion is not built: its function body has passed, or would pass, the implementation limit of 65536 MIR statements"

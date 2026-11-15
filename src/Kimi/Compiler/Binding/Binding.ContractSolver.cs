@@ -81,7 +81,15 @@
 //   only at a prefix of a cycle's mate joins no extension. An outermost refinement request (PremiseRefines)
 //   whose walk is not positive for its demanded Contract and recorded rows builds its own classes over the view's premises and
 //   those rows (ExtendedClassesOf: request-local, the rows Provisional),
-//   re-keys its subject and its view's facts and walks again while a round adds a row. Nothing computed under an extension is kept (no
+//   re-keys its subject and its view's facts and walks again while a round adds a row, at most IdentityRoundLimit rounds (SPEC 8.3.3
+//   Limits; the owner's O-321 (b)): a mate's chain may be deeper than the link it is identical with (row (5)), so under a path
+//   equation to a deeper projection (`Self.(Pq).Up is Self.(Pq).Next.(Pq).Next.(Pq).Up`, allowed) each round supplies a deeper
+//   identity and the rounds have no end of their own. A request still unproven at the bound is refused (RefuseProof:
+//   PremiseClosureLimit, a Resource record, SPEC 23.1.1, at the use whose check asked, else at the owner of the request's scope)
+//   and the proof that asked rests on the refusal, so a judgment that fails on it is a resource failure, never Unknown by
+//   exhaustion; a judgment other evidence proves stands, a request proven within the bound is proven, and a query made after the
+//   pass has counted its failures (a lint, MIR, emission) keeps Unknown (PLAN G651 U2's outcome). Nothing computed under an
+//   extension is kept (no
 //   kept row, no key column of the view's table), and a kept row answers only where it decides: a refinement among the rows, or rows
 //   whose walk recorded no identity row, which no extension reaches; else the request walks and extends as if nothing were kept
 //   (whether a walk extends depends on the Contract asked, the rows do not). So an answer is a function of (subject, view) (SPEC
@@ -301,7 +309,8 @@ public sealed partial class Binding
     }
 
     // A link's rows as EnumerateClosed's stop test reads them: its rows, an available one twice. A link's rows and their
-    // availability only grow from round to round, so equal weights are equal rows.
+    // availability only grow from round to round, so equal weights are equal rows up to their Sources (a leaf row's Stated is its
+    // prefix row's Source, the first available derivation's, which a later round may change at equal weight; it decides no verdict).
     private static int RowWeight(List<PremiseRow>? rows)
     {
         var weight = 0;
@@ -544,9 +553,9 @@ public sealed partial class Binding
                 foreach (var (_, _, premise) in new ContractSupply(this, shape, root, view.Premises))
                 {
                     // An identity row is an available row's clause: an unavailable Contract premise supplies no ground (SPEC 8.3.1). A
-                    // deferred mate's walk records none (the class header's Extension).
+                    // deferred mate's walk keeps none (EnumerateClosed; the class header's Extension).
                     if (premise is { Kind: ConstraintKind.TypeIdentity, Subject: { } left, RequiredType: { } right } && this.enumerateDepth == 1 &&
-                        !this.enumerateDeferring && prefix[i].Available && !this.enumerateIdentities.Contains((left, right)))
+                        prefix[i].Available && !this.enumerateIdentities.Contains((left, right)))
                     {
                         this.enumerateIdentities.Add((left, right)); // c2-2: an identity row (SPEC 8.2.3 grounds), for the request's classes
                     }

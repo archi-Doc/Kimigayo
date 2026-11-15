@@ -6,7 +6,8 @@ namespace Kimi.Compiler;
 
 // The proof frame's failure channel (DECISIONS BU-22, N3-1; SPEC 8.3.3, 23.1.1, 23.1.2), a part of constraint validation.
 // - Responsibility: the proof scopes (BeginProof, EndProof) and the causes they carry: the first limit (L) and Error cause a scope read,
-//   kept by the scope whose answer rests on them (ProofCause, ReadVerdict); the one failed cause a settled proof leaves for the check
+//   kept by the scope whose answer rests on them (ProofCause, ReadVerdict), a refused analysis among the limits (RefuseProof); the
+//   one failed cause a settled proof leaves for the check
 //   that failed on it (failedCause, TakeFailedCause) or for a later record (HoldCause); the reset of each pass (ClearProofScopes);
 //   the judgment that left a candidate trial Pending before its proof, carried by the trial frame to its selection (trialPending, BU-86);
 //   the clause fact a scope holds at its answer (ProofClause), which a clause list and a Type's per-use formation hand on (LeaveClause,
@@ -55,6 +56,10 @@ public sealed partial class Binding
     // The judgment that left a candidate trial Pending before its proof (DECISIONS BU-86), diagnostic payload only; its selection reads
     // it (EvaluateCallCandidate).
     private PendingJudgment? trialPending;
+
+    // The pass's refusals by node (RefuseProof): one cause a node, so an answer computed again rests on the same cause (the
+    // capability engine's fixpoint compares causes by reference).
+    private Dictionary<Koto, Refusal>? refusals;
 
     // The innermost open frame's epoch (0: none) and the monotonic counter that issues them, never reused (design-r2 Amendment 5), and
     // the frame that encloses the outermost scope's own (BeginProof, EndProof).
@@ -116,9 +121,15 @@ public sealed partial class Binding
             return this.ReadVerdict(proof, cause, fact);
         }
 
-        // Where the answer is no longer combined, an untaken U fact is dropped and an Unknown without a limit leaves its own for the
-        // frame's consumer, under the epoch of the frame it is read in; an untaken clause fact is dropped (a clause list leaves its own
-        // after its end, LeaveClause).
+        // Where the answer is no longer combined, a refusal it rests on is settled (RefuseProof): its node is failed, so the record
+        // exists whoever reads the Error; an answer read after the pass rests on none and is its Unknown.
+        if (cause is Refusal refusal && !refusal.Settle())
+        {
+            cause = null;
+        }
+
+        // An untaken U fact is dropped and an Unknown without a limit leaves its own for the frame's consumer, under the epoch of the
+        // frame it is read in; an untaken clause fact is dropped (a clause list leaves its own after its end, LeaveClause).
         this.failedClause = null;
         this.failedUnknown = cause is null ? fact : null;
         if (this.failedUnknown is { } left)
@@ -334,8 +345,42 @@ public sealed partial class Binding
         return ConstraintProof.Error;
     }
 
+    // SPEC 8.3.3 (Limits), 23.1.1 (DECISIONS BU-22's L): an analysis a judgment needs reached an implementation limit (`limit`, a
+    // failure whose record's category is Resource), so its negative answer is a resource failure, never Unknown or Refuted. The
+    // limit's record is `site`'s: the open consultation frame's node (the use), else the owner of the scope whose premises the
+    // analysis read (the declaration that reaches the limit), so no refusal is without a node. Inside a proof the answer joins it
+    // as a limit whose Use is that node: an Unknown resting on it is Error wherever it is read again (a capability result, a
+    // memo, a source state), and the node is failed where such an answer is no longer combined (EndProof), so the record exists
+    // whoever reads the Error and a check failing on it derives from the record; a judgment other evidence proves stands and
+    // nothing is recorded, and neither is anything inside a source-state publication, whose rounds are one proof scope. Outside
+    // every proof the node's own check reads the answer as a decision, so the node is failed at once. All of it while the pass
+    // produces its failures (producing): a query after the pass (a lint, MIR, emission, the editor) fails no node, so its
+    // request answers Unknown, as without the analysis (PLAN G651 U2 gives the after-run queries their outcome).
+    private void RefuseProof(Koto site, BindingFailure limit)
+    {
+        if (!this.producing)
+        {
+            return;
+        }
+
+        if (this.proofNesting != 0 || this.capabilityConsumer is not null)
+        {
+            this.refusals ??= new(ReferenceEqualityComparer.Instance);
+            if (!this.refusals.TryGetValue(site, out var refusal))
+            {
+                this.refusals[site] = refusal = new(this, site, limit);
+            }
+
+            this.ReadVerdict(ConstraintProof.Unknown, refusal, null);
+            return;
+        }
+
+        this.Fail(site, limit);
+    }
+
     private void ClearProofScopes()
     {
+        this.refusals?.Clear();
         this.failedCause = null;
         Array.Clear(this.proofScopes);
         this.failedUnknown = null;
@@ -397,7 +442,7 @@ public sealed partial class Binding
     }
 
     // What a proof scope read, of which it keeps what its own answer rests on (EndProof): the first limit (L, an Unknown resting on a
-    // located Unsupported_Kd) and the first Error cause (DECISIONS BU-22, N3-1); the U fact, the first Callable comparison failure an
+    // located Unsupported_Kd or on a refusal's Resource record) and the first Error cause (DECISIONS BU-22, N3-1); the U fact, the first Callable comparison failure an
     // Unknown rests on (design-r2 Amendment 4); the clause fact, the clause a clause list's combined verdict rests on, handed one step
     // outward (G351a); and the first Origin not proven `static` an Owned answer rests on, kept only when the answer is not Proven
     // (R4-M161, r2-1b; CapabilityWork.Origin). All but the causes are diagnostic payload only.
@@ -408,5 +453,31 @@ public sealed partial class Binding
         internal CallableUnknown? Unknown;
         internal ClauseFact? Clause;
         internal BoundOrigin? Origin;
+    }
+
+    // What a proof that read a refused analysis rests on (RefuseProof): the node the limit is recorded at, failed where an answer
+    // resting on it is no longer combined within the pass (Settle; its first failure only, Fail).
+    private sealed class Refusal(Binding binding, Koto use, BindingFailure limit) : ICheckCause
+    {
+        public Koto Use { get; } = use;
+
+        public ICheckCause? Next => null;
+
+        public ICheckCause? ReentrySite => null;
+
+        public void Rest()
+        {
+        }
+
+        // False after the pass: no node is failed there.
+        internal bool Settle()
+        {
+            if (binding.producing)
+            {
+                binding.Fail(this.Use, limit);
+            }
+
+            return binding.producing;
+        }
     }
 }

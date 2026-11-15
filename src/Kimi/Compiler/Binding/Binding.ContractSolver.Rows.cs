@@ -39,13 +39,15 @@ public sealed partial class Binding
     private int enumerateWalking;
     private int enumerateKeptPoolNext;
     private bool enumerateMoved; // PLAN G881b: a link of the round closed with rows that are not its last round's
-    private bool enumerateDeferring; // PLAN G881b: EnumerateClosed is walking the round's deferred mates
     private IdentityClasses? enumerateClasses; // R7-C2c2: the current request's view's identity classes, or null
 
     // The scaling rows' measure: the pairs Closure(view)'s entries indexed in this compilation, in every row (a fact of a row kind,
     // TypeIdentity or Semantics as written; a row kind's fact under its class key and a Contract fact as read), the validators' entries
     // included.
     internal int ClosureIndexWork { get; private set; }
+
+    /// <summary>The greatest number of extension rounds of one request (SPEC 8.3.3 Limits; the class header's Extension).</summary>
+    internal const int IdentityRoundLimit = 32;
 
     // R7-C2c2 c2-2: the extension rounds of this compilation (the scaling rows' measure of the loop's bound).
     internal int IdentityRounds { get; private set; }
@@ -136,11 +138,24 @@ public sealed partial class Binding
                 var refines = RowsRefine(rows, contract) || RowsRefine(keyRows, contract);
 
                 // R7-C2c2 c2-2: the identity rows the walk recorded join the request's own classes, and the walk runs again under
-                // them while a round records a row the last extension did not hold. Bound: rows only grow, and each is a clause
-                // instance at a distinct link Type some round walked (the prefixes of the subject and of its successive keys, each key
-                // no deeper than the Type it keys), so the rounds are at most those (link Type, clause) pairs plus one.
-                for (var applied = 0; !refines && this.enumerateDepth == 1 && this.enumerateIdentities.Count > applied;)
+                // them while a round records a row the last extension did not hold. Rows only grow, and each is a clause instance at
+                // a distinct link Type some round walked: the prefixes of the subject, of its successive keys (each no deeper than
+                // the Type it keys) and of row (5)'s mates, which may be deeper than the link they are identical with. Under a path
+                // equation to a deeper projection (SPEC 8.3.3 Limits: allowed; `Self.(Pq).Up is Self.(Pq).Next.(Pq).Next.(Pq).Up`)
+                // each round's mate supplies a deeper identity and the link Types have no end, so the rounds are bounded
+                // (IdentityRoundLimit): a request still unproven after them is refused (RefuseProof: PremiseClosureLimit, a Resource
+                // record at its use, or at its scope's owner where no check's frame is open; the owner's O-321 (b)), never Unknown by
+                // exhaustion while the pass produces its failures (a query after the pass keeps Unknown: RefuseProof). Whether a
+                // request reaches the bound is a function of (subject, Contract, view): a kept answer never stands for a request
+                // that would extend (the class header).
+                for (var (applied, rounds) = (0, 0); !refines && this.enumerateDepth == 1 && this.enumerateIdentities.Count > applied; rounds++)
                 {
+                    if (rounds == IdentityRoundLimit)
+                    {
+                        this.RefuseProof(this.consultationNode ?? scope.Owner, BindingFailure.PremiseClosureLimit);
+                        break;
+                    }
+
                     applied = this.enumerateIdentities.Count;
                     if (this.ExtendedClassesOf(scope, this.enumerateIdentities) is not { } extended)
                     {
@@ -198,18 +213,17 @@ public sealed partial class Binding
             this.enumerateDeferred.Clear();
             var rows = this.Enumerate(subject, view, index);
             var keyRows = ReferenceEquals(key, subject) ? null : this.Enumerate(key, view, index);
-            this.enumerateDeferring = true;
-            try
+
+            // A deferred mate's walk records no identity row (the class header's Extension): the deferred walks are the round's
+            // last, so what they recorded first is removed, and a row an earlier walk of the request recorded stays.
+            var recorded = this.enumerateIdentities.Count;
+            for (var d = 0; d < this.enumerateDeferred.Count; d++)
             {
-                for (var d = 0; d < this.enumerateDeferred.Count; d++)
-                {
-                    this.Enumerate(this.enumerateDeferred[d], view, index);
-                }
+                this.IdentityMateWork++;
+                this.Enumerate(this.enumerateDeferred[d], view, index);
             }
-            finally
-            {
-                this.enumerateDeferring = false;
-            }
+
+            this.enumerateIdentities.RemoveRange(recorded, this.enumerateIdentities.Count - recorded);
 
             if (this.enumerateDeferred.Count == 0 || !this.enumerateMoved)
             {

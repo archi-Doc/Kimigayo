@@ -136,6 +136,49 @@ public partial class TypeDagScalingTest
         }
     }
 
+    // PLAN G881 with G881b (the owner's O-321 (b); SPEC 8.3.3 Limits, 23.1.1): the extension rounds of one request end at
+    // Binding.IdentityRoundLimit. Pq's path equation `Self.(Pq).Up is Self.(Pq).Next.(Pq).Next.(Pq).Up` (allowed) supplies one deeper
+    // identity a round through row (5)'s mate, so with Inner supplied at `T` + 2k times `.(Pq).Next` + `.(Pq).Up` the request for
+    // `T.(Pq).Up is Inner` is proven after k - 1 rounds (valid: SPEC 8.3.2, 8.2.3; the call is judged twice, so 6, 14, 30 rounds at
+    // k = 4, 8, 16) and its mate walks grow with the cube of k (rounds x mates x a round's walks; asserted within x16 per x2). A
+    // request is proven through k = limit + 1. One step deeper (valid), or with nothing supplying Inner (invalid), it is refused
+    // after limit rounds: the limit's one Resource record at the use, naming the limit, and no Proof or Language record.
+    [Fact]
+    public void ExtensionRoundsEndAtTheRoundLimit()
+    {
+        const int Limit = Kimi.Compiler.Binding.IdentityRoundLimit;
+        var (p4, p8, p16, edge) = (Proven(4), Proven(8), Proven(16), Proven(Limit + 1));
+        Assert.True(p4.Rounds == 6 && p8.Rounds == 14 && p16.Rounds == 30 && edge.Rounds == 2 * Limit, $"rounds {p4.Rounds}, {p8.Rounds}, {p16.Rounds}; {edge.Rounds} at the edge");
+        Assert.True(p8.Work <= 16 * p4.Work && p16.Work <= 16 * p8.Work, $"mate work {p4.Work}, {p8.Work}, {p16.Work} at 4, 8, 16; {edge.Work} at the edge");
+        Refused(Source(Limit + 2));
+        Refused(Source(0));
+
+        static (long Rounds, long Work) Proven(int k)
+        {
+            var c = MinimalEmissionTest.Analyze(Source(k));
+            Assert.True(CompilationTestHelper.PublishedErrors(c).Length == 0, MinimalEmissionTest.Describe(c));
+            return (c.Binding.IdentityRounds, c.Binding.IdentityMateWork);
+        }
+
+        static void Refused(string source)
+        {
+            var c = MinimalEmissionTest.Analyze(source);
+            var record = Assert.Single(CompilationTestHelper.PublishedErrors(c));
+            Assert.Equal(nameof(Kimi.DiagnosticCode.PremiseClosureLimit_Kd), record.Code);
+            Assert.Contains(Limit.ToString(System.Globalization.CultureInfo.InvariantCulture), record.Message, StringComparison.Ordinal);
+            Assert.Equal(source.IndexOf("need(x)", StringComparison.Ordinal), record.Span.Start);
+            Assert.True(Kimi.DiagnosticEntries.TryGet(Kimi.DiagnosticCode.PremiseClosureLimit_Kd, out var entry) && entry.Category == Kimi.Diagnostics.DiagnosticCategory.Resource);
+            Assert.Equal(Limit, c.Binding.IdentityRounds);
+        }
+
+        // Inner supplied at depth 2k of Pq's chain; k = 0: nowhere.
+        static string Source(int k)
+            => "contract Inner\ncontract Pq\n    associate Next is Pq\n    associate Up\n    Self.(Pq).Up is Self.(Pq).Next.(Pq).Next.(Pq).Up\n" +
+                "func need<X>(x: ref/X)\n    X is Inner\n    return\nfunc f<T>(x: ref/T.(Pq).Up)\n    T is Pq\n" +
+                (k == 0 ? string.Empty : $"    T{string.Concat(Enumerable.Repeat(".(Pq).Next", 2 * k))}.(Pq).Up is Inner\n") +
+                "    need(x)\npublic func main() -> ()\n    return\n";
+    }
+
     // PLAN G881 (design review B3): ContractSolver's row (5) work (IdentityMateWork: a class's members scanned once per table, mates
     // walked) over c2-1's `members` shape (one class of n + 1 parameters, no projection mate), n projection mates of one parameter
     // (`Ti.(Outer3).Next.(Mid).Next is U`) and n chained two-link identities (`V{i-1}.(R).A.(R2).B is Vi`, each link's rows from its
