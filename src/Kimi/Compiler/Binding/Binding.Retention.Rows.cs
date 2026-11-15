@@ -43,7 +43,8 @@ public sealed partial class Binding
     private bool[] retentionMembers = [];
     private int retentionStamp;
 
-    // What an output's hold walk met (SPEC 15.6.4, 5.7 Calls; DECISIONS BU-40): a raw layer without an Origin the call may write (rule
+    // What an output's hold walk met per storage, and Hold's outcome there (Chained) in the same table (SPEC 15.6.4, 5.7 Calls; DECISIONS
+    // BU-40): a raw layer without an Origin the call may write (rule
     // A), a `static` one, and one without an Origin behind a borrow or a stated raw layer in the result (R′: lent, not written). The
     // output is untied when it met Unstated or Static. An Unstated layer bounds what the call stores through it to what its pointee Type
     // admits where the parameter's Type expression writes it, so its rows stay in the storage holding it; one a declaration states in its
@@ -57,8 +58,9 @@ public sealed partial class Binding
     // its pointee Type admits", C-352's C3), since what a chain of reads brings there is a value of that Type, and an argument's own value
     // only where a position can hold it (the Value test, SPEC 15.6.4); one holding no such position
     // (Scalars, raw layers stating an Origin, which StatedFits judges) takes only its own. A part no Type states (a part Binding did not
-    // bind, the storage past a layer whose content no Type states) or a Rejected Type holds whatever it is (Any, DECISIONS BU-36): no
-    // Origin bounds it, so its storage takes rule A's rows whole. Loans fails closed: a part is Loan-free only by MirTypes.HoldsLoans'
+    // bind, the storage past a layer whose content no Type states) or a Rejected Type may be any Type (Any), so no Origin bounds it and
+    // its storage takes rule A's rows whole, failing closed: for the Free and Chained verdicts this departs from DECISIONS BU-36's "a part
+    // that does not substitute holds nothing" (only dependent records differ, SPEC 23.1.2). Loans fails closed: a part is Loan-free only by MirTypes.HoldsLoans'
     // criterion over a fully bound, prepared Type (an entry it passes on, Hold.PassesOn, the one row both walks read, holding the part's
     // Type, in a Type whose storage is Prepared), so every other part (a borrow, an abstract or erased part, Any) holds Loans. A storage
     // is Free only where that is proven (PLAN's N7, C-281): its holds (Walked) met no Loans and no raw layer (Pointer, of any step: a raw
@@ -717,12 +719,13 @@ public sealed partial class Binding
     // and only accumulates, so each position is walked at most once per lent bit, storage and output (retentionMet): the work is linear in the
     // distinct positions per storage, not in the paths to them through the interned Types (V16). A struct or enum whose storage is a Limit, a
     // growing one among them (PrepareTypeStorage's limits, DECISIONS BU-12), makes the contract CallRetention.Limit; Rejected storage is
-    // walked as far as it substitutes, and it and a part that does not (null) hold Loans (Readable, BU-36: it holds whatever it is).
+    // walked as far as it substitutes (Readable, BU-36), and it and a part that does not (null) may be any Type: Loans and Any, failing
+    // closed (Holding; superseding BU-36's "holds nothing" for the Free and Chained verdicts).
     private Holding Held(BoundType? type, BoundType? written, BoundType? holder, int output, int storage, bool lent)
     {
         if (type is null)
         {
-            return Holding.Loans | Holding.Any; // A part that does not substitute, or storage no Type states: it holds whatever it is (BU-36).
+            return Holding.Loans | Holding.Any; // A part that does not substitute, or storage no Type states: it may be any Type.
         }
 
         written = Written(written);
@@ -743,7 +746,7 @@ public sealed partial class Binding
         var refers = run.End > run.Start;
         var stepped = false;
         var unbounded = false;
-        var any = this.PrepareTypeStorage(type) != StorageOutcome.Prepared; // Rejected storage holds whatever it is (DECISIONS BU-36).
+        var any = this.PrepareTypeStorage(type) != StorageOutcome.Prepared; // Rejected storage: its failed parts may be any Type.
         var loans = any;
         var pointer = false;
         var hidden = false;

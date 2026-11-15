@@ -994,6 +994,31 @@ public sealed partial class RetentionTest
     public void ALoanHoldingStoragePastABoundingLayerKeepsWhatItsOriginsAdmit(string function, string expected)
         => Assert.Equal(expected, Declared(Bind(function + "\n"), "f"));
 
+    // C-352's C3 (the review's N1; SPEC 23.1.2): a Rejected part past a bounding layer may be any Type (Holding.Any), so no Origin bounds
+    // that storage and it keeps rule A's rows whole, failing closed, where the repaired program's storage admits only t's chain: a
+    // departure from DECISIONS BU-36's "a part that does not substitute holds nothing", which leaves only dependent records apart.
+    [Fact]
+    public void ARejectedPartPastABoundingLayerKeepsRuleAWhole()
+    {
+        var source = "struct Bad\n    public var m: MISSING\n" +
+            "func f(t: uniq/(raw/((ref/i32 during a, Bad))), v: ref/i64 during b) => ()\n" +
+            "func g(t: uniq/(raw/((ref/i32 during a, Bad))), v: ref/i64) => f(t, v)\n";
+        var rejected = MinimalEmissionTest.Analyze(source.Replace("MISSING", "Missing", StringComparison.Ordinal));
+        Assert.False(rejected.Binding.Result.IsComplete);
+        Assert.Equal(["store 0: own {0 Chain, 1 Value Chain}, reached {0 Chain, 1 Value Chain} untied"], Calls(rejected, "f"));
+        Assert.Equal(["store 0: own {0 Chain, 1 Value Chain}, reached {0 Chain} untied"], Calls(Bind(source.Replace("MISSING", "i32", StringComparison.Ordinal)), "f"));
+    }
+
+    // C-352's C3 (the review's N2; DECISIONS R4-M154, Revision 10): a Chained storage admits an input whose fit to its position only the
+    // call's solved Origins decide (a conjunction, retentionPairs) by its chain, the pair kept for its own value: y's `q > a` past x's
+    // bounding layer (without the conjunction arm y's chain would be lost there, an unsound narrowing).
+    [Fact]
+    public void AChainedStorageKeepsTheChainOfAnInputItsPairsMayFit()
+    {
+        var c = Bind("func f<T, E>(x: T, y: E) => ()\nfunc g(x: uniq/(raw/(ref/i32 during a)) during p, y: ref/i32 during q) => f(x, y)\n");
+        Assert.Equal(["store 0: own {0 Chain, 1 Value Chain} if {0 Value: p > a}, reached {0 Chain, 1 Chain} if {0 Value: p > a, 1 Value: q > a} untied"], Calls(c, "f"));
+    }
+
     // SPEC 5.7 Calls (D15; DECISIONS BU-24, the delta review's C4 item): a raw layer's Origin reaches its slot's keepers however deep the
     // slot is forwarded through nested Types, so ten forwarding levels keep the innermost Loan's referent writable through `p`, as one
     // does (a walk bounded at eight lost it), and a slot kept again through a raw pointer to its own Type keeps its rows.
