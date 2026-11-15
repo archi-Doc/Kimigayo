@@ -390,8 +390,8 @@ public class UserArithmeticOperatorTest
     // pairs: with n enclosing premises about (3n seeds) x (2n facts) per scope, quadratic in n (`enclosing-derived`, the bound asserted:
     // at most 4x per doubling; RP8's unit-specific kernel for x41n). `depth`'s link walks (a request per prefix, each walking up to n
     // links) have no counter here. Measured pairs at 8, 16, 32 (the ceilings pass a linear result too, so these are the evidence):
-    // members 52, 100, 196; members-derived 8,042, 15,818, 31,370 (linear, about 980 per member); enclosing 48, 88, 168;
-    // enclosing-derived 11,362, 36,530, 129,874 (x3.2, x3.6: about 125 n^2); depth 18, 34, 66. Valid (SPEC 13.3.4, 8.3.2, 8.2.3): no
+    // members 52, 100, 196; members-derived 5,674, 11,146, 22,090 (linear, about 690 per member); enclosing 48, 88, 168;
+    // enclosing-derived 7,906, 25,138, 88,786 (x3.2, x3.5: about 87 n^2); depth 18, 34, 66. Valid (SPEC 13.3.4, 8.3.2, 8.2.3): no
     // arithmetic premise.
     [Theory]
     [InlineData("members")]

@@ -334,13 +334,20 @@ public sealed partial class Binding
             throw new InvalidOperationException($"A request for the rows of `{subject}` entered from Enumerate's walk or a closure validator's read (InternalInvariant; R7-C2a).");
         }
 
-        var classes = HasTypeIdentity(scope) ? this.ClassesOf(scope, out _) : null;
-        var key = classes is null ? subject : this.ClassKey(subject, classes);
+        var classes = this.RequestClasses(scope);
+        var key = this.RequestKey(subject, classes);
         var view = this.ViewOf(scope);
         var serial = SerialOf(scope);
         var final = classes is null ? !HasTypeIdentity(scope) : classes.Final;
         return (view, serial, classes, key, final, this.enumerateDepth == 0 && this.KeptRegion && final);
     }
+
+    // The identity classes a request over `scope` keys by (null: no identity premise in the view's chain) and a subject's key in them,
+    // the supply's index of subjects: one rule for the requests (RowsRequest) and for a reader that asks once per key (the arithmetic
+    // direction check's seeds).
+    private IdentityClasses? RequestClasses(BindingScope scope) => HasTypeIdentity(scope) ? this.ClassesOf(scope, out _) : null;
+
+    private BoundType RequestKey(BoundType subject, IdentityClasses? classes) => classes is null ? subject : this.ClassKey(subject, classes);
 
     // An entered request's preparation: the view's entry in Closure(view) and, for an outermost request whose entry is not Kept, the
     // view's readings in it, after which the entry is Kept when every reading the preparation formed was kept and the request's class

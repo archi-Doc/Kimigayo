@@ -90,8 +90,8 @@ public sealed partial class Binding
 
     // SPEC 13.3.4 under 8.2.3 and 8.3.2 (PLAN G882, x41n): the premises of a pair are rows. A scope with premises of its own takes as
     // seeds every parameter or projection occurring in an available premise of its view's chain (AbstractParts: one walk, each part once,
-    // before any request); each seed's available arithmetic rows (FirstRows: at every depth, through its identity class) are a pair's
-    // first premise (ValidateArithmeticRows). A scope with none examines nothing: its view is its parent's, judged first. The
+    // before any request), one per class key; each seed's available arithmetic rows (FirstRows: at every depth, through its identity
+    // class) are a pair's first premise (ValidateArithmeticRows). A scope with none examines nothing: its view is its parent's, judged first. The
     // contradiction is reported once, at the first scope where its two premises meet: the validation judges a parent before its members,
     // and a failed environment is neither read here nor supplies a row, so a member's view never meets its parent's pair.
     private bool ValidateArithmeticDirections(BindingScope scope)
@@ -101,6 +101,7 @@ public sealed partial class Binding
             return true;
         }
 
+        var classes = this.RequestClasses(scope); // before the query: a build of the view's classes may begin queries of its own
         var start = this.directionSeeds.Count;
         var query = this.visitedParts.Begin(this.storageVersion);
         for (var stating = scope; stating is not null; stating = stating.Parent)
@@ -119,8 +120,22 @@ public sealed partial class Binding
             }
         }
 
+        // One request per class key, the requests' own (RequestKey): mates of one identity class have that class's rows (PLAN G881's
+        // row (5)), so the seeds are kept once per key (a second state bit of the same query).
+        var unique = start;
+        for (var i = start; i < this.directionSeeds.Count; i++)
+        {
+            var key = this.RequestKey(this.directionSeeds[i], classes);
+            this.visitedParts.TryGet(key, query, out var met);
+            if ((met & 2) == 0)
+            {
+                this.visitedParts.Set(key, query, (byte)(met | 2));
+                this.directionSeeds[unique++] = this.directionSeeds[i];
+            }
+        }
+
         var valid = true;
-        for (var i = start; valid && i < this.directionSeeds.Count; i++)
+        for (var i = start; valid && i < unique; i++)
         {
             valid = this.ValidateArithmeticRows(this.directionSeeds[i], scope);
         }
