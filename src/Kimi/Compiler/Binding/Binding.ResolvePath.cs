@@ -247,7 +247,7 @@ public sealed partial class Binding
             switch (step.Kind)
             {
                 case NameStepKind.Head:
-                    this.importCandidates?.GetValueOrDefault(step.Use)?.Clear();
+                    this.gatheredGroups?.GetValueOrDefault(step.Use)?.Clear();
                     this.qualificationStops?.Remove((step.Use, step.Role != LookupRole.Value));
                     if (step.Import.Environment is not null)
                     {
