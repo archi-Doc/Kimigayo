@@ -133,9 +133,30 @@ public sealed partial class Binding
 
     // SPEC 8.7.4: a symbolic Type proven PrimitiveInteger has the built-in integer operators; each instance uses the
     // operations of its concrete Type.
-    // A shared literal argument constructs an owner temporary before acquiring its borrow.
+    // A shared literal argument constructs an owner temporary before acquiring its borrow. SPEC 10.2.1, 12.3.1 (the one Literal layer
+    // rule, the owner's O-372 (a)): the Type a Literal meets at a parameter Type: a pair layer that formed nothing (an application under
+    // a binding that forms no Type, D3) passes to its target, one fixed ref layer to its referent (a borrowed temporary), and any other
+    // fixed layer (uniq, an object form, raw) is met as it is, which no Literal fits.
     private static BoundType LiteralInputType(BoundType parameter)
-        => parameter is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref, Components: [var referent] } ? referent : parameter;
+    {
+        var borrowed = false;
+        while (true)
+        {
+            if (parameter is { Kind: BoundTypeKind.SemanticsApplication, Components: [var target] })
+            {
+                parameter = target;
+            }
+            else if (!borrowed && parameter is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref, Components: [var referent] })
+            {
+                parameter = referent;
+                borrowed = true;
+            }
+            else
+            {
+                return parameter;
+            }
+        }
+    }
 
     private static BoundType? Complete(Koto node, BoundType? type)
     {

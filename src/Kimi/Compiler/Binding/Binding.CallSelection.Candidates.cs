@@ -195,21 +195,20 @@ public sealed partial class Binding
         var part = solution.Call.ArgumentNodes[i];
         var mark = this.unformedWrites;
         return (solution.Pattern(type) is { } evidencePattern ? solution.InferArgument(evidencePattern, part, late: false) : part.BoundType is null) ||
-            this.UnformedPart(ref solution, type, i, mark, ref unknown) == true;
+            this.UnformedPart(ref solution, type, i, this.FormsNone(type, mark), ref unknown) == true;
     }
 
-    // DECISIONS D3 with rule W (BU-79; G812 ruling 88, design revision 1): argument i's evidence check failed; whether it failed through its
-    // own pattern's formation, the writes compared from `mark`, taken at that part's check (the evidence passes form only the part's own
-    // pattern: its adaptation pattern, application, direct target) or around its `solution.Type` (the pass loop), for a pattern with an
-    // abstract part only (a closed Type forms under no binding; a call's Type also reads every pair's outer slot, CallType). Null where
-    // nothing it formed formed no Type: the part's own failure. A Literal is judged at its target (FitsLiteralShape, SPEC 10.2.1): false, the part's
-    // own failure, or unknown. A typed part at a closed leaf that disagrees with its binder's evidence fails (IsSource, the owner's
+    // DECISIONS D3 with rule W (BU-79; G812 ruling 88, design revision 1): argument i's check failed; whether it failed through its own
+    // pattern's formation, `formsNone` (FormsNone over a mark taken at that part's evidence check, which forms only the part's own
+    // pattern: its adaptation pattern, application, direct target; or around its `solution.Type` in the pass loop). Null where its
+    // pattern formed: the part's own failure. A Literal is judged at its target (FitsLiteralShape, SPEC 10.2.1): false, the part's own
+    // failure, or unknown. A typed part at a closed leaf that disagrees with its binder's evidence fails (IsSource, the owner's
     // O-338 (a); F's O1 (a)), and so does one that no case of the split layer adapts (FitsOpenLayer; the owner's O-366 (a)). Any other
     // part is unknown, a wildcard in every later check as a parameter Type that failed to bind is (SPEC 10.1's Unknown applicability),
     // and the trial goes on.
-    private bool? UnformedPart(ref SlotSolution solution, BoundType type, int i, int mark, ref SlotSet unknown)
+    private bool? UnformedPart(ref SlotSolution solution, BoundType type, int i, bool formsNone, ref SlotSet unknown)
     {
-        if (!type.HasAbstractPart || !this.UnformedSince(mark))
+        if (!formsNone)
         {
             return null;
         }
@@ -225,6 +224,11 @@ public sealed partial class Binding
         unknown.Add(i);
         return true;
     }
+
+    // DECISIONS D3 (the part predicate's one spelling): whether a pattern formed since `mark` formed no Type or kept an unrepresented slot;
+    // a closed Type forms under no binding, while a call's Type also reads every pair's outer slot (CallType), so only a pattern with
+    // an abstract part counts.
+    private bool FormsNone(BoundType pattern, int mark) => pattern.HasAbstractPart && this.UnformedSince(mark);
 
     // SPEC 10.8, 10.2: whether a typed part whose pattern forms no Type fails case-independently: at a closed leaf by IsSource
     // (LeafDisagrees), or where no case of the split layer adapts it (FitsOpenLayer); otherwise it rests on the split.
@@ -451,7 +455,7 @@ public sealed partial class Binding
                 var mark = this.unformedWrites;
                 if ((solution.Pattern(type) is { } evidencePattern
                     ? !solution.InferArgument(evidencePattern, part, late: false) : part.BoundType is not null) &&
-                    this.UnformedPart(ref solution, type, i, mark, ref unknown) is not true)
+                    this.UnformedPart(ref solution, type, i, this.FormsNone(type, mark), ref unknown) is not true)
                 {
                     if (part.BoundType is { } actual)
                     {
@@ -554,7 +558,7 @@ public sealed partial class Binding
 
                     var mark = this.unformedWrites;
                     var type = solution.Type(pattern);
-                    var unrepresented = pattern.HasAbstractPart && this.UnformedSince(mark); // D3: its own Type forms none or keeps an unrepresented slot.
+                    var formsNone = this.FormsNone(pattern, mark); // D3: its own Type forms none or keeps an unrepresented slot.
                     if (type is null)
                     {
                         if (this.IsWaitingCallable(argument) && solution.CallableSlot(pattern) is { } slotType &&
@@ -615,9 +619,8 @@ public sealed partial class Binding
                                 continue;
                             }
 
-                            if (unrepresented && !this.TypedPartFails(ref solution, pattern, call.ArgumentNodes[i]))
+                            if (this.UnformedPart(ref solution, pattern, i, formsNone, ref unknown) == true)
                             {
-                                unknown.Add(i);
                                 continue;
                             }
 
@@ -635,10 +638,9 @@ public sealed partial class Binding
                             return CandidateApplicability.Inapplicable;
                         }
 
-                        if (met is null)
+                        if (met is null && this.UnformedPart(ref solution, pattern, i, formsNone, ref unknown) == true)
                         {
-                            unknown.Add(i); // A Literal that fits the target of a pattern that forms no Type (FitsLiteralShape): unknown.
-                            continue;
+                            continue; // A Literal that fits the target of a pattern that forms no Type (FitsLiteralShape): unknown.
                         }
 
                         type = solution.Type(pattern);
@@ -674,10 +676,9 @@ public sealed partial class Binding
                     waitingCallables |= applicability == CandidateApplicability.Waiting;
                     if (applicability is not (CandidateApplicability.Applicable or CandidateApplicability.Waiting))
                     {
-                        if (unrepresented)
+                        if (this.UnformedPart(ref solution, pattern, i, formsNone, ref unknown) == true)
                         {
-                            unknown.Add(i); // D3: the fit failed at a Type formed with an unrepresented slot (HasOuterSlot).
-                            continue;
+                            continue; // D3: the fit failed at a Type formed with an unrepresented slot (HasOuterSlot).
                         }
 
                         return applicability;
@@ -717,7 +718,7 @@ public sealed partial class Binding
                 // nor one that forms no Type (D3: its part is unknown, UnformedPart).
                 var mark = this.unformedWrites;
                 if (function.Parameters[i].Type.BoundType is { } parameter && (solution.Type(parameter) is not { } completed
-                    ? !(waitingCallables || MentionsSlots(parameter, CallSlotOwner(function), unsolvedSlots) || this.UnformedSince(mark))
+                    ? !(waitingCallables || MentionsSlots(parameter, CallSlotOwner(function), unsolvedSlots) || this.FormsNone(parameter, mark))
                     : !this.ProveTypeLengths(completed, scope.Function)))
                 {
                     return CandidateApplicability.Inapplicable;
@@ -737,7 +738,7 @@ public sealed partial class Binding
             // SPEC 10.8: a result that keeps an unsolved slot is no failure of its own; the parts of its fit that do not contain the slot are
             // still checked against an expected result (SPEC 10.3). Nor is one that forms no Type (D3, as a parameter Type above).
             var openResult = result is null && resultPattern is not null &&
-                (MentionsSlots(resultPattern, CallSlotOwner(function), unsolvedSlots) || this.UnformedSince(resultMark));
+                (MentionsSlots(resultPattern, CallSlotOwner(function), unsolvedSlots) || this.FormsNone(resultPattern, resultMark));
             if (resultPattern is not null && result is null && !waitingCallables && !openResult)
             {
                 // A result Type names no Origin of the callee: OpenUnsolvedOrigins filled every Origin and input slot (SPEC 15.3.6; PLAN
@@ -850,7 +851,7 @@ public sealed partial class Binding
 
             var mark = this.unformedWrites;
             if (solution.Pattern(parameter) is { } latePattern && !solution.InferArgument(latePattern, call.ArgumentNodes[i], late: true) &&
-                this.UnformedPart(ref solution, parameter, i, mark, ref unknown) is not true)
+                this.UnformedPart(ref solution, parameter, i, this.FormsNone(parameter, mark), ref unknown) is not true)
             {
                 return false;
             }

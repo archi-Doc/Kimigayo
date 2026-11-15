@@ -389,7 +389,10 @@ public partial class PairAnnotationBindingTest
     // whatever the other candidates. A candidate whose only open check is the split rests on it: selected (ovU1b) or compared as though
     // applicable (ovU2b). A typed argument at a structured application is judged by the common adaptation in each case of the layer
     // (O3, the owner's O-366 (a)): no case adapts a bool at `s/Option<Box>` or an i32 at `s/Option<i32>` (ovS, ovSn; ovSk, ovSkt alone),
-    // while a typed `Option<Box>` fits the owner case and rests on the split (ovSo).
+    // while a typed `Option<Box>` fits the owner case and rests on the split (ovSo). A typed Tag at the closed leaf `s/Box` fails it
+    // (rT1, rT2 alone), and so does `2.5` at `s/i32` (rT7). One Literal layer rule for a formed and an unformed pattern (the owner's
+    // O-372 (a)): a pair layer that formed nothing passes to its target and a ref layer to its referent, while any other layer takes no
+    // Literal, so `6` at `s/(uniq/i64 during b)` fails the pair candidate (rT9b accepted as on dev; rT10b alone keeps dev's records).
     [Theory]
     [InlineData("struct Box\n    public let v: i32\n    public init(v: i32)\n        self.v = v@move\nfunc h<s/W>(m: s/W, n: s/Box) -> i32\n    s is owner\n    return 0\nfunc h<X, Y>(m: X, n: Y) -> i32\n    return 1\nfunc call<t/U>(m: t/U, u: U) -> i32\n    t is owner or ref\n    return h(u@move, true)\n", "clean")] // ovPA
     [InlineData("struct Box\n    public let v: i32\n    public init(v: i32)\n        self.v = v@move\nfunc h<s/W>(m: s/W, n: s/Box) -> i32\n    s is owner\n    return 0\nfunc h<X, Y>(m: X, n: Y) -> i32\n    return 1\nfunc call<t/U>(m: t/U, u: U, flag: bool) -> i32\n    t is owner or ref\n    return h(u@move, flag)\n", "clean")] // ovPB
@@ -416,6 +419,11 @@ public partial class PairAnnotationBindingTest
     [InlineData("func h<s/W>(m: s/W, n: s/Option<i32>) -> i32\n    s is owner\n    return 0\nfunc h<X, Y>(m: X, n: Y) -> i32\n    return 1\nfunc call<t/U>(m: t/U, u: U, k: i32) -> i32\n    t is owner or ref\n    return h(u@move, k)\n", "clean")] // ovSn
     [InlineData("struct Box\n    public let v: i32\n    public init(v: i32)\n        self.v = v@move\nfunc h1<s/W>(m: s/W, n: s/(Box, i32)) -> i32\n    return 0\nfunc call<t/U>(m: t/U, u: U, flag: bool) -> i32\n    t is owner or ref\n    return h1(u@move, flag)\n", "1*NoApplicableOverload_Kd")] // ovSkt
     [InlineData("struct Box\n    public let v: i32\n    public init(v: i32)\n        self.v = v@move\nfunc h1<s/W>(m: s/W, n: s/Option<Box>) -> i32\n    return 0\nfunc call<t/U>(m: t/U, u: U, o: Option<Box>) -> i32\n    t is owner or ref\n    return h1(u@move, o@move)\n", "1*Unsupported_Kd")] // ovSo
+    [InlineData("struct Box\n    public let v: i32\n    public init(v: i32)\n        self.v = v@move\nstruct Tag\n    public let v: i32\n    public init(v: i32)\n        self.v = v@move\nfunc h<s/W>(m: s/W, n: s/Box) -> i32\n    s is owner\n    return 0\nfunc h<X, Y>(m: X, n: Y) -> i32\n    return 1\nfunc call<t/U>(m: t/U, u: U) -> i32\n    t is owner or ref\n    let g = Tag.init(1)\n    return h(u@move, g@move)\n", "clean")] // rT1
+    [InlineData("struct Box\n    public let v: i32\n    public init(v: i32)\n        self.v = v@move\nstruct Tag\n    public let v: i32\n    public init(v: i32)\n        self.v = v@move\nfunc h2<s/W>(m: s/W, n: s/Box) -> i32\n    s is owner\n    return 0\nfunc call<t/U>(m: t/U, u: U) -> i32\n    t is owner or ref\n    let g = Tag.init(1)\n    return h2(u@move, g@move)\n", "1*NoApplicableOverload_Kd")] // rT2
+    [InlineData("func kq<s/W>(m: s/W, n: s/i32) -> i32\n    return 0\nfunc call<t/U>(m: t/U, u: U) -> i32\n    t is owner or ref\n    return kq(u@move, 2.5)\n", "1*NoApplicableOverload_Kd")] // rT7
+    [InlineData("func h<s/W>(m: s/W, n: s/(uniq/i64 during b)) -> i32\n    s is owner\n    return 0\nfunc h<X>(m: X, n: i32) -> i32\n    return 1\nfunc call<t/U>(m: t/U, u: U) -> i32\n    t is owner or ref\n    return h(u@move, 6)\n", "clean")] // rT9b
+    [InlineData("func kq<s/W>(m: s/W, n: s/(uniq/i64 during b)) -> i32\n    return 0\nfunc call<t/U>(m: t/U, u: U) -> i32\n    t is owner or ref\n    return kq(u@move, 6)\n", "1*NoApplicableOverload_Kd 1*UnprovenConstraint_Kd")] // rT10b
     public void AnUnformedSplitDecidesOnlyACandidateThatRestsOnIt(string source, string records)
         => Assert.Equal(records, DiagnosticCorpus.RecordProfile(source));
 
