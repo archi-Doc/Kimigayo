@@ -53,7 +53,7 @@ public sealed partial class Binding
     // abstract part, a Type argument's or an erased environment's dependency; SPEC 15.6.4 "also as a part of a value of that layer's
     // pointee Type"): such a storage takes rule A's rows too; one holding no such position (Scalars, raw layers stating an Origin, which
     // StatedFits judges) takes only its own. Loans fails closed: a part is Loan-free only by MirTypes.HoldsLoans' criterion over a fully
-    // bound, prepared Type (an entry it passes on: Inline, a safe Own or a Type argument's Loan step, of the part's Type, in a Type whose
+    // bound, prepared Type (an entry it passes on, Hold.PassesOn, the one row both walks read, holding the part's Type, in a Type whose
     // storage is Prepared), so every other part (a borrow, an abstract or erased part, a part Binding did not bind or storage no Type
     // states, a Rejected Type) holds Loans. A storage is Free only where that is proven (PLAN's N7, C-281): its holds (Walked) met no Loans
     // and no raw layer (Pointer, of any step: a raw pointer carries the holders it addresses, SPEC 15.6), the fact MirTypes.HoldsLoans
@@ -709,7 +709,7 @@ public sealed partial class Binding
             refers &= Dereference(entry);
             stepped |= layer && entry.Step != HoldStep.Address;
             unbounded |= layer && entry is { Step: HoldStep.Address, Holds: HoldContent.Any }; // A layer a declaration wrote (TyCtxt.RawStated).
-            loans |= !layer && entry is not { Step: HoldStep.Inline or HoldStep.Own or HoldStep.Loan, Holds: HoldContent.Its }; // HoldsLoans' pass-on entries.
+            loans |= !layer && !(entry.PassesOn && entry.Holds == HoldContent.Its); // Hold.PassesOn, the row MirTypes.HoldsLoans reads.
             pointer |= layer;
             hidden |= entry.Step == HoldStep.Abstract;
         }

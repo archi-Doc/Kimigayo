@@ -239,21 +239,28 @@ internal static partial class MirTypes
             return (mode != LoanOnly || !MirDepths.Entered(modes[Own], depth)) && MirDepths.Enter(ref modes[mode], depth);
         }
 
-        // SPEC 3.3.4's rows as A5 reads them: what one entry adds in a mode. `Inline`, a safe `Own` and `Loan` pass the walk on: a Type
-        // argument has no address and grants no access (SPEC 15.3.5), so in the value's own storage it gives Loan facts only, while past an
-        // exclusive reference a call may replace the whole value, and it stays Exclusive. `Abstract` writes by provenance in the value's own
-        // storage (SPEC 15.6.4; DECISIONS R4-M170). Every other step is a part that may hold a Loan: its mode's fact (Met), and in the value's
-        // own storage what lies past it (Past).
-        private Facts Entry(in Hold entry, BoundType layer, BoundType? written, BoundType? holder, int mode, int depth) => entry.Step switch
+        // SPEC 3.3.4's rows as A5 reads them: what one entry adds in a mode. An entry that passes the walk on (Hold.PassesOn, the one row
+        // Binding's hold walk reads too) adds its Part's facts (Passed). `Abstract` writes by provenance in the value's own storage (SPEC
+        // 15.6.4; DECISIONS R4-M170). Every other step is a part that may hold a Loan: its mode's fact (Met), and in the value's own storage
+        // what lies past it (Past).
+        private Facts Entry(in Hold entry, BoundType layer, BoundType? written, BoundType? holder, int mode, int depth) => entry.PassesOn ? this.Passed(entry, mode, depth) : entry.Step switch
         {
-            HoldStep.Inline => this.Holds(entry.Part, entry.Written, entry.Holder, mode, depth),
-            HoldStep.Own when (entry.Flags & HoldFlags.Raw) == 0 => this.Holds(entry.Part, null, null, mode, depth),
-            HoldStep.Loan => this.Holds(entry.Part, null, null, (mode & ~LoanOnly) == Own ? mode | LoanOnly : mode, depth),
             HoldStep.Abstract => mode == Own ? new(true, MirOutcome.None, named: true) : Met(mode),
             HoldStep.Unsupported => new((mode & ~LoanOnly) == Own, (mode & LoanOnly) == 0 ? MirOutcome.Limit : MirOutcome.None),
             <= HoldStep.Exclusive or HoldStep.Erased // The five steps a raw layer takes (HoldStep's first) and an erased environment.
                 => Met(mode).Join(mode == Own ? this.Past(entry, layer, written, holder, depth) : default),
             _ => throw new InvalidOperationException($"HoldStep {entry.Step} has no row (InternalInvariant)."),
+        };
+
+        // What an entry that passes the walk on adds (Hold.PassesOn): an `Inline` part with the Type its declaration writes there, a safe
+        // `Own` step's part as a part of its own, and a Type argument (`Loan`), which has no address and grants no access (SPEC 15.3.5), so in
+        // the value's own storage it gives Loan facts only, while past an exclusive reference a call may replace the whole value, and it
+        // stays Exclusive.
+        private Facts Passed(in Hold entry, int mode, int depth) => entry.Step switch
+        {
+            HoldStep.Inline => this.Holds(entry.Part, entry.Written, entry.Holder, mode, depth),
+            HoldStep.Loan => this.Holds(entry.Part, null, null, (mode & ~LoanOnly) == Own ? mode | LoanOnly : mode, depth),
+            _ => this.Holds(entry.Part, null, null, mode, depth),
         };
 
         // What lies past a layer of the value's own storage (DECISIONS R4-M147, R4-M151): by what the entry holds, the write fact where
