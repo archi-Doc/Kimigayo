@@ -1578,7 +1578,7 @@ public sealed partial class InstanceCollectorTest
     // K 4.5 row 6, SPEC 22.10.1, 8.13.3 (R8-W2 b2-1): an adapter over a user BufferWriter is Text.writer's generic body, whose
     // reserveDispatch is the item of its destination's reserve witness; one over a fixed buffer is the FixedBuffer specialization, selected
     // for its call, which names no reserve target, Utf8Writer.reserve's Fixed arm reserving for it (fail-before: the ErasedWriter
-    // intrinsic's item, without a target for a fixed buffer by W1a's clause on LegacyRuntimeHelpers.WriterKind).
+    // intrinsic's item, without a target for a fixed buffer by W1a's clause on the legacy writer kind).
     [Fact]
     public void AnErasedWriterIsItsDestinationsReserveWitness()
     {
