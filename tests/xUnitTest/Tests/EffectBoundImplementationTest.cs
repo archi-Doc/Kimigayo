@@ -30,6 +30,13 @@ public partial class EffectBoundImplementationTest
 
     private const string Main = "public func main() => ()\n";
 
+    // ASuppliedContractsBoundIsReadAtEveryDepth's conformances: the call's conforming Type is a requirement's result, or a Type an
+    // identity premise makes one with a projection at depth 2.
+    private const string DeepMeter = "struct Meter<T>\n    T is Node\n    Self is Report\n    var reading: T\n    public func report(self: ref/Self) -> i32\n        return self.reading.deep().ping()\n";
+
+    private const string IdentityMeter = "struct Meter<T>\n    T is Node\n    T.(Node).Other is T.(Node).Next.(Node).Item\n    Self is Report\n    var reading: T.(Node).Other\n" +
+        "    public func report(self: ref/Self) -> i32\n        return self.reading.ping()\n";
+
     // P42's StaticStorage record at Sink's settable static, Metrics.puts (DECISIONS R5-M82; STATUS Static members): a MIR row of every
     // program with Sink.
     private static readonly (DiagnosticCode Code, SyntaxLocation At) PutsStorage =
@@ -266,6 +273,24 @@ public partial class EffectBoundImplementationTest
     [InlineData("guard", "g234n", StableSources + "contract C\n    associate Item(s) is Source and Copy\n    func get(self: uniq/Self during s) -> Self.Item(s)\n        effect confined\n" + Step + TakingCursor, "IncompatibleContractImplementation_Kd: Self is Step")]
     public void ABoundReachesAnAssociatedFamily(string unit, string form, string program, string records)
         => CompilationTestHelper.AssertRecordsAtLines($"{form} [{unit}]", program + "()", records);
+
+    // R7-C2c2 c2-3b (SPEC 8.11.3, 8.3.2, 8.2.3): a requirement call uses the bounds of the Contracts its premises prove for the
+    // conforming Type, at every depth and whatever its spelling: a Type that is a requirement's result (ebd) or stands behind an
+    // identity premise (ebi). Where the supplied Contract declares no bound, the conformance is rejected at its Self clause.
+    [Theory]
+    [InlineData("ebd2", "Quiet", "    func deep(self: ref/Self) -> ref/Self.(Node).Next.(Node).Item\n        effect confined\n", DeepMeter, "")]
+    [InlineData("ebd3", "Quiet", "    func deep(self: ref/Self) -> ref/Self.(Node).Next.(Node).Next.(Node).Item\n        effect confined\n", DeepMeter, "")]
+    [InlineData("ebd2n", "Loud", "    func deep(self: ref/Self) -> ref/Self.(Node).Next.(Node).Item\n        effect confined\n", DeepMeter, "IncompatibleContractImplementation_Kd: Self is Report")]
+    [InlineData("ebi2", "Quiet", "", IdentityMeter, "")]
+    [InlineData("ebi2n", "Loud", "", IdentityMeter, "IncompatibleContractImplementation_Kd: Self is Report")]
+    [InlineData("ebi4", "Quiet", "", "struct Meter<T, U>\n    T is Quiet\n    T is U\n    Self is Report\n    var reading: U\n    public func report(self: ref/Self) -> i32\n        return self.reading.ping()\n", "")]
+    public void ASuppliedContractsBoundIsReadAtEveryDepth(string form, string item, string requirement, string meter, string records)
+    {
+        var program = "contract Quiet\n    func ping(self: ref/Self) -> i32\n        effect confined\ncontract Loud\n    func ping(self: ref/Self) -> i32\n" +
+            $"contract Node\n    associate Next is Node\n    associate Item is {item}\n    associate Other\n{requirement}" +
+            "contract Report\n    func report(self: ref/Self) -> i32\n        effect confined\n" + meter + Main;
+        CompilationTestHelper.AssertRecordsAtLines(form, program, records);
+    }
 
     // R6-check H3b T40: since the MIR decides acceptance (H5, DECISIONS R5-M185), A4 judges an effect bound where Binding did. Binding
     // completes; a violated bound refuses the program with A4's IncompatibleContractImplementation_Kd at the conformance's `Self is C`
