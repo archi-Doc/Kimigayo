@@ -10,9 +10,10 @@ namespace Kimi.Compiler;
 // selection and of an explicitly declared conformance's ineligibility (13.3.3), and SPEC 13.3.4's direction contradiction
 // (ValidateArithmeticDirections). Inputs of the direction check: the view's available written arithmetic premises, the opposite
 // premise as ContractSolver's rows (FirstRows) and the pair compared by Binding.TypeIdentity's judge (IdentityProven). Output: the
-// owner's ArithmeticDirection failure with both premises' uses. Invariant: a function of the view, whatever the premises' order, side,
-// spelling or depth. Prohibitions: no scan of written facts for the opposite premise and no identity rule of its own. Limit: a pair
-// neither of whose premises is written in the view's environments waits for Closure(view) (C3/e2).
+// owner's ArithmeticDirection failure with both premises' uses. Invariant: a function of the view, whatever the premises' order, side
+// or spelling, and at every depth the rows reach. Prohibitions: no scan of written facts for the opposite premise and no identity rule
+// of its own. Limits: a pair neither of whose premises is written in the view's environments waits for Closure(view) (C3/e2); a clause
+// instance at a class mate's projection prefix is no row of the subject until PLAN G881's row (5) (EnumerateMates) lands (d2n).
 public sealed partial class Binding
 {
     private Dictionary<Koto, ArithmeticSelectionFailure>? arithmeticSelectionFailures;
@@ -81,8 +82,8 @@ public sealed partial class Binding
 
     // SPEC 13.3.4 under 8.2.3 and 8.3.2 (PLAN G882): for each available written arithmetic premise `X is Op<Y>` of the view's chain,
     // the opposite premise of its operand pair is an available row of the opposite Contract that the rows supply for Y (OppositeRow).
-    // The contradiction is reported once, at the first scope where its two premises meet: a scope stating neither leaves it to its
-    // parent when the parent's view already holds it.
+    // The contradiction is reported once, at the first scope where its two premises meet: the validation judges a parent before its
+    // members, and a failed environment is neither read here nor supplies a row, so a member's view never meets its parent's pair.
     private bool ValidateArithmeticDirections(BindingScope scope)
     {
         for (var stating = scope; stating is not null; stating = stating.Parent)
@@ -103,8 +104,7 @@ public sealed partial class Binding
 
                 var reversed = ArithmeticContracts.IsLeft(id);
                 var oppositeId = reversed ? id - (KimiDeclarationId.LeftAddable - KimiDeclarationId.Addable) : id + (KimiDeclarationId.LeftAddable - KimiDeclarationId.Addable);
-                if (this.OppositeRow(counterpart, subject, oppositeId, scope) is not { Symbol: { } opposite } row ||
-                    (!ReferenceEquals(stating, scope) && !ReferenceEquals(row.Stated, scope) && scope.Parent is { } parent && this.OppositeRow(counterpart, subject, oppositeId, parent) is not null))
+                if (this.OppositeRow(counterpart, subject, oppositeId, scope) is not { Symbol: { } opposite } row)
                 {
                     continue;
                 }

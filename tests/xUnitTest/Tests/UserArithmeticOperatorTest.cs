@@ -238,13 +238,13 @@ public class UserArithmeticOperatorTest
         Assert.Equal(new[] { "ordinary", "reverse" }, error.Related!.Select(static x => x.Role));
     }
 
-    // PLAN G882 (SPEC 13.3.4 under 8.2.3 and 8.3.2): the coverage table's programs (labels from SPEC first; design-g882 §3). One operand
-    // pair is one up to the view's identity, on either side and in either direction, and its opposite premise may be written or
-    // supplied by a Contract premise at any depth; the contradiction is recorded once, at the declaration where its premises first meet
-    // (`at`: f, or the member g whose identity joins Box's premises). The valid controls are accepted. Pinned as they are: d2n, a limit
-    // of the rows (Enumerate's row (2) walks no class mate's projection prefix; G882's O5 PLAN row); e0n and e2n, whose independent
-    // conflict the failed environment hides (SPEC 23.1.2; G882's O2 PLAN row); a6n, a6k and a6v without 8.3.2's closed-world record
-    // (G853, c2-4).
+    // PLAN G882 (SPEC 13.3.4 under 8.2.3 and 8.3.2): the coverage table's programs (labels from SPEC first; design-g882 §3) and the
+    // independent review's twins (t*). One operand pair is one up to the view's identity, on either side and in either direction, and
+    // its opposite premise may be written or supplied by a Contract premise at any depth; the contradiction is recorded once, at the
+    // declaration where its premises first meet (`at`: f, Box, or the member g whose identity joins Box's premises). The valid controls
+    // are accepted. e0n and e2n keep their independent 8.2.3 conflict beside the contradiction (SPEC 23.1.2). Pinned as they are: d2n, a
+    // clause instance at a class mate's prefix, until PLAN G881's row (5) (EnumerateMates); a6n, a6k and a6v without 8.3.2's
+    // closed-world record (G853, c2-4).
     [Theory]
     [InlineData("a0n", "func f<L, R>(left: ref/L, right: ref/R)\n    L is Addable<R>\n    R is LeftAddable<L>\n    ()\npublic func main() => ()\n", "1*ArithmeticDirection_Kd", "f<")]
     [InlineData("a0r", "func f<L, R>(left: ref/L, right: ref/R)\n    R is LeftAddable<L>\n    L is Addable<R>\n    ()\npublic func main() => ()\n", "1*ArithmeticDirection_Kd", "f<")]
@@ -277,8 +277,24 @@ public class UserArithmeticOperatorTest
     [InlineData("n2v", "struct Box<L, R, S>\n    L is Addable<R>\n    public func g(self)\n        S is LeftAddable<L>\n        ()\npublic func main() => ()\n", "clean", null)]
     [InlineData("o2v", "func f<L, R, S>(left: ref/L, right: ref/R)\n    L is Addable<R>\n    S is LeftAddable<L>\n    R is S or i32\n    ()\npublic func main() => ()\n", "clean", null)]
     [InlineData("e1n", "func f<L, R, S>(left: ref/L, right: ref/R)\n    L is Addable<R>\n    S is LeftAddable<L>\n    R is S\n    S is Option<R>\n    ()\npublic func main() => ()\n", "1*InvalidConstraint_Kd", null)]
-    [InlineData("e0n", "func f<L, R, T, U>(left: ref/L, right: ref/R)\n    L is Addable<R>\n    R is LeftAddable<L>\n    T is Option<U>\n    T is Array<U>\n    ()\npublic func main() => ()\n", "1*ArithmeticDirection_Kd", "f<")]
-    [InlineData("e2n", "func f<L, R, S, T, U>(left: ref/L, right: ref/R)\n    L is Addable<R>\n    S is LeftAddable<L>\n    R is S\n    T is Option<U>\n    T is Array<U>\n    ()\npublic func main() => ()\n", "1*ArithmeticDirection_Kd", "f<")]
+    [InlineData("e0n", "func f<L, R, T, U>(left: ref/L, right: ref/R)\n    L is Addable<R>\n    R is LeftAddable<L>\n    T is Option<U>\n    T is Array<U>\n    ()\npublic func main() => ()\n", "1*ArithmeticDirection_Kd 1*InvalidConstraint_Kd", "f<")]
+    [InlineData("e2n", "func f<L, R, S, T, U>(left: ref/L, right: ref/R)\n    L is Addable<R>\n    S is LeftAddable<L>\n    R is S\n    T is Option<U>\n    T is Array<U>\n    ()\npublic func main() => ()\n", "1*ArithmeticDirection_Kd 1*InvalidConstraint_Kd", "f<")]
+    [InlineData("t1i", "contract P\n    associate A\n    Self.(P).A is Addable<Self>\nfunc f<L, M>(left: ref/L)\n    L is P\n    L is LeftAddable<M>\n    M is L.(P).A\n    ()\npublic func main() => ()\n", "1*ArithmeticDirection_Kd 1*InvalidConstraint_Kd", "f<")]
+    [InlineData("t1v", "contract P\n    associate A\n    Self.(P).A is Addable<i32>\nfunc f<L>(left: ref/L)\n    L is P\n    L is LeftAddable<L.(P).A>\n    ()\npublic func main() => ()\n", "clean", null)]
+    [InlineData("t2n", "contract Q\n    associate A\nfunc f<L, R, T>(left: ref/L)\n    T is Q\n    L is Addable<T.(Q).A>\n    R is LeftAddable<L>\n    R is T.(Q).A\n    ()\npublic func main() => ()\n", "1*ArithmeticDirection_Kd 2*InvalidConstraint_Kd", "f<")]
+    [InlineData("t2d", "contract Q\n    associate A\nfunc f<L, R, T, W>(left: ref/L)\n    T is Q\n    L is Addable<T.(Q).A>\n    R is LeftAddable<L>\n    W is Option<T.(Q).A>\n    W is Option<R>\n    ()\npublic func main() => ()\n", "1*ArithmeticDirection_Kd 2*InvalidConstraint_Kd", "f<")]
+    [InlineData("t2v", "contract Q\n    associate A\nfunc f<L, R, T, W, V>(left: ref/L)\n    T is Q\n    L is Addable<T.(Q).A>\n    R is LeftAddable<L>\n    W is Option<T.(Q).A>\n    V is Option<R>\n    ()\npublic func main() => ()\n", "clean", null)]
+    [InlineData("t3m", "struct Box<L, R, S>\n    S is LeftAddable<L>\n    public func g(self)\n        L is Addable<R>\n        R is S\n        ()\npublic func main() => ()\n", "1*ArithmeticDirection_Kd", "g(self)")]
+    [InlineData("t3x", "struct Box<L, R, S>\n    R is S\n    L is Addable<R>\n    public func g(self)\n        S is LeftAddable<L>\n        ()\npublic func main() => ()\n", "1*ArithmeticDirection_Kd", "g(self)")]
+    [InlineData("t3c", "struct Box<L, R, S>\n    L is Addable<R>\n    S is LeftAddable<L>\n    R is S\n    public func g(self)\n        R is S\n        ()\npublic func main() => ()\n", "1*ArithmeticDirection_Kd 1*InvalidConstraint_Kd", "struct Box")]
+    [InlineData("t7n", "contract P\n    associate A\n    Self.(P).A is Addable<Self>\ncontract P2\n    associate B is P\nfunc f<L>(left: ref/L)\n    L is P2\n    L.(P2).B is LeftAddable<L.(P2).B.(P).A>\n    ()\npublic func main() => ()\n", "1*ArithmeticDirection_Kd 3*InvalidConstraint_Kd", "f<")]
+    [InlineData("t5a", "func f<L, R>(left: ref/L, right: ref/R)\n    L is Addable<R>\n    R is LeftSubtractable<L>\n    ()\npublic func main() => ()\n", "clean", null)]
+    [InlineData("t5b", "func f<L, R>(left: ref/L, right: ref/R)\n    L is Addable<R>\n    R is LeftAddable<Option<L>>\n    ()\npublic func main() => ()\n", "clean", null)]
+    [InlineData("t5c", "func f<L, R>(left: ref/L, right: ref/R)\n    L is Addable<R>\n    ()\nfunc g<L, R>(left: ref/L, right: ref/R)\n    R is LeftAddable<L>\n    ()\npublic func main() => ()\n", "clean", null)]
+    [InlineData("t5d", "contract K<X>\nfunc f<L, R, S, T>(left: ref/L, right: ref/R)\n    L is Addable<R>\n    S is LeftAddable<L>\n    T is K<R>\n    T is K<S>\n    ()\npublic func main() => ()\n", "clean", null)]
+    [InlineData("t5e", "struct Box<L, R>\n    L is Addable<R>\nstruct Box2<L, R>\n    R is LeftAddable<L>\npublic func main() => ()\n", "clean", null)]
+    [InlineData("t5f", "func f<L, R, S, W>(left: ref/L, right: ref/R)\n    L is Addable<R>\n    S is LeftAddable<L>\n    W is Option<R>\n    S is Option<W>\n    ()\npublic func main() => ()\n", "clean", null)]
+    [InlineData("t5g", "func f<L, R>(left: ref/L, right: ref/R)\n    L is Addable<R>\n    R is LeftAddable<L> or Copy\n    ()\npublic func main() => ()\n", "clean", null)]
     public void ADirectionContradictionIsOnePairUpToIdentity(string name, string program, string records, string? at)
     {
         _ = name;

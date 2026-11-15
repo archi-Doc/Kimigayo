@@ -243,7 +243,7 @@ public sealed partial class Binding
         }
 
         this.identityRecorded.Add(scope, scope.Owner.BindingFailure == BindingFailure.None);
-        this.Fail(scope.Owner, failure);
+        this.Record(scope.Owner, failure, []); // a problem of its own where the owner's first failure is another check's (SPEC 23.1.2)
         return true;
     }
 

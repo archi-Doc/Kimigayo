@@ -210,14 +210,17 @@ public sealed partial class Binding
                 continue;
             }
 
-            if (!environment.Invalid && !this.ValidateArithmeticDirections(scope))
+            // SPEC 23.1.2: the direction contradiction and the identity premise error are independent; both are judged on the valid
+            // environment, the premise error once per pass, so the certificate rounds terminate (SPEC 8.2.3).
+            var contradiction = !environment.Invalid && !this.ValidateArithmeticDirections(scope);
+            changed |= this.RecordIdentityPremiseError(scope, mode);
+            if (contradiction)
             {
                 environment.Fail(scope.Owner); // ValidateArithmeticDirections failed the owner.
                 changed = true;
                 continue;
             }
 
-            changed |= this.RecordIdentityPremiseError(scope, mode); // SPEC 8.2.3: once per pass, so the certificate rounds terminate.
             foreach (var fact in environment.Facts)
             {
                 // The environment's judgment is its owner's, the node its record names: the proof runs in the owner's frame.
