@@ -626,7 +626,7 @@ public sealed partial class Binding
                 // SPEC 15.6.1: an Origin relation never changes a selection, so the reference's applicability takes the comparison's
                 // region conjuncts and drops them; the erasure at the value forms them (ErasesToFunction).
                 var rows = this.comparisonRows.Count;
-                var fits = this.ContractFits(use, symbol, function, required, container, null, frame, operations, origins, inputs, this.comparisonRows);
+                var fits = this.ContractFits(use, symbol, function, ContractComparison(required, this.comparisonRows), container, null, frame, operations, origins, inputs);
                 this.DropComparisonRows(rows);
                 if (!fits)
                 {

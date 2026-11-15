@@ -274,6 +274,12 @@ public sealed partial class Binding
         static bool Omitted(BoundOrigin? written, BoundOrigin? binding) => ReferenceEquals(written, binding) || written?.Kind == OriginKind.Inference;
     }
 
+    // SPEC 10.7, 15.3.7: the whole-contract comparison ContractFits judges, without an implementation signature (it solves the
+    // implementation's Origins itself): every proof, its solve's too, assumes the required signature's own well-formedness (the owner's
+    // (a)), and `rows` is the sink of the reader that builds it (CallableInstance.Rows; null: a region conjunct is not proven).
+    private static CallableInstance ContractComparison(BoundType required, List<BindingObligation>? rows)
+        => new(null, null, required, FunctionTypeBinder(required), null) { Rows = rows };
+
     // SPEC 7.7.4: a concrete Closure or Function Item converts to an expected common Function Type when its minimum receiver is Shared,
     // its signature fits under its conditions (CallableSignatureFits), its complete environment is Owned and its result contract does
     // not depend on its receiver (ResultDependsOnReceiver). Initializations, returns and call arguments share this judgment. A failure
@@ -402,27 +408,24 @@ public sealed partial class Binding
     // SPEC 10.7, 15.3.7: the implementation's per-call Origins are solved against the required signature, whose quantifiers and fixed
     // Origins stay rigid, under its declared relations and result premises; then the required inputs fit the implementation's, its
     // result fits the required one, and its conditions are proven for the solution. The implementation's Types are its members within
-    // `container` with `arguments` bound, or those of the Function Item `item`. `rows` takes the region conjuncts its premises leave
-    // unproven (CallableInstance.Rows; null: not proven).
+    // `container` with `arguments` bound, or those of the Function Item `item`. `comparison` is the query (ContractComparison): the
+    // required signature and the row sink that takes the region conjuncts its premises leave unproven.
     private bool ContractFits(
         Koto use,
         BindingSymbol symbol,
         FunctionKoto function,
-        BoundType required,
+        CallableInstance comparison,
         BoundType? container,
         BoundType? item,
         SlotFrame? frame,
         Span<BoundArgumentOperation> operations,
         BoundOrigin[] origins,
-        BoundOrigin[] inputs,
-        List<BindingObligation>? rows)
+        BoundOrigin[] inputs)
     {
+        var required = comparison.Expected!;
         var parameters = required.Components[0];
         var generic = function.GenericArguments.Count;
         var inputCount = InputOriginCount(function);
-
-        // The owner's (a): every proof of the comparison, its solve's too, assumes the required signature's own well-formedness.
-        var comparison = new CallableInstance(null, null, required, FunctionTypeBinder(required), null) { Rows = rows };
         var inference = this.BeginOriginInference(use, function);
         inference.Comparison = comparison;
         this.contractFailure = default;

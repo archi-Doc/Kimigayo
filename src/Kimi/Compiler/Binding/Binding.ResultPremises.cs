@@ -116,7 +116,7 @@ public sealed partial class Binding
         Array.Clear(inputs, 0, inputCount);
         try
         {
-            var fits = this.ContractFits(use, symbol, function, required, null, item, null, default, origins, inputs, rows);
+            var fits = this.ContractFits(use, symbol, function, ContractComparison(required, rows), null, item, null, default, origins, inputs);
             failure = fits ? default : this.contractFailure;
             return fits;
         }
