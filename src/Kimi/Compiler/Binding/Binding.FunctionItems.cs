@@ -196,26 +196,13 @@ public sealed partial class Binding
             return type;
         }
 
-        if (ItemDeclaringType(item, function) is { } declaring)
-        {
-            if (this.MemberType(type, declaring) is not { } member)
-            {
-                return null;
-            }
-
-            type = member;
-        }
-
-        if (item.LengthArguments.Length == 0)
-        {
-            return function.GenericArguments.Count == 0 ? type : this.SubstituteType(type, function, ((BoundType[])item.Components).AsSpan(0, function.GenericArguments.Count));
-        }
-
+        // PLAN G457 (b): the item's own arguments and its declaring occurrence's in one pass, as a call's (CallSubstitution), so an
+        // argument naming the enclosing callable's own slot (the item formed in its own body) is kept.
         var arguments = this.typeScratch.Rent(function.GenericArguments.Count);
         try
         {
             CopyItemArguments(item, function, arguments);
-            return this.SubstituteType(type, function, arguments.AsSpan(0, function.GenericArguments.Count), item.LengthArguments);
+            return this.Substitute(type, SubstitutionOf(function, ItemDeclaringType(item, function), arguments.AsSpan(0, function.GenericArguments.Count), item.LengthArguments));
         }
         finally
         {

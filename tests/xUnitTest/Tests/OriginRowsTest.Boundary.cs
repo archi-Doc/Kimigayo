@@ -57,15 +57,16 @@ public sealed partial class OriginRowsTest
     public void AFixedRecordHasNoRow(string source, string at, string site)
         => Assert.Empty(Recorded(source, [$"{Unproven} {at}"], site));
 
-    // Pinned until R7 (DECISIONS R4-M108, BU's `fncomp`): CheckTypeUse stops at the first differing Function Type component, so the
-    // positions after it have no row: the recorded body chain `local@ref` over x has a row only when it comes first. The records are the
-    // same in either order (G216 (a) U2.1, design-r2 §2 and Amendment 1; SPEC 15.6.1, 23.1.2): the Function component's failed condition
-    // is one UnprovenOriginContract_Kd at the value (it was an UnprovenOriginRelation_Kd per member position), beside the borrow's
-    // UnsatisfiedOriginRelation_Kd. Where the borrow's position has its row, A5's twin of it is at `return t` too (H3b T50).
+    // PLAN G900 (design 10.1; it was pinned as BU's `fncomp`, DECISIONS R4-M108's H11 list, while CheckTypeUse stopped at the first
+    // differing Function Type component and the positions after it had no row): the fit's decomposition goes on past that component, so
+    // the recorded body chain `local@ref` over x has its row in either order, and A5's twin of it at `return t` (H3b T50). The
+    // records are the same in either order (G216 (a) U2.1, design-r2 §2 and Amendment 1; SPEC 15.6.1, 23.1.2): the Function component's
+    // failed condition is one UnprovenOriginContract_Kd at the value (it was an UnprovenOriginRelation_Kd per member position), beside
+    // the borrow's UnsatisfiedOriginRelation_Kd.
     [Theory]
-    [InlineData("(g, local@ref)", "(ref/((ref/i32 during x) -> i32), ref/i32 during x)", "Fn:f Fit Fixed Fixed", "UnsatisfiedOriginRelation_Kd t|UnprovenOriginContract_Kd t")]
+    [InlineData("(g, local@ref)", "(ref/((ref/i32 during x) -> i32), ref/i32 during x)", "Fn:f Fit Fixed Fixed|Fn:f Fit Finite Fixed", "UnsatisfiedOriginRelation_Kd t|UnprovenOriginContract_Kd t|UnsatisfiedOriginRelation_Kd return t")]
     [InlineData("(local@ref, g)", "(ref/i32 during x, ref/((ref/i32 during x) -> i32))", "Fn:f Fit Finite Fixed|Fn:f Fit Fixed Fixed", "UnsatisfiedOriginRelation_Kd t|UnprovenOriginContract_Kd t|UnsatisfiedOriginRelation_Kd return t")]
-    public void APositionAfterADifferingFunctionComponentHasNoRowUntilH11(string value, string result, string rows, string records)
+    public void APositionBesideADifferingFunctionComponentHasItsRow(string value, string result, string rows, string records)
     {
         var source = $"func f(x: ref/i32, y: ref/i32, g: ref/((ref/i32 during y) -> i32)) -> {result}\n    let local = 1\n    let t = {value}\n    return t\n";
         Assert.Equal(rows.Split('|'), Recorded(source, records.Split('|'), "return t"));
