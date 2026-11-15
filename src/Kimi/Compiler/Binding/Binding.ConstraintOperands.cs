@@ -69,9 +69,10 @@ public sealed partial class Binding
         return null;
     }
 
+    // A declaration whose own validation step runs is no failed context of that step's checks, whatever the step recorded (validationStep).
     private Koto? InvalidDeclarationCause(Koto declaration)
     {
-        if (declaration.BindingState != BindingState.Invalid)
+        if (declaration.BindingState != BindingState.Invalid || ReferenceEquals(declaration, this.validationStep))
         {
             return null;
         }
