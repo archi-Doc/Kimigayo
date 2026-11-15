@@ -13505,12 +13505,19 @@ resumed by R4-M86 (2026-10-20).
     conformances) reads the key below `LayersTerminal`; `KeyType` no longer walks layers itself.
   - **Origin.** In `MeetLayers`, below a met layer a pair slot that does not restart the dependency (owner or uniq admitted) is not
     met: in the cases where it exists it outlives every layer outside it (SPEC 15.6.1), a premise of those cases alone. A first
-    layer and a ref-only slot are met as before. `MeetStep`'s PairFollow arm reads the same rule; `PairSlot` (read by PairOrigin and
-    SelectLayers) is unchanged. Amended by BU-213.
+    layer and a ref-only slot are met as before. `MeetStep`'s PairFollow arm reads the same rule (One slot rule, below); `PairSlot`
+    (read by PairOrigin and SelectLayers) is unchanged. Amended by BU-213.
+  - **One slot rule.** `FollowedSlot` is a pair layer's one case split (slot, restart, owner case), read by `MeetLayers` and
+    `MeetStep`'s PairFollow arm. `PairSlot` keeps its own contract, read by `PairOrigin` and `SelectLayers`. One owner: `LayerBelow`
+    serves `LayersTerminal`, `SharedReferenceThroughLayers`, `IterationEntry` and `SubjectModeOf`.
   - **Moves** (Q17 class 3): the row's forms through a qualifying pair layer below ref or uniq layers, a `ref/Self` receiver and a
     borrowing `for` through one, newly accepted; two Loan twins move from Binding's false rejection to A5's records.
   - **Rejected:** `MeetLayers`/`MeetStep` reading `PairSlot` (accepted an invalid program at a root pair layer: no outer layer
     bounds the slot); a pair walk inside the row (a second copy); an optional scope steering the walk.
+  - **Temporary structure.** An Exclusive `for` whose layer walk crossed a pair layer below a stored layer is the loop's located
+    `Unsupported_Kd` (`IterationEntry(..., out bool crossed)`, read by `BindUserIteration`), never a candidate failure. SPEC 7.3 and
+    13.5.5: such an exclusive receiver has no adaptation yet (PLAN G162's remainder). Removal: once that receiver (G162) and the
+    Exclusive `for`'s entry call through stored layers (G179) adapt.
   - Removes BU-181's temporary structure.
 - **BU-213 A reached-through Place is named by the one walk, whose facts the walk alone decides** (Front, 2026-11-13; PLAN G813;
   Major; design reviews 1 REVISE and 2 ACCEPT WITH NOTES, implementation review 1 ACCEPT; the Middle's RP17 consent C-291, round 2
