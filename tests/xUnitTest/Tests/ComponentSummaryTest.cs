@@ -211,6 +211,77 @@ public class ComponentSummaryTest
         Assert.DoesNotContain(records, static x => x.StartsWith("Unsupported_Kd", StringComparison.Ordinal));
     }
 
+    // SPEC 15.3.5 Fixed points, 8.3.3 Finality (R7-C2e2 e2-5a): an instance family. R<T> stores S<R<Wrap<T>>> and S needs its argument
+    // Owned. The stored instance is formed once, in R's formals under R's premises, never at an instance of R, so nothing grows: the
+    // declaration is valid, used or not, and Binding judges a use without a limit (an expansion a later phase cannot represent is that
+    // phase's located Unsupported_Kd at the use). Without the Owned premise the stored Types' own formation is unproven (SPEC 15.2.3)
+    // and Owned of an instance, which rests on it, is unproven at a use; a recursion that does not grow (S<R<T>>) is judged the same way.
+    [Theory]
+    [InlineData("rf3o", "struct R<T>\n    T is Owned\n    let next: Array<S<R<Wrap<T>>>>\n", true, "", 0)]
+    [InlineData("rf3o-nouse", "struct R<T>\n    T is Owned\n    let next: Array<S<R<Wrap<T>>>>\n", false, "", 0)]
+    [InlineData("rf4o", "struct R<T>\n    T is Owned\n    let next: Array<S<R<Wrap<T>>>>\n    let other: Array<S<R<Pair2<T>>>>\n", true, "", 0)]
+    [InlineData("rf-mut-o", "struct R<T>\n    T is Owned\n    let next: Array<S<Q<Wrap<T>>>>\nstruct Q<U>\n    U is Owned\n    let back: Array<S<R<U>>>\n", true, "", 0)]
+    [InlineData("rf3", "struct R<T>\n    let next: Array<S<R<Wrap<T>>>>\n", true, "", 4)]
+    [InlineData("rf3-nouse", "struct R<T>\n    let next: Array<S<R<Wrap<T>>>>\n", false, "", 3)]
+    [InlineData("regular", "struct R<T>\n    T is Owned\n    let next: Array<S<R<T>>>\n", true, "", 0)]
+    [InlineData("regular-n", "struct R<T>\n    let next: Array<S<R<T>>>\n", true, "", 4)]
+    public void AnInstanceFamilyIsFormedOnce(string id, string declarations, bool use, string limits, int unproven)
+    {
+        var c = CompilationTestHelper.ParseSuccess(Prelude + "struct S<U>\n    U is Owned\n    public var u: U\nstruct Wrap<A>\n    public var a: A\n" + declarations +
+            "func needOwned<V>(v: ref/V)\n    V is Owned\n    ()\n" + (use ? "func use1(r: ref/R<i32>) -> ()\n    needOwned(r)\n" : string.Empty));
+        Assert.True(c.Bind().IsComplete == (limits.Length == 0 && unproven == 0), id);
+        c.Binding.ReportDiagnostics();
+        var records = TestDiagnostics.Of(c).ToArray();
+        Assert.Equal(limits, string.Join(" | ", records.Where(static x => x.Code == "Unsupported_Kd").Select(static x => x.Text).Order(StringComparer.Ordinal)));
+        Assert.Equal(unproven, records.Count(static x => x.Code == "UnprovenConstraint_Kd"));
+        Assert.Equal(records.Length, records.Count(static x => x.Code is "Unsupported_Kd" or "UnprovenConstraint_Kd"));
+    }
+
+    // SPEC 23.1.2, 8.6.1 (R7-C2e2 e2-5a, the Middle's B3): one stored Type S2<R<Wrap<T>>, T> holds an instance family (U is Owned) and a
+    // Proof that fails on its own (V is K without `T is K`, or Wrap stating no K). The failed Proof is an independent record at the
+    // stored Type, kept beside the family, with a use or not, and in the controls without recursion; any other record is the use's,
+    // resting on R's failed Field. The valid twin (T is K, Wrap is K) has no Language record: only a later phase's located
+    // Unsupported_Kd at the use, as on dev.
+    [Theory]
+    [InlineData("g-mix-n", "contract K\nstruct S2<U, V>\n    U is Owned\n    V is K\n    public var u: U\nstruct Wrap<A>\n    public var a: A\nstruct R<T>\n    T is Owned\n    let next: Array<S2<R<Wrap<T>>, T>>\nfunc needOwned<V>(v: ref/V)\n    V is Owned\n    ()\nfunc use1(r: ref/R<i32>) -> ()\n    needOwned(r)\npublic func main() => ()\n", 10, 3, 15)]
+    [InlineData("g-mix2-n", "contract K\nstruct S2<U, V>\n    U is Owned\n    V is K\n    public var u: U\nstruct Wrap<A>\n    public var a: A\nstruct R<T>\n    T is Owned\n    let next: Array<S2<R<Wrap<T>>, Wrap<T>>>\nfunc needOwned<V>(v: ref/V)\n    V is Owned\n    ()\nfunc use1(r: ref/R<i32>) -> ()\n    needOwned(r)\npublic func main() => ()\n", 10, 3, 15)]
+    [InlineData("g-mix3-n", "contract K\nstruct S2<U, V>\n    U is Owned\n    V is K\n    public var u: U\nstruct Wrap<A>\n    Self is K\n    public var a: A\nstruct R<T>\n    T is Owned\n    let next: Array<S2<R<Wrap<T>>, T>>\nfunc needOwned<V>(v: ref/V)\n    V is Owned\n    ()\npublic func main() => ()\n", 11, 3, 0)]
+    [InlineData("g-mix3-use-n", "contract K\nstruct S2<U, V>\n    U is Owned\n    V is K\n    public var u: U\nstruct Wrap<A>\n    Self is K\n    public var a: A\nstruct R<T>\n    T is Owned\n    let next: Array<S2<R<Wrap<T>>, T>>\nfunc needOwned<V>(v: ref/V)\n    V is Owned\n    ()\nfunc use1(r: ref/R<i32>) -> ()\n    needOwned(r)\npublic func main() => ()\n", 11, 3, 16)]
+    [InlineData("g-mix-ctl-n", "contract K\nstruct S2<U, V>\n    U is Owned\n    V is K\n    public var u: U\nstruct Wrap<A>\n    Self is K\n    public var a: A\nstruct R<T>\n    T is Owned\n    let next: Array<S2<Wrap<T>, T>>\nfunc needOwned<V>(v: ref/V)\n    V is Owned\n    ()\npublic func main() => ()\n", 11, 3, 0)]
+    [InlineData("g-mix-ctl0-n", "contract K\nstruct S2<U, V>\n    U is Owned\n    V is K\n    public var u: U\nstruct Wrap<A>\n    public var a: A\nstruct R<T>\n    T is Owned\n    let next: Array<S2<Wrap<T>, T>>\nfunc needOwned<V>(v: ref/V)\n    V is Owned\n    ()\npublic func main() => ()\n", 10, 3, 0)]
+    [InlineData("g-mix-r", "contract K\nstruct S2<U, V>\n    U is Owned\n    V is K\n    public var u: U\nstruct Wrap<A>\n    Self is K\n    public var a: A\nstruct R<T>\n    T is Owned\n    T is K\n    let next: Array<S2<R<Wrap<T>>, T>>\nfunc needOwned<V>(v: ref/V)\n    V is Owned\n    ()\nfunc use1(r: ref/R<Wrap<Wrap<i32>>>) -> ()\n    needOwned(r)\npublic func main() => ()\n", 12, 0, 17)]
+    public void AnIndependentRecordBesideAnInstanceFamilyIsKept(string id, string source, int stored, int unproven, int use)
+    {
+        var records = DiagnosticCorpus.Check(source).Diagnostics.Select(x => (x.Code, Line: source.AsSpan(0, x.Span!.Value.Start).Count('\n') + 1)).ToArray();
+        Assert.Equal(unproven, records.Count(x => x == ("UnprovenConstraint_Kd", stored)));
+        Assert.All(records, x => Assert.True(x == ("UnprovenConstraint_Kd", stored) || x.Line == use, $"{id}: {x.Code}@{x.Line}"));
+        if (unproven == 0)
+        {
+            Assert.Equal(("Unsupported_Kd", use), Assert.Single(records));
+        }
+    }
+
+    // SPEC 8.3.3 Limits, 23.1.2 (R7-C2e2 e2-5a, DECISIONS BU-22): a work that reaches two located limits, a Tuple of two instances whose
+    // summaries are each past the projection bound, rests on the least by key (the earlier stored Type), whichever Tuple order reads them
+    // first (dev rested on the first one read, so the record moved with the order).
+    [Fact]
+    public void AWorkReachingTwoLimitsRestsOnTheLeastInEveryOrder()
+    {
+        var next = string.Concat(Enumerable.Repeat(".(Deep).Next", 64));
+        var declarations = "contract Deep: Owned\n    associate Next is Deep\ncontract Many\n    associate A1 is Deep\n    associate A2 is Deep\n" +
+            $"struct Wide1<T>\n    T is Many\n    let field1: T.(Many).A1{next}\nstruct Wide2<T>\n    T is Many\n    let field2: T.(Many).A2{next}\n" + Need;
+        Assert.Equal(Records("(Wide1<U>, Wide2<U>)"), Records("(Wide2<U>, Wide1<U>)"));
+        Assert.Equal(["Unsupported_Kd T.(Many).A1" + next], Records("(Wide1<U>, Wide2<U>)"));
+
+        string[] Records(string tuple)
+        {
+            var c = CompilationTestHelper.ParseSuccess(declarations + $"func inspect<U>(x: {tuple})\n    U is Many and Owned\n    need(x@move)\n");
+            Assert.False(c.Bind().IsComplete);
+            c.Binding.ReportDiagnostics();
+            return [.. TestDiagnostics.Of(c).Select(static x => x.Code + " " + x.Text)];
+        }
+    }
+
     // The closure of F5 (a) (DECISIONS BU-22): a projection of more than 64 steps (a conformance binding can lengthen a projection with
     // no projection link) makes its summary a site, which only yields the located Unsupported_Kd at its stored Type, never a verdict; a
     // shorter one is judged (each step is `Deep`, hence Owned, by SPEC 8.3.2's refinement row: R7-C2a1), and many short projections stay

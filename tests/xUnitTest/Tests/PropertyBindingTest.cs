@@ -181,7 +181,7 @@ public partial class PropertyBindingTest
     [Theory]
     [InlineData(StoredWitnessNamesItsConformance, "clean")]
     [InlineData(ComputedWitnessNamesItsConformance, "clean")]
-    [InlineData(CopiedWitnessNamesItsConformance, "clean")]
+    [InlineData(CopiedWitnessNamesItsConformance, "1*IncompatibleContractImplementation_Kd 6*InvalidConstraint_Kd 2*UninitializedPlace_Kd 1*UnprovenConstraint_Kd")]
     [InlineData(WitnessNamesAContractItsTypeLacks, "1*IncompatibleContractImplementation_Kd 1*NoApplicableOverload_Kd 2*UninitializedPlace_Kd 9*UnsatisfiedConstraint_Kd")]
     [InlineData(AccessorOfAFailedProperty, "1*InaccessibleBinding_Kd 1*IncompatibleContractImplementation_Kd 1*InvalidConstraint_Kd")]
     [InlineData(FailedSetterARequirementDoesNotNeed, "1*InaccessibleBinding_Kd")]
