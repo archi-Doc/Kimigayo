@@ -245,7 +245,8 @@ public class UserArithmeticOperatorTest
     // are accepted. e0n and e2n keep their independent 8.2.3 conflict beside the contradiction, and x22n, x22s and x22r their 8.3.2
     // contradictory evidence (`T is Copy`, `T is not Copy`), each at the declaration (SPEC 23.1.2); x40n's two premises are both supplied
     // by `L is W`, one level deep, its identity written; k2n's contradiction is in Contract K's own environment, whose `Self is
-    // ObjectPayload` reads K itself: no record beside the contradiction (a self-read is no failed input). Pinned as they are: d2n, a
+    // ObjectPayload` reads K itself: no record at K beside the contradiction (a self-read is no failed input). Pinned as they are: k2n's
+    // four ICs at its premises' projections (5:5, 5:27, 6:5, 6:31: later checks reading K's failed environment, dev's records); d2n, a
     // clause instance at a class mate's prefix, until PLAN G881's row (5) (EnumerateMates); a6n, a6k and a6v without 8.3.2's
     // closed-world record (G853, c2-4).
     [Theory]

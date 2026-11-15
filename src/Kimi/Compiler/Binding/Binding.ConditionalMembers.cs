@@ -37,7 +37,7 @@ public sealed partial class Binding
             return this.InvalidEnvironment(invalid);
         }
 
-        if (declaration.BindingState == BindingState.Invalid ||
+        if (this.DeclarationFailed(declaration) ||
             this.InvalidDeclarationCause(member.Declaration) is not null)
         {
             return ConstraintProof.Error;
