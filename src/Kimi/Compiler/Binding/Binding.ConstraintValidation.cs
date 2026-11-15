@@ -210,7 +210,7 @@ public sealed partial class Binding
                 continue;
             }
 
-            if (!environment.Invalid && !this.ValidateArithmeticDirections(scope, environment))
+            if (!environment.Invalid && !this.ValidateArithmeticDirections(scope))
             {
                 environment.Fail(scope.Owner); // ValidateArithmeticDirections failed the owner.
                 changed = true;

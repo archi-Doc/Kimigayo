@@ -238,6 +238,83 @@ public class UserArithmeticOperatorTest
         Assert.Equal(new[] { "ordinary", "reverse" }, error.Related!.Select(static x => x.Role));
     }
 
+    // PLAN G882 (SPEC 13.3.4 under 8.2.3 and 8.3.2): the coverage table's programs (labels from SPEC first; design-g882 §3). One operand
+    // pair is one up to the view's identity, on either side and in either direction, and its opposite premise may be written or
+    // supplied by a Contract premise at any depth; the contradiction is recorded once, at the declaration where its premises first meet
+    // (`at`: f, or the member g whose identity joins Box's premises). The valid controls are accepted. Pinned as they are: d2n, a limit
+    // of the rows (Enumerate's row (2) walks no class mate's projection prefix; G882's O5 PLAN row); e0n and e2n, whose independent
+    // conflict the failed environment hides (SPEC 23.1.2; G882's O2 PLAN row); a6n, a6k and a6v without 8.3.2's closed-world record
+    // (G853, c2-4).
+    [Theory]
+    [InlineData("a0n", "func f<L, R>(left: ref/L, right: ref/R)\n    L is Addable<R>\n    R is LeftAddable<L>\n    ()\npublic func main() => ()\n", "1*ArithmeticDirection_Kd", "f<")]
+    [InlineData("a0r", "func f<L, R>(left: ref/L, right: ref/R)\n    R is LeftAddable<L>\n    L is Addable<R>\n    ()\npublic func main() => ()\n", "1*ArithmeticDirection_Kd", "f<")]
+    [InlineData("a0v", "func f<L, R, M>(left: ref/L, right: ref/R)\n    L is Addable<R>\n    R is LeftAddable<M>\n    ()\npublic func main() => ()\n", "clean", null)]
+    [InlineData("a1n", "func f<L, R, S>(left: ref/L, right: ref/R)\n    L is Addable<R>\n    S is LeftAddable<L>\n    R is S\n    ()\npublic func main() => ()\n", "1*ArithmeticDirection_Kd", "f<")]
+    [InlineData("a1o", "func f<L, R, S>(left: ref/L, right: ref/R)\n    L is Addable<R>\n    S is LeftAddable<L>\n    S is R\n    ()\npublic func main() => ()\n", "1*ArithmeticDirection_Kd", "f<")]
+    [InlineData("a1r", "func f<L, R, S>(left: ref/L, right: ref/R)\n    S is LeftAddable<L>\n    L is Addable<R>\n    R is S\n    ()\npublic func main() => ()\n", "1*ArithmeticDirection_Kd", "f<")]
+    [InlineData("a1v", "func f<L, R, S>(left: ref/L, right: ref/R)\n    L is Addable<R>\n    S is LeftAddable<L>\n    ()\npublic func main() => ()\n", "clean", null)]
+    [InlineData("a1w", "func f<L, R, S, M>(left: ref/L, right: ref/R)\n    L is Addable<R>\n    S is LeftAddable<M>\n    R is S\n    ()\npublic func main() => ()\n", "clean", null)]
+    [InlineData("a2n", "func f<L, R, M>(left: ref/L, right: ref/R)\n    L is Addable<R>\n    R is LeftAddable<M>\n    M is L\n    ()\npublic func main() => ()\n", "1*ArithmeticDirection_Kd", "f<")]
+    [InlineData("a9n", "func f<L, R, S, M>(left: ref/L, right: ref/R)\n    L is Addable<R>\n    S is LeftAddable<M>\n    R is S\n    M is L\n    ()\npublic func main() => ()\n", "1*ArithmeticDirection_Kd", "f<")]
+    [InlineData("a4n", "func f<L, R>(left: ref/L, right: ref/R)\n    L is Addable<R>\n    L is LeftAddable<R>\n    L is R\n    ()\npublic func main() => ()\n", "1*ArithmeticDirection_Kd", "f<")]
+    [InlineData("a4v", "func f<L, R>(left: ref/L, right: ref/R)\n    L is Addable<R>\n    L is LeftAddable<R>\n    ()\npublic func main() => ()\n", "clean", null)]
+    [InlineData("a5n", "func f<L, R, S, W>(left: ref/L, right: ref/R)\n    L is Addable<R>\n    S is LeftAddable<L>\n    W is Option<R>\n    W is Option<S>\n    ()\npublic func main() => ()\n", "1*ArithmeticDirection_Kd", "f<")]
+    [InlineData("a5v", "func f<L, R, S, W, V>(left: ref/L, right: ref/R)\n    L is Addable<R>\n    S is LeftAddable<L>\n    W is Option<R>\n    V is Option<S>\n    ()\npublic func main() => ()\n", "clean", null)]
+    [InlineData("a7n", "contract Q\n    associate A\n    associate B\n    Self.(Q).A is Self.(Q).B\nfunc f<L, T>(left: ref/L)\n    T is Q\n    L is Addable<T.(Q).A>\n    T.(Q).B is LeftAddable<L>\n    ()\npublic func main() => ()\n", "1*ArithmeticDirection_Kd 2*InvalidConstraint_Kd", "f<")]
+    [InlineData("a7v", "contract Q\n    associate A\n    associate B\nfunc f<L, T>(left: ref/L)\n    T is Q\n    L is Addable<T.(Q).A>\n    T.(Q).B is LeftAddable<L>\n    ()\npublic func main() => ()\n", "clean", null)]
+    [InlineData("a3n", "contract P\n    associate A\n    Self.(P).A is LeftAddable<Self>\nfunc f<L>(left: ref/L)\n    L is P\n    L is Addable<L.(P).A>\n    ()\npublic func main() => ()\n", "1*ArithmeticDirection_Kd 1*InvalidConstraint_Kd", "f<")]
+    [InlineData("a3v", "contract P\n    associate A\n    Self.(P).A is LeftAddable<i32>\nfunc f<L>(left: ref/L)\n    L is P\n    L is Addable<L.(P).A>\n    ()\npublic func main() => ()\n", "clean", null)]
+    [InlineData("a3i", "contract P\n    associate A\n    Self.(P).A is LeftAddable<Self>\nfunc f<L, R>(left: ref/L, right: ref/R)\n    L is P\n    L is Addable<R>\n    R is L.(P).A\n    ()\npublic func main() => ()\n", "1*ArithmeticDirection_Kd 1*InvalidConstraint_Kd", "f<")]
+    [InlineData("a3iv", "contract P\n    associate A\n    Self.(P).A is LeftAddable<i32>\nfunc f<L, R>(left: ref/L, right: ref/R)\n    L is P\n    L is Addable<R>\n    R is L.(P).A\n    ()\npublic func main() => ()\n", "clean", null)]
+    [InlineData("d2r", "contract P\n    associate A\n    Self.(P).A is LeftAddable<Self>\ncontract P2\n    associate B is P\nfunc f<L>(left: ref/L)\n    L is P2\n    L.(P2).B is Addable<L.(P2).B.(P).A>\n    ()\npublic func main() => ()\n", "1*ArithmeticDirection_Kd 3*InvalidConstraint_Kd", "f<")]
+    [InlineData("d2n", "contract P\n    associate A\n    Self.(P).A is LeftAddable<Self>\ncontract P2\n    associate B is P\nfunc f<L, R>(left: ref/L, right: ref/R)\n    L is P2\n    L.(P2).B is Addable<R>\n    R is L.(P2).B.(P).A\n    ()\npublic func main() => ()\n", "clean", null)]
+    [InlineData("a6n", "func f<L, R>(left: ref/L, right: ref/R)\n    L is Addable<Option<i32>>\n    R is LeftAddable<L>\n    R is Option<i32>\n    ()\npublic func main() => ()\n", "1*ArithmeticDirection_Kd", "f<")]
+    [InlineData("a6k", "func f<L, R, K>(left: ref/L, right: ref/R)\n    L is Addable<R>\n    R is LeftAddable<K>\n    L is Option<i32>\n    K is Option<i32>\n    ()\npublic func main() => ()\n", "1*ArithmeticDirection_Kd", "f<")]
+    [InlineData("a6v", "func f<L, R>(left: ref/L, right: ref/R)\n    L is Addable<Option<i32>>\n    R is LeftAddable<L>\n    R is Option<u8>\n    ()\npublic func main() => ()\n", "clean", null)]
+    [InlineData("n1n", "struct Box<L, R, S>\n    L is Addable<R>\n    S is LeftAddable<L>\n    public func g(self)\n        R is S\n        ()\npublic func main() => ()\n", "1*ArithmeticDirection_Kd", "g(self)")]
+    [InlineData("n1v", "struct Box<L, R, S>\n    L is Addable<R>\n    S is LeftAddable<L>\n    public func g(self)\n        ()\npublic func main() => ()\n", "clean", null)]
+    [InlineData("n2n", "struct Box<L, R, S>\n    L is Addable<R>\n    public func g(self)\n        S is LeftAddable<L>\n        R is S\n        ()\npublic func main() => ()\n", "1*ArithmeticDirection_Kd", "g(self)")]
+    [InlineData("n2v", "struct Box<L, R, S>\n    L is Addable<R>\n    public func g(self)\n        S is LeftAddable<L>\n        ()\npublic func main() => ()\n", "clean", null)]
+    [InlineData("o2v", "func f<L, R, S>(left: ref/L, right: ref/R)\n    L is Addable<R>\n    S is LeftAddable<L>\n    R is S or i32\n    ()\npublic func main() => ()\n", "clean", null)]
+    [InlineData("e1n", "func f<L, R, S>(left: ref/L, right: ref/R)\n    L is Addable<R>\n    S is LeftAddable<L>\n    R is S\n    S is Option<R>\n    ()\npublic func main() => ()\n", "1*InvalidConstraint_Kd", null)]
+    [InlineData("e0n", "func f<L, R, T, U>(left: ref/L, right: ref/R)\n    L is Addable<R>\n    R is LeftAddable<L>\n    T is Option<U>\n    T is Array<U>\n    ()\npublic func main() => ()\n", "1*ArithmeticDirection_Kd", "f<")]
+    [InlineData("e2n", "func f<L, R, S, T, U>(left: ref/L, right: ref/R)\n    L is Addable<R>\n    S is LeftAddable<L>\n    R is S\n    T is Option<U>\n    T is Array<U>\n    ()\npublic func main() => ()\n", "1*ArithmeticDirection_Kd", "f<")]
+    public void ADirectionContradictionIsOnePairUpToIdentity(string name, string program, string records, string? at)
+    {
+        _ = name;
+        var result = DiagnosticCorpus.Check(program);
+        Assert.Equal(records, DiagnosticCorpus.RecordProfile(result));
+        int[] expected = at is null ? [] : [program.IndexOf(at, StringComparison.Ordinal)];
+        Assert.Equal(expected, result.Diagnostics.Where(static x => x.Code == nameof(DiagnosticCode.ArithmeticDirection_Kd)).Select(static x => x.Span!.Value.Start));
+    }
+
+    // PLAN G882's scaling row: the direction check asks the rows once per written arithmetic premise of a view (OppositeRow), so the
+    // pairs Closure(view) indexes grow linearly in one declaration's premises and in the declarations. Valid (SPEC 13.3.4, 8.2.3): each
+    // identity joins S{i} to R{i}, whose pairs (L{i}, R{i}) and (M{i}, R{i}) differ (a1w).
+    [Theory]
+    [InlineData("premises")]
+    [InlineData("declarations")]
+    public void DirectionChecksAreLinearInTheArithmeticPremises(string grown)
+    {
+        var (w8, w16, w32) = (Work(grown, 8), Work(grown, 16), Work(grown, 32));
+        Assert.True(w8 > 0 && w16 <= 2 * w8 && w32 <= 2 * w16, $"{grown}: {w8} at 8, {w16} at 16, {w32} at 32");
+
+        static int Work(string grown, int n)
+        {
+            var (declarations, premises) = grown == "declarations" ? (n, 4) : (1, n);
+            var parameters = string.Join(", ", Enumerable.Range(0, premises).Select(static i => $"L{i}, R{i}, S{i}, M{i}"));
+            var clauses = string.Concat(Enumerable.Range(0, premises).Select(static i => $"    L{i} is Addable<R{i}>\n    S{i} is LeftAddable<M{i}>\n    R{i} is S{i}\n"));
+            return Closure(string.Concat(Enumerable.Range(0, declarations).Select(j => $"func f{j}<{parameters}>(left: ref/L0)\n{clauses}    ()\n"))) - Closure(string.Empty);
+        }
+
+        static int Closure(string source)
+        {
+            var c = MinimalEmissionTest.Analyze(source + "public func main() -> ()\n    return\n");
+            Assert.True(CompilationTestHelper.PublishedErrors(c).Length == 0, MinimalEmissionTest.Describe(c));
+            return c.Binding.ClosureIndexWork;
+        }
+    }
+
     [Fact]
     public void LiteralAmbiguityRetainsBothConformancesInPublicRecords()
     {

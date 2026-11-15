@@ -6,6 +6,13 @@ using Kimi.Diagnostics;
 
 namespace Kimi.Compiler;
 
+// Binding.ArithmeticDiagnostics: SPEC 13.3's arithmetic records. Responsibility: the typed facts of a fixed provider route's failed
+// selection and of an explicitly declared conformance's ineligibility (13.3.3), and SPEC 13.3.4's direction contradiction
+// (ValidateArithmeticDirections). Inputs of the direction check: the view's available written arithmetic premises, the opposite
+// premise as ContractSolver's rows (FirstRows) and the pair compared by Binding.TypeIdentity's judge (IdentityProven). Output: the
+// owner's ArithmeticDirection failure with both premises' uses. Invariant: a function of the view, whatever the premises' order, side,
+// spelling or depth. Prohibitions: no scan of written facts for the opposite premise and no identity rule of its own. Limit: a pair
+// neither of whose premises is written in the view's environments waits for Closure(view) (C3/e2).
 public sealed partial class Binding
 {
     private Dictionary<Koto, ArithmeticSelectionFailure>? arithmeticSelectionFailures;
@@ -72,42 +79,64 @@ public sealed partial class Binding
             : node is ParenthesizedKoto parentheses ? ContractUse(parentheses.Operand, contract) : null;
     }
 
-    private bool ValidateArithmeticDirections(BindingScope scope, ConstraintEnvironment environment)
+    // SPEC 13.3.4 under 8.2.3 and 8.3.2 (PLAN G882): for each available written arithmetic premise `X is Op<Y>` of the view's chain,
+    // the opposite premise of its operand pair is an available row of the opposite Contract that the rows supply for Y (OppositeRow).
+    // The contradiction is reported once, at the first scope where its two premises meet: a scope stating neither leaves it to its
+    // parent when the parent's view already holds it.
+    private bool ValidateArithmeticDirections(BindingScope scope)
     {
-        foreach (var fact in environment.Facts)
+        for (var stating = scope; stating is not null; stating = stating.Parent)
         {
-            if (fact.Kind != ConstraintKind.Contract || fact.Subject is not { } subject || fact.Contract is not { Type.Components: [var counterpart] } contract ||
-                ArithmeticContractSyntax.Identity(contract) is not { } id || id == KimiDeclarationId.Negatable ||
-                !this.AvailableConstraintFact(environment, fact, out _))
+            if (stating.Constraints is not { Invalid: false } environment)
             {
                 continue;
             }
 
-            var reversed = ArithmeticContracts.IsLeft(id);
-            var oppositeId = reversed ? id - (KimiDeclarationId.LeftAddable - KimiDeclarationId.Addable) : id + (KimiDeclarationId.LeftAddable - KimiDeclarationId.Addable);
-            for (var current = scope; current is not null; current = current.Parent)
+            foreach (var fact in environment.Facts)
             {
-                if (current.Constraints is not { Invalid: false } other)
+                if (fact.Kind != ConstraintKind.Contract || fact.Subject is not { } subject || fact.Contract is not { Type.Components: [var counterpart] } contract ||
+                    ArithmeticContractSyntax.Identity(contract) is not { } id || id == KimiDeclarationId.Negatable ||
+                    !this.AvailableConstraintFact(environment, fact, out _))
                 {
                     continue;
                 }
 
-                foreach (var oppositeFact in other.Facts)
+                var reversed = ArithmeticContracts.IsLeft(id);
+                var oppositeId = reversed ? id - (KimiDeclarationId.LeftAddable - KimiDeclarationId.Addable) : id + (KimiDeclarationId.LeftAddable - KimiDeclarationId.Addable);
+                if (this.OppositeRow(counterpart, subject, oppositeId, scope) is not { Symbol: { } opposite } row ||
+                    (!ReferenceEquals(stating, scope) && !ReferenceEquals(row.Stated, scope) && scope.Parent is { } parent && this.OppositeRow(counterpart, subject, oppositeId, parent) is not null))
                 {
-                    if (oppositeFact.Kind == ConstraintKind.Contract && oppositeFact.Contract is { Type.Components: [var oppositeCounterpart] } opposite &&
-                        ArithmeticContractSyntax.Identity(opposite) == oppositeId && AssociatedIdentityMatches(oppositeFact.Subject, counterpart) &&
-                        AssociatedIdentityMatches(oppositeCounterpart, subject) && this.AvailableConstraintFact(other, oppositeFact, out _))
-                    {
-                        var here = this.ArithmeticFactUse(fact, scope);
-                        var there = this.ArithmeticFactUse(oppositeFact, current);
-                        this.FailExplained(ref this.arithmeticDirectionFailures, scope.Owner, BindingFailure.ArithmeticDirection, reversed ? new(counterpart, subject, oppositeId, opposite, contract, there, here) : new(subject, counterpart, id, contract, opposite, here, there));
-                        return false;
-                    }
+                    continue;
                 }
+
+                var here = this.ArithmeticFactUse(fact, stating);
+                var there = row is { Raw: { } raw, Stated: { } where } ? this.ArithmeticFactUse(raw, where) : row.Stated?.Owner ?? scope.Owner;
+                this.FailExplained(ref this.arithmeticDirectionFailures, scope.Owner, BindingFailure.ArithmeticDirection, reversed ? new(counterpart, subject, oppositeId, opposite, contract, there, here) : new(subject, counterpart, id, contract, opposite, here, there));
+                return false;
             }
         }
 
         return true;
+    }
+
+    // The opposite premise for the pair of `subject` and `counterpart`: an available Contract row of `counterpart` in the view (FirstRows:
+    // every depth, through its identity class) of the Contract `oppositeId` whose argument is `subject` by the identity judge.
+    private PremiseRow? OppositeRow(BoundType counterpart, BoundType subject, KimiDeclarationId oppositeId, BindingScope view)
+    {
+        var start = this.premiseRows.Count;
+        this.FirstRows(counterpart, view, this.premiseRows);
+        PremiseRow? found = null;
+        for (var i = start; found is null && i < this.premiseRows.Count; i++)
+        {
+            if (this.premiseRows[i] is { Available: true, Symbol: { Type.Components: [var argument] } opposite } row &&
+                ArithmeticContractSyntax.Identity(opposite) == oppositeId && this.IdentityProven(argument, subject, view))
+            {
+                found = row;
+            }
+        }
+
+        this.premiseRows.RemoveRange(start, this.premiseRows.Count - start);
+        return found;
     }
 
     private void ReportArithmeticSelection(Koto use, DiagnosticRequirement requirement, ArithmeticSelectionFailure failure)
