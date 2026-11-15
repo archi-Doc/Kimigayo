@@ -16661,6 +16661,8 @@ structure is recorded here by the unit that first implements it.
   - Superseded in part by R8-W2 c4 (2026-11-15): no formatting runtime text is left. `ModuleCodegen.Request(HelperNeeds)` and
     `Needs.Formatting` are deleted, so "The runtime is written once, after the Array runtime and before the helpers" ends;
     Text.writer's routine is the kept file's (R8-M18).
+  - Superseded in part by R8-M46 (R8-W2 b2-1): `Text.writer` is a Kimigayo body with specializations for `FixedBuffer` and
+    `HeapBuffer`; the kept file holds `__kimi_erased_reserve` only.
 - **R5-M129 The Array literal is one MIR aggregate (alit)** (2026-10-26; the owner's 「a) 設計して直す お願いします」 (2026-10-26, on G:library-2's held
   review: design and fix) and 「いずれも承認します」 (2026-10-26, to "MIR の語彙に新しい集約の種類 MirAggregateKind.Array を加えてよいですか？"); G:library-2's B1; partly
   supersedes R5-M121 and R3-5's interim mapping for the Array literal)
@@ -16801,6 +16803,9 @@ structure is recorded here by the unit that first implements it.
   - Superseded in part by R8-M22 (R8-W1c-2, after R8-M18's W1b-4): its Wrappers bullet: the write wrapper,
     `WriteFormattingConversion`, `FormatHealthy` and `ModuleCodegen.Formatting` are deleted; a Body formatter is called by the
     `write<T>` body's instance, and `toString` and `tryFormat` are bodies.
+  - Superseded in part by R8-M46 (R8-W2 b2-1): its Erased writer bullet: `Text.writer` is a Kimigayo body, not the ErasedWriter
+    intrinsic; the intrinsic is `ReserveDispatch`, the reserve witness's code address; `LegacyRuntimeHelpers.WriterKind`,
+    `IntrinsicWriter.Writer` (now `Address`) and `__kimi_text_writer` are gone.
 - **R5-M131 The owning interpolation's buffer, hints and end in MIR code generation (C9c)** (2026-10-27; under R3-10, R5-M18 form 2
   (G:format), R5-M30, R5-M128, R5-M130 and R5-M132; PLAN G157 (35))
   - Estimate: code generation writes R3-10's three temporary intrinsics from each call's own operands, the literal bytes, the values'
@@ -20231,6 +20236,10 @@ R8-M* and R9-M* by the stage of the recording unit.
     validated-suffix copies of `text`, `validate`, `intoText` and `intoString` are one internal `Text.validSuffix`.
   - Amended by R8-W2 c4 (2026-11-15): the "Option A" bullet's kind 0/1 arms are the Kimigayo ones (`Utf8Writer.reserve`'s) since
     c4, which deleted the runtime's arms.
+  - Superseded in part by R8-M46 (R8-W2 b2-1): the Temporary collector clause
+    (`IntrinsicTarget.Witness when WriterKind(argument) is 0 or 1 => -1`) is removed with `WriterKind` and `Dispatch`'s kind 0/1
+    arm; Option A's sentence ends: the standard buffers' adapters are Kimigayo specializations of `Text.writer`, and `Dispatch` has
+    one arm. Rejected B keeps its reasons.
 - **R8-M10 A Drop that destroys nothing asks no drop glue** (Back, 2026-11-08; OI-1a, PLAN G641 kinds 1-3; Major; the Middle's C-160
   YES with B1 and B2) SPEC 8.15.3, 14.10.3, 16.2.1, 16.2.2. Supersedes in part R5-M60 (its clause "A2's verdicts do not narrow the
   checked set") and R4-M6a (its clause "a Drop only check edges reach has no row; check-only code is not judged").
@@ -20486,6 +20495,11 @@ R8-M* and R9-M* by the stage of the recording unit.
       and the lasting `destination`/`dispatch` layout pair.
     - Counts: `ModuleCodegen.Needs` loses `Formatting` (bit 64 is free); `HelperNeeds` 1 -> 0 (deleted); `IntrinsicId`,
       `CompilerFunctionKind` and `KimiDeclarationId` unchanged.
+  - Superseded in part by R8-M46 (R8-W2 b2-1): the Temporary "the reservation's kind switch restating `WriterKind`'s 0/1/2, the hint
+    arm and the unreachable kind Abort" ends: the numbering and the Abort go; the switch is an exhaustive match over the enum tag
+    `WriterDestination` and the hint arm is lasting (SPEC 22.10.5), a departure by name (part b's plan §2 P1/P6). The need column's
+    "`llvm.memset` is declared by its lasting user, the kept file (`__kimi_text_writer` zeroes the adapter)" ends: no runtime builds
+    the adapter. The lasting pair is unchanged.
 
   - R8-M2's rule beyond `Formatting.kimi`, with its RP8 exception until R8-L1: R8-M2's Scope sub-bullet (PLAN G693, the owner's
     O-150 (a)).
@@ -21719,6 +21733,44 @@ R8-M* and R9-M* by the stage of the recording unit.
     - A library `hinted<length H>`: one instance per distinct hint, a2 review 2's R2-N2.
     - Skipping the store on a fixed-only line: a mode in `Writes`.
   - **RP8:** T-218.
+- **R8-M46 The adapter built in Kimigayo** (Back, 2026-11-15; R8-W2 b2-1; Major; the owner's O-239 (a), verbatim 「推奨どおりでお願いします」; B's
+  independent review ACCEPT WITH NOTES; the Middle's C-330: hunk review ACCEPT WITH NOTES; the Front's C-367: CONSENT; the owner's
+  O-354 (a), verbatim 「O-354 a」, for its Bind cost; on PLAN G863 as landed, DECISIONS BU-208). SPEC 8.13.1-8.13.3, 22.9.1, 22.9.2,
+  22.10.5; IMPL 21.1.3.
+  - **Rule.** `Text.writer<W>` (`W is BufferWriter`) is a body in `Formatting.kimi`'s `group Text`, with explicit specializations
+    for `Text.FixedBuffer` and `Text.HeapBuffer`. One internal `Utf8Writer.init(destination, dispatch, kind)` stores the adapter,
+    every Field. Its destination tag is the internal enum `WriterDestination` (`Fixed`, `Heap`, `Erased`), which
+    `Utf8Writer.reserve` matches exhaustively; the hint arm is lasting (SPEC 22.10.5).
+  - **The one inexpressible word.** The code address of a user Writer's `reserve` is `Storage.reserveDispatch<W>()`,
+    `IntrinsicId.ReserveDispatch` (renamed from `ErasedWriter`; row `(ReserveDispatch, Witness, LayoutNeed.None, Address, null)`). A
+    function value is IMPL 21.1.3's pair, not the word `__kimi_erased_reserve` calls through.
+  - **MIR and code generation.** `MirBuilder.Line`'s fixed arm (`Erase`) calls `writer<FixedBuffer>` as a `MirCalleeKind.Fn` call,
+    the original with its substitution (the collector selects the specialization), replacing `intrinsic ErasedWriter<FixedBuffer>`;
+    R8-M24's one erased writer stays. `MirDescriptors`: `ReserveDispatch => Intrinsic(MirEffect.None, 0)`.
+    `FunctionCodegen.Formatting.cs` is one `Dispatch` (the user arm; any other target `InternalInvariant_Kd`); the collector's
+    `IntrinsicTarget.Witness` is always `Runs(BufferWriter, W)`; `ErasedWriterRuntime.ll.in` keeps `__kimi_erased_reserve` only.
+    `Utf8Writer` is 56 bytes (was 64).
+  - **Deleted:** `LegacyRuntimeHelpers.WriterKind` (with `LegacyRuntimeHelpers.Formatting.cs`), W1a's collector clause, `Dispatch`'s
+    kind 0/1 arm, `{{__kimi_text_writer}}` and its `llvm.memset` declare, `RuntimeAbi.TextWriter`, `Text.kimi`.
+  - **Counts** (RQ9): `KimiDeclarationId` +1 (`StorageReserveDispatch`; `TextWriter` keeps its id); `CompilerFunctionKind` 29 -> 29
+    with `None` (-`TextWriter`, +`StorageReserveDispatch` inside the Storage range, so `IsStorageOperation` covers it);
+    `IntrinsicId` 27 -> 27 with `None`; `IntrinsicWriter.Writer` -> `Address`, the same count.
+  - **Moves:** no acceptance move; diagnostic snapshot 0 differences. One record move outside the snapshot (the Front's C-367 N2):
+    the invalid `Utf8Writer.init(null, null, .Heap)` gets `NoApplicableOverload_Kd` (was `UnresolvedBinding_Kd`), the record
+    `WriteWindow`'s internal init already gives. Generated gate T-286: 1,109 programs, 0 differences in exit, records and IR
+    written; 664 `P.ll` move, each where the base holds the writer-kind Abort text and `__kimi_text_writer`; user MIR
+    `intrinsic ErasedWriter<B>(` -> `writer<B>(`; library MIR 303 -> 307 bodies. A5 (C-330): records 31/31 equal.
+  - **RP8** (T-273): O2 unchanged (every kernel inside its A=A by R5-M135's address-matched control). Bind B/A′: warm Hello 1.006,
+    Milestone26 1.017, Interpolation 1.033; cold Milestone26 1.052 (A′/A 0.993), above RP8's 1.03: the adapter's bodies join the
+    library's fixed bind cost, accepted by the owner's O-354 (a). Cold bytes +95 to +118 KB, warm 0 B, recorded for the stage exit's
+    comparison.
+  - **Supersedes in part:** R8-M16 (its Temporary collector clause and Option A's kind 0/1 sentence); R8-M18 (the kind switch's
+    numbering and Abort, and the memset sentence); R5-M128 and R5-M130 (`Text.writer`'s intrinsic row). R8-M18's lasting pair
+    (destination 0, dispatch 8, `__kimi_erased_reserve`) is unchanged.
+  - **Rejected:** an intrinsic original with body specializations (SPEC 8.13.1); an adapter-building intrinsic kept for a user
+    Writer; one init per destination with an `isize` tag.
+  - **Lands after** PLAN G863 as landed (DECISIONS BU-208: a specialization argument's omitted Origins are inherited from the
+    original, SPEC 8.13.2, 15.4.2), which makes the two specializations' headers bind.
 - **R9-M1 A check's phase sequence is `Compilation.Check`** (2026-11-08; R9-F5; Major, behavior-preserving; review 1 REVISE, then
   review 2). SPEC 23.1.2, 23.2.2; IMPL 20.6.1. Supersedes in part R5-M65 (`Project` reads `Accepts`) and R5-M77 (`Project` discovers
   the test catalog after acceptance and owns it).
