@@ -432,9 +432,9 @@ public sealed class MirAnalysisTest
     }
 
     // R6-check H3-2 (Q-R4-2): every analysis InternalInvariant_Kd names Ownership.Internal (MirReport's defects and Merged's disagreement
-    // record, A5's broken contracts, A1's runtime Drop of an unplaced part (DRV-N8); the C1-F4 view throws at its own, DECISIONS BU-102),
-    // so the disagreement record never disagrees again: each site of the code in the analyses states that requirement before it in its
-    // block, and a new site joins this list after review.
+    // record, A5's broken contracts, A1's broken invariants at a runtime location (DRV-N8, S2-N1); the C1-F4 view throws at its own,
+    // DECISIONS BU-102), so the disagreement record never disagrees again: each site of the code in the analyses states that requirement
+    // before it in its block, and a new site joins this list after review.
     [Fact]
     public void EveryAnalysisInternalInvariantNamesOwnershipInternal()
     {

@@ -27,9 +27,10 @@
 // is a delivery, checked only where the runtime edges reach it; a Return checks nothing. A Move without a Move Path is reported whatever its
 // root: DefaultArgumentMove_Kd for a default template's prepared slot or its owned contents, which the default cannot Move (SPEC 7.2.3),
 // else StaticMovePathRequired_Kd. A body no view decides is analyzed once, for every view.
-// Invariant: no Unplaced bit is set in a Move Path's subtree at a Drop the runtime edges reach, which A2 destroys whole by its own bit: a
-// construction leaves a part unplaced only after a Never form, which ends the runtime paths (SPEC 14.9.3, 14.10.3); a broken one is
-// InternalInvariant_Kd at the Drop.
+// Invariants: no Unplaced bit is set in a Move Path's subtree at a Drop the runtime edges reach, which A2 destroys whole by its own bit,
+// and no definition the runtime edges reach keeps its path's state (a Use of a temp that holds nothing would set MaybeInit, A2's lane,
+// where nothing was placed): a construction leaves a part unplaced, and a temp holds nothing, only after a Never form, which ends the
+// runtime paths (SPEC 14.9.3, 14.10.3); a broken one is InternalInvariant_Kd at the location.
 // Must not judge Take eligibility (Binding's), decide a Drop (A2's), apply a derived-problem rule (MirReport's) or copy the body per view.
 
 using Kimi.Diagnostics;
@@ -198,8 +199,7 @@ internal sealed class MirInit(MirDataflow flow, MirMoveData moves, MirCases case
                 drops.Record(state, this.at.Block, how == MirMoveData.Direct ? path : -1, this.runtime);
                 if (this.runtime && how == MirMoveData.Direct && MirDataflow.Any(state, Lanes, Unplaced, path, moves.Paths[path].End))
                 {
-                    var broken = DiagnosticRequirement.Ownership(OwnershipRequirement.Internal); // A broken contract (the header), H3-2's.
-                    this.Add(DiagnosticCode.InternalInvariant_Kd, broken, this.subject);
+                    this.Broken();
                 }
             }
 
@@ -252,8 +252,12 @@ internal sealed class MirInit(MirDataflow flow, MirMoveData moves, MirCases case
             {
                 var source = carries[k];
                 var held = source >= 0 ? MirDataflow.Any(state, Lanes, Uninit, source, source + 1) : MirDataflow.Any(state, Lanes, Unplaced, ~source, ~source + 1);
-                this.Held[k >> 1] = held && carries[k + 1] != defined;
-                this.kept = held && carries[k + 1] == defined ? defined : this.kept;
+                var kept = held && carries[k + 1] == defined;
+                (this.Held[k >> 1], this.kept) = (held && !kept, kept ? defined : this.kept);
+                if (kept && this.runtime && this.Checks)
+                {
+                    this.Broken(); // The header's invariant: MaybeInit would be set where nothing was placed, which A2 would destroy.
+                }
             }
 
             MirUses.ForEach(cases, this.at, ref this);
@@ -425,6 +429,13 @@ internal sealed class MirInit(MirDataflow flow, MirMoveData moves, MirCases case
             moved ? DiagnosticCode.MovedPlace_Kd : DiagnosticCode.UninitializedPlace_Kd,
             DiagnosticRequirement.Ownership(moved ? OwnershipRequirement.PossiblyMovedUse : OwnershipRequirement.UninitializedUse),
             subject);
+
+        // A broken contract at the location (the header's invariants; R6-check H3-2: its requirement first): A2's table marks the body.
+        private readonly void Broken()
+        {
+            var requirement = DiagnosticRequirement.Ownership(OwnershipRequirement.Internal);
+            this.Add(DiagnosticCode.InternalInvariant_Kd, requirement, this.subject);
+        }
 
         // A problem at the location, with the call of the inline default copy it lies in, whose template's check it is (R4-M69); A2's table
         // records it first, a copy's included (R4-M102), at its subject in the location's scope with its index.

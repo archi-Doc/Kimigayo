@@ -848,6 +848,37 @@ public sealed class MirInitTest
     public void NoRuntimeDropFindsAnUnplacedPart(string function)
         => Assert.Empty(Problems(Reads + function));
 
+    // MirInit's second invariant (the step 2 review's S2-N1): a definition the runtime edges reach never keeps its path's state, as a
+    // temp holds nothing only after a Never form; a kept definition there would set MaybeInit, A2's lane, where nothing was placed. The
+    // builder never emits one; made so (the else arm's placement of the join temp a let takes later turned into a StorageLive of it), the
+    // let's Use keeps x's state on a runtime path: one InternalInvariant_Kd; the unmutated body has none. Fail-before: without the check
+    // the mutated body records none.
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void NoRuntimeDefinitionKeepsItsState(bool broken)
+    {
+        var c = MirBuildTest.Compile("func use(n: i32) => ()\nfunc f(y: i32, c: bool)\n    let x: i32\n    x = if c => y else => y\n    use(x)\n");
+        var program = new MirBuilder(c).Build(); // Unanalyzed: a version's problems are reset only with its bodies.
+        var body = program.Bodies.ToArray().Single(static x => x.Key.Decl?.Name == "f");
+        var statements = body.Statements.ToArray();
+        var take = Array.FindIndex(statements, x => x is { Kind: MirStatementKind.Assign, Rvalue.Kind: MirRvalueKind.Use, Place.Projection: 0 } &&
+            body.Locals[x.Place.Root].Kind == MirLocalKind.Var && body.Operands[x.Rvalue.Start].Place is { Projection: 0, Root: >= 0 } operand &&
+            body.Locals[operand.Root].Kind == MirLocalKind.Temp);
+        Assert.True(take >= 0);
+        var temp = body.Operands[statements[take].Rvalue.Start].Place;
+        var placements = Enumerable.Range(0, statements.Length).Where(x => statements[x].Kind == MirStatementKind.Assign && statements[x].Place == temp).ToArray();
+        Assert.Equal(2, placements.Length);
+        if (broken)
+        {
+            Unsafe.AsRef(in body.Statements[placements[1]]) = statements[placements[1]] with { Kind = MirStatementKind.StorageLive };
+        }
+
+        new MirAnalysis(c.Types).Run(program, c.SourceModules.Length);
+        var internals = program.Problems.All.ToArray().Where(x => x.Code == DiagnosticCode.InternalInvariant_Kd && x.Body == body.Ordinal);
+        Assert.Equal(broken ? 1 : 0, internals.Count());
+    }
+
     // Plan 5.6.1, SPEC 13.5.5: a PairLayer is the Place itself in the owner case and a Deref in a reference case, so writing through an
     // unset pair layer is a problem in the uniq view only; a body whose accesses no view decides is analyzed once, for every view.
     [Fact]
