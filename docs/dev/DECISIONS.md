@@ -13486,6 +13486,27 @@ resumed by R4-M86 (2026-10-20).
     equality where the use admits only `ref`); the fix is that row's. `CommonOriginType` is not a reader of this point: SPEC 14.9.2
     forms a join by the structural part only, so its invariant read belongs to the join formation's departure (PLAN G394, G443) and
     stays until that row's rule replaces it.
+- **BU-210 FunctionGroup: one representation of a use's function group (PLAN G906, O3)** (Back for the Front's area, 2026-11-15;
+  Binding; Major; design review, implementation review and its revision 2; the Front's rulings C-339 and C-344; the Middle's RP17
+  consent C-347). SPEC 7.4.4, 8.13.3, 9.5, 9.5.1, 9.6, 10.5.3.
+  - Decision: a use's function group (SPEC 9.5, 9.5.1, 9.6) is read only as `FunctionGroup`, built by `GroupOf(use, head)` from
+    lookup's publications and enumerated by calls, references, items and the argument-kind queries alike; `FunctionGroup.Of(head)`
+    builds a declaration's own chain. `ReferenceRequirements(use)` is the one decision that a use is a requirement reference:
+    `GroupOf` enumerates by it and the reference and item binders route by it. Explicit specializations are never yielded (SPEC
+    8.13.3). The check of a group gathered at a use (SPEC 7.4.4) runs for the callee and for the value use, through
+    `GatheredGroupFails`; `CheckGatheredParameterShapes` takes the group, so member lookup checks the group it gathers through
+    `GroupOf(member, null)`. Removed: `CallCandidates`, `ReferenceCandidate` and every `.Next` walk from a use's symbol.
+  - Reason: the gathered group had one reader, the call; references and items read the first source's chain, so alias order (and a
+    Constraint-gathered callee's clause order) decided acceptance. Against dev: 42 valid programs newly accepted, 40 invalid newly
+    rejected, and wrong code fixed in both orders (rp2-AB's selection, d6-ref, d6-arg, sp-gb-ref, sp-gb-arg); the record moves (Q13)
+    include gr-percall-BA (`MissingOriginBinding_Kd` -> `NoApplicableOverload_Kd`), fr-n8e-BA, d6-item, sp-gb-plain-AB, rb-shape and
+    the rb-* rows; one more accepted program changes its generated code (cfa2-BA).
+  - Rejected: (a) each reference reader looking into the gathered table itself (nine copies of one rule); (b) lookup returning a
+    chained synthetic head (a `BindingSymbol` is a declaration's identity and `Next` its scope's chain); (c) a candidate list for
+    every use (an allocation per call on the hot path); (d) gathering again at the reader from the document's aliases (a second
+    gathering; the stage stop and the access filter decided twice); (e) running the alias-stage check once where lookup publishes
+    the group (the check reads the members' bound headers, and lookup publishes while headers are bound and for binders that discard
+    the use).
 - **BU-211 Two Function Types at an invariant position relate both ways (PLAN G900)** (Front, 2026-11-15; Binding; Major; design
   review REVISE (B1), revisions 1 and 2, re-check ACCEPT; the Middle's consent C-342 with its condition C-1; the owner's O-310 (a)).
   SPEC 3.8, 10.7, 15.3.5.
