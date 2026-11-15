@@ -165,10 +165,26 @@ public sealed partial class KimiLibrary
         }
     }
 
-    private DeclarationContainerKoto? FormattingContainer(KimiLibraryContainer kind)
-        => kind == KimiLibraryContainer.Text ? this.Text :
-            kind is KimiLibraryContainer.FixedBuffer or KimiLibraryContainer.HeapBuffer
-                ? FindDeclaration(this.Text, kind.ToString()) : null;
+    // The one nested declaration container of a name, or null: the containers LoadSources parses a source into (until G1-5).
+    private static DeclarationContainerKoto? FindDeclaration(DeclarationContainerKoto container, string name)
+    {
+        DeclarationContainerKoto? found = null;
+        for (var i = 0; i < container.NestedContainers.Count; i++)
+        {
+            var declaration = container.NestedContainers[i];
+            if (declaration.Name == name)
+            {
+                if (found is not null)
+                {
+                    return null;
+                }
+
+                found = declaration;
+            }
+        }
+
+        return found;
+    }
 
     private void LoadSources()
     {
@@ -176,15 +192,15 @@ public sealed partial class KimiLibrary
         {
             var container = source.Container switch
             {
+                KimiLibraryContainer.Root => this.Kotonoha.RootKoto,
                 KimiLibraryContainer.Console => this.Console,
                 KimiLibraryContainer.Intrinsics => this.Intrinsics,
                 KimiLibraryContainer.Test => this.Test,
+                KimiLibraryContainer.Text => this.Text,
                 KimiLibraryContainer.Array => FindDeclaration(this.Kotonoha.RootKoto, "Array"), // Array.kimi is read first.
-                KimiLibraryContainer.Dictionary => FindDeclaration(this.Kotonoha.RootKoto, "Dictionary"),
                 KimiLibraryContainer.Storage => FindDeclaration(this.Kotonoha.RootKoto, "Storage"), // Storage.kimi is read first.
                 KimiLibraryContainer.Raw => FindDeclaration(this.Kotonoha.RootKoto, "Raw"), // Raw.kimi is read first.
-                KimiLibraryContainer.Root => this.Kotonoha.RootKoto,
-                _ => this.FormattingContainer(source.Container),
+                _ => throw new InvalidOperationException($"The library container {source.Container} has no declaration (InternalInvariant)."),
             };
             if (container is null)
             {

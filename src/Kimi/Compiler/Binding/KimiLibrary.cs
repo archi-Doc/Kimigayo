@@ -170,14 +170,14 @@ public sealed partial class KimiLibrary
 
     internal BindingScope Scope { get; }
 
-    /// <summary>Gets the ordinal of Option's Some Case, taken from the declaration (the Case named Some; AdtDef numbers Cases in
-    /// declaration order), or -1 before Binding prepared the library's Cases: the one statement of where Some is (TyCtxt.NonnullSome, the
-    /// for statement's Some position).</summary>
-    internal int OptionSome => Array.FindIndex(this.Option.Adt?.Cases ?? [], static x => x?.Symbol.Name == "Some");
+    /// <summary>Gets the ordinal of Option's Some Case, its first (SPEC 22.1 declares <c>Some(T)</c>, then <c>None</c>; AdtDef numbers
+    /// Cases in declaration order), or -1 before Binding prepared the library's Cases: the one statement of where Some is
+    /// (TyCtxt.NonnullSome, the for statement's Some position).</summary>
+    internal int OptionSome => this.OptionCase(0);
 
-    /// <summary>Gets the ordinal of Option's None Case, taken from the declaration as <see cref="OptionSome"/> is: the one statement of
-    /// where None is (the for statement's None position).</summary>
-    internal int OptionNone => Array.FindIndex(this.Option.Adt?.Cases ?? [], static x => x?.Symbol.Name == "None");
+    /// <summary>Gets the ordinal of Option's None Case, its second, as <see cref="OptionSome"/> is: the one statement of where None is
+    /// (the for statement's None position).</summary>
+    internal int OptionNone => this.OptionCase(1);
 
     /// <summary>Gets the internal group whose receiver functions are the members of the built-in fixed array (SPEC 22.1, PLAN G32).</summary>
     internal DeclarationContainerKoto? FixedArrayMembers { get; private set; }
@@ -368,27 +368,6 @@ public sealed partial class KimiLibrary
         this.Kotonoha.RootKoto.BindingState = BindingState.Resolved;
     }
 
-    // The one nested declaration container of a name, or null: the containers LoadSources parses a source into (until G1-5).
-    private static DeclarationContainerKoto? FindDeclaration(DeclarationContainerKoto container, string name)
-    {
-        DeclarationContainerKoto? found = null;
-        for (var i = 0; i < container.NestedContainers.Count; i++)
-        {
-            var declaration = container.NestedContainers[i];
-            if (declaration.Name == name)
-            {
-                if (found is not null)
-                {
-                    return null;
-                }
-
-                found = declaration;
-            }
-        }
-
-        return found;
-    }
-
     // IMPL 21.3.4: each declaration the library marks `#Lang("Name")`, by KimiDeclarationId, read from the syntax by the Attribute's
     // Kind (the Attribute's own BindingState is not read). A Name that is no lang item, a second declaration of one Name or a `#Lang`
     // without its one string is a defect of the compiler build, whose embedded library KimiLibraryShapeTest checks.
@@ -548,6 +527,9 @@ public sealed partial class KimiLibrary
             return scope;
         }
     }
+
+    // The ordinal of Option's Case in declaration order, or -1 before Binding prepared the library's Cases.
+    private int OptionCase(int ordinal) => ordinal < (this.Option.Adt?.Cases.Length ?? 0) ? ordinal : -1;
 
     private BindingSymbol CreateAbort()
     {

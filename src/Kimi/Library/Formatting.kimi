@@ -533,7 +533,7 @@ public group Console
 // F32Format, F64Format, WrappingFormat and IntegerFormat rows select (Binding.WitnessGroup); string's is
 // StringWitness's (Core.kimi).
 // Each writes its text once through the writer's leaf, writeUtf8, or Wrapping<T>'s through a write of its integer; its
-// catalog row's CallerLocation passes the user's location on (SPEC 22.5.1, until G1).
+// `#CallerLocation` passes the user's location on (SPEC 22.5.1, via its private ABI).
 #Lang("BoolFormat")
 internal group BoolFormat
     #Lang("BoolFormatFormat")
