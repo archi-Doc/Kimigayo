@@ -13547,6 +13547,25 @@ resumed by R4-M86 (2026-10-20).
   - Rejected: a PairFollow clause and a pair look-ahead in PlaceOrigin's arms (one clause per form, the second walk kept); a third
     per-step `bounded` test for a pair layer stored in a Field (the review's B1 cause, one level up); dropping an unbounded
     owner-admitting slot in `FollowedSlot` (the borrow cases need it: `pd<s/T>`, MirOriginsTest.Unknown).
+- **BU-214 An open Literal position is ranked by the operation its pattern needs (PLAN G915)** (2026-11-15; Front, Binding; Major,
+  an acceptance mover: class 1 rejections and one valid program newly accepted; design review ACCEPT WITH NOTES; the Middle's
+  consent C-353; the owner's O-313 (b)). SPEC 10.2.2's Literal row, 12.3.1, 10.2.1, 10.4 step 1.
+  - **Rule.** A Literal at a position whose slot stays open takes the class of the operation the pattern it meets needs whatever the
+    slot binds: `CrossSemanticsBorrow` when the Literal is a temporary borrowed there (`TemporaryTarget`, as `FitLiteral` ranks a
+    closed position; 12.3.1: at an expected `ref/U` the Literal is that temporary), else `Literal`. In a well-formed group (7.4.4) a
+    Literal then has one class at a position in every candidate, and step 2 decides, as 10.2.1 states.
+  - **Representation.** `SlotSolution.FitsLiteralShape(pattern, shape, out met)`: `met` is the pattern the slot-free shape was
+    fitted at (the member pattern; under G812 its `FittedPattern`), the ranking's only source for an open Literal. No reader forms a
+    pattern of its own for it.
+  - **Moves.** Invalid, newly rejected (accepted to `AmbiguousBinding_Kd` at the call): Nc4, G1s, G2, G6, G7 and the review's twins
+    T01, T03, T04, T08-T11; valid, newly accepted (the plain candidate selected): G3b and its order twin T13; records K1, K1r, K1g
+    lose one `AmbiguousBinding_Kd` each and K2 gains one. With G812 (Q-421) merged, Nc2, Nc2s, Nc3 and Nc6 become
+    `AmbiguousBinding_Kd` at G812's landing.
+  - **Rejected:** reading the declared parameter Type's outer layer at the call site (misses a pair layer G812 forms, so G812 would
+    not land unchanged); `FormedApplication` at the call site (a second derivation of the formed pattern, and it misses the original
+    `s/W` of Nc2s); ranking the open position from the plain candidate's class (a comparison that reads another candidate).
+  - **Removal condition:** PLAN G916's one class source for every open arm replaces this expression (and amends BU-164's
+    "Representation" parenthetical, whose `Literal` the open composite arm does not give today).
 - **G209-1** (2026-10-24; structural unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source
   aliases their selected container and environment before ordinary lookup merges imports. These responsibilities were embedded in the
   general expression parser and `Binding.Types.Lookup`, with alias resolution beside Type formation. `Parser.RuntimeTypeTests` now
