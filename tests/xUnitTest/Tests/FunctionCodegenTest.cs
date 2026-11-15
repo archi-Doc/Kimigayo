@@ -1682,6 +1682,17 @@ public sealed partial class FunctionCodegenTest
         Assert.Equal(["TypeMismatch_Kd"], CompilationTestHelper.PublishedErrors(c).Select(static x => x.Code.ToString()));
     }
 
+    // R7-C2c2 c2-4a (C2 ruling 164, B2): a slot condition Refuted for the instance is decided once, at the settle point, whatever its
+    // spelling: the header premises bind the override's inputs and result only (its header layer, SPEC 6.4.2) and are no body facts,
+    // so a dependent `Base<Box<U>>`, a closed `Base<Box<i32>>` and an override whose group has no common premise agree (accepted under
+    // DECISIONS R5-M153 until the owner answers O-370 on SPEC 6.4.3).
+    [Theory]
+    [InlineData("p06", "contract Marker\nstruct Box<A>\n    public var a: A\nopen struct Base<T>\n    public init() => ()\n    public virtual func mark(self: objref/Self) -> i32\n        T is Marker\n        return 5\nstruct Plain<U> : Base<Box<U>>\n    public init() => ()\n    override func mark(self: objref/Self) -> i32\n        return 1\n")]
+    [InlineData("p06b", "contract Marker\nstruct Box<A>\n    public var a: A\nopen struct Base<T>\n    public init() => ()\n    public virtual func mark(self: objref/Self) -> i32\n        T is Marker\n        return 5\nstruct Plain : Base<Box<i32>>\n    public init() => ()\n    override func mark(self: objref/Self) -> i32\n        return 1\n")]
+    [InlineData("p06c", "contract Marker\ncontract Other\nstruct Box<A>\n    public var a: A\nopen struct Base<T>\n    public init() => ()\n    public virtual func mark(self: objref/Self, x: i32) -> i32\n        T is Marker\n        return 5\n    public virtual func mark(self: objref/Self, x: bool) -> i32\n        T is Other\n        return 6\nstruct Plain<U> : Base<Box<U>>\n    public init() => ()\n    override func mark(self: objref/Self, x: i32) -> i32\n        return 1\n")]
+    public void ARefutedSlotsConditionIsNoPremiseInAnySpelling(string form, string program)
+        => Assert.True(Analyze(program, OutputKind.Library).Accepts, form);
+
     // DECISIONS R5-M153, against over-exclusion: no Closure's body is a Library output root (Generates), yet each one a generated body makes
     // at its Aggregate(Closure) site is Generated through that target: in an accessor's get and set, a destructor, a default template and a
     // static's initializer.

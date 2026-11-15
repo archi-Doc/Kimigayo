@@ -25,26 +25,32 @@ public sealed partial class Binding
     private Dictionary<FunctionKoto, OverrideFailure>? overrideFailures;
 
     // Header names must be independent of slot selection. Only premises common to the accessible
-    // virtual group can supply an unqualified associated name; a qualified name needs no guess.
-    private void PrepareVirtualHeaderPremises(FunctionKoto function, BindingScope scope)
+    // virtual group can supply an unqualified associated name; a qualified name needs no guess. The scope the header binds in: an
+    // override's header layer holding those premises (SPEC 6.4.2 step 2), else the function's scope. The layer serves the header only:
+    // the body's premises are the selected slot's, decided once at SettleVirtualOverridePremises, so a condition Refuted for the
+    // instance is no body premise however it is spelled (R7-C2c2 c2-4a; C2 ruling 164).
+    private BindingScope PrepareVirtualHeaderPremises(FunctionKoto function, BindingScope scope)
     {
         if (!function.IsOverride || function.BoundSymbol?.Scope.Owner is not StructKoto { BaseClause: { } clause, BoundSymbol: { } symbol } structure ||
             this.BindType(clause, this.scopes[structure]) is null)
         {
-            return;
+            return scope;
         }
 
         var self = this.SelfType(symbol);
         if (AdtDef.Base(self) is not { } baseType)
         {
-            return;
+            return scope;
         }
 
         var selection = this.LookupTypeMember(baseType, function.Name, scope, self);
         if (selection.Pending || selection.DeclaringType?.Symbol is null)
         {
-            return;
+            return scope;
         }
+
+        var header = scope.HeaderPremises ??= new(function) { Parent = scope, Function = function };
+        (header.Constraints ??= new()).Reset(); // Bound again when a pending associated Type reopens the header.
 
         // Lookup and base binding are complete before these buffers are used. Collecting the
         // finite declared facts performs substitution only: no header/body recursion.
@@ -94,11 +100,11 @@ public sealed partial class Binding
                     // Judge against the derived declaration, before assuming any slot premise.
                     if (this.ProveConstraint(facts[i], function.BoundSymbol.Scope) is ConstraintProof.Proven or ConstraintProof.Unknown)
                     {
-                        this.AddConstraintFact(scope.Constraints ??= new(), facts[i]);
+                        this.AddConstraintFact(header.Constraints!, facts[i]);
                     }
                 }
 
-                this.ExpandScopeContractPremises(scope);
+                this.ExpandScopeContractPremises(header);
             }
             finally
             {
@@ -110,6 +116,8 @@ public sealed partial class Binding
             common.Clear();
             current.Clear();
         }
+
+        return header;
 
         void Collect(BindingScope source)
         {

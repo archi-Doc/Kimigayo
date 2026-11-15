@@ -150,16 +150,16 @@ public sealed partial class Binding
     private bool BindFunctionHeader(BindingSymbol symbol, FunctionKoto function)
     {
         var scope = this.scopes[function];
-        this.PrepareVirtualHeaderPremises(function, scope);
+        var header = this.PrepareVirtualHeaderPremises(function, scope); // An override's inputs and result bind under its header layer.
         var originDeclaration = this.BeginOriginDeclaration(function, scope);
         for (var i = 0; i < function.Parameters.Count; i++)
         {
             var parameter = function.Parameters[i];
-            this.symbols[parameter].Type = this.BindType(parameter.Type, scope);
+            this.symbols[parameter].Type = this.BindType(parameter.Type, header);
         }
 
         // Named signatures never infer a result from their body or callers (SPEC 10.5).
-        symbol.Type = function.ReturnType is { } result ? this.BindType(result, scope) : BoundType.Unit;
+        symbol.Type = function.ReturnType is { } result ? this.BindType(result, header) : BoundType.Unit;
         var pendingInputs = false;
         for (var i = 0; i < function.Parameters.Count; i++)
         {

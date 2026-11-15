@@ -810,6 +810,10 @@ internal sealed class BindingScope(Koto owner)
     // Retained with the declaration scope; never includes an implementation's own conditional block.
     internal BindingScope? ImplementationPremises { get; set; }
 
+    // An override's header layer (R7-C2c2 c2-4a): the virtual group's common premises its inputs and result bind under (SPEC 6.4.2),
+    // its Parent the function's scope; never the body's premises, which the slot's settle point decides.
+    internal BindingScope? HeaderPremises { get; set; }
+
     internal BoundConformancePath? ConformancePath
     {
         get => this.conformancePath;
