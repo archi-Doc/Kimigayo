@@ -239,11 +239,12 @@ public class UserArithmeticOperatorTest
     }
 
     // x41n's contracts (design-x41n §2, §6; each valid alone). X41: `L is Z` supplies `L.(Z).E is W` (depth 1), W's Addable premise on
-    // D (depth 2) and, through `associate C is K1`, K1's Left premise on C.A (depth 3). X41m: code A, the Left premise on the identity's
-    // other side. X41g: code B, a pair at depth 2 joined by a Contract argument. Y1: the review's two-scope twins; Y3: its y3n family.
+    // D (depth 2) and, through `associate C is K1`, K1's Left premise on C.A (depth 3). X41m (design-x41n §6.3, no user generic Contract):
+    // the Left premise on the identity's other side, at depth 3. X41i: an identity supplied only at depth 2 (Zi's clause). Y1: the
+    // review's two-scope twins; Y3: its y3n family.
     private const string X41 = "contract K1\n    associate A\n    Self.(K1).A is LeftAddable<Self>\ncontract W\n    associate C is K1\n    associate D\n    Self.(W).D is Addable<Self.(W).C.(K1).A>\ncontract Z\n    associate E is W\n";
-    private const string X41m = "contract K1e<X>\n    associate A\n    Self.(K1e<X>).A is LeftAddable<X>\ncontract W\n    associate D\n    associate H\n    associate G is K1e<Self.(W).D>\n    Self.(W).D is Addable<Self.(W).H>\ncontract Z\n    associate E is W\n";
-    private const string X41g = "contract KL<X>: LeftAddable<X>\ncontract K7<X>\n    associate P is KL<X>\ncontract K5<X>\n    associate N is K7<X>\ncontract Z0b\n    associate A\ncontract Zq<Y>: Z0b\n    Self.(Z0b).A is Addable<Y>\ncontract Gb\n    associate G\ncontract G0: Gb\n    Self.(Gb).G is Z0b\ncontract Gq<Y>: Gb\n    Self.(Gb).G is Zq<Y>\n";
+    private const string X41m = "contract K1\n    associate A\n    Self.(K1).A is LeftAddable<Self>\ncontract Wm\n    associate C is K1\n    associate H\n    Self.(Wm).C is Addable<Self.(Wm).H>\ncontract Zm\n    associate E is Wm\n";
+    private const string X41i = "contract Z0\n    associate A\n    associate B\n    associate C\ncontract Zi: Z0\n    Self.(Z0).B is Self.(Z0).C\ncontract G0\n    associate G is Z0\ncontract Gi: G0\n    Self.(G0).G is Zi\n";
     private const string Y1 = "contract Z0\n    associate A\n    associate B\ncontract Zq: Z0\n    Self.(Z0).A is LeftAddable<Self.(Z0).B>\ncontract G0\n    associate G is Z0\ncontract Gq: G0\n    Self.(G0).G is Zq\n";
     private const string Y3 = "contract Z0\n    associate A\n    associate B\ncontract Za: Z0\n    Self.(Z0).B is Addable<Self.(Z0).A>\ncontract Zb: Z0\n    Self.(Z0).A is LeftAddable<Self.(Z0).B>\ncontract G0\n    associate G is Z0\ncontract Ga: G0\n    Self.(G0).G is Za\ncontract Gb: G0\n    Self.(G0).G is Zb\n";
     private const string MainLine = "public func main() => ()\n";
@@ -254,11 +255,12 @@ public class UserArithmeticOperatorTest
     // declaration where its premises first meet (`at`: f, Box, or the member g whose identity joins Box's premises). The valid controls
     // are accepted. e0n and e2n keep their independent 8.2.3 conflict beside the contradiction, and x22n, x22s and x22r their 8.3.2
     // contradictory evidence (`T is Copy`, `T is not Copy`), each at the declaration (SPEC 23.1.2); x40n's two premises are both supplied
-    // by `L is W`, one level deep, its identity written. Pinned as they are: a6n, a6k and a6v without 8.3.2's closed-world record (G853,
-    // c2-4). x41n (design-x41n §2, §6; labels from SPEC: x41v, x41u, x41x, x41gv, x41sv, y1v, y3v valid, the others invalid): a pair's
+    // by `L is W`, one level deep, its identity written. Pinned as they are: a6n and a6k without 8.3.2's closed-world record (G853,
+    // c2-4); a6v (invalid by 8.3.2 alone: `Option<u8> is LeftAddable<L>`) has it since x41n, whose requests in f's view form the
+    // reading that refutes it (a record move toward SPEC). x41n (design-x41n §2, §6; labels from SPEC: x41v, x41u, x41x, x41mv, x41iv, x41sv, y1v, y3v valid, the others invalid): a pair's
     // premises are the rows of the parameters and projections occurring in the chain's premises, so a pair two or three levels below a
     // written Contract premise (x41n, x41o, x41t), on either side of the identity (x41m, x41md; d2n, whose identity names the projection),
-    // joined by decomposition (y4n), by a Contract argument (x41g), by congruence (x41p) or by a premise of the member (x41s, y1n, y1m,
+    // joined by decomposition (y4n), by congruence (x41p) or by a premise of the member (x41s, y1n, y1m,
     // y1d) is found where the premises first meet (x41s2 at Box, g stating nothing); x41e and x41f keep their independent 8.2.3 conflict
     // and 8.3.2 contradictory evidence. The ICs at the identity's projections rest on the failed environment (a3n's pattern). Pinned accepted, Closure(view)'s limit (PLAN dm1's class 1 row): x41i, an identity supplied only at depth; y3n and
     // y3s, both premises below the premises' Types.
@@ -287,7 +289,7 @@ public class UserArithmeticOperatorTest
     [InlineData("d2n", "contract P\n    associate A\n    Self.(P).A is LeftAddable<Self>\ncontract P2\n    associate B is P\nfunc f<L, R>(left: ref/L, right: ref/R)\n    L is P2\n    L.(P2).B is Addable<R>\n    R is L.(P2).B.(P).A\n    ()\npublic func main() => ()\n", "1*ArithmeticDirection_Kd 3*InvalidConstraint_Kd", "f<")]
     [InlineData("a6n", "func f<L, R>(left: ref/L, right: ref/R)\n    L is Addable<Option<i32>>\n    R is LeftAddable<L>\n    R is Option<i32>\n    ()\npublic func main() => ()\n", "1*ArithmeticDirection_Kd", "f<")]
     [InlineData("a6k", "func f<L, R, K>(left: ref/L, right: ref/R)\n    L is Addable<R>\n    R is LeftAddable<K>\n    L is Option<i32>\n    K is Option<i32>\n    ()\npublic func main() => ()\n", "1*ArithmeticDirection_Kd", "f<")]
-    [InlineData("a6v", "func f<L, R>(left: ref/L, right: ref/R)\n    L is Addable<Option<i32>>\n    R is LeftAddable<L>\n    R is Option<u8>\n    ()\npublic func main() => ()\n", "clean", null)]
+    [InlineData("a6v", "func f<L, R>(left: ref/L, right: ref/R)\n    L is Addable<Option<i32>>\n    R is LeftAddable<L>\n    R is Option<u8>\n    ()\npublic func main() => ()\n", "1*InvalidConstraint_Kd", null)]
     [InlineData("n1n", "struct Box<L, R, S>\n    L is Addable<R>\n    S is LeftAddable<L>\n    public func g(self)\n        R is S\n        ()\npublic func main() => ()\n", "1*ArithmeticDirection_Kd", "g(self)")]
     [InlineData("n1v", "struct Box<L, R, S>\n    L is Addable<R>\n    S is LeftAddable<L>\n    public func g(self)\n        ()\npublic func main() => ()\n", "clean", null)]
     [InlineData("n2n", "struct Box<L, R, S>\n    L is Addable<R>\n    public func g(self)\n        S is LeftAddable<L>\n        R is S\n        ()\npublic func main() => ()\n", "1*ArithmeticDirection_Kd", "g(self)")]
@@ -319,10 +321,9 @@ public class UserArithmeticOperatorTest
     [InlineData("x41n", X41 + "func f<L>(left: ref/L)\n    L is Z\n    L.(Z).E.(W).D is L.(Z).E.(W).C\n    ()\n" + MainLine, "1*ArithmeticDirection_Kd 4*InvalidConstraint_Kd", "f<")]
     [InlineData("x41o", "contract Z\n    associate E is W\ncontract W\n    associate C is K1\n    associate D\n    Self.(W).D is Addable<Self.(W).C.(K1).A>\ncontract K1\n    associate A\n    Self.(K1).A is LeftAddable<Self>\nfunc f<L>(left: ref/L)\n    L.(Z).E.(W).C is L.(Z).E.(W).D\n    L is Z\n    ()\n" + MainLine, "1*ArithmeticDirection_Kd 4*InvalidConstraint_Kd", "f<")]
     [InlineData("x41t", X41 + "contract Y\n    associate G is Z\nfunc f<L>(left: ref/L)\n    L is Y\n    L.(Y).G.(Z).E.(W).D is L.(Y).G.(Z).E.(W).C\n    ()\n" + MainLine, "1*ArithmeticDirection_Kd 6*InvalidConstraint_Kd", "f<")]
-    [InlineData("x41m", X41m + "func f<L>(left: ref/L)\n    L is Z\n    L.(Z).E.(W).H is L.(Z).E.(W).G.(K1e<L.(Z).E.(W).D>).A\n    ()\n" + MainLine, "1*ArithmeticDirection_Kd 7*InvalidConstraint_Kd", "f<")]
-    [InlineData("x41md", X41m + "func f<L>(left: ref/L)\n    L is Z\n    L.(Z).E.(W).G.(K1e<L.(Z).E.(W).D>).A is L.(Z).E.(W).H\n    ()\n" + MainLine, "1*ArithmeticDirection_Kd 7*InvalidConstraint_Kd", "f<")]
-    [InlineData("x41g", X41g + "func f<L, M>(left: ref/L, right: ref/M)\n    L is G0\n    M is K5<L.(Gb).G.(Z0b).A>\n    L is Gq<M.(K5<L.(Gb).G.(Z0b).A>).N.(K7<L.(Gb).G.(Z0b).A>).P>\n    ()\n" + MainLine, "1*ArithmeticDirection_Kd 8*InvalidConstraint_Kd", "f<")]
-    [InlineData("x41gv", X41g + "func f<L, M>(left: ref/L, right: ref/M)\n    L is G0\n    M is K5<L.(Gb).G.(Z0b).A>\n    L is Gq<M.(K5<L.(Gb).G.(Z0b).A>).N>\n    ()\n" + MainLine, "clean", null)]
+    [InlineData("x41m", X41m + "func f<L>(left: ref/L)\n    L is Zm\n    L.(Zm).E.(Wm).H is L.(Zm).E.(Wm).C.(K1).A\n    ()\n" + MainLine, "1*ArithmeticDirection_Kd 5*InvalidConstraint_Kd", "f<")]
+    [InlineData("x41md", X41m + "func f<L>(left: ref/L)\n    L is Zm\n    L.(Zm).E.(Wm).C.(K1).A is L.(Zm).E.(Wm).H\n    ()\n" + MainLine, "1*ArithmeticDirection_Kd 5*InvalidConstraint_Kd", "f<")]
+    [InlineData("x41mv", X41m + "func f<L>(left: ref/L)\n    L is Zm\n    L.(Zm).E.(Wm).H is L.(Zm).E.(Wm).C\n    ()\n" + MainLine, "clean", null)]
     [InlineData("x41p", X41 + "func f<L, M>(left: ref/L, right: ref/M)\n    L is Z\n    M is Z\n    L.(Z).E is M.(Z).E\n    L.(Z).E.(W).D is M.(Z).E.(W).C\n    ()\n" + MainLine, "1*ArithmeticDirection_Kd 6*InvalidConstraint_Kd", "f<")]
     [InlineData("x41s", X41 + "struct Box<L>\n    L is Z\n    public func g(self)\n        L.(Z).E.(W).D is L.(Z).E.(W).C\n        ()\n" + MainLine, "1*ArithmeticDirection_Kd 4*InvalidConstraint_Kd", "g(self)")]
     [InlineData("x41s2", X41 + "struct Box<L>\n    L is Z\n    L.(Z).E.(W).D is L.(Z).E.(W).C\n    public func g(self)\n        ()\n" + MainLine, "1*ArithmeticDirection_Kd 4*InvalidConstraint_Kd", "struct Box")]
@@ -332,7 +333,8 @@ public class UserArithmeticOperatorTest
     [InlineData("x41x", "contract K1\n    associate A\n    Self.(K1).A is LeftAddable<Self>\ncontract W\n    associate C is K1\n    associate D\n    Self.(W).D is Addable<Self.(W).C>\ncontract Z\n    associate E is W\nfunc f<L>(left: ref/L)\n    L is Z\n    L.(Z).E.(W).D is L.(Z).E.(W).C\n    ()\n" + MainLine, "clean", null)]
     [InlineData("x41e", X41 + "func f<L, T, U>(left: ref/L)\n    L is Z\n    L.(Z).E.(W).D is L.(Z).E.(W).C\n    T is Option<U>\n    T is Array<U>\n    ()\n" + MainLine, "1*ArithmeticDirection_Kd 5*InvalidConstraint_Kd", "f<")]
     [InlineData("x41f", X41 + "func f<L, T>(left: ref/L)\n    T is Copy\n    T is not Copy\n    L is Z\n    L.(Z).E.(W).D is L.(Z).E.(W).C\n    ()\n" + MainLine, "1*ArithmeticDirection_Kd 5*InvalidConstraint_Kd", "f<")]
-    [InlineData("x41i", X41 + "contract J<X, Y>\n    associate K\n    Self.(J<X, Y>).K is X\n    Self.(J<X, Y>).K is Y\ncontract J2<X, Y>\n    associate N is J<X, Y>\nfunc f<L, M>(left: ref/L, right: ref/M)\n    L is Z\n    M is J2<L.(Z).E.(W).D, L.(Z).E.(W).C>\n    ()\n" + MainLine, "clean", null)]
+    [InlineData("x41i", X41i + "func f<M>(value: ref/M)\n    M is Gi\n    M.(G0).G.(Z0).B is Addable<M.(G0).G.(Z0).A>\n    M.(G0).G.(Z0).A is LeftAddable<M.(G0).G.(Z0).C>\n    ()\n" + MainLine, "clean", null)]
+    [InlineData("x41iv", X41i + "func f<M>(value: ref/M)\n    M is G0\n    M.(G0).G.(Z0).B is Addable<M.(G0).G.(Z0).A>\n    M.(G0).G.(Z0).A is LeftAddable<M.(G0).G.(Z0).C>\n    ()\n" + MainLine, "clean", null)]
     [InlineData("y4n", X41 + "func f<L, T>(left: ref/L, value: T)\n    L is Z\n    T is Option<L.(Z).E.(W).D>\n    T is Option<L.(Z).E.(W).C>\n    ()\n" + MainLine, "1*ArithmeticDirection_Kd 4*InvalidConstraint_Kd", "f<")]
     [InlineData("y1n", Y1 + "struct Box<M>\n    M is G0\n    M.(G0).G.(Z0).B is Addable<M.(G0).G.(Z0).A>\n    public func g(self)\n        M is Gq\n        ()\n" + MainLine, "1*ArithmeticDirection_Kd", "g(self)")]
     [InlineData("y1m", Y1 + "struct Box<M>\n    M is Gq\n    public func g(self)\n        M.(G0).G.(Z0).B is Addable<M.(G0).G.(Z0).A>\n        ()\n" + MainLine, "1*ArithmeticDirection_Kd 4*InvalidConstraint_Kd", "g(self)")]
