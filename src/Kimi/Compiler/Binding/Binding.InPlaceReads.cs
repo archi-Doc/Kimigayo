@@ -46,7 +46,7 @@ public sealed partial class Binding
             return terminal;
         }
 
-        if ((terminal is not { Kind: BoundTypeKind.Tuple } && !AdtDef.IsStruct(terminal)) || this.SharedReferenceThroughLayers(actual, terminal, out _) is not { } shared)
+        if ((terminal is not { Kind: BoundTypeKind.Tuple } && !AdtDef.IsStruct(terminal)) || this.SharedReferenceThroughLayers(actual, terminal, this.ConstraintScope(left), out _) is not { } shared)
         {
             return null;
         }
@@ -64,7 +64,7 @@ public sealed partial class Binding
         if (ElementAccess.IsUserIndex(left) && element is not null)
         {
             var origin = this.PlaceOrigin(left);
-            var read = this.ElementRead(element, origin) ?? this.types.Reference(SemanticsKind.Ref, element, origin);
+            var read = this.ElementRead(left, element, origin) ?? this.types.Reference(SemanticsKind.Ref, element, origin);
             this.adaptations[left] = new(ExpectedAdaptationKind.SharedBorrow, read);
             return;
         }
@@ -91,7 +91,7 @@ public sealed partial class Binding
             // SPEC 4.7.1, 13.4: a Non-Copy element of receiver[key] on a user Type is compared in place through the reference
             // its selected call returns, continued through the layers it stores as any in-place read of it (ElementRead).
             var origin = this.PlaceOrigin(operand);
-            var read = this.ElementRead(published, origin) ?? this.types.Intern(BoundTypeKind.Semantics, null, placeSemantics, [published], origin: origin);
+            var read = this.ElementRead(operand, published, origin) ?? this.types.Intern(BoundTypeKind.Semantics, null, placeSemantics, [published], origin: origin);
             this.adaptations[operand] = new(ExpectedAdaptationKind.SharedBorrow, read);
             return;
         }
@@ -128,7 +128,7 @@ public sealed partial class Binding
             var origin = this.PlaceOrigin(node);
             var referent = element.Semantics == SemanticsKind.Owner ? element : element.Components[0];
             var dependency = element.Semantics == SemanticsKind.Owner ? origin : this.ReferentOrigin(node, element) ?? origin;
-            var read = this.ElementRead(element, origin) ?? this.types.Intern(BoundTypeKind.Semantics, null, semantics, [referent], origin: dependency);
+            var read = this.ElementRead(node, element, origin) ?? this.types.Intern(BoundTypeKind.Semantics, null, semantics, [referent], origin: dependency);
             this.adaptations[node] = new(ExpectedAdaptationKind.SharedBorrow, read);
         }
     }
@@ -136,8 +136,8 @@ public sealed partial class Binding
     // SPEC 3.4.3, 10.2: the in-place read of an element storing safe reference layers, below which a member is selected: one shared
     // reference to the declaring struct or Tuple, the element's selection reference (with the selection's Origin) continued through
     // those layers; null for any other element. It is the selection's representation, never a layer (ElementAccess.IsSynthesizedAccess).
-    private BoundType? ElementRead(BoundType element, BoundOrigin selection)
+    private BoundType? ElementRead(Koto at, BoundType element, BoundOrigin selection)
         => ComparisonReferent(element) is var terminal && !ReferenceEquals(terminal, element) &&
             (terminal.Kind == BoundTypeKind.Tuple || AdtDef.IsStruct(terminal))
-            ? this.SharedReferenceThroughLayers(this.types.Reference(SemanticsKind.Ref, element, selection), terminal, out _) : null;
+            ? this.SharedReferenceThroughLayers(this.types.Reference(SemanticsKind.Ref, element, selection), terminal, this.ConstraintScope(at), out _) : null;
 }

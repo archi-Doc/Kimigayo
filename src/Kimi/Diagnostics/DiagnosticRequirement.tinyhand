@@ -683,6 +683,9 @@
   + Name="Binding.TypeHeightLimit"
     Description="every Type the program forms stays within the implementation's height limit"
 
+  + Name="Binding.PremiseClosureLimit"
+    Description="the closure of a declaration's premises stays within the implementation's round limit"
+
   + Name="Emission"
     Description="generation succeeds"
 

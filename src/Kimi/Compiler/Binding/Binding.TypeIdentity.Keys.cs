@@ -1,5 +1,7 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using System.Runtime.InteropServices;
+
 namespace Kimi.Compiler;
 
 // Binding.TypeIdentity's class keys (the entry file states the contract; R7-C2c2 c2-1): ClassKey, a Type's key in a view's identity
@@ -135,6 +137,41 @@ public sealed partial class Binding
     {
         private readonly Dictionary<BoundType, BoundType> keys = new(ReferenceEqualityComparer.Instance); // ClassKey's answers (R7-C2c2)
         private readonly Dictionary<int, (BoundType? Least, BoundType? Member)> scanned = new(); // per class root: Representative's and Member's answers
+        private readonly Dictionary<int, (int Start, int Count)> projections = new(); // ProjectionMembers' range per class root (G881)
+        private readonly List<BoundType> projectionMembers = new();
+
+        // PLAN G881: the projection members of a Type's class in Order, appended to `into`, where Members lists the class (ContractSolver's
+        // row (5) walks them). Each class is scanned and sorted once per table, so a link of a parameter-only class costs a lookup.
+        internal void ProjectionMembers(BoundType type, List<BoundType> into)
+        {
+            var root = this.ListedRoot(type);
+            if (root < 0)
+            {
+                return;
+            }
+
+            if (!this.projections.TryGetValue(root, out var range))
+            {
+                var start = this.projectionMembers.Count;
+                for (var m = this.head[root]; m >= 0; m = this.next[m])
+                {
+                    binding.IdentityMateWork++;
+                    if (this.types[m].Kind == BoundTypeKind.AssociatedProjection)
+                    {
+                        this.projectionMembers.Add(this.types[m]);
+                    }
+                }
+
+                range = (start, this.projectionMembers.Count - start);
+                CollectionsMarshal.AsSpan(this.projectionMembers).Slice(range.Start, range.Count).Sort(static (x, y) => Order(x, y));
+                this.projections[root] = range;
+            }
+
+            for (var i = range.Start; i < range.Start + range.Count; i++)
+            {
+                into.Add(this.projectionMembers[i]);
+            }
+        }
 
         // R7-C2c2: the table's key of a Type ClassKey formed from it, or null. Keys are a function of the closed table (no class joins
         // after Close), so each Type is keyed once per table; they go with the table at its next Open.

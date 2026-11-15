@@ -90,6 +90,8 @@ public sealed partial class Binding
             this.stack.Clear();
             this.keys.Clear();
             this.scanned.Clear();
+            this.projections.Clear();
+            this.projectionMembers.Clear();
         }
 
         internal void Premise(BoundType a, BoundType b, Completion availability)
@@ -107,12 +109,8 @@ public sealed partial class Binding
         // erroneous or provisional class fixes no form); nothing for a Type outside the classes (PLAN G823's key walk reads them).
         internal void Members(BoundType type, List<BoundType> into)
         {
-            if (!this.node.TryGetValue(this.Target(type), out var n) || this.state[this.Find(n)] != One || this.incompleteClass[this.Find(n)])
-            {
-                return;
-            }
-
-            for (var i = this.head[this.Find(n)]; i >= 0; i = this.next[i])
+            var root = this.ListedRoot(type);
+            for (var i = root < 0 ? -1 : this.head[root]; i >= 0; i = this.next[i])
             {
                 into.Add(this.types[i]);
             }
@@ -1074,6 +1072,10 @@ public sealed partial class Binding
         // The admitted set of a pair application's binder in this view (SPEC 8.3.4).
         private SemanticsMask Admitted(BoundType application)
             => TryPairLayer(application, out var whole, out _) ? binding.AdmittedSemantics(whole, this.scope!) : SemanticsMask.All;
+
+        // The root of a Type's class where Members lists it (a final One class), else -1 (Members' and ProjectionMembers' condition).
+        private int ListedRoot(BoundType type)
+            => this.node.TryGetValue(this.Target(type), out var n) && this.Find(n) is var root && this.state[root] == One && !this.incompleteClass[root] ? root : -1;
 
         // SPEC 8.2.3's pair row: with exactly `owner` admitted, `s/V` is `V` itself.
         private BoundType Target(BoundType type)
