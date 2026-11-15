@@ -211,7 +211,8 @@ public sealed partial class Binding
     private void RawReach(OriginPremiseEnvironment environment, BoundType type, StorageAt at, HeldRange run, int targets, int layer)
     {
         var (pointee, content) = (this.retentionHeld[run.Start].Part!, this.retentionHeld[run.Start].Holds);
-        var below = at with { Written = null, Holder = null, Depth = at.Depth + 1, Signature = null };
+        var signature = this.SignaturePast(at.Signature, type, this.retentionHeld[run.Start]);
+        var below = at with { Written = null, Holder = null, Depth = at.Depth + 1, Signature = signature };
         if (at.Storage == NoStorage)
         {
             this.Through(environment, pointee, layer, below);
@@ -219,7 +220,6 @@ public sealed partial class Binding
         }
 
         var step = this.RawStepAt(type, at.Written, at.Holder, at.Signature);
-        below = below with { Signature = this.SignaturePast(at.Signature, type, this.retentionHeld[run.Start]) };
         if (step == HoldStep.Own)
         {
             this.Admitted(environment, run, below);
@@ -338,7 +338,7 @@ public sealed partial class Binding
         {
             if (this.retentionHeld[i] is { Part: { } stored, Holder: { } owner } part && ReferenceEquals(owner, type) && ReferenceTypes.IsPointer(part.Written))
             {
-                var below = at with { Written = null, Holder = null, Depth = at.Depth + 1, Captured = captured };
+                var below = at with { Written = null, Holder = null, Depth = at.Depth + 1, Captured = captured, Signature = null };
                 this.SelfContent(environment, stored, part.Written, owner, below);
             }
         }

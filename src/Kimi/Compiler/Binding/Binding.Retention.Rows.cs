@@ -192,6 +192,8 @@ public sealed partial class Binding
         this.Storages(environment, links, kept);
         var resultKinds = this.retentionKinds[ResultStorage];
         var resultRecord = new StorageRetention([.. resultKinds], this.Pairs(resultKinds, ResultStorage), untied);
+        var resultWrites = this.ResultWrites(environment, links, inputs, result, (key, callee, premises), ref transfer) is { } past
+            ? new OutputRetention(CallRetention.ResultOutput, resultRecord, [.. past.Reached], past.All) : null;
         var writes = this.retentionWrites;
         writes.Clear();
         for (var output = 0; output < inputs.Length; output++)
@@ -212,7 +214,28 @@ public sealed partial class Binding
             }
         }
 
-        return this.retentionLimit ? CallRetention.Limit : new(resultRecord, [.. writes], this.ReferentStores(key, callee?.BoundSymbol, inputs));
+        return this.retentionLimit ? CallRetention.Limit
+            : new(resultRecord, resultWrites, [.. writes], this.ReferentStores(key, callee?.BoundSymbol, inputs));
+    }
+
+    // The result read as an output (CallRetention.ResultWrites; G841's H2, PLAN G935): the walk an input's output takes, from the result's
+    // own value as its root storage, so that each storage past a layer the call writes in the result is a Reached entry with the rows of
+    // the positions and raw layers it holds (Hold from its positions, Storages); the caller keeps the root's record the whole result
+    // Type's (Result), which every reader of the result reads. Null where no storage lies past such a layer.
+    private OutputRetention? ResultWrites(
+        OriginPremiseEnvironment environment,
+        (int[] First, int[] Next, int[] SourceFirst, int[] SourceNext, int[] Marks) links,
+        ReadOnlySpan<BoundType> inputs,
+        BoundType result,
+        (Transfer Key, FunctionKoto? Callee, BindingScope? Premises) call,
+        ref Transfer? transfer)
+    {
+        this.BeginStorages();
+        this.StorageWalk(environment, result, StorageAt.Output(OwnStorage, writable: true) with { Signature = this.SignatureResult });
+        var kept = this.Kept(inputs.Length);
+        var untied = this.Hold(environment, CallRetention.ResultOutput, CollectionsMarshal.AsSpan(this.storageHolds), inputs, call, ref transfer);
+        this.Storages(environment, links, kept);
+        return this.Written(CallRetention.ResultOutput, untied) is { Reached.Length: > 0 } past ? past : null;
     }
 
     // Each storage's kinds for the walk made (retentionKinds, by storage): Content where the closure from one of its targets reaches an

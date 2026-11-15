@@ -15,8 +15,9 @@
 // returned, publishes no Value row: it has no Origin a caller names, and rule A keeps only the written-through input's chain.
 // Output: an immutable CallRetention, one per callee, signature or erased destruction's receiver, Type instantiation and the premise
 // scope or declaration it reads, for the latest Binding pass and reused by later passes until an edit (DECISIONS R4-M154): its Result
-// (a StorageRetention: per input the RetentionKind flags the result retains it by, and Untied), per output it may write (Writes, ascending)
-// an OutputRetention, and ReferentStores; an OutputRetention holds the StorageRetention of the output's root storage (Own: what the
+// (a StorageRetention: per input the RetentionKind flags the result retains it by, and Untied), the result read as an output
+// (ResultWrites: Own the Result, Reached the storages past the result's written layers; null where it has none; G841's H2), per output it
+// may write (Writes, ascending) an OutputRetention, and ReferentStores; an OutputRetention holds the StorageRetention of the output's root storage (Own: what the
 // argument's direct Loans name, the referent of a borrowed input, a raw input's pointee, or what the exclusive layers and the raw
 // layers the call may write that a by-value input holds refer to, in its Fields, payloads and elements too) and of the storage past its
 // exclusive layers (Reached: one entry per Origin-erased storage Type, joined over that Type's occurrences, an Abstract entry for what
@@ -167,10 +168,10 @@ internal sealed class OutputRetention(int output, StorageRetention own, (BoundTy
     internal StorageRetention All { get; } = all;
 }
 
-/// <summary>A call's retention: what its result retains (<see cref="Result"/>), what the storage it may write through each input retains
-/// (<see cref="Writes"/>, by ascending output), and the stores it writes only in the storage its receiver refers to (BU-42); or
-/// <see cref="Limit"/>, which has none of them.</summary>
-internal sealed class CallRetention(StorageRetention? result, OutputRetention[] writes, int[] referentStores)
+/// <summary>A call's retention: what its result retains (<see cref="Result"/>), the storages past the result's written layers
+/// (<see cref="ResultWrites"/>), what the storage it may write through each input retains (<see cref="Writes"/>, by ascending output),
+/// and the stores it writes only in the storage its receiver refers to (BU-42); or <see cref="Limit"/>, which has none of them.</summary>
+internal sealed class CallRetention(StorageRetention? result, OutputRetention? resultWrites, OutputRetention[] writes, int[] referentStores)
 {
     /// <summary>The output slot of a call's result, beside its inputs' slots (0 and up).</summary>
     internal const int ResultOutput = -1;
@@ -180,9 +181,10 @@ internal sealed class CallRetention(StorageRetention? result, OutputRetention[] 
     /// member walk is incomplete (a keeper cycle that changes its Type arguments), as A4's effects take it: nothing is computed, and A5
     /// records a located Unsupported_Kd at the call. Storage a Binding failure left Rejected is not a Limit (DECISIONS BU-36). Reading its
     /// Result, Writes or ReferentStores is a broken contract.</summary>
-    internal static readonly CallRetention Limit = new(null, [], []);
+    internal static readonly CallRetention Limit = new(null, null, [], []);
 
     private readonly StorageRetention? result = result;
+    private readonly OutputRetention? resultWrites = resultWrites;
     private readonly OutputRetention[] writes = writes;
     private readonly int[] referentStores = referentStores;
 
@@ -211,6 +213,12 @@ internal sealed class CallRetention(StorageRetention? result, OutputRetention[] 
     }
 
     internal StorageRetention Result => this.result ?? throw new InvalidOperationException("The Limit retention has no result.");
+
+    /// <summary>Gets the result read as an output (G841's H2, PLAN G935): its Own is <see cref="Result"/>, the whole result Type's record,
+    /// and its Reached entries the storages past the result's layers the call may write, each with the rows of the positions and raw
+    /// layers it holds, by the walk an input's output takes (Binding.Retention.Rows.cs); null where the result has no such storage.</summary>
+    internal OutputRetention? ResultWrites
+        => this.result is null ? throw new InvalidOperationException("The Limit retention has no ResultWrites.") : this.resultWrites;
 
     internal ReadOnlySpan<OutputRetention> Writes
         => this.result is null ? throw new InvalidOperationException("The Limit retention has no Writes.") : this.writes;

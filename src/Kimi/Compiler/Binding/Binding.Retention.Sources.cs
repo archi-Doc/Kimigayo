@@ -82,7 +82,7 @@ public sealed partial class Binding
             if (inputs[i] is not { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Raw })
             {
                 this.storageSeen.Clear();
-                this.StorageWalk(environment, inputs[i], StorageAt.Input(i));
+                this.StorageWalk(environment, inputs[i], StorageAt.Input(i) with { Signature = this.SignatureInput(i) });
             }
         }
     }
@@ -113,7 +113,7 @@ public sealed partial class Binding
             }
 
             var own = at.Source.Held ? type : null;
-            this.retentionSources.Add(new(node, at.Source.Input, own, referent, (start, this.retentionPaths.Count - start)));
+            this.retentionSources.Add(new(node, at.Source.Input, own, referent, at.Signature, (start, this.retentionPaths.Count - start)));
             layer = node;
         }
 
@@ -316,8 +316,9 @@ public sealed partial class Binding
     }
 
     // A Value source of an input (RetentionSources): its node, the part of its own value it is (null: one reached through an exclusive
-    // layer), the referent of the borrow layer it is, through which it forms borrows (null: none), and its path, the nodes every one of
-    // which a position's closure must reach (retentionPaths: the layers it is formed through but those Related to the layer above, its own
-    // last unless Related).
-    private readonly record struct RetentionSource(int Node, int Input, BoundType? Own, BoundType? Through, (int Start, int Count) Path);
+    // layer), the referent of the borrow layer it is, through which it forms borrows (null: none), the walked signature's declared Type
+    // where it was met (StorageAt.Signature, DECISIONS BU-113, BU-202: the input's declared Type at the walk's root; null where none
+    // pairs), and its path, the nodes every one of which a position's closure must reach (retentionPaths: the layers it is formed through
+    // but those Related to the layer above, its own last unless Related).
+    private readonly record struct RetentionSource(int Node, int Input, BoundType? Own, BoundType? Through, BoundType? Signature, (int Start, int Count) Path);
 }
