@@ -520,6 +520,149 @@ public sealed partial class MirBorrowsTest
             kk = 2
         """;
 
+    private const string ReachedForms = """
+        func usep<T>(p: raw/T) => ()
+        func keepU(slot: uniq/((raw/u8 during a, u64)), a: ref/u8, value: raw/u8) => ()
+        func keepV(slot: uniq/((raw/u8, u64)), a: ref/u8, value: raw/u8) => ()
+        func keepR2(slot: raw/(raw/((raw/u8 during a, u64))), a: ref/u8, value: raw/u8) => ()
+        func keepP2(slot: raw/(raw/((raw/u8, u64))), a: ref/u8, value: raw/u8) => ()
+        func keepR(slot: raw/(raw/((raw/u8 during a, u64))), a: ref/u8, value: raw/u8) => ()
+        func keepS(slot: raw/(raw/((raw/u8 during static, u64))), value: raw/u8) => ()
+        func usew(v: (u64, u64)) => ()
+        func keepP1(slot: raw/((raw/u8 during a, u64)), a: ref/u8, value: raw/u8) => ()
+        func keepQ1(slot: raw/((raw/u8, u64)), a: ref/u8, value: raw/u8) => ()
+        func keepQ(slot: uniq/((raw/u8 during a, u64)), a: uniq/u8, value: raw/u8) => ()
+        func keepW(slot: uniq/((raw/u8, u64)), a: uniq/u8, value: raw/u8) => ()
+        func keepSt(slot: uniq/((raw/u8 during static, u64)), value: raw/u8) => ()
+        func keepSt2(slot: uniq/((raw/u8, u64)), value: raw/u8) => ()
+        func keepM(slot: uniq/((raw/u8 during a, raw/u8)), a: ref/u8, value: raw/u8) => ()
+        func keep1(slot: raw/(raw/u8), value: raw/u8) => ()
+        func tRecBorrowOk(a: ref/u8)
+            var kk: u8 = 1
+            let r = kk@uniq
+            var spare: raw/u8 = r@follow@raw
+            var c = (a@follow@raw, 0@u64)
+            keepU(c@uniq, a, spare)
+            kk = 2
+            usep(c.0)
+        func tRecBorrowBad(a: ref/u8)
+            var kk: u8 = 1
+            let r = kk@uniq
+            var spare: raw/u8 = r@follow@raw
+            var x: u8 = 0
+            var c = (x@raw, 0@u64)
+            keepV(c@uniq, a, spare)
+            kk = 2
+            usep(c.0)
+        func tRecTypedOk(a: ref/u8)
+            var kk: u8 = 1
+            let r = kk@uniq
+            var spare: raw/u8 = r@follow@raw
+            var c = (a@follow@raw, 0@u64)
+            var g = c@raw
+            keepR2(g@raw, a, spare)
+            kk = 2
+            usep(c.0)
+        func tRecTypedBad(a: ref/u8)
+            var kk: u8 = 1
+            let r = kk@uniq
+            var spare: raw/u8 = r@follow@raw
+            var x: u8 = 0
+            var c = (x@raw, 0@u64)
+            var g = c@raw
+            keepP2(g@raw, a, spare)
+            kk = 2
+            usep(c.0)
+        func zRecMixOk(a: ref/u8)
+            var kk: u8 = 1
+            let r = kk@uniq
+            var spare: raw/u8 = r@follow@raw
+            var x: raw/u8 = null
+            var w: (raw/u64, u64, u64) = (x@raw@raw/u64, 0@u64, 0@u64)
+            keepR(w@raw@raw/(raw/((raw/u8 during a, u64))), a, spare)
+            kk = 2
+        func dNoA()
+            var kk: u8 = 1
+            let r = kk@uniq
+            var spare: raw/u8 = r@follow@raw
+            var x: raw/u8 = null
+            var w: (raw/u64, u64, u64) = (x@raw@raw/u64, 0@u64, 0@u64)
+            keepS(w@raw@raw/(raw/((raw/u8 during static, u64))), spare)
+            kk = 2
+        func pRootOk(a: ref/u8)
+            var kk: u8 = 1
+            let r = kk@uniq
+            var spare: raw/u8 = r@follow@raw
+            var w: (u64, u64) = (0@u64, 0@u64)
+            keepP1(w@raw@raw/((raw/u8 during a, u64)), a, spare)
+            kk = 2
+            usew(w)
+        func pRootBad(a: ref/u8)
+            var kk: u8 = 1
+            let r = kk@uniq
+            var spare: raw/u8 = r@follow@raw
+            var w: (u64, u64) = (0@u64, 0@u64)
+            keepQ1(w@raw@raw/((raw/u8, u64)), a, spare)
+            kk = 2
+            usew(w)
+        func uRecOk(a: uniq/u8)
+            var kk: u8 = 1
+            let r = kk@uniq
+            var spare: raw/u8 = r@follow@raw
+            var c = (a@follow@raw, 0@u64)
+            keepQ(c@uniq, a, spare)
+            kk = 2
+            usep(c.0)
+        func uRecBad(a: uniq/u8)
+            var kk: u8 = 1
+            let r = kk@uniq
+            var spare: raw/u8 = r@follow@raw
+            var x: u8 = 0
+            var c = (x@raw, 0@u64)
+            keepW(c@uniq, a, spare)
+            kk = 2
+            usep(c.0)
+        func sRecOk()
+            var kk: u8 = 1
+            let r = kk@uniq
+            var spare: raw/u8 = r@follow@raw
+            var c: (raw/u8 during static, u64) = (null, 0@u64)
+            keepSt(c@uniq, spare)
+            kk = 2
+            usep(c.0)
+        func sRecBad()
+            var kk: u8 = 1
+            let r = kk@uniq
+            var spare: raw/u8 = r@follow@raw
+            var c: (raw/u8, u64) = (null, 0@u64)
+            keepSt2(c@uniq, spare)
+            kk = 2
+            usep(c.0)
+        func mMixBad(a: ref/u8)
+            var kk: u8 = 1
+            let r = kk@uniq
+            var spare: raw/u8 = r@follow@raw
+            var c: (raw/u8 during a, raw/u8) = (a@follow@raw, null)
+            keepM(c@uniq, a, spare)
+            kk = 2
+            usep(c.0)
+        func mMixOk(a: ref/u8)
+            var kk: u8 = 1
+            let r = kk@uniq
+            var spare: raw/u8 = r@follow@raw
+            var c: (raw/u8 during a, raw/u8) = (a@follow@raw, null)
+            keepM(c@uniq, a, spare)
+            kk = 2
+        func kDirectBad()
+            var kk: u8 = 1
+            let r = kk@uniq
+            var spare: raw/u8 = r@follow@raw
+            var c: raw/u8 = null
+            keep1(c@raw, spare)
+            kk = 2
+            usep(c)
+        """;
+
     // PLAN G338, SPEC 5.2.1 ("storage a pointer addresses `during o` is covered by the Loans of `o`"), 5.7's table, 15.6 Holders: a store through
     // a raw parameter's stated layer writes the holders that Origin's Loans name, whose storage end or whole write ends what it put there,
     // so a null q leaves nothing in E (the Ok rows, each an error at spare's end or the write before the fix, and at `kk = 1` in
@@ -633,5 +776,34 @@ public sealed partial class MirBorrowsTest
     {
         var c = MirBuildTest.Compile(Prelude + StatedForms[..StatedForms.IndexOf("func endOk(", StringComparison.Ordinal)] + Form(StatedForms, form));
         Assert.Equal($"{form}: [{expected}]", $"{form}: [{string.Join("; ", Problems(c, Analyze(c), LoanCodes).Order(StringComparer.Ordinal))}]");
+    }
+
+    // C-352 (the owner's O-329 (a); SPEC 15.6.4 "with an Origin, as the borrow that Origin belongs to would", 5.7 Fits and claims, 15.6
+    // Holders, O-223 (B')): a raw layer stating an Origin retains only what that Origin admits, at depth 1 and past a written layer, typed
+    // and punned, for a `ref`, a `uniq` and a `static` Origin; a raw argument stating no Origin fits it only by a claim, so `spare` is not
+    // kept there (each `*Ok`). A raw layer stating none that the call writes keeps it
+    // (each `*Bad`, the mixed storage's included); the rows of an unstated layer the parameter's Type expression writes are the rows of
+    // the storage holding it, since it bounds what is stored past it to its pointee Type (5.7 Calls). tRecBorrowOk, tRecTypedOk, pRootOk,
+    // uRecOk and sRecOk fail before (`kk = 2`); zRecMixOk and dNoA are the A5 chain's U3b's punned rows (accepted on dev and here).
+    [Theory]
+    [InlineData("tRecBorrowOk", "")]
+    [InlineData("tRecBorrowBad", "tRecBorrowBad: kk = 2")]
+    [InlineData("tRecTypedOk", "")]
+    [InlineData("tRecTypedBad", "tRecTypedBad: kk = 2")]
+    [InlineData("zRecMixOk", "")]
+    [InlineData("dNoA", "")]
+    [InlineData("pRootOk", "")]
+    [InlineData("pRootBad", "pRootBad: kk = 2")]
+    [InlineData("uRecOk", "")]
+    [InlineData("uRecBad", "uRecBad: kk = 2")]
+    [InlineData("sRecOk", "")]
+    [InlineData("sRecBad", "sRecBad: kk = 2")]
+    [InlineData("mMixBad", "mMixBad: kk = 2")]
+    [InlineData("mMixOk", "")]
+    [InlineData("kDirectBad", "kDirectBad: kk = 2")]
+    public void AStatedRawLayerRetainsWhatItsOriginAdmits(string form, string expected)
+    {
+        var c = MirBuildTest.Compile(Prelude + ReachedForms[..ReachedForms.IndexOf("func tRecBorrowOk(", StringComparison.Ordinal)] + Form(ReachedForms, form));
+        Assert.Equal($"{form}: [{expected}]", $"{form}: [{string.Join("; ", Problems(c, Analyze(c), [.. LoanCodes, DiagnosticCode.Unsupported_Kd]).Order(StringComparer.Ordinal))}]");
     }
 }

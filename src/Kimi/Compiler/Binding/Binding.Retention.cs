@@ -291,6 +291,7 @@ public sealed partial class Binding
         this.retentionCarriers.Clear();
         this.retentionReachedNodes.Clear();
         this.retentionRawSources.Clear();
+        this.retentionRawStated.Clear();
         this.retentionFills.Clear();
         this.retentionScope.Clear();
         this.retentionScope.AddRange(inputs);
@@ -323,6 +324,7 @@ public sealed partial class Binding
         this.retentionCarriers.Clear();
         this.retentionReachedNodes.Clear();
         this.retentionRawSources.Clear();
+        this.retentionRawStated.Clear();
         this.retentionFills.Clear();
         this.retentionInstantiated.Clear();
         this.retentionDeclared.Clear();
@@ -482,7 +484,7 @@ public sealed partial class Binding
     private void AddErasedSignature(OriginPremiseEnvironment environment, ErasedSignature erased)
     {
         var (atoms, signature) = (this.retentionAtoms, erased.Signature);
-        var (start, raws) = (atoms.Count, this.retentionRawSources.Count);
+        var (start, raws, stated) = (atoms.Count, this.retentionRawSources.Count, this.retentionRawStated.Count);
         var inputs = signature.Components[0];
         var (contract, signatureInputs) = (this.retentionScope, this.retentionInputs);
         (this.retentionScope, this.retentionInputs) = (this.retentionErasedScope, 0);
@@ -505,6 +507,7 @@ public sealed partial class Binding
         this.ErasedFills(start, raws);
         atoms.RemoveRange(start, atoms.Count - start);
         this.retentionRawSources.RemoveRange(raws, this.retentionRawSources.Count - raws);
+        this.retentionRawStated.RemoveRange(stated, this.retentionRawStated.Count - stated);
         (this.retentionScope, this.retentionInputs) = (contract, signatureInputs);
     }
 

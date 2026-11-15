@@ -16,9 +16,9 @@ namespace Kimi.Compiler;
 // Outputs: per walk, the storages (the root, Own; the Abstract one, what an abstract part hides, at each carrier's ReachedNode; one per
 // contract Type past an exclusive layer, keyed for its Origin-erased Type), each position's node and the Types its fit reads (Value
 // tests, Reads: a raw layer stating an Origin as the borrows that Origin belongs to; no Type: any value), every Origin occurrence's
-// node (Content targets), and for an input's walk each position with the Type its declaration writes there and the instance holding
-// it (storageHolds: where rule A's hold walk starts, so a by-value input's Fields, payloads and elements reach it as a borrowed
-// input's referent does).
+// node (Content targets), and for an input's walk each position with the Type its declaration writes there, the instance holding
+// it and its storage (storageHolds: where rule A's hold walk starts, in that storage, so a by-value input's Fields, payloads and
+// elements reach it as a borrowed input's referent does).
 // Invariants: a position is storage the call may write: a part a value of the storage holds by value (Tuple and fixed-array elements, a
 // struct's Fields and base, an enum's payloads, a Closure's environment bindings, a raw layer's pointee by its own step and what a
 // `during self` layer admits, Admitted), the layer of a borrow, pair or raw layer, an abstract part (whose hidden storage is the
@@ -54,7 +54,7 @@ public sealed partial class Binding
     private readonly HashSet<(int Storage, BoundType Type)> storageTargeted = new();
     private readonly List<(int Storage, int Node, BoundType? Type)> storagePositions = new();
     private readonly List<(int Storage, int Node)> storageTargets = new();
-    private readonly List<(BoundType Type, BoundType? Written, BoundType? Holder)> storageHolds = new();
+    private readonly List<(BoundType Type, BoundType? Written, BoundType? Holder, int Storage)> storageHolds = new();
     private readonly List<int> retentionOwnNodes = new();
     private readonly List<int> retentionOccurrences = new();
     private readonly HashSet<(BoundType Type, bool Callable)> retentionOccurred = new();
@@ -142,7 +142,7 @@ public sealed partial class Binding
             this.Position(environment, type, at.Storage);
             if (at.Storage != ResultStorage)
             {
-                this.storageHolds.Add((type, at.Written, at.Holder));
+                this.storageHolds.Add((type, at.Written, at.Holder, at.Storage));
             }
         }
 

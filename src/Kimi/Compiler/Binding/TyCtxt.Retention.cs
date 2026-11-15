@@ -20,7 +20,8 @@
 // argument's direct Loans name, the referent of a borrowed input, a raw input's pointee, or what the exclusive layers and the raw
 // layers the call may write that a by-value input holds refer to, in its Fields, payloads and elements too) and of the storage past its
 // exclusive layers (Reached: one entry per Origin-erased storage Type, joined over that Type's occurrences, an Abstract entry for what
-// an abstract part hides, and All, their join);
+// an abstract part hides, and All, their join), each storage with the hold walk's rows of the raw layers it holds itself (a raw layer
+// the call writes retains in the storage holding it, never in every storage of the output; C-352);
 // CallRetention.Limit, a genuine limit only, where the contract or a Type its hold walk reaches has storage past Binding's limits (nested
 // past its depth bound, which a growing recursive Type of SPEC 15.3.5 always reaches; Binding.StorageOutcome.Limit), the contract's
 // substitution does not complete (no reproducer), or a raw layer's member walk is incomplete (a keeper cycle that changes its Type
@@ -49,8 +50,9 @@
 // Shared; a raw parameter layer without an Origin, or with `static`, lets the call write its pointee, one whose Origin steps Exclusive
 // what that Origin's borrows admit (their referents, a slot's Keepers) as that input's storage. A raw input is retained as a borrowed
 // one, its pointee as the referent: an Origin inside its pointee is Content, its own layer's Origin gives no row, and its own value is
-// a Value row only of an output that can hold it where the call may write it (a raw layer stating an Origin or `static`, whatever its
-// pointee Type, or an abstract part where a callable the call may run may retain it there, DECISIONS BU-66, at or below a position of
+// a Value row only of an output that can hold it where the call may write it (a raw layer stating an Origin or `static` where one of its
+// own layers states an Origin that one's premise closure reaches, whatever its pointee Type: a raw layer stating none fits it only by a
+// claim, SPEC 5.7, so it is no row there, the owner's O-329 (a); or an abstract part where a callable the call may run may retain it there, DECISIONS BU-66, at or below a position of
 // the output's writable storage: a value
 // stored there brings its whole Type, every layer but a callable's, a struct's or enum's stored content included), of a result the call
 // forms within its storage (Raw.slice), or by the rules below; never of its own pointee, so a raw input may have both rows to one
