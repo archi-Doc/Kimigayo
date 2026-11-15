@@ -95,7 +95,7 @@ inspect(none)
 // identity<T>(value: T) -> T; inspectWidePair(values: ref/[2 of i64]); keepPair<V>(values: ref/[2 of V]); wideRef: ref/i64.
 inspectWidePair([2 of identity(1)]) // The fill value is checked against i64: identity<i64>; one temporary, borrowed.
 inspectWidePair([2 of wideRef])     // wideRef is value-read as i64.
-// keepPair([2 of identity(1)])     // Error: V is still unbound after the defaults; identity(1) is no evidence.
+keepPair([2 of identity(1)])        // After selection identity(1) is resolved alone (10.5.1): V = i32.
 ```
 
 ### 4.3.4. `noinit`
