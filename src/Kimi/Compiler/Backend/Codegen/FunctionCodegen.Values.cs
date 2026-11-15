@@ -10,7 +10,7 @@ namespace Kimi.Compiler.Backend;
 // item's instance, bool's widening and narrowing and a site's location (SPEC 22.5.1); their spelling is FunctionCodegen.Spelling's. A
 // string constant at the string Type has no value: it is written whole where it is put (FunctionCodegen.Stores' Text); at ref/string, a
 // comparison's literal, it is its constant record's address (MirConst.IsRecord), which the library witness reads (R8-S1d2, R8-S1e). A
-// TypeToken constant has no value either: its call's writer reads it (C6a's TypeTest, C9c's format estimates).
+// TypeToken constant has no value either: its call's writer reads it (C6a's TypeTest).
 internal sealed partial class FunctionCodegen
 {
     // An integer's spelling at its width: the signed value of its low bits (two's complement, IMPL 21.1.3), so an unsigned value above the
