@@ -583,8 +583,8 @@ public sealed partial class Binding
         return proof;
 
         ConstraintProof Formed(BoundType? written, ReadOnlySpan<BoundType?> slots, ReadOnlySpan<BoundLength?> slotLengths)
-            => written is not null && this.MemberType(written, container) is { } member &&
-                this.SubstituteType(member, function, slots, slotLengths) is { } bound && this.ProveTypeLengths(bound, scope.Function)
+            => written is not null && this.Substitute(written, SubstitutionOf(function, container, slots, slotLengths)) is { } bound &&
+                this.ProveTypeLengths(bound, scope.Function)
                 ? ConstraintProof.Proven : ConstraintProof.Refuted;
     }
 

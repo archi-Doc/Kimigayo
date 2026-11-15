@@ -179,7 +179,12 @@ public class SpecializationBindingTest
     // header's Type arguments the limits below do not apply. Rows are named by G863's coverage table (row and program). The body
     // serves the call's slot (the Middle's C-331 rows, named by its labels): a result over the input (directly, through a call or a
     // generic call, nested, in a method), a write through a uniq slot, one T's two inputs, a static value or a subslice in the result,
-    // a Move; a raw layer states no Origin.
+    // a Move; a raw layer states no Origin (PLAN G888: outer, in an enum or struct instance, a Tuple, an array, a raw layer or a
+    // Function Type, over an aggregate whose slot is the call's, in a method original, in a Slice, through a projection, as a pair's
+    // argument, under `T is Owned` (Z7: an Origin-free raw layer is Owned); a call writes any Origin). The Middle's rows (G888 Tn,
+    // C-340): the valid twins of the rejected forms (a parameter beside it, nested, a Function Type input, the original's binder, the
+    // `?` spelling, `T is Owned`, a raw layer's Type argument); a written Origin argument the bound Type does not use (T52); a raw
+    // layer's Origin that is the call's, reached through a projection subject's omitted slot (T56: the rule's boundary).
     private const string Box = "struct Box {source}\n    public let value: ref/i32 during source\n    public init(value: ref/i32 during source) => self.value = value\nstruct W {source}\n    public let data: uniq/i32 during source\n    public init(data: uniq/i32 during source) => self.data = data\nstruct Wrap<T>\n    public let inner: T\n    public init(inner: T) => self.inner = inner@move\nfunc f<T>(x: ref/T) -> i32 => 0\n";
 
     [Theory]
@@ -218,6 +223,28 @@ public class SpecializationBindingTest
     [InlineData("s1 C-331", "func g2<T>(x: T) -> T => x@move\nspecialize func g2<Slice<u8>>(x: Slice<u8>) -> Slice<u8> => x[1..]")]
     [InlineData("mv2 C-331", "func k2<T>(x: T) -> i32 => 0\nspecialize func k2<W>(x: W) -> i32\n    var a = x@move\n    a.data@follow = 3\n    return a.data@follow")]
     [InlineData("k1 C-331", "func h<T>(x: T) -> i32 => 0\nspecialize func h<raw/i32>(x: raw/i32) -> i32 => 1")]
+    [InlineData("G888 R5", "func h<T>(x: T) -> i32 => 0\nspecialize func h<Option<raw/i32>>(x: Option<raw/i32>) -> i32 => 1")]
+    [InlineData("G888 R7", "func h<T>(x: T) -> i32 => 0\nspecialize func h<Wrap<raw/i32>>(x: Wrap<raw/i32>) -> i32 => 1")]
+    [InlineData("G888 R9", "func h<T>(x: T) -> i32 => 0\nspecialize func h<(raw/i32, i32)>(x: (raw/i32, i32)) -> i32 => 1")]
+    [InlineData("G888 R11", "func h<T>(x: T) -> i32 => 0\nspecialize func h<[2 of raw/i32]>(x: [2 of raw/i32]) -> i32 => 1")]
+    [InlineData("G888 R13", "func h<T>(x: T) -> i32 => 0\nspecialize func h<raw/(raw/i32)>(x: raw/(raw/i32)) -> i32 => 1")]
+    [InlineData("G888 R14", "func h<T>(x: T) -> i32 => 0\nspecialize func h<raw/Box>(x: raw/Box) -> i32 => 1")]
+    [InlineData("G888 R20", "func apply<T>(f: T) -> i32 => 0\nspecialize func apply<() -> raw/i32>(f: () -> raw/i32) -> i32 => 1")]
+    [InlineData("G888 R23", "struct Holder\n    public let n: i32\n    public init(n: i32) => self.n = n\n    public func m<T>(self: ref/Self, x: T) -> i32 => 0\n    specialize func m<raw/i32>(self: ref/Self, x: raw/i32) -> i32 => 1")]
+    [InlineData("G888 R27", "func h<T>(x: T) -> i32 => 0\nfunc c(p: raw/i32 during static) -> i32 => h<raw/i32 during static>(p)")]
+    [InlineData("G888 X2", "func h<T>(x: T) -> i32 => 0\nspecialize func h<Slice<raw/i32>>(x: Slice<raw/i32>) -> i32 => 1")]
+    [InlineData("G888 X12", "contract Holds\n    associate Item\nstruct P\n    Self is Holds\n    associate Holds.Item is raw/i32\nfunc h<T>(x: T) -> i32 => 0\nspecialize func h<P.(Holds).Item>(x: P.(Holds).Item) -> i32 => 1")]
+    [InlineData("G888 X14", "func p<s/T>(x: s/T) -> i32 => 0\nspecialize func p<raw/i32>(x: raw/i32) -> i32 => 1")]
+    [InlineData("G888 Z7", "func o3<T>(x: ref/i32, z: T) -> i32\n    T is Owned\n    return 0\nspecialize func o3<raw/i32>(x: ref/i32, z: raw/i32) -> i32 => 1")]
+    [InlineData("G888 T31", "func apply<T>(f: T) -> i32 => 0\nspecialize func apply<(raw/i32) -> i32>(f: (raw/i32) -> i32) -> i32 => 1")]
+    [InlineData("G888 T32", "func first<T>(values: ref/[3 of T] during source) -> i32 => 0\nspecialize func first<raw/i32>(values: ref/[3 of raw/i32] during source) -> i32 => 1")]
+    [InlineData("G888 T33", "func h3<T>(y: ref/i32, x: T) -> i32 => 0\nspecialize func h3<raw/i32>(y: ref/i32, x: raw/i32) -> i32 => 1")]
+    [InlineData("G888 T34", "func h3<T>(y: ref/i32, x: T) -> i32 => 0\nspecialize func h3<Option<raw/i32>>(y: ref/i32, x: Option<raw/i32>) -> i32 => 1")]
+    [InlineData("G888 T35", "func h<T>(x: T) -> i32 => 0\nspecialize func h<raw/i32?>(x: raw/i32?) -> i32 => 1")]
+    [InlineData("G888 T36", "func o<T>(x: T) -> i32\n    T is Owned\n    return 0\nspecialize func o<raw/i32>(x: raw/i32) -> i32 => 1")]
+    [InlineData("G888 T37", "func h<T>(x: T) -> i32 => 0\nspecialize func h<raw/Wrap<raw/i32>>(x: raw/Wrap<raw/i32>) -> i32 => 1")]
+    [InlineData("G888 T52", "contract Holds2\n    associate Item(o)\nstruct P2\n    Self is Holds2\n    associate Holds2.Item(o) is raw/i32\nfunc h<T>(x: T) -> i32 => 0\nspecialize func h<P2.(Holds2).Item(static)>(x: P2.(Holds2).Item(static)) -> i32 => 1")]
+    [InlineData("G888 T56", "contract Holds\n    associate Item\nstruct P3 {s}\n    Self is Holds\n    associate Holds.Item is raw/i32 during s\n    public let r: ref/i32 during s\n    public init(r: ref/i32 during s) => self.r = r\nfunc h5<T>(n: i32) -> i32 => 0\nspecialize func h5<P3.(Holds).Item>(n: i32) -> i32 => 1")]
     public void ArgumentOriginsAreInheritedFromTheOriginal(string row, string specialization)
     {
         var c = MinimalEmissionTest.Analyze(Box + specialization + "\n()");
@@ -248,7 +275,18 @@ public class SpecializationBindingTest
     // one-key specializations included); so do C-331's: `static` over a direct input, a parameter's Origin in a method original, a
     // fresh binder in a restated input's inner or outer layer, a parameter's Origin inside a Function Type argument. An
     // Origin-carrying argument still meets the target search, the inherited Constraints (q1i: q1n's Origin-free control) and the one
-    // key. Each row lists its records' nodes in source order.
+    // key. PLAN G888: so does a raw layer's written Origin (SPEC 5.7), `static` or a parameter's, outer, in an enum or struct instance,
+    // a Tuple, an array, a raw layer, a Function Type's result or input, over an aggregate, in a method original, the original's binder,
+    // the second of one key; a restated input's alone is C15's. The review's rows (G888 Xn): in a Slice, the `?` spelling, a raw
+    // layer's Type argument, a nested Type's qualifier, one the argument's bound Type states through a projection (X11), a borrow's at
+    // a Function Type input (X19: any variance); under an inherited Constraint that is proven (`T is Owned`, X6), undecided (X7, as its
+    // Origin-free twin X24: the Constraint's record) or an identity (X21 fails it; X20 states the one Origin the original admits and
+    // is rejected by G863's reading of a written Origin, as dev's borrow and slot twins are: a disputed label, the owner's question
+    // O-318); a raw pair's argument fits by dropping its Origin, so the restated input's is C15's (X13). The implementation review's
+    // rows: a slot's Origin projected from a parameter (`y.source`, Z5); a parameter's Origin on a raw layer under an undecided
+    // `T is Owned` keeps the Constraint's record (Z2: the limit's gate reads no raw layer; Z7 is its valid twin). The Middle's rows:
+    // an Origin argument the bound Type gives a raw layer (T51, T52's twin), `static` where no parameter states T (T59, T56's twin),
+    // the same invalid header twice (T40: each header's own record, no duplicate). Each row lists its records' nodes in source order.
     [Theory]
     [InlineData("C1 i2", "specialize func f<Box during static>(x: ref/Box) -> i32 => 1", "specialize func f<Box during static>(x: ref/Box) -> i32 => 1", Kimi.DiagnosticCode.IncompatibleContractImplementation_Kd)]
     [InlineData("C4 r13", "specialize func f<Option<Box during static>>(x: ref/Option<Box>) -> i32 => 1", "specialize func f<Option<Box during static>>(x: ref/Option<Box>) -> i32 => 1", Kimi.DiagnosticCode.IncompatibleContractImplementation_Kd)]
@@ -270,6 +308,39 @@ public class SpecializationBindingTest
     [InlineData("w6 C-331", "func apply2<T>(x: ref/i32, f: T) -> i32 => 0\nspecialize func apply2<() -> ref/i32 during x>(x: ref/i32, f: () -> ref/i32 during x) -> i32 => 1", "specialize func apply2<() -> ref/i32 during x>(x: ref/i32, f: () -> ref/i32 during x) -> i32 => 1", Kimi.DiagnosticCode.IncompatibleContractImplementation_Kd)]
     [InlineData("C23 i4", "specialize func f<Box>(x: ref/Box) -> i32 => 1\nspecialize func f<Box during static>(x: ref/Box) -> i32 => 2", "specialize func f<Box during static>(x: ref/Box) -> i32 => 2", Kimi.DiagnosticCode.IncompatibleContractImplementation_Kd)]
     [InlineData("C23 i6", "specialize func f<Box>(x: ref/Box) -> i32 => 1\nspecialize func f<Box>(x: ref/Box) -> i32 => 2", "specialize func f<Box>(x: ref/Box) -> i32 => 1|specialize func f<Box>(x: ref/Box) -> i32 => 2", Kimi.DiagnosticCode.DuplicateBinding_Kd)]
+    [InlineData("G888 R2 k2", "func h<T>(x: T) -> i32 => 0\nspecialize func h<raw/i32 during static>(x: raw/i32 during static) -> i32 => 1", "specialize func h<raw/i32 during static>(x: raw/i32 during static) -> i32 => 1", Kimi.DiagnosticCode.IncompatibleContractImplementation_Kd)]
+    [InlineData("G888 R3 k3", "func h3<T>(y: ref/i32, x: T) -> i32 => 0\nspecialize func h3<raw/i32 during y>(y: ref/i32, x: raw/i32 during y) -> i32 => 1", "specialize func h3<raw/i32 during y>(y: ref/i32, x: raw/i32 during y) -> i32 => 1", Kimi.DiagnosticCode.IncompatibleContractImplementation_Kd)]
+    [InlineData("G888 R4 k4", "func h<T>(x: T) -> i32 => 0\nspecialize func h<Option<raw/i32 during static>>(x: Option<raw/i32 during static>) -> i32 => 1", "specialize func h<Option<raw/i32 during static>>(x: Option<raw/i32 during static>) -> i32 => 1", Kimi.DiagnosticCode.IncompatibleContractImplementation_Kd)]
+    [InlineData("G888 R6", "func h<T>(x: T) -> i32 => 0\nspecialize func h<Wrap<raw/i32 during static>>(x: Wrap<raw/i32 during static>) -> i32 => 1", "specialize func h<Wrap<raw/i32 during static>>(x: Wrap<raw/i32 during static>) -> i32 => 1", Kimi.DiagnosticCode.IncompatibleContractImplementation_Kd)]
+    [InlineData("G888 R8", "func h<T>(x: T) -> i32 => 0\nspecialize func h<(raw/i32 during static, i32)>(x: (raw/i32 during static, i32)) -> i32 => 1", "specialize func h<(raw/i32 during static, i32)>(x: (raw/i32 during static, i32)) -> i32 => 1", Kimi.DiagnosticCode.IncompatibleContractImplementation_Kd)]
+    [InlineData("G888 R10", "func h<T>(x: T) -> i32 => 0\nspecialize func h<[2 of raw/i32 during static]>(x: [2 of raw/i32 during static]) -> i32 => 1", "specialize func h<[2 of raw/i32 during static]>(x: [2 of raw/i32 during static]) -> i32 => 1", Kimi.DiagnosticCode.IncompatibleContractImplementation_Kd)]
+    [InlineData("G888 R12", "func h<T>(x: T) -> i32 => 0\nspecialize func h<raw/(raw/i32 during static)>(x: raw/(raw/i32 during static)) -> i32 => 1", "specialize func h<raw/(raw/i32 during static)>(x: raw/(raw/i32 during static)) -> i32 => 1", Kimi.DiagnosticCode.IncompatibleContractImplementation_Kd)]
+    [InlineData("G888 R15", "func h<T>(x: T) -> i32 => 0\nspecialize func h<raw/Box during static>(x: raw/Box during static) -> i32 => 1", "specialize func h<raw/Box during static>(x: raw/Box during static) -> i32 => 1", Kimi.DiagnosticCode.IncompatibleContractImplementation_Kd)]
+    [InlineData("G888 R16", "func h<T>(x: T) -> i32 => 0\nspecialize func h<raw/(Box during static)>(x: raw/(Box during static)) -> i32 => 1", "specialize func h<raw/(Box during static)>(x: raw/(Box during static)) -> i32 => 1", Kimi.DiagnosticCode.IncompatibleContractImplementation_Kd)]
+    [InlineData("G888 R17", "func h3<T>(y: ref/i32, x: T) -> i32 => 0\nspecialize func h3<Option<raw/i32 during y>>(y: ref/i32, x: Option<raw/i32 during y>) -> i32 => 1", "specialize func h3<Option<raw/i32 during y>>(y: ref/i32, x: Option<raw/i32 during y>) -> i32 => 1", Kimi.DiagnosticCode.IncompatibleContractImplementation_Kd)]
+    [InlineData("G888 R19", "func apply<T>(f: T) -> i32 => 0\nspecialize func apply<() -> raw/i32 during static>(f: () -> raw/i32 during static) -> i32 => 1", "specialize func apply<() -> raw/i32 during static>(f: () -> raw/i32 during static) -> i32 => 1", Kimi.DiagnosticCode.IncompatibleContractImplementation_Kd)]
+    [InlineData("G888 R21", "func apply<T>(f: T) -> i32 => 0\nspecialize func apply<(raw/i32 during static) -> i32>(f: (raw/i32 during static) -> i32) -> i32 => 1", "specialize func apply<(raw/i32 during static) -> i32>(f: (raw/i32 during static) -> i32) -> i32 => 1", Kimi.DiagnosticCode.IncompatibleContractImplementation_Kd)]
+    [InlineData("G888 R22", "struct Holder\n    public let n: i32\n    public init(n: i32) => self.n = n\n    public func m<T>(self: ref/Self, x: T) -> i32 => 0\n    specialize func m<raw/i32 during static>(self: ref/Self, x: raw/i32 during static) -> i32 => 1", "specialize func m<raw/i32 during static>(self: ref/Self, x: raw/i32 during static) -> i32 => 1", Kimi.DiagnosticCode.IncompatibleContractImplementation_Kd)]
+    [InlineData("G888 R24", "func h<T>(x: T) -> i32 => 0\nspecialize func h<raw/i32>(x: raw/i32 during static) -> i32 => 1", "specialize func h<raw/i32>(x: raw/i32 during static) -> i32 => 1", Kimi.DiagnosticCode.UnprovenOriginContract_Kd)]
+    [InlineData("G888 R25", "func first<T>(values: ref/[3 of T] during source) -> i32 => 0\nspecialize func first<raw/i32 during source>(values: ref/[3 of raw/i32 during source] during source) -> i32 => 1", "specialize func first<raw/i32 during source>(values: ref/[3 of raw/i32 during source] during source) -> i32 => 1", Kimi.DiagnosticCode.IncompatibleContractImplementation_Kd)]
+    [InlineData("G888 R26", "func h<T>(x: T) -> i32 => 0\nspecialize func h<raw/i32>(x: raw/i32) -> i32 => 1\nspecialize func h<raw/i32 during static>(x: raw/i32 during static) -> i32 => 2", "specialize func h<raw/i32 during static>(x: raw/i32 during static) -> i32 => 2", Kimi.DiagnosticCode.IncompatibleContractImplementation_Kd)]
+    [InlineData("G888 X1", "func h<T>(x: T) -> i32 => 0\nspecialize func h<Slice<raw/i32 during static>>(x: Slice<raw/i32 during static>) -> i32 => 1", "specialize func h<Slice<raw/i32 during static>>(x: Slice<raw/i32 during static>) -> i32 => 1", Kimi.DiagnosticCode.IncompatibleContractImplementation_Kd)]
+    [InlineData("G888 X5", "func h<T>(x: T) -> i32 => 0\nspecialize func h<raw/i32? during static>(x: raw/i32? during static) -> i32 => 1", "specialize func h<raw/i32? during static>(x: raw/i32? during static) -> i32 => 1", Kimi.DiagnosticCode.IncompatibleContractImplementation_Kd)]
+    [InlineData("G888 X6", "func o<T>(x: T) -> i32\n    T is Owned\n    return 0\nspecialize func o<raw/i32 during static>(x: raw/i32 during static) -> i32 => 1", "specialize func o<raw/i32 during static>(x: raw/i32 during static) -> i32 => 1", Kimi.DiagnosticCode.IncompatibleContractImplementation_Kd)]
+    [InlineData("G888 X7", "contract Marker\nfunc tr<T>(x: T) -> i32\n    T is Marker\n    return 0\nspecialize func tr<raw/i32 during static>(x: raw/i32 during static) -> i32 => 1", "specialize func tr<raw/i32 during static>(x: raw/i32 during static) -> i32 => 1", Kimi.DiagnosticCode.UnprovenConstraint_Kd)]
+    [InlineData("G888 X24", "contract Marker\nfunc tr<T>(x: T) -> i32\n    T is Marker\n    return 0\nspecialize func tr<raw/i32>(x: raw/i32) -> i32 => 1", "specialize func tr<raw/i32>(x: raw/i32) -> i32 => 1", Kimi.DiagnosticCode.UnprovenConstraint_Kd)]
+    [InlineData("G888 X11", "contract Holds\n    associate Item\nstruct P\n    Self is Holds\n    associate Holds.Item is raw/i32 during static\nfunc h<T>(x: T) -> i32 => 0\nspecialize func h<P.(Holds).Item>(x: P.(Holds).Item) -> i32 => 1", "specialize func h<P.(Holds).Item>(x: P.(Holds).Item) -> i32 => 1", Kimi.DiagnosticCode.IncompatibleContractImplementation_Kd)]
+    [InlineData("G888 X13", "func p<s/T>(x: s/T) -> i32 => 0\nspecialize func p<raw/i32 during static>(x: raw/i32 during static) -> i32 => 1", "specialize func p<raw/i32 during static>(x: raw/i32 during static) -> i32 => 1", Kimi.DiagnosticCode.UnprovenOriginContract_Kd)]
+    [InlineData("G888 X16", "func h<T>(x: T) -> i32 => 0\nspecialize func h<raw/Wrap<raw/i32 during static>>(x: raw/Wrap<raw/i32 during static>) -> i32 => 1", "specialize func h<raw/Wrap<raw/i32 during static>>(x: raw/Wrap<raw/i32 during static>) -> i32 => 1", Kimi.DiagnosticCode.IncompatibleContractImplementation_Kd)]
+    [InlineData("G888 X19", "func apply<T>(f: T) -> i32 => 0\nspecialize func apply<(ref/i32 during static) -> i32>(f: (ref/i32 during static) -> i32) -> i32 => 1", "specialize func apply<(ref/i32 during static) -> i32>(f: (ref/i32 during static) -> i32) -> i32 => 1", Kimi.DiagnosticCode.IncompatibleContractImplementation_Kd)]
+    [InlineData("G888 X20", "func q<T>(x: T) -> i32\n    T is raw/i32 during static\n    return 0\nspecialize func q<raw/i32 during static>(x: raw/i32 during static) -> i32 => 1", "specialize func q<raw/i32 during static>(x: raw/i32 during static) -> i32 => 1", Kimi.DiagnosticCode.IncompatibleContractImplementation_Kd)]
+    [InlineData("G888 X21", "func q<T>(x: T) -> i32\n    T is raw/i32 during static\n    return 0\nspecialize func q<raw/i32>(x: raw/i32) -> i32 => 1", "specialize func q<raw/i32>(x: raw/i32) -> i32 => 1", Kimi.DiagnosticCode.UnsatisfiedConstraint_Kd)]
+    [InlineData("G888 X22b", "struct Outer<T>\n    public let t: i32\n    public init(t: i32) => self.t = t\n    public struct Inner\n        public let n: i32\n        public init(n: i32) => self.n = n\nfunc h<T>(x: T) -> i32 => 0\nspecialize func h<Outer<raw/i32 during static>.Inner>(x: Outer<raw/i32 during static>.Inner) -> i32 => 1", "specialize func h<Outer<raw/i32 during static>.Inner>(x: Outer<raw/i32 during static>.Inner) -> i32 => 1", Kimi.DiagnosticCode.IncompatibleContractImplementation_Kd)]
+    [InlineData("G888 Z5", "func h4<T>(y: ref/Box, x: T) -> i32 => 0\nspecialize func h4<raw/i32 during y.source>(y: ref/Box, x: raw/i32 during y.source) -> i32 => 1", "specialize func h4<raw/i32 during y.source>(y: ref/Box, x: raw/i32 during y.source) -> i32 => 1", Kimi.DiagnosticCode.IncompatibleContractImplementation_Kd)]
+    [InlineData("G888 Z2", "func o3<T>(x: ref/i32, z: T) -> i32\n    T is Owned\n    return 0\nspecialize func o3<raw/i32 during x>(x: ref/i32, z: raw/i32 during x) -> i32 => 1", "specialize func o3<raw/i32 during x>(x: ref/i32, z: raw/i32 during x) -> i32 => 1", Kimi.DiagnosticCode.UnprovenConstraint_Kd)]
+    [InlineData("G888 T51", "contract Holds2\n    associate Item(o)\nstruct P2\n    Self is Holds2\n    associate Holds2.Item(o) is raw/i32 during o\nfunc h<T>(x: T) -> i32 => 0\nspecialize func h<P2.(Holds2).Item(static)>(x: P2.(Holds2).Item(static)) -> i32 => 1", "specialize func h<P2.(Holds2).Item(static)>(x: P2.(Holds2).Item(static)) -> i32 => 1", Kimi.DiagnosticCode.IncompatibleContractImplementation_Kd)]
+    [InlineData("G888 T59", "func h5<T>(n: i32) -> i32 => 0\nspecialize func h5<raw/i32 during static>(n: i32) -> i32 => 1", "specialize func h5<raw/i32 during static>(n: i32) -> i32 => 1", Kimi.DiagnosticCode.IncompatibleContractImplementation_Kd)]
+    [InlineData("G888 T40", "func h<T>(x: T) -> i32 => 0\nspecialize func h<raw/i32 during static>(x: raw/i32 during static) -> i32 => 1\nspecialize func h<raw/i32 during static>(x: raw/i32 during static) -> i32 => 2", "specialize func h<raw/i32 during static>(x: raw/i32 during static) -> i32 => 1|specialize func h<raw/i32 during static>(x: raw/i32 during static) -> i32 => 2", Kimi.DiagnosticCode.IncompatibleContractImplementation_Kd)]
     public void RejectsWrittenArgumentOrigins(string row, string specialization, string located, Kimi.DiagnosticCode code)
         => AssertRecords(row, specialization, located.Split('|').Select(x => (x, code)));
 
@@ -278,7 +349,9 @@ public class SpecializationBindingTest
     // borrow target or Option, a pair's outer layer) or nested in a restated input, a Function Type result that no input of its own
     // gives (a borrow, an aggregate, nested in an Option or a Function Type's input; C-331's h1, whose body would read it as
     // `static`), and an undecided inherited Constraint over the header's universal Origins (`T is Owned`; `T is Marker` that Box does
-    // not meet, C-331's q1n, G863's remainder (b)).
+    // not meet, C-331's q1n, G863's remainder (b)). PLAN G888: a raw layer's written Origin under an omitted borrow layer rests on
+    // that layer's limit (X3); an undecided Constraint over a header's written parameter Origins, a meet (X8) as its atom (X27), is
+    // the limit too (G863's remainder (b): the header's own restriction is not reported beside it).
     [Theory]
     [InlineData("C19 v10", "func h<T>(x: T) -> i32 => 0\nspecialize func h<ref/i32>(x: ref/i32) -> i32 => 1", "ref/i32")]
     [InlineData("C19 v13", "func h<T>(x: T) -> i32 => 0\nspecialize func h<uniq/i32>(x: uniq/i32) -> i32 => 1", "uniq/i32")]
@@ -297,6 +370,9 @@ public class SpecializationBindingTest
     [InlineData("C18 r06", "func o<T>(x: ref/T) -> i32\n    T is Owned\n    return 0\nspecialize func o<Box>(x: ref/Box) -> i32 => 1", "specialize func o<Box>(x: ref/Box) -> i32 => 1")]
     [InlineData("h1 C-331", "func apply<T>(f: T) -> Option<ref/i32> => .None\nspecialize func apply<() -> ref/i32>(f: () -> ref/i32) -> Option<ref/i32> => .Some(f())", "ref/i32")]
     [InlineData("q1n C-331", "contract Marker\nfunc tr<T>(x: ref/T) -> i32\n    T is Marker\n    return 0\nspecialize func tr<Box>(x: ref/Box) -> i32 => 1", "specialize func tr<Box>(x: ref/Box) -> i32 => 1")]
+    [InlineData("G888 X3", "func h<T>(x: T) -> i32 => 0\nspecialize func h<ref/(raw/i32 during static)>(x: ref/(raw/i32 during static)) -> i32 => 1", "ref/(raw/i32 during static)")]
+    [InlineData("G888 X8", "func o2<T>(x: ref/i32, y: ref/i32, z: T) -> i32\n    T is Owned\n    return 0\nspecialize func o2<ref/i32 during (x and y)>(x: ref/i32, y: ref/i32, z: ref/i32 during (x and y)) -> i32 => 1", "specialize func o2<ref/i32 during (x and y)>(x: ref/i32, y: ref/i32, z: ref/i32 during (x and y)) -> i32 => 1")]
+    [InlineData("G888 X27", "func o2<T>(x: ref/i32, y: ref/i32, z: T) -> i32\n    T is Owned\n    return 0\nspecialize func o2<ref/i32 during x>(x: ref/i32, y: ref/i32, z: ref/i32 during x) -> i32 => 1", "specialize func o2<ref/i32 during x>(x: ref/i32, y: ref/i32, z: ref/i32 during x) -> i32 => 1")]
     public void UncompletedArgumentOriginsAreALocatedLimit(string row, string specialization, string located)
         => AssertRecords(row, specialization, located.Split('|').Select(x => (x, Kimi.DiagnosticCode.Unsupported_Kd)));
 
@@ -305,7 +381,9 @@ public class SpecializationBindingTest
     // result's limit beside the restated result's pre-existing missing Origin (C20 v18, G863's remainder (c)); a local borrow as the
     // call's Origin in the body (C10 r05; Binding records it once, the CLI's report shows it twice as for its ordinary twin: G56's row).
     // SPEC 8.13.2, 15.6 (C-331): a body that reads the call's slot as `static` (directly, through a generic call, nested, a Slice's
-    // element), as `self`'s, a parameter's or another argument's Origin gets its direct twin's record.
+    // element), as `self`'s, a parameter's or another argument's Origin gets its direct twin's record. SPEC 5.7 (G888 R18): `self` on a
+    // raw layer of a Type argument binds nothing, in the argument and the restated input; the header's verdict is C-331 F5's pattern.
+    // SPEC 5.7 (G888 T50): a written raw Origin is one atom, so a meet is invalid at each layer that writes it.
     [Theory]
     [InlineData("C3 i5", "func w<T>(d: uniq/T) -> i32 => 0\nspecialize func w<W during static>(d: uniq/W) -> i32 => 1", "IncompatibleContractImplementation_Kd: specialize func w<W during static>(d: uniq/W) -> i32 => 1|InvalidOriginBinding_Kd: W during static|InvalidOriginBinding_Kd: W")]
     [InlineData("C19 i8", "specialize func missing<i32>(x: Option<ref/i32>) -> i32 => 1", "MissingSpecializationTarget_Kd: specialize func missing<i32>(x: Option<ref/i32>) -> i32 => 1|Unsupported_Kd: ref/i32")]
@@ -318,6 +396,8 @@ public class SpecializationBindingTest
     [InlineData("m3 C-331", "struct Holder\n    public let n: i32\n    public init(n: i32) => self.n = n\n    public func m2<T>(self: ref/Self, x: T) -> ref/i32 => self.m2(x@move)\n    specialize func m2<Box>(self: ref/Self, x: Box) -> ref/i32 => x.value", "UnprovenOriginRelation_Kd: x.value")]
     [InlineData("c2 C-331", "func mk2<T>(x: ref/i32) -> Option<T> => .None\nspecialize func mk2<Box>(x: ref/i32) -> Option<Box> => .Some(Box.init(x))", "UnprovenOriginRelation_Kd: Box.init(x)")]
     [InlineData("b2 C-331", "func two2<A, B>(x: A, y: B) -> A => x@move\nspecialize func two2<Box, Box>(x: Box, y: Box) -> Box => y@move", "UnprovenOriginRelation_Kd: y@move")]
+    [InlineData("G888 R18", "func h<T>(x: T) -> i32 => 0\nspecialize func h<raw/i32 during self>(x: raw/i32 during self) -> i32 => 1", "InvalidTypeFormation_Kd: specialize func h<raw/i32 during self>(x: raw/i32 during self) -> i32 => 1|MissingOriginBinding_Kd: self|MissingOriginBinding_Kd: self")]
+    [InlineData("G888 T50", "func h4<T>(y: ref/i32, z: ref/i32, x: T) -> i32 => 0\nspecialize func h4<raw/i32 during (y and z)>(y: ref/i32, z: ref/i32, x: raw/i32 during (y and z)) -> i32 => 1", "InvalidOriginBinding_Kd: raw/i32 during (y and z)|InvalidOriginBinding_Kd: raw/i32 during (y and z)")]
     public void ReportsEveryIndependentHeaderRecord(string row, string specialization, string records)
         => AssertRecords(row, specialization, records.Split('|').Select(x => (x[(x.IndexOf(": ", StringComparison.Ordinal) + 2)..], Enum.Parse<Kimi.DiagnosticCode>(x[..x.IndexOf(": ", StringComparison.Ordinal)]))));
 
