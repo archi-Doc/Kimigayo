@@ -22,8 +22,8 @@ namespace Kimi.Compiler.Mir;
 // Input: the state before the Call, its inspection Loans ended (R-a, MirBorrows.Endings), its terminator, and whether the checks replay
 // runs; the Call's plan.
 // Output: the Call's entries: its arguments' Moves, its inputs' values into the result and into the holders W reaches ({Φ_E} besides into
-// an untied storage), and the result into the destination; Φ_E for an untied result, and for a result that may hold a raw pointer where it
-// is untracked (MirBorrows.Addresses); in the checks replay, whether a store is undecided, two facts: the limit, where its W reached a
+// an untied storage), and the result into the destination; Φ_E for an untied result; in the checks replay, whether a store is undecided,
+// two facts: the limit, where its W reached a
 // holder the guard leaves undecided (MirWrites.Limit, R4-M147), or a record's pair whose Origins the view's Origin class does not class
 // where its Value would store one (R4-M154); and the depth fact (R4-M153), where the step from a holder W met whose guard is Deep would
 // change what W writes; the location records their join (MirBorrows.Locations). A record's pairs
@@ -62,9 +62,8 @@ internal sealed partial class MirBorrows
         => (proven & (1UL << Math.Min(input, 63))) != 0 ? (kind & ~RetentionKind.Content) | RetentionKind.Value : kind;
 
     // A Call (A3 5, Calls; E14, E16): its arguments' Moves, then its inputs' values into the result by its record and into the holders each
-    // output's store reaches (Keep), then the result into the destination; Φ_E for an untied result and, by the untracked rule, for a
-    // result whose Type may hold a raw pointer (B′ §4.2). A Value callee's value is read with the arguments', the callee operand's position
-    // (Input): a Closure's call receiver (R4-M148). In the checks replay, an undecided store sets the location's limit.
+    // output's store reaches (Keep), then the result into the destination; Φ_E for an untied result. A Value callee's value is read with
+    // the arguments', the callee operand's position (Input): a Closure's call receiver (R4-M148). In the checks replay, an undecided store sets the location's limit.
     private void Call(ulong[] state, in MirTerminator call, bool checks)
     {
         MirDataflow.Grow(ref this.argValues, call.Count + 1);
@@ -120,12 +119,6 @@ internal sealed partial class MirBorrows
         if (call.Target < 0)
         {
             return;
-        }
-
-        if (this.Untracked(result))
-        {
-            this.Work++; // The Type walk (A3 6.2).
-            result = MirTypes.HoldsRaw(cases.TypeOf(call.Place), this.seen) ? this.sets.Union(result, this.escapedSet) : result;
         }
 
         this.Store(state, call.Place, result, 0, issue: false);

@@ -330,6 +330,39 @@ public sealed partial class MirBorrowsTest
                 keep2(q, spare)
                 kk = 2
             """,
+        ["kCalleeConvUsedAfterBad"] = """
+            func keep(slot: raw/(raw/u8), value: raw/u8) => ()
+            func view1(p: uniq/u64) -> raw/(raw/u8) during p => p@follow@raw@raw/(raw/u8)
+            func kCalleeConvUsedAfterBad()
+                var kk: u8 = 1
+                let r = kk@uniq
+                var spare: raw/u8 = r@follow@raw
+                var w: u64 = 3
+                let q = view1(w@uniq)
+                keep(q, spare)
+                kk = 2
+                usep(q)
+            """,
+        ["kCalleeConvReadBad"] = """
+            func keep(slot: raw/(raw/u8), value: raw/u8) => ()
+            func view1(p: uniq/u64) -> raw/(raw/u8) during p => p@follow@raw@raw/(raw/u8)
+            func kCalleeConvReadBad()
+                var kk: u8 = 1
+                let r = kk@uniq
+                var spare: raw/u8 = r@follow@raw
+                var w: u64 = 3
+                let q = view1(w@uniq)
+                keep(q, spare)
+                kk = 2
+                let z = w
+            """,
+        ["kCalleeRefOk"] = """
+            func pick(p: uniq/u64) -> uniq/u64 during p => p
+            func kCalleeRefOk()
+                var w: u64 = 3
+                let q = pick(w@uniq)
+                let v = q@follow
+            """,
         ["fSliceKeepDirectOk"] = """
             func keep(slot: raw/(raw/u8), value: raw/u8) => ()
             func fSliceKeepDirectOk()
@@ -719,6 +752,9 @@ public sealed partial class MirBorrowsTest
     [InlineData("eSharedOnlyOk", "")] // V, a shared borrow only: no exposed holder, the call writes nothing past it (15.6.4, 5.2.1 condition 3)
     [InlineData("kCalleeConvOk", "")] // V, a call result tied to an exclusive argument (fail-before: the untracked rule's call-result arm)
     [InlineData("kCalleeConvBad", "kCalleeConvBad: kk = 2")] // I, a pointer read from w's u64 bytes reaches storage the body does not own (15.6 Holders)
+    [InlineData("kCalleeConvUsedAfterBad", "kCalleeConvUsedAfterBad: kk = 2")] // I, the result, carrying w's Loan, is used after: a use of w (15.6)
+    [InlineData("kCalleeConvReadBad", "kCalleeConvReadBad: kk = 2")] // I, w, which carries spare, is read after (15.6 Holders)
+    [InlineData("kCalleeRefOk", "")] // V, a result whose Type holds no raw pointer keeps its exclusive Loan only (15.6.4)
     [InlineData("fSliceKeepDirectOk", "")] // V, a range selection's storage address (fail-before)
     [InlineData("fSliceUsedAfterBad", "fSliceUsedAfterBad: kk = 2")] // I
     [InlineData("aSliceTupleNoWriteOk", "")] // V, an always-failing position is a Warning (4.7.4; fail-before)

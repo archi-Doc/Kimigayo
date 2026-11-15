@@ -810,8 +810,8 @@ internal sealed partial class MirBorrows
 
     // A step of W from a set (Writes), at its first step (ViaRoot) or past a holder (ViaPast) by the holder's guard (`past`, Through at the
     // first step): the holder each direct Loan not shared or address names (R4-M177), and E where it carries Φ_E, past Named Φ_W. A value
-    // that may refer to storage the body does not own carries Φ_E and Φ_W where it is formed (an untied result or store, a raw pointer
-    // formed untracked, an integer's pointer, a parameter and E's own content at entry), so a set naming nothing writes nothing.
+    // that may refer to storage the body does not own carries Φ_E and Φ_W where it is formed (an untied result or store, an integer's
+    // pointer, a parameter and E's own content at entry), so a set naming nothing writes nothing.
     private void Write(int set, byte via, MirWrites past)
     {
         var named = past == MirWrites.Named;

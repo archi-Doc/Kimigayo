@@ -1314,8 +1314,8 @@ public sealed partial class MirBorrowsTest
     [InlineData("fRefOnlyBad", "fRefOnlyBad: kk = 2; fRefOnlyBad: var y: i32 = 5")] // I, 15.6's example punnedRef itself (PLAN G785)
     [InlineData("fRcOnlyBad", "fRcOnlyBad: kk = 2")] // I, a handle's bytes: rejected as on dev
     [InlineData("aUniqBad", "aUniqBad: kk = 2; aUniqBad: var y: i32 = 5")] // I, PLAN G785: a `uniq` reference's bytes
-    [InlineData("aObjBad", "aObjBad: kk = 2")] // I, an `obj` handle's bytes (also the untracked rule today)
-    [InlineData("aArcBad", "aArcBad: kk = 2")] // I, an `arc` handle's bytes (also the untracked rule today)
+    [InlineData("aObjBad", "aObjBad: kk = 2")] // I, an `obj` handle's bytes
+    [InlineData("aArcBad", "aArcBad: kk = 2")] // I, an `arc` handle's bytes
     [InlineData("bRefOk", "")] // V, the row raw/u8 stores only a u8 (5.7 Calls)
     [InlineData("bUniqOk", "")] // V, as bRefOk
     [InlineData("bObjRefOk", "")] // V, as bRefOk

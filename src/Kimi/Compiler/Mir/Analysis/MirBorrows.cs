@@ -24,7 +24,7 @@
 // their problems as Cause facts; UnretainedRawStore_Kd at a safe direct store of an input's own part that its own contract refuses
 // (SPEC 5.2.1 Retained dependencies; MirBorrows.Storing, PLAN G581); and Work, the steps it took (A3 6.2).
 // Rules, each with its inputs, records and Unsupported_Kd cases in its owner's contract:
-// - a raw pointer's addresses and own-step entries, the untracked rule and PQ-10's Borrows and reads: MirBorrows.Addresses (R4-M116);
+// - a raw pointer's addresses and own-step entries and PQ-10's Borrows and reads: MirBorrows.Addresses (R4-M116);
 // - the own-step entries' departures: MirBorrows.OwnSteps (R4-M116);
 // - a Call's contract rows, P9's and untied stores among them: MirBorrows.CallRows; their transfer: MirBorrows.Calls;
 // - the effect rule and its initialization proof: MirBorrows.Effects;
