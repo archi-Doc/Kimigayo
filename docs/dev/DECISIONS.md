@@ -21577,7 +21577,7 @@ R8-M* and R9-M* by the stage of the recording unit.
     the signature's Arity finding alone, and a constant id out of range the walk's Const finding (each fault is reported once).
   - Temporaries removed: R8-M18's `WriteBuiltin` (`__kimi_writer_write_builtin`), R8-M30's temporary 5 (`StringFormatKind`), and
     R5-M133's routines (`__kimi_format_literal`, `__kimi_format_bytes`, `__kimi_format_builtin`).
-  - Staged (PLAN G828): `__kimi_format_check` (c3a); `Utf8Writer.logicalLength`'s writer (part b); one unreferenced String constant
+  - Staged (PLAN G828): `__kimi_format_check` (c3a); `Utf8Writer.logicalLength` (part b): deleted at R8-W2 b2-2 (no reader; b2-1's init was its only writer); one unreferenced String constant
     per literal position in a body's constant table (`Literal` makes it for `Bytes`, `Viewed` interns the record beside it; no IR is
     written from it), removed when a later unit of part c touches `Bytes` (c2b, which replaces the estimate).
   - Rejected: the name `defer` (a keyword); a Unit result for the deferral (its flush arm can fail; SPEC 22.10.5 forbids a delayed
