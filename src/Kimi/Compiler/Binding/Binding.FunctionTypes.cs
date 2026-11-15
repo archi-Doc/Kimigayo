@@ -280,13 +280,16 @@ public sealed partial class Binding
     // publishes its first failed part for its record and Note (erasureOutcomes): the receiver, the signature's structure and the
     // receiver dependence, the consumer's Type mismatch; Owned (its Error's cause held, its member named) and a
     // condition, the value's own failure, recorded here at `node` (FailOwnedConversion, RecordCondition; DECISIONS BU-107), on which every
-    // consumer rests: a call argument, a payload, a Tuple or array element, a grouping, a join arm.
+    // consumer rests: a call argument, a payload, a Tuple or array element, a grouping, a join arm. The conversion at the value is a
+    // reader of its comparison's region conjuncts: it forms them as the body's rows when the signature fits (FormComparisonRows).
     private bool ErasesToFunction(Koto node, BoundType actual, BoundType expected)
     {
-        var failure = default(ComparisonFailure);
         var receiver = BoundClosure.Of(actual)?.Receiver ?? SemanticsKind.Ref; // An Item, or a closure with no signature, has none.
         var signature = this.ClosureSignature(actual) ?? this.FunctionItemSignature(actual);
-        var fits = this.ErasureFits(actual, expected, node, out failure);
+        var rows = this.comparisonRows.Count;
+        var fits = this.ErasureFits(actual, expected, node, this.comparisonRows, out var failure);
+        this.FormComparisonRows(rows, fits);
+
         OwnedFact owned = default;
         var shape = signature is null || !ReferenceTypes.StorageMatches(expected, signature); // A fit may adapt past a storage difference.
         var part = receiver != SemanticsKind.Ref ? ErasurePart.Receiver
@@ -335,14 +338,15 @@ public sealed partial class Binding
 
     // SPEC 7.7.4, 10.7, 15.3.7 (PLAN G504): the receiver and signature part of an erasure as its decision reads it, under the premises
     // of `use`: a Closure's Shared receiver and its signature (CallableSignatureFits), a Function Item's contract (ErasureSignatureFits).
-    // ErasesToFunction's, and a join source's late Type (LateAdaptation), so a join decides no erasure apart from it.
-    private bool ErasureFits(BoundType actual, BoundType expected, Koto use, out ComparisonFailure failure)
+    // ErasesToFunction's, and a join source's late Type (LateAdaptation), so a join decides no erasure apart from it. `rows` takes the
+    // comparison's region conjuncts (CallableInstance.Rows).
+    private bool ErasureFits(BoundType actual, BoundType expected, Koto use, List<BindingObligation>? rows, out ComparisonFailure failure)
     {
         failure = default;
         return actual.Kind == BoundTypeKind.Closure
             ? expected.Kind == BoundTypeKind.Function && (BoundClosure.Of(actual)?.Receiver ?? SemanticsKind.Ref) == SemanticsKind.Ref &&
-                this.ClosureSignature(actual) is { } signature && this.CallableSignatureFits(signature, expected, SignatureOwner(actual), use, out failure)
-            : this.ErasureSignatureFits(actual, expected, use, out failure);
+                this.ClosureSignature(actual) is { } signature && this.CallableSignatureFits(signature, expected, SignatureOwner(actual), use, rows, out failure)
+            : this.ErasureSignatureFits(actual, expected, use, rows, out failure);
     }
 
     // SPEC 10.7, 15.3.7: a Function value converts to an expected Function Type of its storage where it meets it, as a Closure or a
@@ -371,13 +375,13 @@ public sealed partial class Binding
     // SPEC 7.7.4, 10.5, 10.7: the signature part of an erasure, which a call's applicability uses; the Shared receiver, the Owned
     // environment and a Closure's Origin conditions are judged after selection, at the argument (SPEC 15.6.1), and a failure there never
     // selects another candidate. A Function Item's Origin conditions belong to its signature, proven from the required contract at `use`
-    // (SPEC 15.3.7).
-    private bool ErasureSignatureFits(BoundType actual, BoundType expected, Koto use, out ComparisonFailure failure)
+    // (SPEC 15.3.7). `rows` takes the contract's region conjuncts (CallableInstance.Rows).
+    private bool ErasureSignatureFits(BoundType actual, BoundType expected, Koto use, List<BindingObligation>? rows, out ComparisonFailure failure)
     {
         failure = default;
         return expected.Kind == BoundTypeKind.Function &&
             ((actual.Kind == BoundTypeKind.FunctionItem && this.FunctionItemSignature(actual) is { } signature &&
-            this.ItemContractFits(actual, signature, expected, use, out failure)) ||
+            this.ItemContractFits(actual, signature, expected, use, rows, out failure)) ||
             (actual.Kind == BoundTypeKind.Closure && this.ClosureSignature(actual) is { } closureSignature &&
             this.CallableSubtype(closureSignature, expected, SignatureOwner(actual), out failure)));
     }
@@ -385,7 +389,8 @@ public sealed partial class Binding
     // SPEC 10.7, 15.3.7: the implementation's per-call Origins are solved against the required signature, whose quantifiers and fixed
     // Origins stay rigid, under its declared relations and result premises; then the required inputs fit the implementation's, its
     // result fits the required one, and its conditions are proven for the solution. The implementation's Types are its members within
-    // `container` with `arguments` bound, or those of the Function Item `item`.
+    // `container` with `arguments` bound, or those of the Function Item `item`. `rows` takes the region conjuncts its premises leave
+    // unproven (CallableInstance.Rows; null: not proven).
     private bool ContractFits(
         Koto use,
         BindingSymbol symbol,
@@ -396,14 +401,15 @@ public sealed partial class Binding
         SlotFrame? frame,
         Span<BoundArgumentOperation> operations,
         BoundOrigin[] origins,
-        BoundOrigin[] inputs)
+        BoundOrigin[] inputs,
+        List<BindingObligation>? rows)
     {
         var parameters = required.Components[0];
         var generic = function.GenericArguments.Count;
         var inputCount = InputOriginCount(function);
 
         // The owner's (a): every proof of the comparison, its solve's too, assumes the required signature's own well-formedness.
-        var comparison = new CallableInstance(null, null, required, FunctionTypeBinder(required), null);
+        var comparison = new CallableInstance(null, null, required, FunctionTypeBinder(required), null) { Rows = rows };
         var inference = this.BeginOriginInference(use, function);
         inference.Comparison = comparison;
         this.contractFailure = default;

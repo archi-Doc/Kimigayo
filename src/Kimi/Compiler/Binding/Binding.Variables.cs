@@ -89,7 +89,8 @@ public sealed partial class Binding
                 declared = this.InferLocalOrigins(declared, inferred, variable, scope, slot);
             }
 
-            if (declared is not null && inferred is not null && !this.CheckTypeUse(inferred, declared, variable, out var failure))
+            // The declaration's fit re-reads the comparisons its initializer's fit at the value judged and formed (RefitTypeUse).
+            if (declared is not null && inferred is not null && !this.RefitTypeUse(inferred, declared, variable, out var failure))
             {
                 this.FailMismatch(variable, variable.InitializerKoto ?? variable, inferred, declared, failure);
             }

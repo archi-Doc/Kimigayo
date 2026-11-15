@@ -9,7 +9,8 @@ namespace Kimi.Compiler;
 //   (FunctionFits), two at an invariant position, one each way (SPEC 3.8, 15.3.5), whose implementation conditions it judges at every
 //   nesting when it has a Binding.
 // - Inputs: the query: the Binding and use whose premises and Origins the Origin part reads (none: the relation as written), and which
-//   Origin bindings count (OriginPart).
+//   Origin bindings count (OriginPart), and the row sink of a reader of a comparison's region conjuncts (CallableInstance.Rows: its
+//   root comparisons take it, a nested one inherits its enclosing comparison's; none: such a conjunct is not proven).
 // - Outputs: whether the relation holds and, when it does not, its first failure where the walk found it (ComparisonFailure), which the
 //   reader that records the failure takes from the walk that decided; a recording root's walk also keeps one fact per failing position
 //   (comparisonFacts, design-r2 Amendment 1 A2), and CheckTypeUse's root one result per part it walks outside every Callable comparison
@@ -148,6 +149,9 @@ public sealed partial class Binding
         // The first failure of the walk's last false answer.
         internal readonly ComparisonFailure Failure => this.facts is { } kept && kept.Count > this.start ? kept[this.start] : this.failure;
 
+        // The query's row sink, set by the reader that walks (the file contract's Inputs; CallableInstance.Rows); none: not proven.
+        internal List<BindingObligation>? Rows { get; init; }
+
         // SPEC 3.8: the relation; Never relates only to itself. `own` is the declaration whose own per-call inputs the root actual signature
         // names (SPEC 8.10); a nested Function Type's own syntax binds its inputs. `skipOrigin` leaves the outer Origin to an instantiation
         // that already fixed it; `instance` is the Callable comparison whose per-call Origins the parts are compared under.
@@ -249,7 +253,7 @@ public sealed partial class Binding
                 // position the two Function Types relate both ways (SPEC 3.8, 15.3.5): a Callable comparison is oriented (it instantiates
                 // only the implementation's per-call inputs and judges only its well-formedness, SPEC 10.7), so the comparison as written
                 // is followed by the one with the sides exchanged, whose members relate one way since the first related them both ways.
-                var comparison = Comparison(actual, own, expected, instance);
+                var comparison = Comparison(actual, own, expected, instance, InComparison(instance) ? instance.Rows : this.Rows);
                 if (this.FunctionFits(actual, expected, invariant, comparison) &&
                     (!invariant || ReferenceEquals(actual, expected) || this.FunctionFits(expected, actual, false, comparison.Exchanged)))
                 {

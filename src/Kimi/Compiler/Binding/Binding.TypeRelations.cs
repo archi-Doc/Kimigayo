@@ -48,10 +48,11 @@ public sealed partial class Binding
 
     // SPEC 10.7, 15.3.7, 15.6.1: callable compatibility of a Closure's or a Function value's signature with a required one at `use`, a
     // whole-contract comparison: its member Origins and the implementation's conditions, its own well-formedness among them (the
-    // owner's (a); FunctionFits), are proven from the required signature's premises and those of `use` alone (DECISIONS BU-93).
-    internal bool CallableSignatureFits(BoundType actual, BoundType expected, Koto? own, Koto use, out ComparisonFailure failure)
+    // owner's (a); FunctionFits), are proven from the required signature's premises and those of `use` alone (DECISIONS BU-93), its
+    // region conjuncts the premises leave unproven taken by `rows` (CallableInstance.Rows; null: not proven).
+    internal bool CallableSignatureFits(BoundType actual, BoundType expected, Koto? own, Koto use, List<BindingObligation>? rows, out ComparisonFailure failure)
     {
-        var walk = new RelationWalk(this, use, OriginPart.Contract);
+        var walk = new RelationWalk(this, use, OriginPart.Contract) { Rows = rows };
         var fits = walk.Fits(actual, this.CompatibleSignature(actual, expected), own: own);
         failure = walk.Failure;
         return fits;
@@ -73,9 +74,9 @@ public sealed partial class Binding
         => type.Semantics is SemanticsKind.Uniq or SemanticsKind.ObjUniq or SemanticsKind.Raw || (binding is not null && binding.InvariantAdmitted(type, use, comparison));
 
     // The Callable comparison of `actual`, whose per-call inputs `own` binds (its own syntax when null), with `expected`, nested in the
-    // comparisons `outer` names.
-    private static CallableInstance Comparison(BoundType actual, Koto? own, BoundType expected, in CallableInstance enclosing)
-        => new(actual, own ?? FunctionTypeBinder(actual), expected, FunctionTypeBinder(expected), enclosing.Enclosing) { Scope = enclosing.Scope };
+    // comparisons `enclosing` names and judged in its scope, its region conjuncts taken by `rows` (CallableInstance.Rows).
+    private static CallableInstance Comparison(BoundType actual, Koto? own, BoundType expected, in CallableInstance enclosing, List<BindingObligation>? rows)
+        => new(actual, own ?? FunctionTypeBinder(actual), expected, FunctionTypeBinder(expected), enclosing.Enclosing) { Scope = enclosing.Scope, Rows = rows };
 
     // A signature whose inputs are fresh per-call borrows and whose result has no Origin or one over those inputs alone.
     private static bool PerCallShape(BoundType signature, Koto? own, bool any = false)
@@ -134,8 +135,10 @@ public sealed partial class Binding
 
             if (comparison.IsRequiredSlot(longer) || comparison.IsRequiredSlot(shorter))
             {
-                // A required per-call Origin relates to another only through the required signatures' own well-formedness.
-                return binding is not null && binding.ProvesOriginOutlives(longer, shorter, use!, comparison, condition);
+                // A required per-call Origin relates to another only through the required signatures' own well-formedness; a local
+                // region at the longer end is the comparison's one decision's (LeavesBodyRows, the L1 lift).
+                return binding is not null && (binding.ProvesOriginOutlives(longer, shorter, use!, comparison, condition) ||
+                    binding.LeavesBodyRows(longer, shorter, use!, comparison, condition, null));
             }
 
             if (shorter is { Kind: OriginKind.Inference, Open: true } && comparison.IsResultOnlyOrigin(longer))

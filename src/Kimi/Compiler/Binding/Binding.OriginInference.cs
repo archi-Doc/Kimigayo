@@ -259,7 +259,10 @@ public sealed partial class Binding
         {
             var longer = Resolve(bound.Longer, bound.LongerVariable);
             var shorter = Resolve(bound.Shorter, bound.ShorterVariable);
-            if (longer is null || shorter is null || (!this.ProvesOriginOutlives(longer, shorter, use, inference.Comparison, bound.Condition) &&
+            // In a comparison the solve judges no bound, only that it is solved: each bound is a member position, a clause or a
+            // well-formedness premise that the comparison's owning check judges after the solve, once (ContractFits,
+            // CompareCallableContracts). Outside a comparison (a call) the solve's check is the judge.
+            if (longer is null || shorter is null || (!InComparison(inference.Comparison) && !this.ProvesOriginOutlives(longer, shorter, use, inference.Comparison, bound.Condition) &&
                 !this.HoldsResting(longer, shorter, bound.Condition, new ProofLeaf(this, use, inference.Comparison))))
             {
                 inference.Failure = longer is not null && shorter is not null

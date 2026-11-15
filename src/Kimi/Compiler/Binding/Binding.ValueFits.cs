@@ -39,7 +39,7 @@ public sealed partial class Binding
     {
         this.comparisonFacts.Clear();
         this.fitRested = false;
-        var walk = new RelationWalk(this, use, this.comparisonFacts);
+        var walk = new RelationWalk(this, use, this.comparisonFacts); // No reader of region conjuncts: FitsValueAt's CheckTypeUse is.
         var fits = NeverFits(actual) || walk.Fits(actual, expected);
         failure = walk.Failure;
 
@@ -88,17 +88,41 @@ public sealed partial class Binding
     // `failure` is the failure of the walk at which the fit failed: the root's, or a component's that the obligations could not take.
     // The relation is walked once, at the root (PLAN G492-a (i)), and its parts (FitPart) answer each part as a walk rooted there in this
     // fit's orientation would; the facts left for a record (RecordComparisonFacts) are those of the part whose failure is the fit's.
+    // The use-site fit is a reader of its comparisons' region conjuncts (a Function value's conversion at the value, a literal's element,
+    // a selected call's argument): it forms them as the body's rows when the fit holds. Its walks carry the row sink (comparisonRows), a
+    // reversed part's again too, whose repeated rows the obligations' set takes once (AddObligation).
     private bool CheckTypeUse(BoundType actual, BoundType expected, Koto use, out ComparisonFailure failure)
     {
         var pending = this.pendingRelations.Count;
+        var rows = this.comparisonRows.Count;
         failure = default;
         var fits = NeverFits(actual) || this.CheckTypeUseWalk(actual, expected, use, out failure);
+        this.FormComparisonRows(rows, fits);
+        this.SetFitDestination(pending, expected);
+        return fits;
+    }
+
+    // CheckTypeUse as a re-reading of comparisons that a fit at the value judged and formed before it (SPEC 23.1.2: one record per failing
+    // condition): it takes their region conjuncts and drops them. Its readers: the declaration's fit of its initializer, whose value's fit
+    // (ErasesToFunction, FailsFunctionConversion) runs first (DECISIONS <G492-a (iii)>, the re-fit invariant).
+    private bool RefitTypeUse(BoundType actual, BoundType expected, Koto use, out ComparisonFailure failure)
+    {
+        var pending = this.pendingRelations.Count;
+        var rows = this.comparisonRows.Count;
+        failure = default;
+        var fits = NeverFits(actual) || this.CheckTypeUseWalk(actual, expected, use, out failure);
+        this.DropComparisonRows(rows);
+        this.SetFitDestination(pending, expected);
+        return fits;
+    }
+
+    // The pending relations one use-site fit appended from `pending` take its whole destination (DECISIONS R4-M133).
+    private void SetFitDestination(int pending, BoundType expected)
+    {
         for (var i = pending; i < this.pendingRelations.Count; i++)
         {
             this.pendingRelations[i] = this.pendingRelations[i] with { Destination = expected };
         }
-
-        return fits;
     }
 
     // The relation collects open initializer bounds even beside a local region; regional fits also publish their source edges. Until the
@@ -125,7 +149,7 @@ public sealed partial class Binding
     {
         var parts = this.fitParts;
         var start = parts.Count;
-        _ = new RelationWalk(this, use, this.comparisonFacts, parts).Fits(actual, expected, polarity == OriginVariance.Invariant);
+        _ = new RelationWalk(this, use, this.comparisonFacts, parts) { Rows = this.comparisonRows }.Fits(actual, expected, polarity == OriginVariance.Invariant);
         cursor.Next = start;
         var fits = this.CheckTypeUseCore(actual, expected, use, polarity, ref cursor);
         parts.RemoveRange(start, parts.Count - start);

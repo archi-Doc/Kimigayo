@@ -229,18 +229,22 @@ public class LocalRegionInferenceTest(ITestOutputHelper output)
     }
 
     // Pinned: outside a local an omitted Origin keeps its record, a Field's (SPEC 15.3.6) and an expression statement's call qualifier's
-    // (PLAN G10), and the S3 demo, a local Function input bounded through a clause by another inferred slot, stays the located
-    // Unsupported_Kd at its local (OQ-1 (c); DECISIONS R4-M112).
+    // (PLAN G10).
     [Theory]
     [InlineData("struct S\n    public let r: ref/i32\npublic func main() => ()", nameof(DiagnosticCode.MissingOriginBinding_Kd), "ref/i32")]
     [InlineData("public func main()\n    let n = 0\n    Array<ref/i32>.init(capacity: 0).length", nameof(DiagnosticCode.MissingOriginBinding_Kd), "ref/i32")]
-    [InlineData(S3Demo, nameof(DiagnosticCode.Unsupported_Kd), "let pair")]
     public void AnOriginOutsideTheRegionRulesKeepsItsRecord(string source, string code, string at)
     {
         var error = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics);
         Assert.Equal(code, error.Code);
         Assert.StartsWith(at, source[error.Span!.Value.Start..], StringComparison.Ordinal);
     }
+
+    // The S3 demo, a local Function input bounded through a clause by another inferred slot (R4-M112's pinned limit until G492-a (iii)):
+    // the Function value's comparison needs `k.source outlives s`, a region at the longer end, which is the body's row (SPEC 15.6.1 under
+    // the owner's O-261 Q2 (a)); R_k has no source and `x.source -> w.source -> x.source` holds, so the program is valid (SPEC 15.6.5).
+    [Fact]
+    public void TheS3DemosComparisonIsItsBodysRow() => Assert.Empty(DiagnosticCorpus.Check(S3Demo).Diagnostics);
 
     // SPEC 15.4.2, 15.6.5 (PLAN G758): a `var` local's pair slot, the original's `o` or an annotation, is a region of the local as a
     // concrete layer's Origin is, in every pair set; a written original keeps `o` (qb7) and a `let` local is not opened (qb8). Each row's
