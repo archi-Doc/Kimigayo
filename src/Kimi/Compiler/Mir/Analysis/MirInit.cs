@@ -25,6 +25,9 @@
 // is a delivery, checked only where the runtime edges reach it; a Return checks nothing. A Move without a Move Path is reported whatever its
 // root: DefaultArgumentMove_Kd for a default template's prepared slot or its owned contents, which the default cannot Move (SPEC 7.2.3),
 // else StaticMovePathRequired_Kd. A body no view decides is analyzed once, for every view.
+// Invariant: no Unplaced bit is set in a Move Path's subtree at a Drop the runtime edges reach, which A2 destroys whole by its own bit: a
+// construction leaves a part unplaced only after a Never form, which ends the runtime paths (SPEC 14.9.3, 14.10.3); a broken one is
+// InternalInvariant_Kd at the Drop.
 // Must not judge Take eligibility (Binding's), decide a Drop (A2's), apply a derived-problem rule (MirReport's) or copy the body per view.
 
 using Kimi.Diagnostics;
@@ -186,7 +189,7 @@ internal sealed class MirInit(MirDataflow flow, MirMoveData moves, MirCases case
         // PairLayer a case-dependent access takes is the Place itself in the owner case and a Deref in a reference case (SPEC 13.5.5),
         // so the outermost such reference ends the path; through a Deref or an Index only the prefix's path is used, and a Move there has
         // no Move Path (SPEC 15.1.3, 15.1.5). A2 judges a Drop from the state before it, by its path (-1: none), and whether the runtime
-        // edges reach it.
+        // edges reach it; a runtime Drop's Move Path lacks no part (the header's invariant).
         public void Place(MirPlace place, MirAccess access, MirRefKind kind)
         {
             var transfer = this.placed;
@@ -198,6 +201,11 @@ internal sealed class MirInit(MirDataflow flow, MirMoveData moves, MirCases case
             if ((access & MirAccess.DropUse) != 0 && this.Checks)
             {
                 drops.Record(state, this.at.Block, how == MirMoveData.Direct ? path : -1, this.runtime);
+                if (this.runtime && how == MirMoveData.Direct && MirDataflow.Any(state, Lanes, Unplaced, path, moves.Paths[path].End))
+                {
+                    var broken = DiagnosticRequirement.Ownership(OwnershipRequirement.Internal); // A broken contract (the header), H3-2's.
+                    this.Add(DiagnosticCode.InternalInvariant_Kd, broken, this.subject);
+                }
             }
 
             if (place.IsStatic || (place == new MirPlace(0) && (access & MirAccess.Defines) == 0 && !this.runtime))
@@ -212,7 +220,7 @@ internal sealed class MirInit(MirDataflow flow, MirMoveData moves, MirCases case
                 {
                     var (code, requirement) = this.Prepared(place) ? (DiagnosticCode.DefaultArgumentMove_Kd, OwnershipRequirement.DefaultArgumentMove)
                         : (DiagnosticCode.StaticMovePathRequired_Kd, OwnershipRequirement.StaticMovePathRequired);
-                    this.Add(code, requirement, this.subject);
+                    this.Add(code, DiagnosticRequirement.Ownership(requirement), this.subject);
                 }
             }
             else if ((access & MirAccess.Defines) != 0)
@@ -346,7 +354,7 @@ internal sealed class MirInit(MirDataflow flow, MirMoveData moves, MirCases case
 
             if (checks && paths[path].Once && MirDataflow.Any(state, Lanes, Ever, path, paths[path].End))
             {
-                this.Add(DiagnosticCode.ReassignedLet_Kd, OwnershipRequirement.ReassignedLet, this.subject);
+                this.Add(DiagnosticCode.ReassignedLet_Kd, DiagnosticRequirement.Ownership(OwnershipRequirement.ReassignedLet), this.subject);
             }
 
             MirDataflow.Apply(state, Lanes, path, paths[path].End, set: (1 << Ever) | (1 << Init), clear: (1 << Uninit) | (1 << Moved) | (1 << Partial) | (1 << Unplaced));
@@ -415,14 +423,14 @@ internal sealed class MirInit(MirDataflow flow, MirMoveData moves, MirCases case
         // A use of a Place some incoming path leaves uninitialized: MovedPlace_Kd where it may have been moved, else UninitializedPlace_Kd.
         private readonly void Uninitialized(bool moved, SourceRef subject) => this.Add(
             moved ? DiagnosticCode.MovedPlace_Kd : DiagnosticCode.UninitializedPlace_Kd,
-            moved ? OwnershipRequirement.PossiblyMovedUse : OwnershipRequirement.UninitializedUse,
+            DiagnosticRequirement.Ownership(moved ? OwnershipRequirement.PossiblyMovedUse : OwnershipRequirement.UninitializedUse),
             subject);
 
         // A problem at the location, with the call of the inline default copy it lies in, whose template's check it is (R4-M69); A2's table
         // records it first, a copy's included (R4-M102), at its subject in the location's scope with its index.
-        private readonly void Add(DiagnosticCode code, OwnershipRequirement requirement, SourceRef subject)
+        private readonly void Add(DiagnosticCode code, DiagnosticRequirement requirement, SourceRef subject)
         {
-            var problem = new MirProblem(code, DiagnosticRequirement.Ownership(requirement), subject, body.Ordinal, this.Views);
+            var problem = new MirProblem(code, requirement, subject, body.Ordinal, this.Views);
             var inlined = body.Inlining(this.scope);
             var index = this.Report.Add(problem, inlined < 0 ? default : [new(ProblemFactKind.Inlined, body.Scopes[inlined].Source)]);
             drops.Incomplete(code, new(subject, this.scope, StatementStart: false), index);

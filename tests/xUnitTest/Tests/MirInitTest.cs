@@ -747,6 +747,23 @@ public sealed class MirInitTest
     public void CodeAfterANeverPlaceReadIsCheckedOnTheAssumedPaths(string function, string expected)
         => Assert.Equal(expected.Length == 0 ? [] : expected.Split(" | "), Problems(Reads + function));
 
+    // SPEC 14.9.3, 14.10.3, 16.2 (DECISIONS R4-M6a; the redesign's DRV-N8): a construction leaves a part no Place names unplaced (A1's
+    // Unplaced lane, which A2 never reads) only after a Never form, which ends the runtime paths, so no Drop the runtime edges reach
+    // finds one, and A2 destroys each Move Path whole by its own bit; MirInit records InternalInvariant_Kd where one would. Valid: a
+    // Tuple, an Array literal, a nested Tuple with a part moved out, a Dictionary literal and an overwritten var whose component is a
+    // Never parameter's read, each dropped at its scope's end in the check-only code after the read, and the same after a Never call.
+    // Fail-before: with the read's block runtime (unit 1), each row but the last reached its Drop by the runtime edges with the part
+    // unplaced (InternalInvariant_Kd under this check).
+    [Theory]
+    [InlineData("func g(x: Never, y: i32, c: bool)\n    let t: (Box, Box) = (Box.init(\"a\"), x)\n")]
+    [InlineData("func g(x: Never, y: i32, c: bool)\n    let s: Array<Box> = [Box.init(\"a\"), x]\n")]
+    [InlineData("func g(x: Never, y: i32, c: bool)\n    let t: (Box, (Box, Box)) = (Box.init(\"a\"), (Box.init(\"b\"), x))\n    let u = t.0@move\n")]
+    [InlineData("func g(x: Never, y: i32, c: bool)\n    let d: Dictionary<i32, Box> = [1: Box.init(\"a\"), 2: x]\n")]
+    [InlineData("func g(x: Never, y: i32, c: bool)\n    var t: (Box, Box) = (Box.init(\"a\"), Box.init(\"b\"))\n    t = (Box.init(\"c\"), x)\n")]
+    [InlineData("func g(x: Never, y: i32, c: bool)\n    if c\n        let t: (Box, Box) = (Box.init(\"a\"), fail())\n")]
+    public void NoRuntimeDropFindsAnUnplacedPart(string function)
+        => Assert.Empty(Problems(Reads + function));
+
     // Plan 5.6.1, SPEC 13.5.5: a PairLayer is the Place itself in the owner case and a Deref in a reference case, so writing through an
     // unset pair layer is a problem in the uniq view only; a body whose accesses no view decides is analyzed once, for every view.
     [Fact]
