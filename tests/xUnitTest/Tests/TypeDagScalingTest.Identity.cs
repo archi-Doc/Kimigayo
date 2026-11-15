@@ -232,6 +232,24 @@ public partial class TypeDagScalingTest
                 "    needL(t)\npublic func main() -> ()\n    return\n";
     }
 
+    // R7-C2c2 c2-4a (design RB3; rulings 151, 156): the identity table's work along a chain of binding grounds is linear in the chain:
+    // `T is B<U1>`, ..., `Un is L`, `V is T.(C).X` grounds `T.(C).X` through n uses of B's binding, one ground per projection node.
+    // Measured at n = 4 and 8: the base's walk below it (the nested well-formedness the descent reaches, its own unit) is exponential
+    // past about 16, so the row stays where the base allows; the closure limit (PremiseClosureLimit) waits for that fix.
+    [Fact]
+    public void AGroundChainsTableWorkIsLinearInTheChain()
+    {
+        var (small, large) = (Work(4), Work(8));
+        Assert.True(large <= 2 * small, $"{small} at 4, {large} at 8");
+
+        static int Work(int n)
+        {
+            var c = MinimalEmissionTest.Analyze(GroundChainSource(n));
+            Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
+            return c.Binding.IdentityClassWork;
+        }
+    }
+
     private static string MateSource(string shape, int n)
     {
         if (shape == "members")
@@ -282,24 +300,6 @@ public partial class TypeDagScalingTest
         };
 
         return $"func f<{parameters}>(v: T0) -> i32\n" + string.Concat(premises) + "    return 0\npublic func main() -> ()\n    return\n";
-    }
-
-    // R7-C2c2 c2-4a (design RB3; rulings 151, 156): the identity table's work along a chain of binding grounds is linear in the chain:
-    // `T is B<U1>`, ..., `Un is L`, `V is T.(C).X` grounds `T.(C).X` through n uses of B's binding, one ground per projection node.
-    // Measured at n = 4 and 8: the base's walk below it (the nested well-formedness the descent reaches, its own unit) is exponential
-    // past about 16, so the row stays where the base allows; the closure limit (PremiseClosureLimit) waits for that fix.
-    [Fact]
-    public void AGroundChainsTableWorkIsLinearInTheChain()
-    {
-        var (small, large) = (Work(4), Work(8));
-        Assert.True(large <= 2 * small, $"{small} at 4, {large} at 8");
-
-        static int Work(int n)
-        {
-            var c = MinimalEmissionTest.Analyze(GroundChainSource(n));
-            Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
-            return c.Binding.IdentityClassWork;
-        }
     }
 
     private static string GroundChainSource(int n)
