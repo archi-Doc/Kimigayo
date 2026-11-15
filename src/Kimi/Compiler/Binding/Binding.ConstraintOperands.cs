@@ -69,10 +69,15 @@ public sealed partial class Binding
         return null;
     }
 
-    // A declaration whose own validation step runs is no failed context of that step's checks, whatever the step recorded (validationStep).
+    // SPEC 23.1.2: whether a declaration is failed for the check reading it: Invalid, but not the declaration whose own validation step
+    // runs, whatever that step recorded against it (validationStep: a self-read is no failed input). Every read of a declaration's
+    // failure in a proof goes through it: its context (InvalidDeclarationCause), a leaf capability's Type, a conformance's Contract.
+    private bool DeclarationFailed(Koto declaration)
+        => declaration.BindingState == BindingState.Invalid && !ReferenceEquals(declaration, this.validationStep);
+
     private Koto? InvalidDeclarationCause(Koto declaration)
     {
-        if (declaration.BindingState != BindingState.Invalid || ReferenceEquals(declaration, this.validationStep))
+        if (!this.DeclarationFailed(declaration))
         {
             return null;
         }

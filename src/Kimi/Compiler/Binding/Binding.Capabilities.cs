@@ -61,101 +61,6 @@ public sealed partial class Binding
 
     internal ConstraintProof ProveSealed(BoundType type, BindingScope scope) => this.RequestCapability(type, this.Library.Sealed, scope);
 
-    private static bool TryLeafCapability(BoundType type, IntrinsicKind kind, out ConstraintProof result)
-    {
-        result = ConstraintProof.Unknown;
-        if (kind == IntrinsicKind.PrimitiveInteger)
-        {
-            // SPEC 8.7.4: exactly the twelve owner integer Cores; a symbolic Type is decided by its premises.
-            if (type.IsAbstract)
-            {
-                return false;
-            }
-
-            result = type.Kind == BoundTypeKind.Primitive && type.Semantics == SemanticsKind.Owner && type.IsInteger ? ConstraintProof.Proven : ConstraintProof.Refuted;
-            return true;
-        }
-
-        if (kind == IntrinsicKind.ObjectPayload)
-        {
-            if (type.Symbol?.Declaration.BindingState == BindingState.Invalid)
-            {
-                result = ConstraintProof.Error;
-                return true;
-            }
-
-            // SPEC 8.7.3: symbolic targets, a Contract's Self among them, are decided by their premises.
-            if (type.IsAbstract)
-            {
-                return false;
-            }
-
-            // The judgment is shallow: outer owner Semantics, a Core other than Never, and no inherited opt-out.
-            result = type.Semantics != SemanticsKind.Owner || ReferenceEquals(type, BoundType.Never) || type.Symbol?.ObjectPayloadOptOut is not null
-                ? ConstraintProof.Refuted : ConstraintProof.Proven;
-            return true;
-        }
-
-        if (kind == IntrinsicKind.Sealed)
-        {
-            if (type.Symbol?.Declaration.BindingState == BindingState.Invalid)
-            {
-                result = ConstraintProof.Error;
-                return true;
-            }
-
-            if (type.IsAbstract)
-            {
-                return false;
-            }
-
-            result = type.Semantics != SemanticsKind.Owner || ReferenceEquals(type, BoundType.Never) ||
-                (type.Symbol?.Declaration is StructKoto structure && (structure.Modifier & ModifierKind.Open) != 0)
-                ? ConstraintProof.Refuted : ConstraintProof.Proven;
-            return true;
-        }
-
-        if (type.Kind is BoundTypeKind.Array or BoundTypeKind.Dictionary && kind == IntrinsicKind.Copy)
-        {
-            result = ConstraintProof.Refuted; // SPEC 4.5: Array is Non-Copy for every element Type.
-            return true;
-        }
-
-        if (type.Semantics == SemanticsKind.Owner && type.Symbol?.LibraryDeclaration is KimiDeclarationId.FixedBuffer or KimiDeclarationId.WriteWindow or KimiDeclarationId.Utf8Writer)
-        {
-            result = ConstraintProof.Refuted; // Verified raw storage retains an exclusive external dependency.
-            return true;
-        }
-
-        if (type.Kind == BoundTypeKind.Slice && kind == IntrinsicKind.Copy)
-        {
-            result = ConstraintProof.Proven;
-            return true;
-        }
-
-        if (type.Kind == BoundTypeKind.FunctionItem && kind == IntrinsicKind.Copy)
-        {
-            // SPEC 7.7.4: an Item stores nothing, so it is Copy; it is Owned when its bound arguments and its call signature are, which
-            // the structural proof decides (CallSignature).
-            result = ConstraintProof.Proven;
-            return true;
-        }
-
-        if (type.Kind == BoundTypeKind.Primitive || (type.Kind == BoundTypeKind.Function && kind == IntrinsicKind.Copy))
-        {
-            result = kind == IntrinsicKind.Owned || (type.Kind == BoundTypeKind.Primitive && type.Name != "string") ? ConstraintProof.Proven : ConstraintProof.Refuted;
-            return true;
-        }
-
-        if (type.Kind == BoundTypeKind.Semantics && kind == IntrinsicKind.Copy)
-        {
-            result = type.Semantics is SemanticsKind.Ref or SemanticsKind.ObjRef or SemanticsKind.Raw ? ConstraintProof.Proven : ConstraintProof.Refuted;
-            return true;
-        }
-
-        return false;
-    }
-
     // Whether a capability judgment reads a Type's declaration (a struct, enum or other container) rather than its parts (SPEC 4.5: a
     // collection by its element Types, whatever its Symbol).
     private static bool JudgedByDeclaration(BoundType type)
@@ -216,6 +121,101 @@ public sealed partial class Binding
         }
 
         return null;
+    }
+
+    private bool TryLeafCapability(BoundType type, IntrinsicKind kind, out ConstraintProof result)
+    {
+        result = ConstraintProof.Unknown;
+        if (kind == IntrinsicKind.PrimitiveInteger)
+        {
+            // SPEC 8.7.4: exactly the twelve owner integer Cores; a symbolic Type is decided by its premises.
+            if (type.IsAbstract)
+            {
+                return false;
+            }
+
+            result = type.Kind == BoundTypeKind.Primitive && type.Semantics == SemanticsKind.Owner && type.IsInteger ? ConstraintProof.Proven : ConstraintProof.Refuted;
+            return true;
+        }
+
+        if (kind == IntrinsicKind.ObjectPayload)
+        {
+            if (type.Symbol?.Declaration is { } declaration && this.DeclarationFailed(declaration))
+            {
+                result = ConstraintProof.Error;
+                return true;
+            }
+
+            // SPEC 8.7.3: symbolic targets, a Contract's Self among them, are decided by their premises.
+            if (type.IsAbstract)
+            {
+                return false;
+            }
+
+            // The judgment is shallow: outer owner Semantics, a Core other than Never, and no inherited opt-out.
+            result = type.Semantics != SemanticsKind.Owner || ReferenceEquals(type, BoundType.Never) || type.Symbol?.ObjectPayloadOptOut is not null
+                ? ConstraintProof.Refuted : ConstraintProof.Proven;
+            return true;
+        }
+
+        if (kind == IntrinsicKind.Sealed)
+        {
+            if (type.Symbol?.Declaration is { } declaration && this.DeclarationFailed(declaration))
+            {
+                result = ConstraintProof.Error;
+                return true;
+            }
+
+            if (type.IsAbstract)
+            {
+                return false;
+            }
+
+            result = type.Semantics != SemanticsKind.Owner || ReferenceEquals(type, BoundType.Never) ||
+                (type.Symbol?.Declaration is StructKoto structure && (structure.Modifier & ModifierKind.Open) != 0)
+                ? ConstraintProof.Refuted : ConstraintProof.Proven;
+            return true;
+        }
+
+        if (type.Kind is BoundTypeKind.Array or BoundTypeKind.Dictionary && kind == IntrinsicKind.Copy)
+        {
+            result = ConstraintProof.Refuted; // SPEC 4.5: Array is Non-Copy for every element Type.
+            return true;
+        }
+
+        if (type.Semantics == SemanticsKind.Owner && type.Symbol?.LibraryDeclaration is KimiDeclarationId.FixedBuffer or KimiDeclarationId.WriteWindow or KimiDeclarationId.Utf8Writer)
+        {
+            result = ConstraintProof.Refuted; // Verified raw storage retains an exclusive external dependency.
+            return true;
+        }
+
+        if (type.Kind == BoundTypeKind.Slice && kind == IntrinsicKind.Copy)
+        {
+            result = ConstraintProof.Proven;
+            return true;
+        }
+
+        if (type.Kind == BoundTypeKind.FunctionItem && kind == IntrinsicKind.Copy)
+        {
+            // SPEC 7.7.4: an Item stores nothing, so it is Copy; it is Owned when its bound arguments and its call signature are, which
+            // the structural proof decides (CallSignature).
+            result = ConstraintProof.Proven;
+            return true;
+        }
+
+        if (type.Kind == BoundTypeKind.Primitive || (type.Kind == BoundTypeKind.Function && kind == IntrinsicKind.Copy))
+        {
+            result = kind == IntrinsicKind.Owned || (type.Kind == BoundTypeKind.Primitive && type.Name != "string") ? ConstraintProof.Proven : ConstraintProof.Refuted;
+            return true;
+        }
+
+        if (type.Kind == BoundTypeKind.Semantics && kind == IntrinsicKind.Copy)
+        {
+            result = type.Semantics is SemanticsKind.Ref or SemanticsKind.ObjRef or SemanticsKind.Raw ? ConstraintProof.Proven : ConstraintProof.Refuted;
+            return true;
+        }
+
+        return false;
     }
 
     // SPEC 15.2.3, 15.3.4 (DECISIONS BU-73): a callable's call signature as an Owned part, with the binder of its own per-call Origins: a
@@ -289,7 +289,7 @@ public sealed partial class Binding
 
         if (!this.capabilitiesReady)
         {
-            if (this.running && !derivation && TryLeafCapability(type, intrinsic.Intrinsic, out var concrete))
+            if (this.running && !derivation && this.TryLeafCapability(type, intrinsic.Intrinsic, out var concrete))
             {
                 return concrete;
             }
@@ -297,7 +297,7 @@ public sealed partial class Binding
             return ConstraintProof.Unknown;
         }
 
-        if (!derivation && TryLeafCapability(type, intrinsic.Intrinsic, out var leaf))
+        if (!derivation && this.TryLeafCapability(type, intrinsic.Intrinsic, out var leaf))
         {
             return leaf;
         }
@@ -674,7 +674,7 @@ public sealed partial class Binding
             return ConstraintProof.Error;
         }
 
-        if (TryLeafCapability(type, work.Intrinsic.Intrinsic, out var leaf))
+        if (this.TryLeafCapability(type, work.Intrinsic.Intrinsic, out var leaf))
         {
             return leaf;
         }

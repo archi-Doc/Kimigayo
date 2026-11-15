@@ -20,7 +20,7 @@ public sealed partial class Binding
 
     // SPEC 23.1.2: the declaration whose own validation step runs (ValidateConstraintEnvironments), when it entered the step without a
     // failure. A failure the step records against it (a direction contradiction, a premise error, a proof's) is no failed context for the
-    // step's own other checks, a self-read being no failed input; the context fails for every later check (InvalidDeclarationCause).
+    // step's own other checks, a self-read being no failed input; the context fails for every later check (DeclarationFailed).
     private Koto? validationStep;
 
     // The independent causes of an unproven Type role or pair formation (TypeRoleCauses).

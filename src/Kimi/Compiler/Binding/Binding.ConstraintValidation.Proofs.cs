@@ -337,6 +337,7 @@ public sealed partial class Binding
     private void ClearProofScopes()
     {
         this.failedCause = null;
+        this.validationStep = null; // A faulted Bind leaves no validation step marked for the next one.
         Array.Clear(this.proofScopes);
         this.failedUnknown = null;
         this.trialUnknown = null;
