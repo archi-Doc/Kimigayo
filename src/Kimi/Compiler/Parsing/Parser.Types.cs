@@ -126,9 +126,9 @@ public static partial class Parser
             }
         }
 
-        // After a group whose member Name failed, a complete Type still reads an Origin, '?' and BorrowOrigin onto the Error; every other
-        // position ends at the Error. One recovery for every position is a Parsing decision of its own, outside R9-F2.
-        if (type is ErrorKoto && !(grouped && context == TypeContext.Type))
+        // A head that read no Type ends the Type at its Error; a failed member Name is a recovered Type (ParseTypeSuffixes), which reads
+        // its Origin, '?' and BorrowOrigin as any Type does.
+        if (type is ErrorKoto)
         {
             return type;
         }

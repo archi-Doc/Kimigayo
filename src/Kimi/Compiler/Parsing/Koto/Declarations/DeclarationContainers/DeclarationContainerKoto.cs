@@ -986,7 +986,7 @@ public abstract class DeclarationContainerKoto : DeclarationKoto
             var constraint = Parser.ParseTypeConstraint(ref reader, finishLine: false);
             if (reader.IsCurrentIdentifier("when"))
             {
-                var premises = Parser.ParseConformanceConditions(ref reader);
+                var premises = Parser.ParseConformanceConditions(ref reader, constraint);
                 var span = SourceSpan.FromBounds(constraint.Span.Start, premises.Span.End);
                 if (reader.TrySkipSeparatorsTo(TokenKind.StartBlock))
                 {

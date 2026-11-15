@@ -476,7 +476,13 @@ public sealed partial class Binding
         }
 
         CompleteQualifier(selector, named, ancestor);
-        var name = effect.Name is IdentifierNameKoto identifier ? identifier.IdentifierName : null;
+        // The requirement Name, either leaf of one Name (the Type reader's or the requirement reader's, as IsAssociatedTypeName reads it).
+        var name = effect.Name switch
+        {
+            IdentifierNameKoto identifier => identifier.IdentifierName,
+            TypeSemanticsKoto { Type: null, IsNamedType: true } leaf => leaf.Identifier,
+            _ => null,
+        };
         BoundRequirement? target = null;
         var found = 0;
         var requirements = ancestor.Contract!.Requirements;

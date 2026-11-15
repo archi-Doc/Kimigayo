@@ -219,6 +219,12 @@ public class FrontEndSyntaxTest
     [InlineData("func f(v: move/Missing) => ()", "1*MisplacedSyntax_Kd 1*UnresolvedBinding_Kd")] // SPEC 13.5.1: move and copy are operations.
     [InlineData("func f(x: i32)\n    let y = x@copy/Missing", "1*MisplacedSyntax_Kd 1*UnresolvedBinding_Kd")]
     [InlineData("func f(a: i32, v: ref{a}/Missing) => ()", "1*LegacyBorrowOrigin_Kd 1*UnresolvedBinding_Kd")]
+    [InlineData("func f(v: Missing.1) => ()", "1*ExpectedSyntax_Kd 1*UnresolvedBinding_Kd")] // F.5: the path before a failed member stays bound.
+    [InlineData("func f(v: ref/Missing.1) => ()", "1*ExpectedSyntax_Kd 1*UnresolvedBinding_Kd")]
+    [InlineData("func f(v: Missing<i32>.1) => ()", "1*ExpectedSyntax_Kd 1*UnresolvedBinding_Kd")]
+    [InlineData("func f(v: GB<Missing.1>) => ()", "1*ExpectedSyntax_Kd 1*UnresolvedBinding_Kd")]
+    [InlineData("func f(v: i32.1) => ()", "1*ExpectedSyntax_Kd")]
+    [InlineData("func f(v: B0.1) => ()", "1*ExpectedSyntax_Kd")]
     public void AFailureInsideAWrittenTypeOutsideItsGrammarKeepsItsRecord(string declaration, string records)
         => Assert.Equal(records, DiagnosticCorpus.RecordProfile("open struct B0\nopen struct GB<T>\nopen struct Base {a}\n    public let value: ref/i32 during a\n    public init(value: ref/i32 during a) => self.value = value\n" + declaration + "\n"));
 
@@ -345,4 +351,191 @@ public class FrontEndSyntaxTest
         var place = KotoTree.Walk(tree.RootKoto).OfType<FunctionKoto>().Single(x => x.Name == "place");
         Assert.Equal("place", place.ReturnType!.ToString());
     }
+
+    // SPEC F.6.2 ConditionalConformance := "Self" "is" ContractReference "when" ConformanceConditions, with ContractReference :=
+    // ContainerReference := NamedReference (F.5: ContainerPath OriginBindingSet?) and ConformanceCondition := ConstraintSubject "is"
+    // ConformanceRequirement (atoms joined by "and"; no "not", no "or", also 8.8.1): a head or condition outside it is one grammar
+    // record at the part, the same in selected and excluded syntax (SPEC 19.4); the "when" decides the production (PLAN G873).
+    [Theory]
+    [InlineData("Self is (X) when U is Copy", "(X)", "contract reference")]
+    [InlineData("Self is ((X)) when U is Copy", "((X))", "contract reference")]
+    [InlineData("Self is ref/X when U is Copy", "ref/X", "contract reference")]
+    [InlineData("Self is X? when U is Copy", "X?", "contract reference")]
+    [InlineData("Self is X during a when U is Copy", "X during a", "contract reference")]
+    [InlineData("Self is not X when U is Copy", "not X", "contract reference")]
+    [InlineData("Self is X and Y when U is Copy", "X and Y", "contract reference")]
+    [InlineData("Self is X or Y when U is Copy", "X or Y", "contract reference")]
+    [InlineData("Self is (X, Y) when U is Copy", "(X, Y)", "contract reference")]
+    [InlineData("Self is () when U is Copy", "()", "contract reference")]
+    [InlineData("Self is [2 of X] when U is Copy", "[2 of X]", "contract reference")]
+    [InlineData("Self is X(a) when U is Copy", "X(a)", "contract reference")]
+    [InlineData("Self is (X) -> i32 when U is Copy", "(X) -> i32", "contract reference")]
+    [InlineData("U is X when U is Copy", "U", "conditional conformance's subject")]
+    [InlineData("Self is X when U is not Copy", "not Copy", "conformance requirement")]
+    [InlineData("Self is X when U is Copy or X", "Copy or X", "conformance requirement")]
+    public void AConditionalConformanceHeadOrConditionOutsideItsGrammarIsOneRecordInEverySelection(string item, string at, string phrase)
+    {
+        foreach (var excluded in (bool[])[false, true])
+        {
+            var source = "contract X\ncontract Y\nstruct T<U>\n    " + (excluded ? "#if false\n        " : string.Empty) + item + "\n    var value: U\n";
+            var diagnostic = Assert.Single(TestDiagnostics.Of(Parse(source)));
+            Assert.Equal("ExpectedSyntax_Kd", diagnostic.Code);
+            Assert.Contains(phrase, diagnostic.Message, StringComparison.Ordinal);
+            Assert.Equal(source.IndexOf(item, StringComparison.Ordinal) + item.IndexOf(at, StringComparison.Ordinal), diagnostic.Span.Start);
+        }
+    }
+
+    // SPEC 23.1.2: each part of the head is judged on its own input, so two independent failures give two records; an enum body reads the
+    // same production.
+    [Theory]
+    [InlineData("struct T<U>\n    U is X.1 when U is Copy\n    var value: U", 2)]
+    [InlineData("struct T<U>\n    U is (X) when U is Copy\n    var value: U", 2)]
+    [InlineData("struct T<U>\n    U is X when U is not Copy\n    var value: U", 2)]
+    [InlineData("struct T<U>\n    Self is X.1 when U is Copy\n    var value: U", 1)]
+    [InlineData("enum E<V>\n    Self is (X) when V is Copy\n    A", 1)]
+    public void AConditionalConformanceKeepsEachIndependentRecord(string declaration, int count)
+    {
+        foreach (var excluded in (bool[])[false, true])
+        {
+            var source = "contract X\n" + (excluded ? "#if false\n    " + declaration.Replace("\n", "\n    ", StringComparison.Ordinal) : declaration) + "\n";
+            var diagnostics = TestDiagnostics.Of(Parse(source));
+            Assert.Equal(count, diagnostics.Length);
+            Assert.All(diagnostics, static x => Assert.Equal("ExpectedSyntax_Kd", x.Code));
+        }
+    }
+
+    // The valid twins: a ContractReference (a path, a root name, a binding set, a primitive or Self TypeName; F.3.2's Semantics,
+    // SemanticsCategory and Callable words are Names there, no requirement), conditions joined by "and", a list, a block; and every
+    // plain ConstraintClause, whose RequirementAtom is Binding's to judge.
+    [Theory]
+    [InlineData("Self is X when U is Copy")]
+    [InlineData("Self is ::X when U is Copy")]
+    [InlineData("Self is Api.X when U is Copy")]
+    [InlineData("Self is X{a} when U is Copy")]
+    [InlineData("Self is i32 when U is Copy")]
+    [InlineData("Self is ref when U is Copy")]
+    [InlineData("Self is value when U is Copy")]
+    [InlineData("Self is Callable<(i32) -> i32> when U is Copy")]
+    [InlineData("Self is X when U is Copy and X")]
+    [InlineData("Self is X when U is (Copy and X)")]
+    [InlineData("Self is X when U is Copy, U is X")]
+    [InlineData("Self is X when U is Copy\n        public func f(self: ref/Self) -> i32 => 0")]
+    [InlineData("Self is (X)")]
+    [InlineData("Self is ref/X")]
+    [InlineData("Self is X?")]
+    [InlineData("Self is X during a")]
+    [InlineData("Self is not X")]
+    [InlineData("Self is X or Y")]
+    public void AConditionalConformanceInsideItsGrammarHasNoRecordInEverySelection(string item)
+    {
+        ParseSuccess("contract X\ncontract Y\nstruct T<U>\n    " + item + "\n    var value: U\n");
+        ParseSuccess("contract X\ncontract Y\nstruct T<U>\n    #if false\n        " + item.Replace("\n    ", "\n        ", StringComparison.Ordinal) + "\n    var value: U\n");
+    }
+
+    // SPEC F.6.2 ContractReference := NamedReference in every position that writes one: F.5's PathSuffix "." "(" ContractReference ")"
+    // "." Name in a Type, a ConstraintSubject and a requirement, F.9.1's PostfixSuffix and BoundContainerExpression, and a
+    // ContractSelector's group (an AssociatedTypeName, an EffectSpecification): one reader, one record over the reference.
+    [Theory]
+    [InlineData("ref/Y")]
+    [InlineData("(Y)")]
+    [InlineData("Y?")]
+    [InlineData("Y during a")]
+    [InlineData("[2 of Y]")]
+    [InlineData("(Y) -> i32")]
+    [InlineData("Y(a)")]
+    public void AContractReferenceOutsideItsGrammarIsOneRecordInEveryPosition(string reference)
+    {
+        foreach (var format in ContractReferencePositions())
+        {
+            foreach (var excluded in (bool[])[false, true])
+            {
+                var declaration = format.Replace("R", reference, StringComparison.Ordinal);
+                var source = excluded ? "#if false\n    " + declaration.Replace("\n", "\n    ", StringComparison.Ordinal) + "\n" : declaration + "\n";
+                var diagnostic = Assert.Single(TestDiagnostics.Of(Parse(source)));
+                Assert.Equal("ExpectedSyntax_Kd", diagnostic.Code);
+                Assert.Contains("contract reference", diagnostic.Message, StringComparison.Ordinal);
+                Assert.Equal(source.IndexOf("(" + reference + ")", StringComparison.Ordinal) + 1, diagnostic.Span.Start);
+            }
+        }
+    }
+
+    [Theory]
+    [InlineData("Y")]
+    [InlineData("::Y")]
+    [InlineData("Y{a}")]
+    [InlineData("Api.Y<i32>")]
+    public void AContractReferenceInsideItsGrammarHasNoRecordInEveryPosition(string reference)
+    {
+        foreach (var format in ContractReferencePositions())
+        {
+            var declaration = format.Replace("R", reference, StringComparison.Ordinal);
+            ParseSuccess(declaration + "\n");
+            ParseSuccess("#if false\n    " + declaration.Replace("\n", "\n    ", StringComparison.Ordinal) + "\n");
+        }
+    }
+
+    // SPEC F.6.2 ContractSelector := ContainerPath | "(" ContractReference ")", read by one reader at both heads and judged once complete:
+    // a PathQualifier needs its PathSuffix (F.5 ContainerPath := PathQualifier PathSuffix+), and no other grouped Type is a PathQualifier,
+    // so a further suffix after "(" ContractReference ")" "." Name is the enclosing construct's.
+    [Theory]
+    [InlineData("struct S\n    associate (Y).K.Item is i32", ".Item", "ExpectedSyntax_Kd")]
+    [InlineData("struct S\n    associate [2 of u8].Item is i32", "[2 of u8]", "ExpectedSyntax_Kd")]
+    [InlineData("struct S\n    associate (Y during a).Item is i32", "Y during a", "ExpectedSyntax_Kd")]
+    [InlineData("struct S\n    associate (Y, K).Item is i32", "(Y, K)", "ExpectedSyntax_Kd")]
+    [InlineData("struct S\n    associate ().Item is i32", "()", "ExpectedSyntax_Kd")]
+    [InlineData("struct S\n    associate ((Y) -> i32).Item is i32", "(Y) -> i32", "ExpectedSyntax_Kd")]
+    [InlineData("struct S\n    associate (i32, u8).Item is i32", "(i32, u8)", "ExpectedSyntax_Kd")]
+    [InlineData("contract E\n    func h(self: ref/Self)\n    effect (X).K.h confined", ".h", "ExpectedSyntax_Kd")]
+    [InlineData("contract E\n    func h(self: ref/Self)\n    effect (Y, K).h confined", "(Y, K)", "ExpectedSyntax_Kd")]
+    [InlineData("contract E\n    func h(self: ref/Self)\n    effect ().h confined", "()", "ExpectedSyntax_Kd")]
+    [InlineData("contract E\n    func h(self: ref/Self)\n    effect [2 of u8].h confined", "[2 of u8]", "ExpectedSyntax_Kd")]
+    [InlineData("contract E\n    func h(self: ref/Self)\n    effect (Y during a).h confined", "Y during a", "ExpectedSyntax_Kd")]
+    public void AContractSelectorOutsideItsGrammarIsOneRecordInEverySelection(string declaration, string at, string code)
+    {
+        foreach (var excluded in (bool[])[false, true])
+        {
+            var source = excluded ? "#if false\n    " + declaration.Replace("\n", "\n    ", StringComparison.Ordinal) + "\n" : declaration + "\n";
+            var diagnostic = Assert.Single(TestDiagnostics.Of(Parse(source)));
+            Assert.Equal(code, diagnostic.Code);
+            Assert.Equal(source.LastIndexOf(at, StringComparison.Ordinal), diagnostic.Span.Start);
+        }
+    }
+
+    // The valid twins: "(" ContractReference ")" "." Name, a path from a Name, a root name or Type arguments, and a ContainerPath headed
+    // by a PathQualifier with its PathSuffix, at both heads (an EffectSpecification's selector is no longer read by a Name loop of its own).
+    [Theory]
+    [InlineData("struct S\n    associate (Y{a}).Item is i32")]
+    [InlineData("struct S\n    associate (Y).Item is i32")]
+    [InlineData("struct S\n    associate Y.Item is i32")]
+    [InlineData("struct S\n    associate (i32, u8).Y.Item is i32")]
+    [InlineData("struct S\n    associate (Y{a}).K.Item is i32")]
+    [InlineData("struct S\n    associate (Y during a).K.Item is i32")]
+    [InlineData("struct S\n    associate ((i32) -> i32).K.Item is i32")]
+    [InlineData("struct S\n    associate [2 of u8].K.Item is i32")]
+    [InlineData("struct S\n    associate (i32, u8).(K).Item.Y.Item is i32")]
+    [InlineData("contract E\n    func h(self: ref/Self)\n    effect (Y{a}).h confined")]
+    [InlineData("contract E\n    func h(self: ref/Self)\n    effect (Y).h confined")]
+    [InlineData("contract E\n    func h(self: ref/Self)\n    effect X.h confined")]
+    [InlineData("contract E\n    func h(self: ref/Self)\n    effect ::X.h confined")]
+    [InlineData("contract E\n    func h(self: ref/Self)\n    effect Y<i32>.h confined")]
+    [InlineData("contract E\n    func h(self: ref/Self)\n    effect (i32, u8).X.h confined")]
+    [InlineData("contract E\n    func h(self: ref/Self)\n    effect [2 of u8].K.h confined")]
+    [InlineData("contract E\n    func h(self: ref/Self)\n    effect K.(Y).Item.h confined")]
+    public void AContractSelectorInsideItsGrammarHasNoRecordInEverySelection(string declaration)
+    {
+        ParseSuccess(declaration + "\n");
+        ParseSuccess("#if false\n    " + declaration.Replace("\n", "\n    ", StringComparison.Ordinal) + "\n");
+    }
+
+    // The positions of F.6.2's ContractReference, R the reference.
+    private static string[] ContractReferencePositions() =>
+    [
+        "func f(v: Api.N.(R).Item) -> i32 => 0",
+        "func f<U>(u: U) -> i32\n    U.(R).Item is K\n    return 0",
+        "func f<U>(u: U) -> i32\n    U is Api.N.(R).Item\n    return 0",
+        "func f(v: Api.N) -> i32\n    let r = v.(R).m\n    return 0",
+        "func f(z: i32) -> i32\n    let r = (Api.N{z}).(R).m\n    return 0",
+        "struct S\n    associate (R).Item is i32",
+        "contract E\n    func h(self: ref/Self)\n    effect (R).h confined",
+    ];
 }

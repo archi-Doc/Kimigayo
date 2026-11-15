@@ -67,7 +67,8 @@ public static partial class Parser
         }
     }
 
-    // A written Type outside its position's grammar, after its record: a Type beside a rejected part (RecoverRejectedPart); an
+    // A written Type outside its position's grammar, after its record: a Type beside a rejected part (RecoverRejectedPart: a rejected
+    // prefix, or a path whose member Name failed); a ContractReference or ContractSelector that is no NamedReference (F.6.2); an
     // adaptation target's borrow layer with an Origin or its Core's path headed by a bound Container qualifier (13.5.1); a base or
     // Contract parent that is no InheritanceReference (F.6.1, F.6.2). The one recovery of each such position: the Type stays where it was written and is bound, so
     // every independent failure inside it keeps its record (SPEC 23.1.2); the Type is a recovery, so a check that consults it
@@ -84,7 +85,8 @@ public static partial class Parser
     }
 
     // A part the grammar rejects beside a complete Type, after its record: a prefix before it ("::" before a group, a fixed array or a
-    // second "::", SPEC F.5; a move or copy prefix, 13.5.1; a legacy borrow prefix X{a}/). The written Type is the part and the Type,
+    // second "::", SPEC F.5; a move or copy prefix, 13.5.1; a legacy borrow prefix X{a}/) or a failed PathSuffix after it (a member Name
+    // that failed, F.5). The written Type is the part and the Type,
     // the span written: it stays as a transparent layer over the Type, recovered (RecoverWrittenType), so the Type and its parts bind
     // and keep their own records while the part's meaning is dropped.
     private static Koto RecoverRejectedPart(ref TokenReader reader, SourceSpan written, Koto type, DiagnosticKey? cause)
