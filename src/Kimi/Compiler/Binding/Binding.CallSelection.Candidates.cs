@@ -115,9 +115,9 @@ public sealed partial class Binding
         return null;
     }
 
-    // SPEC 10.8 ("collected together"; traversal order never chooses; every exact source of a binder, an application of a bare slot
-    // included, fixes it before the expected result fills): an input whose pattern holds an application of a binder no source has
-    // fixed waits. A waiting input that no longer holds one is inferred; when none can be, every waiting input not yet a source is
+    // SPEC 10.8 ("collected together"; traversal order never chooses; every exact source of a binder (IsExactSource), an application
+    // of a bare slot or a closed leaf Type included, fixes it before the expected result fills): an input whose pattern holds an
+    // application of a binder no source has fixed waits. A waiting input that no longer holds one is inferred; when none can be, every waiting input not yet a source is
     // inferred once as one (its exact sources fix its own binders; a structured application of a binder still unfixed supplies
     // nothing), and those it formed are inferred again. Called before the expected result, after it (for a binder only the
     // expected result fixes) and after the late pass (for one only a Literal's default fixes); one still open keeps its open parts
