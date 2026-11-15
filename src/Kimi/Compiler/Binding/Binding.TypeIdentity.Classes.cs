@@ -707,9 +707,9 @@ public sealed partial class Binding
 
         // The pair row's head (PairMeet's comment): the heads' meet and, where the heads may agree so that the components decide, the
         // pair layer, the other side, the pair's target and the other side's component (null when the head alone decides). A family is
-        // no form of 8.2.3's table (Unsupported). The verdict ranges over the cases of both sides' admitted sets: a side with no case
-        // (an empty set, 8.3.4's Error, 8.3.1's contradictory evidence) leaves none in which the identity holds, so it is Conflict
-        // before any reading of the cases (one binder's shared head, MayBeItsTarget, disjointness).
+        // no form of 8.2.3's table (Unsupported). An empty admitted set on either side is 8.3.4's Error (8.3.1's contradictory
+        // evidence) and disjoint from every set, and a pair differs from another form where its admitted set is disjoint from the other's
+        // outer Semantics (8.2.3): Conflict, decided before the other tests read the sets (one binder's shared head, MayBeItsTarget).
         private (byte Head, BoundType Pair, BoundType Other, BoundType Target, BoundType? Component) PairHead(BoundType x, BoundType y)
         {
             var (pair, other) = x.IsPairLayer ? (x, y) : (y, x);
@@ -724,7 +724,7 @@ public sealed partial class Binding
                 : ReferenceEquals(whole, otherWhole) ? admitted : binding.AdmittedSemantics(otherWhole, this.scope!);
             if (admitted == SemanticsMask.None || outer == SemanticsMask.None)
             {
-                return (Conflict, pair, other, target, null); // No case on one side: contradictory evidence, read before the cases.
+                return (Conflict, pair, other, target, null); // An empty set: 8.3.4's Error, disjoint from every set (8.2.3).
             }
 
             if (paired && ReferenceEquals(whole, otherWhole))
