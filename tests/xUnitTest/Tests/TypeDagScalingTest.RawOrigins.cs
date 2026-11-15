@@ -49,6 +49,30 @@ public partial class TypeDagScalingTest
         Assert.True(seen.SetEquals(t[..40].Concat(u[..40])));
     }
 
+    // PLAN G492-a (ii): MirTypes.Agree, the validator's Type agreement, over T_{k+1} = (T_k, T_k) and U_{k+1} = (U_k, U_k), whose leaves
+    // differ only in their Origin (a `let` local's opened Type against its value's): each distinct pair is decided once per call, and a
+    // warm call allocates nothing (the pair set keeps its capacity). CarrierOf over T_40, which carries no Unstated, visits each distinct
+    // part once.
+    [Fact]
+    [Trait("Purpose", "Allocation")]
+    public void TypeAgreementAndCarrierWalksAreLinearInDistinctParts()
+    {
+        var c = MirBuildTest.Compile("public func main() => ()\n");
+        var types = c.Types;
+        var t = types.Pointer(BoundType.I32, BoundOrigin.Static);
+        var u = types.Pointer(BoundType.I32, BoundOrigin.Unstated);
+        var w = types.Tuple([BoundType.I32, BoundType.Boolean]);
+        for (var k = 0; k < 40; k++)
+        {
+            (t, u, w) = (types.Tuple([t, t]), types.Tuple([u, u]), types.Tuple([w, w]));
+        }
+
+        Assert.True(Kimi.Compiler.Mir.MirTypes.Agree(t, u));
+        Assert.False(Kimi.Compiler.Mir.MirTypes.Agree(t, w));
+        Assert.Equal(0, AllocationMeasurement.Measure(() => Kimi.Compiler.Mir.MirTypes.Agree(t, u)));
+        Assert.Null(c.Binding.CarrierOf(t, BoundOrigin.Unstated, c.Kotonoha.RootKoto));
+    }
+
     // WithoutRawOrigins, AdtDef's view of an instance's kept parts, over D<T_40> with `struct D<T> { x: T }`: the kept Field is T_40
     // itself and AdtDef's is its erased twin E_{k+1} = (E_k, E_k), E_0 = `raw/i32`.
     [Fact]

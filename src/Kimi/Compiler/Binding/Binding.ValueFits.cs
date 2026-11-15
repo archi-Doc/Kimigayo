@@ -17,7 +17,8 @@ namespace Kimi.Compiler;
 // - Invariants: a fit adds no Constraint, reopens no inference and publishes nothing but CheckTypeUse's obligations; nothing below the
 //   root fits by Never (a Type holding Never is an ordinary Type). CheckTypeUse walks the relation once at its root and reads each
 //   part's answer from that walk (RelationWalk.FitPart), and once more at each invariant part the relation meets reversed, in the fit's
-//   own orientation; a reversed part's structure does not depend on the orientation (CheckTypeUseCore's precondition).
+//   own orientation; a reversed part's structure does not depend on the orientation (CheckTypeUseCore's precondition). A pair of
+//   composite parts the walk meets again is decomposed once (FitPart.Same), so a fit is linear in its distinct pairs.
 // - Prohibitions: a Type-to-Type comparison calls the relation's entries (IsSubtype, IsSubtypeAt, FitsStructuralPart), not these.
 public sealed partial class Binding
 {
@@ -161,7 +162,28 @@ public sealed partial class Binding
         {
             cursor.Last = (part.FactStart, part.FactEnd);
             cursor.Next++;
-            fits = this.CheckTypeUsePart(actual, expected, use, polarity, part, ref cursor);
+            if (part.Same != 0)
+            {
+                // PLAN G492-a (ii): the walk entered this pair before (FitPart.Same), and the decomposition formed its obligations there,
+                // which are this meeting's; it answers that part's decomposition (Fails), and a part whose walk failed leaves the cursor
+                // as CheckTypeUsePart leaves it for a part whose walk failed. Where the earlier part's decomposition failed, its branch
+                // failed first, so this part's failure and facts are never the fit's.
+                if (!part.Holds)
+                {
+                    cursor.Failure = part.Failure;
+                }
+
+                fits = !this.fitParts[part.Same - 1].Fails;
+            }
+            else
+            {
+                var index = cursor.Next - 1;
+                fits = this.CheckTypeUsePart(actual, expected, use, polarity, part, ref cursor);
+                if (!fits)
+                {
+                    this.fitParts[index] = this.fitParts[index] with { Fails = true };
+                }
+            }
         }
         else
         {

@@ -15,32 +15,9 @@ public sealed partial class Binding
     internal bool HasLocalRegion(BoundType type) => this.LocalRegionPart(type, this.visitedParts.Begin(this.storageVersion));
 
     // SPEC 15.6, 15.6.5: the Origin, read at a use, through which a value of a Type carries `origin`, judged without flow: one the Type
-    // names (a meet operand included) or a local region with `origin` among its sources; null when the value does not carry it.
-    internal BoundOrigin? CarrierOf(BoundType type, BoundOrigin origin, Koto use)
-    {
-        if (this.RegionCarrier(type.Origin, origin, use) is { } own)
-        {
-            return own;
-        }
-
-        for (var i = 0; i < type.OriginArguments.Count; i++)
-        {
-            if (this.RegionCarrier(type.OriginArguments[i], origin, use) is { } argument)
-            {
-                return argument;
-            }
-        }
-
-        for (var i = 0; i < type.Components.Count; i++)
-        {
-            if (this.CarrierOf(type.Components[i], origin, use) is { } part)
-            {
-                return part;
-            }
-        }
-
-        return null;
-    }
+    // names (a meet operand included) or a local region with `origin` among its sources; null when the value does not carry it. Each
+    // distinct part is visited once per query (DECISIONS BU-19, BU-63): a part met again carried nothing, since a carrier ends the walk.
+    internal BoundOrigin? CarrierOf(BoundType type, BoundOrigin origin, Koto use) => this.CarrierPart(type, origin, use, this.visitedParts.Begin(this.storageVersion));
 
     // Whether an Origin of the Type's parts has region bounds; each distinct part is visited once per query (DECISIONS BU-19).
     internal bool HasRegionBounds(BoundType type) => this.RegionBoundsPart(type, this.visitedParts.Begin(this.storageVersion));
@@ -63,6 +40,32 @@ public sealed partial class Binding
         }
 
         return false;
+    }
+
+    private BoundOrigin? CarrierPart(BoundType type, BoundOrigin origin, Koto use, uint query)
+    {
+        if (this.RegionCarrier(type.Origin, origin, use) is { } own)
+        {
+            return own;
+        }
+
+        for (var i = 0; i < type.OriginArguments.Count; i++)
+        {
+            if (this.RegionCarrier(type.OriginArguments[i], origin, use) is { } argument)
+            {
+                return argument;
+            }
+        }
+
+        for (var i = 0; i < type.Components.Count; i++)
+        {
+            if (this.FirstVisit(type.Components[i], query) && this.CarrierPart(type.Components[i], origin, use, query) is { } part)
+            {
+                return part;
+            }
+        }
+
+        return null;
     }
 
     // An Origin of a Type read at a use, when it carries `origin` (CarrierOf).
@@ -184,8 +187,24 @@ public sealed partial class Binding
     }
 
     // SPEC 15.3.6, 15.8.2 (DECISIONS: G570): a Closure's result with the regions of its own body resolved. An enclosing region is fixed in
-    // `body` (BU-28), so it stays: the result and the environment name one Origin, solved over all its bounds.
+    // `body` (BU-28), so it stays: the result and the environment name one Origin, solved over all its bounds. One call is one query of
+    // rewrittenParts (DECISIONS BU-19), as PublishedResult is: a part's resolution is a function of the part and `body`, so each distinct
+    // part is resolved once (PLAN G492-a (ii)).
     private BoundType ResolveLocalResultOrigins(BoundType type, ExecutableBody body)
+        => this.ResolveLocalResultOrigins(type, body, this.rewrittenParts.Begin(this.storageVersion));
+
+    private BoundType ResolveLocalResultOrigins(BoundType type, ExecutableBody body, uint query)
+    {
+        if (!this.rewrittenParts.TryGet(type, query, out var resolved))
+        {
+            resolved = this.ResolveLocalResultPart(type, body, query);
+            this.rewrittenParts.Set(type, query, resolved);
+        }
+
+        return resolved!;
+    }
+
+    private BoundType ResolveLocalResultPart(BoundType type, ExecutableBody body, uint query)
     {
         if (!this.HasLocalRegion(type))
         {
@@ -198,7 +217,7 @@ public sealed partial class Binding
         {
             for (var i = 0; i < type.Components.Count; i++)
             {
-                components[i] = this.ResolveLocalResultOrigins(type.Components[i], body);
+                components[i] = this.ResolveLocalResultOrigins(type.Components[i], body, query);
             }
 
             for (var i = 0; i < type.OriginArguments.Count; i++)
