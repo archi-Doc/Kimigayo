@@ -238,23 +238,24 @@ public class ComponentSummaryTest
     }
 
     // SPEC 23.1.2, 8.6.1 (R7-C2e2 e2-5a, the Middle's B3): one stored Type S2<R<Wrap<T>>, T> holds an instance family (U is Owned) and a
-    // Proof that fails on its own (V is K without `T is K`, or Wrap stating no K). The failed Proof is an independent record at the
+    // Proof that fails on its own (V is K without `T is K`, Unproven; or Wrap stating no K, Refuted over its declared head by the
+    // owner's O-344 (a), UnsatisfiedConstraint_Kd). The failed Proof is an independent record at the
     // stored Type, kept beside the family, with a use or not, and in the controls without recursion; any other record is the use's,
     // resting on R's failed Field. The valid twin (T is K, Wrap is K) has no Language record: only a later phase's located
     // Unsupported_Kd at the use, as on dev.
     [Theory]
     [InlineData("g-mix-n", "contract K\nstruct S2<U, V>\n    U is Owned\n    V is K\n    public var u: U\nstruct Wrap<A>\n    public var a: A\nstruct R<T>\n    T is Owned\n    let next: Array<S2<R<Wrap<T>>, T>>\nfunc needOwned<V>(v: ref/V)\n    V is Owned\n    ()\nfunc use1(r: ref/R<i32>) -> ()\n    needOwned(r)\npublic func main() => ()\n", 10, 3, 15)]
-    [InlineData("g-mix2-n", "contract K\nstruct S2<U, V>\n    U is Owned\n    V is K\n    public var u: U\nstruct Wrap<A>\n    public var a: A\nstruct R<T>\n    T is Owned\n    let next: Array<S2<R<Wrap<T>>, Wrap<T>>>\nfunc needOwned<V>(v: ref/V)\n    V is Owned\n    ()\nfunc use1(r: ref/R<i32>) -> ()\n    needOwned(r)\npublic func main() => ()\n", 10, 3, 15)]
+    [InlineData("g-mix2-n", "contract K\nstruct S2<U, V>\n    U is Owned\n    V is K\n    public var u: U\nstruct Wrap<A>\n    public var a: A\nstruct R<T>\n    T is Owned\n    let next: Array<S2<R<Wrap<T>>, Wrap<T>>>\nfunc needOwned<V>(v: ref/V)\n    V is Owned\n    ()\nfunc use1(r: ref/R<i32>) -> ()\n    needOwned(r)\npublic func main() => ()\n", 10, 3, 15, "UnsatisfiedConstraint_Kd")] // O-344 (a): Wrap states no K, so `Wrap<T> is K` is Refuted
     [InlineData("g-mix3-n", "contract K\nstruct S2<U, V>\n    U is Owned\n    V is K\n    public var u: U\nstruct Wrap<A>\n    Self is K\n    public var a: A\nstruct R<T>\n    T is Owned\n    let next: Array<S2<R<Wrap<T>>, T>>\nfunc needOwned<V>(v: ref/V)\n    V is Owned\n    ()\npublic func main() => ()\n", 11, 3, 0)]
     [InlineData("g-mix3-use-n", "contract K\nstruct S2<U, V>\n    U is Owned\n    V is K\n    public var u: U\nstruct Wrap<A>\n    Self is K\n    public var a: A\nstruct R<T>\n    T is Owned\n    let next: Array<S2<R<Wrap<T>>, T>>\nfunc needOwned<V>(v: ref/V)\n    V is Owned\n    ()\nfunc use1(r: ref/R<i32>) -> ()\n    needOwned(r)\npublic func main() => ()\n", 11, 3, 16)]
     [InlineData("g-mix-ctl-n", "contract K\nstruct S2<U, V>\n    U is Owned\n    V is K\n    public var u: U\nstruct Wrap<A>\n    Self is K\n    public var a: A\nstruct R<T>\n    T is Owned\n    let next: Array<S2<Wrap<T>, T>>\nfunc needOwned<V>(v: ref/V)\n    V is Owned\n    ()\npublic func main() => ()\n", 11, 3, 0)]
     [InlineData("g-mix-ctl0-n", "contract K\nstruct S2<U, V>\n    U is Owned\n    V is K\n    public var u: U\nstruct Wrap<A>\n    public var a: A\nstruct R<T>\n    T is Owned\n    let next: Array<S2<Wrap<T>, T>>\nfunc needOwned<V>(v: ref/V)\n    V is Owned\n    ()\npublic func main() => ()\n", 10, 3, 0)]
     [InlineData("g-mix-r", "contract K\nstruct S2<U, V>\n    U is Owned\n    V is K\n    public var u: U\nstruct Wrap<A>\n    Self is K\n    public var a: A\nstruct R<T>\n    T is Owned\n    T is K\n    let next: Array<S2<R<Wrap<T>>, T>>\nfunc needOwned<V>(v: ref/V)\n    V is Owned\n    ()\nfunc use1(r: ref/R<Wrap<Wrap<i32>>>) -> ()\n    needOwned(r)\npublic func main() => ()\n", 12, 0, 17)]
-    public void AnIndependentRecordBesideAnInstanceFamilyIsKept(string id, string source, int stored, int unproven, int use)
+    public void AnIndependentRecordBesideAnInstanceFamilyIsKept(string id, string source, int stored, int unproven, int use, string code = "UnprovenConstraint_Kd")
     {
         var records = DiagnosticCorpus.Check(source).Diagnostics.Select(x => (x.Code, Line: source.AsSpan(0, x.Span!.Value.Start).Count('\n') + 1)).ToArray();
-        Assert.Equal(unproven, records.Count(x => x == ("UnprovenConstraint_Kd", stored)));
-        Assert.All(records, x => Assert.True(x == ("UnprovenConstraint_Kd", stored) || x.Line == use, $"{id}: {x.Code}@{x.Line}"));
+        Assert.Equal(unproven, records.Count(x => x == (code, stored)));
+        Assert.All(records, x => Assert.True(x == (code, stored) || x.Line == use, $"{id}: {x.Code}@{x.Line}"));
         if (unproven == 0)
         {
             Assert.Equal(("Unsupported_Kd", use), Assert.Single(records));
