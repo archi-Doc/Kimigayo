@@ -68,7 +68,7 @@ public class CoreCatalogTest
         var c = Compilation.CreateForTest();
         var makeObj = c.Library.MakeObj;
         Assert.IsType<List<DeclarationContainerKoto>>(c.Library.Kotonoha.RootKoto.NestedContainers).Reverse();
-        Assert.IsType<List<Koto>>(c.Library.Intrinsics.Members).Reverse();
+        Assert.IsType<List<Koto>>(((DeclarationContainerKoto)makeObj.Declaration.Parent!).Members).Reverse(); // Kimi.Intrinsics
         c.Kotonoha.CreateCodeContext().Parse(c.Kotonoha.RootKoto, "let value = Kimi.Intrinsics.makeObj(42)");
         Assert.True(c.Bind().IsComplete, string.Join('\n', c.Binding.Issues));
         Assert.Same(makeObj, c.Library.MakeObj);

@@ -1,3 +1,4 @@
-#Lang("TestTempDirectory")
-#Intrinsic("TestTempDirectory")
-public func tempDirectory() -> string
+public group Test
+    #Lang("TestTempDirectory")
+    #Intrinsic("TestTempDirectory")
+    public func tempDirectory() -> string

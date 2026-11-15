@@ -1,5 +1,5 @@
-// UTF-8 formatting declarations (SPEC 22.9, 22.10). Text.writer, the erased adapter, is a compiler implementation
-// (Text.kimi); the buffers, windows, the other Text operations and Console.writeLine are bodies here, each
+// UTF-8 formatting declarations (SPEC 22.9, 22.10). Text.writer, the erased adapter, and Console.writeStdout are
+// compiler implementations (#Intrinsic); the buffers, windows, the other Text operations and Console.writeLine are bodies here, each
 // raw Field's storage where its Origin states (SPEC 5.7).
 #Lang("BufferFull")
 public struct BufferFull
@@ -471,6 +471,11 @@ public group Text
             if not Text.validUtf8((*repr).data, bytes.length) => return .Err(Text.InvalidUtf8.init())
         return .Ok(Text.Utf8Slice.init(bytes))
 
+    #Lang("TextWriter")
+    #Intrinsic("ErasedWriter")
+    public func writer<W>(destination: uniq/W) -> Utf8Writer
+        W is BufferWriter
+
     /// Whether a buffer's unvalidated suffix, the bytes from `validated` to `length` at `data`, is UTF-8
     /// (`validUtf8`). The buffer keeps `0 <= validated <= length`, which bounds the difference.
     ///
@@ -536,6 +541,14 @@ public group Console
     #Lang("WriteLine")
     #CallerLocation
     public func writeLine(text: ref/string) => Console.writeLine(Text.utf8(text))
+
+    /// Writes the `length` bytes at `data` to standard output; Aborts with `KIMI_E_STDOUT` when the host does not accept
+    /// them (SPEC 22.7), and may leave partial output.
+    ///
+    /// - safety: `length >= 0`, and the `length` bytes at `data` lie within its provenance and are readable.
+    #Lang("ConsoleWriteStdout")
+    #Intrinsic("WriteStdout")
+    internal unsafe func writeStdout(data: raw/u8, length: isize)
 
 // SPEC 22.10.2, 22.1: the bodies of bool's, char's, Unit's, the view's, f32's, f64's, Wrapping<T>'s and the integers'
 // built-in conformances to Utf8Format, which the witness table's BoolFormat, CharFormat, UnitFormat, Utf8SliceFormat,

@@ -531,13 +531,13 @@ public static partial class Parser
         constructor.SetBaseInitializer(new InvocationKoto(ref reader, SourceSpan.FromBounds(baseSpan.Start, Math.Max(baseSpan.End, close.End)), target, arguments, labels));
     }
 
-    /// <summary>Parses a named function body, allowing bodyless imported declarations.</summary>
+    /// <summary>Parses a named function body, allowing bodyless imported declarations and those that omit their Body (<see cref="FunctionKoto.OmitsBody"/>).</summary>
     /// <param name="reader">The token reader.</param>
     /// <param name="function">The parsed declaration.</param>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal static void ParseNamedFunctionBody(ref TokenReader reader, FunctionKoto function)
     {
-        if (reader.CurrentTokenKind == TokenKind.EqualsGreaterThan || reader.TrySkipSeparatorsTo(TokenKind.StartBlock))
+        if (function.OmitsBody || reader.CurrentTokenKind == TokenKind.EqualsGreaterThan || reader.TrySkipSeparatorsTo(TokenKind.StartBlock))
         {
             function.Parse(ref reader);
             return;

@@ -247,6 +247,35 @@ public class ParserOptimizationTest
         Assert.Empty(TestDiagnostics.Of(c));
     }
 
+    // SPEC 22.1, IMPL 21.3.4 (R8-G1 G1-5, the Body omission): in the Kimi library a function or constructor carrying `#Intrinsic` or
+    // `#Unsupported`, or a constructor carrying `#Lang` (a linked constructor), may omit its Body without a record, and a block after its
+    // header with only its clauses (SPEC 7.5's leading region) is no Body; every other declaration needs its Body. In a user source those
+    // Attributes are unknown, so the missing Body keeps its record. Such a constructor with a body keeps it
+    // (ALibraryConstructorTakesOnlyTheImplementationAttributes).
+    [Theory]
+    [InlineData(true, "#Intrinsic(\"Abort\")\n    public func f() -> i32", 0, 0)]
+    [InlineData(true, "#Unsupported\n    public func f() -> i32", 0, 0)]
+    [InlineData(true, "#Lang(\"ArrayInit\")\n    public init(x: i32)", 0, 0)]
+    [InlineData(true, "#Intrinsic(\"Abort\")\n    public init(x: i32)", 0, 0)]
+    [InlineData(true, "#Intrinsic(\"MakeObj\")\n    public func f<T>(value: T) -> i32\n        T is Copy", 0, 1)]
+    [InlineData(true, "#Lang(\"ArrayInit\")\n    public func f() -> i32", 1, 0)]
+    [InlineData(true, "#CallerLocation\n    public init(x: i32)", 1, 0)]
+    [InlineData(true, "public func f() -> i32", 1, 0)]
+    [InlineData(false, "#Intrinsic(\"Abort\")\n    public func f() -> i32", 1, 0)]
+    [InlineData(false, "#Unsupported\n    public init(x: i32)", 1, 0)]
+    public void OnlyALibraryImplementationKindOmitsTheBody(bool library, string declaration, int missing, int constraints)
+    {
+        var c = Compilation.CreateForTest();
+        var kotonoha = library ? c.Library.Kotonoha : c.Kotonoha;
+        kotonoha.CreateCodeContext().Parse(kotonoha.RootKoto, $"public struct Probe\n    public let x: i32\n    {declaration}\n");
+        var probe = Assert.Single(kotonoha.RootKoto.NestedContainers, static x => x is StructKoto { Name: "Probe" });
+        var function = Assert.Single(probe.Members.OfType<FunctionKoto>(), static x => !x.IsImplicitConstructor);
+        Assert.Equal(missing, TestDiagnostics.Of(c).Count(static x => x.Code == nameof(Kimi.DiagnosticCode.MissingSyntax_Kd)));
+        Assert.Equal((missing == 1, constraints), (function.MissingBody, function.TypeConstraints.Count));
+        Assert.Null(function.Body);
+        ParseTestHelper.VerifyParents(function);
+    }
+
     // The re-classification after an edit (Koto.ReplaceChild) reads the same mark: the node's own Kotonoha.
     [Fact]
     public void AReplacedNameIsClassifiedByItsKotonoha()

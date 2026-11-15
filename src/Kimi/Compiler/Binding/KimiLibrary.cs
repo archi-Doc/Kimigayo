@@ -22,30 +22,13 @@ public sealed partial class KimiLibrary
         this.Kotonoha = Kotonoha.ForKimiLibrary(compilation, "compiler://Kimi/" + Compilation.CurrentLanguageVersion);
         this.Scope = new(this.Kotonoha.RootKoto);
         this.Module = new("Kimi", BindingSymbolKind.Container, this.Kotonoha.RootKoto, this.Scope);
-        var context = new TokenContext(null, ModifierKind.Public, false);
-        this.Console = (GroupKoto)this.Kotonoha.RootKoto.GetOrAddGroup("Console", TokenKind.Group, context, default);
-        this.ConsoleScope = new(this.Console) { Parent = this.Scope };
-        this.ConsoleSymbol = new("Console", BindingSymbolKind.Container, this.Console, this.Scope);
-        this.Intrinsics = (GroupKoto)this.Kotonoha.RootKoto.GetOrAddGroup("Intrinsics", TokenKind.Group, context, default);
-        this.IntrinsicsScope = new(this.Intrinsics) { Parent = this.Scope };
-        this.IntrinsicsSymbol = new("Intrinsics", BindingSymbolKind.Container, this.Intrinsics, this.Scope);
-        this.Test = (GroupKoto)this.Kotonoha.RootKoto.GetOrAddGroup("Test", TokenKind.Group, context, default);
-        this.TestScope = new(this.Test) { Parent = this.Scope };
-        this.TestSymbol = new("Test", BindingSymbolKind.Container, this.Test, this.Scope);
-        this.Text = (GroupKoto)this.Kotonoha.RootKoto.GetOrAddGroup("Text", TokenKind.Group, context, default);
-        this.TextScope = new(this.Text) { Parent = this.Scope };
-        this.TextSymbol = new("Text", BindingSymbolKind.Container, this.Text, this.Scope);
         this.LoadSources();
         var declarations = new Koto?[KimiLibraryCatalog.LangItemCount]; // By KimiDeclarationId.
         FindLangItems(this.Kotonoha.RootKoto, declarations);
         this.ReadPrivateDeclarations(declarations);
         var entries = KimiLibraryCatalog.Entries;
         this.symbols = new BindingSymbol?[entries.Length];
-        // The four containers, then the catalog's symbols in catalog order.
-        this.registeredSymbols = new(4 + entries.Length)
-        {
-            this.ConsoleSymbol, this.IntrinsicsSymbol, this.TestSymbol, this.TextSymbol,
-        };
+        this.registeredSymbols = new(entries.Length); // The catalog's symbols in catalog order.
         this.RegisterCatalog(declarations);
 
         this.Copy = this.GetSymbol(KimiDeclarationId.Copy)!;
@@ -280,30 +263,6 @@ public sealed partial class KimiLibrary
 
     internal FunctionKoto DictionaryCompact { get; private set; }
 
-    internal GroupKoto Console { get; }
-
-    internal GroupKoto Test { get; }
-
-    internal BindingScope TestScope { get; }
-
-    internal BindingSymbol TestSymbol { get; }
-
-    internal GroupKoto Intrinsics { get; }
-
-    internal BindingScope IntrinsicsScope { get; }
-
-    internal BindingSymbol IntrinsicsSymbol { get; }
-
-    internal BindingScope ConsoleScope { get; }
-
-    internal BindingSymbol ConsoleSymbol { get; }
-
-    internal GroupKoto Text { get; }
-
-    internal BindingScope TextScope { get; }
-
-    internal BindingSymbol TextSymbol { get; }
-
     // A compiler-only call identity, never entered into Kimi or source name lookup.
     internal BindingSymbol Abort { get; }
 
@@ -325,19 +284,13 @@ public sealed partial class KimiLibrary
     internal BindingSymbol PresentedTarget(BindingSymbol target)
         => target.LibraryDeclaration is { } id && KimiLibraryCatalog.PresentationOf(id) is { } presented && this.GetSymbol(presented) is { } symbol ? symbol : target;
 
-    internal BindingScope? SignatureScope(DeclarationContainerKoto container)
-        => ReferenceEquals(container, this.Console) ? this.ConsoleScope :
-            ReferenceEquals(container, this.Intrinsics) ? this.IntrinsicsScope :
-            ReferenceEquals(container, this.Test) ? this.TestScope : null;
-
     internal void Restore()
     {
         this.Scope.Reset();
-        // Intrinsic requirements and signature-only group shells are already
-        // registered. Their source members and all ordinary helpers use normal indexing.
+        // The judged intrinsic Contracts are already registered; every other library declaration uses normal indexing.
         foreach (var symbol in this.registeredSymbols)
         {
-            if (symbol.Intrinsic != IntrinsicKind.None || (symbol.Kind == BindingSymbolKind.Container && !ReferenceEquals(symbol, this.TextSymbol)))
+            if (symbol.Intrinsic != IntrinsicKind.None)
             {
                 this.Scope.Types.Add(symbol.Name, symbol);
                 symbol.Declaration.BoundSymbol = symbol;
@@ -345,10 +298,6 @@ public sealed partial class KimiLibrary
             }
         }
 
-        this.IntrinsicsScope.Reset();
-        this.ConsoleScope.Reset();
-        this.TestScope.Reset();
-        this.TextScope.Reset();
         this.Kotonoha.RootKoto.BoundSymbol = this.Module;
         this.Kotonoha.RootKoto.BindingState = BindingState.Resolved;
     }
@@ -465,20 +414,13 @@ public sealed partial class KimiLibrary
     }
 
     // SPEC 22.1: the catalog's symbols in catalog order, each bound to the declaration its `#Lang` marks, in the scope of the container
-    // that declares it: the root's, a signature-only group's or Text's own scope, else one scope per container whose parent is its
-    // declaring container's (indexing later gives a member's symbol its container's ordinary member scope). A symbol carries its
-    // declaration's `#CallerLocation` and `#Intrinsic` (DefinitionOf).
+    // that declares it: the root's, else one scope per container whose parent is its declaring container's (indexing later gives a
+    // member's symbol its container's ordinary member scope). A symbol carries its declaration's `#CallerLocation` and `#Intrinsic`
+    // (DefinitionOf).
     private void RegisterCatalog(Koto?[] declarations)
     {
         var entries = KimiLibraryCatalog.Entries;
-        var scopes = new Dictionary<Koto, BindingScope>(ReferenceEqualityComparer.Instance)
-        {
-            [this.Kotonoha.RootKoto] = this.Scope,
-            [this.Console] = this.ConsoleScope,
-            [this.Intrinsics] = this.IntrinsicsScope,
-            [this.Test] = this.TestScope,
-            [this.Text] = this.TextScope,
-        };
+        var scopes = new Dictionary<Koto, BindingScope>(ReferenceEqualityComparer.Instance) { [this.Kotonoha.RootKoto] = this.Scope };
         for (var i = 0; i < entries.Length; i++)
         {
             ref readonly var entry = ref entries[i];

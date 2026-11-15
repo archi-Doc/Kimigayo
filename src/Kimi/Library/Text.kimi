@@ -1,5 +1,0 @@
-// Compiler-implemented operations loaded into Kimi.Text.
-#Lang("TextWriter")
-#Intrinsic("ErasedWriter")
-public func writer<W>(destination: uniq/W) -> Utf8Writer
-    W is BufferWriter

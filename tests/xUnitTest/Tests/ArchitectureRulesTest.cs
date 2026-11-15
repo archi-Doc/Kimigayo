@@ -179,6 +179,8 @@ public class ArchitectureRulesTest
     [InlineData("The RawStep vocabulary", "src/Kimi/Compiler", "*.cs", @"\bRawStep\b", 0)]
     // G416 U1: a value's parts are Holdings' entries, read by every fit and fold; the private walks stay gone (RP6).
     [InlineData("Private walks of what a value holds", "src/Kimi/Compiler/Binding", "*.cs", @"\b(?:HeldParts|BorrowShaped|BorrowTarget|PartPlace|HeldPart|Stores)\b(?=\()|\bPartPlace\b", 0)]
+    // R7-N4 (RP6): Binding names no attribute by string; AttributeKoto.Classify is the one read of an attribute's Name.
+    [InlineData("Attribute Name strings in Binding", "src/Kimi/Compiler/Binding", "*.cs", @"""(?:Layout|LibraryImport|Test|Lang|Intrinsic|CallerLocation|Unsupported)""", 0)]
     public void SourcePatternDoesNotGrow(string rule, string directory, string pattern, string regex, int limit)
     {
         var expression = new Regex(regex);
@@ -212,9 +214,8 @@ public class ArchitectureRulesTest
     // (src/Benchmark) are not tests. A letter in brackets keeps the pattern from matching its source.
     [InlineData("Allocation windows outside AllocationMeasurement", "tests", @"\bGC\.GetAllocatedBytesForCurrentThrea[d]\b", "xUnitTest/AllocationMeasurement.cs=7")]
     // R7-N4 (RP6): the parser classifies an attribute by its Name once, so AttributeKoto.Classify is the one read of the Name, and Binding
-    // names no attribute by string (its two hits are the Kimi.Test group's Name). A Name the compiler reads joins the second pattern.
+    // names no attribute by string (SourcePatternDoesNotGrow's row; its two hits were the deleted Kimi.Test shell's Name, R8-G1 G1-5).
     [InlineData("Reads of an attribute's Name", "src/Kimi/Compiler", @"\bIdentifierKoto\b", "Parsing/Koto/Expressions/UnaryKoto.cs=2")]
-    [InlineData("Attribute Name strings in Binding", "src/Kimi/Compiler/Binding", @"""(?:Layout|LibraryImport|Test|Lang|Intrinsic|CallerLocation|Unsupported)""", "KimiLibrary.cs=2")]
     // R7-N2a (RP6): a struct has one base clause (SPEC 6.2.2), read through StructKoto.BaseClause. `.Bases` stays only where the container may
     // be an enum, which keeps its whole list until PrepareStorage fails it, or a Contract, whose refinements are many (BuildContract).
     [InlineData("A container's base clauses", "src/Kimi/Compiler/Binding", @"\.Bases\b|\{ Bases\b", "Binding.Contracts.cs=2;Binding.Expressions.cs=2;Binding.OriginProof.cs=2;Binding.Storage.cs=3")]

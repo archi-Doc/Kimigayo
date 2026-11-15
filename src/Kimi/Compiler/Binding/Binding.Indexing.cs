@@ -44,31 +44,12 @@ public sealed partial class Binding
     {
         this.Library.Restore();
         this.scopes[this.Library.Kotonoha.RootKoto] = this.Library.Scope;
-        this.scopes[this.Library.Intrinsics] = this.Library.IntrinsicsScope;
-        this.scopes[this.Library.Console] = this.Library.ConsoleScope;
-        this.scopes[this.Library.Test] = this.Library.TestScope;
-        this.scopes[this.Library.Text] = this.Library.TextScope;
         this.indexer.Scope = this.Library.Scope;
         var libraryRoot = this.Library.Kotonoha.RootKoto;
         for (var i = 0; i < libraryRoot.NestedContainers.Count; i++)
         {
             var declaration = libraryRoot.NestedContainers[i];
-            if (declaration.BoundSymbol?.Intrinsic is not (null or IntrinsicKind.None))
-            {
-                continue;
-            }
-
-            if (this.Library.SignatureScope(declaration) is { } signatureScope)
-            {
-                this.indexer.Scope = signatureScope;
-                for (var m = 0; m < declaration.Members.Count; m++)
-                {
-                    this.indexer.Visit(declaration.Members[m]);
-                }
-
-                this.indexer.Scope = this.Library.Scope;
-            }
-            else
+            if (declaration.BoundSymbol?.Intrinsic is null or IntrinsicKind.None)
             {
                 this.indexer.Visit(declaration);
             }

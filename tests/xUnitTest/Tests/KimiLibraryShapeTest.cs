@@ -230,17 +230,12 @@ public partial class KimiLibraryShapeTest
     // IMPL 21.3.4 (R8-G1 row L2): a function or constructor without a definition, outside a Contract, is a foreign import, or a
     // cataloged compiler function carrying `#Intrinsic` exactly when its symbol's Definition is an intrinsic, or a `#Lang`
     // constructor the catalog links to the internal function that defines it; a function with a definition carries no `#Intrinsic`.
-    // `#Unsupported` joins with its declarations and its reader (G1-3b), so none is written yet. The signature-only groups hold only
-    // registered compiler functions.
+    // `#Unsupported` joins with its declarations and its reader (G1-3b), so none is written yet. Every library source is ordinary
+    // (R8-G1 G1-5): such a declaration omits its Body by its Attribute (FunctionKoto.OmitsBody).
     [Fact]
     public void BodilessFunctionsAreCompilerFunctions()
     {
         var c = Library.Value;
-        foreach (var group in new GroupKoto[] { c.Library.Intrinsics, c.Library.Console, c.Library.Test })
-        {
-            Assert.All(group.Members, member => Assert.Contains(Assert.IsType<FunctionKoto>(member).SymbolOf()!, c.Library.RegisteredSymbols.ToArray()));
-        }
-
         Visit(c.Library.Kotonoha.RootKoto);
         Assert.Empty(LibraryAttributes(AttributeKind.Unsupported));
 

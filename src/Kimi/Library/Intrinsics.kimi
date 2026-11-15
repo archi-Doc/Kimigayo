@@ -1,5 +1,5 @@
 /// Object creation, cloning and the whole-value updates (SPEC 13.6.2, 15.7). The compiler implements the operations
-/// `IntrinsicOperations.kimi` declares. `replace`, `exchange` and `swap` take, destroy and place through raw Places of their
+/// marked `#Intrinsic`. `replace`, `exchange` and `swap` take, destroy and place through raw Places of their
 /// targets: each target is the complete, Initialized referent of a live exclusive borrow, readable and writable while its
 /// Loan lives, and `swap`'s two targets are disjoint (SPEC 15.7.2), so every take and placement meets the raw access
 /// conditions and the placement rule (SPEC 5.2, 5.2.1, 5.2.3). Callers are checked against SPEC 15.7, never these bodies.
@@ -32,3 +32,20 @@ public group Intrinsics
             let held = (*one)@move
             Raw.initialize(one, (*other)@move)
             Raw.initialize(other, held@move)
+
+    #Lang("MakeObj")
+    #Intrinsic("MakeObj")
+    public func makeObj<T>(value: T) -> obj/T
+        T is ObjectPayload
+    #Lang("MakeRc")
+    #Intrinsic("MakeRc")
+    public func makeRc<T>(value: T) -> rc/T
+        T is ObjectPayload
+    #Lang("MakeArc")
+    #Intrinsic("MakeArc")
+    public func makeArc<T>(value: T) -> arc/T
+        T is ObjectPayload
+    #Lang("Clone")
+    #Intrinsic("Clone")
+    public func clone<s/T>(value: ref/(s/T)) -> s/T
+        s is rc or arc

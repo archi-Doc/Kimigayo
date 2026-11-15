@@ -2,16 +2,11 @@
 
 namespace Kimi.Compiler;
 
+// The container IsUnsourced matches an unsourced entry's Name in (temporary with IsUnsourced, removed by G1-3b-2).
 internal enum KimiLibraryContainer : byte
 {
     Root,
-    Console,
     Intrinsics,
-    Test,
-    Array,
-    Text,
-    Storage,
-    Raw,
 }
 
 /// <summary>Immutable recognition rules, shared across compilations. Stable IDs are independent of catalog and syntax order. The entries
