@@ -21,7 +21,7 @@ namespace Kimi.Compiler;
 // - Prohibitions: no second statement of which Contract a built-in Type conforms to through a group; a receiver's Type (WitnessReceiver) and
 //   the fixed array's member lookup are other facts. A new built-in Type's conformance adds a row, never a witness kind, a proof arm or a
 //   name switch: a WitnessMembers value, a WitnessGroup arm, a WitnessReceiver arm, a KimiLibrary.Members arm and the group's property,
-//   and a CallerLocation catalog row for the group's function when its witness can Abort on its caller's behalf (SPEC 22.5.1, until G1).
+//   read by its `#Lang`, and a catalog entry for its `#CallerLocation` function when its witness can Abort on its caller's behalf (SPEC 22.5.1).
 //   A receiver-only group (the fixed array's members, SPEC 22.1) adds a value, a WitnessReceiver arm, a Members arm and its property, and
 //   no WitnessGroup arm: a built-in conformance adds no member (PLAN G776-b). No member lookup, diagnostic or written state beyond interning.
 
