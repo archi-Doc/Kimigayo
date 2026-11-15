@@ -115,7 +115,6 @@ public struct Utf8Writer {target}
     // A deferred string literal's bytes, which are static storage (SPEC 3.1.2).
     var pending: raw/u8 during static
     var pendingLength: isize
-    let logicalLength: isize
     let loan: Loan<uniq/u8 during target>
 
     /// An adapter over the Writer at `destination`, without a failure, a hint or a deferred literal. The caller's
@@ -130,7 +129,6 @@ public struct Utf8Writer {target}
         self.hint = 0
         self.pending = null
         self.pendingLength = 0
-        self.logicalLength = 0
         self.loan = Loan<uniq/u8 during target>.init()
 
     /// The recorded failure (`status`) without formatting; otherwise `value`'s `format` once, the first failure it

@@ -540,7 +540,7 @@ public partial class KimiLibraryShapeTest
     [InlineData("Wrapping", "public struct Wrapping<T>")]
     [InlineData("BufferFull", "public struct BufferFull")]
     [InlineData("WriteWindow", "public struct WriteWindow {source}\nlet state: raw/u8 during source\nlet start: isize\npublic var written: isize\npublic var remaining: isize\nlet loan: Loan<uniq/u8 during source>")]
-    [InlineData("Utf8Writer", "public struct Utf8Writer {target}\nlet destination: raw/u8 during target\nlet dispatch: raw/u8 during static\nlet kind: WriterDestination\nvar failed: bool\ninternal var hint: isize\nvar pending: raw/u8 during static\nvar pendingLength: isize\nlet logicalLength: isize\nlet loan: Loan<uniq/u8 during target>")]
+    [InlineData("Utf8Writer", "public struct Utf8Writer {target}\nlet destination: raw/u8 during target\nlet dispatch: raw/u8 during static\nlet kind: WriterDestination\nvar failed: bool\ninternal var hint: isize\nvar pending: raw/u8 during static\nvar pendingLength: isize\nlet loan: Loan<uniq/u8 during target>")]
     [InlineData("Text.FixedBuffer", "public struct FixedBuffer {source}\nlet data: raw/u8 during source\npublic let capacity: isize\npublic var length: isize\nvar validated: isize\nlet loan: Loan<uniq/u8 during source>")]
     [InlineData("Text.HeapBuffer", "public struct HeapBuffer\nvar data: raw/u8 during self\npublic var capacity: isize\npublic var length: isize\nvar validated: isize\ndrop")]
     [InlineData("Text.Utf8Slice", "public struct Utf8Slice {source}\nlet value: Slice<u8> during source")]
@@ -610,12 +610,12 @@ public partial class KimiLibraryShapeTest
 
     // Layouts read at fixed offsets, each row by its reader: Utf8Writer's destination and dispatch by the kept runtime
     // (ErasedWriterRuntime.ll.in: __kimi_erased_reserve loads them), its hint at 16 by FunctionCodegenTest.Interpolation's Hint helper,
-    // and its other offsets, which no runtime reads, are pinned so that R8-W2 b2-2's layout change (logicalLength deleted, 56 -> 48) is
-    // checked against them; WriteWindow's by __kimi_erased_reserve (written and remaining, in the Result's payload at byte 8);
-    // FixedBuffer's and HeapBuffer's equal Storage.BufferRepr's, as which the library reads a window's state (Formatting.kimi,
-    // WriteWindow.commit, commitUtf8 and next).
+    // and its size and other offsets, which nothing reads at a fixed offset, are pinned because every adapter's generated size and
+    // Field addresses follow them, so that a layout change is an explicit edit of this row; WriteWindow's by __kimi_erased_reserve
+    // (written and remaining, in the Result's payload at byte 8); FixedBuffer's and HeapBuffer's equal Storage.BufferRepr's, as which
+    // the library reads a window's state (Formatting.kimi, WriteWindow.commit, commitUtf8 and next).
     [Theory]
-    [InlineData("Utf8Writer", 56, "destination", 0, "dispatch", 8, "hint", 16, "pending", 24, "pendingLength", 32, "logicalLength", 40, "kind", 48, "failed", 52)]
+    [InlineData("Utf8Writer", 48, "destination", 0, "dispatch", 8, "hint", 16, "pending", 24, "pendingLength", 32, "kind", 40, "failed", 44)]
     [InlineData("Text.FixedBuffer", 32, "data", 0, "capacity", 8, "length", 16, "validated", 24)]
     [InlineData("Text.HeapBuffer", 32, "data", 0, "capacity", 8, "length", 16, "validated", 24)]
     [InlineData("WriteWindow", 32, "state", 0, "start", 8, "written", 16, "remaining", 24)]
