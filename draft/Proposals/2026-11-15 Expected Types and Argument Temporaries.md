@@ -89,3 +89,18 @@ func kf(x: ref/[2 of i64]) -> i32 => 0
    that implement it; STATUS and DECISIONS with them.
 4. In-flight units the principles supersede or must wait (G910, G915, G916, G267fd, G812's literal rows) are held or re-scoped by the
    Front's plan; O-331 is answered by this proposal.
+
+## 6. The owner's readings (O-333, 2026-11-15)
+
+The design's four readings before its prototype (`front\notes\ArgFlow\design.md`, `census.md`: 435 programs on dev b1aaf418d, 84
+move under A/B); the owner chose, verbatim 「O-333 R2 (a)・R3 (a)・R6 (b)・R5 (a)」. With the prelude of §2 and
+`func fo2(x: i32) -> i32 => 0`, `func fo2(x: i64) -> i32 => 1`, `func fo3(x: ref/[2 of i64]) -> i32 => 0`,
+`func fo3(x: bool) -> i32 => 1`, `func put<T>(a: T, b: T) -> () => ()`:
+
+| Reading | Rule | Program and verdict |
+| --- | --- | --- |
+| R2 (a) | A and B apply at every fixed expected Type: a declared Type is an expected Type as a parameter's is. | `let x: ref/[2 of i64] = [2 of idf(1)]`: accepted (`idf<i64>`; one temporary at the `let`, ending with it). |
+| R3 (a) | At overloads, a part whose Type depends on the expected Type is checked at each remaining candidate; independent parts are typed once. | `fo3([2 of idf(1)])`: accepted (only `ref/[2 of i64]` fits); `fo2(idf(1))`: `AmbiguousBinding_Kd` (both fit, no operation). |
+| R6 (b) | A join is one value (Principle B): a Non-Copy Place source is not taken by value; a join of Places only stays a Place join. | `kd(if c => dm else => ["b": 2])` with `dm: Dictionary<string, i32>`: `TransferRequired_Kd` (write `dm@move`); `kd(if c => dm else => dm2)`: accepted. |
+| R5 (a) | A join's sources classify as the same expression would outside a join (one rule). | `put(f, if c => [y, y] else => [y, y])` with `f: [2 of i32]`, `y: i32`: accepted, `T = [2 of i32]`. |
+| R9 (a) (O-339, verbatim 「O-339 (a)」) | Principle B covers both borrowed parameter forms: at `objref/U` as at `ref/U`, a value expression is one temporary at the argument, borrowed once; `uniq/U` borrows no temporary. | With `func ko(x: objref/Box) -> i32 => 0`: `ko(if c => Box.init(1)@obj else => Box.init(2)@obj)`: accepted; `ko(if c => Box.init(1)@obj else => bx)` with `bx: obj/Box`: `TransferRequired_Kd` (one value; R6 (b)). |
