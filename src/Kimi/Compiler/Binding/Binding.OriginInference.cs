@@ -45,6 +45,7 @@ public sealed partial class Binding
         inference.Variables.Clear();
         inference.WellFormed.Clear();
         inference.PremiseSolved.Clear();
+        inference.Quantifiers.Clear();
         inference.Comparison = default;
         inference.Conditional = false;
         inference.Source = default;
@@ -55,18 +56,6 @@ public sealed partial class Binding
     {
         if (!pattern.CarriesOrigin || !actual.CarriesOrigin)
         {
-            return;
-        }
-
-        if (pattern.Kind == BoundTypeKind.Function && actual.Kind == BoundTypeKind.Function && PerCallShape(pattern, null, any: true) && PerCallShape(actual, null, any: true))
-        {
-            // These Origins are quantified by the nested Function Types, not by this call's binder.
-            // Their positional correspondence is checked by the ordinary Type relation.
-            // The test is by slot index, of any binder (`any`), not by the Types' binders (BoundType.Binder): it also drops the bounds
-            // of a nested Type whose fixed input sits at its own index, which the walk then judges with the exact binders. With the
-            // exact test those bounds reach the solver, which takes a nested Type's own per-call Origin for a bound of this call and
-            // rejects valid programs (PLAN G904's rows l0v, l1v, n0i, e0v, e1v; b0v, b1v on dev). Removal: the unit that keeps a
-            // nested Function Type's own per-call Origins out of the bounds, Origin by Origin (PLAN G904's s5v and m0v-m3v row).
             return;
         }
 
@@ -82,6 +71,16 @@ public sealed partial class Binding
             Add(pattern.OriginArguments[i], actual.OriginArguments[i], Compose(polarity, variance), 0);
         }
 
+        // SPEC 15.3.4, 10.7: inside a Function Type pair, each side's own per-call Origins (an Input Origin of its BoundType.Binder) are
+        // that Type's quantification, which the Type relation corresponds position by position; they are never bounds of this call's
+        // Origins, at any slot or depth.
+        var enclosing = inference.Quantifiers.Count;
+        if (pattern.Kind == BoundTypeKind.Function && actual.Kind == BoundTypeKind.Function)
+        {
+            inference.Enter(pattern.Binder);
+            inference.Enter(actual.Binder);
+        }
+
         for (var i = 0; i < Math.Min(pattern.Components.Count, actual.Components.Count); i++)
         {
             var sign = IsInvariantLayer(pattern, this, null, inference.Comparison) ? 0 :
@@ -94,6 +93,8 @@ public sealed partial class Binding
             this.CollectOriginInference(pattern.Components[i], actual.Components[i], inference, sign, result, known);
         }
 
+        inference.Quantifiers.RemoveRange(enclosing, inference.Quantifiers.Count - enclosing);
+
         static int Compose(int sign, OriginVariance variance) => variance == OriginVariance.Covariant ? sign : variance == OriginVariance.Contravariant ? -sign : 0;
 
         void Add(BoundOrigin parameter, BoundOrigin value, int sign, ulong condition)
@@ -101,6 +102,11 @@ public sealed partial class Binding
             if (known is not null && QuantifiedBy(value, known))
             {
                 return; // SPEC 10.8: a known call signature's own Origin is no bound for the callee's Origins.
+            }
+
+            if (inference.Quantifies(parameter) || inference.Quantifies(value))
+            {
+                return;
             }
 
             if (sign > 0 && !result)
@@ -453,6 +459,10 @@ public sealed partial class Binding
         // position fixes this Origin" fact: U4's Decided column takes it over (its removal condition).
         internal List<BoundOrigin> PremiseSolved { get; } = new();
 
+        // SPEC 15.3.4: the per-call binders (BoundType.Binder) of the Function Types the collection is inside, on either side
+        // (CollectOriginInference, the one writer); empty between collections.
+        internal List<Koto> Quantifiers { get; } = new();
+
         // The Callable comparison whose implementation the solve instantiates (ContractFits), whose premises its proofs assume; default
         // for a call's solve.
         internal CallableInstance Comparison { get; set; }
@@ -500,6 +510,36 @@ public sealed partial class Binding
 
             this.Bounds.Add((longer, shorter, longerVariable, shorterVariable, this.Source.Member, this.Source.Clause, this.Source.Equality, condition));
             this.Conditional |= condition != 0;
+        }
+
+        internal void Enter(Koto? binder)
+        {
+            if (binder is not null)
+            {
+                this.Quantifiers.Add(binder);
+            }
+        }
+
+        // An Origin that, or an operand of which, a Function Type the collection is inside quantifies per call (Quantifiers).
+        internal bool Quantifies(BoundOrigin origin)
+        {
+            for (var i = 0; origin.Kind == OriginKind.Input && i < this.Quantifiers.Count; i++)
+            {
+                if (ReferenceEquals(origin.Binder, this.Quantifiers[i]))
+                {
+                    return true;
+                }
+            }
+
+            for (var i = 0; i < origin.Operands.Count; i++)
+            {
+                if (this.Quantifies(origin.Operands[i]))
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         // The index of the bound with these ends (its source aside), or -1.
