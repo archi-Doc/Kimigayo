@@ -39,21 +39,19 @@ public sealed partial class Binding
             Add(own);
         }
 
-        for (var current = scope; current is not null; current = current.Parent)
+        // SPEC 8.3.2, 8.5.2, 9.6: the Contracts the premises supply for the Type, one per identity class (each non-Alias row of Enumerate's
+        // rows: the use is judged).
+        var start = this.premiseRows.Count;
+        this.PremiseRows(type, scope, this.premiseRows);
+        for (var i = start; i < this.premiseRows.Count; i++)
         {
-            if (current.Constraints is not { Invalid: false } environment)
+            if (this.premiseRows[i] is { Alias: false, Symbol.Contract: { } shape })
             {
-                continue;
-            }
-
-            foreach (var fact in environment.Facts)
-            {
-                if (fact.Kind == ConstraintKind.Contract && AssociatedIdentityMatches(fact.Subject, type) && fact.Contract?.Contract is not null)
-                {
-                    Add(this.AppliedAssociatedContract(fact, type).Contract!);
-                }
+                Add(shape);
             }
         }
+
+        this.premiseRows.RemoveRange(start, this.premiseRows.Count - start);
 
         // SPEC 8.7.4: PrimitiveInteger implies Position, whose requirement is called through an integer Type parameter;
         // concrete integers gain no members. Temporary: this clause names Position apart from PrimitiveIntegerSupplies until
