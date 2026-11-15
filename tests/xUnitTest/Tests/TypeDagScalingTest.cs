@@ -254,6 +254,42 @@ public partial class TypeDagScalingTest
         }
     }
 
+    // PLAN G492-a (ii) (design review M1): a `let` DAG used after its declaration, valid (SPEC 15.6.5: every leaf is `p`'s): a generic
+    // call fitting the whole opened DAG, a `let` copy and a projection to a leaf (use), or a Closure capturing it and returning a leaf
+    // (capture). At 26 the DAG has 2^27 paths, so a walk per path hangs. Revision 2: a `let` chain whose every level meets the two locals
+    // of the level before (meet; valid, SPEC 15.3.6: each value is `(p and q)`), read in its own body as its values: at 26 a read per path
+    // through the values would take 2^26 steps.
+    [Theory]
+    [InlineData("use", 12)]
+    [InlineData("use", 20)]
+    [InlineData("use", 26)]
+    [InlineData("capture", 12)]
+    [InlineData("capture", 20)]
+    [InlineData("capture", 26)]
+    [InlineData("meet", 12)]
+    [InlineData("meet", 20)]
+    [InlineData("meet", 26)]
+    public void AUsedLetDagIsLinearInDistinctParts(string shape, int depth)
+    {
+        var c = Checked(LetDagUse(shape, depth));
+        Assert.Equal(string.Empty, MinimalEmissionTest.Problems(c));
+        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c));
+    }
+
+    // A warm rebind and a warm Analyze of a used `let` DAG allocate nothing: the opening's and the walks' tables keep their capacity.
+    [Theory]
+    [InlineData("use")]
+    [InlineData("meet")]
+    [Trait("Purpose", "Allocation")]
+    public void AWarmPassOverAUsedLetDagAllocatesNothing(string shape)
+    {
+        var c = Checked(LetDagUse(shape, 12));
+        var valid = true;
+        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Bind().IsComplete));
+        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Analyze().IsVerified));
+        Assert.True(valid, MinimalEmissionTest.Describe(c));
+    }
+
     // SPEC 15.6.6: a part shared at depth 0 and 70 levels down a Tuple keeps the bound's verdict in either order: at 70 a later write
     // meets A5's depth bound, a located OwnershipDepthLimit_Kd at `let d` (DECISIONS R4-M153), where the old analysis's bound retained the
     // Loan and the write conflicted with it (R6-check H5; H3b T48, class 3); without the write there is none. At 70 each Tuple more than
@@ -437,6 +473,32 @@ public partial class TypeDagScalingTest
 
                 return text.Append(shape == "originLets" ? "    return\npublic func main() -> ()\n    let x = 1\n    f(x@ref)\n    return\n" : "    return\npublic func main() -> ()\n    f(1)\n    return\n").ToString();
         }
+    }
+
+    // A `let` DAG t_{k+1} = (t_k, t_k), t_0 = (p, p), and its use: a leaf through `keep`, a `let` copy and depth + 1 projections, or a
+    // Closure that captures it (the review's du1 and du2 rows).
+    private static string LetDagUse(string shape, int depth)
+    {
+        if (shape == "meet")
+        {
+            var chain = new System.Text.StringBuilder("func use(p: ref/i64, q: ref/i64, k: bool) -> ref/i64 during (p and q)\n    let a0 = p\n    let b0 = q\n");
+            for (var i = 1; i <= depth; i++)
+            {
+                chain.Append($"    let a{i} = if k => a{i - 1} else => b{i - 1}\n    let b{i} = if k => b{i - 1} else => a{i - 1}\n");
+            }
+
+            return chain.Append($"    return a{depth}\npublic func main() => ()\n").ToString();
+        }
+
+        var text = new System.Text.StringBuilder("func keep<T>(x: T) -> T\n    return x@move\nfunc use(p: ref/i64) -> ref/i64 during p\n    let t0 = (p, p)\n");
+        for (var i = 1; i <= depth; i++)
+        {
+            text.Append($"    let t{i} = (t{i - 1}, t{i - 1})\n");
+        }
+
+        var path = string.Join('.', Enumerable.Range(0, depth + 1).Select(static i => i % 2));
+        text.Append(shape == "use" ? $"    let u = keep(t{depth})\n    let w = u\n    return w.{path}\n" : $"    let f = func [t{depth}] () -> ref/i64 during p => t{depth}.{path}\n    return f()\n");
+        return text.Append("public func main() => ()\n").ToString();
     }
 
     // A deep-heir chain (valid, SPEC 8.6.2: every level inherits C with Item = Option<i32>): L0 conforms, L(k) : L(k-1), D : L(depth-1),

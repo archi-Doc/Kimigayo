@@ -301,8 +301,7 @@ public sealed partial class Binding
             for (var i = 0; i < types.Count; i++)
             {
                 ComparisonFailure fit;
-                var regional = this.HasLocalRegion(common) || this.HasLocalRegion(types[i]);
-                if (!(regional ? this.CheckTypeUse(types[i], common, node, out fit) : this.FitsTypeAt(types[i], common, node, out fit)))
+                if (!(this.RegionalAt(types[i], common, node) ? this.CheckTypeUse(types[i], common, node, out fit) : this.FitsTypeAt(types[i], common, node, out fit)))
                 {
                     context.Conflict();
                     if (failed is null)

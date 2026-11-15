@@ -7,8 +7,8 @@ namespace Kimi.Compiler;
 // A local's omitted Origins (SPEC 15.3.6, 15.4.4): the Origins its initializer infers while it binds, and the Origins its annotation
 // omits, inferred from the initializer's Type and solved with the local's clauses.
 // - Responsibility: ResolveInitializerOrigins closes the initializer's acquisition (initializerOrigins, whose bounds the fits record in
-//   Binding.OriginProof.cs) and rewrites the initializer's Type; InferLocalOrigins matches the annotation against that Type, giving a
-//   mutable local's slots and every slot no fit binds regions (LocalRegionSlot); SolveLocalBounds solves the slots its clauses bound.
+//   Binding.OriginProof.cs) and rewrites the initializer's Type; InferLocalOrigins matches the annotation against that Type, giving the
+//   local's omitted slots regions (LocalRegionSlot), `let` or `var`; SolveLocalBounds solves the slots its clauses bound.
 // - Inputs: the local's declared and initializer Types, the bounds its initializer's fits recorded, its clauses (originDeclarations).
 // - Outputs: the replacements of the local's two Origin declarations, the local's rewritten Types and annotation nodes, the discharged
 //   inference obligations of resolved Origins, and the region bounds that publish their resolutions.
@@ -122,6 +122,30 @@ public sealed partial class Binding
             return declared;
         }
 
+        if (!IsMutableDeclaration(owner))
+        {
+            // SPEC 15.3.4, 15.3.6, 15.6.5 (PLAN G492-a (ii) revision 2): a `let` local's solved slot is the value of its own region, which
+            // its name denotes: its own body reads the value (RegionValueAtUse), a nested signature or body the region, fixed there.
+            var solved = this.regionWork;
+            solved.Clear();
+            foreach (var replacement in declaration.Forming.Replacements)
+            {
+                if (!IsLocalRegion(replacement.Value))
+                {
+                    solved.Add(replacement.Key);
+                }
+            }
+
+            foreach (var pending in solved)
+            {
+                var region = this.LocalRegionSlot(owner, slot--);
+                this.PublishRegionValue(region, declaration.Forming.Replacements[pending], owner);
+                declaration.Forming.Replacements[pending] = region;
+            }
+
+            solved.Clear();
+        }
+
         declaration.Forming.Scope = scope;
         declaration.Forming.State = 3;
         this.originStateVersion++;
@@ -174,7 +198,11 @@ public sealed partial class Binding
                 else
                 {
                     // SPEC 15.3.6: the slot itself is no candidate, so a slot bound only to itself is a local region (DECISIONS R4-M112).
-                    declaration.Forming.Replacements[pending] = declaration.Forming.Replacements.TryGetValue(pending, out var previous) ? this.Meet(previous, value)
+                    // A `let` local's candidate reads the initializer's regions as their values (PLAN G492-a (ii) revision 2), a binding
+                    // again its own slot's region too; once solved, it is the value of the slot's region (below).
+                    value = this.RegionValueAtUse(value, owner);
+                    declaration.Forming.Replacements[pending] = declaration.Forming.Replacements.TryGetValue(pending, out var previous)
+                        ? this.Meet(this.RegionValueAtUse(previous, owner), value)
                         : ReferenceEquals(value, pending) ? this.LocalRegionSlot(owner, slot--) : value;
                     this.originStateVersion++;
                 }

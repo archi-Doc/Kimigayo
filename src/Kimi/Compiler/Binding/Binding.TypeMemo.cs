@@ -24,8 +24,9 @@ public sealed partial class Binding
     private readonly TypeMemo<BoundType, BoundType?> closedParts = new(); // CloseClosureTypes' images.
 
     // The images of the leaf rewrites, WithoutRawOrigins, WithUnstatedOrigins, WithoutUnstated, SubstituteStoredOrigins, PublishedResult and
-    // ResolveLocalResultOrigins (DECISIONS BU-58, BU-63; PLAN G492-a (ii)): none calls a user of this table while it walks, so a query
-    // never begins inside another and evicts nothing live.
+    // ResolveLocalResultOrigins (DECISIONS BU-58, BU-63; PLAN G492-a (ii)), RegionValuesAt, and LocalBorrowType's opening of a `let`
+    // local, whose answer mints a part's regions the first time the query meets it (a function of the part within its query): none calls
+    // a user of this table while it walks, so a query never begins inside another and evicts nothing live.
     private readonly TypeMemo<BoundType, BoundType?> rewrittenParts = new();
 
     // The states in which a walk met a part, one bit per state (DECISIONS BU-63): the existence walks OperandContexts,

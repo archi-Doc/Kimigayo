@@ -118,7 +118,8 @@ public sealed partial class Binding
             }
         }
 
-        return origin;
+        // PLAN G492-a (ii) revision 2: a `let` region, written or a declaration's replacement, reads as its value in its own body.
+        return this.RegionValueAtUse(origin, use);
     }
 
     // The order in which a judgment fails a relation: Refuted before Unknown before Unrepresentable.
@@ -273,11 +274,12 @@ public sealed partial class Binding
 
     // DECISIONS R4-M126 §2.5 (b): an Origin relation formed naming a pending atom (PendingAtom), new or one obligationSet already holds,
     // joins the list of the outermost unclassified Closure whose atoms it names: one append per formation (PLAN V16), so a relation
-    // formed twice is judged twice, the second finding its use failed or proving it again, with no second record.
+    // formed twice is judged twice, the second finding its use failed or proving it again, with no second record. Its ends are read at
+    // its use (PLAN G492-a (ii) revision 2: a `let` region of the use's own body as its value, which may name a pending atom).
     private void AddPendingRelation(in BindingObligation obligation)
     {
-        if (obligation is not { Kind: BindingObligationKind.OriginOutlives, Longer: { } longer, Shorter: { } shorter } ||
-            PendingOwner(shorter, PendingOwner(longer, null)) is not { } owner)
+        if (obligation is not { Kind: BindingObligationKind.OriginOutlives, Longer: { } longer, Shorter: { } shorter, Use: var use } ||
+            PendingOwner(this.RegionValueAtUse(shorter, use), PendingOwner(this.RegionValueAtUse(longer, use), null)) is not { } owner)
         {
             return;
         }

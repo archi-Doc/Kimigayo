@@ -267,6 +267,9 @@ public sealed partial class Binding
         // contravariant one, and both, as `==` with `actual` first, at an invariant one.
         internal OriginRelationFact? FailedOriginPart(BoundOrigin actual, BoundOrigin expected, OriginVariance variance, ulong condition = 0)
         {
+            // PLAN G492-a (ii) revision 2: a position's Origins read at the use, a `let` region in its own body as its value (SPEC 15.3.6).
+            actual = binding.RegionValueAtUse(actual, use);
+            expected = binding.RegionValueAtUse(expected, use);
             if (ReferenceEquals(actual, expected))
             {
                 return null;

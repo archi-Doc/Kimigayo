@@ -301,7 +301,7 @@ public sealed partial class Binding
         // Complete initializer-owned holes before deferring finite constraints to the body graph.
         var forwardProven = this.FitOriginOutlives(this.OriginAtUse(longer, at), this.OriginAtUse(shorter, at), at, default, condition);
         var backwardProven = !equality || this.FitOriginOutlives(this.OriginAtUse(shorter, at), this.OriginAtUse(longer, at), at, default, condition);
-        if (BodyChain(longer, shorter, equality, this.formingBody))
+        if (BodyChain(this.RegionValueAtUse(longer, at), this.RegionValueAtUse(shorter, at), equality, this.formingBody))
         {
             this.AddObligation(new(BindingObligationKind.OriginOutlives, at, BindingDeadline.BodyOrigins, declared ? null : context.Parameter, longer, shorter, Equality: equality, Clause: declared ? clause : null, WellFormed: wellFormed, Condition: condition));
             return; // Local bounds are judged after every assignment and selected call has contributed its constraints.

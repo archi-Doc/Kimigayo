@@ -79,8 +79,7 @@ public sealed partial class Binding
     // SPEC 10.2, 15.4.4, 15.6.1: a value at a value position: the fit at the use, or, where a local region of a body takes part, the
     // use-site fit at `value`, whose Origin positions ownership judges. `failure` is the fit's, which a caller that records it passes on.
     private bool FitsValueAt(BoundType actual, BoundType expected, Koto use, Koto value, out ComparisonFailure failure)
-        => this.FitsTypeAt(actual, expected, use, out failure) ||
-            ((this.HasLocalRegion(actual) || this.HasLocalRegion(expected)) && this.CheckTypeUse(actual, expected, value, out _));
+        => this.FitsTypeAt(actual, expected, use, out failure) || (this.RegionalAt(actual, expected, value) && this.CheckTypeUse(actual, expected, value, out _));
 
     // SPEC 15.6.1: a fit whose structure holds leaves each differing Origin position as an obligation that ownership judges and reports
     // with facts at the value. A position's pending relation is recorded with the fit's whole destination, as the fit's own record is

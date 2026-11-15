@@ -161,6 +161,10 @@ public partial class LocalOriginClauseTest
         Assert.True(records == actual, $"{row}: {actual}");
     }
 
+    // A program's records in order as `code@line:column`, joined by `|` (PLAN G492-a (ii)'s rows).
+    internal static string Records(string source)
+        => string.Join('|', DiagnosticCorpus.Check(source).Diagnostics.Select(x => $"{x.Code}@{Position(source, x.Span)}"));
+
     // A span's start as `line:column`, both from 1.
     private static string Position(string source, SourceSpan? span)
     {

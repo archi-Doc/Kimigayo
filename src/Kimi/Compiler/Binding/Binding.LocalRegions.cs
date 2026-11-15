@@ -17,6 +17,7 @@ public sealed partial class Binding
     private readonly HashSet<BoundOrigin> regionVisited = new(ReferenceEqualityComparer.Instance);
     private readonly List<(Koto? Value, BoundOrigin? Parent)> regionEvidence = new();
     private int regionVersion;
+    private int regionValues;
 
     // The region graph's version: every recorded bound moves it, so a body's last one is the whole-body graph.
     internal int RegionVersion => this.regionVersion;
@@ -172,6 +173,78 @@ public sealed partial class Binding
             => value is null || parent is null ? null : (value is VariableKoto { InitializerKoto: { } initializer } ? initializer : value, parent);
     }
 
+    // SPEC 15.3.6, 15.4.4 (PLAN G492-a (ii), revision 2): the Origin a region of a `let` local stands for where its own body reads it, its
+    // value, which its declaration fixes (the initializer's Origin at that slot, or the slot's solved annotation candidate): a body nested
+    // in that body, or a nested signature, reads the region itself, fixed there (15.3.4; DECISIONS BU-28). A value holds no region of its
+    // own body (PublishRegionValue reads it once), so a read is one step per region and a meet's operands are read once each.
+    internal BoundOrigin RegionValueAtUse(BoundOrigin origin, Koto use)
+        => this.regionValues == 0 || origin.Kind is not (OriginKind.Inference or OriginKind.Intersection) ? origin : this.RegionValueIn(origin, BodyOwner(use));
+
+    // The innermost function whose body holds `node`: a Closure's and a nested function's signature and body are their own.
+    private static Koto? BodyOwner(Koto node)
+    {
+        for (var current = node.Parent; current is not null; current = current.Parent)
+        {
+            if (current is FunctionKoto)
+            {
+                return current;
+            }
+        }
+
+        return null;
+    }
+
+    private BoundOrigin RegionValueIn(BoundOrigin origin, Koto? body)
+    {
+        if (origin.Kind != OriginKind.Intersection)
+        {
+            return this.localRegions.TryGetValue(origin, out var region) && region.Value is { } value && ReferenceEquals(region.Body, body) ? value : origin;
+        }
+
+        var first = 0;
+        var read = origin;
+        for (; first < origin.Operands.Count; first++)
+        {
+            read = this.RegionValueIn(origin.Operands[first], body);
+            if (!ReferenceEquals(read, origin.Operands[first]))
+            {
+                break;
+            }
+        }
+
+        if (first == origin.Operands.Count)
+        {
+            return origin;
+        }
+
+        var resolved = BoundOrigin.Static;
+        for (var i = 0; i < first; i++)
+        {
+            resolved = this.Meet(resolved, origin.Operands[i]);
+        }
+
+        resolved = this.Meet(resolved, read);
+        for (var i = first + 1; i < origin.Operands.Count; i++)
+        {
+            resolved = this.Meet(resolved, this.RegionValueIn(origin.Operands[i], body));
+        }
+
+        return resolved;
+    }
+
+    // A `let` region's value (RegionValueAtUse), published by its declaration once per binding of it, read through the earlier regions of
+    // the same body; also the region's one bound, so a nested body that reads the region through its sources (DECISIONS BU-127) reads
+    // that value's. A re-binding publishes the same region again (the same slot) with its value read anew.
+    private void PublishRegionValue(BoundOrigin region, BoundOrigin value, Koto evidence)
+    {
+        var record = this.localRegions[region];
+        record.Body = BodyOwner(region.Binder!);
+        record.Value = null;
+        record.Value = this.RegionValueIn(value, record.Body);
+        this.regionValues++;
+        this.RecordRegionBound(record.Value, region, evidence);
+    }
+
     private void ResetLocalRegions()
     {
         foreach (var region in this.localRegions.Values)
@@ -180,8 +253,11 @@ public sealed partial class Binding
             region.Values.Clear();
             region.Sources.Clear();
             region.Version = -1;
+            region.Value = null;
+            region.Body = null;
         }
 
+        this.regionValues = 0;
         this.regionVersion = 0;
         this.regionWork.Clear();
         this.regionVisited.Clear();
@@ -281,6 +357,10 @@ public sealed partial class Binding
         internal List<BoundOrigin> Sources { get; } = new();
 
         internal List<Koto> Values { get; } = new();
+
+        internal BoundOrigin? Value { get; set; }
+
+        internal Koto? Body { get; set; }
 
         internal int Version { get; set; } = -1;
     }
