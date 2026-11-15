@@ -35,8 +35,9 @@ internal sealed partial class MirEffects(TyCtxt types, MirCases cases, MirDatafl
     /// <summary>A class of a summary: an effect this implementation cannot classify yet (a located <c>Unsupported_Kd</c>).</summary>
     internal const byte Limit = 4;
 
-    /// <summary>A class of a summary: an effect only an Opaque site, a callee Binding rejected or a body with a validator finding causes,
-    /// a dependent of that error (R4-M10, R5-M183).</summary>
+    /// <summary>A class of a summary: an effect only an Opaque site, a callee whose definition rests on a recorded error (Binding rejected
+    /// it or the parser recorded its Body missing: TyCtxt.Bodyless's Dependent) or a body with a validator finding causes, a dependent of
+    /// that error (R4-M10, R5-M183).</summary>
     internal const byte Derived = 8;
 
     /// <summary>A class of a summary: a destroyed part past the destruction walk's bound, whose effects the walk does not follow (the depth

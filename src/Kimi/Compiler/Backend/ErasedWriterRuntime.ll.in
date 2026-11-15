@@ -1,8 +1,7 @@
 ; The erased writer's kept runtime (SPEC 22.9.2, 22.9.4, 22.10.1): Text.writer's adapter (ErasedWriter) and the call of a
 ; Writer's reserve through the adapter's dispatch word with the window check (ErasedReserve). Adapter offsets: destination 0,
 ; dispatch 8, kind 16 (Utf8Writer's Fields). A Result has an i32 tag (Ok=0, Err=1) and its window {state, start, written,
-; remaining} at byte 8. It declares llvm.memset, which the formatting runtime, always written with this text until R8-W2,
-; also calls.
+; remaining} at byte 8. It declares llvm.memset, which it calls.
 declare void @llvm.memset.p0.i64(ptr nocapture writeonly, i8, i64, i1 immarg)
 
 {{__kimi_text_writer}}

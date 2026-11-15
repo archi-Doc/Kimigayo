@@ -1,6 +1,7 @@
 [CmdletBinding()]
 param()
 $ErrorActionPreference = 'Stop'
+. (Join-Path $PSScriptRoot 'expected-output.ps1')
 if (-not $IsWindows) { throw 'These containment checks require Windows.' }
 $harness = Join-Path $PSScriptRoot 'invoke-verification.ps1'
 $root = Join-Path ([IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../../../artifacts/verify'))) ('verification-check-' + [Guid]::NewGuid().ToString('N'))
@@ -20,7 +21,8 @@ function Invoke-Check([string] $name, [string] $code, [bool] $success, [int] $de
 }
 
 $record = @(Invoke-Check 'streams' '[Console]::Out.Write("hello"); [Console]::Error.Write("error")' $true)[-1]
-if ([IO.File]::ReadAllText((Join-Path $record 'stdout.log')) -cne 'hello' -or [IO.File]::ReadAllText((Join-Path $record 'stderr.log')) -cne 'error') { throw 'Output bytes changed.' }
+if (-not (Test-KimiExpectedOutput ([Text.Encoding]::UTF8.GetBytes('hello')) ([IO.File]::ReadAllBytes((Join-Path $record 'stdout.log')))) -or
+    -not (Test-KimiExpectedOutput ([Text.Encoding]::UTF8.GetBytes('error')) ([IO.File]::ReadAllBytes((Join-Path $record 'stderr.log'))))) { throw 'Output bytes changed.' }
 $record = @(Invoke-Check 'nonzero' 'exit 7' $false)[-1]
 $result = Get-Content -LiteralPath (Join-Path $record 'result.json') -Raw | ConvertFrom-Json
 if ($result.exitCode -ne 7) { throw 'Nonzero exit code was lost.' }

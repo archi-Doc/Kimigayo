@@ -23,6 +23,8 @@ public partial class TypeIdentityTest
         "let p = Pair<i32, i32>.init(1, 2)\n" +
         "require p.pick() and check(p@ref) and same(3, 4) == 4 else => $abort(\"identity\")\nConsole.writeLine(\"ok\")";
 
+    private const string Getter = "contract Getter\n    func get(self: ref/Self) -> i32\n";
+
     [Theory]
     [InlineData("func same<A, B>(a: A, b: B) -> A\n    B is A\n    return b@move")]
     [InlineData("func same<A, B>(a: A, b: B) -> A\n    B is A\n    let x: A = b@move\n    return x@move")]
@@ -39,6 +41,44 @@ public partial class TypeIdentityTest
         var c = MinimalEmissionTest.Analyze(source + "\n()");
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c));
+    }
+
+    // SPEC 8.2.3, 3.4.3, 8.5.2, 8.6.4: `U is S` makes S one Type with U, so name lookup on S reads U's Contracts (identity Constraints
+    // provide declarations): beside S's own premise a second same-named associated Type or requirement is ambiguous (r18, r21: accepted
+    // before R7-C2c2 c2-3a's name discovery read Enumerate's rows), whichever side the identity names first (r19) and for two
+    // instances of one generic Contract (n-r18-other-n: SPEC 8.5.1); alone U's requirement is S's (x1, the counterpart).
+    [Theory]
+    [InlineData("contract Named2\n    associate Element\nfunc g<S, U>(items: ref/S, e: ref/S.Element) -> i32\n    U is Indexable<isize>\n    U is S\n    S is Named2\n    return 0", "AmbiguousBinding_Kd")]
+    [InlineData(Getter + "contract Getter2\n    func get(self: ref/Self) -> i32\nfunc g<S, U>(v: ref/S) -> i32\n    U is Getter\n    U is S\n    S is Getter2\n    return v.get()", "AmbiguousBinding_Kd")]
+    [InlineData(Getter + "func g<S, U>(v: ref/S) -> i32\n    U is Getter\n    U is S\n    return v.get()", "")]
+    [InlineData("contract Named2\n    associate Element\nfunc g<S, U>(items: ref/S, e: ref/S.Element) -> i32\n    U is Indexable<isize>\n    S is U\n    S is Named2\n    return 0", "AmbiguousBinding_Kd")]
+    [InlineData("func g<S, U>(items: ref/S, e: ref/S.Element) -> i32\n    U is Indexable<isize>\n    U is S\n    S is Indexable<i32>\n    return 0", "AmbiguousBinding_Kd")]
+    public void NameLookupReadsTheIdenticalTypesContracts(string source, string codes)
+    {
+        var c = MinimalEmissionTest.Check(source + "\n()");
+        Assert.Equal(codes, string.Join(" ", TestDiagnostics.Of(c).Select(static x => x.Code)));
+    }
+
+    // SPEC 8.2.3, 8.5.1, 8.6.4: identity is closed under replacing a Type inside Contract arguments, so under `U is S` the references
+    // `Getter<U>` and `Getter<S>` are one and name one requirement or associated Type (v2, v3; v1 the non-generic control); `Boxed<i32>`
+    // and `Boxed<i64>` stay two (v11: accepted before R7-C2c2 c2-3a). So are two written spellings under `U is i32` (w1, w2), a
+    // projection argument a premise completes (w3, fa1, ar15) and arguments a decomposed identity joins (z1): PLAN G302's false
+    // AmbiguousBinding_Kd before c2-3a published one candidate per Contract (ContractSolver's PremiseRows).
+    [Theory]
+    [InlineData("contract Getter<X>\n    func get(self: ref/Self) -> i32\nfunc g<S, U>(v: ref/S) -> i32\n    U is Getter<U>\n    U is S\n    S is Getter<S>\n    return v.get()", "")]
+    [InlineData("contract Boxed<X>\n    associate Item\nfunc g<S, U>(items: ref/S, e: ref/S.Item) -> i32\n    U is Boxed<U>\n    U is S\n    S is Boxed<S>\n    return 0", "")]
+    [InlineData(Getter + "func g<S, U>(v: ref/S) -> i32\n    U is Getter\n    U is S\n    S is Getter\n    return v.get()", "")]
+    [InlineData("contract Boxed<X>\n    associate Item\nfunc g<S, U>(items: ref/S, e: ref/S.Item) -> i32\n    U is Boxed<i32>\n    U is S\n    S is Boxed<i64>\n    return 0", "AmbiguousBinding_Kd")]
+    [InlineData("contract Getter<X>\n    func get(self: ref/Self) -> i32\nfunc g<T, U>(v: ref/T) -> i32\n    T is Getter<U>\n    U is i32\n    T is Getter<i32>\n    return v.get()", "")]
+    [InlineData("contract Boxed<X>\n    associate Item\nfunc g<T, U>(e: ref/T.Item) -> i32\n    T is Boxed<U>\n    U is i32\n    T is Boxed<i32>\n    return 0", "")]
+    [InlineData("contract Getter<X>\n    func get(self: ref/Self) -> i32\ncontract K\n    associate Y\nfunc g<S, U>(v: ref/S) -> i32\n    U is Getter<i32>\n    U is S\n    S is K\n    S.(K).Y is i32\n    S is Getter<S.(K).Y>\n    return v.get()", "")]
+    [InlineData("contract Getter<X>\n    func get(self: ref/Self) -> i32\nfunc g<T, U, S>(first: ref/U during a, second: ref/S during b, v: ref/S) -> i32\n    origin a == b\n    T is ref/U during a\n    T is ref/S during b\n    S is Getter<U>\n    S is Getter<S>\n    return v.get()", "")]
+    [InlineData("contract HasItem\n    associate Item\ncontract Iter<T>\n    associate Tag\nfunc f<T, U>(x: ref/T, t: T.Tag) -> ()\n    U is HasItem\n    U.(HasItem).Item is i32\n    T is Iter<i32>\n    T is Iter<U.(HasItem).Item>\n    ()", "")]
+    [InlineData("contract HasItem\n    associate Item\nfunc f<T, U>(a: T, b: i32) -> T.Output\n    U is HasItem\n    U.(HasItem).Item is i32\n    T is Addable<i32>\n    T is Addable<U.(HasItem).Item>\n    return a + b", "")]
+    public void IdenticalContractReferencesNameOneCandidate(string source, string codes)
+    {
+        var c = MinimalEmissionTest.Check(source + "\n()");
+        Assert.Equal(codes, string.Join(" ", TestDiagnostics.Of(c).Select(static x => x.Code)));
     }
 
     [Fact]

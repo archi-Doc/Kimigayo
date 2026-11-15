@@ -7,7 +7,7 @@ using Xunit;
 
 namespace XunitTest;
 
-public class TypeBindingTest
+public partial class TypeBindingTest
 {
     [Theory]
     [InlineData("func f(x: ref/i32 during a)")]

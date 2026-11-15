@@ -14,12 +14,13 @@ internal sealed partial class TyCtxt
     private bool callsRowsChecked; // Whether CheckCallsRows has held: the catalog's Calls rows are checked once, not at each read.
 
     // SPEC 8.11.2: what a call of a function without a MIR body does: a compiler function's class (IntrinsicDisposition.Effect), a
-    // definition Binding rejected a dependent of that error (R4-M18: its parts are not published), a foreign function (SPEC 22.6) an
-    // environment effect; any other is unclassified.
+    // definition Binding rejected (R4-M18: its parts are not published) or whose Body the parser recorded missing (SPEC 14.2.1; MissingBody
+    // is set with its record; PLAN G890) a dependent of that error, a foreign function (SPEC 22.6) an environment effect; any other is
+    // unclassified.
     internal static CompilerFunctionEffect Bodyless(BindingSymbol function) => function switch
     {
         { CompilerFunction: not CompilerFunctionKind.None } => IntrinsicDisposition.Effect(function.CompilerFunction),
-        { Declaration.BindingState: not BindingState.Resolved } => CompilerFunctionEffect.Dependent,
+        { Declaration.BindingState: not BindingState.Resolved } or { Declaration: FunctionKoto { MissingBody: true } } => CompilerFunctionEffect.Dependent,
         { Declaration: FunctionKoto declaration } when declaration.FindAttribute(AttributeKind.LibraryImport) is not null => CompilerFunctionEffect.Environment,
         _ => CompilerFunctionEffect.Unclassified,
     };

@@ -131,34 +131,37 @@ public sealed partial class Binding
 
         var confined = false;
         var identity = new BoundRequirement(requirement.BoundSymbol!, reference ?? requirement.BoundSymbol!.Scope.Owner.BoundSymbol!);
-        for (var current = scope; current is not null; current = current.Parent)
+
+        // SPEC 8.11.3, 8.3.2: the Contracts proven by the premises are the available Contract rows they supply for the conforming
+        // Type, at every depth and whatever its spelling (ContractSolver's FirstRows). The evidence names a row's Source: the scope
+        // stating it and its written premise, or the supplied proposition where a clause or an ancestor gives the row.
+        var start = this.premiseRows.Count;
+        this.FirstRows(conforming, scope, this.premiseRows);
+        for (var r = start; r < this.premiseRows.Count; r++)
         {
-            if (current.Constraints is not { Invalid: false } environment)
+            if (this.premiseRows[r] is not { Available: true, Symbol: { Contract: { } shape } contract } row)
             {
                 continue;
             }
 
-            foreach (var fact in environment.Facts)
-            {
-                if (fact.Kind == ConstraintKind.Contract && ReferenceEquals(fact.Subject, conforming) && fact.Contract?.Contract is { } shape &&
-                    this.AvailableConstraintFact(environment, fact, out _))
-                {
-                    Add(shape, current.Owner, fact);
+            var context = (row.Stated ?? scope).Owner;
+            var fact = evidence is null ? null : row.Raw ?? this.InternConstraint(new(ConstraintKind.Contract, conforming, contract: contract));
+            Add(shape, context, fact);
 
-                    // SPEC 8.7.4: a PrimitiveInteger premise also proves the Contracts it supplies, so their bounds are available.
-                    if (IsRefinement(fact.Contract!, this.Library.PrimitiveInteger))
+            // SPEC 8.7.4: a PrimitiveInteger premise also proves the Contracts it supplies, so their bounds are available.
+            if (IsRefinement(contract, this.Library.PrimitiveInteger))
+            {
+                foreach (var id in PrimitiveIntegerSupplies)
+                {
+                    if (this.Library.GetSymbol(id)?.Contract is { } supplied)
                     {
-                        foreach (var id in PrimitiveIntegerSupplies)
-                        {
-                            if (this.Library.GetSymbol(id)?.Contract is { } supplied)
-                            {
-                                Add(supplied, current.Owner, fact);
-                            }
-                        }
+                        Add(supplied, context, fact);
                     }
                 }
             }
         }
+
+        this.premiseRows.RemoveRange(start, this.premiseRows.Count - start);
 
         if (conforming.Symbol is { Kind: BindingSymbolKind.Type } type && this.ConformancesOf(type) is { } conformances)
         {

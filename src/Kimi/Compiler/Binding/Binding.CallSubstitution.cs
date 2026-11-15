@@ -26,15 +26,13 @@ namespace Kimi.Compiler;
 //   - a pattern read before the callee's slots have images, the declaring occurrence's arguments first and the solver's images after:
 //     the trial's CallMemberPattern (ArgumentKinds.Evidence, ArgumentKinds.Solution, CallSelection.Candidates, ShapeEvidence),
 //     OriginInference's Project, PropertyCalls' Signature (an accessor's pattern, matched by MatchInputOrigins before its Origins are
-//     solved) and FunctionReferences' InferReferenceSlots (a function reference's pattern); they join the one pass when the declaring
-//     occurrence's arguments are bound slots of the solver's frame;
-//   - a function item's signature, the declaring occurrence first (MemberType) and the item's own arguments after: FunctionItems'
-//     SubstitutedItemType and FunctionReferences' Formed. Its clauses are read under the one value (ReferenceArgumentProof), so an item
-//     formed inside its own Type's method on another occurrence still captures in its signature (an invalid call through it is
-//     accepted: PLAN G457 (R1));
-//   - a comparison of two signatures, where no call is made: FunctionTypes' Bound (ContractFits), CallableContracts' Corresponding and
-//     Translate and ContractMatching's parameter read (a witness's signature in the requirement's terms), OriginInheritance's
-//     BindContractType and BindContractOrigin (an inherited definition's contract);
+//     solved) and FunctionReferences' InferReferenceSlots and PerCallReferenceSlot's result read (a function reference's pattern; the
+//     slots they infer are rechecked by the one pass, ContractFits' Bound); they join the one pass when the declaring occurrence's
+//     arguments are bound slots of the solver's frame;
+//   - a comparison of two signatures, where no call is made: the Origin step of FunctionTypes' Bound (ContractFits; its Type part is
+//     the one pass, PLAN G457 (R2) its Origins), CallableContracts' Corresponding and Translate and ContractMatching's parameter read
+//     (a witness's signature in the requirement's terms), OriginInheritance's BindContractType and BindContractOrigin (an inherited
+//     definition's contract);
 //   - an associated Type's formation under its projection (AssociatedOrigins): the projection's substitution, not a call's.
 public sealed partial class Binding
 {

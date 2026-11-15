@@ -399,9 +399,17 @@ internal readonly struct CallableInstance
 
     internal ComparisonPremises? Outer => this.outer;
 
+    // SPEC 8.8.2: the scope the comparison is judged in when no syntax gives it, a conformance scope of D, P and the requirement's
+    // premises; null: the scope of the use it is made at (Binding.RelationScope).
+    internal BindingScope? Scope { get; init; }
+
     // The enclosing premises of a comparison nested in this one: this comparison's required signature before its own enclosing ones.
     // A signature that carries no Origin has no well-formedness, so it adds no node.
     internal ComparisonPremises? Enclosing => this.expected is { CarriesOrigin: true } required ? new(required, this.outer) : this.outer;
+
+    // The comparison with its sides exchanged, nested in the same comparisons and judged in the same scope: the second half of an
+    // invariant position's two-way relation (SPEC 3.8, 15.3.5; RelationWalk.Fits).
+    internal CallableInstance Exchanged => new(this.expected, this.expectedBinder, this.actual, this.actualBinder, this.outer) { Scope = this.Scope };
 
     // A direct input whose outer Origin the implementation binds at that input's own position.
     internal bool IsQuantifiedInput(BoundType input, int position)
