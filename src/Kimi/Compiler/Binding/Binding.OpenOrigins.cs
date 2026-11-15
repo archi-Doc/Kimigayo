@@ -144,30 +144,15 @@ public sealed partial class Binding
         }
     }
 
-    // Whether `type` names the Origin parameter `slot` of `binder` (EvidenceNames).
-    private static bool MentionsOriginSlot(BoundType type, Koto binder, int slot)
+    // Whether an Origin is a call's own region (OpenUnsolvedOrigins), keyed from UnsolvedKey, far from every argument evidence key.
+    private static bool IsCallRegion(BoundOrigin origin) => origin is { Kind: OriginKind.Inference, Open: true } && origin.Slot < UnsolvedKey / 2;
+
+    // Whether `type` names the Origin parameter `slot` of `binder` (EvidenceNames): a node of its Origin summary, a meet's operand included.
+    private bool MentionsOriginSlot(BoundType type, Koto binder, int slot)
     {
-        if (!type.CarriesOrigin)
+        foreach (var origin in this.SummaryOf(type).Nodes)
         {
-            return false;
-        }
-
-        if (NamesSlot(type.Origin, binder, slot))
-        {
-            return true;
-        }
-
-        for (var i = 0; i < type.OriginArguments.Count; i++)
-        {
-            if (NamesSlot(type.OriginArguments[i], binder, slot))
-            {
-                return true;
-            }
-        }
-
-        for (var i = 0; i < type.Components.Count; i++)
-        {
-            if (MentionsOriginSlot(type.Components[i], binder, slot))
+            if (origin.Kind == OriginKind.Parameter && ReferenceEquals(origin.Binder, binder) && origin.Slot == slot)
             {
                 return true;
             }
@@ -175,27 +160,6 @@ public sealed partial class Binding
 
         return false;
     }
-
-    private static bool NamesSlot(BoundOrigin? origin, Koto binder, int slot)
-    {
-        if (origin is null)
-        {
-            return false;
-        }
-
-        for (var i = 0; i < origin.Operands.Count; i++)
-        {
-            if (NamesSlot(origin.Operands[i], binder, slot))
-            {
-                return true;
-            }
-        }
-
-        return origin.Kind == OriginKind.Parameter && ReferenceEquals(origin.Binder, binder) && origin.Slot == slot;
-    }
-
-    // Whether an Origin is a call's own region (OpenUnsolvedOrigins), keyed from UnsolvedKey, far from every argument evidence key.
-    private static bool IsCallRegion(BoundOrigin origin) => origin is { Kind: OriginKind.Inference, Open: true } && origin.Slot < UnsolvedKey / 2;
 
     // SPEC 15.3.6, 15.6.4 steps 1, 3 (DECISIONS BU-104, superseding BU-51's region clause): after a candidate's solve, every Origin of
     // the callee without a candidate (no evidence, no equality, no result and no representative), whatever names it, a supplied

@@ -68,37 +68,6 @@ public sealed partial class Binding
     private static BoundOrigin? QualifierSlot(BoundType qualified, int slot)
         => qualified.Kind == BoundTypeKind.Slice ? slot == 0 ? qualified.Origin : null : slot < qualified.OriginArguments.Count ? qualified.OriginArguments[slot] : null;
 
-    private static bool NamesOrigin(BoundType type, BoundOrigin origin)
-    {
-        if (!type.CarriesOrigin)
-        {
-            return false;
-        }
-
-        if (type.Origin is { } own && ContainsOrigin(own, origin))
-        {
-            return true;
-        }
-
-        for (var i = 0; i < type.OriginArguments.Count; i++)
-        {
-            if (ContainsOrigin(type.OriginArguments[i], origin))
-            {
-                return true;
-            }
-        }
-
-        for (var i = 0; i < type.Components.Count; i++)
-        {
-            if (NamesOrigin(type.Components[i], origin))
-            {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
     private static BoundOrigin? InferenceAtom(BoundOrigin origin)
     {
         if (origin.Kind == OriginKind.Inference && !IsLocalRegion(origin))

@@ -38,8 +38,6 @@
     <EmbeddedResource Include="Diagnostics\RepairKind.tinyhand" />
     <EmbeddedResource Include="Compiler\Backend\WindowsRuntime.ll.in" />
     <EmbeddedResource Include="Compiler\Backend\ErasedWriterRuntime.ll.in" />
-    <EmbeddedResource Include="Compiler\Backend\Utf8BufferRuntime.ll.in" />
-    <EmbeddedResource Include="Compiler\Backend\Utf8FormatRuntime.ll.in" />
     <EmbeddedResource Include="Compiler\Backend\Utf8FloatRuntime.ll.in" />
     <EmbeddedResource Include="Compiler\Backend\Utf8FloatRyu.ll.in" />
     <EmbeddedResource Include="Compiler\Backend\FormatInteger128Runtime.ll.in" />

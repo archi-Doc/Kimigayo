@@ -284,8 +284,8 @@ public partial class KimiLibraryShapeTest
     }
 
     // Plan 5.8: the intrinsic table gives every compiler function one disposition; an intrinsic serves at most one of them, except Fail,
-    // which carries a fixed SPEC 22.5.2 code; there are at most 28 intrinsics, and the temporary Capacity and FormatSegment (owner
-    // approvals 2026-10-11; FormatHint renamed FormatSegment, R5-M133; FormatBuffer went at R8-W2 c3b, FormatFinish at c3a) until R8.
+    // which carries a fixed SPEC 22.5.2 code; there are at most 27 intrinsics, the temporary ones of the owner's approvals of 2026-10-11
+    // gone (FormatBuffer at R8-W2 c3b, FormatFinish at c3a, FormatSegment, R5-M133's rename of FormatHint, at c2b).
     [Fact]
     public void EveryCompilerFunctionHasOneDisposition()
     {
@@ -512,8 +512,8 @@ public partial class KimiLibraryShapeTest
     public void ContractShapesAreFixed(KimiDeclarationId id, string shape)
         => Assert.Equal(shape, Shape(Assert.IsType<ContractKoto>(Library.Value.Library.GetSymbol(id)!.Declaration)));
 
-    // Code generation and the runtime address these records' stored Fields by name, in this order, and run their drop
-    // (Utf8BufferRuntime.ll.in); a record without Fields stays zero-sized.
+    // Code generation addresses these records' stored Fields by name, in this order, and runs their drop; a record without Fields stays
+    // zero-sized.
     [Theory]
     [InlineData("Storage.RefRemainder", "internal struct RefRemainder<E> {source}\ninternal let storage: raw/E during source\ninternal var position: isize = 0\ninternal var count: isize\ninternal let loan: Loan<ref/E during source>")]
     [InlineData("Storage.UniqRemainder", "internal struct UniqRemainder<E> {source}\ninternal let storage: raw/E during source\ninternal var position: isize = 0\ninternal var count: isize\ninternal let loan: Loan<uniq/E during source>")]
@@ -538,7 +538,7 @@ public partial class KimiLibraryShapeTest
     [InlineData("Wrapping", "public struct Wrapping<T>")]
     [InlineData("BufferFull", "public struct BufferFull")]
     [InlineData("WriteWindow", "public struct WriteWindow {source}\nlet state: raw/u8 during source\nlet start: isize\npublic var written: isize\npublic var remaining: isize\nlet loan: Loan<uniq/u8 during source>")]
-    [InlineData("Utf8Writer", "public struct Utf8Writer {target}\nlet destination: raw/u8 during target\nlet dispatch: raw/u8 during static\nlet kind: isize\nvar failed: bool\nlet hint: isize\nvar pending: raw/u8 during static\nvar pendingLength: isize\nlet logicalLength: isize\nlet loan: Loan<uniq/u8 during target>")]
+    [InlineData("Utf8Writer", "public struct Utf8Writer {target}\nlet destination: raw/u8 during target\nlet dispatch: raw/u8 during static\nlet kind: isize\nvar failed: bool\ninternal var hint: isize\nvar pending: raw/u8 during static\nvar pendingLength: isize\nlet logicalLength: isize\nlet loan: Loan<uniq/u8 during target>")]
     [InlineData("Text.FixedBuffer", "public struct FixedBuffer {source}\nlet data: raw/u8 during source\npublic let capacity: isize\npublic var length: isize\nvar validated: isize\nlet loan: Loan<uniq/u8 during source>")]
     [InlineData("Text.HeapBuffer", "public struct HeapBuffer\nvar data: raw/u8 during self\npublic var capacity: isize\npublic var length: isize\nvar validated: isize\ndrop")]
     [InlineData("Text.Utf8Slice", "public struct Utf8Slice {source}\nlet value: Slice<u8> during source")]
@@ -606,14 +606,16 @@ public partial class KimiLibraryShapeTest
         Assert.Equal(2, ordinal);
     }
 
-    // The static runtime (Utf8BufferRuntime.ll.in, Utf8FormatRuntime.ll.in) reads these records at fixed offsets until R8.
+    // Layouts read at fixed offsets, each row by its reader: Utf8Writer's by the kept runtime (ErasedWriterRuntime.ll.in:
+    // __kimi_text_writer zeroes its size and stores destination, dispatch and kind; __kimi_erased_reserve loads destination and dispatch);
+    // WriteWindow's by __kimi_erased_reserve (written and remaining, in the Result's payload at byte 8); FixedBuffer's and HeapBuffer's
+    // equal Storage.BufferRepr's, as which the library reads a window's state (Formatting.kimi, WriteWindow.commit, commitUtf8 and next).
     [Theory]
     [InlineData("Utf8Writer", 64, "destination", 0, "dispatch", 8, "kind", 16, "hint", 24, "pending", 32, "pendingLength", 40, "logicalLength", 48, "failed", 56)]
     [InlineData("Text.FixedBuffer", 32, "data", 0, "capacity", 8, "length", 16, "validated", 24)]
     [InlineData("Text.HeapBuffer", 32, "data", 0, "capacity", 8, "length", 16, "validated", 24)]
     [InlineData("WriteWindow", 32, "state", 0, "start", 8, "written", 16, "remaining", 24)]
     [InlineData("Storage.BufferRepr", 32, "data", 0, "capacity", 8, "length", 16, "validated", 24)]
-    [InlineData("Text.Utf8Slice", 16, "value", 0)]
     public void RuntimeLayoutsAreFixed(string path, int size, params object[] offsets)
     {
         var (layout, type) = Layout(path);
@@ -624,7 +626,9 @@ public partial class KimiLibraryShapeTest
         }
     }
 
-    // The runtime's adapter routines are runtime glue: they test `failed` at the offset of the library's named layout.
+    // The kept runtime's routines are glue over the library's named layouts (plan Q5, B4's guard): __kimi_text_writer zeroes
+    // Utf8Writer's size and stores destination, dispatch and kind at their offsets; __kimi_erased_reserve loads destination and dispatch
+    // and checks the window's written and remaining in the Result's payload at byte 8.
     [Fact]
     public void RuntimeGlueMatchesTheNamedLayouts()
     {
@@ -641,7 +645,21 @@ public partial class KimiLibraryShapeTest
             """;
         var ir = CompilationTestHelper.WriteIr(MinimalEmissionTest.Analyze(Source));
         var (writer, writerType) = Layout("Utf8Writer");
-        Assert.Contains($"%failed = getelementptr i8, ptr %self, i64 {writer.FieldOffsets.Span[AdtDef.IndexOf(writerType, "failed")]}\n", ir, StringComparison.Ordinal);
+        var (window, windowType) = Layout("WriteWindow");
+        int At(TypeLayout layout, BoundType type, string field) => layout.FieldOffsets.Span[AdtDef.IndexOf(type, field)];
+        Assert.Equal(0, At(writer, writerType, "destination")); // Stored and loaded at the adapter's address.
+        foreach (var glue in new[]
+        {
+            $"  call void @llvm.memset.p0.i64(ptr %ret, i8 0, i64 {writer.Size}, i1 false)\n  store ptr %self, ptr %ret, align 8\n",
+            $"  %dispatchp = getelementptr i8, ptr %ret, i64 {At(writer, writerType, "dispatch")}\n" +
+                $"  %kindp = getelementptr i8, ptr %ret, i64 {At(writer, writerType, "kind")}\n",
+            $"  %destination = load ptr, ptr %writer, align 8\n  %functionp = getelementptr i8, ptr %writer, i64 {At(writer, writerType, "dispatch")}\n",
+            $"  %writtenp = getelementptr i8, ptr %ret, i64 {8 + At(window, windowType, "written")}\n" +
+                $"  %remainingp = getelementptr i8, ptr %ret, i64 {8 + At(window, windowType, "remaining")}\n",
+        })
+        {
+            Assert.Contains(glue, ir, StringComparison.Ordinal);
+        }
 
         // R8-W1c: the conversions are bodies, so no glue allocates a buffer or an adapter record.
         Assert.DoesNotContain("%buffer = alloca", ir, StringComparison.Ordinal);
