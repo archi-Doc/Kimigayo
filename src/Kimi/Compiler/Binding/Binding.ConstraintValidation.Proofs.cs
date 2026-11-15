@@ -59,8 +59,9 @@ public sealed partial class Binding
     // it (EvaluateCallCandidate).
     private PendingJudgment? trialPending;
 
-    // The pass's refusals by node (RefuseProof): one cause a node, so an answer computed again rests on the same cause (the
-    // capability engine's fixpoint compares causes by reference).
+    // The refusals by node (RefuseProof): one cause a node, so an answer computed again rests on the same cause (the capability
+    // engine's fixpoint compares causes by reference). A Refusal holds no pass state (its node, its limit), so it is kept across
+    // passes, as the capability works are: a refused request allocates it once and a warm pass reuses it (RP8's warm bytes).
     private Dictionary<Koto, Refusal>? refusals;
 
     // SPEC 10.1, 8.3.3 (the owner's O-335 (a)): the first refusal a candidate trial read while a selection evaluates its candidates
@@ -410,7 +411,6 @@ public sealed partial class Binding
 
     private void ClearProofScopes()
     {
-        this.refusals?.Clear();
         this.trialRefusal = null;
         this.failedCause = null;
         Array.Clear(this.proofScopes);

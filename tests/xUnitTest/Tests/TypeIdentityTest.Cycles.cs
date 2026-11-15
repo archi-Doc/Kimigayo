@@ -408,4 +408,19 @@ public partial class TypeIdentityTest
         Assert.True(c.Binding.IdentityRounds >= Binding.PremiseClosureLimit, $"{c.Binding.IdentityRounds} rounds");
         Assert.True(c.Binding.CheckBound().IsComplete, MinimalEmissionTest.Describe(c));
     }
+
+    // PLAN G881 with G881b (the owner's O-335 (a); RP8's warm bytes): a refused request's Refusal is its node's, kept across passes,
+    // so a warm rebind whose losing candidate's request reaches the round bound again allocates nothing (xovm; a new Refusal each
+    // pass was 40 bytes).
+    [Trait("Purpose", "Allocation")]
+    [Fact]
+    public void AWarmRebindPastTheRoundBoundAllocatesNothing()
+    {
+        var c = CompilationTestHelper.ParseSuccess(
+            "contract Inner\n" + Pq + "func pick<X>(x: ref/X) -> () => ()\nfunc pick<X>(x: ref/X, tag: i32 = 0) -> ()\n    X is Inner\n    return\n" +
+            "func f<T>(x: ref/T.(Pq).Up)\n    T is Pq\n    pick(x)\npublic func main() => ()\n");
+        Assert.True(c.Bind().IsComplete);
+        Assert.Equal(0, AllocationMeasurement.Measure(() => c.Binding.Bind(BindingMode.Final)));
+        Assert.True(c.Binding.IdentityRounds >= Binding.PremiseClosureLimit, $"{c.Binding.IdentityRounds} rounds");
+    }
 }
