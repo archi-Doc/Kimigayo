@@ -409,6 +409,232 @@ public partial class TypeBindingTest
             """,
             "UnprovenOriginContract_Kd h"
         },
+        // c1v (valid, SPEC 15.2.3, 3.2.1): Owned: o1v with the instance built from a Function Item and called through its Field.
+        {
+            "c1v",
+            """
+            func need<T>(value: T) -> i32
+                T is Owned
+                return 1
+
+            struct S<T>
+                public let call: (ref/i32, T) -> i32
+
+                public init(call: (ref/i32, T) -> i32)
+                    self.call = call@move
+
+            func add(a: ref/i32, x: i32) -> i32 => a@follow + x
+
+            func f(s: S<i32>) -> i32 => need(s.call@move)
+
+            func run(s: S<i32>) -> i32
+                let n: i32 = 40
+                return s.call(n@ref, 2)
+            """,
+            string.Empty
+        },
+        // c2v (valid, SPEC 15.2.3, 7.7.4): Owned: the instance's Function Type Field captured by a Closure erased to () -> i32.
+        {
+            "c2v",
+            """
+            struct S<T>
+                public let call: (ref/i32, T) -> i32
+
+                public init(call: (ref/i32, T) -> i32)
+                    self.call = call@move
+
+            func add(a: ref/i32, x: i32) -> i32 => a@follow + x
+
+            func f(s: S<i32>) -> () -> i32
+                let call = s.call@move
+                return func [call@move] () -> i32 => 7
+            """,
+            string.Empty
+        },
+        // c2i (invalid, SPEC 15.2.3, 7.7.4): c2v at S<ref/i32 during c>: the environment holds the fixed c (the record names c, not the per-call input).
+        {
+            "c2i",
+            """
+            struct S<T>
+                public let call: (ref/i32, T) -> i32
+
+                public init(call: (ref/i32, T) -> i32)
+                    self.call = call@move
+
+            func f(c: ref/i32, s: S<ref/i32 during c>) -> () -> i32
+                let call = s.call@move
+                return func [call@move] () -> i32 => 7
+            """,
+            "UnprovenConstraint_Kd func [call@move] () -> i32 => 7"
+        },
+        // c4v (valid, SPEC 15.2.3, 8.15): Owned: a generic body's S<T>.call under the premise T is Owned.
+        {
+            "c4v",
+            """
+            func need<T>(value: T) -> i32
+                T is Owned
+                return 1
+
+            struct S<T>
+                public let call: (ref/i32, T) -> i32
+
+                public init(call: (ref/i32, T) -> i32)
+                    self.call = call@move
+
+            func add(a: ref/i32, x: i32) -> i32 => a@follow + x
+
+            func g<T>(s: S<T>) -> i32
+                T is Owned
+                return need(s.call@move)
+            """,
+            string.Empty
+        },
+        // c5v (valid, SPEC 15.2.3, 15.3.4): Owned: S<(ref/i32) -> i32>.call, the nested Function Type's input its own per-call Origin.
+        {
+            "c5v",
+            """
+            func need<T>(value: T) -> i32
+                T is Owned
+                return 1
+
+            struct S<T>
+                public let call: (ref/i32, T) -> i32
+
+                public init(call: (ref/i32, T) -> i32)
+                    self.call = call@move
+
+            func f(s: S<(ref/i32) -> i32>) -> i32 => need(s.call@move)
+            """,
+            string.Empty
+        },
+        // c6v (valid, SPEC 15.2.3): Owned: S2<i32>.call, (T, ref/i32) -> i32 with the per-call input at slot 1.
+        {
+            "c6v",
+            """
+            func need<T>(value: T) -> i32
+                T is Owned
+                return 1
+
+            struct S2<T>
+                public let call: (T, ref/i32) -> i32
+
+            func f(s: S2<i32>) -> i32 => need(s.call@move)
+            """,
+            string.Empty
+        },
+        // c8v (valid, SPEC 15.2.3, 8.15, 7.7.4): Owned: c2v in a generic body under the premise T is Owned.
+        {
+            "c8v",
+            """
+            struct S<T>
+                public let call: (ref/i32, T) -> i32
+
+                public init(call: (ref/i32, T) -> i32)
+                    self.call = call@move
+
+            func add(a: ref/i32, x: i32) -> i32 => a@follow + x
+
+            func g<T>(s: S<T>) -> () -> i32
+                T is Owned
+                let call = s.call@move
+                return func [call@move] () -> i32 => 7
+            """,
+            string.Empty
+        },
+        // t01i (invalid, SPEC 10.7, 3.8, 15.3.4): the result (ref/i32 during b, ref/i32) -> i32 against (ref/i32, ref/i32) -> i32, b at slot 0 (the record names the result's 1st parameter, the fixed input).
+        {
+            "t01i",
+            """
+            func h(b: ref/i32, u: (ref/i32 during b, ref/i32) -> i32) -> (ref/i32 during b, ref/i32) -> i32 => u@move
+
+            func f() -> i32
+                let k: (ref/i32, (ref/i32, ref/i32) -> i32) -> (ref/i32, ref/i32) -> i32 = h
+                return 0
+            """,
+            "UnprovenOriginContract_Kd h"
+        },
+        // t05i (invalid, SPEC 10.7, 3.8): the input ((ref/i32 during b, ref/i32) -> i32) -> i32 against ((ref/i32, ref/i32) -> i32) -> i32, b at slot 0 (the record names the fixed input).
+        {
+            "t05i",
+            """
+            func h(b: ref/i32, u: ((ref/i32 during b, ref/i32) -> i32) -> i32) -> i32 => 0
+
+            func f() -> i32
+                let k: (ref/i32, ((ref/i32, ref/i32) -> i32) -> i32) -> i32 = h
+                return 0
+            """,
+            "UnprovenOriginContract_Kd h"
+        },
+        // t06i (invalid, SPEC 10.7, 3.8, 15.3.5): the result Option<FX(b)> against Option<PC> (a covariant payload).
+        {
+            "t06i",
+            """
+            func h(b: ref/i32, u: (ref/i32 during b) -> i32) -> Option<(ref/i32 during b) -> i32> => .Some(u@move)
+
+            func f() -> i32
+                let k: (ref/i32, (ref/i32) -> i32) -> Option<(ref/i32) -> i32> = h
+                return 0
+            """,
+            "UnprovenOriginContract_Kd h"
+        },
+        // t08i (invalid, SPEC 10.7, 10.8): x0i with one input: T written PC, h's result FX(b).
+        {
+            "t08i",
+            """
+            func g<T>(k: (ref/i32, T) -> T) -> i32 => 0
+
+            func h(b: ref/i32, u: (ref/i32 during b) -> i32) -> (ref/i32 during b) -> i32 => u@move
+
+            func f() -> i32 => g<(ref/i32) -> i32>(h)
+            """,
+            "NoApplicableOverload_Kd g<(ref/i32) -> i32>(h)"
+        },
+        // t09i (invalid, SPEC 10.7, 10.8.1): t08i at a constructor's Function Type parameter, Box<PC>.init(h).
+        {
+            "t09i",
+            """
+            struct Box<T>
+                public let k: (ref/i32, T) -> T
+
+                public init(k: (ref/i32, T) -> T)
+                    self.k = k@move
+
+            func h(b: ref/i32, u: (ref/i32 during b) -> i32) -> (ref/i32 during b) -> i32 => u@move
+
+            func f() -> i32
+                let box = Box<(ref/i32) -> i32>.init(h)
+                return 0
+            """,
+            "NoApplicableOverload_Kd Box<(ref/i32) -> i32>.init(h)"
+        },
+        // t10i (invalid, SPEC 10.8, 10.7): t08i with T inferred from a second argument w: PC (no T makes h fit).
+        {
+            "t10i",
+            """
+            func g<T>(k: (ref/i32, T) -> T, t: T) -> i32 => 0
+
+            func h(b: ref/i32, u: (ref/i32 during b) -> i32) -> (ref/i32 during b) -> i32 => u@move
+
+            func f(w: (ref/i32) -> i32) -> i32 => g(h, w@move)
+            """,
+            "NoApplicableOverload_Kd g(h, w@move)"
+        },
+        // cb1i (invalid, SPEC 8.10, 10.7): l3i's h through F is Callable<(ref/i32, PC) -> PC>.
+        {
+            "cb1i",
+            """
+            func use<F>(f: ref/F) -> i32
+                F is Callable<(ref/i32, (ref/i32) -> i32) -> (ref/i32) -> i32>
+                return 0
+
+            func h(b: ref/i32, u: (ref/i32 during b) -> i32) -> (ref/i32 during b) -> i32 => u@move
+
+            func f() -> i32
+                let item = h
+                return use(item@ref)
+            """,
+            "UnprovenConstraint_Kd use(item@ref)"
+        },
         // a2i (invalid, SPEC 10.7, 15.3.5, 8.10): call argument, the outer per-call Origin at slot 1 (s1i at an argument).
         {
             "a2i",

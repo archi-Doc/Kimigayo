@@ -66,7 +66,7 @@ public sealed partial class Binding
             // of a nested Type whose fixed input sits at its own index, which the walk then judges with the exact binders. With the
             // exact test those bounds reach the solver, which takes a nested Type's own per-call Origin for a bound of this call and
             // rejects valid programs (PLAN G904's rows l0v, l1v, n0i, e0v, e1v; b0v, b1v on dev). Removal: the unit that keeps a
-            // nested Function Type's own per-call Origins out of the bounds, Origin by Origin (PLAN G904's s5v and m0v-m3v row).
+            // nested Function Type's own per-call Origins out of the bounds, Origin by Origin (PLAN G913).
             return;
         }
 
