@@ -196,7 +196,7 @@ public sealed partial class Binding
     // DECISIONS D3: whether a formation since HoldUnformed was unformed. Unlike BU-86's take-once channel it consumes nothing, in both
     // cases: a held fact is restored (an enclosing trial's own stays first), and when nothing was held the fact the formations left stays
     // in the channel. Inside an enclosing candidate trial that gives the trial's selection the same fact, so a reference in a candidate's
-    // argument makes the enclosing call its one located Unsupported_Kd (rf1); outside any trial the fact sits until its frame closes or
+    // argument makes the enclosing call its one located Unsupported_Kd; outside any trial the fact sits until its frame closes or
     // the next OpenTrial clears it, harmless since every reader holds first (a value call, a reference) or reads only its own trial's fact (the selection).
     private bool TakeUnformed(PendingJudgment? held)
     {
