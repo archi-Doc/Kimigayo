@@ -100,7 +100,7 @@ public sealed class HirColumnsTest
         Assert.True(c.Binding.KeptTargetWork > work, "the warm publish did not walk");
     }
 
-    // The publish found no node without the facts of its Op (HirTables.Broken: a call Op its call, a match, a try and a user loop their
+    // The publish found no node without the facts of its Op (HirTables.Broken: a call Op its call, a match, a try and a loop their
     // Pattern plan, an expansion the calls it names), and every parsed node in the tree has an Op, a selected symbol its Res (the prepared
     // slot exactly where the parameter is read in a later default of its function), a jump the target it transfers to, and an evaluated
     // node its completion; every child an Op consumes has its Adjust: a call's argument and receiver the adaptation of the operation of a
@@ -298,7 +298,7 @@ public sealed class HirColumnsTest
             var expansion = ExpansionPlan.Of(node);
             var written = (node as BinaryKoto)?.Left ?? (node as UnaryKoto)?.Operand;
             var updated = written is null ? null : KotoHelper.UnwrapParentheses(written); // The Property Binding designates.
-            if ((expansion is null) == (op is HirOp.For or HirOp.Try or HirOp.Interpolation or HirOp.DictionaryLiteral or HirOp.Range or HirOp.CompoundAssign or HirOp.Index || (op == HirOp.Call && node is IndexKoto)) ||
+            if ((expansion is null) == (op is HirOp.For or HirOp.Try or HirOp.Interpolation or HirOp.DictionaryLiteral or HirOp.CompoundAssign or HirOp.Index || (op == HirOp.Call && node is IndexKoto)) ||
                 (op == HirOp.Range && CallPlan.Of(node) is not null) ||
                 (node is IndexKoto && ((op == HirOp.Call) == (expansion?.Second is null) || (expansion?.First is not null) != (op == HirOp.Index && CallPlan.Of(node) is not null))) ||
                 (op == HirOp.CompoundAssign && HirTables.Op(updated!) == HirOp.Call && updated is not IndexKoto && expansion?.Second is null))

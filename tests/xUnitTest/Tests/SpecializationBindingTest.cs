@@ -413,6 +413,32 @@ public class SpecializationBindingTest
         Assert.Equal(problems, MinimalEmissionTest.Problems(c));
     }
 
+    // SPEC 8.13.1-8.13.3, 15.2.3 (R8-W2 b2-1's coverage S2, Text.writer's form in user code): a group member with a Constraint,
+    // specialized at an unqualified user Type whose Origin slot requires uniq, binds and runs for a local Lw, directly and after
+    // substitution (s3); the argument written `during static` restricts the original's bindings and cannot supply uniq, two
+    // independent records, and the restated parameter's record rests on the argument's (s3x, its records' nodes in source order).
+    private const string GroupWriter = "struct Lw {source}\n    Self is BufferWriter\n    let data: uniq/i32 during source\n    public init(data: uniq/i32 during source) => self.data = data\n    public func reserve(self: uniq/Self, minimum: isize) -> Result<WriteWindow, BufferFull> => .Err(BufferFull.init())\ngroup G\n    public func w<W>(d: uniq/W) -> i32\n        W is BufferWriter\n        return 0\n";
+
+    [Fact]
+    public void AGroupMembersUniqSlotArgumentSelectsTheSpecialization()
+        => ScalarEmissionTest.EmitFixture(
+            "SpecializationGroupUniqArgument",
+            GroupWriter + "    specialize func w<Lw>(d: uniq/Lw) -> i32 => 1\nfunc relay<W>(d: uniq/W) -> i32\n    W is BufferWriter\n    return G.w(d)\nfunc local() -> i32\n    var m = 6\n    var u = Lw.init(m@uniq)\n    return G.w(u@uniq) * 10 + relay(u@uniq)\nrequire local() == 11 else => $abort(\"the generic body ran\")\nConsole.writeLine(\"ok\")",
+            "ok\n");
+
+    [Fact]
+    public void AGroupMembersArgumentWrittenStaticReportsEachRecord()
+    {
+        var c = MinimalEmissionTest.Analyze(GroupWriter + "    specialize func w<Lw during static>(d: uniq/Lw) -> i32 => 1\n()");
+        Assert.False(c.Binding.Result.IsComplete);
+        Assert.Equal(
+            [
+                (Kimi.DiagnosticCode.IncompatibleContractImplementation_Kd, "specialize func w<Lw during static>(d: uniq/Lw) -> i32 => 1"),
+                (Kimi.DiagnosticCode.InvalidOriginBinding_Kd, "Lw during static"), (Kimi.DiagnosticCode.InvalidOriginBinding_Kd, "Lw"),
+            ],
+            c.Binding.Issues.OrderBy(x => x.Node.Span.Start).Select(x => (x.Code, x.Node.ToString())));
+    }
+
     // SPEC 8.13.3: specializations never enter the candidate set; an invalid one does not fail calls to the original.
     [Fact]
     public void InvalidSpecializationDoesNotCascadeIntoCalls()

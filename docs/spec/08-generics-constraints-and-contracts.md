@@ -527,6 +527,33 @@ struct S
     public func take(value: i32) -> () => ()        // Error: duplicate of the previous take.
 ```
 
+Forming a Type written in a requirement's or an implementation's signature, or in an associated-Type specification ([§8.5.1](#851-declaration-and-specification)), is no compatibility obligation: the Constraints its formation needs ([§8.3](#83-constraint-proof)) are proven where it is written, after the conformance holds, and its Origin well-formedness follows [§15.6.1](15-ownership-and-lifetime-analysis.md#1561-origin-relations-and-well-formedness). An associated Type's requirement is part of the conformance's compatibility ([§8.11.3](#8113-checking-and-use)): the evidence that the specified Type meets it rests on that Type's Constraints, an instance of a generic Type's at its arguments ([§8.6.1](#861-conformance-declarations-and-identity)), and evidence that depends on the conformance being verified, directly or through other declarations, supplies none ([§8.3.3](#833-recursion-and-finality)).
+
+```kimi
+contract K
+
+contract C
+    associate Item is K
+
+struct Box<T>
+    T is C
+    Self is K
+
+struct S
+    Self is C                    // Error: Box<S> is K needs S is C, the conformance being verified.
+    associate C.Item is Box<S>
+
+contract D
+    associate Item
+
+struct Cell<T>
+    T is D
+
+struct R
+    Self is D                    // Valid: Cell<R> is judged where it is written, after R is D holds.
+    associate D.Item is Cell<R>
+```
+
 ### 8.6.4. Calls through requirements
 
 Under `T is C`, generic code may use the requirements and associated Types of `C` and its ancestors. A Type function is called through the Type: under `T is Empty`, where `Empty` declares `func empty() -> Self`, write `T.empty()`; `Empty.empty()` is invalid, since the Type is never inferred from the expected result. `T.compare` under `T is Comparable` is the requirement's Function Item with `Self` bound ([§10.5](10-overload-resolution-and-inference.md#105-inference-boundaries)). Distinct requirements are distinct call candidates, and a call that matches several is ambiguous. There is no qualified requirement call; call through a helper constrained by one Contract.

@@ -80,8 +80,8 @@ internal enum IntrinsicId : byte
     Abort, // $abort (SPEC 17.4).
     Fail, // A fixed SPEC 22.5.2 code.
     WriteStdout, // SPEC 22.1, 22.5.
-    FormatFloat, // Formatting (SPEC 22.9.1): Ryu, the erased entry Text.writer makes, the erased reserve, i128 until Kimigayo formats it.
-    ErasedWriter,
+    FormatFloat, // Formatting (SPEC 22.9.1): Ryu, the code of a Writer's reserve, the erased reserve through it, i128 until Kimigayo formats it.
+    ReserveDispatch,
     ErasedReserve,
     FormatInteger128,
     MakeObj, // Handles (IMPL 21.1.3, SPEC 13.6); the Weak operations come with P41.
