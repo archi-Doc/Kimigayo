@@ -112,7 +112,7 @@ public sealed partial class Binding
     private int ChildPositions(Koto part)
     {
         part = KotoHelper.UnwrapParentheses(part);
-        return part is TupleLiteralKoto or ArrayLiteralKoto or DictionaryLiteralKoto ? IndexedChildren(part) : this.ComposedJoin(part) is null ? 0 : 1;
+        return part is TupleLiteralKoto or ArrayLiteralKoto ? IndexedChildren(part) : this.ComposedJoin(part) is null ? 0 : 1;
     }
 
     // Appends the parts of child position `index` of [start, end), each part's there (AddIndexedChild), and gives the parameter Type at
@@ -134,7 +134,7 @@ public sealed partial class Binding
         }
 
         var part = KotoHelper.UnwrapParentheses(this.positionParts[start]);
-        if (part is TupleLiteralKoto or ArrayLiteralKoto or DictionaryLiteralKoto)
+        if (part is TupleLiteralKoto or ArrayLiteralKoto)
         {
             this.AddIndexedChild(part, index);
         }

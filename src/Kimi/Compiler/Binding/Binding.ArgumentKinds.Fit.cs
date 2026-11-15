@@ -116,27 +116,6 @@ public sealed partial class Binding
             return CandidateApplicability.Applicable;
         }
 
-        if (source is DictionaryLiteralKoto dictionary)
-        {
-            // SPEC 12.4.3, 10.5.1: each key and value is an argument at the key and value Types of a Dictionary candidate.
-            if (ExpectedChild(dictionary, 0, expected) is not { } key || ExpectedChild(dictionary, 1, expected) is not { } value)
-            {
-                return CandidateApplicability.Inapplicable;
-            }
-
-            foreach (var entry in dictionary.Entries)
-            {
-                var result = this.FitElement(entry.Key, key, scope);
-                result = result != CandidateApplicability.Applicable ? result : this.FitElement(entry.Value, value, scope);
-                if (result != CandidateApplicability.Applicable)
-                {
-                    return result;
-                }
-            }
-
-            return CandidateApplicability.Applicable;
-        }
-
         if (ControlFlowExpression(source) is { } join && this.KindOf(source) == PartKind.Join)
         {
             return this.FitsJoin(join, expected) ? CandidateApplicability.Applicable : CandidateApplicability.Inapplicable;
@@ -156,7 +135,7 @@ public sealed partial class Binding
             return start != CandidateApplicability.Applicable ? start : this.ProbeRangeBoundary(range.End, ExpectedChild(range, 1, expected)!, this.EndType, scope);
         }
 
-        throw new InvalidOperationException("A composite argument is a Tuple, array or Dictionary literal, a join or a mixed range (InternalInvariant).");
+        throw new InvalidOperationException("A composite argument is a Tuple or array literal, a join or a mixed range (InternalInvariant).");
     }
 
     // SPEC 10.5.1, 10.4 step 1: a Tuple or array literal argument's element at its position, fitted as an argument (FitArgument), its
@@ -235,11 +214,10 @@ public sealed partial class Binding
                 (PartKind.Call, _) => true,
                 (PartKind.Aggregate, TupleLiteralKoto tuple) => TupleShapeAt(tuple, type),
                 (PartKind.Aggregate, ArrayLiteralKoto array) => this.ArrayShapeAt(array, type),
-                (PartKind.Aggregate, DictionaryLiteralKoto dictionary) => ExpectedChild(dictionary, 0, type) is not null,
                 (PartKind.Typed, _) when common is not null && this.TypedPositionPart(part) is { } own =>
                     this.FitsTypedPart(part, own, type, common, ref positionClass),
                 (PartKind.Typed, TupleLiteralKoto or ArrayLiteralKoto) when this.IsAggregatePart(part) => this.FitsWholeAt(part, type),
-                _ => this.LateFits(part, type),
+                _ => this.LateFits(part, type), // A Dictionary part whole (BU-43), its key and value not walked.
             };
             if (!fits)
             {
@@ -256,7 +234,7 @@ public sealed partial class Binding
             this.positionClasses.Add(this.SameStructure(common, type) ? ArgumentAdaptation.Exact : positionClass ?? ArgumentAdaptation.CrossSemanticsBorrow);
         }
 
-        var children = kind == PartKind.Aggregate ? this.ChildPositions(start, end) : 0;
+        var children = kind == PartKind.Aggregate && this.PartsShape(start, end) is not DictionaryLiteralKoto ? this.ChildPositions(start, end) : 0;
         for (var i = 0; i < children; i++)
         {
             var child = this.positionParts.Count;

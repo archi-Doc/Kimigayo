@@ -221,8 +221,8 @@ public partial class ApplicabilityChainRegressionTest
     [InlineData("applyArg(if c => (func [] (v: i64) -> i64 => v, x) else => (stop(), x))")]
     [InlineData("takeD(if c => [\"k\": func [] (v: i64) -> i64 => v] else => stop())")]
     [InlineData("takeD([\"k\": func [] (v: i64) -> i64 => v])")]
+    [InlineData("first(if c => ([\"k\": func [] (v: i64) -> i64 => v], x) else => (stop(), x))")]
     [InlineData("takeA(if c => [func [] (v: i64) -> i64 => v] else => stop())")]
-    [InlineData("takeDictI(if c => [\"k\": 5] else => [\"k\": stop()])")] // C1 (SPEC 10.5.1, 12.4.3): `5` fits i64 at the value place; stop() is Never.
     [InlineData("first(if c => (if c => (func [] (v: i64) -> i64 => v, x) else => (stop(), 5)) else => (stop(), 5))")]
     public void AnAnonymousFunctionAmongAControlFlowArgumentsResultsWaitsForTheCall(string use)
     {
@@ -242,6 +242,7 @@ public partial class ApplicabilityChainRegressionTest
     [InlineData("tuples(if c => (stop(), 5) else => (6, stop()))", nameof(DiagnosticCode.AmbiguousBinding_Kd), "tuples(if c => (stop(), 5) else => (6, stop()))")]
     [InlineData("keep(if c => (x, stop()) else => (x, stop()))", nameof(DiagnosticCode.UnboundTypeArgument_Kd), "keep(if c => (x, stop()) else => (x, stop()))")]
     [InlineData("keep(if c => (5, stop()) else => (6, stop()))", nameof(DiagnosticCode.UnboundTypeArgument_Kd), "keep(if c => (5, stop()) else => (6, stop()))")]
+    [InlineData("takeDictI(if c => [\"k\": 5] else => [\"k\": stop()])", nameof(DiagnosticCode.NoApplicableOverload_Kd), "takeDictI(if c => [\"k\": 5] else => [\"k\": stop()])")]
     [InlineData("applyArg(if c => (func [] (v: bool) => v, stop()) else => (stop(), x))", nameof(DiagnosticCode.NoApplicableOverload_Kd), "applyArg(if c => (func [] (v: bool) => v, stop()) else => (stop(), x))")]
     [InlineData("takeF(if c => func [] (v: bool) => v else => stop())", nameof(DiagnosticCode.NoApplicableOverload_Kd), "takeF(if c => func [] (v: bool) => v else => stop())")]
     [InlineData("applyArg(if c => func [] (v) => v else => stop())", nameof(DiagnosticCode.UnboundTypeArgument_Kd), "applyArg(if c => func [] (v) => v else => stop())")]
@@ -265,9 +266,8 @@ public partial class ApplicabilityChainRegressionTest
     [InlineData("first(if c => (if c => (if c => (func [] (v: i64) -> i64 => v, x) else => (func [] (w: i64) -> i64 => w, x)) else => (stop(), x)) else => (stop(), x))", nameof(DiagnosticCode.TypeMismatch_Kd), "if c => (func [] (v: i64) -> i64 => v, x) else => (func [] (w: i64) -> i64 => w, x)")]
     [InlineData("first(if c => ((if c => func [] (v: i64) -> i64 => v else => func [] (w: i64) -> i64 => w), x) else => (stop(), x))", nameof(DiagnosticCode.TypeMismatch_Kd), "if c => func [] (v: i64) -> i64 => v else => func [] (w: i64) -> i64 => w")]
     [InlineData("takeD(if c => (if c => [\"k\": missing] else => [\"k\": stop()]) else => [\"k\": x])", nameof(DiagnosticCode.UnresolvedBinding_Kd), "missing")]
-    [InlineData("applyArg(([\"k\": func [] (v) => v], x))", nameof(DiagnosticCode.UnboundTypeArgument_Kd), "applyArg(([\"k\": func [] (v) => v], x))")] // A1 (C1; F's ruling 49): v's Type rests on the call's record.
-    [InlineData("applyArg(if c => ([\"k\": func [] (v: i64) -> i64 => v], x) else => (stop(), x))", nameof(DiagnosticCode.UnboundTypeArgument_Kd), "applyArg(if c => ([\"k\": func [] (v: i64) -> i64 => v], x) else => (stop(), x))")] // A3 (C1; SPEC 10.8, F's ruling 19 P1 (a)): the closure fills no slot.
-    [InlineData("first(if c => ([\"k\": func [] (v: i64) -> i64 => v], x) else => (stop(), x))", nameof(DiagnosticCode.UnboundTypeArgument_Kd), "first(if c => ([\"k\": func [] (v: i64) -> i64 => v], x) else => (stop(), x))")] // A4 (C1; SPEC 10.8, F's ruling 19 P1 (a)), as its Tuple twin keep(...).
+    [InlineData("applyArg(([\"k\": func [] (v) => v], x))", nameof(DiagnosticCode.UnresolvedBinding_Kd), "v")]
+    [InlineData("applyArg(if c => ([\"k\": func [] (v: i64) -> i64 => v], x) else => (stop(), x))", nameof(DiagnosticCode.NoApplicableOverload_Kd), "applyArg(if c => ([\"k\": func [] (v: i64) -> i64 => v], x) else => (stop(), x))")]
     public void AControlFlowArgumentRanksAsItsKind(string use, string code, string at)
     {
         var source = ControlFlowDeclarations + use + "\n";
@@ -288,13 +288,24 @@ public partial class ApplicabilityChainRegressionTest
             DiagnosticCorpus.Check(source).Diagnostics.Select(x => (x.Code, source.Substring(x.Span!.Value.Start, x.Span.Value.Length))));
     }
 
-    // SPEC 23.1.2 (DECISIONS BU-79, rule W; the owner, 2026-11-02; F's ruling 49): a failed part is a wildcard and no evidence, so the
-    // call reports F unbound; the closure is completed on its own, but `v`'s omitted Type would come from F and rests on the call's
-    // record (a record move: dev also reported `v`'s dependent UnresolvedBinding_Kd). An independent failure in its body is reported.
+    // SPEC 23.1.2 (DECISIONS BU-79, rule W; the owner, 2026-11-02): a failed part is a wildcard and no evidence, so beside the
+    // closure's own record (`v`) the call reports F unbound, a dependent record SPEC 23.1.2 allows. The Dictionary held in the join's
+    // Tuple no longer rests F on its failed part (U1.6h-3' fix (b), superseded).
+    [Fact]
+    public void AFailedPartIsAWildcardAndTheCallsOwnRecordIsReported()
+    {
+        var source = ControlFlowDeclarations + "applyArg(if c => ([\"k\": func [] (v) => v], x) else => (stop(), x))\n";
+        var shown = DiagnosticCorpus.Check(source).Diagnostics.Select(x => x.Code + " " + source.Substring(x.Span!.Value.Start, x.Span.Value.Length)).Order();
+        Assert.Equal(["UnboundTypeArgument_Kd applyArg(if c => ([\"k\": func [] (v) => v], x) else => (stop(), x))", "UnresolvedBinding_Kd v"], shown);
+    }
+
+    // SPEC 10.5.4, 23.1.2 (F's ruling 49): an unselected call's anonymous function is completed on its own: an independent failure in its
+    // body (`missing`) is reported beside the call's own record, while its omitted parameter Type, which the call's slot would supply,
+    // rests on the call's record (rule W), so `v` gives none.
     [Theory]
-    [InlineData("applyArg(if c => ([\"k\": func [] (v) => v], x) else => (stop(), x))", "UnboundTypeArgument_Kd applyArg(if c => ([\"k\": func [] (v) => v], x) else => (stop(), x))", null)]
-    [InlineData("applyArg(([\"k\": func [] (v) => missing], x))", "UnboundTypeArgument_Kd applyArg(([\"k\": func [] (v) => missing], x))", "UnresolvedBinding_Kd missing")]
-    public void AFailedPartIsAWildcardAndTheCallsOwnRecordIsReported(string use, string call, string? body)
+    [InlineData("keep((func [] (v) => missing, x))", "UnboundTypeArgument_Kd keep((func [] (v) => missing, x))", "UnresolvedBinding_Kd missing")]
+    [InlineData("keep((func [] (v) => v, x))", "UnboundTypeArgument_Kd keep((func [] (v) => v, x))", null)]
+    public void AnUnselectedCallsClosureReportsOnlyItsBodysOwnFailures(string use, string call, string? body)
     {
         var source = ControlFlowDeclarations + use + "\n";
         var shown = DiagnosticCorpus.Check(source).Diagnostics.Select(x => x.Code + " " + source.Substring(x.Span!.Value.Start, x.Span.Value.Length)).Order();

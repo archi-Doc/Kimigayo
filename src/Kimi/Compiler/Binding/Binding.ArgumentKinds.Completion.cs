@@ -230,25 +230,13 @@ public sealed partial class Binding
             return;
         }
 
-        // SPEC 12.4.3, 23.1.2 (PLAN G924 C1): a Dictionary literal's keys and values are parts as a Tuple's elements are.
-        if (node is DictionaryLiteralKoto dictionary)
-        {
-            foreach (var entry in dictionary.Entries)
-            {
-                this.CompleteUnselectedPart(entry.Key, scope, call);
-                this.CompleteUnselectedPart(entry.Value, scope, call);
-            }
-
-            return;
-        }
-
         // SPEC 10.5.4, 23.1.2 (F's ruling 49): an anonymous function no candidate completed is bound on its own, so independent failures
         // in its body are reported; its omitted parameter Types would come from the call's slot and rest on the call's record (rule W).
         if (node is FunctionKoto closure && this.KindOf(node) == PartKind.Function)
         {
-            foreach (var parameter in closure.Parameters)
+            for (var i = 0; i < closure.Parameters.Count; i++)
             {
-                if (parameter.Type is SyntaxFormKoto { Akind: KotoKind.InferredType } omitted && omitted.BindingState == BindingState.Unvisited)
+                if (closure.Parameters[i].Type is SyntaxFormKoto { Akind: KotoKind.InferredType } omitted && omitted.BindingState == BindingState.Unvisited)
                 {
                     _ = this.CompleteDependent(omitted, call);
                 }
