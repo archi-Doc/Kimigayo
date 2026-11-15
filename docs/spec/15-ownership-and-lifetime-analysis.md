@@ -574,11 +574,12 @@ func punnedRef(y: uniq/i32)
 A borrow of a temporary cannot outlive it, wherever the temporary belongs ([§3.6](03-types-and-values.md#36-temporaries)):
 
 ```kimi
-// idf<T>(value: T) -> T; kf32(x: ref/[2 of i32]); pk(x: ref/[2 of i32]) -> ref/[2 of i32]; kw(x: ref/i64); pkw(x: ref/i64) -> ref/i64.
-kf32(if ready => [2 of idf(1)] else => [2 of idf(2)])       // The Loan on the argument temporary ends with the call.
-let r = pk(if ready => [2 of idf(1)] else => [2 of idf(2)]) // r carries the Loan on pk's argument temporary.
-// kf32(r)                                                  // Error: that temporary ended with the statement above.
-// kw(if ready => pkw(idf(1)) else => pkw(idf(2)))          // Error: each source's value borrows its own temporary.
+// identity<T>(value: T) -> T; inspectPair(values: ref/[2 of i32]); passPair(values: ref/[2 of i32]) -> ref/[2 of i32];
+// inspectWide(value: ref/i64); passWide(value: ref/i64) -> ref/i64.
+inspectPair(if ready => [2 of identity(1)] else => [2 of identity(2)])          // The Loan on the argument temporary ends with the call.
+let view = passPair(if ready => [2 of identity(1)] else => [2 of identity(2)])  // view carries the Loan on passPair's argument temporary.
+// inspectPair(view)                                                            // Error: that temporary ended with the statement above.
+// inspectWide(if ready => passWide(identity(1)) else => passWide(identity(2))) // Error: each source's value borrows its own temporary.
 ```
 
 ### 15.6.1. Origin relations and well-formedness

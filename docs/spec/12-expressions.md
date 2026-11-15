@@ -41,9 +41,9 @@ let ok = ready() and check()  // check() runs only when ready() is true.
 
 ### 12.3.1. Expected Types and defaults
 
-Declared Types of bindings, parameters and results are expected Types, as is every other fixed expected Type ([§10.2](10-overload-resolution-and-inference.md#102-common-adaptation)). An expected Type propagates into the expression by one rule, whatever its form: into every part of a Tuple, array, fill or Dictionary literal (each element, the fill value, each key and value), both range boundaries ([§4.6.2](04-arrays-indexing-and-slices.md#462-ranges)), every source of a selection, `do` or `loop` ([§14.9.2](14-control-flow.md#1492-target-result-type-and-expression-type)) and a generic call's result, which fills only the slots its evidence leaves unbound ([§10.8](10-overload-resolution-and-inference.md#108-generic-argument-inference)); at a call argument it is the parameter Type under each remaining candidate ([§10.5.1](10-overload-resolution-and-inference.md#1051-argument-kinds)). Otherwise a Type comes from the operands. Built-in numeric operations need operands of one numeric Type: widths, signedness, and integer and floating-point Types never mix implicitly. There are no implicit conversions between `bool`, `char` and numbers, and a condition must be `bool`.
+Every fixed expected Type of [§10.2](10-overload-resolution-and-inference.md#102-common-adaptation), a declared Type of a binding, parameter or result included, is an expected Type. An expected Type propagates into the expression by one rule, whatever its form: into every part of a Tuple, array, fill or Dictionary literal (each element, the fill value, each key and value), both range boundaries ([§4.6.2](04-arrays-indexing-and-slices.md#462-ranges)), every source of a selection, `do` or `loop` ([§14.9.2](14-control-flow.md#1492-target-result-type-and-expression-type)) and a generic call's result, which fills only the slots its evidence leaves unbound ([§10.8](10-overload-resolution-and-inference.md#108-generic-argument-inference)); at a call argument it is the parameter Type under each remaining candidate ([§10.5.1](10-overload-resolution-and-inference.md#1051-argument-kinds)). Otherwise a Type comes from the operands. Built-in numeric operations need operands of one numeric Type: widths, signedness, and integer and floating-point Types never mix implicitly. There are no implicit conversions between `bool`, `char` and numbers, and a condition must be `bool`.
 
-An untyped integer literal adopts an expected integer Type if its value fits; a floating-point literal adopts an expected `f32` or `f64`. At an expected `ref/U`, every value that is neither a Place nor a borrow value (a literal of any kind, a fill, a range, a call returning a value, or a selection, `do` or `loop` with such a source) is the owner temporary that [§10.2](10-overload-resolution-and-inference.md#102-common-adaptation) borrows and is checked against `U` as at an expected `U`, at a parameter, a declared Type or any other fixed expected Type. Where no expected Type reaches a literal, integer literals default to `i32` (also every range boundary and `^` operand with no other source of its Type, [§4.6.2](04-arrays-indexing-and-slices.md#462-ranges)), floating-point literals to `f64`, and literals in length contexts to `isize` ([§4.2](04-arrays-indexing-and-slices.md#42-length-expressions)); a literal that does not fit the default needs an explicit Type. In a call, defaults apply only after candidate selection ([§10.2.1](10-overload-resolution-and-inference.md#1021-literals)), never during candidate comparison or conformance selection ([§4.7.1](04-arrays-indexing-and-slices.md#471-index-expression-resolution)). Integers never fit floating-point Types implicitly.
+An untyped integer literal adopts an expected integer Type if its value fits; a floating-point literal adopts an expected `f32` or `f64`. At an expected `ref/U`, every owner value (neither a Place nor a borrow value, [§3.4.1](03-types-and-values.md#341-access-paths-and-value-kinds)), whatever its form (a literal of any kind, a fill, a range, a call returning a value, or a selection, `do` or `loop` that [§14.9.2](14-control-flow.md#1492-target-result-type-and-expression-type) step 3 makes one value), is the owner temporary that [§10.2](10-overload-resolution-and-inference.md#102-common-adaptation) borrows and is checked against `U` as at an expected `U`, at a parameter, a declared Type or any other fixed expected Type. Where no expected Type reaches a literal, integer literals default to `i32` (also every range boundary and `^` operand with no other source of its Type, [§4.6.2](04-arrays-indexing-and-slices.md#462-ranges)), floating-point literals to `f64`, and literals in length contexts to `isize` ([§4.2](04-arrays-indexing-and-slices.md#42-length-expressions)); a literal that does not fit the default needs an explicit Type. In a call, defaults apply only after candidate selection ([§10.2.1](10-overload-resolution-and-inference.md#1021-literals)), never during candidate comparison or conformance selection ([§4.7.1](04-arrays-indexing-and-slices.md#471-index-expression-resolution)). Integers never fit floating-point Types implicitly.
 
 ```kimi
 let a: i64 = 10
@@ -54,9 +54,9 @@ let e = a + c        // Error: i64 and i32 do not mix.
 ```
 
 ```kimi
-// idf<T>(value: T) -> T; kqd(x: (i64, ref/Dictionary<string, i64> during a)).
-let w: ref/[2 of i64] = [2 of idf(1)] // The fill is checked against [2 of i64]: idf<i64>.
-kqd((1, ["a": idf(1)]))               // The Dictionary at the ref element is checked against Dictionary<string, i64>.
+// identity<T>(value: T) -> T; takeEntry(entry: (i64, ref/Dictionary<string, i64> during a)).
+let wide: ref/[2 of i64] = [2 of identity(1)] // The fill is checked against [2 of i64]: identity<i64>.
+takeEntry((1, ["a": identity(1)]))            // The Dictionary at the ref element is checked against Dictionary<string, i64>.
 ```
 
 ### 12.3.2. Direct literals
@@ -120,8 +120,8 @@ let unknown = []        // Error: an empty literal needs an expected Type.
 ```
 
 ```kimi
-// idf<T>(value: T) -> T; kd64(x: ref/Dictionary<string, i64>).
-kd64(["a": idf(1)])     // The value is checked against i64: idf<i64>.
+// identity<T>(value: T) -> T; inspectWideTable(table: ref/Dictionary<string, i64>).
+inspectWideTable(["a": identity(1)]) // The value is checked against i64: identity<i64>.
 ```
 
 ### 12.4.2. Interpolated strings

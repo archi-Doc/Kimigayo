@@ -64,8 +64,8 @@ let wrong: [3 of i32] = [1, 2]              // Error: element count.
 ```
 
 ```kimi
-// idf<T>(value: T) -> T; ka(x: ref/Array<i64>).
-ka(if ready => [idf(1), 2] else => [idf(3)]) // Every element of each source is checked against i64: idf<i64>.
+// identity<T>(value: T) -> T; inspectWideArray(values: ref/Array<i64>).
+inspectWideArray(if ready => [identity(1), 2] else => [identity(3)]) // Every element of each source is checked against i64: identity<i64>.
 ```
 
 ### 4.3.2. Initial construction
@@ -92,10 +92,10 @@ inspect(none)
 ```
 
 ```kimi
-// idf<T>(value: T) -> T; kf(x: ref/[2 of i64]); kg<V>(x: ref/[2 of V]); wr: ref/i64.
-kf([2 of idf(1)])        // The fill value is checked against i64: idf<i64>; one temporary, borrowed.
-kf([2 of wr])            // wr is value-read as i64.
-// kg([2 of idf(1)])     // Error: V is unbound, so idf(1) has no expected Type and is no evidence.
+// identity<T>(value: T) -> T; inspectWidePair(values: ref/[2 of i64]); keepPair<V>(values: ref/[2 of V]); wideRef: ref/i64.
+inspectWidePair([2 of identity(1)]) // The fill value is checked against i64: identity<i64>; one temporary, borrowed.
+inspectWidePair([2 of wideRef])     // wideRef is value-read as i64.
+// keepPair([2 of identity(1)])     // Error: V is still unbound after the defaults; identity(1) is no evidence.
 ```
 
 ### 4.3.4. `noinit`
@@ -245,8 +245,8 @@ let f = (0..3) == (0..=2)     // Error: different range Types.
 ```
 
 ```kimi
-// idf<T>(value: T) -> T; kr(x: ref/Range<i64, i64>).
-kr(idf(1)..3)                 // Both boundaries are checked against i64: idf<i64>.
+// identity<T>(value: T) -> T; inspectWideRange(range: ref/Range<i64, i64>).
+inspectWideRange(identity(1)..3) // Both boundaries are checked against i64: identity<i64>.
 ```
 
 ### 4.6.3. Resolution
