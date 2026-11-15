@@ -121,8 +121,10 @@ public sealed partial class Binding
     }
 
     // The first array literal source of a join, through the forms that deliver it (DeliveredOperand), that is still unbound: it awaits
-    // its position; null when there is none. (A Tuple literal source keeps the step-3 path: its Origins-only joins rest on G443's interim
-    // and its closures on the control-flow ranking rows; AF-2's phase 8.)
+    // its position; null when there is none.
+    // Temporary path (F's ruling 48): a Tuple literal source keeps step 3 at its typed sources' Type, since classifying it by the call
+    // makes an Origins-only difference an inapplicable candidate (g586h3 would give NoApplicableOverload_Kd on a valid program instead of
+    // G443's located Unsupported_Kd). Removal condition: PLAN G443's landing (R7-I2 d), which then classifies Tuple sources here too.
     private static Koto? AwaitingAggregateSource(ResultContext context)
     {
         foreach (var source in context.SourceNodes)

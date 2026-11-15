@@ -54,6 +54,8 @@ public partial class ApplicabilityChainRegressionTest
 
     private const string PickGenericFirst = "func pick<T>(value: T) -> i32 => 1\nfunc pick(values: Array<i32>) -> i32 => 0\nfunc w() -> i32\n    var y: i32 = 1\n";
 
+    private const string ExpectedReferents = "struct Box<T>\n    public let value: T\n    public init(value: T) => self.value = value@move\nfunc wrap<T>(value: T) -> Box<T> => Box.init(value@move)\nfunc inspectBox(box: ref/Box<i64>) -> () => ()\nfunc w() -> i32\n";
+
     private const string HeldDeclarations = "func identity<T>(v: T) -> T => v@move\nfunc f(x: i64) -> i32 => 0\nfunc ft(x: (i64, i32)) -> i32 => 0\nfunc fa(x: Array<i64>) -> i32 => 0\nfunc fd(x: Dictionary<string, i64>) -> i32 => 0\nfunc k(c: bool, d: bool) -> i32\n";
 
     // A row is (unit, form, program, records). Its verdict comes from SPEC, never from a build: records is empty for a valid program, which
@@ -444,6 +446,16 @@ public partial class ApplicabilityChainRegressionTest
     [InlineData("G924", "t-nev3r", Wholes + "    let r = put([y], [y, stop()])\n    return 0\n", "")]
     public void AWholeHoldingNeverGivesNoEvidence(string unit, string form, string program, string records)
         => CompilationTestHelper.AssertBindingRecordsAtLines($"{form} [{unit}]", program + "()", records);
+
+    // SPEC 10.8.1, 12.3.1 (PLAN G924 s-b1): at an expected `ref/U` the expected result of a construction or call whose result is an owner Type
+    // is U, which inverts nothing: `inspectBox(Box.init(1))` takes T = i64 (10.8.1's own example), as `wrap(1)` does; an argument's
+    // established Type is never changed by it (b1n: `true` binds T = bool, and Box<bool> is no Box<i64>).
+    [Theory]
+    [InlineData("G924", "b1", ExpectedReferents + "    inspectBox(Box.init(1))\n    return 0\n", "")]
+    [InlineData("G924", "b1w", ExpectedReferents + "    inspectBox(wrap(1))\n    return 0\n", "")]
+    [InlineData("G924", "b1n", ExpectedReferents + "    inspectBox(Box.init(true))\n    return 0\n", "*: inspectBox(Box.init(true)) | ...")]
+    public void AnExpectedReferenceGivesTheResultItsReferent(string unit, string form, string program, string records)
+        => CompilationTestHelper.AssertRecordsAtLines($"{form} [{unit}]", program + "()", records);
 
     // SPEC 10.2.2 step 1, 10.2, 8.1.3 (PLAN G719): explicit Type arguments bind first and supply every slot, so each argument fits its fixed
     // parameter Type by the common adaptation: a value read at a read Type (fr1-fr4; fr5 through a caller's proven parameter), a new shared
