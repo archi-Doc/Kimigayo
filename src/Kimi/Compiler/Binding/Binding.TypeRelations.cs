@@ -173,11 +173,14 @@ public sealed partial class Binding
             : this.types.Rebuild(required, [required.Components[0], BoundType.Never], required.Origin, (BoundOrigin[])required.OriginArguments);
     }
 
-    private BoundType DirectTarget(BoundType whole)
+    // SPEC 8.1.1: the direct target of a pair binder's binding: a family's case by case, a layer's target, a Type parameter's or pair
+    // original's projection, and a value Type or an owner-proven abstract Type itself; a binding that forms no Type has none represented
+    // (Unformed, D3).
+    private BoundType? DirectTarget(BoundType whole)
     {
         if (whole.Kind == BoundTypeKind.SemanticsAdaptation)
         {
-            return this.TransformFamily(whole, FamilyTransform.Target)!;
+            return this.TransformFamily(whole, FamilyTransform.Target);
         }
 
         if (whole.Kind is BoundTypeKind.Semantics or BoundTypeKind.SemanticsApplication)
@@ -190,7 +193,7 @@ public sealed partial class Binding
             return whole.Symbol!.Kind == BindingSymbolKind.SemanticsTarget ? whole.Symbol.Type! : this.types.Intern(BoundTypeKind.TargetProjection, whole.Symbol, SemanticsKind.Owner, []);
         }
 
-        return whole;
+        return this.FormsUnder(whole) ? whole : this.Unformed();
     }
 
     // A Type with its binder's slots, lengths and pair Origins and the images of its Origin binder's declared slots and per-call atoms
@@ -311,7 +314,7 @@ public sealed partial class Binding
             // SPEC 8.1.2: an original `s/T` denotes the pair's binding (TyCtxt.PairBinding), its projection `T` the direct target.
             var projected = type.Kind == BoundTypeKind.TargetProjection ? this.DirectTarget(whole)
                 : type.Symbol is { Kind: BindingSymbolKind.SemanticsTarget } ? this.types.PairBinding(whole) : whole;
-            return type.Origin is { } replacement ? this.AnnotatedOriginal(projected, this.SubstituteSlotOrigin(replacement, substitution)) : projected;
+            return projected is not null && type.Origin is { } replacement ? this.AnnotatedOriginal(projected, this.SubstituteSlotOrigin(replacement, substitution)) : projected;
         }
 
         // DECISIONS BU-60: the Type instance a closure's context holds is a part of the Closure Type.

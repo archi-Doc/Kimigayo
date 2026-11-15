@@ -177,8 +177,8 @@ public sealed partial class Binding
             var trial = binding.infer.Snapshot();
             try
             {
-                var formed = binding.FittedPattern(memberPattern, this.SlotOwner, this.Frame, literal);
-                return binding.Infer(LiteralInputType(formed), shape, this.SlotOwner, this.Frame);
+                return binding.FittedPattern(memberPattern, this.SlotOwner, this.Frame, literal) is { } formed &&
+                    binding.Infer(LiteralInputType(formed), shape, this.SlotOwner, this.Frame);
             }
             finally
             {
@@ -282,8 +282,7 @@ public sealed partial class Binding
         // evidence binds stays a slot, so no argument's adaptation follows another's Type binding. Null where it does not adapt.
         private readonly BoundType? AdaptPart(BoundType pattern, BoundType actual, Koto source, BoundMemberPath? path = null, bool receiver = false)
         {
-            var fit = this.AdaptationPattern(pattern, source);
-            return this.Binding.AdaptInput(
+            return this.AdaptationPattern(pattern, source) is { } fit && this.Binding.AdaptInput(
                 source, fit, actual, this.Scope, path, this.DeclaringType, out var adapted, out _, out _, receiver: receiver, deferAcquisition: true)
                 ? adapted : null;
         }
@@ -291,11 +290,9 @@ public sealed partial class Binding
         // SPEC 10.2, 10.8, 6.5.2 step 2: the pattern a part adapts at: under the bindings fixed before any evidence (FixedPattern), with each
         // structured application of its outer layers formed under the binder its sources fixed (FittedPattern; the owner's O-283 (a)), and
         // every pair layer so for a Literal, which is no evidence (SPEC 10.5.1; the owner's O-294 (b)).
-        private readonly FixedPattern AdaptationPattern(BoundType pattern, Koto? source)
-            => FixedPattern.Of(
-                this.Binding,
-                this.Binding.FittedPattern(pattern, this.SlotOwner, this.Frame, source),
-                this.Fixed);
+        // Null where a binding forms no Type (Binding.Unformed, D3).
+        private readonly FixedPattern? AdaptationPattern(BoundType pattern, Koto? source)
+            => this.Binding.FittedPattern(pattern, this.SlotOwner, this.Frame, source) is { } fitted ? FixedPattern.Of(this.Binding, fitted, this.Fixed) : null;
 
         // SPEC 10.5.1, 14.9.2 step 2, 10.2 (DECISIONS BU-43 as amended by G729): a typed position of several parts is one control-flow
         // argument whose sources are its parts. Each typed part (those PositionType takes; a part awaiting its call has no supplied Type,
@@ -334,11 +331,20 @@ public sealed partial class Binding
             var binding = this.Binding;
             var binder = this.Binder;
             var callee = actual;
-            actual = binding.SignatureAtFunction(this.AdaptationPattern(pattern, part.Node).Type, actual);
+            if (this.AdaptationPattern(pattern, part.Node) is not { } adaptation)
+            {
+                return false; // Unformed (D3): the call is Unsupported.
+            }
+
+            actual = binding.SignatureAtFunction(adaptation.Type, actual);
 
             // SPEC 8.1.2, 10.8: Origins are matched at the formed pattern only (OriginPattern); Infer forms the pattern itself.
             var matched = this.OriginPattern(pattern);
-            var formed = matched ?? binding.FormedApplication(pattern, this.SlotOwner, this.Frame);
+            if ((matched ?? binding.FormedApplication(pattern, this.SlotOwner, this.Frame)) is not { } formed)
+            {
+                return false; // Unformed (D3): the call is Unsupported.
+            }
+
             var known = part.Node is { } node && formed.Kind == BoundTypeKind.Function && actual.Kind == BoundTypeKind.Function
                 ? new SignatureEvidence(CalleeBinder(callee, actual), node) : (SignatureEvidence?)null;
             var quantifier = known is { } evidence ? evidence.Binder ?? evidence.Source : null; // The argument itself binds nothing.

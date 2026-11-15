@@ -136,12 +136,13 @@ public sealed partial class Binding
             evaluation.Mapping.AsSpan(0, argumentCount).CopyTo(evaluation.AllMaps.AsSpan(index * argumentCount));
         }
 
+        // The trial's judgment is taken once, in the selection's frame (DECISIONS BU-86); an unformed split (D3) whatever the state.
+        var judgment = this.TakeTrialPending(call);
+        evaluation.Unformed |= judgment is { Kind: PendingJudgmentKind.UnformedSplit };
         evaluation.Pending |= state == CandidateApplicability.Pending;
         if (state == CandidateApplicability.Pending)
         {
-            // A failed signature part or explicit Type argument leaves the selection resting on it (SPEC 23.1.2); the trial's judgment
-            // before its proof is taken once, in the selection's frame (DECISIONS BU-86).
-            var judgment = this.TakeTrialPending(call);
+            // A failed signature part or explicit Type argument leaves the selection resting on it (SPEC 23.1.2).
             evaluation.FailedPendingSignature ??= IncompleteSignature(function) ?? this.FailedSignaturePart(function) ??
                 (judgment is { Kind: PendingJudgmentKind.FailedTypeArgument } failed ? failed.Part : null);
 
@@ -268,6 +269,7 @@ public sealed partial class Binding
         internal bool Pending;
         internal bool PremisesOnly;
         internal bool Error;
+        internal bool Unformed; // DECISIONS D3: a candidate needed a Type formed under an unrepresented split (PendingJudgmentKind.UnformedSplit).
         internal CallableConstraintFact? CallableFailure;
         internal ReferenceConstraintFailure? ConstraintFailure;
         internal PendingJudgment? PendingJudgment;

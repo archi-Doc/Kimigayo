@@ -165,10 +165,38 @@ public sealed partial class Binding
         => type is { Kind: BoundTypeKind.TargetProjection, Symbol: { Kind: BindingSymbolKind.SemanticsTarget, WholeType: { } whole } pair }
             ? CaseOf(cases, pair)?.ToMask() ?? this.AdmittedSemantics(whole, scope) : SemanticsMask.All;
 
+    // SPEC 8.1.2: whether a Type is formed under this binding, its split represented: a value Type, an owner-proven abstract Type, one
+    // with a selector of its own, a family case by case. A selector-less abstract binding (a pair target alone or an unresolved
+    // projection no premise proves owner) forms none (Unformed; PLAN G886).
+    private bool FormsUnder(BoundType binding) => !this.IsAbstractBinding(binding) || HasOwnSelector(binding);
+
+    // DECISIONS D3 (temporary; removed with the representation of a selector-less binding's split, PLAN G886): a formation under a binding
+    // that forms none (FormsUnder) forms nothing (null), and the candidate trial in progress carries that fact (PendingJudgmentKind.
+    // UnformedSplit, BU-86's channel) to its selection, which makes the call one located Unsupported_Kd (EvaluateCallCandidate). Its
+    // callers: ApplySemantics, SubstituteFamily, DirectTarget, HasOuterSlot; IsSource's comparison reads FormsUnder and publishes nothing.
+    private BoundType? Unformed()
+    {
+        if (this.activeInferenceFunction is { } candidate)
+        {
+            this.trialPending ??= new(PendingJudgmentKind.UnformedSplit, candidate) { Epoch = this.frameEpoch };
+        }
+
+        return null;
+    }
+
     // SPEC 8.1.2: whether a pair layer formed under this binding (an annotated original, or an application `s/U`, ApplySemantics) keeps
-    // its outer-Origin slot: a borrow binding does, an abstract binding or a family conditionally; a value binding keeps none.
+    // its outer-Origin slot: a borrow binding does, an abstract binding or a family conditionally; a value binding keeps none. For a
+    // binding that forms no Type it is unrepresented (Unformed, D3): the slot is kept and the call is Unsupported.
     private bool HasOuterSlot(BoundType binding)
-        => IsBorrow(binding.Semantics) || this.IsAbstractBinding(binding) || binding.Kind == BoundTypeKind.SemanticsAdaptation;
+    {
+        var isAbstract = this.IsAbstractBinding(binding);
+        if (isAbstract && !HasOwnSelector(binding))
+        {
+            _ = this.Unformed();
+        }
+
+        return isAbstract || IsBorrow(binding.Semantics) || binding.Kind == BoundTypeKind.SemanticsAdaptation;
+    }
 
     // Short adaptations select the output mode with the input case; a fixed mode maps every input case. The cases are the binder's
     // admitted set at the adaptation (SPEC 8.3.4, 8.15.2: a conditional member's or block's premises included), not at its declaration,
@@ -309,11 +337,11 @@ public sealed partial class Binding
     // SPEC 8.1.2: `s/U`, a pair binder's binding `whole` applied to `target`: a family case by case, an abstract binding's application, and
     // a layer the binding's Semantics forms over the target, read through TyCtxt.PairBinding (DECISIONS BU-46): never its Origin, but a
     // borrow states `origin`, the annotation's, and a raw layer what the binding states (none, or a declaration's Unstated); an owner
-    // binding gives the target. An abstract binding without a selector of its own (HasOwnSelector) forms none (null).
+    // binding gives the target. An abstract binding without a selector of its own (HasOwnSelector) forms none (Unformed).
     private BoundType? ApplySemantics(BoundType whole, BoundType target, BoundOrigin? origin) => whole switch
     {
         { Kind: BoundTypeKind.SemanticsAdaptation } => this.TransformFamily(whole, FamilyTransform.Apply, origin, target: target),
-        _ when this.IsAbstractBinding(whole) => HasOwnSelector(whole) ? this.PairApplication(whole.Symbol!, target, origin) : null,
+        _ when this.IsAbstractBinding(whole) => HasOwnSelector(whole) ? this.PairApplication(whole.Symbol!, target, origin) : this.Unformed(),
         { Kind: BoundTypeKind.Semantics } => this.types.Rebuild(this.types.PairBinding(whole), [target], IsBorrow(whole.Semantics) ? origin : null, []),
         _ => this.Form(whole.Semantics, target, origin),
     };
@@ -375,7 +403,12 @@ public sealed partial class Binding
     {
         if (this.IsAbstractBinding(whole))
         {
-            if (!HasOwnSelector(whole) || whole.Symbol is not { } selector)
+            if (!HasOwnSelector(whole))
+            {
+                return this.Unformed();
+            }
+
+            if (whole.Symbol is not { } selector)
             {
                 return null;
             }

@@ -269,6 +269,13 @@ public sealed partial class Binding
             this.EvaluateCallCandidates(ref evaluation, candidates);
             var count = evaluation.Count;
             var applicable = evaluation.Applicable;
+            if (evaluation.Unformed)
+            {
+                // DECISIONS D3 (temporary, PLAN G886): a candidate needed a Type no binding represents (a Constraint over it included,
+                // whose proof is then Error), so the call is not judged, whatever the other candidates.
+                return this.Fail(call, BindingFailure.Unsupported, true);
+            }
+
             if (evaluation.Error)
             {
                 // A candidate in a failed declaration cannot be judged, nor one whose Constraint fails on a conformance resting on a failed

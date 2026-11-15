@@ -26,11 +26,12 @@ public sealed partial class Binding
         Error,
     }
 
-    // DECISIONS BU-86: the closed vocabulary of PendingJudgment.
+    // DECISIONS BU-86: the closed vocabulary of PendingJudgment (UnformedSplit: the temporary D3 fact, PLAN G886).
     private enum PendingJudgmentKind : byte
     {
         FailedTypeArgument,
         EnvironmentResult,
+        UnformedSplit,
     }
 
     // SPEC 10.4, 8.3.3: the candidates the ordinary comparison ranks; with premises, also each candidate whose applicability is unproven
@@ -327,6 +328,8 @@ public sealed partial class Binding
     // FailedTypeArgument: an explicit Type argument that did not bind (Part), on which the selection rests (SPEC 23.1.2).
     // EnvironmentResult: the argument (Part) whose known signature's result over its closure's environment is no evidence for Slot
     // (SPEC 8.10, 7.7.4), a slot that no other evidence binds (SPEC 10.8).
+    // UnformedSplit (DECISIONS D3, temporary until PLAN G886's representation): the candidate (Part) needed a Type formed under a
+    // binding whose split no Type represents (Binding.Unformed); its call is one located Unsupported_Kd, whatever its other candidates.
     private readonly record struct PendingJudgment(PendingJudgmentKind Kind, Koto Part, BindingSymbol? Slot = null)
     {
         // The epoch of the innermost open frame it is read in (design-r2 Amendment 5).

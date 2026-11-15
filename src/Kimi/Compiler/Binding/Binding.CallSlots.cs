@@ -201,7 +201,8 @@ public sealed partial class Binding
     // family; an owner binding gives the target) over the callee's target, which is formed first: a caller's pair is never formed again
     // under the callee's bindings (a recursive call), and Origin matching never meets an unformed application (MatchInputOrigins). An
     // application whose s is still unknown is kept as it is.
-    private BoundType FormedApplication(BoundType pattern, Koto function, SlotFrame frame)
+    // Null where a binding forms no Type (Unformed, D3): the part fails and the call is Unsupported.
+    private BoundType? FormedApplication(BoundType pattern, Koto function, SlotFrame frame)
     {
         var count = pattern.Components.Count;
         if (!pattern.HasAbstractPart || count == 0)
@@ -213,7 +214,7 @@ public sealed partial class Binding
         if (pattern is { Kind: BoundTypeKind.SemanticsApplication, Symbol: { } selector, Components: [var target] } &&
             ContainerSlot(function, selector) is >= 0 and var slot && Selector(frame, slot) is { } whole)
         {
-            return this.ApplySemantics(whole, this.FormedApplication(target, function, frame), pattern.Origin) ?? pattern;
+            return this.FormedApplication(target, function, frame) is { } formedTarget ? this.ApplySemantics(whole, formedTarget, pattern.Origin) : null;
         }
 
         var components = this.RentTypes(count);
@@ -222,8 +223,13 @@ public sealed partial class Binding
             var changed = false;
             for (var i = 0; i < count; i++)
             {
-                components[i] = this.FormedApplication(pattern.Components[i], function, frame);
-                changed |= !ReferenceEquals(components[i], pattern.Components[i]);
+                if (this.FormedApplication(pattern.Components[i], function, frame) is not { } component)
+                {
+                    return null;
+                }
+
+                components[i] = component;
+                changed |= !ReferenceEquals(component, pattern.Components[i]);
             }
 
             return changed ? this.types.Rebuild(pattern, components.AsSpan(0, count), pattern.Origin, (BoundOrigin[])pattern.OriginArguments) : pattern;
@@ -243,13 +249,14 @@ public sealed partial class Binding
     // evidence (SPEC 10.5.1, 10.2.1; the owner's O-294 (b)): its default fits every pair layer whose binder evidence fixed, an exact
     // source and an occurrence of the original whose Type is still open alike (a borrowed temporary under ref), and binds only what no
     // evidence binds.
-    private BoundType FittedPattern(BoundType pattern, Koto function, SlotFrame frame, Koto? part)
+    // Null where a binding forms no Type (Unformed, D3).
+    private BoundType? FittedPattern(BoundType pattern, Koto function, SlotFrame frame, Koto? part)
     {
         if (pattern is { Kind: BoundTypeKind.Parameter, Symbol: { Kind: BindingSymbolKind.SemanticsTarget, Type: { } original } pair } &&
             ContainerSlot(function, pair) is >= 0 and var own && own < frame.Types.Length && frame.Types[own] is null &&
             frame.Selectors[own] is { } fixedBy && part is not null && this.KindOf(part) == PartKind.Literal)
         {
-            return this.ApplySemantics(fixedBy, original, pattern.Origin) ?? pattern;
+            return this.ApplySemantics(fixedBy, original, pattern.Origin);
         }
 
         if (pattern is not { Kind: BoundTypeKind.SemanticsApplication or BoundTypeKind.Semantics, HasAbstractPart: true, Components: [var target] })
@@ -257,12 +264,15 @@ public sealed partial class Binding
             return pattern;
         }
 
-        var fitted = this.FittedPattern(target, function, frame, part);
-        if (pattern.Kind == BoundTypeKind.SemanticsApplication && ContainerSlot(function, pattern.Symbol!) is >= 0 and var slot &&
-            Selector(frame, slot) is { } whole && (!IsExactSource(pattern, function) || (part is not null && this.KindOf(part) == PartKind.Literal)) &&
-            this.ApplySemantics(whole, fitted, pattern.Origin) is { } formed)
+        if (this.FittedPattern(target, function, frame, part) is not { } fitted)
         {
-            return formed;
+            return null;
+        }
+
+        if (pattern.Kind == BoundTypeKind.SemanticsApplication && ContainerSlot(function, pattern.Symbol!) is >= 0 and var slot &&
+            Selector(frame, slot) is { } whole && (!IsExactSource(pattern, function) || (part is not null && this.KindOf(part) == PartKind.Literal)))
+        {
+            return this.ApplySemantics(whole, fitted, pattern.Origin);
         }
 
         return ReferenceEquals(fitted, target) ? pattern : this.types.Rebuild(pattern, [fitted], pattern.Origin, (BoundOrigin[])pattern.OriginArguments);
@@ -301,8 +311,9 @@ public sealed partial class Binding
     // application of a bare slot (IsExactSource), the expected result included. Each gives its outer Semantics: the first exact source
     // of a slot nothing has fixed becomes the slot's selector evidence, and every other one must agree with it, whichever comes first:
     // both form the same layer over one `target` (ApplySemantics; an owner source forms the target itself, so owner evidence is
-    // compared as any other is; a binding that forms none, a pair target alone, agrees only with itself). A slot bound with no selector evidence was fixed before any evidence (explicit Type arguments, a
-    // construction's fixed slots): its binder is not inferred, so nothing is compared. Never supplies no evidence.
+    // compared as any other is; a binding that forms none, a pair target alone, agrees only with itself: a Language verdict, no
+    // Unformed fact). A slot bound with no selector evidence was fixed before any evidence (explicit Type arguments, a construction's
+    // fixed slots): its binder is not inferred, so nothing is compared. Never supplies no evidence.
     private bool IsSource(SlotFrame frame, int slot, BoundType actual, BoundType target)
     {
         if (ReferenceEquals(actual, BoundType.Never))
@@ -320,8 +331,8 @@ public sealed partial class Binding
             return true;
         }
 
-        return ReferenceEquals(evidence, actual) ||
-            (this.ApplySemantics(evidence, target, null) is { } formed && ReferenceEquals(formed, this.ApplySemantics(actual, target, null)));
+        return ReferenceEquals(evidence, actual) || (this.FormsUnder(evidence) && this.FormsUnder(actual) &&
+            this.ApplySemantics(evidence, target, null) is { } formed && ReferenceEquals(formed, this.ApplySemantics(actual, target, null)));
     }
 
     // SPEC 8.1.2, 10.8: the Type an application pattern forms against `actual`, in two phases whatever the order of the sources: an
@@ -345,8 +356,13 @@ public sealed partial class Binding
             return false;
         }
 
-        formed = Selector(frame, slot) is { } whole ? this.ApplySemantics(whole, target, pattern.Origin) : null;
-        return true;
+        if (Selector(frame, slot) is not { } whole)
+        {
+            return true;
+        }
+
+        formed = this.ApplySemantics(whole, target, pattern.Origin);
+        return formed is not null; // Unformed (D3): the part fails and the call is Unsupported.
     }
 
     // SPEC 10.8, 8.1.2: the actual an occurrence of a pair's original binds its slot with: null when it disagrees with the binder's
@@ -395,7 +411,7 @@ public sealed partial class Binding
             // with it in structure and Semantics (SPEC 10.8; Origins are judged after selection). A binding is the caller's Type and never a
             // pattern: in a recursive call or a construction of the enclosing structure its symbols are the callee's own slots.
             return projectionSlot < arguments.Length && (arguments[projectionSlot] is not { } whole ||
-                (this.DirectTarget(whole) is var target && (ReferenceEquals(target, actual) || (FitsStructuralPart(actual, target) && FitsStructuralPart(target, actual)))));
+                (this.DirectTarget(whole) is { } target && (ReferenceEquals(target, actual) || (FitsStructuralPart(actual, target) && FitsStructuralPart(target, actual)))));
         }
 
         if (pattern.Kind == BoundTypeKind.SemanticsApplication)
