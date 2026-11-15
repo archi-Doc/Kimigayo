@@ -174,9 +174,10 @@ public sealed partial class Binding
             return ConstraintProof.Unknown;
         }
 
-        // R7-C2c2 c2-4 (SPEC 8.2.3, 8.3.2): an atom about a Type is judged on its identity class's Member: its premise rows are the
-        // class's (ClassKey), its closed world the Member's, so a premise meeting a Refuted member is contradictory evidence (Error).
-        if (proposition.Kind != ConstraintKind.TypeIdentity && proposition.Subject is { } held && HasTypeIdentity(scope) &&
+        // R7-C2c2 c2-4 (SPEC 8.2.3, 8.3.2): an atom about a Type, of every kind, is judged on its identity class's Member: its premise
+        // rows are the class's (ClassKey), its closed world the Member's, so a premise meeting a Refuted member is contradictory
+        // evidence (Error).
+        if (proposition.Subject is { } held && HasTypeIdentity(scope) &&
             this.ClassesOf(scope, out _)?.Member(held) is { } member && !ReferenceEquals(member, held))
         {
             return this.JudgeConstraintAtom(this.InternConstraint(new(proposition.Kind, member, proposition.RequiredType, proposition.Contract, proposition.Mask)), scope);
@@ -189,10 +190,7 @@ public sealed partial class Binding
                 return ConstraintProof.Proven;
             }
 
-            // c2-4: an identity atom over unbound Types is Refuted where the class table refutes it (IdentityRefuted, SPEC 8.2.3's
-            // Refuted), as the atom judge's other kinds read the class's Member; the premise meeting it is contradictory evidence.
-            return (this.DependentType(proposition.Subject!) || this.DependentType(proposition.RequiredType!)) &&
-                !(HasTypeIdentity(scope) && this.IdentityRefuted(proposition.Subject!, proposition.RequiredType!, scope, null))
+            return this.DependentType(proposition.Subject!) || this.DependentType(proposition.RequiredType!)
                 ? ConstraintProof.Unknown : ConstraintProof.Refuted;
         }
 

@@ -392,8 +392,8 @@ public class ConstraintBindingTest
     [InlineData(NestedSubjects + "    public init() => ()\ncontract C2\n    W<Self>.Inner is K", "1*InvalidConstraint_Kd")] // a8, Contract-wide
     [InlineData(NestedSubjects + "    W<Z>.Inner is not K\n    public init() => ()", "1*InvalidConstraint_Kd")] // a5: the clause's record alone, none at S
     [InlineData(NestedSubjects + "    W<Z>.Inner is W<i32>.Inner\n    public init() => ()\nfunc use() => S<i64>.init()", "1*InvalidConstraint_Kd")] // s3use: the use rests on the clause
-    [InlineData("contract K\nstruct W<T>\n    Inner is K\n    public struct Inner\n        public init() => ()", "clean")] // v1
-    [InlineData("contract K\nstruct W<T>\n    Self.Inner is K\n    public struct Inner\n        public init() => ()", "clean")] // v2
+    [InlineData("contract K\nstruct W<T>\n    Inner is K\n    public struct Inner\n        public init() => ()", "2*InvalidConstraint_Kd")] // v1: O-344 (a), Inner declares no K
+    [InlineData("contract K\nstruct W<T>\n    Self.Inner is K\n    public struct Inner\n        public init() => ()", "3*InvalidConstraint_Kd")] // v2: O-344 (a)
     [InlineData(NestedSubjects + "    N.Inner is K\n    public init() => ()", "clean")] // v3
     [InlineData(NestedSubjects + "    D<i32>.Item is Copy\n    public init() => ()", "clean")] // p5, a projection whose value is known
     [InlineData(NestedSubjects + "    D<W<Z>.Inner>.Item is K\n    public init() => ()", "clean")] // p8
