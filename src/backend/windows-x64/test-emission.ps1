@@ -9,6 +9,7 @@ $ToolchainRoot = Resolve-KimiToolchainRoot $ToolchainRoot
 if (-not $LlvmBin) { $LlvmBin = $ToolchainRoot }
 . (Join-Path $PSScriptRoot 'artifact-paths.ps1')
 . (Join-Path $PSScriptRoot 'kernel32.ps1')
+. (Join-Path $PSScriptRoot 'expected-output.ps1')
 $profile = Read-KimiWindowsProfile
 $expectedVersion = $profile.llvmVersion
 $repo = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../../..'))
@@ -62,15 +63,20 @@ function Execute([string] $exe, [byte[]] $stdout) {
     $start.RedirectStandardError = $true
     $p = [Diagnostics.Process]::Start($start)
     $output = [IO.MemoryStream]::new()
+    $errorOutput = [IO.MemoryStream]::new()
     $copy = $p.StandardOutput.BaseStream.CopyToAsync($output)
-    $errors = $p.StandardError.ReadToEndAsync()
+    $errorCopy = $p.StandardError.BaseStream.CopyToAsync($errorOutput)
     if (-not $p.WaitForExit(30000)) { $p.Kill(); $p.WaitForExit(); throw "Timed out: $exe" }
     $null = $copy.GetAwaiter().GetResult()
-    $stderr = $errors.GetAwaiter().GetResult()
+    $null = $errorCopy.GetAwaiter().GetResult()
     $actual = $output.ToArray()
-    if ($p.ExitCode -ne 0 -or $stderr -or [Convert]::ToHexString($actual) -cne [Convert]::ToHexString($stdout)) { throw "Execution failed: $exe, exit=$($p.ExitCode), stderr=$stderr, stdout=$([Convert]::ToHexString($actual))" }
+    $stderr = $errorOutput.ToArray()
+    if ($p.ExitCode -ne 0 -or -not (Test-KimiExpectedOutput ([byte[]]@()) $stderr) -or -not (Test-KimiExpectedOutput $stdout $actual)) {
+        throw "Execution failed: $exe, exit=$($p.ExitCode), stderr=$([Convert]::ToHexString($stderr)), stdout=$([Convert]::ToHexString($actual))"
+    }
     $p.Dispose()
     $output.Dispose()
+    $errorOutput.Dispose()
 }
 $testResults = @()
 foreach ($level in @('O0', 'O2')) {
