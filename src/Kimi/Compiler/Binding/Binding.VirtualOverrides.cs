@@ -316,10 +316,8 @@ public sealed partial class Binding
             this.overrideEntries.Add(key, function);
             if (IncompleteSignature(slot.Original) is { } prerequisite)
             {
-                this.CompleteDependent(function, prerequisite);
-                continue;
+                this.CompleteDependent(function, prerequisite); // The settle point skips it (SettleVirtualOverridePremises).
             }
-
         }
     }
 
