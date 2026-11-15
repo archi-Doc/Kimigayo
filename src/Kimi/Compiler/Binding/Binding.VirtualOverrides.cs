@@ -28,7 +28,7 @@ public sealed partial class Binding
     // virtual group can supply an unqualified associated name; a qualified name needs no guess. The scope the header binds in: an
     // override's header layer holding those premises (SPEC 6.4.2 step 2), else the function's scope. The layer serves the header only:
     // the body's premises are the selected slot's, decided once at SettleVirtualOverridePremises, so a condition Refuted for the
-    // instance is no body premise however it is spelled (R7-C2c2 c2-4a; C2 ruling 164).
+    // instance is the override's one declaration error however it is spelled (SPEC 6.4.3; R7-C2c2 c2-4a; C2 ruling 164).
     private BindingScope PrepareVirtualHeaderPremises(FunctionKoto function, BindingScope scope)
     {
         if (!function.IsOverride || function.BoundSymbol?.Scope.Owner is not StructKoto { BaseClause: { } clause, BoundSymbol: { } symbol } structure ||
@@ -411,8 +411,8 @@ public sealed partial class Binding
     }
 
     // The overrides' inherited conditions are decided once, when the proofs answer (after VerifyEarlyProjections; before it every
-    // conformance proof is Unknown): a condition Refuted for the slot's instance is a premise nowhere, since the member does not exist
-    // for that instance (DECISIONS R5-M153), so InheritVirtualConstraints' skip is reached; a Proven or Unknown one is the body's
+    // conformance proof is Unknown): a condition Refuted or Error for the slot's instance is a declaration error at the override,
+    // since the slot never exists for that instance (SPEC 6.4.3), and no premise; a Proven or Unknown one is the body's
     // premise. The override's signature check reads those premises (its result names complete through them:
     // `U.Element` under the slot's `T is First`), so it and the Origin completion run here, after them, and the dispatch tables,
     // which read the overrides' failures, are filled last. Each override that selected its slot (not a duplicate, its signature
@@ -475,16 +475,11 @@ public sealed partial class Binding
         foreach (var fact in environment.DirectFacts)
         {
             var bound = this.StoredConstraint(fact, slot.DeclaringType);
-            // Applicability belongs to the public slot. A refuted substituted premise supplies no
-            // body evidence; ordinary definition checks still run (SPEC 8.3.3). Generation keeps
-            // the inapplicable slot's position without requesting its body.
+            // SPEC 6.4.3: a substituted premise Refuted or Error for the derived Type makes the override one declaration error at the
+            // override (the slot never exists for that Type; the owner's O-370); it supplies no evidence. The body's Binding-time records
+            // stand (SPEC 23.1.2); a rejected definition publishes no body (DECISIONS R4-M18).
             var proof = this.ProveConstraint(bound, premises);
-            if (proof == ConstraintProof.Refuted)
-            {
-                continue;
-            }
-
-            if (proof == ConstraintProof.Error)
+            if (proof is ConstraintProof.Refuted or ConstraintProof.Error)
             {
                 this.FailConstraint(function, this.FindConformanceDiagnosticCause(source.Owner, fact));
                 continue;
