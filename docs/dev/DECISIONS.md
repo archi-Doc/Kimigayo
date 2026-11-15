@@ -3650,7 +3650,7 @@ and migration obligations remain in force; no numeric cap changes are authorized
     resolved operations; a read-only use writes `view@ref`); a write through a captured raw pointer, `*p` or `p[n]`, is Exclusive
     (5.2.1 (3): a pointer read past a shared layer has no write authority, so under a Shared call the write would always be undefined).
     The mode is the Subject's, so a ResolvedRange Subject through a captured `uniq` (mode Exclusive, its interval read once by
-    14.6.2) is Exclusive too. A `let` Closure's call of such a Closure is `InvalidAssignment_Kd`; its `var` form is valid.
+    14.6.2 (superseded in part by R8-M47: the entry reads the interval)) is Exclusive too. A `let` Closure's call of such a Closure is `InvalidAssignment_Kd`; its `var` form is valid.
   - Open (PLAN): the receiver/Subject-mode order and 7.7.3's "mutates" for read-only Exclusive causes, which the later SPEC session
     states; the general Note's wording for read-only causes (DIAGNOSTICS); `NeedsExclusively`, HIR's `ExclusiveUse` and
     EffectBounds' `PlaceAccess` decide one meaning at three times (a duplication candidate, cross-phase, full process).
@@ -21771,6 +21771,39 @@ R8-M* and R9-M* by the stage of the recording unit.
     Writer; one init per destination with an `isize` tag.
   - **Lands after** PLAN G863 as landed (DECISIONS BU-208: a specialization argument's omitted Origins are inherited from the
     original, SPEC 8.13.2, 15.4.2), which makes the two specializations' headers bind.
+- **R8-M47 A ResolvedRange `for` is an ordinary Iterable loop (R8-W3)** (Back, 2026-11-15; R8-W3; Major; design revision 1 and its
+  reviews; B's rulings I-N1 to I-N4; the Middle's C-338 CONSENT WITH CONDITIONS; hold H-87; supersedes in part R4-M130) SPEC 14.6.2,
+  4.6.4, 15.1.6, 15.6.
+  - Rule: `Binding.Sequences`' `BindUserIteration` selects a ResolvedRange Subject's entry by the Subject mode (`intoIterator`,
+    `iterate`, `iterateUniq`) and binds `next`; the MIR builder's `For` lowers it, and `RangeIterator<isize>`'s Kimigayo `next`
+    alone decides the positions. Every successful loop has a plan, an entry and a step, and `For` requires them: a plan-less
+    resolved `For` fails HIR's completion fact and `MirBuilder.Module` reports it as a located `InternalInvariant_Kd` (R4-M61).
+  - Deleted: the counted lowering (`MirBuilder.Count`, `Iteration`'s plan-less arm); HIR's Copy Adjust for plan-less loops; HIR
+    Facts' plan-less Complete arm for `HirOp.For` with its `Declared`, a second copy of which loops have no plan; Binding's
+    ResolvedRange cases in `BindIteration` (the referent read, the `isize` element, `BindsReference`'s `!userEntry` clause, the
+    `IsResolvedRange` test). In its own first commit, `ExpansionKind.Range`, an empty second name of `HirOp.Range` that no code read
+    (RP18; `ExpansionKind` 7 -> 6); `HirOp.Range` stays the direct key's Op.
+  - Supersedes R4-M130's clause "its interval read once by 14.6.2": the interval is now read by the entry the Subject mode selects
+    (`iterateUniq` for a captured `uniq`). R4-M130's rule, that such a Closure is Exclusive and its `let` call is
+    `InvalidAssignment_Kd`, stands (rows c1, cx1).
+  - Moves (the Middle's C-338). (C1) Invalid programs newly rejected: a Subject that stores `uniq/ResolvedRange` is Exclusive
+    (15.1.6), so a shared Reborrow of its referent live across the loop conflicts with the entry, `CallActivationConflict_Kd` at the
+    `for` (the reservation at the Subject), the record its `Range<isize, isize>` twin gives on both builds: rows b2x (a
+    `uniq/ResolvedRange` parameter), b5x (a top-level `let u = r@uniq`), b6x (a `var` Closure capturing `rv`, R4-M130's case) and
+    their twins b2xr, b5xr, b6xr; the valid b4 and b4r stay accepted. No valid program is newly rejected and no invalid one newly
+    accepted. (C2) A record move (Q13): an explicit `r@uniq` Subject while a shared Loan of `r` is live (a3x; b1x through a Field)
+    goes from `ComparisonLoanConflict_Kd` at the Subject's `@uniq` to `CallActivationConflict_Kd` at the `for`, with the reservation
+    at the Subject as a related location (rows a3x, a3xr).
+  - Generated code: O2 inlining gives the counted loop back. The B-vs-A O2 IR per entry (iterate, iterateUniq, a `ref/` and a Field
+    Subject, intoIterator) and for `appendCopies` and `firstIndex` is one loop of the same instruction count with no call and no
+    Option; the step loses `nuw nsw` in the Shared and Exclusive loops, and `firstIndex`'s loop is rotated (an `smax` bound). RP8:
+    T-269 (O2 inside A=A by the address-matched control; warm Bind and Analyze +2 %, Generate +5 % on the Iterators kernel), and
+    Milestone26's cold Bind read again in its window's slot (R7-M36; the landing commit records it).
+  - Reason: one owner for the loop, for its plan-less rule and for the positions.
+  - Rejected: a counted lowering published as a library fact (a new vocabulary entry without a measured O2 need); a counted loop at
+    O0 only (a mode steering the builder).
+  - The three checks: Exposure, G416's generic Iterable rows, unchanged; Readings, none disputed (the library's unresolved-key
+    sentinel `ResolvedRange.init(start: 0, end: -1)` is never iterated).
 - **R9-M1 A check's phase sequence is `Compilation.Check`** (2026-11-08; R9-F5; Major, behavior-preserving; review 1 REVISE, then
   review 2). SPEC 23.1.2, 23.2.2; IMPL 20.6.1. Supersedes in part R5-M65 (`Project` reads `Accepts`) and R5-M77 (`Project` discovers
   the test catalog after acceptance and owns it).

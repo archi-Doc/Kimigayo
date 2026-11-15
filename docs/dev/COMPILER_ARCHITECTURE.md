@@ -76,7 +76,7 @@ a SPEC basis and owner approval.
 | `HirAdaptation` | 9 |
 | `HirPlaceKind` | 11 |
 | `HirCompletion` | 3 |
-| `ExpansionKind` | 7 |
+| `ExpansionKind` | 6 |
 | `IntrinsicId` | 34 |
 | `MirStatementKind` | 5 |
 | `MirRvalueKind` | 11 |
