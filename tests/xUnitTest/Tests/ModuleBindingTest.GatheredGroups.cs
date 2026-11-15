@@ -140,6 +140,8 @@ public partial class ModuleBindingTest
         ("kp2", "A B", ABool + BI32 + Keep + "let n = keep(pick)", Ambiguous),
         ("n8a", "A B", ABool + BI32 + Open, Unbound), // SPEC 10.5.1, 10.8: the gathered reference waits, so the open S binds no T.
         ("n8g", "A B", ABool + BGenFixed + Open, Unbound),
+        ("fr-n8e", "A B", AOne + "group B\n    public func pick(value: i32) -> i64 => 2\n" + Open, Unbound), // The members agree on the parameter Type; still no evidence for T.
+        ("fr-n8x", "A B", ABool + BGenFixed + "func use<T>(action: (T) -> i32) -> i32 => 0\nlet n = use(pick<i32>)", string.Empty), // SPEC 10.5.3, 10.1 step 1: the explicit argument leaves one candidate.
         ("tc2", "A B", "group A\n    public func apply(value: bool) -> i32 => 0\ngroup B\n    public func apply(action: (i32) -> i32, value: i32) -> i32 => action(value)\n" + Twice + "let n = apply(twice, 3)", string.Empty),
 
         // Lookup's own rules (SPEC 9.5), which the group reads and never decides.
