@@ -391,14 +391,137 @@ public class DiagnosticPrecisionTest
     [InlineData("struct S\n    public let x: i32\n    #Layout(\"C\")\n    public init(x: i32)\n        self.x = x\n", "MisplacedSyntax_Kd 3:5")]
     [InlineData("contract C\n    #Lang(\"Equatable\")\n    func c(self: ref/Self) -> i32\n", "MisplacedSyntax_Kd 2:5")]
     public void UnrecognizedAttributesPublishTheirOwnRecords(string source, params string[] expected)
+        => Assert.Equal(expected.Order(StringComparer.Ordinal), ErrorsAt(source, DiagnosticCorpus.Check(source, "Library")).Order(StringComparer.Ordinal));
+
+    // SPEC 22.1, 13.6.2, 13.6.3, 23.1.1, 23.1.2 (R8-G1-3b's coverage table; each row is named by its program): where a use of a
+    // declaration this implementation does not support is reported, and what a program that only names one beside it keeps. Each
+    // row holds the records of the base, on which no declaration is written `#Unsupported` and Binding's use verdict (Supported)
+    // hands every selection on; the phase that writes the five declarations moves the rows its groups name.
+    [Theory]
+    // At their SPEC label on the base: a use by a call, a Type name, a value, a generic argument, a member of an alias, a length.
+    [InlineData("e1x", "let r = Kimi.Intrinsics.makeRc(1)\nlet w = Kimi.Intrinsics.downgrade(r)\nConsole.writeLine(\"ok\")\n", "Unsupported_Kd 2:9")]
+    [InlineData("e7x", "let w = Kimi.Intrinsics.upgrade(1)\nConsole.writeLine(\"ok\")\n", "Unsupported_Kd 1:9")]
+    [InlineData("r08x", "func f(w: ref/Weak<rc/i32>) => ()\nConsole.writeLine(\"ok\")\n", "Unsupported_Kd 1:15")]
+    [InlineData("r09x", "let r = Kimi.Intrinsics.makeRc(1)\nlet w = Kimi.Intrinsics.downgrade(r@ref)\nlet u = Kimi.Intrinsics.upgrade(w@ref)\nConsole.writeLine(\"ok\")\n", "Unsupported_Kd 2:9", "Unsupported_Kd 3:9")]
+    [InlineData("r14x", "alias M => Kimi.Intrinsics\nlet r = M.makeRc(1)\nlet w = M.downgrade(r@ref)\nConsole.writeLine(\"ok\")\n", "Unsupported_Kd 3:9")]
+    [InlineData("r17x", "let r = Kimi.Intrinsics.makeRc(1)\nlet w = Kimi.Intrinsics.downgrade(r@ref)\nlet z: i32 = \"s\"\nConsole.writeLine(\"ok\")\n", "Unsupported_Kd 2:9", "TypeMismatch_Kd 3:14")]
+    [InlineData("r18x", "let w = Kimi.Intrinsics.downgrade(missing@ref)\nConsole.writeLine(\"ok\")\n", "Unsupported_Kd 1:9", "UnresolvedBinding_Kd 1:35")]
+    [InlineData("r19x", "let r = Kimi.Intrinsics.makeRc(1)\nlet w = Kimi.Intrinsics.downgrade(r@ref)\nlet n: i32 = w\nConsole.writeLine(\"ok\")\n", "Unsupported_Kd 2:9")]
+    [InlineData("g01x", "func f(a: ref/Array<Weak<rc/i32>>) => ()\nConsole.writeLine(\"ok\")\n", "Unsupported_Kd 1:21")]
+    [InlineData("g02x", "let f = Kimi.Intrinsics.downgrade\nConsole.writeLine(\"ok\")\n", "Unsupported_Kd 1:9")]
+    [InlineData("g03x", "func keep(w: ref/Weak<rc/i32>) -> i32 => 1\nlet n = keep(1)\nConsole.writeLine(\"ok\")\n", "Unsupported_Kd 1:18")]
+    [InlineData("g04x", "func make(r: ref/(rc/i32)) -> Weak<rc/i32> => Kimi.Intrinsics.downgrade(r)\nConsole.writeLine(\"ok\")\n", "Unsupported_Kd 1:31", "Unsupported_Kd 1:47")]
+    [InlineData("g05x", "func g<T>(r: ref/(rc/T)) -> i32\n    T is ObjectPayload\n    let w = Kimi.Intrinsics.downgrade(r)\n    return 1\nConsole.writeLine(\"ok\")\n", "Unsupported_Kd 3:13")]
+    [InlineData("g07x", "struct Node\n    public let selfWeak: Weak<rc/Node>\n    public init(selfWeak: Weak<rc/Node>)\n        self.selfWeak = selfWeak@move\n\nlet build = func [] (weak: Weak<rc/Node>) -> Node\n    let before = Kimi.Intrinsics.upgrade(weak)\n    return Node.init(weak@move)\nlet node = Kimi.Intrinsics.makeRcCyclic(build)\nlet after = Kimi.Intrinsics.upgrade(node.selfWeak)\nConsole.writeLine(\"ok\")\n", "Unsupported_Kd 2:26", "Unsupported_Kd 3:27", "Unsupported_Kd 6:28", "Unsupported_Kd 7:18", "Unsupported_Kd 9:12", "Unsupported_Kd 10:13")]
+    [InlineData("g11x", "func f(w: ref/Weak<rc/i32>) -> i32\n    let c = Kimi.Intrinsics.clone(w)\n    return 1\nConsole.writeLine(\"ok\")\n", "Unsupported_Kd 1:15")]
+    [InlineData("h05x", "let f = Kimi.Intrinsics.downgrade<rc/i32>\nConsole.writeLine(\"ok\")\n", "Unsupported_Kd 1:9")]
+    [InlineData("h13x", "func make(w: i32) -> i32 => w\nlet n = Kimi.Intrinsics.makeRcCyclic(make)\nConsole.writeLine(\"ok\")\n", "Unsupported_Kd 2:9")]
+    [InlineData("j01x", "func apply<T>(f: T) -> i32 => 1\nlet n = apply(Kimi.Intrinsics.downgrade)\n", "Unsupported_Kd 2:15")]
+    [InlineData("p03x", "func f(w: ref/Weak<rc/i32>) -> i32 => 1\nConsole.writeLine(\"ok\")\n", "Unsupported_Kd 1:15")]
+    [InlineData("p04x", "func f(w: (Weak<rc/i32>)) -> i32 => 1\nConsole.writeLine(\"ok\")\n", "Unsupported_Kd 1:12")]
+    [InlineData("l01x", "func f(a: ref/[Kimi.Intrinsics.downgrade of i32]) => ()\nConsole.writeLine(\"ok\")\n", "Unsupported_Kd 1:16")]
+    [InlineData("q04x", "let r = Kimi.Intrinsics.makeRc(1)\nlet w = ::Kimi.Intrinsics.downgrade(r@ref)\nConsole.writeLine(\"ok\")\n", "Unsupported_Kd 2:9")]
+    [InlineData("f02x", "func f(x: Weak<rc/i32>.(Iterator).Item) -> i32 => 1\nConsole.writeLine(\"ok\")\n", "Unsupported_Kd 1:11")]
+    // Valid: no `#Unsupported` declaration is used (a user `Weak`, excluded syntax, the strong `clone`, a mixed group's other winner).
+    [InlineData("e1v/g12v", "let r = Kimi.Intrinsics.makeRc(1)\nlet c = Kimi.Intrinsics.clone(r@ref)\nConsole.writeLine(\"ok\")\n")]
+    [InlineData("r13v", "struct Weak\n    public let x: i32\n    public init(x: i32)\n        self.x = x\nfunc g(w: ref/Weak) -> i32 => w.x\nlet v = Weak.init(x: 2)\nConsole.writeLine(\"\\(g(v@ref))\")\n")]
+    [InlineData("g06v", "#if false\nfunc f(w: ref/Weak<rc/i32>) => ()\nConsole.writeLine(\"ok\")\n")]
+    [InlineData("h07v", "alias Kimi.Intrinsics\nalias Mine\ngroup Mine\n    public func downgrade(value: i32) -> i32 => value\nlet n = downgrade(1)\nConsole.writeLine(\"ok\")\n")]
+    [InlineData("h09v", "alias Mine\nalias Kimi.Intrinsics\ngroup Mine\n    public func downgrade(value: i32) -> i32 => value\nlet n = downgrade(1)\nConsole.writeLine(\"ok\")\n")]
+    [InlineData("i03v", "alias Kimi.Intrinsics\nalias Mine\ngroup Mine\n    public func downgrade(value: i32) -> i32 => value\nlet f: (i32) -> i32 = downgrade\nConsole.writeLine(\"ok\")\n")]
+    [InlineData("i04v", "alias Mine\nalias Kimi.Intrinsics\ngroup Mine\n    public func downgrade(value: i32) -> i32 => value\nlet f: (i32) -> i32 = downgrade\nConsole.writeLine(\"ok\")\n")]
+    [InlineData("i08v", "alias B\nalias A\ngroup A\n    public func pick(value: bool) -> i32 => 1\ngroup B\n    public func pick(value: i32) -> i32 => value\nlet f: (i32) -> i32 = pick\nConsole.writeLine(\"ok\")\n")]
+    [InlineData("i10v", "alias Kimi.Intrinsics\nalias Mine\ngroup Mine\n    public func makeRcCyclic(build: (i32) -> i32) -> i32 => build(1)\nlet n = makeRcCyclic(func [] (x: i32) -> i32 => x)\nConsole.writeLine(\"ok\")\n")]
+    [InlineData("i12v", "alias Mine\nalias Kimi.Intrinsics\ngroup Mine\n    public func makeRcCyclic(build: (i32) -> i32) -> i32 => build(1)\nlet n = makeRcCyclic(func [] (x: i32) -> i32 => x)\nConsole.writeLine(\"ok\")\n")]
+    // Invalid by another rule, where no `#Unsupported` declaration is selected: the records are that rule's.
+    [InlineData("g10x", "let r = Kimi.Intrinsics.makeRc(1)\nlet w = Kimi.downgrade(r@ref)\nConsole.writeLine(\"ok\")\n", "UnresolvedBinding_Kd 2:9")]
+    [InlineData("g13x", "alias W => Weak\nfunc f(w: ref/W<rc/i32>) => ()\nConsole.writeLine(\"ok\")\n", "UnresolvedBinding_Kd 1:1", "UnresolvedBinding_Kd 2:15")]
+    [InlineData("g14x", "alias D => Kimi.Intrinsics.downgrade\nConsole.writeLine(\"ok\")\n", "UnresolvedBinding_Kd 1:1")]
+    [InlineData("i01x", "alias Kimi.Intrinsics\nalias Mine\ngroup Mine\n    public func downgrade(value: i32) -> i32 => value\nlet n = downgrade(\"x\")\nConsole.writeLine(\"ok\")\n", "NoApplicableOverload_Kd 5:9")]
+    [InlineData("i02x", "alias Mine\nalias Kimi.Intrinsics\ngroup Mine\n    public func downgrade(value: i32) -> i32 => value\nlet n = downgrade(\"x\")\nConsole.writeLine(\"ok\")\n", "NoApplicableOverload_Kd 5:9")]
+    // The base's records of the rows R8-G1-3b-2 moves to `Unsupported_Kd` at the use (q03x at 1:13; h03x keeps its 1:1 beside 1:7).
+    [InlineData("r12x", "func f(w: ref/Kimi.Weak<rc/i32>) => ()\nConsole.writeLine(\"ok\")\n", "UnresolvedBinding_Kd 1:15")]
+    [InlineData("g08x", "struct Weak\n    public let x: i32\nfunc f(w: ref/Kimi.Weak<rc/i32>) => ()\nConsole.writeLine(\"ok\")\n", "UnresolvedBinding_Kd 3:15")]
+    [InlineData("g09x", "func f(w: ref/::Kimi.Weak<rc/i32>) => ()\nConsole.writeLine(\"ok\")\n", "UnresolvedBinding_Kd 1:17")]
+    [InlineData("g15x", "alias W => Kimi.Weak\nConsole.writeLine(\"ok\")\n", "UnresolvedBinding_Kd 1:1")]
+    [InlineData("h01x", "alias Kimi.Intrinsics\nlet r = makeRc(1)\nlet w = downgrade(r@ref)\nConsole.writeLine(\"ok\")\n", "UnresolvedBinding_Kd 3:9")]
+    [InlineData("h02x", "alias Kimi.Intrinsics\nlet f = downgrade\nConsole.writeLine(\"ok\")\n", "UnresolvedBinding_Kd 2:9")]
+    [InlineData("h03x", "alias Kimi.Weak<rc/i32>\nConsole.writeLine(\"ok\")\n", "InvalidTypeFormation_Kd 1:1")]
+    [InlineData("h04x", "let w = Weak<rc/i32>.init()\nConsole.writeLine(\"ok\")\n", "UnresolvedBinding_Kd 1:9")]
+    [InlineData("h08x", "alias Kimi.Intrinsics\nalias Mine\ngroup Mine\n    public func downgrade(value: i32) -> i32 => value\nlet r = makeRc(1)\nlet w = downgrade(r@ref)\nConsole.writeLine(\"ok\")\n", "NoApplicableOverload_Kd 6:9")]
+    [InlineData("h10x", "alias Mine\nalias Kimi.Intrinsics\ngroup Mine\n    public func downgrade(value: i32) -> i32 => value\nlet r = makeRc(1)\nlet w = downgrade(r@ref)\nConsole.writeLine(\"ok\")\n", "NoApplicableOverload_Kd 6:9")]
+    [InlineData("h11x", "alias Kimi.Intrinsics\nlet f = downgrade<rc/i32>\nConsole.writeLine(\"ok\")\n", "UnresolvedBinding_Kd 2:9")]
+    [InlineData("i05x", "alias Kimi.Intrinsics\nalias Mine\ngroup Mine\n    public func downgrade(value: i32) -> i32 => value\nlet f = downgrade<rc/i32>\nConsole.writeLine(\"ok\")\n", "NoApplicableOverload_Kd 5:9")]
+    [InlineData("i06x", "alias Mine\nalias Kimi.Intrinsics\ngroup Mine\n    public func downgrade(value: i32) -> i32 => value\nlet f = downgrade<rc/i32>\nConsole.writeLine(\"ok\")\n", "NoApplicableOverload_Kd 5:9")]
+    [InlineData("i09x", "alias Kimi.Intrinsics\nalias Mine\nstruct Node\n    public let v: i32\ngroup Mine\n    public func makeRcCyclic(build: (i32, i32) -> i32) -> i32 => build(1, 2)\nlet node = makeRcCyclic(func [] (weak) -> Node => Node.init(v: 1))\nConsole.writeLine(\"ok\")\n", "NoApplicableOverload_Kd 7:12")]
+    [InlineData("i11x", "alias Mine\nalias Kimi.Intrinsics\nstruct Node\n    public let v: i32\ngroup Mine\n    public func makeRcCyclic(build: (i32, i32) -> i32) -> i32 => build(1, 2)\nlet node = makeRcCyclic(func [] (weak) -> Node => Node.init(v: 1))\nConsole.writeLine(\"ok\")\n", "NoApplicableOverload_Kd 7:12")]
+    [InlineData("j02x", "alias Kimi.Intrinsics\nfunc apply<T>(f: T) -> i32 => 1\nlet n = apply(downgrade)\n", "UnresolvedBinding_Kd 3:15")]
+    [InlineData("k01x", "alias Kimi.Intrinsics\nlet n = upgrade(1)\n", "UnresolvedBinding_Kd 2:9")]
+    [InlineData("n01x", "alias Kimi.Intrinsics\nalias Mine\ngroup Mine\n    public func downgrade(value: i32) -> i32 => value\nfunc outer<T>(v: T) -> i32 => 1\nlet r = makeRc(1)\nlet n = outer(downgrade(r@ref))\nConsole.writeLine(\"ok\")\n", "NoApplicableOverload_Kd 7:15")]
+    [InlineData("n02x", "alias Mine\nalias Kimi.Intrinsics\ngroup Mine\n    public func downgrade(value: i32) -> i32 => value\nfunc outer<T>(v: T) -> i32 => 1\nlet r = makeRc(1)\nlet n = outer(downgrade(r@ref))\nConsole.writeLine(\"ok\")\n", "NoApplicableOverload_Kd 7:15")]
+    [InlineData("q02x", "func f(x: Kimi.Weak<rc/i32>.Foo) -> i32 => 1\nConsole.writeLine(\"ok\")\n", "UnresolvedBinding_Kd 1:11")]
+    [InlineData("q03x", "func f(x: ::Kimi.Weak<rc/i32>.Foo) -> i32 => 1\nConsole.writeLine(\"ok\")\n", "UnresolvedBinding_Kd 1:11")]
+    [InlineData("f01x", "func f(x: Kimi.Weak<rc/i32>.(Iterator).Item) -> i32 => 1\nConsole.writeLine(\"ok\")\n", "UnresolvedBinding_Kd 1:11")]
+    // The base's records of the rows R8-G1-3b-2 moves to `UnresolvedBinding_Kd`: a function is no Type (SPEC 9.2), so none is used.
+    [InlineData("t01x", "func f(x: Kimi.Intrinsics.downgrade) -> i32 => 1\nConsole.writeLine(\"ok\")\n", "Unsupported_Kd 1:11")]
+    [InlineData("w01x", "func work<length N>() -> i32 => 1\nlet n = work<Kimi.Intrinsics.downgrade>()\nConsole.writeLine(\"ok\")\n", "NoApplicableOverload_Kd 2:9", "Unsupported_Kd 2:14")]
+    [InlineData("w02x", "func work<length N>() -> i32 => 1\nlet f: () -> i32 = work<Kimi.Intrinsics.downgrade>\nConsole.writeLine(\"ok\")\n", "Unsupported_Kd 2:25")]
+    // Recorded as the base has them: h06x's `InvalidConstraint_Kd` pair and i07v's rejection are open issues of their own (a
+    // constraint over a failed requirement Name; a gathered group read by a reference); h12x's other records are its own errors.
+    [InlineData("h06x", "func f<T>(x: T) -> i32\n    T is Weak<rc/i32>\n    return 1\nConsole.writeLine(\"ok\")\n", "InvalidConstraint_Kd 1:6", "Unsupported_Kd 2:10", "InvalidConstraint_Kd 2:10")]
+    [InlineData("i07v", "alias A\nalias B\ngroup A\n    public func pick(value: bool) -> i32 => 1\ngroup B\n    public func pick(value: i32) -> i32 => value\nlet f: (i32) -> i32 = pick\nConsole.writeLine(\"ok\")\n", "TypeMismatch_Kd 7:23")]
+    [InlineData("h12x", "func ident<T>(x: T) -> T => x\nlet n = Kimi.Intrinsics.makeRcCyclic(ident)\n", "TransferRequired_Kd 1:29", "Unsupported_Kd 2:9", "UnboundTypeArgument_Kd 2:38")]
+    public void UnsupportedDeclarationUsesAreLocated(string row, string source, params string[] expected)
     {
-        var records = DiagnosticCorpus.Check(source, "Library").Diagnostics.Where(static x => x.Severity == Kimi.Diagnostics.DiagnosticSeverity.Error).Select(x =>
-        {
-            var start = x.Span!.Value.Start;
-            var line = source.AsSpan(0, start).Count('\n');
-            return $"{x.Code} {line + 1}:{start - (start == 0 ? 0 : source.LastIndexOf('\n', start - 1) + 1) + 1}";
-        });
-        Assert.Equal(expected.Order(StringComparer.Ordinal), records.Order(StringComparer.Ordinal));
+        var output = DiagnosticCorpus.Check(source);
+        Assert.Equal(expected.Order(StringComparer.Ordinal), ErrorsAt(source, output).Order(StringComparer.Ordinal));
+        Assert.True(output.Accepted == (expected.Length == 0), row);
+    }
+
+    // SPEC 22.1, 23.1.1, 23.1.2 (R8-G1-3b's verdict where a selection is handed on; the Front's C-346 C2 and review N1): test-only
+    // `#Unsupported` library structs with member Types reach the verdict's refusing branch, which no library declaration reaches before
+    // R8-G1-3b-2. Each use outside them is one Unsupported_Kd at the Name that names one, whether the Name ends the path, qualifies a
+    // member (no later step republishes it; deeper members, a group member, an inherited member Type) or is a `::` path's root name, and
+    // independent uses each have their own; a mention inside an `#Unsupported` declaration is no use. The valid twins open a plain struct
+    // (t14v, SPEC 18.2.1) and inherit a member Type from a plain open base (t18v, SPEC 6.2.2, 9.6). A record in the library text is "L"
+    // with its position there. A record in an Attribute of the hook is not a use's: before R8-G1 phase G1-2 binds library Attributes, the
+    // hook's own `#Unsupported` Names are records (the Front's experiment Z), so the rows leave Attributes out. Removal condition of that
+    // filter: G1-2's landing deletes it, and the rows then also pin that the hook adds no record of its own.
+    [Theory]
+    [InlineData("z01x", "", "func f(v: ref/ZProbe) => ()\n", "Unsupported_Kd 1:15")]
+    [InlineData("z02x", "", "func f(v: ref/ZProbe.Inner) => ()\n", "Unsupported_Kd 1:15")]
+    [InlineData("z03x", "", "func f(v: ref/Kimi.ZProbe.Inner) => ()\n", "Unsupported_Kd 1:15")]
+    [InlineData("z04x", "", "func f(v: ref/::Kimi.ZProbe.Inner) => ()\n", "Unsupported_Kd 1:17")]
+    [InlineData("z05x", "", "func f(v: ref/::Kimi.ZProbe) => ()\n", "Unsupported_Kd 1:17")]
+    [InlineData("z06v", "", "func f(v: ref/i32) => ()\n")]
+    [InlineData("z07x", "public group ZUses\n    public func zuse(v: ref/::ZProbe.Inner) => ()\n", "func f(v: ref/i32) => ()\n", "L Unsupported_Kd 31:31")]
+    [InlineData("z08x", "public group ZUses\n    public func zuse(v: ref/::ZProbe) => ()\n", "func f(v: ref/i32) => ()\n", "L Unsupported_Kd 31:31")]
+    [InlineData("z09v", "#Unsupported\npublic group ZOwn\n    public func zown(v: ref/::ZProbe.Inner) => ()\n", "func f(v: ref/i32) => ()\n")]
+    [InlineData("t01x", "", "func f(v: ref/ZProbe.Inner.Deep) => ()\n", "Unsupported_Kd 1:15")]
+    [InlineData("t02x", "", "func f(v: ref/Kimi.ZProbe.Inner.Deep) => ()\n", "Unsupported_Kd 1:15")]
+    [InlineData("t03x", "", "func f(v: ref/::Kimi.ZProbe.Inner.Deep) => ()\n", "Unsupported_Kd 1:17")]
+    [InlineData("t05x", "", "func f(v: ref/ZG.ZM.Inner) => ()\n", "Unsupported_Kd 1:15")]
+    [InlineData("t12x", "", "func f(a: ref/ZProbe, b: ref/ZProbe.Inner) => ()\n", "Unsupported_Kd 1:15", "Unsupported_Kd 1:30")]
+    [InlineData("t14v", "", "alias Kimi.ZPlain\nfunc f(v: ref/Inner) => ()\n")]
+    [InlineData("t18v", "", "struct D : ZOpenPlain\n    let a: i32\nfunc f(v: ref/D.Inner) => ()\n")]
+    [InlineData("t19x", "", "func f(v: ref/ZDer.Inner) => ()\n", "Unsupported_Kd 1:15")]
+    [InlineData("t23x", "public group ZUses\n    public func zuse(v: ref/::ZProbe.Inner.Deep) => ()\n", "func f(v: ref/i32) => ()\n", "L Unsupported_Kd 31:31")]
+    public void AnUnsupportedDeclarationIsRefusedWhereItIsHandedOn(string row, string library, string source, params string[] expected)
+    {
+        var probe = "#Unsupported\npublic struct ZProbe\n    public let x: i32\n\n    public struct Inner\n        public let y: i32\n\n        public struct Deep\n            public let z: i32\n" +
+            "public group ZG\n    #Unsupported\n    public struct ZM\n        public let x: i32\n\n        public struct Inner\n            public let y: i32\n" +
+            "public struct ZPlain\n    public let x: i32\n\n    public struct Inner\n        public let y: i32\n" +
+            "public open struct ZOpenPlain\n    public let x: i32\n\n    public struct Inner\n        public let y: i32\n" +
+            "#Unsupported\npublic struct ZDer : ZOpenPlain\n    public let w: i32\n" + library;
+        var c = Compilation.CreateForTest();
+        Assert.True(c.Prepare(WindowsProfile.Target));
+        c.Library.Kotonoha.CreateCodeContext().Parse(c.Library.Kotonoha.RootKoto, probe);
+        c.Kotonoha.CreateCodeContext().Parse(c.Kotonoha.RootKoto, source);
+        c.Bind();
+        var records = c.Binding.Issues.Where(static x => x.Node is not Kimi.Compiler.Parsing.AttributeKoto && x.Node.Parent is not Kimi.Compiler.Parsing.AttributeKoto).Select(x =>
+            ReferenceEquals(x.Node.Kotonoha, c.Library.Kotonoha) ? "L " + At(probe, x.Node.Span.Start, x.Code)
+            : ReferenceEquals(x.Node.Kotonoha, c.Kotonoha) ? At(source, x.Node.Span.Start, x.Code) : $"{x.Code} elsewhere at {x.Node.Span.Start}");
+        Assert.True(expected.Order(StringComparer.Ordinal).SequenceEqual(records.Order(StringComparer.Ordinal)), $"{row}: {string.Join(", ", records)}");
     }
 
     // SPEC 6.7, 19.4 (R8-G1 row A6): excluded syntax is checked syntactically only, so an implementation Attribute there is not
@@ -409,5 +532,16 @@ public class DiagnosticPrecisionTest
         var output = DiagnosticCorpus.Check("#if false\n#Lang(\"Option\")\nfunc f() => ()\n", "Library");
         Assert.True(output.Accepted);
         Assert.Empty(output.Diagnostics);
+    }
+
+    // A check's Errors, each as its code and the 1-based line and column of its start.
+    private static IEnumerable<string> ErrorsAt(string source, Kimi.Checking.CheckOutput output)
+        => output.Diagnostics.Where(static x => x.Severity == Kimi.Diagnostics.DiagnosticSeverity.Error).Select(x => At(source, x.Span!.Value.Start, x.Code));
+
+    // A record as its code and the 1-based line and column of its start in `source`.
+    private static string At(string source, int start, object code)
+    {
+        var line = source.AsSpan(0, start).Count('\n');
+        return $"{code} {line + 1}:{start - (start == 0 ? 0 : source.LastIndexOf('\n', start - 1) + 1) + 1}";
     }
 }
