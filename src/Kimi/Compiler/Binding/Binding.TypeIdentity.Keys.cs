@@ -81,9 +81,11 @@ public sealed partial class Binding
     }
 
     // R7-C2c2 c2-4 (design R1.1): the subject an atom judge takes: the Type's identity class's Member in a view with an identity
-    // premise, else the Type. ProveConformance, RequestCapability and JudgeConstraintAtom's other arms read it at their entries.
+    // premise, else the Type. ProveConformance, RequestCapability and JudgeConstraintAtom's other arms read it at their entries. A
+    // Member whose operand contexts are unresolved (a concrete prerequisite still pending) stands for nothing yet: the Type itself is
+    // judged, Unknown as before (UnresolvedCapabilityProofBindingTest's pending `Target`).
     private BoundType MemberOf(BoundType type, BindingScope scope)
-        => HasTypeIdentity(scope) && this.ClassesOf(scope, out _)?.Member(type) is { } member ? member : type;
+        => HasTypeIdentity(scope) && this.ClassesOf(scope, out _)?.Member(type) is { } member && !this.OperandContexts(member).Unresolved ? member : type;
 
     // The Type over its components' keys, whose class is asked again; the Type itself when no component's key differs.
     private BoundType CongruentKey(BoundType type, IdentityClasses classes)
