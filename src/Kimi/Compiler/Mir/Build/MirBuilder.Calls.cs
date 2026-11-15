@@ -126,7 +126,7 @@ internal sealed partial class MirBuilder
             this.arguments.Add(extra);
         }
 
-        var declaration = function?.LibraryDeclaration is null ? null : function; // The compiler-only $abort has none (SPEC 17.4).
+        var declaration = ReferenceEquals(function, compilation.Library.Abort) ? null : function; // The compiler-only $abort has none (SPEC 17.4).
         var callee = disposition.Kind == DispositionKind.Intrinsic ? MirCallee.Intrinsic(disposition.Id, declaration, subst) : call.Kind switch
         {
             CalleeKind.Requirement => new(MirCalleeKind.Requirement, function, subst, Contract: call.RequirementContract),

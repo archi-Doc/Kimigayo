@@ -109,8 +109,7 @@ internal sealed partial class MirValidator
                 case > MirCalleeKind.Intrinsic:
                     this.Report(MirViolation.UnknownKind);
                     break;
-                case MirCalleeKind.Intrinsic when callee.Symbol is { } declaration &&
-                    (declaration.LibraryDeclaration is null || declaration.Definition.Id != (IntrinsicId)callee.Arg):
+                case MirCalleeKind.Intrinsic when callee.Symbol is { } declaration && declaration.Definition.Id != (IntrinsicId)callee.Arg:
                     this.Report(MirViolation.Callee); // A3 E14: its function is the library declaration of a compiler function it serves.
                     break;
                 case MirCalleeKind.Intrinsic when row.Arity >= 0 && row.Arity != call.Count:

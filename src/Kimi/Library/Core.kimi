@@ -131,7 +131,6 @@ public struct FromEnd<T>
     /// Resolves to `length - offset`.
     ///
     /// - abort: `offset` lies outside `[0, length]`.
-    #Lang("FromEndResolve")
     #CallerLocation
     public func resolve(self: Self, length: isize) -> isize
         match self.tryResolve(length)
@@ -164,7 +163,6 @@ public struct Start
     /// Resolves to `0`.
     ///
     /// - abort: `length < 0`.
-    #Lang("StartResolve")
     #CallerLocation
     public func resolve(self: Self, length: isize) -> isize
         require length >= 0 else => Kimi.Storage.argumentOutOfRange()
@@ -195,7 +193,6 @@ public struct End
     /// Resolves to `length`.
     ///
     /// - abort: `length < 0`.
-    #Lang("EndResolve")
     #CallerLocation
     public func resolve(self: Self, length: isize) -> isize
         require length >= 0 else => Kimi.Storage.argumentOutOfRange()
@@ -243,7 +240,6 @@ public struct Range<S, E>
     /// Resolves both boundaries against `length` into `[start, end)`.
     ///
     /// - abort: A boundary does not resolve, or the resolved start exceeds the resolved end.
-    #Lang("RangeResolve")
     #CallerLocation
     public func resolve(self: Self, length: isize) -> ResolvedRange
         match self.tryResolve(length)
@@ -262,7 +258,6 @@ public struct Range<S, E>
         /// Starts a shared enumeration from `start` upward; the iterator keeps no borrow of the range.
         ///
         /// - abort: `start > end`.
-        #Lang("RangeIterate")
         #CallerLocation
         public func iterate(self: ref/Self during source) -> RangeIterator<S>
             return RangeIterator<S>.starting(self.start, self.end)
@@ -273,7 +268,6 @@ public struct Range<S, E>
         /// Starts an enumeration through an exclusive borrow; the range itself does not change.
         ///
         /// - abort: `start > end`.
-        #Lang("RangeIterateUniq")
         #CallerLocation
         public func iterateUniq(self: uniq/Self during source) -> RangeIterator<S>
             return RangeIterator<S>.starting(self.start, self.end)
@@ -284,7 +278,6 @@ public struct Range<S, E>
         /// Starts an enumeration of the consumed range value.
         ///
         /// - abort: `start > end`.
-        #Lang("RangeIntoIterator")
         #CallerLocation
         public func intoIterator(self: Self) -> RangeIterator<S>
             return RangeIterator<S>.starting(self.start, self.end)
@@ -326,7 +319,6 @@ public struct ClosedRange<S, E>
     /// Resolves the range against `length` into the half-open `[start, end + 1)`.
     ///
     /// - abort: A boundary does not resolve, the end is not an element position or the start exceeds the end.
-    #Lang("ClosedRangeResolve")
     #CallerLocation
     public func resolve(self: Self, length: isize) -> ResolvedRange
         match self.tryResolve(length)
@@ -345,7 +337,6 @@ public struct ClosedRange<S, E>
         /// Starts a shared enumeration from `start` through `end`; the iterator keeps no borrow of the range.
         ///
         /// - abort: `start > end`.
-        #Lang("ClosedRangeIterate")
         #CallerLocation
         public func iterate(self: ref/Self during source) -> ClosedRangeIterator<S>
             return ClosedRangeIterator<S>.starting(self.start, self.end)
@@ -356,7 +347,6 @@ public struct ClosedRange<S, E>
         /// Starts an enumeration through an exclusive borrow; the range itself does not change.
         ///
         /// - abort: `start > end`.
-        #Lang("ClosedRangeIterateUniq")
         #CallerLocation
         public func iterateUniq(self: uniq/Self during source) -> ClosedRangeIterator<S>
             return ClosedRangeIterator<S>.starting(self.start, self.end)
@@ -367,7 +357,6 @@ public struct ClosedRange<S, E>
         /// Starts an enumeration of the consumed range value.
         ///
         /// - abort: `start > end`.
-        #Lang("ClosedRangeIntoIterator")
         #CallerLocation
         public func intoIterator(self: Self) -> ClosedRangeIterator<S>
             return ClosedRangeIterator<S>.starting(self.start, self.end)
@@ -389,7 +378,6 @@ public struct RangeIterator<T>
     /// Starts at `start` after checking the order of a range entry.
     ///
     /// - abort: `start > end`.
-    #Lang("RangeIteratorStarting")
     #CallerLocation
     internal func starting(start: T, end: T) -> RangeIterator<T>
         require start <= end else => Kimi.Storage.argumentOutOfRange()
@@ -426,7 +414,6 @@ public struct ClosedRangeIterator<T>
     /// Starts at `start` after checking the order of a range entry.
     ///
     /// - abort: `start > end`.
-    #Lang("ClosedRangeIteratorStarting")
     #CallerLocation
     internal func starting(start: T, end: T) -> ClosedRangeIterator<T>
         require start <= end else => Kimi.Storage.argumentOutOfRange()
@@ -555,7 +542,6 @@ public struct ResolvedRange
     /// Returns this interval when its end does not exceed `length`.
     ///
     /// - abort: The end exceeds `length`.
-    #Lang("ResolvedRangeResolve")
     #CallerLocation
     public func resolve(self: Self, length: isize) -> ResolvedRange
         match self.tryResolve(length)

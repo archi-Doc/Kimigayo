@@ -676,7 +676,7 @@ public sealed partial class MirEffectsTest(ITestOutputHelper output)
     public void AnErasedReserveCallIsClassedByItsIntrinsicRow()
     {
         var library = Compilation.CreateForTest().Library;
-        var reserve = library.GetSymbol(KimiDeclarationId.StorageErasedReserve)!;
+        var reserve = LibrarySource.Symbol(library, "Storage.erasedReserve");
         var writer = library.GetSymbol(KimiDeclarationId.TextWriter)!;
         Assert.Equal((BodylessKind.Intrinsic, IntrinsicId.ErasedReserve), (TyCtxt.Bodyless(reserve), reserve.Definition.Id));
         Assert.Equal((BodylessKind.Intrinsic, IntrinsicId.ErasedWriter), (TyCtxt.Bodyless(writer), writer.Definition.Id));
@@ -694,7 +694,7 @@ public sealed partial class MirEffectsTest(ITestOutputHelper output)
         var descriptor = MirDescriptors.Of(IntrinsicId.FormatFloat);
         Assert.Equal(
             (BodylessKind.Intrinsic, IntrinsicId.FormatFloat, (MirEffect.None, (sbyte)3)),
-            (TyCtxt.Bodyless(library.GetSymbol(KimiDeclarationId.StorageFormatFloat)!), library.GetSymbol(KimiDeclarationId.StorageFormatFloat)!.Definition.Id, (descriptor.Effects, descriptor.Arity)));
+            (TyCtxt.Bodyless(LibrarySource.Symbol(library, "Storage.formatFloat")), LibrarySource.Symbol(library, "Storage.formatFloat").Definition.Id, (descriptor.Effects, descriptor.Arity)));
     }
 
     // SPEC 8.11.2, 22.10.2 (R8-S2b2, C-258): A4 classes a Storage.formatInteger128 call, FormatInteger128's producer, as an intrinsic by its
@@ -708,7 +708,7 @@ public sealed partial class MirEffectsTest(ITestOutputHelper output)
         var descriptor = MirDescriptors.Of(IntrinsicId.FormatInteger128);
         Assert.Equal(
             (BodylessKind.Intrinsic, IntrinsicId.FormatInteger128, (MirEffect.None, (sbyte)2)),
-            (TyCtxt.Bodyless(library.GetSymbol(KimiDeclarationId.StorageFormatInteger128)!), library.GetSymbol(KimiDeclarationId.StorageFormatInteger128)!.Definition.Id, (descriptor.Effects, descriptor.Arity)));
+            (TyCtxt.Bodyless(LibrarySource.Symbol(library, "Storage.formatInteger128")), LibrarySource.Symbol(library, "Storage.formatInteger128").Definition.Id, (descriptor.Effects, descriptor.Arity)));
     }
 
     // SPEC 8.11.2, 22.9.1 (R8-S2a, C-188; R8-S2b1, C-254): a confined caller's write(true) runs BoolFormat's body and its write of an i64

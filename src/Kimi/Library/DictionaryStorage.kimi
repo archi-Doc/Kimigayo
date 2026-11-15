@@ -78,7 +78,6 @@ group DictionaryStorage
     // The bodies below read a Dictionary's Handle through the path their borrow gives (SPEC 5.2.1): a Dictionary's one
     // component is its `Handle` (IMPL 21.1.3), so `value@follow@raw@raw/Handle` addresses it with that borrow's
     // authority.
-    #Lang("DictionaryStorageClearEntries")
     #CallerLocation
     internal func clearEntries<K, V>(value: uniq/Dictionary<K, V>)
         K is Equatable
@@ -123,21 +122,18 @@ group DictionaryStorage
             return previous@move
 
     // The capacity operations carry the standard operation's caller location to each failure they detect (SPEC 22.5.1).
-    #Lang("DictionaryStorageReserveEntries")
     #CallerLocation
     internal func reserveEntries<K, V>(value: uniq/Dictionary<K, V>, additional: isize)
         K is Equatable
         unsafe
             _ = reserve(value@follow@raw@raw/Handle, slotStride<K, V>(), additional)
 
-    #Lang("DictionaryStorageShrinkEntries")
     #CallerLocation
     internal func shrinkEntries<K, V>(value: uniq/Dictionary<K, V>)
         K is Equatable
         unsafe
             shrinkToFit(value@follow@raw@raw/Handle, slotStride<K, V>())
 
-    #Lang("DictionaryStorageReserve")
     #CallerLocation
     unsafe func reserve(handle: raw/Handle, stride: isize, additional: isize) -> isize
         unsafe
@@ -153,7 +149,6 @@ group DictionaryStorage
             grow(handle, stride, minimum)
             return minimum
 
-    #Lang("DictionaryStorageGrow")
     #CallerLocation
     unsafe func grow(handle: raw/Handle, stride: isize, minimum: isize)
         unsafe
@@ -187,7 +182,6 @@ group DictionaryStorage
             (*handle).buffer = memory
             (*handle).capacity = target
 
-    #Lang("DictionaryStorageAppend")
     #CallerLocation
     unsafe func append(handle: raw/Handle, stride: isize) -> raw/u8
         unsafe
@@ -207,7 +201,6 @@ group DictionaryStorage
             Raw.initialize(keyAt<K, V>(slot), key@move)
             Raw.initialize(valueAt<K, V>(slot), value@move)
 
-    #Lang("DictionaryStorageShrinkToFit")
     #CallerLocation
     unsafe func shrinkToFit(handle: raw/Handle, stride: isize)
         unsafe

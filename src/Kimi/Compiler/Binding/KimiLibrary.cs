@@ -14,7 +14,7 @@ public sealed partial class KimiLibrary
 {
     private static readonly WitnessMembers[] WitnessGroups = Enum.GetValues<WitnessMembers>();
 
-    private readonly BindingSymbol?[] symbols; // By catalog index.
+    private readonly BindingSymbol?[] symbols; // By KimiDeclarationId, the catalog's.
     private readonly List<BindingSymbol> registeredSymbols;
 
     internal KimiLibrary(Compilation compilation)
@@ -24,12 +24,13 @@ public sealed partial class KimiLibrary
         this.Module = new("Kimi", BindingSymbolKind.Container, this.Kotonoha.RootKoto, this.Scope);
         this.LoadSources();
         var declarations = new Koto?[KimiLibraryCatalog.LangItemCount]; // By KimiDeclarationId.
-        FindLangItems(this.Kotonoha.RootKoto, declarations);
+        var unnamed = new List<Koto>();
+        FindImplementations(this.Kotonoha.RootKoto, declarations, unnamed);
         this.ReadPrivateDeclarations(declarations);
         var entries = KimiLibraryCatalog.Entries;
         this.symbols = new BindingSymbol?[entries.Length];
-        this.registeredSymbols = new(entries.Length); // The catalog's symbols in catalog order.
-        this.RegisterCatalog(declarations);
+        this.registeredSymbols = new(entries.Length + unnamed.Count); // The catalog's symbols in catalog order, then the unnamed ones.
+        this.RegisterCatalog(declarations, unnamed);
 
         this.Copy = this.GetSymbol(KimiDeclarationId.Copy)!;
         this.Owned = this.GetSymbol(KimiDeclarationId.Owned)!;
@@ -302,10 +303,11 @@ public sealed partial class KimiLibrary
         this.Kotonoha.RootKoto.BindingState = BindingState.Resolved;
     }
 
-    // IMPL 21.3.4: each declaration the library marks `#Lang("Name")`, by KimiDeclarationId, read from the syntax by the Attribute's
-    // Kind (the Attribute's own BindingState is not read). A Name that is no lang item, a second declaration of one Name or a `#Lang`
-    // without its one string is a defect of the compiler build, whose embedded library KimiLibraryShapeTest checks.
-    private static void FindLangItems(DeclarationContainerKoto container, Koto?[] declarations)
+    // IMPL 21.3.4: the declarations whose implementation Attributes the registration reads, from the syntax by the Attribute's Kind (the
+    // Attribute's own BindingState is not read): each the library marks `#Lang("Name")`, by KimiDeclarationId, and in source order each
+    // other carrying `#Intrinsic` or `#CallerLocation`. A Name that is no lang item, a second declaration of one Name or a `#Lang` without
+    // its one string is a defect of the compiler build, whose embedded library KimiLibraryShapeTest checks.
+    private static void FindImplementations(DeclarationContainerKoto container, Koto?[] declarations, List<Koto> unnamed)
     {
         Add(container);
         for (var i = 0; i < container.Members.Count; i++)
@@ -315,7 +317,7 @@ public sealed partial class KimiLibrary
 
         for (var i = 0; i < container.NestedContainers.Count; i++)
         {
-            FindLangItems(container.NestedContainers[i], declarations);
+            FindImplementations(container.NestedContainers[i], declarations, unnamed);
         }
 
         void Visit(Koto node)
@@ -337,6 +339,11 @@ public sealed partial class KimiLibrary
         {
             if (declaration.FindAttribute(AttributeKind.Lang) is not { } attribute)
             {
+                if (declaration.FindAttribute(AttributeKind.Intrinsic) is not null || declaration.FindAttribute(AttributeKind.CallerLocation) is not null)
+                {
+                    unnamed.Add(declaration);
+                }
+
                 return;
             }
 
@@ -413,11 +420,11 @@ public sealed partial class KimiLibrary
         this.PositionSyntax = declarations[(int)KimiDeclarationId.PositionSyntax] as DeclarationContainerKoto;
     }
 
-    // SPEC 22.1: the catalog's symbols in catalog order, each bound to the declaration its `#Lang` marks, in the scope of the container
-    // that declares it: the root's, else one scope per container whose parent is its declaring container's (indexing later gives a
-    // member's symbol its container's ordinary member scope). A symbol carries its declaration's `#CallerLocation` and `#Intrinsic`
-    // (DefinitionOf).
-    private void RegisterCatalog(Koto?[] declarations)
+    // SPEC 22.1: the catalog's symbols in catalog order, each bound to the declaration its `#Lang` marks, then a symbol of each unnamed
+    // declaration (FindImplementations) in source order, in the scope of the container that declares it: the root's, else one scope per
+    // container whose parent is its declaring container's (indexing later gives a member's symbol its container's ordinary member scope).
+    // A symbol carries its declaration's `#CallerLocation` and `#Intrinsic` (DefinitionOf).
+    private void RegisterCatalog(Koto?[] declarations, List<Koto> unnamed)
     {
         var entries = KimiLibraryCatalog.Entries;
         var scopes = new Dictionary<Koto, BindingScope>(ReferenceEqualityComparer.Instance) { [this.Kotonoha.RootKoto] = this.Scope };
@@ -435,15 +442,7 @@ public sealed partial class KimiLibrary
                 continue;
             }
 
-            var function = declaration as FunctionKoto;
-            var name = function?.Name ?? ((DeclarationContainerKoto)declaration).Name;
-            var symbol = new BindingSymbol(name, function is null ? BindingSymbolKind.Type : BindingSymbolKind.Function, declaration, ScopeOf(DeclaringContainer(declaration)))
-            {
-                Intrinsic = entry.Intrinsic,
-                LibraryDeclaration = entry.Id,
-                CallerLocation = declaration.FindAttribute(AttributeKind.CallerLocation) is not null,
-                Definition = DefinitionOf(declaration),
-            };
+            var symbol = Register(declaration, entry.Id, entry.Intrinsic);
             if (IntrinsicContract.Of(entry.Intrinsic).Judged)
             {
                 symbol.Contract = new(symbol) { State = 2 }; // SPEC 8.4.3, 8.7.1: a refinement parent without members.
@@ -463,10 +462,29 @@ public sealed partial class KimiLibrary
                 }
             }
 
+            this.symbols[i] = symbol;
+        }
+
+        foreach (var declaration in unnamed)
+        {
+            Register(declaration, null, IntrinsicKind.None);
+        }
+
+        BindingSymbol Register(Koto declaration, KimiDeclarationId? id, IntrinsicKind intrinsic)
+        {
+            var function = declaration as FunctionKoto;
+            var name = function?.Name ?? ((DeclarationContainerKoto)declaration).Name;
+            var symbol = new BindingSymbol(name, function is null ? BindingSymbolKind.Type : BindingSymbolKind.Function, declaration, ScopeOf(DeclaringContainer(declaration)))
+            {
+                Intrinsic = intrinsic,
+                LibraryDeclaration = id,
+                CallerLocation = declaration.FindAttribute(AttributeKind.CallerLocation) is not null,
+                Definition = DefinitionOf(declaration),
+            };
             declaration.BoundSymbol = symbol;
             declaration.BindingState = BindingState.Resolved;
-            this.symbols[i] = symbol;
             this.registeredSymbols.Add(symbol);
+            return symbol;
         }
 
         BindingScope ScopeOf(DeclarationContainerKoto container)

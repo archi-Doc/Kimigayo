@@ -40,7 +40,7 @@ public partial class KimiLibraryShapeTest
 
         Assert.Equal(sourced.Order(), declared.Keys.Order());
         Assert.Equal(declared.Count, declared.Values.Distinct().Count());
-        Assert.Equal((189, 206), (declared.Keys.Count(x => library.GetSymbol(x) is not null), declared.Count));
+        Assert.Equal((119, 136), (declared.Keys.Count(x => library.GetSymbol(x) is not null), declared.Count)); // R8-G1 G1-6: the members a C# reader names.
     }
 
     // Row L3: `#Intrinsic("Name")` names an IntrinsicId member, the Definition the registration gives the declaration's symbol;
@@ -94,33 +94,25 @@ public partial class KimiLibraryShapeTest
         Assert.Equal(36, rows);
     }
 
-    // Row L5: the functions carrying `#CallerLocation` (SPEC 22.5.1) are exactly the cataloged symbols whose private ABI ModuleCodegen
-    // reads (KimiLibraryCatalog.RequiresCallerLocation), so no `#CallerLocation` sits on a declaration registration does not read; the
-    // Attribute takes no argument.
+    // Row L5: the functions carrying `#CallerLocation` (SPEC 22.5.1) are exactly the registered symbols, named or not (R8-G1 G1-6), whose
+    // private ABI ModuleCodegen reads (KimiLibraryCatalog.RequiresCallerLocation), so no `#CallerLocation` sits on a declaration
+    // registration does not read; the Attribute takes no argument.
     [Fact]
     public void TheCallerLocationAttributesAreTheRegisteredFlags()
     {
-        var library = Library.Value.Library;
-        var declared = new List<KimiDeclarationId>();
+        var registered = Library.Value.Library.RegisteredSymbols.ToArray();
+        var declared = new HashSet<BindingSymbol>();
         foreach (var (attribute, target) in LibraryAttributes(AttributeKind.CallerLocation))
         {
             Assert.Empty(Texts(attribute));
-            var id = Assert.IsType<FunctionKoto>(target).SymbolOf()!.LibraryDeclaration!.Value;
-            Assert.Same(library.GetSymbol(id)!.Declaration, target);
-            declared.Add(id);
+            var symbol = Assert.IsType<FunctionKoto>(target).SymbolOf()!;
+            Assert.Contains(symbol, registered);
+            Assert.True(declared.Add(symbol));
         }
 
-        var flagged = new List<KimiDeclarationId>();
-        foreach (var entry in KimiLibraryCatalog.Entries)
-        {
-            if (KimiLibraryCatalog.RequiresCallerLocation(library.GetSymbol(entry.Id)))
-            {
-                flagged.Add(entry.Id);
-            }
-        }
-
-        Assert.Equal(flagged.Order(), declared.Order());
-        Assert.Equal(82, declared.Count);
+        var flagged = registered.Where(static x => KimiLibraryCatalog.RequiresCallerLocation(x)).ToArray();
+        Assert.True(declared.SetEquals(flagged));
+        Assert.Equal((82, 82), (declared.Count, flagged.Length));
     }
 
     // The library's Attributes of one kind, each with the declaration it is written on, in source order.

@@ -9,7 +9,6 @@
 // `ArrayRepr.data` or from a remainder's `storage`, has IMPL 21.1.3's `Array<T>` guarantee.
 internal group Storage
     /// The shared Loan of its `source` slot and the untaken contiguous elements; it does not own them.
-    #Lang("RefRemainder")
     internal struct RefRemainder<E> {source}
         internal let storage: raw/E during source
         internal var position: isize = 0
@@ -25,7 +24,6 @@ internal group Storage
             self.loan = Loan<ref/E during source>.init()
 
     /// The parent Loan of its `source` slot and exclusive access to the untaken contiguous elements.
-    #Lang("UniqRemainder")
     internal struct UniqRemainder<E> {source}
         internal let storage: raw/E during source
         internal var position: isize = 0
@@ -65,7 +63,6 @@ internal group Storage
 
     /// Selects a range from an exclusive capability without copying elements or weakening its Loan. The one
     /// displacement of a view's start in the library: the selected start's offset is its stride (SPEC 5.3, 8.15.3).
-    #Lang("StorageSliceUniq")
     #CallerLocation
     internal func sliceUniq<E, R>(state: UniqRemainder<E> during source, range: R) -> UniqSlice<E> during source
         R is PositionRange
@@ -80,7 +77,6 @@ internal group Storage
 
     /// The shared Loan of its `source` Dictionary slot and the untaken live entries, followed in insertion order through
     /// the slot links; it does not own them.
-    #Lang("DictionaryRefRemainder")
     internal struct DictionaryRefRemainder<K, V> {source}
         internal let storage: raw/u8 during source
         internal var link: isize
@@ -98,7 +94,6 @@ internal group Storage
 
     /// The parent Loan of its `source` Dictionary slot, shared access to the untaken keys and exclusive access to their
     /// values; keys never become exclusive references.
-    #Lang("DictionaryUniqRemainder")
     internal struct DictionaryUniqRemainder<K, V> {source}
         internal let storage: raw/u8 during source
         internal var link: isize
@@ -130,7 +125,6 @@ internal group Storage
     /// The component of a consumed Dictionary, which owns the slot storage and the destruction responsibility for its
     /// unreturned entries: the last `handle.length` live entries, from `handle.head` to `handle.tail`. The storage is
     /// read here, its current holder (SPEC 5.2.1, 5.7).
-    #Lang("DictionaryOwnedRemainder")
     internal struct DictionaryOwnedRemainder<K, V>
         internal var handle: DictionaryStorage.Handle
 
@@ -180,7 +174,6 @@ internal group Storage
         unsafe => Raw.release((*handle).buffer)
 
     /// Destroys a live suffix in reverse insertion order without releasing its storage.
-    #Lang("StorageDestroyDictionaryEntries")
     #CallerLocation
     internal unsafe func destroyDictionaryEntries<K, V>(storage: raw/u8, stride: isize, tail: isize, count: isize)
         var link = tail
@@ -331,7 +324,6 @@ internal group Storage
         public func slice<E, length N>(self: ref/[N of E] during source) -> Slice<E> during source
             return self[..]
 
-        #Lang("FixedArraySliceRange")
         #CallerLocation
         public func slice<E, length N, R>(self: ref/[N of E] during source, range: R) -> Slice<E> during source
             R is PositionRange
@@ -341,7 +333,6 @@ internal group Storage
         public func sliceUniq<E, length N>(self: uniq/[N of E] during source) -> UniqSlice<E> during source
             return UniqSlice<E>.init(Storage.borrowStorageUniq(self))
 
-        #Lang("FixedArraySliceUniqRange")
         #CallerLocation
         public func sliceUniq<E, length N, R>(self: uniq/[N of E] during source, range: R) -> UniqSlice<E> during source
             R is PositionRange
@@ -434,7 +425,6 @@ internal group Storage
     /// The one component of a `string`, under IMPL 21.1.3's Handles. A string owns its bytes only for release kind 1,
     /// and a literal's are owned by no value (SPEC 3.1.2), so `data` states no `self`. This struct and the runtime's
     /// `RuntimeAbi.String`, whose hand-written IR reads the same words, are a lasting pair.
-    #Lang("StringRepr")
     #Layout("C")
     internal struct StringRepr
         internal var data: raw/u8
@@ -493,7 +483,6 @@ internal group Storage
     /// capacity shrinks.
     ///
     /// - safety: `handle` addresses a live Array whose elements have `stride` bytes each.
-    #Lang("StorageShrinkArray")
     #CallerLocation
     internal unsafe func shrinkArray(handle: raw/ArrayRepr<u8>, stride: isize)
         unsafe
@@ -536,26 +525,20 @@ internal group Storage
 
     // The operations the compiler implements (#Intrinsic); their comments state their operation contracts (SPEC 5.2).
     // Fails with the caller location carried by the standard operation's private ABI.
-    #Lang("StorageMissingDictionaryKey")
     #Intrinsic("Fail", "KIMI_E_MISSING_KEY")
     internal func missingDictionaryKey() -> Never
-    #Lang("StorageIndexBounds")
     #Intrinsic("Fail", "KIMI_E_INDEX_BOUNDS")
     internal func indexBounds() -> Never
-    #Lang("StorageArgumentOutOfRange")
     #Intrinsic("Fail", "KIMI_E_ARG_RANGE")
     internal func argumentOutOfRange() -> Never
-    #Lang("StorageCountOverflow")
     #Intrinsic("Fail", "KIMI_E_INT_OVERFLOW")
     internal func countOverflow() -> Never
-    #Lang("StorageAllocationSizeExceeded")
     #Intrinsic("Fail", "KIMI_E_ALLOC_SIZE")
     internal func allocationSizeExceeded() -> Never
     // The nullable form of Alloc (SPEC 21.4.3): null wherever Alloc would Abort. A nonnull result is the start of an
     // unreleased allocation of `bytes` bytes that holds no value; that allocation is its provenance, and it is readable and
     // writable (SPEC 5.2.1). `Raw.release` accepts it as the start of an `allocate` result, never as a zero-byte result
     // even when `bytes` is 0, so it is released at most once.
-    #Lang("StorageTryAllocateBytes")
     #Intrinsic("TryAllocateBytes")
     internal func tryAllocateBytes(bytes: isize) -> raw/u8
     /// Copies `count` bytes from `source` into the storage at `destination` and runs no user code; it may relocate the
@@ -572,14 +555,12 @@ internal group Storage
     ///
     /// - safety: `count >= 0`, and each of the `count` strided elements from `storage` is a distinct Place holding a
     ///   complete value of `T`.
-    #Lang("StorageDestroyValues")
     #Intrinsic("DestroyValues")
     internal unsafe func destroyValues<T>(storage: raw/u8, count: isize)
     /// A user Writer's reservation through the adapter's dispatch word (the ErasedReserve intrinsic): its
     /// `reserve(minimum)`, then `BufferFull` for a window with `written != 0` or `remaining < minimum`, which it drops
     /// (SPEC 22.9.4). It records nothing and reads no writer kind. The caller's obligation, which the signature cannot
     /// state: `writer` is a user Writer's adapter, and its caller commits or drops the window before the next reservation.
-    #Lang("StorageErasedReserve")
     #Intrinsic("ErasedReserve")
     internal func erasedReserve(writer: uniq/Utf8Writer, minimum: isize) -> Result<WriteWindow during writer.target, BufferFull>
     /// Writes the shortest round-trip text of a float (the FormatFloat intrinsic; SPEC 22.10.2) at the start of
@@ -587,17 +568,14 @@ internal group Storage
     /// `-Infinity`, `0` and `-0`. `bits` is an f64's IEEE 754 encoding, or with `narrow` an f32's in its low 32 bits, of
     /// which only those are read. It writes exactly the returned 1 to 24 bytes (at most 17 with `narrow`) and no other
     /// byte; the text is ASCII, so valid UTF-8. It allocates nothing and never Aborts.
-    #Lang("StorageFormatFloat")
     #Intrinsic("FormatFloat")
     internal func formatFloat(bits: u64 ! narrow: bool, destination: uniq/[24 of u8]) -> isize
     /// Writes the ASCII decimal digits of `value` (the FormatInteger128 intrinsic; SPEC 22.10.2) at the end of
     /// `destination` and returns their count, 1 to 39: no sign, no leading zero, `0` for zero. It writes exactly
     /// those bytes and no other; the text is ASCII, so valid UTF-8. It allocates nothing and never Aborts. Interim by
     /// RQ16 (a): the backend generates no 128-bit division (IMPL 21.3.3).
-    #Lang("StorageFormatInteger128")
     #Intrinsic("FormatInteger128")
     internal func formatInteger128(value: u128 ! destination: uniq/[40 of u8]) -> isize
     /// Returns the stride of `T` (IMPL 21.1.3), the byte distance between adjacent elements.
-    #Lang("StorageStride")
     #Intrinsic("Stride")
     internal func stride<T>() -> isize

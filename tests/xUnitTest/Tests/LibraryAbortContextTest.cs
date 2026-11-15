@@ -13,7 +13,7 @@ public class LibraryAbortContextTest
     {
         var c = Compilation.CreateForTest();
         Assert.True(c.Bind().IsComplete, string.Join("; ", c.Binding.Issues));
-        Assert.True(KimiLibraryCatalog.RequiresCallerLocation(c.Library.GetSymbol(KimiDeclarationId.RangeIteratorStarting)));
+        Assert.True(KimiLibraryCatalog.RequiresCallerLocation(LibrarySource.Symbol(c.Library, "RangeIterator.starting")));
     }
 
     [Theory]

@@ -9,9 +9,9 @@ internal enum KimiLibraryContainer : byte
     Intrinsics,
 }
 
-/// <summary>Immutable recognition rules, shared across compilations. Stable IDs are independent of catalog and syntax order. The entries
-/// are in KimiLibraryCatalog.Definitions.cs, the rows an operation publishes beyond its signature and the functions code generation keeps
-/// out of line in KimiLibraryCatalog.Rows.cs.</summary>
+/// <summary>Immutable recognition rules, shared across compilations. The entries, indexed by ID, are in KimiLibraryCatalog.Definitions.cs,
+/// the rows an operation publishes beyond its signature and the functions code generation keeps out of line in
+/// KimiLibraryCatalog.Rows.cs.</summary>
 internal static partial class KimiLibraryCatalog
 {
     // IMPL 21.3.4: a `#Lang("Name")` names the KimiDeclarationId member of that Name, compared ordinally.
@@ -34,7 +34,8 @@ internal static partial class KimiLibraryCatalog
     internal static bool ManagesRepresentation(BindingSymbol? symbol)
         => symbol?.LibraryDeclaration is { } id && Index(id) is >= 0 and var index && Definitions[index].ManagedRepresentation;
 
-    internal static int Index(KimiDeclarationId id) => (uint)id < (uint)Indices.Length ? Indices[(int)id] : -1;
+    // The entry of a cataloged lang item, at its ID; -1 for an internal declaration KimiLibrary reads into a member, which has none.
+    internal static int Index(KimiDeclarationId id) => (int)id < Definitions.Length ? (int)id : -1;
 
     // The internal source function that defines a linked public declaration (SPEC 22.1).
     internal static KimiDeclarationId? ImplementationOf(KimiDeclarationId id) => Index(id) is >= 0 and var index ? Definitions[index].Implementation : null;

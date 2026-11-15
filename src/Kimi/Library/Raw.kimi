@@ -7,7 +7,6 @@ public group Raw
     /// A zero-byte request allocates nothing and returns a nonnull address aligned for `T`, with provenance of its own.
     ///
     /// - abort: `count` is negative, `count * stride(T)` overflows, or the allocation fails.
-    #Lang("RawAllocate")
     #Intrinsic("RawAllocate")
     public func allocate<T>(count: isize) -> raw/T
     /// Releases storage that `allocate` returned, at its start address, without destroying any value.

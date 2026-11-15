@@ -1343,13 +1343,9 @@ public sealed partial class FunctionCodegenTest
     [Fact]
     public void EveryMirFailCodeHasAReason()
     {
-        KimiDeclarationId[] served =
-        [
-            KimiDeclarationId.StorageIndexBounds, KimiDeclarationId.StorageMissingDictionaryKey, KimiDeclarationId.StorageArgumentOutOfRange,
-            KimiDeclarationId.StorageCountOverflow, KimiDeclarationId.StorageAllocationSizeExceeded,
-        ];
+        string[] served = ["Storage.indexBounds", "Storage.missingDictionaryKey", "Storage.argumentOutOfRange", "Storage.countOverflow", "Storage.allocationSizeExceeded"];
         var library = Compilation.CreateForTest().Library;
-        string[] codes = [.. served.Select(x => library.GetSymbol(x)!.Definition.Code!), "KIMI_E_DUPLICATE_KEY", "KIMI_E_FORMAT"];
+        string[] codes = [.. served.Select(x => LibrarySource.Symbol(library, x).Definition.Code!), "KIMI_E_DUPLICATE_KEY", "KIMI_E_FORMAT"];
         Assert.Equal(7, codes.Distinct().Count());
         Assert.All(codes, static x => Assert.StartsWith(x + ":", AbortReasons.All[AbortReasons.Of(x)].Text, StringComparison.Ordinal));
         Assert.Equal(-1, AbortReasons.Of("KIMI_E_UNKNOWN"));

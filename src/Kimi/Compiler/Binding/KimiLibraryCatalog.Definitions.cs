@@ -2,16 +2,16 @@
 
 namespace Kimi.Compiler;
 
-// The recognition entries (SPEC 22.1): each cataloged library declaration's stable ID, which its `#Lang` names (IMPL 21.3.4), with
-// what the compiler knows of it beyond its source, and the indices built from them once: by ID, and from each linked implementation
-// to its public declaration (KimiLibraryCatalog.cs reads them).
+// The recognition entries (SPEC 22.1): each cataloged lang item, which its declaration's `#Lang` names (IMPL 21.3.4), with what the
+// compiler knows of it beyond its source, at the index of its KimiDeclarationId, and the index built from them once: from each linked
+// implementation to its public declaration (KimiLibraryCatalog.cs reads them).
 internal static partial class KimiLibraryCatalog
 {
     // The published rows (SPEC 4.9.6, 22.10.1) the entries name: no user code beyond the input accesses; `K` equality; the destruction
     // of the target in place (`replace`) or of its elements (the `clear`s, `truncate`); the calls of the Callable input (parameter 1),
     // then the destruction of the target's removed elements (`removeAll`, SPEC 4.9.7: after the last call) and of the Callable input it
     // consumes (DECISIONS BU-70); a formatting of the value (first parameter, or second after a writer). Every initializer the entries
-    // and indices read is in this file, in order: the order of static initializers across partial files is not defined.
+    // and the index read is in this file, in order: the order of static initializers across partial files is not defined.
     private static readonly PublishedRow None = new(Runs: null); // Not `default`, which skips the parameter defaults (On 0, Destroys 0).
     private static readonly PublishedRow Equality = new(KimiDeclarationId.Equatable, On: 1);
     private static readonly PublishedRow Replace = new(Destroys: 0, InPlace: true);
@@ -26,7 +26,6 @@ internal static partial class KimiLibraryCatalog
         new(KimiDeclarationId.Owned, Intrinsic: IntrinsicKind.Owned),
         new(KimiDeclarationId.Callable, Intrinsic: IntrinsicKind.Callable),
         new(KimiDeclarationId.WriteLine),
-        new(KimiDeclarationId.ConsoleWriteStdout),
         new(KimiDeclarationId.TestTempDirectory),
         new(KimiDeclarationId.Option),
         new(KimiDeclarationId.Result),
@@ -91,39 +90,25 @@ internal static partial class KimiLibraryCatalog
         new(KimiDeclarationId.ArrayRepeatingImplementation, Row: None),
         new(KimiDeclarationId.Utf8Format),
         new(KimiDeclarationId.BufferWriter),
-        new(KimiDeclarationId.BufferFull),
         new(KimiDeclarationId.WriteWindow),
         new(KimiDeclarationId.Utf8Writer),
         new(KimiDeclarationId.FixedBuffer),
         new(KimiDeclarationId.HeapBuffer),
         new(KimiDeclarationId.Utf8Slice),
-        new(KimiDeclarationId.InvalidUtf8),
         new(KimiDeclarationId.TextFixed), // A direct line's region (R8-W2).
         new(KimiDeclarationId.TextHeap),
         new(KimiDeclarationId.TextWriter),
         new(KimiDeclarationId.TextToString, Row: Formats),
         new(KimiDeclarationId.TextTryFormat, Row: Formats),
-        new(KimiDeclarationId.FixedBufferReserve),
         new(KimiDeclarationId.FixedBufferText), // A direct line's view (R8-W2).
-        new(KimiDeclarationId.HeapBufferReserve),
         new(KimiDeclarationId.HeapBufferIntoString),
-        new(KimiDeclarationId.WindowLimit),
         new(KimiDeclarationId.WriterWrite, Row: FormatsValue),
         new(KimiDeclarationId.WriterStatus),
         new(KimiDeclarationId.WriterReserve),
-        new(KimiDeclarationId.WriterWriteUtf8),
         new(KimiDeclarationId.WriterDeferLiteral),
         new(KimiDeclarationId.WriterFinish),
         new(KimiDeclarationId.WriteLineUtf8),
-        new(KimiDeclarationId.BoolFormatFormat),
-        new(KimiDeclarationId.CharFormatFormat),
-        new(KimiDeclarationId.UnitFormatFormat),
-        new(KimiDeclarationId.F32FormatFormat),
-        new(KimiDeclarationId.F64FormatFormat),
         new(KimiDeclarationId.StringWitnessFormat),
-        new(KimiDeclarationId.Utf8SliceFormatFormat),
-        new(KimiDeclarationId.WrappingFormatFormat),
-        new(KimiDeclarationId.IntegerFormatFormat),
         new(KimiDeclarationId.DictionaryReserve, Row: None),
         new(KimiDeclarationId.DictionaryTryInsert, Row: Equality),
         new(KimiDeclarationId.DictionaryInsertOrReplace, Row: new(KimiDeclarationId.Equatable, On: 1, Destroys: 1)), // `K` equality and the unused input `K`'s destruction.
@@ -136,15 +121,9 @@ internal static partial class KimiLibraryCatalog
         // IMPL 21.1.3: the structs that state the handles' inline components, by identity for Layout and the tests.
         new(KimiDeclarationId.ArrayRepr),
         new(KimiDeclarationId.SliceRepr),
-        new(KimiDeclarationId.StringRepr),
         new(KimiDeclarationId.DictionaryStorageHandle),
         // SPEC 22.2: the standard storage boundary; the exclusive borrow of each family is borrowStorageUniq (SPEC 7.4).
-        new(KimiDeclarationId.RefRemainder),
-        new(KimiDeclarationId.UniqRemainder),
         // SPEC 22.2: the distinct Dictionary family traverses live entries in insertion order.
-        new(KimiDeclarationId.DictionaryRefRemainder),
-        new(KimiDeclarationId.DictionaryUniqRemainder),
-        new(KimiDeclarationId.DictionaryOwnedRemainder),
         // SPEC 22.2: the fixed-array overloads of the contiguous borrowing remainders.
         // PLAN G33: the fixed-array owning remainder keeps its elements in compiler-known inline storage.
         new(KimiDeclarationId.InlineStorage),
@@ -152,73 +131,24 @@ internal static partial class KimiLibraryCatalog
         new(KimiDeclarationId.PositionRange),
         new(KimiDeclarationId.Start),
         new(KimiDeclarationId.End),
-        new(KimiDeclarationId.DictionaryIndex),
         new(KimiDeclarationId.DictionaryIndexUniq, Row: Equality),
-        new(KimiDeclarationId.StorageMissingDictionaryKey),
         // SPEC 22.2: private primitives that hold no collection logic, used by the DictionaryStorage capacity bodies.
-        new(KimiDeclarationId.StorageCountOverflow),
-        new(KimiDeclarationId.StorageAllocationSizeExceeded),
-        new(KimiDeclarationId.StorageTryAllocateBytes),
         new(KimiDeclarationId.StorageTransferBytes),
-        new(KimiDeclarationId.StorageStride),
         new(KimiDeclarationId.StorageGrowArray),
-        new(KimiDeclarationId.StorageDestroyValues),
-        new(KimiDeclarationId.StorageErasedReserve),
-        new(KimiDeclarationId.StorageFormatFloat),
-        new(KimiDeclarationId.StorageFormatInteger128),
-        new(KimiDeclarationId.StorageShrinkArray),
         new(KimiDeclarationId.StorageDestroyArray),
         new(KimiDeclarationId.StorageDestroyDictionary),
         new(KimiDeclarationId.StorageReleaseDictionary),
         new(KimiDeclarationId.StorageArrayCapacity, Row: None),
         new(KimiDeclarationId.DictionaryStorageCapacity, Row: None),
         new(KimiDeclarationId.DictionaryStorageInitialize), // SPEC 4.3: `[:]`'s target.
-        new(KimiDeclarationId.DictionaryStorageReserveEntries),
-        new(KimiDeclarationId.DictionaryStorageReserve),
-        new(KimiDeclarationId.DictionaryStorageGrow),
-        new(KimiDeclarationId.DictionaryStorageAppend),
         new(KimiDeclarationId.DictionaryStoragePlaceEntry),
-        new(KimiDeclarationId.DictionaryStorageShrinkEntries),
-        new(KimiDeclarationId.DictionaryStorageShrinkToFit),
         new(KimiDeclarationId.DictionaryStorageFindEntry, Row: Equality), // SPEC 12.4.3.
         // SPEC 5.6: the public raw storage operations.
-        new(KimiDeclarationId.RawAllocate),
         new(KimiDeclarationId.RawRelease),
         new(KimiDeclarationId.RawInitialize),
         new(KimiDeclarationId.RawSlice),
         // SPEC 15.3.5: the zero-sized dependency Field Core.
         new(KimiDeclarationId.Loan, ManagedRepresentation: true),
-        new(KimiDeclarationId.StorageArgumentOutOfRange),
-        new(KimiDeclarationId.FromEndResolve),
-        new(KimiDeclarationId.StartResolve),
-        new(KimiDeclarationId.EndResolve),
-        new(KimiDeclarationId.RangeResolve),
-        new(KimiDeclarationId.ClosedRangeResolve),
-        new(KimiDeclarationId.ResolvedRangeResolve),
-        new(KimiDeclarationId.RangeIterate),
-        new(KimiDeclarationId.RangeIterateUniq),
-        new(KimiDeclarationId.RangeIntoIterator),
-        new(KimiDeclarationId.ClosedRangeIterate),
-        new(KimiDeclarationId.ClosedRangeIterateUniq),
-        new(KimiDeclarationId.ClosedRangeIntoIterator),
-        new(KimiDeclarationId.RangeIteratorStarting),
-        new(KimiDeclarationId.ClosedRangeIteratorStarting),
-        new(KimiDeclarationId.DictionaryStorageClearEntries),
-        new(KimiDeclarationId.StorageDestroyDictionaryEntries),
-        new(KimiDeclarationId.StorageIndexBounds),
-        new(KimiDeclarationId.UniqSliceIndex),
-        new(KimiDeclarationId.UniqSliceIndexUniq),
-        new(KimiDeclarationId.UniqSliceIndexPosition),
-        new(KimiDeclarationId.UniqSliceIndexPositionUniq),
-        new(KimiDeclarationId.UniqSliceSliceRange),
-        new(KimiDeclarationId.UniqSliceSliceUniqRange),
-        new(KimiDeclarationId.ArraySliceRange),
-        new(KimiDeclarationId.ArraySliceUniqRange),
-        new(KimiDeclarationId.FixedArraySliceRange),
-        new(KimiDeclarationId.FixedArraySliceUniqRange),
-        new(KimiDeclarationId.SliceSliceRange),
-        new(KimiDeclarationId.StorageSliceUniq),
-        new(KimiDeclarationId.SliceToArray),
         new(KimiDeclarationId.ArrayAppendCopies, Row: None),
         // SPEC 4.9.6: `truncate` destroys its receiver's elements from `length` on; `removeAll` calls `matching`, destroys the removed
         // elements and destroys `matching`.
@@ -234,50 +164,35 @@ internal static partial class KimiLibraryCatalog
         new(KimiDeclarationId.ArrayReverse, Row: None),
     ];
 
-    private static readonly int[] Indices = CreateIndices();
-
-    // The public declaration of each linked implementation, by catalog index; -1 elsewhere.
+    // The public declaration of each linked implementation, by ID; -1 elsewhere.
     private static readonly int[] Presentations = CreatePresentations();
 
-    // A link joins a public declaration to one implementation; no implementation is linked twice or linked onward. That neither is an
-    // intrinsic (their Definitions are Body) and that the implementation is an internal source function of the same container carrying
-    // `#CallerLocation` is the library's source, which KimiLibraryShapeTest checks (DECISIONS BU-112).
+    // Each entry sits at its ID's index. A link joins a public declaration to one implementation; no implementation is linked twice or
+    // linked onward. That neither is an intrinsic (their Definitions are Body) and that the implementation is an internal source function
+    // of the same container carrying `#CallerLocation` is the library's source, which KimiLibraryShapeTest checks (DECISIONS BU-112).
     private static int[] CreatePresentations()
     {
         var result = new int[Definitions.Length];
         Array.Fill(result, -1);
         for (var i = 0; i < Definitions.Length; i++)
         {
+            if ((int)Definitions[i].Id != i)
+            {
+                throw new InvalidOperationException($"The Kimi catalog entry {Definitions[i].Id} is not at its ID's index.");
+            }
+
             if (Definitions[i].Implementation is not { } implementation)
             {
                 continue;
             }
 
-            var target = Indices[(int)implementation];
+            var target = Index(implementation);
             if (target < 0 || result[target] >= 0 || Definitions[target].Implementation is not null)
             {
                 throw new InvalidOperationException("Invalid Kimi implementation link.");
             }
 
             result[target] = i;
-        }
-
-        return result;
-    }
-
-    private static int[] CreateIndices()
-    {
-        var result = new int[Enum.GetValues<KimiDeclarationId>().Length];
-        Array.Fill(result, -1);
-        for (var i = 0; i < Definitions.Length; i++)
-        {
-            var id = (int)Definitions[i].Id;
-            if (result[id] != -1)
-            {
-                throw new InvalidOperationException("Duplicate Kimi catalog ID.");
-            }
-
-            result[id] = i;
         }
 
         return result;

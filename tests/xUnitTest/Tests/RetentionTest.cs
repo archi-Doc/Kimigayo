@@ -1074,12 +1074,12 @@ public sealed partial class RetentionTest
     // DictionaryStorage.grow writes the Handle its `raw/Handle` addresses, whose `buffer` states `self`: through it a call stores what
     // the Handle's Type admits, nothing here, so the handle is no untied store (SPEC 5.7 Calls).
     [Theory]
-    [InlineData(KimiDeclarationId.DictionaryStoragePlaceEntry, "store 0: own {0 Content, 1 Value, 2 Value}, reached {}")]
-    [InlineData(KimiDeclarationId.DictionaryStorageGrow, "")]
-    public void StorageOperationsRetainTheirRawArguments(KimiDeclarationId id, string expected)
+    [InlineData("DictionaryStorage.placeEntry", "store 0: own {0 Content, 1 Value, 2 Value}, reached {}")]
+    [InlineData("DictionaryStorage.grow", "")]
+    public void StorageOperationsRetainTheirRawArguments(string path, string expected)
     {
         var c = Bind(string.Empty);
-        Assert.Equal(expected, Show(c.Types.Retains(c.Library.GetSymbol(id)!, null, null)));
+        Assert.Equal(expected, Show(c.Types.Retains(LibrarySource.Symbol(c.Library, path), null, null)));
     }
 
     // SPEC 15.6.4 (OQ-3, DECISIONS R4-M116; G160-2c): a raw argument is retained as a borrowed one, its pointee as the referent. An Origin
@@ -1602,7 +1602,7 @@ public sealed partial class RetentionTest
             {
                 var value = call.Kind == CalleeKind.Value;
                 var callee = call is { Kind: CalleeKind.Virtual, VirtualIsDirect: true } ? call.VirtualImplementation?.SymbolOf() : call.Target;
-                if (callee is null || (callee.LibraryDeclaration is null && callee.Definition.Kind == DispositionKind.Intrinsic))
+                if (callee is null || ReferenceEquals(callee, c.Library.Abort))
                 {
                     continue; // The compiler-only $abort has no declaration MIR names (SPEC 17.4).
                 }

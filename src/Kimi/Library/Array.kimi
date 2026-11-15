@@ -35,7 +35,6 @@ public struct Array<T>
     public func slice(self: ref/Self) -> Slice<T> during self
         return self[..]
 
-    #Lang("ArraySliceRange")
     #CallerLocation
     public func slice<R>(self: ref/Self, range: R) -> Slice<T> during self
         R is PositionRange
@@ -45,7 +44,6 @@ public struct Array<T>
     public func sliceUniq(self: uniq/Self) -> UniqSlice<T> during self
         return UniqSlice<T>.init(Storage.borrowStorageUniq(self))
 
-    #Lang("ArraySliceUniqRange")
     #CallerLocation
     public func sliceUniq<R>(self: uniq/Self, range: R) -> UniqSlice<T> during self
         R is PositionRange
