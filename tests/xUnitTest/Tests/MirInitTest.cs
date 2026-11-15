@@ -54,6 +54,7 @@ public sealed class MirInitTest
         "func rw(c: bool, y: i32) -> Array<i32>\n    return [y]\n    return [y, if c => y else => fail()]\n" +
         "func takeF1(a: [1 of i32]) => ()\nfunc takeF3(a: [3 of i32]) => ()\nfunc takeFL(a: [10000 of i32]) => ()\n" +
         "func takeTF(t: (i32, [2 of i32])) => ()\nfunc takeFT(a: [2 of (i32, i32)]) => ()\nfunc takeFLT(a: [10000 of (i32, i32)]) => ()\n" +
+        "func keepL<length L>(a: [L of i32]) => ()\n" +
         "public func main() -> ()\n    let y: i32 = 5\n    let c: bool = y > 2\n";
 
     // The declarations before a function g that reads a Place of Type Never (CodeAfterANeverPlaceReadIsCheckedOnTheAssumedPaths).
@@ -668,7 +669,9 @@ public sealed class MirInitTest
     // and writing every element restores it (SPEC 15.1.2); length 0, a real path and an unused Fill stay valid. Last, the table t2
     // (smf1 to smf5): a temp holding such a Fill that holds nothing on another assumed path is the Never value there (smf3 was
     // accepted on the base). Fail-before: the base accepted every invalid Fill row but flt and flLt (a Tuple's tracked part was
-    // mirrored into every element).
+    // mirrored into every element). Last, an open length (flo, ol1 to ol8; the step 5 review's S5-N1): it names no element for every
+    // binding (SPEC 4.4.2), so all of its elements are the others, at a whole use, `a[0]` and a runtime index (flo, ol1, ol2 and ol5
+    // were accepted by step 5); a constant-expression length is closed (ol6, ol7).
     [Theory]
     [InlineData("return\n    takeA([if c => y else => fail()])", "UninitializedPlace_Kd takeA([if c => y 1")]
     [InlineData("return\n    takeT((y, if c => y else => fail()))", "UninitializedPlace_Kd takeT((y, if c => y 1")]
@@ -763,6 +766,14 @@ public sealed class MirInitTest
     [InlineData("takeF(if c => [2 of if c => y else => y] else => fail())\n    return\n    takeF(if c => [2 of if c => y else => y] else => fail())\n    takeTF(if c => (y, [2 of if c => y else => y]) else => fail())", "")] // smf5, smf1, smf2
     [InlineData("return\n    takeF(if c => [2 of if c => y else => fail()] else => fail())", "UninitializedPlace_Kd takeF(if c => [2 of if c => y 1")] // smf3
     [InlineData("return\n    let f: [2 of i32] = if c => [2 of if c => y else => y] else => fail()\n    takeF(f)", "UninitializedPlace_Kd takeF(f) 1")] // smf4
+    [InlineData("gl<2>(c, y)\nfunc gl<length L>(c: bool, y: i32) -> ()\n    return\n    keepL([L of if c => y else => fail()])", "UninitializedPlace_Kd keepL([L of if c => y 1")] // flo
+    [InlineData("g<2>(c, y)\nfunc g<length L>(c: bool, y: i32) -> ()\n    return\n    let a: [L of i32] = [L of if c => y else => fail()]\n    keepL(a)", "UninitializedPlace_Kd keepL(a) 1")] // ol1
+    [InlineData("g<2>(c, y)\nfunc g<length L>(c: bool, y: i32) -> ()\n    return\n    let a: [L of i32] = [L of if c => y else => fail()]\n    use(a[0])", "UninitializedPlace_Kd a[0] 1")] // ol2
+    [InlineData("g<2>(c, y)\nfunc g<length L>(c: bool, y: i32) -> ()\n    return\n    let i: isize = 0\n    let a: [L of i32] = [L of if c => y else => fail()]\n    use(a[i])", "UninitializedPlace_Kd a[i] 1")] // ol5
+    [InlineData("g<2>(c, y)\nfunc g<length L>(c: bool, y: i32) -> ()\n    return\n    let a: [L of i32] = [L of if c => y else => y]\n    keepL(a)\n    let b: [L of i32] = [L of if c => y else => fail()]", "")] // ol3, ol4
+    [InlineData("return\n    let a: [(1 + 1) of i32] = [(1 + 1) of if c => y else => fail()]\n    takeF(a)", "UninitializedPlace_Kd takeF(a) 1")] // ol6
+    [InlineData("return\n    let a: [Dim.W of i32] = [Dim.W of if c => y else => fail()]\n    takeF(a)\ngroup Dim\n    public let W: isize = 2", "UninitializedPlace_Kd takeF(a) 1")] // ol7
+    [InlineData("return\n    let a: [Dim.W of i32] = [Dim.W of if c => y else => y]\n    takeF(a)\ngroup Dim\n    public let W: isize = 2", "")] // ol8
     public void AnOperandWithoutAValuePlacesNothingIntoItsComponent(string body, string expected)
         => Assert.Equal(expected.Length == 0 ? [] : [expected], Problems(Operands + "    " + body + "\n"));
 

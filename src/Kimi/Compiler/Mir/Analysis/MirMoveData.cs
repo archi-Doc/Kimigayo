@@ -102,6 +102,10 @@ internal sealed class MirMoveData
     /// <summary>Gets the most carries of one Assign (<see cref="Carries"/>).</summary>
     internal int MaxCarried { get; private set; }
 
+    /// <summary>Gets the paths the last build created, numbered or not: its size, which a body bounds (a Fill lists its elements only
+    /// where a fact needs them).</summary>
+    internal int Created => this.created;
+
     /// <summary>Collects the move paths of a body and numbers them.</summary>
     /// <param name="body">The validated body.</param>
     /// <param name="flow">The dataflow, begun with the body.</param>
@@ -314,12 +318,13 @@ internal sealed class MirMoveData
         var whole = destination.Projection == 0 && this.body.Locals[destination.Root].Kind == MirLocalKind.Temp;
         var first = whole || (destination.Projection == 0 && this.once[destination.Root]); // A temp or a let binding: placed once.
         var takes = rvalue.Kind == MirRvalueKind.Aggregate || first; // Whether a whole temp's own state has a component to go to.
-        var copies = fill ? this.Elements(found >> 2, rvalue) : 1;
+        var copies = fill ? -1 : 1; // A Fill's components, listed where a fact first needs them (Elements).
         var parts = this.Open();
         for (var i = 0; i < rvalue.Count; i++)
         {
             var taken = this.Taken(rvalue, i);
             var never = taken >= 0 && taken < this.body.Locals.Length && this.Never(taken);
+            copies = never && copies < 0 ? this.Elements(found >> 2, rvalue) : copies;
             for (var k = 0; never && k < copies; k++)
             {
                 this.Push(fill ? this.elements[k] : rvalue.Kind == MirRvalueKind.Aggregate ? this.Component(found >> 2, rvalue, i) : found >> 2);
@@ -333,7 +338,9 @@ internal sealed class MirMoveData
             var taken = this.Taken(rvalue, i);
             var temp = taken < 0 ? -1 : this.body.Operands[rvalue.Start + i].Place.Root;
             var absent = temp >= 0 && takes && this.Absent(temp, taken, chain);
-            for (var k = 0; temp >= 0 && k < copies && (absent || this.nevers.TryGetValue(~temp, out _)); k++)
+            var carried = temp >= 0 && (absent || this.nevers.TryGetValue(~temp, out _));
+            copies = carried && copies < 0 ? this.Elements(found >> 2, rvalue) : copies;
+            for (var k = 0; carried && k < copies; k++)
             {
                 var component = fill ? this.elements[k] : rvalue.Kind == MirRvalueKind.Aggregate ? this.Component(found >> 2, rvalue, i) : found >> 2;
                 if (this.Mirrored(temp, taken, component) && absent)
@@ -565,13 +572,13 @@ internal sealed class MirMoveData
         return -1;
     }
 
-    // The path of an aggregate's component (its operand at position i, or a Fill's element i): a Tuple's Field, an array's ConstIndex,
+    // The path of an aggregate's component (its operand at position i; a Fill's are its Elements): a Tuple's Field, an array's ConstIndex,
     // an enum Case's payload Field under its Downcast (the aggregate's ordinal), a struct's base (its first operand where it has one) or own
     // Field.
     private int Component(int path, in MirRvalue aggregate, int i) => (MirAggregateKind)aggregate.Op switch
     {
         MirAggregateKind.Tuple => this.Child(path, MirProjectionKind.Field, i),
-        MirAggregateKind.FixedArray or MirAggregateKind.Fill or MirAggregateKind.Array => this.Child(path, MirProjectionKind.ConstIndex, i),
+        MirAggregateKind.FixedArray or MirAggregateKind.Array => this.Child(path, MirProjectionKind.ConstIndex, i),
         _ when AdtDef.IsEnum(aggregate.Type) => this.Child(this.Child(path, MirProjectionKind.Downcast, aggregate.Arg), MirProjectionKind.Field, i),
         _ when AdtDef.Base(aggregate.Type!) is not null => this.Child(path, i == 0 ? MirProjectionKind.Base : MirProjectionKind.Field, i == 0 ? 1 : i - 1),
         _ => this.Child(path, MirProjectionKind.Field, i),
@@ -580,15 +587,17 @@ internal sealed class MirMoveData
     // SPEC 4.3.3, 15.1.3: the components of a Fill into a path (their count; the facts in elements): the elements below its length a
     // Place can name alone, at the constant indices of the body's projections, and, for the others, the path's Unplaced lane (its
     // complement), as their owner: no use tells them apart (a whole or a runtime-index use reads the path; a Move, a Drop and a definition
-    // apply to it), so they have no path, and a Fill's facts stay bounded by the body. An open length has none.
+    // apply to it), so they have no path, and a Fill's facts stay bounded by the body. An open length names no element for every binding
+    // (SPEC 4.4.2), so all of its elements are the others. Read only where a fact needs the list (Nevers).
     private int Elements(int path, in MirRvalue fill)
     {
-        if (fill.Type is not { Kind: BoundTypeKind.FixedArray, LengthExpression: null } type)
+        if (fill.Type is not { Kind: BoundTypeKind.FixedArray } type)
         {
             return 0;
         }
 
-        if (this.indexCount < 0)
+        var closed = type.LengthExpression is null;
+        if (closed && this.indexCount < 0)
         {
             this.indexCount = 0;
             foreach (ref readonly var row in this.body.Projections)
@@ -604,7 +613,7 @@ internal sealed class MirMoveData
         }
 
         var count = 0;
-        for (var at = 0; at < this.indexCount && this.indices[at] < type.Length; at++)
+        for (var at = 0; closed && at < this.indexCount && this.indices[at] < type.Length; at++)
         {
             if (at == 0 || this.indices[at] != this.indices[at - 1])
             {
@@ -613,7 +622,7 @@ internal sealed class MirMoveData
             }
         }
 
-        if (count < type.Length)
+        if (!closed || count < type.Length)
         {
             MirDataflow.Grow(ref this.elements, count + 1);
             this.elements[count++] = ~path;
