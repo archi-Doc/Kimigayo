@@ -436,14 +436,15 @@ public sealed partial class Binding
         {
             var binding = this.Binding;
             var part = binding.positionParts[start];
-            while (end - start != 1 && ResultTarget(part) is { } target)
+            var owner = part;
+            while (end - start != 1 && ResultTarget(owner) is { } target)
             {
-                part = target;
+                owner = target;
             }
 
-            if (binding.Materialization(part, pattern, this.Scope) is { } temporary)
+            if (binding.Materialization(owner, pattern, this.Scope) is { } temporary)
             {
-                this.InferTemporary(pattern, part);
+                this.InferTemporary(pattern, owner);
                 pattern = temporary;
             }
 
