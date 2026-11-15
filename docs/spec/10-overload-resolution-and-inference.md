@@ -140,7 +140,7 @@ Adaptations are ranked by class, best first, with no preference within a class:
 | Class | Meaning |
 | --- | --- |
 | Exact | No adaptation operation, including no borrow or Reborrow |
-| Expected-Type fitting | Fitting an argument checked against the expected Type ([§10.5.1](#1051-argument-kinds)), whatever its form, directly to the candidate's Type; when an acquisition such as borrowing a temporary is also needed, that acquisition's class applies |
+| Expected-Type fitting | Fitting an argument checked against the expected Type ([§10.5.1](#1051-argument-kinds)), whatever its form, or a value join ([§10.4](#104-best-candidate) step 1), directly to the candidate's Type; when an acquisition such as borrowing a temporary is also needed, that acquisition's class applies |
 | Same-Semantics Reborrow | A Reborrow that preserves the input's outer Semantics |
 | Cross-Semantics adaptation | Any other borrow or Reborrow, one shared reference through several layers, or a value read |
 
@@ -192,10 +192,10 @@ func g(x: i32) -> () => ()
 func g(x: i32, y: i32 = 0) -> () => ()
 g(1@i32)                // g(x): steps 1–3 tie on x; step 4 prefers fewer defaults.
 
-// identity<T>(value: T) -> T; wideRef: ref/i64.
-func measure(value: ref/i64) -> () => ()
-func measure(value: i64) -> () => ()
-measure(if ready => wideRef else => identity(1)) // measure(i64): the one value itself beats its one borrowed temporary.
+// identity<T>(value: T) -> T.
+func measure(pair: (i32, i32)) -> () => ()
+func measure(pair: ref/(i64, i64)) -> () => ()
+measure(if ready => (1, 2) else => (3, identity(4))) // measure((i32, i32)): the one value beats the borrow of its one temporary.
 ```
 
 ## 10.5. Inference boundaries
