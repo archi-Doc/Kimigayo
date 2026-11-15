@@ -353,23 +353,36 @@ public sealed partial class Binding
     // Function Item erases (ErasesToFunction), also as a Tuple or array literal's element: a contract whose condition fails fails the
     // value with that conversion's own record, by its walk's facts (RecordMismatch), never a mismatch of the literal holding it (held
     // 353a12e81). A Closure's or Function Item's erasure that recorded its failed condition or Owned part (ErasesToFunction) is the
-    // value's failure.
-    private bool FailsFunctionConversion(Koto node, BoundType actual, BoundType expected)
+    // value's failure. The value's Type at the position: null when it failed; the expected Type when it converted, written to the node's
+    // own Type (unlike an erasure, which keeps the node's Type and publishes ErasedFunctionType for HIR's Erasure; subtyping inserts no
+    // operation, SPEC 3.8, so no adaptation records it), so every consumer's fit (a declaration, a join, a store, a return) is identity
+    // and the conversion's comparison has one judge; otherwise its own.
+    private BoundType? ConvertFunctionValue(Koto node, BoundType actual, BoundType expected)
     {
         if (node.BindingFailure == BindingFailure.OriginContract ||
             (node.BindingState == BindingState.Invalid && this.ErasureOf(actual, expected) is { Part: ErasurePart.Owned }))
         {
-            return true;
+            return null;
         }
 
         if (expected.Kind != BoundTypeKind.Function || actual.Kind != BoundTypeKind.Function || ReferenceEquals(actual, expected) ||
-            !ReferenceTypes.StorageMatches(expected, actual) || this.CheckTypeUse(actual, expected, node, out var failure) || !failure.IsCondition)
+            !ReferenceTypes.StorageMatches(expected, actual))
         {
-            return false; // A limit (design-r2 A1) or a plain position stays the enclosing fit's record (S3Demo: at the declaration).
+            return actual;
+        }
+
+        if (this.CheckTypeUse(actual, expected, node, out var failure))
+        {
+            return node.BoundType = expected;
+        }
+
+        if (!failure.IsCondition)
+        {
+            return actual; // A limit (design-r2 A1) or a plain position stays the enclosing fit's record (S3Demo: at the declaration).
         }
 
         this.FailMismatch(node, node, actual, expected, failure);
-        return true;
+        return null;
     }
 
     // SPEC 7.7.4, 10.5, 10.7: the signature part of an erasure, which a call's applicability uses; the Shared receiver, the Owned

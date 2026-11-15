@@ -98,31 +98,12 @@ public sealed partial class Binding
         failure = default;
         var fits = NeverFits(actual) || this.CheckTypeUseWalk(actual, expected, use, out failure);
         this.FormComparisonRows(rows, fits);
-        this.SetFitDestination(pending, expected);
-        return fits;
-    }
-
-    // CheckTypeUse as a re-reading of comparisons that a fit at the value judged and formed before it (SPEC 23.1.2: one record per failing
-    // condition): it takes their region conjuncts and drops them. Its readers: the declaration's fit of its initializer, whose value's fit
-    // (ErasesToFunction, FailsFunctionConversion) runs first (DECISIONS <G492-a (iii)>, the re-fit invariant).
-    private bool RefitTypeUse(BoundType actual, BoundType expected, Koto use, out ComparisonFailure failure)
-    {
-        var pending = this.pendingRelations.Count;
-        var rows = this.comparisonRows.Count;
-        failure = default;
-        var fits = NeverFits(actual) || this.CheckTypeUseWalk(actual, expected, use, out failure);
-        this.DropComparisonRows(rows);
-        this.SetFitDestination(pending, expected);
-        return fits;
-    }
-
-    // The pending relations one use-site fit appended from `pending` take its whole destination (DECISIONS R4-M133).
-    private void SetFitDestination(int pending, BoundType expected)
-    {
         for (var i = pending; i < this.pendingRelations.Count; i++)
         {
             this.pendingRelations[i] = this.pendingRelations[i] with { Destination = expected };
         }
+
+        return fits;
     }
 
     // The relation collects open initializer bounds even beside a local region; regional fits also publish their source edges. Until the
