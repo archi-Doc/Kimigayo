@@ -329,10 +329,9 @@ public sealed partial class Binding
     // FailedTypeArgument: an explicit Type argument that did not bind (Part), on which the selection rests (SPEC 23.1.2).
     // EnvironmentResult: the argument (Part) whose known signature's result over its closure's environment is no evidence for Slot
     // (SPEC 8.10, 7.7.4), a slot that no other evidence binds (SPEC 10.8).
-    // UnformedSplit (DECISIONS D3, temporary until PLAN G886's representation): a formation under a binding whose split no Type
-    // represents (Binding.Unformed), in the candidate trial of Part or, with no Part, outside any trial for its consumer (TakeUnformed).
-    // A candidate rests on it only where every check reading no unformed Type passed (TryCandidate's verdict), its call then one located
-    // Unsupported_Kd; a value call's callee signature or a reference's candidates, whatever the rest (their consumers hold the channel).
+    // UnformedSplit (DECISIONS D3, temporary until PLAN G886's representation): the candidate trial of Part rests on a formation under a
+    // binding whose split no Type represents (Binding.Unformed's count), every check reading no unformed Type having passed; only
+    // TryCandidate's verdict publishes it, and its call is then one located Unsupported_Kd.
     private readonly record struct PendingJudgment(PendingJudgmentKind Kind, Koto? Part, BindingSymbol? Slot = null)
     {
         // The epoch of the innermost open frame it is read in (design-r2 Amendment 5).

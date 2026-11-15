@@ -61,7 +61,7 @@ public sealed partial class Binding
             Koto? invalid = null;
             var error = false;
             this.failedCause = null;
-            var held = this.HoldUnformed();
+            var unformedMark = this.unformedWrites;
             for (var candidate = ReferenceCandidate(symbol); candidate is not null; candidate = ReferenceCandidate(candidate.Next), index++)
             {
                 this.BindHeader(candidate);
@@ -101,7 +101,7 @@ public sealed partial class Binding
                 }
             }
 
-            if (this.TakeUnformed(held))
+            if (this.UnformedSince(unformedMark))
             {
                 // DECISIONS D3 (temporary, PLAN G886): a candidate's signature at S needed a Type no binding represents. Its erasure's
                 // Owned proof reads only its bound Type arguments, so it is still judged (FailUnformedOwned), and a reference resting on a

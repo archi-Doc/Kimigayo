@@ -200,46 +200,22 @@ public sealed partial class Binding
     private bool FormsUnder(BoundType binding) => !this.IsAbstractBinding(binding) || HasOwnSelector(binding);
 
     // DECISIONS D3 (temporary; removed with the representation of a selector-less binding's split, PLAN G886): a formation under a binding
-    // that forms none (FormsUnder) forms nothing (null), counts one write (UnformedSince) and leaves one fact
-    // (PendingJudgmentKind.UnformedSplit, BU-86's channel). The split is an Unknown in one candidate's fit (rule W, BU-79): a part whose
-    // own pattern forms no Type is unknown (UnformedPart), and a candidate trial rests on it only where every other check passed
-    // (TryCandidate), its call then one located Unsupported_Kd; a formation outside any trial leaves the fact for its consumer, which
-    // holds the channel around it (HoldUnformed, TakeUnformed: a value call's callee signature, a reference's candidates).
-    // The writers: ApplySemantics, SubstituteFamily, DirectTarget, HasOuterSlot (the inline `IsAbstractBinding` and not `HasOwnSelector`
-    // there is FormsUnder's body where the first is already decided); IsSource's comparison reads FormsUnder and publishes nothing.
+    // that forms none (FormsUnder) forms nothing (null) and counts one write (unformedWrites), the one record of it; its readers compare
+    // the count with a mark (UnformedSince). The split is an Unknown in one candidate's fit (rule W, BU-79): a part whose own pattern
+    // forms no Type is unknown (UnformedPart), and a candidate trial rests on it only where every other check passed, which its verdict
+    // publishes to the selection (TryCandidate: PendingJudgmentKind.UnformedSplit), its call then one located Unsupported_Kd. A value
+    // call's callee signature and a reference's candidates read the count around their own formations, whatever the rest. The writers:
+    // ApplySemantics, SubstituteFamily, DirectTarget, HasOuterSlot (the inline `IsAbstractBinding` and not `HasOwnSelector` there is
+    // FormsUnder's body where the first is already decided); IsSource's comparison reads FormsUnder and publishes nothing.
     private BoundType? Unformed()
     {
         this.unformedWrites++;
-
-        // The trial's frame, also from inside a proof the trial runs (a Constraint over the unformed Type), whose frame drops its own.
-        this.trialPending ??= new(PendingJudgmentKind.UnformedSplit, this.activeInferenceFunction) { Epoch = this.proofNesting != 0 ? this.judgmentEnclosing : this.frameEpoch };
         return null;
     }
 
     // DECISIONS D3 with rule W (BU-79): whether a formation since `mark` (an earlier unformedWrites) formed no Type, so that a check that
     // failed since then failed through the split: an Unknown, not a failure of its own.
     private bool UnformedSince(int mark) => this.unformedWrites != mark;
-
-    // DECISIONS D3: a consumer of formations outside a candidate trial holds the channel's fact before them (HoldUnformed clears the
-    // channel and returns what it held), then asks TakeUnformed.
-    private PendingJudgment? HoldUnformed()
-    {
-        var held = this.trialPending;
-        this.trialPending = null;
-        return held;
-    }
-
-    // DECISIONS D3: whether a formation since HoldUnformed was unformed. Unlike BU-86's take-once channel it consumes nothing, in both
-    // cases: a held fact is restored (an enclosing trial's own stays first), and when nothing was held the fact the formations left stays
-    // in the channel. Inside an enclosing candidate trial that gives the trial's selection the same fact, so a reference in a candidate's
-    // argument makes the enclosing call its one located Unsupported_Kd; outside any trial the fact sits until its frame closes or
-    // the next OpenTrial clears it, harmless since every reader holds first (a value call, a reference) or reads only its own trial's fact (the selection).
-    private bool TakeUnformed(PendingJudgment? held)
-    {
-        var unformed = this.trialPending is { Kind: PendingJudgmentKind.UnformedSplit };
-        this.trialPending = held ?? this.trialPending;
-        return unformed;
-    }
 
     // SPEC 8.1.2: whether a pair layer formed under this binding (an annotated original, or an application `s/U`, ApplySemantics) keeps
     // its outer-Origin slot: a borrow binding does, an abstract binding or a family conditionally; a value binding keeps none. For a

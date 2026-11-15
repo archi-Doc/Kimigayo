@@ -80,7 +80,7 @@ public sealed partial class Binding
             // bind is a wildcard in every fit, so only a candidate that would apply rests on it (IncompleteSignature) instead. The same
             // verdict over an unformed split (D3, PLAN G886; SPEC 10.1's unproven candidate): a trial that formed a Type no binding
             // represents rests on it (Pending, UnformedSplit) only where every check reading no unformed Type passed; an inapplicable
-            // candidate is judged without it, its writes and fact dropped. A proof's Error without one stays (InvalidDeclarationContext).
+            // candidate is judged without it, its writes dropped. A proof's Error without one stays (InvalidDeclarationContext).
             if (this.UnformedSince(unformedMark) && result is not (CandidateApplicability.Inapplicable or CandidateApplicability.Error))
             {
                 this.trialPending = new(PendingJudgmentKind.UnformedSplit, solution.Function) { Epoch = this.frameEpoch };
@@ -89,11 +89,6 @@ public sealed partial class Binding
             }
 
             this.unformedWrites = unformedMark;
-            if (this.trialPending is { Kind: PendingJudgmentKind.UnformedSplit })
-            {
-                this.trialPending = null;
-            }
-
             return result is CandidateApplicability.Applicable or CandidateApplicability.Waiting && IncompleteSignature(solution.Function) is not null
                 ? CandidateApplicability.Pending : result;
         }
@@ -235,14 +230,17 @@ public sealed partial class Binding
     private bool TypedPartFails(ref SlotSolution solution, BoundType type, Koto part)
         => this.LeafDisagrees(ref solution, type, part) || !this.FitsOpenLayer(ref solution, type, part);
 
-    // SPEC 10.2, 10.8 (O3; the owner's O-366 (a)): whether a typed part fits its pattern with the split layer open: the common adaptation
-    // itself (AdaptInput) judges the layer formed in each case of the callee's admitted set over its target, as it judges a pair layer
-    // case by case. A part that no case adapts fails case-independently (a typed bool at `s/Option<Box>`); one that some case adapts
-    // rests on the split.
+    // SPEC 10.2, 10.8 (O3; the owner's O-366 (a)): whether a typed part fits its structured application (an exact source is
+    // LeafDisagrees') with the split layer open: the common adaptation itself (AdaptInput) judges the layer formed in each case of the
+    // callee's admitted set over the target the frame completes, as it judges a pair layer case by case. A part that no case adapts fails
+    // case-independently (a typed bool at `s/Option<Box>`); one that some case adapts, or whose target keeps an unbound slot, rests on
+    // the split.
     private bool FitsOpenLayer(ref SlotSolution solution, BoundType type, Koto part)
     {
         if (part.BoundType is not { } actual ||
-            solution.Pattern(type) is not { Kind: BoundTypeKind.SemanticsApplication, Symbol.WholeType: { } whole, Components: [var target] })
+            solution.Pattern(type) is not { Kind: BoundTypeKind.SemanticsApplication, Symbol.WholeType: { } whole, Components: [var open] } application ||
+            IsExactSource(application, solution.SlotOwner, solution.Frame) ||
+            this.SubstituteType(open, solution.SlotOwner, solution.Types, solution.Lengths) is not { } target)
         {
             return true;
         }

@@ -91,9 +91,9 @@ public sealed partial class Binding
             var several = false;
             BoundType signature = null!;
             var receiverKind = SemanticsKind.Owner;
-            var held = this.HoldUnformed();
+            var unformedMark = this.unformedWrites;
             var callable = callableType is not null && this.TryCallable(callableType, scope, out signature, out receiverKind, out several);
-            if (this.TakeUnformed(held))
+            if (this.UnformedSince(unformedMark))
             {
                 // DECISIONS D3 (temporary, PLAN G886): the callee's signature (a function item's) needed a Type no binding represents.
                 return this.Fail(call, BindingFailure.Unsupported, true);
