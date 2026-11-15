@@ -357,7 +357,8 @@ internal sealed partial class MirBorrows
         this.punRaw.RemoveRange(start, this.punRaw.Count - start);
     }
 
-    // Whether a raw Place of a Type, or one within it, has a punnable Type holding a Scalar.
+    // Whether a raw Place of a Type, or one within it, has a punnable Type holding a Scalar; an array of no element has none within
+    // (Sized, as Within's array row and RawPointers read it: SPEC 5.2, a punned Place is positive-sized).
     private bool Scalared(BoundType type)
     {
         if (this.Scalar(type) != Extent.None)
@@ -373,7 +374,8 @@ internal sealed partial class MirBorrows
         {
             for (var i = start; !found && i < this.punRaw.Count; i++)
             {
-                found = this.punRaw[i] is { Key.Type: { } row } && this.Scalared(cases.Type(row));
+                found = this.punRaw[i] is { Key.Type: { } row, Element: var element } && (!element || Sized(type) != Extent.None) &&
+                    this.Scalared(cases.Type(row));
             }
 
             this.punRaw.RemoveRange(start, this.punRaw.Count - start);

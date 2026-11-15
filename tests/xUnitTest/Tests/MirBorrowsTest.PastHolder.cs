@@ -589,11 +589,70 @@ public sealed partial class MirBorrowsTest
                 kk = 2
                 usep(w)
             """,
+        ["lBorrowRefBad"] = """
+            func sneakU(slot: uniq/(uniq/(raw/(raw/u8)) during o), value: raw/u8) => ()
+            func lBorrowRefBad()
+                var kk: u8 = 1
+                let r = kk@uniq
+                var spare: raw/u8 = r@follow@raw
+                var y: i32 = 5
+                var w = y@ref
+                let p = w@raw@raw/(raw/(raw/u8))
+                unsafe
+                    var h = (*p)@uniq
+                    sneakU(h@uniq, spare)
+                    kk = 2
+                let done = 0
+            """,
+        ["lBorrowScalarPartBad"] = """
+            func sneakU(slot: uniq/(uniq/(raw/(raw/u8)) during o), value: raw/u8) => ()
+            func lBorrowScalarPartBad()
+                var kk: u8 = 1
+                let r = kk@uniq
+                var spare: raw/u8 = r@follow@raw
+                var y: i32 = 5
+                var w = (7@u64, y@ref)
+                let p = w@raw@raw/(raw/(raw/u8))
+                unsafe
+                    var h = (*p)@uniq
+                    sneakU(h@uniq, spare)
+                    kk = 2
+                let done = 0
+            """,
+        ["lBorrowRefOk"] = """
+            func sneakU1(slot: uniq/(uniq/(raw/u8) during o), value: raw/u8) => ()
+            func lBorrowRefOk()
+                var kk: u8 = 1
+                let r = kk@uniq
+                var spare: raw/u8 = r@follow@raw
+                var y: i32 = 5
+                var w = y@ref
+                let p = w@raw@raw/(raw/u8)
+                unsafe
+                    var h = (*p)@uniq
+                    sneakU1(h@uniq, spare)
+                    kk = 2
+                let done = 0
+            """,
+        ["kPastRawRefOk"] = """
+            func keep1(slot: raw/(raw/u8), value: raw/u8) => ()
+            func kPastRawRefOk()
+                var kk: u8 = 1
+                let r = kk@uniq
+                var spare: raw/u8 = r@follow@raw
+                var y: i32 = 5
+                var h = y@ref
+                var p: raw/(ref/i32) = h@raw
+                keep1(p@raw@raw/(raw/u8), spare)
+                kk = 2
+            """,
     };
 
     // The coverage table's rows (U3c; the state file a5v-u3c-state.md, sections 1 and 4). Three environment rows (d4OriMixedBad,
     // d4UniqRefLetBad, letRefLeafUseBad) need the Front's A5-F (row 2 (i) and (ii): an environment's raw layers stated, a `let`
-    // binding's own layer marked); until it lands they give the records below, which are not their labels' (condition: A5-F).
+    // binding's own layer marked); until it lands they give the records below, which are not their labels' (condition: A5-F). PLAN
+    // G785's rows (a5v-r3ref-state.md): past a holder through a borrow layer, a punned read over a reference's or an `owner` Scalar's
+    // bytes reaches storage the body does not own.
     [Theory]
     [InlineData("zPairLayerBad", "zPairLayer: y = 5")] // I
     [InlineData("zPairLayerOk", "")] // V
@@ -615,7 +674,7 @@ public sealed partial class MirBorrowsTest
     [InlineData("letRefLeafUseBad", "")] // I by SPEC; accepted until the Front's A5-F lands (its condition)
     [InlineData("letRefLeafOk", "")] // V
     [InlineData("dDeepOk", "f: value = 99; f: var d = (r.0@raw@raw/u32, n2@uniq); f: var n2 = ((((((((((((((((((((((((((((((((((((((((0, 0), 1), 2), 3), 4), 5), 6), 7), 8), 9), 10), 11), 12), 13), 14), 15), 16), 17), 18), 19), 20), 21), 22), 23), 24), 25), 26), 27), 28), 29), 30), 31), 32), 33), 34), 35), 36), 37), 38), 39); f: var n1 = ((((((((((((((((((((((((((((((((((((((((0, 0), 1), 2), 3), 4), 5), 6), 7), 8), 9), 10), 11), 12), 13), 14), 15), 16), 17), 18), 19), 20), 21), 22), 23), 24), 25), 26), 27), 28), 29), 30), 31), 32), 33), 34), 35), 36), 37), 38), 39); f: var x = 1")] // V by SPEC; records beside the depth limit: E's record by the reading layer (R3d.5) is not in this unit
-    [InlineData("uUniqBytesYBad", "")] // I by SPEC; accepted: reading (a)'s chain (R3d.6) is not in this unit
+    [InlineData("uUniqBytesYBad", "g: kk = 2; g: usei(y); g: var y: i32 = 5")] // I, PLAN G785: E keeps w's uniq Loan on y (15.6.4, reading (a))
     [InlineData("rAliasBorrowBad", "g: kk = 2")] // I
     [InlineData("rAliasBorrowU64Bad", "g: kk = 2")] // I
     [InlineData("rAliasBorrowNoEntryBad", "g: kk = 2")] // V by SPEC; rejected as on dev (valid by O-230); not reached by this unit
@@ -633,6 +692,10 @@ public sealed partial class MirBorrowsTest
     [InlineData("zIntMixBad", "zIntMixBad: kk = 2")] // I
     [InlineData("zIntMixOk", "")] // V
     [InlineData("hidPunUseOk", "")] // V
+    [InlineData("lBorrowRefBad", "lBorrowRefBad: kk = 2; lBorrowRefBad: var y: i32 = 5")] // I, past a holder through a borrow layer, over a reference's bytes
+    [InlineData("lBorrowScalarPartBad", "lBorrowScalarPartBad: kk = 2; lBorrowScalarPartBad: var y: i32 = 5")] // I, the same over an owner Scalar's bytes (the first clause)
+    [InlineData("lBorrowRefOk", "")] // V, only a u8 is stored through the row
+    [InlineData("kPastRawRefOk", "")] // V, p retains spare, not used after; h is not reached
     public void TheReadingKeyPastAHolderReadsEveryLayer(string form, string expected)
     {
         var c = MirBuildTest.Compile(PastHolderForms[form] + "\npublic func main() => ()\n");

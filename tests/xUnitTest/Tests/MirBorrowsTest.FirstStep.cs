@@ -8,7 +8,7 @@ namespace XunitTest;
 /// 15.6.4; the A5 value redesign's unit U3b, the owner's O-209): a Place that Type does not designate (SPEC 5.2, 4.1) is read punned
 /// through the Type's raw pointer raw Places, each a layer of its own (the owner's O-223 (B'): no other part of it is read), the
 /// holder's state at those layers' guard beside its own, and storage the body does not own, with those layers' record, where that
-/// guard steps over an `owner` Scalar's byte. The rows are the unit's coverage table, each labelled from
+/// guard steps over an `owner` Scalar's byte or a byte a punned write may not change (PLAN G785). The rows are the unit's coverage table, each labelled from
 /// SPEC (I invalid, V valid; P3: RESULT.md batch 1's settled label), the record each invalid one gives (SPEC 23.1.2).</summary>
 public sealed partial class MirBorrowsTest
 {
@@ -968,6 +968,269 @@ public sealed partial class MirBorrowsTest
                 keep2(h@raw@raw/(raw/(raw/u8)), spare)
                 kk = 2
             """,
+        ["aUniqBad"] = """
+            func keep2(slot: raw/(raw/(raw/u8)), value: raw/u8) => ()
+            func aUniqBad()
+                var kk: u8 = 1
+                let r = kk@uniq
+                var spare: raw/u8 = r@follow@raw
+                var y: i32 = 5
+                var h = y@uniq
+                keep2(h@raw@raw/(raw/(raw/u8)), spare)
+                kk = 2
+            """,
+        ["aObjBad"] = """
+            struct Cel
+                public var v: i32 = 0
+                public init() => ()
+            func keep2(slot: raw/(raw/(raw/u8)), value: raw/u8) => ()
+            func aObjBad()
+                var kk: u8 = 1
+                let r = kk@uniq
+                var spare: raw/u8 = r@follow@raw
+                var h = Cel.init()@obj
+                keep2(h@raw@raw/(raw/(raw/u8)), spare)
+                kk = 2
+            """,
+        ["aArcBad"] = """
+            struct Cel
+                public var v: i32 = 0
+                public init() => ()
+            func keep2(slot: raw/(raw/(raw/u8)), value: raw/u8) => ()
+            func aArcBad()
+                var kk: u8 = 1
+                let r = kk@uniq
+                var spare: raw/u8 = r@follow@raw
+                var h = Cel.init()@arc
+                keep2(h@raw@raw/(raw/(raw/u8)), spare)
+                kk = 2
+            """,
+        ["bRefOk"] = """
+            func keep1(slot: raw/(raw/u8), value: raw/u8) => ()
+            func bRefOk()
+                var kk: u8 = 1
+                let r = kk@uniq
+                var spare: raw/u8 = r@follow@raw
+                var y: i32 = 5
+                var h = y@ref
+                keep1(h@raw@raw/(raw/u8), spare)
+                kk = 2
+            """,
+        ["bUniqOk"] = """
+            func keep1(slot: raw/(raw/u8), value: raw/u8) => ()
+            func bUniqOk()
+                var kk: u8 = 1
+                let r = kk@uniq
+                var spare: raw/u8 = r@follow@raw
+                var y: i32 = 5
+                var h = y@uniq
+                keep1(h@raw@raw/(raw/u8), spare)
+                kk = 2
+            """,
+        ["bObjRefOk"] = """
+            struct Cel
+                public var v: i32 = 0
+                public init() => ()
+            func keep1(slot: raw/(raw/u8), value: raw/u8) => ()
+            func bObjRefOk()
+                var kk: u8 = 1
+                let r = kk@uniq
+                var spare: raw/u8 = r@follow@raw
+                var item = Cel.init()@obj
+                var h = item@objref
+                keep1(h@raw@raw/(raw/u8), spare)
+                kk = 2
+            """,
+        ["cRefNoLoanOk"] = """
+            func keep2(slot: raw/(raw/(raw/u8)), value: raw/u8) => ()
+            func cRefNoLoanOk()
+                var kk: u8 = 1
+                var x: u8 = 0
+                var y: i32 = 5
+                var h = y@ref
+                keep2(h@raw@raw/(raw/(raw/u8)), x@raw)
+                kk = 2
+            """,
+        ["dRefYBad"] = """
+            func keep2(slot: raw/(raw/(raw/u8)), value: raw/u8) => ()
+            func usei(v: i32) => ()
+            func dRefYBad()
+                var kk: u8 = 1
+                let r = kk@uniq
+                var spare: raw/u8 = r@follow@raw
+                var y: i32 = 5
+                var h = y@ref
+                keep2(h@raw@raw/(raw/(raw/u8)), spare)
+                kk = 2
+                usei(y)
+            """,
+        ["dUniqYOk"] = """
+            func keep1(slot: raw/(raw/u8), value: raw/u8) => ()
+            func usei(v: i32) => ()
+            func dUniqYOk()
+                var kk: u8 = 1
+                let r = kk@uniq
+                var spare: raw/u8 = r@follow@raw
+                var y: i32 = 5
+                var h = y@uniq
+                keep1(h@raw@raw/(raw/u8), spare)
+                kk = 2
+                usei(y)
+            """,
+        ["eTupRowRefBad"] = """
+            func keepT2(slot: raw/((raw/(raw/u8), u64)), value: raw/u8) => ()
+            func eTupRowRefBad()
+                var kk: u8 = 1
+                let r = kk@uniq
+                var spare: raw/u8 = r@follow@raw
+                var y: i32 = 5
+                var h = y@ref
+                keepT2(h@raw@raw/((raw/(raw/u8), u64)), spare)
+                kk = 2
+            """,
+        ["hZeroRefOk"] = """
+            func keep2(slot: raw/(raw/(raw/u8)), value: raw/u8) => ()
+            func hZeroRefOk()
+                var kk: u8 = 1
+                let r = kk@uniq
+                var spare: raw/u8 = r@follow@raw
+                var h: [0 of ref/i32] = []
+                keep2(h@raw@raw/(raw/(raw/u8)), spare)
+                kk = 2
+            """,
+        ["hOneRefBad"] = """
+            func keep2(slot: raw/(raw/(raw/u8)), value: raw/u8) => ()
+            func hOneRefBad()
+                var kk: u8 = 1
+                let r = kk@uniq
+                var spare: raw/u8 = r@follow@raw
+                var y: i32 = 5
+                var h: [1 of ref/i32] = [y@ref]
+                keep2(h@raw@raw/(raw/(raw/u8)), spare)
+                kk = 2
+            """,
+        ["hZeroPairOk"] = """
+            func keep2(slot: raw/(raw/(raw/u8)), value: raw/u8) => ()
+            func hZeroPairOk()
+                var kk: u8 = 1
+                let r = kk@uniq
+                var spare: raw/u8 = r@follow@raw
+                var h: ([0 of u64], [0 of ref/i32]) = ([], [])
+                keep2(h@raw@raw/(raw/(raw/u8)), spare)
+                kk = 2
+            """,
+        ["hOnePairBad"] = """
+            func keep2(slot: raw/(raw/(raw/u8)), value: raw/u8) => ()
+            func hOnePairBad()
+                var kk: u8 = 1
+                let r = kk@uniq
+                var spare: raw/u8 = r@follow@raw
+                var h: ([1 of u64], [0 of ref/i32]) = ([1 of 0@u64], [])
+                keep2(h@raw@raw/(raw/(raw/u8)), spare)
+                kk = 2
+            """,
+        ["iEnumRefBad"] = """
+            func keep2(slot: raw/(raw/(raw/u8)), value: raw/u8) => ()
+            func iEnumRefBad()
+                var kk: u8 = 1
+                let r = kk@uniq
+                var spare: raw/u8 = r@follow@raw
+                var y: i32 = 5
+                var h: Option<ref/i32> = .Some(y@ref)
+                keep2(h@raw@raw/(raw/(raw/u8)), spare)
+                kk = 2
+            """,
+        ["iStructRefBad"] = """
+            struct Box {a}
+                public var p: ref/i32 during a
+                public init(p: ref/i32 during a) => self.p = p
+            func keep2(slot: raw/(raw/(raw/u8)), value: raw/u8) => ()
+            func iStructRefBad()
+                var kk: u8 = 1
+                let r = kk@uniq
+                var spare: raw/u8 = r@follow@raw
+                var y: i32 = 5
+                var h = Box.init(y@ref)
+                keep2(h@raw@raw/(raw/(raw/u8)), spare)
+                kk = 2
+            """,
+        ["jHidRefOk"] = """
+            func wa<U>(p: raw/U, value: raw/u8) => ()
+            func jHidRefOk()
+                var kk: u8 = 1
+                let r = kk@uniq
+                var spare: raw/u8 = r@follow@raw
+                var y: i32 = 5
+                var h = y@ref
+                wa(h@raw@raw/(raw/(raw/u8)), spare)
+                kk = 2
+            """,
+        ["jHidPartScalarOk"] = """
+            func wa<U>(p: raw/U, value: raw/u8) => ()
+            func jHidPartScalarOk()
+                var kk: u8 = 1
+                let r = kk@uniq
+                var spare: raw/u8 = r@follow@raw
+                var y: i32 = 5
+                var h = (7@u64, y@ref)
+                wa(h@raw@raw/(raw/(raw/u8)), spare)
+                kk = 2
+            """,
+        ["jHidPartRefOk"] = """
+            func wa<U>(p: raw/U, value: raw/u8) => ()
+            func jHidPartRefOk()
+                var kk: u8 = 1
+                let r = kk@uniq
+                var spare: raw/u8 = r@follow@raw
+                var y: i32 = 5
+                var h = (y@ref, y@ref)
+                wa(h@raw@raw/(raw/(raw/u8)), spare)
+                kk = 2
+            """,
+        ["jHidWholeRefOk"] = """
+            func wz<U>(p: U, value: raw/u8) => ()
+            func jHidWholeRefOk()
+                var kk: u8 = 1
+                let r = kk@uniq
+                var spare: raw/u8 = r@follow@raw
+                var y: i32 = 5
+                var h = y@ref
+                wz(h@raw@raw/(raw/(raw/u8)), spare)
+                kk = 2
+            """,
+        ["jHidWholeScalarOk"] = """
+            func wz<U>(p: U, value: raw/u8) => ()
+            func jHidWholeScalarOk()
+                var kk: u8 = 1
+                let r = kk@uniq
+                var spare: raw/u8 = r@follow@raw
+                var y: i32 = 5
+                var h = (7@u64, y@ref)
+                wz(h@raw@raw/(raw/(raw/u8)), spare)
+                kk = 2
+            """,
+        ["jGenCalleeBad"] = """
+            func wb<U>(p: raw/(raw/(raw/u8)), q: U, value: raw/u8) => ()
+            func jGenCalleeBad()
+                var kk: u8 = 1
+                let r = kk@uniq
+                var spare: raw/u8 = r@follow@raw
+                var y: i32 = 5
+                var h = y@ref
+                wb(h@raw@raw/(raw/(raw/u8)), 0, spare)
+                kk = 2
+            """,
+        ["jShowPartScalarBad"] = """
+            func wd<U>(p: raw/(raw/U), value: U) => ()
+            func jShowPartScalarBad()
+                var kk: u8 = 1
+                let r = kk@uniq
+                var spare: raw/u8 = r@follow@raw
+                var y: i32 = 5
+                var h = (7@u64, y@ref)
+                wd(h@raw@raw/(raw/(raw/u8)), spare)
+                kk = 2
+            """,
     };
 
     // The coverage table's rows (U3b): the 17 forms the first step's reading newly rejects (12 of PLAN G784's 13, pPlainViewBad, F2 unit
@@ -975,8 +1238,10 @@ public sealed partial class MirBorrowsTest
     // 1's B1 three and G667a's four (rejected as on dev), the typed controls, and the rows past a holder that U3c moves; and the
     // implementation review's F1 rows: a reading Type with a part that is no raw Place beside a raw pointer whose pointee admits no
     // Loan (four valid forms, their control and invalid twins), a row whose pointee admits the argument, a row stating an Origin;
-    // and its F2 rows: a safe reference or a handle beside a raw pointer, and a Place that is one alone (three forms invalid by SPEC
-    // 15.6's example punnedRef are accepted, as on dev, until storage the body does not own is reached over a reference's bytes).
+    // and its F2 rows: a safe reference or a handle beside a raw pointer, and a Place that is one alone; and PLAN G785's rows (the
+    // state file a5v-r3ref-state.md): a stepping row over a byte a punned write may not change (a reference's, a handle's, an enum's
+    // or a struct Field's) reaches storage the body does not own, an array of no element has no byte of either kind, and a layer
+    // hidden in the called function's Type parameter's binding adds no reach (SPEC 15.6.4).
     [Theory]
     [InlineData("fMixedPunChainBad", "fMixedPunChainBad: kk = 2; fMixedPunChainBad: var z: u8 = 5")] // I, PLAN G784
     [InlineData("qIntChainMixedBad", "qIntChainMixedBad: kk = 2")] // I, PLAN G784
@@ -1044,10 +1309,33 @@ public sealed partial class MirBorrowsTest
     [InlineData("fRcPtrBad", "fRcPtrBad: kk = 2")] // I, review F2: the first step's own write, h used after
     [InlineData("fObjPtrStoreBad", "fObjPtrStoreBad: kk = 2; fObjPtrStoreBad: var item = Cel.init()@obj")] // I, a stepping row over h's pointer bytes: the call's own pointer (15.6.4's composition); item's Loan is kept there too
     [InlineData("fObjUniqOnlyOk", "")] // V, review F2: a row raw/u8 over a reference's bytes stores only a u8
-    [InlineData("fObjUniqOnlyBad", "")] // I by SPEC (15.6 Holders, example punnedRef); accepted as on dev: storage the body does not own over a reference's bytes (PLAN G785's row) is not in this unit
-    [InlineData("fObjRefOnlyBad", "")] // I by SPEC, as fObjUniqOnlyBad; accepted as on dev
-    [InlineData("fRefOnlyBad", "")] // I by SPEC: 15.6's example punnedRef itself; accepted as on dev (PLAN G785's row)
+    [InlineData("fObjUniqOnlyBad", "fObjUniqOnlyBad: kk = 2; fObjUniqOnlyBad: var item = Cel.init()@obj")] // I, 15.6 Holders (example punnedRef): a row stepping over a reference's bytes reaches storage the body does not own (PLAN G785); E keeps h's Loan on item (15.6.4, reading (a))
+    [InlineData("fObjRefOnlyBad", "fObjRefOnlyBad: kk = 2; fObjRefOnlyBad: var item = Cel.init()@obj")] // I, as fObjUniqOnlyBad
+    [InlineData("fRefOnlyBad", "fRefOnlyBad: kk = 2; fRefOnlyBad: var y: i32 = 5")] // I, 15.6's example punnedRef itself (PLAN G785)
     [InlineData("fRcOnlyBad", "fRcOnlyBad: kk = 2")] // I, a handle's bytes: rejected as on dev
+    [InlineData("aUniqBad", "aUniqBad: kk = 2; aUniqBad: var y: i32 = 5")] // I, PLAN G785: a `uniq` reference's bytes
+    [InlineData("aObjBad", "aObjBad: kk = 2")] // I, an `obj` handle's bytes (also the untracked rule today)
+    [InlineData("aArcBad", "aArcBad: kk = 2")] // I, an `arc` handle's bytes (also the untracked rule today)
+    [InlineData("bRefOk", "")] // V, the row raw/u8 stores only a u8 (5.7 Calls)
+    [InlineData("bUniqOk", "")] // V, as bRefOk
+    [InlineData("bObjRefOk", "")] // V, as bRefOk
+    [InlineData("cRefNoLoanOk", "cRefNoLoanOk: var y: i32 = 5")] // I, E keeps what the chain of reads through slot carries, h's Loan on y (15.6.4, reading (a)); value is an address only
+    [InlineData("dRefYBad", "dRefYBad: kk = 2; dRefYBad: var y: i32 = 5")] // I, y read after: a shared Loan does not conflict with the read
+    [InlineData("dUniqYOk", "")] // V, nothing stored through the row raw/u8; h is dead at the read of y
+    [InlineData("eTupRowRefBad", "eTupRowRefBad: kk = 2; eTupRowRefBad: var y: i32 = 5")] // I, a Tuple's stepping row over a reference's bytes
+    [InlineData("hZeroRefOk", "")] // V, an array of no element has no byte (5.2: a punned Place is positive-sized)
+    [InlineData("hOneRefBad", "hOneRefBad: kk = 2; hOneRefBad: var y: i32 = 5")] // I, an array of one reference
+    [InlineData("hZeroPairOk", "")] // V, no byte: an array of no element holds no owner Scalar's byte either (5.2)
+    [InlineData("hOnePairBad", "hOnePairBad: kk = 2")] // I, an owner Scalar's bytes (the first clause)
+    [InlineData("iEnumRefBad", "iEnumRefBad: kk = 2; iEnumRefBad: var y: i32 = 5")] // I, an enum: its own bytes and its payload's reference bytes
+    [InlineData("iStructRefBad", "iStructRefBad: kk = 2; iStructRefBad: var y: i32 = 5")] // I, a struct Field of a reference Type
+    [InlineData("jHidRefOk", "")] // V, a layer hidden in the callee's Type parameter's binding adds no reach (15.6.4)
+    [InlineData("jHidPartScalarOk", "")] // V, as jHidRefOk over a holder with owner Scalar bytes
+    [InlineData("jHidPartRefOk", "")] // V, as jHidRefOk over two references
+    [InlineData("jHidWholeRefOk", "")] // V, the whole parameter Type hidden
+    [InlineData("jHidWholeScalarOk", "")] // V, as jHidWholeRefOk over owner Scalar bytes
+    [InlineData("jGenCalleeBad", "jGenCalleeBad: kk = 2; jGenCalleeBad: var y: i32 = 5")] // I, a generic callee whose stepping row is shown
+    [InlineData("jShowPartScalarBad", "jShowPartScalarBad: kk = 2; jShowPartScalarBad: var y: i32 = 5")] // I, the stepping layers shown above the hidden one
     public void TheFirstStepReadsAtTheReadingPathsType(string form, string expected)
     {
         var c = MirBuildTest.Compile(FirstStepShapes + FirstStepForms[form] + "\npublic func main() => ()\n");
