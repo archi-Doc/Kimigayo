@@ -4,7 +4,9 @@ namespace Kimi.Compiler;
 
 // Owns a projection's specification (SPEC 8.5.2, 8.6.1, 8.9.2): the one outcome of what Type an associated projection names on its
 // receiver, through the builtin routes, a chain scope's conformance path naming the receiver, or the receiver's conformances registered
-// by declaration or selected by a bound reference, whose paths must agree (PathsAgree). Reads the associated bindings
+// by declaration or selected by a bound reference, whose paths must agree (PathsAgree). R7-C2c2 c2-4's UnconditionalBinding is the
+// unconditional, proof-free restriction of the by-declaration route, with the same qualifier selection, which the identity table's
+// grounds and ContractTypeCore's Member specification read. Reads the associated bindings
 // (ResolveAssociated(path), AssociatedInPath: Binding.AssociatedTypes) and the conformance tables.
 public sealed partial class Binding
 {
@@ -55,30 +57,31 @@ public sealed partial class Binding
     {
         pending = false;
         var associated = projection.Symbol!;
-        if (member.Symbol is not { } owner || associated.Scope.Owner.BoundSymbol is not { } contract ||
+        var qualifier = projection.Components.Count == 2 ? projection.Components[1] : null;
+        if (member.Symbol is not { } owner || qualifier is { Kind: BoundTypeKind.Constructed } || associated.Scope.Owner.BoundSymbol is not { } contract ||
             this.ConformanceByDeclaration(owner, contract, out _) is not { } identity)
         {
-            return null;
+            return null; // a Contract reference with Type arguments selects by reference (ConformanceByReference, a proof): no ground (named limit)
         }
 
         BoundType? found = null;
         for (var i = 0; i < identity.PathStorage.Count; i++)
         {
             var path = identity.PathStorage[i];
-            if (path.InheritedFrom is not null || path.Premises is not null || this.AssociatedInPath(path, member, associated, null, path.Scope) is not { } selected)
+            if (path.InheritedFrom is not null || path.Premises is not null || this.AssociatedInPath(path, member, associated, qualifier, path.Scope) is not { } selected)
             {
                 continue;
             }
 
             var binding = this.ResolveAssociated(path, selected, out var bindingPending);
             var instance = binding is null ? null : this.StoredType(this.SubstituteStoredOrigins(binding, associated.Declaration, (BoundOrigin[])projection.OriginArguments), member);
-            pending |= instance is null && bindingPending;
+            pending |= instance is null && (binding is not null || bindingPending); // StoredType's null (a refused instance) is pending, as ContractTypeCore's route
             if (instance is null)
             {
                 continue;
             }
 
-            if (found is not null && !ReferenceEquals(found, instance))
+            if (found is not null && !ReferenceEquals(found, instance)) // interned: equal instances are one object
             {
                 return null;
             }

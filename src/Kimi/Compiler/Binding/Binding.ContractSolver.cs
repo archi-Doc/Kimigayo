@@ -107,8 +107,10 @@
 //   (TyCtxt.Rebuild, Intern, HeldContext, HeldType, InterpolationBound, WithContext, RentTypes, StoredType and SubstituteType where
 //   they return a Type), the static gates (ArithmeticContracts.IsArithmetic, WitnessGroup), SubstituteStoredOrigins (declared
 //   Origins), ConformanceByDeclaration (final after the InheritedConformances query, Binding.cs's RegisterInheritedConformances),
-//   and the PrepareTypeStorage memo (per storageVersion).
-// - PremiseRefines' answer may rest on a Provisional identity table (a view holding a derived identity fact, W6, W7) and reaches its
+//   and the PrepareTypeStorage memo (per storageVersion); R7-C2c2 c2-4's MemberOf (ContractTypeCore meets its Completion, the
+//   table's), UnconditionalBinding (declarations only; an unfinished or refused instance is its `pending`, met as Provisional),
+//   AssociatedInPath and OperandContexts (pure reads).
+// - PremiseRefines' answer, and the judges' MemberOf reads (ProveConformance, RequestCapability, JudgeConstraintAtom), may rest on a Provisional identity table (a view holding a derived identity fact, W6, W7) and reaches its
 //   callers unthreaded, as Complete, as its availability reads do; carrying it is R7-C2e2's (Completion carried by the judgments'
 //   answers). No such table is known to grow after the read within a pass.
 //

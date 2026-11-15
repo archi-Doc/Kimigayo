@@ -81,11 +81,21 @@ public sealed partial class Binding
     }
 
     // R7-C2c2 c2-4 (design R1.1): the subject an atom judge takes: the Type's identity class's Member in a view with an identity
-    // premise, else the Type. ProveConformance, RequestCapability and JudgeConstraintAtom's other arms read it at their entries. A
-    // Member whose operand contexts are unresolved (a concrete prerequisite still pending) stands for nothing yet: the Type itself is
-    // judged, Unknown as before (UnresolvedCapabilityProofBindingTest's pending `Target`).
-    private BoundType MemberOf(BoundType type, BindingScope scope)
-        => HasTypeIdentity(scope) && this.ClassesOf(scope, out _)?.Member(type) is { } member && !this.OperandContexts(member).Unresolved ? member : type;
+    // premise, else the Type, with the table's Completion (Complete without an identity premise; a re-entered build, which answers no
+    // table, Provisional). A Member whose operand contexts are unresolved (a concrete prerequisite still pending) stands for nothing
+    // yet: the Type itself is judged, Unknown as before (UnresolvedCapabilityProofBindingTest's pending `Target`). ContractTypeCore's
+    // (E) arm meets the Completion (W4); the judges (ProveConformance, RequestCapability, JudgeConstraintAtom's other arms) read it
+    // unthreaded, as PremiseRefines' (ContractSolver's header), until R7-C2e2 carries Completion through the judgments' answers.
+    private BoundType MemberOf(BoundType type, BindingScope scope, out Completion completion)
+    {
+        completion = Completion.Complete;
+        if (!HasTypeIdentity(scope))
+        {
+            return type;
+        }
+
+        return this.ClassesOf(scope, out completion)?.Member(type) is { } member && !this.OperandContexts(member).Unresolved ? member : type;
+    }
 
     // The Type over its components' keys, whose class is asked again; the Type itself when no component's key differs.
     private BoundType CongruentKey(BoundType type, IdentityClasses classes)
@@ -138,20 +148,14 @@ public sealed partial class Binding
         // kept rows).
         internal BoundType? Representative(BoundType type) => this.Scanned(type).Least;
 
-        // N9 (SPEC 8.2.3, 8.3.2): the complete constructed member (no parameter in it) of the same class, least by Order (the members
-        // agree, so any one decides a proposition by the closed world); null otherwise. With Representative it is the one fact c2-1's
-        // rule rests on: a constructed member's conformance is ResolveConformance's alone. Its readers: IdentityRefuted (a parameter or
-        // projection bound by a premise, G866) and ProveProposition's contradiction check (MemberVerdict, N9). The table's Completion is
-        // not read: until R7-C2e2 threads Completion through the
-        // judgments' answers, the answer is that of the pass it is asked in, as every judgment's.
         // R7-C2c2 c2-4 (SPEC 8.2.3, 8.3.2; design R1.1, R1.2): the class's constructed member whose closed world decides an atom about
         // any member, a closed one (no parameter) first, else the least by Order (the more determined spelling; never premise order);
         // null as Representative. The members of a class in state One are identical, so any one decides. Its readers: MemberOf (the
         // atom judges' subjects) and Refuted.
         internal BoundType? Member(BoundType type) => this.Scanned(type).Member;
 
-        // The one class-validity rule and member scan behind both answers: a parameter's or projection's class in state One whose
-        // meets are complete, scanned once per table (its members are fixed after Close), whatever the number of its members asked.
+        // The one class-validity rule and member scan behind both answers: a node's class (any node, constructed ones included) in
+        // state One whose meets are complete, scanned once per table (its members are fixed after Close), whatever the number asked.
         private (BoundType? Least, BoundType? Member) Scanned(BoundType type)
         {
             if (!this.node.TryGetValue(type, out var n))

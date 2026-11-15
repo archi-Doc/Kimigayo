@@ -271,13 +271,13 @@ public sealed partial class Binding
             return contexts.Invalid ? ConstraintProof.Error : ConstraintProof.Unknown;
         }
 
-        type = this.MemberOf(type, scope); // R7-C2c2 c2-4 (design R1.1): the capability judge's subject is its class's Member
+        type = this.MemberOf(type, scope, out _); // R7-C2c2 c2-4 (design R1.1): the capability judge's subject is its class's Member
 
         if (!this.capabilitiesReady)
         {
             if (this.running && !derivation && TryLeafCapability(type, intrinsic.Intrinsic, out var concrete))
             {
-                return concrete;
+                return this.WithClassPremises(concrete, type, intrinsic, scope);
             }
 
             return ConstraintProof.Unknown;
@@ -285,7 +285,7 @@ public sealed partial class Binding
 
         if (!derivation && TryLeafCapability(type, intrinsic.Intrinsic, out var leaf))
         {
-            return leaf;
+            return this.WithClassPremises(leaf, type, intrinsic, scope);
         }
 
         // A proof can re-enter a declaration with ever larger arguments: Copy's conditional premise over a projection, and Owned's
@@ -382,15 +382,14 @@ public sealed partial class Binding
         return this.EndProof(this.ReadVerdict(work.Result, work.Cause, work.Fact));
     }
 
-    // R7-C2c2 c2-4 (SPEC 8.2.3, 8.3.2): a constructed Type's premise rows are its identity class's (ClassKey), joined with its closed
-    // world by polarity: a premise is positive evidence, the structure's Refuted negative, both contradictory evidence (Error). An
-    // abstract Type reads its premises in SymbolicCapability.
     private ConstraintProof ComputeCapability(CapabilityWork work)
-    {
-        var proof = this.CapabilityByStructure(work);
-        return proof != ConstraintProof.Error && !work.Type.IsAbstract && HasTypeIdentity(work.Scope) && this.PremiseRefines(work.Type, work.Intrinsic, work.Scope)
-            ? (proof == ConstraintProof.Refuted ? ConstraintProof.Error : ConstraintProof.Proven) : proof;
-    }
+        => this.WithClassPremises(this.CapabilityByStructure(work), work.Type, work.Intrinsic, work.Scope);
+
+    // R7-C2c2 c2-4 (SPEC 8.2.3, 8.3.2): a constructed Type's premise rows are its identity class's (ClassKey), joined with its closed
+    // world by PremiseJoin; every answer of the capability judge for a constructed Type passes here (the leaf shortcuts and the
+    // computed work). An abstract Type reads its premises in SymbolicCapability.
+    private ConstraintProof WithClassPremises(ConstraintProof proof, BoundType type, BindingSymbol intrinsic, BindingScope scope)
+        => PremiseJoin(proof != ConstraintProof.Error && !type.IsAbstract && HasTypeIdentity(scope) && this.PremiseRefines(type, intrinsic, scope), proof);
 
     private ConstraintProof CapabilityByStructure(CapabilityWork work)
     {

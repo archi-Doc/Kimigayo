@@ -60,6 +60,11 @@ public sealed partial class Binding
         _ => value,
     };
 
+    // R7-C2c2 c2-4 (SPEC 8.3.2): the one join of a premise with a judge's closed world, by polarity: a premise is positive evidence,
+    // the closed world's Refuted negative, both contradictory evidence (Error). ProveConformance and the capability judge read it.
+    private static ConstraintProof PremiseJoin(bool premise, ConstraintProof proof)
+        => !premise || proof == ConstraintProof.Error ? proof : proof == ConstraintProof.Refuted ? ConstraintProof.Error : CombineProof(ConstraintProof.Proven, proof, false);
+
     private static ConstraintProof CombineProof(ConstraintProof left, ConstraintProof right, bool conjunction)
     {
         if (left == ConstraintProof.Error || right == ConstraintProof.Error)
@@ -177,7 +182,7 @@ public sealed partial class Binding
         // R7-C2c2 c2-4 (SPEC 8.2.3, 8.3.2; design R1.1): an identity, Callable or Semantics atom is judged on its subject's Member
         // (MemberOf); the Contract and capability judges read it at their own entries (ProveConformance, RequestCapability).
         if (proposition.Kind is ConstraintKind.TypeIdentity or ConstraintKind.Callable or ConstraintKind.Semantics &&
-            proposition.Subject is { } held && this.MemberOf(held, scope) is var member && !ReferenceEquals(member, held))
+            proposition.Subject is { } held && this.MemberOf(held, scope, out _) is var member && !ReferenceEquals(member, held))
         {
             return this.JudgeConstraintAtom(this.InternConstraint(new(proposition.Kind, member, proposition.RequiredType, proposition.Contract, proposition.Mask)), scope);
         }

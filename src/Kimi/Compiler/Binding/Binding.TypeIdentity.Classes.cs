@@ -26,6 +26,8 @@ public sealed partial class Binding
         private readonly List<(BoundOrigin A, BoundOrigin B)> correspondence = new(); // one Function pair's quantified Origins, by position
         private readonly List<(BoundType A, BoundType B)> parts = new(); // a meet's decomposition, read by its consumer and removed
         private readonly HashSet<int> grounded = new(); // projection nodes joined with a binding ground (BindingGrounds, R7-C2c2 c2-4)
+        private readonly Dictionary<int, (BindingSymbol Owner, BindingSymbol Associated, int Height, int From)> groundOrigin = new(); // a ground's new nodes: the binding, its subject's height and the node it grounded
+        private readonly List<int> unbounded = new(); // projection nodes whose ground would re-enter its own chain's binding (SPEC 8.3.3)
         private readonly List<byte> state = new();
         private readonly List<int> head = new();
         private readonly List<int> next = new();
@@ -74,6 +76,8 @@ public sealed partial class Binding
             this.correspondence.Clear();
             this.parts.Clear();
             this.grounded.Clear();
+            this.groundOrigin.Clear();
+            this.unbounded.Clear();
             this.state.Clear();
             this.head.Clear();
             this.next.Clear();
@@ -212,8 +216,8 @@ public sealed partial class Binding
             return same;
         }
 
-        // SPEC 8.2.3's Refuted (PLAN G866), read by the one table the premise meets read (Meet): a parameter or projection bound by a
-        // premise stands for its class's Member; one class is no difference; an abstract Type (IsAbstractType) differs only as
+        // SPEC 8.2.3's Refuted (PLAN G866), read by the one table the premise meets read (Meet): a node stands for its class's Member
+        // (R7-C2c2 c2-4); one class is no difference; an abstract Type (IsAbstractType) differs only as
         // a proper part; two constructors differ where their meet conflicts or a pair of their parts differs, or as a proper part.
         // The meet is the premises' own: a Function pair's quantification structure is a compared attribute (Correspond), while an
         // attribute's Unproven (Origins whose agreement is not proven) decides nothing. Limits: a pair's own `s/T` is no constructor
@@ -256,7 +260,8 @@ public sealed partial class Binding
         }
 
         // Applies every premise, joins congruent nodes, and meets each class's constructor pairs, whose agreeing parts join, to a fixpoint:
-        // the round that joins nothing judged the final classes, so its meets are the states. Each round is linear in the nodes plus the
+        // the round that joins nothing judged the final classes, so its meets are the states (binding grounds add nodes within their bound,
+        // BindingGrounds). Each round is linear in the nodes plus the
         // class sizes' squares (constructors of one class only).
         internal void Close()
         {
@@ -283,6 +288,12 @@ public sealed partial class Binding
                 }
             }
             while (this.pending.Count != 0);
+
+            for (var i = 0; i < this.unbounded.Count; i++)
+            {
+                var root = this.Find(this.unbounded[i]);
+                this.state[root] = Math.Max(this.state[root], Unsupported); // the ground bound's located limit (SPEC 8.3.3 Limits)
+            }
 
             this.MarkCycles();
             for (var root = 0; root < this.types.Count; root++)
@@ -516,8 +527,14 @@ public sealed partial class Binding
         // R7-C2c2 c2-4 (design RB3): a projection node whose subject's class has a constructor member with an unconditional binding
         // for it (UnconditionalBinding: declarations only, no identity or proof, within this table's prohibition) is joined with that
         // binding's instance, as a premise is; once per node, so its pending union starts the next round as decomposition's do, and the
-        // rounds end when one joins nothing. A binding not yet complete makes the table Provisional (W7). Nodes grow only by the parts of
-        // binding instances.
+        // rounds end when one joins nothing. A binding not yet complete makes the table Provisional (W7). The bound (SPEC 8.3.3): the
+        // nodes a ground adds remember the binding (conforming declaration, associated Type), the height of the subject it was taken on
+        // and the node it grounded; a ground that reuses a binding of its own chain on a taller subject is the expansion growing
+        // (`associate C.X is Option<G<Option<A>>.(C).X>`), so it is not taken and its class is the located limit (Unsupported,
+        // recorded once at the declaration). A reuse on a subject no taller is a descent (`associate C.X is A.(C).X` over `B<B<L>>`)
+        // and is taken. Along a chain each binding's subjects never grow, and Types of bounded height over the program's symbols are
+        // finitely many, so the grounds and the rounds are finite. RequestCapability's growth guard (DECISIONS BU-22) is the same
+        // reading of growth for capability proofs under its own contract (one growth step, then Unknown), not this table's.
         private void BindingGrounds()
         {
             var count = this.types.Count;
@@ -544,7 +561,19 @@ public sealed partial class Binding
                     }
 
                     this.grounded.Add(n);
+                    if (this.Grows(n, this.types[m], type.Symbol!))
+                    {
+                        this.unbounded.Add(n);
+                        break;
+                    }
+
+                    var before = this.types.Count;
                     this.pending.Add((n, this.Add(instance)));
+                    for (var k = before; k < this.types.Count; k++)
+                    {
+                        this.groundOrigin[k] = (this.types[m].Symbol!, type.Symbol!, this.types[m].Height, n);
+                    }
+
                     break;
                 }
             }
@@ -553,6 +582,21 @@ public sealed partial class Binding
             {
                 this.Members(); // the instances' new nodes are classes of their own until the next round joins them
             }
+        }
+
+        // Whether grounding node n through `member`'s binding for `associated` grows the expansion: an earlier ground of n's chain (the
+        // grounds that added it, back to a premise's node) used the same binding on a subject shorter than `member`.
+        private bool Grows(int n, BoundType member, BindingSymbol associated)
+        {
+            for (var at = n; this.groundOrigin.TryGetValue(at, out var origin); at = origin.From)
+            {
+                if (ReferenceEquals(origin.Owner, member.Symbol) && ReferenceEquals(origin.Associated, associated) && member.Height > origin.Height)
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         private void Members()

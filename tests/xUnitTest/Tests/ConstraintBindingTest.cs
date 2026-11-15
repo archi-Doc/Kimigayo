@@ -393,7 +393,7 @@ public class ConstraintBindingTest
     [InlineData(NestedSubjects + "    W<Z>.Inner is not K\n    public init() => ()", "1*InvalidConstraint_Kd")] // a5: the clause's record alone, none at S
     [InlineData(NestedSubjects + "    W<Z>.Inner is W<i32>.Inner\n    public init() => ()\nfunc use() => S<i64>.init()", "1*InvalidConstraint_Kd")] // s3use: the use rests on the clause
     [InlineData("contract K\nstruct W<T>\n    Inner is K\n    public struct Inner\n        public init() => ()", "2*InvalidConstraint_Kd")] // v1: O-344 (a), Inner declares no K
-    [InlineData("contract K\nstruct W<T>\n    Self.Inner is K\n    public struct Inner\n        public init() => ()", "3*InvalidConstraint_Kd")] // v2: O-344 (a)
+    [InlineData("contract K\nstruct W<T>\n    Self.Inner is K\n    public struct Inner\n        public init() => ()", "3*InvalidConstraint_Kd")] // v2: O-344 (a); the third record repeats a line: a duplicate pinned until its PLAN line (record selection, ruling 130) is fixed
     [InlineData(NestedSubjects + "    N.Inner is K\n    public init() => ()", "clean")] // v3
     [InlineData(NestedSubjects + "    D<i32>.Item is Copy\n    public init() => ()", "clean")] // p5, a projection whose value is known
     [InlineData(NestedSubjects + "    D<W<Z>.Inner>.Item is K\n    public init() => ()", "clean")] // p8
