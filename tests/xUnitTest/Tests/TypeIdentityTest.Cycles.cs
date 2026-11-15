@@ -411,7 +411,8 @@ public partial class TypeIdentityTest
 
     // PLAN G881 with G881b (the owner's O-335 (a); RP8's warm bytes): a refused request's Refusal is its node's, kept across passes,
     // so a warm rebind whose losing candidate's request reaches the round bound again allocates nothing (xovm; a new Refusal each
-    // pass was 40 bytes).
+    // pass was 40 bytes). IdentityRounds only grows, so the measured Binds' own rounds are its growth across the measurement: each
+    // of its operations (warm-up and measured) makes the refused request again, the bound's rounds each time.
     [Trait("Purpose", "Allocation")]
     [Fact]
     public void AWarmRebindPastTheRoundBoundAllocatesNothing()
@@ -420,7 +421,10 @@ public partial class TypeIdentityTest
             "contract Inner\n" + Pq + "func pick<X>(x: ref/X) -> () => ()\nfunc pick<X>(x: ref/X, tag: i32 = 0) -> ()\n    X is Inner\n    return\n" +
             "func f<T>(x: ref/T.(Pq).Up)\n    T is Pq\n    pick(x)\npublic func main() => ()\n");
         Assert.True(c.Bind().IsComplete);
+        var before = c.Binding.IdentityRounds;
         Assert.Equal(0, AllocationMeasurement.Measure(() => c.Binding.Bind(BindingMode.Final)));
-        Assert.True(c.Binding.IdentityRounds >= Binding.PremiseClosureLimit, $"{c.Binding.IdentityRounds} rounds");
+        var grown = c.Binding.IdentityRounds - before;
+        const int Operations = AllocationMeasurement.WarmupOperations + AllocationMeasurement.MeasuredOperations;
+        Assert.True(grown >= Binding.PremiseClosureLimit * Operations, $"{grown} rounds in the measured Binds");
     }
 }
