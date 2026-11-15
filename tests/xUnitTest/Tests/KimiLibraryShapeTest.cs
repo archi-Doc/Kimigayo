@@ -118,22 +118,14 @@ public partial class KimiLibraryShapeTest
         // Text.fixed and FixedBuffer.text, a direct line's (R8-W2 a2); Never (G704); bool, char, Unit format (R8-S2a); f32, f64 format,
         // formatFloat (R8-S2c); string, view and Wrapping<T> format (R8-S2d1); the integers' format (R8-S2b1); formatInteger128 (R8-S2b2);
         // Utf8Writer.deferLiteral, an owning interpolation's literal before a value (R8-W2 c1); Utf8Writer.finish, its end (R8-W2 c3a).
-        Assert.Equal(194, KimiLibraryCatalog.Entries.Length);
-        var unsourced = new List<KimiDeclarationId>();
+        Assert.Equal(190, KimiLibraryCatalog.Entries.Length);
         foreach (var entry in KimiLibraryCatalog.Entries)
         {
-            if (c.Library.GetSymbol(entry.Id) is not { } symbol)
-            {
-                unsourced.Add(entry.Id);
-                continue;
-            }
-
+            var symbol = c.Library.GetSymbol(entry.Id);
+            Assert.NotNull(symbol);
             Assert.Same(symbol, symbol.Declaration.SymbolOf());
             Assert.Equal(BindingState.Resolved, symbol.Declaration.StateOf());
         }
-
-        // SPEC 22.1: the Weak family is cataloged but not yet declared in source.
-        Assert.Equal([KimiDeclarationId.Downgrade, KimiDeclarationId.Upgrade, KimiDeclarationId.MakeRcCyclic, KimiDeclarationId.MakeArcCyclic, KimiDeclarationId.Weak], unsourced);
     }
 
     // KimiLibrarySize's statement: the library's size is what a Bind of the empty program fills, each count rounded up to the Granule.
@@ -188,12 +180,7 @@ public partial class KimiLibraryShapeTest
         var c = Library.Value;
         var entry = KimiLibraryCatalog.Entries[KimiLibraryCatalog.Index(id)];
         var symbol = c.Library.GetSymbol(id);
-        Assert.Equal(entry.SourceExpected, symbol is not null);
-        if (symbol is null)
-        {
-            return;
-        }
-
+        Assert.NotNull(symbol);
         var declaration = symbol.Declaration;
         var container = Container(declaration);
         var path = entry.Owner ?? entry.Container switch
@@ -246,13 +233,30 @@ public partial class KimiLibraryShapeTest
         var c = Library.Value;
         foreach (var group in new GroupKoto[] { c.Library.Intrinsics, c.Library.Console, c.Library.Test })
         {
-            Assert.All(group.Members, member => Assert.Contains(Assert.IsType<FunctionKoto>(member).SymbolOf()!, c.Library.RegisteredSymbols.ToArray()));
+            Assert.All(group.Members.Where(static x => x.FindAttribute(AttributeKind.Unsupported) is null), member => Assert.Contains(Assert.IsType<FunctionKoto>(member).SymbolOf()!, c.Library.RegisteredSymbols.ToArray()));
         }
 
         var legacy = new List<KimiDeclarationId>();
         Visit(c.Library.Kotonoha.RootKoto);
         Assert.Equal([KimiDeclarationId.WriteLine], legacy);
-        Assert.Empty(LibraryAttributes(AttributeKind.Unsupported));
+
+        // Rows L9-L11 (SPEC 22.1, 3.2.2, 13.6.2, 13.6.3; IMPL 21.3.4): the `#Unsupported` declarations are Kimi.Intrinsics' four Weak
+        // functions, each the only declaration of its Name (so its group is wholly `#Unsupported`), and the struct Weak, which has no
+        // member and no synthesized constructor (`#Lang("Weak")`: ManagedRepresentation); none is specialized.
+        var unsupported = LibraryAttributes(AttributeKind.Unsupported).Select(static x => x.Target).ToArray();
+        Assert.Equal(["downgrade", "upgrade", "makeRcCyclic", "makeArcCyclic", "Weak"], unsupported.Select(static x => x is FunctionKoto function ? function.Name : ((StructKoto)x).Name));
+        foreach (var function in unsupported.OfType<FunctionKoto>())
+        {
+            Assert.Same(c.Library.Intrinsics, function.Parent);
+            Assert.False(function.IsSpecialization || HasBody(function) || function.FindAttribute(AttributeKind.Intrinsic) is not null, Line(function));
+            Assert.Single(c.Library.Intrinsics.Members, x => x is FunctionKoto other && other.Name == function.Name);
+        }
+
+        var weak = Assert.IsType<StructKoto>(unsupported[^1]);
+        Assert.Same(weak, c.Library.GetSymbol(KimiDeclarationId.Weak)?.Declaration);
+        Assert.Empty(weak.Members);
+        Assert.Null(weak.SynthesizedConstructor);
+        Assert.DoesNotContain(KotoTree.Walk(weak), static x => x.SymbolOf() is { Kind: BindingSymbolKind.Function });
 
         void Visit(DeclarationContainerKoto container)
         {
@@ -264,7 +268,7 @@ public partial class KimiLibraryShapeTest
                 }
 
                 var intrinsic = function.FindAttribute(AttributeKind.Intrinsic) is not null;
-                if (HasBody(function) || function.FindAttribute(AttributeKind.LibraryImport) is not null)
+                if (HasBody(function) || function.FindAttribute(AttributeKind.LibraryImport) is not null || function.FindAttribute(AttributeKind.Unsupported) is not null)
                 {
                     Assert.False(intrinsic, Line(function));
                     continue;
@@ -294,7 +298,7 @@ public partial class KimiLibraryShapeTest
         var expected = new List<KimiDeclarationId>();
         foreach (var entry in KimiLibraryCatalog.Entries)
         {
-            if ((entry.Function != CompilerFunctionKind.None || entry.Implementation is not null) && entry.SourceExpected)
+            if (entry.Function != CompilerFunctionKind.None || entry.Implementation is not null)
             {
                 expected.Add(entry.Id);
             }

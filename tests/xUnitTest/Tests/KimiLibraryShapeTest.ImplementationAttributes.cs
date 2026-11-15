@@ -37,7 +37,7 @@ public partial class KimiLibraryShapeTest
 
         Assert.Equal(sourced.Order(), declared.Keys.Order());
         Assert.Equal(declared.Count, declared.Values.Distinct().Count());
-        Assert.Equal(189, declared.Count);
+        Assert.Equal(190, declared.Count);
     }
 
     // Row L3: `#Intrinsic("Name")` names an IntrinsicId member, the disposition the intrinsic table gives the declaration's compiler

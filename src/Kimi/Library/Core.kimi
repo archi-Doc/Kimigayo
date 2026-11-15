@@ -668,3 +668,9 @@ internal group StringBytes
         unsafe
             Storage.transferBytes(value@raw@raw/u8, source, 4)
         return value
+/// A weak reference (SPEC 3.2.2, 13.6.3): a compiler-managed Non-Copy struct; this implementation reports every use as
+/// Unsupported (IMPL 21.3.4).
+#Lang("Weak")
+#Unsupported
+public struct Weak<s/T>
+    s is rc or arc

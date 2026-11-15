@@ -44,30 +44,12 @@ internal static partial class KimiLibraryCatalog
     // The public declaration an internal implementation defines, which every presentation names instead.
     internal static KimiDeclarationId? PresentationOf(KimiDeclarationId id) => Index(id) is >= 0 and var index && Presentations[index] >= 0 ? Definitions[Presentations[index]].Id : null;
 
-    /// <summary>Gets a value indicating whether a name is a cataloged declaration that the library does not yet declare in source (PLAN G4).</summary>
-    /// <param name="container">The container the name was looked up in.</param>
-    /// <param name="name">The name.</param>
-    /// <returns><see langword="true"/> when a lookup that misses the name meets an implementation limit, not a missing name.</returns>
-    internal static bool IsUnsourced(KimiLibraryContainer container, string name)
-    {
-        foreach (ref readonly var entry in Entries)
-        {
-            if (!entry.SourceExpected && entry.Container == container && entry.Name == name)
-            {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
     internal readonly record struct Entry(
         KimiDeclarationId Id,
         string Name,
         KimiLibraryContainer Container = KimiLibraryContainer.Root,
         IntrinsicKind Intrinsic = IntrinsicKind.None,
         CompilerFunctionKind Function = CompilerFunctionKind.None,
-        bool SourceExpected = true,
         int Overload = -1,
         bool SourceFunction = false,
         bool CallerLocation = false,

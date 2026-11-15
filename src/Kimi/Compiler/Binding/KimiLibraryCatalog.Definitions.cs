@@ -68,11 +68,7 @@ internal static partial class KimiLibraryCatalog
         new(KimiDeclarationId.MakeRc, "makeRc", KimiLibraryContainer.Intrinsics, Function: CompilerFunctionKind.MakeRc),
         new(KimiDeclarationId.MakeArc, "makeArc", KimiLibraryContainer.Intrinsics, Function: CompilerFunctionKind.MakeArc),
         new(KimiDeclarationId.Clone, "clone", KimiLibraryContainer.Intrinsics, Function: CompilerFunctionKind.Clone),
-        new(KimiDeclarationId.Downgrade, "downgrade", KimiLibraryContainer.Intrinsics, SourceExpected: false),
-        new(KimiDeclarationId.Upgrade, "upgrade", KimiLibraryContainer.Intrinsics, SourceExpected: false),
-        new(KimiDeclarationId.MakeRcCyclic, "makeRcCyclic", KimiLibraryContainer.Intrinsics, SourceExpected: false),
-        new(KimiDeclarationId.MakeArcCyclic, "makeArcCyclic", KimiLibraryContainer.Intrinsics, SourceExpected: false),
-        new(KimiDeclarationId.Weak, "Weak", SourceExpected: false, ManagedRepresentation: true),
+        new(KimiDeclarationId.Weak, "Weak", ManagedRepresentation: true),
         // SPEC 4.9.3, 4.9.5: the Array mutation operations, Kimigayo bodies declared inside the Array struct; SPEC 4.9.6 gives `reserve`,
         // `append`, `insert`, `pop`, `remove`, `swap` and `shrinkToFit` no user-code effect and `clear` the destruction of its elements.
         new(KimiDeclarationId.ArrayReserve, "reserve", KimiLibraryContainer.Array, SourceFunction: true, CallerLocation: true, Row: None),

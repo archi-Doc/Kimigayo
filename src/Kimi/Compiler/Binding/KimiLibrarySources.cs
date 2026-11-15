@@ -188,7 +188,7 @@ public sealed partial class KimiLibrary
             };
             if (container is null)
             {
-                continue; // A missing Array struct fails library construction (SourceExpected).
+                continue; // A missing Array struct fails library construction (RegisterCatalog).
             }
 
             this.ParseSource(source, container);

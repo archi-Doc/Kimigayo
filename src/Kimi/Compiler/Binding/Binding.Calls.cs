@@ -116,7 +116,7 @@ public sealed partial class Binding
             }
             else
             {
-                this.Fail(callee, callee.BindingFailure == BindingFailure.Ambiguous ? BindingFailure.Ambiguous : this.MissingFailure(callee, scope, BindingFailure.MissingName), true);
+                this.Fail(callee, callee.BindingFailure == BindingFailure.Ambiguous ? BindingFailure.Ambiguous : this.MissingFailure(callee, BindingFailure.MissingName), true);
             }
 
             return Complete(call, null);

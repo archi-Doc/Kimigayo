@@ -518,12 +518,7 @@ public sealed partial class KimiLibrary
             // KimiLibraryShapeTest checks; FindDeclaration finds no duplicate.
             if (FindDeclaration((DeclarationContainerKoto)scope.Owner, entry.Name, entry.IsFunction, entry.Overload) is not { } declaration)
             {
-                if (entry.SourceExpected)
-                {
-                    throw new InvalidOperationException($"The embedded Kimi library has no unique declaration of {entry.Id}.");
-                }
-
-                continue;
+                throw new InvalidOperationException($"The embedded Kimi library has no unique declaration of {entry.Id}.");
             }
 
             var symbol = new BindingSymbol(entry.Name, entry.IsFunction ? BindingSymbolKind.Function : BindingSymbolKind.Type, declaration, scope)
