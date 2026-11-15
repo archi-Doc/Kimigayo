@@ -168,7 +168,9 @@ public sealed partial class Binding
         // (FittedPattern of the Literal part: every pair layer whose binder evidence fixed formed; the owner's O-294 (b)). `met` is
         // that pattern, whose outer layer decides the operation the position is ranked by (SPEC 10.2.2's Literal row; PLAN G915).
         // Where the default has nothing to bind (DefaultBindsAt) its shape is not checked: the Literal fits the layer's target once
-        // the binder is fixed.
+        // the binder is fixed. Where the pattern forms no Type (Unformed, D3), `met` is null: a Literal meets a Semantics layer only
+        // through its target (SPEC 10.2.1: an owner layer as the target, a ref layer by borrowing a temporary of it, no other layer at
+        // all), so the target below the layers is a fit every case needs: a misfit fails the part, a fit leaves it unknown (PLAN G886).
         internal readonly bool FitsLiteralShape(BoundType pattern, BoundType shape, Koto literal, out BoundType? met)
         {
             var binding = this.Binding;
@@ -184,7 +186,14 @@ public sealed partial class Binding
                 met = binding.FittedPattern(memberPattern, this.SlotOwner, this.Frame, literal);
                 if (met is not { } formed)
                 {
-                    return false; // Unformed (D3): the Literal fits no pattern there, and the call is Unsupported.
+                    var target = memberPattern;
+                    while (target is { Kind: BoundTypeKind.Semantics or BoundTypeKind.SemanticsApplication, Components: [var inner] })
+                    {
+                        target = inner;
+                    }
+
+                    return binding.SubstituteType(target, this.SlotOwner, this.Types, this.Lengths) is { } complete
+                        ? binding.FitsLiteralPart(literal, complete, this.Scope) : binding.Infer(target, shape, this.SlotOwner, this.Frame);
                 }
 
                 return !this.DefaultBindsAt(memberPattern) || binding.Infer(LiteralInputType(formed), shape, this.SlotOwner, this.Frame);

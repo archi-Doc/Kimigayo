@@ -136,9 +136,10 @@ public sealed partial class Binding
             evaluation.Mapping.AsSpan(0, argumentCount).CopyTo(evaluation.AllMaps.AsSpan(index * argumentCount));
         }
 
-        // The trial's judgment is taken once, in the selection's frame (DECISIONS BU-86); an unformed split (D3) whatever the state.
+        // The trial's judgment is taken once, in the selection's frame (DECISIONS BU-86); an unformed split (D3) only of a candidate that
+        // rests on it (Pending; TryCandidate's verdict), as an environment result.
         var judgment = this.TakeTrialPending(call);
-        evaluation.Unformed |= judgment is { Kind: PendingJudgmentKind.UnformedSplit };
+        evaluation.Unformed |= state == CandidateApplicability.Pending && judgment is { Kind: PendingJudgmentKind.UnformedSplit };
         evaluation.Pending |= state == CandidateApplicability.Pending;
         if (state == CandidateApplicability.Pending)
         {
@@ -269,7 +270,7 @@ public sealed partial class Binding
         internal bool Pending;
         internal bool PremisesOnly;
         internal bool Error;
-        internal bool Unformed; // DECISIONS D3: a candidate needed a Type formed under an unrepresented split (PendingJudgmentKind.UnformedSplit).
+        internal bool Unformed; // DECISIONS D3: a candidate rests on a Type formed under an unrepresented split (PendingJudgmentKind.UnformedSplit).
         internal CallableConstraintFact? CallableFailure;
         internal ReferenceConstraintFailure? ConstraintFailure;
         internal PendingJudgment? PendingJudgment;

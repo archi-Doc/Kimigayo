@@ -279,13 +279,6 @@ public sealed partial class Binding
             this.EvaluateCallCandidates(ref evaluation, candidates);
             var count = evaluation.Count;
             var applicable = evaluation.Applicable;
-            if (evaluation.Unformed)
-            {
-                // DECISIONS D3 (temporary, PLAN G886): a candidate needed a Type no binding represents (a Constraint over it included,
-                // whose proof is then Error), so the call is not judged, whatever the other candidates.
-                return this.Fail(call, BindingFailure.Unsupported, true);
-            }
-
             if (evaluation.Error)
             {
                 // A candidate in a failed declaration cannot be judged, nor one whose Constraint fails on a conformance resting on a failed
@@ -318,8 +311,11 @@ public sealed partial class Binding
 
             if (selection == CallSelection.Unproven)
             {
-                // SPEC 8.3.3: an Unknown premise that can affect the selection defers it. Omitted header Types rest on the call.
-                return evaluation.PendingCount == 1 && evaluation.CallableFailure is { } callable ? this.FailCallableSelection(call, callable)
+                // SPEC 8.3.3: an Unknown premise that can affect the selection defers it. Omitted header Types rest on the call. A
+                // candidate unproven through an unformed split (DECISIONS D3, temporary, PLAN G886: never premise-only, unrankable) makes
+                // the call one located Unsupported_Kd, however many are pending.
+                return evaluation.Unformed ? this.Fail(call, BindingFailure.Unsupported, true)
+                    : evaluation.PendingCount == 1 && evaluation.CallableFailure is { } callable ? this.FailCallableSelection(call, callable)
                     : evaluation.PendingCount == 1 && evaluation.ConstraintFailure is { } constraint ? this.FailPendingConstraint(call, constraint)
                     : evaluation.PendingCount == 1 && evaluation.PendingJudgment is { } judgment ? this.FailPendingJudgment(call, judgment)
                     : this.FailWaitingSelection(call, BindingFailure.UnprovenConstraint);

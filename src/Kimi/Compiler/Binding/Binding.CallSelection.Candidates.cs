@@ -49,6 +49,7 @@ public sealed partial class Binding
         this.acquisitionFailure = null;
         this.invariantSlots = this.RentSlotSet(CallSlotCount(solution.Function));
         this.environmentJudgments = this.environmentScratch.Rent(CallSlotCount(solution.Function));
+        var unformedMark = this.unformedWrites;
         var enclosing = this.OpenTrial(); // A candidate trial is a frame (design-r2 Amendment 5; r2-6).
         try
         {
@@ -72,11 +73,27 @@ public sealed partial class Binding
                     savedAcquisition = acquisition;
                 }
 
-                return CandidateApplicability.Inapplicable;
+                result = CandidateApplicability.Inapplicable;
             }
 
             // Rule W at the candidate's own verdict (DECISIONS BU-79; SPEC 23.1.2; PLAN G206): a parameter or result Type that failed to
-            // bind is a wildcard in every fit, so only a candidate that would apply rests on it (IncompleteSignature) instead.
+            // bind is a wildcard in every fit, so only a candidate that would apply rests on it (IncompleteSignature) instead. The same
+            // verdict over an unformed split (D3, PLAN G886; SPEC 10.1's unproven candidate): a trial that formed a Type no binding
+            // represents rests on it (Pending, UnformedSplit) only where every check reading no unformed Type passed; an inapplicable
+            // candidate is judged without it, its writes and fact dropped. A proof's Error without one stays (InvalidDeclarationContext).
+            if (this.UnformedSince(unformedMark) && result is not (CandidateApplicability.Inapplicable or CandidateApplicability.Error))
+            {
+                this.trialPending = new(PendingJudgmentKind.UnformedSplit, solution.Function) { Epoch = this.frameEpoch };
+                premiseUnknown = false;
+                return CandidateApplicability.Pending;
+            }
+
+            this.unformedWrites = unformedMark;
+            if (this.trialPending is { Kind: PendingJudgmentKind.UnformedSplit })
+            {
+                this.trialPending = null;
+            }
+
             return result is CandidateApplicability.Applicable or CandidateApplicability.Waiting && IncompleteSignature(solution.Function) is not null
                 ? CandidateApplicability.Pending : result;
         }
@@ -121,8 +138,8 @@ public sealed partial class Binding
     // inferred once as one (its exact sources fix its own binders; a structured application of a binder still unfixed supplies
     // nothing), and those it formed are inferred again. Called before the expected result, after it (for a binder only the
     // expected result fixes) and after the late pass (for one only a Literal's default fixes); one still open keeps its open parts
-    // unbound.
-    private bool SettleWaiting(ref SlotSolution solution, int[] mapping, ref SlotSet waiting, ref SlotSet sourced)
+    // unbound. An input whose own pattern forms no Type is judged by UnformedPart instead.
+    private bool SettleWaiting(ref SlotSolution solution, int[] mapping, ref SlotSet waiting, ref SlotSet sourced, ref SlotSet unknown)
     {
         var call = solution.Call;
         var function = solution.Function;
@@ -134,7 +151,7 @@ public sealed partial class Binding
             {
                 if (waiting.Contains(i) && !this.HasOpenApplication(function.Parameters[mapping[i]].Type.BoundType!, owner, solution.Frame))
                 {
-                    if (!InferWaiting(ref solution, function, mapping, i))
+                    if (!this.InferWaiting(ref solution, mapping, i, ref unknown))
                     {
                         return false;
                     }
@@ -155,7 +172,7 @@ public sealed partial class Binding
                 if (waiting.Contains(i) && !sourced.Contains(i))
                 {
                     sourced.Add(i);
-                    if (!InferWaiting(ref solution, function, mapping, i))
+                    if (!this.InferWaiting(ref solution, mapping, i, ref unknown))
                     {
                         return false;
                     }
@@ -169,10 +186,61 @@ public sealed partial class Binding
         }
 
         return true;
+    }
 
-        static bool InferWaiting(ref SlotSolution solution, FunctionKoto function, int[] mapping, int i)
-            => solution.Pattern(function.Parameters[mapping[i]].Type.BoundType!) is { } evidencePattern
-                ? solution.InferArgument(evidencePattern, solution.Call.ArgumentNodes[i], late: false) : solution.Call.ArgumentNodes[i].BoundType is null;
+    // SPEC 10.8: infers waiting input i; false when it fails, unless it failed through its own pattern's formation (UnformedPart).
+    private bool InferWaiting(ref SlotSolution solution, int[] mapping, int i, ref SlotSet unknown)
+    {
+        var type = solution.Function.Parameters[mapping[i]].Type.BoundType!;
+        var part = solution.Call.ArgumentNodes[i];
+        var mark = this.unformedWrites;
+        return (solution.Pattern(type) is { } evidencePattern ? solution.InferArgument(evidencePattern, part, late: false) : part.BoundType is null) ||
+            this.UnformedPart(ref solution, type, i, mark, ref unknown) == true;
+    }
+
+    // DECISIONS D3 with rule W (BU-79; G812 ruling 88, design revision 1): argument i's evidence check failed; whether it failed through its
+    // own pattern's formation, the writes compared from `mark`, taken at that part's check (the evidence passes form only the part's own
+    // pattern: its adaptation pattern, application, direct target) or around its `solution.Type` (the pass loop), for a pattern with an
+    // abstract part only (a closed Type forms under no binding; a call's Type also reads every pair's outer slot, CallType). Null where
+    // nothing it formed formed no Type: the part's own failure. A Literal is judged at its target (FitsLiteralShape, SPEC 10.2.1): false, the part's
+    // own failure, or unknown. A typed part at a closed leaf that disagrees with its binder's evidence fails (IsSource, the owner's
+    // O-338 (a); F's O1 (a)). Any other part is unknown, a wildcard in every later check as a parameter Type that failed to bind is
+    // (SPEC 10.1's Unknown applicability), and the trial goes on.
+    private bool? UnformedPart(ref SlotSolution solution, BoundType type, int i, int mark, ref SlotSet unknown)
+    {
+        if (!type.HasAbstractPart || !this.UnformedSince(mark))
+        {
+            return null;
+        }
+
+        var part = solution.Call.ArgumentNodes[i];
+        if (this.KindOf(part) == PartKind.Literal
+            ? this.PartDefault(part, solution.Scope) is { } shape && !solution.FitsLiteralShape(type, shape, part, out _)
+            : this.LeafDisagrees(ref solution, type, part))
+        {
+            return false;
+        }
+
+        unknown.Add(i);
+        return true;
+    }
+
+    // SPEC 10.8 (the owner's O-338 (a)), 8.1.2: whether a typed part at an application over a closed leaf (IsExactSource) disagrees with
+    // the evidence its binder's sources gave (IsSource): a Language verdict that reads no unformed Type. A binder fixed before any
+    // evidence (explicit Type arguments) compares nothing.
+    private bool LeafDisagrees(ref SlotSolution solution, BoundType type, Koto part)
+    {
+        if (part.BoundType is not { } actual ||
+            solution.Pattern(type) is not { Kind: BoundTypeKind.SemanticsApplication, Symbol: { } selector, Components: [var target] } member)
+        {
+            return false;
+        }
+
+        var owner = solution.SlotOwner;
+        var frame = solution.Frame;
+        var slot = ContainerSlot(owner, selector);
+        var evidenced = slot >= 0 && slot < frame.Types.Length && frame.Selectors[slot] is not null;
+        return evidenced && IsExactSource(member, owner, frame) && !this.IsSource(frame, slot, actual, target);
     }
 
     // SPEC 10.1 step 4, 15.6.1: the expected result fills a candidate's still-unbound slots by its structure, and its Origins are
@@ -247,6 +315,7 @@ public sealed partial class Binding
         var unboundSlots = this.RentSlotSet(CallSlotCount(function));
         var unsolvedSlots = this.RentSlotSet(CallSlotCount(function));
         var defaults = this.RentSlotSet(function.Parameters.Count);
+        var unknown = this.RentSlotSet(call.ArgumentNodes.Count); // The parts whose own pattern forms no Type (UnformedPart).
         try
         {
             defaultsUsed = argumentMap.DefaultsUsed;
@@ -347,8 +416,10 @@ public sealed partial class Binding
                     continue;
                 }
 
-                if (solution.Pattern(type) is { } evidencePattern
-                    ? !solution.InferArgument(evidencePattern, part, late: false) : part.BoundType is not null)
+                var mark = this.unformedWrites;
+                if ((solution.Pattern(type) is { } evidencePattern
+                    ? !solution.InferArgument(evidencePattern, part, late: false) : part.BoundType is not null) &&
+                    this.UnformedPart(ref solution, type, i, mark, ref unknown) is not true)
                 {
                     if (part.BoundType is { } actual)
                     {
@@ -365,7 +436,7 @@ public sealed partial class Binding
                 }
             }
 
-            if (!this.SettleWaiting(ref solution, mapping, ref waiting, ref sourced))
+            if (!this.SettleWaiting(ref solution, mapping, ref waiting, ref sourced, ref unknown))
             {
                 return CandidateApplicability.Inapplicable;
             }
@@ -386,7 +457,7 @@ public sealed partial class Binding
             var expectedStructure = this.InferExpectedResult(ref solution, expected);
 
             // SPEC 10.8: the expected result is the last source of a binder; an input formed only now is inferred now.
-            if (!this.SettleWaiting(ref solution, mapping, ref waiting, ref sourced))
+            if (!this.SettleWaiting(ref solution, mapping, ref waiting, ref sourced, ref unknown))
             {
                 return CandidateApplicability.Inapplicable;
             }
@@ -396,7 +467,7 @@ public sealed partial class Binding
                 DefaultSlots(function, mapping.AsSpan(0, call.ArgumentNodes.Count), receiverSlot, ref defaults);
             }
 
-            if (!this.SolveLate(ref solution, mapping, defaults, ref waiting, ref sourced))
+            if (!this.SolveLate(ref solution, mapping, defaults, ref waiting, ref sourced, ref unknown))
             {
                 return CandidateApplicability.Inapplicable;
             }
@@ -442,14 +513,16 @@ public sealed partial class Binding
                 {
                     var argument = KotoHelper.UnwrapParentheses(call.ArgumentNodes[i]);
                     var kind = this.KindOf(argument);
-                    if (function.Parameters[mapping[i]].Type.BoundType is not { } pattern ||
+                    if (unknown.Contains(i) || function.Parameters[mapping[i]].Type.BoundType is not { } pattern ||
                         (kind is PartKind.Function or PartKind.Reference ? pass != ordinaryPasses :
                         pass == ordinaryPasses || (contextualInputs && (kind is PartKind.Aggregate or PartKind.Join) != (pass == 1))))
                     {
                         continue;
                     }
 
+                    var mark = this.unformedWrites;
                     var type = solution.Type(pattern);
+                    var unrepresented = pattern.HasAbstractPart && this.UnformedSince(mark); // D3: its own Type forms none or keeps an unrepresented slot.
                     if (type is null)
                     {
                         if (this.IsWaitingCallable(argument) && solution.CallableSlot(pattern) is { } slotType &&
@@ -510,6 +583,12 @@ public sealed partial class Binding
                                 continue;
                             }
 
+                            if (unrepresented)
+                            {
+                                unknown.Add(i);
+                                continue;
+                            }
+
                             return solution.IsComplete() ? CandidateApplicability.Inapplicable : CandidateApplicability.Pending;
                         }
 
@@ -522,6 +601,12 @@ public sealed partial class Binding
                             }
 
                             return CandidateApplicability.Inapplicable;
+                        }
+
+                        if (met is null)
+                        {
+                            unknown.Add(i); // A Literal that fits the target of a pattern that forms no Type (FitsLiteralShape): unknown.
+                            continue;
                         }
 
                         type = solution.Type(pattern);
@@ -557,6 +642,12 @@ public sealed partial class Binding
                     waitingCallables |= applicability == CandidateApplicability.Waiting;
                     if (applicability is not (CandidateApplicability.Applicable or CandidateApplicability.Waiting))
                     {
+                        if (unrepresented)
+                        {
+                            unknown.Add(i); // D3: the fit failed at a Type formed with an unrepresented slot (HasOuterSlot).
+                            continue;
+                        }
+
                         return applicability;
                     }
                 }
@@ -590,9 +681,12 @@ public sealed partial class Binding
 
             for (var i = 0; i < function.Parameters.Count; i++)
             {
-                // SPEC 10.8: a parameter Type that holds an unsolved slot, an open position or an unused default, is no failure of its own.
+                // SPEC 10.8: a parameter Type that holds an unsolved slot, an open position or an unused default, is no failure of its own;
+                // nor one that forms no Type (D3: its part is unknown, UnformedPart).
+                var mark = this.unformedWrites;
                 if (function.Parameters[i].Type.BoundType is { } parameter && (solution.Type(parameter) is not { } completed
-                    ? !(waitingCallables || MentionsSlots(parameter, CallSlotOwner(function), unsolvedSlots)) : !this.ProveTypeLengths(completed, scope.Function)))
+                    ? !(waitingCallables || MentionsSlots(parameter, CallSlotOwner(function), unsolvedSlots) || this.UnformedSince(mark))
+                    : !this.ProveTypeLengths(completed, scope.Function)))
                 {
                     return CandidateApplicability.Inapplicable;
                 }
@@ -601,6 +695,7 @@ public sealed partial class Binding
             solution.CompleteOperationTypes(operations);
 
             var resultPattern = function.IsConstructor && declaringType is not null ? this.SelfType(declaringType.Symbol!) : function.BoundSymbol!.Type;
+            var resultMark = this.unformedWrites;
             var result = resultPattern is not null ? solution.Type(resultPattern) : null;
             if (result is not null && !this.ProveTypeLengths(result, scope.Function))
             {
@@ -608,8 +703,9 @@ public sealed partial class Binding
             }
 
             // SPEC 10.8: a result that keeps an unsolved slot is no failure of its own; the parts of its fit that do not contain the slot are
-            // still checked against an expected result (SPEC 10.3).
-            var openResult = result is null && resultPattern is not null && MentionsSlots(resultPattern, CallSlotOwner(function), unsolvedSlots);
+            // still checked against an expected result (SPEC 10.3). Nor is one that forms no Type (D3, as a parameter Type above).
+            var openResult = result is null && resultPattern is not null &&
+                (MentionsSlots(resultPattern, CallSlotOwner(function), unsolvedSlots) || this.UnformedSince(resultMark));
             if (resultPattern is not null && result is null && !waitingCallables && !openResult)
             {
                 // A result Type names no Origin of the callee: OpenUnsolvedOrigins filled every Origin and input slot (SPEC 15.3.6; PLAN
@@ -627,7 +723,13 @@ public sealed partial class Binding
                 return CandidateApplicability.Inapplicable;
             }
 
+            var proofMark = this.unformedWrites;
             var proof = solution.Prove(frame.Types[..CallOwnSlots(function).Count], waitingCallables, unsolvedSlots);
+            if (proof is ConstraintProof.Refuted or ConstraintProof.Error && this.UnformedSince(proofMark))
+            {
+                proof = ConstraintProof.Unknown; // D3: a proof that read a Type no binding represents (dt2) is Unknown through the split.
+            }
+
             var failure = ClauseFailure(this.TakeTrialClause(call), function.BoundSymbol); // The trial's clause fact, before a later proof's.
             if (proof is ConstraintProof.Refuted or ConstraintProof.Unknown && !waitingCallables && solution.PerCallCallables(mapping, operations))
             {
@@ -682,6 +784,7 @@ public sealed partial class Binding
         }
         finally
         {
+            this.ReturnSlotSet(unknown);
             this.ReturnSlotSet(defaults);
             this.ReturnSlotSet(unsolvedSlots);
             this.ReturnSlotSet(unboundSlots);
@@ -697,14 +800,25 @@ public sealed partial class Binding
     // candidate's Origins, which the well-formedness of each Signature position (F1, R4-M164: each leaf row of an argument,
     // CollectPositionPremises, and each default it uses, `defaults`, DefaultSlots) shortens as an Evidence part's does (InferAdapted);
     // false when the candidate is inapplicable.
-    private bool SolveLate(ref SlotSolution solution, int[] mapping, in SlotSet defaults, ref SlotSet waiting, ref SlotSet sourced)
+    private bool SolveLate(ref SlotSolution solution, int[] mapping, in SlotSet defaults, ref SlotSet waiting, ref SlotSet sourced, ref SlotSet unknown)
     {
         var call = solution.Call;
         var function = solution.Function;
         for (var i = 0; i < call.ArgumentNodes.Count; i++)
         {
-            if (function.Parameters[mapping[i]].Type.BoundType is { } parameter && solution.Pattern(parameter) is { } latePattern &&
-                !solution.InferArgument(latePattern, call.ArgumentNodes[i], late: true))
+            if (unknown.Contains(i))
+            {
+                continue;
+            }
+
+            if (function.Parameters[mapping[i]].Type.BoundType is not { } parameter)
+            {
+                continue;
+            }
+
+            var mark = this.unformedWrites;
+            if (solution.Pattern(parameter) is { } latePattern && !solution.InferArgument(latePattern, call.ArgumentNodes[i], late: true) &&
+                this.UnformedPart(ref solution, parameter, i, mark, ref unknown) is not true)
             {
                 return false;
             }
@@ -712,7 +826,7 @@ public sealed partial class Binding
 
         // SPEC 10.8, 10.2.1: the defaults bind what no evidence bound (the owner's O-343 (a), O-347 (a)); an input formed only now is
         // inferred now.
-        if (!this.SettleWaiting(ref solution, mapping, ref waiting, ref sourced))
+        if (!this.SettleWaiting(ref solution, mapping, ref waiting, ref sourced, ref unknown))
         {
             return false;
         }

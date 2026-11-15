@@ -11,6 +11,9 @@ public sealed partial class Binding
     // evidence Type (PremiseScope); null otherwise.
     private BindingScope? premiseUse;
 
+    // DECISIONS D3: the formations so far that formed no Type (Unformed); a check compares it with its mark (UnformedSince).
+    private int unformedWrites;
+
     // A finite Type family stores complete case Types in SemanticsOrder, packed by its Length mask.
     // Only the selecting binder is a dependency; no source expression or operation plan is retained.
     private enum FamilyTransform : byte
@@ -197,18 +200,25 @@ public sealed partial class Binding
     private bool FormsUnder(BoundType binding) => !this.IsAbstractBinding(binding) || HasOwnSelector(binding);
 
     // DECISIONS D3 (temporary; removed with the representation of a selector-less binding's split, PLAN G886): a formation under a binding
-    // that forms none (FormsUnder) forms nothing (null) and leaves one fact (PendingJudgmentKind.UnformedSplit, BU-86's channel): a
-    // candidate trial in progress carries it to its selection (EvaluateCallCandidate), and a formation outside any trial leaves it for
-    // its consumer, which holds the channel around it (HoldUnformed, TakeUnformed: a value call's callee signature, a reference's
-    // candidates). Each reader makes its call or reference one located Unsupported_Kd. The writers: ApplySemantics, SubstituteFamily,
-    // DirectTarget, HasOuterSlot (the inline `IsAbstractBinding` and not `HasOwnSelector` there is FormsUnder's body where the first is
-    // already decided); IsSource's comparison reads FormsUnder and publishes nothing.
+    // that forms none (FormsUnder) forms nothing (null), counts one write (UnformedSince) and leaves one fact
+    // (PendingJudgmentKind.UnformedSplit, BU-86's channel). The split is an Unknown in one candidate's fit (rule W, BU-79): a part whose
+    // own pattern forms no Type is unknown (UnformedPart), and a candidate trial rests on it only where every other check passed
+    // (TryCandidate), its call then one located Unsupported_Kd; a formation outside any trial leaves the fact for its consumer, which
+    // holds the channel around it (HoldUnformed, TakeUnformed: a value call's callee signature, a reference's candidates).
+    // The writers: ApplySemantics, SubstituteFamily, DirectTarget, HasOuterSlot (the inline `IsAbstractBinding` and not `HasOwnSelector`
+    // there is FormsUnder's body where the first is already decided); IsSource's comparison reads FormsUnder and publishes nothing.
     private BoundType? Unformed()
     {
+        this.unformedWrites++;
+
         // The trial's frame, also from inside a proof the trial runs (a Constraint over the unformed Type), whose frame drops its own.
         this.trialPending ??= new(PendingJudgmentKind.UnformedSplit, this.activeInferenceFunction) { Epoch = this.proofNesting != 0 ? this.judgmentEnclosing : this.frameEpoch };
         return null;
     }
+
+    // DECISIONS D3 with rule W (BU-79): whether a formation since `mark` (an earlier unformedWrites) formed no Type, so that a check that
+    // failed since then failed through the split: an Unknown, not a failure of its own.
+    private bool UnformedSince(int mark) => this.unformedWrites != mark;
 
     // DECISIONS D3: a consumer of formations outside a candidate trial holds the channel's fact before them (HoldUnformed clears the
     // channel and returns what it held), then asks TakeUnformed.
@@ -233,7 +243,7 @@ public sealed partial class Binding
 
     // SPEC 8.1.2: whether a pair layer formed under this binding (an annotated original, or an application `s/U`, ApplySemantics) keeps
     // its outer-Origin slot: a borrow binding does, an abstract binding or a family conditionally; a value binding keeps none. For a
-    // binding that forms no Type it is unrepresented (Unformed, D3): the slot is kept and the call is Unsupported.
+    // binding that forms no Type it is unrepresented (Unformed, D3): the slot is kept and the candidate rests on the split.
     private bool HasOuterSlot(BoundType binding)
     {
         var isAbstract = this.IsAbstractBinding(binding);
