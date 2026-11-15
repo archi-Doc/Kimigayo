@@ -19812,6 +19812,38 @@ R8-M* and R9-M* by the stage of the recording unit.
     an expanding argument in the summary's walk (one form; growth through two declarations escapes it); a located limit for a growing
     stored instance (a proof exists: the formation in the formals); R2.3's restart (it rotates, review-r2 B2); the first Cause read
     (rotates after the verdicts settle, review 3 B1); a tie-break by creation order (depends on the check order).
+- **R7-M34 A judge refutes two Types' agreement only by SPEC 8.2.3's Refuted, read by the identity classes' one table** (Front,
+  2026-11-15; R7-C2c2 N9's commit 1, PLAN G866 (closed by it); design-n9.md R3, C1, C2; review-n9.md "Diff review: commit 1
+  revision 4"; the owner's O-289 (a), O-293 (a), O-304 (a), O-315 (a) and O-337 (a), the last on the Middle's C-332 round 3, R3-B1
+  and R3-B2). SPEC 8.1.2, 8.2.3, 8.3.2, 10.7, 15.6.1.
+  - The rule (8.3.2: absence of proof is not enough): `IdentityClasses.Refuted`, the mirror of `Same`, reads the meets the premises
+    read (`Meet`, `SameHead`, `PairMeet`, `Decompose`): a bound parameter stands for its class's complete member, one class is no
+    difference, an abstract Type differs only as a proper part (up to structure, a step that is no `owner`-admitting pair making it
+    proper), two constructors differ where their meet conflicts or a pair of parts is Refuted; the meet is the premises' own, so a
+    Function pair's quantification structure is a compared attribute (the owner's O-293 (a): one table, no reader mode), and an
+    Origin whose agreement is unproven decides nothing. `PairMeet` compares the components where the heads may agree, reads two
+    binders' admitted sets and lets an `owner`-admitting pair meet every form.
+  - At a Function position every layer's outer-Origin slot is compared one way, `SlotMeet` over the correspondence's `Pair`: a pair
+    layer's slot is its `OuterOrigin` (the original `s/T`'s `o` included), present only in its admitted borrow cases (SPEC 8.1.2),
+    so a difference in only some cases varies; the pair row's head is one function, `PairHead`, read by the premise meets
+    (`PairMeet`) and by the Function walk (`CorrespondPair`, where an application admitting exactly `owner` is its target and an
+    agreeing pair layer stays Unsupported) (the owner's O-337 (a)).
+  - Readers: the Contract judge's refutation (a same-declaration conformance whose instance, in the conforming Type's terms, is not
+    Refuted against the required reference, in the scope's, and whose paths' conditions are not all Refuted is a path not ruled out:
+    Unknown) and the Callable judge (a storage mismatch refutes only where 10.7's `CompatibleSignature` is Refuted, both sides with
+    every Origin static: 10.7 compares Origins by subtyping, 15.6.1, never as a difference).
+  - Rejected: a second refutation walk beside the table (each round missed one more row: Self, lengths, conditions, admitted sets,
+    proper parts, components under a varying head, quantification structures); refuting by assuming the identity; a reader mode on
+    the table; comparing a pair layer's slot by the Origin domain at a Function position (two rules for one slot).
+  - Limits: a pair's own `s/T` is no constructor node in premise meets; `SameHead` reads no length arguments.
+- **R7-M35 Evidence for a proposition against its result for the complete constructed Type identical with its subject is
+  contradictory evidence** (Front, 2026-11-15; R7-C2c2 N9, PLAN G851; design-n9.md R3.6). SPEC 8.2.3, 8.3.2.
+  - `Binding.TypeIdentity` publishes a class's complete constructed member from its key's scan (`CompleteMember`, `Representative`:
+    one rule, one table). `ProveProposition`, the owner of the polarity rule, judges the proposition over the member
+    (`MemberVerdict`: the atom judge and the rows for `and`, `or`, `not`; every form) and reads it only to detect the other
+    polarity, never as evidence.
+  - Rejected: the check inside `ProveConformance`.
+  - A member with an argument decides nothing until c2-4 (G853, N7).
 - **R8-M1 The representation structs and their Place contract** (owner, 2026-11-07, verbatim 「推奨の内容でOKです。処理を継続してください。」,
   on O-41 (a) and O-43 (A); R8-R1a; prototype R8-L0p; supersedes the two plan rows below) IMPL 21.1.3, SPEC 5.2, 5.5, 5.7.
   - Adopted: `Storage.ArrayRepr<T>`, `Storage.SliceRepr<T>` and `Storage.StringRepr`, internal `#Layout("C")` structs of the Kimi
