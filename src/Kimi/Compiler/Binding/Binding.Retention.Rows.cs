@@ -37,7 +37,8 @@ public sealed partial class Binding
     private int[] retentionSourceFirst = [];
     private int[] retentionSourceNext = [];
     private int[] retentionMarks = [];
-    private Holding[] retentionHolding = []; // What each storage's holds met (Hold), reused.
+    private Holding[] retentionHolding = []; // What each storage's holds met and Hold's outcome there (Chained), reused.
+    private RetentionKind[] retentionChained = []; // Rule A's rows of the output (Hold), which a Chained storage joins as it admits.
     private bool[] retentionAssigned = []; // Written's storages already in an entry, and the storages whose pairs Pairs reads, reused.
     private bool[] retentionMembers = [];
     private int retentionStamp;
@@ -51,16 +52,21 @@ public sealed partial class Binding
     // storage of the output. What the call stores through a bounding one is retained by the pointee storage's own positions, with what
     // any chain of reads through an argument carries where such a position can hold a value that carries a Loan (Loans: a borrow, an
     // abstract part, a Type argument's or an erased environment's dependency; SPEC 15.6.4 "also as a part of a value of that layer's
-    // pointee Type"): such a storage takes rule A's rows too; one holding no such position (Scalars, raw layers stating an Origin, which
-    // StatedFits judges) takes only its own. Loans fails closed: a part is Loan-free only by MirTypes.HoldsLoans' criterion over a fully
-    // bound, prepared Type (an entry it passes on, Hold.PassesOn, the one row both walks read, holding the part's Type, in a Type whose
-    // storage is Prepared), so every other part (a borrow, an abstract or erased part, a part Binding did not bind or storage no Type
-    // states, a Rejected Type) holds Loans. A storage is Free only where that is proven (PLAN's N7, C-281): its holds (Walked) met no Loans
-    // and no raw layer (Pointer, of any step: a raw pointer carries the holders it addresses, SPEC 15.6), the fact MirTypes.HoldsLoans
-    // states for A5; it retains nothing (SPEC 15.6.4: an argument's own value only where the storage can hold it) and publishes no row,
-    // whatever another storage's layer reaches. A storage no hold walks (the Abstract one, whose Type is hidden) is never Free.
+    // pointee Type"): such a storage takes rule A's chain rows too, but only for the arguments its own positions admit (Chained, Hold's
+    // outcome: Storages joins them where the storage's Origin tests retain the input, the fit a stated Origin makes; SPEC 5.7 Calls "what
+    // its pointee Type admits", C-352's C3), since what a chain of reads brings there is a value of that Type, and an argument's own value
+    // only where a position can hold it (the Value test, SPEC 15.6.4); one holding no such position
+    // (Scalars, raw layers stating an Origin, which StatedFits judges) takes only its own. A part no Type states (a part Binding did not
+    // bind, the storage past a layer whose content no Type states) or a Rejected Type holds whatever it is (Any, DECISIONS BU-36): no
+    // Origin bounds it, so its storage takes rule A's rows whole. Loans fails closed: a part is Loan-free only by MirTypes.HoldsLoans'
+    // criterion over a fully bound, prepared Type (an entry it passes on, Hold.PassesOn, the one row both walks read, holding the part's
+    // Type, in a Type whose storage is Prepared), so every other part (a borrow, an abstract or erased part, Any) holds Loans. A storage
+    // is Free only where that is proven (PLAN's N7, C-281): its holds (Walked) met no Loans and no raw layer (Pointer, of any step: a raw
+    // pointer carries the holders it addresses, SPEC 15.6), the fact MirTypes.HoldsLoans states for A5; it retains nothing (SPEC 15.6.4:
+    // an argument's own value only where the storage can hold it) and publishes no row, whatever another storage's layer reaches. A
+    // storage no hold walks (the Abstract one, whose Type is hidden) is never Free.
     [Flags]
-    private enum Holding : byte
+    private enum Holding : ushort
     {
         None = 0,
         Unstated = 1,
@@ -70,6 +76,8 @@ public sealed partial class Binding
         Loans = 16,
         Pointer = 32,
         Walked = 64,
+        Any = 128,
+        Chained = 256,
     }
 
     // Whether a reader may read a Type whose storage has this verdict (SPEC 23.1.2; DECISIONS BU-36, R4-M139): Prepared, and Rejected, whose
@@ -210,7 +218,9 @@ public sealed partial class Binding
     // Each storage's kinds for the walk made (retentionKinds, by storage): Content where the closure from one of its targets reaches an
     // occurrence of an input (none for a raw input's own layer), Value where the closure from a position's node reaches a source the
     // position can hold (CanHold), Content for one it cannot, Value over Content; then the hold walk's kinds of that storage (`kept`, by
-    // storage), Chain over Content.
+    // storage), and at a storage rule A's rows reach only through its Loan-carrying positions (Chained) their Chain for each input those
+    // tests retain or a conjunction names (C-352's C3: what a chain of reads brings there is a value its positions admit, SPEC 5.7 Calls;
+    // the input's own value there is the Value test's, 15.6.4), Chain over Content.
     // A position whose Origin the call's Subst brings can also hold a source whose fit relates such Origins the premises do not prove: the
     // conjunction (retentionPairs) of a pair per layer of the source's path the closure misses and the position (Conjunction) is the
     // solved Origins' to judge (DECISIONS R4-M154, Revisions 2 and 10).
@@ -290,12 +300,29 @@ public sealed partial class Binding
         for (var s = 0; s < kinds.Count; s++)
         {
             var (storage, held) = (kinds[s], kept[s]);
+            var chained = (this.retentionHolding[s] & Holding.Chained) != 0;
             for (var i = 0; i < storage.Length && !this.Free(s); i++)
             {
+                var admitted = chained && (storage[i] != RetentionKind.None || this.Conjoins(s, i));
                 var kind = ((storage[i] & RetentionKind.Value) != 0 ? RetentionKind.Value : storage[i]) | held[i];
+                kind |= admitted ? this.retentionChained[i] & RetentionKind.Chain : RetentionKind.None; // Its own value: the Value test's.
                 storage[i] = (kind & RetentionKind.Chain) != 0 ? kind & ~RetentionKind.Content : kind;
             }
         }
+    }
+
+    // Whether a storage has a conjunction for an input (retentionPairs): the call's solved Origins may fit the input there.
+    private bool Conjoins(int storage, int input)
+    {
+        foreach (var (s, i, _, _) in this.retentionPairs)
+        {
+            if (s == storage && i == input)
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     // Whether a storage of the walk made is proven to hold no Loan (Holding's Free: Hold walked it and met no Loans and no raw layer there).
@@ -544,7 +571,9 @@ public sealed partial class Binding
     // An output's hold walk (Held from each of its holds: the result's whole Type, or each position of input j's storages the storage walk
     // emits with the Type its declaration writes there and the instance holding it, DECISIONS BU-52; each position once per lent bit and
     // storage) and what it keeps, by storage (retentionKept; C-352: the rows of a raw layer belong to the storage holding it, never to
-    // every storage of the output): rule A's rows at a written unstated layer (WrittenUnstated, the transfer read once per contract), the
+    // every storage of the output): rule A's rows at a written unstated layer (WrittenUnstated, the transfer read once per contract; formed
+    // once per output, whole where the storage holds such a layer, a declaration's own layer reaches it or it holds a part no Type bounds,
+    // Holding.Any, and through Storages' admission where it holds only Loan-carrying positions past a bounding one, Holding.Chained), the
     // raw arguments at a lent one (R′: SPEC's "the raw arguments", the raw sources at their own layer, never a wrapped one), and at a
     // stated layer the raw sources its Origin admits (StatedFits); whether it met a layer stepping Unstated or Static, not lent, which unties
     // the output. A published transfer operation writes only its own outputs (TransferWrites, by the declaring-identity key: an Iterator's
@@ -576,13 +605,29 @@ public sealed partial class Binding
         }
 
         var untied = false;
+        var rows = Reused(ref this.retentionChained, inputs.Length);
+        Array.Clear(rows);
+        var ruled = false; // Rule A's rows are the output's, the same in every storage they reach: formed once.
         for (var s = 0; s < count; s++)
         {
-            var reached = (met[s] & (Holding.Unstated | Holding.Loans)) != 0 || (reach & Holding.Unbounded) != 0;
-            if (writes && (reach & Holding.Unstated) != 0 && reached)
+            var whole = (met[s] & (Holding.Unstated | Holding.Any)) != 0 || (reach & Holding.Unbounded) != 0;
+            if (writes && (reach & Holding.Unstated) != 0 && (whole || (met[s] & Holding.Loans) != 0))
             {
-                transfer ??= call.Key == Transfer.None ? this.IteratorTransfer(call.Callee?.BoundSymbol, inputs, call.Premises) : call.Key;
-                this.WrittenUnstated(this.retentionKept[s], output, inputs, transfer.Value, call.Callee?.BoundSymbol);
+                if (!ruled)
+                {
+                    transfer ??= call.Key == Transfer.None ? this.IteratorTransfer(call.Callee?.BoundSymbol, inputs, call.Premises) : call.Key;
+                    this.WrittenUnstated(rows, output, inputs, transfer.Value, call.Callee?.BoundSymbol);
+                    ruled = true;
+                }
+
+                if (whole)
+                {
+                    Join(this.retentionKept[s], rows);
+                }
+                else
+                {
+                    met[s] |= Holding.Chained; // Through its Loan-carrying positions only: Storages joins the rows its Origin tests admit.
+                }
             }
             else if ((met[s] & Holding.Lent) != 0)
             {
@@ -677,7 +722,7 @@ public sealed partial class Binding
     {
         if (type is null)
         {
-            return Holding.Loans; // A part that does not substitute, or storage no Type states: it holds whatever it is (BU-36), never Free.
+            return Holding.Loans | Holding.Any; // A part that does not substitute, or storage no Type states: it holds whatever it is (BU-36).
         }
 
         written = Written(written);
@@ -698,7 +743,8 @@ public sealed partial class Binding
         var refers = run.End > run.Start;
         var stepped = false;
         var unbounded = false;
-        var loans = this.PrepareTypeStorage(type) != StorageOutcome.Prepared; // Rejected storage holds whatever it is (DECISIONS BU-36).
+        var any = this.PrepareTypeStorage(type) != StorageOutcome.Prepared; // Rejected storage holds whatever it is (DECISIONS BU-36).
+        var loans = any;
         var pointer = false;
         var hidden = false;
         for (var i = run.Start; i < run.End; i++)
@@ -728,6 +774,7 @@ public sealed partial class Binding
         }
 
         var met = (loans ? Holding.Loans : Holding.None) | (pointer ? Holding.Pointer : Holding.None);
+        met |= any ? Holding.Any : Holding.None;
         met |= step switch
         {
             HoldStep.Static => Holding.Static,

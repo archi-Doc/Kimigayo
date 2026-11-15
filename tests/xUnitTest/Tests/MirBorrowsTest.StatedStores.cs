@@ -537,6 +537,26 @@ public sealed partial class MirBorrowsTest
         func keepSt2(slot: uniq/((raw/u8, u64)), value: raw/u8) => ()
         func keepM(slot: uniq/((raw/u8 during a, raw/u8)), a: ref/u8, value: raw/u8) => ()
         func keep1(slot: raw/(raw/u8), value: raw/u8) => ()
+        func keepB(slot: uniq/((raw/u8 during a, u64)), a: ref/u8, value: raw/u8 during a) => ()
+        func keepB2(slot: uniq/((raw/u8 during a, u64)), a: ref/u8, value: raw/u8) => ()
+        func keepC(slot: uniq/((raw/u8 during a, u64)), a: ref/u8, b: ref/u8, value: raw/u8 during b)
+            origin b outlives a
+            return
+        func keepC2(slot: uniq/((raw/u8 during a, u64)), a: ref/u8, b: ref/u8, value: raw/u8 during b) => ()
+        struct SlotS {s}
+            let loan: Loan<ref/u8 during s>
+            public var at: raw/u8 during s
+            public init(r: ref/u8 during s)
+                self.loan = Loan.init(r)
+                self.at = r@follow@raw
+        func keepSl(x: uniq/(SlotS during t), value: raw/u8) => ()
+        func keepSl2(x: uniq/(SlotS during t), value: raw/u8 during t) => ()
+        func keepGs<T>(slot: uniq/((raw/T during a, u64)), a: ref/T, value: raw/T) => ()
+        func keepGu<T>(slot: uniq/((raw/T, u64)), a: ref/T, value: raw/T) => ()
+        func sink(o: uniq/(raw/u8), v: raw/u8) => ()
+        func usev<T>(v: ref/T) => ()
+        func keepL(slot: raw/(raw/((ref/i32 during a, u64))), a: ref/i32, value: raw/u8) => ()
+        func keepLQ(slot: raw/(raw/((ref/u8 during a, u64))), q: ref/(ref/u8 during a) during b) => ()
         func tRecBorrowOk(a: ref/u8)
             var kk: u8 = 1
             let r = kk@uniq
@@ -661,6 +681,116 @@ public sealed partial class MirBorrowsTest
             keep1(c@raw, spare)
             kk = 2
             usep(c)
+        func sAdmitBad()
+            var kk: u8 = 1
+            var z: u8 = 0
+            let rk = kk@ref
+            let q = z@ref
+            var c = (q@follow@raw, 0@u64)
+            keepB(c@uniq, q, rk@follow@raw)
+            kk = 2
+            usep(c.0)
+        func sUnstOk()
+            var kk: u8 = 1
+            var z: u8 = 0
+            let rk = kk@ref
+            let q = z@ref
+            var c = (q@follow@raw, 0@u64)
+            keepB2(c@uniq, q, rk@follow@raw)
+            kk = 2
+            usep(c.0)
+        func clauseBad()
+            var kk: u8 = 1
+            var z: u8 = 0
+            let rk = kk@ref
+            let q = z@ref
+            var c = (q@follow@raw, 0@u64)
+            keepC(c@uniq, q, rk, rk@follow@raw)
+            kk = 2
+            usep(c.0)
+        func clauseNoOk()
+            var kk: u8 = 1
+            var z: u8 = 0
+            let rk = kk@ref
+            let q = z@ref
+            var c = (q@follow@raw, 0@u64)
+            keepC2(c@uniq, q, rk, rk@follow@raw)
+            kk = 2
+            usep(c.0)
+        func slotStOk()
+            var kk: u8 = 1
+            var z: u8 = 0
+            let rk = kk@ref
+            let q = z@ref
+            var x = SlotS.init(r: q)
+            keepSl(x@uniq, rk@follow@raw)
+            kk = 2
+            usep(x.at)
+        func slotAdmBad()
+            var kk: u8 = 1
+            var z: u8 = 0
+            let rk = kk@ref
+            let q = z@ref
+            var x = SlotS.init(r: q)
+            keepSl2(x@uniq, rk@follow@raw)
+            kk = 2
+            usep(x.at)
+        func genStOk(a: ref/u8)
+            var kk: u8 = 1
+            let r = kk@uniq
+            var spare: raw/u8 = r@follow@raw
+            var c = (a@follow@raw, 0@u64)
+            keepGs(c@uniq, a, spare)
+            kk = 2
+            usep(c.0)
+        func genUnBad(a: ref/u8)
+            var kk: u8 = 1
+            let r = kk@uniq
+            var spare: raw/u8 = r@follow@raw
+            var x: u8 = 0
+            var c = (x@raw, 0@u64)
+            keepGu(c@uniq, a, spare)
+            kk = 2
+            usep(c.0)
+        func tRecPassOk(a: ref/u8)
+            var kk: u8 = 1
+            let r = kk@uniq
+            var spare: raw/u8 = r@follow@raw
+            var c = (a@follow@raw, 0@u64)
+            keepU(c@uniq, a, spare)
+            var out: raw/u8 = null
+            sink(out@uniq, c.0)
+            kk = 2
+            usep(out)
+        func tRecPassBad(a: ref/u8)
+            var kk: u8 = 1
+            let r = kk@uniq
+            var spare: raw/u8 = r@follow@raw
+            var x: u8 = 0
+            var c = (x@raw, 0@u64)
+            keepV(c@uniq, a, spare)
+            var out: raw/u8 = null
+            sink(out@uniq, c.0)
+            kk = 2
+            usep(out)
+        func bndLoansOk(a: ref/i32)
+            var kk: u8 = 1
+            let r = kk@uniq
+            var spare: raw/u8 = r@follow@raw
+            var c = (a, 0@u64)
+            var g = c@raw
+            keepL(g@raw, a, spare)
+            kk = 2
+            usev(c@ref)
+        func bndLoansBad()
+            var kk: u8 = 1
+            var w: ref/u8 = kk@ref
+            var x: u8 = 0
+            var c = (x@ref, 0@u64)
+            var g = c@raw
+            keepLQ(g@raw, w@ref)
+            kk = 2
+            usev(c@ref)
         """;
 
     // PLAN G338, SPEC 5.2.1 ("storage a pointer addresses `during o` is covered by the Loans of `o`"), 5.7's table, 15.6 Holders: a store through
@@ -784,7 +914,11 @@ public sealed partial class MirBorrowsTest
     // kept there (each `*Ok`). A raw layer stating none that the call writes keeps it
     // (each `*Bad`, the mixed storage's included); the rows of an unstated layer the parameter's Type expression writes are the rows of
     // the storage holding it, since it bounds what is stored past it to its pointee Type (5.7 Calls). tRecBorrowOk, tRecTypedOk, pRootOk,
-    // uRecOk and sRecOk fail before (`kk = 2`); zRecMixOk and dNoA are the A5 chain's U3b's punned rows (accepted on dev and here).
+    // uRecOk and sRecOk fail before (`kk = 2`); zRecMixOk and dNoA are the A5 chain's U3b's punned rows (accepted on dev and here). The
+    // consent review's twins (C5): a body-local Origin, a declared `outlives` clause, a slot's Field layer, a generic callee and the value
+    // passed on to a writer, each with its admitting twin. C3: past the parameter's bounding layer, the Loan-holding `(ref/i32 during a,
+    // u64)` storage takes rule A's rows only for the inputs its Origins admit (5.7 Calls "what its pointee Type admits"), so spare is not
+    // kept there (bndLoansOk, failing before), while q's referent names `a` and its chain of reads gives kk's borrow (bndLoansBad).
     [Theory]
     [InlineData("tRecBorrowOk", "")]
     [InlineData("tRecBorrowBad", "tRecBorrowBad: kk = 2")]
@@ -801,6 +935,18 @@ public sealed partial class MirBorrowsTest
     [InlineData("mMixBad", "mMixBad: kk = 2")]
     [InlineData("mMixOk", "")]
     [InlineData("kDirectBad", "kDirectBad: kk = 2")]
+    [InlineData("sAdmitBad", "sAdmitBad: kk = 2")]
+    [InlineData("sUnstOk", "")]
+    [InlineData("clauseBad", "clauseBad: kk = 2")]
+    [InlineData("clauseNoOk", "")]
+    [InlineData("slotStOk", "")]
+    [InlineData("slotAdmBad", "slotAdmBad: kk = 2")]
+    [InlineData("genStOk", "")]
+    [InlineData("genUnBad", "genUnBad: kk = 2")]
+    [InlineData("tRecPassOk", "")]
+    [InlineData("tRecPassBad", "tRecPassBad: kk = 2")]
+    [InlineData("bndLoansOk", "")]
+    [InlineData("bndLoansBad", "bndLoansBad: kk = 2")]
     public void AStatedRawLayerRetainsWhatItsOriginAdmits(string form, string expected)
     {
         var c = MirBuildTest.Compile(Prelude + ReachedForms[..ReachedForms.IndexOf("func tRecBorrowOk(", StringComparison.Ordinal)] + Form(ReachedForms, form));

@@ -978,6 +978,22 @@ public sealed partial class RetentionTest
     public void AStorageThatHoldsNoLoanRetainsNothing(string function, string expected)
         => Assert.Equal(expected, Declared(Bind(function + "\n"), "f"));
 
+    // C-352's C3 (SPEC 5.7 Calls: a parameter's raw layer without an Origin "bounds what the call stores through it to what its pointee
+    // Type admits"; 15.6.4: what the call stores there, "also as a part of a value of that layer's pointee Type", is retained "as above"):
+    // past t's layer the `ref/i32 during a` storage takes rule A's rows only for the inputs its Origins admit (Holding's Chained): not v of
+    // an unrelated Origin and Type, even two layers deep, nor q whose chain of reads gives a `ref/i32 during c`; v fitting `a`, q whose
+    // referent names `a` and a `T` the abstract part admits keep theirs; past a layer stating no Origin (the control) rule A keeps v.
+    [Theory]
+    [InlineData("func f(t: uniq/(raw/(ref/i32 during a)), v: ref/i64 during b) => ()", "store 0: own {0 Chain, 1 Value Chain}, reached {0 Chain} untied")]
+    [InlineData("func f(t: uniq/(raw/(ref/i32 during a)), v: ref/i32 during a) => ()", "store 0: own {0 Chain, 1 Value Chain}, reached {0 Chain, 1 Value Chain} untied")]
+    [InlineData("func f(t: uniq/(raw/((u64, (u8, ref/i32 during a)))), v: ref/i64 during b) => ()", "store 0: own {0 Chain, 1 Value Chain}, reached {0 Chain} untied")]
+    [InlineData("func f(t: uniq/(raw/(ref/i32 during a)), q: ref/(ref/i32 during a) during b) => ()", "store 0: own {0 Chain, 1 Value Chain}, reached {0 Chain, 1 Chain} untied")]
+    [InlineData("func f(t: uniq/(raw/(ref/i32 during a)), q: ref/(ref/i32 during c) during b) => ()", "store 0: own {0 Chain, 1 Value Chain}, reached {0 Chain} untied")]
+    [InlineData("func f<T>(t: uniq/(raw/((T, u64))), v: T) => ()", "store 0: own {0 Chain, 1 Value Chain}, reached {0 Chain, 1 Value Chain} untied")]
+    [InlineData("func f(t: uniq/(raw/(raw/i32)), v: ref/i64 during b) => ()", "store 0: own {0 Chain, 1 Value Chain}, reached {0 Chain, 1 Value Chain} untied")]
+    public void ALoanHoldingStoragePastABoundingLayerKeepsWhatItsOriginsAdmit(string function, string expected)
+        => Assert.Equal(expected, Declared(Bind(function + "\n"), "f"));
+
     // SPEC 5.7 Calls (D15; DECISIONS BU-24, the delta review's C4 item): a raw layer's Origin reaches its slot's keepers however deep the
     // slot is forwarded through nested Types, so ten forwarding levels keep the innermost Loan's referent writable through `p`, as one
     // does (a walk bounded at eight lost it), and a slot kept again through a raw pointer to its own Type keeps its rows.
