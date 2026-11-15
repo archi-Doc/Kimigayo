@@ -5,11 +5,22 @@ using Kimi.Compiler.Parsing;
 
 namespace Kimi.Compiler;
 
-// The local-region graph (SPEC 15.3.6, 15.4.4): the region slots of a reassignable local's Type, a var local's, a var Pattern binding's
-// or a var for slot's (their declarations are IsRegionOwner's; LocalRegionSlot), the contract bounds recorded on them, never a current
-// value (RecordLocalRegionBound, RecordRegionBound), their finite sources (LocalRegionSources) and the value that brought a source in
-// (LocalRegionSourceUse), and the relations judged through those sources (RegionContains, JudgeLocalRegion). The Types that carry the
-// regions are Binding.LocalRegions.Types.cs's.
+// The local-region graph (SPEC 15.3.6, 15.4.4): the region slots of a region owner's Type (IsRegionOwner: every local, a var Pattern
+// binding or a var for slot; LocalRegionSlot), the bounds recorded on them (RecordLocalRegionBound, RecordRegionBound), their finite
+// sources (LocalRegionSources) and the value that brought a source in (LocalRegionSourceUse), and the relations judged through those
+// sources (RegionContains, JudgeLocalRegion). The Types that carry the regions are Binding.LocalRegions.Types.cs's.
+// Output (PLAN G492-a (ii)): a `let` local's region has a value, the Origin its declaration fixes for the slot (PublishRegionValue: the
+// initializer's Origin there, or the omitted slot's solved candidate), also recorded as a bound of the region. Its readers at a use:
+// RegionValueAtUse (an Origin; SuppliedAtUse and so OriginAtUse read through it) and RegionValuesAt (a Type), RegionalAt through it.
+// Invariants: a value holds no region of its own body (it is read once, when published); values and bounds are reset each pass
+// (ResetLocalRegions); a `var` region has no value.
+// A written Origin binds as the slot it names, not its value (BindOrigin through SlotAtUse): the value is read at each use, by the
+// readers above, and a written Origin's region is what a comparison constrains.
+// Must not: let a reader at a use in the local's own body take a `let` slot as written. The one exception, decided at one place
+// (Binding.OriginProof's OriginAtUse with the comparison): a Callable comparison's relation, in its walk and its conditions alike, is a
+// later use that constrains the slot, so it reads the region, an inference variable (SlotAtUse; the owner's O-363 (a)). It constrains
+// the region only where the region is named, so a read elsewhere still takes the value (O-375 Q1 (a)). A nested function's signature or
+// body reads the region, fixed there (SPEC 15.3.4, DECISIONS BU-28).
 public sealed partial class Binding
 {
     private readonly Dictionary<BoundOrigin, LocalRegion> localRegions = new(ReferenceEqualityComparer.Instance);
@@ -176,7 +187,8 @@ public sealed partial class Binding
     // SPEC 15.3.6, 15.4.4 (PLAN G492-a (ii), revision 2): the Origin a region of a `let` local stands for where its own body reads it, its
     // value, which its declaration fixes (the initializer's Origin at that slot, or the slot's solved annotation candidate): a body nested
     // in that body, or a nested signature, reads the region itself, fixed there (15.3.4; DECISIONS BU-28). A value holds no region of its
-    // own body (PublishRegionValue reads it once), so a read is one step per region and a meet's operands are read once each.
+    // own body (PublishRegionValue reads it once), so a read is one step per region and a meet's operands are read once each. A Callable
+    // comparison's relation does not call it: it reads the region (the owner's O-363 (a); the contract above).
     internal BoundOrigin RegionValueAtUse(BoundOrigin origin, Koto use)
         => this.regionValues == 0 || origin.Kind is not (OriginKind.Inference or OriginKind.Intersection) ? origin : this.RegionValueIn(origin, BodyOwner(use));
 
