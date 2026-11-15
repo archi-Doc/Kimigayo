@@ -297,9 +297,9 @@ public sealed partial class Binding
 
         private static BoundType Component(BoundType type, int i) => TryPairLayer(type, out _, out var target) ? target : type.Components[i];
 
-        // SPEC 8.2.3's pair row: a pair layer whose admitted set includes `owner`, or is empty (8.3.4's Error), may be its target itself
-        // (PairHead, ProperPart, MarkCycleEdges).
-        private static bool MayBeItsTarget(SemanticsMask admitted) => (admitted & SemanticsMask.Owner) != 0 || admitted == SemanticsMask.None;
+        // SPEC 8.2.3's pair row: a pair layer whose admitted set includes `owner` may be its target itself (PairHead, ProperPart,
+        // MarkCycleEdges). An empty set (8.3.4's Error, 8.3.1's contradictory evidence) admits no `owner` and is disjoint from every set.
+        private static bool MayBeItsTarget(SemanticsMask admitted) => (admitted & SemanticsMask.Owner) != 0;
 
         // An Origin quantified in a Function Type, or a meet with one among its operands (a result's omitted Origin is the meet of the
         // per-call inputs, SPEC 8.10, 15.4.3): quantification structure (8.2.3's Function row).
@@ -694,7 +694,8 @@ public sealed partial class Binding
 
         // SPEC 8.2.3's pair row (8.3.4's admitted sets). Pair layers of one `s` share their head. A pair that may be its target itself
         // (MayBeItsTarget) meets every form: the truth varies (Unproven). Otherwise
-        // disjoint outer Semantics (`owner` for a Type that is no Semantics layer, another pair's admitted set) differ; where the heads
+        // disjoint outer Semantics (`owner` for a Type that is no Semantics layer, another pair's admitted set; an empty set is disjoint
+        // from every one) differ; where the heads
         // may agree the components decide in that case: one head on both sides decomposes, and a head that varies compares them too
         // while the identity stays Unproven (the premise-error row 4). A pair layer admitting exactly `owner` never meets (Add).
         // Every pair layer reaches it, the original `s/T` included (its one component is its target, Arity).
@@ -724,7 +725,7 @@ public sealed partial class Binding
             var admitted = binding.AdmittedSemantics(whole, this.scope!);
             var outer = paired ? binding.AdmittedSemantics(otherWhole, this.scope!)
                 : other.Kind == BoundTypeKind.Semantics ? other.Semantics.ToMask() : SemanticsMask.Owner;
-            if (MayBeItsTarget(admitted) || (paired && MayBeItsTarget(outer)) || outer == SemanticsMask.None)
+            if (MayBeItsTarget(admitted) || (paired && MayBeItsTarget(outer)))
             {
                 return (Unproven, pair, other, target, null);
             }
@@ -740,7 +741,7 @@ public sealed partial class Binding
 
         // SPEC 8.2.3 (Refuted, Cycles): whether `part` is a proper part of `whole` up to structure (Origins are never a known
         // difference): a route of steps into constructors' components, a pair layer's target included, with one step that is no pair
-        // admitting `owner` or none (`s/V` may be V itself), as the class graph's cycle edges count it (MarkCycleEdges); an abstract
+        // that may be its target (MayBeItsTarget), as the class graph's cycle edges count it (MarkCycleEdges); an abstract
         // Type and a family end a route (Reaches).
         private bool ProperPart(BoundType part, BoundType whole)
         {
