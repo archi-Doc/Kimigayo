@@ -34,6 +34,9 @@ public sealed partial class RetentionTest
 
     internal const string Phantom = "struct Ph<T>\n";
 
+    // A holder of a borrow by its Origin argument (C-352's C9 rows: a chain of reads through a struct Field).
+    internal const string ChainHolder = "struct Hd {s}\n    public var r: ref/i32 during s\n    public init(r: ref/i32 during s) => self.r = r\n";
+
     internal const string CappedRaw = "struct HS {s}\n    let loan: Loan<ref/u8 during s>\n    public var b: raw/(raw/u8) during s\n";
 
     internal const string Handle = Bad + "struct Sx\n    public var x: rc/Bad\nfunc f(s: uniq/Sx, p: raw/i32) => ()\nfunc g(s: uniq/Sx) => f(s, null)\n";
@@ -982,7 +985,9 @@ public sealed partial class RetentionTest
     // Type admits"; 15.6.4: what the call stores there, "also as a part of a value of that layer's pointee Type", is retained "as above"):
     // past t's layer the `ref/i32 during a` storage takes rule A's rows only for the inputs its Origins admit (Holding's Chained): not v of
     // an unrelated Origin and Type, even two layers deep, nor q whose chain of reads gives a `ref/i32 during c`; v fitting `a`, q whose
-    // referent names `a` and a `T` the abstract part admits keep theirs; past a layer stating no Origin (the control) rule A keeps v.
+    // referent names `a` and a `T` the abstract part admits keep theirs; past a layer stating no Origin (the control) rule A keeps v. The
+    // re-check's C9 twins: q's chain admitted by `origin c outlives a`, a chain through a Field (`Hd during a` admitted, `during c` not),
+    // and an Option payload position (v of another Origin and Type not admitted, v fitting `a` kept by its Value).
     [Theory]
     [InlineData("func f(t: uniq/(raw/(ref/i32 during a)), v: ref/i64 during b) => ()", "store 0: own {0 Chain, 1 Value Chain}, reached {0 Chain} untied")]
     [InlineData("func f(t: uniq/(raw/(ref/i32 during a)), v: ref/i32 during a) => ()", "store 0: own {0 Chain, 1 Value Chain}, reached {0 Chain, 1 Value Chain} untied")]
@@ -991,6 +996,11 @@ public sealed partial class RetentionTest
     [InlineData("func f(t: uniq/(raw/(ref/i32 during a)), q: ref/(ref/i32 during c) during b) => ()", "store 0: own {0 Chain, 1 Value Chain}, reached {0 Chain} untied")]
     [InlineData("func f<T>(t: uniq/(raw/((T, u64))), v: T) => ()", "store 0: own {0 Chain, 1 Value Chain}, reached {0 Chain, 1 Value Chain} untied")]
     [InlineData("func f(t: uniq/(raw/(raw/i32)), v: ref/i64 during b) => ()", "store 0: own {0 Chain, 1 Value Chain}, reached {0 Chain, 1 Value Chain} untied")]
+    [InlineData("func f(t: uniq/(raw/(ref/i32 during a)), q: ref/(ref/i32 during c) during b)\n    origin c outlives a\n    return", "store 0: own {0 Chain, 1 Value Chain}, reached {0 Chain, 1 Chain} untied")]
+    [InlineData(ChainHolder + "func f(t: uniq/(raw/(ref/i32 during a)), h: ref/(Hd during a) during b) => ()", "store 0: own {0 Chain, 1 Value Chain}, reached {0 Chain, 1 Chain} untied")]
+    [InlineData(ChainHolder + "func f(t: uniq/(raw/(ref/i32 during a)), h: ref/(Hd during c) during b) => ()", "store 0: own {0 Chain, 1 Value Chain}, reached {0 Chain} untied")]
+    [InlineData("func f(t: uniq/(raw/(Option<ref/i32 during a>)), v: ref/i64 during b) => ()", "store 0: own {0 Chain, 1 Value Chain}, reached {0 Chain} untied")]
+    [InlineData("func f(t: uniq/(raw/(Option<ref/i32 during a>)), v: ref/i32 during a) => ()", "store 0: own {0 Chain, 1 Value Chain}, reached {0 Chain, 1 Value Chain} untied")]
     public void ALoanHoldingStoragePastABoundingLayerKeepsWhatItsOriginsAdmit(string function, string expected)
         => Assert.Equal(expected, Declared(Bind(function + "\n"), "f"));
 
@@ -1017,6 +1027,21 @@ public sealed partial class RetentionTest
     {
         var c = Bind("func f<T, E>(x: T, y: E) => ()\nfunc g(x: uniq/(raw/(ref/i32 during a)) during p, y: ref/i32 during q) => f(x, y)\n");
         Assert.Equal(["store 0: own {0 Chain, 1 Value Chain} if {0 Value: p > a}, reached {0 Chain, 1 Chain} if {0 Value: p > a, 1 Value: q > a} untied"], Calls(c, "f"));
+    }
+
+    // C-352's C10 (SPEC 5.7 Calls: "a raw layer without an Origin in an environment binding's Type is one the Closure states in its own
+    // Fields, as a declaration does, never one a parameter's Type expression writes"): a Closure's environment is read with such layers
+    // stated (TyCtxt.ClosureEnvironment, Binding.ClosureStated), so q's layer bounds nothing past it and rule A's rows reach every storage
+    // of the receiver: v is kept past q (the chain's varRefLeafBad), where a bounding reading kept only the receiver's chain past it, and
+    // past a `var` raw binding of the Closure's own (cloVarPtrU8Bad), whose pointee storage no Type states.
+    [Theory]
+    [InlineData("var c = func [n, var q] (v: raw/u8)\n        unsafe => *q = *q\n", "store 0: own {0 Chain, 1 Value Chain}, reached {0 Chain, 1 Value Chain} untied")]
+    [InlineData("let m: raw/u8 = null\n    var c = func [var m] (v: raw/u8)\n        m = v\n", "store 0: own {0 Chain, 1 Value Chain}, reached {0 Chain, 1 Value Chain} untied")]
+    public void AClosureStatesTheRawLayersOfItsEnvironment(string closure, string expected)
+    {
+        var c = Bind("func h(spare: raw/u8)\n    var x: u8 = 0\n    var w: ref/u8 = x@ref\n    let n: u64 = 3\n    let q: raw/(ref/u8) = w@raw\n    " +
+            closure + "    c(spare)\n");
+        Assert.Equal([expected], ValueCalls(c));
     }
 
     // SPEC 5.7 Calls (D15; DECISIONS BU-24, the delta review's C4 item): a raw layer's Origin reaches its slot's keepers however deep the

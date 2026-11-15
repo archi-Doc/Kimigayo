@@ -285,6 +285,32 @@ public sealed partial class Binding
     // part is marked once per call (DECISIONS BU-19, BU-58).
     private BoundType WithUnstatedOrigins(BoundType declared) => this.MarkedParts(declared, this.rewrittenParts.Begin(this.storageVersion));
 
+    // SPEC 5.7 Calls ("a raw layer without an Origin in an environment binding's Type is one the Closure states in its own Fields, as a
+    // declaration does, never one a parameter's Type expression writes"; C-352's C10): a Closure environment's bindings marked as a
+    // declaration's kept parts are (WithUnstatedOrigins, BU-46), so TyCtxt.RawStated reads each such layer as stated and Holdings gives it
+    // `Holds: Any`: it bounds nothing past it. TyCtxt.ClosureEnvironment, the one reading of a Closure part as its body sees it, reads it.
+    internal BoundType ClosureStated(BoundType environment)
+    {
+        var query = this.rewrittenParts.Begin(this.storageVersion);
+        var components = this.RentTypes(environment.Components.Count);
+        try
+        {
+            var changed = false;
+            for (var i = 0; i < environment.Components.Count; i++)
+            {
+                components[i] = this.MarkedPart(environment.Components[i], query);
+                changed |= !ReferenceEquals(components[i], environment.Components[i]);
+            }
+
+            var parts = components.AsSpan(0, environment.Components.Count);
+            return changed ? this.types.Rebuild(environment, parts, environment.Origin, (BoundOrigin[])environment.OriginArguments) : environment;
+        }
+        finally
+        {
+            this.typeScratch.Return(components, clearArray: true);
+        }
+    }
+
     // A component's result (WithUnstatedOrigins), each distinct one with components marked once per query; a leaf is cheaper to mark
     // again than to record.
     private BoundType MarkedPart(BoundType part, uint query)
