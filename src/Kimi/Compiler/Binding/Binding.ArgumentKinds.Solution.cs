@@ -187,6 +187,71 @@ public sealed partial class Binding
             }
         }
 
+        // J2 (SPEC 10.5.1, 10.8, 15.3.6; the owner's O-358 (a), O-362 (a); PLAN G936): a callee variable that covariant evidence binds
+        // and a position without evidence names (CollectWaitingNames) is an Origin variable that the waiting part's check bounds as well
+        // as the evidence's fit, so the call opens it as its region; each relation is then judged after selection at its own source
+        // (JudgeSelectedCall, the waiting part's completion, the uses of the result) and ownership analysis solves the region with the
+        // body's other regions: with covariant uses exactly the meet of the bounds (SPEC 15.2.2). A Type slot that evidence names only at
+        // covariant positions (CollectCovariantEvidence), bound without an invariant binding and fixed by no explicit or declaring Type,
+        // takes its solution with the Origins at its covariant positions opened (OpenSlotOrigins); its structure and Semantics stay the
+        // evidence's, so applicability and ranking are unchanged and no candidate is solved twice. An Origin parameter that an evidence
+        // position names is published to the solve (OriginInference.WaitingNamed), which gives a covariant one no candidate but the
+        // call's region (CallRegion). A candidate without a Signature row reads nothing more.
+        internal readonly void OpenWaited()
+        {
+            var signature = false;
+            for (var i = 0; !signature && i < this.Rows.Length; i++)
+            {
+                signature = this.Rows[i].Contribution == Contribution.Signature;
+            }
+
+            if (!signature)
+            {
+                return;
+            }
+
+            var binding = this.Binding;
+            var slots = binding.RentSlotSet(CallSlotCount(this.Binder));
+            var covariant = binding.RentSlotSet(CallSlotCount(this.Binder));
+            var other = binding.RentSlotSet(CallSlotCount(this.Binder));
+            var origins = binding.waitingOrigins;
+            try
+            {
+                origins.Clear();
+                binding.CollectWaitingNames(this, ref slots, origins);
+                if (!slots.IsEmpty)
+                {
+                    binding.CollectCovariantEvidence(this, ref covariant, ref other);
+                }
+
+                var own = CallOwnSlots(this.Function).Count;
+                for (var g = 0; g < own && !covariant.IsEmpty; g++)
+                {
+                    if (slots.Contains(g) && covariant.Contains(g) && !other.Contains(g) && this.Types[g] is { CarriesOrigin: true } solution &&
+                        !binding.invariantSlots.Contains(g) && !this.FixedSlot(g))
+                    {
+                        var ordinal = 0;
+                        this.Frame.SetType(g, binding.OpenSlotOrigins(solution, this.Call, g, 1, ref ordinal));
+                    }
+                }
+
+                foreach (var origin in origins)
+                {
+                    if (this.OriginInference is { } inference && this.EvidenceNamed.Contains(origin.Slot))
+                    {
+                        inference.WaitingNamed.Add(origin);
+                    }
+                }
+            }
+            finally
+            {
+                origins.Clear();
+                binding.ReturnSlotSet(other);
+                binding.ReturnSlotSet(covariant);
+                binding.ReturnSlotSet(slots);
+            }
+        }
+
         // Each operation's parameter Type with the solution substituted, where it is complete.
         internal readonly void CompleteOperationTypes(Span<BoundArgumentOperation> operations)
         {
@@ -260,6 +325,11 @@ public sealed partial class Binding
         private readonly bool FitsCallable(Koto node, BoundType type)
             => node.BoundType is { } actual
                 ? this.Binding.ErasureSignatureFits(actual, type, node, out _) : this.Binding.FunctionGroupFits(node, node.BoundSymbol!, type, this.Scope);
+
+        // Whether the Type slot `slot` is fixed before any evidence (FixCallSlots): an explicit Type argument, or a constructor's slot
+        // that its declaring Type gives (an open construction slot is its own parameter there).
+        private readonly bool FixedSlot(int slot)
+            => slot < this.Fixed.Types.Length && this.Fixed.Types[slot] is { } bound && OwnSlot(bound, this.SlotOwner) != slot;
 
         private readonly Span<BoundOrigin> InputSpan() => this.Inputs.AsSpan(0, Math.Min(this.Inputs.Length, InputOriginCount(this.Binder)));
 

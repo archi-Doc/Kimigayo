@@ -10,8 +10,9 @@ namespace Kimi.Compiler;
 //   argument's own position, and the child rows of an argument, the positions of its composition (ChildPositions, AddChildPosition),
 //   composed once per candidate at its first solve (RetainChildRows, the probe's state) and retained, which every later solve of the
 //   candidate (CollectPositionPremises) and its selected call's judgment (JudgePositionRows) read, each leaf at its own sub-Type; both
-//   readers stay here until U5's shared relation judge. Its evidence leaves (IsEvidenceLeaf) are read by EvidenceNames and by a value
-//   call's solve (SolveValueCallOrigins, PLAN G504).
+//   readers stay here until U5's shared relation judge. Its evidence leaves (IsEvidenceLeaf) are read by EvidenceNames, by a value
+//   call's solve (SolveValueCallOrigins, PLAN G504) and by CollectCovariantEvidence, its Signature leaves by CollectWaitingNames (J2,
+//   PLAN G936).
 // - Inputs: the arguments, the candidate's parameter patterns, solution and contributions (SlotSolution.Contribute, ContributePayloads);
 //   the position composition (Binding.ArgumentKinds.Positions.cs) and each part's contribution (PartContribution) for child rows.
 // - Outputs: PositionRow; SlotSolution.Rows, the candidate's root rows, a slice of CallEvaluation.Rows (rowScratch); childRows, the
@@ -149,6 +150,106 @@ public sealed partial class Binding
                 {
                     this.CollectLeafPremises(ref solution, row with { Type = this.SubstituteType(pattern, solution.SlotOwner, solution.Types, solution.Lengths) });
                 }
+            }
+        }
+    }
+
+    // J2 (SPEC 10.5.1, 10.8, 15.3.6; the owner's O-358 (a), O-362 (a); PLAN G936): the callee's own Type slots (`slots`) and Origin
+    // parameters (`origins`) that a position without evidence names, a Signature leaf row's pattern or a Signature root's
+    // without child rows: the reading EvidenceNames makes of evidence positions, here in one walk of the retained rows for every slot
+    // and Origin at once. A slot or Origin that covariant evidence also binds is a variable the waiting part's check bounds too, so the
+    // candidate opens it as a region of the call (SlotSolution.OpenWaited).
+    private void CollectWaitingNames(in SlotSolution solution, ref SlotSet slots, HashSet<BoundOrigin> origins)
+    {
+        for (var i = 0; i < solution.Rows.Length; i++)
+        {
+            this.ChildGroup(solution, i, out var start, out var end);
+            if (start == end && solution.Rows[i] is { Contribution: Contribution.Signature, Pattern: { } pattern })
+            {
+                this.AddWaitingNames(pattern, solution.Binder, solution.SlotOwner, ref slots, origins);
+            }
+
+            for (var j = start; j < end; j++)
+            {
+                if (this.IsLeaf(solution.ChildSlice[0], j, end) && this.childRows[j] is { Contribution: Contribution.Signature, Pattern: { } leaf })
+                {
+                    this.AddWaitingNames(leaf, solution.Binder, solution.SlotOwner, ref slots, origins);
+                }
+            }
+        }
+    }
+
+    // J2: the own Type slots that evidence binds covariantly: named by an evidence position (an Evidence leaf row's pattern, an Evidence
+    // root's without child rows, the receiver's: EvidenceNames' reading) only at covariant positions of its pattern (SlotComponentPolarity;
+    // inside a Function Type none is). `covariant` gets each slot named at a covariant position, `other` each named at another.
+    private void CollectCovariantEvidence(in SlotSolution solution, ref SlotSet covariant, ref SlotSet other)
+    {
+        for (var i = 0; i < solution.Rows.Length; i++)
+        {
+            this.ChildGroup(solution, i, out var start, out var end);
+            if (start == end && solution.Rows[i] is { Contribution: Contribution.Evidence, Pattern: { } pattern })
+            {
+                this.AddEvidenceSlots(pattern, solution.SlotOwner, 1, ref covariant, ref other);
+            }
+
+            for (var j = start; j < end; j++)
+            {
+                if (this.IsEvidenceLeaf(solution, j, end) && this.childRows[j].Pattern is { } leaf)
+                {
+                    this.AddEvidenceSlots(leaf, solution.SlotOwner, 1, ref covariant, ref other);
+                }
+            }
+        }
+
+        if (solution.Binder is FunctionKoto { BoundSymbol.ReceiverIndex: >= 0 and var receiver } function &&
+            function.Parameters[receiver].Type.BoundType is { } receiverPattern)
+        {
+            this.AddEvidenceSlots(receiverPattern, solution.SlotOwner, 1, ref covariant, ref other);
+        }
+    }
+
+    private void AddEvidenceSlots(BoundType type, Koto owner, int polarity, ref SlotSet covariant, ref SlotSet other)
+    {
+        if (OwnSlot(type, owner) is >= 0 and var slot)
+        {
+            if (polarity > 0)
+            {
+                covariant.Add(slot);
+            }
+            else
+            {
+                other.Add(slot);
+            }
+        }
+
+        for (var i = 0; i < type.Components.Count; i++)
+        {
+            this.AddEvidenceSlots(type.Components[i], owner, this.SlotComponentPolarity(type, i, polarity), ref covariant, ref other);
+        }
+    }
+
+    // The own Type slots `pattern` names (OwnSlot) and the Origin parameters of `binder` its Origin summary holds.
+    private void AddWaitingNames(BoundType pattern, Koto binder, Koto owner, ref SlotSet slots, HashSet<BoundOrigin> origins)
+    {
+        AddSlots(pattern, owner, ref slots);
+        foreach (var origin in this.SummaryOf(pattern).Nodes)
+        {
+            if (origin.Kind == OriginKind.Parameter && ReferenceEquals(origin.Binder, binder))
+            {
+                origins.Add(origin);
+            }
+        }
+
+        static void AddSlots(BoundType type, Koto owner, ref SlotSet slots)
+        {
+            if (OwnSlot(type, owner) is >= 0 and var slot)
+            {
+                slots.Add(slot);
+            }
+
+            for (var i = 0; i < type.Components.Count; i++)
+            {
+                AddSlots(type.Components[i], owner, ref slots);
             }
         }
     }

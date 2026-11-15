@@ -45,6 +45,7 @@ public sealed partial class Binding
         inference.Variables.Clear();
         inference.WellFormed.Clear();
         inference.PremiseSolved.Clear();
+        inference.WaitingNamed.Clear();
         inference.Quantifiers.Clear();
         inference.Comparison = default;
         inference.Conditional = false;
@@ -170,6 +171,11 @@ public sealed partial class Binding
             var changed = false;
             foreach (var variable in inference.Variables)
             {
+                if (Waited(variable))
+                {
+                    continue;
+                }
+
                 var (upper, lower, _) = Limits(variable.Origin, variable.Polarity != 3);
                 var candidate = variable.Polarity == 2 ? lower : upper ?? lower;
                 if (variable.Polarity == 3 && (upper is null || lower is null ||
@@ -219,7 +225,7 @@ public sealed partial class Binding
             {
                 for (var i = 0; i < count; i++)
                 {
-                    representatives[i] = (Get(inference.Variables[i].Origin) is null ? Representative(inference.Variables[i]) : null)!;
+                    representatives[i] = (Get(inference.Variables[i].Origin) is null && !Waited(inference.Variables[i]) ? Representative(inference.Variables[i]) : null)!;
                 }
 
                 for (var i = 0; i < count; i++)
@@ -233,6 +239,16 @@ public sealed partial class Binding
             finally
             {
                 this.originScratch.Return(representatives, clearArray: true);
+            }
+        }
+
+        // J2: a waited variable is the call's region (OpenUnsolvedOrigins' region), set once the others are solved without it, so the
+        // candidate's parameter Types name it from its first fit on.
+        foreach (var variable in inference.Variables)
+        {
+            if (Waited(variable))
+            {
+                Set(variable.Origin, this.CallRegion(use, variable.Origin.Slot));
             }
         }
 
@@ -376,6 +392,11 @@ public sealed partial class Binding
             return upper ?? lower;
         }
 
+        // J2 (SPEC 15.3.6; the owner's O-362 (a)): a covariant variable that an evidence position and a position without evidence both
+        // name (WaitingNamed) is a variable the waiting part's check bounds too, which the solve does not see: it takes no evidence-only
+        // candidate or representative but the region of the call, judged after selection by each fit at its source.
+        bool Waited((BoundOrigin Origin, int Polarity) variable) => variable.Polarity == 1 && inference.WaitingNamed.Contains(variable.Origin);
+
         BoundOrigin Project(BoundOrigin origin) => declaringType?.Symbol is { } owner ?
             this.SubstituteStoredOrigin(origin, owner.Declaration, (BoundOrigin[])declaringType.OriginArguments) : origin;
 
@@ -465,6 +486,12 @@ public sealed partial class Binding
         // premises solve (DiscoverPremiseOrigins, the one writer); empty for a solve without such positions. The first published "which
         // position fixes this Origin" fact: U4's Decided column takes it over (its removal condition).
         internal List<BoundOrigin> PremiseSolved { get; } = new();
+
+        // J2 (SPEC 15.3.6; the owner's O-362 (a); PLAN G936): the callee's own Origins that an evidence position and a position without
+        // evidence both name (SlotSolution.OpenWaited, the one writer, a candidate's late solve only): the solve gives a covariant one no
+        // candidate but the call's region (CallRegion), which the waiting part's check bounds as the evidence's fit does; empty for any
+        // other solve.
+        internal HashSet<BoundOrigin> WaitingNamed { get; } = new(ReferenceEqualityComparer.Instance);
 
         // SPEC 15.3.4: the per-call binders (BoundType.Binder) of the Function Types the collection is inside, on either side
         // (CollectOriginInference, the one writer); empty between collections.

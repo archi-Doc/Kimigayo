@@ -604,8 +604,9 @@ public sealed partial class Binding
     // SPEC 10.2.1, 4.6.2, 15.6.4 steps 1, 3: after the expected result, the late pass of the evidence walk (the Literal parts' defaults
     // applied to the selected candidate and range typing), then the arguments' root rows (Contribute) and the first solve of the
     // candidate's Origins, which the well-formedness of each Signature position (F1, R4-M164: each leaf row of an argument,
-    // CollectPositionPremises, and each default it uses, `defaults`, DefaultSlots) shortens as an Evidence part's does (InferAdapted);
-    // false when the candidate is inapplicable.
+    // CollectPositionPremises, and each default it uses, `defaults`, DefaultSlots) shortens as an Evidence part's does (InferAdapted),
+    // after the variables that a waiting part bounds too are opened (J2, SlotSolution.OpenWaited); false when the candidate is
+    // inapplicable.
     private bool SolveLate(ref SlotSolution solution, int[] mapping, in SlotSet defaults)
     {
         var call = solution.Call;
@@ -628,12 +629,7 @@ public sealed partial class Binding
                 solution.OriginInference = this.BeginOriginInference(call, function);
             }
 
-            if (solution.OriginInference is not { } inference)
-            {
-                return true;
-            }
-
-            for (var i = 0; i < function.Parameters.Count; i++)
+            for (var i = 0; solution.OriginInference is { } inference && i < function.Parameters.Count; i++)
             {
                 if (defaults.Contains(i) && function.Parameters[i].Type.BoundType is { } parameter && solution.Pattern(parameter) is { } pattern &&
                     this.SubstituteType(pattern, solution.SlotOwner, solution.Types, solution.Lengths) is { } instantiated)
@@ -643,7 +639,9 @@ public sealed partial class Binding
                 }
             }
 
-            return this.SolveCallOriginInference(function, inference, solution.Origins, solution.Inputs, solution.DeclaringType, select: true);
+            solution.OpenWaited(); // J2: after every premise of the solve, before the solve and the operations' Types.
+            return solution.OriginInference is not { } solved ||
+                this.SolveCallOriginInference(function, solved, solution.Origins, solution.Inputs, solution.DeclaringType, select: true);
         }
         finally
         {
