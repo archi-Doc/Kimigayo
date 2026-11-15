@@ -256,6 +256,162 @@ public partial class TypeBindingTest
             """,
             string.Empty
         },
+        // s0i (invalid, SPEC 10.7, 15.3.5, 8.10; with PLAN G900): outer per-call at slot 0, nested fixed input at slot 0, uniq/ (f1j, the PLAN row).
+        {
+            "s0i",
+            """
+            func h(b: ref/i32, u: uniq/((ref/i32 during b) -> i32)) -> i32 => 0
+
+            func f() -> i32
+                let k: (ref/i32, uniq/((ref/i32) -> i32)) -> i32 = h
+                return 0
+            """,
+            "UnprovenOriginContract_Kd h"
+        },
+        // s1j (invalid, SPEC 10.7, 15.3.5, 8.10; with PLAN G900): outer per-call at slot 1, nested fixed input at slot 1.
+        {
+            "s1j",
+            """
+            func h(x: i32, b: ref/i32, u: uniq/((i32, ref/i32 during b) -> i32)) -> i32 => 0
+
+            func f() -> i32
+                let k: (i32, ref/i32, uniq/((i32, ref/i32) -> i32)) -> i32 = h
+                return 0
+            """,
+            "UnprovenOriginContract_Kd h"
+        },
+        // s2i (invalid, SPEC 10.7, 15.3.5, 8.10; with PLAN G900): nested Function Type of the outer one's arity (2 and 2), slot 0.
+        {
+            "s2i",
+            """
+            func h(b: ref/i32, u: uniq/((ref/i32 during b, i32) -> i32)) -> i32 => 0
+
+            func f() -> i32
+                let k: (ref/i32, uniq/((ref/i32, i32) -> i32)) -> i32 = h
+                return 0
+            """,
+            "UnprovenOriginContract_Kd h"
+        },
+        // s3i (invalid, SPEC 10.7, 15.3.5, 8.10; with PLAN G900): two outer per-call Origins; the nested input fixed at the first (slot 0).
+        {
+            "s3i",
+            """
+            func h(a: ref/i32, b: ref/i32, u: uniq/((ref/i32 during a) -> i32)) -> i32 => 0
+
+            func f() -> i32
+                let k: (ref/i32, ref/i32, uniq/((ref/i32) -> i32)) -> i32 = h
+                return 0
+            """,
+            "UnprovenOriginContract_Kd h"
+        },
+        // s4i (invalid, SPEC 10.7, 15.3.5, 8.10; with PLAN G900): an Origin restriction on the implementation (origin a outlives b), nested fixed at a.
+        {
+            "s4i",
+            """
+            func h(a: ref/i32, b: ref/i32, u: uniq/((ref/i32 during a) -> i32)) -> i32
+                origin a outlives b
+                return 0
+
+            func f() -> i32
+                let k: (ref/i32, ref/i32, uniq/((ref/i32) -> i32)) -> i32 = h
+                return 0
+            """,
+            "UnprovenOriginContract_Kd h"
+        },
+        // l2i (invalid, SPEC 10.7, 15.3.5, 8.10; with PLAN G900): raw/ layer: required raw/PC, implementation raw/FX(b).
+        {
+            "l2i",
+            """
+            func h(b: ref/i32, u: raw/((ref/i32 during b) -> i32)) -> i32 => 0
+
+            func f() -> i32
+                let k: (ref/i32, raw/((ref/i32) -> i32)) -> i32 = h
+                return 0
+            """,
+            "UnprovenOriginContract_Kd h"
+        },
+        // l4i (invalid, SPEC 10.7, 15.3.5, 8.10; with PLAN G900): a Tuple under uniq/: uniq/(FX(b), i32).
+        {
+            "l4i",
+            """
+            func h(b: ref/i32, u: uniq/((ref/i32 during b) -> i32, i32)) -> i32 => 0
+
+            func f() -> i32
+                let k: (ref/i32, uniq/((ref/i32) -> i32, i32)) -> i32 = h
+                return 0
+            """,
+            "UnprovenOriginContract_Kd h"
+        },
+        // a0i (invalid, SPEC 10.7, 15.3.5, 8.10; with PLAN G900): call argument.
+        {
+            "a0i",
+            """
+            func h(b: ref/i32, u: uniq/((ref/i32 during b) -> i32)) -> i32 => 0
+
+            func take(k: (ref/i32, uniq/((ref/i32) -> i32)) -> i32) -> i32 => 0
+
+            func f() -> i32 => take(h)
+            """,
+            "NoApplicableOverload_Kd take(h)"
+        },
+        // a1i (invalid, SPEC 10.7, 15.3.5, 8.10; with PLAN G900): return.
+        {
+            "a1i",
+            """
+            func h(b: ref/i32, u: uniq/((ref/i32 during b) -> i32)) -> i32 => 0
+
+            func f() -> (ref/i32, uniq/((ref/i32) -> i32)) -> i32 => h
+            """,
+            "UnprovenOriginContract_Kd h"
+        },
+        // g0i (invalid, SPEC 10.7, 15.3.5, 8.10; with PLAN G900): inside a generic function.
+        {
+            "g0i",
+            """
+            func h(b: ref/i32, u: uniq/((ref/i32 during b) -> i32)) -> i32 => 0
+
+            func f<T>(t: T) -> i32
+                let k: (ref/i32, uniq/((ref/i32) -> i32)) -> i32 = h
+                return 0
+            """,
+            "UnprovenOriginContract_Kd h"
+        },
+        // g1i (invalid, SPEC 10.7, 15.3.5, 8.10; with PLAN G900): a generic implementation, T bound to i32.
+        {
+            "g1i",
+            """
+            func h<T>(b: ref/T, u: uniq/((ref/T during b) -> i32)) -> i32 => 0
+
+            func f() -> i32
+                let k: (ref/i32, uniq/((ref/i32) -> i32)) -> i32 = h
+                return 0
+            """,
+            "UnprovenOriginContract_Kd h"
+        },
+        // g3i (invalid, SPEC 10.7, 15.3.5, 8.10; with PLAN G900): a generic Function Type parameter bound to PC by a written Type argument, the implementation's nested input fixed.
+        {
+            "g3i",
+            """
+            func g<T>(k: (ref/i32, uniq/T) -> i32) -> i32 => 0
+
+            func h(b: ref/i32, u: uniq/((ref/i32 during b) -> i32)) -> i32 => 0
+
+            func f() -> i32 => g<(ref/i32) -> i32>(h)
+            """,
+            "NoApplicableOverload_Kd g<(ref/i32) -> i32>(h)"
+        },
+        // m0i (invalid, SPEC 10.7, 15.3.5, 8.10; with PLAN G900): a nested Type with its own per-call input and a fixed `during b` input, required uniq/PC2, b at the outer slot 1 (the fixed input at its own index 1).
+        {
+            "m0i",
+            """
+            func h(x: ref/i32, b: ref/i32, u: uniq/((ref/i32, ref/i32 during b) -> i32)) -> i32 => 0
+
+            func f() -> i32
+                let k: (ref/i32, ref/i32, uniq/((ref/i32, ref/i32) -> i32)) -> i32 = h
+                return 0
+            """,
+            "UnprovenOriginContract_Kd h"
+        },
         // a2i (invalid, SPEC 10.7, 15.3.5, 8.10): call argument, the outer per-call Origin at slot 1 (s1i at an argument).
         {
             "a2i",

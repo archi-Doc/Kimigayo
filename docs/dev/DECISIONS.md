@@ -9364,6 +9364,8 @@ resumed by R4-M86 (2026-10-20).
   - Ended by R5-M192 (2026-11-05, R6-check H11a): the `ContainsOrigin(BoundType, …)` stay walk and the summary readers
     `ResultFixedForCall` and `FixedInBody` (R4-M152's gate) are deleted.
 
+  - Readers added by PLAN G888: `MentionsOriginSlot` (EvidenceNames), `PrepareSpecializations`' header-Origin check (Nodes and
+    RawNodes) and its B2 gate (Nodes); `NamesOrigin`, unused since R1b-1, deleted.
 - **BU-64 ContractType rewrites each distinct part once per call: a per-query table, `contractParts`, superseding BU-19's rejection of
   a table for it** (2026-10-30; PLAN G309, unit bu82) SPEC 8.2, 8.4; R4's V16.
   - Census: on `D1<ref/i32 during a>` ContractType/ContractTypeCore took 3,453,264 visits at n = 16 in Bind (7,035 root calls:
@@ -13397,7 +13399,8 @@ resumed by R4-M86 (2026-10-20).
   - `TypeContext` gives a `specialize func` header's Type argument the input row: each omitted aggregate slot is the header's
     universal input Origin (`OriginKind.Input`, `Occurrence` the slot, `InputIndex` -1), the call's `T`-Origin, which
     `CompleteImplementationOrigins` then gives the restated inputs and result through the substituted contract.
-  - `PrepareSpecializations` rejects an Origin the header wrote in a Type argument (8.13.2: it restricts the admitted bindings) with
+  - `PrepareSpecializations` rejects an Origin the header wrote in a Type argument (8.13.2: a header's Type argument states no
+    Origin, the owner's O-318 (b) and O-324 (a)) with
     `IncompatibleContractImplementation_Kd`; Origins bound inside the argument pass.
   - Located `Unsupported_Kd` until the argument has a `TypePosition` of its own: an omitted borrow layer of T's binding (argument or
     restated input), a Function Type result in the argument that no input of its own gives, and an undecided inherited Constraint
