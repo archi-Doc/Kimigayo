@@ -1,5 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using System.Reflection;
 using Kimi;
 using Kimi.Compiler;
 using Kimi.Compiler.Mir;
@@ -145,7 +146,8 @@ public partial class EffectBoundImplementationTest
     // intrinsic, MIR's row of it (MirDescriptors; MirEffects reads the two). Every library function or $abort that is no body is an
     // intrinsic, and of those Console output and the test temporary directory alone are environment effects (the Storage and Raw
     // families, the handles, Text.writer and the fixed failures act only on their inputs and the allocator); a library body is no
-    // bodyless category; a built-in target (equality, comparison) is a shim, which acts on its inputs.
+    // bodyless category; each of the eight built-in targets (Binding.PrepareBuiltinTargets: equality, comparison and the six arithmetic
+    // operations) is a shim, which acts on its inputs (MirEffects.Class's Shim arm), and the tuple comparisons' calls target two of them.
     [Fact]
     public void EveryCompilerFunctionHasOneEffectClass()
     {
@@ -170,7 +172,16 @@ public partial class EffectBoundImplementationTest
         Assert.Equal(2, contracts.Length);
         Assert.Contains(KimiDeclarationId.Equatable, contracts);
         Assert.Contains(KimiDeclarationId.Comparable, contracts);
-        Assert.All(shims, static x => Assert.Equal(BodylessKind.Shim, TyCtxt.Bodyless(x)));
+        var targets = new[] { (BindingSymbol?)Field("builtinEquals"), (BindingSymbol?)Field("builtinCompare") }
+            .Concat((BindingSymbol?[])Field("builtinArithmetic")!).Select(static x => x!).ToArray();
+        Assert.Subset(targets.ToHashSet(), shims.ToHashSet());
+        Assert.Equal(
+            new[] { KimiDeclarationId.Equatable, KimiDeclarationId.Comparable, KimiDeclarationId.Addable, KimiDeclarationId.Subtractable, KimiDeclarationId.Multipliable, KimiDeclarationId.Dividable, KimiDeclarationId.RemainderProvider, KimiDeclarationId.Negatable },
+            targets.Select(static x => TyCtxt.Contract(x).LibraryDeclaration!.Value));
+        Assert.All(targets, static x => Assert.Equal(BodylessKind.Shim, TyCtxt.Bodyless(x)));
+
+        // A built-in target Binding prepares (Binding.PrepareBuiltinTargets), by its field.
+        object? Field(string name) => typeof(Binding).GetField(name, BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(c.Binding);
     }
 
     // SPEC 8.11.3, 8.11.2, 15.6.4: confined is judged over every body the witness reaches, which its calls select: a helper, a recursive

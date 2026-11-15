@@ -647,10 +647,14 @@ public sealed partial class MirEffectsTest(ITestOutputHelper output)
 
     // SPEC 8.11.2, 22.1's Test row (R8-G1 row D3): Test.tempDirectory, the case's temporary directory from the environment, is an
     // environment effect, so a confined slot of a test-only source in a test build that calls it fails its bound: one record at the slot;
-    // its twin without the call reports none.
+    // its twin without the call reports none. A direct call takes the intrinsic's class from its descriptor; a call through its function
+    // item takes it from Binding's category of the function (MirEffects.Class): the same record, and none through Raw.allocate's item,
+    // whose Storage is created in the call (SPEC 8.11.2's table; Raw.release on it is a raw access, Allocation is permitted).
     [Theory]
     [InlineData("        let path = Test.tempDirectory()\n", "UnsatisfiedEffectBound_Kd public virtual func read(self: objref/Self) -> i32 1")]
     [InlineData("        let path = \"x\"\n", "")]
+    [InlineData("        let f = Test.tempDirectory\n        let path = f()\n", "UnsatisfiedEffectBound_Kd public virtual func read(self: objref/Self) -> i32 1")]
+    [InlineData("        let f = Kimi.Raw.allocate<i32>\n        let p = f(1)\n        unsafe\n            Kimi.Raw.release(storage: p)\n", "")]
     public void AConfinedTestSlotOwesTheTemporaryDirectorysClass(string body, string expected)
     {
         var c = Compilation.CreateForTest();
@@ -669,7 +673,7 @@ public sealed partial class MirEffectsTest(ITestOutputHelper output)
     // effect of its own), as an intrinsic (TyCtxt.Bodyless) by that row, Inputs, as Text.writer's ErasedWriter: the Writer's reserve it runs is checked against
     // its confined bound where Text.writer erases it. S2a's built-in bodies are its first callers (AConfinedLeafWriteReportsNothing).
     [Fact]
-    public void AnErasedReserveCallIsClassedByItsStorageFamily()
+    public void AnErasedReserveCallIsClassedByItsIntrinsicRow()
     {
         var library = Compilation.CreateForTest().Library;
         var reserve = library.GetSymbol(KimiDeclarationId.StorageErasedReserve)!;
