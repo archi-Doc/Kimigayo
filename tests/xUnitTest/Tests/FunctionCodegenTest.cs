@@ -1669,6 +1669,19 @@ public sealed partial class FunctionCodegenTest
         Assert.Equal(applies, set.IsGenerated(closure));
     }
 
+    // R7-C2c2 c2-4 (C2 ruling 159, DECISIONS R5-M153): a member whose condition is Refuted for an instance does not exist for it, so its
+    // instantiated condition is a premise nowhere; the override is still checked in its own declared scope, and its own errors stay.
+    [Fact]
+    public void ARefutedSlotsOverrideIsCheckedInItsOwnScope()
+    {
+        var c = Analyze(
+            "contract Marker\nstruct Thing\n    public init() => ()\nopen struct Base<T>\n    public init() => ()\n" +
+            "    public virtual func mark(self: objref/Self) -> i32\n        T is Marker\n        return 5\n" +
+            "struct Plain : Base<Thing>\n    public init() => ()\n    override func mark(self: objref/Self) -> i32\n        return true\n",
+            OutputKind.Library);
+        Assert.Equal(["TypeMismatch_Kd"], CompilationTestHelper.PublishedErrors(c).Select(static x => x.Code.ToString()));
+    }
+
     // DECISIONS R5-M153, against over-exclusion: no Closure's body is a Library output root (Generates), yet each one a generated body makes
     // at its Aggregate(Closure) site is Generated through that target: in an accessor's get and set, a destructor, a default template and a
     // static's initializer.

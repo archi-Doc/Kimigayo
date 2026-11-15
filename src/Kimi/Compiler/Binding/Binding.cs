@@ -253,6 +253,7 @@ public sealed partial class Binding
         this.capabilitiesReady = true;
         this.ValidateConformances(mode, false);
         this.VerifyEarlyProjections(); // The proofs answer from here on (contractHeadersReady).
+        this.SettleVirtualOverridePremises(); // R7-C2c2 c2-4: a refuted inherited condition is a premise nowhere (R5-M153).
         this.ValidateConstraintEnvironments(mode);
         this.PrepareSpecializations();
         this.CompleteImplicitConstructors();

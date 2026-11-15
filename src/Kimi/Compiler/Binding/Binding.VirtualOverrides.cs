@@ -320,9 +320,6 @@ public sealed partial class Binding
                 continue;
             }
 
-            var frame = this.BeginConsultation(function); // A site frame: the override's premises are its facts.
-            this.PrepareVirtualOverridePremises(function, slot);
-            this.DropConsultation(frame);
             this.CheckVirtualOverrideSignature(function, slot);
             if (function.BindingFailure == BindingFailure.None && !this.CompleteImplementationOrigins(function, slot.Original, [], [], out var incompatible, slot.DeclaringType, self))
             {
@@ -418,6 +415,27 @@ public sealed partial class Binding
             {
                 this.AddSlotMembers(block.Items);
             }
+        }
+    }
+
+    // The overrides' inherited conditions are decided once the proofs answer (after VerifyEarlyProjections; before it every
+    // conformance proof is Unknown): a condition Refuted for the slot's instance is a premise nowhere, since the member does not exist
+    // for that instance (DECISIONS R5-M153), so InheritVirtualConstraints' skip is reached; a Proven or Unknown one is the body's
+    // premise. Each override that selected its slot (not a duplicate, its signature complete) takes them once per pass.
+    private void SettleVirtualOverridePremises()
+    {
+        foreach (var (function, implementation) in this.virtualOverrides)
+        {
+            var original = implementation.Slot.Original;
+            if (function.BoundSymbol?.Scope.Owner.BoundSymbol is not { } typeSymbol || IncompleteSignature(original) is not null ||
+                !this.overrideEntries.TryGetValue((typeSymbol, original), out var entry) || !ReferenceEquals(entry, function))
+            {
+                continue;
+            }
+
+            var frame = this.BeginConsultation(function); // A site frame: the override's premises are its facts.
+            this.PrepareVirtualOverridePremises(function, implementation.Slot);
+            this.DropConsultation(frame);
         }
     }
 
