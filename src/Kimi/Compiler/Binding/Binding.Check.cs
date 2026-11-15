@@ -9,7 +9,8 @@ namespace Kimi.Compiler;
 // - Responsibility: the pass's failure producers (the definition obligations, the needed conformance paths and capability sites, the
 //   call and runtime-test Constraint checks, the part prerequisites, Unvisited to Unresolved); in a Final pass, then, the HIR of every
 //   module, the library included (PublishPass), and H1's TransferRequired judgment over it (CheckTransfers, DECISIONS BU-84), with one
-//   republication when it failed a node; then the counting of the node states and the collection of the issues.
+//   republication when it failed a node; then the counting of the node states and the collection of the issues, which ends the
+//   pass's failure production (producing: a refusal after it fails no node, Binding.RefuseProof).
 // - Inputs: the bound nodes, the obligations, the needed sites and paths, the facts the pass recorded.
 // - Outputs: every failure the pass decides; the published HIR columns of a Final pass; the pass summary, issues and derived issues.
 // - Invariants: every step that decides a failure runs before the publication, so the published columns describe the pass's final
@@ -20,21 +21,33 @@ public sealed partial class Binding
     // Each call Binding synthesized in this pass, with its consumer (BindSynthesizedCall).
     private Dictionary<InvocationKoto, Koto>? synthesizedCalls;
 
+    // Whether a node failed now is this pass's failure: from a pass's start (Bind) or a re-check's (CheckBound) until Check has
+    // counted the node states. After it the pass is published: its lints, MIR, emission and the editor's queries fail no node.
+    private bool producing;
+
     private BindingResult Check(BindingMode mode)
     {
-        this.ProduceFailures(mode);
-        if (mode == BindingMode.Final)
+        this.producing = true; // A re-check's start (CheckBound); a Bind raised it at its own.
+        try
         {
-            this.PublishPass();
-            if (this.CheckTransfers())
+            this.ProduceFailures(mode);
+            if (mode == BindingMode.Final)
             {
-                // H1 (DECISIONS BU-84): its failed nodes are published Error, which the assertion checks creates no new subject.
                 this.PublishPass();
-                this.AssertTransfers();
+                if (this.CheckTransfers())
+                {
+                    // H1 (DECISIONS BU-84): its failed nodes are published Error, which the assertion checks creates no new subject.
+                    this.PublishPass();
+                    this.AssertTransfers();
+                }
             }
-        }
 
-        return this.CountStates(mode);
+            return this.CountStates(mode);
+        }
+        finally
+        {
+            this.producing = false; // Also when a re-check throws: a later query fails no node.
+        }
     }
 
     // Every failure the pass decides at its end, in the order the nodes were bound.

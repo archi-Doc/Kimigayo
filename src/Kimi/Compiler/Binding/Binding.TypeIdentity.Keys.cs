@@ -1,5 +1,7 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using System.Runtime.InteropServices;
+
 namespace Kimi.Compiler;
 
 // Binding.TypeIdentity's class keys (the entry file states the contract; R7-C2c2 c2-1): ClassKey, a Type's key in a view's identity
@@ -118,7 +120,42 @@ public sealed partial class Binding
     private sealed partial class IdentityClasses
     {
         private readonly Dictionary<BoundType, BoundType> keys = new(ReferenceEqualityComparer.Instance); // ClassKey's answers (R7-C2c2)
-        private readonly Dictionary<int, BoundType?> least = new(); // Representative's answer per class root (R7-C2c2)
+        private readonly Dictionary<int, (BoundType? Least, BoundType? Complete)> scanned = new(); // per class root: Representative's and CompleteMember's answers
+        private readonly Dictionary<int, (int Start, int Count)> projections = new(); // ProjectionMembers' range per class root (G881)
+        private readonly List<BoundType> projectionMembers = new();
+
+        // PLAN G881: the projection members of a Type's class in Order, appended to `into`, where Members lists the class (ContractSolver's
+        // row (5) walks them). Each class is scanned and sorted once per table, so a link of a parameter-only class costs a lookup.
+        internal void ProjectionMembers(BoundType type, List<BoundType> into)
+        {
+            var root = this.ListedRoot(type);
+            if (root < 0)
+            {
+                return;
+            }
+
+            if (!this.projections.TryGetValue(root, out var range))
+            {
+                var start = this.projectionMembers.Count;
+                for (var m = this.head[root]; m >= 0; m = this.next[m])
+                {
+                    binding.IdentityMateWork++;
+                    if (this.types[m].Kind == BoundTypeKind.AssociatedProjection)
+                    {
+                        this.projectionMembers.Add(this.types[m]);
+                    }
+                }
+
+                range = (start, this.projectionMembers.Count - start);
+                CollectionsMarshal.AsSpan(this.projectionMembers).Slice(range.Start, range.Count).Sort(static (x, y) => Order(x, y));
+                this.projections[root] = range;
+            }
+
+            for (var i = range.Start; i < range.Start + range.Count; i++)
+            {
+                into.Add(this.projectionMembers[i]);
+            }
+        }
 
         // R7-C2c2: the table's key of a Type ClassKey formed from it, or null. Keys are a function of the closed table (no class joins
         // after Close), so each Type is keyed once per table; they go with the table at its next Open.
@@ -128,39 +165,54 @@ public sealed partial class Binding
 
         // R7-C2c2: the key of a class in state One whose meets are complete, its least parameter or projection by Order (shallowest
         // first); null for a Type that is no node, a class with no such member, or an erroneous one (an erroneous class keys nothing).
-        // The table's finality is not read: it decides only reuse (ContractSolver's kept rows). A class's members are fixed after Close,
-        // so each class is scanned once per table, whatever the number of its members keyed. A constructed Type receives no key (ClassKey).
-        internal BoundType? Representative(BoundType type)
+        // The table's finality is not read: it decides only reuse (ContractSolver's kept rows). A constructed Type receives no key (ClassKey).
+        internal BoundType? Representative(BoundType type) => this.Scanned(type).Least;
+
+        // N9 (SPEC 8.2.3, 8.3.2): the complete constructed member (no parameter in it) of the same class, least by Order (the members
+        // agree, so any one decides a proposition by the closed world); null otherwise. With Representative it is the one fact c2-1's
+        // rule rests on: a constructed member's conformance is ResolveConformance's alone. Its readers: IdentityRefuted (a parameter or
+        // projection bound by a premise, G866) and ProveProposition's contradiction check (MemberVerdict, N9). The table's Completion is
+        // not read: until R7-C2e2 threads Completion through the
+        // judgments' answers, the answer is that of the pass it is asked in, as every judgment's.
+        internal BoundType? CompleteMember(BoundType type) => this.Scanned(type).Complete;
+
+        // The one class-validity rule and member scan behind both answers: a parameter's or projection's class in state One whose
+        // meets are complete, scanned once per table (its members are fixed after Close), whatever the number of its members asked.
+        private (BoundType? Least, BoundType? Complete) Scanned(BoundType type)
         {
             if (type.Kind is not (BoundTypeKind.Parameter or BoundTypeKind.AssociatedProjection) || !this.node.TryGetValue(type, out var n))
             {
-                return null;
+                return default;
             }
 
             var root = this.Find(n);
             if (this.state[root] != One || this.incompleteClass[root])
             {
-                return null;
+                return default;
             }
 
-            if (this.least.TryGetValue(root, out var known))
+            if (!this.scanned.TryGetValue(root, out var answer))
             {
-                return known;
-            }
-
-            BoundType? best = null;
-            for (var m = this.head[root]; m >= 0; m = this.next[m])
-            {
-                var member = this.types[m];
-                binding.IdentityKeyWork++;
-                if (member.Kind is BoundTypeKind.Parameter or BoundTypeKind.AssociatedProjection && (best is null || Order(member, best) < 0))
+                BoundType? best = null;
+                BoundType? complete = null;
+                for (var m = this.head[root]; m >= 0; m = this.next[m])
                 {
-                    best = member;
+                    var member = this.types[m];
+                    binding.IdentityKeyWork++;
+                    if (member.Kind is BoundTypeKind.Parameter or BoundTypeKind.AssociatedProjection)
+                    {
+                        best = best is null || Order(member, best) < 0 ? member : best;
+                    }
+                    else if (!member.ContainsParameter)
+                    {
+                        complete = complete is null || Order(member, complete) < 0 ? member : complete;
+                    }
                 }
+
+                this.scanned[root] = answer = (best, complete);
             }
 
-            this.least[root] = best;
-            return best;
+            return answer;
         }
     }
 }

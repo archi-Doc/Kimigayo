@@ -132,6 +132,7 @@ public sealed partial class Binding
         }
 
         this.running = true;
+        this.producing = true;
         try
         {
             // SyntaxIds: each module is renumbered only when parsing or an edit changed its syntax since it was last numbered. Its
@@ -172,6 +173,7 @@ public sealed partial class Binding
         finally
         {
             this.running = false;
+            this.producing = false; // A pass that did not finish produced none.
         }
     }
 
