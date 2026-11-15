@@ -152,21 +152,29 @@
 //   entry's serial, per link, with whether that walk recorded an identity row (c2-2: such rows answer only a refinement among them);
 //   and, in a table of their own, a Contract's head depth. Rows are kept only in a Kept entry (both need final keys and every reading
 //   kept), so a row lives no longer than its entry.
-// - Where: the kept region (KeptRegion, R7-M20's rule, which Reading and PremiseRefines both ask), an outermost request, a
-//   preparation that formed no reading, final keys (no identity premise, or a Final identity table), and a Complete walk: every
-//   availability read it made was Complete (W6, W8). Nested demands never read or fill the rows.
-// - Not pinned by a row (located invariants; R7-C2e2 e2-3a's implementation review, mutations `admit`: rows kept whatever the
-//   walk's Completion, and `w8`: an Unknown read Complete): the admission (PremiseRefines' and FirstRows' test of enumerateCompletion) and W8's
-//   Provisional for a Pending state (ReadSourceState) decide only what is kept, and only a walk inside a publication round can
-//   keep a row that differs from a fresh walk's: outside a round a Pending state stays as it is until the next publication's
-//   start, which forgets the row. Such a row is stale from the source's settling until that start: in the rest of its round,
-//   in the later rounds and in the checks that follow the rounds. The difference exists (under
-//   `admit`, ClosedConformancePrerequisiteBindingTest's cap10 with X before R answers `T is Copy` from the stale rows after R
-//   settled; n3b likewise in both orders), but no record moves: Supply's one-level eager derivation answers the same proposition. That
-//   derivation goes at C3, and from then on the admission alone keeps such rows out. Under `w8` no admission changes: a walk
-//   that reads a Contract Pending also reads the derived facts the eager derivation filed from it, not found and so Provisional
-//   by W6. Measured on 48 programs (the 16 coverage rows, Hello, Milestone26; cap6, cap6n, cap3b, cap9, cap10, n3b, n3c, n3d
-//   and cyc1 in both orders; twelve probes) and the Unit's classes: no record and no test differs under either mutation.
+// - Where: the kept region (KeptRegion, R7-M20's rule, which Reading asks and both keepers, PremiseRefines and FirstRows, ask
+//   through RowsRequest), an outermost request, a preparation that formed no reading, final keys (no identity premise, or a Final
+//   identity table), and a Complete walk: every availability read it made was Complete (W6, W8). Nested demands never read or fill
+//   the rows.
+// - Not pinned by a row (located invariants; R7-C2e2 e2-3a's implementation review and its W-224 merge review): the admission (each
+//   keeper's test of enumerateCompletion, PremiseRefines' and FirstRows') and W8's Provisional for a Pending state (ReadSourceState)
+//   decide only what is kept, and only a walk inside a publication round can keep a row that differs from a fresh walk's: outside a
+//   round a Pending state stays as it is until the next publication's start, which forgets the row. Such a row is stale from the
+//   source's settling until that start: in the rest of its round, in the later rounds and in the checks that follow the rounds.
+//   What was measured, by mutation:
+//   - PremiseRefines' admission (`admit`: rows kept whatever the walk's Completion) and W8 (`w8`: an Unknown read Complete), on a
+//     base before FirstRows: 48 programs (the 16 coverage rows, Hello, Milestone26; cap6, cap6n, cap3b, cap9, cap10, n3b, n3c, n3d
+//     and cyc1 in both orders; twelve probes) and the Unit's classes: no record and no test differs under either mutation. The
+//     difference exists (under `admit`, ClosedConformancePrerequisiteBindingTest's cap10 with X before R answers `T is Copy` from
+//     the stale rows after R settled; n3b likewise in both orders), but no record moves: Supply's one-level eager derivation answers
+//     the same proposition. That shadow covers PremiseRefines' answers alone; the derivation goes at C3, and from then on the
+//     admission alone keeps such rows out. Under `w8` no admission changes: a walk that reads a Contract Pending also reads the
+//     derived facts the eager derivation filed from it, not found and so Provisional by W6.
+//   - FirstRows' admission (`nofirstadmit`: its rows kept whatever the walk's Completion): the merge review's six twins (d3a, d3ar,
+//     d3av, d3b, d3br, d3bv) and the refresh's 56 acceptance programs: no difference, and the admission unobserved: the invalid
+//     twins never reach a Provisional FirstRows walk (an environment naming a failed Contract is Invalid, and the walk skips it).
+//     FirstRows' readers (PremiseCallable, the Callable and effect-bound readers, HandedSignatures) read `Available` rows directly,
+//     with no shadow, so a Pending read inside a round by one of them is the case left open; its row is owed with C3's.
 // - Lifetime: the entry's, the publication, in the capability phase (KeepsAcrossRequests, the one phase fact); before it one
 //   outermost request (a Contract's clauses are still being bound, so not even a head depth outlives it).
 // - Inputs outside the key, and what covers a change to each inside a publication: Contract clause storage (HeadDepth,

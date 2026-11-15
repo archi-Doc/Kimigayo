@@ -233,10 +233,12 @@ public class ArchitectureRulesTest
     // members (Invalid and the flags have private setters), and a BindingScope's link only through its counting setters.
     [InlineData("Writes of a constraint environment's fact sets", "src/Kimi/Compiler", @"\b(?:Facts|DirectFacts|DerivedFacts)\.(?:Add|Remove\w*|Clear|UnionWith|ExceptWith|IntersectWith|SymmetricExceptWith|Insert|TrimExcess)\(", "Binding/Binding.Constraints.Model.cs=6")]
     [InlineData("Counts of a view's state", "src/Kimi/Compiler/Binding", @"\b(?:Version|LinkVersion)\+\+", "Binding.Constraints.Model.cs=3;BindingModel.cs=1")]
-    // DECISIONS R7-C2e1: Completion's zero is Provisional and only the whitelist's members (W1-W6, the ContractSolver header) give
-    // Complete, so a new route is Provisional until a reviewed row joins them: a further site fails here. Every spelling of Complete is
-    // counted (an assignment, a return, an arm, an argument, a cast), the comparison in Reading included.
-    // R7-C3a: W7, the identity classes' Completion member (DECISIONS R7-M20's amendment).
+    // DECISIONS R7-C2e1: Completion's zero is Provisional and only the whitelist's members (W1-W8 and an outermost walk, the
+    // ContractSolver header) give Complete, so a new route is Provisional until a reviewed row joins them: a further site fails here.
+    // Every spelling of Complete is counted (an assignment, a return, an arm, an argument, a cast), the comparison in Reading included.
+    // R7-C3a: W7, the identity classes' Completion member (DECISIONS R7-M20's amendment). R7-C2e2 e2-3a: W8, ReadSourceState
+    // (SourceStates.cs); W6's meets in AvailableContractPremise and AvailableConstraintFact (ContractSolver.cs); and an outermost
+    // walk's start and admission in each keeper, PremiseRefines and FirstRows (ContractSolver.Rows.cs).
     [InlineData("Answers given Complete", "src/Kimi/Compiler", @"\bCompletion\.Complete\b|\(Completion\)", "Binding/Binding.AssociatedTypes.Specification.cs=1;Binding/Binding.BoundContracts.cs=2;Binding/Binding.BuiltinArithmetic.cs=1;Binding/Binding.Constraints.cs=2;Binding/Binding.ContractSolver.Rows.cs=4;Binding/Binding.ContractSolver.cs=4;Binding/Binding.ContractTypes.cs=3;Binding/Binding.FixedArrays.cs=1;Binding/Binding.SourceStates.cs=1;Binding/Binding.TypeIdentity.Classes.cs=1;Binding/Binding.TypeIdentity.cs=2")]
     // H11b-0 B0 (RP6): an Origin declaration's state is private; its formation alone names `Forming`, file by file, each occurrence
     // forming the declaration it names (the type's file: the member and its contract's three mentions). Every other read is one of
