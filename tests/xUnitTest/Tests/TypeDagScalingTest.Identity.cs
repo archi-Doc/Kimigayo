@@ -207,16 +207,21 @@ public partial class TypeDagScalingTest
     // parameter, each needing the last one's row (`T is L0`, `T.(L{i-1}).X.(M{i}).Next is T`: T is Li only once it is L{i-1}), so a
     // request for T walks about n rounds. Valid (SPEC 8.2.3 Cycles and grounds, 8.3.2): T is Ln. The rounds are linear in n (measured
     // 12, 20, 36 at 2, 4, 8); the mate walks are rounds x mates x a round's walks, asserted at x8 per x2 (measured 102, 234, 1,218).
-    // The library and a chain of identities walk no second round; projection mates of one class defer each other (each is open
-    // while it walks the others), a constant two rounds whatever their number (measured 2 at 4 and at 16 mates: the first
-    // request's rows are kept).
+    // A chain of identities walks no round beyond the library's; projection mates of one class defer each other (each is open
+    // while it walks the others), a constant number of rounds whatever their number (measured 2 at 4 and at 16 mates before PLAN
+    // x41n, 12 with it: the first request's rows are kept). The library walks 9 rounds (0 before x41n): the direction check asks
+    // the rows of the projections its premises name, among them Iterator's mates `LentItem(step)` and `Item` (`associate
+    // LendingIterator.LentItem(step) is Item`): once in Iterator's scope and four times (LentItem and Item, twice) in each of
+    // OwningIterator's and BorrowingIterator's conformance scopes, each of those 9 requests walking one second round through the class.
+    // The check's whole cost on Hello (233 seed requests): 48 more pairs indexed (1,619 to 1,667), 66 more mate walks (81 to 147) and
+    // these 9 rounds, RP8's library kernel for x41n.
     [Fact]
     public void CycleRoundsAreBoundedByTheRowsThroughTheCycle()
     {
         var (r2, r4, r8) = (Rounds(LadderSource(2)), Rounds(LadderSource(4)), Rounds(LadderSource(8)));
         Assert.True(r4.Rounds <= 2 * r2.Rounds && r8.Rounds <= 2 * r4.Rounds && r4.Work <= 8 * r2.Work && r8.Work <= 8 * r4.Work, $"rounds {r2.Rounds}, {r4.Rounds}, {r8.Rounds}; mate work {r2.Work}, {r4.Work}, {r8.Work} at 2, 4, 8");
         var (m4, m16, c16, e) = (Rounds(MateSource("mates", 4)).Rounds, Rounds(MateSource("mates", 16)).Rounds, Rounds(MateSource("chained", 16)).Rounds, Rounds(string.Empty).Rounds);
-        Assert.True(e == 0 && c16 == 0 && m16 == m4, $"mates {m4}, {m16}; chained {c16}; empty {e}");
+        Assert.True(e == 9 && c16 == e && m16 == m4, $"mates {m4}, {m16}; chained {c16}; empty {e}");
 
         static (long Rounds, long Work) Rounds(string source)
         {

@@ -68,11 +68,15 @@ public class NormalizedConstraintProofBindingTest
 
     // DECISIONS R7-C2e2-1: the pairs the entries index for Moved (the fill moves its view: the entry is formed again at the new serial)
     // and Derived (an identity view whose table the derived identity fact of `T is K` keeps Provisional: its class keys are not final,
-    // so its entry stays the request's and each request forms it again, R7-C2c2 c2-1's lifetime), less the library's: exact. An entry
-    // read across its serial indexes fewer (1,411); one Kept under a table that is not Final indexes 192. Every row counts (R7-C2e2-2).
+    // so its entry stays the request's and each request forms it again, R7-C2c2 c2-1's lifetime), less the library's: exact. Every row
+    // counts (R7-C2e2-2). PLAN x41n's direction check adds 432 (1,416 before it): it asks the rows of `both`'s six seeds (T, U, T.(K).X
+    // and three Child projections) in each of the four validation runs (the first and three certificate rounds), and each of those 24
+    // requests forms `both`'s non-final entry again, 18 pairs each, the pinned path itself; `twice`'s requests read entries other
+    // readers form anyway (0), and the library's and Trees' requests are in both terms. Before x41n, an entry read across its serial
+    // indexed fewer (1,411) and one Kept under a table that is not Final 192.
     [Fact]
     public void AViewsIndexIsFormedAtEachSerialUntilComplete()
-        => Assert.Equal(1416, ClosureWork(Trees + Moved + Derived) - ClosureWork(Trees));
+        => Assert.Equal(1848, ClosureWork(Trees + Moved + Derived) - ClosureWork(Trees));
 
     // DECISIONS R7-C2e2-1, R7-M20 (implementation review 2's twins): `(a, a)` is an in-region Copy request, which keeps the view's entry
     // with readings; `Box<U>.(K).X` then normalizes through `Box<T>: K when T is C`, whose condition is proven by premise inside that
