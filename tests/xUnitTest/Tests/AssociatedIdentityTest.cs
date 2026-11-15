@@ -66,6 +66,20 @@ public class AssociatedIdentityTest(ITestOutputHelper output)
         Assert.Contains(c.Binding.Issues, static x => x.Code == DiagnosticCode.AmbiguousBinding_Kd);
     }
 
+    // SPEC 8.5.2, 8.3.2: an unqualified associated Type is unique under every Contract the premises supply for its receiver, a clause row
+    // at depth included: at height 4 C2's row supplies Boxed's Item, and a premise naming Other adds a second (accepted before R7-C2c2 c2-3a
+    // read Enumerate's rows: r17).
+    [Theory]
+    [InlineData("", "")]
+    [InlineData("    T.(Tree).Child.(Tree).Child.(Tree).Child.(Tree).Child is Other\n", "AmbiguousBinding_Kd")]
+    public void AnUnqualifiedAssociatedTypeIsUniqueAcrossTheRowsAtDepth(string premise, string codes)
+    {
+        var c = MinimalEmissionTest.Check("contract Tree\n    associate Child is Tree\ncontract Boxed\n    associate Item\ncontract Other\n    associate Item\n" +
+            "contract C2: Tree, Boxed\n    Self.(Tree).Child.(Tree).Child is C2\nfunc f<T>(v: ref/T.(Tree).Child.(Tree).Child.(Tree).Child.(Tree).Child.Item) -> i32\n" +
+            "    T is C2\n" + premise + "    return 0\n()");
+        Assert.Equal(codes, string.Join(" ", TestDiagnostics.Of(c).Select(static x => x.Code)));
+    }
+
     [Theory]
     [InlineData("i32", 1)]
     [InlineData("i64", 2)]

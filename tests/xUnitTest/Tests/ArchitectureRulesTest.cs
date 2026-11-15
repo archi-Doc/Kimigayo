@@ -237,7 +237,7 @@ public class ArchitectureRulesTest
     // Complete, so a new route is Provisional until a reviewed row joins them: a further site fails here. Every spelling of Complete is
     // counted (an assignment, a return, an arm, an argument, a cast), the comparison in Reading included.
     // R7-C3a: W7, the identity classes' Completion member (DECISIONS R7-M20's amendment).
-    [InlineData("Answers given Complete", "src/Kimi/Compiler", @"\bCompletion\.Complete\b|\(Completion\)", "Binding/Binding.AssociatedTypes.Specification.cs=1;Binding/Binding.BoundContracts.cs=2;Binding/Binding.BuiltinArithmetic.cs=1;Binding/Binding.Constraints.cs=2;Binding/Binding.ContractSolver.cs=6;Binding/Binding.ContractTypes.cs=3;Binding/Binding.FixedArrays.cs=1;Binding/Binding.SourceStates.cs=1;Binding/Binding.TypeIdentity.Classes.cs=1;Binding/Binding.TypeIdentity.cs=2")]
+    [InlineData("Answers given Complete", "src/Kimi/Compiler", @"\bCompletion\.Complete\b|\(Completion\)", "Binding/Binding.AssociatedTypes.Specification.cs=1;Binding/Binding.BoundContracts.cs=2;Binding/Binding.BuiltinArithmetic.cs=1;Binding/Binding.Constraints.cs=2;Binding/Binding.ContractSolver.Rows.cs=4;Binding/Binding.ContractSolver.cs=4;Binding/Binding.ContractTypes.cs=3;Binding/Binding.FixedArrays.cs=1;Binding/Binding.SourceStates.cs=1;Binding/Binding.TypeIdentity.Classes.cs=1;Binding/Binding.TypeIdentity.cs=2")]
     // H11b-0 B0 (RP6): an Origin declaration's state is private; its formation alone names `Forming`, file by file, each occurrence
     // forming the declaration it names (the type's file: the member and its contract's three mentions). Every other read is one of
     // OriginDeclaration's read members, so the readers of a declaration, a failed one included, are those members' callers.
@@ -405,20 +405,26 @@ public class ArchitectureRulesTest
     // R7-C2a: Enumerate is a leaf of the judgment graph (Binding.ContractSolver.cs's contract). The members of its walk call exactly
     // the names listed here, none of which proves, resolves a binding, normalizes or requests a capability (ProveConformance,
     // ProveConstraint, ResolveAssociated, NormalizeProof*, SubstituteIdentity, RequestCapability), and the two callees that can
-    // normalize are told not to. A new callee is read for judgments before it joins the list. PremiseRefines and the indexes are the
-    // request boundary, not the walk; a walk that reaches PremiseRefines fails at run time (InternalInvariant). R7-C2c2: the walk's class
+    // normalize are told not to. A new callee is read for judgments before it joins the list. PremiseRefines, FirstRows, PremiseRows,
+    // PremiseCallable and the indexes are the request boundary (Binding.ContractSolver.Rows.cs), not the walk; a walk that reaches a
+    // request fails at run time (InternalInvariant). R7-C2c2 c2-3b: the walk's row list (RowKind) and row merge (AddRow) are members.
+    // R7-C2c2: the walk's class
     // keys (SameClass, and ClassKey and CongruentKey in Binding.TypeIdentity.Keys.cs) are walk members too, so no judgment is reached from
     // a key: they read the built table (KeyOf, Representative) and intern (Rebuild).
     [Fact]
     public void EnumeratesWalkCallsNoJudgment()
     {
-        string[] walk = ["Enumerate", "EnumerateLink", "HeadDepth", "ClauseHeads", "AvailableContractPremise", "AvailableConstraintFact", "ContractSupply", "SameClass", "ClassKey", "CongruentKey", "RowContract"];
+        string[] walk =
+        [
+            "Enumerate", "EnumerateLink", "HeadDepth", "ClauseHeads", "AvailableContractPremise", "AvailableConstraintFact", "ContractSupply", "SameClass", "ClassKey", "CongruentKey",
+            "RowContract", "RowKind", "AddRow",
+        ];
         string[] allowed =
         [
-            "Add", "AppliedAssociatedContract", "AsSpan", "AssociatedIdentityMatches", "AvailableConstraintFact", "AvailableContractPremise", "ClassKey", "ClauseHeads",
+            "Add", "AddRow", "AppliedAssociatedContract", "AsSpan", "AssociatedIdentityMatches", "AvailableConstraintFact", "AvailableContractPremise", "ClassKey", "ClauseHeads",
             "Clear", "CongruentKey", "Contains", "ContractConstraint", "DependentConstraint", "EnumerateLink", "FactStates", "GetValueOrDefault", "HeadDepth", "Heads",
             "InstantiatedAncestor", "InstantiatedContract", "InvalidDeclarationContext", "IsContractSelf", "KeyOf", "Max", "Meet", "ReadSourceState", "Rebuild",
-            "ReferenceEquals", "RemoveAt", "RemoveRange", "RentTypes", "Representative", "Return", "RowContract", "SameClass", "SetKey", "SubjectKey", "TryGetValue",
+            "ReferenceEquals", "RemoveAt", "RemoveRange", "RentTypes", "Representative", "Return", "RowContract", "RowKind", "SameClass", "SetKey", "SubjectKey", "TryGetValue",
             "UnresolvedTypeDeclarationContext", "WalkAvailable",
         ];
         var members = new[] { "Binding.ContractSolver.cs", "Binding.TypeIdentity.Keys.cs" }

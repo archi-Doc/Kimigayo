@@ -262,10 +262,17 @@ public sealed partial class Binding
         var valueType = borrow ? type.Components[0] : type;
         var first = this.positionClasses.Count;
         var result = this.ProbeAggregateArgument(node, valueType, scope);
-        if (result == CandidateApplicability.Applicable && borrow && this.KindOf(node) == PartKind.Aggregate &&
-            this.TemporaryTarget(node, type, scope) is null && !this.HasTypeWithoutExpectation(node, valueType, scope))
+
+        // A fill or mixed range at `ref/U` is no temporary of U (K2, K3): the probe only filters a candidate whose own Type is not U, and the
+        // selected call binds it at `ref/U` itself (CompleteArguments, no source Type), as a let does, so the binder decides every part.
+        // A join its call classifies (PartKind Join) keeps U as its source Type, DECISIONS BU-187's one exception (PLAN G729): its
+        // sources are bound at U and its one value is borrowed here, since a waited source has no borrow row at `ref/U`
+        // (BindWaitedSources; the value is made once at the join's position, which R7-I2 d's position source plans). So a join's fill,
+        // mixed range or waiting call source still takes U's parts: an open class 1 row of that unit, not this rule's.
+        var own = borrow && this.KindOf(node) == PartKind.Aggregate && this.TemporaryTarget(node, type, scope) is null;
+        if (result == CandidateApplicability.Applicable && own && !this.HasTypeWithoutExpectation(node, valueType, scope))
         {
-            result = CandidateApplicability.Inapplicable; // A fill or mixed range at `ref/U` whose own Type is not U (K2, K3).
+            result = CandidateApplicability.Inapplicable;
         }
 
         if (result != CandidateApplicability.Applicable)
@@ -275,7 +282,7 @@ public sealed partial class Binding
 
         operation = result != CandidateApplicability.Applicable ? default : new(
             part,
-            valueType,
+            own ? null : valueType,
             type,
             borrow ? ArgumentOperationKind.Borrow : ArgumentOperationKind.Value,
             borrow ? ArgumentAdaptation.CrossSemanticsBorrow : ArgumentAdaptation.Literal,
