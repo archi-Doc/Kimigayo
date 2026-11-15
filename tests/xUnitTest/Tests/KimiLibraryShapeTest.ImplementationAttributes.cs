@@ -62,7 +62,7 @@ public partial class KimiLibraryShapeTest
         Assert.Equal(
             [
                 IntrinsicId.None, IntrinsicId.Abort, IntrinsicId.TypeTest, IntrinsicId.TestObserve, IntrinsicId.TestMessage, IntrinsicId.TestRequireAbort,
-                IntrinsicId.TestRecordValue, IntrinsicId.StaticEnsure, IntrinsicId.FormatSegment,
+                IntrinsicId.TestRecordValue, IntrinsicId.StaticEnsure,
             ],
             Enum.GetValues<IntrinsicId>().Except(named));
     }
