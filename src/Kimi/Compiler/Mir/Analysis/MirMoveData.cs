@@ -18,8 +18,9 @@
 // resolves to, and the source counterpart of a carry whose destination is one (closed upward and backward through the carries). A fact
 // on a component no Place names goes to its owner, the nearest Move Path above it, as "its value lacks a part" (A1's Unplaced lane); a
 // fact on a Move Path is its initialization (MaybeUninit), and a Places Call's is its construction's lacking entry. A published fact
-// is a path's number, or its complement for the Unplaced lane. Invariant: a carry's source lies in a run recorded before the carry's
-// (a temp is defined at a location the walk visits before the one that takes it), so one reverse pass over the carries closes them.
+// is a path's number, or its complement for the Unplaced lane. Invariant (Ordered, which A1 reads): a carry's source lies in a run
+// recorded before the carry's (a temp is defined at a location the walk visits before the one that takes it) and differs from its
+// destination, so one reverse pass over the carries closes them; a location that carries a temp into itself breaks it.
 // Must not decide initialization, copy a body per view, intern projections or change the body.
 
 #pragma warning disable SA1402 // The path record belongs to the paths.
@@ -93,6 +94,11 @@ internal sealed class MirMoveData
     /// <summary>Gets the most carries of one Assign (<see cref="Carries"/>).</summary>
     internal int MaxCarried { get; private set; }
 
+    /// <summary>Gets a value indicating whether every carry's source lies in a run recorded before it and differs from its destination,
+    /// which the closure's one reverse pass needs; false is a broken contract of the body's MIR, which A1 records as
+    /// InternalInvariant_Kd.</summary>
+    internal bool Ordered { get; private set; }
+
     /// <summary>Collects the move paths of a body and numbers them.</summary>
     /// <param name="body">The validated body.</param>
     /// <param name="flow">The dataflow, begun with the body.</param>
@@ -100,7 +106,7 @@ internal sealed class MirMoveData
     {
         this.body = body;
         var locals = body.Locals.Length;
-        (this.created, this.ViewDependent, this.runCount, this.MaxCarried, this.carryCount) = (0, false, 0, 0, 0);
+        (this.created, this.ViewDependent, this.runCount, this.MaxCarried, this.carryCount, this.Ordered) = (0, false, 0, 0, 0, true);
         this.children.Clear();
         this.places.Clear();
         this.nevers.Clear();
@@ -317,7 +323,6 @@ internal sealed class MirMoveData
                 var component = rvalue.Kind == MirRvalueKind.Aggregate ? this.Component(found >> 2, rvalue, fill ? k : i) : found >> 2;
                 for (; run >= 0; run = this.runs[run + 1])
                 {
-                    System.Diagnostics.Debug.Assert(run < carries, "A carry's source lies in a run recorded before it.");
                     for (var at = run + 2; at < run + 2 + this.runs[run]; at++)
                     {
                         var tracked = this.runs[at];
@@ -331,6 +336,7 @@ internal sealed class MirMoveData
                         if (above == taken)
                         {
                             var mirror = this.Mirror(path, taken, component);
+                            this.Ordered &= run < carries && mirror != path;
                             this.Push(tracked);
                             this.Push(tracked < 0 ? ~mirror : mirror);
                         }
@@ -393,12 +399,14 @@ internal sealed class MirMoveData
                 continue;
             }
 
+            this.Ordered &= temp != found >> 2;
             this.Push(temp);
             this.Push(own);
             for (var run = this.nevers.TryGetValue(~temp, out var below) ? below : -1; run >= 0; run = this.runs[run + 1])
             {
                 for (var at = run + 2; at < run + 2 + this.runs[run]; at++)
                 {
+                    this.Ordered &= run < carries && (this.runs[at] < 0 ? ~this.runs[at] : this.runs[at]) != found >> 2;
                     this.Push(this.runs[at]);
                     this.Push(own);
                 }

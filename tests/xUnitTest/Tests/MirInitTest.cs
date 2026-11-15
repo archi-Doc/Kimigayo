@@ -373,6 +373,34 @@ public sealed class MirInitTest
         Assert.DoesNotContain(program.Problems.All.ToArray(), static x => x.Subject.Module == 0);
     }
 
+    // The redesign's R1.3 (DRV-N5, U1-N3): MirMoveData's closure reads the carries once, in reverse, which needs each carry's source in a
+    // run recorded before it and apart from its destination (MirMoveData.Ordered). The builder never emits a location that carries a temp
+    // into itself; made so (the Use that takes a Dictionary literal's construction redirected into the construction), the body's MIR
+    // breaks that contract: one InternalInvariant_Kd at the body, which A1 then leaves unanalyzed (no recovery); the unmutated body has none.
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void ACarryIntoItsOwnSourceIsABrokenContract(bool broken)
+    {
+        var c = MirBuildTest.Compile("func takeD(d: Dictionary<i32, i32>) => ()\nfunc f(y: i32)\n    takeD([1: y])\n");
+        var program = new MirBuilder(c).Build(); // Unanalyzed: a version's problems are reset only with its bodies.
+        var body = program.Bodies.ToArray().Single(static x => x.Key.Decl?.Name == "f");
+        var call = Array.FindIndex(body.Blocks.ToArray(), static x => x.Terminator.Places);
+        var construction = body.Construction(call)!.Value;
+        var statements = body.Statements.ToArray();
+        var take = Array.FindIndex(statements, x => x.Kind == MirStatementKind.Assign && x.Rvalue.Kind == MirRvalueKind.Use &&
+            body.Operands[x.Rvalue.Start].Place == construction);
+        Assert.True(take >= 0);
+        if (broken)
+        {
+            Unsafe.AsRef(in body.Statements[take]) = statements[take] with { Place = construction };
+        }
+
+        new MirAnalysis(c.Types).Run(program, c.SourceModules.Length);
+        var internals = program.Problems.All.ToArray().Where(x => x.Code == DiagnosticCode.InternalInvariant_Kd && x.Body == body.Ordinal);
+        Assert.Equal(broken ? 1 : 0, internals.Count());
+    }
+
     // SPEC 3.1.3, 14.10.3 (DECISIONS R5-M38, BU-6): a named Place of Type Never takes the acquisition Binding publishes into its node's
     // Never temp, Copy for a bare read (Never is Copy, BU-4) and Move for x@move, which keeps its effect on the assumed path: a Never
     // parameter read twice is no MovedPlace, a read after x@move is one, and a read before it is not. A MovedPlace's subject is the bare

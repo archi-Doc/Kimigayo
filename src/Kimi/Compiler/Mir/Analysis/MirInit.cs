@@ -61,7 +61,8 @@ internal sealed class MirInit(MirDataflow flow, MirMoveData moves, MirCases case
     /// <param name="body">The body.</param>
     /// <param name="view">The selected view.</param>
     /// <param name="report">The problems of the program version.</param>
-    /// <returns>False when the body's state arena exceeds the analyses' limit (R4-M15a), so that no view of it is analyzed.</returns>
+    /// <returns>False when the body's state arena exceeds the analyses' limit (R4-M15a), or its move data reports a broken contract
+    /// (<see cref="MirMoveData.Ordered"/>: InternalInvariant_Kd at the body), so that no view of it is analyzed.</returns>
     internal bool Run(MirBody body, long view, MirReport report)
     {
         if (view > 0 && !moves.ViewDependent)
@@ -70,6 +71,14 @@ internal sealed class MirInit(MirDataflow flow, MirMoveData moves, MirCases case
         }
 
         var all = MirCases.Every(body);
+        if (!moves.Ordered)
+        {
+            var requirement = DiagnosticRequirement.Ownership(OwnershipRequirement.Internal);
+            var broken = new MirProblem(DiagnosticCode.InternalInvariant_Kd, requirement, body.Source, body.Ordinal, all);
+            drops.Incomplete(broken.Code, default, report.Add(broken)); // No recovery: the driver stops the views.
+            return false;
+        }
+
         var state = flow.Prepare(0, Lanes * ((moves.FlowCount + 63) >> 6), Lanes * ((moves.Paths.Length + 63) >> 6), out var words);
         if (state is null)
         {
