@@ -7,6 +7,10 @@ namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
+    // SPEC 10.8, 8.3.4: while a call's evidence is judged (EnterEvidence), the scope of its solve's node, whose premises judge an abstract
+    // evidence Type (PremiseScope); null otherwise.
+    private BindingScope? premiseUse;
+
     // A finite Type family stores complete case Types in SemanticsOrder, packed by its Length mask.
     // Only the selecting binder is a dependency; no source expression or operation plan is retained.
     private enum FamilyTransform : byte
@@ -135,18 +139,40 @@ public sealed partial class Binding
     // no Type over another target is formed under it (ApplySemantics, SubstituteFamily; PLAN G886: its representation is the remainder).
     private static bool HasOwnSelector(BoundType binding) => binding.Kind == BoundTypeKind.Parameter || binding.Semantics == SemanticsKind.Parameter;
 
-    // SPEC 7.5, 8.15.1: the scope whose premises judge an abstract Type a pair slot binds: its root's declaration, a projection's receiver's
-    // (`T` of `T.Element`, so the caller's `T.Element is ObjectPayload` and a refinement through its `T is Holder` are read), where the
-    // generic declaring it states its Constraints; a receiver without a declaration leaves the projection's own. A nested scope's premises
-    // (a conditional member's, a when block's) are not read here (PLAN G886).
-    private static BindingScope PremiseScope(BoundType type)
+    // SPEC 7.5, 8.3.4, 8.15.1, 10.8: the scope whose premises judge an abstract Type, by the Type's one meaning where it is read. A source's
+    // outer Semantics at a call (its evidence, while EnterEvidence holds the solve's node) is judged under the premises at that node, a
+    // conditional member's leading region and an enclosing `when` condition included, wherever the Type is in scope there. Any other
+    // reading, a pair slot's stored binding above all, is the Type it is in every phase (Binding's substitution, MIR's TyCtxt.Signature),
+    // so it reads what the Type carries: its root's declaration, a projection's receiver's (`T` of `T.Element`, so the caller's
+    // `T.Element is ObjectPayload` and a refinement through its `T is Holder` are read), where the generic declaring it states its
+    // Constraints; a receiver without a declaration leaves the projection's own. A binding that only the use's premises make owner is the
+    // remainder of PLAN G886's representation (the call's substitution records no scope).
+    private BindingScope PremiseScope(BoundType type)
     {
         while (type is { Kind: BoundTypeKind.AssociatedProjection, Components: [{ Symbol: not null } receiver, ..] })
         {
             type = receiver;
         }
 
-        return type.Symbol!.Scope;
+        var declaring = type.Symbol!.Scope;
+        for (var scope = this.premiseUse; scope is not null; scope = scope.Parent)
+        {
+            if (ReferenceEquals(scope, declaring))
+            {
+                return this.premiseUse!;
+            }
+        }
+
+        return declaring;
+    }
+
+    // SPEC 10.8, 8.3.4: opens the judgment of a call's evidence at the solve's node (PremiseScope) and returns the scope it replaces, which
+    // the caller restores.
+    private BindingScope? EnterEvidence(SlotFrame frame)
+    {
+        var saved = this.premiseUse;
+        this.premiseUse = this.ConstraintScope(frame.Node);
+        return saved;
     }
 
     // SPEC 8.1.2, 8.2.3, 8.7.3: whether a pair slot's binding is abstract, its outer Semantics not yet known: a pair's original or
@@ -155,7 +181,7 @@ public sealed partial class Binding
     // owner (ResultSemantics; the owner's O-311 (a)), when it binds as an owner Type. ApplySemantics, the substitution of a family and
     // HasOuterSlot read it.
     private bool IsAbstractBinding(BoundType binding) => binding.IsAbstractType
-        ? this.ResultSemantics(binding, PremiseScope(binding)) != SemanticsMask.Owner
+        ? this.ResultSemantics(binding, this.PremiseScope(binding)) != SemanticsMask.Owner
         : HasOwnSelector(binding);
 
     // SPEC 8.1.1, 8.2.3 (Rd3): the cases a pair target alone takes from its pair, the selected case or else its binder's admitted set; in
@@ -333,7 +359,7 @@ public sealed partial class Binding
                         FamilyTransform.Target => this.DirectTarget(child),
                         FamilyTransform.Origin => IsBorrow(child.Semantics) || child.IsAbstract ? this.WithOrigins(child, origin, (BoundOrigin[])child.OriginArguments) : child,
                         // A pair target alone whose case is owner is `W` itself (TargetCases): the case forms the target itself.
-                        _ when child.IsAbstractType && this.TargetCases(child, PremiseScope(child), cases.AsSpan(0, 1)) == SemanticsMask.Owner
+                        _ when child.IsAbstractType && this.TargetCases(child, this.PremiseScope(child), cases.AsSpan(0, 1)) == SemanticsMask.Owner
                             => this.CaseType(target!, cases.AsSpan(0, 1)),
                         _ => this.ApplySemantics(child, this.CaseType(target!, cases.AsSpan(0, 1)), origin),
                     };
@@ -434,7 +460,7 @@ public sealed partial class Binding
                 return null;
             }
 
-            var admitted = this.ResultSemantics(whole, PremiseScope(whole)) & (SemanticsMask)family.Length;
+            var admitted = this.ResultSemantics(whole, this.PremiseScope(whole)) & (SemanticsMask)family.Length;
             var children = this.RentTypes(BitOperations.PopCount((uint)admitted));
             try
             {

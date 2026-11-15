@@ -228,9 +228,10 @@ public sealed partial class Binding
 
         this.termWalks++;
         if (pattern is { Kind: BoundTypeKind.SemanticsApplication, Symbol: { } selector, Components: [var target] } &&
-            ContainerSlot(function, selector) is >= 0 and var slot && Selector(frame, slot) is { } whole)
+            ContainerSlot(function, selector) is >= 0 and var slot && Selector(frame, slot) is not null)
         {
-            return this.FormedApplication(target, function, frame) is { } formedTarget ? this.ApplySemantics(whole, formedTarget, pattern.Origin) : null;
+            return this.FormedApplication(target, function, frame) is { } formedTarget &&
+                this.FormedUnder(frame, slot, formedTarget, pattern.Origin, out var formed) ? formed : null;
         }
 
         var components = this.RentTypes(count);
@@ -271,9 +272,9 @@ public sealed partial class Binding
         var literal = part is not null && this.KindOf(part) == PartKind.Literal;
         if (literal && pattern is { Kind: BoundTypeKind.Parameter, Symbol: { Kind: BindingSymbolKind.SemanticsTarget, Type: { } original } pair } &&
             ContainerSlot(function, pair) is >= 0 and var own && own < frame.Types.Length && frame.Types[own] is null &&
-            Selector(frame, own) is { } fixedBy)
+            this.FormedUnder(frame, own, original, pattern.Origin, out var fixedForm))
         {
-            return this.ApplySemantics(fixedBy, original, pattern.Origin);
+            return fixedForm;
         }
 
         if (pattern is not { Kind: BoundTypeKind.SemanticsApplication or BoundTypeKind.Semantics, HasAbstractPart: true, Components: [var target] })
@@ -287,9 +288,9 @@ public sealed partial class Binding
         }
 
         if (pattern.Kind == BoundTypeKind.SemanticsApplication && ContainerSlot(function, pattern.Symbol!) is >= 0 and var slot &&
-            Selector(frame, slot) is { } whole && (literal || !IsExactSource(pattern, function, frame)))
+            (literal || !IsExactSource(pattern, function, frame)) && this.FormedUnder(frame, slot, fitted, pattern.Origin, out var formed))
         {
-            return this.ApplySemantics(whole, fitted, pattern.Origin);
+            return formed;
         }
 
         return ReferenceEquals(fitted, target) ? pattern : this.types.Rebuild(pattern, [fitted], pattern.Origin, (BoundOrigin[])pattern.OriginArguments);
@@ -327,7 +328,8 @@ public sealed partial class Binding
     // `actual` stands as an exact source of pair slot `slot`'s binder: the evidence at an occurrence of the pair's original or at an
     // application of a bare slot or a closed leaf Type (IsExactSource), the expected result included. Each gives its outer Semantics: the first exact source
     // of a slot nothing has fixed becomes the slot's selector evidence, and every other one must agree with it, whichever comes first:
-    // both form the same layer over one `target` (ApplySemantics; an owner source forms the target itself, so owner evidence is
+    // both form the same layer over one `target` under the premises at the solve's node (ApplySemantics, EnterEvidence: a conditional
+    // member's premise included; an owner source forms the target itself, so owner evidence is
     // compared as any other is; a binding that forms none, a pair target alone, agrees only with itself: a Language verdict, no
     // Unformed fact). A slot bound with no selector evidence was fixed before any evidence (explicit Type arguments, a construction's
     // fixed slots): its binder is not inferred, so nothing is compared. Never supplies no evidence.
@@ -348,8 +350,45 @@ public sealed partial class Binding
             return true;
         }
 
-        return ReferenceEquals(evidence, actual) || (this.FormsUnder(evidence) && this.FormsUnder(actual) &&
-            this.ApplySemantics(evidence, target, null) is { } formed && ReferenceEquals(formed, this.ApplySemantics(actual, target, null)));
+        if (ReferenceEquals(evidence, actual))
+        {
+            return true;
+        }
+
+        var saved = this.EnterEvidence(frame);
+        var agrees = this.FormsUnder(evidence) && this.FormsUnder(actual) &&
+            this.ApplySemantics(evidence, target, null) is { } formed && ReferenceEquals(formed, this.ApplySemantics(actual, target, null));
+        this.premiseUse = saved;
+        return agrees;
+    }
+
+    // SPEC 8.1.2, 10.8, 8.3.4: `s/target` formed under pair slot `slot`'s binder (ApplySemantics); false while no source has fixed it. One
+    // meaning each (PremiseScope): the slot's stored binding is the Type every phase substitutes, so it forms as that Type is; while the
+    // slot is unbound, its selector evidence is a source's outer Semantics at this call, so it forms under the premises at the solve's
+    // node (EnterEvidence), as IsSource compares it. `formed` is null where the binder forms no Type (Unformed, D3).
+    private bool FormedUnder(SlotFrame frame, int slot, BoundType target, BoundOrigin? origin, out BoundType? formed)
+    {
+        formed = null;
+        if (slot >= frame.Types.Length)
+        {
+            return false;
+        }
+
+        if (frame.Types[slot] is { } binding)
+        {
+            formed = this.ApplySemantics(binding, target, origin);
+            return true;
+        }
+
+        if (frame.Selectors[slot] is not { } evidence)
+        {
+            return false;
+        }
+
+        var saved = this.EnterEvidence(frame);
+        formed = this.ApplySemantics(evidence, target, origin);
+        this.premiseUse = saved;
+        return true;
     }
 
     // SPEC 8.1.2, 10.8: the Type an application pattern forms against `actual`, in two phases whatever the order of the sources: an
@@ -373,13 +412,7 @@ public sealed partial class Binding
             return false;
         }
 
-        if (Selector(frame, slot) is not { } whole)
-        {
-            return true;
-        }
-
-        formed = this.ApplySemantics(whole, target, pattern.Origin);
-        return formed is not null; // Unformed (D3): the part fails and the call is Unsupported.
+        return !this.FormedUnder(frame, slot, target, pattern.Origin, out formed) || formed is not null; // Unformed (D3): the part fails and the call is Unsupported.
     }
 
     // SPEC 10.8, 8.1.2: the actual an occurrence of a pair's original binds its slot with: null when it disagrees with the binder's
