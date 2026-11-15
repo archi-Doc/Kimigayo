@@ -15,7 +15,9 @@ namespace Kimi.Compiler;
 //   walk, also the clause fact at the part's verdict, handed on as a clause list hands its own (LeaveClause; PLAN G354 (2)).
 // - Invariants: the step runs in the same order in both walks: the declaration context, the Origin clauses, the walk's components, the
 //   clauses; each walk then closes the part's proof scope; each distinct part with components is decided once per query, and each walk
-//   call begins its own query, so the two walks never share an entry. A cached part and a computed one leave the same facts.
+//   call begins its own query, so the two walks never share an entry, except that a per-use walk call made while a per-use walk of the
+//   same scope runs is a part of that walk's query (a conformance's instance formation inside a part's clauses), so the walk is linear
+//   in the distinct parts however deep its instances nest. A cached part and a computed one leave the same facts.
 // - Prohibitions: no record and no failure is written here; a nested signature's result is judged where it is written
 //   (BindFunctionType, R4-M162) and its inputs at its value calls (R4-M137), never by the declaration walk; the declaration walk hands
 //   no clause fact on while PLAN G375's sigref1 stays open.
@@ -31,10 +33,31 @@ public sealed partial class Binding
     /// <summary>Gets the walks the SignatureVerdict row ran in the latest pass, which a scaling check reads.</summary>
     internal int SignatureWalkWork => this.signatureWalks;
 
+    // The innermost per-use walk running: its scope and query (no scope outside every per-use walk).
+    private (BindingScope? Scope, uint Query) openFormation;
+
     // The per-use walk over an instantiated Type. A part's proof and the cause it rests on depend on the part alone in one query (its
-    // scope fixed), so each distinct part is proven once (FormedPart).
+    // scope fixed), so each distinct part is proven once (FormedPart). A call made while a per-use walk of the same scope runs (a
+    // part's clause proving a conformance, whose evidence rests on the instance's formation: InstanceFormation) is a part of that
+    // walk's query, so a nested instance is formed once with the walk's parts, never again per enclosing level.
     private ConstraintProof CheckTypeConstraints(BoundType type, BindingScope scope)
-        => this.CheckTypeConstraints(type, scope, this.formedParts.Begin(this.storageVersion));
+    {
+        if (ReferenceEquals(this.openFormation.Scope, scope))
+        {
+            return this.FormedPart(type, scope, this.openFormation.Query);
+        }
+
+        var outer = this.openFormation;
+        this.openFormation = (scope, this.formedParts.Begin(this.storageVersion));
+        try
+        {
+            return this.CheckTypeConstraints(type, scope, this.openFormation.Query);
+        }
+        finally
+        {
+            this.openFormation = outer;
+        }
+    }
 
     private ConstraintProof CheckTypeConstraints(BoundType type, BindingScope scope, uint query)
     {
