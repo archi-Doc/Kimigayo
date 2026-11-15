@@ -270,19 +270,20 @@ public sealed partial class Binding
     // SPEC 10.5: a generic candidate's own slots are bound by matching its parameter Types against those of S and its result
     // against the result of S, without adaptations; it applies when every slot is bound and its Constraints are Proven.
     // Origins are left to the per-call solver, and a per-call Origin of S never becomes part of a bound argument. Explicit Type
-    // arguments are compared with that binding as normalized Types, so equivalent Function Types with distinct binders agree.
+    // arguments bind first (InferReferenceSlots) and are then compared with the binding as normalized Types, so equivalent Function
+    // Types with distinct binders agree.
     private bool BindReferenceArguments(Koto use, BindingSymbol symbol, FunctionKoto function, BoundType required, SlotFrame frame, BindingScope scope, GenericsKoto? explicitReference, BoundType? container, out ConstraintProof proof)
     {
         proof = ConstraintProof.Proven;
         var count = function.GenericArguments.Count;
-        if (!this.InferReferenceSlots(symbol, function, required, frame, container, false, true, true) ||
+        if (!this.InferReferenceSlots(symbol, function, required, frame, container, false, true, explicitReference) ||
             (explicitReference is not null && !this.ExplicitReferenceAgrees(explicitReference, frame, count, false, function, scope)))
         {
             // SPEC 10.8, 15.3.6: bindings of one slot that differ only in their Origins are an Origin failure, not a structural one;
             // when only per-call Origins of S would satisfy the slot, the reference's record names that slot and those parameters.
             // A Constraint that the met binding does not prove is judged first, as for a binding without a conflict, since neither an Origin
             // of the slot nor a wrapper would repair it.
-            if (this.InferReferenceSlots(symbol, function, required, frame, container, true, true, true) &&
+            if (this.InferReferenceSlots(symbol, function, required, frame, container, true, true, explicitReference) &&
                 (explicitReference is null || this.ExplicitReferenceAgrees(explicitReference, frame, count, true, function, scope)))
             {
                 if (ReferenceSlotsComplete(function, frame.Types, frame.Lengths) && (proof = this.ReferenceArgumentProof(function, frame.Types, scope, container, frame.Lengths)) != ConstraintProof.Proven)
@@ -351,13 +352,20 @@ public sealed partial class Binding
     }
 
     // SPEC 10.5, 10.8: binds a reference's slots from the parameters of S and, with `result`, from its result; `commonOrigins` meets
-    // the Origins that two positions give one slot, as a call's inference would.
-    private bool InferReferenceSlots(BindingSymbol symbol, FunctionKoto function, BoundType required, SlotFrame frame, BoundType? container, bool commonOrigins, bool result, bool lengths)
+    // the Origins that two positions give one slot, as a call's inference would. Explicit arguments bind first, as a call's
+    // (FixCallSlots): a written Type argument is its slot's binding before S is matched, so S's parts are matched against it and are no
+    // evidence for a binder it fixes (IsSource); one that omits an Origin is the binding from S, which solves that Origin (SPEC 15.4.4),
+    // so its slot is bound from S and compared after (ExplicitReferenceAgrees), as a written length is.
+    private bool InferReferenceSlots(BindingSymbol symbol, FunctionKoto function, BoundType required, SlotFrame frame, BoundType? container, bool commonOrigins, bool result, GenericsKoto? explicitReference)
     {
         frame.ClearTypes(function.GenericArguments.Count);
-        if (lengths)
+        frame.ClearLengths(function.GenericArguments.Count);
+        for (var i = 0; explicitReference is not null && i < function.GenericArguments.Count; i++)
         {
-            frame.ClearLengths(function.GenericArguments.Count);
+            if (function.GenericArguments[i] is not LengthParameterKoto && explicitReference.TypeArguments[i].BoundType is { } written && !OmitsOrigins(written))
+            {
+                frame.SetType(i, written);
+            }
         }
 
         // SPEC 10.8 (two phases): a structured application of a pair binder is formed after the binder's exact sources, wherever S
@@ -378,7 +386,7 @@ public sealed partial class Binding
 
                 open |= this.HasOpenApplication(parameter, function, frame);
                 if (!this.Infer(
-                    parameter, parameters.Components[i], function, frame, inferOrigins: true, lengths: lengths, commonOrigins: commonOrigins, structural: true))
+                    parameter, parameters.Components[i], function, frame, inferOrigins: true, lengths: true, commonOrigins: commonOrigins, structural: true))
                 {
                     return false;
                 }
@@ -393,7 +401,7 @@ public sealed partial class Binding
 
                 open |= this.HasOpenApplication(bound, function, frame);
                 if (!this.Infer(
-                    bound, required.Components[1], function, frame, inferOrigins: true, lengths: lengths, commonOrigins: commonOrigins, structural: true))
+                    bound, required.Components[1], function, frame, inferOrigins: true, lengths: true, commonOrigins: commonOrigins, structural: true))
                 {
                     return false;
                 }
@@ -405,7 +413,8 @@ public sealed partial class Binding
     }
 
     // SPEC 10.5: explicit Type arguments agree with the binding from S when they are the same normalized Type: identical, or equivalent
-    // in both directions, as two spellings of one Function Type are. With `commonOrigins`, they may differ in covariant Origins only.
+    // in both directions, as two spellings of one Function Type are (one that bound first, InferReferenceSlots, is its own binding unless
+    // S met it). With `commonOrigins`, they may differ in covariant Origins only.
     // An agreeing argument replaces the binding, so the Item keeps the written Type; one that differs only in Origins it omits keeps
     // the binding, since local inference solves those Origins from S (SPEC 15.4.4).
     private bool ExplicitReferenceAgrees(GenericsKoto explicitReference, SlotFrame frame, int count, bool commonOrigins, FunctionKoto function, BindingScope scope)
@@ -502,7 +511,7 @@ public sealed partial class Binding
         var fromResult = this.infer.Rent(count, use);
         try
         {
-            if (!this.InferReferenceSlots(symbol, function, required, frame, container, true, false, true))
+            if (!this.InferReferenceSlots(symbol, function, required, frame, container, true, false, explicitReference))
             {
                 return null;
             }
