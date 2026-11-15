@@ -122,9 +122,6 @@ internal static partial class KimiLibraryCatalog
         new(KimiDeclarationId.ArrayRepr),
         new(KimiDeclarationId.SliceRepr),
         new(KimiDeclarationId.DictionaryStorageHandle),
-        // SPEC 22.2: the standard storage boundary; the exclusive borrow of each family is borrowStorageUniq (SPEC 7.4).
-        // SPEC 22.2: the distinct Dictionary family traverses live entries in insertion order.
-        // SPEC 22.2: the fixed-array overloads of the contiguous borrowing remainders.
         // PLAN G33: the fixed-array owning remainder keeps its elements in compiler-known inline storage.
         new(KimiDeclarationId.InlineStorage),
         new(KimiDeclarationId.Position),

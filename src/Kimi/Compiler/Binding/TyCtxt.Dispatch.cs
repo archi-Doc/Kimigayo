@@ -93,6 +93,9 @@ internal sealed partial class TyCtxt
     // The library declaration a compiler component reaches by its catalog identity (InstanceCollector: the destroyArray instance).
     internal BindingSymbol? Declaration(KimiDeclarationId id) => library.GetSymbol(id);
 
+    // SPEC 17.4: the compiler-only $abort (KimiLibrary.Abort), which is no library declaration, so no MIR callee names it as one (MirValidator).
+    internal BindingSymbol Abort => library.Abort;
+
     // A library declaration's own Type, each of its parameters standing for itself (Layout: a sequence handle's component, IMPL 21.1.3).
     internal BoundType SelfType(KimiDeclarationId id) => binding.SelfType(library.GetSymbol(id)!);
 
