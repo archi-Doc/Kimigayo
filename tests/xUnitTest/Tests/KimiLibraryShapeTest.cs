@@ -52,7 +52,6 @@ public partial class KimiLibraryShapeTest
     // Types, overload position and constraints.
     private static readonly (KimiDeclarationId Id, string Shape)[] CompilerFunctionShapes =
     [
-        (KimiDeclarationId.WriteLine, "public func writeLine(text: ref/string)"),
         (KimiDeclarationId.ConsoleWriteStdout, "internal unsafe func writeStdout(data: raw/u8, length: isize)"),
         (KimiDeclarationId.TestTempDirectory, "public func tempDirectory() -> string"),
         (KimiDeclarationId.MakeObj, "public func makeObj<T>(value: T) -> obj/T\nT is ObjectPayload"),
@@ -231,9 +230,8 @@ public partial class KimiLibraryShapeTest
     // IMPL 21.3.4 (R8-G1 row L2): a function or constructor without a definition, outside a Contract, is a foreign import, or a
     // cataloged compiler function carrying `#Intrinsic` exactly when its symbol's Definition is an intrinsic, or a `#Lang`
     // constructor the catalog links to the internal function that defines it; a function with a definition carries no `#Intrinsic`.
-    // `#Unsupported` joins with its declarations and its reader (G1-3b), so none is written yet. One compiler function has neither
-    // form until R8-W2 d gives it its body: Console.writeLine(text), which the backend still serves from a legacy runtime helper (a
-    // Body disposition, plan 5.8). The signature-only groups hold only registered compiler functions.
+    // `#Unsupported` joins with its declarations and its reader (G1-3b), so none is written yet. The signature-only groups hold only
+    // registered compiler functions.
     [Fact]
     public void BodilessFunctionsAreCompilerFunctions()
     {
@@ -245,7 +243,7 @@ public partial class KimiLibraryShapeTest
 
         var legacy = new List<KimiDeclarationId>();
         Visit(c.Library.Kotonoha.RootKoto);
-        Assert.Equal([KimiDeclarationId.WriteLine], legacy);
+        Assert.Empty(legacy);
         Assert.Empty(LibraryAttributes(AttributeKind.Unsupported));
 
         void Visit(DeclarationContainerKoto container)
@@ -323,15 +321,15 @@ public partial class KimiLibraryShapeTest
     }
 
     // R8-G1: the catalog's Function column, which TyCtxt.Bodyless (IntrinsicDisposition.Effect) and the compiler-function keys still read,
-    // agrees with `#Intrinsic` (Definition): a library function or $abort has a kind other than None and WriteLine (whose Body disposition
-    // its legacy row serves until R8-W2 d) exactly when its Definition is Intrinsic. It stays until G1-4c deletes BindingSymbol.CompilerFunction.
+    // agrees with `#Intrinsic` (Definition): a library function or $abort has a kind other than None exactly when its Definition is
+    // Intrinsic. It stays until G1-4c deletes BindingSymbol.CompilerFunction.
     [Fact]
     public void FunctionColumnAgreesWithDefinitionPresence()
     {
         var library = Library.Value.Library;
         Assert.All(
             library.RegisteredSymbols.ToArray().Append(library.Abort),
-            static x => Assert.True((x.CompilerFunction is not (CompilerFunctionKind.None or CompilerFunctionKind.WriteLine)) == (x.Definition.Kind == DispositionKind.Intrinsic), x.Name));
+            static x => Assert.True((x.CompilerFunction != CompilerFunctionKind.None) == (x.Definition.Kind == DispositionKind.Intrinsic), x.Name));
     }
 
     // R3 decision 5: the MIR builder serves a built-in form (a slicing, a direct line's fixed arm) by a library function it names by its
@@ -474,6 +472,7 @@ public partial class KimiLibraryShapeTest
     [InlineData(KimiDeclarationId.TextToString, "public func toString<T>(value: ref/T) -> string\nT is Utf8Format")]
     [InlineData(KimiDeclarationId.TextTryFormat, "public func tryFormat<T, length N>(\nvalue: ref/T, destination: uniq/[N of u8]\n) -> Result<Utf8Slice during destination, BufferFull>\nT is Utf8Format")]
     [InlineData(KimiDeclarationId.WriteLineUtf8, "public func writeLine(text: Text.Utf8Slice)")]
+    [InlineData(KimiDeclarationId.WriteLine, "public func writeLine(text: ref/string) => Console.writeLine(Text.utf8(text))")]
     public void OperationBodiesKeepTheirHeaders(KimiDeclarationId id, string header)
         => Assert.Equal(header, HeaderLines(Library.Value.Library.GetSymbol(id)!.Declaration, header));
 

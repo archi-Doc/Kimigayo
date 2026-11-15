@@ -25,7 +25,7 @@ internal static partial class KimiLibraryCatalog
         new(KimiDeclarationId.Copy, Intrinsic: IntrinsicKind.Copy),
         new(KimiDeclarationId.Owned, Intrinsic: IntrinsicKind.Owned),
         new(KimiDeclarationId.Callable, Intrinsic: IntrinsicKind.Callable),
-        new(KimiDeclarationId.WriteLine, Function: CompilerFunctionKind.WriteLine),
+        new(KimiDeclarationId.WriteLine),
         new(KimiDeclarationId.ConsoleWriteStdout, Function: CompilerFunctionKind.ConsoleWriteStdout),
         new(KimiDeclarationId.TestTempDirectory, Function: CompilerFunctionKind.TestTempDirectory),
         new(KimiDeclarationId.Option),

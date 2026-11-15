@@ -116,10 +116,9 @@ public sealed partial class Binding
         try
         {
             CopyItemArguments(type, function, own);
-            // Compiler entries (a served function, or WriteLine, whose Body disposition its legacy row serves until R8-W2 d) and virtual
-            // Items consume already-acquired logical parameters. Their public contract operands serve effect checks without inventing a
-            // source invocation.
-            var compiler = type.Symbol.Definition.Kind != DispositionKind.Body || type.Symbol.CompilerFunction == CompilerFunctionKind.WriteLine;
+            // Compiler entries (a served function) and virtual Items consume already-acquired logical parameters. Their public contract
+            // operands serve effect checks without inventing a source invocation.
+            var compiler = type.Symbol.Definition.Kind != DispositionKind.Body;
             var operations = !compiler && !function.IsVirtual ? [] : new BoundArgumentOperation[function.Parameters.Count];
             for (var i = 0; i < operations.Length; i++)
             {

@@ -120,7 +120,7 @@ public partial class KimiLibraryShapeTest
         }
 
         Assert.Equal(flagged.Order(), declared.Order());
-        Assert.Equal(81, declared.Count);
+        Assert.Equal(82, declared.Count);
     }
 
     // The library's Attributes of one kind, each with the declaration it is written on, in source order.
