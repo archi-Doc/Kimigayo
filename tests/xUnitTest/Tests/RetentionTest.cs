@@ -961,6 +961,23 @@ public sealed partial class RetentionTest
     public void RawLayersRetainByTheirOrigins(string function, string expected)
         => Assert.Equal(expected, Declared(Bind(function + "\n"), "f"));
 
+    // PLAN's N7 (C-281, joined with C-352; SPEC 15.6.4, 15.6 Holders, 15.3.5): a storage whose Type holds no Loan, no borrow, raw layer,
+    // Slice, Function value, abstract part or Type argument that may hold one (MirTypes.HoldsLoans' fact), retains nothing, so Binding
+    // publishes no row there (Holding's Free): a Scalar, a Loan-free struct, a fixed array of Scalars, the `u8` past a raw layer and a
+    // `u64` past a declaration's own layer's reach; each beside a Loan-holding twin, which keeps its rows.
+    [Theory]
+    [InlineData("func f(x: uniq/u64, v: ref/i32, p: raw/u8) => ()", "")]
+    [InlineData("func f(x: uniq/(ref/i32 during a), v: ref/i32 during a, p: raw/u8) => ()", "store 0: own {0 Content, 1 Value}, reached {}")]
+    [InlineData("struct S\n    public var n: i32\n    public var m: u8\n    public init() => ()\nfunc f(s: uniq/S, v: ref/i32, p: raw/u8) => ()", "")]
+    [InlineData("struct S2 {a}\n    public var r: ref/i32 during a\n    public init(r: ref/i32 during a) => self.r = r\nfunc f(s: uniq/(S2 during b), v: ref/i32 during b, p: raw/u8) => ()", "store 0: own {0 Content, 1 Value}, reached {}")]
+    [InlineData("func f(a: uniq/[4 of u8], p: raw/u8) => ()", "")]
+    [InlineData("func f(a: uniq/[2 of raw/u8], p: raw/u8) => ()", "store 0: own {0 Chain, 1 Value Chain}, reached {} untied")]
+    [InlineData("func f(slot: uniq/(raw/u8), p: raw/u8) => ()", "store 0: own {0 Chain, 1 Value Chain}, reached {} untied")]
+    [InlineData("struct H {s}\n    var data: raw/u8\n    var q: uniq/u64 during s\n    public init(q: uniq/u64 during s)\n        self.data = null\n        self.q = q\nfunc f(h: uniq/(H during t), p: raw/u8) => ()", "store 0: own {0 Chain, 1 Value Chain}, reached {0 Chain, 1 Value Chain} untied")]
+    [InlineData("struct H {s}\n    var data: raw/u8\n    var q: uniq/(ref/i32 during s) during s\n    public init(q: uniq/(ref/i32 during s) during s)\n        self.data = null\n        self.q = q\nfunc f(h: uniq/(H during t), p: raw/u8) => ()", "store 0: own {0 Chain, 1 Value Chain}, reached {0 Chain, 1 Value Chain} untied")]
+    public void AStorageThatHoldsNoLoanRetainsNothing(string function, string expected)
+        => Assert.Equal(expected, Declared(Bind(function + "\n"), "f"));
+
     // SPEC 5.7 Calls (D15; DECISIONS BU-24, the delta review's C4 item): a raw layer's Origin reaches its slot's keepers however deep the
     // slot is forwarded through nested Types, so ten forwarding levels keep the innermost Loan's referent writable through `p`, as one
     // does (a walk bounded at eight lost it), and a slot kept again through a raw pointer to its own Type keeps its rows.
