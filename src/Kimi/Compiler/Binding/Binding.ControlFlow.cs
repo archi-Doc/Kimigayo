@@ -149,29 +149,7 @@ public sealed partial class Binding
     // source that awaits its position (step 3 at its typed sources' Type would decide it before the call's places meet).
     private bool WaitsForItsCall(Koto node, ResultContext context, bool awaiting)
         => context.HasTyped && context.Cause is not null ? this.ClassifiedByCall(node, null)
-            : awaiting && (AwaitingAggregateSource(context) ?? this.AwaitingOwnerCall(node, context)) is { } shape && this.ClassifiedByCall(node, shape);
-
-    // SPEC 14.9.2 step 3, 3.6 (PLAN G924 item (1)): the first call source of a join that awaits its call and is an owner value
-    // (OwnerValueCall), through the forms that deliver it; with it the join is a value join, one temporary at a `ref/U` position.
-    private Koto? AwaitingOwnerCall(Koto node, ResultContext context)
-    {
-        var scope = this.ConstraintScope(node);
-        foreach (var source in context.SourceNodes)
-        {
-            var core = source;
-            while (core is not null && DeliveredOperand(core) is { } operand)
-            {
-                core = operand;
-            }
-
-            if (core is InvocationKoto { BoundType: null } && this.OwnerValueCall(core, scope))
-            {
-                return core;
-            }
-        }
-
-        return null;
-    }
+            : awaiting && AwaitingAggregateSource(context) is { } shape && this.ClassifiedByCall(node, shape);
 
     // SPEC 14.9.2: result sources whose reference layers over one read Type differ in number or kind unify to that Type;
     // sources with the same layers keep the ordinary common-borrow rule.
