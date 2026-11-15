@@ -5034,6 +5034,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
   - Amended by R4-M181 (PLAN G416 U2): A5 no longer reads `Binding.SelfAdmitted` through TyCtxt; `TyCtxt.SelfAdmitted` goes, and A5 reads row 13's entries.
   - Rule 3's parenthesis is superseded in part by R7-M32 (the clauses of every kind, at every depth, of the Types the contract or
     its handed signatures reach).
+  - Completed by BU-215 (PLAN G904): Revision 9's "the signature's Binder" is, for a Function Type, its `BoundType.Binder`, the
+    syntax that declares it.
 - **R4-M155 A failed comparison's record reads the comparison's one fact, produced once where it is judged (G216 (a) U2.1)**
   (2026-10-31; superseded in part by R4-M162; amended by R4-M161; design round 2 and design-r2 Amendments 1-5; the owner, verbatim:
   「すべて推奨の内容でお願いします」 for round 2's design and s4, 「U2.1 の設計を条件つきで実装に進めてよい」, and 「すべて推奨の内容でお願いします」 for the e1a split) SPEC 10.7, 15.3.5,
@@ -9735,6 +9737,8 @@ resumed by R4-M86 (2026-10-20).
   - Amended by BU-198 (PLAN G826, G811-o, 2026-11-13): `CallSignature` gains a Function Item's row (what a function nested in a
     body, a root function included, inherits from its enclosing body), and `ErasureSubject` judges the environment Tuple of the
     Item's bound arguments, a requirement Contract's inherited Origins included.
+  - Amended by BU-215 (PLAN G904): a Function Type's `CallSignature` row reads its `BoundType.Binder` (the declaring syntax), not a
+    binder guessed from an input's Origin.
 - **BU-74 A recorded argument part's relation to its call is one published column, `ArgumentPart.Relation` (`CallRelation`)**
   (2026-11-01; PLAN G216 (a) Part 1 U1.6g3a and U1.6g3b; the owner's 「U1.6g3 をどうしますか？ 続ける」, 2026-10-31) The owner's rule: ArgumentKinds
   publishes a part's relation to its call as one fact, and no consumer infers that relation from BoundType or BindingState. G1b B4 (a
@@ -13482,6 +13486,27 @@ resumed by R4-M86 (2026-10-20).
     equality where the use admits only `ref`); the fix is that row's. `CommonOriginType` is not a reader of this point: SPEC 14.9.2
     forms a join by the structural part only, so its invariant read belongs to the join formation's departure (PLAN G394, G443) and
     stays until that row's rule replaces it.
+- **BU-210 FunctionGroup: one representation of a use's function group (PLAN G906, O3)** (Back for the Front's area, 2026-11-15;
+  Binding; Major; design review, implementation review and its revision 2; the Front's rulings C-339 and C-344; the Middle's RP17
+  consent C-347). SPEC 7.4.4, 8.13.3, 9.5, 9.5.1, 9.6, 10.5.3.
+  - Decision: a use's function group (SPEC 9.5, 9.5.1, 9.6) is read only as `FunctionGroup`, built by `GroupOf(use, head)` from
+    lookup's publications and enumerated by calls, references, items and the argument-kind queries alike; `FunctionGroup.Of(head)`
+    builds a declaration's own chain. `ReferenceRequirements(use)` is the one decision that a use is a requirement reference:
+    `GroupOf` enumerates by it and the reference and item binders route by it. Explicit specializations are never yielded (SPEC
+    8.13.3). The check of a group gathered at a use (SPEC 7.4.4) runs for the callee and for the value use, through
+    `GatheredGroupFails`; `CheckGatheredParameterShapes` takes the group, so member lookup checks the group it gathers through
+    `GroupOf(member, null)`. Removed: `CallCandidates`, `ReferenceCandidate` and every `.Next` walk from a use's symbol.
+  - Reason: the gathered group had one reader, the call; references and items read the first source's chain, so alias order (and a
+    Constraint-gathered callee's clause order) decided acceptance. Against dev: 42 valid programs newly accepted, 40 invalid newly
+    rejected, and wrong code fixed in both orders (rp2-AB's selection, d6-ref, d6-arg, sp-gb-ref, sp-gb-arg); the record moves (Q13)
+    include gr-percall-BA (`MissingOriginBinding_Kd` -> `NoApplicableOverload_Kd`), fr-n8e-BA, d6-item, sp-gb-plain-AB, rb-shape and
+    the rb-* rows; one more accepted program changes its generated code (cfa2-BA).
+  - Rejected: (a) each reference reader looking into the gathered table itself (nine copies of one rule); (b) lookup returning a
+    chained synthetic head (a `BindingSymbol` is a declaration's identity and `Next` its scope's chain); (c) a candidate list for
+    every use (an allocation per call on the hot path); (d) gathering again at the reader from the document's aliases (a second
+    gathering; the stage stop and the access filter decided twice); (e) running the alias-stage check once where lookup publishes
+    the group (the check reads the members' bound headers, and lookup publishes while headers are bound and for binders that discard
+    the use).
 - **BU-211 Two Function Types at an invariant position relate both ways (PLAN G900)** (Front, 2026-11-15; Binding; Major; design
   review REVISE (B1), revisions 1 and 2, re-check ACCEPT; the Middle's consent C-342 with its condition C-1; the owner's O-310 (a)).
   SPEC 3.8, 10.7, 15.3.5.
@@ -13568,6 +13593,35 @@ resumed by R4-M86 (2026-10-20).
     `s/W` of Nc2s); ranking the open position from the plain candidate's class (a comparison that reads another candidate).
   - **Removal condition:** PLAN G916's one class source for every open arm replaces this expression (and amends BU-164's
     "Representation" parenthetical, whose `Literal` the open composite arm does not give today).
+- **BU-215 A Function Type carries its per-call binder (`BoundType.Binder`)** (2026-11-15; Front, Binding; PLAN G904, Q17 class 1;
+  Major; the Middle's C-349 CONSENT WITH CONDITIONS, C1-C3 met) SPEC 8.10, 10.7, 15.2.3, 15.3.4, 15.3.7, 3.8. Completes R4-M154
+  Revision 9's "the signature's Binder" for a Function Type; amends BU-73's `CallSignature` row for a Function Type.
+  - Rule: a Function Type's per-call binder is the Function Type syntax that declares it. It is part of the Type's identity
+    (`TyCtxt.Intern`'s key), given where the syntax is bound (`BindFunctionType`; a callee parameter's signature rebuilt from its
+    call Types takes the parameter signature's), kept by `Rebuild` and every shape-keeping rebuild, and null where the Type
+    quantifies none of its direct inputs (so equal Types intern to one instance whichever path formed them) and on every other kind.
+    An Input Origin of any other binder inside a Function Type is fixed, whatever its slot index.
+  - One owner: every reader takes the field (`Comparison`, `ContractFits`, `SameCallableSignature`, `ClosureExpectation`,
+    `CalleeBinder`, the reference slot matchers, retention's erased signatures, `ReplaceOpenOrigin`, `CallSignature`). Removed:
+    `FunctionTypeBinder` (the guess "the first direct input whose outer Origin is an Input Origin of some Function Type at its own
+    slot index"), `ReplaceOpenOrigin`'s copy of that test, `Capabilities.OwnFunctionBinder` (`binder.BoundType == signature`, false
+    for every substituted instance: a generic struct's Function Type field read at an instance was not Owned, row o1v).
+  - Reason: a binder read from an input's Origin takes another signature's per-call Origin for the nested Type's own when the slot
+    indexes match. Such a substituted copy arises where a named function's `b` is solved to a required signature's per-call Origin
+    (`ContractFits`) or to a written Type argument's own per-call Origin (generic inference), SPEC 15.3.4.
+  - Kept, with its removal condition (C-349 N1): the bound collector's skip of a nested Function Type pair
+    (`CollectOriginInference`, `PerCallShape(any: true)`) still tests an Input Origin of any binder at its own slot. With the exact
+    test the bounds of a nested Type whose fixed input sits at its own index reach the solver, which takes a nested Type's own
+    per-call Origin for a bound of the call: valid programs are rejected (rows l0v, l1v, n0i, e0v, e1v; b0v and b1v already on dev,
+    where the indexes differ) and n3i is accepted. The skip only drops bounds that the walk then judges with the exact binders.
+    Removal: PLAN G913's unit, which keeps a nested Function Type's own per-call Origins out of the bounds Origin by Origin.
+  - Moves (against G900's landing head, 65 programs labelled from SPEC first): invalid, newly rejected l3i, n2i, n3i, n4i
+    (`UnprovenOriginContract_Kd`), x0i (`NoApplicableOverload_Kd`) and 12 of the 13 G900-dependent rows (s0i (f1j), s1j, s2i, s3i,
+    s4i, l2i, l4i, a0i, a1i, g0i, g1i, g3i); valid, newly accepted o1v (a generic struct's Function Type field read at an instance,
+    required Owned); C-349's families: valid c1v, c2v, c4v, c5v, c6v, c8v newly accepted, invalid t06i, t08i, t09i, t10i, cb1i newly
+    rejected; no valid program newly rejected, no invalid one newly accepted. Open on dev and the head: c0v (PLAN G905), and s5v,
+    m0v-m3v, b0v, b1v, n0j (valid, rejected) with n3j (invalid, accepted) in PLAN G913.
+  - Rejected: arity or instance tests on the Type; the enclosing comparisons' binders in the walk; `binder.BoundType == signature`.
 - **G209-1** (2026-10-24; structural unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source
   aliases their selected container and environment before ordinary lookup merges imports. These responsibilities were embedded in the
   general expression parser and `Binding.Types.Lookup`, with alias resolution beside Type formation. `Parser.RuntimeTypeTests` now
@@ -19881,6 +19935,10 @@ R8-M* and R9-M* by the stage of the recording unit.
     Middle T-281, T-290; the Back its own (the board's T rows of 2026-11-15 20:2x).
   - Rejected: builds during a slot on separate cores (option 4: memory bandwidth and cache interference would widen the A′/A spread,
     unmeasured); keeping per-unit slots (above).
+  - Amended (the owner, 2026-11-16, in the Coordinator's dialog, verbatim 「O0 の記録を外す案も適用してください」, on K's proposal; plan revision 87):
+    the window's slot records no O0 (the O2 corpus A/B and the compile cost stay), so a slot takes about 34 minutes per B instead of
+    45; O0 stays recorded at the stage exit (plan X1, §10.1 item 2). `artifacts/board/tools/rp8_window.sh run` takes `--o0` to
+    record it.
 - **R8-M1 The representation structs and their Place contract** (owner, 2026-11-07, verbatim 「推奨の内容でOKです。処理を継続してください。」,
   on O-41 (a) and O-43 (A); R8-R1a; prototype R8-L0p; supersedes the two plan rows below) IMPL 21.1.3, SPEC 5.2, 5.5, 5.7.
   - Adopted: `Storage.ArrayRepr<T>`, `Storage.SliceRepr<T>` and `Storage.StringRepr`, internal `#Layout("C")` structs of the Kimi
