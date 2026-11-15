@@ -13,7 +13,7 @@ namespace Kimi.Compiler;
 // - Inputs: the two Types, the use, and the Type relation (RelationWalk, Binding.TypeRelations.Walk.cs), which relates Never only to itself.
 // - Outputs: the verdict and, for FitsTypeAt and CheckTypeUse, the walk's first failure (ComparisonFailure), which a caller
 //   that records the failure passes on (FailMismatch, RecordMismatch); CheckTypeUse records the obligations of a fit whose structure
-//   holds.
+//   holds, among them the region conjuncts its comparisons left in the row sink when the whole fit holds (FormComparisonRows).
 // - Invariants: a fit adds no Constraint, reopens no inference and publishes nothing but CheckTypeUse's obligations; nothing below the
 //   root fits by Never (a Type holding Never is an ordinary Type). CheckTypeUse walks the relation once at its root and reads each
 //   part's answer from that walk (RelationWalk.FitPart), and once more at each invariant part the relation meets reversed, in the fit's

@@ -16,7 +16,9 @@ namespace XunitTest;
 /// over a Borrow of its environment (a pending atom), and the boundaries that keep premises alone (a conversion's Owned Constraint).
 /// Unit (iii) lands before unit (ii) (the owner's O-328 (a)), so a `let` local's unwritten slot is no region yet: a `let` row whose
 /// condition only that region would decide keeps premises alone, its invalid twin Binding's contract record (Proof); the `let` rows that
-/// only (ii)'s region brings to their label (c6, vr5n, vi3l, vr5nr, vl1l, vl1c, vl1cn) are (ii)'s.</summary>
+/// only (ii)'s region brings to their label (c6, vr5n, vi3l, vr5nr, vl1l, vl1c, vl1cn; opc5, OriginPremiseCatalogTest's `(x and z)`
+/// row; vcc1l, a Callable Constraint over a `let` local named in a Closure's result) are (ii)'s; vl1c and vcc1l, invalid programs dev
+/// accepts, are G492's open class 1 members (O-249 Q1 (a)) until (ii) lands.</summary>
 public sealed partial class MirBorrowsTest
 {
     // The valid rows: accepted with no record (the comment names the coverage twins of each program).
