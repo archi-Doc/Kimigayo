@@ -54,7 +54,7 @@ public sealed partial class Binding
     private readonly HashSet<(int Storage, BoundType Type)> storageTargeted = new();
     private readonly List<(int Storage, int Node, BoundType? Type)> storagePositions = new();
     private readonly List<(int Storage, int Node)> storageTargets = new();
-    private readonly List<(BoundType Type, BoundType? Written, BoundType? Holder, int Storage)> storageHolds = new();
+    private readonly List<(BoundType? Type, BoundType? Written, BoundType? Holder, int Storage)> storageHolds = new();
     private readonly List<int> retentionOwnNodes = new();
     private readonly List<int> retentionOccurrences = new();
     private readonly HashSet<(BoundType Type, bool Callable)> retentionOccurred = new();
@@ -205,10 +205,12 @@ public sealed partial class Binding
     // as RetentionParts reads it; SPEC 5.2.1 condition 3, 5.7; DECISIONS BU-113), the cap of a contract's walk, which stays outside the fact;
     // one stepping Exclusive also writes its Origin's members wherever the input holds it (SPEC 15.6.4 "a Tuple element, an Option payload,
     // a Field or a Type argument included"; PLAN G583): its holding instance decides its step, never its members, and the walk meets the
-    // layers an input holds at its own address by ByValue, as OwnLayers lists them.
+    // layers an input holds at its own address by ByValue, as OwnLayers lists them. A layer whose content no Type states (Holds Any: one a
+    // declaration wrote, TyCtxt.RawStated) addresses storage its pointee Type does not describe (SPEC 5.7 Calls, 5.2; DECISIONS BU-46), so
+    // the storage it writes past it gets a hold of no Type, which the hold walk reads as a part no Type states (Held: Loans, never Free).
     private void RawReach(OriginPremiseEnvironment environment, BoundType type, StorageAt at, HeldRange run, int targets, int layer)
     {
-        var pointee = this.retentionHeld[run.Start].Part!;
+        var (pointee, content) = (this.retentionHeld[run.Start].Part!, this.retentionHeld[run.Start].Holds);
         var below = at with { Written = null, Holder = null, Depth = at.Depth + 1, Signature = null };
         if (at.Storage == NoStorage)
         {
@@ -224,7 +226,12 @@ public sealed partial class Binding
             return;
         }
 
-        this.Past(environment, pointee, targets, step != HoldStep.Shared, layer, below);
+        var past = this.Past(environment, pointee, targets, step != HoldStep.Shared, layer, below);
+        if (content == HoldContent.Any && past >= 0 && past != ResultStorage)
+        {
+            this.storageHolds.Add((null, null, null, past));
+        }
+
         if (step == HoldStep.Exclusive)
         {
             this.Members(environment, OwnedOrigin(type)!, below);
@@ -280,12 +287,13 @@ public sealed partial class Binding
     // What a layer refers to. For the output fold: the storage past it where the call may write through it (the root from before the
     // root), and the result's own past any layer (a result carries its whole Type); else, below a position (`targets`, its storage; -1
     // below none), only what a value stored there brings. For the input fold: what a source goes through the layer to (Through, `layer`
-    // its node, -1 for none).
-    private void Past(OriginPremiseEnvironment environment, BoundType referent, int targets, bool written, int layer, StorageAt at)
+    // its node, -1 for none). The storage it walks past the layer, -1 for none.
+    private int Past(OriginPremiseEnvironment environment, BoundType referent, int targets, bool written, int layer, StorageAt at)
     {
+        var past = -1;
         if (at.Storage != NoStorage && (written || at.Storage == ResultStorage))
         {
-            var past = at.Storage switch
+            past = at.Storage switch
             {
                 ResultStorage => ResultStorage,
                 < 0 => OwnStorage,
@@ -299,6 +307,7 @@ public sealed partial class Binding
         }
 
         this.Through(environment, referent, layer, at);
+        return past;
     }
 
     // A value's parts by value (StorageWalk; `run`, its entries), walked in the same state with the Type each part's declaration writes

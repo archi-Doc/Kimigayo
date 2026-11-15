@@ -52,12 +52,13 @@ public sealed partial class Binding
     // any chain of reads through an argument carries where such a position can hold a value that carries a Loan (Loans: a borrow, an
     // abstract part, a Type argument's or an erased environment's dependency; SPEC 15.6.4 "also as a part of a value of that layer's
     // pointee Type"): such a storage takes rule A's rows too; one holding no such position (Scalars, raw layers stating an Origin, which
-    // StatedFits judges) takes only its own. A storage whose holds met neither a Loan-carrying position nor a raw layer (Pointer, of any
-    // step: a raw pointer carries the holders it addresses, SPEC 15.6) holds no Loan, the fact MirTypes.HoldsLoans states for A5, and so
-    // retains nothing (SPEC 15.6.4: an argument's own value only where the storage can hold it; PLAN's N7, C-281): it publishes no row
-    // (Free), whatever another storage's layer reaches. The Abstract storage, whose Type is hidden, is never Free, nor is the storage
-    // past an Unbounded layer: that layer addresses storage it does not state (SPEC 5.7 Calls), so its pointee Type does not say what
-    // the storage holds (the hold walk gives it Loans).
+    // StatedFits judges) takes only its own. Loans fails closed: a part is Loan-free only by MirTypes.HoldsLoans' criterion over a fully
+    // bound, prepared Type (an entry it passes on: Inline, a safe Own or a Type argument's Loan step, of the part's Type, in a Type whose
+    // storage is Prepared), so every other part (a borrow, an abstract or erased part, a part Binding did not bind or storage no Type
+    // states, a Rejected Type) holds Loans. A storage is Free only where that is proven (PLAN's N7, C-281): its holds (Walked) met no Loans
+    // and no raw layer (Pointer, of any step: a raw pointer carries the holders it addresses, SPEC 15.6), the fact MirTypes.HoldsLoans
+    // states for A5; it retains nothing (SPEC 15.6.4: an argument's own value only where the storage can hold it) and publishes no row,
+    // whatever another storage's layer reaches. A storage no hold walks (the Abstract one, whose Type is hidden) is never Free.
     [Flags]
     private enum Holding : byte
     {
@@ -68,6 +69,7 @@ public sealed partial class Binding
         Unbounded = 8,
         Loans = 16,
         Pointer = 32,
+        Walked = 64,
     }
 
     // Whether a reader may read a Type whose storage has this verdict (SPEC 23.1.2; DECISIONS BU-36, R4-M139): Prepared, and Rejected, whose
@@ -166,7 +168,7 @@ public sealed partial class Binding
         this.BeginStorages();
         this.StorageWalk(environment, result, StorageAt.Output(ResultStorage, writable: true) with { Signature = this.SignatureResult });
         var kept = this.Kept(inputs.Length);
-        var whole = (result, (BoundType?)null, (BoundType?)null, ResultStorage);
+        var whole = ((BoundType?)result, (BoundType?)null, (BoundType?)null, ResultStorage);
         var untied = this.Hold(environment, CallRetention.ResultOutput, new(in whole), inputs, (key, callee, premises), ref transfer);
         if (within >= 0)
         {
@@ -296,8 +298,8 @@ public sealed partial class Binding
         }
     }
 
-    // Whether a storage of the walk made holds no Loan (Holding's Free: Hold met no Loan-carrying position and no raw layer in it).
-    private bool Free(int storage) => storage != AbstractStorage && (this.retentionHolding[storage] & (Holding.Loans | Holding.Pointer)) == 0;
+    // Whether a storage of the walk made is proven to hold no Loan (Holding's Free: Hold walked it and met no Loans and no raw layer there).
+    private bool Free(int storage) => (this.retentionHolding[storage] & (Holding.Walked | Holding.Loans | Holding.Pointer)) == Holding.Walked;
 
     // The hold walk's kinds of the walk made (retentionKept, one array per storage, none set), for the computation's input count.
     private List<RetentionKind[]> Kept(int inputs)
@@ -550,7 +552,7 @@ public sealed partial class Binding
     private bool Hold(
         OriginPremiseEnvironment environment,
         int output,
-        ReadOnlySpan<(BoundType Type, BoundType? Written, BoundType? Holder, int Storage)> holds,
+        ReadOnlySpan<(BoundType? Type, BoundType? Written, BoundType? Holder, int Storage)> holds,
         ReadOnlySpan<BoundType> inputs,
         (Transfer Key, FunctionKoto? Callee, BindingScope? Premises) call,
         ref Transfer? transfer)
@@ -562,7 +564,7 @@ public sealed partial class Binding
         Array.Clear(met, 0, count);
         foreach (var (type, written, holder, storage) in holds)
         {
-            met[storage] |= this.Held(type, written, holder, output, storage, lent: false);
+            met[storage] |= Holding.Walked | this.Held(type, written, holder, output, storage, lent: false);
         }
 
         this.StatedFits(environment, output);
@@ -670,12 +672,12 @@ public sealed partial class Binding
     // and only accumulates, so each position is walked at most once per lent bit, storage and output (retentionMet): the work is linear in the
     // distinct positions per storage, not in the paths to them through the interned Types (V16). A struct or enum whose storage is a Limit, a
     // growing one among them (PrepareTypeStorage's limits, DECISIONS BU-12), makes the contract CallRetention.Limit; Rejected storage is
-    // walked as far as it substitutes, a part that does not (null) holding nothing (Readable, BU-36).
+    // walked as far as it substitutes, and it and a part that does not (null) hold Loans (Readable, BU-36: it holds whatever it is).
     private Holding Held(BoundType? type, BoundType? written, BoundType? holder, int output, int storage, bool lent)
     {
         if (type is null)
         {
-            return Holding.Loans; // A part that does not substitute: its storage keeps the rows that hold whatever it is (BU-36), never Free.
+            return Holding.Loans; // A part that does not substitute, or storage no Type states: it holds whatever it is (BU-36), never Free.
         }
 
         written = Written(written);
@@ -696,7 +698,7 @@ public sealed partial class Binding
         var refers = run.End > run.Start;
         var stepped = false;
         var unbounded = false;
-        var loans = IsCallable(type); // A Function value may hold what its environment captured (SPEC 15.6).
+        var loans = this.PrepareTypeStorage(type) != StorageOutcome.Prepared; // Rejected storage holds whatever it is (DECISIONS BU-36).
         var pointer = false;
         var hidden = false;
         for (var i = run.Start; i < run.End; i++)
@@ -706,14 +708,8 @@ public sealed partial class Binding
             step ??= layer ? entry.Step : null;
             refers &= Dereference(entry);
             stepped |= layer && entry.Step != HoldStep.Address;
-            if (layer && entry is { Step: HoldStep.Address, Holds: HoldContent.Any, Part: { } addressed })
-            {
-                unbounded = true; // A layer a declaration wrote (TyCtxt.RawStated): the storage past it is not of its pointee Type.
-                this.retentionHolding[this.storageOf.TryGetValue(addressed, out var past) ? past : AbstractStorage] |= Holding.Loans;
-            }
-
-            loans |= !layer && (entry.Step is HoldStep.Shared or HoldStep.Exclusive or HoldStep.Abstract or HoldStep.Loan or HoldStep.Erased ||
-                entry.Holds == HoldContent.Any); // Any: a part Binding did not bind holds whatever it is (DECISIONS BU-36).
+            unbounded |= layer && entry is { Step: HoldStep.Address, Holds: HoldContent.Any }; // A layer a declaration wrote (TyCtxt.RawStated).
+            loans |= !layer && entry is not { Step: HoldStep.Inline or HoldStep.Own or HoldStep.Loan, Holds: HoldContent.Its }; // HoldsLoans' pass-on entries.
             pointer |= layer;
             hidden |= entry.Step == HoldStep.Abstract;
         }
