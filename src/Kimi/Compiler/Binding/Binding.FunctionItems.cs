@@ -428,12 +428,18 @@ public sealed partial class Binding
         return true;
     }
 
-    private BoundType CompleteFunctionItem(Koto use, BindingSymbol symbol, ReadOnlySpan<BoundType?> typeArguments = default, BoundType? declaringType = null, ReadOnlySpan<BoundLength?> lengthArguments = default)
+    private BoundType? CompleteFunctionItem(Koto use, BindingSymbol symbol, ReadOnlySpan<BoundType?> typeArguments = default, BoundType? declaringType = null, ReadOnlySpan<BoundLength?> lengthArguments = default)
         => this.CompleteFunctionItem(use, this.FunctionItemType(symbol, typeArguments, declaringType, lengthArguments));
 
-    private BoundType CompleteFunctionItem(Koto use, BoundType type)
+    // A function item completed on its use, or null with the use failed when the selected function is `#Unsupported` (SPEC 7.3, 22.1).
+    private BoundType? CompleteFunctionItem(Koto use, BoundType type)
     {
         var symbol = type.Symbol!;
+        if (!this.SupportedFunction(use, symbol))
+        {
+            return null;
+        }
+
         while (use is ParenthesizedKoto parentheses)
         {
             use.BoundSymbol = symbol;

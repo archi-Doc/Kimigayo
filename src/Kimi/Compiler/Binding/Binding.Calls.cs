@@ -391,6 +391,12 @@ public sealed partial class Binding
                 return null; // SPEC 10.5.1, 10.2.1: the nested call waits, or the call rests on its record (SolveSelected).
             }
 
+            if (!this.SupportedFunction(callee, winner))
+            {
+                this.MarkWaitingHeaders(call); // As a failed selection (FailWaitingSelection); the record is the callee's (SPEC 22.1, R8).
+                return Complete(call, null);
+            }
+
             if (evaluated[winnerIndex].State == CandidateApplicability.Waiting)
             {
                 // SPEC 10.5: selection precedes bodies. Complete only this candidate; a body or capture failure

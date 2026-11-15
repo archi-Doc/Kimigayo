@@ -4,23 +4,25 @@ using Kimi.Compiler.Parsing;
 
 namespace Kimi.Compiler;
 
-// FunctionGroup: the function group a use's Name denotes (SPEC 9.5, 9.5.1, 9.6), as lookup published it.
-// Responsibility: the one way a reader reaches the candidates of a use: a call, a function reference, a function item or an
-//   argument-kind query.
-// Inputs: the use and the head symbol its lookup returned; lookup's publications for the use (the alias stage's gathered list,
-//   Binding.Imports.cs; the Constraint-gathered requirement group, Binding.ContractCalls.cs).
+// FunctionGroup: the function group a use's Name denotes (SPEC 9.5, 9.5.1, 9.6), as lookup gathered it.
+// Responsibility: the one way a reader reaches the candidates of a use: a call, a function reference, a function item, an
+//   argument-kind query, or the use verdict while the use is evaluated (Binding.UnsupportedUses.cs).
+// Inputs: the use and the head symbol its lookup returned; lookup's gathering for the use (the alias stage's ImportGroup steps and
+//   their publication, the gathered list, Binding.Imports.cs; the Constraint-gathered requirement group, Binding.ContractCalls.cs).
 // Output: FunctionGroup, enumerated as the requirement members, or every source's declarations, or the head's chain; and the verdict
 //   of the check SPEC 7.4.4 and 9.5.1 give a group gathered at the alias stage (GatheredGroupFails).
-// Invariants: GroupOf is the one constructor for a use, and the only reader of the gathered table; FunctionGroup.Of is the one for a
-//   declaration's own chain, which has no use (a scope's init chain). ReferenceRequirements is the one decision that a use is a
-//   requirement reference (its Name a member access whose lookup gathered an active group from Constraints): GroupOf enumerates by
-//   it and the reference and item binders route by it, so no other reader decides it from the requirement table. The head is
-//   lookup's published head, never a selection: a selected declaration would enumerate a suffix of its chain. A null head is
-//   allowed only where lookup published a group for the use: the Constraint group's own check (RequirementMember) reads
-//   GroupOf(member, null) after it stored the group and set Active; with a null head and nothing published the group is empty,
-//   and a check over it passes. An explicit specialization is never yielded (SPEC 8.13.3: specializations are never candidates).
-//   The order of enumeration never decides acceptance or selection (SPEC 10.4). No reader walks BindingSymbol.Next from a use's
-//   symbol.
+// Invariants: FunctionGroup.Of builds every chain. A use's group is its head's chain plus each gathered source's chain, read from the
+//   walk's own ImportGroup steps while the use is evaluated (the use verdict, which runs before PublishPath) and from their
+//   publication after it: GroupOf, the one constructor of a published use's group and the only reader of the gathered table. A
+//   declaration's own chain with no use (a scope's init chain) is FunctionGroup.Of alone. ReferenceRequirements is the one decision
+//   that a use is a requirement reference (its Name a member access whose lookup gathered an active group from Constraints):
+//   GroupOf enumerates by it and the reference and item binders route by it, so no other reader decides it from the requirement
+//   table. The head is the walk's own head before publication (the verdict) and lookup's published head after it (GroupOf), never
+//   a selection: a selected declaration would enumerate a suffix of its chain. A null head is allowed only where lookup published a
+//   group for the use: the Constraint group's own check (RequirementMember) reads GroupOf(member, null) after it stored the group
+//   and set Active; with a null head and nothing published the group is empty, and a check over it passes. An explicit
+//   specialization is never yielded (SPEC 8.13.3: specializations are never candidates). The order of enumeration never decides
+//   acceptance or selection (SPEC 10.4). No reader walks BindingSymbol.Next from a use's symbol.
 // Prohibitions: no lookup, no gathering, no access or applicability judgment, no report.
 public sealed partial class Binding
 {

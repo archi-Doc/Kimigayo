@@ -223,7 +223,7 @@ public sealed partial class Binding
     {
         var mark = this.nameSteps.Count;
         var reads = this.notReadyReads;
-        var path = this.Supported(this.ResolveName(name, scope, use, LookupRole.Value, 0));
+        var path = this.ResolveValue(name, scope, use);
         if (reads != this.notReadyReads)
         {
             (this.earlyReads ??= new(ReferenceEqualityComparer.Instance))[use] = new(scope, LookupRole.Value, 0, path.Symbol, name);
@@ -335,7 +335,11 @@ public sealed partial class Binding
         }
     }
 
-    // The evaluation alone, for a question that selects nothing (a repair's check that a qualifier names its Container alone).
+    // An unqualified value Name completed (SPEC 9.5 in the Value namespace): judged (Supported) as Lookup reads it and ReadAgain reads it again.
+    private ResolvedPath ResolveValue(string name, BindingScope scope, Koto use) => this.Supported(this.ResolveName(name, scope, use, LookupRole.Value, 0));
+
+    // The evaluation alone of a spelling the program does not contain (a repair's check that a qualifier names its Container alone): what
+    // lookup selects, unjudged, since no use is written (SPEC 22.1 judges uses).
     private BindingSymbol? ProbePath(string name, BindingScope scope, Koto use, LookupRole role)
     {
         var mark = this.nameSteps.Count;
@@ -352,10 +356,15 @@ public sealed partial class Binding
         return path.Symbol;
     }
 
-    // An early read (BaseLayers) evaluated again as it was read, publishing nothing: a value name by its name (Lookup's ResolveName), a
-    // Type name by its syntax (NamePath's ResolvePath).
+    // An early read (BaseLayers) evaluated again as it was read, judged as it was and publishing nothing: a value name by its name (Lookup's
+    // ResolveValue), a Type name by its syntax (NamePath's ResolvePath).
     private BindingSymbol? ReadAgain(Koto use, in EarlyRead read)
-        => read.Name is { } name ? this.ProbePath(name, read.Scope, use, read.Role) : this.ProbePath(use, read.Scope, read.Role, read.Arity);
+    {
+        var mark = this.nameSteps.Count;
+        var path = read.Name is { } name ? this.ResolveValue(name, read.Scope, use) : this.ResolvePath(use, read.Scope, read.Role, read.Arity);
+        this.nameSteps.RemoveRange(mark, this.nameSteps.Count - mark);
+        return path.Symbol;
+    }
 
     // SPEC 6.1.5, 9.1, 9.3: what a written Self selects, decided here for every reader. The first enclosing Container that is no group
     // is its context: a Contract's Self is the Contract's Self Type parameter (the conforming-Type binder), never the Contract; a
