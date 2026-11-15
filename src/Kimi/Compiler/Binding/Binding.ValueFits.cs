@@ -26,7 +26,7 @@ public sealed partial class Binding
 
     // CheckTypeUse's place in its walk's parts and what it has read there: the walk's next part (an index of fitParts), the facts of the
     // last part read (a range of comparisonFacts; none for a part identity discharges, which has no position and no fact) and the
-    // failure of the last part read that failed.
+    // failure of the last part read that failed; once a part's components are read, the facts and failure of its first failed one.
     private record struct FitCursor(int Next, (int From, int To) Last, ComparisonFailure Failure);
 
     /// <summary>Proves the implemented structural subtype rules without performing a value operation.</summary>
@@ -87,7 +87,7 @@ public sealed partial class Binding
     // itself, RelationWalk forms none), so the entries appended before it returns are exactly this fit's.
     // `failure` is the failure of the walk at which the fit failed: the root's, or a component's that the obligations could not take.
     // The relation is walked once, at the root (PLAN G492-a (i)), and its parts (FitPart) answer each part as a walk rooted there in this
-    // fit's orientation would; the facts left for a record (RecordComparisonFacts) are the last part's, as that part's own walk leaves them.
+    // fit's orientation would; the facts left for a record (RecordComparisonFacts) are those of the part whose failure is the fit's.
     private bool CheckTypeUse(BoundType actual, BoundType expected, Koto use, out ComparisonFailure failure)
     {
         var pending = this.pendingRelations.Count;
@@ -138,8 +138,9 @@ public sealed partial class Binding
     // Contract: a pair identity discharges has no part; any other pair is the walk's next part (`cursor.Next`), in this fit's
     // orientation, or an invariant part the walk met reversed, which is walked once more (CheckTypeUseParts). Precondition: a reversed
     // part's structure does not depend on the orientation, so the root walk does not end inside such a part while the fit's own walk of
-    // it holds; it would have entered no later part, and the decomposition would go on to components the walk never entered. A pair
-    // that is not the walk's next part, or a read past the walk's parts, is a broken contract (InternalInvariant).
+    // it holds; it would have entered no later part, and the decomposition would go on to components the walk never entered. A
+    // structural failure ends the decomposition where it ends the walk (CheckTypeUsePart), so no part after the walk's end is read. A
+    // pair that is not the walk's next part, or a read past the walk's parts, is a broken contract (InternalInvariant).
     private bool CheckTypeUseCore(BoundType actual, BoundType expected, Koto use, OriginVariance polarity, ref FitCursor cursor)
     {
         if (ReferenceEquals(actual, expected))
@@ -217,27 +218,35 @@ public sealed partial class Binding
             }
         }
 
+        // SPEC 23.1.2: a part the obligations cannot take (a Function component's failed condition) is the fit's failure, the first such
+        // part's (its failure and its facts); the parts after it still leave their positions as obligations, each an independent record
+        // of the fit. SPEC 15.6.1: a structural failure is a Type mismatch, after which no Origin relation forms: it is the fit's failure
+        // and ends the decomposition, as it ends the walk, which enters no part after it.
+        var (failure, last, holds) = (cursor.Failure, cursor.Last, true);
         for (var i = 0; i < actual.Components.Count; i++)
         {
-            if (IsInvariantLayer(actual, this))
+            var position = actual.Kind == BoundTypeKind.Constructed && actual.Symbol?.Schema is { } schema && i < schema.GenericSlots.Count
+                ? schema.GenericSlots[i].OriginVariance : OriginVariance.Covariant;
+            cursor.Failure = failure;
+            if (this.CheckTypeUseCore(actual.Components[i], expected.Components[i], use, IsInvariantLayer(actual, this, use, default) ? OriginVariance.Invariant : ComposeVariance(polarity, position), ref cursor))
             {
-                if (!this.CheckTypeUseCore(actual.Components[i], expected.Components[i], use, OriginVariance.Invariant, ref cursor))
-                {
-                    return false;
-                }
-
                 continue;
             }
 
-            var position = actual.Kind == BoundTypeKind.Constructed && actual.Symbol?.Schema is { } schema && i < schema.GenericSlots.Count
-                ? schema.GenericSlots[i].OriginVariance : OriginVariance.Covariant;
-            if (!this.CheckTypeUseCore(actual.Components[i], expected.Components[i], use, ComposeVariance(polarity, position), ref cursor))
+            if (cursor.Failure.Kind == ComparisonFailureKind.Shape)
             {
                 return false;
             }
+
+            if (holds)
+            {
+                (failure, last, holds) = (cursor.Failure, cursor.Last, false);
+            }
         }
 
-        return true;
+        cursor.Failure = failure;
+        cursor.Last = holds ? cursor.Last : last;
+        return holds;
     }
 
     // One Origin position of a fit by its variance: `actual` outlives `expected` at a covariant position, the reverse at a contravariant
