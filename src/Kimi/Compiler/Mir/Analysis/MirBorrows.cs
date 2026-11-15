@@ -36,7 +36,8 @@
 // - the storing rule, its must-facts (Own, Past, the landing fact) and its producer: MirBorrows.Storing (PLAN G581);
 // - the pun rule, its marker Δ and its undecided writes (Φ_M, Φ_U; a located Unsupported_Kd at the check that rests on one):
 //   MirBorrows.Puns, with its judgement over Types (MirBorrows.PunTypes) and its Place keys (MirBorrows.PunKeys; PLAN G667b, G667c).
-// Invariants: a holder is a root local whose case Type may hold a Loan (MirTypes.HoldsLoans, a raw layer included), or E, the storage the
+// Invariants: a holder is a root local whose case Type may hold a Loan (MirTypes.HoldsLoans, a raw layer included) or that is exposed
+// (MirBorrows.Loans' Exposed: a pointer the body formed may write it, whatever its Type; MirBorrows.Holders), or E, the storage the
 // body does not own, static storage included (a direct Loan on a static names E), or a holder's drop slot, whose state is always empty
 // (drop-liveness, MirBorrows.Holders; R4-M153); its state is two MirLoanSets nodes, Placed and Shared, whose union σ(h) every reader
 // reads (MirBorrows.States, R4-M160), of Loans, addresses and markers, of which only Loans conflict and only Loans, with their

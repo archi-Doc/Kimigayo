@@ -282,9 +282,6 @@ internal sealed partial class MirBorrows
         }
     }
 
-    // Whether a local's case Type may hold a Loan (Holds): the holder test (MirBorrows.Holders).
-    private bool Holding(int local) => this.Holds(cases.Type(this.body.Locals[local].Type), out _);
-
     // The guard of a holder's own root Type, the Type the walk reads its state at (Writes, Read): what a call that writes its storage
     // may write past it (Holds); none for E and a static, which a call writes as storage the body does not own.
     private MirWrites Guard(int root) => root < 0 ? MirWrites.None : this.Guard(cases.Type(this.body.Locals[root].Type));

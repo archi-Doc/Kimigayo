@@ -294,7 +294,8 @@ internal sealed partial class MirBorrows
 
     // The untracked rule (B′ §4.2, PQ-2): whether a set has a direct element naming a local that is no holder and granting a write there
     // (an address or an exclusive Loan; a pointer formed through a shared borrow writes nothing, SPEC 5.2.1 condition 3), through which a
-    // raw pointer may place a Loan-carrying value where A5 tracks none.
+    // raw pointer may place a Loan-carrying value where A5 tracks none. No set has one since such a local is an exposed holder
+    // (MirBorrows.Holders' Holding); the rule, Formed and the call result's arm are deleted by the A5 value redesign's U7.
     private bool Untracked(int set)
     {
         this.Work += this.sets.Count(set);

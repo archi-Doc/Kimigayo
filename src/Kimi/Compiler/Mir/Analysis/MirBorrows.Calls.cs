@@ -10,7 +10,8 @@ namespace Kimi.Compiler.Mir;
 // root and everything past it (Own and Reached.All), E reached past a holder Reached.All (through a punned reading's layers alone,
 // their pointee's Reached entry: MirBorrows.Reach's Punned), and a local reached past a holder the Reached
 // entry whose Type, in the view's case and Origin-erased, is that of the Place the reaching Loan names (PastEntry, ReachedEntry;
-// Reached.All where none names it, never the Abstract entry), joined over the ways the walk reached it. A Closure
+// Reached.All where none names it, never the Abstract entry; nothing at a Type that holds no Loan, a temporary reading until Binding
+// publishes it), joined over the ways the walk reached it. A Closure
 // callee's call receiver is its input at position call.Count, the callee operand, read before the Moves, and a store into it takes W as
 // any argument's (ER-closure-stores; SPEC 15.8.2, DECISIONS R4-M148). At a referent store (CallRetention.ReferentStores, a per-output
 // membership: an operation of SPEC 4.6 to 4.9 writes through its exclusive receiver only what it refers to, 4.9.6) the store reaches
@@ -280,7 +281,10 @@ internal sealed partial class MirBorrows
 
     // The Reached entry of a Place's erased case Type (PastEntry): the entries whose Types, in the view's case (MirCases.Type) and
     // Origin-erased (TyCtxt.Erase), are that Type, joined; none (null) where no entry names it, never the Abstract one, which only All
-    // joins. Memoized per record, Type and view for the program version.
+    // joins. An entry at a Type that holds no Loan retains nothing: storage of that Type admits no value that carries a Loan or an
+    // address (SPEC 5.7 Calls, 15.6.4), which Binding's entry there (a raw layer's Scalar pointee keeping inputs) does not yet say. A
+    // temporary reading, removed when Binding publishes no retention at such a storage (the Front's unit N7 of the A5 value redesign,
+    // board C-281). Memoized per record, Type and view for the program version.
     private StorageRetention? ReachedEntry(OutputRetention written, BoundType place)
     {
         this.Version();
@@ -288,6 +292,7 @@ internal sealed partial class MirBorrows
         if (!known)
         {
             entry = this.Matched(written, place);
+            entry = entry is not null && !this.Holds(place, out _) ? new(new RetentionKind[entry.Kinds.Length], [], false) : entry;
         }
 
         return entry;

@@ -3,8 +3,8 @@
 namespace Kimi.Compiler.Mir;
 
 // A5's holders of a view (A3 3): the holder table, E in slot 0, the flow holders, whose states cross heads, then the chain-local ones,
-// with each Loan's reservation holder and named holder mapped to slots. A local is a holder when its case Type may hold a Loan
-// (MirBorrows.Reach's Holding). A holder a kept Drop past the destruction walk's bound drops has a drop slot right after its own, in its
+// with each Loan's reservation holder and named holder mapped to slots. A local is a holder when its case Type may hold a Loan or it is
+// exposed (Holding). A holder a kept Drop past the destruction walk's bound drops has a drop slot right after its own, in its
 // region, whose state is always empty: drop-liveness, the liveness that only such a Drop gives (MirBorrows.Liveness; DECISIONS R4-M153).
 // Must not carry, end or check a Loan (MirBorrows.Solve, MirBorrows.Endings, MirBorrows.Checks).
 internal sealed partial class MirBorrows
@@ -72,6 +72,12 @@ internal sealed partial class MirBorrows
 
         this.Work += (2 * locals.Length) + this.body.Blocks.Length + this.loanCount + this.addressCount + this.holderCount;
     }
+
+    // Whether a local is a holder (SPEC 15.6 Holders: a holder carries the Loans of the values stored in every part of it): it is exposed
+    // (MirBorrows.Loans' Exposed: a pointer the body formed may write its bytes, so what a write through it stores there, a punned one over
+    // its Scalars included, SPEC 5.2, is carried by it, SPEC 15.6 Addresses, 5.2.1 Retained dependencies, 15.6.4), or its case Type may
+    // hold a Loan (Holds). No other local can carry a Loan, so it has no slot.
+    private bool Holding(int local) => this.Exposed(local) || this.Holds(cases.Type(this.body.Locals[local].Type), out _);
 
     // A holder slot's local, or a drop slot's holder's (the drop list keeps it).
     private int HolderLocal(int slot)

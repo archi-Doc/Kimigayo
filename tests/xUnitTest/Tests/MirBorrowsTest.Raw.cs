@@ -966,15 +966,17 @@ public sealed partial class MirBorrowsTest
 
     // SPEC 15.6 (condition 5, D6; DECISIONS R4-M116 S2, S3, R-B2, B-B1): a pointer the contract ties to nothing reaches storage the body
     // does not own: in a result's raw Field (hiddenInit, hiddenHolder), written into an input's raw Field by the call (fill, which may also
-    // store what a read through h carries, v's Loan, where h's untied pointer reaches), or formed through a local that holds no Loan
-    // (punCall; punned, the residual: a Loan-free local keeps no Loan, so E does); a raw argument's pointee is read through it into the
-    // result (snap); a pointer that addresses a Loan-free local and stores a value with no Loan is valid.
+    // store what a read through h carries, v's Loan, where h's untied pointer reaches); a pointer formed through a local that holds no
+    // Loan stores y's Loan in that local, and a reference read from it carries the Loan (punCall: z is used after y = 5); a raw
+    // argument's pointee is read through it into the result (snap). A pointer that addresses
+    // a Loan-free local, or carries an exclusive Loan on one, stores y's Loan in that local, an exposed holder, unused after (punBorrow,
+    // punAddress: valid, the A5 value redesign's U6; R4-M120's untracked rule sent the store to E), and one that stores a value with
+    // no Loan is valid.
     [Fact]
     public void AnUntiedPointerReachesStorageTheBodyDoesNotOwn()
         => Assert.Equal(
             [
-                "hiddenInit: y = 5", "hiddenHolder: y = 5", "filled: y = 5", "filled: var v: i32 = 2", "punCall: y = 5", "punBorrow: y = 5",
-                "punAddress: y = 5", "snap: y = 5",
+                "hiddenInit: y = 5", "hiddenHolder: y = 5", "filled: y = 5", "filled: var v: i32 = 2", "punCall: y = 5", "snap: y = 5",
             ],
             Problems(RawShapes + """
                 func hiddenInit()

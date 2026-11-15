@@ -284,7 +284,7 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
     // parameter. Each form stores spare (r's Loan) through a pointer into a Slice's elements: into values, dead after (direct, tuple,
     // dynamic: valid; dev gave their Slices that storage) or used after (usedAfter, subUsedAfter, readAfter), or into storage the body
     // does not own, used after every point (written, writtenSub, parameter, parameterArray). values holds raw pointers, so it is a holder
-    // (a Loan-free array's storage address takes Φ_E by the untracked rule, R4-M120).
+    // by its Type (a Loan-free array is one once exposed: MirBorrowsTest.Exposed's fSliceKeepDirectOk).
     [Fact]
     public void ARangeSelectionsSliceReachesWhatItsBackingReaches()
         => Assert.Equal(
@@ -1078,8 +1078,9 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
     // three). Each is a Language problem: a self-row returning a route's own Loan to its holder, read twice (twoLayersRead,
     // acrossLayersRead); and through an iterator, whose stored raw layer steps Exclusive and passes the guard through its members' referents
     // (R4-M147), an exclusive iteration over a local collection of shared references, then reads (iterated), or over exclusive elements,
-    // then a shared one (exclusiveElements, MemberThroughLayersTest's program, with the ends of b and the array, whose Loans the iterator's
-    // stores carry to E: its value names b's exclusive Loan, b holding none, so it carries Φ_E by the untracked rule, R4-M116 PQ-2), and an
+    // then a shared one (exclusiveElements, MemberThroughLayersTest's program; the iterator's stores land in b, an exposed holder, and
+    // the array, so the ends of b and the array observe no Loan: the A5 value redesign's U6, where R4-M116 PQ-2's untracked rule carried
+    // them to E), and an
     // exclusive parameter's iteration whose stores reach E, then an append (bumpRefs, its Loan met once, where the loop's Borrow of values
     // is formed, R4-M68).
     [Fact]
@@ -1126,8 +1127,7 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
         Assert.Equal(
             [
                 "twoLayersRead: w@follow@ref", "twoLayersRead: w@follow@ref", "acrossLayersRead: w@follow@ref", "acrossLayersRead: w@follow@ref",
-                "iterated: refs@ref", "iterated: refs@ref", "exclusiveElements: exclusive",
-                "exclusiveElements: var exclusive: [1 of uniq/Data] = [b@uniq]", "exclusiveElements: var b = Data.init()", "bumpRefs: values",
+                "iterated: refs@ref", "iterated: refs@ref", "exclusiveElements: exclusive", "bumpRefs: values",
             ],
             Problems(c, Analyze(c), [.. LoanCodes, DiagnosticCode.Unsupported_Kd]));
     }
