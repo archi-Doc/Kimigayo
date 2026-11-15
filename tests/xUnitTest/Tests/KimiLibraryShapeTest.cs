@@ -275,10 +275,11 @@ public partial class KimiLibraryShapeTest
 
         // Rows L9-L11 (SPEC 22.1, 3.2.2, 13.6.2, 13.6.3; IMPL 21.3.4): the `#Unsupported` declarations are Kimi.Intrinsics' four Weak
         // functions, each the only declaration of its Name (so its group is wholly `#Unsupported`), and the struct Weak, which has no
-        // member and no synthesized constructor (`#Lang("Weak")`: ManagedRepresentation); none is specialized.
+        // member and no synthesized constructor (`#Lang("Weak")`: ManagedRepresentation); none is specialized. Source order: Core.kimi is
+        // read before Intrinsics.kimi (R8-G1 G1-5: every library source is ordinary).
         var intrinsics = Assert.IsType<GroupKoto>(c.Library.MakeObj.Declaration.Parent); // Kimi.Intrinsics, makeObj's group (R8-G1 G1-5).
         var unsupported = LibraryAttributes(AttributeKind.Unsupported).Select(static x => x.Target).ToArray();
-        Assert.Equal(["downgrade", "upgrade", "makeRcCyclic", "makeArcCyclic", "Weak"], unsupported.Select(static x => x is FunctionKoto function ? function.Name : ((StructKoto)x).Name));
+        Assert.Equal(["Weak", "downgrade", "upgrade", "makeRcCyclic", "makeArcCyclic"], unsupported.Select(static x => x is FunctionKoto function ? function.Name : ((StructKoto)x).Name));
         foreach (var function in unsupported.OfType<FunctionKoto>())
         {
             Assert.Same(intrinsics, function.Parent);
@@ -286,7 +287,7 @@ public partial class KimiLibraryShapeTest
             Assert.Single(intrinsics.Members, x => x is FunctionKoto other && other.Name == function.Name);
         }
 
-        var weak = Assert.IsType<StructKoto>(unsupported[^1]);
+        var weak = Assert.IsType<StructKoto>(unsupported[0]);
         Assert.Same(weak, c.Library.GetSymbol(KimiDeclarationId.Weak)?.Declaration);
         Assert.Empty(weak.Members);
         Assert.Null(weak.SynthesizedConstructor);
