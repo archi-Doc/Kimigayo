@@ -24,7 +24,7 @@ namespace Kimi.Compiler;
 //   Type: no evidence, and no Type at a slot that takes the whole (SPEC 10.8, BU-2 U3's D6). A failed part (PartFailed) makes its
 //   position Call, Waiting under 10.5.1 (U1.6h site 3; DECISIONS BU-78): it is no evidence and fits every candidate (SPEC 23.1.2), and
 //   its siblings are checked at the selected candidate's Type. Every
-//   reader (the evidence, the defaults, IndependentPositionType, the fit) takes the kind from it.
+//   reader (the evidence, the defaults, WholeEvidence, the fit) takes the kind from it.
 // - Inputs: a part (its syntax and recorded kind), a child index and the position's Type pattern or Type; for the expected Type
 //   (SPEC 10.2's fixed expected Type, 12.3.1; PLAN G924 rule A) the part's form and the position's Type alone.
 // - Outputs: OpenPosition and ClosePosition, a walk's position of one part; ChildPositions and AddChildPosition, a position's (or a

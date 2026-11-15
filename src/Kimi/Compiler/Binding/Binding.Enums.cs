@@ -522,13 +522,21 @@ public sealed partial class Binding
     // is the construction's Type mismatch.
     private bool InferPayloads(Koto use, ReadOnlySpan<Koto> payload, ref SlotSolution solution, SlotSet settled, bool late)
     {
+        var wholes = this.wholes.Count;
         for (var i = 0; i < payload.Length; i++)
         {
             if (!settled.Contains(i) && !solution.InferArgument(payload[i].BoundType!, solution.Call.ArgumentNodes[i], late))
             {
+                this.wholes.RemoveRange(wholes, this.wholes.Count - wholes);
                 this.Fail(use, BindingFailure.TypeMismatch);
                 return false;
             }
+        }
+
+        if (!solution.BindWholes(wholes, late))
+        {
+            this.Fail(use, BindingFailure.TypeMismatch);
+            return false;
         }
 
         return true;

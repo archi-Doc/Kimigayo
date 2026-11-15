@@ -428,7 +428,7 @@ public sealed partial class Binding
         }
 
         // SPEC 10.8, 4.3.1, 4.6.2: a Tuple or array literal or a mixed range, part by part at their positions; at a bare slot the
-        // whole literal, only when every part is evidence. A composite at `ref/T` borrows its temporary, whose Origin binds the input's.
+        // whole, recorded for WholeEvidence (BindWholes). A composite at `ref/T` borrows its temporary, whose Origin binds the input's.
         // A join its call classifies, and a join position of aggregates, go by their child positions likewise (SPEC 10.5.1, 14.9.2). A
         // position of several parts holds a join's sources: its value is the join's (PLAN G924 rule B, R8), so its temporary is the
         // join's, the outermost result target of its parts, never a source's.
@@ -457,14 +457,21 @@ public sealed partial class Binding
 
             if (pattern.Kind == BoundTypeKind.Parameter)
             {
-                if (binding.SubstituteType(pattern, this.SlotOwner, this.Types, this.Lengths) is { } fixedType)
+                // SPEC 10.5.1, 10.8 Solving (WholeEvidence): a whole at a slot no fixed binding solves is gathered with the slot's
+                // other wholes and evidence and bound once, at the pass's end (BindWholes); an earlier argument's binding never shapes it.
+                var fixedType = FixedPattern.Of(binding, pattern, this.Fixed).Type;
+                var solved = ReferenceEquals(fixedType, pattern) ? binding.SubstituteType(pattern, this.SlotOwner, this.Types, this.Lengths) : fixedType;
+                if (!ReferenceEquals(solved, pattern) && ReferenceEquals(fixedType, pattern))
                 {
-                    pattern = fixedType;
+                    for (var i = start; i < end; i++)
+                    {
+                        binding.wholes.Add((pattern, binding.positionParts[i]));
+                    }
+
+                    return true;
                 }
-                else if (binding.IndependentPositionType(start, late) is { } inferred)
-                {
-                    return binding.Infer(pattern, inferred, this.SlotOwner, this.Frame, lengths: true);
-                }
+
+                pattern = solved!;
             }
 
             if (source is ArrayLiteralKoto array && !this.InferArrayLength(pattern, array))

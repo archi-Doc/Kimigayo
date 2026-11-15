@@ -120,6 +120,35 @@ public sealed partial class Binding
         return expected;
     }
 
+    // The first array literal source of a join, through the forms that deliver it (DeliveredOperand), that is still unbound: it awaits
+    // its position; null when there is none. (A Tuple literal source keeps the step-3 path: its Origins-only joins rest on G443's interim
+    // and its closures on the control-flow ranking rows; AF-2's phase 8.)
+    private static Koto? AwaitingAggregateSource(ResultContext context)
+    {
+        foreach (var source in context.SourceNodes)
+        {
+            var core = source;
+            while (core is not null && DeliveredOperand(core) is { } operand)
+            {
+                core = operand;
+            }
+
+            if (core is ArrayLiteralKoto { BoundType: null })
+            {
+                return core;
+            }
+        }
+
+        return null;
+    }
+
+    // SPEC 10.5.1 (DECISIONS BU-43, BU-78; PLAN G924 B2, F's ruling 46): whether a join that is no conflict is its call's argument probe
+    // control flow, which its call classifies (ClassifiedByCall): a typed one holding a failed source, or one with an array literal
+    // source that awaits its position (step 3 at its typed sources' Type would decide it before the call's places meet).
+    private bool WaitsForItsCall(Koto node, ResultContext context, bool awaiting)
+        => context.HasTyped && context.Cause is not null ? this.ClassifiedByCall(node, null)
+            : awaiting && AwaitingAggregateSource(context) is { } shape && this.ClassifiedByCall(node, shape);
+
     // SPEC 14.9.2: result sources whose reference layers over one read Type differ in number or kind unify to that Type;
     // sources with the same layers keep the ordinary common-borrow rule.
     private BoundType? ReadTypeUnification(List<BoundType> types, BindingScope scope)
@@ -314,9 +343,10 @@ public sealed partial class Binding
         }
 
         // SPEC 10.5.1, 23.1.2: a typed join fixes no complete Type without its call when its typed parts have no common Type (U1.6g
-        // (a)) or, holding a typed part (HasTyped), it holds a failed source (G368 (1), DECISIONS BU-78 as amended); under its
-        // call's argument probe it waits, and its call classifies it and binds it at the selected candidate's Type.
-        if (conflict ? this.ConflictWaits(node) : context.HasTyped && context.Cause is not null && this.ClassifiedByCall(node, null))
+        // (a)) or, holding a typed part (HasTyped), it holds a failed source (G368 (1), DECISIONS BU-78 as amended), or an aggregate
+        // source awaits its position (PLAN G924 B2: its sources meet at the parameter's places, 10.5.1 ¶1, 4.3.1); under its call's
+        // argument probe it waits, and its call classifies it and binds it at the selected candidate's Type.
+        if (conflict ? this.ConflictWaits(node) : this.WaitsForItsCall(node, context, awaiting))
         {
             context.Wait(this.SourcesAwait(context));
             return Complete(node, null);

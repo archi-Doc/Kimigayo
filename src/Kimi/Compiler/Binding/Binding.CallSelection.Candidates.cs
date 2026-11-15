@@ -50,6 +50,7 @@ public sealed partial class Binding
         this.invariantSlots = this.RentSlotSet(CallSlotCount(solution.Function));
         this.environmentJudgments = this.environmentScratch.Rent(CallSlotCount(solution.Function));
         var enclosing = this.OpenTrial(); // A candidate trial is a frame (design-r2 Amendment 5; r2-6).
+        var wholesMark = this.wholes.Count;
         try
         {
             var result = this.TryCandidateCore(
@@ -82,6 +83,7 @@ public sealed partial class Binding
         }
         finally
         {
+            this.wholes.RemoveRange(wholesMark, this.wholes.Count - wholesMark);
             this.CloseTrial(enclosing);
             this.ReturnSlotSet(this.invariantSlots);
             this.invariantSlots = saved;
@@ -226,6 +228,7 @@ public sealed partial class Binding
             var contextualInputs = false;
             var contextualCallables = false;
             var waitingCallables = false;
+            var wholes = this.wholes.Count;
             for (var i = 0; i < call.ArgumentNodes.Count; i++)
             {
                 var part = call.ArgumentNodes[i];
@@ -270,7 +273,7 @@ public sealed partial class Binding
                 }
             }
 
-            if (!solution.InferCallableSignatures(mapping, operations))
+            if (!solution.BindWholes(wholes, late: false) || !solution.InferCallableSignatures(mapping, operations))
             {
                 return CandidateApplicability.Inapplicable;
             }
@@ -608,6 +611,7 @@ public sealed partial class Binding
     {
         var call = solution.Call;
         var function = solution.Function;
+        var wholes = this.wholes.Count;
         for (var i = 0; i < call.ArgumentNodes.Count; i++)
         {
             if (function.Parameters[mapping[i]].Type.BoundType is { } parameter && solution.Pattern(parameter) is { } latePattern &&
@@ -615,6 +619,11 @@ public sealed partial class Binding
             {
                 return false;
             }
+        }
+
+        if (!solution.BindWholes(wholes, late: true))
+        {
+            return false;
         }
 
         solution.Contribute(mapping);

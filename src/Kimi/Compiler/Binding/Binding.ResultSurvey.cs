@@ -146,6 +146,13 @@ public sealed partial class Binding
             context.Conflict();
         }
 
+        // SPEC 10.5.1 ¶1, 4.3.1 Places (PLAN G924 B2, F's ruling 46): under a call's argument probe a join with an aggregate source takes
+        // no Type from its typed sources: its call classifies it (WaitsForItsCall), and its sources meet at the parameter's places.
+        if (context.HasValue && this.UnderArgumentProbe(target))
+        {
+            context.Expected = null;
+        }
+
         context.HasTyped = context.Evidence.Count > 0;
         context.Evidence.Clear();
         context.Collecting = true; // The survey binds what it reads at once; the sources bound after it collect.

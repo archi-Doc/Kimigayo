@@ -189,6 +189,16 @@ public sealed partial class Binding
         return fits;
     }
 
+    // SPEC 10.5.1 ¶2, 4.3.1 Places (PLAN G924 rule A): a Tuple or array literal part beside a typed part at a position is fitted by its own
+    // parts at the position's Type, as an aggregate position is (each element still fitted to it), never whole.
+    private bool FitsWholeAt(Koto part, BoundType type)
+    {
+        var start = this.OpenPosition(part);
+        var fits = this.FitsPosition(start, type);
+        this.ClosePosition(start);
+        return fits;
+    }
+
     private bool FitsPosition(int start, BoundType type)
     {
         var end = this.positionParts.Count;
@@ -206,6 +216,7 @@ public sealed partial class Binding
                 (PartKind.Aggregate, ArrayLiteralKoto array) => this.ArrayShapeAt(array, type),
                 (PartKind.Typed, _) when common is not null && this.TypedPositionPart(part) is { } own =>
                     this.FitsTypedPart(part, own, type, common, ref positionClass),
+                (PartKind.Typed, TupleLiteralKoto or ArrayLiteralKoto) when this.IsAggregatePart(part) => this.FitsWholeAt(part, type),
                 _ => this.LateFits(part, type), // A Dictionary part whole (BU-43), its key and value not walked.
             };
             if (!fits)

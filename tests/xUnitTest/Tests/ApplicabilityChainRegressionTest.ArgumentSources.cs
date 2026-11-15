@@ -48,6 +48,12 @@ public partial class ApplicabilityChainRegressionTest
 
     private const string HandleJoins = "struct Box\n    public var v: i32\n    public init(v: i32) => self.v = v\n    public func read(self: objref/Self) -> i32 => self.v\nfunc firstO(p: (objref/Box during a, i32)) -> objref/Box during a => p.0\nfunc lookO(p: (objref/Box during a, i32)) -> i32 => p.1\nfunc f(c: bool) -> i32\n";
 
+    private const string Wholes = "func put<T>(a: T, b: T) -> i32 => 0\nfunc put3<T>(a: T, b: T, c: T) -> i32 => 0\nfunc id<T>(value: T) -> T => value@move\nfunc stop() -> Never => $abort(\"stop\")\nfunc fr<T>(value: T, code: i32) -> (T, i32) => (value@move, code)\nfunc fr<T>(value: T, name: string) -> (i64, T) => (0, value@move)\nfunc w(c: bool, k: i64, f: [2 of i32], a2: [2 of i32], wide: Array<i64>) -> i32\n    var y: i32 = 1\n    var n32: i32 = 2\n";
+
+    private const string PickArrayFirst = "func pick(values: Array<i32>) -> i32 => 0\nfunc pick<T>(value: T) -> i32 => 1\nfunc w() -> i32\n    var y: i32 = 1\n";
+
+    private const string PickGenericFirst = "func pick<T>(value: T) -> i32 => 1\nfunc pick(values: Array<i32>) -> i32 => 0\nfunc w() -> i32\n    var y: i32 = 1\n";
+
     private const string HeldDeclarations = "func identity<T>(v: T) -> T => v@move\nfunc f(x: i64) -> i32 => 0\nfunc ft(x: (i64, i32)) -> i32 => 0\nfunc fa(x: Array<i64>) -> i32 => 0\nfunc fd(x: Dictionary<string, i64>) -> i32 => 0\nfunc k(c: bool, d: bool) -> i32\n";
 
     // A row is (unit, form, program, records). Its verdict comes from SPEC, never from a build: records is empty for a valid program, which
@@ -85,16 +91,16 @@ public partial class ApplicabilityChainRegressionTest
     // beside Array<i32> has no common Type and the argument waits; elements of one literal agree (4.3.1).
     [InlineData("guard", "q3b", Sources + SourcesBody + "    r = g(if c => [x] else => identity([x]))\n    return r\n", "")]
     [InlineData("guard", "p3f", LengthSources + "    return g(if c => [1@i64, 2@i64] else => zeros())\n", "*: return g(if c => [1@i64, 2@i64] else => zeros()) | ...")]
-    [InlineData("guard", "q2a", Sources + SourcesBody + "    let j = if c => [u@ref] else => [y]\n    return r\n", "*: let j = if c => [u@ref] else => [y] | ...")]
-    [InlineData("guard", "r02", Sources + SourcesBody + "    let j = [u@ref, y]\n    return r\n", "*: let j = [u@ref, y] | ...")]
+    [InlineData("let", "q2a", Sources + SourcesBody + "    let j = if c => [u@ref] else => [y]\n    return r\n", "", Explicit = true)] // V (O-352 (a)); owed to the let unit (ruling 23): the independent literal's place rule.
+    [InlineData("let", "r02", Sources + SourcesBody + "    let j = [u@ref, y]\n    return r\n", "", Explicit = true)] // V (O-352 (a)); owed to the let unit (ruling 23): the independent literal's place rule.
     [InlineData("guard", "r01", Sources + SourcesBody + "    r = ha([u@ref, y])\n    return r\n", "*: r = ha([u@ref, y]) | ...")]
-    [InlineData("guard", "p43", Sources + SourcesBody + "    let t = identity([u@ref, y])\n    return r\n", "*: let t = identity([u@ref, y]) | ...")]
-    [InlineData("guard", "q2d", Sources + SourcesBody + "    r = ha(if c => [u@ref, y] else => [y, u])\n    return r\n", "*: r = ha(if c => [u@ref, y] else => [y, u]) | ...")]
-    [InlineData("guard", "q2e", Sources + SourcesBody + "    r = ha(if c => [u@ref, y] else => [y, y])\n    return r\n", "*: r = ha(if c => [u@ref, y] else => [y, y]) | ...")]
-    [InlineData("guard", "r09", Sources + SourcesBody + "    r = ha(if c => [u@ref, u@ref] else => [y, y])\n    return r\n", "*: r = ha(if c => [u@ref, u@ref] else => [y, y]) | ...")]
-    [InlineData("guard", "q2f", Sources + SourcesBody + "    r = ga(if c => [u@ref] else => [y])\n    return r\n", "*: r = ga(if c => [u@ref] else => [y]) | ...")]
-    [InlineData("guard", "p48", Sources + SourcesBody + "    let t = identity(if c => [u@ref] else => [y])\n    return r\n", "*: let t = identity(if c => [u@ref] else => [y]) | ...")]
-    [InlineData("guard", "r15", Sources + SourcesBody + "    r = ha(if c => [u@ref, identity(1)] else => [y, 2])\n    return r\n", "*: r = ha(if c => [u@ref, identity(1)] else => [y, 2]) | ...")]
+    [InlineData("guard", "p43", Sources + SourcesBody + "    let t = identity([u@ref, y])\n    return r\n", "")] // SPEC 14.9.2 step 2 at every place, the owner's O-352 (a): accepted.
+    [InlineData("G924p8", "q2d", Sources + SourcesBody + "    r = ha(if c => [u@ref, y] else => [y, u])\n    return r\n", "", Explicit = true)] // V (O-352 (a)); owed to AF-2 phase 8: a fill join source or a `[2 of T]` element position does not reach WholeEvidence yet.
+    [InlineData("G924p8", "q2e", Sources + SourcesBody + "    r = ha(if c => [u@ref, y] else => [y, y])\n    return r\n", "", Explicit = true)] // V (O-352 (a)); owed to AF-2 phase 8: a fill join source or a `[2 of T]` element position does not reach WholeEvidence yet.
+    [InlineData("guard", "r09", Sources + SourcesBody + "    r = ha(if c => [u@ref, u@ref] else => [y, y])\n    return r\n", "")] // SPEC 14.9.2 step 2 at every place, the owner's O-352 (a): accepted.
+    [InlineData("guard", "q2f", Sources + SourcesBody + "    r = ga(if c => [u@ref] else => [y])\n    return r\n", "")] // SPEC 14.9.2 step 2 at every place, the owner's O-352 (a): accepted.
+    [InlineData("guard", "p48", Sources + SourcesBody + "    let t = identity(if c => [u@ref] else => [y])\n    return r\n", "")] // SPEC 14.9.2 step 2 at every place, the owner's O-352 (a): accepted.
+    [InlineData("guard", "r15", Sources + SourcesBody + "    r = ha(if c => [u@ref, identity(1)] else => [y, 2])\n    return r\n", "")] // SPEC 14.9.2 step 2 at every place, the owner's O-352 (a): accepted (label-p7a.md).
 
     // SPEC 14.9.2 step 2: arrays, Dictionaries, fills and selections formed part by part. w10: at a bare slot a waiting element leaves T unbound (SPEC
     // 10.5.1).
@@ -112,27 +118,31 @@ public partial class ApplicabilityChainRegressionTest
     [InlineData("guard", "w10", Sources + SourcesBody + "    let t = identity(if c => [(identity(1), u@ref)] else => [(2, y)])\n    return r\n", "")] // The owner's O-341 (a): identity(1) takes its own Type.
     [InlineData("I2", "w11", Sources + SourcesBody + "    let j = if c => [(identity(1), u@ref)] else => [(2, y)]\n    return r\n", "", Explicit = true)]
     [InlineData("I2", "w12", Sources + SourcesBody + "    r = g(if c => [identity(1), u@ref] else => [2, y])\n    return r\n", "", Explicit = true)]
-    [InlineData("guard", "w13w", Sources + SourcesBody + "    r = g(if c => [identity(y)] else => [u@ref])\n    return r\n", "*: r = g(if c => [identity(y)] else => [u@ref]) | ...")]
-    [InlineData("guard", "w14", Sources + SourcesBody + "    r = g(if c => [2 of y] else => [y, y])\n    return r\n", "*: r = g(if c => [2 of y] else => [y, y]) | ...")]
-    [InlineData("guard", "w08a", Sources + SourcesBody + "    let t = identity(if c => [2 of u@ref] else => [2 of y])\n    return r\n", "*: let t = identity(if c => [2 of u@ref] else => [2 of y]) | ...")]
+    [InlineData("guard", "w13w", Sources + SourcesBody + "    r = g(if c => [identity(y)] else => [u@ref])\n    return r\n", "")] // SPEC 14.9.2 step 2 at every place, the owner's O-352 (a): accepted (label-p7a.md).
+    [InlineData("guard", "w14", Sources + SourcesBody + "    r = g(if c => [2 of y] else => [y, y])\n    return r\n", "")] // The owner's O-346 (a), O-316 (a), O-333 R5 (a): the fill fixes the place (WholeEvidence).
+    [InlineData("G924p8", "w08a", Sources + SourcesBody + "    let t = identity(if c => [2 of u@ref] else => [2 of y])\n    return r\n", "", Explicit = true)] // V (O-352 (a)); owed to AF-2 phase 8: a fill join source or a `[2 of T]` element position does not reach WholeEvidence yet.
     [InlineData("I2", "w09a", Sources + SourcesBody + "    let t = identity(if c => [2 of u@ref] else => [2 of 1])\n    return r\n", "", Explicit = true)]
-    [InlineData("guard", "w18a", Sources + SourcesBody + "    let t = identity(if c => ([2 of u@ref], 1) else => ([2 of y], 2))\n    return r\n", "*: let t = identity(if c => ([2 of u@ref], 1) else => ([2 of y], 2)) | ...")]
-    [InlineData("guard", "a05", Sources + SourcesBody + "    let t = identity(if c => [y, 1] else => [u@ref])\n    return r\n", "*: let t = identity(if c => [y, 1] else => [u@ref]) | ...")]
-    [InlineData("guard", "a05m", Sources + SourcesBody + "    let t = identity(if c => [u@ref] else => [y, 1])\n    return r\n", "*: let t = identity(if c => [u@ref] else => [y, 1]) | ...")]
+    [InlineData("G924p8", "w18a", Sources + SourcesBody + "    let t = identity(if c => ([2 of u@ref], 1) else => ([2 of y], 2))\n    return r\n", "", Explicit = true)] // V (O-352 (a)); owed to AF-2 phase 8: a fill join source or a `[2 of T]` element position does not reach WholeEvidence yet.
+    [InlineData("guard", "a05", Sources + SourcesBody + "    let t = identity(if c => [y, 1] else => [u@ref])\n    return r\n", "")] // SPEC 14.9.2 step 2 at every place, the owner's O-352 (a): accepted (label-p7a.md).
+    [InlineData("guard", "a05m", Sources + SourcesBody + "    let t = identity(if c => [u@ref] else => [y, 1])\n    return r\n", "")] // SPEC 14.9.2 step 2 at every place, the owner's O-352 (a): accepted (label-p7a.md).
 
     // SPEC 10.8: evidence for one slot agrees across arguments, elements and joins in every order; o18's two positions are two parts and need not agree.
-    [InlineData("guard", "o01", Sources + SourcesBody + "    r = h2([y], [u@ref])\n    return r\n", "*: r = h2([y], [u@ref]) | ...")]
-    [InlineData("guard", "o02", Sources + SourcesBody + "    r = h2([u@ref], [y])\n    return r\n", "*: r = h2([u@ref], [y]) | ...")]
-    [InlineData("guard", "o03", Sources + SourcesBody + "    r = p2(([y], [u@ref]))\n    return r\n", "*: r = p2(([y], [u@ref])) | ...")]
-    [InlineData("guard", "o04", Sources + SourcesBody + "    r = p2(([u@ref], [y]))\n    return r\n", "*: r = p2(([u@ref], [y])) | ...")]
-    [InlineData("guard", "o05", Sources + SourcesBody + "    r = g(if c => [y] else => [u@ref])\n    return r\n", "*: r = g(if c => [y] else => [u@ref]) | ...")]
-    [InlineData("guard", "o06", Sources + SourcesBody + "    r = g(if c => [u@ref] else => [y])\n    return r\n", "*: r = g(if c => [u@ref] else => [y]) | ...")]
+    [InlineData("guard", "o01", Sources + SourcesBody + "    r = h2([y], [u@ref])\n    return r\n", "")] // SPEC 14.9.2 step 2 at every place, the owner's O-352 (a): accepted.
+    [InlineData("guard", "o02", Sources + SourcesBody + "    r = h2([u@ref], [y])\n    return r\n", "")] // SPEC 14.9.2 step 2 at every place, the owner's O-352 (a): accepted.
+    [InlineData("guard", "o03", Sources + SourcesBody + "    r = p2(([y], [u@ref]))\n    return r\n", "")] // SPEC 14.9.2 step 2 at every place, the owner's O-352 (a): accepted.
+    [InlineData("guard", "o04", Sources + SourcesBody + "    r = p2(([u@ref], [y]))\n    return r\n", "")] // SPEC 14.9.2 step 2 at every place, the owner's O-352 (a): accepted.
+    [InlineData("guard", "o05", Sources + SourcesBody + "    r = g(if c => [y] else => [u@ref])\n    return r\n", "")] // SPEC 14.9.2 step 2 at every place, the owner's O-352 (a): accepted (label-p7a.md).
+    [InlineData("guard", "o06", Sources + SourcesBody + "    r = g(if c => [u@ref] else => [y])\n    return r\n", "")] // SPEC 14.9.2 step 2 at every place, the owner's O-352 (a): accepted (label-p7a.md).
     [InlineData("guard", "o07m", Sources + SourcesBody + "    r = h2(xs@move, if c => [u@ref] else => [u@ref])\n    return r\n", "*: r = h2(xs@move, if c => [u@ref] else => [u@ref]) | ...")]
     [InlineData("guard", "o09m", Sources + SourcesBody + "    r = g(if c => xs@move else => [u@ref])\n    return r\n", "*: r = g(if c => xs@move else => [u@ref]) | ...")]
     [InlineData("guard", "o10m", Sources + SourcesBody + "    r = g(if c => [u@ref] else => xs@move)\n    return r\n", "*: r = g(if c => [u@ref] else => xs@move) | ...")]
+    [InlineData("G924p8", "o09v", Sources + SourcesBody + "    r = g(if c => xs@move else => [u@ref, y])\n    return r\n", "", Explicit = true)] // V (label-p7a.md): selection is right on this head; owed to AF-2 phase 8: the join's Typed position binds the list literal whole at the common Type (BindStepThree), so `u@ref` is not value-read (TypeMismatch_Kd).
+    [InlineData("G924p8", "o09vr", Sources + SourcesBody + "    r = g(if c => [u@ref, y] else => xs@move)\n    return r\n", "", Explicit = true)] // V (label-p7a.md): selection is right on this head; owed to AF-2 phase 8: the join's Typed position binds the list literal whole at the common Type (BindStepThree), so `u@ref` is not value-read (TypeMismatch_Kd).
+    [InlineData("guard", "o09w", Sources + SourcesBody + "    r = g(if c => xs@move else => [y])\n    return r\n", "")] // V: the literal's parts meet by 14.9.2 step 2 and agree with xs's pushed `i32` (4.3.1 Places; label-p7a.md).
+    [InlineData("guard", "o09wr", Sources + SourcesBody + "    r = g(if c => [y] else => xs@move)\n    return r\n", "")] // V: the literal's parts meet by 14.9.2 step 2 and agree with xs's pushed `i32` (4.3.1 Places; label-p7a.md).
     [InlineData("guard", "o11m", Sources + SourcesBody + "    let j = if c => xs@move else => [u@ref]\n    return r\n", "*: let j = if c => xs@move else => [u@ref] | ...")]
-    [InlineData("guard", "o12", Sources + SourcesBody + "    r = p2(if c => ([y], [u@ref]) else => ([y], [y]))\n    return r\n", "*: r = p2(if c => ([y], [u@ref]) else => ([y], [y])) | ...")]
-    [InlineData("guard", "o16", Sources + SourcesBody + "    r = g(if c => ([y], 1) else => ([u@ref], 2))\n    return r\n", "*: r = g(if c => ([y], 1) else => ([u@ref], 2)) | ...")]
+    [InlineData("guard", "o12", Sources + SourcesBody + "    r = p2(if c => ([y], [u@ref]) else => ([y], [y]))\n    return r\n", "")] // SPEC 14.9.2 step 2 at every place, the owner's O-352 (a): accepted (label-p7a.md).
+    [InlineData("guard", "o16", Sources + SourcesBody + "    r = g(if c => ([y], 1) else => ([u@ref], 2))\n    return r\n", "")] // SPEC 14.9.2 step 2 at every place, the owner's O-352 (a): accepted (label-p7a.md).
     [InlineData("I2", "o18", Sources + SourcesBody + "    let t = identity(([y], [u@ref]))\n    return r\n", "", Explicit = true)]
     [InlineData("guard", "o19", Sources + SourcesBody + "    let j = if c => ([y], [u@ref]) else => ([y], [y])\n    return r\n", "*: let j = if c => ([y], [u@ref]) else => ([y], [y]) | ...")]
     [InlineData("guard", "c16", Sources + SourcesBody + "    let t = identity(match d\n        true => [u@ref]\n        false => [y]\n    )\n    return r\n", "*: * | ...")]
@@ -323,20 +333,117 @@ public partial class ApplicabilityChainRegressionTest
     [InlineData("G729", "j18", JoinPositions + "    var x: i32 = 1\n    var y: i32 = 2\n    return gr<i32>(if c => (x, 1) else => (y, 2))\n", "")]
     [InlineData("guard", "j18n", JoinPositions + "    var x: i32 = 1\n    var y: i32 = 2\n    return gr<i64>(if c => (x, 1) else => (y, 2))\n", "NoApplicableOverload_Kd: return gr<i64>(if c => (x, 1) else => (y, 2))")]
     [InlineData("guard", "j19", "func pn2(p: ((ref/i32 during a, ref/i32 during a), i32)) -> i32 => p.1\n" + JoinPositions + "    return pn2(if c => ((n, m), 1) else => ((m, n), 2))\n", "")]
-    [InlineData("guard", "j19n", JoinPositions + "    return pn(if c => ((n, m), 1) else => ((m, n), 2))\n", "NoApplicableOverload_Kd: return pn(if c => ((n, m), 1) else => ((m, n), 2))")]
+    [InlineData("G924p8", "j19n", JoinPositions + "    return pn(if c => ((n, m), 1) else => ((m, n), 2))\n", "", Explicit = true)] // V by the j20n sentences (label-p7a.md); owed to AF-2 phase 8: a typed Tuple literal part at a fixed parameter is still fitted whole (BU-43).
     [InlineData("guard", "j20", "func fw(p: ((ref/i32 during a, ref/i32 during a), i32)) -> bool => true\nfunc fw(p: (ref/(ref/i32 during a, ref/i32 during a) during b, i32)) -> i32 => 0\n" + JoinPositions + "    let q2 = (n, m)\n    let q = fw(if c => ((n, m), 1) else => (q2, 2))\n    let z: bool = q\n    return 0\n", "")]
-    [InlineData("guard", "j20n", "func fta(p: (Array<i32>, i32)) -> i32 => p.1\n" + JoinPositions + "    return fta(if c => ([n], 1) else => ([m], 2))\n", "NoApplicableOverload_Kd: return fta(if c => ([n], 1) else => ([m], 2))")]
+    [InlineData("guard", "j20n", "func fta(p: (Array<i32>, i32)) -> i32 => p.1\n" + JoinPositions + "    return fta(if c => ([n], 1) else => ([m], 2))\n", "")] // SPEC 10.5.1 ¶2, 4.3.1 ¶1: each element is fitted at the candidate's element Type (supersedes BU-43's typed-whole part here; label-p7a.md).
     // SPEC 14.9.2 step 2 (PLAN G729, finding I1): a position holding literals beside safe reference layers over a read Type has that Type,
     // the references value-read, as a join's own sources do (BesideLiterals): no temporary, at a call (j21, j22 the overload it decides, j24
     // nested, j25 with no Loan after the call) and at a let (j23; j23n its twin, the position's i32 at bool).
     [InlineData("G729", "j21", JoinPositions + "    return pt(if c => (n, 1) else => (1, 2))\n", "")]
     [InlineData("G729", "j22", "func fo2(p: (i64, i32)) -> i32 => 0\nfunc fo2(p: (bool, i32)) -> i32 => 1\n" + JoinPositions + "    return fo2(if c => (r, 1) else => (1, 2))\n", "")]
     [InlineData("G729", "j23", JoinPositions + "    let q = if c => (n, 1) else => (1, 2)\n    return q.0\n", "")]
+    [InlineData("let", "t-tupt", JoinPositions + "    let t = if c => (n, v) else => (v, v)\n    return t.1\n", "", Explicit = true)] // design-letunit P1; V by SPEC 14.9.2 step 2 at every place (O-352 (a)); owed to the let unit (ruling 23).
     [InlineData("guard", "j23n", JoinPositions + "    let q = if c => (n, 1) else => (1, 2)\n    let z: bool = q.0\n    return 0\n", "TypeMismatch_Kd: let z: bool = q.0")]
     [InlineData("G729", "j24", JoinPositions + "    return pn(if c => ((n, 1), 2) else => ((1, 2), 3))\n", "")]
     [InlineData("G729", "j25", JoinPositions + "    var x: i32 = 1\n    let q = pt(if c => (x@ref, 1) else => (1, 2))\n    x = 3\n    return q\n", "")]
     public void ACommonTypeFormationHasItsVerdict(string unit, string form, string program, string records)
         => CompilationTestHelper.AssertRecordsAtLines($"{form} [{unit}]", program + "()", records);
+
+    // SPEC 10.5.1, 10.8 Solving, 4.3.1 Places (PLAN G924 AF-2, WholeEvidence; the owner's O-316 (a), O-341 (a), O-346 (a); F's rulings
+    // 21-27): every whole a bare slot takes, from every argument, meets once with the slot's other evidence, order-free (both orders of
+    // each pair): an exact part, a fill or a fixed-array Place fixes its place, and a part's Type at a place stands at each place below it
+    // (c06-q09, q07, q01, push), a literal or another whole's exact part fills a hole (w2-w5, e1, t-hole*), a join's sources are its
+    // wholes (j1-j11, w14), a whole holding Never gives nothing (t-nev*), and 7.4.4 reads list wholes through their parts (p1, p2, p8, W6).
+    // The I rows disagree at a place (10.8: a binding pushed from above meets the place's step-2 Type without adaptation, `ref/i32`
+    // against `i32`: r01, r07, m5, t-tupm5, t-ik), in a length a fill fixes (j7, t-nest3, t-3i, t-len3), or leave a hole no own Type
+    // fills (u4m, t-emp2, t-fn1) or Never (t-nev1); m5 and t-tupm5 were accepted before (Q17 class 1, closed here). The parts at one place
+    // meet by 14.9.2 step 2 with or without a literal (the owner's O-352 (a)): t-m5-3/-r and j6/j6r are accepted. The pick rows: the whole binds T, so the non-generic candidate is preferred
+    // (10.4 step 3; ruling 26).
+    [Theory]
+    [InlineData("G924", "c06", Wholes + "    let r = put([[y, y], f], [[y, y]])\n    return 0\n", "")]
+    [InlineData("G924", "c06r", Wholes + "    let r = put([[y, y]], [[y, y], f])\n    return 0\n", "")]
+    [InlineData("G924", "c07", Wholes + "    let r = put([f, [y, y]], [[y, y]])\n    return 0\n", "")]
+    [InlineData("G924", "c07r", Wholes + "    let r = put([[y, y]], [f, [y, y]])\n    return 0\n", "")]
+    [InlineData("G924", "c01", Wholes + "    let r = put([[y, y], [y, y]], [[2 of y], [y, y]])\n    return 0\n", "")]
+    [InlineData("G924", "c01r", Wholes + "    let r = put([[2 of y], [y, y]], [[y, y], [y, y]])\n    return 0\n", "")]
+    [InlineData("G924", "q09", Wholes + "    let r = put([([y, y], n32), (f, n32)], [([y, y], n32)])\n    return 0\n", "")]
+    [InlineData("G924", "q09r", Wholes + "    let r = put([([y, y], n32)], [([y, y], n32), (f, n32)])\n    return 0\n", "")]
+    [InlineData("G924", "r01v", Wholes + "    let r = put([[y@ref, 1], f], [f])\n    return 0\n", "")]
+    [InlineData("G924", "r01vr", Wholes + "    let r = put([f], [[y@ref, 1], f])\n    return 0\n", "")]
+    [InlineData("G924", "q07", Wholes + "    let r = put([[y, y], f], [f])\n    return 0\n", "")]
+    [InlineData("G924", "q07r", Wholes + "    let r = put([f], [[y, y], f])\n    return 0\n", "")]
+    [InlineData("G924", "q01", Wholes + "    let r = id([[y, y], f])\n    return 0\n", "")]
+    [InlineData("G924", "w1", Wholes + "    let r = id([y])\n    return 0\n", "")]
+    [InlineData("G924", "w2", Wholes + "    let r = id([1, 2])\n    return 0\n", "")]
+    [InlineData("G924", "w3", Wholes + "    let r = put([k, 1], [k])\n    return 0\n", "")]
+    [InlineData("G924", "w3r", Wholes + "    let r = put([k], [k, 1])\n    return 0\n", "")]
+    [InlineData("G924", "w4", Wholes + "    let r = put([y], [y, y])\n    return 0\n", "")]
+    [InlineData("G924", "w5", Wholes + "    let r = put([1], [y])\n    return 0\n", "")]
+    [InlineData("G924", "w5r", Wholes + "    let r = put([y], [1])\n    return 0\n", "")]
+    [InlineData("G924", "n22v", Wholes + "    let r = id([k, 1])\n    return 0\n", "")]
+    [InlineData("G924", "j1", Wholes + "    let r = put(f, if c => [y, y] else => [y, y])\n    return 0\n", "")]
+    [InlineData("G924", "j1r", Wholes + "    let r = put(if c => [y, y] else => [y, y], f)\n    return 0\n", "")]
+    [InlineData("G924", "j5", Wholes + "    let r = put([2 of y], if c => [y, y] else => [y, y])\n    return 0\n", "")]
+    [InlineData("G924", "j5r", Wholes + "    let r = put(if c => [y, y] else => [y, y], [2 of y])\n    return 0\n", "")]
+    [InlineData("G924", "j8", Wholes + "    let r = put(f, if c => [y, y] else => stop())\n    return 0\n", "")]
+    [InlineData("G924", "j8r", Wholes + "    let r = put(if c => [y, y] else => stop(), f)\n    return 0\n", "")]
+    [InlineData("G924", "j11", Wholes + "    let r = put(f, if c => [y, y] else => f)\n    return 0\n", "")]
+    [InlineData("G924", "w14", Wholes + "    let r = id(if c => [2 of y] else => [y, y])\n    return 0\n", "")]
+    [InlineData("G924", "e1", Wholes + "    let r = put([], [y])\n    return 0\n", "")]
+    [InlineData("G924", "e1r", Wholes + "    let r = put([y], [])\n    return 0\n", "")]
+    [InlineData("G924", "t-emp3", Wholes + "    let r = id([[], [y]])\n    return 0\n", "")]
+    [InlineData("G924", "t-hole1", Wholes + "    let r = put([(1, y)], [(k, y)])\n    return 0\n", "")]
+    [InlineData("G924", "t-hole2", Wholes + "    let r = put([(1, y)], [(1, y)])\n    return 0\n", "")]
+    [InlineData("G924", "t-hole3", Wholes + "    let r = put([(1, y)], [(k, 2)])\n    return 0\n", "")]
+    [InlineData("G924", "t-len", Wholes + "    let r = put([y, y], [y, y, y])\n    return 0\n", "")]
+    [InlineData("G924", "t-ord1", Wholes + "    let r = id([[y, 1], [2]])\n    return 0\n", "")]
+    [InlineData("G924", "t-ord1r", Wholes + "    let r = id([[2], [y, 1]])\n    return 0\n", "")]
+    [InlineData("G924", "t-nest1", Wholes + "    let r = id([[y], [y, y]])\n    return 0\n", "")]
+    [InlineData("G924", "t-nest2", Wholes + "    let r = id([[y, y], [2 of y]])\n    return 0\n", "")]
+    [InlineData("G924", "t-nest2r", Wholes + "    let r = id([[2 of y], [y, y]])\n    return 0\n", "")]
+    [InlineData("G924", "t-fixedp", Wholes + "    let r = id([f, a2])\n    return 0\n", "")]
+    [InlineData("G924", "t-tup", Wholes + "    let r = id((y, [y]))\n    return 0\n", "")]
+    [InlineData("G924", "t-o01", Wholes + "    let r = put([y, y], [2 of y])\n    return 0\n", "")]
+    [InlineData("G924", "t-o01r", Wholes + "    let r = put([2 of y], [y, y])\n    return 0\n", "")]
+    [InlineData("G924", "push", Wholes + "    let r = put([1, 2], wide@move)\n    return 0\n", "")] // `wide` is an owned Array, so the by-value argument is written as a move (TransferRequired_Kd otherwise).
+    [InlineData("G924", "p1", Wholes + "    let r = fr([y, y], 0)\n    return 0\n", "")]
+    [InlineData("G924p8", "p2", Wholes + "    let r = fr([1, 2], 0)\n    return 0\n", "", Explicit = true)] // V by W6; owed to AF-2 phase 8: a literal-only whole at 7.4.4 (its Tuple twin fr((1, 2), 0) gives the same record on dev).
+    [InlineData("G924", "p8", Wholes + "    let r = fr([y, 1], 0)\n    return 0\n", "")]
+    [InlineData("G924", "r01", Wholes + "    let r = put([[y@ref, y@ref], f], [f])\n    return 0\n", "NoApplicableOverload_Kd: let r = put([[y@ref, y@ref], f], [f]) | ...")]
+    [InlineData("G924", "r01r", Wholes + "    let r = put([f], [[y@ref, y@ref], f])\n    return 0\n", "NoApplicableOverload_Kd: let r = put([f], [[y@ref, y@ref], f]) | ...")]
+    [InlineData("G924", "r07", Wholes + "    let r = put([([y@ref, y@ref], n32), (f, n32)], [(f, n32)])\n    return 0\n", "NoApplicableOverload_Kd: let r = put([([y@ref, y@ref], n32), (f, n32)], [(f, n32)]) | ...")]
+    [InlineData("G924", "r07r", Wholes + "    let r = put([(f, n32)], [([y@ref, y@ref], n32), (f, n32)])\n    return 0\n", "NoApplicableOverload_Kd: let r = put([(f, n32)], [([y@ref, y@ref], n32), (f, n32)]) | ...")]
+    [InlineData("G924", "m5", Wholes + "    let r = put(f, [y@ref, y@ref])\n    return 0\n", "NoApplicableOverload_Kd: let r = put(f, [y@ref, y@ref]) | ...")]
+    [InlineData("G924", "m5r", Wholes + "    let r = put([y@ref, y@ref], f)\n    return 0\n", "NoApplicableOverload_Kd: let r = put([y@ref, y@ref], f) | ...")]
+    [InlineData("G924", "t-tupm5", Wholes + "    let r = put((f, y), ([y@ref, y@ref], y))\n    return 0\n", "NoApplicableOverload_Kd: let r = put((f, y), ([y@ref, y@ref], y)) | ...")]
+    [InlineData("G924", "t-tupm5r", Wholes + "    let r = put(([y@ref, y@ref], y), (f, y))\n    return 0\n", "NoApplicableOverload_Kd: let r = put(([y@ref, y@ref], y), (f, y)) | ...")]
+    [InlineData("G924", "t-m5-3", Wholes + "    let r = put3(f, [y, y], [y@ref, y@ref])\n    return 0\n", "")] // SPEC 14.9.2 step 2 at every place, the owner's O-352 (a): accepted.
+    [InlineData("G924", "t-m5-3r", Wholes + "    let r = put3([y@ref, y@ref], [y, y], f)\n    return 0\n", "")] // SPEC 14.9.2 step 2 at every place, the owner's O-352 (a): accepted.
+    [InlineData("G924", "j6", Wholes + "    let r = put(f, if c => [y@ref, y@ref] else => [y, y])\n    return 0\n", "")] // SPEC 14.9.2 step 2 at every place, the owner's O-352 (a): accepted.
+    [InlineData("G924", "j6r", Wholes + "    let r = put(if c => [y@ref, y@ref] else => [y, y], f)\n    return 0\n", "")] // SPEC 14.9.2 step 2 at every place, the owner's O-352 (a): accepted.
+    [InlineData("G924", "j7", Wholes + "    let r = id(if c => [2 of y] else => [y, y, y])\n    return 0\n", "NoApplicableOverload_Kd: let r = id(if c => [2 of y] else => [y, y, y]) | ...")]
+    [InlineData("G924", "t-ik", Wholes + "    let r = put([y], [k])\n    return 0\n", "NoApplicableOverload_Kd: let r = put([y], [k]) | ...")]
+    [InlineData("G924", "t-ikr", Wholes + "    let r = put([k], [y])\n    return 0\n", "NoApplicableOverload_Kd: let r = put([k], [y]) | ...")]
+    [InlineData("G924", "t-nest3", Wholes + "    let r = id([[y], [2 of y]])\n    return 0\n", "NoApplicableOverload_Kd: let r = id([[y], [2 of y]]) | ...")]
+    [InlineData("G924", "t-3i", Wholes + "    let r = put3([y], [y, y], [2 of y])\n    return 0\n", "NoApplicableOverload_Kd: let r = put3([y], [y, y], [2 of y]) | ...")]
+    [InlineData("G924", "t-len3", Wholes + "    let r = put([y, y], [3 of y])\n    return 0\n", "NoApplicableOverload_Kd: let r = put([y, y], [3 of y]) | ...")]
+    [InlineData("G924", "u4m", Wholes + "    let r = id([])\n    return 0\n", "UnboundTypeArgument_Kd: let r = id([]) | ...")]
+    [InlineData("G924", "t-emp2", Wholes + "    let r = put([], [])\n    return 0\n", "UnboundTypeArgument_Kd: let r = put([], []) | ...")]
+    [InlineData("G924", "t-nev1", Wholes + "    let r = id([y, stop()])\n    return 0\n", "UnboundTypeArgument_Kd: let r = id([y, stop()]) | ...")]
+    [InlineData("G924", "t-fn1", Wholes + "    let r = id([func [] (v: i64) -> i64 => v])\n    return 0\n", "UnboundTypeArgument_Kd: let r = id([func [] (v: i64) -> i64 => v]) | ...")]
+    [InlineData("G924", "pick-a", PickArrayFirst + "    let r = pick([y, 1])\n    return r\n", "")]
+    [InlineData("G924", "pick-g", PickGenericFirst + "    let r = pick([y, 1])\n    return r\n", "")]
+    public void ASlotTakesItsWholesInOneMeet(string unit, string form, string program, string records)
+        => CompilationTestHelper.AssertRecordsAtLines($"{form} [{unit}]", program + "()", records);
+
+    // SPEC 10.5.1 ¶2, 10.8 (WholeEvidence): a whole holding a part of Type Never gives no evidence, so the other argument binds the slot
+    // and Binding accepts the call (t-nev3, t-nev3r). Asserted on Binding's records: a later phase reports UninitializedPlace_Kd at the
+    // call for an argument list literal holding Never (an open issue outside G924, the bare-slot review's t-nev2 aside).
+    [Theory]
+    [InlineData("G924", "t-nev3", Wholes + "    let r = put([y, stop()], [y])\n    return 0\n", "")]
+    [InlineData("G924", "t-nev3r", Wholes + "    let r = put([y], [y, stop()])\n    return 0\n", "")]
+    public void AWholeHoldingNeverGivesNoEvidence(string unit, string form, string program, string records)
+        => CompilationTestHelper.AssertBindingRecordsAtLines($"{form} [{unit}]", program + "()", records);
 
     // SPEC 10.2.2 step 1, 10.2, 8.1.3 (PLAN G719): explicit Type arguments bind first and supply every slot, so each argument fits its fixed
     // parameter Type by the common adaptation: a value read at a read Type (fr1-fr4; fr5 through a caller's proven parameter), a new shared

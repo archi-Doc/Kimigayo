@@ -256,9 +256,12 @@ public sealed partial class Binding
         }
 
         this.collectingElements = collecting;
-        if (collected && established is null && this.DecidedLater(literal))
+        // SPEC 14.9.2 step 3, 4.3: no element establishes a Type, so the literal waits for its position's; under a call's argument probe
+        // (a join's source) it waits whatever its elements establish, since the call classifies its parts (SPEC 10.5.1; PLAN G924 B2,
+        // WholeEvidence at a bare slot).
+        if (collected && (established is null || this.UnderArgumentProbe(literal)) && this.DecidedLater(literal))
         {
-            return Complete(literal, null); // SPEC 14.9.2 step 3, 4.3: no element establishes a Type, so the literal waits for its position's.
+            return Complete(literal, null);
         }
 
         // Without an established Type, or when an element failed (SPEC 23.1.2: the others are still bound), the waiting parts default.
