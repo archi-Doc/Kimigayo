@@ -81,7 +81,8 @@ public sealed partial class Binding
                 continue;
             }
 
-            if (found is not null && !ReferenceEquals(found, instance)) // interned: equal instances are one object
+            // Interned: equal instances are one object.
+            if (found is not null && !ReferenceEquals(found, instance))
             {
                 return null;
             }
