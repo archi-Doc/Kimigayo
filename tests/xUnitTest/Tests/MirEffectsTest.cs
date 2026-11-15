@@ -735,7 +735,7 @@ public sealed partial class MirEffectsTest(ITestOutputHelper output)
 
     // SPEC 8.11.2, 8.11.3, 22.9.1 (R8-W2 b2-1; the Middle's C-330 note N2, its twin ef2): a user Writer's reserve, confined by
     // BufferWriter.reserve's bound, that makes a local adapter over a local user Writer and writes through it runs Text.writer's generic
-    // body, whose Storage.reserveDispatch call is classed by its family, Inputs (AnErasedReserveCallIsClassedByItsIntrinsicRow), and
+    // body, whose Storage.reserveDispatch call is classed by its intrinsic row, Inputs (AnErasedReserveCallIsClassedByItsIntrinsicRow), and
     // the write's erased reserve is checked against Inner's own confined bound, so Outer reports nothing (the rows above reach only the
     // two specializations). The counterpart, Inner's reserve writing to the console, is Inner's record at its clause and the only one:
     // Outer's erased call still meets the bound it is checked against. Rows labelled from SPEC before running.
