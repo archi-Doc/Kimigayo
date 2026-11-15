@@ -40,6 +40,24 @@ public static partial class Parser
         return FinishConstraint(ref reader, subject, lastError, finishLine);
     }
 
+    /// <summary>
+    /// Parses a ConditionalConformance's conditions (SPEC F.6.2 <c>"Self" "is" ContractReference "when" ConformanceConditions</c>) at its
+    /// <c>when</c>: the head was read as a ConstraintClause before it, since the <c>when</c> decides the production.
+    /// </summary>
+    /// <param name="reader">The token reader positioned at <c>when</c>.</param>
+    /// <returns>The conditions, one node spanning them.</returns>
+    internal static SyntaxFormKoto ParseConformanceConditions(ref TokenReader reader)
+    {
+        reader.Advance();
+        var conditions = new List<Koto>();
+        do
+        {
+            conditions.Add(ParseTypeConstraint(ref reader, finishLine: false));
+        }
+        while (reader.TryConsume(TokenKind.Comma));
+        return new SyntaxFormKoto(ref reader, SourceSpan.FromBounds(conditions[0].Span.Start, conditions[^1].Span.End), KotoKind.ConditionalConformance, string.Empty, conditions.ToArray());
+    }
+
     /// <summary>Parses an associated Type's specification after its <c>associate</c>: <c>AssociatedTypeName OriginParameters? is requirement</c>.</summary>
     /// <param name="reader">The token reader positioned at the Name.</param>
     /// <returns>The parsed specification, retained as a recovery when any required part is invalid.</returns>

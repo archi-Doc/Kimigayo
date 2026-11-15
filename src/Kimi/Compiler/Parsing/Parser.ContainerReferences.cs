@@ -210,15 +210,39 @@ public static partial class Parser
     private static Koto ParseInheritanceReference(ref TokenReader reader)
     {
         var type = ParseType(ref reader, TypeContext.Type);
-        var path = type is TypeSemanticsKoto { IsTransparentWrapper: true, Type: { } wrapped } ? wrapped : type;
-        var head = ContainerPathHead(path);
-        if (IsRecoveredType(ref reader, type) || head is TypeSemanticsKoto { Type: null } or SyntaxFormKoto { Akind: KotoKind.RootName } ||
-            (!ReferenceEquals(head, path) && head is ParenthesizedTypeKoto or TupleTypeKoto or FixedArrayTypeKoto))
+        if (IsRecoveredType(ref reader, type) || IsContainerPath(OriginLayerType(type)))
         {
             return type;
         }
 
         return RecoverWrittenType(ref reader, type, type.Expected(SyntaxForm.InheritanceReference));
+    }
+
+    // SPEC F.5 ContainerPath := "::"? TypeSegment PathSuffix* | PathQualifier PathSuffix+, read as a Type: its head is a path leaf, or a
+    // PathQualifier (a group, a Tuple or Unit, a fixed array) that its PathSuffixes continue.
+    private static bool IsContainerPath(Koto path)
+    {
+        var head = ContainerPathHead(path);
+        return IsPathLeaf(head) || (!ReferenceEquals(head, path) && head is ParenthesizedTypeKoto or TupleTypeKoto or FixedArrayTypeKoto);
+    }
+
+    // The first TypeSegment of a ContainerPath (F.5) or a root name: a Name as the Type reader builds it (TypeSemanticsKoto, Type: null)
+    // or as the requirement reader builds it (IdentifierNameKoto), the two leaves of one Name.
+    private static bool IsPathLeaf(Koto head)
+        => head is TypeSemanticsKoto { Type: null } or IdentifierNameKoto or SyntaxFormKoto { Akind: KotoKind.RootName };
+
+    // The Type below the transparent layer that carries a path's Origin (a binding set or a BorrowOrigin), or the Type itself.
+    private static Koto OriginLayerType(Koto type)
+        => type is TypeSemanticsKoto { IsTransparentWrapper: true, Type: { } wrapped } ? wrapped : type;
+
+    // SPEC F.6.2: "(" ContractReference ")", a grouped Contract: one reference and its closer, so an empty group or a list is a syntax
+    // Error there, and the node of every grouped Contract reference, which Binding reads (WrittenReference).
+    private static Koto ParseContractGroup(ref TokenReader reader)
+    {
+        var open = reader.Read().Span.Start;
+        var reference = ParseType(ref reader, TypeContext.Element);
+        reader.ExpectCloser(TokenKind.CloseParenthesis, out var close);
+        return new ParenthesizedTypeKoto(ref reader, SourceSpan.FromBounds(open, Math.Max(reference.Span.End, close.End)), reference);
     }
 
     // The head of a ContainerPath read as a Type (SPEC F.5): the node its PathSuffixes and Type arguments continue.

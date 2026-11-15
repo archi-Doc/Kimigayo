@@ -986,15 +986,8 @@ public abstract class DeclarationContainerKoto : DeclarationKoto
             var constraint = Parser.ParseTypeConstraint(ref reader, finishLine: false);
             if (reader.IsCurrentIdentifier("when"))
             {
-                reader.Advance();
-                var conditions = new List<Koto>();
-                do
-                {
-                    conditions.Add(Parser.ParseTypeConstraint(ref reader, finishLine: false));
-                }
-                while (reader.TryConsume(TokenKind.Comma));
-                var span = SourceSpan.FromBounds(constraint.Span.Start, conditions.Count == 0 ? constraint.Span.End : conditions[^1].Span.End);
-                var premises = new SyntaxFormKoto(ref reader, conditions.Count == 0 ? span : SourceSpan.FromBounds(conditions[0].Span.Start, span.End), KotoKind.ConditionalConformance, string.Empty, conditions.ToArray());
+                var premises = Parser.ParseConformanceConditions(ref reader);
+                var span = SourceSpan.FromBounds(constraint.Span.Start, premises.Span.End);
                 if (reader.TrySkipSeparatorsTo(TokenKind.StartBlock))
                 {
                     // A condition takes no effect list (SPEC F.6): the block is the conformance's, whatever item starts it.

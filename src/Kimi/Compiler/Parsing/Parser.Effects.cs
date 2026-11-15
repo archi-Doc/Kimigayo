@@ -158,10 +158,7 @@ public static partial class Parser
         Koto? group = null;
         if (reader.CurrentTokenKind == TokenKind.OpenParenthesis)
         {
-            var open = reader.Read().Span.Start;
-            var reference = ParseType(ref reader, TypeContext.Element);
-            reader.ExpectCloser(TokenKind.CloseParenthesis, out var close);
-            group = new ParenthesizedTypeKoto(ref reader, SourceSpan.FromBounds(open, Math.Max(reference.Span.End, close.End)), reference);
+            group = ParseContractGroup(ref reader);
         }
 
         var path = group ?? (reader.CurrentTokenKind == TokenKind.ColonColon ? ParseRootName(ref reader) : ParseName(ref reader));

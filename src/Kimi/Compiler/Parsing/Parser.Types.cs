@@ -172,7 +172,7 @@ public static partial class Parser
                 // A group, a fixed array or a second '::' written there is read as the Type it writes, so nothing of it is left to the
                 // enclosing construct, and that Type is a written Type outside its grammar: '::' roots only a TypeSegment.
                 var written = ParseAnnotatedType(ref reader, target ? TypeContext.TargetOperand : TypeContext.SemanticsOperand, out _);
-                return RecoverRejectedPrefix(ref reader, rootStart, written, cause);
+                return RecoverRejectedPart(ref reader, SourceSpan.FromBounds(rootStart, written.Span.End), written, cause);
             }
 
             reader.Advance();
@@ -228,7 +228,7 @@ public static partial class Parser
             var type = ParseAnnotatedType(ref reader, target ? TypeContext.TargetOperand : TypeContext.SemanticsOperand, out _);
             if (cause is { } operationCause)
             {
-                return RecoverRejectedPrefix(ref reader, token.Span.Start, type, operationCause);
+                return RecoverRejectedPart(ref reader, SourceSpan.FromBounds(token.Span.Start, type.Span.End), type, operationCause);
             }
 
             if (type is TypeSemanticsKoto
