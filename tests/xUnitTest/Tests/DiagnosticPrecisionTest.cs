@@ -458,6 +458,52 @@ public class DiagnosticPrecisionTest
         Assert.True(output.Accepted == (expected.Length == 0), row);
     }
 
+    // SPEC 22.1, 23.1.1, 23.1.2 (R8-G1-3b's verdict where a selection is handed on; the Front's C-346 C2 and review N1): test-only
+    // `#Unsupported` library structs with member Types reach the verdict's refusing branch, which no library declaration reaches before
+    // R8-G1-3b-2. Each use outside them is one Unsupported_Kd at the Name that names one, whether the Name ends the path, qualifies a
+    // member (no later step republishes it; deeper members, a group member, an inherited member Type) or is a `::` path's root name, and
+    // independent uses each have their own; a mention inside an `#Unsupported` declaration is no use. The valid twins open a plain struct
+    // (t14v, SPEC 18.2.1) and inherit a member Type from a plain open base (t18v, SPEC 6.2.2, 9.6). A record in the library text is "L"
+    // with its position there. A record in an Attribute of the hook is not a use's: before R8-G1 phase G1-2 binds library Attributes, the
+    // hook's own `#Unsupported` Names are records (the Front's experiment Z), so the rows leave Attributes out. Removal condition of that
+    // filter: G1-2's landing deletes it, and the rows then also pin that the hook adds no record of its own.
+    [Theory]
+    [InlineData("z01x", "", "func f(v: ref/ZProbe) => ()\n", "Unsupported_Kd 1:15")]
+    [InlineData("z02x", "", "func f(v: ref/ZProbe.Inner) => ()\n", "Unsupported_Kd 1:15")]
+    [InlineData("z03x", "", "func f(v: ref/Kimi.ZProbe.Inner) => ()\n", "Unsupported_Kd 1:15")]
+    [InlineData("z04x", "", "func f(v: ref/::Kimi.ZProbe.Inner) => ()\n", "Unsupported_Kd 1:17")]
+    [InlineData("z05x", "", "func f(v: ref/::Kimi.ZProbe) => ()\n", "Unsupported_Kd 1:17")]
+    [InlineData("z06v", "", "func f(v: ref/i32) => ()\n")]
+    [InlineData("z07x", "public group ZUses\n    public func zuse(v: ref/::ZProbe.Inner) => ()\n", "func f(v: ref/i32) => ()\n", "L Unsupported_Kd 31:31")]
+    [InlineData("z08x", "public group ZUses\n    public func zuse(v: ref/::ZProbe) => ()\n", "func f(v: ref/i32) => ()\n", "L Unsupported_Kd 31:31")]
+    [InlineData("z09v", "#Unsupported\npublic group ZOwn\n    public func zown(v: ref/::ZProbe.Inner) => ()\n", "func f(v: ref/i32) => ()\n")]
+    [InlineData("t01x", "", "func f(v: ref/ZProbe.Inner.Deep) => ()\n", "Unsupported_Kd 1:15")]
+    [InlineData("t02x", "", "func f(v: ref/Kimi.ZProbe.Inner.Deep) => ()\n", "Unsupported_Kd 1:15")]
+    [InlineData("t03x", "", "func f(v: ref/::Kimi.ZProbe.Inner.Deep) => ()\n", "Unsupported_Kd 1:17")]
+    [InlineData("t05x", "", "func f(v: ref/ZG.ZM.Inner) => ()\n", "Unsupported_Kd 1:15")]
+    [InlineData("t12x", "", "func f(a: ref/ZProbe, b: ref/ZProbe.Inner) => ()\n", "Unsupported_Kd 1:15", "Unsupported_Kd 1:30")]
+    [InlineData("t14v", "", "alias Kimi.ZPlain\nfunc f(v: ref/Inner) => ()\n")]
+    [InlineData("t18v", "", "struct D : ZOpenPlain\n    let a: i32\nfunc f(v: ref/D.Inner) => ()\n")]
+    [InlineData("t19x", "", "func f(v: ref/ZDer.Inner) => ()\n", "Unsupported_Kd 1:15")]
+    [InlineData("t23x", "public group ZUses\n    public func zuse(v: ref/::ZProbe.Inner.Deep) => ()\n", "func f(v: ref/i32) => ()\n", "L Unsupported_Kd 31:31")]
+    public void AnUnsupportedDeclarationIsRefusedWhereItIsHandedOn(string row, string library, string source, params string[] expected)
+    {
+        var probe = "#Unsupported\npublic struct ZProbe\n    public let x: i32\n\n    public struct Inner\n        public let y: i32\n\n        public struct Deep\n            public let z: i32\n" +
+            "public group ZG\n    #Unsupported\n    public struct ZM\n        public let x: i32\n\n        public struct Inner\n            public let y: i32\n" +
+            "public struct ZPlain\n    public let x: i32\n\n    public struct Inner\n        public let y: i32\n" +
+            "public open struct ZOpenPlain\n    public let x: i32\n\n    public struct Inner\n        public let y: i32\n" +
+            "#Unsupported\npublic struct ZDer : ZOpenPlain\n    public let w: i32\n" + library;
+        var c = Compilation.CreateForTest();
+        Assert.True(c.Prepare(WindowsProfile.Target));
+        c.Library.Kotonoha.CreateCodeContext().Parse(c.Library.Kotonoha.RootKoto, probe);
+        c.Kotonoha.CreateCodeContext().Parse(c.Kotonoha.RootKoto, source);
+        c.Bind();
+        var records = c.Binding.Issues.Where(static x => x.Node is not Kimi.Compiler.Parsing.AttributeKoto && x.Node.Parent is not Kimi.Compiler.Parsing.AttributeKoto).Select(x =>
+            ReferenceEquals(x.Node.Kotonoha, c.Library.Kotonoha) ? "L " + At(probe, x.Node.Span.Start, x.Code)
+            : ReferenceEquals(x.Node.Kotonoha, c.Kotonoha) ? At(source, x.Node.Span.Start, x.Code) : $"{x.Code} elsewhere at {x.Node.Span.Start}");
+        Assert.True(expected.Order(StringComparer.Ordinal).SequenceEqual(records.Order(StringComparer.Ordinal)), $"{row}: {string.Join(", ", records)}");
+    }
+
     // SPEC 6.7, 19.4 (R8-G1 row A6): excluded syntax is checked syntactically only, so an implementation Attribute there is not
     // resolved: a user source with one is accepted without a record.
     [Fact]
@@ -470,10 +516,12 @@ public class DiagnosticPrecisionTest
 
     // A check's Errors, each as its code and the 1-based line and column of its start.
     private static IEnumerable<string> ErrorsAt(string source, Kimi.Checking.CheckOutput output)
-        => output.Diagnostics.Where(static x => x.Severity == Kimi.Diagnostics.DiagnosticSeverity.Error).Select(x =>
-        {
-            var start = x.Span!.Value.Start;
-            var line = source.AsSpan(0, start).Count('\n');
-            return $"{x.Code} {line + 1}:{start - (start == 0 ? 0 : source.LastIndexOf('\n', start - 1) + 1) + 1}";
-        });
+        => output.Diagnostics.Where(static x => x.Severity == Kimi.Diagnostics.DiagnosticSeverity.Error).Select(x => At(source, x.Span!.Value.Start, x.Code));
+
+    // A record as its code and the 1-based line and column of its start in `source`.
+    private static string At(string source, int start, object code)
+    {
+        var line = source.AsSpan(0, start).Count('\n');
+        return $"{code} {line + 1}:{start - (start == 0 ? 0 : source.LastIndexOf('\n', start - 1) + 1) + 1}";
+    }
 }
