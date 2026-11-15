@@ -339,6 +339,11 @@ public sealed class BindingSymbol
     // on the original declaration's symbol only; a specialization has it through its original (TyCtxt.Original).
     internal bool CallerLocation { get; init; }
 
+    // Plan 5.8, IMPL 21.3.4: how a call of this function is served, set where the symbol is made: a library declaration's
+    // `#Intrinsic("Name")` (Fail with its code) by the library's registration on the original declaration's symbol, $abort's
+    // Intrinsic, a built-in target's Shim (PrepareBuiltinTargets); otherwise Body.
+    internal IntrinsicDisposition Definition { get; init; }
+
     internal List<BoundOrigin>? AggregateInputOrigins { get; set; }
 
     internal BoundType? WholeType { get; set; }

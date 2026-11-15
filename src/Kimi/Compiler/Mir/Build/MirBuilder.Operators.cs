@@ -89,7 +89,7 @@ internal sealed partial class MirBuilder
     // byte Slice. SPEC 4.9.5: an Array's or a Dictionary's capacity is the call of its library Field read on a shared view of the handle.
     private void Metadata(MirPlace destination, MemberAccessKoto member)
     {
-        var form = IntrinsicDisposition.FormOf(member);
+        var form = Binding.FormOf(member);
         if (form == BuiltinForm.None)
         {
             this.Unsupported(member, destination);

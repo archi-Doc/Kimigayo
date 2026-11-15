@@ -312,21 +312,6 @@ public sealed partial class KimiLibrary
     public BindingSymbol? GetSymbol(KimiDeclarationId id)
         => KimiLibraryCatalog.Index(id) is var index && index >= 0 ? this.symbols[index] : null;
 
-    // The declaration of a compiler function, which the MIR builder calls where that function serves a built-in form (an Array literal, a
-    // slicing, a Dictionary literal); null for None and the compiler-only $abort.
-    internal BindingSymbol? Function(CompilerFunctionKind kind)
-    {
-        foreach (ref readonly var entry in KimiLibraryCatalog.Entries)
-        {
-            if (entry.Function == kind && kind != CompilerFunctionKind.None)
-            {
-                return this.GetSymbol(entry.Id);
-            }
-        }
-
-        return null;
-    }
-
     /// <summary>Gets the internal source function that defines a linked constructor (SPEC 22.1).</summary>
     /// <param name="constructor">The selected public constructor.</param>
     /// <returns>The executed implementation; null when the constructor is not linked.</returns>
@@ -437,6 +422,32 @@ public sealed partial class KimiLibrary
         }
     }
 
+    // IMPL 21.3.4: how a call of a library declaration is served, its `#Intrinsic` read from the syntax by the Attribute's Kind:
+    // `#Intrinsic("Name")` the IntrinsicId member of that Name, `#Intrinsic("Fail", "Code")` Fail with its SPEC 22.5.2 code; Body without
+    // one. Another argument list or a Name that is no IntrinsicId member is a defect of the compiler build, whose embedded library
+    // KimiLibraryShapeTest checks.
+    private static IntrinsicDisposition DefinitionOf(Koto declaration)
+    {
+        if (declaration.FindAttribute(AttributeKind.Intrinsic) is not { } attribute)
+        {
+            return default;
+        }
+
+        // Unlabeled string literals: the Name, then Fail's code.
+        var (name, code) = attribute.Operand is InvocationKoto call && call.GetArgumentLabel(0) is null ? call.ArgumentNodes switch
+        {
+            [StringLiteralKoto only] => (only.Literal, null),
+            [StringLiteralKoto first, StringLiteralKoto second] when call.GetArgumentLabel(1) is null => (first.Literal, second.Literal),
+            _ => (string.Empty, (string?)null),
+        } : (string.Empty, null);
+        if (!Enum.TryParse<IntrinsicId>(name, out var id) || id.ToString() != name || id == IntrinsicId.None || (id == IntrinsicId.Fail) != (code is not null))
+        {
+            throw new InvalidOperationException($"The embedded Kimi library's #Intrinsic at {attribute.Span} names no intrinsic (InternalInvariant).");
+        }
+
+        return new(DispositionKind.Intrinsic, id, code);
+    }
+
     // The declaration container a library declaration is declared in: its parent, or the container of the conditional conformance
     // whose block holds it.
     private static DeclarationContainerKoto DeclaringContainer(Koto declaration)
@@ -477,7 +488,7 @@ public sealed partial class KimiLibrary
     // SPEC 22.1: the catalog's symbols in catalog order, each bound to the declaration its `#Lang` marks, in the scope of the container
     // that declares it: the root's, a signature-only group's or Text's own scope, else one scope per container whose parent is its
     // declaring container's (indexing later gives a member's symbol its container's ordinary member scope). A symbol carries its
-    // declaration's `#CallerLocation`.
+    // declaration's `#CallerLocation` and `#Intrinsic` (DefinitionOf).
     private void RegisterCatalog(Koto?[] declarations)
     {
         var entries = KimiLibraryCatalog.Entries;
@@ -511,6 +522,7 @@ public sealed partial class KimiLibrary
                 CompilerFunction = entry.Function,
                 LibraryDeclaration = entry.Id,
                 CallerLocation = declaration.FindAttribute(AttributeKind.CallerLocation) is not null,
+                Definition = DefinitionOf(declaration),
             };
             if (IntrinsicContract.Of(entry.Intrinsic).Judged)
             {
@@ -564,7 +576,7 @@ public sealed partial class KimiLibrary
             var function = new FunctionKoto(ref reader, new(null, ModifierKind.Public, false), default, "$abort", null, [new("text", "text", type, null)], null);
             type.BoundType = BoundType.String;
             type.BindingState = BindingState.Resolved;
-            var symbol = new BindingSymbol("$abort", BindingSymbolKind.Function, function, this.Scope) { CompilerFunction = CompilerFunctionKind.Abort, Type = BoundType.Never };
+            var symbol = new BindingSymbol("$abort", BindingSymbolKind.Function, function, this.Scope) { CompilerFunction = CompilerFunctionKind.Abort, Definition = new(DispositionKind.Intrinsic, IntrinsicId.Abort), Type = BoundType.Never };
             function.BoundSymbol = symbol;
             function.BoundType = BoundType.Never;
             function.BindingState = BindingState.Resolved;

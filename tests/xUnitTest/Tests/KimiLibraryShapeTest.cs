@@ -229,7 +229,7 @@ public partial class KimiLibraryShapeTest
     }
 
     // IMPL 21.3.4 (R8-G1 row L2): a function or constructor without a definition, outside a Contract, is a foreign import, or a
-    // cataloged compiler function carrying `#Intrinsic` exactly when the intrinsic table serves it by an intrinsic, or a `#Lang`
+    // cataloged compiler function carrying `#Intrinsic` exactly when its symbol's Definition is an intrinsic, or a `#Lang`
     // constructor the catalog links to the internal function that defines it; a function with a definition carries no `#Intrinsic`.
     // `#Unsupported` joins with its declarations and its reader (G1-3b), so none is written yet. One compiler function has neither
     // form until R8-W2 d gives it its body: Console.writeLine(text), which the backend still serves from a legacy runtime helper (a
@@ -266,7 +266,7 @@ public partial class KimiLibraryShapeTest
 
                 var symbol = function.SymbolOf();
                 Assert.True(symbol?.LibraryDeclaration is { } id && ReferenceEquals(c.Library.GetSymbol(id), symbol) && LangName(function) == id.ToString(), Line(function));
-                var served = IntrinsicDisposition.Of(symbol!.CompilerFunction).Kind == DispositionKind.Intrinsic;
+                var served = symbol!.Definition.Kind == DispositionKind.Intrinsic;
                 var linked = function.IsConstructor && symbol.CompilerFunction == CompilerFunctionKind.None && KimiLibraryCatalog.ImplementationOf(symbol.LibraryDeclaration!.Value) is not null;
                 Assert.True(intrinsic == served && (served || linked || symbol.CompilerFunction != CompilerFunctionKind.None), Line(function));
                 if (!served && !linked)
@@ -297,39 +297,40 @@ public partial class KimiLibraryShapeTest
         Assert.Equal(expected, CompilerFunctionShapes.Select(x => x.Id));
     }
 
-    // Plan 5.8: the intrinsic table gives every compiler function one disposition; an intrinsic serves at most one of them, except Fail,
-    // which carries a fixed SPEC 22.5.2 code; there are at most 28 intrinsics, and the temporary Capacity and FormatSegment (owner
-    // approvals 2026-10-11; FormatHint renamed FormatSegment, R5-M133; FormatBuffer went at R8-W2 c3b, FormatFinish at c3a) until R8.
+    // Plan 5.8: every library function and $abort has one disposition, its symbol's Definition: an intrinsic serves at most one of them,
+    // except Fail, which carries a fixed SPEC 22.5.2 code; a symbol of no compiler function has its Body; there are at most 28
+    // intrinsics, and the temporary Capacity and FormatSegment (owner approvals 2026-10-11; FormatHint renamed FormatSegment, R5-M133;
+    // FormatBuffer went at R8-W2 c3b, FormatFinish at c3a) until R8. A built-in target's Shim is MirBuildTest's census key.
     [Fact]
     public void EveryCompilerFunctionHasOneDisposition()
     {
         var spec = File.ReadAllText(System.IO.Path.Combine(Repository.Root, "docs", "spec", "22-core-execution-and-foreign-functions.md"));
-        var rows = Enum.GetValues<CompilerFunctionKind>().Select(static x => (Kind: x, Row: IntrinsicDisposition.Of(x))).ToArray();
-        foreach (var (kind, row) in rows)
+        var library = Library.Value.Library;
+        var symbols = library.RegisteredSymbols.ToArray().Append(library.Abort).ToArray();
+        foreach (var symbol in symbols)
         {
+            var row = symbol.Definition;
             var coded = row.Code is null ? row.Id != IntrinsicId.Fail
                 : row.Id == IntrinsicId.Fail && (spec.Contains($"{row.Code} (", StringComparison.Ordinal) || spec.Contains($"`{row.Code}: ", StringComparison.Ordinal));
-            Assert.True((row.Kind == DispositionKind.Intrinsic) == (row.Id != IntrinsicId.None) && coded, kind.ToString());
+            Assert.True((row.Kind == DispositionKind.Intrinsic) == (row.Id != IntrinsicId.None) && row.Kind != DispositionKind.Shim && coded, symbol.Name);
+            Assert.True(symbol.CompilerFunction != CompilerFunctionKind.None || row == default, symbol.Name);
         }
 
-        var served = rows.Select(static x => x.Row.Id).Where(static x => x is not (IntrinsicId.None or IntrinsicId.Fail)).ToArray();
+        var served = symbols.Select(static x => x.Definition.Id).Where(static x => x is not (IntrinsicId.None or IntrinsicId.Fail)).ToArray();
         Assert.Equal(served.Distinct(), served);
-        Assert.Equal(DispositionKind.Body, IntrinsicDisposition.Of(CompilerFunctionKind.None).Kind);
+        Assert.Equal(new IntrinsicDisposition(DispositionKind.Intrinsic, IntrinsicId.Abort), library.Abort.Definition);
         Assert.True(Enum.GetValues<IntrinsicId>().Length <= 34);
     }
 
-    // R3 decision 5: the MIR builder serves a built-in form (an Array literal, a slicing, a Dictionary literal) by an existing compiler
-    // function, whose declaration the library gives by kind.
+    // R3 decision 5: the MIR builder serves a built-in form (a slicing, a direct line's fixed arm) by a library function it names by its
+    // lang item, which the library registers as the intrinsic it calls.
     [Fact]
-    public void CompilerFunctionsHaveTheirDeclarations()
+    public void ServedFunctionsHaveTheirDeclarations()
     {
         var library = Library.Value.Library;
-        foreach (var entry in KimiLibraryCatalog.Entries)
-        {
-            Assert.True(entry.Function == CompilerFunctionKind.None || ReferenceEquals(library.Function(entry.Function), library.GetSymbol(entry.Id)), entry.Id.ToString());
-        }
-
-        Assert.Null(library.Function(CompilerFunctionKind.None));
+        Assert.Equal(
+            [IntrinsicId.ErasedWriter, IntrinsicId.RawSlice],
+            new[] { KimiDeclarationId.TextWriter, KimiDeclarationId.RawSlice }.Select(x => library.GetSymbol(x)!.Definition.Id));
     }
 
     // SPEC 4.9.6, 12.4.3: each published row, as TyCtxt.Published gives it to the MIR: the requirement it runs and the parameter below

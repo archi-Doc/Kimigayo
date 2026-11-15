@@ -632,6 +632,19 @@ public sealed partial class MirEffectsTest(ITestOutputHelper output)
                 "    public init(key: K) => self.key = key@move\n    public func put(self: uniq/Self, value: i32) -> Result<(), BufferFull>\n" +
                 "        _ = self.table.tryGet(self.key)\n        return .Ok(())\n"));
 
+    // SPEC 8.11.2 (R8-G1 rows D1, D2): a confined slot's call reaches a body-less intrinsic's class through a library body. Console
+    // output is an environment effect, so a slot whose body calls the view overload of Console.writeLine, whose body calls
+    // Console.writeStdout, fails its bound: one record at the slot (D1); its twin without the call reports none. Raw.allocate and
+    // Raw.release act on their inputs and the allocator, which confined permits (D2).
+    [Theory]
+    [InlineData("        let text = \"x\"\n        Console.writeLine(Text.utf8(text@ref))\n", "UnsatisfiedEffectBound_Kd public virtual func read(self: objref/Self) -> i32 1")]
+    [InlineData("        let x = 1\n", "")]
+    [InlineData("        let p = Kimi.Raw.allocate<i32>(count: 1)\n        unsafe\n            Kimi.Raw.release(storage: p)\n", "")]
+    public void AConfinedSlotOwesTheClassOfTheIntrinsicItReaches(string body, string expected)
+        => Assert.Equal(
+            Expected(expected),
+            Problems("open struct Base\n    public virtual func read(self: objref/Self) -> i32\n        effect confined\n" + body + "        return 1\n"));
+
     // SPEC 8.11.2, 22.9.1 (R8-W1b-3, C-188): A4 classes a Storage.erasedReserve call, ErasedReserve's producer (MirDescriptors: no
     // effect of its own), by its kind's family, Inputs, as Text.writer's ErasedWriter: the Writer's reserve it runs is checked against
     // its confined bound where Text.writer erases it. S2a's built-in bodies are its first callers (AConfinedLeafWriteReportsNothing).
@@ -639,8 +652,8 @@ public sealed partial class MirEffectsTest(ITestOutputHelper output)
     public void AnErasedReserveCallIsClassedByItsStorageFamily()
     {
         var library = Compilation.CreateForTest().Library;
-        Assert.Equal(CompilerFunctionEffect.Inputs, TyCtxt.Bodyless(library.Function(CompilerFunctionKind.StorageErasedReserve)!));
-        Assert.Equal(TyCtxt.Bodyless(library.Function(CompilerFunctionKind.TextWriter)!), TyCtxt.Bodyless(library.Function(CompilerFunctionKind.StorageErasedReserve)!));
+        Assert.Equal(CompilerFunctionEffect.Inputs, TyCtxt.Bodyless(library.GetSymbol(KimiDeclarationId.StorageErasedReserve)!));
+        Assert.Equal(TyCtxt.Bodyless(library.GetSymbol(KimiDeclarationId.TextWriter)!), TyCtxt.Bodyless(library.GetSymbol(KimiDeclarationId.StorageErasedReserve)!));
         Assert.Equal((MirEffect.None, (sbyte)2), (MirDescriptors.Of(IntrinsicId.ErasedReserve).Effects, MirDescriptors.Of(IntrinsicId.ErasedReserve).Arity));
     }
 
@@ -654,7 +667,7 @@ public sealed partial class MirEffectsTest(ITestOutputHelper output)
         var descriptor = MirDescriptors.Of(IntrinsicId.FormatFloat);
         Assert.Equal(
             (CompilerFunctionEffect.Inputs, (MirEffect.None, (sbyte)3)),
-            (TyCtxt.Bodyless(library.Function(CompilerFunctionKind.StorageFormatFloat)!), (descriptor.Effects, descriptor.Arity)));
+            (TyCtxt.Bodyless(library.GetSymbol(KimiDeclarationId.StorageFormatFloat)!), (descriptor.Effects, descriptor.Arity)));
     }
 
     // SPEC 8.11.2, 22.10.2 (R8-S2b2, C-258): A4 classes a Storage.formatInteger128 call, FormatInteger128's producer, by its kind's family,
@@ -668,7 +681,7 @@ public sealed partial class MirEffectsTest(ITestOutputHelper output)
         var descriptor = MirDescriptors.Of(IntrinsicId.FormatInteger128);
         Assert.Equal(
             (CompilerFunctionEffect.Inputs, (MirEffect.None, (sbyte)2)),
-            (TyCtxt.Bodyless(library.Function(CompilerFunctionKind.StorageFormatInteger128)!), (descriptor.Effects, descriptor.Arity)));
+            (TyCtxt.Bodyless(library.GetSymbol(KimiDeclarationId.StorageFormatInteger128)!), (descriptor.Effects, descriptor.Arity)));
     }
 
     // SPEC 8.11.2, 22.9.1 (R8-S2a, C-188; R8-S2b1, C-254): a confined caller's write(true) runs BoolFormat's body and its write of an i64

@@ -1602,7 +1602,7 @@ public sealed partial class RetentionTest
             {
                 var value = call.Kind == CalleeKind.Value;
                 var callee = call is { Kind: CalleeKind.Virtual, VirtualIsDirect: true } ? call.VirtualImplementation?.SymbolOf() : call.Target;
-                if (callee is null || (callee.LibraryDeclaration is null && IntrinsicDisposition.Of(callee.CompilerFunction).Kind == DispositionKind.Intrinsic))
+                if (callee is null || (callee.LibraryDeclaration is null && callee.Definition.Kind == DispositionKind.Intrinsic))
                 {
                     continue; // The compiler-only $abort has no declaration MIR names (SPEC 17.4).
                 }

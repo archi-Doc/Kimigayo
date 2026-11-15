@@ -8,7 +8,7 @@ namespace XunitTest;
 
 // The implementation Attributes the library's sources state (IMPL 21.3.4; R8-G1 rows L1, L3, L4 and L5; row L2 is
 // BodilessFunctionsAreCompilerFunctions, row L6 ParserOptimizationTest.TheLibrarysLinkedConstructorsCarryLang). The library's
-// registration reads `#Lang` and `#CallerLocation` (G1-3a); `#Intrinsic` still equals the catalog's Function column.
+// registration reads `#Lang` and `#CallerLocation` (G1-3a) and `#Intrinsic` into the symbol's Definition (G1-4a).
 public partial class KimiLibraryShapeTest
 {
     // Row L1: `#Lang("Name")` names a KimiDeclarationId member and sits on the one declaration the library reads under it: the symbol the
@@ -41,8 +41,8 @@ public partial class KimiLibraryShapeTest
         Assert.Equal((189, 206), (declared.Keys.Count(x => library.GetSymbol(x) is not null), declared.Count));
     }
 
-    // Row L3: `#Intrinsic("Name")` names an IntrinsicId member, the disposition the intrinsic table gives the declaration's compiler
-    // function; `#Intrinsic("Fail", "Code")` carries Fail's SPEC 22.5.2 code. An intrinsic other than Fail is named once. The
+    // Row L3: `#Intrinsic("Name")` names an IntrinsicId member, the Definition the registration gives the declaration's symbol;
+    // `#Intrinsic("Fail", "Code")` carries Fail's SPEC 22.5.2 code. An intrinsic other than Fail is named once. The
     // intrinsics no declaration names are those the MIR builder emits without a library function, `$abort`'s among them.
     [Fact]
     public void EachIntrinsicAttributeNamesItsIntrinsic()
@@ -53,7 +53,7 @@ public partial class KimiLibraryShapeTest
             var texts = Texts(attribute);
             Assert.True(Enum.TryParse<IntrinsicId>(texts[0], out var id) && id.ToString() == texts[0] && id != IntrinsicId.None, Line(target));
             Assert.Equal(id == IntrinsicId.Fail ? 2 : 1, texts.Length);
-            Assert.Equal(IntrinsicDisposition.Of(target.SymbolOf()!.CompilerFunction), new(DispositionKind.Intrinsic, id, id == IntrinsicId.Fail ? texts[1] : null));
+            Assert.Equal(target.SymbolOf()!.Definition, new(DispositionKind.Intrinsic, id, id == IntrinsicId.Fail ? texts[1] : null));
             named.Add(id);
         }
 

@@ -1,11 +1,12 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
-// Owns compiler/library identities, the disposition of each compiler operation and the intrinsic Contract table.
-// Input: CompilerFunctionKind; IntrinsicKind. Output: a Kimigayo implementation, intrinsic or shim disposition; an intrinsic Contract's row.
-// Each operation has one disposition and each intrinsic Contract one row; temporary intrinsics keep their recorded removal stage.
+// Owns compiler/library identities, the vocabulary of how a call is served (IntrinsicDisposition, which a function's symbol publishes as
+// BindingSymbol.Definition) and the intrinsic Contract table.
+// Input: CompilerFunctionKind; IntrinsicId; IntrinsicKind. Output: a compiler function's effect class; an intrinsic's written inputs; an
+// intrinsic Contract's row.
+// Each function has one disposition, set where its symbol is made (the library's registration from `#Intrinsic`, $abort's,
+// Binding.PrepareBuiltinTargets' shims), and each intrinsic Contract one row; temporary intrinsics keep their recorded removal stage.
 // Must not create a second intrinsic allowlist or hand-written library path.
-
-using Kimi.Compiler.Parsing;
 
 namespace Kimi.Compiler;
 
@@ -158,43 +159,13 @@ internal enum DispositionKind : byte
     Shim, // A built-in witness (equality, comparison, arithmetic), whose body the backend generates for its instance.
 }
 
-/// <summary>The intrinsic table (plan 5.8): the one disposition of each <see cref="CompilerFunctionKind"/>.</summary>
+/// <summary>How a call of a function is served (plan 5.8), which its symbol publishes (<see cref="BindingSymbol.Definition"/>): a library
+/// declaration's `#Intrinsic` (IMPL 21.3.4), a built-in target's Shim, otherwise its Body.</summary>
 /// <param name="Kind">How the call is served.</param>
 /// <param name="Id">The intrinsic of an Intrinsic disposition.</param>
 /// <param name="Code">The SPEC 22.5.2 code of <see cref="IntrinsicId.Fail"/>.</param>
 internal readonly record struct IntrinsicDisposition(DispositionKind Kind, IntrinsicId Id = IntrinsicId.None, string? Code = null)
 {
-    internal static IntrinsicDisposition Of(CompilerFunctionKind kind) => kind switch
-    {
-        CompilerFunctionKind.None or CompilerFunctionKind.WriteLine => default,
-        CompilerFunctionKind.BuiltinEquals or CompilerFunctionKind.BuiltinCompare or CompilerFunctionKind.BuiltinArithmetic => new(DispositionKind.Shim),
-        CompilerFunctionKind.Abort => Intrinsic(IntrinsicId.Abort),
-        CompilerFunctionKind.MakeObj => Intrinsic(IntrinsicId.MakeObj),
-        CompilerFunctionKind.MakeRc => Intrinsic(IntrinsicId.MakeRc),
-        CompilerFunctionKind.MakeArc => Intrinsic(IntrinsicId.MakeArc),
-        CompilerFunctionKind.Clone => Intrinsic(IntrinsicId.Clone),
-        CompilerFunctionKind.TestTempDirectory => Intrinsic(IntrinsicId.TestTempDirectory),
-        CompilerFunctionKind.TextWriter => Intrinsic(IntrinsicId.ErasedWriter),
-        CompilerFunctionKind.ConsoleWriteStdout => Intrinsic(IntrinsicId.WriteStdout),
-        CompilerFunctionKind.StorageTryAllocateBytes => Intrinsic(IntrinsicId.TryAllocateBytes),
-        CompilerFunctionKind.StorageTransferBytes => Intrinsic(IntrinsicId.MoveBytes),
-        CompilerFunctionKind.StorageDestroyValues => Intrinsic(IntrinsicId.DestroyValues),
-        CompilerFunctionKind.StorageErasedReserve => Intrinsic(IntrinsicId.ErasedReserve),
-        CompilerFunctionKind.StorageFormatFloat => Intrinsic(IntrinsicId.FormatFloat),
-        CompilerFunctionKind.StorageFormatInteger128 => Intrinsic(IntrinsicId.FormatInteger128),
-        CompilerFunctionKind.StorageStride => Intrinsic(IntrinsicId.Stride),
-        CompilerFunctionKind.RawAllocate => Intrinsic(IntrinsicId.RawAllocate),
-        CompilerFunctionKind.RawRelease => Intrinsic(IntrinsicId.RawRelease),
-        CompilerFunctionKind.RawInitialize => Intrinsic(IntrinsicId.RawInitialize),
-        CompilerFunctionKind.RawSlice => Intrinsic(IntrinsicId.RawSlice),
-        CompilerFunctionKind.StorageIndexBounds => Fail("KIMI_E_INDEX_BOUNDS"),
-        CompilerFunctionKind.StorageMissingDictionaryKey => Fail("KIMI_E_MISSING_KEY"),
-        CompilerFunctionKind.StorageArgumentOutOfRange => Fail("KIMI_E_ARG_RANGE"),
-        CompilerFunctionKind.StorageCountOverflow => Fail("KIMI_E_INT_OVERFLOW"),
-        CompilerFunctionKind.StorageAllocationSizeExceeded => Fail("KIMI_E_ALLOC_SIZE"),
-        _ => throw new ArgumentOutOfRangeException(nameof(kind)),
-    };
-
     // SPEC 8.11.2: the effect class of each compiler function. The Storage and Raw families act only on their inputs and the allocator
     // (SPEC 5.6, 22.2), so they are classified as families; a storage kind that obtained environment authority would have to be split
     // out of its family. Console output and the test temporary directory are environment effects. Text.writer and the
@@ -208,32 +179,14 @@ internal readonly record struct IntrinsicDisposition(DispositionKind Kind, Intri
         _ => CompilerFunctionEffect.Unclassified,
     };
 
-    // SPEC 5.2, 7.7.3 (the owner's O-21 (ii)): the written inputs, whether a body-less operation's contract performs an access that needs
+    // SPEC 5.2, 7.7.3 (the owner's O-21 (ii)): the written inputs, whether an intrinsic's contract performs an access that needs
     // write capability through the raw pointer it takes as a parameter: a construction at `storage`, a relocation's destination and source
     // (the source as a Take) and an in-place destruction; a Dictionary entry's placement is the DictionaryStorage.placeEntry body.
     // Raw.release and Raw.slice write nothing.
-    internal static bool WritesThrough(CompilerFunctionKind kind, int parameter) => kind switch
+    internal static bool WritesThrough(IntrinsicId id, int parameter) => id switch
     {
-        CompilerFunctionKind.RawInitialize or CompilerFunctionKind.StorageDestroyValues => parameter == 0,
-        CompilerFunctionKind.StorageTransferBytes => parameter is 0 or 1,
+        IntrinsicId.RawInitialize or IntrinsicId.DestroyValues => parameter == 0,
+        IntrinsicId.MoveBytes => parameter is 0 or 1,
         _ => false,
     };
-
-    // The built-in form of a published node: a sequence's metadata by its member.
-    internal static BuiltinForm FormOf(Koto node)
-        => HirTables.Op(node) == HirOp.PrimitiveOp && node is MemberAccessKoto member ? Binding.SequenceMember(member) : BuiltinForm.None;
-
-    private static IntrinsicDisposition Intrinsic(IntrinsicId id) => new(DispositionKind.Intrinsic, id);
-
-    private static IntrinsicDisposition Fail(string code) => new(DispositionKind.Intrinsic, IntrinsicId.Fail, code);
-}
-
-/// <summary>A sequence's metadata member, which Binding serves without a call: <see cref="IntrinsicDisposition.FormOf"/> gives a node's.</summary>
-internal enum BuiltinForm : byte
-{
-    None,
-    Length, // A sequence's length (SPEC 4.7).
-    IsEmpty,
-    Indices, // The ResolvedRange from 0 to the length (SPEC 4.6.2).
-    Capacity, // An Array's or a Dictionary's capacity (SPEC 4.9.5).
 }

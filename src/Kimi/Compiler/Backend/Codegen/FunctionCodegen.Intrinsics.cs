@@ -76,12 +76,11 @@ internal sealed partial class FunctionCodegen
     private FunctionAbi? Routine(BoundType item, BoundType? result, int target, out ReadOnlySpan<Value> given)
     {
         given = default;
-        var kind = item.Symbol?.CompilerFunction ?? CompilerFunctionKind.None;
-        return IntrinsicDisposition.Of(kind) switch
+        return item.Symbol?.Definition switch
         {
             { Kind: DispositionKind.Intrinsic, Id: var id } =>
                 this.Routine(IntrinsicRows.Of(id), result, this.typeContext.SubstOfItem(item), target, out given),
-            _ => LegacyRuntimeHelpers.Row(kind)?.Routine,
+            _ => LegacyRuntimeHelpers.Row(item.Symbol?.CompilerFunction ?? CompilerFunctionKind.None)?.Routine,
         };
     }
 

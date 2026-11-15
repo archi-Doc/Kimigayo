@@ -208,7 +208,7 @@ internal sealed partial class MirBuilder
         var scope = this.OpenScope(block: false);
         var at = this.arguments.Count;
         this.arguments.Add(this.Borrow(SemanticsKind.Uniq, fixedBuffer, node));
-        this.Serve(writer, CompilerFunctionKind.TextWriter, null, [this.body.TypeOf(fixedBuffer)], at, node);
+        this.Serve(writer, KimiDeclarationId.TextWriter, null, [this.body.TypeOf(fixedBuffer)], at, node);
         this.CloseScope(scope);
     }
 

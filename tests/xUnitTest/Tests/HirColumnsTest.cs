@@ -285,7 +285,7 @@ public sealed class HirColumnsTest
 
             if (!ViewsAgree(node, op))
             {
-                problems.Add($"{where} views {IntrinsicDisposition.FormOf(node)} {BoundEnumConstruction.Of(node)?.Type}");
+                problems.Add($"{where} views {Binding.FormOf(node)} {BoundEnumConstruction.Of(node)?.Type}");
             }
 
             if (op == HirOp.Closure && (BoundClosure.Of((FunctionKoto)node) is not { EnvironmentType: { } environment, Signature: not null } || module.Compilation.Types.SubstOfClosure(environment) is null))
@@ -316,7 +316,7 @@ public sealed class HirColumnsTest
 
             for (var i = 0; CallPlan.Of(node, i) is { } call; i++)
             {
-                var disposition = call.Kind == CalleeKind.Value ? default : IntrinsicDisposition.Of(call.Target.CompilerFunction);
+                var disposition = call.Kind == CalleeKind.Value ? default : call.Target.Definition;
                 if ((call.Kind == CalleeKind.Requirement && call.RequirementContract is null && disposition.Kind != DispositionKind.Shim) ||
                     (disposition.Id is IntrinsicId.Abort or IntrinsicId.Fail && !ReferenceEquals(call.ReturnType, BoundType.Never)) ||
                     (call.Kind != CalleeKind.Value && call.Target.Declaration is FunctionKoto { Accessor.Declaration: { Body: not null } accessor } && !ReferenceEquals(call.Target, CallPlan.Accessor(accessor))))
@@ -443,7 +443,7 @@ public sealed class HirColumnsTest
                 found += TyCtxt.Layer(type, out type, out var binder) == HirPlaceKind.PairLayer && binder is not null ? 1 : 0;
             }
 
-            found += (BoundEnumConstruction.Of(node) is null ? 0 : 1) + (int)IntrinsicDisposition.FormOf(node);
+            found += (BoundEnumConstruction.Of(node) is null ? 0 : 1) + (int)Binding.FormOf(node);
             var function = node is PropertyAccessorKoto accessor && HirTables.Op(node) == HirOp.Body ? CallPlan.Accessor(accessor)
                 : node is FunctionKoto && HirTables.Op(node) is HirOp.Body or HirOp.Closure ? HirTables.Symbol(node) : null;
             for (var i = -1; function is not null && i < ((FunctionKoto)function.Declaration).Parameters.Count; i++)
@@ -506,7 +506,7 @@ public sealed class HirColumnsTest
     {
         var construction = BoundEnumConstruction.Of(node);
         var type = node.TypeOf();
-        var form = IntrinsicDisposition.FormOf(node);
+        var form = Binding.FormOf(node);
         var agree = (construction is not null) == (op == HirOp.Aggregate && node is not (TupleLiteralKoto or ArrayLiteralKoto)) &&
             (construction is null || ReferenceEquals(construction.Type, type)) &&
             (op == HirOp.PrimitiveOp && node is MemberAccessKoto) == form is BuiltinForm.Length or BuiltinForm.IsEmpty or BuiltinForm.Indices or BuiltinForm.Capacity &&

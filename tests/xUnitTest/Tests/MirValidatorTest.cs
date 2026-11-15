@@ -121,9 +121,8 @@ public sealed class MirValidatorTest(ITestOutputHelper output)
     public void AnIntrinsicsRowCoversItsDeclaration()
     {
         var c = Fixture.Value.Compilation;
-        var declared = Enum.GetValues<CompilerFunctionKind>().Where(static x => IntrinsicDisposition.Of(x).Kind == DispositionKind.Intrinsic)
-            .Select(x => (Row: MirDescriptors.Of(IntrinsicDisposition.Of(x).Id), Declaration: c.Library.Function(x)))
-            .Where(static x => x.Declaration is not null).ToArray();
+        var declared = c.Library.RegisteredSymbols.ToArray().Where(static x => x.Definition.Kind == DispositionKind.Intrinsic)
+            .Select(static x => (Row: MirDescriptors.Of(x.Definition.Id), Declaration: (BindingSymbol?)x)).ToArray();
         Assert.NotEmpty(declared);
         foreach (var (row, declaration) in declared)
         {

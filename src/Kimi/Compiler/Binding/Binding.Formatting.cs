@@ -146,7 +146,7 @@ public sealed partial class Binding
         {
             if (this.Library.GetSymbol(id)!.Contract!.OwnRequirement() is { } requirement)
             {
-                target ??= new(requirement.Name, requirement.Kind, requirement.Declaration, requirement.Scope) { CompilerFunction = kind };
+                target ??= new(requirement.Name, requirement.Kind, requirement.Declaration, requirement.Scope) { CompilerFunction = kind, Definition = new(DispositionKind.Shim) };
                 target.Type = requirement.Type;
                 target.ReceiverIndex = requirement.ReceiverIndex;
             }

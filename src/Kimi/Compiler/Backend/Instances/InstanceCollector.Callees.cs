@@ -92,7 +92,7 @@ internal sealed partial class InstanceCollector
             return this.Imported(item, subject, function);
         }
 
-        if (IntrinsicDisposition.Of(function.CompilerFunction) is not { Kind: DispositionKind.Intrinsic, Id: var id } ||
+        if (function.Definition is not { Kind: DispositionKind.Intrinsic, Id: var id } ||
             IntrinsicRows.Of(id) is not { ReadsTypeArgument: true } row)
         {
             return -1; // An intrinsic whose row reads no Type argument (Test.tempDirectory's has none to read).

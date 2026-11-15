@@ -10,10 +10,11 @@
 // function; the kind Context of Text.writer's destination is the runtime's own number (WriterKind); a bounded Type's maximum is
 // FormattingTypes.Bound's, which an owning interpolation's estimate sums for its hints (FormatEstimate; R3-10).
 // The one map from a compiler function of the Body disposition to the runtime routine MIR code generation calls for it (Row, S2-S4
-// X39; DECISIONS R5-M116): writeLine's, the one such kind left (the formatting kinds are bodies, R8-W1a to W1c).
-// Invariants: a new helper kind adds a row; a kind without a row fails, a Body-disposition compiler function's included; the
-// formatting runtime's text is written once when a caller requests it; warm writes allocate nothing; the expanded runtime texts
-// (Texts) are built only when a code generation writer first reads one, never on the check path (G350).
+// X39; DECISIONS R5-M116): writeLine's, the one such kind left (the formatting kinds are bodies, R8-W1a to W1c; every other compiler
+// function's declaration carries `#Intrinsic`, KimiLibraryShapeTest's row L2, and CompilerFunctionKind gains no member, RQ9).
+// Invariants: a new helper kind adds a row; the formatting runtime's text is written once when a caller requests it; warm writes
+// allocate nothing; the expanded runtime texts (Texts) are built only when a code generation writer first reads one, never on the
+// check path (G350).
 // Must not hold module state, take syntax or MIR types, or a BoundType but a writer's destination for its kind (WriterKind),
 // or use LINQ.
 
@@ -49,13 +50,7 @@ internal static partial class LegacyRuntimeHelpers
     /// kind to the runtime routine MIR code generation calls for it, and the one test of whether a function is one: every site asks
     /// it, a Call, a Value call, the copy slots and the routine rows.</summary>
     /// <param name="kind">The compiler function.</param>
-    /// <returns>Its row; null for None and for a kind of another disposition.</returns>
-    internal static LegacyRow? Row(CompilerFunctionKind kind) => kind switch
-    {
-        CompilerFunctionKind.None => null,
-        CompilerFunctionKind.WriteLine => new(RuntimeAbi.WriteLine), // SPEC 22.1-22.5.5: it borrows its string.
-        _ when IntrinsicDisposition.Of(kind).Kind == DispositionKind.Body =>
-            throw new InvalidOperationException($"The compiler function {kind} has no legacy row."), // A fault: each has a row.
-        _ => null,
-    };
+    /// <returns>Its row; null for None and for a kind of another disposition (an intrinsic's or a shim's).</returns>
+    internal static LegacyRow? Row(CompilerFunctionKind kind)
+        => kind == CompilerFunctionKind.WriteLine ? new(RuntimeAbi.WriteLine) : null; // SPEC 22.1-22.5.5: it borrows its string.
 }
