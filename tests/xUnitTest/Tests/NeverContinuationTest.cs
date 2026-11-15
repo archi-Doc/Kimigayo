@@ -613,7 +613,8 @@ public class NeverContinuationTest
     // PLAN G442 (SPEC 14.10.3, 15.1.2, 15.1.3, 3.4; DECISIONS R4-M175): A1 checks a temp's use as a program Place's but for its own bit,
     // so a construct's value whose Never part no path placed is reported where a call, a comparison or a read of the part consumes it; a
     // placing location takes a whole temp without a use: an aggregate (an Array or tuple literal) and a Dictionary literal's insertion, a
-    // Places call (the owner's O-97 (a)) whose first entry looks no key up (U1). The reachable twins and the Never value consumed directly
+    // Places call (the owner's O-97 (a)) whose first entry looks no key up (U1), while a write where no Move Path exists (a Dictionary
+    // value, `d["j"] = X`) uses it (the owner's O-319 (a)). The reachable twins and the Never value consumed directly
     // (M's Q2) stay valid; a part read of a temp absent on one assumed path is rejected as its Var twin is (SPEC 14.10.3's
     // `let y: i32 = fail()`); a Dictionary literal received whole while an entry's value holds an unplaced part is incomplete, as an
     // aggregate is (its insertion's carries, MirMoveData; SPEC 12.4.3), while an unused one and its later entries stay valid.
@@ -633,7 +634,7 @@ public class NeverContinuationTest
     [InlineData("h((if c => (a, a) else => fail()).0)", "")]
     [InlineData("return 9\n    _ = d.tryInsert(\"j\", " + Joined + ")", "UninitializedPlace_Kd d.tryInsert(\"j\", (")]
     [InlineData("return 9\n    _ = d.insertOrReplace(\"j\", " + Joined + ")", "UninitializedPlace_Kd d.insertOrReplace(\"j\", (")]
-    [InlineData("return 9\n    d[\"j\"] = " + Joined, "")]
+    [InlineData("return 9\n    d[\"j\"] = " + Joined, "UninitializedPlace_Kd d[\"j\"] = (")]
     [InlineData("let x: Dictionary<(i64, i64), i64> = [(a, (return 4)): 1]", "")]
     [InlineData("let x: Dictionary<(i64, i64), i64> = [(a, a): 1, (a, (return 4)): 2]", "UninitializedPlace_Kd (a, (return 4))")]
     [InlineData("let x = [\"j\": (a, (return 4)), \"k\": (a, a)]", "")]

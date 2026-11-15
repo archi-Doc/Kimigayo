@@ -63,6 +63,18 @@ public sealed class MirInitTest
         "enum RN\n    Ok(i32)\n    Err(Never)\nstruct Box\n    public var value: string\n" +
         "    public init(value: string) => self.value = value@move\n    drop => ()\n";
 
+    // The declarations before the writes of AnIncompleteValueWrittenWithoutAMovePathIsReportedAtTheWrite.
+    private const string Writes = "func fail() -> Never => $abort(\"no\")\nfunc use(n: i32) => ()\nfunc mk(a: i32, b: i32) -> (i32, i32) => (a, b)\n" +
+        "func takeT(t: (i32, i32)) => ()\nfunc takeTT(t: (i32, (i32, i32))) => ()\nfunc takeAT(a: Array<(i32, i32)>) => ()\n" +
+        "func takeATT(a: Array<(i32, (i32, i32))>) => ()\nfunc takeAA(a: Array<Array<i32>>) => ()\nfunc takeAE(a: Array<E>) => ()\n" +
+        "func takeAD(a: Array<Dictionary<i32, i32>>) => ()\nfunc takeFT(a: [2 of (i32, i32)]) => ()\n" +
+        "func takeDT(d: Dictionary<i32, (i32, i32)>) => ()\nfunc takeDA(d: Dictionary<i32, Array<i32>>) => ()\n" +
+        "func takeDD(d: Dictionary<i32, Dictionary<i32, i32>>) => ()\nfunc takeD(d: Dictionary<i32, i32>) => ()\n" +
+        "func takeTD(a: Array<(i32, Dictionary<i32, i32>)>) => ()\nfunc takeAF(a: Array<[2 of (i32, i32)]>) => ()\n" +
+        "func takeTA(t: (i32, Array<(i32, i32)>)) => ()\nfunc takeB(b: B) => ()\nenum E\n    Two(i32, i32)\n" +
+        "struct B\n    public var t: (i32, i32)\n    public init(t: (i32, i32)) => self.t = t\n" +
+        "public func main() -> ()\n    let y: i32 = 5\n    let c: bool = y > 2\n";
+
     // SPEC 15.1.1: a use needs its Place initialized on every incoming runtime path.
     [Fact]
     public void AUseNeedsInitializationOnEveryPath()
@@ -878,6 +890,154 @@ public sealed class MirInitTest
         var internals = program.Problems.All.ToArray().Where(x => x.Code == DiagnosticCode.InternalInvariant_Kd && x.Body == body.Ordinal);
         Assert.Equal(broken ? 1 : 0, internals.Count());
     }
+
+    // SPEC 15.1.3, 15.1.2, 14.10.3 (the owner's O-319 (a); PLAN G909): an incomplete value (a Tuple, an Array literal, a Case or a
+    // Dictionary literal with a part without a value; an aggregate whose operand holds nothing on an assumed path) written where no
+    // Move Path exists (an Array element at a constant or runtime index, a fixed array's at a runtime index, a UniqSlice element, a
+    // uniq reference's referent, a Dictionary value, a raw Place, static storage, a Field below an element or a referent, an element
+    // below a Field or an element, a Closure's var binding in an Exclusive call, whose environment is a borrowed referent, SPEC 7.7.3)
+    // is UninitializedPlace_Kd at the write, whether the container is used whole after or not, and only there; at a Move Path (a local,
+    // a Tuple element, a fixed array's at a constant index, a Consuming call's binding, SPEC 7.7.2) the record stays at the whole use and
+    // an unused value stays valid. The complete twins, the Never value itself or a value that holds nothing on an assumed path (each
+    // places nothing; R4-M62), a write a real path reaches (on it the value is complete, SPEC 14.10.3: rch, rchl, lp1) and a call
+    // taking the Never value stay valid; a write into an incomplete Array is its own record (two). A Dictionary literal's lacking
+    // entry (its construction's own Unplaced bit) reaches the write through the assignment's temp, also as a Tuple's part or on an
+    // assumed path only (acd, gd2-gd6). Through a PairLayer (SPEC 13.5.5) the owner view writes a Move Path (the record at the whole
+    // use) and a reference view a referent (the record at the write, and the location's facts do not reach the binder: none at the
+    // use), also below a Field and through nested layers (plp, nC). The static rows keep the static initializer's Unsupported_Kd. Rows
+    // by name in the trailing comments. Fail-before: the redesign's unit 2 (step 2) accepted every invalid row of a destination
+    // without a Move Path.
+    [Theory]
+    [InlineData("var s: Array<(i32, i32)> = [(y, y)]\n    s[0] = (y, fail())\n    takeAT(s@move)", "UninitializedPlace_Kd s[0] = (y, fail()) 1")] // act
+    [InlineData("var s: Array<(i32, i32)> = [(y, y)]\n    s[0] = (y, fail())", "UninitializedPlace_Kd s[0] = (y, fail()) 1")] // actu
+    [InlineData("var s: Array<(i32, i32)> = [(y, y)]\n    s[0] = (y, y)\n    takeAT(s@move)", "")] // actv
+    [InlineData("var s: Array<(i32, i32)> = [(y, y)]\n    return\n    s[0] = (y, if c => y else => fail())\n    takeAT(s@move)", "UninitializedPlace_Kd s[0] = (y, if c => y 1")] // acn
+    [InlineData("var s: Array<(i32, i32)> = [(y, y)]\n    return\n    s[0] = (y, if c => y else => fail())", "UninitializedPlace_Kd s[0] = (y, if c => y 1")] // acnu
+    [InlineData("var s: Array<(i32, i32)> = [(y, y)]\n    return\n    s[0] = (y, if c => y else => y)\n    takeAT(s@move)", "")] // acnv
+    [InlineData("var s: Array<(i32, i32)> = [(y, y)]\n    let i: isize = 0\n    s[i] = (y, fail())\n    takeAT(s@move)", "UninitializedPlace_Kd s[i] = (y, fail()) 1")] // ait
+    [InlineData("var s: Array<(i32, i32)> = [(y, y)]\n    let i: isize = 0\n    s[i] = (y, fail())", "UninitializedPlace_Kd s[i] = (y, fail()) 1")] // aitu
+    [InlineData("var s: Array<(i32, i32)> = [(y, y)]\n    let i: isize = 0\n    s[i] = (y, y)\n    takeAT(s@move)", "")] // aitv
+    [InlineData("var s: Array<(i32, i32)> = [(y, y)]\n    let i: isize = 0\n    return\n    s[i] = (y, if c => y else => fail())\n    takeAT(s@move)", "UninitializedPlace_Kd s[i] = (y, if c => y 1")] // ain
+    [InlineData("var s: Array<(i32, i32)> = [(y, y)]\n    let i: isize = 0\n    return\n    s[i] = (y, if c => y else => fail())", "UninitializedPlace_Kd s[i] = (y, if c => y 1")] // ainu
+    [InlineData("var s: Array<(i32, i32)> = [(y, y)]\n    let i: isize = 0\n    return\n    s[i] = (y, if c => y else => y)\n    takeAT(s@move)", "")] // ainv
+    [InlineData("var f: [2 of (i32, i32)] = [(y, y), (y, y)]\n    let i: isize = 1\n    f[i] = (y, fail())\n    takeFT(f)", "UninitializedPlace_Kd f[i] = (y, fail()) 1")] // fit
+    [InlineData("var f: [2 of (i32, i32)] = [(y, y), (y, y)]\n    let i: isize = 1\n    f[i] = (y, fail())", "UninitializedPlace_Kd f[i] = (y, fail()) 1")] // fitu
+    [InlineData("var f: [2 of (i32, i32)] = [(y, y), (y, y)]\n    let i: isize = 1\n    f[i] = (y, y)\n    takeFT(f)", "")] // fitv
+    [InlineData("var f: [2 of (i32, i32)] = [(y, y), (y, y)]\n    let i: isize = 1\n    return\n    f[i] = (y, if c => y else => fail())\n    takeFT(f)", "UninitializedPlace_Kd f[i] = (y, if c => y 1")] // fin
+    [InlineData("var f: [2 of (i32, i32)] = [(y, y), (y, y)]\n    let i: isize = 1\n    return\n    f[i] = (y, if c => y else => fail())", "UninitializedPlace_Kd f[i] = (y, if c => y 1")] // finu
+    [InlineData("var f: [2 of (i32, i32)] = [(y, y), (y, y)]\n    let i: isize = 1\n    return\n    f[i] = (y, if c => y else => y)\n    takeFT(f)", "")] // finv
+    [InlineData("var a: Array<(i32, i32)> = [(y, y)]\n    var s = a.sliceUniq()\n    s[0] = (y, fail())\n    takeAT(a@move)", "UninitializedPlace_Kd s[0] = (y, fail()) 1")] // slt
+    [InlineData("var a: Array<(i32, i32)> = [(y, y)]\n    var s = a.sliceUniq()\n    s[0] = (y, fail())", "UninitializedPlace_Kd s[0] = (y, fail()) 1")] // sltu
+    [InlineData("var a: Array<(i32, i32)> = [(y, y)]\n    var s = a.sliceUniq()\n    s[0] = (y, y)\n    takeAT(a@move)", "")] // sltv
+    [InlineData("var a: Array<(i32, i32)> = [(y, y)]\n    var s = a.sliceUniq()\n    return\n    s[0] = (y, if c => y else => fail())\n    takeAT(a@move)", "UninitializedPlace_Kd s[0] = (y, if c => y 1")] // sln
+    [InlineData("var a: Array<(i32, i32)> = [(y, y)]\n    var s = a.sliceUniq()\n    return\n    s[0] = (y, if c => y else => fail())", "UninitializedPlace_Kd s[0] = (y, if c => y 1")] // slnu
+    [InlineData("var a: Array<(i32, i32)> = [(y, y)]\n    var s = a.sliceUniq()\n    return\n    s[0] = (y, if c => y else => y)\n    takeAT(a@move)", "")] // slnv
+    [InlineData("var t: (i32, i32) = (y, y)\n    let r = t@uniq\n    r@follow = (y, fail())\n    takeT(t)", "UninitializedPlace_Kd r@follow = (y, fail()) 1")] // rft
+    [InlineData("var t: (i32, i32) = (y, y)\n    let r = t@uniq\n    r@follow = (y, fail())", "UninitializedPlace_Kd r@follow = (y, fail()) 1")] // rftu
+    [InlineData("var t: (i32, i32) = (y, y)\n    let r = t@uniq\n    r@follow = (y, y)\n    takeT(t)", "")] // rftv
+    [InlineData("var t: (i32, i32) = (y, y)\n    let r = t@uniq\n    return\n    r@follow = (y, if c => y else => fail())\n    takeT(t)", "UninitializedPlace_Kd r@follow = (y, if c => y 1")] // rfn
+    [InlineData("var t: (i32, i32) = (y, y)\n    let r = t@uniq\n    return\n    r@follow = (y, if c => y else => fail())", "UninitializedPlace_Kd r@follow = (y, if c => y 1")] // rfnu
+    [InlineData("var t: (i32, i32) = (y, y)\n    let r = t@uniq\n    return\n    r@follow = (y, if c => y else => y)\n    takeT(t)", "")] // rfnv
+    [InlineData("var d: Dictionary<i32, (i32, i32)> = [1: (y, y)]\n    d[1] = (y, fail())\n    takeDT(d@move)", "UninitializedPlace_Kd d[1] = (y, fail()) 1")] // dvt
+    [InlineData("var d: Dictionary<i32, (i32, i32)> = [1: (y, y)]\n    d[1] = (y, fail())", "UninitializedPlace_Kd d[1] = (y, fail()) 1")] // dvtu
+    [InlineData("var d: Dictionary<i32, (i32, i32)> = [1: (y, y)]\n    d[1] = (y, y)\n    takeDT(d@move)", "")] // dvtv
+    [InlineData("var d: Dictionary<i32, (i32, i32)> = [1: (y, y)]\n    return\n    d[1] = (y, if c => y else => fail())\n    takeDT(d@move)", "UninitializedPlace_Kd d[1] = (y, if c => y 1")] // dvn
+    [InlineData("var d: Dictionary<i32, (i32, i32)> = [1: (y, y)]\n    return\n    d[1] = (y, if c => y else => fail())", "UninitializedPlace_Kd d[1] = (y, if c => y 1")] // dvnu
+    [InlineData("var d: Dictionary<i32, (i32, i32)> = [1: (y, y)]\n    return\n    d[1] = (y, if c => y else => y)\n    takeDT(d@move)", "")] // dvnv
+    [InlineData("_ = 0\nfunc gp(p: raw/(i32, i32), y: i32, c: bool)\n    unsafe\n        *p = (y, fail())\n        takeT(*p)", "UninitializedPlace_Kd *p = (y, fail()) 1")] // rwt
+    [InlineData("_ = 0\nfunc gp(p: raw/(i32, i32), y: i32, c: bool)\n    unsafe\n        *p = (y, fail())", "UninitializedPlace_Kd *p = (y, fail()) 1")] // rwtu
+    [InlineData("_ = 0\nfunc gp(p: raw/(i32, i32), y: i32, c: bool)\n    unsafe\n        *p = (y, y)\n        takeT(*p)", "")] // rwtv
+    [InlineData("_ = 0\nfunc gp(p: raw/(i32, i32), y: i32, c: bool)\n    unsafe\n        return\n        *p = (y, if c => y else => fail())\n        takeT(*p)", "UninitializedPlace_Kd *p = (y, if c => y 1")] // rwn
+    [InlineData("_ = 0\nfunc gp(p: raw/(i32, i32), y: i32, c: bool)\n    unsafe\n        return\n        *p = (y, if c => y else => fail())", "UninitializedPlace_Kd *p = (y, if c => y 1")] // rwnu
+    [InlineData("_ = 0\nfunc gp(p: raw/(i32, i32), y: i32, c: bool)\n    unsafe\n        return\n        *p = (y, if c => y else => y)\n        takeT(*p)", "")] // rwnv
+    [InlineData("var s: Array<(i32, (i32, i32))> = [(y, (y, y))]\n    s[0].1 = (y, fail())\n    takeATT(s@move)", "UninitializedPlace_Kd s[0].1 = (y, fail()) 1")] // aft
+    [InlineData("var s: Array<(i32, (i32, i32))> = [(y, (y, y))]\n    s[0].1 = (y, fail())", "UninitializedPlace_Kd s[0].1 = (y, fail()) 1")] // aftu
+    [InlineData("var s: Array<(i32, (i32, i32))> = [(y, (y, y))]\n    s[0].1 = (y, y)\n    takeATT(s@move)", "")] // aftv
+    [InlineData("var s: Array<(i32, (i32, i32))> = [(y, (y, y))]\n    return\n    s[0].1 = (y, if c => y else => fail())\n    takeATT(s@move)", "UninitializedPlace_Kd s[0].1 = (y, if c => y 1")] // afn
+    [InlineData("var s: Array<(i32, (i32, i32))> = [(y, (y, y))]\n    return\n    s[0].1 = (y, if c => y else => fail())", "UninitializedPlace_Kd s[0].1 = (y, if c => y 1")] // afnu
+    [InlineData("var s: Array<(i32, (i32, i32))> = [(y, (y, y))]\n    return\n    s[0].1 = (y, if c => y else => y)\n    takeATT(s@move)", "")] // afnv
+    [InlineData("var t: (i32, (i32, i32)) = (y, (y, y))\n    let r = t@uniq\n    r@follow.1 = (y, fail())\n    takeTT(t)", "UninitializedPlace_Kd r@follow.1 = (y, fail()) 1")] // rfft
+    [InlineData("var t: (i32, (i32, i32)) = (y, (y, y))\n    let r = t@uniq\n    r@follow.1 = (y, fail())", "UninitializedPlace_Kd r@follow.1 = (y, fail()) 1")] // rfftu
+    [InlineData("var t: (i32, (i32, i32)) = (y, (y, y))\n    let r = t@uniq\n    r@follow.1 = (y, y)\n    takeTT(t)", "")] // rfftv
+    [InlineData("var t: (i32, (i32, i32)) = (y, (y, y))\n    let r = t@uniq\n    return\n    r@follow.1 = (y, if c => y else => fail())\n    takeTT(t)", "UninitializedPlace_Kd r@follow.1 = (y, if c => y 1")] // rffn
+    [InlineData("var t: (i32, (i32, i32)) = (y, (y, y))\n    let r = t@uniq\n    return\n    r@follow.1 = (y, if c => y else => fail())", "UninitializedPlace_Kd r@follow.1 = (y, if c => y 1")] // rffnu
+    [InlineData("var t: (i32, (i32, i32)) = (y, (y, y))\n    let r = t@uniq\n    return\n    r@follow.1 = (y, if c => y else => y)\n    takeTT(t)", "")] // rffnv
+    [InlineData("var t: (i32, i32) = (y, y)\n    t = (y, fail())\n    takeT(t)", "UninitializedPlace_Kd takeT(t) 1")] // mlt
+    [InlineData("var t: (i32, i32) = (y, y)\n    t = (y, fail())", "")] // mltu
+    [InlineData("var t: (i32, i32) = (y, y)\n    t = (y, y)\n    takeT(t)", "")] // mltv
+    [InlineData("var t: (i32, i32) = (y, y)\n    return\n    t = (y, if c => y else => fail())\n    takeT(t)", "UninitializedPlace_Kd takeT(t) 1")] // mln
+    [InlineData("var t: (i32, i32) = (y, y)\n    return\n    t = (y, if c => y else => fail())", "")] // mlnu
+    [InlineData("var t: (i32, i32) = (y, y)\n    return\n    t = (y, if c => y else => y)\n    takeT(t)", "")] // mlnv
+    [InlineData("var u: (i32, (i32, i32)) = (y, (y, y))\n    u.1 = (y, fail())\n    takeTT(u)", "UninitializedPlace_Kd takeTT(u) 1")] // mft
+    [InlineData("var u: (i32, (i32, i32)) = (y, (y, y))\n    u.1 = (y, fail())", "")] // mftu
+    [InlineData("var u: (i32, (i32, i32)) = (y, (y, y))\n    u.1 = (y, y)\n    takeTT(u)", "")] // mftv
+    [InlineData("var u: (i32, (i32, i32)) = (y, (y, y))\n    return\n    u.1 = (y, if c => y else => fail())\n    takeTT(u)", "UninitializedPlace_Kd takeTT(u) 1")] // mfn
+    [InlineData("var u: (i32, (i32, i32)) = (y, (y, y))\n    return\n    u.1 = (y, if c => y else => fail())", "")] // mfnu
+    [InlineData("var u: (i32, (i32, i32)) = (y, (y, y))\n    return\n    u.1 = (y, if c => y else => y)\n    takeTT(u)", "")] // mfnv
+    [InlineData("var f: [2 of (i32, i32)] = [(y, y), (y, y)]\n    f[1] = (y, fail())\n    takeFT(f)", "UninitializedPlace_Kd takeFT(f) 1")] // mct
+    [InlineData("var f: [2 of (i32, i32)] = [(y, y), (y, y)]\n    f[1] = (y, fail())", "")] // mctu
+    [InlineData("var f: [2 of (i32, i32)] = [(y, y), (y, y)]\n    f[1] = (y, y)\n    takeFT(f)", "")] // mctv
+    [InlineData("var f: [2 of (i32, i32)] = [(y, y), (y, y)]\n    return\n    f[1] = (y, if c => y else => fail())\n    takeFT(f)", "UninitializedPlace_Kd takeFT(f) 1")] // mcn
+    [InlineData("var f: [2 of (i32, i32)] = [(y, y), (y, y)]\n    return\n    f[1] = (y, if c => y else => fail())", "")] // mcnu
+    [InlineData("var f: [2 of (i32, i32)] = [(y, y), (y, y)]\n    return\n    f[1] = (y, if c => y else => y)\n    takeFT(f)", "")] // mcnv
+    [InlineData("var s: Array<Array<i32>> = [[y]]\n    s[0] = [y, fail()]\n    takeAA(s@move)", "UninitializedPlace_Kd s[0] = [y, fail()] 1")] // aca
+    [InlineData("var s: Array<Array<i32>> = [[y]]\n    s[0] = [y, fail()]", "UninitializedPlace_Kd s[0] = [y, fail()] 1")] // acau
+    [InlineData("var s: Array<Array<i32>> = [[y]]\n    s[0] = [y, y]\n    takeAA(s@move)", "")] // acav
+    [InlineData("var s: Array<Array<i32>> = [[y]]\n    s[0] = [fail()]\n    takeAA(s@move)", "UninitializedPlace_Kd s[0] = [fail()] 1")] // aca1
+    [InlineData("var s: Array<Array<i32>> = [[y]]\n    s[0] = [fail()]", "UninitializedPlace_Kd s[0] = [fail()] 1")] // aca1u
+    [InlineData("var s: Array<Array<i32>> = [[y]]\n    s[0] = [y]\n    takeAA(s@move)", "")] // aca1v
+    [InlineData("var s: Array<E> = [E.Two(y, y)]\n    s[0] = E.Two(y, fail())\n    takeAE(s@move)", "UninitializedPlace_Kd s[0] = E.Two(y, fail()) 1")] // ace
+    [InlineData("var s: Array<E> = [E.Two(y, y)]\n    s[0] = E.Two(y, fail())", "UninitializedPlace_Kd s[0] = E.Two(y, fail()) 1")] // aceu
+    [InlineData("var s: Array<E> = [E.Two(y, y)]\n    s[0] = E.Two(y, y)\n    takeAE(s@move)", "")] // acev
+    [InlineData("var s: Array<Dictionary<i32, i32>> = [[1: y]]\n    s[0] = [1: y, 2: fail()]\n    takeAD(s@move)", "UninitializedPlace_Kd s[0] = [1: y, 2: fail()] 1")] // acd
+    [InlineData("var s: Array<Dictionary<i32, i32>> = [[1: y]]\n    s[0] = [1: y, 2: fail()]", "UninitializedPlace_Kd s[0] = [1: y, 2: fail()] 1")] // acdu
+    [InlineData("var s: Array<Dictionary<i32, i32>> = [[1: y]]\n    s[0] = [1: y, 2: y]\n    takeAD(s@move)", "")] // acdv
+    [InlineData("var d: Dictionary<i32, Array<i32>> = [1: [y]]\n    d[1] = [fail()]\n    takeDA(d@move)", "UninitializedPlace_Kd d[1] = [fail()] 1")] // dva
+    [InlineData("var d: Dictionary<i32, Array<i32>> = [1: [y]]\n    d[1] = [fail()]", "UninitializedPlace_Kd d[1] = [fail()] 1")] // dvau
+    [InlineData("var d: Dictionary<i32, Array<i32>> = [1: [y]]\n    d[1] = [y]\n    takeDA(d@move)", "")] // dvav
+    [InlineData("var f: [2 of (i32, i32)] = [(y, y), (y, y)]\n    let i: isize = 1\n    f[i] = (y, fail())\n    f[0] = (y, y)\n    takeFT(f)", "UninitializedPlace_Kd f[i] = (y, fail()) 1")] // fi2
+    [InlineData("var s: Array<(i32, i32)> = [(y, y)]\n    s[0] = fail()\n    takeAT(s@move)", "")] // nvac
+    [InlineData("var t: (i32, i32) = (y, y)\n    let r = t@uniq\n    r@follow = fail()\n    takeT(t)", "")] // nvrf
+    [InlineData("var d: Dictionary<i32, (i32, i32)> = [1: (y, y)]\n    d[1] = fail()\n    takeDT(d@move)", "")] // nvdv
+    [InlineData("var s: Array<(i32, i32)> = [(y, y)]\n    return\n    s[0] = if c => (y, y) else => fail()\n    takeAT(s@move)", "")] // hnac
+    [InlineData("var t: (i32, i32) = (y, y)\n    let r = t@uniq\n    return\n    r@follow = if c => (y, y) else => fail()\n    takeT(t)", "")] // hnrf
+    [InlineData("var s: Array<(i32, i32)> = [(y, y)]\n    s[0] = mk(y, fail())\n    takeAT(s@move)", "")] // clac
+    [InlineData("var s: Array<(i32, i32)> = [(y, fail())]\n    s[0] = (y, fail())", "UninitializedPlace_Kd s[0] 1 | UninitializedPlace_Kd s[0] = (y, fail()) 1")] // two
+    [InlineData("G.t = (y, fail())\n    takeT(G.t)\ngroup G\n    public var t: (i32, i32) = (1, 2)", "UninitializedPlace_Kd G.t = (y, fail()) 1 | Unsupported_Kd public var t: (i32, i32) = (1, 2) 18446744073709551615")] // stt
+    [InlineData("G.t = (y, fail())\ngroup G\n    public var t: (i32, i32) = (1, 2)", "UninitializedPlace_Kd G.t = (y, fail()) 1 | Unsupported_Kd public var t: (i32, i32) = (1, 2) 18446744073709551615")] // sttu
+    [InlineData("G.t = (y, y)\n    takeT(G.t)\ngroup G\n    public var t: (i32, i32) = (1, 2)", "Unsupported_Kd public var t: (i32, i32) = (1, 2) 18446744073709551615")] // sttv
+    [InlineData("var d: Dictionary<i32, Dictionary<i32, i32>> = [1: [2: y]]\n    d[1] = [2: fail()]\n    takeDD(d@move)", "UninitializedPlace_Kd d[1] = [2: fail()] 1")] // gd2
+    [InlineData("var d: Dictionary<i32, Dictionary<i32, i32>> = [1: [2: y]]\n    d[1] = [2: y]\n    takeDD(d@move)", "")] // gd2v
+    [InlineData("var e: Dictionary<i32, i32> = [1: y]\n    let r = e@uniq\n    r@follow = [1: y, 2: fail()]\n    takeD(e@move)", "UninitializedPlace_Kd r@follow = [1: y, 2: fail()] 1")] // gd3
+    [InlineData("var e: Dictionary<i32, i32> = [1: y]\n    let r = e@uniq\n    r@follow = [1: y, 2: y]\n    takeD(e@move)", "")] // gd3v
+    [InlineData("var s: Array<Dictionary<i32, i32>> = [[1: y]]\n    return\n    s[0] = [1: if c => fail() else => y]\n    takeAD(s@move)", "UninitializedPlace_Kd s[0] = [1: if c => fail() 1")] // gd4
+    [InlineData("var s: Array<Dictionary<i32, i32>> = [[1: y]]\n    return\n    s[0] = [1: if c => y else => y]\n    takeAD(s@move)", "")] // gd4v
+    [InlineData("var s: Array<Dictionary<i32, i32>> = [[1: y]]\n    return\n    s[0] = if c => [1: y] else => fail()\n    takeAD(s@move)", "")] // gd5
+    [InlineData("var s: Array<(i32, Dictionary<i32, i32>)> = [(y, [1: y])]\n    s[0] = (y, [1: fail()])\n    takeTD(s@move)", "UninitializedPlace_Kd s[0] = (y, [1: fail()]) 1")] // gd6
+    [InlineData("var s: Array<(i32, Dictionary<i32, i32>)> = [(y, [1: y])]\n    s[0] = (y, [1: y])\n    takeTD(s@move)", "")] // gd6v
+    [InlineData("G.d = [1: y, 2: fail()]\ngroup G\n    public var d: Dictionary<i32, i32> = [1: 2]", "UninitializedPlace_Kd G.d = [1: y, 2: fail()] 1 | Unsupported_Kd public var d: Dictionary<i32, i32> = [1: 2] 18446744073709551615")] // gs1
+    [InlineData("G.d = [1: y, 2: y]\ngroup G\n    public var d: Dictionary<i32, i32> = [1: 2]", "Unsupported_Kd public var d: Dictionary<i32, i32> = [1: 2] 18446744073709551615")] // gs1v
+    [InlineData("_ = 0\nfunc view<s/T>(value: s/(T, T), x: T) -> ()\n    s is owner or uniq\n    T is Copy\n    var v = value@move\n    v@follow = (x, fail())\n    let w = v@follow", "UninitializedPlace_Kd v@follow 1 | UninitializedPlace_Kd v@follow = (x, fail()) 2")] // pl1
+    [InlineData("_ = 0\nfunc view<s/T>(value: s/(T, T), x: T) -> ()\n    s is owner or uniq\n    T is Copy\n    var v = value@move\n    v@follow = (x, fail())", "UninitializedPlace_Kd v@follow = (x, fail()) 2")] // pl1u
+    [InlineData("_ = 0\nfunc view<s/T>(value: s/(T, T), x: T) -> ()\n    s is owner or uniq\n    T is Copy\n    var v = value@move\n    v@follow = (x, x)\n    let w = v@follow", "")] // pl1v
+    [InlineData("_ = 0\nfunc view<s/T>(value: s/(T, (T, T)), x: T) -> ()\n    s is owner or uniq\n    T is Copy\n    var v = value@move\n    v@follow.1 = (x, fail())\n    let w = v@follow", "UninitializedPlace_Kd v@follow 1 | UninitializedPlace_Kd v@follow.1 = (x, fail()) 2")] // plp
+    [InlineData("_ = 0\nfunc view<s/T>(value: s/(T, (T, T)), x: T) -> ()\n    s is owner or uniq\n    T is Copy\n    var v = value@move\n    v@follow.1 = (x, fail())", "UninitializedPlace_Kd v@follow.1 = (x, fail()) 2")] // plpu
+    [InlineData("_ = 0\nfunc nest<t/U, s/T>(value: s/(t/(U, U) during a), x: U) -> ()\n    s is owner or uniq\n    t is owner or uniq\n    U is Copy\n    var v = value@move\n    v@follow@follow = (x, fail())\n    let w = v@follow@follow", "UninitializedPlace_Kd v@follow@follow 1 | UninitializedPlace_Kd v@follow@follow = (x, fail()) 14")] // nC
+    [InlineData("_ = 0\nfunc nest<t/U, s/T>(value: s/(t/(U, U) during a), x: U) -> ()\n    s is owner or uniq\n    t is owner or uniq\n    U is Copy\n    var v = value@move\n    v@follow@follow = (x, fail())", "UninitializedPlace_Kd v@follow@follow = (x, fail()) 14")] // nCu
+    [InlineData("_ = 0\nfunc nest<t/U, s/T>(value: s/(t/(U, U) during a), x: U) -> ()\n    s is owner or uniq\n    t is owner or uniq\n    U is Copy\n    var v = value@move\n    v@follow@follow = (x, x)\n    let w = v@follow@follow", "")] // nCv
+    [InlineData("var s: Array<(i32, i32)> = [(y, y)]\n    s[0] = (y, if c => y else => fail())\n    takeAT(s@move)", "")] // rch
+    [InlineData("var s: Array<Dictionary<i32, i32>> = [[1: y]]\n    s[0] = [1: if c => fail() else => y]\n    takeAD(s@move)", "")] // rchl
+    [InlineData("var s: Array<(i32, i32)> = [(y, y)]\n    var k: i32 = 0\n    while k < 3\n        s[0] = (y, if k > 5 => fail() else => y)\n        k += 1\n    takeAT(s@move)", "")] // lp1
+    [InlineData("var t: (i32, i32) = (y, y)\n    var f = func [var t] (z: i32)\n        return\n        t = (z, fail())\n    f(y)", "UninitializedPlace_Kd t = (z, fail()) 1")] // cl1
+    [InlineData("let item: Array<i32> = [1]\n    var t: (i32, i32) = (y, y)\n    let f = func [var t, item@move] (z: i32)\n        let it = item@move\n        return\n        t = (z, fail())\n    f@move(y)", "")] // cl3
+    [InlineData("var s: Array<[2 of (i32, i32)]> = [[(y, y), (y, y)]]\n    s[0] = [2 of (y, fail())]\n    takeAF(s@move)", "UninitializedPlace_Kd s[0] = [2 of (y, fail())] 1")] // fl1
+    [InlineData("var s: Array<[2 of (i32, i32)]> = [[(y, y), (y, y)]]\n    return\n    s[0] = [2 of (y, if c => y else => fail())]\n    takeAF(s@move)", "UninitializedPlace_Kd s[0] = [2 of (y, if c => y 1")] // fl3
+    [InlineData("var s: Array<[2 of (i32, i32)]> = [[(y, y), (y, y)]]\n    s[0][1] = (y, fail())\n    takeAF(s@move)", "UninitializedPlace_Kd s[0][1] = (y, fail()) 1")] // fl4
+    [InlineData("var u: (i32, Array<(i32, i32)>) = (y, [(y, y)])\n    u.1[0] = (y, fail())\n    takeTA(u@move)", "UninitializedPlace_Kd u.1[0] = (y, fail()) 1")] // fix
+    [InlineData("var b = B.init((y, y))\n    let r = b@uniq\n    r@follow.t = (y, fail())\n    takeB(b@move)", "UninitializedPlace_Kd r@follow.t = (y, fail()) 1")] // rbf
+    [InlineData("_ = 0\nfunc put(b: uniq/B, y: i32, c: bool) -> ()\n    return\n    b@follow.t = (y, if c => y else => fail())", "UninitializedPlace_Kd b@follow.t = (y, if c => y 1")] // mself
+    public void AnIncompleteValueWrittenWithoutAMovePathIsReportedAtTheWrite(string body, string expected)
+        => Assert.Equal(expected.Length == 0 ? [] : expected.Split(" | "), Problems(Writes + "    " + body + "\n"));
 
     // Plan 5.6.1, SPEC 13.5.5: a PairLayer is the Place itself in the owner case and a Deref in a reference case, so writing through an
     // unset pair layer is a problem in the uniq view only; a body whose accesses no view decides is analyzed once, for every view.

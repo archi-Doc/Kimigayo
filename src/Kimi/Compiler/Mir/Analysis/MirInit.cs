@@ -23,8 +23,12 @@
 // unplaced (R4-M175), a part being a Place in its Temporary Place (SPEC 3.4); a Places Call's construction's own Unplaced bit is read only
 // where it is taken (its literal's lookups and insertions are its own steps, SPEC 15.1.2, 12.4.3). A whole temp that a placing location's operand moves is
 // transferred, not used (SPEC 3.5.3, 12.4.3): an Assign's Use or aggregate, whose carries give its state to the component, and a
-// Places Call, a construction's insertion, whose facts give it its lacking entry (PLAN G442). A whole use of the return local
-// is a delivery, checked only where the runtime edges reach it; a Return checks nothing. A Move without a Move Path is reported whatever its
+// Places Call, a construction's insertion, whose facts give it its lacking entry (PLAN G442). An Assign transfers only into a
+// destination with a Move Path: one without (MirMoveData.Find under the view, or a static Place) has no component to take the temp's
+// state, so the temp is used there and the location's facts do not apply (a PairLayer the view makes a reference, which MirMoveData's
+// view-independent paths pass), an incomplete value being UninitializedPlace_Kd at the write (SPEC 15.1.3; the owner's O-319 (a));
+// a Places Call's construction is a temp, which has its path. A whole use of the return local is a delivery, checked only where the
+// runtime edges reach it; a Return checks nothing. A Move without a Move Path is reported whatever its
 // root: DefaultArgumentMove_Kd for a default template's prepared slot or its owned contents, which the default cannot Move (SPEC 7.2.3),
 // else StaticMovePathRequired_Kd. A body no view decides is analyzed once, for every view.
 // Invariants: no Unplaced bit is set in a Move Path's subtree at a Drop the runtime edges reach, which A2 destroys whole by its own bit,
@@ -102,7 +106,7 @@ internal sealed class MirInit(MirDataflow flow, MirMoveData moves, MirCases case
         private int scope; // The location's scope.
         private MirLocation at;
         private bool runtime; // Whether the runtime edges reach the block applied.
-        private bool placing; // Whether the location places its operands: an Assign of a Use or an aggregate, or a Places Call.
+        private bool placing; // Whether the location places its operands, its facts applying: an Assign of a Use or an aggregate into a Move Path, or a Places Call.
         private bool placed; // Whether the next Place reported is the whole temp an operand of such a location moves.
         private int kept = -1; // The path the location defines that keeps its state: a Use places a temp there that may hold nothing; else -1.
 
@@ -153,9 +157,9 @@ internal sealed class MirInit(MirDataflow flow, MirMoveData moves, MirCases case
                 else if (statement.Kind != MirStatementKind.EndBorrow)
                 {
                     var assign = statement.Kind == MirStatementKind.Assign;
-                    this.placing = assign && statement.Rvalue.Kind is MirRvalueKind.Use or MirRvalueKind.Aggregate;
-                    var carries = assign ? moves.Carries(data.Start + i) : default;
-                    this.Uses(carries, assign ? moves.NeverParts(data.Start + i) : default, carries.IsEmpty ? -1 : moves.Find(statement.Place, out _));
+                    this.placing = assign && statement.Rvalue.Kind is MirRvalueKind.Use or MirRvalueKind.Aggregate && this.Tracked(statement.Place);
+                    var carries = this.placing ? moves.Carries(data.Start + i) : default;
+                    this.Uses(carries, this.placing ? moves.NeverParts(data.Start + i) : default, carries.IsEmpty ? -1 : moves.Find(statement.Place, out _));
                 }
             }
 
@@ -181,19 +185,15 @@ internal sealed class MirInit(MirDataflow flow, MirMoveData moves, MirCases case
         {
         }
 
-        // A use of a Place under the view. A whole use of the return local delivers it, which only the runtime edges can (SPEC 14.10.3). A
-        // PairLayer a case-dependent access takes is the Place itself in the owner case and a Deref in a reference case (SPEC 13.5.5),
-        // so the outermost such reference ends the path; through a Deref or an Index only the prefix's path is used, and a Move there has
-        // no Move Path (SPEC 15.1.3, 15.1.5). A2 judges a Drop from the state before it, by its path (-1: none), and whether the runtime
-        // edges reach it; a runtime Drop's Move Path lacks no part (the header's invariant).
+        // A use of a Place under the view (Path). A whole use of the return local delivers it, which only the runtime edges can (SPEC
+        // 14.10.3). Through a Deref or an Index only the prefix's path is used, and a Move there has no Move Path (SPEC 15.1.3, 15.1.5). A2
+        // judges a Drop from the state before it, by its path (-1: none), and whether the runtime edges reach it; a runtime Drop's Move
+        // Path lacks no part (the header's invariant).
         public void Place(MirPlace place, MirAccess access, MirRefKind kind)
         {
             var transfer = this.placed;
             this.placed = false;
-            var used = (access & MirAccess.CaseDependent) != 0 ? this.Layer(place) : place;
-            var how = MirMoveData.NoPath;
-            var path = place.IsStatic ? -1 : moves.Find(used, out how);
-            how = used == place ? how : MirMoveData.NoPath;
+            var path = this.Path(place, out var how);
             if ((access & MirAccess.DropUse) != 0 && this.Checks)
             {
                 drops.Record(state, this.at.Block, how == MirMoveData.Direct ? path : -1, this.runtime);
@@ -293,6 +293,20 @@ internal sealed class MirInit(MirDataflow flow, MirMoveData moves, MirCases case
 
             return subject;
         }
+
+        // A Place's path under the view and how the Place is below it (MirMoveData.Find): a PairLayer is the Place itself in the owner
+        // case and a Deref in a reference case (SPEC 13.5.5), so the outermost such reference ends the path, and a static Place has none.
+        private readonly int Path(MirPlace place, out int how)
+        {
+            var used = this.Layer(place);
+            how = MirMoveData.NoPath;
+            var path = place.IsStatic ? -1 : moves.Find(used, out how);
+            how = used == place ? how : MirMoveData.NoPath;
+            return path;
+        }
+
+        // Whether a placing Assign's destination is a Move Path, which takes the state of the temps it places (SPEC 15.1.3).
+        private readonly bool Tracked(MirPlace destination) => this.Path(destination, out var how) >= 0 && how == MirMoveData.Direct;
 
         // The Place up to its outermost PairLayer step the view makes a reference, or the Place itself.
         private readonly MirPlace Layer(MirPlace place)
