@@ -13,14 +13,17 @@
 // lies in a constructor's Field placed once (SPEC 15.1.1, 11.7).
 // Each placing location's facts (SPEC 14.10.3; DECISIONS R4-M175), which A1 applies: an Assign's Never parts, the components of its
 // destination that its construction leaves unplaced, as their operand is the Never value, and its carries, the paths of a temp it takes
-// whole whose state A1 copies onto the destination's component on each path; a Places Call's, at the construction it inserts into (its
-// entry not inserted, SPEC 12.4.3). Only Move Paths are numbered: a root, a constructor's Field or base, a path a Place of the body
-// resolves to, and the source counterpart of a carry whose destination is one (closed upward and backward through the carries). A fact
-// on a component no Place names goes to its owner, the nearest Move Path above it, as "its value lacks a part" (A1's Unplaced lane); a
-// fact on a Move Path is its initialization (MaybeUninit), and a Places Call's is its construction's lacking entry. A published fact
-// is a path's number, or its complement for the Unplaced lane. Invariant (Ordered, which A1 reads): a carry's source lies in a run
-// recorded before the carry's (a temp is defined at a location the walk visits before the one that takes it) and differs from its
-// destination, so one reverse pass over the carries closes them; a location that carries a temp into itself breaks it.
+// whose own state A1 copies onto the destination's counterpart on each path: the temp's tracked parts and, for a whole temp that may hold
+// nothing there (Absent), the temp itself (a Use's counterpart is its destination); a Places Call's, at the construction it inserts into
+// (its entry not inserted, SPEC 12.4.3). Only Move Paths are numbered: a root, a constructor's Field or base, a path a Place of the body
+// resolves to, and on the source side of a carry the counterpart of the destination's nearest Move Path at or below the component
+// (closed upward and backward through the carries), so a source's parts whose counterparts lie under different Move Paths have
+// different owners. A fact on a component no Place names goes to its owner, the nearest Move Path above it, as "its value lacks a part"
+// (A1's Unplaced lane); a fact on a Move Path is its initialization (MaybeUninit), and a Places Call's is its construction's lacking
+// entry. A published fact is a path's number, or its complement for the Unplaced lane. Invariant: a carry's source lies in a run
+// recorded before the carry's (a temp is defined at a location the walk visits before the one that takes it, and runs are appended) and
+// differs from its destination (MirValidator: no placing location takes its own destination temp, no insertion's value holds its
+// construction), so one reverse pass over the carries closes them.
 // Must not decide initialization, copy a body per view, intern projections or change the body.
 
 #pragma warning disable SA1402 // The path record belongs to the paths.
@@ -69,9 +72,10 @@ internal sealed class MirMoveData
     private bool[] named = []; // By creation index: a Move Path (a root, a constructor's Field or base, a Place's path, closed).
     private int[] owners = []; // By creation index: the nearest Move Path at or above it.
     private bool[] constructions = []; // By local: a temp a Places Call inserts into.
-    private int[] carryRuns = []; // The carries' runs in recording order (the closure).
+    private int[] carryRuns = []; // The Assigns' carries' runs in recording order (the closure).
     private int carryCount;
     private int[] chains = []; // Each local's chain head, -1 without an event, -2 in more than one.
+    private int[] placed = []; // Each local's chain where a location last placed it whole in its storage's lifetime, -1 for none.
     private bool[] live = []; // Whether a local's first event, in reverse postorder, is its StorageLive.
     private MirMovePath[] paths = [];
     private MirBody body = null!;
@@ -94,11 +98,6 @@ internal sealed class MirMoveData
     /// <summary>Gets the most carries of one Assign (<see cref="Carries"/>).</summary>
     internal int MaxCarried { get; private set; }
 
-    /// <summary>Gets a value indicating whether every carry's source lies in a run recorded before it and differs from its destination,
-    /// which the closure's one reverse pass needs; false is a broken contract of the body's MIR, which A1 records as
-    /// InternalInvariant_Kd.</summary>
-    internal bool Ordered { get; private set; }
-
     /// <summary>Collects the move paths of a body and numbers them.</summary>
     /// <param name="body">The validated body.</param>
     /// <param name="flow">The dataflow, begun with the body.</param>
@@ -106,7 +105,7 @@ internal sealed class MirMoveData
     {
         this.body = body;
         var locals = body.Locals.Length;
-        (this.created, this.ViewDependent, this.runCount, this.MaxCarried, this.carryCount, this.Ordered) = (0, false, 0, 0, 0, true);
+        (this.created, this.ViewDependent, this.runCount, this.MaxCarried, this.carryCount) = (0, false, 0, 0, 0);
         this.children.Clear();
         this.places.Clear();
         this.nevers.Clear();
@@ -114,7 +113,9 @@ internal sealed class MirMoveData
         MirDataflow.Grow(ref this.chains, locals);
         MirDataflow.Grow(ref this.live, locals);
         MirDataflow.Grow(ref this.constructions, locals);
+        MirDataflow.Grow(ref this.placed, locals);
         Array.Fill(this.chains, -1, 0, locals);
+        Array.Fill(this.placed, -1, 0, locals);
         Array.Clear(this.constructions, 0, locals);
         for (var i = 0; i < locals; i++)
         {
@@ -151,7 +152,7 @@ internal sealed class MirMoveData
                 MirUses.ForEach(body, new(block, i), ref events);
                 if (i < body.Blocks[block].Count && body.Statements[index].Kind == MirStatementKind.Assign)
                 {
-                    this.Nevers(index, body.Statements[index].Place, body.Statements[index].Rvalue);
+                    this.Nevers(index, flow.Head(block), body.Statements[index].Place, body.Statements[index].Rvalue);
                 }
             }
 
@@ -193,9 +194,10 @@ internal sealed class MirMoveData
     internal ReadOnlySpan<int> NeverParts(int statement)
         => this.nevers.TryGetValue(statement, out var run) ? this.runs.AsSpan(run + 2, this.runs[run]) : default;
 
-    /// <summary>Gets the carries of an Assign or a Places Call of the built body (SPEC 14.10.3): pairs of a source fact, below a temp Place
-    /// it takes where a construction may have left a part unplaced, and the destination fact whose state A1 gives it on each path (the same
-    /// path below the component, a Places Call's construction), each a number or a complement as <see cref="NeverParts"/>'.</summary>
+    /// <summary>Gets the carries of an Assign or a Places Call of the built body (SPEC 14.10.3): pairs of a source fact, at or below a temp
+    /// Place it takes, a part a construction may have left unplaced or the whole temp, which may hold nothing, and the destination fact that
+    /// takes the source's own state on each path (the same path below the component, the component itself for the whole temp, a Use's
+    /// being its destination; a Places Call's construction), each a number or a complement as <see cref="NeverParts"/>'.</summary>
     /// <param name="statement">The Assign's statement index, or the Places Call's <see cref="Insertion"/>.</param>
     /// <returns>The pairs, source then destination; empty for most.</returns>
     internal ReadOnlySpan<int> Carries(int statement)
@@ -286,10 +288,15 @@ internal sealed class MirMoveData
     // SPEC 14.10.3 (DECISIONS R4-M175): an Assign's Never parts and carries, as paths created below its destination's, so a whole use sees
     // them. A Never part is a component of its aggregate whose operand is the Never value (a temp of Type Never), each element's for a
     // Fill. A carry pairs each tracked path below the temp Place an operand or a Use takes (whole or a part) with the same path at the
-    // component, so A1 copies the temp's state there on each path. A temp's tracked paths are those its Never parts and carries created
-    // (its runs): structure only; a Closure environment has no component path. An Array literal's element has one, as a fixed array's,
-    // which no Place names (an Array's Index ends the path), so a whole use or an indexed one sees it (SPEC 15.1.2, 15.1.3).
-    private void Nevers(int statement, MirPlace destination, in MirRvalue rvalue)
+    // component, so A1 copies the temp's state there on each path, and a whole temp that may hold nothing (Absent) with the component
+    // itself: a form without a value on an assumed path places nothing. A Use's component is its destination, which then keeps its
+    // state (MirInit): one that takes one placement in its lifetime, a temp, which then may hold nothing too (so the Use does not place it
+    // for its chain), or a let binding; a Place a Use overwrites has its old value's Drop before the Use (MirBuilder.Overwrite), which
+    // that path must not take either (PLAN open issue). A Fill's operand has no such carry (PLAN open issue). A temp's tracked paths are
+    // those its Never parts and carries created below it (its runs): structure only; a Closure environment has no component path. An
+    // Array literal's element has one, as a fixed array's, which no Place names (an Array's Index ends the path), so a whole use or an
+    // indexed one sees it (SPEC 15.1.2, 15.1.3).
+    private void Nevers(int statement, int chain, MirPlace destination, in MirRvalue rvalue)
     {
         var kind = (MirAggregateKind)rvalue.Op;
         var found = destination.IsStatic ? NoPath : this.Resolve(destination);
@@ -300,6 +307,9 @@ internal sealed class MirMoveData
         }
 
         var fill = rvalue.Kind == MirRvalueKind.Aggregate && kind == MirAggregateKind.Fill;
+        var whole = destination.Projection == 0 && this.body.Locals[destination.Root].Kind == MirLocalKind.Temp;
+        var first = whole || (destination.Projection == 0 && this.once[destination.Root]); // A temp or a let binding: placed once.
+        var takes = rvalue.Kind == MirRvalueKind.Aggregate ? !fill : first; // Whether a whole temp's own state has a component to go to.
         var copies = fill ? rvalue.Type is { Kind: BoundTypeKind.FixedArray, LengthExpression: null } type ? (int)type.Length : 0 : 1;
         var parts = this.Open();
         for (var i = 0; i < rvalue.Count; i++)
@@ -318,36 +328,27 @@ internal sealed class MirMoveData
         {
             var taken = this.Taken(rvalue, i);
             var temp = taken < 0 ? -1 : this.body.Operands[rvalue.Start + i].Place.Root;
-            for (var k = 0; temp >= 0 && this.nevers.TryGetValue(~temp, out var run) && k < copies; k++)
+            var absent = temp >= 0 && takes && this.Absent(temp, taken, chain);
+            for (var k = 0; temp >= 0 && k < copies && (absent || this.nevers.TryGetValue(~temp, out _)); k++)
             {
                 var component = rvalue.Kind == MirRvalueKind.Aggregate ? this.Component(found >> 2, rvalue, fill ? k : i) : found >> 2;
-                for (; run >= 0; run = this.runs[run + 1])
+                if (this.Mirrored(temp, taken, component) && absent)
                 {
-                    for (var at = run + 2; at < run + 2 + this.runs[run]; at++)
-                    {
-                        var tracked = this.runs[at];
-                        var path = tracked < 0 ? ~tracked : tracked; // A complement: its Unplaced lane, given as the same lane.
-                        var above = path;
-                        while (above >= 0 && above != taken)
-                        {
-                            above = this.parents[above];
-                        }
-
-                        if (above == taken)
-                        {
-                            var mirror = this.Mirror(path, taken, component);
-                            this.Ordered &= run < carries && mirror != path;
-                            this.Push(tracked);
-                            this.Push(tracked < 0 ? ~mirror : mirror);
-                        }
-                    }
+                    this.Push(taken);
+                    this.Push(component);
                 }
             }
         }
 
         carries = this.Close(carries);
         this.Publish(statement, parts, carries);
-        if ((parts >= 0 || carries >= 0) && destination.Projection == 0 && this.body.Locals[destination.Root].Kind == MirLocalKind.Temp)
+        if (carries >= 0)
+        {
+            MirDataflow.Grow(ref this.carryRuns, this.carryCount + 1);
+            this.carryRuns[this.carryCount++] = carries;
+        }
+
+        if ((parts >= 0 || carries >= 0) && whole)
         {
             var tracked = this.Open();
             for (var at = parts + 2; parts >= 0 && at < parts + 2 + this.runs[parts]; at++)
@@ -357,11 +358,58 @@ internal sealed class MirMoveData
 
             for (var at = carries + 3; carries >= 0 && at < carries + 2 + this.runs[carries]; at += 2)
             {
-                this.Push(this.runs[at]);
+                if (this.runs[at] != found >> 2)
+                {
+                    this.Push(this.runs[at]);
+                }
+                else
+                {
+                    this.placed[destination.Root] = -1; // Its own path is not tracked: its own bit, which its taker then carries.
+                }
             }
 
-            this.Track(destination.Root, this.Close(tracked));
+            tracked = this.Close(tracked);
+            if (tracked >= 0)
+            {
+                this.Track(destination.Root, tracked);
+            }
         }
+    }
+
+    // Whether the temp Place an operand takes is a whole temp that may hold nothing where its location, in a chain, takes it (SPEC
+    // 14.10.3): not the Never value, whose component is a Never part, and not placed whole earlier in the chain, a straight line, on which
+    // it then holds a value on every path.
+    private bool Absent(int temp, int taken, int chain) => this.parents[taken] < 0 && this.placed[temp] != chain && !this.Never(temp);
+
+    // Pushes the carries of a temp's tracked facts at or below the Place an operand takes, each with the same path at the component (a
+    // complement, its Unplaced lane, as the same lane), and gives whether none of them is that Place's own path, which its own carry would
+    // repeat.
+    private bool Mirrored(int temp, int taken, int component)
+    {
+        var apart = true;
+        for (var run = this.nevers.TryGetValue(~temp, out var newest) ? newest : -1; run >= 0; run = this.runs[run + 1])
+        {
+            for (var at = run + 2; at < run + 2 + this.runs[run]; at++)
+            {
+                var tracked = this.runs[at];
+                var path = tracked < 0 ? ~tracked : tracked;
+                var above = path;
+                while (above >= 0 && above != taken)
+                {
+                    above = this.parents[above];
+                }
+
+                if (above == taken)
+                {
+                    var mirror = this.Mirror(path, taken, component);
+                    this.Push(tracked);
+                    this.Push(tracked < 0 ? ~mirror : mirror);
+                    apart &= tracked != taken;
+                }
+            }
+        }
+
+        return apart;
     }
 
     // SPEC 12.4.3, 14.10.3: the Never parts and carries of a Places Call, at the construction it inserts into (MirBody.Construction):
@@ -399,14 +447,12 @@ internal sealed class MirMoveData
                 continue;
             }
 
-            this.Ordered &= temp != found >> 2;
             this.Push(temp);
             this.Push(own);
             for (var run = this.nevers.TryGetValue(~temp, out var below) ? below : -1; run >= 0; run = this.runs[run + 1])
             {
                 for (var at = run + 2; at < run + 2 + this.runs[run]; at++)
                 {
-                    this.Ordered &= run < carries && (this.runs[at] < 0 ? ~this.runs[at] : this.runs[at]) != found >> 2;
                     this.Push(this.runs[at]);
                     this.Push(own);
                 }
@@ -438,13 +484,14 @@ internal sealed class MirMoveData
         {
             this.carried.Add(location, carries);
             this.MaxCarried = Math.Max(this.MaxCarried, this.runs[carries] >> 1);
-            MirDataflow.Grow(ref this.carryRuns, this.carryCount + 1);
-            this.carryRuns[this.carryCount++] = carries;
         }
     }
 
-    // Closes the Move Paths backward through the carries, the latest first (the invariant above): the source counterpart of a
-    // destination a Place observes is observed too, with its prefixes, so a carry between them keeps that part's own state.
+    // Closes the Move Paths backward through an Assign's carries, the latest first (the invariant above): a carry's source and destination
+    // take the same steps from the temp Place taken, a Move Path (Resolve), and from the component, so the source counterpart of the
+    // destination's nearest Move Path at or below the component is one too, with its prefixes. A part a Place observes then keeps its
+    // own state across the carry, and a source's parts whose counterparts lie under different Move Paths never share an owner (the
+    // lacking part of one sibling never reaches another).
     private void NameCarried()
     {
         for (var c = this.carryCount - 1; c >= 0; c--)
@@ -452,15 +499,15 @@ internal sealed class MirMoveData
             var run = this.carryRuns[c];
             for (var at = run + 2; at < run + 2 + this.runs[run]; at += 2)
             {
-                var (source, destination) = (this.runs[at], this.runs[at + 1]);
-                if (destination < 0 || !this.named[destination])
+                var (source, destination) = (this.runs[at] < 0 ? ~this.runs[at] : this.runs[at], this.runs[at + 1] < 0 ? ~this.runs[at + 1] : this.runs[at + 1]);
+                while (!this.named[source] && !this.named[destination])
                 {
-                    continue; // A complement's source is a complement too (Nevers).
+                    (source, destination) = (this.parents[source], this.parents[destination]);
                 }
 
-                for (var path = source; path >= 0 && !this.named[path]; path = this.parents[path])
+                for (; !this.named[source]; source = this.parents[source])
                 {
-                    this.named[path] = true;
+                    this.named[source] = true;
                 }
             }
         }
@@ -625,6 +672,15 @@ internal sealed class MirMoveData
 
             _ = data.Resolve(place);
             data.ViewDependent |= (access & MirAccess.CaseDependent) != 0;
+            if (this.kind is MirStatementKind.StorageLive or MirStatementKind.StorageDead)
+            {
+                data.placed[place.Root] = -1;
+            }
+            else if (place.Projection == 0 && (access & MirAccess.Defines) != 0)
+            {
+                data.placed[place.Root] = this.chain;
+            }
+
             ref var chain = ref data.chains[place.Root];
             if (this.kind == MirStatementKind.StorageDead)
             {

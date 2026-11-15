@@ -10,7 +10,7 @@ namespace Kimi.Compiler.Mir;
 //   a diverging Call's, which MirUses does not report, a Place the body names (MirValidator.Tables' Names) with its write bit for G131,
 //   no Never value written by a returning Call; a constant record only as an input of a Fn call that keeps nothing of it
 //   (ConstantRecords), and nothing else as Utf8Writer.deferLiteral's text (Defers); a Places Call's Fn callee, whole-Temp Moves and
-//   construction borrow (Placed, which MirValidator.Blocks' Terminator calls with the block; PLAN G442).
+//   construction borrow, no value the construction's temp (Placed, which MirValidator.Blocks' Terminator calls with the block; PLAN G442).
 // - Inputs: a Call terminator; an intrinsic's arity from its MirDescriptors row. Outputs: OperandRange, Callee, UnknownKind, Arity,
 //   StaticSlot, Type, NeverWrite, Operation, Place and Projection findings; a callee with a signature goes to MirValidator.Signatures
 //   and the Call's inputs to MirValidator.Inputs (G136).
@@ -153,7 +153,8 @@ internal sealed partial class MirValidator
 
         // A Places Call (PLAN G442; the owner's O-97 (a)): a construction's insertion, a Fn callee each of whose operands is a Move of a
         // whole Temp that the call transfers into the construction, the first the construction's exclusive borrow, which the Call's
-        // block forms (MirBody.Construction, which MirMoveData reads).
+        // block forms (MirBody.Construction, which MirMoveData reads), and no other the construction or a temp holding it (MirMoveData
+        // carries each into it).
         private readonly bool Placed(int block, in MirTerminator call)
         {
             if (call.Callee.Kind != MirCalleeKind.Fn)
@@ -161,16 +162,18 @@ internal sealed partial class MirValidator
                 return false;
             }
 
-            foreach (ref readonly var operand in body.Operands.Slice(call.Start, call.Count))
+            var construction = body.Construction(block);
+            for (var i = 0; i < call.Count; i++)
             {
+                ref readonly var operand = ref body.Operands[call.Start + i];
                 if (operand.Kind != MirOperandKind.Move || Whole(operand.Place, body.Locals.Length) is not (>= 0 and var root) ||
-                    body.Locals[root].Kind != MirLocalKind.Temp)
+                    body.Locals[root].Kind != MirLocalKind.Temp || (i > 0 && root == construction?.Root))
                 {
                     return false;
                 }
             }
 
-            return body.Construction(block) is not null;
+            return construction is not null;
         }
     }
 }

@@ -10,8 +10,10 @@
 // Six lanes per path, joined by union: MaybeUninit, MaybeMoved, EverInit, for A2 MaybeInit and MaybePartial (a non-root path a Move or
 // a Drop took out of its parent, cleared with the subtree by any event of an ancestor-or-self), and Unplaced, A1's alone: the value the
 // path holds lacks a part no Place names (a construction left it unplaced on the path; a Places Call's construction its entry). A
-// definition initializes a path's subtree but its Never parts and what a temp it takes whole left unplaced on the path (MirMoveData's
-// NeverParts and Carries, SPEC 14.10.3; a fact on a Move Path is MaybeUninit, its complement Unplaced), clearing Unplaced first,
+// definition initializes a path's subtree but its Never parts and what a temp it takes left unplaced on the path (MirMoveData's
+// NeverParts and Carries, SPEC 14.10.3; a fact on a Move Path is MaybeUninit, its complement Unplaced), clearing Unplaced first: a
+// carry gives its destination its fact where its source's own bit is set, and one onto the defined path itself (a Use of a whole temp
+// that holds nothing there places nothing) keeps the destination's state instead,
 // a Move or a Drop uninitializes it and clears Unplaced, StorageLive and StorageDead start a fresh binding lifetime; a use needs its whole subtree initialized on
 // every incoming path, its own bit being the construction fact, and no Unplaced bit in it; a use through a runtime Index of storage reports on its receiver under
 // the selection's subject, its position local's, as the selection's guard, a use where the receiver is located, does (the builder's
@@ -64,8 +66,7 @@ internal sealed class MirInit(MirDataflow flow, MirMoveData moves, MirCases case
     /// <param name="body">The body.</param>
     /// <param name="view">The selected view.</param>
     /// <param name="report">The problems of the program version.</param>
-    /// <returns>False when the body's state arena exceeds the analyses' limit (R4-M15a), or its move data reports a broken contract
-    /// (<see cref="MirMoveData.Ordered"/>: InternalInvariant_Kd at the body), so that no view of it is analyzed.</returns>
+    /// <returns>False when the body's state arena exceeds the analyses' limit (R4-M15a), so that no view of it is analyzed.</returns>
     internal bool Run(MirBody body, long view, MirReport report)
     {
         if (view > 0 && !moves.ViewDependent)
@@ -74,14 +75,6 @@ internal sealed class MirInit(MirDataflow flow, MirMoveData moves, MirCases case
         }
 
         var all = MirCases.Every(body);
-        if (!moves.Ordered)
-        {
-            var requirement = DiagnosticRequirement.Ownership(OwnershipRequirement.Internal);
-            var broken = new MirProblem(DiagnosticCode.InternalInvariant_Kd, requirement, body.Source, body.Ordinal, all);
-            drops.Incomplete(broken.Code, default, report.Add(broken)); // No recovery: the driver stops the views.
-            return false;
-        }
-
         var state = flow.Prepare(0, Lanes * ((moves.FlowCount + 63) >> 6), Lanes * ((moves.Paths.Length + 63) >> 6), out var words);
         if (state is null)
         {
@@ -110,12 +103,13 @@ internal sealed class MirInit(MirDataflow flow, MirMoveData moves, MirCases case
         private bool runtime; // Whether the runtime edges reach the block applied.
         private bool placing; // Whether the location places its operands: an Assign of a Use or an aggregate, or a Places Call.
         private bool placed; // Whether the next Place reported is the whole temp an operand of such a location moves.
+        private int kept = -1; // The path the location defines that keeps its state: a Use places a temp there that may hold nothing; else -1.
 
         internal required MirReport Report { get; init; }
 
         internal ulong Views { get; init; }
 
-        internal required bool[] Held { get; init; } // Each carry's source state before an Assign's uses (pooled, MirMoveData.MaxCarried).
+        internal required bool[] Held { get; init; } // Whether each carry gives its destination its fact, read before an Assign's uses (pooled, MirMoveData.MaxCarried).
 
         internal bool Checks { get; set; }
 
@@ -159,7 +153,8 @@ internal sealed class MirInit(MirDataflow flow, MirMoveData moves, MirCases case
                 {
                     var assign = statement.Kind == MirStatementKind.Assign;
                     this.placing = assign && statement.Rvalue.Kind is MirRvalueKind.Use or MirRvalueKind.Aggregate;
-                    this.Uses(assign ? moves.Carries(data.Start + i) : default, assign ? moves.NeverParts(data.Start + i) : default);
+                    var carries = assign ? moves.Carries(data.Start + i) : default;
+                    this.Uses(carries, assign ? moves.NeverParts(data.Start + i) : default, carries.IsEmpty ? -1 : moves.Find(statement.Place, out _));
                 }
             }
 
@@ -168,7 +163,7 @@ internal sealed class MirInit(MirDataflow flow, MirMoveData moves, MirCases case
                 (this.subject, this.scope, this.at) = (body.Subject(data.Terminator.Source), data.Terminator.Source.Scope, new(block, data.Count));
                 this.placing = data.Terminator.Places;
                 var key = moves.Insertion(block);
-                this.Uses(this.placing ? moves.Carries(key) : default, this.placing ? moves.NeverParts(key) : default);
+                this.Uses(this.placing ? moves.Carries(key) : default, this.placing ? moves.NeverParts(key) : default, -1);
             }
         }
 
@@ -247,19 +242,22 @@ internal sealed class MirInit(MirDataflow flow, MirMoveData moves, MirCases case
         }
 
         // The location's uses under the view, with its carries and Never parts where it places (SPEC 14.10.3, R4-M175): a construction
-        // places nothing into its Never parts, and a temp taken whole gives its component what this path left of it, read before its
-        // uses take it.
-        private void Uses(ReadOnlySpan<int> carries, ReadOnlySpan<int> parts)
+        // places nothing into its Never parts, and a temp it takes gives each carry's destination what this path left of the carry's
+        // source, its own bit (a Move Path's MaybeUninit, a complement's Unplaced), read before the uses take it: a destination below
+        // the path the location defines (defined) gets its fact after the definition; the defined path itself, into which a Use places
+        // a temp that holds nothing, keeps its state.
+        private void Uses(ReadOnlySpan<int> carries, ReadOnlySpan<int> parts, int defined)
         {
             for (var k = 0; k < carries.Length; k += 2)
             {
                 var source = carries[k];
-                this.Held[k >> 1] = source >= 0 ? MirDataflow.Any(state, Lanes, Uninit, source, moves.Paths[source].End)
-                    : MirDataflow.Any(state, Lanes, Unplaced, ~source, ~source + 1);
+                var held = source >= 0 ? MirDataflow.Any(state, Lanes, Uninit, source, source + 1) : MirDataflow.Any(state, Lanes, Unplaced, ~source, ~source + 1);
+                this.Held[k >> 1] = held && carries[k + 1] != defined;
+                this.kept = held && carries[k + 1] == defined ? defined : this.kept;
             }
 
             MirUses.ForEach(cases, this.at, ref this);
-            this.placing = false;
+            (this.placing, this.kept) = (false, -1);
             foreach (var part in parts)
             {
                 this.Lacks(part);
@@ -338,7 +336,8 @@ internal sealed class MirInit(MirDataflow flow, MirMoveData moves, MirCases case
         }
 
         // A definition: every strict ancestor constructed (its own bit initialized), a path admitting one placement initialized once per
-        // binding lifetime (SPEC 15.1.1, 11.7), then the subtree initialized.
+        // binding lifetime (SPEC 15.1.1, 11.7), then the subtree initialized; a kept path (Uses) joins that with the state it had, as
+        // nothing is placed into it on some path (SPEC 14.10.3).
         private readonly void Define(int path)
         {
             var paths = moves.Paths;
@@ -357,7 +356,8 @@ internal sealed class MirInit(MirDataflow flow, MirMoveData moves, MirCases case
                 this.Add(DiagnosticCode.ReassignedLet_Kd, DiagnosticRequirement.Ownership(OwnershipRequirement.ReassignedLet), this.subject);
             }
 
-            MirDataflow.Apply(state, Lanes, path, paths[path].End, set: (1 << Ever) | (1 << Init), clear: (1 << Uninit) | (1 << Moved) | (1 << Partial) | (1 << Unplaced));
+            var cleared = path == this.kept ? 0 : (1 << Uninit) | (1 << Moved) | (1 << Partial) | (1 << Unplaced);
+            MirDataflow.Apply(state, Lanes, path, paths[path].End, set: (1 << Ever) | (1 << Init), clear: cleared);
             this.Event(path, set: true);
         }
 
