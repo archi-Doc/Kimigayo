@@ -45,9 +45,17 @@ func fill()
 
 ### 4.3.1. Array literals and annotation holes
 
-With an expected fixed-array Type, an array literal constructs that Type and must have exactly `N` elements, acquired in source order ([§3.5](03-types-and-values.md#35-copy-and-move)). Otherwise an independent array literal constructs `Array<T>`, and a call-argument literal is fitted per candidate ([§4.4.1](#441-declaration-and-inference)). An expected element Type is the expected Type of every element ([§12.3.1](12-expressions.md#1231-expected-types-and-defaults)), also the one an expected `ref/U` gives through `U` and the one each candidate gives at a position of a call argument ([§10.5.1](10-overload-resolution-and-inference.md#1051-argument-kinds)). For an independent literal without an expected element Type, the element Type is the common Type of its elements, found as [§14.9.2](14-control-flow.md#1492-target-result-type-and-expression-type) step 2 finds one for result sources: with `n: ref/i32`, `[n, 1]` constructs `Array<i32>`, `n` value-read ([§3.5.3](03-types-and-values.md#353-value-read)). An empty literal needs a known element Type.
+With an expected fixed-array Type, an array literal constructs that Type and must have exactly `N` elements, acquired in source order ([§3.5](03-types-and-values.md#35-copy-and-move)); with an expected `Array<T>`, it constructs `Array<T>`. An expected element Type is the expected Type of every element ([§12.3.1](12-expressions.md#1231-expected-types-and-defaults)), also the one an expected `ref/U` gives through `U` and the one each candidate gives at a position of a call argument ([§10.5.1](10-overload-resolution-and-inference.md#1051-argument-kinds)), and a call-argument literal is fitted per candidate ([§4.4.1](#441-declaration-and-inference)). Without an expected Type, an array literal or a fill takes its Type by the place rule below. An empty literal needs a known element Type.
 
-An initialized local `let` or `var` may write `_` for the length, the element Type or both in a fixed-array annotation, at any depth of written fixed-array structure. The initializer alone must determine every hole: a length hole takes the literal's element count or the initializer's fixed-array length; an element hole follows ordinary element evidence and numeric defaults, and an inner literal without a written fixed-array expectation constructs `Array<T>`. All elements must agree; a mismatch is an error, never a fallback to `Array<T>`. A written part of the annotation is an expectation for the initializer, also for inference through a callee's signature. Holes are forbidden in uninitialized declarations, signatures, Fields, static storage and explicit generic arguments.
+**Places.** Each of these is typed as one whole: a Tuple, array, fill or Dictionary literal that no expected Type reaches, as in a `let` or `var` without a declared Type; a selection, `do` or `loop` with such a source whose Type [§14.9.2](14-control-flow.md#1492-target-result-type-and-expression-type) step 2 forms, its sources other than Never standing at its own place; and the literals that a slot a call leaves unbound takes whole, from every argument together ([§10.5.1](10-overload-resolution-and-inference.md#1051-argument-kinds)). The **places** of a whole are the whole itself, each Tuple component, the one element place of an array literal or a fill, shared by every element and by the parts their literals hold there, and a Dictionary's key place and value place. At each place, in any order:
+
+- Within each literal, the independently typable parts and the untyped literals there meet as [§14.9.2](14-control-flow.md#1492-target-result-type-and-expression-type) step 2 finds a common Type: with `n: ref/i32`, `[n, 1]` meets at `i32`, `n` value-read ([§3.5.3](03-types-and-values.md#353-value-read)). Those Types, the Types of the other parts there (a typed source, a literal part as this rule forms it) and a slot's binding from other evidence meet as covariant bindings do ([§10.8](10-overload-resolution-and-inference.md#108-generic-argument-inference), Solving), without adaptation, and the Tuple literals there have one length; a disagreement is an error, at a call an inapplicable candidate. A part of Type Never gives no Type, and a place that only such parts reach is Never.
+- A list literal there is a fixed array when a fill, a part of fixed-array Type or a slot's binding of fixed-array Type stands at the place, every list literal and fill there then having its one length, and `Array<T>` otherwise.
+- A place that only untyped literals and nested calls that are not independently typable reach takes their own Types ([§10.2.1](10-overload-resolution-and-inference.md#1021-literals)), directly where no selection waits and at a call after selection ([§10.5.1](10-overload-resolution-and-inference.md#1051-argument-kinds)).
+
+The Type the places form is then the whole's expected Type, and every literal in it is checked against its part ([§12.3.1](12-expressions.md#1231-expected-types-and-defaults)).
+
+An initialized local `let` or `var` may write `_` for the length, the element Type or both in a fixed-array annotation, at any depth of written fixed-array structure. The initializer alone must determine every hole: a length hole takes the literal's element count or the initializer's fixed-array length; an element hole and an inner literal without a written fixed-array expectation take their Types by the place rule above. All elements must agree; a mismatch is an error, never a fallback to `Array<T>`. A written part of the annotation is an expectation for the initializer, also for inference through a callee's signature. Holes are forbidden in uninitialized declarations, signatures, Fields, static storage and explicit generic arguments.
 
 ```kimi
 func zeros<T>() -> [3 of T]
@@ -57,6 +65,7 @@ func zeros<T>() -> [3 of T]
 var values: [_ of i32] = [1, 2, 3]                       // [3 of i32]
 let wide: [_ of i64] = zeros()                           // T = i64; length 3 from the signature.
 let rows: [_ of _] = [[1], [2, 3]]                       // [2 of Array<i32>]
+let pairs: [_ of _] = [[2 of 1], [3, 4]]                 // [2 of [2 of i32]]: the fill fixes the inner kind.
 let matrix: [_ of [_ of f32]] = [[1.0, 2.0], [3.0, 4.0]] // [2 of [2 of f32]]
 let unknown: [_ of _] = []                  // Error: no element Type.
 let ragged: [_ of [_ of _]] = [[1], [2, 3]] // Error: conflicting inner lengths.
@@ -66,6 +75,17 @@ let wrong: [3 of i32] = [1, 2]              // Error: element count.
 ```kimi
 // identity<T>(value: T) -> T; inspectWideArray(values: ref/Array<i64>).
 inspectWideArray(if ready => [identity(1), 2] else => [identity(3)]) // Every element of each source is checked against i64: identity<i64>.
+```
+
+```kimi
+// identity<T>(value: T) -> T; item: i32; fixed: [2 of i32].
+let a = [[2 of item], [item, item]]           // Array<[2 of i32]>: the fill fixes the element place's kind.
+let b = [[item, item], fixed]                 // Array<[2 of i32]>: so does fixed.
+let p = identity([[2 of item], [item, item]]) // T = Array<[2 of i32]>, as for a.
+let q = identity([[item, item], fixed])       // T = Array<[2 of i32]>, as for b.
+let c = [[item, item], [item, item, item]]    // Array<Array<i32>>: nothing fixes the element place's kind.
+// let d = [[2 of item], [item, item, item]]  // Error: the element place is [2 of i32]; one literal has 3 elements.
+// let e = [[item@ref, item@ref], fixed]      // Error: [2 of ref/i32] and [2 of i32] do not meet at the element place.
 ```
 
 ### 4.3.2. Initial construction
