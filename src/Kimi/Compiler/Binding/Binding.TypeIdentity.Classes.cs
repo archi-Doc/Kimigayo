@@ -298,7 +298,7 @@ public sealed partial class Binding
         private static BoundType Component(BoundType type, int i) => TryPairLayer(type, out _, out var target) ? target : type.Components[i];
 
         // SPEC 8.2.3's pair row: a pair layer whose admitted set includes `owner` may be its target itself (PairHead, ProperPart,
-        // MarkCycleEdges). An empty set (8.3.4's Error, 8.3.1's contradictory evidence) admits no `owner` and is disjoint from every set.
+        // MarkCycleEdges). An empty set (8.3.4's Error, 8.3.1's contradictory evidence) admits no `owner`; PairHead decides it first.
         private static bool MayBeItsTarget(SemanticsMask admitted) => (admitted & SemanticsMask.Owner) != 0;
 
         // An Origin quantified in a Function Type, or a meet with one among its operands (a result's omitted Origin is the meet of the
@@ -707,7 +707,9 @@ public sealed partial class Binding
 
         // The pair row's head (PairMeet's comment): the heads' meet and, where the heads may agree so that the components decide, the
         // pair layer, the other side, the pair's target and the other side's component (null when the head alone decides). A family is
-        // no form of 8.2.3's table (Unsupported).
+        // no form of 8.2.3's table (Unsupported). The verdict ranges over the cases of both sides' admitted sets: a side with no case
+        // (an empty set, 8.3.4's Error, 8.3.1's contradictory evidence) leaves none in which the identity holds, so it is Conflict
+        // before any reading of the cases (one binder's shared head, MayBeItsTarget, disjointness).
         private (byte Head, BoundType Pair, BoundType Other, BoundType Target, BoundType? Component) PairHead(BoundType x, BoundType y)
         {
             var (pair, other) = x.IsPairLayer ? (x, y) : (y, x);
@@ -717,14 +719,19 @@ public sealed partial class Binding
             }
 
             var paired = TryPairLayer(other, out var otherWhole, out var otherTarget);
+            var admitted = binding.AdmittedSemantics(whole, this.scope!);
+            var outer = !paired ? (other.Kind == BoundTypeKind.Semantics ? other.Semantics.ToMask() : SemanticsMask.Owner)
+                : ReferenceEquals(whole, otherWhole) ? admitted : binding.AdmittedSemantics(otherWhole, this.scope!);
+            if (admitted == SemanticsMask.None || outer == SemanticsMask.None)
+            {
+                return (Conflict, pair, other, target, null); // No case on one side: contradictory evidence, read before the cases.
+            }
+
             if (paired && ReferenceEquals(whole, otherWhole))
             {
                 return (One, pair, other, target, otherTarget);
             }
 
-            var admitted = binding.AdmittedSemantics(whole, this.scope!);
-            var outer = paired ? binding.AdmittedSemantics(otherWhole, this.scope!)
-                : other.Kind == BoundTypeKind.Semantics ? other.Semantics.ToMask() : SemanticsMask.Owner;
             if (MayBeItsTarget(admitted) || (paired && MayBeItsTarget(outer)))
             {
                 return (Unproven, pair, other, target, null);
