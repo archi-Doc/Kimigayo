@@ -316,25 +316,25 @@ public sealed partial class Binding
 
         if (this.contractHeadersReady && this.BuiltinArithmeticConformance(type, contract, scope))
         {
-            return contract.Declaration.BindingState == BindingState.Invalid ? ConstraintProof.Error : ConstraintProof.Proven;
+            return this.DeclarationFailed(contract.Declaration) ? ConstraintProof.Error : ConstraintProof.Proven;
         }
 
         // SPEC 4.6.1, 8.7, 22.1: a conformance the library witness table records for a built-in Type.
         if (this.contractHeadersReady && WitnessGroup(type, contract.LibraryDeclaration) is not null)
         {
-            return contract.Declaration.BindingState == BindingState.Invalid ? ConstraintProof.Error : ConstraintProof.Proven;
+            return this.DeclarationFailed(contract.Declaration) ? ConstraintProof.Error : ConstraintProof.Proven;
         }
 
         if (this.contractHeadersReady && contract.LibraryDeclaration is KimiDeclarationId.Equatable or KimiDeclarationId.Comparable &&
             ComparisonTypes.OperatorTableRuns(type, KimiDeclarationId.Equatable))
         {
-            return contract.Declaration.BindingState == BindingState.Invalid ? ConstraintProof.Error
+            return this.DeclarationFailed(contract.Declaration) ? ConstraintProof.Error
                 : ComparisonTypes.OperatorTableRuns(type, contract.LibraryDeclaration) ? ConstraintProof.Proven : ConstraintProof.Refuted;
         }
 
         if (this.contractHeadersReady && contract.LibraryDeclaration is KimiDeclarationId.Equatable or KimiDeclarationId.Comparable && ComparisonTypes.IsComposite(type))
         {
-            return contract.Declaration.BindingState == BindingState.Invalid
+            return this.DeclarationFailed(contract.Declaration)
                 ? ConstraintProof.Error : this.ComparisonProof(type, contract, scope, false, out _);
         }
 
@@ -344,7 +344,7 @@ public sealed partial class Binding
         if (this.contractHeadersReady && this.capabilityMode == BindingMode.Final && type.Kind == BoundTypeKind.Primitive &&
             contract.Intrinsic == IntrinsicKind.None)
         {
-            return contract.Declaration.BindingState == BindingState.Invalid ? ConstraintProof.Error : ConstraintProof.Refuted;
+            return this.DeclarationFailed(contract.Declaration) ? ConstraintProof.Error : ConstraintProof.Refuted;
         }
 
         // SPEC 22.1: the standard collections declare their conformances in Kimigayo behind their compiler-managed kinds.
@@ -353,7 +353,7 @@ public sealed partial class Binding
             return ConstraintProof.Unknown;
         }
 
-        if (this.OperandContexts(type).Invalid || contract.Declaration.BindingState == BindingState.Invalid)
+        if (this.OperandContexts(type).Invalid || this.DeclarationFailed(contract.Declaration))
         {
             return ConstraintProof.Error;
         }
