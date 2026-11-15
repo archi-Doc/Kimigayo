@@ -205,9 +205,10 @@ public sealed partial class Binding
 
         // O-368 (a): a variable that a Constraint of the callee reads is judged by its proof from premises (SPEC 8.3, 10.1 step 5), which
         // reads no bound of a region, so it keeps the evidence's binding (`T is Owned`, `F is Callable<() -> T>`).
-        foreach (var clause in solution.Binder is FunctionKoto callee ? callee.TypeConstraints : [])
+        var clauses = solution.Binder is FunctionKoto callee ? callee.TypeConstraints : [];
+        for (var c = 0; c < clauses.Count; c++)
         {
-            if (clause is IsKoto { BoundConstraint: { } constraint })
+            if (clauses[c] is IsKoto { BoundConstraint: { } constraint })
             {
                 this.AddConstraintNames(constraint, solution, ref blocked);
             }
