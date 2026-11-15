@@ -274,6 +274,38 @@ public sealed partial class Binding
         static bool Omitted(BoundOrigin? written, BoundOrigin? binding) => ReferenceEquals(written, binding) || written?.Kind == OriginKind.Inference;
     }
 
+    // SPEC 15.4.4: whether a written Type argument omits an Origin, an inference variable that the binding from S solves.
+    private static bool OmitsOrigins(BoundType written)
+    {
+        if (!written.CarriesOrigin)
+        {
+            return false;
+        }
+
+        if (written.Origin?.Kind == OriginKind.Inference)
+        {
+            return true;
+        }
+
+        for (var i = 0; i < written.OriginArguments.Count; i++)
+        {
+            if (written.OriginArguments[i].Kind == OriginKind.Inference)
+            {
+                return true;
+            }
+        }
+
+        for (var i = 0; i < written.Components.Count; i++)
+        {
+            if (OmitsOrigins(written.Components[i]))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     // SPEC 7.7.4: a concrete Closure or Function Item converts to an expected common Function Type when its minimum receiver is Shared,
     // its signature fits under its conditions (CallableSignatureFits), its complete environment is Owned and its result contract does
     // not depend on its receiver (ResultDependsOnReceiver). Initializations, returns and call arguments share this judgment. A failure

@@ -375,4 +375,35 @@ public partial class PairAnnotationBindingTest
     [InlineData("struct Box\n    public let v: i32\n    public init(v: i32)\n        self.v = v@move\nfunc stop() -> Never => $abort(\"stop\")\nfunc put3<s/W>(m: s/W, n: s/Box) -> i32\n    return 0\nfunc app<V>(f: (V, Box) -> i32, v: V) -> i32\n    V is Owned\n    return 0\nfunc call<t/U>(m: t/U, u: U) -> i32\n    t is owner\n    U is Owned\n    return app(put3, u@move)\n", "clean")] // rf1o
     public void AStructuredApplicationIsFormedAfterTheExactSources(string source, string records)
         => Assert.Equal(records, DiagnosticCorpus.RecordProfile(source));
+
+    // SPEC 10.8 ("Explicit arguments bind first ... An explicit Type argument is kept"), 10.5.3, 7.7.4 (C-293's amendment, C-359 B2):
+    // a reference's explicit Type arguments are its binding before S is matched, so S's part at `y: s/V` is no evidence for the binder
+    // `put<i32, X>` fixes to owner, and S binds nothing once every slot is bound. The reference is then erased when its environment is
+    // Owned (ex1 = tw4o, ex1x, ex1j, bx4 with the pair second, bx8 under `s is owner`); otherwise the erasure's (ex1n = tw4, bx2, bx9:
+    // ObjectPayload is not Owned) or the Constraint's (ex5: `s is owner or ref` for s = outer(U)) record stands, as on dev. 843efba20
+    // matched S first and compared X with i32's owner (TypeMismatch_Kd on ex1x, bx2, bx4, bx8, bx9). bx7 (`put<X, X>`, invalid) keeps
+    // 843efba20's record (dev: UnprovenConstraint_Kd): S's X meets the layer `y: s/V` forms under the abstract binding X, which nothing
+    // but such a layer meets (PLAN G886's representation of an abstract binding), not this evidence rule. Controls: an explicit
+    // argument S contradicts (bx3), the explicit reference as an argument (bx5) and at a call (bx6), without S (ex2), a closed binding
+    // (ex1c), the pair whole (ex4), a constructed binding (ex7).
+    [Theory]
+    [InlineData("func put<s/W, V>(m: s/W, y: s/V) -> i32\n    s is owner or ref\n    return 0\nfunc call<t/U>(m: t/U, u: U) -> i32\n    t is owner or ref\n    U is Owned\n    let f: (i32, U) -> i32 = put<i32, U>\n    return 0\n", "clean")] // ex1
+    [InlineData("func put<s/W, V>(m: s/W, y: s/V) -> i32\n    s is owner or ref\n    return 0\nfunc call<X>(x: X) -> i32\n    X is Owned\n    let f: (i32, X) -> i32 = put<i32, X>\n    return 0\n", "clean")] // ex1x
+    [InlineData("contract Holder\n    associate Element\nfunc put<s/W, V>(m: s/W, y: s/V) -> i32\n    s is owner or ref\n    return 0\nfunc call<T>(h: T, e: T.Element) -> i32\n    T is Holder\n    T.Element is Owned\n    let f: (i32, T.Element) -> i32 = put<i32, T.Element>\n    return 0\n", "clean")] // ex1j
+    [InlineData("func put2<V, s/W>(y: s/V, m: s/W) -> i32\n    s is owner or ref\n    return 0\nfunc call<X>(x: X) -> i32\n    X is Owned\n    let f: (X, i32) -> i32 = put2<X, i32>\n    return 0\n", "clean")] // bx4
+    [InlineData("func put<s/W, V>(m: s/W, y: s/V) -> i32\n    s is owner\n    return 0\nfunc call<X>(x: X) -> i32\n    X is Owned\n    let f: (i32, X) -> i32 = put<i32, X>\n    return 0\n", "clean")] // bx8
+    [InlineData("func put<s/W, V>(m: s/W, y: s/V) -> i32\n    s is owner or ref\n    return 0\nfunc call<t/U>(m: t/U, u: U) -> i32\n    t is owner or ref\n    let f: (i32, U) -> i32 = put<i32, U>\n    return 0\n", "1*UnprovenConstraint_Kd")] // ex1n
+    [InlineData("func put<s/W, V>(m: s/W, y: s/V) -> i32\n    s is owner or ref\n    return 0\nfunc call<X>(x: X) -> i32\n    let f: (i32, X) -> i32 = put<i32, X>\n    return 0\n", "1*UnprovenConstraint_Kd")] // bx2
+    [InlineData("func put<s/W, V>(m: s/W, y: s/V) -> i32\n    s is owner or ref\n    return 0\nfunc call<X>(x: X) -> i32\n    X is ObjectPayload\n    let f: (i32, X) -> i32 = put<i32, X>\n    return 0\n", "1*UnprovenConstraint_Kd")] // bx9
+    [InlineData("func put<s/W, V>(m: s/W, y: s/V) -> i32\n    s is owner or ref\n    return 0\nfunc call<t/U>(m: t/U, u: U) -> i32\n    t is owner or ref\n    U is Owned\n    let f: (U, i32) -> i32 = put<U, i32>\n    return 0\n", "1*UnprovenConstraint_Kd")] // ex5
+    [InlineData("func put<s/W, V>(m: s/W, y: s/V) -> i32\n    s is owner or ref\n    return 0\nfunc call<X>(x: X) -> i32\n    X is Owned\n    let f: (X, X) -> i32 = put<X, X>\n    return 0\n", "1*TypeMismatch_Kd")] // bx7
+    [InlineData("func put<s/W, V>(m: s/W, y: s/V) -> i32\n    s is owner or ref\n    return 0\nfunc call<X>(x: X) -> i32\n    X is Owned\n    let f: (i32, i64) -> i32 = put<i32, X>\n    return 0\n", "1*TypeMismatch_Kd")] // bx3
+    [InlineData("func put<s/W, V>(m: s/W, y: s/V) -> i32\n    s is owner or ref\n    return 0\nfunc app<A>(g: (i32, A) -> i32, a: A) -> i32\n    A is Owned\n    return 0\nfunc call<X>(x: X) -> i32\n    X is Owned\n    return app(put<i32, X>, x@move)\n", "clean")] // bx5
+    [InlineData("func put<s/W, V>(m: s/W, y: s/V) -> i32\n    s is owner or ref\n    return 0\nfunc call<X>(x: X) -> i32\n    X is Owned\n    let a: i32 = 1\n    return put<i32, X>(a@move, x@move)\n", "clean")] // bx6
+    [InlineData("func put<s/W, V>(m: s/W, y: s/V) -> i32\n    s is owner or ref\n    return 0\nfunc call<t/U>(m: t/U, u: U) -> i32\n    t is owner or ref\n    let f = put<i32, U>\n    let a: i32 = 1\n    return f(a@move, u@move)\n", "clean")] // ex2
+    [InlineData("func put<s/W, V>(m: s/W, y: s/V) -> i32\n    s is owner or ref\n    return 0\nfunc call<t/U>(m: t/U, u: U) -> i32\n    t is owner or ref\n    U is Owned\n    let f: (i32, i64) -> i32 = put<i32, i64>\n    return 0\n", "clean")] // ex1c
+    [InlineData("func put8<s/W>(m: s/W) -> i32\n    return 0\nfunc call<t/U>(m: t/U, u: U) -> i32\n    t is owner or ref\n    U is Owned\n    let f: (U) -> i32 = put8<U>\n    return 0\n", "clean")] // ex4
+    [InlineData("func put<s/W, V>(m: s/W, y: s/V) -> i32\n    s is owner or ref\n    return 0\nfunc call<t/U>(m: t/U, u: U) -> i32\n    t is owner or ref\n    U is Owned\n    let f: (i32, Option<U>) -> i32 = put<i32, Option<U>>\n    return 0\n", "clean")] // ex7
+    public void ExplicitTypeArgumentsBindAReferenceFirst(string source, string records)
+        => Assert.Equal(records, DiagnosticCorpus.RecordProfile(source));
 }
