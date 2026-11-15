@@ -167,6 +167,10 @@ public sealed partial class Binding
         // structure its default would have; it binds no slot, and it is no evidence, so it meets the position as its default will
         // (FittedPattern of the Literal part: every pair layer whose binder evidence fixed formed; the owner's O-294 (b)). `met` is
         // that pattern, whose outer layer decides the operation the position is ranked by (SPEC 10.2.2's Literal row; PLAN G915).
+        // A pair application still at its outer layer is one whose binder no source has fixed: the default's shape is not inferred
+        // through it, since at an exact source Infer would take that shape as the binder's evidence (SourcedLayer, IsSource); the
+        // Literal meets the layer once its default binds the binder, owner when nothing else does, and then fits the target the layer
+        // fixes (SPEC 10.2.1, 10.8; the owner's O-343 (a)), as at a structured application whose binder is open.
         internal readonly bool FitsLiteralShape(BoundType pattern, BoundType shape, Koto literal, out BoundType? met)
         {
             var binding = this.Binding;
@@ -180,7 +184,9 @@ public sealed partial class Binding
             try
             {
                 met = binding.FittedPattern(memberPattern, this.SlotOwner, this.Frame, literal);
-                return binding.Infer(LiteralInputType(met), shape, this.SlotOwner, this.Frame);
+                var input = LiteralInputType(met);
+                return (input.Kind == BoundTypeKind.SemanticsApplication && binding.HasOpenApplication(input, this.SlotOwner, this.Frame)) ||
+                    binding.Infer(input, shape, this.SlotOwner, this.Frame);
             }
             finally
             {
