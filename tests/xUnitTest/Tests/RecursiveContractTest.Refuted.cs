@@ -228,6 +228,12 @@ public sealed partial class RecursiveContractTest
     [InlineData("sb1v-sames-inactive", G866FunctionPremises + "func f<s/A, T>(x: ref/T)\n    s is obj\n    T is (s/Leaf during static) -> i32\n    T is (s/Leaf) -> i32\n    ()\n", "")]
     [InlineData("sb1x-sames-active", G866FunctionPremises + "func f<s/A, T>(x: ref/T)\n    s is ref\n    T is (s/Leaf during static) -> i32\n    T is (s/Leaf) -> i32\n    ()\n", "InvalidConstraint_Kd: func f<s/A, T>(x: ref/T)")]
     [InlineData("sb1m-sames-mixed", G866FunctionPremises + "func f<s/A, T>(x: ref/T)\n    s is obj or ref\n    T is (s/Leaf during static) -> i32\n    T is (s/Leaf) -> i32\n    ()\n", "UnprovenConstraint_Kd: func f<s/A, T>(x: ref/T)")]
+    [InlineData("tw1v-own", G866FunctionPremises + "func f<s/A, T>(x: ref/T)\n    s is owner\n    T is (s/Leaf during static) -> i32\n    T is (s/Leaf) -> i32\n    ()\n", "")]
+    [InlineData("tw4v-obj-ab", G866FunctionPremises + "func f<s/A, T>(x: ref/T, y: ref/i32 during a)\n    s is obj\n    T is (s/Leaf during a) -> i32\n    T is (s/Leaf during static) -> i32\n    ()\n", "")]
+    [InlineData("tw6v-obj-swap", G866FunctionPremises + "func f<s/A, T>(x: ref/T)\n    s is obj\n    T is (s/Leaf) -> i32\n    T is (s/Leaf during static) -> i32\n    ()\n", "")]
+    [InlineData("tw2x-objref", G866FunctionPremises + "func f<s/A, T>(x: ref/T)\n    s is objref\n    T is (s/Leaf during static) -> i32\n    T is (s/Leaf) -> i32\n    ()\n", "InvalidConstraint_Kd: func f<s/A, T>(x: ref/T)")]
+    [InlineData("tw3x-ownref", G866FunctionPremises + "func f<s/A, T>(x: ref/T)\n    s is owner or ref\n    T is (s/Leaf during static) -> i32\n    T is (s/Leaf) -> i32\n    ()\n", "UnprovenConstraint_Kd: func f<s/A, T>(x: ref/T)")]
+    [InlineData("tw5x-ref-ab", G866FunctionPremises + "func f<s/A, T>(x: ref/T, y: ref/i32 during a)\n    s is ref\n    T is (s/Leaf during a) -> i32\n    T is (s/Leaf during static) -> i32\n    ()\n", "UnprovenConstraint_Kd: func f<s/A, T>(x: ref/T, y: ref/i32 during a)")]
     public void AJudgeRefutesOnlyByTheIdentityTable(string form, string program, string records)
         => CompilationTestHelper.AssertRecordsAtLines($"{form} [G866]", program + "()", records);
 
