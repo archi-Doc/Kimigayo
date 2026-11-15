@@ -427,7 +427,9 @@ public sealed partial class MirBorrowsTest
     // storage the body does not own, by a write or a call that may store it there, is invalid "with the error at that operation"; SPEC
     // 23.1.2): one record at each storing operation, and one at the Loan's site where the result's own value keeps the Loan ("Its result
     // cannot keep a new Borrow or Reborrow of a preceding argument"), both when both hold: the result alone (keptOnly), a store or a call
-    // through a parameter (storedCopy, whose result is a Copy; keepECall: sink's pointee raw/i32 admits v, 5.7 Calls), two stores
+    // through a parameter (storedCopy, whose result is a Copy read through rz, which reaches the storage the store made carry rz's Loan:
+    // its result keeps it too, 15.6's read sentence and the value-flow rule H, a record added under DECISIONS Q13 rule W; keepECall: sink's
+    // pointee raw/i32 admits v, 5.7 Calls), two stores
     // (keepETwice), a store or a call and the result (keepBoth, bothCall, keepBoth2), two Loans (twoLoans: rz stored, rw kept), the result
     // read back from the stored storage, a Tuple holding rz, or a Reborrow through it (readBack, resultTuple, reborrowChain, whose exclusive
     // Borrow is one subject: its record names the Borrow), a result that only addresses that storage (resultAddr: the store alone); an
@@ -439,6 +441,7 @@ public sealed partial class MirBorrowsTest
         => Assert.Equal(
             [
                 "keptOnly: z DefaultArgumentBorrow_Kd", "storedCopy: *p = rz@follow@raw DefaultArgumentBorrow_Kd",
+                "storedCopy: z DefaultArgumentBorrow_Kd",
                 "keepECall: sink(p, rz@follow@raw) DefaultArgumentBorrow_Kd",
                 "keepETwice: *p = rz@follow@raw DefaultArgumentBorrow_Kd", "keepETwice: *s = rz@follow@raw DefaultArgumentBorrow_Kd",
                 "keepBoth: *p = rz@follow@raw DefaultArgumentBorrow_Kd", "keepBoth: z DefaultArgumentBorrow_Kd",

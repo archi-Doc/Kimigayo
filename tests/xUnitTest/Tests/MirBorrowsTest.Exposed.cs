@@ -11,7 +11,9 @@ namespace XunitTest;
 /// live while the local or a pointer addressing it is used. A shared borrow writes nothing (5.2.1 condition 3), and a raw layer
 /// whose pointee holds no Loan stores none (5.7 Calls). The rows are the unit's coverage table, each labelled from SPEC (I invalid, V
 /// valid; P3: RESULT.md batch 1's settled label), the record each invalid one gives (SPEC 23.1.2); the valid rows marked fail-before
-/// were rejected only by R4-M120's untracked rule, which sent the store to storage the body does not own.</summary>
+/// were rejected only by R4-M120's untracked rule, which sent the store to storage the body does not own. A local a store gives a value
+/// read from a holder is one too, whatever its Type (15.6 Holders: "A value read, Copied or Moved from a part carries every Loan the
+/// holder carries"; rule H, MirBorrows.Holders' Flowing).</summary>
 public sealed partial class MirBorrowsTest
 {
     private const string ExposedShapes = "func usep<T>(p: raw/T) => ()\n";
@@ -726,6 +728,759 @@ public sealed partial class MirBorrowsTest
             """,
     };
 
+    private static readonly Dictionary<string, string> FlowForms = new()
+    {
+        ["cpyOutBad"] = """
+            func keep(slot: raw/(raw/u8), value: raw/u8) => ()
+            func cpyOutBad()
+                var kk: u8 = 1
+                let r = kk@uniq
+                var spare: raw/u8 = r@follow@raw
+                var w: u64 = 3
+                keep(w@raw@raw/(raw/u8), spare)
+                let z = w
+                kk = 2
+                let y = z
+            """,
+        ["cpyOutOk"] = """
+            func keep(slot: raw/(raw/u8), value: raw/u8) => ()
+            func cpyOutOk()
+                var kk: u8 = 1
+                let r = kk@uniq
+                var spare: raw/u8 = r@follow@raw
+                var w: u64 = 3
+                keep(w@raw@raw/(raw/u8), spare)
+                let z = w
+                kk = 2
+            """,
+        ["cpyPunBad2"] = """
+            func keep(slot: raw/(raw/u8), value: raw/u8) => ()
+            func get(slot: raw/(raw/u8)) -> raw/u8
+                unsafe => return *slot
+            func put8(p: raw/u8, v: raw/u8) => ()
+            func cpyPunBad2()
+                var kk: u8 = 1
+                let r = kk@uniq
+                var spare: raw/u8 = r@follow@raw
+                var w: u64 = 3
+                keep(w@raw@raw/(raw/u8), spare)
+                let z = w
+                var w2: u64 = z
+                let q = get(w2@raw@raw/(raw/u8))
+                kk = 2
+                put8(q, null)
+            """,
+        ["cpyPunOk2"] = """
+            func keep(slot: raw/(raw/u8), value: raw/u8) => ()
+            func get(slot: raw/(raw/u8)) -> raw/u8
+                unsafe => return *slot
+            func put8(p: raw/u8, v: raw/u8) => ()
+            func cpyPunOk2()
+                var kk: u8 = 1
+                let r = kk@uniq
+                var spare: raw/u8 = r@follow@raw
+                var w: u64 = 3
+                keep(w@raw@raw/(raw/u8), spare)
+                let z = w
+                var w2: u64 = z
+                let q = get(w2@raw@raw/(raw/u8))
+                put8(q, null)
+                kk = 2
+            """,
+        ["cpyPunDirectBad2"] = """
+            func keep(slot: raw/(raw/u8), value: raw/u8) => ()
+            func get(slot: raw/(raw/u8)) -> raw/u8
+                unsafe => return *slot
+            func put8(p: raw/u8, v: raw/u8) => ()
+            func cpyPunDirectBad2()
+                var kk: u8 = 1
+                let r = kk@uniq
+                var spare: raw/u8 = r@follow@raw
+                var w: u64 = 3
+                keep(w@raw@raw/(raw/u8), spare)
+                var w2: u64 = w
+                let q = get(w2@raw@raw/(raw/u8))
+                kk = 2
+                put8(q, null)
+            """,
+        ["cpyHolderBad"] = """
+            func keep(slot: raw/(raw/u8), value: raw/u8) => ()
+            func cpyHolderBad()
+                var kk: u8 = 1
+                let r = kk@uniq
+                var spare: raw/u8 = r@follow@raw
+                var w: u64 = 3
+                keep(w@raw@raw/(raw/u8), spare)
+                let z: (u64, raw/u8) = (w, null)
+                kk = 2
+                let y = z.0
+            """,
+        ["cpyTupOutBad"] = """
+            func keep(slot: raw/(raw/u8), value: raw/u8) => ()
+            func cpyTupOutBad()
+                var kk: u8 = 1
+                let r = kk@uniq
+                var spare: raw/u8 = r@follow@raw
+                var t: (u64, raw/u8) = (3@u64, null)
+                keep(t.0@raw@raw/(raw/u8), spare)
+                let z = t.0
+                kk = 2
+                let y = z
+            """,
+        ["cpyTupOutOk"] = """
+            func keep(slot: raw/(raw/u8), value: raw/u8) => ()
+            func cpyTupOutOk()
+                var kk: u8 = 1
+                let r = kk@uniq
+                var spare: raw/u8 = r@follow@raw
+                var t: (u64, raw/u8) = (3@u64, null)
+                keep(t.0@raw@raw/(raw/u8), spare)
+                let z = t.0
+                kk = 2
+            """,
+        ["cpyTupPunBad2"] = """
+            func keep(slot: raw/(raw/u8), value: raw/u8) => ()
+            func get(slot: raw/(raw/u8)) -> raw/u8
+                unsafe => return *slot
+            func put8(p: raw/u8, v: raw/u8) => ()
+            func cpyTupPunBad2()
+                var kk: u8 = 1
+                let r = kk@uniq
+                var spare: raw/u8 = r@follow@raw
+                var t: (u64, raw/u8) = (3@u64, null)
+                keep(t.0@raw@raw/(raw/u8), spare)
+                let z = t.0
+                var w2: u64 = z
+                let q = get(w2@raw@raw/(raw/u8))
+                kk = 2
+                put8(q, null)
+            """,
+        ["cpyTupAggBad"] = """
+            func keep(slot: raw/(raw/u8), value: raw/u8) => ()
+            func cpyTupAggBad()
+                var kk: u8 = 1
+                let r = kk@uniq
+                var spare: raw/u8 = r@follow@raw
+                var w: u64 = 3
+                keep(w@raw@raw/(raw/u8), spare)
+                let s = (w, 1@u64)
+                kk = 2
+                let y = s.0
+            """,
+        ["cpyTupAggOk"] = """
+            func keep(slot: raw/(raw/u8), value: raw/u8) => ()
+            func cpyTupAggOk()
+                var kk: u8 = 1
+                let r = kk@uniq
+                var spare: raw/u8 = r@follow@raw
+                var w: u64 = 3
+                keep(w@raw@raw/(raw/u8), spare)
+                let s = (w, 1@u64)
+                kk = 2
+            """,
+        ["loopCpyBad"] = """
+            func keep(slot: raw/(raw/u8), value: raw/u8) => ()
+            func loopCpyBad()
+                var kk: u8 = 1
+                let r = kk@uniq
+                var spare: raw/u8 = r@follow@raw
+                var w: u64 = 3
+                keep(w@raw@raw/(raw/u8), spare)
+                var a: u64 = 0
+                var b: u64 = 0
+                var i: i32 = 0
+                while i < 2
+                    a = b
+                    b = w
+                    i = i + 1
+                kk = 2
+                let y = a
+            """,
+        ["loopCpyOk"] = """
+            func keep(slot: raw/(raw/u8), value: raw/u8) => ()
+            func loopCpyOk()
+                var kk: u8 = 1
+                let r = kk@uniq
+                var spare: raw/u8 = r@follow@raw
+                var w: u64 = 3
+                keep(w@raw@raw/(raw/u8), spare)
+                var a: u64 = 0
+                var b: u64 = 0
+                var i: i32 = 0
+                while i < 2
+                    a = b
+                    b = w
+                    i = i + 1
+                kk = 2
+            """,
+        ["capCpyBad"] = """
+            func keep(slot: raw/(raw/u8), value: raw/u8) => ()
+            func capCpyBad()
+                var kk: u8 = 1
+                let r = kk@uniq
+                var spare: raw/u8 = r@follow@raw
+                var w: u64 = 3
+                keep(w@raw@raw/(raw/u8), spare)
+                let f = func [w] () -> u64 => w
+                kk = 2
+                let y = f()
+            """,
+        ["capCpyOk"] = """
+            func keep(slot: raw/(raw/u8), value: raw/u8) => ()
+            func capCpyOk()
+                var kk: u8 = 1
+                let r = kk@uniq
+                var spare: raw/u8 = r@follow@raw
+                var w: u64 = 3
+                keep(w@raw@raw/(raw/u8), spare)
+                let f = func [w] () -> u64 => w
+                kk = 2
+            """,
+        ["argUseBad"] = """
+            func keep(slot: raw/(raw/u8), value: raw/u8) => ()
+            func use64(v: u64) => ()
+            func argUseBad()
+                var kk: u8 = 1
+                let r = kk@uniq
+                var spare: raw/u8 = r@follow@raw
+                var w: u64 = 3
+                keep(w@raw@raw/(raw/u8), spare)
+                let z = w
+                kk = 2
+                use64(z)
+            """,
+        ["arithOk"] = """
+            func keep(slot: raw/(raw/u8), value: raw/u8) => ()
+            func arithOk()
+                var kk: u8 = 1
+                let r = kk@uniq
+                var spare: raw/u8 = r@follow@raw
+                var w: u64 = 3
+                keep(w@raw@raw/(raw/u8), spare)
+                let z = w + 0
+                kk = 2
+                let y = z
+            """,
+        ["cpyResultBad"] = """
+            func keep(slot: raw/(raw/u8), value: raw/u8) => ()
+            func id64(a: u64) -> u64 => a
+            func cpyResultBad()
+                var kk: u8 = 1
+                let r = kk@uniq
+                var spare: raw/u8 = r@follow@raw
+                var w: u64 = 3
+                keep(w@raw@raw/(raw/u8), spare)
+                let z = id64(w)
+                kk = 2
+                let y = z
+            """,
+        ["cpyResultOk"] = """
+            func keep(slot: raw/(raw/u8), value: raw/u8) => ()
+            func id64(a: u64) -> u64 => a
+            func cpyResultOk()
+                var kk: u8 = 1
+                let r = kk@uniq
+                var spare: raw/u8 = r@follow@raw
+                var w: u64 = 3
+                keep(w@raw@raw/(raw/u8), spare)
+                let z = id64(w)
+                kk = 2
+            """,
+        ["cpyFieldBad"] = """
+            struct Pt
+                public var a: u64
+                public var b: u64
+                public init(a: u64)
+                    self.a = a
+                    self.b = 2
+            func keep(slot: raw/(raw/u8), value: raw/u8) => ()
+            func cpyFieldBad()
+                var kk: u8 = 1
+                let r = kk@uniq
+                var spare: raw/u8 = r@follow@raw
+                var w: u64 = 3
+                keep(w@raw@raw/(raw/u8), spare)
+                let s = Pt.init(a: w)
+                kk = 2
+                let y = s.a
+            """,
+        ["cpyFieldOk"] = """
+            struct Pt
+                public var a: u64
+                public var b: u64
+                public init(a: u64)
+                    self.a = a
+                    self.b = 2
+            func keep(slot: raw/(raw/u8), value: raw/u8) => ()
+            func cpyFieldOk()
+                var kk: u8 = 1
+                let r = kk@uniq
+                var spare: raw/u8 = r@follow@raw
+                var w: u64 = 3
+                keep(w@raw@raw/(raw/u8), spare)
+                let s = Pt.init(a: w)
+                kk = 2
+            """,
+        ["narrowResultOk"] = """
+            func keep(slot: raw/(raw/u8), value: raw/u8) => ()
+            func lo(a: u64) -> u8 => 1
+            func narrowResultOk()
+                var kk: u8 = 1
+                let r = kk@uniq
+                var spare: raw/u8 = r@follow@raw
+                var w: u64 = 3
+                keep(w@raw@raw/(raw/u8), spare)
+                let z = lo(w)
+                kk = 2
+                let y = z
+            """,
+        ["intFirstBad"] = """
+            func keep(slot: raw/(raw/u8), value: raw/u8) => ()
+            func put64(slot: raw/u64, v: u64) => ()
+            func intFirstBad()
+                var kk: u8 = 1
+                let r = kk@uniq
+                var spare: raw/u8 = r@follow@raw
+                var w0: u64 = 3
+                keep(w0@raw@raw/(raw/u8), spare)
+                var d: u64 = 0
+                put64(d@raw, w0)
+                kk = 2
+                let y = d
+            """,
+        ["intFirstPunBad"] = """
+            func keep(slot: raw/(raw/u8), value: raw/u8) => ()
+            func put64(slot: raw/u64, v: u64) => ()
+            func get(slot: raw/(raw/u8)) -> raw/u8
+                unsafe => return *slot
+            func put8(p: raw/u8, v: raw/u8) => ()
+            func intFirstPunBad()
+                var kk: u8 = 1
+                let r = kk@uniq
+                var spare: raw/u8 = r@follow@raw
+                var w0: u64 = 3
+                keep(w0@raw@raw/(raw/u8), spare)
+                var d: u64 = 0
+                put64(d@raw, w0)
+                let q = get(d@raw@raw/(raw/u8))
+                kk = 2
+                put8(q, null)
+            """,
+        ["intFirstPunOk"] = """
+            func keep(slot: raw/(raw/u8), value: raw/u8) => ()
+            func put64(slot: raw/u64, v: u64) => ()
+            func get(slot: raw/(raw/u8)) -> raw/u8
+                unsafe => return *slot
+            func put8(p: raw/u8, v: raw/u8) => ()
+            func intFirstPunOk()
+                var kk: u8 = 1
+                let r = kk@uniq
+                var spare: raw/u8 = r@follow@raw
+                var w0: u64 = 3
+                keep(w0@raw@raw/(raw/u8), spare)
+                var d: u64 = 0
+                put64(d@raw, w0)
+                let q = get(d@raw@raw/(raw/u8))
+                put8(q, null)
+                kk = 2
+            """,
+        ["storeCopyBad"] = """
+            func keep(slot: raw/(raw/u8), value: raw/u8) => ()
+            func set(x: uniq/u64, v: u64) => x@follow = v
+            func storeCopyBad()
+                var kk: u8 = 1
+                let r = kk@uniq
+                var spare: raw/u8 = r@follow@raw
+                var w0: u64 = 3
+                keep(w0@raw@raw/(raw/u8), spare)
+                var a: u64 = 0
+                set(a@uniq, w0)
+                kk = 2
+                let y = a
+            """,
+        ["storeCopyOk"] = """
+            func keep(slot: raw/(raw/u8), value: raw/u8) => ()
+            func set(x: uniq/u64, v: u64) => x@follow = v
+            func storeCopyOk()
+                var kk: u8 = 1
+                let r = kk@uniq
+                var spare: raw/u8 = r@follow@raw
+                var w0: u64 = 3
+                keep(w0@raw@raw/(raw/u8), spare)
+                var a: u64 = 0
+                set(a@uniq, w0)
+                kk = 2
+            """,
+        ["storeSafeOk"] = """
+            func set(x: uniq/i32, v: i32) => x@follow = v
+            func storeSafeOk()
+                var kk: u8 = 1
+                let r = kk@uniq
+                var a: i32 = 0
+                set(a@uniq, 5)
+                kk = 2
+                let y = a
+            """,
+        ["intPastBad"] = """
+            func keep(slot: raw/(raw/u8), value: raw/u8) => ()
+            func put64p(w: uniq/(raw/u64), v: u64) => ()
+            func intPastBad()
+                var kk: u8 = 1
+                let r = kk@uniq
+                var spare: raw/u8 = r@follow@raw
+                var w0: u64 = 3
+                keep(w0@raw@raw/(raw/u8), spare)
+                var d: u64 = 0
+                var x: raw/u64 = d@raw
+                put64p(x@uniq, w0)
+                kk = 2
+                let y = d
+            """,
+        ["intPastPunBad2"] = """
+            func keep(slot: raw/(raw/u8), value: raw/u8) => ()
+            func put64p(w: uniq/(raw/u64), v: u64) => ()
+            func get(slot: raw/(raw/u8)) -> raw/u8
+                unsafe => return *slot
+            func put8(p: raw/u8, v: raw/u8) => ()
+            func intPastPunBad2()
+                var kk: u8 = 1
+                let r = kk@uniq
+                var spare: raw/u8 = r@follow@raw
+                var w0: u64 = 3
+                keep(w0@raw@raw/(raw/u8), spare)
+                var d: u64 = 0
+                var x: raw/u64 = d@raw
+                put64p(x@uniq, w0)
+                let q = get(d@raw@raw/(raw/u8))
+                kk = 2
+                put8(q, null)
+            """,
+        ["intPastOk"] = """
+            func keep(slot: raw/(raw/u8), value: raw/u8) => ()
+            func put64p(w: uniq/(raw/u64), v: u64) => ()
+            func intPastOk()
+                var kk: u8 = 1
+                let r = kk@uniq
+                var spare: raw/u8 = r@follow@raw
+                var w0: u64 = 3
+                keep(w0@raw@raw/(raw/u8), spare)
+                var d: u64 = 0
+                var x: raw/u64 = d@raw
+                put64p(x@uniq, w0)
+                kk = 2
+            """,
+        ["ownerQBad"] = """
+            func keep(slot: raw/(raw/u8), value: raw/u8) => ()
+            func id64(a: u64) -> u64 => a
+            func put64(slot: raw/u64, v: u64) => ()
+            func ownerQBad()
+                var kk: u8 = 1
+                let r = kk@uniq
+                var spare: raw/u8 = r@follow@raw
+                var w: u64 = 3
+                keep(w@raw@raw/(raw/u8), spare)
+                let z = id64(w)
+                var d: u64 = 0
+                put64(d@raw, w)
+                kk = 2
+                let y = z + d
+            """,
+        ["ownerQOk"] = """
+            func keep(slot: raw/(raw/u8), value: raw/u8) => ()
+            func id64(a: u64) -> u64 => a
+            func put64(slot: raw/u64, v: u64) => ()
+            func ownerQOk()
+                var kk: u8 = 1
+                let r = kk@uniq
+                var spare: raw/u8 = r@follow@raw
+                var w: u64 = 3
+                keep(w@raw@raw/(raw/u8), spare)
+                let z = id64(w)
+                var d: u64 = 0
+                put64(d@raw, w)
+                let y = z + d
+                kk = 2
+            """,
+        ["intPastScalarOk"] = """
+            func put64p(w: uniq/(raw/u64), v: u64) => ()
+            func intPastScalarOk()
+                var kk: u8 = 1
+                let r = kk@uniq
+                var spare: raw/u8 = r@follow@raw
+                var w0: u64 = 3
+                var d: u64 = 0
+                var x: raw/u64 = d@raw
+                put64p(x@uniq, w0)
+                kk = 2
+                let y = d
+            """,
+        ["cpyNoHolderOk"] = """
+            func keep(slot: raw/(raw/u8), value: raw/u8) => ()
+            func cpyNoHolderOk()
+                var kk: u8 = 1
+                let r = kk@uniq
+                var spare: raw/u8 = r@follow@raw
+                var w: u64 = 3
+                keep(w@raw@raw/(raw/u8), spare)
+                var n: u64 = 4
+                let z = n
+                kk = 2
+                let y = z
+            """,
+        ["resultPlainOk"] = """
+            func keep(slot: raw/(raw/u8), value: raw/u8) => ()
+            func id64(a: u64) -> u64 => a
+            func resultPlainOk()
+                var kk: u8 = 1
+                let r = kk@uniq
+                var spare: raw/u8 = r@follow@raw
+                var w: u64 = 3
+                keep(w@raw@raw/(raw/u8), spare)
+                var n: u64 = 4
+                let z = id64(n)
+                kk = 2
+                let y = z
+            """,
+        ["sharedSrcOk"] = """
+            func peek(p: ref/u64) => ()
+            func sharedSrcOk()
+                var kk: u8 = 1
+                let r = kk@uniq
+                var w: u64 = 3
+                peek(w@ref)
+                let z = w
+                kk = 2
+                let y = z
+            """,
+        ["cpyReplOk"] = """
+            func keep(slot: raw/(raw/u8), value: raw/u8) => ()
+            func cpyReplOk()
+                var kk: u8 = 1
+                let r = kk@uniq
+                var spare: raw/u8 = r@follow@raw
+                var w: u64 = 3
+                keep(w@raw@raw/(raw/u8), spare)
+                var z: u64 = w
+                z = 5
+                kk = 2
+                let y = z
+            """,
+        ["replOk"] = """
+            func keep(slot: raw/(raw/u8), value: raw/u8) => ()
+            func replOk()
+                var kk: u8 = 1
+                let r = kk@uniq
+                var spare: raw/u8 = r@follow@raw
+                var w: u64 = 3
+                keep(w@raw@raw/(raw/u8), spare)
+                w = 5
+                kk = 2
+                let y = w
+            """,
+        ["partWriteBad"] = """
+            struct Pt
+                public var a: u64
+                public var b: u64
+                public init()
+                    self.a = 1
+                    self.b = 2
+            func keep(slot: raw/(raw/u8), value: raw/u8) => ()
+            func partWriteBad()
+                var kk: u8 = 1
+                let r = kk@uniq
+                var spare: raw/u8 = r@follow@raw
+                var s = Pt.init()
+                keep(s.a@raw@raw/(raw/u8), spare)
+                s.a = 5
+                kk = 2
+                let y = s.b
+            """,
+        ["rvPastU64HolderBad"] = """
+            func put64p(w: uniq/(raw/u64), v: u64) => ()
+            func rvPastU64HolderBad()
+                var kk: u8 = 1
+                let r = kk@uniq
+                var spare: raw/u8 = r@follow@raw
+                var t: (u64, raw/u8) = (3@u64, spare)
+                var d: u64 = 0
+                var x: raw/u64 = d@raw
+                put64p(x@uniq, t.0)
+                kk = 2
+            """,
+        ["rvPastU8OwnBad"] = """
+            func setb(w: uniq/(raw/u8), v: u8) => ()
+            func rvPastU8OwnBad()
+                var kk: u8 = 1
+                let r = kk@uniq
+                var spare: raw/u8 = r@follow@raw
+                let t: (u8, raw/u8) = (1@u8, spare)
+                var b: u8 = 0
+                var x: raw/u8 = b@raw
+                setb(x@uniq, t.0)
+                kk = 2
+            """,
+        ["rvPastU8Ok"] = """
+            func keep1(slot: raw/(raw/u8), value: raw/u8) => ()
+            func rvPastU8Ok(y: uniq/i32)
+                let w = y@follow@ref
+                var b: u8 = 0
+                var cell: raw/u8 = b@raw
+                keep1(cell@raw, w@raw@raw/u8)
+                y@follow = 5
+                let k = b
+            """,
+        ["rvPastU8UniqOk"] = """
+            func setp(w: uniq/(raw/u8), v: raw/u8) => ()
+            func rvPastU8UniqOk(y: uniq/i32)
+                let t = y@follow@ref
+                var b: u8 = 0
+                var x: raw/u8 = b@raw
+                setp(x@uniq, t@raw@raw/u8)
+                y@follow = 5
+                let k = b
+            """,
+        ["rvPastU8UniqBad"] = """
+            func setp(w: uniq/(raw/u8), v: raw/u8) => ()
+            func rvPastU8UniqBad(y: uniq/i32)
+                let t = y@follow@ref
+                var b: u8 = 0
+                var x: raw/u8 = b@raw
+                setp(x@uniq, t@raw@raw/u8)
+                y@follow = 5
+                let k = x
+            """,
+        ["rvCompRawBad"] = """
+            func put8p(w: uniq/(raw/(raw/u8)), v: raw/u8) => ()
+            func rvCompRawBad()
+                var kk: u8 = 1
+                let r = kk@uniq
+                var spare: raw/u8 = r@follow@raw
+                var d: raw/u8 = null
+                var x: raw/(raw/u8) = d@raw
+                put8p(x@uniq, spare)
+                kk = 2
+            """,
+        ["rvCompTupBad"] = """
+            func putT(w: uniq/(raw/(u64, raw/u8)), v: (u64, raw/u8)) => ()
+            func rvCompTupBad()
+                var kk: u8 = 1
+                let r = kk@uniq
+                var spare: raw/u8 = r@follow@raw
+                var d: (u64, raw/u8) = (0@u64, null)
+                var x: raw/(u64, raw/u8) = d@raw
+                putT(x@uniq, (1@u64, spare))
+                kk = 2
+            """,
+        ["rvCompRawOk"] = """
+            func put8p(w: uniq/(raw/(raw/u8)), v: raw/u8) => ()
+            func rvCompRawOk()
+                var kk: u8 = 1
+                let r = kk@uniq
+                var spare: raw/u8 = r@follow@raw
+                var d: raw/u8 = null
+                var x: raw/(raw/u8) = d@raw
+                put8p(x@uniq, null)
+                kk = 2
+            """,
+        ["rvTupPartSafeBad"] = """
+            func rvTupPartSafeBad() -> i32
+                var a: i32 = 1
+                let t = (a@ref, 3)
+                let n = t.1
+                a = 2
+                return n
+            """,
+        ["rvTupPartSafeOk"] = """
+            func rvTupPartSafeOk() -> i32
+                var a: i32 = 1
+                let t = (a@ref, 3)
+                let n = t.1
+                let m = n + 1
+                a = 2
+                return m
+            """,
+        ["rvFieldSafeBad"] = """
+            struct RS {s}
+                public let r: ref/i32 during s
+                public let n: i32
+                public init(r: ref/i32 during s, n: i32)
+                    self.r = r
+                    self.n = n
+            func rvFieldSafeBad() -> i32
+                var a: i32 = 1
+                let s = RS.init(r: a@ref, n: 3)
+                let n = s.n
+                a = 2
+                return n
+            """,
+        ["rvFieldSafeOk"] = """
+            struct RS {s}
+                public let r: ref/i32 during s
+                public let n: i32
+                public init(r: ref/i32 during s, n: i32)
+                    self.r = r
+                    self.n = n
+            func rvFieldSafeOk() -> i32
+                var a: i32 = 1
+                let s = RS.init(r: a@ref, n: 3)
+                let n = s.n
+                let m = n + 1
+                a = 2
+                return m
+            """,
+        ["rvReborrowRetBad"] = """
+            struct KI
+                public var v: i32 = 0
+                public init() => ()
+                public func keep(self: uniq/Self) -> uniq/KI during self => self
+            func rvReborrowRetBad() -> i32
+                var x = KI.init()
+                var slot = x@uniq
+                var rr = slot@uniq
+                let res = rr@follow@follow.keep()
+                return res.v
+            """,
+        ["rvReborrowUseBad"] = """
+            struct KI
+                public var v: i32 = 0
+                public init() => ()
+                public func keep(self: uniq/Self) -> uniq/KI during self => self
+            func rvReborrowUseBad()
+                var x = KI.init()
+                var slot = x@uniq
+                var rr = slot@uniq
+                let res = rr@follow@follow.keep()
+                let n = res.v
+                x.v = 5
+                let y = n
+            """,
+        ["rvReborrowUseOk"] = """
+            struct KI
+                public var v: i32 = 0
+                public init() => ()
+                public func keep(self: uniq/Self) -> uniq/KI during self => self
+            func rvReborrowUseOk()
+                var x = KI.init()
+                var slot = x@uniq
+                var rr = slot@uniq
+                let res = rr@follow@follow.keep()
+                let n = res.v
+                let y = n
+                x.v = 5
+            """,
+        ["rvDerefPlainOk"] = """
+            struct KI
+                public var v: i32 = 0
+                public init() => ()
+            func rvDerefPlainOk()
+                var x = KI.init()
+                let r = x@uniq
+                let n = r@follow.v
+                x.v = 5
+                let y = n
+            """,
+    };
+
     // The coverage table's rows (a5v-u6-state.md), by exposure.
     [Theory]
     [InlineData("fScalarLetPtrOk", "")] // V, an address of a `let` local (fail-before: the untracked rule sent the store to E)
@@ -788,6 +1543,72 @@ public sealed partial class MirBorrowsTest
     public void AnExposedLocalIsAHolderWhateverItsType(string form, string expected)
     {
         var c = MirBuildTest.Compile(ExposedShapes + ExposedForms[form] + "\npublic func main() => ()\n");
+        Assert.Equal($"{form}: [{expected}]", $"{form}: [{string.Join("; ", Problems(c, Analyze(c), LoanCodes))}]");
+    }
+
+    // H's coverage table (a5v-u6flow-design.md, section 1 and R1.2), each row labelled from SPEC 15.6 Holders and Loans (O-230 Q1 (a),
+    // O-364 (a): as written, a Scalar part's Copy included), 15.6.4 and 5.7 Calls; rows marked "with G935's rule R" are invalid and keep
+    // today's acceptance until Binding retains an Origin-free input's own value (PLAN G935).
+    [Theory]
+    [InlineData("cpyOutBad", "cpyOutBad: kk = 2")] // I, z, a Copy of w (which carries r's Loan), is read after (15.6 Holders' Copy sentence; U6's F1)
+    [InlineData("cpyOutOk", "")] // V
+    [InlineData("cpyPunBad2", "cpyPunBad2: kk = 2")] // I, z copied on into the exposed w2 and a pointer read over w2's bytes (U6's F1)
+    [InlineData("cpyPunOk2", "")] // V
+    [InlineData("cpyPunDirectBad2", "cpyPunDirectBad2: kk = 2")] // I, the control: the Copy straight into the exposed local (U6's holders)
+    [InlineData("cpyHolderBad", "cpyHolderBad: kk = 2")] // I, the control: into a Loan-holding Tuple (a holder by its Type)
+    [InlineData("cpyTupOutBad", "cpyTupOutBad: kk = 2")] // I, a Scalar part of an exposed Tuple holder copied out (accepted before on every build)
+    [InlineData("cpyTupOutOk", "")] // V
+    [InlineData("cpyTupPunBad2", "cpyTupPunBad2: kk = 2")] // I, the same re-punned (accepted before on every build)
+    [InlineData("cpyTupAggBad", "cpyTupAggBad: kk = 2")] // I, into an aggregate built by value (15.6 Loans bullet 1)
+    [InlineData("cpyTupAggOk", "")] // V
+    [InlineData("loopCpyBad", "loopCpyBad: kk = 2")] // I, a = b in a loop: the second iteration's a holds the first's Copy (liveness's fixed point)
+    [InlineData("loopCpyOk", "")] // V
+    [InlineData("capCpyBad", "capCpyBad: kk = 2")] // I, a Closure capturing the Copy (15.6 Loans bullet 1)
+    [InlineData("capCpyOk", "")] // V
+    [InlineData("argUseBad", "argUseBad: kk = 2")] // I, the Copy passed to a call after kk = 2 (a use)
+    [InlineData("arithOk", "")] // V, an arithmetic result carries nothing (A3 5's val)
+    [InlineData("cpyResultBad", "")] // I; kk = 2 with G935's rule R (an Origin-free input's own value at a result that can hold it, 15.6.4)
+    [InlineData("cpyResultOk", "")] // V
+    [InlineData("cpyFieldBad", "")] // I; kk = 2 with G935's rule R (a constructor's Field holds the input by value)
+    [InlineData("cpyFieldOk", "")] // V
+    [InlineData("narrowResultOk", "")] // V, a u8 result cannot hold a u64 or a part of one (15.6.4)
+    [InlineData("intFirstBad", "")] // I; kk = 2 with G935's rule R (put64 stores v at d: 5.7 Calls, 5.2.1 Retained dependencies)
+    [InlineData("intFirstPunBad", "")] // I; kk = 2 with G935's rule R
+    [InlineData("intFirstPunOk", "")] // V
+    [InlineData("storeCopyBad", "")] // I; kk = 2 with G935's rule R (set stores v through x into a)
+    [InlineData("storeCopyOk", "")] // V
+    [InlineData("storeSafeOk", "")] // V, a safe store of a constant
+    [InlineData("intPastBad", "")] // I; kk = 2 with G935's rule R (the storage past a parameter's raw layer without an Origin)
+    [InlineData("intPastPunBad2", "")] // I; kk = 2 with G935's rule R
+    [InlineData("intPastOk", "")] // I by 15.6.4's composition (twoLayers; O-230 Q2 (a)); kk = 2 with G935's rule R and OwnPointer's pointee test deleted (rule D, PLAN G841)
+    [InlineData("ownerQBad", "")] // I; kk = 2 with G935's rule R
+    [InlineData("ownerQOk", "")] // V
+    [InlineData("intPastScalarOk", "")] // V, the control: w0 never punned, so it carries nothing
+    [InlineData("cpyNoHolderOk", "")] // V, a Copy of a local that carries nothing
+    [InlineData("resultPlainOk", "")] // V
+    [InlineData("sharedSrcOk", "")] // V, a shared-only source (5.2.1 condition 3)
+    [InlineData("cpyReplOk", "")] // V, z = 5 replaces the Copy (15.6 Holders: completely replaced)
+    [InlineData("replOk", "")] // V
+    [InlineData("partWriteBad", "partWriteBad: kk = 2")] // I, a part write ends none (15.6 Holders)
+    [InlineData("rvPastU64HolderBad", "")] // I (O-364 (a): v = t.0 carries t's Loans; 15.6.4's composition); kk = 2 with G935's rule R
+    [InlineData("rvPastU8OwnBad", "")] // I (O-364 (a): a u8 own value at a u8 past layer); kk = 2 with G935's rule R
+    [InlineData("rvPastU8Ok", "")] // V, past a parameter's raw/u8 layer the u8 admits no raw/u8 own value (15.6.4's oneLayer)
+    [InlineData("rvPastU8UniqOk", "")] // V
+    [InlineData("rvPastU8UniqBad", "rvPastU8UniqBad: y@follow = 5")] // I, x itself receives v, which addresses t
+    [InlineData("rvCompRawBad", "rvCompRawBad: kk = 2")] // I, the composition with an Origin-carrying value (O-230 Q2 (a))
+    [InlineData("rvCompTupBad", "rvCompTupBad: kk = 2")] // I
+    [InlineData("rvCompRawOk", "")] // V
+    [InlineData("rvTupPartSafeBad", "rvTupPartSafeBad: a = 2")] // I (15.6 Holders' Copy sentence as written, O-364 (a)): a Scalar part of a Loan-holding Tuple copied, the owner written, the Copy used
+    [InlineData("rvTupPartSafeOk", "")] // V
+    [InlineData("rvFieldSafeBad", "rvFieldSafeBad: a = 2")] // I (O-364 (a)): the same with a struct Field
+    [InlineData("rvFieldSafeOk", "")] // V
+    [InlineData("rvReborrowRetBad", "rvReborrowRetBad: var x = KI.init()")] // I (O-364 (a)): a Scalar read through a reference reborrowed through another holder, returned past x's end
+    [InlineData("rvReborrowUseBad", "rvReborrowUseBad: x.v = 5")] // I (O-364 (a)): the same used after x.v = 5
+    [InlineData("rvReborrowUseOk", "")] // V
+    [InlineData("rvDerefPlainOk", "")] // V, the control: r reaches x only, which carries nothing
+    public void AValueReadFromAHolderCarriesItsLoansWhateverItsType(string form, string expected)
+    {
+        var c = MirBuildTest.Compile(ExposedShapes + FlowForms[form] + "\npublic func main() => ()\n");
         Assert.Equal($"{form}: [{expected}]", $"{form}: [{string.Join("; ", Problems(c, Analyze(c), LoanCodes))}]");
     }
 }

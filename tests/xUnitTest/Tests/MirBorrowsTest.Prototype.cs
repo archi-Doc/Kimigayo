@@ -556,7 +556,9 @@ public sealed partial class MirBorrowsTest
     // (15.1.3), which the payload step is (15.6.2). c80's release may be final (16.3.3), so HRD's drop retains as a uniq/Self call (15.6.4,
     // BU-47's `0 Content store 0`; DECISIONS R4-M150). x and z, which hold no Loan, are exposed holders (the A5 value redesign's U6), so
     // makeRc's result, tied to its argument, reaches no storage the body does not own and slot2's, slot's, z's and x's storage ends
-    // observe no Loan (R4-M120's untracked rule gave that result Φ_E; F2's M2, not due: 15.6.2, 15.6.4).
+    // observe no Loan (R4-M120's untracked rule gave that result Φ_E; F2's M2, not due: 15.6.2, 15.6.4). c84's `res.v`, read through res,
+    // which was Reborrowed through rr and slot, carries slot's exclusive Loan on x (15.6: a read through a reference carries the Loans of
+    // what it reaches) and the returned i32 holds it (the value-flow rule H), so it outlives x (a record added under DECISIONS Q13 rule W).
     [Fact]
     public void TheOuterReplacementCasesKeepTheirVerdicts()
         => Assert.Equal(
@@ -569,6 +571,7 @@ public sealed partial class MirBorrowsTest
                 "c72: m[i][0]@follow@follow = 7", "c74: p.pa@follow@follow = 7", "c75: h@follow.r@follow@follow = 7",
                 "c77: slot@follow = 5", "c79: slot@follow = 5",
                 "c80: h = Kimi.Intrinsics.makeRc(HRD.init(r: slot2@uniq))", "c81: q@follow@follow = 5", "c84: rr = slot2@uniq CallReservationConflict_Kd",
+                "c84: var x = KI.init()",
                 "c85: rr = slot2@uniq CallReservationConflict_Kd", "c86: c@follow = 1", "c87: slot@follow = 5", "c88: arr[j]", "c88: arr[j]@follow = 7",
                 "c90: slot@follow = 5", "c91: t = TTD.init(r: slot2@uniq, c: t.r@follow@follow@uniq)", "c94: slot@follow@uniq"
             ],

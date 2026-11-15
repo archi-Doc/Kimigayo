@@ -3,13 +3,17 @@
 namespace Kimi.Compiler.Mir;
 
 // A5's holders of a view (A3 3): the holder table, E in slot 0, the flow holders, whose states cross heads, then the chain-local ones,
-// with each Loan's reservation holder and named holder mapped to slots. A local is a holder when its case Type may hold a Loan or it is
-// exposed (Holding). A holder a kept Drop past the destruction walk's bound drops has a drop slot right after its own, in its
-// region, whose state is always empty: drop-liveness, the liveness that only such a Drop gives (MirBorrows.Liveness; DECISIONS R4-M153).
+// with each Loan's reservation holder and named holder mapped to slots. A local is a holder when its case Type may hold a Loan, it is
+// exposed (Holding), or a store of the body gives it a value read from a holder (Flowing), the least such set. A holder a kept Drop past
+// the destruction walk's bound drops has a drop slot right after its own, in its region, whose state is always empty: drop-liveness, the
+// liveness that only such a Drop gives (MirBorrows.Liveness; DECISIONS R4-M153).
 // Must not carry, end or check a Loan (MirBorrows.Solve, MirBorrows.Endings, MirBorrows.Checks).
 internal sealed partial class MirBorrows
 {
     private readonly List<(int Slot, int Local)> drops = []; // The view's drop slots, each with its holder's local.
+    private readonly List<int> flowQueue = []; // Flowing's worklist: the holders whose edges are still to follow.
+    private int[] flowFirst = []; // By local: its first edge in flowEdges, -1 for none (Flowing).
+    private int[] flowEdges = []; // Flowing's edges, two entries each: the local a store gives the value, and its source's next edge.
     private int[] slots = []; // Each local's holder slot, -1 for none; E is slot 0.
     private int[] dropSlots = []; // By local: its drop slot, -1 for none; set where the view has drop slots.
     private bool[] reserves = []; // By slot: whether a two-phase Loan is issued into it, its reservation holder.
@@ -30,6 +34,7 @@ internal sealed partial class MirBorrows
             this.slots[i] = this.Holding(i) ? -2 : -1;
         }
 
+        this.Flowing();
         var deep = this.DroppedDeep();
         for (var pass = 0; pass < 2; pass++)
         {
@@ -76,8 +81,92 @@ internal sealed partial class MirBorrows
     // Whether a local is a holder (SPEC 15.6 Holders: a holder carries the Loans of the values stored in every part of it): it is exposed
     // (MirBorrows.Loans' Exposed: a pointer the body formed may write its bytes, so what a write through it stores there, a punned one over
     // its Scalars included, SPEC 5.2, is carried by it, SPEC 15.6 Addresses, 5.2.1 Retained dependencies, 15.6.4), or its case Type may
-    // hold a Loan (Holds). No other local can carry a Loan, so it has no slot.
+    // hold a Loan (Holds): Flowing's seed.
     private bool Holding(int local) => this.Exposed(local) || this.Holds(cases.Type(this.body.Locals[local].Type), out _);
+
+    // The holders closed over the body's value flow (SPEC 15.6 Holders: "A value read, Copied or Moved from a part carries every Loan the
+    // holder carries"; 15.6 Loans: every aggregate, Closure or storage that holds one; a read through a reference carries the Loans of what
+    // it reaches; O-230 Q1 (a), O-359 (a), O-364 (a): a Scalar part's Copy too): a local is one, whatever its Type, when a store of the body
+    // gives it a value read from a holder: an Assign into its own Place (through no borrow or raw Deref, Through) whose rvalue's value is its
+    // operands' (Value: Keeps, or an aggregate, a Closure's environment included), or a returning Call's destination (MirBorrows.Calls'
+    // inputs, the callee operand of a Value callee included), one of the operands a Place rooted at a holder. The least such set over
+    // Holding's: an edge per such store and operand from the operand's root to the destination, then a worklist from the holders, each edge
+    // once, linear in the body. A local no such store reaches carries nothing at every point, so it has no slot.
+    private void Flowing()
+    {
+        var locals = this.body.Locals.Length;
+        MirDataflow.Grow(ref this.flowFirst, locals);
+        Array.Fill(this.flowFirst, -1, 0, locals);
+        var edges = 0;
+        for (var b = 0; b < this.body.Blocks.Length; b++)
+        {
+            ref readonly var data = ref this.body.Blocks[b];
+            for (var s = data.Start; s < data.Start + data.Count; s++)
+            {
+                ref readonly var statement = ref this.body.Statements[s];
+                if (statement is { Kind: MirStatementKind.Assign, Place.Root: >= 0 and var to } && this.slots[to] == -1 && !this.Through(statement.Place))
+                {
+                    var rvalue = statement.Rvalue.Kind == MirRvalueKind.Adapt ? cases.Adapt(statement.Rvalue, out _) : statement.Rvalue;
+                    var end = rvalue.Start + (this.Keeps(rvalue) ? 1 : rvalue.Kind == MirRvalueKind.Aggregate ? rvalue.Count : 0);
+                    for (var o = rvalue.Start; o < end; o++)
+                    {
+                        edges = this.Flows(this.body.Operands[o], to, edges);
+                    }
+                }
+            }
+
+            if (data.Terminator is { Kind: MirTerminatorKind.Call, Target: >= 0, Place.Root: >= 0 and var into } call && this.slots[into] == -1 &&
+                !this.Through(call.Place))
+            {
+                for (var o = call.Start; o < call.Start + call.Count; o++)
+                {
+                    edges = this.Flows(this.body.Operands[o], into, edges);
+                }
+
+                edges = call.Callee.Kind == MirCalleeKind.Value ? this.Flows(call.Operand, into, edges) : edges;
+            }
+        }
+
+        this.flowQueue.Clear();
+        for (var i = 0; i < locals; i++)
+        {
+            if (this.slots[i] == -2 && this.flowFirst[i] >= 0)
+            {
+                this.flowQueue.Add(i);
+            }
+        }
+
+        while (this.flowQueue.Count > 0)
+        {
+            var from = this.flowQueue[^1];
+            this.flowQueue.RemoveAt(this.flowQueue.Count - 1);
+            for (var e = this.flowFirst[from]; e >= 0; e = this.flowEdges[(2 * e) + 1])
+            {
+                var to = this.flowEdges[2 * e];
+                if (this.slots[to] == -1)
+                {
+                    this.slots[to] = -2;
+                    this.flowQueue.Add(to);
+                }
+            }
+        }
+
+        this.Work += this.body.Statements.Length + this.body.Blocks.Length + edges;
+    }
+
+    // Flowing's edge from an operand's root to the local a store gives its value (none from a constant or a static); the edges after it.
+    private int Flows(in MirOperand operand, int to, int edges)
+    {
+        if (operand.Kind == MirOperandKind.Const || operand.Place.Root < 0)
+        {
+            return edges;
+        }
+
+        MirDataflow.Grow(ref this.flowEdges, 2 * (edges + 1));
+        (this.flowEdges[2 * edges], this.flowEdges[(2 * edges) + 1]) = (to, this.flowFirst[operand.Place.Root]);
+        this.flowFirst[operand.Place.Root] = edges;
+        return edges + 1;
+    }
 
     // A holder slot's local, or a drop slot's holder's (the drop list keeps it).
     private int HolderLocal(int slot)
