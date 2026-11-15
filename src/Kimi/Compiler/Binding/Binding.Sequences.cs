@@ -23,7 +23,7 @@ public sealed partial class Binding
         => HirTables.Op(node) == HirOp.PrimitiveOp && node is MemberAccessKoto member ? SequenceMember(member) : BuiltinForm.None;
 
     // SPEC 4.7, 4.6.2, 4.9.5: the metadata member of a sequence a member access names, by its spelling; None for another name.
-    internal static BuiltinForm SequenceMember(MemberAccessKoto source) => (source.Right as IdentifierNameKoto)?.IdentifierName switch
+    private static BuiltinForm SequenceMember(MemberAccessKoto source) => (source.Right as IdentifierNameKoto)?.IdentifierName switch
     {
         "length" => BuiltinForm.Length,
         "isEmpty" => BuiltinForm.IsEmpty,

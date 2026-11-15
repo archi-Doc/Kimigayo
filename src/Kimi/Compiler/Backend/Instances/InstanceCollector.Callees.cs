@@ -82,12 +82,12 @@ internal sealed partial class InstanceCollector
     // K 4.5 row 8 (DECISIONS R5-M30, R5-M74): a callee without a MIR body: the function of an intrinsic, reached by its Item (a call of
     // it is an Intrinsic callee), the target its row names under the Item's Type argument, a part of the Item Type its site made (In), read
     // only for a row that reads one (IntrinsicRow.ReadsTypeArgument, as at an intrinsic call's site, Edge; DECISIONS R5-M136); -1 for
-    // another (an intrinsic whose row reads no Type argument); a function that is no compiler function, its import's item (Imported). An
-    // intrinsic row whose need is TypeArguments (IntrinsicRow.Need) makes each of the call's Type arguments a use at the call first (K 4.8;
-    // DECISIONS R5-M108, R5-M149).
+    // another (an intrinsic whose row reads no Type argument, or WriteLine, whose Body disposition its legacy row serves until R8-W2 d); a
+    // function the compiler does not serve (the Body disposition), its import's item (Imported). An intrinsic row whose need is
+    // TypeArguments (IntrinsicRow.Need) makes each of the call's Type arguments a use at the call first (K 4.8; DECISIONS R5-M108, R5-M149).
     private int Bodyless(MirProgram program, int item, SourceRef subject, BindingSymbol function, Subst? subst)
     {
-        if (function.CompilerFunction == CompilerFunctionKind.None)
+        if (function.Definition.Kind == DispositionKind.Body && function.CompilerFunction != CompilerFunctionKind.WriteLine)
         {
             return this.Imported(item, subject, function);
         }
@@ -118,7 +118,7 @@ internal sealed partial class InstanceCollector
         {
             case CompilerFunctionEffect.Dependent:
                 return -1;
-            case CompilerFunctionEffect.Environment when function.CompilerFunction == CompilerFunctionKind.None:
+            case CompilerFunctionEffect.Environment when function.Definition.Kind == DispositionKind.Body:
                 var key = new MonoKey(MonoKind.Import, default, null, function, 0, null);
                 if (this.Set.Find(key) is >= 0 and var found)
                 {

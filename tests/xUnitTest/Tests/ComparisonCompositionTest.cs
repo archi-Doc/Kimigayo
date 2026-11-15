@@ -537,16 +537,12 @@ public class ComparisonCompositionTest
     private static IEnumerable<CallPlan> Comparisons(Kotonoha module)
         => KotoTree.Walk(module.RootKoto)
             .SelectMany(static x => Enumerable.Range(0, 8).Select(i => CallPlan.Of(x, i)).TakeWhile(static y => y is not null).OfType<CallPlan>())
-            .Where(static x => x is { Target.CompilerFunction: CompilerFunctionKind.BuiltinEquals or CompilerFunctionKind.BuiltinCompare } and
-                { ConformingType: not null });
+            .Where(static x => x is { Target.Definition.Kind: DispositionKind.Shim, ConformingType: not null } &&
+                TyCtxt.Contract(x.Target).LibraryDeclaration is KimiDeclarationId.Equatable or KimiDeclarationId.Comparable);
 
     // The view of a comparison call: its Contract (the built-in target's), Self and mode.
     private static ComparisonNode? View(Compilation c, CallPlan call)
-    {
-        var equality = call.Target.CompilerFunction == CompilerFunctionKind.BuiltinEquals;
-        var contract = c.Library.GetSymbol(equality ? KimiDeclarationId.Equatable : KimiDeclarationId.Comparable)!;
-        return c.Types.Comparison(contract, call.ConformingType!, call.TupleOperator);
-    }
+        => c.Types.Comparison(TyCtxt.Contract(call.Target), call.ConformingType!, call.TupleOperator);
 
     // A node: parts in parentheses, a built-in Type, a witness and its declaring instance, the requirement on a Self, or none.
     private static string Show(ComparisonNode node) => node.Kind switch
@@ -597,7 +593,7 @@ public class ComparisonCompositionTest
         // and its targets are the view's witness leaves, each at the same instance, in walk order.
         static bool Same(Compilation c, CallPlan call, ComparisonNode node)
         {
-            var contract = c.Library.GetSymbol(call.Target.CompilerFunction == CompilerFunctionKind.BuiltinEquals ? KimiDeclarationId.Equatable : KimiDeclarationId.Comparable)!;
+            var contract = TyCtxt.Contract(call.Target);
             var expected = new List<(BindingSymbol Target, Subst Instance)>();
             var leaves = new List<(BindingSymbol Target, Subst Instance)>();
             var requirement = contract.Contract!.OwnRequirement()!;

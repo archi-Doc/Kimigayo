@@ -21,7 +21,7 @@ internal enum MonoKind : byte
     ItemAdapter, // A function item Type's value of a common Function Type (SPEC 7.7.4): its erased Item Type and erased Function Type.
     DropGlue, // The destruction of a value of a Type (SPEC 16.3): its erased Type, one glue of every Function value, or an owning handle's
     // release (InstanceCollector.GlueKey).
-    Builtin, // A compiler function a requirement runs on a Self (SPEC 8.11.3): the function (its kind its CompilerFunction), the erased Self;
+    Builtin, // A shim a requirement runs on a Self (SPEC 8.11.3): the function (its kind its Contract), the erased Self;
     // a comparison's also its ComparisonMode, its node's erased Type at the template and the requesting instance when that has a parameter.
     PropertyWitness, // A standard property witness (SPEC 11.9.2, S2-S4 X14): its Field, the erased Self and the PropertyWitnessKind.
     ObjectDescriptor, // The runtime descriptor of an object payload (IMPL 21.1.3, SPEC 13.6): its erased payload Type.

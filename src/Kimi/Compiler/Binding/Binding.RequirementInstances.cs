@@ -24,10 +24,10 @@ public sealed partial class Binding
         var self = call.Self!;
         var contract = this.InstanceContract(recorded, self, call.Declaring);
         var witness = this.ResolveRequirementWitness(requirement, self, contract, this.EffectPremises(definition));
-        if (witness is { Kind: RequirementWitnessKind.Builtin, Target: { } target } &&
-            target.CompilerFunction is CompilerFunctionKind.BuiltinEquals or CompilerFunctionKind.BuiltinCompare)
+        // A comparison shim, by its requirement's own Contract, whose mapping the plan follows (Binding.PrepareBuiltinTargets).
+        if (witness is { Kind: RequirementWitnessKind.Builtin, Target: { Definition.Kind: DispositionKind.Shim } target } &&
+            requirement.Scope.Owner.BoundSymbol is { LibraryDeclaration: KimiDeclarationId.Equatable or KimiDeclarationId.Comparable } declaring)
         {
-            var declaring = requirement.Scope.Owner.BoundSymbol!; // The comparison's own Contract, whose mapping the plan follows.
             return this.ComparisonPlan(target, self, declaring.LibraryDeclaration!.Value) is { } plan && this.Leaves(plan, into);
         }
 

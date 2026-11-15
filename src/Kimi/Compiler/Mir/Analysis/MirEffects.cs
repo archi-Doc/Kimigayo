@@ -187,7 +187,7 @@ internal sealed partial class MirEffects(TyCtxt types, MirCases cases, MirDatafl
             this.Compared(program, body, contract, types.Comparison(contract, callee.Subst!.Self!, operators: true)!); // The builder's root.
         }
         else if (callee is { Kind: MirCalleeKind.Requirement, Subst: { Self: { } written } subst } && cases.Type(written) is var self &&
-            (callee.Symbol!.CompilerFunction != CompilerFunctionKind.None || !self.IsAbstract))
+            (callee.Symbol!.Definition.Kind != DispositionKind.Body || !self.IsAbstract))
         {
             // Binding's built-in target for its Self, or what a closed Self's witnesses run under the call's Contract reference at the call's
             // own Types and lengths (SPEC 8.6.3): the item keeps the call's substitution in the view, here alone its Self and its
