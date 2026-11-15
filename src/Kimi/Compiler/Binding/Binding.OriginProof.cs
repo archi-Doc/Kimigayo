@@ -572,11 +572,12 @@ public sealed partial class Binding
         return bound;
     }
 
-    // A fit at a value that read its comparisons with the row sink from `start` (comparisonRows): when it holds, outside a trial or a
-    // collected fit, their region conjuncts are the body's rows (AddObligation, the one writer); the segment is then dropped.
-    private void FormComparisonRows(int start, bool holds)
+    // A fit at a value that read its comparisons with the row sink from `start` (comparisonRows): outside a trial or a collected fit, the
+    // region conjuncts of its comparisons that held are the body's rows (AddObligation, the one writer), also when another part of the
+    // fit failed (SPEC 23.1.2: each an independent requirement; a failed comparison kept none, RelationWalk); the segment is then dropped.
+    private void FormComparisonRows(int start)
     {
-        for (var i = start; holds && this.candidateTrials == 0 && !this.collectingFits && i < this.comparisonRows.Count; i++)
+        for (var i = start; this.candidateTrials == 0 && !this.collectingFits && i < this.comparisonRows.Count; i++)
         {
             this.AddObligation(this.comparisonRows[i]);
         }

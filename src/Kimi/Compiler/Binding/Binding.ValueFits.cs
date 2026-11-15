@@ -13,7 +13,7 @@ namespace Kimi.Compiler;
 // - Inputs: the two Types, the use, and the Type relation (RelationWalk, Binding.TypeRelations.Walk.cs), which relates Never only to itself.
 // - Outputs: the verdict and, for FitsTypeAt and CheckTypeUse, the walk's first failure (ComparisonFailure), which a caller
 //   that records the failure passes on (FailMismatch, RecordMismatch); CheckTypeUse records the obligations of a fit whose structure
-//   holds, among them the region conjuncts its comparisons left in the row sink when the whole fit holds (FormComparisonRows).
+//   holds, among them the region conjuncts its comparisons that held left in the row sink (FormComparisonRows).
 // - Invariants: a fit adds no Constraint, reopens no inference and publishes nothing but CheckTypeUse's obligations; nothing below the
 //   root fits by Never (a Type holding Never is an ordinary Type). CheckTypeUse walks the relation once at its root and reads each
 //   part's answer from that walk (RelationWalk.FitPart), and once more at each invariant part the relation meets reversed, in the fit's
@@ -89,15 +89,16 @@ public sealed partial class Binding
     // The relation is walked once, at the root (PLAN G492-a (i)), and its parts (FitPart) answer each part as a walk rooted there in this
     // fit's orientation would; the facts left for a record (RecordComparisonFacts) are those of the part whose failure is the fit's.
     // The use-site fit is a reader of its comparisons' region conjuncts (a Function value's conversion at the value, a literal's element,
-    // a selected call's argument): it forms them as the body's rows when the fit holds. Its walks carry the row sink (comparisonRows), a
-    // reversed part's again too, whose repeated rows the obligations' set takes once (AddObligation).
+    // a selected call's argument): it forms as the body's rows those of its comparisons that held, also when another part failed (SPEC
+    // 23.1.2). Its walks carry the row sink (comparisonRows), a reversed part's again too, whose repeated rows the obligations' set
+    // takes once (AddObligation).
     private bool CheckTypeUse(BoundType actual, BoundType expected, Koto use, out ComparisonFailure failure)
     {
         var pending = this.pendingRelations.Count;
         var rows = this.comparisonRows.Count;
         failure = default;
         var fits = NeverFits(actual) || this.CheckTypeUseWalk(actual, expected, use, out failure);
-        this.FormComparisonRows(rows, fits);
+        this.FormComparisonRows(rows);
         for (var i = pending; i < this.pendingRelations.Count; i++)
         {
             this.pendingRelations[i] = this.pendingRelations[i] with { Destination = expected };

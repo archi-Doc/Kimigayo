@@ -294,7 +294,14 @@ public sealed partial class Binding
         var signature = this.ClosureSignature(actual) ?? this.FunctionItemSignature(actual);
         var rows = this.comparisonRows.Count;
         var fits = this.ErasureFits(actual, expected, node, this.comparisonRows, out var failure);
-        this.FormComparisonRows(rows, fits);
+        if (fits)
+        {
+            this.FormComparisonRows(rows);
+        }
+        else
+        {
+            this.DropComparisonRows(rows); // A Function Item's contract (ContractFits) fails after the rows its earlier conditions left.
+        }
 
         OwnedFact owned = default;
         var shape = signature is null || !ReferenceTypes.StorageMatches(expected, signature); // A fit may adapt past a storage difference.

@@ -254,13 +254,17 @@ public sealed partial class Binding
                 // position the two Function Types relate both ways (SPEC 3.8, 15.3.5): a Callable comparison is oriented (it instantiates
                 // only the implementation's per-call inputs and judges only its well-formedness, SPEC 10.7), so the comparison as written
                 // is followed by the one with the sides exchanged, whose members relate one way since the first related them both ways.
+                // A comparison that fails keeps none of the region conjuncts it left as rows: its failure is its one fact (SPEC 15.6.1,
+                // 23.1.2); one that holds keeps them for the reader, also when another part of the walk fails.
                 var comparison = Comparison(actual, own, expected, instance, InComparison(instance) ? instance.Rows : this.Rows);
+                var rows = comparison.Rows?.Count ?? 0;
                 if (this.FunctionFits(actual, expected, invariant, comparison) &&
                     (!invariant || ReferenceEquals(actual, expected) || this.FunctionFits(expected, actual, false, comparison.Exchanged)))
                 {
                     return holds;
                 }
 
+                comparison.Rows?.RemoveRange(rows, comparison.Rows.Count - rows);
                 _ = !this.ended && this.Keep(this.failure, instance);
                 return false;
             }
