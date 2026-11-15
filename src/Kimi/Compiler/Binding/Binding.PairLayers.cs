@@ -13,9 +13,10 @@ public sealed partial class Binding
     private readonly Dictionary<Koto, SemanticsMask> implicitPairFollows = new(ReferenceEqualityComparer.Instance);
     private int termWalks;
 
-    /// <summary>Gets the steps the walks of one Type's parts took in the latest pass (PLAN G647): a layer followed by OperandTerminal,
-    /// PairSubject, PairTerminal, FormedApplication or SharedReferenceThroughLayers, and a part entered by CollectCallRelations,
-    /// FailedOriginRelation, AddTypeClauseObligations, SolveOmittedOrigins, Occurs or CExchangeable; read by the scaling tests.</summary>
+    /// <summary>Gets the steps the walks of one Type's parts took in the latest pass (PLAN G647): a layer (ref, uniq or pair) followed by
+    /// LayersTerminal, a layer followed by PairSubject, PairTerminal, FormedApplication or SharedReferenceThroughLayers, and a part
+    /// entered by CollectCallRelations, FailedOriginRelation, AddTypeClauseObligations, SolveOmittedOrigins, Occurs or CExchangeable;
+    /// read by the scaling tests.</summary>
     internal int TermWalkWork => this.termWalks;
 
     /// <summary>Decomposes a pair layer (SPEC 13.5.5): the original <c>s/T</c>, stored as the pair's whole Type, an annotated
@@ -200,7 +201,7 @@ public sealed partial class Binding
             kind = ArgumentOperationKind.Borrow;
         }
         else if (!exclusive && target is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref } &&
-            this.SharedReferenceThroughLayers(target, pattern.Components[0], out _) is { } inner)
+            this.SharedReferenceThroughLayers(target, pattern.Components[0], scope, out _) is { } inner)
         {
             // The inner shared reference Copies in every admitted case and keeps only its own dependencies.
             adapted = inner;
@@ -279,7 +280,8 @@ public sealed partial class Binding
     // every case's. PairOrigin (a Place) and SelectLayers (a Pattern path) supply the Place reached and the borrows reaching it.
     private BoundOrigin? PairSlot(BoundType? pair, SemanticsMask admitted, out bool met)
     {
-        met = (admitted & (SemanticsMask.Uniq | SemanticsMask.ObjUniq)) != 0;
-        return (admitted & SemanticsMask.Owner) != 0 || pair is null ? null : this.OuterOrigin(pair);
+        var slot = this.FollowedSlot(pair, admitted, out var shared, out var inPlace);
+        met = !shared;
+        return inPlace ? null : slot;
     }
 }
