@@ -10984,6 +10984,8 @@ resumed by R4-M86 (2026-10-20).
   - `FormSignature` has one caller, `CheckSignatureTypeConstraints`, until R7-C2.
   - Open until R7-V5b (PLAN G588): `VerifyConformance`'s formation of an associated binding stays, though O-54 decides that form valid, because it is also the only judge of a binding-only inline cycle (BU-65, SPEC 6.2). `ProveConformance`'s formation of a constructed subject stays.
   - Rejected: the row at contract matching (BU-120); a revisited conformance as evidence (8.3.3); judging a signature after the conformance inside matching (a second judge); removing the reads with nothing in their place (a Property would supply evidence after its declaration failed, nine `IsVerified` rows); splitting `ValidateAccessor` and keeping the four reads (+27/−27 lines, two reads of one fact); removing S3 here (BU-65's judge, 16 rows).
+  - Superseded in part by R7-M33 (R7-C2e2 e2-5a, 2026-11-15): "Open until R7-V5b (PLAN G588): `VerifyConformance`'s formation of an
+    associated binding stays" ends with S3's removal; its reason, the binding-only inline cycle, is BU-128's since R7-V5b-1.
 - **BU-125 R7-E1 Problem records: two records over one fact vocabulary** (2026-11-07; plan RP3, RP19, §5.1 E1; the owner exception RQ6: one candidate, prototype-first). Binding records problems in `BindingReport`: `BindingProblem(Code, Requirement, SourceRef Subject, Condition)` per check key, its facts `ProblemFact` rows, the vocabulary moved from `MirFact` to Core; `MirProblem` stays. Reason: Binding's key is the check's and supports a retried attempt, MIR's merges views and numbers conditions at `Merged`, so one type needs a mode. A Type-valued fact's `Value` is an index in the report's kept Types, references only; a struct payload boxes per warm pass (measured). A side of a mismatch that is no Type is a closed `MismatchForm` row, an enumeration of Binding's that the vocabulary only names, as `MirStorageTable` is MIR's (an anonymous function with its parameter count, an integer literal, a floating-point literal, a Type proven Position or PositionRange), whose text the adapter owns (`Binding.DiagnosticTypes`), so no check writes text into a fact: `Keep` takes a `BoundType`, and a ratchet holds it (F's ruling on review 1, a new representation). The subject is a `SourceRef`: the recorder's state write is the numbering point; R7-N5 follows (`SourceRef`, or `SyntaxId` within one module's columns). `Record` adds a problem and sets state and slot only as a node's first failure (DIAGNOSTICS rule 4). `Actual`, `Expected`, `Span`, `ActualForm` and `ExpectedForm` are appended after `Cause`, Binding only, with no renumbering; a MIR record carrying one is `InternalInvariant_Kd` (C-103), and `ProblemFactKind` is not an ARCH-closed vocabulary (R4-M92's reading). One-way in data: a problem writes the slot, and no slot value becomes a problem's key, code or facts. Not one-way in control: until a family migrates, its sites read the slot to decide whether to record, which is the first-failure rule kept per site. `CodeOf(node, failure)` is the one table, out of `CountStates`. A failure leaves a node inside a pass through `ClearFailure`, or a snapshot that saves the chain (`PropertyTypeVisitor`); `SyntheticKoto.Resolve` and `Koto.ReplaceAt` stay on the pass reset, since no `Record` reaches them and an edit resets the pass, and `HirTables.Reset` of a try's arms comes before anything binds them (`SemanticsIndexed`). The site of a fact is a node the check read, numbered by `SourceRef.Of` on a rejected program only if no semantic write did; `MinimalEmissionTest.Analyze` asserts that none is. Rejected: a recorder private to Binding (a third record shape), one type with a phase payload, an interned Type id. Temporaries: below.
   - Amended by BU-129 (R7-E1d): the first failure, but a resting `InvalidOrigin` of the node's own clause yields.
   - Superseded in part by BU-159 (2026-11-11, H11b-0 B1): BU-129's amendment above; no owner holds its clause's resting
@@ -19667,6 +19669,52 @@ R8-M* and R9-M* by the stage of the recording unit.
     reach)": the clauses of every kind, at every depth, of the Types the contract or its handed signatures reach.
   - Rejected: a Callable case in the supply walk (a second copy of the depth rule, still spelling-dependent: h3bad); the signature's
     Types only (h3bad, h4bad); a fixed depth; a per-clause handed set with Self abstracted (a new representation).
+- **R7-M33 One nominal re-entry rule at the solver; evidence about an instance rests on its formation** (Front, 2026-11-15;
+  R7-C2e2 e2-5a with R7-C2b b2 and R7-V5b-2; PLAN G588, G629; the owner's O-54 (a), O-69 (a), O-78 (a) (verbatim
+  「aでお願いいたす」), O-265 (a), O-275 (a), O-288 (a), O-325 (a); supersedes in part BU-124). SPEC 8.3.1, 8.3.3, 8.6.1, 8.6.3,
+  15.3.5.
+  - Rule: a nominal obligation `T is C` is open while `ResolveConformance` proves it; a request reaching an open obligation reads no
+    evidence (Unknown). The key is the obligation (Type, Contract), not the requester's scope.
+  - One member, `InstanceFormation(type, scope)`: evidence about an instance of a generic declaration rests on the declaration's
+    Constraints at its arguments (8.6.1), proven through the rule. Readers: `ResolveConformance`; the capability engine at each
+    capability node of an instance (`InstanceCapability`); `StorageFormation` for the constrained instances a declaration's own
+    storage writes. The formation it reads is inductive.
+  - **A capability read under an open obligation is not kept (SPEC 8.3.3 Finality).** The solver counts the re-entry reads of the
+    obligations now open (`reentryReads`: the open set's entry and a path being verified each count theirs; an obligation's reads leave
+    the count when its proof ends). The capability engine marks a work whose evaluation saw the count grow `Pending` and, when the
+    outermost request ends, returns it and every work that read its verdict to the initial state (`ForgetPendingCapabilities`), so
+    declaration order never decides a capability. Temporary carrier; removal: R7-C2e2 e2-5b, with e2-3's `Completion` on the answer.
+    (C-315 B1: without it a valid program was rejected whenever `S` was declared before `Wrap`.)
+  - **Stored instances are formed once, in the declaration's formals (SPEC 15.3.5 Fixed points, 8.3.3 Finality, 8.3.1).** Owned has a
+    derivation work per declaration, as Copy has (`StorageFormation`): the formation of each constrained instance the declaration's
+    storage writes (`ComponentSummary.Instances`), as written under its own premises, and the derivation works of the declarations its
+    storage names (`ComponentSummary.Components`). `SummaryCapability` of `D<A>` reads that one work; the instance adds only its own
+    formation (`InstanceCapability`). Nothing is mapped from a component, nothing grows, no limit is made at a declaration.
+  - **The capability engine's fixed point (SPEC 8.3.3 Recursion and Limits, 15.3.5).** Every work starts Unknown and each evaluation
+    is monotone in the information order, so a verdict only rises (the inductive step). When the queue drains, the request's residual
+    Owned works of a Type with structure left Unknown are assumed Proven (the coinductive step): an assumption is read only by another
+    assumed work, at the obligation depth its evaluation began (the open set's obligations plus the conformance verifications in
+    progress: one boundary for both Recursion guards); the greatest set that stays Proven is committed and the inductive step resumes.
+    A read of a work never evaluated voids the step. O(N (N + M)) evaluations, one verdict in any order. Its cost on the chain and ring
+    workloads (RP8 T-261, about 10% warm) is accepted by the owner's O-325 (a) (verbatim 「O-325 a」).
+  - **A work's Cause is settled after the verdicts.** The change test compares the Result alone; then each Unknown or Error work takes
+    the least Cause by a fixed key (source, position, syntax id, kind, then the same key along `Next` and `ReentrySite`) among its own
+    and those of the works it read at its verdict: a function of the settled verdicts, at most K changes per work.
+  - Temporary: `BoundConformancePath.Checking` stays the second guard of 8.3.3 at a path being verified (a declaration's obligation for
+    every instance cannot share the instance key without one answer for both); it counts toward the one obligation depth; removal:
+    R7-C2e2 e2-5b, with e2-3's carriers.
+  - Deleted: `conformanceQueries`; `ResolveConformance`'s inline instance test; S3, `VerifyConformance`'s formation of each associated
+    binding and its inference inputs (O-54 (a): the binding's Type is judged where written, BU-124's judge, which reaches imported and
+    nested written Types, e2-5a0); R2.3's restart of Proven-start readers.
+  - Supersedes in part BU-124 ("Open until R7-V5b: `VerifyConformance`'s formation of an associated binding stays"; its reason, the
+    binding-only inline cycle, is BU-128's since V5b-1).
+  - Rejected: V5b's `InstanceAllowed` at two readers split by Contract kind (B5); a re-entry guard per reader; the requester's scope in
+    the key; an inductive capability engine (15.3.5); keeping S3 for bound bindings; reading every non-final node of a running
+    capability fixpoint as pending (16 valid closed-clause rows rejected); mapping components' instances under `ProjectionBound` and
+    the Family rule; ending the capability epoch when an obligation closes; caching no work evaluated inside a proof; a static test for
+    an expanding argument in the summary's walk (one form; growth through two declarations escapes it); a located limit for a growing
+    stored instance (a proof exists: the formation in the formals); R2.3's restart (it rotates, review-r2 B2); the first Cause read
+    (rotates after the verdicts settle, review 3 B1); a tie-break by creation order (depends on the check order).
 - **R8-M1 The representation structs and their Place contract** (owner, 2026-11-07, verbatim 「推奨の内容でOKです。処理を継続してください。」,
   on O-41 (a) and O-43 (A); R8-R1a; prototype R8-L0p; supersedes the two plan rows below) IMPL 21.1.3, SPEC 5.2, 5.5, 5.7.
   - Adopted: `Storage.ArrayRepr<T>`, `Storage.SliceRepr<T>` and `Storage.StringRepr`, internal `#Layout("C")` structs of the Kimi
