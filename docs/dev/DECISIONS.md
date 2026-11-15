@@ -19886,6 +19886,11 @@ R8-M* and R9-M* by the stage of the recording unit.
     Middle T-281, T-290; the Back its own (the board's T rows of 2026-11-15 20:2x).
   - Rejected: builds during a slot on separate cores (option 4: memory bandwidth and cache interference would widen the A′/A spread,
     unmeasured); keeping per-unit slots (above).
+  - Amended by K (2026-11-16, after W-229): the window's slot runs after its Session and A5 oracle, and from the window's open until
+    the slot's CLOSED line no new heavy run starts. Run before the Session, the slot's drain waited for heavy runs that started
+    before the window (W-229: a Session of over three hours) and blocked every build meanwhile; run after it, the window's Session
+    overlaps them. A unit beyond a bound then leaves the window with one more Session, which RP8's record says is rare (W-228,
+    W-229: none).
 - **R8-M1 The representation structs and their Place contract** (owner, 2026-11-07, verbatim 「推奨の内容でOKです。処理を継続してください。」,
   on O-41 (a) and O-43 (A); R8-R1a; prototype R8-L0p; supersedes the two plan rows below) IMPL 21.1.3, SPEC 5.2, 5.5, 5.7.
   - Adopted: `Storage.ArrayRepr<T>`, `Storage.SliceRepr<T>` and `Storage.StringRepr`, internal `#Layout("C")` structs of the Kimi
