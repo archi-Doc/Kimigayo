@@ -259,7 +259,7 @@ public sealed partial class Binding
     private CandidateApplicability FitComposite(Koto part, Koto node, BoundType type, BindingScope scope, out BoundArgumentOperation operation)
     {
         var borrow = type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref };
-        var valueType = borrow ? type.Components[0] : type;
+        var valueType = ExpectedTypeOf(type);
         var first = this.positionClasses.Count;
         var result = this.ProbeAggregateArgument(node, valueType, scope);
 
@@ -269,7 +269,7 @@ public sealed partial class Binding
         // sources are bound at U and its one value is borrowed here, since a waited source has no borrow row at `ref/U`
         // (BindWaitedSources; the value is made once at the join's position, which R7-I2 d's position source plans). So a join's fill,
         // mixed range or waiting call source still takes U's parts: an open class 1 row of that unit, not this rule's.
-        var own = borrow && this.KindOf(node) == PartKind.Aggregate && this.TemporaryTarget(node, type, scope) is null;
+        var own = borrow && this.KindOf(node) == PartKind.Aggregate && this.Materialization(node, type, scope) is null;
         if (result == CandidateApplicability.Applicable && own && !this.HasTypeWithoutExpectation(node, valueType, scope))
         {
             result = CandidateApplicability.Inapplicable;
@@ -290,27 +290,8 @@ public sealed partial class Binding
         return result;
     }
 
-    // SPEC 10.2 row 2, 12.3.1, 14.9.2 step 3 (PLAN G585; the owner's O-201 (1) (a), (2) (a)): the Type U of the owner temporary that a
-    // source at `ref/U` is, materialized once and shared-borrowed, the one rule of every position (an argument's fit, BindAndAdaptNode
-    // at any expected Type, the evidence walk, a value call's solve): a Tuple or array literal (a fill is none, 4.3.3), an untyped literal
-    // or a literal-only expression (12.3; a mixed range is none, 4.6.2), or an unbound selection, `do` or `loop` with such a source,
-    // directly or nested (its survey), whose value is the one temporary at its position. The source is fitted to U as at an expected U,
-    // so a misfit is its own record at U; a call's fit tests it (FitLiteral). A form that delivers its operand (a label, an expression
-    // body) passes the position to it; null at any other Type or part.
-    private BoundType? TemporaryTarget(Koto part, BoundType? type, BindingScope scope)
-    {
-        var core = KotoHelper.UnwrapParentheses(part);
-        if (type is not { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref, Components: [var target] } || DeliveredOperand(core) is not null)
-        {
-            return null;
-        }
-
-        return core is TupleLiteralKoto { Elements.Count: > 0 } or ArrayLiteralKoto { FillLength: null } || IsUnfittedLiteral(core) ||
-            (core.BoundType is null && ControlFlowExpression(core) is { } join && this.SurveyResult(join, scope).Literal) ? target : null;
-    }
-
     // SPEC 10.2.1, 12.3.1, 4.3.3, 4.6.2 rules 2 and 3 (PLAN G585, K's K2 and K3): a composite at `ref/U` that is no temporary of U
-    // (TemporaryTarget: a fill, a mixed range) takes nothing from U: it is typed with no expected Type, as binding it with none types it
+    // (Materialization: a fill, a mixed range) takes nothing from U: it is typed with no expected Type, as binding it with none types it
     // (BindAndAdaptNode, a let), and fits only where that Type is U. Whether `part` has the Type `type` so, read only, where the probe
     // fitted its shape and parts (ProbeAggregateArgument): a Literal part at any depth keeps its default (PartDefault), a literal-only
     // boundary takes its other boundary's Type, else i32 (OtherBoundaryType); a typed, waiting or failed part is the probe's.
@@ -331,7 +312,7 @@ public sealed partial class Binding
         var elements = core is TupleLiteralKoto tuple ? tuple.Elements : ((ArrayLiteralKoto)core).Elements;
         for (var i = 0; i < elements.Count; i++)
         {
-            if (ChildPattern(core, i, type) is not { } element || !this.HasTypeWithoutExpectation(elements[i], element, scope))
+            if (ExpectedChild(core, i, type) is not { } element || !this.HasTypeWithoutExpectation(elements[i], element, scope))
             {
                 return false;
             }
@@ -346,7 +327,7 @@ public sealed partial class Binding
 
     private CandidateApplicability FitLiteral(Koto part, Koto node, BoundType type, BindingScope scope, out BoundArgumentOperation operation)
     {
-        if (this.TemporaryTarget(node, type, scope) is { } target && this.FitsLiteralPart(node, target, scope))
+        if (this.Materialization(node, type, scope) is { } target && this.FitsLiteralPart(node, target, scope))
         {
             // SPEC 10.2: a literal owner temporary is fitted to T, materialized once and shared-borrowed.
             var literalBorrow = this.types.Intern(BoundTypeKind.Semantics, null, SemanticsKind.Ref, [target], origin: this.PlaceOrigin(node));

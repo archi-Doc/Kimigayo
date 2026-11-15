@@ -74,7 +74,7 @@ public sealed partial class Binding
         => node.Parent is { } parent && (ReferenceEquals(DeliveredOperand(parent), node) || CallableParts(parent) is not null) ? parent : null;
 
     // Each waiting callable of the part at an F of the owner, in source order: the part itself, a part of its aggregate at that part's
-    // position (CallableParts, ChildPattern), or a result of a control-flow part its call classifies at the part's own position
+    // position (CallableParts, ExpectedChild), or a result of a control-flow part its call classifies at the part's own position
     // (ComposedJoin; DECISIONS BU-43). False when the taker stops.
     private bool TakeWaiting<T>(Koto part, BoundType pattern, Koto owner, in T taker)
         where T : IWaitingTaker, allows ref struct
@@ -102,7 +102,7 @@ public sealed partial class Binding
         var parts = CallableParts(aggregate);
         for (var i = 0; parts is not null && i < parts.Count; i++)
         {
-            if (ChildPattern(aggregate, i, pattern) is { } position && !this.TakeWaiting(parts[i], position, owner, taker))
+            if (ExpectedChild(aggregate, i, pattern) is { } position && !this.TakeWaiting(parts[i], position, owner, taker))
             {
                 return false;
             }

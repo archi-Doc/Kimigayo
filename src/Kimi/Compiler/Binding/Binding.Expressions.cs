@@ -131,12 +131,6 @@ public sealed partial class Binding
         return literal.TryGetIntegerMagnitude(out var magnitude) && ScalarTypes.TryLiteral(type, magnitude, negative, out _);
     }
 
-    // SPEC 8.7.4: a symbolic Type proven PrimitiveInteger has the built-in integer operators; each instance uses the
-    // operations of its concrete Type.
-    // A shared literal argument constructs an owner temporary before acquiring its borrow.
-    private static BoundType LiteralInputType(BoundType parameter)
-        => parameter is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref, Components: [var referent] } ? referent : parameter;
-
     private static BoundType? Complete(Koto node, BoundType? type)
     {
         node.BoundType = type;
@@ -250,7 +244,7 @@ public sealed partial class Binding
         {
             actual = this.DecideWaiting(node, waited, expected);
         }
-        else if (this.TemporaryTarget(node, expected, scope) is { } temporary)
+        else if (this.Materialization(node, expected, scope) is { } temporary)
         {
             actual = this.BindNodeCore(node, scope, temporary);
             if (actual is null && node.BindingFailure == BindingFailure.None && this.prerequisites.ContainsKey(node))

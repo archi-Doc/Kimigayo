@@ -176,7 +176,7 @@ public sealed partial class Binding
             var trial = binding.infer.Snapshot();
             try
             {
-                return binding.Infer(LiteralInputType(memberPattern), shape, this.SlotOwner, this.Frame);
+                return binding.Infer(ExpectedTypeOf(memberPattern), shape, this.SlotOwner, this.Frame);
             }
             finally
             {
@@ -391,7 +391,7 @@ public sealed partial class Binding
 
             if (this.Binding.SubstituteType(pattern, this.SlotOwner, this.Types, this.Lengths) is { } fixedType)
             {
-                if (this.Binding.TemporaryTarget(literal, fixedType, this.Scope) is not null)
+                if (this.Binding.Materialization(literal, fixedType, this.Scope) is not null)
                 {
                     this.InferTemporary(pattern, literal);
                 }
@@ -429,7 +429,7 @@ public sealed partial class Binding
             if (pattern is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref })
             {
                 this.InferTemporary(pattern, part);
-                pattern = pattern.Components[0];
+                pattern = ExpectedTypeOf(pattern);
             }
 
             var source = KotoHelper.UnwrapParentheses(part);
