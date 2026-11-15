@@ -88,7 +88,7 @@ public class Utf8ConsoleTest
         Assert.Equal($"alloca {{ [0 x i8], [{Encoding.UTF8.GetByteCount(text)} x i8] }}, align 1", region.Shape);
     }
 
-    // SPEC 22.10.3, 22.10.5, rule L (R8-W2 design §4b): a direct line's FixedBuffer adapter (kind 0) carries a literal deferred before a
+    // SPEC 22.10.3, 22.10.5, rule L (R8-W2 design §4b): a direct line's FixedBuffer adapter (the Fixed tag) carries a literal deferred before a
     // value, which the value's reservation prepends (the shared tail), for each bounded kind other than an integer, and in a generic body's
     // fixed arm (T = bool): the exact text, so a dropped pending literal fails, and no allocation.
     [Trait("Purpose", "Allocation")]
