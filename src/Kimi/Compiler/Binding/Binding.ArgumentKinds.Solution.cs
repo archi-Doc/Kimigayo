@@ -188,8 +188,8 @@ public sealed partial class Binding
         }
 
         // J2 (SPEC 10.5.1, 10.8, 15.3.6; the owner's O-358 (a), O-362 (a), F's ruling 3; PLAN G936): a callee variable that evidence
-        // names only at covariant positions and a position without evidence also names, neither inside a Function Type
-        // (CollectPositionNames), is an Origin variable that the waiting part's check bounds as well as the evidence's fit, so the call
+        // names only at covariant positions and a position without evidence also names, neither inside a Function Type nor read by a
+        // Constraint of the callee (CollectPositionNames; O-368 (a)), is an Origin variable that the waiting part's check bounds as well as the evidence's fit, so the call
         // opens it as its region; each relation is then judged after selection at its own source (JudgeSelectedCall, the waiting part's
         // completion, the uses of the result) and ownership analysis solves the region with the body's other regions: with covariant
         // uses exactly the meet of the bounds (SPEC 15.2.2). Such a Type slot, bound without an invariant binding and fixed by no

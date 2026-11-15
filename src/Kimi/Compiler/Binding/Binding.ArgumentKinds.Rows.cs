@@ -202,6 +202,36 @@ public sealed partial class Binding
         {
             this.AddPositionNames(receiverPattern, Contribution.Evidence, solution, ref waiting, ref covariant, ref blocked);
         }
+
+        // O-368 (a): a variable that a Constraint of the callee reads is judged by its proof from premises (SPEC 8.3, 10.1 step 5), which
+        // reads no bound of a region, so it keeps the evidence's binding (`T is Owned`, `F is Callable<() -> T>`).
+        foreach (var clause in solution.Binder is FunctionKoto callee ? callee.TypeConstraints : [])
+        {
+            if (clause is IsKoto { BoundConstraint: { } constraint })
+            {
+                this.AddConstraintNames(constraint, solution, ref blocked);
+            }
+        }
+    }
+
+    // The callee variables a Constraint's Types name (its subject, its required Type, its operands'), all into `blocked`.
+    private void AddConstraintNames(BoundConstraint? constraint, in SlotSolution solution, ref SlotSet blocked)
+    {
+        if (constraint is null)
+        {
+            return;
+        }
+
+        foreach (var type in (ReadOnlySpan<BoundType?>)[constraint.Subject, constraint.RequiredType])
+        {
+            if (type is not null)
+            {
+                this.AddNames(type, ContractPolarity, solution, ref blocked, ref blocked, ref blocked);
+            }
+        }
+
+        this.AddConstraintNames(constraint.Left, solution, ref blocked);
+        this.AddConstraintNames(constraint.Right, solution, ref blocked);
     }
 
     private void AddPositionNames(BoundType pattern, Contribution contribution, in SlotSolution solution, ref SlotSet waiting, ref SlotSet covariant, ref SlotSet blocked)
