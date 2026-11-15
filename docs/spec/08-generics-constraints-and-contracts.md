@@ -503,7 +503,7 @@ One implementation may satisfy several requirements, including requirements of d
 | Access | Usable throughout the conformance's domain ([§9.4.6](09-names-signatures-and-access.md#946-conformance-accessibility)). |
 | Context and Effects | No stronger calling context; a safe requirement never needs unsafe. No effect outside the applicable bounds ([§8.11](#811-effect-bounds)). |
 
-Bounds are checked against each implementation's effect summary ([§15.6.4](15-ownership-and-lifetime-analysis.md#1564-calls)), with destruction as in [§16.3.3](16-scope-exit-and-destruction.md#1633-handles-and-object-release); an effect the summary cannot classify is a conflict, never an empty effect. Bounds are checked when [§8.11.3](#8113-checking-and-use) states. Origin contracts use [§15.3.7](15-ownership-and-lifetime-analysis.md#1537-contract-comparison). Compatibility inserts no conversion, Copy, Borrow or erasure, and a failure is a conformance error, never a reason to try another implementation. Properties and accessor witnesses follow [§11.9](11-properties.md#119-contract-property-requirements) and [§12.7](12-expressions.md#127-object-receiver-compatibility). An associated-Type binding's Type is judged where it is written, after the conformance holds; a bound the Contract states on the associated Type stays an obligation of the conformance.
+Bounds are checked against each implementation's effect summary ([§15.6.4](15-ownership-and-lifetime-analysis.md#1564-calls)), with destruction as in [§16.3.3](16-scope-exit-and-destruction.md#1633-handles-and-object-release); an effect the summary cannot classify is a conflict, never an empty effect. Bounds are checked when [§8.11.3](#8113-checking-and-use) states. Origin contracts use [§15.3.7](15-ownership-and-lifetime-analysis.md#1537-contract-comparison). Compatibility inserts no conversion, Copy, Borrow or erasure, and a failure is a conformance error, never a reason to try another implementation. Properties and accessor witnesses follow [§11.9](11-properties.md#119-contract-property-requirements) and [§12.7](12-expressions.md#127-object-receiver-compatibility).
 
 ```kimi
 contract Maker<T>
@@ -525,6 +525,37 @@ struct S
     public func read(self: ref/Self) -> i32 => 1    // Infers Source.Element is i32.
     public func take(value: Self.Element) -> () => ()
     public func take(value: i32) -> () => ()        // Error: duplicate of the previous take.
+```
+
+Forming a Type written in a requirement's or an implementation's signature, or in an associated-Type binding, is no compatibility
+obligation: the Constraints its formation needs ([§8.3](#83-constraint-proof)) are proven where it is written, after the conformance
+holds, and its Origin well-formedness follows [§15.6.1](15-ownership-and-lifetime-analysis.md#1561-origin-relations-and-well-formedness).
+A bound the Contract states for an associated Type ([§8.5.1](#851-declaration-and-specification)) stays an obligation of the
+conformance; evidence for an instance of a generic Type rests on that instance's Constraints ([§8.6.1](#861-conformance-declarations-and-identity)),
+so a bound whose evidence needs the conformance being verified supplies none ([§8.3.3](#833-recursion-and-finality)).
+
+```kimi
+contract K
+contract C
+    associate Item is K
+
+struct Box<T>
+    T is C
+    Self is K
+
+struct S
+    Self is C                    // Error: Box<S> is K needs S is C, the conformance being verified.
+    associate C.Item is Box<S>
+
+contract D
+    associate Item
+
+struct Cell<T>
+    T is D
+
+struct R
+    Self is D                    // Valid: Cell<R> is judged where it is written, after R is D holds.
+    associate D.Item is Cell<R>
 ```
 
 ### 8.6.4. Calls through requirements
