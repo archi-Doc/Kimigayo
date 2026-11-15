@@ -10,7 +10,8 @@ namespace Kimi.Compiler.Mir;
 // Input: a Call terminator; for a callee's contract Binding's retention (TyCtxt.Retains over the callee's declaration and Subst, an
 // intrinsic's library declaration included, or a Value callee's declared signature) and the intrinsic table's retained operand beyond a
 // declaration (MirDescriptors); a default template's call (MirCalleeKind.Fn, Arg > 0) needs neither.
-// Output: Planned, in reused scratch (Plan: the same with PD13's hold): the result's kinds by operand position (resultKinds) and whether it is untied, the contract's
+// Output: Planned, in reused scratch (Plan: the same with PD13's hold; MirBorrows.Holders reads the result's kinds before the forward
+// solve): the result's kinds by operand position (resultKinds) and whether it is untied, the contract's
 // retention whose Writes the Call stores through (planned), its slots' operand positions (slotPositions) and the outputs the call writes only
 // where their receiver refers to (its referent stores, CallRetention.ReferentStores, by position); Retaining, the CallRetention of a
 // callee's contract; Broken, a Value call whose declared signature does not number its operands; Cover, a written input's covering inputs

@@ -88,10 +88,11 @@ internal sealed partial class MirBorrows
     // holder carries"; 15.6 Loans: every aggregate, Closure or storage that holds one; a read through a reference carries the Loans of what
     // it reaches; O-230 Q1 (a), O-359 (a), O-364 (a): a Scalar part's Copy too): a local is one, whatever its Type, when a store of the body
     // gives it a value read from a holder: an Assign into its own Place (through no borrow or raw Deref, Through) whose rvalue's value is its
-    // operands' (Value: Keeps, or an aggregate, a Closure's environment included), or a returning Call's destination (MirBorrows.Calls'
-    // inputs, the callee operand of a Value callee included), one of the operands a Place rooted at a holder. The least such set over
-    // Holding's: an edge per such store and operand from the operand's root to the destination, then a worklist from the holders, each edge
-    // once, linear in the body. A local no such store reaches carries nothing at every point, so it has no slot.
+    // operands' (Value: Keeps, or an aggregate, a Closure's environment included), or a returning Call's destination, whose operands are
+    // the inputs its result record retains (Binding's retention, 15.6.4: decided per argument; MirBorrows.CallRows' Planned, a call
+    // receiver input at the callee operand), one of the operands a Place rooted at a holder. The least such set over Holding's: an edge per
+    // such store and operand from the operand's root to the destination, then a worklist from the holders, each edge once, linear in the
+    // body. A local no such store reaches carries nothing at every point, so it has no slot.
     private void Flowing()
     {
         var locals = this.body.Locals.Length;
@@ -118,12 +119,14 @@ internal sealed partial class MirBorrows
             if (data.Terminator is { Kind: MirTerminatorKind.Call, Target: >= 0, Place.Root: >= 0 and var into } call && this.slots[into] == -1 &&
                 !this.Through(call.Place))
             {
-                for (var o = call.Start; o < call.Start + call.Count; o++)
+                _ = this.Planned(call);
+                for (var p = 0; p <= call.Count; p++)
                 {
-                    edges = this.Flows(this.body.Operands[o], into, edges);
+                    if (this.resultKinds[p] != RetentionKind.None)
+                    {
+                        edges = this.Flows(p < call.Count ? this.body.Operands[call.Start + p] : call.Operand, into, edges);
+                    }
                 }
-
-                edges = call.Callee.Kind == MirCalleeKind.Value ? this.Flows(call.Operand, into, edges) : edges;
             }
         }
 
