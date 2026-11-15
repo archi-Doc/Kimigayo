@@ -19173,6 +19173,8 @@ R8-M* and R9-M* by the stage of the recording unit.
     - Amended by R7-M21 (the owner, 2026-11-11): an open-issue fix books no timing slot; timing stays for a fix that changes a
       hot path's complexity or per-use work, a back unit's generated code and a plan unit; a checkpoint every fifth landed
       window watches the sum.
+    - Amended by R7-M36 (the owner, 2026-11-15): a timed unit is measured in its window's one slot on the window's merge, alone only
+      beyond a bound.
   - RP13: prototype first for every unit; a Minor or deletion unit's prototype is its reproducer.
   - RP14: a unit that changes an A5 verdict, or adds or changes a library body, runs the full mir ledger before its review and adds no
     blocking row (until H10); after H10 the generated gate, the A5 class set and `MirCensusTest`.
@@ -19496,6 +19498,8 @@ R8-M* and R9-M* by the stage of the recording unit.
   - Amended 2026-11-14 (the owner's O-270 (a)): the pending checkpoints (3's confirmation and 4-7, W-179 to W-204) run as one
     cumulative checkpoint, A = W-179's 3f391cb35, B = W-208's 3bcbe1ed6, with (3)'s harness and RP8's bounds; a stop is bisected
     with the per-checkpoint pairs; the cadence then returns to one slot after every fifth landed window.
+  - Amended by R7-M36 (the owner, 2026-11-15): (2)'s timing is the window's one slot on its merge; a unit is timed alone only when
+    the window is beyond a bound, in one slot shared with the window's other timed units.
 - **R7-M22 A behaviour-preserving R7 unit rests on the deterministic checks and the checkpoints** (owner, 2026-11-12, in the
   Coordinator's dialog, verbatim 「C. 動作を変えない R7 単位は、単位ごとの RP8 計時をやめる。のみ適用お願いします。」, adopting option C alone of the Coordinator's four
   proposals for R7 after R8 and R9; amends R7-M21 (2); plan revision 63).
@@ -19512,6 +19516,8 @@ R8-M* and R9-M* by the stage of the recording unit.
   - Not adopted (the owner chose C alone): the streams of R7 per session, the delegation of R7 design beyond Q18, the seat caps
     after R8 and R9, and a first Binding-file split stage.
   - With the decision no booked slot was released: the one booked R7 slot, T-168 (R7-C3a), is R7's core and changes behaviour.
+  - Amended by R7-M36 (the owner, 2026-11-15): the Kept per-unit timing of R7's behaviour-changing units and of R8's and R9's units
+    is the window's one slot on its merge.
 - **R7-M23 `UnionCovered` reads SPEC 9.4.2's empty intersections** (2026-11-12; R7 open-issue lane, PLAN G610; Major; no design
   review, F's ruling; extends R7-M10 and R7-M15, supersedes neither) SPEC 9.4.1, 9.4.2, 9.4.6.
   - Rule: `Access(a) ∩ Access(b)` is inside a union U of the member when one level of a's or b's chain has every atom in U (R7-M10),
@@ -19844,6 +19850,29 @@ R8-M* and R9-M* by the stage of the recording unit.
     polarity, never as evidence.
   - Rejected: the check inside `ProveConformance`.
   - A member with an argument decides nothing until c2-4 (G853, N7).
+- **R7-M36 RP8 per window: one slot measures a window's merge, and a unit is timed alone only beyond a bound** (owner, 2026-11-15,
+  in the Coordinator's dialog, verbatim 「計時スロットの改善策 1と2と3の適用をお願いします。」, adopting options 1-3 of the Coordinator's four; amends
+  R7-M3's RP8, R7-M21 (2) and R7-M22's Kept per-unit timing; plan revision 86).
+  - Rule: a unit that R7-M21 (2) times (a fix whose design review names a hot path's complexity change or added per-use work, a back
+    unit that changes generated code, a behaviour-changing unit of the R7, R8 or R9 plan) books no slot of its own. After a window's
+    Session and A5 oracle, K runs one slot on the window's merge: A = the window's dev base, B = the merge, A′ = A's byte copy, with
+    the standard suite (the O2 corpus A/B with R5-M147's address-matched control; the O0 record; Bind, Analyze and Generate, cold
+    and warm, on Hello, Milestone26 and Interpolation; cold and warm bytes) and every unit-specific kernel its units' Q rows name.
+    RP8's bounds apply to the window: within them every unit of the window passes; beyond one, the window's timed units are measured
+    one by one in one slot that shares A and A′, and the unit beyond the bound leaves the window or goes to the owner as RP8 states.
+  - Shared slots (option 3): units measured separately (a window beyond a bound, a unit-specific A/B) share one slot's A and A′.
+  - Order (option 1): W-228 opened before the remaining booked slots, right after T-274 (R8-W2 b2-2's RP8, already started).
+  - Kept: RP8's bounds; R7-M21 (1)'s deterministic gates and (3)'s checkpoint after every fifth landed window; a unit measured
+    before this decision keeps its result (G800 T-260, G881 T-272, b2-1 T-273, e2-3a T-277, G891 T-267, b2-2 T-274).
+  - Reason: per-unit slots ran back to back (seven from 17:11 to 19:48, twelve more booked before W-228, about four to five hours),
+    and `quiet_guard.py` refuses every build while a slot is pending or started, so implementers and windows waited behind them; in
+    this turn two units reached a bound (b2-1, accepted by the owner's O-354 (a); W3's borderline cold Bind).
+  - Risk accepted: a unit's gain can hide another's loss in one window; the checkpoint and the stage exit's comparison (plan §10.1
+    item 3) see the sum.
+  - With the decision the sessions released their booked unit-RP8 slots: the Front T-284, T-285, T-287, T-288, T-289, T-294; the
+    Middle T-281, T-290; the Back its own (the board's T rows of 2026-11-15 20:2x).
+  - Rejected: builds during a slot on separate cores (option 4: memory bandwidth and cache interference would widen the A′/A spread,
+    unmeasured); keeping per-unit slots (above).
 - **R8-M1 The representation structs and their Place contract** (owner, 2026-11-07, verbatim 「推奨の内容でOKです。処理を継続してください。」,
   on O-41 (a) and O-43 (A); R8-R1a; prototype R8-L0p; supersedes the two plan rows below) IMPL 21.1.3, SPEC 5.2, 5.5, 5.7.
   - Adopted: `Storage.ArrayRepr<T>`, `Storage.SliceRepr<T>` and `Storage.StringRepr`, internal `#Layout("C")` structs of the Kimi
