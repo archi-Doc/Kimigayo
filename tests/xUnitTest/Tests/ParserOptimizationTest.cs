@@ -249,30 +249,35 @@ public class ParserOptimizationTest
 
     // SPEC 22.1, IMPL 21.3.4 (R8-G1 G1-5, the Body omission): in the Kimi library a function or constructor carrying `#Intrinsic` or
     // `#Unsupported`, or a constructor carrying `#Lang` (a linked constructor), may omit its Body without a record, and a block after its
-    // header with only its clauses (SPEC 7.5's leading region) is no Body; every other declaration needs its Body. In a user source those
-    // Attributes are unknown, so the missing Body keeps its record. Such a constructor with a body keeps it
-    // (ALibraryConstructorTakesOnlyTheImplementationAttributes).
+    // header with only its clauses (SPEC 7.5's leading region) is no Body; a block holding an executable item stays its Body. Every other
+    // declaration needs its Body, and its block is that Body, clauses only or not (SPEC 7.5, 14.2.1): a library declaration that does not
+    // omit, and a user declaration, whose implementation Attributes are unknown, so its missing Body keeps its record. Probe is generic so
+    // that a constructor's clause is rooted in the declaring Type's parameter (SPEC 7.5).
     [Theory]
-    [InlineData(true, "#Intrinsic(\"Abort\")\n    public func f() -> i32", 0, 0)]
-    [InlineData(true, "#Unsupported\n    public func f() -> i32", 0, 0)]
-    [InlineData(true, "#Lang(\"ArrayInit\")\n    public init(x: i32)", 0, 0)]
-    [InlineData(true, "#Intrinsic(\"Abort\")\n    public init(x: i32)", 0, 0)]
-    [InlineData(true, "#Intrinsic(\"MakeObj\")\n    public func f<T>(value: T) -> i32\n        T is Copy", 0, 1)]
-    [InlineData(true, "#Lang(\"ArrayInit\")\n    public func f() -> i32", 1, 0)]
-    [InlineData(true, "#CallerLocation\n    public init(x: i32)", 1, 0)]
-    [InlineData(true, "public func f() -> i32", 1, 0)]
-    [InlineData(false, "#Intrinsic(\"Abort\")\n    public func f() -> i32", 1, 0)]
-    [InlineData(false, "#Unsupported\n    public init(x: i32)", 1, 0)]
-    public void OnlyALibraryImplementationKindOmitsTheBody(bool library, string declaration, int missing, int constraints)
+    [InlineData(true, "#Intrinsic(\"Abort\")\n    public func f() -> i32", 0, 0, false)]
+    [InlineData(true, "#Unsupported\n    public func f() -> i32", 0, 0, false)]
+    [InlineData(true, "#Lang(\"ArrayInit\")\n    public init(x: i32)", 0, 0, false)]
+    [InlineData(true, "#Intrinsic(\"Abort\")\n    public init(x: i32)", 0, 0, false)]
+    [InlineData(true, "#Intrinsic(\"MakeObj\")\n    public func f<U>(value: U) -> i32\n        U is Copy", 0, 1, false)]
+    [InlineData(true, "#Lang(\"ArrayInit\")\n    public init(x: i32)\n        T is Copy", 0, 1, false)]
+    [InlineData(true, "#Intrinsic(\"Abort\")\n    public func f() -> i32\n        return 1", 0, 0, true)]
+    [InlineData(true, "#Lang(\"ArrayInit\")\n    public init(x: i32)\n        T is Copy\n        self.x = x", 0, 1, true)]
+    [InlineData(false, "#Intrinsic(\"MakeObj\")\n    public func f<U>(value: U) -> i32\n        U is Copy", 0, 1, true)]
+    [InlineData(true, "#Lang(\"ArrayInit\")\n    public func f<U>(value: U) -> i32\n        U is Copy", 0, 1, true)]
+    [InlineData(true, "#Lang(\"ArrayInit\")\n    public func f() -> i32", 1, 0, false)]
+    [InlineData(true, "#CallerLocation\n    public init(x: i32)", 1, 0, false)]
+    [InlineData(true, "public func f() -> i32", 1, 0, false)]
+    [InlineData(false, "#Intrinsic(\"Abort\")\n    public func f() -> i32", 1, 0, false)]
+    [InlineData(false, "#Unsupported\n    public init(x: i32)", 1, 0, false)]
+    public void OnlyALibraryImplementationKindOmitsTheBody(bool library, string declaration, int missing, int constraints, bool body)
     {
         var c = Compilation.CreateForTest();
         var kotonoha = library ? c.Library.Kotonoha : c.Kotonoha;
-        kotonoha.CreateCodeContext().Parse(kotonoha.RootKoto, $"public struct Probe\n    public let x: i32\n    {declaration}\n");
+        kotonoha.CreateCodeContext().Parse(kotonoha.RootKoto, $"public struct Probe<T>\n    public let x: i32\n    {declaration}\n");
         var probe = Assert.Single(kotonoha.RootKoto.NestedContainers, static x => x is StructKoto { Name: "Probe" });
         var function = Assert.Single(probe.Members.OfType<FunctionKoto>(), static x => !x.IsImplicitConstructor);
         Assert.Equal(missing, TestDiagnostics.Of(c).Count(static x => x.Code == nameof(Kimi.DiagnosticCode.MissingSyntax_Kd)));
-        Assert.Equal((missing == 1, constraints), (function.MissingBody, function.TypeConstraints.Count));
-        Assert.Null(function.Body);
+        Assert.Equal((missing == 1, constraints, body), (function.MissingBody, function.TypeConstraints.Count, function.Body is not null));
         ParseTestHelper.VerifyParents(function);
     }
 

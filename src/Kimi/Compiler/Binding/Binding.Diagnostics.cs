@@ -689,7 +689,7 @@ public sealed partial class Binding
         {
             MemberAccessKoto member when this.requirementGroups.TryGetValue(member, out var group) && group.PropertyRequirement => true,
             MemberAccessKoto member => TypeSpelling(member.Right) is { } spelled && KimiLibraryCatalog.IsUnsourced(KimiLibraryContainer.Intrinsics, spelled) &&
-                ReferenceEquals(this.TypeName(member.Left, scope)?.Declaration, this.Library.MakeObj.Declaration.Parent), // Kimi.Intrinsics, makeObj's group (SPEC 22.1)
+                ReferenceEquals(this.TypeName(member.Left, scope)?.Declaration, this.Library.MakeObj.Declaration.Parent), // Kimi.Intrinsics, makeObj's group (SPEC 22.1); temporary with IsUnsourced, removed by G1-3b-2
             _ => TypeSpelling(name) is { } spelled && KimiLibraryCatalog.IsUnsourced(KimiLibraryContainer.Root, spelled),
         };
         return limit ? BindingFailure.Unsupported : missing;

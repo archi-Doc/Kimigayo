@@ -537,7 +537,7 @@ public static partial class Parser
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal static void ParseNamedFunctionBody(ref TokenReader reader, FunctionKoto function)
     {
-        if (function.OmitsBody || reader.CurrentTokenKind == TokenKind.EqualsGreaterThan || reader.TrySkipSeparatorsTo(TokenKind.StartBlock))
+        if (reader.CurrentTokenKind == TokenKind.EqualsGreaterThan || reader.TrySkipSeparatorsTo(TokenKind.StartBlock) || function.OmitsBody)
         {
             function.Parse(ref reader);
             return;

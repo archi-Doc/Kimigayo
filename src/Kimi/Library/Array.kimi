@@ -1,5 +1,5 @@
-// Compiler-managed dynamic Array (SPEC 4.5, 4.9): storage, length/capacity metadata and the operations of
-// the two linked constructors are supplied by the compiler; other operations and helpers are functions here.
+// Compiler-managed dynamic Array (SPEC 4.5, 4.9): the compiler supplies storage and the length/capacity metadata;
+// the bodies of `initCapacity` and `initRepeating` define its two linked constructors (IMPL 21.3.4).
 #Lang("Array")
 public struct Array<T>
     Self is UniqIndexable<isize>
