@@ -109,7 +109,7 @@ public partial class ApplicabilityChainRegressionTest
     [InlineData("guard", "c13", Sources + SourcesBody + "    let j = if c => (if d => [(u@ref, 1)] else => [(y, 2)]) else => [(y, 3)]\n    return r\n", "")]
     [InlineData("guard", "c14", Sources + SourcesBody + "    let t = identity((if c => [(u@ref, 1)] else => [(y, 2)]))\n    return r\n", "")]
     [InlineData("guard", "c15", Sources + SourcesBody + "    let t = identity(match d\n        true => [(u@ref, 1)]\n        false => [(y, 2)]\n    )\n    return r\n", "")]
-    [InlineData("guard", "w10", Sources + SourcesBody + "    let t = identity(if c => [(identity(1), u@ref)] else => [(2, y)])\n    return r\n", "UnboundTypeArgument_Kd: let t = identity(if c => [(identity(1), u@ref)] else => [(2, y)])")]
+    [InlineData("guard", "w10", Sources + SourcesBody + "    let t = identity(if c => [(identity(1), u@ref)] else => [(2, y)])\n    return r\n", "")] // The owner's O-341 (a): identity(1) takes its own Type.
     [InlineData("I2", "w11", Sources + SourcesBody + "    let j = if c => [(identity(1), u@ref)] else => [(2, y)]\n    return r\n", "", Explicit = true)]
     [InlineData("I2", "w12", Sources + SourcesBody + "    r = g(if c => [identity(1), u@ref] else => [2, y])\n    return r\n", "", Explicit = true)]
     [InlineData("guard", "w13w", Sources + SourcesBody + "    r = g(if c => [identity(y)] else => [u@ref])\n    return r\n", "*: r = g(if c => [identity(y)] else => [u@ref]) | ...")]

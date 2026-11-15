@@ -143,7 +143,8 @@ public class ScalarTemporaryBorrowTest
     // BU-187's K2 and K3 removed): a fill or mixed range at `ref/U` is the owner temporary of U, at a call as at a let, so a waiting part
     // (`idf(1)`), a part needing a value read (`wr`) and a join formed part by part take U's parts: the argument of a function, a method,
     // a construction, a labelled or explicitly instantiated call, at any depth and in either declaration order (all valid now). A
-    // waiting part is no evidence for a Type argument (10.8, wait-geninf: R1), and a typed boundary keeps its own Type against E
+    // waiting part is no evidence for a Type argument (10.8) and, at a slot no evidence binds, takes its own Type after selection (the
+    // owner's O-341 (a): wait-geninf, arm-geninf), and a typed boundary keeps its own Type against E
     // (rread32-call); a fill inside a Tuple literal argument is at the Tuple's element Type; a fill at a `ref/U` element of a Tuple or
     // array literal argument, and a fill as a Case payload at `ref/U` (10.5.1), is completed at U by the enclosing literal's and the
     // payload's own completion.
@@ -162,7 +163,7 @@ public class ScalarTemporaryBorrowTest
     [InlineData("wait-init", Fills + "    let k = K.init([2 of idf(1)])\n", "")]
     [InlineData("wait-named", Fills + "    let r = kf(x: [2 of idf(1)])\n", "")]
     [InlineData("wait-gen", Fills + "    let r = kg<i64>([2 of idf(1)])\n", "")]
-    [InlineData("wait-geninf", Fills + "    let r = kg([2 of idf(1)])\n", "UnboundTypeArgument_Kd: let r = kg([2 of idf(1)])")]
+    [InlineData("wait-geninf", Fills + "    let r = kg([2 of idf(1)])\n", "")]
     [InlineData("wait-nest", Fills + "    let r = kn([2 of [2 of idf(1)]])\n", "")]
     [InlineData("wait-order", FillCaller + "    let r = kf([2 of idf(1)])\n    return r\n" + FillCallees + "func u() -> i32\n", "")]
     [InlineData("wait-tup", Fills + "    let r = kp((1, [2 of idf(1)]))\n", "")]
@@ -196,7 +197,7 @@ public class ScalarTemporaryBorrowTest
     [InlineData("arm32-call", Fills + "    let r = kf32(if c => [2 of idf(1)] else => [2 of idf(2)])\n", "")]
     [InlineData("arm32-let", Fills + "    let x: ref/[2 of i32] = if c => [2 of idf(1)] else => [2 of idf(2)]\n", "")]
     [InlineData("arm32-let-use", Fills + "    let x: ref/[2 of i32] = if c => [2 of idf(1)] else => [2 of idf(2)]\n    let r = kf32(x)\n", "ComparisonLoanConflict_Kd: let x: ref/[2 of i32] = if c => [2 of idf(1)] else => [2 of idf(2)]")]
-    [InlineData("arm-geninf", Fills + "    let r = kg(if c => [2 of idf(1)] else => [2 of idf(2)])\n", "UnboundTypeArgument_Kd: let r = kg(if c => [2 of idf(1)] else => [2 of idf(2)])")]
+    [InlineData("arm-geninf", Fills + "    let r = kg(if c => [2 of idf(1)] else => [2 of idf(2)])\n", "")]
     [InlineData("mix-call", Fills + "    let r = kf(if c => [2 of idf(1)] else => a)\n", "")]
     [InlineData("mix-let", Fills + "    let x: ref/[2 of i64] = if c => [2 of idf(1)] else => a\n", "")]
     [InlineData("mix32-call", Fills + "    let r = kf32(if c => [2 of idf(1)] else => a32)\n", "")]

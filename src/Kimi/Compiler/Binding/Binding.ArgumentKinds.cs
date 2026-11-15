@@ -189,9 +189,20 @@ public sealed partial class Binding
     // which gave it the fixed expected call signature S as its context, as WasDeferred does for a Call.
     private bool WasWaitingCallable(Koto node) => this.RecordedPart(node).Kind is PartKind.Function or PartKind.Reference;
 
-    // SPEC 10.2.1: the default a Literal part takes for the selected candidate of its call, once DefaultArguments applied it.
+    // SPEC 10.2.1 (PLAN G924, the owner's O-341 (a)): the Type a part that no expected Type reaches takes for the selected candidate of
+    // its call (OwnType), once DefaultArguments applied it.
     private BoundType? DefaultOf(Koto part)
-        => this.RecordedPart(part) is { Kind: PartKind.Literal, Default: { } literalDefault } ? literalDefault : null;
+        => this.RecordedPart(part) is { Default: { } own } ? own : null;
+
+    // SPEC 10.2.1, 10.5.1 (PLAN G924, the owner's O-341 (a)): after selection, the own Type of a part that no expected Type reaches,
+    // which binds a still-unbound slot: a literal's default, a waiting nested call's resolution with no expected result (its own
+    // literals defaulting); none for any other part. A failure is the part's own record and never reselects.
+    private BoundType? OwnType(Koto part, BindingScope scope) => this.KindOf(part) switch
+    {
+        PartKind.Literal => this.PartDefault(part, scope),
+        PartKind.Call when this.AwaitsCall(part) => this.BindNode(part, scope, null),
+        _ => null,
+    };
 
     // The one writer of the kind a producer decides for a part (P1 PrepareArgument, P2 AwaitsCallAtResult and AtArgumentPosition, P3
     // DeferNestedCall, P4 ClassifiedByCall), keyed by its core's syntax identity (PartCore) for this pass, and of its Awaits by one row:
@@ -518,10 +529,6 @@ public sealed partial class Binding
         else
         {
             // SPEC 10.8, 10.6: the selected candidate's unsolved slot is the inference boundary; the checks that need it are derived.
-            // PLAN G924, the owner's O-341 (a) (11-15): one rule after selection, a part that no expected Type reaches takes its own
-            // Type, which binds the still-unbound slot (a literal its default, a nested call its resolution with no expected result).
-            // Phase 1 still holds the interim second rule here (a nested call at such a slot needs an annotation); the one rule
-            // replaces it in the defaults step (DefaultArguments), not as a second path.
             this.FailUnboundSlots(
                 call,
                 selected,

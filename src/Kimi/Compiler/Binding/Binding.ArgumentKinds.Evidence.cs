@@ -249,6 +249,8 @@ public sealed partial class Binding
                     return this.InferComposite(pattern, start, end, late);
                 case PartKind.Literal:
                     return this.InferLiteral(pattern, node, late);
+                case PartKind.Typed when binding.DefaultOf(node) is not null:
+                    return !late || binding.SubstituteType(pattern, this.SlotOwner, this.Types, this.Lengths) is not null || this.InferOwnType(pattern, node);
                 default:
                     if (node.BoundType is not { } actual || ReferenceEquals(actual, BoundType.Never))
                     {
@@ -399,8 +401,14 @@ public sealed partial class Binding
                 return true;
             }
 
-            return this.Binding.DefaultOf(literal) is not { } literalDefault || this.InferAdapted(pattern, literalDefault, literal);
+            return this.InferOwnType(pattern, literal);
         }
+
+        // SPEC 10.2.1 (O-341 (a)): a part's own Type after selection (DefaultOf: a literal's default, a nested call's resolution) is
+        // evidence, in the late pass, for slots no other evidence binds; a nested call's is no relation-only input then.
+        private bool InferOwnType(BoundType pattern, Koto part)
+            => this.Binding.DefaultOf(part) is not { } own ||
+                (this.AdaptPart(pattern, own, part) is { } adapted && this.InferFrom(pattern, adapted, new(part, this.Binding.PartContribution(part), false)));
 
         // SPEC 10.2 row 2, 15.3.6: a temporary borrowed at `ref/U during a` (a Literal fitted at U, a Tuple or array literal or a mixed range)
         // supplies its Place Origin as an input of `a`, at the root and at every nested position: matched (MatchInputOrigin) and a bound of
@@ -563,9 +571,9 @@ public sealed partial class Binding
             }
 
             var source = KotoHelper.UnwrapParentheses(binding.positionParts[start]);
-            if (binding.KindOf(source) == PartKind.Literal)
+            if (binding.KindOf(source) is PartKind.Literal or PartKind.Call)
             {
-                return this.Default(source, binding.PartDefault(source, this.Scope), ref applied);
+                return this.Default(source, binding.OwnType(source, this.Scope), ref applied);
             }
 
             Koto? misfit = null;
@@ -598,6 +606,15 @@ public sealed partial class Binding
                     return misfit;
                 case PartKind.Aggregate:
                     return this.DefaultChildren(start, end, pattern, unsolved, ref applied);
+                case PartKind.Call:
+                    // SPEC 10.2.1 (O-341 (a)): a position that waits for its call: each part takes its own Type (OwnType).
+                    Koto? waited = null;
+                    for (var i = start; i < end; i++)
+                    {
+                        waited = this.Default(binding.positionParts[i], binding.OwnType(binding.positionParts[i], this.Scope), ref applied) ?? waited;
+                    }
+
+                    return waited;
                 default:
                     return null;
             }
@@ -630,24 +647,28 @@ public sealed partial class Binding
             return this.Default(boundary, binding.OtherBoundaryType(boundary, binding.IndependentRangeBoundary(other, omitted)), ref applied);
         }
 
-        private readonly Koto? Default(Koto literal, BoundType? type, ref bool applied)
+        // SPEC 10.2.1 (O-341 (a)): records the own Type a part takes after selection (OwnType) in its Default column, keeping its kind (a
+        // Literal does not await its call: RecordPart's row). A literal its default does not fit is bound at it for its own record; a
+        // nested call is already resolved, and a failed resolution is its own record, on which the call rests (SPEC 23.1.2).
+        private readonly Koto? Default(Koto part, BoundType? type, ref bool applied)
         {
             var binding = this.Binding;
             if (type is null)
             {
-                return null;
+                return binding.HasFailureCauses(part) ? part : null;
             }
 
-            ref var record = ref binding.RecordPart(literal, PartKind.Literal); // A Literal does not await its call (RecordPart's row).
+            var kind = binding.KindOf(part) == PartKind.Literal ? PartKind.Literal : PartKind.Call;
+            ref var record = ref binding.RecordPart(part, kind);
             record = record with { Default = type };
             applied = true;
-            if (binding.FitsLiteralPart(literal, type, this.Scope))
+            if (kind == PartKind.Call || binding.FitsLiteralPart(part, type, this.Scope))
             {
                 return null;
             }
 
-            binding.RequireType(literal, this.Scope, type);
-            return literal;
+            binding.RequireType(part, this.Scope, type);
+            return part;
         }
     }
 
