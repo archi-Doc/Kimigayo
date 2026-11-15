@@ -115,9 +115,9 @@ public sealed partial class Binding
         return null;
     }
 
-    // SPEC 10.8 ("collected together"; traversal order never chooses; every exact source of a binder, an application of a bare slot
-    // included, fixes it before the expected result fills): an input whose pattern holds an application of a binder no source has
-    // fixed waits. A waiting input that no longer holds one is inferred; when none can be, every waiting input not yet a source is
+    // SPEC 10.8 ("collected together"; traversal order never chooses; every exact source of a binder (IsExactSource), an application
+    // of a bare slot or a closed leaf Type included, fixes it before the expected result fills): an input whose pattern holds an
+    // application of a binder no source has fixed waits. A waiting input that no longer holds one is inferred; when none can be, every waiting input not yet a source is
     // inferred once as one (its exact sources fix its own binders; a structured application of a binder still unfixed supplies
     // nothing), and those it formed are inferred again. Called before the expected result, after it (for a binder only the
     // expected result fixes) and after the late pass (for one only a Literal's default fixes); one still open keeps its open parts
@@ -513,7 +513,7 @@ public sealed partial class Binding
                             return solution.IsComplete() ? CandidateApplicability.Inapplicable : CandidateApplicability.Pending;
                         }
 
-                        if (!solution.FitsLiteralShape(pattern, shape, argument))
+                        if (!solution.FitsLiteralShape(pattern, shape, argument, out var met))
                         {
                             if (DifferentRangeShapes(shape, pattern))
                             {
@@ -529,9 +529,13 @@ public sealed partial class Binding
                         {
                             if (MentionsSlots(pattern, CallSlotOwner(function), UnboundSlots(function, frame.Types, frame.Lengths, ref unboundSlots)))
                             {
-                                // A Literal waits for its default, which cannot invert a projection or an unresolved selector either.
+                                // A Literal waits for its default, which cannot invert a projection or an unresolved selector either. SPEC
+                                // 10.2.2's Literal row, 10.2.1 (PLAN G915): the open position is ranked by the operation the pattern it meets
+                                // needs whatever the slot binds: the borrow of its temporary under a ref layer (TemporaryTarget, as FitLiteral
+                                // ranks a closed one), else the Literal fit; so it ties with a candidate that fits the Literal, and step 2 decides.
                                 open.Add(i);
-                                operations[i] = new(call.ArgumentNodes[i], null, null, ArgumentOperationKind.Value, ArgumentAdaptation.Literal, ParameterIndex: mapping[i]);
+                                var adaptation = this.TemporaryTarget(argument, met, scope) is null ? ArgumentAdaptation.Literal : ArgumentAdaptation.CrossSemanticsBorrow;
+                                operations[i] = new(call.ArgumentNodes[i], null, null, ArgumentOperationKind.Value, adaptation, ParameterIndex: mapping[i]);
                                 continue;
                             }
 

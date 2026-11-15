@@ -186,6 +186,21 @@ public class Utf8InterpolationTest
         NativeAllocationAudit.WriteFixture("Utf8InterpolationLiteral" + name, Formatters + "\n" + statements, allocations, allocations, bytes, expected);
     }
 
+    // SPEC 22.10.5 (R8-W2 c2b): a generic body's hint is a Length its instance decides, the later literal bytes and values' bounds, an
+    // unbounded value counting 0. At T = i32 the first write grows the empty buffer by its 3 bytes and the hint 11, so the value fits; at
+    // T = string the value counts 0 and the trailing literal's 3 bytes fit. A guard: at T = i32 a hint without the later values, and at
+    // T = string one refolded by the bound's rule (rule L gives a line with an unbounded value 0), allocate twice.
+    [Trait("Purpose", "Allocation")]
+    [Theory]
+    [InlineData("I32", "\\(a)\\(b)", "42@i32", 14, "abc42\n")]
+    [InlineData("String", "\\(a)\\(b)xyz", "\"\"", 6, "abcxyz\n")]
+    public void AGenericValuesHintIsItsInstancesBound(string name, string template, string argument, int bytes, string expected)
+    {
+        var source = "func pair<T>(a: ref/string, b: ref/T) -> string\n    T is Utf8Format\n    return \"" + template + "\"\n" +
+            "let text = pair(\"abc\", " + argument + ")\nConsole.writeLine(text)";
+        NativeAllocationAudit.WriteFixture("Utf8InterpolationGenericHint" + name, source, 1, 1, bytes, expected);
+    }
+
     // SPEC 22.10.1, 22.10.5: an interpolated literal passed to `write`, or embedded in a $tryWrite, first builds its owning string, a
     // bounded one in at most one allocation, of its written bytes when no bounded value follows the first (R8-W2 c3b; fail-before: the
     // estimate, 13); writing that string into a FixedBuffer, or a HeapBuffer with enough capacity, allocates nothing.

@@ -88,18 +88,34 @@ public sealed partial class Binding
         return count;
     }
 
-    // SPEC 10.8 (the owner's reading, O-263 (a)): whether an application is an exact source of its binder, as an occurrence of the
-    // original is: its target is a bare Type slot being inferred (`s/V`), which has no layer of its own, so the evidence's outer
-    // Semantics is the binder's alone. The pattern is classified under the solve's fixed bindings (FixedSlots), where only an own
-    // slot of the slot owner stays open, as its own parameter: an enclosing slot is always a fixed binding (OpenConstructionSlot;
-    // SPEC 9.7.1), so `s/V` over one is `s/(its binding)` on every path, a constructor's or a Case's as a method's, whose pattern has
-    // it substituted; explicit Type arguments or a construction Type that fix the own slots fix the binder too. Any other target
-    // (`s/(ref/i32)`, `s/(t/i32)`, `s/Option<U>`) has its own layer or structure: that application is formed under the binder its
-    // exact sources fixed, a parameter Type its argument fits (FittedPattern) and is then compared with (SourcedLayer), never evidence,
-    // so an owner binding of the outer layer is no layer, even above a reference.
-    private static bool IsExactSource(BoundType application, Koto function)
-        => application.Components[0] is { Kind: BoundTypeKind.Parameter, Symbol: { Kind: not BindingSymbolKind.SemanticsTarget } bare } &&
-            ReferenceEquals(bare.Scope.Owner, function);
+    // SPEC 10.8 (the owner's readings O-263 (a), O-338 (a), O-340 (a)): whether an application is an exact source of its binder, as an
+    // occurrence of the original is: its target has no layer, structure or open slot of its own that could claim the evidence's outer
+    // Semantics, so that Semantics is the binder's alone: a bare Type slot being inferred (`s/V`) or a closed leaf Type (`s/i64`, a pair layer of
+    // `s` whose typed evidence counts as at any other, SPEC 10.5.1). The pattern is classified under the solve's fixed bindings
+    // (FixedSlots, read from the frame), where only an own slot of the slot owner stays open, as its own parameter: an enclosing slot
+    // is always a fixed binding (OpenConstructionSlot; SPEC 9.7.1), so `s/V` over one is `s/(its binding)` on every path and is
+    // classified as its binding is, whether the pattern holds the slot (a constructor's, a Case's) or has it substituted (a
+    // method's): never as a slot being inferred; explicit Type arguments or a construction Type that fix the own slots fix the
+    // binder too. Any other target (`s/(ref/i32)`, `s/(t/i32)`, `s/Option<U>`, another pair's target, a caller's Type parameter)
+    // has its own layer, structure or slot: that application is formed under the binder its exact sources fixed, a parameter Type
+    // its argument fits (FittedPattern) and is then compared with (SourcedLayer), never evidence, so an owner binding of the outer
+    // layer is no layer, even above a reference.
+    private static bool IsExactSource(BoundType application, Koto function, SlotFrame frame)
+    {
+        var target = application.Components[0];
+        if (target is { Kind: BoundTypeKind.Parameter, Symbol: { Kind: not BindingSymbolKind.SemanticsTarget } bare })
+        {
+            if (ReferenceEquals(bare.Scope.Owner, function))
+            {
+                return true;
+            }
+
+            target = ContainerSlot(function, bare) is >= 0 and var slot && slot < frame.Types.Length && frame.Types[slot] is { } binding
+                ? binding : target;
+        }
+
+        return target is { Components.Count: 0, ContainsParameter: false };
+    }
 
     // SPEC 8.1.2: whether a formed pattern is a layer over the callee's `target` (a pair's application or original, a Semantics layer),
     // matched by LayerTarget, rather than a Type matched as it is (an owner binding's target, a family, case by case).
@@ -270,7 +286,7 @@ public sealed partial class Binding
         }
 
         if (pattern.Kind == BoundTypeKind.SemanticsApplication && ContainerSlot(function, pattern.Symbol!) is >= 0 and var slot &&
-            Selector(frame, slot) is { } whole && (!IsExactSource(pattern, function) || (part is not null && this.KindOf(part) == PartKind.Literal)))
+            Selector(frame, slot) is { } whole && (!IsExactSource(pattern, function, frame) || (part is not null && this.KindOf(part) == PartKind.Literal)))
         {
             return this.ApplySemantics(whole, fitted, pattern.Origin);
         }
@@ -308,7 +324,7 @@ public sealed partial class Binding
     // SPEC 10.8 ("An unbound s is inferred from the outer Semantics of the evidence matched against each pair layer of s"; "owner and
     // ref evidence for one s conflict in any argument order"; the owner's readings O-243 (a), O-255 (a) and O-263 (a)): whether
     // `actual` stands as an exact source of pair slot `slot`'s binder: the evidence at an occurrence of the pair's original or at an
-    // application of a bare slot (IsExactSource), the expected result included. Each gives its outer Semantics: the first exact source
+    // application of a bare slot or a closed leaf Type (IsExactSource), the expected result included. Each gives its outer Semantics: the first exact source
     // of a slot nothing has fixed becomes the slot's selector evidence, and every other one must agree with it, whichever comes first:
     // both form the same layer over one `target` (ApplySemantics; an owner source forms the target itself, so owner evidence is
     // compared as any other is; a binding that forms none, a pair target alone, agrees only with itself: a Language verdict, no
@@ -351,7 +367,7 @@ public sealed partial class Binding
 
         var target = pattern.Components[0];
         formed = null;
-        if (IsExactSource(pattern, function) && !this.IsSource(frame, slot, actual, target))
+        if (IsExactSource(pattern, function, frame) && !this.IsSource(frame, slot, actual, target))
         {
             return false;
         }

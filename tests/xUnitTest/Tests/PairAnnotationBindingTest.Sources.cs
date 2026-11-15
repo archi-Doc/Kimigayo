@@ -157,13 +157,24 @@ public partial class PairAnnotationBindingTest
     // what no evidence binds (e2, e2s; in a Tuple literal e2t, e2ts; at an original whose Type evidence bound e2w, e2ws; the other
     // 10.5.1 Literals, a control-flow one e2j and a literal-only expression e2e; in a Case payload cq1, cq1s; invalid where another
     // input binds the slot to a Type it does not fit, e2x, e2xs, cqx, cqxs, or where only an exclusive borrow of the temporary would fit,
-    // e2u, e2us), while a suffixed literal is evidence (e2k, e2ks). A formed Type no adaptation fits rejects in either order (L2y,
+    // e2u, e2us), while a suffixed literal is evidence (e2k, e2ks). A closed leaf target (`s/i64`) has no layer, structure or slot of
+    // its own, so it is an exact source as a bare slot is: a typed argument there (a suffixed literal, a Place, a call result) is
+    // owner evidence against ref in either order and over two overloads (Nc3t, N3a, c1s, c2, c2s, c3, c3s; at depth c9; a ref Place
+    // against owner c7, c7s), agreeing evidence is accepted (c4, c4s, c5, c5s; at depth c9o), it alone fixes the binder (c8; from
+    // the expected result c12; a constructor's own pattern c13, c13s, c13v) and a Literal there is no evidence (c6, c6s); G812's
+    // 2f4bec489 formed it, accepted Nc3t, N3a, c1s-c3s, c7, c7s, c13, c13s and rejected c8. The owner's O-338 (a) settles that
+    // reading (one rule for every pair layer): a ref argument at a closed leaf against owner evidence and an owner one against ref
+    // are invalid in either order (X1, X1r; vr1, vr1s; at depth below a declared ref layer ol2, ol2s; in a Tuple literal T1;
+    // from the argument against the expected result X2e); dev accepted T1, X2e and ol2s (its class 1). A closed target with
+    // structure stays formed (c10). A formed Type no adaptation fits rejects in either order (L2y,
     // L2ys, q4y, q4ys, o3x, o3xs, o4x), and with
     // nothing to fix the binder it is unbound (o5); with no evidence a Literal's default fixes the binder after the defaults (L1, L1s),
     // and a formed layer's slot is bound then (d1, d1s; d1x invalid). a9497632c rejected o1, o2, o3, o4, o6, o7, o8 and o9 and accepted their swapped
     // twins; each order twin's invalid counterpart rejects in both orders (o2x, o2xs; r4f4x, r4f4xs for o6; o7x, o7xs; o8x, o8xs). A
-    // slot fixed before any evidence is not being inferred (the owner's O-276 (a)): `s/V` over an enclosing slot its qualifier fixes is
-    // formed, through a constructor (z1, z1s, z1x, z1o), a method (z2, z2s) or a Case's payloads (z4, z4s, z4o, z4x, z4xs) alike;
+    // slot fixed before any evidence is not being inferred (the owner's O-276 (a), as O-340 (a) reads it): `s/V` over an enclosing
+    // slot its qualifier fixes to a Type with a layer, structure or slot of its own is formed, through a constructor (z1, z1s, z1x,
+    // z1o), a method (z2, z2s) or a Case's payloads (z4, z4s, z4o, z4x, z4xs) alike; one fixed to a closed leaf reads as that leaf,
+    // evidence on both paths (O-340 (a): c11, c11s through a constructor, c14, c14s through a method, invalid as on dev);
     // a326bfea7 read it as an exact source and rejected z1, z1s, z4 and z4s. A ref binder's formed ref/(ref/X) takes no ref/i32
     // reference slot, which is never borrowed implicitly (o9y, o9ys: o9's and o9s's invalid twins), while two layers fit (o9r, o9rs).
     // A call-shape contract (SPEC 7.4.4) holds where an argument needs the formed Type's adaptation, the relied-on slot a pair binder
@@ -229,6 +240,41 @@ public partial class PairAnnotationBindingTest
     [InlineData("func put6<s/W>(m: s/W, n: s/W) -> i32\n    s is owner or ref\n    return 0\nfunc call() -> i32\n    let b: i64 = 2\n    return put6(5, b@ref)\n", "clean")] // e2ws
     [InlineData("func put5<s/W, V>(m: s/W, y: s/V) -> i32\n    s is owner or ref\n    return 0\nfunc call() -> i32\n    let b: i64 = 2\n    return put5(b@ref, 5@i32)\n", "1*NoApplicableOverload_Kd")] // e2k
     [InlineData("func put5<s/W, V>(m: s/W, y: s/V) -> i32\n    s is owner or ref\n    return 0\nfunc call() -> i32\n    let b: i64 = 2\n    return put5(5@i32, b@ref)\n", "1*NoApplicableOverload_Kd")] // e2ks
+    [InlineData("func k2<s/W>(m: s/W, y: s/i64) -> i32\n    s is ref\n    return 1\nfunc k2<s/W, V>(m: s/W, y: s/V) -> i32\n    s is ref\n    return 0\nfunc call() -> i32\n    let b: i64 = 2\n    return k2(b@ref, 5@i64)\n", "1*NoApplicableOverload_Kd")] // Nc3t
+    [InlineData("func k1<s/W>(m: s/W, y: s/i64) -> i32\n    s is ref\n    return 1\nfunc call() -> i32\n    let b: i64 = 2\n    return k1(b@ref, 5@i64)\n", "1*NoApplicableOverload_Kd")] // N3a
+    [InlineData("func k1<s/W>(y: s/i64, m: s/W) -> i32\n    s is ref\n    return 1\nfunc call() -> i32\n    let b: i64 = 2\n    return k1(5@i64, b@ref)\n", "1*NoApplicableOverload_Kd")] // c1s
+    [InlineData("func k1<s/W>(m: s/W, y: s/i64) -> i32\n    s is ref\n    return 1\nfunc call() -> i32\n    let b: i64 = 2\n    let c: i64 = 7\n    return k1(b@ref, c)\n", "1*NoApplicableOverload_Kd")] // c2
+    [InlineData("func k1<s/W>(y: s/i64, m: s/W) -> i32\n    s is ref\n    return 1\nfunc call() -> i32\n    let b: i64 = 2\n    let c: i64 = 7\n    return k1(c, b@ref)\n", "1*NoApplicableOverload_Kd")] // c2s
+    [InlineData("func seven() -> i64\n    return 7\nfunc k1<s/W>(m: s/W, y: s/i64) -> i32\n    s is ref\n    return 1\nfunc call() -> i32\n    let b: i64 = 2\n    return k1(b@ref, seven())\n", "1*NoApplicableOverload_Kd")] // c3
+    [InlineData("func seven() -> i64\n    return 7\nfunc k1<s/W>(y: s/i64, m: s/W) -> i32\n    s is ref\n    return 1\nfunc call() -> i32\n    let b: i64 = 2\n    return k1(seven(), b@ref)\n", "1*NoApplicableOverload_Kd")] // c3s
+    [InlineData("func k1<s/W>(m: s/W, y: s/i64) -> i32\n    s is ref\n    return 1\nfunc call() -> i32\n    let b: i64 = 2\n    let c: i64 = 7\n    return k1(b@ref, c@ref)\n", "clean")] // c4
+    [InlineData("func k1<s/W>(y: s/i64, m: s/W) -> i32\n    s is ref\n    return 1\nfunc call() -> i32\n    let b: i64 = 2\n    let c: i64 = 7\n    return k1(c@ref, b@ref)\n", "clean")] // c4s
+    [InlineData("func ko<s/W>(m: s/W, y: s/i64) -> i32\n    s is owner or ref\n    return 1\nfunc call() -> i32\n    let b: i64 = 2\n    return ko(b@move, 5@i64)\n", "clean")] // c5
+    [InlineData("func ko<s/W>(y: s/i64, m: s/W) -> i32\n    s is owner or ref\n    return 1\nfunc call() -> i32\n    let b: i64 = 2\n    return ko(5@i64, b@move)\n", "clean")] // c5s
+    [InlineData("func k1<s/W>(m: s/W, y: s/i64) -> i32\n    s is ref\n    return 1\nfunc call() -> i32\n    let b: i64 = 2\n    return k1(b@ref, 5)\n", "clean")] // c6
+    [InlineData("func k1<s/W>(y: s/i64, m: s/W) -> i32\n    s is ref\n    return 1\nfunc call() -> i32\n    let b: i64 = 2\n    return k1(5, b@ref)\n", "clean")] // c6s
+    [InlineData("func ko<s/W>(m: s/W, y: s/i64) -> i32\n    s is owner or ref\n    return 1\nfunc call() -> i32\n    let b: i64 = 2\n    let c: i64 = 7\n    return ko(b@move, c@ref)\n", "1*NoApplicableOverload_Kd")] // c7
+    [InlineData("func ko<s/W>(y: s/i64, m: s/W) -> i32\n    s is owner or ref\n    return 1\nfunc call() -> i32\n    let b: i64 = 2\n    let c: i64 = 7\n    return ko(c@ref, b@move)\n", "1*NoApplicableOverload_Kd")] // c7s
+    [InlineData("func k1<s/W>(m: s/W, y: s/i64) -> i32\n    s is ref\n    return 1\nfunc call() -> i32\n    let c: i64 = 7\n    return k1(5, c@ref)\n", "clean")] // c8
+    [InlineData("func kn<s/W>(m: s/W, y: (s/i64 during c, i32)) -> i32\n    s is ref\n    return 1\nfunc call() -> i32\n    let b: i64 = 2\n    let t: (i64, i32) = (5, 1)\n    return kn(b@ref, t)\n", "1*NoApplicableOverload_Kd")] // c9
+    [InlineData("func kn<s/W>(m: s/W, y: (s/i64 during c, i32)) -> i32\n    s is owner or ref\n    return 1\nfunc call() -> i32\n    let b: i64 = 2\n    let t: (i64, i32) = (5, 1)\n    return kn(b@move, t)\n", "clean")] // c9o
+    [InlineData("func kt<s/W>(m: s/W, y: s/(i64, i32)) -> i32\n    s is ref\n    return 1\nfunc call() -> i32\n    let b: i64 = 2\n    let t: (i64, i32) = (5, 1)\n    return kt(b@ref, t)\n", "clean")] // c10
+    [InlineData("func stop() -> Never => $abort(\"stop\")\nfunc kr<s/W>(m: s/W) -> s/i64\n    s is owner or ref\n    return stop()\nfunc call() -> i32\n    let q: ref/i64 = kr(5)\n    return 0\n", "clean")] // c12
+    [InlineData("struct Inner<s/T>\n    s is owner or ref\n    public init(x: s/i32, y: s/T) => ()\nfunc call() -> i32\n    let k: i64 = 1\n    let a: i32 = 2\n    let v = Inner.init(a, k@ref)\n    return 0\n", "1*NoApplicableOverload_Kd")] // c13
+    [InlineData("struct Inner<s/T>\n    s is owner or ref\n    public init(y: s/T, x: s/i32) => ()\nfunc call() -> i32\n    let k: i64 = 1\n    let a: i32 = 2\n    let v = Inner.init(k@ref, a)\n    return 0\n", "1*NoApplicableOverload_Kd")] // c13s
+    [InlineData("struct Inner<s/T>\n    s is owner or ref\n    public init(x: s/i32, y: s/T) => ()\nfunc call() -> i32\n    let k: i64 = 1\n    let a: i32 = 2\n    let v = Inner.init(a@ref, k@ref)\n    return 0\n", "clean")] // c13v
+    [InlineData("func put<s/W>(m: s/W, y: s/i32) -> i32\n    s is owner or ref\n    return 0\nfunc call() -> i32\n    let a: i32 = 1\n    let c: i32 = 3\n    return put(a@move, c@ref)\n", "1*NoApplicableOverload_Kd")] // X1
+    [InlineData("func put<s/W>(m: s/W, y: s/i32) -> i32\n    s is owner or ref\n    return 0\nfunc call() -> i32\n    let b: i64 = 2\n    let c: i32 = 3\n    return put(b@ref, c)\n", "1*NoApplicableOverload_Kd")] // X1r
+    [InlineData("func put<s/W>(m: s/W, y: s/i32) -> i32\n    s is owner or ref\n    return 0\nfunc call(r: ref/i32) -> i32\n    let k: i64 = 1\n    return put(k@move, r)\n", "1*NoApplicableOverload_Kd")] // vr1
+    [InlineData("func put<s/W>(y: s/i32, m: s/W) -> i32\n    s is owner or ref\n    return 0\nfunc call(r: ref/i32) -> i32\n    let k: i64 = 1\n    return put(r, k@move)\n", "1*NoApplicableOverload_Kd")] // vr1s
+    [InlineData("func tt<s/T>(p: (s/i32 during q, s/T)) -> i32\n    s is owner or ref\n    return 0\nfunc call() -> i32\n    let a: i32 = 1\n    let c: i32 = 3\n    return tt((c@ref, a))\n", "1*NoApplicableOverload_Kd")] // T1
+    [InlineData("func stop() -> Never => $abort(\"stop\")\nfunc two<s/T>(x: s/i32) -> s/T\n    s is owner or ref\n    return stop()\nfunc call() -> i32\n    let c: i32 = 3\n    let r: i64 = two(c@ref)\n    return 0\n", "1*NoApplicableOverload_Kd")] // X2e
+    [InlineData("func g<s/W>(m: s/W, x: ref/(s/i32 during c) during a) -> i32\n    s is owner or ref\n    return 0\nfunc call(p: ref/i32, rr: ref/(ref/i32 during p)) -> i32\n    let k: i64 = 1\n    return g(k@move, rr)\n", "1*NoApplicableOverload_Kd")] // ol2
+    [InlineData("func g<s/W>(x: ref/(s/i32 during c) during a, m: s/W) -> i32\n    s is owner or ref\n    return 0\nfunc call(p: ref/i32, rr: ref/(ref/i32 during p)) -> i32\n    let k: i64 = 1\n    return g(rr, k@move)\n", "1*NoApplicableOverload_Kd")] // ol2s
+    [InlineData("struct Outer<V>\n    public struct Inner<s/T>\n        s is owner or ref\n        public init(x: s/V, y: s/T) => ()\nfunc call() -> i32\n    let k: i64 = 1\n    let a: i32 = 2\n    let v = Outer<i32>.Inner.init(a, k@ref)\n    return 0\n", "1*NoApplicableOverload_Kd")] // c11
+    [InlineData("struct Outer<V>\n    public struct Inner<s/T>\n        s is owner or ref\n        public init(y: s/T, x: s/V) => ()\nfunc call() -> i32\n    let k: i64 = 1\n    let a: i32 = 2\n    let v = Outer<i32>.Inner.init(k@ref, a)\n    return 0\n", "1*NoApplicableOverload_Kd")] // c11s
+    [InlineData("struct Outer<V>\n    public init() => ()\n    public func m<s/W>(self: ref/Self, x: s/V, y: s/W) -> i32\n        s is owner or ref\n        return 0\nfunc call() -> i32\n    let k: i64 = 1\n    let a: i32 = 2\n    let o = Outer<i32>.init()\n    return o.m(a, k@ref)\n", "1*NoApplicableOverload_Kd")] // c14
+    [InlineData("struct Outer<V>\n    public init() => ()\n    public func m<s/W>(self: ref/Self, y: s/W, x: s/V) -> i32\n        s is owner or ref\n        return 0\nfunc call() -> i32\n    let k: i64 = 1\n    let a: i32 = 2\n    let o = Outer<i32>.init()\n    return o.m(k@ref, a)\n", "1*NoApplicableOverload_Kd")] // c14s
     [InlineData("func put5<s/W, V>(m: s/W, y: s/V) -> i32\n    s is owner or ref\n    return 0\nfunc call(ready: bool) -> i32\n    let b: i64 = 2\n    return put5(b@ref, if ready => 1 else => 2)\n", "clean")] // e2j
     [InlineData("func put5<s/W, V>(m: s/W, y: s/V) -> i32\n    s is owner or ref\n    return 0\nfunc call() -> i32\n    let b: i64 = 2\n    return put5(b@ref, 5 + 1)\n", "clean")] // e2e
     [InlineData("enum E<s/T, V> {a}\n    s is owner or ref\n    P(s/T during a, s/V during a)\n    N\nfunc use(b: ref/i64)\n    match E.P(b, 5)\n        .P(let x, let y) => ()\n        .N => ()\n", "clean")] // cq1

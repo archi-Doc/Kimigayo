@@ -6,7 +6,7 @@ namespace Kimi.Compiler.Mir;
 // - Responsibility: a Call's operand range and its callee by kind (Call): a Fn, Requirement or Virtual callee's function (a Requirement
 //   callee's comparison mode, Compares), a Value callee's TypeToken constant, an intrinsic's row (defined, the library declaration of the
 //   compiler function it serves, its arity, no target when it diverges, staticEnsure's static slot by Ensures, MirValidator.Statics' Slot,
-//   testRecordValue's recorded value a Scalar by Records, an owning interpolation's step's constants by Constants); and its destination:
+//   testRecordValue's recorded value a Scalar by Records); and its destination:
 //   a diverging Call's, which MirUses does not report, a Place the body names (MirValidator.Tables' Names) with its write bit for G131,
 //   no Never value written by a returning Call; a constant record only as an input of a Fn call that keeps nothing of it
 //   (ConstantRecords), and nothing else as Utf8Writer.deferLiteral's text (Defers); a Places Call's Fn callee and whole-Temp Moves
@@ -20,19 +20,8 @@ namespace Kimi.Compiler.Mir;
 //   tier's TypeOf and SPEC 3.1's one Scalar predicate (ScalarTypes.Supports, which the builder's records read too).
 internal sealed partial class MirValidator
 {
-    // R3-10: the constants an estimate carries, its literal bytes and its values' Types (a FormatSegment's, the later ones', after its
-    // adapter; MirBuilder.Format's Estimate).
-    private static readonly MirConstKind[] EstimateConstants = [MirConstKind.Integer, MirConstKind.TypeToken];
-
     // A whole local's index, -1 for another Place.
     private static int Whole(MirPlace place, int locals) => place is { Projection: 0, Root: >= 0 and var root } && root < locals ? root : -1;
-
-    // An owning interpolation's step's first constant operand and the kinds of its constants (above); none for another intrinsic.
-    private static (int First, MirConstKind[] Kinds) Steps(IntrinsicId id) => id == IntrinsicId.FormatSegment ? (1, EstimateConstants) : (0, []);
-
-    // Whether a step's constant is of its position's kind: its values' Types a token of their Tuple, read element by element.
-    private static bool Fits(in MirConst constant, MirConstKind kind)
-        => constant.Kind == kind && (kind != MirConstKind.TypeToken || constant.Type.Kind == BoundTypeKind.Tuple);
 
     private partial struct Checker
     {
@@ -45,24 +34,6 @@ internal sealed partial class MirValidator
         // never sees, or the Never value, which fits any operand (SPEC 3.8) and which the builder never records.
         private readonly bool Records(in MirTerminator call)
             => this.TypeOf(body.Operands[call.Start + 1]) is not { } type || ScalarTypes.Supports(type);
-
-        // R3-10 (PLAN G157 (37)): an owning interpolation's step's constants (Steps), which code generation
-        // reads without a check, each a constant of its position's kind (Fits); a constant id out of range is the walk's Const finding. True
-        // for another intrinsic; a step's operands are its row's (the Arity row before it).
-        private readonly bool Constants(in MirTerminator call)
-        {
-            var (first, kinds) = Steps((IntrinsicId)call.Callee.Arg);
-            for (var i = 0; i < kinds.Length; i++)
-            {
-                var operand = body.Operands[call.Start + first + i];
-                if (operand.Kind != MirOperandKind.Const || ((uint)operand.Arg < (uint)body.Consts.Length && !Fits(body.Consts[operand.Arg], kinds[i])))
-                {
-                    return false;
-                }
-            }
-
-            return true;
-        }
 
         // DECISIONS R5-M166: a Requirement callee's comparison mode names Equatable's or Comparable's own requirement (Reversed only
         // Comparable's) through its own Contract (Contract null) on a Self whose comparison under source operators TyCtxt.Comparison composes
@@ -152,7 +123,6 @@ internal sealed partial class MirValidator
                     this.Report(MirViolation.StaticSlot); // DECISIONS R5-M71.
                     break;
                 case MirCalleeKind.Intrinsic when (IntrinsicId)callee.Arg == IntrinsicId.TestRecordValue && !this.Records(call):
-                case MirCalleeKind.Intrinsic when !this.Constants(call):
                     this.Report(MirViolation.Type);
                     break;
             }

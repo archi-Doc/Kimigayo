@@ -165,10 +165,12 @@ public sealed partial class Binding
 
         // SPEC 10.5.1, 10.2.1: before its default applies, a Literal fits a position that holds an unbound slot only by the slot-free
         // structure its default would have; it binds no slot, and it is no evidence, so it meets the position as its default will
-        // (FittedPattern of the Literal part: every pair layer whose binder evidence fixed formed; the owner's O-294 (b)).
-        internal readonly bool FitsLiteralShape(BoundType pattern, BoundType shape, Koto literal)
+        // (FittedPattern of the Literal part: every pair layer whose binder evidence fixed formed; the owner's O-294 (b)). `met` is
+        // that pattern, whose outer layer decides the operation the position is ranked by (SPEC 10.2.2's Literal row; PLAN G915).
+        internal readonly bool FitsLiteralShape(BoundType pattern, BoundType shape, Koto literal, out BoundType? met)
         {
             var binding = this.Binding;
+            met = null;
             if (this.Pattern(pattern) is not { } memberPattern)
             {
                 return false;
@@ -177,8 +179,8 @@ public sealed partial class Binding
             var trial = binding.infer.Snapshot();
             try
             {
-                return binding.FittedPattern(memberPattern, this.SlotOwner, this.Frame, literal) is { } formed &&
-                    binding.Infer(LiteralInputType(formed), shape, this.SlotOwner, this.Frame);
+                met = binding.FittedPattern(memberPattern, this.SlotOwner, this.Frame, literal);
+                return met is { } formed && binding.Infer(LiteralInputType(formed), shape, this.SlotOwner, this.Frame);
             }
             finally
             {

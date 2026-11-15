@@ -659,6 +659,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
   - `FormatHint` is renamed `FormatSegment`, which carries the segment's literal text beside the estimates that "take the literal byte
     count and a TypeToken of the values' Types", and a literal segment is no write, so "the failure check reads each write's own Result"
     holds for value writes: R5-M133.
+  - Amended by R8-M44 (R8-W2 c2b): "R8 removes all three" is done. `FormatHint`/`FormatSegment` went at R8-W2 c2b, after
+    `FormatBuffer` (c3b) and `FormatFinish` (c3a; R8-M24's amendments).
 
 ## R4 (accepted 2026-10-11)
 
@@ -9362,6 +9364,8 @@ resumed by R4-M86 (2026-10-20).
   - Ended by R5-M192 (2026-11-05, R6-check H11a): the `ContainsOrigin(BoundType, …)` stay walk and the summary readers
     `ResultFixedForCall` and `FixedInBody` (R4-M152's gate) are deleted.
 
+  - Readers added by PLAN G888: `MentionsOriginSlot` (EvidenceNames), `PrepareSpecializations`' header-Origin check (Nodes and
+    RawNodes) and its B2 gate (Nodes); `NamesOrigin`, unused since R1b-1, deleted.
 - **BU-64 ContractType rewrites each distinct part once per call: a per-query table, `contractParts`, superseding BU-19's rejection of
   a table for it** (2026-10-30; PLAN G309, unit bu82) SPEC 8.2, 8.4; R4's V16.
   - Census: on `D1<ref/i32 during a>` ContractType/ContractTypeCore took 3,453,264 visits at n = 16 in Bind (7,035 root calls:
@@ -12483,16 +12487,21 @@ resumed by R4-M86 (2026-10-20).
     occurrence once per case when a Semantics family's slot is the declaring Type's; a warm Bind allocates nothing.
   - Kept two-step reads, none a call's substitution and none a model for a new site, each named in the file's contract: pattern
     reads before the callee's slots have images (the trial's `CallMemberPattern`, OriginInference's `Project`, PropertyCalls'
-    `Signature`, FunctionReferences' `InferReferenceSlots`), a function item's signature (FunctionItems' `SubstitutedItemType`,
-    FunctionReferences' `Formed`), signature comparisons (`ContractFits`' `Bound`, CallableContracts' `Translate`,
+    `Signature`, FunctionReferences' `InferReferenceSlots` and `PerCallReferenceSlot`'s result read, rechecked by the one-pass
+    `Bound`), signature comparisons (the Origin step of `ContractFits`' `Bound` (PLAN G457 (R2)), CallableContracts' `Translate`,
     ContractMatching's parameter read, `BindContractType` / `BindContractOrigin`) and an associated Type's formation
-    (AssociatedOrigins). The pattern reads and the function item's signature are open under PLAN G457 (R1).
+    (AssociatedOrigins). The pattern reads are open under PLAN G457 (R1).
   - Rejected: per-site columns (the first design: the inputs stay out and the second pass in); one order at every site (still two
     passes, so the signature's capture would hold for clauses too); renaming the callee's atoms apart (a second representation of a
     binder, an allocation per candidate); interning the value per candidate (a hash and array copies for candidates that mostly
     lose; `Subst` stays the interned form after selection).
   - Closes PLAN G707 and G700 (`proto/f-o2s1` is not needed). Not in the unit: Fr1, a function reference's clause at `ContractFits`
     (a SPEC reading, 10.7 with 15.3.7), kept on PLAN G457 (R1).
+  - Amended by plan revision 69 bundle 3a (PLAN G457 (b), G585) (Q-433, 873052b8e, 2026-11-15; Major): the function-item entry is
+    removed from the kept two-step reads: FunctionItems' `SubstitutedItemType`, FunctionReferences' `Formed` and the Type part of
+    FunctionTypes' `ContractFits.Bound` (with a slot frame) apply the one `CallSubstitution`; `Bound`'s Origin step stays (PLAN G457
+    (R2)); `InferReferenceSlots` and `PerCallReferenceSlot`'s result read stay two-step pattern reads, rechecked by the one-pass
+    `Bound`.
 
 - **BU-180 A list is read by index, a node's children by the one walk (PLAN G609)** (2026-11-11; Front, Binding and Parsing; Major;
   redesigned one level up by its first review's B1; design `front\G609\design-r2.md` and its review ACCEPT, implementation review
@@ -12722,7 +12731,9 @@ resumed by R4-M86 (2026-10-20).
     No fit test and no Type gate: each source is fitted to `U` as at an expected `U`, so a misfit is its own record at `U` (K1). A
     form delivering its operand (a label, an expression body) passes the position on. Readers: `FitLiteral` (it tests the fit on
     top: the applicability of a call); `FitComposite`: a fill or mixed range at `ref/U` is no temporary of `U` (`TemporaryTarget`
-    gives none), so it is typed with no expected Type, as binding it at a let types it, and fits only where that Type is `U`.
+    gives none), so it is typed with no expected Type, as binding it at a let types it, and fits only where that Type is `U`; the
+    selected call completes it at `ref/U` itself (no source Type: `CompleteArguments` binds it at the parameter), so the binder
+    decides every part and the fit only filters candidates.
     `HasTypeWithoutExpectation` reads this after the probe fitted the shape: a Literal part at any depth keeps its default
     (`PartDefault`: a Tuple's or nested fill's elements, a literal join), a literal-only boundary takes its other boundary's Type,
     `T` for `FromEnd<T>`, else `i32` (`OtherBoundaryType`, SPEC 4.6.2 rules 2 and 3, the function the late default of a mixed range
@@ -12733,17 +12744,23 @@ resumed by R4-M86 (2026-10-20).
     composite and a Literal at a fixed position; `SolveValueCallOrigins` adds the same bound (`AddTemporaryBound`) for the root row
     and every child row that waits at `ref/U during a` as a borrowed temporary: an Aggregate part (a Tuple or array literal, a fill,
     a mixed range: `InferComposite`'s key for such a part) or a source the rule names (`InferLiteral`'s key). A part of Join kind at
-    `ref/(...)`, which `InferComposite` borrows too (**The one exception**, PLAN G729), is no key of a value call: whether a value
-    call takes it is the question of a temporary carried out of its arm (review 2 N8's owner question).
+    `ref/U` (a Tuple or array result), which `InferComposite` borrows too (**The one exception**, PLAN G729), is no key of a value
+    call: whether a value call takes it is the question of a temporary carried out of its arm (review 2 N8's owner question).
   - **Raw.** `AdaptInput` borrows a `raw/U` value as an owner's (raw is no reference or handle slot, 10.2): `null` at
     `ref/(raw/i32)` (K4); a raw Place at `ref/(raw/U)` is borrowed too.
   - **The one exception.** `FitComposite` and `InferComposite` also borrow a join its call classifies part by part (PartKind Join)
-    at `ref/(...)`, with the join's Place Origin as the bound: that join is G729's (R7-I2 d), not this rule's.
+    at `ref/U` (a Tuple or array result), with the join's Place Origin as the bound: that join is G729's (R7-I2 d), not this rule's.
+    A source of such a join that is no temporary of `U` (a fill, a mixed range, a waiting call) still takes `U`'s parts: PLAN G910
+    (class 1, its own unit).
   - **Deleted.** `FailBorrowedElements` (BU-165's interim) and its call; `CallSelection.Candidates`' root-only `InferInput` for a
     borrowed Literal; FitLiteral's copy of the Type gate.
   - **Rejected:** `ConstructedAt` in `ChildPattern` (BU-165 B1); a per-element operation table (a side table); a fits-gated join row
     (K1); one temporary per arm (O-201 (2) (b)); two per-form arms in the fit (`FitsOwnTypeAt`: a fill's direct literal element, a
     range with `S == E`; review 1 B1); a bound only for `TemporaryTarget` leaves of a value call (review 1 B2).
+  - Amended by plan revision 69 bundle 3a (PLAN G457 (b), G585) (Q-433, 440a601c7, 2026-11-15; Major; closes PLAN G585's residue):
+    the Rule's `FitComposite` sentence (the selected call completes a fill or mixed range at `ref/U` itself, as at a let); the
+    Input's and the one exception's `ref/(...)` is `ref/U` (a Tuple or array result: `InferComposite` borrows a Join at any `ref/`
+    pattern); the one exception names PLAN G910 for a source of such a join that is no temporary of `U`.
 
 - **BU-188 A specialization's placement is judged by the item list that reads it** (2026-11-13; Front, Parsing and Binding; Major,
   an acceptance mover; PLAN G807; design review 3 ACCEPT, implementation review ACCEPT WITH NOTES; the owner approved
@@ -13382,7 +13399,8 @@ resumed by R4-M86 (2026-10-20).
   - `TypeContext` gives a `specialize func` header's Type argument the input row: each omitted aggregate slot is the header's
     universal input Origin (`OriginKind.Input`, `Occurrence` the slot, `InputIndex` -1), the call's `T`-Origin, which
     `CompleteImplementationOrigins` then gives the restated inputs and result through the substituted contract.
-  - `PrepareSpecializations` rejects an Origin the header wrote in a Type argument (8.13.2: it restricts the admitted bindings) with
+  - `PrepareSpecializations` rejects an Origin the header wrote in a Type argument (8.13.2: a header's Type argument states no
+    Origin, the owner's O-318 (b) and O-324 (a)) with
     `IncompatibleContractImplementation_Kd`; Origins bound inside the argument pass.
   - Located `Unsupported_Kd` until the argument has a `TypePosition` of its own: an omitted borrow layer of T's binding (argument or
     restated input), a Function Type result in the argument that no input of its own gives, and an undecided inherited Constraint
@@ -14108,6 +14126,8 @@ structure is recorded here by the unit that first implements it.
   no rows (C9a would read the old Emission's table); rows per wrapper kind (the collector never sees a wrapper); a
   `FormattingWitness` row bit (a third statement of the published `Formats` rows); wrappers written only under the runtime flag
   (G133).
+  - Superseded in part by R8-W2 c4 (2026-11-15): no formatting runtime text is left, so `HelperNeeds` and its member
+    `FormattingRuntime` are deleted; Text.writer's routine is the kept file's (`ErasedWriterRuntime.ll.in`, R8-M18).
 - **R5-M31 HIR lints** (2026-10-18; under R5-M23 and PD31) A permanent canonical Binding component, `Binding/Binding.Lints.cs`:
   Binding's checks that never fail a node, one row per code in a lint table (code; derived from `FailureCauses`; rests on a
   guessed completion), the row number being its records' condition; a row whose check rests on a Binding failure or a guess
@@ -16539,6 +16559,9 @@ structure is recorded here by the unit that first implements it.
     - re-pointing the old lowering to the map (D5).
   - Superseded in part by R8-M22 (R8-W1c-1 to W1c-2b): its formatting rows are Kimigayo bodies or gone, and the `Formatting` writer,
     `LegacyRow.Needs`, the measured capacity Context (`Measure`) and `WitnessKind` are deleted.
+  - Superseded in part by R8-W2 c4 (2026-11-15): no formatting runtime text is left. `ModuleCodegen.Request(HelperNeeds)` and
+    `Needs.Formatting` are deleted, so "The runtime is written once, after the Array runtime and before the helpers" ends;
+    Text.writer's routine is the kept file's (R8-M18).
 - **R5-M129 The Array literal is one MIR aggregate (alit)** (2026-10-26; the owner's 「a) 設計して直す お願いします」 (2026-10-26, on G:library-2's held
   review: design and fix) and 「いずれも承認します」 (2026-10-26, to "MIR の語彙に新しい集約の種類 MirAggregateKind.Array を加えてよいですか？"); G:library-2's B1; partly
   supersedes R5-M121 and R3-5's interim mapping for the Array literal)
@@ -16844,6 +16867,7 @@ structure is recorded here by the unit that first implements it.
     the adapter's two-phase `uniq` borrow and a tested Result, while its record still has no Place, Loan or Drop; (3) its Descriptor
     bullet `Row(None, Allocation | Abort, 4)`: the row is arity 3, effect None, and the Allocation and Abort effects are the two
     library bodies', which A4 reads.
+  - Superseded by R8-M44 (R8-W2 c2b): FormatSegment is deleted; the hint is the writer's Field store.
 - **R5-M134 The owner confirms C9d's departure (i)** (owner, 2026-10-27, on the choice between C9d's two designs; verbatim 「C9d の逸脱 2
   件（R3-10 の FormatHint を FormatSegment に改名して区間のリテラル本文を持たせること、遅延規則 (a) により固定されていないプログラムで割り当て回数が旧生成器より少なくなり得ること）を承認します。」) Departure (i) is
   confirmed: R3-10's temporary intrinsic FormatHint is renamed `FormatSegment`, and the owning interpolation's per-segment step carries
@@ -20041,9 +20065,11 @@ R8-M* and R9-M* by the stage of the recording unit.
       adapter cannot, per W1b's design and `Utf8InterpolationTest.NestedReservationsRetainTheOuterHint`), together with `Dispatch`'s kind
       0/1 arm;
     - the second statement of HeapBuffer growth, `__kimi_buffer_reserve` beside `HeapBuffer.reserve`: removed with the adapter's kind 0/1
-      arms (W2), census 2a (precedent: R8-M2's `__kimi_array_grow`);
+      arms (W2), census 2a (precedent: R8-M2's `__kimi_array_grow`); done, R8-W2 c4, which deletes the runtime's arms
+      (`__kimi_writer_reserve` and `__kimi_buffer_reserve`); the Kimigayo arms (`Utf8Writer.reserve`'s kind 0/1, reserving through
+      `FixedBuffer.reserve` and the heap hint's growth) stay, part b's subject;
     - `__kimi_buffer_bytes` as a plain define: removed with its last caller (`{{text_try_format}}` and `WriteFormattingConversion` at W1c,
-      `format_take_string` at W2);
+      `format_take_string` at W2); done, R8-W2 c3a (211191c9e removed its last text).
     - `__kimi_utf8_valid`: removed with `{{text_validate_utf8}}` (W1c); done, R8-M22 (W1c-1).
   - Moves: acceptance, the buffer half of `BodylessWitness` (a `BufferWriter` requirement call or requirement Item at either buffer is
     accepted; no corpus program uses it, R5-M146; diagnostic snapshot 0 differences); `.ll`: 546 of 6,139 fixtures move, 84 in the
@@ -20058,6 +20084,8 @@ R8-M* and R9-M* by the stage of the recording unit.
     instance); D (a `BufferRepr` pun for the buffers' own operations: their Fields are already ordinary Places).
   - Amended by R8-M18 (the W1b chain's RP8 fix): `Text.validUtf8`'s guard-bounded steps wrap under R8-M2's rule, and the six
     validated-suffix copies of `text`, `validate`, `intoText` and `intoString` are one internal `Text.validSuffix`.
+  - Amended by R8-W2 c4 (2026-11-15): the "Option A" bullet's kind 0/1 arms are the Kimigayo ones (`Utf8Writer.reserve`'s) since
+    c4, which deleted the runtime's arms.
 - **R8-M10 A Drop that destroys nothing asks no drop glue** (Back, 2026-11-08; OI-1a, PLAN G641 kinds 1-3; Major; the Middle's C-160
   YES with B1 and B2) SPEC 8.15.3, 14.10.3, 16.2.1, 16.2.2. Supersedes in part R5-M60 (its clause "A2's verdicts do not narrow the
   checked set") and R4-M6a (its clause "a Drop only check edges reach has no row; check-only code is not judged").
@@ -20222,7 +20250,7 @@ R8-M* and R9-M* by the stage of the recording unit.
     until W2) and `__kimi_erased_reserve(ret, writer, amount)`: a Writer's `reserve` through the adapter's dispatch word, then the
     window check (`written == 0`, `remaining >= amount`, else `BufferFull`), the plan contract of `ErasedReserve`. `LlvmModuleText`
     owns its text (`ErasedWriterRuntime`, expanded once on first use); `ModuleCodegen` writes it after the formatting runtime when
-    `Needs.ErasedWriter` (bit 32; bit 16 stays free) was requested: by `Text.writer` (FunctionCodegen.Formatting's `Writer`) and by
+    `Needs.ErasedWriter` (bit 32; bit 16 is `Needs.FormatFloat` since R8-S2c; bit 64 is free after R8-W2 c4) was requested: by `Text.writer` (FunctionCodegen.Formatting's `Writer`) and by
     `Request(HelperNeeds.FormattingRuntime)`.
   - **The window's bodies** (W1b-1): `WriteWindow.push`, `append`, `limit`, `commit` and `Utf8Writer.status` are Kimigayo bodies in
     `Formatting.kimi` (SPEC 22.9.4, 22.10.1); `written` and `remaining` are `public var` with `private set` (a user write is
@@ -20297,6 +20325,22 @@ R8-M* and R9-M* by the stage of the recording unit.
     those instances before O2); re-measured in T-91 (rows on Q-233). The rule's remaining sites are PLAN G693.
   - Amended by R8-W2 b1 (2026-11-14): `write`, `reserve` and `finish` guard by `status`, the writer's one failure guard (four
     statements become one; the failure recording in `write` and `settled` stays).
+  - Amended by R8-W2 c4 (2026-11-15), which deletes the dead formatting runtime (`Utf8FormatRuntime.ll.in`,
+    `Utf8BufferRuntime.ll.in`):
+    - Temporaries closed: `Request(HelperNeeds.FormattingRuntime)` implying `Needs.ErasedWriter` (`HelperNeeds` is deleted;
+      `Text.writer` requests `Needs.ErasedWriter` itself); `__kimi_writer_reserve`'s user arm and its restatement of the adapter's
+      reservation (deleted); the formatting runtime's expansion skipping the kept file's definitions (the expansion is deleted);
+      `utf8_commit`'s restated commit; `window_address` and `window_advance` (deleted).
+    - `BufferRepr`'s pairing with the runtime's offsets is closed: no runtime reads a buffer at fixed offsets. What lasts is the
+      library's equal layouts, the prefix pun of the "`Storage.BufferRepr` is lasting" bullet, which `RuntimeLayoutsAreFixed`'s
+      FixedBuffer, HeapBuffer and BufferRepr rows pin.
+    - Three phrases end with them: the need column's "the formatting runtime, which also calls it, is written only with the kept
+      file until W2"; the window invariant's "and, until W2, the runtime's own windows (`__kimi_writer_reserve`'s arms)"; the kept
+      runtime's "after the formatting runtime" and "and by `Request(HelperNeeds.FormattingRuntime)`".
+    - Kept: the reservation's kind switch restating `WriterKind` (until b2-1), the kept file's `llvm.memset` (b2-1 supersedes it)
+      and the lasting `destination`/`dispatch` layout pair.
+    - Counts: `ModuleCodegen.Needs` loses `Formatting` (bit 64 is free); `HelperNeeds` 1 -> 0 (deleted); `IntrinsicId`,
+      `CompilerFunctionKind` and `KimiDeclarationId` unchanged.
 
   - R8-M2's rule beyond `Formatting.kimi`, with its RP8 exception until R8-L1: R8-M2's Scope sub-bullet (PLAN G693, the owner's
     O-150 (a)).
@@ -21064,7 +21108,8 @@ R8-M* and R9-M* by the stage of the recording unit.
   - **The formatting row family is gone, S2d2** (0a62ff4ce): `FormattingHelperRow`, `FormattingRows`, `FormattingRow`,
     `CreateFormattingRows`, `LlvmModuleText.ErasedWriterDefinitions`; Text.writer's routine ABI is `RuntimeAbi.TextWriter`, beside
     `ErasedReserve` (the same kept runtime); `IntrinsicRows`' ErasedWriter row no longer reads a legacy formatting row (it still
-    reads `LegacyRuntimeHelpers.FormatHeap`, `FormatHint` and `FormatFinish`, the interpolation adapter's ABIs, until R8-W2 c;
+    reads `LegacyRuntimeHelpers.FormatHeap`, `FormatHint` and `FormatFinish`, the interpolation adapter's ABIs, until R8-W2 c (all
+    three gone: `FormatFinish` at c3a, `FormatHeap` at c3b, `FormatHint` at c2b, R8-M44);
     implementation review 1's N1 corrects commit 3's message, which said "IntrinsicRows no longer initializes
     LegacyRuntimeHelpers").
   - **Rejected, S2d2.** Re-pointing `RequirementMember` to the witness table (D1): `WitnessGroup` answers a `Wrapping<T>` over an
@@ -21395,6 +21440,9 @@ R8-M* and R9-M* by the stage of the recording unit.
   - RP8 (R7-M21 (2)): T-169 (11-13 10:49-11:14): the O2 and O0 corpus A/B shows no slowdown and the warm compile cost is within;
     cold Bind shifts per program, which deterministic GC counts per phase attribute to the collector's cadence; T-186 reads the
     timing GC-free (`artifacts/benchmarks/r8-k1a-20261113-111107`).
+  - Amended by R8-M44 (R8-W2 c2b): "FormatSegment keeps only the hint (arity 3, effect None) until c2b" is closed: FormatSegment
+    is deleted, and the hint is the writer's Field store. The Staged bullet's unreferenced String constant is not removed by c2b
+    (its "(c2b, which replaces the estimate)"): PLAN G828 (2) stays.
 - **R8-M40 The interpolation-hint term: a second value-Type term row and one refold** (Back, 2026-11-13; R8-W2 c2t, Major; in the
   Front's files, designed and implemented by the Back with the Front's review, C-307: ACCEPT WITH NOTES; part c's plan §3 c2t,
   Revision 1 B6, N2; O-214 (a) R3-N4). SPEC 22.10.5. Amends R8-M21.
@@ -21415,7 +21463,8 @@ R8-M* and R9-M* by the stage of the recording unit.
     `Refold` substitutes declared parameter patterns only, and a term forms only in MIR build. If an open substitution ever reaches
     this arm (G814's rule, folded into R7-I2), an unbound slot must keep itself there (R1, C-307).
   - Spelling: `(L + hint(Types))`. Relations are R8-M21's: a hint and a bound over the same values and literal intern apart.
-  - Staged (PLAN G876): until c2b, `FormatEstimate` states the hint's rule beside `HintBound`; c2b deletes it.
+  - Staged (PLAN G876): until c2b, `FormatEstimate` states the hint's rule beside `HintBound`; c2b deletes it. Closed by R8-M44
+    (R8-W2 c2b): `FormatEstimate` is deleted, and `HintBound` is the rule's one statement.
   - Moves: none (unused until c2b). RP8 (R7-M21 (2)): T-205 (11-14 11:29-11:32): the compile cost within A'/A's noise, warm 0 B
     (`artifacts/benchmarks/r8-k1a-20261114-112931`).
   - Rejected: a refold arm per site (R8-M21); a second walk for the hint (C-307); folding closed values into `Value` (a1 keeps the
@@ -21439,7 +21488,8 @@ R8-M* and R9-M* by the stage of the recording unit.
     (R3-N3: the one length statement). A non-closed or negative result is `InternalInvariant_Kd`.
   - The analyses. A4 and A5 read it as any Const operand (no Place, no Origin).
   - Staged. FormatSegment's (Integer, TypeToken) estimate is a second form of an instance-decided value until c2b, which makes the
-    hint operand `LengthOperand`'s (RN2; PLAN G828).
+    hint operand `LengthOperand`'s (RN2; PLAN G828). Closed by R8-M44 (R8-W2 c2b): FormatSegment is deleted, and the hint's store
+    takes `LengthOperand`'s operand (PLAN G828 (7)).
   - Rejected: a `[L of ()]` Place (R3: a fixed array as a carrier of a number); a narrowed estimate intrinsic (R2); a direct
     `Subst.Lengths` read, or an entry over `SubstituteLength` (R3-N3); Binding publishing a Name's term in a HIR column (a Binding
     change for one form).
@@ -21474,6 +21524,56 @@ R8-M* and R9-M* by the stage of the recording unit.
     text reads drop BOMs or replace bytes.
   - Rejected: `[string]::Equals(..., Ordinal)` on decoded text (keeps the lossy decoding), hex strings with `-ceq` (correct only by
     argument, a second rule), `[byte[]]`-typed parameters (PowerShell converts a numeric string).
+- **R8-M44 An owning interpolation's hint is the adapter's `hint` Field, stored before each write position** (Back, 2026-11-13;
+  R8-W2 c2b; Major, prototype first by the owner's O-214 (a); B's rulings Q1-Q7; the Middle's C-267: CONSENT, hunk review ACCEPT
+  WITH NOTES; the Front's C-345: CONSENT; B's implementation review ACCEPT WITH NOTES; on R3-10, R5-M133, R8-M39, R8-M40 and
+  R8-M41). SPEC 22.10.5, 11.2, 11.3.2.
+  - **Rule.** Before each write position of an owning interpolation (literal ones included), `MirBuilder.Writes` stores, into the
+    writer's Field `Utf8Writer.hint` (by name, `AdtDef.IndexOf`), the term of the later literal bytes and values' Types
+    (`TyCtxt.InterpolationHint`). The store is in the length's one form (`MirBuilder.LengthOperand`): an Integer where it folds, a
+    `Length` constant its instance decides otherwise. Code generation writes the Field's store.
+  - **The set.** `internal var hint: isize` with `private get`. The standard set is Place access (SPEC 11.2), writable by the
+    library's Kotonoha, the compiler's expansion included; its one reader, `reserve`'s kind-1 arm, is private.
+    - The plan's `var` with `internal set` would broaden a private Property's accessor, an error (SPEC 11.3.2).
+    - No function, catalog row or `KimiDeclarationId` (+0; part c's total is +2, not the plan's +3), and no `CallerLocation` (a
+      standard set cannot Abort).
+  - **Moved.** The hint's value moved from code generation (`FormatEstimate` over the step's Integer and TypeToken) to the term,
+    folded at build or refolded in the instance; its store moved from a runtime routine to MIR. One statement of the rule remains,
+    `FormattingTypes.HintBound`.
+  - **Deleted.**
+    - `IntrinsicId.FormatSegment` (28 -> 27, `None` included), the last of R3-10's temporary intrinsics (the owner, 2026-10-11).
+    - Its descriptor row; the validator's `Constants`, `Steps`, `Fits` and `EstimateConstants`; `IntrinsicWriter.Segment` and its
+      row; `FunctionCodegen.Interpolation.cs`; `LegacyRuntimeHelpers.FormatEstimate` and `FormatHint`; `__kimi_format_hint`.
+    - The builder's Unit temp and per-position borrow.
+  - **Validation and analyses: no new rule.** The store is an Assign the existing rules check (its Type; c2a's `Length` row).
+    A4 composes nothing. A5 sees a write of a Scalar Field of a local and one Loan fewer per position. Generated gate: W-204, 0
+    record differences.
+  - **Counts unchanged** (SPEC 22.10.5): NestedReservations 2/2/22, BoundedGrowsByItsHint 1/9, Kernel 2/60. A generic non-direct
+    `"\(a)\(b)"` (b: T) at T = i32 allocates once.
+  - **The three checks** (WORKFLOW's Owner, Exposure and Readings).
+    - Owner: the hint's value is the term's (`TyCtxt.InterpolationHint`, folded by `FormattingTypes.HintBound`; R8-M40), its MIR
+      form `MirBuilder.LengthOperand`'s (R8-M41), its position and store `MirBuilder.Writes`'. c2b reads the first two and deletes
+      the second statement of the value (`FormatEstimate`).
+    - Exposure: none found. B's implementation review ran 14 valid twins on the base and the head (closed, generic, nested,
+      direct-line, `$tryWrite`, Closure and default-parameter interpolations): both accept each with the same output, exit code
+      and allocation counts, and none gives `Unsupported_Kd` or `InternalInvariant_Kd`.
+    - Readings: none beyond the text. SPEC 11.2 (a standard `set` "initializes or replaces the storage") and 11.3.2 ("A repeated
+      or broader modifier is an error"; "`set` access need not be contained in `get` access") are read word for word. User code
+      writing or reading `writer.hint` stays `InaccessibleBinding_Kd` (the review's two invalid twins).
+  - **Closes:** R8-M41's Staged (RN2: the estimate beside `Length`; PLAN G828 (7)) and R8-M40's Staged (`FormatEstimate` beside
+    `HintBound`; PLAN G876).
+    **Staged:** the dead formatting runtime until c4 (PLAN G828 (3): no routine of it has a caller); closed by R8-W2 c4, which
+    deletes it (R8-M18's c4 amendment). PLAN G828 (2) is not closed
+    (B's Q2; the Middle's C-267): its cause, a record made by re-typing an already-stored constant (`Text`'s
+    `Viewed(Literal(...))` and the comparison path), is the Middle's `Literal`/`Viewed`.
+  - **Rejected:**
+    - A custom setter with a catalog row: a wrapper without semantics, plus a call, a block and a borrow per position.
+    - `setHint`: the one name is `Utf8Writer.hint` (the plan's N7).
+    - An internal getter: broader than its one reader (the fallback if Binding had lacked a narrowed `get`).
+    - FormatSegment kept with a `Length` operand: a temporary intrinsic for a store.
+    - A library `hinted<length H>`: one instance per distinct hint, a2 review 2's R2-N2.
+    - Skipping the store on a fixed-only line: a mode in `Writes`.
+  - **RP8:** T-218.
 - **R9-M1 A check's phase sequence is `Compilation.Check`** (2026-11-08; R9-F5; Major, behavior-preserving; review 1 REVISE, then
   review 2). SPEC 23.1.2, 23.2.2; IMPL 20.6.1. Supersedes in part R5-M65 (`Project` reads `Accepts`) and R5-M77 (`Project` discovers
   the test catalog after acceptance and owns it).
