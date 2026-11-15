@@ -272,7 +272,7 @@ elsewhere its conventions are recommended.
 
 - UpperCamelCase Types, Contracts, groups, Cases and files; lowerCamelCase functions, Properties and locals.
   Type parameters `T`, `Key`; length `N`; Semantics `s`; Origins `source`. Acronyms are words: `Utf8Writer`.
-- Keep lines within 120 columns; short bodies use `=>`; separate declarations with one blank line.
+- Short bodies use `=>`; separate declarations with one blank line.
   Order: constraints, associated Types, Cases, stored/computed Properties, constructors/drop, functions,
   nested Types. Preserve storage order; keep overloads adjacent, shared variants first.
 - Use `sorted`/`sort`, shared/exclusive `tryGet`/`tryGetUniq`, conversion `toString`, Boolean `isEmpty`.

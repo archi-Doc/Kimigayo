@@ -82,6 +82,25 @@ public sealed partial class MirBorrowsTest
             public init()
                 self.link = .Some(.Some(OBoxP.init(v: 0)@obj))
                 self.next = null
+        enum OE
+            Has(obj/OBoxP)
+            Nil
+        #Layout("C")
+        struct NodeE
+            public var link: OE
+            public var next: raw/(raw/u8)
+            public init()
+                self.link = .Has(OBoxP.init(v: 0)@obj)
+                self.next = null
+        #Layout("C")
+        struct NodeH
+            public var h: obj/OBoxP
+            public var next: raw/(raw/u8)
+            public init()
+                self.h = OBoxP.init(v: 0)@obj
+                self.next = null
+        func setV(h: raw/(obj/OBoxP))
+            unsafe => (*h).v = 7
         func storePunBad()
             var kk: u8 = 1
             let r = kk@uniq
@@ -891,6 +910,126 @@ public sealed partial class MirBorrowsTest
             unsafe => (*hp).v = 7
             stash(n.next, spare)
             kk = 2
+        func sharedOptTyped(flag: bool)
+            var kk: u8 = 1
+            let r = kk@uniq
+            var spare: raw/u8 = r@follow@raw
+            var other: raw/u8 = null
+            var n = NodeO.init()
+            n.next = other@raw
+            let p = n@raw
+            if flag
+                unsafe
+                    match (*p).link
+                        .Some(let b) => (*(b@follow@raw)).v = 7
+                        .None => ()
+            stash(n.next, spare)
+            kk = 2
+        func sharedOptNoWrite(flag: bool)
+            var kk: u8 = 1
+            let r = kk@uniq
+            var spare: raw/u8 = r@follow@raw
+            var other: raw/u8 = null
+            var n = NodeO.init()
+            n.next = other@raw
+            let p = n@raw
+            if flag
+                unsafe
+                    match (*p).link
+                        .Some(let b) => inspect(b)
+                        .None => ()
+            stash(n.next, spare)
+            kk = 2
+        func sharedOptCallTyped(flag: bool)
+            var kk: u8 = 1
+            let r = kk@uniq
+            var spare: raw/u8 = r@follow@raw
+            var other: raw/u8 = null
+            var n = NodeO.init()
+            n.next = other@raw
+            let p = n@raw
+            if flag
+                unsafe
+                    match (*p).link
+                        .Some(let b) => setV(b@follow@raw)
+                        .None => ()
+            stash(n.next, spare)
+            kk = 2
+        func sharedKOptRests(flag: bool)
+            var kk: u8 = 1
+            let r = kk@uniq
+            var spare: raw/u8 = r@follow@raw
+            var other: raw/u8 = null
+            var n = NodeKO.init()
+            n.next = other@raw
+            let p = n@raw
+            if flag
+                unsafe
+                    match (*p).link
+                        .Some(let b) => (*(b@follow@raw)).v = 7
+                        .None => ()
+            stash(n.next, spare)
+            kk = 2
+        func sharedEnumRests(flag: bool)
+            var kk: u8 = 1
+            let r = kk@uniq
+            var spare: raw/u8 = r@follow@raw
+            var other: raw/u8 = null
+            var n = NodeE.init()
+            n.next = other@raw
+            let p = n@raw
+            if flag
+                unsafe
+                    match (*p).link
+                        .Has(let b) => (*(b@follow@raw)).v = 7
+                        .Nil => ()
+            stash(n.next, spare)
+            kk = 2
+        func sharedOptOptRests(flag: bool)
+            var kk: u8 = 1
+            let r = kk@uniq
+            var spare: raw/u8 = r@follow@raw
+            var other: raw/u8 = null
+            var n = NodeOO.init()
+            n.next = other@raw
+            let p = n@raw
+            if flag
+                unsafe
+                    match (*p).link
+                        .Some(.Some(let b)) => (*(b@follow@raw)).v = 7
+                        _ => ()
+            stash(n.next, spare)
+            kk = 2
+        func hOptMatch(flag: bool)
+            var kk: u8 = 1
+            let r = kk@uniq
+            var spare: raw/u8 = r@follow@raw
+            var other: raw/u8 = null
+            var n = NodeH.init()
+            n.next = other@raw
+            let p = n@raw@raw/(Option<obj/OBoxP>)
+            if flag
+                unsafe
+                    match (*p)@uniq
+                        .Some(let b) => b.v = 7
+                        .None => ()
+            stash(n.next, spare)
+            kk = 2
+        func hEnumMatch(flag: bool)
+            var kk: u8 = 1
+            let r = kk@uniq
+            var spare: raw/u8 = r@follow@raw
+            var other: raw/u8 = null
+            var n = NodeH.init()
+            n.next = other@raw
+            let p = n@raw@raw/OE
+            if flag
+                unsafe
+                    match (*p)@uniq
+                        .Has(let b) => b.v = 7
+                        .Nil => ()
+            stash(n.next, spare)
+            kk = 2
         func wholeTupleLoanOk()
             var kk: u8 = 1
             let r = kk@uniq
@@ -1365,14 +1504,17 @@ public sealed partial class MirBorrowsTest
     // Field's is not decided (kLayoutFieldRests). A first Field `Option<obj/OBoxP>` places its Some payload there too (IMPL 21.1.3, PLAN
     // G808), so a store past it is typed (opt*Typed; undecided before G808), and the init's own conflict stands (SPEC 15.6: the result's
     // raw `next` is tied to no argument); a Kimigayo-layout or `Option<Option<R>>` Field's is not decided (kOpt*Rests, optOptCastRests).
-    // A written array of no element over a pointer is no pun (zeroArrayOk, 5.2: positive-sized). A length that is no constant is not
-    // established positive (4.4.2: the body is checked for every binding that meets the public conditions, which may all make it 0:
-    // `N - N`, `N * 0`, a bare `N` beside a `[(0 - N) of u8]` parameter), so no pun is decided over one, written or the holder's: a
-    // located Unsupported_Kd where the conflict rests on it, never a Language error (lengthArrayRests, lengthZeroExprRests,
-    // lengthMulZeroRests, lengthZeroCondRests; lengthHolderRests, lengthZeroExprHolderRests). A holder's typed rows need no length:
-    // its element's Type through its address is typed (lengthHolderElemOk, 4.1). A holder of no element, at any depth, or a Tuple or
-    // an enum whose only pointers are in one (zeroInTupleHolderOk, zeroPayloadBranchOk: bytes held, not Loans carried, 4.3.3),
-    // holds no pointer, and a write at its address, seen or a call's, is no pun (zeroHolder*Ok, zeroNestBranchOk, lengthZeroNestOk;
+    // A shared Subject's binding of the payload in place (SPEC 15.1.6; its write runs only under `flag`, having no write authority,
+    // SPEC 5.2.1 condition 3) keeps that verdict, a store or a call past it typed (sharedOpt*), through an enum that is no nonnull
+    // Option, a Kimigayo-layout Field or `Option<Option<R>>` undecided (sharedEnumRests, sharedKOptRests, sharedOptOptRests). A written
+    // array of no element over a pointer is no pun (zeroArrayOk, 5.2: positive-sized). A length that is no constant is not established
+    // positive (4.4.2: the body is checked for every binding that meets the public conditions, which may all make it 0: `N - N`,
+    // `N * 0`, a bare `N` beside a `[(0 - N) of u8]` parameter), so no pun is decided over one, written or the holder's: a located
+    // Unsupported_Kd where the conflict rests on it, never a Language error (lengthArrayRests, lengthZeroExprRests, lengthMulZeroRests,
+    // lengthZeroCondRests; lengthHolderRests, lengthZeroExprHolderRests). A holder's typed rows need no length: its element's Type
+    // through its address is typed (lengthHolderElemOk, 4.1). A holder of no element, at any depth, or a Tuple or an enum whose only
+    // pointers are in one (zeroInTupleHolderOk, zeroPayloadBranchOk: bytes held, not Loans carried, 4.3.3), holds no pointer, and a
+    // write at its address, seen or a call's, is no pun (zeroHolder*Ok, zeroNestBranchOk, lengthZeroNestOk;
     // 4.1, 5.2; the write is undefined when it runs, which is no compile-time error, 1.3).
     // An abstract written part (PLAN G792, F1; SPEC 8.15.1: every binding, a Scalar of any size among them) is a punnable write that
     // surely holds a Scalar, judged at its Position: over a pointer, a seen store, a call's write, a Field or an exclusive borrow of it
@@ -1470,6 +1612,12 @@ public sealed partial class MirBorrowsTest
     [InlineData("kOptCastRests", "kOptCastRests: kk = 2 Unsupported_Kd")]
     [InlineData("kOptMatchRests", "kOptMatchRests: kk = 2 Unsupported_Kd")]
     [InlineData("optOptCastRests", "optOptCastRests: kk = 2 Unsupported_Kd")]
+    [InlineData("sharedOptTyped", "sharedOptTyped: kk = 2")]
+    [InlineData("sharedOptNoWrite", "sharedOptNoWrite: kk = 2")]
+    [InlineData("sharedOptCallTyped", "sharedOptCallTyped: kk = 2")]
+    [InlineData("sharedKOptRests", "sharedKOptRests: kk = 2 Unsupported_Kd")]
+    [InlineData("sharedEnumRests", "sharedEnumRests: kk = 2 Unsupported_Kd")]
+    [InlineData("sharedOptOptRests", "sharedOptOptRests: kk = 2 Unsupported_Kd")]
     [InlineData("wholeTupleLoanOk", "")]
     [InlineData("wholeTupleNoLoanOk", "")]
     [InlineData("wholeTupleCallLoanOk", "")]
@@ -1559,6 +1707,50 @@ public sealed partial class MirBorrowsTest
         Assert.Equal($"{form}: [{expected}]", $"{form}: [{string.Join("; ", problems.Order(StringComparer.Ordinal))}]");
     }
 
+    // The step rule (Step; G808 design review N4, the A5 value redesign's U2): a nonnull Option's Some payload is TyCtxt.Leading's one
+    // step from the Option, its Downcast and Field, also where a Place's own walk takes them past a raw Deref. No source form builds that
+    // Place (a match binding borrows through its Subject Place's Deref, `&((*_s) as case k).j`), so each shared-Subject form's body is
+    // copied with its Subject's Deref replaced by the Place the Subject borrows, `&(((*p).link) as case k).j`: a store past the payload
+    // keeps its source form's verdict, typed through `Option<obj/OBoxP>` at a C first Field (sharedOptTyped: undecided while the
+    // Downcast kept no Position), undecided through an enum that is no nonnull Option, a Kimigayo-layout Field or `Option<Option<R>>`.
+    [Theory]
+    [InlineData("sharedOptTyped", "sharedOptTyped: kk = 2")]
+    [InlineData("sharedOptCallTyped", "sharedOptCallTyped: kk = 2")]
+    [InlineData("sharedEnumRests", "sharedEnumRests: kk = 2 Unsupported_Kd")]
+    [InlineData("sharedKOptRests", "sharedKOptRests: kk = 2 Unsupported_Kd")]
+    [InlineData("sharedOptOptRests", "sharedOptOptRests: kk = 2 Unsupported_Kd")]
+    public void APayloadBorrowedInPlacePastARawDerefKeepsLeadingsStep(string form, string expected)
+    {
+        var c = MirBuildTest.Compile(Prelude + PunForms[..PunForms.IndexOf("func storePunBad(", StringComparison.Ordinal)] + Form(PunForms, form));
+        var program = c.BuildMir();
+        program.Problems.Clear();
+        var built = Body(program, form);
+        new Stratum(c.Types).Run(program, Validated(c, InPlace(built, Binding(built).Rvalue.Place.Root)));
+        var problems = Problems(c, Sound(program), [.. LoanCodes, DiagnosticCode.Unsupported_Kd]).Order(StringComparer.Ordinal);
+        Assert.Equal($"{form}: [{expected}]", $"{form}: [{string.Join("; ", problems)}]");
+    }
+
+    // The step rule's other reader (StoreWrite; U2's implementation review, U2-N1): a seen store whose own Place passes the pair past its
+    // last Deref. No source form stores through that Place (a binding's store goes through the binding's reference), so each uniq-Subject
+    // form's body is copied with its Subject and then its binding rebased onto the Place each borrows (InPlace): the store `b.v = 7` is
+    // `(*(((*p) as case 0).0)).v = 7`, typed through `Option<obj/OBoxP>` cast at a C first Field `obj/OBoxP` (hOptMatch: undecided while the
+    // Downcast kept no Position), undecided through an enum that is no nonnull Option (hEnumMatch: A5's Limit; the write past the handle's
+    // own step is the object's, SPEC 5.2). The binding's Ref stays, a borrow no store goes through, so each verdict is the store's.
+    [Theory]
+    [InlineData("hOptMatch", "hOptMatch: kk = 2")]
+    [InlineData("hEnumMatch", "hEnumMatch: kk = 2 Unsupported_Kd")]
+    public void APayloadStoredInPlacePastARawDerefKeepsLeadingsStep(string form, string expected)
+    {
+        var c = MirBuildTest.Compile(Prelude + PunForms[..PunForms.IndexOf("func storePunBad(", StringComparison.Ordinal)] + Form(PunForms, form));
+        var program = c.BuildMir();
+        program.Problems.Clear();
+        var built = Body(program, form);
+        var subject = InPlace(built, Binding(built).Rvalue.Place.Root);
+        new Stratum(c.Types).Run(program, Validated(c, InPlace(subject, Binding(subject).Place.Root)));
+        var problems = Problems(c, Sound(program), [.. LoanCodes, DiagnosticCode.Unsupported_Kd]).Order(StringComparer.Ordinal);
+        Assert.Equal($"{form}: [{expected}]", $"{form}: [{string.Join("; ", problems)}]");
+    }
+
     // PLAN G667c's named limit (a) on the stated-store forms (StatedForms; the Middle's Q13 rulings): a Scalar written at the whole
     // address of a struct or a Tuple that holds a raw pointer is undecided, IMPL 21.1.2 promising no offset there, so these invalid
     // forms, the conflict before G667c, are rejected by the located Unsupported_Kd at the conflict's two subjects, until Layout's byte
@@ -1594,5 +1786,49 @@ public sealed partial class MirBorrowsTest
             stratum.Run(program = c.BuildMir());
         }));
         Assert.Contains("pastPunBad: kk = 2", Problems(c, program!, LoanCodes));
+    }
+
+    // A copy of a body with each Place `(*_x)...` of the local `_x` rebased onto the Place X its Ref `_x = &X` borrows (Copied), every other
+    // row as built: a match Subject's (its bindings, discriminant and reads), or a binding's (its stores).
+    private static MirBody InPlace(MirBody built, int local)
+    {
+        var borrowed = built.Statements.ToArray().Single(x => x.Place == new MirPlace(local) && x.Rvalue.Kind == MirRvalueKind.Ref).Rvalue.Place;
+        return Copied(built, body => place => Map(body, place));
+
+        // The Place's projections, root first, re-made in the copy; past the local's Deref, onto the borrowed Place.
+        MirPlace Map(MirBody body, MirPlace place)
+        {
+            var chain = new List<int>();
+            for (var id = place.Projection; id > 0; id = built.Projections[id].Prefix)
+            {
+                chain.Insert(0, id);
+            }
+
+            var rebased = place.Root == local && chain.Count > 0 && built.Projections[chain[0]].Kind == MirProjectionKind.Deref;
+            var at = rebased ? Map(body, borrowed) : new MirPlace(place.Root);
+            foreach (var id in chain.Skip(rebased ? 1 : 0))
+            {
+                at = body.Project(at, built.Projections[id].Kind, built.Projections[id].Arg);
+            }
+
+            return at;
+        }
+    }
+
+    // A body's first match binding of a borrowed payload: the first Ref whose Place passes a Downcast past a Deref of its root, the Subject.
+    private static MirStatement Binding(MirBody body)
+    {
+        return body.Statements.ToArray().First(x => x.Rvalue is { Kind: MirRvalueKind.Ref, Place.Projection: > 0 } && Payload(x.Rvalue.Place.Projection));
+
+        bool Payload(int id)
+        {
+            var cast = false;
+            for (; body.Projections[id].Prefix > 0; id = body.Projections[id].Prefix)
+            {
+                cast |= body.Projections[id].Kind == MirProjectionKind.Downcast;
+            }
+
+            return cast && body.Projections[id].Kind == MirProjectionKind.Deref;
+        }
     }
 }

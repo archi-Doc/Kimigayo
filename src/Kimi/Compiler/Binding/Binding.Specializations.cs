@@ -226,10 +226,8 @@ public sealed partial class Binding
             // stay direct. Everything below needs the declaration scope or a target: the selection key's arguments and their
             // closedness (8.13.1 "outer generic parameter"), the target search and the target's checks. The arguments' Names are
             // still resolved with the declaration's other Types, so their own records stay.
-            if (function.Placement is { } placement)
+            if (RestsOn(function, function.Placement))
             {
-                this.partPrerequisites[function] = placement;
-                this.Fail(function, BindingFailure.Unsupported, true);
                 continue;
             }
 
@@ -243,6 +241,7 @@ public sealed partial class Binding
             Array.Clear(arguments);
             Array.Clear(lengths);
             var closed = true;
+            Koto? failed = null;
             var scope = this.scopes[function];
             for (var i = 0; i < arguments.Length; i++)
             {
@@ -256,7 +255,13 @@ public sealed partial class Binding
                 {
                     arguments[i] = this.BindType(function.GenericArguments[i], scope);
                     closed &= arguments[i] is { } type && Closed(type);
+                    failed ??= FailedPart(function.GenericArguments[i]);
                 }
+            }
+
+            if (RestsOn(function, failed))
+            {
+                continue; // SPEC 23.1.2: the closedness verdict over an argument that failed to bind.
             }
 
             if (!closed)
@@ -299,8 +304,18 @@ public sealed partial class Binding
 
             if (matches != 1)
             {
+                // SPEC 23.1.2: an input-structure mismatch over a restated input that failed to bind rests on the input's record.
+                for (var p = 0; failed is null && matches == 0 && candidates != 0 && p < function.Parameters.Count; p++)
+                {
+                    failed = FailedPart(function.Parameters[p].Type);
+                }
+
                 // SPEC 8.13.1: no target, an input-structure mismatch and multiple targets are distinct diagnostics.
-                this.Fail(function, matches > 1 ? BindingFailure.Ambiguous : candidates == 0 ? BindingFailure.MissingSpecializationTarget : BindingFailure.SpecializationInputMismatch);
+                if (!RestsOn(function, failed))
+                {
+                    this.Fail(function, matches > 1 ? BindingFailure.Ambiguous : candidates == 0 ? BindingFailure.MissingSpecializationTarget : BindingFailure.SpecializationInputMismatch);
+                }
+
                 continue;
             }
 
@@ -313,6 +328,18 @@ public sealed partial class Binding
 
             // SPEC 8.13.2: the original's generic Constraints are inherited; the closed arguments must satisfy them.
             var constraints = this.CheckConstraints(definition.TypeConstraints, new CallSubstitution(definition, arguments, lengths), scope);
+            if (constraints == ConstraintProof.Unknown && NamesHeaderOrigin(arguments, function))
+            {
+                // SPEC 8.13.2 (PLAN G863): the original admits only the bindings its Constraints allow, so an undecided Constraint over
+                // the header's universal Origins is a premise of the body, which nothing states yet: a located limit. The gate reads
+                // the arguments, not the proof: an Unknown proof publishes no fact naming the Origin it rests on (only a Callable
+                // comparison's CallableUnknown), so an Unknown of another cause at such an argument is the limit too (still rejected,
+                // without its Proof evidence) until the proof names its cause or the Constraint becomes a premise (G863's remainder).
+                _ = this.TakeUnknownFact();
+                this.Fail(function, BindingFailure.Unsupported);
+                continue;
+            }
+
             if (constraints != ConstraintProof.Proven)
             {
                 _ = constraints == ConstraintProof.Unknown ? this.FailUnprovenConstraint(function, this.TakeUnknownFact(), unresolved: true)
@@ -324,6 +351,20 @@ public sealed partial class Binding
             for (var p = 0; p < function.Parameters.Count; p++)
             {
                 valid &= function.Parameters[p].ExternalName == definition.Parameters[p].ExternalName;
+            }
+
+            // SPEC 8.13.2: a Type argument's Origins are the ones each call of the original supplies, the header's universal input
+            // Origins at that argument (TypeContext), or ones bound inside it; any other Origin the argument's bound Type states adds
+            // an Origin restriction (independent of the Origin's own well-formedness, SPEC 15.2.3): a raw layer's too (SPEC 5.7: it
+            // states which storage the pointer addresses), in any variance position (a Function Type's input included) and whatever
+            // spells it (one reached through a completed projection included).
+            for (var i = 0; i < arguments.Length; i++)
+            {
+                if (arguments[i] is { } argument)
+                {
+                    var summary = this.SummaryOf(argument);
+                    valid &= Unwritten(summary.Nodes, function, function.GenericArguments[i]) && Unwritten(summary.RawNodes, function, function.GenericArguments[i]);
+                }
             }
 
             if (!valid)
@@ -364,6 +405,22 @@ public sealed partial class Binding
             }
         }
 
+        // SPEC 23.1.2: the first failed part of a header syntax that formed no Type; a header verdict reading it rests on its record.
+        Koto? FailedPart(Koto syntax) => syntax.BoundType is null ? (this.failedSignaturePartVisitor ??= new()).Find(syntax, invalidState: true) : null;
+
+        // The header's failure rests on a part's record (IsDerived): its placement Error, or an argument or input that formed no Type.
+        bool RestsOn(FunctionKoto function, Koto? part)
+        {
+            if (part is null)
+            {
+                return false;
+            }
+
+            this.partPrerequisites[function] = part;
+            this.Fail(function, BindingFailure.Unsupported, true);
+            return true;
+        }
+
         // SPEC 8.13.1: every slot is supplied with its original kind, in declaration order.
         static bool SameSlotKinds(FunctionKoto ordinary, BoundLength?[] lengths)
         {
@@ -389,6 +446,48 @@ public sealed partial class Binding
             for (var i = 0; i < type.Components.Count; i++)
             {
                 if (!Closed(type.Components[i]))
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        // Whether an argument's Origins (its Origin summary's nodes) name one of the header's: a universal input or a parameter's Origin.
+        // Raw layers' nodes stay out, though a Constraint may be undecided over one (`T is Owned` reads a raw layer's Origin, SPEC
+        // 15.2.3): the limit stands for a header that may be valid, and a raw node of a header's argument is never the call's (SPEC
+        // 15.4.2 completes no raw Origin), so that header is invalid whichever record is selected and keeps the Constraint's.
+        bool NamesHeaderOrigin(BoundType?[] arguments, FunctionKoto function)
+        {
+            foreach (var argument in arguments)
+            {
+                if (argument is null)
+                {
+                    continue;
+                }
+
+                foreach (var origin in this.SummaryOf(argument).Nodes)
+                {
+                    if (ReferenceEquals(origin.Binder, function))
+                    {
+                        return true;
+                    }
+                }
+            }
+
+            return false;
+        }
+
+        // SPEC 8.13.2: whether every Origin node of a Type argument is the call's: the header's universal input Origin at the
+        // argument, one bound inside it (a Function Type's per-call input) or their meet (whose operands are nodes too). Any other
+        // (static, a parameter's, a binder's; written in the header or stated by what the argument names) restricts the original.
+        static bool Unwritten(BoundOrigin[] nodes, FunctionKoto function, Koto argument)
+        {
+            foreach (var origin in nodes)
+            {
+                if (origin.Kind != OriginKind.Intersection && !(origin is { Kind: OriginKind.Input, Binder: { } binder } &&
+                    (ReferenceEquals(binder, function) ? origin.Occurrence is { } at && IsWithin(at, argument) : IsWithin(binder, argument))))
                 {
                     return false;
                 }

@@ -557,8 +557,9 @@ public class NeverContinuationTest
     // position, a Tuple or a fixed array; a read of a placed part is valid, of the Never part UninitializedPlace_Kd. Each read is
     // unreachable (after `return`, or after an `if` whose arms both diverge). Fail-before on dev 66de6a02a: it rejected the do rows'
     // placed-part reads (an exit holding a Never part built no delivery) and accepted every Never-part read but the do's, and the whole read.
-    // An exit's operand `(a, (return 1)).0` reads the placed part, so it is valid. A dynamic Array's element has no Place of its own, so
-    // `arr[1]` is accepted: the stated limit (STATUS). A construct nested in an aggregate gives its component what each path placed (the
+    // An exit's operand `(a, (return 1)).0` reads the placed part, so it is valid. A dynamic Array's unplaced element leaves the whole
+    // Array incomplete, so `t[1]`, an element without a Move Path, is UninitializedPlace_Kd (SPEC 15.1.3; PLAN D-661: dev accepted it, the
+    // stated limit). A construct nested in an aggregate gives its component what each path placed (the
     // owner's 「修正して進める」): on a real path the read is valid (fail-before at 878717d52: UninitializedPlace_Kd, the parts applied on every
     // path); after `return` the Never part's read is UninitializedPlace_Kd, also through a part of the construct's value (dev: accepted).
     [Theory]
@@ -589,7 +590,7 @@ public class NeverContinuationTest
     [InlineData("return 9\n    let t = (a, (return 1))\n    let u = t\n    return u.0", "UninitializedPlace_Kd t")]
     [InlineData("return 9\n    let t = loop\n        if c => exit a\n        exit (a, (return 1)).0\n    return t", "")]
     [InlineData("return 9\n    let t = label s: if c\n        yield to s a\n    else\n        yield to s (a, (return 1)).0\n    return t", "")]
-    [InlineData("return 9\n    let t: Array<i64> = [a, (return 1)]\n    return t[1]", "")]
+    [InlineData("return 9\n    let t: Array<i64> = [a, (return 1)]\n    return t[1]", "UninitializedPlace_Kd t[1]")]
     [InlineData("let t = ((if c => (a, (return 1)) else => (a, a)), a)\n    return t.0.1", "")]
     [InlineData("let t = ((if c => (a, fail()) else => (a, a)), a)\n    return t.0.1", "")]
     [InlineData("let t = [2 of (if c => (a, (return 1)) else => (a, a))]\n    return t[1].1", "")]
@@ -614,7 +615,8 @@ public class NeverContinuationTest
     // placing location takes a whole temp without a use: an aggregate (an Array or tuple literal) and a Dictionary literal's insertion, a
     // Places call (the owner's O-97 (a)) whose first entry looks no key up (U1). The reachable twins and the Never value consumed directly
     // (M's Q2) stay valid; a part read of a temp absent on one assumed path is rejected as its Var twin is (SPEC 14.10.3's
-    // `let y: i32 = fail()`); a Dictionary literal received whole keeps no component path (the Array literal's stated limit).
+    // `let y: i32 = fail()`); a Dictionary literal received whole keeps no component path (the stated limit: its entries are Places
+    // calls' insertions, not an aggregate's components).
     [Theory]
     [InlineData("return 9\n    g(" + Joined + ")", "UninitializedPlace_Kd g((")]
     [InlineData("g(" + Joined + ")", "")]

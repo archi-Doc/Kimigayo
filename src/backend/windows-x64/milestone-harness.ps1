@@ -3,6 +3,7 @@
 param([int] $Milestone, [string] $ToolchainRoot, [string] $Configuration, [string] $Expected, [string] $Source = '', [string] $WorkRoot = '', [int] $Runs = 1)
 $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'toolchain.ps1')
+. (Join-Path $PSScriptRoot 'expected-output.ps1')
 $ToolchainRoot = Resolve-KimiToolchainRoot $ToolchainRoot
 $repo = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../../..'))
 $compiler = Join-Path $repo "src/Kimi/bin/$Configuration/net10.0/Kimi.dll"
@@ -28,19 +29,21 @@ function Invoke-Captured([string] $File, [string[]] $Arguments, [int] $ExpectedE
     foreach ($argument in $Arguments) { $start.ArgumentList.Add($argument) }
     $process = [Diagnostics.Process]::Start($start)
     $output = [IO.MemoryStream]::new()
+    $errorOutput = [IO.MemoryStream]::new()
     try {
         $copy = $process.StandardOutput.BaseStream.CopyToAsync($output)
-        $errors = $process.StandardError.ReadToEndAsync()
+        $errorCopy = $process.StandardError.BaseStream.CopyToAsync($errorOutput)
         if (-not $process.WaitForExit(60000)) { $process.Kill($true); $process.WaitForExit(); throw "Timed out: $File" }
         $null = $copy.GetAwaiter().GetResult()
-        $stderr = $errors.GetAwaiter().GetResult()
+        $null = $errorCopy.GetAwaiter().GetResult()
         $bytes = $output.ToArray()
+        $errorBytes = $errorOutput.ToArray()
         if ($process.ExitCode -ne $ExpectedExit) {
-            throw "Exit $($process.ExitCode), expected $ExpectedExit`: $File $Arguments`n$($utf8.GetString($bytes))`n$stderr"
+            throw "Exit $($process.ExitCode), expected $ExpectedExit`: $File $Arguments`n$($utf8.GetString($bytes))`n$($utf8.GetString($errorBytes))"
         }
-        return @{ stdout = $bytes; stderr = $stderr; exitCode = $process.ExitCode }
+        return @{ stdout = $bytes; stderr = $errorBytes; exitCode = $process.ExitCode }
     }
-    finally { $process.Dispose(); $output.Dispose() }
+    finally { $process.Dispose(); $output.Dispose(); $errorOutput.Dispose() }
 }
 
 function Invoke-Kimi([string[]] $Arguments, [int] $ExpectedExit = 0) {
@@ -64,7 +67,7 @@ try {
         $timer.Restart()
         $build = Invoke-Kimi @('build', $project, '--ToolchainRoot', $ToolchainRoot)
         [IO.File]::WriteAllBytes((Join-Path $directory 'build.stdout'), $build.stdout)
-        [IO.File]::WriteAllText((Join-Path $directory 'build.stderr'), $build.stderr, $utf8)
+        [IO.File]::WriteAllBytes((Join-Path $directory 'build.stderr'), $build.stderr)
         $buildSeconds = $timer.Elapsed.TotalSeconds
         $stem = Join-Path $directory "bin/x86_64-pc-windows-msvc/$name"
         $record = Get-Content -LiteralPath "$stem.link.build.json" -Raw | ConvertFrom-Json
@@ -80,10 +83,13 @@ try {
             $repeats.Add($timer.Elapsed.TotalSeconds)
         }
         [IO.File]::WriteAllBytes((Join-Path $directory 'run.stdout'), $actual.stdout)
-        [IO.File]::WriteAllText((Join-Path $directory 'run.stderr'), $actual.stderr, $utf8)
+        [IO.File]::WriteAllBytes((Join-Path $directory 'run.stderr'), $actual.stderr)
         $hex = [Convert]::ToHexString($actual.stdout)
-        if ($hex -cne [Convert]::ToHexString($utf8.GetBytes($Expected)) -or $actual.stderr -cne '') { throw "Output mismatch: $name.$level; stdout=$hex; stderr=$($actual.stderr)" }
-        $results.Add(@{ name = "$name.$level"; optimization = $level; execution = 'native'; stdoutHex = $hex; stderr = $actual.stderr; exitCode = $actual.exitCode
+        $errorHex = [Convert]::ToHexString($actual.stderr)
+        if (-not (Test-KimiExpectedOutput $utf8.GetBytes($Expected) $actual.stdout) -or -not (Test-KimiExpectedOutput ([byte[]]@()) $actual.stderr)) {
+            throw "Output mismatch: $name.$level; stdout=$hex; stderr=$errorHex"
+        }
+        $results.Add(@{ name = "$name.$level"; optimization = $level; execution = 'native'; stdoutHex = $hex; stderrHex = $errorHex; exitCode = $actual.exitCode
             preparationSeconds = $preparationSeconds; buildSeconds = $buildSeconds; runSeconds = $runSeconds; repeatedRunSeconds = $repeats.ToArray() })
     }
     if ((Get-FileHash -LiteralPath $source -Algorithm SHA256).Hash -cne $sourceHash -or

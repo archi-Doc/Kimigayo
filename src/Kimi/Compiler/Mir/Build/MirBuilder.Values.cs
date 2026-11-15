@@ -48,8 +48,8 @@ internal sealed partial class MirBuilder
             case HirOp.Literal:
                 this.Use(destination, this.Literal(node), node);
                 break;
-            case HirOp.Name when HirTables.Symbol(node)?.Kind == BindingSymbolKind.Function && HirTables.TypeOf(node) is { } item:
-                this.Use(destination, MirOperand.Const(this.body.Const(new(MirConstKind.FnItem, item))), node); // SPEC 7.7.4: a constant of its Item Type.
+            case HirOp.Name when this.NamedConstant(node) is { } constant:
+                this.Use(destination, constant, node);
                 break;
             case HirOp.Group: // Its operand, which the group acquires as the operand's Adjust says.
                 this.Assign(destination, Child(node), input);
@@ -343,6 +343,20 @@ internal sealed partial class MirBuilder
         this.Use(target, MirOperand.Move(value), node);
     }
 
+    // The constant a Name of a constant is, by its symbol: a function's, of its Item Type (SPEC 7.7.4), and a length slot's, its value
+    // (SPEC 4.4.1, LengthOperand); null for another Name.
+    private MirOperand? NamedConstant(Koto node) => HirTables.Symbol(node) switch
+    {
+        { Kind: BindingSymbolKind.Function } when HirTables.TypeOf(node) is { } item => MirOperand.Const(this.body.Const(new(MirConstKind.FnItem, item))),
+        { Kind: BindingSymbolKind.LengthParameter } slot => this.LengthOperand(compilation.Types.SlotLength(slot)),
+        _ => null,
+    };
+
+    // SPEC 4.4.1, 4.2: a length's value, the one canonical form of each: a closed length its Integer, any other a Length constant, whose
+    // instance decides it (TyCtxt.InstanceLength).
+    private MirOperand LengthOperand(BoundLength length)
+        => MirOperand.Const(this.body.Const(length.IsConstant ? new(MirConstKind.Integer, BoundType.ISize, length.Value) : new(MirConstKind.Length, BoundType.ISize, Value: length)));
+
     // SPEC 3.1: a published Literal's constant, a number's being the value Binding fitted (its plan row's Folded); a literal the lexer
     // could not read is published Error (Binding.Rejected). A published Literal without its constant is a broken contract, the one check
     // of that guarantee: InternalInvariant_Kd, the value a derived Opaque.
@@ -389,10 +403,11 @@ internal sealed partial class MirBuilder
     // only the checks continue (assumed completion, SPEC 14.10.3; DECISIONS R4-M62). Nothing is built that has no value: an rvalue that
     // has an input (an operand, or the Place of a kind that has one, MirDescriptor.HasPlace) whose every input is the Never value (never
     // an Adapt, whose token is a constant), or a value assigned to the Never value, since a node of Type Never makes none (but its Opaque
-    // value, which stands for its syntax, of its Type).
+    // value, which stands for its syntax, of its Type). A construction is a value whatever its operands: it places each component and
+    // nothing into one whose operand is the Never value (MirMoveData's Never parts; SPEC 15.1.2, 14.10.3, DECISIONS R4-M175).
     private void Set(MirPlace destination, in MirRvalue rvalue, Koto node)
     {
-        var never = MirDescriptors.Of(rvalue.Kind).HasPlace ? this.IsNeverValue(rvalue.Place) : rvalue.Count > 0;
+        var never = rvalue.Kind != MirRvalueKind.Aggregate && (MirDescriptors.Of(rvalue.Kind).HasPlace ? this.IsNeverValue(rvalue.Place) : rvalue.Count > 0);
         for (var i = 0; never && i < rvalue.Count; i++)
         {
             never = this.body.Operands[rvalue.Start + i] is { Kind: not MirOperandKind.Const } operand && this.IsNeverValue(operand.Place);

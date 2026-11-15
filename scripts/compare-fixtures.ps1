@@ -2,7 +2,8 @@
 # Inputs: two successful evidence directories written by verify.ps1, each with summary.json, fixtures-<Configuration>
 # and the native steps' native*-fixtures/results.json. Output: fixture-comparison.json and fixture-comparison.txt in
 # -Output (default: the candidate run). It compares the set and bytes of every file in fixtures-<Configuration> (the
-# .ll files, their expectation sidecars and any other fixture output) and the per-fixture native outcomes (result and
+# .ll files, their expectation sidecars and any other fixture output; the baseline's bytes are the expectation of
+# Test-KimiExpectedOutput) and the per-fixture native outcomes (result and
 # completed levels; a passing level matched its sidecars). Fixture IR records no checkout path, so runs from any worktree
 # compare byte for byte; nothing is normalized. Exit code 1 when anything differs; a failed run or missing evidence throws.
 # -O2Metrics also writes o2-metrics.json (information only: the exit code stays the comparison's): instructions and
@@ -24,6 +25,7 @@ param(
     [switch] $O2Metrics
 )
 $ErrorActionPreference = 'Stop'
+$expectedOutput = Join-Path $PSScriptRoot '../src/backend/windows-x64/expected-output.ps1'
 
 function Read-Run([string] $path) {
     $directory = (Resolve-Path -LiteralPath $path).ProviderPath
@@ -78,11 +80,12 @@ $added = @($candidateRun.names | Where-Object { -not $baseRun.files.Contains($_)
 $parallel = [Math]::Min(8, [Environment]::ProcessorCount)
 $chunks = @(for ($i = 0; $i -lt $parallel; $i++) { , @(for ($j = $i; $j -lt $common.Count; $j += $parallel) { $common[$j] }) })
 $differing = @($chunks | ForEach-Object -ThrottleLimit $parallel -Parallel {
+    . $using:expectedOutput
     $base = $using:baseRun
     $candidate = $using:candidateRun
     foreach ($file in $_) {
         $before = [IO.File]::ReadAllBytes([IO.Path]::Combine($base.fixtures, $file))
-        if (-not [Linq.Enumerable]::SequenceEqual($before, [IO.File]::ReadAllBytes([IO.Path]::Combine($candidate.fixtures, $file)))) { $file }
+        if (-not (Test-KimiExpectedOutput $before ([IO.File]::ReadAllBytes([IO.Path]::Combine($candidate.fixtures, $file))))) { $file }
     }
 } | Sort-Object)
 $irCount = @($common -clike '*.ll').Count

@@ -22,7 +22,8 @@ namespace Kimi.Compiler.Mir;
 // Φ_U apart (MirBorrows.Candidates), and what it reaches only through such a set, the holders it names and their stores
 // (MirBorrows.CheckSets' read keys, PLAN G775), so a check only such finds meet is a Limit, the located Unsupported_Kd at its subject
 // (R4-M153's path), and an undecided write no check rests on records nothing. Δ marks a pointer displaced by a stride that is no grid
-// row, or an address formed past a raw Deref through a component step other than a C-layout first Field (Step, the one step rule).
+// row, or an address formed past a raw Deref through a component step to no part TyCtxt.Leading places at its base's address (Step,
+// the one step rule: a C-layout first Field; a nonnull Option's Some payload, its Downcast and Field one step, Selected).
 // The sites: a seen store writes the stored Place, typed where a raw Place from its last Deref to it is designated; a call, through
 // each input its contract may store through (TyCtxt.NoStore), every raw Place within the Types its input's layers lead to
 // (TyCtxt.OwnLayers at the input's root key), then, past each holder its entries name, within those the parameter's next layers lead
@@ -287,7 +288,7 @@ internal sealed partial class MirBorrows
                 return PunAt(this.Designated(held, at, on), facts);
             }
 
-            on = on && this.Step(held, at, this.Field(i + 1));
+            on = on && (this.Selected(i + 1, count) is not { } field || this.Step(held, at, field));
         }
     }
 
@@ -358,8 +359,9 @@ internal sealed partial class MirBorrows
     }
 
     // An address or borrow formed past a raw Deref (SPEC 5.2, 5.3, IMPL 21.1), its steps in the walk buffer: each component step past
-    // the Deref (an element: Index or ConstIndex; a Field, Base or Downcast) moves its pointer's value (Stepped). The five kinds are
-    // named: a new projection kind is no component step until it is listed here.
+    // the Deref (an element: Index or ConstIndex; a Field, Base or Downcast) moves its pointer's value (Stepped), a Case payload's
+    // component with its Downcast (Selected). The five kinds are named: a new projection kind is no component step until it is listed
+    // here.
     private int Interior(int value, MirPlace place, int count)
     {
         var deref = -1;
@@ -372,15 +374,25 @@ internal sealed partial class MirBorrows
         {
             var kind = this.walk[i].Kind;
             var element = kind is MirProjectionKind.Index or MirProjectionKind.ConstIndex;
-            if (element || kind is MirProjectionKind.Field or MirProjectionKind.Base or MirProjectionKind.Downcast)
+            if ((element || kind is MirProjectionKind.Field or MirProjectionKind.Base or MirProjectionKind.Downcast) &&
+                this.Selected(i, count) is { } field)
             {
-                value = this.Stepped(value, cases.TypeOf(place with { Projection = this.walk[i].Prefix }), this.Field(i));
+                value = this.Stepped(value, cases.TypeOf(place with { Projection = this.walk[i].Prefix }), field);
             }
         }
 
         return value;
     }
 
-    // The Field the step at `i` of the walk buffer selects, else -1.
-    private int Field(int i) => this.walk[i].Kind == MirProjectionKind.Field ? this.walk[i].Arg : -1;
+    // The one reading of the walk buffer's step `i` (of `count`) for the step rule (Step), the Field it selects from the Type it applies
+    // to, else -1: an enum Case payload's component is one step with its Downcast, judged at the Downcast from the enum (TyCtxt.Leading's
+    // nonnull Option row: the Some payload, MIR's Downcast and Field), so that Field is no step of its own (null), and a Downcast with no
+    // Field after it selects none.
+    private int? Selected(int i, int count) => this.walk[i].Kind switch
+    {
+        MirProjectionKind.Downcast => i + 1 < count && this.walk[i + 1].Kind == MirProjectionKind.Field ? this.walk[i + 1].Arg : -1,
+        MirProjectionKind.Field when i > 0 && this.walk[i - 1].Kind == MirProjectionKind.Downcast => null,
+        MirProjectionKind.Field => this.walk[i].Arg,
+        _ => -1,
+    };
 }

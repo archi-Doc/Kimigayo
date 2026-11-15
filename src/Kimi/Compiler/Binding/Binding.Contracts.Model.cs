@@ -253,6 +253,10 @@ public sealed class BoundConformancePath : ICheckCause
 
     internal bool Checking { get; set; }
 
+    // The requests that reached it while it is being verified (Binding.ReentryRead), until its verification ends. Temporary carrier
+    // with reentryReads; removal: R7-C2e2 e2-5b, with e2-3's Completion on the answer.
+    internal int Reentries { get; set; }
+
     internal bool Invalid { get; set; }
 
     /// <summary>Gets a verified implementation by requirement identity, without source member lookup.</summary>

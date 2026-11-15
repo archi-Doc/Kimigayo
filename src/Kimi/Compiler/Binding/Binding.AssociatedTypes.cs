@@ -125,21 +125,19 @@ public sealed partial class Binding
                 Search(own);
             }
 
-            for (var current = scope; current is not null; current = current.Parent)
+            // SPEC 8.3.2, 8.5.2, 9.6: the Contracts the premises supply for the Type, one per identity class (each non-Alias row of Enumerate's
+            // rows: the use is judged).
+            var start = this.premiseRows.Count;
+            this.PremiseRows(type, scope, this.premiseRows);
+            for (var i = start; i < this.premiseRows.Count; i++)
             {
-                if (current.Constraints is not { Invalid: false } environment)
+                if (this.premiseRows[i] is { Alias: false, Symbol.Contract: { } shape })
                 {
-                    continue;
-                }
-
-                foreach (var fact in environment.Facts)
-                {
-                    if (fact.Kind == ConstraintKind.Contract && AssociatedIdentityMatches(fact.Subject, type) && fact.Contract?.Contract is not null)
-                    {
-                        Search(this.AppliedAssociatedContract(fact, type).Contract!);
-                    }
+                    Search(shape);
                 }
             }
+
+            this.premiseRows.RemoveRange(start, this.premiseRows.Count - start);
 
             // SPEC 9.7.3: a conformance is a candidate as the receiver sees it, its bound reference at the receiver's arguments, the
             // terms a premise's reference is in, so one conformance reached both ways is one candidate (PLAN G798).

@@ -128,9 +128,6 @@ internal enum IntrinsicId : byte
     TestRecordValue,
     TestTempDirectory,
     StaticEnsure, // SPEC 22.4.3.
-    [Transitional("R8", Reason = "R8 replaces this temporary intrinsic with Kimigayo representation and library code.")]
-    FormatSegment, // Temporary (owner, 2026-10-11) until R8 writes the internal adapter in Kimigayo: one step per write position, the hint
-    // of the later literal bytes and values (R5-M133; a literal's text is a library call since R8-W2 c1, its end since c3a).
 }
 
 /// <summary>How A4 classifies a call without a MIR body (SPEC 8.11.2; TyCtxt.Bodyless), the effect column of the intrinsic table.</summary>
@@ -145,7 +142,8 @@ internal enum CompilerFunctionEffect : byte
     /// <summary>The function obtains authority from the environment, which confined excludes.</summary>
     Environment,
 
-    /// <summary>A definition Binding rejected, whose parts are not published (DECISIONS R4-M18): its effects are a dependent of that error.</summary>
+    /// <summary>A definition Binding rejected, whose parts are not published (DECISIONS R4-M18), or whose Body the parser recorded missing
+    /// (SPEC 14.2.1): its effects are a dependent of that error.</summary>
     Dependent,
 }
 

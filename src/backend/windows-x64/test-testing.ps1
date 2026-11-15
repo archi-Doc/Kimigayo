@@ -4,6 +4,7 @@ param(
     [string] $ResultRoot = (Join-Path $PSScriptRoot '../../../artifacts/verify/test-profile-verification')
 )
 $ErrorActionPreference = 'Stop'
+. (Join-Path $PSScriptRoot 'expected-output.ps1')
 $Compiler = [IO.Path]::GetFullPath($Compiler)
 $root = [IO.Path]::GetFullPath($ResultRoot)
 $null = New-Item -ItemType Directory -Force -Path $root
@@ -94,7 +95,9 @@ Test = { Timeout = "2s", RecoveryGrace = "3s", LogBytes = 256 }
     if ($cases['comparisons'].failures[0].values[0].bits -ne '00000000000000000000000000000007') { throw 'Integer snapshot lost' }
     if ($cases['comparisons'].failures[1].values[0].type -ne 'float') { throw 'Float snapshot lost' }
     if ($cases['generic'].failures[0].values[0].bits -ne '00000000000000000000000000000001') { throw 'Shared snapshot lost' }
-    if ((Get-Content -LiteralPath $cases['comparisons'].stdout -Raw).Trim() -ne 'continued') { throw 'Expect did not continue' }
+    if (-not (Test-KimiExpectedOutput ([Text.Encoding]::UTF8.GetBytes("continued`n")) ([IO.File]::ReadAllBytes($cases['comparisons'].stdout)))) {
+        throw 'Expect did not continue'
+    }
     if ((Get-Item -LiteralPath $cases['flood'].stdout).Length -gt 256 -or [long]$cases['flood'].omittedLogBytes -eq 0) { throw 'Log budget failed' }
     $temporary = (Get-Content -LiteralPath $cases['temporary'].stdout -Raw).Trim()
     if (Test-Path -LiteralPath $temporary) { throw 'Temporary directory leaked' }

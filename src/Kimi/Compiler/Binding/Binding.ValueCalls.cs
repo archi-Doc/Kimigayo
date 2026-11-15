@@ -277,42 +277,39 @@ public sealed partial class Binding
             return this.TryCallable(normalizedOwner, scope, out signature, out receiver, out several);
         }
 
+        // SPEC 8.10, 8.3.2: the Callable Constraints on the callee are the available Callable rows its premises supply, at every
+        // depth and whatever its spelling (ContractSolver's FirstRows).
         signature = null!;
         receiver = SemanticsKind.Owner;
-        for (var current = scope; current is not null; current = current.Parent)
+        var start = this.premiseRows.Count;
+        this.FirstRows(owner, scope, this.premiseRows);
+        for (var i = start; i < this.premiseRows.Count; i++)
         {
-            if (current.Constraints is not { } environment)
+            if (this.premiseRows[i] is not { Available: true, Clause: { Kind: ConstraintKind.Callable } fact })
             {
                 continue;
             }
 
-            foreach (var fact in environment.Facts)
+            var currentSignature = this.CallableContractType(fact.RequiredType!, scope);
+            if (signature is not null && !SameCallableSignature(signature, currentSignature))
             {
-                if (fact.Kind != ConstraintKind.Callable || !ReferenceEquals(this.CallableContractType(fact.Subject!, scope), owner) || !this.AvailableConstraintFact(environment, fact, out _))
-                {
-                    continue;
-                }
+                several = true;
+                break;
+            }
 
-                var currentSignature = this.CallableContractType(fact.RequiredType!, scope);
-                if (signature is not null && !SameCallableSignature(signature, currentSignature))
-                {
-                    several = true;
-                    return false;
-                }
-
-                signature ??= currentSignature;
-                if (fact.Mask == SemanticsMask.Ref)
-                {
-                    receiver = SemanticsKind.Ref;
-                }
-                else if (fact.Mask == SemanticsMask.Uniq && receiver == SemanticsKind.Owner)
-                {
-                    receiver = SemanticsKind.Uniq;
-                }
+            signature ??= currentSignature;
+            if (fact.Mask == SemanticsMask.Ref)
+            {
+                receiver = SemanticsKind.Ref;
+            }
+            else if (fact.Mask == SemanticsMask.Uniq && receiver == SemanticsKind.Owner)
+            {
+                receiver = SemanticsKind.Uniq;
             }
         }
 
-        return signature is not null;
+        this.premiseRows.RemoveRange(start, this.premiseRows.Count - start);
+        return !several && signature is not null;
     }
 
     // SPEC 7.3.3 (object-kind column and check 1), 7.7.3, 13.5.5: a callee reached through an obj/rc/arc handle or an objref/objuniq view,

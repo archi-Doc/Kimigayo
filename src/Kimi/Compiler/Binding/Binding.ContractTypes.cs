@@ -268,7 +268,8 @@ public sealed partial class Binding
     // R8-W2: a fixed array whose length is an interpolation-bound term over abstract value Types, with the term's value Types normalized as
     // this rewrite normalizes the Type, a Contract's Self and a completed projection included, which a substitution leaves
     // (Binding.SubstituteLength), and the term folded again (TyCtxt.InterpolationBound); any other Type itself. A term is only a fixed
-    // array's length or a substitution's length entry (Binding.InstanceLength), never an operand or an Item's length argument (R8-W2 a2).
+    // array's length, a substitution's length entry (Binding.InstanceLength) or a MIR Length constant's value (R8-W2 c2a: the operand of a
+    // length read as an isize value, SPEC 4.4.1), never an Item's length argument (R8-W2 a2).
     private BoundType ContractLength(BoundType type, BindingScope scope, BoundType? self, bool normalize, out Completion completion)
     {
         completion = Completion.Complete;

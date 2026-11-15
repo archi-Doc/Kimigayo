@@ -10,7 +10,8 @@ namespace Kimi.Compiler.Mir;
 //   kind and Type (Rvalue, Arity), an aggregate's by its shape, the one rule of its operand count and each operand's Type (Shape), a
 //   Discriminant's enum Place and a Len's sequence Place (IsSequence); and each operand MirUses reports (Operand): its kind row, a
 //   constant in range and an Integer constant its Type's canonical payload or of the widthless family MirTypes.HoldsIntegerConstant
-//   publishes, ranged by its member (Holds, G620, G644), a PairAcquire only as a marked Use's whole rvalue and of its Place's pair
+//   publishes, ranged by its member (Holds, G620, G644), a Length constant an isize term the body leaves open (Holds, SPEC 4.4.1), a
+//   PairAcquire only as a marked Use's whole rvalue and of its Place's pair
 //   binder, a function item constant only as an Assign's Use (G154), and a Copy, but a case site's (Views), only of a Type Binding
 //   proves Copy under the body definition's premises (its TyCtxt.Copies; DECISIONS BU-88).
 // - Inputs: an Assign's rvalue with its destination's Type; each location's operands, with the positions Statement marks.
@@ -34,7 +35,7 @@ internal sealed partial class MirValidator
             {
                 this.Report(MirViolation.UnknownKind);
             }
-            else if (operand.Kind == MirOperandKind.Const && ((uint)operand.Arg >= (uint)body.Consts.Length || !Holds(body.Consts[operand.Arg])))
+            else if (operand.Kind == MirOperandKind.Const && ((uint)operand.Arg >= (uint)body.Consts.Length || !Holds(body.Consts[operand.Arg], body.Key.Decl)))
             {
                 this.Report(MirViolation.Const);
             }
@@ -67,12 +68,61 @@ internal sealed partial class MirValidator
         // unsigned value of 2^(N-1) and above is negative), isize and usize at the profile's width; (ii) char a Unicode scalar value (SPEC
         // 3.1); (iii) a raw pointer null, 0 (SPEC 5.1); (iv) a Type whose instance decides it a generic literal, 0 through 127, a value of
         // every instance (SPEC 8.7.4; Binding types a literal it fits through an identity premise at the complete Type, BU-72); else a
-        // finding.
-        private static bool Holds(in MirConst constant) => constant.Kind != MirConstKind.Integer ||
-            (constant.Type.Width is > 0 and var width ? ScalarTypes.Normalize(constant.Bits, width) == constant.Bits
-            : MirTypes.HoldsIntegerConstant(constant.Type) && (ReferenceEquals(constant.Type, BoundType.Char)
-                ? constant.Bits >= 0 && constant.Bits <= 0x10FFFF && Rune.IsValid((int)constant.Bits)
-                : constant.Bits >= 0 && constant.Bits <= (constant.Type.Semantics == SemanticsKind.Raw ? 0 : 127)));
+        // finding. SPEC 4.4.1 (condition (a) of R8-W2 c2a): a Length constant is of isize and its term is open, its slots and Type
+        // parameters the body definition's or an enclosing declaration's (Scoped): a closed term is an Integer (MirBuilder.LengthOperand).
+        private static bool Holds(in MirConst constant, BindingSymbol? definition) => constant.Kind switch
+        {
+            MirConstKind.Integer => constant.Type.Width is > 0 and var width ? ScalarTypes.Normalize(constant.Bits, width) == constant.Bits
+                : MirTypes.HoldsIntegerConstant(constant.Type) && (ReferenceEquals(constant.Type, BoundType.Char)
+                    ? constant.Bits >= 0 && constant.Bits <= 0x10FFFF && Rune.IsValid((int)constant.Bits)
+                    : constant.Bits >= 0 && constant.Bits <= (constant.Type.Semantics == SemanticsKind.Raw ? 0 : 127)),
+            MirConstKind.Length => ReferenceEquals(constant.Type, BoundType.ISize) && constant.Value is BoundLength { IsConstant: false } length &&
+                Scoped(length, definition),
+            _ => true,
+        };
+
+        // Whether a term's slots and its value Types' parameters are each declared by the definition or a declaration enclosing it.
+        private static bool Scoped(BoundLength length, BindingSymbol? definition)
+            => (length.Parameter is not { } slot || Within(slot, definition)) && (length.Values is not { } values || Scoped(values, definition)) &&
+                (length.Left is not { } left || Scoped(left, definition)) && (length.Right is not { } right || Scoped(right, definition));
+
+        private static bool Scoped(BoundType type, BindingSymbol? definition)
+        {
+            if (type is { Kind: BoundTypeKind.Parameter, Symbol: { Kind: BindingSymbolKind.TypeParameter } parameter } && !Within(parameter, definition))
+            {
+                return false;
+            }
+
+            for (var i = 0; i < type.Components.Count; i++)
+            {
+                if (type.Components[i] is { HasAbstractPart: true } component && !Scoped(component, definition))
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        // Whether a generic slot is the definition's own, or of a declaration whose scope the definition's is in.
+        private static bool Within(BindingSymbol slot, BindingSymbol? definition)
+        {
+            var owner = slot.Scope.Owner;
+            if (ReferenceEquals(definition?.Declaration, owner))
+            {
+                return true;
+            }
+
+            for (var scope = definition?.Scope; scope is not null; scope = scope.Parent)
+            {
+                if (ReferenceEquals(scope.Owner, owner))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
 
         private static bool IsSequence(BoundType type)
             => type.Kind is BoundTypeKind.FixedArray or BoundTypeKind.Slice or BoundTypeKind.Array or BoundTypeKind.Dictionary ||
