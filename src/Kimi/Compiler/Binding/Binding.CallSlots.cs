@@ -88,9 +88,9 @@ public sealed partial class Binding
         return count;
     }
 
-    // SPEC 10.8 (the owner's reading, O-263 (a)): whether an application is an exact source of its binder, as an occurrence of the
-    // original is: its target has no layer, structure or open slot of its own that could claim the evidence's outer Semantics, so
-    // that Semantics is the binder's alone: a bare Type slot being inferred (`s/V`) or a closed leaf Type (`s/i64`, a pair layer of
+    // SPEC 10.8 (the owner's readings O-263 (a), O-338 (a), O-340 (a)): whether an application is an exact source of its binder, as an
+    // occurrence of the original is: its target has no layer, structure or open slot of its own that could claim the evidence's outer
+    // Semantics, so that Semantics is the binder's alone: a bare Type slot being inferred (`s/V`) or a closed leaf Type (`s/i64`, a pair layer of
     // `s` whose typed evidence counts as at any other, SPEC 10.5.1). The pattern is classified under the solve's fixed bindings
     // (FixedSlots, read from the frame), where only an own slot of the slot owner stays open, as its own parameter: an enclosing slot
     // is always a fixed binding (OpenConstructionSlot; SPEC 9.7.1), so `s/V` over one is `s/(its binding)` on every path and is
