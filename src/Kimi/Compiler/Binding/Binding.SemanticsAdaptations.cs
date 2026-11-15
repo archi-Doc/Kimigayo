@@ -178,7 +178,8 @@ public sealed partial class Binding
     {
         if (this.activeInferenceFunction is { } candidate)
         {
-            this.trialPending ??= new(PendingJudgmentKind.UnformedSplit, candidate) { Epoch = this.frameEpoch };
+            // The trial's frame, also from inside a proof the trial runs (a Constraint over the unformed Type), whose frame drops its own.
+            this.trialPending ??= new(PendingJudgmentKind.UnformedSplit, candidate) { Epoch = this.proofNesting != 0 ? this.judgmentEnclosing : this.frameEpoch };
         }
 
         return null;
