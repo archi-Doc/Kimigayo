@@ -58,6 +58,7 @@ internal sealed class OriginPremiseClosure
     private int[] reachedBy = new int[32];
     private int[] reachedFrom = new int[32];
     private int[] queue = new int[32];
+    private bool[] places = new bool[32];
     private int[] edgeLonger = new int[64];
     private int[] edgeNext = new int[64];
     private OriginPremiseRule[] edgeRule = new OriginPremiseRule[64];
@@ -191,13 +192,32 @@ internal sealed class OriginPremiseClosure
         Grow(ref this.reachedBy, this.nodeCount);
         Grow(ref this.reachedFrom, this.nodeCount);
         Grow(ref this.queue, this.nodeCount);
+        Grow(ref this.places, this.nodeCount);
         this.firstIncoming[node] = -1;
         this.firstMeet[node] = -1;
         this.operandCount[node] = 0;
         this.reachedStamp[node] = 0;
         this.unmetStamp[node] = 0;
+        this.places[node] = false;
         return node;
     }
+
+    /// <summary>Adds a node to the local-place start set (R5's Places, SPEC 15.6.1; PLAN G491) once, by the node's own mark.</summary>
+    /// <param name="node">The node.</param>
+    /// <param name="nodes">The start set's nodes in the order added.</param>
+    internal void AddPlace(int node, List<int> nodes)
+    {
+        if (!this.places[node])
+        {
+            this.places[node] = true;
+            nodes.Add(node);
+        }
+    }
+
+    /// <summary>Whether a node is in the local-place start set (AddPlace).</summary>
+    /// <param name="node">The node.</param>
+    /// <returns>Whether it was added.</returns>
+    internal bool IsPlace(int node) => this.places[node];
 
     /// <summary>Gets the expression of a node.</summary>
     /// <param name="node">The node.</param>
@@ -227,18 +247,18 @@ internal sealed class OriginPremiseClosure
         this.firstIncoming[shorter] = this.edgeCount++;
     }
 
-    /// <summary>Adds to <paramref name="nodes"/> each longer end of an edge of <paramref name="rule"/> into <paramref name="shorter"/>
-    /// that it does not hold yet.</summary>
+    /// <summary>Adds to the local-place start set (AddPlace) each longer end of an edge of <paramref name="rule"/> into
+    /// <paramref name="shorter"/>.</summary>
     /// <param name="shorter">The shorter node.</param>
     /// <param name="rule">The catalog rule.</param>
-    /// <param name="nodes">The nodes collected so far.</param>
+    /// <param name="nodes">The start set's nodes.</param>
     internal void AddLongerEnds(int shorter, OriginPremiseRule rule, List<int> nodes)
     {
         for (var edge = this.firstIncoming[shorter]; edge >= 0; edge = this.edgeNext[edge])
         {
-            if (this.edgeRule[edge] == rule && !nodes.Contains(this.edgeLonger[edge]))
+            if (this.edgeRule[edge] == rule)
             {
-                nodes.Add(this.edgeLonger[edge]);
+                this.AddPlace(this.edgeLonger[edge], nodes);
             }
         }
     }
