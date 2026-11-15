@@ -261,9 +261,10 @@ public sealed partial class Binding
     // evidence binds.
     private BoundType FittedPattern(BoundType pattern, Koto function, SlotFrame frame, Koto? part)
     {
-        if (pattern is { Kind: BoundTypeKind.Parameter, Symbol: { Kind: BindingSymbolKind.SemanticsTarget, Type: { } original } pair } &&
+        var literal = part is not null && this.KindOf(part) == PartKind.Literal;
+        if (literal && pattern is { Kind: BoundTypeKind.Parameter, Symbol: { Kind: BindingSymbolKind.SemanticsTarget, Type: { } original } pair } &&
             ContainerSlot(function, pair) is >= 0 and var own && own < frame.Types.Length && frame.Types[own] is null &&
-            frame.Selectors[own] is { } fixedBy && part is not null && this.KindOf(part) == PartKind.Literal)
+            Selector(frame, own) is { } fixedBy)
         {
             return this.ApplySemantics(fixedBy, original, pattern.Origin);
         }
@@ -275,7 +276,7 @@ public sealed partial class Binding
 
         var fitted = this.FittedPattern(target, function, frame, part);
         if (pattern.Kind == BoundTypeKind.SemanticsApplication && ContainerSlot(function, pattern.Symbol!) is >= 0 and var slot &&
-            Selector(frame, slot) is { } whole && (!IsExactSource(pattern, function, frame) || (part is not null && this.KindOf(part) == PartKind.Literal)))
+            Selector(frame, slot) is { } whole && (literal || !IsExactSource(pattern, function, frame)))
         {
             return this.ApplySemantics(whole, fitted, pattern.Origin);
         }

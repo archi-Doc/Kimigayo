@@ -142,7 +142,12 @@ public partial class PairAnnotationBindingTest
     // structure stays formed (c10). With only Literals at a pair, no evidence fixes the binder before selection, so a Literal at an
     // exact source checks no shape there; after selection the defaults bind it owner and the Literal fits the target the layer
     // fixes (the owner's O-343 (a)): at a closed leaf (P1) and at a solved slot another argument binds (P2), as dev; with evidence
-    // fixing the binder the Literal fits the formed layer (P1r, P2r, P1t, P2t). G812's head rejected P2, and the fix also P1. A formed Type no adaptation fits rejects in either order (L2y,
+    // fixing the binder the Literal fits the formed layer (P1r, P2r, P1t, P2t). G812's head rejected P2, and the fix also P1.
+    // The rule is order-free (the owner's O-347 (a)): where the default has nothing to bind, a layer whose target is complete, it
+    // is neither checked nor inferred, so the arguments' order, named arguments and an expected closed-leaf result give one verdict
+    // (Qp1s, Rp1-Rp5, Qp2s, Rp7; Qe1, Qe2, Re4; f5a09feda rejected Qp1s, Rp2, Rp3, Rp5, Qp2s, Rp7, Qe1, Qe2, Re4). With G915, a
+    // Literal-only slot against a borrowing plain candidate is ambiguous (Nc2, Nc2s, Nc3, Nc6), typed evidence decides (Nc1t, Nc2t,
+    // Nc7). A formed Type no adaptation fits rejects in either order (L2y,
     // L2ys, q4y, q4ys, o3x, o3xs, o4x), and with
     // nothing to fix the binder it is unbound (o5); with no evidence a Literal's default fixes the binder after the defaults (L1, L1s),
     // and a formed layer's slot is bound then (d1, d1s; d1x invalid). a9497632c rejected o1, o2, o3, o4, o6, o7, o8 and o9 and accepted their swapped
@@ -247,6 +252,24 @@ public partial class PairAnnotationBindingTest
     [InlineData("func k<s/W, V>(m: s/W, x: V, y: s/V) -> i32\n    s is owner or ref\n    return 0\nfunc call() -> i32\n    return k(5, 1@i64, 6)\n", "clean")] // P2
     [InlineData("func k<s/W, V>(m: s/W, x: V, y: s/V) -> i32\n    s is owner or ref\n    return 0\nfunc call() -> i32\n    let b = 5\n    return k(b@ref, 1@i64, 6)\n", "clean")] // P2r
     [InlineData("func k<s/W, V>(m: s/W, x: V, y: s/V) -> i32\n    s is owner or ref\n    return 0\nfunc call() -> i32\n    return k(5@i64, 1@i64, 6)\n", "clean")] // P2t
+    [InlineData("func k<s/W>(y: s/i64, m: s/W) -> i32\n    s is owner or ref\n    return 0\nfunc use() -> i32\n    let b: i64 = 2\n    let c: i32 = 3\n    return k(6, 5)\n", "clean")] // Qp1s
+    [InlineData("func k<s/W>(m: s/W, y: s/i64, z: s/i64) -> i32\n    s is owner or ref\n    return 0\nfunc use() -> i32\n    let b: i64 = 2\n    let c: i32 = 3\n    return k(5, 6, 7)\n", "clean")] // Rp1
+    [InlineData("func k<s/W>(y: s/i64, m: s/W, z: s/i64) -> i32\n    s is owner or ref\n    return 0\nfunc use() -> i32\n    let b: i64 = 2\n    let c: i32 = 3\n    return k(6, 5, 7)\n", "clean")] // Rp2
+    [InlineData("func k<s/W>(y: s/i64, z: s/i64, m: s/W) -> i32\n    s is owner or ref\n    return 0\nfunc use() -> i32\n    let b: i64 = 2\n    let c: i32 = 3\n    return k(6, 7, 5)\n", "clean")] // Rp3
+    [InlineData("func k<s/W>(y: s/i64, m: s/W) -> i32\n    s is owner or ref\n    return 0\nfunc use() -> i32\n    let b: i64 = 2\n    let c: i32 = 3\n    return k(m: 5, y: 6)\n", "clean")] // Rp4
+    [InlineData("func k<s/W>(m: s/W, y: s/i64) -> i32\n    s is owner or ref\n    return 0\nfunc use() -> i32\n    let b: i64 = 2\n    let c: i32 = 3\n    return k(y: 6, m: 5)\n", "clean")] // Rp5
+    [InlineData("func k2<s/W, V>(y: s/V, x: V, m: s/W) -> i32\n    s is owner or ref\n    return 0\nfunc use() -> i32\n    let b: i64 = 2\n    let c: i32 = 3\n    return k2(6, 1@i64, 5)\n", "clean")] // Qp2s
+    [InlineData("func k2<s/W, V>(x: V, y: s/V, m: s/W) -> i32\n    s is owner or ref\n    return 0\nfunc use() -> i32\n    let b: i64 = 2\n    let c: i32 = 3\n    return k2(1@i64, 6, 5)\n", "clean")] // Rp7
+    [InlineData("func stop() -> Never => $abort(\"stop\")\nfunc ke<s/W>(m: s/W, y: s/i64) -> s/i32\n    s is owner or ref\n    return stop()\nfunc use() -> i32\n    let b: i64 = 2\n    let c: i32 = 3\n    let q: ref/i32 = ke(5, 6)\n    return 0\n", "clean")] // Qe1
+    [InlineData("func stop() -> Never => $abort(\"stop\")\nfunc ke<s/W>(m: s/W, y: s/i64) -> s/i32\n    s is owner or ref\n    return stop()\nfunc use() -> i32\n    let b: i64 = 2\n    let c: i32 = 3\n    let q: i32 = ke(5, 6)\n    return 0\n", "clean")] // Qe2
+    [InlineData("func stop() -> Never => $abort(\"stop\")\nfunc ke<s/W>(y: s/i64, m: s/W) -> s/i32\n    s is owner or ref\n    return stop()\nfunc use() -> i32\n    let b: i64 = 2\n    let c: i32 = 3\n    let q: i32 = ke(6, 5)\n    return 0\n", "clean")] // Re4
+    [InlineData("func kr(m: ref/i64, y: ref/i32) -> i32 => 1\nfunc kr<s/W, V>(m: s/W, y: s/V) -> i32\n    s is ref\n    return 0\nfunc use() -> i32\n    let a: i32 = 1\n    let b: i64 = 2\n    let c: i32 = 3\n    var u: i64 = 4\n    var w: i32 = 5\n    return kr(b@ref, 5)\n", "1*AmbiguousBinding_Kd")] // Nc2
+    [InlineData("func krs(m: ref/i32, y: ref/i64) -> i32 => 1\nfunc krs<s/W, V>(m: s/W, y: s/V) -> i32\n    s is ref\n    return 0\nfunc use() -> i32\n    let a: i32 = 1\n    let b: i64 = 2\n    let c: i32 = 3\n    var u: i64 = 4\n    var w: i32 = 5\n    return krs(5, b@ref)\n", "1*AmbiguousBinding_Kd")] // Nc2s
+    [InlineData("func k2<s/W>(m: s/W, y: s/i64) -> i32\n    s is ref\n    return 1\nfunc k2<s/W, V>(m: s/W, y: s/V) -> i32\n    s is ref\n    return 0\nfunc use() -> i32\n    let a: i32 = 1\n    let b: i64 = 2\n    let c: i32 = 3\n    var u: i64 = 4\n    var w: i32 = 5\n    return k2(b@ref, 5)\n", "1*AmbiguousBinding_Kd")] // Nc3
+    [InlineData("func kr4(m: ref/i64, y: ref/i32, z: ref/i32) -> i32 => 1\nfunc kr4<s/W, V>(m: s/W, y: s/V, z: s/V) -> i32\n    s is ref\n    return 0\nfunc use() -> i32\n    let b: i64 = 2\n    return kr4(b@ref, 5, 6)\n", "1*AmbiguousBinding_Kd")] // Nc6
+    [InlineData("func ko(m: i64, y: i32) -> i32 => 1\nfunc ko<s/W, V>(m: s/W, y: s/V) -> i32\n    s is owner\n    return 0\nfunc use() -> i32\n    let a: i32 = 1\n    let b: i64 = 2\n    let c: i32 = 3\n    var u: i64 = 4\n    var w: i32 = 5\n    return ko(b@move, 5@i32)\n", "clean")] // Nc1t
+    [InlineData("func kr(m: ref/i64, y: ref/i32) -> i32 => 1\nfunc kr<s/W, V>(m: s/W, y: s/V) -> i32\n    s is ref\n    return 0\nfunc use() -> i32\n    let a: i32 = 1\n    let b: i64 = 2\n    let c: i32 = 3\n    var u: i64 = 4\n    var w: i32 = 5\n    return kr(b@ref, 5@i32)\n", "clean")] // Nc2t
+    [InlineData("func kr(m: ref/i64, y: ref/i32) -> i32 => 1\nfunc kr<s/W, V>(m: s/W, y: s/V) -> i32\n    s is ref\n    return 0\nfunc use() -> i32\n    let b: i64 = 2\n    let c: i32 = 3\n    return kr(b@ref, c@ref)\n", "clean")] // Nc7
     [InlineData("func put5<s/W, V>(m: s/W, y: s/V) -> i32\n    s is owner or ref\n    return 0\nfunc call(ready: bool) -> i32\n    let b: i64 = 2\n    return put5(b@ref, if ready => 1 else => 2)\n", "clean")] // e2j
     [InlineData("func put5<s/W, V>(m: s/W, y: s/V) -> i32\n    s is owner or ref\n    return 0\nfunc call() -> i32\n    let b: i64 = 2\n    return put5(b@ref, 5 + 1)\n", "clean")] // e2e
     [InlineData("enum E<s/T, V> {a}\n    s is owner or ref\n    P(s/T during a, s/V during a)\n    N\nfunc use(b: ref/i64)\n    match E.P(b, 5)\n        .P(let x, let y) => ()\n        .N => ()\n", "clean")] // cq1
