@@ -681,26 +681,17 @@ public sealed partial class Binding
     }
 
     // A lookup that misses a Name the language defines but the implementation does not yet provide meets an implementation
-    // limit, not a missing Name (DIAGNOSTICS.md rule 3): a cataloged declaration without source (PLAN G4), or a Property
-    // requirement whose combined identities or access path are not yet supported.
-    private BindingFailure MissingFailure(Koto name, BindingScope scope, BindingFailure missing)
-    {
-        var limit = name switch
-        {
-            MemberAccessKoto member when this.requirementGroups.TryGetValue(member, out var group) && group.PropertyRequirement => true,
-            MemberAccessKoto member => TypeSpelling(member.Right) is { } spelled && KimiLibraryCatalog.IsUnsourced(KimiLibraryContainer.Intrinsics, spelled) &&
-                ReferenceEquals(this.TypeName(member.Left, scope)?.Declaration, this.Library.MakeObj.Declaration.Parent), // Kimi.Intrinsics, makeObj's group (SPEC 22.1); temporary with IsUnsourced, removed by G1-3b-2
-            _ => TypeSpelling(name) is { } spelled && KimiLibraryCatalog.IsUnsourced(KimiLibraryContainer.Root, spelled),
-        };
-        return limit ? BindingFailure.Unsupported : missing;
-    }
+    // limit, not a missing Name (DIAGNOSTICS.md rule 3): a Property requirement whose combined identities or access path are not yet
+    // supported. A declaration this implementation does not support is written `#Unsupported` and never missed (UnsupportedUses).
+    private BindingFailure MissingFailure(Koto name, BindingFailure missing)
+        => name is MemberAccessKoto member && this.requirementGroups.TryGetValue(member, out var group) && group.PropertyRequirement ? BindingFailure.Unsupported : missing;
 
     // A Name that no lookup selects, at a Type position (MissingType) or as a value member (MissingName): an inaccessible qualifier
     // explains the miss, otherwise the Name is missing.
     private BoundType? FailMissing(Koto name, BindingScope scope, BindingFailure missing)
         => this.ReportUnavailableQualifier(name, scope) is { } qualifier
             ? this.CompleteDependent(name, qualifier)
-            : this.Fail(name, this.MissingFailure(name, scope, missing), true);
+            : this.Fail(name, this.MissingFailure(name, missing), true);
 
     // Called only after both value and Type lookup failed. A tentative Type path must not
     // publish access errors when a valid value path exists in the other namespace.

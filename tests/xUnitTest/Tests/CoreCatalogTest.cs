@@ -108,7 +108,7 @@ public class CoreCatalogTest
             Assert.NotNull(c.Library.GetSymbol(id));
         }
 
-        Assert.Null(c.Library.GetSymbol(KimiDeclarationId.Weak));
+        Assert.Equal(BindingState.Resolved, c.Library.GetSymbol(KimiDeclarationId.Weak)?.Declaration.StateOf()); // SPEC 22.1: declared `#Unsupported`.
     }
 
     [Fact]
@@ -126,15 +126,6 @@ public class CoreCatalogTest
 
         c.Kotonoha.CreateCodeContext().Parse(c.Kotonoha.RootKoto, "func missing() -> ()");
         Assert.Contains(TestDiagnostics.Of(c), x => x.Code == nameof(DiagnosticCode.MissingSyntax_Kd));
-    }
-
-    [Fact]
-    public void MissingCatalogEntriesDoNotCreateLookupCandidates()
-    {
-        var c = Compilation.CreateForTest();
-        c.Kotonoha.CreateCodeContext().Parse(c.Kotonoha.RootKoto, "func f(x: ::Kimi.Weak<i32>) => ()");
-        Assert.False(c.Bind().IsComplete);
-        Assert.Null(c.Library.GetSymbol(KimiDeclarationId.Weak));
     }
 
     [Trait("Purpose", "Allocation")]

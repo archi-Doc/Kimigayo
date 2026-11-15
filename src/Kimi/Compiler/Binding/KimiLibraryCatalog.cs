@@ -2,13 +2,6 @@
 
 namespace Kimi.Compiler;
 
-// The container IsUnsourced matches an unsourced entry's Name in (temporary with IsUnsourced, removed by G1-3b-2).
-internal enum KimiLibraryContainer : byte
-{
-    Root,
-    Intrinsics,
-}
-
 /// <summary>Immutable recognition rules, shared across compilations. The entries, indexed by ID, are in KimiLibraryCatalog.Definitions.cs,
 /// the rows an operation publishes beyond its signature and the functions code generation keeps out of line in
 /// KimiLibraryCatalog.Rows.cs.</summary>
@@ -43,33 +36,10 @@ internal static partial class KimiLibraryCatalog
     // The public declaration an internal implementation defines, which every presentation names instead.
     internal static KimiDeclarationId? PresentationOf(KimiDeclarationId id) => Index(id) is >= 0 and var index && Presentations[index] >= 0 ? Definitions[Presentations[index]].Id : null;
 
-    /// <summary>Gets a value indicating whether a name is a cataloged declaration that the library does not yet declare in source (PLAN G4).</summary>
-    /// <param name="container">The container the name was looked up in.</param>
-    /// <param name="name">The name.</param>
-    /// <returns><see langword="true"/> when a lookup that misses the name meets an implementation limit, not a missing name.</returns>
-    internal static bool IsUnsourced(KimiLibraryContainer container, string name)
-    {
-        foreach (ref readonly var entry in Entries)
-        {
-            if (!entry.SourceExpected && entry.Container == container && entry.Name == name)
-            {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
-    // An entry's declaration is the one whose `#Lang` names its Id (IMPL 21.3.4), which the library's registration reads. Name and
-    // Container belong only to the entries whose SourceExpected is false: the spelling and container IsUnsourced matches, since such a
-    // declaration has no source to carry a `#Lang`. A temporary structure: G1-3b-2 writes the five declarations `#Unsupported` and
-    // removes Name, Container, SourceExpected and IsUnsourced.
+    // An entry's declaration is the one whose `#Lang` names its Id (IMPL 21.3.4), which the library's registration reads.
     internal readonly record struct Entry(
         KimiDeclarationId Id,
         IntrinsicKind Intrinsic = IntrinsicKind.None,
-        bool SourceExpected = true,
-        string? Name = null,
-        KimiLibraryContainer Container = KimiLibraryContainer.Root,
         bool ManagedRepresentation = false,
         PublishedRow? Row = null,
         KimiDeclarationId? Implementation = null);

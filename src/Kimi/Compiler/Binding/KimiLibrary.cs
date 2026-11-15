@@ -434,12 +434,7 @@ public sealed partial class KimiLibrary
             // SPEC 22.1: a missing required declaration is a defect of the compiler build, whose embedded library KimiLibraryShapeTest checks.
             if (declarations[(int)entry.Id] is not { } declaration)
             {
-                if (entry.SourceExpected)
-                {
-                    throw new InvalidOperationException($"The embedded Kimi library has no declaration of {entry.Id}.");
-                }
-
-                continue;
+                throw new InvalidOperationException($"The embedded Kimi library has no declaration of {entry.Id}.");
             }
 
             var symbol = Register(declaration, entry.Id, entry.Intrinsic);
