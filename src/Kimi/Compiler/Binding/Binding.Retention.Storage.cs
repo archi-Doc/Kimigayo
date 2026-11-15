@@ -231,7 +231,7 @@ public sealed partial class Binding
         }
 
         var past = this.Past(environment, pointee, targets, step != HoldStep.Shared, layer, below);
-        if ((content == HoldContent.Any || (at.Captured && type.RawOrigin is null)) && past >= 0 && past != ResultStorage)
+        if ((content == HoldContent.Any || (at.Captured && step == HoldStep.Address)) && past >= 0 && past != ResultStorage)
         {
             this.storageHolds.Add((null, null, null, past)); // Storage no Type states: a declaration's layer's, or a Closure's (C-352's C10).
         }
