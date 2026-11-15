@@ -167,7 +167,7 @@ public sealed partial class Binding
     {
         if (path.Checking)
         {
-            return ConstraintProof.Unknown;
+            return this.ReentryRead(path);
         }
 
         if (path.Invalid || path.Identity.Invalid || this.InvalidDeclarationContext(path.Type.Declaration))
@@ -322,7 +322,7 @@ public sealed partial class Binding
         }
         finally
         {
-            path.Checking = false;
+            this.EndChecking(path);
             path.Unsupported &= completed; // An interrupted verification records no limit.
             this.conformanceChecks--;
         }
