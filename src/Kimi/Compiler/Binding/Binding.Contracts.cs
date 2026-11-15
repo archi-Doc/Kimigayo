@@ -442,9 +442,10 @@ public sealed partial class Binding
         // Refinement assumptions are input evidence, not in-progress registrations (PremiseRefines, the refinement row's one predicate).
         premise = premise || this.PremiseRefines(type, contract, scope);
 
-        // Definition evidence is still resolved so that its errors are never hidden by an assumption.
+        // Definition evidence is still resolved so that its errors are never hidden by an assumption. R7-C2c2 c2-4 (SPEC 8.3.2): the
+        // join is by polarity: a premise is positive evidence, the closed world's Refuted negative, and both are contradictory evidence.
         var proof = this.ResolveConformance(type, contract, scope, out _);
-        return premise ? CombineProof(ConstraintProof.Proven, proof, false) : proof;
+        return premise && proof == ConstraintProof.Refuted ? ConstraintProof.Error : premise ? CombineProof(ConstraintProof.Proven, proof, false) : proof;
     }
 
     private BoundConstraint ContractConstraint(BoundConstraint constraint, BindingScope scope, BoundType? self, bool normalize = true, BindingSymbol? reference = null)

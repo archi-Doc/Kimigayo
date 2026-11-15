@@ -61,11 +61,10 @@ public sealed partial class Binding
         return c != 0 ? c : ((int)a.Kind).CompareTo((int)b.Kind);
     }
 
-    // R7-C2c2: the key of `type` in a view's classes: a parameter's or projection's class's Representative, else the Type over its
-    // components' keys (congruence), whose class is asked again. A constructed member (`i32`, a struct, `Option<U>`) keys to itself over
-    // its components' keys, so no parameter's premise rows reach it and its conformance is ResolveConformance's: a premise contradicting
-    // a Refuted one stays the premise's error (SPEC 8.3.2). Where it is Unknown, the implementation's limit, not SPEC's rule: a premise
-    // is not yet read as evidence for that member (SPEC 8.2.3), so valid programs such as d09c stay rejected, as on base, until c2-4. A
+    // R7-C2c2: the key of `type` in a view's classes: its class's Representative (c2-4: a constructed member's too, so every member's
+    // premise rows are the class's, SPEC 8.2.3 "a Contract fact about a Type is evidence for an identical one, also where that Type is
+    // constructed"), else the Type over its components' keys (congruence), whose class is asked again. A lent row meeting the member's
+    // closed world is contradictory evidence (ProveConformance's polarity join, SPEC 8.3.2), never a Proven over a Refuted. A
     // key names the class to the premise supply only; no reader sees it as a Type. Each
     // Type is keyed once per table (the table keeps it), so a request's keys cost the distinct Types it compares; a warm pass finds
     // the rebuilt Types interned and the table's capacity kept, and allocates nothing.
@@ -118,7 +117,7 @@ public sealed partial class Binding
     private sealed partial class IdentityClasses
     {
         private readonly Dictionary<BoundType, BoundType> keys = new(ReferenceEqualityComparer.Instance); // ClassKey's answers (R7-C2c2)
-        private readonly Dictionary<int, (BoundType? Least, BoundType? Complete)> scanned = new(); // per class root: Representative's and CompleteMember's answers
+        private readonly Dictionary<int, (BoundType? Least, BoundType? Complete, BoundType? Member)> scanned = new(); // per class root: Representative's, CompleteMember's and Member's answers
 
         // R7-C2c2: the table's key of a Type ClassKey formed from it, or null. Keys are a function of the closed table (no class joins
         // after Close), so each Type is keyed once per table; they go with the table at its next Open.
@@ -127,8 +126,9 @@ public sealed partial class Binding
         internal void SetKey(BoundType type, BoundType key) => this.keys[type] = key;
 
         // R7-C2c2: the key of a class in state One whose meets are complete, its least parameter or projection by Order (shallowest
-        // first); null for a Type that is no node, a class with no such member, or an erroneous one (an erroneous class keys nothing).
-        // The table's finality is not read: it decides only reuse (ContractSolver's kept rows). A constructed Type receives no key (ClassKey).
+        // first), for any node of it, constructed ones included (c2-4); null for a Type that is no node, a class with no such member, or
+        // an erroneous one (an erroneous class keys nothing). The table's finality is not read: it decides only reuse (ContractSolver's
+        // kept rows).
         internal BoundType? Representative(BoundType type) => this.Scanned(type).Least;
 
         // N9 (SPEC 8.2.3, 8.3.2): the complete constructed member (no parameter in it) of the same class, least by Order (the members
@@ -137,13 +137,21 @@ public sealed partial class Binding
         // projection bound by a premise, G866) and ProveProposition's contradiction check (MemberVerdict, N9). The table's Completion is
         // not read: until R7-C2e2 threads Completion through the
         // judgments' answers, the answer is that of the pass it is asked in, as every judgment's.
-        internal BoundType? CompleteMember(BoundType type) => this.Scanned(type).Complete;
+        // c2-4 keeps this answer as N9's (B4 of the design review): a parameter's or projection's closed member only, so Refuted reads
+        // what it read before; Member below is the scan's other answer.
+        internal BoundType? CompleteMember(BoundType type)
+            => type.Kind is BoundTypeKind.Parameter or BoundTypeKind.AssociatedProjection ? this.Scanned(type).Complete : null;
+
+        // R7-C2c2 c2-4 (SPEC 8.2.3, 8.3.2): the class's constructed member whose closed world decides an atom about any member, a closed
+        // one (no parameter) first, else the least by Order (the more determined spelling; never premise order); null as Representative.
+        // The members of a class in state One are identical, so any one decides; JudgeConstraintAtom is its one reader.
+        internal BoundType? Member(BoundType type) => this.Scanned(type).Member;
 
         // The one class-validity rule and member scan behind both answers: a parameter's or projection's class in state One whose
         // meets are complete, scanned once per table (its members are fixed after Close), whatever the number of its members asked.
-        private (BoundType? Least, BoundType? Complete) Scanned(BoundType type)
+        private (BoundType? Least, BoundType? Complete, BoundType? Member) Scanned(BoundType type)
         {
-            if (type.Kind is not (BoundTypeKind.Parameter or BoundTypeKind.AssociatedProjection) || !this.node.TryGetValue(type, out var n))
+            if (!this.node.TryGetValue(type, out var n))
             {
                 return default;
             }
@@ -158,6 +166,7 @@ public sealed partial class Binding
             {
                 BoundType? best = null;
                 BoundType? complete = null;
+                BoundType? open = null;
                 for (var m = this.head[root]; m >= 0; m = this.next[m])
                 {
                     var member = this.types[m];
@@ -170,9 +179,13 @@ public sealed partial class Binding
                     {
                         complete = complete is null || Order(member, complete) < 0 ? member : complete;
                     }
+                    else
+                    {
+                        open = open is null || Order(member, open) < 0 ? member : open;
+                    }
                 }
 
-                this.scanned[root] = answer = (best, complete);
+                this.scanned[root] = answer = (best, complete, complete ?? open);
             }
 
             return answer;

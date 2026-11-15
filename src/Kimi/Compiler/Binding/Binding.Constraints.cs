@@ -174,6 +174,14 @@ public sealed partial class Binding
             return ConstraintProof.Unknown;
         }
 
+        // R7-C2c2 c2-4 (SPEC 8.2.3, 8.3.2): an atom about a Type is judged on its identity class's Member: its premise rows are the
+        // class's (ClassKey), its closed world the Member's, so a premise meeting a Refuted member is contradictory evidence (Error).
+        if (proposition.Kind != ConstraintKind.TypeIdentity && proposition.Subject is { } held && HasTypeIdentity(scope) &&
+            this.ClassesOf(scope, out _)?.Member(held) is { } member && !ReferenceEquals(member, held))
+        {
+            return this.JudgeConstraintAtom(this.InternConstraint(new(proposition.Kind, member, proposition.RequiredType, proposition.Contract, proposition.Mask)), scope);
+        }
+
         if (proposition.Kind == ConstraintKind.TypeIdentity)
         {
             if (this.IdentityProven(proposition.Subject!, proposition.RequiredType!, scope))
@@ -181,7 +189,10 @@ public sealed partial class Binding
                 return ConstraintProof.Proven;
             }
 
-            return this.DependentType(proposition.Subject!) || this.DependentType(proposition.RequiredType!)
+            // c2-4: an identity atom over unbound Types is Refuted where the class table refutes it (IdentityRefuted, SPEC 8.2.3's
+            // Refuted), as the atom judge's other kinds read the class's Member; the premise meeting it is contradictory evidence.
+            return (this.DependentType(proposition.Subject!) || this.DependentType(proposition.RequiredType!)) &&
+                !(HasTypeIdentity(scope) && this.IdentityRefuted(proposition.Subject!, proposition.RequiredType!, scope, null))
                 ? ConstraintProof.Unknown : ConstraintProof.Refuted;
         }
 
@@ -618,33 +629,8 @@ public sealed partial class Binding
             return ConstraintProof.Unknown;
         }
 
-        // SPEC 8.2.3, 8.3.2 (N9): the proposition's result for the complete constructed Type its subject is identical with is evidence of
-        // the other polarity too. It only detects the contradiction and never joins `positive` or `negative`: as evidence a member's
-        // Proven accepted an invalid program (r2-e3), and that direction is R7-C2c2 c2-4's.
-        if (structural != ConstraintProof.Error && positive != negative && HasTypeIdentity(scope) &&
-            this.MemberVerdict(normalized, scope) == (positive ? ConstraintProof.Refuted : ConstraintProof.Proven))
-        {
-            return ConstraintProof.Error;
-        }
-
         return structural == ConstraintProof.Error || (positive && negative) ? ConstraintProof.Error : positive ? ConstraintProof.Proven : negative ? ConstraintProof.Refuted : ConstraintProof.Unknown;
     }
-
-    // SPEC 8.2.3 ("a Contract fact about a Type is evidence for an identical one"), 8.3.2's rows: the proposition's result with each
-    // atom's subject replaced by the complete constructed member of its identity class (TypeIdentity's CompleteMember), judged by the
-    // atom judge and combined by the rows for `and`, `or` and `not`; an atom whose subject has no such member is Unknown. Premises are
-    // not read for it: a constructed member keys to itself (R7-C2c2 c2-1), so the atom judge answers by the closed world. ProveProposition
-    // is its one reader.
-    private ConstraintProof MemberVerdict(BoundConstraint proposition, BindingScope scope)
-        => proposition.Kind switch
-        {
-            ConstraintKind.Not => NegateProof(this.MemberVerdict(proposition.Left!, scope)),
-            ConstraintKind.And => CombineProof(this.MemberVerdict(proposition.Left!, scope), this.MemberVerdict(proposition.Right!, scope), true),
-            ConstraintKind.Or => CombineProof(this.MemberVerdict(proposition.Left!, scope), this.MemberVerdict(proposition.Right!, scope), false),
-            _ => proposition.Subject is { } subject && this.ClassesOf(scope, out _)?.CompleteMember(subject) is { } member
-                ? this.JudgeConstraintAtom(this.InternConstraint(new(proposition.Kind, member, proposition.RequiredType, proposition.Contract, proposition.Mask)), scope)
-                : ConstraintProof.Unknown,
-        };
 
     // W1 (ContractSolver's Completion): Complete with nothing to normalize, else the meet of the parts'; a Callable fact's required
     // Type (CallableContractType) is Provisional.

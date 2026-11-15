@@ -380,7 +380,17 @@ public sealed partial class Binding
         return this.EndProof(this.ReadVerdict(work.Result, work.Cause, work.Fact));
     }
 
+    // R7-C2c2 c2-4 (SPEC 8.2.3, 8.3.2): a constructed Type's premise rows are its identity class's (ClassKey), joined with its closed
+    // world by polarity: a premise is positive evidence, the structure's Refuted negative, both contradictory evidence (Error). An
+    // abstract Type reads its premises in SymbolicCapability.
     private ConstraintProof ComputeCapability(CapabilityWork work)
+    {
+        var proof = this.CapabilityByStructure(work);
+        return proof != ConstraintProof.Error && !work.Type.IsAbstract && HasTypeIdentity(work.Scope) && this.PremiseRefines(work.Type, work.Intrinsic, work.Scope)
+            ? (proof == ConstraintProof.Refuted ? ConstraintProof.Error : ConstraintProof.Proven) : proof;
+    }
+
+    private ConstraintProof CapabilityByStructure(CapabilityWork work)
     {
         var type = work.Type;
         if (this.OperandContexts(type).Invalid)
