@@ -614,8 +614,8 @@ public sealed partial class Binding
         var source = KotoHelper.UnwrapParentheses(part);
         if (source is RangeKoto range && IsMixedRange(range))
         {
-            return (range.Start is null || IsUnfittedLiteral(range.Start) || this.PrepareArgument(range.Start, scope, null, callableContext: false)) &
-                (range.End is null || IsUnfittedLiteral(range.End) || this.PrepareArgument(range.End, scope, null, callableContext: false));
+            return (range.Start is null || IsUnfittedLiteral(range.Start) || this.PrepareArgument(range.Start, scope, default, callableContext: false)) &
+                (range.End is null || IsUnfittedLiteral(range.End) || this.PrepareArgument(range.End, scope, default, callableContext: false));
         }
 
         var elements = source is ArrayLiteralKoto array ? array.Elements : ((TupleLiteralKoto)source).Elements;
