@@ -271,6 +271,8 @@ public sealed partial class Binding
             return contexts.Invalid ? ConstraintProof.Error : ConstraintProof.Unknown;
         }
 
+        type = this.MemberOf(type, scope); // R7-C2c2 c2-4 (design R1.1): the capability judge's subject is its class's Member
+
         if (!this.capabilitiesReady)
         {
             if (this.running && !derivation && TryLeafCapability(type, intrinsic.Intrinsic, out var concrete))

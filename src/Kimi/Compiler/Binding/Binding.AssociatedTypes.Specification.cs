@@ -46,6 +46,49 @@ public sealed partial class Binding
         return resolved with { Type = this.SubstituteStoredOrigins(binding, projection.Symbol!.Declaration, (BoundOrigin[])projection.OriginArguments) };
     }
 
+    // R7-C2c2 c2-4 (design RB3, S3; SPEC 8.2.3 "the available completed associated-Type bindings" are grounds): the binding a
+    // constructed member's own unconditional conformance (no `when`, not inherited) declares for a projection, as the member's Type;
+    // null without one or where two such paths disagree. Declarations only (no identity, no proof); `pending` when a binding is not yet
+    // complete. Its readers are the identity table's binding grounds and ContractTypeCore's specification on a Member, so one
+    // projection has one form; a conditional conformance's binding is no ground and completes nothing here (N8's named limit).
+    private BoundType? UnconditionalBinding(BoundType member, BoundType projection, out bool pending)
+    {
+        pending = false;
+        var associated = projection.Symbol!;
+        if (member.Symbol is not { } owner || associated.Scope.Owner.BoundSymbol is not { } contract ||
+            this.ConformanceByDeclaration(owner, contract, out _) is not { } identity)
+        {
+            return null;
+        }
+
+        BoundType? found = null;
+        for (var i = 0; i < identity.PathStorage.Count; i++)
+        {
+            var path = identity.PathStorage[i];
+            if (path.InheritedFrom is not null || path.Premises is not null || this.AssociatedInPath(path, member, associated, null, path.Scope) is not { } selected)
+            {
+                continue;
+            }
+
+            var binding = this.ResolveAssociated(path, selected, out var bindingPending);
+            var instance = binding is null ? null : this.StoredType(this.SubstituteStoredOrigins(binding, associated.Declaration, (BoundOrigin[])projection.OriginArguments), member);
+            pending |= instance is null && bindingPending;
+            if (instance is null)
+            {
+                continue;
+            }
+
+            if (found is not null && !ReferenceEquals(found, instance))
+            {
+                return null;
+            }
+
+            found = instance;
+        }
+
+        return found;
+    }
+
     // `qualifier` is the declaring Contract reference of the projection (SPEC 8.6.1); a bound reference of a Contract with Type
     // arguments selects that conformance, and a Contract without them has one conformance per Type. `pending`: a null result is not final
     // (as the path's ResolveAssociated); once the pass's evidence is complete, a Type without the conformance gives none. The paths whose

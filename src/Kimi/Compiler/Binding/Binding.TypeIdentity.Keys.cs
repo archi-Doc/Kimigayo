@@ -80,6 +80,11 @@ public sealed partial class Binding
         return key;
     }
 
+    // R7-C2c2 c2-4 (design R1.1): the subject an atom judge takes: the Type's identity class's Member in a view with an identity
+    // premise, else the Type. ProveConformance, RequestCapability and JudgeConstraintAtom's other arms read it at their entries.
+    private BoundType MemberOf(BoundType type, BindingScope scope)
+        => HasTypeIdentity(scope) && this.ClassesOf(scope, out _)?.Member(type) is { } member ? member : type;
+
     // The Type over its components' keys, whose class is asked again; the Type itself when no component's key differs.
     private BoundType CongruentKey(BoundType type, IdentityClasses classes)
     {
@@ -117,7 +122,7 @@ public sealed partial class Binding
     private sealed partial class IdentityClasses
     {
         private readonly Dictionary<BoundType, BoundType> keys = new(ReferenceEqualityComparer.Instance); // ClassKey's answers (R7-C2c2)
-        private readonly Dictionary<int, (BoundType? Least, BoundType? Complete, BoundType? Member)> scanned = new(); // per class root: Representative's, CompleteMember's and Member's answers
+        private readonly Dictionary<int, (BoundType? Least, BoundType? Member)> scanned = new(); // per class root: Representative's and Member's answers
 
         // R7-C2c2: the table's key of a Type ClassKey formed from it, or null. Keys are a function of the closed table (no class joins
         // after Close), so each Type is keyed once per table; they go with the table at its next Open.
@@ -137,19 +142,15 @@ public sealed partial class Binding
         // projection bound by a premise, G866) and ProveProposition's contradiction check (MemberVerdict, N9). The table's Completion is
         // not read: until R7-C2e2 threads Completion through the
         // judgments' answers, the answer is that of the pass it is asked in, as every judgment's.
-        // c2-4 keeps this answer as N9's (B4 of the design review): a parameter's or projection's closed member only, so Refuted reads
-        // what it read before; Member below is the scan's other answer.
-        internal BoundType? CompleteMember(BoundType type)
-            => type.Kind is BoundTypeKind.Parameter or BoundTypeKind.AssociatedProjection ? this.Scanned(type).Complete : null;
-
-        // R7-C2c2 c2-4 (SPEC 8.2.3, 8.3.2): the class's constructed member whose closed world decides an atom about any member, a closed
-        // one (no parameter) first, else the least by Order (the more determined spelling; never premise order); null as Representative.
-        // The members of a class in state One are identical, so any one decides; JudgeConstraintAtom is its one reader.
+        // R7-C2c2 c2-4 (SPEC 8.2.3, 8.3.2; design R1.1, R1.2): the class's constructed member whose closed world decides an atom about
+        // any member, a closed one (no parameter) first, else the least by Order (the more determined spelling; never premise order);
+        // null as Representative. The members of a class in state One are identical, so any one decides. Its readers: MemberOf (the
+        // atom judges' subjects) and Refuted.
         internal BoundType? Member(BoundType type) => this.Scanned(type).Member;
 
         // The one class-validity rule and member scan behind both answers: a parameter's or projection's class in state One whose
         // meets are complete, scanned once per table (its members are fixed after Close), whatever the number of its members asked.
-        private (BoundType? Least, BoundType? Complete, BoundType? Member) Scanned(BoundType type)
+        private (BoundType? Least, BoundType? Member) Scanned(BoundType type)
         {
             if (!this.node.TryGetValue(type, out var n))
             {
@@ -185,7 +186,7 @@ public sealed partial class Binding
                     }
                 }
 
-                this.scanned[root] = answer = (best, complete, complete ?? open);
+                this.scanned[root] = answer = (best, complete ?? open);
             }
 
             return answer;

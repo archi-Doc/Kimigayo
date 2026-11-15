@@ -25,6 +25,7 @@ public sealed partial class Binding
         private readonly List<bool> transparent = new(); // a pair application admitting exactly `owner`: its target (SPEC 8.2.3)
         private readonly List<(BoundOrigin A, BoundOrigin B)> correspondence = new(); // one Function pair's quantified Origins, by position
         private readonly List<(BoundType A, BoundType B)> parts = new(); // a meet's decomposition, read by its consumer and removed
+        private readonly HashSet<int> grounded = new(); // projection nodes joined with a binding ground (BindingGrounds, R7-C2c2 c2-4)
         private readonly List<byte> state = new();
         private readonly List<int> head = new();
         private readonly List<int> next = new();
@@ -72,6 +73,7 @@ public sealed partial class Binding
             this.transparent.Clear();
             this.correspondence.Clear();
             this.parts.Clear();
+            this.grounded.Clear();
             this.state.Clear();
             this.head.Clear();
             this.next.Clear();
@@ -211,7 +213,7 @@ public sealed partial class Binding
         }
 
         // SPEC 8.2.3's Refuted (PLAN G866), read by the one table the premise meets read (Meet): a parameter or projection bound by a
-        // premise stands for its class's complete member; one class is no difference; an abstract Type (IsAbstractType) differs only as
+        // premise stands for its class's Member; one class is no difference; an abstract Type (IsAbstractType) differs only as
         // a proper part; two constructors differ where their meet conflicts or a pair of their parts differs, or as a proper part.
         // The meet is the premises' own: a Function pair's quantification structure is a compared attribute (Correspond), while an
         // attribute's Unproven (Origins whose agreement is not proven) decides nothing. Limits: a pair's own `s/T` is no constructor
@@ -219,7 +221,7 @@ public sealed partial class Binding
         internal bool Refuted(BoundType a, BoundType b)
         {
             (a, b) = (this.Target(a), this.Target(b));
-            (a, b) = (this.CompleteMember(a) ?? a, this.CompleteMember(b) ?? b);
+            (a, b) = (this.Member(a) ?? a, this.Member(b) ?? b); // R7-C2c2 c2-4 (design R1.2): Member, with parameters too
             if (ReferenceEquals(a, b) ||
                 (this.node.TryGetValue(a, out var x) && this.node.TryGetValue(b, out var y) && this.Find(x) == this.Find(y)))
             {
@@ -268,6 +270,7 @@ public sealed partial class Binding
                 this.pending.Clear();
                 this.Congruence();
                 this.Members();
+                this.BindingGrounds();
                 this.state.Clear();
                 for (var n = 0; n < this.types.Count; n++)
                 {
@@ -507,6 +510,48 @@ public sealed partial class Binding
                         this.signatureNext[first] = n;
                     }
                 }
+            }
+        }
+
+        // R7-C2c2 c2-4 (design RB3): a projection node whose subject's class has a constructor member with an unconditional binding
+        // for it (UnconditionalBinding: declarations only, no identity or proof, within this table's prohibition) is joined with that
+        // binding's instance, as a premise is; once per node, so its pending union starts the next round as decomposition's do, and the
+        // rounds end when one joins nothing. A binding not yet complete makes the table Provisional (W7). Nodes grow only by the parts of
+        // binding instances.
+        private void BindingGrounds()
+        {
+            var count = this.types.Count;
+            for (var n = 0; n < count; n++)
+            {
+                var type = this.types[n];
+                if (type.Kind != BoundTypeKind.AssociatedProjection || this.grounded.Contains(n) || !this.node.TryGetValue(type.Components[0], out var subject))
+                {
+                    continue;
+                }
+
+                for (var m = this.head[this.Find(subject)]; m >= 0; m = this.next[m])
+                {
+                    if (!IsConstructor(this.types[m]))
+                    {
+                        continue;
+                    }
+
+                    var instance = binding.UnconditionalBinding(this.types[m], type, out var unfinished);
+                    this.provisional |= unfinished;
+                    if (instance is null)
+                    {
+                        continue;
+                    }
+
+                    this.grounded.Add(n);
+                    this.pending.Add((n, this.Add(instance)));
+                    break;
+                }
+            }
+
+            if (this.types.Count != count)
+            {
+                this.Members(); // the instances' new nodes are classes of their own until the next round joins them
             }
         }
 

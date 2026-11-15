@@ -174,11 +174,10 @@ public sealed partial class Binding
             return ConstraintProof.Unknown;
         }
 
-        // R7-C2c2 c2-4 (SPEC 8.2.3, 8.3.2): an atom about a Type, of every kind, is judged on its identity class's Member: its premise
-        // rows are the class's (ClassKey), its closed world the Member's, so a premise meeting a Refuted member is contradictory
-        // evidence (Error).
-        if (proposition.Subject is { } held && HasTypeIdentity(scope) &&
-            this.ClassesOf(scope, out _)?.Member(held) is { } member && !ReferenceEquals(member, held))
+        // R7-C2c2 c2-4 (SPEC 8.2.3, 8.3.2; design R1.1): an identity, Callable or Semantics atom is judged on its subject's Member
+        // (MemberOf); the Contract and capability judges read it at their own entries (ProveConformance, RequestCapability).
+        if (proposition.Kind is ConstraintKind.TypeIdentity or ConstraintKind.Callable or ConstraintKind.Semantics &&
+            proposition.Subject is { } held && this.MemberOf(held, scope) is var member && !ReferenceEquals(member, held))
         {
             return this.JudgeConstraintAtom(this.InternConstraint(new(proposition.Kind, member, proposition.RequiredType, proposition.Contract, proposition.Mask)), scope);
         }

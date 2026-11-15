@@ -187,6 +187,15 @@ public sealed partial class Binding
 
             try
             {
+                // R7-C2c2 c2-4 (design (E), S3): a projection whose subject has a constructed Member is specified on it, through the one
+                // unconditional lookup the identity table's grounds read (SPEC 8.2.3 Projections).
+                if (result.Kind == BoundTypeKind.AssociatedProjection && this.MemberOf(result.Components[0], scope) is var member &&
+                    !ReferenceEquals(member, result.Components[0]) && this.UnconditionalBinding(member, result, out var unfinished) is { } grounded)
+                {
+                    var instance = this.ContractTypeAnswer(grounded, scope, self);
+                    return (instance.Image, inner, Meet(completion, unfinished ? Completion.Provisional : instance.Completion));
+                }
+
                 if (result.Kind == BoundTypeKind.AssociatedProjection)
                 {
                     var outcome = this.ProjectionSpecification(result, scope);
