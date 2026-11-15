@@ -200,11 +200,12 @@ public sealed partial class Binding
         // A variable without a principal solution takes a representative, so that its relations are judged at their own sources: an
         // invariant one its fixed equality partner, else the meet of its upper bounds, else its lower bound proven to outlive every
         // other (SPEC 15.3.6's covariant and contravariant candidates; the owner's O-350 (a)), each read from the solution reached, so
-        // neither the order of the bounds nor that of the variables decides it. The meet satisfies every bound whenever any Origin does.
-        // A variable with neither stays open, in a call a region of the body (SPEC 15.3.6). A call's selection judges no Origin
-        // relation (SPEC 15.6.1); a comparison judges every bound against the representative, and its walk every member, so a variable
-        // at both covariant and contravariant positions whose bounds admit a choice is accepted (SPEC 15.3.7: compatibility admits every
-        // call the requirement allows; the owner's O-348 (a)).
+        // neither the order of the bounds nor that of the variables decides it. For one open variable the meet satisfies every bound
+        // whenever any Origin does; a bound between two open variables is not read, since each is read where the other is still open
+        // (PLAN: two variables without a principal solution related by a clause). A variable with neither stays open, in a call a
+        // region of the body (SPEC 15.3.6). A call's selection judges no Origin relation (SPEC 15.6.1); a comparison judges every bound
+        // against the representative, and its walk every member, so a variable at both covariant and contravariant positions whose
+        // bounds admit a choice is accepted (SPEC 15.3.7: compatibility admits every call the requirement allows; the owner's O-348 (a)).
         var open = 0;
         foreach (var variable in inference.Variables)
         {
@@ -247,11 +248,11 @@ public sealed partial class Binding
             if (longer is null || shorter is null || (!this.ProvesOriginOutlives(longer, shorter, use, inference.Comparison, bound.Condition) &&
                 !this.HoldsResting(longer, shorter, bound.Condition, new ProofLeaf(this, use, inference.Comparison))))
             {
-                // An end left open is a variable without a representative: no upper bound, and lower bounds none of which outlives
-                // the others, whose first such pair fails here; none when the open variable is inside a meet.
+                // An end left open holds a variable without a representative, itself or as an operand of a meet: no upper bound, and
+                // lower bounds none of which outlives the others, whose first such pair fails here.
                 inference.Failure = longer is not null && shorter is not null
                     ? BoundFailure(inference.Comparison, bound.Member, bound.Clause, longer, shorter, bound.Equality)
-                    : Limits(longer is null ? bound.Longer : bound.Shorter, false).Conflict;
+                    : Limits(Open(longer is null ? bound.Longer : bound.Shorter), false).Conflict;
                 return false;
             }
         }
@@ -377,6 +378,20 @@ public sealed partial class Binding
 
         BoundOrigin Project(BoundOrigin origin) => declaringType?.Symbol is { } owner ?
             this.SubstituteStoredOrigin(origin, owner.Declaration, (BoundOrigin[])declaringType.OriginArguments) : origin;
+
+        // The first variable without a solution that leaves `expression` unresolved: the expression itself or an operand of its meet.
+        BoundOrigin Open(BoundOrigin expression)
+        {
+            for (var i = 0; i < expression.Operands.Count; i++)
+            {
+                if (Resolve(expression.Operands[i], true) is null)
+                {
+                    return Open(expression.Operands[i]);
+                }
+            }
+
+            return expression;
+        }
 
         BoundOrigin? Get(BoundOrigin origin)
         {
