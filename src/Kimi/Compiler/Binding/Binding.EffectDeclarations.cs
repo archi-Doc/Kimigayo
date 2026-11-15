@@ -476,13 +476,25 @@ public sealed partial class Binding
         }
 
         CompleteQualifier(selector, named, ancestor);
-        // The requirement Name, either leaf of one Name (the Type reader's or the requirement reader's, as IsAssociatedTypeName reads it).
-        var name = effect.Name switch
+        // The requirement Name: either leaf of one Name (the group reader's or the Type reader's, as IsAssociatedTypeName reads it), or the
+        // Error of a path that failed in Parsing (its record is reported). Parsing builds no other form.
+        string? name;
+        switch (effect.Name)
         {
-            IdentifierNameKoto identifier => identifier.IdentifierName,
-            TypeSemanticsKoto { Type: null, IsNamedType: true } leaf => leaf.Identifier,
-            _ => null,
-        };
+            case IdentifierNameKoto identifier:
+                name = identifier.IdentifierName;
+                break;
+            case TypeSemanticsKoto { Type: null } leaf:
+                name = leaf.Identifier;
+                break;
+            case ErrorKoto:
+                name = null;
+                break;
+            default:
+                this.Fail(effect, BindingFailure.Internal);
+                return null;
+        }
+
         BoundRequirement? target = null;
         var found = 0;
         var requirements = ancestor.Contract!.Requirements;

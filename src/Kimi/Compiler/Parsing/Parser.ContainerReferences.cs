@@ -159,6 +159,10 @@ public static partial class Parser
                     SourceSpan.FromBounds(left.Span.Start, Math.Max(operatorRange.End, accessor.Span.End)),
                     left,
                     accessor);
+                if (accessor is ParenthesizedTypeKoto && !ContinuesContractMember(ref reader, ref left, accessor))
+                {
+                    return left;
+                }
             }
             else if (tokenKind == TokenKind.LessThan)
             {
@@ -223,11 +227,27 @@ public static partial class Parser
     }
 
     // SPEC F.5 ContainerPath := "::"? TypeSegment PathSuffix* | PathQualifier PathSuffix+, read as a Type: its head is a path leaf, or a
-    // PathQualifier (a group, a Tuple or Unit, a fixed array) that its PathSuffixes continue.
+    // PathQualifier (a group, a Tuple or Unit, a fixed array) that its PathSuffixes continue; it never ends at a grouped Contract, whose
+    // PathSuffix carries its ". Name" (a path split before that Name, as a selector's final ". Name" can split it, is none).
     private static bool IsContainerPath(Koto path)
     {
         var head = ContainerPathHead(path);
-        return IsPathLeaf(head) || (!ReferenceEquals(head, path) && head is ParenthesizedTypeKoto or TupleTypeKoto or FixedArrayTypeKoto);
+        return path is not MemberAccessKoto { Right: ParenthesizedTypeKoto } &&
+            (IsPathLeaf(head) || (!ReferenceEquals(head, path) && head is ParenthesizedTypeKoto or TupleTypeKoto or FixedArrayTypeKoto));
+    }
+
+    // SPEC F.5 PathSuffix := "." TypeSegment | "." "(" ContractReference ")" "." Name: a grouped Contract after "." is one suffix with its
+    // ". Name", read by F.5's suffix loop (ParseTypeSuffixes) and, until G489 merges it into that loop, ParseConstraintSubject's. Without
+    // the Name, the path read so far is a written Type outside its grammar: one record at the group, the path recovered.
+    private static bool ContinuesContractMember(ref TokenReader reader, ref Koto path, Koto group)
+    {
+        if (reader.CurrentTokenKind == TokenKind.Dot && reader.PeekKind(1).IsIdentifierOrContextualKeyword())
+        {
+            return true;
+        }
+
+        path = RecoverWrittenType(ref reader, path, group.Expected(SyntaxForm.ContractMember));
+        return false;
     }
 
     // The first TypeSegment of a ContainerPath (F.5) or a root name: a Name as the Type reader builds it (TypeSemanticsKoto, Type: null)

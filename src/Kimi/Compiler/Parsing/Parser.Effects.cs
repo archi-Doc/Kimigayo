@@ -155,6 +155,13 @@ public static partial class Parser
     private static Koto ParseEffectTarget(ref TokenReader reader, out Koto name)
     {
         var path = ParseContractSelectorPath(ref reader);
+        if (IsRecoveredType(ref reader, path))
+        {
+            // A path that failed (its record is reported) names no requirement; the item rests on that record.
+            name = new ErrorKoto(ref reader, reader.InsertionSpan) { Cause = reader.CodeContext.RecoveryCause(path) ?? (path as ErrorKoto)?.Cause };
+            return path;
+        }
+
         if (path is MemberAccessKoto member)
         {
             RecoverContractSelector(ref reader, member.Left);

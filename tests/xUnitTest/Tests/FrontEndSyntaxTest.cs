@@ -530,26 +530,34 @@ public class FrontEndSyntaxTest
     // SPEC F.5 NamedType := NamedReference OriginApplication? (F.8: "never a call, Tuple or grouping"): the OriginApplication ends the
     // NamedType, so a PathSuffix, Type arguments or a second application after it is the enclosing construct's syntax error, in every
     // Type position, a selector head and a requirement (whose suffixes F.5's one loop reads), the same in selected and excluded syntax.
+    // The counts: one record at the token after the application, except the named second records on these rejected programs (rule W,
+    // counted): a Type argument's list closes at "." and the parameter list's own check meets the written ">" (G848); a result Type's
+    // header skips the body (the missing-body record, D1's line); a base clause's record over Y(a) and the header's at ".Item"; the
+    // associate head's "is" record and the line's end after the skipped requirement (G848's cascade).
     [Theory]
-    [InlineData("func f(v: Y(a).Item) -> i32 => 0", ".Item")]
-    [InlineData("func f() -> i32\n    let x: Y(a).Item = 0\n    return 0", ".Item")]
-    [InlineData("func f(v: Option<Y(a).Item>) -> i32 => 0", ".Item")]
-    [InlineData("func f<T>(v: T.Item(a).Z) -> i32 => 0", ".Z")]
-    [InlineData("func f(v: Y(a).(K).Item) -> i32 => 0", ".(K)")]
-    [InlineData("func f(v: Y(a)<i32>) -> i32 => 0", "<i32>")]
-    [InlineData("func f(v: Missing(a).Item) -> i32 => 0", ".Item")]
-    [InlineData("struct A\n    associate Y(a).Item is i32", ".Item")]
-    [InlineData("func f<T>(v: T) -> i32\n    T is Y(a).Item\n    return 0", ".Item")]
-    [InlineData("func f<T>(v: T) -> i32\n    T is K.Item(a).Z\n    return 0", ".Z")]
-    [InlineData("func f<T>(v: T) -> i32\n    T is Y(a)(b)\n    return 0", "(b)")]
-    [InlineData("func f<T>(v: T) -> i32\n    T is Y(a)<i32>\n    return 0", "<i32>")]
-    [InlineData("struct T<V>\n    Self is Y(a).Item when V is Copy", ".Item")]
-    public void AnOriginApplicationEndsANamedTypeInEverySelection(string declaration, string at)
+    [InlineData("func f(v: Y(a).Item) -> i32 => 0", ".Item", 1)]
+    [InlineData("func f() -> i32\n    let x: Y(a).Item = 0\n    return 0", ".Item", 1)]
+    [InlineData("func f(v: Option<Y(a).Item>) -> i32 => 0", ".Item", 2)]
+    [InlineData("func f() -> Y(a).Item => g()", ".Item", 2)]
+    [InlineData("func f<T>(v: T.Item(a).Z) -> i32 => 0", ".Z", 1)]
+    [InlineData("func f(v: Y(a).(K).Item) -> i32 => 0", ".(K)", 1)]
+    [InlineData("func f(v: Y(a)<i32>) -> i32 => 0", "<i32>", 1)]
+    [InlineData("func f(v: Missing(a).Item) -> i32 => 0", ".Item", 1)]
+    [InlineData("struct A\n    associate Y(a).Item is i32", ".Item", 2)]
+    [InlineData("func f<T>(v: T) -> i32\n    T is Y(a).Item\n    return 0", ".Item", 1)]
+    [InlineData("func f<T>(v: T) -> i32\n    T is K.Item(a).Z\n    return 0", ".Z", 1)]
+    [InlineData("func f<T>(v: T) -> i32\n    T is Y(a)(b)\n    return 0", "(b)", 1)]
+    [InlineData("func f<T>(v: T) -> i32\n    T is Y(a)<i32>\n    return 0", "<i32>", 1)]
+    [InlineData("struct T<V>\n    Self is Y(a).Item when V is Copy", ".Item", 1)]
+    [InlineData("open struct D: Y(a).Item", ".Item", 2)]
+    [InlineData("contract E\n    func h(self: ref/Self)\n    effect K(a).h confined", "K(a)", 1)]
+    public void AnOriginApplicationEndsANamedTypeInEverySelection(string declaration, string at, int count)
     {
         foreach (var excluded in (bool[])[false, true])
         {
             var source = excluded ? "#if false\n    " + declaration.Replace("\n", "\n    ", StringComparison.Ordinal) + "\n" : declaration + "\n";
             var diagnostics = TestDiagnostics.Of(Parse(source));
+            Assert.Equal(count, diagnostics.Length);
             Assert.Contains(diagnostics, x => x.Span.Start == source.LastIndexOf(at, StringComparison.Ordinal));
             Assert.All(diagnostics, static x => Assert.Contains(x.Code, (string[])["ExpectedSyntax_Kd", "MissingSyntax_Kd"]));
         }
@@ -579,6 +587,41 @@ public class FrontEndSyntaxTest
     [InlineData("func f<T>(v: T) -> i32\n    T is K and Y\n    return 0")]
     [InlineData("func f<T>(v: T) -> i32\n    T is not K\n    return 0")]
     public void AnOriginApplicationClosingANamedTypeHasNoRecordInEverySelection(string declaration)
+    {
+        ParseSuccess(declaration + "\n");
+        ParseSuccess("#if false\n    " + declaration.Replace("\n", "\n    ", StringComparison.Ordinal) + "\n");
+    }
+
+    // SPEC F.5 PathSuffix := "." TypeSegment | "." "(" ContractReference ")" "." Name: a grouped Contract after "." is one suffix with its
+    // ". Name", in F.5's one suffix loop and every reader that reads it (a Type, a subject, a requirement, a selector head, a runtime type
+    // test's target): a lone grouped Contract is one record at the group; a selector split before the PathSuffix's own Name is none.
+    [Theory]
+    [InlineData("func f(v: K.(Y)) -> i32 => 0", "(Y)", "grouped Contract followed by its member Name")]
+    [InlineData("func f<U>(u: U) -> i32\n    U.(K) is Copy\n    return 0", "(K)", "grouped Contract followed by its member Name")]
+    [InlineData("func f<T, U>(v: T) -> i32\n    T is U.(K)\n    return 0", "(K)", "grouped Contract followed by its member Name")]
+    [InlineData("func f(x: i32) -> bool => x is K.(Y)", "(Y)", "grouped Contract followed by its member Name")]
+    [InlineData("contract E\n    func h(self: ref/Self)\n    effect X.(Y) confined", "(Y)", "grouped Contract followed by its member Name")]
+    [InlineData("struct A\n    associate X.(Y).Item is i32", "X.(Y)", "contract reference")]
+    [InlineData("contract E\n    func h(self: ref/Self)\n    effect X.(Y).h confined", "X.(Y)", "contract reference")]
+    public void AGroupedContractWithoutItsMemberNameIsOneRecordInEverySelection(string declaration, string at, string phrase)
+    {
+        foreach (var excluded in (bool[])[false, true])
+        {
+            var source = excluded ? "#if false\n    " + declaration.Replace("\n", "\n    ", StringComparison.Ordinal) + "\n" : declaration + "\n";
+            var diagnostic = Assert.Single(TestDiagnostics.Of(Parse(source)));
+            Assert.Equal("ExpectedSyntax_Kd", diagnostic.Code);
+            Assert.Contains(phrase, diagnostic.Message, StringComparison.Ordinal);
+            Assert.Equal(source.IndexOf(at, StringComparison.Ordinal), diagnostic.Span.Start);
+        }
+    }
+
+    [Theory]
+    [InlineData("func f<T>(v: T.(K).Item) -> i32 => 0")]
+    [InlineData("func f<U>(u: U) -> i32\n    U.(K).Item is Copy\n    return 0")]
+    [InlineData("func f<T, U>(v: T) -> i32\n    T is U.(K).Item\n    return 0")]
+    [InlineData("struct A\n    associate X.(Y).Item.Z is i32")]
+    [InlineData("contract E\n    func h(self: ref/Self)\n    effect K.(Y).Item.h confined")]
+    public void AGroupedContractWithItsMemberNameHasNoRecordInEverySelection(string declaration)
     {
         ParseSuccess(declaration + "\n");
         ParseSuccess("#if false\n    " + declaration.Replace("\n", "\n    ", StringComparison.Ordinal) + "\n");

@@ -128,6 +128,9 @@ public enum SyntaxForm : ushort
     /// most a binding set, in a ConditionalConformance's head, a grouped Contract and a ContractSelector.</summary>
     ContractReference,
 
+    /// <summary>A grouped Contract after <c>.</c> with its member Name (SPEC F.5 PathSuffix <c>"." "(" ContractReference ")" "." Name</c>).</summary>
+    ContractMember,
+
     /// <summary>The subject of a ConditionalConformance (SPEC F.6.2): <c>Self</c>.</summary>
     ConformanceSubject,
 

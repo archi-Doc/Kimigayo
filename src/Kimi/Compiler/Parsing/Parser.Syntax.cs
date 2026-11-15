@@ -99,6 +99,13 @@ public static partial class Parser
                 ? ParseContractGroup(ref reader)
                 : ParseName(ref reader);
             subject = new MemberAccessKoto(ref reader, SourceSpan.FromBounds(subject.Span.Start, member.Span.End), subject, member);
+
+            // F.5's ".(C).Name" rule (ContinuesContractMember), read here too as a temporary: this loop also reads a runtime type test's
+            // target and a requirement's head word in the requirement reader's leaves; removed when G489 routes it through ParseTypeSuffixes.
+            if (member is ParenthesizedTypeKoto && !ContinuesContractMember(ref reader, ref subject, member))
+            {
+                break;
+            }
         }
 
         return subject;
