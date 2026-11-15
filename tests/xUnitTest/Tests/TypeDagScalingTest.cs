@@ -107,6 +107,31 @@ public partial class TypeDagScalingTest
         Assert.True(counts[0].Steps == counts[2].Steps, text);
     }
 
+    // SPEC 8.3.3 Recursion and Finality (R7-M33; basewalk): with Z's clause, `S<D> is C` rests on `S<D>`'s formation, `D is Owned`,
+    // whose storage writes `Z<S<D>>`, formed only when `S<D> is C`: the conformance rests on itself, so the coinductive step's assumption
+    // of `D is Owned` is not read through the newer `(S<D>, C)` obligation, also where the walk forming `Z<S<D>>` decided `S<D>` under
+    // that assumption first (a nested formation reads only a part decided on settled verdicts). Without Z's clause the ring of Owned works
+    // holds (SPEC 15.3.5), alone and read by B's clause.
+    [Theory]
+    [InlineData(true, false)]
+    [InlineData(false, false)]
+    [InlineData(true, true)]
+    [InlineData(false, true)]
+    public void AnAssumedOwnedWorkIsNotReadThroughANewerObligation(bool clause, bool read)
+    {
+        var source = "contract C\n    func m(self: ref/Self) -> i32\nstruct Z<A>\n" + (clause ? "    A is C\n" : string.Empty) + "    public var a: A\n" +
+            "struct S<U>\n    U is Owned\n    Self is C\n    public var u: U\n    public func m(self: ref/Self) -> i32 => 0\nstruct D\n    let next: Array<Z<S<D>>>\n" +
+            (read ? "struct B<A>\n    A is C\n    Self is C\n    public var a: A\n    public func m(self: ref/Self) -> i32 => 0\nfunc f(x: ref/B<S<D>>) -> i32\n    return 0\n" : string.Empty);
+        var c = CompilationTestHelper.ParseSuccess(source);
+        var complete = c.Bind().IsComplete;
+        string[] issues = [.. c.Binding.Issues.Select(static x => $"{x.Code} {x.Node}").Order(StringComparer.Ordinal)];
+        // The records 45c9fab40 gives (the field, each Z<S<D>> and S<D> occurrence the storage formation proves, and B<S<D>> where read).
+        string[] own = ["UnprovenConstraint_Kd S<D>", "UnprovenConstraint_Kd S<D>", "UnprovenConstraint_Kd Z<S<D>>", "UnprovenConstraint_Kd Z<S<D>>", "UnprovenConstraint_Kd let next: Array<Z<S<D>>>"];
+        string[] expected = !clause ? [] : read ? ["UnprovenConstraint_Kd B<S<D>>", "UnprovenConstraint_Kd S<D>", "UnprovenConstraint_Kd S<D>", .. own] : own;
+        Assert.Equal(!clause, complete);
+        Assert.Equal(expected, issues);
+    }
+
     // Binding's walks: the instance Types of a Tuple chain (TyCtxt.Apply, from the checked set), the capability proofs of HIR publication
     // over inferred shared Tuples, closed and generic, through the MIR, its analyses and the checked set.
     [Theory]
