@@ -13,8 +13,8 @@ namespace Kimi.Compiler;
 //   BindLengthName's member arm), until BU-122 c-f bring those walks into ResolvePath. A selected function names its Name's function
 //   group (SPEC 9.5.1): its head's chain and each further source the walk gathered for the Name (its ImportGroup steps, which PublishPath
 //   publishes after the verdict). A call's winner and a function item hand their Name one selected function (SupportedFunction).
-// - Outputs: a refused component ends its walk at its Name, Unresolved (it names nothing the use may read), with an Unsupported step that
-//   PublishPath publishes as the Name's failure, so no later step holds its selection; a walk outside ResolvePath gets null with the Name
+// - Outputs: at a refused component the walk ends Unresolved (it names nothing the use may read), and the refused Name carries the
+//   record: an Unsupported step that PublishPath publishes as the Name's failure, so no later step holds its selection; a walk outside ResolvePath gets null with the Name
 //   failed, and a refused winner or item fails its Name. Either way the Name is failed Unsupported and unresolved, so its reader runs its
 //   miss branch and adds nothing to the Name (Fail keeps a node's first failure).
 // - Invariants: the one reader of AttributeKind.Unsupported in Binding. Both sides read syntax by Kind (the declaration's Attributes),

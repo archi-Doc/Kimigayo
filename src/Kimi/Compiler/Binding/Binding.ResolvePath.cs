@@ -16,7 +16,8 @@ namespace Kimi.Compiler;
 //   Container's members are read through MemberTypes (SPEC 9.6, 18.2.1): no path, `::` member step or import stage reaches a formal
 //   parameter, which only the scope walk finds.
 // - A component returns through the use verdict (Supported, SPEC 22.1) as the walk completes it, before it is handed on as a qualifier
-//   or ends the path; a refused one ends the walk Unresolved at its Name, its record an Unsupported step. No publication arm judges.
+//   or ends the path; at a refused one the walk ends Unresolved and the refused Name carries the record, an Unsupported step (an
+//   ordinary path ends at that Name, a `::` path at its outer member node). No publication arm judges.
 // - Prohibited: reading an outcome from anywhere but the result; a second stage walk; a publish on the way.
 // - Published per use (R7-N1e2-1R): a Type-name use's lookup is published on the use (HirTables.Lookups: its end; its selection in the
 //   Symbols column), once; NamePath, the only entry outside this file, reads the published lookup on every later call. The row is the
