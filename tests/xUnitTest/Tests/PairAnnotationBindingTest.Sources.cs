@@ -80,11 +80,13 @@ public partial class PairAnnotationBindingTest
     // bare slot take a borrowed or abstract actual whole (B1, the Middle's M1-M7 with their swapped twins, a construction K3, three
     // sources r3, a V another input binds v1), nor a caller's abstract Type, whose outer Semantics only a premise fixes (SPEC 8.2.3,
     // 8.7.3): a plain parameter (p1, p1s), a pair target alone, at any depth (p3, p3s, n3, n3s; PLAN G886) or beside its own pair
-    // (pt, pts), an unresolved projection (a3, a3s); one such Type agrees with itself (pu), and a premise proving it owner makes it
-    // owner evidence (p1o, p1os, p2 with PrimitiveInteger, SPEC 8.7.4; p3o, p3os, n3o; the reading Rd2 the owner is asked about). A slot
-    // fixed before any evidence infers no binder, so `owner/U` is `U` (B1x2-ok, e1x). dev accepts B1, B1s, B1g, B1u2, M4, M4s, K3, p1,
-    // p1s, p2, p3 and p3s and gives the other invalid rows UnboundTypeArgument_Kd; d17dfea95 rejected p1o, p1os and p2 and accepted
-    // p3, p3s, a3, a3s, n3 and n3s.
+    // (pt, pts), an unresolved projection (a3, a3s), a pair target's projection (a3u, a3us); one such Type agrees with itself (pu), and
+    // a premise proving it owner makes it owner evidence (the owner's O-311 (a): p1o, p1os, p2 with PrimitiveInteger, SPEC 8.7.4; p3o,
+    // p3os, n3o), read where the Type's root is declared, a projection's receiver's premise or refinement included (a3o, a3os, a3c); a
+    // pair target whose pair admits only owner is `W` itself (p3t, p3ts). A slot fixed before any evidence infers no binder, so
+    // `owner/U` is `U` (B1x2-ok, e1x). dev accepts B1, B1s, B1g, B1u2, M4, M4s, K3, p1, p1s, p2, p3 and p3s and gives the other invalid
+    // rows UnboundTypeArgument_Kd; d17dfea95 rejected p1o, p1os and p2 and accepted p3, p3s, a3, a3s, n3 and n3s; 843228419 rejected
+    // a3o, a3os, a3c, p3t and p3ts.
     [Theory]
     [InlineData("func put<s/W, V>(m: s/W, y: s/V) -> i32\n    s is owner or ref\n    return 0\nfunc call() -> i32\n    let a: i32 = 1\n    let b: i64 = 2\n    return put(a@move, b@ref)\n", "1*NoApplicableOverload_Kd")] // B1
     [InlineData("func put2<s/W, V>(y: s/V, m: s/W) -> i32\n    s is owner or ref\n    return 0\nfunc call() -> i32\n    let a: i32 = 1\n    let b: i64 = 2\n    return put2(b@ref, a@move)\n", "1*NoApplicableOverload_Kd")] // B1s
@@ -120,6 +122,13 @@ public partial class PairAnnotationBindingTest
     [InlineData("func put6<s/W>(m: s/W, y: s/W) -> i32\n    return 0\nfunc call<t/U>(m: t/U, u: U, w: U) -> i32\n    t is owner or ref\n    return put6(u@move, w@move)\n", "clean")] // pu
     [InlineData("func put<s/W, V>(m: s/W, y: s/V) -> i32\n    s is owner or ref\n    return 0\nfunc call<X>(x: X) -> i32\n    X is ObjectPayload\n    let a: i32 = 1\n    return put(a@move, x@move)\n", "clean")] // p1o
     [InlineData("func put<s/W, V>(y: s/V, m: s/W) -> i32\n    s is owner or ref\n    return 0\nfunc call<X>(x: X) -> i32\n    X is ObjectPayload\n    let a: i32 = 1\n    return put(x@move, a@move)\n", "clean")] // p1os
+    [InlineData("contract Holder\n    associate Element\nfunc put<s/W, V>(m: s/W, y: s/V) -> i32\n    s is owner or ref\n    return 0\nfunc call<t/U>(m: t/U, e: U.Element) -> i32\n    t is owner or ref\n    U is Holder\n    let a: i32 = 1\n    return put(a@move, e@move)\n", "1*NoApplicableOverload_Kd")] // a3u
+    [InlineData("contract Holder\n    associate Element\nfunc put2<s/W, V>(y: s/V, m: s/W) -> i32\n    s is owner or ref\n    return 0\nfunc call<t/U>(m: t/U, e: U.Element) -> i32\n    t is owner or ref\n    U is Holder\n    let a: i32 = 1\n    return put2(e@move, a@move)\n", "1*NoApplicableOverload_Kd")] // a3us
+    [InlineData("contract Holder\n    associate Element\nfunc put<s/W, V>(m: s/W, y: s/V) -> i32\n    s is owner or ref\n    return 0\nfunc call<T>(h: T, e: T.Element) -> i32\n    T is Holder\n    T.Element is ObjectPayload\n    let a: i32 = 1\n    return put(a@move, e@move)\n", "clean")] // a3o
+    [InlineData("contract Holder\n    associate Element\nfunc put2<s/W, V>(y: s/V, m: s/W) -> i32\n    s is owner or ref\n    return 0\nfunc call<T>(h: T, e: T.Element) -> i32\n    T is Holder\n    T.Element is ObjectPayload\n    let a: i32 = 1\n    return put2(e@move, a@move)\n", "clean")] // a3os
+    [InlineData("contract Holder\n    associate Element is ObjectPayload\nfunc put<s/W, V>(m: s/W, y: s/V) -> i32\n    s is owner or ref\n    return 0\nfunc call<T>(h: T, e: T.Element) -> i32\n    T is Holder\n    let a: i32 = 1\n    return put(a@move, e@move)\n", "clean")] // a3c
+    [InlineData("func put<s/W, V>(m: s/W, y: s/V) -> i32\n    s is owner or ref\n    return 0\nfunc call<t/U>(m: t/U, u: U) -> i32\n    t is owner\n    let a: i32 = 1\n    return put(a@move, u@move)\n", "clean")] // p3t
+    [InlineData("func put2<s/W, V>(y: s/V, m: s/W) -> i32\n    s is owner or ref\n    return 0\nfunc call<t/U>(m: t/U, u: U) -> i32\n    t is owner\n    let a: i32 = 1\n    return put2(u@move, a@move)\n", "clean")] // p3ts
     [InlineData("func put<s/W, V>(m: s/W, y: s/V) -> i32\n    s is owner or ref\n    return 0\nfunc call() -> i32\n    let a: i32 = 1\n    let b: i64 = 2\n    return put(a@move, b@move)\n", "clean")] // B1o-ok
     [InlineData("func put<s/W, V>(m: s/W, y: s/V) -> i32\n    s is owner or ref\n    return 0\nfunc call() -> i32\n    let a: i32 = 1\n    let b: i64 = 2\n    return put(a@ref, b@ref)\n", "clean")] // B1r-ok
     [InlineData("func put<s/W, V>(m: s/W, y: s/V) -> i32\n    s is owner or ref\n    return 0\nfunc call(b: ref/i64) -> i32\n    let a: i32 = 1\n    return put<i32, ref/i64 during b>(a@move, b)\n", "clean")] // B1x2-ok
@@ -258,6 +267,8 @@ public partial class PairAnnotationBindingTest
     [InlineData("struct Box\n    public let v: i32\n    public init(v: i32)\n        self.v = v@move\ncontract Holder\n    associate Element\nfunc put3<s/W>(m: s/W, n: s/Box) -> i32\n    return 0\nfunc call<T>(h: T, e: T.Element) -> i32\n    T is Holder\n    let b = Box.init(1)\n    return put3(e@move, b@move)\n", "1*NoApplicableOverload_Kd")] // f1a
     [InlineData("struct Box\n    public let v: i32\n    public init(v: i32)\n        self.v = v@move\nfunc put3<s/W>(m: s/W, n: s/Box) -> i32\n    return 0\nfunc call<X>(x: X) -> i32\n    let b = Box.init(1)\n    return put3(x@move, b@move)\n", "1*NoApplicableOverload_Kd")] // f1x
     [InlineData("struct Box\n    public let v: i32\n    public init(v: i32)\n        self.v = v@move\nfunc put3<s/W>(m: s/W, n: s/Box) -> i32\n    return 0\nfunc call<t/U>(m: t/U, u: U) -> i32\n    t is owner or ref\n    U is ObjectPayload\n    let b = Box.init(1)\n    return put3(u@move, b@move)\n", "clean")] // f1o
+    [InlineData("struct Box\n    public let v: i32\n    public init(v: i32)\n        self.v = v@move\nfunc stop() -> Never => $abort(\"stop\")\nfunc put3<s/W>(m: s/W, n: s/Box) -> i32\n    return 0\nfunc call<X>(x: X) -> i32\n    return put3(x@move, stop())\n", "clean")] // f1xn
+    [InlineData("contract Tag\n    func tag(self: ref/Self) -> i32\nfunc put<s/W>(m: s/W) -> i32\n    W is Tag\n    return 0\nfunc call<X>(x: X) -> i32\n    X is Tag\n    return put(x@move)\n", "1*UnprovenConstraint_Kd")] // dt2x
     public void AStructuredApplicationIsFormedAfterTheExactSources(string source, string records)
         => Assert.Equal(records, DiagnosticCorpus.RecordProfile(source));
 }

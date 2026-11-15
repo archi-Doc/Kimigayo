@@ -64,7 +64,8 @@ public sealed partial class Binding
 
             if (type.IsAbstract)
             {
-                return this.RequestCapability(type, this.Library.ObjectPayload, scope) == ConstraintProof.Proven ||
+                return this.TargetCases(type, scope, default) == SemanticsMask.Owner ||
+                    this.RequestCapability(type, this.Library.ObjectPayload, scope) == ConstraintProof.Proven ||
                     this.ProveSealed(type, scope) == ConstraintProof.Proven ||
                     this.RequestCapability(type, this.Library.PrimitiveInteger, scope) == ConstraintProof.Proven
                     ? SemanticsMask.Owner : this.AdmittedSemantics(type, scope);
@@ -134,13 +135,35 @@ public sealed partial class Binding
     // no Type over another target is formed under it (ApplySemantics, SubstituteFamily; PLAN G886: its representation is the remainder).
     private static bool HasOwnSelector(BoundType binding) => binding.Kind == BoundTypeKind.Parameter || binding.Semantics == SemanticsKind.Parameter;
 
+    // SPEC 7.5, 8.15.1: the scope whose premises judge an abstract Type a pair slot binds: its root's declaration, a projection's receiver's
+    // (`T` of `T.Element`, so the caller's `T.Element is ObjectPayload` and a refinement through its `T is Holder` are read), where the
+    // generic declaring it states its Constraints; a receiver without a declaration leaves the projection's own. A nested scope's premises
+    // (a conditional member's, a when block's) are not read here (PLAN G886).
+    private static BindingScope PremiseScope(BoundType type)
+    {
+        while (type is { Kind: BoundTypeKind.AssociatedProjection, Components: [{ Symbol: not null } receiver, ..] })
+        {
+            type = receiver;
+        }
+
+        return type.Symbol!.Scope;
+    }
+
     // SPEC 8.1.2, 8.2.3, 8.7.3: whether a pair slot's binding is abstract, its outer Semantics not yet known: a pair's original or
     // occurrence, an application (Semantics Parameter), or an abstract Type (a Type parameter, a pair target alone, an unresolved
-    // projection: its Semantics field is the constructor default, never an outer Semantics) unless a premise of its declaration proves it
-    // owner (ResultSemantics), when it binds as an owner Type. ApplySemantics, the substitution of a family and HasOuterSlot read it.
+    // projection: its Semantics field is the constructor default, never an outer Semantics) unless its premises (PremiseScope) prove it
+    // owner (ResultSemantics; the owner's O-311 (a)), when it binds as an owner Type. ApplySemantics, the substitution of a family and
+    // HasOuterSlot read it.
     private bool IsAbstractBinding(BoundType binding) => binding.IsAbstractType
-        ? this.ResultSemantics(binding, binding.Symbol!.Scope) != SemanticsMask.Owner
+        ? this.ResultSemantics(binding, PremiseScope(binding)) != SemanticsMask.Owner
         : HasOwnSelector(binding);
+
+    // SPEC 8.1.1, 8.2.3 (Rd3): the cases a pair target alone takes from its pair, the selected case or else its binder's admitted set; in
+    // the owner case it is `W` itself, an owner Type (`t is owner` alone makes U owner). All for any other Type, whose premises alone fix
+    // its outer Semantics. ResultSemantics, CanSelectIdentity and TransformFamily's owner case read it.
+    private SemanticsMask TargetCases(BoundType type, BindingScope scope, ReadOnlySpan<PairCase> cases)
+        => type is { Kind: BoundTypeKind.TargetProjection, Symbol: { Kind: BindingSymbolKind.SemanticsTarget, WholeType: { } whole } pair }
+            ? CaseOf(cases, pair)?.ToMask() ?? this.AdmittedSemantics(whole, scope) : SemanticsMask.All;
 
     // SPEC 8.1.2: whether a pair layer formed under this binding (an annotated original, or an application `s/U`, ApplySemantics) keeps
     // its outer-Origin slot: a borrow binding does, an abstract binding or a family conditionally; a value binding keeps none.
@@ -180,23 +203,7 @@ public sealed partial class Binding
 
     // A placeholder's Owner tag is not mode evidence. A pair's owner case does establish its target's owner form.
     private bool CanSelectIdentity(BoundType type, BindingScope scope, ReadOnlySpan<PairCase> cases = default)
-    {
-        if (!type.IsAbstract)
-        {
-            return true;
-        }
-
-        if (type.Kind == BoundTypeKind.TargetProjection && type.Symbol is { Kind: BindingSymbolKind.SemanticsTarget, WholeType: { } whole } pair)
-        {
-            var admitted = CaseOf(cases, pair) is { } selected ? selected.ToMask() : this.AdmittedSemantics(whole, scope);
-            if (admitted == SemanticsMask.Owner)
-            {
-                return true;
-            }
-        }
-
-        return this.ResultSemantics(type, scope) == SemanticsMask.Owner;
-    }
+        => !type.IsAbstract || this.TargetCases(type, scope, cases) == SemanticsMask.Owner || this.ResultSemantics(type, scope) == SemanticsMask.Owner;
 
     // A family is interned only when no pair application has its cases: SPEC 13.5.1's `p@s` abbreviates `p@s/U`, whose Type is the
     // application `s/U` (8.2.3: one Type, one representation), so a case list that one application's cases (CaseType) give is that
@@ -258,7 +265,8 @@ public sealed partial class Binding
         return application;
     }
 
-    private BoundType TransformFamily(BoundType family, FamilyTransform operation, BoundOrigin? origin = null, BoundType? target = null)
+    // Only Apply forms nothing (null), for a case whose binding forms no Type; Target and Origin map every case.
+    private BoundType? TransformFamily(BoundType family, FamilyTransform operation, BoundOrigin? origin = null, BoundType? target = null)
     {
         var children = this.RentTypes(family.Components.Count);
         var cases = this.adaptationCaseScratch.Rent(1);
@@ -271,15 +279,21 @@ public sealed partial class Binding
                 {
                     var child = family.Components[count];
                     cases[0] = new(family.Symbol!, mode);
-                    children[count++] = operation switch
+                    var formed = operation switch
                     {
                         FamilyTransform.Target => this.DirectTarget(child),
                         FamilyTransform.Origin => IsBorrow(child.Semantics) || child.IsAbstract ? this.WithOrigins(child, origin, (BoundOrigin[])child.OriginArguments) : child,
-                        // A case's outer Semantics is its mode: the owner case forms the target itself, whatever the child's own layer.
-                        _ when mode == SemanticsKind.Owner => this.CaseType(target!, cases.AsSpan(0, 1)),
-                        _ => this.ApplySemantics(child, this.CaseType(target!, cases.AsSpan(0, 1)), origin) ??
-                            throw new InvalidOperationException($"The {mode} case `{child}` of a family is no layer (InternalInvariant)."),
+                        // A pair target alone whose case is owner is `W` itself (TargetCases): the case forms the target itself.
+                        _ when child.IsAbstractType && this.TargetCases(child, PremiseScope(child), cases.AsSpan(0, 1)) == SemanticsMask.Owner
+                            => this.CaseType(target!, cases.AsSpan(0, 1)),
+                        _ => this.ApplySemantics(child, this.CaseType(target!, cases.AsSpan(0, 1)), origin),
                     };
+                    if (formed is null)
+                    {
+                        return null; // A case whose binding forms no Type (ApplySemantics): the application forms none either.
+                    }
+
+                    children[count++] = formed;
                 }
             }
 
@@ -366,7 +380,7 @@ public sealed partial class Binding
                 return null;
             }
 
-            var admitted = this.ResultSemantics(whole, selector.Scope) & (SemanticsMask)family.Length;
+            var admitted = this.ResultSemantics(whole, PremiseScope(whole)) & (SemanticsMask)family.Length;
             var children = this.RentTypes(BitOperations.PopCount((uint)admitted));
             try
             {

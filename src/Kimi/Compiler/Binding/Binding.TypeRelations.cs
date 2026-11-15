@@ -177,7 +177,7 @@ public sealed partial class Binding
     {
         if (whole.Kind == BoundTypeKind.SemanticsAdaptation)
         {
-            return this.TransformFamily(whole, FamilyTransform.Target);
+            return this.TransformFamily(whole, FamilyTransform.Target)!;
         }
 
         if (whole.Kind is BoundTypeKind.Semantics or BoundTypeKind.SemanticsApplication)
