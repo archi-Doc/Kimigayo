@@ -158,12 +158,6 @@ public sealed partial class Binding
                 return CandidateApplicability.Inapplicable;
             }
 
-            // SPEC 8.13.3: specializations never enter the candidate set, so an invalid one cannot fail a call.
-            if (function.IsSpecialization)
-            {
-                return CandidateApplicability.Inapplicable;
-            }
-
             if (this.InvalidDeclarationContext(function))
             {
                 return CandidateApplicability.Error;
@@ -430,7 +424,7 @@ public sealed partial class Binding
                             return solution.IsComplete() ? CandidateApplicability.Inapplicable : CandidateApplicability.Pending;
                         }
 
-                        if (!solution.FitsLiteralShape(pattern, shape))
+                        if (!solution.FitsLiteralShape(pattern, shape, out var met))
                         {
                             if (DifferentRangeShapes(shape, pattern))
                             {
@@ -446,9 +440,13 @@ public sealed partial class Binding
                         {
                             if (MentionsSlots(pattern, CallSlotOwner(function), UnboundSlots(function, frame.Types, frame.Lengths, ref unboundSlots)))
                             {
-                                // A Literal waits for its default, which cannot invert a projection or an unresolved selector either.
+                                // A Literal waits for its default, which cannot invert a projection or an unresolved selector either. SPEC
+                                // 10.2.2's Literal row, 10.2.1 (PLAN G915): the open position is ranked by the operation the pattern it meets
+                                // needs whatever the slot binds: the borrow of its temporary under a ref layer (TemporaryTarget, as FitLiteral
+                                // ranks a closed one), else the Literal fit; so it ties with a candidate that fits the Literal, and step 2 decides.
                                 open.Add(i);
-                                operations[i] = new(call.ArgumentNodes[i], null, null, ArgumentOperationKind.Value, ArgumentAdaptation.ExpectedTypeFitting, ParameterIndex: mapping[i]);
+                                var adaptation = this.Materialization(argument, met, scope) is null ? ArgumentAdaptation.ExpectedTypeFitting : ArgumentAdaptation.CrossSemanticsBorrow;
+                                operations[i] = new(call.ArgumentNodes[i], null, null, ArgumentOperationKind.Value, adaptation, ParameterIndex: mapping[i]);
                                 continue;
                             }
 

@@ -323,7 +323,7 @@ public sealed partial class Binding
         }
 
         if (CallableTarget(node) is not { } target || !this.UnderArgumentProbe(target) ||
-            IndependentFunctionItem(node.BoundSymbol!, this.UnboundMemberReference(node), this.ReferenceDeclaringType(node)))
+            this.IndependentFunctionItem(node, node.BoundSymbol) is not null)
         {
             return false;
         }
@@ -335,7 +335,7 @@ public sealed partial class Binding
     // Independent argument evidence is prepared once for named and constraint-based calls. False when a part failed: the call then reports
     // only the checks SPEC 10.1 makes before inference, which read no argument's Type (AnyArgumentsMatch; DECISIONS BU-79's G455
     // amendment).
-    private bool PrepareCallArguments(InvocationKoto call, BindingScope scope, BindingSymbol? group = null, bool callableContext = false)
+    private bool PrepareCallArguments(InvocationKoto call, BindingScope scope, FunctionGroup group = default, bool callableContext = false)
     {
         var valid = true;
         for (var i = 0; i < call.ArgumentNodes.Count; i++)
@@ -351,7 +351,7 @@ public sealed partial class Binding
     // fitted after selection, unless the parser kept it as a recovery, which fails here so that the call rests on its Error; every other
     // part is bound under the argument probe, where a nested call that only an expectation could type waits, also as a result source of
     // a control-flow part, which then waits with it, and a function reference that needs S waits for the selected candidate's (10.5.3).
-    private bool PrepareArgument(Koto part, BindingScope scope, BindingSymbol? group, bool callableContext)
+    private bool PrepareArgument(Koto part, BindingScope scope, FunctionGroup group, bool callableContext)
     {
         if (this.RecordsWaitingForm(part))
         {
@@ -396,7 +396,7 @@ public sealed partial class Binding
         // SPEC 10.5: a single closed declaration supplies its own Item Type as generic argument evidence. A generic Callable contract
         // checks that Type without erasing it to a common Function handle.
         if ((callableContext || this.TakesCallableContext(group)) &&
-            !IndependentFunctionItem(item, this.UnboundMemberReference(part), this.ReferenceDeclaringType(part)) &&
+            this.IndependentFunctionItem(part, item) is null &&
             !this.ExplicitReferenceValue(part, item, scope))
         {
             this.RecordPart(part, PartKind.Reference); // SPEC 10.5.3: it needs S, so it stays unbound until its call completes it.
@@ -627,7 +627,7 @@ public sealed partial class Binding
 
         for (var i = 0; i < elements.Count; i++)
         {
-            valid &= this.PrepareArgument(elements[i], scope, null, callableContext: true);
+            valid &= this.PrepareArgument(elements[i], scope, default, callableContext: true);
         }
 
         return valid;

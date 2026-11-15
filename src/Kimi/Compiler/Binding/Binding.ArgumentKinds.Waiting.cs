@@ -124,7 +124,7 @@ public sealed partial class Binding
 
         if (KotoHelper.UnwrapParentheses(callable) is not FunctionKoto closure)
         {
-            return IndependentFunctionItem(callable.BoundSymbol!, this.UnboundMemberReference(callable), this.ReferenceDeclaringType(callable));
+            return this.IndependentFunctionItem(callable, callable.BoundSymbol) is not null;
         }
 
         for (var i = 0; i < closure.Parameters.Count; i++)

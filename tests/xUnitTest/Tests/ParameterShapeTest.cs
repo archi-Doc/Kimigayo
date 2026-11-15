@@ -95,10 +95,13 @@ public sealed class ParameterShapeTest(ITestOutputHelper output)
     [Theory]
     [InlineData("let a = f(v@ref)", "ParameterShapeMismatch_Kd")]
     [InlineData("let a = f(v)", "ParameterShapeMismatch_Kd")]
+    [InlineData("let a: (Value) -> i32 = f", "ParameterShapeMismatch_Kd")] // Every use: a reference under S,
+    [InlineData("let a = f", "ParameterShapeMismatch_Kd")] // a function item
+    [InlineData("let a = apply(f)", "ParameterShapeMismatch_Kd")] // and a reference argument.
     [InlineData("let a = A.f(v)\nlet b = B.f(v@ref)", "")]
     public void GroupsGatheredAtTheAliasStageAreCheckedAtTheUse(string use, string codes)
     {
-        var c = Analyze("alias A\nalias B\n" + Types + "group A\n    public func f(value: Value) -> i32 => 1\ngroup B\n    public func f(value: ref/Value) -> i32 => 2\nlet v = Value.init()\n" + use);
+        var c = Analyze("alias A\nalias B\n" + Types + "group A\n    public func f(value: Value) -> i32 => 1\ngroup B\n    public func f(value: ref/Value) -> i32 => 2\nfunc apply(action: (Value) -> i32) -> i32 => 0\nlet v = Value.init()\n" + use);
         var errors = Errors(c);
         Assert.Equal(codes.Length == 0 ? [] : codes.Split(','), errors.Select(static x => x.Code));
         if (errors.Length != 0)

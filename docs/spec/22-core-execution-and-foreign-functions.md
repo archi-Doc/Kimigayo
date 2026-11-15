@@ -424,7 +424,7 @@ Every Abort cause of [§17.4.1](17-failure-handling.md#1741-causes) and of the K
 | `KIMI_E_INDEX_BOUNDS: Index out of bounds` | Any failed resolution of a position or range: indexing, slicing, `resolve`, and positions of `insert`/`remove` |
 | `KIMI_E_MISSING_KEY: Dictionary key was not found` | Dictionary indexing with an absent key |
 | `KIMI_E_DUPLICATE_KEY: Dictionary literal contains an equivalent key` | Runtime duplicate key in a Dictionary literal |
-| `KIMI_E_ARG_RANGE: Argument out of range` | A numeric argument out of range: negative count, capacity or length, `limit < 1`, `capacity < 0`, iteration over a reversed range |
+| `KIMI_E_ARG_RANGE: Argument out of range` | A numeric argument out of range: a negative count or capacity, a negative length that no position or range is resolved against (a resolution against a negative length fails, [§4.6.3](04-arrays-indexing-and-slices.md#463-resolution)), `limit < 1`, `capacity < 0`, iteration over a reversed range |
 | `KIMI_E_FORMAT: Formatting failed` | Formatting failure ([§22.10](#2210-formatting-and-interpolation)) |
 | `KIMI_E_REF_COUNT: Reference count limit exceeded` | Strong or weak count at its maximum in `clone`, `downgrade` or `upgrade` |
 | `KIMI_E_STATIC_CYCLE: Static initialization cycle` | Access to a slot that the same thread is initializing |
