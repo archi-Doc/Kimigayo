@@ -198,7 +198,7 @@ public sealed partial class Binding
                         return this.Fail(node, objectProjection ? BindingFailure.Unsupported : BindingFailure.TypeMismatch, objectProjection);
                     }
 
-                    var compatibility = kind == ArgumentOperationKind.PayloadProjection ? ConstraintProof.Proven : ProjectedReceiverProof(symbol, operation);
+                    var compatibility = kind == ArgumentOperationKind.PayloadProjection ? ConstraintProof.Proven : this.ProjectedReceiverProof(symbol, operation);
                     this.receiverOperations[node] = new(sourceReceiver, sourceType, projectedReceiver, kind, quality, pathSelection.Path, 0, compatibility);
                 }
 

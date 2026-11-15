@@ -130,7 +130,7 @@ public sealed partial class Binding
 
         if (proof == ConstraintProof.Proven)
         {
-            var objectProof = kind == PropertyWitnessKind.AccessorCall && selection.Path is not null ? ProjectedReceiverProof(implementation.Property.Symbol, implementation) : ConstraintProof.Proven;
+            var objectProof = kind == PropertyWitnessKind.AccessorCall && selection.Path is not null ? this.ProjectedReceiverProof(implementation.Property.Symbol, implementation) : ConstraintProof.Proven;
             var witness = new BoundPropertyWitness(requirement, implementation, kind, receiver, input, result, selection.DeclaringType!, inputOrigins, selection.Path, objectProof) { Origins = originBindings, Contract = conformance.Contract };
             conformance.PropertyWitnessStorage.Add(witness);
             conformance.PropertyWitnessMap.Add((witness.Identity, requirement.Kind), witness);

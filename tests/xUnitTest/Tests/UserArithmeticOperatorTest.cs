@@ -256,7 +256,9 @@ public class UserArithmeticOperatorTest
     // are accepted. e0n and e2n keep their independent 8.2.3 conflict beside the contradiction, and x22n, x22s and x22r their 8.3.2
     // contradictory evidence (`T is Copy`, `T is not Copy`), each at the declaration (SPEC 23.1.2); x40n's two premises are both supplied
     // by `L is W`, one level deep, its identity written; k2n's contradiction is in Contract K's own environment, whose `Self is
-    // ObjectPayload` reads K itself: no record beside the contradiction (a self-read is no failed input). Since x41n, a6n, a6k and a6v have 8.3.2's closed-world record
+    // ObjectPayload` reads K itself: no record at K beside the contradiction (a self-read is no failed input). Pinned as they are: k2n's
+    // four ICs at its premises' projections (5:5, 5:27, 6:5, 6:31: later checks reading K's failed environment, dev's records). Since
+    // x41n, a6n, a6k and a6v have 8.3.2's closed-world record
     // (`Option<..> is LeftAddable<L>` refuted; G853's), a6n and a6k beside their contradiction (SPEC 23.1.2), a6v (invalid by 8.3.2
     // alone) with none: the check's requests in f's view form the reading that refutes it (a record move toward SPEC). x41n (design-x41n §2, §6; labels from SPEC: x41v, x41u, x41x, x41mv, x41iv, x41sv, y1v, y3v valid, the others invalid): a pair's
     // premises are the rows of the parameters and projections occurring in the chain's premises, so a pair two or three levels below a
