@@ -14,6 +14,7 @@ public partial class KimiLibraryShapeTest
     // Row L1: `#Lang("Name")` names a KimiDeclarationId member and sits on the one declaration the library reads under it: the symbol the
     // catalog registers, or one of the 17 internal declarations the compiler reads through a KimiLibrary member (the owner's O-307 (a));
     // each Name is declared once, a declaration carries one Name, and every lang item the library declares in source carries its Name.
+    // No `#Lang` sits on an explicit specialization, which is no declaration of its own (SPEC 8.13.3).
     [Fact]
     public void EachLangItemIsDeclaredOnce()
     {
@@ -22,6 +23,7 @@ public partial class KimiLibraryShapeTest
         foreach (var (attribute, target) in LibraryAttributes(AttributeKind.Lang))
         {
             var name = Assert.Single(Texts(attribute));
+            Assert.False(target is FunctionKoto { IsSpecialization: true }, name);
             Assert.True(Enum.TryParse<KimiDeclarationId>(name, out var id) && id.ToString() == name, name);
             Assert.True(declared.TryAdd(id, target), name);
             Assert.Same(library.GetSymbol(id)?.Declaration ?? PrivateDeclaration(library, id), target);
@@ -63,7 +65,7 @@ public partial class KimiLibraryShapeTest
         Assert.Equal(
             [
                 IntrinsicId.None, IntrinsicId.Abort, IntrinsicId.TypeTest, IntrinsicId.TestObserve, IntrinsicId.TestMessage, IntrinsicId.TestRequireAbort,
-                IntrinsicId.TestRecordValue, IntrinsicId.StaticEnsure, IntrinsicId.FormatSegment,
+                IntrinsicId.TestRecordValue, IntrinsicId.StaticEnsure,
             ],
             Enum.GetValues<IntrinsicId>().Except(named));
     }

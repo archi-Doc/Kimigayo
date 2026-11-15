@@ -9,13 +9,9 @@ internal enum KimiLibraryContainer : byte
     Intrinsics,
     Test,
     Array,
-    Dictionary,
     Text,
-    FixedBuffer,
-    HeapBuffer,
     Storage,
     Raw,
-    FixedArray,
 }
 
 /// <summary>Immutable recognition rules, shared across compilations. Stable IDs are independent of catalog and syntax order. The entries
@@ -36,7 +32,8 @@ internal static partial class KimiLibraryCatalog
     // (TyCtxt.Original), never a specialization's.
     internal static bool RequiresCallerLocation(BindingSymbol? symbol) => symbol is { CallerLocation: true };
 
-    // The number of lang items, the KimiDeclarationId members.
+    // The number of lang items, the KimiDeclarationId members, whose values are implicit and dense from 0: an array of this length is
+    // indexed by (int)id.
     internal static int LangItemCount => LangItems.Count;
 
     // The lang item a `#Lang` Name names, or null when the Name is no KimiDeclarationId member.

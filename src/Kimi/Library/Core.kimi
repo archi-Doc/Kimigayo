@@ -597,8 +597,8 @@ internal group StringWitness
             let right = other@follow@raw@raw/Storage.StringRepr
             return StringBytes.order((*left).data, (*left).length, (*right).data, (*right).length)
 
-    /// Writes the string's bytes, valid UTF-8 (SPEC 3.1.2), once through the writer's leaf; its catalog row's
-    /// CallerLocation passes the user's location to the leaf (SPEC 22.5.1, until G1).
+    /// Writes the string's bytes, valid UTF-8 (SPEC 3.1.2), once through the writer's leaf; `#CallerLocation`
+    /// passes the user's location to the leaf (SPEC 22.5.1, through its private ABI).
     #Lang("StringWitnessFormat")
     #CallerLocation
     func format(self: ref/string, writer: uniq/Utf8Writer) -> Result<(), BufferFull>
