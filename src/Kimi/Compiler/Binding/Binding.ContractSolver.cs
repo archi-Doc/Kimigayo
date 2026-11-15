@@ -607,8 +607,9 @@ public sealed partial class Binding
     // mate whose chain holds a link open in this walk (a cycle, `T.(Cy2).X.(Mid).Next is T`; SPEC 8.2.3 Cycles) is not walked from
     // here: it would read the open link as empty and leave that partial answer in the memo. It is deferred: it adds its rows of
     // the request's last round, and EnumerateClosed walks it once the request's chains are closed and walks again until no link's
-    // rows move (the least fixpoint, PLAN G881b). A constructed link (`Leaf` under `T.(Holder).Item is Leaf`) takes no mate's rows: its conformance is ResolveConformance's
-    // (the class header's Identity; ClassKey keys it to itself), so a premise contradicting it stays the premise's error (d09y).
+    // rows move (the least fixpoint, PLAN G881b). A constructed link (`Leaf` under `T.(Holder).Item is Leaf`) walks no mates of its
+    // own: R7-C2c2 c2-4 keys it to its class's Representative, so the class's rows, the mates' included, are its rows, and its closed
+    // world meets them by PremiseJoin, so a premise contradicting it is contradictory evidence (d09y).
     // Its own member, so EnumerateLink's body, walked for every link, holds no try region.
     private void EnumerateMates(BoundType subject, IdentityClasses classes, EvidenceView view, ViewIndex index, List<PremiseRow> rows)
     {

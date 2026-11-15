@@ -248,6 +248,7 @@ public sealed partial class Binding
             IdentityClasses.One => BindingFailure.None,
             IdentityClasses.Unproven => BindingFailure.UnprovenConstraint,
             IdentityClasses.Unsupported => BindingFailure.Unsupported,
+            IdentityClasses.Limit => BindingFailure.PremiseClosureLimit, // R7-C2c2 c2-4: the binding grounds' closure limit (SPEC 8.3.3)
             _ => BindingFailure.InvalidConstraint,
         };
 
