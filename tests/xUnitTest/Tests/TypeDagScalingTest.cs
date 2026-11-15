@@ -32,6 +32,24 @@ public partial class TypeDagScalingTest
         }
     }
 
+    // SPEC 8.3.2, 8.6.1 (basewalk): each level of a 40-deep instance of a declaration with `A is C` and `Self is C` proves `A is C`
+    // through B's conformance, whose evidence rests on the instance's formation (InstanceFormation), which reads the level the running
+    // walk has already formed, so each level is formed once per query. Formed again per level, the walk meets 2^40 steps (45c9fab40 took
+    // over 400 s at depth 24), so the check has a deadline and fails, never hangs.
+    [Fact]
+    public async Task ANestedConstrainedInstanceIsFormedOncePerQuery()
+    {
+        var type = string.Concat(Enumerable.Repeat("B<", 40)) + "L" + new string('>', 40);
+        var source = "contract C\n    func m(self: ref/Self) -> i32\nstruct L\n    Self is C\n    public func m(self: ref/Self) -> i32 => 0\n" +
+            "struct B<A>\n    A is C\n    Self is C\n    public var a: A\n    public func m(self: ref/Self) -> i32 => 0\n" +
+            $"func f(x: ref/{type}) -> i32\n    return 0\nlet present = 1";
+        var cancel = TestContext.Current.CancellationToken;
+        var run = Task.Run(() => MinimalEmissionTest.Analyze(source), cancel);
+        Assert.Same(run, await Task.WhenAny(run, Task.Delay(TimeSpan.FromSeconds(60), cancel)));
+        var c = await run;
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
+    }
+
     // R7-C2e2 e2-5a: a component summary lists only the constrained instances its own storage writes (never a component's, mapped), so
     // a family whose storage recurses through ever larger instance arguments, n levels deep and back to itself, is summarized once per
     // declaration; a list that grew with the mapping stalled here (prototype efda54a52), so the check has a deadline and fails, never hangs.
