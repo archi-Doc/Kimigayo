@@ -72,7 +72,7 @@ public sealed partial class Binding
         source.Iteration?.Decomposition.Reset(null);
         var followed = this.PairSubject(source.Iterable, iterable, scope);
         iterable = followed ?? iterable;
-        source.Mode = SubjectModeOf(source.Iterable, iterable);
+        source.Mode = this.SubjectModeOf(source.Iterable, iterable);
         if (iterable is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components: [{ Kind: BoundTypeKind.Nominal, Symbol.LibraryDeclaration: KimiDeclarationId.ResolvedRange }] })
         {
             // SPEC 14.6.2, 3.4.3: the iteration entry is selected through the reference; the Copy interval is the
@@ -178,7 +178,7 @@ public sealed partial class Binding
     // parameter. A proven conformance whose entry or step did not bind remains an implementation boundary of the loop.
     private BoundType? FailIterationSubject(ForKoto source, BindingScope scope, BoundType subject)
     {
-        var entry = this.IterationEntry(source, ref subject);
+        var entry = this.IterationEntry(source, scope, ref subject, out _);
         var proof = this.ProveConstraint(this.InternConstraint(new(ConstraintKind.Contract, subject, contract: entry)), scope);
         if (proof == ConstraintProof.Proven)
         {
@@ -196,25 +196,35 @@ public sealed partial class Binding
 
     // SPEC 14.6.2, 3.4.3: the Subject mode selects the entry, which a borrowing mode searches at the referent of every
     // reference layer.
-    private BindingSymbol IterationEntry(ForKoto source, ref BoundType subject)
+    private BindingSymbol IterationEntry(ForKoto source, BindingScope scope, ref BoundType subject, out bool crossed)
     {
+        crossed = false;
         if (source.Mode == SubjectMode.ByValue)
         {
             return this.Library.IntoIterable;
         }
 
-        while (subject is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 })
-        {
-            subject = subject.Components[0];
-        }
-
+        // SPEC 14.6.2, 3.4.3: the borrowing entry is selected through the safe value-reference layers (LayerBelow; a pair layer as
+        // member lookup follows it, FollowablePair: no Constraint names a pair's whole Type, so none stops it here).
+        var stored = ComparisonReferent(subject);
+        subject = this.LayersTerminal(subject, scope);
+        crossed = !ReferenceEquals(subject, stored);
         return source.Mode == SubjectMode.Exclusive ? this.Library.UniqIterable : this.Library.Iterable;
     }
 
     private bool BindUserIteration(ForKoto source, BindingScope scope, BoundType subject, out BoundType? item)
     {
         item = null;
-        var entry = this.IterationEntry(source, ref subject);
+        var entry = this.IterationEntry(source, scope, ref subject, out var crossed);
+        if (crossed && source.Mode == SubjectMode.Exclusive)
+        {
+            // SPEC 7.3, 13.5.5: an exclusive receiver selected through a pair layer below a stored layer has no adaptation yet (PLAN
+            // G162's remainder): the loop's located Unsupported_Kd (FailIterationSubject's proven entry), never a candidate failure.
+            // A temporary structure (PLAN G794): removed once that receiver (G162) and the Exclusive `for`'s entry call through stored
+            // layers (G179) adapt.
+            return false;
+        }
+
         var method = source.Mode == SubjectMode.ByValue ? "intoIterator" : source.Mode == SubjectMode.Exclusive ? "iterateUniq" : "iterate";
         // SPEC 8.3.3: a conditional conformance whose condition is refuted supplies no entry; the Subject is then diagnosed.
         // A range's condition is decided at the Subject as well when it is only unproven, so the loop reports it once there
@@ -224,7 +234,7 @@ public sealed partial class Binding
         var nominal = library || (subject.Symbol is { Declaration: StructKoto or EnumKoto } owner && this.ConformanceByDeclaration(owner, entry, out _) is not null &&
                 this.ProveConstraint(this.InternConstraint(new(ConstraintKind.Contract, subject, contract: entry)), scope) is var proof &&
                 (proof == ConstraintProof.Proven || (proof != ConstraintProof.Refuted && !IsRangeShape(subject))));
-        if (!nominal && !this.HasContractFact(subject, entry, scope))
+        if (!nominal && !this.PremiseRefines(subject, entry, scope))
         {
             return false;
         }
@@ -310,7 +320,7 @@ public sealed partial class Binding
     {
         if (target.Declaration is FunctionKoto { IsRequirement: true })
         {
-            return target.Scope.Owner is ContractKoto owner && RefinesDeclaration(contract, owner);
+            return target.Scope.Owner is ContractKoto { BoundSymbol: { } owner } && IsRefinement(contract, owner);
         }
 
         if (WitnessGroup(self, contract.LibraryDeclaration) is { } group)
@@ -338,7 +348,7 @@ public sealed partial class Binding
                 for (var w = 0; w < path.WitnessStorage.Count; w++)
                 {
                     var witness = path.WitnessStorage[w];
-                    if (ReferenceEquals(witness.Implementation, target) && witness.Requirement.Scope.Owner is ContractKoto declaration && RefinesDeclaration(contract, declaration))
+                    if (ReferenceEquals(witness.Implementation, target) && witness.Requirement.Scope.Owner is ContractKoto { BoundSymbol: { } declaration } && IsRefinement(contract, declaration))
                     {
                         return true;
                     }

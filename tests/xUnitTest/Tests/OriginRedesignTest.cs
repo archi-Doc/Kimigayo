@@ -17,6 +17,15 @@ public class OriginRedesignTest
     // PLAN G457 (R1) d_decl_ok: a method called on another value of its Type in its own body.
     private const string MethodOnAnotherValue = "struct W {x}\n    public let r: ref/i32 during x\n    public init(r: ref/i32 during x) => self.r = r\n    public func m(self: ref/Self, y: ref/i32 during k, z: ref/i32 during j) -> ref/i32 during x\n        let w: W during k = W.init(y)\n        let p: ref/i32 during k = w.m(z, z)\n        return self.r";
 
+    // PLAN G457 (R1) (b): a member's Item formed in that member's own body on another occurrence of its Type. `G<U>.put2<i32>` there is
+    // T := U (the body's own U) and put2's U := i32 in one substitution, so the Item's `self` is `ref/G<U>`.
+    private const string ItemInItsOwnBody = "struct G<T>\n    public var n: i32 = 0\n    public func put2<U>(self: ref/Self, u: ref/U, gi: ref/G<i32>, gu: ref/G<U>, n: ref/i32)\n";
+    private const string ItemAtInt = "(ref/G<i32>, ref/i32, ref/G<i32>, ref/G<i32>, ref/i32) -> ()";
+    private const string ItemAtOwn = "(ref/G<U>, ref/i32, ref/G<i32>, ref/G<i32>, ref/i32) -> ()";
+    private const string ItemWithLength = "struct G<T>\n    public var n: i32 = 0\n    public func put3<U, length N>(self: ref/Self, u: ref/U, a: ref/[N of U], gi: ref/G<i32>, gu: ref/G<U>, n: ref/i32, a2: ref/[2 of i32])\n        let g = G<U>.put3<i32, 2>\n";
+    private const string ItemInNestedType = "struct O<T>\n    public struct G\n        public var n: i32 = 0\n        public func put2<U>(self: ref/Self, u: ref/U, gi: ref/O<i32>.G, gu: ref/O<U>.G, n: ref/i32)\n            let g = O<U>.G.put2<i32>\n";
+    private const string ItemOfOriginType = "struct H<T> {a}\n    let v: ref/i32 during a\n    public func put2<U>(self: ref/Self, u: ref/U, hi: ref/H<i32>, hu: ref/H<U>, n: ref/i32)\n        let g = H<U>.put2<i32>\n";
+
     [Theory]
     [InlineData("struct V<T> {source}\n    struct Inner\n        let value: ref/T during source")]
     [InlineData("func identity<T>(x: ref/T during s) -> ref/T during s => x")]
@@ -318,7 +327,10 @@ public class OriginRedesignTest
     // a method called on another value in its own body (d_decl, Oq), an implementation's clause under the comparison's solved Origins (O2)
     // and a constructor's clause over its structure's slots (D). No image is read again as the callee's or the declaring Type's: a
     // clause over the declaring Type's Type slot (Gp, Gt), over both its Type and Origin slots (Hb) and over a parameter's elided Origin
-    // beside them (Hi) takes each slot's image once.
+    // beside them (Hi) takes each slot's image once. SPEC 10.5, 9.7.2, 7.7.4 (PLAN G457 (R1) (b)): a Function Item's signature is read
+    // under the same one value, so an Item formed in its own member's body keeps the body's own slot (fr2): called, at an annotated
+    // Function Type (its erasure needs `U is Owned`: fr2-ann, fr2-annv), with its slot inferred there, beside a length slot and through a
+    // nested declaring occurrence; an Origin-carrying declaring Type is a located limit (fr2-he).
     [Theory]
     [InlineData("func f<U>(u: U, r: ref/i32)\n    U is ref/i32 during r\n    return\nfunc use(x: ref/i32) => f(x, x)", "")] // In1 V
     [InlineData("struct S\n    public func put<U>(self: ref/Self, u: U, r: ref/i32)\n        U is ref/i32 during r\n        return\nfunc use(s: ref/S, x: ref/i32) => s.put(x, x)", "")] // In1m V
@@ -360,6 +372,22 @@ public class OriginRedesignTest
     [InlineData("struct H {a}\n    public let r: ref/i32 during a\n    public init(r: ref/i32 during a) => self.r = r\n    public func put<U>(self: ref/Self, u: U, w: ref/i32)\n        U is ref/i32 during w\n        return\n    public func go(self: ref/Self, other: ref/H{o}, x: ref/i32 during a, y: ref/i32 during o.a)\n        self.put(x, x)", "")] // Hi2v V
     [InlineData("contract Put\n    func put<U>(self: uniq/Self, u: U, r: ref/i32 during a)\n        U is ref/i32 during a\nstruct S\n    Self is Put\n    public func put<U>(self: uniq/Self, u: U, r: ref/i32)\n        U is ref/i32 during r\n        return", "")] // O2inm V
     [InlineData("contract Put\n    func put<U>(self: uniq/Self, u: U, r: ref/i32 during a, q: ref/i32 during c)\n        U is ref/i32 during a\nstruct S\n    Self is Put\n    public func put<U>(self: uniq/Self, u: U, r: ref/i32, q: ref/i32)\n        U is ref/i32 during q\n        return", "UnprovenConstraint_Kd")] // O2inmi I
+    [InlineData(ItemInItsOwnBody + "        let g = G<U>.put2<i32>\n        g(gi, n, gi, gi, n)", "NoApplicableOverload_Kd")] // fr2i I
+    [InlineData(ItemInItsOwnBody + "        let g = G<U>.put2<i32>\n        g(gu, n, gi, gi, n)", "")] // fr2v V
+    [InlineData(ItemInItsOwnBody + "        U is Owned\n        let g: " + ItemAtInt + " = G<U>.put2<i32>\n        g(gi, n, gi, gi, n)", "TypeMismatch_Kd")] // fr2-anno I
+    [InlineData(ItemInItsOwnBody + "        U is Owned\n        let g: " + ItemAtOwn + " = G<U>.put2<i32>\n        g(gu, n, gi, gi, n)", "")] // fr2-annov V
+    [InlineData(ItemInItsOwnBody + "        let g: " + ItemAtInt + " = G<U>.put2<i32>\n        g(gi, n, gi, gi, n)", "TypeMismatch_Kd")] // fr2-ann I (and U not Owned)
+    [InlineData(ItemInItsOwnBody + "        let g: " + ItemAtOwn + " = G<U>.put2<i32>\n        g(gu, n, gi, gi, n)", "UnprovenConstraint_Kd")] // fr2-annv I (U not Owned)
+    [InlineData(ItemInItsOwnBody + "        U is Owned\n        let g: " + ItemAtInt + " = G<U>.put2\n        g(gi, n, gi, gi, n)", "TypeMismatch_Kd")] // fr2-inf I
+    [InlineData(ItemInItsOwnBody + "        U is Owned\n        let g: " + ItemAtOwn + " = G<U>.put2\n        g(gu, n, gi, gi, n)", "")] // fr2-infv V
+    [InlineData(ItemInItsOwnBody + "        return\n    public func go<U>(self: ref/Self, gi: ref/G<i32>, gu: ref/G<U>, n: ref/i32)\n        let g = G<U>.put2<i32>\n        g(gi, n, gi, gi, n)", "NoApplicableOverload_Kd")] // fr2-go I (another method's own U)
+    [InlineData(ItemInItsOwnBody + "        return\n    public func go<U>(self: ref/Self, gi: ref/G<i32>, gu: ref/G<U>, n: ref/i32)\n        let g = G<U>.put2<i32>\n        g(gu, n, gi, gi, n)", "")] // fr2-gov V
+    [InlineData(ItemWithLength + "        g(gi, n, a2, gi, gi, n, a2)", "NoApplicableOverload_Kd")] // fr2-len I
+    [InlineData(ItemWithLength + "        g(gu, n, a2, gi, gi, n, a2)", "")] // fr2-lenv V
+    [InlineData(ItemInNestedType + "            g(gi, n, gi, gi, n)", "NoApplicableOverload_Kd")] // fr2-nest I
+    [InlineData(ItemInNestedType + "            g(gu, n, gi, gi, n)", "")] // fr2-nestv V
+    [InlineData(ItemOfOriginType + "        g(hi, n, hi, hi, n)", "Unsupported_Kd")] // fr2-he I (a located limit)
+    [InlineData(ItemOfOriginType + "        g(hu, n, hi, hi, n)", "Unsupported_Kd")] // fr2-hev V (a located limit)
     public void ACallIsJudgedUnderItsOneSubstitution(string declaration, string codes)
         => Assert.Equal(codes, string.Join(' ', ContextualCaptureTest.PublishedRecords(RegionPrelude + declaration + "\n").Select(static x => x.Code).Order(StringComparer.Ordinal)));
 
