@@ -403,7 +403,7 @@ public sealed partial class Binding
             return;
         }
 
-        context.HasValue |= IsAggregateArgument(expression) || expression is DictionaryLiteralKoto;
+        context.HasValue |= IsAggregateArgument(expression);
 
         var evidence = this.ResultEvidence(expression, scope, context.HasLiteral);
         if (evidence is not null && !ReferenceEquals(evidence, BoundType.Never))

@@ -111,8 +111,11 @@ public sealed partial class Binding
         _ => PartKind.Typed,
     };
 
+    // SPEC 10.5.1, 12.3.1 (PLAN G924 rule A; BU-43 C1 deleted): a literal whose parts are checked against their expected Types: a Tuple
+    // literal with elements, an array literal or fill, a Dictionary literal with entries, or a mixed range.
     private static bool IsAggregateArgument(Koto source)
-        => KotoHelper.UnwrapParentheses(source) is ArrayLiteralKoto or TupleLiteralKoto { Elements.Count: > 0 } || IsMixedRange(source);
+        => KotoHelper.UnwrapParentheses(source) is ArrayLiteralKoto or TupleLiteralKoto { Elements.Count: > 0 } or DictionaryLiteralKoto { Entries.Count: > 0 } ||
+            IsMixedRange(source);
 
     // SPEC 4.6.2: a range with a literal-only and a typed written boundary. Like a tuple element, each literal-only boundary
     // takes the S or E of the candidate's parameter, while a typed boundary keeps its independent Type.
@@ -618,8 +621,21 @@ public sealed partial class Binding
                 (range.End is null || IsUnfittedLiteral(range.End) || this.PrepareArgument(range.End, scope, null, callableContext: false));
         }
 
-        var elements = source is ArrayLiteralKoto array ? array.Elements : ((TupleLiteralKoto)source).Elements;
         var valid = true;
+        if (source is DictionaryLiteralKoto dictionary)
+        {
+            // SPEC 12.4.3, 10.5.1: each key and value is prepared as an argument at the key and value positions, as a Tuple's elements
+            // are; at a slot that takes the literal whole an anonymous function there is a hole (WholeEvidence; SPEC 10.8).
+            foreach (var entry in dictionary.Entries)
+            {
+                valid &= this.PrepareArgument(entry.Key, scope, null, callableContext: true);
+                valid &= this.PrepareArgument(entry.Value, scope, null, callableContext: true);
+            }
+
+            return valid;
+        }
+
+        var elements = source is ArrayLiteralKoto array ? array.Elements : ((TupleLiteralKoto)source).Elements;
         if (source is ArrayLiteralKoto { FillLength: { } length } fill)
         {
             valid = (fill.FillCount = this.BindLength(length, scope)) is not null;

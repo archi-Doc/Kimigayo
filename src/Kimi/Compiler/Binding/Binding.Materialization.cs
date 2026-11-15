@@ -30,7 +30,7 @@ public sealed partial class Binding
             return null;
         }
 
-        return IsAggregateArgument(core) || core is DictionaryLiteralKoto || IsUnfittedLiteral(core) || (ControlFlowExpression(core) is { } join &&
+        return IsAggregateArgument(core) || IsUnfittedLiteral(core) || (ControlFlowExpression(core) is { } join &&
             (this.KindOf(core) == PartKind.Join || (core.BoundType is null && this.SurveyResult(join, scope) is { Literal: true } or { Value: true })))
             ? ExpectedTypeOf(type) : null;
     }

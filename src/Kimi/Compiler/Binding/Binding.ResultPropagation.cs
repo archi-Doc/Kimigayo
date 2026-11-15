@@ -322,7 +322,7 @@ public sealed partial class Binding
 
     // SPEC 10.5.1, 14.9.2 (DECISIONS BU-43, BU-74): whether a waited source's parts are bound since, by its call (TakeWaiting) or its
     // join's step 3, whoever bound them, through the forms that made its anonymous functions wait (CallableTarget): bound, a form that
-    // delivers one, an aggregate each of whose parts at least one (CallableParts) was; a Waiting result target is bound since by its
+    // delivers one, an aggregate each of whose parts at least one (CallablePart) was; a Waiting result target is bound since by its
     // outcome (ResultContext.Wait; DECISIONS BU-87), a decision whatever its sources hold since. Position waiting (Deferred), not a
     // call relation: it holds before any selection.
     private bool BoundSince(Koto source)
@@ -333,14 +333,14 @@ public sealed partial class Binding
         }
 
         return this.WaitingResult(source) is not null || source.BoundType is not null ||
-            (CallableParts(source) is { Count: > 0 } parts && this.AllBoundSince(parts));
+            (CallablePartCount(source) > 0 && this.AllBoundSince(source));
     }
 
-    private bool AllBoundSince(List<Koto> parts)
+    private bool AllBoundSince(Koto aggregate)
     {
-        foreach (var part in parts)
+        for (int i = 0, count = CallablePartCount(aggregate); i < count; i++)
         {
-            if (!this.BoundSince(part))
+            if (!this.BoundSince(CallablePart(aggregate, i, out _)))
             {
                 return false;
             }
@@ -461,7 +461,7 @@ public sealed partial class Binding
         }
 
         var common = this.JudgeOwn(node, context, out var shape, out var defaults);
-        if (context.Outcome == JoinOutcome.Undecided && (later || (shape is not DictionaryLiteralKoto && this.ClassifiedByCall(node, shape))))
+        if (context.Outcome == JoinOutcome.Undecided && (later || this.ClassifiedByCall(node, shape)))
         {
             context.Wait(this.SourcesAwait(context));
             return true;
@@ -561,6 +561,12 @@ public sealed partial class Binding
             }
 
             var waited = context.Sources[i] is null;
+            if (waited && source.BoundType is not null && !this.Deferred(source))
+            {
+                context.Sources[i] = this.SuppliedType(source); // Bound by step 3 above (a match arm's or an exit's literal): its Type.
+                continue;
+            }
+
             var held = waited && this.HoldsWaitedResult(source);
             var awaits = !waited && type is not null && this.AwaitsPosition(source);
             var fit = default(ComparisonFailure);
@@ -653,7 +659,7 @@ public sealed partial class Binding
                 }
 
                 return;
-            case PartKind.Aggregate when this.PartsShape(start, end) is not DictionaryLiteralKoto:
+            case PartKind.Aggregate:
                 for (int i = 0, count = this.ChildPositions(start, end); i < count; i++)
                 {
                     var child = this.positionParts.Count;
@@ -663,7 +669,6 @@ public sealed partial class Binding
                 }
 
                 return;
-            case PartKind.Aggregate: // A Dictionary, taken whole (BU-43): its source's binding at `target`, BindWaitedSources' loop.
             case PartKind.Literal: // Its literals take `target` with their sources, BindWaitedSources' loop.
             case PartKind.Call: // Its parts await the call, which binds them at its candidate's Type (CompleteArguments, the loop).
                 return;
