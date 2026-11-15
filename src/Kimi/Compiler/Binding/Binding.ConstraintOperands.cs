@@ -5,9 +5,10 @@ using Kimi.Compiler.Parsing;
 namespace Kimi.Compiler;
 
 // Owns the facts of a constraint's operand Types: whether a part of an operand names a declaration whose context failed (Invalid) or is not
-// yet resolved (Unresolved), which a proof reads before it judges the proposition (JudgeConstraintAtom, the capability requests), and
-// whether a part is an associated projection (an interned constraint's HasAssociatedProjection). Each walk visits a distinct part once
-// per query (DECISIONS BU-19). Reads binding states and their retained part causes; never binds or reports.
+// yet resolved (Unresolved), which a proof reads before it judges the proposition (JudgeConstraintAtom, the capability requests),
+// whether a part is an associated projection (an interned constraint's HasAssociatedProjection), and the parameters and projections
+// occurring in the operand Types (AbstractParts, the arithmetic direction check's seeds). Each walk visits a distinct part once per
+// query (DECISIONS BU-19). Reads binding states and their retained part causes; never binds or reports.
 public sealed partial class Binding
 {
     private static bool UnresolvedTypeDeclarationContext(Koto declaration)
@@ -147,6 +148,45 @@ public sealed partial class Binding
         }
 
         return null;
+    }
+
+    // The parameters and projections (BoundType.IsProofDecided) occurring in a constraint's operand Types, appended to `into`: in its
+    // subject, its required Type and its Contract's arguments, at every part (a constructed Type's components, a projection's subject and
+    // Contract arguments), and in an And's, Or's or Not's operands. One query may span several constraints; each distinct part is met
+    // once in it, a leaf too (the list is the walk's answer, so a leaf is recorded rather than answered again).
+    private void AbstractParts(BoundConstraint constraint, uint query, List<BoundType> into)
+    {
+        this.AbstractParts(constraint.Subject, query, into);
+        this.AbstractParts(constraint.RequiredType, query, into);
+        this.AbstractParts(constraint.Contract?.Type, query, into);
+        if (constraint.Left is { } left)
+        {
+            this.AbstractParts(left, query, into);
+        }
+
+        if (constraint.Right is { } right)
+        {
+            this.AbstractParts(right, query, into);
+        }
+    }
+
+    private void AbstractParts(BoundType? type, uint query, List<BoundType> into)
+    {
+        if (type is not { HasAbstractPart: true } || this.visitedParts.TryGet(type, query, out _))
+        {
+            return;
+        }
+
+        this.visitedParts.Set(type, query, 1);
+        if (type.IsProofDecided)
+        {
+            into.Add(type);
+        }
+
+        for (var i = 0; i < type.Components.Count; i++)
+        {
+            this.AbstractParts(type.Components[i], query, into);
+        }
     }
 
     private bool ProjectionPart(BoundType type, uint query)

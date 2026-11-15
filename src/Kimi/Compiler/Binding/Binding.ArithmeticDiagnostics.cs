@@ -8,15 +8,19 @@ namespace Kimi.Compiler;
 
 // Binding.ArithmeticDiagnostics: SPEC 13.3's arithmetic records. Responsibility: the typed facts of a fixed provider route's failed
 // selection and of an explicitly declared conformance's ineligibility (13.3.3), and SPEC 13.3.4's direction contradiction
-// (ValidateArithmeticDirections). Inputs of the direction check: the available arithmetic premises in the view's environments (written,
-// or one level from a written Contract premise: ExpandScopeContractPremises), the opposite premise as ContractSolver's rows (FirstRows)
-// and the pair compared by Binding.TypeIdentity's judge (IdentityProven). Output: the owner's ArithmeticDirection failure with both
-// premises' uses. Invariant: a function of the view, whatever the premises' order, side or spelling, and at every depth the rows reach.
-// Prohibitions: no scan of written facts for the opposite premise and no identity rule of its own. Limits: a pair neither of whose
-// premises is in the view's environments (written, or one level from a written Contract premise) waits for Closure(view) (C3/e2); a clause
-// instance at a class mate's projection prefix is no row of the subject until PLAN G881's row (5) (EnumerateMates) lands (d2n).
+// (ValidateArithmeticDirections). Inputs of the direction check, for a scope with premises of its own: every parameter or projection
+// occurring in an available premise of its view's chain (AbstractParts; written, or until C3 one level from a written Contract premise),
+// their premises as ContractSolver's rows (FirstRows), the opposite premise likewise (OppositeRow) and the pair by Binding.TypeIdentity's
+// judge (IdentityProven). Output: the owner's ArithmeticDirection failure with both premises' uses. Invariant: a function of the view,
+// whatever the premises' order, side or spelling, and at every depth the rows reach. Prohibitions: no premise taken from the facts (they
+// give the seeds only) and no identity rule of its own. Limits, until R7-C2e2's Closure(view) publishes the view's premises at every depth
+// (PLAN dm1's class 1 row; it removes the seed rule): a pair whose two Types occur in no premise of the chain, only inside Contracts'
+// clauses below the premises' Types (y3n, y3s; after C3 also y3d), and an identity supplied only at depth, no ground of the judge (x41i).
+// The seeds are exact up to identity only with PLAN G881's row (5) (EnumerateMates): until it lands, a clause instance at a class mate's
+// projection prefix is no row of a seed.
 public sealed partial class Binding
 {
+    private readonly List<BoundType> directionSeeds = new(); // ValidateArithmeticDirections' seeds, a stack of ranges
     private Dictionary<Koto, ArithmeticSelectionFailure>? arithmeticSelectionFailures;
     private Dictionary<Koto, ArithmeticDirectionFailure>? arithmeticDirectionFailures;
 
@@ -29,6 +33,9 @@ public sealed partial class Binding
         NoFit,
         Ambiguous,
     }
+
+    // The scaling rows' measure: the seeds whose rows this compilation's direction checks asked for (FirstRows), one per seed and view.
+    internal int DirectionSeeds { get; private set; }
 
     private readonly record struct ArithmeticSelectionFailure(BoundArithmetic Plan, BoundType Self, BoundType? Counterpart, KimiDeclarationId Id, ArithmeticSelectionCause Cause);
 
@@ -81,12 +88,21 @@ public sealed partial class Binding
             : node is ParenthesizedKoto parentheses ? ContractUse(parentheses.Operand, contract) : null;
     }
 
-    // SPEC 13.3.4 under 8.2.3 and 8.3.2 (PLAN G882): for each available arithmetic premise `X is Op<Y>` in the environments of the view's
-    // chain (written, or one level from a written Contract premise), the opposite premise of its operand pair is an available row of the opposite Contract that the rows supply for Y (OppositeRow).
-    // The contradiction is reported once, at the first scope where its two premises meet: the validation judges a parent before its
-    // members, and a failed environment is neither read here nor supplies a row, so a member's view never meets its parent's pair.
+    // SPEC 13.3.4 under 8.2.3 and 8.3.2 (PLAN G882, x41n): the premises of a pair are rows. A scope with premises of its own takes as
+    // seeds every parameter or projection occurring in an available premise of its view's chain (AbstractParts: one walk, each part once,
+    // before any request); each seed's available arithmetic rows (FirstRows: at every depth, through its identity class) are a pair's
+    // first premise (ValidateArithmeticRows). A scope with none examines nothing: its view is its parent's, judged first. The
+    // contradiction is reported once, at the first scope where its two premises meet: the validation judges a parent before its members,
+    // and a failed environment is neither read here nor supplies a row, so a member's view never meets its parent's pair.
     private bool ValidateArithmeticDirections(BindingScope scope)
     {
+        if (scope.Constraints is not { Invalid: false, Facts.Count: > 0 })
+        {
+            return true;
+        }
+
+        var start = this.directionSeeds.Count;
+        var query = this.visitedParts.Begin(this.storageVersion);
         for (var stating = scope; stating is not null; stating = stating.Parent)
         {
             if (stating.Constraints is not { Invalid: false } environment)
@@ -96,29 +112,62 @@ public sealed partial class Binding
 
             foreach (var fact in environment.Facts)
             {
-                if (fact.Kind != ConstraintKind.Contract || fact.Subject is not { } subject || fact.Contract is not { Type.Components: [var counterpart] } contract ||
-                    ArithmeticContractSyntax.Identity(contract) is not { } id || id == KimiDeclarationId.Negatable ||
-                    !this.AvailableConstraintFact(environment, fact, out _))
+                if (this.AvailableConstraintFact(environment, fact, out _))
                 {
-                    continue;
+                    this.AbstractParts(fact, query, this.directionSeeds);
                 }
-
-                var reversed = ArithmeticContracts.IsLeft(id);
-                var oppositeId = reversed ? id - (KimiDeclarationId.LeftAddable - KimiDeclarationId.Addable) : id + (KimiDeclarationId.LeftAddable - KimiDeclarationId.Addable);
-                if (this.OppositeRow(counterpart, subject, oppositeId, scope) is not { Symbol: { } opposite } row)
-                {
-                    continue;
-                }
-
-                var here = this.ArithmeticFactUse(fact, stating);
-                var there = row is { Raw: { } raw, Stated: { } where } ? this.ArithmeticFactUse(raw, where) : row.Stated?.Owner ?? scope.Owner;
-                this.FailExplained(ref this.arithmeticDirectionFailures, scope.Owner, BindingFailure.ArithmeticDirection, reversed ? new(counterpart, subject, oppositeId, opposite, contract, there, here) : new(subject, counterpart, id, contract, opposite, here, there));
-                return false;
             }
         }
 
-        return true;
+        var valid = true;
+        for (var i = start; valid && i < this.directionSeeds.Count; i++)
+        {
+            valid = this.ValidateArithmeticRows(this.directionSeeds[i], scope);
+        }
+
+        this.directionSeeds.RemoveRange(start, this.directionSeeds.Count - start);
+        return valid;
     }
+
+    // Each available arithmetic row `X is Op<Y>` of `seed` in the view (not Negatable) with its opposite premise (OppositeRow); the
+    // first pair found fails the owner. The record names the ordinary premise's Types as its row gives them (its written fact's subject,
+    // else the seed it was asked for, and its argument) and each premise's use (ArithmeticRowUse).
+    private bool ValidateArithmeticRows(BoundType seed, BindingScope scope)
+    {
+        this.DirectionSeeds++;
+        var start = this.premiseRows.Count;
+        this.FirstRows(seed, scope, this.premiseRows);
+        var end = this.premiseRows.Count;
+        var valid = true;
+        for (var r = start; valid && r < end; r++)
+        {
+            if (this.premiseRows[r] is not { Available: true, Symbol: { Type.Components: [var counterpart] } contract } row ||
+                ArithmeticContractSyntax.Identity(contract) is not { } id || id == KimiDeclarationId.Negatable)
+            {
+                continue;
+            }
+
+            var reversed = ArithmeticContracts.IsLeft(id);
+            var oppositeId = reversed ? id - (KimiDeclarationId.LeftAddable - KimiDeclarationId.Addable) : id + (KimiDeclarationId.LeftAddable - KimiDeclarationId.Addable);
+            if (this.OppositeRow(counterpart, seed, oppositeId, scope) is not { Symbol: { Type.Components: [var argument] } opposite } other)
+            {
+                continue;
+            }
+
+            var here = this.ArithmeticRowUse(row, scope);
+            var there = this.ArithmeticRowUse(other, scope);
+            this.FailExplained(ref this.arithmeticDirectionFailures, scope.Owner, BindingFailure.ArithmeticDirection, reversed ? new(other.Raw?.Subject ?? counterpart, argument, oppositeId, opposite, contract, there, here) : new(row.Raw?.Subject ?? seed, counterpart, id, contract, opposite, here, there));
+            valid = false;
+        }
+
+        this.premiseRows.RemoveRange(start, this.premiseRows.Count - start);
+        return valid;
+    }
+
+    // The related location of a premise row: its written fact at the scope stating it (ArithmeticFactUse), else that scope's owner (a
+    // clause instance's or an ancestor's: its Contract row's scope), else the view's.
+    private Koto ArithmeticRowUse(PremiseRow row, BindingScope view)
+        => row is { Raw: { } raw, Stated: { } where } ? this.ArithmeticFactUse(raw, where) : row.Stated?.Owner ?? view.Owner;
 
     // The opposite premise for the pair of `subject` and `counterpart`: an available Contract row of `counterpart` in the view (FirstRows:
     // every depth, through its identity class) of the Contract `oppositeId` whose argument is `subject` by the identity judge.
