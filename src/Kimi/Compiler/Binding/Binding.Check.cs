@@ -28,21 +28,26 @@ public sealed partial class Binding
     private BindingResult Check(BindingMode mode)
     {
         this.producing = true; // A re-check's start (CheckBound); a Bind raised it at its own.
-        this.ProduceFailures(mode);
-        if (mode == BindingMode.Final)
+        try
         {
-            this.PublishPass();
-            if (this.CheckTransfers())
+            this.ProduceFailures(mode);
+            if (mode == BindingMode.Final)
             {
-                // H1 (DECISIONS BU-84): its failed nodes are published Error, which the assertion checks creates no new subject.
                 this.PublishPass();
-                this.AssertTransfers();
+                if (this.CheckTransfers())
+                {
+                    // H1 (DECISIONS BU-84): its failed nodes are published Error, which the assertion checks creates no new subject.
+                    this.PublishPass();
+                    this.AssertTransfers();
+                }
             }
-        }
 
-        var result = this.CountStates(mode);
-        this.producing = false;
-        return result;
+            return this.CountStates(mode);
+        }
+        finally
+        {
+            this.producing = false; // Also when a re-check throws: a later query fails no node.
+        }
     }
 
     // Every failure the pass decides at its end, in the order the nodes were bound.

@@ -82,7 +82,7 @@ public sealed partial class Binding
 
     // The limit a Resource record of Binding names (SPEC 8.3.3 Limits, 23.1.1): each implementation limit Binding records at a node is a row.
     private static long? ImplementationLimit(BindingFailure failure)
-        => failure switch { BindingFailure.TypeHeightLimit => TypeHeightLimit, BindingFailure.PremiseClosureLimit => IdentityRoundLimit, _ => null };
+        => failure switch { BindingFailure.TypeHeightLimit => TypeHeightLimit, BindingFailure.PremiseClosureLimit => PremiseClosureLimit, _ => null };
 
     // Publishes one direct failure with the facts its check recorded. Each fact table holds the explanation of its node's one
     // failure only (FailExplained), so at most one table answers for a node.

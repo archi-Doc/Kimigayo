@@ -15,7 +15,8 @@ public sealed partial class Binding
     private int originStateVersion;
 
     // The candidate evaluations in progress (EvaluateCallCandidates): the Origin part of a fit there is the pure answer, since only the
-    // selected candidate's bounds are recorded, after selection (FitsOriginOutlives).
+    // selected candidate's bounds are recorded, after selection (FitsOriginOutlives); a refusal read there is held for the selection
+    // in the same way (Refusal.Settle, SettleSelected).
     private int candidateTrials;
 
     // Set while a selected call's fits are collected (CollectFitBounds): the Origin part of a fit is then the pure answer, and the

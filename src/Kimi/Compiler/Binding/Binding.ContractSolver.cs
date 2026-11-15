@@ -81,7 +81,7 @@
 //   only at a prefix of a cycle's mate joins no extension. An outermost refinement request (PremiseRefines)
 //   whose walk is not positive for its demanded Contract and recorded rows builds its own classes over the view's premises and
 //   those rows (ExtendedClassesOf: request-local, the rows Provisional),
-//   re-keys its subject and its view's facts and walks again while a round adds a row, at most IdentityRoundLimit rounds (SPEC 8.3.3
+//   re-keys its subject and its view's facts and walks again while a round adds a row, at most PremiseClosureLimit rounds (SPEC 8.3.3
 //   Limits; the owner's O-321 (b)): a mate's chain may be deeper than the link it is identical with (row (5)), so under a path
 //   equation to a deeper projection (`Self.(Pq).Up is Self.(Pq).Next.(Pq).Next.(Pq).Up`, allowed) each round supplies a deeper
 //   identity and the rounds have no end of their own. A request still unproven at the bound is refused (RefuseProof:

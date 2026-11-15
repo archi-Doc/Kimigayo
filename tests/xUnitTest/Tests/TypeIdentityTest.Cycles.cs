@@ -264,7 +264,8 @@ public partial class TypeIdentityTest
     // only through a cycle (fc*, fb*); a recursive Contract supplied only through a cycle (rk*, pkv; pk, the invalid twin of pkv, ends
     // at the round bound: its record is the limit's, PremiseClosureLimit_Kd); an identity recorded on the request's own chain from a row that arrives
     // through the cycle (mzc*, mzm*); an identity a Contract supplies at a prefix of a cycle's mate (yz*: yz itself, valid, is rejected,
-    // the stated limit, and no row); retention through each (h*). On G881's head hdc2, hsc and hq4b (invalid) were accepted.
+    // the stated limit, a PLAN row; its row holds the record until that row lands); retention through each (h*). On G881's head hdc2,
+    // hsc and hq4b (invalid) were accepted.
     public static TheoryData<string, string, string> CycleReviewRows => new()
     {
         { "q4", RvA + "contract Ff\n    associate Q is Ca\n    Self.(Ff).Q is Other\ncontract Ff0\n    associate Q is Ca\ncontract FfB\n    associate Q is Ca0\n    Self.(FfB).Q is Other\ncontract Ee\n    associate Next is Ff\ncontract Ee0\n    associate Next is Ff0\ncontract EeB\n    associate Next is FfB\ncontract Dd\n    associate W is Ee\ncontract Dd0\n    associate W is Ee0\ncontract DdB\n    associate W is EeB\ncontract Cb\n    associate Y is Dd\ncontract Cb0\n    associate Y is Dd0\ncontract CbB\n    associate Y is DdB\nfunc needCa<X>(x: ref/X)\n    X is Ca\n    return\nfunc f<T, U, V, W>(t: ref/T, u: ref/U)\n    U is Cb\n    U.(Cb).Y is V\n    V.(Dd).W.(Ee).Next is W\n    W.(Ff).Q is T\n    T.(Ca).X.(Mid).Next is U\n    need(u)\n    needO(t)\n    needCa(t)\n", string.Empty },
@@ -314,6 +315,7 @@ public partial class TypeIdentityTest
         { "mzm2", RvY + "func f<T, U>(u: ref/U, x: ref/T.(CyZ).X.(MidZ).Next.(A3).X)\n    T is CyZ\n    T.(CyZ).X.(MidZ).Next is T\n    T.(CyZ).X.(MidZ).Next.(A3).X is U\n    needZ(x)\n    needZ(u)\n", string.Empty },
         { "mzm3", RvY + "func f<T, U>(u: ref/U, x: ref/T.(CyZ).X.(MidZ).Next.(A3).X)\n    T is CyZ\n    T.(CyZ).X.(MidZ).Next is T\n    T.(CyZ).X.(MidZ).Next.(A3).X is U\n    needZ(u)\n    needZ(x)\n", string.Empty },
         { "mzcn", RvY + "func f<T, U>(u: ref/U)\n    T is CyZ\n    T.(CyZ).X.(MidZ).Next is T\n    T.(A3).X is U\n    need(u)\n", "UnprovenConstraint_Kd" },
+        { "yz", RvZ + "func f<T>(t: ref/T)\n    T is CyY\n    T.(CyY).X.(MidY).Next is T\n    needZ(t)\n", "UnprovenConstraint_Kd" },
         { "yzx", RvZ + "func f<T>(x: ref/T.(CyY).X.(MidY).Next)\n    T is CyY\n    T.(CyY).X.(MidY).Next is T\n    needZ(x)\n", string.Empty },
         { "yz2", RvZ + "func f<T>(t: ref/T, x: ref/T.(CyY).X.(MidY).Next)\n    T is CyY\n    T.(CyY).X.(MidY).Next is T\n    needZ(x)\n    needZ(t)\n", string.Empty },
         { "yz3", RvZ + "func f<T>(t: ref/T, x: ref/T.(CyY).X.(MidY).Next)\n    T is CyY\n    T.(CyY).X.(MidY).Next is T\n    needZ(t)\n    needZ(x)\n", string.Empty },
@@ -341,7 +343,7 @@ public partial class TypeIdentityTest
         "    return\nfunc needB<X>(x: ref/X)\n    X is Other\n    X is Inner\n    return\n";
 
     // PLAN G881 with G881b (the owner's O-321 (b); SPEC 8.3.3 Limits, 23.1.1): a request whose extension rounds pass
-    // Binding.IdentityRoundLimit is refused, and a judgment that rests on it is a resource failure, never Unknown or Refuted. Pq's
+    // Binding.PremiseClosureLimit is refused, and a judgment that rests on it is a resource failure, never Unknown or Refuted. Pq's
     // path equation to a deeper projection (allowed) supplies one deeper identity a round, so `T.(Pq).Up is Inner` never ends by
     // itself (pathqn above; before the bound it did not finish). Each row is a whole program after CyclePrelude. Each use whose
     // request is refused has the limit's record, PremiseClosureLimit_Kd, alone (pq2, pqmix beside a proven use, pqorn, pqand,
@@ -350,8 +352,22 @@ public partial class TypeIdentityTest
     // recorded (pqor, pqoro: a disjunction's Proven operand; before the bound they did not finish); a request proven within the
     // bound is proven (pqd1, pqd2, pqcopyv); a value that is moved needs no such judgment (pqmovev, pqletv, pqrefv ask none;
     // pqcallv's is MIR's Copy question after the pass, which keeps Unknown and fails no node; before the bound it did not finish).
+    // The owner's O-335 (a) (SPEC 10.1, 10.4): a refusal a candidate trial reads is held to the selection and settled only by the
+    // selected candidate's obligation, so a losing candidate whose `X is Inner` reaches the bound refuses nothing (xov, xovr: step 4
+    // selects the candidate without the default, in either declaration order; xov0 the same loser without Pq), and the selected one's
+    // is the limit's record at the call (xovn). Twins of other judgments a check reads: a bare owned Place to `ref/X` asks no Copy
+    // (xbare), a signature's struct Constraint (xstruct, xstructv) and a conditional conformance's `when` premise (xcond, xcondv).
     public static TheoryData<string, string, string> RoundBoundRows => new()
     {
+        { "xov", Pq + "func pick<X>(x: ref/X) -> () => ()\nfunc pick<X>(x: ref/X, tag: i32 = 0) -> ()\n    X is Inner\n    return\nfunc f<T>(x: ref/T.(Pq).Up)\n    T is Pq\n    pick(x)\n", string.Empty },
+        { "xovr", Pq + "func pick<X>(x: ref/X, tag: i32 = 0) -> ()\n    X is Inner\n    return\nfunc pick<X>(x: ref/X) -> () => ()\nfunc f<T>(x: ref/T.(Pq).Up)\n    T is Pq\n    pick(x)\n", string.Empty },
+        { "xovn", Pq + "func pick<X>(x: ref/X, tag: i32 = 0) -> ()\n    X is Inner\n    return\nfunc f<T>(x: ref/T.(Pq).Up)\n    T is Pq\n    pick(x)\n", "PremiseClosureLimit_Kd" },
+        { "xov0", Pq + "func pick<X>(x: ref/X) -> () => ()\nfunc pick<X>(x: ref/X, tag: i32 = 0) -> ()\n    X is Inner0\n    return\nfunc f<T, U>(x: ref/U)\n    U is Mid\n    pick(x)\n", string.Empty },
+        { "xbare", Pq + "func g<X>(x: ref/X) => ()\nfunc f<T>(x: T.(Pq).Up)\n    T is Pq\n    g(x)\n", string.Empty },
+        { "xstruct", Pq + "struct Box<X>\n    X is Inner\n    var v: X\nfunc f<T>(x: ref/Box<T.(Pq).Up>)\n    T is Pq\n    return\n", "PremiseClosureLimit_Kd" },
+        { "xstructv", Pq + "struct Box<X>\n    X is Inner\n    var v: X\nfunc f<T>(x: ref/Box<T.(Pq).Up>)\n    T is Pq\n    T.(Pq).Next.(Pq).Next.(Pq).Up is Inner\n    return\n", string.Empty },
+        { "xcond", Pq + "contract Flag\nfunc needF<X>(x: ref/X)\n    X is Flag\n    return\nstruct Wrap<X>\n    var v: X\n    Self is Flag when X is Inner\nfunc f<T>(w: ref/Wrap<T.(Pq).Up>)\n    T is Pq\n    needF(w)\n", "PremiseClosureLimit_Kd" },
+        { "xcondv", Pq + "contract Flag\nfunc needF<X>(x: ref/X)\n    X is Flag\n    return\nstruct Wrap<X>\n    var v: X\n    Self is Flag when X is Inner\nfunc f<T>(w: ref/Wrap<T.(Pq).Up>)\n    T is Pq\n    T.(Pq).Next.(Pq).Next.(Pq).Up is Inner\n    needF(w)\n", string.Empty },
         { "pq2", Pq + "func f<T>(x: ref/T.(Pq).Up)\n    T is Pq\n    need(x)\n    need(x)\n", "PremiseClosureLimit_Kd PremiseClosureLimit_Kd" },
         { "pqmix", Pq + "func f<T, V>(x: ref/T.(Pq).Up, o: ref/V)\n    T is Pq\n    V is Other\n    needO(o)\n    need(x)\n", "PremiseClosureLimit_Kd" },
         { "pqcopy", Pq + "func f<T>(x: T.(Pq).Up) -> T.(Pq).Up\n    T is Pq\n    return x\n", "PremiseClosureLimit_Kd" },
@@ -389,7 +405,7 @@ public partial class TypeIdentityTest
     {
         var c = MinimalEmissionTest.Analyze(CyclePrelude + Pq + "func f<T>(x: T.(Pq).Up)\n    T is Pq\n    consume(x@move)\npublic func main() => ()\n");
         Assert.True(CompilationTestHelper.PublishedErrors(c).Length == 0, MinimalEmissionTest.Describe(c));
-        Assert.True(c.Binding.IdentityRounds >= Binding.IdentityRoundLimit, $"{c.Binding.IdentityRounds} rounds");
+        Assert.True(c.Binding.IdentityRounds >= Binding.PremiseClosureLimit, $"{c.Binding.IdentityRounds} rounds");
         Assert.True(c.Binding.CheckBound().IsComplete, MinimalEmissionTest.Describe(c));
     }
 }

@@ -137,7 +137,7 @@ public partial class TypeDagScalingTest
     }
 
     // PLAN G881 with G881b (the owner's O-321 (b); SPEC 8.3.3 Limits, 23.1.1): the extension rounds of one request end at
-    // Binding.IdentityRoundLimit. Pq's path equation `Self.(Pq).Up is Self.(Pq).Next.(Pq).Next.(Pq).Up` (allowed) supplies one deeper
+    // Binding.PremiseClosureLimit. Pq's path equation `Self.(Pq).Up is Self.(Pq).Next.(Pq).Next.(Pq).Up` (allowed) supplies one deeper
     // identity a round through row (5)'s mate, so with Inner supplied at `T` + 2k times `.(Pq).Next` + `.(Pq).Up` the request for
     // `T.(Pq).Up is Inner` is proven after k - 1 rounds (valid: SPEC 8.3.2, 8.2.3; the call is judged twice, so 6, 14, 30 rounds at
     // k = 4, 8, 16) and its mate walks grow with the cube of k (rounds x mates x a round's walks; asserted within x16 per x2). A
@@ -146,7 +146,7 @@ public partial class TypeDagScalingTest
     [Fact]
     public void ExtensionRoundsEndAtTheRoundLimit()
     {
-        const int Limit = Kimi.Compiler.Binding.IdentityRoundLimit;
+        const int Limit = Kimi.Compiler.Binding.PremiseClosureLimit;
         var (p4, p8, p16, edge) = (Proven(4), Proven(8), Proven(16), Proven(Limit + 1));
         Assert.True(p4.Rounds == 6 && p8.Rounds == 14 && p16.Rounds == 30 && edge.Rounds == 2 * Limit, $"rounds {p4.Rounds}, {p8.Rounds}, {p16.Rounds}; {edge.Rounds} at the edge");
         Assert.True(p8.Work <= 16 * p4.Work && p16.Work <= 16 * p8.Work, $"mate work {p4.Work}, {p8.Work}, {p16.Work} at 4, 8, 16; {edge.Work} at the edge");

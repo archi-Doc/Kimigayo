@@ -128,7 +128,9 @@ public sealed partial class Binding
             declaringType = this.ConstructionType(function, declaringType, evaluation.Frame.Types) ?? declaringType;
         }
 
-        evaluation.Evaluated[index] = new(candidate, state, declaringType, defaultsUsed, unsolved, closureReceiver, argumentMap, accessible, function.IsConstructor && StableConstructionPremises(state, unsolved, declaringType, operations), independentRejection, rejectedConstraint, premiseUnknown);
+        // The refusal the trial held (the owner's O-335 (a)): settled only if this candidate is selected (Binding.Calls).
+        var held = this.TakeTrialRefusal(call);
+        evaluation.Evaluated[index] = new(candidate, state, declaringType, defaultsUsed, unsolved, closureReceiver, argumentMap, accessible, function.IsConstructor && StableConstructionPremises(state, unsolved, declaringType, operations), independentRejection, rejectedConstraint, premiseUnknown) { HeldRefusal = held };
         var saved = evaluation.SavedCandidates != 0;
         var argumentCount = call.ArgumentNodes.Count;
         if (saved)
