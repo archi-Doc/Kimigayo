@@ -414,7 +414,7 @@ public sealed partial class Binding
                     structural,
                     evidence,
                     relateLater,
-                    invariant || IsInvariantLayer(formed, this))
+                    invariant || IsInvariantLayer(formed, this, null, default))
                 : this.Infer(formed, actual, function, frame, inferOrigins, lengths, commonOrigins, structural, evidence, relateLater, invariant)));
         }
 
