@@ -7,7 +7,7 @@ namespace Kimi.Compiler;
 
 // Argument positions (SPEC 10.5.1, 4.3.1, 14.9.2; DECISIONS BU-2 U3, BU-43): the parameter positions that the parts of an argument
 // occupy, which the evidence walk (SlotSolution.InferPosition), the defaults (SlotSolution.DefaultPosition) and the whole Type at a bare
-// slot (IndependentPositionType) recurse into.
+// slot (WholeEvidence, Binding.ArgumentKinds.Wholes.cs) recurse into.
 // - Responsibility: the expected Type of every part's child positions (ExpectedChild) and of a value part (ExpectedTypeOf); a position
 //   is the argument parts at one parameter position, a range of positionParts: a call argument or a Case
 //   payload; each element of a Tuple or array literal part, which SPEC 10.5.1 classifies one by one at its component or element Type;

@@ -109,7 +109,7 @@ public sealed partial class Binding
         {
             if (a?.Kind == BoundTypeKind.Parameter || b?.Kind == BoundTypeKind.Parameter)
             {
-                if (this.IndependentPositionType(start, fitLiterals: true) is not null)
+                if (this.IsWholeEvidence(start))
                 {
                     return Paths(a, b);
                 }
