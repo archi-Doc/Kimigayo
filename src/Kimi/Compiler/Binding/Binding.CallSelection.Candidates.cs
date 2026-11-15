@@ -204,8 +204,9 @@ public sealed partial class Binding
     // abstract part only (a closed Type forms under no binding; a call's Type also reads every pair's outer slot, CallType). Null where
     // nothing it formed formed no Type: the part's own failure. A Literal is judged at its target (FitsLiteralShape, SPEC 10.2.1): false, the part's
     // own failure, or unknown. A typed part at a closed leaf that disagrees with its binder's evidence fails (IsSource, the owner's
-    // O-338 (a); F's O1 (a)). Any other part is unknown, a wildcard in every later check as a parameter Type that failed to bind is
-    // (SPEC 10.1's Unknown applicability), and the trial goes on.
+    // O-338 (a); F's O1 (a)), and so does one that no case of the split layer adapts (FitsOpenLayer; the owner's O-366 (a)). Any other
+    // part is unknown, a wildcard in every later check as a parameter Type that failed to bind is (SPEC 10.1's Unknown applicability),
+    // and the trial goes on.
     private bool? UnformedPart(ref SlotSolution solution, BoundType type, int i, int mark, ref SlotSet unknown)
     {
         if (!type.HasAbstractPart || !this.UnformedSince(mark))
@@ -216,13 +217,44 @@ public sealed partial class Binding
         var part = solution.Call.ArgumentNodes[i];
         if (this.KindOf(part) == PartKind.Literal
             ? this.PartDefault(part, solution.Scope) is { } shape && !solution.FitsLiteralShape(type, shape, part, out _)
-            : this.LeafDisagrees(ref solution, type, part))
+            : this.TypedPartFails(ref solution, type, part))
         {
             return false;
         }
 
         unknown.Add(i);
         return true;
+    }
+
+    // SPEC 10.8, 10.2: whether a typed part whose pattern forms no Type fails case-independently: at a closed leaf by IsSource
+    // (LeafDisagrees), or where no case of the split layer adapts it (FitsOpenLayer); otherwise it rests on the split.
+    private bool TypedPartFails(ref SlotSolution solution, BoundType type, Koto part)
+        => this.LeafDisagrees(ref solution, type, part) || !this.FitsOpenLayer(ref solution, type, part);
+
+    // SPEC 10.2, 10.8 (O3; the owner's O-366 (a)): whether a typed part fits its pattern with the split layer open: the common adaptation
+    // itself (AdaptInput) judges the layer formed in each case of the callee's admitted set over its target, as it judges a pair layer
+    // case by case. A part that no case adapts fails case-independently (a typed bool at `s/Option<Box>`); one that some case adapts
+    // rests on the split.
+    private bool FitsOpenLayer(ref SlotSolution solution, BoundType type, Koto part)
+    {
+        if (part.BoundType is not { } actual ||
+            solution.Pattern(type) is not { Kind: BoundTypeKind.SemanticsApplication, Symbol.WholeType: { } whole, Components: [var target] })
+        {
+            return true;
+        }
+
+        var admitted = this.AdmittedSemantics(whole, this.ConstraintScope(solution.Function));
+        foreach (var mode in SemanticsOrder)
+        {
+            if ((admitted & mode.ToMask()) != 0 && this.Form(mode, target, null) is var layer &&
+                this.AdaptInput(part, FixedPattern.Open(layer), actual, solution.Scope, null, solution.DeclaringType, out var adapted, out _, out _, deferAcquisition: true) &&
+                this.FitsStructuralPartAt(adapted, layer, part))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     // SPEC 10.8 (the owner's O-338 (a)), 8.1.2: whether a typed part at an application over a closed leaf (IsExactSource) disagrees with
@@ -583,7 +615,7 @@ public sealed partial class Binding
                                 continue;
                             }
 
-                            if (unrepresented)
+                            if (unrepresented && !this.TypedPartFails(ref solution, pattern, call.ArgumentNodes[i]))
                             {
                                 unknown.Add(i);
                                 continue;
