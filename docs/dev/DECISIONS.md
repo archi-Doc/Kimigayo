@@ -13985,6 +13985,7 @@ structure is recorded here by the unit that first implements it.
     `PartOf` and `Row` read instead of `ArrayHelperKind` arms; a new helper kind sets it in its row. `FixedRemainder` also makes the
     routine's given number the array's length. Rejected: four bool columns, a delegate column, and a `LegacyRow` Kind column (no
     other reader needs a kind).
+  - Closed by R8-M48 (R8-W2 d, the second lander after b2-1): the component is deleted.
 - **R5-M17 `LlvmScalarText`** (2026-10-18; plan P4a, P4b; promoted under R5-M14; amended by R5-M163: `WritePositionConversion`
   deleted) A permanent Backend component owning the LLVM text of scalar arithmetic, numeric conversions and their checks: the
   instruction (`WriteOperation`), the overflow intrinsic (`WriteOverflowChecked`), the signed quotient with its zero and minimum /
@@ -16348,6 +16349,8 @@ structure is recorded here by the unit that first implements it.
     the legacy map (`LegacyWriter.Replace/Exchange/Swap`, `LegacyRow.Updates`) and `FunctionCodegen.Updates` are gone.
   - Superseded in part by R8-M22 (R8-W1c-2b): the map's writer column is gone: `LegacyWriter` and `LegacyRow.Writer` are deleted,
     and `LegacyRow` is `LegacyRow(FunctionAbi Routine)`, `writeLine`'s routine alone.
+  - Superseded in part by R8-M48 (R8-W2 d): the Map, Dispatch and Copy-slots paragraphs; `LegacyRuntimeHelpers.Row`, `LegacyRow` and
+    `FunctionCodegen.Legacy` are gone. Its Glue-target paragraph stays (`InstanceCollector.Callees`' `Bodyless`).
 - **R5-M117 The owner confirms C8b's departures** (owner, 2026-10-25, after C8b's design and before its behavior commit; verbatim
   「4件の逸脱を承認します」, answering the four departures put to the owner together, C6c's two (R5-M115) and C8b's two) The two departures R5-M116
   records are confirmed: an inline Body-disposition row (the updates `replace`, `exchange` and `swap`, as R5-M45's storage kernels) has no
@@ -16475,6 +16478,8 @@ structure is recorded here by the unit that first implements it.
     kind arms (R5-M16's amendment).
   - Superseded by R8-M11 (2026-11-09, R8-K1b-3): the `LegacyRow` item kind (`MonoKind.LegacyRow`, `AdmitRow`) is removed; its last
     row, placeEntry's, became a `DictionaryStorage` body at R8-K1b-2, and the Array rows went at R8-A1d.
+  - Superseded in part by R8-M48 (R8-W2 d): the Adapters paragraph: `FunctionCodegen.Passes` is the same kind only, since no helper
+    takes a string borrow by value.
 - **R5-M122 The owner confirms C8d's departure** (owner, 2026-10-25, after C8d's design; verbatim 「C8d の逸脱（Array カーネルの corpus O2 A/B を C8d
   と C9c の遅い方へ移し、C8d は一時カーネルで参考測定すること）も承認します。」) The departure R5-M121 records is confirmed: plan row C8d's Array kernel O2 moves to the
   later of C8d and C9c, since the `Array` corpus kernel's checksum line needs interpolation (C9c) under MIR code generation; C8d measured
@@ -19939,6 +19944,12 @@ R8-M* and R9-M* by the stage of the recording unit.
     the window's slot records no O0 (the O2 corpus A/B and the compile cost stay), so a slot takes about 34 minutes per B instead of
     45; O0 stays recorded at the stage exit (plan X1, §10.1 item 2). `artifacts/board/tools/rp8_window.sh run` takes `--o0` to
     record it.
+
+  - Amended by K (2026-11-16, after W-229): the window's slot runs after its Session and A5 oracle, and from the window's open until
+    the slot's CLOSED line no new heavy run starts. Run before the Session, the slot's drain waited for heavy runs that started
+    before the window (W-229: a Session of over three hours) and blocked every build meanwhile; run after it, the window's Session
+    overlaps them. A unit beyond a bound then leaves the window with one more Session, which RP8's record says is rare (W-228,
+    W-229: none).
 - **R8-M1 The representation structs and their Place contract** (owner, 2026-11-07, verbatim 「推奨の内容でOKです。処理を継続してください。」,
   on O-41 (a) and O-43 (A); R8-R1a; prototype R8-L0p; supersedes the two plan rows below) IMPL 21.1.3, SPEC 5.2, 5.5, 5.7.
   - Adopted: `Storage.ArrayRepr<T>`, `Storage.SliceRepr<T>` and `Storage.StringRepr`, internal `#Layout("C")` structs of the Kimi
@@ -21926,6 +21937,25 @@ R8-M* and R9-M* by the stage of the recording unit.
     O0 only (a mode steering the builder).
   - The three checks: Exposure, G416's generic Iterable rows, unchanged; Readings, none disputed (the library's unresolved-key
     sentinel `ResolvedRange.init(start: 0, end: -1)` is never iterated).
+- **R8-M48 `Console.writeLine(ref/string)` is a Kimigayo body; no compiler function has the Body disposition** (Back, 2026-11-16;
+  R8-W2 d, the second lander after b2-1 and b2-2; Major; the Front's C-321 consent) SPEC 22.7, 22.5.1.
+  - The string overload is `Console.writeLine(Text.utf8(text))` in `Formatting.kimi`'s Console group, after the view overload
+    (overload positions unchanged), with a `SourceFunction`, `CallerLocation` catalog row (SPEC 22.7, 22.5.1: `KIMI_E_STDOUT` at the
+    user's call). `CompilerFunctionKind.WriteLine`, `RuntimeAbi.WriteLine` and `{{__kimi_write_line}}` are deleted.
+  - `LegacyRuntimeHelpers.Row`, `LegacyRow` and `FunctionCodegen.Legacy` are deleted with their four readers (no row is left).
+    `DispositionKind.Body` is `None`'s row only. As the second lander after b2-1 (R8-M46, which deleted `WriterKind`), d deletes
+    `LegacyRuntimeHelpers` whole: `git grep LegacyRuntimeHelpers -- src tests scripts` is empty.
+  - R5-M121's Adapters paragraph (ruling Q6 (a)) is superseded in part: `FunctionCodegen.Passes` is the same kind only. The reason
+    that no longer holds: no helper takes a string borrow by value (the Array and Text rows are bodies since R8-A and R8-W1c, and
+    writeLine since d), and every other signature's kinds are `Abi.Kind`'s over the same Types.
+  - `ExpansionPlan.Direct` reads the declaration identity (`KimiDeclarationId.WriteLine`), not a compiler-function kind (the Front's
+    consent C-321).
+  - Rejected: restating the view overload's two writes in the string body; keeping the routine for O0 call depth (a hand-written IR
+    needs inexpressibility or a measured O2 need, AGENTS; RP8's record decides the O0 cost).
+  - Counts (RQ9): `CompilerFunctionKind` 29 -> 28 with `None`; `IntrinsicId`, `KimiDeclarationId` unchanged; catalog rows unchanged
+    (one row changes form); `RuntimeAbi.RuntimeDefinitions` 5 -> 4.
+  - Closed: R5-M116's Map, Dispatch and Copy-slots paragraphs (in part) and R5-M128's and R5-M130's "writeLine's, the one such kind
+    left" lines in the component's contract; R5-M16's temporary component.
 - **R9-M1 A check's phase sequence is `Compilation.Check`** (2026-11-08; R9-F5; Major, behavior-preserving; review 1 REVISE, then
   review 2). SPEC 23.1.2, 23.2.2; IMPL 20.6.1. Supersedes in part R5-M65 (`Project` reads `Accepts`) and R5-M77 (`Project` discovers
   the test catalog after acceptance and owns it).
