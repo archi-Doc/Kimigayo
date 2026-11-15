@@ -236,15 +236,17 @@ public sealed partial class Binding
         }
 
         // SPEC 14.9.2: a result target that waited for its position takes the Type that position supplies, or the outcome its root gave it.
-        // SPEC 10.2 row 2: a literal at ref/U is bound as its owner temporary at U, which the common adaptation below borrows. Its Type is
-        // U also where it rests on a failed part (a join, SPEC 23.1.2: no record of its own), so the value its kept sources build still
-        // takes the borrow its position needs.
+        // SPEC 10.2 row 2, 14.9.2 step 3 (PLAN G924 rule B): a value at ref/U (Materialization: a literal, or a value join waited or not)
+        // is bound as its owner temporary at U, which the common adaptation below borrows once. Its Type is U also where it rests on a
+        // failed part (a join, SPEC 23.1.2: no record of its own), so the value its kept sources build still takes the borrow its
+        // position needs.
         BoundType? actual;
+        var temporary = this.Materialization(node, expected, scope);
         if (this.WaitedResult(node) is { } waited)
         {
-            actual = this.DecideWaiting(node, waited, expected);
+            actual = this.DecideWaiting(node, waited, temporary ?? expected);
         }
-        else if (this.Materialization(node, expected, scope) is { } temporary)
+        else if (temporary is not null)
         {
             actual = this.BindNodeCore(node, scope, temporary);
             if (actual is null && node.BindingFailure == BindingFailure.None && this.prerequisites.ContainsKey(node))
