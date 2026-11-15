@@ -704,14 +704,15 @@ public sealed partial class Binding
             this.retentionKept[storage][input] |= input != output && holds ? kind ?? RetentionKind.Value : RetentionKind.None;
         }
 
-        var met = step switch
+        var met = loans ? Holding.Loans : Holding.None;
+        met |= step switch
         {
             HoldStep.Static => Holding.Static,
             HoldStep.Address when lent => Holding.Lent,
             HoldStep.Address when unbounded => Holding.Unstated | Holding.Unbounded,
             HoldStep.Address => Holding.Unstated,
             _ => Holding.None,
-        } | (loans ? Holding.Loans : Holding.None);
+        };
         var below = lent || (output == CallRetention.ResultOutput && refers);
         if (type.Symbol?.LibraryDeclaration == KimiDeclarationId.UniqSlice)
         {
