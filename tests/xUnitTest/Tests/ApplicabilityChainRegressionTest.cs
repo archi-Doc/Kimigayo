@@ -128,6 +128,7 @@ public partial class ApplicabilityChainRegressionTest
             Assert.Equal("Generic parameter 'T' is not bound", error.Label);
             Assert.Contains("No explicit Type argument or evidence binds T", error.Note, StringComparison.Ordinal);
         }
+    }
 
     // SPEC 10.2.1, 10.5.1 (PLAN G924, the owner's O-341 (a)): after selection a nested call at a slot no evidence binds takes its own
     // Type, resolved with no expected result (its own literals defaulting), and that Type binds the slot, as a literal's default does;
@@ -139,7 +140,6 @@ public partial class ApplicabilityChainRegressionTest
     [InlineData("struct Box<T>\n    public let value: T\n    public init(value: T) => self.value = value@move\nlet a = Box.init(Box.init(42))")]
     public void ANestedCallAtAnUnboundSlotTakesItsOwnType(string source)
         => Assert.True(DiagnosticCorpus.Check(source).Accepted);
-    }
 
     // SPEC 10.5.1, 14.9.2 (owner decision (1)): a control-flow argument that is no Literal is bound under the argument probe, which
     // reaches its result sources: literals beside only Never or waiting sources, or a waiting source call, make it Waiting, checked
