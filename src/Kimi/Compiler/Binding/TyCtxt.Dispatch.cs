@@ -58,6 +58,13 @@ internal sealed partial class TyCtxt
     internal static BindingSymbol Contract(BindingSymbol requirement) => requirement.Scope.Owner is ContractKoto { BoundSymbol: { } contract }
         ? contract : throw new InvalidOperationException($"{requirement.Name} is not a requirement.");
 
+    // SPEC 8.6.1: a shim's Contract (Binding.PrepareBuiltinTargets) by its lang item, which names what the shim runs: Equatable's or
+    // Comparable's comparison, or an arithmetic Contract's operation (ArithmeticContracts.IsArithmetic); null for a function of another
+    // disposition. Its readers are the Backend's shim targets (InstanceCollector.Witnesses' Shim), capability gaps
+    // (InstanceCollector.Capabilities) and bodies (FunctionCodegen.Shims).
+    internal static KimiDeclarationId? ShimContract(BindingSymbol function)
+        => function.Definition.Kind == DispositionKind.Shim ? Contract(function).LibraryDeclaration : null;
+
     // SPEC 8.6.1, 8.11.3, 11.9.2, 22.1; IMPL 21.3.1: what a requirement call with the recorded Contract reference runs under a closed
     // substitution.
     internal RequirementTarget Witness(BindingSymbol requirement, BindingSymbol? contract, Subst subst)

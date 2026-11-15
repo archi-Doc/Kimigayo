@@ -151,7 +151,7 @@ internal sealed partial class InstanceCollector
         bool Same(BoundType? declared, BoundType? key) => declared is not null && key is not null && ReferenceEquals(this.types.Erase(declared), key);
     }
 
-    // K 4.3: a shim's targets, at its default site, by its function's Contract (the Shim disposition, Binding.PrepareBuiltinTargets): a
+    // K 4.3: a shim's targets, at its default site, by its function's Contract (TyCtxt.ShimContract; Binding.PrepareBuiltinTargets): a
     // comparison item's (Equatable, Comparable) are its direct parts' (Parts); an arithmetic shim's scalar Self
     // calls no witness (ArithmeticContracts.Supports); a setter's property witness drops the Field's
     // old value (its glue), the Field Agrees found in the representative Self at admission, so a Self without it is a broken contract.
@@ -174,7 +174,7 @@ internal sealed partial class InstanceCollector
             return;
         }
 
-        switch (key.Symbol!.Definition.Kind == DispositionKind.Shim ? TyCtxt.Contract(key.Symbol).LibraryDeclaration : null)
+        switch (TyCtxt.ShimContract(key.Symbol!))
         {
             case KimiDeclarationId.Equatable or KimiDeclarationId.Comparable:
                 this.Parts(program, item, site, key, self);
@@ -182,7 +182,7 @@ internal sealed partial class InstanceCollector
             case var contract when ArithmeticContracts.IsArithmetic(contract):
                 return;
             default:
-                throw new InvalidOperationException($"The shim {key.Symbol.Name} has no target row.");
+                throw new InvalidOperationException($"The shim {key.Symbol!.Name} has no target row.");
         }
     }
 

@@ -9,7 +9,7 @@ namespace Kimi.Compiler.Backend;
 // DECISIONS R5-M126, R5-M141): a Builtin item's function under its requirement's signature in its instance (ModuleCodegen.Shim: the
 // admitting call's substitution, a caller-location function), which a Requirement call, a requirement Item's Value call and its adapter
 // entry call (FunctionCodegen.Calls' Witness). Its operands are ref/Self addresses, read in place; a comparison acquires, destroys and
-// reports nothing. By its function's Contract (TyCtxt.Contract; the Shim disposition, Binding.PrepareBuiltinTargets), as the collector's
+// reports nothing. By its function's Contract (TyCtxt.ShimContract; the Shim disposition, Binding.PrepareBuiltinTargets), as the collector's
 // shim targets:
 // - Equatable and Comparable: the comparison item's node (InstanceCollector.Comparison; DECISIONS R5-M166) by its direct parts,
 //   whose items and witnesses are the item's targets in order: a Tuple's parts left to right at their Field offsets in its Self's layout,
@@ -51,9 +51,8 @@ internal sealed partial class FunctionCodegen
             return;
         }
 
-        var contract = TyCtxt.Contract(key.Symbol!);
-        this.Returned(ArithmeticContracts.IsArithmetic(contract.LibraryDeclaration)
-            ? this.Arithmetic(contract, self) : this.Compare(contract.LibraryDeclaration, (ComparisonMode)key.Variant, self));
+        var contract = TyCtxt.ShimContract(key.Symbol!);
+        this.Returned(ArithmeticContracts.IsArithmetic(contract) ? this.Arithmetic(contract, self) : this.Compare(contract, (ComparisonMode)key.Variant, self));
     }
 
     // A comparison's or an arithmetic operation's value returned (ReturnValue) and the function ended; nothing after a record (no value).
@@ -207,14 +206,14 @@ internal sealed partial class FunctionCodegen
     // SPEC 13.3.3: the built-in operation of an arithmetic shim's Contract, its MIR operator (MirTypes.ArithmeticOperation) through the
     // operator table's row (RowOf), on its loaded operands (a unary one's on both sides), with its check, which Aborts at the location the
     // shim received (Apply, Location).
-    private Value? Arithmetic(BindingSymbol contract, BoundType self)
+    private Value? Arithmetic(KimiDeclarationId? contract, BoundType self)
     {
         if (this.Laid(self) is not { } lowering)
         {
             return null; // A broken contract, recorded.
         }
 
-        var (kind, op) = MirTypes.ArithmeticOperation(contract.LibraryDeclaration);
+        var (kind, op) = MirTypes.ArithmeticOperation(contract);
         var left = this.Loaded(self, lowering, new('p', 0));
         var right = kind == MirRvalueKind.BinaryOp ? this.Loaded(self, lowering, new('p', 1)) : left;
         return this.Apply(RowOf(kind, op), Column(kind, op, self), left, right, proven: false, default);

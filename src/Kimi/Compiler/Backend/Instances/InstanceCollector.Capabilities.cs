@@ -18,7 +18,7 @@ internal sealed partial class InstanceCollector
     // shim, as a statement's operation is at its location; none for any other target (a Shim of another Contract included).
     private static CapabilityGap? ArithmeticGap(in RequirementTarget target)
     {
-        var contract = target.Target!.Definition.Kind == DispositionKind.Shim ? TyCtxt.Contract(target.Target).LibraryDeclaration : null;
+        var contract = TyCtxt.ShimContract(target.Target!);
         if (!ArithmeticContracts.IsArithmetic(contract))
         {
             return null;
