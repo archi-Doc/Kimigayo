@@ -429,11 +429,18 @@ public sealed partial class Binding
 
         // SPEC 10.8, 4.3.1, 4.6.2: a Tuple or array literal or a mixed range, part by part at their positions; at a bare slot the
         // whole literal, only when every part is evidence. A composite at `ref/T` borrows its temporary, whose Origin binds the input's.
-        // A join its call classifies, and a join position of aggregates, go by their child positions likewise (SPEC 10.5.1, 14.9.2).
+        // A join its call classifies, and a join position of aggregates, go by their child positions likewise (SPEC 10.5.1, 14.9.2). A
+        // position of several parts holds a join's sources: its value is the join's (PLAN G924 rule B, R8), so its temporary is the
+        // join's, the outermost result target of its parts, never a source's.
         private bool InferComposite(BoundType pattern, int start, int end, bool late)
         {
             var binding = this.Binding;
             var part = binding.positionParts[start];
+            while (end - start != 1 && ResultTarget(part) is { } target)
+            {
+                part = target;
+            }
+
             if (binding.Materialization(part, pattern, this.Scope) is { } temporary)
             {
                 this.InferTemporary(pattern, part);
