@@ -710,7 +710,8 @@ public sealed partial class Binding
             }
         }
 
-        // SPEC 10.8, 10.2.1: a Literal's default is the last exact source of a binder; an input formed only now is inferred now.
+        // SPEC 10.8, 10.2.1: the defaults bind what no evidence bound (the owner's O-343 (a), O-347 (a)); an input formed only now is
+        // inferred now.
         if (!this.SettleWaiting(ref solution, mapping, ref waiting, ref sourced))
         {
             return false;

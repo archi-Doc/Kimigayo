@@ -167,10 +167,8 @@ public sealed partial class Binding
         // structure its default would have; it binds no slot, and it is no evidence, so it meets the position as its default will
         // (FittedPattern of the Literal part: every pair layer whose binder evidence fixed formed; the owner's O-294 (b)). `met` is
         // that pattern, whose outer layer decides the operation the position is ranked by (SPEC 10.2.2's Literal row; PLAN G915).
-        // A pair application still at its outer layer is one whose binder no source has fixed: the default's shape is not inferred
-        // through it, since at an exact source Infer would take that shape as the binder's evidence (SourcedLayer, IsSource); the
-        // Literal meets the layer once its default binds the binder, owner when nothing else does, and then fits the target the layer
-        // fixes (SPEC 10.2.1, 10.8; the owner's O-343 (a)), as at a structured application whose binder is open.
+        // Where the default has nothing to bind (DefaultBindsAt) its shape is not checked: the Literal fits the layer's target once
+        // the binder is fixed.
         internal readonly bool FitsLiteralShape(BoundType pattern, BoundType shape, Koto literal, out BoundType? met)
         {
             var binding = this.Binding;
@@ -189,9 +187,7 @@ public sealed partial class Binding
                     return false; // Unformed (D3): the Literal fits no pattern there, and the call is Unsupported.
                 }
 
-                var input = LiteralInputType(formed);
-                return (input.Kind == BoundTypeKind.SemanticsApplication && binding.HasOpenApplication(input, this.SlotOwner, this.Frame)) ||
-                    binding.Infer(input, shape, this.SlotOwner, this.Frame);
+                return !this.DefaultBindsAt(memberPattern) || binding.Infer(LiteralInputType(formed), shape, this.SlotOwner, this.Frame);
             }
             finally
             {
@@ -415,6 +411,28 @@ public sealed partial class Binding
             }
         }
 
+        // SPEC 10.2.1, 10.8 (the owner's O-343 (a), O-347 (a)): whether a Literal's default has anything to bind at `pattern`. A Literal
+        // is no evidence, and its default binds only slots no evidence binds: along the outer layers, a pair layer whose target holds no
+        // slot left unbound (a closed leaf, or a Type slot another input bound) gives it nothing, whatever fixes the binder and whenever,
+        // so the Literal fits that target once the binder is fixed (SPEC 12.3), in any argument order and beside an expected result.
+        // The original, and a layer over a slot still open, are where the default binds (the binder owner when nothing else fixes it).
+        // Read by the shape check before selection (FitsLiteralShape) and by the late pass (InferLiteral).
+        private readonly bool DefaultBindsAt(BoundType pattern)
+        {
+            while (pattern is { Kind: BoundTypeKind.Semantics or BoundTypeKind.SemanticsApplication, Components: [var target] })
+            {
+                if (pattern.Kind == BoundTypeKind.SemanticsApplication &&
+                    this.Binding.SubstituteType(target, this.SlotOwner, this.Types, this.Lengths) is not null)
+                {
+                    return false;
+                }
+
+                pattern = target;
+            }
+
+            return true;
+        }
+
         // SPEC 10.2.1: a Literal is evidence only through its default, applied to the selected candidate, for slots no other evidence binds;
         // at a fixed `ref/U` it is a borrowed temporary (InferTemporary).
         private bool InferLiteral(BoundType pattern, Koto literal, bool late)
@@ -424,9 +442,17 @@ public sealed partial class Binding
                 return true;
             }
 
-            if (this.Binding.SubstituteType(pattern, this.SlotOwner, this.Types, this.Lengths) is { } fixedType)
+            var fixedType = this.Binding.SubstituteType(pattern, this.SlotOwner, this.Types, this.Lengths);
+            if (fixedType is not null || !this.DefaultBindsAt(pattern))
             {
-                if (this.Binding.TemporaryTarget(literal, fixedType, this.Scope) is not null)
+                // Nothing for the default to bind: a temporary borrowed under a binder already fixed `ref` (by evidence or the expected
+                // result; a late default fixes owner) supplies its Origin, at the complete Type or at the formed layer.
+                if ((fixedType ?? this.AdaptationPattern(pattern, literal)?.Type) is not { } at)
+                {
+                    return false; // Unformed (D3): the layer forms no Type, and the call is Unsupported.
+                }
+
+                if (this.Binding.TemporaryTarget(literal, at, this.Scope) is not null)
                 {
                     this.InferTemporary(pattern, literal);
                 }

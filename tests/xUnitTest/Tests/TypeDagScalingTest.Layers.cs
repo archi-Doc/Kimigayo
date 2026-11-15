@@ -109,13 +109,15 @@ public partial class TypeDagScalingTest
     // The forms and their SPEC rules: a Field read and a receiver below the layers (3.4.3, 7.3; Q has neither); a `for` Subject (14.6.2,
     // 15.1.6; i32 is not iterable); built-in arithmetic and comparison of the terminals (3.5.3, 13.1, 13.4; bool is not numeric or
     // ordered, Q not Equatable); a Case Pattern (14.8.1; i32 has no Case); the shared-reference row at an argument (10.2: layers ending
-    // in i32 give one ref/i32; bool does not); a string comparison through safe reference layers (13.4; i32 is no string).
+    // in i32 give one ref/i32; bool does not); a string comparison through safe reference layers (13.4; i32 is no string); a member
+    // Borrow below the layers (15.6.3, PLAN G813: the containment walk meets every layer, one recursion each; Q has no Field).
     internal static string LayeredForm(string form, bool pair, int layers, bool valid)
     {
         var (good, bad, result, body) = form switch
         {
             "field" => ("Node", "Q", "i32", "    return x.weight\n"),
             "recv" => ("Node", "Q", "i32", "    return x.load()\n"),
+            "borrow" => ("Node", "Q", "i32", "    let b = x.weight@ref\n    return b + 0\n"),
             "for" => ("Array<i32>", "i32", "i32", "    var total: i32 = 0\n    for v in x\n        total += v\n    return total\n"),
             "arith" => ("i32", "bool", "i32", "    return x + 1\n"),
             "match" => ("Option<i32>", "i32", "i32", "    match x\n        .Some(let v) => return v\n        .None => return 0\n"),
