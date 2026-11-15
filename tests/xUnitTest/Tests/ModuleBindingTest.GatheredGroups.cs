@@ -38,6 +38,11 @@ public partial class ModuleBindingTest
     private const string BUniq = "group B\n    public func pick(value: uniq/i32) -> i32 => 2\n";
     private const string BUnsafe = "group B\n    public unsafe func pick(value: i32) -> i32 => value\n";
     private const string BVar = "group B\n    public var pick: i32 = 3\n";
+    private const string D6Gen = "public group A\n    public func pick<T>(value: T) -> T => value@move\n";
+    private const string D6I32 = "public group B\n    public func pick(value: i32) -> i32 => value + 100\n";
+    private const string D6Apply = "func apply(action: (i32) -> i32, value: i32) -> i32 => action(value)\n";
+    private const string ASpecBool = "group A\n    public func pick<T>(value: T) -> i32 => 0\n    specialize func pick<bool>(value: bool) -> i32 => 1\n";
+    private const string BoolApply = "func applyB(action: (bool) -> i32, value: bool) -> i32 => action(value)\n";
     private const string CStr = "group C\n    public func pick(value: string) -> i32 => 2\n";
     private const string Box = "struct Box\n    public func pick(value: i32) -> i32 => value\n";
     private const string GenericBox = "struct Box<T>\n    public func pick(value: i32) -> i32 => value\n";
@@ -260,6 +265,39 @@ public partial class ModuleBindingTest
         var use = nodes.Last(static x => x.ToString() == "pick");
         var expected = nodes.OfType<FunctionKoto>().Single(static x => x.ToString().Contains("pick(value: i32)", StringComparison.Ordinal));
         Assert.Same(expected, HirTables.Of(use).Symbols[use.SyntaxId]?.Declaration);
+    }
+
+    // SPEC 10.4 step 3 with 10.5.3 and 10.5.1: a value use of a gathered group, a reference fitted to a Function Type or an argument,
+    // selects the non-generic declaration over a generic one (d6: two public groups under the project's default aliases, in either order) and over a generic one with an explicit
+    // specialization, which is no candidate (8.13.3, sp-gb), in either order. Dev accepted these too but selected the generic
+    // declaration (wrong code, the Middle's RP17 probes: d6 printed 5 for 105, sp-gb 1 for 2), so the selection is read at Binding's
+    // layer, as above.
+    [Theory]
+    [InlineData("d6-ref-AB", "A,B", D6Gen + D6I32 + "let f: (i32) -> i32 = pick\nlet n = f(5)\n", "pick(value: i32)")]
+    [InlineData("d6-ref-BA", "B,A", D6Gen + D6I32 + "let f: (i32) -> i32 = pick\nlet n = f(5)\n", "pick(value: i32)")]
+    [InlineData("d6-arg-AB", "A,B", D6Gen + D6I32 + D6Apply + "let n = apply(pick, 5)\n", "pick(value: i32)")]
+    [InlineData("d6-arg-BA", "B,A", D6Gen + D6I32 + D6Apply + "let n = apply(pick, 5)\n", "pick(value: i32)")]
+    [InlineData("sp-gb-ref-AB", "", "alias A\nalias B\n" + ASpecBool + BBool + "let f: (bool) -> i32 = pick\nlet n = f(true)\n", "pick(value: bool)")]
+    [InlineData("sp-gb-ref-BA", "", "alias B\nalias A\n" + ASpecBool + BBool + "let f: (bool) -> i32 = pick\nlet n = f(true)\n", "pick(value: bool)")]
+    [InlineData("sp-gb-arg-AB", "", "alias A\nalias B\n" + ASpecBool + BBool + BoolApply + "let n = applyB(pick, true)\n", "pick(value: bool)")]
+    [InlineData("sp-gb-arg-BA", "", "alias B\nalias A\n" + ASpecBool + BBool + BoolApply + "let n = applyB(pick, true)\n", "pick(value: bool)")]
+    public void AGatheredValueUseSelectsTheNonGenericDeclaration(string name, string defaults, string source, string expected)
+    {
+        var c = Compilation.CreateForTest();
+        c.Project.ProjectFile.OutputKind = OutputKind.Application;
+        if (defaults.Length != 0)
+        {
+            c.Project.ProjectFile.Alias = defaults.Split(',');
+        }
+
+        Assert.True(c.Prepare(WindowsProfile.Target));
+        c.Kotonoha.AddSource(new SourceDocument("Main.kimi", source + "Console.writeLine(\"ok\")\n"));
+        c.Check();
+        Assert.DoesNotContain(TestDiagnostics.Of(c), static x => x.Severity == DiagnosticSeverity.Error);
+        var nodes = KotoTree.Walk(c.Kotonoha.RootKoto).ToArray();
+        var use = nodes.Last(static x => x.ToString() == "pick");
+        var declaration = nodes.OfType<FunctionKoto>().Single(x => x.ToString().Contains(expected, StringComparison.Ordinal));
+        Assert.True(ReferenceEquals(declaration, HirTables.Of(use).Symbols[use.SyntaxId]?.Declaration), name);
     }
 
     private static IEnumerable<string[]> Orders(string[] items)
