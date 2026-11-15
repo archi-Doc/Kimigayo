@@ -527,15 +527,11 @@ struct S
     public func take(value: i32) -> () => ()        // Error: duplicate of the previous take.
 ```
 
-Forming a Type written in a requirement's or an implementation's signature, or in an associated-Type binding, is no compatibility
-obligation: the Constraints its formation needs ([§8.3](#83-constraint-proof)) are proven where it is written, after the conformance
-holds, and its Origin well-formedness follows [§15.6.1](15-ownership-and-lifetime-analysis.md#1561-origin-relations-and-well-formedness).
-A bound the Contract states for an associated Type ([§8.5.1](#851-declaration-and-specification)) stays an obligation of the
-conformance; evidence for an instance of a generic Type rests on that instance's Constraints ([§8.6.1](#861-conformance-declarations-and-identity)),
-so a bound whose evidence needs the conformance being verified supplies none ([§8.3.3](#833-recursion-and-finality)).
+Forming a Type written in a requirement's or an implementation's signature, or in an associated-Type specification ([§8.5.1](#851-declaration-and-specification)), is no compatibility obligation: the Constraints its formation needs ([§8.3](#83-constraint-proof)) are proven where it is written, after the conformance holds, and its Origin well-formedness follows [§15.6.1](15-ownership-and-lifetime-analysis.md#1561-origin-relations-and-well-formedness). An associated Type's requirement is part of the conformance's compatibility ([§8.11.3](#8113-checking-and-use)): the evidence that the specified Type meets it rests on that Type's Constraints, an instance of a generic Type's at its arguments ([§8.6.1](#861-conformance-declarations-and-identity)), and evidence that depends on the conformance being verified, directly or through other declarations, supplies none ([§8.3.3](#833-recursion-and-finality)).
 
 ```kimi
 contract K
+
 contract C
     associate Item is K
 
