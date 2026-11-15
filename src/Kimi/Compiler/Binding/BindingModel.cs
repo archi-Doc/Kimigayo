@@ -444,10 +444,11 @@ public sealed record BoundType
     private readonly bool hasAbstractPart;
     private readonly int height;
 
-    internal BoundType(string name, BoundTypeKind kind, BindingSymbol? symbol = null, SemanticsKind semantics = SemanticsKind.Owner, BoundType[]? components = null, long length = 0, BoundOrigin? origin = null, BoundOrigin[]? originArguments = null, BoundLength? lengthExpression = null, BoundLength?[]? lengthArguments = null, Subst? closureContext = null)
+    internal BoundType(string name, BoundTypeKind kind, BindingSymbol? symbol = null, SemanticsKind semantics = SemanticsKind.Owner, BoundType[]? components = null, long length = 0, BoundOrigin? origin = null, BoundOrigin[]? originArguments = null, BoundLength? lengthExpression = null, BoundLength?[]? lengthArguments = null, Subst? closureContext = null, Koto? binder = null)
     {
         this.Name = name;
         this.Kind = kind;
+        this.Binder = binder;
         this.Symbol = symbol;
         this.Semantics = semantics;
         this.Components = components ?? [];
@@ -613,6 +614,11 @@ public sealed record BoundType
     // A closure an instance closed keeps that instance's substitution (SPEC 6.1.3, 8.1.3; DECISIONS R5-M36), interned and shared by the instance's
     // closures, even when none of its slots occupy capture storage; a Field initializer's keeps its Type's instance (TyCtxt.HeldType, BU-60).
     internal Subst? ClosureContext { get; }
+
+    // SPEC 8.10, 15.3.4: a Function Type's per-call binder, the Function Type syntax that declares it, while it quantifies the outer
+    // Origin of one of its own direct inputs; null where it quantifies none and on every other kind. An Input Origin of another
+    // binder inside it is fixed, even at its own slot index. Part of the Type's identity (TyCtxt.Intern), kept by every rebuild.
+    internal Koto? Binder { get; }
 
     // Function Item length bindings use declaration slots; Type slots are null. Components contain only actual Types.
     internal BoundLength?[] LengthArguments { get; } = [];

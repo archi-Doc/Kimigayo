@@ -334,11 +334,11 @@ public sealed partial class Binding
     {
         if (origin.Open && ReferenceEquals(origin.Binder, source))
         {
-            // A required input's own per-call Origin is the outer Origin of a direct borrow that the signature's Function Type binds at
-            // that position (SPEC 8.10); any other Origin there is fixed.
+            // A required input's own per-call Origin is the outer Origin of a direct borrow that the signature's binder
+            // (BoundType.Binder) quantifies at that position (SPEC 8.10); any other Origin there is fixed.
             var inputs = signature.Components[0];
             return origin.Slot >= 0 && origin.Slot < inputs.Components.Count && inputs.Components[origin.Slot].Origin is { Open: false } perCall &&
-                !(fixedOnly && perCall is { Kind: OriginKind.Input, Occurrence: null, Binder: FunctionTypeKoto } && perCall.Slot == origin.Slot) ? perCall : origin;
+                !(fixedOnly && perCall is { Kind: OriginKind.Input, Occurrence: null } && ReferenceEquals(perCall.Binder, signature.Binder) && perCall.Slot == origin.Slot) ? perCall : origin;
         }
 
         if (origin.Kind == OriginKind.Intersection && origin.Operands.Count != 0)
