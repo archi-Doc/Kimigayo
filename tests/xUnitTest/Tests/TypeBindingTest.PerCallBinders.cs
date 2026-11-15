@@ -183,6 +183,18 @@ public partial class TypeBindingTest
             """,
             "UnprovenOriginContract_Kd h"
         },
+        // n4i (invalid, SPEC 10.7, 8.10, 3.8): the result three levels deep: ((FX(b)) -> i32) -> i32 against ((PC) -> i32) -> i32 (the parameter u as n0i's, valid).
+        {
+            "n4i",
+            """
+            func h(b: ref/i32, u: (((ref/i32 during b) -> i32) -> i32) -> i32) -> (((ref/i32 during b) -> i32) -> i32) -> i32 => u@move
+
+            func f() -> i32
+                let k: (ref/i32, (((ref/i32) -> i32) -> i32) -> i32) -> (((ref/i32) -> i32) -> i32) -> i32 = h
+                return 0
+            """,
+            "UnprovenOriginContract_Kd h"
+        },
         // n0i (valid, SPEC 10.7, 8.10, 3.8): two levels, no invariant layer: u: ((FX(b)) -> i32) -> i32 against ((PC) -> i32) -> i32.
         {
             "n0i",
