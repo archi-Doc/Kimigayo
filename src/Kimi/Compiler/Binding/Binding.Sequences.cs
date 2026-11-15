@@ -72,23 +72,12 @@ public sealed partial class Binding
         source.Iteration?.Decomposition.Reset(null);
         var followed = this.PairSubject(source.Iterable, iterable, scope);
         iterable = followed ?? iterable;
-        source.Mode = SubjectModeOf(source.Iterable, iterable);
-        if (iterable is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components: [{ Kind: BoundTypeKind.Nominal, Symbol.LibraryDeclaration: KimiDeclarationId.ResolvedRange }] })
-        {
-            // SPEC 14.6.2, 3.4.3: the iteration entry is selected through the reference; the Copy interval is the
-            // entry receiver and is read once for the loop.
-            this.adaptations[source.Iterable] = new(ExpectedAdaptationKind.ReferentRead, iterable.Components[0]);
-            iterable = iterable.Components[0];
-        }
+        source.Mode = this.SubjectModeOf(source.Iterable, iterable);
 
-        // Dynamic Array, Dictionary, fixed-array and Slice loops use their Kimigayo entries and iterators (SPEC 14.6.2,
-        // 22.1.2.5). SPEC 4.6.4: a ResolvedRange loop yields the isize positions of its RangeIterator<isize> entries
-        // directly; a validated interval never Aborts, so no iterator value is formed.
-        var view = iterable;
-        var element = view is not null && ReferenceTypes.IsResolvedRange(view) ? BoundType.ISize : null;
-
-        var userEntry = element is null && iterable is not null &&
-            this.BindUserIteration(source, scope, iterable, out element);
+        // Every loop uses its Subject's Kimigayo entry, selected by the Subject mode, and iterator: a Dynamic Array's, Dictionary's,
+        // fixed array's and Slice's (SPEC 14.6.2, 22.1.2.5) and a ResolvedRange's RangeIterator<isize> (SPEC 4.6.4) included.
+        BoundType? element = null;
+        var userEntry = iterable is not null && this.BindUserIteration(source, scope, iterable, out element);
 
         // SPEC 14.6.2, 15.1.6: Some delivers one owned item, independently of the entry mode, which the ordinary match plan
         // decomposes: a parenthesized binding by the item's Tuple position and one Binding position per slot, each selected by the
@@ -116,7 +105,7 @@ public sealed partial class Binding
                 ? this.SelectLayers(decomposition, slot, structural: false, scope, ref slotReach, out slotLayers) : slot;
             var symbol = name.BoundSymbol!;
             symbol.Type = selected is null ? null : this.BindingTypeOf(selected, slotReach, name);
-            symbol.BindsReference = slotReach.Access != PatternAccessMode.Owned || (!userEntry && source.Mode != SubjectMode.ByValue);
+            symbol.BindsReference = slotReach.Access != PatternAccessMode.Owned;
             if (iterable is null)
             {
                 // SPEC 23.1.2: a binding of a failed iterable rests on it, as a local rests on a failed initializer (BindReference).
@@ -160,7 +149,7 @@ public sealed partial class Binding
             return Complete(source, null);
         }
 
-        if (!userEntry && !ReferenceTypes.IsResolvedRange(view))
+        if (!userEntry)
         {
             return this.FailIterationSubject(source, scope, iterable);
         }
@@ -178,7 +167,7 @@ public sealed partial class Binding
     // parameter. A proven conformance whose entry or step did not bind remains an implementation boundary of the loop.
     private BoundType? FailIterationSubject(ForKoto source, BindingScope scope, BoundType subject)
     {
-        var entry = this.IterationEntry(source, ref subject);
+        var entry = this.IterationEntry(source, scope, ref subject, out _);
         var proof = this.ProveConstraint(this.InternConstraint(new(ConstraintKind.Contract, subject, contract: entry)), scope);
         if (proof == ConstraintProof.Proven)
         {
@@ -196,25 +185,35 @@ public sealed partial class Binding
 
     // SPEC 14.6.2, 3.4.3: the Subject mode selects the entry, which a borrowing mode searches at the referent of every
     // reference layer.
-    private BindingSymbol IterationEntry(ForKoto source, ref BoundType subject)
+    private BindingSymbol IterationEntry(ForKoto source, BindingScope scope, ref BoundType subject, out bool crossed)
     {
+        crossed = false;
         if (source.Mode == SubjectMode.ByValue)
         {
             return this.Library.IntoIterable;
         }
 
-        while (subject is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 })
-        {
-            subject = subject.Components[0];
-        }
-
+        // SPEC 14.6.2, 3.4.3: the borrowing entry is selected through the safe value-reference layers (LayerBelow; a pair layer as
+        // member lookup follows it, FollowablePair: no Constraint names a pair's whole Type, so none stops it here).
+        var stored = ComparisonReferent(subject);
+        subject = this.LayersTerminal(subject, scope);
+        crossed = !ReferenceEquals(subject, stored);
         return source.Mode == SubjectMode.Exclusive ? this.Library.UniqIterable : this.Library.Iterable;
     }
 
     private bool BindUserIteration(ForKoto source, BindingScope scope, BoundType subject, out BoundType? item)
     {
         item = null;
-        var entry = this.IterationEntry(source, ref subject);
+        var entry = this.IterationEntry(source, scope, ref subject, out var crossed);
+        if (crossed && source.Mode == SubjectMode.Exclusive)
+        {
+            // SPEC 7.3, 13.5.5: an exclusive receiver selected through a pair layer below a stored layer has no adaptation yet (PLAN
+            // G162's remainder): the loop's located Unsupported_Kd (FailIterationSubject's proven entry), never a candidate failure.
+            // A temporary structure (PLAN G794): removed once that receiver (G162) and the Exclusive `for`'s entry call through stored
+            // layers (G179) adapt.
+            return false;
+        }
+
         var method = source.Mode == SubjectMode.ByValue ? "intoIterator" : source.Mode == SubjectMode.Exclusive ? "iterateUniq" : "iterate";
         // SPEC 8.3.3: a conditional conformance whose condition is refuted supplies no entry; the Subject is then diagnosed.
         // A range's condition is decided at the Subject as well when it is only unproven, so the loop reports it once there

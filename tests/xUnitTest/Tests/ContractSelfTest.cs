@@ -108,9 +108,10 @@ public class ContractSelfTest
         Inner + "struct S\n    Self is C\n    public func f<T>(value: T.(D<S>).N) -> ()\n        T is C2<i32>\n        ()",
         "UnprovenConstraint_Kd UnprovenConstraint_Kd UnprovenConstraint_Kd")]
 
-    // Not G180: a concrete Type's ancestor path is keyed by the written `D<Self>` (PLAN G397, the identity unit after G170's C3).
+    // Not G180: a concrete Type's ancestor path is keyed by the written `D<Self>` (PLAN G397, the identity unit after G170's C3), so it
+    // names no `D<S>`; read in S's terms it is `D<S>`, no known difference, so the path is not ruled out: Unknown, never Refuted (G866).
     [InlineData(
-        "contract D<U>\ncontract C: D<Self>\nstruct S\n    Self is C\n" + Needs + "func probe(s: ref/S)\n    needs<S, S>(s)", "NoApplicableOverload_Kd")]
+        "contract D<U>\ncontract C: D<Self>\nstruct S\n    Self is C\n" + Needs + "func probe(s: ref/S)\n    needs<S, S>(s)", "UnprovenConstraint_Kd")]
     public void ContractReferenceArgumentsNameTheConformingType(string source, string codes)
     {
         var c = MinimalEmissionTest.Analyze(source + "\nlet x = 1");

@@ -135,11 +135,35 @@ public class UnboundCallSlotTest(ITestOutputHelper output)
     [InlineData("func run(action: (i32) -> i32) -> i32 => action(1)\nfunc run<T>(action: (T) -> T, extra: i32 = 0) -> i32 => 0\npublic func main() -> ()\n    let r = run(func (n) => n + 1)\n", "run(func (n) => n + 1)")]
     [InlineData("func h(value: i32) -> i32 => 1\nfunc h<T>(value: T) -> i32 => 2\npublic func main() -> ()\n    let r = h(1)\n", "h(1)")]
     [InlineData("func g2(value: f64) -> i32 => 1\nfunc g2<T>(value: T) -> i32 => 2\npublic func main() -> ()\n    let r = g2(1.5)\n", "g2(1.5)")]
+    // SPEC 10.2.2's Literal row, 12.3.1 (PLAN G915): under ref both candidates borrow the Literal's temporary (at an expected ref/U the
+    // Literal is that temporary), the open one whatever V binds, so step 1 ties and step 2 decides: a Literal, a control-flow Literal and
+    // a literal-only expression, in either order, and between two generic candidates.
+    [InlineData("func kr2(m: ref/i64, y: ref/i32) -> i32 => 1\nfunc kr2<V>(m: ref/i64, y: ref/V) -> i32 => 0\npublic func main() -> ()\n    let b: i64 = 2\n    let r = kr2(b@ref, 5)\n", "kr2(b@ref, 5)")]
+    [InlineData("func kg<W>(m: ref/W, y: ref/i32) -> i32 => 1\nfunc kg<W, V>(m: ref/W, y: ref/V) -> i32 => 0\npublic func main() -> ()\n    let b: i64 = 2\n    let r = kg(b@ref, 5)\n", "kg(b@ref, 5)")]
+    [InlineData("func kr2s(m: ref/i32, y: ref/i64) -> i32 => 1\nfunc kr2s<V>(m: ref/V, y: ref/i64) -> i32 => 0\npublic func main() -> ()\n    let b: i64 = 2\n    let r = kr2s(5, b@ref)\n", "kr2s(5, b@ref)")]
+    [InlineData("func k3(m: ref/i32, y: ref/i32) -> i32 => 1\nfunc k3<V>(m: ref/V, y: ref/V) -> i32 => 0\npublic func main() -> ()\n    let r = k3(5, 6)\n", "k3(5, 6)")]
+    [InlineData("func kr2(m: ref/i64, y: ref/i32) -> i32 => 1\nfunc kr2<V>(m: ref/i64, y: ref/V) -> i32 => 0\npublic func main() -> ()\n    let b: i64 = 2\n    let f = true\n    let r = kr2(b@ref, if f => 5 else => 6)\n", "kr2(b@ref, if f => 5 else => 6)")]
+    [InlineData("func kr2(m: ref/i64, y: ref/i32) -> i32 => 1\nfunc kr2<V>(m: ref/i64, y: ref/V) -> i32 => 0\npublic func main() -> ()\n    let b: i64 = 2\n    let r = kr2(b@ref, 5 + 1)\n", "kr2(b@ref, 5 + 1)")]
     public void OpenParameterTypesAreIncomparable(string source, string at)
     {
         var error = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics);
         Assert.Equal((nameof(DiagnosticCode.AmbiguousBinding_Kd), at), (error.Code, Text(source, error.Span)));
         Assert.Equal(2, error.Related!.Count(static x => x.Role == "candidate"));
+    }
+
+    // SPEC 10.2.2's Literal row, 12.3.1, 10.4 (PLAN G915): an open Literal position under ref ties with a candidate that borrows the
+    // Literal's temporary, so another argument decides step 1 (a Same-Semantics Reborrow beats one shared reference), in either declaration
+    // order, or evidence binds the slot and step 3 does. The plain candidate returns bool and the generic one i64; the result read into
+    // `selected` shows the selection.
+    [Theory]
+    [InlineData("func kx2(a: uniq/(uniq/Node during p) during q, y: ref/i32) -> bool => true\nfunc kx2<V>(a: ref/Node, y: ref/V) -> i64 => 0\n", "kx2(x, 5)", "bool")]
+    [InlineData("func kx2<V>(a: ref/Node, y: ref/V) -> i64 => 0\nfunc kx2(a: uniq/(uniq/Node during p) during q, y: ref/i32) -> bool => true\n", "kx2(x, 5)", "bool")]
+    [InlineData("func kx(a: ref/Node, y: ref/i32) -> bool => true\nfunc kx<V>(a: uniq/(uniq/Node during p) during q, y: ref/V) -> i64 => 0\n", "kx(x, 5)", "i64")]
+    [InlineData("func k3(m: ref/i32, y: ref/i32) -> bool => true\nfunc k3<V>(m: ref/V, y: ref/V) -> i64 => 0\n", "k3(5@i32, 6)", "bool")]
+    public void AnOpenLiteralIsRankedByTheBorrowItsPatternNeeds(string group, string call, string selected)
+    {
+        var source = "struct Node\n    public var n: i32 = 0\n" + group + "func use(x: uniq/(uniq/Node during p) during q) -> ()\n    let r = " + call + "\n    let t: " + selected + " = r\npublic func main() -> () => ()\n";
+        Assert.Empty(DiagnosticCorpus.Check(source).Diagnostics);
     }
 
     // SPEC 10.5, 23.1.2: the body of the selected candidate's argument keeps its own error without a fallback to another candidate, and

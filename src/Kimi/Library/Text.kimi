@@ -1,3 +1,0 @@
-// Compiler-implemented operations loaded into Kimi.Text.
-public func writer<W>(destination: uniq/W) -> Utf8Writer
-    W is BufferWriter
