@@ -403,7 +403,7 @@ public sealed partial class Binding
             return;
         }
 
-        context.HasValue |= IsAggregateArgument(expression) || expression is DictionaryLiteralKoto;
+        context.HasValue |= IsAggregateArgument(expression) || expression is DictionaryLiteralKoto || this.OwnerValueCall(expression, scope);
 
         var evidence = this.ResultEvidence(expression, scope, context.HasLiteral);
         if (evidence is not null && !ReferenceEquals(evidence, BoundType.Never))
@@ -425,6 +425,27 @@ public sealed partial class Binding
         {
             context.HasNever = true; // SPEC 14.9.2, 10.5.1: a Never source supplies no candidate and is no Literal.
         }
+    }
+
+    // SPEC 14.9.2 step 3, 3.6 (PLAN G924 item (1)): a call source is an owner value, neither a Place nor a borrow value, when every
+    // function its name reaches declares a result that is no borrow (a reference layer at its root).
+    private bool OwnerValueCall(Koto expression, BindingScope scope)
+    {
+        if (expression is not InvocationKoto { Method: IdentifierNameKoto callee } ||
+            this.Lookup(callee.IdentifierName, this.NodeScope(callee, scope), callee) is not { } function)
+        {
+            return false;
+        }
+
+        for (var symbol = function; symbol is not null; symbol = symbol.Next)
+        {
+            if (symbol.Declaration is not FunctionKoto { ReturnType.BoundType: { Kind: not BoundTypeKind.Semantics } })
+            {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     private void TransferEvidence(Koto node, Koto target, BindingScope scope, ResultContext context)
