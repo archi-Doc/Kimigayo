@@ -102,4 +102,22 @@ public class MemberFunctionReferenceTest
         Assert.True(c.Binding.Result.IsComplete && c.Analyze().IsVerified, MinimalEmissionTest.Describe(c));
         ScalarEmissionTest.EmitFixture("MemberReferenceContainerGet", source, string.Empty);
     }
+
+    private const string ItemArgument = "struct A\n    public var z: i32 = 0\n    public func apply<F, V>(f: F, g: ref/G<V>) -> ()\n        F is Callable<(ref/G<V>, ref/i32, ref/G<i32>, ref/G<i32>, ref/i32) -> ()>\n        return\n" +
+        "    public func applyE<V>(f: (ref/G<V>, ref/i32, ref/G<i32>, ref/G<i32>, ref/i32) -> (), g: ref/G<V>) -> () => ()\n" +
+        "struct G<T>\n    public var n: i32 = 0\n    public func put2<U>(self: ref/Self, u: ref/U, gi: ref/G<i32>, gu: ref/G<U>, n: ref/i32)\n";
+
+    // SPEC 10.5.3, 7.7.4, 9.7.2 (PLAN G457 (R1) (b)): an Item formed in its own member's body on another occurrence of its Type
+    // (`G<U>.put2<i32>`: `self: ref/G<U>`, the body's own U) is an argument under that one signature: bound to a Callable slot without
+    // erasure, erased at a Function Type parameter, and with its own slot inferred from that parameter.
+    [Theory]
+    [InlineData("callable-int", ItemArgument + "        A.apply(G<U>.put2<i32>, gi)\n", "NoApplicableOverload_Kd: A.apply(G<U>.put2<i32>, gi)")] // fr2a-call I
+    [InlineData("callable", ItemArgument + "        A.apply(G<U>.put2<i32>, gu)\n", "")] // fr2a-callv V
+    [InlineData("erased-int", ItemArgument + "        U is Owned\n        A.applyE<i32>(G<U>.put2<i32>, gi)\n", "NoApplicableOverload_Kd: A.applyE<i32>(G<U>.put2<i32>, gi)")] // fr2a-erase I
+    [InlineData("erased", ItemArgument + "        U is Owned\n        A.applyE<U>(G<U>.put2<i32>, gu)\n", "")] // fr2a-erasev V
+    [InlineData("inferred-int", ItemArgument + "        U is Owned\n        A.applyE<i32>(G<U>.put2, gi)\n", "NoApplicableOverload_Kd: A.applyE<i32>(G<U>.put2, gi)")] // fr2a-arginf I
+    [InlineData("inferred", ItemArgument + "        U is Owned\n        A.applyE<U>(G<U>.put2, gu)\n", "")] // fr2a-arginfv V
+    [InlineData("other-method", ItemArgument + "        U is Owned\n        return\n    public func go(self: ref/Self, gi: ref/G<i32>)\n        A.applyE<i32>(G<i32>.put2<i32>, gi)\n", "")] // ca-root V
+    public void AnItemOfItsOwnBodyIsAnArgumentUnderItsOneSignature(string form, string program, string records)
+        => CompilationTestHelper.AssertRecordsAtLines(form, program + "()", records);
 }
