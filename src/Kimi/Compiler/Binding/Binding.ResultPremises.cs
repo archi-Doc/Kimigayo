@@ -270,14 +270,14 @@ public sealed partial class Binding
             this.ChildGroup(solution, i, out var start, out var end);
             this.evidenceNameReads += 1 + end - start;
             if (start == end && solution.Rows[i] is { Contribution: Contribution.Evidence, Pattern: { } pattern } &&
-                MentionsOriginSlot(pattern, solution.Binder, slot))
+                this.MentionsOriginSlot(pattern, solution.Binder, slot))
             {
                 return true;
             }
 
             for (var j = start; j < end; j++)
             {
-                if (this.IsEvidenceLeaf(solution, j, end) && this.childRows[j].Pattern is { } leaf && MentionsOriginSlot(leaf, solution.Binder, slot))
+                if (this.IsEvidenceLeaf(solution, j, end) && this.childRows[j].Pattern is { } leaf && this.MentionsOriginSlot(leaf, solution.Binder, slot))
                 {
                     return true;
                 }
@@ -285,7 +285,7 @@ public sealed partial class Binding
         }
 
         return solution.Binder is FunctionKoto { BoundSymbol.ReceiverIndex: >= 0 and var receiver } function &&
-            function.Parameters[receiver].Type.BoundType is { } receiverPattern && MentionsOriginSlot(receiverPattern, solution.Binder, slot);
+            function.Parameters[receiver].Type.BoundType is { } receiverPattern && this.MentionsOriginSlot(receiverPattern, solution.Binder, slot);
     }
 
     // R2' (SPEC 15.3.6; DECISIONS BU-99): a position that gives no evidence, a Signature leaf row or a default the call uses, makes each
