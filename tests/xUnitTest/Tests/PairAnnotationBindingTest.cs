@@ -355,7 +355,10 @@ public partial class PairAnnotationBindingTest
 
     // SPEC 10.8, 8.1.1 (D-590 (1)): a pair target's position meets the target of the pair's binding, a Type in the caller's terms, by
     // structure and Semantics; in a recursive call or a construction of the enclosing structure its symbols are the callee's own, and
-    // reading it as a pattern once overflowed the stack. Each valid form is accepted; each invalid twin is its one record.
+    // reading it as a pattern once overflowed the stack. Each valid form is accepted; each invalid twin is its one record. `f(x@move,
+    // x@move)` binds `s/T` by the pair target alone, which forms no Type (PLAN G886): its verdict rests on that unformed split, so its
+    // record is the located Unsupported_Kd (DECISIONS D3, the owner's O-332 (a)) until the representation lands; 2f4bec489 gave the
+    // unproven `s is owner or ref` (UnprovenConstraint_Kd).
     [Theory]
     [InlineData("func f<s/T>(m: s/T, x: T) -> i32\n    s is owner or ref\n    return f(m@move, x@move)\n", "clean")]
     [InlineData("func f<s/T>(m: s/T, x: T) -> i32\n    s is owner or ref\n    return f<s/T>(m@move, x@move)\n", "clean")]
@@ -365,7 +368,7 @@ public partial class PairAnnotationBindingTest
     [InlineData("struct S<s/T>\n    s is owner or ref\n    public init(m: s/T, x: T) => ()\n    public func g(self: ref/Self, m: s/T, x: T) -> i32\n        let k = S<s/T>.init(m@move, x@move)\n        return 0\n", "clean")]
     [InlineData("func f<s/T>(m: s/T, x: T) -> i32\n    s is owner or ref\n    return f(m@move, m@move)\n", "1*NoApplicableOverload_Kd")]
     [InlineData("func f<s/T, r/V>(m: s/T, n: r/V, x: V, y: T) -> i32\n    s is owner or ref\n    r is owner or ref\n    return f(n@move, m@move, x@move, y@move)\n", "1*NoApplicableOverload_Kd")]
-    [InlineData("func f<s/T>(m: s/T, x: T) -> i32\n    s is owner or ref\n    return f(x@move, x@move)\n", "1*UnprovenConstraint_Kd")]
+    [InlineData("func f<s/T>(m: s/T, x: T) -> i32\n    s is owner or ref\n    return f(x@move, x@move)\n", "1*Unsupported_Kd")]
     public void ARecursivePairTargetMeetsItsBindingAsACallerType(string program, string profile)
         => Assert.Equal(profile, DiagnosticCorpus.RecordProfile(program));
 
