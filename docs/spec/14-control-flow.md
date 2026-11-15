@@ -469,6 +469,7 @@ inspectCounter(if ready => first else => second)                            // P
 // inspectTable(if ready => table else => ["b": 2])                         // Error: table is not acquired by value; write table@move.
 // inspectTable(if ready => tableRef else => ["b": 2])                      // Error: a Dictionary is not of a read Type, so tableRef does not fit.
 // inspectCounter(if ready => Counter.init(1)@obj else => first)            // Error: first is not acquired by value.
+// inspectCounter(if ready => Counter.init(1)@obj else => Counter.init(2)@rc) // Error: obj/Counter and rc/Counter have no common Type.
 ```
 
 ```kimi
