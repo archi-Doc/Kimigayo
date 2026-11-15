@@ -60,7 +60,7 @@ public static partial class Parser
         }
 
         var next = reader.PeekKind(1);
-        return next.IsIdentifierOrContextualKeyword() || (specification && next is TokenKind.OpenParenthesis or TokenKind.ColonColon);
+        return next.IsIdentifierOrContextualKeyword() || (specification && next is TokenKind.OpenParenthesis or TokenKind.ColonColon or TokenKind.OpenBracket);
     }
 
     /// <summary>Parses an effect clause or an effect specification; the reader stands at <c>effect</c> (SPEC 8.11.1). The item

@@ -244,6 +244,11 @@ public sealed partial class Binding
         _ => EffectRejection.OutsideContract,
     };
 
+    // SPEC 23.1.2: a selector Parsing rejected (F.6.2's ContractSelector, or the ContractReference in its group) is judged there; every
+    // reader of the selector's reference (an applying item's target, a misplaced item's own judgment) rests on that record.
+    private static bool SelectorRestsOnParsing(Koto selector)
+        => IsRecovery(selector, out _) || (selector is ParenthesizedTypeKoto { Type: { } written } && IsRecovery(written, out _));
+
     // SPEC 8.11.1: the bounds of every Contract, checked once per pass after the requirement headers are bound and before
     // conformances are verified against them.
     private void PrepareEffectBounds()
@@ -449,6 +454,11 @@ public sealed partial class Binding
     private BoundRequirement? EffectTarget(BoundContract shape, EffectBoundKoto effect, BindingScope scope)
     {
         var selector = effect.Selector!;
+        if (SelectorRestsOnParsing(selector))
+        {
+            return null;
+        }
+
         if (this.SelectorReference(selector, scope, out var named, out var reference) is { } fault)
         {
             this.RejectEffectBound(effect, fault);
@@ -534,7 +544,7 @@ public sealed partial class Binding
             // No verdict of the item reads that judgment, so it runs with no frame open (SuspendConsultation), as an applying item's and a
             // Callable list's do: nothing it reads (a syntax Error among its Type arguments) becomes the item's prerequisite.
             this.RejectEffectBound(effect, new(position));
-            if (effect.Selector is { } written)
+            if (effect.Selector is { } written && !SelectorRestsOnParsing(written))
             {
                 var frame = this.SuspendConsultation();
                 var fault = this.SelectorReference(written, this.ConstraintScope(effect), out _, out _);

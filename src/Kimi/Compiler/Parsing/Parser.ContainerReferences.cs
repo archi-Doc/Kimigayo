@@ -314,8 +314,10 @@ public static partial class Parser
             return group;
         }
 
+        // The Name is a TypeSegment's: its Type arguments are read with it, so a head that is no AssociatedTypeName is judged whole.
         var name = ParseName(ref reader);
-        return new MemberAccessKoto(ref reader, SourceSpan.FromBounds(group.Span.Start, name.Span.End), group, name);
+        var member = new MemberAccessKoto(ref reader, SourceSpan.FromBounds(group.Span.Start, name.Span.End), group, name);
+        return reader.CurrentTokenKind == TokenKind.LessThan ? ParseGenericsPostfix(ref reader, member) : member;
     }
 
     // SPEC F.6.2 ContractSelector := ContainerPath | "(" ContractReference ")", judged once complete, for both heads (a whitelist): a

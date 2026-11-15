@@ -50,7 +50,7 @@ public static partial class Parser
     /// <returns>The conditions, one node spanning them.</returns>
     internal static SyntaxFormKoto ParseConformanceConditions(ref TokenReader reader, IsKoto head)
     {
-        if (!IsRecoveredType(ref reader, head.Left) && head.Left is not IdentifierNameKoto { IdentifierName: "Self" } &&
+        if (!IsRecoveredType(ref reader, head.Left) && !(head.Left is IdentifierNameKoto subjectName && subjectName.IdentifierName == TokenKind.Self.ToText()) &&
             head.Left.Expected(SyntaxForm.ConformanceSubject) is { } subject && reader.CodeContext.RecoveryCause(head) is null)
         {
             reader.CodeContext.RecordRecovery(head, subject);
