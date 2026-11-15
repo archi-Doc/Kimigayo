@@ -20,6 +20,9 @@ public sealed partial class Binding
     // once the erasure's Owned failure is decided after the prologue).
     private List<(Koto Use, Koto? First, ICheckCause? Next, ICheckCause? ReentrySite)>? derivedUses;
 
+    // The ordinal a record names a member by ("1st Type argument").
+    private static string Ordinal(int n) => n + (n % 100 is >= 11 and <= 13 ? "th" : (n % 10) switch { 1 => "st", 2 => "nd", 3 => "rd", _ => "th" });
+
     // SPEC 15.2.3, 7.7.4: the erasure decided which part failed and which member explains it (ErasesToFunction), which records an Owned
     // failure here at the converted value; a recorded mismatch of a Closure or Item against a Function Type always follows its erasure, so
     // a missing outcome is a broken contract. A use records one failure: its erasure's record, made where it was judged, is that record, so
@@ -77,8 +80,60 @@ public sealed partial class Binding
         var fact = new OwnedConversionFact(at, implementation, name, member!, origin, entry, closure, borrow, owned.Refuted);
         this.FailExplained(ref this.ownedConversions, use, fact.Refuted ? BindingFailure.UnsatisfiedConstraint : BindingFailure.UnprovenConstraint, fact);
         return true;
+    }
 
-        static string Ordinal(int n) => n + (n % 100 is >= 11 and <= 13 ? "th" : (n % 10) switch { 1 => "st", 2 => "nd", 3 => "rd", _ => "th" });
+    // SPEC 7.7.4, 15.2.3, 23.1.2 (C-359 B4; G812 rulings 89-91, the owner's O-369 (a)): a reference at a common Function Type whose
+    // signature rests on an unformed split (DECISIONS D3) is still erased in its environment, whose Owned proof reads only the bound Type
+    // arguments, never the unformed signature: a Language failure of its own, recorded at its own node, as on dev. A written Type argument
+    // (the reference's own, or its container's for a member) not proven Owned is recorded there, and the reference, a verdict over that
+    // failed child, adds no record; with none written, the one candidate's inferred arguments (its trial frame) make the reference's
+    // record. One with an Error proof rests on that Error.
+    private void FailUnformedOwned(Koto use, BoundType required, SlotFrame? trial)
+    {
+        var written = KotoHelper.UnwrapParentheses(use) switch
+        {
+            GenericsKoto generics => generics,
+            MemberAccessKoto { Left: GenericsKoto container } => container,
+            _ => null,
+        };
+
+        if (written is null && trial is { } frame)
+        {
+            for (var i = 0; i < frame.Types.Length; i++)
+            {
+                if ((frame.Types[i] ?? frame.Selectors[i]) is not { } inferred)
+                {
+                    continue;
+                }
+
+                var unproven = this.ProveOwned(inferred, use, out _);
+                if (unproven is not (ConstraintProof.Unknown or ConstraintProof.Refuted))
+                {
+                    continue;
+                }
+
+                var fact = new OwnedConversionFact(use, required, $"{Ordinal(i + 1)} Type argument", inferred, null, null, null, null, unproven == ConstraintProof.Refuted);
+                this.FailExplained(ref this.ownedConversions, use, fact.Refuted ? BindingFailure.UnsatisfiedConstraint : BindingFailure.UnprovenConstraint, fact);
+                return;
+            }
+        }
+
+        for (var i = 0; written is not null && i < written.TypeArguments.Count; i++)
+        {
+            if (written.TypeArguments[i] is not { BoundType: { } type } argument)
+            {
+                continue;
+            }
+
+            var proof = this.ProveOwned(type, argument, out _);
+            if (proof is not (ConstraintProof.Unknown or ConstraintProof.Refuted))
+            {
+                continue;
+            }
+
+            var fact = new OwnedConversionFact(argument, required, $"{Ordinal(i + 1)} Type argument", type, null, null, null, null, proof == ConstraintProof.Refuted);
+            this.FailExplained(ref this.ownedConversions, argument, fact.Refuted ? BindingFailure.UnsatisfiedConstraint : BindingFailure.UnprovenConstraint, fact);
+        }
     }
 
     // SPEC 23.1.2 (DECISIONS BU-75, BU-76): a conversion whose own check failed because a part it judged failed is a derived failure, with

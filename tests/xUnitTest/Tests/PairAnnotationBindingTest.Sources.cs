@@ -413,6 +413,20 @@ public partial class PairAnnotationBindingTest
     public void AnUnformedSplitDecidesOnlyACandidateThatRestsOnIt(string source, string records)
         => Assert.Equal(records, DiagnosticCorpus.RecordProfile(source));
 
+    // SPEC 7.7.4, 15.2.3, 23.1.2 (C-359 B4; G812 rulings 89-91, the owner's O-369 (a)): a reference whose signature rests on the unformed
+    // split is still erased in its environment, whose Owned proof reads only the bound Type arguments: a Language failure of its own at
+    // its own node, as on dev. A written argument takes it (fx4 = fr4x, `put3<U>`; fr3x, the container's `S<U>`), and the reference, a
+    // verdict over that failed child, adds no record; with none written the reference takes it (fr2). Its twins: only the split (fx1,
+    // `U is Owned`) and only Owned (fx2, `t is owner`). 09251209c gave fx4, fr3x and fr2 the split's Unsupported_Kd alone.
+    [Theory]
+    [InlineData("struct Box\n    public let v: i32\n    public init(v: i32)\n        self.v = v@move\nfunc put3<s/W>(m: s/W, n: s/Box) -> i32\n    return 0\nfunc call<t/U>(m: t/U, u: U) -> i32\n    t is owner or ref\n    U is Owned\n    let f: (U, Box) -> i32 = put3<U>\n    return 0\n", "1*Unsupported_Kd")] // fx1
+    [InlineData("struct Box\n    public let v: i32\n    public init(v: i32)\n        self.v = v@move\nfunc put3<s/W>(m: s/W, n: s/Box) -> i32\n    return 0\nfunc call<t/U>(m: t/U, u: U) -> i32\n    t is owner\n    let f: (U, Box) -> i32 = put3<U>\n    return 0\n", "1*UnprovenConstraint_Kd")] // fx2
+    [InlineData("struct Box\n    public let v: i32\n    public init(v: i32)\n        self.v = v@move\nfunc put3<s/W>(m: s/W, n: s/Box) -> i32\n    return 0\nfunc call<t/U>(m: t/U, u: U) -> i32\n    t is owner or ref\n    let f: (U, Box) -> i32 = put3<U>\n    return 0\n", "1*UnprovenConstraint_Kd")] // fx4
+    [InlineData("struct Box\n    public let v: i32\n    public init(v: i32)\n        self.v = v@move\nstruct S<s/T>\n    public init(m: s/T) => ()\n    public func g(self: ref/Self, n: s/Box) -> i32\n        return 0\nfunc call<t/U>(m: t/U, u: U) -> i32\n    t is owner or ref\n    let f: (ref/S<U>, Box) -> i32 = S<U>.g\n    return 0\n", "1*UnprovenConstraint_Kd")] // fr3x
+    [InlineData("contract Tag\n    func tag(self: ref/Self) -> i32\nfunc put<s/W>(m: s/W) -> i32\n    W is Tag\n    return 0\nfunc call<t/U>(m: t/U, u: U) -> i32\n    t is owner or ref\n    U is Tag\n    let f: (U) -> i32 = put\n    return 0\n", "1*UnprovenConstraint_Kd")] // fr2
+    public void AnErasedReferenceOnTheSplitStillProvesItsEnvironmentOwned(string source, string records)
+        => Assert.Equal(records, DiagnosticCorpus.RecordProfile(source));
+
     // SPEC 10.8 ("Explicit arguments bind first ... An explicit Type argument is kept"), 10.5.3, 7.7.4 (C-293's amendment, C-359 B2):
     // a reference's explicit Type arguments are its binding before S is matched, so S's part at `y: s/V` is no evidence for the binder
     // `put<i32, X>` fixes to owner, and S binds nothing once every slot is bound. The reference is then erased when its environment is

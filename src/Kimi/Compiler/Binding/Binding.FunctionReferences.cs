@@ -103,7 +103,14 @@ public sealed partial class Binding
 
             if (this.TakeUnformed(held))
             {
-                // DECISIONS D3 (temporary, PLAN G886): a candidate's signature at S needed a Type no binding represents.
+                // DECISIONS D3 (temporary, PLAN G886): a candidate's signature at S needed a Type no binding represents. Its erasure's
+                // Owned proof reads only its bound Type arguments, so it is still judged (FailUnformedOwned), and a reference resting on a
+                // failed argument is no record of its own (SPEC 23.1.2).
+                if (erase && count == 1)
+                {
+                    this.FailUnformedOwned(use, required, trial);
+                }
+
                 return this.Fail(use, BindingFailure.Unsupported);
             }
 
