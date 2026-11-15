@@ -8,11 +8,12 @@ namespace Kimi.Compiler;
 
 // Binding.ArithmeticDiagnostics: SPEC 13.3's arithmetic records. Responsibility: the typed facts of a fixed provider route's failed
 // selection and of an explicitly declared conformance's ineligibility (13.3.3), and SPEC 13.3.4's direction contradiction
-// (ValidateArithmeticDirections). Inputs of the direction check: the view's available written arithmetic premises, the opposite
-// premise as ContractSolver's rows (FirstRows) and the pair compared by Binding.TypeIdentity's judge (IdentityProven). Output: the
-// owner's ArithmeticDirection failure with both premises' uses. Invariant: a function of the view, whatever the premises' order, side
-// or spelling, and at every depth the rows reach. Prohibitions: no scan of written facts for the opposite premise and no identity rule
-// of its own. Limits: a pair neither of whose premises is written in the view's environments waits for Closure(view) (C3/e2); a clause
+// (ValidateArithmeticDirections). Inputs of the direction check: the available arithmetic premises in the view's environments (written,
+// or one level from a written Contract premise: ExpandScopeContractPremises), the opposite premise as ContractSolver's rows (FirstRows)
+// and the pair compared by Binding.TypeIdentity's judge (IdentityProven). Output: the owner's ArithmeticDirection failure with both
+// premises' uses. Invariant: a function of the view, whatever the premises' order, side or spelling, and at every depth the rows reach.
+// Prohibitions: no scan of written facts for the opposite premise and no identity rule of its own. Limits: a pair neither of whose
+// premises is in the view's environments (written, or one level from a written Contract premise) waits for Closure(view) (C3/e2); a clause
 // instance at a class mate's projection prefix is no row of the subject until PLAN G881's row (5) (EnumerateMates) lands (d2n).
 public sealed partial class Binding
 {
@@ -80,8 +81,8 @@ public sealed partial class Binding
             : node is ParenthesizedKoto parentheses ? ContractUse(parentheses.Operand, contract) : null;
     }
 
-    // SPEC 13.3.4 under 8.2.3 and 8.3.2 (PLAN G882): for each available written arithmetic premise `X is Op<Y>` of the view's chain,
-    // the opposite premise of its operand pair is an available row of the opposite Contract that the rows supply for Y (OppositeRow).
+    // SPEC 13.3.4 under 8.2.3 and 8.3.2 (PLAN G882): for each available arithmetic premise `X is Op<Y>` in the environments of the view's
+    // chain (written, or one level from a written Contract premise), the opposite premise of its operand pair is an available row of the opposite Contract that the rows supply for Y (OppositeRow).
     // The contradiction is reported once, at the first scope where its two premises meet: the validation judges a parent before its
     // members, and a failed environment is neither read here nor supplies a row, so a member's view never meets its parent's pair.
     private bool ValidateArithmeticDirections(BindingScope scope)
