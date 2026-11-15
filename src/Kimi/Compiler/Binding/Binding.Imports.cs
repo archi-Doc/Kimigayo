@@ -119,7 +119,7 @@ public sealed partial class Binding
             return false;
         }
 
-        this.nameSteps.Add(new(NameStepKind.ImportGroup, use, candidate, imported, default, default, default));
+        this.nameSteps.Add(new(NameStepKind.ImportGroup, use, candidate, imported, default, default, default, null));
         return true;
     }
 
