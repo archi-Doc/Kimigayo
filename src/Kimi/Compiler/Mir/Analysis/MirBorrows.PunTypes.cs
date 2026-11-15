@@ -115,15 +115,16 @@ internal sealed partial class MirBorrows
     // punnable Type; none can have been written by a raw pointer, 5.5), over which a raw pointer read reaches storage the body does
     // not own (SPEC 15.6 Holders, example punnedRef; MirBorrows.Reach's Punned) though nothing is written or read on there (the
     // owner's O-223 (B')).
-    // A Scalar: neither (punnable; an `owner` Scalar's byte is Scalared's). A raw pointer: Pointer surely. A safe reference or an
-    // object handle (`ref`, `uniq`, `objref`, `objuniq`: MirTypes.IsBorrow; `obj`, `rc`, `arc`: BoundType.HandleMode): Fixed surely.
+    // A Scalar: neither (punnable; an `owner` Scalar's byte is Scalared's). Unit and a Function Item: neither (size 0, IMPL 21.1: a
+    // Place of no byte reads nothing, the planning session's reading 2). A raw pointer: Pointer surely. A safe reference or an object
+    // handle (`ref`, `uniq`, `objref`, `objuniq`: MirTypes.IsBorrow; `obj`, `rc`, `arc`: BoundType.HandleMode): Fixed surely.
     // A fixed array has its element's, by its own extent at most; a Tuple, a struct (its Fields and its base, AdtDef) and an enum
     // (its Cases' payloads) their parts' most, an enum also its own bytes (punning changes no Case), which it may have (Open). Open
     // for both (it may have one: Binding's layer fact stands, nothing establishes the byte): any other Type (an abstract part, a
     // Closure, a Slice, a Function value), a part Binding did not bind and a declaration on an inline cycle (an error at its container).
     private (Extent Pointer, Extent Fixed) PlaceBytes(BoundType type)
     {
-        if (ScalarTypes.Supports(type))
+        if (ScalarTypes.Supports(type) || ReferenceEquals(type, BoundType.Unit) || type.Kind == BoundTypeKind.FunctionItem)
         {
             return default;
         }

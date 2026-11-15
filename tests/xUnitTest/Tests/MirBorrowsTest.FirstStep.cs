@@ -1129,6 +1129,72 @@ public sealed partial class MirBorrowsTest
                 keep2(h@raw@raw/(raw/(raw/u8)), spare)
                 kk = 2
             """,
+        ["hUnitOk"] = """
+            func keep2(slot: raw/(raw/(raw/u8)), value: raw/u8) => ()
+            func hUnitOk()
+                var kk: u8 = 1
+                let r = kk@uniq
+                var spare: raw/u8 = r@follow@raw
+                var h = ()
+                keep2(h@raw@raw/(raw/(raw/u8)), spare)
+                kk = 2
+            """,
+        ["hUnitPairOk"] = """
+            func keep2(slot: raw/(raw/(raw/u8)), value: raw/u8) => ()
+            func hUnitPairOk()
+                var kk: u8 = 1
+                let r = kk@uniq
+                var spare: raw/u8 = r@follow@raw
+                var h: ((), [0 of ref/i32]) = ((), [])
+                keep2(h@raw@raw/(raw/(raw/u8)), spare)
+                kk = 2
+            """,
+        ["hUnitPairOneBad"] = """
+            func keep2(slot: raw/(raw/(raw/u8)), value: raw/u8) => ()
+            func hUnitPairOneBad()
+                var kk: u8 = 1
+                let r = kk@uniq
+                var spare: raw/u8 = r@follow@raw
+                var y: i32 = 5
+                var h: ((), [1 of ref/i32]) = ((), [y@ref])
+                keep2(h@raw@raw/(raw/(raw/u8)), spare)
+                kk = 2
+            """,
+        ["hFnItemOk"] = """
+            func nop() => ()
+            func keep2(slot: raw/(raw/(raw/u8)), value: raw/u8) => ()
+            func hFnItemOk()
+                var kk: u8 = 1
+                let r = kk@uniq
+                var spare: raw/u8 = r@follow@raw
+                var h = nop
+                keep2(h@raw@raw/(raw/(raw/u8)), spare)
+                kk = 2
+            """,
+        ["hFnItemPairOk"] = """
+            func nop() => ()
+            func keep2(slot: raw/(raw/(raw/u8)), value: raw/u8) => ()
+            func hFnItemPairOk()
+                var kk: u8 = 1
+                let r = kk@uniq
+                var spare: raw/u8 = r@follow@raw
+                let e: [0 of ref/i32] = []
+                var h = (nop, e)
+                keep2(h@raw@raw/(raw/(raw/u8)), spare)
+                kk = 2
+            """,
+        ["hFnItemRefBad"] = """
+            func nop() => ()
+            func keep2(slot: raw/(raw/(raw/u8)), value: raw/u8) => ()
+            func hFnItemRefBad()
+                var kk: u8 = 1
+                let r = kk@uniq
+                var spare: raw/u8 = r@follow@raw
+                var y: i32 = 5
+                var h = (nop, y@ref)
+                keep2(h@raw@raw/(raw/(raw/u8)), spare)
+                kk = 2
+            """,
         ["iEnumRefBad"] = """
             func keep2(slot: raw/(raw/(raw/u8)), value: raw/u8) => ()
             func iEnumRefBad()
@@ -1240,7 +1306,8 @@ public sealed partial class MirBorrowsTest
     // Loan (four valid forms, their control and invalid twins), a row whose pointee admits the argument, a row stating an Origin;
     // and its F2 rows: a safe reference or a handle beside a raw pointer, and a Place that is one alone; and PLAN G785's rows (the
     // state file a5v-r3ref-state.md): a stepping row over a byte a punned write may not change (a reference's, a handle's, an enum's
-    // or a struct Field's) reaches storage the body does not own, an array of no element has no byte of either kind, and a layer
+    // or a struct Field's) reaches storage the body does not own, an array of no element, Unit and a Function Item have no byte of
+    // either kind (the owner's O-356 (a)), and a layer
     // hidden in the called function's Type parameter's binding adds no reach (SPEC 15.6.4).
     [Theory]
     [InlineData("fMixedPunChainBad", "fMixedPunChainBad: kk = 2; fMixedPunChainBad: var z: u8 = 5")] // I, PLAN G784
@@ -1327,6 +1394,12 @@ public sealed partial class MirBorrowsTest
     [InlineData("hOneRefBad", "hOneRefBad: kk = 2; hOneRefBad: var y: i32 = 5")] // I, an array of one reference
     [InlineData("hZeroPairOk", "")] // V, no byte: an array of no element holds no owner Scalar's byte either (5.2)
     [InlineData("hOnePairBad", "hOnePairBad: kk = 2")] // I, an owner Scalar's bytes (the first clause)
+    [InlineData("hUnitOk", "")] // V, Unit has no byte (IMPL 21.1: size 0; the planning session's reading 2; the owner's O-356 (a))
+    [InlineData("hUnitPairOk", "")] // V, ((), [0 of ref/i32]) has no byte
+    [InlineData("hUnitPairOneBad", "hUnitPairOneBad: kk = 2; hUnitPairOneBad: var y: i32 = 5")] // I, a reference's bytes beside Unit
+    [InlineData("hFnItemOk", "")] // V, a Function Item value has no byte (IMPL 21.1: size 0)
+    [InlineData("hFnItemPairOk", "")] // V, (Function Item, [0 of ref/i32]) has no byte
+    [InlineData("hFnItemRefBad", "hFnItemRefBad: kk = 2; hFnItemRefBad: var y: i32 = 5")] // I, a reference's bytes beside a Function Item
     [InlineData("iEnumRefBad", "iEnumRefBad: kk = 2; iEnumRefBad: var y: i32 = 5")] // I, an enum: its own bytes and its payload's reference bytes
     [InlineData("iStructRefBad", "iStructRefBad: kk = 2; iStructRefBad: var y: i32 = 5")] // I, a struct Field of a reference Type
     [InlineData("jHidRefOk", "")] // V, a layer hidden in the callee's Type parameter's binding adds no reach (15.6.4)
