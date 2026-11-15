@@ -137,20 +137,6 @@ public sealed partial class MirBorrowsTest
                     y = 5
                     look(b@ref)
             """,
-        ["d4OriMixedBad"] = """
-            func d4OriMixedBad()
-                var kk: u8 = 1
-                let rk = kk@uniq
-                var spare: raw/u8 = rk@follow@raw
-                var other: raw/u8 = null
-                let ro = other@uniq
-                let n: u64 = 3
-                let q = ro@follow@raw
-                var c = func [n, q] (v: raw/u8)
-                    unsafe => *q = v
-                c(spare)
-                kk = 2
-            """,
         ["oriRefLeafOk"] = """
             func oriRefLeafOk()
                 var kk: u8 = 1
@@ -163,19 +149,6 @@ public sealed partial class MirBorrowsTest
                 let q = rw@follow@raw
                 var c = func [n, q] (v: raw/u8)
                     unsafe => *q = *q
-                c(spare)
-                kk = 2
-            """,
-        ["d4UniqRefLetBad"] = """
-            func d4UniqRefLetBad()
-                var kk: u8 = 1
-                let rk = kk@uniq
-                var spare: raw/u8 = rk@follow@raw
-                var cell: raw/u8 = null
-                let n: u64 = 3
-                let r = cell@uniq
-                var c = func [n, r] (v: raw/u8)
-                    r@follow = r@follow
                 c(spare)
                 kk = 2
             """,
@@ -271,22 +244,6 @@ public sealed partial class MirBorrowsTest
                 var t = (c@move, other@raw)
                 touchS(t@uniq, spare)
                 kk = 2
-            """,
-        ["letRefLeafUseBad"] = """
-            func inspect<T>(value: ref/T) => ()
-            func letRefLeafUseBad()
-                var kk: u8 = 1
-                let r = kk@uniq
-                var spare: raw/u8 = r@follow@raw
-                var x: u8 = 0
-                var w: ref/u8 = x@ref
-                let n: u64 = 3
-                let q: raw/(ref/u8) = w@raw
-                var c = func [n, q] (v: raw/u8)
-                    unsafe => *q = *q
-                c(spare)
-                kk = 2
-                inspect(w)
             """,
         ["letRefLeafOk"] = """
             func letRefLeafOk()
@@ -575,20 +532,6 @@ public sealed partial class MirBorrowsTest
                 sneakI1(h@raw, spare)
                 kk = 2
             """,
-        ["hidPunUseOk"] = """
-            func usep<T>(p: raw/T) => ()
-            func touchT<F>(t: uniq/(F, u8), v: raw/u8) => ()
-            func hidPunUseOk()
-                var kk: u8 = 1
-                let rk = kk@uniq
-                var spare: raw/u8 = rk@follow@raw
-                var w: raw/u8 = null
-                let z8: u8 = 0
-                var t = (w@raw@raw/u64, z8)
-                touchT(t@uniq, spare)
-                kk = 2
-                usep(w)
-            """,
         ["lBorrowRefBad"] = """
             func sneakU(slot: uniq/(uniq/(raw/(raw/u8)) during o), value: raw/u8) => ()
             func lBorrowRefBad()
@@ -646,13 +589,158 @@ public sealed partial class MirBorrowsTest
                 keep1(p@raw@raw/(raw/u8), spare)
                 kk = 2
             """,
+        ["otherOriginNullOk"] = """
+            func stO(t: uniq/(raw/(ref/i32 during a)), v: ref/i64 during b) => ()
+            func otherOriginNullOk()
+                var y: i64 = 2
+                var c2: raw/(ref/i32) = null
+                stO(c2@uniq, y@ref)
+                y = 5
+            """,
+        ["otherOriginNullBad"] = """
+            func stO2(t: uniq/(raw/(ref/i32 during a)), v: ref/i32 during a) => ()
+            func otherOriginNullBad()
+                var y: i32 = 2
+                var c2: raw/(ref/i32) = null
+                stO2(c2@uniq, y@ref)
+                y = 5
+            """,
+        ["otherOriginOwnPtrOk"] = """
+            func stO(t: uniq/(raw/(ref/i32 during a)), v: ref/i64 during b) => ()
+            func otherOriginOwnPtrOk()
+                var x: i32 = 1
+                var y: i64 = 2
+                var cell: ref/i32 = x@ref
+                var c2 = cell@raw
+                stO(c2@uniq, y@ref)
+                y = 5
+            """,
+        ["otherOriginChainBad"] = """
+            func stO(t: uniq/(raw/(ref/i32 during a)), v: ref/i64 during b) => ()
+            func otherOriginChainBad()
+                var x: i32 = 1
+                var y: i64 = 2
+                var cell: ref/i32 = x@ref
+                var c2 = cell@raw
+                stO(c2@uniq, y@ref)
+                x = 5
+            """,
+        ["keepHalfOk"] = """
+            func keepH<T>(slot: raw/(raw/T), value: raw/u8) => ()
+            func twoLayersHalf(y: uniq/i32)
+                let w = y@follow@ref
+                var cell: raw/u8 = null
+                var hop: raw/(raw/u8) = cell@raw
+                keepH(hop@raw, w@raw@raw/u8)
+                y@follow = 5
+            """,
+        ["keepShownBad"] = """
+            func keepS<T>(slot: raw/(raw/(raw/T)), value: raw/T) => ()
+            func twoLayersShown(y: uniq/i32)
+                let w = y@follow@ref
+                var cell: raw/u8 = null
+                var hop: raw/(raw/u8) = cell@raw
+                keepS(hop@raw, w@raw@raw/u8)
+                y@follow = 5
+            """,
+        ["gHidOwnPtrOk"] = """
+            func keepG<T>(slot: raw/(raw/T), value: raw/u8) => ()
+            func gHidOwnPtrOk()
+                var kk: u8 = 1
+                let r = kk@uniq
+                var spare: raw/u8 = r@follow@raw
+                var cell: raw/u8 = null
+                var hop: raw/(raw/u8) = cell@raw
+                keepG(hop@raw, spare)
+                kk = 2
+            """,
+        ["gShownOwnPtrBad"] = """
+            func keepG2<T>(slot: raw/(raw/(raw/T)), value: raw/u8) => ()
+            func gShownOwnPtrBad()
+                var kk: u8 = 1
+                let r = kk@uniq
+                var spare: raw/u8 = r@follow@raw
+                var cell: raw/u8 = null
+                var hop: raw/(raw/u8) = cell@raw
+                keepG2(hop@raw, spare)
+                kk = 2
+            """,
+        ["keepTHopUsedOk"] = """
+            func usepp(p: raw/(raw/u8)) => ()
+            func keepT<T>(slot: raw/T, value: raw/u8) => ()
+            func twoLayersTHopUsed(y: uniq/i32)
+                let w = y@follow@ref
+                var cell: raw/u8 = null
+                var hop: raw/(raw/u8) = cell@raw
+                keepT(hop@raw, w@raw@raw/u8)
+                y@follow = 5
+                usepp(hop)
+            """,
+        ["twoLayersBad"] = """
+            func keep2(slot: raw/(raw/(raw/u8)), value: raw/u8) => ()
+            func twoLayers(y: uniq/i32)
+                let w = y@follow@ref
+                var cell: raw/u8 = null
+                var hop: raw/(raw/u8) = cell@raw
+                keep2(hop@raw, w@raw@raw/u8)
+                y@follow = 5
+            """,
+        ["zUniqPastEnumHOk"] = """
+            func usep<T>(p: raw/T) => ()
+            func viaU(slot: raw/(uniq/((raw/u8, Option<raw/(raw/u8)>)) during o), value: raw/u8) => ()
+            func zUniqPastEnumHOk()
+                var kk: u8 = 1
+                let r = kk@uniq
+                var spare: raw/u8 = r@follow@raw
+                var x: raw/u8 = null
+                var h: (raw/u64, raw/u64, raw/u64) = (x@raw@raw/u64, null, null)
+                let p = h@raw@raw/((raw/u8, Option<raw/(raw/u8)>))
+                unsafe
+                    var g = (*p)@uniq
+                    viaU(g@raw, spare)
+                    kk = 2
+                    usep(h.0)
+            """,
+        ["zUniqPastRefHOk"] = """
+            func usep<T>(p: raw/T) => ()
+            func viaB(slot: raw/(uniq/((raw/u8, ref/u64 during k)) during o), value: raw/u8) => ()
+            func zUniqPastRefHOk()
+                var kk: u8 = 1
+                let r = kk@uniq
+                var spare: raw/u8 = r@follow@raw
+                var x: raw/u8 = null
+                var h: (raw/u64, raw/u64, raw/u64) = (x@raw@raw/u64, null, null)
+                let p = h@raw@raw/((raw/u8, ref/u64))
+                unsafe
+                    var g = (*p)@uniq
+                    viaB(g@raw, spare)
+                    kk = 2
+                    usep(h.0)
+            """,
+        ["zUniqPastTupBad"] = """
+            func usep<T>(p: raw/T) => ()
+            func viaT(slot: raw/(uniq/((raw/u8, u64)) during o), value: raw/u8) => ()
+            func zUniqPastTupBad()
+                var kk: u8 = 1
+                let r = kk@uniq
+                var spare: raw/u8 = r@follow@raw
+                var x: raw/u8 = null
+                var h: (raw/u64, raw/u64, raw/u64) = (x@raw@raw/u64, null, null)
+                let p = h@raw@raw/((raw/u8, u64))
+                unsafe
+                    var g = (*p)@uniq
+                    viaT(g@raw, spare)
+                    kk = 2
+                    usep(h.0)
+            """,
     };
 
-    // The coverage table's rows (U3c; the state file a5v-u3c-state.md, sections 1 and 4). Three environment rows (d4OriMixedBad,
-    // d4UniqRefLetBad, letRefLeafUseBad) need the Front's A5-F (row 2 (i) and (ii): an environment's raw layers stated, a `let`
-    // binding's own layer marked); until it lands they give the records below, which are not their labels' (condition: A5-F). PLAN
-    // G785's rows (a5v-r3ref-state.md): past a holder through a borrow layer, a punned read over a reference's or an `owner` Scalar's
-    // bytes reaches storage the body does not own.
+    // The coverage table's rows (U3c; the state file a5v-u3c-state.md, sections 1 and 4; its implementation review's rows). Not rows
+    // here, since no row asserts an invalid program's acceptance: the three environment rows the Front's A5-F builds (an environment's
+    // raw layers stated, a `let` binding's own layer marked) and a holder whose address a hidden binding carries, written with the
+    // record of its own storage Type (the owner's O-312 (a); a Binding fact), each a PLAN row of its unit. PLAN G785's rows
+    // (a5v-r3ref-state.md): past a holder through a borrow layer, a punned read over a reference's or an `owner` Scalar's bytes reaches
+    // storage the body does not own.
     [Theory]
     [InlineData("zPairLayerBad", "zPairLayer: y = 5")] // I
     [InlineData("zPairLayerOk", "")] // V
@@ -662,16 +750,13 @@ public sealed partial class MirBorrowsTest
     [InlineData("zAddrPairBad", "zAddrPair: y = 5")] // I
     [InlineData("zAddrPairOk", "")] // V
     [InlineData("zAddrPairNoneOk", "zAddrPairNone: y = 5")] // I
-    [InlineData("d4OriMixedBad", "")] // I by SPEC; accepted until the Front's A5-F lands (its condition)
     [InlineData("oriRefLeafOk", "")] // V
-    [InlineData("d4UniqRefLetBad", "")] // I by SPEC; accepted until the Front's A5-F lands (its condition)
     [InlineData("d4UniqRefLetOk", "")] // V
     [InlineData("d4NestVarBad", "d4NestVarBad: kk = 2; d4NestVarBad: var x: u8 = 0")] // I: the `var` binding inner may hold the call's own pointer
     [InlineData("d4NestLetOk", "")] // V
     [InlineData("d4AggGenOk", "")] // V
-    [InlineData("d4AggGenUseOk", "d4AggGenUseOk: kk = 2")] // V by SPEC; rejected as on dev: a hidden part's addresses are read by the named step (the reading of section 5)
+    [InlineData("d4AggGenUseOk", "d4AggGenUseOk: kk = 2")] // I by the owner's O-312 (a): the carried addresses are reached, hidden or not, so touchT may write w
     [InlineData("aggGenShownBad", "aggGenShownBad: kk = 2")] // I: a raw layer shown beside the hidden part may hold the call's own pointer
-    [InlineData("letRefLeafUseBad", "")] // I by SPEC; accepted until the Front's A5-F lands (its condition)
     [InlineData("letRefLeafOk", "")] // V
     [InlineData("dDeepOk", "f: value = 99; f: var d = (r.0@raw@raw/u32, n2@uniq); f: var n2 = ((((((((((((((((((((((((((((((((((((((((0, 0), 1), 2), 3), 4), 5), 6), 7), 8), 9), 10), 11), 12), 13), 14), 15), 16), 17), 18), 19), 20), 21), 22), 23), 24), 25), 26), 27), 28), 29), 30), 31), 32), 33), 34), 35), 36), 37), 38), 39); f: var n1 = ((((((((((((((((((((((((((((((((((((((((0, 0), 1), 2), 3), 4), 5), 6), 7), 8), 9), 10), 11), 12), 13), 14), 15), 16), 17), 18), 19), 20), 21), 22), 23), 24), 25), 26), 27), 28), 29), 30), 31), 32), 33), 34), 35), 36), 37), 38), 39); f: var x = 1")] // V by SPEC; records beside the depth limit: E's record by the reading layer (R3d.5) is not in this unit
     [InlineData("uUniqBytesYBad", "g: kk = 2; g: usei(y); g: var y: i32 = 5")] // I, PLAN G785: E keeps w's uniq Loan on y (15.6.4, reading (a))
@@ -691,11 +776,23 @@ public sealed partial class MirBorrowsTest
     [InlineData("uNarrowTwoBad", "uNarrowTwo: y = 5; uNarrowTwo: y2 = 6")] // I
     [InlineData("zIntMixBad", "zIntMixBad: kk = 2")] // I
     [InlineData("zIntMixOk", "")] // V
-    [InlineData("hidPunUseOk", "")] // V
     [InlineData("lBorrowRefBad", "lBorrowRefBad: kk = 2; lBorrowRefBad: var y: i32 = 5")] // I, past a holder through a borrow layer, over a reference's bytes
     [InlineData("lBorrowScalarPartBad", "lBorrowScalarPartBad: kk = 2; lBorrowScalarPartBad: var y: i32 = 5")] // I, the same over an owner Scalar's bytes (the first clause)
     [InlineData("lBorrowRefOk", "")] // V, only a u8 is stored through the row
     [InlineData("kPastRawRefOk", "")] // V, p retains spare, not used after; h is not reached
+    [InlineData("otherOriginNullOk", "otherOriginNullOk: y = 5")] // V by SPEC: the call's own pointer at c2's layer stores a ref/i32 during a, which v is not; rejected: stO's entry for that storage retains v (Binding's, PLAN), which rule 4 now takes in place of All
+    [InlineData("otherOriginNullBad", "otherOriginNullBad: y = 5")] // I: v fits that layer's pointee
+    [InlineData("otherOriginOwnPtrOk", "otherOriginOwnPtrOk: y = 5; otherOriginOwnPtrOk: var x: i32 = 1")] // I: storage the body does not own keeps a read through t, cell's Loan on x; `y = 5` is that entry's (as otherOriginNullOk)
+    [InlineData("otherOriginChainBad", "otherOriginChainBad: x = 5; otherOriginChainBad: var y: i64 = 2")] // I, the same; `var y` is that entry's
+    [InlineData("keepHalfOk", "")] // V, the owner's O-353 (a): hop's layer raw/T is shown, its pointee T's binding adds no reach
+    [InlineData("keepShownBad", "twoLayersShown: y@follow = 5")] // I: both layers above T are the parameter's own (twoLayers)
+    [InlineData("gHidOwnPtrOk", "")] // V, as keepHalfOk
+    [InlineData("gShownOwnPtrBad", "gShownOwnPtrBad: kk = 2")] // I, as keepShownBad
+    [InlineData("keepTHopUsedOk", "twoLayersTHopUsed: y@follow = 5")] // V by the owner's O-353 (a); rejected: hop takes keepT<raw/(raw/u8)>'s instantiated Own record at the first step (Binding's, PLAN G841)
+    [InlineData("twoLayersBad", "twoLayers: y@follow = 5")] // I, SPEC 15.6.4's example twoLayers with its error line
+    [InlineData("zUniqPastEnumHOk", "")] // V: through a borrow layer a non-punnable referent designates nothing at h
+    [InlineData("zUniqPastRefHOk", "")] // V, the same
+    [InlineData("zUniqPastTupBad", "zUniqPastTupBad: kk = 2")] // I: a punnable referent is read punned over h.0's bytes
     public void TheReadingKeyPastAHolderReadsEveryLayer(string form, string expected)
     {
         var c = MirBuildTest.Compile(PastHolderForms[form] + "\npublic func main() => ()\n");
