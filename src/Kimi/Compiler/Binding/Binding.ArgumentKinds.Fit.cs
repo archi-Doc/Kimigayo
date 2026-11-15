@@ -6,6 +6,12 @@ namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
+    // SPEC 10.4 step 1 (PLAN G924, G916): the class of a part checked against its expected Type, by its Materialization there: its one
+    // owner temporary of U borrowed at `ref/U`, else Expected-Type fitting by value. The one class source of FitComposite and of an
+    // open position's whole literal or join (TryCandidateCore).
+    private static ArgumentAdaptation ExpectedTypeClass(BoundType? temporary)
+        => temporary is not null ? ArgumentAdaptation.CrossSemanticsBorrow : ArgumentAdaptation.ExpectedTypeFitting;
+
     // SPEC 10.1, 10.2, 10.5.1: whether an argument part fits a candidate's closed Type at its position, by the part's kind, and the
     // operation that adapts it (unset when it does not fit, but for a literal's range shape). Another part that awaits its call (a
     // Case, a Call) is checked only by the selected candidate; an anonymous function (Function) fits by its signature and a function
@@ -76,7 +82,7 @@ public sealed partial class Binding
             var first = this.positionClasses.Count;
             for (var i = 0; i < array.Elements.Count; i++)
             {
-                var result = this.FitElement(array.Elements[i], expected.Components[0], scope);
+                var result = this.FitElement(array.Elements[i], ExpectedChild(array, i, expected)!, scope);
                 if (result != CandidateApplicability.Applicable)
                 {
                     return result;
@@ -100,7 +106,7 @@ public sealed partial class Binding
 
             for (var i = 0; i < tuple.Elements.Count; i++)
             {
-                var result = this.FitElement(tuple.Elements[i], expected.Components[i], scope);
+                var result = this.FitElement(tuple.Elements[i], ExpectedChild(tuple, i, expected)!, scope);
                 if (result != CandidateApplicability.Applicable)
                 {
                     return result;
@@ -125,8 +131,8 @@ public sealed partial class Binding
                 return CandidateApplicability.Inapplicable;
             }
 
-            var start = this.ProbeRangeBoundary(range.Start, expected.Components[0], this.StartType, scope);
-            return start != CandidateApplicability.Applicable ? start : this.ProbeRangeBoundary(range.End, expected.Components[1], this.EndType, scope);
+            var start = this.ProbeRangeBoundary(range.Start, ExpectedChild(range, 0, expected)!, this.StartType, scope);
+            return start != CandidateApplicability.Applicable ? start : this.ProbeRangeBoundary(range.End, ExpectedChild(range, 1, expected)!, this.EndType, scope);
         }
 
         throw new InvalidOperationException("A composite argument is a Tuple or array literal, a join or a mixed range (InternalInvariant).");
@@ -159,8 +165,9 @@ public sealed partial class Binding
             return this.FitsInputLiteral(boundary, expected, scope) ? CandidateApplicability.Applicable : CandidateApplicability.Inapplicable;
         }
 
+        // SPEC 4.6.2 (PLAN G924 rule A): a boundary that awaits its call is checked against S or E by the selected candidate.
         var syntax = KotoHelper.UnwrapParentheses(boundary);
-        return syntax.BoundType is not { } actual ? CandidateApplicability.Pending :
+        return syntax.BoundType is not { } actual ? this.AwaitsCall(syntax) ? CandidateApplicability.Applicable : CandidateApplicability.Pending :
             ReferenceEquals(this.ReadTypeReferent(actual, syntax) ?? actual, expected) ? CandidateApplicability.Applicable
             : CandidateApplicability.Inapplicable;
     }
@@ -252,29 +259,19 @@ public sealed partial class Binding
         return true;
     }
 
-    // SPEC 10.4 step 1, 10.5.1: a Tuple or array literal argument is ranked by its own fit (Literal by value, as where its slot stays open,
-    // or a borrowed temporary) and by each element position its fit visits (Positions, FitElement), recursively, a nested literal's own
-    // fit among them; a fill's element is no position (it stays one argument). A join formed part by part records one class per typed
-    // position, as one control-flow argument (FitsPosition; SPEC 10.5.1, PLAN G729).
+    // SPEC 10.4 step 1, 10.5.1, 10.2 row 2 (PLAN G924 rules A and B): a Tuple or array literal, a fill, a mixed range or a join its call
+    // classifies is checked against its expected Type (ExpectedTypeOf): its shape and parts at U, each element as an argument at its
+    // position (FitElement), so a nested literal fits a ref/(...) position as a borrowed temporary. At `ref/U` it is one owner temporary
+    // of U (Materialization), shared-borrowed once; by value it is fitted as it stands. It is ranked by its own fit (Expected-Type
+    // fitting by value, or a borrowed temporary) and by each element position its fit visits (Positions, FitElement), recursively; a
+    // fill's element is no position (it stays one argument). A join formed part by part records one class per typed position, as one
+    // control-flow argument (FitsPosition; SPEC 10.5.1, PLAN G729).
     private CandidateApplicability FitComposite(Koto part, Koto node, BoundType type, BindingScope scope, out BoundArgumentOperation operation)
     {
-        var borrow = type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref };
-        var valueType = ExpectedTypeOf(type);
+        var temporary = this.Materialization(node, type, scope);
+        var valueType = temporary ?? type;
         var first = this.positionClasses.Count;
         var result = this.ProbeAggregateArgument(node, valueType, scope);
-
-        // A fill or mixed range at `ref/U` is no temporary of U (K2, K3): the probe only filters a candidate whose own Type is not U, and the
-        // selected call binds it at `ref/U` itself (CompleteArguments, no source Type), as a let does, so the binder decides every part.
-        // A join its call classifies (PartKind Join) keeps U as its source Type, DECISIONS BU-187's one exception (PLAN G729): its
-        // sources are bound at U and its one value is borrowed here, since a waited source has no borrow row at `ref/U`
-        // (BindWaitedSources; the value is made once at the join's position, which R7-I2 d's position source plans). So a join's fill,
-        // mixed range or waiting call source still takes U's parts: an open class 1 row of that unit, not this rule's.
-        var own = borrow && this.KindOf(node) == PartKind.Aggregate && this.Materialization(node, type, scope) is null;
-        if (result == CandidateApplicability.Applicable && own && !this.HasTypeWithoutExpectation(node, valueType, scope))
-        {
-            result = CandidateApplicability.Inapplicable;
-        }
-
         if (result != CandidateApplicability.Applicable)
         {
             this.positionClasses.RemoveRange(first, this.positionClasses.Count - first);
@@ -282,48 +279,13 @@ public sealed partial class Binding
 
         operation = result != CandidateApplicability.Applicable ? default : new(
             part,
-            own ? null : valueType,
+            valueType,
             type,
-            borrow ? ArgumentOperationKind.Borrow : ArgumentOperationKind.Value,
-            borrow ? ArgumentAdaptation.CrossSemanticsBorrow : ArgumentAdaptation.Literal,
+            temporary is not null ? ArgumentOperationKind.Borrow : ArgumentOperationKind.Value,
+            ExpectedTypeClass(temporary),
             Positions: first..this.positionClasses.Count);
         return result;
     }
-
-    // SPEC 10.2.1, 12.3.1, 4.3.3, 4.6.2 rules 2 and 3 (PLAN G585, K's K2 and K3): a composite at `ref/U` that is no temporary of U
-    // (Materialization: a fill, a mixed range) takes nothing from U: it is typed with no expected Type, as binding it with none types it
-    // (BindAndAdaptNode, a let), and fits only where that Type is U. Whether `part` has the Type `type` so, read only, where the probe
-    // fitted its shape and parts (ProbeAggregateArgument): a Literal part at any depth keeps its default (PartDefault), a literal-only
-    // boundary takes its other boundary's Type, else i32 (OtherBoundaryType); a typed, waiting or failed part is the probe's.
-    private bool HasTypeWithoutExpectation(Koto part, BoundType type, BindingScope scope)
-    {
-        var core = KotoHelper.UnwrapParentheses(part);
-        if (core is RangeKoto range && IsMixedRange(range))
-        {
-            return this.KeepsBoundaryType(range.Start, type.Components[0], this.IndependentRangeBoundary(range.End, this.EndType)) &&
-                this.KeepsBoundaryType(range.End, type.Components[1], this.IndependentRangeBoundary(range.Start, this.StartType));
-        }
-
-        if (core is not (TupleLiteralKoto or ArrayLiteralKoto))
-        {
-            return this.KindOf(core) != PartKind.Literal || ReferenceEquals(this.PartDefault(core, scope), type);
-        }
-
-        var elements = core is TupleLiteralKoto tuple ? tuple.Elements : ((ArrayLiteralKoto)core).Elements;
-        for (var i = 0; i < elements.Count; i++)
-        {
-            if (ExpectedChild(core, i, type) is not { } element || !this.HasTypeWithoutExpectation(elements[i], element, scope))
-            {
-                return false;
-            }
-        }
-
-        return true;
-    }
-
-    // SPEC 4.6.2 rules 2 and 3: whether a written boundary that is literal-only has the Type `type` beside the other boundary's Type.
-    private bool KeepsBoundaryType(Koto? boundary, BoundType type, BoundType? other)
-        => boundary is null || !IsLiteralOnlyPosition(boundary) || ReferenceEquals(this.OtherBoundaryType(boundary, other), type);
 
     private CandidateApplicability FitLiteral(Koto part, Koto node, BoundType type, BindingScope scope, out BoundArgumentOperation operation)
     {
@@ -337,13 +299,13 @@ public sealed partial class Binding
 
         if (this.FitsLiteralPart(node, type, scope))
         {
-            operation = new(part, null, type, ArgumentOperationKind.Value, ArgumentAdaptation.Literal);
+            operation = new(part, null, type, ArgumentOperationKind.Value, ArgumentAdaptation.ExpectedTypeFitting);
             return CandidateApplicability.Applicable;
         }
 
         // The rejected candidate's range shape, which explains a failed selection.
         operation = this.PartDefault(node, scope) is { } literalType && DifferentRangeShapes(literalType, type)
-            ? new(part, literalType, type, ArgumentOperationKind.Value, ArgumentAdaptation.Literal) : default;
+            ? new(part, literalType, type, ArgumentOperationKind.Value, ArgumentAdaptation.ExpectedTypeFitting) : default;
         return CandidateApplicability.Inapplicable;
     }
 

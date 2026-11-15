@@ -118,92 +118,92 @@ public class ScalarTemporaryBorrowTest
     public void JudgesATemporaryAgainstAnInvariantOrigin(string form, string program, string records)
         => CompilationTestHelper.AssertRecordsAtLines(form, program + "()", records);
 
-    // SPEC 12.3.1, 14.9.2 step 3 (PLAN G585, K's K1-K3): at ref/U a literal source, or a join holding one, is fitted to U, so each
-    // misfit is its own record at U (one at `s`, one at `1`; one at `300`, also beside a resting join); a fill and a mixed range take
-    // nothing from U (4.3.3, 4.6.2 rule 2), at a let and at a call alike, while their own Type fits (the i32 controls): each Literal
-    // part of a fill keeps its default at any depth (a Tuple, a join, a nested fill), and a literal-only boundary takes its typed
-    // boundary's Type, `T` for `FromEnd<T>` (the FromEnd rows are valid).
+    // SPEC 12.3.1, 14.9.2 (PLAN G585; PLAN G924 rules A and B, the owner's direction of 11-15 and O-333 R2 (a)): at ref/U a literal
+    // source, or a join holding one, is fitted to U, so each misfit is its own record at U (one at `s`, one at `1`; one at `300`, also
+    // beside a resting join); a fill and a mixed range are owner temporaries of U like any literal (BU-187's K2 and K3 removed), at a
+    // let and at a call alike: each Literal part of a fill takes U's element Type at any depth (a Tuple, a join, a nested fill), and a
+    // literal-only boundary takes U's S or E, `T` for `FromEnd<T>` (the FromEnd rows are valid).
     [Theory]
     [InlineData("string", Literals + "    let x: ref/string = if c => s else => 1\n", "TransferRequired_Kd: let x: ref/string = if c => s else => 1 | TypeMismatch_Kd: let x: ref/string = if c => s else => 1")]
     [InlineData("u8", Literals + "    let x: ref/u8 = if c => b else => 300\n", "InvalidNumericLiteral_Kd: let x: ref/u8 = if c => b else => 300")]
-    [InlineData("fill", Literals + "    let x: ref/[2 of i64] = [2 of 1]\n", "TypeMismatch_Kd: let x: ref/[2 of i64] = [2 of 1]")]
-    [InlineData("fill-call", Literals + "    let r = kf([2 of 1])\n", "NoApplicableOverload_Kd: let r = kf([2 of 1])")]
-    [InlineData("range", Literals + "    let x: ref/Range<i64, i32> = 0..v\n", "TypeMismatch_Kd: let x: ref/Range<i64, i32> = 0..v")]
-    [InlineData("range-call", Literals + "    let r = km(0..v)\n", "NoApplicableOverload_Kd: let r = km(0..v)")]
+    [InlineData("fill", Literals + "    let x: ref/[2 of i64] = [2 of 1]\n", "")]
+    [InlineData("fill-call", Literals + "    let r = kf([2 of 1])\n", "")]
+    [InlineData("range", Literals + "    let x: ref/Range<i64, i32> = 0..v\n", "")]
+    [InlineData("range-call", Literals + "    let r = km(0..v)\n", "")]
     [InlineData("controls", Literals + "    let x: ref/[2 of i32] = [2 of 1]\n    let r = kg([2 of 1]) + kn(0..w)\n", "")]
-    [InlineData("fill-tuple-call", Composites + Literals + "    let r = kft([2 of (1, 2)])\n", "NoApplicableOverload_Kd: let r = kft([2 of (1, 2)])")]
-    [InlineData("fill-join-call", Composites + Literals + "    let r = kf([2 of if c => 1 else => 2])\n", "NoApplicableOverload_Kd: let r = kf([2 of if c => 1 else => 2])")]
-    [InlineData("fill-nested-call", Composites + Literals + "    let r = kff([2 of [2 of 1]])\n", "NoApplicableOverload_Kd: let r = kff([2 of [2 of 1]])")]
+    [InlineData("fill-tuple-call", Composites + Literals + "    let r = kft([2 of (1, 2)])\n", "")]
+    [InlineData("fill-join-call", Composites + Literals + "    let r = kf([2 of if c => 1 else => 2])\n", "")]
+    [InlineData("fill-nested-call", Composites + Literals + "    let r = kff([2 of [2 of 1]])\n", "")]
     [InlineData("fill-controls", Composites + Literals + "    let r = kfu([2 of (1, 2)]) + kf([2 of w]) + kg([2 of if c => 1 else => 2])\n", "")]
     [InlineData("fromend-call", Composites + Literals + "    let x: ref/Range<i32, FromEnd<i32>> = v..^1\n    let r = kfe(v..^1) + kcf(v..=^1) + kfs(^1..v)\n", "")]
     public void FitsALiteralSourceAtTheReferent(string form, string program, string records)
         => CompilationTestHelper.AssertRecordsAtLines(form, program + "    return 0\n()", records);
 
-    // SPEC 10.2 row 2, 10.2.1, 3.5.3, 4.3.3, 4.6.2 (PLAN G585's residue, DECISIONS BU-187's K2, K3): a fill or mixed range at `ref/U`
-    // is completed at `ref/U` itself, at a call as at a let, so a waiting part (`idf(1)`), a part needing a value read (`wr`) and a join
-    // formed part by part take nothing from U: the argument of a function, a method, a construction, a labelled or explicitly
-    // instantiated call, at any depth and in either declaration order. Its misfit is the fill's own record, the only one; a later use
-    // of the failed variable evaluates its call again, and what that reports beside it is dependent (join-call-use: `...`). A waiting
-    // part is no evidence for a Type argument (10.8); a fill inside a Tuple literal argument is at the Tuple's element Type; a function
-    // value's call and a mixed range's waiting boundary are decided before the call is selected. A fill at a `ref/U` element of a
-    // Tuple or array literal argument, and a fill as a Case payload at `ref/U` (10.5.1), is completed at `ref/U` by the enclosing
-    // literal's and the payload's own completion (the element and payload rows: the same rule, unchanged by PLAN G585's residue).
+    // SPEC 10.2 row 2, 10.2.1, 3.5.3, 4.3.3, 4.6.2, 12.3.1 (PLAN G924 rules A and B, the owner's direction of 11-15 and O-333 R2 (a);
+    // BU-187's K2 and K3 removed): a fill or mixed range at `ref/U` is the owner temporary of U, at a call as at a let, so a waiting part
+    // (`idf(1)`), a part needing a value read (`wr`) and a join formed part by part take U's parts: the argument of a function, a method,
+    // a construction, a labelled or explicitly instantiated call, at any depth and in either declaration order (all valid now). A
+    // waiting part is no evidence for a Type argument (10.8, wait-geninf: R1), and a typed boundary keeps its own Type against E
+    // (rread32-call); a fill inside a Tuple literal argument is at the Tuple's element Type; a fill at a `ref/U` element of a Tuple or
+    // array literal argument, and a fill as a Case payload at `ref/U` (10.5.1), is completed at U by the enclosing literal's and the
+    // payload's own completion.
     [Theory]
-    [InlineData("wait-call", Fills + "    let r = kf([2 of idf(1)])\n", "TypeMismatch_Kd: let r = kf([2 of idf(1)])")]
-    [InlineData("wait-let", Fills + "    let x: ref/[2 of i64] = [2 of idf(1)]\n", "TypeMismatch_Kd: let x: ref/[2 of i64] = [2 of idf(1)]")]
+    [InlineData("wait-call", Fills + "    let r = kf([2 of idf(1)])\n", "")]
+    [InlineData("wait-let", Fills + "    let x: ref/[2 of i64] = [2 of idf(1)]\n", "")]
     [InlineData("wait32-call", Fills + "    let r = kf32([2 of idf(1)])\n", "")]
     [InlineData("wait32-let", Fills + "    let x: ref/[2 of i32] = [2 of idf(1)]\n", "")]
-    [InlineData("read-call", Fills + "    let r = kf([2 of wr])\n", "TypeMismatch_Kd: let r = kf([2 of wr])")]
-    [InlineData("read-let", Fills + "    let x: ref/[2 of i64] = [2 of wr]\n", "TypeMismatch_Kd: let x: ref/[2 of i64] = [2 of wr]")]
-    [InlineData("join-call", Fills + "    let r = kft([2 of if c => (1, 2) else => (3, 4)])\n", "TypeMismatch_Kd: let r = kft([2 of if c => (1, 2) else => (3, 4)])")]
-    [InlineData("join-call-use", Fills + "    let r = kft([2 of if c => (1, 2) else => (3, 4)])\n    let u: i32 = r\n", "TypeMismatch_Kd: let r = kft([2 of if c => (1, 2) else => (3, 4)]) | ...")]
-    [InlineData("join-let", Fills + "    let x: ref/[2 of (i64, i64)] = [2 of if c => (1, 2) else => (3, 4)]\n", "TypeMismatch_Kd: let x: ref/[2 of (i64, i64)] = [2 of if c => (1, 2) else => (3, 4)]")]
+    [InlineData("read-call", Fills + "    let r = kf([2 of wr])\n", "")]
+    [InlineData("read-let", Fills + "    let x: ref/[2 of i64] = [2 of wr]\n", "")]
+    [InlineData("join-call", Fills + "    let r = kft([2 of if c => (1, 2) else => (3, 4)])\n", "")]
+    [InlineData("join-call-use", Fills + "    let r = kft([2 of if c => (1, 2) else => (3, 4)])\n    let u: i32 = r\n", "")]
+    [InlineData("join-let", Fills + "    let x: ref/[2 of (i64, i64)] = [2 of if c => (1, 2) else => (3, 4)]\n", "")]
     [InlineData("join32-call", Fills + "    let r = kft32([2 of if c => (1, 2) else => (3, 4)])\n", "")]
-    [InlineData("wait-meth", Fills + "    let r = s.kf([2 of idf(1)])\n", "TypeMismatch_Kd: let r = s.kf([2 of idf(1)])")]
-    [InlineData("wait-init", Fills + "    let k = K.init([2 of idf(1)])\n", "TypeMismatch_Kd: let k = K.init([2 of idf(1)])")]
-    [InlineData("wait-named", Fills + "    let r = kf(x: [2 of idf(1)])\n", "TypeMismatch_Kd: let r = kf(x: [2 of idf(1)])")]
-    [InlineData("wait-gen", Fills + "    let r = kg<i64>([2 of idf(1)])\n", "TypeMismatch_Kd: let r = kg<i64>([2 of idf(1)])")]
+    [InlineData("wait-meth", Fills + "    let r = s.kf([2 of idf(1)])\n", "")]
+    [InlineData("wait-init", Fills + "    let k = K.init([2 of idf(1)])\n", "")]
+    [InlineData("wait-named", Fills + "    let r = kf(x: [2 of idf(1)])\n", "")]
+    [InlineData("wait-gen", Fills + "    let r = kg<i64>([2 of idf(1)])\n", "")]
     [InlineData("wait-geninf", Fills + "    let r = kg([2 of idf(1)])\n", "UnboundTypeArgument_Kd: let r = kg([2 of idf(1)])")]
-    [InlineData("wait-nest", Fills + "    let r = kn([2 of [2 of idf(1)]])\n", "TypeMismatch_Kd: let r = kn([2 of [2 of idf(1)]])")]
-    [InlineData("wait-order", FillCaller + "    let r = kf([2 of idf(1)])\n    return r\n" + FillCallees + "func u() -> i32\n", "TypeMismatch_Kd: let r = kf([2 of idf(1)])")]
+    [InlineData("wait-nest", Fills + "    let r = kn([2 of [2 of idf(1)]])\n", "")]
+    [InlineData("wait-order", FillCaller + "    let r = kf([2 of idf(1)])\n    return r\n" + FillCallees + "func u() -> i32\n", "")]
     [InlineData("wait-tup", Fills + "    let r = kp((1, [2 of idf(1)]))\n", "")]
-    [InlineData("wait-val", Fills + "    let k = kf\n    let r = k([2 of idf(1)])\n", "NoApplicableOverload_Kd: let r = k([2 of idf(1)])")]
-    [InlineData("range-call", Fills + "    let r = kr(idf(1)..3)\n", "NoApplicableOverload_Kd: let r = kr(idf(1)..3)")]
-    [InlineData("range-let", Fills + "    let x: ref/Range<i64, i64> = idf(1)..3\n", "TypeMismatch_Kd: let x: ref/Range<i64, i64> = idf(1)..3")]
+    [InlineData("wait-val", Fills + "    let k = kf\n    let r = k([2 of idf(1)])\n", "")]
+    [InlineData("range-call", Fills + "    let r = kr(idf(1)..3)\n", "")]
+    [InlineData("range-let", Fills + "    let x: ref/Range<i64, i64> = idf(1)..3\n", "")]
     [InlineData("range32-call", Fills + "    let r = kr32(idf(1)..3)\n", "")]
     [InlineData("rread-call", Fills + "    let r = kr(wr..3)\n", "")]
     [InlineData("rread32-call", Fills + "    let r = kr32(wr..3)\n", "NoApplicableOverload_Kd: let r = kr32(wr..3)")]
     [InlineData("typed-gen", Fills + "    let r = kg([2 of w])\n", "")]
     [InlineData("typed-meth", Fills + "    let r = s.kf([2 of w])\n", "")]
-    [InlineData("element-tuple-call", FillElements + "    let r = kq((1, [2 of idf(1)]))\n", "TypeMismatch_Kd: let r = kq((1, [2 of idf(1)]))")]
-    [InlineData("element-tuple-let", FillElements + "    let x: (i64, ref/[2 of i64]) = (1, [2 of idf(1)])\n", "TypeMismatch_Kd: let x: (i64, ref/[2 of i64]) = (1, [2 of idf(1)])")]
+    [InlineData("element-tuple-call", FillElements + "    let r = kq((1, [2 of idf(1)]))\n", "")]
+    [InlineData("element-tuple-let", FillElements + "    let x: (i64, ref/[2 of i64]) = (1, [2 of idf(1)])\n", "")]
     [InlineData("element-tuple32-call", FillElements + "    let r = kq32((1, [2 of idf(1)]))\n", "")]
-    [InlineData("element-array-call", FillElements + "    let r = ka([[2 of idf(1)], [2 of idf(2)]])\n", "TypeMismatch_Kd: let r = ka([[2 of idf(1)], [2 of idf(2)]])")]
+    [InlineData("element-array-call", FillElements + "    let r = ka([[2 of idf(1)], [2 of idf(2)]])\n", "")]
     [InlineData("element-array32-call", FillElements + "    let r = ka32([[2 of idf(1)], [2 of idf(2)]])\n", "")]
     [InlineData("element-typed-call", FillElements + "    let r = kq((1, [2 of w]))\n", "")]
-    [InlineData("payload-call", FillElements + "    let e = E.P([2 of idf(1)])\n", "TypeMismatch_Kd: let e = E.P([2 of idf(1)])")]
+    [InlineData("payload-call", FillElements + "    let e = E.P([2 of idf(1)])\n", "")]
     [InlineData("payload32-call", FillElements + "    let e = E.P32([2 of idf(1)])\n", "")]
     public void CompletesAFillAtTheReferentItself(string form, string program, string records)
         => CompilationTestHelper.AssertRecordsAtLines(form, program + "    return 0\n()", records);
 
-    // SPEC 14.9.2, 10.5.1, 3.6 (DECISIONS BU-187's one exception): a call's control-flow argument at `ref/U` classified part by part is
-    // completed at U and borrowed once at the call, so the fill rule above does not reach it: the valid joins stay accepted (fills,
-    // Tuple literals, a mixed range, an independently typable source beside a fill), and their let forms take the declared Type as the
-    // Target Result Type, each arm's fill its own temporary there (used after the let: the Loan record). The invalid joins that
-    // exception still accepts are PLAN G910's rows, not pinned here.
+    // SPEC 14.9.2, 10.5.1, 3.6 (PLAN G924 rule B, O-333 R2 (a) and R6 (b); BU-187's exception is now Materialization's join row): a
+    // value join at `ref/U`, a call's argument or a let's initializer, is one temporary of U, each source checked against U and the
+    // selected source's value moved into it, borrowed once: the valid joins are accepted (fills, Tuple literals, a mixed range, an
+    // independently typable source beside a fill, waiting calls), and a let's temporary ends with its statement (used after the let:
+    // the Loan record). A join of mixed ranges with waiting boundaries at a call (range-call) is not yet fitted by its sources' ranges
+    // (AF-2 phase 1: an open row).
     [Theory]
-    [InlineData("arm-let", Fills + "    let x: ref/[2 of i64] = if c => [2 of idf(1)] else => [2 of idf(2)]\n", "TypeMismatch_Kd: let x: ref/[2 of i64] = if c => [2 of idf(1)] else => [2 of idf(2)]")]
+    [InlineData("arm-let", Fills + "    let x: ref/[2 of i64] = if c => [2 of idf(1)] else => [2 of idf(2)]\n", "")]
     [InlineData("arm32-call", Fills + "    let r = kf32(if c => [2 of idf(1)] else => [2 of idf(2)])\n", "")]
     [InlineData("arm32-let", Fills + "    let x: ref/[2 of i32] = if c => [2 of idf(1)] else => [2 of idf(2)]\n", "")]
     [InlineData("arm32-let-use", Fills + "    let x: ref/[2 of i32] = if c => [2 of idf(1)] else => [2 of idf(2)]\n    let r = kf32(x)\n", "ComparisonLoanConflict_Kd: let x: ref/[2 of i32] = if c => [2 of idf(1)] else => [2 of idf(2)]")]
     [InlineData("arm-geninf", Fills + "    let r = kg(if c => [2 of idf(1)] else => [2 of idf(2)])\n", "UnboundTypeArgument_Kd: let r = kg(if c => [2 of idf(1)] else => [2 of idf(2)])")]
     [InlineData("mix-call", Fills + "    let r = kf(if c => [2 of idf(1)] else => a)\n", "")]
-    [InlineData("mix-let", Fills + "    let x: ref/[2 of i64] = if c => [2 of idf(1)] else => a\n", "TypeMismatch_Kd: let x: ref/[2 of i64] = if c => [2 of idf(1)] else => a")]
+    [InlineData("mix-let", Fills + "    let x: ref/[2 of i64] = if c => [2 of idf(1)] else => a\n", "")]
     [InlineData("mix32-call", Fills + "    let r = kf32(if c => [2 of idf(1)] else => a32)\n", "")]
     [InlineData("range-call", Fills + "    let r = kr(if c => idf(1)..3 else => idf(2)..4)\n", "NoApplicableOverload_Kd: let r = kr(if c => idf(1)..3 else => idf(2)..4)")]
-    [InlineData("range-let", Fills + "    let x: ref/Range<i64, i64> = if c => idf(1)..3 else => idf(2)..4\n", "TypeMismatch_Kd: let x: ref/Range<i64, i64> = if c => idf(1)..3 else => idf(2)..4")]
+    [InlineData("range-let", Fills + "    let x: ref/Range<i64, i64> = if c => idf(1)..3 else => idf(2)..4\n", "")]
     [InlineData("range32-call", Fills + "    let r = kr32(if c => idf(1)..3 else => idf(2)..4)\n", "")]
-    [InlineData("call-let", Fills + "    let x: ref/[2 of i64] = if c => idf([2 of 1]) else => idf([2 of 2])\n", "NoApplicableOverload_Kd: let x: ref/[2 of i64] = if c => idf([2 of 1]) else => idf([2 of 2])")]
+    [InlineData("call-let", Fills + "    let x: ref/[2 of i64] = if c => idf([2 of 1]) else => idf([2 of 2])\n", "")]
     [InlineData("tuple-call", Fills + "    let r = kp(if c => (1, [2 of idf(1)]) else => (2, [2 of idf(2)]))\n", "")]
     [InlineData("tuple-ref", Fills + "    let r = ptr(if c => (n, 1) else => (n, 2))\n", "")]
     [InlineData("typed-call", Fills + "    let r = kf(if c => a else => a)\n", "")]

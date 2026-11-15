@@ -392,9 +392,9 @@ public sealed partial class Binding
         return !IsUnfittedLiteral(boundary) || this.RequireType(boundary, scope, other ?? BoundType.I32) is not null;
     }
 
-    // SPEC 4.6.2: a range value. Its shape is fixed by the syntax; each written boundary is a value of a Type satisfying
-    // Position, known independently of the context, and a literal-only boundary takes the S or E of an expected range of
-    // the same shape, else the integer Type of the other boundary, else i32 (SPEC 4.6.2). Construction checks nothing.
+    // SPEC 4.6.2, 12.3.1 (PLAN G924 rule A): a range value. Its shape is fixed by the syntax; each written boundary is a value of a Type
+    // satisfying Position, checked against the S or E of an expected range of the same shape, and without one known on its own; a
+    // literal-only boundary takes that S or E, else the integer Type of the other boundary, else i32. Construction checks nothing.
     private BoundType? BindRangeValue(RangeKoto range, BindingScope scope, BoundType? expected)
     {
         if (range.IsInclusive && range.End is null)
@@ -404,8 +404,8 @@ public sealed partial class Binding
 
         var shape = range.IsInclusive ? this.Library.ClosedRange : this.Library.Range;
         var fitted = expected is { Kind: BoundTypeKind.Constructed, Components.Count: 2 } && ReferenceEquals(expected.Symbol, shape) ? expected : null;
-        var start = this.IndependentBoundary(range.Start, scope, out var startInteger, out var startFailed);
-        var end = this.IndependentBoundary(range.End, scope, out var endInteger, out var endFailed);
+        var start = this.IndependentBoundary(range.Start, scope, ExpectedChild(range, 0, fitted), out var startInteger, out var startFailed);
+        var end = this.IndependentBoundary(range.End, scope, ExpectedChild(range, 1, fitted), out var endInteger, out var endFailed);
         if (startFailed || endFailed)
         {
             return Complete(range, null);
@@ -433,9 +433,9 @@ public sealed partial class Binding
         return this.BindSynthesizedCall(range, call, scope) is null ? Complete(range, null) : Complete(range, type);
     }
 
-    // The Type of a written range boundary known independently of the context, read through references; null for an
-    // omitted or literal-only boundary. `integer` is the integer Type a literal-only other boundary takes from it.
-    private BoundType? IndependentBoundary(Koto? boundary, BindingScope scope, out BoundType? integer, out bool failed)
+    // The Type of a written range boundary, checked against its expected S or E or known on its own, read through references; null
+    // for an omitted or literal-only boundary. `integer` is the integer Type a literal-only other boundary takes from it.
+    private BoundType? IndependentBoundary(Koto? boundary, BindingScope scope, BoundType? expected, out BoundType? integer, out bool failed)
     {
         integer = null;
         failed = false;
@@ -444,7 +444,7 @@ public sealed partial class Binding
             return null;
         }
 
-        var type = this.BindPositionKey(boundary, scope);
+        var type = expected is null ? this.BindPositionKey(boundary, scope) : this.RequireType(boundary, scope, expected);
         if (type is null || ReferenceEquals(type, BoundType.Never))
         {
             failed = type is null;

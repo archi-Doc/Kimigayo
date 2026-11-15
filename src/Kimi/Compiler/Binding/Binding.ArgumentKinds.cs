@@ -518,6 +518,9 @@ public sealed partial class Binding
         else
         {
             // SPEC 10.8, 10.6: the selected candidate's unsolved slot is the inference boundary; the checks that need it are derived.
+            // SPEC 10.5.1's interim second rule (PLAN G924; the owner's O-341 is open): a nested call at a slot that only the defaults
+            // above would bind is not completed with no expected result, so its slot needs an annotation; O-341 (a) would complete it
+            // here after selection, as a literal takes its default.
             this.FailUnboundSlots(
                 call,
                 selected,
@@ -688,16 +691,16 @@ public sealed partial class Binding
         return KotoHelper.UnwrapParentheses(boundary) is FromEndIndexKoto ? this.FromEndType(integer) : integer;
     }
 
-    // SPEC 10.5.1, 4.6.2: an Aggregate's parts: each element of a Tuple or array literal is prepared as an argument at its position (a
-    // function reference among them waits when it needs S), the payloads of a contextual Case likewise, and the written boundaries of a
-    // mixed range on their own, since a boundary is never waiting.
+    // SPEC 10.5.1, 4.6.2, 12.3.1 (PLAN G924 rule A): an Aggregate's parts: each element of a Tuple or array literal is prepared as an
+    // argument at its position (a function reference among them waits when it needs S), the payloads of a contextual Case likewise, and
+    // the written boundaries of a mixed range too, each checked against its S or E (a nested call there waits for its call).
     private bool PrepareComposite(Koto part, BindingScope scope)
     {
         var source = KotoHelper.UnwrapParentheses(part);
         if (source is RangeKoto range && IsMixedRange(range))
         {
-            return (range.Start is null || IsUnfittedLiteral(range.Start) || this.BindNode(range.Start, scope) is not null) &
-                (range.End is null || IsUnfittedLiteral(range.End) || this.BindNode(range.End, scope) is not null);
+            return (range.Start is null || IsUnfittedLiteral(range.Start) || this.PrepareArgument(range.Start, scope, null, callableContext: false)) &
+                (range.End is null || IsUnfittedLiteral(range.End) || this.PrepareArgument(range.End, scope, null, callableContext: false));
         }
 
         var elements = source is ArrayLiteralKoto array ? array.Elements : ((TupleLiteralKoto)source).Elements;

@@ -426,10 +426,10 @@ public sealed partial class Binding
         {
             var binding = this.Binding;
             var part = binding.positionParts[start];
-            if (pattern is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref })
+            if (binding.Materialization(part, pattern, this.Scope) is { } temporary)
             {
                 this.InferTemporary(pattern, part);
-                pattern = ExpectedTypeOf(pattern);
+                pattern = temporary;
             }
 
             var source = KotoHelper.UnwrapParentheses(part);

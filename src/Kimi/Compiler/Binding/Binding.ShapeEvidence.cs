@@ -78,7 +78,7 @@ public sealed partial class Binding
             var kind = end - start == 1 ? this.KindOf(node) : this.PositionKind(start, end, out type);
             if (kind is PartKind.Aggregate or PartKind.Join)
             {
-                return Composite(start, end, Referent(a), Referent(b));
+                return Composite(start, end, ExpectedTypeOf(a), ExpectedTypeOf(b));
             }
 
             if (end - start == 1 && kind != PartKind.Literal)
@@ -152,9 +152,6 @@ public sealed partial class Binding
 
         static BoundType? CallableSlot(BoundType? pattern, FunctionKoto function)
             => pattern is not null && CallableSlotType(pattern, CallSlotOwner(function)) is not null ? pattern : null;
-
-        static BoundType? Referent(BoundType? pattern)
-            => pattern is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref, Components: [var referent] } ? referent : pattern;
 
         static BoundType? SignaturePart(BoundType? signature, int index)
             => signature is { Kind: BoundTypeKind.Function, Components: [var parameters, var returns] }
@@ -392,23 +389,19 @@ public sealed partial class Binding
                         return;
                     }
 
-                    if (pattern is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref, Components: [var referent] })
-                    {
-                        pattern = referent;
-                    }
-
+                    pattern = ExpectedTypeOf(pattern);
                     if (source is TupleLiteralKoto tuple && TupleShapeAt(tuple, pattern))
                     {
                         for (var e = 0; e < tuple.Elements.Count; e++)
                         {
-                            CollectArgument(pattern.Components[e], tuple.Elements[e], candidateSlots);
+                            CollectArgument(ExpectedChild(tuple, e, pattern)!, tuple.Elements[e], candidateSlots);
                         }
                     }
                     else if (source is ArrayLiteralKoto array && pattern.Kind is BoundTypeKind.FixedArray or BoundTypeKind.Array)
                     {
                         for (var e = 0; e < array.Elements.Count; e++)
                         {
-                            CollectArgument(pattern.Components[0], array.Elements[e], candidateSlots);
+                            CollectArgument(ExpectedChild(array, e, pattern)!, array.Elements[e], candidateSlots);
                         }
                     }
                 }

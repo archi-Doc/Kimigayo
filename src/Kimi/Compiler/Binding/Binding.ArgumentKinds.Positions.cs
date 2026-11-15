@@ -1,5 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using System.Diagnostics.CodeAnalysis;
 using Kimi.Compiler.Parsing;
 
 namespace Kimi.Compiler;
@@ -7,7 +8,8 @@ namespace Kimi.Compiler;
 // Argument positions (SPEC 10.5.1, 4.3.1, 14.9.2; DECISIONS BU-2 U3, BU-43): the parameter positions that the parts of an argument
 // occupy, which the evidence walk (SlotSolution.InferPosition), the defaults (SlotSolution.DefaultPosition) and the whole Type at a bare
 // slot (IndependentPositionType) recurse into.
-// - Responsibility: a position is the argument parts at one parameter position, a range of positionParts: a call argument or a Case
+// - Responsibility: the expected Type of every part's child positions (ExpectedChild) and of a value part (ExpectedTypeOf); a position
+//   is the argument parts at one parameter position, a range of positionParts: a call argument or a Case
 //   payload; each element of a Tuple or array literal part, which SPEC 10.5.1 classifies one by one at its component or element Type;
 //   and a control-flow part its call classifies by element (ClassifiedByCall; the owner, 2026-10-26): its one child position is its
 //   results at its own parameter Type, the parts of a join that supplies no candidate (Binding.ResultPropagation.Parts.cs), whose
@@ -23,6 +25,8 @@ namespace Kimi.Compiler;
 //   position Call, Waiting under 10.5.1 (U1.6h site 3; DECISIONS BU-78): it is no evidence and fits every candidate (SPEC 23.1.2), and
 //   its siblings are checked at the selected candidate's Type. Every
 //   reader (the evidence, the defaults, IndependentPositionType, the fit) takes the kind from it.
+// - Inputs: a part (its syntax and recorded kind), a child index and the position's Type pattern or Type; for the expected Type
+//   (SPEC 10.2's fixed expected Type, 12.3.1; PLAN G924 rule A) the part's form and the position's Type alone.
 // - Outputs: OpenPosition and ClosePosition, a walk's position of one part; ChildPositions and AddChildPosition, a position's (or a
 //   part's) child positions and the parameter Type at each; PositionKind. The expected Type (SPEC 10.2's fixed expected Type, PLAN
 //   G924): ExpectedChild, the one table of a part's child positions' Types (rows: a Tuple element, an array element, a Dictionary key
@@ -41,21 +45,25 @@ public sealed partial class Binding
     private static bool TupleShapeAt(TupleLiteralKoto tuple, BoundType? type)
         => type is { Kind: BoundTypeKind.Tuple } && type.Components.Count == tuple.Elements.Count;
 
-    // SPEC 10.2, 10.5.1: the expected Type at child position `index` of a part `core` (unwrapped) at the Type `pattern`, one row per
-    // form: a Tuple literal's element its component (of a Tuple of its length), an array literal's element the element Type, a
-    // Dictionary literal's key and value the key and value Types; any other part with a child position is a join its call classifies
-    // (ComposedJoin), whose results take the join's own. Null where the pattern's shape differs.
+    // SPEC 10.2, 10.5.1, 12.3.1, 4.6.2 (PLAN G924 rule A): the expected Type at child position `index` of a part `core` (unwrapped) at
+    // the Type `pattern`, one row per form: a Tuple literal's element its component (of a Tuple of its length), an array literal's or
+    // fill's element the element Type, a Dictionary literal's key and value the key and value Types, a range's boundary its S or E (of
+    // a range Type); a join (a selection, `do` or `loop`, through a label: ComposedJoin) gives its results the join's own. Null where
+    // the pattern's shape differs; any other form has no child position.
     private static BoundType? ExpectedChild(Koto core, int index, BoundType? pattern) => core switch
     {
         TupleLiteralKoto tuple => TupleShapeAt(tuple, pattern) && index < tuple.Elements.Count ? pattern!.Components[index] : null,
         ArrayLiteralKoto => pattern is { Kind: BoundTypeKind.Array or BoundTypeKind.FixedArray } ? pattern.Components[0] : null,
         DictionaryLiteralKoto => pattern is { Kind: BoundTypeKind.Dictionary, Components.Count: 2 } ? pattern.Components[index] : null,
-        _ => pattern,
+        RangeKoto => pattern is { Kind: BoundTypeKind.Constructed, Components.Count: 2 } ? pattern.Components[index] : null,
+        _ when ControlFlowExpression(core) is not null => pattern,
+        _ => throw new InvalidOperationException("A child position belongs to a literal, a range or a join (InternalInvariant)."),
     };
 
     // SPEC 10.2 row 2: the expected Type of a value part at a position of Type `position`: at `ref/U` the referent U, the owner
-    // temporary's Type (Materialization), else the position's own.
-    private static BoundType ExpectedTypeOf(BoundType position)
+    // temporary's Type (Materialization, its one reader for a part), else the position's own.
+    [return: NotNullIfNotNull(nameof(position))]
+    private static BoundType? ExpectedTypeOf(BoundType? position)
         => position is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref, Components: [var referent] } ? referent : position;
 
     // SPEC 10.5.1 (the owner, 2026-10-31, reading I): an aggregate literal part's child positions by index, as an argument's elements

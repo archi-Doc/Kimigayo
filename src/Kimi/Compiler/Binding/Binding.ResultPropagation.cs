@@ -852,7 +852,7 @@ public sealed partial class Binding
         {
             for (var i = 0; i < tuple.Elements.Count; i++)
             {
-                if (this.LateType(tuple.Elements[i], target.Components[i]) is not { } part)
+                if (this.LateType(tuple.Elements[i], ExpectedChild(tuple, i, target)!) is not { } part)
                 {
                     return null;
                 }
@@ -880,7 +880,7 @@ public sealed partial class Binding
 
         for (var i = 0; i < array.Elements.Count; i++)
         {
-            if (!this.LateFits(array.Elements[i], target.Components[0]))
+            if (!this.LateFits(array.Elements[i], ExpectedChild(array, i, target)!))
             {
                 return null;
             }
@@ -917,7 +917,7 @@ public sealed partial class Binding
 
         for (var i = 0; i < dictionary.Entries.Count; i++)
         {
-            if (!this.LateFits(dictionary.Entries[i].Key, target.Components[0]) || !this.LateFits(dictionary.Entries[i].Value, target.Components[1]))
+            if (!this.LateFits(dictionary.Entries[i].Key, ExpectedChild(dictionary, 0, target)!) || !this.LateFits(dictionary.Entries[i].Value, ExpectedChild(dictionary, 1, target)!))
             {
                 return null;
             }

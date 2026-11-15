@@ -410,6 +410,10 @@ public sealed partial class Binding
 
         internal bool HasLiteral { get; set; }
 
+        // Whether a source is an owner value of a literal form (SPEC 3.6, 14.9.2; PLAN G924 rule B): a Tuple, array, fill, mixed range or
+        // Dictionary literal, at any depth of nested control flow; an untyped literal is HasLiteral's.
+        internal bool HasValue { get; set; }
+
         // Whether the join holds a typed part (G368 (1)): its survey found one at any depth (its evidence, ResultSurvey.Typed), kept
         // after the survey drops its evidence and whatever Expected it chose, or a collected source is one (ResultCandidates).
         internal bool HasTyped { get; set; }
@@ -427,7 +431,7 @@ public sealed partial class Binding
 
         internal void Clear(BoundType? expected)
         {
-            this.HasLiteral = this.HasTyped = this.PartialEvidence = this.HasNever = this.LiteralMisfit = false;
+            this.HasLiteral = this.HasValue = this.HasTyped = this.PartialEvidence = this.HasNever = this.LiteralMisfit = false;
             this.LiteralFit = this.LiteralDefault = null;
             this.Expected = expected;
             this.Inferred = expected is null;

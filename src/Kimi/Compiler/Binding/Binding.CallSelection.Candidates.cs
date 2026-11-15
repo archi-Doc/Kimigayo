@@ -405,8 +405,10 @@ public sealed partial class Binding
                                 // Option<T>, at a parameter Type that holds a slot no evidence binds: the position stays open and the
                                 // candidate stays applicable on its other checks; it is completed only if the candidate is selected. Waiting
                                 // parts that bind the position's slots are completed with the selected candidate instead (SPEC 10.5.4).
-                                var adaptation = pattern.Kind == BoundTypeKind.Function && this.IsWaitingCallable(argument)
-                                    ? ArgumentAdaptation.Erasure : ArgumentAdaptation.Exact;
+                                // A part checked against its expected Type ranks as its fit there ranks it (ExpectedTypeClass; PLAN G924,
+                                // G916): the open position's whole literal or join is the same operation as at a closed one.
+                                var adaptation = pattern.Kind == BoundTypeKind.Function && this.IsWaitingCallable(argument) ? ArgumentAdaptation.Erasure
+                                    : this.KindOf(argument) is PartKind.Aggregate or PartKind.Join ? ExpectedTypeClass(this.Materialization(argument, pattern, scope)) : ArgumentAdaptation.Exact;
                                 operations[i] = new(call.ArgumentNodes[i], null, null, ArgumentOperationKind.Value, adaptation, ParameterIndex: mapping[i]);
                                 if (this.WaitingPartsBind(argument, pattern, function, unboundSlots, ref unsolvedSlots))
                                 {
@@ -428,7 +430,7 @@ public sealed partial class Binding
                             if (DifferentRangeShapes(shape, pattern))
                             {
                                 operations[i] = new(
-                                    call.ArgumentNodes[i], shape, pattern, ArgumentOperationKind.Value, ArgumentAdaptation.Literal, ParameterIndex: mapping[i]);
+                                    call.ArgumentNodes[i], shape, pattern, ArgumentOperationKind.Value, ArgumentAdaptation.ExpectedTypeFitting, ParameterIndex: mapping[i]);
                             }
 
                             return CandidateApplicability.Inapplicable;
@@ -441,7 +443,7 @@ public sealed partial class Binding
                             {
                                 // A Literal waits for its default, which cannot invert a projection or an unresolved selector either.
                                 open.Add(i);
-                                operations[i] = new(call.ArgumentNodes[i], null, null, ArgumentOperationKind.Value, ArgumentAdaptation.Literal, ParameterIndex: mapping[i]);
+                                operations[i] = new(call.ArgumentNodes[i], null, null, ArgumentOperationKind.Value, ArgumentAdaptation.ExpectedTypeFitting, ParameterIndex: mapping[i]);
                                 continue;
                             }
 
