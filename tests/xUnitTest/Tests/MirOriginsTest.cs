@@ -129,6 +129,12 @@ public sealed partial class MirOriginsTest
 
     private const string HolderP = "struct Holder {a}\n    public let p: ref/i32 during a\n";
 
+    // A comparison's region row in a Field initializer (DECISIONS G492-a (iii); its judged twins are MirBorrowsTest's vfic, vficn).
+    private const string ComparisonUtil = "group Util\n    public func idf(w: ref/i64 during a) -> ref/i64 during a => w\n";
+
+    private const string ComparisonInit = "struct Holder {a}\n    public let p: ref/i64 during a\n    public var n: i32 = if true\n" +
+        "        let v: i64 = 1\n        var x = v@ref\n        var y = x\n";
+
     private const string InitP = "    public init(p: ref/i32 during a) => self.p = p\n";
 
     // A base whose two constructors have every parameter defaulted, so a derived struct's omitted base clause selects none.
@@ -364,6 +370,8 @@ public sealed partial class MirOriginsTest
     [InlineData("struct Pair {a, b}\n    origin b outlives a\n" + PairInit, "ref/(ref/i32 during b) during a")]
     [InlineData("struct Pair {a, b}\n" + PairInit, "ref/(ref/i32 during b) during a")]
     [InlineData(HolderP + LocalInit, "let t: ref/i32 during a = x@ref")]
+    [InlineData(ComparisonUtil + ComparisonInit + "        let f: (ref/i64 during y) -> ref/i64 during x = Util.idf\n        yield 0\n    else => 0\n", "v@ref", "x", "Util.idf")] // G492-a (iii)'s vfil: valid
+    [InlineData(ComparisonUtil + ComparisonInit + "        let f: (ref/i64 during x) -> ref/i64 during a = Util.idf\n        yield 0\n    else => 0\n", "v@ref", "x", "Util.idf")] // vfiln: invalid (Refuted)
     public void AConstructorlessLayersRowsAreTheLocatedLimit(string source, params string[] sites)
         => Assert.Equal([.. sites.Select(static x => $"{nameof(DiagnosticCode.Unsupported_Kd)} {x}")], Origins(MirBuildTest.Compile(source + Main)));
 
