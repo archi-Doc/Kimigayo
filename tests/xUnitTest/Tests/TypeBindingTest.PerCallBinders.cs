@@ -884,6 +884,42 @@ public partial class TypeBindingTest
             """,
             string.Empty
         },
+        // t02i (invalid, SPEC 10.7, 3.8; PLAN G913): the input (ref/i32, ref/i32 during b) -> i32 holds against (ref/i32, ref/i32) -> i32, the same result does not, b at slot 0 (the record names the result's 2nd parameter).
+        {
+            "t02i",
+            """
+            func h(b: ref/i32, u: (ref/i32, ref/i32 during b) -> i32) -> (ref/i32, ref/i32 during b) -> i32 => u@move
+
+            func f() -> i32
+                let k: (ref/i32, (ref/i32, ref/i32) -> i32) -> (ref/i32, ref/i32) -> i32 = h
+                return 0
+            """,
+            "UnprovenOriginContract_Kd h"
+        },
+        // t03i (invalid, SPEC 10.7, 3.8; PLAN G913): t02i with (ref/i32 during b, ref/i32) -> i32 and b at slot 1 (the record names the result's 1st parameter).
+        {
+            "t03i",
+            """
+            func h(x: ref/i32, b: ref/i32, u: (ref/i32 during b, ref/i32) -> i32) -> (ref/i32 during b, ref/i32) -> i32 => u@move
+
+            func f() -> i32
+                let k: (ref/i32, ref/i32, (ref/i32, ref/i32) -> i32) -> (ref/i32, ref/i32) -> i32 = h
+                return 0
+            """,
+            "UnprovenOriginContract_Kd h"
+        },
+        // t12v (valid, SPEC 10.7, 3.8, 15.2.3; PLAN G913): the required ((ref/i32 during static, ref/i32) -> i32) -> i32 against ((ref/i32 during b, ref/i32) -> i32) -> i32, b at slot 0: `static` outlives b's Origin.
+        {
+            "t12v",
+            """
+            func h(b: ref/i32, u: ((ref/i32 during b, ref/i32) -> i32) -> i32) -> i32 => 0
+
+            func f() -> i32
+                let k: (ref/i32, ((ref/i32 during static, ref/i32) -> i32) -> i32) -> i32 = h
+                return 0
+            """,
+            string.Empty
+        },
         // n4j (invalid, SPEC 10.7, 8.10, 3.8; PLAN G913): n4i with b at slot 1.
         {
             "n4j",
