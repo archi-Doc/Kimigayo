@@ -513,7 +513,7 @@ public sealed partial class Binding
                             return solution.IsComplete() ? CandidateApplicability.Inapplicable : CandidateApplicability.Pending;
                         }
 
-                        if (!solution.FitsLiteralShape(pattern, shape))
+                        if (!solution.FitsLiteralShape(pattern, shape, argument))
                         {
                             if (DifferentRangeShapes(shape, pattern))
                             {

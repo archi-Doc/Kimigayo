@@ -145,8 +145,11 @@ public partial class PairAnnotationBindingTest
     // argument's own Type and rejected them all. An exact source is never adapted to a formed layer, so a Place there is owner evidence
     // against ref in either order (e1, e1s). A Literal is no evidence (SPEC 10.5.1, 10.2.1; the owner's O-294 (b)): its default fits
     // every pair layer whose binder evidence fixed, an exact source or the original, as a borrowed temporary under ref, and binds only
-    // what no evidence binds (e2, e2s; in a Tuple literal e2t, e2ts; invalid where another input binds the slot to a Type it does not
-    // fit, e2x, e2xs). A formed Type no adaptation fits rejects in either order (L2y, L2ys, q4y, q4ys, o3x, o3xs, o4x), and with
+    // what no evidence binds (e2, e2s; in a Tuple literal e2t, e2ts; at an original whose Type evidence bound e2w, e2ws; the other
+    // 10.5.1 Literals, a control-flow one e2j and a literal-only expression e2e; in a Case payload cq1, cq1s; invalid where another
+    // input binds the slot to a Type it does not fit, e2x, e2xs, cqx, cqxs, or where only an exclusive borrow of the temporary would fit,
+    // e2u, e2us), while a suffixed literal is evidence (e2k, e2ks). A formed Type no adaptation fits rejects in either order (L2y,
+    // L2ys, q4y, q4ys, o3x, o3xs, o4x), and with
     // nothing to fix the binder it is unbound (o5); with no evidence a Literal's default fixes the binder after the defaults (L1, L1s),
     // and a formed layer's slot is bound then (d1, d1s; d1x invalid). a9497632c rejected o1, o2, o3, o4, o6, o7, o8 and o9 and accepted their swapped
     // twins; each order twin's invalid counterpart rejects in both orders (o2x, o2xs; r4f4x, r4f4xs for o6; o7x, o7xs; o8x, o8xs). A
@@ -201,6 +204,18 @@ public partial class PairAnnotationBindingTest
     [InlineData("func put8<s/W, V>(p: (s/V during c, i32), m: s/W) -> i32\n    s is owner or ref\n    return 0\nfunc call() -> i32\n    let b: i64 = 2\n    return put8((5, 1), b@ref)\n", "clean")] // e2ts
     [InlineData("func put7<s/W, V>(m: s/W, y: s/V, z: V) -> i32\n    s is owner or ref\n    return 0\nfunc call() -> i32\n    let b: i64 = 2\n    return put7(b@ref, 5, true)\n", "1*NoApplicableOverload_Kd")] // e2x
     [InlineData("func put7<s/W, V>(y: s/V, m: s/W, z: V) -> i32\n    s is owner or ref\n    return 0\nfunc call() -> i32\n    let b: i64 = 2\n    return put7(5, b@ref, true)\n", "1*NoApplicableOverload_Kd")] // e2xs
+    [InlineData("func put5u<s/W, V>(m: s/W, y: s/V) -> i32\n    s is owner or uniq\n    return 0\nfunc call() -> i32\n    var b: i64 = 2\n    return put5u(b@uniq, 5)\n", "1*NoApplicableOverload_Kd")] // e2u
+    [InlineData("func put5u<s/W, V>(m: s/W, y: s/V) -> i32\n    s is owner or uniq\n    return 0\nfunc call() -> i32\n    var b: i64 = 2\n    return put5u(5, b@uniq)\n", "1*NoApplicableOverload_Kd")] // e2us
+    [InlineData("func put6<s/W>(m: s/W, n: s/W) -> i32\n    s is owner or ref\n    return 0\nfunc call() -> i32\n    let b: i64 = 2\n    return put6(b@ref, 5)\n", "clean")] // e2w
+    [InlineData("func put6<s/W>(m: s/W, n: s/W) -> i32\n    s is owner or ref\n    return 0\nfunc call() -> i32\n    let b: i64 = 2\n    return put6(5, b@ref)\n", "clean")] // e2ws
+    [InlineData("func put5<s/W, V>(m: s/W, y: s/V) -> i32\n    s is owner or ref\n    return 0\nfunc call() -> i32\n    let b: i64 = 2\n    return put5(b@ref, 5@i32)\n", "1*NoApplicableOverload_Kd")] // e2k
+    [InlineData("func put5<s/W, V>(m: s/W, y: s/V) -> i32\n    s is owner or ref\n    return 0\nfunc call() -> i32\n    let b: i64 = 2\n    return put5(5@i32, b@ref)\n", "1*NoApplicableOverload_Kd")] // e2ks
+    [InlineData("func put5<s/W, V>(m: s/W, y: s/V) -> i32\n    s is owner or ref\n    return 0\nfunc call(ready: bool) -> i32\n    let b: i64 = 2\n    return put5(b@ref, if ready => 1 else => 2)\n", "clean")] // e2j
+    [InlineData("func put5<s/W, V>(m: s/W, y: s/V) -> i32\n    s is owner or ref\n    return 0\nfunc call() -> i32\n    let b: i64 = 2\n    return put5(b@ref, 5 + 1)\n", "clean")] // e2e
+    [InlineData("enum E<s/T, V> {a}\n    s is owner or ref\n    P(s/T during a, s/V during a)\n    N\nfunc use(b: ref/i64)\n    match E.P(b, 5)\n        .P(let x, let y) => ()\n        .N => ()\n", "clean")] // cq1
+    [InlineData("enum E<s/T, V> {a}\n    s is owner or ref\n    P(s/V during a, s/T during a)\n    N\nfunc use(b: ref/i64)\n    match E.P(5, b)\n        .P(let x, let y) => ()\n        .N => ()\n", "clean")] // cq1s
+    [InlineData("enum E<s/T, V> {a}\n    s is owner or ref\n    P(s/T during a, s/V during a, V)\n    N\nfunc use(b: ref/i64)\n    let t: bool = true\n    match E.P(b, 5, t)\n        .P(let x, let y, let z) => ()\n        .N => ()\n", "1*TypeMismatch_Kd")] // cqx
+    [InlineData("enum E<s/T, V> {a}\n    s is owner or ref\n    P(s/V during a, s/T during a, V)\n    N\nfunc use(b: ref/i64)\n    let t: bool = true\n    match E.P(5, b, t)\n        .P(let x, let y, let z) => ()\n        .N => ()\n", "1*TypeMismatch_Kd")] // cqxs
     [InlineData("func put<s/W, X>(m: s/W, y: s/(ref/X during b) during a) -> i32\n    s is owner or ref\n    return 0\nfunc call(r: ref/i32) -> i32\n    return put(5, r)\n", "clean")] // d1
     [InlineData("func put<s/W, X>(y: s/(ref/X during b) during a, m: s/W) -> i32\n    s is owner or ref\n    return 0\nfunc call(r: ref/i32) -> i32\n    return put(r, 5)\n", "clean")] // d1s
     [InlineData("func put<s/W, X>(m: s/W, y: s/(ref/X during b) during a, z: X) -> i32\n    s is owner or ref\n    return 0\nfunc call(r: ref/i32) -> i32\n    return put(5, r, true)\n", "1*NoApplicableOverload_Kd")] // d1x

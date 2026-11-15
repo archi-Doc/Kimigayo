@@ -237,14 +237,17 @@ public sealed partial class Binding
     // SPEC 10.1 step 5, 10.2, 10.8 (the owner's O-283 (a)): the pattern an argument part adapts at (SlotSolution.AdaptationPattern): each
     // structured application among its outer layers formed under the binder a source has fixed (ApplySemantics, as FormedApplication), a
     // parameter Type the argument fits by the common adaptation as any argument fits its parameter. The adaptation reaches only the outer
-    // layers, so nothing below them is formed. For a part that is evidence, an exact source (IsExactSource) is kept, since its evidence is
-    // its own outer Semantics, never converted (IsSource), so owner and ref evidence still conflict in any order. A Literal is no evidence
-    // (SPEC 10.5.1, 10.2.1; the owner's O-294 (b)): its default fits every pair layer whose binder evidence fixed, an exact source and
-    // an occurrence of the original whose Type is still open alike (a borrowed temporary under ref), and binds only what no evidence binds.
-    private BoundType FittedPattern(BoundType pattern, Koto function, SlotFrame frame, bool evidence)
+    // layers, so nothing below them is formed. `part` is the argument part (null for a position of several typed parts, their common
+    // Type), whose kind its owner decides (KindOf). An exact source (IsExactSource) of a part that is evidence is kept, since its evidence
+    // is its own outer Semantics, never converted (IsSource), so owner and ref evidence still conflict in any order. A Literal is no
+    // evidence (SPEC 10.5.1, 10.2.1; the owner's O-294 (b)): its default fits every pair layer whose binder evidence fixed, an exact
+    // source and an occurrence of the original whose Type is still open alike (a borrowed temporary under ref), and binds only what no
+    // evidence binds.
+    private BoundType FittedPattern(BoundType pattern, Koto function, SlotFrame frame, Koto? part)
     {
-        if (!evidence && pattern is { Kind: BoundTypeKind.Parameter, Symbol: { Kind: BindingSymbolKind.SemanticsTarget, Type: { } original } pair } &&
-            ContainerSlot(function, pair) is >= 0 and var own && own < frame.Types.Length && frame.Types[own] is null && frame.Selectors[own] is { } fixedBy)
+        if (pattern is { Kind: BoundTypeKind.Parameter, Symbol: { Kind: BindingSymbolKind.SemanticsTarget, Type: { } original } pair } &&
+            ContainerSlot(function, pair) is >= 0 and var own && own < frame.Types.Length && frame.Types[own] is null &&
+            frame.Selectors[own] is { } fixedBy && part is not null && this.KindOf(part) == PartKind.Literal)
         {
             return this.ApplySemantics(fixedBy, original, pattern.Origin) ?? pattern;
         }
@@ -254,9 +257,9 @@ public sealed partial class Binding
             return pattern;
         }
 
-        var fitted = this.FittedPattern(target, function, frame, evidence);
-        if (pattern.Kind == BoundTypeKind.SemanticsApplication && (!evidence || !IsExactSource(pattern, function)) &&
-            ContainerSlot(function, pattern.Symbol!) is >= 0 and var slot && Selector(frame, slot) is { } whole &&
+        var fitted = this.FittedPattern(target, function, frame, part);
+        if (pattern.Kind == BoundTypeKind.SemanticsApplication && ContainerSlot(function, pattern.Symbol!) is >= 0 and var slot &&
+            Selector(frame, slot) is { } whole && (!IsExactSource(pattern, function) || (part is not null && this.KindOf(part) == PartKind.Literal)) &&
             this.ApplySemantics(whole, fitted, pattern.Origin) is { } formed)
         {
             return formed;
