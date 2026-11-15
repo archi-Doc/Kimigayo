@@ -7,18 +7,21 @@
 // A2 (MirDrops) the code, subject (in the location's scope) and MirReport.Add's index of each problem it records (R4-M102, R4-M132), the
 // paths its entry initializes (the arguments'; a constructing _0's own bit has no subtree event) and, in its checks replay, the state
 // before each Drop, with whether the runtime edges reach it, and each state event the runtime edges reach.
-// Five lanes per path, joined by union: MaybeUninit, MaybeMoved, EverInit, and for A2 MaybeInit and MaybePartial (a non-root path a Move or
-// a Drop took out of its parent, cleared with the subtree by any event of an ancestor-or-self). A definition initializes a path's subtree
-// but its Never parts and what a temp it takes whole left uninitialized on the path (MirMoveData's NeverParts and Carries, SPEC 14.10.3),
-// a Move or a Drop uninitializes it, StorageLive and StorageDead start a fresh binding lifetime; a use needs its whole subtree initialized on
-// every incoming path, its own bit being the construction fact; a use through a runtime Index of storage reports on its receiver under
+// Six lanes per path, joined by union: MaybeUninit, MaybeMoved, EverInit, for A2 MaybeInit and MaybePartial (a non-root path a Move or
+// a Drop took out of its parent, cleared with the subtree by any event of an ancestor-or-self), and Unplaced, A1's alone: the value the
+// path holds lacks a part no Place names (a construction left it unplaced on the path; a Places Call's construction its entry). A
+// definition initializes a path's subtree but its Never parts and what a temp it takes whole left unplaced on the path (MirMoveData's
+// NeverParts and Carries, SPEC 14.10.3; a fact on a Move Path is MaybeUninit, its complement Unplaced), clearing Unplaced first,
+// a Move or a Drop uninitializes it and clears Unplaced, StorageLive and StorageDead start a fresh binding lifetime; a use needs its whole subtree initialized on
+// every incoming path, its own bit being the construction fact, and no Unplaced bit in it; a use through a runtime Index of storage reports on its receiver under
 // the selection's subject, its position local's, as the selection's guard, a use where the receiver is located, does (the builder's
 // contract, DECISIONS R4-M56), so the two are one problem unless the receiver changed in between. Every root is tracked (A2 reads
 // temporaries' states). The state rules report a temp's use as a program Place's but for its own bit: a temp that holds nothing
 // holds the Never value, which a consumption takes as it is (SPEC 3.8, 14.10.3), and its parts are what a construction left
-// unplaced (R4-M175), a part being a Place in its Temporary Place (SPEC 3.4). A whole temp that a placing location's operand moves is
+// unplaced (R4-M175), a part being a Place in its Temporary Place (SPEC 3.4); a Places Call's construction's own Unplaced bit is read only
+// where it is taken (its literal's lookups and insertions are its own steps, SPEC 15.1.2, 12.4.3). A whole temp that a placing location's operand moves is
 // transferred, not used (SPEC 3.5.3, 12.4.3): an Assign's Use or aggregate, whose carries give its state to the component, and a
-// Places Call, a construction's insertion into storage without component paths (PLAN G442). A whole use of the return local
+// Places Call, a construction's insertion, whose facts give it its lacking entry (PLAN G442). A whole use of the return local
 // is a delivery, checked only where the runtime edges reach it; a Return checks nothing. A Move without a Move Path is reported whatever its
 // root: DefaultArgumentMove_Kd for a default template's prepared slot or its owned contents, which the default cannot Move (SPEC 7.2.3),
 // else StaticMovePathRequired_Kd. A body no view decides is analyzed once, for every view.
@@ -36,7 +39,7 @@ namespace Kimi.Compiler.Mir;
 internal sealed class MirInit(MirDataflow flow, MirMoveData moves, MirCases cases, MirDrops drops)
 {
     /// <summary>The lanes per path, each set and cleared by its bit 1 &lt;&lt; lane.</summary>
-    internal const int Lanes = 5;
+    internal const int Lanes = 6;
 
     /// <summary>MaybeUninit.</summary>
     internal const int Uninit = 0;
@@ -49,7 +52,8 @@ internal sealed class MirInit(MirDataflow flow, MirMoveData moves, MirCases case
 
     private const int Moved = 1; // MaybeMoved.
     private const int Ever = 2; // EverInit.
-    private const int Fresh = (1 << Moved) | (1 << Ever) | (1 << Init) | (1 << Partial); // Cleared where a binding lifetime starts.
+    private const int Unplaced = 5; // The value lacks a part no Place names; A1's alone.
+    private const int Fresh = (1 << Moved) | (1 << Ever) | (1 << Init) | (1 << Partial) | (1 << Unplaced); // Cleared where a binding lifetime starts.
 
     private bool[] held = [];
 
@@ -151,7 +155,8 @@ internal sealed class MirInit(MirDataflow flow, MirMoveData moves, MirCases case
             {
                 (this.subject, this.scope, this.at) = (body.Subject(data.Terminator.Source), data.Terminator.Source.Scope, new(block, data.Count));
                 this.placing = data.Terminator.Places;
-                this.Uses(default, default);
+                var key = moves.Insertion(block);
+                this.Uses(this.placing ? moves.Carries(key) : default, this.placing ? moves.NeverParts(key) : default);
             }
         }
 
@@ -231,21 +236,23 @@ internal sealed class MirInit(MirDataflow flow, MirMoveData moves, MirCases case
         {
             for (var k = 0; k < carries.Length; k += 2)
             {
-                this.Held[k >> 1] = MirDataflow.Any(state, Lanes, Uninit, carries[k], moves.Paths[carries[k]].End);
+                var source = carries[k];
+                this.Held[k >> 1] = source >= 0 ? MirDataflow.Any(state, Lanes, Uninit, source, moves.Paths[source].End)
+                    : MirDataflow.Any(state, Lanes, Unplaced, ~source, ~source + 1);
             }
 
             MirUses.ForEach(cases, this.at, ref this);
             this.placing = false;
             foreach (var part in parts)
             {
-                this.Unplaced(part);
+                this.Lacks(part);
             }
 
             for (var k = 0; k < carries.Length; k += 2)
             {
                 if (this.Held[k >> 1])
                 {
-                    this.Unplaced(carries[k + 1]);
+                    this.Lacks(carries[k + 1]);
                 }
             }
         }
@@ -333,19 +340,28 @@ internal sealed class MirInit(MirDataflow flow, MirMoveData moves, MirCases case
                 this.Add(DiagnosticCode.ReassignedLet_Kd, OwnershipRequirement.ReassignedLet, this.subject);
             }
 
-            MirDataflow.Apply(state, Lanes, path, paths[path].End, set: (1 << Ever) | (1 << Init), clear: (1 << Uninit) | (1 << Moved) | (1 << Partial));
+            MirDataflow.Apply(state, Lanes, path, paths[path].End, set: (1 << Ever) | (1 << Init), clear: (1 << Uninit) | (1 << Moved) | (1 << Partial) | (1 << Unplaced));
             this.Event(path, set: true);
         }
 
-        // A part its definition left uninitialized (SPEC 14.10.3): a Never part, or a part a carried temp left so on this path.
-        private readonly void Unplaced(int path)
-            => MirDataflow.Apply(state, Lanes, path, moves.Paths[path].End, set: 1 << Uninit, clear: (1 << Init) | (1 << Partial));
+        // A part its definition left unplaced (SPEC 14.10.3): a Never part, or a part a carried temp left so on this path. A Move Path holds
+        // no value; a complement's path holds a value that lacks a part no Place names, which only A1 reads.
+        private readonly void Lacks(int fact)
+        {
+            if (fact < 0)
+            {
+                MirDataflow.Apply(state, Lanes, ~fact, ~fact + 1, set: 1 << Unplaced, clear: 0);
+                return;
+            }
+
+            MirDataflow.Apply(state, Lanes, fact, moves.Paths[fact].End, set: 1 << Uninit, clear: (1 << Init) | (1 << Partial) | (1 << Unplaced));
+        }
 
         // A Move or a Drop takes the subtree out, uninitialized; a part taken out of its parent leaves the parent's own bit, so it is partial.
         private readonly void Take(int path, int set)
         {
             var paths = moves.Paths;
-            MirDataflow.Apply(state, Lanes, path, paths[path].End, set, clear: (1 << Init) | (1 << Partial));
+            MirDataflow.Apply(state, Lanes, path, paths[path].End, set, clear: (1 << Init) | (1 << Partial) | (1 << Unplaced));
             if (paths[path].Parent >= 0)
             {
                 MirDataflow.Apply(state, Lanes, path, path + 1, set: 1 << Partial, clear: 0);
@@ -363,11 +379,13 @@ internal sealed class MirInit(MirDataflow flow, MirMoveData moves, MirCases case
             }
         }
 
-        // A use needs the whole subtree initialized, the construction fact included (SPEC 15.1.2): Moved where it may have been moved.
+        // A use needs the whole subtree initialized, the construction fact included, and lacking no part (SPEC 15.1.2): Moved where it may
+        // have been moved.
         private readonly void Check(int path, SourceRef subject)
         {
             var (start, end) = (this.Checked(path), moves.Paths[path].End);
-            if (this.Checks && this.Reported(path) && MirDataflow.Any(state, Lanes, Uninit, start, end))
+            var lacks = MirDataflow.Any(state, Lanes, Unplaced, this.Lacking(path), end);
+            if (this.Checks && this.Reported(path) && (lacks || MirDataflow.Any(state, Lanes, Uninit, start, end)))
             {
                 this.Uninitialized(MirDataflow.Any(state, Lanes, Moved, start, end), subject);
             }
@@ -380,6 +398,10 @@ internal sealed class MirInit(MirDataflow flow, MirMoveData moves, MirCases case
         // value, which a consumption takes as it is (SPEC 3.8, 14.10.3); its parts are what a construction left unplaced (R4-M175).
         private readonly int Checked(int path)
             => moves.Paths[path].Parent < 0 && body.Locals[moves.Paths[path].Local].Kind == MirLocalKind.Temp ? path + 1 : path;
+
+        // The first path whose Unplaced bit a use of a path reads: a construction's own one is its lacking entry, which only the location
+        // that takes it reads (SPEC 15.1.2: the aggregate commits after all elements are placed; its later entries are its own steps).
+        private readonly int Lacking(int path) => moves.Paths[path].Parent < 0 && moves.IsConstruction(moves.Paths[path].Local) ? path + 1 : path;
 
         // A use of a Place some incoming path leaves uninitialized: MovedPlace_Kd where it may have been moved, else UninitializedPlace_Kd.
         private readonly void Uninitialized(bool moved, SourceRef subject) => this.Add(

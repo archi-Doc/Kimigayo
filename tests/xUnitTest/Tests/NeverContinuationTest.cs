@@ -615,8 +615,8 @@ public class NeverContinuationTest
     // placing location takes a whole temp without a use: an aggregate (an Array or tuple literal) and a Dictionary literal's insertion, a
     // Places call (the owner's O-97 (a)) whose first entry looks no key up (U1). The reachable twins and the Never value consumed directly
     // (M's Q2) stay valid; a part read of a temp absent on one assumed path is rejected as its Var twin is (SPEC 14.10.3's
-    // `let y: i32 = fail()`); a Dictionary literal received whole keeps no component path (the stated limit: its entries are Places
-    // calls' insertions, not an aggregate's components).
+    // `let y: i32 = fail()`); a Dictionary literal received whole while an entry's value holds an unplaced part is incomplete, as an
+    // aggregate is (its insertion's carries, MirMoveData; SPEC 12.4.3), while an unused one and its later entries stay valid.
     [Theory]
     [InlineData("return 9\n    g(" + Joined + ")", "UninitializedPlace_Kd g((")]
     [InlineData("g(" + Joined + ")", "")]
@@ -641,7 +641,7 @@ public class NeverContinuationTest
     [InlineData("return 9\n    let x = if c => [\"j\": " + Joined + "] else => [\"j\": (a, a)]", "")]
     [InlineData("return 9\n    let x = [\"j\": g2(" + Joined + ")]", "UninitializedPlace_Kd g2((")]
     [InlineData("return 9\n    let x = [\"j\": " + Joined + ".1]", "UninitializedPlace_Kd (")]
-    [InlineData("return 9\n    take([\"j\": (a, (return 4))])", "")]
+    [InlineData("return 9\n    take([\"j\": (a, (return 4))])", "UninitializedPlace_Kd take([\"j\": (a, (return 4))])")]
     [InlineData("return 9\n    let x = [" + Joined + "]", "")]
     [InlineData("return 9\n    let t = (" + Joined + ", a)", "")]
     public void ATempsUnplacedPartIsReportedWhereItIsConsumed(string body, string records)

@@ -11,9 +11,15 @@
 // whose events all lie in one chain from their StorageLive (a StorageDead elsewhere kills whatever state arrives) are chain-local and
 // numbered after the flow roots, so a head stores only the flow paths. A path admits one placement when its root is a let binding or it
 // lies in a constructor's Field placed once (SPEC 15.1.1, 11.7).
-// Each Assign's Never parts: the components of its destination that its construction leaves unplaced, as their operand is the Never value
-// (SPEC 14.10.3; DECISIONS R4-M175), which A1's definition applies, and its carries, the paths of a temp it takes whole that A1 copies onto
-// the destination's component on each path. An Array literal's element is such a component (ConstIndex), a path no Place names.
+// Each placing location's facts (SPEC 14.10.3; DECISIONS R4-M175), which A1 applies: an Assign's Never parts, the components of its
+// destination that its construction leaves unplaced, as their operand is the Never value, and its carries, the paths of a temp it takes
+// whole whose state A1 copies onto the destination's component on each path; a Places Call's, at the construction it inserts into (its
+// entry not inserted, SPEC 12.4.3). Only Move Paths are numbered: a root, a constructor's Field or base, a path a Place of the body
+// resolves to, and the source counterpart of a carry whose destination is one (closed upward and backward through the carries). A fact
+// on a component no Place names goes to its owner, the nearest Move Path above it, as "its value lacks a part" (A1's Unplaced lane); a
+// fact on a Move Path is its initialization (MaybeUninit), and a Places Call's is its construction's lacking entry. A published fact
+// is a path's number, or its complement for the Unplaced lane. Invariant: a carry's source lies in a run recorded before the carry's
+// (a temp is defined at a location the walk visits before the one that takes it), so one reverse pass over the carries closes them.
 // Must not decide initialization, copy a body per view, intern projections or change the body.
 
 #pragma warning disable SA1402 // The path record belongs to the paths.
@@ -59,14 +65,20 @@ internal sealed class MirMoveData
     private int[] sizes = [];
     private int[] numbers = []; // Each creation index's pre-order number.
     private bool[] once = []; // By creation index: a let root or a constructor's Field placed once.
+    private bool[] named = []; // By creation index: a Move Path (a root, a constructor's Field or base, a Place's path, closed).
+    private int[] owners = []; // By creation index: the nearest Move Path at or above it.
+    private bool[] constructions = []; // By local: a temp a Places Call inserts into.
+    private int[] carryRuns = []; // The carries' runs in recording order (the closure).
+    private int carryCount;
     private int[] chains = []; // Each local's chain head, -1 without an event, -2 in more than one.
     private bool[] live = []; // Whether a local's first event, in reverse postorder, is its StorageLive.
     private MirMovePath[] paths = [];
     private MirBody body = null!;
     private int created;
+    private int count; // The Move Paths.
 
     /// <summary>Gets the paths by pre-order number.</summary>
-    internal ReadOnlySpan<MirMovePath> Paths => this.paths.AsSpan(0, this.created);
+    internal ReadOnlySpan<MirMovePath> Paths => this.paths.AsSpan(0, this.count);
 
     /// <summary>Gets the number of flow paths, numbered first: the paths whose state crosses a head.</summary>
     internal int FlowCount { get; private set; }
@@ -88,18 +100,20 @@ internal sealed class MirMoveData
     {
         this.body = body;
         var locals = body.Locals.Length;
-        (this.created, this.ViewDependent, this.runCount, this.MaxCarried) = (0, false, 0, 0);
+        (this.created, this.ViewDependent, this.runCount, this.MaxCarried, this.carryCount) = (0, false, 0, 0, 0);
         this.children.Clear();
         this.places.Clear();
         this.nevers.Clear();
         this.carried.Clear();
         MirDataflow.Grow(ref this.chains, locals);
         MirDataflow.Grow(ref this.live, locals);
+        MirDataflow.Grow(ref this.constructions, locals);
         Array.Fill(this.chains, -1, 0, locals);
+        Array.Clear(this.constructions, 0, locals);
         for (var i = 0; i < locals; i++)
         {
             var root = this.Add(-1); // Adding grows the arrays first.
-            this.once[root] = body.Locals[i] is { Kind: MirLocalKind.Var, Mutable: false };
+            (this.once[root], this.named[root]) = (body.Locals[i] is { Kind: MirLocalKind.Var, Mutable: false }, true);
         }
 
         this.Constructing = body.Key.Kind == MirBodyKind.Fn && AdtDef.IsConstructor(body.Key.Decl);
@@ -111,13 +125,13 @@ internal sealed class MirMoveData
                 if (AdtDef.FieldType(self, i) is not null)
                 {
                     var field = this.Child(0, MirProjectionKind.Field, i);
-                    this.once[field] = AdtDef.PlacedOnce(self, i);
+                    (this.once[field], this.named[field]) = (AdtDef.PlacedOnce(self, i), true);
                 }
             }
 
             if (AdtDef.Base(self) is not null)
             {
-                this.Child(0, MirProjectionKind.Base, 1);
+                this.named[this.Child(0, MirProjectionKind.Base, 1)] = true;
             }
         }
 
@@ -134,28 +148,49 @@ internal sealed class MirMoveData
                     this.Nevers(index, body.Statements[index].Place, body.Statements[index].Rvalue);
                 }
             }
+
+            if (body.Blocks[block].Terminator.Places)
+            {
+                this.Inserted(block, body.Blocks[block].Terminator);
+            }
         }
 
+        this.NameCarried();
         this.Number(locals);
         for (var run = 0; run < this.runCount; run += this.runs[run] + 2)
         {
             for (var i = run + 2; i < run + 2 + this.runs[run]; i++)
             {
-                this.runs[i] = this.numbers[this.runs[i]];
+                var entry = this.runs[i];
+                this.runs[i] = entry >= 0 && this.named[entry] ? this.numbers[entry] : ~this.numbers[this.owners[entry < 0 ? ~entry : entry]];
             }
         }
     }
 
-    /// <summary>Gets the Never parts of an Assign of the built body (SPEC 14.10.3): the paths of its destination's components that its
-    /// construction places nothing into, their operand being the Never value.</summary>
-    /// <param name="statement">The Assign's statement index.</param>
-    /// <returns>The parts' paths; empty for most.</returns>
+    /// <summary>Gets the key of a Places Call's Never parts and carries (<see cref="NeverParts"/>, <see cref="Carries"/>), past every
+    /// statement's index.</summary>
+    /// <param name="block">The block the Call ends.</param>
+    /// <returns>The key.</returns>
+    internal int Insertion(int block) => this.body.Statements.Length + block;
+
+    /// <summary>Gets whether a local is a construction a Places Call inserts into (SPEC 15.1.2, 12.4.3): its own lacking entry is read only
+    /// where it is taken, as its literal's later lookups and insertions are its own steps.</summary>
+    /// <param name="local">The local.</param>
+    /// <returns>Whether it is.</returns>
+    internal bool IsConstruction(int local) => this.constructions[local];
+
+    /// <summary>Gets the Never parts of an Assign or a Places Call of the built body (SPEC 14.10.3): the facts of the components its
+    /// construction places nothing into, their operand being the Never value: a Move Path's number (it holds no value), or the complement of
+    /// its owner's (the owner lacks a part, A1's Unplaced lane).</summary>
+    /// <param name="statement">The Assign's statement index, or the Places Call's <see cref="Insertion"/>.</param>
+    /// <returns>The facts; empty for most.</returns>
     internal ReadOnlySpan<int> NeverParts(int statement)
         => this.nevers.TryGetValue(statement, out var run) ? this.runs.AsSpan(run + 2, this.runs[run]) : default;
 
-    /// <summary>Gets the carries of an Assign of the built body (SPEC 14.10.3): pairs of a path below a temp Place it takes, where a
-    /// construction may have left a Never part, and the same path below the destination's component, whose state A1 takes on each path.</summary>
-    /// <param name="statement">The Assign's statement index.</param>
+    /// <summary>Gets the carries of an Assign or a Places Call of the built body (SPEC 14.10.3): pairs of a source fact, below a temp Place
+    /// it takes where a construction may have left a part unplaced, and the destination fact whose state A1 gives it on each path (the same
+    /// path below the component, a Places Call's construction), each a number or a complement as <see cref="NeverParts"/>'.</summary>
+    /// <param name="statement">The Assign's statement index, or the Places Call's <see cref="Insertion"/>.</param>
     /// <returns>The pairs, source then destination; empty for most.</returns>
     internal ReadOnlySpan<int> Carries(int statement)
         => this.carried.TryGetValue(statement, out var run) ? this.runs.AsSpan(run + 2, this.runs[run]) : default;
@@ -176,8 +211,9 @@ internal sealed class MirMoveData
         var index = this.created++;
         MirDataflow.Grow(ref this.parents, this.created);
         MirDataflow.Grow(ref this.once, this.created);
+        MirDataflow.Grow(ref this.named, this.created);
         MirDataflow.Grow(ref this.steps, this.created);
-        (this.parents[index], this.once[index], this.steps[index]) = (parent, false, default);
+        (this.parents[index], this.once[index], this.named[index], this.steps[index]) = (parent, false, false, default);
         return index;
     }
 
@@ -225,6 +261,7 @@ internal sealed class MirMoveData
         };
 
         this.places.Add(place, found);
+        this.named[found >> 2] = true;
         return found;
     }
 
@@ -234,6 +271,7 @@ internal sealed class MirMoveData
         for (var i = 0; i < depth; i++)
         {
             path = this.Child(path, MirProjectionKind.Base, 1);
+            this.named[path] = true;
         }
 
         return path;
@@ -279,10 +317,12 @@ internal sealed class MirMoveData
                 var component = rvalue.Kind == MirRvalueKind.Aggregate ? this.Component(found >> 2, rvalue, fill ? k : i) : found >> 2;
                 for (; run >= 0; run = this.runs[run + 1])
                 {
+                    System.Diagnostics.Debug.Assert(run < carries, "A carry's source lies in a run recorded before it.");
                     for (var at = run + 2; at < run + 2 + this.runs[run]; at++)
                     {
                         var tracked = this.runs[at];
-                        var above = tracked;
+                        var path = tracked < 0 ? ~tracked : tracked; // A complement: its Unplaced lane, given as the same lane.
+                        var above = path;
                         while (above >= 0 && above != taken)
                         {
                             above = this.parents[above];
@@ -290,8 +330,9 @@ internal sealed class MirMoveData
 
                         if (above == taken)
                         {
+                            var mirror = this.Mirror(path, taken, component);
                             this.Push(tracked);
-                            this.Push(this.Mirror(tracked, taken, component));
+                            this.Push(tracked < 0 ? ~mirror : mirror);
                         }
                     }
                 }
@@ -317,6 +358,63 @@ internal sealed class MirMoveData
         }
     }
 
+    // SPEC 12.4.3, 14.10.3: the Never parts and carries of a Places Call, at the construction it inserts into (MirBody.Construction):
+    // each operand after the borrow is a part of the entry, which is not inserted while a part has no value. An operand that is the
+    // Never value is a Never part; another carries its temp's whole state (a temp that holds nothing holds the Never value) and each
+    // tracked fact below it. All are the construction's lacking entry: its own Unplaced lane, which its own steps do not read
+    // (IsConstruction), and a construction that is a whole temp tracks it, so the location that takes it carries it to its taker.
+    private void Inserted(int block, in MirTerminator call)
+    {
+        var construction = this.body.Construction(block)!.Value; // The validator's Placed.
+        var found = construction.IsStatic ? NoPath : this.Resolve(construction);
+        if ((found & 3) != Direct)
+        {
+            return;
+        }
+
+        var own = ~(found >> 2);
+        var operands = this.body.Operands.Slice(call.Start + 1, call.Count - 1);
+        var parts = this.Open();
+        foreach (ref readonly var operand in operands)
+        {
+            if (this.Never(operand.Place.Root))
+            {
+                this.Push(own);
+            }
+        }
+
+        parts = this.Close(parts);
+        var carries = this.Open();
+        foreach (ref readonly var operand in operands)
+        {
+            var temp = operand.Place.Root;
+            if (this.Never(temp))
+            {
+                continue;
+            }
+
+            this.Push(temp);
+            this.Push(own);
+            for (var run = this.nevers.TryGetValue(~temp, out var below) ? below : -1; run >= 0; run = this.runs[run + 1])
+            {
+                for (var at = run + 2; at < run + 2 + this.runs[run]; at++)
+                {
+                    this.Push(this.runs[at]);
+                    this.Push(own);
+                }
+            }
+        }
+
+        this.Publish(this.Insertion(block), parts, this.Close(carries));
+        if (construction.Projection == 0 && this.body.Locals[construction.Root].Kind == MirLocalKind.Temp && !this.constructions[construction.Root])
+        {
+            this.constructions[construction.Root] = true;
+            var tracked = this.Open();
+            this.Push(own);
+            this.Track(construction.Root, this.Close(tracked));
+        }
+    }
+
     // Whether a local is the Never value, a temp of Type Never: an operand that places nothing (SPEC 14.10.3).
     private bool Never(int local) => ReferenceEquals(this.body.Locals[local].Type, BoundType.Never);
 
@@ -332,6 +430,31 @@ internal sealed class MirMoveData
         {
             this.carried.Add(location, carries);
             this.MaxCarried = Math.Max(this.MaxCarried, this.runs[carries] >> 1);
+            MirDataflow.Grow(ref this.carryRuns, this.carryCount + 1);
+            this.carryRuns[this.carryCount++] = carries;
+        }
+    }
+
+    // Closes the Move Paths backward through the carries, the latest first (the invariant above): the source counterpart of a
+    // destination a Place observes is observed too, with its prefixes, so a carry between them keeps that part's own state.
+    private void NameCarried()
+    {
+        for (var c = this.carryCount - 1; c >= 0; c--)
+        {
+            var run = this.carryRuns[c];
+            for (var at = run + 2; at < run + 2 + this.runs[run]; at += 2)
+            {
+                var (source, destination) = (this.runs[at], this.runs[at + 1]);
+                if (destination < 0 || !this.named[destination])
+                {
+                    continue; // A complement's source is a complement too (Nevers).
+                }
+
+                for (var path = source; path >= 0 && !this.named[path]; path = this.parents[path])
+                {
+                    this.named[path] = true;
+                }
+            }
         }
     }
 
@@ -413,14 +536,20 @@ internal sealed class MirMoveData
         this.runs[this.runCount++] = value;
     }
 
-    // Numbers the paths in pre-order without a stack: subtree sizes in reverse creation order (a child is created after its parent), flow
-    // roots then chain-local roots by their sizes, then each child at its parent's cursor.
+    // Numbers the Move Paths in pre-order without a stack: subtree sizes in reverse creation order (a child is created after its parent),
+    // flow roots then chain-local roots by their sizes, then each child at its parent's cursor; a path no Place names gets no number and
+    // its owner, the nearest Move Path above it (a Move Path's prefixes are Move Paths).
     private void Number(int locals)
     {
         MirDataflow.Grow(ref this.sizes, this.created);
         MirDataflow.Grow(ref this.numbers, this.created);
+        MirDataflow.Grow(ref this.owners, this.created);
         MirDataflow.Grow(ref this.paths, this.created);
-        Array.Fill(this.sizes, 1, 0, this.created);
+        for (var c = 0; c < this.created; c++)
+        {
+            (this.sizes[c], this.owners[c]) = (this.named[c] ? 1 : 0, this.named[c] ? c : this.owners[this.parents[c]]);
+        }
+
         for (var c = this.created - 1; c >= locals; c--)
         {
             this.sizes[this.parents[c]] += this.sizes[c];
@@ -440,9 +569,15 @@ internal sealed class MirMoveData
             this.FlowCount = pass == 0 ? next : this.FlowCount;
         }
 
+        this.count = next;
         var cursors = this.sizes; // Reused: a node's size is read before it becomes its cursor.
         for (var c = 0; c < this.created; c++)
         {
+            if (!this.named[c])
+            {
+                continue;
+            }
+
             var parent = this.parents[c];
             var number = parent < 0 ? this.numbers[c] : cursors[parent];
             var end = number + this.sizes[c];

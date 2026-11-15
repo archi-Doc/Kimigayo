@@ -25,9 +25,24 @@ public sealed class MirInitTest
     private const string Components = "func fail() -> Never => $abort(\"no\")\nfunc takeA(a: Array<i32>) => ()\nfunc takeF(a: [2 of i32]) => ()\n" +
         "func takeT(t: (i32, i32)) => ()\nfunc takeE(e: E) => ()\nfunc takeOA(o: Option<Array<i32>>) => ()\nfunc takeTA(t: (i32, Array<i32>)) => ()\n" +
         "func takeAT(a: Array<(i32, i32)>) => ()\nfunc takeAA(a: Array<Array<i32>>) => ()\nfunc takeFA(a: [2 of Array<i32>]) => ()\n" +
-        "func takeS(s: S) => ()\nfunc takeAS(a: Array<string>) => ()\nfunc h2a(a: Array<i32>, b: Array<i32>) => ()\nenum E\n    Two(i32, i32)\n" +
+        "func takeS(s: S) => ()\nfunc takeAS(a: Array<string>) => ()\nfunc h2a(a: Array<i32>, b: Array<i32>) => ()\n" +
+        "func takeRA(a: ref/Array<i32>) => ()\nenum E\n    Two(i32, i32)\n" +
         "struct S\n    public let a: Array<i32>\n    public init(a: Array<i32>) => self.a = a@move\nfunc r1() -> Array<i32> => [fail()]\n" +
         "func r2() -> Array<i32>\n    return [5, fail()]\npublic func main() -> ()\n    let y: i32 = 5\n    let c: bool = y > 2\n";
+
+    private const string Entries = "func fail() -> Never => $abort(\"no\")\nfunc use(n: i32) => ()\nfunc takeD(d: Dictionary<i32, i32>) => ()\n" +
+        "func takeDA(d: Dictionary<i32, Array<i32>>) => ()\nfunc takeDT(d: Dictionary<i32, (i32, i32)>) => ()\n" +
+        "func takeDD(d: Dictionary<i32, Dictionary<i32, i32>>) => ()\nfunc takeDS(d: Dictionary<string, string>) => ()\n" +
+        "func takeKT(d: Dictionary<(i32, i32), i32>) => ()\nfunc refD(d: ref/Dictionary<i32, i32>) => ()\n" +
+        "func takeTD(t: (i32, Dictionary<i32, i32>)) => ()\nfunc takeAD(a: Array<Dictionary<i32, i32>>) => ()\n" +
+        "func takeOD(o: Option<Dictionary<i32, i32>>) => ()\nfunc h2d(a: Dictionary<i32, i32>, b: Dictionary<i32, i32>) => ()\n" +
+        "func h2<T>(a: T, b: T) => ()\nfunc r1d() -> Dictionary<i32, i32> => [1: fail()]\n" +
+        "func r2d() -> Dictionary<i32, i32>\n    return [1: 5, 2: fail()]\nfunc r3d() -> Dictionary<i32, i32> => [1: fail(), 2: 5]\n" +
+        "func r4d() -> i32\n    let d: Dictionary<string, string> = [\"a\": \"b\", \"c\": fail(), \"e\": (return 1)]\n    return 2\n" +
+        "func takeG<U>(u: U) => ()\nfunc takeDN(d: Dictionary<i32, Never>) => ()\nfunc takeDR(d: Dictionary<i32, Res>) => ()\nfunc takeW(w: WD) => ()\n" +
+        "struct Res\n    public var v: i32\n    public init(v: i32) => self.v = v\n    drop => ()\nstruct WD\n    public var d: Dictionary<i32, i32>\n" +
+        "    public var b: i32\n    public init(d: Dictionary<i32, i32>)\n        self.d = d@move\n        self.b = 3\n" +
+        "public func main() -> ()\n    let y: i32 = 5\n    let c: bool = y > 2\n";
 
     // SPEC 15.1.1: a use needs its Place initialized on every incoming runtime path.
     [Fact]
@@ -433,6 +448,12 @@ public sealed class MirInitTest
     // index) is UninitializedPlace_Kd, of a temp too, while a placed part's read, a real path, a whole replacement, a call taking the
     // Never value itself and the whole returned value (r1, r2) stay valid. Fail-before: dev accepted every invalid row here (an Array
     // literal's element had no component path, and a construction of Never values only was not built, its temp holding nothing).
+    // The last six rows are the implementation review's (N1): a write through a runtime index neither is allowed nor restores (two
+    // records), a named Never Place's read, an inline default, a Move of an incomplete let in a return, a bare Place match Subject
+    // (SPEC 15.1.6), and a loop whose assumed back edge stores an incomplete Array while the head and the later Move have real paths.
+    // Then the redesign's review rows (nc): a placed part of a nested component and of a let stays readable beside an unplaced one,
+    // which no Place names, so its owner lacks a part (A1's Unplaced lane): a read of the Never part, a whole read of the incomplete
+    // part and a whole Copy are errors; a join operand that has a value on both assumed paths is complete.
     [Theory]
     [InlineData("takeA([fail()])", "UninitializedPlace_Kd takeA([fail()]) 1")]
     [InlineData("takeA([y, fail()])", "UninitializedPlace_Kd takeA([y, fail()]) 1")]
@@ -459,8 +480,92 @@ public sealed class MirInitTest
     [InlineData("takeA([y])\n    takeAA([[y]])\n    takeAT([(y, y)])\n    takeS(S.init(fail()))\n    _ = r1()\n    _ = r2()\n    _ = (y, fail()).0", "")]
     [InlineData("takeA(if c => [y] else => [fail()])\n    let s: Array<i32> = if c => [y] else => [fail()]\n    takeA(s@move)", "")]
     [InlineData("var s: Array<i32> = [y]\n    s = [fail()]\n    s = [y]\n    takeA(s@move)\n    let t: Array<string> = [\"a\", fail()]", "")]
+    [InlineData("var s: Array<i32> = [y, fail()]\n    s[1] = 5\n    takeA(s@move)", "UninitializedPlace_Kd s[1] 1 | UninitializedPlace_Kd s 1")]
+    [InlineData("_ = 0\nfunc gx(x: Never) => takeA([x])", "UninitializedPlace_Kd takeA([x]) 1")]
+    [InlineData("hd()\nfunc hd(a: Array<i32> = [fail()]) => ()", "UninitializedPlace_Kd hd() 1")]
+    [InlineData("_ = 0\nfunc rr() -> Array<i32>\n    let t: Array<i32> = [5, fail()]\n    return t@move", "UninitializedPlace_Kd t 1")]
+    [InlineData("let o: Option<Array<(i32, i32)>> = Option.Some([(y, fail())])\n    match o\n        .Some(_) => ()\n        .None => ()", "UninitializedPlace_Kd o 1")]
+    [InlineData("var s: Array<i32> = [y]\n    var i: i32 = 0\n    while i < 3\n        takeRA(s)\n        i = i + 1\n        if c\n            fail()\n            s = [fail()]\n    takeA(s@move)", "")]
+    [InlineData("return\n    takeA(if c => [y] else => fail())\n    takeT(if c => (y, y) else => fail())", "")]
+    [InlineData("let t: (i32, (i32, i32, i32)) = (y, (y, if c => y else => y, fail()))\n    _ = t.1.1\n    _ = t.0\n    let a: (i32, i32) = (y, fail())\n    _ = a.0", "")]
+    [InlineData("let t: (i32, (i32, i32, i32)) = (y, (y, if c => y else => y, fail()))\n    _ = t.1.2", "UninitializedPlace_Kd t.1.2 1")]
+    [InlineData("let t: (i32, (i32, i32, i32)) = (y, (y, if c => y else => y, fail()))\n    use3(t.1)\nfunc use3(t: (i32, i32, i32)) => ()", "UninitializedPlace_Kd use3(t.1) 1")]
+    [InlineData("let a: (i32, i32) = (y, fail())\n    let b: (i32, i32) = a", "UninitializedPlace_Kd a 1")]
+    [InlineData("return\n    let t: (i32, (i32, i32)) = (y, (y, if c => y else => y))\n    takeT(t.1)\n    let u: (i32, (i32, i32)) = (y, (y, if c => y else => fail()))\n    _ = u.1.0", "")]
     public void AConstructionPlacesNothingIntoItsNeverComponents(string body, string expected)
-        => Assert.Equal(expected.Length == 0 ? [] : [expected], Problems(Components + "    " + body + "\n"));
+        => Assert.Equal(expected.Length == 0 ? [] : expected.Split(" | "), Problems(Components + "    " + body + "\n"));
+
+    // SPEC 12.4.3, 14.10.3, 15.1.2, 15.1.3 (DECISIONS R4-M188's Places Call; PLAN D-661's Dictionary row): a Dictionary literal's entry
+    // whose key or value has no value on a path (a Never form in any entry and position, a read of a named Never Place, a value or key
+    // a construction left a part of unplaced, an if with a Never arm on assumed paths only) inserts nothing, so the literal's value is
+    // incomplete there and a whole use of it (a call's argument, a nested component, a Move, a borrow, an accessor, an index, an
+    // iteration) is UninitializedPlace_Kd, once, at the use; a later entry's lookup and insertion are the literal's own steps and report
+    // nothing, and a real path, a whole replacement, an unused or only cleaned-up literal, a call taking the Never value itself and the
+    // whole returned value (r1d to r3d) stay valid. Fail-before: D-661's head accepted every invalid row here (a Places Call transferred
+    // its temps and gave their state to nothing). The rows after the last group: a temp holding a complete literal on one assumed path
+    // and nothing on another is taken whole as the Never value there (R4-M188; the first six failed on the unit's first head, whose
+    // inserted part read as unplaced where the temp held nothing), beside a real path, its let twin and an incomplete then arm; then
+    // the implementation review's N1 rows (a Never value Type, droppable values, a loop, a match, a generic Type, a struct Field).
+    [Theory]
+    [InlineData("takeD([1: y, 2: fail()])", "UninitializedPlace_Kd takeD([1: y, 2: fail()]) 1")]
+    [InlineData("takeD([1: fail(), 2: y])", "UninitializedPlace_Kd takeD([1: fail(), 2: y]) 1")]
+    [InlineData("takeD([1: y, 2: fail(), 3: y])", "UninitializedPlace_Kd takeD([1: y, 2: fail(), 3: y]) 1")]
+    [InlineData("takeD([1: y, fail(): y])", "UninitializedPlace_Kd takeD([1: y, fail(): y]) 1")]
+    [InlineData("takeDT([1: (y, fail())])", "UninitializedPlace_Kd takeDT([1: (y, fail())]) 1")]
+    [InlineData("takeKT([(y, fail()): y])", "UninitializedPlace_Kd takeKT([(y, fail()): y]) 1")]
+    [InlineData("takeDS([\"a\": \"b\", \"c\": fail()])", "UninitializedPlace_Kd takeDS([\"a\": \"b\", \"c\": fail()]) 1")]
+    [InlineData("h2d([1: y], [1: y, 2: fail()])", "UninitializedPlace_Kd h2d([1: y], [1: y, 2: fail()]) 1")]
+    [InlineData("h2([1: y], [1: y, 2: fail()])", "UninitializedPlace_Kd h2([1: y], [1: y, 2: fail()]) 1")]
+    [InlineData("let d: Dictionary<i32, i32> = [1: fail()]\n    takeD(d@move)", "UninitializedPlace_Kd d 1")]
+    [InlineData("let d: Dictionary<i32, i32> = [fail(): y]\n    takeD(d@move)", "UninitializedPlace_Kd d 1")]
+    [InlineData("let d: Dictionary<i32, i32> = [fail(): fail()]\n    takeD(d@move)", "UninitializedPlace_Kd d 1")]
+    [InlineData("let d: Dictionary<i32, i32> = [1: fail(), 2: fail()]\n    takeD(d@move)", "UninitializedPlace_Kd d 1")]
+    [InlineData("_ = 0\nfunc gd(x: Never)\n    let d: Dictionary<i32, i32> = [1: x]\n    takeD(d@move)", "UninitializedPlace_Kd d 1")]
+    [InlineData("_ = 0\nfunc gk(x: Never)\n    let d: Dictionary<i32, i32> = [x: 1]\n    takeD(d@move)", "UninitializedPlace_Kd d 1")]
+    [InlineData("let d: Dictionary<i32, Array<i32>> = [1: [fail()]]\n    takeDA(d@move)", "UninitializedPlace_Kd d 1")]
+    [InlineData("let d: Dictionary<i32, Dictionary<i32, i32>> = [1: [2: fail()]]\n    takeDD(d@move)", "UninitializedPlace_Kd d 1")]
+    [InlineData("let t: (i32, Dictionary<i32, i32>) = (y, [1: fail()])\n    takeTD(t@move)", "UninitializedPlace_Kd t 1")]
+    [InlineData("let a: Array<Dictionary<i32, i32>> = [[1: fail()]]\n    takeAD(a@move)", "UninitializedPlace_Kd a 1")]
+    [InlineData("let o: Option<Dictionary<i32, i32>> = Option.Some([1: fail()])\n    takeOD(o@move)", "UninitializedPlace_Kd o 1")]
+    [InlineData("var d: Dictionary<i32, i32> = [1: y]\n    d = [1: y, 2: fail()]\n    takeD(d@move)", "UninitializedPlace_Kd d 1")]
+    [InlineData("let d: Dictionary<i32, i32> = [1: y, 2: fail()]\n    _ = d.length", "UninitializedPlace_Kd d.length 1")]
+    [InlineData("let d: Dictionary<i32, i32> = [1: y, 2: fail()]\n    _ = d[1]", "UninitializedPlace_Kd d 1")]
+    [InlineData("let d: Dictionary<i32, i32> = [1: y, 2: fail()]\n    refD(d@ref)", "UninitializedPlace_Kd d@ref 1")]
+    [InlineData("let d: Dictionary<i32, i32> = [1: y, 2: fail()]\n    for (k, v) in d => ()", "UninitializedPlace_Kd d 1")]
+    [InlineData("let d: Dictionary<i32, i32> = [1: y, 2: fail()]\n    for (k, v) in d@move => ()", "UninitializedPlace_Kd d 1")]
+    [InlineData("_ = [1: y, 2: fail()].length", "UninitializedPlace_Kd [1: y, 2: fail()].length 1")]
+    [InlineData("return\n    takeD([1: y, 2: fail()])", "UninitializedPlace_Kd takeD([1: y, 2: fail()]) 1")]
+    [InlineData("return\n    takeD([1: if c => y else => fail()])", "UninitializedPlace_Kd takeD([1: if c => y 1")]
+    [InlineData("takeD(if c => [1: fail()] else => [1: y, 2: fail()])", "UninitializedPlace_Kd takeD(if c => [1: fail()] 1")]
+    [InlineData("if c\n        fail()\n        takeD([1: y, 2: fail()])", "UninitializedPlace_Kd takeD([1: y, 2: fail()]) 1")]
+    [InlineData("takeD([1: y, 2: if c => fail() else => fail()])", "UninitializedPlace_Kd takeD([1: y, 2: if c => fail() 1")]
+    [InlineData("takeD([1: y, 2: y])\n    takeDT([1: (y, y)])\n    takeKT([(y, y): y])\n    let e: Dictionary<i32, i32> = [:]\n    takeD(e@move)\n    _ = r1d()\n    _ = r2d()\n    _ = r3d()\n    _ = r4d()\n    takeD(fail())", "")]
+    [InlineData("takeD(if c => [1: y] else => [1: fail(), 2: y])\n    let d: Dictionary<i32, i32> = [1: fail(), 2: y]\n    let m: Dictionary<i32, i32> = [1: y, 2: fail(), 3: y]\n    _ = [fail(): y, 2: y]", "")]
+    [InlineData("takeD(if c => [1: y] else => [1: y, 2: fail()])\n    let d: Dictionary<i32, i32> = if c => [1: y] else => [1: fail()]\n    takeD(d@move)\n    takeD([1: y, 2: if c => y else => fail()])", "")]
+    [InlineData("var d: Dictionary<i32, i32> = [1: y]\n    d = [1: y, 2: fail()]\n    d = [1: y]\n    takeD(d@move)\n    let u: Dictionary<string, string> = [\"a\": \"b\", \"c\": fail()]\n    _ = [1: y, 2: fail()]", "")]
+    [InlineData("return\n    takeD([1: y])\n    takeD([1: if c => y else => y])\n    use(if c => y else => fail())", "")]
+    [InlineData("fail()\n    takeD([1: y])\n    let d: Dictionary<i32, i32> = [1: y, 2: fail()]", "")]
+    [InlineData("return\n    takeD(if c => [1: y] else => fail())", "")]
+    [InlineData("return\n    takeD(if c => [1: y, 2: y] else => fail())", "")]
+    [InlineData("return\n    takeTD(if c => (y, [1: y]) else => fail())", "")]
+    [InlineData("if c\n        fail()\n        takeD(if c => [1: y] else => fail())", "")]
+    [InlineData("return\n    takeG(if c => [1: y] else => fail())", "")]
+    [InlineData("return\n    refD(if c => [1: y] else => fail())", "")]
+    [InlineData("takeD(if c => [1: y] else => fail())", "")]
+    [InlineData("return\n    let d: Dictionary<i32, i32> = if c => [1: y] else => fail()\n    takeD(d@move)", "UninitializedPlace_Kd d 1")]
+    [InlineData("return\n    takeD(if c => [1: fail()] else => fail())", "UninitializedPlace_Kd takeD(if c => [1: fail()] 1")]
+    [InlineData("let d: Dictionary<i32, Never> = [1: fail()]\n    takeDN(d@move)", "UninitializedPlace_Kd d 1")]
+    [InlineData("_ = 0\nfunc gv(x: Never)\n    let d: Dictionary<i32, Never> = [1: x]\n    takeDN(d@move)", "UninitializedPlace_Kd d 1")]
+    [InlineData("let d: Dictionary<i32, Res> = [1: Res.init(1), 2: fail()]\n    takeDR(d@move)", "UninitializedPlace_Kd d 1")]
+    [InlineData("_ = 0\nfunc r7(x: Never)\n    let d: Dictionary<i32, Res> = [1: Res.init(1), 2: x]\n    takeDR(d@move)", "UninitializedPlace_Kd d 1")]
+    [InlineData("var d: Dictionary<i32, i32> = [1: y]\n    var i: i32 = 0\n    while i < 3\n        i = i + 1\n        if c\n            fail()\n            d = [fail(): y]\n            refD(d)", "UninitializedPlace_Kd d 1")]
+    [InlineData("return\n    let d: Dictionary<i32, i32> = match c\n        true => [1: y]\n        false => [1: fail()]\n    takeD(d@move)", "UninitializedPlace_Kd d 1")]
+    [InlineData("_ = 0\nfunc mk<T>(t: T)\n    let d: Dictionary<i32, T> = [1: t@move, 2: fail()]\n    takeG(d@move)", "UninitializedPlace_Kd d 1")]
+    [InlineData("var w: WD = WD.init([1: y])\n    w.d = [1: fail()]\n    takeW(w@move)", "UninitializedPlace_Kd w 1")]
+    [InlineData("takeDT([1: (y, y), 2: (y, fail())])", "UninitializedPlace_Kd takeDT([1: (y, y), 2: (y, fail())]) 1")]
+    [InlineData("var d: Dictionary<i32, i32> = [1: y]\n    var i: i32 = 0\n    while i < 3\n        refD(d)\n        i = i + 1\n        if c\n            fail()\n            d = [fail(): y]\n    takeD(d@move)", "")]
+    public void ADictionaryLiteralInsertsNoEntryWithoutAValue(string body, string expected)
+        => Assert.Equal(expected.Length == 0 ? [] : [expected], Problems(Entries + "    " + body + "\n"));
 
     // Plan 5.6.1, SPEC 13.5.5: a PairLayer is the Place itself in the owner case and a Deref in a reference case, so writing through an
     // unset pair layer is a problem in the uniq view only; a body whose accesses no view decides is analyzed once, for every view.
