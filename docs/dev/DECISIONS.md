@@ -19855,13 +19855,16 @@ R8-M* and R9-M* by the stage of the recording unit.
   R7-M3's RP8, R7-M21 (2) and R7-M22's Kept per-unit timing; plan revision 86).
   - Rule: a unit that R7-M21 (2) times (a fix whose design review names a hot path's complexity change or added per-use work, a back
     unit that changes generated code, a behaviour-changing unit of the R7, R8 or R9 plan) books no slot of its own. After a window's
-    Session and A5 oracle, K runs one slot on the window's merge: A = the window's dev base, B = the merge, A′ = A's byte copy, with
-    the standard suite (the O2 corpus A/B with R5-M147's address-matched control; the O0 record; Bind, Analyze and Generate, cold
-    and warm, on Hello, Milestone26 and Interpolation; cold and warm bytes) and every unit-specific kernel its units' Q rows name.
-    RP8's bounds apply to the window: within them every unit of the window passes; beyond one, the window's timed units are measured
-    one by one in one slot that shares A and A′, and the unit beyond the bound leaves the window or goes to the owner as RP8 states.
+    merge and before its Session and A5 oracle (a unit beyond a bound then leaves the window before the Session runs), K runs one
+    slot on the merge: A = the window's dev base, B = the merge, A′ = A's byte copy, with the standard suite (the O2 corpus A/B with
+    R5-M147's address-matched control; the O0 record; Bind, Analyze and Generate, cold and warm, on Hello, Milestone26 and
+    Interpolation; cold and warm bytes) and every unit-specific kernel its units' Q rows name. RP8's bounds apply to the window:
+    within them every unit of the window passes; beyond one, the window's timed units are measured one by one in one slot that
+    shares A and A′, and the unit beyond the bound leaves the window or goes to the owner as RP8 states.
   - Shared slots (option 3): units measured separately (a window beyond a bound, a unit-specific A/B) share one slot's A and A′.
-  - Order (option 1): W-228 opened before the remaining booked slots, right after T-274 (R8-W2 b2-2's RP8, already started).
+  - Order (option 1): W-228 opened before the remaining booked slots, right after T-274 (R8-W2 b2-2's RP8, already started); its
+    slot measures R8-W3 alone (A = the window's merge before W3, B = the merge with it), the window's other units having been
+    measured before the decision.
   - Kept: RP8's bounds; R7-M21 (1)'s deterministic gates and (3)'s checkpoint after every fifth landed window; a unit measured
     before this decision keeps its result (G800 T-260, G881 T-272, b2-1 T-273, e2-3a T-277, G891 T-267, b2-2 T-274).
   - Reason: per-unit slots ran back to back (seven from 17:11 to 19:48, twelve more booked before W-228, about four to five hours),
