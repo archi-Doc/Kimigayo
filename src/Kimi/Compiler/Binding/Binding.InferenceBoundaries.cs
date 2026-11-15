@@ -212,13 +212,13 @@ public sealed partial class Binding
                     {
                         if (holds && ReferenceEquals(waiting, argument))
                         {
-                            var group = inner.BoundSymbol!;
-                            overloads = group.Next is not null;
-                            for (var candidate = group; candidate is not null && reference is null; candidate = candidate.Next)
+                            var group = this.GroupOf(inner, inner.BoundSymbol);
+                            overloads = group.Single is null;
+                            foreach (var candidate in group)
                             {
-                                if (candidate.Declaration is FunctionKoto { GenericArguments.Count: > 0 } generic)
+                                if (reference is null && candidate.Declaration is FunctionKoto { GenericArguments.Count: > 0 } generic)
                                 {
-                                    reference = $"{group.Name}<{string.Join(", ", Enumerable.Repeat("Type", generic.GenericArguments.Count))}>";
+                                    reference = $"{candidate.Name}<{string.Join(", ", Enumerable.Repeat("Type", generic.GenericArguments.Count))}>";
                                 }
                             }
                         }

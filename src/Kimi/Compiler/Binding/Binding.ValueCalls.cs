@@ -617,7 +617,7 @@ public sealed partial class Binding
         {
             var source = call.ArgumentNodes[i];
             var parameter = parameters.Components[i];
-            if (!this.PrepareArgument(source, scope, null, callableContext: true))
+            if (!this.PrepareArgument(source, scope, default, callableContext: true))
             {
                 formed = false;
             }
