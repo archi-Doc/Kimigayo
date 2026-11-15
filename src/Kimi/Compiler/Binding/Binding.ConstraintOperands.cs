@@ -150,9 +150,9 @@ public sealed partial class Binding
         return null;
     }
 
-    // The parameters and projections (BoundType.IsProofDecided) occurring in a constraint's operand Types, appended to `into`: in its
-    // subject, its required Type and its Contract's arguments, at every part (a constructed Type's components, a projection's subject and
-    // Contract arguments), and in an And's, Or's or Not's operands. One query may span several constraints; each distinct part is met
+    // The parameters and projections (BoundType.IsAbstractType: a Semantics binder has no Contract row) occurring in a constraint's
+    // operand Types, appended to `into`: in its subject, its required Type and its Contract's arguments, at every part (a constructed
+    // Type's components, a projection's subject and Contract arguments), and in an And's, Or's or Not's operands. One query may span several constraints; each distinct part is met
     // once in it, a leaf too (the list is the walk's answer, so a leaf is recorded rather than answered again).
     private void AbstractParts(BoundConstraint constraint, uint query, List<BoundType> into)
     {
@@ -178,7 +178,7 @@ public sealed partial class Binding
         }
 
         this.visitedParts.Set(type, query, 1);
-        if (type.IsProofDecided)
+        if (type.IsAbstractType)
         {
             into.Add(type);
         }

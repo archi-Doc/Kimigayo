@@ -382,18 +382,27 @@ public class UserArithmeticOperatorTest
     // x41n's scaling row: a scope with premises of its own asks the rows of each seed of its chain once (each parameter or projection
     // occurring in the chain's premises, once per check) and a scope with none asks nothing, so the seeds grow linearly in the members
     // with premises (members x (own + enclosing seeds)), in the enclosing premises and in a written projection's depth, and premise-less
-    // members add none. Valid (SPEC 13.3.4, 8.3.2): no arithmetic premise.
+    // members add none. The work is Closure(view)'s pairs (ClosureIndexWork, G882's measure): a view whose class keys are final keeps its
+    // entry, formed once, so it is linear too; a view with a derived identity fact (K's `Self.(K).A is Self.(K).B`, `-derived`) forms its
+    // entry again for each request (ContractSolver's RowsRequest keeps only final keys), so a scope pays its chain seeds x its view's
+    // pairs: with n enclosing premises about (3n seeds) x (2n facts) per scope, quadratic in n (`enclosing-derived`, the bound asserted:
+    // at most 4x per doubling; RP8's unit-specific kernel for x41n). `depth`'s link walks (a request per prefix, each walking up to n
+    // links) have no counter here. Valid (SPEC 13.3.4, 8.3.2, 8.2.3): no arithmetic premise.
     [Theory]
     [InlineData("members")]
+    [InlineData("members-derived")]
     [InlineData("enclosing")]
+    [InlineData("enclosing-derived")]
     [InlineData("depth")]
     public void DirectionSeedsAreLinearInTheScopesWithPremises(string grown)
     {
-        var w8 = Seeds(Source(grown, 8, 0));
-        var w16 = Seeds(Source(grown, 16, 0));
-        var w32 = Seeds(Source(grown, 32, 0));
-        Assert.True(w8 > 0 && w16 <= 2 * w8 && w32 <= 2 * w16, $"{grown}: {w8} at 8, {w16} at 16, {w32} at 32");
-        Assert.Equal(w8, Seeds(Source(grown, 8, 8)));
+        var (s8, w8) = Measure(Source(grown, 8, 0));
+        var (s16, w16) = Measure(Source(grown, 16, 0));
+        var (s32, w32) = Measure(Source(grown, 32, 0));
+        var growth = grown == "enclosing-derived" ? 4 : 2;
+        Assert.True(s8 > 0 && s16 <= 2 * s8 && s32 <= 2 * s16, $"{grown} seeds: {s8} at 8, {s16} at 16, {s32} at 32");
+        Assert.True(w8 > 0 && w16 <= growth * w8 && w32 <= growth * w16, $"{grown} pairs indexed: {w8} at 8, {w16} at 16, {w32} at 32");
+        Assert.Equal(s8, Measure(Source(grown, 8, 8)).Seeds);
 
         // `members`: n members with two premises each under four enclosing premises; `enclosing`: four members under n; both with
         // `premiseless` members stating nothing. `depth`: one written projection n links deep.
@@ -406,20 +415,23 @@ public class UserArithmeticOperatorTest
                 return contracts + $"func f<L>(left: ref/L)\n    L is C0\n    {projection} is Copy\n    ()\n" + string.Concat(Enumerable.Range(0, premiseless).Select(static j => $"func h{j}<T>(value: ref/T) => ()\n"));
             }
 
-            var members = grown == "members" ? n : 4;
-            var enclosing = grown == "members" ? 4 : n;
+            var members = grown.StartsWith("members", StringComparison.Ordinal) ? n : 4;
+            var enclosing = grown.StartsWith("members", StringComparison.Ordinal) ? 4 : n;
+            var contract = grown.EndsWith("-derived", StringComparison.Ordinal) ? "contract K\n    associate A\n    associate B\n    Self.(K).A is Self.(K).B\n" : "contract K\n";
             var parameters = string.Join(", ", Enumerable.Range(0, enclosing).Select(static i => $"L{i}").Concat(Enumerable.Range(0, 2 * members).Select(static i => $"U{i}")));
-            return $"contract K\nstruct Box<{parameters}>\n" + string.Concat(Enumerable.Range(0, enclosing).Select(static i => $"    L{i} is K\n")) +
+            return contract + $"struct Box<{parameters}>\n" + string.Concat(Enumerable.Range(0, enclosing).Select(static i => $"    L{i} is K\n")) +
                 string.Concat(Enumerable.Range(0, members).Select(static j => $"    public func g{j}(self)\n        U{2 * j} is K\n        U{(2 * j) + 1} is K\n        ()\n")) +
                 string.Concat(Enumerable.Range(0, premiseless).Select(static j => $"    public func h{j}(self)\n        ()\n"));
         }
 
-        static int Seeds(string source)
+        // The seeds the direction checks asked for and the pairs Closure(view) indexed, beyond those of the library alone.
+        static (int Seeds, int Work) Measure(string source)
         {
             const string Main = "public func main() -> ()\n    return\n";
             var c = MinimalEmissionTest.Analyze(source + Main);
             Assert.True(CompilationTestHelper.PublishedErrors(c).Length == 0, MinimalEmissionTest.Describe(c));
-            return c.Binding.DirectionSeeds - MinimalEmissionTest.Analyze(Main).Binding.DirectionSeeds;
+            var library = MinimalEmissionTest.Analyze(Main).Binding;
+            return (c.Binding.DirectionSeeds - library.DirectionSeeds, c.Binding.ClosureIndexWork - library.ClosureIndexWork);
         }
     }
 
