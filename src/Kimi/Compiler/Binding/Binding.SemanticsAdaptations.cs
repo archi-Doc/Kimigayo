@@ -171,18 +171,33 @@ public sealed partial class Binding
     private bool FormsUnder(BoundType binding) => !this.IsAbstractBinding(binding) || HasOwnSelector(binding);
 
     // DECISIONS D3 (temporary; removed with the representation of a selector-less binding's split, PLAN G886): a formation under a binding
-    // that forms none (FormsUnder) forms nothing (null), and the candidate trial in progress carries that fact (PendingJudgmentKind.
-    // UnformedSplit, BU-86's channel) to its selection, which makes the call one located Unsupported_Kd (EvaluateCallCandidate). Its
-    // callers: ApplySemantics, SubstituteFamily, DirectTarget, HasOuterSlot; IsSource's comparison reads FormsUnder and publishes nothing.
+    // that forms none (FormsUnder) forms nothing (null) and leaves one fact (PendingJudgmentKind.UnformedSplit, BU-86's channel): a
+    // candidate trial in progress carries it to its selection (EvaluateCallCandidate), and a formation outside any trial leaves it for
+    // its consumer, which holds the channel around it (HoldUnformed, TakeUnformed: a value call's callee signature, a reference's
+    // candidates). Each reader makes its call or reference one located Unsupported_Kd. The writers: ApplySemantics, SubstituteFamily,
+    // DirectTarget, HasOuterSlot (the inline `IsAbstractBinding` and not `HasOwnSelector` there is FormsUnder's body where the first is
+    // already decided); IsSource's comparison reads FormsUnder and publishes nothing.
     private BoundType? Unformed()
     {
-        if (this.activeInferenceFunction is { } candidate)
-        {
-            // The trial's frame, also from inside a proof the trial runs (a Constraint over the unformed Type), whose frame drops its own.
-            this.trialPending ??= new(PendingJudgmentKind.UnformedSplit, candidate) { Epoch = this.proofNesting != 0 ? this.judgmentEnclosing : this.frameEpoch };
-        }
-
+        // The trial's frame, also from inside a proof the trial runs (a Constraint over the unformed Type), whose frame drops its own.
+        this.trialPending ??= new(PendingJudgmentKind.UnformedSplit, this.activeInferenceFunction) { Epoch = this.proofNesting != 0 ? this.judgmentEnclosing : this.frameEpoch };
         return null;
+    }
+
+    // DECISIONS D3: a consumer of formations outside a candidate trial holds the channel's fact before them; TakeUnformed then answers
+    // whether one of them was unformed and restores the held fact (an enclosing trial's own stays first).
+    private PendingJudgment? HoldUnformed()
+    {
+        var held = this.trialPending;
+        this.trialPending = null;
+        return held;
+    }
+
+    private bool TakeUnformed(PendingJudgment? held)
+    {
+        var unformed = this.trialPending is { Kind: PendingJudgmentKind.UnformedSplit };
+        this.trialPending = held ?? this.trialPending;
+        return unformed;
     }
 
     // SPEC 8.1.2: whether a pair layer formed under this binding (an annotated original, or an application `s/U`, ApplySemantics) keeps

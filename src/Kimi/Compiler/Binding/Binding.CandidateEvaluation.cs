@@ -131,12 +131,13 @@ public sealed partial class Binding
     // environment gives the slot no evidence (SPEC 8.10, 7.7.4), named without its acquisition spelling.
     private static void ReportPendingJudgment(Koto node, PendingJudgment judgment, DiagnosticRequirement requirement, DiagnosticCode code)
     {
-        var argument = KotoHelper.UnwrapParentheses(judgment.Part) is ConversionKoto { Left: { } place } ? place : judgment.Part;
+        var part = judgment.Part!; // An EnvironmentResult judgment always names its argument.
+        var argument = KotoHelper.UnwrapParentheses(part) is ConversionKoto { Left: { } place } ? place : part;
         node.Report(
             requirement,
             code,
             note: $"The result of {argument} over its environment is no evidence for {judgment.Slot?.Name}",
-            related: [("argument", judgment.Part, null)]);
+            related: [("argument", part, null)]);
     }
 
     // SPEC 10.2.2, 10.4 step 1: two adaptation classes at one argument or position; false when they are incomparable (an erasure and
@@ -328,9 +329,10 @@ public sealed partial class Binding
     // FailedTypeArgument: an explicit Type argument that did not bind (Part), on which the selection rests (SPEC 23.1.2).
     // EnvironmentResult: the argument (Part) whose known signature's result over its closure's environment is no evidence for Slot
     // (SPEC 8.10, 7.7.4), a slot that no other evidence binds (SPEC 10.8).
-    // UnformedSplit (DECISIONS D3, temporary until PLAN G886's representation): the candidate (Part) needed a Type formed under a
-    // binding whose split no Type represents (Binding.Unformed); its call is one located Unsupported_Kd, whatever its other candidates.
-    private readonly record struct PendingJudgment(PendingJudgmentKind Kind, Koto Part, BindingSymbol? Slot = null)
+    // UnformedSplit (DECISIONS D3, temporary until PLAN G886's representation): a formation under a binding whose split no Type
+    // represents (Binding.Unformed), in the candidate trial of Part or, with no Part, outside any trial for its consumer (TakeUnformed);
+    // its call, value call or reference is one located Unsupported_Kd, whatever its other candidates.
+    private readonly record struct PendingJudgment(PendingJudgmentKind Kind, Koto? Part, BindingSymbol? Slot = null)
     {
         // The epoch of the innermost open frame it is read in (design-r2 Amendment 5).
         internal long Epoch { get; init; }

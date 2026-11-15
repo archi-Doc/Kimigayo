@@ -89,7 +89,17 @@ public sealed partial class Binding
         {
             var callableType = callee is InvocationKoto || group is null ? callee.BoundType : this.BindReference(callee, group, scope);
             var several = false;
-            if (callableType is not null && this.TryCallable(callableType, scope, out var signature, out var receiverKind, out several))
+            BoundType signature = null!;
+            var receiverKind = SemanticsKind.Owner;
+            var held = this.HoldUnformed();
+            var callable = callableType is not null && this.TryCallable(callableType, scope, out signature, out receiverKind, out several);
+            if (this.TakeUnformed(held))
+            {
+                // DECISIONS D3 (temporary, PLAN G886): the callee's signature (a function item's) needed a Type no binding represents.
+                return this.Fail(call, BindingFailure.Unsupported, true);
+            }
+
+            if (callable)
             {
                 return this.BindValueCall(call, scope, signature, receiverKind);
             }

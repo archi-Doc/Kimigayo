@@ -61,6 +61,7 @@ public sealed partial class Binding
             Koto? invalid = null;
             var error = false;
             this.failedCause = null;
+            var held = this.HoldUnformed();
             for (var candidate = ReferenceCandidate(symbol); candidate is not null; candidate = ReferenceCandidate(candidate.Next), index++)
             {
                 this.BindHeader(candidate);
@@ -98,6 +99,12 @@ public sealed partial class Binding
                 {
                     applicable++;
                 }
+            }
+
+            if (this.TakeUnformed(held))
+            {
+                // DECISIONS D3 (temporary, PLAN G886): a candidate's signature at S needed a Type no binding represents.
+                return this.Fail(use, BindingFailure.Unsupported);
             }
 
             if (error)

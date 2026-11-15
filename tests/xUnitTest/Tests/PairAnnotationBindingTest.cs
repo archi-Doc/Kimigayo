@@ -358,7 +358,8 @@ public partial class PairAnnotationBindingTest
     // reading it as a pattern once overflowed the stack. Each valid form is accepted; each invalid twin is its one record. `f(x@move,
     // x@move)` binds `s/T` by the pair target alone, which forms no Type (PLAN G886): its verdict rests on that unformed split, so its
     // record is the located Unsupported_Kd (DECISIONS D3, the owner's O-332 (a)) until the representation lands; 2f4bec489 gave the
-    // unproven `s is owner or ref` (UnprovenConstraint_Kd).
+    // unproven `s is owner or ref` (UnprovenConstraint_Kd), which returns with it, as GenericIdentityAdaptationTest's Proof-record
+    // assertions for an associated Item without owner evidence do.
     [Theory]
     [InlineData("func f<s/T>(m: s/T, x: T) -> i32\n    s is owner or ref\n    return f(m@move, x@move)\n", "clean")]
     [InlineData("func f<s/T>(m: s/T, x: T) -> i32\n    s is owner or ref\n    return f<s/T>(m@move, x@move)\n", "clean")]

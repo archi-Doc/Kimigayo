@@ -174,7 +174,11 @@ public partial class PairAnnotationBindingTest
     // Unsupported_Kd (DECISIONS D3, temporary until G886's representation; F's ruling of 11-15): valid (f1n, f1ns, a Never argument)
     // and invalid alike (f1, f1s, f1e, f1a; dt2, whose `W is Tag` needs the target; ow1p, ow1ps, whose premise is unproven). A plain
     // Type parameter has a selector of its own (f1x, f1xn, dt2x) and a premise proving owner forms (f1o). 9a0248f9f gave f1, f1s, f1e,
-    // f1a, f1n, f1ns, ow1p and ow1ps NoApplicableOverload_Kd and accepted dt2.
+    // f1a, f1n, f1ns, ow1p and ow1ps NoApplicableOverload_Kd and accepted dt2. The same fact outside a call's trial: a function item's
+    // signature at its value call (fr4n valid, fr4c invalid; 076e81d65 gave both NotCallable_Kd and 2f4bec489 accepted fr4c) and a
+    // reference's candidates at a required Type (fr1w, which 2f4bec489 accepted and 076e81d65 gave TypeMismatch_Kd); a constructor's
+    // (con1) and a call with an argument awaiting its call (nt1) alike; `t is owner` alone forms (fr4cv, con1o). The invalid rows'
+    // record is the owner's O-332 (a).
     [Theory]
     [InlineData("func put<s/W>(m: s/W, y: s/(ref/i32 during b) during a) -> i32\n    s is owner or ref\n    return 0\nfunc call(r: ref/i32) -> i32\n    let a: i64 = 1\n    return put(a@move, r)\n", "clean")] // n1
     [InlineData("func put<s/W>(y: s/(ref/i32 during b) during a, m: s/W) -> i32\n    s is owner or ref\n    return 0\nfunc call(r: ref/i32) -> i32\n    let a: i64 = 1\n    return put(r, a@move)\n", "clean")] // n2
@@ -280,6 +284,13 @@ public partial class PairAnnotationBindingTest
     [InlineData("contract Tag\n    func tag(self: ref/Self) -> i32\nfunc put<s/W>(m: s/W) -> i32\n    W is Tag\n    return 0\nfunc call<t/U>(m: t/U, u: U) -> i32\n    t is owner or ref\n    U is Tag\n    return put(u@move)\n", "1*Unsupported_Kd")] // dt2
     [InlineData("func put<s/W>(m: s/W during q, q: ref/i32) -> i32\n    s is owner or ref\n    return 0\nfunc call<t/U>(m: t/U, u: U) -> i32\n    t is owner or ref\n    let c: i32 = 2\n    return put(u@move, c@ref)\n", "1*Unsupported_Kd")] // ow1p
     [InlineData("func put2<s/W>(q: ref/i32, m: s/W during q) -> i32\n    s is owner or ref\n    return 0\nfunc call<t/U>(m: t/U, u: U) -> i32\n    t is owner or ref\n    let c: i32 = 2\n    return put2(c@ref, u@move)\n", "1*Unsupported_Kd")] // ow1ps
+    [InlineData("struct Box\n    public let v: i32\n    public init(v: i32)\n        self.v = v@move\nfunc stop() -> Never => $abort(\"stop\")\nfunc put3<s/W>(m: s/W, n: s/Box) -> i32\n    return 0\nfunc call<t/U>(m: t/U, u: U) -> i32\n    t is owner or ref\n    let f = put3<U>\n    return f(u@move, stop())\n", "1*Unsupported_Kd")] // fr4n
+    [InlineData("struct Box\n    public let v: i32\n    public init(v: i32)\n        self.v = v@move\nfunc put3<s/W>(m: s/W, n: s/Box) -> i32\n    return 0\nfunc call<t/U>(m: t/U, u: U) -> i32\n    t is owner or ref\n    let f = put3<U>\n    let b = Box.init(1)\n    return f(u@move, b@move)\n", "1*Unsupported_Kd")] // fr4c
+    [InlineData("struct Box\n    public let v: i32\n    public init(v: i32)\n        self.v = v@move\nfunc put3<s/W>(m: s/W, n: s/Box) -> i32\n    return 0\nfunc call<t/U>(m: t/U, u: U) -> i32\n    t is owner\n    let f = put3<U>\n    let b = Box.init(1)\n    return f(u@move, b@move)\n", "clean")] // fr4cv
+    [InlineData("struct Box\n    public let v: i32\n    public init(v: i32)\n        self.v = v@move\nfunc put3<s/W>(m: s/W, n: s/Box) -> i32\n    return 0\nfunc call<t/U>(m: t/U, u: U) -> i32\n    t is owner or ref\n    U is Owned\n    let f: (U, Box) -> i32 = put3\n    return 0\n", "1*Unsupported_Kd")] // fr1w
+    [InlineData("struct Box\n    public let v: i32\n    public init(v: i32)\n        self.v = v@move\nstruct S<s/T>\n    public init(m: s/T, n: s/Box) => ()\nfunc call<t/U>(m: t/U, u: U) -> i32\n    t is owner or ref\n    let b = Box.init(1)\n    let k = S.init(u@move, b@move)\n    return 0\n", "1*Unsupported_Kd")] // con1
+    [InlineData("struct Box\n    public let v: i32\n    public init(v: i32)\n        self.v = v@move\nstruct S<s/T>\n    public init(m: s/T, n: s/Box) => ()\nfunc call<t/U>(m: t/U, u: U) -> i32\n    t is owner\n    let b = Box.init(1)\n    let k = S.init(u@move, b@move)\n    return 0\n", "clean")] // con1o
+    [InlineData("struct Box\n    public let v: i32\n    public init(v: i32)\n        self.v = v@move\nfunc stop() -> Never => $abort(\"stop\")\nfunc mk<V>() -> V\n    return stop()\nfunc put4<s/W>(m: s/W, n: s/Box, k: i32) -> i32\n    return 0\nfunc call<t/U>(m: t/U, u: U) -> i32\n    t is owner or ref\n    let b = Box.init(1)\n    return put4(u@move, b@move, mk())\n", "1*Unsupported_Kd")] // nt1
     public void AStructuredApplicationIsFormedAfterTheExactSources(string source, string records)
         => Assert.Equal(records, DiagnosticCorpus.RecordProfile(source));
 }
