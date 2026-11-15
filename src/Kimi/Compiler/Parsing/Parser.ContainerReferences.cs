@@ -159,9 +159,10 @@ public static partial class Parser
                     SourceSpan.FromBounds(left.Span.Start, Math.Max(operatorRange.End, accessor.Span.End)),
                     left,
                     accessor);
-                if (accessor is ParenthesizedTypeKoto && !ContinuesContractMember(ref reader, ref left, accessor))
+                if (accessor is ParenthesizedTypeKoto && ContractMemberCause(ref reader, accessor) is { } cause)
                 {
-                    return left;
+                    // The path read so far stays bound beside the record (SPEC 23.1.2), so its head keeps its own record.
+                    return RecoverRejectedPart(ref reader, left.Span, left, cause);
                 }
             }
             else if (tokenKind == TokenKind.LessThan)
@@ -238,17 +239,26 @@ public static partial class Parser
 
     // SPEC F.5 PathSuffix := "." TypeSegment | "." "(" ContractReference ")" "." Name (F.9.1's PostfixSuffix the same): a grouped Contract
     // after "." is one suffix with its ". Name", the one rule of every reader of it: F.5's suffix loop (ParseTypeSuffixes), the
-    // expression's PostfixSuffix (TryParsePostfixExpression) and, until G489 merges it into F.5's loop, ParseConstraintSubject's. Without
-    // the Name, the path read so far is written outside its grammar: one record at the group, the path recovered.
-    private static bool ContinuesContractMember(ref TokenReader reader, ref Koto path, Koto group)
+    // expression's PostfixSuffix (TryParsePostfixExpression) and, until G489 merges it into F.5's loop, ParseConstraintSubject's. Null when
+    // the ". Name" follows; else the one record's key: at a token after "." that is no Name (the "." consumed: the Name was expected
+    // there), or at the group when no "." follows (or a second group does). Each reader keeps what was read beside it (its recovery).
+    private static DiagnosticKey? ContractMemberCause(ref TokenReader reader, Koto group)
     {
-        if (reader.CurrentTokenKind == TokenKind.Dot && reader.PeekKind(1).IsIdentifierOrContextualKeyword())
+        if (reader.CurrentTokenKind == TokenKind.Dot)
         {
-            return true;
+            if (reader.PeekKind(1).IsIdentifierOrContextualKeyword())
+            {
+                return null;
+            }
+
+            if (reader.PeekKind(1) != TokenKind.OpenParenthesis)
+            {
+                reader.Advance();
+                return reader.Expect(SyntaxForm.Name);
+            }
         }
 
-        path = RecoverWrittenType(ref reader, path, group.Expected(SyntaxForm.ContractMember));
-        return false;
+        return group.Expected(SyntaxForm.ContractMember);
     }
 
     // The first TypeSegment of a ContainerPath (F.5) or a root name: a Name as the Type reader builds it (TypeSemanticsKoto, Type: null)

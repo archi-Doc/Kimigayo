@@ -225,6 +225,8 @@ public class FrontEndSyntaxTest
     [InlineData("func f(v: GB<Missing.1>) => ()", "1*ExpectedSyntax_Kd 1*UnresolvedBinding_Kd")]
     [InlineData("func f(v: i32.1) => ()", "1*ExpectedSyntax_Kd")]
     [InlineData("func f(v: B0.1) => ()", "1*ExpectedSyntax_Kd")]
+    [InlineData("contract Y\nfunc f(v: Missing.(Y).1) => ()", "1*ExpectedSyntax_Kd 1*UnresolvedBinding_Kd")] // F.5: the Name after ".(C)." failed.
+    [InlineData("contract Y\nfunc f(v: Missing.(Y)) => ()", "1*ExpectedSyntax_Kd 1*UnresolvedBinding_Kd")] // A lone ".(C)".
     public void AFailureInsideAWrittenTypeOutsideItsGrammarKeepsItsRecord(string declaration, string records)
         => Assert.Equal(records, DiagnosticCorpus.RecordProfile("open struct B0\nopen struct GB<T>\nopen struct Base {a}\n    public let value: ref/i32 during a\n    public init(value: ref/i32 during a) => self.value = value\n" + declaration + "\n"));
 
@@ -532,8 +534,9 @@ public class FrontEndSyntaxTest
     // Type position, a selector head and a requirement (whose suffixes F.5's one loop reads), the same in selected and excluded syntax.
     // The counts: one record at the token after the application, except the named second records on these rejected programs (rule W,
     // counted): a Type argument's list closes at "." and the parameter list's own check meets the written ">" (G848); a result Type's
-    // header skips the body (the missing-body record, D1's line); a base clause's record over Y(a) and the header's at ".Item"; the
-    // associate head's "is" record and the line's end after the skipped requirement (G848's cascade).
+    // header skips the body (the missing-body record, D1's line); a base clause's record over Y(a) and the header's at ".Item". The
+    // associate head is one failure (SPEC 23.1.2): its "is" is missing at ".", and the rest of the line is that specification's text,
+    // which no other check reads as written.
     [Theory]
     [InlineData("func f(v: Y(a).Item) -> i32 => 0", ".Item", 1)]
     [InlineData("func f() -> i32\n    let x: Y(a).Item = 0\n    return 0", ".Item", 1)]
@@ -543,7 +546,7 @@ public class FrontEndSyntaxTest
     [InlineData("func f(v: Y(a).(K).Item) -> i32 => 0", ".(K)", 1)]
     [InlineData("func f(v: Y(a)<i32>) -> i32 => 0", "<i32>", 1)]
     [InlineData("func f(v: Missing(a).Item) -> i32 => 0", ".Item", 1)]
-    [InlineData("struct A\n    associate Y(a).Item is i32", ".Item", 2)]
+    [InlineData("struct A\n    associate Y(a).Item is i32", ".Item", 1)]
     [InlineData("func f<T>(v: T) -> i32\n    T is Y(a).Item\n    return 0", ".Item", 1)]
     [InlineData("func f<T>(v: T) -> i32\n    T is K.Item(a).Z\n    return 0", ".Z", 1)]
     [InlineData("func f<T>(v: T) -> i32\n    T is Y(a)(b)\n    return 0", "(b)", 1)]

@@ -434,9 +434,9 @@ ProcessPrefix:
                         SourceSpan.FromBounds(left.Span.Start, Math.Max(operatorRange.End, accessor.Span.End)),
                         left,
                         accessor);
-                    if (accessor is ParenthesizedTypeKoto)
+                    if (accessor is ParenthesizedTypeKoto && ContractMemberCause(ref reader, accessor) is { } cause)
                     {
-                        _ = ContinuesContractMember(ref reader, ref left, accessor);
+                        left = RecoverWrittenType(ref reader, left, cause);
                     }
 
                     return true;
