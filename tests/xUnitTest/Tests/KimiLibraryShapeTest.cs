@@ -322,6 +322,18 @@ public partial class KimiLibraryShapeTest
         Assert.True(Enum.GetValues<IntrinsicId>().Length <= 34);
     }
 
+    // R8-G1: the catalog's Function column, which TyCtxt.Bodyless (IntrinsicDisposition.Effect) and the compiler-function keys still read,
+    // agrees with `#Intrinsic` (Definition): a library function or $abort has a kind other than None and WriteLine (whose Body disposition
+    // its legacy row serves until R8-W2 d) exactly when its Definition is Intrinsic. It stays until G1-4c deletes BindingSymbol.CompilerFunction.
+    [Fact]
+    public void FunctionColumnAgreesWithDefinitionPresence()
+    {
+        var library = Library.Value.Library;
+        Assert.All(
+            library.RegisteredSymbols.ToArray().Append(library.Abort),
+            static x => Assert.True((x.CompilerFunction is not (CompilerFunctionKind.None or CompilerFunctionKind.WriteLine)) == (x.Definition.Kind == DispositionKind.Intrinsic), x.Name));
+    }
+
     // R3 decision 5: the MIR builder serves a built-in form (a slicing, a direct line's fixed arm) by a library function it names by its
     // lang item, which the library registers as the intrinsic it calls.
     [Fact]
