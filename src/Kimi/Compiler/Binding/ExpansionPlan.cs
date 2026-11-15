@@ -41,8 +41,6 @@ internal readonly record struct ExpansionPlan(ExpansionKind Kind, CallPlan? Firs
                 return new(ExpansionKind.Format, Direct: node is InterpolatedStringKoto && output is { ArgumentNodes: [var text], BoundCall.Target.CompilerFunction: CompilerFunctionKind.WriteLine } && ReferenceEquals(text, node));
             case HirOp.DictionaryLiteral:
                 return new(ExpansionKind.DictionaryLiteral);
-            case HirOp.Range:
-                return new(ExpansionKind.Range);
             case HirOp.CompoundAssign:
                 var target = node is BinaryKoto update ? update.Left : ((UnaryKoto)node).Operand;
                 var setter = binding.PropertyCall(target, PropertyAccessorKind.Set)?.CallStorage;
@@ -66,11 +64,10 @@ internal readonly record struct ExpansionPlan(ExpansionKind Kind, CallPlan? Firs
 /// the receiver's MIR length minus x.</summary>
 internal enum ExpansionKind : byte
 {
-    Iteration, // A for loop: a user loop's entry and step calls with its Some/None Pattern plan; a ResolvedRange loop has none and binds each isize position.
+    Iteration, // A for loop: its entry and step calls with its Some/None Pattern plan (SPEC 14.6.2).
     Try, // Its Pattern plan's arms: the payload, or the failure the generated return transfers (SPEC 17.3).
     Format, // An interpolation's buffer and adapter calls, then its writes; a $tryWrite's writes, then its status (SPEC 22.10).
     DictionaryLiteral, // Its key lookup (SPEC 12.4.3), for each entry before its insertion.
-    Range, // A key applied directly: each written boundary an isize position, a `^x` one the length of the selection's receiver minus x.
     Index, // A built-in element or slice, by its key or its key's resolution, or a user or view selection's selected call (SPEC 4.7.1).
     CompoundAssign, // Its Place, or its Property's getter and setter, read and written once; its arithmetic call, or a primitive operation.
 }

@@ -468,8 +468,8 @@ internal group PositionSyntax
 
 /// A validated absolute half-open interval `[start, end)` with `0 <= start <= end` (SPEC 4.6.2).
 ///
-/// Only `indices`, `resolve` and `tryResolve` produce it. A `for` loop over it runs the same positions as its
-/// entries without an iterator value; selection with a ResolvedRange still checks `end` against the target's length.
+/// Only `indices`, `resolve` and `tryResolve` produce it. Selection with a ResolvedRange still checks `end` against the
+/// target's length.
 public struct ResolvedRange
     Self is Copy
     Self is Equatable
