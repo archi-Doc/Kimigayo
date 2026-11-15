@@ -518,9 +518,10 @@ public sealed partial class Binding
         else
         {
             // SPEC 10.8, 10.6: the selected candidate's unsolved slot is the inference boundary; the checks that need it are derived.
-            // SPEC 10.5.1's interim second rule (PLAN G924; the owner's O-341 is open): a nested call at a slot that only the defaults
-            // above would bind is not completed with no expected result, so its slot needs an annotation; O-341 (a) would complete it
-            // here after selection, as a literal takes its default.
+            // PLAN G924, the owner's O-341 (a) (11-15): one rule after selection, a part that no expected Type reaches takes its own
+            // Type, which binds the still-unbound slot (a literal its default, a nested call its resolution with no expected result).
+            // Phase 1 still holds the interim second rule here (a nested call at such a slot needs an annotation); the one rule
+            // replaces it in the defaults step (DefaultArguments), not as a second path.
             this.FailUnboundSlots(
                 call,
                 selected,
