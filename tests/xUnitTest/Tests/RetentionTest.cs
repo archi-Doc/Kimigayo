@@ -1030,10 +1030,10 @@ public sealed partial class RetentionTest
     }
 
     // C-352's C10 (SPEC 5.7 Calls: "a raw layer without an Origin in an environment binding's Type is one the Closure states in its own
-    // Fields, as a declaration does, never one a parameter's Type expression writes"): a Closure's environment is read with such layers
-    // stated (TyCtxt.ClosureEnvironment, Binding.ClosureStated), so q's layer bounds nothing past it and rule A's rows reach every storage
-    // of the receiver: v is kept past q (the chain's varRefLeafBad), where a bounding reading kept only the receiver's chain past it, and
-    // past a `var` raw binding of the Closure's own (cloVarPtrU8Bad), whose pointee storage no Type states.
+    // Fields, as a declaration does, never one a parameter's Type expression writes"; through it the call may store what a raw layer it
+    // writes retains): the storage a call writes past such a layer is storage no Type states (RawReach's hold of no Type in a Closure's
+    // environment, `Captured`), which keeps rule A's rows whole: v is kept past q from a `var` binding (the chain's varRefLeafBad), where
+    // a bounding reading kept only the receiver's chain, and past a `var` raw binding of the Closure's own (cloVarPtrU8Bad).
     [Theory]
     [InlineData("var c = func [n, var q] (v: raw/u8)\n        unsafe => *q = *q\n", "store 0: own {0 Chain, 1 Value Chain}, reached {0 Chain, 1 Value Chain} untied")]
     [InlineData("let m: raw/u8 = null\n    var c = func [var m] (v: raw/u8)\n        m = v\n", "store 0: own {0 Chain, 1 Value Chain}, reached {0 Chain, 1 Value Chain} untied")]

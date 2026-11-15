@@ -144,9 +144,7 @@ internal sealed partial class TyCtxt
     // part of a contract input (a Closure callee's receiver, Binding.RetentionInput; one nested in an input, RetentionParts): its definition's
     // environment Type under the Type's closure context (ReadableInstance, DECISIONS BU-36, R4-M139; null where it does not substitute,
     // CallRetention.Limit). A Closure Type a local's initializer inferred names the local's regions, not the Origins its signature and its
-    // body name. A Closure whose definition Binding did not bind is read as it is, a dependent of Binding's rejection. A raw layer without
-    // an Origin in a binding is one the Closure states, as a declaration does (SPEC 5.7 Calls): the bindings are read marked as a
-    // declaration's kept parts are (Binding.ClosureStated; C-352's C10).
+    // body name. A Closure whose definition Binding did not bind is read as it is, a dependent of Binding's rejection.
     internal BoundType? ClosureEnvironment(BoundType closure)
     {
         if (BoundClosure.Of(closure)?.EnvironmentType is not { } environment)
@@ -154,8 +152,7 @@ internal sealed partial class TyCtxt
             return closure;
         }
 
-        var read = ClosureInstance(closure) is { } context ? this.ReadableInstance(environment, context) : environment;
-        return read is null ? null : binding.ClosureStated(read);
+        return ClosureInstance(closure) is { } context ? this.ReadableInstance(environment, context) : environment;
     }
 
     // SPEC 7.7.3 (DECISIONS R4-M128, R4-M148): the call receiver a Closure Type's case admits, given a case Type of a view or the
