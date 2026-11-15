@@ -184,8 +184,8 @@ public sealed partial class Binding
         return null;
     }
 
-    // DECISIONS D3: a consumer of formations outside a candidate trial holds the channel's fact before them; TakeUnformed then answers
-    // whether one of them was unformed and restores the held fact (an enclosing trial's own stays first).
+    // DECISIONS D3: a consumer of formations outside a candidate trial holds the channel's fact before them (HoldUnformed clears the
+    // channel and returns what it held), then asks TakeUnformed.
     private PendingJudgment? HoldUnformed()
     {
         var held = this.trialPending;
@@ -193,6 +193,11 @@ public sealed partial class Binding
         return held;
     }
 
+    // DECISIONS D3: whether a formation since HoldUnformed was unformed. Unlike BU-86's take-once channel it consumes nothing, in both
+    // cases: a held fact is restored (an enclosing trial's own stays first), and when nothing was held the fact the formations left stays
+    // in the channel. Inside an enclosing candidate trial that gives the trial's selection the same fact, so a reference in a candidate's
+    // argument makes the enclosing call its one located Unsupported_Kd (rf1); outside any trial the fact sits until its frame closes or
+    // the next OpenTrial clears it, harmless since every reader holds first (a value call, a reference) or reads only its own trial's fact (the selection).
     private bool TakeUnformed(PendingJudgment? held)
     {
         var unformed = this.trialPending is { Kind: PendingJudgmentKind.UnformedSplit };
