@@ -8,6 +8,7 @@ using Kimi;
 using Kimi.Compiler;
 using Kimi.Compiler.Backend;
 using Kimi.Compiler.Mir;
+using Kimi.Compiler.Parsing;
 
 namespace Benchmark;
 
@@ -129,7 +130,7 @@ internal static class CollectionCostMeasurements
     private static Collections Operation(string source)
     {
         var c = Checked(source);
-        var program = new MirAnalysis(c.Types).Run(new MirBuilder(c).Build(), c.SourceModules.Length);
+        var program = new MirAnalysis(c.Types).Run(new MirBuilder(c).Build(SyntaxTable.LibraryModule + 1), c.SourceModules.Length);
         Require(!program.Records(MirRecordClass.Construction).Any() && program.Findings.Count == 0, "MIR construction or validation failed.");
         Layout[] layouts = [c.Layout, new Layout(c.Types), c.Layout];
         var (ticks, bytes) = (new long[layouts.Length], new long[layouts.Length]);

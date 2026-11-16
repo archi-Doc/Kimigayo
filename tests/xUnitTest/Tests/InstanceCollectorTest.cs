@@ -517,7 +517,7 @@ public sealed partial class InstanceCollectorTest
         var c = MirBuildTest.Compile(CLayoutP + "func h<T>(value: T) => ()\nfunc f(value: " + Huge + ") => h(value@move)\n" +
             "group J\n    public var j: i32 = 0\ngroup K\n    public var k: i32 = P.init(1, ()).n\n");
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
-        var program = new MirBuilder(c).Build(); // Uncollected: a version's records are reset only with its bodies (MirProgram.Clear).
+        var program = new MirBuilder(c).Build(SyntaxTable.LibraryModule + 1); // Uncollected: a version's records are reset only with its bodies (MirProgram.Clear).
         Assert.Empty(program.Findings);
         Break(program, "f", MirBodyKind.Fn);
         Break(program, "j", MirBodyKind.StaticInit);
@@ -535,7 +535,7 @@ public sealed partial class InstanceCollectorTest
     {
         var c = MirBuildTest.Compile(InBlock + "require outer(3) == outer(3) and outer(true) == outer(true) else => $abort(\"nested\")\n");
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
-        var program = new MirBuilder(c).Build(); // Uncollected: a version's records are reset only with its bodies (MirProgram.Clear).
+        var program = new MirBuilder(c).Build(SyntaxTable.LibraryModule + 1); // Uncollected: a version's records are reset only with its bodies (MirProgram.Clear).
         Break(program, "inner", MirBodyKind.Fn);
         var set = new InstanceCollector(c.Types, c.Layout).Run(program, 1);
         Assert.Equal([(DiagnosticCode.Unsupported_Kd, "inner(x)")], program.Records(MirRecordClass.Collection).Select(x => (x.Code, c.SyntaxOf(x.Subject).ToString())));
@@ -2441,7 +2441,7 @@ public sealed partial class InstanceCollectorTest
         var c = ModuleBindingTest.Create("public func main() -> ()\n    _ = Lib.Api.take(1)\n    _ = Lib.Api.grow<i32>(1, 3)\n    return\n", library);
         Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c));
         Assert.True(c.Binding.CheckStartup(OutputKind.Application).IsComplete);
-        var program = new MirBuilder(c).Build(); // Uncollected: the compilation's own collection roots both modules.
+        var program = new MirBuilder(c).Build(SyntaxTable.LibraryModule + 1); // Uncollected: the compilation's own collection roots both modules.
         Assert.Empty(program.Records(MirRecordClass.Construction));
         var main = program.Bodies.ToArray().Single(static x => x.Key is { Kind: MirBodyKind.Fn, Decl.Name: "main" });
         Assert.Contains(
