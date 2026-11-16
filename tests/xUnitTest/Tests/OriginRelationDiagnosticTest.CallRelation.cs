@@ -22,7 +22,8 @@ public partial class OriginRelationDiagnosticTest
     // Places, 14.9.2 step 2, 10.8; F's rulings 77-78): at a generic slot the typed parts of a place meet without adaptation while the
     // candidate is tried, so a Function Type beside a Function Item makes `identity` inapplicable, whatever the expected result would
     // fill (g038, g038v1, g038v2: accepted before G924); a whole with a place of literals only binds nothing, the expected result
-    // fills the slot and each part is fitted to it (p5, p4: an erasure; w8, w12: a value read).
+    // fills the slot and each part is fitted to it (p5, p4: an erasure; w8, w12: a value read; w15: through a call argument; e6: a
+    // Case construction's payload), and a part that does not fit it leaves no applicable candidate (w13, w14).
     [Theory]
     [InlineData("U1.6g3b", "g236", Twice + Idg + "func g<T>(x: T) -> i32 => 0\nfunc k(c1: bool, gv2: (i64) -> i64, c3: bool, c4: bool) -> i32\n    return g<(i64) -> i64>(if c4 => (if c3 => (if c1 => idg else => func [] (v: i64) -> i64 => v) else => gv2@move) else => twice)\n", "")]
     [InlineData("U1.6g3b", "g161", Stop + Twice + Idg + "func f(x: (i64) -> i64) -> i32 => 0\nfunc k(gv1: (i64) -> i64, c2: bool, c3: bool, gv4: (i64) -> i64, c5: bool, c6: bool, c7: bool, c8: bool) -> i32\n    return f((if c7 => func [] (v) => v else if c8 => (if c5 => twice else if c6 => gv4@move else => (if c2 => idg else if c3 => stop() else => gv1@move)) else => func [] (v: i64) -> i64 => v))\n", "")]
@@ -45,6 +46,10 @@ public partial class OriginRelationDiagnosticTest
     [InlineData("G924 AF-2", "p4", IdentityT + Twice + "func k(c: bool) -> i32\n    let v: ((i64) -> i64, i32) = identity(if c => (twice, 4) else => (twice, 5))\n    return 0\n", "")]
     [InlineData("G924 AF-2", "w8", IdentityT + "func k(ri: ref/i64) -> i32\n    let v: (i64, i32) = identity((ri, 3))\n    return 0\n", "")]
     [InlineData("G924 AF-2", "w12", IdentityT + "func k(ri: ref/i64, c: bool) -> i32\n    let v: (i64, i32) = identity(if c => (ri, 3) else => (ri, 4))\n    return 0\n", "")]
+    [InlineData("G924 AF-2", "w13", IdentityT + "func k(n: i32) -> i32\n    let v: (i64, i32) = identity((n, 3))\n    return 0\n", "NoApplicableOverload_Kd identity((n, 3))")]
+    [InlineData("G924 AF-2", "w14", IdentityT + "func k(b: bool) -> i32\n    let v: ((i64) -> i64, i32) = identity((b, 4))\n    return 0\n", "NoApplicableOverload_Kd identity((b, 4))")]
+    [InlineData("G924 AF-2", "w15", IdentityT + "func kt(x: (i64, i32)) -> i32 => 0\nfunc k(ri: ref/i64) -> i32\n    return kt(identity((ri, 3)))\n", "")]
+    [InlineData("G924 AF-2", "e6", Twice + "func k() -> i32\n    let o: Option<((i64) -> i64, i32)> = Option.Some((twice, 4))\n    return 0\n", "")]
     [InlineData("U1.6g3b", "g038mv", IdentityT + Twice + Idg + "func f(x: ((i64) -> i64, i32)) -> i32 => 0\nfunc k(gv1: (i64) -> i64, c2: bool, c4: bool) -> i32\n    return f(if c4 => ((if c2 => gv1@move else => gv1@move), 3) else => (twice, 5))\n", "")]
     [InlineData("U1.6g3b", "g020g", Stop + Twice + Idg + "func g<T>(x: T) -> i32 => 0\nfunc k(gv1: (i64) -> i64, c2: bool, c3: bool, c4: bool, c5: bool) -> i32\n    return g((if c4 => (if c2 => func [] (v) => v else if c3 => stop() else => gv1@move) else if c5 => twice else => gv1@move))\n", "NoApplicableOverload_Kd g((if c4 => (if c2 => func [] (v) => v else if c3 => stop() else => gv1@move) else if c5 => twice else => gv1@move))")]
     [InlineData("U1.6g3b", "g020n", Stop + Twice + Idg + "func g<T>(x: T) -> i32 => 0\nfunc k(gv1: (i64) -> i64, c2: bool, c3: bool, c4: bool, c5: bool) -> i32\n    return g((if c4 => gv1@move else if c5 => twice else => idg))\n", "NoApplicableOverload_Kd g((if c4 => gv1@move else if c5 => twice else => idg))")]
@@ -61,8 +66,8 @@ public partial class OriginRelationDiagnosticTest
     // valid twin: twice's Item at a child position is erased only at `(i64) -> i64` (7.7.4), so that candidate is selected
     // (fs_joinChildTuple_refNoS_refNoS_fov). PLAN G924 (the open issue of the board's D-735, older than G924): under SPEC 14.9.2
     // step 1 each source is fitted to the selection's expected Type, so a selection of an anonymous function and `twice` at a fixed
-    // Function Type is valid and still rejected (fs3 is that issue's program; the rows of its family keep their records until its
-    // fix). g189 is one of them once the expected result has filled its slot: AF-2 keeps its two records.
+    // Function Type is valid and still rejected (fs3 is that issue's program). The rows of that family (g189 among them, once the
+    // expected result has filled its slot) pin a known defect, not SPEC: their records stay until that issue's fix.
     [Theory]
     [InlineData("U1.6g3b", "fs1", Twice + Idg + "func f(x: (i64) -> i64) -> i32 => 0\nfunc f(x: (bool) -> bool) -> i32 => 1\nfunc k(c: bool) -> i32\n    return f(if c => func [] (v: i64) -> i64 => v else => twice)\n", "TypeMismatch_Kd func [] (v: i64) -> i64 => v")]
     [InlineData("U1.6g3b", "fs2", Twice + Idg + "func f(x: (i64) -> i64) -> i32 => 0\nfunc f(x: (bool) -> bool) -> i32 => 1\nfunc k(c: bool) -> i32\n    return f(if c => func [] (v) => v else => twice)\n", "TypeMismatch_Kd func [] (v) => v")]

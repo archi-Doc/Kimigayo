@@ -97,7 +97,9 @@ public sealed partial class Binding
 
         internal readonly ReadOnlySpan<BoundLength?> Lengths => this.Frame.Lengths;
 
-        // Publishes Left in `left`, the caller's scratch, which the late walk reads until the caller's next write of it.
+        // Publishes Left in `left`, the caller's scratch. Contract: nothing writes that scratch between this call and the end of the
+        // late walk it precedes (SolveLate's is the trial's `unboundSlots`, which the trial recomputes only after SolveLate; a
+        // nested call's trial has its own).
         internal void LeaveUnbound(ref SlotSet left)
         {
             left.Clear();
