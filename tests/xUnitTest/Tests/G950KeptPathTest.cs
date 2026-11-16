@@ -13,7 +13,9 @@ namespace XunitTest;
 /// <summary>PLAN G950's kept path (design §R1, coverage rows g7, g8, M1, M2 and the focused re-review's M4): a later version of one compilation gives what a fresh
 /// MIR pipeline gives over the same compilation state, and the code its first version generated, whether the library's MIR segment is
 /// built again (the base) or kept (G950-K). g8 and M2 are explicit until G950-K keeps the segment; the base fails them. M3, the library
-/// check over two versions, is <see cref="MirAnalysisTest.TheLibraryHasNoAnalysisProblem"/>. Labels (SPEC, before any output): the
+/// check over two versions, is <see cref="MirAnalysisTest.TheLibraryHasNoAnalysisProblem"/> and, for the collector's A3b with a record,
+/// <see cref="InstanceCollectorTest.TheLibraryRangeChecksALibraryBodyInEveryVersion"/>; the analysis's replay of the library step's
+/// problems is <see cref="MirAnalysisTest.ALibraryStepProblemIsInEveryVersion"/>. Labels (SPEC, before any output): the
 /// corpora's own, tests/mir's MirDumpTest's (valid but the three syntax-recovery witnesses), the diagnostic snapshot's cases their
 /// corpora's (milestones and examples valid; mutation and syntax cases as tests/diagnostics records them); Bad invalid (SPEC 23.1.2's
 /// example: `1` does not fit string, one independent Language Error), and Hello, Milestones 26, 27, 30 and 31 valid. M4's: Confined
@@ -132,6 +134,20 @@ public sealed class G950KeptPathTest
         var later = c.BuildMir();
         Assert.Equal(library, later.Bodies[..later.LibraryCount].ToArray());
         Assert.True(library[0].HasFinding);
+    }
+
+    // g8 for the collector (the Back's C-378 (2); explicit until G950-K, the base templates every body again): a later version walks only
+    // the program segment's bodies into templates, the library segment's template store kept.
+    [Fact(Explicit = true)]
+    public void ALaterVersionKeepsTheLibrarysTemplates()
+    {
+        var c = Compile("milestone/Milestone27");
+        var (builder, collector) = (new MirBuilder(c), new InstanceCollector(c.Types, c.Layout));
+        _ = collector.Run(builder.Build(SyntaxTable.LibraryModule + 1), c.SourceModules.Length);
+        Finish(c, OutputKind.Application);
+        var later = builder.Build(SyntaxTable.LibraryModule + 1);
+        _ = collector.Run(later, c.SourceModules.Length);
+        Assert.Equal(later.ProgramBodies.Length, collector.Templated);
     }
 
     // M2 (design §R1.4; explicit until G950-K, the base's rebuild drops the injection): a kept library row is published in every version:

@@ -69,8 +69,8 @@ internal sealed class MirInit(MirDataflow flow, MirMoveData moves, MirCases case
         var state = flow.Prepare(0, Lanes * ((moves.FlowCount + 63) >> 6), Lanes * ((moves.Paths.Length + 63) >> 6), out var words);
         if (state is null)
         {
-            var limit = MirDataflow.StorageLimit(report, body, all, MirStorageTable.Initialization, words); // R4-M15a: the driver stops the views.
-            drops.Incomplete(DiagnosticCode.OwnershipStorageLimit_Kd, default, limit);
+            MirDataflow.StorageLimit(report, body, all, MirStorageTable.Initialization, words); // R4-M15a: the driver stops the views.
+            drops.Incomplete(DiagnosticCode.OwnershipStorageLimit_Kd, default);
             return false;
         }
 
@@ -383,13 +383,13 @@ internal sealed class MirInit(MirDataflow flow, MirMoveData moves, MirCases case
             subject);
 
         // A problem at the location, with the call of the inline default copy it lies in, whose template's check it is (R4-M69); A2's table
-        // records it first, a copy's included (R4-M102), at its subject in the location's scope with its index.
+        // records it first, a copy's included (R4-M102), at its subject in the location's scope.
         private readonly void Add(DiagnosticCode code, OwnershipRequirement requirement, SourceRef subject)
         {
             var problem = new MirProblem(code, DiagnosticRequirement.Ownership(requirement), subject, body.Ordinal, this.Views);
             var inlined = body.Inlining(this.scope);
-            var index = this.Report.Add(problem, inlined < 0 ? default : [new(ProblemFactKind.Inlined, body.Scopes[inlined].Source)]);
-            drops.Incomplete(code, new(subject, this.scope, StatementStart: false), index);
+            this.Report.Add(problem, inlined < 0 ? default : [new(ProblemFactKind.Inlined, body.Scopes[inlined].Source)]);
+            drops.Incomplete(code, new(subject, this.scope, StatementStart: false));
         }
     }
 }
