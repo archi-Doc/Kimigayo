@@ -389,8 +389,9 @@ public sealed partial class Binding
         }
 
         // SPEC 5.2, 7.7.3 (the owner's O-21 (ii)): whether a pointer reached from a capture is passed to a call whose operation contract
-        // performs an access that needs write capability through it (IntrinsicDisposition.WritesThrough), the body's own access. A foreign
-        // import's contract is prose the compiler cannot read (SPEC 22.6), so its call is kept as Undecided, a located Unsupported_Kd.
+        // performs an access that needs write capability through it (IntrinsicDisposition.WritesThrough, by its intrinsic), the body's own
+        // access. A foreign import's contract is prose the compiler cannot read (SPEC 22.6), so its call is kept as Undecided, a located
+        // Unsupported_Kd.
         private bool ContractWritesThrough(Koto place)
         {
             if (!ReferenceTypes.IsPointer(place.BoundType) || place.Parent is not InvocationKoto { BoundCall: { } call } invocation ||
@@ -409,7 +410,7 @@ public sealed partial class Binding
                 return false;
             }
 
-            return IntrinsicDisposition.WritesThrough(call.Target.CompilerFunction, argument.ParameterIndex);
+            return IntrinsicDisposition.WritesThrough(call.Target.Definition.Id, argument.ParameterIndex);
         }
 
         // What the use of a Place reached from a capture needs, as the one place-use rule decides it (Binding.UseOf) over its consumer's

@@ -348,5 +348,5 @@ public sealed partial class Binding
 
     // The Type with these components and this closure context, every other part kept.
     private BoundType WithContext(BoundType type, ReadOnlySpan<BoundType> components, Subst? context)
-        => this.types.Intern(type.Kind, type.Symbol, type.Semantics, components, type.Length, type.Origin ?? type.RawOrigin, (BoundOrigin[])type.OriginArguments, type.LengthExpression, context, type.LengthArguments);
+        => this.types.Intern(type.Kind, type.Symbol, type.Semantics, components, type.Length, type.Origin ?? type.RawOrigin, (BoundOrigin[])type.OriginArguments, type.LengthExpression, context, type.LengthArguments, type.Binder);
 }

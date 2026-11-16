@@ -38,7 +38,7 @@ programs. Hypothetical APIs do not imply support; see [STATUS.md](STATUS.md).
 | function | lowerCamelCase operation name; see the variants below | `append`, `validateUtf8`, `toString` |
 | Property | lowerCamelCase noun; Boolean names use `is`, `has` or `can` | `length`, `capacity`, `isEmpty` |
 | parameter, local | lowerCamelCase name describing its role | `index`, `destination` |
-| file | UpperCamelCase `.kimi`, named for its main declaration or topic | `Array.kimi`, `ArrayOperations.kimi` |
+| file | UpperCamelCase `.kimi`, named for its main declaration or topic | `Array.kimi`, `DictionaryStorage.kimi` |
 
 - `[Language]` Names are case-sensitive and must be in NFC; `_` alone is not a Name
   ([SPEC §2.5](spec/02-source-and-lexical-structure.md#25-names)).

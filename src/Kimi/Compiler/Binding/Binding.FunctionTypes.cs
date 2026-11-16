@@ -5,9 +5,10 @@ using Kimi.Compiler.Parsing;
 namespace Kimi.Compiler;
 
 // Function Types and their conversions (SPEC 7.7.4, 8.10, 10.7, 15.3.7, 15.6.4).
-// - Responsibility: a Function Type's syntax (BindFunctionType); the shape of a signature's per-call inputs (FunctionTypeBinder,
-//   SignatureOwner, PerCallSignature, InputDependentBinder, PerCallInputs, InputOrigins); the erasure of a Closure or Function Item to
-//   a common Function Type (ErasesToFunction, and ErasureSignatureFits, its signature part that applicability reads); and the solved
+// - Responsibility: a Function Type's syntax (BindFunctionType), which gives the Type its per-call binder (BoundType.Binder, the one
+//   answer to whose per-call inputs a Function Type's are); the shape of a signature's per-call inputs (SignatureOwner,
+//   PerCallSignature, InputDependentBinder, PerCallInputs, InputOrigins); the erasure of a Closure or Function Item to a common
+//   Function Type (ErasesToFunction, and ErasureSignatureFits, its signature part that applicability reads); and the solved
 //   comparison of a named function's contract with a required signature (ContractFits).
 // - Inputs: the Types compared, the use whose premises the comparison reads, the Type relation (Binding.TypeRelations) and, for a
 //   Closure's erasure, its call's retention (TyCtxt.Retains).
@@ -17,21 +18,6 @@ namespace Kimi.Compiler;
 // - Prohibitions: the Type relation's walk stays in Binding.TypeRelations.Walk.cs; these judgments call its entries.
 public sealed partial class Binding
 {
-    // The binder of a Function Type's own per-call inputs: its syntax, which quantifies an outer input Origin at that input's slot.
-    internal static Koto? FunctionTypeBinder(BoundType signature)
-    {
-        var inputs = signature.Components[0];
-        for (var i = 0; i < inputs.Components.Count; i++)
-        {
-            if (inputs.Components[i].Origin is { Kind: OriginKind.Input, Occurrence: null, Binder: FunctionTypeKoto binder } origin && origin.Slot == i)
-            {
-                return binder;
-            }
-        }
-
-        return null;
-    }
-
     // The declaration whose own per-call inputs the signature of a Function Item or closure names (SPEC 8.10).
     internal static Koto? SignatureOwner(BoundType callee)
     {
@@ -170,7 +156,7 @@ public sealed partial class Binding
 
     // SPEC 8.10, 15.6.4: every Origin-bearing input is a direct borrow over its own per-call input, an Origin that the signature's
     // own binder quantifies: a Function Type's own syntax or the declaration `own`. Any other Origin is fixed, even at its own slot.
-    // An expected signature (`any`) may take a fixed Origin for a per-call one, which only asks more of the implementation.
+    // The bound collector's skip (`any`, CollectOriginInference) takes an Input Origin of any binder at its own slot instead.
     private static bool PerCallInputs(BoundType signature, Koto? own, bool any = false)
     {
         var inputs = signature.Components[0];
@@ -178,7 +164,7 @@ public sealed partial class Binding
         {
             var input = inputs.Components[i];
             if (input.CarriesAnyOrigin && !(IsBorrow(input.Semantics) && input is { Kind: BoundTypeKind.Semantics, Components.Count: 1, OriginArguments.Count: 0, Origin.Kind: OriginKind.Input } &&
-                input.Origin.Slot == i && (any || input.Origin.Binder is FunctionTypeKoto || (own is not null && ReferenceEquals(input.Origin.Binder, own))) &&
+                input.Origin.Slot == i && (any || ReferenceEquals(input.Origin.Binder, signature.Binder) || (own is not null && ReferenceEquals(input.Origin.Binder, own))) &&
                 !input.Components[0].CarriesAnyOrigin))
             {
                 return false;
@@ -403,7 +389,7 @@ public sealed partial class Binding
         var inputCount = InputOriginCount(function);
 
         // The owner's (a): every proof of the comparison, its solve's too, assumes the required signature's own well-formedness.
-        var comparison = new CallableInstance(null, null, required, FunctionTypeBinder(required), null);
+        var comparison = new CallableInstance(null, null, required, required.Binder, null);
         var inference = this.BeginOriginInference(use, function);
         inference.Comparison = comparison;
         this.contractFailure = default;
@@ -541,7 +527,7 @@ public sealed partial class Binding
             }
 
             this.AddTypeClauseObligations(result, function.ReturnType);
-            return this.types.Intern(BoundTypeKind.Function, null, SemanticsKind.Owner, [parameters, result]);
+            return this.types.Intern(BoundTypeKind.Function, null, SemanticsKind.Owner, [parameters, result], binder: function);
         }
         finally
         {
