@@ -21,8 +21,8 @@ internal sealed class SemanticQuery(Compilation compilation, Binding binding, Li
     /// <summary>Gets every syntax node of the current pass.</summary>
     internal IReadOnlyList<Koto> BoundNodes => nodes;
 
-    /// <summary>Gets each declared symbol by its declaration syntax (a parameter by its parameter syntax). Read only.</summary>
-    internal Dictionary<object, BindingSymbol> Declarations => declarations;
+    /// <summary>Gets every declared symbol; a parameter's is its function's at its slot.</summary>
+    internal Dictionary<object, BindingSymbol>.ValueCollection Declarations => declarations.Values;
 
     internal BoundType? TypeOf(Koto node) => HirTables.TypeOf(node);
 
