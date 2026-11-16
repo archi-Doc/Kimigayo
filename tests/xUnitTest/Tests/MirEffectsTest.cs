@@ -103,9 +103,7 @@ public sealed partial class MirEffectsTest(ITestOutputHelper output)
     [InlineData("    public func c() => H.a()\n", "")]
     [InlineData("    public func c()\n        H.a()\n        Console.writeLine(\"c\")\n", Failed)]
     public void SummariesAreTransitive(string last, string expected)
-        => Assert.Equal(
-            Expected(expected),
-            Problems(Sink + Loud + "group H\n    public func a() => H.b()\n    public func b() => H.c()\n" + last + Witness + "        H.a()\n        return .Ok(())\n"));
+        => Assert.Equal(Expected(expected), Problems(Transitive(last)));
 
     // SPEC 8.15, 8.11.3 (plan Appendix B X2): a requirement call in a generic body has the bounds of that body's own premises, never those
     // of an instance: the helper calls take under `S is Source`, which declares no confined bound, though Feed also proves Confined.
@@ -990,6 +988,11 @@ public sealed partial class MirEffectsTest(ITestOutputHelper output)
             return Problems(c, report);
         }
     }
+
+    // SummariesAreTransitive's program: S.put, which implements Sink.put (effect confined), calls H.a, which reaches the last function,
+    // H.c, through H.b (G950KeptPathTest's row M4 reads it in later versions).
+    internal static string Transitive(string last)
+        => Sink + Loud + "group H\n    public func a() => H.b()\n    public func b() => H.c()\n" + last + Witness + "        H.a()\n        return .Ok(())\n";
 
     // The driver's A4 rows over a built program and its A2 table: each body begun, its views' local facts, then the run.
     private static void Analyze(MirEffects effects, MirDataflow flow, MirCases cases, MirProgram program, MirReport report)
