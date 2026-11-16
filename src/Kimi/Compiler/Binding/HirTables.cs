@@ -275,6 +275,7 @@ internal struct NodeColumns
     internal StampedColumn<BoundType?, Binding.PassCounter> InheritedOriginTypes; // Pass: the inherited contract's Type an omitted Origin takes (Binding.OriginInheritance.cs).
     internal StampedColumn<bool?, Binding.PassCounter> DeferredConstraints; // Pass: whether a clause waits for the conformances (Binding.Constraints.cs).
     internal StampedColumn<BoundMatch?, Binding.PassCounter> Matches; // Pass: the plan of a match the pass indexed (Binding.Patterns.cs).
+    internal StampedColumn<BoundAdaptation, Binding.PassCounter> Adaptations; // Pass: the implicit adaptation selected for an expression (Binding.ArgumentOperations.cs).
     internal StampedColumn<int, Binding.PassCounter> ShapeContractHeads; // Pass: a function's first shape contract as the later of an overload pair, its index + 1 (Binding.ShapeContracts.cs).
 
     internal void Resize(int length)
@@ -294,6 +295,7 @@ internal struct NodeColumns
         this.InheritedOriginTypes.Grow(length);
         this.DeferredConstraints.Grow(length);
         this.Matches.Grow(length);
+        this.Adaptations.Grow(length);
         this.ObjectErasures.Grow(length);
     }
 
@@ -309,6 +311,7 @@ internal struct NodeColumns
         this.InheritedOriginTypes.Reserve(stated.InheritedOriginTypes);
         this.DeferredConstraints.Reserve(stated.DeferredConstraints);
         this.Matches.Reserve(stated.Matches);
+        this.Adaptations.Reserve(stated.Adaptations);
         this.Scopes.Reserve(stated.Scopes);
         this.OriginAtoms.Reserve(stated.OriginAtoms);
         this.OpenOrigins.Reserve(stated.OpenOrigins);
@@ -336,6 +339,7 @@ internal struct NodeColumns
             InheritedOriginTypes = this.InheritedOriginTypes.Renumbered(length),
             DeferredConstraints = this.DeferredConstraints.Renumbered(length),
             Matches = this.Matches.Renumbered(length),
+            Adaptations = this.Adaptations.Renumbered(length),
             ObjectErasures = this.ObjectErasures.Renumbered(length),
         };
         return columns;
