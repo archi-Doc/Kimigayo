@@ -24,8 +24,8 @@
 // Owns one instance of each analysis and their shared scratch for the compilation's lifetime, arrays reset by counts; each analysis unit
 // adds its field and its pass row at its step: step 2 in Body, steps 1, 3 and 4 in Run (A5 with its own loop over the bodies after A4's,
 // Borrows per body). A2's table (MirProgram.Drops) is per version, like the problems: its library store per library version. The library
-// stamp is valid for the one program its builder publishes (Compilation pairs one MirBuilder with one MirAnalysis): a program of another
-// builder with the same library version would keep this analysis's library facts.
+// state is keyed on the program whose library segment it holds and on that segment's library version, so any other program takes the
+// library step.
 // Must not read syntax, HIR or plans, publish, decide acceptance, or read a body with a validator finding (MirBody.HasFinding, DECISIONS
 // R5-M183): steps 1, 2 and 4 skip it (MirDrops.Exclude closes its empty table entry); A4 composes a body with one as Derived
 // (MirEffects.Views); the initialization proof that consults one rests on it (MirBorrows.Unproved).
@@ -47,7 +47,7 @@ internal sealed class MirAnalysis
     private readonly MirOrigins origins;
     private readonly MirReport.Kept libraryProblems = new(); // The library step's problems, replayed in a version that keeps its facts.
     private ulong version; // The program version whose problems the program holds (0: none).
-    private ulong library = ulong.MaxValue; // The library version whose step-2 facts the analyses hold (MirProgram.LibraryVersion; none yet).
+    private (MirProgram? Program, ulong Version) library; // The program and library version whose step-2 facts the analyses hold (none yet).
 
     /// <summary>Initializes a new instance of the <see cref="MirAnalysis"/> class.</summary>
     /// <param name="types">The Type context of the programs, which the case views read.</param>
@@ -84,9 +84,9 @@ internal sealed class MirAnalysis
         }
 
         (this.version, this.Judgments) = (program.Version, 0);
-        if (program.LibraryVersion != this.library)
+        if (this.library != (program, program.LibraryVersion))
         {
-            this.library = program.LibraryVersion;
+            this.library = (program, program.LibraryVersion);
             program.Drops.Clear();
             this.effects.BeginLibrary();
             var first = program.Problems.All.Length;

@@ -14,7 +14,7 @@
 // an erasure to a Function Type; a function item constant; a cast or binary operation whose Types depend on slots (K 4.7, checked per
 // instance); a binary operation whose operator row has a layout need (a raw pointer's displacement, K 4.8).
 // Invariants: built before any item is replayed, the library segment's once per library version (Run compares its stamp once; the stamp
-// is valid for the one program its compilation's builder publishes, as MirAnalysis's is); a template
+// is valid for the one program its compilation's builder publishes); a template
 // is a function of its body alone: the runtime bit is one MirReach walk without CheckTarget edges, and a template holds locations and the
 // body's Places only, no substitution or target.
 // Must not: resolve a target, read TyCtxt, an item or the root range, or record anything: the definition-stage capability check (A3b) is
