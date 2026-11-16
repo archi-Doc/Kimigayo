@@ -189,13 +189,7 @@ public sealed class DiagnosticSnapshotTest : IDisposable
         }
         else
         {
-            var source = kind switch
-            {
-                "milestone" => File.ReadAllText(DiagnosticCorpus.RepositoryPath("tests", "milestones", subject + ".kimi")),
-                "syntax" => DiagnosticCorpus.Syntax(subject).Source,
-                "spec" => DiagnosticCorpus.Spec(subject),
-                _ => DiagnosticCorpus.Apply(DiagnosticCorpus.Mutation(subject)),
-            };
+            var source = Source(name);
             var folder = Path.Combine(directory, kind, subject);
             Directory.CreateDirectory(folder);
             project = Path.Combine(folder, "Program.kimiproj");
@@ -210,6 +204,25 @@ public sealed class DiagnosticSnapshotTest : IDisposable
         var root = Path.GetDirectoryName(project)!;
         var diagnostics = output.Diagnostics.Select(x => new SnapshotDiagnostic(x.Code, x.Severity.ToString(), x.Message, Relative(root, x.Source < 0 ? null : output.Sources[x.Source].Path), Format(x.Display?.Range), Format(x.Repairs))).ToArray();
         return new(name, output.Outcome.ToString(), output.Accepted, diagnostics);
+    }
+
+    /// <summary>Gets the program of a case, the one case-to-source mapping of the snapshots: an example's one source file (its project's
+    /// program; <see cref="Take(string, string)"/> checks the project itself), or the source it generates a project for.</summary>
+    /// <param name="name">The case name: its kind (<c>example</c>, <c>milestone</c>, <c>syntax</c>, <c>spec</c> or <c>mutation</c>), a slash
+    /// and its subject.</param>
+    /// <returns>The source text.</returns>
+    internal static string Source(string name)
+    {
+        var kind = name[..name.IndexOf('/')];
+        var subject = name[(kind.Length + 1)..];
+        return kind switch
+        {
+            "example" => File.ReadAllText(Directory.GetFiles(DiagnosticCorpus.RepositoryPath("docs", "examples", subject), "*.kimi").Single()),
+            "milestone" => File.ReadAllText(DiagnosticCorpus.RepositoryPath("tests", "milestones", subject + ".kimi")),
+            "syntax" => DiagnosticCorpus.Syntax(subject).Source,
+            "spec" => DiagnosticCorpus.Spec(subject),
+            _ => DiagnosticCorpus.Apply(DiagnosticCorpus.Mutation(subject)),
+        };
     }
 
     private static string Serialize(SnapshotCase[] snapshot)

@@ -3,7 +3,7 @@
 // Owns the MIR analyses (P7–P9) of one program version (DECISIONS R4-M1, R4-M2a).
 // Input: a built and validated MirProgram and its root modules, the range of Source.Module Compilation gives the collector too.
 // Output: its Problems for that version, which the analyses add through MirReport after the construction records (MirProgram.Clear resets
-// them with the bodies, R6-check H3-1).
+// them with the bodies, R6-check H3-1), and the version's count of judgments (Judgments), which the library check reads in each version.
 // Runs them once per version, after build and validation: the version alone keys the run because an instance analyzes the programs of
 // one builder (Compilation pairs its analysis with its builder; a test or measurement makes both), which builds a version with one root
 // range (MirBuilder.Build); that build range is the builder's, not Run's rootModules. The steps run in a fixed order, one line per step
@@ -59,6 +59,10 @@ internal sealed class MirAnalysis
         this.borrows = new(types, this.flow, this.moves, this.cases, this.effects, this.origins); // A4's keys (R4-M92), rule W's causes (R4-M132).
     }
 
+    /// <summary>Gets the judgments of the latest version: one per body step 1 (A3) judged and one per body step 4 (A5) judged; the library
+    /// check reads it in each version (MirAnalysisTest.TheLibraryHasNoAnalysisProblem, PLAN G950's row M3).</summary>
+    internal int Judgments { get; private set; }
+
     /// <summary>Analyzes a program unless this version already was: a new version starts with its construction records only (MirProgram.Clear),
     /// and a body with a validator finding is not analyzed (DECISIONS R5-M183).</summary>
     /// <param name="program">The built and validated program.</param>
@@ -73,7 +77,7 @@ internal sealed class MirAnalysis
             return program;
         }
 
-        this.version = program.Version;
+        (this.version, this.Judgments) = (program.Version, 0);
         program.Drops.Clear();
         foreach (var body in program.Bodies)
         {
@@ -86,6 +90,7 @@ internal sealed class MirAnalysis
             if (Judged(body, rootModules))
             {
                 this.lints.Run(body, program.Problems); // 1. A3 per judged body.
+                this.Judgments++;
             }
 
             this.Body(program, body); // 2. per body.
@@ -97,6 +102,7 @@ internal sealed class MirAnalysis
             if (Judged(body, rootModules) && !body.HasFinding)
             {
                 this.Borrows(program, body); // 4. per judged body.
+                this.Judgments++;
             }
         }
 
