@@ -16,8 +16,9 @@
 // another Self what its witnesses run; one worklist with recorded dependencies solves
 // the least fixed point; storage is pooled and reset by counts, so a warm version allocates nothing. The local facts are recorded per
 // segment (PLAN G950): the library segment's nodes first, into a store of their own (Locals) kept while its library version holds
-// (BeginLibrary), then the program's, into a store cleared per program version (BeginProgram); a node's store is the library's below its
-// node count (R8-L1 M-B1), and its ends index that store.
+// (BeginLibrary), then the program's, into a store cleared per program version (BeginProgram); each store holds its nodes' and bodies'
+// entries by the node id and the ordinal themselves, and a reader takes the library's store below its node count or MirProgram's
+// LibraryCount (R8-L1 M-B1's split rule; no offset).
 // Must not read syntax or HIR, re-derive premises, bounds or obligations, report a failure that only an Opaque site or a callee
 // Binding rejected causes (derived, R4-M10), or read a body with a validator finding (Views: derived, R5-M183).
 
@@ -64,11 +65,6 @@ internal sealed partial class MirEffects(TyCtxt types, MirCases cases, MirDatafl
     private readonly List<MirDropStep> destroyed = []; // MirDropTable.Destroyed's steps of the Drop being read (Dropped).
     private readonly Locals libraryLocals = new(); // The library segment's local facts, kept while its library version holds.
     private readonly Locals programLocals = new(); // The program segment's, cleared per program version.
-    private int[] bases = []; // The first node of each body, by ordinal: a node is a body view.
-    private int[] owners = []; // The body of each node.
-    private byte[] local = []; // The classes of each node's local facts.
-    private int[] itemEnds = []; // The end of each node's local inputs in its store's items.
-    private int[] edgeEnds = []; // The end of each node's calls in its store's edges.
     private Locals writing = null!; // The segment Local records into, which a begin call names.
     private byte found; // The classes the current evaluation or local walk found.
 
@@ -84,14 +80,14 @@ internal sealed partial class MirEffects(TyCtxt types, MirCases cases, MirDatafl
     }
 
     // The number of nodes recorded: the library segment's, then the program's.
-    private int NodeCount => this.libraryLocals.Nodes + this.programLocals.Nodes;
+    private int NodeCount => this.writing.End;
 
     /// <summary>Begins the library segment's local facts for a new library version (driver step 0): both segments' facts and every Field
     /// number cleared; <see cref="Local"/> records into the library's store until <see cref="BeginProgram"/>.</summary>
     internal void BeginLibrary()
     {
-        this.libraryLocals.Clear();
-        this.programLocals.Clear();
+        this.libraryLocals.Clear(0);
+        this.programLocals.Clear(0);
         this.fieldIds.Clear();
         this.writing = this.libraryLocals;
     }
@@ -105,7 +101,7 @@ internal sealed partial class MirEffects(TyCtxt types, MirCases cases, MirDatafl
             this.fieldIds.Remove(field);
         }
 
-        this.programLocals.Clear();
+        this.programLocals.Clear(this.libraryLocals.End);
         this.writing = this.programLocals;
     }
 
@@ -118,20 +114,8 @@ internal sealed partial class MirEffects(TyCtxt types, MirCases cases, MirDatafl
     /// <param name="view">The selected view.</param>
     internal void Local(MirProgram program, MirBody body, long view)
     {
-        var node = this.NodeCount;
-        this.writing.Nodes++;
-        MirDataflow.Grow(ref this.bases, body.Ordinal + 1);
-        MirDataflow.Grow(ref this.owners, node + 1);
-        MirDataflow.Grow(ref this.local, node + 1);
-        MirDataflow.Grow(ref this.itemEnds, node + 1);
-        MirDataflow.Grow(ref this.edgeEnds, node + 1);
-        MirDataflow.Grow(ref this.keyEnds, node + 1);
-        if (view == 0)
-        {
-            this.bases[body.Ordinal] = node;
-        }
-
-        (this.owners[node], this.found) = (body.Ordinal, 0);
+        var node = this.writing.Open(body.Ordinal, view);
+        this.found = 0;
         var uses = new Uses(this, body);
         for (var block = 0; block < body.Blocks.Length; block++)
         {
@@ -155,8 +139,7 @@ internal sealed partial class MirEffects(TyCtxt types, MirCases cases, MirDatafl
             }
         }
 
-        (this.local[node], this.itemEnds[node], this.edgeEnds[node]) = (this.found, this.writing.ItemCount, this.writing.EdgeCount);
-        this.keyEnds[node] = this.writing.KeyCount;
+        this.writing.Close(node, body.Ordinal, this.found);
     }
 
     // SPEC 4.9.6: the Type below a callee's parameter under the call's substitution in the view, what a published row runs on or
@@ -376,10 +359,13 @@ internal sealed partial class MirEffects(TyCtxt types, MirCases cases, MirDatafl
     private void AddEdge(MirBody callee, Subst? subst) => this.writing.Add(new Edge(callee.Ordinal, this.Views(callee, subst), subst));
 
     // The store of a node's local facts: the library segment's below its node count (R8-L1 M-B1).
-    private Locals Of(int node) => node < this.libraryLocals.Nodes ? this.libraryLocals : this.programLocals;
+    private Locals Of(int node) => node < this.libraryLocals.End ? this.libraryLocals : this.programLocals;
 
-    // Where a node's local facts begin in its store: the previous node's end there, 0 for a segment's first node.
-    private int Start(int[] ends, int node) => node == 0 || node == this.libraryLocals.Nodes ? 0 : ends[node - 1];
+    // Where a node's local facts begin in its store: the previous node's ends there, none for a segment's first node.
+    private NodeFacts Start(Locals store, int node) => node == 0 || node == this.libraryLocals.End ? default : store[node - 1];
+
+    // The first node of a body of the last Run's program: its store's, the library segment's below MirProgram.LibraryCount (R8-L1 M-B1).
+    private int Base(int body) => (body < this.program.LibraryCount ? this.libraryLocals : this.programLocals).Base(body);
 
     // The views of a body a call, a destruction or an obligation enters that its substitution selects; none for a body with a finding,
     // which no consumer reads (R5-M183): what rests on it is that finding's dependent (Derived, R4-M10).
@@ -412,15 +398,24 @@ internal sealed partial class MirEffects(TyCtxt types, MirCases cases, MirDatafl
     // caller's view (a specialization of the caller's declaration, Local).
     private readonly record struct Edge(int Body, ulong Views, Subst? Subst);
 
-    // A segment's local facts in record order (PLAN G950), data only, so the library segment's are kept while its library version holds:
-    // its node count, its nodes' local inputs, calls and keys, and the Fields it numbered (BeginProgram removes the program's numbers).
+    // A node's entry in its store: its body (an ordinal), the classes of its local facts and the ends of its local inputs, calls and keys
+    // in the store.
+    private readonly record struct NodeFacts(int Owner, byte Classes, int Items, int Edges, int Keys);
+
+    // A segment's local facts in record order (PLAN G950, the Back's C-378 (1)(a)), data only, so the library segment's are kept while its
+    // library version holds: its nodes' entries by node id and its bodies' first nodes by ordinal, each the id or ordinal itself (the
+    // program's after the library's, no offset), its nodes' local inputs, calls and keys, and the Fields it numbered (BeginProgram removes
+    // the program's numbers).
     private sealed class Locals
     {
         private Atom[] items = [];
         private Edge[] edges = [];
         private int[] keys = [];
+        private NodeFacts[] nodes = []; // By node id, its nodes from its first.
+        private int[] bases = []; // By body ordinal, the first node of each of its bodies: a node is a body view.
 
-        internal int Nodes { get; set; }
+        // The node id after its last node.
+        internal int End { get; private set; }
 
         internal int ItemCount { get; private set; }
 
@@ -435,6 +430,29 @@ internal sealed partial class MirEffects(TyCtxt types, MirCases cases, MirDatafl
         internal ReadOnlySpan<Edge> Edges => this.edges.AsSpan(0, this.EdgeCount);
 
         internal ReadOnlySpan<int> Keys => this.keys.AsSpan(0, this.KeyCount);
+
+        // A node's entry.
+        internal NodeFacts this[int node] => this.nodes[node];
+
+        // The first node of one of its bodies.
+        internal int Base(int body) => this.bases[body];
+
+        // Opens the next node, a body's view: its id, the body's first node for view 0.
+        internal int Open(int body, long view)
+        {
+            var node = this.End++;
+            MirDataflow.Grow(ref this.nodes, this.End);
+            MirDataflow.Grow(ref this.bases, body + 1);
+            if (view == 0)
+            {
+                this.bases[body] = node;
+            }
+
+            return node;
+        }
+
+        // Closes a node with its body and its local classes: its inputs, calls and keys are those added since it was opened.
+        internal void Close(int node, int body, byte classes) => this.nodes[node] = new(body, classes, this.ItemCount, this.EdgeCount, this.KeyCount);
 
         internal void Add(in Atom item)
         {
@@ -457,9 +475,11 @@ internal sealed partial class MirEffects(TyCtxt types, MirCases cases, MirDatafl
         // Drops the inputs and calls added past the given counts (a site's, which are not a node's).
         internal void Truncate(int items, int edges) => (this.ItemCount, this.EdgeCount) = (items, edges);
 
-        internal void Clear()
+        // Removes its facts, keeping the storage: its next node has the id first.
+        internal void Clear(int first)
         {
-            this.Nodes = this.ItemCount = this.EdgeCount = this.KeyCount = 0;
+            this.End = first;
+            this.ItemCount = this.EdgeCount = this.KeyCount = 0;
             this.Fields.Clear();
         }
     }

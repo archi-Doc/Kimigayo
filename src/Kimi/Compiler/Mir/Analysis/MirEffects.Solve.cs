@@ -122,12 +122,14 @@ internal sealed partial class MirEffects
     // A node's summary from its local facts and its callees' current summaries: whether it grew.
     private bool Evaluate(int node)
     {
-        var body = this.program.Body(this.owners[node]);
+        var store = this.Of(node);
+        var (facts, start) = (store[node], this.Start(store, node));
+        var body = this.program.Body(facts.Owner);
         this.Evaluations++;
-        cases.Select(body, node - this.bases[this.owners[node]]);
-        (this.definition, this.reader, this.found, this.scratchCount) = (body.Key.Decl, node, this.local[node], 0);
+        cases.Select(body, node - this.Base(facts.Owner));
+        (this.definition, this.reader, this.found, this.scratchCount) = (body.Key.Decl, node, facts.Classes, 0);
         this.glued.Clear();
-        this.Inputs(this.Of(node), this.Start(this.itemEnds, node), this.itemEnds[node], this.Start(this.edgeEnds, node), this.edgeEnds[node]);
+        this.Inputs(store, start.Items, facts.Items, start.Edges, facts.Edges);
         var found = this.Found;
         if (found == this.classes[node] && this.scratchCount == this.atomCounts[node])
         {
@@ -164,7 +166,7 @@ internal sealed partial class MirEffects
     {
         for (var mask = views; mask != 0; mask &= mask - 1)
         {
-            var node = this.bases[body] + BitOperations.TrailingZeroCount(mask);
+            var node = this.Base(body) + BitOperations.TrailingZeroCount(mask);
             if (this.reader >= 0 && this.readers[node] != this.reader)
             {
                 this.readers[node] = this.reader;

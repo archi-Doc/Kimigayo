@@ -65,8 +65,9 @@ internal readonly record struct MirDropRow(int Block, ulong Views, MirDropVerdic
 internal readonly record struct MirFlagPoint(MirLocation At, int First, int Count, bool Set, ulong Views);
 
 /// <summary>Drop elaboration's output for a program version (DECISIONS R4-M6a), by body ordinal (<see cref="MirProgram.Body"/>), the
-/// library segment's rows and points in a store of their own, kept while its library version holds, and the program's in another,
-/// cleared per program version (PLAN G950; <see cref="EndLibrary"/>, <see cref="ClearProgram"/>): the body's verdict rows, ordered by
+/// library segment's entries (each body's rows, points and ends there, by its ordinal) in a store of their own, kept while its library
+/// version holds, and the program's in another, cleared per program version, the store read by the ordinal's segment (PLAN G950;
+/// <see cref="EndLibrary"/>, <see cref="ClearProgram"/>): the body's verdict rows, ordered by
 /// block, so a Drop's groups are contiguous, in view order; its flag points, ordered by block, each view's in location order; its number of flags; the views it judged, those A1 and A2 completed (all
 /// of the body's, none past A1's arena limit, R4-M15a); and its first A1 or A2 problem (R4-M102). A body not analyzed has none. A group
 /// says what its Drop destroys, the statement every walk of it cites: a Keep or Flag row its Type whole (its drop, then every part); an
@@ -79,8 +80,7 @@ internal readonly record struct MirFlagPoint(MirLocation At, int First, int Coun
 /// generation, A4, A5, the instance collector and the dump read it.</summary>
 internal sealed partial class MirDropTable
 {
-    private readonly List<End> ends = []; // Each closed body's ends in its segment's store, judged views and first problem, by ordinal.
-    private readonly Segment library = new(); // The library segment's rows and points.
+    private readonly Segment library = new(); // The library segment's rows, points and ends.
     private readonly Segment program = new(); // The program segment's.
     private Segment writing; // The segment whose bodies are closed: the library's until EndLibrary.
     private int libraryCount = int.MaxValue; // The library segment's bodies; every body closed is the library's until EndLibrary.
@@ -98,23 +98,39 @@ internal sealed partial class MirDropTable
     /// <param name="body">The body's ordinal.</param>
     /// <returns>Its rows, empty for a body not analyzed.</returns>
     internal ReadOnlySpan<MirDropRow> RowsOf(int body)
-        => (uint)body < (uint)this.ends.Count ? CollectionsMarshal.AsSpan(this.Of(body).Rows)[this.Start(body).Rows..this.ends[body].Rows] : default;
+    {
+        var store = this.Of(body);
+        var ends = store.Ends;
+        return (uint)body < (uint)ends.Length ? CollectionsMarshal.AsSpan(store.Rows)[this.Start(ends, body).Rows..ends[body].Rows] : default;
+    }
 
     /// <summary>Gets the flag points of a body.</summary>
     /// <param name="body">The body's ordinal.</param>
     /// <returns>Its points, empty for a body not analyzed.</returns>
     internal ReadOnlySpan<MirFlagPoint> PointsOf(int body)
-        => (uint)body < (uint)this.ends.Count ? CollectionsMarshal.AsSpan(this.Of(body).Points)[this.Start(body).Points..this.ends[body].Points] : default;
+    {
+        var store = this.Of(body);
+        var ends = store.Ends;
+        return (uint)body < (uint)ends.Length ? CollectionsMarshal.AsSpan(store.Points)[this.Start(ends, body).Points..ends[body].Points] : default;
+    }
 
     /// <summary>Gets the number of drop flags of a body.</summary>
     /// <param name="body">The body's ordinal.</param>
     /// <returns>Its flags, 0 for a body not analyzed.</returns>
-    internal int FlagsOf(int body) => (uint)body < (uint)this.ends.Count ? this.ends[body].Flags : 0;
+    internal int FlagsOf(int body)
+    {
+        var ends = this.Of(body).Ends;
+        return (uint)body < (uint)ends.Length ? ends[body].Flags : 0;
+    }
 
     /// <summary>Gets the views A1 and A2 completed for a body, which A5 checks (R4-M15a): views 0 to the count less one.</summary>
     /// <param name="body">The body's ordinal.</param>
     /// <returns>Its completed views: every view of the body, 0 past A1's arena limit or for a body not analyzed.</returns>
-    internal long ViewsOf(int body) => (uint)body < (uint)this.ends.Count ? this.ends[body].Views : 0;
+    internal long ViewsOf(int body)
+    {
+        var ends = this.Of(body).Ends;
+        return (uint)body < (uint)ends.Length ? ends[body].Views : 0;
+    }
 
     /// <summary>Gets a body's first A1 or A2 problem, an inline default copy's included (R4-M102): its verdicts are exact only without one
     /// (R4-M6a). A1's arena limit is <c>OwnershipStorageLimit_Kd</c> at the body (the default source), its views 0 (R4-M15a), whose facts
@@ -123,7 +139,10 @@ internal sealed partial class MirDropTable
     /// <returns>The problem's code and its subject (the template's for a copy's, R4-M69) in its location's scope, which locates it out of
     /// an inline default (K 4.9); null for an exact body or a body not analyzed.</returns>
     internal (DiagnosticCode Code, SourceInfo Source)? Incomplete(int body)
-        => (uint)body < (uint)this.ends.Count ? this.ends[body].Incomplete : null;
+    {
+        var ends = this.Of(body).Ends;
+        return (uint)body < (uint)ends.Length ? ends[body].Incomplete : null;
+    }
 
     /// <summary>Gets a Drop's verdict group under a view, the one lookup of its readers.</summary>
     /// <param name="body">The body's ordinal.</param>
@@ -166,47 +185,64 @@ internal sealed partial class MirDropTable
     /// <param name="views">The views judged, from view 0.</param>
     /// <param name="incomplete">Its first A1 or A2 problem, or null.</param>
     internal void Close(int flags, long views, (DiagnosticCode Code, SourceInfo Source)? incomplete)
-        => this.ends.Add(new(this.Rows.Count, this.Points.Count, flags, views, incomplete));
+        => this.writing.Close(new(this.Rows.Count, this.Points.Count, flags, views, incomplete));
 
     /// <summary>Removes every body, keeping the storage, for a new library version: the bodies closed next are the library segment's.</summary>
     internal void Clear()
     {
-        this.library.Clear();
-        this.program.Clear();
-        this.ends.Clear();
+        this.library.Clear(0);
+        this.program.Clear(0);
         (this.writing, this.libraryCount) = (this.library, int.MaxValue);
     }
 
-    /// <summary>Ends the library segment: the bodies closed so far are the library's, those closed next the program's.</summary>
-    internal void EndLibrary() => (this.writing, this.libraryCount) = (this.program, this.ends.Count);
-
-    /// <summary>Removes the program segment's bodies, keeping the library's and the storage, for a new program version.</summary>
-    internal void ClearProgram()
+    /// <summary>Ends the library segment: the bodies closed so far are the library's, those closed next the program's, from the ordinal
+    /// after the library's last.</summary>
+    internal void EndLibrary()
     {
-        this.program.Clear();
-        this.ends.RemoveRange(this.libraryCount, this.ends.Count - this.libraryCount);
+        this.libraryCount = this.library.Ends.Length;
+        this.ClearProgram();
+        this.writing = this.program;
     }
 
-    // The store of a body's rows and points: the library segment's below its count (R8-L1 M-B1).
+    /// <summary>Removes the program segment's bodies, keeping the library's and the storage, for a new program version.</summary>
+    internal void ClearProgram() => this.program.Clear(this.libraryCount);
+
+    // The store of a body's entries: the library segment's below its count (R8-L1 M-B1's split rule; each store is indexed by the ordinal).
     private Segment Of(int body) => body < this.libraryCount ? this.library : this.program;
 
     // Where a closed body's rows and points begin in its store: the previous body's ends, nothing for a segment's first body.
-    private End Start(int body) => body > 0 && body != this.libraryCount ? this.ends[body - 1] : default;
+    private End Start(ReadOnlySpan<End> ends, int body) => body > 0 && body != this.libraryCount ? ends[body - 1] : default;
 
-    // A closed body's ends in the rows and points, its flags, its judged views and its first A1 or A2 problem.
+    // A closed body's ends in its store's rows and points, its flags, its judged views and its first A1 or A2 problem.
     private readonly record struct End(int Rows, int Points, int Flags, long Views, (DiagnosticCode Code, SourceInfo Source)? Incomplete);
 
-    // A segment's rows and points, data only (PLAN G950).
+    // A segment's entries, data only (PLAN G950, the Back's C-378 (1)(a)): its bodies' rows and points, and each body's ends there by the
+    // body's ordinal itself (the program's from the library's count, no offset), for the bodies closed so far.
     private sealed class Segment
     {
+        private End[] ends = [];
+        private int closed; // The ordinal after the last body closed.
+
         internal List<MirDropRow> Rows { get; } = [];
 
         internal List<MirFlagPoint> Points { get; } = [];
 
-        internal void Clear()
+        // The closed bodies' ends, by ordinal; none below the segment's first ordinal is read.
+        internal ReadOnlySpan<End> Ends => this.ends.AsSpan(0, this.closed);
+
+        // Closes the next body with its ends.
+        internal void Close(in End end)
+        {
+            MirDataflow.Grow(ref this.ends, this.closed + 1);
+            this.ends[this.closed++] = end;
+        }
+
+        // Removes every body, keeping the storage: the next body closed has the ordinal first.
+        internal void Clear(int first)
         {
             this.Rows.Clear();
             this.Points.Clear();
+            this.closed = first;
         }
     }
 }

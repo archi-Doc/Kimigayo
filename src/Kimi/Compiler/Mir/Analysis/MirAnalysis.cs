@@ -23,7 +23,9 @@
 // check every unit changing A3 or A5 runs.
 // Owns one instance of each analysis and their shared scratch for the compilation's lifetime, arrays reset by counts; each analysis unit
 // adds its field and its pass row at its step: step 2 in Body, steps 1, 3 and 4 in Run (A5 with its own loop over the bodies after A4's,
-// Borrows per body). A2's table (MirProgram.Drops) is per version, like the problems: its library store per library version.
+// Borrows per body). A2's table (MirProgram.Drops) is per version, like the problems: its library store per library version. The library
+// stamp is valid for the one program its builder publishes (Compilation pairs one MirBuilder with one MirAnalysis): a program of another
+// builder with the same library version would keep this analysis's library facts.
 // Must not read syntax, HIR or plans, publish, decide acceptance, or read a body with a validator finding (MirBody.HasFinding, DECISIONS
 // R5-M183): steps 1, 2 and 4 skip it (MirDrops.Exclude closes its empty table entry); A4 composes a body with one as Derived
 // (MirEffects.Views); the initialization proof that consults one rests on it (MirBorrows.Unproved).

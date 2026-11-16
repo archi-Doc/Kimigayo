@@ -11,7 +11,6 @@ namespace Kimi.Compiler.Mir;
 internal sealed partial class MirEffects
 {
     private readonly Dictionary<BindingSymbol, int> fieldIds = new(ReferenceEqualityComparer.Instance); // Each mutable static Field's number (P5).
-    private int[] keyEnds = []; // The end of each node's local keys in its store's keys (a key's bit: 2 × its Field's number, plus 1 for a write).
     private ulong[] keys = []; // Each node's static keys, keyWords words of key bits (P5: of Fields, never substituted), after Spread,
     private ulong[] keyScratch = []; // and those of the current query.
     private int keyWords;
@@ -54,7 +53,7 @@ internal sealed partial class MirEffects
     /// <returns>The row, A4's storage, valid until the next <see cref="Run"/>.</returns>
     internal ReadOnlySpan<ulong> Summary(MirBody body, long view, out byte classes)
     {
-        var node = this.bases[body.Ordinal] + (int)view;
+        var node = this.Base(body.Ordinal) + (int)view;
         classes = (byte)(this.classes[node] & (Unknown | Limit | Derived | Deep));
         if (this.atomCounts[node] > 0)
         {
@@ -72,7 +71,7 @@ internal sealed partial class MirEffects
     /// <returns>The atoms, A4's storage, valid until the next <see cref="Run"/>.</returns>
     internal ReadOnlySpan<Atom> Items(MirBody body, long view, out byte classes)
     {
-        var node = this.bases[body.Ordinal] + (int)view;
+        var node = this.Base(body.Ordinal) + (int)view;
         classes = this.classes[node];
         return this.atoms.AsSpan(this.atomStarts[node], this.atomCounts[node]);
     }
@@ -107,8 +106,9 @@ internal sealed partial class MirEffects
         this.visits.AsSpan(0, count).Fill(-1);
         for (var node = 0; node < count; node++)
         {
-            var own = this.Of(node).Keys;
-            for (var k = this.Start(this.keyEnds, node); k < this.keyEnds[node]; k++)
+            var store = this.Of(node);
+            var own = store.Keys;
+            for (var k = this.Start(store, node).Keys; k < store[node].Keys; k++)
             {
                 this.keys[(node * this.keyWords) + (own[k] >> 6)] |= 1UL << own[k];
             }

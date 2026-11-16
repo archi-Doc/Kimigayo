@@ -210,19 +210,9 @@ internal static class StaticKeyMeasurements
     {
         var (localBytes, localTicks) = (0L, 0L);
         effects.BeginLibrary();
-        foreach (var body in w.Program.Bodies)
-        {
-            w.Flow.Begin(body);
-            var (bytes, start) = (GC.GetAllocatedBytesForCurrentThread(), Stopwatch.GetTimestamp());
-            for (var view = 0L; view < MirCases.Count(body); view++)
-            {
-                w.Cases.Select(body, view);
-                effects.Local(w.Program, body, view);
-            }
-
-            (localBytes, localTicks) = (localBytes + GC.GetAllocatedBytesForCurrentThread() - bytes, localTicks + Stopwatch.GetTimestamp() - start);
-        }
-
+        Local(w.Program.LibraryBodies);
+        effects.BeginProgram();
+        Local(w.Program.ProgramBodies);
         w.Report.Clear();
         var (runBytes, runTicks) = (GC.GetAllocatedBytesForCurrentThread(), Stopwatch.GetTimestamp());
         effects.Run(w.Program, w.Report);
@@ -253,6 +243,23 @@ internal static class StaticKeyMeasurements
         }
 
         return new(localBytes, localTicks, runBytes, runTicks, queryBytes, queryTicks, sites, unknowns, keys);
+
+        // A segment's bodies' Local, begun with each body's dataflow.
+        void Local(ReadOnlySpan<MirBody> bodies)
+        {
+            foreach (var body in bodies)
+            {
+                w.Flow.Begin(body);
+                var (bytes, start) = (GC.GetAllocatedBytesForCurrentThread(), Stopwatch.GetTimestamp());
+                for (var view = 0L; view < MirCases.Count(body); view++)
+                {
+                    w.Cases.Select(body, view);
+                    effects.Local(w.Program, body, view);
+                }
+
+                (localBytes, localTicks) = (localBytes + GC.GetAllocatedBytesForCurrentThread() - bytes, localTicks + Stopwatch.GetTimestamp() - start);
+            }
+        }
     }
 
     private static long[] MinMax(Pass[] passes, Func<Pass, long> value) => [passes.Min(value), passes.Max(value)];
