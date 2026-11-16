@@ -263,6 +263,7 @@ internal struct NodeColumns
     internal PagedColumn<BindingSymbol?> Symbols; // Kept: the symbol declared at a node (Binding.Scopes.cs).
     internal PagedColumn<BindingSymbol?[]?> Parameters; // Kept: Symbols' composite column, a function's parameters' symbols by index.
     internal PagedColumn<BindingSymbol?> Receivers; // Kept: a constructor's or destructor's receiver `self` (Binding.Structs.cs).
+    internal PagedColumn<BoundEnumConstruction?> EnumConstructions; // Kept: a construction expression's enum construction plan (Binding.Enums.cs).
     internal PagedColumn<BindingScope?> Scopes; // Kept: a node's scope (Binding.Scopes.cs).
     internal PagedColumn<(SourceDocument Document, BindingScope? Scope)[]?> Documents; // Kept: Scopes' composite column, a module root's document scopes.
     internal PagedColumn<BoundOrigin?[]?> OriginAtoms; // Kept: a binder's Origin atoms, a KeyedRow by kind and slot (Binding.Origins.cs).
@@ -276,6 +277,7 @@ internal struct NodeColumns
         this.Symbols.Grow(length);
         this.Parameters.Grow(length);
         this.Receivers.Grow(length);
+        this.EnumConstructions.Grow(length);
         this.Scopes.Grow(length);
         this.Documents.Grow(length);
         this.OriginAtoms.Grow(length);
@@ -291,6 +293,7 @@ internal struct NodeColumns
         this.Symbols.Reserve(stated.Declarations);
         this.Parameters.Reserve(stated.Parameters);
         this.Receivers.Reserve(stated.Receivers);
+        this.EnumConstructions.Reserve(stated.EnumConstructions);
         this.Scopes.Reserve(stated.Scopes);
         this.OriginAtoms.Reserve(stated.OriginAtoms);
         this.OpenOrigins.Reserve(stated.OpenOrigins);
@@ -306,6 +309,7 @@ internal struct NodeColumns
             Symbols = this.Symbols.Renumbered(length),
             Parameters = this.Parameters.Renumbered(length),
             Receivers = this.Receivers.Renumbered(length),
+            EnumConstructions = this.EnumConstructions.Renumbered(length),
             Scopes = this.Scopes.Renumbered(length),
             Documents = this.Documents.Renumbered(length),
             OriginAtoms = this.OriginAtoms.Renumbered(length),
@@ -324,6 +328,7 @@ internal struct NodeColumns
         this.Symbols.Retire();
         this.Parameters.Retire();
         this.Receivers.Retire();
+        this.EnumConstructions.Retire();
         this.Scopes.Retire();
         this.Documents.Retire();
         this.OriginAtoms.Retire();
@@ -336,6 +341,7 @@ internal struct NodeColumns
         this.Symbols.MoveTo(ref target.Symbols, from, to);
         this.Parameters.MoveTo(ref target.Parameters, from, to);
         this.Receivers.MoveTo(ref target.Receivers, from, to);
+        this.EnumConstructions.MoveTo(ref target.EnumConstructions, from, to);
         this.Scopes.MoveTo(ref target.Scopes, from, to);
         this.Documents.MoveTo(ref target.Documents, from, to);
         this.OriginAtoms.MoveTo(ref target.OriginAtoms, from, to);

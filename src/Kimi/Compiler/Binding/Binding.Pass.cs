@@ -52,7 +52,7 @@ public sealed partial class Binding
         this.implicitPairFollows.Clear();
         foreach (var construction in this.enumConstructions.Values)
         {
-            construction.IsValid = false;
+            construction!.IsValid = false;
         }
 
         this.nodes.Clear();

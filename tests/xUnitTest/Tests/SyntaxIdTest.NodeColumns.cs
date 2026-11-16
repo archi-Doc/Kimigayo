@@ -100,18 +100,20 @@ public partial class SyntaxIdTest
     // G949 D2b-d's d10, per kept family: an edit's renumbering moves a kept family's rows into the column's spare arena, so the second
     // of two edits allocates no arena: the column's arena is again the one it had before the first, and its first row is the same object
     // at its node's id, which a synthesized node's renumbering may change (Symbols: a declaration's symbol; Receivers: Point's implicit
-    // constructor's `self`).
+    // constructor's `self`; EnumConstructions: `.Some(1)`'s plan). The column is read by reflection, since the families' rows differ.
     [Trait("Purpose", "Allocation")]
     [Theory]
-    [InlineData("Symbols")]
-    [InlineData("Receivers")]
-    public void AKeptFamilyAlternatesItsArenasAcrossEdits(string family)
+    [InlineData("Symbols", null)]
+    [InlineData("Receivers", null)]
+    [InlineData("EnumConstructions", null)]
+    public void AKeptFamilyAlternatesItsArenasAcrossEdits(string family, string? program)
     {
-        var c = MinimalEmissionTest.Analyze(Source);
+        var c = MinimalEmissionTest.Analyze(program ?? Source);
         var field = typeof(NodeColumns).GetField(family, Members)!;
-        var rows = Column().Enumerate();
-        Assert.True(rows.MoveNext(), $"{family} holds no row of the program.");
-        var (node, row) = (c.Kotonoha.Syntax.Nodes[rows.Id]!, rows.Current);
+        var rows = Column().GetType().GetMethod("Enumerate", Members)!.Invoke(Column(), null)!;
+        Assert.True((bool)rows.GetType().GetMethod("MoveNext")!.Invoke(rows, null)!, $"{family} holds no row of the program.");
+        var node = c.Kotonoha.Syntax.Nodes[(int)rows.GetType().GetProperty("Id", Members)!.GetValue(rows)!]!;
+        var row = rows.GetType().GetProperty("Current")!.GetValue(rows);
         var before = Read<Array>(Column(), "arena");
         for (var i = 0; i < 2; i++)
         {
@@ -120,9 +122,9 @@ public partial class SyntaxIdTest
         }
 
         Assert.Same(before, Read<Array>(Column(), "arena"));
-        Assert.Same(row, Column().Get(node.SyntaxId));
+        Assert.Same(row, Column().GetType().GetMethod("Get", Members)!.Invoke(Column(), [node.SyntaxId]));
 
-        PagedColumn<BindingSymbol?> Column() => (PagedColumn<BindingSymbol?>)field.GetValue(c.Kotonoha.Syntax.Hir.Families)!;
+        object Column() => field.GetValue(c.Kotonoha.Syntax.Hir.Families)!;
     }
 
     // G949 D2b-d's d10, per pass or edit family: an edit's renumbering hands the family's column over, stale, so the Bind after each
