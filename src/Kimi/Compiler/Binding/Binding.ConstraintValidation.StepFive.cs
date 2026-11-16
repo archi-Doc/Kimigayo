@@ -103,7 +103,7 @@ public sealed partial class Binding
         {
             var function = bindings.Function;
             var open = !bindings.Unbound.IsEmpty;
-            var proof = this.CheckConstraints(function.TypeConstraints, bindings.Substitution, scope, bindings.Self, incomplete: incomplete || open, skipUnresolved: open);
+            var proof = this.CheckConstraints(CandidateClauses(function, slotOwner, 0)!, bindings.Substitution, scope, bindings.Self, incomplete: incomplete || open, skipUnresolved: open);
             if (bindings.Owner is { } owner)
             {
                 proof = CombineProof(proof, this.CheckTypeConstraints(owner, scope), true);
@@ -114,7 +114,7 @@ public sealed partial class Binding
                 proof = CombineProof(
                     proof,
                     this.CheckConstraints(
-                        openOwner.ConstraintNodes, new CallSubstitution(openOwner, bindings.Slots), scope, incomplete: true, skipUnresolved: !bindings.Unbound.IsEmpty),
+                        CandidateClauses(function, slotOwner, 1)!, new CallSubstitution(openOwner, bindings.Slots), scope, incomplete: true, skipUnresolved: !bindings.Unbound.IsEmpty),
                     true);
             }
 
@@ -135,6 +135,14 @@ public sealed partial class Binding
             this.activeRequirementContract = enclosing;
         }
     }
+
+    // SPEC 10.1 step 5, 10.8.1, 10.9: the Constraint clause lists a candidate is proven under, in order: 0 its own, 1 its owner
+    // structure's, a constructor's, whose slots are the owner's (`slotOwner`, CallSlotOwner); null where it has none. The one
+    // enumeration of StepFiveConjunction, which proves them, and of J2's CollectPositionNames, which reads the variables they name
+    // (the owner's O-368 (a)).
+    private static IReadOnlyList<Koto>? CandidateClauses(Koto binder, Koto? slotOwner, int list)
+        => list == 0 ? (binder as FunctionKoto)?.TypeConstraints
+            : list == 1 && slotOwner is StructKoto owner && !ReferenceEquals(owner, binder) ? owner.ConstraintNodes : null;
 
     private ConstraintProof CheckOperationTypeConstraints(in BoundArgumentOperation operation, BindingScope scope)
     {
