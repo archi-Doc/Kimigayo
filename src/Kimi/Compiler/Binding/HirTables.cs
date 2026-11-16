@@ -197,6 +197,9 @@ internal struct HirTables
     /// <returns>The columns.</returns>
     internal readonly HirTables Renumbered(int length, int plans) => new(length, plans) { Families = this.Families.Renumbered(length) };
 
+    /// <summary>Ends a renumbering's moves (<see cref="Renumbered"/>, <see cref="Move"/>): the node families clear their retired arenas.</summary>
+    internal readonly void Retire() => this.Families.Retire();
+
     /// <summary>Resizes every column indexed by id.</summary>
     /// <param name="length">The new length.</param>
     internal void Resize(int length)
@@ -282,6 +285,14 @@ internal struct NodeColumns
         Scopes = this.Scopes.Renumbered(length),
         Documents = this.Documents.Renumbered(length),
     };
+
+    internal readonly void Retire()
+    {
+        this.Symbols.Retire();
+        this.Parameters.Retire();
+        this.Scopes.Retire();
+        this.Documents.Retire();
+    }
 
     internal readonly void Move(int from, ref NodeColumns target, int to)
     {

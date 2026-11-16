@@ -140,6 +140,8 @@ public sealed class SyntaxTable
                 node.SyntaxId = 0;
             }
         }
+
+        this.Hir.Retire();
     }
 
     private readonly record struct Walked(Koto Node, SyntaxTable? Owner, int Id);

@@ -49,6 +49,7 @@ public class PagedColumnTest
     // Empty makes every row absent, keeps the arena and clears its references, so no earlier row's object stays reachable; the next
     // write carves a cleared page from the same arena.
     [Fact]
+    [Trait("Purpose", "Allocation")]
     public void EmptyRetainsNothing()
     {
         var column = Column<object>(100);
@@ -82,8 +83,9 @@ public class PagedColumnTest
     }
 
     // A reserved column (the library's, KimiLibrarySize) allocates its stated slots at its first carve and nothing more until they are
-    // full; the reservation survives a renumbering.
+    // full; a page past them doubles the arena with every row intact; the reservation survives a renumbering.
     [Fact]
+    [Trait("Purpose", "Allocation")]
     public void AReservedColumnStartsAtItsStatedSize()
     {
         var column = Column<int>(100 * P);
@@ -97,11 +99,15 @@ public class PagedColumnTest
         }
 
         Assert.Same(arena, Field<int[]>(column, "arena"));
+        column.Ref(99 * P) = 10;
+        Assert.Equal(20 * P, Field<int[]>(column, "arena").Length);
+        Assert.Equal(new[] { 1 }.Concat(Enumerable.Range(1, 10)), Rows(column));
         Assert.Equal(10 * P, Field<int>(column.Renumbered(100 * P), "reserve"));
     }
 
     // The arena doubles, never past the module's dense size: a module of ten pages, every page carved, ends at ten pages, not sixteen.
     [Fact]
+    [Trait("Purpose", "Allocation")]
     public void GrowthStopsAtTheModulesDenseSize()
     {
         var column = Column<int>(10 * P);
@@ -114,9 +120,10 @@ public class PagedColumnTest
         Assert.Equal(Enumerable.Range(1, 10), Rows(column));
     }
 
-    // A renumbering moves each present row into the spare arena, so two arenas alternate: the second renumbering reuses the first's
-    // source arena, cleared, and allocates no arena.
+    // A renumbering moves each present row into the spare arena, so two arenas alternate: Retire clears the retired arena once the moves
+    // end, and the second renumbering reuses it and allocates no arena.
     [Fact]
+    [Trait("Purpose", "Allocation")]
     public void ARenumberingMovesRowsIntoTheSpareArena()
     {
         var column = Column<string>(64);
@@ -133,9 +140,11 @@ public class PagedColumnTest
         Assert.Equal(("b", "a"), (renumbered.Get(2), renumbered.Get(21)));
         Assert.Equal(new[] { "b", "a" }, Rows(renumbered));
         Assert.Same(first, Field<string?[]>(renumbered, "spare"));
+        Assert.Contains("a", first);
+        renumbered.Retire();
+        Assert.All(first, static x => Assert.Null(x));
         var second = renumbered.Renumbered(64);
         Assert.Same(first, Field<string?[]>(second, "arena"));
-        Assert.All(first, static x => Assert.Null(x));
         renumbered.MoveTo(ref second, 21, 1);
         Assert.Equal("a", second.Get(1));
     }
