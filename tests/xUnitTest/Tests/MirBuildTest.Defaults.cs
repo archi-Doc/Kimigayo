@@ -237,7 +237,8 @@ public sealed partial class MirBuildTest
         Assert.True(library.Binding.CheckStartup(OutputKind.Application).IsComplete);
         Assert.Equal(["main: take; Lib.Api.take(1) reads PendingSlot", "record Lib.Api.take(1) Unsupported_Kd"], Callers(library, "main"));
         var program = new MirBuilder(library).Build(SyntaxTable.LibraryModule + 1); // Uncollected: the compilation's own collection roots both modules.
-        new InstanceCollector(library.Types, library.Layout).Run(program, 1);
+        new MirAnalysis(library.Types).Run(program, 1); // The collector replays stepped bodies (its input contract, PLAN G951).
+        Assert.Equal(program.Version, new InstanceCollector(library.Types, library.Layout).Run(program, 1).Version);
         Assert.Empty(program.Records(MirRecordClass.Collection));
     }
 

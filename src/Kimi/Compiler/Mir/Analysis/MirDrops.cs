@@ -5,11 +5,13 @@
 // over MirMoveData's paths), each state event there and the paths A1's entry initializes (the arguments'; a constructing _0's own bit has
 // no subtree event, so no point); the selected view (MirCases). Output: MirProgram.Drops, per Drop its verdict groups (a group equal but
 // for its views to the Drop's previous group is merged into it; lookups are by view), the body's flags and their set and clear points,
-// the views judged (A1 and A2 completed them), the body's first A1 or A2 problem, an inline copy's included (its code and its subject in
-// its location's scope; both set it after MirReport.Add; the table is exact only without one, R4-M6a, R4-M102), and MovedPlace_Kd
-// through MirReport where a layer with its own drop may be incomplete at a runtime Drop, inside an inline default copy with the copy's
-// call as its Inlined fact (R4-M69). Elide where the view's Type needs no drop (MirTypes.MayNeedDrop) or nothing is initialized on any
-// path; Keep where the whole is initialized on every path or the Place has no Move Path, and in a check-only group
+// the views judged (A1 and A2 completed them), whether the table holds a body (Holds: the driver's one stepping path closed its entry in
+// this version, a kept library body's in its library version, which a round of A4 or the collector reads, PLAN G951), the body's first
+// A1 or A2 problem, an inline copy's included (its code and its subject in its location's scope; both set it after MirReport.Add; the
+// table is exact only without one, R4-M6a, R4-M102), and MovedPlace_Kd through MirReport where a layer with its own drop may be
+// incomplete at a runtime Drop, inside an inline default copy with the copy's call as its Inlined fact (R4-M69). Elide where the view's
+// Type needs no drop (MirTypes.MayNeedDrop) or nothing is initialized on any path; Keep where the whole is initialized on every path or
+// the Place has no Move Path, and in a check-only group
 // also where Flag or an incomplete layer with its own drop would be; Flag where it is complete or wholly absent on every path, the flag
 // mirroring the path's own bit; Open where a part may be missing: the components without a child path follow the own bit, each child
 // path its own verdict. The states are per solve, recorded as Type-free trees; the Type rule is per view. Flags are numbered in path
@@ -93,6 +95,14 @@ internal sealed partial class MirDropTable
 
     /// <summary>Gets the flag points of the segment whose bodies are closed, which <see cref="MirDrops"/> writes.</summary>
     internal List<MirFlagPoint> Points => this.writing.Points;
+
+    /// <summary>Gets whether the table holds a body: the driver's one stepping path (<see cref="MirAnalysis.Step"/>) has closed its entry
+    /// in this version, or the library step in its library version for a library body (its segment's store, by the ordinal), so step 2 has
+    /// run on it (A4's local facts follow its entry in the same step); a round that reads a body the table does not hold misses (PLAN
+    /// G951).</summary>
+    /// <param name="body">The body's ordinal.</param>
+    /// <returns>Whether its entry is closed.</returns>
+    internal bool Holds(int body) => (uint)body < (uint)this.Of(body).Ends.Length;
 
     /// <summary>Gets the verdict rows of a body.</summary>
     /// <param name="body">The body's ordinal.</param>
