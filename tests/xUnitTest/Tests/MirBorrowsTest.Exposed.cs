@@ -2274,6 +2274,132 @@ public sealed partial class MirBorrowsTest
                     .Ok(_) => return 0
                     .Err(let e) => return e
             """,
+        ["caseWriteR2LenderOk"] = """
+            func keep(slot: raw/(raw/u8), value: raw/u8) => ()
+            func mk(x: uniq/i32) -> Result<uniq/i32, u64> => .Ok(x)
+            func put(dst: uniq/Result<uniq/i32 during s, u64>, v: u64) => ()
+            func caseWriteR2LenderOk() -> u64
+                var kk: u8 = 1
+                let r = kk@uniq
+                var spare: raw/u8 = r@follow@raw
+                var w: u64 = 3
+                keep(w@raw@raw/(raw/u8), spare)
+                var a: i32 = 0
+                var res = mk(a@uniq)
+                put(res@uniq, w)
+                match res@move
+                    .Ok(_) => return 0
+                    .Err(let e)
+                        a = 2
+                        return e
+            """,
+        ["caseWriteR2LenderUseOk"] = """
+            func keep(slot: raw/(raw/u8), value: raw/u8) => ()
+            func mk(x: uniq/i32) -> Result<uniq/i32, u64> => .Ok(x)
+            func put(dst: uniq/Result<uniq/i32 during s, u64>, v: u64) => ()
+            func caseWriteR2LenderUseOk() -> u64
+                var kk: u8 = 1
+                let r = kk@uniq
+                var spare: raw/u8 = r@follow@raw
+                var w: u64 = 3
+                keep(w@raw@raw/(raw/u8), spare)
+                var a: i32 = 0
+                var res = mk(a@uniq)
+                put(res@uniq, w)
+                match res@move
+                    .Ok(_) => return 0
+                    .Err(let e)
+                        a = 2
+                        let k = e
+                        return 0
+            """,
+        ["caseWriteR2KeptUseOk"] = """
+            func keep(slot: raw/(raw/u8), value: raw/u8) => ()
+            func mk(x: uniq/i32) -> Result<uniq/i32, u64> => .Ok(x)
+            func put(dst: uniq/Result<uniq/i32 during s, u64>, v: u64) => ()
+            func caseWriteR2KeptUseOk() -> u64
+                var kk: u8 = 1
+                let r = kk@uniq
+                var spare: raw/u8 = r@follow@raw
+                var w: u64 = 3
+                keep(w@raw@raw/(raw/u8), spare)
+                var a: i32 = 0
+                var res = mk(a@uniq)
+                let rr = res@uniq
+                put(rr, w)
+                match res@move
+                    .Ok(_) => return 0
+                    .Err(let e)
+                        a = 2
+                        let k = e
+                        return 0
+            """,
+        ["caseWriteR2LaterBad"] = """
+            struct RS {s}
+                public let r: ref/u8 during s
+                public let n: u64
+                public init(r: ref/u8 during s, n: u64)
+                    self.r = r
+                    self.n = n
+            func mk(x: uniq/i32) -> Result<uniq/i32, u64> => .Ok(x)
+            func put(dst: uniq/Result<uniq/i32 during s, u64>, v: u64) => ()
+            func caseWriteR2LaterBad() -> u64
+                var kk: u8 = 1
+                let s = RS.init(r: kk@ref, n: 3)
+                var w = s.n
+                var a: i32 = 0
+                var res = mk(a@uniq)
+                put(res@uniq, w)
+                w = 7
+                match res@move
+                    .Ok(_) => return 0
+                    .Err(let e)
+                        kk = 2
+                        return e
+            """,
+        ["caseWriteR2ExposedBad"] = """
+            func keep(slot: raw/(raw/u8), value: raw/u8) => ()
+            func mk(x: uniq/i32) -> Result<uniq/i32, u64> => .Ok(x)
+            func put(dst: uniq/Result<uniq/i32 during s, u64>, v: u64) => ()
+            func caseWriteR2ExposedBad() -> u64
+                var kk: u8 = 1
+                let r = kk@uniq
+                var spare: raw/u8 = r@follow@raw
+                var w: u64 = 3
+                keep(w@raw@raw/(raw/u8), spare)
+                var a: i32 = 0
+                var res = mk(a@uniq)
+                var rr = res@uniq
+                let pr = rr@raw
+                put(rr, w)
+                match res@move
+                    .Ok(_) => return 0
+                    .Err(let e)
+                        kk = 2
+                        return e
+            """,
+        ["caseWriteR2ExposedUseOk"] = """
+            func keep(slot: raw/(raw/u8), value: raw/u8) => ()
+            func mk(x: uniq/i32) -> Result<uniq/i32, u64> => .Ok(x)
+            func put(dst: uniq/Result<uniq/i32 during s, u64>, v: u64) => ()
+            func caseWriteR2ExposedUseOk() -> u64
+                var kk: u8 = 1
+                let r = kk@uniq
+                var spare: raw/u8 = r@follow@raw
+                var w: u64 = 3
+                keep(w@raw@raw/(raw/u8), spare)
+                var a: i32 = 0
+                var res = mk(a@uniq)
+                var rr = res@uniq
+                let pr = rr@raw
+                put(rr, w)
+                match res@move
+                    .Ok(_) => return 0
+                    .Err(let e)
+                        a = 2
+                        let k = e
+                        return 0
+            """,
     };
 
     // The coverage table's rows (a5v-u6-state.md), by exposure.
@@ -2453,7 +2579,7 @@ public sealed partial class MirBorrowsTest
     [InlineData("rvCaseRefCycleOk", "")] // V (O-383 (b)): the same Places through reference locals that Copy each other
     [InlineData("rvCaseRefTwiceHolderBad", "rvCaseRefTwiceHolderBad: a = 2")] // I (O-364 (a)): one Place the reference refers to is a local that is a holder by value flow
     [InlineData("rvCaseRefCopyOk", "")] // V (O-383 (b)): a Copy of the payload's reference refers to what it refers to
-    [InlineData("caseWriteR2Bad", "")] // I; kk = 2 (and var a: i32 = 0, the holder mixed) once a rule retains v in put's write (G935's rule R): put's write of a Loan-carrying u64 then mixes res (MirBorrows.Holders' Writes)
+    [InlineData("caseWriteR2Bad", "")] // I; kk = 2 once a rule retains v in put's write (G935's rule R): put's write of a Loan-carrying u64 is then a write source of res's Loan-free payloads (MirBorrows.Holders' Writes, WriteSlots)
     [InlineData("caseWriteR2Ok", "")] // V: e is not used after kk = 2
     [InlineData("caseWriteR2CleanOk", "")] // V: w is plain, so the u64 put may write carries nothing and res stays a call's result
     [InlineData("caseWriteR2ConstOk", "")] // V: a constant written
@@ -2461,6 +2587,12 @@ public sealed partial class MirBorrowsTest
     [InlineData("caseWriteR2KeptBad", "")] // I; kk = 2 with G935's rule R: put writes through rr, which refers to res
     [InlineData("caseWriteOtherOk", "")] // V: put writes into oth, not res; res's exclusive reference ro is never written through
     [InlineData("caseWriteOkCaseOk", "")] // V (O-383 (b)): put2 may store y only in the Ok Case, and a value of a Type that holds a Loan reaches no Loan-free payload
+    [InlineData("caseWriteR2LenderOk", "")] // D (the Middle: V; mine: I at var kk: u8 = 1, SPEC 15.6: e carries r's Loan on kk and is returned past kk's end); with G935's rule R: var kk: u8 = 1 and a = 2 while the write mixed res, var kk: u8 = 1 alone with the write slot
+    [InlineData("caseWriteR2LenderUseOk", "")] // V (O-383 (b), the Middle's phase-6 decision 2): put's write reaches only the Err payload, so e carries r's Loan and not a's; a = 2 with G935's rule R while the write mixed res
+    [InlineData("caseWriteR2KeptUseOk", "")] // V: the same through a kept exclusive reference
+    [InlineData("caseWriteR2LaterBad", "")] // I (O-364 (a)); kk = 2 with G935's rule R: the write slot keeps the value written, though w is overwritten after the call
+    [InlineData("caseWriteR2ExposedBad", "")] // I; kk = 2 with G935's rule R: put writes through an exposed reference local, so every exposed local is written (Written's lost argument)
+    [InlineData("caseWriteR2ExposedUseOk", "")] // V: the same with e used after a = 2; the lost argument's targets keep their bound
     public void AValueReadFromAHolderCarriesItsLoansWhateverItsType(string form, string expected)
     {
         var c = MirBuildTest.Compile(ExposedShapes + FlowForms[form] + "\npublic func main() => ()\n");

@@ -5,7 +5,8 @@ namespace Kimi.Compiler.Mir;
 // A5's holders of a view (A3 3): the holder table, E in slot 0, the flow holders, whose states cross heads, then the chain-local ones,
 // with each Loan's reservation holder and named holder mapped to slots. A local is a holder when its case Type may hold a Loan, it is
 // exposed (Holding), or a store of the body gives it a value read from a holder (Flowing), the least such set; a local that holds only
-// calls' results and Case payloads of them (Returned) gives none from a Case payload that holds no Loan (MirBorrows.Values' Unheld).
+// calls' results and Case payloads of them (Returned) gives none from a Case payload that holds no Loan (MirBorrows.Values' Unheld)
+// but what a call's write source stored in it, which its write slot, in the flow region, carries (WriteSlots).
 // A holder a kept Drop past the destruction walk's bound drops has a drop slot right after its own, in its region, whose state is
 // always empty: drop-liveness, the liveness that only such a Drop gives (MirBorrows.Liveness; DECISIONS R4-M153).
 // Must not carry, end or check a Loan (MirBorrows.Solve, MirBorrows.Endings, MirBorrows.Checks).
@@ -19,6 +20,10 @@ internal sealed partial class MirBorrows
     private int[] mixFirst = []; // By local: its first edge in mixEdges, -1 for none (Mixing).
     private int[] mixEdges = []; // Mixing's edges, two entries each: the local a whole Move or Copy gives the value, and its source's next edge.
     private bool[] mixed = []; // By local: whether it may hold a value that is neither a call's result nor a Case payload of one (Mixing).
+    private bool[] written = []; // By local: whether a call's write source may store in it (Mixing, Writes).
+    private int[] writeSlots = []; // By local: its write slot, -1 for none; set where writeCount > 0.
+    private int[] slotWrites = []; // By holder slot: its local's write slot, -1 for none; set where writeCount > 0.
+    private int writeCount; // The view's write slots, -1 before the slots are numbered.
     private bool mixedKnown; // Whether mixed is the view's (Returned); Run resets it per view.
     private bool mixedWrites; // Whether Mixing met a call's write it counted before Flowing decided the holders (Carries).
     private bool flowed; // Whether Flowing has decided the view's holders (Carries).
@@ -47,7 +52,7 @@ internal sealed partial class MirBorrows
     {
         var locals = this.body.Locals;
         MirDataflow.Grow(ref this.slots, locals.Length);
-        (this.holderCount, this.flowed) = (1, false);
+        (this.holderCount, this.flowed, this.writeCount) = (1, false, -1);
         for (var i = 0; i < locals.Length; i++)
         {
             this.slots[i] = this.Holding(i) ? -2 : -1;
@@ -55,7 +60,12 @@ internal sealed partial class MirBorrows
 
         this.Unfollow();
         this.Flowing();
-        (this.flowed, this.mixedKnown) = (true, this.mixedKnown && !this.mixedWrites); // Mixing again with the holders (Carries).
+        this.flowed = true;
+        if (this.mixedKnown && this.mixedWrites)
+        {
+            this.Mixing(); // Again with the holders (Carries), before the write slots are numbered.
+        }
+
         var deep = this.DroppedDeep();
         for (var pass = 0; pass < 2; pass++)
         {
@@ -72,7 +82,21 @@ internal sealed partial class MirBorrows
                 }
             }
 
+            this.writeCount = pass == 0 ? this.WriteSlots() : this.writeCount;
             this.flowCount = pass == 0 ? this.holderCount : this.flowCount;
+        }
+
+        if (this.writeCount > 0)
+        {
+            MirDataflow.Grow(ref this.slotWrites, this.holderCount);
+            Array.Fill(this.slotWrites, -1, 0, this.holderCount);
+            for (var i = 0; i < locals.Length; i++)
+            {
+                if (this.slots[i] >= 0)
+                {
+                    this.slotWrites[this.slots[i]] = this.writeSlots[i];
+                }
+            }
         }
 
         this.Unfollow(); // Sources' answers read the slots.
@@ -200,18 +224,22 @@ internal sealed partial class MirBorrows
 
     // The locals that may hold a value that is neither a call's result nor a Case payload of one, the least such set: an argument (the
     // caller's value), a local an Assign stores into (through no borrow or raw Deref, Through) other than whole by a Move or Copy of
-    // another local's whole value or Case payload (Whole), a local a Call returns into a part of, a local a call's write may store a
-    // value a Loan-free Case payload may hold and that may carry a Loan into (Writes), and a local such a Move or Copy gives the value
-    // of one of them: a call's result stays one while it is Moved or Copied whole from local to local, and a Case payload of it is
-    // bounded as it is (the owner's O-383 (b)). A pointer the body formed on such a local does not make it one of them otherwise: a
-    // raw write is SPEC 15.6 Addresses', and a store of the body through a reference to it is not read here (a known limit: the row
-    // rvCaseRefWriteBad). An edge per such Move or Copy, then a worklist from the others, each edge once, linear in the body.
+    // another local's whole value or Case payload (Whole), a local a Call returns into a part of, and a local such a Move or Copy gives
+    // the value of one of them: a call's result stays one while it is Moved or Copied whole from local to local, and a Case payload of
+    // it is bounded as it is (the owner's O-383 (b)). A pointer the body formed on such a local does not make it one of them otherwise:
+    // a raw write is SPEC 15.6 Addresses', and a store of the body through a reference to it is not read here (a known limit: the row
+    // rvCaseRefWriteBad). A call's write may store a value a Loan-free Case payload may hold and that may carry a Loan in a local
+    // (Writes): the local stays a call's result, written, as is a local such a Move or Copy gives its value, and its write slot carries
+    // what the writes store (WriteSlots); where the slots were numbered before Mixing ran, it is mixed instead. An edge per such Move or
+    // Copy, then a worklist from the others, each edge once, linear in the body.
     private void Mixing()
     {
         var locals = this.body.Locals;
         MirDataflow.Grow(ref this.mixed, locals.Length);
+        MirDataflow.Grow(ref this.written, locals.Length);
         MirDataflow.Grow(ref this.mixFirst, locals.Length);
         Array.Fill(this.mixFirst, -1, 0, locals.Length);
+        Array.Clear(this.written, 0, locals.Length);
         for (var i = 0; i < locals.Length; i++)
         {
             this.mixed[i] = locals[i].Kind == MirLocalKind.Arg;
@@ -241,11 +269,31 @@ internal sealed partial class MirBorrows
             lost |= data.Terminator.Kind == MirTerminatorKind.Call && this.Writes(data.Terminator);
         }
 
-        this.flowQueue.Clear();
+        var writes = false;
         for (var i = 0; i < locals.Length; i++)
         {
-            this.mixed[i] |= lost && this.Exposed(i);
-            if (this.mixed[i] && this.mixFirst[i] >= 0)
+            this.written[i] |= lost && this.Exposed(i);
+            this.mixed[i] |= this.written[i] && this.writeCount >= 0;
+            writes |= this.written[i];
+        }
+
+        this.Spread(this.mixed);
+        if (writes)
+        {
+            this.Spread(this.written);
+        }
+
+        this.mixedKnown = true;
+        this.Work += locals.Length + this.body.Statements.Length + this.body.Blocks.Length + edges;
+    }
+
+    // Spreads a flag by local over Mixing's edges, each edge once (a written local's mixed targets are mixed already).
+    private void Spread(bool[] flag)
+    {
+        this.flowQueue.Clear();
+        for (var i = 0; i < this.body.Locals.Length; i++)
+        {
+            if (flag[i] && this.mixFirst[i] >= 0)
             {
                 this.flowQueue.Add(i);
             }
@@ -258,23 +306,35 @@ internal sealed partial class MirBorrows
             for (var e = this.mixFirst[from]; e >= 0; e = this.mixEdges[(2 * e) + 1])
             {
                 var to = this.mixEdges[2 * e];
-                if (!this.mixed[to])
+                if (!flag[to])
                 {
-                    this.mixed[to] = true;
+                    flag[to] = true;
                     this.flowQueue.Add(to);
                 }
             }
         }
-
-        this.mixedKnown = true;
-        this.Work += locals.Length + this.body.Statements.Length + this.body.Blocks.Length + edges;
     }
 
-    // A call's writes into the locals its arguments refer to (SPEC 15.6.4 by its published retention, MirBorrows.CallRows' Retaining;
-    // the Middle's decision on the review's caseWriteR2Bad): through each output whose storage may hold an input that is no constant,
-    // whose Type holds no Loan (a value a Loan-free Case payload may hold; a value of a Type that holds one reaches no such payload) and
-    // that may carry a Loan (Carries), the locals the output's argument may refer to (Written) are mixed. Whether a written argument
-    // was lost (Written).
+    // The write slots (A3 3): a local a call's write source may store in (written) that holds only calls' results takes one in the flow
+    // region, which the call's write source joins (MirBorrows.Calls' Keep) and a whole Move or Copy passes on (MirBorrows.Flow), so a
+    // Case payload the Case bound empties carries what the writes stored (MirBorrows.Values' Read); the count.
+    private int WriteSlots()
+    {
+        var (locals, count) = (this.body.Locals.Length, 0);
+        MirDataflow.Grow(ref this.writeSlots, locals);
+        for (var i = 0; i < locals; i++)
+        {
+            this.writeSlots[i] = this.mixedKnown && this.written[i] && !this.mixed[i] ? this.holderCount++ : -1;
+            count += this.writeSlots[i] >= 0 ? 1 : 0;
+        }
+
+        return count;
+    }
+
+    // A call's write sources into the locals its arguments refer to (SPEC 15.6.4 by its published retention, MirBorrows.CallRows'
+    // Retaining; the Middle's decisions on the review's caseWriteR2Bad): through each output with an input it sources (Sourced) that
+    // may carry a Loan (Carries), the locals the output's argument may refer to are written (Written). Whether a written argument was
+    // lost (Written).
     private bool Writes(in MirTerminator call)
     {
         if (this.Broken(call) || this.Retaining(call) is not { IsLimit: false } retention)
@@ -288,8 +348,7 @@ internal sealed partial class MirBorrows
             for (var slot = 0; slot < retention.Result.Kinds.Length; slot++)
             {
                 var input = this.Input(call, Position(call.Callee, receiver, slot));
-                if (input.Kind != MirOperandKind.Const && (written.Own.Holds(slot) || written.All.Holds(slot)) && !this.Holds(cases.TypeOf(input), out _) &&
-                    this.Carries(input.Place.Root))
+                if (this.Sourced(input, written, slot) && this.Carries(input.Place.Root))
                 {
                     lost |= this.Written(this.Input(call, Position(call.Callee, receiver, written.Output)));
                     break;
@@ -300,6 +359,11 @@ internal sealed partial class MirBorrows
         return lost;
     }
 
+    // Whether an output's store may put an input's value in a Loan-free Case payload, a write source: the input is no constant, the
+    // output's storage may hold it, and its Type holds no Loan (a value of a Type that holds one reaches no such payload).
+    private bool Sourced(in MirOperand input, OutputRetention written, int slot)
+        => input.Kind != MirOperandKind.Const && (written.Own.Holds(slot) || written.All.Holds(slot)) && !this.Holds(cases.TypeOf(input), out _);
+
     // Whether a written input's root may carry a Loan: a static's {Φ_E}, a holder (Flowing's least set), and any local before Flowing
     // has decided the holders, which Holders then has Mixing count again (mixedWrites).
     private bool Carries(int root)
@@ -308,10 +372,10 @@ internal sealed partial class MirBorrows
         return root < 0 || !this.flowed || this.slots[root] != -1;
     }
 
-    // Mixes the locals a written argument may refer to: following its local's referring stores (MirBorrows.Loans' Referring), a Ref's
+    // Writes the locals a written argument may refer to: following its local's referring stores (MirBorrows.Loans' Referring), a Ref's
     // Place's root where the Place passes no Deref, else the local whose Deref is its first step, and the local a Reborrow, Move or
     // Copy reads; each local once per walk. Whether the argument was lost: a local not Referring, a Place past a deeper Deref, or an
-    // argument that is no whole local's value, so every exposed local is mixed instead (Mixing).
+    // argument that is no whole local's value, so every exposed local is written instead (Mixing).
     private bool Written(in MirOperand argument)
     {
         if (argument is not { Kind: MirOperandKind.Copy or MirOperandKind.Move, Place: { Projection: 0 } whole })
@@ -352,7 +416,7 @@ internal sealed partial class MirBorrows
 
                 if (rvalue.Kind == MirRvalueKind.Ref && deref == 0 && place.Root >= 0)
                 {
-                    this.mixed[place.Root] = true;
+                    this.written[place.Root] = true;
                 }
                 else
                 {
@@ -362,6 +426,17 @@ internal sealed partial class MirBorrows
         }
 
         return false;
+    }
+
+    // A whole Move or Copy into a local with a write slot (Whole) joins the write slot of the local it reads, if any, into it: the value
+    // moved carries what the writes stored in its source (MirBorrows.Flow's Assign).
+    private void PassWrites(ulong[] state, in MirStatement statement)
+    {
+        if (statement.Place is { Projection: 0, Root: >= 0 and var to } && this.writeSlots[to] >= 0 && this.Whole(statement.Rvalue) is >= 0 and var from &&
+            this.writeSlots[from] >= 0)
+        {
+            this.AddSlot(this.writeSlots[to], this.Set(state[this.writeSlots[from]]), 0, Joined, issue: false);
+        }
     }
 
     // Of a Place's steps, whether a Deref is its first and none other: 1 for that, 0 for no Deref, -1 for a deeper one.

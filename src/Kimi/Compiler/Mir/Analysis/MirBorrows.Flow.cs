@@ -4,8 +4,8 @@ namespace Kimi.Compiler.Mir;
 
 // A5's transfer per statement kind (A3 5, Carrying, with E3): a location's effect planned on the state before it as entries, which the
 // checks replay reads, then committed (MirBorrows.Solve): a storage statement or EndBorrow clears its root, an Assign stores its value,
-// its issued Reborrow's or its rvalue's, into its Place after the Moves it makes, a Call's are MirBorrows.Calls' and a Drop's
-// MirBorrows.Destructions'. A store into a holder's own Place changes its Placed part, one through a reference joins its Shared part
+// its issued Reborrow's or its rvalue's, into its Place after the Moves it makes (a whole Move or Copy also joins its source's write
+// slot into its destination's, MirBorrows.Holders' PassWrites), a Call's are MirBorrows.Calls' and a Drop's MirBorrows.Destructions'. A store into a holder's own Place changes its Placed part, one through a reference joins its Shared part
 // (MirBorrows.States, DECISIONS R4-M160). A store adds the markers its destination's role gives (MarkerOf): γ_H to the Loans issued
 // into a guard candidate H (E7); and Φ_N where it stores into an exposed holder (MirBorrows.Loans' Exposed; PLAN G598), into its own
 // Place or through a reference (a holder a shared Loan alone names is no exposed holder, and E carries Φ_E), since a pointer the body
@@ -72,6 +72,10 @@ internal sealed partial class MirBorrows
             this.Moves(rvalue.Start, rvalue.Count);
             var issue = rvalue.Kind is MirRvalueKind.Ref or MirRvalueKind.Storage || this.Reborrowing(statement) != MirRefKind.Raw;
             this.Store(state, statement.Place, value, own, issue);
+            if (this.writeCount > 0)
+            {
+                this.PassWrites(state, statement); // A write slot (MirBorrows.Holders' WriteSlots).
+            }
         }
     }
 

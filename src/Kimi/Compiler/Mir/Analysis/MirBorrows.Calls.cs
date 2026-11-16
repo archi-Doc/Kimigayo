@@ -152,6 +152,7 @@ internal sealed partial class MirBorrows
         var (limited, deepHolder) = stored ? default : this.Writes(state, this.argValues[position], input, referent, call, position);
         this.limit |= limited && checks;
         this.deep |= deepHolder && checks;
+        var sourced = this.writeCount > 0 ? this.Sourcing(call, written) : 0;
         for (var t = 0; t < this.targets.Count; t++)
         {
             var target = this.targets[t];
@@ -159,7 +160,24 @@ internal sealed partial class MirBorrows
             value = target == Escaped ? value : this.sets.Union(value, this.unformedSet); // W writes exposed holders and E only (Written).
             value = target == Escaped && this.walkResting ? this.sets.Union(value, this.undecidedSet) : value; // MirBorrows.Puns' Φ_U.
             this.AddSlot(target, value, 0, JoinedThrough, issue: false);
+            if (sourced != 0 && this.slotWrites[target] >= 0)
+            {
+                this.AddSlot(this.slotWrites[target], sourced, 0, Joined, issue: false); // Its write slot (MirBorrows.Holders' WriteSlots).
+            }
         }
+    }
+
+    // What an output's store may put in a Loan-free Case payload: the values of the inputs it sources (MirBorrows.Holders' Sourced).
+    private int Sourcing(in MirTerminator call, OutputRetention written)
+    {
+        var value = 0;
+        for (var slot = 0; slot < written.All.Kinds.Length; slot++)
+        {
+            var position = this.slotPositions[slot];
+            value = this.Sourced(this.Input(call, position), written, slot) ? this.sets.Union(value, this.argValues[position]) : value;
+        }
+
+        return value;
     }
 
     // The value a holder W reached receives through one output (DECISIONS R4-M154): each input's value by its kinds in the records of the

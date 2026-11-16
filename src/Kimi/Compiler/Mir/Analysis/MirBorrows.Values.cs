@@ -8,15 +8,18 @@ namespace Kimi.Compiler.Mir;
 // a root's state, and a borrow's parents and Loan, over the one step walk of MirSteps' steps (Prefix), which a store's destination also
 // reads (MirBorrows.Flow), and the value a Deref goes through (PointerOf); a raw Ref issues its address, a `during self` layer's read
 // carries what `@raw` of its storage carries (Layered); a Case payload of a holder that holds only calls' results carries nothing where
-// the Case's payload Type holds no Loan (Sources; SPEC 15.6 Holders' Case-payload sentence, the owner's O-383 (b)). Must not decide which
+// the Case's payload Type holds no Loan but what a call's write source stored there, its holder's write slot's (Sources; SPEC 15.6
+// Holders' Case-payload sentence, the owner's O-383 (b); the Middle's phase-6 decision 2). Must not decide which
 // holders a set reaches or a call's store writes (MirBorrows.Reach), which locals hold only calls' results (MirBorrows.Holders) or which
 // Places a local's reference refers to (MirBorrows.Loans).
 internal sealed partial class MirBorrows
 {
     private const byte ReadsPlace = 1; // Sources: a Place the read reads is one the Case bound does not empty.
     private const byte ReadsHolder = 2; // Sources: such a Place is a holder's or a static's.
+    private const byte ReadsWritten = 4; // Sources: such a Place is one the Case bound empties but for a call's write source.
 
     private readonly List<(int Root, int At, bool Bound)> following = []; // Sources' worklist: the walks still to make.
+    private readonly List<int> writtenRoots = []; // Sources: the roots whose write slots the read reads (ReadsWritten).
     private int[] followedBy = []; // By local and incoming bound: the Sources walk that followed its reference.
     private byte[] followed = []; // By local and incoming bound: 1 + the Sources answer of following its reference, 0 for none yet.
     private int sourceWalks = 1; // The Sources walks that followed a reference, and one.
@@ -85,14 +88,21 @@ internal sealed partial class MirBorrows
         return this.slots[root] >= 0 ? this.Set(state[this.slots[root]]) : 0;
     }
 
-    // val(X) = content^k(σ(root(X))) over its k Derefs: the step walk's layer over all its steps, read as Layered reads it; none where
-    // no Place the read reads (Sources) is a holder's or a static's: the Case bound empties the others, and a local that is no holder
-    // carries nothing at every point (MirBorrows.Holders' Flowing).
+    // val(X) = content^k(σ(root(X))) over its k Derefs: the step walk's layer over all its steps, read as Layered reads it; where no
+    // Place the read reads (Sources) is a holder's or a static's, what the write slots of the roots whose payloads it reads carry: the
+    // Case bound empties the others but for what a call's write source stored there (MirBorrows.Holders' WriteSlots), and a local that
+    // is no holder carries nothing at every point (MirBorrows.Holders' Flowing).
     private int Read(ulong[] state, MirPlace place)
     {
         if ((this.Sources(place) & ReadsHolder) == 0)
         {
-            return 0;
+            var written = 0;
+            foreach (var root in this.writtenRoots)
+            {
+                written = this.sets.Union(written, this.Set(state[this.writeSlots[root]]));
+            }
+
+            return written;
         }
 
         var (layer, parents) = this.Prefix(state, place.Root, this.placeSteps.Walk(place, reborrow: false, ref this.walk));
@@ -117,17 +127,19 @@ internal sealed partial class MirBorrows
     // result's Type as the view instantiates it, holds no Loan (Holds), reached from a local that holds only calls' results
     // (MirBorrows.Holders' Returned) through Case payloads alone (Payload), a payload of a payload included, carries nothing: the
     // result holds none through that Case, so a value Moved or Copied out of the payload carries none, whatever the result holds through
-    // another Case. A read through a local's shared reference reads the Places it refers to (MirBorrows.Loans' Referred), one per
+    // another Case; where a call's write source may store in the local, it reads the local's write slot instead (Ends). A read through a local's shared reference reads the Places it refers to (MirBorrows.Loans' Referred), one per
     // referring store: a Ref's Place, or what the local a whole Move or Copy reads refers to; so a Copy out of the payload through a
     // shared match Subject is bounded like a Move, and one through a reference stored more than once where every Place it refers to
     // is. A Field or an element of the result or of a payload, and any other holder's parts, carry what the holder carries (O-364 (a)).
     // Each walk runs from a Place's last step to its root: a step that is no payload step drops the bound of the steps after it. A
     // reference is followed once per walk and incoming bound, so a cycle of Copies ends; each store followed is counted as work. What
     // follows the first reference a read follows depends on that reference and its incoming bound alone, so it is kept (followed)
-    // and a later read through the same reference with the same bound reuses it, linear in the reads and the stores.
+    // and a later read through the same reference with the same bound reuses it, linear in the reads and the stores; an answer that
+    // reads a write slot is not kept, as its roots are the read's (writtenRoots).
     private byte Sources(MirPlace place)
     {
         var (root, at, bound, reads, first) = (place.Root, place.Projection, false, (byte)0, -1);
+        this.writtenRoots.Clear();
         while (true)
         {
             var hopped = false;
@@ -139,10 +151,7 @@ internal sealed partial class MirBorrows
             }
 
             first = hopped && first < 0 ? (2 * root) + (bound ? 1 : 0) : first;
-            if (!hopped && !(bound && root >= 0 && this.Returned(root)))
-            {
-                reads |= root < 0 || this.slots[root] >= 0 ? (byte)(ReadsPlace | ReadsHolder) : ReadsPlace;
-            }
+            reads |= hopped ? (byte)0 : this.Ends(root, bound);
 
             if (this.following.Count == 0)
             {
@@ -155,10 +164,28 @@ internal sealed partial class MirBorrows
 
         if (first >= 0)
         {
-            (this.followed[first], this.sourceWalks) = ((byte)(reads + 1), this.sourceWalks + 1);
+            (this.followed[first], this.sourceWalks) = ((reads & ReadsWritten) == 0 ? (byte)(reads + 1) : (byte)0, this.sourceWalks + 1);
         }
 
         return reads;
+    }
+
+    // What a walk that ends at a root reads: nothing where the Case bound empties the Place, but the root's write slot where a call's
+    // write source may store in it (MirBorrows.Holders' written; before the slots are numbered, that it is read); else the Place, a
+    // holder's or a static's.
+    private byte Ends(int root, bool bound)
+    {
+        if (!(bound && root >= 0 && this.Returned(root)))
+        {
+            return root < 0 || this.slots[root] >= 0 ? (byte)(ReadsPlace | ReadsHolder) : ReadsPlace;
+        }
+
+        if (this.written[root] && this.writeCount > 0)
+        {
+            this.writtenRoots.Add(root);
+        }
+
+        return this.written[root] ? (byte)(ReadsPlace | ReadsWritten) : (byte)0;
     }
 
     // Whether a walk of Sources at a local's Deref follows the local's reference (MirBorrows.Loans' Referred): with its kept answer
