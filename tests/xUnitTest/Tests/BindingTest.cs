@@ -491,18 +491,22 @@ public class BindingTest
     // PLAN G949, the localRegions batch (n55-design 2.3 rules 1-3; DECISIONS BU-220's D-9 line): the local-region graph is a PassPart
     // collection. A Bind records its rows in the running pass's part, Binding's own until S1-r1b splits the library pass off, so the
     // layer's part stays empty; rows moved after the Bind into the layer's part are found there, and each region's sources, walked again
-    // through them, equal the program part's.
+    // through them, equal the program part's. `held`'s region reaches b's borrow only through `view`'s row, so the walk reads a moved
+    // row past its first find too.
     [Fact]
     public void ALocalRegionInTheLayersPartIsFoundThere()
     {
-        // A var local's region takes the sources of both values stored in it (SPEC 15.4.4): valid.
-        var c = CompilationTestHelper.Parse("let a = 1\nlet b = 2\nvar view = a@ref\nview = b@ref\nrequire view@follow == 2 else => $abort(\"view\")\n");
+        // A var local's region takes the sources of every value stored in it, `held`'s through `view`'s region (SPEC 15.3.6, 15.4.4,
+        // 15.6.5): valid.
+        var c = CompilationTestHelper.Parse("let a = 1\nlet b = 2\nvar view = a@ref\nview = b@ref\nvar held = view\nheld = a@ref\n" +
+            "require view@follow == 2 and held@follow == 1 else => $abort(\"view\")\n");
         c.Bind();
+        Assert.True(c.Binding.Result.IsComplete);
         var layer = c.Binding.Library.Layer.Part.Regions;
         var own = (Dictionary<BoundOrigin, Binding.LocalRegion>)typeof(Binding).GetField("localRegions", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(c.Binding)!;
         Assert.Empty(layer);
         var sources = own.Keys.Select(x => (Origin: x, Sources: c.Binding.LocalRegionSources(x).ToArray())).ToArray();
-        Assert.Contains(sources, static x => x.Sources.Length != 0);
+        Assert.Contains(sources, static x => x.Origin.Binder is VariableKoto { NameKoto: var name } && name.ToString() == "held" && x.Sources.Length >= 2);
         try
         {
             foreach (var (origin, region) in own)
