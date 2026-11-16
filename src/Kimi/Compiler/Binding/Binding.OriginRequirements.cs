@@ -93,7 +93,9 @@ public sealed partial class Binding
 
     private static LoanRequirement Min(LoanRequirement a, LoanRequirement b) => a < b ? a : b;
 
-    // activeOriginRequirements is the call's scratch, emptied on every exit (PLAN G949 S1-e), so a Bind that throws leaves the next none.
+    // The call's scratch, emptied on every exit (PLAN G949 S1-e), so a Bind that throws leaves the next none: the active works and their
+    // Dependents (the edges to their consumers, read only inside the call). Only an active work gains an edge (CollectRequirementEdges
+    // reads the call's pass stamp), so between calls every work's Dependents is empty.
     private void ComputeOriginRequirements()
     {
         try
@@ -102,6 +104,11 @@ public sealed partial class Binding
         }
         finally
         {
+            foreach (var work in this.activeOriginRequirements)
+            {
+                work.Dependents.Clear();
+            }
+
             this.activeOriginRequirements.Clear();
         }
     }
@@ -146,7 +153,6 @@ public sealed partial class Binding
             }
 
             work.Schema = schema;
-            work.Dependents.Clear();
             work.Pass = this.originRequirementPass;
             work.Queued = true;
             this.activeOriginRequirements.Add(work);
