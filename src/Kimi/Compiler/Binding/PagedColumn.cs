@@ -288,8 +288,9 @@ internal static class KeyedRow
 
 // StampedColumn<T, TCounter> (DECISIONS BU-220): a pass or edit family's column, the stamped form of PagedColumn<T>.
 // - Responsibility: a column whose rows hold only while its stamp is the current value of the counter its declaration names (TCounter:
-//   Binding.PassCounter, which ResetPass advances, or Binding.EditCounter, which only Invalidate advances); each operation once: Get
-//   (the one comparison of a stamp with its counter), Ref, Enumerate, Grow, Reserve and Renumbered.
+//   Binding.PassCounter, which ResetPass advances, or Binding.EditCounter, which only Invalidate advances); each operation once: Get,
+//   Ref, Enumerate, Grow, Reserve and Renumbered, and Holds, the one comparison of the stamp with its counter, which Get, Ref and
+//   Enumerate each ask.
 // - Inputs: ids below the count Grow last gave, and the Binding whose counter the column follows. Outputs: the current rows.
 // - Invariants: a stale column reads default at every id and enumerates nothing; its first write after its counter advanced empties it,
 //   keeping its capacity, and stamps it; a renumbering hands it over unmoved and emptied, capacity and stamp kept, so no removed node's
@@ -313,7 +314,7 @@ internal struct StampedColumn<T, TCounter>
     /// <param name="id">The id.</param>
     /// <param name="binding">The Binding whose counter the column follows.</param>
     /// <returns>The row.</returns>
-    internal readonly T Get(int id, Binding binding) => this.stamp == TCounter.Of(binding) ? this.rows.Get(id) : default!;
+    internal readonly T Get(int id, Binding binding) => this.Holds(binding, out _) ? this.rows.Get(id) : default!;
 
     /// <summary>Gets a row for a write; the column's first write since its counter advanced empties it and stamps it.</summary>
     /// <param name="id">The id.</param>
@@ -321,8 +322,7 @@ internal struct StampedColumn<T, TCounter>
     /// <returns>The row.</returns>
     internal ref T Ref(int id, Binding binding)
     {
-        var counter = TCounter.Of(binding);
-        if (this.stamp != counter)
+        if (!this.Holds(binding, out var counter))
         {
             this.rows.Empty();
             this.stamp = counter;
@@ -334,7 +334,7 @@ internal struct StampedColumn<T, TCounter>
     /// <summary>Gets the current rows in ascending id order; a stale column has none.</summary>
     /// <param name="binding">The Binding whose counter the column follows.</param>
     /// <returns>The rows.</returns>
-    internal readonly PagedColumn<T>.Enumerator Enumerate(Binding binding) => (this.stamp == TCounter.Of(binding) ? this.rows : default).Enumerate();
+    internal readonly PagedColumn<T>.Enumerator Enumerate(Binding binding) => (this.Holds(binding, out _) ? this.rows : default).Enumerate();
 
     /// <summary>Gives the column room for the ids below a count.</summary>
     /// <param name="count">The module's id count.</param>
@@ -355,6 +355,9 @@ internal struct StampedColumn<T, TCounter>
         column.rows.Grow(count);
         return column;
     }
+
+    // The one comparison of the column's stamp with the current value of its counter (ruling 118; S1-1 adds Frozen here only).
+    private readonly bool Holds(Binding binding, out ulong counter) => this.stamp == (counter = TCounter.Of(binding));
 }
 
 /// <summary>A Binding counter a stamped column follows (StampedColumn): Binding.PassCounter or Binding.EditCounter.</summary>
