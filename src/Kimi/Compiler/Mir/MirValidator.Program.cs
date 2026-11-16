@@ -7,7 +7,9 @@ namespace Kimi.Compiler.Mir;
 //   statics whose initializers it builds; each call of a default template (a Fn callee's Arg above 0) with the template's body
 //   (MirProgram.Callee) and each created Closure (a Closure aggregate) with its Closure body. So A4, A5, the instance collector and code
 //   generation read MirProgram.StaticInit, a template call's body and a Closure's body without a guard.
-// - Inputs: the program's bodies once all are built (MirBuilder.Build); a staticEnsure's static by MirValidator.Statics' Slot. Outputs:
+// - Inputs: a segment's bodies once all its bodies are built (MirBuilder.Build: the library segment's at the library walk's end, since a
+//   library body names library bodies only, SPEC 18; then the program segment's, which names either), the program's bodies they name
+//   (MirProgram's lookups) and a staticEnsure's static by MirValidator.Statics' Slot. Outputs:
 //   StaticSlot and Callee findings in the program's findings at the call or the statement, each marking the body it is located in
 //   (MirBody.HasFinding).
 // - Invariants: a staticEnsure of another form, a Fn callee without its function and an aggregate of another Type than a Closure Type
@@ -19,9 +21,10 @@ internal sealed partial class MirValidator
     /// StaticInit body the program has (a StaticSlot finding at the call otherwise), and each default template's call and each created
     /// Closure has its body (a Callee finding at the call or the statement otherwise), each finding marking its body (MirBody.HasFinding).</summary>
     /// <param name="program">The program, whose findings the findings are added to.</param>
-    internal void Validate(MirProgram program)
+    /// <param name="bodies">The bodies validated: a segment's (MirProgram.LibraryBodies, MirProgram.ProgramBodies), every body it names built.</param>
+    internal void Validate(MirProgram program, ReadOnlySpan<MirBody> bodies)
     {
-        foreach (var body in program.Bodies)
+        foreach (var body in bodies)
         {
             foreach (ref readonly var block in body.Blocks)
             {

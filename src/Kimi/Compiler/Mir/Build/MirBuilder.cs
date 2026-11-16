@@ -43,7 +43,8 @@ internal sealed partial class MirBuilder(Compilation compilation)
     private int scope;
     private bool statementStart; // The next statement or terminator starts a source statement.
 
-    /// <summary>Builds and validates the MIR of the latest Binding pass, once per pass: each body, then the program.</summary>
+    /// <summary>Builds and validates the MIR of the latest Binding pass, once per pass: the library segment, each body and then what its
+    /// bodies require of each other, once per library version (PLAN G950), then the program segment's in the same way.</summary>
     /// <returns>The program, with its construction records and validator findings.</returns>
     internal MirProgram Build()
     {
@@ -53,14 +54,27 @@ internal sealed partial class MirBuilder(Compilation compilation)
             return this.program;
         }
 
-        this.program.Clear();
-        this.visited.Clear();
-        this.omissions.Clear();
-        // The library's bodies first, the ordinals' prefix, then the program's (R8-L1 M-B1); in each, the default templates first, which
-        // the bodies that omit them copy: a library body omits the library's only.
-        this.Module(compilation.Library.Kotonoha.Syntax, templates: true);
-        this.Module(compilation.Library.Kotonoha.Syntax, templates: false);
-        this.program.EndLibrary();
+        var library = version; // The library version: the Binding pass until G949's library publication version replaces it (G950-K).
+        if (library != this.program.LibraryVersion)
+        {
+            this.program.Clear();
+            this.visited.Clear();
+            this.omissions.Clear();
+            // The library's bodies first, the ordinals' prefix, then the program's (R8-L1 M-B1); in each, the default templates first, which
+            // the bodies that omit them copy: a library body omits the library's only, so the library's nodes of the omission graph are its
+            // prefix. A library body names library bodies only (SPEC 18), so its segment is validated whole here (G191).
+            this.Module(compilation.Library.Kotonoha.Syntax, templates: true);
+            this.Module(compilation.Library.Kotonoha.Syntax, templates: false);
+            this.validator.Validate(this.program, this.program.Bodies);
+            this.program.EndLibrary(library);
+            this.libraryOmissions = this.omissions.Count;
+        }
+        else
+        {
+            this.program.ClearProgram();
+            this.ClearProgramOmissions();
+        }
+
         for (var pass = 0; pass < 2; pass++)
         {
             foreach (var module in compilation.SourceModules)
@@ -69,7 +83,7 @@ internal sealed partial class MirBuilder(Compilation compilation)
             }
         }
 
-        this.validator.Validate(this.program); // What the bodies require of each other (G191).
+        this.validator.Validate(this.program, this.program.ProgramBodies); // What the program segment's bodies require of the program (G191).
         this.program.Version = version;
         return this.program;
     }

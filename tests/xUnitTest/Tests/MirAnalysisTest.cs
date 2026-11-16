@@ -173,6 +173,30 @@ public sealed class MirAnalysisTest
         Assert.Equal(0, program.Problems.All.Length);
     }
 
+    // PLAN G950: rows kept from an index (MirReport.Keep) and replayed after other problems (Replay) equal their first adding at that step,
+    // merged views and facts included: a Cause naming a kept row moves by the offset, -1 stays, and a later Add of a kept key merges into
+    // the replayed row.
+    [Fact]
+    public void KeptRowsReplayAtTheirStep()
+    {
+        var (first, second) = (new MirProblem(DiagnosticCode.MovedPlace_Kd, Moved, new(0, 5), 0, 0b01), new MirProblem(DiagnosticCode.MovedPlace_Kd, Moved, new(0, 6), 0, 0b01));
+        var report = new MirReport();
+        report.Add(new(DiagnosticCode.Unsupported_Kd, Moved, new(0, 4), MirProblem.NoBody, 1));
+        report.Add(first);
+        report.Add(second, [new(ProblemFactKind.Cause, new(0, 1), 1), new(ProblemFactKind.Cause, new(0, 7), -1)]);
+        report.Add(first with { Views = 0b10 });
+        var kept = new MirReport.Kept();
+        report.Keep(1, kept);
+        var replayed = new MirReport();
+        replayed.Add(new(DiagnosticCode.Unsupported_Kd, Moved, new(0, 3), MirProblem.NoBody, 1));
+        replayed.Add(new(DiagnosticCode.Unsupported_Kd, Moved, new(0, 4), MirProblem.NoBody, 1));
+        replayed.Replay(kept);
+        Assert.Equal(report.All[1..].ToArray(), replayed.All[2..].ToArray());
+        Assert.Equal([new(ProblemFactKind.Cause, new(0, 1), 2), new(ProblemFactKind.Cause, new(0, 7), -1)], replayed.Facts(3).ToArray());
+        Assert.Equal(2, replayed.Add(first with { Views = 0b100 }));
+        Assert.Equal(0b111UL, replayed.All[2].Views);
+    }
+
     // R5-M23: the problems a key merges name one requirement, the first's; a problem that names another is a recording rule's defect, one
     // InternalInvariant_Kd problem at the subject with the views that disagreed, however often it disagrees, and Add returns -1 for it.
     [Fact]

@@ -748,7 +748,7 @@ public sealed class MirValidatorTest(ITestOutputHelper output)
             use.Terminate(block, use.Blocks[block].Terminator with { Start = operand });
         }
 
-        new MirValidator(c.Types).Validate(program);
+        new MirValidator(c.Types).Validate(program, program.Bodies);
         Assert.Equal(broken ? [(MirViolation.StaticSlot, "Registry.total")] : [], program.Findings.Select(x => (x.Rule, c.SyntaxOf(x.Subject).ToString())));
         Assert.Equal(broken, use.HasFinding); // The ensuring body's verdict (DECISIONS R5-M183).
     }
@@ -783,7 +783,7 @@ public sealed class MirValidatorTest(ITestOutputHelper output)
             Unsafe.AsRef(in use.Statements[assign]) = use.Statements[assign] with { Rvalue = new(MirRvalueKind.Aggregate, (byte)MirAggregateKind.Closure, Type: closure) };
         }
 
-        new MirValidator(c.Types).Validate(program);
+        new MirValidator(c.Types).Validate(program, program.Bodies);
         Assert.Equal(broken is null ? [] : [(MirViolation.Callee, use.Subject(at))], program.Findings.Select(static x => (x.Rule, x.Subject)));
         Assert.Equal(broken is not null, use.HasFinding);
     }
