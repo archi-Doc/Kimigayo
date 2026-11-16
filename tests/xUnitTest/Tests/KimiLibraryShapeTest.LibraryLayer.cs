@@ -63,12 +63,19 @@ public partial class KimiLibraryShapeTest
             .Concat(DiagnosticCorpus.SyntaxCases.Select(static x => "syntax/" + x.Name)))];
 
     // The dump itself: the empty program's layer twice, in two compilations, is the same (no hash order, identity or counter in a row);
-    // and each disposition names a store or field that exists, so none widens a rule silently.
+    // and each disposition names a store or field that exists, so none widens a rule silently; every node family (NodeColumns) with
+    // library rows has rows in it, so a family the walk misses fails here.
     [Fact]
     public void TheLibraryLayerDumpIsDeterministic()
     {
         Assert.Empty(LibraryLayer.Unresolved());
         SameLayerAsTheEmptyPrograms(string.Empty);
+        var c = Bound(string.Empty);
+        var dump = LibraryLayer.Dump(c);
+        var families = typeof(NodeColumns).GetFields(BindingFlags.Instance | BindingFlags.NonPublic);
+        Assert.All(
+            families.Where(x => LibraryLayer.RowObjects(x.GetValue(c.Library.Kotonoha.Syntax.Hir.Families)!).Any()),
+            x => Assert.Contains(dump, row => row.StartsWith(x.Name + " ", StringComparison.Ordinal)));
     }
 
     // The epoch rule's invariant: ResetCapabilities, which begins every pass (its one call is ResetPass's, which the pass driver's RunPass
@@ -311,13 +318,16 @@ public partial class KimiLibraryShapeTest
         {
             var layer = new LibraryLayer(c);
             layer.Store("Binding", c.Binding, 0);
-            foreach (var (store, field) in new[] { ("symbol", "symbols"), ("scope", "scopes") })
+
+            // Binding's node families (NodeColumns, DECISIONS BU-220) live in each module's HIR tables, which no store walks: by one rule
+            // every family of every module, its rows' objects (a row's fields, an array's and a pair's elements) by the family's name.
+            foreach (var module in c.SourceModules.Select(static x => x.Syntax).Append(c.Library.Kotonoha.Syntax))
             {
-                foreach (var value in ((IDictionary)typeof(Binding).GetField(field, BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(c.Binding)!).Values)
+                foreach (var family in Fields(typeof(NodeColumns)))
                 {
-                    if (layer.Owner(value, 0) == Side.Library)
+                    foreach (var value in RowObjects(family.GetValue(module.Hir.Families)!))
                     {
-                        layer.rows.Add($"{store} {layer.Fields(value!, 0)}{(value is BindingSymbol s ? layer.Queries(s) : string.Empty)}");
+                        layer.Row(Name(family), value);
                     }
                 }
             }
@@ -364,6 +374,28 @@ public partial class KimiLibraryShapeTest
             }
 
             return value;
+        }
+
+        // A family column's present rows (PagedColumn.Enumerate), each flattened to its objects: a composite column's list by its
+        // elements, a pair by its items.
+        internal static IEnumerable<object> RowObjects(object column)
+        {
+            var rows = column.GetType().GetMethod("Enumerate", BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(column, null)!;
+            var (moveNext, current) = (rows.GetType().GetMethod("MoveNext")!, rows.GetType().GetProperty("Current")!);
+            while ((bool)moveNext.Invoke(rows, null)!)
+            {
+                var row = current.GetValue(rows)!;
+                foreach (var part in row is Array items ? items.Cast<object?>() : [row])
+                {
+                    foreach (var value in part is ITuple pair ? Enumerable.Range(0, pair.Length).Select(i => pair[i]) : [part])
+                    {
+                        if (value is not null)
+                        {
+                            yield return value;
+                        }
+                    }
+                }
+            }
         }
 
         private static FieldInfo? FieldAt(string store)
@@ -674,6 +706,15 @@ public partial class KimiLibraryShapeTest
         // A pass stamp by its distance from the latest pass (Binding's storageVersion).
         private string Stamp(ulong stamp)
             => stamp == 0 ? "0" : stamp <= this.pass ? $"pass-{this.pass - stamp}" : stamp.ToString(CultureInfo.InvariantCulture);
+
+        // A library object's row, field by field, a symbol's with its query states.
+        private void Row(string store, object? value)
+        {
+            if (this.Owner(value, 0) == Side.Library)
+            {
+                this.rows.Add($"{store} {this.Fields(value!, 0)}{(value is BindingSymbol s ? this.Queries(s) : string.Empty)}");
+            }
+        }
 
         private string Queries(BindingSymbol symbol)
             => " queries=" + string.Join(',', Enum.GetValues<DeclQueryKind>().Select(x => $"{x}:{symbol.QueryState(x, this.pass)}"));

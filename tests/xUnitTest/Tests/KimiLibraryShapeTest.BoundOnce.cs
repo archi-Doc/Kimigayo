@@ -1,6 +1,5 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
-using System.Collections;
 using System.Reflection;
 using Kimi.Compiler;
 using Kimi.Compiler.Parsing;
@@ -55,8 +54,7 @@ public partial class KimiLibraryShapeTest
         var c = Bound(string.Empty);
         Assert.Equal(BindingMode.Final, c.Binding.Result.Mode);
         var pass = (ulong)typeof(Binding).GetField("storageVersion", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(c.Binding)!;
-        var symbols = (IDictionary)typeof(Binding).GetField("symbols", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(c.Binding)!;
-        var functions = symbols.Values.Cast<BindingSymbol>()
+        var functions = DeclaredSymbols(c)
             .Where(x => x.Kind == BindingSymbolKind.Function && ReferenceEquals(x.Declaration.CodeContext?.Kotonoha, c.Library.Kotonoha)).ToArray();
         Assert.NotEmpty(functions);
         Assert.Empty(functions.Where(x => x.QueryState(DeclQueryKind.SignatureVerdict, pass) != DeclState.Done).Select(static x => Line(x.Declaration)));
@@ -70,6 +68,18 @@ public partial class KimiLibraryShapeTest
     [Fact]
     public void TheLibraryDeclaresNoBoundedCallableClause()
         => Assert.Empty(KotoTree.Walk(Bound(string.Empty).Library.Kotonoha.RootKoto).OfType<IsKoto>().Where(static x => x.EffectBounds.Count != 0).Select(static x => Line(x)));
+
+    // Binding's kept symbols (DECISIONS BU-220: the `symbols` family, read through SemanticQuery.Declarations).
+    private static List<BindingSymbol> DeclaredSymbols(Compilation c)
+    {
+        var symbols = new List<BindingSymbol>();
+        foreach (var symbol in c.Binding.Semantics.Declarations)
+        {
+            symbols.Add(symbol);
+        }
+
+        return symbols;
+    }
 
     private static Compilation Analyzed(string program)
     {

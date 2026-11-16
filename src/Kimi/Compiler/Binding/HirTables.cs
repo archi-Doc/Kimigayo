@@ -1,9 +1,9 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
-// Owns the Binding facts and published HIR columns indexed by a module's SyntaxId.
+// Owns the Binding facts and published HIR columns indexed by a module's SyntaxId, and Binding's private node families (NodeColumns).
 // Input: Binding's decisions and syntax identity. Output: reusable columns and PlanRows for readers.
-// Column rows move with renumbered nodes and are cleared for the current pass.
-// Must not let consumers reconstruct semantic facts from syntax.
+// Column rows move with renumbered nodes and are cleared for the current pass; a node family's kept rows move with their nodes too.
+// Must not let consumers reconstruct semantic facts from syntax; no file outside Compiler/Binding names NodeColumns (DECISIONS BU-220).
 
 using System.Runtime.CompilerServices;
 using Kimi.Compiler.Parsing;
@@ -36,6 +36,7 @@ internal struct HirTables
     internal HirPlace[]? Places;
     internal List<DefaultDecl>? Defaults; // The parameter defaults the latest publish evaluated, in walk order: the MIR's default templates.
     internal List<Koto>? Broken; // The nodes Binding resolved that the latest publish found without the facts their Op guarantees, published Error.
+    internal NodeColumns Families; // Binding's private node families, read and written only by their accessors (DECISIONS BU-220).
 
     /// <summary>The plan rows from 1 to <see cref="PlanCount"/>; a node gets one at its first plan write and keeps it across passes.</summary>
     internal PlanRow[] Plans;
@@ -189,10 +190,21 @@ internal struct HirTables
         }
     }
 
+    /// <summary>Gives the columns a renumbering of this table's module moves its rows into (<see cref="Move"/>): the base columns new, each
+    /// node family's column empty over the spare arena its kept rows move into (PagedColumn.Renumbered).</summary>
+    /// <param name="length">The renumbered module's id count.</param>
+    /// <param name="plans">The plan rows to start with.</param>
+    /// <returns>The columns.</returns>
+    internal readonly HirTables Renumbered(int length, int plans) => new(length, plans) { Families = this.Families.Renumbered(length) };
+
+    /// <summary>Ends a renumbering's moves (<see cref="Renumbered"/>, <see cref="Move"/>): the node families clear their retired arenas.</summary>
+    internal readonly void Retire() => this.Families.Retire();
+
     /// <summary>Resizes every column indexed by id.</summary>
     /// <param name="length">The new length.</param>
     internal void Resize(int length)
     {
+        this.Families.Resize(length);
         Array.Resize(ref this.States, length);
         Array.Resize(ref this.Failures, length);
         Array.Resize(ref this.Meanings, length);
@@ -211,6 +223,7 @@ internal struct HirTables
     {
         this.CopyBase(from, target, to);
         target.PlanIndexes[to] = this.PlanIndexes[from] is var plan and not 0 ? target.AddPlan(this.Plans[plan]) : 0;
+        this.Families.Move(from, ref target.Families, to);
     }
 
     // Row 0, which no node has, is the default row.
@@ -233,6 +246,60 @@ internal struct HirTables
 
         this.Plans[this.PlanCount] = row;
         return this.PlanCount;
+    }
+}
+
+/// <summary>
+/// Binding's private node families of one module (DECISIONS BU-220): one <see cref="PagedColumn{T}"/> per family, indexed by the SyntaxId
+/// of the node that keys it. A kept family keeps its rows across passes, and a renumbering moves each row with its node
+/// (<see cref="HirTables.Renumbered"/>, <see cref="HirTables.Move"/>). Its family's accessor, in the family's component, reads and writes
+/// a column; only Compiler/Binding names this type.
+/// </summary>
+internal struct NodeColumns
+{
+    internal PagedColumn<BindingSymbol?> Symbols; // Kept: the symbol declared at a node (Binding.Scopes.cs).
+    internal PagedColumn<BindingSymbol?[]?> Parameters; // Kept: Symbols' composite column, a function's parameters' symbols by index.
+    internal PagedColumn<BindingScope?> Scopes; // Kept: a node's scope (Binding.Scopes.cs).
+    internal PagedColumn<(SourceDocument Document, BindingScope? Scope)[]?> Documents; // Kept: Scopes' composite column, a module root's document scopes.
+
+    internal void Resize(int length)
+    {
+        this.Symbols.Grow(length);
+        this.Parameters.Grow(length);
+        this.Scopes.Grow(length);
+        this.Documents.Grow(length);
+    }
+
+    // The library's columns start at their stated slots (KimiLibrarySize: no program row lands in them).
+    internal void Reserve(KimiLibrarySize.Tables stated)
+    {
+        this.Symbols.Reserve(stated.Declarations);
+        this.Parameters.Reserve(stated.Parameters);
+        this.Scopes.Reserve(stated.Scopes);
+    }
+
+    internal readonly NodeColumns Renumbered(int length) => new()
+    {
+        Symbols = this.Symbols.Renumbered(length),
+        Parameters = this.Parameters.Renumbered(length),
+        Scopes = this.Scopes.Renumbered(length),
+        Documents = this.Documents.Renumbered(length),
+    };
+
+    internal readonly void Retire()
+    {
+        this.Symbols.Retire();
+        this.Parameters.Retire();
+        this.Scopes.Retire();
+        this.Documents.Retire();
+    }
+
+    internal readonly void Move(int from, ref NodeColumns target, int to)
+    {
+        this.Symbols.MoveTo(ref target.Symbols, from, to);
+        this.Parameters.MoveTo(ref target.Parameters, from, to);
+        this.Scopes.MoveTo(ref target.Scopes, from, to);
+        this.Documents.MoveTo(ref target.Documents, from, to);
     }
 }
 
