@@ -656,7 +656,7 @@ public sealed class MirAnalysisTest
         var analyzed = c.BuildMir();
         Assert.Empty(analyzed.Findings);
         var views = analyzed.Bodies.ToArray().Select(x => analyzed.Drops.ViewsOf(x.Ordinal)).ToArray();
-        var program = new MirBuilder(c).Build(); // Unanalyzed: a version's problems are reset only with its bodies (MirProgram.Clear).
+        var program = new MirBuilder(c).Build(SyntaxTable.LibraryModule + 1); // Unanalyzed: a version's problems are reset only with its bodies (MirProgram.Clear).
         var broken = program.Bodies.ToArray().Single(x => x.Key.Kind == MirBodyKind.Fn && x.Key.Decl?.Name == name);
         program.Findings.Add(new(MirViolation.Callee, broken.Source)); // As MirValidator gives a finding and the body's verdict.
         broken.HasFinding = true;
@@ -765,7 +765,7 @@ public sealed class MirAnalysisTest
         Assert.True(c.Prepare(target));
         c.Kotonoha.AddSource(new SourceDocument("Program.kimi", "public func main() => ()\n"));
         Assert.True(c.Bind().IsComplete);
-        var program = new MirBuilder(c).Build(); // Unanalyzed: a version's problems are reset only with its bodies (MirProgram.Clear).
+        var program = new MirBuilder(c).Build(SyntaxTable.LibraryModule + 1); // Unanalyzed: a version's problems are reset only with its bodies (MirProgram.Clear).
         Assert.Contains(program.Bodies.ToArray(), static x => x.Source.IsLibrary);
         new MirAnalysis(c.Types).Run(program, SyntaxTable.LibraryModule + 1);
         Assert.Equal([], program.Records(MirRecordClass.Construction).Select(x => $"record {x.Code} {Line(c, x.Subject)}")

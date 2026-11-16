@@ -168,14 +168,15 @@ public partial class KimiLibraryShapeTest
 
     // R5 K package 4.4 (P5, DECISIONS R5-M41): the bundled library collected with every module a root module, so every closed library body
     // is a root, has no collector record; with no library declaration under a compile-time Condition and one target profile, rooting it in
-    // each compilation would add none.
+    // each compilation would add none. Its own build has the library range, which builds every library body (PLAN G951).
     [Fact]
     public void TheLibraryCollectsWithoutRecords()
     {
         var c = Compilation.CreateForTest();
         Assert.True(c.Bind().IsComplete, string.Join('\n', c.Binding.Issues));
-        var set = new Kimi.Compiler.Backend.InstanceCollector(c.Types, c.Layout).Run(c.BuildMir(), SyntaxTable.LibraryModule + 1);
-        Assert.Empty(c.BuildMir().Records(Kimi.Compiler.Mir.MirRecordClass.Collection));
+        var program = new Kimi.Compiler.Mir.MirAnalysis(c.Types).Run(new Kimi.Compiler.Mir.MirBuilder(c).Build(SyntaxTable.LibraryModule + 1), c.SourceModules.Length);
+        var set = new Kimi.Compiler.Backend.InstanceCollector(c.Types, c.Layout).Run(program, SyntaxTable.LibraryModule + 1);
+        Assert.Empty(program.Records(Kimi.Compiler.Mir.MirRecordClass.Collection));
         Assert.True(set.RootCount > 50 && set.Items.Length > set.RootCount, $"{set.RootCount} roots, {set.Items.Length} items");
     }
 

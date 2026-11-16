@@ -35,6 +35,10 @@ public sealed partial class MirBuildTest(ITestOutputHelper output)
         "        self.items = []\n        self.count = 0\nfunc inspect(values: ref/Array<i32>) => ()\nfunc see(value: ref/i32) => ()\n" +
         "func f(x: i32)\n    var holder = Holder.init()\n";
 
+    // PLAN G951's X3: a library function erased at a declared Function Type and called through it (SPEC 10.5.3, 7.7.4; valid).
+    private const string StopwatchAction = "let action: (uniq/::Kimi.Time.Stopwatch) -> () = ::Kimi.Time.Stopwatch.start\n" +
+        "var watch = ::Kimi.Time.Stopwatch.init()\naction(watch@uniq)\n";
+
     // The callees of the operand order tests and the start of their function f, which binds x (SPEC 12.2).
     private const string Operations = "func take(a: i32, b: ()) -> i32 => a\nfunc pair(t: (i32, ())) => ()\nfunc reset(p: uniq/i32) -> i32 => 0\n" +
         "func consume(a: string, b: ()) => ()\nfunc touch(p: uniq/Slice<i32>) -> isize => 0\nfunc jump(p: uniq/raw/i32) -> isize => 0\n" +
@@ -286,6 +290,69 @@ public sealed partial class MirBuildTest(ITestOutputHelper output)
         }
     }
 
+    // PLAN G951 U0 (C-g191, M1): in a build whose root range is the program's, a lookup of a library definition the HIR publishes with a
+    // value builds its body once, validated, and runs its program pass where it is built, which builds the initializer its staticEnsure
+    // names (Stopwatch.start reads Time.counterFrequency, SPEC 22.4.3); the key then finds the same body. X3 is valid (SPEC 10.5.3: an
+    // erasure at a declared Function Type; 7.7.4).
+    [Fact]
+    public void ADemandedBodyIsBuiltWithItsProgramPass()
+    {
+        var c = Compile(StopwatchAction);
+        var eager = c.ConstructMir();
+        var (start, frequency) = (Library(eager, MirBodyKind.Fn, "start"), Library(eager, MirBodyKind.StaticInit, "counterFrequency"));
+        var program = new MirBuilder(c).Build(c.SourceModules.Length);
+        var count = program.Bodies.Length;
+        Assert.DoesNotContain(program.Bodies.ToArray(), static x => x.Source.IsLibrary);
+        var body = program[start];
+        Assert.Equal([start, frequency], program.Bodies[count..].ToArray().Select(static x => x.Key));
+        Assert.Same(body, program[start]);
+        Assert.Same(program.Body(count + 1), program[frequency]);
+        Assert.Equal(count + 2, program.Bodies.Length);
+        Assert.Empty(program.Findings);
+        Assert.Empty(program.Records(MirRecordClass.Construction));
+    }
+
+    // PLAN G951 U0 (N6): null means only "no body": a key the HIR publishes no value for (a library function without a body), a key that is
+    // not its definition's body (an accessor's executing function as Fn, whose body is its Getter's) and any lookup of a sealed version
+    // build nothing; the root range's walk built every body below it, so an eager build never demands. X3 as above.
+    [Fact]
+    public void ALookupWithoutABodyBuildsNothing()
+    {
+        var c = Compile(StopwatchAction);
+        var eager = c.ConstructMir();
+        var getter = eager.Bodies.ToArray().First(static x => x.Source.IsLibrary && x.Key.Kind == MirBodyKind.Getter).Key;
+        var bodyless = eager.Bodies.ToArray().Where(static x => x.Source.IsLibrary).SelectMany(static x => x.Blocks.ToArray())
+            .Select(static x => x.Terminator.Callee).First(x => x is { Kind: MirCalleeKind.Fn, Arg: 0, Symbol: not null } && eager.Callee(x) is null);
+        var program = new MirBuilder(c).Build(c.SourceModules.Length);
+        var count = program.Bodies.Length;
+        Assert.Null(program.Callee(bodyless));
+        Assert.Null(program[getter with { Kind = MirBodyKind.Fn }]);
+        Assert.Equal(count, program.Bodies.Length);
+        Assert.Equal(MirBodyKind.Getter, program[getter]!.Key.Kind);
+        count = program.Bodies.Length;
+        program.Seal();
+        Assert.Null(program[Library(eager, MirBodyKind.Fn, "start")]);
+        Assert.Equal(count, program.Bodies.Length);
+        Assert.Equal(MirProgram.Phase.Sealed, c.BuildMir().Demands);
+    }
+
+    // PLAN G951 U0 (N4, R3-N2): a version is built with one root range: the same range finds the version's program as it is, demanded bodies
+    // included, and another range for the same version is a broken contract, since the analyses and the collector keep a version's facts by
+    // its version.
+    [Fact]
+    public void AVersionIsBuiltWithOneRootRange()
+    {
+        var c = Compile(StopwatchAction);
+        var start = Library(c.ConstructMir(), MirBodyKind.Fn, "start");
+        var builder = new MirBuilder(c);
+        var program = builder.Build(c.SourceModules.Length);
+        Assert.NotNull(program[start]);
+        var count = program.Bodies.Length;
+        Assert.Same(program, builder.Build(c.SourceModules.Length));
+        Assert.Equal(count, program.Bodies.Length);
+        Assert.Throws<InvalidOperationException>(() => builder.Build(SyntaxTable.LibraryModule + 1));
+    }
+
     // V11: publishing, building and validating an unchanged compilation again, and selecting every Semantics case view of its bodies with
     // their locals' case Types, allocates nothing, owning interpolations (Milestone30) and pair-generic bodies (Milestone28) included.
     [Trait("Purpose", "Allocation")]
@@ -452,6 +519,10 @@ public sealed partial class MirBuildTest(ITestOutputHelper output)
         _ = test ? c.Binding.CheckTestStartup() : c.Binding.CheckStartup(OutputKind.Application);
         return c;
     }
+
+    // The key of a library body an eager build built, by its kind and definition's name.
+    private static MirDefKey Library(MirProgram program, MirBodyKind kind, string name)
+        => program.Bodies.ToArray().Single(x => x.Source.IsLibrary && x.Key.Kind == kind && x.Key.Decl?.Name == name).Key;
 
     // The body of a function of a source, built without validator findings.
     private static MirBody Body(string source, string name)

@@ -2,7 +2,8 @@
 
 // Owns construction and validation of one MIR body per definition or closure.
 // Input: syntax children, published HIR/plans, declaration views, TyCtxt and one Binding view, the guessed completion nodes of a require's
-// failure body (Binding.GuessedCompletionNodes, DECISIONS R5-M186). Output: a validated MirProgram.
+// failure body (Binding.GuessedCompletionNodes, DECISIONS R5-M186). Output: a validated MirProgram: the bodies of a root range built
+// eagerly, and any other body a lookup of the open version demands (Demand, PLAN G951), each with its program pass where it is built.
 // Op, Adjust and PlaceShape decide lowering; unsupported forms use the one located Unsupported path; it trusts the facts each Op guarantees.
 // Every runtime-index selection on storage lends its receiver where it locates it (a guard, or a range's backing), the receiver's check
 // at the selection, where its position local is located too, the subject A1 reports an access through the Index under (DECISIONS R4-M56).
@@ -36,6 +37,7 @@ internal sealed partial class MirBuilder(Compilation compilation)
     private readonly HashSet<BoundType> walked = new(ReferenceEqualityComparer.Instance); // A Type walk's scratch (MayNeedDrop, HoldsRaw).
     private MirBody body = null!;
     private Koto declaration = null!;
+    private int named; // The bodies of the version whose program pass ran, in build order (Name).
     private SourceInfo entry; // The body's declaration in its own scope: where _0 without a written result Type and the drop tree's edges are.
     private Koto? constructed; // A constructor's body, whose completion requests its exit (SPEC 6.3.5); null in other bodies.
     private int current; // The block being built.
@@ -43,35 +45,77 @@ internal sealed partial class MirBuilder(Compilation compilation)
     private int scope;
     private bool statementStart; // The next statement or terminator starts a source statement.
 
-    /// <summary>Builds and validates the MIR of the latest Binding pass, once per pass: each body, then the program.</summary>
+    /// <summary>Builds and validates the MIR of the latest Binding pass, once per pass (PLAN G951): every module's default templates, the
+    /// bodies of the modules below the root range, then each body's program pass; the version's lookups build any other body on demand
+    /// (<see cref="Demand"/>) until it is sealed. One version is built with one range: a version asked for with another range is a
+    /// broken contract, since the analyses and the collector keep a version's facts by its <see cref="MirProgram.Version"/>.</summary>
+    /// <param name="rootModules">The root range: <see cref="Parsing.SyntaxTable.LibraryModule"/> + 1 builds every body eagerly, the
+    /// source modules' count the program's.</param>
     /// <returns>The program, with its construction records and validator findings.</returns>
-    internal MirProgram Build()
+    internal MirProgram Build(int rootModules)
     {
         var version = HirTables.Publish(compilation);
         if (version == this.program.Version)
         {
-            return this.program;
+            return rootModules == this.program.RootModules ? this.program
+                : throw new InvalidOperationException($"Version {version} was built with the root range {this.program.RootModules}, not {rootModules} (InternalInvariant).");
         }
 
         this.program.Clear();
+        this.program.Open(this, rootModules);
         this.visited.Clear();
         this.omissions.Clear();
+        this.named = 0;
         // The library's bodies first, the ordinals' prefix, then the program's (R8-L1 M-B1); in each, the default templates first, which
-        // the bodies that omit them copy: a library body omits the library's only.
-        this.Module(compilation.Library.Kotonoha.Syntax, templates: true);
-        this.Module(compilation.Library.Kotonoha.Syntax, templates: false);
+        // the bodies that omit them copy: a library body omits the library's only. The templates are built in every build, a demanded
+        // body's included (G951 M2).
+        var library = compilation.Library.Kotonoha.Syntax;
+        this.Module(library, templates: true);
+        if (library.Module < rootModules)
+        {
+            this.Module(library, templates: false);
+        }
+
         this.program.EndLibrary();
         for (var pass = 0; pass < 2; pass++)
         {
             foreach (var module in compilation.SourceModules)
             {
-                this.Module(module.Syntax, pass == 0);
+                if (pass == 0 || module.Syntax.Module < rootModules)
+                {
+                    this.Module(module.Syntax, pass == 0);
+                }
             }
         }
 
-        this.validator.Validate(this.program); // What the bodies require of each other (G191).
+        this.Name();
         this.program.Version = version;
         return this.program;
+    }
+
+    /// <summary>Builds the body of a definition outside the root range that a lookup of an open version did not find (MirProgram's demand
+    /// point, PLAN G951): the body <see cref="Definition"/> gives exactly the key, built as the module walk builds it, with its program
+    /// pass, whose lookups may demand more. The builder is idle here: it never looks a body up while it builds one.</summary>
+    /// <param name="key">The definition.</param>
+    /// <returns>The body, or null when the definition has none: the HIR publishes no value for it, the key is not its body's, or its
+    /// module is in the root range, whose walk built every body.</returns>
+    internal MirBody? Demand(MirDefKey key)
+    {
+        var node = (Koto?)(key.Decl?.Declaration as FunctionKoto)?.Accessor?.Declaration ?? key.Decl?.Declaration; // An accessor's executing function's.
+        if (node?.SyntaxOwner is not { } table || table.Module < this.program.RootModules || !Published(node))
+        {
+            return null;
+        }
+
+        if (Definition(node, table) is not { } definition || definition.Key != key)
+        {
+            return null;
+        }
+
+        this.Body(definition.Key, node, definition.Function, definition.Result, definition.Value);
+        var body = this.body;
+        this.Name();
+        return body;
     }
 
     private static BoundType TypeOf(Koto node) => HirTables.TypeOf(node) ?? BoundType.Unit;
@@ -94,6 +138,42 @@ internal sealed partial class MirBuilder(Compilation compilation)
             _ => null,
         };
         return value is not null && HirTables.Op(node) != HirOp.Unset && HirTables.Op(value) != HirOp.Syntax;
+    }
+
+    // The one map from a published definition's node to its body's key and Body's arguments, the module walk's and Demand's (G951 N6): a
+    // function's Fn body, a #Test function's Test body, a Closure's keyed by its own symbol, a module's top-level statements by the module's
+    // ordinal; an accessor's Getter or Setter keyed by the function its calls target (SPEC 11.3); a static's initializer; null for another
+    // node.
+    private static (MirDefKey Key, BindingSymbol? Function, BoundType Result, Koto Value)? Definition(Koto node, SyntaxTable table)
+    {
+        var symbol = HirTables.Symbol(node);
+        switch (symbol?.Kind)
+        {
+            case null or BindingSymbolKind.Function: // A module's top-level statements have no symbol (SPEC 22.4.1).
+                var function = (FunctionKoto)node;
+                var closure = BoundClosure.Of(function) is not null; // A Closure's definition (DECISIONS R5-M79).
+                MirBodyKind kind;
+                if (closure)
+                {
+                    kind = MirBodyKind.Closure;
+                }
+                else
+                {
+                    kind = TestDefinition.Marker(function) is null ? MirBodyKind.Fn : MirBodyKind.Test;
+                }
+
+                var result = closure ? symbol?.Type ?? BoundType.Unit : TypeOf(node);
+                return (new(symbol, kind, symbol is null ? table.Module : 0), symbol, result, (Koto?)function.Body ?? function.ExpressionBody!);
+            case BindingSymbolKind.PropertyAccessor:
+                var accessor = (PropertyAccessorKoto)node;
+                var executing = CallPlan.Accessor(accessor); // SPEC 11.3: the function its calls target.
+                kind = accessor.AccessorKind == PropertyAccessorKind.Get ? MirBodyKind.Getter : MirBodyKind.Setter;
+                return (new(executing, kind), executing, executing.Type ?? BoundType.Unit, accessor.Body!);
+            case BindingSymbolKind.Property when HirTables.ResOf(node) == HirRes.Static:
+                return (new(symbol, MirBodyKind.StaticInit), null, symbol!.Type ?? BoundType.Unit, ((PropertyKoto)node).InitializerKoto!);
+            default:
+                return null;
+        }
     }
 
     // The syntax of a node, its scope and whether it starts a source statement, which the first statement or terminator built for the
@@ -132,40 +212,20 @@ internal sealed partial class MirBuilder(Compilation compilation)
         var nodes = table.Nodes;
         for (var id = 1; id < nodes.Length; id++)
         {
-            if (nodes[id] is not { } node || !ReferenceEquals(node.SyntaxOwner, table) || !Published(node))
+            if (nodes[id] is { } node && ReferenceEquals(node.SyntaxOwner, table) && Published(node) && Definition(node, table) is { } definition)
             {
-                continue;
+                this.Body(definition.Key, node, definition.Function, definition.Result, definition.Value);
             }
+        }
+    }
 
-            var symbol = HirTables.Symbol(node);
-            switch (symbol?.Kind)
-            {
-                case null or BindingSymbolKind.Function: // A module's top-level statements have no symbol (SPEC 22.4.1).
-                    var function = (FunctionKoto)node;
-                    var closure = BoundClosure.Of(function) is not null; // A Closure's definition (DECISIONS R5-M79).
-                    MirBodyKind kind;
-                    if (closure)
-                    {
-                        kind = MirBodyKind.Closure;
-                    }
-                    else
-                    {
-                        kind = TestDefinition.Marker(function) is null ? MirBodyKind.Fn : MirBodyKind.Test;
-                    }
-
-                    var result = closure ? symbol?.Type ?? BoundType.Unit : TypeOf(node);
-                    this.Body(new(symbol, kind, symbol is null ? table.Module : 0), node, symbol, result, (Koto?)function.Body ?? function.ExpressionBody!);
-                    break;
-                case BindingSymbolKind.PropertyAccessor:
-                    var accessor = (PropertyAccessorKoto)node;
-                    var executing = CallPlan.Accessor(accessor); // SPEC 11.3: the function its calls target.
-                    kind = accessor.AccessorKind == PropertyAccessorKind.Get ? MirBodyKind.Getter : MirBodyKind.Setter;
-                    this.Body(new(executing, kind), node, executing, executing.Type ?? BoundType.Unit, accessor.Body!);
-                    break;
-                case BindingSymbolKind.Property when HirTables.ResOf(node) == HirRes.Static:
-                    this.Body(new(symbol, MirBodyKind.StaticInit), node, null, symbol!.Type ?? BoundType.Unit, ((PropertyKoto)node).InitializerKoto!);
-                    break;
-            }
+    // The program pass (G191) of each body built since the last, in build order, each once: the root build's after its walk, a demanded
+    // body's after it is built; a lookup in a pass may demand a body, which joins the queue (MirValidator.Program.cs).
+    private void Name()
+    {
+        while (this.named < this.program.Bodies.Length)
+        {
+            this.validator.Validate(this.program, this.program.Body(this.named++));
         }
     }
 
