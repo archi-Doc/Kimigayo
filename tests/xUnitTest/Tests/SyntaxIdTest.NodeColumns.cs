@@ -105,7 +105,8 @@ public partial class SyntaxIdTest
 
     // G949 D2b-d's d10, per kept family: an edit's renumbering moves a kept family's rows into the column's spare arena, so the second
     // of two edits allocates no arena: the column's arena is again the one it had before the first, and its first row is the same object
-    // (Symbols: a declaration's symbol; Receivers: Point's implicit constructor's `self`).
+    // at its node's id, which a synthesized node's renumbering may change (Symbols: a declaration's symbol; Receivers: Point's implicit
+    // constructor's `self`).
     [Trait("Purpose", "Allocation")]
     [Theory]
     [InlineData("Symbols")]
@@ -116,7 +117,7 @@ public partial class SyntaxIdTest
         var field = typeof(NodeColumns).GetField(family, Members)!;
         var rows = Column().Enumerate();
         Assert.True(rows.MoveNext(), $"{family} holds no row of the program.");
-        var (id, row) = (rows.Id, rows.Current);
+        var (node, row) = (c.Kotonoha.Syntax.Nodes[rows.Id]!, rows.Current);
         var before = Read<Array>(Column(), "arena");
         for (var i = 0; i < 2; i++)
         {
@@ -125,7 +126,7 @@ public partial class SyntaxIdTest
         }
 
         Assert.Same(before, Read<Array>(Column(), "arena"));
-        Assert.Same(row, Column().Get(id));
+        Assert.Same(row, Column().Get(node.SyntaxId));
 
         PagedColumn<BindingSymbol?> Column() => (PagedColumn<BindingSymbol?>)field.GetValue(c.Kotonoha.Syntax.Hir.Families)!;
     }
