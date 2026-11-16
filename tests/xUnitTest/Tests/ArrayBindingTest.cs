@@ -266,7 +266,7 @@ public class ArrayBindingTest
         })
         {
             var symbol = c.Library.GetSymbol(id)!;
-            Assert.Equal(CompilerFunctionKind.None, symbol.CompilerFunction);
+            Assert.Equal(DispositionKind.Body, symbol.Definition.Kind);
             Assert.Same(c.Library.DynamicArray.Declaration, symbol.Declaration.Parent);
         }
     }
