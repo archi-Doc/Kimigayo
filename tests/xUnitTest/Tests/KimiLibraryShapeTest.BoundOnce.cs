@@ -3,6 +3,7 @@
 using System.Collections;
 using System.Reflection;
 using Kimi.Compiler;
+using Kimi.Compiler.Parsing;
 using Xunit;
 using Printer = XunitTest.SemanticSnapshotTest.SemanticPrinter;
 
@@ -60,6 +61,15 @@ public partial class KimiLibraryShapeTest
         Assert.NotEmpty(functions);
         Assert.Empty(functions.Where(x => x.QueryState(DeclQueryKind.SignatureVerdict, pass) != DeclState.Done).Select(static x => Line(x.Declaration)));
     }
+
+    // PLAN G949 S1-r1a (review-r1a B2): CollectCallableEffectUses tests every pass's bounded Callable clauses before it collects a pass's
+    // uses, since a use may select a library callee's clause (SPEC 8.11.4). No program can show that read until the library declares
+    // such a clause: today every clause a use selects is the program's, in the pass's own part. The unit whose library declares the
+    // first one removes this Fact and adds the cross-part row: a program stating no bounded clause of its own calls that library
+    // function, and its use gets its effect obligation (S1-r1b's c15 extension, ruling 65, once the parts split).
+    [Fact]
+    public void TheLibraryDeclaresNoBoundedCallableClause()
+        => Assert.Empty(KotoTree.Walk(Bound(string.Empty).Library.Kotonoha.RootKoto).OfType<IsKoto>().Where(static x => x.EffectBounds.Count != 0).Select(static x => Line(x)));
 
     private static Compilation Analyzed(string program)
     {

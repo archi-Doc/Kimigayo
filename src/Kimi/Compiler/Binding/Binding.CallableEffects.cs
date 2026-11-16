@@ -92,7 +92,9 @@ public sealed partial class Binding
     private void CollectCallableEffectUses()
     {
         this.callableEffectUses.Clear();
-        for (var i = 0; i < this.nodes.Count && this.callableEffectClauses.Count != 0; i++)
+        // A use may select a library callee's bounded clause, so the test reads every pass's clauses (review-r1a B2), as
+        // AvailableCallableEffects does; the uses collected are the pass's own (its nodes).
+        for (var i = 0; i < this.nodes.Count && this.callableEffectClausesView.Count != 0; i++)
         {
             var node = this.nodes[i];
             if (node is InvocationKoto { BoundCall: { } call } && this.Library.PresentedTarget(call.Target).Declaration is FunctionKoto function)

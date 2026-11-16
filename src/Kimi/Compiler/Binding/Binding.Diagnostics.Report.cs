@@ -79,8 +79,6 @@ public sealed partial class Binding
     private static string PermittedCallsText(SemanticsKind receiver)
         => receiver switch { SemanticsKind.Ref => "Shared calls only", SemanticsKind.Uniq => "Shared and Exclusive calls only", _ => "every call" };
 
-    // Publishes one direct failure with the facts its check recorded. Each fact table holds the explanation of its node's one
-    // failure only (FailExplained), so at most one table answers for a node.
     // SPEC 23.2.2's fallback site: the first node not Resolved, the program part's nodes first, then the library layer's.
     private Koto? FirstIncompleteNode()
     {
@@ -95,6 +93,8 @@ public sealed partial class Binding
         return null;
     }
 
+    // Publishes one direct failure with the facts its check recorded. Each fact table holds the explanation of its node's one
+    // failure only (FailExplained), so at most one table answers for a node.
     private void ReportIssue(BindingIssue issue)
     {
         var requirement = DiagnosticRequirement.Binding(issue.Failure);

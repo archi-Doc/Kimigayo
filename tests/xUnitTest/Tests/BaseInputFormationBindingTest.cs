@@ -143,8 +143,8 @@ public class BaseInputFormationBindingTest
 
     // PLAN G949 S1-r1a (s1r1-design 1.3, v2 and v3): j4's Bind after an edit restarts. Its second run has a counter value of its own, one
     // past the first run's, and runs as a second run (StartRuns once per Bind, so the runs end); the work counters are the last run's,
-    // equal to a warm Bind's one run. A restart that kept the first run's counter or ran StartRuns again, or a work counter zeroed once
-    // per Bind, fails here.
+    // equal to a warm Bind's one run. A restart that kept the first run's counter, or a work counter zeroed once per Bind, fails here; one
+    // that ran StartRuns again would restart without end (review-r1a N3: a hang, not a failed assertion).
     [Fact]
     public void ARestartStartsARunOfItsOwnWithinItsBind()
     {
