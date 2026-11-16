@@ -96,7 +96,9 @@ public sealed partial class Binding
             if (this.UnformedSince(unformedMark))
             {
                 // DECISIONS D3 (temporary, PLAN G886): the callee's signature (a function item's) needed a Type no binding represents.
-                return this.Fail(call, BindingFailure.Unsupported, true);
+                // A call that fails in every case of the split layer fails by itself (ValueCallRestsOnSplit; SPEC 10.1.1, 10.2).
+                return this.ValueCallRestsOnSplit(call, scope, callableType!, expected, unformedMark) ? this.Fail(call, BindingFailure.Unsupported, true)
+                    : this.Fail(call, BindingFailure.NoApplicableCandidate);
             }
 
             if (callable)
@@ -314,7 +316,7 @@ public sealed partial class Binding
                 // SPEC 8.3.3: an Unknown premise that can affect the selection defers it. Omitted header Types rest on the call. A
                 // candidate unproven through an unformed split (DECISIONS D3, temporary, PLAN G886: never premise-only, unrankable) makes
                 // the call one located Unsupported_Kd, however many are pending.
-                return evaluation.Unformed ? this.Fail(call, BindingFailure.Unsupported, true)
+                return evaluation.Unformed ? this.FailUnformedCall(ref evaluation)
                     : evaluation.PendingCount == 1 && evaluation.CallableFailure is { } callable ? this.FailCallableSelection(call, callable)
                     : evaluation.PendingCount == 1 && evaluation.ConstraintFailure is { } constraint ? this.FailPendingConstraint(call, constraint)
                     : evaluation.PendingCount == 1 && evaluation.PendingJudgment is { } judgment ? this.FailPendingJudgment(call, judgment)

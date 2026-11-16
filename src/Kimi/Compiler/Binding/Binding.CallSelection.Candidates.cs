@@ -230,16 +230,33 @@ public sealed partial class Binding
     private bool TypedPartFails(ref SlotSolution solution, BoundType type, Koto part)
         => this.LeafDisagrees(ref solution, type, part) || !this.FitsOpenLayer(ref solution, type, part);
 
-    // SPEC 10.2, 10.8 (O3; the owner's O-366 (a)): whether a typed part fits its structured application (an exact source is
-    // LeafDisagrees') with the split layer open: the common adaptation itself (AdaptInput) judges the layer formed in each case of the
+    // SPEC 7.7.4, 10.5 (C-359 C1): whether a Function Item part whose own signature forms no Type (DECISIONS D3) fits no case of its
+    // split at the Function Type the frame completes (ItemSignatureFits); one that some case fits, or whose parameter is still open,
+    // rests on the split. Read once every part's evidence is in (TryCandidateCore), so the argument order decides nothing.
+    private bool UnformedItemFails(ref SlotSolution solution, BoundType type, Koto part)
+    {
+        if (part.BoundType is not { Kind: BoundTypeKind.FunctionItem } item)
+        {
+            return false;
+        }
+
+        var mark = this.unformedWrites;
+        _ = this.FunctionItemSignature(item);
+        var unformed = this.UnformedSince(mark);
+        this.unformedWrites = mark;
+        return unformed && solution.Type(type) is { Kind: BoundTypeKind.Function } required && !this.ItemSignatureFits(item, required, part, out _);
+    }
+
+    // SPEC 10.2, 10.8 (O3; the owner's O-366 (a)): whether a typed part fits its application (an exact source of an evidenced binder
+    // is LeafDisagrees') with the split layer open: the common adaptation itself (AdaptInput) judges the layer formed in each case of the
     // callee's admitted set over the target the frame completes, as it judges a pair layer case by case. A part that no case adapts fails
-    // case-independently (a typed bool at `s/Option<Box>`); one that some case adapts, or whose target keeps an unbound slot, rests on
-    // the split.
+    // case-independently (a typed bool at `s/Option<Box>`; a Tag at the closed leaf `s/Box` of a binder explicit Type arguments fixed,
+    // C-359 C1); one that some case adapts, or whose target keeps an unbound slot, rests on the split.
     private bool FitsOpenLayer(ref SlotSolution solution, BoundType type, Koto part)
     {
         if (part.BoundType is not { } actual ||
             solution.Pattern(type) is not { Kind: BoundTypeKind.SemanticsApplication, Symbol.WholeType: { } whole, Components: [var open] } application ||
-            IsExactSource(application, solution.SlotOwner, solution.Frame) ||
+            IsEvidencedSource(application, solution.SlotOwner, solution.Frame) ||
             this.SubstituteType(open, solution.SlotOwner, solution.Types, solution.Lengths) is not { } target)
         {
             return true;
@@ -272,9 +289,7 @@ public sealed partial class Binding
 
         var owner = solution.SlotOwner;
         var frame = solution.Frame;
-        var slot = ContainerSlot(owner, selector);
-        var evidenced = slot >= 0 && slot < frame.Types.Length && frame.Selectors[slot] is not null;
-        return evidenced && IsExactSource(member, owner, frame) && !this.IsSource(frame, slot, actual, target);
+        return IsEvidencedSource(member, owner, frame) && !this.IsSource(frame, ContainerSlot(owner, selector), actual, target);
     }
 
     // SPEC 10.1 step 4, 15.6.1: the expected result fills a candidate's still-unbound slots by its structure, and its Origins are
@@ -681,6 +696,15 @@ public sealed partial class Binding
 
                         return applicability;
                     }
+                }
+            }
+
+            for (var i = 0; i < call.ArgumentNodes.Count; i++)
+            {
+                // DECISIONS D3 (C-359 C1): a Function Item part left unknown through its own signature fails where no case fits it.
+                if (unknown.Contains(i) && this.UnformedItemFails(ref solution, function.Parameters[mapping[i]].Type.BoundType!, call.ArgumentNodes[i]))
+                {
+                    return CandidateApplicability.Inapplicable;
                 }
             }
 

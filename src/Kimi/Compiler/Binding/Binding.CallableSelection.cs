@@ -165,6 +165,43 @@ public sealed partial class Binding
         }
     }
 
+    // DECISIONS D3 with rule W (BU-79; C-359 C1; temporary, PLAN G886): whether a value call whose callee signature (a Function Item's)
+    // formed a Type no binding represents rests on that split. Its binder is fixed before any evidence, so no part is left unknown: the
+    // call is probed against the signature each case of the split layer forms (EnterSplitCase), as against a Callable candidate
+    // (MapValueCallArguments, ProbeValueCall). A call that no case's signature takes fails by itself, its Language record the call's
+    // (SPEC 23.1.2), the writes since `mark` dropped; any other, or one beside an unprepared argument, rests on the split.
+    private bool ValueCallRestsOnSplit(InvocationKoto call, BindingScope scope, BoundType callee, BoundType? expected, int mark)
+    {
+        if (call.Method is GenericsKoto || !this.PrepareCallArguments(call, scope, callableContext: true))
+        {
+            return true;
+        }
+
+        var operations = this.argumentOperationScratch.Rent(call.ArgumentNodes.Count + 1);
+        var classBase = this.positionClasses.Count;
+        try
+        {
+            foreach (var mode in SemanticsOrder)
+            {
+                var entered = this.EnterSplitCase(mode);
+                var failed = this.TryCallable(callee, scope, out var signature, out _) &&
+                    (!MapValueCallArguments(call, signature).Valid || this.ProbeValueCall(call, scope, signature, expected, operations) == CandidateApplicability.Inapplicable);
+                if (!this.LeaveSplitCase(entered, failed))
+                {
+                    return true;
+                }
+            }
+
+            this.unformedWrites = mark;
+            return false;
+        }
+        finally
+        {
+            this.argumentOperationScratch.Return(operations, clearArray: true);
+            this.positionClasses.RemoveRange(classBase, this.positionClasses.Count - classBase);
+        }
+    }
+
     private CandidateApplicability ProbeValueCall(InvocationKoto call, BindingScope scope, BoundType signature, BoundType? expected, Span<BoundArgumentOperation> operations)
     {
         operations.Clear();

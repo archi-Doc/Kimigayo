@@ -317,8 +317,22 @@ public sealed partial class Binding
     {
         var failure = default(ComparisonFailure);
         var receiver = BoundClosure.Of(actual)?.Receiver ?? SemanticsKind.Ref; // An Item, or a closure with no signature, has none.
-        var signature = this.ClosureSignature(actual) ?? this.FunctionItemSignature(actual);
+        var unformedMark = this.unformedWrites;
         var fits = this.ErasureFits(actual, expected, node, out failure);
+        if (this.UnformedSince(unformedMark))
+        {
+            // DECISIONS D3 (temporary, PLAN G886): the Item's signature rests on a Type no binding represents (ItemSignatureFits), so the
+            // conversion is one located Unsupported_Kd; its environment is still judged (FailErasedOwned), that record the node's one.
+            if (!this.FailErasedOwned(node, actual, expected))
+            {
+                this.Fail(node, BindingFailure.Unsupported, true);
+            }
+
+            return false;
+        }
+
+        var signature = this.ClosureSignature(actual) ?? this.FunctionItemSignature(actual);
+        this.unformedWrites = unformedMark; // An Item that no case of its split fits fails by itself (ItemSignatureFits).
         OwnedFact owned = default;
         var shape = signature is null || !ReferenceTypes.StorageMatches(expected, signature); // A fit may adapt past a storage difference.
         var part = receiver != SemanticsKind.Ref ? ErasurePart.Receiver
@@ -380,11 +394,11 @@ public sealed partial class Binding
     // SPEC 10.7, 15.3.7: a Function value converts to an expected Function Type of its storage where it meets it, as a Closure or a
     // Function Item erases (ErasesToFunction), also as a Tuple or array literal's element: a contract whose condition fails fails the
     // value with that conversion's own record, by its walk's facts (RecordMismatch), never a mismatch of the literal holding it (held
-    // 353a12e81). A Closure's or Function Item's erasure that recorded its failed condition or Owned part (ErasesToFunction) is the
-    // value's failure.
+    // 353a12e81). A Closure's or Function Item's erasure that recorded its failed condition or Owned part, or the located limit of an
+    // unformed split (ErasesToFunction; DECISIONS D3), is the value's failure.
     private bool FailsFunctionConversion(Koto node, BoundType actual, BoundType expected)
     {
-        if (node.BindingFailure == BindingFailure.OriginContract ||
+        if (node.BindingFailure is BindingFailure.OriginContract or BindingFailure.Unsupported ||
             (node.BindingState == BindingState.Invalid && this.ErasureOf(actual, expected) is { Part: ErasurePart.Owned }))
         {
             return true;
@@ -408,10 +422,42 @@ public sealed partial class Binding
     {
         failure = default;
         return expected.Kind == BoundTypeKind.Function &&
-            ((actual.Kind == BoundTypeKind.FunctionItem && this.FunctionItemSignature(actual) is { } signature &&
-            this.ItemContractFits(actual, signature, expected, use, out failure)) ||
+            ((actual.Kind == BoundTypeKind.FunctionItem && this.ItemSignatureFits(actual, expected, use, out failure)) ||
             (actual.Kind == BoundTypeKind.Closure && this.ClosureSignature(actual) is { } closureSignature &&
             this.CallableSubtype(closureSignature, expected, SignatureOwner(actual), out failure)));
+    }
+
+    // SPEC 7.7.4, 10.7: whether a Function Item's signature fits the required contract. DECISIONS D3 with rule W (BU-79; C-359 C1, C2;
+    // temporary, PLAN G886): an Item whose signature formed a Type no binding represents has its binder fixed before any evidence, so
+    // the same check is judged in each case of the split layer (EnterSplitCase). One that no case fits fails by itself, its writes
+    // dropped; one that some case fits rests on the split: it fits here, and its writes stay, so its reader rests on it too (a
+    // candidate trial's verdict, TryCandidate; the conversion's decision, ErasesToFunction).
+    private bool ItemSignatureFits(BoundType item, BoundType expected, Koto use, out ComparisonFailure failure)
+    {
+        failure = default;
+        var mark = this.unformedWrites;
+        if (this.FunctionItemSignature(item) is { } signature)
+        {
+            return this.ItemContractFits(item, signature, expected, use, out failure);
+        }
+
+        if (!this.UnformedSince(mark))
+        {
+            return false;
+        }
+
+        foreach (var mode in SemanticsOrder)
+        {
+            var entered = this.EnterSplitCase(mode);
+            var fails = this.FunctionItemSignature(item) is not { } inCase || !this.ItemContractFits(item, inCase, expected, use, out _);
+            if (!this.LeaveSplitCase(entered, fails))
+            {
+                return true;
+            }
+        }
+
+        this.unformedWrites = mark;
+        return false;
     }
 
     // SPEC 10.7, 15.3.7: the implementation's per-call Origins are solved against the required signature, whose quantifiers and fixed

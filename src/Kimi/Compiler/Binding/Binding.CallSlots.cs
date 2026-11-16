@@ -117,6 +117,12 @@ public sealed partial class Binding
         return target is { Components.Count: 0, ContainsParameter: false };
     }
 
+    // SPEC 10.8: whether an application is an exact source (IsExactSource) of a binder whose sources gave selector evidence, which
+    // IsSource compares its typed part with; a binder fixed before any evidence has none, and its part is judged with the layer open.
+    private static bool IsEvidencedSource(BoundType application, Koto owner, SlotFrame frame)
+        => ContainerSlot(owner, application.Symbol!) is >= 0 and var slot && slot < frame.Types.Length && frame.Selectors[slot] is not null &&
+            IsExactSource(application, owner, frame);
+
     // SPEC 8.1.2: whether a formed pattern is a layer over the callee's `target` (a pair's application or original, a Semantics layer),
     // matched by LayerTarget, rather than a Type matched as it is (an owner binding's target, a family, case by case).
     private static bool IsFormedLayer(BoundType formed, BoundType target)

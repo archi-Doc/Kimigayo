@@ -87,7 +87,9 @@ public sealed partial class Binding
     // arguments, never the unformed signature: a Language failure of its own, recorded at its own node, as on dev. A written Type argument
     // (the reference's own, or its container's for a member) not proven Owned is recorded there, and the reference, a verdict over that
     // failed child, adds no record; with none written, the one candidate's inferred arguments (its trial frame) make the reference's
-    // record. One with an Error proof rests on that Error.
+    // record. The erasure fails once, at its first argument not proven Owned (one record, as on dev). One with an Error proof rests on
+    // that Error. `use` is the reference wherever its erasure is judged: a reference at S (one candidate or a group: the written
+    // arguments are every candidate's) or an argument part the one resting candidate of a call erases.
     private void FailUnformedOwned(Koto use, BoundType required, SlotFrame? trial)
     {
         var written = KotoHelper.UnwrapParentheses(use) switch
@@ -133,7 +135,65 @@ public sealed partial class Binding
 
             var fact = new OwnedConversionFact(argument, required, $"{Ordinal(i + 1)} Type argument", type, null, null, null, null, proof == ConstraintProof.Refuted);
             this.FailExplained(ref this.ownedConversions, argument, fact.Refuted ? BindingFailure.UnsatisfiedConstraint : BindingFailure.UnprovenConstraint, fact);
+            return;
         }
+    }
+
+    // DECISIONS D3 (temporary, PLAN G886), SPEC 7.7.4, 23.1.2 (C-359 C2): a call whose selection rests on an unformed split is one located
+    // Unsupported_Kd. Where one candidate rests, each Function Item or reference part at a parameter it declares at a common Function
+    // Type is erased whatever the split decides, so its environment is still judged, as a conversion's is (FailErasedOwned; a
+    // reference part by its written arguments, FailUnformedOwned): the erasure comes after a selection that the split leaves open, and
+    // its Owned proof reads no unformed Type.
+    private BoundType? FailUnformedCall(ref CallEvaluation evaluation)
+    {
+        var call = evaluation.Call;
+        var arguments = call.ArgumentNodes.Count;
+        var resting = -1;
+        for (var i = 0; i < evaluation.Count; i++)
+        {
+            if (evaluation.Evaluated[i].State == CandidateApplicability.Pending)
+            {
+                resting = resting == -1 ? i : -2;
+            }
+        }
+
+        if (resting >= 0 && evaluation.Evaluated[resting] is { Symbol.Declaration: FunctionKoto function, ArgumentMap.Valid: true })
+        {
+            var mapping = evaluation.SavedCandidates != 0 ? evaluation.AllMaps.AsSpan(resting * arguments, arguments) : evaluation.Mapping.AsSpan(0, arguments);
+            for (var a = 0; a < arguments; a++)
+            {
+                var part = call.ArgumentNodes[a];
+                if (function.Parameters[mapping[a]].Type.BoundType is not { Kind: BoundTypeKind.Function } erased)
+                {
+                    continue;
+                }
+
+                if (part.BoundType is { Kind: BoundTypeKind.FunctionItem } item)
+                {
+                    this.FailErasedOwned(part, item, erased);
+                }
+                else if (this.KindOf(part) == PartKind.Reference)
+                {
+                    this.FailUnformedOwned(part, erased, null);
+                }
+            }
+        }
+
+        return this.Fail(call, BindingFailure.Unsupported, true);
+    }
+
+    // SPEC 7.7.4, 15.2.3 (C-359 C2): the Owned part of an erasure whose signature part rests on an unformed split (DECISIONS D3), judged
+    // and recorded as the erasure's own is (ProveErasedOwned, FailOwnedConversion): whether the environment is not proven Owned.
+    private bool FailErasedOwned(Koto node, BoundType actual, BoundType expected)
+    {
+        if (this.ProveErasedOwned(actual, node, out var owned) == ConstraintProof.Proven)
+        {
+            return false;
+        }
+
+        (this.erasureOutcomes ??= new())[(actual, expected)] = new(ErasurePart.Owned, true, BoundClosure.Of(actual)?.Receiver ?? SemanticsKind.Ref, owned);
+        this.FailOwnedConversion(actual, expected, node, node);
+        return true;
     }
 
     // SPEC 23.1.2 (DECISIONS BU-75, BU-76): a conversion whose own check failed because a part it judged failed is a derived failure, with

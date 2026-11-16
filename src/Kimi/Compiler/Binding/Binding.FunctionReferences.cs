@@ -60,8 +60,8 @@ public sealed partial class Binding
             var pendingProof = false;
             Koto? invalid = null;
             var error = false;
+            var resting = false;
             this.failedCause = null;
-            var unformedMark = this.unformedWrites;
             for (var candidate = ReferenceCandidate(symbol); candidate is not null; candidate = ReferenceCandidate(candidate.Next), index++)
             {
                 this.BindHeader(candidate);
@@ -73,6 +73,7 @@ public sealed partial class Binding
                 this.perCallReferenceSlot = null;
                 this.referenceSlotFailure = default;
                 ReferenceConstraintFailure? constraint = null;
+                var unformedMark = this.unformedWrites;
                 var state = this.Accessible(candidate, scope)
                     ? this.FunctionReferenceApplicability(use, candidate, function, required, scope, out constraint, operations.AsSpan(index * stride, stride - 1), trial)
                     : CandidateApplicability.Inapplicable;
@@ -80,6 +81,12 @@ public sealed partial class Binding
                 {
                     perCall = this.perCallReferenceSlot;
                     slotFailure = this.referenceSlotFailure;
+                }
+
+                if (this.RestsOnSplit(use, candidate, function, required, scope, unformedMark, state))
+                {
+                    resting = true;
+                    state = CandidateApplicability.Pending;
                 }
 
                 evaluated[index] = new(candidate, state, null, 0, ConstraintFailure: constraint);
@@ -101,23 +108,24 @@ public sealed partial class Binding
                 }
             }
 
-            if (this.UnformedSince(unformedMark))
+            if (error)
             {
-                // DECISIONS D3 (temporary, PLAN G886): a candidate's signature at S needed a Type no binding represents. Its erasure's
-                // Owned proof reads only its bound Type arguments, so it is still judged (FailUnformedOwned), and a reference resting on a
+                return (invalid ?? this.TakeFailedCause().Use) is { } cause ? this.CompleteDependent(use, cause)
+                    : this.Fail(use, BindingFailure.InvalidConstraint);
+            }
+
+            if (resting)
+            {
+                // DECISIONS D3 (temporary, PLAN G886): a candidate rests on a Type no binding represents (RestsOnSplit), so the reference
+                // is one located Unsupported_Kd, whatever the other candidates (SPEC 10.1's unproven candidate). Its erasure's Owned
+                // proof reads only its bound Type arguments, so it is still judged (FailUnformedOwned), and a reference resting on a
                 // failed argument is no record of its own (SPEC 23.1.2).
-                if (erase && count == 1)
+                if (erase)
                 {
                     this.FailUnformedOwned(use, required, trial);
                 }
 
                 return this.Fail(use, BindingFailure.Unsupported);
-            }
-
-            if (error)
-            {
-                return (invalid ?? this.TakeFailedCause().Use) is { } cause ? this.CompleteDependent(use, cause)
-                    : this.Fail(use, BindingFailure.InvalidConstraint);
             }
 
             if (pendingProof)
@@ -156,7 +164,18 @@ public sealed partial class Binding
                     var bound = slotFailure.Failure == ReferenceSlotFailure.None && (trial is not { } complete || ReferenceSlotsComplete(function, complete.Types, complete.Lengths));
                     var candidateItem = bound ? this.FunctionItemType(single, trial is { } solved ? solved.Types[..slots] : default, this.ReferenceContainer(use, single), trial is { } solvedLengths ? solvedLengths.Lengths[..slots] : default)
                         : this.FunctionItemType(single, default);
-                    if (this.FunctionItemSignature(candidateItem) is { } actual)
+                    var signatureMark = this.unformedWrites;
+                    var candidateSignature = this.FunctionItemSignature(candidateItem);
+                    if (this.UnformedSince(signatureMark))
+                    {
+                        // DECISIONS D3 (temporary, PLAN G886): the bound Item's signature forms no Type, and no case of its split meets S
+                        // (RestsOnSplit): the record names the Item, its Note the erasure's failed part (ErasesToFunction).
+                        this.unformedWrites = signatureMark;
+                        _ = this.ErasesToFunction(use, candidateItem, required);
+                        return this.FailMismatch(use, use, candidateItem, required, default);
+                    }
+
+                    if (candidateSignature is { } actual)
                     {
                         var contract = ComparisonFailure.Shape;
                         var structure = bound && ReferenceTypes.StorageMatches(required, actual);
@@ -272,12 +291,46 @@ public sealed partial class Binding
                 return true;
             }
 
-            if (this.Accessible(candidate, scope) && this.FunctionReferenceApplicability(use, candidate, function, required, scope, out _) != CandidateApplicability.Inapplicable)
+            var unformedMark = this.unformedWrites;
+            var state = this.Accessible(candidate, scope)
+                ? this.FunctionReferenceApplicability(use, candidate, function, required, scope, out _) : CandidateApplicability.Inapplicable;
+            if (state != CandidateApplicability.Inapplicable || this.RestsOnSplit(use, candidate, function, required, scope, unformedMark, state))
+            {
+                return true; // One that rests on the split leaves its writes: the trial that fits this part rests on it too.
+            }
+        }
+
+        return false;
+    }
+
+    // DECISIONS D3 with rule W (BU-79; C-359 C1; temporary, PLAN G886): whether a candidate whose check at S formed a Type no binding
+    // represents (a write since `mark`) rests on that split. A reference's binder is fixed before any evidence, so no part of it is left
+    // unknown: the same check is judged in each case of the split layer (EnterSplitCase). A candidate that is inapplicable, or in
+    // Error, in every case as in its own check (`state`) is so by itself, its writes dropped and its Language record the reference's
+    // (SPEC 23.1.2); any other rests on the split (a proof that reads an unformed Type writes in every case).
+    private bool RestsOnSplit(Koto use, BindingSymbol candidate, FunctionKoto function, BoundType required, BindingScope scope, int mark, CandidateApplicability state)
+    {
+        if (!this.UnformedSince(mark))
+        {
+            return false;
+        }
+
+        if (state is not (CandidateApplicability.Inapplicable or CandidateApplicability.Error))
+        {
+            return true;
+        }
+
+        foreach (var mode in SemanticsOrder)
+        {
+            var entered = this.EnterSplitCase(mode);
+            var inCase = this.FunctionReferenceApplicability(use, candidate, function, required, scope, out _);
+            if (!this.LeaveSplitCase(entered, inCase == state))
             {
                 return true;
             }
         }
 
+        this.unformedWrites = mark;
         return false;
     }
 
