@@ -286,6 +286,10 @@ public sealed class BoundConformancePath : ICheckCause
 
     internal List<BoundConformancePath>? InferenceConsumers { get; set; }
 
+    // Binding.AssociatedTypes: a root path's binding of each associated identity (PrepareAssociatedBindings, AssociatedBindingOf), kept
+    // with the path and reset in place with the path's per-pass state.
+    internal List<(BoundRequirement Associated, Binding.AssociatedBinding Binding)>? AssociatedBindings { get; set; }
+
     // Binding.AssociatedInference: whether the pass published this inherited path's inference evidence (PublishInheritedInference).
     internal bool InferencePublished { get; set; }
 

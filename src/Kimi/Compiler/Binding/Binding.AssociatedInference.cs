@@ -158,9 +158,15 @@ public sealed partial class Binding
 
         // Explicit equations may point at a newly completed binding. Normalize their values again,
         // preserving their original candidates for final formation/projection verification.
-        foreach (var binding in this.associatedBindings.Values)
+        foreach (var path in this.impls.Paths)
         {
-            binding.State = 0;
+            if (path.AssociatedBindings is { } bindings)
+            {
+                foreach (var (_, binding) in bindings)
+                {
+                    binding.State = 0;
+                }
+            }
         }
 
         foreach (var path in this.impls.Paths)
@@ -170,7 +176,7 @@ public sealed partial class Binding
                 if (this.ResolveAssociated(path, identity, out _) is { } result && !this.PendingAssociatedType(result))
                 {
                     path.AssociatedStorage[identity] = result;
-                    if (this.associatedBindings.TryGetValue((path.RootPath, identity), out var binding))
+                    if (this.AssociatedBindingOf(path.RootPath, identity) is { } binding)
                     {
                         foreach (var evidence in binding.EvidenceSources)
                         {
@@ -323,7 +329,7 @@ public sealed partial class Binding
                         continue;
                     }
 
-                    var binding = this.associatedBindings[(path, identity)];
+                    var binding = this.AssociatedBindingOf(path, identity)!;
                     foreach (var source in evidence)
                     {
                         if (!this.SameConformanceType(source.Identity.Contract.Type!, identity.Contract.Type!, path.Scope) ||
@@ -358,7 +364,7 @@ public sealed partial class Binding
 
     private bool InferenceHole(BoundConformancePath path, BoundRequirement identity)
         => path.InheritedFrom is null && this.AssociatedParameters(identity.Symbol.Declaration).Length == 0 &&
-        this.associatedBindings.TryGetValue((path.RootPath, identity), out var binding) && binding.Candidates.Count == 0 &&
+        this.AssociatedBindingOf(path.RootPath, identity) is { Candidates.Count: 0 } &&
         this.SpecificationPart(path, identity) is null;
 
     // SPEC 15.3.3, 15.4.4, 23.1.2: the explicit specification of an associated identity in the conformance's declaration or its
@@ -580,7 +586,7 @@ public sealed partial class Binding
                 path.Scope) is { } identity &&
             this.InferenceHole(path, identity))
         {
-            var binding = this.associatedBindings[(path.RootPath, identity)];
+            var binding = this.AssociatedBindingOf(path.RootPath, identity)!;
             if (problem > binding.Problem)
             {
                 binding.Problem = problem;
@@ -747,7 +753,7 @@ public sealed partial class Binding
         Pending,
     }
 
-    private enum InferenceProblem : byte
+    internal enum InferenceProblem : byte
     {
         None,
         Shape,
@@ -761,7 +767,7 @@ public sealed partial class Binding
 
     internal readonly record struct RequirementMatch(RequirementMatchState State, BindingSymbol? Member, MemberSelection Selection);
 
-    private readonly record struct AssociatedEvidence(BoundConformancePath Path, BoundRequirement Identity, BoundType Type, FunctionKoto Source);
+    internal readonly record struct AssociatedEvidence(BoundConformancePath Path, BoundRequirement Identity, BoundType Type, FunctionKoto Source);
 
     private sealed class AssociatedInference(BindingSymbol type)
     {

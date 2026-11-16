@@ -223,7 +223,7 @@ public sealed partial class Binding
 
                     if (this.InferenceHole(conformance, identity))
                     {
-                        var binding = this.associatedBindings[(conformance.RootPath, identity)];
+                        var binding = this.AssociatedBindingOf(conformance.RootPath, identity)!;
                         if (binding.Problem is InferenceProblem.Missing or InferenceProblem.Ambiguous)
                         {
                             return Invalid(binding.Problem == InferenceProblem.Missing ? BindingFailure.MissingImplementation : BindingFailure.Ambiguous);

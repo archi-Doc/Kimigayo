@@ -7,8 +7,8 @@ using Kimi.Compiler.Parsing;
 // - Responsibility: one identity (BoundConformance) per Type and Contract; one path (BoundConformancePath) per Type, Contract,
 //   declaration and root Contract; the pass's paths and each Type's identities in registration order; the lookups by key; the reset
 //   at each pass, which also empties the state other components write on its identities and paths (the verification flags, witnesses
-//   and their maps, associated and inference storage, requirement matches and published inference, Needed, RejectedSelfSignature, the
-//   paths' scopes) until R7-D2b's stamped tables.
+//   and their maps, associated and inference storage, requirement matches and published inference, the associated bindings' state,
+//   Needed, RejectedSelfSignature, the paths' scopes) until R7-D2b's stamped tables.
 // - Inputs: Register's Type, Contract, root, declaration, scope and premises, from the two registrars (Self clauses and conditional
 //   blocks, Binding.Contracts.Registration; inherited paths, Binding.InheritedConformances).
 // - Outputs: Paths (the pass's paths), Identities (every identity ever named), ByType and OfType(type) (the pass's identities of a
@@ -149,6 +149,14 @@ internal sealed class ImplTable
             conformance.InferenceStorage.Clear();
             conformance.RequirementMatches?.Clear();
             conformance.InferencePublished = false;
+            if (conformance.AssociatedBindings is { } bindings)
+            {
+                foreach (var (_, binding) in bindings)
+                {
+                    binding.Reset();
+                }
+            }
+
             conformance.Scope.Reset();
         }
     }

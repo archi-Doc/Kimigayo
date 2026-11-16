@@ -158,21 +158,6 @@ public sealed partial class Binding
         {
             group.Active = false;
         }
-
-        foreach (var binding in this.associatedBindings.Values)
-        {
-            binding.Candidates.Clear();
-            binding.Result = null;
-            binding.Inferred = null;
-            binding.InferenceSource = null;
-            binding.InferenceConflict = false;
-            binding.Problem = InferenceProblem.None;
-            binding.ProblemSource = null;
-            binding.ProblemDetail = null;
-            binding.EvidenceSources.Clear();
-            binding.State = 0;
-            binding.FormationScope?.Reset();
-        }
     }
 
     private void PrepareContracts()

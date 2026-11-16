@@ -21,11 +21,13 @@ public sealed partial class Binding
                 var path = this.impls.Paths[i];
                 matches += path.RequirementMatches?.Count ?? 0;
                 graphCapacity += (path.RequirementMatches?.Capacity ?? 0) + (path.InferenceConsumers?.Capacity ?? 0);
-            }
-
-            foreach (var binding in this.associatedBindings.Values)
-            {
-                evidenceCapacity += binding.EvidenceSources.Capacity;
+                if (path.AssociatedBindings is { } bindings)
+                {
+                    foreach (var (_, binding) in bindings)
+                    {
+                        evidenceCapacity += binding.EvidenceSources.Capacity;
+                    }
+                }
             }
 
             foreach (var batch in this.associatedInference.Values)
