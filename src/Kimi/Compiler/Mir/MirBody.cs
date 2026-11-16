@@ -1,11 +1,12 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 // Owns the indexed storage of one MIR body and its projection chains.
-// Input: the forms the builder appends (MirForms.cs). Output: reusable arrays of locals, blocks, statements and associated records,
-// the validator's verdict (HasFinding), which only MirValidator writes; no consumer reads a body that has one (DECISIONS R5-M183); and
-// whether a construction record lies in it (HasConstructionRecord), which only the builder's record path writes (R5-M183's GR-1a line).
-// References use body-local indices; projection chains are interned and ProjectedType owns their Type rule.
-// Must not resolve syntax or introduce a parallel representation for the same body.
+// Input: the forms the builder appends (MirForms.cs) to a body it began (Reset), or a built body stored (Store). Output: reusable arrays
+// of locals, blocks, statements and associated records, a stored body's grown only to exactly the rows stored in it; the validator's
+// verdict (HasFinding), which only MirValidator writes; no consumer reads a body that has one (DECISIONS R5-M183); and whether a
+// construction record lies in it (HasConstructionRecord), which only the builder's record path writes (R5-M183's GR-1a line).
+// References use body-local indices; projection chains are interned while a body is built and ProjectedType owns their Type rule.
+// Must not resolve syntax or introduce a parallel representation for the same body; a stored body is read, never appended to.
 
 using System.Runtime.InteropServices;
 using SemanticsKind = Kimi.Compiler.Parsing.SemanticsKind;
@@ -15,7 +16,8 @@ namespace Kimi.Compiler.Mir;
 /// <summary>The MIR of one body (plan 5.4): struct arrays that the builder appends to (<see cref="AddLocal"/>, <see cref="AddBlock"/>,
 /// <see cref="Push"/>, <see cref="Terminate"/>, <see cref="AddOperand"/>, <see cref="Const"/>, <see cref="Project"/>,
 /// <see cref="AddMustNotComplete"/> and the other adders)
-/// and that a reset keeps, so a pooled body rebuilt to the same size allocates nothing.</summary>
+/// and that a reset keeps; <see cref="MirProgram"/> builds each body in one such body and stores it in a pooled one (<see cref="Store"/>),
+/// so a pooled body holds exactly its rows and one rebuilt to no larger size allocates nothing.</summary>
 internal sealed class MirBody
 {
     private static readonly MirTerminator Unterminated = new(MirTerminatorKind.Goto, default);
@@ -280,6 +282,30 @@ internal sealed class MirBody
         Add(ref this.scopes, ref this.scopeCount, new MirScope(-1, MirScopeKind.Lexical, source));
     }
 
+    /// <summary>Stores a built body in this one, its definition, ordinal, verdicts, binders and tables: each table in this body's array
+    /// where that holds the rows, else in a new array of exactly their count; the built body's interning stays with it.</summary>
+    /// <param name="built">The body built.</param>
+    internal void Store(MirBody built)
+    {
+        (this.Key, this.Source, this.Ordinal, this.HasFinding, this.HasConstructionRecord) =
+            (built.Key, built.Source, built.Ordinal, built.HasFinding, built.HasConstructionRecord);
+        this.Binders.Clear();
+        this.Binders.AddRange(built.Binders);
+        this.localCount = Store(ref this.locals, built.Locals);
+        this.blockCount = Store(ref this.blocks, built.Blocks);
+        this.statementCount = Store(ref this.statements, built.Statements);
+        this.operandCount = Store(ref this.operands, built.Operands);
+        this.caseCount = Store(ref this.cases, built.Cases);
+        this.constCount = Store(ref this.consts, built.Consts);
+        this.projectionCount = Store(ref this.projections, built.Projections);
+        this.scopeCount = Store(ref this.scopes, built.Scopes);
+        this.staticCount = Store(ref this.statics, built.Statics);
+        this.opaqueCount = Store(ref this.opaques, built.OpaqueSites);
+        this.opaqueRootCount = Store(ref this.opaqueRoots, built.OpaqueRoots);
+        this.endCount = Store(ref this.ends, built.MustNotComplete);
+        this.guessedSiteCount = Store(ref this.guessedSites, built.GuessedSites);
+    }
+
     internal int AddLocal(in MirLocal local) => Add(ref this.locals, ref this.localCount, local);
 
     internal int AddBlock() => Add(ref this.blocks, ref this.blockCount, new MirBlock(this.statementCount, 0, Unterminated));
@@ -387,5 +413,16 @@ internal sealed class MirBody
 
         items[count] = item;
         return count++;
+    }
+
+    private static int Store<T>(ref T[] items, ReadOnlySpan<T> rows)
+    {
+        if (items.Length < rows.Length)
+        {
+            items = new T[rows.Length];
+        }
+
+        rows.CopyTo(items);
+        return rows.Length;
     }
 }

@@ -121,9 +121,8 @@ public sealed class MirValidatorTest(ITestOutputHelper output)
     public void AnIntrinsicsRowCoversItsDeclaration()
     {
         var c = Fixture.Value.Compilation;
-        var declared = Enum.GetValues<CompilerFunctionKind>().Where(static x => IntrinsicDisposition.Of(x).Kind == DispositionKind.Intrinsic)
-            .Select(x => (Row: MirDescriptors.Of(IntrinsicDisposition.Of(x).Id), Declaration: c.Library.Function(x)))
-            .Where(static x => x.Declaration is not null).ToArray();
+        var declared = c.Library.RegisteredSymbols.ToArray().Where(static x => x.Definition.Kind == DispositionKind.Intrinsic)
+            .Select(static x => (Row: MirDescriptors.Of(x.Definition.Id), Declaration: (BindingSymbol?)x)).ToArray();
         Assert.NotEmpty(declared);
         foreach (var (row, declaration) in declared)
         {
@@ -132,6 +131,20 @@ public sealed class MirValidatorTest(ITestOutputHelper output)
         }
 
         Assert.Equal([IntrinsicId.RawSlice], Enum.GetValues<IntrinsicId>().Where(static x => MirDescriptors.Of(x) is { Defined: true, Retained: >= 0 }));
+    }
+
+    // SPEC 17.4 (A3 E14): the compiler-only $abort is no library declaration, so an Abort call names none; one naming $abort's symbol is
+    // a Callee finding at the call (fail-before: its Definition, Intrinsic(Abort), passed the declaration test).
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void AnAbortCallNamesNoDeclaration(bool named)
+    {
+        var body = Build(null);
+        var abort = Array.FindIndex(body.Blocks.ToArray(), static x => x.Terminator is { Kind: MirTerminatorKind.Call, Callee: { Kind: MirCalleeKind.Intrinsic, Arg: (int)IntrinsicId.Abort } });
+        var callee = body.Blocks[abort].Terminator.Callee with { Symbol = named ? Fixture.Value.Compilation.Library.Abort : null };
+        Unsafe.AsRef(in body.Blocks[abort]).Terminator = body.Blocks[abort].Terminator with { Callee = callee, Source = Broken };
+        Assert.Equal(named ? [(MirViolation.Callee, Broken.Syntax)] : [], Validate(body).Select(static x => (x.Rule, x.Subject)));
     }
 
     // An rvalue's operands before its Place, the index locals of a Place before it, a destination last; static accesses, pair cases,

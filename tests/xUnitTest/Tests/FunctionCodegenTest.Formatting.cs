@@ -426,7 +426,7 @@ public sealed partial class FunctionCodegenTest
     // row); a user generic forwarding to it at a FixedBuffer and the FixedBuffer Item's Value call (coverage S6, `ref`) run the direct
     // call's specialization instance (SPEC 8.13.3: selection after substitution and for function references), so no instance at a
     // FixedBuffer or a HeapBuffer stores a dispatch word; the witness is never called here (the runtime calls it through the word)
-    // (fail-before: each site called __kimi_text_writer with LegacyRuntimeHelpers.WriterKind's number and the dispatch word). writer<Sink>'s
+    // (fail-before: each site called __kimi_text_writer with its destination's legacy writer kind and the dispatch word). writer<Sink>'s
     // call and Item get two identical instances, each storing the dispatch word: PLAN G883's pre-existing duplicate of a generic group
     // member's Item key, not this contract; its fix reads 4 -> 3 writers and 2 -> 1 dispatch stores.
     [Fact]
