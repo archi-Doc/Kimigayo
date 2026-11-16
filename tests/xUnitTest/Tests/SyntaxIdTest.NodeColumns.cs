@@ -120,6 +120,7 @@ public partial class SyntaxIdTest
     [InlineData("OriginRequirementNodes", "milestone:Milestone10")]
     [InlineData("InitializerOrigins", "milestone:Milestone13")]
     [InlineData("PropertyCalls", "milestone:Milestone26")]
+    [InlineData("StorageProjections", "milestone:Milestone26")]
     public void AKeptFamilyAlternatesItsArenasAcrossEdits(string family, string? program)
     {
         var c = MinimalEmissionTest.Analyze(program is null ? Source

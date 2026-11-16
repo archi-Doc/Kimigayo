@@ -138,7 +138,7 @@ public sealed partial class Binding
 
         foreach (var projection in this.storageProjections.Values)
         {
-            this.ResetSynthetic(projection);
+            this.ResetSynthetic(projection!);
         }
 
         foreach (var storage in this.propertyUpdateStorage.Values)

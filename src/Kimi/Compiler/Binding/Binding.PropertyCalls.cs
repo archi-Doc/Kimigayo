@@ -8,7 +8,7 @@ namespace Kimi.Compiler;
 public sealed partial class Binding
 {
     private readonly PropertyCallRows propertyCalls;
-    private readonly Dictionary<Koto, MemberAccessKoto> storageProjections = new(ReferenceEqualityComparer.Instance);
+    private readonly StorageProjectionRows storageProjections;
     private readonly Dictionary<Koto, MemberAccessKoto> propertyUpdateStorage = new(ReferenceEqualityComparer.Instance);
     private readonly Dictionary<Koto, EvaluatedKoto> propertyUpdateInputs = new(ReferenceEqualityComparer.Instance);
 
@@ -374,5 +374,25 @@ public sealed partial class Binding
 
         internal bool TryGetValue((Koto Source, PropertyAccessorKind Kind) key, [NotNullWhen(true)] out InvocationKoto? value)
             => (value = this.GetValueOrDefault(key)) is not null;
+    }
+
+    /// <summary>The `storageProjections` family's one accessor (DECISIONS BU-220): a kept family, an accessor body's synthesized `self`
+    /// storage projection (SPEC 13.7.2), made once and reset in place by each pass (ResetSyntheticCalls), kept in its key node's module's
+    /// NodeColumns at its SyntaxId. Its members keep the names its readers use.</summary>
+    private readonly struct StorageProjectionRows(Binding binding)
+    {
+        internal FamilyRows<MemberAccessKoto?> Values => new(binding, static (table, _) => table.Hir.Families.StorageProjections.Enumerate());
+
+        internal void Add(Koto node, MemberAccessKoto value)
+        {
+            ref var row = ref HirTables.Of(node).Families.StorageProjections.Ref(node.SyntaxId);
+            row = row is null ? value : throw new ArgumentException($"`storageProjections` already holds a row at `{node}`.", nameof(node));
+        }
+
+        internal MemberAccessKoto? GetValueOrDefault(Koto node)
+            => node.SyntaxOwner is { } table ? table.Hir.Families.StorageProjections.Get(node.SyntaxId) : null;
+
+        internal bool TryGetValue(Koto node, [NotNullWhen(true)] out MemberAccessKoto? value)
+            => (value = this.GetValueOrDefault(node)) is not null;
     }
 }

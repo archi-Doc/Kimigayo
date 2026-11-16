@@ -75,6 +75,7 @@ public sealed partial class Binding
         this.discoveredOrigins = new(this);
         this.initializerOrigins = new(this);
         this.propertyCalls = new(this);
+        this.storageProjections = new(this);
         this.Library.Kotonoha.Syntax.Hir.Families.Reserve(KimiLibrarySize.Stated);
         foreach (var symbol in this.Library.RegisteredSymbols)
         {
