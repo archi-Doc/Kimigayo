@@ -39,6 +39,10 @@ public sealed partial class Binding
     private HashSet<BindingObligation> obligationSet;
     private bool running;
 
+    // The edit counter: Invalidate alone advances it, never a pass, so an edit column (StampedColumn following EditCounter) holds across
+    // passes and reads absent after an edit until its first write.
+    private ulong edit;
+
     internal Binding(Compilation compilation)
     {
         this.compilation = compilation;
@@ -48,6 +52,18 @@ public sealed partial class Binding
         this.types = new(this, this.Library);
         this.symbols = new(this);
         this.scopes = new(this);
+        this.originAtoms = new(this);
+        this.openOrigins = new(this);
+        this.associatedOrigins = new(this);
+        this.shapeContractHeads = new(this);
+        this.objectErasures = new(this);
+        this.enumConstructions = new(this);
+        this.copyDeclarations = new(this);
+        this.copyByType = new(this);
+        this.inheritedOriginTypes = new(this);
+        this.deferredConstraints = new(this);
+        this.matches = new(this);
+        this.adaptations = new(this);
         this.associatedInference = new(this);
         this.Library.Kotonoha.Syntax.Hir.Families.Reserve(KimiLibrarySize.Stated);
         foreach (var symbol in this.Library.RegisteredSymbols)
@@ -96,6 +112,17 @@ public sealed partial class Binding
             this.Library.Kotonoha.Syntax.Hir.Families.Symbols.Used,
             this.Library.Kotonoha.Syntax.Hir.Families.Parameters.Used,
             this.Library.Kotonoha.Syntax.Hir.Families.Scopes.Used,
+            this.Library.Kotonoha.Syntax.Hir.Families.OriginAtoms.Used,
+            this.Library.Kotonoha.Syntax.Hir.Families.OpenOrigins.Used,
+            this.Library.Kotonoha.Syntax.Hir.Families.AssociatedOrigins.Used,
+            this.Library.Kotonoha.Syntax.Hir.Families.Receivers.Used,
+            this.Library.Kotonoha.Syntax.Hir.Families.EnumConstructions.Used,
+            this.Library.Kotonoha.Syntax.Hir.Families.CopyDeclarations.Used,
+            this.Library.Kotonoha.Syntax.Hir.Families.CopyByType.Used,
+            this.Library.Kotonoha.Syntax.Hir.Families.InheritedOriginTypes.Used,
+            this.Library.Kotonoha.Syntax.Hir.Families.DeferredConstraints.Used,
+            this.Library.Kotonoha.Syntax.Hir.Families.Matches.Used,
+            this.Library.Kotonoha.Syntax.Hir.Families.Adaptations.Used,
             this.types.KeyCount,
             this.constraints.Count,
             this.pendingAssociatedTypes.Count,
@@ -105,13 +132,25 @@ public sealed partial class Binding
             this.substitutedParts.Count);
 
     /// <summary>Gets the free slots of the tables KimiLibrarySize sizes: each table's capacity less its entries; a node family's column
-    /// (symbols, their parameters, scopes) its arena's slots no page holds.</summary>
+    /// (symbols, their parameters, scopes, Origin atoms, open regions, associated Origins, special receivers) its arena's slots no page
+    /// holds.</summary>
     internal KimiLibrarySize.Tables TableFree
         => new(
             this.programPart.Nodes.Capacity + this.Library.Layer.Part.Nodes.Capacity - this.nodesView.Count,
             this.Library.Kotonoha.Syntax.Hir.Families.Symbols.Free,
             this.Library.Kotonoha.Syntax.Hir.Families.Parameters.Free,
             this.Library.Kotonoha.Syntax.Hir.Families.Scopes.Free,
+            this.Library.Kotonoha.Syntax.Hir.Families.OriginAtoms.Free,
+            this.Library.Kotonoha.Syntax.Hir.Families.OpenOrigins.Free,
+            this.Library.Kotonoha.Syntax.Hir.Families.AssociatedOrigins.Free,
+            this.Library.Kotonoha.Syntax.Hir.Families.Receivers.Free,
+            this.Library.Kotonoha.Syntax.Hir.Families.EnumConstructions.Free,
+            this.Library.Kotonoha.Syntax.Hir.Families.CopyDeclarations.Free,
+            this.Library.Kotonoha.Syntax.Hir.Families.CopyByType.Free,
+            this.Library.Kotonoha.Syntax.Hir.Families.InheritedOriginTypes.Free,
+            this.Library.Kotonoha.Syntax.Hir.Families.DeferredConstraints.Free,
+            this.Library.Kotonoha.Syntax.Hir.Families.Matches.Free,
+            this.Library.Kotonoha.Syntax.Hir.Families.Adaptations.Free,
             this.types.KeyFree,
             this.constraints.Capacity - this.constraints.Count,
             this.pendingAssociatedTypes.Capacity - this.pendingAssociatedTypes.Count,
@@ -198,8 +237,9 @@ public sealed partial class Binding
         }
 
         // The facts kept across unchanged passes are revoked by every edit, also after a pass that did not finish (a Bind that throws
-        // leaves no result): associated Origin parameters of the edited trees, local regions, item contexts and the Type context's view memos.
-        this.associatedOrigins.Clear();
+        // leaves no result): associated Origin parameters of the edited trees (the edit families: the edit counter's advance leaves every
+        // module's edit columns stale, StampedColumn), local regions, item contexts and the Type context's view memos.
+        this.edit++;
         this.knownBases?.Clear();
         this.localRegions.Clear();
         this.functionItemContexts.Clear();
@@ -368,5 +408,19 @@ public sealed partial class Binding
 
         this.ValidateVirtualOverrideConditions();
         this.GuardPendingVirtualDeclarations();
+    }
+
+    /// <summary>The pass counter a pass family's column follows (StampedColumn, DECISIONS BU-220): storageVersion, which ResetPass
+    /// advances.</summary>
+    internal readonly struct PassCounter : IStampCounter
+    {
+        public static ulong Of(Binding binding) => binding.storageVersion;
+    }
+
+    /// <summary>The edit counter an edit family's column follows (StampedColumn, DECISIONS BU-220): edit, which only Invalidate
+    /// advances.</summary>
+    internal readonly struct EditCounter : IStampCounter
+    {
+        public static ulong Of(Binding binding) => binding.edit;
     }
 }

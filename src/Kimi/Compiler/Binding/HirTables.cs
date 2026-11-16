@@ -2,7 +2,8 @@
 
 // Owns the Binding facts and published HIR columns indexed by a module's SyntaxId, and Binding's private node families (NodeColumns).
 // Input: Binding's decisions and syntax identity. Output: reusable columns and PlanRows for readers.
-// Column rows move with renumbered nodes and are cleared for the current pass; a node family's kept rows move with their nodes too.
+// Column rows move with renumbered nodes and are cleared for the current pass; a node family's kept rows move with their nodes too,
+// and a pass or edit family's rows read absent once the counter its column follows advances, until its first write (StampedColumn).
 // Must not let consumers reconstruct semantic facts from syntax; no file outside Compiler/Binding names NodeColumns (DECISIONS BU-220).
 
 using System.Runtime.CompilerServices;
@@ -250,26 +251,54 @@ internal struct HirTables
 }
 
 /// <summary>
-/// Binding's private node families of one module (DECISIONS BU-220): one <see cref="PagedColumn{T}"/> per family, indexed by the SyntaxId
-/// of the node that keys it. A kept family keeps its rows across passes, and a renumbering moves each row with its node
-/// (<see cref="HirTables.Renumbered"/>, <see cref="HirTables.Move"/>). Its family's accessor, in the family's component, reads and writes
-/// a column; only Compiler/Binding names this type.
+/// Binding's private node families of one module (DECISIONS BU-220): one column per family, indexed by the SyntaxId of the node that keys
+/// it. A kept family's <see cref="PagedColumn{T}"/> keeps its rows across passes, and a renumbering moves each row with its node
+/// (<see cref="HirTables.Renumbered"/>, <see cref="HirTables.Move"/>). A pass or edit family's <see cref="StampedColumn{T, TCounter}"/>
+/// holds its rows while its stamp is the value of the counter its declaration names (Binding.PassCounter, Binding.EditCounter), empties
+/// itself at its first write after that counter advanced, and is handed over unmoved by a renumbering. Its family's accessor, in the
+/// family's component, reads and writes a column; only Compiler/Binding names this type.
 /// </summary>
 internal struct NodeColumns
 {
     internal PagedColumn<BindingSymbol?> Symbols; // Kept: the symbol declared at a node (Binding.Scopes.cs).
     internal PagedColumn<BindingSymbol?[]?> Parameters; // Kept: Symbols' composite column, a function's parameters' symbols by index.
+    internal PagedColumn<BindingSymbol?> Receivers; // Kept: a constructor's or destructor's receiver `self` (Binding.Structs.cs).
+    internal PagedColumn<Binding.CopyDeclaration?> CopyDeclarations; // Kept: a `Self is Copy` clause's declaration (Binding.CopyDeclarations.cs).
+    internal PagedColumn<List<Binding.CopyDeclaration>?> CopyByType; // Kept: a container's Copy declarations (Binding.CopyDeclarations.cs).
+    internal PagedColumn<BoundEnumConstruction?> EnumConstructions; // Kept: a construction expression's enum construction plan (Binding.Enums.cs).
     internal PagedColumn<BindingScope?> Scopes; // Kept: a node's scope (Binding.Scopes.cs).
     internal PagedColumn<(SourceDocument Document, BindingScope? Scope)[]?> Documents; // Kept: Scopes' composite column, a module root's document scopes.
     internal PagedColumn<Binding.AssociatedInference?> AssociatedInference; // Kept: a conforming Type's inference batch (Binding.AssociatedInference.cs).
+    internal PagedColumn<BoundOrigin?[]?> OriginAtoms; // Kept: a binder's Origin atoms, a KeyedRow by kind and slot (Binding.Origins.cs).
+    internal PagedColumn<BoundOrigin?[]?> OpenOrigins; // Kept: a source's open regions, a KeyedRow by key (Binding.OpenOrigins.cs).
+    internal StampedColumn<BoundOrigin[]?, Binding.EditCounter> AssociatedOrigins; // Edit: an associated Type declaration's Origin parameters (Binding.AssociatedOrigins.cs).
+    internal StampedColumn<Binding.ObjectErasureEvidence, Binding.PassCounter> ObjectErasures; // Pass: an operation's or immutable alias's erased-view evidence (Binding.ObjectViews.cs).
+    internal StampedColumn<BoundType?, Binding.PassCounter> InheritedOriginTypes; // Pass: the inherited contract's Type an omitted Origin takes (Binding.OriginInheritance.cs).
+    internal StampedColumn<bool?, Binding.PassCounter> DeferredConstraints; // Pass: whether a clause waits for the conformances (Binding.Constraints.cs).
+    internal StampedColumn<BoundMatch?, Binding.PassCounter> Matches; // Pass: the plan of a match the pass indexed (Binding.Patterns.cs).
+    internal StampedColumn<BoundAdaptation, Binding.PassCounter> Adaptations; // Pass: the implicit adaptation selected for an expression (Binding.ArgumentOperations.cs).
+    internal StampedColumn<int, Binding.PassCounter> ShapeContractHeads; // Pass: a function's first shape contract as the later of an overload pair, its index + 1 (Binding.ShapeContracts.cs).
 
     internal void Resize(int length)
     {
         this.Symbols.Grow(length);
         this.Parameters.Grow(length);
+        this.Receivers.Grow(length);
+        this.EnumConstructions.Grow(length);
+        this.CopyDeclarations.Grow(length);
+        this.CopyByType.Grow(length);
         this.Scopes.Grow(length);
         this.Documents.Grow(length);
         this.AssociatedInference.Grow(length);
+        this.OriginAtoms.Grow(length);
+        this.OpenOrigins.Grow(length);
+        this.AssociatedOrigins.Grow(length);
+        this.ShapeContractHeads.Grow(length);
+        this.InheritedOriginTypes.Grow(length);
+        this.DeferredConstraints.Grow(length);
+        this.Matches.Grow(length);
+        this.Adaptations.Grow(length);
+        this.ObjectErasures.Grow(length);
     }
 
     // The library's columns start at their stated slots (KimiLibrarySize: no program row lands in them).
@@ -277,34 +306,79 @@ internal struct NodeColumns
     {
         this.Symbols.Reserve(stated.Declarations);
         this.Parameters.Reserve(stated.Parameters);
+        this.Receivers.Reserve(stated.Receivers);
+        this.EnumConstructions.Reserve(stated.EnumConstructions);
+        this.CopyDeclarations.Reserve(stated.CopyDeclarations);
+        this.CopyByType.Reserve(stated.CopyByType);
+        this.InheritedOriginTypes.Reserve(stated.InheritedOriginTypes);
+        this.DeferredConstraints.Reserve(stated.DeferredConstraints);
+        this.Matches.Reserve(stated.Matches);
+        this.Adaptations.Reserve(stated.Adaptations);
         this.Scopes.Reserve(stated.Scopes);
+        this.OriginAtoms.Reserve(stated.OriginAtoms);
+        this.OpenOrigins.Reserve(stated.OpenOrigins);
+        this.AssociatedOrigins.Reserve(stated.AssociatedOrigins);
     }
 
-    internal readonly NodeColumns Renumbered(int length) => new()
+    // A kept family's column gives a renumbering an empty column over its spare arena; a stamped family's is handed over unmoved and
+    // emptied, its stamp kept (StampedColumn.Renumbered).
+    internal readonly NodeColumns Renumbered(int length)
     {
-        Symbols = this.Symbols.Renumbered(length),
-        Parameters = this.Parameters.Renumbered(length),
-        Scopes = this.Scopes.Renumbered(length),
-        Documents = this.Documents.Renumbered(length),
-        AssociatedInference = this.AssociatedInference.Renumbered(length),
-    };
+        var columns = new NodeColumns
+        {
+            Symbols = this.Symbols.Renumbered(length),
+            Parameters = this.Parameters.Renumbered(length),
+            Receivers = this.Receivers.Renumbered(length),
+            EnumConstructions = this.EnumConstructions.Renumbered(length),
+            CopyDeclarations = this.CopyDeclarations.Renumbered(length),
+            CopyByType = this.CopyByType.Renumbered(length),
+            Scopes = this.Scopes.Renumbered(length),
+            Documents = this.Documents.Renumbered(length),
+            AssociatedInference = this.AssociatedInference.Renumbered(length),
+            OriginAtoms = this.OriginAtoms.Renumbered(length),
+            OpenOrigins = this.OpenOrigins.Renumbered(length),
+            AssociatedOrigins = this.AssociatedOrigins.Renumbered(length),
+            ShapeContractHeads = this.ShapeContractHeads.Renumbered(length),
+            InheritedOriginTypes = this.InheritedOriginTypes.Renumbered(length),
+            DeferredConstraints = this.DeferredConstraints.Renumbered(length),
+            Matches = this.Matches.Renumbered(length),
+            Adaptations = this.Adaptations.Renumbered(length),
+            ObjectErasures = this.ObjectErasures.Renumbered(length),
+        };
+        return columns;
+    }
 
+    // A renumbering's moves have ended: the kept families clear their retired arenas; a stamped family's column was handed over unmoved
+    // (Renumbered) and retires nothing.
     internal readonly void Retire()
     {
         this.Symbols.Retire();
         this.Parameters.Retire();
+        this.Receivers.Retire();
+        this.EnumConstructions.Retire();
+        this.CopyDeclarations.Retire();
+        this.CopyByType.Retire();
         this.Scopes.Retire();
         this.Documents.Retire();
         this.AssociatedInference.Retire();
+        this.OriginAtoms.Retire();
+        this.OpenOrigins.Retire();
     }
 
+    // A kept family's row moves with its node; a stamped family's rows were handed over (Renumbered).
     internal readonly void Move(int from, ref NodeColumns target, int to)
     {
         this.Symbols.MoveTo(ref target.Symbols, from, to);
         this.Parameters.MoveTo(ref target.Parameters, from, to);
+        this.Receivers.MoveTo(ref target.Receivers, from, to);
+        this.EnumConstructions.MoveTo(ref target.EnumConstructions, from, to);
+        this.CopyDeclarations.MoveTo(ref target.CopyDeclarations, from, to);
+        this.CopyByType.MoveTo(ref target.CopyByType, from, to);
         this.Scopes.MoveTo(ref target.Scopes, from, to);
         this.Documents.MoveTo(ref target.Documents, from, to);
         this.AssociatedInference.MoveTo(ref target.AssociatedInference, from, to);
+        this.OriginAtoms.MoveTo(ref target.OriginAtoms, from, to);
+        this.OpenOrigins.MoveTo(ref target.OpenOrigins, from, to);
     }
 }
 
