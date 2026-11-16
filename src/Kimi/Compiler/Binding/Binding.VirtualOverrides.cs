@@ -1,5 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using System.Diagnostics.CodeAnalysis;
 using Kimi.Compiler.Parsing;
 using Kimi.Diagnostics;
 
@@ -16,7 +17,7 @@ public sealed partial class Binding
     private readonly VirtualOverrideRows virtualOverrides;
     // Single inheritance gives each original declaration one bound path per derived Type.
     // Duplicate checking and direct-base selection share this index; virtualOverrides retains the full contract.
-    private readonly Dictionary<(BindingSymbol Type, FunctionKoto Original), FunctionKoto> overrideEntries = new();
+    private readonly OverrideEntryRows overrideEntries;
     private readonly HashSet<BoundConstraint> virtualHeaderCommon = new(ReferenceEqualityComparer.Instance);
     private readonly HashSet<BoundConstraint> virtualHeaderCandidate = new(ReferenceEqualityComparer.Instance);
     private readonly ScratchBuffers<BoundConstraint> virtualHeaderScratch = new();
@@ -204,7 +205,7 @@ public sealed partial class Binding
             call.VirtualBaseLookupType = AdtDef.Base(receiver);
             for (var current = call.VirtualBaseLookupType; current is not null; current = AdtDef.Base(current))
             {
-                if (current.Symbol is { } symbol && this.overrideEntries.TryGetValue((symbol, original), out var implementation) &&
+                if (current.Symbol is { } symbol && OverrideEntryRows.TryGetValue((symbol, original), out var implementation) &&
                     this.virtualOverrides.TryGetValue(implementation, out var entry) && ReferenceEquals(this.MemberType(entry.Slot.DeclaringType, current), declaring))
                 {
                     // An invalid implementation remains selected; later proof checks must not fall back.
@@ -307,13 +308,13 @@ public sealed partial class Binding
             var slot = new VirtualSlot(first!, selection.DeclaringType!);
             this.virtualOverrides.Add(function, new(slot, self, selection.Path));
             var key = (typeSymbol, slot.Original);
-            if (this.overrideEntries.TryGetValue(key, out var previous))
+            if (OverrideEntryRows.TryGetValue(key, out var previous))
             {
                 this.FailOverride(function, BindingFailure.DuplicateOverride, new(OverrideFailureCause.DuplicateSlot, slot.Original) { Second = previous });
                 continue;
             }
 
-            this.overrideEntries.Add(key, function);
+            OverrideEntryRows.Add(key, function);
             if (IncompleteSignature(slot.Original) is { } prerequisite)
             {
                 this.CompleteDependent(function, prerequisite);
@@ -601,5 +602,34 @@ public sealed partial class Binding
 
         internal bool TryGetValue(FunctionKoto function, out VirtualOverride result)
             => (result = function.SyntaxOwner is { } table ? table.Hir.Families.VirtualOverrides.Get(function.SyntaxId, binding) : default) != default;
+    }
+
+    /// <summary>The `overrideEntries` family's one accessor (DECISIONS BU-220): a Type's implementations of its originals' slots, a composite
+    /// key (the Type symbol's declaration, the original) kept in the declaration's module's NodeColumns at its SyntaxId as a list scanned by
+    /// the original (an identity key, C-382), the list kept and emptied in place by each pass (ResetVirtualDeclarations). Its members keep
+    /// the names its readers use.</summary>
+    private readonly struct OverrideEntryRows(Binding binding)
+    {
+        internal FamilyRows<List<(FunctionKoto Original, FunctionKoto Implementation)>?> Values
+            => new(binding, static (table, _) => table.Hir.Families.OverrideEntries.Enumerate());
+
+        internal static void Add((BindingSymbol Type, FunctionKoto Original) key, FunctionKoto implementation)
+            => (HirTables.Of(key.Type.Declaration).Families.OverrideEntries.Ref(key.Type.Declaration.SyntaxId) ??= []).Add((key.Original, implementation));
+
+        internal static bool TryGetValue((BindingSymbol Type, FunctionKoto Original) key, [NotNullWhen(true)] out FunctionKoto? implementation)
+        {
+            var row = key.Type.Declaration.SyntaxOwner is { } table ? table.Hir.Families.OverrideEntries.Get(key.Type.Declaration.SyntaxId) : null;
+            for (var i = 0; row is not null && i < row.Count; i++)
+            {
+                if (ReferenceEquals(row[i].Original, key.Original))
+                {
+                    implementation = row[i].Implementation;
+                    return true;
+                }
+            }
+
+            implementation = null;
+            return false;
+        }
     }
 }

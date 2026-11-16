@@ -268,6 +268,7 @@ internal struct NodeColumns
     internal PagedColumn<BoundEnumConstruction?> EnumConstructions; // Kept: a construction expression's enum construction plan (Binding.Enums.cs).
     internal PagedColumn<BindingScope?> Scopes; // Kept: a node's scope (Binding.Scopes.cs).
     internal StampedColumn<Binding.VirtualOverride, Binding.PassCounter> VirtualOverrides; // Pass: an override's verified slot (Binding.VirtualOverrides.cs).
+    internal PagedColumn<List<(FunctionKoto Original, FunctionKoto Implementation)>?> OverrideEntries; // Kept: a Type's implementations by original, emptied each pass (Binding.VirtualOverrides.cs).
     internal PagedColumn<(SourceDocument Document, BindingScope? Scope)[]?> Documents; // Kept: Scopes' composite column, a module root's document scopes.
     internal PagedColumn<Binding.AssociatedInference?> AssociatedInference; // Kept: a conforming Type's inference batch (Binding.AssociatedInference.cs).
     internal PagedColumn<BoundOrigin?[]?> OriginAtoms; // Kept: a binder's Origin atoms, a KeyedRow by kind and slot (Binding.Origins.cs).
@@ -290,6 +291,7 @@ internal struct NodeColumns
         this.CopyByType.Grow(length);
         this.Scopes.Grow(length);
         this.Documents.Grow(length);
+        this.OverrideEntries.Grow(length);
         this.VirtualOverrides.Grow(length);
         this.AssociatedInference.Grow(length);
         this.OriginAtoms.Grow(length);
@@ -336,6 +338,7 @@ internal struct NodeColumns
             CopyByType = this.CopyByType.Renumbered(length),
             Scopes = this.Scopes.Renumbered(length),
             Documents = this.Documents.Renumbered(length),
+            OverrideEntries = this.OverrideEntries.Renumbered(length),
             VirtualOverrides = this.VirtualOverrides.Renumbered(length),
             AssociatedInference = this.AssociatedInference.Renumbered(length),
             OriginAtoms = this.OriginAtoms.Renumbered(length),
@@ -363,6 +366,7 @@ internal struct NodeColumns
         this.CopyByType.Retire();
         this.Scopes.Retire();
         this.Documents.Retire();
+        this.OverrideEntries.Retire();
         this.AssociatedInference.Retire();
         this.OriginAtoms.Retire();
         this.OpenOrigins.Retire();
@@ -379,6 +383,7 @@ internal struct NodeColumns
         this.CopyByType.MoveTo(ref target.CopyByType, from, to);
         this.Scopes.MoveTo(ref target.Scopes, from, to);
         this.Documents.MoveTo(ref target.Documents, from, to);
+        this.OverrideEntries.MoveTo(ref target.OverrideEntries, from, to);
         this.AssociatedInference.MoveTo(ref target.AssociatedInference, from, to);
         this.OriginAtoms.MoveTo(ref target.OriginAtoms, from, to);
         this.OpenOrigins.MoveTo(ref target.OpenOrigins, from, to);

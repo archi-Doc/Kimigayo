@@ -70,7 +70,11 @@ public sealed partial class Binding
         this.virtualDeclarations.Clear();
         this.virtualEffectBounds.Clear();
         this.virtualDeclarationFailures?.Clear();
-        this.overrideEntries.Clear();
+        foreach (var entries in this.overrideEntries.Values)
+        {
+            entries!.Clear();
+        }
+
         this.overrideFailures?.Clear();
         this.baseCallFailures?.Clear();
     }
