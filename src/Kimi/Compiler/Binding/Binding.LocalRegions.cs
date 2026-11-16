@@ -8,8 +8,8 @@ namespace Kimi.Compiler;
 // The local-region graph (SPEC 15.3.6, 15.4.4): the region slots of a reassignable local's Type, a var local's, a var Pattern binding's
 // or a var for slot's (their declarations are IsRegionOwner's; LocalRegionSlot), the contract bounds recorded on them, never a current
 // value (RecordLocalRegionBound, RecordRegionBound), their finite sources (LocalRegionSources) and the value that brought a source in
-// (LocalRegionSourceUse), and the relations judged through those sources (RegionContains, JudgeLocalRegion). The Types that carry the
-// regions are Binding.LocalRegions.Types.cs's.
+// (LocalRegionSourceUse), and the relations judged through those sources (RegionContains, JudgeLocalRegion). A row is read through
+// one find (Region) and written through one create (WrittenRegion). The Types that carry the regions are Binding.LocalRegions.Types.cs's.
 public sealed partial class Binding
 {
     private readonly Dictionary<BoundOrigin, LocalRegion> localRegions = new(ReferenceEqualityComparer.Instance);
@@ -59,7 +59,7 @@ public sealed partial class Binding
     // The graph stores contract bounds, never a current value. Ownership separately follows the definitions reaching each use.
     internal ReadOnlySpan<BoundOrigin> LocalRegionSources(BoundOrigin origin)
     {
-        if (!this.localRegions.TryGetValue(origin, out var region))
+        if (this.Region(origin) is not { } region)
         {
             return [];
         }
@@ -85,7 +85,7 @@ public sealed partial class Binding
                     continue;
                 }
 
-                if (this.localRegions.TryGetValue(current, out var parents))
+                if (this.Region(current) is { } parents)
                 {
                     for (var i = parents.Parents.Count - 1; i >= 0; i--)
                     {
@@ -114,7 +114,7 @@ public sealed partial class Binding
     }
 
     internal bool HasRegionBounds(BoundOrigin origin)
-        => IsLocalRegion(origin) || (this.localRegions.TryGetValue(origin, out var region) && region.Parents.Count != 0);
+        => IsLocalRegion(origin) || this.Region(origin) is { Parents.Count: not 0 };
 
     // The value that brought `source` into the region graph `region` reads, by LocalRegionSources' walk (each parent read through
     // OriginAtUse at its bound's value, meet operands expanded, a meet `region` through its region operands): the value of the bound whose
@@ -144,7 +144,7 @@ public sealed partial class Binding
                 continue;
             }
 
-            if (this.localRegions.TryGetValue(current, out var bounds))
+            if (this.Region(current) is { } bounds)
             {
                 for (var i = 0; i < bounds.Parents.Count; i++)
                 {
@@ -187,14 +187,26 @@ public sealed partial class Binding
         this.regionVisited.Clear();
     }
 
+    // The one find of a target Origin's row; null when no bound or slot was recorded on it.
+    private LocalRegion? Region(BoundOrigin origin) => this.localRegions.TryGetValue(origin, out var region) ? region : null;
+
+    // A write's row: the one the find returns, else a new row, so an Origin has one row.
+    private LocalRegion WrittenRegion(BoundOrigin origin)
+    {
+        if (this.Region(origin) is { } region)
+        {
+            return region;
+        }
+
+        region = new();
+        this.localRegions.Add(origin, region);
+        return region;
+    }
+
     private BoundOrigin LocalRegionSlot(Koto owner, int slot)
     {
         var origin = this.OriginAtom(owner, OriginKind.Inference, slot);
-        if (!this.localRegions.ContainsKey(origin))
-        {
-            this.localRegions.Add(origin, new());
-        }
-
+        _ = this.WrittenRegion(origin);
         return origin;
     }
 
@@ -235,11 +247,7 @@ public sealed partial class Binding
             return;
         }
 
-        if (!this.localRegions.TryGetValue(target, out var region))
-        {
-            this.localRegions.Add(target, region = new());
-        }
-
+        var region = this.WrittenRegion(target);
         if (!region.Parents.Contains(source))
         {
             region.Parents.Add(source);
