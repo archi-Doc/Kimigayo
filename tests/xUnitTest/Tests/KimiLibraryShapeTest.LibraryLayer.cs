@@ -70,14 +70,15 @@ public partial class KimiLibraryShapeTest
         SameLayerAsTheEmptyPrograms(string.Empty);
     }
 
-    // The epoch rule's invariant: ResetCapabilities, which begins every pass (Binding.Pass), ends the capability epoch, so no entry of a
-    // per-epoch memo is current after it. Every component summary is stale (its Epoch is not summaryEpoch); Enumerate's kept pool is
-    // free (enumerateKeptPoolNext 0: the kept lists are enumerateKept's, review C1); every capability work holds CapabilityWork.Reset's
-    // state; every other epoch store is empty. Reset leaves a work's Site and Fact (review N2). Site is the limit site of the work's own
-    // Closure signature, its Use that signature's binder and its Needed flag cleared by ResetCapabilities (ClearNeededSites); only the
-    // work's own evaluation reads it. Fact, the U fact of its last Unknown, is payload no fixpoint compares (design-r2 Amendment 4):
-    // each evaluation rewrites it, but a consumer that requests the work while it waits in the queue reads it beside the reset Unknown
-    // (RequestCapability's read of the queued work), so it is not asserted here (PLAN G949 S1-0b r2's report).
+    // The epoch rule's invariant: ResetCapabilities, which begins every pass (its one call is ResetPass's, which Bind runs first in each
+    // pass: ArchitectureRulesTest's row), ends the capability epoch, so no entry of a per-epoch memo is current after it. Every component
+    // summary is stale (its Epoch is not summaryEpoch); Enumerate's kept pool is free (enumerateKeptPoolNext 0: the kept lists are
+    // enumerateKept's, review C1); every capability work holds CapabilityWork.Reset's state; every other epoch store is empty. Reset
+    // leaves a work's Site and Fact (review N2). Site is the limit site of the work's own Closure signature, its Use that signature's
+    // binder and its Needed flag cleared by ResetCapabilities (ClearNeededSites); only the work's own evaluation reads it. Fact, the U
+    // fact of its last Unknown, is payload no fixpoint compares (design-r2 Amendment 4): each evaluation rewrites it, but a consumer that
+    // requests the work while it waits in the queue reads it beside the reset Unknown (RequestCapability's read of the queued work), for
+    // record selection only, never a verdict; so it is not asserted here until G949 S1-e's Reset empties it (S1-0b r2's review, Finding 3).
     [Fact]
     public void TheCapabilityMemosEndWithTheirEpoch()
     {
