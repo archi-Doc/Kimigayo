@@ -1548,6 +1548,158 @@ public sealed partial class MirBorrowsTest
                 e = pickR(w0, i@ref)
                 kk = 2
             """,
+        ["tryErrLocal"] = """
+            struct Full
+                public init() => ()
+            func reserve(x: uniq/i32) -> Result<uniq/i32, Full> => .Ok(x)
+            func tryErrLocal() -> Result<(), Full>
+                var a: i32 = 0
+                let w = try reserve(a@uniq)
+                w@follow = 1
+                return .Ok(())
+            """,
+        ["tryErrMatchLocal"] = """
+            struct Full
+                public init() => ()
+            func reserve(x: uniq/i32) -> Result<uniq/i32, Full> => .Ok(x)
+            func tryErrMatchLocal() -> Result<(), Full>
+                var a: i32 = 0
+                match reserve(a@uniq)@move
+                    .Ok(let w) => w@follow = 1
+                    .Err(let e) => return .Err(e@move)
+                return .Ok(())
+            """,
+        ["tryErrLetLocal"] = """
+            struct Full
+                public init() => ()
+            func reserve(x: uniq/i32) -> Result<uniq/i32, Full> => .Ok(x)
+            func tryErrLetLocal() -> Result<(), Full>
+                var a: i32 = 0
+                let r = reserve(a@uniq)
+                match r@move
+                    .Ok(let w) => w@follow = 1
+                    .Err(let e) => return .Err(e@move)
+                return .Ok(())
+            """,
+        ["tryErrExposedE"] = """
+            struct Full
+                public init() => ()
+            func reserve(x: uniq/i32) -> Result<uniq/i32, Full> => .Ok(x)
+            func touch(e: uniq/Full) => ()
+            func tryErrExposedE() -> Result<(), Full>
+                var a: i32 = 0
+                match reserve(a@uniq)@move
+                    .Ok(let w) => w@follow = 1
+                    .Err(var e)
+                        touch(e@uniq)
+                        return .Err(e@move)
+                return .Ok(())
+            """,
+        ["tryErrParamOk"] = """
+            struct Full
+                public init() => ()
+            func reserve(x: uniq/i32) -> Result<uniq/i32, Full> => .Ok(x)
+            func tryErrParamOk(a: uniq/i32) -> Result<(), Full>
+                let w = try reserve(a)
+                w@follow = 1
+                return .Ok(())
+            """,
+        ["tryErrFreshOk"] = """
+            struct Full
+                public init() => ()
+            func reserve(x: uniq/i32) -> Result<uniq/i32, Full> => .Ok(x)
+            func tryErrFreshOk() -> Result<(), Full>
+                var a: i32 = 0
+                match reserve(a@uniq)@move
+                    .Ok(let w) => w@follow = 1
+                    .Err(_) => return .Err(Full.init())
+                return .Ok(())
+            """,
+        ["caseHoldsUseBad"] = """
+            func lend(x: uniq/i32) -> Result<(), uniq/i32> => .Err(x)
+            func caseHoldsUseBad() -> i32
+                var a: i32 = 0
+                match lend(a@uniq)@move
+                    .Ok(_) => return 0
+                    .Err(let e)
+                        a = 2
+                        e@follow = 3
+                        return 1
+            """,
+        ["caseHoldsUseOk"] = """
+            func lend(x: uniq/i32) -> Result<(), uniq/i32> => .Err(x)
+            func caseHoldsUseOk() -> i32
+                var a: i32 = 0
+                match lend(a@uniq)@move
+                    .Ok(_) => return 0
+                    .Err(let e)
+                        e@follow = 3
+                        a = 2
+                        return 1
+            """,
+        ["casePartHoldsBad"] = """
+            func lend2(x: uniq/i32) -> Result<(), (uniq/i32, i32)> => .Err((x, 3))
+            func casePartHoldsBad() -> i32
+                var a: i32 = 0
+                match lend2(a@uniq)@move
+                    .Ok(_) => return 0
+                    .Err(let e)
+                        let n = e.1
+                        a = 2
+                        return n
+            """,
+        ["caseBuiltLocal"] = """
+            struct Full
+                public init() => ()
+            func caseBuiltLocal(c: bool) -> Result<(), Full>
+                var a: i32 = 0
+                var r: Result<uniq/i32, Full> = .Err(Full.init())
+                if c => r = .Ok(a@uniq)
+                match r@move
+                    .Ok(let w) => w@follow = 1
+                    .Err(let e) => return .Err(e@move)
+                return .Ok(())
+            """,
+        ["callFieldSafeBad"] = """
+            struct RS {s}
+                public let r: ref/i32 during s
+                public let n: i32
+                public init(r: ref/i32 during s, n: i32)
+                    self.r = r
+                    self.n = n
+            func mk(r: ref/i32) -> RS => RS.init(r: r, n: 3)
+            func callFieldSafeBad() -> i32
+                var a: i32 = 1
+                let s = mk(a@ref)
+                let n = s.n
+                a = 2
+                return n
+            """,
+        ["tryErrRefRead"] = """
+            func count(x: uniq/i32) -> Result<uniq/i32, i32> => .Ok(x)
+            func tryErrRefRead() -> i32
+                var a: i32 = 0
+                let r = count(a@uniq)
+                match r
+                    .Ok(_) => return 0
+                    .Err(let e) => return e@follow
+            """,
+        ["caseOwnValueBad"] = """
+            func keep(slot: raw/(raw/u8), value: raw/u8) => ()
+            func mk(x: uniq/i32, v: u64) -> Result<uniq/i32, u64> => .Err(v)
+            func caseOwnValueBad() -> u64
+                var kk: u8 = 1
+                let r = kk@uniq
+                var spare: raw/u8 = r@follow@raw
+                var w: u64 = 3
+                keep(w@raw@raw/(raw/u8), spare)
+                var a: i32 = 0
+                match mk(a@uniq, w)@move
+                    .Ok(_) => return 0
+                    .Err(let e)
+                        kk = 2
+                        return e
+            """,
     };
 
     // The coverage table's rows (a5v-u6-state.md), by exposure.
@@ -1617,7 +1769,9 @@ public sealed partial class MirBorrowsTest
 
     // H's coverage table (a5v-u6flow-design.md, section 1 and R1.2), each row labelled from SPEC 15.6 Holders and Loans (O-230 Q1 (a),
     // O-364 (a): as written, a Scalar part's Copy included), 15.6.4 and 5.7 Calls; rows marked "with G935's rule R" are invalid and keep
-    // today's acceptance until Binding retains an Origin-free input's own value (PLAN G935).
+    // today's acceptance until Binding retains an Origin-free input's own value (PLAN G935). The tryErr and case rows are the Case
+    // bound's (the owner's O-383 (b)): a value Moved out of a Case payload of a call's result carries the Loans the result holds through
+    // that Case, by the callee's declared result Type.
     [Theory]
     [InlineData("cpyOutBad", "cpyOutBad: kk = 2")] // I, z, a Copy of w (which carries r's Loan), is read after (15.6 Holders' Copy sentence; U6's F1)
     [InlineData("cpyOutOk", "")] // V
@@ -1680,9 +1834,37 @@ public sealed partial class MirBorrowsTest
     [InlineData("rvPutRNoKeepOk", "")] // V, the same with d read after and no keep: w0 carries nothing, so neither does its Copy in the temporary
     [InlineData("rvPutTROk", "")] // V, the spill before a borrow argument in a generic call (T = u64); d is not used after
     [InlineData("rvPickSpillOk", "")] // V, the spill in a call whose result is stored into an exposed local; e is not used after
+    [InlineData("tryErrLocal", "")] // V (the owner's O-383 (b)): the Err payload `try` Moves out of reserve's result carries none, Full holding no Loan
+    [InlineData("tryErrMatchLocal", "")] // V (O-383 (b)): the same by an explicit match, the result Moved whole into the Subject
+    [InlineData("tryErrLetLocal", "")] // V (O-383 (b)): the result Moved whole into a local first is still the call's result
+    [InlineData("tryErrExposedE", "")] // V (O-383 (b)): the payload carries none into an exposed binding either
+    [InlineData("tryErrParamOk", "")] // V, the control: the lender is a parameter's referent
+    [InlineData("tryErrFreshOk", "")] // V, the control: a fresh Err is returned
+    [InlineData("caseHoldsUseBad", "caseHoldsUseBad: a = 2")] // I, a Case whose payload Type holds the reference: e carries the result's Loan on a
+    [InlineData("caseHoldsUseOk", "")] // V
+    [InlineData("casePartHoldsBad", "casePartHoldsBad: a = 2")] // I (O-364 (a) within the Case): a Scalar beside the reference in the payload, copied out of the binding
+    [InlineData("caseBuiltLocal", "caseBuiltLocal: var a: i32 = 0")] // I (O-364 (a); O-383 (b) bounds a call's result only): a value the body built, its Err payload returned past a's end
+    [InlineData("callFieldSafeBad", "callFieldSafeBad: a = 2")] // I (O-364 (a)): a struct Field of a call's result, which O-383 (b) does not bound
+    [InlineData("tryErrRefRead", "tryErrRefRead: var a: i32 = 0")] // I (O-364 (a)): the boundary, a payload read through a reference to the result, not Moved out of its own Place
+    [InlineData("caseOwnValueBad", "")] // I; kk = 2 with G935's rule R read per Case: the Err Case, u64, then holds v's own value, which the payload Type does not show
     public void AValueReadFromAHolderCarriesItsLoansWhateverItsType(string form, string expected)
     {
         var c = MirBuildTest.Compile(ExposedShapes + FlowForms[form] + "\npublic func main() => ()\n");
         Assert.Equal($"{form}: [{expected}]", $"{form}: [{string.Join("; ", Problems(c, Analyze(c), LoanCodes))}]");
+    }
+
+    // The Case bound's fact, which locals hold only calls' results (MirBorrows.Holders' Mixing), is linear in the body: a call's result
+    // Moved whole through N locals, then its Err payload Moved out and returned past the lender's end (N = 16, 32, 64; valid by the
+    // owner's O-383 (b) at every N, which Measured asserts).
+    [Fact]
+    public void ACallsResultMovedWholeStaysOneInLinearWork()
+    {
+        const string Head = "struct Full\n    public init() => ()\nfunc reserve(x: uniq/i32) -> Result<uniq/i32, Full> => .Ok(x)\n" +
+            "func shape() -> Result<(), Full>\n    var a: i32 = 0\n    let r0 = reserve(a@uniq)\n«N:    let r{1} = r{0}@move\n»";
+        const string Tail = "@move\n        .Ok(let w) => w@follow = 1\n        .Err(let e) => return .Err(e@move)\n    return .Ok(())\n" +
+            "public func main() => ()\n";
+        long[] work = [.. new[] { 16, 32, 64 }.Select(n => Measured(Expand(Head, n, 0) + $"    match r{n}" + Tail).Work)];
+        output.WriteLine($"N 16, 32, 64: work {string.Join(", ", work)}");
+        Assert.True(Grows(work, 3), $"work {string.Join(", ", work)}");
     }
 }

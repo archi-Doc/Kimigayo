@@ -4,8 +4,9 @@ namespace Kimi.Compiler.Mir;
 
 // A5's holders of a view (A3 3): the holder table, E in slot 0, the flow holders, whose states cross heads, then the chain-local ones,
 // with each Loan's reservation holder and named holder mapped to slots. A local is a holder when its case Type may hold a Loan, it is
-// exposed (Holding), or a store of the body gives it a value read from a holder (Flowing), the least such set. A holder a kept Drop past
-// the destruction walk's bound drops has a drop slot right after its own, in its region, whose state is always empty: drop-liveness, the
+// exposed (Holding), or a store of the body gives it a value read from a holder (Flowing), the least such set; a local that holds only
+// calls' results (Returned) gives none from a Case payload that holds no Loan (MirBorrows.Values' Unheld). A holder a kept Drop past the
+// destruction walk's bound drops has a drop slot right after its own, in its region, whose state is always empty: drop-liveness, the
 // liveness that only such a Drop gives (MirBorrows.Liveness; DECISIONS R4-M153).
 // Must not carry, end or check a Loan (MirBorrows.Solve, MirBorrows.Endings, MirBorrows.Checks).
 internal sealed partial class MirBorrows
@@ -14,11 +15,24 @@ internal sealed partial class MirBorrows
     private readonly List<int> flowQueue = []; // Flowing's worklist: the holders whose edges are still to follow.
     private int[] flowFirst = []; // By local: its first edge in flowEdges, -1 for none (Flowing).
     private int[] flowEdges = []; // Flowing's edges, two entries each: the local a store gives the value, and its source's next edge.
+    private int[] mixFirst = []; // By local: its first edge in mixEdges, -1 for none (Mixing).
+    private int[] mixEdges = []; // Mixing's edges, two entries each: the local a whole Move or Copy gives the value, and its source's next edge.
+    private bool[] mixed = []; // By local: whether it may hold a value that is no call's result (Mixing).
+    private bool mixedKnown; // Whether mixed is the view's (Returned); Run resets it per view.
     private int[] slots = []; // Each local's holder slot, -1 for none; E is slot 0.
     private int[] dropSlots = []; // By local: its drop slot, -1 for none; set where the view has drop slots.
     private bool[] reserves = []; // By slot: whether a two-phase Loan is issued into it, its reservation holder.
     private int holderCount; // The slots, E's included.
     private int flowCount; // The slots a head stores: E and the flow holders.
+
+    // An edge of a linked adjacency (first by source local; two entries per edge: its target and the source's next edge); the edges after it.
+    private static int Linked(ref int[] edges, int[] first, (int From, int To) edge, int count)
+    {
+        MirDataflow.Grow(ref edges, 2 * (count + 1));
+        (edges[2 * count], edges[(2 * count) + 1]) = (edge.To, first[edge.From]);
+        first[edge.From] = count;
+        return count + 1;
+    }
 
     // The holders of the view (A3 3): E in slot 0, then the flow holders, whose states cross heads (MirMoveData's flow roots and the roots a
     // direct Loan or address names, whose states the closure and the Loans' content read anywhere), then the chain-local ones, a holder's
@@ -90,7 +104,8 @@ internal sealed partial class MirBorrows
     // gives it a value read from a holder: an Assign into its own Place (through no borrow or raw Deref, Through) whose rvalue's value is its
     // operands' (Value: Keeps, or an aggregate, a Closure's environment included), or a returning Call's destination, whose operands are
     // the inputs its result record retains (Binding's retention, 15.6.4: decided per argument; MirBorrows.CallRows' Planned, a call
-    // receiver input at the callee operand), one of the operands a Place rooted at a holder. The least such set over Holding's: an edge per
+    // receiver input at the callee operand), one of the operands a Place rooted at a holder whose read carries what the holder carries
+    // (none through a Case payload the Case bound empties, MirBorrows.Values' Unheld). The least such set over Holding's: an edge per
     // such store and operand from the operand's root to the destination, then a worklist from the holders, each edge once, linear in the
     // body. A local no such store reaches carries nothing at every point, so it has no slot.
     private void Flowing()
@@ -157,18 +172,95 @@ internal sealed partial class MirBorrows
         this.Work += this.body.Statements.Length + this.body.Blocks.Length + edges;
     }
 
-    // Flowing's edge from an operand's root to the local a store gives its value (none from a constant or a static); the edges after it.
+    // Flowing's edge from an operand's root to the local a store gives its value (none from a constant, a static or a Place whose read
+    // carries nothing, Unheld); the edges after it.
     private int Flows(in MirOperand operand, int to, int edges)
+        => operand.Kind == MirOperandKind.Const || operand.Place.Root < 0 || this.Unheld(operand.Place)
+            ? edges : Linked(ref this.flowEdges, this.flowFirst, (operand.Place.Root, to), edges);
+
+    // Whether a local holds only calls' results (SPEC 15.6 Holders' Case-payload sentence; the owner's O-383 (b)): every value the body
+    // stores in it is one (Mixing, computed once per view at the first Place that asks, so a body without such a Place pays nothing).
+    private bool Returned(int local)
     {
-        if (operand.Kind == MirOperandKind.Const || operand.Place.Root < 0)
+        if (!this.mixedKnown)
         {
-            return edges;
+            this.Mixing();
         }
 
-        MirDataflow.Grow(ref this.flowEdges, 2 * (edges + 1));
-        (this.flowEdges[2 * edges], this.flowEdges[(2 * edges) + 1]) = (to, this.flowFirst[operand.Place.Root]);
-        this.flowFirst[operand.Place.Root] = edges;
-        return edges + 1;
+        return !this.mixed[local];
+    }
+
+    // The locals that may hold a value that is no call's result, the least such set: an argument (the caller's value), an exposed holder (a
+    // pointer the body formed may write its bytes, MirBorrows.Loans' Exposed), a local an Assign stores into (through no borrow or raw
+    // Deref, Through) other than whole from the whole of another local by a Move or Copy, a local a Call returns into a part of, and a local
+    // such a whole Move or Copy gives the value of one of them: a call's result stays one while it is Moved or Copied whole from local to
+    // local. An edge per whole Move or Copy, then a worklist from the others, each edge once, linear in the body.
+    private void Mixing()
+    {
+        var locals = this.body.Locals;
+        MirDataflow.Grow(ref this.mixed, locals.Length);
+        MirDataflow.Grow(ref this.mixFirst, locals.Length);
+        Array.Fill(this.mixFirst, -1, 0, locals.Length);
+        for (var i = 0; i < locals.Length; i++)
+        {
+            this.mixed[i] = locals[i].Kind == MirLocalKind.Arg || this.Exposed(i);
+        }
+
+        var edges = 0;
+        for (var b = 0; b < this.body.Blocks.Length; b++)
+        {
+            ref readonly var data = ref this.body.Blocks[b];
+            for (var s = data.Start; s < data.Start + data.Count; s++)
+            {
+                ref readonly var statement = ref this.body.Statements[s];
+                if (statement is { Kind: MirStatementKind.Assign, Place.Root: >= 0 and var to } && !this.mixed[to] && !this.Through(statement.Place))
+                {
+                    var from = statement.Place.Projection == 0 ? this.Whole(statement.Rvalue) : -1;
+                    edges = from >= 0 ? Linked(ref this.mixEdges, this.mixFirst, (from, to), edges) : edges;
+                    this.mixed[to] = from < 0;
+                }
+            }
+
+            if (data.Terminator is { Kind: MirTerminatorKind.Call, Target: >= 0, Place: { Root: >= 0 and var into, Projection: not 0 } part } && !this.Through(part))
+            {
+                this.mixed[into] = true;
+            }
+        }
+
+        this.flowQueue.Clear();
+        for (var i = 0; i < locals.Length; i++)
+        {
+            if (this.mixed[i] && this.mixFirst[i] >= 0)
+            {
+                this.flowQueue.Add(i);
+            }
+        }
+
+        while (this.flowQueue.Count > 0)
+        {
+            var from = this.flowQueue[^1];
+            this.flowQueue.RemoveAt(this.flowQueue.Count - 1);
+            for (var e = this.mixFirst[from]; e >= 0; e = this.mixEdges[(2 * e) + 1])
+            {
+                var to = this.mixEdges[2 * e];
+                if (!this.mixed[to])
+                {
+                    this.mixed[to] = true;
+                    this.flowQueue.Add(to);
+                }
+            }
+        }
+
+        this.mixedKnown = true;
+        this.Work += locals.Length + this.body.Statements.Length + this.body.Blocks.Length + edges;
+    }
+
+    // The local whose whole value an rvalue is by a Move or Copy (an Adapt's case-selected one), or -1.
+    private int Whole(in MirRvalue assigned)
+    {
+        var rvalue = assigned.Kind == MirRvalueKind.Adapt ? cases.Adapt(assigned, out _) : assigned;
+        return rvalue.Kind == MirRvalueKind.Use &&
+            this.body.Operands[rvalue.Start] is { Kind: MirOperandKind.Copy or MirOperandKind.Move, Place: { Projection: 0, Root: >= 0 and var from } } ? from : -1;
     }
 
     // A holder slot's local, or a drop slot's holder's (the drop list keeps it).

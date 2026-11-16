@@ -7,8 +7,9 @@ namespace Kimi.Compiler.Mir;
 // A5's values on a state (A3 5's val and issued, with E3; SPEC 15.6 Addresses, 5.2.2, 5.7): what an rvalue, an operand or a Place carries,
 // a root's state, and a borrow's parents and Loan, over the one step walk of MirSteps' steps (Prefix), which a store's destination also
 // reads (MirBorrows.Flow), and the value a Deref goes through (PointerOf); a raw Ref issues its address, a `during self` layer's read
-// carries what `@raw` of its storage carries (Layered). Must not decide which holders a set reaches or a call's store writes
-// (MirBorrows.Reach).
+// carries what `@raw` of its storage carries (Layered); a Case payload of a holder that holds only calls' results carries nothing where
+// the Case's payload Type holds no Loan (Unheld; SPEC 15.6 Holders' Case-payload sentence, the owner's O-383 (b)). Must not decide which
+// holders a set reaches or a call's store writes (MirBorrows.Reach) or which locals hold only calls' results (MirBorrows.Holders).
 internal sealed partial class MirBorrows
 {
     // val(rv) (A3 5) and the Loans it issues: an operand's, a Ref's (a raw one's and a Storage's its parents and address), the union of an aggregate's
@@ -74,11 +75,41 @@ internal sealed partial class MirBorrows
         return this.slots[root] >= 0 ? this.Set(state[this.slots[root]]) : 0;
     }
 
-    // val(X) = content^k(σ(root(X))) over its k Derefs: the step walk's layer over all its steps, read as Layered reads it.
+    // val(X) = content^k(σ(root(X))) over its k Derefs: the step walk's layer over all its steps, read as Layered reads it; none where the
+    // Case bound empties it (Unheld).
     private int Read(ulong[] state, MirPlace place)
     {
+        if (this.Unheld(place))
+        {
+            return 0;
+        }
+
         var (layer, parents) = this.Prefix(state, place.Root, this.placeSteps.Walk(place, reborrow: false, ref this.walk));
         return this.Layered(place.Root, place.Projection, layer, parents);
+    }
+
+    // The Case bound (SPEC 15.6 Holders' Case-payload sentence; the owner's O-383 (b)): whether a Place is, or lies in, a Case payload
+    // directly of a local that holds only calls' results (MirBorrows.Holders' Returned) whose payload Type, the Case's in the callee's
+    // declared result Type as the view reads it, holds no Loan (Holds): the result holds none through that Case, so a value Moved or
+    // Copied out of the payload carries none, whatever the result holds through another Case. A Field or an element of the result, a
+    // payload read through a reference and any other holder's parts carry what the holder carries (O-364 (a)). Flowing asks it of an
+    // edge's operand and Read of every Place.
+    private bool Unheld(MirPlace place)
+    {
+        if (place.Root < 0 || place.Projection == 0)
+        {
+            return false;
+        }
+
+        var projections = this.body.Projections;
+        var first = place.Projection;
+        while (projections[first].Prefix != 0)
+        {
+            first = projections[first].Prefix;
+        }
+
+        return projections[first].Kind == MirProjectionKind.Downcast && !this.Holds(cases.TypeOf(place with { Projection = first }), out _) &&
+            this.Returned(place.Root);
     }
 
     // A raw address's value, a raw Ref's and a Storage's alike (O-92 (a)): the parents of its Place's step walk (a Storage's with the
