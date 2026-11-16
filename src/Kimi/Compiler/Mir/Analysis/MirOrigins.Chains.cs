@@ -124,10 +124,10 @@ internal sealed partial class MirOrigins
     // layer's (a Field initializer's Ref); Fixed atoms are shared.
     private bool InLayer(int tail, int head, int row) => row >= 0 ? row >= this.slice.LayerStart : this.slice.InLayer(tail) || this.slice.InLayer(head);
 
-    // A meet's operand count and, resolved at a site, its operand's node (OriginChains.Relate, MeetNode's rule).
+    // A meet's operand count and its operand's node, as the view holds it (TyCtxt.MeetOperand; OriginChains.Relate, MeetNode's rule).
     private int MeetOperands(int node) => this.slice.Atoms[node].Atom is { Kind: OriginKind.Intersection } meet ? meet.Operands.Count : 0;
 
-    private int MeetOperand(int node, int index, SourceRef site) => types.OriginAtom(this.key, this.slice.Atoms[node].Atom.Operands[index], site);
+    private int MeetOperand(int node, int index, SourceRef site) => types.MeetOperand(this.key, node, index, site);
 
     // SPEC 15.6.5: a relation between two fixed Origins is Proven only when the premises derive it, one oracle test under the class's
     // condition; an Equality row failing in both directions is one problem with Equality set, the second direction failing right after the
