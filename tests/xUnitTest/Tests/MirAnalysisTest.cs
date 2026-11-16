@@ -1,5 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using System.Reflection;
 using System.Text;
 using System.Text.RegularExpressions;
 using Kimi;
@@ -896,6 +897,31 @@ public sealed class MirAnalysisTest
         var analysis = new MirAnalysis(c.Types);
         var program = analysis.Run(new MirBuilder(c).Build(c.SourceModules.Length), c.SourceModules.Length);
         Assert.Throws<InvalidOperationException>(() => analysis.Step(program, c.SourceModules.Length));
+    }
+
+    // PLAN G951 U2-H (U1 review N7; the Back's C-378 A2): Compilation.JudgedWithoutProblem, hover's ownership line, requires A2's entry of
+    // the body (MirDropTable.Holds): a body a lookup built after the version's steps and nothing stepped has no A1 or A2 facts, so it is not
+    // judged without a problem; once the one stepping path steps it, it is. An explicit builder with the program's root range builds X3 and
+    // its analysis runs; a lookup then builds Stopwatch.reset, which X3 never reaches; the premise (a body built after the run, not held)
+    // is asserted before the judgment is read; the program stands for the compilation's latest analysis's, injected as R5-M183's hover rows
+    // inject a fact. Fail-before: the judgment read the body's existence, findings, records and problems only, so the unstepped body read
+    // as judged. X3 as above.
+    [Fact]
+    public void ABodyBuiltButNotSteppedIsNotJudged()
+    {
+        var c = MirBuildTest.Compile(LazySource("X3"));
+        var reset = MirBuildTest.Library(new MirBuilder(c).Build(SyntaxTable.LibraryModule + 1), MirBodyKind.Fn, "reset");
+        var analysis = new MirAnalysis(c.Types);
+        var program = analysis.Run(new MirBuilder(c).Build(c.SourceModules.Length), c.SourceModules.Length);
+        var count = program.Bodies.Length;
+        var body = program[reset]!;
+        Assert.Equal(count, body.Ordinal);
+        Assert.False(program.Drops.Holds(body.Ordinal));
+        typeof(Compilation).GetField("mir", BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(c, program);
+        Assert.False(c.JudgedWithoutProblem(reset.Decl!));
+        analysis.Step(program, c.SourceModules.Length);
+        Assert.True(program.Drops.Holds(body.Ordinal));
+        Assert.True(c.JudgedWithoutProblem(reset.Decl!));
     }
 
     // PLAN G950 (design §R1.1 (b), the implementation review's M1): the library step's problems (step 2's A1 and A2) are kept as data and

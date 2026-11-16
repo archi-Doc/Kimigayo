@@ -610,13 +610,13 @@ public sealed partial class MirBuildTest(ITestOutputHelper output)
         return c;
     }
 
+    // The key of a library body an eager build built, by its kind and definition's name.
+    internal static MirDefKey Library(MirProgram program, MirBodyKind kind, string name)
+        => program.Bodies.ToArray().Single(x => x.Source.IsLibrary && x.Key.Kind == kind && x.Key.Decl?.Name == name).Key;
+
     // A Fn callee of a library body an eager build built whose function has no body (an intrinsic, an import).
     private static MirCallee Bodyless(MirProgram eager) => eager.Bodies.ToArray().Where(static x => x.Source.IsLibrary).SelectMany(static x => x.Blocks.ToArray())
         .Select(static x => x.Terminator.Callee).First(x => x is { Kind: MirCalleeKind.Fn, Arg: 0, Symbol: not null } && eager.Callee(x) is null);
-
-    // The key of a library body an eager build built, by its kind and definition's name.
-    private static MirDefKey Library(MirProgram program, MirBodyKind kind, string name)
-        => program.Bodies.ToArray().Single(x => x.Source.IsLibrary && x.Key.Kind == kind && x.Key.Decl?.Name == name).Key;
 
     // The body of a function of a source, built without validator findings.
     private static MirBody Body(string source, string name)
