@@ -228,7 +228,11 @@ public sealed partial class Binding
     // a Field or a Type argument included"; PLAN G583): its holding instance decides its step, never its members, and the walk meets the
     // layers an input holds at its own address by ByValue, as OwnLayers lists them. A layer whose content no Type states (Holds Any: one a
     // declaration wrote, TyCtxt.RawStated) addresses storage its pointee Type does not describe (SPEC 5.7 Calls, 5.2; DECISIONS BU-46), so
-    // the storage it writes past it gets a hold of no Type, which the hold walk reads as a part no Type states (Held: Loans, never Free).
+    // the storage it writes past it gets a hold of no Type, which the hold walk reads as a part no Type states (Held: Loans and Any, rule A's
+    // rows whole). So does a layer stating no Origin in a Closure's environment (`Captured`, at any depth of a
+    // binding's Type: SPEC 5.7 Calls, "one the Closure states in its own Fields, as a declaration does"; C-352's C10), which the walk's
+    // state, not the binding's Type, knows: the environment's Types are the MIR locals' (DECISIONS BU-50), and its layers stating an
+    // Origin keep their binder's step (RawStepAt, BU-113).
     private void RawReach(OriginPremiseEnvironment environment, BoundType type, StorageAt at, HeldRange run, int targets, int layer)
     {
         var (pointee, content) = (this.retentionHeld[run.Start].Part!, this.retentionHeld[run.Start].Holds);
@@ -248,9 +252,9 @@ public sealed partial class Binding
         }
 
         var past = this.Past(environment, pointee, targets, step != HoldStep.Shared, layer, below);
-        if (content == HoldContent.Any && past >= 0 && past != ResultStorage)
+        if ((content == HoldContent.Any || (at.Captured && step == HoldStep.Address)) && past >= 0 && past != ResultStorage)
         {
-            this.storageHolds.Add((null, null, null, past));
+            this.storageHolds.Add((null, null, null, past)); // Storage no Type states: a declaration's layer's, or a Closure's (C-352's C10).
         }
 
         if (step == HoldStep.Exclusive)
