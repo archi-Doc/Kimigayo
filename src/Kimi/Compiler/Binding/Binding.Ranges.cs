@@ -1,5 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using System.Diagnostics.CodeAnalysis;
 using Kimi.Compiler.Parsing;
 
 namespace Kimi.Compiler;
@@ -10,7 +11,7 @@ public sealed partial class Binding
     // internal Kimi group PositionSyntax. Each synthesized call pins its target declaration, so neither a same-named source
     // declaration nor the source's access rules affect it; its arguments are the source operands, bound beforehand under the
     // ordinary rules. A key applied directly (below) constructs no value and has no call.
-    private readonly Dictionary<Koto, InvocationKoto> rangeCalls = new(ReferenceEqualityComparer.Instance);
+    private readonly RangeCallRows rangeCalls;
 
     // SPEC 4.6.3, 4.7.1: a position or range key of a built-in selection that is not applied directly resolves against the
     // receiver's length by a synthesized PositionSyntax.resolved<P> or resolvedRange<R> call whose length argument reads
@@ -134,7 +135,7 @@ public sealed partial class Binding
 
         foreach (var call in this.rangeCalls.Values)
         {
-            this.ResetSynthetic(call);
+            this.ResetSynthetic(call!);
         }
 
         foreach (var call in this.resolvedKeys.Values)
@@ -549,4 +550,20 @@ public sealed partial class Binding
 
     private BindingSymbol? PositionSyntaxMember(string name)
         => this.Library.PositionSyntax is { } group && this.scopes.TryGetValue(group, out var members) && members.Values.TryGetValue(name, out var member) ? member : null;
+
+    /// <summary>The `rangeCalls` family's one accessor (DECISIONS BU-220): a kept family, a range or position key's synthesized
+    /// PositionSyntax call (SPEC 4.6.1), made once and reset in place by each pass (ResetSyntheticCalls), kept in its key node's module's
+    /// NodeColumns at its SyntaxId. Its members keep the names its readers use.</summary>
+    private readonly struct RangeCallRows(Binding binding)
+    {
+        internal FamilyRows<InvocationKoto?> Values => new(binding, static (table, _) => table.Hir.Families.RangeCalls.Enumerate());
+
+        internal InvocationKoto this[Koto node]
+        {
+            set => HirTables.Of(node).Families.RangeCalls.Ref(node.SyntaxId) = value;
+        }
+
+        internal bool TryGetValue(Koto node, [NotNullWhen(true)] out InvocationKoto? value)
+            => (value = node.SyntaxOwner is { } table ? table.Hir.Families.RangeCalls.Get(node.SyntaxId) : null) is not null;
+    }
 }

@@ -80,6 +80,7 @@ public sealed partial class Binding
         this.propertyUpdateInputs = new(this);
         this.indexerCalls = new(this);
         this.viewRangeCalls = new(this);
+        this.rangeCalls = new(this);
         this.Library.Kotonoha.Syntax.Hir.Families.Reserve(KimiLibrarySize.Stated);
         foreach (var symbol in this.Library.RegisteredSymbols)
         {
@@ -144,6 +145,7 @@ public sealed partial class Binding
             this.Library.Kotonoha.Syntax.Hir.Families.DiscoveredOrigins.Used,
             this.Library.Kotonoha.Syntax.Hir.Families.OriginRequirementNodes.Used,
             this.Library.Kotonoha.Syntax.Hir.Families.PropertyCalls.Used,
+            this.Library.Kotonoha.Syntax.Hir.Families.RangeCalls.Used,
             this.types.KeyCount,
             this.constraints.Count,
             this.pendingAssociatedTypes.Count,
@@ -178,6 +180,7 @@ public sealed partial class Binding
             this.Library.Kotonoha.Syntax.Hir.Families.DiscoveredOrigins.Free,
             this.Library.Kotonoha.Syntax.Hir.Families.OriginRequirementNodes.Free,
             this.Library.Kotonoha.Syntax.Hir.Families.PropertyCalls.Free,
+            this.Library.Kotonoha.Syntax.Hir.Families.RangeCalls.Free,
             this.types.KeyFree,
             this.constraints.Capacity - this.constraints.Count,
             this.pendingAssociatedTypes.Capacity - this.pendingAssociatedTypes.Count,

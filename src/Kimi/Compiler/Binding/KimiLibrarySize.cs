@@ -19,7 +19,7 @@ namespace Kimi.Compiler;
 // - The library's node columns (Binding's `symbols`, its parameters' composite column, `scopes`, `originAtoms`, `openOrigins`,
 //   `associatedOrigins`, `specialReceivers`, `enumConstructions`, `copyDeclarations`, `copyByType`, `inheritedOriginTypes`,
 //   `deferredConstraints`, `matches`, `adaptations`, `specializations`, `specializationsByOriginal`,
-//   `originDeclarations`, `discoveredOrigins`, `originRequirementNodes` and `propertyCalls`,
+//   `originDeclarations`, `discoveredOrigins`, `originRequirementNodes`, `propertyCalls` and `rangeCalls`,
 //   DECISIONS BU-220): the library
 //   module's own columns, which no program row enters (a program's rows are its modules'), so each starts at its stated slots
 //   (PagedColumn.Reserve) and has no room; its count is the slots the library's pages hold, rounded up to ColumnGranule, and its free
@@ -74,6 +74,7 @@ internal static class KimiLibrarySize
         DiscoveredOrigins: 1024,
         OriginRequirementNodes: 1536,
         PropertyCalls: 512,
+        RangeCalls: 512,
         TypeKeys: 3072,
         Constraints: 2048,
         AssociatedTypes: 2048,
@@ -115,6 +116,7 @@ internal static class KimiLibrarySize
         int DiscoveredOrigins, // The library's discoveredOrigins column: the slots its pages hold.
         int OriginRequirementNodes, // The library's originRequirementNodes column: the slots its pages hold.
         int PropertyCalls, // The library's propertyCalls column: the slots its pages hold.
+        int RangeCalls, // The library's rangeCalls column: the slots its pages hold.
         int TypeKeys, // TyCtxt's keys of the interned Types.
         int Constraints, // Binding's interned constraints.
         int AssociatedTypes, // Binding's associated-Type answers.
@@ -153,6 +155,7 @@ internal static class KimiLibrarySize
                 Round(this.DiscoveredOrigins, ColumnGranule),
                 Round(this.OriginRequirementNodes, ColumnGranule),
                 Round(this.PropertyCalls, ColumnGranule),
+                Round(this.RangeCalls, ColumnGranule),
                 Round(this.TypeKeys, Granule),
                 Round(this.Constraints, Granule),
                 Round(this.AssociatedTypes, Granule),

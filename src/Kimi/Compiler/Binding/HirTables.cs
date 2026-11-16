@@ -294,6 +294,7 @@ internal struct NodeColumns
     internal PagedColumn<EvaluatedKoto?> PropertyUpdateInputs; // Kept: a property update's synthesized input (Binding.PropertyCalls.cs).
     internal PagedColumn<InvocationKoto?[]?> IndexerCalls; // Kept: an index expression's synthesized `index` and `indexUniq` calls (Binding.Indexers.cs).
     internal PagedColumn<InvocationKoto?> ViewRangeCalls; // Kept: a view's range selection's synthesized `slice` call (Binding.Views.cs).
+    internal PagedColumn<InvocationKoto?> RangeCalls; // Kept: a range or position key's synthesized PositionSyntax call (Binding.Ranges.cs).
 
     internal void Resize(int length)
     {
@@ -331,6 +332,7 @@ internal struct NodeColumns
         this.PropertyUpdateInputs.Grow(length);
         this.IndexerCalls.Grow(length);
         this.ViewRangeCalls.Grow(length);
+        this.RangeCalls.Grow(length);
     }
 
     // The library's columns start at their stated slots (KimiLibrarySize: no program row lands in them).
@@ -356,6 +358,7 @@ internal struct NodeColumns
         this.DiscoveredOrigins.Reserve(stated.DiscoveredOrigins);
         this.OriginRequirementNodes.Reserve(stated.OriginRequirementNodes);
         this.PropertyCalls.Reserve(stated.PropertyCalls);
+        this.RangeCalls.Reserve(stated.RangeCalls);
     }
 
     // A kept family's column gives a renumbering an empty column over its spare arena; a stamped family's is handed over unmoved and
@@ -398,6 +401,7 @@ internal struct NodeColumns
             PropertyUpdateInputs = this.PropertyUpdateInputs.Renumbered(length),
             IndexerCalls = this.IndexerCalls.Renumbered(length),
             ViewRangeCalls = this.ViewRangeCalls.Renumbered(length),
+            RangeCalls = this.RangeCalls.Renumbered(length),
         };
         return columns;
     }
@@ -429,6 +433,7 @@ internal struct NodeColumns
         this.PropertyUpdateInputs.Retire();
         this.IndexerCalls.Retire();
         this.ViewRangeCalls.Retire();
+        this.RangeCalls.Retire();
     }
 
     // A kept family's row moves with its node; a stamped family's rows were handed over (Renumbered).
@@ -457,6 +462,7 @@ internal struct NodeColumns
         this.PropertyUpdateInputs.MoveTo(ref target.PropertyUpdateInputs, from, to);
         this.IndexerCalls.MoveTo(ref target.IndexerCalls, from, to);
         this.ViewRangeCalls.MoveTo(ref target.ViewRangeCalls, from, to);
+        this.RangeCalls.MoveTo(ref target.RangeCalls, from, to);
     }
 }
 
