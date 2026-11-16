@@ -225,6 +225,15 @@ public sealed class HoverProjectionTest
         Assert.DoesNotContain("initRepeating", declaration.Header + string.Concat(declaration.Documentation.Select(static x => x.ToString())), StringComparison.Ordinal);
     }
 
+    // IMPL 21.3.4: a library declaration's header shows its implementation Attributes as written, through the ordinary syntax writers.
+    [Fact]
+    public void ALibraryDeclarationsHeaderShowsItsImplementationAttributes()
+    {
+        const string text = "var xs = Array<i32>.init(capacity: 4)\nxs.append(1)\n";
+        var declaration = Assert.Single(At(Project(text), text.IndexOf("append", StringComparison.Ordinal)).Declarations);
+        Assert.Equal("#Lang(\"ArrayAppend\") #CallerLocation\npublic func append(self: uniq/Self, value: T)", declaration.Header);
+    }
+
     [Fact]
     public void InvalidConstraintsNeverPublishCopyYes()
     {

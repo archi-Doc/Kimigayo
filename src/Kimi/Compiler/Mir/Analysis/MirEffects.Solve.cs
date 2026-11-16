@@ -268,7 +268,7 @@ internal sealed partial class MirEffects
 
         if (body is null)
         {
-            this.found |= Class(TyCtxt.Bodyless(symbol));
+            this.found |= Class(symbol);
             return;
         }
 
@@ -304,7 +304,7 @@ internal sealed partial class MirEffects
         for (var i = start; i < this.targets.Count; i++)
         {
             var (target, instance) = this.targets[i];
-            if (target.CompilerFunction == CompilerFunctionKind.None && types.DispatchBounds(this.definition, target, null, null) is { } dispatched)
+            if (target.Definition.Kind == DispositionKind.Body && types.DispatchBounds(this.definition, target, null, null) is { } dispatched)
             {
                 this.found |= dispatched ? (byte)0 : Unknown; // SPEC 6.4.6: a virtual witness dispatches; its slot's bound decides.
             }

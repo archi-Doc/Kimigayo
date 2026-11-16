@@ -5,8 +5,8 @@ namespace Kimi.Compiler.Mir;
 // Calls (plan 5.4; A3 E14; DECISIONS R5-M38, R5-M71, R5-M166).
 // - Responsibility: a Call's operand range and its callee by kind (Call): a Fn, Requirement or Virtual callee's function (a Requirement
 //   callee's comparison mode, Compares), a Value callee's TypeToken constant, an intrinsic's row (defined, the library declaration of the
-//   compiler function it serves, its arity, no target when it diverges, staticEnsure's static slot by Ensures, MirValidator.Statics' Slot,
-//   testRecordValue's recorded value a Scalar by Records); and its destination:
+//   compiler function it serves (none for $abort, TyCtxt.Abort), its arity, no target when it diverges, staticEnsure's static slot by
+//   Ensures, MirValidator.Statics' Slot, testRecordValue's recorded value a Scalar by Records); and its destination:
 //   a diverging Call's, which MirUses does not report, a Place the body names (MirValidator.Tables' Names) with its write bit for G131,
 //   no Never value written by a returning Call; a constant record only as an input of a Fn call that keeps nothing of it
 //   (ConstantRecords), and nothing else as Utf8Writer.deferLiteral's text (Defers); a Places Call's Fn callee and whole-Temp Moves
@@ -110,8 +110,8 @@ internal sealed partial class MirValidator
                     this.Report(MirViolation.UnknownKind);
                     break;
                 case MirCalleeKind.Intrinsic when callee.Symbol is { } declaration &&
-                    (declaration.LibraryDeclaration is null || IntrinsicDisposition.Of(declaration.CompilerFunction).Id != (IntrinsicId)callee.Arg):
-                    this.Report(MirViolation.Callee); // A3 E14: its function is the library declaration of a compiler function it serves.
+                    (ReferenceEquals(declaration, types.Abort) || declaration.Definition.Id != (IntrinsicId)callee.Arg):
+                    this.Report(MirViolation.Callee); // A3 E14: its function is the library declaration of a compiler function it serves, none for $abort (SPEC 17.4).
                     break;
                 case MirCalleeKind.Intrinsic when row.Arity >= 0 && row.Arity != call.Count:
                     this.Report(MirViolation.Arity);

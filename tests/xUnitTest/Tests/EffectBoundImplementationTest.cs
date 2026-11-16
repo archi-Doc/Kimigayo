@@ -1,7 +1,9 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using System.Reflection;
 using Kimi;
 using Kimi.Compiler;
+using Kimi.Compiler.Mir;
 using Kimi.Compiler.Parsing;
 using Xunit;
 
@@ -140,23 +142,46 @@ public partial class EffectBoundImplementationTest
         static string First(Koto node) => node.ToString().Split('\n')[0].Trim();
     }
 
-    // SPEC 8.11.2: every compiler function has one effect class. The Storage and Raw families act only on their inputs and the
-    // allocator; Console output and the test temporary directory are environment effects; the formatting kinds left (Text.writer, the
-    // built-in items) act on their inputs, the formatting operations being bodies (R8-W1). A new kind is unclassified until it is placed
-    // here.
+    // SPEC 8.11.2: every function the compiler serves has one effect class, Binding's category of it (TyCtxt.Bodyless) and, for an
+    // intrinsic, MIR's row of it (MirDescriptors; MirEffects reads the two). Every library function or $abort that is no body is an
+    // intrinsic, and of those Console output and the test temporary directory alone are environment effects (the Storage and Raw
+    // families, the handles, Text.writer and the fixed failures act only on their inputs and the allocator); a library body is no
+    // bodyless category; each of the eight built-in targets (Binding.PrepareBuiltinTargets: equality, comparison and the six arithmetic
+    // operations) is a shim, which acts on its inputs (MirEffects.Class's Shim arm), and the tuple comparisons' calls target two of them.
     [Fact]
     public void EveryCompilerFunctionHasOneEffectClass()
     {
-        foreach (var kind in Enum.GetValues<CompilerFunctionKind>())
+        var library = Compilation.CreateForTest().Library;
+        var environment = new List<IntrinsicId>();
+        foreach (var symbol in library.RegisteredSymbols.ToArray().Append(library.Abort))
         {
-            var expected = kind switch
+            var kind = TyCtxt.Bodyless(symbol);
+            Assert.True(symbol.Definition.Kind == DispositionKind.Body ? kind is not (BodylessKind.Intrinsic or BodylessKind.Shim) : kind == BodylessKind.Intrinsic, symbol.Name);
+            if (kind == BodylessKind.Intrinsic && (MirDescriptors.Of(symbol.Definition.Id).Effects & MirEffect.Environment) != 0)
             {
-                CompilerFunctionKind.None => CompilerFunctionEffect.Unclassified,
-                CompilerFunctionKind.WriteLine or CompilerFunctionKind.ConsoleWriteStdout or CompilerFunctionKind.TestTempDirectory => CompilerFunctionEffect.Environment,
-                _ => CompilerFunctionEffect.Inputs,
-            };
-            Assert.True(expected == IntrinsicDisposition.Effect(kind), kind.ToString());
+                environment.Add(symbol.Definition.Id);
+            }
         }
+
+        Assert.Equal(new[] { IntrinsicId.WriteStdout, IntrinsicId.TestTempDirectory }, environment.Order().ToArray());
+        var c = MinimalEmissionTest.Analyze("let same = (1, 2) == (1, 2)\nlet less = (1, 2) < (3, 4)");
+        var shims = KotoTree.Walk(c.Kotonoha.RootKoto)
+            .SelectMany(static x => Enumerable.Range(0, 8).Select(i => CallPlan.Of(x, i)).TakeWhile(static y => y is not null).OfType<CallPlan>())
+            .Where(static x => x.Target.Definition.Kind == DispositionKind.Shim).Select(static x => x.Target).Distinct().ToArray();
+        var contracts = shims.Select(static x => TyCtxt.Contract(x).LibraryDeclaration!.Value).ToArray();
+        Assert.Equal(2, contracts.Length);
+        Assert.Contains(KimiDeclarationId.Equatable, contracts);
+        Assert.Contains(KimiDeclarationId.Comparable, contracts);
+        var targets = new[] { (BindingSymbol?)Field("builtinEquals"), (BindingSymbol?)Field("builtinCompare") }
+            .Concat((BindingSymbol?[])Field("builtinArithmetic")!).Select(static x => x!).ToArray();
+        Assert.Subset(targets.ToHashSet(), shims.ToHashSet());
+        Assert.Equal(
+            new[] { KimiDeclarationId.Equatable, KimiDeclarationId.Comparable, KimiDeclarationId.Addable, KimiDeclarationId.Subtractable, KimiDeclarationId.Multipliable, KimiDeclarationId.Dividable, KimiDeclarationId.RemainderProvider, KimiDeclarationId.Negatable },
+            targets.Select(static x => TyCtxt.Contract(x).LibraryDeclaration!.Value));
+        Assert.All(targets, static x => Assert.Equal(BodylessKind.Shim, TyCtxt.Bodyless(x)));
+
+        // A built-in target Binding prepares (Binding.PrepareBuiltinTargets), by its field.
+        object? Field(string name) => typeof(Binding).GetField(name, BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(c.Binding);
     }
 
     // SPEC 8.11.3, 8.11.2, 15.6.4: confined is judged over every body the witness reaches, which its calls select: a helper, a recursive

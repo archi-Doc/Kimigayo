@@ -1,4 +1,5 @@
 /// An exclusive view of completed contiguous elements. Moving or dropping the view never moves or destroys an element.
+#Lang("UniqSlice")
 public struct UniqSlice<T> {source}
     Self is UniqIndexable<isize>
     associate Element is T
@@ -24,6 +25,7 @@ public struct UniqSlice<T> {source}
     public func slice(self: ref/Self) -> Slice<T> during self
         unsafe => return Raw.slice(self.storage, self.length)
 
+    #CallerLocation
     public func slice<R>(self: ref/Self, range: R) -> Slice<T> during self
         R is PositionRange
         return self.slice()[range]
@@ -32,16 +34,19 @@ public struct UniqSlice<T> {source}
     public func sliceUniq(self: uniq/Self) -> UniqSlice<T> during self
         return UniqSlice<T>.init(Storage.borrowStorageUniq(self))
 
+    #CallerLocation
     public func sliceUniq<R>(self: uniq/Self, range: R) -> UniqSlice<T> during self
         R is PositionRange
         return Storage.sliceUniq(Storage.borrowStorageUniq(self), range)
 
+    #CallerLocation
     public func index(self: ref/Self, key: ref/isize) -> ref/T during self
         require key >= 0 and key < self.length else => Storage.indexBounds()
         unsafe
             let element = self.storage[key]@ref
             return element
 
+    #CallerLocation
     public func indexUniq(self: uniq/Self, key: ref/isize) -> uniq/T during self
         require key >= 0 and key < self.length else => Storage.indexBounds()
         unsafe
@@ -49,10 +54,12 @@ public struct UniqSlice<T> {source}
             return element@move
 
     // Subscripts normalize Position keys once through these internal receiver functions.
+    #CallerLocation
     internal func indexPosition<P>(self: ref/Self, key: P) -> ref/T during self
         P is Position
         return self.index(PositionSyntax.resolved(key, self.length))
 
+    #CallerLocation
     internal func indexPositionUniq<P>(self: uniq/Self, key: P) -> uniq/T during self
         P is Position
         return self.indexUniq(PositionSyntax.resolved(key, self.length))

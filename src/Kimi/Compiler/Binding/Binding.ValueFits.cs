@@ -15,10 +15,20 @@ namespace Kimi.Compiler;
 //   that records the failure passes on (FailMismatch, RecordMismatch); CheckTypeUse records the obligations of a fit whose structure
 //   holds.
 // - Invariants: a fit adds no Constraint, reopens no inference and publishes nothing but CheckTypeUse's obligations; nothing below the
-//   root fits by Never (a Type holding Never is an ordinary Type).
+//   root fits by Never (a Type holding Never is an ordinary Type). CheckTypeUse walks the relation once at its root and reads each
+//   part's answer from that walk (RelationWalk.FitPart), and once more at each invariant part the relation meets reversed, in the fit's
+//   own orientation; a reversed part's structure does not depend on the orientation (CheckTypeUseCore's precondition).
 // - Prohibitions: a Type-to-Type comparison calls the relation's entries (IsSubtype, IsSubtypeAt, FitsStructuralPart), not these.
 public sealed partial class Binding
 {
+    // CheckTypeUse's walk's parts (RelationWalk.FitPart), read in walk order and truncated back by the root that appended them (warm 0 B).
+    private readonly List<FitPart> fitParts = new();
+
+    // CheckTypeUse's place in its walk's parts and what it has read there: the walk's next part (an index of fitParts), the facts of the
+    // last part read (a range of comparisonFacts; none for a part identity discharges, which has no position and no fact) and the
+    // failure of the last part read that failed; once a part's components are read, the facts and failure of its first failed one.
+    private record struct FitCursor(int Next, (int From, int To) Last, ComparisonFailure Failure);
+
     /// <summary>Proves the implemented structural subtype rules without performing a value operation.</summary>
     /// <param name="actual">The supplied complete type.</param>
     /// <param name="expected">The required complete type.</param>
@@ -76,11 +86,13 @@ public sealed partial class Binding
     // (RecordOriginFitFailure; DECISIONS R4-M133): this is the one entry to the positions' obligations (CheckTypeUseCore recurses only into
     // itself, RelationWalk forms none), so the entries appended before it returns are exactly this fit's.
     // `failure` is the failure of the walk at which the fit failed: the root's, or a component's that the obligations could not take.
+    // The relation is walked once, at the root (PLAN G492-a (i)), and its parts (FitPart) answer each part as a walk rooted there in this
+    // fit's orientation would; the facts left for a record (RecordComparisonFacts) are those of the part whose failure is the fit's.
     private bool CheckTypeUse(BoundType actual, BoundType expected, Koto use, out ComparisonFailure failure)
     {
         var pending = this.pendingRelations.Count;
         failure = default;
-        var fits = NeverFits(actual) || this.CheckTypeUseCore(actual, expected, use, OriginVariance.Covariant, ref failure);
+        var fits = NeverFits(actual) || this.CheckTypeUseWalk(actual, expected, use, out failure);
         for (var i = pending; i < this.pendingRelations.Count; i++)
         {
             this.pendingRelations[i] = this.pendingRelations[i] with { Destination = expected };
@@ -89,30 +101,95 @@ public sealed partial class Binding
         return fits;
     }
 
+    // The relation collects open initializer bounds even beside a local region; regional fits also publish their source edges. Until the
+    // facts are trimmed to the last part's range, only this fit's own walks append to comparisonFacts (at its end), so a read range stays.
+    private bool CheckTypeUseWalk(BoundType actual, BoundType expected, Koto use, out ComparisonFailure failure)
+    {
+        var facts = this.comparisonFacts;
+        facts.Clear();
+        this.fitRested = false;
+        var cursor = default(FitCursor);
+        var fits = this.CheckTypeUseParts(actual, expected, use, OriginVariance.Covariant, ref cursor);
+        facts.RemoveRange(cursor.Last.To, facts.Count - cursor.Last.To);
+        facts.RemoveRange(0, cursor.Last.From);
+        failure = cursor.Failure;
+        return fits;
+    }
+
+    // SPEC 15.3.5, 10.7: one walk of a part in this fit's orientation, decomposed: the root's, and an invariant part's that the relation
+    // walks reversed (an invariant layer or slot under a contravariant one): `polarity` makes the part `==` without its orientation, and
+    // a Function Type there is one oriented comparison (its per-call inputs and well-formedness are the implementation side's), so the
+    // part is walked as the fit composes it, once for the part and everything in it. The walk's parts are read from its first; the
+    // caller sets the cursor's next part again.
+    private bool CheckTypeUseParts(BoundType actual, BoundType expected, Koto use, OriginVariance polarity, ref FitCursor cursor)
+    {
+        var parts = this.fitParts;
+        var start = parts.Count;
+        _ = new RelationWalk(this, use, this.comparisonFacts, parts).Fits(actual, expected, polarity == OriginVariance.Invariant);
+        cursor.Next = start;
+        var fits = this.CheckTypeUseCore(actual, expected, use, polarity, ref cursor);
+        parts.RemoveRange(start, parts.Count - start);
+        return fits;
+    }
+
     // `polarity` is the variance of the compared position within the fitted Type (SPEC 15.3.5), composed as RelationWalk composes it: a
     // contravariant position reverses the relation, and an invariant or unused one makes it `==`, also for every position nested in it,
     // such as the slots of a Type argument stored through `uniq/T` or read by `(T) -> i32`.
-    private bool CheckTypeUseCore(BoundType actual, BoundType expected, Koto use, OriginVariance polarity, ref ComparisonFailure failure)
+    // Contract: a pair identity discharges has no part; any other pair is the walk's next part (`cursor.Next`), in this fit's
+    // orientation, or an invariant part the walk met reversed, which is walked once more (CheckTypeUseParts). Precondition: a reversed
+    // part's structure does not depend on the orientation, so the root walk does not end inside such a part while the fit's own walk of
+    // it holds; it would have entered no later part, and the decomposition would go on to components the walk never entered. A
+    // structural failure ends the decomposition where it ends the walk (CheckTypeUsePart), so no part after the walk's end is read. A
+    // pair that is not the walk's next part, or a read past the walk's parts, is a broken contract (InternalInvariant).
+    private bool CheckTypeUseCore(BoundType actual, BoundType expected, Koto use, OriginVariance polarity, ref FitCursor cursor)
     {
-        // The relation collects open initializer bounds even beside a local region; regional fits also publish their source edges.
-        this.comparisonFacts.Clear();
-        this.fitRested = false;
-        var walk = new RelationWalk(this, use, this.comparisonFacts);
-        var fits = polarity == OriginVariance.Contravariant ? walk.Fits(expected, actual) : walk.Fits(actual, expected, polarity == OriginVariance.Invariant);
+        if (ReferenceEquals(actual, expected))
+        {
+            cursor.Last = (0, 0);
+            return true;
+        }
 
+        // The walk's parts end at the list's end: a nested walk's parts are removed before the enclosing walk's next one is read.
+        var part = cursor.Next < this.fitParts.Count ? this.fitParts[cursor.Next] : default;
+        var (a, b) = polarity == OriginVariance.Contravariant ? (expected, actual) : (actual, expected);
+        bool fits;
+        if (polarity == OriginVariance.Invariant && ReferenceEquals(part.Actual, b) && ReferenceEquals(part.Expected, a))
+        {
+            fits = this.CheckTypeUseParts(actual, expected, use, polarity, ref cursor);
+        }
+        else if (ReferenceEquals(part.Actual, a) && ReferenceEquals(part.Expected, b))
+        {
+            cursor.Last = (part.FactStart, part.FactEnd);
+            cursor.Next++;
+            fits = this.CheckTypeUsePart(actual, expected, use, polarity, part, ref cursor);
+        }
+        else
+        {
+            throw new InvalidOperationException($"CheckTypeUse's part `{actual}` into `{expected}` is not its walk's next part (InternalInvariant).");
+        }
+
+        cursor.Next = part.End;
+        return fits;
+    }
+
+    // One part's obligations from its walk's answers: the verdict, resting and failure are the part's, and its components are the
+    // walk's next parts.
+    private bool CheckTypeUsePart(BoundType actual, BoundType expected, Koto use, OriginVariance polarity, in FitPart part, ref FitCursor cursor)
+    {
         // SPEC 23.1.2 (PLAN G739): a walk that held by a resting position forms the rows its shape gives, and its answer stays the walk's
         // where the shape gives none (`rested`).
-        var rested = fits && this.fitRested;
+        var fits = part.Holds;
+        var rested = fits && part.Rested;
         if (!fits)
         {
-            failure = walk.Failure;
+            cursor.Failure = part.Failure;
         }
         else if (!rested && !this.HasLocalRegion(actual) && !this.HasLocalRegion(expected))
         {
             return true;
         }
 
-        if (actual.Kind != expected.Kind || actual.Semantics != expected.Semantics || actual.Symbol != expected.Symbol || actual.Length != expected.Length || !ReferenceEquals(actual.LengthExpression, expected.LengthExpression) || !actual.LengthArguments.AsSpan().SequenceEqual(expected.LengthArguments) || actual.Components.Count != expected.Components.Count || actual.OriginArguments.Count != expected.OriginArguments.Count || actual.Kind == BoundTypeKind.Primitive)
+        if (!part.Shaped || actual.Kind != expected.Kind || actual.Semantics != expected.Semantics || actual.Symbol != expected.Symbol || actual.Length != expected.Length || !ReferenceEquals(actual.LengthExpression, expected.LengthExpression) || !actual.LengthArguments.AsSpan().SequenceEqual(expected.LengthArguments) || actual.Components.Count != expected.Components.Count || actual.OriginArguments.Count != expected.OriginArguments.Count || actual.Kind == BoundTypeKind.Primitive)
         {
             return rested;
         }
@@ -143,33 +220,33 @@ public sealed partial class Binding
         }
 
         // SPEC 23.1.2: a part the obligations cannot take (a Function component's failed condition) is the fit's failure, the first such
-        // part's; the parts after it still leave their positions as obligations, each an independent record of the fit. SPEC 15.6.1: a
-        // structural failure is a Type mismatch, after which no Origin relation forms: it is the fit's failure and ends the
-        // decomposition, as it ends the walk.
-        var holds = true;
+        // part's (its failure and its facts); the parts after it still leave their positions as obligations, each an independent record
+        // of the fit. SPEC 15.6.1: a structural failure is a Type mismatch, after which no Origin relation forms: it is the fit's failure
+        // and ends the decomposition, as it ends the walk, which enters no part after it.
+        var (failure, last, holds) = (cursor.Failure, cursor.Last, true);
         for (var i = 0; i < actual.Components.Count; i++)
         {
             var position = actual.Kind == BoundTypeKind.Constructed && actual.Symbol?.Schema is { } schema && i < schema.GenericSlots.Count
                 ? schema.GenericSlots[i].OriginVariance : OriginVariance.Covariant;
-            var part = failure;
-            if (this.CheckTypeUseCore(actual.Components[i], expected.Components[i], use, IsInvariantLayer(actual, this, use, default) ? OriginVariance.Invariant : ComposeVariance(polarity, position), ref part))
+            cursor.Failure = failure;
+            if (this.CheckTypeUseCore(actual.Components[i], expected.Components[i], use, IsInvariantLayer(actual, this, use, default) ? OriginVariance.Invariant : ComposeVariance(polarity, position), ref cursor))
             {
                 continue;
             }
 
-            if (part.Kind == ComparisonFailureKind.Shape)
+            if (cursor.Failure.Kind == ComparisonFailureKind.Shape)
             {
-                failure = part;
                 return false;
             }
 
             if (holds)
             {
-                holds = false;
-                failure = part;
+                (failure, last, holds) = (cursor.Failure, cursor.Last, false);
             }
         }
 
+        cursor.Failure = failure;
+        cursor.Last = holds ? cursor.Last : last;
         return holds;
     }
 

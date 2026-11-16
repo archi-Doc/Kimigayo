@@ -62,6 +62,11 @@ public sealed partial class Binding
         {
             // These Origins are quantified by the nested Function Types, not by this call's binder.
             // Their positional correspondence is checked by the ordinary Type relation.
+            // The test is by slot index, of any binder (`any`), not by the Types' binders (BoundType.Binder): it also drops the bounds
+            // of a nested Type whose fixed input sits at its own index, which the walk then judges with the exact binders. With the
+            // exact test those bounds reach the solver, which takes a nested Type's own per-call Origin for a bound of this call and
+            // rejects valid programs (PLAN G904's rows l0v, l1v, n0i, e0v, e1v; b0v, b1v on dev). Removal: the unit that keeps a
+            // nested Function Type's own per-call Origins out of the bounds, Origin by Origin (PLAN G913).
             return;
         }
 
