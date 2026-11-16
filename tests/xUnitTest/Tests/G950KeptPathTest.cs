@@ -69,7 +69,7 @@ public sealed class G950KeptPathTest
     // g7 (design §R1.2) and M4: after a later version (a warm rebind, Provisional then Final, or an edit into another program), the
     // compilation's own MIR equals a fresh builder's, analysis's and collector's over the same compilation state: every report row with its
     // facts (M4's record rests on Console.writeLine's A4 summary), every finding, the program's and the library's dumps with A2's tables,
-    // and the checked set by body identity (N10) with each item's targets and their runtime bits (RN5).
+    // and the checked set by every part of each item's key (N10) with each item's targets and their runtime bits (RN5).
     [Theory]
     [MemberData(nameof(Sequences))]
     public void ALaterVersionEqualsAFreshPipeline(string program, string then)
@@ -79,7 +79,8 @@ public sealed class G950KeptPathTest
     }
 
     // g7 (a) over every case of the diagnostic snapshot (N11), a warm rebind each, in parallel as SemanticSnapshotTest's corpus run, so
-    // the class stays short: a failure names each case whose later version differs from the fresh pipeline, or throws.
+    // the class stays short: a failure gives the count and each case whose later version differs from the fresh pipeline, with its first
+    // differing line (fresh -> own, as the semantic snapshot reports one), or throws.
     [Fact]
     public void AWarmVersionOfEverySnapshotCaseEqualsAFreshPipeline()
     {
@@ -90,14 +91,15 @@ public sealed class G950KeptPathTest
             try
             {
                 var (own, fresh) = Later(names[i], "warm");
-                failed[i] = own == fresh ? null : $"{names[i]}: differs";
+                failed[i] = SemanticSnapshotTest.FirstDifference(fresh, own) is { } difference ? $"{names[i]}:{difference}" : null;
             }
             catch (Exception exception)
             {
                 failed[i] = $"{names[i]}: {exception.GetType().Name} {exception.Message}";
             }
         });
-        Assert.Equal([], failed.OfType<string>());
+        string[] failures = [.. failed.OfType<string>()];
+        Assert.True(failures.Length == 0, $"{failures.Length} of {names.Length} cases differ from a fresh pipeline:\n{string.Join('\n', failures)}");
     }
 
     // M1 (design §R1.4): the code a later version generates, after a warm rebind and after Provisional then Final, is the first version's.
@@ -175,10 +177,10 @@ public sealed class G950KeptPathTest
 
         Finish(c, OutputKind.Application);
         _ = c.Analyze();
-        var own = Snapshot(c.BuildMir(), c.Instances!);
+        var own = Snapshot(c.Types, c.BuildMir(), c.Instances!);
         var fresh = new MirBuilder(c).Build();
         new MirAnalysis(c.Types).Run(fresh, c.SourceModules.Length);
-        return (own, Snapshot(fresh, new InstanceCollector(c.Types, c.Layout).Run(fresh, c.SourceModules.Length)));
+        return (own, Snapshot(c.Types, fresh, new InstanceCollector(c.Types, c.Layout).Run(fresh, c.SourceModules.Length)));
     }
 
     // A later version: a final pass and the startup check of the output kind (a test build's test startup).
@@ -198,15 +200,23 @@ public sealed class G950KeptPathTest
     }
 
     // What g7 compares: the report's rows with their facts, the findings, the dumps of the program and of the library, and the checked set,
-    // each item by its key, a symbol by its declaration's written location (read without numbering a node), and its body's kind and
-    // location, with its targets.
-    private static string Snapshot(MirProgram program, CheckedSet set)
+    // each item by every part of its key, and its body's kind and location, with its targets. Every identity-bearing part prints through
+    // one rendering: a Type or a length as MirDump spells it (TyCtxt.Name), an erased substitution by its target, Self, declaring Type and
+    // each slot's Type or length (with the Origins it binds, none once erased), a symbol by its declaration's written location (read
+    // without numbering a node), and a Reason's end by its index in its body's C1-F4 atom table, the canonical atoms a Reason names
+    // (MirProblem's contract). Two instances of one declaration print alike only where TyCtxt.Name spells their Types alike: two closure
+    // Types of one signature (a closure is shown by its signature).
+    private static string Snapshot(TyCtxt types, MirProgram program, CheckedSet set)
     {
         var text = new StringBuilder();
         text.Append("library ").Append(program.LibraryCount).Append(" of ").Append(program.Bodies.Length).Append('\n');
         for (var i = 0; i < program.Problems.All.Length; i++)
         {
-            text.Append("problem ").Append(program.Problems.All[i]).Append(" facts ").AppendJoin(", ", program.Problems.Facts(i).ToArray()).Append('\n');
+            var problem = program.Problems.All[i];
+            IReadOnlyList<OriginAtomEntry> atoms = problem.Reason == default || problem.Body < 0 ? [] : types.OriginRows(program.Body(problem.Body).Key.Body).Atoms;
+            text.Append($"problem {problem.Code} {problem.Requirement} {problem.Subject} body {problem.Body} views {problem.Views} ")
+                .Append($"reason {End(atoms, problem.Reason.Longer)} {End(atoms, problem.Reason.Shorter)} {problem.Reason.Equality} facts ")
+                .AppendJoin(", ", program.Problems.Facts(i).ToArray()).Append('\n');
         }
 
         foreach (var finding in program.Findings)
@@ -221,13 +231,22 @@ public sealed class G950KeptPathTest
         {
             var (item, key) = (set.Items[i], set.Items[i].Key);
             var body = item.BodyOrdinal >= 0 ? program.Body(item.BodyOrdinal) : null;
-            text.Append($"{key.Kind} {Id(key.Body.Def.Decl)} {key.Body.Def.Kind} {key.Body.Def.Index} {key.Body.Erased} {key.Type} {Id(key.Symbol)} ")
-                .Append($"{key.Variant} {key.Function} view {item.View} parent {item.Parent} site {item.Site} body {body?.Key.Kind} {body?.Source} ")
-                .AppendJoin(", ", set.Targets(i).ToArray()).Append('\n');
+            text.Append($"{key.Kind} {Id(key.Body.Def.Decl)} {key.Body.Def.Kind} {key.Body.Def.Index} {Bindings(key.Body.Erased)} {Name(key.Type)} ")
+                .Append($"{Id(key.Symbol)} {key.Variant} {Name(key.Function)} view {item.View} parent {item.Parent} site {item.Site} body {body?.Key.Kind} ")
+                .Append($"{body?.Source} ").AppendJoin(", ", set.Targets(i).ToArray()).Append('\n');
         }
 
         return text.ToString();
 
         static string Id(BindingSymbol? symbol) => symbol is null ? "-" : $"{symbol.Name}@{SourceRef.Written(symbol.Declaration)}";
+
+        static string Name(BoundType? type) => type is null ? "-" : TyCtxt.Name(type);
+
+        static string Bindings(Subst? subst) => subst is null ? "-"
+            : $"{Id(subst.Target)} self {Name(subst.Self)} declaring {Name(subst.Declaring)} <{string.Join(", ", subst.Types.ToArray().Zip(subst.Lengths.ToArray(), static (type, length)
+                => type is not null ? TyCtxt.Name(type) : length is not null ? TyCtxt.Name(length) : "_"))}> origins {subst.Origins.Length} inputs {subst.Inputs.Length}";
+
+        static string End(IReadOnlyList<OriginAtomEntry> atoms, BoundOrigin? end)
+            => end is null ? "-" : "atom " + Enumerable.Range(0, atoms.Count).FirstOrDefault(i => ReferenceEquals(atoms[i].Atom, end), -1);
     }
 }
