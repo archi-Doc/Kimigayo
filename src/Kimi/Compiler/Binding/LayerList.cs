@@ -11,6 +11,9 @@ namespace Kimi.Compiler;
 // - Outputs: the composed reads; Program and Library, each part alone.
 // - Invariants: an index below the program part's Count reads the program part, any other the library part at the index less it;
 //   foreach reads the program part, then the library part, and fails as a List's does when a part changes during it.
+// - Precondition (the reader's): no entry joins either part while an index loop over the composed list runs, since a program entry
+//   added then shifts every library index (the loop reads one library entry twice and never the new one); ImplTable's registrations
+//   end with RegisterInheritedConformances, before every index loop over Paths (Binding's pass order).
 // - Prohibitions: no copy of either part and no write: each part belongs to its store.
 internal readonly struct LayerList<T> : IReadOnlyList<T>
 {
