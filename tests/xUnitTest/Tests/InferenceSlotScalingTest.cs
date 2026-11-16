@@ -65,29 +65,37 @@ public class InferenceSlotScalingTest
         }
     }
 
-    // DECISIONS D3 (C-359 C1, G812 ruling 97; SPEC 8.15.2): a reference `putN<U0, ...>` over n bindings that form no Type, its misfit (a
-    // Tag at the last `s/Box`) failing in every combination of their cases, is judged in 8n + 1 combinations, not 9^n: a binding
-    // takes a case only when a run meets it, so each earlier binding costs the 8 cases that fail at its own part. The search stops
-    // after PairBinder.CaseBound combinations (the reference then rests on the split), so no check judges more than 65.
+    // DECISIONS D3 (C-359 C1, G812 rulings 97, 99; SPEC 8.15.2): a check over n bindings that form no Type, its misfit (a Tag at the last
+    // `s/Box`) failing in every combination of their cases, is not judged in 9^n combinations: a binding takes a case only when a
+    // run meets it. A reference `put<U0, ...>` at S costs 8n + 1: each earlier binding the 8 cases that fail at its own part. The
+    // value call of the same Item costs 8(2^n - 1) + 1: a moved Box fits two cases of `s/Box`, so each earlier binding doubles. The
+    // search stops after PairBinder.CaseBound combinations (the check then rests on the split), so no search judges more than 65.
     [Theory]
-    [InlineData(1, 9)]
-    [InlineData(2, 17)]
-    [InlineData(4, 33)]
-    [InlineData(8, 65)]
-    [InlineData(16, 65)]
-    public void ASplitCaseSearchGrowsLinearlyInItsBindingsUpToTheCaseBound(int bindings, long combinations)
+    [InlineData(false, 1, 9)]
+    [InlineData(false, 2, 17)]
+    [InlineData(false, 4, 33)]
+    [InlineData(false, 8, 65)]
+    [InlineData(false, 16, 65)]
+    [InlineData(true, 1, 9)]
+    [InlineData(true, 2, 25)]
+    [InlineData(true, 3, 57)]
+    [InlineData(true, 4, 65)]
+    public void ASplitCaseSearchGrowsWithItsBindingsUpToTheCaseBound(bool call, int bindings, long combinations)
     {
         var all = Enumerable.Range(0, bindings).ToArray();
+        var reference = $"    let f: ({List(i => $"U{i}")}, {string.Join(", ", Enumerable.Repeat("Box", bindings - 1).Append("Tag"))}) -> i32 = put<{List(i => $"U{i}")}>\n    return 0\n";
+        var valueCall = $"    let f = put<{List(i => $"U{i}")}>\n    let g = Tag.init(1)\n" + string.Concat(all.Skip(1).Select(i => $"    let b{i} = Box.init({i})\n")) +
+            $"    return f({List(i => $"u{i}@move")}, {string.Join(", ", all.Skip(1).Select(i => $"b{i}@move").Append("g@move"))})\n";
         var source = "struct Box\n    public let v: i32\n    public init(v: i32)\n        self.v = v@move\n" +
             "struct Tag\n    public let v: i32\n    public init(v: i32)\n        self.v = v@move\n" +
             $"func put<{List(i => $"s{i}/W{i}")}>({List(i => $"m{i}: s{i}/W{i}")}, {List(i => $"b{i}: s{i}/Box")}) -> i32\n    return 0\n" +
             $"func call<{List(i => $"t{i}/U{i}")}>({List(i => $"k{i}: t{i}/U{i}, u{i}: U{i}")}) -> i32\n" +
-            string.Concat(all.Select(i => $"    t{i} is owner or ref\n    U{i} is Owned\n")) +
-            $"    let f: ({List(i => $"U{i}")}, {string.Join(", ", Enumerable.Repeat("Box", bindings - 1).Append("Tag"))}) -> i32 = put<{List(i => $"U{i}")}>\n    return 0\n";
+            string.Concat(all.Select(i => $"    t{i} is owner or ref\n    U{i} is Owned\n")) + (call ? valueCall : reference);
         var c = MinimalEmissionTest.Analyze(source);
         Assert.False(c.Binding.Result.IsComplete);
         Assert.Equal(combinations, c.Binding.SplitCaseRuns);
-        Assert.Contains(c.Binding.Issues, x => x.Failure == (combinations > PairBinder.CaseBound ? BindingFailure.Unsupported : BindingFailure.TypeMismatch));
+        var failure = combinations > PairBinder.CaseBound ? BindingFailure.Unsupported : call ? BindingFailure.NoApplicableCandidate : BindingFailure.TypeMismatch;
+        Assert.Contains(c.Binding.Issues, x => x.Failure == failure);
 
         string List(Func<int, string> item) => string.Join(", ", all.Select(item));
     }
