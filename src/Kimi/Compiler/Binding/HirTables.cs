@@ -274,6 +274,7 @@ internal struct NodeColumns
     internal StampedColumn<Binding.ObjectErasureEvidence, Binding.PassCounter> ObjectErasures; // Pass: an operation's or immutable alias's erased-view evidence (Binding.ObjectViews.cs).
     internal StampedColumn<BoundType?, Binding.PassCounter> InheritedOriginTypes; // Pass: the inherited contract's Type an omitted Origin takes (Binding.OriginInheritance.cs).
     internal StampedColumn<bool?, Binding.PassCounter> DeferredConstraints; // Pass: whether a clause waits for the conformances (Binding.Constraints.cs).
+    internal StampedColumn<BoundMatch?, Binding.PassCounter> Matches; // Pass: the plan of a match the pass indexed (Binding.Patterns.cs).
     internal StampedColumn<int, Binding.PassCounter> ShapeContractHeads; // Pass: a function's first shape contract as the later of an overload pair, its index + 1 (Binding.ShapeContracts.cs).
 
     internal void Resize(int length)
@@ -292,6 +293,7 @@ internal struct NodeColumns
         this.ShapeContractHeads.Grow(length);
         this.InheritedOriginTypes.Grow(length);
         this.DeferredConstraints.Grow(length);
+        this.Matches.Grow(length);
         this.ObjectErasures.Grow(length);
     }
 
@@ -306,6 +308,7 @@ internal struct NodeColumns
         this.CopyByType.Reserve(stated.CopyByType);
         this.InheritedOriginTypes.Reserve(stated.InheritedOriginTypes);
         this.DeferredConstraints.Reserve(stated.DeferredConstraints);
+        this.Matches.Reserve(stated.Matches);
         this.Scopes.Reserve(stated.Scopes);
         this.OriginAtoms.Reserve(stated.OriginAtoms);
         this.OpenOrigins.Reserve(stated.OpenOrigins);
@@ -332,6 +335,7 @@ internal struct NodeColumns
             ShapeContractHeads = this.ShapeContractHeads.Renumbered(length),
             InheritedOriginTypes = this.InheritedOriginTypes.Renumbered(length),
             DeferredConstraints = this.DeferredConstraints.Renumbered(length),
+            Matches = this.Matches.Renumbered(length),
             ObjectErasures = this.ObjectErasures.Renumbered(length),
         };
         return columns;

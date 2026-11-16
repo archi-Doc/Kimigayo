@@ -137,7 +137,8 @@ public partial class SyntaxIdTest
     // edit empties it at its first write and rewrites its rows in the same arena (AssociatedOrigins: an associated Type's Origin
     // parameters; ShapeContractHeads: the shape contracts of an overload group whose every pair shares a slot; ObjectErasures: an
     // override's call through its receiver's erased view, VirtualEntryErasureTest's program; InheritedOriginTypes: Milestone11's omitted
-    // inherited Origins; DeferredConstraints: Milestone10's clause decisions). Checked after each edit (N5-5's review C1):
+    // inherited Origins; DeferredConstraints: Milestone10's clause decisions; Matches: Milestone10's match plans). Checked after each edit
+    // (N5-5's review C1):
     // a kept family's two arenas alternate, so after an even number of edits a kept column's arena is again its first.
     [Trait("Purpose", "Allocation")]
     [Theory]
@@ -146,6 +147,7 @@ public partial class SyntaxIdTest
     [InlineData("ObjectErasures", "open struct Base<T>\n    public func ordinary(self: objref/Self) -> i32 => 1\n    public virtual func read(self: objref/Self, other: objref/Leaf<T>) -> i32 => 1\nstruct Leaf<T> : Base<T>\n    override func read(self: objref/Self, other: objref/Leaf<T>) -> i32\n        return self.ordinary()\n()")]
     [InlineData("InheritedOriginTypes", "milestone:Milestone11")]
     [InlineData("DeferredConstraints", "milestone:Milestone10")]
+    [InlineData("Matches", "milestone:Milestone10")]
     public void AStampedFamilyKeepsItsArenaAcrossEdits(string family, string program)
     {
         var source = program == "candidates" ? ConstructorInferenceWorkloads.Create(program, 4)
