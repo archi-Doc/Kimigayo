@@ -17,12 +17,12 @@ namespace Kimi.Compiler.Mir;
 /// <see cref="Push"/>, <see cref="Terminate"/>, <see cref="AddOperand"/>, <see cref="Const"/>, <see cref="Project"/>,
 /// <see cref="AddMustNotComplete"/> and the other adders)
 /// and that a reset keeps; <see cref="MirProgram"/> builds each body in one such body and stores it in a pooled one (<see cref="Store"/>),
-/// so a pooled body holds exactly its rows and one rebuilt to no larger size allocates nothing.</summary>
+/// so a pooled body is grown only to exactly the rows stored in it and one rebuilt to no larger size allocates nothing.</summary>
 internal sealed class MirBody
 {
     private static readonly MirTerminator Unterminated = new(MirTerminatorKind.Goto, default);
-    private readonly Dictionary<MirProjection, int> projectionIds = new();
-    private readonly Dictionary<MirConst, int> constIds = new();
+    private Dictionary<MirProjection, int>? projectionIds; // Created at the first projection interned, so a stored body has none.
+    private Dictionary<MirConst, int>? constIds; // Created at the first constant interned, so a stored body has none.
     private MirLocal[] locals = [];
     private MirBlock[] blocks = [];
     private MirStatement[] statements = [];
@@ -275,8 +275,8 @@ internal sealed class MirBody
         (this.Key, this.Source, this.HasFinding, this.HasConstructionRecord) = (key, source, false, false);
         this.localCount = this.blockCount = this.statementCount = this.operandCount = this.caseCount = this.constCount = 0;
         this.projectionCount = this.scopeCount = this.staticCount = this.opaqueCount = this.opaqueRootCount = this.endCount = this.guessedSiteCount = 0;
-        this.projectionIds.Clear();
-        this.constIds.Clear();
+        this.projectionIds?.Clear();
+        this.constIds?.Clear();
         this.Binders.Clear();
         Add(ref this.projections, ref this.projectionCount, default);
         Add(ref this.scopes, ref this.scopeCount, new MirScope(-1, MirScopeKind.Lexical, source));
@@ -342,7 +342,7 @@ internal sealed class MirBody
     /// <returns>The id the body's equal constants share.</returns>
     internal int Const(in MirConst constant)
     {
-        ref var id = ref CollectionsMarshal.GetValueRefOrAddDefault(this.constIds, constant, out var exists);
+        ref var id = ref CollectionsMarshal.GetValueRefOrAddDefault(this.constIds ??= new(), constant, out var exists);
         if (!exists)
         {
             id = Add(ref this.consts, ref this.constCount, constant);
@@ -360,7 +360,7 @@ internal sealed class MirBody
     internal MirPlace Project(MirPlace place, MirProjectionKind kind, int arg)
     {
         var row = new MirProjection(place.Projection, kind, arg, this.ProjectedType(this.TypeOf(place), kind, arg));
-        ref var id = ref CollectionsMarshal.GetValueRefOrAddDefault(this.projectionIds, row, out var exists);
+        ref var id = ref CollectionsMarshal.GetValueRefOrAddDefault(this.projectionIds ??= new(), row, out var exists);
         if (!exists)
         {
             id = Add(ref this.projections, ref this.projectionCount, row);
