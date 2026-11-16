@@ -29,7 +29,7 @@ public class NamedAliasTest
             x => Assert.Same(c.Library.WriteLine, x.CallOf()!.Target));
         using var writer = new StringWriter();
         Assert.True(c.Generate(writer), MinimalEmissionTest.Describe(c));
-        Assert.Contains("@__kimi_write_line", writer.ToString());
+        Assert.Contains("call void @__kimi_stdout(", writer.ToString()); // The string overload's body reaches WriteStdout's routine.
     }
 
     [Theory]

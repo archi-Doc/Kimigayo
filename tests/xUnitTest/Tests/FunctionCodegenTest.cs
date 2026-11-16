@@ -138,11 +138,18 @@ public sealed partial class FunctionCodegenTest
     };
 
     // The first programs (R5 C0b2, C0c): console output through writeLine, one line, several lines, an empty line and non-ASCII text: the
-    // literal, its borrow, the call and the temporary's destruction (DECISIONS R5-M73, R5-M78).
+    // literal, its borrow, the call and the temporary's destruction (DECISIONS R5-M73, R5-M78). S3 (SPEC 22.7; R8-W2 d's coverage table):
+    // every byte as written, NUL, a CR LF inside the text and an unnormalized combining sequence, each line ending in one LF.
     public static TheoryData<string, string, string> Hellos => new()
     {
         { "HelloWorld", "Console.writeLine(\"Hello, world!\")\n", "Hello, world!\n" },
         { "HelloLines", "Console.writeLine(\"one\")\nConsole.writeLine(\"\")\nConsole.writeLine(\"日本語\")\n", "one\n\n日本語\n" },
+        {
+            "S3HelloBytes",
+            "Console.writeLine(\"one\")\nConsole.writeLine(\"\")\nConsole.writeLine(\"日本語\")\nConsole.writeLine(\"a\\0b\")\n" +
+            "Console.writeLine(\"c\\r\\nd\")\nConsole.writeLine(\"e\\u(301)\")\n",
+            "one\n\n日本語\na\0b\nc\r\nd\ne\u0301\n"
+        },
     };
 
     // The operator rows' programs (R5 C1a; DECISIONS R5-M76): each tests its results and divides by zero when one is wrong, so a normal exit
@@ -603,16 +610,23 @@ public sealed partial class FunctionCodegenTest
     public void RawProgramsRun(string name, string source, string stderr)
         => ScalarEmissionTest.EmitFixture(name, source, string.Empty, stderr.Length == 0 ? 0 : 1, stderr);
 
-    // The console writeLine is a compiler function's legacy runtime row (RuntimeAbi.WriteLine): the routine is called with the string borrow
-    // loaded from its local and the call site's location text (SPEC 22.5.1), a header constant. A string constant is stored whole into its
-    // local, its bytes a header constant and its release kind Static (IMPL 21.1.3); the empty string has no bytes.
+    // SPEC 22.7 (R8-W2 d): the console writeLine of a string is a Kimigayo body with a CallerLocation row: it is called with the string
+    // borrow loaded from its local and the call site's location text (SPEC 22.5.1), a header constant, and views the string's bytes for
+    // the view overload at the location it received (fail-before: the runtime routine __kimi_write_line, a legacy row). A string
+    // constant is stored whole into its local, its bytes a header constant and its release kind Static (IMPL 21.1.3); the empty string
+    // has no bytes.
     [Fact]
-    public void WriteLineCallsTheConsoleRuntimeRow()
+    public void WriteLineCallsTheConsoleBody()
     {
-        var text = Generate(Analyze(Strings, OutputKind.Library));
+        var c = Analyze(Strings, OutputKind.Library);
+        var text = Generate(c);
         var ir = GeneratedIr.Parse(text);
         var call = Assert.Single(ir.Single("internal void (ptr noundef nonnull align 8 dereferenceable(24))").Instructions, static x => x.Opcode == "call");
-        Assert.Same(ir.Function("__kimi_write_line"), call.Callee);
+        var line = LineOf(ir, c, view: false);
+        Assert.Same(line, call.Callee);
+        var view = Assert.Single(CallsOf(line), x => x.Callee == LineOf(ir, c, view: true));
+        Assert.Equal(line.Parameters.TakeLast(2), view.Operands.TakeLast(2));
+        Assert.DoesNotContain("__kimi_write_line", text, StringComparison.Ordinal);
         Assert.Equal("call void @(ptr noundef nonnull align 8 dereferenceable(24) %, ptr @, i64 15)", call.Shape);
         Assert.Equal("load ptr, ptr %, align 8", Assert.Single(call.Operands).Shape);
         Assert.Contains(Constant("Hello.kimi:1:32"), text);
@@ -623,6 +637,20 @@ public sealed partial class FunctionCodegenTest
         Assert.Equal(
             "store %kimi.string { ptr null, i64 0, i8 0 }, ptr %, align 8",
             Assert.Single(ir.Single("internal void (ptr, i1)").Instructions, static x => x.Opcode == "store" && x.Shape.Contains("kimi.string")).Shape);
+    }
+
+    // D5/L1 (SPEC 9, 22.7; R8-W2 d's coverage table): a user function writeLine(text: ref/string), the string overload's name and
+    // parameters, is the program's own function. LineOf finds each overload's body by its cataloged declaration beside it, and the startup
+    // calls the user's function, then the string overload's body.
+    [Fact]
+    public void D5AUserWriteLineOfTheStringOverloadsParametersIsItsOwnFunction()
+    {
+        var c = Analyze("func writeLine(text: ref/string) => Console.writeLine(\"user \\(text)\")\nwriteLine(\"x\")\nConsole.writeLine(\"lib\")\n");
+        var ir = GeneratedIr.Parse(Generate(c));
+        var line = LineOf(ir, c, view: false);
+        var writers = FunctionsOf(ir, c, "writeLine");
+        var user = Assert.Single(writers.Except([line, LineOf(ir, c, view: true)]));
+        Assert.Equal([user, line], ir.Startup.Instructions.Select(static x => x.Callee).Where(x => x is not null && writers.Contains(x)));
     }
 
     // The operator rows (R5 C1a; DECISIONS R5-M76; SPEC 13.3.1, IMPL 21.3.3): a checked integer operation is its overflow intrinsic, whose
@@ -1315,12 +1343,9 @@ public sealed partial class FunctionCodegenTest
     [Fact]
     public void EveryMirFailCodeHasAReason()
     {
-        CompilerFunctionKind[] served =
-        [
-            CompilerFunctionKind.StorageIndexBounds, CompilerFunctionKind.StorageMissingDictionaryKey, CompilerFunctionKind.StorageArgumentOutOfRange,
-            CompilerFunctionKind.StorageCountOverflow, CompilerFunctionKind.StorageAllocationSizeExceeded,
-        ];
-        string[] codes = [.. served.Select(static x => IntrinsicDisposition.Of(x).Code!), "KIMI_E_DUPLICATE_KEY", "KIMI_E_FORMAT"];
+        string[] served = ["Storage.indexBounds", "Storage.missingDictionaryKey", "Storage.argumentOutOfRange", "Storage.countOverflow", "Storage.allocationSizeExceeded"];
+        var library = Compilation.CreateForTest().Library;
+        string[] codes = [.. served.Select(x => LibrarySource.Symbol(library, x).Definition.Code!), "KIMI_E_DUPLICATE_KEY", "KIMI_E_FORMAT"];
         Assert.Equal(7, codes.Distinct().Count());
         Assert.All(codes, static x => Assert.StartsWith(x + ":", AbortReasons.All[AbortReasons.Of(x)].Text, StringComparison.Ordinal));
         Assert.Equal(-1, AbortReasons.Of("KIMI_E_UNKNOWN"));
@@ -1813,20 +1838,23 @@ public sealed partial class FunctionCodegenTest
     // The definitions of a definition's body items (null: the top-level statements), each written directly whatever records the module's
     // other items make: an instance a call names (the call is C3a's row) or a body beside a broken one. Every body item is an output
     // root.
-    internal static string[] ItemTexts(Compilation c, string? name)
+    internal static string[] ItemTexts(Compilation c, string? name) => ItemTexts(c, (_, definition) => definition?.Name == name);
+
+    // The program's own body items, those whose MIR body is defined from the program's source and not from the library's (MirBody.Source,
+    // SourceRef.IsLibrary), written as ItemTexts writes them: the subject of a check on what the program's code does, whatever library
+    // bodies its module carries.
+    internal static string[] ProgramTexts(Compilation c) => ItemTexts(c, static (body, _) => !body.Source.IsLibrary);
+
+    // Console.writeLine's function in a module by overload (SPEC 22.7; R8-W2 d), the body item of the cataloged declaration: the string
+    // overload's or the view overload's.
+    internal static IrFunction LineOf(GeneratedIr ir, Compilation c, bool view)
     {
-        var (program, collector, module, bodies) = WrittenModule(c);
-        return [.. bodies.Where(x => collector.Set.Items[x].Key.Body.Def.Decl?.Name == name).Select(x =>
-        {
-            using var writer = new StringWriter();
-            new FunctionCodegen(module, c.Types).Write(program, collector, x, writer);
-            return writer.ToString();
-        })];
+        var id = view ? KimiDeclarationId.WriteLineUtf8 : KimiDeclarationId.WriteLine;
+        return Assert.Single(Functions(ir, ItemTexts(c, (_, definition) => definition?.LibraryDeclaration == id)));
     }
 
     // The functions of a definition's body items, one per instance (ItemTexts).
-    internal static IrFunction[] FunctionsOf(GeneratedIr ir, Compilation c, string name)
-        => [.. ItemTexts(c, name).Select(x => ir.Function(Regex.Match(x, @"define internal \S+ @(__kimi_f\d+)\(").Groups[1].Value))];
+    internal static IrFunction[] FunctionsOf(GeneratedIr ir, Compilation c, string name) => Functions(ir, ItemTexts(c, name));
 
     // DECISIONS R8-M2: each named definition has a written body, and none of them checks an arithmetic step.
     internal static void AssertNoCheckedArithmetic(Compilation c, params string[] names)
@@ -1838,6 +1866,23 @@ public sealed partial class FunctionCodegenTest
             Assert.All(texts, x => Assert.DoesNotContain("with.overflow", x));
         }
     }
+
+    // The body items a selection takes, by each item's MIR body and its definition's symbol (null: top-level statements), each written
+    // directly (ItemTexts).
+    private static string[] ItemTexts(Compilation c, Func<MirBody, BindingSymbol?, bool> selects)
+    {
+        var (program, collector, module, bodies) = WrittenModule(c);
+        return [.. bodies.Where(x => selects(program.Body(collector.Set.Items[x].BodyOrdinal), collector.Set.Items[x].Key.Body.Def.Decl)).Select(x =>
+        {
+            using var writer = new StringWriter();
+            new FunctionCodegen(module, c.Types).Write(program, collector, x, writer);
+            return writer.ToString();
+        })];
+    }
+
+    // The module's functions that body items' texts define.
+    private static IrFunction[] Functions(GeneratedIr ir, string[] items)
+        => [.. items.Select(x => ir.Function(Regex.Match(x, @"define internal \S+ @(__kimi_f\d+)\(").Groups[1].Value))];
 
     // A program analyzed for an output form; a source that declares a test is a test build's test-only source, its catalog discovered
     // after acceptance as `Compilation.Check` discovers it.
