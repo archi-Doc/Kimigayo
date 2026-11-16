@@ -202,6 +202,21 @@ public sealed partial class Binding
         return false;
     }
 
+    // Whether `source`, a bound of the solution `(E and region)`, is a bound of `region` of its own: neither an operand of the
+    // solution (E outlives the meet by SPEC 15.3.6's law, which bounds nothing) nor an Origin holding the region.
+    private static bool BoundsSolved(BoundOrigin source, BoundOrigin solution, BoundOrigin region)
+    {
+        for (var i = 0; i < solution.Operands.Count; i++)
+        {
+            if (ReferenceEquals(source, solution.Operands[i]))
+            {
+                return false;
+            }
+        }
+
+        return !HoldsOrigin(source, region);
+    }
+
     // J2: the polarity of Origin argument `index` of `type` at `polarity` (SlotComponentPolarity's), by its variance.
     private static int OriginArgumentPolarity(BoundType type, int index, int polarity, Binding binding)
         => polarity == ContractPolarity ? ContractPolarity : ComposePolarity(polarity, OriginArgumentVariance(type, index, binding));

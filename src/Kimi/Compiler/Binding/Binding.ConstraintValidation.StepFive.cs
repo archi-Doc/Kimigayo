@@ -136,14 +136,6 @@ public sealed partial class Binding
         }
     }
 
-    // SPEC 10.1 step 5, 10.8.1, 10.9: the Constraint clause lists a candidate is proven under, in order: 0 its own, 1 its owner
-    // structure's, a constructor's, whose slots are the owner's (`slotOwner`, CallSlotOwner); null where it has none. The one
-    // enumeration of StepFiveConjunction, which proves them, and of J2's CollectPositionNames, which reads the variables they name
-    // (the owner's O-368 (a)).
-    private static IReadOnlyList<Koto>? CandidateClauses(Koto binder, Koto? slotOwner, int list)
-        => list == 0 ? (binder as FunctionKoto)?.TypeConstraints
-            : list == 1 && slotOwner is StructKoto owner && !ReferenceEquals(owner, binder) ? owner.ConstraintNodes : null;
-
     private ConstraintProof CheckOperationTypeConstraints(in BoundArgumentOperation operation, BindingScope scope)
     {
         var proof = operation.SourceType is { } source ? this.CheckTypeConstraints(source, scope) : ConstraintProof.Proven;

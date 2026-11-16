@@ -506,6 +506,23 @@ public sealed partial class Binding
         // its later runs; the selected candidate's are the region graph's records (RecordOpenings). E is never read back from a meet.
         internal List<(BoundOrigin Region, BoundOrigin Bound)> Opened { get; } = new();
 
+        // SPEC 15.3.4: the per-call binders (BoundType.Binder) of the Function Types the collection is inside, on either side
+        // (CollectOriginInference, the one writer); empty between collections.
+        internal List<Koto> Quantifiers { get; } = new();
+
+        // The Callable comparison whose implementation the solve instantiates (ContractFits), whose premises its proofs assume; default
+        // for a call's solve.
+        internal CallableInstance Comparison { get; set; }
+
+        // The source of the bounds being added, set by their producer around its collection (ContractFits, SolveOriginInference).
+        internal (byte Member, Koto? Clause, bool Equality) Source { get; set; }
+
+        // The first bound a failed solve could not satisfy, as the comparison's failure (ContractFits); None when no bound failed.
+        internal ComparisonFailure Failure { get; set; }
+
+        // Whether a bound was added with a condition, so a solve folds conditional limits (SolveOriginInference).
+        internal bool Conditional { get; set; }
+
         // The evidence candidate of `region`'s variable: `solved`, kept at its opening; the kept one where `solved` already holds the
         // region, a later run's value that the completed waiting part has entered.
         internal BoundOrigin Open(BoundOrigin region, BoundOrigin solved)
@@ -531,23 +548,6 @@ public sealed partial class Binding
 
             return solved;
         }
-
-        // SPEC 15.3.4: the per-call binders (BoundType.Binder) of the Function Types the collection is inside, on either side
-        // (CollectOriginInference, the one writer); empty between collections.
-        internal List<Koto> Quantifiers { get; } = new();
-
-        // The Callable comparison whose implementation the solve instantiates (ContractFits), whose premises its proofs assume; default
-        // for a call's solve.
-        internal CallableInstance Comparison { get; set; }
-
-        // The source of the bounds being added, set by their producer around its collection (ContractFits, SolveOriginInference).
-        internal (byte Member, Koto? Clause, bool Equality) Source { get; set; }
-
-        // The first bound a failed solve could not satisfy, as the comparison's failure (ContractFits); None when no bound failed.
-        internal ComparisonFailure Failure { get; set; }
-
-        // Whether a bound was added with a condition, so a solve folds conditional limits (SolveOriginInference).
-        internal bool Conditional { get; set; }
 
         internal void Add(BoundOrigin longer, BoundOrigin shorter, bool longerVariable = true, bool shorterVariable = true, ulong condition = 0)
         {

@@ -255,21 +255,6 @@ public sealed partial class Binding
         }
     }
 
-    // Whether `source`, a bound of the solution `(E and region)`, is a bound of `region` of its own: neither an operand of the
-    // solution (E outlives the meet by SPEC 15.3.6's law, which bounds nothing) nor an Origin holding the region.
-    private static bool BoundsSolved(BoundOrigin source, BoundOrigin solution, BoundOrigin region)
-    {
-        for (var i = 0; i < solution.Operands.Count; i++)
-        {
-            if (ReferenceEquals(source, solution.Operands[i]))
-            {
-                return false;
-            }
-        }
-
-        return !HoldsOrigin(source, region);
-    }
-
     // J2 (SPEC 15.3.6, 15.2.2; the owner's O-358 (a), O-362 (a); PLAN G936): the record of a region the selected call's late solve
     // opened beside the evidence candidate `bound` (OriginInference.Opened). The region lies within `bound`, and within the longer
     // end of every relation whose shorter end is the variable's own solution `(bound and region)`: the waiting part's fit, recorded
