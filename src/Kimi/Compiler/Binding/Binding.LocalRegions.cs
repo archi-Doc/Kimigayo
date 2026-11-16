@@ -9,13 +9,18 @@ namespace Kimi.Compiler;
 // or a var for slot's (their declarations are IsRegionOwner's; LocalRegionSlot), the contract bounds recorded on them, never a current
 // value (RecordLocalRegionBound, RecordRegionBound), their finite sources (LocalRegionSources) and the value that brought a source in
 // (LocalRegionSourceUse), and the relations judged through those sources (RegionContains, JudgeLocalRegion). A row is read through
-// one find (Region) and written through one create (WrittenRegion). The Types that carry the regions are Binding.LocalRegions.Types.cs's.
+// one find (Region) and written through one create (WrittenRegion). The rows are a pass part's (PassPart.Regions; DECISIONS BU-220's
+// D-9 line): the find reads the library layer's part first, then the running pass's, and a new row goes into the running pass's. The
+// Types that carry the regions are Binding.LocalRegions.Types.cs's.
 public sealed partial class Binding
 {
-    private readonly Dictionary<BoundOrigin, LocalRegion> localRegions = new(ReferenceEqualityComparer.Instance);
     private readonly List<BoundOrigin> regionWork = new();
     private readonly HashSet<BoundOrigin> regionVisited = new(ReferenceEqualityComparer.Instance);
     private readonly List<(Koto? Value, BoundOrigin? Parent)> regionEvidence = new();
+
+    // The running pass's part of the rows (PassPart.Regions), which its steps write and reset; the driver hands it over (EnterPass),
+    // Binding's own between Binds.
+    private Dictionary<BoundOrigin, LocalRegion> localRegions;
     private int regionVersion;
 
     // The region graph's version: every recorded bound moves it, so a body's last one is the whole-body graph.
@@ -172,6 +177,7 @@ public sealed partial class Binding
             => value is null || parent is null ? null : (value is VariableKoto { InitializerKoto: { } initializer } ? initializer : value, parent);
     }
 
+    // The running pass's rows, emptied in place; the version starts again per run (BeginRun).
     private void ResetLocalRegions()
     {
         foreach (var region in this.localRegions.Values)
@@ -182,15 +188,19 @@ public sealed partial class Binding
             region.Version = -1;
         }
 
-        this.regionVersion = 0;
         this.regionWork.Clear();
         this.regionVisited.Clear();
     }
 
-    // The one find of a target Origin's row; null when no bound or slot was recorded on it.
-    private LocalRegion? Region(BoundOrigin origin) => this.localRegions.TryGetValue(origin, out var region) ? region : null;
+    // The one find of a target Origin's row (PassPart.Find): the library layer's part first, then the running pass's; null when no
+    // bound or slot was recorded on it.
+    private LocalRegion? Region(BoundOrigin origin)
+    {
+        _ = PassPart.Find(this.Library.Layer.Part.Regions, this.localRegions, origin, out var region);
+        return region;
+    }
 
-    // A write's row: the one the find returns, else a new row, so an Origin has one row.
+    // A write's row: the one the find returns, else a new row in the running pass's part, so an Origin has one row.
     private LocalRegion WrittenRegion(BoundOrigin origin)
     {
         if (this.Region(origin) is { } region)
@@ -282,7 +292,9 @@ public sealed partial class Binding
         return result;
     }
 
-    private sealed class LocalRegion
+    // A target Origin's row: the bounds recorded on it (Parents, each with its Values entry) and the memo of its sources (Sources,
+    // current while Version is the graph's version).
+    internal sealed class LocalRegion
     {
         internal List<BoundOrigin> Parents { get; } = new();
 
