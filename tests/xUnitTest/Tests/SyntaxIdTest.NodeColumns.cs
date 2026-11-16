@@ -125,7 +125,8 @@ public partial class SyntaxIdTest
     }
 
     // G949 D2b-d's d10 for an edit family (N5-5's associatedOrigins): an edit's renumbering hands its column over, stale, so the Bind
-    // after each of two edits empties it at its first write and rewrites the row in the same arena.
+    // after each edit empties it at its first write and rewrites the row in the same arena. Checked after each edit: a kept family's
+    // two arenas alternate, so after an even number of edits a kept column's arena is again its first.
     [Trait("Purpose", "Allocation")]
     [Fact]
     public void AnEditFamilyKeepsItsArenaAcrossEdits()
@@ -138,10 +139,9 @@ public partial class SyntaxIdTest
         {
             c.NoteSyntaxEdit(c.Kotonoha.RootKoto);
             Assert.True(c.Bind().IsComplete);
+            Assert.Same(before, Read<Array>(c.Kotonoha.Syntax.Hir.Families.AssociatedOrigins, "arena"));
+            Assert.Equal(PagedColumn<int>.PageSize, c.Kotonoha.Syntax.Hir.Families.AssociatedOrigins.Used);
         }
-
-        Assert.Same(before, Read<Array>(c.Kotonoha.Syntax.Hir.Families.AssociatedOrigins, "arena"));
-        Assert.Equal(PagedColumn<int>.PageSize, c.Kotonoha.Syntax.Hir.Families.AssociatedOrigins.Used);
     }
 
     // G949 N5-5's n15: an owner-keyed Origin interner's row (originAtoms, openOrigins) keeps its owner's atoms in key order, so a search
