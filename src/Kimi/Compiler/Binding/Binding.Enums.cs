@@ -154,23 +154,32 @@ public sealed partial class Binding
             return null;
         }
 
-        expected = this.ExpectedTypeOf(expected); // SPEC 10.2, 10.8.1: the expected enum of a contextual Case at `ref/U` is U's.
-        if (expected is not { Semantics: SemanticsKind.Owner, Symbol.Declaration: EnumKoto } || reference.Operands.Length != 1 || reference.Operands[0] is not IdentifierNameKoto name)
+        // SPEC 10.2, 10.8.1: the expected enum of a contextual Case at `ref/U` is U's.
+        if (this.CaseAt(reference, scope, this.ExpectedTypeOf(expected), out var missing) is not { } member)
         {
-            this.Fail(reference, BindingFailure.MissingType, true);
+            this.Fail(reference, missing, missing == BindingFailure.MissingType);
             return null;
         }
 
-        var member = this.LookupMember(expected, name.IdentifierName, scope, LookupRole.EnumCase).Member;
-        if (member is null)
-        {
-            this.Fail(reference, BindingFailure.MissingName);
-            return null;
-        }
-
+        var name = (IdentifierNameKoto)reference.Operands[0];
         reference.BoundSymbol = name.BoundSymbol = member;
         Complete(name, BoundType.Unit);
         return member;
+    }
+
+    // SPEC 6.5.2: the Case that a contextual `.Name` names in the expected Type, a lookup that writes no node (InferredCase publishes
+    // it). Null with why there is none: MissingType when the expected Type is no owned enum Type, MissingName when that enum has no
+    // such Case.
+    private BindingSymbol? CaseAt(SyntaxFormKoto reference, BindingScope scope, BoundType? expected, out BindingFailure missing)
+    {
+        missing = BindingFailure.MissingType;
+        if (expected is not { Semantics: SemanticsKind.Owner, Symbol.Declaration: EnumKoto } || reference.Operands.Length != 1 || reference.Operands[0] is not IdentifierNameKoto name)
+        {
+            return null;
+        }
+
+        missing = BindingFailure.MissingName;
+        return this.LookupMember(expected, name.IdentifierName, scope, LookupRole.EnumCase).Member;
     }
 
     private BoundType? BindEnumConstruction(Koto use, Koto reference, BindingSymbol symbol, InvocationKoto? call, BindingScope scope, BoundType? expected)
