@@ -6,12 +6,15 @@ namespace Kimi.Compiler;
 
 // Scopes and symbols: the scope tree and the symbol tables of its scopes.
 // - Responsibility: one scope per key, created once and attached to its parent each pass (GetScope); the scope a node binds in
-//   (NodeScope); a symbol's declaration in its scope's Type or value table with the duplicate rule (Declare); a parameter's symbol.
+//   (NodeScope); a symbol's declaration in its scope's Type or value table with the duplicate rule (Declare); a function parameter's
+//   symbol by its function and index, declared (DeclareParameter) and read (ParameterSymbol).
 // - Inputs: the indexing walk and the declaration steps that declare a symbol. Outputs: scopes, symbols, each declaring node's
 //   BoundSymbol, Duplicate failures.
-// - Invariants: scopes and symbols are kept across passes by their key (a node or a source document) and reset by ResetPass.
+// - Invariants: scopes and symbols are kept across passes by their key (a node, a source document, or a parameter's function and
+//   index) and reset by ResetPass.
 // - Prohibitions: no name is resolved here (lookup is Binding.Names.cs's and Binding.Types.cs's); Declare reads a scope's table only
-//   to chain a name's symbols (Next) and apply the duplicate rule.
+//   to chain a name's symbols (Next) and apply the duplicate rule. No other file reaches a function parameter's symbol but through
+//   DeclareParameter and ParameterSymbol (DECISIONS BU-220's key rule).
 public sealed partial class Binding
 {
     internal BindingSymbol ParameterSymbol(FunctionKoto function, int index) => function.Accessor is { } accessor
@@ -72,5 +75,11 @@ public sealed partial class Binding
         table[name] = symbol;
         node.BoundSymbol = symbol;
         return symbol;
+    }
+
+    private void DeclareParameter(FunctionKoto function, int index, BindingScope scope)
+    {
+        var parameter = function.Parameters[index];
+        this.Declare(parameter, parameter.InternalName, BindingSymbolKind.Parameter, function, scope).Slot = index;
     }
 }

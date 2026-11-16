@@ -441,9 +441,7 @@ public sealed partial class Binding
                     this.Scope = binding.GetScope(node, this.Scope);
                     for (var i = 0; i < function.Parameters.Count; i++)
                     {
-                        var parameter = function.Parameters[i];
-                        var symbol = binding.Declare(parameter, parameter.InternalName, BindingSymbolKind.Parameter, node, this.Scope);
-                        symbol.Slot = i;
+                        binding.DeclareParameter(function, i, this.Scope);
                     }
 
                     node.BoundSymbol = binding.symbols.GetValueOrDefault(node);
