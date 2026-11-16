@@ -65,6 +65,7 @@ public sealed partial class Binding
         this.matches = new(this);
         this.adaptations = new(this);
         this.associatedInference = new(this);
+        this.specializations = new(this);
         this.virtualEffectBounds = new(this);
         this.overrideEntries = new(this);
         this.virtualOverrides = new(this);
@@ -126,6 +127,7 @@ public sealed partial class Binding
             this.Library.Kotonoha.Syntax.Hir.Families.DeferredConstraints.Used,
             this.Library.Kotonoha.Syntax.Hir.Families.Matches.Used,
             this.Library.Kotonoha.Syntax.Hir.Families.Adaptations.Used,
+            this.Library.Kotonoha.Syntax.Hir.Families.Specializations.Used,
             this.types.KeyCount,
             this.constraints.Count,
             this.pendingAssociatedTypes.Count,
@@ -154,6 +156,7 @@ public sealed partial class Binding
             this.Library.Kotonoha.Syntax.Hir.Families.DeferredConstraints.Free,
             this.Library.Kotonoha.Syntax.Hir.Families.Matches.Free,
             this.Library.Kotonoha.Syntax.Hir.Families.Adaptations.Free,
+            this.Library.Kotonoha.Syntax.Hir.Families.Specializations.Free,
             this.types.KeyFree,
             this.constraints.Capacity - this.constraints.Count,
             this.pendingAssociatedTypes.Capacity - this.pendingAssociatedTypes.Count,

@@ -1,5 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using System.Diagnostics.CodeAnalysis;
 using Kimi.Compiler.Parsing;
 
 namespace Kimi.Compiler;
@@ -9,7 +10,7 @@ namespace Kimi.Compiler;
 // call contract and ABI it keeps (SPEC 8.13.2).
 public sealed partial class Binding
 {
-    private readonly Dictionary<FunctionKoto, Specialization> specializations = new(ReferenceEqualityComparer.Instance);
+    private readonly SpecializationRows specializations;
 
     // SPEC 8.13.3: selection is keyed by the original; each original lists its verified specializations.
     private readonly Dictionary<BindingSymbol, List<FunctionKoto>> specializationsByOriginal = new(ReferenceEqualityComparer.Instance);
@@ -183,7 +184,6 @@ public sealed partial class Binding
 
     private void ResetSpecializations()
     {
-        this.specializations.Clear();
         foreach (var siblings in this.specializationsByOriginal.Values)
         {
             siblings.Clear();
@@ -528,12 +528,32 @@ public sealed partial class Binding
         }
     }
 
-    private sealed class Specialization(BoundType?[] arguments, BoundLength?[] lengths)
+    internal sealed class Specialization(BoundType?[] arguments, BoundLength?[] lengths)
     {
         internal BindingSymbol Original { get; set; } = null!;
 
         internal BoundType?[] Arguments { get; } = arguments;
 
         internal BoundLength?[] Lengths { get; } = lengths;
+    }
+
+    /// <summary>The `specializations` family's one accessor (DECISIONS BU-220): a pass family, a verified explicit specialization's entry
+    /// (the kept object specializationStorage holds), in the specialization's module's NodeColumns at its SyntaxId; absent after a pass until
+    /// the column's first write. Its members keep the names its readers use.</summary>
+    private readonly struct SpecializationRows(Binding binding)
+    {
+        internal Specialization this[FunctionKoto function]
+            => this.TryGetValue(function, out var specialization) ? specialization : throw new KeyNotFoundException($"`{function}` is no verified specialization in this pass.");
+
+        internal void Add(FunctionKoto function, Specialization specialization)
+        {
+            ref var row = ref HirTables.Of(function).Families.Specializations.Ref(function.SyntaxId, binding);
+            row = row is null ? specialization : throw new ArgumentException($"`{function}` was already verified in this pass.", nameof(function));
+        }
+
+        internal bool ContainsKey(FunctionKoto function) => this.TryGetValue(function, out _);
+
+        internal bool TryGetValue(FunctionKoto function, [NotNullWhen(true)] out Specialization? specialization)
+            => (specialization = function.SyntaxOwner is { } table ? table.Hir.Families.Specializations.Get(function.SyntaxId, binding) : null) is not null;
     }
 }

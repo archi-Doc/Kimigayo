@@ -270,6 +270,7 @@ internal struct NodeColumns
     internal StampedColumn<Binding.VirtualOverride, Binding.PassCounter> VirtualOverrides; // Pass: an override's verified slot (Binding.VirtualOverrides.cs).
     internal PagedColumn<List<(FunctionKoto Original, FunctionKoto Implementation)>?> OverrideEntries; // Kept: a Type's implementations by original, emptied each pass (Binding.VirtualOverrides.cs).
     internal StampedColumn<EffectBoundKoto?, Binding.PassCounter> VirtualEffectBounds; // Pass: a virtual function's confining effect bound (Binding.EffectDeclarations.cs).
+    internal StampedColumn<Binding.Specialization?, Binding.PassCounter> Specializations; // Pass: a verified explicit specialization's entry (Binding.Specializations.cs).
     internal PagedColumn<(SourceDocument Document, BindingScope? Scope)[]?> Documents; // Kept: Scopes' composite column, a module root's document scopes.
     internal PagedColumn<Binding.AssociatedInference?> AssociatedInference; // Kept: a conforming Type's inference batch (Binding.AssociatedInference.cs).
     internal PagedColumn<BoundOrigin?[]?> OriginAtoms; // Kept: a binder's Origin atoms, a KeyedRow by kind and slot (Binding.Origins.cs).
@@ -292,6 +293,7 @@ internal struct NodeColumns
         this.CopyByType.Grow(length);
         this.Scopes.Grow(length);
         this.Documents.Grow(length);
+        this.Specializations.Grow(length);
         this.VirtualEffectBounds.Grow(length);
         this.OverrideEntries.Grow(length);
         this.VirtualOverrides.Grow(length);
@@ -320,6 +322,7 @@ internal struct NodeColumns
         this.DeferredConstraints.Reserve(stated.DeferredConstraints);
         this.Matches.Reserve(stated.Matches);
         this.Adaptations.Reserve(stated.Adaptations);
+        this.Specializations.Reserve(stated.Specializations);
         this.Scopes.Reserve(stated.Scopes);
         this.OriginAtoms.Reserve(stated.OriginAtoms);
         this.OpenOrigins.Reserve(stated.OpenOrigins);
@@ -340,6 +343,7 @@ internal struct NodeColumns
             CopyByType = this.CopyByType.Renumbered(length),
             Scopes = this.Scopes.Renumbered(length),
             Documents = this.Documents.Renumbered(length),
+            Specializations = this.Specializations.Renumbered(length),
             VirtualEffectBounds = this.VirtualEffectBounds.Renumbered(length),
             OverrideEntries = this.OverrideEntries.Renumbered(length),
             VirtualOverrides = this.VirtualOverrides.Renumbered(length),
