@@ -143,11 +143,15 @@ public partial class LocalRegionInferenceTest(ITestOutputHelper output)
     // SPEC 23.1, 15.4.4 (DECISIONS R4-M133; PLAN G492-a (ii)): a record shows and relates the Borrow at the operand that supplies its end
     // when that Borrow, or the value it is stored through, reads a `let` local's region in the local's own body, where the region is its
     // value: a Reborrow through `let rr`, a `let` slice's element Borrow stored into a `var`, and a call whose Closure captured a `let`
-    // array, which holds no Borrow at the operand, so the end is shown there. Each showed the `let` initializer's Borrow instead.
+    // array, which holds no Borrow at the operand, so the end is shown there. Each showed the `let` initializer's Borrow instead. us1v
+    // (the owner's O-385 (a)): a comparison's bound `z outlives x` is stored in the region graph as the comparison read it, the slot z,
+    // and read as stored, so the Borrow n@ref that z's value bound brought in is shown and related (it was read back as z's value and
+    // matched at the comparison, where no Borrow is: "the borrow n" related at the call).
     [Theory]
     [InlineData("func f(p: ref/i32) -> ref/i32 during p\n    var local: i32 = 1\n    var r = local@uniq\n    let rr = r@uniq\n    return rr@follow@follow@ref\n", "rr@follow@follow@ref", "the borrow rr@follow@follow@ref outlives p", "rr@follow@follow@ref")]
     [InlineData("func f(x: ref/i32) -> ref/i32 during x\n    let values = [1, 2, 3]\n    let s = values[0..2]\n    var view = x\n    view = s[0]@ref\n    return view\n", "view", "the borrow s[0]@ref outlives x", "s[0]@ref")]
     [InlineData("func bad() -> ref/i32 during static\n    let n = 7\n    let values: [1 of ref/i32] = [n@ref]\n    let f = func [values] () => values[0]\n    return f()\n", "f()", "the borrow n outlives static", "f()")]
+    [InlineData("func h(w: ref/i64 during a, v: ref/i64 during c) -> ref/i64 during c\n    origin a outlives c\n    return w\nfunc outer(p: ref/i64) -> ref/i64 during p\n    let n: i64 = 1\n    let z = n@ref\n    var x = p\n    let f: (ref/i64 during z, ref/i64 during x) -> ref/i64 during x = h\n    return f(z, x)\n", "f(z, x)", "the borrow n@ref outlives p", "n@ref")]
     public void ARecordShowsTheOperandsBorrowThroughALetRegion(string function, string at, string relation, string related)
     {
         var source = function + "public func main() => ()\n";
