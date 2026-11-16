@@ -1612,6 +1612,50 @@ public sealed partial class RetentionTest
         Assert.Contains(written.Reached.ToArray(), x => ReferenceEquals(x.Type, entry) && (x.Retention.Kinds[1] & RetentionKind.Value) != 0);
     }
 
+    // SPEC 15.6.4 (PLAN G935 c3-4; the Middle's C-370): the part of a mixed storage that is the callee's kept T has its own entry,
+    // which TyCtxt.EntryType names at the part's key (Select), beside the entry of the storage holding it: `(T, u64)` past slot's
+    // layers keeps an input of T in the T entry.
+    [Fact]
+    public void AMixedStoragesKeptPartHasItsOwnEntry()
+    {
+        var c = Bind("func f<T>(slot: uniq/(uniq/(T, u64) during a), value: T) => ()\nfunc g(x: uniq/(uniq/(raw/u8, u64) during a), v: raw/u8)\n    f(x, v)\n");
+        var (call, retention) = Retentions(c, "f").Single();
+        var written = retention.Writes.ToArray().Single(static x => x.Output == 0);
+        var key = TyCtxt.ParameterKey(call.Target, 0, KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(static x => x.Name == "g").Parameters[0].Type.TypeOf()!);
+        var into = new List<OwnLayer>();
+        for (var i = 0; i < 2; i++)
+        {
+            into.Clear();
+            Assert.True(c.Types.OwnLayers(key, into));
+            key = into.Single().Past; // Past slot's two layers: the Tuple.
+        }
+
+        var (whole, part) = (c.Types.EntryType(written, key)!, c.Types.EntryType(written, c.Types.Select(key, 0))!);
+        Assert.Equal("T", Binding.DiagnosticTypeName(part));
+        Assert.NotSame(whole, part);
+        Assert.Contains(written.Reached.ToArray(), x => ReferenceEquals(x.Type, part) && (x.Retention.Kinds[1] & RetentionKind.Value) != 0);
+        Assert.Contains(written.Reached.ToArray(), x => ReferenceEquals(x.Type, whole));
+    }
+
+    // OutputRetention's contract (PLAN G935 c3-4, the C-370 design's property (i)): a call has no OutputRetention for an output none
+    // of whose storages retains anything: the storage written through p never keeps p's own value, and nothing else is passed.
+    [Fact]
+    public void AnOutputThatRetainsNothingHasNoRecord()
+        => Assert.Equal([string.Empty], Calls(Bind("func f<T>(p: raw/T) => ()\nvar c: u8 = 0\nf(c@raw)\n"), "f"));
+
+    // OutputRetention's contract (PLAN G935 c3-4, the design review's C3; the C-370 design's property (ii)): a kept Type's entry and
+    // an instantiated Type's are one entry where the call's Subst names the callee's own Types: f calling itself, with
+    // T := T, has one entry for the storage of T, and it holds the T input.
+    [Fact]
+    public void ACallNamingTheCalleesOwnTypeHasOneEntryForItsStorage()
+    {
+        var c = Bind("func f<T>(slot: uniq/(uniq/T during a), value: T)\n    f(slot, value@move)\n    return\n");
+        var written = Retentions(c, "f").Single().Retention.Writes.ToArray().Single(static x => x.Output == 0);
+        Assert.NotNull(written.Kept);
+        var entry = Assert.Single(written.Reached.ToArray(), static x => x.Type is { } type && Binding.DiagnosticTypeName(type) == "T");
+        Assert.NotEqual(RetentionKind.None, entry.Retention.Kinds[1] & RetentionKind.Value);
+    }
+
     // SPEC 4.9.6, 15.6.4 (DECISIONS BU-42, PLAN G255's C3): an operation of SPEC 4.6 to 4.9 writes the store at its receiver, an
     // exclusive borrow, only in the storage the receiver refers to (CallRetention.ReferentStores, `referent store j`), by declaring
     // identity whatever its element Type: an Array holding no raw layer (`Array<ref/i32>`; `Array<uniq/(ref/i32)>`, whose premise rows
