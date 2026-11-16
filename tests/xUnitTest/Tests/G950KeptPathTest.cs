@@ -132,6 +132,20 @@ public sealed class G950KeptPathTest
         Assert.True(library[0].HasFinding);
     }
 
+    // g8 for the collector (the Back's C-378 (2); explicit until G950-K, the base templates every body again): a later version walks only
+    // the program segment's bodies into templates, the library segment's template store kept.
+    [Fact(Explicit = true)]
+    public void ALaterVersionKeepsTheLibrarysTemplates()
+    {
+        var c = Compile("milestone/Milestone27");
+        var (builder, collector) = (new MirBuilder(c), new InstanceCollector(c.Types, c.Layout));
+        _ = collector.Run(builder.Build(), c.SourceModules.Length);
+        Finish(c, OutputKind.Application);
+        var later = builder.Build();
+        _ = collector.Run(later, c.SourceModules.Length);
+        Assert.Equal(later.ProgramBodies.Length, collector.Templated);
+    }
+
     // M2 (design §R1.4; explicit until G950-K, the base's rebuild drops the injection): a kept library row is published in every version:
     // a validator finding of a library body (the seam MirAnalysisTest.ABodyWithAFindingLeavesOtherBodiesProblems uses; G950-K gives it at
     // the validator's library step) is published by the second version again, at the same index.

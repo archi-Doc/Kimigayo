@@ -17,9 +17,10 @@
 // and a PropertyWitness item's key signature (StorageSignature; DECISIONS R5-M141, the owner's R5-M142); a borrowing callee's owner Value
 // call also targets its operand's glue, after the body (DECISIONS R5-M102).
 // Roots (K 4.4): each body of a root module whose definition does not instantiate, a module's top-level statements included.
-// Edges (K 4.5): one template per body and version (InstanceCollector.Templates.cs) lists its sites that may carry a target (Fn,
-// Requirement and Value calls and the intrinsics the Target column names, a Virtual call none, X5; a Closure environment, an erasure and a
-// function item constant; a Drop), each with its runtime bit from one MirReach walk without CheckTarget edges. An item's targets are
+// Edges (K 4.5): one template per body (InstanceCollector.Templates.cs: the library segment's kept while its library version holds, PLAN
+// G950) lists its sites that may carry a target (Fn, Requirement and Value calls and the intrinsics the Target column names, a Virtual
+// call none, X5; a Closure environment, an erasure and a function item constant; a Drop), each with its runtime bit from one MirReach
+// walk without CheckTarget edges. An item's targets are
 // InstanceCollector.Edges.cs's: replaying a body item's template resolves each site's row under the item's representative, a callee's body
 // (InstanceCollector.Callees.cs), and a Requirement call's, a requirement Item's, a bodyless callee's published row's and an erased writer's
 // by the witness there (InstanceCollector.Witnesses.cs: a body, a Builtin or a property-witness shim keyed by its compiler function or Field
@@ -30,7 +31,8 @@
 // InstanceCollector.Objects.cs: a created payload's descriptor's glue and VTable, a VTable's slot bodies by VTableDef and Applies).
 // Capability (K 4.7, InstanceCollector.Capabilities.cs): the definition-stage check (A3b) of every operation of a root-module body whose
 // Types are closed, every block included, once per definition and location, and of a root-module static's declaration (static storage
-// P42 has not brought, a generic container's included, DECISIONS R5-M82); Binding's refusals are Opaque values, so it never repeats them.
+// P42 has not brought, a generic container's included, DECISIONS R5-M82), judged in the root loop every version before LayOutImports
+// (PLAN G950: never kept with a template); Binding's refusals are Opaque values, so it never repeats them.
 // An operation whose Types depend on slots is a template site, checked in each instance with its Types there, once per location.
 // Layout obligations (K 4.8, InstanceCollector.Layouts.cs): each item's by-value uses (its body's locals but drop flags and a constructor's
 // construction receiver, DECISIONS BU-48; its aggregates; the inputs and result of an erasure's target Function Type, DECISIONS R5-M108),
@@ -119,6 +121,10 @@ internal sealed partial class InstanceCollector
     /// window per key), which grow linearly with the instances.</summary>
     internal int Work { get; private set; }
 
+    /// <summary>Gets the bodies the latest run walked into templates: every body where it built the library segment's templates, the
+    /// program segment's where it kept them (PLAN G950's row g8).</summary>
+    internal int Templated { get; private set; }
+
     /// <summary>Collects the checked set of a program version unless this version already was.</summary>
     /// <param name="program">The built and validated program.</param>
     /// <param name="rootModules">The root range: the bodies whose module is below it are roots. Any bound is a range: Compilation passes
@@ -138,14 +144,19 @@ internal sealed partial class InstanceCollector
         this.refused.Clear();
         this.glueKeys.Clear();
         Array.Clear(this.declaring);
-        (this.program, this.rootModules, this.Work) = (program, rootModules, 0);
+        (this.program, this.rootModules, this.Work, this.Templated) = (program, rootModules, 0, 0);
         this.Templates(program);
         foreach (var body in program.Bodies)
         {
-            if (!body.HasFinding && body.Source.Module < rootModules && (body.Key.Decl is null || !this.types.Instantiates(body.Key.Decl)))
+            this.CheckStatic(body); // A3b, judged every version (PLAN G950), in body order: a static's declaration row first.
+            if (!body.HasFinding && body.Source.Module < rootModules)
             {
-                var key = new MonoKey(MonoKind.Body, new(body.Key, null), null, null, 0, null);
-                set.Add(new() { Key = key, BodyOrdinal = body.Ordinal, Parent = -1, Growth = new(1, 0, -1), Site = body.Source });
+                this.CheckOperations(body);
+                if (body.Key.Decl is null || !this.types.Instantiates(body.Key.Decl))
+                {
+                    var key = new MonoKey(MonoKind.Body, new(body.Key, null), null, null, 0, null);
+                    set.Add(new() { Key = key, BodyOrdinal = body.Ordinal, Parent = -1, Growth = new(1, 0, -1), Site = body.Source });
+                }
             }
         }
 
