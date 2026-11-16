@@ -859,7 +859,7 @@ public sealed class MirInitTest
     public void NoRuntimeDefinitionKeepsItsState(bool broken)
     {
         var c = MirBuildTest.Compile("func use(n: i32) => ()\nfunc f(y: i32, c: bool)\n    let x: i32\n    x = if c => y else => y\n    use(x)\n");
-        var program = new MirBuilder(c).Build(); // Unanalyzed: a version's problems are reset only with its bodies.
+        var program = new MirBuilder(c).Build(SyntaxTable.LibraryModule + 1); // Unanalyzed: a version's problems are reset only with its bodies.
         var body = program.Bodies.ToArray().Single(static x => x.Key.Decl?.Name == "f");
         var statements = body.Statements.ToArray();
         var take = Array.FindIndex(statements, x => x is { Kind: MirStatementKind.Assign, Rvalue.Kind: MirRvalueKind.Use, Place.Projection: 0 } &&
