@@ -1,12 +1,12 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using System.Diagnostics.CodeAnalysis;
 using Kimi.Compiler.Parsing;
 
 namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
-    private readonly Dictionary<BindingSymbol, AssociatedInference> associatedInference = new(ReferenceEqualityComparer.Instance);
     private readonly Dictionary<BoundType, bool> pendingAssociatedTypes = new(
         KimiLibrarySize.KeyedCapacity(KimiLibrarySize.Stated.AssociatedTypes), ReferenceEqualityComparer.Instance);
 
@@ -95,8 +95,9 @@ public sealed partial class Binding
         this.inferenceSources.Clear();
 
         this.pendingAssociatedTypes.Clear();
-        foreach (var batch in this.associatedInference.Values)
+        for (var batches = this.associatedInference.Values; batches.MoveNext();)
         {
+            var batch = batches.Current!;
             batch.State = 0;
             batch.Active = false;
             batch.Paths.Clear();
@@ -120,12 +121,7 @@ public sealed partial class Binding
             {
                 if (this.InferenceHole(path, identity))
                 {
-                    if (!this.associatedInference.TryGetValue(path.Type, out var batch))
-                    {
-                        this.associatedInference.Add(path.Type, batch = new(path.Type));
-                    }
-
-                    batch.Active = true;
+                    InferenceBatches.Batch(path.Type).Active = true;
                     break;
                 }
             }
@@ -139,18 +135,18 @@ public sealed partial class Binding
             }
         }
 
-        foreach (var entry in this.associatedInference)
+        for (var batches = this.associatedInference.Values; batches.MoveNext();)
         {
-            if (!entry.Value.Active)
+            if (batches.Current is { Active: false } inactive)
             {
-                this.associatedInference.Remove(entry.Key);
+                InferenceBatches.Remove(inactive.Type);
             }
         }
 
         this.associatedInferenceReady = true;
-        foreach (var batch in this.associatedInference.Values)
+        for (var batches = this.associatedInference.Values; batches.MoveNext();)
         {
-            if (batch.Paths.Count != 0)
+            if (batches.Current is { Paths.Count: > 0 } batch)
             {
                 this.InferAssociatedTypes(batch);
             }
@@ -769,7 +765,42 @@ public sealed partial class Binding
 
     internal readonly record struct AssociatedEvidence(BoundConformancePath Path, BoundRequirement Identity, BoundType Type, FunctionKoto Source);
 
-    private sealed class AssociatedInference(BindingSymbol type)
+    // The `associatedInference` family's one accessor (DECISIONS BU-220): a conforming Type's batch is kept in its Type's declaration's
+    // module at the declaration's SyntaxId (SPEC 8.6.1: a conformance is declared in its Type's declaration, ImplTable's store rule),
+    // across passes: ResetAssociatedInference resets each in place, and PrepareAssociatedInference drops one no inference hole needs.
+    internal readonly struct InferenceBatches(Binding binding)
+    {
+        // Every kept batch in G949 D2b-d's d8 order: the source modules by ordinal, then the library, each by ascending id.
+        internal FamilyRows<AssociatedInference?> Values => new(binding, static table => table.Hir.Families.AssociatedInference);
+
+        // The slots the family's columns hold over the compilation's modules (AssociatedMetrics' retained storage).
+        internal int Capacity
+        {
+            get
+            {
+                var capacity = Slots(binding.Library.Kotonoha.Syntax);
+                foreach (var module in binding.compilation.SourceModules)
+                {
+                    capacity += Slots(module.Syntax);
+                }
+
+                return capacity;
+
+                static int Slots(SyntaxTable table) => table.Hir.Families.AssociatedInference.Used + table.Hir.Families.AssociatedInference.Free;
+            }
+        }
+
+        // A conforming Type's batch, made at its first need.
+        internal static AssociatedInference Batch(BindingSymbol type)
+            => HirTables.Of(type.Declaration).Families.AssociatedInference.Ref(type.Declaration.SyntaxId) ??= new(type);
+
+        internal static void Remove(BindingSymbol type) => HirTables.Of(type.Declaration).Families.AssociatedInference.Ref(type.Declaration.SyntaxId) = null;
+
+        internal bool TryGetValue(BindingSymbol type, [NotNullWhen(true)] out AssociatedInference? batch)
+            => (batch = type.Declaration.SyntaxOwner is { } table ? table.Hir.Families.AssociatedInference.Get(type.Declaration.SyntaxId) : null) is not null;
+    }
+
+    internal sealed class AssociatedInference(BindingSymbol type)
     {
         internal BindingSymbol Type { get; } = type;
 

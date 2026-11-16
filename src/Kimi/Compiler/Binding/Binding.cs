@@ -28,6 +28,7 @@ public sealed partial class Binding
     private readonly KeptScopes scopes;
 
     private readonly DeclaredSymbols symbols;
+    private readonly InferenceBatches associatedInference;
     private readonly List<BindingIssue> issues = new();
     private readonly List<LibraryImport> libraryImports = new();
     private readonly TyCtxt types;
@@ -44,6 +45,7 @@ public sealed partial class Binding
         this.types = new(this, this.Library);
         this.symbols = new(this);
         this.scopes = new(this);
+        this.associatedInference = new(this);
         this.Library.Kotonoha.Syntax.Hir.Families.Reserve(KimiLibrarySize.Stated);
         foreach (var symbol in this.Library.RegisteredSymbols)
         {
