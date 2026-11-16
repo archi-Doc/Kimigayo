@@ -289,11 +289,7 @@ public sealed partial class Binding
             return; // `bound` is static: the solution is the region itself, whose bounds are recorded on it.
         }
 
-        if (!this.localRegions.TryGetValue(solution, out var entry))
-        {
-            this.localRegions.Add(solution, entry = new());
-        }
-
+        var entry = this.WrittenRegion(solution);
         entry.Solved = region;
         for (var i = 0; i < entry.Parents.Count; i++)
         {
