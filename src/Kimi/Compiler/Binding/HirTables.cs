@@ -265,6 +265,7 @@ internal struct NodeColumns
     internal PagedColumn<BindingScope?> Scopes; // Kept: a node's scope (Binding.Scopes.cs).
     internal PagedColumn<(SourceDocument Document, BindingScope? Scope)[]?> Documents; // Kept: Scopes' composite column, a module root's document scopes.
     internal PagedColumn<BoundOrigin?[]?> OriginAtoms; // Kept: a binder's Origin atoms, a KeyedRow by kind and slot (Binding.Origins.cs).
+    internal PagedColumn<BoundOrigin?[]?> OpenOrigins; // Kept: a source's open regions, a KeyedRow by key (Binding.OpenOrigins.cs).
     internal PagedColumn<BoundOrigin[]?> AssociatedOrigins; // Edit: an associated Type declaration's Origin parameters (Binding.AssociatedOrigins.cs).
     internal ulong EditStamp; // The edit counter (Binding.Invalidate) at the edit columns' first write since it last advanced.
 
@@ -275,6 +276,7 @@ internal struct NodeColumns
         this.Scopes.Grow(length);
         this.Documents.Grow(length);
         this.OriginAtoms.Grow(length);
+        this.OpenOrigins.Grow(length);
         this.AssociatedOrigins.Grow(length);
     }
 
@@ -285,6 +287,7 @@ internal struct NodeColumns
         this.Parameters.Reserve(stated.Parameters);
         this.Scopes.Reserve(stated.Scopes);
         this.OriginAtoms.Reserve(stated.OriginAtoms);
+        this.OpenOrigins.Reserve(stated.OpenOrigins);
         this.AssociatedOrigins.Reserve(stated.AssociatedOrigins);
     }
 
@@ -312,6 +315,7 @@ internal struct NodeColumns
             Scopes = this.Scopes.Renumbered(length),
             Documents = this.Documents.Renumbered(length),
             OriginAtoms = this.OriginAtoms.Renumbered(length),
+            OpenOrigins = this.OpenOrigins.Renumbered(length),
             AssociatedOrigins = this.AssociatedOrigins,
             EditStamp = this.EditStamp,
         };
@@ -328,6 +332,7 @@ internal struct NodeColumns
         this.Scopes.Retire();
         this.Documents.Retire();
         this.OriginAtoms.Retire();
+        this.OpenOrigins.Retire();
     }
 
     // A kept family's row moves with its node; an edit family's rows were handed over (Renumbered).
@@ -338,6 +343,7 @@ internal struct NodeColumns
         this.Scopes.MoveTo(ref target.Scopes, from, to);
         this.Documents.MoveTo(ref target.Documents, from, to);
         this.OriginAtoms.MoveTo(ref target.OriginAtoms, from, to);
+        this.OpenOrigins.MoveTo(ref target.OpenOrigins, from, to);
     }
 }
 

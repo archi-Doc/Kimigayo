@@ -77,8 +77,9 @@ public partial class KimiLibraryShapeTest
             x => Assert.Contains(dump, row => row.StartsWith(x.Name + " ", StringComparison.Ordinal)));
     }
 
-    // G949 N5-5's n3 (C-380 F2): a library binder's atoms live in the library module's NodeColumns (originAtoms): after a second Bind,
-    // and after an edit to the program's module and a Bind, every atom the library's rows hold is the same object.
+    // G949 N5-5's n3 (C-380 F2): a library binder's atoms and a library source's open regions live in the library module's NodeColumns
+    // (originAtoms, openOrigins): after a second Bind, and after an edit to the program's module and a Bind, every atom the library's
+    // rows hold is the same object.
     [Theory]
     [MemberData(nameof(LayerPrograms))]
     public void TheLibraryAtomsAreKeptAcrossBindsAndEdits(string program)
@@ -93,7 +94,7 @@ public partial class KimiLibraryShapeTest
         Assert.Equal(atoms, LibraryAtoms(c), ReferenceEqualityComparer.Instance);
 
         static object[] LibraryAtoms(Compilation c)
-            => [.. LibraryLayer.Families().Where(static x => x.Name is "OriginAtoms").SelectMany(x => LibraryLayer.RowObjects(x.GetValue(c.Library.Kotonoha.Syntax.Hir.Families)!))];
+            => [.. LibraryLayer.Families().Where(static x => x.Name is "OriginAtoms" or "OpenOrigins").SelectMany(x => LibraryLayer.RowObjects(x.GetValue(c.Library.Kotonoha.Syntax.Hir.Families)!))];
     }
 
     // The epoch rule's invariant: ResetCapabilities, which begins every pass (its one call is ResetPass's, which Bind runs first in each
