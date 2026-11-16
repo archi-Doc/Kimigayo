@@ -7,7 +7,8 @@
 // Interned identity is equality; values live with the compilation and survive warm rebinds. No instance or Item states a raw Origin on
 // a pair slot's argument: Intern binds each by PairBinding (SPEC 8.1.1; DECISIONS BU-34), but Unstated in kept parts, so there one SPEC
 // Type is two interned Types, a declaration's (`PS<raw/u8 during Unstated>`) and a parameter's (`PS<raw/u8>`) (DECISIONS BU-46).
-// Must not resolve source expressions or let consumers duplicate Type construction.
+// Must not resolve source expressions or let consumers duplicate Type construction: every Type but BoundType's statics is made here
+// (Intern, Parameter).
 
 using System.Runtime.CompilerServices;
 using Kimi.Compiler.Parsing;
@@ -110,6 +111,10 @@ internal sealed partial class TyCtxt(Binding binding, KimiLibrary library)
     // SPEC 8.15: the complete Type a Type takes in one Semantics case, each pair layer of a binder the cases name the Type of its Semantics
     // over its direct target, which the MIR's case views give every Type by.
     internal BoundType CaseType(BoundType type, ReadOnlySpan<PairCase> cases) => binding.CaseType(type, cases);
+
+    // A Type parameter's own Type, which no interning shares: a generic parameter's whole Type and a pair parameter's target
+    // projection (Binding.Indexing), a Contract's Self (Binding.ContractSelfType); each is made once and kept on its symbol.
+    internal BoundType Parameter(string name, BoundTypeKind kind, BindingSymbol symbol) => new(name, kind, symbol);
 
     // A Type by its parts, one instance per parts. `origin` is the layer's stated Origin, whose role the Semantics decides: a raw layer's raw
     // Origin (BoundType.RawOrigin; Pointer and Rebuild write it), any other layer's Origin (DECISIONS BU-24).

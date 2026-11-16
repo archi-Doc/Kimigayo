@@ -485,8 +485,8 @@ public sealed partial class Binding
                 case GenericParameterKoto parameter:
                     var typeSymbol = binding.Declare(node, parameter.Identifier, parameter.SemanticsParameter is null ? BindingSymbolKind.TypeParameter : BindingSymbolKind.SemanticsTarget, node, this.Scope);
                     typeSymbol.Slot = this.Scope.Types.Count - 1;
-                    typeSymbol.WholeType ??= new(parameter.Identifier, BoundTypeKind.Parameter, typeSymbol);
-                    typeSymbol.Type ??= parameter.SemanticsParameter is null ? typeSymbol.WholeType : new(parameter.Identifier, BoundTypeKind.TargetProjection, typeSymbol);
+                    typeSymbol.WholeType ??= binding.types.Parameter(parameter.Identifier, BoundTypeKind.Parameter, typeSymbol);
+                    typeSymbol.Type ??= parameter.SemanticsParameter is null ? typeSymbol.WholeType : binding.types.Parameter(parameter.Identifier, BoundTypeKind.TargetProjection, typeSymbol);
                     if (parameter.SemanticsParameter is not null)
                     {
                         if (!binding.pairSymbols.TryGetValue(parameter, out var semanticsSymbol))

@@ -420,8 +420,9 @@ public sealed class BindingSymbol
 }
 
 /// <summary>An immutable complete type; constructed types are interned within a compilation.</summary>
-/// <remarks>Interning makes identity the type equality, so equality and hashing never walk the fields.</remarks>
-public sealed record BoundType
+/// <remarks>Interning makes identity the type equality, so equality and hashing never walk the fields. TyCtxt makes every Type but the
+/// static ones below: the interned ones (TyCtxt.Intern) and the parameter Types (TyCtxt.Parameter).</remarks>
+public sealed class BoundType : IEquatable<BoundType?>
 {
     private readonly NumericCategory numeric;
     private readonly byte width;
@@ -546,6 +547,12 @@ public sealed record BoundType
         Float,
     }
 
+    public static BoundType Unit { get; } = new("()", BoundTypeKind.Primitive);
+
+    public static BoundType Never { get; } = new("Never", BoundTypeKind.Primitive);
+
+    public static BoundType Boolean { get; } = new("bool", BoundTypeKind.Primitive);
+
     /// <summary>Gets the canonical type name.</summary>
     public string Name { get; }
 
@@ -579,12 +586,6 @@ public sealed record BoundType
 
     /// <summary>Gets a value indicating whether this is a numeric Type: integer, wrapping integer or floating-point.</summary>
     public bool IsNumeric => this.numeric != NumericCategory.None;
-
-    public static BoundType Unit { get; } = new("()", BoundTypeKind.Primitive);
-
-    public static BoundType Never { get; } = new("Never", BoundTypeKind.Primitive);
-
-    public static BoundType Boolean { get; } = new("bool", BoundTypeKind.Primitive);
 
     internal static readonly Dictionary<string, BoundType> Primitives = CreatePrimitives();
 
