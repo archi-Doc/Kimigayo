@@ -293,6 +293,7 @@ internal struct NodeColumns
     internal PagedColumn<MemberAccessKoto?> PropertyUpdateStorage; // Kept: a property update's synthesized storage access (Binding.PropertyCalls.cs).
     internal PagedColumn<EvaluatedKoto?> PropertyUpdateInputs; // Kept: a property update's synthesized input (Binding.PropertyCalls.cs).
     internal PagedColumn<InvocationKoto?[]?> IndexerCalls; // Kept: an index expression's synthesized `index` and `indexUniq` calls (Binding.Indexers.cs).
+    internal PagedColumn<InvocationKoto?> ViewRangeCalls; // Kept: a view's range selection's synthesized `slice` call (Binding.Views.cs).
 
     internal void Resize(int length)
     {
@@ -329,6 +330,7 @@ internal struct NodeColumns
         this.PropertyUpdateStorage.Grow(length);
         this.PropertyUpdateInputs.Grow(length);
         this.IndexerCalls.Grow(length);
+        this.ViewRangeCalls.Grow(length);
     }
 
     // The library's columns start at their stated slots (KimiLibrarySize: no program row lands in them).
@@ -395,6 +397,7 @@ internal struct NodeColumns
             PropertyUpdateStorage = this.PropertyUpdateStorage.Renumbered(length),
             PropertyUpdateInputs = this.PropertyUpdateInputs.Renumbered(length),
             IndexerCalls = this.IndexerCalls.Renumbered(length),
+            ViewRangeCalls = this.ViewRangeCalls.Renumbered(length),
         };
         return columns;
     }
@@ -425,6 +428,7 @@ internal struct NodeColumns
         this.PropertyUpdateStorage.Retire();
         this.PropertyUpdateInputs.Retire();
         this.IndexerCalls.Retire();
+        this.ViewRangeCalls.Retire();
     }
 
     // A kept family's row moves with its node; a stamped family's rows were handed over (Renumbered).
@@ -452,6 +456,7 @@ internal struct NodeColumns
         this.PropertyUpdateStorage.MoveTo(ref target.PropertyUpdateStorage, from, to);
         this.PropertyUpdateInputs.MoveTo(ref target.PropertyUpdateInputs, from, to);
         this.IndexerCalls.MoveTo(ref target.IndexerCalls, from, to);
+        this.ViewRangeCalls.MoveTo(ref target.ViewRangeCalls, from, to);
     }
 }
 

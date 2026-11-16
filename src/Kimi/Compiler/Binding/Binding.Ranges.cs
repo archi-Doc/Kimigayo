@@ -129,7 +129,7 @@ public sealed partial class Binding
 
         foreach (var call in this.viewRangeCalls.Values)
         {
-            this.ResetSynthetic(call);
+            this.ResetSynthetic(call!);
         }
 
         foreach (var call in this.rangeCalls.Values)
