@@ -262,6 +262,26 @@ public sealed partial class TyCtxtTest
         CheckInstantiations(c, c.Kotonoha.RootKoto);
     }
 
+    // PLAN G949 S1-b2 (DECISIONS BU-220): the statics hold the ids 1..StaticCount from one fixed list, the same objects in every
+    // compilation; a compilation's TyCtxt numbers each Type it makes after them, each id once, in the order it makes them, so two
+    // compilations of one program number alike.
+    [Fact]
+    public void TypeIdsAreDenseAndUnique()
+    {
+        var statics = new[] { BoundType.Unit, BoundType.Never, BoundType.Boolean, BoundType.Range }.Concat(BoundType.Primitives.Values)
+            .Concat(BoundType.WrappingScalars.Values).Distinct().Select(static x => x.Id).Order();
+        Assert.Equal(Enumerable.Range(1, BoundType.StaticCount), statics);
+        var first = Interned(CompilationTestHelper.BindSuccess("()"));
+        var second = Interned(CompilationTestHelper.BindSuccess("()"));
+        Assert.All(first, static x => Assert.True(x > BoundType.StaticCount));
+        Assert.Equal(first.Length, first.Distinct().Count());
+        Assert.Equal(first, second);
+
+        static int[] Interned(Compilation c)
+            => [.. ((Dictionary<int, List<BoundType>>)typeof(TyCtxt).GetField("types", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!
+                .GetValue(c.Types)!).Values.SelectMany(static x => x).Select(static x => x.Id).Order()];
+    }
+
     // SPEC 6.1.3, 8.1.3: a closure an instance closed is in that instance's substitution and has its signature; a closure no instance closed is
     // in the identity of the function enclosing it, which keeps every Type.
     [Fact]
