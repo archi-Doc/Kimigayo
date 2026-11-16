@@ -7,14 +7,15 @@ namespace Kimi.Compiler;
 public sealed partial class Binding
 {
     private readonly Dictionary<BindingSymbol, AssociatedInference> associatedInference = new(ReferenceEqualityComparer.Instance);
-    private readonly Dictionary<(BoundConformancePath Path, BoundRequirement Requirement), RequirementMatch> requirementMatches = new();
     private readonly Dictionary<BoundType, bool> pendingAssociatedTypes = new(
         KimiLibrarySize.KeyedCapacity(KimiLibrarySize.Stated.AssociatedTypes), ReferenceEqualityComparer.Instance);
 
     private readonly Dictionary<Koto, (BoundRequirement Identity, AssociatedBinding Binding)> inferenceFailures = new(ReferenceEqualityComparer.Instance);
-    private readonly Dictionary<BoundConformancePath, List<BoundConformancePath>> inferenceConsumers = new(ReferenceEqualityComparer.Instance);
+
+    // The pass's inference sources, each path whose consumer list (BoundConformancePath.InferenceConsumers) this pass filled, in the order
+    // first filled: InvalidateAssociatedEvidence's order, and the lists ResetAssociatedInference empties.
+    private readonly List<BoundConformancePath> inferenceSources = new();
     private readonly Queue<BoundConformancePath> inferenceInvalidation = new();
-    private readonly HashSet<BoundConformancePath> publishedInference = new(ReferenceEqualityComparer.Instance);
     private AssociatedInference? collectingAssociated;
     private bool associatedInferenceReady;
 
@@ -83,15 +84,15 @@ public sealed partial class Binding
     {
         this.associatedInferenceReady = false;
         this.collectingAssociated = null;
-        this.requirementMatches.Clear();
         this.completeTypeIdentities.Clear();
         this.inferenceFailures.Clear();
         this.inferenceInvalidation.Clear();
-        this.publishedInference.Clear();
-        foreach (var consumers in this.inferenceConsumers.Values)
+        foreach (var source in this.inferenceSources)
         {
-            consumers.Clear();
+            source.InferenceConsumers!.Clear();
         }
+
+        this.inferenceSources.Clear();
 
         this.pendingAssociatedTypes.Clear();
         foreach (var batch in this.associatedInference.Values)
@@ -194,9 +195,10 @@ public sealed partial class Binding
             return;
         }
 
-        if (!this.inferenceConsumers.TryGetValue(source, out var consumers))
+        var consumers = source.InferenceConsumers ??= new();
+        if (consumers.Count == 0)
         {
-            this.inferenceConsumers.Add(source, consumers = new());
+            this.inferenceSources.Add(source);
         }
 
         if (!consumers.Contains(target))
@@ -207,10 +209,12 @@ public sealed partial class Binding
 
     private void PublishInheritedInference(BoundConformancePath path)
     {
-        if (path.InheritedFrom is null || !this.publishedInference.Add(path))
+        if (path.InheritedFrom is null || path.InferencePublished)
         {
             return;
         }
+
+        path.InferencePublished = true;
 
         for (var i = 0; i < path.InheritedSourceCount; i++)
         {
@@ -596,7 +600,7 @@ public sealed partial class Binding
 
     private void InvalidateAssociatedEvidence()
     {
-        foreach (var source in this.inferenceConsumers.Keys)
+        foreach (var source in this.inferenceSources)
         {
             if (!source.IsVerified)
             {
@@ -606,7 +610,7 @@ public sealed partial class Binding
 
         while (this.inferenceInvalidation.TryDequeue(out var source))
         {
-            if (!this.inferenceConsumers.TryGetValue(source, out var consumers))
+            if (source.InferenceConsumers is not { } consumers)
             {
                 continue;
             }
@@ -670,12 +674,14 @@ public sealed partial class Binding
         return true;
     }
 
+    // The pass's identification of a requirement in a path, kept on the path (BoundConformancePath.RequirementMatches) until the pass
+    // ends; a pending one is identified again.
     private RequirementMatch IdentifyRequirement(BoundConformancePath path, BoundRequirement identity)
     {
-        var key = (path, identity);
-        if (this.requirementMatches.TryGetValue(key, out var known) && known.State != RequirementMatchState.Pending)
+        var identified = path.RequirementMatches ??= new();
+        if (MatchIndex(identified, identity) is var known and >= 0 && identified[known].Match.State != RequirementMatchState.Pending)
         {
-            return known;
+            return identified[known].Match;
         }
 
         var self = this.ConformanceSelf(path);
@@ -708,8 +714,37 @@ public sealed partial class Binding
 
         var state = selection.Ambiguous || matches > 1 ? RequirementMatchState.Ambiguous : pending ? RequirementMatchState.Pending : selected is null ? RequirementMatchState.Missing : RequirementMatchState.Unique;
         var result = new RequirementMatch(state, selected, selection);
-        this.requirementMatches[key] = result;
+        if (MatchIndex(identified, identity) is var index and >= 0)
+        {
+            identified[index] = (identity, result); // The identification above may have stored one for the same requirement.
+        }
+        else
+        {
+            identified.Add((identity, result));
+        }
+
         return result;
+
+        static int MatchIndex(List<(BoundRequirement Requirement, RequirementMatch Match)> list, BoundRequirement identity)
+        {
+            for (var i = 0; i < list.Count; i++)
+            {
+                if (list[i].Requirement == identity)
+                {
+                    return i;
+                }
+            }
+
+            return -1;
+        }
+    }
+
+    internal enum RequirementMatchState : byte
+    {
+        Unique,
+        Missing,
+        Ambiguous,
+        Pending,
     }
 
     private enum InferenceProblem : byte
@@ -724,15 +759,7 @@ public sealed partial class Binding
         Ambiguous,
     }
 
-    private enum RequirementMatchState : byte
-    {
-        Unique,
-        Missing,
-        Ambiguous,
-        Pending,
-    }
-
-    private readonly record struct RequirementMatch(RequirementMatchState State, BindingSymbol? Member, MemberSelection Selection);
+    internal readonly record struct RequirementMatch(RequirementMatchState State, BindingSymbol? Member, MemberSelection Selection);
 
     private readonly record struct AssociatedEvidence(BoundConformancePath Path, BoundRequirement Identity, BoundType Type, FunctionKoto Source);
 

@@ -273,8 +273,21 @@ public sealed class BoundConformancePath : ICheckCause
     // Binding.PropertyWitnesses: a standard Property operation's bridge accessor (PropertyWitnessFunction).
     internal List<(BoundAccessor Requirement, BoundAccessor Bridge, PropertyWitnessKind Kind)>? PropertyBridges { get; set; }
 
+    // Binding.ConditionalConformances: the overlap scope of this path, the pair's left, with each right path (VerifyConformanceAgreement).
+    internal List<(BoundConformancePath Right, BindingScope Scope)>? OverlapScopes { get; set; }
+
     // Binding.ContractTypes: the hop chains resolving a step through this path, one per step and inner chain (Hop).
     internal List<Binding.ResolutionHops>? HopChains { get; set; }
+
+    // Binding.AssociatedInference: the pass's identification of each requirement in this path (IdentifyRequirement), and the paths
+    // whose inferred bindings rest on this path's evidence (AddInferenceConsumer); the first is per-pass state of the path, the second
+    // emptied at each pass start (ResetAssociatedInference).
+    internal List<(BoundRequirement Requirement, Binding.RequirementMatch Match)>? RequirementMatches { get; set; }
+
+    internal List<BoundConformancePath>? InferenceConsumers { get; set; }
+
+    // Binding.AssociatedInference: whether the pass published this inherited path's inference evidence (PublishInheritedInference).
+    internal bool InferencePublished { get; set; }
 
     /// <summary>Gets a verified implementation by requirement identity, without source member lookup.</summary>
     /// <param name="requirement">The original requirement declaration identity.</param>
