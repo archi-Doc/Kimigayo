@@ -8,11 +8,19 @@ namespace Kimi.Compiler.Mir;
 // a root's state, and a borrow's parents and Loan, over the one step walk of MirSteps' steps (Prefix), which a store's destination also
 // reads (MirBorrows.Flow), and the value a Deref goes through (PointerOf); a raw Ref issues its address, a `during self` layer's read
 // carries what `@raw` of its storage carries (Layered); a Case payload of a holder that holds only calls' results carries nothing where
-// the Case's payload Type holds no Loan (Unheld; SPEC 15.6 Holders' Case-payload sentence, the owner's O-383 (b)). Must not decide which
+// the Case's payload Type holds no Loan (Sources; SPEC 15.6 Holders' Case-payload sentence, the owner's O-383 (b)). Must not decide which
 // holders a set reaches or a call's store writes (MirBorrows.Reach), which locals hold only calls' results (MirBorrows.Holders) or which
-// Place a local's reference refers to (MirBorrows.Loans).
+// Places a local's reference refers to (MirBorrows.Loans).
 internal sealed partial class MirBorrows
 {
+    private const byte ReadsPlace = 1; // Sources: a Place the read reads is one the Case bound does not empty.
+    private const byte ReadsHolder = 2; // Sources: such a Place is a holder's or a static's.
+
+    private readonly List<(int Root, int At, bool Bound)> following = []; // Sources' worklist: the walks still to make.
+    private int[] followedBy = []; // By local and incoming bound: the Sources walk that followed its reference.
+    private byte[] followed = []; // By local and incoming bound: 1 + the Sources answer of following its reference, 0 for none yet.
+    private int sourceWalks = 1; // The Sources walks that followed a reference, and one.
+
     // val(rv) (A3 5) and the Loans it issues: the union of the operands whose values it is (ValueOperands: an operand's, a value-keeping
     // Cast's operand's, between raw pointer Types, 5.4; none to usize, 5.5; a displacement's pointer's, 5.3; an aggregate's), a Ref's (a
     // raw one's and a Storage's its parents and address), an integer's pointer {Φ_E} (D8), an Opaque site's {Φ_E} (R4-M70: the site
@@ -77,11 +85,12 @@ internal sealed partial class MirBorrows
         return this.slots[root] >= 0 ? this.Set(state[this.slots[root]]) : 0;
     }
 
-    // val(X) = content^k(σ(root(X))) over its k Derefs: the step walk's layer over all its steps, read as Layered reads it; none where the
-    // Case bound empties it (Unheld).
+    // val(X) = content^k(σ(root(X))) over its k Derefs: the step walk's layer over all its steps, read as Layered reads it; none where
+    // no Place the read reads (Sources) is a holder's or a static's: the Case bound empties the others, and a local that is no holder
+    // carries nothing at every point (MirBorrows.Holders' Flowing).
     private int Read(ulong[] state, MirPlace place)
     {
-        if (this.Unheld(place))
+        if ((this.Sources(place) & ReadsHolder) == 0)
         {
             return 0;
         }
@@ -90,33 +99,92 @@ internal sealed partial class MirBorrows
         return this.Layered(place.Root, place.Projection, layer, parents);
     }
 
-    // The Case bound (SPEC 15.6 Holders' Case-payload sentence; the owner's O-383 (b)): whether a Place is, or lies in, a Case payload
-    // whose Type, the Case's in the result's Type as the view instantiates it, holds no Loan (Holds), reached from a local that holds
-    // only calls' results (MirBorrows.Holders' Returned) through Case payloads alone (Payload), a payload of a payload included: the
-    // result holds none through that Case, so a value Moved or Copied out of the payload carries none, whatever the result holds through
-    // another Case. A read through a local's shared reference reads the Place it refers to (MirBorrows.Loans' Referred), so a Copy out of
-    // the payload through a shared match Subject is bounded like a Move. A Field or an element of the result or of a payload, and any
-    // other holder's parts, carry what the holder carries (O-364 (a)). The walk runs from the Place's last step to its root: a step that
-    // is no payload step drops the bound of the steps after it; each reference followed is counted as work. Flowing asks it of an edge's
-    // operand and Read of every Place.
-    private bool Unheld(MirPlace place)
+    // Whether the Case bound empties every Place a read reads (Sources): MirBorrows.Holders' Flowing asks it of an edge's operand.
+    private bool Unheld(MirPlace place) => (this.Sources(place) & ReadsPlace) == 0;
+
+    // Forgets the answers of following references (Sources), at a view's start and once Flowing has decided its holders, which the
+    // answers read (MirBorrows.Holders).
+    private void Unfollow()
     {
-        var (root, at, bound, hops) = (place.Root, place.Projection, false, 0);
-        while (at != 0 && root >= 0)
+        MirDataflow.Grow(ref this.followed, 2 * this.body.Locals.Length);
+        MirDataflow.Grow(ref this.followedBy, 2 * this.body.Locals.Length);
+        Array.Clear(this.followed, 0, 2 * this.body.Locals.Length);
+    }
+
+    // What a read of a Place reads, less the Places the Case bound empties: ReadsPlace where one remains, with ReadsHolder where one is
+    // a holder's or a static's (once Flowing has decided the holders). The Case bound (SPEC 15.6
+    // Holders' Case-payload sentence; the owner's O-383 (b)): a Place that is, or lies in, a Case payload whose Type, the Case's in the
+    // result's Type as the view instantiates it, holds no Loan (Holds), reached from a local that holds only calls' results
+    // (MirBorrows.Holders' Returned) through Case payloads alone (Payload), a payload of a payload included, carries nothing: the
+    // result holds none through that Case, so a value Moved or Copied out of the payload carries none, whatever the result holds through
+    // another Case. A read through a local's shared reference reads the Places it refers to (MirBorrows.Loans' Referred), one per
+    // referring store: a Ref's Place, or what the local a whole Move or Copy reads refers to; so a Copy out of the payload through a
+    // shared match Subject is bounded like a Move, and one through a reference stored more than once where every Place it refers to
+    // is. A Field or an element of the result or of a payload, and any other holder's parts, carry what the holder carries (O-364 (a)).
+    // Each walk runs from a Place's last step to its root: a step that is no payload step drops the bound of the steps after it. A
+    // reference is followed once per walk and incoming bound, so a cycle of Copies ends; each store followed is counted as work. What
+    // follows the first reference a read follows depends on that reference and its incoming bound alone, so it is kept (followed)
+    // and a later read through the same reference with the same bound reuses it, linear in the reads and the stores.
+    private byte Sources(MirPlace place)
+    {
+        var (root, at, bound, reads, first) = (place.Root, place.Projection, false, (byte)0, -1);
+        while (true)
         {
-            var step = this.body.Projections[at];
-            if (step is { Kind: MirProjectionKind.Deref, Prefix: 0 } && hops < this.body.Locals.Length && this.Referred(root, out var referent))
+            var hopped = false;
+            while (at != 0 && root >= 0 && !(hopped = this.Follows(root, at, bound, ref reads)))
             {
-                (root, at, hops) = (referent.Root, referent.Projection, hops + 1);
-                continue;
+                var step = this.body.Projections[at];
+                bound = this.Payload(at) && (bound || (step.Kind == MirProjectionKind.Downcast && !this.Holds(cases.TypeOf(new MirPlace(root, at)), out _)));
+                at = step.Prefix;
             }
 
-            bound = this.Payload(at) && (bound || (step.Kind == MirProjectionKind.Downcast && !this.Holds(cases.TypeOf(new MirPlace(root, at)), out _)));
-            at = step.Prefix;
+            first = hopped && first < 0 ? (2 * root) + (bound ? 1 : 0) : first;
+            if (!hopped && !(bound && root >= 0 && this.Returned(root)))
+            {
+                reads |= root < 0 || this.slots[root] >= 0 ? (byte)(ReadsPlace | ReadsHolder) : ReadsPlace;
+            }
+
+            if (this.following.Count == 0)
+            {
+                break;
+            }
+
+            (root, at, bound) = this.following[^1];
+            this.following.RemoveAt(this.following.Count - 1);
         }
 
-        this.Work += hops;
-        return bound && root >= 0 && this.Returned(root);
+        if (first >= 0)
+        {
+            (this.followed[first], this.sourceWalks) = ((byte)(reads + 1), this.sourceWalks + 1);
+        }
+
+        return reads;
+    }
+
+    // Whether a walk of Sources at a local's Deref follows the local's reference (MirBorrows.Loans' Referred): with its kept answer
+    // where a read followed it with that bound before (Sources), else queueing a walk per referring store unless this Sources walk
+    // followed the local with that bound already: from a Ref's Place on, or at the same Deref of the local whose whole value the store
+    // Moves or Copies.
+    private bool Follows(int root, int at, bool bound, ref byte reads)
+    {
+        if (this.body.Projections[at] is not { Kind: MirProjectionKind.Deref, Prefix: 0 } || !this.Referred(root, out var store))
+        {
+            return false;
+        }
+
+        var key = (2 * root) + (bound ? 1 : 0);
+        reads |= this.followed[key] > 0 ? (byte)(this.followed[key] - 1) : (byte)0;
+        for (; store >= 0 && this.followed[key] == 0 && this.followedBy[key] != this.sourceWalks; store = this.referStores[(2 * store) + 1])
+        {
+            var assigned = this.body.Statements[this.referStores[2 * store]].Rvalue;
+            var rvalue = assigned.Kind == MirRvalueKind.Adapt ? cases.Adapt(assigned, out _) : assigned;
+            this.following.Add(rvalue.Kind == MirRvalueKind.Ref
+                ? (rvalue.Place.Root, rvalue.Place.Projection, bound) : (this.body.Operands[rvalue.Start].Place.Root, at, bound));
+            this.Work++;
+        }
+
+        this.followedBy[key] = this.sourceWalks;
+        return true;
     }
 
     // Whether a projection is a Case payload step: a Downcast, the payload Tuple of a Case, or the Field of that Tuple, a payload.

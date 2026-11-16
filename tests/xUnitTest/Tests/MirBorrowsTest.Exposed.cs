@@ -2038,6 +2038,242 @@ public sealed partial class MirBorrowsTest
                     .Ok(_) => return 0
                     .Err(let e) => return e.n
             """,
+        ["rvCaseRefTwiceOk"] = """
+            func count(x: uniq/i32) -> Result<uniq/i32, i32> => .Ok(x)
+            func rvCaseRefTwiceOk(c: bool) -> i32
+                var a: i32 = 0
+                var b: i32 = 5
+                let r = count(a@uniq)
+                var p: ref/i32 = b@ref
+                match r
+                    .Ok(_) => return 0
+                    .Err(let code)
+                        if c => p = code
+                        return p@follow
+            """,
+        ["rvCaseRefTwiceBuiltBad"] = """
+            func rvCaseRefTwiceBuiltBad(c: bool) -> i32
+                var a: i32 = 0
+                var b: i32 = 5
+                var r: Result<uniq/i32, i32> = .Err(3)
+                if c => r = .Ok(a@uniq)
+                var p: ref/i32 = b@ref
+                match r
+                    .Ok(_) => return 0
+                    .Err(let code)
+                        if c => p = code
+                        return p@follow
+            """,
+        ["rvCaseRefTwoOk"] = """
+            func count(x: uniq/i32) -> Result<uniq/i32, i32> => .Ok(x)
+            func rvCaseRefTwoOk(c: bool) -> i32
+                var a: i32 = 0
+                var d: i32 = 0
+                let r = count(a@uniq)
+                let s = count(d@uniq)
+                match s
+                    .Ok(_) => return 0
+                    .Err(let first)
+                        var p: ref/i32 = first
+                        match r
+                            .Ok(_) => return 1
+                            .Err(let code)
+                                if c => p = code
+                                return p@follow
+            """,
+        ["rvCaseRefCycleOk"] = """
+            func count(x: uniq/i32) -> Result<uniq/i32, i32> => .Ok(x)
+            func rvCaseRefCycleOk(c: bool) -> i32
+                var a: i32 = 0
+                var b: i32 = 5
+                let r = count(a@uniq)
+                var p: ref/i32 = b@ref
+                var q: ref/i32 = p
+                match r
+                    .Ok(_) => return 0
+                    .Err(let code)
+                        if c => p = code
+                        if c => q = p
+                        if c => p = q
+                        return q@follow
+            """,
+        ["rvCaseRefTwiceHolderBad"] = """
+            struct RS {s}
+                public let r: ref/i32 during s
+                public let n: i32
+                public init(r: ref/i32 during s, n: i32)
+                    self.r = r
+                    self.n = n
+            func count(x: uniq/i32) -> Result<uniq/i32, i32> => .Ok(x)
+            func rvCaseRefTwiceHolderBad(c: bool) -> i32
+                var a: i32 = 1
+                var d: i32 = 0
+                let s = RS.init(r: a@ref, n: 3)
+                let n = s.n
+                let r = count(d@uniq)
+                var p: ref/i32 = n@ref
+                match r
+                    .Ok(_) => return 0
+                    .Err(let code)
+                        if c => p = code
+                        let v = p@follow
+                        a = 2
+                        let w = v
+                        return 0
+            """,
+        ["rvCaseRefCopyOk"] = """
+            func count(x: uniq/i32) -> Result<uniq/i32, i32> => .Ok(x)
+            func rvCaseRefCopyOk() -> i32
+                var a: i32 = 0
+                let r = count(a@uniq)
+                match r
+                    .Ok(_) => return 0
+                    .Err(let code)
+                        let q = code
+                        return q@follow
+            """,
+        ["caseWriteR2Bad"] = """
+            func keep(slot: raw/(raw/u8), value: raw/u8) => ()
+            func mk(x: uniq/i32) -> Result<uniq/i32, u64> => .Ok(x)
+            func put(dst: uniq/Result<uniq/i32 during s, u64>, v: u64) => ()
+            func caseWriteR2Bad() -> u64
+                var kk: u8 = 1
+                let r = kk@uniq
+                var spare: raw/u8 = r@follow@raw
+                var w: u64 = 3
+                keep(w@raw@raw/(raw/u8), spare)
+                var a: i32 = 0
+                var res = mk(a@uniq)
+                put(res@uniq, w)
+                match res@move
+                    .Ok(_) => return 0
+                    .Err(let e)
+                        kk = 2
+                        return e
+            """,
+        ["caseWriteR2Ok"] = """
+            func keep(slot: raw/(raw/u8), value: raw/u8) => ()
+            func mk(x: uniq/i32) -> Result<uniq/i32, u64> => .Ok(x)
+            func put(dst: uniq/Result<uniq/i32 during s, u64>, v: u64) => ()
+            func caseWriteR2Ok() -> u64
+                var kk: u8 = 1
+                let r = kk@uniq
+                var spare: raw/u8 = r@follow@raw
+                var w: u64 = 3
+                keep(w@raw@raw/(raw/u8), spare)
+                var a: i32 = 0
+                var res = mk(a@uniq)
+                put(res@uniq, w)
+                match res@move
+                    .Ok(_) => return 0
+                    .Err(let e)
+                        let k = e
+                        kk = 2
+                        return 0
+            """,
+        ["caseWriteR2CleanOk"] = """
+            func mk(x: uniq/i32) -> Result<uniq/i32, u64> => .Ok(x)
+            func put(dst: uniq/Result<uniq/i32 during s, u64>, v: u64) => ()
+            func caseWriteR2CleanOk() -> u64
+                var kk: u8 = 1
+                let r = kk@uniq
+                var w: u64 = 3
+                var a: i32 = 0
+                var res = mk(a@uniq)
+                put(res@uniq, w)
+                match res@move
+                    .Ok(_) => return 0
+                    .Err(let e)
+                        kk = 2
+                        return e
+            """,
+        ["caseWriteR2ConstOk"] = """
+            func mk(x: uniq/i32) -> Result<uniq/i32, u64> => .Ok(x)
+            func put(dst: uniq/Result<uniq/i32 during s, u64>, v: u64) => ()
+            func caseWriteR2ConstOk() -> u64
+                var a: i32 = 0
+                var res = mk(a@uniq)
+                put(res@uniq, 3)
+                match res@move
+                    .Ok(_) => return 0
+                    .Err(let e) => return e
+            """,
+        ["caseWriteR2FieldBad"] = """
+            struct RS {s}
+                public let r: ref/u8 during s
+                public let n: u64
+                public init(r: ref/u8 during s, n: u64)
+                    self.r = r
+                    self.n = n
+            func mk(x: uniq/i32) -> Result<uniq/i32, u64> => .Ok(x)
+            func put(dst: uniq/Result<uniq/i32 during s, u64>, v: u64) => ()
+            func caseWriteR2FieldBad() -> u64
+                var kk: u8 = 1
+                let s = RS.init(r: kk@ref, n: 3)
+                let w = s.n
+                var a: i32 = 0
+                var res = mk(a@uniq)
+                put(res@uniq, w)
+                match res@move
+                    .Ok(_) => return 0
+                    .Err(let e)
+                        kk = 2
+                        return e
+            """,
+        ["caseWriteR2KeptBad"] = """
+            func keep(slot: raw/(raw/u8), value: raw/u8) => ()
+            func mk(x: uniq/i32) -> Result<uniq/i32, u64> => .Ok(x)
+            func put(dst: uniq/Result<uniq/i32 during s, u64>, v: u64) => ()
+            func caseWriteR2KeptBad() -> u64
+                var kk: u8 = 1
+                let r = kk@uniq
+                var spare: raw/u8 = r@follow@raw
+                var w: u64 = 3
+                keep(w@raw@raw/(raw/u8), spare)
+                var a: i32 = 0
+                var res = mk(a@uniq)
+                let rr = res@uniq
+                put(rr, w)
+                match res@move
+                    .Ok(_) => return 0
+                    .Err(let e)
+                        kk = 2
+                        return e
+            """,
+        ["caseWriteOtherOk"] = """
+            func keep(slot: raw/(raw/u8), value: raw/u8) => ()
+            func mk(x: uniq/i32) -> Result<uniq/i32, u64> => .Ok(x)
+            func put(dst: uniq/Result<uniq/i32 during s, u64>, v: u64) => ()
+            func caseWriteOtherOk() -> u64
+                var kk: u8 = 1
+                let r = kk@uniq
+                var spare: raw/u8 = r@follow@raw
+                var w: u64 = 3
+                keep(w@raw@raw/(raw/u8), spare)
+                var a: i32 = 0
+                var b: i32 = 0
+                var res = mk(a@uniq)
+                var oth = mk(b@uniq)
+                let ro = res@uniq
+                put(oth@uniq, w)
+                match res@move
+                    .Ok(_) => return 0
+                    .Err(let e)
+                        kk = 2
+                        return e
+            """,
+        ["caseWriteOkCaseOk"] = """
+            func mk(x: uniq/i32) -> Result<uniq/i32, u64> => .Ok(x)
+            func put2(dst: uniq/Result<uniq/i32 during s, u64>, y: uniq/i32 during s) => ()
+            func caseWriteOkCaseOk() -> u64
+                var a: i32 = 0
+                var b: i32 = 0
+                var res = mk(a@uniq)
+                put2(res@uniq, b@uniq)
+                match res@move
+                    .Ok(_) => return 0
+                    .Err(let e) => return e
+            """,
     };
 
     // The coverage table's rows (a5v-u6-state.md), by exposure.
@@ -2211,6 +2447,20 @@ public sealed partial class MirBorrowsTest
     [InlineData("rvCaseRefUniqSubjectBad", "rvCaseRefUniqSubjectBad: var a: i32 = 0")] // I (O-364 (a)): the payload read through an exclusive Subject, which the bound does not follow
     [InlineData("rvCaseElementBad", "rvCaseElementBad: var a: i32 = 0")] // I (O-364 (a)'s rule for an element before the Case): a Case payload of an element of a Tuple result
     [InlineData("rvCaseFieldOfFreeOk", "")] // V (O-383 (b)): a Field of a Case payload whose Type holds no Loan lies in it
+    [InlineData("rvCaseRefTwiceOk", "")] // V (O-383 (b)): a Copy through a shared reference stored twice, which refers to a local that is no holder or to the Err payload of a call's result
+    [InlineData("rvCaseRefTwiceBuiltBad", "rvCaseRefTwiceBuiltBad: var a: i32 = 0")] // I (O-364 (a)): the same where the result is a value the body built, so one Place the reference refers to carries what its holder carries
+    [InlineData("rvCaseRefTwoOk", "")] // V (O-383 (b)): both Places the reference refers to are Err payloads of calls' results
+    [InlineData("rvCaseRefCycleOk", "")] // V (O-383 (b)): the same Places through reference locals that Copy each other
+    [InlineData("rvCaseRefTwiceHolderBad", "rvCaseRefTwiceHolderBad: a = 2")] // I (O-364 (a)): one Place the reference refers to is a local that is a holder by value flow
+    [InlineData("rvCaseRefCopyOk", "")] // V (O-383 (b)): a Copy of the payload's reference refers to what it refers to
+    [InlineData("caseWriteR2Bad", "")] // I; kk = 2 (and var a: i32 = 0, the holder mixed) once a rule retains v in put's write (G935's rule R): put's write of a Loan-carrying u64 then mixes res (MirBorrows.Holders' Writes)
+    [InlineData("caseWriteR2Ok", "")] // V: e is not used after kk = 2
+    [InlineData("caseWriteR2CleanOk", "")] // V: w is plain, so the u64 put may write carries nothing and res stays a call's result
+    [InlineData("caseWriteR2ConstOk", "")] // V: a constant written
+    [InlineData("caseWriteR2FieldBad", "")] // I (O-364 (a): w, a Copy of a Field of s, carries kk's Loan); kk = 2 with G935's rule R, as caseWriteR2Bad
+    [InlineData("caseWriteR2KeptBad", "")] // I; kk = 2 with G935's rule R: put writes through rr, which refers to res
+    [InlineData("caseWriteOtherOk", "")] // V: put writes into oth, not res; res's exclusive reference ro is never written through
+    [InlineData("caseWriteOkCaseOk", "")] // V (O-383 (b)): put2 may store y only in the Ok Case, and a value of a Type that holds a Loan reaches no Loan-free payload
     public void AValueReadFromAHolderCarriesItsLoansWhateverItsType(string form, string expected)
     {
         var c = MirBuildTest.Compile(ExposedShapes + FlowForms[form] + "\npublic func main() => ()\n");
@@ -2228,6 +2478,21 @@ public sealed partial class MirBorrowsTest
         const string Tail = "@move\n        .Ok(let w) => w@follow = 1\n        .Err(let e) => return .Err(e@move)\n    return .Ok(())\n" +
             "public func main() => ()\n";
         long[] work = [.. new[] { 16, 32, 64 }.Select(n => Measured(Expand(Head, n, 0) + $"    match r{n}" + Tail).Work)];
+        output.WriteLine($"N 16, 32, 64: work {string.Join(", ", work)}");
+        Assert.True(Grows(work, 3), $"work {string.Join(", ", work)}");
+    }
+
+    // The Places a shared reference local refers to (MirBorrows.Values' Sources over MirBorrows.Loans' Referred) are followed in work
+    // linear in its stores and reads: a reference stored N more times with the Err payload's reference, then N Copies through it into
+    // a local returned past the lender's end (N = 16, 32, 64; valid by the owner's O-383 (b) at every N, which Measured asserts).
+    [Fact]
+    public void AReferenceStoredManyTimesIsFollowedInLinearWork()
+    {
+        const string Head = "func count(x: uniq/i32) -> Result<uniq/i32, i32> => .Ok(x)\nfunc shape(c: bool) -> i32\n    var a: i32 = 0\n" +
+            "    var b: i32 = 5\n    let r = count(a@uniq)\n    var p: ref/i32 = b@ref\n    match r\n        .Ok(_) => return 0\n" +
+            "        .Err(let code)\n            var s: i32 = 0\n«N:            if c => p = code\n»«N:            s = p@follow\n»" +
+            "            return s\npublic func main() => ()\n";
+        long[] work = [.. new[] { 16, 32, 64 }.Select(n => Measured(Expand(Head, n, 0)).Work)];
         output.WriteLine($"N 16, 32, 64: work {string.Join(", ", work)}");
         Assert.True(Grows(work, 3), $"work {string.Join(", ", work)}");
     }
