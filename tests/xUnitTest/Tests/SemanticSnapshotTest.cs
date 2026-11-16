@@ -163,7 +163,9 @@ public sealed class SemanticSnapshotTest
                 HirTables.Publish(c);
             }
 
-            var program = mir ? c.BuildMir() : null;
+            // The library case dumps every library body, as the library check builds them (PLAN G951 U2-T: Compilation's own build holds
+            // only the library bodies its program reaches); a program's case dumps Compilation's build.
+            var program = !mir ? null : module == c.Library.Kotonoha ? MirBuildTest.LibraryRange(c) : c.BuildMir();
             c.Analyze();
             if (program is not null)
             {

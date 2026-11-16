@@ -711,7 +711,7 @@ public sealed class MirAnalysisTest
     {
         var c = MirBuildTest.Compile(source);
         Assert.Empty(c.Binding.Issues);
-        var analyzed = c.BuildMir();
+        var analyzed = MirBuildTest.LibraryRange(c); // Every body's views, the library's included (PLAN G951 U2-T).
         Assert.Empty(analyzed.Findings);
         var views = analyzed.Bodies.ToArray().Select(x => analyzed.Drops.ViewsOf(x.Ordinal)).ToArray();
         var program = new MirBuilder(c).Build(SyntaxTable.LibraryModule + 1); // Unanalyzed: a version's problems are reset only with its bodies (MirProgram.Clear).

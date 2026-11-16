@@ -172,7 +172,7 @@ public partial class KimiLibraryShapeTest
         }
 
         var mir = new StringBuilder();
-        MirDump.Write(c.ConstructMir(), SyntaxTable.LibraryModule, mir); // The program the check analyzed, memoized per pass.
+        MirDump.Write(MirBuildTest.LibraryRange(c), SyntaxTable.LibraryModule, mir); // Every library body (PLAN G951 U2-T); LM compares Compilation's.
         var obligations = new List<EffectObligation>();
         c.Types.EffectObligations(obligations);
         return
