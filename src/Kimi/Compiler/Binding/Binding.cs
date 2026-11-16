@@ -6,7 +6,8 @@ namespace Kimi.Compiler;
 
 // Binding (P2-P5s, COMPILER_ARCHITECTURE "Target pipeline"): the entry of the pass that resolves the selected syntax and publishes its facts.
 // - Responsibility: one pass per Bind(mode) in the order written here: SyntaxId numbering, ResetPass, IndexSources, IndexLibrary,
-//   BindDeclarations, BindBodies, ValidateBoundDeclarations, Check, and WalkLints in a Final pass; CheckBound repeats Check on a Final
+//   BindDeclarations, BindBodies, ValidateBoundDeclarations, Check, WalkLints in a Final pass, and the conformance table's sweep
+//   (ImplTable.Sweep); CheckBound repeats Check on a Final
 //   pass; Invalidate revokes the latest pass after an edit. Each step lives in its concern's file (Binding.<Concern>.cs); this file
 //   holds the entry points, the state the concerns share and the pass order.
 // - Inputs: the compilation's source modules, the embedded Kimi library (Library) and the mode.
@@ -40,6 +41,7 @@ public sealed partial class Binding
         this.compilation = compilation;
         this.indexer = new(this);
         this.Library = new(compilation);
+        this.impls = new(this.Library.Layer.Impls);
         this.types = new(this, this.Library);
         foreach (var symbol in this.Library.RegisteredSymbols)
         {
@@ -166,6 +168,7 @@ public sealed partial class Binding
                 this.WalkLints();
             }
 
+            this.impls.Sweep(); // No identity or path an edit removed is kept (PLAN G949, DECISIONS BU-220).
             this.knownMode = mode; // knownBases, if any, are this completed Bind's (StartRuns).
             return this.Result;
         }
