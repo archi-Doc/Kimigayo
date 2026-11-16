@@ -33,6 +33,10 @@ public partial class OriginRelationDiagnosticTest
 
     private const string Mk2Call = "func mk2<T>(w: Option<ref/T during static>) -> T => $abort(\"mk2\")\n";
 
+    private const string Mk2RefCall = "func mk2r<T>(w: Option<ref/T during static>) -> ref/T during static => $abort(\"mk2r\")\n";
+
+    private const string Mk2TupleCall = "func mk2t<T>(w: Option<ref/T during static>) -> (T, i32) => $abort(\"mk2t\")\n";
+
     private const string NnHead = "func k(q: ref/i32, r: ref/i32, c: bool, d: bool) -> ref/i32 during r\n";
 
     private const string NnInner = "    func inner(p: (Option<ref/(ref/i32 during q) during r>, i32), x: ref/i32 during q) -> ref/i32 during r => x\n";
@@ -266,11 +270,17 @@ public partial class OriginRelationDiagnosticTest
     // until that unit lands and removes the marker. `dotnet xUnitTest.dll -class <class> -explicit only` runs those.
     [Theory]
     // SPEC 15.6.1, 15.6.4 (PLAN G388, closed): a Signature position inside a Result-position aggregate (rb) and a layer around the slot the expected
-    // result solves (mk2) are judged; each with its valid twin.
+    // result solves (mk2t) are judged; each with its valid twin. SPEC 10.2.2 item 2 (PLAN G924, K's revision; F's ruling 74): at an expected
+    // `ref/U` a declared result `T` is a returned value, matched against U, so mk2's `T` is `i32` and its result a temporary whose borrow
+    // is not `during q` (mk2, mk2_bare: invalid, where the earlier text bound `T = ref/i32 during q`); a declared `ref/T` result is matched
+    // against `ref/U` (mk2_ref, valid). Inside a Tuple the expected result still binds `T` to the reference Type (mk2t, mk2t_ok).
     [InlineData("guard", "rb", RbCall + "func k(q: ref/i32) -> i32\n    let short = 2\n    let t: (Option<i32>, ref/i32 during q) = mk((Option.None, Option.None), short@ref)\n    return 0\n", "UnsatisfiedOriginRelation_Kd: let t: (Option<i32>, ref/i32 during q) = mk((Option.None, Option.None), short@ref)")]
     [InlineData("guard", "rb_ok", RbCall + "func k(q: ref/i32, v: ref/i32 during q) -> i32\n    let t: (Option<i32>, ref/i32 during q) = mk((Option.None, Option.None), v)\n    return 0\n", "")]
-    [InlineData("guard", "mk2", Mk2Call + "func k(q: ref/i32) -> i32\n    let y: ref/i32 during q = mk2(.None)\n    return 0\n", "UnprovenOriginRelation_Kd: let y: ref/i32 during q = mk2(.None)")]
-    [InlineData("guard", "mk2_ok", Mk2Call + "func k(q: ref/i32) -> i32\n    origin q outlives static\n    let y: ref/i32 during q = mk2(.None)\n    return 0\n", "")]
+    [InlineData("guard", "mk2", Mk2Call + "func k(q: ref/i32) -> i32\n    let y: ref/i32 during q = mk2(.None)\n    return 0\n", "UnsatisfiedOriginRelation_Kd: let y: ref/i32 during q = mk2(.None)")]
+    [InlineData("guard", "mk2_bare", Mk2Call + "func k(q: ref/i32) -> i32\n    origin q outlives static\n    let y: ref/i32 during q = mk2(.None)\n    return 0\n", "UnsatisfiedOriginRelation_Kd: let y: ref/i32 during q = mk2(.None)")]
+    [InlineData("guard", "mk2_ref", Mk2RefCall + "func k(q: ref/i32) -> i32\n    let y: ref/i32 during q = mk2r(.None)\n    return 0\n", "")]
+    [InlineData("guard", "mk2t", Mk2TupleCall + "func k(q: ref/i32) -> i32\n    let y: (ref/i32 during q, i32) = mk2t(.None)\n    return 0\n", "UnprovenOriginRelation_Kd: let y: (ref/i32 during q, i32) = mk2t(.None)")]
+    [InlineData("guard", "mk2t_ok", Mk2TupleCall + "func k(q: ref/i32) -> i32\n    origin q outlives static\n    let y: (ref/i32 during q, i32) = mk2t(.None)\n    return 0\n", "")]
 
     // SPEC 10.5.1, 14.9.2, 15.6.1 (PLAN G390, closed): the selected call judges a nested join's positions (nn in a Tuple, nd alone).
     [InlineData("guard", "nn", NnHead + NnInner + "    return inner(if c => (if d => .None else => .None, 1) else => (if d => .None else => .None, 2), q)\n", "UnprovenOriginRelation_Kd: return inner(if c => (if d => .None else => .None, 1) else => (if d => .None else => .None, 2), q)")]
