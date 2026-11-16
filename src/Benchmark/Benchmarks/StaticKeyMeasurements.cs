@@ -16,7 +16,9 @@ namespace Benchmark;
 // fresh MirEffects over a built program whose case views and dataflow are warm (A1-A3 warm them in the driver): Local per view, Run (the
 // fixed point, then Spread), then a Keys query at every Call and Drop, as A5 reads them. The MIR build is outside every interval: every body, the
 // library's included (the library check's root range, so the workload's library locals stay A4's library store, PLAN G951 U2-T),
-// analyzed with the source modules as roots, as Compilation built and analyzed it before U2's switch.
+// analyzed with the source modules as roots, as Compilation built and analyzed it before U2's switch. Unlike BuildMir's, the program is
+// not Sealed, so a lookup of a bodyless key in the timed Run takes MirBuilder.Demand's early return instead of the Sealed table's null:
+// equal results, a few checks per miss more than before U2-T.
 // "--static-keys" reports each phase's allocation (three fresh instances), the managed heap a fresh instance retains and a warm re-run's
 // allocation; "--static-keys timing" reports pinned times per phase, the F programs of one shape and size interleaved.
 internal static class StaticKeyMeasurements

@@ -14,14 +14,16 @@ namespace Benchmark;
 
 // The instance collector's cost inside one compilation (PLAN10-P3's collection share; R5 plan §5.3 item 10, §5.4 item 6, §5.5 item 7;
 // DECISIONS R5-M148), without a compiler hook. For each compiler pipeline input, a compilation is bound and its MIR built, validated
-// and analyzed outside timing by the two components Compilation.BuildMir composes (MirBuilder, then MirAnalysis), not by BuildMir, which
+// and analyzed outside timing (but for the bodies cold's missed runs build, below) by the two components Compilation.BuildMir composes (MirBuilder, then MirAnalysis), not by BuildMir, which
 // also collects (since DECISIONS BU-48), in Compilation's configuration: the source modules' root range, a library body built where a
 // lookup demands it (PLAN G951 U2; before U2 every library body, so the workload changed there). Three fresh collectors then run over
 // that program in order, each timed with its construction: cold, the compilation's first collection, with its Layout (the
 // collection-and-layout share, and the check-time cost of collection), Compilation.Collect's loop: its runs timed, the steps between
 // them (MirAnalysis.Step of the bodies a missed run built) not, its run count reported (the Back's C-378 A4); freshLayout, a new Layout
 // with the Type context's memos warm; warm, the compilation's Layout again; each of the last two one clean run over the stepped program. Layout's first
-// computations are freshLayout - warm and the Type context's first queries cold - freshLayout, both per operation inside one compilation.
+// computations are freshLayout - warm and the Type context's first queries cold - freshLayout, both per operation inside one compilation;
+// when coldRuns > 1, cold's timed runs include its missed runs and the library bodies their lookups build on demand, so cold -
+// freshLayout (firstQueriesMedianMilliseconds) holds that work too (PLAN G951 U2: a changed workload across the switch).
 // `--collection-cost-check` times nothing: it requires the three collections to equal each other and the compilation's own checked set
 // (its Analyze's) element by element (the items' keys in admission order, the records' codes and locations: a program's collection records,
 // MirProgram.Records, which the later collections over one program must leave as the cold one made them), the comparison to fail on a
@@ -124,7 +126,7 @@ internal static class CollectionCostMeasurements
             collectorRecords = counts.Records,
             coldRuns = counts.Runs,
             layoutMedianMilliseconds = Milliseconds(Median(Difference(ticks[1], ticks[2]))),
-            firstQueriesMedianMilliseconds = Milliseconds(Median(Difference(ticks[0], ticks[1]))),
+            firstQueriesMedianMilliseconds = Milliseconds(Median(Difference(ticks[0], ticks[1]))), // The Type context's first queries, and with coldRuns > 1 the missed runs and the bodies they build.
             variants,
         };
     }

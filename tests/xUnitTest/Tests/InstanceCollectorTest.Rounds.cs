@@ -111,7 +111,7 @@ public sealed partial class InstanceCollectorTest
         var c = ModuleBindingTest.Create(root, Hold);
         Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c));
         Assert.True(c.Binding.CheckStartup(OutputKind.Application).IsComplete);
-        Assert.Equal(eager.Rows, Rows(c, c.BuildMir()));
+        Assert.Equal(eager.Rows, Rows(c, c.BuildMir())); // One clean run (Lib is a source module); Compilation.Collect's miss path is C-col's (ALazyCollectionEqualsTheEagerOne).
     }
 
     // The commit rule's other half (the Middle's review N2, its RV-C and RV-A): a construction record of a body built during a round that

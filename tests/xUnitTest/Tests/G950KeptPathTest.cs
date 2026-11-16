@@ -12,7 +12,8 @@ namespace XunitTest;
 
 /// <summary>PLAN G950's kept path (design §R1, coverage rows g7, g8, M1, M2 and the focused re-review's M4): a later version of one compilation gives what a fresh
 /// MIR pipeline gives over the same compilation state, and the code its first version generated, whether the library's MIR segment is
-/// built again (the base) or kept (G950-K). g8 and M2 are explicit until G950-K keeps the segment; the base fails them. The fresh pipeline
+/// built again (the base) or kept (G950-K). g8 and M2 are explicit until G950-K keeps the segment; the base fails them, and M2's premise
+/// (a library body in Compilation's library segment) waits for G951 U2-K too. The fresh pipeline
 /// is built in Compilation's configuration (PLAN G951 U2: the source modules' root range, collected through Compilation.Collect's loop). M3, the library
 /// check over two versions, is <see cref="MirAnalysisTest.TheLibraryHasNoAnalysisProblem"/> and, for the collector's A3b with a record,
 /// <see cref="InstanceCollectorTest.TheLibraryRangeChecksALibraryBodyInEveryVersion"/>; the analysis's replay of the library step's
@@ -156,15 +157,19 @@ public sealed class G950KeptPathTest
     }
 
     // M2 (design §R1.4; explicit until G950-K, the base's rebuild drops the injection): a kept library row is published in every version:
-    // a validator finding of a library body (the seam MirAnalysisTest.ABodyWithAFindingLeavesOtherBodiesProblems uses; G950-K gives it at
-    // the validator's library step) is published by the second version again, at the same index.
+    // a validator finding of a library body in Compilation's library segment (the seam MirAnalysisTest.ABodyWithAFindingLeavesOtherBodiesProblems
+    // uses; G950-K gives it at the validator's library step) is published by the second version again, at the same index. Its premise,
+    // asserted first, waits for U2-K as g8's Compilation form does (PLAN G951 U2): until then Compilation's library segment holds the
+    // library's templates only, and the library body Hello reaches (Console.writeLine's) takes a program ordinal, built again in every
+    // version; publication is Compilation's, so no explicit builder can carry the row.
     [Fact(Explicit = true)]
     public void AKeptLibraryRowIsPublishedInEveryVersion()
     {
         var c = Compile("example/Hello");
         _ = c.Analyze();
         var program = c.BuildMir();
-        var body = program.Body(0);
+        var body = program.Bodies.ToArray().First(static x => x.Source.IsLibrary); // The first library body Hello reaches.
+        Assert.True(body.Ordinal < program.LibraryCount, $"{body.Key.Kind} {body.Key.Decl?.Name} is at ordinal {body.Ordinal}, after the library segment's {program.LibraryCount}");
         program.Findings.Add(new(MirViolation.Callee, body.Source));
         body.HasFinding = true;
         Problem[] first = [.. c.Problems];

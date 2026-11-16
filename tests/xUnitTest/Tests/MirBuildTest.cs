@@ -150,15 +150,16 @@ public sealed partial class MirBuildTest(ITestOutputHelper output)
     }
 
     // SPEC 14.8.1, 22.10.1 (R8-W2 N3): a case test, a Case position's or a synthesized call's Result's, is MirBuilder.CaseTest's: its
-    // discriminant's StorageLive, its one write and the SwitchInt that reads it lie in one block, over the goldens' programs. A guard, not a
-    // fail-before row (N3 changed MIR text only), so that a re-blessed golden cannot bring back a discriminant held across its call's operands
-    // or shared by two tests.
+    // discriminant's StorageLive, its one write and the SwitchInt that reads it lie in one block, over the goldens' programs, as each
+    // compilation builds them, and the library (LibraryBuild, PLAN G951 U2). A guard, not a fail-before row (N3 changed MIR text only), so
+    // that a re-blessed golden cannot bring back a discriminant held across its call's operands or shared by two tests.
     [Fact]
     public void ACaseTestsDiscriminantIsWrittenOnceInTheBlockThatReadsIt()
     {
-        foreach (var name in MirDumpTest.Programs.Select(static x => x.Data))
+        var programs = MirDumpTest.Programs.Select(static x => (Name: x.Data, Program: MirDumpTest.Compile(x.Data).BuildMir())).Append(("library", LibraryBuild()));
+        foreach (var (name, program) in programs)
         {
-            foreach (var body in MirDumpTest.Compile(name).BuildMir().Bodies)
+            foreach (var body in program.Bodies)
             {
                 var statements = body.Statements.ToArray();
                 foreach (var block in body.Blocks)
@@ -638,6 +639,11 @@ public sealed partial class MirBuildTest(ITestOutputHelper output)
     // of the library's bodies or their A2 and A4 facts reads, since Compilation's own build holds only the library bodies its program reaches.
     internal static MirProgram LibraryRange(Compilation c)
         => new MirAnalysis(c.Types).Run(new MirBuilder(c).Build(SyntaxTable.LibraryModule + 1), c.SourceModules.Length);
+
+    // PLAN G951 U2-F: every library body, built with the library check's root range from the library case (an empty program, so the
+    // library's bodies alone): the library's row of a rule over every MIR body, whose programs' compilations build only the library bodies
+    // they reach.
+    internal static MirProgram LibraryBuild() => new MirBuilder(SemanticSnapshotTest.Bind("library").Compilation).Build(SyntaxTable.LibraryModule + 1);
 
     // The key of a library body an eager build built, by its kind and definition's name.
     internal static MirDefKey Library(MirProgram program, MirBodyKind kind, string name)
