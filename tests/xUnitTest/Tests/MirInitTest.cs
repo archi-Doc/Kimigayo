@@ -390,7 +390,7 @@ public sealed class MirInitTest
         var c = MirBuildTest.Compile(
             "func helper(x: i32) -> i32 => x + 1\n#Test\nfunc sample()\n    let a = 3\n    $expect(helper(1) == a)\n    $expect((a < 4))\n",
             test: true);
-        var program = new MirBuilder(c).Build(); // Unanalyzed: a version's problems are reset only with its bodies.
+        var program = new MirBuilder(c).Build(SyntaxTable.LibraryModule + 1); // Unanalyzed: a version's problems are reset only with its bodies.
         var body = program.Bodies.ToArray().Single(static x => x.Key.Kind == MirBodyKind.Test);
         var read = MirBuildTest.Records(body).Select(x => body.Operands[x.Start + 1]).Where(static x => x.Kind == MirOperandKind.Copy).ToArray();
         Assert.Equal(3, read.Length);
@@ -436,7 +436,7 @@ public sealed class MirInitTest
     public void ASecuredNeverPlaceIsWritten()
     {
         var c = MirBuildTest.Compile("func k() -> i32 => 1\nfunc g2(a: Never, b: i32) => ()\nfunc absurd(x: Never) => g2(x, k())\n");
-        var program = new MirBuilder(c).Build(); // Unanalyzed: a version's problems are reset only with its bodies.
+        var program = new MirBuilder(c).Build(SyntaxTable.LibraryModule + 1); // Unanalyzed: a version's problems are reset only with its bodies.
         var body = program.Bodies.ToArray().Single(static x => x.Key.Decl?.Name == "absurd");
         var call = body.Blocks.ToArray().Select(static x => x.Terminator).Single(static x => x.Callee.Symbol?.Name == "g2");
         var secured = body.Operands[call.Start];

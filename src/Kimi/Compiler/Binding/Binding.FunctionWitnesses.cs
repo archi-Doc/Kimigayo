@@ -45,8 +45,6 @@ public sealed class BoundFunctionWitness
 
 public sealed partial class Binding
 {
-    private readonly Dictionary<(BoundConformancePath Path, BoundRequirement Requirement), BoundFunctionWitness> functionWitnesses = new();
-
     private static bool CopyRequirementWitness(BoundConformancePath source, BoundConformancePath target, BoundRequirement identity)
     {
         if (!source.IsVerified || !source.WitnessMap.TryGetValue(identity, out var witness))
@@ -76,14 +74,20 @@ public sealed partial class Binding
         => declaringType is not null && required is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq } && SameType(required.Components[0], self)
             ? this.types.Intern(BoundTypeKind.Semantics, null, required.Semantics, [declaringType], origin: required.Origin) : null;
 
+    // A requirement's correspondence on its path, kept with the path (BoundConformancePath.FunctionWitnesses).
     private BoundFunctionWitness FunctionWitness(BoundConformancePath path, BoundRequirement requirement)
     {
-        var key = (path, requirement);
-        if (!this.functionWitnesses.TryGetValue(key, out var witness))
+        var witnesses = path.FunctionWitnesses ??= new();
+        for (var i = 0; i < witnesses.Count; i++)
         {
-            this.functionWitnesses.Add(key, witness = new());
+            if (witnesses[i].Requirement == requirement)
+            {
+                return witnesses[i].Witness;
+            }
         }
 
+        var witness = new BoundFunctionWitness();
+        witnesses.Add((requirement, witness));
         return witness;
     }
 

@@ -3039,7 +3039,18 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
             }
 
             this.version = program.Version;
-            foreach (var body in program.Bodies)
+            this.effects.BeginLibrary();
+            this.Local(program, program.LibraryBodies);
+            this.effects.BeginProgram();
+            this.Local(program, program.ProgramBodies);
+            this.obligations.Clear();
+            this.effects.Run(program, this.obligations);
+        }
+
+        // A segment's bodies' views' local facts.
+        private void Local(MirProgram program, ReadOnlySpan<MirBody> bodies)
+        {
+            foreach (var body in bodies)
             {
                 this.flow.Begin(body);
                 for (var view = 0L; view < MirCases.Count(body); view++)
@@ -3048,9 +3059,6 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
                     this.effects.Local(program, body, view);
                 }
             }
-
-            this.obligations.Clear();
-            this.effects.Run(program, this.obligations);
         }
     }
 }
