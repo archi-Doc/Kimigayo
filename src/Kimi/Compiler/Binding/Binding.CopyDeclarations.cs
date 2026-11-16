@@ -1,12 +1,13 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using System.Diagnostics.CodeAnalysis;
 using Kimi.Compiler.Parsing;
 
 namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
-    private readonly Dictionary<Koto, CopyDeclaration> copyDeclarations = new(ReferenceEqualityComparer.Instance);
+    private readonly CopyDeclarationRows copyDeclarations;
     private readonly Dictionary<DeclarationContainerKoto, List<CopyDeclaration>> copyByType = new(ReferenceEqualityComparer.Instance);
 
     // A pending atom (Provisional: its name is missing) names a Contract or a complete Type once found, both positive (SPEC 8.8.1).
@@ -21,7 +22,7 @@ public sealed partial class Binding
     {
         foreach (var declaration in this.copyDeclarations.Values)
         {
-            declaration.Active = false;
+            declaration!.Active = false;
         }
 
         foreach (var declarations in this.copyByType.Values)
@@ -51,8 +52,7 @@ public sealed partial class Binding
     {
         if (!this.copyDeclarations.TryGetValue(clause, out var declaration))
         {
-            declaration = new(clause, container, scope, premises);
-            this.copyDeclarations.Add(clause, declaration);
+            CopyDeclarationRows.Slot(clause) = declaration = new(clause, container, scope, premises);
         }
 
         if (!this.copyByType.TryGetValue(container, out var list))
@@ -80,7 +80,7 @@ public sealed partial class Binding
         }
     }
 
-    private sealed class CopyDeclaration(IsKoto clause, DeclarationContainerKoto container, BindingScope scope, SyntaxFormKoto? premises)
+    internal sealed class CopyDeclaration(IsKoto clause, DeclarationContainerKoto container, BindingScope scope, SyntaxFormKoto? premises)
     {
         internal IsKoto Clause { get; } = clause;
 
@@ -91,5 +91,18 @@ public sealed partial class Binding
         internal SyntaxFormKoto? Premises { get; set; } = premises;
 
         internal bool Active { get; set; }
+    }
+
+    /// <summary>The `copyDeclarations` family's one accessor (DECISIONS BU-220): a kept family, a `Self is Copy` clause's declaration kept in its
+    /// clause's module's NodeColumns at its SyntaxId, made once and reset in place by each pass (BindCopyDeclarations' Active). Its members
+    /// keep the names its readers use.</summary>
+    private readonly struct CopyDeclarationRows(Binding binding)
+    {
+        internal FamilyRows<CopyDeclaration?> Values => new(binding, static (table, _) => table.Hir.Families.CopyDeclarations.Enumerate());
+
+        internal static ref CopyDeclaration? Slot(Koto clause) => ref HirTables.Of(clause).Families.CopyDeclarations.Ref(clause.SyntaxId);
+
+        internal bool TryGetValue(Koto clause, [NotNullWhen(true)] out CopyDeclaration? declaration)
+            => (declaration = clause.SyntaxOwner is { } table ? table.Hir.Families.CopyDeclarations.Get(clause.SyntaxId) : null) is not null;
     }
 }

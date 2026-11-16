@@ -17,7 +17,7 @@ namespace Kimi.Compiler;
 //   (before the member sides). The RP8 exception
 //   (the owner's O-136 (a) and O-139 (a)) covers this until the removal condition holds.
 // - The library's node columns (Binding's `symbols`, its parameters' composite column, `scopes`, `originAtoms`, `openOrigins`,
-//   `associatedOrigins`, `specialReceivers` and `enumConstructions`,
+//   `associatedOrigins`, `specialReceivers`, `enumConstructions` and `copyDeclarations`,
 //   DECISIONS BU-220): the library
 //   module's own columns, which no program row enters (a program's rows are its modules'), so each starts at its stated slots
 //   (PagedColumn.Reserve) and has no room; its count is the slots the library's pages hold, rounded up to ColumnGranule, and its free
@@ -60,6 +60,7 @@ internal static class KimiLibrarySize
         AssociatedOrigins: 512,
         Receivers: 512,
         EnumConstructions: 1536,
+        CopyDeclarations: 512,
         TypeKeys: 3072,
         Constraints: 2048,
         AssociatedTypes: 2048,
@@ -89,6 +90,7 @@ internal static class KimiLibrarySize
         int AssociatedOrigins, // The library's associatedOrigins column: the slots its pages hold.
         int Receivers, // The library's specialReceivers column: the slots its pages hold.
         int EnumConstructions, // The library's enumConstructions column: the slots its pages hold.
+        int CopyDeclarations, // The library's copyDeclarations column: the slots its pages hold.
         int TypeKeys, // TyCtxt's keys of the interned Types.
         int Constraints, // Binding's interned constraints.
         int AssociatedTypes, // Binding's associated-Type answers.
@@ -115,6 +117,7 @@ internal static class KimiLibrarySize
                 Round(this.AssociatedOrigins, ColumnGranule),
                 Round(this.Receivers, ColumnGranule),
                 Round(this.EnumConstructions, ColumnGranule),
+                Round(this.CopyDeclarations, ColumnGranule),
                 Round(this.TypeKeys, Granule),
                 Round(this.Constraints, Granule),
                 Round(this.AssociatedTypes, Granule),

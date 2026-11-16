@@ -15,6 +15,9 @@ public partial class SyntaxIdTest
 {
     private const BindingFlags Members = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
 
+    // A Copy declaration (SPEC 3.5.2): the kept Copy families' rows (CopyDeclarations, CopyByType).
+    private const string CopyPoint = "struct Point\n    Self is Copy\n    public var x: i32 = 1\n    public var y: i32 = 2\nlet p = Point.init()\n";
+
     // G949 D2b-d's d7: by reflection over NodeColumns' fields, so a family added without its Resize, Renumbered, Move or Retire line fails
     // here. Every field is a column: a kept family's PagedColumn moves its row into the renumbered column's spare arena, which Retire
     // clears; a pass or edit family's StampedColumn is handed over unmoved and emptied, its stamp with it (no removed node's row stays
@@ -100,12 +103,14 @@ public partial class SyntaxIdTest
     // G949 D2b-d's d10, per kept family: an edit's renumbering moves a kept family's rows into the column's spare arena, so the second
     // of two edits allocates no arena: the column's arena is again the one it had before the first, and its first row is the same object
     // at its node's id, which a synthesized node's renumbering may change (Symbols: a declaration's symbol; Receivers: Point's implicit
-    // constructor's `self`; EnumConstructions: `.Some(1)`'s plan). The column is read by reflection, since the families' rows differ.
+    // constructor's `self`; EnumConstructions: `.Some(1)`'s plan; CopyDeclarations: a `Self is Copy` clause's declaration). The column is
+    // read by reflection, since the families' rows differ.
     [Trait("Purpose", "Allocation")]
     [Theory]
     [InlineData("Symbols", null)]
     [InlineData("Receivers", null)]
     [InlineData("EnumConstructions", null)]
+    [InlineData("CopyDeclarations", CopyPoint)]
     public void AKeptFamilyAlternatesItsArenasAcrossEdits(string family, string? program)
     {
         var c = MinimalEmissionTest.Analyze(program ?? Source);
