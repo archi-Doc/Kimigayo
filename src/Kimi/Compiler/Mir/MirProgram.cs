@@ -7,8 +7,8 @@
 // benchmarks read; publication reads MirReport.Merged, records included, DECISIONS R5-M185).
 // Owns the ordinal space, numbered in build order here (Begin) and nowhere else. In an eager build, whose root range holds the library,
 // it has a library prefix (R8-L1 M-B1): the library's bodies are 0 to LibraryCount - 1, the program's follow; in a build whose root range
-// is the program's, LibraryCount counts the library's templates and a demanded body takes the next ordinal (PLAN G951 U0; U2 gives
-// library bodies fixed ordinals, G950 R-4). Body(ordinal) reads either segment. Bodies is the compilation's own bodies, which a walker
+// is the program's, Compilation's since PLAN G951 U2, LibraryCount counts the library's templates and a demanded body takes the next
+// ordinal (U0; U2-K gives library bodies fixed ordinals, G950 R-4). Body(ordinal) reads either segment. Bodies is the compilation's own bodies, which a walker
 // of the whole program iterates: both segments while a compilation builds its library's bodies. Its walkers: MirAnalysis's step 4,
 // MirOrigins.Findings, MirDump.Write, InstanceCollector's roots (with A3b) and the Benchmark's counts and queries
 // (CompilerPipelineBenchmark, CollectionCostMeasurements, PairCaseMeasurements, StaticKeyMeasurements). LibraryBodies and ProgramBodies

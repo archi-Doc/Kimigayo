@@ -92,7 +92,8 @@ public sealed partial class InstanceCollectorTest
     // IMPL 21.3.2 with DECISIONS R5-M171: Gs.g's erased Option<[2147483648 of u8]> is over the layout limit, one GenerationResourceLimit_Kd
     // for the declaration at its least use, a, which only g<[2147483648 of u8]> reaches, through the drop of hold's parameter. Built
     // lazily, the first run misses at hold (built by the erasure's adapter; the targets of its Drop wait for A2) with b as g's least use, and
-    // commits nothing; the clean run records a once, as the eager build. Fail-before (a missed run committing): records at b and at a.
+    // commits nothing; the clean run records a once, as the eager build, and as Compilation's own check, whose root range holds Lib (L1,
+    // PLAN G951 U2). Fail-before (a missed run committing): records at b and at a.
     [Fact]
     public void ALeastUseReachedAfterAMissIsTheOneRecord()
     {
@@ -107,6 +108,10 @@ public sealed partial class InstanceCollectorTest
         Assert.Equal(["collection GenerationResourceLimit_Kd let a: Option<T> = .None"], eager.Rows);
         Assert.Equal(eager.Rows, lazy.Rows);
         Assert.Equal(eager.Items, lazy.Items);
+        var c = ModuleBindingTest.Create(root, Hold);
+        Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c));
+        Assert.True(c.Binding.CheckStartup(OutputKind.Application).IsComplete);
+        Assert.Equal(eager.Rows, Rows(c, c.BuildMir()));
     }
 
     // The commit rule's other half (the Middle's review N2, its RV-C and RV-A): a construction record of a body built during a round that

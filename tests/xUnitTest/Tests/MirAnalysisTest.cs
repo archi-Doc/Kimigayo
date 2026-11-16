@@ -924,6 +924,86 @@ public sealed class MirAnalysisTest
         Assert.True(c.JudgedWithoutProblem(reset.Decl!));
     }
 
+    // PLAN G951 U2 (the review's N1: hover's rows H1 and H2 restated at Compilation.JudgedWithoutProblem, since hover writes the ownership
+    // line only for a virtual or override declaration and the library declares none): after Hello's analysis Console.writeLine, which
+    // Hello reaches, is judged without a problem, and Stopwatch.start, which it never reaches, is not: the compilation built no body for
+    // it (DECISIONS R9-M9; a sealed lookup reads only). Hello is valid (SPEC 22.7). Fail-before: Compilation built and analyzed every
+    // library body, so start read as judged.
+    [Fact]
+    public void ALibraryFunctionTheProgramNeverReachesIsNotJudged()
+    {
+        var c = MirBuildTest.Compile(LazySource("docs/examples/Hello/Hello.kimi"));
+        var start = MirBuildTest.Library(new MirBuilder(c).Build(SyntaxTable.LibraryModule + 1), MirBodyKind.Fn, "start");
+        Assert.True(c.Analyze().IsVerified, MinimalEmissionTest.Describe(c));
+        Assert.True(c.JudgedWithoutProblem(c.Library.GetSymbol(KimiDeclarationId.WriteLine)!));
+        Assert.Null(c.BuildMir()[start]);
+        Assert.False(c.JudgedWithoutProblem(start.Decl!));
+    }
+
+    // PLAN G951 U2, rows S1 and its guard (the design's §4; the review's N3): the record rule (SPEC 23.1.2, 23.2.2; DECISIONS R5-M168; the
+    // owner's O-378 (a)) as a MIR-layer model, in which the root range 1 makes Lib stand for the library, whose bodies a program builds
+    // and steps only where it reaches them. Labels: as SPEC programs both are invalid (Lib is a source module of the unit, and 23.1.2
+    // reports broken's UninitializedPlace_Kd, SPEC 15.1.1, called or not); in the model, root calling ok is accepted and its twin
+    // calling broken is rejected at Lib's `return n`. The library check's range (every body built) rejects both; through Compilation,
+    // whose root range is its source modules, Lib's included, both stay rejected (the guard: the range is the source modules', not
+    // module 0's). The model passes before U2 too (explicit builders): it pins the rule; the declared move itself is the CLI probe's.
+    [Theory]
+    [InlineData("ok()", false)]
+    [InlineData("broken(true)", true)]
+    public void ALibraryBodysRecordIsWhereAProgramReachesIt(string call, bool reaches)
+    {
+        const string Lib = "public group Api\n    public func ok() -> i32 => 1\n    public func broken(c: bool) -> i32\n        var n: i32\n" +
+            "        if c\n            n = 1\n        return n\n";
+        var source = $"public func main() -> ()\n    _ = Lib.Api.{call}\n    return\n";
+        string[] record = ["UninitializedPlace_Kd n"];
+        foreach (var (range, expected) in new[] { (SyntaxTable.LibraryModule + 1, record), (1, reaches ? record : []) })
+        {
+            var c = Bound(source, Lib);
+            Assert.Equal(expected, Errors(c, new MirAnalysis(c.Types).Run(new MirBuilder(c).Build(range), 1)));
+        }
+
+        var compiled = Bound(source, Lib);
+        Assert.Equal(record, Errors(compiled, compiled.BuildMir()));
+
+        static Compilation Bound(string root, string lib)
+        {
+            var c = ModuleBindingTest.Create(root, lib);
+            Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c));
+            Assert.True(c.Binding.CheckStartup(OutputKind.Application).IsComplete);
+            return c;
+        }
+
+        static string[] Errors(Compilation c, MirProgram program)
+            => [.. program.Problems.All.ToArray().Where(static x => !x.IsRecord).Select(x => $"{x.Code} {Line(c, x.Subject)}")];
+    }
+
+    // PLAN G951 U2, rows P1 and P2 with the review's P4 and P5 (the record move the owner's O-378 (a) and O-381 (b) declare): a library
+    // body's records show only in a program that reaches it, directly, through another library body or through a generic instance.
+    // The probe adds defective bodies to the library (SPEC 15.1.1: `first` and `second` are not initialized on every path; a defective
+    // library body is a compiler defect, SPEC 23.1.1, judged by its own inputs, DECISIONS R5-M168): broken, caller (a library body
+    // calling broken) and the generic brokenOf. Labels: each program is valid as a program (SPEC 22.7, 7.2.3); its expected records are
+    // those of the defective bodies it reaches. Fail-before: Compilation built and stepped every library body, so each program showed
+    // both records (as `kimi check` did in the design's and the review's CLI probes, cli-p1p2.log and cli-p1p5.log).
+    [Theory]
+    [InlineData("Console.writeLine(\"Hello, world!\")", "")]
+    [InlineData("_ = Kimi.G951Probe.broken(true)", "first")]
+    [InlineData("_ = Kimi.G951Probe.caller()", "first")]
+    [InlineData("_ = Kimi.G951Probe.brokenOf(1, true)", "second")]
+    public void AProgramShowsALibraryBodysRecordsOnlyWhereItReachesIt(string program, string reached)
+    {
+        const string Probe = "public group G951Probe\n    public func broken(condition: bool) -> i32\n        var first: i32\n        if condition\n" +
+            "            first = 1\n        return first\n    public func caller() -> i32 => G951Probe.broken(true)\n" +
+            "    public func brokenOf<T>(value: T, condition: bool) -> i32\n        var second: i32\n        if condition\n" +
+            "            second = 2\n        return second\n";
+        var c = CompilationTestHelper.Parse(program + "\n");
+        c.Library.Kotonoha.AddSource(new("G951Probe.kimi", Probe));
+        Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c));
+        Assert.True(c.Binding.CheckStartup(OutputKind.Application).IsComplete);
+        string[] expected = reached.Length == 0 ? [] : [$"UninitializedPlace_Kd {reached}"];
+        Assert.Equal(expected.Length == 0, c.Analyze().IsVerified);
+        Assert.Equal(expected, c.Problems.Select(x => $"{x.Code} {Line(c, x.Subject)}"));
+    }
+
     // PLAN G950 (design §R1.1 (b), the implementation review's M1): the library step's problems (step 2's A1 and A2) are kept as data and
     // replayed at the library step in a version that keeps the library segment: one analysis over two versions of one compilation reports
     // an A1 problem seeded into a library body after each build (a copy of a new Var no path initializes, in a new block the entry block

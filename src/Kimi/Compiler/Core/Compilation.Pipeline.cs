@@ -209,10 +209,10 @@ public partial class Compilation
     }
 
     /// <summary>Builds and validates the MIR of the latest Binding pass, once per pass: the first step of <see cref="BuildMir"/>, and the
-    /// work <c>--compiler-pipeline</c>'s stage 3 times (R6-check H0 D-c5).</summary>
+    /// work <c>--compiler-pipeline</c>'s stage 3 times (R6-check H0 D-c5). The root range is the source modules' (PLAN G951 U2, DECISIONS
+    /// R9-M9): their bodies and the library's default templates; a library body is built where a lookup of the version demands it.</summary>
     /// <returns>The program, with its construction records and validator findings.</returns>
-    internal Mir.MirProgram ConstructMir()
-        => (this.mirBuilder ??= new(this)).Build(SyntaxTable.LibraryModule + 1); // Every body eagerly until PLAN G951 U2 (the source range).
+    internal Mir.MirProgram ConstructMir() => (this.mirBuilder ??= new(this)).Build(this.SourceModules.Length);
 
     internal void InvalidateMir() => this.mir = null;
 }

@@ -12,7 +12,8 @@ namespace XunitTest;
 
 /// <summary>PLAN G950's kept path (design §R1, coverage rows g7, g8, M1, M2 and the focused re-review's M4): a later version of one compilation gives what a fresh
 /// MIR pipeline gives over the same compilation state, and the code its first version generated, whether the library's MIR segment is
-/// built again (the base) or kept (G950-K). g8 and M2 are explicit until G950-K keeps the segment; the base fails them. M3, the library
+/// built again (the base) or kept (G950-K). g8 and M2 are explicit until G950-K keeps the segment; the base fails them. The fresh pipeline
+/// is built in Compilation's configuration (PLAN G951 U2: the source modules' root range, collected through Compilation.Collect's loop). M3, the library
 /// check over two versions, is <see cref="MirAnalysisTest.TheLibraryHasNoAnalysisProblem"/> and, for the collector's A3b with a record,
 /// <see cref="InstanceCollectorTest.TheLibraryRangeChecksALibraryBodyInEveryVersion"/>; the analysis's replay of the library step's
 /// problems is <see cref="MirAnalysisTest.ALibraryStepProblemIsInEveryVersion"/>. Labels (SPEC, before any output): the
@@ -122,16 +123,20 @@ public sealed class G950KeptPathTest
 
     // g8 (design §4; explicit until G950-K, the base builds the segment again): a later version keeps the library's bodies, the same objects
     // at the same ordinals, none begun again, so a body's validator verdict set after the first version (the seam
-    // MirAnalysisTest.ABodyWithAFindingLeavesOtherBodiesProblems uses) stays.
+    // MirAnalysisTest.ABodyWithAFindingLeavesOtherBodiesProblems uses) stays. A builder with the library check's root range, whose library
+    // segment holds every library body (PLAN G951 U2; the review's N5): Compilation's build holds the library's templates only until
+    // U2-K, so its row (a later version keeps the library bodies the compilation demanded) is U2-K's completion row and G950-K's
+    // prerequisite.
     [Fact(Explicit = true)]
     public void ALaterVersionKeepsTheLibrarysBodies()
     {
         var c = Compile("milestone/Milestone27");
-        var program = c.BuildMir();
+        var builder = new MirBuilder(c);
+        var program = builder.Build(SyntaxTable.LibraryModule + 1);
         MirBody[] library = [.. program.Bodies[..program.LibraryCount]];
         library[0].HasFinding = true;
         Finish(c, OutputKind.Application);
-        var later = c.BuildMir();
+        var later = builder.Build(SyntaxTable.LibraryModule + 1);
         Assert.Equal(library, later.Bodies[..later.LibraryCount].ToArray());
         Assert.True(library[0].HasFinding);
     }
@@ -176,7 +181,8 @@ public sealed class G950KeptPathTest
             : program.StartsWith("mir/", StringComparison.Ordinal) ? MirDumpTest.Compile(program[4..]) : SemanticSnapshotTest.Bind(program).Compilation;
 
     // g7's two snapshots of a program's later version (a warm rebind, Provisional then Final, or an edit into another program): the
-    // compilation's own MIR and a fresh builder's, analysis's and collector's over the same compilation state.
+    // compilation's own MIR and a fresh builder's, analysis's and collector's over the same compilation state, in Compilation's
+    // configuration (the source modules' root range, collected through Compilation.Collect's loop; PLAN G951 U2).
     private static (string Own, string Fresh) Later(string program, string then)
     {
         var c = Compile(program);
@@ -194,9 +200,9 @@ public sealed class G950KeptPathTest
         Finish(c, OutputKind.Application);
         _ = c.Analyze();
         var own = Snapshot(c.Types, c.BuildMir(), c.Instances!);
-        var fresh = new MirBuilder(c).Build(SyntaxTable.LibraryModule + 1);
-        new MirAnalysis(c.Types).Run(fresh, c.SourceModules.Length);
-        return (own, Snapshot(c.Types, fresh, new InstanceCollector(c.Types, c.Layout).Run(fresh, c.SourceModules.Length)));
+        var analysis = new MirAnalysis(c.Types);
+        var fresh = analysis.Run(new MirBuilder(c).Build(c.SourceModules.Length), c.SourceModules.Length);
+        return (own, Snapshot(c.Types, fresh, Compilation.Collect(analysis, new InstanceCollector(c.Types, c.Layout), fresh, c.SourceModules.Length)));
     }
 
     // A later version: a final pass and the startup check of the output kind (a test build's test startup).

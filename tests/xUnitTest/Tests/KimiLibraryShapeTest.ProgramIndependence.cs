@@ -102,6 +102,24 @@ public partial class KimiLibraryShapeTest
         SameAsTheEmptyPrograms(c);
     }
 
+    // PLAN G951 U2, row LM (R8-M32's "library MIR" fact under demand; the design's §1.2): a compilation's check builds the library bodies
+    // its program reaches (the source modules' root range, DECISIONS R9-M9), each equal to that body in the library check's build, its
+    // A2 table included, and the empty program builds none. With the library MIR the rows above compare (every library body, the library
+    // check's build per program) it is the fact that the library's MIR is the same in every program. Fail-before: Compilation built
+    // every library body, so the empty program built them all.
+    [Theory]
+    [InlineData("")]
+    [InlineData("docs/examples/Hello/Hello.kimi")]
+    [InlineData(Milestone31)]
+    public void ACompilationsLibraryBodiesAreTheLibraryChecks(string program)
+    {
+        var c = Check(Compilation.CreateForTest(), program, WindowsProfile.Target);
+        var (own, library) = (c.BuildMir(), MirBuildTest.LibraryRange(c));
+        var built = own.Bodies.ToArray().Where(static x => x.Source.IsLibrary).ToArray();
+        Assert.Equal(program.Length == 0, built.Length == 0);
+        Assert.All(built, x => Assert.Equal(MirDumpTest.Unsited(library, library[x.Key]!), MirDumpTest.Unsited(own, x)));
+    }
+
     // M-N4, R2-N5: the library declares no parameter default, for a function or an `init`, so after its Final Bind its published HIR holds
     // no default and its MIR no default template. Temporary: a frozen library would have to freeze a template's omission facts (Recursive,
     // Failed, Reads), which the builder's omission graph reads; removal: U5b or a later unit freezes them, and this pin goes.

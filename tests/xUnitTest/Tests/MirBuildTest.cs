@@ -305,6 +305,26 @@ public sealed partial class MirBuildTest(ITestOutputHelper output)
         }
     }
 
+    // PLAN G951 U2 (N3-b's lazy twin; DECISIONS R9-M9 amending R8-M33): Compilation builds with the source modules' root range, so its
+    // library segment holds the library's templates only (none: KimiLibraryShapeTest.TheLibraryDeclaresNoParameterDefault) and each
+    // library body its lookups demand follows the program's bodies, in the first build and after a rebind. X3 as below. Fail-before:
+    // Compilation built the library's bodies as the ordinals' prefix.
+    [Fact]
+    public void ACompilationsLibraryBodiesFollowItsProgramsBodies()
+    {
+        var c = Compile(StopwatchAction);
+        for (var build = 0; build < 2; build++)
+        {
+            var program = c.BuildMir();
+            var bodies = program.Bodies.ToArray();
+            Assert.All(program.LibraryBodies.ToArray(), static x => Assert.Equal(MirBodyKind.DefaultTemplate, x.Key.Kind));
+            var first = Array.FindIndex(bodies, static x => x.Source.IsLibrary && x.Key.Kind != MirBodyKind.DefaultTemplate);
+            Assert.InRange(first, program.LibraryCount + 1, bodies.Length - 1);
+            Assert.All(bodies[first..], static x => Assert.True(x.Source.IsLibrary));
+            c.Binding.Bind(BindingMode.Final);
+        }
+    }
+
     // PLAN G951 U0 (C-g191, M1): in a build whose root range is the program's, a lookup of a library definition the HIR publishes with a
     // value builds its body once, validated, and runs its program pass where it is built, which builds the initializer its staticEnsure
     // names (Stopwatch.start reads Time.counterFrequency, SPEC 22.4.3); the key then finds the same body. X3 is valid (SPEC 10.5.3: an
