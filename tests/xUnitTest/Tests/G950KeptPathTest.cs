@@ -143,9 +143,9 @@ public sealed class G950KeptPathTest
     {
         var c = Compile("milestone/Milestone27");
         var (builder, collector) = (new MirBuilder(c), new InstanceCollector(c.Types, c.Layout));
-        _ = collector.Run(builder.Build(), c.SourceModules.Length);
+        _ = collector.Run(builder.Build(SyntaxTable.LibraryModule + 1), c.SourceModules.Length);
         Finish(c, OutputKind.Application);
-        var later = builder.Build();
+        var later = builder.Build(SyntaxTable.LibraryModule + 1);
         _ = collector.Run(later, c.SourceModules.Length);
         Assert.Equal(later.ProgramBodies.Length, collector.Templated);
     }
@@ -194,7 +194,7 @@ public sealed class G950KeptPathTest
         Finish(c, OutputKind.Application);
         _ = c.Analyze();
         var own = Snapshot(c.Types, c.BuildMir(), c.Instances!);
-        var fresh = new MirBuilder(c).Build();
+        var fresh = new MirBuilder(c).Build(SyntaxTable.LibraryModule + 1);
         new MirAnalysis(c.Types).Run(fresh, c.SourceModules.Length);
         return (own, Snapshot(c.Types, fresh, new InstanceCollector(c.Types, c.Layout).Run(fresh, c.SourceModules.Length)));
     }

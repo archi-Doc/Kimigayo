@@ -680,7 +680,7 @@ public sealed class MirAnalysisTest
         var analyzed = c.BuildMir();
         Assert.Empty(analyzed.Findings);
         var views = analyzed.Bodies.ToArray().Select(x => analyzed.Drops.ViewsOf(x.Ordinal)).ToArray();
-        var program = new MirBuilder(c).Build(); // Unanalyzed: a version's problems are reset only with its bodies (MirProgram.Clear).
+        var program = new MirBuilder(c).Build(SyntaxTable.LibraryModule + 1); // Unanalyzed: a version's problems are reset only with its bodies (MirProgram.Clear).
         var broken = program.Bodies.ToArray().Single(x => x.Key.Kind == MirBodyKind.Fn && x.Key.Decl?.Name == name);
         program.Findings.Add(new(MirViolation.Callee, broken.Source)); // As MirValidator gives a finding and the body's verdict.
         broken.HasFinding = true;
@@ -797,7 +797,7 @@ public sealed class MirAnalysisTest
         for (var version = 1; version <= 2; version++)
         {
             Assert.True(c.Bind().IsComplete);
-            var program = builder.Build(); // Unanalyzed: a version's problems are reset only with its bodies (MirProgram.Clear).
+            var program = builder.Build(SyntaxTable.LibraryModule + 1); // Unanalyzed: a version's problems are reset only with its bodies (MirProgram.Clear).
             Assert.Contains(program.Bodies.ToArray(), static x => x.Source.IsLibrary);
             analysis.Run(program, SyntaxTable.LibraryModule + 1);
             var set = collector.Run(program, SyntaxTable.LibraryModule + 1);
@@ -825,7 +825,7 @@ public sealed class MirAnalysisTest
         for (var version = 1; version <= 2; version++)
         {
             Assert.True(c.Bind().IsComplete, string.Join('\n', c.Binding.Issues));
-            var program = builder.Build();
+            var program = builder.Build(SyntaxTable.LibraryModule + 1);
             var body = program.LibraryBodies[0];
             var source = body.Blocks[0].Terminator.Source;
             var unset = new MirPlace(body.AddLocal(new(BoundType.I32, MirLocalKind.Var, source)));

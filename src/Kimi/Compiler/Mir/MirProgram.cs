@@ -5,17 +5,19 @@
 // Input: built definitions, findings, records and problems. Output: reusable bodies identified by MirDefKey and numbered in order, the body
 // a callee runs (Callee), the initializer a staticEnsure names (StaticInit) and a record class's rows (Records, which MirDump, tests and
 // benchmarks read; publication reads MirReport.Merged, records included, DECISIONS R5-M185).
-// Owns the ordinal space, one with a library prefix (R8-L1 M-B1): the library's bodies are 0 to LibraryCount - 1, the program's follow,
-// each numbered here (Begin) and nowhere else. Body(ordinal) reads either segment. Bodies is the compilation's own bodies, which a walker
+// Owns the ordinal space, numbered in build order here (Begin) and nowhere else. In an eager build, whose root range holds the library,
+// it has a library prefix (R8-L1 M-B1): the library's bodies are 0 to LibraryCount - 1, the program's follow; in a build whose root range
+// is the program's, LibraryCount counts the library's templates and a demanded body takes the next ordinal (PLAN G951 U0; U2 gives
+// library bodies fixed ordinals, G950 R-4). Body(ordinal) reads either segment. Bodies is the compilation's own bodies, which a walker
 // of the whole program iterates: both segments while a compilation builds its library's bodies. Its walkers: MirAnalysis's step 4,
-// MirOrigins.Findings, MirDump.Write, InstanceCollector's roots (with A3b), MirBuilder's library validation (before EndLibrary, when it is
-// the library segment) and the Benchmark's counts and queries (CompilerPipelineBenchmark, CollectionCostMeasurements,
-// PairCaseMeasurements, StaticKeyMeasurements). LibraryBodies and ProgramBodies are the segments, each the span a walker of that segment
-// takes as its input: MirBuilder's program validation (MirValidator's program pass), MirAnalysis's library step and steps 1 and 2,
-// InstanceCollector's templates and StaticKeyMeasurements' local facts. No walker tests an ordinal against LibraryCount itself; an owner
-// keeping per-body entries in a store per segment reads them by the ordinal itself through one split rule, the library's store below
-// the library's count (R8-L1 M-B1; the Back's C-378 (1)(a)): MirDropTable.Of (its library store's count), MirEffects.Base and
-// InstanceCollector.TemplatesOf (LibraryCount).
+// MirOrigins.Findings, MirDump.Write, InstanceCollector's roots (with A3b) and the Benchmark's counts and queries
+// (CompilerPipelineBenchmark, CollectionCostMeasurements, PairCaseMeasurements, StaticKeyMeasurements). LibraryBodies and ProgramBodies
+// are the segments, each the span a walker of that segment takes as its input: MirAnalysis's library step and steps 1 and 2,
+// InstanceCollector's templates and StaticKeyMeasurements' local facts. The program pass reads each body by ordinal from the builder's
+// build-order queue (MirBuilder.Name), the library segment's drained before EndLibrary. No walker tests an ordinal against LibraryCount
+// itself; an owner keeping per-body entries in a store per segment reads them by the ordinal itself through one split rule, the
+// library's store below the library's count (R8-L1 M-B1; the Back's C-378 (1)(a)): MirDropTable.Of (its library store's count),
+// MirEffects.Base and InstanceCollector.TemplatesOf (LibraryCount).
 // Owns the segments' versions (PLAN G950): the library segment, its bodies, their keys and findings and its construction records, is kept
 // while its library version holds (LibraryVersion, EndLibrary), the program segment rebuilt per program version over it (ClearProgram);
 // the library's findings stay the prefix of Findings and its records are replayed into the version's report first, where the builder's
@@ -24,6 +26,10 @@
 // segment's construction allocates by the other's bodies, and stored in the next pooled body at End, which registers its key: a stored
 // body is grown only to exactly the rows stored in it, and a building body's tables and interning grow once to its segment's largest
 // body's.
+// Its lookups (this[key], Callee, StaticInit) are the one demand point (PLAN G951): a key without a body is looked up by its phase's row
+// of the demand table (Phase): while Open, the builder that opened the version builds the body if the HIR publishes the definition with
+// a value outside the root range the builder built eagerly (MirBuilder.Demand); once Sealed, a lookup reads only. Null means only "this
+// definition has no body", never "not built yet".
 // One key identifies one body, in one key map whose lookup is one read; warm rebuilding reuses body storage; Clear resets the report and
 // both segments, ClearProgram the report and the program's.
 // Must not re-bind definitions or maintain a second body map in a consumer; a reader by ordinal reads through Body, never offsets an
@@ -45,6 +51,19 @@ internal sealed class MirProgram
     private MirBody[] pool = [];
     private int count;
     private int libraryFindings; // The library segment's findings, the prefix of Findings.
+    private MirBuilder? builder; // The builder that opened the version, which a lookup while Open demands a body from.
+
+    /// <summary>The demand table (PLAN G951): a row per phase of a program version, each what a lookup of a key without a body does.</summary>
+    internal enum Phase
+    {
+        /// <summary>From <see cref="Open"/>: a lookup builds the body the HIR publishes a value for, validates it and runs its program
+        /// pass (<see cref="MirBuilder.Demand"/>).</summary>
+        Open,
+
+        /// <summary>Before a builder opens a version and from <see cref="Seal"/> (the end of Compilation's <c>BuildMir</c>): a lookup reads
+        /// only.</summary>
+        Sealed,
+    }
 
     /// <summary>Gets the bodies a walker of the whole program visits, in ordinal order: the compilation's own, the library's prefix included
     /// while the compilation builds it.</summary>
@@ -56,8 +75,9 @@ internal sealed class MirProgram
     /// <summary>Gets the program segment's bodies, the ordinals from <see cref="LibraryCount"/> on.</summary>
     internal ReadOnlySpan<MirBody> ProgramBodies => this.pool.AsSpan(this.LibraryCount, this.count - this.LibraryCount);
 
-    /// <summary>Gets the number of the library's bodies, which hold ordinals 0 to the count less one in every compilation; the program's
-    /// bodies follow (R8-L1 M-B1).</summary>
+    /// <summary>Gets the number of the bodies built before the program's: in an eager build the library's, which hold ordinals 0 to the
+    /// count less one, the program's bodies following (R8-L1 M-B1); in a build whose root range is the program's, the library's templates
+    /// (PLAN G951).</summary>
     internal int LibraryCount { get; private set; }
 
     /// <summary>Gets the library version the library segment was built for (0: none), the stamp a component keeping a library segment's
@@ -66,6 +86,13 @@ internal sealed class MirProgram
 
     /// <summary>Gets or sets the Binding pass the bodies were built from (0: none).</summary>
     internal ulong Version { get; set; }
+
+    /// <summary>Gets the root range the version was opened with: the builder built the bodies of the modules below it eagerly, and builds
+    /// any other on demand (<see cref="MirBuilder.Build"/>); one version is built with one range.</summary>
+    internal int RootModules { get; private set; }
+
+    /// <summary>Gets the version's row of the demand table.</summary>
+    internal Phase Demands { get; private set; } = Phase.Sealed;
 
     /// <summary>Gets the validator's findings, which Compilation's <c>PublishMirRecords</c> publishes as <c>InternalInvariant_Kd</c> after
     /// the merged problems (DECISIONS R5-M185): the library segment's first, its program pass's included, then the program's.</summary>
@@ -90,7 +117,11 @@ internal sealed class MirProgram
     /// the program's.</summary>
     private MirBody Building => this.building[this.LibraryCount > 0 ? 1 : 0];
 
-    internal MirBody? this[MirDefKey key] => this.bodies.TryGetValue(key, out var body) ? body : null;
+    /// <summary>Gets the body of a definition, the demand point: a key without a body is looked up by the version's row of the demand
+    /// table (<see cref="Demands"/>).</summary>
+    /// <param name="key">The definition.</param>
+    /// <returns>The body, or null for a definition without one.</returns>
+    internal MirBody? this[MirDefKey key] => this.bodies.TryGetValue(key, out var body) ? body : this.Demand(key);
 
     /// <summary>Gets the body of an ordinal, the library's or the program's, the one read by ordinal.</summary>
     /// <param name="ordinal">The body's ordinal (<see cref="MirBody.Ordinal"/>).</param>
@@ -129,6 +160,14 @@ internal sealed class MirProgram
         this.LibraryVersion = 0;
         this.LayerWalkWork = 0;
     }
+
+    /// <summary>Opens a version for its builder: a lookup builds a missing body on demand until <see cref="Seal"/>.</summary>
+    /// <param name="builder">The builder of the version.</param>
+    /// <param name="rootModules">The root range the builder builds eagerly.</param>
+    internal void Open(MirBuilder builder, int rootModules) => (this.builder, this.RootModules, this.Demands) = (builder, rootModules, Phase.Open);
+
+    /// <summary>Seals the version (the end of Compilation's <c>BuildMir</c>): a lookup reads only.</summary>
+    internal void Seal() => this.Demands = Phase.Sealed;
 
     /// <summary>Ends the library segment, built and validated for a library version: the bodies begun so far are the library's
     /// (<see cref="LibraryCount"/>), the findings so far its findings and the records so far its records, which
@@ -199,6 +238,14 @@ internal sealed class MirProgram
         this.bodies.Add(body.Key, body);
         return body;
     }
+
+    // A lookup of a key without a body, by the version's row of the demand table.
+    private MirBody? Demand(MirDefKey key) => this.Demands switch
+    {
+        Phase.Open => this.builder!.Demand(key),
+        Phase.Sealed => null,
+        _ => throw new InvalidOperationException($"The demand table has no row {this.Demands} (InternalInvariant)."),
+    };
 
     /// <summary>The rows of one record class of a version (<see cref="Records"/>), each its code and location.</summary>
     /// <param name="report">The version's report.</param>

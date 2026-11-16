@@ -5,24 +5,34 @@ using Kimi.Compiler.Parsing;
 namespace Kimi.Compiler;
 
 // Scopes and symbols: the scope tree and the symbol tables of its scopes.
-// - Responsibility: one scope per key, created once and attached to its parent each pass (GetScope); the scope a node binds in
-//   (NodeScope); a symbol's declaration in its scope's Type or value table with the duplicate rule (Declare); a parameter's symbol.
+// - Responsibility: one scope per key, created once and attached to its parent each pass (GetScope; a source document's, which its
+//   top-level statements share, DocumentScope); the scope kept for a node (ScopeOf) and the one it binds in (NodeScope); a symbol's
+//   declaration in its scope's Type or value table with the duplicate rule (Declare); a function parameter's symbol by its function
+//   and index, declared (DeclareParameter) and read (ParameterSymbol).
 // - Inputs: the indexing walk and the declaration steps that declare a symbol. Outputs: scopes, symbols, each declaring node's
 //   BoundSymbol, Duplicate failures.
-// - Invariants: scopes and symbols are kept across passes by their key (a node or a source document) and reset by ResetPass.
+// - Invariants: scopes and symbols are kept across passes by their key (a node, a parameter's function and index, or a top-level
+//   statement's source document) and reset by ResetPass.
 // - Prohibitions: no name is resolved here (lookup is Binding.Names.cs's and Binding.Types.cs's); Declare reads a scope's table only
-//   to chain a name's symbols (Next) and apply the duplicate rule.
+//   to chain a name's symbols (Next) and apply the duplicate rule. No other file keys either table by anything but a node: a
+//   parameter's symbol goes through DeclareParameter and ParameterSymbol, a document's scope through DocumentScope and ScopeOf
+//   (DECISIONS BU-220's key rules).
 public sealed partial class Binding
 {
     internal BindingSymbol ParameterSymbol(FunctionKoto function, int index) => function.Accessor is { } accessor
         ? index == 0 && accessor.Receiver is not null ? accessor.SelfSymbol! : accessor.ValueSymbol!
         : this.symbols[function.Parameters[index]];
 
-    private BindingScope GetScope(object key, BindingScope? parent, Koto? owner = null)
+    private BindingScope GetScope(Koto node, BindingScope? parent) => this.KeptScope(node, node, parent);
+
+    // One scope per document: the module's generated function body owns it, its first top-level statement creates it.
+    private BindingScope DocumentScope(SourceDocument document, BindingScope parent, Koto owner) => this.KeptScope(document, owner, parent);
+
+    private BindingScope KeptScope(object key, Koto owner, BindingScope? parent)
     {
         if (!this.scopes.TryGetValue(key, out var scope))
         {
-            scope = new(owner ?? (Koto)key);
+            scope = new(owner);
             this.scopes.Add(key, scope);
         }
 
@@ -31,17 +41,21 @@ public sealed partial class Binding
         return scope;
     }
 
-    private BindingScope NodeScope(Koto node, BindingScope fallback)
-    {
-        if (node.Parent is CodeBlockKoto { Parent: FunctionKoto { IsGenerated: true } } && node.CodeContext.SourceDocument is { } source && this.scopes.TryGetValue(source, out var sourceScope))
-        {
-            fallback = sourceScope;
-        }
+    // The scope a node opens, else for a top-level statement (a node directly in its module's generated function) its document's.
+    private BindingScope? ScopeOf(Koto node) => this.scopes.GetValueOrDefault(node) ??
+        (node.Parent is CodeBlockKoto { Parent: FunctionKoto { IsGenerated: true } } && node.CodeContext.SourceDocument is { } document ? this.scopes.GetValueOrDefault(document) : null);
 
-        return this.scopes.TryGetValue(node, out var scope) ? scope : fallback;
+    private BindingScope NodeScope(Koto node, BindingScope fallback) => this.ScopeOf(node) ?? fallback;
+
+    private BindingSymbol Declare(Koto key, string name, BindingSymbolKind kind, Koto node, BindingScope scope) => this.DeclareKept(key, name, kind, node, scope);
+
+    private void DeclareParameter(FunctionKoto function, int index, BindingScope scope)
+    {
+        var parameter = function.Parameters[index];
+        this.DeclareKept(parameter, parameter.InternalName, BindingSymbolKind.Parameter, function, scope).Slot = index;
     }
 
-    private BindingSymbol Declare(object key, string name, BindingSymbolKind kind, Koto node, BindingScope scope)
+    private BindingSymbol DeclareKept(object key, string name, BindingSymbolKind kind, Koto node, BindingScope scope)
     {
         if (!this.symbols.TryGetValue(key, out var symbol))
         {

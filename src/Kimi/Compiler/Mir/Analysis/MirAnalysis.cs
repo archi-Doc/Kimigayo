@@ -4,8 +4,11 @@
 // Input: a built and validated MirProgram and its root modules, the range of Source.Module Compilation gives the collector too.
 // Output: its Problems for that version, which the analyses add through MirReport after the construction records (MirProgram.Clear and
 // ClearProgram reset them, R6-check H3-1), and the version's count of judgments (Judgments), which the library check reads in each version.
-// Runs them once per version, after build and validation, in a fixed order, one line per step (a judged body's steps 1 and 2 together,
-// another body's step 2 only); a step's details are in the comment of the method that runs it or in its analysis's contract:
+// Runs them once per version, after build and validation: the version alone keys the run because an instance analyzes the programs of
+// one builder (Compilation pairs its analysis with its builder; a test or measurement makes both), which builds a version with one root
+// range (MirBuilder.Build); that build range is the builder's, not Run's rootModules. The steps run in a fixed order, one line per step
+// (a judged body's steps 1 and 2 together, another body's step 2 only); a step's details are in the comment of the method that runs it
+// or in its analysis's contract:
 // 0. the library step, once per library version (PLAN G950): step 2 of the library segment's bodies (LibraryBodies), whose facts (A2's
 //    library store, A4's library locals) and problems are a function of the library segment alone; its problems are kept as data and
 //    replayed here in every other version of that library version, so the report equals a rebuild's row for row; then the judged
