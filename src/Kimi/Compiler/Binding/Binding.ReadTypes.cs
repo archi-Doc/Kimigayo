@@ -52,7 +52,7 @@ public sealed partial class Binding
 
         if (type.Kind is BoundTypeKind.Nominal or BoundTypeKind.Constructed)
         {
-            if (!ReferenceEquals(type.Symbol?.Declaration.CodeContext.Kotonoha, this.Library.Kotonoha))
+            if (type.Symbol?.Declaration.Kotonoha.Syntax.IsLibrary is not true)
             {
                 return false;
             }

@@ -288,7 +288,8 @@ internal sealed partial class MirBuilder(Compilation compilation)
         }
 
         this.ends.Clear();
-        this.validator.Validate(body, this.program.Findings);
+        this.body = this.program.End(); // The stored body, which the validator marks and a default's copies read.
+        this.validator.Validate(this.body, this.program.Findings);
     }
 
     // IMPL 21.3.2 (DECISIONS R4-M176): the body budget both expansions consult where a copy would begin: a default's template copy, of its
