@@ -152,6 +152,7 @@ public partial class SyntaxIdTest
     [InlineData("Matches", "milestone:Milestone10")]
     [InlineData("Adaptations", "milestone:Milestone10")]
     [InlineData("VirtualOverrides", "open struct Base<T>\n    public func ordinary(self: objref/Self) -> i32 => 1\n    public virtual func read(self: objref/Self, other: objref/Leaf<T>) -> i32 => 1\nstruct Leaf<T> : Base<T>\n    override func read(self: objref/Self, other: objref/Leaf<T>) -> i32\n        return self.ordinary()\n()")]
+    [InlineData("VirtualEffectBounds", "milestone:Milestone44")]
     public void AStampedFamilyKeepsItsArenaAcrossEdits(string family, string program)
     {
         var source = program == "candidates" ? ConstructorInferenceWorkloads.Create(program, 4)
