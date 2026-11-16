@@ -13666,20 +13666,24 @@ resumed by R4-M86 (2026-10-20).
   modules; the Back's consent C-376, condition 3) Refines R7-M16 (`ImplTable`'s `Reset`, "until R7-D2b's stamped tables"); extends
   R8-M31; L1 F-B2 and F-B3 are its inputs.
   - **Representation.** A table Binding keeps per pass becomes a family stored in `PagedColumn<T>`, the one column form: indexed by
-    a dense id, pages of 16 slots carved from one arena at first write, an `int` directory, no hashing. The ids: a node's `SyntaxId`
-    in its module (`NodeColumns`, a field of `HirTables`, Binding's only), or a Type's `BoundType.Id` (`TypeColumns`, TyCtxt's). Key
-    rules: a symbol by its declaration's id, a declaration's other symbols by its listed slots only (a function's parameters, an
-    accessor's `SelfSymbol` and `ValueSymbol`, a Contract's `Self`, a generic parameter's Semantics symbol), any other symbol
-    refused; a scope held in `scopes` by its `scopes` key, and no other scope: a node's scope by that node, and a document's
-    execution scope (SPEC 6.1.1: the document's top-level items in its module's generated function) by `(module root, document)`,
-    where the module is the one that holds those items now (AST2's current module), so a document whose items lie in two modules
-    (after AST2's attachment at a generated function's `Body`, or one `SourceDocument` object parsed into two modules through the
-    public `Kotonoha.AddSource`, `AddSources` or `CodeContext.Parse`) has a scope in each; an Origin by its owner node and slot; a
-    conformance by its Type symbol; a composite key is a small list in its first id's row. A per-pass list whose library entries are
-    read later is a `LayerList<T>`: the program pass's part, then the library's, through one enumerator; the driver hands each pass
-    its part, so no step tests which pass runs, and a program pass's record at a library location goes in the program's part.
-    Interners stay content-hash tables; a program pass's memo over library keys stays the compilation's own memo, a program fact
-    with no base.
+    a dense id, pages of 8 slots carved from one arena at first write, the arena reserved from the module's stated size for a
+    library-only column (`KimiLibrarySize`) and grown at most to the module's dense size, an `int` directory allocated at its first
+    write, no hashing. The ids: a node's `SyntaxId` in its module (`NodeColumns`, a field of `HirTables`, Binding's only), or a
+    Type's `BoundType.Id` (`TypeColumns`, TyCtxt's). Key rules: a symbol by its declaration's id, a declaration's other symbols by
+    its listed slots only (a function's parameters, an accessor's `SelfSymbol` and `ValueSymbol`, a Contract's `Self`, a generic
+    parameter's Semantics symbol), any other symbol refused; a scope held in `scopes` by its `scopes` key, and no other scope: a
+    node's scope by that node, and a document's execution scope (SPEC 6.1.1: the document's top-level items in its module's
+    generated function) by `(module root, document)`, where the module is the one that holds those items now (AST2's current
+    module), so a document whose items lie in two modules (after AST2's attachment at a generated function's `Body`, or one
+    `SourceDocument` object parsed into two modules through the public `Kotonoha.AddSource`, `AddSources` or `CodeContext.Parse`)
+    has a scope in each; an Origin by its owner node and slot; a conformance by its Type symbol; a composite key's entries are a row
+    of the family's composite column at its first id. A per-pass list whose library entries are read later is a `LayerList<T>`: the
+    program pass's part, then the library's, through one enumerator; the driver hands each pass its part, so no step tests which
+    pass runs, and a program pass's record at a library location goes in the program's part. A keyed `PassPart` collection is read
+    by one find, `PassPart.Find`: the layer's part first, then the running pass's when it is not the layer's map (a test of the map,
+    never of which pass runs); a write goes to the row the find returns or, for a key in neither part, to the running part; a keyed
+    collection whose values index a per-pass list keeps that list in its own part. Interners stay content-hash tables; a program
+    pass's memo over library keys stays the compilation's own memo, a program fact with no base.
   - **Base and overlay.** Each family has a base, the library pass's, and an overlay, the compilation's program pass's: a node
     family's base is the library module's `NodeColumns`; the Type base, `ImplTable`'s base and the lists' base parts are in
     `LibraryLayer`, owned by `KimiLibrary`. The key decides the store, once, in the family's one accessor; no reader composes,
@@ -13724,6 +13728,22 @@ resumed by R4-M86 (2026-10-20).
       modules, the two parts share one scope that binds one module's code in the other's root, and a document moved from another
       compilation came from a module whose columns are not this compilation's.
     - A `TypeId` or `SyntaxId` wrapper type: a wrapper without semantics (R8-M31's reason).
+  - Amended by PLAN G949 N5-1 (the Front, 2026-11-17; D-728): pages of 8 slots, the library-only column's arena reserved at its
+    stated size, a composite key's entries in the family's composite column, so every row is 8 bytes. Reason: N5-1 measured +0.9 to
+    +1.15 MB per compilation for two families against the design's +0.28 MB for all (16-byte rows, power-of-two overshoot and
+    doubling copies); with these forms its four node families (symbols, parameters, scopes and documents; each family with library
+    rows reserved at its stated size in `KimiLibrarySize`) cost +9,632 B (Empty) and +87,416 B (RawStores) per compilation, warm
+    Bind 0 B. Still one form (`PagedColumn<T>`). Staged: N5-1 converts the Kept families only; the pass and edit stamps and the
+    Pass/Edit hand-over come with the first Pass or Edit family, and `Enumerate` yields present rows (absent is all-zero bytes).
+  - Amended by PLAN G949 D-9 (the `localRegions` batch; the Front's design, the Back's seats): an Origin-keyed fact table whose keys
+    include Origin expressions (Intersections, interned with no owner: `localRegions`) keeps its reference key and has two parts,
+    the passes' `PassPart`s (the layer's and Binding's own, the pass driver swapping the field). One find searches the layer's part
+    first, then the running pass's; a write goes into the row found, else into the running pass's part, so a key has one row.
+    Contract: no program pass records a region bound on library atoms only (the library's rows refuse program writes and keep frozen
+    sources from PLAN G949 S1-1). Owner-keyed producers (`originAtoms`, `openOrigins`) stay node families by their owner node and
+    slot. Rejected: a key by the recording body (a meet is shared across bodies; every reader would need the body); a dense Origin
+    id (a new representation for one table that is not hot); a store decided by a meet's operands (a second rule deciding an
+    Origin's store beside the recording pass's part).
 - **G209-1** (2026-10-24; structural unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source
   aliases their selected container and environment before ordinary lookup merges imports. These responsibilities were embedded in the
   general expression parser and `Binding.Types.Lookup`, with alias resolution beside Type formation. `Parser.RuntimeTypeTests` now
@@ -22578,3 +22598,56 @@ R8-M* and R9-M* by the stage of the recording unit.
       range) memo.
     - A rebuild for another range on a built version (the design's N4), for the same reason.
     - A second node-to-key map for `Demand`; reading an unbuilt body as bodyless; building the whole library on its first lookup.
+  - **Adopted (U1, the driver's half).**
+    - Steps 1 and 2 have one path, `MirAnalysis.Step`: every program-segment body built since the last step, in build order, a body
+      a lookup builds meanwhile included, so A2's entry of each body is its build position; the library step (R8-M50) steps the
+      library segment's bodies, so a version's stepping starts at `LibraryCount` whether the segment is kept or new. A2 publishes
+      `MirDropTable.Holds(ordinal)`, the fact that the body's entry is closed in its segment's store (a kept library body's in its
+      library version). A round of a consumer of step-2 facts that reads a body A2 does not hold misses: it adds nothing, goes on to
+      its end and commits nothing; the consumer's driver steps and runs it again until a round is clean. A4 reads a body's nodes
+      only through `Compose`; the collector follows the same rule (U1b). A consumer steps only after a missed round, and a round
+      misses only at a body built since the last step, so a `Step` with every body stepped is a broken contract (InternalInvariant),
+      never a rerun.
+    - The demand table gains Judging between Open and Sealed (`MirProgram.Enter`; Seal is `Enter(Sealed)`, a Sealed version stays
+      Sealed; `Enter` takes Judging from Open and Open from Judging, any other step being a broken contract): while step 4 and
+      `MirOrigins.Findings` run, a lookup that builds a body throws (InternalInvariant), and a definition without a body is null, as
+      in every row (null means only "no body"; a site A5 replays may name a witness or import without one). The throw is
+      unreachable: A5 looks up only at a site with a static Loan or a static's Drop, where its keys replay A4's site inputs
+      (callees, Closures, destructors, witnesses), whose lookups A4's clean round made, none of which built a body with views (such
+      a build would have made that round miss), and at its static initializers, which the root program pass built; `Findings` looks
+      nothing up.
+    - The input rule by range covers every verdict: step 3 judges the obligations whose subject is in the root range and
+      `MirOrigins.Findings` the layer rows located there (E3, E1); the library's are `TheLibraryHasNoAnalysisProblem`'s, which every
+      unit changing the library, MIR construction, the validator or A1-A5 runs. `KimiLibraryShapeTest` pins the library-subject
+      obligation rows as program-independent.
+  - **Adopted (U1b, the collector's half).**
+    - The collector follows A4's round rule: a run that replays a body item whose body A2 does not hold (`MirDropTable.Holds`: one a
+      lookup built during the run) misses. It goes on to its end and makes every demand but those of that body's Drop sites, which
+      read A2's facts (`DropTargets` requests nothing for a body A2 does not hold), so their targets wait for the next run and a
+      chain through them takes another (three runs or more); and it commits nothing: no record (A3b's in the root loop included), no
+      end-of-run record (`RecordLimits`, R5-M171) and no checked set (a missed run's set holds no version, so `Run`'s version check
+      holds only after a clean run).
+    - The one commit rule is `MirReport`'s round, which A4's rounds and the collector's runs share: one round at a time;
+      `Begin(body)` holds the round's problems of its body value (A4's NoBody, the Collection class), which carry no facts (one with
+      facts is the recording rule's `InternalInvariant_Kd` defect, held as the round's), until `Commit` adds them or `Drop` discards
+      them; any other problem added meanwhile (a construction record of a demanded body) is added at once, as is a record made
+      outside a run (code generation's); a `Begin` in an open round and a `Commit` or `Drop` without one are broken contracts. A
+      kept library row (R8-M50's `Keep`/`Replay`) was committed when kept and is replayed outside any round. `Report` stays the one
+      record path (R5-M151).
+    - A template records nothing (R8-M50), so the program segment's templates are kept across a version's runs and extend in build
+      order over the bodies built since (`extent`, a build position; `Replay` extends them when a lookup built bodies during the
+      run), each read from its segment's store (`TemplatesOf`, `ordinal < D`). The driver (`Compilation.Collect`) steps the bodies
+      built since (`MirAnalysis.Step`) and runs again until a run is clean; a clean run replays only stepped bodies from the same
+      roots in the same FIFO order, so it equals one run over an eager build, and every body code generation reads is stepped, with
+      no step after it within a version (across versions under the kept library segment: U2, the Back's C1). `Work`, `RunCount` and
+      `Templated` sum the runs of one version.
+  - **Amends R8-M50:** A3b runs in the collector's root loop in every run (inside the run's round, so a missed run's A3b records
+    drop with it), not once per version; `Templated` counts the version's runs.
+  - **Rejected (U1's and U1b's).** Ending a round at its first missed read (one round per body); a per-ordinal A4 stamp beside A2's
+    `Holds` (a second copy of the stepped fact); step 2 at the demand (nested steps and unstepped program-pass bodies, re-review
+    R2-B1); a Judging row that throws on every miss (null means only "no body" in every row); a pending buffer in each round's owner
+    (two copies of the commit rule; C-378 §3); reverting the report to the round's start (it drops the construction records of
+    bodies built during the round); a step after the clean collector run (no body a clean run replays is unstepped); a throw for a
+    held problem with facts (a second form of a recording rule's defect); the templates walked again from the first body in every
+    run (they record nothing since R8-M50, the Back's N4); the extension triggered by comparing a body's ordinal with the build
+    position (two index spaces under U2's holes).
