@@ -82,7 +82,11 @@ public sealed partial class Binding
             return this.Fail(use, BindingFailure.DirectCallFunctionValue);
         }
 
-        this.CompleteFunctionItem(use, selected);
+        if (this.CompleteFunctionItem(use, selected) is null)
+        {
+            return null; // A requirement member is never `#Unsupported` (KimiLibraryShapeTest L11).
+        }
+
         if (erase && required is not null)
         {
             if (!this.ErasesToFunction(use, selected, required))
