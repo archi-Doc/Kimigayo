@@ -4,7 +4,7 @@ using Kimi.Compiler.Parsing;
 
 namespace Kimi.Compiler;
 
-// Indexing (IndexSources, IndexLibrary, IndexVisitor, TestSyntaxVisitor): the walk over the source modules and the embedded library
+// Indexing (Index, IndexLibrary, IndexVisitor, TestSyntaxVisitor): the walk over the pass's source modules and the embedded library
 // after ResetPass, before any header, Type or expression is bound. One part enters later: a try propagation's arms are deferred
 // (SemanticsIndexed false), and BindMatch indexes them during body binding (IndexMatchArms), once the Subject's Type selects Option
 // or Result (Binding.Patterns.cs).
@@ -27,25 +27,30 @@ public sealed partial class Binding
     private readonly Dictionary<GenericParameterKoto, BindingSymbol> pairSymbols = new(ReferenceEqualityComparer.Instance);
     private TestSyntaxVisitor? testSyntaxVisitor;
 
-    // The indexer resets every semantic field of the source trees before any header or expression is evaluated.
-    private void IndexSources()
+    // The indexer resets every semantic field of the pass's modules before any header or expression is evaluated: its source trees and
+    // their module references, then, when it binds the library, the library's.
+    private void Index()
     {
-        foreach (var module in this.compilation.SourceModules)
+        foreach (var module in this.pass.Sources)
         {
             this.indexer.Scope = this.GetScope(module.RootKoto, null);
             this.indexer.Visit(module.RootKoto);
         }
 
         this.IndexModuleReferences();
+        if (this.pass.Library is { } library)
+        {
+            this.IndexLibrary(library);
+        }
     }
 
     // Restores and indexes the embedded Kimi library.
-    private void IndexLibrary()
+    private void IndexLibrary(Kotonoha library)
     {
         this.Library.Restore();
-        this.scopes[this.Library.Kotonoha.RootKoto] = this.Library.Scope;
+        this.scopes[library.RootKoto] = this.Library.Scope;
         this.indexer.Scope = this.Library.Scope;
-        var libraryRoot = this.Library.Kotonoha.RootKoto;
+        var libraryRoot = library.RootKoto;
         for (var i = 0; i < libraryRoot.NestedContainers.Count; i++)
         {
             var declaration = libraryRoot.NestedContainers[i];
@@ -483,8 +488,8 @@ public sealed partial class Binding
                 case GenericParameterKoto parameter:
                     var typeSymbol = binding.Declare(node, parameter.Identifier, parameter.SemanticsParameter is null ? BindingSymbolKind.TypeParameter : BindingSymbolKind.SemanticsTarget, node, this.Scope);
                     typeSymbol.Slot = this.Scope.Types.Count - 1;
-                    typeSymbol.WholeType ??= new(parameter.Identifier, BoundTypeKind.Parameter, typeSymbol);
-                    typeSymbol.Type ??= parameter.SemanticsParameter is null ? typeSymbol.WholeType : new(parameter.Identifier, BoundTypeKind.TargetProjection, typeSymbol);
+                    typeSymbol.WholeType ??= binding.types.Parameter(parameter.Identifier, BoundTypeKind.Parameter, typeSymbol);
+                    typeSymbol.Type ??= parameter.SemanticsParameter is null ? typeSymbol.WholeType : binding.types.Parameter(parameter.Identifier, BoundTypeKind.TargetProjection, typeSymbol);
                     if (parameter.SemanticsParameter is not null)
                     {
                         if (!binding.pairSymbols.TryGetValue(parameter, out var semanticsSymbol))

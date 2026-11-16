@@ -71,9 +71,9 @@ public partial class KimiLibraryShapeTest
         SameLayerAsTheEmptyPrograms(string.Empty);
     }
 
-    // The epoch rule's invariant: ResetCapabilities, which begins every pass (its one call is ResetPass's, which Bind runs first in each
-    // pass: ArchitectureRulesTest's row), ends the capability epoch, so no entry of a per-epoch memo is current after it. Every component
-    // summary is stale (its Epoch is not summaryEpoch); Enumerate's kept pool is free (enumerateKeptPoolNext 0: the kept lists are
+    // The epoch rule's invariant: ResetCapabilities, which begins every pass (its one call is ResetPass's, which the pass driver's RunPass
+    // runs first in each pass: ArchitectureRulesTest's row), ends the capability epoch, so no entry of a per-epoch memo is current after
+    // it. Every component summary is stale (its Epoch is not summaryEpoch); Enumerate's kept pool is free (enumerateKeptPoolNext 0: the kept lists are
     // enumerateKept's, review C1); every capability work holds CapabilityWork.Reset's state, its Fact included; every other epoch store
     // is empty. Reset leaves only a work's Site (review N2): the limit site of the work's own Closure signature, its Use that signature's
     // binder and its Needed flag cleared by ResetCapabilities (ClearNeededSites); only the work's own evaluation reads it. Fact, the U fact
