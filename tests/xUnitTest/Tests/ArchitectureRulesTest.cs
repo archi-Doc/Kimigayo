@@ -167,6 +167,9 @@ public class ArchitectureRulesTest
     [InlineData("Binding reads and writes of BindingSymbol.Resolving (0 at R7-D2 d4)", "src/Kimi/Compiler/Binding", "*.cs", @"\.Resolving\b|\bResolving\s*:", 5)]
     // DECISIONS BU-111 (amended by G478): a Binding failure fact records typed parts, and its explanation text is formed only by the
     // diagnostics adapter. The one left is UnboundSlotFact.Note (PLAN's check-formed prose row).
+    // R7-N5, PLAN G949 S1-N5 (DECISIONS BU-220): a node-keyed table member of Binding (a Dictionary or HashSet keyed by a Koto type, or
+    // by object for the node tables) moves into NodeColumns batch by batch; each batch lowers the limit.
+    [InlineData("Node-keyed table members in Binding", "src/Kimi/Compiler/Binding", "*.cs", @"(?m)^\s*(?:private|internal|protected|public)[^=(\n]*\b(?:Dictionary|HashSet)<(?:\w*Koto|object)\b", 103)]
     [InlineData("String explanations in Binding failure facts", "src/Kimi/Compiler/Binding", "*.cs", @"\bstring (?:Condition|Reason|Note)\b(?=[,)])", 1)]
     // R7-E1b: a problem's fact keeps a Type or a closed row, and a check writes no text into one: the adapter owns each row's.
     [InlineData("Text a check keeps as a problem's fact", "src/Kimi/Compiler/Binding", "*.cs", @"\bKeep\((?:object\b|\$?"")|\bRecordMismatch\([^;\n]*\$?""", 0)]
@@ -243,6 +246,24 @@ public class ArchitectureRulesTest
     // forming the declaration it names (the type's file: the member and its contract's three mentions). Every other read is one of
     // OriginDeclaration's read members, so the readers of a declaration, a failed one included, are those members' callers.
     [InlineData("Formation of an Origin declaration", "src/Kimi/Compiler", @"\bForming\b", "Binding/Binding.LocalOrigins.cs=27;Binding/Binding.OriginDeclarations.Failures.cs=5;Binding/Binding.OriginDeclarations.cs=29;Binding/Binding.OriginInheritance.cs=6;Binding/Binding.Origins.Model.cs=4")]
+    // PLAN G949 S1-0b r2 and r3 (the library-layer dump's number rule, KimiLibraryShapeTest.LibraryLayer): a number naming a walk's or
+    // memo's order is read only by the walk or memo that assigns it, so the dump prints it as # and compares the rest of its row. Each row
+    // counts every name through which the number is reached, its holder and a member returning it included:
+    // - a scope's view serial and the chain state it names: declared in BindingModel and read by ContractSolver's SerialOf, whose callers
+    //   compare the serial for equality only (ContractSolver, its Rows and TypeIdentity's memo);
+    // - an Origin requirement work's Consumer mark: read by OriginRequirements' edge collection;
+    // - an inline summary's Tarjan Index and Low: read in InlineLayouts, the one file that names the summary, its stores or Summary, the
+    //   member returning one (ComponentSummaries' own Summary shares the name and is counted too). All are Binding's private members, so
+    //   only Binding's partial files, in its directory, reach them.
+    // A further reader fails here until the dump's rule is reviewed.
+    [InlineData("Readers of a scope's view serial and state", "src/Kimi/Compiler", @"\bView(?:Serial|State)\b|\bSerialOf\b", "Binding/Binding.ContractSolver.Rows.cs=3;Binding/Binding.ContractSolver.cs=8;Binding/Binding.TypeIdentity.cs=3;Binding/BindingModel.cs=3")]
+    [InlineData("Readers of an Origin requirement work's Consumer mark", "src/Kimi/Compiler", @"\.Consumer\b|\bConsumer:", "Binding/Binding.OriginRequirements.cs=2")]
+    [InlineData("Holders of an inline summary's Tarjan numbers", "src/Kimi/Compiler/Binding", @"\b(?:InlineSummary|inlineSummaries|inlineSummaryPool|inlineComponents|Summary)\b", "Binding.ComponentSummaries.cs=7;Binding.InlineLayouts.cs=43")]
+    // PLAN G949 S1-0b r3 (the dump's epoch rule): the memos of one capability epoch are the program's because each pass begins with
+    // ResetCapabilities: its one call is ResetPass's, which Bind runs first in each pass and Invalidate on an edit. A further caller (G949
+    // S1-r1's pass driver among them) fails here until the epoch rule's premise is reviewed. Binding's own ResetPass calls are this.ResetPass
+    // (a member call's spelling); the conformance identities' and paths' ResetPass(ulong) (S1-b1) are other members of the name.
+    [InlineData("A pass's start ends the capability epoch", "src/Kimi/Compiler", @"\bResetCapabilities\(|\bthis\.ResetPass\(", "Binding/Binding.Capabilities.cs=1;Binding/Binding.Pass.cs=1;Binding/Binding.cs=2")]
     public void SourcePatternStaysAtItsSites(string rule, string directory, string regex, string sites)
     {
         var expression = new Regex(regex);
@@ -417,6 +438,16 @@ public class ArchitectureRulesTest
             .GroupBy(static x => x.Site, StringComparer.Ordinal).Select(static x => $"{x.Key}={x.Count()}").Order(StringComparer.Ordinal).ToArray();
         Assert.Equal(
             new[] { "BoundType..cctor=4", "BoundType.CreatePrimitives=1", "BoundType.CreateWrappingScalars=1", "TyCtxt.Intern=1", "TyCtxt.Parameter=1" }, sites);
+    }
+
+    // G949 D2b-d's d13 (DECISIONS BU-220): NodeColumns holds Binding's private node families, read and written only through each
+    // family's accessor, so no source file outside Compiler/Binding names it.
+    [Fact]
+    public void NodeColumnsIsNamedOnlyInBinding()
+    {
+        var binding = Path.Combine(Repository.Root, "src", "Kimi", "Compiler", "Binding") + Path.DirectorySeparatorChar;
+        var name = new Regex(@"\bNodeColumns\b");
+        Assert.DoesNotContain(SourceFiles("src", "*.cs"), x => !x.StartsWith(binding, StringComparison.OrdinalIgnoreCase) && name.IsMatch(File.ReadAllText(x)));
     }
 
     // R7-C2a: Enumerate is a leaf of the judgment graph (Binding.ContractSolver.cs's contract). The members of its walk call exactly

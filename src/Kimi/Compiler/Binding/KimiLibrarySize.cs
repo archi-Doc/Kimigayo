@@ -16,6 +16,10 @@ namespace Kimi.Compiler;
 //   (cold Bind bytes at 128, 256 and 512 reads, factor 3) measures 1.100 on the capacities before this statement and 3.118 on these
 //   (before the member sides). The RP8 exception
 //   (the owner's O-136 (a) and O-139 (a)) covers this until the removal condition holds.
+// - The library's node columns (Binding's `symbols`, its parameters' composite column and `scopes`, DECISIONS BU-220): the library
+//   module's own columns, which no program row enters (a program's rows are its modules'), so each starts at its stated slots
+//   (PagedColumn.Reserve) and has no room; its count is the slots the library's pages hold, rounded up to ColumnGranule, and its free
+//   slots are its arena's.
 // - Inputs: none; the counts are stated here and KimiLibraryShapeTest compares them with what a Bind of the empty program fills
 //   (Binding.TableCounts), so a library change that moves a count past its Granule fails there and restates it.
 // - Outputs: Stated (a library-only table starts at its count there), NodeRoom, KeyedRoom, NodeCapacity, KeyedCapacity.
@@ -39,11 +43,15 @@ internal static class KimiLibrarySize
     /// <summary>The unit the stated counts are rounded up to.</summary>
     internal const int Granule = 1024;
 
+    /// <summary>The unit a node column's stated slots are rounded up to: 64 pages.</summary>
+    internal const int ColumnGranule = 64 * PagedColumn<object>.PageSize;
+
     /// <summary>The library's entries in each sized table; a library-only table starts at its count here.</summary>
     internal static readonly Tables Stated = new(
         Nodes: 16384,
-        Declarations: 2048,
-        Scopes: 2048,
+        Declarations: 7680,
+        Parameters: 3072,
+        Scopes: 8704,
         TypeKeys: 3072,
         Constraints: 2048,
         AssociatedTypes: 2048,
@@ -65,8 +73,9 @@ internal static class KimiLibrarySize
     /// <summary>One number per sized table: the statement, a Binding's entries (Binding.TableCounts) or its free slots (Binding.TableFree).</summary>
     internal readonly record struct Tables(
         int Nodes, // Binding's nodes: the node table.
-        int Declarations, // Binding's symbols.
-        int Scopes, // Binding's scopes.
+        int Declarations, // The library's symbols column: the slots its pages hold.
+        int Parameters, // The library's parameters column (the symbols' composite column): the slots its pages hold.
+        int Scopes, // The library's scopes column: the slots its pages hold.
         int TypeKeys, // TyCtxt's keys of the interned Types.
         int Constraints, // Binding's interned constraints.
         int AssociatedTypes, // Binding's associated-Type answers.
@@ -75,27 +84,27 @@ internal static class KimiLibrarySize
         int CapabilityNodes, // Binding's capability nodes: library-only.
         int SubstitutedParts) // Binding's substituted parts.
     {
-        /// <summary>Gets the least number among the keyed tables with a room: every keyed table but the library-only three.</summary>
+        /// <summary>Gets the least number among the keyed tables with a room: every keyed table but the library-only three, and no
+        /// node column.</summary>
         internal int LeastKeyed
-            => Math.Min(
-                Math.Min(Math.Min(this.Declarations, this.Scopes), Math.Min(this.TypeKeys, this.Constraints)),
-                Math.Min(this.AssociatedTypes, this.SubstitutedParts));
+            => Math.Min(Math.Min(this.TypeKeys, this.Constraints), Math.Min(this.AssociatedTypes, this.SubstitutedParts));
 
         /// <summary>Gives these counts as the statement writes them.</summary>
-        /// <returns>Each count rounded up to the Granule.</returns>
+        /// <returns>Each count rounded up to the Granule, a node column's to the ColumnGranule.</returns>
         internal Tables Rounded()
             => new(
-                Round(this.Nodes),
-                Round(this.Declarations),
-                Round(this.Scopes),
-                Round(this.TypeKeys),
-                Round(this.Constraints),
-                Round(this.AssociatedTypes),
-                Round(this.MemberSelections),
-                Round(this.MemberSides),
-                Round(this.CapabilityNodes),
-                Round(this.SubstitutedParts));
+                Round(this.Nodes, Granule),
+                Round(this.Declarations, ColumnGranule),
+                Round(this.Parameters, ColumnGranule),
+                Round(this.Scopes, ColumnGranule),
+                Round(this.TypeKeys, Granule),
+                Round(this.Constraints, Granule),
+                Round(this.AssociatedTypes, Granule),
+                Round(this.MemberSelections, Granule),
+                Round(this.MemberSides, Granule),
+                Round(this.CapabilityNodes, Granule),
+                Round(this.SubstitutedParts, Granule));
 
-        private static int Round(int count) => (count + Granule - 1) / Granule * Granule;
+        private static int Round(int count, int granule) => (count + granule - 1) / granule * granule;
     }
 }
