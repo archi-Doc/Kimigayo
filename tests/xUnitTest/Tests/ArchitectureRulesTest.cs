@@ -257,11 +257,11 @@ public class ArchitectureRulesTest
     [InlineData("Readers of an Origin requirement work's Consumer mark", "src/Kimi/Compiler", @"\.Consumer\b|\bConsumer:", "Binding/Binding.OriginRequirements.cs=2")]
     [InlineData("Holders of an inline summary's Tarjan numbers", "src/Kimi/Compiler/Binding", @"\b(?:InlineSummary|inlineSummaries|inlineSummaryPool|inlineComponents|Summary)\b", "Binding.ComponentSummaries.cs=7;Binding.InlineLayouts.cs=43")]
     // PLAN G949 S1-0b r3 (the dump's epoch rule): the memos of one capability epoch are the program's because each pass begins with
-    // ResetCapabilities: its one call is ResetPass's, which the pass driver's RunPass runs first in each pass of each run and Invalidate
-    // on an edit (Binding.Passes.cs, Binding.cs; G949 S1-r1a, its premise reviewed there). ImplTable's identity and path ResetPass(ulong)
-    // (Binding.Contracts.Model.cs, ImplTable.cs; S1-b1) reset a conformance object, not the epoch. A further caller (S1-r1b's library pass
-    // among them) fails here until the epoch rule's premise is reviewed again.
-    [InlineData("A pass's start ends the capability epoch", "src/Kimi/Compiler", @"\bReset(?:Capabilities|Pass)\(", "Binding/Binding.Capabilities.cs=1;Binding/Binding.Contracts.Model.cs=2;Binding/Binding.Pass.cs=2;Binding/Binding.Passes.cs=1;Binding/Binding.cs=1;Binding/ImplTable.cs=2")]
+    // ResetCapabilities: its one call is ResetPass's, which the pass driver's RunPass runs first in each pass of each run (Binding.Passes.cs)
+    // and Invalidate on an edit (Binding.cs; G949 S1-r1a, its premise reviewed there). A further caller (S1-r1b's library pass among them)
+    // fails here until the epoch rule's premise is reviewed again. Binding's own ResetPass calls are this.ResetPass (a member call's
+    // spelling); the conformance identities' and paths' ResetPass(ulong) (S1-b1) are other members of the name.
+    [InlineData("A pass's start ends the capability epoch", "src/Kimi/Compiler", @"\bResetCapabilities\(|\bthis\.ResetPass\(", "Binding/Binding.Capabilities.cs=1;Binding/Binding.Pass.cs=1;Binding/Binding.Passes.cs=1;Binding/Binding.cs=1")]
     public void SourcePatternStaysAtItsSites(string rule, string directory, string regex, string sites)
     {
         var expression = new Regex(regex);
