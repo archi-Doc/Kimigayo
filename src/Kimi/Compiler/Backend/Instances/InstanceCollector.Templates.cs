@@ -5,17 +5,16 @@
 // its library version holds, the program segment's built per program version (PLAN G950).
 // Input: a built, validated MirProgram, its segments (LibraryBodies, ProgramBodies) and its library version (LibraryVersion); the Target
 // and Need columns of the intrinsic rows; LayoutNeeds and Layout.Indirect (DECISIONS R5-M149).
-// Output: each body's sites (none for a body with a finding, MirBody.HasFinding; a static's declaration row reads no body and stays), which
-// Replay reads, and its layout needs past its Places' roots' storage (InstanceCollector.Layouts.cs' ListNeeds), which LayOutNeeds reads,
-// in its segment's TemplateStore: the library segment's store (stamped with the library version it was built under) below
-// MirProgram.LibraryCount, the program's from it, each by the body's ordinal itself (R8-L1 M-B1's split rule; the Back's C-378).
+// Output: each body's sites (none for a body with a finding, MirBody.HasFinding), which Replay reads, and its layout needs past its
+// Places' roots' storage (InstanceCollector.Layouts.cs' ListNeeds), which LayOutNeeds reads, in its segment's TemplateStore: the library
+// segment's store (stamped with the library version it was built under) below MirProgram.LibraryCount, the program's from it, each by the
+// body's ordinal itself (R8-L1 M-B1's split rule; the Back's C-378).
 // Sites: a call whose callee may carry a target (a Fn, Requirement or Value callee, an intrinsic whose row names one; a Virtual call none,
 // X5) or whose intrinsic lays out its Type argument; a Drop; a case adaptation (an instance's creation, DECISIONS R5-M111); an aggregate;
 // an erasure to a Function Type; a function item constant; a cast or binary operation whose Types depend on slots (K 4.7, checked per
 // instance); a binary operation whose operator row has a layout need (a raw pointer's displacement, K 4.8).
 // Invariants: built before any item is replayed, the library segment's once per library version (Run compares its stamp once; the stamp
-// is valid for the one program its compilation's builder publishes); a template
-// is a function of its body alone: the runtime bit is one MirReach walk without CheckTarget edges, and a template holds locations and the
+// is valid for the one program its compilation's builder publishes); a template is a function of its body alone: the runtime bit is one MirReach walk without CheckTarget edges, and a template holds locations and the
 // body's Places only, no substitution or target.
 // Must not: resolve a target, read TyCtxt, an item or the root range, or record anything: the definition-stage capability check (A3b) is
 // judged work, run every version in Run's root loop (InstanceCollector.Capabilities.cs).
@@ -141,8 +140,8 @@ internal sealed partial class InstanceCollector
         }
     }
 
-    // A segment's site templates and layout needs (PLAN G950; the Back's C-378), data only, so the library segment's are kept while its
-    // library version holds and the freeze takes them at U5b (R8-L1 M-N5): its bodies' sites and needs in body order, each body's first
+    // A segment's site templates and layout needs (PLAN G950; the Back's C-378), data only, so the library segment's are kept across its
+    // compilation's versions while its library version holds: its bodies' sites and needs in body order, each body's first
     // site and first need by the body's ordinal itself (the program's from the library's count, no offset), the next ordinal's entry
     // ending them, and the library version it was built under (0: none; Binding's library publication is never 0).
     private sealed class TemplateStore

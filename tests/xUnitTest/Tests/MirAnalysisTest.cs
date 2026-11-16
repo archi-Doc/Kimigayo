@@ -812,6 +812,35 @@ public sealed class MirAnalysisTest
         }
     }
 
+    // PLAN G950 (design §R1.1 (b), the implementation review's M1): the library step's problems (step 2's A1 and A2) are kept as data and
+    // replayed at the library step in a version that keeps the library segment: one analysis over two versions of one compilation reports
+    // an A1 problem seeded into a library body after each build (a copy of a new Var no path initializes, in a new block the entry block
+    // enters first) in each version, at its location, once. Every version takes the library step until G950-K, so the row pins the replay
+    // on the kept path (as InstanceCollectorTest.TheLibraryRangeChecksALibraryBodyInEveryVersion pins A3b there).
+    [Fact]
+    public void ALibraryStepProblemIsInEveryVersion()
+    {
+        var c = Compilation.CreateForTest();
+        var (builder, analysis) = (new MirBuilder(c), new MirAnalysis(c.Types));
+        for (var version = 1; version <= 2; version++)
+        {
+            Assert.True(c.Bind().IsComplete, string.Join('\n', c.Binding.Issues));
+            var program = builder.Build();
+            var body = program.LibraryBodies[0];
+            var source = body.Blocks[0].Terminator.Source;
+            var unset = new MirPlace(body.AddLocal(new(BoundType.I32, MirLocalKind.Var, source)));
+            var into = new MirPlace(body.AddLocal(new(BoundType.I32, MirLocalKind.Var, source)));
+            var block = body.AddBlock();
+            body.Push(block, MirStatement.Assign(into, MirRvalue.Use(body.AddOperand(MirOperand.Copy(unset))), source));
+            body.Terminate(block, body.Blocks[0].Terminator);
+            body.Terminate(0, MirTerminator.Goto(block, source));
+            analysis.Run(program, 0);
+            Assert.Equal(
+                [(version, DiagnosticCode.UninitializedPlace_Kd, body.Subject(source), body.Ordinal)],
+                program.Problems.All.ToArray().Where(static x => !x.IsRecord).Select(x => (version, x.Code, x.Subject, x.Body)));
+        }
+    }
+
     // V16: a warm report allocates nothing: clearing keeps the storage the problems of a version need.
     [Trait("Purpose", "Allocation")]
     [Fact]

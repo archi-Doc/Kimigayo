@@ -121,8 +121,8 @@ internal sealed partial class InstanceCollector
     /// window per key), which grow linearly with the instances.</summary>
     internal int Work { get; private set; }
 
-    /// <summary>Gets the bodies the latest run walked into templates: every body where it built the library segment's templates, the
-    /// program segment's where it kept them (PLAN G950's row g8).</summary>
+    /// <summary>Gets the bodies the latest run templated, a body with a finding (an empty template) included: every body where it built
+    /// the library segment's templates, the program segment's where it kept them (PLAN G950's row g8).</summary>
     internal int Templated { get; private set; }
 
     /// <summary>Collects the checked set of a program version unless this version already was.</summary>

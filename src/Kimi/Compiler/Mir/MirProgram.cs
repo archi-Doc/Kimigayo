@@ -7,11 +7,15 @@
 // benchmarks read; publication reads MirReport.Merged, records included, DECISIONS R5-M185).
 // Owns the ordinal space, one with a library prefix (R8-L1 M-B1): the library's bodies are 0 to LibraryCount - 1, the program's follow,
 // each numbered here (Begin) and nowhere else. Body(ordinal) reads either segment. Bodies is the compilation's own bodies, which a walker
-// of the whole program iterates: both segments while a compilation builds its library's bodies. Its walkers: MirAnalysis's steps 1, 3 and
-// 4, MirOrigins.Findings, MirDump.Write, InstanceCollector's roots and templates, and the Benchmark's counts (CompilerPipelineBenchmark,
-// CollectionCostMeasurements, PairCaseMeasurements, StaticKeyMeasurements). LibraryBodies and ProgramBodies are the segments, each the
-// span a walker building that segment's per-body facts takes as its input (MirValidator's program pass); no walker tests an ordinal
-// against LibraryCount itself.
+// of the whole program iterates: both segments while a compilation builds its library's bodies. Its walkers: MirAnalysis's step 4,
+// MirOrigins.Findings, MirDump.Write, InstanceCollector's roots (with A3b), MirBuilder's library validation (before EndLibrary, when it is
+// the library segment) and the Benchmark's counts and queries (CompilerPipelineBenchmark, CollectionCostMeasurements,
+// PairCaseMeasurements, StaticKeyMeasurements). LibraryBodies and ProgramBodies are the segments, each the span a walker of that segment
+// takes as its input: MirBuilder's program validation (MirValidator's program pass), MirAnalysis's library step and steps 1 and 2,
+// InstanceCollector's templates and StaticKeyMeasurements' local facts. No walker tests an ordinal against LibraryCount itself; an owner
+// keeping per-body entries in a store per segment reads them by the ordinal itself through one split rule, the library's store below
+// the library's count (R8-L1 M-B1; the Back's C-378 (1)(a)): MirDropTable.Of (its library store's count), MirEffects.Base and
+// InstanceCollector.TemplatesOf (LibraryCount).
 // Owns the segments' versions (PLAN G950): the library segment, its bodies, their keys and findings and its construction records, is kept
 // while its library version holds (LibraryVersion, EndLibrary), the program segment rebuilt per program version over it (ClearProgram);
 // the library's findings stay the prefix of Findings and its records are replayed into the version's report first, where the builder's
