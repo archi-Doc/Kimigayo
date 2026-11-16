@@ -73,7 +73,7 @@ public partial class KimiLibraryShapeTest
         var c = Bound(string.Empty);
         var dump = LibraryLayer.Dump(c);
         Assert.All(
-            LibraryLayer.Families().Where(x => LibraryLayer.RowObjects(x.GetValue(c.Library.Kotonoha.Syntax.Hir.Families)!).Any()),
+            typeof(NodeColumns).GetFields(BindingFlags.Instance | BindingFlags.NonPublic).Where(x => LibraryLayer.RowObjects(x.GetValue(c.Library.Kotonoha.Syntax.Hir.Families)!, c.Binding).Any()),
             x => Assert.Contains(dump, row => row.StartsWith(x.Name + " ", StringComparison.Ordinal)));
     }
 
@@ -94,7 +94,7 @@ public partial class KimiLibraryShapeTest
         Assert.Equal(atoms, LibraryAtoms(c), ReferenceEqualityComparer.Instance);
 
         static object[] LibraryAtoms(Compilation c)
-            => [.. LibraryLayer.Families().Where(static x => x.Name is "OriginAtoms" or "OpenOrigins").SelectMany(x => LibraryLayer.RowObjects(x.GetValue(c.Library.Kotonoha.Syntax.Hir.Families)!))];
+            => [.. LibraryLayer.Families().Where(static x => x.Name is "OriginAtoms" or "OpenOrigins").SelectMany(x => LibraryLayer.RowObjects(x.GetValue(c.Library.Kotonoha.Syntax.Hir.Families)!, c.Binding))];
     }
 
     // The epoch rule's invariant: ResetCapabilities, which begins every pass (its one call is ResetPass's, which Bind runs first in each
@@ -344,7 +344,7 @@ public partial class KimiLibraryShapeTest
             {
                 foreach (var family in Families())
                 {
-                    foreach (var value in RowObjects(family.GetValue(module.Hir.Families)!))
+                    foreach (var value in RowObjects(family.GetValue(module.Hir.Families)!, c.Binding))
                     {
                         layer.Row(Name(family), value);
                     }
@@ -395,15 +395,15 @@ public partial class KimiLibraryShapeTest
             return value;
         }
 
-        // NodeColumns' family columns, its stamps left out (a counter value is no row).
-        internal static IEnumerable<FieldInfo> Families()
-            => Fields(typeof(NodeColumns)).Where(static x => x.FieldType.IsGenericType && x.FieldType.GetGenericTypeDefinition() == typeof(PagedColumn<>));
+        // NodeColumns' families: every field, each a column (a PagedColumn or a StampedColumn, SyntaxIdTest's d7 row).
+        internal static IEnumerable<FieldInfo> Families() => Fields(typeof(NodeColumns));
 
-        // A family column's present rows (PagedColumn.Enumerate), each flattened to its objects: a composite column's list by its
-        // elements, a pair by its items.
-        internal static IEnumerable<object> RowObjects(object column)
+        // A family column's present rows (PagedColumn.Enumerate; a stamped column's current ones, StampedColumn.Enumerate), each flattened
+        // to its objects: a composite column's list by its elements, a pair by its items.
+        internal static IEnumerable<object> RowObjects(object column, Binding binding)
         {
-            var rows = column.GetType().GetMethod("Enumerate", BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(column, null)!;
+            var enumerate = column.GetType().GetMethod("Enumerate", BindingFlags.Instance | BindingFlags.NonPublic)!;
+            var rows = enumerate.Invoke(column, enumerate.GetParameters().Length == 0 ? null : [binding])!;
             var (moveNext, current) = (rows.GetType().GetMethod("MoveNext")!, rows.GetType().GetProperty("Current")!);
             while ((bool)moveNext.Invoke(rows, null)!)
             {

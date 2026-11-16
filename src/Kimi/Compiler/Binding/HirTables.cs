@@ -3,7 +3,7 @@
 // Owns the Binding facts and published HIR columns indexed by a module's SyntaxId, and Binding's private node families (NodeColumns).
 // Input: Binding's decisions and syntax identity. Output: reusable columns and PlanRows for readers.
 // Column rows move with renumbered nodes and are cleared for the current pass; a node family's kept rows move with their nodes too,
-// and its edit rows read absent after an edit until their store's first write (NodeColumns.EditStamp).
+// and a pass or edit family's rows read absent once the counter its column follows advances, until its first write (StampedColumn).
 // Must not let consumers reconstruct semantic facts from syntax; no file outside Compiler/Binding names NodeColumns (DECISIONS BU-220).
 
 using System.Runtime.CompilerServices;
@@ -251,11 +251,11 @@ internal struct HirTables
 }
 
 /// <summary>
-/// Binding's private node families of one module (DECISIONS BU-220): one <see cref="PagedColumn{T}"/> per family, indexed by the SyntaxId
-/// of the node that keys it, and the store's stamp. A kept family keeps its rows across passes, and a renumbering moves each row with its
-/// node (<see cref="HirTables.Renumbered"/>, <see cref="HirTables.Move"/>). An edit family's rows hold until an edit: the store reads them
-/// only while its <see cref="EditStamp"/> is the edit counter (<see cref="HoldsEdit"/>), and its first write after the counter advanced
-/// empties them (<see cref="BeginEdit"/>); a renumbering, which follows an edit, hands them over unmoved. Its family's accessor, in the
+/// Binding's private node families of one module (DECISIONS BU-220): one column per family, indexed by the SyntaxId of the node that keys
+/// it. A kept family's <see cref="PagedColumn{T}"/> keeps its rows across passes, and a renumbering moves each row with its node
+/// (<see cref="HirTables.Renumbered"/>, <see cref="HirTables.Move"/>). A pass or edit family's <see cref="StampedColumn{T, TCounter}"/>
+/// holds its rows while its stamp is the value of the counter its declaration names (Binding.PassCounter, Binding.EditCounter), empties
+/// itself at its first write after that counter advanced, and is handed over unmoved by a renumbering. Its family's accessor, in the
 /// family's component, reads and writes a column; only Compiler/Binding names this type.
 /// </summary>
 internal struct NodeColumns
@@ -267,8 +267,8 @@ internal struct NodeColumns
     internal PagedColumn<(SourceDocument Document, BindingScope? Scope)[]?> Documents; // Kept: Scopes' composite column, a module root's document scopes.
     internal PagedColumn<BoundOrigin?[]?> OriginAtoms; // Kept: a binder's Origin atoms, a KeyedRow by kind and slot (Binding.Origins.cs).
     internal PagedColumn<BoundOrigin?[]?> OpenOrigins; // Kept: a source's open regions, a KeyedRow by key (Binding.OpenOrigins.cs).
-    internal PagedColumn<BoundOrigin[]?> AssociatedOrigins; // Edit: an associated Type declaration's Origin parameters (Binding.AssociatedOrigins.cs).
-    internal ulong EditStamp; // The edit counter (Binding.Invalidate) at the edit columns' first write since it last advanced.
+    internal StampedColumn<BoundOrigin[]?, Binding.EditCounter> AssociatedOrigins; // Edit: an associated Type declaration's Origin parameters (Binding.AssociatedOrigins.cs).
+    internal StampedColumn<int, Binding.PassCounter> ShapeContractHeads; // Pass: a function's first shape contract as the later of an overload pair, its index + 1 (Binding.ShapeContracts.cs).
 
     internal void Resize(int length)
     {
@@ -280,6 +280,7 @@ internal struct NodeColumns
         this.OriginAtoms.Grow(length);
         this.OpenOrigins.Grow(length);
         this.AssociatedOrigins.Grow(length);
+        this.ShapeContractHeads.Grow(length);
     }
 
     // The library's columns start at their stated slots (KimiLibrarySize: no program row lands in them).
@@ -294,21 +295,8 @@ internal struct NodeColumns
         this.AssociatedOrigins.Reserve(stated.AssociatedOrigins);
     }
 
-    // The store's one stamp check: whether its edit columns hold the current edit's rows; while they do not, every row reads absent.
-    internal readonly bool HoldsEdit(ulong edit) => this.EditStamp == edit;
-
-    // An edit column's write: the store's first since the edit counter advanced empties its edit columns and stamps it.
-    internal void BeginEdit(ulong edit)
-    {
-        if (this.EditStamp != edit)
-        {
-            this.AssociatedOrigins.Empty();
-            this.EditStamp = edit;
-        }
-    }
-
-    // A renumbering follows an edit, whose Invalidate advanced the edit counter (every Version change outside Binding reaches it), so
-    // the edit columns are stale: handed over with their stamp, unmoved, and emptied by their first write.
+    // A kept family's column gives a renumbering an empty column over its spare arena; a stamped family's is handed over unmoved and
+    // emptied, its stamp kept (StampedColumn.Renumbered).
     internal readonly NodeColumns Renumbered(int length)
     {
         var columns = new NodeColumns
@@ -320,14 +308,13 @@ internal struct NodeColumns
             Documents = this.Documents.Renumbered(length),
             OriginAtoms = this.OriginAtoms.Renumbered(length),
             OpenOrigins = this.OpenOrigins.Renumbered(length),
-            AssociatedOrigins = this.AssociatedOrigins,
-            EditStamp = this.EditStamp,
+            AssociatedOrigins = this.AssociatedOrigins.Renumbered(length),
+            ShapeContractHeads = this.ShapeContractHeads.Renumbered(length),
         };
-        columns.AssociatedOrigins.Grow(length);
         return columns;
     }
 
-    // A renumbering's moves have ended: the kept families clear their retired arenas; an edit family's column was handed over unmoved
+    // A renumbering's moves have ended: the kept families clear their retired arenas; a stamped family's column was handed over unmoved
     // (Renumbered) and retires nothing.
     internal readonly void Retire()
     {
@@ -340,7 +327,7 @@ internal struct NodeColumns
         this.OpenOrigins.Retire();
     }
 
-    // A kept family's row moves with its node; an edit family's rows were handed over (Renumbered).
+    // A kept family's row moves with its node; a stamped family's rows were handed over (Renumbered).
     internal readonly void Move(int from, ref NodeColumns target, int to)
     {
         this.Symbols.MoveTo(ref target.Symbols, from, to);

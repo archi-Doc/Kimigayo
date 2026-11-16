@@ -309,15 +309,10 @@ public sealed partial class Binding
     {
         internal BoundOrigin[] this[Koto declaration]
         {
-            set
-            {
-                ref var columns = ref HirTables.Of(declaration).Families;
-                columns.BeginEdit(binding.edit);
-                columns.AssociatedOrigins.Ref(declaration.SyntaxId) = value;
-            }
+            set => HirTables.Of(declaration).Families.AssociatedOrigins.Ref(declaration.SyntaxId, binding) = value;
         }
 
         internal bool TryGetValue(Koto declaration, [NotNullWhen(true)] out BoundOrigin[]? origins)
-            => (origins = declaration.SyntaxOwner is { } table && table.Hir.Families.HoldsEdit(binding.edit) ? table.Hir.Families.AssociatedOrigins.Get(declaration.SyntaxId) : null) is not null;
+            => (origins = declaration.SyntaxOwner is { } table ? table.Hir.Families.AssociatedOrigins.Get(declaration.SyntaxId, binding) : null) is not null;
     }
 }

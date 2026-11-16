@@ -33,8 +33,8 @@ public sealed partial class Binding
     private readonly HashSet<BindingObligation> obligationSet = new();
     private bool running;
 
-    // The edit counter: Invalidate alone advances it, never a pass, so a store's edit columns (NodeColumns.EditStamp) hold across passes
-    // and read absent after an edit until their first write.
+    // The edit counter: Invalidate alone advances it, never a pass, so an edit column (StampedColumn following EditCounter) holds across
+    // passes and reads absent after an edit until its first write.
     private ulong edit;
 
     internal Binding(Compilation compilation)
@@ -49,6 +49,7 @@ public sealed partial class Binding
         this.originAtoms = new(this);
         this.openOrigins = new(this);
         this.associatedOrigins = new(this);
+        this.shapeContractHeads = new(this);
         this.Library.Kotonoha.Syntax.Hir.Families.Reserve(KimiLibrarySize.Stated);
         foreach (var symbol in this.Library.RegisteredSymbols)
         {
@@ -216,7 +217,7 @@ public sealed partial class Binding
 
         // The facts kept across unchanged passes are revoked by every edit, also after a pass that did not finish (a Bind that throws
         // leaves no result): associated Origin parameters of the edited trees (the edit families: the edit counter's advance leaves every
-        // module's edit columns stale, NodeColumns.EditStamp), local regions, item contexts and the Type context's view memos.
+        // module's edit columns stale, StampedColumn), local regions, item contexts and the Type context's view memos.
         this.edit++;
         this.knownBases?.Clear();
         this.localRegions.Clear();
@@ -381,5 +382,19 @@ public sealed partial class Binding
 
         this.ValidateVirtualOverrideConditions();
         this.GuardPendingVirtualDeclarations();
+    }
+
+    /// <summary>The pass counter a pass family's column follows (StampedColumn, DECISIONS BU-220): storageVersion, which ResetPass
+    /// advances.</summary>
+    internal readonly struct PassCounter : IStampCounter
+    {
+        public static ulong Of(Binding binding) => binding.storageVersion;
+    }
+
+    /// <summary>The edit counter an edit family's column follows (StampedColumn, DECISIONS BU-220): edit, which only Invalidate
+    /// advances.</summary>
+    internal readonly struct EditCounter : IStampCounter
+    {
+        public static ulong Of(Binding binding) => binding.edit;
     }
 }

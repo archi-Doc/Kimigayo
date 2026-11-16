@@ -5,7 +5,8 @@ using System.Runtime.InteropServices;
 
 namespace Kimi.Compiler;
 
-// PagedColumn<T> (DECISIONS BU-220): the one store form of Binding's per-module node families (NodeColumns, HirTables.cs).
+// PagedColumn<T> (DECISIONS BU-220): the one store form of Binding's per-module node families (NodeColumns, HirTables.cs); a pass or
+// edit family's column is its stamped form, StampedColumn<T, TCounter> below.
 // - Responsibility: a column indexed by a dense id (a node's SyntaxId in its module) in pages of PageSize slots, carved from one arena
 //   at a page's first write; each operation once: Get, Ref, Empty, Grow, Reserve, Enumerate, MoveTo, and Renumbered and Retire for a
 //   renumbering.
@@ -283,4 +284,84 @@ internal static class KeyedRow
 
         return low;
     }
+}
+
+// StampedColumn<T, TCounter> (DECISIONS BU-220): a pass or edit family's column, the stamped form of PagedColumn<T>.
+// - Responsibility: a column whose rows hold only while its stamp is the current value of the counter its declaration names (TCounter:
+//   Binding.PassCounter, which ResetPass advances, or Binding.EditCounter, which only Invalidate advances); each operation once: Get
+//   (the one comparison of a stamp with its counter), Ref, Enumerate, Grow, Reserve and Renumbered.
+// - Inputs: ids below the count Grow last gave, and the Binding whose counter the column follows. Outputs: the current rows.
+// - Invariants: a stale column reads default at every id and enumerates nothing; its first write after its counter advanced empties it,
+//   keeping its capacity, and stamps it; a renumbering hands it over unmoved and emptied, capacity and stamp kept, so no removed node's
+//   row stays reachable: SyntaxTable.Number runs at a Bind's start, after the edit's Invalidate and before the pass's ResetPass, so no
+//   handed-over row was still to be read.
+// - Prohibitions: no other stamp check and no lifetime flag (a column's lifetime is the counter it follows); no row read past Get and
+//   Enumerate.
+internal struct StampedColumn<T, TCounter>
+    where TCounter : IStampCounter
+{
+    private PagedColumn<T> rows;
+    private ulong stamp;
+
+    /// <summary>Gets the slots the column's pages hold.</summary>
+    internal readonly int Used => this.rows.Used;
+
+    /// <summary>Gets the arena's slots no page holds yet.</summary>
+    internal readonly int Free => this.rows.Free;
+
+    /// <summary>Gets a row; every row of a stale column reads default.</summary>
+    /// <param name="id">The id.</param>
+    /// <param name="binding">The Binding whose counter the column follows.</param>
+    /// <returns>The row.</returns>
+    internal readonly T Get(int id, Binding binding) => this.stamp == TCounter.Of(binding) ? this.rows.Get(id) : default!;
+
+    /// <summary>Gets a row for a write; the column's first write since its counter advanced empties it and stamps it.</summary>
+    /// <param name="id">The id.</param>
+    /// <param name="binding">The Binding whose counter the column follows.</param>
+    /// <returns>The row.</returns>
+    internal ref T Ref(int id, Binding binding)
+    {
+        var counter = TCounter.Of(binding);
+        if (this.stamp != counter)
+        {
+            this.rows.Empty();
+            this.stamp = counter;
+        }
+
+        return ref this.rows.Ref(id);
+    }
+
+    /// <summary>Gets the current rows in ascending id order; a stale column has none.</summary>
+    /// <param name="binding">The Binding whose counter the column follows.</param>
+    /// <returns>The rows.</returns>
+    internal readonly PagedColumn<T>.Enumerator Enumerate(Binding binding) => (this.stamp == TCounter.Of(binding) ? this.rows : default).Enumerate();
+
+    /// <summary>Gives the column room for the ids below a count.</summary>
+    /// <param name="count">The module's id count.</param>
+    internal void Grow(int count) => this.rows.Grow(count);
+
+    /// <summary>Sets the arena's first allocation (the library's stated size, KimiLibrarySize).</summary>
+    /// <param name="slots">The slots.</param>
+    internal void Reserve(int slots) => this.rows.Reserve(slots);
+
+    /// <summary>Gives the column a renumbering hands over: this one, unmoved and emptied (its capacity and stamp kept), grown to the
+    /// renumbered module's ids.</summary>
+    /// <param name="count">The renumbered module's id count.</param>
+    /// <returns>The column.</returns>
+    internal readonly StampedColumn<T, TCounter> Renumbered(int count)
+    {
+        var column = this;
+        column.rows.Empty();
+        column.rows.Grow(count);
+        return column;
+    }
+}
+
+/// <summary>A Binding counter a stamped column follows (StampedColumn): Binding.PassCounter or Binding.EditCounter.</summary>
+internal interface IStampCounter
+{
+    /// <summary>Gets the counter's current value.</summary>
+    /// <param name="binding">The Binding.</param>
+    /// <returns>The value.</returns>
+    static abstract ulong Of(Binding binding);
 }

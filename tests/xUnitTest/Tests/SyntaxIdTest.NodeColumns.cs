@@ -4,6 +4,7 @@ using System.Reflection;
 using System.Runtime.CompilerServices;
 using Kimi.Compiler;
 using Kimi.Compiler.Parsing;
+using Verification;
 using Xunit;
 
 namespace XunitTest;
@@ -15,92 +16,85 @@ public partial class SyntaxIdTest
     private const BindingFlags Members = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
 
     // G949 D2b-d's d7: by reflection over NodeColumns' fields, so a family added without its Resize, Renumbered, Move or Retire line fails
-    // here. A kept family's row moves into the renumbered column's spare arena, which Retire clears; an edit family (one the store's first
-    // edit write empties) is handed over unmoved with the store's stamp, every other field of the store.
+    // here. Every field is a column: a kept family's PagedColumn moves its row into the renumbered column's spare arena, which Retire
+    // clears; a pass or edit family's StampedColumn is handed over unmoved and emptied, its stamp with it (no removed node's row stays
+    // reachable), and follows one of Binding's two counters.
     [Fact]
     public void EveryNodeFamilyIsResizedRenumberedAndMoved()
     {
-        var all = typeof(NodeColumns).GetFields(Members);
-        var fields = all.Where(static x => x.FieldType.IsGenericType && x.FieldType.GetGenericTypeDefinition() == typeof(PagedColumn<>)).ToArray();
+        var fields = typeof(NodeColumns).GetFields(Members);
         Assert.NotEmpty(fields);
+        Assert.All(fields, static x => Assert.True(IsKept(x) || IsStamped(x), $"{x.Name} is no column."));
+        Assert.All(fields.Where(IsStamped), static x => Assert.Contains(x.FieldType.GetGenericArguments()[1], new[] { typeof(Binding.PassCounter), typeof(Binding.EditCounter) }));
         object columns = default(NodeColumns);
         typeof(NodeColumns).GetMethod("Resize", Members)!.Invoke(columns, [40]);
-        var stamps = all.Except(fields).ToArray();
-        foreach (var stamp in stamps)
-        {
-            stamp.SetValue(columns, 7UL);
-        }
-
         var rows = new Dictionary<FieldInfo, object>();
         foreach (var field in fields)
         {
-            var column = field.GetValue(columns)!;
+            var outer = field.GetValue(columns)!;
+            var column = IsStamped(field) ? Read<object>(outer, "rows") : outer;
             var pages = Read<int>(column, "pages");
             Assert.True(pages * PagedColumn<int>.PageSize >= 40, $"{field.Name} is not resized.");
             var directory = new int[pages]; // A column's directory comes with its first write.
             column.GetType().GetField("directory", Members)!.SetValue(column, directory);
-            var arena = Array.CreateInstance(field.FieldType.GetGenericArguments()[0], PagedColumn<int>.PageSize);
+            var arena = Array.CreateInstance(column.GetType().GetGenericArguments()[0], PagedColumn<int>.PageSize);
             arena.SetValue(rows[field] = NonDefault(arena.GetType().GetElementType()!), 1);
             column.GetType().GetField("arena", Members)!.SetValue(column, arena);
             column.GetType().GetField("used", Members)!.SetValue(column, PagedColumn<int>.PageSize);
             directory[0] = 1;
-            field.SetValue(columns, column);
+            if (IsStamped(field))
+            {
+                outer.GetType().GetField("rows", Members)!.SetValue(outer, column);
+                outer.GetType().GetField("stamp", Members)!.SetValue(outer, 7UL);
+            }
+
+            field.SetValue(columns, outer);
         }
 
         var moved = new object[] { 1, typeof(NodeColumns).GetMethod("Renumbered", Members)!.Invoke(columns, [40])!, 33 };
         typeof(NodeColumns).GetMethod("Move", Members)!.Invoke(columns, moved);
-        Assert.All(stamps, x => Assert.Equal(7UL, x.GetValue(moved[1])));
-        var targets = fields.ToDictionary(static x => x, x => (Column: x.GetValue(moved[1])!, Arena: Read<Array>(x.GetValue(columns)!, "arena")));
-        var read = targets.ToDictionary(static x => x.Key, static x => (Moved: Get(x.Value.Column, 33), Kept: Get(x.Value.Column, 1)));
-        typeof(NodeColumns).GetMethod("BeginEdit", Members)!.Invoke(columns, [8UL]);
+        typeof(NodeColumns).GetMethod("Retire", Members)!.Invoke(moved[1], null);
         foreach (var field in fields)
         {
-            var (target, arena) = targets[field];
-            if (Read<int>(field.GetValue(columns)!, "used") == 0)
+            var (source, target) = (field.GetValue(columns)!, field.GetValue(moved[1])!);
+            if (IsStamped(field))
             {
-                Assert.Same(arena, Read<Array>(target, "arena"));
-                Assert.Equal(rows[field], read[field].Kept);
+                Assert.Equal(7UL, Read<ulong>(target, "stamp"));
+                Assert.Same(Read<Array>(Read<object>(source, "rows"), "arena"), Read<Array>(Read<object>(target, "rows"), "arena"));
+                Assert.Equal(0, Read<int>(Read<object>(target, "rows"), "used"));
+                Assert.True(Get(Read<object>(target, "rows"), 1) is not { } kept || kept.Equals(Activator.CreateInstance(kept.GetType())), $"{field.Name} keeps a row.");
             }
             else
             {
-                Assert.Same(arena, Read<Array>(target, "spare"));
-                Assert.Equal(rows[field], read[field].Moved);
+                Assert.Same(Read<Array>(source, "arena"), Read<Array>(target, "spare"));
+                Assert.Equal(rows[field], Get(target, 33));
+                Assert.All(Read<Array>(target, "spare").Cast<object?>(), static row => Assert.True(row is null || row.Equals(Activator.CreateInstance(row.GetType()))));
             }
         }
-
-        typeof(NodeColumns).GetMethod("Retire", Members)!.Invoke(moved[1], null);
-        Assert.All(fields.Where(x => !ReferenceEquals(targets[x].Arena, Read<Array>(targets[x].Column, "arena"))), x => Assert.All(Read<Array>(targets[x].Column, "spare").Cast<object?>(), static row => Assert.True(row is null || row.Equals(Activator.CreateInstance(row.GetType())))));
 
         static object? Get(object column, int id) => column.GetType().GetMethod("Get", Members)!.Invoke(column, [id]);
     }
 
-    // G949 N5-5's n14: an edit family's store, the lowest layer. Its rows hold while its stamp is the edit counter; once the counter
-    // advances (Invalidate) the store reads stale, a renumbering hands the stale column over unmoved, and its first write empties the
-    // edit columns, keeping their capacity, and stamps the store; a later write of the same edit empties nothing.
-    [Fact]
-    public void AnEditFamilyIsStaleAfterAnEditUntilItsFirstWrite()
+    // G949 D2b-d §1.3 (DECISIONS BU-220; N5-5's n14, one row per counter): a stamped column, the lowest layer, holds its rows while its
+    // stamp is the value of the counter it follows. A Bind advances the pass counter only, so a pass column reads stale while an edit
+    // column holds; an edit (Invalidate) advances the edit counter, and after a finished pass the pass counter too. A renumbering hands the
+    // stale column over unmoved; its first write empties it, keeping its capacity, and stamps it; a later write under the same counter
+    // empties nothing.
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void AStampedColumnHoldsUntilItsCounterAdvances(bool pass)
     {
-        var columns = default(NodeColumns);
-        columns.Resize(40);
-        var (first, second) = (new BoundOrigin[1], new BoundOrigin[2]);
-        columns.BeginEdit(3);
-        columns.AssociatedOrigins.Ref(5) = first;
-        Assert.True(columns.HoldsEdit(3));
-        Assert.False(columns.HoldsEdit(4));
-
-        var renumbered = columns.Renumbered(48);
-        Assert.False(renumbered.HoldsEdit(4));
-        Assert.Same(first, renumbered.AssociatedOrigins.Get(5));
-        Assert.Same(Read<Array>(columns.AssociatedOrigins, "arena"), Read<Array>(renumbered.AssociatedOrigins, "arena"));
-
-        renumbered.BeginEdit(4);
-        Assert.True(renumbered.HoldsEdit(4));
-        Assert.Equal(0, renumbered.AssociatedOrigins.Used);
-        Assert.Null(renumbered.AssociatedOrigins.Get(5));
-        renumbered.AssociatedOrigins.Ref(44) = second;
-        renumbered.BeginEdit(4);
-        Assert.Same(second, renumbered.AssociatedOrigins.Get(44));
-        Assert.Equal(PagedColumn<int>.PageSize, renumbered.AssociatedOrigins.Used);
+        var c = CompilationTestHelper.Parse(string.Empty);
+        Assert.True(c.Bind().IsComplete);
+        if (pass)
+        {
+            Holds<Binding.PassCounter, Binding.EditCounter>(c, () => c.Bind(), 1);
+        }
+        else
+        {
+            Holds<Binding.EditCounter, Binding.PassCounter>(c, () => c.NoteSyntaxEdit(c.Kotonoha.RootKoto), 0);
+        }
     }
 
     // G949 D2b-d's d10, per kept family: an edit's renumbering moves a kept family's rows into the column's spare arena, so the second
@@ -131,24 +125,32 @@ public partial class SyntaxIdTest
         PagedColumn<BindingSymbol?> Column() => (PagedColumn<BindingSymbol?>)field.GetValue(c.Kotonoha.Syntax.Hir.Families)!;
     }
 
-    // G949 D2b-d's d10 for an edit family (N5-5's associatedOrigins): an edit's renumbering hands its column over, stale, so the Bind
-    // after each of two edits empties it at its first write and rewrites the row in the same arena.
+    // G949 D2b-d's d10, per pass or edit family: an edit's renumbering hands the family's column over, stale, so the Bind after each of
+    // two edits empties it at its first write and rewrites its rows in the same arena (AssociatedOrigins: an associated Type's Origin
+    // parameters; ShapeContractHeads: the shape contracts of an overload group whose every pair shares a slot).
     [Trait("Purpose", "Allocation")]
-    [Fact]
-    public void AnEditFamilyKeepsItsArenaAcrossEdits()
+    [Theory]
+    [InlineData("AssociatedOrigins", "contract C\n    associate Item(a) for ref/i32 during a\n")]
+    [InlineData("ShapeContractHeads", "candidates")]
+    public void AStampedFamilyKeepsItsArenaAcrossEdits(string family, string program)
     {
-        var c = CompilationTestHelper.Parse("contract C\n    associate Item(a) for ref/i32 during a\n", "Hello.kimi");
+        var c = CompilationTestHelper.Parse(program == "candidates" ? ConstructorInferenceWorkloads.Create(program, 4) : program, "Hello.kimi");
         Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c));
-        var before = Read<Array>(c.Kotonoha.Syntax.Hir.Families.AssociatedOrigins, "arena");
+        var field = typeof(NodeColumns).GetField(family, Members)!;
+        var (before, used) = (Arena(), Used());
         Assert.NotNull(before);
+        Assert.NotEqual(0, used);
         for (var i = 0; i < 2; i++)
         {
             c.NoteSyntaxEdit(c.Kotonoha.RootKoto);
             Assert.True(c.Bind().IsComplete);
         }
 
-        Assert.Same(before, Read<Array>(c.Kotonoha.Syntax.Hir.Families.AssociatedOrigins, "arena"));
-        Assert.Equal(PagedColumn<int>.PageSize, c.Kotonoha.Syntax.Hir.Families.AssociatedOrigins.Used);
+        Assert.Same(before, Arena());
+        Assert.Equal(used, Used());
+
+        Array? Arena() => Read<Array?>(Read<object>(field.GetValue(c.Kotonoha.Syntax.Hir.Families)!, "rows"), "arena");
+        int Used() => (int)field.FieldType.GetProperty("Used", Members)!.GetValue(field.GetValue(c.Kotonoha.Syntax.Hir.Families))!;
     }
 
     // G949 N5-5's n15: an owner-keyed Origin interner's row (originAtoms, openOrigins) keeps its owner's atoms in key order, so a search
@@ -174,6 +176,39 @@ public partial class SyntaxIdTest
         }
     }
 
+    private static bool IsKept(FieldInfo field) => field.FieldType.IsGenericType && field.FieldType.GetGenericTypeDefinition() == typeof(PagedColumn<>);
+
+    private static bool IsStamped(FieldInfo field) => field.FieldType.IsGenericType && field.FieldType.GetGenericTypeDefinition() == typeof(StampedColumn<,>);
+
+    // N5-5's n14 for one counter: a column following TCounter and one following TOther, each with a row, then the advance.
+    private static void Holds<TCounter, TOther>(Compilation c, Action advance, int otherAfter)
+        where TCounter : IStampCounter
+        where TOther : IStampCounter
+    {
+        var (column, other) = (default(StampedColumn<int, TCounter>), default(StampedColumn<int, TOther>));
+        column.Grow(40);
+        other.Grow(40);
+        column.Ref(5, c.Binding) = 1;
+        other.Ref(5, c.Binding) = 1;
+        Assert.Equal(1, column.Get(5, c.Binding));
+        advance();
+        Assert.Equal(0, column.Get(5, c.Binding));
+        Assert.Equal(otherAfter, other.Get(5, c.Binding));
+
+        var renumbered = column.Renumbered(48);
+        Assert.Equal(0, renumbered.Get(5, c.Binding));
+        Assert.Equal(0, renumbered.Used);
+        Assert.Same(Arena(column), Arena(renumbered));
+        renumbered.Ref(44, c.Binding) = 2;
+        Assert.Equal(PagedColumn<int>.PageSize, renumbered.Used);
+        Assert.Equal(0, renumbered.Get(5, c.Binding));
+        Assert.Same(Arena(column), Arena(renumbered));
+        renumbered.Ref(6, c.Binding) = 3;
+        Assert.Equal(2, renumbered.Get(44, c.Binding));
+
+        static Array Arena(StampedColumn<int, TCounter> x) => Read<Array>(Read<object>(x, "rows"), "arena");
+    }
+
     private static object NonDefault(Type type)
     {
         if (type.IsArray)
@@ -184,6 +219,11 @@ public partial class SyntaxIdTest
         if (!type.IsValueType)
         {
             return RuntimeHelpers.GetUninitializedObject(type);
+        }
+
+        if (type.IsPrimitive)
+        {
+            return Convert.ChangeType(1, type, System.Globalization.CultureInfo.InvariantCulture);
         }
 
         var row = Activator.CreateInstance(type)!;
