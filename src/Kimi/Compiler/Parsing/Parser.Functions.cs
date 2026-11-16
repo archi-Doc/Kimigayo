@@ -76,12 +76,17 @@ public static partial class Parser
             form = FunctionForm.Override;
         }
 
-        // A constructor, a specialization and an override take no attributes (SPEC 6.3, 8.13.2, 6.4.1): the prefix's are reported
-        // and attach to nothing. A requirement's were reported by its Contract, as every Contract item's are; a function expression
-        // is never read under a pending override. An OverrideDeclaration has no Access either (F.6.3).
-        if (form is FunctionForm.Constructor or FunctionForm.Specialization or FunctionForm.Override)
+        // A specialization and an override take no attributes (SPEC 6.7, 8.13.2, 6.4.1): the prefix's are reported and attach to
+        // nothing. A constructor takes only the implementation Attributes, in the Kimi library's own sources (SPEC 6.7). A
+        // requirement's were reported by its Contract, as every Contract item's are; a function expression is never read under a
+        // pending override. An OverrideDeclaration has no Access either (F.6.3).
+        if (form is FunctionForm.Specialization or FunctionForm.Override)
         {
             ReportPendingAttributes(ref reader);
+        }
+        else if (form == FunctionForm.Constructor)
+        {
+            ReportConstructorAttributes(ref reader);
         }
 
         if (overrides)
@@ -526,13 +531,13 @@ public static partial class Parser
         constructor.SetBaseInitializer(new InvocationKoto(ref reader, SourceSpan.FromBounds(baseSpan.Start, Math.Max(baseSpan.End, close.End)), target, arguments, labels));
     }
 
-    /// <summary>Parses a named function body, allowing bodyless imported declarations.</summary>
+    /// <summary>Parses a named function body, allowing bodyless imported declarations and those that omit their Body (<see cref="FunctionKoto.OmitsBody"/>).</summary>
     /// <param name="reader">The token reader.</param>
     /// <param name="function">The parsed declaration.</param>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal static void ParseNamedFunctionBody(ref TokenReader reader, FunctionKoto function)
     {
-        if (reader.CurrentTokenKind == TokenKind.EqualsGreaterThan || reader.TrySkipSeparatorsTo(TokenKind.StartBlock))
+        if (reader.CurrentTokenKind == TokenKind.EqualsGreaterThan || reader.TrySkipSeparatorsTo(TokenKind.StartBlock) || function.OmitsBody)
         {
             function.Parse(ref reader);
             return;
