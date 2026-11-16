@@ -1188,8 +1188,13 @@ public sealed partial class MirBorrowsTest
     // v: V)` and `putTwo<U, V, W>(t: U, u: uniq/V, v: W)` store v nowhere in their own terms (`*t`, `*u` are storage of the callee's own
     // U or V, which holds no V or W), so `z = 5` no longer errs in ss8m, ss8g, ss8a, ss8c, ss8two and r1a (relabelled; ss8a and ss8two
     // are valid as wholes), and the valid ss8, ss8s and ss8mv are valid before this rule is read. The rule's two directions are kept by
-    // the concrete twins, whose callee writes the Tuple Type in its own signature (stp's form; putAnyV's by-value rows still read the
-    // binding): cs8, cs8s and cs8mv are valid; cs8m, cs8g, cs8a, cs8c, cs8two and cr1a err at `z = 5`.
+    // the concrete twins, whose callee writes the Tuple Type in its own signature (putAnyV's by-value rows still read the binding):
+    // cs8s (no raw layer in `*t`) and the by-value cs8vr and cs8mvr (stAV and stMV write no layer of the caller's storage, and their
+    // t.0 is w's address read through the shared s) are valid; cs8m, cs8g, cs8a, cs8c, cs8two and cr1a err at `z = 5`. A callee taking
+    // such a Tuple through `uniq` with a raw layer without an Origin in `*t` is no valid twin: it may write its own pointer at t.0 and
+    // store v through it in storage the body does not own (SPEC 15.6.4's composition and its twoLayers example; 5.7 Calls "also as a
+    // Tuple element"). Those programs (the `uniq` forms of cs8vr and cs8mvr, and this test's older r1cv, which the A5 chain relabels)
+    // are rejected only with the chain's reader (PLAN G935's class 1 list), so no row here expects one accepted beyond r1cv.
     [Fact]
     public void AStoreWritesNoHolderOnlyASharedLoanNames()
     {
@@ -1202,7 +1207,8 @@ public sealed partial class MirBorrowsTest
             func putAnyV<U, V>(t: U, v: V) => ()
             func putTwo<U, V, W>(t: U, u: uniq/V, v: W) => ()
             func stp(t: uniq/((raw/(ref/i32 during a), uniq/((raw/(ref/i32 during a), i32)) during c)) during e, v: ref/i32 during a) => ()
-            func stA(t: uniq/((raw/(ref/i32 during a), i32)) during e, v: ref/i32 during a) => ()
+            func stAV(t: (raw/(ref/i32 during a), i32), v: ref/i32 during a) => ()
+            func stMV(t: (raw/(ref/i32 during a), uniq/(ref/i32 during a) during c), v: ref/i32 during a) => ()
             func stS(t: uniq/((ref/(ref/i32 during a) during b, uniq/(ref/i32 during a) during c)) during e, v: ref/i32 during a) => ()
             func stM(t: uniq/((raw/(ref/i32 during a), uniq/(ref/i32 during a) during c)) during e, v: ref/i32 during a) => ()
             func stAA(t: uniq/((raw/(ref/i32 during a), raw/(ref/i32 during a))) during e, v: ref/i32 during a) => ()
@@ -1375,13 +1381,12 @@ public sealed partial class MirBorrowsTest
                 putAny(t@uniq, z@ref)
                 w = y@ref
                 inspect(s)
-            func cs8()
+            func cs8vr()
                 var x = 1
                 var z = 3
                 var w: ref/i32 = x@ref
                 let s = w@ref
-                var t: (raw/(ref/i32), i32) = (s@follow@raw, 0)
-                stA(t@uniq, z@ref)
+                stAV((s@follow@raw, 0), z@ref)
                 z = 5
                 inspect(w)
             func cs8s()
@@ -1395,15 +1400,14 @@ public sealed partial class MirBorrowsTest
                 stS(t@uniq, z@ref)
                 z = 5
                 inspect(w)
-            func cs8mv()
+            func cs8mvr()
                 var x = 1
                 var y = 2
                 var z = 3
                 var w: ref/i32 = x@ref
                 var v: ref/i32 = y@ref
                 let s = w@ref
-                var t: (raw/(ref/i32), uniq/(ref/i32)) = (s@follow@raw, v@uniq)
-                stM(t@uniq, z@ref)
+                stMV((s@follow@raw, v@uniq), z@ref)
                 z = 5
                 inspect(w)
             func cs8m()
