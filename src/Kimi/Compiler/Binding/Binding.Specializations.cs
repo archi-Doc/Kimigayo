@@ -320,7 +320,10 @@ public sealed partial class Binding
             }
 
             var definition = (FunctionKoto)original!.Declaration;
-            if (definition.AttributeChain is not null || HasParameterAttributes(definition))
+            // SPEC 8.13.2: the original's Attributes are inherited. An implementation Attribute (IMPL 21.3.4) is a fact of the original
+            // declaration, and a specialization is no declaration of its own (SPEC 8.13.3): each reader of such a fact resolves the
+            // function to its original first (TyCtxt.Original), so a specialization has it. Any other Attribute is not inherited yet.
+            if (HasUninheritedAttributes(definition) || HasParameterAttributes(definition))
             {
                 this.Fail(function, BindingFailure.Unsupported, true);
                 continue;
@@ -494,6 +497,21 @@ public sealed partial class Binding
             }
 
             return true;
+        }
+
+        // True when the original carries an Attribute whose inheritance is not provided yet: any but an implementation Attribute, which
+        // every reader takes from the original (TyCtxt.Original).
+        static bool HasUninheritedAttributes(FunctionKoto function)
+        {
+            for (var attribute = function.AttributeChain; attribute is not null; attribute = attribute.AttributeChain)
+            {
+                if (!attribute.IsImplementation)
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         static bool HasParameterAttributes(FunctionKoto function)

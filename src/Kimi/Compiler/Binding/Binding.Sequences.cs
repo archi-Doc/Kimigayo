@@ -4,10 +4,26 @@ using Kimi.Compiler.Parsing;
 
 namespace Kimi.Compiler;
 
+#pragma warning disable SA1402 // The metadata form beside the member binding that produces it.
+
+/// <summary>A sequence's metadata member, which Binding serves without a call: <see cref="Binding.FormOf"/> gives a node's.</summary>
+internal enum BuiltinForm : byte
+{
+    None,
+    Length, // A sequence's length (SPEC 4.7).
+    IsEmpty,
+    Indices, // The ResolvedRange from 0 to the length (SPEC 4.6.2).
+    Capacity, // An Array's or a Dictionary's capacity (SPEC 4.9.5).
+}
+
 public sealed partial class Binding
 {
+    // The built-in form of a published node: a sequence's metadata by its member (SequenceMember), which the MIR builder reads.
+    internal static BuiltinForm FormOf(Koto node)
+        => HirTables.Op(node) == HirOp.PrimitiveOp && node is MemberAccessKoto member ? SequenceMember(member) : BuiltinForm.None;
+
     // SPEC 4.7, 4.6.2, 4.9.5: the metadata member of a sequence a member access names, by its spelling; None for another name.
-    internal static BuiltinForm SequenceMember(MemberAccessKoto source) => (source.Right as IdentifierNameKoto)?.IdentifierName switch
+    private static BuiltinForm SequenceMember(MemberAccessKoto source) => (source.Right as IdentifierNameKoto)?.IdentifierName switch
     {
         "length" => BuiltinForm.Length,
         "isEmpty" => BuiltinForm.IsEmpty,

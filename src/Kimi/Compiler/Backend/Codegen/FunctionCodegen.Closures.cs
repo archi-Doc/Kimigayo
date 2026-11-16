@@ -116,18 +116,19 @@ internal sealed partial class FunctionCodegen
     private Run? Runs(BoundType item, int target, BoundType? result, SourceInfo source, out ReadOnlySpan<Value> given)
     {
         given = default;
-        var kind = item.Symbol?.CompilerFunction ?? CompilerFunctionKind.None;
-        if (kind == CompilerFunctionKind.None && target >= 0)
+        // A compiler function: a served one (Definition).
+        var compiler = item.Symbol is { } symbol && symbol.Definition.Kind != DispositionKind.Body;
+        if (!compiler && target >= 0)
         {
             return this.Witness(target, source); // Null after a record.
         }
 
-        if (kind == CompilerFunctionKind.None && item.Symbol is { } function && VTableDef.SlotOf(function) >= 0)
+        if (!compiler && item.Symbol is { } function && VTableDef.SlotOf(function) >= 0)
         {
             return this.module.Slot(item, this.item) is { } slot ? new Run(slot, function) : null; // Null after a record.
         }
 
-        if (kind != CompilerFunctionKind.None && this.Routine(item, result, target, out given) is { } routine)
+        if (compiler && this.Routine(item, result, target, out given) is { } routine)
         {
             return new Run(routine, null);
         }

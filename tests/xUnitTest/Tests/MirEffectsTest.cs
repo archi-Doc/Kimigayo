@@ -632,21 +632,61 @@ public sealed partial class MirEffectsTest(ITestOutputHelper output)
                 "    public init(key: K) => self.key = key@move\n    public func put(self: uniq/Self, value: i32) -> Result<(), BufferFull>\n" +
                 "        _ = self.table.tryGet(self.key)\n        return .Ok(())\n"));
 
+    // SPEC 8.11.2 (R8-G1 rows D1, D2): a confined slot's call reaches a body-less intrinsic's class through a library body. Console
+    // output is an environment effect, so a slot whose body calls the view overload of Console.writeLine, whose body calls
+    // Console.writeStdout, fails its bound: one record at the slot (D1); its twin without the call reports none. Raw.allocate and
+    // Raw.release act on their inputs and the allocator, which confined permits (D2).
+    [Theory]
+    [InlineData("        let text = \"x\"\n        Console.writeLine(Text.utf8(text@ref))\n", "UnsatisfiedEffectBound_Kd public virtual func read(self: objref/Self) -> i32 1")]
+    [InlineData("        let x = 1\n", "")]
+    [InlineData("        let p = Kimi.Raw.allocate<i32>(count: 1)\n        unsafe\n            Kimi.Raw.release(storage: p)\n", "")]
+    public void AConfinedSlotOwesTheClassOfTheIntrinsicItReaches(string body, string expected)
+        => Assert.Equal(
+            Expected(expected),
+            Problems("open struct Base\n    public virtual func read(self: objref/Self) -> i32\n        effect confined\n" + body + "        return 1\n"));
+
+    // SPEC 8.11.2, 22.1's Test row (R8-G1 row D3): Test.tempDirectory, the case's temporary directory from the environment, is an
+    // environment effect, so a confined slot of a test-only source in a test build that calls it fails its bound: one record at the slot;
+    // its twin without the call reports none. A direct call takes the intrinsic's class from its descriptor; a call through its function
+    // item takes it from Binding's category of the function (MirEffects.Class): the same record, and none through Raw.allocate's item,
+    // whose Storage is created in the call (SPEC 8.11.2's table; Raw.release on it is a raw access, Allocation is permitted).
+    [Theory]
+    [InlineData("        let path = Test.tempDirectory()\n", "UnsatisfiedEffectBound_Kd public virtual func read(self: objref/Self) -> i32 1")]
+    [InlineData("        let path = \"x\"\n", "")]
+    [InlineData("        let f = Test.tempDirectory\n        let path = f()\n", "UnsatisfiedEffectBound_Kd public virtual func read(self: objref/Self) -> i32 1")]
+    [InlineData("        let f = Kimi.Raw.allocate<i32>\n        let p = f(1)\n        unsafe\n            Kimi.Raw.release(storage: p)\n", "")]
+    public void AConfinedTestSlotOwesTheTemporaryDirectorysClass(string body, string expected)
+    {
+        var c = Compilation.CreateForTest();
+        c.IsTestBuild = true;
+        Assert.True(c.Prepare(WindowsProfile.Target));
+        c.Kotonoha.AddSource(new SourceDocument(
+            "Tests.kimi",
+            "open struct Base\n    public virtual func read(self: objref/Self) -> i32\n        effect confined\n" + body + "        return 1\n#Test\nfunc sample() => ()\n",
+            isTestOnly: true));
+        Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c));
+        Assert.True(c.Binding.CheckTestStartup().IsComplete, MinimalEmissionTest.Describe(c));
+        Assert.Equal(Expected(expected), Problems(c, c.BuildMir()));
+    }
+
     // SPEC 8.11.2, 22.9.1 (R8-W1b-3, C-188; R8-W2 b2-1): A4 classes a Storage.erasedReserve call, ErasedReserve's producer (MirDescriptors:
-    // no effect of its own), by its kind's family, Inputs, as Storage.reserveDispatch's, the call of Text.writer's body that erases the
-    // Writer's reserve: the reserve it runs is checked against its confined bound where Text.writer erases it. S2a's built-in bodies are
-    // its first callers (AConfinedLeafWriteReportsNothing).
+    // no effect of its own), as an intrinsic (TyCtxt.Bodyless) by that row, Inputs, as Storage.reserveDispatch's, the call of Text.writer's
+    // body that erases the Writer's reserve: the reserve it runs is checked against its confined bound where Text.writer erases it. S2a's
+    // built-in bodies are its first callers (AConfinedLeafWriteReportsNothing).
     [Fact]
-    public void AnErasedReserveCallIsClassedByItsStorageFamily()
+    public void AnErasedReserveCallIsClassedByItsIntrinsicRow()
     {
         var library = Compilation.CreateForTest().Library;
-        Assert.Equal(CompilerFunctionEffect.Inputs, TyCtxt.Bodyless(library.Function(CompilerFunctionKind.StorageErasedReserve)!));
-        Assert.Equal(TyCtxt.Bodyless(library.Function(CompilerFunctionKind.StorageReserveDispatch)!), TyCtxt.Bodyless(library.Function(CompilerFunctionKind.StorageErasedReserve)!));
+        var reserve = LibrarySource.Symbol(library, "Storage.erasedReserve");
+        var dispatch = LibrarySource.Symbol(library, "Storage.reserveDispatch");
+        Assert.Equal((BodylessKind.Intrinsic, IntrinsicId.ErasedReserve), (TyCtxt.Bodyless(reserve), reserve.Definition.Id));
+        Assert.Equal((BodylessKind.Intrinsic, IntrinsicId.ReserveDispatch), (TyCtxt.Bodyless(dispatch), dispatch.Definition.Id));
+        Assert.Equal(MirDescriptors.Of(IntrinsicId.ReserveDispatch).Effects, MirDescriptors.Of(IntrinsicId.ErasedReserve).Effects);
         Assert.Equal((MirEffect.None, (sbyte)0), (MirDescriptors.Of(IntrinsicId.ReserveDispatch).Effects, MirDescriptors.Of(IntrinsicId.ReserveDispatch).Arity));
         Assert.Equal((MirEffect.None, (sbyte)2), (MirDescriptors.Of(IntrinsicId.ErasedReserve).Effects, MirDescriptors.Of(IntrinsicId.ErasedReserve).Arity));
     }
 
-    // SPEC 8.11.2, 22.10.2 (R8-S2c, C-244): A4 classes a Storage.formatFloat call, FormatFloat's producer, by its kind's family, Inputs; its
+    // SPEC 8.11.2, 22.10.2 (R8-S2c, C-244): A4 classes a Storage.formatFloat call, FormatFloat's producer, as an intrinsic by its row, Inputs; its
     // descriptor states no effect of its own over its three operands (the bits, the width flag and the destination), and its signature's
     // `uniq` destination states the one write (fail-before: the descriptor's arity was -1, the kind did not exist).
     [Fact]
@@ -655,12 +695,12 @@ public sealed partial class MirEffectsTest(ITestOutputHelper output)
         var library = Compilation.CreateForTest().Library;
         var descriptor = MirDescriptors.Of(IntrinsicId.FormatFloat);
         Assert.Equal(
-            (CompilerFunctionEffect.Inputs, (MirEffect.None, (sbyte)3)),
-            (TyCtxt.Bodyless(library.Function(CompilerFunctionKind.StorageFormatFloat)!), (descriptor.Effects, descriptor.Arity)));
+            (BodylessKind.Intrinsic, IntrinsicId.FormatFloat, (MirEffect.None, (sbyte)3)),
+            (TyCtxt.Bodyless(LibrarySource.Symbol(library, "Storage.formatFloat")), LibrarySource.Symbol(library, "Storage.formatFloat").Definition.Id, (descriptor.Effects, descriptor.Arity)));
     }
 
-    // SPEC 8.11.2, 22.10.2 (R8-S2b2, C-258): A4 classes a Storage.formatInteger128 call, FormatInteger128's producer, by its kind's family,
-    // Inputs; its descriptor states no effect of its own over its two operands (the value and the destination: the routine neither
+    // SPEC 8.11.2, 22.10.2 (R8-S2b2, C-258): A4 classes a Storage.formatInteger128 call, FormatInteger128's producer, as an intrinsic by its
+    // row, Inputs; its descriptor states no effect of its own over its two operands (the value and the destination: the routine neither
     // allocates nor Aborts), and its signature's `uniq` destination states the one write (fail-before: the kind did not exist, the
     // descriptor's arity was -1).
     [Fact]
@@ -669,8 +709,8 @@ public sealed partial class MirEffectsTest(ITestOutputHelper output)
         var library = Compilation.CreateForTest().Library;
         var descriptor = MirDescriptors.Of(IntrinsicId.FormatInteger128);
         Assert.Equal(
-            (CompilerFunctionEffect.Inputs, (MirEffect.None, (sbyte)2)),
-            (TyCtxt.Bodyless(library.Function(CompilerFunctionKind.StorageFormatInteger128)!), (descriptor.Effects, descriptor.Arity)));
+            (BodylessKind.Intrinsic, IntrinsicId.FormatInteger128, (MirEffect.None, (sbyte)2)),
+            (TyCtxt.Bodyless(LibrarySource.Symbol(library, "Storage.formatInteger128")), LibrarySource.Symbol(library, "Storage.formatInteger128").Definition.Id, (descriptor.Effects, descriptor.Arity)));
     }
 
     // SPEC 8.11.2, 22.9.1 (R8-S2a, C-188; R8-S2b1, C-254): a confined caller's write(true) runs BoolFormat's body and its write of an i64
@@ -695,7 +735,7 @@ public sealed partial class MirEffectsTest(ITestOutputHelper output)
 
     // SPEC 8.11.2, 8.11.3, 22.9.1 (R8-W2 b2-1; the Middle's C-330 note N2, its twin ef2): a user Writer's reserve, confined by
     // BufferWriter.reserve's bound, that makes a local adapter over a local user Writer and writes through it runs Text.writer's generic
-    // body, whose Storage.reserveDispatch call is classed by its family, Inputs (AnErasedReserveCallIsClassedByItsStorageFamily), and
+    // body, whose Storage.reserveDispatch call is classed by its intrinsic row, Inputs (AnErasedReserveCallIsClassedByItsIntrinsicRow), and
     // the write's erased reserve is checked against Inner's own confined bound, so Outer reports nothing (the rows above reach only the
     // two specializations). The counterpart, Inner's reserve writing to the console, is Inner's record at its clause and the only one:
     // Outer's erased call still meets the bound it is checked against. Rows labelled from SPEC before running.

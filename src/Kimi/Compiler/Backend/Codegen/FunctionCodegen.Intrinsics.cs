@@ -73,8 +73,7 @@ internal sealed partial class FunctionCodegen
     private FunctionAbi? Routine(BoundType item, BoundType? result, int target, out ReadOnlySpan<Value> given)
     {
         given = default;
-        var kind = item.Symbol?.CompilerFunction ?? CompilerFunctionKind.None;
-        return IntrinsicDisposition.Of(kind) is { Kind: DispositionKind.Intrinsic, Id: var id }
+        return item.Symbol?.Definition is { Kind: DispositionKind.Intrinsic, Id: var id }
             ? this.Routine(IntrinsicRows.Of(id), result, this.typeContext.SubstOfItem(item), target, out given) : null;
     }
 

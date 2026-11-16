@@ -116,7 +116,7 @@ public sealed partial class Binding
             }
             else
             {
-                this.Fail(callee, callee.BindingFailure == BindingFailure.Ambiguous ? BindingFailure.Ambiguous : this.MissingFailure(callee, scope, BindingFailure.MissingName), true);
+                this.Fail(callee, callee.BindingFailure == BindingFailure.Ambiguous ? BindingFailure.Ambiguous : this.MissingFailure(callee, BindingFailure.MissingName), true);
             }
 
             return Complete(call, null);
@@ -389,6 +389,12 @@ public sealed partial class Binding
             if (!this.SolveSelected(ref evaluation, winnerIndex, selectedType))
             {
                 return null; // SPEC 10.5.1, 10.2.1: the nested call waits, or the call rests on its record (SolveSelected).
+            }
+
+            if (!this.SupportedFunction(callee, winner))
+            {
+                this.MarkWaitingHeaders(call); // As a failed selection (FailWaitingSelection); the record is the callee's (SPEC 22.1, R8).
+                return Complete(call, null);
             }
 
             if (evaluated[winnerIndex].State == CandidateApplicability.Waiting)
