@@ -306,6 +306,12 @@ public sealed partial class Binding
         return false;
     }
 
+    // DECISIONS D3 (temporary, PLAN G886): whether a Closure or Function Item value at a common Function Type carries the located limit
+    // its erasure reported for an unformed split (ErasesToFunction).
+    private static bool RestsOnErasure(Koto node, BoundType actual, BoundType expected)
+        => node.BindingFailure == BindingFailure.Unsupported && actual.Kind is BoundTypeKind.Closure or BoundTypeKind.FunctionItem &&
+            expected.Kind == BoundTypeKind.Function;
+
     // SPEC 7.7.4: a concrete Closure or Function Item converts to an expected common Function Type when its minimum receiver is Shared,
     // its signature fits under its conditions (CallableSignatureFits), its complete environment is Owned and its result contract does
     // not depend on its receiver (ResultDependsOnReceiver). Initializations, returns and call arguments share this judgment. A failure
@@ -398,7 +404,7 @@ public sealed partial class Binding
     // unformed split (ErasesToFunction; DECISIONS D3), is the value's failure.
     private bool FailsFunctionConversion(Koto node, BoundType actual, BoundType expected)
     {
-        if (node.BindingFailure is BindingFailure.OriginContract or BindingFailure.Unsupported ||
+        if (node.BindingFailure == BindingFailure.OriginContract || RestsOnErasure(node, actual, expected) ||
             (node.BindingState == BindingState.Invalid && this.ErasureOf(actual, expected) is { Part: ErasurePart.Owned }))
         {
             return true;

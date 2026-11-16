@@ -83,7 +83,7 @@ public sealed partial class Binding
                     slotFailure = this.referenceSlotFailure;
                 }
 
-                if (this.RestsOnSplit(use, candidate, function, required, scope, unformedMark, state))
+                if (this.RestsOnSplit(use, candidate, required, scope, unformedMark, state))
                 {
                     resting = true;
                     state = CandidateApplicability.Pending;
@@ -294,7 +294,7 @@ public sealed partial class Binding
             var unformedMark = this.unformedWrites;
             var state = this.Accessible(candidate, scope)
                 ? this.FunctionReferenceApplicability(use, candidate, function, required, scope, out _) : CandidateApplicability.Inapplicable;
-            if (state != CandidateApplicability.Inapplicable || this.RestsOnSplit(use, candidate, function, required, scope, unformedMark, state))
+            if (state != CandidateApplicability.Inapplicable || this.RestsOnSplit(use, candidate, required, scope, unformedMark, state))
             {
                 return true; // One that rests on the split leaves its writes: the trial that fits this part rests on it too.
             }
@@ -308,7 +308,7 @@ public sealed partial class Binding
     // unknown: the same check is judged in each case of the split layer (EnterSplitCase). A candidate that is inapplicable, or in
     // Error, in every case as in its own check (`state`) is so by itself, its writes dropped and its Language record the reference's
     // (SPEC 23.1.2); any other rests on the split (a proof that reads an unformed Type writes in every case).
-    private bool RestsOnSplit(Koto use, BindingSymbol candidate, FunctionKoto function, BoundType required, BindingScope scope, int mark, CandidateApplicability state)
+    private bool RestsOnSplit(Koto use, BindingSymbol candidate, BoundType required, BindingScope scope, int mark, CandidateApplicability state)
     {
         if (!this.UnformedSince(mark))
         {
@@ -323,7 +323,7 @@ public sealed partial class Binding
         foreach (var mode in SemanticsOrder)
         {
             var entered = this.EnterSplitCase(mode);
-            var inCase = this.FunctionReferenceApplicability(use, candidate, function, required, scope, out _);
+            var inCase = this.FunctionReferenceApplicability(use, candidate, (FunctionKoto)candidate.Declaration, required, scope, out _);
             if (!this.LeaveSplitCase(entered, inCase == state))
             {
                 return true;
