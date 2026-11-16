@@ -178,7 +178,7 @@ public sealed class G950KeptPathTest
         Finish(c, OutputKind.Application);
         _ = c.Analyze();
         var own = Snapshot(c.Types, c.BuildMir(), c.Instances!);
-        var fresh = new MirBuilder(c).Build();
+        var fresh = new MirBuilder(c).Build(SyntaxTable.LibraryModule + 1);
         new MirAnalysis(c.Types).Run(fresh, c.SourceModules.Length);
         return (own, Snapshot(c.Types, fresh, new InstanceCollector(c.Types, c.Layout).Run(fresh, c.SourceModules.Length)));
     }
