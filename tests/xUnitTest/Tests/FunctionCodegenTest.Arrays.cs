@@ -115,7 +115,8 @@ public sealed partial class FunctionCodegenTest
         => ScalarEmissionTest.EmitFixture(name, source, stdout);
 
     // DECISIONS R8-M2, R8-M18 (PLAN G693): the steps the Array invariant or a dominating guard bounds check no arithmetic. `insertAt` keeps one
-    // check, its documented length sum, as `reserve` and `append` keep theirs; `appendCopies` keeps one, the step of the range it iterates.
+    // check, its documented length sum, as `reserve` and `append` keep theirs. The step of the range `appendCopies` iterates is its entries'
+    // RangeIterator<isize>.next (R8-W3), which keeps that one check; the Array iterator's `next` keeps none.
     [Fact]
     public void ArrayBodiesCheckNoBoundedArithmetic()
     {
@@ -135,11 +136,9 @@ public sealed partial class FunctionCodegenTest
             "func abSortBy(values: uniq/Array<i32>) => values.sort(by: abOrder)\n" +
             "func abDrain(values: Array<i32>) -> i32\n    var sum: i32 = 0\n    for v in values@move => sum += v\n    return sum\n";
         var c = Analyze(Source, OutputKind.Library);
-        AssertNoCheckedArithmetic(c, "swapRemove", "truncate", "initRepeating", "pop", "removeAt", "removeAll", "reverse", "sort", "next");
-        foreach (var name in new[] { "insertAt", "appendCopies" })
-        {
-            Assert.Equal(1, Regex.Count(Assert.Single(ItemTexts(c, name)), @"call .*with\.overflow"));
-        }
+        AssertNoCheckedArithmetic(c, "swapRemove", "truncate", "initRepeating", "pop", "removeAt", "removeAll", "reverse", "sort", "appendCopies");
+        Assert.Equal(1, Regex.Count(Assert.Single(ItemTexts(c, "insertAt")), @"call .*with\.overflow"));
+        Assert.Equal<int>([0, 1], ItemTexts(c, "next").Select(static x => Regex.Count(x, @"call .*with\.overflow")).Order());
     }
 
     // SPEC 4.9.3: each operation calls its body (R8-A1a, A1b) with the handle, its operands at their slots (an element by value, a string by its storage, a zero-sized one not at all), its result slot and the call's
@@ -377,14 +376,16 @@ public sealed partial class FunctionCodegenTest
         Assert.Equal(entry.Parameters.Where(forward.Operands.Contains), forward.Operands);
     }
 
-    // DECISIONS R5-M121 (ruling Q6): an adapter passes a callee's parameter by its own of the same logical index and passing: the same kind, or a
-    // SharedReference and a Value of the same pointer Type; never a Value of another Type or an OwnedSlot (Own also keeps the index).
+    // DECISIONS R5-M121 (ruling Q6, as R8-W2 d narrows it): an adapter passes a callee's parameter by its own of the same logical index
+    // and kind (Own also keeps the index); never an OwnedSlot as a Value, nor a SharedReference as a Value of its pointer Type, which no
+    // callee takes since the last hand-written routine with a string borrow by value became a body (the rows were True until then).
     [Fact]
     public void AnAdaptersParameterPassesWhatTheCalleeTakes()
     {
         var shared = new AbiParameter("ptr", "a", AbiParameterKind.SharedReference, 1);
-        Assert.True(FunctionCodegen.Passes(shared, new("ptr", "b", AbiParameterKind.Value, 1)));
-        Assert.True(FunctionCodegen.Passes(new("ptr", "a", AbiParameterKind.Value, 1), shared));
+        Assert.True(FunctionCodegen.Passes(shared, new("ptr", "b", AbiParameterKind.SharedReference, 1)));
+        Assert.False(FunctionCodegen.Passes(shared, new("ptr", "b", AbiParameterKind.Value, 1)));
+        Assert.False(FunctionCodegen.Passes(new("ptr", "a", AbiParameterKind.Value, 1), shared));
         Assert.True(FunctionCodegen.Passes(new("i64", "a", AbiParameterKind.Value, 1), new("i64", "b", AbiParameterKind.Value, 1)));
         Assert.False(FunctionCodegen.Passes(shared, new("i64", "b", AbiParameterKind.Value, 1)));
         Assert.False(FunctionCodegen.Passes(shared, new("ptr", "b", AbiParameterKind.OwnedSlot, 1)));

@@ -26,6 +26,20 @@ public class CoreCatalogTest
         }
     }
 
+    // R8-G1: the library's table is numbered LibraryModule at its creation, so its sources parse under the mark (SPEC 6.7); a source
+    // module's table never reads as the library's, before or after Binding numbers it.
+    [Fact]
+    public void TheLibraryTableIsMarkedBeforeTheFirstBind()
+    {
+        var c = Compilation.CreateForTest();
+        Assert.Equal(SyntaxTable.LibraryModule, c.Library.Kotonoha.Syntax.Module);
+        Assert.True(c.Library.Kotonoha.Syntax.IsLibrary);
+        Assert.False(c.Kotonoha.Syntax.IsLibrary);
+        Assert.True(c.Bind().IsComplete);
+        Assert.True(c.Library.Kotonoha.Syntax.IsLibrary);
+        Assert.False(c.Kotonoha.Syntax.IsLibrary);
+    }
+
     [Fact]
     public void EmbeddedSourcesKeepFileLocationsAndShareOnlyText()
     {
@@ -54,7 +68,7 @@ public class CoreCatalogTest
         var c = Compilation.CreateForTest();
         var makeObj = c.Library.MakeObj;
         Assert.IsType<List<DeclarationContainerKoto>>(c.Library.Kotonoha.RootKoto.NestedContainers).Reverse();
-        Assert.IsType<List<Koto>>(c.Library.Intrinsics.Members).Reverse();
+        Assert.IsType<List<Koto>>(((DeclarationContainerKoto)makeObj.Declaration.Parent!).Members).Reverse(); // Kimi.Intrinsics
         c.Kotonoha.CreateCodeContext().Parse(c.Kotonoha.RootKoto, "let value = Kimi.Intrinsics.makeObj(42)");
         Assert.True(c.Bind().IsComplete, string.Join('\n', c.Binding.Issues));
         Assert.Same(makeObj, c.Library.MakeObj);
@@ -94,7 +108,7 @@ public class CoreCatalogTest
             Assert.NotNull(c.Library.GetSymbol(id));
         }
 
-        Assert.Null(c.Library.GetSymbol(KimiDeclarationId.Weak));
+        Assert.Equal(BindingState.Resolved, c.Library.GetSymbol(KimiDeclarationId.Weak)?.Declaration.StateOf()); // SPEC 22.1: declared `#Unsupported`.
     }
 
     [Fact]
@@ -112,15 +126,6 @@ public class CoreCatalogTest
 
         c.Kotonoha.CreateCodeContext().Parse(c.Kotonoha.RootKoto, "func missing() -> ()");
         Assert.Contains(TestDiagnostics.Of(c), x => x.Code == nameof(DiagnosticCode.MissingSyntax_Kd));
-    }
-
-    [Fact]
-    public void MissingCatalogEntriesDoNotCreateLookupCandidates()
-    {
-        var c = Compilation.CreateForTest();
-        c.Kotonoha.CreateCodeContext().Parse(c.Kotonoha.RootKoto, "func f(x: ::Kimi.Weak<i32>) => ()");
-        Assert.False(c.Bind().IsComplete);
-        Assert.Null(c.Library.GetSymbol(KimiDeclarationId.Weak));
     }
 
     [Trait("Purpose", "Allocation")]

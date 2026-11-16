@@ -10,6 +10,9 @@
 // iterates: both segments while a compilation builds its library's bodies. Its walkers: MirAnalysis.Run, MirValidator's program pass,
 // MirOrigins.Findings, MirDump.Write, InstanceCollector's roots and templates, and the Benchmark's counts (CompilerPipelineBenchmark,
 // CollectionCostMeasurements, PairCaseMeasurements, StaticKeyMeasurements).
+// A body is built in its segment's reused body (Begin), one for the library's prefix and one for the program's bodies, so that neither
+// segment's construction allocates by the other's bodies, and stored in the next pooled body at End, which registers its key: a stored
+// body holds exactly its rows, and a building body's tables and interning grow once to its segment's largest body's.
 // One key identifies one body; warm rebuilding reuses body storage; Clear resets the report with the bodies.
 // Must not re-bind definitions or maintain a second body map in a consumer; a reader by ordinal reads through Body, never offsets an
 // ordinal or computes one from LibraryCount.
@@ -20,11 +23,12 @@ using Kimi.Diagnostics;
 namespace Kimi.Compiler.Mir;
 
 /// <summary>The MIR bodies of a compilation by <see cref="MirDefKey"/>, with the records their construction, validation and collection made.
-/// <see cref="Clear"/> returns every body to the pool and <see cref="Begin"/> reuses them in order, so a warm rebuild of the same
+/// <see cref="Clear"/> returns every body to the pool and <see cref="End"/> reuses them in order, so a warm rebuild of the same
 /// definitions allocates nothing.</summary>
 internal sealed class MirProgram
 {
     private readonly Dictionary<MirDefKey, MirBody> bodies = new();
+    private readonly MirBody[] building = [new(), new()]; // The body each segment is built in: the library's prefix, then the program's.
     private MirBody[] pool = [];
     private int count;
 
@@ -57,6 +61,10 @@ internal sealed class MirProgram
     /// visits on a layer spine and fewer than it visits on a wide Type; the walks' scaling rows read it, and <see cref="Clear"/> resets
     /// it.</summary>
     internal long LayerWalkWork { get; set; }
+
+    /// <summary>Gets the body the current segment is built in: the library's until its prefix holds bodies (<see cref="EndLibrary"/>), then
+    /// the program's.</summary>
+    private MirBody Building => this.building[this.LibraryCount > 0 ? 1 : 0];
 
     internal MirBody? this[MirDefKey key] => this.bodies.TryGetValue(key, out var body) ? body : null;
 
@@ -115,21 +123,30 @@ internal sealed class MirProgram
     /// <returns>The rows.</returns>
     internal RecordRows Records(MirRecordClass recordClass) => new(this.Problems, recordClass);
 
-    /// <summary>Begins the body of a definition with the next pooled body.</summary>
+    /// <summary>Begins the body of a definition, of the next ordinal, in its segment's body being built, which <see cref="End"/> stores.</summary>
     /// <param name="key">The definition, which has no body yet.</param>
     /// <param name="source">The body's syntax.</param>
-    /// <returns>The empty body.</returns>
+    /// <returns>The empty body being built.</returns>
     internal MirBody Begin(MirDefKey key, SourceRef source)
+    {
+        var built = this.Building;
+        built.Ordinal = this.count;
+        built.Reset(key, source);
+        return built;
+    }
+
+    /// <summary>Ends the body being built: stores it in the next pooled body (<see cref="MirBody.Store"/>) under its definition.</summary>
+    /// <returns>The stored body.</returns>
+    internal MirBody End()
     {
         if (this.count == this.pool.Length)
         {
             Array.Resize(ref this.pool, Math.Max(16, this.count * 2));
         }
 
-        var body = this.pool[this.count] ??= new();
-        body.Ordinal = this.count++;
-        body.Reset(key, source);
-        this.bodies.Add(key, body);
+        var body = this.pool[this.count++] ??= new();
+        body.Store(this.Building);
+        this.bodies.Add(body.Key, body);
         return body;
     }
 

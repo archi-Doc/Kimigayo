@@ -15,15 +15,16 @@ internal sealed partial class InstanceCollector
 
     // IMPL 21.3.3 (DECISIONS R5-M126): the gap of a Builtin witness's operation, an arithmetic shim's Contract's MIR operator
     // (MirTypes.ArithmeticOperation, SPEC 13.3.3) on the target's closed Self, which Requirement records at each site that requests the
-    // shim, as a statement's operation is at its location; none for any other compiler function.
+    // shim, as a statement's operation is at its location; none for any other target (a Shim of another Contract included).
     private static CapabilityGap? ArithmeticGap(in RequirementTarget target)
     {
-        if (target.Target!.CompilerFunction != CompilerFunctionKind.BuiltinArithmetic)
+        var contract = TyCtxt.ShimContract(target.Target!);
+        if (!ArithmeticContracts.IsArithmetic(contract))
         {
             return null;
         }
 
-        var (kind, op) = MirTypes.ArithmeticOperation(TyCtxt.Contract(target.Target).LibraryDeclaration);
+        var (kind, op) = MirTypes.ArithmeticOperation(contract);
         return Capability.Of(kind, op, target.Subst!.Self!, null);
     }
 
