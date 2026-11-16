@@ -8,8 +8,10 @@ namespace Kimi.Compiler.Mir;
 //   above 0) with the template's body (MirProgram.Callee) and each created Closure (a Closure aggregate) with its Closure body. So A4, A5,
 //   the instance collector and code generation read MirProgram.StaticInit, a template call's body and a Closure's body without a guard.
 // - Inputs: a built body and the program, whose lookups may demand the body named (MirProgram's demand point); a staticEnsure's static by
-//   MirValidator.Statics' Slot. Outputs: StaticSlot and Callee findings in the program's findings at the call or the statement, each
-//   marking the body it is located in (MirBody.HasFinding).
+//   MirValidator.Statics' Slot. The builder drains its queue per segment (MirBuilder.Build, PLAN G950): the library segment's bodies at
+//   the library walk's end, before MirProgram.EndLibrary, since a library body names library bodies only (SPEC 18), so the library's
+//   findings are the prefix of the program's; then the program segment's, which name either. Outputs: StaticSlot and Callee findings in
+//   the program's findings at the call or the statement, each marking the body it is located in (MirBody.HasFinding).
 // - Invariants: a staticEnsure of another form, a Fn callee without its function and an aggregate of another Type than a Closure Type
 //   are the body walk's findings (MirValidator.Calls, .Rvalues) and name no body here.
 // - Prohibitions: no rule of one body alone (the body walk's, MirValidator.cs).
