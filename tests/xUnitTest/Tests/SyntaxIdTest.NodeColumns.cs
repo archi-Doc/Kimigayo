@@ -125,10 +125,11 @@ public partial class SyntaxIdTest
         PagedColumn<BindingSymbol?> Column() => (PagedColumn<BindingSymbol?>)field.GetValue(c.Kotonoha.Syntax.Hir.Families)!;
     }
 
-    // G949 D2b-d's d10, per pass or edit family: an edit's renumbering hands the family's column over, stale, so the Bind after each of
-    // two edits empties it at its first write and rewrites its rows in the same arena (AssociatedOrigins: an associated Type's Origin
+    // G949 D2b-d's d10, per pass or edit family: an edit's renumbering hands the family's column over, stale, so the Bind after each
+    // edit empties it at its first write and rewrites its rows in the same arena (AssociatedOrigins: an associated Type's Origin
     // parameters; ShapeContractHeads: the shape contracts of an overload group whose every pair shares a slot; ObjectErasures: an
-    // override's call through its receiver's erased view, VirtualEntryErasureTest's program).
+    // override's call through its receiver's erased view, VirtualEntryErasureTest's program). Checked after each edit (N5-5's review C1):
+    // a kept family's two arenas alternate, so after an even number of edits a kept column's arena is again its first.
     [Trait("Purpose", "Allocation")]
     [Theory]
     [InlineData("AssociatedOrigins", "contract C\n    associate Item(a) for ref/i32 during a\n")]
@@ -146,10 +147,9 @@ public partial class SyntaxIdTest
         {
             c.NoteSyntaxEdit(c.Kotonoha.RootKoto);
             Assert.True(c.Bind().IsComplete);
+            Assert.Same(before, Arena());
+            Assert.Equal(used, Used());
         }
-
-        Assert.Same(before, Arena());
-        Assert.Equal(used, Used());
 
         Array? Arena() => Read<Array?>(Read<object>(field.GetValue(c.Kotonoha.Syntax.Hir.Families)!, "rows"), "arena");
         int Used() => (int)field.FieldType.GetProperty("Used", Members)!.GetValue(field.GetValue(c.Kotonoha.Syntax.Hir.Families))!;
