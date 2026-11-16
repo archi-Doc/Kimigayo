@@ -414,14 +414,17 @@ public class ArchitectureRulesTest
 
     // PLAN G949 S1-b2 (d11; DECISIONS BU-220): every Type carries the dense id its maker gave it, so only TyCtxt, which numbers each Type it
     // makes (Intern, Parameter), and BoundType, whose statics hold one fixed list of ids (its type initializer, CreatePrimitives and
-    // CreateWrappingScalars), construct one. Read from the IL, where a target-typed `new(...)` is a constructor call like any other.
+    // CreateWrappingScalars), construct one, each site as many times as listed (the type initializer's four: Unit, Never, Boolean, Range),
+    // so a construction added inside an allowed method fails too. Read from the IL, where a target-typed `new(...)` is a constructor
+    // call like any other.
     [Fact]
     public void OnlyTyCtxtAndBoundTypeConstructTypes()
     {
         var sites = typeof(Kimi.Compiler.Compilation).Assembly.GetTypes().SelectMany(MethodCalls)
-            .Where(static x => x.Called is ConstructorInfo && x.Called.DeclaringType == typeof(Kimi.Compiler.BoundType)).Select(static x => x.Site)
-            .Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).ToArray();
-        Assert.Equal(new[] { "BoundType..cctor", "BoundType.CreatePrimitives", "BoundType.CreateWrappingScalars", "TyCtxt.Intern", "TyCtxt.Parameter" }, sites);
+            .Where(static x => x.Called is ConstructorInfo && x.Called.DeclaringType == typeof(Kimi.Compiler.BoundType))
+            .GroupBy(static x => x.Site, StringComparer.Ordinal).Select(static x => $"{x.Key}={x.Count()}").Order(StringComparer.Ordinal).ToArray();
+        Assert.Equal(
+            new[] { "BoundType..cctor=4", "BoundType.CreatePrimitives=1", "BoundType.CreateWrappingScalars=1", "TyCtxt.Intern=1", "TyCtxt.Parameter=1" }, sites);
     }
 
     // R7-C2a: Enumerate is a leaf of the judgment graph (Binding.ContractSolver.cs's contract). The members of its walk call exactly
