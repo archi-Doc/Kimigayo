@@ -28,6 +28,7 @@ public sealed partial class Binding
     private readonly KeptScopes scopes;
 
     private readonly DeclaredSymbols symbols;
+    private readonly InferenceBatches associatedInference;
     private readonly TyCtxt types;
 
     // The running pass's part (PassPart), which its steps write; the driver hands it over (EnterPass), Binding's own between Binds.
@@ -47,6 +48,7 @@ public sealed partial class Binding
         this.types = new(this, this.Library);
         this.symbols = new(this);
         this.scopes = new(this);
+        this.associatedInference = new(this);
         this.Library.Kotonoha.Syntax.Hir.Families.Reserve(KimiLibrarySize.Stated);
         foreach (var symbol in this.Library.RegisteredSymbols)
         {

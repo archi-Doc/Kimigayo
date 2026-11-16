@@ -261,6 +261,7 @@ internal struct NodeColumns
     internal PagedColumn<BindingSymbol?[]?> Parameters; // Kept: Symbols' composite column, a function's parameters' symbols by index.
     internal PagedColumn<BindingScope?> Scopes; // Kept: a node's scope (Binding.Scopes.cs).
     internal PagedColumn<(SourceDocument Document, BindingScope? Scope)[]?> Documents; // Kept: Scopes' composite column, a module root's document scopes.
+    internal PagedColumn<Binding.AssociatedInference?> AssociatedInference; // Kept: a conforming Type's inference batch (Binding.AssociatedInference.cs).
 
     internal void Resize(int length)
     {
@@ -268,6 +269,7 @@ internal struct NodeColumns
         this.Parameters.Grow(length);
         this.Scopes.Grow(length);
         this.Documents.Grow(length);
+        this.AssociatedInference.Grow(length);
     }
 
     // The library's columns start at their stated slots (KimiLibrarySize: no program row lands in them).
@@ -284,6 +286,7 @@ internal struct NodeColumns
         Parameters = this.Parameters.Renumbered(length),
         Scopes = this.Scopes.Renumbered(length),
         Documents = this.Documents.Renumbered(length),
+        AssociatedInference = this.AssociatedInference.Renumbered(length),
     };
 
     internal readonly void Retire()
@@ -292,6 +295,7 @@ internal struct NodeColumns
         this.Parameters.Retire();
         this.Scopes.Retire();
         this.Documents.Retire();
+        this.AssociatedInference.Retire();
     }
 
     internal readonly void Move(int from, ref NodeColumns target, int to)
@@ -300,6 +304,7 @@ internal struct NodeColumns
         this.Parameters.MoveTo(ref target.Parameters, from, to);
         this.Scopes.MoveTo(ref target.Scopes, from, to);
         this.Documents.MoveTo(ref target.Documents, from, to);
+        this.AssociatedInference.MoveTo(ref target.AssociatedInference, from, to);
     }
 }
 
