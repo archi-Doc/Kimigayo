@@ -492,6 +492,161 @@ public sealed partial class MirBorrowsTest
             Problems(c, Analyze(c), [.. LoanCodes, DiagnosticCode.Unsupported_Kd]));
     }
 
+    // SPEC 8.2.3 ("identity is closed under replacement inside any Type"), 15.6.4 ("only where the premises make it one"; PLAN G935
+    // c3-2, class 1): the callee's own abstract Type is kept only in the form its function's view gives it. Under `T is Option<V>`
+    // storage of T is an Option<V>, whose payload keeps `value: V` (idFormBad: m holds spare, read after `kk = 2`), and a `value: T`
+    // holds a V by value, which storage of V keeps (idFormInBad); under `T is E`, E the enclosing Type's parameter, `h.value` is
+    // storage of E, which the receiver's instance completes, a `raw/(raw/u8)` the caller states by `uniq` (idEnclBad). Fail-before on
+    // fce0d5078: the three were accepted (the storage walk kept T against the key walk's View). Their valid twins: a `raw/u8` input
+    // that is no V (idFormOtherOk), the holder read before the write (idFormInOk, idAbsOk), the Origin stated only by `ref`
+    // (idEnclOk) and the callee without the premise, whose own T holds no `raw/u8` (idEnclNoPremOk). Two own abstract Types a premise
+    // identifies (`T is V`) both stay kept and fit each other (idAbsBad, rejected before c3-2 too). A raw layer a premise shows
+    // steps by its binder's declared inputs (DECISIONS BU-113): under `T is raw/(raw/u8) during a`, p is a layer stating `a`, which
+    // x states by `uniq` (idRawStepBad: fr may store v into `*x`) or only by `ref` (idRawStepOk: no write authority, 5.2.1
+    // condition 3). A generic caller whose own premise gives its X the form is read alike (idFormGenBad, idFormGenOk).
+    [Fact]
+    public void AKeptTypeIsReadInItsFunctionsView()
+    {
+        var c = MirBuildTest.Compile(Prelude + """
+            func fo<T, V>(slot: uniq/(uniq/T during a), value: V)
+                T is Option<V>
+                return
+            func fw<T, V>(slot: uniq/(uniq/T during a), value: raw/u8, w: V)
+                T is Option<V>
+                return
+            func fi<T, V>(slot: uniq/(uniq/V during a), value: T)
+                T is Option<V>
+                return
+            func fa<T, V>(slot: uniq/(uniq/T during a), value: V)
+                T is V
+                return
+            struct Wrap<E>
+                var value: E
+                public init(value: E) => self.value = value@move
+            struct Host<E>
+                var e: E
+                public init(e: E) => self.e = e@move
+                public func put3<T>(self: ref/Self, h: uniq/Wrap<T>, v: raw/u8)
+                    T is E
+                    return
+                public func put3n<T>(self: ref/Self, h: uniq/Wrap<T>, v: raw/u8) => ()
+            func fr<T>(x: uniq/(raw/u8) during a, p: uniq/T, v: raw/u8)
+                T is raw/(raw/u8) during a
+                return
+            func frr<T>(x: ref/(raw/u8) during a, p: uniq/T, v: raw/u8)
+                T is raw/(raw/u8) during a
+                return
+            func idFormBad()
+                var kk: u8 = 1
+                let r = kk@uniq
+                var spare: raw/u8 = r@follow@raw
+                var m: Option<raw/u8> = .None
+                var x = m@uniq
+                fo(x@uniq, spare)
+                kk = 2
+                inspect(m@ref)
+            func idFormOtherOk()
+                var kk: u8 = 1
+                let r = kk@uniq
+                var spare: raw/u8 = r@follow@raw
+                var m: Option<u64> = .None
+                var x = m@uniq
+                fw(x@uniq, spare, 0@u64)
+                kk = 2
+                inspect(m@ref)
+            func idFormInBad()
+                var kk: u8 = 1
+                let r = kk@uniq
+                var spare: raw/u8 = r@follow@raw
+                var m: raw/u8 = null
+                var x = m@uniq
+                fi(x@uniq, Option.Some(spare))
+                kk = 2
+                inspect(m@ref)
+            func idFormInOk()
+                var kk: u8 = 1
+                let r = kk@uniq
+                var spare: raw/u8 = r@follow@raw
+                var m: raw/u8 = null
+                var x = m@uniq
+                fi(x@uniq, Option.Some(spare))
+                inspect(m@ref)
+                kk = 2
+            func idAbsBad()
+                var kk: u8 = 1
+                let r = kk@uniq
+                var spare: raw/u8 = r@follow@raw
+                var m: raw/u8 = null
+                var x = m@uniq
+                fa(x@uniq, spare)
+                kk = 2
+                inspect(m@ref)
+            func idAbsOk()
+                var kk: u8 = 1
+                let r = kk@uniq
+                var spare: raw/u8 = r@follow@raw
+                var m: raw/u8 = null
+                var x = m@uniq
+                fa(x@uniq, spare)
+                inspect(m@ref)
+                kk = 2
+            func idEnclBad(r: ref/(raw/u8) during a, u: uniq/(raw/u8) during a)
+                var z = 3
+                let w = z@ref
+                var h = Wrap.init(u@follow@raw)
+                let host = Host.init(r@follow@raw)
+                host.put3(h@uniq, w@raw@raw/u8)
+                z = 5
+            func idEnclOk(r: ref/(raw/u8) during a, r2: ref/(raw/u8) during a)
+                var z = 3
+                let w = z@ref
+                var h = Wrap.init(r2@follow@raw)
+                let host = Host.init(r@follow@raw)
+                host.put3(h@uniq, w@raw@raw/u8)
+                z = 5
+            func idEnclNoPremOk(r: ref/(raw/u8) during a, u: uniq/(raw/u8) during a)
+                var z = 3
+                let w = z@ref
+                var h = Wrap.init(u@follow@raw)
+                let host = Host.init(r@follow@raw)
+                host.put3n(h@uniq, w@raw@raw/u8)
+                z = 5
+            func idRawStepBad(u: uniq/(raw/u8))
+                var z = 3
+                let w = z@ref
+                var q = u@follow@raw
+                fr(u, q@uniq, w@raw@raw/u8)
+                z = 5
+            func idRawStepOk(r: ref/(raw/u8))
+                var z = 3
+                let w = z@ref
+                var q = r@follow@raw
+                frr(r, q@uniq, w@raw@raw/u8)
+                z = 5
+            func idFormGenBad<X>(m: uniq/X)
+                X is Option<raw/u8>
+                var kk: u8 = 1
+                let r = kk@uniq
+                var spare: raw/u8 = r@follow@raw
+                var x = m
+                fo(x@uniq, spare)
+                kk = 2
+                inspect(x@ref)
+            func idFormGenOk<X>(m: uniq/X, p: raw/u8)
+                X is Option<raw/u8>
+                var x = m
+                fo(x@uniq, p)
+                inspect(x@ref)
+            """);
+        Assert.Equal(
+            [
+                "idFormBad: kk = 2", "idFormBad: m@ref", "idFormInBad: kk = 2", "idAbsBad: kk = 2", "idEnclBad: z = 5",
+                "idEnclBad: let host = Host.init(r@follow@raw)", "idRawStepBad: z = 5", "idRawStepBad: var q = u@follow@raw",
+                "idFormGenBad: kk = 2",
+            ],
+            Problems(c, Analyze(c), [.. LoanCodes, DiagnosticCode.Unsupported_Kd]));
+    }
+
     // SPEC 15.6.4 (DECISIONS R4-M170, the owner's Q11 ruling 「この方針で」): a tied abstract value retains every raw layer an input holds
     // by value through no shared layer, an Option payload and a Tuple element included, so r's setQ may store w's address where m points,
     // storage the body does not own, and `y = 5` and S's end err (as tiedRawBad does with a raw input; tiedOk, whose r holds only the

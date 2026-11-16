@@ -75,6 +75,10 @@ public sealed partial class Binding
     private bool retentionErased;
     private bool retentionLimit;
 
+    // Whether the walked declaration's premises identify Types (HasTypeIdentity over its constraint scope): then its declared inputs,
+    // result and handed signatures are taken in its view (Viewed; DeclareSignature, RetentionPremises).
+    private bool retentionViewed;
+
     // SPEC 15.6.4: the retention of a callee's contract whose inputs and result are instantiated (a function, or the closure or item a
     // Value call names), under the premises its body is checked under: its own part, its clauses substituted under the declaring Type,
     // and the catalog's walk from its binder's parent outward. An output retains an input when the premises entail that an atom of the
@@ -344,10 +348,13 @@ public sealed partial class Binding
     // The walked signature as its declaration writes it (retentionDeclared): its function's parameter Types and result without any
     // substitution (`target`: a call's target, else the callee's own symbol, also for a Value call of a Function Item, whose signature
     // binds the generic's arguments; SPEC 7), or a Closure's own signature, the inputs and result themselves (`target` null); none where
-    // the declaration's parameters are not the inputs. TyCtxt.Signature reads the declaration in place, so this allocates nothing.
+    // the declaration's parameters are not the inputs. Each is taken in the declaring function's view where its premises identify Types
+    // (Viewed; SPEC 8.2.3; Binding.Retention.Declared.cs): `value: T` under `T is Option<V>` is an `Option<V>`. TyCtxt.Signature reads
+    // the declaration in place, so without such a premise this allocates nothing.
     private void DeclareSignature(BindingSymbol? target, ReadOnlySpan<BoundType> inputs, BoundType result)
     {
         this.retentionDeclared.Clear();
+        this.retentionViewed = target is not null && HasTypeIdentity(this.ConstraintScope(target.Declaration));
         if (target is null)
         {
             this.retentionDeclared.AddRange(inputs);
@@ -364,12 +371,12 @@ public sealed partial class Binding
                 return;
             }
 
-            this.retentionDeclared.Add(input);
+            this.retentionDeclared.Add(this.retentionViewed ? this.Viewed(input, 0)! : input);
         }
 
         if (declared is not null && count == inputs.Length)
         {
-            this.retentionDeclared.Add(declared);
+            this.retentionDeclared.Add(this.retentionViewed ? this.Viewed(declared, 0)! : declared);
         }
     }
 
@@ -460,8 +467,9 @@ public sealed partial class Binding
             this.retentionHanded.Add(bound.Signature);
             this.AddErasedSignature(environment, bound);
             this.Handed(bound.Signature, bound.Signature, this.retentionCallables);
-            this.retentionOwnHanded.Add(bound.Declared ?? bound.Signature);
-            this.Handed(bound.Declared ?? bound.Signature, bound.Declared ?? bound.Signature, this.retentionOwnCallables);
+            var own = this.retentionViewed ? this.Viewed(bound.Declared ?? bound.Signature, 0)! : bound.Declared ?? bound.Signature;
+            this.retentionOwnHanded.Add(own); // As the callee's declaration states it, in its view.
+            this.Handed(own, own, this.retentionOwnCallables);
         }
 
         for (var i = 0; i < this.retentionCallables.Count; i++)

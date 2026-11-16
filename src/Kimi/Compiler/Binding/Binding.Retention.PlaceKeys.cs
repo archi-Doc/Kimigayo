@@ -26,9 +26,9 @@ namespace Kimi.Compiler;
 /// path reads it (a `during self` layer with the Origin reading gives), null where it dereferences none. The path's dereference is
 /// Binding's of that layer (Dereferenced, PathOrigin's one rule); the key holds Types only, as every MIR Type does. <see cref="Signature"/>:
 /// on a called function's parameter path (TyCtxt.ParameterKey), the Type its declaration writes at the Place, paired by the storage walk's
-/// rule and carrier convention (StorageAt.Signature, DECISIONS BU-113: DeclaredRun, SignaturePast, Below) but read in the function's view
-/// (View, SPEC 8.2.3), which the storage walk does not read: below a part an identity premise gives a form, this is the form's
-/// counterpart where StorageAt.Signature keeps the abstract Type. Inside the binding of an abstract Type of that declaration it is the
+/// rule and carrier convention (StorageAt.Signature, DECISIONS BU-113: DeclaredRun, SignaturePast, Below) and, as that walk's (PLAN
+/// G935 c3-2), read in the function's view (View, SPEC 8.2.3; Binding.Retention.Declared.cs): below a part an identity premise gives a
+/// form, it is the form's counterpart. Inside the binding of an abstract Type of that declaration it is the
 /// abstract Type itself, kept below (SPEC 15.6.4: the binding is hidden; PLAN G823); null on any other path.</summary>
 internal readonly record struct PlaceKey(BoundType? Type, BoundType? Written, BoundType? Holder, int Case, BoundType? Through, BoundType? Signature = null)
 {
@@ -77,7 +77,6 @@ internal readonly record struct OwnLayer(BoundType? Layer, HoldStep Step, PlaceK
 public sealed partial class Binding
 {
     private readonly HashSet<(BoundType Type, BoundType? Written, BoundType? Holder, BoundType? Signature)> ownSeen = new(); // OwnLayers' walked keys, reused.
-    private readonly List<BoundType> viewMembers = new(); // View's scratch: an identity class's members.
 
     // SPEC 5.2.1 Retained dependencies, 5.7 Calls, 15.6.4 (PLAN G583, G598, C-189; contract in TyCtxt.Raw.cs): the parts the value at a
     // Place's key holds at its own address, by ByValue at any holder, each part as the body sees it (BodySees, as the storage walk's
@@ -212,35 +211,6 @@ public sealed partial class Binding
 
         this.retentionHeld.RemoveRange(start, this.retentionHeld.Count - start);
         return complete;
-    }
-
-    // SPEC 8.2.3 (PLAN G823 revision 1): a declared counterpart as its declaring function's body sees it. Identity is closed under
-    // replacement inside any Type, so an abstract Type of the function's own declaration takes the form its identity class in the
-    // function's view fixes (Binding.TypeIdentity, the one judge): a constructed member (then paired as any declared Type: `S.Item is
-    // raw/u8` shows the layer), else a member that is no abstract Type of the function (an enclosing Type's parameter: shown), else itself.
-    // Any other Type is itself. A class's constructed members are one Type, so the first in index order is taken.
-    private BoundType? View(BoundType? signature)
-    {
-        if (OwnAbstract(signature) is not { } function)
-        {
-            return signature;
-        }
-
-        this.viewMembers.Clear();
-        this.IdentityMembers(signature!, this.ConstraintScope(function), this.viewMembers);
-        var shown = signature;
-        for (var i = 0; i < this.viewMembers.Count; i++)
-        {
-            var member = this.viewMembers[i];
-            if (member.Kind is not (BoundTypeKind.Parameter or BoundTypeKind.AssociatedProjection or BoundTypeKind.TargetProjection))
-            {
-                return member;
-            }
-
-            shown = ReferenceEquals(shown, signature) && OwnAbstract(member) is null ? member : shown;
-        }
-
-        return shown;
     }
 
     // SPEC 5.7 Reading a Field (C-189): the path's last dereferenced layer past a value of `prefix`, whose Holdings entry is `entry`. A

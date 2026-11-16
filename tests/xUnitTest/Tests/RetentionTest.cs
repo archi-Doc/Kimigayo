@@ -836,6 +836,21 @@ public sealed partial class RetentionTest
         Assert.Equal([$"store 0: own {{1 Value}}, {bound}", $"store 0: own {{0 Content, 1 Value}}, {declared}"], Calls(c, "f"));
     }
 
+    // SPEC 8.2.3, 15.6.4 (PLAN G935 c3-2; class 1): a call's record reads the callee's kept Type in its function's view. Under
+    // `T is Option<V>` the storage past slot's layers is an Option<V>, which keeps `value: V` (also inside `Box<T>`: the view holds at
+    // every depth), and a `value: T` holds a V the V storage keeps; without the premise the storage of T keeps no V. Fail-before on
+    // fce0d5078: the three rows with the premise kept nothing past slot's layers (the storage walk kept T against the key walk's View).
+    [Theory]
+    [InlineData("func f<T, V>(slot: uniq/(uniq/T during a), value: V)\n    T is Option<V>\n    return\nfunc g(spare: raw/u8)\n    var m: Option<raw/u8> = .None\n    var x = m@uniq\n    f(x@uniq, spare)\n", true)]
+    [InlineData("func f<T, V>(slot: uniq/(uniq/V during a), value: T)\n    T is Option<V>\n    return\nfunc g(spare: raw/u8)\n    var m: raw/u8 = null\n    var x = m@uniq\n    f(x@uniq, Option.Some(spare))\n", true)]
+    [InlineData("struct Box<E>\n    public var item: E\n    public init(item: E) => self.item = item@move\nfunc f<T, V>(slot: uniq/(uniq/Box<T> during a), value: V)\n    T is Option<V>\n    return\nfunc g(spare: raw/u8)\n    var m = Box<Option<raw/u8>>.init(.None)\n    var x = m@uniq\n    f(x@uniq, spare)\n", true)]
+    [InlineData("func f<T, V>(slot: uniq/(uniq/T during a), value: V) => ()\nfunc g(spare: raw/u8)\n    var m: Option<raw/u8> = .None\n    var x = m@uniq\n    f(x@uniq, spare)\n", false)]
+    public void ACallReadsTheKeptTypeInItsFunctionsView(string source, bool kept)
+    {
+        var reached = Calls(Bind(source), "f").Single().Split("reached")[1];
+        Assert.Equal(kept, reached.Contains("1 Value", StringComparison.Ordinal));
+    }
+
     // Review r3's B3: an erased callable's carrier output is a fixed Origin its fixed inputs reach, so `mk`'s result `a` retains the
     // View borrowing `*q` (under `v.source == c`, `use`'s result retains `q`), and a generic caller passing its own carriers to `map`
     // retains `a` through the bound `map`'s call instantiates.
