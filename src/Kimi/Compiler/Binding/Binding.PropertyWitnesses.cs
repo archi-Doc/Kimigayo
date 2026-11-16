@@ -6,8 +6,6 @@ namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
-    private readonly Dictionary<(BoundConformancePath Path, BoundAccessor Requirement), (BoundAccessor Bridge, PropertyWitnessKind Kind)> propertyBridges = new();
-
     // Standard operations are verified ordinary function bodies. No member lookup is repeated in an instance.
     private FunctionKoto? PropertyWitnessFunction(BoundConformancePath path, BoundPropertyWitness witness)
     {
@@ -19,8 +17,16 @@ public sealed partial class Binding
         // SPEC 11.9.2: an inherited Field is reached from the requirement receiver over the conforming Type by standard projection,
         // as a direct access is (AdtDef.FindField), so a bridge for a base path has the same body as an own one. An edit that
         // replaces the requirement, the implementing Property or the operation rebuilds the body; otherwise its Types are refreshed.
-        var key = (path, witness.Requirement);
-        if (!this.propertyBridges.TryGetValue(key, out var cached) || !ReferenceEquals(cached.Bridge.Declaration, witness.Requirement.Declaration) ||
+        // The bridge is kept with its path (BoundConformancePath.PropertyBridges).
+        var bridges = path.PropertyBridges ??= new();
+        var index = bridges.Count - 1;
+        while (index >= 0 && !ReferenceEquals(bridges[index].Requirement, witness.Requirement))
+        {
+            index--;
+        }
+
+        var cached = index < 0 ? default : bridges[index];
+        if (cached.Bridge is null || !ReferenceEquals(cached.Bridge.Declaration, witness.Requirement.Declaration) ||
             !ReferenceEquals(cached.Bridge.Property, witness.Implementation.Property) || cached.Kind != witness.Kind)
         {
             BoundAccessor bridge;
@@ -73,7 +79,15 @@ public sealed partial class Binding
             }
 
             function.SetPropertyWitnessBody(body, bridge.Result);
-            this.propertyBridges[key] = (bridge, witness.Kind);
+            if (index < 0)
+            {
+                bridges.Add((witness.Requirement, bridge, witness.Kind));
+            }
+            else
+            {
+                bridges[index] = (witness.Requirement, bridge, witness.Kind);
+            }
+
             return bridge.ExecutionFunction;
         }
         else
