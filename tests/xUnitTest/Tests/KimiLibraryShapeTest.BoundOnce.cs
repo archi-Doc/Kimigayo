@@ -27,24 +27,14 @@ public partial class KimiLibraryShapeTest
 
     // c17 (RC1): the library pass numbers every library node a later phase reads, so the library table's count after the first Bind
     // equals its count after the first Analyze. At dev the MIR builder's CallPlan.Accessor creates and numbers 7 library accessors'
-    // execution functions (Binding.AccessorFunction) after Bind: 16,120 against 16,134. c2's programs (TheLibraryIsIndependentOfTheProgram).
+    // execution functions (Binding.AccessorFunction) after Bind: 16,120 against 16,134. c2's programs and, since S1-0b, the library-layer
+    // rows' whole corpus (c16's), valid or not: a check analyzes whatever Binding found (SPEC 23.1.2).
     [Theory(Explicit = true)] // Until G949 S1-1.
-    [InlineData("")]
-    [InlineData("docs/examples/Hello/Hello.kimi")]
-    [InlineData("tests/milestones/Milestone26.kimi")]
-    [InlineData("tests/milestones/Milestone27.kimi")]
-    [InlineData("tests/milestones/Milestone30.kimi")]
-    [InlineData(Milestone31)]
-    [InlineData("tests/milestones/Milestone32.kimi")]
-    [InlineData("tests/milestones/Milestone35.kimi")]
-    [InlineData("docs/examples/Ranges/Ranges.kimi")]
-    [InlineData("docs/examples/Utf8Formatting/Utf8Formatting.kimi")]
+    [MemberData(nameof(LayerPrograms))]
+    [MemberData(nameof(LayerCorpus))]
     public void TheLibraryPassNumbersEveryLibraryNode(string program)
     {
-        var c = Compilation.CreateForTest();
-        Assert.True(c.Prepare(WindowsProfile.Target));
-        c.Kotonoha.AddSource(new SourceDocument("Program.kimi", program.Length == 0 ? string.Empty : Repository.ReadText(program.Split('/'))));
-        Assert.True(c.Bind().IsComplete);
+        var c = Bound(program);
         var bound = c.Library.Kotonoha.Syntax.Count;
         c.Analyze();
         Assert.Equal(bound, c.Library.Kotonoha.Syntax.Count);
