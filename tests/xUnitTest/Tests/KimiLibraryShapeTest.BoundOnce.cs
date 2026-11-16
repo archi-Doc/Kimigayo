@@ -10,7 +10,7 @@ namespace XunitTest;
 
 // PLAN G949 Stage 1 (the design's coverage rows c13 and c17): the library pass binds the Kimi library once per compilation, and every
 // later Bind is a program pass over the source modules. c13 fails at dev a63b1598b and is Explicit until G949 S1-1 lands the library
-// pass; c17 passes since S1-e (S1-1's SyntaxTable refusal lands only after it), its corpus row Explicit as the library-layer rows' is.
+// pass; c17 passes since S1-e (S1-1's SyntaxTable refusal lands only after it), its corpus row Explicit as the library-layer corpus row is.
 public partial class KimiLibraryShapeTest
 {
     // c13 (bound once): after the first Bind, a second Bind's node table holds the program's nodes only, while its Result keeps the

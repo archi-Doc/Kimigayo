@@ -29,8 +29,8 @@ namespace XunitTest;
 // pass), so synthesized ids (R8-M32's Temporary 1) do not enter a table's row; rows compare as a sorted multiset. How a store compares
 // is its disposition (S1-0b r2: the dispositions' §2 with the review's C1, C2 and C5), named in one table (LibraryLayer.Disposition);
 // a store not in it is a fact:
-// - fact: each program's rows equal the empty program's. Call scratch (suppliedExpansions, activeOriginRequirements) is a fact once its
-//   call empties it at its end (G949 S1-e), so a leftover is a difference;
+// - fact: each program's rows equal the empty program's. Call scratch (suppliedExpansions, activeOriginRequirements and an Origin
+//   requirement work's Dependents) is a fact once its call empties it at its end (G949 S1-e), so a leftover is a difference;
 // - subset: a content interner or Type-keyed memo keeps every row of the empty program's unchanged, and a program's extra row is the
 //   program's level (D2b-d §1.1, §1.5);
 // - epoch: a memo of one capability epoch is the program's (D2b-d §1.1, census O16) and is not printed; its invariant is
@@ -39,10 +39,11 @@ namespace XunitTest;
 //   its readers to the walk or memo that assigns it;
 // - pool: a pool prints its live prefix, asserted slot by slot to be its live store's values in order, and not its free tail.
 // Any other difference is a program fact in the library layer, never filtered: it moves to the program overlay by design (F decides).
-// Both rows are Explicit until the layer is clean (G949's S1-r1 waits for it). Before S1-e they differ in the lazy library facts S1-e
-// makes eager (the dispositions' rows 1, 1b and 2), in its call scratch (rows 8 and 17) and in the synthesized nodes' HIR rows, which
-// Milestones 27 and 30 number by their uses (R8-M32's Temporary 1); and a library Origin requirement work's Dependents list holds the
-// program's consumers (S1-0b r2's report: no disposition yet). The fast row takes about 0.2 s per program.
+// The layer is clean since G949 S1-e (S1-r1 waited for it): before it the rows differed in the lazy library facts S1-e makes eager (the
+// dispositions' rows 1, 1b and 2), in the call scratch it empties (rows 8 and 17, and a library Origin requirement work's Dependents,
+// which held the program's consumers) and in the synthesized nodes' HIR rows, which Milestones 27 and 30 numbered by their uses (R8-M32's
+// Temporary 1). The fast row runs in every Unit, about 0.2 s per program; the corpus row (593 programs, about 75 to 220 s) is Explicit,
+// run by each G949 unit and window.
 public partial class KimiLibraryShapeTest
 {
     private static readonly Lazy<string[]> EmptyProgramLayer = new(() => LibraryLayer.Dump(Bound(string.Empty)));
@@ -109,11 +110,11 @@ public partial class KimiLibraryShapeTest
         static object? Property(object x, string name) => x.GetType().GetProperty(name, BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(x);
     }
 
-    [Theory(Explicit = true)] // Until the layer is clean (PLAN G949 S1-0b's report).
+    [Theory]
     [MemberData(nameof(LayerPrograms))]
     public void TheLibraryLayerIsIndependentOfTheProgram(string program) => SameLayerAsTheEmptyPrograms(program);
 
-    [Theory(Explicit = true)] // Until the layer is clean (PLAN G949 S1-0b's report).
+    [Theory(Explicit = true)] // Its length (PLAN G949 S1-0b): run by each G949 unit and window.
     [MemberData(nameof(LayerCorpus))]
     public void TheLibraryLayerIsIndependentOfTheCorpus(string program) => SameLayerAsTheEmptyPrograms(program);
 
