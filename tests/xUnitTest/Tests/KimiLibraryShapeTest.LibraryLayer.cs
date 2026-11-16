@@ -44,7 +44,7 @@ namespace XunitTest;
 // The layer is clean since G949 S1-e (S1-r1 waited for it): before it the rows differed in the lazy library facts S1-e makes eager (the
 // dispositions' rows 1, 1b and 2), in the call scratch it empties (rows 8 and 17, and a library Origin requirement work's Dependents,
 // which held the program's consumers) and in the synthesized nodes' HIR rows, which Milestones 27 and 30 numbered by their uses (R8-M32's
-// Temporary 1). The fast row runs in every Unit, about 0.2 s per program; the corpus row (593 programs, about 75 to 220 s) is Explicit,
+// Temporary 1). The fast row runs in every Unit, about 0.4 s per program; the corpus row (593 programs, a few minutes) is Explicit,
 // run by each G949 unit and window.
 public partial class KimiLibraryShapeTest
 {
@@ -74,19 +74,25 @@ public partial class KimiLibraryShapeTest
     // The epoch rule's invariant: ResetCapabilities, which begins every pass (its one call is ResetPass's, which Bind runs first in each
     // pass: ArchitectureRulesTest's row), ends the capability epoch, so no entry of a per-epoch memo is current after it. Every component
     // summary is stale (its Epoch is not summaryEpoch); Enumerate's kept pool is free (enumerateKeptPoolNext 0: the kept lists are
-    // enumerateKept's, review C1); every capability work holds CapabilityWork.Reset's state; every other epoch store is empty. Reset
-    // leaves a work's Site and Fact (review N2). Site is the limit site of the work's own Closure signature, its Use that signature's
-    // binder and its Needed flag cleared by ResetCapabilities (ClearNeededSites); only the work's own evaluation reads it. Fact, the U
-    // fact of its last Unknown, is payload no fixpoint compares (design-r2 Amendment 4): each evaluation rewrites it, but a consumer that
-    // requests the work while it waits in the queue reads it beside the reset Unknown (RequestCapability's read of the queued work), for
-    // record selection only, never a verdict; so it is not asserted here until G949 S1-e's Reset empties it (S1-0b r2's review, Finding 3).
+    // enumerateKept's, review C1); every capability work holds CapabilityWork.Reset's state, its Fact included; every other epoch store
+    // is empty. Reset leaves only a work's Site (review N2): the limit site of the work's own Closure signature, its Use that signature's
+    // binder and its Needed flag cleared by ResetCapabilities (ClearNeededSites); only the work's own evaluation reads it. Fact, the U fact
+    // of its last Unknown, is payload no fixpoint compares (design-r2 Amendment 4), and a consumer that requests the work while it waits
+    // in the queue reads it beside the reset Unknown (RequestCapability's read of the queued work), for record selection only; Reset
+    // empties it since G949 S1-e, so that read never hands out a previous epoch's Fact (S1-0b r2's review, Finding 3).
     [Fact]
     public void TheCapabilityMemosEndWithTheirEpoch()
     {
         var binding = Bound("example/Hello").Binding;
+
+        // Hello's works end with no U fact, so one work keeps one as an earlier epoch's Unknown leaves it: without Reset's clear the
+        // Fact check below fails.
+        var work = ((IDictionary)LibraryLayer.ValueAt(binding, "Binding.capabilityNodes")).Values.Cast<object>().First();
+        var fact = RuntimeHelpers.GetUninitializedObject(typeof(Binding).GetNestedType("CallableUnknown", BindingFlags.NonPublic)!);
+        work.GetType().GetProperty("Fact", BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(work, fact);
         typeof(Binding).GetMethod("ResetCapabilities", BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(binding, [binding.Result.Mode]);
         var epoch = (int)LibraryLayer.ValueAt(binding, "Binding.summaryEpoch");
-        string[] reset = ["Result", "Assumed", "Evaluated", "Queued", "Pending", "Parent", "Cause", "OwnCause", "Origin", "Parts", "Reads", "Dependents"];
+        string[] reset = ["Result", "Assumed", "Evaluated", "Queued", "Pending", "Parent", "Cause", "OwnCause", "Fact", "Origin", "Parts", "Reads", "Dependents"];
         foreach (var store in LibraryLayer.StoresOf(LibraryLayer.Rule.Epoch))
         {
             var value = (IEnumerable)LibraryLayer.ValueAt(binding, store);
