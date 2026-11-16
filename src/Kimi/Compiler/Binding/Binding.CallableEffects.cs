@@ -6,11 +6,10 @@ namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
-    private readonly List<CallableEffectUse> callableEffectUses = new(); // The program part (CallableEffectUses).
     private readonly Dictionary<Koto, (IsKoto Clause, FunctionKoto Requirement)> callablePremiseFailures = new(ReferenceEqualityComparer.Instance);
 
-    // Each selected use of a bounded Callable clause, once per pass (DECISIONS BU-220): the program part, then the library's.
-    private LayerList<CallableEffectUse> CallableEffectUses => new(this.callableEffectUses, this.Library.Layer.CallableEffectUses);
+    // Each selected use of a bounded Callable clause, once per pass: the running pass's part (PassPart, EnterPass).
+    private List<CallableEffectUse> callableEffectUses;
 
     internal static BoundType? CallableCore(BoundType? type)
         => type is { Kind: BoundTypeKind.Semantics, Components.Count: 1 } ? type.Components[0] : type;
@@ -41,7 +40,7 @@ public sealed partial class Binding
                 continue;
             }
 
-            var clauses = this.CallableEffectClauses;
+            var clauses = this.callableEffectClausesView;
             for (var i = 0; i < clauses.Count; i++)
             {
                 var clause = clauses[i];
@@ -93,7 +92,9 @@ public sealed partial class Binding
     private void CollectCallableEffectUses()
     {
         this.callableEffectUses.Clear();
-        for (var i = 0; i < this.nodes.Count && this.CallableEffectClauses.Count != 0; i++)
+        // A use may select a library callee's bounded clause, so the test reads every pass's clauses (review-r1a B2), as
+        // AvailableCallableEffects does; the uses collected are the pass's own (its nodes).
+        for (var i = 0; i < this.nodes.Count && this.callableEffectClausesView.Count != 0; i++)
         {
             var node = this.nodes[i];
             if (node is InvocationKoto { BoundCall: { } call } && this.Library.PresentedTarget(call.Target).Declaration is FunctionKoto function)

@@ -260,10 +260,11 @@ public class ArchitectureRulesTest
     [InlineData("Readers of an Origin requirement work's Consumer mark", "src/Kimi/Compiler", @"\.Consumer\b|\bConsumer:", "Binding/Binding.OriginRequirements.cs=2")]
     [InlineData("Holders of an inline summary's Tarjan numbers", "src/Kimi/Compiler/Binding", @"\b(?:InlineSummary|inlineSummaries|inlineSummaryPool|inlineComponents|Summary)\b", "Binding.ComponentSummaries.cs=7;Binding.InlineLayouts.cs=43")]
     // PLAN G949 S1-0b r3 (the dump's epoch rule): the memos of one capability epoch are the program's because each pass begins with
-    // ResetCapabilities: its one call is ResetPass's, which Bind runs first in each pass and Invalidate on an edit. A further caller (G949
-    // S1-r1's pass driver among them) fails here until the epoch rule's premise is reviewed. Binding's own ResetPass calls are this.ResetPass
-    // (a member call's spelling); the conformance identities' and paths' ResetPass(ulong) (S1-b1) are other members of the name.
-    [InlineData("A pass's start ends the capability epoch", "src/Kimi/Compiler", @"\bResetCapabilities\(|\bthis\.ResetPass\(", "Binding/Binding.Capabilities.cs=1;Binding/Binding.Pass.cs=1;Binding/Binding.cs=2")]
+    // ResetCapabilities: its one call is ResetPass's, which the pass driver's RunPass runs first in each pass of each run (Binding.Passes.cs)
+    // and Invalidate on an edit (Binding.cs; G949 S1-r1a, its premise reviewed there). A further caller (S1-r1b's library pass among them)
+    // fails here until the epoch rule's premise is reviewed again. Binding's own ResetPass calls are this.ResetPass (a member call's
+    // spelling); the conformance identities' and paths' ResetPass(ulong) (S1-b1) are other members of the name.
+    [InlineData("A pass's start ends the capability epoch", "src/Kimi/Compiler", @"\bResetCapabilities\(|\bthis\.ResetPass\(", "Binding/Binding.Capabilities.cs=1;Binding/Binding.Pass.cs=1;Binding/Binding.Passes.cs=1;Binding/Binding.cs=1")]
     public void SourcePatternStaysAtItsSites(string rule, string directory, string regex, string sites)
     {
         var expression = new Regex(regex);
@@ -425,6 +426,16 @@ public class ArchitectureRulesTest
         Assert.True(sites.Split(';').Order(StringComparer.Ordinal).SequenceEqual(actual), $"Interface enumerations: {string.Join(";", actual)}; the sites are {sites}.");
     }
 
+    // G949 D2b-d's d13 (DECISIONS BU-220): NodeColumns holds Binding's private node families, read and written only through each
+    // family's accessor, so no source file outside Compiler/Binding names it.
+    [Fact]
+    public void NodeColumnsIsNamedOnlyInBinding()
+    {
+        var binding = Path.Combine(Repository.Root, "src", "Kimi", "Compiler", "Binding") + Path.DirectorySeparatorChar;
+        var name = new Regex(@"\bNodeColumns\b");
+        Assert.DoesNotContain(SourceFiles("src", "*.cs"), x => !x.StartsWith(binding, StringComparison.OrdinalIgnoreCase) && name.IsMatch(File.ReadAllText(x)));
+    }
+
     // PLAN G949 S1-b2 (d11; DECISIONS BU-220): every Type carries the dense id its maker gave it, so only TyCtxt, which numbers each Type it
     // makes (Intern, Parameter), and BoundType, whose statics hold one fixed list of ids (its type initializer, CreatePrimitives and
     // CreateWrappingScalars), construct one, each site as many times as listed (the type initializer's four: Unit, Never, Boolean, Range),
@@ -438,16 +449,6 @@ public class ArchitectureRulesTest
             .GroupBy(static x => x.Site, StringComparer.Ordinal).Select(static x => $"{x.Key}={x.Count()}").Order(StringComparer.Ordinal).ToArray();
         Assert.Equal(
             new[] { "BoundType..cctor=4", "BoundType.CreatePrimitives=1", "BoundType.CreateWrappingScalars=1", "TyCtxt.Intern=1", "TyCtxt.Parameter=1" }, sites);
-    }
-
-    // G949 D2b-d's d13 (DECISIONS BU-220): NodeColumns holds Binding's private node families, read and written only through each
-    // family's accessor, so no source file outside Compiler/Binding names it.
-    [Fact]
-    public void NodeColumnsIsNamedOnlyInBinding()
-    {
-        var binding = Path.Combine(Repository.Root, "src", "Kimi", "Compiler", "Binding") + Path.DirectorySeparatorChar;
-        var name = new Regex(@"\bNodeColumns\b");
-        Assert.DoesNotContain(SourceFiles("src", "*.cs"), x => !x.StartsWith(binding, StringComparison.OrdinalIgnoreCase) && name.IsMatch(File.ReadAllText(x)));
     }
 
     // R7-C2a: Enumerate is a leaf of the judgment graph (Binding.ContractSolver.cs's contract). The members of its walk call exactly
