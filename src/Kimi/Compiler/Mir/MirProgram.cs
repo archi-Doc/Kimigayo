@@ -18,8 +18,8 @@
 // body holds exactly its rows, and a building body's tables and interning grow once to its segment's largest body's.
 // Its lookups (this[key], Callee, StaticInit) are the one demand point (PLAN G951): a key without a body is looked up by its phase's row
 // of the demand table (Phase): while Open, the builder that opened the version builds the body if the HIR publishes the definition with
-// a value outside the root range the builder built eagerly (MirBuilder.Demand); once Sealed, a lookup reads only. Null means only "this
-// definition has no body", never "not built yet".
+// a value outside the root range the builder built eagerly (MirBuilder.Demand); while the analyses judge, a lookup that would build throws;
+// once Sealed, a lookup reads only. Null means only "this definition has no body", never "not built yet".
 // One key identifies one body; warm rebuilding reuses body storage; Clear resets the report with the bodies.
 // Must not re-bind definitions or maintain a second body map in a consumer; a reader by ordinal reads through Body, never offsets an
 // ordinal or computes one from LibraryCount.
@@ -43,12 +43,17 @@ internal sealed class MirProgram
     /// <summary>The demand table (PLAN G951): a row per phase of a program version, each what a lookup of a key without a body does.</summary>
     internal enum Phase
     {
-        /// <summary>From <see cref="Open"/>: a lookup builds the body the HIR publishes a value for, validates it and runs its program
-        /// pass (<see cref="MirBuilder.Demand"/>).</summary>
+        /// <summary>From <see cref="Open"/> (the build, A4's rounds, the collector's runs): a lookup builds the body the HIR publishes a
+        /// value for, validates it and runs its program pass (<see cref="MirBuilder.Demand"/>); the driver's one stepping path
+        /// (<see cref="MirAnalysis.Step"/>) steps it before the reader's next round.</summary>
         Open,
 
-        /// <summary>Before a builder opens a version and from <see cref="Seal"/> (the end of Compilation's <c>BuildMir</c>): a lookup reads
-        /// only.</summary>
+        /// <summary>While the analyses judge (MirAnalysis.Run's step 4 and MirOrigins.Findings): a lookup that builds a body is a broken
+        /// contract and throws, unreachable because each lookup there was made in A4's clean round (A5's site keys replay A4's site inputs,
+        /// its static initializers were built by the program pass), whose reads all hit; a definition without a body is null.</summary>
+        Judging,
+
+        /// <summary>Before a builder opens a version and from the end of Compilation's <c>BuildMir</c>: a lookup reads only.</summary>
         Sealed,
     }
 
@@ -136,13 +141,15 @@ internal sealed class MirProgram
         this.LayerWalkWork = 0;
     }
 
-    /// <summary>Opens a version for its builder: a lookup builds a missing body on demand until <see cref="Seal"/>.</summary>
+    /// <summary>Opens a version for its builder: a lookup builds a missing body on demand until the version is sealed.</summary>
     /// <param name="builder">The builder of the version.</param>
     /// <param name="rootModules">The root range the builder builds eagerly.</param>
     internal void Open(MirBuilder builder, int rootModules) => (this.builder, this.RootModules, this.Demands) = (builder, rootModules, Phase.Open);
 
-    /// <summary>Seals the version (the end of Compilation's <c>BuildMir</c>): a lookup reads only.</summary>
-    internal void Seal() => this.Demands = Phase.Sealed;
+    /// <summary>Enters a row of the demand table: Judging and Open again around the analyses' judging (MirAnalysis.Run), Sealed at the end
+    /// of Compilation's <c>BuildMir</c>. A Sealed version stays Sealed; only <see cref="Open"/> opens a version.</summary>
+    /// <param name="phase">The row.</param>
+    internal void Enter(Phase phase) => this.Demands = this.Demands == Phase.Sealed ? Phase.Sealed : phase;
 
     /// <summary>Ends the library's prefix: the bodies begun so far are the library's (<see cref="LibraryCount"/>).</summary>
     internal void EndLibrary() => this.LibraryCount = this.count;
@@ -194,6 +201,7 @@ internal sealed class MirProgram
     private MirBody? Demand(MirDefKey key) => this.Demands switch
     {
         Phase.Open => this.builder!.Demand(key),
+        Phase.Judging => this.builder!.Demand(key) is null ? null : throw new InvalidOperationException($"A lookup while judging built {key} (InternalInvariant)."),
         Phase.Sealed => null,
         _ => throw new InvalidOperationException($"The demand table has no row {this.Demands} (InternalInvariant)."),
     };

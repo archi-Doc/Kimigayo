@@ -752,11 +752,12 @@ public sealed class MirAnalysisTest
         }
     }
 
-    // DECISIONS R5-M168: at check, steps 1 and 4 (A3, A5) judge only the root modules' bodies, so this is the library's A3 and A5 check, on
-    // each target, at full strength through the driver check uses with the library as a root module: a library construction record,
-    // validator finding or analysis problem fails it (the library ships with the compiler), A1's arena limit included, and a broken C1-F4
-    // view contract throws (DECISIONS BU-102). It reuses the compilation's TyCtxt, whose view throws again at every later read. Every unit
-    // changing A3 or A5 runs it.
+    // DECISIONS R5-M168, PLAN G951 (E1, E3): at check, steps 1 and 4 (A3, A5) judge only the root modules' bodies, step 3 only their
+    // obligations and MirOrigins.Findings only their layers' rows, so this is the library's check of them, on each target, at full strength
+    // through the driver check uses with the library as a root module: a library construction record, validator finding or analysis problem
+    // fails it (the library ships with the compiler), A1's arena limit included, and a broken C1-F4 view contract throws (DECISIONS BU-102).
+    // It reuses the compilation's TyCtxt, whose view throws again at every later read. Every unit changing the library, MIR construction,
+    // the validator or A1-A5 runs it.
     [Theory]
     [InlineData(WindowsProfile.Target)]
     public void TheLibraryHasNoAnalysisProblem(string target)
@@ -772,6 +773,53 @@ public sealed class MirAnalysisTest
             .Concat(program.Findings.Select(x => $"finding {x.Rule} {Line(c, x.Subject)}"))
             .Concat(program.Problems.All.ToArray().Where(static x => !x.IsRecord).Select(x =>
                 $"{x.Requirement} {x.Code} in {(x.Body >= 0 ? program.Body(x.Body).Key.Decl?.Name : "-")}: {Line(c, x.Subject)}")));
+    }
+
+    // PLAN G951 U1 (R2.4): a build whose root range is the program's, analyzed by the driver (A4's rounds over the one stepping path), judges
+    // as the eager build of another compilation of the same source: the same merged problems with their requirement, record class,
+    // ordinal, reason, members (body and views) and facts, the same validator findings and construction records, and each body it built
+    // with the eager body's A2 table; it builds fewer library bodies. Labels (SPEC): X1 valid (8.11.4; Stopwatch.reset has no environment
+    // effect, 8.11.2); X2 invalid (start reads the counter, an environment effect, so the confined bound fails at the argument:
+    // UnsatisfiedEffectBound_Kd, 8.11.4); X3 valid (10.5.3, 7.7.4); H1 valid (22.9.2, 16.2.1); the examples and milestones valid;
+    // Requirements invalid (one problem of each recording rule, above). X2 needs A4's second round (start, first named by its obligation);
+    // H1, Utf8Formatting and Milestone31 one for a destructor, a witness and storage bodies first named by the solve.
+    [Theory]
+    [InlineData("X1")]
+    [InlineData("X2")]
+    [InlineData("X3")]
+    [InlineData("H1")]
+    [InlineData("docs/examples/Hello/Hello.kimi")]
+    [InlineData("tests/milestones/Milestone26.kimi")]
+    [InlineData("docs/examples/Utf8Formatting/Utf8Formatting.kimi")]
+    [InlineData("docs/examples/Ranges/Ranges.kimi")]
+    [InlineData("tests/milestones/Milestone31.kimi")]
+    [InlineData("tests/milestones/Milestone35.kimi")]
+    [InlineData("Requirements")]
+    public void ALazyBuildIsAnalyzedAsTheEagerOne(string name)
+    {
+        var source = LazySource(name);
+        var eager = Analyzed(source, static _ => SyntaxTable.LibraryModule + 1);
+        var lazy = Analyzed(source, static c => c.SourceModules.Length);
+        Assert.Equal(Facts(eager), Facts(lazy));
+        var tables = eager.Bodies.ToArray().ToDictionary(Key, x => Table(eager, x));
+        Assert.All(lazy.Bodies.ToArray(), x => Assert.Equal(tables[Key(x)], Table(lazy, x)));
+        Assert.True(Library(lazy) < Library(eager), $"{Library(lazy)} of {Library(eager)} library bodies");
+    }
+
+    // PLAN G951 U1 (moved from U0): Hello built with its own root range and analyzed builds the 5 library bodies its analyses read.
+    [Fact]
+    public void ALazyHelloBuildsTheLibraryBodiesItReads()
+        => Assert.Equal(5, Library(Analyzed(LazySource("docs/examples/Hello/Hello.kimi"), static c => c.SourceModules.Length)));
+
+    // PLAN G951 U1 (R3-N2): a consumer steps after its round missed, and a round misses only at a body built since the last step, so a step
+    // with every body stepped is a broken contract, never a rerun (its loop would not end). X2 as above.
+    [Fact]
+    public void AStepWithEveryBodySteppedIsABrokenContract()
+    {
+        var c = MirBuildTest.Compile(LazySource("X2"));
+        var analysis = new MirAnalysis(c.Types);
+        var program = analysis.Run(new MirBuilder(c).Build(c.SourceModules.Length), c.SourceModules.Length);
+        Assert.Throws<InvalidOperationException>(() => analysis.Step(program, c.SourceModules.Length));
     }
 
     // V16: a warm report allocates nothing: clearing keeps the storage the problems of a version need.
@@ -884,6 +932,61 @@ public sealed class MirAnalysisTest
 
     // The first line of a syntax's text.
     private static string Line(Compilation c, SourceRef syntax) => c.SyntaxOf(syntax).ToString().Split('\n')[0].Trim();
+
+    // A source of the lazy rows: PLAN G951's X1, X2 (a library function at a Callable binding declaring confined), X3, H1 (a library heap
+    // buffer dropped), Requirements, or a repository file.
+    private static string LazySource(string name)
+    {
+        const string apply = "func apply<F>(action: ref/F) -> ()\n    F is Callable<(uniq/::Kimi.Time.Stopwatch) -> ()>\n        effect confined\n" +
+            "    var watch = ::Kimi.Time.Stopwatch.init()\n    action(watch@uniq)\n\n";
+        return name switch
+        {
+            "X1" => apply + "apply(::Kimi.Time.Stopwatch.reset)\n",
+            "X2" => apply + "apply(::Kimi.Time.Stopwatch.start)\n",
+            "X3" => MirBuildTest.StopwatchAction,
+            "H1" => "let buffer = ::Kimi.Text.heap(16)\n",
+            "Requirements" => Requirements,
+            _ => Repository.ReadText(name.Split('/')),
+        };
+    }
+
+    // A compilation of a source, built with a root range and analyzed with its source modules as roots, as Compilation's driver does.
+    private static MirProgram Analyzed(string source, Func<Compilation, int> range)
+    {
+        var c = MirBuildTest.Compile(source);
+        return new MirAnalysis(c.Types).Run(new MirBuilder(c).Build(range(c)), c.SourceModules.Length);
+    }
+
+    // Every merged problem in report order with its requirement, record class, ordinal, reason, members (body and views) and facts, then
+    // the validator findings and the construction records.
+    private static string[] Facts(MirProgram program)
+    {
+        var report = program.Problems;
+        var rows = new List<string>();
+        for (var i = 0; i < report.Merged.Length; i++)
+        {
+            var merged = report.Merged[i];
+            var members = report.Members(i).ToArray().Select(x => report.All[x].Body is >= 0 and var body ? $"{Key(program.Body(body))}/{report.All[x].Views:x}" : $"{report.All[x].Body}");
+            var facts = report.MergedFacts(i).ToArray().Select(static x => $"{x.Kind}@{x.Site}={x.Value}");
+            rows.Add($"{merged.Code} {merged.Subject} {merged.Requirement} {merged.Class} {merged.Ordinal} {merged.Reason} [{string.Join(", ", members)}] [{string.Join(", ", facts)}]");
+        }
+
+        return [.. rows, .. program.Findings.Select(static x => $"finding {x.Rule} {x.Subject}"),
+            .. program.Records(MirRecordClass.Construction).Select(static x => $"record {x.Code} {x.Subject}")];
+    }
+
+    // A body's definition across compilations: its kind, index and syntax.
+    private static string Key(MirBody body) => $"{body.Key.Kind} {body.Key.Index} {body.Source}";
+
+    // A body's A2 table: its rows, points, flags, views and first problem.
+    private static string Table(MirProgram program, MirBody body)
+    {
+        var drops = program.Drops;
+        return $"{string.Join(", ", drops.RowsOf(body.Ordinal).ToArray())} | {string.Join(", ", drops.PointsOf(body.Ordinal).ToArray())} | " +
+            $"{drops.FlagsOf(body.Ordinal)} {drops.ViewsOf(body.Ordinal)} {drops.Incomplete(body.Ordinal)?.Code}";
+    }
+
+    private static int Library(MirProgram program) => program.Bodies.ToArray().Count(static x => x.Source.IsLibrary);
 
     [Collection<AllocationIsolationCollection>]
     [Trait("Purpose", "Allocation")]

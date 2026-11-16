@@ -182,7 +182,7 @@ public partial class Compilation
 
         var program = (this.mirAnalysis ??= new(this.Types)).Run(this.ConstructMir(), this.SourceModules.Length);
         this.Collect(program);
-        program.Seal(); // Later lookups read only (PLAN G951).
+        program.Enter(Mir.MirProgram.Phase.Sealed); // Later lookups read only (PLAN G951).
         return program;
     }
 

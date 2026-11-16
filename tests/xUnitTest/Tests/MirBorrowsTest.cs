@@ -3050,7 +3050,7 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
             }
 
             this.obligations.Clear();
-            this.effects.Run(program, this.obligations);
+            Assert.True(this.effects.Run(program, this.obligations, SyntaxTable.LibraryModule + 1));
         }
     }
 }

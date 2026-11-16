@@ -13,6 +13,8 @@ namespace XunitTest;
 /// the first line of its subject and its views.</summary>
 public sealed partial class MirEffectsTest(ITestOutputHelper output)
 {
+    private const int All = Kimi.Compiler.Parsing.SyntaxTable.LibraryModule + 1; // The root range of every module: every obligation judged.
+
     private const string Sink = "contract Sink\n    func put(self: uniq/Self, value: i32) -> Result<(), BufferFull>\n        effect confined\n";
 
     private const string Witness = "struct S\n    Self is Sink\n    var loud: Loud = Loud.init()\n" +
@@ -989,6 +991,23 @@ public sealed partial class MirEffectsTest(ITestOutputHelper output)
         Assert.Equal(["Unsupported_Kd Self is Sink 1"], Problems(Sink + Loud + Chain + Witness + "        _ = G<i32>.init()\n        return .Ok(())\n"));
     }
 
+    // PLAN G951 E3 (DECISIONS R5-M168's input rule): A4 judges the obligations whose subject is in the root range; one outside it is the
+    // library check's (MirAnalysisTest.TheLibraryHasNoAnalysisProblem, the library as a root module), so the failing witness of S
+    // (LocalRecordsTheProgramsVersion's program) is not judged under a root range that excludes its module.
+    [Fact]
+    public void AnObligationOutsideTheRootRangeIsNotJudged()
+    {
+        var c = MirBuildTest.Compile(Sink + Loud + "group G\n    public func noisy() => Console.writeLine(\"x\")\n" + Witness + "        G.noisy()\n" +
+            "        return .Ok(())\npublic func main() => ()\n");
+        var program = c.BuildMir();
+        var (cases, flow) = (new MirCases(c.Types), new MirDataflow(new MirReach()));
+        var (outside, inside) = (new MirReport(), new MirReport());
+        Analyze(new MirEffects(c.Types, cases, flow), flow, cases, program, outside, 0);
+        Analyze(new MirEffects(c.Types, cases, flow), flow, cases, program, inside, c.SourceModules.Length);
+        Assert.Empty(Problems(c, outside));
+        Assert.Equal([Failed], Problems(c, inside));
+    }
+
     // R4-M1 (G126): A4 records the program version MirProgram.Version names, whatever body comes first: a fresh A4 recording the bodies
     // last first, so that body 0's first view comes last and must not start a version, finds the witness's failure, which composes its
     // call of G.noisy (before, that view restarted the recording and lost every other body); the next version starts empty, so recording
@@ -1006,9 +1025,9 @@ public sealed partial class MirEffectsTest(ITestOutputHelper output)
         program.Version++;
         Assert.Equal([Failed], Record(lastFirst: false));
         var fresh = new MirEffects(c.Types, cases, flow);
-        Analyze(fresh, flow, cases, program, new MirReport());
+        Analyze(fresh, flow, cases, program, new MirReport(), All);
         Assert.Equal(fresh.Evaluations, effects.Evaluations);
-        effects.Run(new MirProgram { Version = program.Version + 1 }, new MirReport());
+        Assert.True(effects.Run(new MirProgram { Version = program.Version + 1 }, new MirReport(), All));
         Assert.Equal(0, effects.Evaluations);
 
         string[] Record(bool lastFirst)
@@ -1026,13 +1045,14 @@ public sealed partial class MirEffectsTest(ITestOutputHelper output)
             }
 
             var report = new MirReport();
-            effects.Run(program, report);
+            Assert.True(effects.Run(program, report, All));
             return Problems(c, report);
         }
     }
 
-    // The driver's A4 rows over a built program and its A2 table: each body begun, its views' local facts, then the run.
-    private static void Analyze(MirEffects effects, MirDataflow flow, MirCases cases, MirProgram program, MirReport report)
+    // The driver's A4 rows over a built program and its A2 table: each body begun, its views' local facts, then the run, clean since the
+    // table holds every body.
+    private static void Analyze(MirEffects effects, MirDataflow flow, MirCases cases, MirProgram program, MirReport report, int rootModules)
     {
         foreach (var body in program.Bodies)
         {
@@ -1044,7 +1064,7 @@ public sealed partial class MirEffectsTest(ITestOutputHelper output)
             }
         }
 
-        effects.Run(program, report);
+        Assert.True(effects.Run(program, report, rootModules));
     }
 
     private static string[] Expected(string expected) => expected.Length == 0 ? [] : expected.Split('|');
@@ -1107,7 +1127,7 @@ public sealed partial class MirEffectsTest(ITestOutputHelper output)
                 var flow = new MirDataflow(new MirReach());
                 var effects = new MirEffects(c.Types, cases, flow);
                 analyses[i] = (effects, flow, cases, program, report);
-                return () => Analyze(effects, flow, cases, program, report);
+                return () => Analyze(effects, flow, cases, program, report, All);
             });
             for (var i = 0; i < sizes.Length; i++)
             {
@@ -1117,7 +1137,7 @@ public sealed partial class MirEffectsTest(ITestOutputHelper output)
                 {
                     program.Version++; // A new version of the same bodies, which Local starts.
                     report.Clear();
-                    Analyze(effects, flow, cases, program, report);
+                    Analyze(effects, flow, cases, program, report, All);
                 }));
                 Assert.Equal(evaluations[i], effects.Evaluations);
             }

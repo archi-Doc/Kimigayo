@@ -142,10 +142,11 @@ internal sealed partial class MirOrigins(TyCtxt types, MirCases cases)
 
     /// <summary>Adds, once per program after step 4's reads of the view, G215's located limit, one Unsupported_Kd in every view at each
     /// row of a layer whose rows no constructor body's slice includes (R4-M168): no MIR body judges them until the layer has a body of its
-    /// own.</summary>
+    /// own. A row outside the root range is the library check's (PLAN G951 E1, DECISIONS R5-M168's input rule).</summary>
     /// <param name="program">The program, whose constructor bodies' slices name the layers they include.</param>
     /// <param name="report">The program's problems.</param>
-    internal void Findings(MirProgram program, MirReport report)
+    /// <param name="rootModules">The root range: the rows whose site's module is below it are judged.</param>
+    internal void Findings(MirProgram program, MirReport report, int rootModules)
     {
         var layers = types.OriginLayers;
         if (layers.Count == 0)
@@ -173,7 +174,10 @@ internal sealed partial class MirOrigins(TyCtxt types, MirCases cases)
             var rows = types.OriginRows(layers[l]).Rows;
             for (var r = 0; r < rows.Count; r++)
             {
-                report.Add(new(DiagnosticCode.Unsupported_Kd, requirement, rows[r].Site, MirProblem.NoBody, ulong.MaxValue));
+                if (rows[r].Site.Module < rootModules)
+                {
+                    report.Add(new(DiagnosticCode.Unsupported_Kd, requirement, rows[r].Site, MirProblem.NoBody, ulong.MaxValue));
+                }
             }
         }
     }

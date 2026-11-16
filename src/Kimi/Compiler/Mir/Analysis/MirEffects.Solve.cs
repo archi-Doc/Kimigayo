@@ -10,9 +10,13 @@ namespace Kimi.Compiler.Mir;
 // A4's summaries and verdicts (DECISIONS R4-M22): the least fixed point of the summaries over one worklist, each node re-evaluated when a
 // summary it read grows, then P5's static keys joined (Spread in MirEffects.Keys, R4-M38), then each obligation judged with its remaining
 // atoms resolved by its definition's premises: an owing body per view, a Callable binding as a call through it.
+// A round's rule (PLAN G951): Compose is the one read of a body's nodes, and a read of a body A2's table does not hold (MirDropTable.Holds:
+// a body built since the driver's last step, which has no local facts) misses: it adds nothing, and the round goes on to its end, so it
+// demands every body it reads; only a clean round adds its obligations' problems, which wait in pending until then.
 internal sealed partial class MirEffects
 {
     private readonly List<EffectObligation> rows = [];
+    private readonly List<MirProblem> pending = []; // The round's obligation problems, added to the report only by a clean round.
     private readonly List<(BindingSymbol Target, Subst Instance)> targets = []; // What requirements on Types that are not abstract run, a stack.
     private readonly Dictionary<BoundType, byte> glued = new(ReferenceEqualityComparer.Instance); // One evaluation's destruction walks' slots (MirDepths).
     private byte[] classes = []; // Each node's summary: its classes,
@@ -31,6 +35,7 @@ internal sealed partial class MirEffects
     private int atomCount;
     private int scratchCount;
     private int dependentCount;
+    private bool missed; // Whether the round read a body A2's table does not hold.
 
     /// <summary>Gets the node evaluations of the last <see cref="Run"/>, linear in the program's calls (V16).</summary>
     internal int Evaluations { get; private set; }
@@ -39,14 +44,19 @@ internal sealed partial class MirEffects
     // never entered within it (MirDepths: a slot left Past).
     private byte Found => (byte)(this.found | (this.glued.ContainsValue(MirDepths.Past) ? Deep : 0));
 
-    /// <summary>Solves the summaries of the nodes <see cref="Local"/> recorded (driver step 3) and judges each <c>confined</c> obligation:
-    /// per view of its target an environment or unknown effect is its code at its subject, else a limit <c>Unsupported_Kd</c>; a failure the
-    /// premises decide covers every view.</summary>
+    /// <summary>Solves the summaries of the nodes <see cref="Local"/> recorded (driver step 3, a round) and judges each <c>confined</c>
+    /// obligation whose subject is in the root range (the library's are the library check's, PLAN G951 E3): per view of its target an
+    /// environment or unknown effect is its code at its subject, else a limit <c>Unsupported_Kd</c>; a failure the premises decide covers
+    /// every view. A round that read a body A2's table does not hold missed and adds no problem; the driver steps the bodies built since
+    /// its last step and runs the next round.</summary>
     /// <param name="program">The program whose bodies were recorded.</param>
     /// <param name="report">The problems of the program version.</param>
-    internal void Run(MirProgram program, MirReport report)
+    /// <param name="rootModules">The root range: the obligations whose subject's module is below it are judged (DECISIONS R5-M168).</param>
+    /// <returns>Whether the round was clean and added its problems.</returns>
+    internal bool Run(MirProgram program, MirReport report, int rootModules)
     {
-        this.program = program;
+        (this.program, this.missed) = (program, false);
+        this.pending.Clear();
         (this.atomCount, this.dependentCount, this.Evaluations) = (0, 0, 0);
         var count = program.Version == this.version ? this.nodeCount : 0; // A version Local recorded no view of has no node.
         MirDataflow.Grow(ref this.classes, count);
@@ -95,27 +105,38 @@ internal sealed partial class MirEffects
             this.Spread(count);
         }
 
-        this.Obligations(report);
+        this.Obligations(rootModules);
+        if (this.missed)
+        {
+            return false;
+        }
+
+        foreach (var problem in this.pending)
+        {
+            report.Add(problem);
+        }
+
+        return true;
     }
 
     // An obligation row's verdict, at Binding's row, which no body describes (R4-M71), by its classes' one answer (Outcome): decided (an
     // Environment or Unknown effect) fails it; a Limit is the located Unsupported_Kd and Deep the depth limit (R4-M153).
-    private static void Verdict(MirReport report, in EffectObligation row, byte found, ulong views)
+    private void Verdict(in EffectObligation row, byte found, ulong views)
     {
         var outcome = Outcome(found);
         if (outcome.IsDecided)
         {
-            report.Add(new(row.Code, row.Requirement, row.Subject, MirProblem.NoBody, views));
+            this.pending.Add(new(row.Code, row.Requirement, row.Subject, MirProblem.NoBody, views));
         }
         else if (outcome.IsLimit)
         {
             var requirement = DiagnosticRequirement.Ownership(OwnershipRequirement.Unsupported);
-            report.Add(new(DiagnosticCode.Unsupported_Kd, requirement, row.Subject, MirProblem.NoBody, views));
+            this.pending.Add(new(DiagnosticCode.Unsupported_Kd, requirement, row.Subject, MirProblem.NoBody, views));
         }
         else if (outcome.IsDeep)
         {
             var requirement = DiagnosticRequirement.Ownership(OwnershipRequirement.DepthLimit);
-            report.Add(new(DiagnosticCode.OwnershipDepthLimit_Kd, requirement, row.Subject, MirProblem.NoBody, views));
+            this.pending.Add(new(DiagnosticCode.OwnershipDepthLimit_Kd, requirement, row.Subject, MirProblem.NoBody, views));
         }
     }
 
@@ -157,9 +178,15 @@ internal sealed partial class MirEffects
     }
 
     // The summaries of a body's views a call selects, composed through its substitution under the selected view, their keys unchanged
-    // (P5); read nodes record the reader.
+    // (P5); read nodes record the reader. A body A2's table does not hold has no node yet: the round misses (PLAN G951).
     private void Compose(int body, ulong views, Subst? subst)
     {
+        if (views != 0 && !this.program.Drops.Holds(body))
+        {
+            this.missed = true;
+            return;
+        }
+
         for (var mask = views; mask != 0; mask &= mask - 1)
         {
             var node = this.bases[body] + BitOperations.TrailingZeroCount(mask);
@@ -374,7 +401,9 @@ internal sealed partial class MirEffects
     // every view under the use's premises with no caller view (its open pair layers admit every case), and an owner acquisition also
     // destroys the remaining environment; a failure the premises decide is reported in every view. An owing definition owes with every
     // implementation (SPEC 8.4), which its summary includes (Owe).
-    private void Obligations(MirReport report)
+    // A row whose subject is outside the root range is the library check's (PLAN G951 E3, DECISIONS R5-M168's input rule): Binding lists a
+    // library declaration's rows from the library alone, so their verdicts are the same in every program.
+    private void Obligations(int rootModules)
     {
         this.rows.Clear();
         types.EffectObligations(this.rows);
@@ -382,6 +411,11 @@ internal sealed partial class MirEffects
         this.reader = -1;
         foreach (var row in this.rows)
         {
+            if (row.Subject.Module >= rootModules)
+            {
+                continue;
+            }
+
             (this.found, this.scratchCount, this.definition) = (0, 0, row.Definition);
             this.glued.Clear();
             if (row.Callable is { } callable)
@@ -392,22 +426,22 @@ internal sealed partial class MirEffects
                     this.Process(callable, Drop);
                 }
 
-                Verdict(report, row, this.Found, ulong.MaxValue);
+                this.Verdict(row, this.Found, ulong.MaxValue);
             }
             else if (row.Definition is not { } target)
             {
-                report.Add(new(row.Code, row.Requirement, row.Subject, MirProblem.NoBody, ulong.MaxValue));
+                this.pending.Add(new(row.Code, row.Requirement, row.Subject, MirProblem.NoBody, ulong.MaxValue));
             }
             else
             {
-                this.Owe(report, row, target);
+                this.Owe(row, target);
             }
         }
     }
 
     // An owing definition (SPEC 8.4: every implementation, which its summary includes, SPEC 15.6.4, Local): its body per view; a function
     // without a body in every view at once.
-    private void Owe(MirReport report, in EffectObligation row, BindingSymbol definition)
+    private void Owe(in EffectObligation row, BindingSymbol definition)
     {
         var body = this.program.Callee(new(MirCalleeKind.Fn, definition));
         for (var mask = body is null ? 1UL : this.Views(body, null); mask != 0; mask &= mask - 1)
@@ -424,7 +458,7 @@ internal sealed partial class MirEffects
                 this.Compose(body.Ordinal, view, null);
             }
 
-            Verdict(report, row, this.Found, view);
+            this.Verdict(row, this.Found, view);
         }
     }
 

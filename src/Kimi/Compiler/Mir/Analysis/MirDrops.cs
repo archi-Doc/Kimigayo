@@ -86,6 +86,13 @@ internal sealed partial class MirDropTable
     /// <summary>Gets the flag points of the bodies closed, which <see cref="MirDrops"/> writes.</summary>
     internal List<MirFlagPoint> Points { get; } = [];
 
+    /// <summary>Gets whether the table holds a body: the driver's one stepping path (<see cref="MirAnalysis.Step"/>) has closed its entry
+    /// in this version, so step 2 has run on it (A4's local facts follow its entry in the same step); a round that reads a body the table
+    /// does not hold misses (PLAN G951).</summary>
+    /// <param name="body">The body's ordinal.</param>
+    /// <returns>Whether its entry is closed.</returns>
+    internal bool Holds(int body) => (uint)body < (uint)this.ends.Count;
+
     /// <summary>Gets the verdict rows of a body.</summary>
     /// <param name="body">The body's ordinal.</param>
     /// <returns>Its rows, empty for a body not analyzed.</returns>
