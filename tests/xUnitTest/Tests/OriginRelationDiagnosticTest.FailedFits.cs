@@ -112,7 +112,9 @@ public partial class OriginRelationDiagnosticTest
     // (n13b, n13b_deep nested, n13b_match) and an array (n13c) beside an independent UnboundTypeArgument_Kd: a context-typed Case waits
     // for its call's expectation (SPEC 10.5.1), so it is no evidence for `T` with a typed payload either, which the typed twins pin
     // (n13b_v, n13b_deep_v, n13b_match_v, n13c_v). A slot that only a nested join's failed part sits at rests too (n2_nested_slot, R4's
-    // Q4). PLAN G924 AF-2: a nested call whose own resolution failed is such a failed part, with its own record (c2a).
+    // Q4). PLAN G924 AF-2: a nested call whose own resolution failed is such a failed part, with its own record (c2a), also as a
+    // Tuple element, where only the slot at its element rests (c2h); so is a construction that rests on its anonymous function, whose
+    // parameter has no Type (d1; d2 beside an independent slot).
     [Theory]
     [InlineData("U1.6h-1", "g028", IdentityT + "func g<T>(x: (T, i32)) -> i32 => 0\n" + KD + "    return g((if c => .None else if d => undefinedName else => identity(.Some(3)), 3))\n", "UnboundTypeArgument_Kd identity(.Some(3)); UnresolvedBinding_Kd undefinedName")]
     [InlineData("U1.6h-5", "h4", "func h<T>(x: i64, y: Option<T>) -> i32 => 0\n" + KHead + "    return h(if c => undefinedName else => 3, .None)\n", "UnboundTypeArgument_Kd h(if c => undefinedName else => 3, .None); UnresolvedBinding_Kd undefinedName")]
@@ -120,6 +122,9 @@ public partial class OriginRelationDiagnosticTest
     [InlineData("U1.6h-1", "h4b_t", IdentityT + "func h<T>(x: i64, y: Option<T>) -> i32 => 0\n" + KHead + "    return h(if c => identity(4) else => identity(3), .None)\n", "UnboundTypeArgument_Kd h(if c => identity(4) else => identity(3), .None)")]
     [InlineData("U1.6h-1", "h7", IdentityT + "func h<T, U>(x: T, y: Option<U>) -> i32 => 0\n" + KHead + "    return h(if c => undefinedName else => identity(3), .None)\n", "UnboundTypeArgument_Kd h(if c => undefinedName else => identity(3), .None); UnresolvedBinding_Kd undefinedName")]
     [InlineData("G924 AF-2", "c2a", IdentityT + "func h<T, U>(x: T, y: Option<U>) -> i32 => 0\n" + KHead + "    return h(identity(.Some(3)), .None)\n", "UnboundTypeArgument_Kd h(identity(.Some(3)), .None); UnboundTypeArgument_Kd identity(.Some(3))")]
+    [InlineData("G924 AF-2", "c2h", IdentityT + "func h3<T, U>(x: (T, Option<U>)) -> i32 => 0\n" + KHead + "    return h3((identity(.Some(3)), .None))\n", "UnboundTypeArgument_Kd h3((identity(.Some(3)), .None)); UnboundTypeArgument_Kd identity(.Some(3))")]
+    [InlineData("G924 AF-2", "d1", "func hx<T>(x: T, y: i32) -> i32 => 0\n" + KHead + "    return hx(Option.Some(func [] (v) => v), 1)\n", "UnresolvedBinding_Kd v")]
+    [InlineData("G924 AF-2", "d2", "func h<T, U>(x: T, y: Option<U>) -> i32 => 0\n" + KHead + "    return h(Option.Some(func [] (v) => v), .None)\n", "UnboundTypeArgument_Kd h(Option.Some(func [] (v) => v), .None); UnresolvedBinding_Kd v")]
     [InlineData("U1.6h-1", "h7_t", IdentityT + "func h<T, U>(x: T, y: Option<U>) -> i32 => 0\n" + KHead + "    return h(if c => identity(4) else => identity(3), .None)\n", "UnboundTypeArgument_Kd h(if c => identity(4) else => identity(3), .None)")]
     [InlineData("U1.6h-1", "s1", IdentityT + HTx + KHead + "    let a = h(if c => undefinedName else => identity(3), 1)\n    return h(identity(4), 2)\n", "UnresolvedBinding_Kd undefinedName")]
     [InlineData("U1.6h-1", "s2", IdentityT + HTx + KHead + "    let a = h(if c => undefinedName else => identity(3), 1)\n    return 0\nfunc m() -> i32\n    return h(identity(4), 2)\n", "UnresolvedBinding_Kd undefinedName")]

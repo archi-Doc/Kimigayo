@@ -68,7 +68,7 @@ public sealed partial class Binding
     private InvocationKoto? nestedOperandProbe;
 
     // A recorded part's relation to its call (DECISIONS BU-74), a column of its record, one writer and one reader per bit: Awaits, its
-    // producer recorded it as awaiting its call (RecordPart's row; Awaits); Taken, on a call argument's own record, its call has
+    // producer recorded it as awaiting its call (RecordPart's row; Awaits), until its call's defaults resolved it alone (EndAwait); Taken, on a call argument's own record, its call has
     // selected and takes it (TakeArgument; TakenByCall). Taken ends no Awaits: a taken Join argument stays Join for TryCandidate's
     // re-check (KindOf), and a taken Literal or Typed argument does not start awaiting.
     [Flags]
@@ -196,13 +196,32 @@ public sealed partial class Binding
 
     // SPEC 10.2.1, 10.5.1 (PLAN G924, the owner's O-341 (a)): after selection, the own Type of a part that no expected Type reaches,
     // which binds a still-unbound slot: a literal's default, a waiting nested call's resolution with no expected result (its own
-    // literals defaulting); none for any other part. A failure is the part's own record and never reselects.
-    private BoundType? OwnType(Koto part, BindingScope scope) => this.KindOf(part) switch
+    // literals defaulting); none for any other part. A failure is the part's own record and never reselects. The resolved call awaits
+    // its call no more, whatever the resolution gave it (EndAwait).
+    private BoundType? OwnType(Koto part, BindingScope scope)
     {
-        PartKind.Literal => this.PartDefault(part, scope),
-        PartKind.Call when this.AwaitsCall(part) => this.BindNode(part, scope, null),
-        _ => null,
-    };
+        switch (this.KindOf(part))
+        {
+            case PartKind.Literal:
+                return this.PartDefault(part, scope);
+            case PartKind.Call when this.AwaitsCall(part):
+                var type = this.BindNode(part, scope, null);
+                this.EndAwait(part);
+                return type;
+            default:
+                return null;
+        }
+    }
+
+    // SPEC 10.5.1 (the owner's O-341 (a)): the one writer that ends Awaits: the selected candidate's defaults resolved the waiting
+    // nested call alone (OwnType), so it is no waiting part any more: one that got no Type and no failure of its own (it rests on a
+    // part of its own, such as an anonymous function without a Type) is a failed part to its readers (PartFailed), as one with its
+    // own failure already is.
+    private void EndAwait(Koto part)
+    {
+        ref var record = ref this.PartRecord(part);
+        record = record with { Relation = record.Relation & ~CallRelation.Awaits };
+    }
 
     // The one writer of the kind a producer decides for a part (P1 PrepareArgument, P2 AwaitsCallAtResult and AtArgumentPosition, P3
     // DeferNestedCall, P4 ClassifiedByCall), keyed by its core's syntax identity (PartCore) for this pass, and of its Awaits by one row:
