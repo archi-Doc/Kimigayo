@@ -214,10 +214,16 @@ public sealed partial class Binding
     private BoundOrigin OriginAtUse(BoundOrigin origin, Koto use, in CallableInstance comparison)
         => InComparison(comparison) ? this.SlotAtUse(origin, use) : this.OriginAtUse(origin, use);
 
-    // An end of a body row at its use, as the row's producer read it: a Callable comparison's row (Compared) as the comparison does. The
-    // readers of body rows (the C1-F4 view, the local-region graph) read their ends so.
+    // An end of a body row at its use, as the row's producer read it (the owner's O-385 (a): one reading per stored Origin): a Callable
+    // comparison's row (Compared) as the comparison does, the slot (DeclaredAtUse), every other row as its value (SuppliedAtUse). The one
+    // reading of a row's ends and the one reader of Compared: every reader of a row (the C1-F4 view, the local-region graph, the pending
+    // list) reads its ends so, and what it stores from them it keeps as read.
+    private BoundOrigin SuppliedAtUse(BoundOrigin origin, in BindingObligation obligation)
+        => obligation.Compared ? this.DeclaredAtUse(origin, obligation.Use) : this.SuppliedAtUse(origin, obligation.Use);
+
+    // A row's end as its producer read it (SuppliedAtUse with the row), its receivers resolved: OriginAtUse's composition for a row.
     private BoundOrigin OriginAtUse(BoundOrigin origin, in BindingObligation obligation)
-        => obligation.Compared ? this.SlotAtUse(origin, obligation.Use) : this.OriginAtUse(origin, obligation.Use);
+        => this.ReceiverAtUse(this.SuppliedAtUse(origin, obligation), obligation.Use);
 
     // An Origin at its use as written: OriginAtUse with a `let` region kept as the slot, not its value (RegionValueAtUse). A written
     // Origin binds so (BindOrigin), and a comparison's relation reads so (above); Binding.LocalRegions.cs's contract.
@@ -299,12 +305,13 @@ public sealed partial class Binding
 
     // DECISIONS R4-M126 §2.5 (b): an Origin relation formed naming a pending atom (PendingAtom), new or one obligationSet already holds,
     // joins the list of the outermost unclassified Closure whose atoms it names: one append per formation (PLAN V16), so a relation
-    // formed twice is judged twice, the second finding its use failed or proving it again, with no second record. Its ends are read at
-    // its use (PLAN G492-a (ii) revision 2: a `let` region of the use's own body as its value, which may name a pending atom).
+    // formed twice is judged twice, the second finding its use failed or proving it again, with no second record. Its ends are read as
+    // the row reads them (SuppliedAtUse with the row: a `let` region of the use's own body as its value, which may name a pending atom,
+    // and a Compared row's as the slot; PLAN G492-a (ii)), the reading its route takes too.
     private void AddPendingRelation(in BindingObligation obligation)
     {
-        if (obligation is not { Kind: BindingObligationKind.OriginOutlives, Longer: { } longer, Shorter: { } shorter, Use: var use } ||
-            PendingOwner(this.RegionValueAtUse(shorter, use), PendingOwner(this.RegionValueAtUse(longer, use), null)) is not { } owner)
+        if (obligation is not { Kind: BindingObligationKind.OriginOutlives, Longer: { } longer, Shorter: { } shorter } ||
+            PendingOwner(this.SuppliedAtUse(shorter, obligation), PendingOwner(this.SuppliedAtUse(longer, obligation), null)) is not { } owner)
         {
             return;
         }
@@ -379,13 +386,14 @@ public sealed partial class Binding
     // (RecordOriginChains: at RelationAt, a failed Origin environment's dependent, a body chain a twin); any other body chain stays a row
     // for A5 and the old reporter, unjudged here. A relation Binding judges is no row (2a0-D D1): its obligation leaves, as one judged at
     // binding time is never formed (AddObligation's callers route by BodyChain), unless a recorded chain is a body chain, whose obligation
-    // stays the twin's row (R4-M108, R4-M111). Each chain records as its Supplier the part of the obligation's longer end, as it supplies
-    // the end at the use (SuppliedAtUse), that holds the chain's end, and the entry's destination (DECISIONS R4-M133).
+    // stays the twin's row (R4-M108, R4-M111). Each chain records as its Supplier the part of the obligation's longer end, as the row
+    // supplies it (SuppliedAtUse with the row), that holds the chain's end, and the entry's destination (DECISIONS R4-M133). The row's ends
+    // are read as the row reads them (OriginAtUse with the row): a stored row is never read again by value (the owner's O-385 (a)).
     private void RoutePendingRelation(in BindingObligation obligation, BoundType? destination)
     {
         var (use, body) = (obligation.Use, obligation.Body);
-        var longer = this.OriginAtUse(obligation.Longer!, use);
-        var shorter = this.OriginAtUse(obligation.Shorter!, use);
+        var longer = this.OriginAtUse(obligation.Longer!, obligation);
+        var shorter = this.OriginAtUse(obligation.Shorter!, obligation);
         var refuted = RefutesOriginRelation(longer, shorter, body) || (obligation.Equality && RefutesOriginRelation(shorter, longer, body));
         if ((BodyChain(longer, shorter, obligation.Equality, body) && !refuted) || use.BindingFailure != BindingFailure.None)
         {
@@ -399,11 +407,11 @@ public sealed partial class Binding
         {
             for (var i = 0; i < all.Count; i++)
             {
-                var supplier = this.SuppliedBy(this.SuppliedAtUse(obligation.Longer!, use), all[i].Longer, use);
+                var supplier = this.SuppliedBy(this.SuppliedAtUse(obligation.Longer!, obligation), all[i].Longer, use);
                 all[i] = all[i] with { Supplier = supplier, Clause = obligation.Clause, WellFormed = obligation.WellFormed };
             }
 
-            var firstSupplier = this.SuppliedBy(this.SuppliedAtUse(obligation.Longer!, use), first.Longer, use);
+            var firstSupplier = this.SuppliedBy(this.SuppliedAtUse(obligation.Longer!, obligation), first.Longer, use);
             var recorded = first with { Supplier = firstSupplier, Clause = obligation.Clause, WellFormed = obligation.WellFormed };
             if (this.RecordOriginChains(use, RelationAt(obligation), body, destination, recorded, this.UnrefutedCause(use, recorded)))
             {
@@ -417,13 +425,14 @@ public sealed partial class Binding
         this.originStateVersion++;
     }
 
-    // The part of `supplied`, a relation's end as it supplies it at `use` (SuppliedAtUse), that supplied `resolved`, a record's end there
-    // (DECISIONS R4-M133): the first operand of a meet whose resolution holds it, otherwise the end itself.
+    // The part of `supplied`, a relation's end as it supplies it at `use` (SuppliedAtUse, read once; its operands are held), that supplied
+    // `resolved`, a record's end there (DECISIONS R4-M133): the first operand of a meet whose receiver resolution holds it, otherwise the end
+    // itself.
     private BoundOrigin SuppliedBy(BoundOrigin supplied, BoundOrigin resolved, Koto use)
     {
         for (var i = 0; i < supplied.Operands.Count; i++)
         {
-            if (OriginIncludes(this.OriginAtUse(supplied.Operands[i], use), resolved))
+            if (OriginIncludes(this.ReceiverAtUse(supplied.Operands[i], use), resolved))
             {
                 return this.SuppliedBy(supplied.Operands[i], resolved, use);
             }

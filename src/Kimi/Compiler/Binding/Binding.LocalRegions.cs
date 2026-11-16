@@ -13,7 +13,10 @@ namespace Kimi.Compiler;
 // initializer's Origin there, or the omitted slot's solved candidate), also recorded as a bound of the region. Its readers at a use:
 // RegionValueAtUse (an Origin; SuppliedAtUse and so OriginAtUse read through it) and RegionValuesAt (a Type), RegionalAt through it.
 // Invariants: a value holds no region of its own body (it is read once, when published); values and bounds are reset each pass
-// (ResetLocalRegions); a `var` region has no value.
+// (ResetLocalRegions); a `var` region has no value. A bound's parent is stored as its store read it at the bound's use (the owner's
+// O-385 (a): a body row's ends as the row reads them, SuppliedAtUse with the row; a `let` value as published; an initializer alias as
+// its producers read it) and read as held: LocalRegionSources, LocalRegionBound and LocalRegionSourceUse apply the receiver resolution
+// alone (ReceiverAtUse; a Closure is classified after its body's bounds are stored), never OriginAtUse (DECISIONS R4-M133 as amended).
 // A written Origin binds as the slot it names, not its value (BindOrigin through SlotAtUse): the value is read at each use, by the
 // readers above, and a written Origin's region is what a comparison constrains.
 // Must not: let a reader at a use in the local's own body take a `let` slot as written. The one exception, decided at one place
@@ -101,7 +104,7 @@ public sealed partial class Binding
                 {
                     for (var i = parents.Parents.Count - 1; i >= 0; i--)
                     {
-                        this.regionWork.Add(this.OriginAtUse(parents.Parents[i], parents.Values[i]));
+                        this.regionWork.Add(this.ReceiverAtUse(parents.Parents[i], parents.Values[i]));
                     }
                 }
 
@@ -125,18 +128,18 @@ public sealed partial class Binding
         return CollectionsMarshal.AsSpan(region.Sources);
     }
 
-    // The `index`-th Origin a bound recorded as outliving `origin` directly, as its bound's value has it (LocalRegionSources follows them
-    // to the finite sources); null past the last.
+    // The `index`-th Origin a bound recorded as outliving `origin` directly, as stored, its receivers resolved (LocalRegionSources follows
+    // them to the finite sources); null past the last.
     internal BoundOrigin? LocalRegionBound(BoundOrigin origin, int index)
         => this.localRegions.TryGetValue(origin, out var region) && index < region.Parents.Count
-            ? this.OriginAtUse(region.Parents[index], region.Values[index]) : null;
+            ? this.ReceiverAtUse(region.Parents[index], region.Values[index]) : null;
 
     internal bool HasRegionBounds(BoundOrigin origin)
         => IsLocalRegion(origin) || (this.localRegions.TryGetValue(origin, out var region) && region.Parents.Count != 0);
 
-    // The value that brought `source` into the region graph `region` reads, by LocalRegionSources' walk (each parent read through
-    // OriginAtUse at its bound's value, meet operands expanded, a meet `region` through its region operands): the value of the bound whose
-    // parent is `source` or a meet holding it, with that parent as the bound recorded it (before OriginAtUse, the atom a record's Borrow
+    // The value that brought `source` into the region graph `region` reads, by LocalRegionSources' walk (each parent as stored, its
+    // receivers resolved at its bound's value, meet operands expanded, a meet `region` through its region operands): the value of the bound
+    // whose parent is `source` or a meet holding it, with that parent as stored (before the receiver resolution, the atom a record's Borrow
     // carries; DECISIONS R4-M133); null when `region` holds `source` itself or does not reach it. A local's own initializer stands for its
     // declaration.
     internal (Koto Value, BoundOrigin Parent)? LocalRegionSourceUse(BoundOrigin region, BoundOrigin source)
@@ -166,7 +169,7 @@ public sealed partial class Binding
             {
                 for (var i = 0; i < bounds.Parents.Count; i++)
                 {
-                    var parent = this.OriginAtUse(bounds.Parents[i], bounds.Values[i]);
+                    var parent = this.ReceiverAtUse(bounds.Parents[i], bounds.Values[i]);
                     if (ReferenceEquals(parent, source))
                     {
                         return Use(bounds.Values[i], bounds.Parents[i]); // A direct parent first, before a longer path.
@@ -301,8 +304,8 @@ public sealed partial class Binding
 
         var evidence = obligation.Use;
         var body = obligation.Body;
-        longer = this.OriginAtUse(longer, obligation);
-        shorter = this.OriginAtUse(shorter, obligation);
+        longer = this.SuppliedAtUse(longer, obligation);
+        shorter = this.SuppliedAtUse(shorter, obligation);
         Add(longer, shorter);
         if (obligation.Equality)
         {

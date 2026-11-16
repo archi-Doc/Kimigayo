@@ -31,7 +31,8 @@ public sealed partial class Binding
 
     // SPEC 15.4.4, 15.3.6: `local`'s initializer has acquired every bound. An Origin its initializer omits whose bounds reach no Origin
     // but its own variables (none, or a cycle among them) has no candidate and is a local region of `local` (DECISIONS R4-M112); each
-    // resolved Origin's inference obligation is discharged, and the resolutions are published as region bounds. `slot` is the local's
+    // resolved Origin's inference obligation is discharged, and the resolutions are published as region bounds, kept as their producers
+    // read them at their uses (a fit's bound, a reference's binding; the owner's O-385 (a): never read again here). `slot` is the local's
     // next region slot (BindVariableCore).
     private BoundType ResolveInitializerOrigins(BoundType type, OriginDeclaration declaration, VariableKoto local, BindingScope scope, ref int slot)
     {
