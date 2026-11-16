@@ -384,7 +384,7 @@ public sealed partial class Binding
 
         if (identity is null || identity.PathStorage.Count == 0)
         {
-            return !this.DependentType(type) && this.capabilityMode == BindingMode.Final ? ConstraintProof.Refuted : ConstraintProof.Unknown;
+            return !this.DependentType(type) && this.capabilityMode == BindingMode.Final && !this.PathNotRuledOut(type, symbol, contract, scope) ? ConstraintProof.Refuted : ConstraintProof.Unknown;
         }
 
         if (identity.Invalid)
@@ -466,6 +466,52 @@ public sealed partial class Binding
     private ConstraintProof InstanceFormation(BoundType type, BindingScope scope)
         => type.Symbol is not { Declaration: DeclarationContainerKoto, Schema.GenericSlots.Count: > 0 } symbol ? ConstraintProof.Proven
             : type.Components.Count == symbol.Schema.GenericSlots.Count ? this.CheckTypeConstraints(type, scope) : ConstraintProof.Unknown;
+
+    // SPEC 8.3.2's closed world before ResolveConformance refutes: a conformance to the required reference's Contract declaration is a
+    // path not ruled out unless its reference, in the conforming Type's terms, is known to differ from the required one, in the
+    // scope's (IdentityRefuted), or each of its paths' own conditions is Refuted (PLAN G866). The walk opens the obligation as
+    // ResolveConformance does (openObligations); a request reaching it open reads no evidence and rules out nothing.
+    private bool PathNotRuledOut(BoundType type, BindingSymbol symbol, BindingSymbol contract, BindingScope scope)
+    {
+        if (contract.Type is not { } required || ReferenceEquals(required.Symbol, contract) || this.ConformancesOf(symbol) is not { } bindings)
+        {
+            return false;
+        }
+
+        var key = (type, contract);
+        ref var reentries = ref CollectionsMarshal.GetValueRefOrAddDefault(this.openObligations, key, out var open);
+        if (open)
+        {
+            reentries++;
+            this.reentryReads++;
+            return true;
+        }
+
+        try
+        {
+            for (var i = 0; i < bindings.Count; i++)
+            {
+                if (bindings[i].Contract.Type is { } formal && ReferenceEquals(formal.Symbol, required.Symbol) && this.StoredType(formal, type) is { } instance &&
+                    !this.IdentityRefuted(instance, required, scope, type))
+                {
+                    for (var p = 0; p < bindings[i].PathStorage.Count; p++)
+                    {
+                        if (this.ProveConformanceConditions(bindings[i].PathStorage[p], type, scope) != ConstraintProof.Refuted)
+                        {
+                            return true;
+                        }
+                    }
+                }
+            }
+
+            return false;
+        }
+        finally
+        {
+            this.openObligations.Remove(key, out var read);
+            this.reentryReads -= read;
+        }
+    }
 
     private ConstraintProof ProveConformanceConditions(BoundConformancePath path, BoundType type, BindingScope scope)
     {

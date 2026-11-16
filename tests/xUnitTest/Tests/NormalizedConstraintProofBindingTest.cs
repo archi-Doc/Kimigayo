@@ -149,14 +149,19 @@ public class NormalizedConstraintProofBindingTest
     // (SPEC 8.9.1): pair (1, 0)'s disjointness read forms L1's view's entry, which holds no class-key pairs (a read has no request's
     // classes); pair (2, 0) then proves L3's conditions in L1's scope, an outermost request whose classes join T and U, so it forms
     // that view's entry again with its class-key pairs. Kept until that request returned, the read's entry is reused without them:
-    // 4 fewer pairs on l2 (the struct's `U is C` met by L1's `T is U`), 3 on l2r (the roles swapped). The pairs over the library's: exact.
+    // 4 fewer pairs on t-q (the struct's `U is C` met by L1's `T is U`), 3 on t-q with the roles swapped (measured with the prototype's
+    // lifetime, EndClosureRead keeping the read's entry: 18 and 17). L1's condition names Q, a struct that is C, so L1's scope is
+    // consistent: with `{joined} is i32` (R7-C2e2-2's l2, l2r) the struct's premise meets i32's closed world in L1's scope, N9's premise
+    // error (the owner's O-296 (a); RecursiveContractTest's l2 rows). Q joins the class where i32 did and its own conformance forms no
+    // view entry, so the pairs are l2's and l2r's. The pairs over the library's: exact.
     [Theory]
     [InlineData("T", "U", 28)] // 22 and 20 before e2-3a: each publication forms the entries again
     [InlineData("U", "T", 26)]
     public void AValidatorsReadEntryGoesBackWhenTheReadEnds(string joined, string premised, int pairs)
     {
-        var source = "contract C\ncontract P<E>\n    func read(self: ref/Self, value: ref/E) -> i32\ncontract L1: P<i32>\ncontract L2: P<i32>\n" +
-            $"contract L3: P<i32>\nstruct S<T, U>\n    {premised} is C\n    Self is L1 when {joined} is {premised}, {joined} is i32\n" +
+        var source = "struct Q\n    Self is C\n    public var v: i32\n    public init(v: i32) => self.v = v\n" +
+            "contract C\ncontract P<E>\n    func read(self: ref/Self, value: ref/E) -> i32\ncontract L1: P<i32>\ncontract L2: P<i32>\n" +
+            $"contract L3: P<i32>\nstruct S<T, U>\n    {premised} is C\n    Self is L1 when {joined} is {premised}, {joined} is Q\n" +
             $"    Self is L2 when {joined} is string\n    Self is L3 when {joined} is C\n" +
             "    public func read(self: ref/Self, value: ref/i32) -> i32 => 1\n";
         Assert.Equal(pairs, ClosureWork(source) - ClosureWork(string.Empty));

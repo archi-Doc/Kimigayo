@@ -11,7 +11,7 @@ namespace Kimi.Compiler;
 public sealed partial class Binding
 {
     private readonly Dictionary<(Kotonoha Module, string Path), BindingScope?> defaultAliasTargets = new();
-    private Dictionary<Koto, List<BindingSymbol>>? importCandidates;
+    private Dictionary<Koto, List<BindingSymbol>>? gatheredGroups;
 
     private BindingSymbol? AccessibleImport(BindingSymbol head, BindingScope scope)
     {
@@ -119,18 +119,18 @@ public sealed partial class Binding
             return false;
         }
 
-        this.nameSteps.Add(new(NameStepKind.ImportGroup, use, candidate, imported));
+        this.nameSteps.Add(new(NameStepKind.ImportGroup, use, candidate, imported, default, default, default));
         return true;
     }
 
-    // An ImportGroup step's publication: the use's gathered group, which its call reads (BindCallCore).
+    // An ImportGroup step's publication: the use's gathered group, which its readers reach through GroupOf (Binding.FunctionGroups.cs).
     private void AddImportCandidates(Koto use, BindingSymbol imported, BindingSymbol candidate)
     {
-        this.importCandidates ??= new();
-        if (!this.importCandidates.TryGetValue(use, out var candidates))
+        this.gatheredGroups ??= new();
+        if (!this.gatheredGroups.TryGetValue(use, out var candidates))
         {
             candidates = new();
-            this.importCandidates.Add(use, candidates);
+            this.gatheredGroups.Add(use, candidates);
         }
 
         Add(imported, candidates);

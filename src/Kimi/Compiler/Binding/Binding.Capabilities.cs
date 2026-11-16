@@ -166,24 +166,6 @@ public sealed partial class Binding
         => type.Kind == BoundTypeKind.FunctionItem && type.Symbol?.Declaration is FunctionKoto { IsRequirement: true } && type.Components.Count > 1
             ? type.Components[1] : null;
 
-    private static FunctionTypeKoto? OwnFunctionBinder(BoundType type, BoundType signature)
-    {
-        if (type.Origin is { Kind: OriginKind.Input, Binder: FunctionTypeKoto binder } && ReferenceEquals(binder.BoundType, signature))
-        {
-            return binder;
-        }
-
-        for (var i = 0; i < type.Components.Count; i++)
-        {
-            if (OwnFunctionBinder(type.Components[i], signature) is { } found)
-            {
-                return found;
-            }
-        }
-
-        return null;
-    }
-
     // Whether a binder (an atom's, or a Type parameter's declaration) is inherited by `function`, nested in `body`: it is outside the
     // function and is no Container that the function is a member of below the body.
     private static bool Inherited(Koto binder, FunctionKoto function, Koto body)
@@ -219,7 +201,7 @@ public sealed partial class Binding
     }
 
     // SPEC 15.2.3, 15.3.4 (DECISIONS BU-73): a callable's call signature as an Owned part, with the binder of its own per-call Origins: a
-    // Function Type that quantifies an input is its own, under its syntax; a Closure's is its value's (ClosureSignature), under its literal,
+    // Function Type that quantifies an input is its own, under its binder (BoundType.Binder), at every instance; a Closure's is its value's (ClosureSignature), under its literal,
     // which every Closure Type names (ClosureType); a Function Item's, for a function nested in a body, root functions included
     // (EnclosingBody), is what it inherits (InheritedEnvironment), read from its declaration, and none for any other function, whose bound
     // arguments are its whole dependence.
@@ -229,7 +211,7 @@ public sealed partial class Binding
     {
         if (type.Kind == BoundTypeKind.Function)
         {
-            return OwnFunctionBinder(type, type) is { } binder ? (type, binder) : null;
+            return type.Binder is { } binder ? (type, binder) : null;
         }
 
         if (type.Kind is not (BoundTypeKind.Closure or BoundTypeKind.FunctionItem))
