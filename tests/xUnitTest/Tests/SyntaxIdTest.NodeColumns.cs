@@ -14,7 +14,8 @@ public partial class SyntaxIdTest
 {
     private const BindingFlags Members = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
 
-    // G949 D2b-d's d7: by reflection over NodeColumns' fields, so a family added without its Resize, Renumbered or Move line fails here.
+    // G949 D2b-d's d7: by reflection over NodeColumns' fields, so a family added without its Resize, Renumbered, Move or Retire line fails
+    // here.
     [Fact]
     public void EveryNodeFamilyIsResizedRenumberedAndMoved()
     {
@@ -46,6 +47,9 @@ public partial class SyntaxIdTest
             Assert.Same(Read<Array>(field.GetValue(columns)!, "arena"), Read<Array>(target, "spare"));
             Assert.Equal(rows[field], target.GetType().GetMethod("Get", Members)!.Invoke(target, [33]));
         }
+
+        typeof(NodeColumns).GetMethod("Retire", Members)!.Invoke(moved[1], null);
+        Assert.All(fields, x => Assert.All(Read<Array>(x.GetValue(moved[1])!, "spare").Cast<object?>(), static row => Assert.True(row is null || row.Equals(Activator.CreateInstance(row.GetType())))));
     }
 
     // G949 D2b-d's d10: an edit's renumbering moves a kept family's rows into the column's spare arena, so the second of two edits

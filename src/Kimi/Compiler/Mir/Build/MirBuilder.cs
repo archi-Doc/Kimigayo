@@ -46,10 +46,11 @@ internal sealed partial class MirBuilder(Compilation compilation)
     private bool statementStart; // The next statement or terminator starts a source statement.
 
     /// <summary>Builds and validates the MIR of the latest Binding pass, once per pass (PLAN G951): every module's default templates, the
-    /// bodies of the modules below the root range, then each body's program pass; the version's lookups build any other body on demand
-    /// (<see cref="Demand"/>) until it is sealed. One version is built with one range: a version asked for with another range is a
-    /// broken contract, since the analyses and the collector keep a version's facts by its <see cref="MirProgram.Version"/>. Version 0
-    /// is no version: before any Binding pass the program is empty, whatever the range.</summary>
+    /// bodies of the modules below the root range, then each body's program pass, the library segment's once per library version before
+    /// the program segment's (PLAN G950); the version's lookups build any other body on demand (<see cref="Demand"/>) until it is sealed.
+    /// One version is built with one range: a version asked for with another range is a broken contract, since the analyses and the
+    /// collector keep a version's facts by its <see cref="MirProgram.Version"/>. Version 0 is no version: before any Binding pass the
+    /// program is empty, whatever the range.</summary>
     /// <param name="rootModules">The root range: <see cref="Parsing.SyntaxTable.LibraryModule"/> + 1 builds every body eagerly, the
     /// source modules' count the program's.</param>
     /// <returns>The program, with its construction records and validator findings.</returns>
@@ -62,22 +63,36 @@ internal sealed partial class MirBuilder(Compilation compilation)
                 : throw new InvalidOperationException($"Version {version} was built with the root range {this.program.RootModules}, not {rootModules} (InternalInvariant).");
         }
 
-        this.program.Clear();
         this.program.Open(this, rootModules);
-        this.visited.Clear();
-        this.omissions.Clear();
-        this.named = 0;
-        // The library's bodies first, the ordinals' prefix, then the program's (R8-L1 M-B1); in each, the default templates first, which
-        // the bodies that omit them copy: a library body omits the library's only. The templates are built in every build, a demanded
-        // body's included (G951 M2).
-        var library = compilation.Library.Kotonoha.Syntax;
-        this.Module(library, templates: true);
-        if (library.Module < rootModules)
+        var libraryVersion = version; // The Binding pass until G949's library publication version replaces it (G950-K).
+        if (libraryVersion != this.program.LibraryVersion)
         {
-            this.Module(library, templates: false);
+            this.program.Clear();
+            this.visited.Clear();
+            this.omissions.Clear();
+            this.named = 0;
+            // The library's bodies first, the ordinals' prefix, then the program's (R8-L1 M-B1); in each, the default templates first, which
+            // the bodies that omit them copy: a library body omits the library's only, so the library's nodes of the omission graph are its
+            // prefix. The templates are built in every build, a demanded body's included (G951 M2). A library body names library bodies
+            // only (SPEC 18), so the library segment's program passes run here, before the program's (G191).
+            var library = compilation.Library.Kotonoha.Syntax;
+            this.Module(library, templates: true);
+            if (library.Module < rootModules)
+            {
+                this.Module(library, templates: false);
+            }
+
+            this.Name();
+            this.program.EndLibrary(libraryVersion);
+            this.libraryOmissions = this.omissions.Count;
+        }
+        else
+        {
+            this.program.ClearProgram();
+            this.ClearProgramOmissions();
+            this.named = this.program.LibraryCount; // The kept library segment's bodies had their program pass.
         }
 
-        this.program.EndLibrary();
         for (var pass = 0; pass < 2; pass++)
         {
             foreach (var module in compilation.SourceModules)
@@ -89,7 +104,7 @@ internal sealed partial class MirBuilder(Compilation compilation)
             }
         }
 
-        this.Name();
+        this.Name(); // The program segment's program passes (G191).
         this.program.Version = version;
         return this.program;
     }

@@ -987,11 +987,12 @@ public sealed partial class MirEffectsTest(ITestOutputHelper output)
         Assert.Equal(["Unsupported_Kd Self is Sink 1"], Problems(Sink + Loud + Chain + Witness + "        _ = G<i32>.init()\n        return .Ok(())\n"));
     }
 
-    // R4-M1 (G126): A4 records the program version MirProgram.Version names, whatever body comes first: a fresh A4 recording the bodies
-    // last first, so that body 0's first view comes last and must not start a version, finds the witness's failure, which composes its
-    // call of G.noisy (before, that view restarted the recording and lost every other body); the next version starts empty, so recording
-    // it in the driver's order takes a fresh A4's evaluations; and a version whose bodies Local never recorded, here one without bodies,
-    // solves no node (before, Run evaluated the previous version's nodes against it).
+    // R4-M1 (G126; PLAN G950's begin path): A4 records the segment its begin call starts (MirEffects.BeginLibrary, BeginProgram), whatever
+    // body comes first: a fresh A4 recording each segment's bodies last first, so that body 0's first view comes last and must not start a
+    // version, finds the witness's failure, which composes its call of G.noisy (before G126, that view restarted the recording and lost
+    // every other body); the next begin starts empty, so recording the next version in the driver's order takes a fresh A4's evaluations;
+    // and a begin with no body recorded, here over a program without bodies, solves no node (before G126, Run evaluated the previous
+    // version's nodes).
     [Fact]
     public void LocalRecordsTheProgramsVersion()
     {
@@ -1006,12 +1007,23 @@ public sealed partial class MirEffectsTest(ITestOutputHelper output)
         var fresh = new MirEffects(c.Types, cases, flow);
         Analyze(fresh, flow, cases, program, new MirReport());
         Assert.Equal(fresh.Evaluations, effects.Evaluations);
+        effects.BeginLibrary();
         effects.Run(new MirProgram { Version = program.Version + 1 }, new MirReport());
         Assert.Equal(0, effects.Evaluations);
 
         string[] Record(bool lastFirst)
         {
-            var bodies = program.Bodies.ToArray();
+            effects.BeginLibrary();
+            Segment(program.LibraryBodies.ToArray(), lastFirst);
+            effects.BeginProgram();
+            Segment(program.ProgramBodies.ToArray(), lastFirst);
+            var report = new MirReport();
+            effects.Run(program, report);
+            return Problems(c, report);
+        }
+
+        void Segment(MirBody[] bodies, bool lastFirst)
+        {
             for (var i = 0; i < bodies.Length; i++)
             {
                 var body = bodies[lastFirst ? bodies.Length - 1 - i : i];
@@ -1022,10 +1034,6 @@ public sealed partial class MirEffectsTest(ITestOutputHelper output)
                     effects.Local(program, body, view);
                 }
             }
-
-            var report = new MirReport();
-            effects.Run(program, report);
-            return Problems(c, report);
         }
     }
 
@@ -1034,20 +1042,28 @@ public sealed partial class MirEffectsTest(ITestOutputHelper output)
     internal static string Transitive(string last)
         => Sink + Loud + "group H\n    public func a() => H.b()\n    public func b() => H.c()\n" + last + Witness + "        H.a()\n        return .Ok(())\n";
 
-    // The driver's A4 rows over a built program and its A2 table: each body begun, its views' local facts, then the run.
+    // The driver's A4 rows over a built program and its A2 table: per segment, the segment begun, each body begun and its views' local
+    // facts; then the run.
     private static void Analyze(MirEffects effects, MirDataflow flow, MirCases cases, MirProgram program, MirReport report)
     {
-        foreach (var body in program.Bodies)
+        effects.BeginLibrary();
+        Record(program.LibraryBodies);
+        effects.BeginProgram();
+        Record(program.ProgramBodies);
+        effects.Run(program, report);
+
+        void Record(ReadOnlySpan<MirBody> bodies)
         {
-            flow.Begin(body);
-            for (var view = 0L; view < MirCases.Count(body); view++)
+            foreach (var body in bodies)
             {
-                cases.Select(body, view);
-                effects.Local(program, body, view);
+                flow.Begin(body);
+                for (var view = 0L; view < MirCases.Count(body); view++)
+                {
+                    cases.Select(body, view);
+                    effects.Local(program, body, view);
+                }
             }
         }
-
-        effects.Run(program, report);
     }
 
     private static string[] Expected(string expected) => expected.Length == 0 ? [] : expected.Split('|');
@@ -1118,7 +1134,7 @@ public sealed partial class MirEffectsTest(ITestOutputHelper output)
                 evaluations[i] = effects.Evaluations;
                 Assert.Equal(0, AllocationMeasurement.Measure(() =>
                 {
-                    program.Version++; // A new version of the same bodies, which Local starts.
+                    program.Version++; // A new version of the same bodies, which Analyze begins.
                     report.Clear();
                     Analyze(effects, flow, cases, program, report);
                 }));
