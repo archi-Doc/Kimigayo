@@ -248,7 +248,7 @@ public sealed partial class Binding
                 this.InheritOriginContract(syntax, pattern);
                 Reset(syntax);
                 var actual = this.BindType(syntax, scope);
-                this.symbols[function.Parameters[i]].Type = actual;
+                this.ParameterSymbol(function, i).Type = actual;
                 // SPEC 5.7, 15.3.7: an input whose raw Origins differ must accept the required one.
                 var fits = ReferenceEquals(pattern, actual) || (actual is not null && SameExceptRawOrigins(pattern, actual) && IsSubtype(pattern, actual));
                 valid &= fits;
