@@ -435,8 +435,8 @@ public sealed partial class Binding
 
     // SPEC 7.7.4, 10.7: whether a Function Item's signature fits the required contract. DECISIONS D3 with rule W (BU-79; C-359 C1, C2;
     // temporary, PLAN G886): an Item whose signature formed a Type no binding represents has its binder fixed before any evidence, so
-    // the same check is judged in each case of the split layer (EnterSplitCase). One that no case fits fails by itself, its writes
-    // dropped; one that some case fits rests on the split: it fits here, and its writes stay, so its reader rests on it too (a
+    // the same check is judged in each combination of split cases (RestsOnSplitCases). One that no combination fits fails by itself;
+    // one that some combination fits rests on the split: it fits here, and its writes stay, so its reader rests on it too (a
     // candidate trial's verdict, TryCandidate; the conversion's decision, ErasesToFunction).
     private bool ItemSignatureFits(BoundType item, BoundType expected, Koto use, out ComparisonFailure failure)
     {
@@ -447,23 +447,11 @@ public sealed partial class Binding
             return this.ItemContractFits(item, signature, expected, use, out failure);
         }
 
-        if (!this.UnformedSince(mark))
-        {
-            return false;
-        }
-
-        foreach (var mode in SemanticsOrder)
-        {
-            var entered = this.EnterSplitCase(mode);
-            var fails = this.FunctionItemSignature(item) is not { } inCase || !this.ItemContractFits(item, inCase, expected, use, out _);
-            if (!this.LeaveSplitCase(entered, fails))
-            {
-                return true;
-            }
-        }
-
-        this.unformedWrites = mark;
-        return false;
+        return this.UnformedSince(mark) && this.RestsOnSplitCases(
+            mark,
+            (item, expected, use),
+            static (binding, check) => binding.FunctionItemSignature(check.item) is not { } inCase ||
+                !binding.ItemContractFits(check.item, inCase, check.expected, check.use, out _));
     }
 
     // SPEC 10.7, 15.3.7: the implementation's per-call Origins are solved against the required signature, whose quantifiers and fixed

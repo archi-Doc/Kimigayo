@@ -242,14 +242,17 @@ public sealed partial class Binding
 
     private bool TryCallable(BoundType type, BindingScope scope, out BoundType signature, out SemanticsKind receiver) => this.TryCallable(type, scope, out signature, out receiver, out _);
 
+    // SPEC 7.3, 3.4.3: a callee is called through one layer: a concrete one, or an object layer in every case (ObjectCases).
+    private BoundType CalledThrough(BoundType type, BindingScope scope)
+        => type.Kind == BoundTypeKind.Semantics ? type.Components[0] : this.ObjectCases(type, scope, out var view) != SemanticsMask.None ? view : type;
+
     // SPEC 8.10, 10.5: the one call signature of a callable value. Distinct Callable signatures on one F are call candidates
     // (`several`); with them there is no single signature S. A Closure Type's signature and receiver are its definition's
     // (BoundClosure.Of), whatever its literal's creation outcome (DECISIONS R5-M63, R4-M152).
     private bool TryCallable(BoundType type, BindingScope scope, out BoundType signature, out SemanticsKind receiver, out bool several)
     {
         several = false;
-        // SPEC 7.3, 3.4.3: a callee is called through one layer: a concrete one, or an object layer in every case (ObjectCases).
-        var owner = type.Kind == BoundTypeKind.Semantics ? type.Components[0] : this.ObjectCases(type, scope, out var view) != SemanticsMask.None ? view : type;
+        var owner = this.CalledThrough(type, scope);
         if (this.FunctionItemSignature(owner) is { } itemSignature)
         {
             signature = this.ContractType(itemSignature, scope);

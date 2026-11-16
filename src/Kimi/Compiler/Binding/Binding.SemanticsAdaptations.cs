@@ -7,6 +7,11 @@ namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
+    // DECISIONS D3 (temporary; removed with (R), the split layer as a published case family, PLAN G886): the combination of split cases a
+    // check is being judged in (RestsOnSplitCases): each binding that forms no Type the check has met, with its case (an index of
+    // SemanticsOrder).
+    private readonly List<(BoundType Whole, int Case)> splitCases = [];
+
     // SPEC 10.8, 8.3.4: while a call's evidence is judged (EnterEvidence), the scope of its solve's node, whose premises judge an abstract
     // evidence Type (PremiseScope); null otherwise.
     private BindingScope? premiseUse;
@@ -14,10 +19,10 @@ public sealed partial class Binding
     // DECISIONS D3: the formations so far that formed no Type (Unformed); a check compares it with its mark (UnformedSince).
     private int unformedWrites;
 
-    // DECISIONS D3: the case of the split layer a consumer judges in (EnterSplitCase), and the one binding judged in it; null otherwise.
-    private SemanticsKind? splitCase;
+    // DECISIONS D3: whether a check is being judged in a combination of split cases (RestsOnSplitCases), and the runs so far.
+    private bool splitOpen;
 
-    private BoundType? splitWhole;
+    private long splitCaseRuns;
 
     // A finite Type family stores complete case Types in SemanticsOrder, packed by its Length mask.
     // Only the selecting binder is a dependency; no source expression or operation plan is retained.
@@ -210,8 +215,8 @@ public sealed partial class Binding
     // forms no Type is unknown (UnformedPart), and a candidate trial rests on it only where every other check passed, which its verdict
     // publishes to the selection (TryCandidate: PendingJudgmentKind.UnformedSplit), its call then one located Unsupported_Kd. A value
     // call's callee signature and a reference's candidate have no part to leave unknown (their binder is fixed before any evidence), so
-    // they judge the same check in each case of the split layer (EnterSplitCase): one that fails in every case fails by itself, its
-    // Language record kept, and any other rests on the split. The writers:
+    // they judge the same check in each combination of cases of the split layers it meets (RestsOnSplitCases): one that fails in every
+    // combination fails by itself, its Language record kept, and any other rests on the split. The writers:
     // ApplySemantics, SubstituteFamily, DirectTarget, HasOuterSlot (the inline `IsAbstractBinding` and not `HasOwnSelector` there is
     // FormsUnder's body where the first is already decided); IsSource's comparison reads FormsUnder and publishes nothing.
     private BoundType? Unformed()
@@ -220,37 +225,84 @@ public sealed partial class Binding
         return null;
     }
 
-    // DECISIONS D3 (SPEC 8.1.1's table, 8.15.2: a split layer is judged case by case): opens case `mode` of the split layer for one check
-    // of a consumer. Until LeaveSplitCase, the first binding that forms no Type forms `s/target` as `mode`'s layer over the target
-    // (SplitLayer) and keeps an outer slot as that layer does; every other formation that forms none stays Unformed (a second binding's
-    // cases are not paired with the first's; a direct target and a family are unrepresented in any case). Every Semantics is a case, a
-    // superset of the cases the binding's premises admit, so a check that fails in each fails in every admitted one. Returns what
-    // LeaveSplitCase restores.
-    private (int Mark, SemanticsKind? Case, BoundType? Whole) EnterSplitCase(SemanticsKind mode)
+    // DECISIONS D3 with rule W (BU-79; SPEC 8.1.1's table, 8.15.2: a split layer is judged case by case; C-359 C1; temporary, removed
+    // with (R)): whether a check that formed a Type no binding represents (a write since `mark`) rests on that split, for a check whose
+    // binders are fixed before any evidence, so that no part of it is left unknown. `fails` runs the same check once per combination of
+    // cases: in a run, each binding that forms no Type forms `s/target` as its case's layer (ApplySemantics) and keeps an outer slot as
+    // that layer does (HasOuterSlot), through InSplitCase. A binding is given a case when a run first meets it, so only the bindings a
+    // failing run read before it failed are enumerated (the last met first), and the first combination that does not fail by itself
+    // ends the search. Every Semantics is a case, a superset of what the binding's premises admit. A check that fails in every
+    // combination fails by itself: its writes are dropped and its Language record stands. Any other rests on the split: a combination
+    // it passes, one in which a formation still formed none (a direct target, a family), or more than PairBinder.CaseBound combinations
+    // (the bound a definition's own cases have, SPEC 8.15.2). A check judged inside another's run keeps that run's cases.
+    private bool RestsOnSplitCases<TState>(int mark, TState state, Func<Binding, TState, bool> fails)
     {
-        var entered = (this.unformedWrites, this.splitCase, this.splitWhole);
-        this.splitCase = mode;
-        this.splitWhole = null;
-        return entered;
+        var first = this.splitCases.Count;
+        var enclosing = this.splitOpen;
+        this.splitOpen = true;
+        bool rests;
+        var runs = 0;
+        do
+        {
+            var run = this.unformedWrites;
+            this.splitCaseRuns++;
+            rests = ++runs > PairBinder.CaseBound || !fails(this, state) || this.UnformedSince(run);
+            this.unformedWrites = run;
+        }
+        while (!rests && this.NextSplitCase(first));
+
+        this.splitCases.RemoveRange(first, this.splitCases.Count - first);
+        this.splitOpen = enclosing;
+        if (!rests)
+        {
+            this.unformedWrites = mark;
+        }
+
+        return rests;
     }
 
-    // DECISIONS D3: closes a case of the split layer and returns whether its check, which `failed`, failed by itself: no formation in the
-    // case formed none. The case's own writes are dropped (the consumer's first run left the split's).
-    private bool LeaveSplitCase((int Mark, SemanticsKind? Case, BoundType? Whole) entered, bool failed)
+    // DECISIONS D3: the next combination of the cases a search opened from `first` (RestsOnSplitCases): the last binding met takes its
+    // next case, and one whose cases are exhausted is dropped, to be met again under the next case of the binding before it.
+    private bool NextSplitCase(int first)
     {
-        var own = failed && !this.UnformedSince(entered.Mark);
-        this.unformedWrites = entered.Mark;
-        this.splitCase = entered.Case;
-        this.splitWhole = entered.Whole;
-        return own;
+        while (this.splitCases.Count > first)
+        {
+            var (whole, mode) = this.splitCases[^1];
+            if (mode + 1 < SemanticsOrder.Length)
+            {
+                this.splitCases[^1] = (whole, mode + 1);
+                return true;
+            }
+
+            this.splitCases.RemoveAt(this.splitCases.Count - 1);
+        }
+
+        return false;
     }
 
-    // DECISIONS D3: whether the binding `whole`, which forms no Type, is the one judged in an open case of the split layer (EnterSplitCase):
-    // the first such binding a case meets.
+    // DECISIONS D3: the case of the binding `whole`, which forms no Type, in the combination a check is being judged in
+    // (RestsOnSplitCases); a binding the run meets first takes its first case. False while no check is judged.
     private bool InSplitCase(BoundType whole, out SemanticsKind mode)
     {
-        mode = this.splitCase ?? default;
-        return this.splitCase is not null && ReferenceEquals(this.splitWhole ??= whole, whole);
+        mode = default;
+        if (!this.splitOpen)
+        {
+            return false;
+        }
+
+        var index = 0;
+        while (index < this.splitCases.Count && !ReferenceEquals(this.splitCases[index].Whole, whole))
+        {
+            index++;
+        }
+
+        if (index == this.splitCases.Count)
+        {
+            this.splitCases.Add((whole, 0));
+        }
+
+        mode = SemanticsOrder[this.splitCases[index].Case];
+        return true;
     }
 
     // DECISIONS D3 with rule W (BU-79): whether a formation since `mark` (an earlier unformedWrites) formed no Type, so that a check that
@@ -416,7 +468,7 @@ public sealed partial class Binding
     // a layer the binding's Semantics forms over the target, read through TyCtxt.PairBinding (DECISIONS BU-46): never its Origin, but a
     // borrow states `origin`, the annotation's, and a raw layer what the binding states (none, or a declaration's Unstated); an owner
     // binding gives the target. An abstract binding without a selector of its own (HasOwnSelector) forms none (Unformed), or the layer
-    // of the open case of its split (InSplitCase).
+    // of its case in the combination a check is judged in (InSplitCase).
     private BoundType? ApplySemantics(BoundType whole, BoundType target, BoundOrigin? origin) => whole switch
     {
         { Kind: BoundTypeKind.SemanticsAdaptation } => this.TransformFamily(whole, FamilyTransform.Apply, origin, target: target),

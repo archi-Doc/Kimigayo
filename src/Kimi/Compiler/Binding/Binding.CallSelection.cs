@@ -47,6 +47,31 @@ public sealed partial class Binding
         return shape;
     }
 
+    // SPEC 7.7.4, 10.1: the common Function Type a call's argument is declared at by every candidate still pending (the first one's, for
+    // the record: the Owned proof does not read it); null where one of them declares another Type there, or none is pending.
+    private static BoundType? ErasedByEveryPending(ref CallEvaluation evaluation, int argument)
+    {
+        var arguments = evaluation.Call.ArgumentNodes.Count;
+        BoundType? erased = null;
+        for (var i = 0; i < evaluation.Count; i++)
+        {
+            if (evaluation.Evaluated[i] is not { State: CandidateApplicability.Pending, Symbol.Declaration: FunctionKoto function })
+            {
+                continue;
+            }
+
+            var parameter = evaluation.SavedCandidates != 0 ? evaluation.AllMaps[(i * arguments) + argument] : evaluation.Mapping[argument];
+            if (function.Parameters[parameter].Type.BoundType is not { Kind: BoundTypeKind.Function } declared)
+            {
+                return null;
+            }
+
+            erased ??= declared;
+        }
+
+        return erased;
+    }
+
     // SPEC 10.1, 15.4.4: evaluates every candidate. A fit there is pure (FitOrigin): a candidate that is not selected bounds no
     // omitted Origin, and the selected one's bounds are recorded after selection (JudgeSelectedCall).
     private void EvaluateCallCandidates(ref CallEvaluation evaluation, in CallCandidates candidates)
@@ -217,6 +242,35 @@ public sealed partial class Binding
 
         var winner = comparable ? this.SelectBest(candidates, evaluation.Operations, evaluation.OperationStride) : -1;
         return (winner < 0 ? CallSelection.Ambiguous : CallSelection.Selected, winner);
+    }
+
+    // DECISIONS D3 (temporary, PLAN G886), SPEC 7.7.4, 23.1.2 (C-359 C2): a call whose selection rests on an unformed split is one located
+    // Unsupported_Kd. A Function Item or reference part that every candidate still pending declares at a common Function Type
+    // (ErasedByEveryPending) is erased whichever of them a case selects, so its environment is still judged, once, as a conversion's
+    // is (FailErasedOwned; a reference part by its written arguments, FailUnformedOwned): the erasure comes after a selection that
+    // the split leaves open, and its Owned proof reads no unformed Type.
+    private BoundType? FailUnformedCall(ref CallEvaluation evaluation)
+    {
+        var call = evaluation.Call;
+        for (var a = 0; a < call.ArgumentNodes.Count; a++)
+        {
+            var part = call.ArgumentNodes[a];
+            if (ErasedByEveryPending(ref evaluation, a) is not { } erased)
+            {
+                continue;
+            }
+
+            if (part.BoundType is { Kind: BoundTypeKind.FunctionItem } item)
+            {
+                this.FailErasedOwned(part, item, erased);
+            }
+            else if (this.KindOf(part) == PartKind.Reference)
+            {
+                this.FailUnformedOwned(part, erased, null);
+            }
+        }
+
+        return this.Fail(call, BindingFailure.Unsupported, true);
     }
 
     private struct CandidateShape

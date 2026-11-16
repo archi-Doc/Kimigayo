@@ -248,26 +248,35 @@ public sealed partial class Binding
     }
 
     // SPEC 10.2, 10.8 (O3; the owner's O-366 (a)): whether a typed part fits its application (an exact source of an evidenced binder
-    // is LeafDisagrees') with the split layer open: the common adaptation itself (AdaptInput) judges the layer formed in each case of the
-    // callee's admitted set over the target the frame completes, as it judges a pair layer case by case. A part that no case adapts fails
-    // case-independently (a typed bool at `s/Option<Box>`; a Tag at the closed leaf `s/Box` of a binder explicit Type arguments fixed,
-    // C-359 C1); one that some case adapts, or whose target keeps an unbound slot, rests on the split.
+    // is LeafDisagrees') with the split layer open: the common adaptation itself (AdaptInput) judges the layer over the target the frame
+    // completes case by case, as it judges a pair layer. A binder that explicit Type arguments fixed forms that layer in each
+    // combination of its binding's cases (RestsOnSplitCases; C-359 C1: a Tag at the closed leaf `s/Box`); a binder its sources gave
+    // evidence, in each case of the callee's admitted set (a typed bool at `s/Option<Box>`). A part that no case adapts fails
+    // case-independently; one that some case adapts, or whose target keeps an unbound slot, rests on the split.
     private bool FitsOpenLayer(ref SlotSolution solution, BoundType type, Koto part)
     {
         if (part.BoundType is not { } actual ||
-            solution.Pattern(type) is not { Kind: BoundTypeKind.SemanticsApplication, Symbol.WholeType: { } whole, Components: [var open] } application ||
+            solution.Pattern(type) is not { Kind: BoundTypeKind.SemanticsApplication, Symbol: { WholeType: { } whole } pair, Components: [var open] } application ||
             IsEvidencedSource(application, solution.SlotOwner, solution.Frame) ||
             this.SubstituteType(open, solution.SlotOwner, solution.Types, solution.Lengths) is not { } target)
         {
             return true;
         }
 
+        var frame = solution.Frame;
+        if (ContainerSlot(solution.SlotOwner, pair) is >= 0 and var slot && slot < frame.Types.Length && frame.Selectors[slot] is null)
+        {
+            return this.RestsOnSplitCases(
+                this.unformedWrites,
+                (frame, slot, target, part, actual, solution.Scope, solution.DeclaringType),
+                static (binding, check) => !binding.AdaptsAtLayer(
+                    check.part, check.actual, binding.FormedUnder(check.frame, check.slot, check.target, null, out var layer) ? layer : null, check.Scope, check.DeclaringType));
+        }
+
         var admitted = this.AdmittedSemantics(whole, this.ConstraintScope(solution.Function));
         foreach (var mode in SemanticsOrder)
         {
-            if ((admitted & mode.ToMask()) != 0 && this.Form(mode, target, null) is var layer &&
-                this.AdaptInput(part, FixedPattern.Open(layer), actual, solution.Scope, null, solution.DeclaringType, out var adapted, out _, out _, deferAcquisition: true) &&
-                this.FitsStructuralPartAt(adapted, layer, part))
+            if ((admitted & mode.ToMask()) != 0 && this.AdaptsAtLayer(part, actual, this.Form(mode, target, null), solution.Scope, solution.DeclaringType))
             {
                 return true;
             }
@@ -275,6 +284,12 @@ public sealed partial class Binding
 
         return false;
     }
+
+    // SPEC 10.2: whether a typed part adapts at one case's layer of its application and fits it (FitsOpenLayer); none where the layer
+    // forms no Type.
+    private bool AdaptsAtLayer(Koto part, BoundType actual, BoundType? layer, BindingScope scope, BoundType? declaringType)
+        => layer is not null && this.AdaptInput(part, FixedPattern.Open(layer), actual, scope, null, declaringType, out var adapted, out _, out _, deferAcquisition: true) &&
+            this.FitsStructuralPartAt(adapted, layer, part);
 
     // SPEC 10.8 (the owner's O-338 (a)), 8.1.2: whether a typed part at an application over a closed leaf (IsExactSource) disagrees with
     // the evidence its binder's sources gave (IsSource): a Language verdict that reads no unformed Type. A binder fixed before any

@@ -304,35 +304,16 @@ public sealed partial class Binding
     }
 
     // DECISIONS D3 with rule W (BU-79; C-359 C1; temporary, PLAN G886): whether a candidate whose check at S formed a Type no binding
-    // represents (a write since `mark`) rests on that split. A reference's binder is fixed before any evidence, so no part of it is left
-    // unknown: the same check is judged in each case of the split layer (EnterSplitCase). A candidate that is inapplicable, or in
-    // Error, in every case as in its own check (`state`) is so by itself, its writes dropped and its Language record the reference's
-    // (SPEC 23.1.2); any other rests on the split (a proof that reads an unformed Type writes in every case).
+    // represents (a write since `mark`) rests on that split. A reference's binder is fixed before any evidence, so the same check is
+    // judged in each combination of split cases (RestsOnSplitCases). A candidate that is inapplicable, or in Error, in every combination
+    // as in its own check (`state`) is so by itself, its Language record the reference's (SPEC 23.1.2); any other rests on the split
+    // (a proof that reads an unformed Type writes in every case).
     private bool RestsOnSplit(Koto use, BindingSymbol candidate, BoundType required, BindingScope scope, int mark, CandidateApplicability state)
-    {
-        if (!this.UnformedSince(mark))
-        {
-            return false;
-        }
-
-        if (state is not (CandidateApplicability.Inapplicable or CandidateApplicability.Error))
-        {
-            return true;
-        }
-
-        foreach (var mode in SemanticsOrder)
-        {
-            var entered = this.EnterSplitCase(mode);
-            var inCase = this.FunctionReferenceApplicability(use, candidate, (FunctionKoto)candidate.Declaration, required, scope, out _);
-            if (!this.LeaveSplitCase(entered, inCase == state))
-            {
-                return true;
-            }
-        }
-
-        this.unformedWrites = mark;
-        return false;
-    }
+        => this.UnformedSince(mark) && (state is not (CandidateApplicability.Inapplicable or CandidateApplicability.Error) || this.RestsOnSplitCases(
+            mark,
+            (use, candidate, required, scope, state),
+            static (binding, check) => binding.FunctionReferenceApplicability(
+                check.use, check.candidate, (FunctionKoto)check.candidate.Declaration, check.required, check.scope, out _) == check.state));
 
     // SPEC 10.5: a generic candidate's own slots are bound by matching its parameter Types against those of S and its result
     // against the result of S, without adaptations; it applies when every slot is bound and its Constraints are Proven.

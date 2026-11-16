@@ -166,10 +166,9 @@ public sealed partial class Binding
     }
 
     // DECISIONS D3 with rule W (BU-79; C-359 C1; temporary, PLAN G886): whether a value call whose callee signature (a Function Item's)
-    // formed a Type no binding represents rests on that split. Its binder is fixed before any evidence, so no part is left unknown: the
-    // call is probed against the signature each case of the split layer forms (EnterSplitCase), as against a Callable candidate
-    // (MapValueCallArguments, ProbeValueCall). A call that no case's signature takes fails by itself, its Language record the call's
-    // (SPEC 23.1.2), the writes since `mark` dropped; any other, or one beside an unprepared argument, rests on the split.
+    // formed a Type no binding represents rests on that split. Its binder is fixed before any evidence, so the call is probed in each
+    // combination of split cases (RestsOnSplitCases, ItemCallFails). A call that fails in every combination fails by itself, its
+    // Language record the call's (SPEC 23.1.2); any other, or one beside an unprepared argument, rests on the split.
     private bool ValueCallRestsOnSplit(InvocationKoto call, BindingScope scope, BoundType callee, BoundType? expected, int mark)
     {
         if (call.Method is GenericsKoto || !this.PrepareCallArguments(call, scope, callableContext: true))
@@ -177,30 +176,47 @@ public sealed partial class Binding
             return true;
         }
 
-        var operations = this.argumentOperationScratch.Rent(call.ArgumentNodes.Count + 1);
         var classBase = this.positionClasses.Count;
-        try
-        {
-            foreach (var mode in SemanticsOrder)
-            {
-                var entered = this.EnterSplitCase(mode);
-                var failed = this.TryCallable(callee, scope, out var signature, out _) &&
-                    (!MapValueCallArguments(call, signature).Valid || this.ProbeValueCall(call, scope, signature, expected, operations) == CandidateApplicability.Inapplicable);
-                if (!this.LeaveSplitCase(entered, failed))
-                {
-                    return true;
-                }
-            }
+        var rests = this.RestsOnSplitCases(
+            mark,
+            (call, scope, item: this.CalledThrough(callee, scope), expected),
+            static (binding, check) => binding.ItemCallFails(check.call, check.scope, check.item, check.expected));
+        this.positionClasses.RemoveRange(classBase, this.positionClasses.Count - classBase);
+        return rests;
+    }
 
-            this.unformedWrites = mark;
+    // SPEC 10.1.1, 10.5.1, 12.5.2: whether a value call fails against a Function Item's signature, probed as against a Callable
+    // candidate's (MapValueCallArguments, ProbeValueCall) but formed parameter by parameter: the argument count and labels, each
+    // argument at its parameter, the result at `expected`. A search over split cases so reads only the bindings of the parts before
+    // a failure (RestsOnSplitCases). A part that forms no Type fails nothing.
+    private bool ItemCallFails(InvocationKoto call, BindingScope scope, BoundType item, BoundType? expected)
+    {
+        if (item is not { Kind: BoundTypeKind.FunctionItem, Symbol: { Type: { } result, Declaration: FunctionKoto function } })
+        {
             return false;
         }
-        finally
+
+        if (function.Parameters.Count != call.ArgumentNodes.Count)
         {
-            this.argumentOperationScratch.Return(operations, clearArray: true);
-            this.positionClasses.RemoveRange(classBase, this.positionClasses.Count - classBase);
+            return true;
         }
+
+        for (var i = 0; i < call.ArgumentNodes.Count; i++)
+        {
+            if (call.GetArgumentLabel(i) is not null || (this.ItemPart(function.Parameters[i].Type.BoundType, item, function, scope) is { } parameter &&
+                this.FitArgument(call.ArgumentNodes[i], parameter, scope, call, out _) == CandidateApplicability.Inapplicable))
+            {
+                return true;
+            }
+        }
+
+        return expected is not null && this.ItemPart(result, item, function, scope) is { } formed && !this.FitsStructuralPartAt(formed, expected, call) &&
+            this.ExpectedAdaptation(call, formed, expected, recordPair: false) is null;
     }
+
+    // One part of a Function Item's signature as its value call reads it (TryCallable: ItemType, then the scope's contract Type).
+    private BoundType? ItemPart(BoundType? declared, BoundType item, FunctionKoto function, BindingScope scope)
+        => declared is not null && this.ItemType(declared, item, function) is { } part ? this.ContractType(part, scope) : null;
 
     private CandidateApplicability ProbeValueCall(InvocationKoto call, BindingScope scope, BoundType signature, BoundType? expected, Span<BoundArgumentOperation> operations)
     {
