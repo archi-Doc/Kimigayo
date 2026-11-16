@@ -1139,6 +1139,7 @@ public class ConditionalConformanceBindingTest
 
     private static string Describe(Compilation c) => string.Join("\n", c.Binding.Issues.Select(x => $"{x.Code}: {x.Node}"));
 
-    // A bound compilation's published Errors as `Code: text`, sorted.
-    private static string[] Records(Compilation c) => [.. CompilationTestHelper.BindingErrors(c).Select(static x => $"{x.Code}: {x.Text}").Order(StringComparer.Ordinal)];
+    // A bound compilation's Binding records as `Code: node`, sorted (an edited tree holds a donor's document, so its published records
+    // cannot be read by path).
+    private static string[] Records(Compilation c) => [.. c.Binding.Issues.Select(static x => $"{x.Code}: {x.Node}").Order(StringComparer.Ordinal)];
 }
