@@ -118,24 +118,31 @@ public sealed class SemanticSnapshotTest
     /// <returns>The bound compilation and the module the case prints: the library for the library case, else the program.</returns>
     internal static (Compilation Compilation, Kotonoha Module) Bind(string name)
     {
+        var c = Compilation.CreateForTest();
+        Assert.True(c.Prepare(WindowsProfile.Target));
+        c.Kotonoha.AddSource(new SourceDocument("Program.kimi", Source(name)));
+        c.Bind();
+        c.Binding.CheckStartup(OutputKind.Application);
+        return (c, name == "library" ? c.Library.Kotonoha : c.Kotonoha);
+    }
+
+    /// <summary>Gets the source of a case of the corpus or of the diagnostic snapshot's (<see cref="DiagnosticSnapshotTest.CaseNames"/>,
+    /// whose example cases are each one source file): the library case's is empty.</summary>
+    /// <param name="name">The case name.</param>
+    /// <returns>The source text.</returns>
+    internal static string Source(string name)
+    {
         var slash = name.IndexOf('/');
-        var kind = slash < 0 ? name : name[..slash];
         var subject = name[(slash + 1)..];
-        var source = kind switch
+        return (slash < 0 ? name : name[..slash]) switch
         {
             "library" => string.Empty,
             "milestone" => File.ReadAllText(DiagnosticCorpus.RepositoryPath("tests", "milestones", subject + ".kimi")),
+            "example" => File.ReadAllText(Directory.GetFiles(DiagnosticCorpus.RepositoryPath("docs", "examples", subject), "*.kimi").Single()),
             "mutation" => DiagnosticCorpus.Apply(DiagnosticCorpus.Mutation(subject)),
             "syntax" => DiagnosticCorpus.Syntax(subject).Source,
             _ => PairCases().Single(x => x.Name == subject).Source,
         };
-
-        var c = Compilation.CreateForTest();
-        Assert.True(c.Prepare(WindowsProfile.Target));
-        c.Kotonoha.AddSource(new SourceDocument("Program.kimi", source));
-        c.Bind();
-        c.Binding.CheckStartup(OutputKind.Application);
-        return (c, kind == "library" ? c.Library.Kotonoha : c.Kotonoha);
     }
 
     /// <summary>Takes the snapshot of a case; with <paramref name="hir"/> the HIR columns are published before the ownership analysis
