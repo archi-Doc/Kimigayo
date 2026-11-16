@@ -73,7 +73,7 @@ internal sealed class MirProgram
     internal MirReport Problems { get; } = new();
 
     /// <summary>Gets drop elaboration's verdicts and flags in this version, by body ordinal (A2, DECISIONS R4-M6a); only
-    /// <see cref="MirAnalysis"/> resets them, once per version.</summary>
+    /// <see cref="MirAnalysis"/> resets them: the library segment's once per library version, the program's once per version.</summary>
     internal MirDropTable Drops { get; } = new();
 
     /// <summary>Gets or sets the work of the builder's layer walks in this version (PLAN G647): one per iteration of a walk (a layer's

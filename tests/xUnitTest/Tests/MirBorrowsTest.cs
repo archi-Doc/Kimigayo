@@ -3039,6 +3039,7 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
             }
 
             this.version = program.Version;
+            this.effects.BeginLibrary();
             foreach (var body in program.Bodies)
             {
                 this.flow.Begin(body);

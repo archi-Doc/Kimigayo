@@ -725,8 +725,8 @@ public sealed class MirAnalysisTest
     }
 
     // R6-check IC (MirDrops' invariant, H0b §2.1): a body A2's table marks (R4-M102) has an Error problem in MirReport, so generation's
-    // check (H5) can read a marked body reaching it as InternalInvariant_Kd: the problem its index names, of its code at its subject, or for
-    // an inline default copy's (-1) its template's of that code and subject (R4-M69). The forms: A1's state rules and A2's incomplete layer
+    // check (H5) can read a marked body reaching it as InternalInvariant_Kd: the problem of its code at its subject in the body (one per key,
+    // MirReport.Add), or for an inline default copy's, which the report drops, its template's of that code and subject (R4-M69). The forms: A1's state rules and A2's incomplete layer
     // (Requirements), a default copy (MirDropTest.Indices) and A1's arena limit (A5ChecksTheViewsA1Completed's); none merges a disagreement.
     [Fact]
     public void AMarkedBodyHasAnError()
@@ -740,14 +740,14 @@ public sealed class MirAnalysisTest
             var problems = program.Problems.All.ToArray();
             foreach (var body in program.Bodies.ToArray())
             {
-                if (program.Drops.Incomplete(body.Ordinal) is (var code, var at, var index))
+                if (program.Drops.Incomplete(body.Ordinal) is (var code, var at))
                 {
                     var subject = body.Subject(at);
-                    var kept = index >= 0 ? (problems[index].Code, problems[index].Subject, problems[index].Body) == (code, subject, body.Ordinal)
-                        : Array.Exists(problems, x => (x.Code, x.Subject) == (code, subject));
+                    var own = Array.Exists(problems, x => (x.Code, x.Subject, x.Body) == (code, subject, body.Ordinal));
+                    var kept = own || Array.Exists(problems, x => (x.Code, x.Subject) == (code, subject));
                     var error = DiagnosticEntries.TryGet(code, out var entry) && entry.Severity == DiagnosticSeverity.Error;
-                    Assert.True(kept && error, $"{body.Key.Kind} {code} #{index}");
-                    marks.Add($"{body.Key.Kind} {code} {(index >= 0 ? "own" : "copy")}");
+                    Assert.True(kept && error, $"{body.Key.Kind} {code}");
+                    marks.Add($"{body.Key.Kind} {code} {(own ? "own" : "copy")}");
                 }
             }
         }

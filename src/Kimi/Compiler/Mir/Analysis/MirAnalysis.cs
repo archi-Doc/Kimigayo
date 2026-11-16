@@ -2,23 +2,28 @@
 
 // Owns the MIR analyses (P7–P9) of one program version (DECISIONS R4-M1, R4-M2a).
 // Input: a built and validated MirProgram and its root modules, the range of Source.Module Compilation gives the collector too.
-// Output: its Problems for that version, which the analyses add through MirReport after the construction records (MirProgram.Clear resets
-// them with the bodies, R6-check H3-1).
+// Output: its Problems for that version, which the analyses add through MirReport after the construction records (MirProgram.Clear and
+// ClearProgram reset them, R6-check H3-1).
 // Runs them once per version, after build and validation, in a fixed order, one line per step (a judged body's steps 1 and 2 together,
 // another body's step 2 only); a step's details are in the comment of the method that runs it or in its analysis's contract:
-// 1. per judged body, A3;
-// 2. per body, per view A1, then A2, then A4's local facts;
+// 0. the library step, once per library version (PLAN G950): step 2 of the library segment's bodies (LibraryBodies), whose facts (A2's
+//    library store, A4's library locals) and problems are a function of the library segment alone; its problems are kept as data and
+//    replayed here in every other version of that library version, so the report equals a rebuild's row for row; then the judged
+//    library bodies' A3 (the library check's root range only), which is judged work and runs every version;
+// 1. per judged program body, A3;
+// 2. per program body, per view A1, then A2, then A4's local facts;
 // 3. A4 over the program;
 // 4. per judged body, A5: the Origin stratum's judgment, which adds its problems, then the Loan stratum per view; then, once per program,
 //    the rows of layers no constructor body includes (MirOrigins.Findings);
 // 5. A6 inside MirReport.
 // Input rule (DECISIONS R5-M168): steps 1 and 4 judge the bodies of the root modules (Judged), whose problems are the program's; a body
 // outside them is built from its library definition alone, so its A3 and A5 verdicts are the same in every program. Steps 2 and 3 visit
-// every body without a validator finding: A4 composes library callees' local facts and code generation reads A2's tables. The library's
-// own A3 and A5 verdicts are MirAnalysisTest.TheLibraryHasNoAnalysisProblem's, the check every unit changing A3 or A5 runs.
+// every body without a validator finding (step 2 of a library body at the library step): A4 composes library callees' local facts and
+// code generation reads A2's tables. The library's own A3 and A5 verdicts are MirAnalysisTest.TheLibraryHasNoAnalysisProblem's, the
+// check every unit changing A3 or A5 runs.
 // Owns one instance of each analysis and their shared scratch for the compilation's lifetime, arrays reset by counts; each analysis unit
 // adds its field and its pass row at its step: step 2 in Body, steps 1, 3 and 4 in Run (A5 with its own loop over the bodies after A4's,
-// Borrows per body). A2's table (MirProgram.Drops) is per version, like the problems.
+// Borrows per body). A2's table (MirProgram.Drops) is per version, like the problems: its library store per library version.
 // Must not read syntax, HIR or plans, publish, decide acceptance, or read a body with a validator finding (MirBody.HasFinding, DECISIONS
 // R5-M183): steps 1, 2 and 4 skip it (MirDrops.Exclude closes its empty table entry); A4 composes a body with one as Derived
 // (MirEffects.Views); the initialization proof that consults one rests on it (MirBorrows.Unproved).
@@ -38,7 +43,9 @@ internal sealed class MirAnalysis
     private readonly MirEffects effects;
     private readonly MirBorrows borrows;
     private readonly MirOrigins origins;
+    private readonly MirReport.Kept libraryProblems = new(); // The library step's problems, replayed in a version that keeps its facts.
     private ulong version; // The program version whose problems the program holds (0: none).
+    private ulong library = ulong.MaxValue; // The library version whose step-2 facts the analyses hold (MirProgram.LibraryVersion; none yet).
 
     /// <summary>Initializes a new instance of the <see cref="MirAnalysis"/> class.</summary>
     /// <param name="types">The Type context of the programs, which the case views read.</param>
@@ -71,16 +78,38 @@ internal sealed class MirAnalysis
         }
 
         this.version = program.Version;
-        program.Drops.Clear();
-        foreach (var body in program.Bodies)
+        if (program.LibraryVersion != this.library)
         {
-            if (body.HasFinding)
+            this.library = program.LibraryVersion;
+            program.Drops.Clear();
+            this.effects.BeginLibrary();
+            var first = program.Problems.All.Length;
+            foreach (var body in program.LibraryBodies)
             {
-                this.drops.Exclude(program); // No consumer reads it (R5-M183): an empty entry keeps the table's ordinals.
-                continue;
+                this.Body(program, body); // 0. step 2 per library body.
             }
 
-            if (Judged(body, rootModules))
+            program.Problems.Keep(first, this.libraryProblems);
+            program.Drops.EndLibrary();
+        }
+        else
+        {
+            program.Drops.ClearProgram();
+            program.Problems.Replay(this.libraryProblems);
+        }
+
+        this.effects.BeginProgram();
+        foreach (var body in program.LibraryBodies)
+        {
+            if (!body.HasFinding && Judged(body, rootModules))
+            {
+                this.lints.Run(body, program.Problems); // 0. A3 per judged library body.
+            }
+        }
+
+        foreach (var body in program.ProgramBodies)
+        {
+            if (!body.HasFinding && Judged(body, rootModules))
             {
                 this.lints.Run(body, program.Problems); // 1. A3 per judged body.
             }
@@ -105,9 +134,16 @@ internal sealed class MirAnalysis
     private static bool Judged(MirBody body, int rootModules) => body.Source.Module < rootModules;
 
     // Step 2 of one body: its block order and move paths, then per view A1, then A2, a body whose A1 arena exceeds the analyses' limit
-    // stopping those views (R4-M15a), then per view A4's local facts.
+    // stopping those views (R4-M15a), then per view A4's local facts; a body with a validator finding, which no consumer reads (R5-M183), an
+    // empty table entry, which keeps the table's ordinals.
     private void Body(MirProgram program, MirBody body)
     {
+        if (body.HasFinding)
+        {
+            this.drops.Exclude(program);
+            return;
+        }
+
         this.flow.Begin(body); // 2.
         this.moves.Build(body, this.flow);
         this.drops.Begin(body, program);

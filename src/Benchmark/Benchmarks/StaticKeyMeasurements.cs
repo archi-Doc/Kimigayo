@@ -209,6 +209,7 @@ internal static class StaticKeyMeasurements
     private static Pass Measure(MirEffects effects, Workload w)
     {
         var (localBytes, localTicks) = (0L, 0L);
+        effects.BeginLibrary();
         foreach (var body in w.Program.Bodies)
         {
             w.Flow.Begin(body);

@@ -14,7 +14,10 @@
 // recursive base where it arises, SPEC 15.6.4: the fixed point is finite where the view finds the base, and a base G170 hides still ends at
 // G128's bound); requirement calls on an abstract Self and virtual calls take the bounds of the caller's own premises, a requirement on
 // another Self what its witnesses run; one worklist with recorded dependencies solves
-// the least fixed point; storage is pooled and reset by counts, so a warm version allocates nothing.
+// the least fixed point; storage is pooled and reset by counts, so a warm version allocates nothing. The local facts are recorded per
+// segment (PLAN G950): the library segment's nodes first, into a store of their own (Locals) kept while its library version holds
+// (BeginLibrary), then the program's, into a store cleared per program version (BeginProgram); a node's store is the library's below its
+// node count (R8-L1 M-B1), and its ends index that store.
 // Must not read syntax or HIR, re-derive premises, bounds or obligations, report a failure that only an Opaque site or a callee
 // Binding rejected causes (derived, R4-M10), or read a body with a validator finding (Views: derived, R5-M183).
 
@@ -22,8 +25,9 @@ using SemanticsKind = Kimi.Compiler.Parsing.SemanticsKind;
 
 namespace Kimi.Compiler.Mir;
 
-/// <summary>A4, the effect summaries (plan P8, R4 shadow): <see cref="Local"/> records each body view's local facts, <see cref="Run"/>
-/// solves the summaries of the program version and judges the obligations.</summary>
+/// <summary>A4, the effect summaries (plan P8, R4 shadow): <see cref="Local"/> records each body view's local facts in the segment
+/// <see cref="BeginLibrary"/> or <see cref="BeginProgram"/> began, <see cref="Run"/> solves the summaries of the program version and
+/// judges the obligations.</summary>
 /// <param name="types">The Type context, whose effect facts Binding published.</param>
 /// <param name="cases">The Semantics case views.</param>
 /// <param name="flow">The dataflow, begun with the body whose views <see cref="Local"/> records: the blocks the runtime edges reach.</param>
@@ -58,18 +62,15 @@ internal sealed partial class MirEffects(TyCtxt types, MirCases cases, MirDatafl
 
     private readonly HashSet<ComparisonNode> compared = new(ReferenceEqualityComparer.Instance); // A comparison call's distinct nodes (Compared).
     private readonly List<MirDropStep> destroyed = []; // MirDropTable.Destroyed's steps of the Drop being read (Dropped).
+    private readonly Locals libraryLocals = new(); // The library segment's local facts, kept while its library version holds.
+    private readonly Locals programLocals = new(); // The program segment's, cleared per program version.
     private int[] bases = []; // The first node of each body, by ordinal: a node is a body view.
     private int[] owners = []; // The body of each node.
     private byte[] local = []; // The classes of each node's local facts.
-    private int[] itemEnds = []; // The end of each node's local inputs in items.
-    private int[] edgeEnds = []; // The end of each node's calls in edges.
-    private Atom[] items = [];
-    private Edge[] edges = [];
-    private int nodeCount;
-    private int itemCount;
-    private int edgeCount;
+    private int[] itemEnds = []; // The end of each node's local inputs in its store's items.
+    private int[] edgeEnds = []; // The end of each node's calls in its store's edges.
+    private Locals writing = null!; // The segment Local records into, which a begin call names.
     private byte found; // The classes the current evaluation or local walk found.
-    private ulong version; // The program version whose body views Local records (MirProgram.Version; 0: none).
 
     /// <summary>Gets the one answer of classes (DECISIONS R4-M153): the Join of their outcomes, an <see cref="Environment"/> or
     /// <see cref="Unknown"/> effect decided, <see cref="Limit"/> the Limit and <see cref="Deep"/> Deep. A4's obligations and A5's effect
@@ -82,29 +83,49 @@ internal sealed partial class MirEffects(TyCtxt types, MirCases cases, MirDatafl
         return decided.Join((classes & Limit) != 0 ? MirOutcome.Limit : MirOutcome.None).Join((classes & Deep) != 0 ? MirOutcome.Deep : MirOutcome.None);
     }
 
-    /// <summary>Records the local facts of a body view (driver step 2, after the body's A1 and A2, the dataflow begun with the body): its
-    /// effects and static accesses, its calls with a body as edges into the callee views their substitution selects, and the parts its
-    /// Drops destroy (by A2's verdicts) and the Callable inputs it calls through as inputs of its summary. A program whose
-    /// <see cref="MirProgram.Version"/> differs from the one recorded starts a version; a body's views are recorded in order.</summary>
+    // The number of nodes recorded: the library segment's, then the program's.
+    private int NodeCount => this.libraryLocals.Nodes + this.programLocals.Nodes;
+
+    /// <summary>Begins the library segment's local facts for a new library version (driver step 0): both segments' facts and every Field
+    /// number cleared; <see cref="Local"/> records into the library's store until <see cref="BeginProgram"/>.</summary>
+    internal void BeginLibrary()
+    {
+        this.libraryLocals.Clear();
+        this.programLocals.Clear();
+        this.fieldIds.Clear();
+        this.writing = this.libraryLocals;
+    }
+
+    /// <summary>Begins the program segment's local facts for a program version over the library segment's, which stay: the program's facts
+    /// and the Field numbers it gave cleared; <see cref="Local"/> records into the program's store.</summary>
+    internal void BeginProgram()
+    {
+        foreach (var field in this.programLocals.Fields)
+        {
+            this.fieldIds.Remove(field);
+        }
+
+        this.programLocals.Clear();
+        this.writing = this.programLocals;
+    }
+
+    /// <summary>Records the local facts of a body view (driver step 2, after the body's A1 and A2, the dataflow begun with the body) in the
+    /// segment begun (<see cref="BeginLibrary"/>, <see cref="BeginProgram"/>): its effects and static accesses, its calls with a body as
+    /// edges into the callee views their substitution selects, and the parts its Drops destroy (by A2's verdicts) and the Callable inputs
+    /// it calls through as inputs of its summary; a body's views are recorded in order.</summary>
     /// <param name="program">The program.</param>
     /// <param name="body">The body, whose view is selected.</param>
     /// <param name="view">The selected view.</param>
     internal void Local(MirProgram program, MirBody body, long view)
     {
-        if (program.Version != this.version)
-        {
-            this.version = program.Version;
-            this.nodeCount = this.itemCount = this.edgeCount = this.keyCount = 0;
-            this.fieldIds.Clear();
-        }
-
-        var node = this.nodeCount++;
+        var node = this.NodeCount;
+        this.writing.Nodes++;
         MirDataflow.Grow(ref this.bases, body.Ordinal + 1);
-        MirDataflow.Grow(ref this.owners, this.nodeCount);
-        MirDataflow.Grow(ref this.local, this.nodeCount);
-        MirDataflow.Grow(ref this.itemEnds, this.nodeCount);
-        MirDataflow.Grow(ref this.edgeEnds, this.nodeCount);
-        MirDataflow.Grow(ref this.keyEnds, this.nodeCount);
+        MirDataflow.Grow(ref this.owners, node + 1);
+        MirDataflow.Grow(ref this.local, node + 1);
+        MirDataflow.Grow(ref this.itemEnds, node + 1);
+        MirDataflow.Grow(ref this.edgeEnds, node + 1);
+        MirDataflow.Grow(ref this.keyEnds, node + 1);
         if (view == 0)
         {
             this.bases[body.Ordinal] = node;
@@ -134,8 +155,8 @@ internal sealed partial class MirEffects(TyCtxt types, MirCases cases, MirDatafl
             }
         }
 
-        (this.local[node], this.itemEnds[node], this.edgeEnds[node]) = (this.found, this.itemCount, this.edgeCount);
-        this.keyEnds[node] = this.keyCount;
+        (this.local[node], this.itemEnds[node], this.edgeEnds[node]) = (this.found, this.writing.ItemCount, this.writing.EdgeCount);
+        this.keyEnds[node] = this.writing.KeyCount;
     }
 
     // SPEC 4.9.6: the Type below a callee's parameter under the call's substitution in the view, what a published row runs on or
@@ -345,15 +366,16 @@ internal sealed partial class MirEffects(TyCtxt types, MirCases cases, MirDatafl
             return;
         }
 
-        MirDataflow.Grow(ref this.items, this.itemCount + 1);
-        this.items[this.itemCount++] = new(type, kind, requirement, contract, call);
+        this.writing.Add(new Atom(type, kind, requirement, contract, call));
     }
 
-    private void AddEdge(MirBody callee, Subst? subst)
-    {
-        MirDataflow.Grow(ref this.edges, this.edgeCount + 1);
-        this.edges[this.edgeCount++] = new(callee.Ordinal, this.Views(callee, subst), subst);
-    }
+    private void AddEdge(MirBody callee, Subst? subst) => this.writing.Add(new Edge(callee.Ordinal, this.Views(callee, subst), subst));
+
+    // The store of a node's local facts: the library segment's below its node count (R8-L1 M-B1).
+    private Locals Of(int node) => node < this.libraryLocals.Nodes ? this.libraryLocals : this.programLocals;
+
+    // Where a node's local facts begin in its store: the previous node's end there, 0 for a segment's first node.
+    private int Start(int[] ends, int node) => node == 0 || node == this.libraryLocals.Nodes ? 0 : ends[node - 1];
 
     // The views of a body a call, a destruction or an obligation enters that its substitution selects; none for a body with a finding,
     // which no consumer reads (R5-M183): what rests on it is that finding's dependent (Derived, R4-M10).
@@ -385,6 +407,58 @@ internal sealed partial class MirEffects(TyCtxt types, MirCases cases, MirDatafl
     // null for a body entered in every view (a static's initializer); the identity (TyCtxt.Identity) for the callee's own Types read in the
     // caller's view (a specialization of the caller's declaration, Local).
     private readonly record struct Edge(int Body, ulong Views, Subst? Subst);
+
+    // A segment's local facts in record order (PLAN G950), data only, so the library segment's are kept while its library version holds:
+    // its node count, its nodes' local inputs, calls and keys, and the Fields it numbered (BeginProgram removes the program's numbers).
+    private sealed class Locals
+    {
+        private Atom[] items = [];
+        private Edge[] edges = [];
+        private int[] keys = [];
+
+        internal int Nodes { get; set; }
+
+        internal int ItemCount { get; private set; }
+
+        internal int EdgeCount { get; private set; }
+
+        internal int KeyCount { get; private set; }
+
+        internal List<BindingSymbol> Fields { get; } = [];
+
+        internal ReadOnlySpan<Atom> Items => this.items.AsSpan(0, this.ItemCount);
+
+        internal ReadOnlySpan<Edge> Edges => this.edges.AsSpan(0, this.EdgeCount);
+
+        internal ReadOnlySpan<int> Keys => this.keys.AsSpan(0, this.KeyCount);
+
+        internal void Add(in Atom item)
+        {
+            MirDataflow.Grow(ref this.items, this.ItemCount + 1);
+            this.items[this.ItemCount++] = item;
+        }
+
+        internal void Add(in Edge edge)
+        {
+            MirDataflow.Grow(ref this.edges, this.EdgeCount + 1);
+            this.edges[this.EdgeCount++] = edge;
+        }
+
+        internal void AddKey(int key)
+        {
+            MirDataflow.Grow(ref this.keys, this.KeyCount + 1);
+            this.keys[this.KeyCount++] = key;
+        }
+
+        // Drops the inputs and calls added past the given counts (a site's, which are not a node's).
+        internal void Truncate(int items, int edges) => (this.ItemCount, this.EdgeCount) = (items, edges);
+
+        internal void Clear()
+        {
+            this.Nodes = this.ItemCount = this.EdgeCount = this.KeyCount = 0;
+            this.Fields.Clear();
+        }
+    }
 
     // The local facts of a location: an environment effect (an access to a mutable static, Console output, an integer made a pointer, a
     // raw pointer read from an immutable static) or an Opaque site's unknown effect, a dependent of the error that made it (R4-M10).
