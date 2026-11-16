@@ -5,7 +5,9 @@ namespace Kimi.Compiler;
 // The root Type statement of the arithmetic Contracts (SPEC 13.3.3).
 // Responsibility: which Types conform to each arithmetic Contract by a built-in witness (Supports), and which standard declaration
 // identities are arithmetic Contracts and their Left forms.
-// Inputs: a Type and a standard declaration identity. Outputs: the facts alone; Binding reads every one, MIR Supports (MirTypes.Operates).
+// Inputs: a Type and a standard declaration identity. Outputs: the facts alone; Binding reads every one, MIR Supports (MirTypes.Operates),
+// the Backend IsArithmetic of a shim's Contract (TyCtxt.ShimContract): InstanceCollector.Witnesses' shim targets,
+// InstanceCollector.Capabilities' gap of an arithmetic shim and FunctionCodegen.Shims' body.
 // Invariants: every fact is a function of its arguments, independent of a bound Contract's own Symbol and of user spelling.
 // Must not: read syntax or a phase's Symbols (Binding's pairing with tokens, methods and declared Contracts is ArithmeticContractSyntax),
 // prove a generic Type's conformance (Binding's), or name another phase's operators (MIR's pairing is MirTypes.ArithmeticOperations).

@@ -4,6 +4,7 @@
 /// Array, UniqSlice, Dictionary and user Types state their conformances in source. A fixed array has no declaration, so
 /// its conformance is a Builtin row; that row and Slice's conformance, in source, remain incomplete (STATUS).
 /// `a[i]` on a concrete sequence stays the built-in element access (SPEC 4.7.1, 22.1).
+#Lang("Indexable")
 public contract Indexable<Key>
     associate Element
 
@@ -16,6 +17,7 @@ public contract Indexable<Key>
 /// The exclusive indexing Contract: updates and exclusive borrows of `receiver[key]` select `indexUniq`.
 ///
 /// Both requirements belong to one conformance and must return a reference to the same element for the same key.
+#Lang("UniqIndexable")
 public contract UniqIndexable<Key>: Indexable<Key>
     /// Lends the element selected by `key` for updates and exclusive borrows.
     ///

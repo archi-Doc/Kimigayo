@@ -74,7 +74,7 @@
 // walk, the root loop and Admit are the only ways a body enters, so what rests on it has no record); a warm run of a program as large as
 // an earlier one allocates nothing.
 // Must not: read syntax, HIR or plans; depend on the MIR analyses' results or edit their driver; decide acceptance or publish its records
-// (Compilation does); prove anything on an erased value; add an IntrinsicId, CompilerFunctionKind or BindingFailure (PD21).
+// (Compilation does); prove anything on an erased value; add an IntrinsicId or BindingFailure (PD21).
 
 using Kimi.Compiler.Mir;
 
