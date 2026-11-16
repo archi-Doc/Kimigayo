@@ -62,10 +62,10 @@ public partial class LayoutTest
         BoundType[] types =
         [
             BoundType.I32, BoundType.Never, BoundType.String, BoundType.WrappingOf(BoundType.ISize),
-            new("p", BoundTypeKind.Semantics, semantics: SemanticsKind.Ref, components: [BoundType.I32]),
-            new("h", BoundTypeKind.Semantics, semantics: SemanticsKind.Rc, components: [BoundType.I32]),
-            new("fn", BoundTypeKind.Function, components: [BoundType.I32]),
-            new("s", BoundTypeKind.Dictionary, components: [BoundType.String, BoundType.I32]),
+            c.Types.Reference(SemanticsKind.Ref, BoundType.I32),
+            c.Types.Reference(SemanticsKind.Rc, BoundType.I32),
+            c.Types.Intern(BoundTypeKind.Function, null, SemanticsKind.Owner, [BoundType.I32]),
+            c.Types.Intern(BoundTypeKind.Dictionary, null, SemanticsKind.Owner, [BoundType.String, BoundType.I32]),
             .. Parameters(c), P(c, BoundType.Unit), Wrap(c, BoundType.I32, 65),
         ];
         types = [.. types, c.Types.Tuple([Parameters(c)[6], Parameters(c)[6], types[^1]])];

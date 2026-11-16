@@ -142,10 +142,10 @@ public sealed class G950KeptPathTest
     public void ALaterVersionKeepsTheLibrarysTemplates()
     {
         var c = Compile("milestone/Milestone27");
-        var (builder, collector) = (new MirBuilder(c), new InstanceCollector(c.Types, c.Layout));
-        _ = collector.Run(builder.Build(SyntaxTable.LibraryModule + 1), c.SourceModules.Length);
+        var (builder, analysis, collector) = (new MirBuilder(c), new MirAnalysis(c.Types), new InstanceCollector(c.Types, c.Layout));
+        _ = collector.Run(analysis.Run(builder.Build(SyntaxTable.LibraryModule + 1), 1), c.SourceModules.Length); // Stepped (PLAN G951).
         Finish(c, OutputKind.Application);
-        var later = builder.Build(SyntaxTable.LibraryModule + 1);
+        var later = analysis.Run(builder.Build(SyntaxTable.LibraryModule + 1), 1);
         _ = collector.Run(later, c.SourceModules.Length);
         Assert.Equal(later.ProgramBodies.Length, collector.Templated);
     }

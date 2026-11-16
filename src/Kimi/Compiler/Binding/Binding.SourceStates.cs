@@ -30,7 +30,7 @@ public sealed partial class Binding
     // Every declaration container's own symbol, in the pass's order (ResetSourceStates).
     private readonly List<BindingSymbol> sourceDeclarations = new();
 
-    // The checks this pass's publications ran.
+    // The checks this run's publications ran (BeginRun).
     private int sourceChecks;
 
     /// <summary>Gets the declaration checks the latest pass's publications ran, which a scaling check reads.</summary>
@@ -58,7 +58,6 @@ public sealed partial class Binding
     private void ResetSourceStates()
     {
         this.sourceDeclarations.Clear();
-        this.sourceChecks = 0;
         foreach (var symbol in this.symbols.Values)
         {
             if (symbol.Declaration is DeclarationContainerKoto { BoundSymbol: { } own } && ReferenceEquals(own, symbol))
