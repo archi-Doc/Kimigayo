@@ -22435,3 +22435,41 @@ R8-M* and R9-M* by the stage of the recording unit.
     table per form (each column has one reader today); a second enum for the parameter production (a function of the form); one
     entry member per production (the headers share the whole frame); the override as a modifier read beside the form in the list
     reader (G557's rule would need two selectors).
+- **R9-M9 Library bodies are built on demand (PLAN G951)** (Middle, 2026-11-16; the owner's option (a), m-log 11:49, and O-378; the
+  design `g951-design.md` §R1 as amended by §R2, its third review ACCEPT WITH NOTES; U0's implementation review ACCEPT WITH NOTES)
+  Major; U0 is behavior-preserving. Extends R5-M168 and R8-M31; amends R5-M183 and R8-M33 as below. U1, U1b and U2 amend this entry.
+  - **Adopted (U0, the builder's half).**
+    - `MirBuilder.Build(rootModules)` builds every module's default templates, the library's in every build, then the bodies of the
+      modules below the root range. Compilation passes `SyntaxTable.LibraryModule + 1`, every body eagerly, until U2.
+    - `MirProgram`'s lookups (`this[key]`, `Callee`, `StaticInit`) are the one demand point. A key without a body is looked up by
+      the version's row of the demand table `MirProgram.Phase`:
+      - Open (from `Build`): `MirBuilder.Demand` builds the body of any other definition the HIR publishes with a value, through
+        `MirBuilder.Definition`, the one map from a published node to its body's key and `Body`'s arguments, shared by the module
+        walk. `Demand` takes the node from the key (an accessor's executing function's `Accessor.Declaration`, else
+        `Decl.Declaration`) and builds only when the map gives exactly the asked key, so an accessor's executing function misses as
+        Fn and hits as Getter or Setter.
+      - Sealed (before a builder opens a version, and from the end of `Compilation.BuildMir`): a lookup reads only.
+      - Null means only "this definition has no body", never "not built yet".
+    - Each body's program pass (G191) runs where the body is built: `MirValidator.Validate(program, body)` over the builder's
+      build-order queue (`MirBuilder.Name`), which the root build drains after its walk and `Demand` after its body. A lookup inside
+      a pass may demand a body, which joins the queue; the queue index advances before each pass, so a nested drain passes each body
+      once.
+    - One version is built with one root range. `Build` returns the version's program for the same range and throws
+      `InvalidOperationException` (InternalInvariant) for another; version 0, before any Binding pass, is no version (the empty
+      program). The analyses' and the collector's version memos are then exact for each analysis and builder pair (Compilation pairs
+      its own; a test or measurement makes both). This replaces the design's N4 ("a call with another range rebuilds").
+  - **Amends.** R5-M183: the program pass `Validate(program)` is now `Validate(program, body)`, which still sets `HasFinding` on the
+    ensuring body of a G191 StaticSlot finding. R8-M33: the library prefix (ordinals 0 to `LibraryCount` - 1) holds in an eager
+    build; in a build whose root range is the program's, `LibraryCount` counts the library's templates and a demanded body takes the
+    next ordinal until U2 adopts G950 R-4's fixed library slots. `MirValidator`'s program pass leaves `Bodies`' walkers: it reads
+    each body by ordinal from the builder's queue.
+  - **Reason.** A one-shot compile of Hello built and analyzed 318 library bodies to use 5 (G337; K's 11-16 survey rank 2). U0
+    changes no output; it gives U1 (A4's round rule, `MirAnalysis.Step`, `MirDropTable.Holds`, the Judging row), U1b (the
+    collector's round rule) and U2 (the switch to the source range, G950 R-4's slots, the records rule) one demand point and one
+    map.
+  - **Rejected (U0's).**
+    - Keying the analysis on the range as well as the version: `MirEffects`, `MirBorrows` and the collector key a version's facts by
+      its version, so a same-version rebuild would reuse stale A4 nodes, and an eager, lazy, eager sequence defeats a (version,
+      range) memo.
+    - A rebuild for another range on a built version (the design's N4), for the same reason.
+    - A second node-to-key map for `Demand`; reading an unbuilt body as bodyless; building the whole library on its first lookup.
