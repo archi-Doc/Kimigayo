@@ -171,7 +171,7 @@ internal sealed class OutputRetention(int output, StorageRetention own, (BoundTy
 /// <summary>A call's retention: what its result retains (<see cref="Result"/>), the storages past the result's written layers
 /// (<see cref="ResultWrites"/>), what the storage it may write through each input retains (<see cref="Writes"/>, by ascending output),
 /// and the stores it writes only in the storage its receiver refers to (BU-42); or <see cref="Limit"/>, which has none of them.</summary>
-internal sealed class CallRetention(StorageRetention? result, OutputRetention? resultWrites, OutputRetention[] writes, int[] referentStores)
+internal sealed class CallRetention(StorageRetention? result, OutputRetention? resultWrites, OutputRetention[] writes, int[] referentStores, bool composes)
 {
     /// <summary>The output slot of a call's result, beside its inputs' slots (0 and up).</summary>
     internal const int ResultOutput = -1;
@@ -181,7 +181,7 @@ internal sealed class CallRetention(StorageRetention? result, OutputRetention? r
     /// member walk is incomplete (a keeper cycle that changes its Type arguments), as A4's effects take it: nothing is computed, and A5
     /// records a located Unsupported_Kd at the call. Storage a Binding failure left Rejected is not a Limit (DECISIONS BU-36). Reading its
     /// Result, Writes or ReferentStores is a broken contract.</summary>
-    internal static readonly CallRetention Limit = new(null, null, [], []);
+    internal static readonly CallRetention Limit = new(null, null, [], [], composes: true);
 
     private readonly StorageRetention? result = result;
     private readonly OutputRetention? resultWrites = resultWrites;
@@ -189,6 +189,13 @@ internal sealed class CallRetention(StorageRetention? result, OutputRetention? r
     private readonly int[] referentStores = referentStores;
 
     internal bool IsLimit => this.result is null;
+
+    /// <summary>Gets a value indicating whether the call's writes and reads compose within it (SPEC 15.6.4: "Except for the operations whose
+    /// writes SPEC states, ... a call's writes and reads compose within the call"; PLAN G935, F's ruling 12): false for `replace`,
+    /// `exchange`, `swap`, `Raw.initialize` and the operations of SPEC 4.6 to 4.9, by declaring identity (Binding.Retention.Transfers.cs,
+    /// StatesWrites over TransferKey's table), whose stated stores stay in their Reached entries. A5's
+    /// rule 4 (the call's own pointer) and H2 read it before they take any entry.</summary>
+    internal bool Composes { get; } = composes;
 
     /// <summary>Whether the call may keep an input past its end: its result or a storage it may write holds it, and the Limit, which states
     /// nothing, may. False is what an inspection means (SPEC 13.4: the `bool` result keeps none).</summary>

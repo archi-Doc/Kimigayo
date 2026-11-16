@@ -118,6 +118,14 @@ public sealed partial class MirBorrowsTest
         "func f(x: ref/i32, p: uniq/i32 during c, z: ref/(ref/i32 during c) during b, t: uniq/(ref/i32 during b) during w) -> i32\n" +
         PairNoise + "    putAny(t, p@follow@ref)\n";
 
+    private const string PairPutSame = "func putAny<U>(t: uniq/U, v: U) => ()\nfunc inspect<T>(value: ref/T) => ()\n" +
+        "func f(x: ref/i32, p: uniq/i32 during c, z: ref/(ref/i32 during c) during b, t: uniq/(ref/i32 during b) during w) -> i32\n" +
+        PairNoise + "    putAny(t, p@follow@ref)\n";
+
+    private const string PairPickSame = "func pickAny<U>(u: U, v: U) -> U\n    return u@move\nfunc inspect<T>(value: ref/T) => ()\n" +
+        "func f(x: ref/i32, p: uniq/i32 during c, z: ref/(ref/i32 during c) during b, t: ref/i32 during b) -> ref/i32 during b\n" +
+        PairNoise + "    let h = pickAny(t, p@follow@ref)\n";
+
     private const string PairPick = "func pickAny<U, V>(u: U, v: V) -> U\n    return u@move\nfunc inspect<T>(value: ref/T) => ()\n" +
         "func f(x: ref/i32, p: uniq/i32 during c, z: ref/(ref/i32 during c) during b, t: ref/i32 during b) -> ref/i32 during b\n" +
         PairNoise + "    let h = pickAny(t, p@follow@ref)\n";
@@ -467,14 +475,18 @@ public sealed partial class MirBorrowsTest
         => Assert.Equal(WkExpected(expected), WkRecords(row));
 
     // Revision 4 (MirOrigins.Outlives; PLAN G824's F1): the pair (c, b) holds by z's implied premise c: b (SPEC 15.3.3), so v, the shared
-    // Loan on p.*, may be kept (SPEC 15.6.4) by putAny's *t, storage the body does not own, and by pickAny's result h, which f returns:
+    // Loan on p.*, may be kept (SPEC 15.6.4) by putAny's *t, storage the body does not own, and by pickAny's result h, which f returns,
+    // where v is the callee's own U (the Same forms; PLAN G935: with `v: V` neither holds a V, the owner's O-360 (a), so those forms are
+    // valid, relabelled from the instantiated reading):
     // `p@follow = 5` conflicts, and without the write nothing does. r's rows (x's Fixed node, the local borrow's Finite one) are not the
     // pair's. Fail-before: the walk from c read every edge of the atoms before c, so those nodes failed the pair, the Loan was dropped and
     // the invalid forms accepted.
     [Theory]
-    [InlineData(PairPut, "    p@follow = 5\n    return 0\n", "f: p@follow = 5")]
+    [InlineData(PairPutSame, "    p@follow = 5\n    return 0\n", "f: p@follow = 5")]
+    [InlineData(PairPut, "    p@follow = 5\n    return 0\n", "")]
     [InlineData(PairPut, "    return 0\n", "")]
-    [InlineData(PairPick, "    p@follow = 5\n    return h\n", "f: p@follow = 5")]
+    [InlineData(PairPickSame, "    p@follow = 5\n    return h\n", "f: p@follow = 5")]
+    [InlineData(PairPick, "    p@follow = 5\n    return h\n", "")]
     [InlineData(PairPick, "    return h\n", "")]
     public void APairsWalkReadsNoUnrelatedRow(string form, string tail, string expected)
         => Assert.Equal(expected, string.Join(" | ", Caused(form + tail)));

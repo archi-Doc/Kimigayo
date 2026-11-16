@@ -51,9 +51,13 @@ public sealed partial class Binding
     private readonly List<BoundType?> storageTypes = new();
     private readonly Dictionary<BoundType, int> storageOf = new(ReferenceEqualityComparer.Instance);
     private readonly Dictionary<(int Storage, bool Writable, bool Captured, SourceAt Source, BoundType Type, BoundType? Signature), (int Depth, int Layer)> storageSeen = new();
-    private readonly HashSet<(int Storage, BoundType Type)> storageTargeted = new();
-    private readonly List<(int Storage, int Node, BoundType? Type)> storagePositions = new();
-    private readonly List<(int Storage, int Node)> storageTargets = new();
+    private readonly HashSet<(int Storage, BoundType Type, BoundType? Signature)> storageTargeted = new();
+    private readonly List<(int Storage, int Node, BoundType? Type, BoundType? Signature)> storagePositions = new();
+    private readonly HashSet<int> storageBorrowed = new(); // The storages the walk entered past a borrow or pair layer (R's exclusion, Storages).
+    private readonly HashSet<BoundType> storageResultLeaves = new(ReferenceEqualityComparer.Instance); // ResultLeaves' answer, per computation.
+    private readonly List<(int Storage, int Node, BoundType? Signature)> storageTargets = new(); // With the walked signature there (Admits).
+    private readonly List<(int Storage, BoundType Signature)> storageBound = new(); // The written roots of the kept abstract Type's bindings, by storage (HiddenKinds).
+    private readonly Dictionary<BoundType, int> storageResultSeen = new(ReferenceEqualityComparer.Instance); // ResultLeaves' walk: Enters' depths.
     private readonly List<(BoundType? Type, BoundType? Written, BoundType? Holder, int Storage)> storageHolds = new();
     private readonly List<int> retentionOwnNodes = new();
     private readonly List<int> retentionOccurrences = new();
@@ -88,7 +92,9 @@ public sealed partial class Binding
         this.storageSeen.Clear();
         this.storageTargeted.Clear();
         this.storagePositions.Clear();
+        this.storageBorrowed.Clear();
         this.storageTargets.Clear();
+        this.storageBound.Clear();
         this.storageHolds.Clear();
     }
 
@@ -137,17 +143,32 @@ public sealed partial class Binding
 
         var layer = met ? seen.Layer : -1; // `seen` is read no more: the walk below inserts.
         var targets = at.Writable && at.Storage >= 0 ? at.Storage : -1; // Only in an output's walk, whose state is entered once.
+        var (named, bound) = (false, this.Parametric(at.Signature));
         if (targets >= 0)
         {
-            this.Position(environment, type, at.Storage);
-            if (at.Storage != ResultStorage)
+            named = this.Position(environment, type, at.Storage, at.Signature);
+            if (at.Storage != ResultStorage && !bound)
             {
-                this.storageHolds.Add((type, at.Written, at.Holder, at.Storage));
+                this.storageHolds.Add((type, at.Written, at.Holder, at.Storage)); // A hidden binding's layers add no reach (SPEC 15.6.4).
+            }
+
+            // The root of a binding of the callee's kept Type in this storage; in the result's, where the result holds it by value or a
+            // node names it (ResultLeaves: past its own borrow or raw layer the result lends a referent or pointee, K2).
+            if (bound && !at.Bound && (named || at.Storage != ResultStorage || this.storageResultSeen.ContainsKey(type)))
+            {
+                this.storageBound.Add((at.Storage, at.Signature!));
             }
         }
 
+        at = at with { Bound = bound };
+
         var run = this.BodyRun(type, at.Written, at.Holder, out var complete);
         this.retentionLimit |= !complete && at.Storage != NoStorage;
+        if (targets >= 0 && !named && this.Leaf(type, run) && (at.Storage != ResultStorage || this.storageResultLeaves.Contains(type)))
+        {
+            this.storagePositions.Add((at.Storage, -1, type, at.Signature)); // A part that names no Origin (PLAN G935 R1.2).
+        }
+
         if (source && !met)
         {
             layer = this.Source(environment, type, at, run);
@@ -167,7 +188,7 @@ public sealed partial class Binding
         if (TryPairLayer(type, out _, out var target))
         {
             var written = this.SignaturePast(at.Signature, type, default);
-            this.Past(environment, target, targets, IsInvariantLayer(type, this, null, default), layer, below with { Signature = written });
+            this.Borrowed(this.Past(environment, target, targets, IsInvariantLayer(type, this, null, default), layer, below with { Signature = written }));
             if (at.Source.Input >= 0 && this.Referent(run, out _) is null)
             {
                 this.Parts(environment, type, at, run); // A pair layer admitting no borrow holds its target by value in its owning cases.
@@ -189,7 +210,7 @@ public sealed partial class Binding
         else if (first.Step is HoldStep.Shared or HoldStep.Exclusive)
         {
             var written = this.SignaturePast(at.Signature, type, first);
-            this.Past(environment, first.Part!, targets, first.Step == HoldStep.Exclusive, layer, below with { Signature = written });
+            this.Borrowed(this.Past(environment, first.Part!, targets, first.Step == HoldStep.Exclusive, layer, below with { Signature = written }));
         }
         else if ((first.Flags & HoldFlags.ReadOnly) != 0)
         {
@@ -257,8 +278,8 @@ public sealed partial class Binding
             {
                 var argument = arguments[j];
                 var node = this.PremiseNode(environment, argument);
-                this.storagePositions.AddRange([(at.Storage, node, null), (AbstractStorage, node, null)]);
-                this.storageTargets.AddRange([(at.Storage, node), (AbstractStorage, node)]);
+                this.storagePositions.AddRange([(at.Storage, node, null, null), (AbstractStorage, node, null, null)]);
+                this.storageTargets.AddRange([(at.Storage, node, at.Signature), (AbstractStorage, node, null)]);
             }
         }
     }
@@ -297,13 +318,13 @@ public sealed partial class Binding
             {
                 ResultStorage => ResultStorage,
                 < 0 => OwnStorage,
-                _ => this.StorageOf(referent),
+                _ => this.StorageOf(this.Parametric(at.Signature) ? at.Signature! : referent), // The callee's kept T: its own entry (PLAN G935 R1.2).
             };
             this.StorageWalk(environment, referent, at with { Storage = past, Writable = true });
         }
         else if (targets >= 0)
         {
-            this.Targets(environment, referent, targets);
+            this.Targets(environment, referent, targets, at.Signature);
         }
 
         this.Through(environment, referent, layer, at);
@@ -325,11 +346,16 @@ public sealed partial class Binding
                 var signature = this.DeclaredPart(at.Signature, declared, run, i);
                 var holder = type.Kind == BoundTypeKind.Closure ? at.Holder : part.Holder; // A binding lies in the storage holding the Closure.
                 var below = at with { Written = part.Written, Holder = holder, Depth = at.Depth + 1, Captured = captured, Signature = signature };
+                if (at.Storage > ResultStorage && this.Parametric(signature) && !this.Parametric(at.Signature))
+                {
+                    below = below with { Storage = this.StorageOf(signature!) }; // The T part of a mixed storage: its own entry (PLAN G935 R1.2).
+                }
+
                 this.StorageWalk(environment, part.Part, below);
             }
             else if (part.Step == HoldStep.Loan)
             {
-                this.Targets(environment, at.Writable && at.Storage >= 0 ? part.Part : null, at.Storage);
+                this.Targets(environment, at.Writable && at.Storage >= 0 ? part.Part : null, at.Storage, at.Signature);
             }
         }
 
@@ -357,18 +383,22 @@ public sealed partial class Binding
     }
 
     // A position: its Value tests, one per node naming the Type's own layer or its Origin arguments (an abstract part's carrier node, also
-    // for the Abstract storage it hides) and per Type its fit reads (Reads), and its own Origins as targets.
-    private void Position(OriginPremiseEnvironment environment, BoundType type, int storage)
+    // for the Abstract storage it hides) and per Type its fit reads (Reads), each with the walked signature's declared Type there, and its
+    // own Origins as targets; whether a node names it. A position in the binding of the callee's kept abstract Type (Hides) is tested in
+    // the callee's terms (Binding.Retention.Rows.cs, Storages), so it has no target: the binding's Origins are the caller's.
+    private bool Position(OriginPremiseEnvironment environment, BoundType type, int storage, BoundType? signature)
     {
         var (start, end) = this.Reads(type);
+        var named = false;
         foreach (var node in this.OwnNodes(environment, type))
         {
             for (var i = start; i < end; i++)
             {
-                this.storagePositions.Add((storage, node, this.retentionReads[i]));
+                this.storagePositions.Add((storage, node, this.retentionReads[i], signature));
             }
 
-            this.storageTargets.Add((storage, node));
+            named = true;
+            this.storageTargets.Add((storage, node, signature));
         }
 
         this.retentionReads.RemoveRange(start, end - start);
@@ -378,7 +408,73 @@ public sealed partial class Binding
             this.AbstractPositions(environment, type, type);
         }
 
-        this.Targets(environment, type, storage);
+        this.Targets(environment, type, storage, signature);
+        return named;
+    }
+
+    // Whether a Type holds no part by value (ByValue), so a position of it names no Origin of a part below (PLAN G935 R1.2: an aggregate
+    // held by value is its parts' positions).
+    private bool Leaf(BoundType type, HeldRange run)
+    {
+        for (var i = run.Start; i < run.End; i++)
+        {
+            if (this.ByValue(type, this.retentionHeld[i]))
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    // Whether a position lies in the binding of the called function's own abstract Type that the call reads in the callee's terms (PLAN
+    // G935; the owner's O-353 (a), O-360 (a)): a kept abstract Type (Hides, BU-202) of a callee whose rows its declared signature gives,
+    // every callee but a published transfer operation, whose rows SPEC states and the identity-keyed table holds (TransferKey; 15.6.4, 15.7,
+    // 4.9.6): a user-declared twin of `exchange` follows the signature (ex-rows.txt).
+    private bool Parametric(BoundType? signature)
+        => this.retentionParametric && OwnAbstract(signature) is { } function && ReferenceEquals(function, this.retentionCallee);
+
+    // The Types the result holds by value that hold no part by value (R's node-less positions in the result; PLAN G935, K2): the result
+    // holds an input's own value only by value (SPEC 15.6.4), never past its own borrow or raw layer, whose referent or pointee it lends.
+    private void ResultLeaves(BoundType? type, int depth)
+    {
+        if (type is null || depth > StorageBound)
+        {
+            return;
+        }
+
+        ref var shallowest = ref CollectionsMarshal.GetValueRefOrAddDefault(this.storageResultSeen, type, out var met);
+        if (!Enters(ref shallowest, met, depth))
+        {
+            return; // Entered at this depth or shallower: a Type's leaves depend on the Type alone (the bounded walks' rule, PLAN G571).
+        }
+
+        var run = this.BodyRun(type, null, null, out _);
+        var leaf = true;
+        for (var i = run.Start; i < run.End; i++)
+        {
+            if (this.ByValue(type, this.retentionHeld[i]))
+            {
+                leaf = false;
+                this.ResultLeaves(this.retentionHeld[i].Part, depth + 1);
+            }
+        }
+
+        this.retentionHeld.RemoveRange(run.Start, run.End - run.Start);
+        if (leaf)
+        {
+            this.storageResultLeaves.Add(type);
+        }
+    }
+
+    // Marks a storage entered past a borrow or pair layer (Past's answer, -1: none): R's exclusion (SPEC 15.6.4: storage written through a
+    // raw layer an input holds never retains that input's own value) holds only for storage entered past raw layers alone.
+    private void Borrowed(int past)
+    {
+        if (past >= 0)
+        {
+            this.storageBorrowed.Add(past);
+        }
     }
 
     // The Types a position's fit reads (SPEC 5.7 "retains as that borrow would"; DECISIONS R4-M154, r2.2), appended to retentionReads as a
@@ -420,8 +516,8 @@ public sealed partial class Binding
         if (IsCarrier(type))
         {
             var node = this.ReachedNode(environment, type);
-            this.storagePositions.Add((AbstractStorage, node, position));
-            this.storageTargets.Add((AbstractStorage, node));
+            this.storagePositions.Add((AbstractStorage, node, position, null));
+            this.storageTargets.Add((AbstractStorage, node, null));
             return;
         }
 
@@ -485,9 +581,9 @@ public sealed partial class Binding
 
     // What a value stored at a position brings past a layer it does not write through: every Origin occurrence's node (Occurrences), each
     // Type once per storage.
-    private void Targets(OriginPremiseEnvironment environment, BoundType? type, int storage)
+    private void Targets(OriginPremiseEnvironment environment, BoundType? type, int storage, BoundType? signature)
     {
-        if (type is null || storage < 0 || !this.storageTargeted.Add((storage, type)))
+        if (type is null || storage < 0 || !this.storageTargeted.Add((storage, type, signature)))
         {
             return;
         }
@@ -498,7 +594,7 @@ public sealed partial class Binding
         this.Occurrences(environment, type, nodes, callable: false);
         foreach (var node in nodes)
         {
-            this.storageTargets.Add((storage, node));
+            this.storageTargets.Add((storage, node, signature));
         }
     }
 
@@ -682,9 +778,12 @@ public sealed partial class Binding
     // holding it (a raw layer's step, as Held reads it); the depth; whether it lies in a Closure's environment (Captured, as
     // RetentionPlace.Captured); the walked signature's declared Type at the position (Signature, DECISIONS BU-113: inside the binding of an
     // abstract Type of the walked function's own declaration that abstract Type, Below; null inside another Type parameter's image, in a
-    // Closure's environment and below a part whose declared counterpart differs). For the input fold, its own state (Source).
+    // Closure's environment and below a part whose declared counterpart differs), and whether the walk is already inside that kept
+    // Type's binding (Bound: below its root, whose storage takes the callee's-terms rows, storageBound). For the input fold, its own
+    // state (Source).
     private readonly record struct StorageAt(
-        int Storage, bool Writable, BoundType? Written, BoundType? Holder, int Depth, SourceAt Source, bool Captured = false, BoundType? Signature = null)
+        int Storage, bool Writable, BoundType? Written, BoundType? Holder, int Depth, SourceAt Source, bool Captured = false, BoundType? Signature = null,
+        bool Bound = false)
     {
         // An output's walk from a storage.
         internal static StorageAt Output(int storage, bool writable) => new(storage, writable, null, null, 0, new(-1, Held: false, -1, 0));

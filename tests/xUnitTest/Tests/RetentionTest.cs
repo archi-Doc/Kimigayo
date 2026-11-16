@@ -197,7 +197,7 @@ public sealed partial class RetentionTest
     [InlineData("func f(x: ref/i32 during a, y: ref/i32 during b) -> ref/i32 during b => y", "result {1 Value}")]
     [InlineData("func f(b: ref/(ref/i32 during c) during o) -> ref/i32 during o => b@follow", "result {0 Content}")]
     [InlineData("func f(b: ref/(ref/i32 during c) during o, x: ref/i32 during c) -> ref/i32 during o => x", "result {0 Content, 1 Value}")]
-    [InlineData("func f(x: ref/i32, n: i32) -> i32 => n", "")]
+    [InlineData("func f(x: ref/i32, n: i32) -> i32 => n", "result {1 Value}")] // PLAN G935 (R, the owner's O-359 (a)): an i32 result holds n's value.
     [InlineData("func f<s/T>(value: s/T, count: s/i32) -> s/T\n    s is owner or uniq\n    T is Copy\n    _ = count\n    return value", "result {0 Value}, store 0: own {0 Content}, reached {}")]
     [InlineData("func f<s/T>(value: s/T, count: s/i32) -> s/T\n    s is owner or ref\n    T is Copy\n    _ = count\n    return value", "result {0 Value}")]
     public void DeclaredRelationsDecideTheResult(string function, string expected)
@@ -561,7 +561,7 @@ public sealed partial class RetentionTest
     [InlineData("func f<s/T>(a: s/T, b: ref/i32) -> s/T\n    s is ref or uniq\n    return a", "result {0 Value}, store 0: own {0 Content}, reached {}")]
     [InlineData(
         "func f<s/T>(a: s/T, b: uniq/Array<s/T>)\n    s is ref or uniq\n    return",
-        "store 0: own {0 Content, 1 Content}, reached {}, store 1: own {0 Value, 1 Content}, reached {0 Content, 1 Content}")]
+        "store 0: own {0 Content, 1 Chain}, reached {}, store 1: own {0 Value, 1 Content}, reached {0 Content, 1 Content}")] // PLAN G935: b's Content read as Chain at a's T storage, a conservative widening (Chain covers Content; an element lies past Array's buffer).
     [InlineData("func f<s/T>(a: s/T, b: ref/i32)\n    s is owner or uniq\n    return", "store 0: own {0 Content}, reached {}")]
     [InlineData("func f<s/T>(a: s/T, b: ref/i32)\n    s is uniq or raw\n    return", "store 0: own {0 Content}, reached {}")]
     [InlineData("func f<s/T>(a: s/T, b: ref/i32)\n    s is objuniq or obj\n    return", "store 0: own {0 Content}, reached {}")]
@@ -632,7 +632,8 @@ public sealed partial class RetentionTest
 
     // SPEC 15.6.4 step 1, 15.3.5 (DECISIONS R4-M36): an abstract carrier may hold borrows its Origins do not show, so an input naming a
     // Type parameter the result names is retained, as is one whose carrier lies below a layer whose Origin the result's outlives; a call
-    // instantiating the parameter retains by the instance, nothing for an Origin-free one.
+    // instantiating the parameter retains by the instance, an Origin-free one too (PLAN G935, the owner's O-359 (a): a value's Loans are
+    // its holder state's, so `pick(3, ..)`'s result keeps 3, which carries nothing).
     [Fact]
     public void AbstractCarriersRetainUnderTheirInstances()
     {
@@ -640,7 +641,7 @@ public sealed partial class RetentionTest
             "var a = 1\nvar b = 2\nlet r = pick(a@ref, b@ref)\nlet n = pick(3, b@ref)\n");
         Assert.Equal("result {0 Value}", Declared(c, "pick"));
         Assert.Equal("result {0 Value, 1 Value}", Declared(c, "hidden"));
-        Assert.Equal(["result {0 Value}", string.Empty], Calls(c, "pick"));
+        Assert.Equal(["result {0 Value}", "result {0 Value}"], Calls(c, "pick")); // PLAN G935 (R, O-359 (a)): pick's result of its own T holds a, an Origin-free i32 too.
     }
 
     // SPEC 15.6, design A3 3 (Φ_E): a result Origin tied to no input and not static, or a carrier no input names, is untied; a static
@@ -695,7 +696,7 @@ public sealed partial class RetentionTest
             "    _ = nestedRemember(x)\n    return 0\n");
         Assert.Equal(
             ["result {0 Content, 1 Value}, store 0: own {0 Content, 1 Value}, reached {}", string.Empty, "store 0: own {0 Content, 1 Value}, reached {}",
-                "store 0: own {}, reached {0 Content, 1 Value}", string.Empty, "result {0 Content}", "result {0 Content}", "result {0 Content}",
+                "store 0: own {}, reached {0 Content, 1 Value}", "result {0 Value}", "result {0 Content}", "result {0 Content}", "result {0 Content}",
                 "result {0 Content}", "result {0 Content, 1 Value}, store 0: own {0 Content, 1 Value}, reached {}",
                 "result {0 Content, 1 Value}, store 0: own {0 Content, 1 Value}, reached {}"],
             ValueCalls(c));
@@ -796,6 +797,42 @@ public sealed partial class RetentionTest
         Assert.Equal((expected, call), (Declared(c, "f"), string.Join(" | ", Calls(c, "mk"))));
     }
 
+    // SPEC 15.6.4 ("through its result or its writes"; PLAN G935, R1.3; the owner's O-359 (a)): storage of the callee's own T keeps an input
+    // the premise closure does not decide, an Origin-free one as a raw one, where a callable the contract hands the body takes it: by
+    // `mk`'s result in dst's own storage only; by `setN`, a writer through a `uniq/Self` receiver, also where a value of T reaches past
+    // its hidden references (the reached rows; fail-before on the unit's prototype 16: neither kept `1 Value`). A `ref/Self` receiver
+    // writes nothing, in `*self` or past it (15.6.4 "never through a shared Loan", 5.2.1 condition 3), so `setQ` keeps `p` nowhere
+    // (fail-before on prototype 16: `own {0 Content, 1 Value}, reached {1 Value}`, which rejected the valid setQRefParamOk).
+    [Theory]
+    [InlineData("contract MkN\n    func mk(n: u64) -> Self\nfunc f<T>(dst: uniq/T, v: u64)\n    T is MkN\n    return", "store 0: own {0 Content, 1 Value}, reached {}")]
+    [InlineData("contract SetN\n    func setN(self: uniq/Self, n: u64)\nfunc f<T>(dst: uniq/T, v: u64)\n    T is SetN\n    return", "store 0: own {0 Content, 1 Value}, reached {0 Content, 1 Value}")]
+    [InlineData("contract SetQR\n    func setQ(self: ref/Self, q: raw/u8)\nfunc f<T>(dst: uniq/T, p: raw/u8)\n    T is SetQR\n    return", "store 0: own {0 Content}, reached {}")]
+    public void AHandedCallableKeepsAnInputByItsResultOrItsWrites(string function, string expected)
+        => Assert.Equal(expected, Declared(Bind(function + "\n"), "f"));
+
+    // SPEC 15.6.4's abstract-storage sentence (the owner's O-360 (a); PLAN G935, the design review's open point 2; class 1 for a binding
+    // such as Wn): inside the binding of the callee's kept T the rows are the callee's terms', whatever Type the call binds T to. f's
+    // declared record keeps `p` in dst's own storage by `make`'s result (and past T's hidden references by `setQ`, where the contract
+    // hands it); the call with T = W gets the same rows for W a struct whose Field's Type no handed signature names (`k`), one of the
+    // parameters' Types (`p`, `q`) and a `u64` (`n`), as the call with a caller's own X does. The declared record's `0 Content` is dst's
+    // own content at T's carrier, which a binding naming no Origin has no row for. Fail-before on prototype 16: `own {}, reached
+    // {1 Value}` for `k`, `own {1 Value}, reached {1 Value}` for `p, q`, and no row at all for `n` (fcd6a5381 too: the invalid
+    // mkConcWnBad was accepted with an empty record).
+    [Theory]
+    [InlineData("", "    public var k: raw/(raw/(raw/u8))\n    public init() => self.k = null\n", "reached {}", "reached {}")]
+    [InlineData("", "    public var p: raw/(raw/u8)\n    public var q: raw/u8\n    public init()\n        self.p = null\n        self.q = null\n", "reached {}", "reached {}")]
+    [InlineData("", "    public var n: u64\n    public init() => self.n = 0\n", "reached {}", "reached {}")]
+    [InlineData("    func setQ(self: uniq/Self, q: raw/u8)\n", "    public var n: u64\n    public init() => self.n = 0\n    public func setQ(self: uniq/Self, q: raw/u8) => ()\n", "reached {0 Content, 1 Value}", "reached {1 Value}")]
+    public void EveryBindingOfTheKeptTypeGetsTheDeclaredRows(string requirement, string members, string declared, string bound)
+    {
+        var c = Bind("contract MakeK\n    func make(p: raw/(raw/u8), q: raw/u8) -> Self\n" + requirement + "struct W\n    Self is MakeK\n" + members +
+            "    public func make(p: raw/(raw/u8), q: raw/u8) -> Self => W.init()\n" +
+            "func f<T>(dst: uniq/T, p: raw/u8)\n    T is MakeK\n    return\n" +
+            "func g(q: raw/u8)\n    var x = W.init()\n    f(x@uniq, q)\nfunc h<X>(x: uniq/X, q: raw/u8)\n    X is MakeK\n    f(x, q)\n");
+        Assert.Equal($"store 0: own {{0 Content, 1 Value}}, {declared}", Declared(c, "f"));
+        Assert.Equal([$"store 0: own {{1 Value}}, {bound}", $"store 0: own {{0 Content, 1 Value}}, {declared}"], Calls(c, "f"));
+    }
+
     // Review r3's B3: an erased callable's carrier output is a fixed Origin its fixed inputs reach, so `mk`'s result `a` retains the
     // View borrowing `*q` (under `v.source == c`, `use`'s result retains `q`), and a generic caller passing its own carriers to `map`
     // retains `a` through the bound `map`'s call instantiates.
@@ -841,8 +878,10 @@ public sealed partial class RetentionTest
 
     // DECISIONS R4-M154, Revision 10: a source's fit is the conjunction over the layers of its path, but those the premise catalog's
     // well-formedness relates to the layer above, so a borrow formed through `x`'s raw layer lists one pair per layer the position's
-    // closure misses: into `*w`, `p`, `r` (the raw layer's, which no well-formedness relates to `p`) and `a` (none relates it to `r`);
-    // into Box2's `uniq/i32 during a` past x's referent, `p` and `r`. x's raw layer is a Type argument's, judged where `r` is bound (SPEC
+    // closure misses: into Box2's `uniq/i32 during a` past x's referent, `p` and `r` (the raw layer's, which no well-formedness relates
+    // to `p`). `*w` keeps no x: w's referent is storage of f's own E, which holds x, a T, only where a premise makes T an E, and f has
+    // none (SPEC 15.6.4's abstract-storage sentence, 8.2.3; the owner's O-360 (a), PLAN G935: store 1's conjunction `p > s & r > s &
+    // a > s` was the instantiated reading of E's binding, relabelled). x's raw layer is a Type argument's, judged where `r` is bound (SPEC
     // 5.7 Authority, 5.2.1 condition 3; DECISIONS BU-113): g states `r` by `zr: uniq` (and by `zr: ref` with `zu: uniq`), so f may write
     // past it; by `zr: ref` alone, a pointer stating `r` has no write authority, and f writes nothing past it (`reached {}`).
     [Theory]
@@ -854,20 +893,24 @@ public sealed partial class RetentionTest
         var c = Bind("struct Box2 {a}\n    public var inner: uniq/i32 during a\n    public init(inner: uniq/i32 during a) => self.inner = inner\n" +
             "func f<T, E>(x: T, w: uniq/E) => ()\n" +
             $"func g({statements}, x: uniq/(raw/(Box2 during a) during r) during p, w: uniq/(uniq/i32 during s) during q) => f(x, w)\n");
-        Assert.Equal([$"store 0: own {{0 Content}} if {{0 Value: p > r}}, {reached}, store 1: own {{1 Content}} if {{0 Value: p > s & 0 Value: r > s & 0 Value: a > s}}, reached {{}}"], Calls(c, "f"));
+        Assert.Equal([$"store 0: own {{0 Content}} if {{0 Value: p > r}}, {reached}, store 1: own {{1 Content}}, reached {{}}"], Calls(c, "f"));
     }
 
     // SPEC 5.2.1 condition 3, 5.7 Authority (DECISIONS BU-113): a call's contract reads a raw layer by its position. A View method's own
     // layer (`during source`) is capped by `self`'s `ref`-kept slot, a result layer too, whatever the receiver binds the slot to; a
     // `uniq`-kept slot is not. In a Type's own body a Type argument's layer stating its slot is judged by that slot's Loan requirement:
-    // `ref` stores nothing past it, `uniq` may. Holder's slot is `uniq` in one of its declaration's cases, so its method's layer is read
+    // `ref` stores nothing past it, `uniq` may: relay's signature writes that layer (ATypeArgumentsLayerAMethodWritesIsReadByItsSlotsLoan).
+    // `Keep.keep<U>`, which relay hands it to, stores nothing in either case: `*w` is storage of keep's own U, which holds `v`, a
+    // `raw/u8`, only where a premise makes it one, and the layer lies in U's binding, which U does not show and which adds no reach of
+    // its own, storage the body does not own included (SPEC 15.6.4; the owner's O-360 (a), PLAN G935: both rows relabelled from the
+    // instantiated reading). Holder's slot is `uniq` in one of its declaration's cases, so its method's layer is read
     // over every case its declaration admits, also under a `ref`-case instance (SPEC 15.3.5).
     [Theory]
     [InlineData(ViewRef + "    public func put(self: uniq/Self, p: uniq/(raw/(raw/u8) during source), v: raw/u8) => ()\n" + ViewCall, "put", "store 0: own {0 Chain, 1 Value Chain, 2 Value Chain}, reached {} untied, store 1: own {0 Value Chain, 1 Chain, 2 Value Chain}, reached {} untied")]
     [InlineData(ViewUniq + "    public func put(self: uniq/Self, p: uniq/(raw/(raw/u8) during source), v: raw/u8) => ()\n" + ViewUniqCall, "put", "store 0: own {0 Chain, 1 Value Chain, 2 Value Chain}, reached {0 Chain, 1 Value Chain, 2 Value Chain} untied, store 1: own {0 Value Chain, 1 Chain, 2 Value Chain}, reached {0 Value Chain, 1 Chain, 2 Value Chain} untied")]
     [InlineData(ViewRef + "    public func get(self: uniq/Self, p: uniq/(raw/(raw/u8) during source), v: raw/u8) -> raw/(raw/u8) during source => null\n" + ViewGet, "get", "result {0 Content, 1 Chain, 2 Value Chain}, store 0: own {0 Chain, 1 Value Chain, 2 Value Chain}, reached {} untied, store 1: own {0 Value Chain, 1 Chain, 2 Value Chain}, reached {} untied")]
-    [InlineData(ViewRef + ViewRelay, "keep", "store 0: own {0 Chain, 1 Value Chain}, reached {} untied")]
-    [InlineData(ViewUniq + ViewRelay, "keep", "store 0: own {0 Chain, 1 Value Chain}, reached {0 Chain, 1 Value Chain} untied")]
+    [InlineData(ViewRef + ViewRelay, "keep", "store 0: own {0 Content}, reached {}")]
+    [InlineData(ViewUniq + ViewRelay, "keep", "store 0: own {0 Content}, reached {}")]
     [InlineData(
         PairAnnotationBindingTest.HolderRefUniq + "    public func put(self: uniq/Self, p: raw/(ref/i32 during q) during a, v: ref/i32 during q) => ()\n" +
         "func g(r: ref/(ref/i32 during q), h: uniq/(Holder<ref/(ref/i32 during q) during r> during o), p: raw/(ref/i32 during q) during o, v: ref/i32 during q) => h.put(p, v)\n",
@@ -875,6 +918,15 @@ public sealed partial class RetentionTest
         "store 0: own {0 Content, 1 Content}, reached {}, store 1: own {0 Content, 1 Content, 2 Value}, reached {}")]
     public void ACallReadsARawLayerByItsPosition(string source, string callee, string expected)
         => Assert.Equal([expected], Calls(Bind(source), callee));
+
+    // The Type argument's layer of the rule above where the callee's own signature writes it (DECISIONS BU-113; PLAN G935): relay's
+    // `h: uniq/Wrap<raw/(raw/u8) during source>` states View's slot, so under a `ref`-kept slot relay stores nothing past the layer and
+    // under a `uniq`-kept one it may store `v` there.
+    [Theory]
+    [InlineData(ViewRef + ViewRelay, "store 0: own {0 Chain, 1 Value Chain, 2 Value Chain}, reached {} untied, store 1: own {0 Value Chain, 1 Chain, 2 Value Chain}, reached {} untied")]
+    [InlineData(ViewUniq + ViewRelay, "store 0: own {0 Chain, 1 Value Chain, 2 Value Chain}, reached {0 Chain, 1 Value Chain, 2 Value Chain} untied, store 1: own {0 Value Chain, 1 Chain, 2 Value Chain}, reached {0 Value Chain, 1 Chain, 2 Value Chain} untied")]
+    public void ATypeArgumentsLayerAMethodWritesIsReadByItsSlotsLoan(string source, string expected)
+        => Assert.Equal(expected, Declared(Bind(source), "relay"));
 
     // SPEC 22.2.3, 15.6.3, 8.4: a requirement on the caller's abstract Self is read as the caller's premises make its contract: under
     // `I is Iterator`, `next`'s item is `I.Item`, which names no `step`, so it descends from the receiver's referent (Content) and two
@@ -1088,7 +1140,12 @@ public sealed partial class RetentionTest
     // Text.writer its destination, its Utf8Writer untied by the unstated raw Fields it stores; Raw.slice's result, a fresh anchor, is
     // untied unless its pointee's Origins tie it, and lies within its storage, which it retains (D14, R4-M116 item 4) with a read through
     // it; Raw.allocate's, a raw pointer without an Origin, retains every argument with its chain and is untied (SPEC 15.6.4's rule A,
-    // DECISIONS BU-40), as Raw.initialize's unstated `slot` pointee retains `p` and its own chain. A raw input's pointee is its own
+    // DECISIONS BU-40). Raw.initialize<T>(storage: raw/T, value: T) is read in its own terms (PLAN G935, the owner's O-360 (a)): `*storage`
+    // is storage of its own T, which holds `value` (Value: the stored value's Loans and addresses), and T's binding's raw layer adds no
+    // reach, so a `raw/i32` stored there keeps no Chain rows and unties nothing. A Reading: SPEC 5.2.1 "Retained dependencies" names
+    // Raw.initialize under rule A's words; the record keeps that sentence's conclusion (the stored value's Loans and addresses), not its
+    // Chain rows (RG1 applied to a library intrinsic's own Type parameter; Raw.initialize is on 15.6.4's list of operations whose
+    // writes do not compose). A raw input's pointee is its own
     // writable storage, which retains it as a read through it, except where the operation contract stores no value through the input
     // (SPEC 5.2 Placement, 5.6; KimiLibraryCatalog.NoStore, PLAN G780), e.g. Raw.slice's storage: no writable storage there, an unstated
     // layer included (fail-before: rule A's untied store 0 and store 1).
@@ -1098,11 +1155,11 @@ public sealed partial class RetentionTest
     [InlineData(Lent + "let h = Kimi.Intrinsics.makeArc(Lent.init(r: x@ref))\n", "makeArc", "result {0 Value}")]
     [InlineData(Lent + "let h = Kimi.Intrinsics.makeRc(Lent.init(r: x@ref))\nlet c = Kimi.Intrinsics.clone(h@ref)\n", "clone", "result {0 Content}")]
     [InlineData("var x = 1\nlet p: raw/(ref/i32) = Raw.allocate(1)\nunsafe => Raw.initialize(p, x@ref)\n", "initialize", "store 0: own {0 Content, 1 Value}, reached {}")]
-    [InlineData("let slot: raw/(raw/i32) = Raw.allocate(1)\nlet p: raw/i32 = Raw.allocate(1)\nunsafe => Raw.initialize(slot, p)\n", "initialize", "store 0: own {0 Chain, 1 Value Chain}, reached {} untied")]
+    [InlineData("let slot: raw/(raw/i32) = Raw.allocate(1)\nlet p: raw/i32 = Raw.allocate(1)\nunsafe => Raw.initialize(slot, p)\n", "initialize", "store 0: own {1 Value}, reached {}")]
     [InlineData("let p: raw/i32 = Raw.allocate(1)\nunsafe\n    let s = Raw.slice(p, 1)\n", "slice", "result {0 Value}, untied")]
     [InlineData("let p: raw/(ref/i32) = Raw.allocate(1)\nunsafe\n    let s = Raw.slice(p, 1)\n", "slice", "result {0 Value Content}")]
     [InlineData("let p: raw/(raw/i32) = Raw.allocate(1)\nunsafe\n    let s = Raw.slice(p, 1)\n", "slice", "result {0 Value Chain}, untied")]
-    [InlineData("let slot: raw/(raw/(raw/i32)) = Raw.allocate(1)\nlet p: raw/(raw/i32) = Raw.allocate(1)\nunsafe => Raw.initialize(slot, p)\n", "initialize", "store 0: own {0 Chain, 1 Value Chain}, reached {0 Chain, 1 Value Chain} untied")]
+    [InlineData("let slot: raw/(raw/(raw/i32)) = Raw.allocate(1)\nlet p: raw/(raw/i32) = Raw.allocate(1)\nunsafe => Raw.initialize(slot, p)\n", "initialize", "store 0: own {1 Value}, reached {}")]
     [InlineData("var b = Text.heap(8)\nlet w = Text.writer(b@uniq)\n", "writer", "result {0 Value}, untied")]
     [InlineData("let p: raw/(ref/i32) = Raw.allocate(1)\nunsafe => Raw.release(p)\n", "allocate", "result {0 Value Chain}, untied")]
     [InlineData("let p: raw/(ref/i32) = Raw.allocate(1)\nunsafe => Raw.release(p)\n", "release", "")]
@@ -1118,7 +1175,7 @@ public sealed partial class RetentionTest
     // the Handle's Type admits, nothing here, so the handle is no untied store (SPEC 5.7 Calls).
     [Theory]
     [InlineData(KimiDeclarationId.DictionaryStoragePlaceEntry, "store 0: own {0 Content, 1 Value, 2 Value}, reached {}")]
-    [InlineData(KimiDeclarationId.DictionaryStorageGrow, "")]
+    [InlineData(KimiDeclarationId.DictionaryStorageGrow, "store 0: own {1 Value, 2 Value}, reached {}")] // PLAN G935 (R, O-359 (a)): the storage's isize counts hold the isize arguments.
     public void StorageOperationsRetainTheirRawArguments(KimiDeclarationId id, string expected)
     {
         var c = Bind(string.Empty);
@@ -1147,14 +1204,21 @@ public sealed partial class RetentionTest
     // SPEC 15.6.4's abstract-Type sentence (DECISIONS BU-66, R4-M154 rules 2 and 3): an abstract part holds a raw argument's own value
     // only where a callable the call may run may retain it there; no premise makes it storage that can hold one
     // (TwoRawLayersOfOneOriginKeepTheirRows). `make`, which `T is MakeW` hands the body, returns a `T` from raw pointers, whatever their
-    // pointee (a raw cast keeps the address, SPEC 5.4; G297 fix 1, fails on fd7058a42: `raw/i32` gave no row);
+    // pointee (a raw cast keeps the address, SPEC 5.4; G297 fix 1, fails on fd7058a42: `raw/i32` gave no row): f may replace `*dst` with
+    // such a T, so dst's own storage keeps `p`. MakeW hands no requirement with a Self receiver, so f's body has no call through a value
+    // of T that writes where the T reaches, and the reached storage keeps nothing (SPEC 15.6.4 "through its result or its writes"; the
+    // owner's O-360 (a), PLAN G935: `reached {1 Value}` relabelled). MakeQ's `setQ(self: uniq/Self, q: raw/u8)` is such a writer (15.6.4's
+    // routes, its `later`), so its reached storage keeps `p` (fail-before on the unit's prototype 15: `reached {0 Content}`);
     // a requirement on an abstract Self is such a callee itself (the owner, 2026-10-30: 「(a) 今の文面に含まれると読み、今の動作のまま進
     // める」), so `T.make`'s result keeps both. A pair layer admitting `raw` is, in that case, a raw layer without an Origin the call
     // writes (rule A); one admitting only owner and uniq holds what its target `T` holds. `putRaw<s/T>`'s `value` keeps no handle
     // (PLAN G297; fails before: `store 1: own {0 Value, 1 Content}`).
     [Theory]
-    [InlineData("func f<T>(dst: uniq/T, p: raw/u8)\n    T is MakeW\n    return", "store 0: own {0 Content, 1 Value}, reached {1 Value}")]
-    [InlineData("func f<T>(dst: uniq/T, p: raw/i32)\n    T is MakeW\n    return", "store 0: own {0 Content, 1 Value}, reached {1 Value}")]
+    [InlineData("func f<T>(dst: uniq/T, p: raw/u8)\n    T is MakeW\n    return", "store 0: own {0 Content, 1 Value}, reached {}")]
+    [InlineData("func f<T>(dst: uniq/T, p: raw/i32)\n    T is MakeW\n    return", "store 0: own {0 Content, 1 Value}, reached {}")]
+    [InlineData(
+        "contract MakeQ\n    func make(p: raw/(raw/u8), q: raw/u8) -> Self\n    func setQ(self: uniq/Self, q: raw/u8)\nfunc f<T>(dst: uniq/T, p: raw/u8)\n    T is MakeQ\n    return",
+        "store 0: own {0 Content, 1 Value}, reached {0 Content, 1 Value}")]
     [InlineData("func f<T>(dst: uniq/T, p: raw/u8) => ()", "store 0: own {0 Content}, reached {}")]
     [InlineData("func f<s/T>(dst: uniq/(s/T), p: raw/i32)\n    s is raw or owner\n    return", "store 0: own {0 Content, 1 Value}, reached {0 Content, 1 Value}")]
     [InlineData("func f<s/T>(dst: uniq/(s/T), p: raw/i32)\n    s is owner or uniq\n    return", "store 0: own {0 Content}, reached {0 Content}")]
@@ -1209,11 +1273,12 @@ public sealed partial class RetentionTest
         => Assert.Equal([expected], Calls(Bind($"contract MakeO\n    func make(v: {type}) -> Self\nfunc g<T>(v: {type}) -> ()\n    T is MakeO\n    let t = T.make(v: {argument})\n"), "make"));
 
     // The raw sources through the hold walk's other arms (DECISIONS BU-66 at the raw source), each a sound over-approximation of the
-    // wrapped pointer by the argument's own value: the generic wrapper whose handed `make` takes one (rule 3, ErasedFills), a pair layer
+    // wrapped pointer by the argument's own value: the generic wrapper whose handed `make` takes one (rule 3, Fills; its reached storage
+    // keeps nothing, since MakeO hands no requirement with a Self receiver: SPEC 15.6.4, the owner's O-360 (a), PLAN G935), a pair layer
     // admitting `raw` and a result raw layer stating an Origin. A lent one keeps only the raw arguments (R′, SPEC's "the raw arguments"),
     // never a wrapped source (BU's ruling on part A: fails with R′ over the raw sources, `0 Value Chain`).
     [Theory]
-    [InlineData("func f<T>(dst: uniq/T, p: raw/u8)\n    T is MakeO\n    return", "store 0: own {0 Content, 1 Value}, reached {1 Value}")]
+    [InlineData("func f<T>(dst: uniq/T, p: raw/u8)\n    T is MakeO\n    return", "store 0: own {0 Content, 1 Value}, reached {}")]
     [InlineData("func f<s/T>(dst: uniq/(s/T), t: (raw/i32, i32))\n    s is raw or owner\n    return", "store 0: own {0 Content, 1 Value}, reached {0 Content, 1 Value}")]
     [InlineData("func f(b: ref/i32, t: (raw/i32, i32)) -> raw/i32 during b => b@follow@raw", "result {0 Value}")]
     [InlineData("func f(b: ref/i32, t: (raw/i32 during b, i32)) -> raw/i32 during b => b@follow@raw", "result {0 Value, 1 Value}")]
@@ -1329,7 +1394,7 @@ public sealed partial class RetentionTest
     [InlineData("func f(slot: raw/(raw/u8), p: raw/u8) => ()", "store 0: own {0 Chain, 1 Value Chain}, reached {} untied")]
     [InlineData(
         "func f(r: ref/i32, k: i32, slot: uniq/(raw/i32)) => ()",
-        "store 2: own {0 Value Chain, 1 Value Chain, 2 Chain}, reached {} untied")]
+        "store 2: own {0 Value Chain, 1 Value Chain, 2 Chain}, reached {1 Value} untied")] // PLAN G935 (R; SPEC 5.7 Calls, 15.6.4's composition): the i32 past slot's raw layer admits k, also through the call's own pointer there.
     [InlineData("func f(r: ref/i32, slot: uniq/(raw/u8 during static)) => ()", "store 1: own {1 Content}, reached {} untied")]
     public void AnUnstatedLayerACallWritesRetainsEveryArgument(string function, string expected)
         => Assert.Equal(expected, Declared(Bind(function + "\n"), "f"));
@@ -1402,13 +1467,16 @@ public sealed partial class RetentionTest
     // an enum's payload added by value (`append`, `insertOrReplace`), `exchange`'s `with` (fail-before: `store 1: own {}, reached {}
     // untied`, an untied pointer for what the added value addresses; before C4, `0 Chain store 1`).
     // A 4.9 operation writes its receiver's store only in the storage the receiver refers to (`referent store 0`, DECISIONS BU-42);
-    // construction, `exchange`, `swap`, an Iterator's `next` and a user `trade` or `pop` have no such store.
+    // construction, `exchange`, `swap`, an Iterator's `next` and a user `trade` or `pop` have no such store. `trade<T>(a: uniq/T, b:
+    // uniq/T)`, a user twin of `swap`, follows its declared signature (PLAN G935, the owner's O-360 (a); SPEC states rows only for the
+    // published operation): a's referent, storage of trade's own T, keeps what a read through b gives, a T (Content); b's own value, a
+    // `uniq/T`, is no T, and T's binding's raw layer adds no reach, so no Chain row and no untied store (relabelled from rule A's rows).
     [Theory]
     [InlineData("var x: raw/u8 = null\nvar y: raw/u8 = null\nKimi.Intrinsics.swap(x@uniq, y@uniq)\n", "swap", "store 0: own {0 Chain, 1 Chain}, reached {} untied, store 1: own {0 Chain, 1 Chain}, reached {} untied")]
     [InlineData(
         "func trade<T>(a: uniq/T, b: uniq/T) => ()\nvar x: raw/u8 = null\nvar y: raw/u8 = null\ntrade(x@uniq, y@uniq)\n",
         "trade",
-        "store 0: own {0 Chain, 1 Value Chain}, reached {} untied, store 1: own {0 Value Chain, 1 Chain}, reached {} untied")]
+        "store 0: own {1 Content}, reached {}, store 1: own {0 Content}, reached {}")]
     [InlineData("var x: raw/u8 = null\nlet old = Kimi.Intrinsics.exchange(x@uniq, with: null)\n", "exchange", "result {0 Chain}, untied, store 0: own {0 Chain, 1 Value Chain}, reached {} untied")]
     [InlineData("var a = 1\nvar b = 2\nvar x = a@ref\nlet old = Kimi.Intrinsics.exchange(x@uniq, with: b@ref)\n", "exchange", "result {0 Content, 1 Value}, store 0: own {0 Content, 1 Value}, reached {}")]
     [InlineData("var a: Array<raw/u8> = [null]\nlet x = a.pop()\n", "pop", "result {0 Chain}, untied, store 0: own {0 Chain}, reached {} untied, referent store 0")]
