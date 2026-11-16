@@ -1073,6 +1073,9 @@ and migration obligations remain in force; no numeric cap changes are authorized
   signature in MIR is the general fix and changes a shared MIR form); one bounds function with a null-callee mode (two contracts in one
   signature). `Bodyless`' composite clause is refined by R4-M28. Its `Dependent` class is amended by R8-M42 (a Body the
   parser recorded missing).
+  - Superseded in part by R8-M45 (R8-G1 G1-4c): `TyCtxt.Bodyless` returns `BodylessKind` (Intrinsic, Shim, Import, Dependent,
+    Unclassified) from Binding-published facts; `IntrinsicDisposition.Effect` and `CompilerFunctionEffect` are deleted, and A4 reads
+    an Intrinsic's class from its `MirDescriptors` row.
 - **R4-M24** (2026-10-12) A5-1, regions and Loans: superseded by R4-M33 (2026-10-16); full text: 0d989e685.
 - **R4-M9b** (2026-10-12; superseded R4-M9's view list and placement) Binding views built by their first reader: superseded by
   R4-M33 (2026-10-16), its view list where it applies by R4-M94's C1-F4 view; full text: 0d9492185.
@@ -10940,6 +10943,9 @@ resumed by R4-M86 (2026-10-20).
   - The kind is stored, and `Koto.ReplaceChild` classifies again, because a parse recovery replaces the Name. Rejected: a computed `Kind` (design §3); without the
     re-classification a nesting cut gives a false `InvalidLayoutAttribute_Kd`, and `#Test(1)` loses its `UnresolvedBinding_Kd`.
   - `"C"` and `"Kimigayo"` stay strings: they are argument values, not names.
+  - Superseded in part by R8-M45 (R8-G1 G1-1): the "one enum member" sentence: R8-G1 adds four kinds, `Lang`, `Intrinsic`,
+    `CallerLocation` and `Unsupported` (`AttributeKind` 4 -> 8), classified only in the library's Kotonoha; `Classify` stays the one
+    read of the Name.
 - **BU-119 Constraint subjects by the grammar** (owner, 2026-11-07, verbatim 「O-42はaで決定します」, confirmed 「(a) のまま進める」; R7-N7, plan §5.1 N7; Major; one review, ACCEPT at re-check) A Type written with Type arguments, such as `W<Y>`, is no Constraint subject:
   the parser follows Appendix F's `ConstraintSubject`, which restores the line R4-M115's rejected list took from proposal B 7.2 ("constructed Constraint subjects"; `Option<U> is Option<i32>` would be a second spelling of `U is i32`).
   - `Parser.ParseTypeConstraint` keeps its Type path, because an `AssociatedTypeReference`'s qualifier may be a constructed Type (`W<Y>.(Has2).Out`, `::W<Y>.(Has2).Out`), and `IsConstraintSubject` is the one owner of the shape: a Type with no Type
@@ -20846,6 +20852,9 @@ R8-M* and R9-M* by the stage of the recording unit.
   - Amended by R8-M24 (R8-W2 a2): the stack-Region caller of `FormatFixed` (`FunctionCodegen.Interpolation.cs`, FormatBuffer's
     buffer over an owning interpolation's stack Region) is deleted; its one caller is `__kimi_text_heap` (and Utf8FloatTest's hand
     IR) until R8-W2 c.
+  - Superseded in part by R8-M45 (R8-G1 G1-4c, G1-5): the producer `writeStdout` is written in `Formatting.kimi`'s Console group
+    with `#Intrinsic("WriteStdout")` and registered unnamed; the signature-only `Console.kimi`,
+    `CompilerFunctionKind.ConsoleWriteStdout` and its Effect row are deleted (A4 reads `WriteStdout`'s `MirDescriptors` row).
 - **R8-M23 One Backend walk of a drop group serves the instance collector and code generation (PLAN G641 kind 4)** (Back,
   2026-11-10; R3-U2a, the first part (R3-U1 and R3-U2b extend this entry); Major, no acceptance move, four record moves on rejected
   programs (Q13); design reviews 1 REVISE, 2 ACCEPT; implementation reviews 1 REVISE, 2 REVISE, 3 ACCEPT) SPEC 16.3.2, 15.1.3,
@@ -21448,6 +21457,9 @@ R8-M* and R9-M* by the stage of the recording unit.
     on all three (11,816,064 against 11,816,264 on Hello), warm 0 B. The compile cost is unchanged.
   - Superseded in part by R8-M38 (PLAN G815, 2026-11-13): the view's `Utf8Format` conformance is the witness table's
     `Utf8SliceFormat` row; `Utf8Slice` declares no `format`.
+  - Superseded in part by R8-M45 (R8-G1 G1-3a): a catalog row names the original through its `#Lang`, which an explicit
+    specialization never carries (`KimiLibraryShapeTest` L1); `KimiLibrary.FindDeclaration` is deleted, and `RequiresCallerLocation`
+    reads the original's `#CallerLocation` (`BindingSymbol.CallerLocation`).
 - **R8-M31 The library's module ordinal is fixed: `SyntaxTable.LibraryModule`** (Back, 2026-11-11; R8-L1 U0; the design
   `back\l1-design\design.md` (Major), design review 3: the Middle's ACCEPT and the Front's ACCEPT with conditions, C-240/C-241;
   implementation reviews C-245, C-246 and B's; the owner's O-170 (a), O-175 (a)). Behavior-preserving except the declared MirDump
@@ -21831,6 +21843,8 @@ R8-M* and R9-M* by the stage of the recording unit.
     Binding's partition (it widens R5-M151's stated cost and still leaves A4's Limit to `Bodyless`).
   - Follow-up (the Front's C-334 N1): one owner of a definition's failure, Binding's declaration state carrying the recorded missing
     body, would let `Bodyless` keep one arm.
+  - Superseded in part by R8-M45 (R8-G1 G1-4c): `Bodyless` returns `BodylessKind` and reads `Definition`, not the deleted
+    `CompilerFunction`; its `Dependent` rule stands.
 - **R8-M43 Program output equality: `Test-KimiExpectedOutput` compares bytes ordinally (PLAN G894)** (Back, 2026-11-14; D-654;
   verification tooling; review ACCEPT WITH NOTES, notes folded).
   - The owner. `Test-KimiExpectedOutput` (`src/backend/windows-x64/expected-output.ps1`) owns the rule "a program's output equals
@@ -21897,6 +21911,160 @@ R8-M* and R9-M* by the stage of the recording unit.
     - A library `hinted<length H>`: one instance per distinct hint, a2 review 2's R2-N2.
     - Skipping the store on a fixed-only line: a mode in `Writes`.
   - **RP8:** T-218.
+- **R8-M45 Kimi declarations are identified by the library's implementation Attributes; `CompilerFunctionKind` deleted** (Back,
+  2026-11-16; R8-G1, its phases G1-1, G1-2, G1-3a, G1-3b-1, G1-3b-2, G1-4a, G1-4b, G1-4c, G1-5 and G1-6 landed together from one
+  branch; Major; RP20, RQ9, RQ11; the owner's O-300 (a), O-305 (a), O-306 (a) and O-307 (a); the design `back\notes\g1\g1-design.md`
+  and G1-3b's `g1\g13b\g13b-design.md` revision 4.1 with their reviews, and each phase's implementation review; the Front's consents
+  C-341, C-346, C-348, C-354, C-357, C-361, C-364, C-366 and C-368; the Middle's C-358, C-369 and C-371). SPEC 6.7, 9.5.1, 13.6.2,
+  13.6.3, 22.1, 23.1.1; IMPL 21.3.4. Extends R8-M31 (the library's ordinal is fixed at its table's creation).
+  - **Classification (G1-1).** `AttributeKoto.Classify` classifies `#Lang`, `#Intrinsic`, `#CallerLocation` and `#Unsupported` only
+    where the node's Kotonoha is the library's: `SyntaxTable.IsLibrary`, R8-M31's `LibraryModule`, which `SyntaxTable.ForLibrary`
+    now gives at creation through `Kotonoha.ForKimiLibrary`. Elsewhere they are Unknown (SPEC 6.7). One equivalence: a table is the
+    library's iff Binding numbers it `LibraryModule` (the `Number` guard is symmetric; B's N2). `Classify` stays the one read of an
+    Attribute's Name (BU-118).
+  - **Parsing (G1-1, G1-5).** It accepts these kinds on a library constructor. A library function or constructor carrying
+    `#Intrinsic` or `#Unsupported`, or a constructor carrying `#Lang` (a linked constructor), may omit its Body (SPEC 6.7, 22.1;
+    IMPL 21.3.4): `FunctionKoto.OmitsBody` records no `MissingSyntax_Kd` for its missing Body, and a block whose leading region
+    holds only its clauses is no Body (a body with items stays). The kinds exist only under the library mark, so user declarations
+    keep their records.
+  - **Ordinary sources (G1-5).** Every library source is ordinary: the signature-only parse mode, its signature files
+    (`ArrayOperations.kimi`, `Console.kimi`, `IntrinsicOperations.kimi`, `RawOperations.kimi`, `StorageOperations.kimi`; `Test.kimi`
+    is ordinary source now) and the four synthesized group shells (Console, Intrinsics, Test, Text) are deleted; a declaration the
+    compiler implements is written in its container with its implementation Attributes.
+  - **Binding of the Attributes (G1-2).** Binding completes an implementation Attribute as a marker (the valid `#Test` arm's shape)
+    and never binds its operand. An implementation Attribute is a fact of the original declaration; registration gives it to the
+    original's symbol only. A specialization is no declaration of its own (SPEC 8.13.3) and inherits the fact (SPEC 8.13.2) because
+    every reader resolves the function to its original first (`TyCtxt.Original`): a reader never takes such a fact from a
+    specialization's own symbol. `AttributeKoto.IsImplementation` is the family's predicate. A library declaration's Hover header
+    shows its Attributes through the ordinary syntax writers (B's Hover ruling (a); the Front's C-341).
+  - **Registration (G1-3a, G1-6).** The library's registration reads the implementation Attributes from syntax by Kind, never from
+    their BindingState: one walk (`KimiLibrary.FindImplementations`, G1-3a's `FindLangItems`) maps each `#Lang("Name")` to its
+    `KimiDeclarationId` (the member of that Name, ordinal) and keeps the declaration by id. A cataloged id becomes a symbol (catalog
+    order), whose name and kind are its declaration's and whose scope is its declaring container's (the root's, else one scope per
+    container under its declaring container's; G1-5 deleted the shells' own scopes). `KimiDeclarationId`'s 17 internal members (the
+    owner's O-307 (a)) are read into `KimiLibrary`'s members, not symbols. `#CallerLocation` sets `BindingSymbol.CallerLocation` on
+    the original's symbol only; a reader takes it through `TyCtxt.Original` (`RequiresCallerLocation`). The catalog entry keeps only
+    facts the source does not state: `IntrinsicKind`, `ManagedRepresentation`, `Row` and `Implementation` (G1-4c deleted the
+    `Function` column, and G1-3b-2 the `Name`, `Container` and `SourceExpected` that G1-3a kept for `IsUnsourced`).
+    `RegisterCatalog` throws for any entry without its declaration (G1-3b-2).
+  - **The lang items (G1-6, with B's D1).** `KimiDeclarationId` holds only the lang items a C# reader names (the owner's O-307 (a):
+    137, the design's 135 plus `TestTempDirectory` and `Weak`), the catalog's first in the order of its entries, the 17 internal
+    declarations `KimiLibrary` reads into members last; the entry array is dense and indexed by id (no index table): an entry for
+    each lang item registered as a catalog symbol, at its id; its facts are the four columns (B's D1 ruling, 11-15, amending design
+    §3.1 item 3), so an id has an entry exactly when it is a catalog symbol and the entry count is the boundary before the internal
+    declarations. A library declaration without a `#Lang` that carries `#Intrinsic` or `#CallerLocation` is registered unnamed
+    (`LibraryDeclaration` null) after the catalog's symbols, in source order, so its `Definition` and caller-location flag are read
+    once, as a lang item's are; every other library declaration is declared by indexing. `Storage.reserveDispatch<W>()` (R8-M46) is
+    registered unnamed by this rule: no C# reader names it, so it has no `KimiDeclarationId` member or catalog entry and carries
+    `#Intrinsic("ReserveDispatch")` only (B's second-lander ruling).
+  - **Definitions (G1-4a).** `BindingSymbol.Definition` (an `IntrinsicDisposition`) is a function's one published disposition, set
+    where its symbol is made: the library's registration from the declaration's `#Intrinsic` read from syntax by Kind
+    (`KimiLibrary.DefinitionOf`; `#Intrinsic("Fail", "Code")` gives Fail and its code), `$abort`'s `Intrinsic(Abort)`, and
+    `Binding.PrepareBuiltinTargets`' Shim; otherwise Body. Its readers (`FunctionCodegen.Intrinsics`, `InstanceCollector.Callees`,
+    `MirBuilder.Calls` and `Serve`, `MirValidator.Calls`, `Binding.ClosureReceivers`) read it, and `MirBuilder.Serve` names its
+    function by lang item. `WritesThrough` is keyed by `IntrinsicId`; `FormOf` and `BuiltinForm` moved beside `SequenceMember`
+    (`Binding.Sequences.cs`).
+  - **Shims (G1-4b).** A shim has no declaration. `Binding.PrepareBuiltinTargets` alone sets `Definition = Shim`, and a shim's kind
+    is its target's Contract, a lang item, not a second fact: one published read, `TyCtxt.ShimContract` (a shim's Contract by its
+    lang item, null for another disposition), at `InstanceCollector.Witnesses`' Shim, `InstanceCollector.Capabilities`'
+    ArithmeticGap, `FunctionCodegen.Shims`' WriteShim (G1-4b's review N3) and `Binding.RequirementInstances`' comparison plan
+    (G1-4c; C-357 C2): Equatable or Comparable, or `ArithmeticContracts.IsArithmetic`. The former compiler-function keys read
+    `Definition.Kind != Body`; `Binding.Access` reads `Test.tempDirectory` by its lang item.
+  - **Bodiless calls (G1-4c).** One decider of a function without a MIR body: `TyCtxt.Bodyless(BindingSymbol) -> BodylessKind`
+    (Binding, `TyCtxt.Effects.cs`), from Binding-published facts only: Intrinsic and Shim by `Definition`, Dependent for a
+    definition Binding rejected or whose Body the parser recorded missing (R8-M42), Import for `#LibraryImport`, else Unclassified.
+    `BodylessKind` replaces `CompilerFunctionEffect`. A4 (`MirEffects.Class`) reads an Intrinsic's class from MIR's own row
+    (`MirDescriptors.Of(Definition.Id)`: Environment where the row has it, else Inputs), a Shim as Inputs, an Import as Environment,
+    Dependent as Derived, Unclassified as a Limit; the instance collector reads the category (an Intrinsic's row, a Shim -1, an
+    Import's item, Dependent -1, else `InternalInvariant_Kd`). Neither reads syntax.
+  - **`#Unsupported` declarations in the library's source; one use verdict (G1-3b-1, G1-3b-2; the owner's O-305 (a); G1-3b's own
+    design, which extends this entry).**
+    - `downgrade`, `upgrade`, `makeRcCyclic` and `makeArcCyclic` are written with `#Unsupported` in `Intrinsics.kimi`'s `Intrinsics`
+      group, after `clone` (B's second-lander ruling: G1-5 deleted `IntrinsicOperations.kimi`), and
+      `#Lang("Weak") #Unsupported public struct Weak<s/T>` in `Core.kimi`. The Attribute on the declaration is the fact's one
+      representation; no symbol flag.
+    - A mention inside an `#Unsupported` declaration's own text is part of that declaration, not a use.
+    - The use verdict (`Binding.UnsupportedUses`, `Refused(name, selected)`) decides where the walk completes a component of a
+      written name, before the component is handed on as a qualifier or ends the path: `ResolvePath`, `ResolveRootPath` and `Lookup`
+      return through it. A refused component's walk ends `Unresolved`, and the refused Name carries the record: an `Unsupported`
+      name step whose publication fails the Name; no later step holds the refused selection as its qualifier. `SelectMember`,
+      `SelectQualifier` and `BindLengthName` judge their one selection where they write it (until BU-122 c-f).
+      `Binding.SupportedFunction(name, function)` is the verdict of one selected function: the call's winner, after its solution and
+      before its waiting parts, and `CompleteFunctionItem`.
+    - A selected function names its Name's function group (SPEC 9.5.1): its head's chain and each further source the import stage
+      gathered for the Name, read from the walk's own `ImportGroup` steps, since the verdict runs in evaluation, before
+      `PublishPath` publishes the gathered table `GroupOf` reads: `FunctionGroup.Of` builds every chain, and a use's group is its
+      head's chain plus each gathered source's chain, read from the walk's own `ImportGroup` steps while the use is evaluated (the
+      verdict) and from their publication after it (`GroupOf`). `Lookup` and `ReadAgain` share one judged value evaluation
+      (`ResolveValue`); a repair's probe of a spelling no use wrote (`ProbePath(string)`, Qualification) is not judged. An alias's
+      segment walk records at the alias, its only node.
+    - A Name whose gathered group is wholly `#Unsupported` is decided at the Name (`upgrade(1)`: one `Unsupported_Kd`). In a mixed
+      group the `#Unsupported` candidate takes part in selection as declared and is used only when selected (R8). Every library
+      group is wholly `#Unsupported` or not at all.
+    - New vocabulary entry (record): `NameStepKind.Unsupported` (no closed-vocabulary limit; COMPILER_ARCHITECTURE lists no
+      `NameStepKind`).
+    - Reason: the base recognized two spellings under one container (F3), so every other route to the five declarations got a
+      Language record on a valid form.
+    - Staged: `SelectMember`'s, `SelectQualifier`'s and `BindLengthName`'s calls go when BU-122 c-f bring those walks into
+      `ResolvePath`.
+  - **Deleted:** `CompilerFunctionKind`, `BindingSymbol.CompilerFunction`, `CompilerFunctionEffect`, `IntrinsicDisposition.Of` and
+    `Effect`, `KimiLibrary.Function(CompilerFunctionKind)`, `KimiLibraryCatalog.IsStorageOperation` and `IsRawOperation` (a second
+    copy of `MirDescriptors`' intrinsic class), the catalog's spelling columns and its index table, `KimiLibraryContainer`,
+    `KimiLibrary.FindDeclaration` and the 22 name lookups, the signature-only parse mode, `IsUnsourced`, `SourceExpected`,
+    `MissingFailure`'s catalog arms (its Property-requirement arm stays) and the ids `Downgrade`, `Upgrade`, `MakeRcCyclic` and
+    `MakeArcCyclic`. `TyCtxt.Bodyless` stays, the one decider (G1-4c).
+  - **Counts.** `AttributeKind` 4 -> 8, by the owner's O-306 (a); `CompilerFunctionKind` 28 (with `None`, after R8-M48) -> deleted
+    (RQ9), and its ARCH vocabulary row removed; `KimiDeclarationId` 195 -> 137 (O-307 (a): 120 cataloged lang items, then the 17
+    internal declarations; no ARCH row); catalog entries 192 -> 120, each with its symbol, and 63 library declarations registered
+    unnamed; `IntrinsicId` unchanged.
+  - **Moves.**
+    - Every phase but G1-3b-2 is behaviour-preserving by the design's phase rule: no record's code, subject or count changes. G1-2,
+      G1-5 and G1-6 move library positions only (related-fact locations, MirDump's library ids, fixture IR's library locations).
+      G1-5 also declares (N3): the four group rows (Console, Intrinsics and Test now bound as declarations, `t=()`; all four at
+      their declaration's span instead of `?:0`); the library's resolved-node count +3 in the `= binding` footer of every bound
+      program (661 snapshot files); library.mir.txt's function order (the functions equal as a multiset). None changes a record,
+      acceptance, a user file's HIR or MIR, or fixture IR beyond library positions.
+    - G1-3b-2, the one record move (its design's R4.6), 31 programs: 16 to `Unsupported_Kd` (r12x, g08x, g09x, g15x, h01x, h02x,
+      h03x with its 1:1, h04x, h11x, i09x, i11x, j02x, k01x, q02x, q03x, f01x), 3 to `UnresolvedBinding_Kd` (t01x, w01x, w02x), 12
+      to `ParameterShapeMismatch_Kd` by SPEC 9.5.1's gathered-group check (h07v, h09v, i03v, i04v; i01x, i02x; h08x, h10x, i05x,
+      i06x, n01x, n02x). t01x moves by SPEC 9.2 (a parameter Type is looked up in the Type namespace; a function is no Type); w01x
+      and w02x by the argument-kind decision (`IsLengthArgument`: a qualified argument naming no Property binds as a Type), the rule
+      every function follows (d12x, d13x), not SPEC 9.2 (the Front's C-366 N2).
+    - The acceptance move as a class (N2, B's ruling): programs that relied on a missing required library declaration are rejected
+      by the rule that reads it once it is declared (SPEC 22.1): 9.5.1's gathered-group check (h07v, h09v, i03v, i04v) or 9.7's Type
+      ambiguity (tw18x); invalid programs newly rejected. d17x (a user `makeRcCyclic(build: uniq/i32)` beside `Kimi.Intrinsics`:
+      accepted before, `ParameterShapeMismatch_Kd` 6:9 now) is one more member (the Front's C-366 N6).
+    - Record placement: g15x and the alias rows at the alias (1:1). `milestone/Milestone41` and `Milestone43`, which name `Weak`,
+      keep their `Unsupported_Kd` (8:26 in Milestone41) at the same place, where the base's `MissingFailure` gave it (G1-3b-2's
+      re-check, R2).
+  - **Supersedes in part:** BU-118's "one enum member" sentence (four facts, one read of the Name); R4-M23's and R8-M42's `Bodyless`
+    facts (`BodylessKind`, read from `Definition`); R8-M22's producer kind `ConsoleWriteStdout` and its signature-only
+    `Console.kimi`; R8-M30's `FindDeclaration`; R8-M46's `StorageReserveDispatch` member; R8-M48's `None` row of the Body
+    disposition.
+  - **Reason.** Identity was spelling matched against a C# table (SPEC 22.1: "never by name").
+  - **Rejected:**
+    - G1's design: Binding deciding the library-only rule (a consumer deciding what Parsing publishes; a second Unknown path); one
+      `Implementation` member (a second read of the Name); keeping `IntrinsicDisposition.Effect` (a second copy of `MirDescriptors`'
+      class); deciding the bodiless class in MIR (revision 1's `MirDescriptors.Bodyless`): MIR would read syntax and a Koto slot,
+      against ARCH's dependency rules; `#Lang` on the shims (SPEC 6.7 excludes Attributes on requirements; no declaration exists);
+      numbering the library's empty root before `LoadSources` as the mark (it rests on parsing changing `Version`, unverified); an
+      optional fixed-module parameter on the shared Kotonoha constructor (a parameter steering a shared constructor).
+    - G1-3b: a verdict at each miss site (an open family); a `PathEnd` member (`Unresolved` already stops every hand-on); a check
+      over the Symbols column after binding (dependents cannot read it); a filter in `Accessible` or on reporting; reading the use's
+      Kotonoha; the word-for-word reading; a symbol flag written at registration (two creation sites); one selection-level rule for
+      every group (moves E7); dropping `Weak`'s id; an optional candidate-set parameter; a statement about a length's consumers; a
+      reader clause for an alias's target (O4); a verdict at publication's writes (a selection has several writes and one hand-on:
+      N10, N17, C-346 C2, the implementation review's N1 (a)-(d)); `Selected` without a symbol inside evaluation; the function arm
+      through `GroupOf` (it reads a publication from evaluation: on a Name's first evaluation the table is empty, and u03v would be
+      rejected); judging the repair's probe (it is no use).
+    - G1-4c: a WriteLine arm on `BodylessKind` (a symptom fix; R8-W2 d gave `writeLine(ref/string)` its body first).
+    - G1-5: parsing every block of such a declaration as signature clauses (a requirement's `ParseSignatureClauses`): it rejects a
+      `#Lang` constructor with a body, which G1-1's placement rule admits.
+    - G1-6: a sparse list of the entries with a fact only (design §3.1 item 3's first text; the review's N1): indexing it by id
+      needs a derived id table, the Indices structure this unit deletes, or default rows at the fact-less ids, which are the dense
+      entries written out; and registration then needs a boundary marker, such as a named first internal member, between the catalog
+      lang items (68 of them without a fact) and the 17 internal members; keeping a member for every registered declaration (a
+      member without a reader, against O-307 (a)).
 - **R8-M46 The adapter built in Kimigayo** (Back, 2026-11-15; R8-W2 b2-1; Major; the owner's O-239 (a), verbatim 「推奨どおりでお願いします」; B's
   independent review ACCEPT WITH NOTES; the Middle's C-330: hunk review ACCEPT WITH NOTES; the Front's C-367: CONSENT; the owner's
   O-354 (a), verbatim 「O-354 a」, for its Bind cost; on PLAN G863 as landed, DECISIONS BU-208). SPEC 8.13.1-8.13.3, 22.9.1, 22.9.2,
@@ -21935,6 +22103,9 @@ R8-M* and R9-M* by the stage of the recording unit.
     Writer; one init per destination with an `isize` tag.
   - **Lands after** PLAN G863 as landed (DECISIONS BU-208: a specialization argument's omitted Origins are inherited from the
     original, SPEC 8.13.2, 15.4.2), which makes the two specializations' headers bind.
+  - Superseded in part by R8-M45 (R8-G1 G1-6, G1-4c): its count's `StorageReserveDispatch` member: no C# reader names
+    `Storage.reserveDispatch`, so it is registered unnamed by its `#Intrinsic("ReserveDispatch")`, with no `KimiDeclarationId`
+    member or catalog entry; `CompilerFunctionKind` and `IsStorageOperation` are deleted.
 - **R8-M47 A ResolvedRange `for` is an ordinary Iterable loop (R8-W3)** (Back, 2026-11-15; R8-W3; Major; design revision 1 and its
   reviews; B's rulings I-N1 to I-N4; the Middle's C-338 CONSENT WITH CONDITIONS; hold H-87; supersedes in part R4-M130) SPEC 14.6.2,
   4.6.4, 15.1.6, 15.6.
@@ -21987,6 +22158,22 @@ R8-M* and R9-M* by the stage of the recording unit.
     (one row changes form); `RuntimeAbi.RuntimeDefinitions` 5 -> 4.
   - Closed: R5-M116's Map, Dispatch and Copy-slots paragraphs (in part) and R5-M128's and R5-M130's "writeLine's, the one such kind
     left" lines in the component's contract; R5-M16's temporary component.
+  - Superseded in part by R8-M45 (R8-G1 G1-4a, G1-4c): "`DispositionKind.Body` is `None`'s row only": `IntrinsicDisposition.Of`'s
+    table and `CompilerFunctionKind` are deleted; a function's `BindingSymbol.Definition` is Body unless its declaration carries
+    `#Intrinsic` or it is a built-in target's shim.
+- **R8-M49 Each MIR body is built in its segment's body and stored exactly** (Middle, 2026-11-16; PLAN G952, Minor; K's compile-time
+  survey rank 5, the owner's 「提案の1と2と3を、進めて下さい」). `MirProgram.Begin` resets and returns the reused building body of the current
+  ordinal segment (the library's prefix, then the program's; R8-L1 M-B1), which the builder builds into; `MirProgram.End` stores it
+  in the next pooled body (`MirBody.Store`: each table in the pooled body's array where that holds the rows, else in a new array of
+  exactly their count) and registers its key; the builder validates the stored body.
+  - A stored body is read, never appended to, and never interns. One building body per segment, so that a program's construction
+    allocates only by its own bodies: with one building body for the whole compilation, the library's largest body set where a
+    program body's growth began and two V16 scaling rows failed.
+  - Rejected: program-level arrays with per-body ranges (they still grow by doubling unless presized, take a body's storage out of
+    `MirBody`, and the library segment G950 keeps across versions needs self-contained bodies).
+  - Cost: one copy of the stored rows per warm build (Hello 1.55 MB over 320 bodies, about 0.3 ms unpinned), nearly all of it the
+    library's, which G950 keeps. When G950-R and G951 U2 build library bodies into fixed slots (G950 R-4, C-sep), the building body
+    and the store follow the definition's segment and slot.
 - **R9-M1 A check's phase sequence is `Compilation.Check`** (2026-11-08; R9-F5; Major, behavior-preserving; review 1 REVISE, then
   review 2). SPEC 23.1.2, 23.2.2; IMPL 20.6.1. Supersedes in part R5-M65 (`Project` reads `Accepts`) and R5-M77 (`Project` discovers
   the test catalog after acceptance and owns it).

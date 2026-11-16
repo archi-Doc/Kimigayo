@@ -313,8 +313,6 @@ public sealed class BindingSymbol
 
     public IntrinsicKind Intrinsic { get; internal init; }
 
-    public CompilerFunctionKind CompilerFunction { get; internal init; }
-
     public Koto Declaration { get; }
 
     public BoundType? Type { get; internal set; }
@@ -334,6 +332,15 @@ public sealed class BindingSymbol
     public int ReceiverIndex { get; internal set; } = -1;
 
     internal KimiDeclarationId? LibraryDeclaration { get; init; }
+
+    // SPEC 22.5.1, IMPL 21.3.4: whether this library function's declaration carries `#CallerLocation`, set by the library's registration
+    // on the original declaration's symbol only; a specialization has it through its original (TyCtxt.Original).
+    internal bool CallerLocation { get; init; }
+
+    // Plan 5.8, IMPL 21.3.4: how a call of this function is served, set where the symbol is made: a library declaration's
+    // `#Intrinsic("Name")` (Fail with its code) by the library's registration on the original declaration's symbol, $abort's
+    // Intrinsic, a built-in target's Shim (PrepareBuiltinTargets); otherwise Body.
+    internal IntrinsicDisposition Definition { get; init; }
 
     internal List<BoundOrigin>? AggregateInputOrigins { get; set; }
 

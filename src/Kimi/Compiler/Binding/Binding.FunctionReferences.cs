@@ -210,7 +210,7 @@ public sealed partial class Binding
                 }
 
                 var item = this.CompleteFunctionItem(use, selected, frame.Types[..target.GenericArguments.Count], this.ReferenceContainer(use, selected), frame.Lengths[..target.GenericArguments.Count]);
-                if (!erase)
+                if (item is null || !erase)
                 {
                     return item;
                 }
@@ -231,7 +231,7 @@ public sealed partial class Binding
 
         // The reference is its Function Item; at a common Function Type that Item is erased (SPEC 7.7.4), whatever syntax names it.
         var concrete = this.CompleteFunctionItem(use, selected, default, this.ReferenceContainer(use, selected));
-        if (!erase)
+        if (concrete is null || !erase)
         {
             return concrete;
         }
