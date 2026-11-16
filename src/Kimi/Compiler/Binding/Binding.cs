@@ -65,6 +65,7 @@ public sealed partial class Binding
         this.matches = new(this);
         this.adaptations = new(this);
         this.associatedInference = new(this);
+        this.virtualOverrides = new(this);
         this.Library.Kotonoha.Syntax.Hir.Families.Reserve(KimiLibrarySize.Stated);
         foreach (var symbol in this.Library.RegisteredSymbols)
         {

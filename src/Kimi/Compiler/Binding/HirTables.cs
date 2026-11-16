@@ -267,6 +267,7 @@ internal struct NodeColumns
     internal PagedColumn<List<Binding.CopyDeclaration>?> CopyByType; // Kept: a container's Copy declarations (Binding.CopyDeclarations.cs).
     internal PagedColumn<BoundEnumConstruction?> EnumConstructions; // Kept: a construction expression's enum construction plan (Binding.Enums.cs).
     internal PagedColumn<BindingScope?> Scopes; // Kept: a node's scope (Binding.Scopes.cs).
+    internal StampedColumn<Binding.VirtualOverride, Binding.PassCounter> VirtualOverrides; // Pass: an override's verified slot (Binding.VirtualOverrides.cs).
     internal PagedColumn<(SourceDocument Document, BindingScope? Scope)[]?> Documents; // Kept: Scopes' composite column, a module root's document scopes.
     internal PagedColumn<Binding.AssociatedInference?> AssociatedInference; // Kept: a conforming Type's inference batch (Binding.AssociatedInference.cs).
     internal PagedColumn<BoundOrigin?[]?> OriginAtoms; // Kept: a binder's Origin atoms, a KeyedRow by kind and slot (Binding.Origins.cs).
@@ -289,6 +290,7 @@ internal struct NodeColumns
         this.CopyByType.Grow(length);
         this.Scopes.Grow(length);
         this.Documents.Grow(length);
+        this.VirtualOverrides.Grow(length);
         this.AssociatedInference.Grow(length);
         this.OriginAtoms.Grow(length);
         this.OpenOrigins.Grow(length);
@@ -334,6 +336,7 @@ internal struct NodeColumns
             CopyByType = this.CopyByType.Renumbered(length),
             Scopes = this.Scopes.Renumbered(length),
             Documents = this.Documents.Renumbered(length),
+            VirtualOverrides = this.VirtualOverrides.Renumbered(length),
             AssociatedInference = this.AssociatedInference.Renumbered(length),
             OriginAtoms = this.OriginAtoms.Renumbered(length),
             OpenOrigins = this.OpenOrigins.Renumbered(length),

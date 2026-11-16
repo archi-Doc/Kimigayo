@@ -13,7 +13,7 @@ public sealed partial class Binding
 
     internal readonly record struct VirtualOverride(VirtualSlot Slot, BoundType ImplementingType, BoundMemberPath? Path);
 
-    private readonly Dictionary<FunctionKoto, VirtualOverride> virtualOverrides = new(ReferenceEqualityComparer.Instance);
+    private readonly VirtualOverrideRows virtualOverrides;
     // Single inheritance gives each original declaration one bound path per derived Type.
     // Duplicate checking and direct-base selection share this index; virtualOverrides retains the full contract.
     private readonly Dictionary<(BindingSymbol Type, FunctionKoto Original), FunctionKoto> overrideEntries = new();
@@ -469,8 +469,10 @@ public sealed partial class Binding
 
     private void ValidateVirtualOverrideConditions()
     {
-        foreach (var (function, implementation) in this.virtualOverrides)
+        // D2b-d's d8 order: the source modules by ordinal, then the library, each by ascending id (the walk's order on a cold compile).
+        for (var rows = this.virtualOverrides.Values; rows.MoveNext();)
         {
+            var (function, implementation) = ((FunctionKoto)rows.Node, rows.Current);
             if (function.BindingFailure != BindingFailure.None || function.BoundSymbol!.ConditionalDeclaration is not { } block)
             {
                 continue;
@@ -576,5 +578,28 @@ public sealed partial class Binding
     {
         (this.overrideFailures ??= new(ReferenceEqualityComparer.Instance))[function] = facts;
         this.Fail(function, failure);
+    }
+
+    /// <summary>The `virtualOverrides` family's one accessor (DECISIONS BU-220): a pass family, an override's verified slot, implementing
+    /// Type and path, kept in the overriding function's module's NodeColumns at its SyntaxId (a present row always has its implementing
+    /// Type, so the column's default is none); absent after a pass until the column's first write. Its members keep the names its readers
+    /// use.</summary>
+    private readonly struct VirtualOverrideRows(Binding binding)
+    {
+        internal FamilyRows<VirtualOverride> Values => new(binding, static (table, b) => table.Hir.Families.VirtualOverrides.Enumerate(b));
+
+        internal VirtualOverride this[FunctionKoto function]
+            => this.TryGetValue(function, out var result) ? result : throw new KeyNotFoundException($"`{function}` has no verified override in this pass.");
+
+        internal void Add(FunctionKoto function, VirtualOverride entry)
+        {
+            ref var row = ref HirTables.Of(function).Families.VirtualOverrides.Ref(function.SyntaxId, binding);
+            row = row == default ? entry : throw new ArgumentException($"`{function}` already has an override in this pass.", nameof(function));
+        }
+
+        internal VirtualOverride GetValueOrDefault(FunctionKoto function) => this.TryGetValue(function, out var result) ? result : default;
+
+        internal bool TryGetValue(FunctionKoto function, out VirtualOverride result)
+            => (result = function.SyntaxOwner is { } table ? table.Hir.Families.VirtualOverrides.Get(function.SyntaxId, binding) : default) != default;
     }
 }
