@@ -757,22 +757,36 @@ public sealed class MirAnalysisTest
     // through the driver check uses with the library as a root module: a library construction record, validator finding or analysis problem
     // fails it (the library ships with the compiler), A1's arena limit included, and a broken C1-F4 view contract throws (DECISIONS BU-102).
     // It reuses the compilation's TyCtxt, whose view throws again at every later read. Every unit changing the library, MIR construction,
-    // the validator or A1-A5 runs it.
+    // the validator or A1-A5 runs it. PLAN G950's row M3 (design §R1.4, re-review RN4): the check, the checked set's records included
+    // (A3b), runs in two versions of one compilation through one builder, analysis and collector and finds none in either, and each version
+    // judges every body with A3 and A5 and collects the same checked set again: a library segment kept across versions (G950-K) is still
+    // judged in each.
     [Theory]
     [InlineData(WindowsProfile.Target)]
+    [InlineData("i686-unknown-linux-gnu")]
     public void TheLibraryHasNoAnalysisProblem(string target)
     {
         var c = Compilation.CreateForTest();
         Assert.True(c.Prepare(target));
         c.Kotonoha.AddSource(new SourceDocument("Program.kimi", "public func main() => ()\n"));
-        Assert.True(c.Bind().IsComplete);
-        var program = new MirBuilder(c).Build(SyntaxTable.LibraryModule + 1); // Unanalyzed: a version's problems are reset only with its bodies (MirProgram.Clear).
-        Assert.Contains(program.Bodies.ToArray(), static x => x.Source.IsLibrary);
-        new MirAnalysis(c.Types).Run(program, SyntaxTable.LibraryModule + 1);
-        Assert.Equal([], program.Records(MirRecordClass.Construction).Select(x => $"record {x.Code} {Line(c, x.Subject)}")
-            .Concat(program.Findings.Select(x => $"finding {x.Rule} {Line(c, x.Subject)}"))
-            .Concat(program.Problems.All.ToArray().Where(static x => !x.IsRecord).Select(x =>
-                $"{x.Requirement} {x.Code} in {(x.Body >= 0 ? program.Body(x.Body).Key.Decl?.Name : "-")}: {Line(c, x.Subject)}")));
+        var (builder, analysis, collector) = (new MirBuilder(c), new MirAnalysis(c.Types), new Kimi.Compiler.Backend.InstanceCollector(c.Types, c.Layout));
+        var collected = (0, 0);
+        for (var version = 1; version <= 2; version++)
+        {
+            Assert.True(c.Bind().IsComplete);
+            var program = builder.Build(SyntaxTable.LibraryModule + 1); // Unanalyzed: a version's problems are reset only with its bodies (MirProgram.Clear).
+            Assert.Contains(program.Bodies.ToArray(), static x => x.Source.IsLibrary);
+            analysis.Run(program, SyntaxTable.LibraryModule + 1);
+            var set = collector.Run(program, SyntaxTable.LibraryModule + 1);
+            Assert.Equal([], program.Records(MirRecordClass.Construction).Concat(program.Records(MirRecordClass.Collection))
+                .Select(x => $"version {version}: record {x.Code} {Line(c, x.Subject)}")
+                .Concat(program.Findings.Select(x => $"version {version}: finding {x.Rule} {Line(c, x.Subject)}"))
+                .Concat(program.Problems.All.ToArray().Where(static x => !x.IsRecord).Select(x =>
+                    $"version {version}: {x.Requirement} {x.Code} in {(x.Body >= 0 ? program.Body(x.Body).Key.Decl?.Name : "-")}: {Line(c, x.Subject)}")));
+            var now = (set.RootCount, set.Items.Length);
+            Assert.Equal((version, 2 * program.Bodies.Length, program.Version, version == 1 ? now : collected), (version, analysis.Judgments, set.Version, now));
+            collected = now;
+        }
     }
 
     // PLAN G951 U1 (R2.4): a build whose root range is the program's, analyzed by the driver (A4's rounds over the one stepping path), judges
