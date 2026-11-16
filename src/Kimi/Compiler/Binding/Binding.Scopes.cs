@@ -169,18 +169,6 @@ public sealed partial class Binding
                 }
             }
         }
-
-        // The values that follow, counted on a copy.
-        internal readonly int Count()
-        {
-            var (count, rest) = (0, this);
-            while (rest.MoveNext())
-            {
-                count++;
-            }
-
-            return count;
-        }
     }
 
     /// <summary>The `symbols` family's one accessor (DECISIONS BU-220): a symbol is kept in its declaration's module, the node's
@@ -188,9 +176,6 @@ public sealed partial class Binding
     /// id, by index. Its members keep the names its readers use.</summary>
     internal readonly struct DeclaredSymbols(Binding binding)
     {
-        /// <summary>Gets every kept symbol, a parameter's included.</summary>
-        internal int Count => this.Values.Count();
-
         /// <summary>Gets every kept symbol in <see cref="KeptValues{T, TPart}"/>' order: a declaration's symbol, then its parameters'.</summary>
         internal KeptValues<BindingSymbol, BindingSymbol?> Values
             => new(new(binding, static table => table.Hir.Families.Symbols), new(binding, static table => table.Hir.Families.Parameters), static x => x);
@@ -238,9 +223,6 @@ public sealed partial class Binding
     /// its readers use.</summary>
     internal readonly struct KeptScopes(Binding binding)
     {
-        /// <summary>Gets every kept scope, a scope that two nodes keep counted at each.</summary>
-        internal int Count => this.Values.Count();
-
         /// <summary>Gets every kept scope in <see cref="KeptValues{T, TPart}"/>' order: a node's scope, then a module root's document scopes.</summary>
         internal KeptValues<BindingScope, (SourceDocument Document, BindingScope? Scope)> Values
             => new(new(binding, static table => table.Hir.Families.Scopes), new(binding, static table => table.Hir.Families.Documents), static x => x.Scope);

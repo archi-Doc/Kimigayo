@@ -9,18 +9,29 @@
 // it has a library prefix (R8-L1 M-B1): the library's bodies are 0 to LibraryCount - 1, the program's follow; in a build whose root range
 // is the program's, LibraryCount counts the library's templates and a demanded body takes the next ordinal (PLAN G951 U0; U2 gives
 // library bodies fixed ordinals, G950 R-4). Body(ordinal) reads either segment. Bodies is the compilation's own bodies, which a walker
-// iterates: both segments while a compilation builds its library's bodies. Its walkers: MirAnalysis.Run, MirOrigins.Findings,
-// MirDump.Write, InstanceCollector's roots and templates, and the Benchmark's counts (CompilerPipelineBenchmark,
-// CollectionCostMeasurements, PairCaseMeasurements, StaticKeyMeasurements); the program pass reads each body by ordinal from the
-// builder's build-order queue (MirBuilder.Name).
+// of the whole program iterates: both segments while a compilation builds its library's bodies. Its walkers: MirAnalysis's step 4,
+// MirOrigins.Findings, MirDump.Write, InstanceCollector's roots (with A3b) and the Benchmark's counts and queries
+// (CompilerPipelineBenchmark, CollectionCostMeasurements, PairCaseMeasurements, StaticKeyMeasurements). LibraryBodies and ProgramBodies
+// are the segments, each the span a walker of that segment takes as its input: MirAnalysis's library step and steps 1 and 2,
+// InstanceCollector's templates and StaticKeyMeasurements' local facts. The program pass reads each body by ordinal from the builder's
+// build-order queue (MirBuilder.Name), the library segment's drained before EndLibrary. No walker tests an ordinal against LibraryCount
+// itself; an owner keeping per-body entries in a store per segment reads them by the ordinal itself through one split rule, the
+// library's store below the library's count (R8-L1 M-B1; the Back's C-378 (1)(a)): MirDropTable.Of (its library store's count),
+// MirEffects.Base and InstanceCollector.TemplatesOf (LibraryCount).
+// Owns the segments' versions (PLAN G950): the library segment, its bodies, their keys and findings and its construction records, is kept
+// while its library version holds (LibraryVersion, EndLibrary), the program segment rebuilt per program version over it (ClearProgram);
+// the library's findings stay the prefix of Findings and its records are replayed into the version's report first, where the builder's
+// library walk added them, so a kept version's report and findings equal a rebuild's row for row.
 // A body is built in its segment's reused body (Begin), one for the library's prefix and one for the program's bodies, so that neither
 // segment's construction allocates by the other's bodies, and stored in the next pooled body at End, which registers its key: a stored
-// body holds exactly its rows, and a building body's tables and interning grow once to its segment's largest body's.
+// body is grown only to exactly the rows stored in it, and a building body's tables and interning grow once to its segment's largest
+// body's.
 // Its lookups (this[key], Callee, StaticInit) are the one demand point (PLAN G951): a key without a body is looked up by its phase's row
 // of the demand table (Phase): while Open, the builder that opened the version builds the body if the HIR publishes the definition with
 // a value outside the root range the builder built eagerly (MirBuilder.Demand); once Sealed, a lookup reads only. Null means only "this
 // definition has no body", never "not built yet".
-// One key identifies one body; warm rebuilding reuses body storage; Clear resets the report with the bodies.
+// One key identifies one body, in one key map whose lookup is one read; warm rebuilding reuses body storage; Clear resets the report and
+// both segments, ClearProgram the report and the program's.
 // Must not re-bind definitions or maintain a second body map in a consumer; a reader by ordinal reads through Body, never offsets an
 // ordinal or computes one from LibraryCount.
 
@@ -36,8 +47,10 @@ internal sealed class MirProgram
 {
     private readonly Dictionary<MirDefKey, MirBody> bodies = new();
     private readonly MirBody[] building = [new(), new()]; // The body each segment is built in: the library's prefix, then the program's.
+    private readonly MirReport.Kept libraryRecords = new(); // The library segment's construction records, replayed first in a kept version.
     private MirBody[] pool = [];
     private int count;
+    private int libraryFindings; // The library segment's findings, the prefix of Findings.
     private MirBuilder? builder; // The builder that opened the version, which a lookup while Open demands a body from.
 
     /// <summary>The demand table (PLAN G951): a row per phase of a program version, each what a lookup of a key without a body does.</summary>
@@ -52,14 +65,24 @@ internal sealed class MirProgram
         Sealed,
     }
 
-    /// <summary>Gets the bodies a walker visits, in ordinal order: the compilation's own, the library's prefix included while the
-    /// compilation builds it.</summary>
+    /// <summary>Gets the bodies a walker of the whole program visits, in ordinal order: the compilation's own, the library's prefix included
+    /// while the compilation builds it.</summary>
     internal ReadOnlySpan<MirBody> Bodies => this.pool.AsSpan(0, this.count);
+
+    /// <summary>Gets the library segment's bodies, ordinals 0 to <see cref="LibraryCount"/> less one.</summary>
+    internal ReadOnlySpan<MirBody> LibraryBodies => this.pool.AsSpan(0, this.LibraryCount);
+
+    /// <summary>Gets the program segment's bodies, the ordinals from <see cref="LibraryCount"/> on.</summary>
+    internal ReadOnlySpan<MirBody> ProgramBodies => this.pool.AsSpan(this.LibraryCount, this.count - this.LibraryCount);
 
     /// <summary>Gets the number of the bodies built before the program's: in an eager build the library's, which hold ordinals 0 to the
     /// count less one, the program's bodies following (R8-L1 M-B1); in a build whose root range is the program's, the library's templates
     /// (PLAN G951).</summary>
     internal int LibraryCount { get; private set; }
+
+    /// <summary>Gets the library version the library segment was built for (0: none), the stamp a component keeping a library segment's
+    /// facts compares (PLAN G950): the Binding pass until G949's library publication version replaces it (G950-K).</summary>
+    internal ulong LibraryVersion { get; private set; }
 
     /// <summary>Gets or sets the Binding pass the bodies were built from (0: none).</summary>
     internal ulong Version { get; set; }
@@ -72,22 +95,22 @@ internal sealed class MirProgram
     internal Phase Demands { get; private set; } = Phase.Sealed;
 
     /// <summary>Gets the validator's findings, which Compilation's <c>PublishMirRecords</c> publishes as <c>InternalInvariant_Kd</c> after
-    /// the merged problems (DECISIONS R5-M185).</summary>
+    /// the merged problems (DECISIONS R5-M185): the library segment's first, its program pass's included, then the program's.</summary>
     internal List<MirFinding> Findings { get; } = [];
 
     /// <summary>Gets the records and problems of this version: the construction and collection records (<see cref="Report"/>) and the
     /// problems the analyses found, which Compilation publishes from <c>MirReport.Merged</c>, records included, and whose Errors decide
-    /// acceptance (DECISIONS R5-M185); <see cref="Clear"/> resets them with the bodies.</summary>
+    /// acceptance (DECISIONS R5-M185); <see cref="Clear"/> resets them with the bodies, and <see cref="ClearProgram"/> to the library's records.</summary>
     internal MirReport Problems { get; } = new();
 
     /// <summary>Gets drop elaboration's verdicts and flags in this version, by body ordinal (A2, DECISIONS R4-M6a); only
-    /// <see cref="MirAnalysis"/> resets them, once per version.</summary>
+    /// <see cref="MirAnalysis"/> resets them: the library segment's once per library version, the program's once per version.</summary>
     internal MirDropTable Drops { get; } = new();
 
     /// <summary>Gets or sets the work of the builder's layer walks in this version (PLAN G647): one per iteration of a walk (a layer's
     /// step and a targeted walk's agreement test together), and a premising as the premised Type's height plus one, the parts premising
-    /// visits on a layer spine and fewer than it visits on a wide Type; the walks' scaling rows read it, and <see cref="Clear"/> resets
-    /// it.</summary>
+    /// visits on a layer spine and fewer than it visits on a wide Type; the walks' scaling rows read it, and <see cref="Clear"/> and
+    /// <see cref="ClearProgram"/> reset it.</summary>
     internal long LayerWalkWork { get; set; }
 
     /// <summary>Gets the body the current segment is built in: the library's until its prefix holds bodies (<see cref="EndLibrary"/>), then
@@ -127,12 +150,14 @@ internal sealed class MirProgram
     /// <returns>The body, null for a static no staticEnsure of a validated body names.</returns>
     internal MirBody? StaticInit(MirBody body, int slot) => this[new(body.Statics[slot].Symbol, MirBodyKind.StaticInit)];
 
+    /// <summary>Returns both segments' bodies to the pool and clears the report, the findings and the work, for a new library version.</summary>
     internal void Clear()
     {
         this.bodies.Clear();
         this.Problems.Clear();
         this.Findings.Clear();
-        this.count = this.LibraryCount = 0;
+        this.count = this.LibraryCount = this.libraryFindings = 0;
+        this.LibraryVersion = 0;
         this.LayerWalkWork = 0;
     }
 
@@ -144,8 +169,32 @@ internal sealed class MirProgram
     /// <summary>Seals the version (the end of Compilation's <c>BuildMir</c>): a lookup reads only.</summary>
     internal void Seal() => this.Demands = Phase.Sealed;
 
-    /// <summary>Ends the library's prefix: the bodies begun so far are the library's (<see cref="LibraryCount"/>).</summary>
-    internal void EndLibrary() => this.LibraryCount = this.count;
+    /// <summary>Ends the library segment, built and validated for a library version: the bodies begun so far are the library's
+    /// (<see cref="LibraryCount"/>), the findings so far its findings and the records so far its records, which
+    /// <see cref="ClearProgram"/> keeps.</summary>
+    /// <param name="libraryVersion">The library version (<see cref="LibraryVersion"/>).</param>
+    internal void EndLibrary(ulong libraryVersion)
+    {
+        (this.LibraryCount, this.libraryFindings, this.LibraryVersion) = (this.count, this.Findings.Count, libraryVersion);
+        this.Problems.Keep(0, this.libraryRecords);
+    }
+
+    /// <summary>Returns the program segment's bodies to the pool, removing their keys, for a new program version over the kept library
+    /// segment: the findings keep the library's prefix, the report starts with the library's records again (MirReport.Replay) and the
+    /// work counts the new version's.</summary>
+    internal void ClearProgram()
+    {
+        foreach (var body in this.ProgramBodies)
+        {
+            this.bodies.Remove(body.Key);
+        }
+
+        this.count = this.LibraryCount;
+        this.Findings.RemoveRange(this.libraryFindings, this.Findings.Count - this.libraryFindings);
+        this.Problems.Clear();
+        this.Problems.Replay(this.libraryRecords);
+        this.LayerWalkWork = 0;
+    }
 
     /// <summary>Records a construction or collection record at its location, a ControlFlow problem of every view, once per class, code and
     /// location however many bodies or items meet it (MirReport's key).</summary>
