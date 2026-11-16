@@ -262,6 +262,33 @@ public sealed partial class TyCtxtTest
         CheckInstantiations(c, c.Kotonoha.RootKoto);
     }
 
+    // PLAN G949 S1-b2 (DECISIONS BU-220): the statics hold the ids 1..StaticCount from one fixed list, the same objects in every
+    // compilation; a compilation's TyCtxt numbers every Type it makes after them, the interned ones and the parameter Types (a generic
+    // parameter's whole Type and target projection, a Contract's Self), each id once and with no gap, in the order it makes them, so two
+    // compilations of one program number alike.
+    [Fact]
+    public void TypeIdsAreDenseAndUnique()
+    {
+        var statics = new[] { BoundType.Unit, BoundType.Never, BoundType.Boolean, BoundType.Range }.Concat(BoundType.Primitives.Values)
+            .Concat(BoundType.WrappingScalars.Values).Distinct().Select(static x => x.Id).Order();
+        Assert.Equal(Enumerable.Range(1, BoundType.StaticCount), statics);
+        var first = Made(CompilationTestHelper.BindSuccess("()"));
+        var second = Made(CompilationTestHelper.BindSuccess("()"));
+        Assert.Equal(Enumerable.Range(BoundType.StaticCount + 1, first.Length), first);
+        Assert.Equal(first, second);
+
+        // The ids of every Type the compilation's TyCtxt made (its interned ones, each declared symbol's own Types), as many as its count.
+        static int[] Made(Compilation c)
+        {
+            const System.Reflection.BindingFlags Private = System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance;
+            var interned = ((Dictionary<int, List<BoundType>>)typeof(TyCtxt).GetField("types", Private)!.GetValue(c.Types)!).Values.SelectMany(static x => x);
+            var own = c.Binding.Semantics.Declarations.Values.SelectMany(static x => new[] { x.WholeType, x.Type, x.ContractSelf }).OfType<BoundType>();
+            int[] ids = [.. interned.Concat(own).Where(static x => x.Id > BoundType.StaticCount).Distinct().Select(static x => x.Id).Order()];
+            Assert.Equal((int)typeof(TyCtxt).GetField("typeCount", Private)!.GetValue(c.Types)! - BoundType.StaticCount, ids.Length);
+            return ids;
+        }
+    }
+
     // SPEC 6.1.3, 8.1.3: a closure an instance closed is in that instance's substitution and has its signature; a closure no instance closed is
     // in the identity of the function enclosing it, which keeps every Type.
     [Fact]
