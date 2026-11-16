@@ -503,6 +503,7 @@ public sealed partial class Binding
                         semanticsSymbol.Scope = this.Scope;
                         semanticsSymbol.Pair = typeSymbol;
                         typeSymbol.Pair = semanticsSymbol;
+                        binding.PairOuterOrigin(typeSymbol); // SPEC 8.1.1: the binder's outer Origin, interned with its binder (PLAN G949 S1-e).
                         if (!this.Scope.Types.TryAdd(parameter.SemanticsParameter, semanticsSymbol))
                         {
                             binding.Fail(node, BindingFailure.Duplicate);
