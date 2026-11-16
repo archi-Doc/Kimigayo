@@ -295,6 +295,7 @@ internal struct NodeColumns
         this.Parameters.Retire();
         this.Scopes.Retire();
         this.Documents.Retire();
+        this.AssociatedInference.Retire();
     }
 
     internal readonly void Move(int from, ref NodeColumns target, int to)

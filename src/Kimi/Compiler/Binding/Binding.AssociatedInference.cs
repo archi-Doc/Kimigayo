@@ -139,7 +139,7 @@ public sealed partial class Binding
         {
             if (batches.Current is { Active: false } inactive)
             {
-                InferenceBatches.Remove(inactive.Type);
+                InferenceBatches.Remove(inactive);
             }
         }
 
@@ -792,12 +792,19 @@ public sealed partial class Binding
 
         // A conforming Type's batch, made at its first need.
         internal static AssociatedInference Batch(BindingSymbol type)
-            => HirTables.Of(type.Declaration).Families.AssociatedInference.Ref(type.Declaration.SyntaxId) ??= new(type);
+            => Own(HirTables.Of(type.Declaration).Families.AssociatedInference.Ref(type.Declaration.SyntaxId) ??= new(type), type)!;
 
-        internal static void Remove(BindingSymbol type) => HirTables.Of(type.Declaration).Families.AssociatedInference.Ref(type.Declaration.SyntaxId) = null;
+        // An enumerated batch's row: present, so the write carves nothing.
+        internal static void Remove(AssociatedInference batch) => HirTables.Of(batch.Type.Declaration).Families.AssociatedInference.Ref(batch.Type.Declaration.SyntaxId) = null;
 
         internal bool TryGetValue(BindingSymbol type, [NotNullWhen(true)] out AssociatedInference? batch)
-            => (batch = type.Declaration.SyntaxOwner is { } table ? table.Hir.Families.AssociatedInference.Get(type.Declaration.SyntaxId) : null) is not null;
+            => (batch = Own(type.Declaration.SyntaxOwner is { } table ? table.Hir.Families.AssociatedInference.Get(type.Declaration.SyntaxId) : null, type)) is not null;
+
+        // A declaration's row is its Type symbol's, the one a path names (a container's BoundSymbol): any other symbol of the declaration
+        // reaching it is a broken contract (DECISIONS BU-220's symbol rule).
+        private static AssociatedInference? Own(AssociatedInference? batch, BindingSymbol type)
+            => batch is null || ReferenceEquals(batch.Type, type) ? batch
+                : throw new InvalidOperationException($"`{type.Name}` reads the inference batch of `{batch.Type.Name}` (InternalInvariant; DECISIONS BU-220).");
     }
 
     internal sealed class AssociatedInference(BindingSymbol type)
