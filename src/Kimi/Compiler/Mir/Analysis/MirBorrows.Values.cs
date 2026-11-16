@@ -20,8 +20,9 @@ internal sealed partial class MirBorrows
 
     private readonly List<(int Root, int At, bool Bound)> following = []; // Sources' worklist: the walks still to make.
     private readonly List<int> writtenRoots = []; // Sources: the roots whose write slots the read reads (ReadsWritten).
+    private readonly List<int> keptRoots = []; // The kept answers' write-slot roots, each answer's run ended by -1 (followed).
     private int[] followedBy = []; // By local and incoming bound: the Sources walk that followed its reference.
-    private byte[] followed = []; // By local and incoming bound: 1 + the Sources answer of following its reference, 0 for none yet.
+    private int[] followed = []; // By local and incoming bound: 1 + the Sources answer of following its reference in the low 4 bits, with its roots' run in keptRoots above; 0 for none yet.
     private int sourceWalks = 1; // The Sources walks that followed a reference, and one.
 
     // val(rv) (A3 5) and the Loans it issues: the union of the operands whose values it is (ValueOperands: an operand's, a value-keeping
@@ -119,6 +120,7 @@ internal sealed partial class MirBorrows
         MirDataflow.Grow(ref this.followed, 2 * this.body.Locals.Length);
         MirDataflow.Grow(ref this.followedBy, 2 * this.body.Locals.Length);
         Array.Clear(this.followed, 0, 2 * this.body.Locals.Length);
+        this.keptRoots.Clear();
     }
 
     // What a read of a Place reads, less the Places the Case bound empties: ReadsPlace where one remains, with ReadsHolder where one is
@@ -135,7 +137,7 @@ internal sealed partial class MirBorrows
     // reference is followed once per walk and incoming bound, so a cycle of Copies ends; each store followed is counted as work. What
     // follows the first reference a read follows depends on that reference and its incoming bound alone, so it is kept (followed)
     // and a later read through the same reference with the same bound reuses it, linear in the reads and the stores; an answer that
-    // reads a write slot is not kept, as its roots are the read's (writtenRoots).
+    // reads write slots keeps their roots with it (keptRoots), which a reuse adds to the read's (Kept).
     private byte Sources(MirPlace place)
     {
         var (root, at, bound, reads, first) = (place.Root, place.Projection, false, (byte)0, -1);
@@ -162,9 +164,28 @@ internal sealed partial class MirBorrows
             this.following.RemoveAt(this.following.Count - 1);
         }
 
-        if (first >= 0)
+        if (first >= 0 && this.followed[first] == 0)
         {
-            (this.followed[first], this.sourceWalks) = ((reads & ReadsWritten) == 0 ? (byte)(reads + 1) : (byte)0, this.sourceWalks + 1);
+            this.followed[first] = (this.keptRoots.Count << 4) | (reads + 1);
+            if ((reads & ReadsWritten) != 0)
+            {
+                this.keptRoots.AddRange(this.writtenRoots);
+                this.keptRoots.Add(-1);
+            }
+        }
+
+        this.sourceWalks += first >= 0 ? 1 : 0;
+        return reads;
+    }
+
+    // A kept answer of following a reference with an incoming bound (Sources): its reads, with the roots whose write slots it reads
+    // added to the read's (writtenRoots); none for no answer yet.
+    private byte Kept(int key)
+    {
+        var reads = this.followed[key] > 0 ? (byte)((this.followed[key] & 15) - 1) : (byte)0;
+        for (var r = this.followed[key] >> 4; (reads & ReadsWritten) != 0 && this.keptRoots[r] >= 0; r++)
+        {
+            this.writtenRoots.Add(this.keptRoots[r]);
         }
 
         return reads;
@@ -200,7 +221,7 @@ internal sealed partial class MirBorrows
         }
 
         var key = (2 * root) + (bound ? 1 : 0);
-        reads |= this.followed[key] > 0 ? (byte)(this.followed[key] - 1) : (byte)0;
+        reads |= this.Kept(key);
         for (; store >= 0 && this.followed[key] == 0 && this.followedBy[key] != this.sourceWalks; store = this.referStores[(2 * store) + 1])
         {
             var assigned = this.body.Statements[this.referStores[2 * store]].Rvalue;

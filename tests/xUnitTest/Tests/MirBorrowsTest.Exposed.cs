@@ -2378,6 +2378,48 @@ public sealed partial class MirBorrowsTest
                         kk = 2
                         return e
             """,
+        ["caseWriteR2BindUseOk"] = """
+            func keep(slot: raw/(raw/u8), value: raw/u8) => ()
+            func mk(x: uniq/i32) -> Result<uniq/i32, u64> => .Ok(x)
+            func put(dst: uniq/Result<uniq/i32 during s, u64>, v: u64) => ()
+            func caseWriteR2BindUseOk() -> u64
+                var kk: u8 = 1
+                let r = kk@uniq
+                var spare: raw/u8 = r@follow@raw
+                var w: u64 = 3
+                keep(w@raw@raw/(raw/u8), spare)
+                var a: i32 = 0
+                var res = mk(a@uniq)
+                put(res@uniq, w)
+                match res@move
+                    .Ok(_) => return 0
+                    .Err(let e)
+                        let pe = e@raw
+                        a = 2
+                        let k = e
+                        return 0
+            """,
+        ["caseWriteR2BindBad"] = """
+            func keep(slot: raw/(raw/u8), value: raw/u8) => ()
+            func mk(x: uniq/i32) -> Result<uniq/i32, u64> => .Ok(x)
+            func put(dst: uniq/Result<uniq/i32 during s, u64>, v: u64) => ()
+            func caseWriteR2BindBad() -> u64
+                var kk: u8 = 1
+                let r = kk@uniq
+                var spare: raw/u8 = r@follow@raw
+                var w: u64 = 3
+                keep(w@raw@raw/(raw/u8), spare)
+                var a: i32 = 0
+                var res = mk(a@uniq)
+                put(res@uniq, w)
+                match res@move
+                    .Ok(_) => return 0
+                    .Err(let e)
+                        let pe = e@raw
+                        kk = 2
+                        let k = e
+                        return 0
+            """,
         ["caseWriteR2ExposedUseOk"] = """
             func keep(slot: raw/(raw/u8), value: raw/u8) => ()
             func mk(x: uniq/i32) -> Result<uniq/i32, u64> => .Ok(x)
@@ -2593,6 +2635,8 @@ public sealed partial class MirBorrowsTest
     [InlineData("caseWriteR2LaterBad", "")] // I (O-364 (a)); kk = 2 with G935's rule R: the write slot keeps the value written, though w is overwritten after the call
     [InlineData("caseWriteR2ExposedBad", "")] // I; kk = 2 with G935's rule R: put writes through an exposed reference local, so every exposed local is written (Written's lost argument)
     [InlineData("caseWriteR2ExposedUseOk", "")] // V: the same with e used after a = 2; the lost argument's targets keep their bound
+    [InlineData("caseWriteR2BindUseOk", "")] // V: e's address taken, so Mixing first runs after the slots are numbered; with G935's rule R the fallback mixes res: a = 2 (a false error; phase 8's row)
+    [InlineData("caseWriteR2BindBad", "")] // I; kk = 2 with G935's rule R, through the same fallback
     public void AValueReadFromAHolderCarriesItsLoansWhateverItsType(string form, string expected)
     {
         var c = MirBuildTest.Compile(ExposedShapes + FlowForms[form] + "\npublic func main() => ()\n");
@@ -2624,6 +2668,24 @@ public sealed partial class MirBorrowsTest
             "    var b: i32 = 5\n    let r = count(a@uniq)\n    var p: ref/i32 = b@ref\n    match r\n        .Ok(_) => return 0\n" +
             "        .Err(let code)\n            var s: i32 = 0\n«N:            if c => p = code\n»«N:            s = p@follow\n»" +
             "            return s\npublic func main() => ()\n";
+        long[] work = [.. new[] { 16, 32, 64 }.Select(n => Measured(Expand(Head, n, 0)).Work)];
+        output.WriteLine($"N 16, 32, 64: work {string.Join(", ", work)}");
+        Assert.True(Grows(work, 3), $"work {string.Join(", ", work)}");
+    }
+
+    // A read that reaches a write slot keeps its answer like any other follow (MirBorrows.Values' Sources): N calls writing one result
+    // holder, a shared reference stored N more times with its Err payload's reference, then N Copies through it (N = 16, 32, 64; valid
+    // by the owner's O-383 (b) at every N, which Measured asserts). The writes are write sources only where Binding retains the
+    // written u64 (G935's rule R); on dev's retention this measures the plain follows.
+    [Fact]
+    public void AReadOfAWrittenHolderIsFollowedInLinearWork()
+    {
+        const string Head = "func keep(slot: raw/(raw/u8), value: raw/u8) => ()\nfunc mk(x: uniq/i32) -> Result<uniq/i32, u64> => .Ok(x)\n" +
+            "func put(dst: uniq/Result<uniq/i32 during s, u64>, v: u64) => ()\nfunc shape(c: bool) -> u64\n    var kk: u8 = 1\n" +
+            "    let r = kk@uniq\n    var spare: raw/u8 = r@follow@raw\n    var w: u64 = 3\n    keep(w@raw@raw/(raw/u8), spare)\n" +
+            "    var a: i32 = 0\n    var res = mk(a@uniq)\n«N:    put(res@uniq, w)\n»    var b: u64 = 5\n    var p: ref/u64 = b@ref\n" +
+            "    match res\n        .Ok(_) => return 0\n        .Err(let code)\n            var s: u64 = 0\n«N:            if c => p = code\n»" +
+            "«N:            s = p@follow\n»            return 0\npublic func main() => ()\n";
         long[] work = [.. new[] { 16, 32, 64 }.Select(n => Measured(Expand(Head, n, 0)).Work)];
         output.WriteLine($"N 16, 32, 64: work {string.Join(", ", work)}");
         Assert.True(Grows(work, 3), $"work {string.Join(", ", work)}");
