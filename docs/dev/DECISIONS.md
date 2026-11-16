@@ -20052,6 +20052,13 @@ R8-M* and R9-M* by the stage of the recording unit.
     before the window (W-229: a Session of over three hours) and blocked every build meanwhile; run after it, the window's Session
     overlaps them. A unit beyond a bound then leaves the window with one more Session, which RP8's record says is rare (W-228,
     W-229: none).
+  - Amended (the owner, 2026-11-16, in the Coordinator's dialog, verbatim 「採用する（終了条件 3 の測定も揃える）」, on the Back's proposal after
+    W-235's Hello cold row): every RP8 timing run sets `DOTNET_gcConcurrent=0` on A, B and A′ alike, beside `KIMI_CPU=2` and tiering
+    off (`artifacts/board/tools/rp8_window_timing.ps1`), and R7 exit gate 3's measurements (Bind not above R7's start) use the same
+    setting on both sides. On the one pinned CPU the background GC's mark thread shares the timed thread's core, so where it falls,
+    placed by allocation, is noise unrelated to the code: W-235's Hello cold Bind rose +3.9 ms (B/A′ 1.139) with no per-compilation
+    cost of its unit (the Front's probe: GC-free cold Bind CPU B/A′ 0.996-1.008; Hello within ±1 % with blocking GC). A measurement
+    taken before the change compares only with one taken under the same setting.
 - **R8-M1 The representation structs and their Place contract** (owner, 2026-11-07, verbatim 「推奨の内容でOKです。処理を継続してください。」,
   on O-41 (a) and O-43 (A); R8-R1a; prototype R8-L0p; supersedes the two plan rows below) IMPL 21.1.3, SPEC 5.2, 5.5, 5.7.
   - Adopted: `Storage.ArrayRepr<T>`, `Storage.SliceRepr<T>` and `Storage.StringRepr`, internal `#Layout("C")` structs of the Kimi
