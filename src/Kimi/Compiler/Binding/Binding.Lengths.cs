@@ -705,7 +705,7 @@ public sealed partial class Binding
 
         if (syntax is MemberAccessKoto member && member.Right is not IdentifierNameKoto)
         {
-            var symbol = this.LengthArgumentSymbol(member, scope);
+            var symbol = this.Supported(member, this.LengthArgumentSymbol(member, scope));
             if (symbol is null)
             {
                 return null;

@@ -198,7 +198,7 @@ public sealed partial class Binding
                         if (parameters is not null)
                         {
                             // SPEC 10.5: the closed parts of S guide the body; its inferred result is never evidence for the slot.
-                            this.BindClosureArgument(argument, closure, scope, this.types.Intern(BoundTypeKind.Function, null, SemanticsKind.Owner, [parameters, result ?? BoundType.Unit]), openResult: result is null);
+                            this.BindClosureArgument(argument, closure, scope, this.types.Intern(BoundTypeKind.Function, null, SemanticsKind.Owner, [parameters, result ?? BoundType.Unit], binder: signature!.Binder), openResult: result is null);
                         }
                         else
                         {
@@ -212,13 +212,13 @@ public sealed partial class Binding
                     {
                         if (holds && ReferenceEquals(waiting, argument))
                         {
-                            var group = inner.BoundSymbol!;
-                            overloads = group.Next is not null;
-                            for (var candidate = group; candidate is not null && reference is null; candidate = candidate.Next)
+                            var group = this.GroupOf(inner, inner.BoundSymbol);
+                            overloads = group.Single is null;
+                            foreach (var candidate in group)
                             {
-                                if (candidate.Declaration is FunctionKoto { GenericArguments.Count: > 0 } generic)
+                                if (reference is null && candidate.Declaration is FunctionKoto { GenericArguments.Count: > 0 } generic)
                                 {
-                                    reference = $"{group.Name}<{string.Join(", ", Enumerable.Repeat("Type", generic.GenericArguments.Count))}>";
+                                    reference = $"{candidate.Name}<{string.Join(", ", Enumerable.Repeat("Type", generic.GenericArguments.Count))}>";
                                 }
                             }
                         }

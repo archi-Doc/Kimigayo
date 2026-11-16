@@ -200,7 +200,7 @@ internal sealed partial class InstanceCollector
 
     // K 4.5 rows 6, 8 and 9 (DECISIONS R5-M74): the target an intrinsic's row names, for its call or for an Item of its function, from the
     // substitution's Type argument in the item's instance (the one operand form the rows read; its layout need, IntrinsicRow.Need, is its
-    // caller's, LaysOutArguments): an erased writer's reserve witness on its destination (SPEC 22.10.1), a creation's payload
+    // caller's, LaysOutArguments): a reserveDispatch's reserve witness on its Writer (SPEC 22.10.1), a creation's payload
     // descriptor (Descriptor), a DestroyValues' element glue. -1 for a row without a target or a Type not made, whose verdict the caller
     // read (In); a staticEnsure's initializer is its call's operand row (Static), so it never reaches here.
     private int Intrinsic(MirProgram program, int item, SourceRef subject, in IntrinsicRow row, BoundType? argument)
@@ -214,10 +214,6 @@ internal sealed partial class InstanceCollector
         {
             IntrinsicTarget.None => -1,
 
-            // Temporary, removed with LegacyRuntimeHelpers.WriterKind, at R8-W2 (only the owning adapter's arms carry `amount + pending`
-            // and the heap hint): Utf8Writer.reserve's kind 0/1 arms reserve a FixedBuffer's or a HeapBuffer's writer themselves, never
-            // through the dispatch word, so the reserve body is no target of the adapter (DECISIONS R8-M16).
-            IntrinsicTarget.Witness when LegacyRuntimeHelpers.WriterKind(argument) is 0 or 1 => -1,
             IntrinsicTarget.Witness => this.Runs(program, item, subject, this.types.OwnRequirement(KimiDeclarationId.BufferWriter)!, argument),
             IntrinsicTarget.Descriptor => this.Descriptor(item, subject, argument),
             IntrinsicTarget.Glue => this.GlueOf(item, subject, argument),

@@ -502,7 +502,7 @@ public sealed partial class Binding
 
     private bool Accessible(BindingSymbol symbol, BindingScope use, ModifierKind? operationAccess = null, BoundType? receiverType = null, bool declarationOnly = false)
     {
-        if (symbol.CompilerFunction == CompilerFunctionKind.TestTempDirectory && (!this.compilation.IsTestBuild || !TestDefinition.IsTestOnly(use.Owner)))
+        if (symbol.LibraryDeclaration == KimiDeclarationId.TestTempDirectory && (!this.compilation.IsTestBuild || !TestDefinition.IsTestOnly(use.Owner)))
         {
             return false;
         }
