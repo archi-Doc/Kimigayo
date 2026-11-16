@@ -19,7 +19,7 @@ namespace Kimi.Compiler;
 // - The library's node columns (Binding's `symbols`, its parameters' composite column, `scopes`, `originAtoms`, `openOrigins`,
 //   `associatedOrigins`, `specialReceivers`, `enumConstructions`, `copyDeclarations`, `copyByType`, `inheritedOriginTypes`,
 //   `deferredConstraints`, `matches`, `adaptations`, `specializations`, `specializationsByOriginal`,
-//   `originDeclarations` and `discoveredOrigins`,
+//   `originDeclarations`, `discoveredOrigins` and `originRequirementNodes`,
 //   DECISIONS BU-220): the library
 //   module's own columns, which no program row enters (a program's rows are its modules'), so each starts at its stated slots
 //   (PagedColumn.Reserve) and has no room; its count is the slots the library's pages hold, rounded up to ColumnGranule, and its free
@@ -72,6 +72,7 @@ internal static class KimiLibrarySize
         SpecializationsByOriginal: 512,
         OriginDeclarations: 512,
         DiscoveredOrigins: 1024,
+        OriginRequirementNodes: 1536,
         TypeKeys: 3072,
         Constraints: 2048,
         AssociatedTypes: 2048,
@@ -111,6 +112,7 @@ internal static class KimiLibrarySize
         int SpecializationsByOriginal, // The library's specializationsByOriginal column: the slots its pages hold.
         int OriginDeclarations, // The library's originDeclarations column: the slots its pages hold.
         int DiscoveredOrigins, // The library's discoveredOrigins column: the slots its pages hold.
+        int OriginRequirementNodes, // The library's originRequirementNodes column: the slots its pages hold.
         int TypeKeys, // TyCtxt's keys of the interned Types.
         int Constraints, // Binding's interned constraints.
         int AssociatedTypes, // Binding's associated-Type answers.
@@ -147,6 +149,7 @@ internal static class KimiLibrarySize
                 Round(this.SpecializationsByOriginal, ColumnGranule),
                 Round(this.OriginDeclarations, ColumnGranule),
                 Round(this.DiscoveredOrigins, ColumnGranule),
+                Round(this.OriginRequirementNodes, ColumnGranule),
                 Round(this.TypeKeys, Granule),
                 Round(this.Constraints, Granule),
                 Round(this.AssociatedTypes, Granule),
