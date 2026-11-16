@@ -407,12 +407,16 @@ public sealed partial class MirBuildTest(ITestOutputHelper output)
     // PLAN G951 U0 (N4, R3-N2): a version is built with one root range: the same range finds the version's program as it is, demanded bodies
     // included, and another range for the same version is a broken contract, since the analyses and the collector keep a version's facts by
     // its version. Version 0 is no version: a compilation no Binding pass published builds the empty program in any range.
+    // PLAN G951 U2-D (D1 per builder; G950-R's range note): every version of a builder keeps the library on the side of the range its first
+    // version had, since a kept library segment's shape is that side's and its stamp holds no range: a later version with the library on
+    // the other side is a broken contract either way (D1a: source range, then library range; library, then source), and a range that grows
+    // with the library outside builds (D1b: Lib's module joins the root range). X3 as above; Lib as in ADependencyModuleIsDemandedAsBuilt.
     [Fact]
     public void AVersionIsBuiltWithOneRootRange()
     {
         Assert.Empty(new MirBuilder(Compilation.CreateForTest()).Build(SyntaxTable.LibraryModule + 1).Bodies.ToArray());
         var c = Compile(StopwatchAction);
-        var start = Library(c.ConstructMir(), MirBodyKind.Fn, "start");
+        var start = Library(new MirBuilder(c).Build(SyntaxTable.LibraryModule + 1), MirBodyKind.Fn, "start");
         var builder = new MirBuilder(c);
         var program = builder.Build(c.SourceModules.Length);
         Assert.NotNull(program[start]);
@@ -420,6 +424,23 @@ public sealed partial class MirBuildTest(ITestOutputHelper output)
         Assert.Same(program, builder.Build(c.SourceModules.Length));
         Assert.Equal(count, program.Bodies.Length);
         Assert.Throws<InvalidOperationException>(() => builder.Build(SyntaxTable.LibraryModule + 1));
+        foreach (var (first, later) in new[] { (c.SourceModules.Length, SyntaxTable.LibraryModule + 1), (SyntaxTable.LibraryModule + 1, c.SourceModules.Length) })
+        {
+            var sided = new MirBuilder(c);
+            Assert.Equal(first, sided.Build(first).RootModules);
+            c.Binding.Bind(BindingMode.Final);
+            Assert.Throws<InvalidOperationException>(() => sided.Build(later));
+        }
+
+        var dependency = ModuleBindingTest.Create(DependencyMain, DependencyLib);
+        Assert.True(dependency.Bind().IsComplete);
+        var growing = new MirBuilder(dependency);
+        var one = growing.Build(1).Bodies.Length;
+        Assert.True(dependency.Bind().IsComplete);
+        var two = growing.Build(2);
+        Assert.Equal(2, two.RootModules);
+        Assert.InRange(one, 1, two.Bodies.Length - 1);
+        Assert.Empty(two.Findings);
     }
 
     // V11: publishing, building and validating an unchanged compilation again, and selecting every Semantics case view of its bodies with

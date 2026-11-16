@@ -95,7 +95,8 @@ internal sealed class MirProgram
     internal ulong Version { get; set; }
 
     /// <summary>Gets the root range the version was opened with: the builder built the bodies of the modules below it eagerly, and builds
-    /// any other on demand (<see cref="MirBuilder.Build"/>); one version is built with one range.</summary>
+    /// any other on demand (<see cref="MirBuilder.Build"/>); one version is built with one range, and every version of a builder with
+    /// the library on one side of it.</summary>
     internal int RootModules { get; private set; }
 
     /// <summary>Gets the version's row of the demand table.</summary>
