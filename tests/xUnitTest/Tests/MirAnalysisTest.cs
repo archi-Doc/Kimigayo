@@ -173,6 +173,39 @@ public sealed class MirAnalysisTest
         Assert.Equal(0, program.Problems.All.Length);
     }
 
+    // PLAN G951's round rule (MirReport's Rounds; the Back's review C3 and N1): while a round is open, a problem of another body value (a
+    // construction record of a body a lookup builds during the round) is added at once and stays when the round is dropped; the round's own
+    // problems are held, so a dropped round adds none and a committed one adds each once, merged, after the problems added during it; a
+    // held problem with facts is a recording rule's defect, held as the round's; a round opened in an open round, or ended with none open,
+    // is a broken contract. Fail-before (a report reverted to the round's start): the construction record is lost.
+    [Fact]
+    public void ARoundHoldsOnlyItsOwnProblems()
+    {
+        var (program, site) = (new MirProgram(), new SourceRef(0, 5));
+        var report = program.Problems;
+        var construction = new MirProblem(DiagnosticCode.Unsupported_Kd, DiagnosticRequirement.ControlFlow, site, (int)MirRecordClass.Construction, ulong.MaxValue);
+        var collection = construction with { Body = (int)MirRecordClass.Collection };
+        report.Begin((int)MirRecordClass.Collection);
+        program.Report(site);
+        program.Report(site, DiagnosticCode.Unsupported_Kd, MirRecordClass.Collection);
+        report.Drop();
+        Assert.Equal([construction], report.All.ToArray());
+        report.Begin((int)MirRecordClass.Collection);
+        program.Report(site, DiagnosticCode.Unsupported_Kd, MirRecordClass.Collection);
+        program.Report(site, DiagnosticCode.Unsupported_Kd, MirRecordClass.Collection);
+        Assert.Throws<InvalidOperationException>(() => report.Begin(MirProblem.NoBody));
+        Assert.Equal([construction], report.All.ToArray());
+        report.Commit();
+        Assert.Equal([construction, collection], report.All.ToArray());
+        Assert.Throws<InvalidOperationException>(report.Commit);
+        Assert.Throws<InvalidOperationException>(report.Drop);
+        report.Begin(MirProblem.NoBody);
+        Assert.Equal(-1, report.Add(Conflict with { Body = MirProblem.NoBody }, [new(ProblemFactKind.Anchor, site)]));
+        report.Commit();
+        var defect = DiagnosticRequirement.Ownership(OwnershipRequirement.Internal);
+        Assert.Equal(new MirProblem(DiagnosticCode.InternalInvariant_Kd, defect, Conflict.Subject, MirProblem.NoBody, Conflict.Views), report.All[2]);
+    }
+
     // R5-M23: the problems a key merges name one requirement, the first's; a problem that names another is a recording rule's defect, one
     // InternalInvariant_Kd problem at the subject with the views that disagreed, however often it disagrees, and Add returns -1 for it.
     [Fact]

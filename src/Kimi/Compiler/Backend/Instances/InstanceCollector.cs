@@ -64,13 +64,14 @@
 // representative that is open or leaves its body open, and a requirement call of a closed Self without a witness, are broken contracts.
 // A refused edge is dropped and collection continues.
 // Round (PLAN G951; A4's round rule, MirEffects.Solve.cs): a run that replays a body item whose body A2's table does not hold, one a lookup
-// built during the run, misses: it goes on to its end, so it makes every demand of the round, its Drop sites reading no A2 fact of that
-// body (DropTargets), and commits nothing: the report holds a run's records until it ends and drops a missed run's (MirReport.Begin, the
-// one commit A4's rounds share; a record made outside a run is added at once), a missed run makes no end-of-run record (RecordLimits)
-// and its checked set holds no version; its driver (Compilation.Collect) steps the bodies built since (MirAnalysis.Step) and runs it
-// again until a run is clean. Templates extend over the bodies in build order as a replay meets one built during the run. A clean run
-// replays only stepped bodies from the same roots in the same FIFO order, so it equals the one run over a program whose bodies were all
-// built before; Work and RunCount sum the runs since the latest clean one, the version's.
+// built during the run, misses: it goes on to its end and makes every demand but those of that body's Drop sites, which read A2's facts
+// (DropTargets requests nothing for a body A2 does not hold), so their targets wait for the next run and a chain through them takes
+// another; and it commits nothing: the report holds a run's records until it ends and drops a missed run's (MirReport's round, the one
+// commit A4's rounds share; a record made outside a run is added at once), a missed run makes no end-of-run record (RecordLimits) and its
+// checked set holds no version. Its driver (Compilation.Collect) steps the bodies built since (MirAnalysis.Step) and runs it again until
+// a run is clean. Templates extend over the bodies in build order as a replay meets one built during the run. A clean run replays only
+// stepped bodies from the same roots in the same FIFO order, so it equals the one run over a program whose bodies were all built before;
+// Work and RunCount sum the runs of the version of the latest run.
 // Records (DECISIONS R5-M151): every record goes through one path (Report). A broken contract is InternalInvariant_Kd where Binding is
 // complete; in an incomplete compilation a fact the collector reads may be undecided because it rests on a part Binding rejected, which the
 // collector cannot name, so the record is that error's dependent and is dropped (SPEC 23.1.2); the edge is refused all the same.
@@ -111,6 +112,7 @@ internal sealed partial class InstanceCollector
     private int[] declaring = []; // Declaration's memo per item: the item whose body holds its subjects, plus one (0: not walked).
     private MirProgram? program; // The program of the latest run, whose bodies Declaration reads and whose report takes the records.
     private int rootModules;
+    private ulong version; // The version of the latest run, whose runs Work and RunCount sum.
     private bool missed; // Whether the run replayed a body A2's table does not hold (Round).
 
     /// <summary>Initializes a new instance of the <see cref="InstanceCollector"/> class.</summary>
@@ -127,11 +129,11 @@ internal sealed partial class InstanceCollector
     /// <summary>Gets the checked set of the latest run.</summary>
     internal CheckedSet Set { get; } = new();
 
-    /// <summary>Gets the work of the runs since the latest clean one, the version's (PLAN G951): the sites replayed, the items admitted and the
-    /// identity items admission reads (at most the window per key), which grow linearly with the instances.</summary>
+    /// <summary>Gets the work of the runs of the latest run's version (PLAN G951): the sites replayed, the items admitted and the identity
+    /// items admission reads (at most the window per key), which grow linearly with the instances.</summary>
     internal int Work { get; private set; }
 
-    /// <summary>Gets the runs since the latest clean one, that one included: the version's runs, each but the last missed (PLAN G951).</summary>
+    /// <summary>Gets the runs of the latest run's version, each but a clean last one missed (PLAN G951).</summary>
     internal int RunCount { get; private set; }
 
     /// <summary>Collects the checked set of a program version unless a clean run already did; a run that missed (Round) leaves a set of
@@ -148,7 +150,7 @@ internal sealed partial class InstanceCollector
             return set;
         }
 
-        (this.Work, this.RunCount) = set.Version == 0 ? (this.Work, this.RunCount + 1) : (0, 1);
+        (this.Work, this.RunCount, this.version) = program.Version == this.version ? (this.Work, this.RunCount + 1, this.version) : (0, 1, program.Version);
         set.Clear(program.Version);
         this.counts.Clear();
         this.limits.Clear();
