@@ -60,6 +60,7 @@ public sealed partial class Binding
         this.copyDeclarations = new(this);
         this.copyByType = new(this);
         this.inheritedOriginTypes = new(this);
+        this.deferredConstraints = new(this);
         this.Library.Kotonoha.Syntax.Hir.Families.Reserve(KimiLibrarySize.Stated);
         foreach (var symbol in this.Library.RegisteredSymbols)
         {
@@ -115,6 +116,7 @@ public sealed partial class Binding
             this.Library.Kotonoha.Syntax.Hir.Families.CopyDeclarations.Used,
             this.Library.Kotonoha.Syntax.Hir.Families.CopyByType.Used,
             this.Library.Kotonoha.Syntax.Hir.Families.InheritedOriginTypes.Used,
+            this.Library.Kotonoha.Syntax.Hir.Families.DeferredConstraints.Used,
             this.types.KeyCount,
             this.constraints.Count,
             this.pendingAssociatedTypes.Count,
@@ -140,6 +142,7 @@ public sealed partial class Binding
             this.Library.Kotonoha.Syntax.Hir.Families.CopyDeclarations.Free,
             this.Library.Kotonoha.Syntax.Hir.Families.CopyByType.Free,
             this.Library.Kotonoha.Syntax.Hir.Families.InheritedOriginTypes.Free,
+            this.Library.Kotonoha.Syntax.Hir.Families.DeferredConstraints.Free,
             this.types.KeyFree,
             this.constraints.Capacity - this.constraints.Count,
             this.pendingAssociatedTypes.Capacity - this.pendingAssociatedTypes.Count,
