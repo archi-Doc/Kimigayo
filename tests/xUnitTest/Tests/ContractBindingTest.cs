@@ -1,6 +1,8 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using System.Collections;
 using System.Reflection;
+using System.Runtime.CompilerServices;
 using Kimi;
 using Kimi.Compiler;
 using Kimi.Compiler.Parsing;
@@ -954,6 +956,29 @@ public class ContractBindingTest
         Assert.True(c.Binding.Result.IsComplete, Describe(c));
     }
 
+    // PLAN G949 S1-b1 (the Front's RR2, review C2): Reuse, then ResetPass as the first access in a pass runs it, leaves a used path and
+    // identity no entry and no state of their earlier conformance. Their lists, maps and settable fields are found by reflection, so one
+    // added later without its line in Reuse or ResetPass fails here.
+    [Fact]
+    public void AReusedPathAndIdentityKeepNoEntryOrStateOfTheirEarlierConformance()
+    {
+        var c = Sources("Self is C");
+        var (s, e) = (Container(c, "S").SymbolOf()!, Container(c, "E").SymbolOf()!);
+        var path = Impls(c).Paths.Single(x => ReferenceEquals(x.Type, s));
+        var (identity, scope) = (path.Identity, path.Scope);
+        object?[] values = [path, s, s.Type, path.Declaration];
+        Spoil(path, values);
+        Spoil(identity, values);
+        identity.Reuse(s, e).ResetPass(Impls(c).Pass);
+        path.Reuse(s, e, identity).ResetPass(Impls(c).Pass);
+        AssertEmptied(path);
+        AssertEmptied(identity);
+        Assert.Same(e, path.Contract);
+        Assert.Same(identity, path.Identity);
+        Assert.NotSame(scope, path.Scope);
+        Assert.Same(path, path.Scope.ConformancePath);
+    }
+
     // ThreeContracts, then S conforming by `clause` and T conforming to D, each in a source of its own; bound.
     private static Compilation Sources(string clause)
     {
@@ -974,6 +999,47 @@ public class ContractBindingTest
     }
 
     private static ImplTable Impls(Compilation c) => (ImplTable)typeof(Binding).GetField("impls", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(c.Binding)!;
+
+    // A conformance identity's or path's state that Reuse and ResetPass empty or reset: each list and map, and each other settable
+    // property but the key Reuse sets (Type, Contract, Identity), the pass stamp and the scope Reuse replaces.
+    private static IEnumerable<PropertyInfo> PassState(object model)
+        => model.GetType().GetProperties(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic).Where(static x =>
+            x.Name is not ("Type" or "Contract" or "Identity" or "Stamp" or "Scope") && (IsCollection(x.PropertyType) || x.GetSetMethod(true) is not null));
+
+    private static bool IsCollection(Type type) => type.IsGenericType && type.GetGenericTypeDefinition() is var definition && (definition == typeof(List<>) || definition == typeof(Dictionary<,>));
+
+    // Gives each list of PassState one more entry and each other settable property a value other than its default: true, 1, the first
+    // of `values` its type accepts, else an instance of a concrete type.
+    private static void Spoil(object model, object?[] values)
+    {
+        foreach (var property in PassState(model))
+        {
+            var type = property.PropertyType;
+            if (type.IsGenericType && type.GetGenericTypeDefinition() == typeof(List<>))
+            {
+                var list = (IList)(property.GetValue(model) ?? Activator.CreateInstance(type)!);
+                var entry = type.GetGenericArguments()[0];
+                list.Add(entry.IsValueType ? Activator.CreateInstance(entry) : null);
+                property.GetSetMethod(true)?.Invoke(model, [list]);
+            }
+            else if (property.GetSetMethod(true) is { } setter)
+            {
+                var value = type == typeof(bool) ? true : type == typeof(int) ? 1
+                    : values.FirstOrDefault(type.IsInstanceOfType) ?? (type.IsAbstract || type.IsValueType ? null : RuntimeHelpers.GetUninitializedObject(type));
+                setter.Invoke(model, [value]);
+            }
+        }
+    }
+
+    // Each PassState property of a model object reads empty, null, false or 0.
+    private static void AssertEmptied(object model)
+    {
+        foreach (var property in PassState(model))
+        {
+            var value = property.GetValue(model);
+            Assert.True(value is null or false or 0 || value is ICollection { Count: 0 }, $"{model.GetType().Name}.{property.Name}: {value}");
+        }
+    }
 
     // Whether `source` binds completely exactly when `codes` is empty, with these distinct issue codes.
     private static void AssertBindingCodes(string source, string codes)
