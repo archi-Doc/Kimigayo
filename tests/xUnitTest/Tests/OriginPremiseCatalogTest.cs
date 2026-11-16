@@ -9,7 +9,7 @@ namespace XunitTest;
 
 // PLAN G74: every premise rule of the catalog (OriginPremiseRule) is extracted from real source: a program the rule's premise
 // proves, and the same relation where no visible contract supplies that premise.
-public class OriginPremiseCatalogTest
+public partial class OriginPremiseCatalogTest
 {
     private const string Main = "public func main() => ()\n";
 

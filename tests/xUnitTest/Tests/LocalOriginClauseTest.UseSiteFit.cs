@@ -46,7 +46,7 @@ public partial class LocalOriginClauseTest
         // valid: the clause `a == c` holds for `x`'s Origin `p`.
         { "veqi", "func eqi(w: uniq/(ref/i64 during a), v: uniq/(ref/i64 during c)) -> i32\n    origin a == c\n    return 0\nfunc outer(p: ref/i64) -> i32\n    let x = p\n    let f: (uniq/(ref/i64 during x), uniq/(ref/i64 during p)) -> i32 = eqi\n    return 0\n", string.Empty },
         // invalid: `q == p` is not proven.
-        { "veqin", "func eqi(w: uniq/(ref/i64 during a), v: uniq/(ref/i64 during c)) -> i32\n    origin a == c\n    return 0\nfunc outer(p: ref/i64, q: ref/i64) -> i32\n    let x = q\n    let f: (uniq/(ref/i64 during x), uniq/(ref/i64 during p)) -> i32 = eqi\n    return 0\n", "UnprovenOriginContract_Kd@6:72 the 2nd parameter requires q == p, which is not proven" },
+        { "veqin", "func eqi(w: uniq/(ref/i64 during a), v: uniq/(ref/i64 during c)) -> i32\n    origin a == c\n    return 0\nfunc outer(p: ref/i64, q: ref/i64) -> i32\n    let x = q\n    let f: (uniq/(ref/i64 during x), uniq/(ref/i64 during p)) -> i32 = eqi\n    return 0\n", "UnprovenOriginContract_Kd@6:72 the 2nd parameter requires the omitted Origin of x == p, which is not proven" },
 
         // An invariant part the relation meets reversed (`uniq/X` in R's contravariant slot, SPEC 15.3.5): its facts are those of its own
         // walk in the fit's orientation, a Function Type's one oriented comparison included (10.7).
@@ -160,6 +160,10 @@ public partial class LocalOriginClauseTest
         var actual = string.Join('|', DiagnosticCorpus.Check(source).Diagnostics.Select(x => $"{x.Code}@{Position(source, x.Span)} {x.Label}".TrimEnd()));
         Assert.True(records == actual, $"{row}: {actual}");
     }
+
+    // A program's records in order as `code@line:column`, joined by `|` (PLAN G492-a (ii)'s rows).
+    internal static string Records(string source)
+        => string.Join('|', DiagnosticCorpus.Check(source).Diagnostics.Select(x => $"{x.Code}@{Position(source, x.Span)}"));
 
     // A span's start as `line:column`, both from 1.
     private static string Position(string source, SourceSpan? span)

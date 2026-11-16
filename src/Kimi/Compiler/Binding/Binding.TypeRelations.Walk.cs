@@ -95,9 +95,17 @@ public sealed partial class Binding
     // SPEC 15.6.1, 23.1.2: one part of CheckTypeUse's walk outside every Callable comparison, as a walk rooted at it would answer it: the
     // pair as walked, whether the relation holds there, whether a position in it held by resting (fitRested), its first failure, whether
     // its own shape held (Shaped: the walk did not end at the pair itself), its facts' range in comparisonFacts and the index after its
-    // own parts. A part that identity discharges has none.
+    // own parts. A part that identity discharges has none. A pair of composite parts the walk entered before in the same invariance is
+    // entered once (PLAN G492-a (ii)): a later meeting is a part that names the earlier one (Same, its index + 1), with its answers and no
+    // parts of its own. Fails is CheckTypeUse's: its decomposition of the part failed (CheckTypeUseCore writes it when it reads the part).
     internal readonly record struct FitPart(
-        BoundType Actual, BoundType Expected, bool Holds, bool Rested, bool Shaped, ComparisonFailure Failure, int FactStart, int FactEnd, int End);
+        BoundType Actual, BoundType Expected, bool Holds, bool Rested, bool Shaped, ComparisonFailure Failure, int FactStart, int FactEnd, int End,
+        int Same = 0, bool Fails = false);
+
+    // The composite parts CheckTypeUse's current root walk entered, by pair and invariance: the part's index in its FitPart list. A
+    // meeting of the same two interned Types in the same invariance within one walk relates them as the first did, reading the same
+    // premises and Origins, so its verdict, resting and facts are the first's (DECISIONS BU-19's table, one query per root walk; warm 0 B).
+    private readonly TypeMemo<(BoundType Actual, BoundType Expected, bool Invariant), int> enteredParts = new();
 
     // Which Origin bindings a relation walk compares: every one (Judged), every one as a whole-contract comparison's Origin part, from the
     // premises alone, so a member that only an inferred or body-local region decides is no limit (Contract, SPEC 15.6.1, 15.3.7: a
@@ -118,6 +126,7 @@ public sealed partial class Binding
         private readonly Koto? use;
         private readonly List<ComparisonFailure>? facts;
         private readonly List<FitPart>? parts;
+        private readonly uint partQuery;
         private readonly int start;
         private OriginPart part;
         private ComparisonFailure failure;
@@ -145,6 +154,7 @@ public sealed partial class Binding
             : this(binding, use, facts)
         {
             this.parts = parts;
+            this.partQuery = binding.enteredParts.Begin(binding.storageVersion);
         }
 
         // The first failure of the walk's last false answer.
@@ -164,6 +174,19 @@ public sealed partial class Binding
                 return this.Relate(actual, expected, invariant, skipOrigin, instance, own);
             }
 
+            // A pair of composite parts entered before in this invariance answers as it did there (FitPart.Same); the comparison of a
+            // Function part, an instantiated outer Origin and a root's own inputs are walked where they occur.
+            var key = (actual, expected, invariant);
+            var once = !skipOrigin && own is null && actual.Components.Count != 0 && actual.Kind is not (BoundTypeKind.Function or BoundTypeKind.FunctionItem);
+            if (once && this.binding!.enteredParts.TryGet(key, this.partQuery, out var earlier))
+            {
+                var first = parts[earlier];
+                this.binding.fitRested |= first.Rested;
+                this.failure = first.Holds ? this.failure : first.Failure;
+                parts.Add(first with { End = parts.Count + 1, Same = earlier + 1 });
+                return first.Holds;
+            }
+
             // A part's resting is its own (FitOrigin sets fitRested), and the enclosing part's includes it.
             var entry = parts.Count;
             var factStart = this.facts!.Count;
@@ -171,8 +194,13 @@ public sealed partial class Binding
             parts.Add(default);
             this.binding.fitRested = false;
             var holds = this.Relate(actual, expected, invariant, skipOrigin, instance, own);
-            var first = holds ? default : this.facts.Count > factStart ? this.facts[factStart] : this.failure;
-            parts[entry] = new(actual, expected, holds, this.binding.fitRested, this.endedAt != entry, first, factStart, this.facts.Count, parts.Count);
+            var failed = holds ? default : this.facts.Count > factStart ? this.facts[factStart] : this.failure;
+            parts[entry] = new(actual, expected, holds, this.binding.fitRested, this.endedAt != entry, failed, factStart, this.facts.Count, parts.Count);
+            if (once)
+            {
+                this.binding.enteredParts.Set(key, this.partQuery, entry);
+            }
+
             this.binding.fitRested |= outerRested;
             return holds;
         }

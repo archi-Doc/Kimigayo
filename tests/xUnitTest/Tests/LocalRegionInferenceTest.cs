@@ -10,7 +10,7 @@ using Xunit;
 
 namespace XunitTest;
 
-public class LocalRegionInferenceTest(ITestOutputHelper output)
+public partial class LocalRegionInferenceTest(ITestOutputHelper output)
 {
     // A stored function's input makes `s` contravariant.
     private const string Callback = "struct C {s}\n    public let call: (ref/i32 during s) -> i32\n    public init(call: (ref/i32 during s) -> i32) => self.call = call@move\n\n";
@@ -138,6 +138,25 @@ public class LocalRegionInferenceTest(ITestOutputHelper output)
 
         var json = JsonSerializer.Serialize(result, DiagnosticJsonContext.Default.DiagnosticResult);
         Assert.Equal(result, JsonSerializer.Deserialize(json, DiagnosticJsonContext.Default.DiagnosticResult));
+    }
+
+    // SPEC 23.1, 15.4.4 (DECISIONS R4-M133; PLAN G492-a (ii)): a record shows and relates the Borrow at the operand that supplies its end
+    // when that Borrow, or the value it is stored through, reads a `let` local's region in the local's own body, where the region is its
+    // value: a Reborrow through `let rr`, a `let` slice's element Borrow stored into a `var`, and a call whose Closure captured a `let`
+    // array, which holds no Borrow at the operand, so the end is shown there. Each showed the `let` initializer's Borrow instead.
+    [Theory]
+    [InlineData("func f(p: ref/i32) -> ref/i32 during p\n    var local: i32 = 1\n    var r = local@uniq\n    let rr = r@uniq\n    return rr@follow@follow@ref\n", "rr@follow@follow@ref", "the borrow rr@follow@follow@ref outlives p", "rr@follow@follow@ref")]
+    [InlineData("func f(x: ref/i32) -> ref/i32 during x\n    let values = [1, 2, 3]\n    let s = values[0..2]\n    var view = x\n    view = s[0]@ref\n    return view\n", "view", "the borrow s[0]@ref outlives x", "s[0]@ref")]
+    [InlineData("func bad() -> ref/i32 during static\n    let n = 7\n    let values: [1 of ref/i32] = [n@ref]\n    let f = func [values] () => values[0]\n    return f()\n", "f()", "the borrow n outlives static", "f()")]
+    public void ARecordShowsTheOperandsBorrowThroughALetRegion(string function, string at, string relation, string related)
+    {
+        var source = function + "public func main() => ()\n";
+        var label = $"requires {relation}, which is false";
+        var record = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics, x => Text(x.Span) == at && x.Label == label);
+        Assert.Equal(nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd), record.Code);
+        Assert.Contains(record.Related!, x => x.Role == "origin" && Text(x.Span) == related);
+
+        string Text(SourceSpan? span) => span is { } value ? source.Substring(value.Start, value.Length) : string.Empty;
     }
 
     // SPEC 15.3.6: a body variable of a local whose row has no candidate is a local region of the local, never invented as static, so each

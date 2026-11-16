@@ -17,7 +17,8 @@ namespace Kimi.Compiler;
 // - Invariants: a fit adds no Constraint, reopens no inference and publishes nothing but CheckTypeUse's obligations; nothing below the
 //   root fits by Never (a Type holding Never is an ordinary Type). CheckTypeUse walks the relation once at its root and reads each
 //   part's answer from that walk (RelationWalk.FitPart), and once more at each invariant part the relation meets reversed, in the fit's
-//   own orientation; a reversed part's structure does not depend on the orientation (CheckTypeUseCore's precondition).
+//   own orientation; a reversed part's structure does not depend on the orientation (CheckTypeUseCore's precondition). A pair of
+//   composite parts the walk meets again is decomposed once (FitPart.Same), so a fit is linear in its distinct pairs.
 // - Prohibitions: a Type-to-Type comparison calls the relation's entries (IsSubtype, IsSubtypeAt, FitsStructuralPart), not these.
 public sealed partial class Binding
 {
@@ -78,8 +79,7 @@ public sealed partial class Binding
     // SPEC 10.2, 15.4.4, 15.6.1: a value at a value position: the fit at the use, or, where a local region of a body takes part, the
     // use-site fit at `value`, whose Origin positions ownership judges. `failure` is the fit's, which a caller that records it passes on.
     private bool FitsValueAt(BoundType actual, BoundType expected, Koto use, Koto value, out ComparisonFailure failure)
-        => this.FitsTypeAt(actual, expected, use, out failure) ||
-            ((this.HasLocalRegion(actual) || this.HasLocalRegion(expected)) && this.CheckTypeUse(actual, expected, value, out _));
+        => this.FitsTypeAt(actual, expected, use, out failure) || (this.RegionalAt(actual, expected, value) && this.CheckTypeUse(actual, expected, value, out _));
 
     // SPEC 15.6.1: a fit whose structure holds leaves each differing Origin position as an obligation that ownership judges and reports
     // with facts at the value. A position's pending relation is recorded with the fit's whole destination, as the fit's own record is
@@ -167,7 +167,28 @@ public sealed partial class Binding
         {
             cursor.Last = (part.FactStart, part.FactEnd);
             cursor.Next++;
-            fits = this.CheckTypeUsePart(actual, expected, use, polarity, part, ref cursor);
+            if (part.Same != 0)
+            {
+                // PLAN G492-a (ii): the walk entered this pair before (FitPart.Same), and the decomposition formed its obligations there,
+                // which are this meeting's; it answers that part's decomposition (Fails), and a part whose walk failed leaves the cursor
+                // as CheckTypeUsePart leaves it for a part whose walk failed. Where the earlier part's decomposition failed, its branch
+                // failed first, so this part's failure and facts are never the fit's.
+                if (!part.Holds)
+                {
+                    cursor.Failure = part.Failure;
+                }
+
+                fits = !this.fitParts[part.Same - 1].Fails;
+            }
+            else
+            {
+                var index = cursor.Next - 1;
+                fits = this.CheckTypeUsePart(actual, expected, use, polarity, part, ref cursor);
+                if (!fits)
+                {
+                    this.fitParts[index] = this.fitParts[index] with { Fails = true };
+                }
+            }
         }
         else
         {
