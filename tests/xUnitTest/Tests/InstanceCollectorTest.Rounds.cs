@@ -180,9 +180,10 @@ public sealed partial class InstanceCollectorTest
         => [.. program.Records(MirRecordClass.Collection).Select(x => $"{x.Code} {c.SyntaxOf(x.Subject).ToString().Split('\n')[0]}")];
 
     // A two-module compilation (main's module 0 and Lib) built with a root range (1: Lib's bodies on demand), analyzed and collected with
-    // main's module as the roots by Compilation.Collect's loop, driven here to observe its first run: the records of both classes and the
-    // analyses' problems (Rows), the checked set (Items), the collector's Work after each run, the first run's set version and rows, and
-    // the work of a fresh collector's run over the stepped program (one clean run's).
+    // main's module as the roots by a copy of Compilation.Collect's loop, which must stay equal to it (the C-col theory drives the loop
+    // itself), copied to observe the first run: the records of both classes and the analyses' problems (Rows), the checked set (Items),
+    // the collector's Work after each run, the first run's set version and rows, and the work of a fresh collector's run over the stepped
+    // program (one clean run's).
     private static (string[] Rows, string[] Items, int[] Works, ulong First, string[] FirstRows, int Fresh) TwoModule(string root, string lib, int range)
     {
         var c = ModuleBindingTest.Create(root, lib);
