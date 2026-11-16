@@ -107,6 +107,25 @@ public partial class Compilation
         this.PublishMirRecords();
     }
 
+    /// <summary>Collects the checked set of an analyzed program (SPEC 8.15.3: its layout obligations are judged at check), whose records join
+    /// the program's report, by the collector's round rule (PLAN G951): a run that missed (its set holds no version) built bodies the
+    /// analyses' one stepping path steps before the next run, until a run is clean.</summary>
+    /// <param name="analysis">The analysis that ran on the program.</param>
+    /// <param name="collector">The collector.</param>
+    /// <param name="program">The program.</param>
+    /// <param name="rootModules">The root range of both.</param>
+    /// <returns>The checked set.</returns>
+    internal static Backend.CheckedSet Collect(Mir.MirAnalysis analysis, Backend.InstanceCollector collector, Mir.MirProgram program, int rootModules)
+    {
+        var set = collector.Run(program, rootModules);
+        for (; set.Version != program.Version; set = collector.Run(program, rootModules))
+        {
+            analysis.Step(program, rootModules);
+        }
+
+        return set;
+    }
+
     /// <summary>Checks the established inputs (SPEC 23.2.2): the one phase sequence of a check, which every command and the check service
     /// run through <c>Project</c>. Final Binding, the startup check (a test build's test startup, else the project's output kind; IMPL
     /// 20.6.1) and the analysis each run whatever an earlier one found (SPEC 23.1.2) and publish their records; an accepted test build
@@ -180,8 +199,9 @@ public partial class Compilation
             return CompilerThread.Run(this, static s => s.BuildMir());
         }
 
-        var program = (this.mirAnalysis ??= new(this.Types)).Run(this.ConstructMir(), this.SourceModules.Length);
-        this.Collect(program);
+        var analysis = this.mirAnalysis ??= new(this.Types);
+        var program = analysis.Run(this.ConstructMir(), this.SourceModules.Length);
+        Collect(analysis, this.instances ??= new(this.Types, this.Layout), program, this.SourceModules.Length);
         program.Enter(Mir.MirProgram.Phase.Sealed); // Later lookups read only (PLAN G951).
         return program;
     }
@@ -193,10 +213,6 @@ public partial class Compilation
         => (this.mirBuilder ??= new(this)).Build(SyntaxTable.LibraryModule + 1); // Every body eagerly until PLAN G951 U2 (the source range).
 
     internal void InvalidateMir() => this.mir = null;
-
-    // The checked set of a built and validated program (SPEC 8.15.3: its layout obligations are judged at check), whose
-    // records join the program's report.
-    private void Collect(Mir.MirProgram program) => (this.instances ??= new(this.Types, this.Layout)).Run(program, this.SourceModules.Length);
 }
 
 /// <summary>The summary of a compilation's analysis.</summary>

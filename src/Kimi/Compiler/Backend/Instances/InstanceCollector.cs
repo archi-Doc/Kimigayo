@@ -3,7 +3,9 @@
 // Owns the checked set (SPEC 8.15.3, IMPL 21.3.1; R5 package K 4.3-4.9; DECISIONS R5-M35, R5-M40, R5-M43, R5-M44, R5-M52-55, R5-M60,
 // R5-M67, R5-M70, R5-M74, R5-M146, R5-M149, R5-M150): every body instance, type-driven item and shim a root requires through runtime or
 // check-only edges, its instance-stage records, and the one resolution of each site's target that code generation reads.
-// Input: a built, validated MirProgram; the root range (Source.Module below it, not a mode); TyCtxt (Instantiates, Erase,
+// Input: a built, validated MirProgram whose bodies the MIR analyses' stepping path has stepped (A2's table holds them, MirDropTable.Holds:
+// a run that replays a body it does not hold misses, Round below), as code generation reads them; the root range (Source.Module below it,
+// not a mode); TyCtxt (Instantiates, Erase,
 // Compose, Instance, BindingComplete, Implementation, Witness, Comparison, OwnRequirement, Published, Bodyless, Signature,
 // SubstOfClosure, SubstOfItem, Synthesized, Applies, Imports, SignatureSite); MirCases (Views, an item's view for a PairLayer's case,
 // an Adapt's AdaptSource and Operation); MirUses; MirTypes.MayNeedDrop; DropGlue.Destroyed, Level and Parts; AdtDef.FindField; VTableDef;
@@ -61,6 +63,14 @@
 // 128 is its erased Type's limit, recorded as a Layout limit is (DECISIONS R5-M171); a
 // representative that is open or leaves its body open, and a requirement call of a closed Self without a witness, are broken contracts.
 // A refused edge is dropped and collection continues.
+// Round (PLAN G951; A4's round rule, MirEffects.Solve.cs): a run that replays a body item whose body A2's table does not hold, one a lookup
+// built during the run, misses: it goes on to its end, so it makes every demand of the round, its Drop sites reading no A2 fact of that
+// body (DropTargets), and commits nothing: the report holds a run's records until it ends and drops a missed run's (MirReport.Begin, the
+// one commit A4's rounds share; a record made outside a run is added at once), a missed run makes no end-of-run record (RecordLimits)
+// and its checked set holds no version; its driver (Compilation.Collect) steps the bodies built since (MirAnalysis.Step) and runs it
+// again until a run is clean. Templates extend over the bodies in build order as a replay meets one built during the run. A clean run
+// replays only stepped bodies from the same roots in the same FIFO order, so it equals the one run over a program whose bodies were all
+// built before; Work and RunCount sum the runs since the latest clean one, the version's.
 // Records (DECISIONS R5-M151): every record goes through one path (Report). A broken contract is InternalInvariant_Kd where Binding is
 // complete; in an incomplete compilation a fact the collector reads may be undecided because it rests on a part Binding rejected, which the
 // collector cannot name, so the record is that error's dependent and is dropped (SPEC 23.1.2); the edge is refused all the same.
@@ -70,11 +80,12 @@
 // Invariants: deterministic; one item per key; every representative is closed and closes its body (K 4.3); one target per site of a body,
 // plus the operand's glue at a borrowing callee's owner Value call, after its body (SPEC 8.10; DECISIONS R5-M102); a type-driven item's
 // targets are at its default site, a DropGlue's in DropGlue.Level's order, a ClosureErasure's body before its environment's glue; a repeated
-// run of a version is a no-op; a body with a finding (MirBody.HasFinding) is no template, root or item (DECISIONS R5-M183: the Templates
-// walk, the root loop and Admit are the only ways a body enters, so what rests on it has no record); a warm run of a program as large as
-// an earlier one allocates nothing.
-// Must not: read syntax, HIR or plans; depend on the MIR analyses' results or edit their driver; decide acceptance or publish its records
-// (Compilation does); prove anything on an erased value; add an IntrinsicId or BindingFailure (PD21).
+// run of a version a clean run collected is a no-op; a body with a finding (MirBody.HasFinding) is no template, root or item (DECISIONS
+// R5-M183: the Templates walk, the root loop and Admit are the only ways a body enters, so what rests on it has no record); a warm run of a
+// program as large as an earlier one allocates nothing.
+// Must not: read syntax, HIR or plans; depend on the MIR analyses' problems (it reads A2's table only: DropTargets, and Holds for its
+// round) or edit their driver; decide acceptance or publish its records (Compilation does); prove anything on an erased value; add an
+// IntrinsicId or BindingFailure (PD21).
 
 using Kimi.Compiler.Mir;
 
@@ -100,6 +111,7 @@ internal sealed partial class InstanceCollector
     private int[] declaring = []; // Declaration's memo per item: the item whose body holds its subjects, plus one (0: not walked).
     private MirProgram? program; // The program of the latest run, whose bodies Declaration reads and whose report takes the records.
     private int rootModules;
+    private bool missed; // Whether the run replayed a body A2's table does not hold (Round).
 
     /// <summary>Initializes a new instance of the <see cref="InstanceCollector"/> class.</summary>
     /// <param name="types">The Type context of the programs.</param>
@@ -115,12 +127,16 @@ internal sealed partial class InstanceCollector
     /// <summary>Gets the checked set of the latest run.</summary>
     internal CheckedSet Set { get; } = new();
 
-    /// <summary>Gets the work of the latest run: the sites replayed, the items admitted and the identity items admission reads (at most the
-    /// window per key), which grow linearly with the instances.</summary>
+    /// <summary>Gets the work of the runs since the latest clean one, the version's (PLAN G951): the sites replayed, the items admitted and the
+    /// identity items admission reads (at most the window per key), which grow linearly with the instances.</summary>
     internal int Work { get; private set; }
 
-    /// <summary>Collects the checked set of a program version unless this version already was.</summary>
-    /// <param name="program">The built and validated program.</param>
+    /// <summary>Gets the runs since the latest clean one, that one included: the version's runs, each but the last missed (PLAN G951).</summary>
+    internal int RunCount { get; private set; }
+
+    /// <summary>Collects the checked set of a program version unless a clean run already did; a run that missed (Round) leaves a set of
+    /// no version (<see cref="CheckedSet.Version"/> 0) and no record.</summary>
+    /// <param name="program">The built, validated and stepped program.</param>
     /// <param name="rootModules">The root range: the bodies whose module is below it are roots. Any bound is a range: Compilation passes
     /// the source modules' count, and <see cref="Parsing.SyntaxTable.LibraryModule"/> + 1 includes the library's bodies.</param>
     /// <returns>The checked set.</returns>
@@ -132,13 +148,15 @@ internal sealed partial class InstanceCollector
             return set;
         }
 
+        (this.Work, this.RunCount) = set.Version == 0 ? (this.Work, this.RunCount + 1) : (0, 1);
         set.Clear(program.Version);
         this.counts.Clear();
         this.limits.Clear();
         this.refused.Clear();
         this.glueKeys.Clear();
         Array.Clear(this.declaring);
-        (this.program, this.rootModules, this.Work) = (program, rootModules, 0);
+        (this.program, this.rootModules, this.missed, this.templated, this.siteCount, this.needCount) = (program, rootModules, false, 0, 0, 0);
+        program.Problems.Begin((int)MirRecordClass.Collection);
         this.Templates(program);
         foreach (var body in program.Bodies)
         {
@@ -156,7 +174,15 @@ internal sealed partial class InstanceCollector
             this.Replay(program, item);
         }
 
+        if (this.missed)
+        {
+            program.Problems.Drop(); // Round: a missed run commits nothing.
+            set.Clear(0);
+            return set;
+        }
+
         this.RecordLimits();
+        program.Problems.Commit();
         return set;
     }
 

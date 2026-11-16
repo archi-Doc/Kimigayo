@@ -3,7 +3,8 @@
 // Owns the problems the MIR analyses find in one program version and its construction and collection records (A6; DECISIONS R4-M3a, R5-M23,
 // R4-M71; R6-check H3-1); their records are MirProblem and ProblemFact (MirProblem.cs, Core/ProblemFact.cs).
 // Input: Add calls, each a problem with its requirement, which its recording rule names (R5-M23), its body (a record's MirRecordClass,
-// through MirProgram.Report) and its facts (related sites, added by their first producer).
+// through MirProgram.Report) and its facts (related sites, added by their first producer); a round's problems, held until it commits
+// (Begin, Commit, Drop: PLAN G951's round rule).
 // Output: one problem per code, subject, body and Reason (R4-M71: views number one body's cases; 2a0-D
 // D18: an Origin problem's relation, the default for other problems) with the views that have it merged, in insertion order (bodies in
 // program order), and each problem's facts by its index, which Add returns (R4-M132). A merge keeps the first problem, its requirement and
@@ -40,6 +41,8 @@ internal sealed partial class MirReport
     private readonly List<MirProblem> problems = [];
     private readonly List<ProblemFact> facts = [];
     private readonly List<(int Start, int Count)> spans = []; // Each problem's facts.
+    private readonly List<MirProblem> held = []; // The open round's problems, which carry no facts (Begin).
+    private int? round; // The body value of the open round's problems (Begin), or none.
 
     /// <summary>Gets the problems in the order they were first added.</summary>
     internal ReadOnlySpan<MirProblem> All => CollectionsMarshal.AsSpan(this.problems);
@@ -56,9 +59,16 @@ internal sealed partial class MirReport
     /// when every report of it is, its Cause facts their union (R4-M132).</summary>
     /// <param name="problem">The problem.</param>
     /// <param name="facts">Its facts, kept for a new problem, of which only the Cause facts merge.</param>
-    /// <returns>The problem's index in <see cref="All"/>, the first problem's on a merge; -1 for a dropped problem and for a defect.</returns>
+    /// <returns>The problem's index in <see cref="All"/>, the first problem's on a merge; -1 for a dropped problem, a defect and a problem an
+    /// open round holds (<see cref="Begin"/>).</returns>
     internal int Add(in MirProblem problem, ReadOnlySpan<ProblemFact> facts = default)
     {
+        if (problem.Body == this.round)
+        {
+            this.held.Add(facts.IsEmpty ? problem : throw new InvalidOperationException($"A round's problem at {problem.Subject} has facts (InternalInvariant)."));
+            return -1;
+        }
+
         var namesNoProblem = false;
         foreach (var fact in facts)
         {
@@ -105,11 +115,38 @@ internal sealed partial class MirReport
     /// <summary>Removes every problem, keeping the storage.</summary>
     internal void Clear()
     {
-        this.isMerged = false;
+        (this.isMerged, this.round) = (false, null);
+        this.held.Clear();
         this.index.Clear();
         this.problems.Clear();
         this.facts.Clear();
         this.spans.Clear();
+    }
+
+    /// <summary>Opens a round of a consumer of step-2 facts (PLAN G951's round rule, the one commit of A4's rounds and the instance
+    /// collector's runs): until <see cref="Commit"/> or <see cref="Drop"/>, Add holds each problem of the round's body value, so a round
+    /// that missed commits nothing; any other problem (a construction record of a body a lookup builds meanwhile) is added at once.</summary>
+    /// <param name="body">The body value of the round's problems, which carry no facts and which no other producer adds meanwhile: A4's
+    /// obligations' NoBody, the collector's MirRecordClass.Collection.</param>
+    internal void Begin(int body) => this.round = body;
+
+    /// <summary>Ends a clean round: adds the problems it held, in order, as Add adds them.</summary>
+    internal void Commit()
+    {
+        this.round = null;
+        foreach (var problem in this.held)
+        {
+            this.Add(problem);
+        }
+
+        this.held.Clear();
+    }
+
+    /// <summary>Ends a round that missed: drops the problems it held.</summary>
+    internal void Drop()
+    {
+        this.round = null;
+        this.held.Clear();
     }
 
     // The number of a fact span's trailing Cause facts.

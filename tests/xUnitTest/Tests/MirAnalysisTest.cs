@@ -926,6 +926,14 @@ public sealed class MirAnalysisTest
         return text.Append("    x = 2\n    inspect(r)\n    return x\n").ToString();
     }
 
+    // A body's A2 table: its rows, points, flags, views and first problem (InstanceCollectorTest's lazy rows read it too).
+    internal static string Table(MirProgram program, MirBody body)
+    {
+        var drops = program.Drops;
+        return $"{string.Join(", ", drops.RowsOf(body.Ordinal).ToArray())} | {string.Join(", ", drops.PointsOf(body.Ordinal).ToArray())} | " +
+            $"{drops.FlagsOf(body.Ordinal)} {drops.ViewsOf(body.Ordinal)} {drops.Incomplete(body.Ordinal)?.Code}";
+    }
+
     // N requires whose failure bodies complete: in sequence in sequence(), nested in nest().
     private static string RequireEnds(int n)
     {
@@ -991,14 +999,6 @@ public sealed class MirAnalysisTest
 
     // A body's definition across compilations: its kind, index and syntax.
     private static string Key(MirBody body) => $"{body.Key.Kind} {body.Key.Index} {body.Source}";
-
-    // A body's A2 table: its rows, points, flags, views and first problem.
-    private static string Table(MirProgram program, MirBody body)
-    {
-        var drops = program.Drops;
-        return $"{string.Join(", ", drops.RowsOf(body.Ordinal).ToArray())} | {string.Join(", ", drops.PointsOf(body.Ordinal).ToArray())} | " +
-            $"{drops.FlagsOf(body.Ordinal)} {drops.ViewsOf(body.Ordinal)} {drops.Incomplete(body.Ordinal)?.Code}";
-    }
 
     private static int Library(MirProgram program) => program.Bodies.ToArray().Count(static x => x.Source.IsLibrary);
 

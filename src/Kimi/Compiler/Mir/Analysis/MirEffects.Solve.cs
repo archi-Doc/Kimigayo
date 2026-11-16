@@ -12,11 +12,11 @@ namespace Kimi.Compiler.Mir;
 // atoms resolved by its definition's premises: an owing body per view, a Callable binding as a call through it.
 // A round's rule (PLAN G951): Compose is the one read of a body's nodes, and a read of a body A2's table does not hold (MirDropTable.Holds:
 // a body built since the driver's last step, which has no local facts) misses: it adds nothing, and the round goes on to its end, so it
-// demands every body it reads; only a clean round adds its obligations' problems, which wait in pending until then.
+// demands every body it reads; the report holds its obligations' problems until it ends (MirReport.Begin, the round rule's one commit,
+// which the instance collector's runs share): a clean round commits them, a missed one drops them.
 internal sealed partial class MirEffects
 {
     private readonly List<EffectObligation> rows = [];
-    private readonly List<MirProblem> pending = []; // The round's obligation problems, added to the report only by a clean round.
     private readonly List<(BindingSymbol Target, Subst Instance)> targets = []; // What requirements on Types that are not abstract run, a stack.
     private readonly Dictionary<BoundType, byte> glued = new(ReferenceEqualityComparer.Instance); // One evaluation's destruction walks' slots (MirDepths).
     private byte[] classes = []; // Each node's summary: its classes,
@@ -30,6 +30,7 @@ internal sealed partial class MirEffects
     private int[] dependentHeads = []; // and each node's readers, a list in dependents.
     private (int Node, int Next)[] dependents = [];
     private MirProgram program = null!;
+    private MirReport report = null!; // The round's report, which holds its obligations' problems until the round ends.
     private BindingSymbol? definition; // The definition whose premises resolve atoms: the evaluated node's, or an obligation's.
     private int reader; // The evaluated node, -1 while judging an obligation, whose atoms are resolved at once.
     private int atomCount;
@@ -55,8 +56,8 @@ internal sealed partial class MirEffects
     /// <returns>Whether the round was clean and added its problems.</returns>
     internal bool Run(MirProgram program, MirReport report, int rootModules)
     {
-        (this.program, this.missed) = (program, false);
-        this.pending.Clear();
+        (this.program, this.report, this.missed) = (program, report, false);
+        report.Begin(MirProblem.NoBody);
         (this.atomCount, this.dependentCount, this.Evaluations) = (0, 0, 0);
         var count = program.Version == this.version ? this.nodeCount : 0; // A version Local recorded no view of has no node.
         MirDataflow.Grow(ref this.classes, count);
@@ -108,14 +109,11 @@ internal sealed partial class MirEffects
         this.Obligations(rootModules);
         if (this.missed)
         {
+            report.Drop();
             return false;
         }
 
-        foreach (var problem in this.pending)
-        {
-            report.Add(problem);
-        }
-
+        report.Commit();
         return true;
     }
 
@@ -126,17 +124,17 @@ internal sealed partial class MirEffects
         var outcome = Outcome(found);
         if (outcome.IsDecided)
         {
-            this.pending.Add(new(row.Code, row.Requirement, row.Subject, MirProblem.NoBody, views));
+            this.report.Add(new(row.Code, row.Requirement, row.Subject, MirProblem.NoBody, views));
         }
         else if (outcome.IsLimit)
         {
             var requirement = DiagnosticRequirement.Ownership(OwnershipRequirement.Unsupported);
-            this.pending.Add(new(DiagnosticCode.Unsupported_Kd, requirement, row.Subject, MirProblem.NoBody, views));
+            this.report.Add(new(DiagnosticCode.Unsupported_Kd, requirement, row.Subject, MirProblem.NoBody, views));
         }
         else if (outcome.IsDeep)
         {
             var requirement = DiagnosticRequirement.Ownership(OwnershipRequirement.DepthLimit);
-            this.pending.Add(new(DiagnosticCode.OwnershipDepthLimit_Kd, requirement, row.Subject, MirProblem.NoBody, views));
+            this.report.Add(new(DiagnosticCode.OwnershipDepthLimit_Kd, requirement, row.Subject, MirProblem.NoBody, views));
         }
     }
 
@@ -430,7 +428,7 @@ internal sealed partial class MirEffects
             }
             else if (row.Definition is not { } target)
             {
-                this.pending.Add(new(row.Code, row.Requirement, row.Subject, MirProblem.NoBody, ulong.MaxValue));
+                this.report.Add(new(row.Code, row.Requirement, row.Subject, MirProblem.NoBody, ulong.MaxValue));
             }
             else
             {

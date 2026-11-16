@@ -518,6 +518,7 @@ public sealed partial class InstanceCollectorTest
             "group J\n    public var j: i32 = 0\ngroup K\n    public var k: i32 = P.init(1, ()).n\n");
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         var program = new MirBuilder(c).Build(SyntaxTable.LibraryModule + 1); // Uncollected: a version's records are reset only with its bodies (MirProgram.Clear).
+        new MirAnalysis(c.Types).Run(program, 1); // The collector replays stepped bodies (its input contract, PLAN G951).
         Assert.Empty(program.Findings);
         Break(program, "f", MirBodyKind.Fn);
         Break(program, "j", MirBodyKind.StaticInit);
@@ -536,6 +537,7 @@ public sealed partial class InstanceCollectorTest
         var c = MirBuildTest.Compile(InBlock + "require outer(3) == outer(3) and outer(true) == outer(true) else => $abort(\"nested\")\n");
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         var program = new MirBuilder(c).Build(SyntaxTable.LibraryModule + 1); // Uncollected: a version's records are reset only with its bodies (MirProgram.Clear).
+        new MirAnalysis(c.Types).Run(program, 1); // The collector replays stepped bodies (its input contract, PLAN G951).
         Break(program, "inner", MirBodyKind.Fn);
         var set = new InstanceCollector(c.Types, c.Layout).Run(program, 1);
         Assert.Equal([(DiagnosticCode.Unsupported_Kd, "inner(x)")], program.Records(MirRecordClass.Collection).Select(x => (x.Code, c.SyntaxOf(x.Subject).ToString())));
@@ -2442,6 +2444,7 @@ public sealed partial class InstanceCollectorTest
         Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c));
         Assert.True(c.Binding.CheckStartup(OutputKind.Application).IsComplete);
         var program = new MirBuilder(c).Build(SyntaxTable.LibraryModule + 1); // Uncollected: the compilation's own collection roots both modules.
+        new MirAnalysis(c.Types).Run(program, 1); // The collector replays stepped bodies (its input contract, PLAN G951).
         Assert.Empty(program.Records(MirRecordClass.Construction));
         var main = program.Bodies.ToArray().Single(static x => x.Key is { Kind: MirBodyKind.Fn, Decl.Name: "main" });
         Assert.Contains(

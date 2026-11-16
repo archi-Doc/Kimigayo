@@ -12,7 +12,8 @@
 // an erasure to a Function Type; a function item constant; a cast or binary operation whose Types depend on slots (K 4.7, checked per
 // instance); a binary operation whose operator row has a layout need (a raw pointer's displacement, K 4.8). A root-module body's
 // operations take the definition-stage capability check on the way (A3b, InstanceCollector.Capabilities.cs).
-// Invariants: built once per version, before any item is replayed; the runtime bit is one MirReach walk without CheckTarget edges; a
+// Invariants: built once per run, the bodies built before it before any item is replayed, and those a lookup builds during it in build
+// order when a replay first meets one (PLAN G951); the runtime bit is one MirReach walk without CheckTarget edges; a
 // template holds locations and the body's Places only, no substitution or target.
 // Must not: resolve a target, read TyCtxt or an item, or record anything but A3b's capability gaps.
 
@@ -25,6 +26,8 @@ internal sealed partial class InstanceCollector
     private readonly MirReach reach = new();
     private (MirLocation At, bool Runtime)[] sites = []; // The templates: each body's sites, in body order.
     private int[] starts = []; // By body ordinal, its first site; the entry after the last body ends the sites.
+    private int templated; // The bodies whose templates the run made, in build order.
+    private int siteCount; // The sites of those bodies.
 
     // K 4.5 rows 1-9: a call carries a target by its callee: a Fn, Requirement or Value callee, or an intrinsic whose row names one; a
     // Virtual call none, its receiver's VTable holding the entries (X5).
@@ -76,28 +79,28 @@ internal sealed partial class InstanceCollector
         return false;
     }
 
-    // Each body's sites, once per version, in location order, with whether a runtime path from its entry reaches each; a body with a
-    // finding, which no consumer reads (DECISIONS R5-M183), has an empty range and is not read. A root-module static's declaration row
-    // (A3b, CheckStatic) reads no body content, so every body takes it first.
+    // The sites of each body built since the run's last call, in build order (Run starts from none; Replay calls it for a body a lookup
+    // built during the run, PLAN G951), in location order, with whether a runtime path from its entry reaches each; a body with a finding,
+    // which no consumer reads (DECISIONS R5-M183), has an empty range and is not read. A root-module static's declaration row (A3b,
+    // CheckStatic) reads no body content, so every body takes it first.
     private void Templates(MirProgram program)
     {
-        var bodies = program.Bodies;
-        if (this.starts.Length <= bodies.Length)
+        var length = program.Bodies.Length;
+        if (this.starts.Length <= length)
         {
-            this.starts = new int[Math.Max(bodies.Length + 1, this.starts.Length * 2)];
-            this.needStarts = new int[this.starts.Length];
+            Array.Resize(ref this.starts, Math.Max(length + 1, this.starts.Length * 2));
+            Array.Resize(ref this.needStarts, this.starts.Length);
         }
 
-        var count = 0;
-        this.needCount = 0;
-        foreach (var body in bodies)
+        for (; this.templated < length; this.templated++)
         {
-            (this.starts[body.Ordinal], this.needStarts[body.Ordinal]) = (count, this.needCount);
+            var body = program.Body(this.templated);
+            (this.starts[body.Ordinal], this.needStarts[body.Ordinal]) = (this.siteCount, this.needCount);
             this.CheckStatic(body);
-            count = body.HasFinding ? count : this.Template(body, count);
+            this.siteCount = body.HasFinding ? this.siteCount : this.Template(body, this.siteCount);
         }
 
-        (this.starts[bodies.Length], this.needStarts[bodies.Length]) = (count, this.needCount);
+        (this.starts[length], this.needStarts[length]) = (this.siteCount, this.needCount);
     }
 
     // A body's sites, appended from `count` in location order with their runtime bits; a root-module body's operations are checked against
