@@ -7,7 +7,7 @@ namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
-    private readonly List<FunctionKoto> virtualDeclarations = new();
+    private List<FunctionKoto> virtualDeclarations; // The running pass's part (PassPart, EnterPass).
     private Dictionary<FunctionKoto, VirtualDeclarationCause>? virtualDeclarationFailures;
 
     // SPEC 6.4.1's eligibility and inherited-header rules, in check order; the adapter explains each (DECISIONS BU-111).

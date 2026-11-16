@@ -421,6 +421,67 @@ public class BindingTest
         Assert.Throws<InvalidOperationException>(() => call.ReplaceArgument(0, call.Method));
     }
 
+    // PLAN G949 S1-r1a (s1r1-design 2.1, v8): a reader outside a pass reads each published list's composed view, the program part's
+    // entries, then the library layer's (LibraryLayer.Part, empty until S1-r1b), never the list a pass writes. Every node, issue, derived
+    // issue and obligation moved after a Bind from Binding's own part to the layer's is still listed, reported with its related
+    // locations (a Callable selection's candidate clauses, found among the nodes: review-r1a B1), counted and read by the Origin rows as
+    // in a twin compilation; a reader of the written list loses it.
+    [Fact]
+    public void AnEntryOfTheLayersPartReachesEveryReaderOutsideAPass()
+    {
+        // Missing is an issue; the header resting on the parser's error in the length slot (SPEC 4.4) a derived one; no Callable
+        // signature of both's is better than the other for action(1) (SPEC 8.10, 10.4: AmbiguousBinding_Kd, each candidate at its clause).
+        const string source = "func f(x: Missing) -> i32 => 1\nstruct Cursor<length N>\n    public init() => ()\n" +
+            "func both<F>(action: ref/F) -> i32\n    F is Callable<(i32) -> i32>\n    F is Callable<(i64) -> i32>\n    return action(1)\n";
+        var twin = CompilationTestHelper.Parse(source);
+        twin.Bind();
+        twin.Binding.ReportDiagnostics();
+        var c = CompilationTestHelper.Parse(source);
+        c.Bind();
+        var (issues, derived, obligations) = (c.Binding.Issues.ToArray(), c.Binding.DerivedIssues.ToArray(), c.Binding.Obligations.ToArray());
+        Assert.NotEmpty(issues);
+        Assert.NotEmpty(derived);
+        Assert.Contains(obligations, static x => x.Body.IsBody);
+        Assert.Contains(Records(twin), static x => x.StartsWith("AmbiguousBinding_Kd", StringComparison.Ordinal) && x.Contains("[candidate", StringComparison.Ordinal));
+        var layer = c.Binding.Library.Layer.Part;
+        Move(c, "nodes", layer.Nodes);
+        Move(c, "issues", layer.Issues);
+        Move(c, "derivedIssues", layer.DerivedIssues);
+        Move(c, "obligations", layer.Obligations);
+        try
+        {
+            Assert.Equal(issues, c.Binding.Issues);
+            Assert.Equal(derived, c.Binding.DerivedIssues);
+            Assert.Equal(obligations, c.Binding.Obligations);
+            c.Binding.ReportDiagnostics();
+            Assert.Equal(Records(twin), Records(c));
+            Assert.Equal(twin.Binding.TableCounts, c.Binding.TableCounts);
+            Assert.Equal(OriginRows(twin), OriginRows(c));
+        }
+        finally
+        {
+            layer.Nodes.Clear();
+            layer.Issues.Clear();
+            layer.DerivedIssues.Clear();
+            layer.Obligations.Clear();
+        }
+
+        // Each published record with its related locations.
+        static string[] Records(Compilation c) => c.Diagnostics.Finalize().Diagnostics
+            .Select(static x => $"{x.Code} {x.Span} {x.Message} [{string.Join(", ", (x.Related ?? []).Select(static r => $"{r.Role} {r.Span}"))}]").ToArray();
+
+        // The Origin rows of each body an obligation names, in the obligations' order.
+        static int[] OriginRows(Compilation c) => c.Binding.Obligations.Where(static x => x.Body.IsBody).Select(x => c.Types.OriginRows(x.Body).Rows.Count).ToArray();
+    }
+
+    // Moves a list Binding's pass wrote, its own part's, into the library layer's part.
+    private static void Move<T>(Compilation c, string field, List<T> layer)
+    {
+        var own = (List<T>)typeof(Binding).GetField(field, BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(c.Binding)!;
+        layer.AddRange(own);
+        own.Clear();
+    }
+
     private sealed class TestReplacement(CodeContext context) : ExpressionKoto(context, default)
     {
         public override KotoKind Akind => KotoKind.NumberLiteral;
