@@ -2,7 +2,6 @@
 
 using System.Globalization;
 using System.Text;
-using System.Text.RegularExpressions;
 using Kimi.Compiler;
 using Kimi.Compiler.Mir;
 using Kimi.Compiler.Parsing;
@@ -29,8 +28,8 @@ public partial class KimiLibraryShapeTest
 
     private static readonly Lazy<(string Fact, string[] Lines)[]> EmptyProgramFacts = new(() => Facts(EmptyProgram.Value));
 
-    // The empty program again (determinism), the census's and the MIR review's programs (Milestones 27 and 30 renumber synthesized ids),
-    // and suite programs that use the library widely: Dictionary (Milestones 31, 32, 35), ranges, Array and Option (Milestone35, Ranges)
+    // The empty program again (determinism), the census's and the MIR review's programs (Milestones 27 and 30, whose uses numbered
+    // synthesized library ids in their own order until PLAN G949 S1-e), and suite programs that use the library widely: Dictionary (Milestones 31, 32, 35), ranges, Array and Option (Milestone35, Ranges)
     // and Text formatting (Utf8Formatting).
     [Theory]
     [InlineData("")]
@@ -47,7 +46,6 @@ public partial class KimiLibraryShapeTest
     {
         var c = Check(Compilation.CreateForTest(), program, WindowsProfile.Target);
         SameAsTheEmptyPrograms(c);
-        SynthesizedNodes.KnownDifference(program, c);
     }
 
     // The inputs a compilation gives besides the program: C9's test build (Binding) and target (the frozen library's key, design §4, so a
@@ -151,7 +149,8 @@ public partial class KimiLibraryShapeTest
         }
     }
 
-    // The library's facts after a check; those of its synthesized nodes as SynthesizedNodes states.
+    // The library's facts after a check. The library steps number every library node a later phase reads (PLAN G949 S1-e; R8-M32's
+    // Temporary 1 removed), so the synthesized nodes compare by id as the parsed ones do.
     private static (string Fact, string[] Lines)[] Facts(Compilation c)
     {
         var library = c.Library;
@@ -172,7 +171,6 @@ public partial class KimiLibraryShapeTest
             }
         }
 
-        var synthesized = SynthesizedNodes.Lines(table);
         var mir = new StringBuilder();
         MirDump.Write(c.ConstructMir(), SyntaxTable.LibraryModule, mir); // The program the check analyzed, memoized per pass.
         var obligations = new List<EffectObligation>();
@@ -181,16 +179,16 @@ public partial class KimiLibraryShapeTest
         [
             ("parsed count", [table.ParsedCount.ToString(CultureInfo.InvariantCulture)]),
             ("parsed nodes", printer.ToString().Split('\n')),
-            ("parsed HIR", SynthesizedNodes.Spell(printer.Hir, table, synthesized).Split('\n')),
+            ("parsed HIR", printer.Hir.Split('\n')),
             ("library symbols", [.. symbols]),
             ("library scopes", [.. scopes.Select(Scope).Order(StringComparer.Ordinal)]),
             ("catalog", [.. Enum.GetValues<KimiDeclarationId>().Select(x => $"{x} {Where(library.GetSymbol(x))}")]),
             ("library imports", [.. c.Binding.LibraryImports.Where(x => x.Decl.Declaration.CodeContext.Kotonoha == library.Kotonoha)
                 .Select(static x => $"{x.Library} {x.Symbol} {x.Kind} {Where(x.Decl)}")]),
-            ("library MIR", SynthesizedNodes.Spell(mir.ToString(), table, synthesized).Split('\n')),
+            ("library MIR", mir.ToString().Split('\n')),
             ("library obligations", [.. obligations.Where(static x => x.Subject.IsLibrary).Select(x => $"{x.Code} {x.Requirement} at " +
                 $"{Where(c.SyntaxOf(x.Subject))} owes {Where(x.Definition)} callable={x.Callable is not null}").Order(StringComparer.Ordinal)]),
-            ("synthesized nodes", SynthesizedNodes.Facts(table, synthesized, printer)),
+            ("synthesized nodes", Synthesized(table, printer)),
         ];
     }
 
@@ -216,62 +214,19 @@ public partial class KimiLibraryShapeTest
 
     private static string Where(Koto? node) => node is null ? "-" : $"{CompilationTestHelper.Location(node)}+{node.Span.Length}";
 
-    /// <summary>A temporary expectation (DECISIONS R5-M168's recorded exception; R8-L1 design M-B3): a library node outside the parsed
-    /// tree takes the next id at its first semantic write, in Bind or in the MIR phase, so a program's uses order these ids (Milestones 27
-    /// and 30 renumber most of them). They are compared by what they synthesize, not by id: their lines (facts, HIR row and own symbol
-    /// state) as a sorted multiset, and a MIR location or HIR jump at one spelled by its node's printer line. It assumes no MIR body is
-    /// keyed by a synthesized node today, so the dump is compared in order; one that appears fails Milestone27 loudly. Removal: U2's
-    /// freeze numbers every library node, so KnownDifference fails, and this class goes; they then compare by id.</summary>
-    private static partial class SynthesizedNodes
+    // Each synthesized node by id: its line, its HIR row and its own symbol's state.
+    private static string[] Synthesized(SyntaxTable table, Printer types)
     {
-        private const string Renumbering = "tests/milestones/Milestone27.kimi";
-
-        // Each synthesized node's printer line, by id.
-        internal static Dictionary<int, string> Lines(SyntaxTable table)
+        var facts = new List<string>();
+        for (var id = table.ParsedCount + 1; id <= table.Count; id++)
         {
-            var lines = new Dictionary<int, string>();
-            for (var id = table.ParsedCount + 1; id <= table.Count; id++)
-            {
-                var printer = new Printer(false);
-                printer.Node(table.Nodes[id]!);
-                lines.Add(id, printer.ToString().TrimEnd('\n'));
-            }
-
-            return lines;
+            var (line, row, node) = (new Printer(false), new Printer(true), table.Nodes[id]!);
+            line.Node(node);
+            row.Node(node);
+            var own = node.SymbolOf() is { } symbol && ReferenceEquals(symbol.Declaration, node) ? State(symbol, types) : "-";
+            facts.Add($"{line.ToString().TrimEnd('\n')} | {row.Hir.TrimEnd('\n')} | {own}");
         }
 
-        // Each synthesized node's line, its HIR row without its id and its own symbol's state, sorted.
-        internal static string[] Facts(SyntaxTable table, Dictionary<int, string> lines, Printer types)
-        {
-            var facts = new List<string>();
-            foreach (var (id, line) in lines)
-            {
-                var (printer, node) = (new Printer(true), table.Nodes[id]!);
-                printer.Node(node);
-                var hir = Spell(printer.Hir.TrimEnd('\n'), table, lines);
-                var own = node.SymbolOf() is { } symbol && ReferenceEquals(symbol.Declaration, node) ? State(symbol, types) : "-";
-                facts.Add($"{line} | {hir[(hir.IndexOf(' ', StringComparison.Ordinal) + 1)..]} | {own}");
-            }
-
-            return [.. facts.Order(StringComparer.Ordinal)];
-        }
-
-        // A MIR location (@Kimi:id) or a HIR jump (->id) at a synthesized node, spelled by its line.
-        internal static string Spell(string text, SyntaxTable table, Dictionary<int, string> lines)
-            => Reference().Replace(text, x => int.Parse(x.Groups[2].ValueSpan, CultureInfo.InvariantCulture) is var id && id > table.ParsedCount
-                ? $"{x.Groups[1].Value}{{{lines[id]}}}" : x.Value);
-
-        // The known difference, stated exactly: Milestone27 orders the synthesized ids otherwise than the empty program.
-        internal static void KnownDifference(string program, Compilation c)
-        {
-            if (program == Renumbering)
-            {
-                var equal = Lines(EmptyProgram.Value.Library.Kotonoha.Syntax).Values.SequenceEqual(Lines(c.Library.Kotonoha.Syntax).Values);
-                Assert.False(equal, "Milestone27 no longer renumbers: after U2 delete SynthesizedNodes; before U2 retarget to Milestone30");
-            }
-        }
-
-        [GeneratedRegex(@"(@Kimi:|->)(\d+)")]
-        private static partial Regex Reference();
+        return [.. facts];
     }
 }
