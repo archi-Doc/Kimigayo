@@ -132,21 +132,21 @@ public sealed partial class Binding
     // declaration, result Type and receiver slot, taken once per pass after headers, so resolving a requirement writes nothing.
     private void PrepareBuiltinTargets()
     {
-        Prepare(ref this.builtinEquals, KimiDeclarationId.Equatable, CompilerFunctionKind.BuiltinEquals);
-        Prepare(ref this.builtinCompare, KimiDeclarationId.Comparable, CompilerFunctionKind.BuiltinCompare);
+        Prepare(ref this.builtinEquals, KimiDeclarationId.Equatable);
+        Prepare(ref this.builtinCompare, KimiDeclarationId.Comparable);
         for (var id = KimiDeclarationId.Addable; id <= KimiDeclarationId.Negatable; id++)
         {
             if (!ArithmeticContracts.IsLeft(id))
             {
-                Prepare(ref this.builtinArithmetic[ArithmeticSlot(id)], id, CompilerFunctionKind.BuiltinArithmetic);
+                Prepare(ref this.builtinArithmetic[ArithmeticSlot(id)], id);
             }
         }
 
-        void Prepare(ref BindingSymbol? target, KimiDeclarationId id, CompilerFunctionKind kind)
+        void Prepare(ref BindingSymbol? target, KimiDeclarationId id)
         {
             if (this.Library.GetSymbol(id)!.Contract!.OwnRequirement() is { } requirement)
             {
-                target ??= new(requirement.Name, requirement.Kind, requirement.Declaration, requirement.Scope) { CompilerFunction = kind };
+                target ??= new(requirement.Name, requirement.Kind, requirement.Declaration, requirement.Scope) { Definition = new(DispositionKind.Shim) };
                 target.Type = requirement.Type;
                 target.ReceiverIndex = requirement.ReceiverIndex;
             }

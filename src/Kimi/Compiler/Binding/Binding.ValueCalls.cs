@@ -125,7 +125,7 @@ public sealed partial class Binding
     // Function Type of the signature, whose own inputs are the only Input atoms it binds at an outer layer.
     private static Koto? CalleeBinder(BoundType? callee, BoundType signature)
     {
-        return callee is not null && SignatureOwner(callee) is { } declaration ? declaration : FunctionTypeBinder(signature);
+        return callee is not null && SignatureOwner(callee) is { } declaration ? declaration : signature.Binder;
     }
 
     // One node's atom (CallAtomsOf); a meet node is none, its operands being nodes of their own.
@@ -617,7 +617,7 @@ public sealed partial class Binding
         {
             var source = call.ArgumentNodes[i];
             var parameter = parameters.Components[i];
-            if (!this.PrepareArgument(source, scope, null, callableContext: true))
+            if (!this.PrepareArgument(source, scope, default, callableContext: true))
             {
                 formed = false;
             }

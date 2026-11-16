@@ -204,12 +204,12 @@ public class ObjectCreationAdaptationTest(ITestOutputHelper output)
         var c = MinimalEmissionTest.Analyze("let n = 7@obj");
         var conversion = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<ConversionKoto>().Single();
         var original = Assert.IsType<InvocationKoto>(conversion.ConversionOf().Creation);
-        Assert.Equal(CompilerFunctionKind.MakeObj, original.CallOf()!.Target.CompilerFunction);
+        Assert.Equal(new IntrinsicDisposition(DispositionKind.Intrinsic, IntrinsicId.MakeObj), original.CallOf()!.Target.Definition);
         var donor = KotoTree.Walk(MinimalEmissionTest.Analyze("let n = 7@rc").Kotonoha.RootKoto).OfType<ConversionKoto>().Single();
         Assert.True(KotoHelper.Replace(conversion, conversion.Right, ParseTestHelper.Detach(donor.Right, new CodeBlockKoto(conversion.CodeContext))));
         Assert.Null(conversion.ConversionOf().Creation);
         Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c));
-        Assert.Equal(CompilerFunctionKind.MakeRc, conversion.ConversionOf().Creation!.CallOf()!.Target.CompilerFunction);
+        Assert.Equal(new IntrinsicDisposition(DispositionKind.Intrinsic, IntrinsicId.MakeRc), conversion.ConversionOf().Creation!.CallOf()!.Target.Definition);
         Assert.True(c.Binding.CheckStartup(OutputKind.Application).IsComplete);
         Assert.True(c.Analyze().IsVerified, MinimalEmissionTest.Describe(c));
         Assert.True(c.Generate(TextWriter.Null), MinimalEmissionTest.Describe(c));
