@@ -1511,3 +1511,16 @@ on the round's F3, 「以下で決定します。(b) BU-28 を SPEC の読みに
   - The old path in DECISIONS R5-M2, in `Proposals/2026-10-17 R5 and R6 Implementation Plan.md`, in `Proposals/2026-10-12
     Post-Reduction Work Items.md` and in `Sketches/R5 Step 0/deep-dives/q4-evidence-metrics.md` reads this file.
   - No SPEC or IMPL text came from it.
+
+## 2026-11-16–17 — Compiler Server Protocol revision and implementation assessment
+
+- `Proposals/2026-11-16 Compiler Server Protocol.md` and `Proposals/2026-11-16 CSP Implementation Assessment.md`:
+  一部取り込み (open). The owner requested a revision of the supplied CSP v0.3, retaining flowcharts, incorporating the
+  review and AI-oriented improvements, and investigating compatibility with the current compiler. The design favors
+  one immutable-input/change/result model, bounded guarantees and a simple full-analysis baseline.
+- No section of either document is integrated into SPEC or IMPL; no text is frozen. Proposed mapping: design §§3–5,
+  7 and 10 → SPEC §23.2–23.5 (input identity, checking, diagnostics and protocol contracts); §6 → SPEC §23.5 with
+  existing §5, §19.4 and §24.1 obligations; §§8–9 and the assessment → future implementation units and, only when
+  implemented, their COMPILER_ARCHITECTURE/DECISIONS records. This mapping records intended subjects, not adoption.
+- The assessment is a source review of `45c9fab404ceff2b62c5db097ff090e5d4019fe4`. No compiler implementation,
+  support boundary, specification, translation or migration-stage state changes in this intake.
