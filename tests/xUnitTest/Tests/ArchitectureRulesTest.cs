@@ -246,14 +246,23 @@ public class ArchitectureRulesTest
     // forming the declaration it names (the type's file: the member and its contract's three mentions). Every other read is one of
     // OriginDeclaration's read members, so the readers of a declaration, a failed one included, are those members' callers.
     [InlineData("Formation of an Origin declaration", "src/Kimi/Compiler", @"\bForming\b", "Binding/Binding.LocalOrigins.cs=27;Binding/Binding.OriginDeclarations.Failures.cs=5;Binding/Binding.OriginDeclarations.cs=29;Binding/Binding.OriginInheritance.cs=6;Binding/Binding.Origins.Model.cs=4")]
-    // PLAN G949 S1-0b r2 (the library-layer dump's number rule, KimiLibraryShapeTest.LibraryLayer): a number naming a walk's or memo's order
-    // is read only by the walk or memo that assigns it, so the dump prints it as # and compares the rest of its row. A scope's view serial
-    // and the chain state it names are read by ContractSolver's SerialOf and declared in BindingModel; an Origin requirement work's
-    // Consumer mark is read by OriginRequirements' edge collection; an inline summary's Tarjan Index and Low are read in InlineLayouts, the
-    // one file that names the summary, its stores or a member returning one. A further reader fails here until the dump's rule is reviewed.
-    [InlineData("Readers of a scope's view serial and state", "src/Kimi/Compiler", @"\bView(?:Serial|State)\b", "Binding/Binding.ContractSolver.cs=4;Binding/BindingModel.cs=2")]
+    // PLAN G949 S1-0b r2 and r3 (the library-layer dump's number rule, KimiLibraryShapeTest.LibraryLayer): a number naming a walk's or
+    // memo's order is read only by the walk or memo that assigns it, so the dump prints it as # and compares the rest of its row. Each row
+    // counts every name through which the number is reached, its holder and a member returning it included:
+    // - a scope's view serial and the chain state it names: declared in BindingModel and read by ContractSolver's SerialOf, whose callers
+    //   compare the serial for equality only (ContractSolver, its Rows and TypeIdentity's memo);
+    // - an Origin requirement work's Consumer mark: read by OriginRequirements' edge collection;
+    // - an inline summary's Tarjan Index and Low: read in InlineLayouts, the one file that names the summary, its stores or Summary, the
+    //   member returning one (ComponentSummaries' own Summary shares the name and is counted too). All are Binding's private members, so
+    //   only Binding's partial files, in its directory, reach them.
+    // A further reader fails here until the dump's rule is reviewed.
+    [InlineData("Readers of a scope's view serial and state", "src/Kimi/Compiler", @"\bView(?:Serial|State)\b|\bSerialOf\b", "Binding/Binding.ContractSolver.Rows.cs=3;Binding/Binding.ContractSolver.cs=8;Binding/Binding.TypeIdentity.cs=3;Binding/BindingModel.cs=3")]
     [InlineData("Readers of an Origin requirement work's Consumer mark", "src/Kimi/Compiler", @"\.Consumer\b|\bConsumer:", "Binding/Binding.OriginRequirements.cs=2")]
-    [InlineData("Holders of an inline summary's Tarjan numbers", "src/Kimi/Compiler", @"\b(?:InlineSummary|inlineSummaries|inlineSummaryPool|inlineComponents)\b", "Binding/Binding.InlineLayouts.cs=37")]
+    [InlineData("Holders of an inline summary's Tarjan numbers", "src/Kimi/Compiler/Binding", @"\b(?:InlineSummary|inlineSummaries|inlineSummaryPool|inlineComponents|Summary)\b", "Binding.ComponentSummaries.cs=7;Binding.InlineLayouts.cs=43")]
+    // PLAN G949 S1-0b r3 (the dump's epoch rule): the memos of one capability epoch are the program's because each pass begins with
+    // ResetCapabilities: its one call is ResetPass's, which Bind runs first in each pass and Invalidate on an edit. A further caller (G949
+    // S1-r1's pass driver among them) fails here until the epoch rule's premise is reviewed.
+    [InlineData("A pass's start ends the capability epoch", "src/Kimi/Compiler", @"\bReset(?:Capabilities|Pass)\(", "Binding/Binding.Capabilities.cs=1;Binding/Binding.Pass.cs=2;Binding/Binding.cs=2")]
     public void SourcePatternStaysAtItsSites(string rule, string directory, string regex, string sites)
     {
         var expression = new Regex(regex);
