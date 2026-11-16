@@ -173,6 +173,30 @@ public sealed class MirAnalysisTest
         Assert.Equal(0, program.Problems.All.Length);
     }
 
+    // PLAN G950: rows kept from an index (MirReport.Keep) and replayed after other problems (Replay) equal their first adding at that step,
+    // merged views and facts included: a Cause naming a kept row moves by the offset, -1 stays, and a later Add of a kept key merges into
+    // the replayed row.
+    [Fact]
+    public void KeptRowsReplayAtTheirStep()
+    {
+        var (first, second) = (new MirProblem(DiagnosticCode.MovedPlace_Kd, Moved, new(0, 5), 0, 0b01), new MirProblem(DiagnosticCode.MovedPlace_Kd, Moved, new(0, 6), 0, 0b01));
+        var report = new MirReport();
+        report.Add(new(DiagnosticCode.Unsupported_Kd, Moved, new(0, 4), MirProblem.NoBody, 1));
+        report.Add(first);
+        report.Add(second, [new(ProblemFactKind.Cause, new(0, 1), 1), new(ProblemFactKind.Cause, new(0, 7), -1)]);
+        report.Add(first with { Views = 0b10 });
+        var kept = new MirReport.Kept();
+        report.Keep(1, kept);
+        var replayed = new MirReport();
+        replayed.Add(new(DiagnosticCode.Unsupported_Kd, Moved, new(0, 3), MirProblem.NoBody, 1));
+        replayed.Add(new(DiagnosticCode.Unsupported_Kd, Moved, new(0, 4), MirProblem.NoBody, 1));
+        replayed.Replay(kept);
+        Assert.Equal(report.All[1..].ToArray(), replayed.All[2..].ToArray());
+        Assert.Equal([new(ProblemFactKind.Cause, new(0, 1), 2), new(ProblemFactKind.Cause, new(0, 7), -1)], replayed.Facts(3).ToArray());
+        Assert.Equal(2, replayed.Add(first with { Views = 0b100 }));
+        Assert.Equal(0b111UL, replayed.All[2].Views);
+    }
+
     // R5-M23: the problems a key merges name one requirement, the first's; a problem that names another is a recording rule's defect, one
     // InternalInvariant_Kd problem at the subject with the views that disagreed, however often it disagrees, and Add returns -1 for it.
     [Fact]
@@ -657,7 +681,7 @@ public sealed class MirAnalysisTest
         var analyzed = c.BuildMir();
         Assert.Empty(analyzed.Findings);
         var views = analyzed.Bodies.ToArray().Select(x => analyzed.Drops.ViewsOf(x.Ordinal)).ToArray();
-        var program = new MirBuilder(c).Build(); // Unanalyzed: a version's problems are reset only with its bodies (MirProgram.Clear).
+        var program = new MirBuilder(c).Build(SyntaxTable.LibraryModule + 1); // Unanalyzed: a version's problems are reset only with its bodies (MirProgram.Clear).
         var broken = program.Bodies.ToArray().Single(x => x.Key.Kind == MirBodyKind.Fn && x.Key.Decl?.Name == name);
         program.Findings.Add(new(MirViolation.Callee, broken.Source)); // As MirValidator gives a finding and the body's verdict.
         broken.HasFinding = true;
@@ -702,8 +726,8 @@ public sealed class MirAnalysisTest
     }
 
     // R6-check IC (MirDrops' invariant, H0b §2.1): a body A2's table marks (R4-M102) has an Error problem in MirReport, so generation's
-    // check (H5) can read a marked body reaching it as InternalInvariant_Kd: the problem its index names, of its code at its subject, or for
-    // an inline default copy's (-1) its template's of that code and subject (R4-M69). The forms: A1's state rules and A2's incomplete layer
+    // check (H5) can read a marked body reaching it as InternalInvariant_Kd: the problem of its code at its subject in the body (one per key,
+    // MirReport.Add), or for an inline default copy's, which the report drops, its template's of that code and subject (R4-M69). The forms: A1's state rules and A2's incomplete layer
     // (Requirements), a default copy (MirDropTest.Indices) and A1's arena limit (A5ChecksTheViewsA1Completed's); none merges a disagreement.
     [Fact]
     public void AMarkedBodyHasAnError()
@@ -717,14 +741,14 @@ public sealed class MirAnalysisTest
             var problems = program.Problems.All.ToArray();
             foreach (var body in program.Bodies.ToArray())
             {
-                if (program.Drops.Incomplete(body.Ordinal) is (var code, var at, var index))
+                if (program.Drops.Incomplete(body.Ordinal) is (var code, var at))
                 {
                     var subject = body.Subject(at);
-                    var kept = index >= 0 ? (problems[index].Code, problems[index].Subject, problems[index].Body) == (code, subject, body.Ordinal)
-                        : Array.Exists(problems, x => (x.Code, x.Subject) == (code, subject));
+                    var own = Array.Exists(problems, x => (x.Code, x.Subject, x.Body) == (code, subject, body.Ordinal));
+                    var kept = own || Array.Exists(problems, x => (x.Code, x.Subject) == (code, subject));
                     var error = DiagnosticEntries.TryGet(code, out var entry) && entry.Severity == DiagnosticSeverity.Error;
-                    Assert.True(kept && error, $"{body.Key.Kind} {code} #{index}");
-                    marks.Add($"{body.Key.Kind} {code} {(index >= 0 ? "own" : "copy")}");
+                    Assert.True(kept && error, $"{body.Key.Kind} {code}");
+                    marks.Add($"{body.Key.Kind} {code} {(own ? "own" : "copy")}");
                 }
             }
         }
@@ -774,7 +798,7 @@ public sealed class MirAnalysisTest
         for (var version = 1; version <= 2; version++)
         {
             Assert.True(c.Bind().IsComplete);
-            var program = builder.Build(); // Unanalyzed: a version's problems are reset only with its bodies (MirProgram.Clear).
+            var program = builder.Build(SyntaxTable.LibraryModule + 1); // Unanalyzed: a version's problems are reset only with its bodies (MirProgram.Clear).
             Assert.Contains(program.Bodies.ToArray(), static x => x.Source.IsLibrary);
             analysis.Run(program, SyntaxTable.LibraryModule + 1);
             var set = collector.Run(program, SyntaxTable.LibraryModule + 1);
@@ -786,6 +810,35 @@ public sealed class MirAnalysisTest
             var now = (set.RootCount, set.Items.Length);
             Assert.Equal((version, 2 * program.Bodies.Length, program.Version, version == 1 ? now : collected), (version, analysis.Judgments, set.Version, now));
             collected = now;
+        }
+    }
+
+    // PLAN G950 (design §R1.1 (b), the implementation review's M1): the library step's problems (step 2's A1 and A2) are kept as data and
+    // replayed at the library step in a version that keeps the library segment: one analysis over two versions of one compilation reports
+    // an A1 problem seeded into a library body after each build (a copy of a new Var no path initializes, in a new block the entry block
+    // enters first) in each version, at its location, once. Every version takes the library step until G950-K, so the row pins the replay
+    // on the kept path (as InstanceCollectorTest.TheLibraryRangeChecksALibraryBodyInEveryVersion pins A3b there).
+    [Fact]
+    public void ALibraryStepProblemIsInEveryVersion()
+    {
+        var c = Compilation.CreateForTest();
+        var (builder, analysis) = (new MirBuilder(c), new MirAnalysis(c.Types));
+        for (var version = 1; version <= 2; version++)
+        {
+            Assert.True(c.Bind().IsComplete, string.Join('\n', c.Binding.Issues));
+            var program = builder.Build(SyntaxTable.LibraryModule + 1);
+            var body = program.LibraryBodies[0];
+            var source = body.Blocks[0].Terminator.Source;
+            var unset = new MirPlace(body.AddLocal(new(BoundType.I32, MirLocalKind.Var, source)));
+            var into = new MirPlace(body.AddLocal(new(BoundType.I32, MirLocalKind.Var, source)));
+            var block = body.AddBlock();
+            body.Push(block, MirStatement.Assign(into, MirRvalue.Use(body.AddOperand(MirOperand.Copy(unset))), source));
+            body.Terminate(block, body.Blocks[0].Terminator);
+            body.Terminate(0, MirTerminator.Goto(block, source));
+            analysis.Run(program, 0);
+            Assert.Equal(
+                [(version, DiagnosticCode.UninitializedPlace_Kd, body.Subject(source), body.Ordinal)],
+                program.Problems.All.ToArray().Where(static x => !x.IsRecord).Select(x => (version, x.Code, x.Subject, x.Body)));
         }
     }
 

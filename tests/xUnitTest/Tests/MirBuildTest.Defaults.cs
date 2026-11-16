@@ -236,7 +236,7 @@ public sealed partial class MirBuildTest
         Assert.True(library.Bind().IsComplete);
         Assert.True(library.Binding.CheckStartup(OutputKind.Application).IsComplete);
         Assert.Equal(["main: take; Lib.Api.take(1) reads PendingSlot", "record Lib.Api.take(1) Unsupported_Kd"], Callers(library, "main"));
-        var program = new MirBuilder(library).Build(); // Uncollected: the compilation's own collection roots both modules.
+        var program = new MirBuilder(library).Build(SyntaxTable.LibraryModule + 1); // Uncollected: the compilation's own collection roots both modules.
         new InstanceCollector(library.Types, library.Layout).Run(program, 1);
         Assert.Empty(program.Records(MirRecordClass.Collection));
     }
