@@ -268,6 +268,7 @@ internal struct NodeColumns
     internal PagedColumn<BoundOrigin?[]?> OriginAtoms; // Kept: a binder's Origin atoms, a KeyedRow by kind and slot (Binding.Origins.cs).
     internal PagedColumn<BoundOrigin?[]?> OpenOrigins; // Kept: a source's open regions, a KeyedRow by key (Binding.OpenOrigins.cs).
     internal StampedColumn<BoundOrigin[]?, Binding.EditCounter> AssociatedOrigins; // Edit: an associated Type declaration's Origin parameters (Binding.AssociatedOrigins.cs).
+    internal StampedColumn<Binding.ObjectErasureEvidence, Binding.PassCounter> ObjectErasures; // Pass: an operation's or immutable alias's erased-view evidence (Binding.ObjectViews.cs).
     internal StampedColumn<int, Binding.PassCounter> ShapeContractHeads; // Pass: a function's first shape contract as the later of an overload pair, its index + 1 (Binding.ShapeContracts.cs).
 
     internal void Resize(int length)
@@ -281,6 +282,7 @@ internal struct NodeColumns
         this.OpenOrigins.Grow(length);
         this.AssociatedOrigins.Grow(length);
         this.ShapeContractHeads.Grow(length);
+        this.ObjectErasures.Grow(length);
     }
 
     // The library's columns start at their stated slots (KimiLibrarySize: no program row lands in them).
@@ -310,6 +312,7 @@ internal struct NodeColumns
             OpenOrigins = this.OpenOrigins.Renumbered(length),
             AssociatedOrigins = this.AssociatedOrigins.Renumbered(length),
             ShapeContractHeads = this.ShapeContractHeads.Renumbered(length),
+            ObjectErasures = this.ObjectErasures.Renumbered(length),
         };
         return columns;
     }
