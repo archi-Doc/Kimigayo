@@ -1,5 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using System.Diagnostics.CodeAnalysis;
 using Kimi.Compiler.Parsing;
 
 namespace Kimi.Compiler;
@@ -8,7 +9,7 @@ public sealed partial class Binding
 {
     // Persist declaration storage across provisional/final binding passes. No environment is
     // allocated for declarations with neither written relations nor binding-set names.
-    private readonly Dictionary<Koto, OriginDeclaration> originDeclarations = new(ReferenceEqualityComparer.Instance);
+    private readonly OriginDeclarationRows originDeclarations;
 
     private readonly Dictionary<Koto, List<string>> discoveredOrigins = new(ReferenceEqualityComparer.Instance);
     private OriginRewriteVisitor? originRewriteVisitor;
@@ -166,7 +167,7 @@ public sealed partial class Binding
     {
         foreach (var declaration in this.originDeclarations.Values)
         {
-            declaration.Reset();
+            declaration!.Reset();
         }
 
         foreach (var declaration in this.initializerOrigins.Values)
@@ -690,5 +691,27 @@ public sealed partial class Binding
 
             node.VisitChildren(this);
         }
+    }
+
+    /// <summary>The `originDeclarations` family's one accessor (DECISIONS BU-220): a kept family, an owner's declared Origins (SPEC 15.3),
+    /// made once and reset in place by each pass (PrepareOriginDeclarations), kept in its key node's module's NodeColumns at its SyntaxId.
+    /// Its members keep the names its readers use.</summary>
+    private readonly struct OriginDeclarationRows(Binding binding)
+    {
+        internal FamilyRows<OriginDeclaration?> Values => new(binding, static (table, _) => table.Hir.Families.OriginDeclarations.Enumerate());
+
+        internal void Add(Koto node, OriginDeclaration value)
+        {
+            ref var row = ref HirTables.Of(node).Families.OriginDeclarations.Ref(node.SyntaxId);
+            row = row is null ? value : throw new ArgumentException($"`originDeclarations` already holds a row at `{node}`.", nameof(node));
+        }
+
+        internal bool ContainsKey(Koto node) => this.TryGetValue(node, out _);
+
+        internal OriginDeclaration? GetValueOrDefault(Koto node)
+            => node.SyntaxOwner is { } table ? table.Hir.Families.OriginDeclarations.Get(node.SyntaxId) : null;
+
+        internal bool TryGetValue(Koto node, [NotNullWhen(true)] out OriginDeclaration? value)
+            => (value = this.GetValueOrDefault(node)) is not null;
     }
 }

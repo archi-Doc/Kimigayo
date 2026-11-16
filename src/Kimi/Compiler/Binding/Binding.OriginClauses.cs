@@ -71,7 +71,7 @@ public sealed partial class Binding
     {
         foreach (var declaration in this.originDeclarations.Values)
         {
-            if (!declaration.Completed || declaration.Owner is FunctionKoto or PropertyAccessorKoto or DeclarationContainerKoto || IsAssociatedRequirement(declaration.Owner))
+            if (!declaration!.Completed || declaration.Owner is FunctionKoto or PropertyAccessorKoto or DeclarationContainerKoto || IsAssociatedRequirement(declaration.Owner))
             {
                 continue;
             }
