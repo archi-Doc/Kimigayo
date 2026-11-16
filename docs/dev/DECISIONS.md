@@ -22161,6 +22161,19 @@ R8-M* and R9-M* by the stage of the recording unit.
   - Superseded in part by R8-M45 (R8-G1 G1-4a, G1-4c): "`DispositionKind.Body` is `None`'s row only": `IntrinsicDisposition.Of`'s
     table and `CompilerFunctionKind` are deleted; a function's `BindingSymbol.Definition` is Body unless its declaration carries
     `#Intrinsic` or it is a built-in target's shim.
+- **R8-M49 Each MIR body is built in its segment's body and stored exactly** (Middle, 2026-11-16; PLAN G952, Minor; K's compile-time
+  survey rank 5, the owner's 「提案の1と2と3を、進めて下さい」). `MirProgram.Begin` resets and returns the reused building body of the current
+  ordinal segment (the library's prefix, then the program's; R8-L1 M-B1), which the builder builds into; `MirProgram.End` stores it
+  in the next pooled body (`MirBody.Store`: each table in the pooled body's array where that holds the rows, else in a new array of
+  exactly their count) and registers its key; the builder validates the stored body.
+  - A stored body is read, never appended to, and never interns. One building body per segment, so that a program's construction
+    allocates only by its own bodies: with one building body for the whole compilation, the library's largest body set where a
+    program body's growth began and two V16 scaling rows failed.
+  - Rejected: program-level arrays with per-body ranges (they still grow by doubling unless presized, take a body's storage out of
+    `MirBody`, and the library segment G950 keeps across versions needs self-contained bodies).
+  - Cost: one copy of the stored rows per warm build (Hello 1.55 MB over 320 bodies, about 0.3 ms unpinned), nearly all of it the
+    library's, which G950 keeps. When G950-R and G951 U2 build library bodies into fixed slots (G950 R-4, C-sep), the building body
+    and the store follow the definition's segment and slot.
 - **R9-M1 A check's phase sequence is `Compilation.Check`** (2026-11-08; R9-F5; Major, behavior-preserving; review 1 REVISE, then
   review 2). SPEC 23.1.2, 23.2.2; IMPL 20.6.1. Supersedes in part R5-M65 (`Project` reads `Accepts`) and R5-M77 (`Project` discovers
   the test catalog after acceptance and owns it).
