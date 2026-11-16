@@ -258,8 +258,9 @@ public class ArchitectureRulesTest
     [InlineData("Holders of an inline summary's Tarjan numbers", "src/Kimi/Compiler/Binding", @"\b(?:InlineSummary|inlineSummaries|inlineSummaryPool|inlineComponents|Summary)\b", "Binding.ComponentSummaries.cs=7;Binding.InlineLayouts.cs=43")]
     // PLAN G949 S1-0b r3 (the dump's epoch rule): the memos of one capability epoch are the program's because each pass begins with
     // ResetCapabilities: its one call is ResetPass's, which Bind runs first in each pass and Invalidate on an edit. A further caller (G949
-    // S1-r1's pass driver among them) fails here until the epoch rule's premise is reviewed.
-    [InlineData("A pass's start ends the capability epoch", "src/Kimi/Compiler", @"\bReset(?:Capabilities|Pass)\(", "Binding/Binding.Capabilities.cs=1;Binding/Binding.Pass.cs=2;Binding/Binding.cs=2")]
+    // S1-r1's pass driver among them) fails here until the epoch rule's premise is reviewed. Binding's own ResetPass calls are this.ResetPass
+    // (a member call's spelling); the conformance identities' and paths' ResetPass(ulong) (S1-b1) are other members of the name.
+    [InlineData("A pass's start ends the capability epoch", "src/Kimi/Compiler", @"\bResetCapabilities\(|\bthis\.ResetPass\(", "Binding/Binding.Capabilities.cs=1;Binding/Binding.Pass.cs=1;Binding/Binding.cs=2")]
     public void SourcePatternStaysAtItsSites(string rule, string directory, string regex, string sites)
     {
         var expression = new Regex(regex);
