@@ -153,6 +153,29 @@ public sealed partial class Binding
     // Whether an Origin is a call's own region (OpenUnsolvedOrigins), keyed from UnsolvedKey, far from every argument evidence key.
     private static bool IsCallRegion(BoundOrigin origin) => origin is { Kind: OriginKind.Inference, Open: true } && origin.Slot < UnsolvedKey / 2;
 
+    // J2: whether an Origin is a call's region for a Type slot's Origin (SlotRegion's key range): the region of a solved variable,
+    // never an open position that later evidence fills (FillOpenOrigins).
+    private static bool IsSlotRegion(BoundOrigin origin) => IsCallRegion(origin) && origin.Slot <= SlotRegionKey;
+
+    // Whether `origin` is `part` or a meet holding it.
+    private static bool HoldsOrigin(BoundOrigin origin, BoundOrigin part)
+    {
+        if (ReferenceEquals(origin, part))
+        {
+            return true;
+        }
+
+        for (var i = 0; i < origin.Operands.Count; i++)
+        {
+            if (HoldsOrigin(origin.Operands[i], part))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     // J2: the polarity of Origin argument `index` of `type` at `polarity` (SlotComponentPolarity's), by its variance.
     private static int OriginArgumentPolarity(BoundType type, int index, int polarity, Binding binding)
         => polarity == ContractPolarity ? ContractPolarity : ComposePolarity(polarity, OriginArgumentVariance(type, index, binding));
@@ -230,21 +253,24 @@ public sealed partial class Binding
     // IsCallRegion holds for every one; slots and positions past 2^14 share a region, which only joins their bounds.
     private BoundOrigin SlotRegion(Koto call, int slot, int ordinal) => this.OpenOrigin(call, SlotRegionKey - (((slot & 0x3FFF) << 14) | (ordinal & 0x3FFF)));
 
-    // J2 (SlotSolution.OpenWaited): a Type slot's solution with each Origin at a covariant position (`polarity` 1 at the root;
-    // SlotComponentPolarity) that its evidence supplied replaced by the call's region for that position (SlotRegion), in pre-order (a
-    // Type's own Origin, its Origin arguments, then each component's), so every run of the candidate opens the same regions. Only SPEC
-    // 15.3.6's covariant row has a meet of upper bounds as its candidate, which a region of the body is; a contravariant Origin's is a
-    // lower bound and an invariant one's the equality, which keep the evidence's binding. Kept also: an open region (already a region
-    // the body's solve decides: a call's, an argument's per-call stand-in), an Origin that no substitution replaces (a raw anchor, a
-    // Constraint set's slot) and a meet holding one, and a raw layer's Origin.
-    private BoundType OpenSlotOrigins(BoundType type, Koto call, int slot, int polarity, ref int ordinal)
+    // J2 (SlotSolution.OpenWaited): a Type slot's solution with each Origin E at a covariant position (`polarity` 1 at the root;
+    // SlotComponentPolarity) that its evidence supplied written as SPEC 15.3.6's covariant candidate, the meet `(E and region)` of the
+    // evidence's bound and the call's region for that position (SlotRegion), which stands for the bounds the waiting part gives after
+    // selection; in pre-order (a Type's own Origin, its Origin arguments, then each component's), so every run of the candidate opens
+    // the same regions, and E is kept beside its region in the candidate's openings (`opened`, OriginInference.Open). The meet is
+    // the fixpoint of SPEC 10.8's covariant binding: a later run's evidence and its completed waiting part give it back, and it is
+    // kept, as every meet holding an open region. A contravariant Origin's candidate is a lower bound and an invariant one's the
+    // equality, which keep the evidence's binding. Kept also: an open region (already a region the body's solve decides: a call's,
+    // an argument's per-call stand-in), an Origin that no substitution replaces (a raw anchor, a Constraint set's slot) and a meet
+    // holding one, and a raw layer's Origin.
+    private BoundType OpenSlotOrigins(BoundType type, Koto call, int slot, int polarity, ref int ordinal, OriginInference opened)
     {
         if (!type.CarriesOrigin || polarity != 1)
         {
             return type;
         }
 
-        var origin = type.Origin is { } outer && OpensAsSlotRegion(outer) ? this.SlotRegion(call, slot, ordinal++) : type.Origin;
+        var origin = type.Origin is { } outer && OpensAsSlotRegion(outer) ? this.OpenSlotOrigin(outer, this.SlotRegion(call, slot, ordinal++), opened) : type.Origin;
         var components = this.RentTypes(type.Components.Count);
         var origins = this.originScratch.Rent(type.OriginArguments.Count);
         try
@@ -253,13 +279,14 @@ public sealed partial class Binding
             for (var i = 0; i < type.OriginArguments.Count; i++)
             {
                 var covariant = OriginArgumentPolarity(type, i, polarity, this) == 1;
-                origins[i] = covariant && OpensAsSlotRegion(type.OriginArguments[i]) ? this.SlotRegion(call, slot, ordinal++) : type.OriginArguments[i];
+                origins[i] = covariant && OpensAsSlotRegion(type.OriginArguments[i])
+                    ? this.OpenSlotOrigin(type.OriginArguments[i], this.SlotRegion(call, slot, ordinal++), opened) : type.OriginArguments[i];
                 changed |= !ReferenceEquals(origins[i], type.OriginArguments[i]);
             }
 
             for (var i = 0; i < type.Components.Count; i++)
             {
-                components[i] = this.OpenSlotOrigins(type.Components[i], call, slot, this.SlotComponentPolarity(type, i, polarity), ref ordinal);
+                components[i] = this.OpenSlotOrigins(type.Components[i], call, slot, this.SlotComponentPolarity(type, i, polarity), ref ordinal, opened);
                 changed |= !ReferenceEquals(components[i], type.Components[i]);
             }
 
@@ -271,6 +298,9 @@ public sealed partial class Binding
             this.originScratch.Return(origins, clearArray: true);
         }
     }
+
+    // An opened slot Origin: the evidence's bound, kept in the candidate's openings, met with its region.
+    private BoundOrigin OpenSlotOrigin(BoundOrigin bound, BoundOrigin region, OriginInference opened) => this.Meet(opened.Open(region, bound), region);
 
     // J2: the polarity of component `index` of `type` at `polarity` (1 covariant, -1 contravariant, 0 invariant), as an Origin solve
     // collects it (CollectOriginInference: an invariant layer 0, a Constructed Type's slot by its schema), except that inside a Function
@@ -458,6 +488,9 @@ public sealed partial class Binding
         return origin;
     }
 
+    // SPEC 10.8 ("another argument's Origin at an open position solves it"): the open regions that later evidence fills are an
+    // argument's per-call stand-in and a call's unsolved region (CallRegion); a slot region (IsSlotRegion) stands for a solved
+    // variable and is neither (J2).
     // `type` with each open region replaced by the Origin that `other` has at the same position, when that one is an ordinary Origin,
     // or also an open region of `other` (`takeOpen`), so that two open positions keep the earlier region. Unequal structure is left to
     // the caller's ordinary comparison.
@@ -496,6 +529,6 @@ public sealed partial class Binding
         }
 
         static BoundOrigin? Fill(BoundOrigin? origin, BoundOrigin? supplied, bool takeOpen)
-            => origin is { Open: true } && supplied is not null && (supplied.Kind != OriginKind.Inference || (takeOpen && supplied.Open)) ? supplied : origin;
+            => origin is { Open: true } && !IsSlotRegion(origin) && supplied is not null && (supplied.Kind != OriginKind.Inference || (takeOpen && supplied.Open)) ? supplied : origin;
     }
 }

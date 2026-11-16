@@ -615,6 +615,7 @@ public sealed partial class Binding
         }
 
         solution.Contribute(mapping);
+        solution.FirstSolve = !solution.FixedConstruction && !solution.ChildSlice.IsEmpty && solution.ChildSlice[1] < 0; // Before the rows are composed.
         this.CollectPositionPremises(ref solution);
         try
         {

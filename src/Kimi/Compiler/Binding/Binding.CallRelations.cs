@@ -64,6 +64,7 @@ public sealed partial class Binding
         InvocationKoto call, in SlotSolution solution, ReadOnlySpan<BoundArgumentOperation> operations, ReadOnlySpan<BoundDefaultArgument> defaults)
     {
         var selected = solution.Function;
+        this.RecordOpenings(call, solution);
         this.callRelationScratch.Clear();
         var argumentCount = operations.Length - 1;
         var receiver = operations[argumentCount];
@@ -115,6 +116,27 @@ public sealed partial class Binding
         this.JudgeCallClauses(call, selected, operations, argumentCount, solution.Origins, solution.Inputs, solution.DeclaringType);
         this.PublishCallRelations();
         this.CollectFitBounds(operations, argumentCount);
+    }
+
+    // J2 (PLAN G936): the selected candidate's openings become the region graph's records (RecordOpening), before its fits and
+    // clauses are judged; only a candidate with a Signature row opened anything (SlotSolution.OpenWaited).
+    private void RecordOpenings(Koto call, in SlotSolution solution)
+    {
+        for (var i = 0; i < solution.Rows.Length; i++)
+        {
+            if (solution.Rows[i].Contribution == Contribution.Signature)
+            {
+                if (this.originInferences.TryGetValue((call, solution.Function), out var inference))
+                {
+                    foreach (var (region, bound) in inference.Opened)
+                    {
+                        this.RecordOpening(region, bound, call);
+                    }
+                }
+
+                return;
+            }
+        }
     }
 
     // SPEC 15.4.4, 10.7: the bounds that a selected call's fits give the Origins omitted in open initializers at the Function Type

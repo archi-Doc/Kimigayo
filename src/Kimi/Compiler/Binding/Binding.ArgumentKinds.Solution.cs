@@ -72,6 +72,10 @@ public sealed partial class Binding
         internal BoundOrigin[] Origins;
         internal BoundOrigin[] Inputs;
         internal bool FixedConstruction;
+
+        // Whether this run is the candidate's first solve, the one that composes its retained rows (SolveLate; DECISIONS BU-104 R3):
+        // its openings start empty there (OpenWaited), and a later run keeps them.
+        internal bool FirstSolve;
         internal OriginInference? OriginInference;
 
         // F1 (R4-M164): each argument's root row for this candidate's call (Contribute; Binding.ArgumentKinds.Rows.cs), a slice of the
@@ -195,8 +199,10 @@ public sealed partial class Binding
         // uses exactly the meet of the bounds (SPEC 15.2.2). Such a Type slot, bound without an invariant binding and fixed by no
         // explicit or declaring Type, takes its solution with the Origins at its covariant positions opened (OpenSlotOrigins); its
         // structure and Semantics stay the evidence's, so applicability and ranking are unchanged and no candidate is solved twice. Such
-        // an Origin parameter is published to the solve (OriginInference.WaitingNamed), which gives a covariant one no candidate but the
-        // call's region (CallRegion). A candidate without a Signature row reads nothing more.
+        // an Origin parameter is published to the solve (OriginInference.WaitingNamed), which writes a covariant one as its evidence
+        // candidate met with the call's region (CallRegion). Either way the solution is `(E and region)`, SPEC 15.3.6's candidate
+        // with the region for the bounds not known yet, and E is kept in the candidate's openings (OriginInference.Opened), which
+        // start empty at its first solve. A candidate without a Signature row reads nothing more.
         internal readonly void OpenWaited()
         {
             var signature = false;
@@ -211,6 +217,12 @@ public sealed partial class Binding
             }
 
             var binding = this.Binding;
+            var opened = binding.InferenceOf(this.Call, this.Function);
+            if (this.FirstSolve)
+            {
+                opened.Opened.Clear();
+            }
+
             var slots = CallSlotCount(this.Binder);
             var waiting = binding.RentSlotSet(slots + this.OriginCount);
             var covariant = binding.RentSlotSet(slots + this.OriginCount);
@@ -224,7 +236,7 @@ public sealed partial class Binding
                         !binding.invariantSlots.Contains(g) && !this.FixedSlot(g))
                     {
                         var ordinal = 0;
-                        this.Frame.SetType(g, binding.OpenSlotOrigins(solution, this.Call, g, 1, ref ordinal));
+                        this.Frame.SetType(g, binding.OpenSlotOrigins(solution, this.Call, g, 1, ref ordinal, opened));
                     }
                 }
 
