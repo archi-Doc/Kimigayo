@@ -116,9 +116,15 @@ public sealed partial class Binding
             }
         }
 
-        foreach (var call in this.indexerCalls.Values)
+        foreach (var calls in this.indexerCalls.Values)
         {
-            this.ResetSynthetic(call);
+            foreach (var call in calls!)
+            {
+                if (call is not null)
+                {
+                    this.ResetSynthetic(call);
+                }
+            }
         }
 
         foreach (var call in this.viewRangeCalls.Values)

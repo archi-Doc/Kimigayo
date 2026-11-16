@@ -292,6 +292,7 @@ internal struct NodeColumns
     internal PagedColumn<MemberAccessKoto?> StorageProjections; // Kept: an accessor body's synthesized `self` storage projection (Binding.PropertyCalls.cs).
     internal PagedColumn<MemberAccessKoto?> PropertyUpdateStorage; // Kept: a property update's synthesized storage access (Binding.PropertyCalls.cs).
     internal PagedColumn<EvaluatedKoto?> PropertyUpdateInputs; // Kept: a property update's synthesized input (Binding.PropertyCalls.cs).
+    internal PagedColumn<InvocationKoto?[]?> IndexerCalls; // Kept: an index expression's synthesized `index` and `indexUniq` calls (Binding.Indexers.cs).
 
     internal void Resize(int length)
     {
@@ -327,6 +328,7 @@ internal struct NodeColumns
         this.StorageProjections.Grow(length);
         this.PropertyUpdateStorage.Grow(length);
         this.PropertyUpdateInputs.Grow(length);
+        this.IndexerCalls.Grow(length);
     }
 
     // The library's columns start at their stated slots (KimiLibrarySize: no program row lands in them).
@@ -392,6 +394,7 @@ internal struct NodeColumns
             StorageProjections = this.StorageProjections.Renumbered(length),
             PropertyUpdateStorage = this.PropertyUpdateStorage.Renumbered(length),
             PropertyUpdateInputs = this.PropertyUpdateInputs.Renumbered(length),
+            IndexerCalls = this.IndexerCalls.Renumbered(length),
         };
         return columns;
     }
@@ -421,6 +424,7 @@ internal struct NodeColumns
         this.StorageProjections.Retire();
         this.PropertyUpdateStorage.Retire();
         this.PropertyUpdateInputs.Retire();
+        this.IndexerCalls.Retire();
     }
 
     // A kept family's row moves with its node; a stamped family's rows were handed over (Renumbered).
@@ -447,6 +451,7 @@ internal struct NodeColumns
         this.StorageProjections.MoveTo(ref target.StorageProjections, from, to);
         this.PropertyUpdateStorage.MoveTo(ref target.PropertyUpdateStorage, from, to);
         this.PropertyUpdateInputs.MoveTo(ref target.PropertyUpdateInputs, from, to);
+        this.IndexerCalls.MoveTo(ref target.IndexerCalls, from, to);
     }
 }
 
