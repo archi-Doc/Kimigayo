@@ -73,6 +73,7 @@ public sealed partial class Binding
         this.virtualOverrides = new(this);
         this.originDeclarations = new(this);
         this.discoveredOrigins = new(this);
+        this.initializerOrigins = new(this);
         this.Library.Kotonoha.Syntax.Hir.Families.Reserve(KimiLibrarySize.Stated);
         foreach (var symbol in this.Library.RegisteredSymbols)
         {

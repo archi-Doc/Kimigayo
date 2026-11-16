@@ -172,7 +172,7 @@ public sealed partial class Binding
 
         foreach (var declaration in this.initializerOrigins.Values)
         {
-            declaration.Reset();
+            declaration!.Reset();
         }
 
         foreach (var names in this.discoveredOrigins.Values)
