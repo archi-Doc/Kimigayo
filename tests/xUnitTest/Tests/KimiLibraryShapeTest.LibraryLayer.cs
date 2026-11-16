@@ -72,9 +72,8 @@ public partial class KimiLibraryShapeTest
         SameLayerAsTheEmptyPrograms(string.Empty);
         var c = Bound(string.Empty);
         var dump = LibraryLayer.Dump(c);
-        var families = typeof(NodeColumns).GetFields(BindingFlags.Instance | BindingFlags.NonPublic);
         Assert.All(
-            families.Where(x => LibraryLayer.RowObjects(x.GetValue(c.Library.Kotonoha.Syntax.Hir.Families)!).Any()),
+            LibraryLayer.Families().Where(x => LibraryLayer.RowObjects(x.GetValue(c.Library.Kotonoha.Syntax.Hir.Families)!).Any()),
             x => Assert.Contains(dump, row => row.StartsWith(x.Name + " ", StringComparison.Ordinal)));
     }
 
@@ -323,7 +322,7 @@ public partial class KimiLibraryShapeTest
             // every family of every module, its rows' objects (a row's fields, an array's and a pair's elements) by the family's name.
             foreach (var module in c.SourceModules.Select(static x => x.Syntax).Append(c.Library.Kotonoha.Syntax))
             {
-                foreach (var family in Fields(typeof(NodeColumns)))
+                foreach (var family in Families())
                 {
                     foreach (var value in RowObjects(family.GetValue(module.Hir.Families)!))
                     {
@@ -375,6 +374,10 @@ public partial class KimiLibraryShapeTest
 
             return value;
         }
+
+        // NodeColumns' family columns, its stamps left out (a counter value is no row).
+        internal static IEnumerable<FieldInfo> Families()
+            => Fields(typeof(NodeColumns)).Where(static x => x.FieldType.IsGenericType && x.FieldType.GetGenericTypeDefinition() == typeof(PagedColumn<>));
 
         // A family column's present rows (PagedColumn.Enumerate), each flattened to its objects: a composite column's list by its
         // elements, a pair by its items.

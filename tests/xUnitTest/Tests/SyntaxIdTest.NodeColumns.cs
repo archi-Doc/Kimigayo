@@ -15,13 +15,22 @@ public partial class SyntaxIdTest
     private const BindingFlags Members = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
 
     // G949 D2b-d's d7: by reflection over NodeColumns' fields, so a family added without its Resize, Renumbered or Move line fails here.
+    // A kept family's row moves into the renumbered column's spare arena; an edit family (one the store's first edit write empties) is
+    // handed over unmoved with the store's stamp, every other field of the store.
     [Fact]
     public void EveryNodeFamilyIsResizedRenumberedAndMoved()
     {
-        var fields = typeof(NodeColumns).GetFields(Members);
+        var all = typeof(NodeColumns).GetFields(Members);
+        var fields = all.Where(static x => x.FieldType.IsGenericType && x.FieldType.GetGenericTypeDefinition() == typeof(PagedColumn<>)).ToArray();
         Assert.NotEmpty(fields);
         object columns = default(NodeColumns);
         typeof(NodeColumns).GetMethod("Resize", Members)!.Invoke(columns, [40]);
+        var stamps = all.Except(fields).ToArray();
+        foreach (var stamp in stamps)
+        {
+            stamp.SetValue(columns, 7UL);
+        }
+
         var rows = new Dictionary<FieldInfo, object>();
         foreach (var field in fields)
         {
@@ -40,12 +49,55 @@ public partial class SyntaxIdTest
 
         var moved = new object[] { 1, typeof(NodeColumns).GetMethod("Renumbered", Members)!.Invoke(columns, [40])!, 33 };
         typeof(NodeColumns).GetMethod("Move", Members)!.Invoke(columns, moved);
+        Assert.All(stamps, x => Assert.Equal(7UL, x.GetValue(moved[1])));
+        var targets = fields.ToDictionary(static x => x, x => (Column: x.GetValue(moved[1])!, Arena: Read<Array>(x.GetValue(columns)!, "arena")));
+        var read = targets.ToDictionary(static x => x.Key, static x => (Moved: Get(x.Value.Column, 33), Kept: Get(x.Value.Column, 1)));
+        typeof(NodeColumns).GetMethod("BeginEdit", Members)!.Invoke(columns, [8UL]);
         foreach (var field in fields)
         {
-            var target = field.GetValue(moved[1])!;
-            Assert.Same(Read<Array>(field.GetValue(columns)!, "arena"), Read<Array>(target, "spare"));
-            Assert.Equal(rows[field], target.GetType().GetMethod("Get", Members)!.Invoke(target, [33]));
+            var (target, arena) = targets[field];
+            if (Read<int>(field.GetValue(columns)!, "used") == 0)
+            {
+                Assert.Same(arena, Read<Array>(target, "arena"));
+                Assert.Equal(rows[field], read[field].Kept);
+            }
+            else
+            {
+                Assert.Same(arena, Read<Array>(target, "spare"));
+                Assert.Equal(rows[field], read[field].Moved);
+            }
         }
+
+        static object? Get(object column, int id) => column.GetType().GetMethod("Get", Members)!.Invoke(column, [id]);
+    }
+
+    // G949 N5-5's n14: an edit family's store, the lowest layer. Its rows hold while its stamp is the edit counter; once the counter
+    // advances (Invalidate) the store reads stale, a renumbering hands the stale column over unmoved, and its first write empties the
+    // edit columns, keeping their capacity, and stamps the store; a later write of the same edit empties nothing.
+    [Fact]
+    public void AnEditFamilyIsStaleAfterAnEditUntilItsFirstWrite()
+    {
+        var columns = default(NodeColumns);
+        columns.Resize(40);
+        var (first, second) = (new BoundOrigin[1], new BoundOrigin[2]);
+        columns.BeginEdit(3);
+        columns.AssociatedOrigins.Ref(5) = first;
+        Assert.True(columns.HoldsEdit(3));
+        Assert.False(columns.HoldsEdit(4));
+
+        var renumbered = columns.Renumbered(48);
+        Assert.False(renumbered.HoldsEdit(4));
+        Assert.Same(first, renumbered.AssociatedOrigins.Get(5));
+        Assert.Same(Read<Array>(columns.AssociatedOrigins, "arena"), Read<Array>(renumbered.AssociatedOrigins, "arena"));
+
+        renumbered.BeginEdit(4);
+        Assert.True(renumbered.HoldsEdit(4));
+        Assert.Equal(0, renumbered.AssociatedOrigins.Used);
+        Assert.Null(renumbered.AssociatedOrigins.Get(5));
+        renumbered.AssociatedOrigins.Ref(44) = second;
+        renumbered.BeginEdit(4);
+        Assert.Same(second, renumbered.AssociatedOrigins.Get(44));
+        Assert.Equal(PagedColumn<int>.PageSize, renumbered.AssociatedOrigins.Used);
     }
 
     // G949 D2b-d's d10: an edit's renumbering moves a kept family's rows into the column's spare arena, so the second of two edits
@@ -67,6 +119,26 @@ public partial class SyntaxIdTest
         Assert.Same(before, Read<Array>(c.Kotonoha.Syntax.Hir.Families.Symbols, "arena"));
         Assert.NotNull(symbol);
         Assert.Same(symbol, c.Kotonoha.Syntax.Hir.Families.Symbols.Get(statement.SyntaxId));
+    }
+
+    // G949 D2b-d's d10 for an edit family (N5-5's associatedOrigins): an edit's renumbering hands its column over, stale, so the Bind
+    // after each of two edits empties it at its first write and rewrites the row in the same arena.
+    [Trait("Purpose", "Allocation")]
+    [Fact]
+    public void AnEditFamilyKeepsItsArenaAcrossEdits()
+    {
+        var c = CompilationTestHelper.Parse("contract C\n    associate Item(a) for ref/i32 during a\n", "Hello.kimi");
+        Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c));
+        var before = Read<Array>(c.Kotonoha.Syntax.Hir.Families.AssociatedOrigins, "arena");
+        Assert.NotNull(before);
+        for (var i = 0; i < 2; i++)
+        {
+            c.NoteSyntaxEdit(c.Kotonoha.RootKoto);
+            Assert.True(c.Bind().IsComplete);
+        }
+
+        Assert.Same(before, Read<Array>(c.Kotonoha.Syntax.Hir.Families.AssociatedOrigins, "arena"));
+        Assert.Equal(PagedColumn<int>.PageSize, c.Kotonoha.Syntax.Hir.Families.AssociatedOrigins.Used);
     }
 
     private static object NonDefault(Type type)
