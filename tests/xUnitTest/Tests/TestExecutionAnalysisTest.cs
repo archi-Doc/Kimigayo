@@ -33,9 +33,21 @@ public class TestExecutionAnalysisTest
     [InlineData("#Test\nfunc sample()\n    $expect(1)")]
     [InlineData("#Test\nfunc sample()\n    $require(true, message: 1)")]
     [InlineData("func ordinary()\n    $expect(true)\n#Test\nfunc sample() => ()")]
+    [InlineData("func ordinary() -> string => Test.tempDirectory()\n#Test\nfunc sample() => ()")] // SPEC 22.1: only in test-only bodies.
     [InlineData("#Test\nfunc sample() => ()\n#Test\nfunc another() => sample()")]
     public void InvalidUnselectedBodiesStillFail(string source)
         => Assert.False(Analyze(source).Binding.Result.IsComplete);
+
+    // SPEC 22.1's Test row (Binding.Access reads Test.tempDirectory by its lang item): outside a test build no body is test-only, so
+    // main's use is the one record, at the use; the invalid side of TestBodiesAreVerifiedWithoutSelectingProductStartup's row.
+    [Fact]
+    public void TempDirectoryOutsideATestBuildIsInaccessible()
+    {
+        const string source = "public func main()\n    Console.writeLine(Test.tempDirectory())";
+        var record = Assert.Single(TestDiagnostics.Of(MinimalEmissionTest.Check(source)));
+        Assert.Equal(("InaccessibleBinding_Kd", "Test.tempDirectory"), (record.Code, record.Text));
+        Assert.Equal(source.IndexOf("Test.", StringComparison.Ordinal), record.Span.Start); // 2:23
+    }
 
     [Theory]
     [InlineData("$expect(true)")]
