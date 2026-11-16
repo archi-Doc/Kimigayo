@@ -105,9 +105,15 @@ public sealed partial class Binding
     private void ResetSyntheticCalls()
     {
         this.synthesizedCalls?.Clear(); // Each pass records its own (BindSynthesizedCall).
-        foreach (var call in this.propertyCalls.Values)
+        foreach (var calls in this.propertyCalls.Values)
         {
-            this.ResetSynthetic(call);
+            foreach (var call in calls!)
+            {
+                if (call is not null)
+                {
+                    this.ResetSynthetic(call);
+                }
+            }
         }
 
         foreach (var call in this.indexerCalls.Values)

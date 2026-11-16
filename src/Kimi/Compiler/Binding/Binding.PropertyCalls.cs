@@ -1,12 +1,13 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using System.Diagnostics.CodeAnalysis;
 using Kimi.Compiler.Parsing;
 
 namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
-    private readonly Dictionary<(Koto Source, PropertyAccessorKind Kind), InvocationKoto> propertyCalls = new();
+    private readonly PropertyCallRows propertyCalls;
     private readonly Dictionary<Koto, MemberAccessKoto> storageProjections = new(ReferenceEqualityComparer.Instance);
     private readonly Dictionary<Koto, MemberAccessKoto> propertyUpdateStorage = new(ReferenceEqualityComparer.Instance);
     private readonly Dictionary<Koto, EvaluatedKoto> propertyUpdateInputs = new(ReferenceEqualityComparer.Instance);
@@ -352,5 +353,26 @@ public sealed partial class Binding
 
             BoundType? Signature(BoundType type) => this.MemberType(type, declaringType) is { } member ? this.ContractType(member, scope, requirement?.Self) : null;
         }
+    }
+
+    /// <summary>The `propertyCalls` family's one accessor (DECISIONS BU-220): a kept family, a property access's synthesized accessor calls
+    /// (SPEC 13.7), its composite key (the source node, its accessor kind) kept in the source's module's NodeColumns at its SyntaxId as a
+    /// row of two calls indexed directly by its accessor kind. Each call is made once and reset in place by each pass
+    /// (ResetSyntheticCalls). Its members keep the names its readers use.</summary>
+    private readonly struct PropertyCallRows(Binding binding)
+    {
+        internal FamilyRows<InvocationKoto?[]?> Values => new(binding, static (table, _) => table.Hir.Families.PropertyCalls.Enumerate());
+
+        internal InvocationKoto this[(Koto Source, PropertyAccessorKind Kind) key]
+        {
+            get => this.GetValueOrDefault(key) ?? throw new KeyNotFoundException($"No `propertyCalls` row at `{key.Source}`.");
+            set => (HirTables.Of(key.Source).Families.PropertyCalls.Ref(key.Source.SyntaxId) ??= new InvocationKoto?[2])[(int)key.Kind] = value;
+        }
+
+        internal InvocationKoto? GetValueOrDefault((Koto Source, PropertyAccessorKind Kind) key)
+            => key.Source.SyntaxOwner is { } table && table.Hir.Families.PropertyCalls.Get(key.Source.SyntaxId) is { } row ? row[(int)key.Kind] : null;
+
+        internal bool TryGetValue((Koto Source, PropertyAccessorKind Kind) key, [NotNullWhen(true)] out InvocationKoto? value)
+            => (value = this.GetValueOrDefault(key)) is not null;
     }
 }
