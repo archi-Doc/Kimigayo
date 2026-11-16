@@ -254,28 +254,41 @@ internal struct HirTables
 /// </summary>
 internal struct NodeColumns
 {
-    internal PagedColumn<Binding.SymbolRow> Symbols; // Kept: a declaration's symbols (Binding.Scopes.cs).
-    internal PagedColumn<Binding.ScopeRow> Scopes; // Kept: a node's scope, a module root's document scopes (Binding.Scopes.cs).
+    internal PagedColumn<BindingSymbol?> Symbols; // Kept: the symbol declared at a node (Binding.Scopes.cs).
+    internal PagedColumn<BindingSymbol?[]?> Parameters; // Kept: Symbols' composite column, a function's parameters' symbols by index.
+    internal PagedColumn<BindingScope?> Scopes; // Kept: a node's scope (Binding.Scopes.cs).
+    internal PagedColumn<(SourceDocument Document, BindingScope? Scope)[]?> Documents; // Kept: Scopes' composite column, a module root's document scopes.
 
     internal void Resize(int length)
     {
         this.Symbols.Grow(length);
+        this.Parameters.Grow(length);
         this.Scopes.Grow(length);
+        this.Documents.Grow(length);
     }
 
     // The library's columns start at their stated slots (KimiLibrarySize: no program row lands in them).
     internal void Reserve(KimiLibrarySize.Tables stated)
     {
         this.Symbols.Reserve(stated.Declarations);
+        this.Parameters.Reserve(stated.Parameters);
         this.Scopes.Reserve(stated.Scopes);
     }
 
-    internal readonly NodeColumns Renumbered(int length) => new() { Symbols = this.Symbols.Renumbered(length), Scopes = this.Scopes.Renumbered(length) };
+    internal readonly NodeColumns Renumbered(int length) => new()
+    {
+        Symbols = this.Symbols.Renumbered(length),
+        Parameters = this.Parameters.Renumbered(length),
+        Scopes = this.Scopes.Renumbered(length),
+        Documents = this.Documents.Renumbered(length),
+    };
 
     internal readonly void Move(int from, ref NodeColumns target, int to)
     {
         this.Symbols.MoveTo(ref target.Symbols, from, to);
+        this.Parameters.MoveTo(ref target.Parameters, from, to);
         this.Scopes.MoveTo(ref target.Scopes, from, to);
+        this.Documents.MoveTo(ref target.Documents, from, to);
     }
 }
 

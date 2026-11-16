@@ -63,15 +63,19 @@ public partial class KimiLibraryShapeTest
             .Concat(DiagnosticCorpus.SyntaxCases.Select(static x => "syntax/" + x.Name)))];
 
     // The dump itself: the empty program's layer twice, in two compilations, is the same (no hash order, identity or counter in a row);
-    // and each disposition names a store or field that exists, so none widens a rule silently; every node family (NodeColumns) has
-    // library rows in it, so a family the walk misses fails here.
+    // and each disposition names a store or field that exists, so none widens a rule silently; every node family (NodeColumns) with
+    // library rows has rows in it, so a family the walk misses fails here.
     [Fact]
     public void TheLibraryLayerDumpIsDeterministic()
     {
         Assert.Empty(LibraryLayer.Unresolved());
         SameLayerAsTheEmptyPrograms(string.Empty);
-        var dump = LibraryLayer.Dump(Bound(string.Empty));
-        Assert.All(typeof(NodeColumns).GetFields(BindingFlags.Instance | BindingFlags.NonPublic), x => Assert.Contains(dump, row => row.StartsWith(x.Name + " ", StringComparison.Ordinal)));
+        var c = Bound(string.Empty);
+        var dump = LibraryLayer.Dump(c);
+        var families = typeof(NodeColumns).GetFields(BindingFlags.Instance | BindingFlags.NonPublic);
+        Assert.All(
+            families.Where(x => LibraryLayer.RowObjects(x.GetValue(c.Library.Kotonoha.Syntax.Hir.Families)!).Any()),
+            x => Assert.Contains(dump, row => row.StartsWith(x.Name + " ", StringComparison.Ordinal)));
     }
 
     // The epoch rule's invariant: ResetCapabilities, which begins every pass (its one call is ResetPass's, which Bind runs first in each
@@ -372,6 +376,28 @@ public partial class KimiLibraryShapeTest
             return value;
         }
 
+        // A family column's present rows (PagedColumn.Enumerate), each flattened to its objects: a composite column's list by its
+        // elements, a pair by its items.
+        internal static IEnumerable<object> RowObjects(object column)
+        {
+            var rows = column.GetType().GetMethod("Enumerate", BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(column, null)!;
+            var (moveNext, current) = (rows.GetType().GetMethod("MoveNext")!, rows.GetType().GetProperty("Current")!);
+            while ((bool)moveNext.Invoke(rows, null)!)
+            {
+                var row = current.GetValue(rows)!;
+                foreach (var part in row is Array items ? items.Cast<object?>() : [row])
+                {
+                    foreach (var value in part is ITuple pair ? Enumerable.Range(0, pair.Length).Select(i => pair[i]) : [part])
+                    {
+                        if (value is not null)
+                        {
+                            yield return value;
+                        }
+                    }
+                }
+            }
+        }
+
         private static FieldInfo? FieldAt(string store)
         {
             var (type, field) = (typeof(Binding), (FieldInfo?)null);
@@ -399,27 +425,6 @@ public partial class KimiLibraryShapeTest
         private static bool Integral(Type type)
             => Type.GetTypeCode(type) is >= TypeCode.SByte and <= TypeCode.UInt64 ||
                 (type.IsValueType && typeof(ITuple).IsAssignableFrom(type) && type.GetGenericArguments().All(Integral));
-
-        // A family column's present rows (PagedColumn.Enumerate), each flattened to its objects.
-        private static IEnumerable<object> RowObjects(object column)
-        {
-            var rows = column.GetType().GetMethod("Enumerate", BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(column, null)!;
-            var (moveNext, current) = (rows.GetType().GetMethod("MoveNext")!, rows.GetType().GetProperty("Current")!);
-            while ((bool)moveNext.Invoke(rows, null)!)
-            {
-                var row = current.GetValue(rows)!;
-                foreach (var part in Fields(row.GetType()).Select(x => x.GetValue(row)).SelectMany(static x => x is Array items ? items.Cast<object?>() : [x]))
-                {
-                    foreach (var value in part is ITuple pair ? Enumerable.Range(0, pair.Length).Select(i => pair[i]) : [part])
-                    {
-                        if (value is not null)
-                        {
-                            yield return value;
-                        }
-                    }
-                }
-            }
-        }
 
         private static FieldInfo[] Fields(Type type)
             => FieldsOf.GetOrAdd(type, static t => [.. Hierarchy(t).SelectMany(static x => x.GetFields(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.DeclaredOnly))]);

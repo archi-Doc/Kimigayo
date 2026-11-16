@@ -22,7 +22,7 @@ internal sealed class SemanticQuery(Compilation compilation, Binding binding, Li
     internal IReadOnlyList<Koto> BoundNodes => nodes;
 
     /// <summary>Gets every declared symbol; a parameter's is its function's at its slot.</summary>
-    internal Binding.DeclaredSymbols.Enumerator Declarations => declarations.Values;
+    internal Binding.KeptValues<BindingSymbol, BindingSymbol?> Declarations => declarations.Values;
 
     internal BoundType? TypeOf(Koto node) => HirTables.TypeOf(node);
 

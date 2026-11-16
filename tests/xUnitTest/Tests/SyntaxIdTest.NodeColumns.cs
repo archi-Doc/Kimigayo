@@ -56,7 +56,7 @@ public partial class SyntaxIdTest
     {
         var c = MinimalEmissionTest.Analyze(Source);
         var statement = Statement(c, "p");
-        var symbol = c.Kotonoha.Syntax.Hir.Families.Symbols.Get(statement.SyntaxId).Symbol;
+        var symbol = c.Kotonoha.Syntax.Hir.Families.Symbols.Get(statement.SyntaxId);
         var before = Read<Array>(c.Kotonoha.Syntax.Hir.Families.Symbols, "arena");
         for (var i = 0; i < 2; i++)
         {
@@ -66,7 +66,7 @@ public partial class SyntaxIdTest
 
         Assert.Same(before, Read<Array>(c.Kotonoha.Syntax.Hir.Families.Symbols, "arena"));
         Assert.NotNull(symbol);
-        Assert.Same(symbol, c.Kotonoha.Syntax.Hir.Families.Symbols.Get(statement.SyntaxId).Symbol);
+        Assert.Same(symbol, c.Kotonoha.Syntax.Hir.Families.Symbols.Get(statement.SyntaxId));
     }
 
     private static object NonDefault(Type type)

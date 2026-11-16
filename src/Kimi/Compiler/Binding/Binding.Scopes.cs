@@ -10,13 +10,14 @@ namespace Kimi.Compiler;
 //   scope, which its top-level statements in one module share, DocumentScope); the scope kept for a node (ScopeOf) and the one it
 //   binds in (NodeScope); a symbol's declaration in its scope's Type or value table with the duplicate rule (Declare); a function
 //   parameter's symbol by its function and index, declared (DeclareParameter) and read (ParameterSymbol); the `symbols` and `scopes`
-//   families' accessors (DeclaredSymbols, KeptScopes) and their order over the modules (FamilyRows).
+//   families' accessors (DeclaredSymbols, KeptScopes), their order over the modules (FamilyRows) and their values (KeptValues).
 // - Inputs: the indexing walk and the declaration steps that declare a symbol. Outputs: scopes, symbols, each declaring node's
 //   BoundSymbol, Duplicate failures.
 // - Invariants: scopes and symbols are kept across passes in their key's module's NodeColumns and reset by ResetPass (DECISIONS
-//   BU-220): a symbol at its declaration's SyntaxId, a parameter's at its function's row by index; a scope at its node's SyntaxId, a
-//   document's execution scope at its module root's row by document, the module the one that holds the document's top-level items now
-//   (AST2), so a document whose items sit in two modules has a scope in each (the owner's O-380 (a)).
+//   BU-220): a symbol at its declaration's SyntaxId, a parameter's in the composite column at its function's id by index; a scope at its
+//   node's SyntaxId, a document's execution scope in the composite column at its module root's id by document, the module the one that
+//   holds the document's top-level items now (AST2), so a document whose items sit in two modules has a scope in each (the owner's
+//   O-380 (a)).
 // - Prohibitions: no name is resolved here (lookup is Binding.Names.cs's and Binding.Types.cs's); Declare reads a scope's table only
 //   to chain a name's symbols (Next) and apply the duplicate rule. No other file keys either family by anything but a node: a
 //   parameter's symbol goes through DeclareParameter and ParameterSymbol, a document's scope through DocumentScope and ScopeOf
@@ -86,23 +87,6 @@ public sealed partial class Binding
         return symbol;
     }
 
-#pragma warning disable SA1401 // Fields should be private: a declaration writes its row's slot in place (DeclareKept, KeptScope).
-    /// <summary>The `symbols` family's row (DECISIONS BU-220): the symbol declared at its node, and a function's parameters' by index.</summary>
-    internal struct SymbolRow
-    {
-        internal BindingSymbol? Symbol;
-        internal BindingSymbol?[]? Parameters;
-    }
-
-    /// <summary>The `scopes` family's row (DECISIONS BU-220): the scope kept at its node, and at a module root its documents' execution
-    /// scopes by document (one pair per document whose top-level items the module holds).</summary>
-    internal struct ScopeRow
-    {
-        internal BindingScope? Scope;
-        internal (SourceDocument Document, BindingScope? Scope)[]? Documents;
-    }
-#pragma warning restore SA1401
-
     /// <summary>A node family's present rows over the compilation's modules in G949 D2b-d's d8 order: the source modules by ordinal, then
     /// the library, each module's by ascending id.</summary>
     /// <typeparam name="TRow">The family's row.</typeparam>
@@ -112,6 +96,9 @@ public sealed partial class Binding
         private PagedColumn<TRow>.Enumerator rows;
 
         internal readonly TRow Current => this.rows.Current;
+
+        // The current row's module ordinal (the library's last) and id: the key of d8's order.
+        internal readonly (int Module, int Id) Key => (this.module, this.rows.Id);
 
         // The current module's next row, else the next module's first.
         internal bool MoveNext()
@@ -131,36 +118,90 @@ public sealed partial class Binding
         }
     }
 
-    /// <summary>The `symbols` family's one accessor (DECISIONS BU-220): a symbol is kept in its declaration's module, the node's
-    /// <see cref="Koto.SyntaxOwner"/>, at the node's SyntaxId; a function's parameters at the function's row by index. Its members keep
-    /// the names its readers use.</summary>
-    internal readonly struct DeclaredSymbols(Binding binding)
+    /// <summary>A kept family's values in d8's order (DECISIONS BU-220): each id's value in the family's column, then the values of the
+    /// list its composite column holds at that id (a function's parameters' symbols, a module root's document scopes).</summary>
+    /// <typeparam name="T">The family's value.</typeparam>
+    /// <typeparam name="TPart">An element of the composite column's lists.</typeparam>
+    internal struct KeptValues<T, TPart>(FamilyRows<T?> values, FamilyRows<TPart[]?> lists, Func<TPart, T?> part)
+        where T : class
     {
-        /// <summary>Gets every kept symbol, a parameter's included.</summary>
-        internal int Count
-        {
-            get
-            {
-                var (count, values) = (0, this.Values);
-                while (values.MoveNext())
-                {
-                    count++;
-                }
+        private bool started;
+        private bool value;
+        private bool list;
+        private TPart[]? parts;
+        private int index;
 
-                return count;
+        public T Current { readonly get; private set; } = null!;
+
+        public readonly KeptValues<T, TPart> GetEnumerator() => this;
+
+        public bool MoveNext()
+        {
+            if (!this.started)
+            {
+                (this.started, this.value, this.list) = (true, values.MoveNext(), lists.MoveNext());
+            }
+
+            while (true)
+            {
+                if (this.parts is { } parts && this.index < parts.Length)
+                {
+                    if (part(parts[this.index++]) is { } item)
+                    {
+                        this.Current = item;
+                        return true;
+                    }
+                }
+                else if (this.value && (!this.list || values.Key.CompareTo(lists.Key) <= 0))
+                {
+                    (this.Current, this.parts) = (values.Current!, null);
+                    this.value = values.MoveNext();
+                    return true;
+                }
+                else if (this.list)
+                {
+                    (this.parts, this.index) = (lists.Current, 0);
+                    this.list = lists.MoveNext();
+                }
+                else
+                {
+                    return false;
+                }
             }
         }
 
-        /// <summary>Gets every kept symbol in <see cref="FamilyRows{TRow}"/>' order, a row's symbol before its parameters.</summary>
-        internal Enumerator Values => new(new(binding, static table => table.Hir.Families.Symbols));
+        // The values that follow, counted on a copy.
+        internal readonly int Count()
+        {
+            var (count, rest) = (0, this);
+            while (rest.MoveNext())
+            {
+                count++;
+            }
+
+            return count;
+        }
+    }
+
+    /// <summary>The `symbols` family's one accessor (DECISIONS BU-220): a symbol is kept in its declaration's module, the node's
+    /// <see cref="Koto.SyntaxOwner"/>, at the node's SyntaxId; a function's parameters in the composite column Parameters at the function's
+    /// id, by index. Its members keep the names its readers use.</summary>
+    internal readonly struct DeclaredSymbols(Binding binding)
+    {
+        /// <summary>Gets every kept symbol, a parameter's included.</summary>
+        internal int Count => this.Values.Count();
+
+        /// <summary>Gets every kept symbol in <see cref="KeptValues{T, TPart}"/>' order: a declaration's symbol, then its parameters'.</summary>
+        internal KeptValues<BindingSymbol, BindingSymbol?> Values
+            => new(new(binding, static table => table.Hir.Families.Symbols), new(binding, static table => table.Hir.Families.Parameters), static x => x);
 
         internal BindingSymbol this[Koto node] => this.GetValueOrDefault(node) ?? throw new KeyNotFoundException($"No symbol is declared at `{node}`.");
 
-        internal static ref BindingSymbol? Slot(Koto node) => ref HirTables.Of(node).Families.Symbols.Ref(node.SyntaxId).Symbol;
+        internal static ref BindingSymbol? Slot(Koto node) => ref HirTables.Of(node).Families.Symbols.Ref(node.SyntaxId);
 
         internal static ref BindingSymbol? ParameterSlot(FunctionKoto function, int index)
         {
-            ref var parameters = ref HirTables.Of(function).Families.Symbols.Ref(function.SyntaxId).Parameters;
+            ref var parameters = ref HirTables.Of(function).Families.Parameters.Ref(function.SyntaxId);
             if (parameters is null || parameters.Length < function.Parameters.Count)
             {
                 Array.Resize(ref parameters, function.Parameters.Count);
@@ -169,7 +210,7 @@ public sealed partial class Binding
             return ref parameters[index];
         }
 
-        internal BindingSymbol? GetValueOrDefault(Koto node) => node.SyntaxOwner is { } table ? table.Hir.Families.Symbols.Get(node.SyntaxId).Symbol : null;
+        internal BindingSymbol? GetValueOrDefault(Koto node) => node.SyntaxOwner is { } table ? table.Hir.Families.Symbols.Get(node.SyntaxId) : null;
 
         internal bool TryGetValue(Koto node, [NotNullWhen(true)] out BindingSymbol? symbol) => (symbol = this.GetValueOrDefault(node)) is not null;
 
@@ -188,70 +229,21 @@ public sealed partial class Binding
         }
 
         internal BindingSymbol Parameter(FunctionKoto function, int index)
-            => (function.SyntaxOwner is { } table && table.Hir.Families.Symbols.Get(function.SyntaxId).Parameters is { } parameters && index < parameters.Length ? parameters[index] : null)
+            => (function.SyntaxOwner is { } table && table.Hir.Families.Parameters.Get(function.SyntaxId) is { } parameters && index < parameters.Length ? parameters[index] : null)
                 ?? throw new KeyNotFoundException($"No symbol is declared for parameter {index} of `{function}`.");
-
-        /// <summary>The kept symbols in <see cref="Values"/>' order.</summary>
-        internal struct Enumerator(FamilyRows<SymbolRow> rows)
-        {
-            private int parameter;
-            private SymbolRow row;
-
-            public BindingSymbol Current { readonly get; private set; } = null!;
-
-            public readonly Enumerator GetEnumerator() => this;
-
-            public bool MoveNext()
-            {
-                while (true)
-                {
-                    if (this.row.Parameters is { } parameters && this.parameter < parameters.Length)
-                    {
-                        if (parameters[this.parameter++] is { } symbol)
-                        {
-                            this.Current = symbol;
-                            return true;
-                        }
-                    }
-                    else if (!rows.MoveNext())
-                    {
-                        return false;
-                    }
-                    else
-                    {
-                        (this.row, this.parameter) = (rows.Current, 0);
-                        if (this.row.Symbol is { } symbol)
-                        {
-                            this.Current = symbol;
-                            return true;
-                        }
-                    }
-                }
-            }
-        }
     }
 
     /// <summary>The `scopes` family's one accessor (DECISIONS BU-220): a scope is kept in its key node's module at the node's SyntaxId,
-    /// a document's execution scope at its module root's row by document. Its members keep the names its readers use.</summary>
+    /// a document's execution scope in the composite column Documents at its module root's id, by document. Its members keep the names
+    /// its readers use.</summary>
     internal readonly struct KeptScopes(Binding binding)
     {
-        /// <summary>Gets every kept row's scope, a scope that two nodes keep counted at each.</summary>
-        internal int Count
-        {
-            get
-            {
-                var (count, values) = (0, this.Values);
-                while (values.MoveNext())
-                {
-                    count++;
-                }
+        /// <summary>Gets every kept scope, a scope that two nodes keep counted at each.</summary>
+        internal int Count => this.Values.Count();
 
-                return count;
-            }
-        }
-
-        /// <summary>Gets every kept scope in <see cref="FamilyRows{TRow}"/>' order, a module root's scope before its documents'.</summary>
-        internal Enumerator Values => new(new(binding, static table => table.Hir.Families.Scopes));
+        /// <summary>Gets every kept scope in <see cref="KeptValues{T, TPart}"/>' order: a node's scope, then a module root's document scopes.</summary>
+        internal KeptValues<BindingScope, (SourceDocument Document, BindingScope? Scope)> Values
+            => new(new(binding, static table => table.Hir.Families.Scopes), new(binding, static table => table.Hir.Families.Documents), static x => x.Scope);
 
         internal BindingScope this[Koto node]
         {
@@ -259,11 +251,11 @@ public sealed partial class Binding
             set => Slot(node) = value;
         }
 
-        internal static ref BindingScope? Slot(Koto node) => ref HirTables.Of(node).Families.Scopes.Ref(node.SyntaxId).Scope;
+        internal static ref BindingScope? Slot(Koto node) => ref HirTables.Of(node).Families.Scopes.Ref(node.SyntaxId);
 
         internal static ref BindingScope? DocumentSlot(Koto root, SourceDocument document)
         {
-            ref var documents = ref HirTables.Of(root).Families.Scopes.Ref(root.SyntaxId).Documents;
+            ref var documents = ref HirTables.Of(root).Families.Documents.Ref(root.SyntaxId);
             var i = IndexOf(documents, document);
             if (i < 0)
             {
@@ -276,10 +268,10 @@ public sealed partial class Binding
         }
 
         internal static BindingScope? Document(Koto root, SourceDocument document)
-            => root.SyntaxOwner is { } table && table.Hir.Families.Scopes.Get(root.SyntaxId).Documents is { } documents && IndexOf(documents, document) is var i and >= 0
+            => root.SyntaxOwner is { } table && table.Hir.Families.Documents.Get(root.SyntaxId) is { } documents && IndexOf(documents, document) is var i and >= 0
                 ? documents[i].Scope : null;
 
-        internal BindingScope? GetValueOrDefault(Koto node) => node.SyntaxOwner is { } table ? table.Hir.Families.Scopes.Get(node.SyntaxId).Scope : null;
+        internal BindingScope? GetValueOrDefault(Koto node) => node.SyntaxOwner is { } table ? table.Hir.Families.Scopes.Get(node.SyntaxId) : null;
 
         internal bool TryGetValue(Koto node, [NotNullWhen(true)] out BindingScope? scope) => (scope = this.GetValueOrDefault(node)) is not null;
 
@@ -304,45 +296,6 @@ public sealed partial class Binding
             }
 
             return -1;
-        }
-
-        /// <summary>The kept scopes in <see cref="Values"/>' order.</summary>
-        internal struct Enumerator(FamilyRows<ScopeRow> rows)
-        {
-            private int document;
-            private ScopeRow row;
-
-            public BindingScope Current { readonly get; private set; } = null!;
-
-            public readonly Enumerator GetEnumerator() => this;
-
-            public bool MoveNext()
-            {
-                while (true)
-                {
-                    if (this.row.Documents is { } documents && this.document < documents.Length)
-                    {
-                        if (documents[this.document++].Scope is { } scope)
-                        {
-                            this.Current = scope;
-                            return true;
-                        }
-                    }
-                    else if (!rows.MoveNext())
-                    {
-                        return false;
-                    }
-                    else
-                    {
-                        (this.row, this.document) = (rows.Current, 0);
-                        if (this.row.Scope is { } scope)
-                        {
-                            this.Current = scope;
-                            return true;
-                        }
-                    }
-                }
-            }
         }
     }
 }

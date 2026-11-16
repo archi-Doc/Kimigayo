@@ -141,6 +141,9 @@ internal struct PagedColumn<T>
         /// <summary>Gets the current row.</summary>
         public readonly T Current => arena![this.offset + this.slot];
 
+        /// <summary>Gets the current row's id.</summary>
+        internal readonly int Id => (this.page << PageShift) + this.slot;
+
         /// <summary>Gets this enumerator, so a foreach can take the column's rows.</summary>
         /// <returns>This enumerator.</returns>
         public readonly Enumerator GetEnumerator() => this;

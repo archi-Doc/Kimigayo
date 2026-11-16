@@ -75,6 +75,7 @@ public sealed partial class Binding
         => new(
             this.nodes.Count,
             this.Library.Kotonoha.Syntax.Hir.Families.Symbols.Used,
+            this.Library.Kotonoha.Syntax.Hir.Families.Parameters.Used,
             this.Library.Kotonoha.Syntax.Hir.Families.Scopes.Used,
             this.types.KeyCount,
             this.constraints.Count,
@@ -85,11 +86,12 @@ public sealed partial class Binding
             this.substitutedParts.Count);
 
     /// <summary>Gets the free slots of the tables KimiLibrarySize sizes: each table's capacity less its entries; a node family's column
-    /// (symbols, scopes) its arena's slots no page holds.</summary>
+    /// (symbols, their parameters, scopes) its arena's slots no page holds.</summary>
     internal KimiLibrarySize.Tables TableFree
         => new(
             this.nodes.Capacity - this.nodes.Count,
             this.Library.Kotonoha.Syntax.Hir.Families.Symbols.Free,
+            this.Library.Kotonoha.Syntax.Hir.Families.Parameters.Free,
             this.Library.Kotonoha.Syntax.Hir.Families.Scopes.Free,
             this.types.KeyFree,
             this.constraints.Capacity - this.constraints.Count,

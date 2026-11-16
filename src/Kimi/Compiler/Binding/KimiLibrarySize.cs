@@ -16,9 +16,10 @@ namespace Kimi.Compiler;
 //   (cold Bind bytes at 128, 256 and 512 reads, factor 3) measures 1.100 on the capacities before this statement and 3.118 on these
 //   (before the member sides). The RP8 exception
 //   (the owner's O-136 (a) and O-139 (a)) covers this until the removal condition holds.
-// - The library's node columns (Binding's `symbols` and `scopes`, DECISIONS BU-220): the library module's own columns, which no
-//   program row enters (a program's rows are its modules'), so each starts at its stated slots (PagedColumn.Reserve) and has no room;
-//   its count is the slots the library's pages hold, rounded up to ColumnGranule, and its free slots are its arena's.
+// - The library's node columns (Binding's `symbols`, its parameters' composite column and `scopes`, DECISIONS BU-220): the library
+//   module's own columns, which no program row enters (a program's rows are its modules'), so each starts at its stated slots
+//   (PagedColumn.Reserve) and has no room; its count is the slots the library's pages hold, rounded up to ColumnGranule, and its free
+//   slots are its arena's.
 // - Inputs: none; the counts are stated here and KimiLibraryShapeTest compares them with what a Bind of the empty program fills
 //   (Binding.TableCounts), so a library change that moves a count past its Granule fails there and restates it.
 // - Outputs: Stated (a library-only table starts at its count there), NodeRoom, KeyedRoom, NodeCapacity, KeyedCapacity.
@@ -49,6 +50,7 @@ internal static class KimiLibrarySize
     internal static readonly Tables Stated = new(
         Nodes: 16384,
         Declarations: 7680,
+        Parameters: 3072,
         Scopes: 8704,
         TypeKeys: 3072,
         Constraints: 2048,
@@ -72,6 +74,7 @@ internal static class KimiLibrarySize
     internal readonly record struct Tables(
         int Nodes, // Binding's nodes: the node table.
         int Declarations, // The library's symbols column: the slots its pages hold.
+        int Parameters, // The library's parameters column (the symbols' composite column): the slots its pages hold.
         int Scopes, // The library's scopes column: the slots its pages hold.
         int TypeKeys, // TyCtxt's keys of the interned Types.
         int Constraints, // Binding's interned constraints.
@@ -92,6 +95,7 @@ internal static class KimiLibrarySize
             => new(
                 Round(this.Nodes, Granule),
                 Round(this.Declarations, ColumnGranule),
+                Round(this.Parameters, ColumnGranule),
                 Round(this.Scopes, ColumnGranule),
                 Round(this.TypeKeys, Granule),
                 Round(this.Constraints, Granule),
