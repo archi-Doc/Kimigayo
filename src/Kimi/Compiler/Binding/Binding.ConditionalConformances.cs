@@ -11,7 +11,6 @@ public sealed partial class Binding
     // open obligation reads no evidence (Unknown), from whichever scope it asks (the obligation, not the requester, is the key). Its
     // value counts those requests while it is open (reentryReads).
     private readonly Dictionary<(BoundType Type, BindingSymbol Contract), int> openObligations = new();
-    private readonly Dictionary<(BoundConformancePath Left, BoundConformancePath Right), BindingScope> conformanceOverlapScopes = new();
 
     // SPEC 8.3.3 Finality: the re-entry reads of the obligations now open, the open set's and a path's being verified (Checking). An
     // answer computed while the count grows read no evidence at an obligation still pending, so it is no fact once that obligation's
@@ -19,6 +18,23 @@ public sealed partial class Binding
     // result. Its reader is the capability engine, which keeps no such work past its outermost request (ForgetPendingCapabilities).
     // Temporary carrier; removal: R7-C2e2 e2-5b, with e2-3's Completion on the answer.
     private int reentryReads;
+
+    // A pair's overlap scope, kept with its left path (BoundConformancePath.OverlapScopes); both paths share their Type, so their store.
+    private static BindingScope OverlapScope(BoundConformancePath a, BoundConformancePath b)
+    {
+        var scopes = a.OverlapScopes ??= new();
+        for (var i = 0; i < scopes.Count; i++)
+        {
+            if (ReferenceEquals(scopes[i].Right, b))
+            {
+                return scopes[i].Scope;
+            }
+        }
+
+        var scope = new BindingScope(a.Declaration);
+        scopes.Add((b, scope));
+        return scope;
+    }
 
     // SPEC 8.9.1: two conformances' conditions exclude each other when a's chain and b's hold facts of one subject that cannot both
     // hold: identities to different complete Types, or Semantics sets that share no member. Each TypeIdentity or Semantics fact of a's
@@ -140,10 +156,7 @@ public sealed partial class Binding
                     continue;
                 }
 
-                if (!this.conformanceOverlapScopes.TryGetValue((a, b), out var scope))
-                {
-                    this.conformanceOverlapScopes.Add((a, b), scope = new(a.Declaration));
-                }
+                var scope = OverlapScope(a, b);
 
                 // SPEC 8.9.2: the pair's intersection is a's conformance scope with every premise of b's, read along b's scope chain where
                 // b keeps them (a declared path's in its block, an inherited path's in its own scope), as the Contract agreement check

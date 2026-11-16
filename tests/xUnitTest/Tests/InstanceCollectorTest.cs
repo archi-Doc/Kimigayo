@@ -517,7 +517,8 @@ public sealed partial class InstanceCollectorTest
         var c = MirBuildTest.Compile(CLayoutP + "func h<T>(value: T) => ()\nfunc f(value: " + Huge + ") => h(value@move)\n" +
             "group J\n    public var j: i32 = 0\ngroup K\n    public var k: i32 = P.init(1, ()).n\n");
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
-        var program = new MirBuilder(c).Build(); // Uncollected: a version's records are reset only with its bodies (MirProgram.Clear).
+        var program = new MirBuilder(c).Build(SyntaxTable.LibraryModule + 1); // Uncollected: a version's records are reset only with its bodies (MirProgram.Clear).
+        new MirAnalysis(c.Types).Run(program, 1); // The collector replays stepped bodies (its input contract, PLAN G951).
         Assert.Empty(program.Findings);
         Break(program, "f", MirBodyKind.Fn);
         Break(program, "j", MirBodyKind.StaticInit);
@@ -535,7 +536,8 @@ public sealed partial class InstanceCollectorTest
     {
         var c = MirBuildTest.Compile(InBlock + "require outer(3) == outer(3) and outer(true) == outer(true) else => $abort(\"nested\")\n");
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
-        var program = new MirBuilder(c).Build(); // Uncollected: a version's records are reset only with its bodies (MirProgram.Clear).
+        var program = new MirBuilder(c).Build(SyntaxTable.LibraryModule + 1); // Uncollected: a version's records are reset only with its bodies (MirProgram.Clear).
+        new MirAnalysis(c.Types).Run(program, 1); // The collector replays stepped bodies (its input contract, PLAN G951).
         Break(program, "inner", MirBodyKind.Fn);
         var set = new InstanceCollector(c.Types, c.Layout).Run(program, 1);
         Assert.Equal([(DiagnosticCode.Unsupported_Kd, "inner(x)")], program.Records(MirRecordClass.Collection).Select(x => (x.Code, c.SyntaxOf(x.Subject).ToString())));
@@ -2180,6 +2182,33 @@ public sealed partial class InstanceCollectorTest
         Assert.Equal(gap ? [(DiagnosticCode.Unsupported_Kd, add.Source.Syntax)] : [], program.Records(MirRecordClass.Collection).Select(static x => (x.Code, x.Subject)));
     }
 
+    // PLAN G950 (the Back's C-378 (2); design §R1.4's M3 with a record, G950-0's review N1): A3b is judged work, run in the root loop every
+    // version and never kept with a library body's template: under the library's root range, one collector over two versions records a
+    // closed operation of the table seeded into a library body after each build (an i128 division of a new local in a new unreachable
+    // block, as above) in each version, at its location, once.
+    [Fact]
+    public void TheLibraryRangeChecksALibraryBodyInEveryVersion()
+    {
+        var c = Compilation.CreateForTest();
+        var (builder, analysis, collector) = (new MirBuilder(c), new MirAnalysis(c.Types), new InstanceCollector(c.Types, c.Layout));
+        var wide = BoundType.Primitives["i128"];
+        for (var version = 1; version <= 2; version++)
+        {
+            Assert.True(c.Bind().IsComplete, string.Join('\n', c.Binding.Issues));
+            var program = analysis.Run(builder.Build(SyntaxTable.LibraryModule + 1), 1); // The collector replays stepped bodies (PLAN G951).
+            var body = program.LibraryBodies[0];
+            var source = body.Blocks[0].Terminator.Source;
+            var operand = MirOperand.Copy(new(body.AddLocal(new(wide, MirLocalKind.Temp, source)))); // A stored body interns nothing.
+            var first = body.AddOperand(operand);
+            _ = body.AddOperand(operand);
+            var block = body.AddBlock();
+            body.Push(block, MirStatement.Assign(new(0), new(MirRvalueKind.BinaryOp, (byte)MirBinaryOp.Div, Start: first, Count: 2, Type: wide), source));
+            body.Terminate(block, MirTerminator.Unreachable(source));
+            _ = collector.Run(program, SyntaxTable.LibraryModule + 1);
+            Assert.Equal([(version, DiagnosticCode.Unsupported_Kd, body.Subject(source))], program.Records(MirRecordClass.Collection).Select(x => (version, x.Code, x.Subject)));
+        }
+    }
+
     // K 4.7: an operation whose Types depend on slots is no definition-stage record; without an instance it has none.
     [Fact]
     public void AnOpenOperationIsNoDefinitionStageRecord()
@@ -2441,7 +2470,8 @@ public sealed partial class InstanceCollectorTest
         var c = ModuleBindingTest.Create("public func main() -> ()\n    _ = Lib.Api.take(1)\n    _ = Lib.Api.grow<i32>(1, 3)\n    return\n", library);
         Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c));
         Assert.True(c.Binding.CheckStartup(OutputKind.Application).IsComplete);
-        var program = new MirBuilder(c).Build(); // Uncollected: the compilation's own collection roots both modules.
+        var program = new MirBuilder(c).Build(SyntaxTable.LibraryModule + 1); // Uncollected: the compilation's own collection roots both modules.
+        new MirAnalysis(c.Types).Run(program, 1); // The collector replays stepped bodies (its input contract, PLAN G951).
         Assert.Empty(program.Records(MirRecordClass.Construction));
         var main = program.Bodies.ToArray().Single(static x => x.Key is { Kind: MirBodyKind.Fn, Decl.Name: "main" });
         Assert.Contains(

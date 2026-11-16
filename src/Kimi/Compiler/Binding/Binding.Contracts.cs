@@ -143,7 +143,7 @@ public sealed partial class Binding
         this.reentryReads = 0;
         this.contractHeadersReady = false;
         this.bindingConstraintTypes = false;
-        this.impls.Reset();
+        this.impls.Begin(this.storageVersion); // Every identity and path is stale (DECISIONS BU-220).
         this.conformancesRegistered = false;
 
         this.projectionUses.Clear();
@@ -157,21 +157,6 @@ public sealed partial class Binding
         foreach (var group in this.requirementGroups.Values)
         {
             group.Active = false;
-        }
-
-        foreach (var binding in this.associatedBindings.Values)
-        {
-            binding.Candidates.Clear();
-            binding.Result = null;
-            binding.Inferred = null;
-            binding.InferenceSource = null;
-            binding.InferenceConflict = false;
-            binding.Problem = InferenceProblem.None;
-            binding.ProblemSource = null;
-            binding.ProblemDetail = null;
-            binding.EvidenceSources.Clear();
-            binding.State = 0;
-            binding.FormationScope?.Reset();
         }
     }
 
@@ -476,21 +461,15 @@ public sealed partial class Binding
         {
             // Body/header validation may invalidate an earlier declaration-side witness of the sources. The Kimi library's
             // declarations are valid and fixed (a malformed library fails the pass), so a library conformance proven before the
-            // bodies stays proven, and only an unproven one is judged again.
-            foreach (var identity in this.impls.Identities)
+            // bodies stays proven, and only an unproven one is judged again: the sources' are the program part (ImplTable's store rule).
+            foreach (var identity in this.impls.Identities.Program)
             {
-                if (!this.IsLibraryDeclaration(identity.Type.Declaration))
-                {
-                    identity.IsVerified = false;
-                }
+                identity.IsVerified = false;
             }
 
-            for (var i = 0; i < this.impls.Paths.Count; i++)
+            foreach (var path in this.impls.Paths.Program)
             {
-                if (!this.IsLibraryDeclaration(this.impls.Paths[i].Type.Declaration))
-                {
-                    this.impls.Paths[i].IsVerified = false;
-                }
+                path.IsVerified = false;
             }
         }
 
