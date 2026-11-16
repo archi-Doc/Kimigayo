@@ -9,13 +9,14 @@ namespace Kimi.Compiler.Backend;
 // DECISIONS R5-M126, R5-M141): a Builtin item's function under its requirement's signature in its instance (ModuleCodegen.Shim: the
 // admitting call's substitution, a caller-location function), which a Requirement call, a requirement Item's Value call and its adapter
 // entry call (FunctionCodegen.Calls' Witness). Its operands are ref/Self addresses, read in place; a comparison acquires, destroys and
-// reports nothing. By its function's compiler function, one of the Shim disposition's closed kinds (PD21), as the collector's shim targets:
-// - BuiltinEquals and BuiltinCompare: the comparison item's node (InstanceCollector.Comparison; DECISIONS R5-M166) by its direct parts,
+// reports nothing. By its function's Contract (TyCtxt.ShimContract; the Shim disposition, Binding.PrepareBuiltinTargets), as the collector's
+// shim targets:
+// - Equatable and Comparable: the comparison item's node (InstanceCollector.Comparison; DECISIONS R5-M166) by its direct parts,
 //   whose items and witnesses are the item's targets in order: a Tuple's parts left to right at their Field offsets in its Self's layout,
 //   each but the last deciding when it is not equal (equals' false, compare's non-zero i32; SPEC 13.4.1), its value then returned; a ref
 //   layer's referent; a Builtin leaf through the operator table's column of its Type under the item's mode (Leaf); any other part its
 //   target's run (Witness: a comparison item, a Mapping item or a witness body, its virtual slot included) on the two part addresses.
-// - BuiltinArithmetic: its Contract's MIR operator (MirTypes.ArithmeticOperation, SPEC 13.3.3) through the operator table's row, as a
+// - an arithmetic Contract (ArithmeticContracts.IsArithmetic): its MIR operator (MirTypes.ArithmeticOperation, SPEC 13.3.3) through the operator table's row, as a
 //   statement's, on the loaded operands with its check, which Aborts at the location the shim received (SPEC 22.5.1).
 // A node the collector refuses (a None leaf, no node) is its record at the item's admission, which stops generation; an arithmetic
 // operation the capability table refuses is the collector's record at each requesting site, whose edge admits no item.
@@ -50,17 +51,8 @@ internal sealed partial class FunctionCodegen
             return;
         }
 
-        var function = key.Symbol!;
-        var contract = TyCtxt.Contract(function);
-        switch (function.CompilerFunction)
-        {
-            case CompilerFunctionKind.BuiltinArithmetic:
-                this.Returned(this.Arithmetic(contract, self));
-                return;
-            default:
-                this.Returned(this.Compare(contract.LibraryDeclaration, (ComparisonMode)key.Variant, self));
-                return;
-        }
+        var contract = TyCtxt.ShimContract(key.Symbol!);
+        this.Returned(ArithmeticContracts.IsArithmetic(contract) ? this.Arithmetic(contract, self) : this.Compare(contract, (ComparisonMode)key.Variant, self));
     }
 
     // A comparison's or an arithmetic operation's value returned (ReturnValue) and the function ended; nothing after a record (no value).
@@ -214,14 +206,14 @@ internal sealed partial class FunctionCodegen
     // SPEC 13.3.3: the built-in operation of an arithmetic shim's Contract, its MIR operator (MirTypes.ArithmeticOperation) through the
     // operator table's row (RowOf), on its loaded operands (a unary one's on both sides), with its check, which Aborts at the location the
     // shim received (Apply, Location).
-    private Value? Arithmetic(BindingSymbol contract, BoundType self)
+    private Value? Arithmetic(KimiDeclarationId? contract, BoundType self)
     {
         if (this.Laid(self) is not { } lowering)
         {
             return null; // A broken contract, recorded.
         }
 
-        var (kind, op) = MirTypes.ArithmeticOperation(contract.LibraryDeclaration);
+        var (kind, op) = MirTypes.ArithmeticOperation(contract);
         var left = this.Loaded(self, lowering, new('p', 0));
         var right = kind == MirRvalueKind.BinaryOp ? this.Loaded(self, lowering, new('p', 1)) : left;
         return this.Apply(RowOf(kind, op), Column(kind, op, self), left, right, proven: false, default);
