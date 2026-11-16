@@ -259,6 +259,23 @@ public sealed class BoundConformancePath : ICheckCause
 
     internal bool Invalid { get; set; }
 
+    // The facts a component keeps by this path and a second key (DECISIONS BU-220), each a small list on the path, kept with it across
+    // passes as ImplTable keeps the path, null until its first entry; the owning component's accessor is the list's one reader and writer.
+    // Binding.FunctionWitnesses: a function requirement's callable correspondence (FunctionWitness).
+    internal List<(BoundRequirement Requirement, BoundFunctionWitness Witness)>? FunctionWitnesses { get; set; }
+
+    // Binding.ContractMatching: a function requirement's premises scope (CompatibleRequirement).
+    internal List<(BoundRequirement Requirement, BindingScope Premises)>? WitnessScopes { get; set; }
+
+    // Binding.PropertyMatching: a non-standard Property operation's input and Origin bindings (OperationOrigins).
+    internal List<(BoundAccessor Requirement, BoundOrigin[] Inputs, BoundOrigin[] Origins)>? PropertyWitnessOrigins { get; set; }
+
+    // Binding.PropertyWitnesses: a standard Property operation's bridge accessor (PropertyWitnessFunction).
+    internal List<(BoundAccessor Requirement, BoundAccessor Bridge, PropertyWitnessKind Kind)>? PropertyBridges { get; set; }
+
+    // Binding.ContractTypes: the hop chains resolving a step through this path, one per step and inner chain (Hop).
+    internal List<Binding.ResolutionHops>? HopChains { get; set; }
+
     /// <summary>Gets a verified implementation by requirement identity, without source member lookup.</summary>
     /// <param name="requirement">The original requirement declaration identity.</param>
     /// <returns>The selected member, or null while the mapping is unverified or has no such requirement.</returns>

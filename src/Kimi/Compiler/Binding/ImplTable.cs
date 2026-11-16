@@ -14,7 +14,8 @@ using Kimi.Compiler.Parsing;
 //   Type), Find(type, contract), Path(key) and TryPath(key).
 // - Invariants: a path joins Paths and its identity's paths only at its first registration in a pass, so both follow the registrars'
 //   order and a derived Type's follow its base's; Register names the root path and the root's own call registers it; each key keeps
-//   one object across binds; Reset returns every path and identity to unregistered. The lists are the table's own: no reader adds to
+//   one object across binds, and with a path the facts other components keep by it and a second key (its satellite lists, DECISIONS
+//   BU-220), which Reset leaves; Reset returns every path and identity to unregistered. The lists are the table's own: no reader adds to
 //   or removes from them (they stay Lists so that a reader's foreach allocates nothing).
 // - Prohibitions: no verification (Binding.ContractMatching, Binding.InheritedConformances), availability at a use
 //   (Binding.ResolveConformance), Self-clause rule or diagnostic here.

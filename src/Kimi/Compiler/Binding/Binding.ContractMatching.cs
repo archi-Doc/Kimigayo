@@ -6,8 +6,6 @@ namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
-    private readonly Dictionary<(BoundConformancePath Conformance, BoundRequirement Requirement), BindingScope> witnessScopes = new();
-
     private static bool SameGenericShape(FunctionKoto requirement, FunctionKoto implementation)
     {
         if (requirement.GenericArguments.Count != implementation.GenericArguments.Count)
@@ -52,6 +50,23 @@ public sealed partial class Binding
     {
         path.Unsupported &= proof == ConstraintProof.Proven;
         return path.Unsupported ? ConstraintProof.Unknown : proof;
+    }
+
+    // A function requirement's premises scope on its path, kept with the path (BoundConformancePath.WitnessScopes).
+    private static BindingScope WitnessScope(BoundConformancePath path, BoundRequirement identity, FunctionKoto requirement)
+    {
+        var scopes = path.WitnessScopes ??= new();
+        for (var i = 0; i < scopes.Count; i++)
+        {
+            if (scopes[i].Requirement == identity)
+            {
+                return scopes[i].Premises;
+            }
+        }
+
+        var premises = new BindingScope(requirement);
+        scopes.Add((identity, premises));
+        return premises;
     }
 
     // SPEC 9.4: whether the accessibility of every Type a Type names covers a and b, each distinct part judged once per call (DECISIONS
@@ -479,12 +494,7 @@ public sealed partial class Binding
         }
 
         var identity = new BoundRequirement(requirement.BoundSymbol!, conformance.Contract);
-        var key = (conformance, identity);
-        if (!this.witnessScopes.TryGetValue(key, out var premises))
-        {
-            this.witnessScopes.Add(key, premises = new(requirement));
-        }
-
+        var premises = WitnessScope(conformance, identity, requirement);
         premises.Reset();
         premises.Parent = scope;
         var environment = premises.Constraints ??= new();
