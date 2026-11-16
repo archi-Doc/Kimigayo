@@ -95,7 +95,6 @@ public sealed partial class Binding
 
     private void ComputeOriginRequirements()
     {
-        this.activeOriginRequirements.Clear();
         this.originRequirementQueue.Clear();
         // Retained work survives between passes so summaries and lists are reused. A pass
         // stamp keeps declarations that dropped out from accumulating dependents forever.
@@ -201,6 +200,8 @@ public sealed partial class Binding
                 }
             }
         }
+
+        this.activeOriginRequirements.Clear(); // Call scratch, emptied at the call's end (PLAN G949 S1-e).
     }
 
     private bool VisitRequirementTypes(OriginRequirementWork work, bool collectEdges)
