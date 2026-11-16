@@ -23,7 +23,9 @@ namespace XunitTest;
 //   the per-query answer tables (TypeMemo) hold no fact after a pass and are not listed;
 // - every library declaration's symbol and scope, field by field: the Contract, Property, Schema and Adt contents, the slots R8-M32 does
 //   not print, and the declaration query states;
-// - the library's HIR rows, parsed and synthesized, as R8-M32's printer prints them (S1-0b r2, the dispositions review's C5);
+// - the library's nodes, parsed and synthesized, as R8-M32's printer prints them: each node's line by location and its HIR row by node
+//   id (S1-0b r2 and r3, the dispositions review's C5; a parsed id is fixed by the library's table, a synthesized one is equal across
+//   programs from G949 S1-e);
 // - the aggregates' library parts: Issues, Obligations, LibraryImports (Binding's lists) and the effect obligations.
 // Values print through declarations and nodes (by location), Types (by printed form) and pass stamps (by their distance from the latest
 // pass), so synthesized ids (R8-M32's Temporary 1) do not enter a table's row; rows compare as a sorted multiset. How a store compares
@@ -42,7 +44,7 @@ namespace XunitTest;
 // The layer is clean since G949 S1-e (S1-r1 waited for it): before it the rows differed in the lazy library facts S1-e makes eager (the
 // dispositions' rows 1, 1b and 2), in the call scratch it empties (rows 8 and 17, and a library Origin requirement work's Dependents,
 // which held the program's consumers) and in the synthesized nodes' HIR rows, which Milestones 27 and 30 numbered by their uses (R8-M32's
-// Temporary 1). The fast row runs in every Unit, about 0.2 s per program; the corpus row (593 programs, about 75 to 220 s) is Explicit,
+// Temporary 1). The fast row runs in every Unit, about 0.4 s per program; the corpus row (593 programs, a few minutes) is Explicit,
 // run by each G949 unit and window.
 public partial class KimiLibraryShapeTest
 {
@@ -69,21 +71,28 @@ public partial class KimiLibraryShapeTest
         SameLayerAsTheEmptyPrograms(string.Empty);
     }
 
-    // The epoch rule's invariant: ResetCapabilities, which begins every pass (Binding.Pass), ends the capability epoch, so no entry of a
-    // per-epoch memo is current after it. Every component summary is stale (its Epoch is not summaryEpoch); Enumerate's kept pool is
-    // free (enumerateKeptPoolNext 0: the kept lists are enumerateKept's, review C1); every capability work holds CapabilityWork.Reset's
-    // state; every other epoch store is empty. Reset leaves a work's Site and Fact (review N2). Site is the limit site of the work's own
-    // Closure signature, its Use that signature's binder and its Needed flag cleared by ResetCapabilities (ClearNeededSites); only the
-    // work's own evaluation reads it. Fact, the U fact of its last Unknown, is payload no fixpoint compares (design-r2 Amendment 4):
-    // each evaluation rewrites it, but a consumer that requests the work while it waits in the queue reads it beside the reset Unknown
-    // (RequestCapability's read of the queued work), so it is not asserted here (PLAN G949 S1-0b r2's report).
+    // The epoch rule's invariant: ResetCapabilities, which begins every pass (its one call is ResetPass's, which the pass driver's RunPass
+    // runs first in each pass: ArchitectureRulesTest's row), ends the capability epoch, so no entry of a per-epoch memo is current after
+    // it. Every component summary is stale (its Epoch is not summaryEpoch); Enumerate's kept pool is free (enumerateKeptPoolNext 0: the kept lists are
+    // enumerateKept's, review C1); every capability work holds CapabilityWork.Reset's state, its Fact included; every other epoch store
+    // is empty. Reset leaves only a work's Site (review N2): the limit site of the work's own Closure signature, its Use that signature's
+    // binder and its Needed flag cleared by ResetCapabilities (ClearNeededSites); only the work's own evaluation reads it. Fact, the U fact
+    // of its last Unknown, is payload no fixpoint compares (design-r2 Amendment 4), and a consumer that requests the work while it waits
+    // in the queue reads it beside the reset Unknown (RequestCapability's read of the queued work), for record selection only; Reset
+    // empties it since G949 S1-e, so that read never hands out a previous epoch's Fact (S1-0b r2's review, Finding 3).
     [Fact]
     public void TheCapabilityMemosEndWithTheirEpoch()
     {
         var binding = Bound("example/Hello").Binding;
+
+        // Hello's works end with no U fact, so one work keeps one as an earlier epoch's Unknown leaves it: without Reset's clear the
+        // Fact check below fails.
+        var work = ((IDictionary)LibraryLayer.ValueAt(binding, "Binding.capabilityNodes")).Values.Cast<object>().First();
+        var fact = RuntimeHelpers.GetUninitializedObject(typeof(Binding).GetNestedType("CallableUnknown", BindingFlags.NonPublic)!);
+        work.GetType().GetProperty("Fact", BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(work, fact);
         typeof(Binding).GetMethod("ResetCapabilities", BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(binding, [binding.Result.Mode]);
         var epoch = (int)LibraryLayer.ValueAt(binding, "Binding.summaryEpoch");
-        string[] reset = ["Result", "Assumed", "Evaluated", "Queued", "Pending", "Parent", "Cause", "OwnCause", "Origin", "Parts", "Reads", "Dependents"];
+        string[] reset = ["Result", "Assumed", "Evaluated", "Queued", "Pending", "Parent", "Cause", "OwnCause", "Fact", "Origin", "Parts", "Reads", "Dependents"];
         foreach (var store in LibraryLayer.StoresOf(LibraryLayer.Rule.Epoch))
         {
             var value = (IEnumerable)LibraryLayer.ValueAt(binding, store);
@@ -257,7 +266,7 @@ public partial class KimiLibraryShapeTest
         private static readonly HashSet<(Type, string)> Numbers = [.. Disposition.Where(static x => x.Value.Rule == Rule.Number)
             .Select(static x => NumberField(x.Key)).Where(static x => x.HasValue).Select(static x => x!.Value)];
 
-        // Compilation-wide roots and the source text: never listed (the HIR rows print through R8-M32's printer).
+        // Compilation-wide roots and the source text: never listed (the library's nodes print through R8-M32's printer).
         private static readonly HashSet<Type> Roots = [typeof(Compilation), typeof(Kotonoha), typeof(CodeContext), typeof(SyntaxTable), typeof(HirTables)];
 
         // Per-query answer tables (Binding.TypeMemo, DECISIONS BU-19): an entry is read only by the query that wrote it, and the next query
@@ -313,7 +322,8 @@ public partial class KimiLibraryShapeTest
                 }
             }
 
-            // The library's HIR rows (review C5): the parsed tree's, then each synthesized node's, each row headed by its node's id.
+            // The library's nodes as R8-M32's printer prints them (review C5), the parsed tree's, then each synthesized node's: a node's line
+            // (its binding state, failure, Type or Origin, symbol and call facts, by location) and its HIR row (headed by its node's id).
             var (hir, table) = (new Printer(true), c.Library.Kotonoha.Syntax);
             hir.Visit(c.Library.Kotonoha.RootKoto);
             for (var id = table.ParsedCount + 1; id <= table.Count; id++)
@@ -321,6 +331,7 @@ public partial class KimiLibraryShapeTest
                 hir.Node(table.Nodes[id]!);
             }
 
+            layer.rows.AddRange(hir.ToString().Split('\n', StringSplitOptions.RemoveEmptyEntries).Select(static x => "node " + x));
             layer.rows.AddRange(hir.Hir.Split('\n', StringSplitOptions.RemoveEmptyEntries).Select(static x => "hir " + x));
             var effects = new List<EffectObligation>(); // Computed on request (MIR's), after the tables: its lazy writes (census O5) stay out of them.
             c.Binding.EffectObligations(effects);

@@ -123,7 +123,8 @@ public sealed partial class Binding
 
         internal List<CapabilityWork> Reads { get; } = new();
 
-        // The U fact its Unknown rests on, from the final iteration; never compared (design-r2 Amendment 4).
+        // The U fact its Unknown rests on, from the final iteration; never compared (design-r2 Amendment 4). Reset empties it, so a
+        // consumer that reads the work before its next evaluation reads none, as in its first epoch (PLAN G949 S1-e).
         internal CallableUnknown? Fact { get; set; }
 
         // For Owned, the first Origin not proven `static` that a verdict other than Proven rests on, and the parts that are not Proven,
@@ -148,6 +149,7 @@ public sealed partial class Binding
             this.Parent = null;
             this.Cause = null;
             this.OwnCause = null;
+            this.Fact = null;
             this.Origin = null;
             this.Parts?.Clear();
             this.Reads.Clear();
