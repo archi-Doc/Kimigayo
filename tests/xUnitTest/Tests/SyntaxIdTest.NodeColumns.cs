@@ -26,8 +26,10 @@ public partial class SyntaxIdTest
         foreach (var field in fields)
         {
             var column = field.GetValue(columns)!;
-            var directory = Read<int[]>(column, "directory");
-            Assert.True(directory.Length * PagedColumn<int>.PageSize >= 40, $"{field.Name} is not resized.");
+            var pages = Read<int>(column, "pages");
+            Assert.True(pages * PagedColumn<int>.PageSize >= 40, $"{field.Name} is not resized.");
+            var directory = new int[pages]; // A column's directory comes with its first write.
+            column.GetType().GetField("directory", Members)!.SetValue(column, directory);
             var arena = Array.CreateInstance(field.FieldType.GetGenericArguments()[0], PagedColumn<int>.PageSize);
             arena.SetValue(rows[field] = NonDefault(arena.GetType().GetElementType()!), 1);
             column.GetType().GetField("arena", Members)!.SetValue(column, arena);

@@ -263,6 +263,13 @@ internal struct NodeColumns
         this.Scopes.Grow(length);
     }
 
+    // The library's columns start at their stated slots (KimiLibrarySize: no program row lands in them).
+    internal void Reserve(KimiLibrarySize.Tables stated)
+    {
+        this.Symbols.Reserve(stated.Declarations);
+        this.Scopes.Reserve(stated.Scopes);
+    }
+
     internal readonly NodeColumns Renumbered(int length) => new() { Symbols = this.Symbols.Renumbered(length), Scopes = this.Scopes.Renumbered(length) };
 
     internal readonly void Move(int from, ref NodeColumns target, int to)

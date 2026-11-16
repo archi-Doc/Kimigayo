@@ -42,6 +42,7 @@ public sealed partial class Binding
         this.types = new(this, this.Library);
         this.symbols = new(this);
         this.scopes = new(this);
+        this.Library.Kotonoha.Syntax.Hir.Families.Reserve(KimiLibrarySize.Stated);
         foreach (var symbol in this.Library.RegisteredSymbols)
         {
             this.symbols.Add(symbol.Declaration, symbol);
@@ -73,8 +74,8 @@ public sealed partial class Binding
     internal KimiLibrarySize.Tables TableCounts
         => new(
             this.nodes.Count,
-            this.symbols.Count,
-            this.scopes.Count,
+            this.Library.Kotonoha.Syntax.Hir.Families.Symbols.Used,
+            this.Library.Kotonoha.Syntax.Hir.Families.Scopes.Used,
             this.types.KeyCount,
             this.constraints.Count,
             this.pendingAssociatedTypes.Count,
@@ -83,13 +84,13 @@ public sealed partial class Binding
             this.capabilityNodes.Count,
             this.substitutedParts.Count);
 
-    /// <summary>Gets the free slots of the tables KimiLibrarySize sizes: each table's capacity less its entries. A node family's column
-    /// (symbols, scopes) is its module's own, so a program's rows never land in a store holding the library's: no capacity bounds them.</summary>
+    /// <summary>Gets the free slots of the tables KimiLibrarySize sizes: each table's capacity less its entries; a node family's column
+    /// (symbols, scopes) its arena's slots no page holds.</summary>
     internal KimiLibrarySize.Tables TableFree
         => new(
             this.nodes.Capacity - this.nodes.Count,
-            int.MaxValue,
-            int.MaxValue,
+            this.Library.Kotonoha.Syntax.Hir.Families.Symbols.Free,
+            this.Library.Kotonoha.Syntax.Hir.Families.Scopes.Free,
             this.types.KeyFree,
             this.constraints.Capacity - this.constraints.Count,
             this.pendingAssociatedTypes.Capacity - this.pendingAssociatedTypes.Count,

@@ -7,25 +7,36 @@ namespace Kimi.Compiler;
 
 // PagedColumn<T> (DECISIONS BU-220): the one store form of Binding's per-module node families (NodeColumns, HirTables.cs).
 // - Responsibility: a column indexed by a dense id (a node's SyntaxId in its module) in pages of PageSize slots, carved from one arena
-//   at a page's first write; each operation once: Get, Ref, Empty, Grow, Enumerate, MoveTo, and Renumbered for a renumbering.
+//   at a page's first write; each operation once: Get, Ref, Empty, Grow, Reserve, Enumerate, MoveTo, and Renumbered for a renumbering.
 // - Inputs: ids below the count Grow last gave (the module's id count, SyntaxTable.Allocate). Outputs: the rows, by value or by reference.
-// - Invariants: default(T) is an absent row, so the absent page reads default; a directory entry is 0 for an absent page, else the page's
-//   offset in the arena plus 1, so the first page (offset 0) is distinct from absent; a carved page never moves within the arena, which
-//   grows by doubling and keeps its capacity through Empty; a renumbering moves each present row into the spare arena, so a kept
-//   column's two arenas alternate and allocate again only when the module grew.
+// - Invariants: default(T) is an absent row, so the absent page reads default; the directory is allocated at the column's first write
+//   (a column without rows has none); a directory entry is 0 for an absent page, else the page's offset in the arena plus 1, so the first
+//   page (offset 0) is distinct from absent; a carved page never moves within the arena, which starts at its reserved size (Reserve: the
+//   library's stated size, KimiLibrarySize), grows by doubling, never past the module's dense size (every page carved), and keeps its
+//   capacity through Empty; a renumbering moves each present row into the spare arena, so a kept column's two arenas alternate and
+//   allocate again only when the module grew.
 // - Prohibitions: no hashing; no store decision or key rule (a family's one accessor decides both); no read or write at or past Grow's
 //   count; a reference Ref returns is used before the column's next Ref, since a carve can replace the arena.
 internal struct PagedColumn<T>
 {
-    /// <summary>The slots of a page: the least bytes of the measured page sizes for the node families with library rows (G949 D2b-d §3).</summary>
-    internal const int PageSize = 16;
+    /// <summary>The slots of a page: the least bytes of the measured page sizes for the node families with library rows (G949 D2b-d §3,
+    /// re-measured with N5-1's first families: 8 at their spread, about one row in 15 ids).</summary>
+    internal const int PageSize = 8;
 
-    private const int PageShift = 4;
+    private const int PageShift = 3;
 
     private int[]? directory;
     private T[]? arena;
     private int used;
     private T[]? spare;
+    private int pages;
+    private int reserve;
+
+    /// <summary>Gets the slots the column's pages hold.</summary>
+    internal readonly int Used => this.used;
+
+    /// <summary>Gets the arena's slots no page holds yet.</summary>
+    internal readonly int Free => (this.arena?.Length ?? 0) - this.used;
 
     /// <summary>Gets a row; an absent row, its page carved or not, reads default.</summary>
     /// <param name="id">The id.</param>
@@ -39,12 +50,13 @@ internal struct PagedColumn<T>
     /// <returns>The row.</returns>
     internal ref T Ref(int id)
     {
-        ref var page = ref this.directory![id >> PageShift];
+        this.directory ??= new int[this.pages];
+        ref var page = ref this.directory[id >> PageShift];
         if (page == 0)
         {
             if (this.arena is null || this.used == this.arena.Length)
             {
-                Array.Resize(ref this.arena, Math.Max(PageSize, this.used * 2));
+                Array.Resize(ref this.arena, Math.Min(Math.Max(Math.Max(PageSize, this.reserve), this.used * 2), this.pages * PageSize));
             }
 
             this.arena.AsSpan(this.used, PageSize).Clear();
@@ -71,9 +83,20 @@ internal struct PagedColumn<T>
         this.used = 0;
     }
 
-    /// <summary>Gives the column room for the ids below a count; its pages stay.</summary>
+    /// <summary>Gives the column room for the ids below a count; its pages stay, and a column without rows allocates nothing.</summary>
     /// <param name="count">The module's id count.</param>
-    internal void Grow(int count) => Array.Resize(ref this.directory, (count + PageSize - 1) >> PageShift);
+    internal void Grow(int count)
+    {
+        this.pages = (count + PageSize - 1) >> PageShift;
+        if (this.directory is not null)
+        {
+            Array.Resize(ref this.directory, this.pages);
+        }
+    }
+
+    /// <summary>Sets the arena's first allocation: a column whose size is stated (the library's, KimiLibrarySize) starts at it.</summary>
+    /// <param name="slots">The slots.</param>
+    internal void Reserve(int slots) => this.reserve = slots;
 
     /// <summary>Gets the present rows in ascending id order.</summary>
     /// <returns>The rows.</returns>
@@ -100,7 +123,7 @@ internal struct PagedColumn<T>
     {
         var arena = this.spare ?? (this.arena is { } current ? new T[current.Length] : []);
         Array.Clear(arena);
-        var column = new PagedColumn<T> { arena = arena, spare = this.arena };
+        var column = new PagedColumn<T> { arena = arena, spare = this.arena, reserve = this.reserve };
         column.Grow(count);
         return column;
     }

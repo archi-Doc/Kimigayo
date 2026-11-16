@@ -7,22 +7,28 @@ using Xunit;
 namespace XunitTest;
 
 /// <summary>PagedColumn&lt;T&gt; (DECISIONS BU-220; G949 D2b-d §1.2, §4): the one store form of Binding's node families, a dense-id column in
-/// pages of 16 slots carved from one arena at a page's first write.</summary>
+/// pages of PageSize slots carved from one arena at a page's first write.</summary>
 public class PagedColumnTest
 {
+    private const int P = PagedColumn<int>.PageSize;
+
     // A page is carved at its first write, cleared, and only then: two ids of one page take one page, an id of another page a second.
+    // The directory itself comes with the first write, so a column without rows allocates nothing, also after Grow.
     [Fact]
     public void APageIsCarvedAtItsFirstWrite()
     {
         var column = Column<int>(100);
-        Assert.Equal(0, column.Get(37));
+        column.Grow(200);
+        Assert.Null(Field<int[]?>(column, "directory"));
+        Assert.Equal(0, column.Get((3 * P) + 1));
         Assert.Equal(0, Used(column));
-        column.Ref(37) = 7;
-        column.Ref(40) = 8;
-        Assert.Equal(PagedColumn<int>.PageSize, Used(column));
-        Assert.Equal((7, 8, 0, 0), (column.Get(37), column.Get(40), column.Get(36), column.Get(5)));
+        column.Ref((3 * P) + 1) = 7;
+        column.Ref((3 * P) + 4) = 8;
+        Assert.Equal(200 / P, Field<int[]>(column, "directory").Length);
+        Assert.Equal(P, Used(column));
+        Assert.Equal((7, 8, 0, 0), (column.Get((3 * P) + 1), column.Get((3 * P) + 4), column.Get(3 * P), column.Get(5)));
         column.Ref(5) = 9;
-        Assert.Equal(2 * PagedColumn<int>.PageSize, Used(column));
+        Assert.Equal(2 * P, Used(column));
         Assert.Equal(new[] { 9, 7, 8 }, Rows(column));
     }
 
@@ -32,11 +38,11 @@ public class PagedColumnTest
     public void TheFirstPageIsDistinctFromAnAbsentOne()
     {
         var column = Column<int>(100);
-        column.Ref(40) = 4;
-        Assert.Equal(1, Field<int[]>(column, "directory")[40 >> 4]);
-        Assert.Equal((4, 0, 0), (column.Get(40), column.Get(0), column.Get(5)));
+        column.Ref(5 * P) = 4;
+        Assert.Equal(1, Field<int[]>(column, "directory")[5]);
+        Assert.Equal((4, 0, 0), (column.Get(5 * P), column.Get(0), column.Get(5)));
         column.Ref(5) = 5;
-        Assert.Equal((4, 5), (column.Get(40), column.Get(5)));
+        Assert.Equal((4, 5), (column.Get(5 * P), column.Get(5)));
         Assert.Equal(new[] { 5, 4 }, Rows(column));
     }
 
@@ -73,6 +79,39 @@ public class PagedColumnTest
         column.Grow(400);
         column.Ref(399) = 399;
         Assert.Equal(new[] { 2, 3, 17, 33, 399 }, Rows(column));
+    }
+
+    // A reserved column (the library's, KimiLibrarySize) allocates its stated slots at its first carve and nothing more until they are
+    // full; the reservation survives a renumbering.
+    [Fact]
+    public void AReservedColumnStartsAtItsStatedSize()
+    {
+        var column = Column<int>(100 * P);
+        column.Reserve(10 * P);
+        column.Ref(0) = 1;
+        var arena = Field<int[]>(column, "arena");
+        Assert.Equal(10 * P, arena.Length);
+        for (var page = 1; page < 10; page++)
+        {
+            column.Ref(page * 7 * P) = page;
+        }
+
+        Assert.Same(arena, Field<int[]>(column, "arena"));
+        Assert.Equal(10 * P, Field<int>(column.Renumbered(100 * P), "reserve"));
+    }
+
+    // The arena doubles, never past the module's dense size: a module of ten pages, every page carved, ends at ten pages, not sixteen.
+    [Fact]
+    public void GrowthStopsAtTheModulesDenseSize()
+    {
+        var column = Column<int>(10 * P);
+        for (var page = 0; page < 10; page++)
+        {
+            column.Ref(page * P) = page + 1;
+        }
+
+        Assert.Equal(10 * P, Field<int[]>(column, "arena").Length);
+        Assert.Equal(Enumerable.Range(1, 10), Rows(column));
     }
 
     // A renumbering moves each present row into the spare arena, so two arenas alternate: the second renumbering reuses the first's
