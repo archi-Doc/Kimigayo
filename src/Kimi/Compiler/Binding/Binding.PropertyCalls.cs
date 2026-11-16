@@ -15,8 +15,16 @@ public sealed partial class Binding
         => KotoHelper.UnwrapParentheses(node) is not MemberAccessKoto { IsDirectStorage: true } &&
             KotoHelper.UnwrapParentheses(node).BoundSymbol?.Property is { Getter.IsStandard: false };
 
+    // SPEC 11.3: the function a custom accessor executes. A library accessor's is made once, by the library steps
+    // (MakeLibraryAccessorFunctions) or an earlier use after its header, and read from then on without a write (census §8 item 1): what
+    // it writes is the library's syntax and its header's interned Types, the same in every pass. A program accessor's is refreshed at each use.
     internal FunctionKoto AccessorFunction(BoundAccessor accessor)
     {
+        if (accessor.ExecutionFunction is { } made && ReferenceEquals(made.CodeContext.Kotonoha, this.Library.Kotonoha))
+        {
+            return made;
+        }
+
         var function = accessor.ExecutionFunction ??= new(accessor);
         function.RefreshAccessor();
         function.BoundSymbol ??= new(function.Name, BindingSymbolKind.Function, function, accessor.Property.Symbol.Scope);
@@ -42,6 +50,21 @@ public sealed partial class Binding
 
     internal MemberAccessKoto? StorageProjection(Koto node)
         => node.BoundSymbol?.Kind == BindingSymbolKind.Storage && this.storageProjections.GetValueOrDefault(node) is { BindingState: BindingState.Resolved } projection ? projection : null;
+
+    // PLAN G949 S1-e: every library accessor with a body gets its executing function, numbered, by the last declaration step, after the
+    // headers gave its Types: the set the MIR builder executes (MirBuilder.Module), so no later phase numbers a library node (c17).
+    private void MakeLibraryAccessorFunctions()
+    {
+        var library = this.Library.Kotonoha;
+        for (var i = 0; i < this.nodes.Count; i++)
+        {
+            if (this.nodes[i] is PropertyAccessorKoto { Body: not null } syntax && ReferenceEquals(syntax.CodeContext?.Kotonoha, library) &&
+                syntax.BoundSymbol?.Kind == BindingSymbolKind.PropertyAccessor)
+            {
+                this.AccessorFunction(Accessor(syntax));
+            }
+        }
+    }
 
     private EvaluatedKoto PropertyUpdateInput(Koto target, Koto update)
     {
