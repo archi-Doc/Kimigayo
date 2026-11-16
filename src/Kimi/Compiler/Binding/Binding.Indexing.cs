@@ -361,7 +361,7 @@ public sealed partial class Binding
             var previous = this.Scope;
             if (node.Parent is CodeBlockKoto { Parent: FunctionKoto { IsGenerated: true } } && node.CodeContext.SourceDocument is { } source)
             {
-                this.Scope = binding.GetScope(source, binding.ModuleScope(node), node.Parent);
+                this.Scope = binding.DocumentScope(source, binding.ModuleScope(node), node.Parent);
             }
 
             switch (node)
