@@ -41,9 +41,10 @@ public sealed partial class Binding
                 continue;
             }
 
-            for (var i = 0; i < this.callableEffectClauses.Count; i++)
+            var clauses = this.CallableEffectClauses;
+            for (var i = 0; i < clauses.Count; i++)
             {
-                var clause = this.callableEffectClauses[i];
+                var clause = clauses[i];
                 if (!ReferenceEquals(clause.Parent, stated.Owner) || !ReferenceEquals(clause.BoundConstraint, raw))
                 {
                     continue;
@@ -92,7 +93,7 @@ public sealed partial class Binding
     private void CollectCallableEffectUses()
     {
         this.callableEffectUses.Clear();
-        for (var i = 0; i < this.nodes.Count && this.callableEffectClauses.Count != 0; i++)
+        for (var i = 0; i < this.nodes.Count && this.CallableEffectClauses.Count != 0; i++)
         {
             var node = this.nodes[i];
             if (node is InvocationKoto { BoundCall: { } call } && this.Library.PresentedTarget(call.Target).Declaration is FunctionKoto function)

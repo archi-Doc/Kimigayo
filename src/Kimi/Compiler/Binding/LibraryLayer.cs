@@ -25,4 +25,7 @@ internal sealed class LibraryLayer
 
     /// <summary>Gets the library part of the selected uses of bounded Callable clauses (Binding.CallableEffectUses).</summary>
     internal List<Binding.CallableEffectUse> CallableEffectUses { get; } = new();
+
+    /// <summary>Gets the library part of the Constraint clauses that carry an effect list (Binding.CallableEffectClauses).</summary>
+    internal List<IsKoto> CallableEffectClauses { get; } = new();
 }
