@@ -103,14 +103,15 @@ public partial class SyntaxIdTest
     // G949 D2b-d's d10, per kept family: an edit's renumbering moves a kept family's rows into the column's spare arena, so the second
     // of two edits allocates no arena: the column's arena is again the one it had before the first, and its first row is the same object
     // at its node's id, which a synthesized node's renumbering may change (Symbols: a declaration's symbol; Receivers: Point's implicit
-    // constructor's `self`; EnumConstructions: `.Some(1)`'s plan; CopyDeclarations: a `Self is Copy` clause's declaration). The column is
-    // read by reflection, since the families' rows differ.
+    // constructor's `self`; EnumConstructions: `.Some(1)`'s plan; CopyDeclarations: a `Self is Copy` clause's declaration; CopyByType:
+    // its container's list). The column is read by reflection, since the families' rows differ.
     [Trait("Purpose", "Allocation")]
     [Theory]
     [InlineData("Symbols", null)]
     [InlineData("Receivers", null)]
     [InlineData("EnumConstructions", null)]
     [InlineData("CopyDeclarations", CopyPoint)]
+    [InlineData("CopyByType", CopyPoint)]
     public void AKeptFamilyAlternatesItsArenasAcrossEdits(string family, string? program)
     {
         var c = MinimalEmissionTest.Analyze(program ?? Source);

@@ -58,6 +58,7 @@ public sealed partial class Binding
         this.objectErasures = new(this);
         this.enumConstructions = new(this);
         this.copyDeclarations = new(this);
+        this.copyByType = new(this);
         this.Library.Kotonoha.Syntax.Hir.Families.Reserve(KimiLibrarySize.Stated);
         foreach (var symbol in this.Library.RegisteredSymbols)
         {
@@ -111,6 +112,7 @@ public sealed partial class Binding
             this.Library.Kotonoha.Syntax.Hir.Families.Receivers.Used,
             this.Library.Kotonoha.Syntax.Hir.Families.EnumConstructions.Used,
             this.Library.Kotonoha.Syntax.Hir.Families.CopyDeclarations.Used,
+            this.Library.Kotonoha.Syntax.Hir.Families.CopyByType.Used,
             this.types.KeyCount,
             this.constraints.Count,
             this.pendingAssociatedTypes.Count,
@@ -134,6 +136,7 @@ public sealed partial class Binding
             this.Library.Kotonoha.Syntax.Hir.Families.Receivers.Free,
             this.Library.Kotonoha.Syntax.Hir.Families.EnumConstructions.Free,
             this.Library.Kotonoha.Syntax.Hir.Families.CopyDeclarations.Free,
+            this.Library.Kotonoha.Syntax.Hir.Families.CopyByType.Free,
             this.types.KeyFree,
             this.constraints.Capacity - this.constraints.Count,
             this.pendingAssociatedTypes.Capacity - this.pendingAssociatedTypes.Count,
