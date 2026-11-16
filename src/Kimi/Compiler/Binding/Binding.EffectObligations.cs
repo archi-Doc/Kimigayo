@@ -54,7 +54,7 @@ public sealed partial class Binding
             }
         }
 
-        foreach (var function in this.virtualDeclarations)
+        foreach (var function in this.VirtualDeclarations)
         {
             var original = function.IsVirtual ? function : this.virtualOverrides.GetValueOrDefault(function).Slot.Original;
             var bounded = original is not null && this.virtualEffectBounds.GetValueOrDefault(original) is not null;

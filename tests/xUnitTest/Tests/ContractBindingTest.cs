@@ -1044,8 +1044,9 @@ public class ContractBindingTest
 
     private static bool IsCollection(Type type) => type.IsGenericType && type.GetGenericTypeDefinition() is var definition && (definition == typeof(List<>) || definition == typeof(Dictionary<,>));
 
-    // Gives each list of PassState one more entry and each other settable property a value other than its default: true, 1, the first
-    // of `values` its type accepts, else an instance of a concrete type.
+    // Gives each list and map of PassState one more entry (a map's key the first of `values` its type accepts, else a default or an
+    // uninitialized instance) and each other settable property a value other than its default: true, 1, the first of `values` its type
+    // accepts, else an instance of a concrete type.
     private static void Spoil(object model, object?[] values)
     {
         foreach (var property in PassState(model))
@@ -1057,6 +1058,14 @@ public class ContractBindingTest
                 var entry = type.GetGenericArguments()[0];
                 list.Add(entry.IsValueType ? Activator.CreateInstance(entry) : null);
                 property.GetSetMethod(true)?.Invoke(model, [list]);
+            }
+            else if (type.IsGenericType && type.GetGenericTypeDefinition() == typeof(Dictionary<,>))
+            {
+                var map = (IDictionary)(property.GetValue(model) ?? Activator.CreateInstance(type)!);
+                var (key, value) = (type.GetGenericArguments()[0], type.GetGenericArguments()[1]);
+                map[key.IsValueType ? Activator.CreateInstance(key)! : values.FirstOrDefault(key.IsInstanceOfType) ?? RuntimeHelpers.GetUninitializedObject(key)] =
+                    value.IsValueType ? Activator.CreateInstance(value) : null;
+                property.GetSetMethod(true)?.Invoke(model, [map]);
             }
             else if (property.GetSetMethod(true) is { } setter)
             {

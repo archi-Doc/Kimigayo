@@ -377,7 +377,7 @@ public sealed partial class Binding
     // SPEC 8.11.1: the confined bound of each valid original virtual function, its slot's public guarantee.
     private void PrepareVirtualEffectBounds()
     {
-        foreach (var function in this.virtualDeclarations)
+        foreach (var function in this.VirtualDeclarations)
         {
             if (!function.IsVirtual || function.BindingFailure != BindingFailure.None)
             {
