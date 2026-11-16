@@ -771,7 +771,7 @@ public sealed partial class Binding
     internal readonly struct InferenceBatches(Binding binding)
     {
         // Every kept batch in G949 D2b-d's d8 order: the source modules by ordinal, then the library, each by ascending id.
-        internal FamilyRows<AssociatedInference?> Values => new(binding, static table => table.Hir.Families.AssociatedInference);
+        internal FamilyRows<AssociatedInference?> Values => new(binding, static (table, _) => table.Hir.Families.AssociatedInference.Enumerate());
 
         // The slots the family's columns hold over the compilation's modules (AssociatedMetrics' retained storage).
         internal int Capacity
