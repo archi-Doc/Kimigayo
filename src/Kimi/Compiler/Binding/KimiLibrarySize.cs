@@ -18,7 +18,7 @@ namespace Kimi.Compiler;
 //   (the owner's O-136 (a) and O-139 (a)) covers this until the removal condition holds.
 // - The library's node columns (Binding's `symbols`, its parameters' composite column, `scopes`, `originAtoms`, `openOrigins`,
 //   `associatedOrigins`, `specialReceivers`, `enumConstructions`, `copyDeclarations`, `copyByType`, `inheritedOriginTypes`,
-//   `deferredConstraints`, `matches`, `adaptations` and `specializations`,
+//   `deferredConstraints`, `matches`, `adaptations`, `specializations` and `specializationsByOriginal`,
 //   DECISIONS BU-220): the library
 //   module's own columns, which no program row enters (a program's rows are its modules'), so each starts at its stated slots
 //   (PagedColumn.Reserve) and has no room; its count is the slots the library's pages hold, rounded up to ColumnGranule, and its free
@@ -68,6 +68,7 @@ internal static class KimiLibrarySize
         Matches: 512,
         Adaptations: 512,
         Specializations: 512,
+        SpecializationsByOriginal: 512,
         TypeKeys: 3072,
         Constraints: 2048,
         AssociatedTypes: 2048,
@@ -104,6 +105,7 @@ internal static class KimiLibrarySize
         int Matches, // The library's matches column: the slots its pages hold.
         int Adaptations, // The library's adaptations column: the slots its pages hold.
         int Specializations, // The library's specializations column: the slots its pages hold.
+        int SpecializationsByOriginal, // The library's specializationsByOriginal column: the slots its pages hold.
         int TypeKeys, // TyCtxt's keys of the interned Types.
         int Constraints, // Binding's interned constraints.
         int AssociatedTypes, // Binding's associated-Type answers.
@@ -137,6 +139,7 @@ internal static class KimiLibrarySize
                 Round(this.Matches, ColumnGranule),
                 Round(this.Adaptations, ColumnGranule),
                 Round(this.Specializations, ColumnGranule),
+                Round(this.SpecializationsByOriginal, ColumnGranule),
                 Round(this.TypeKeys, Granule),
                 Round(this.Constraints, Granule),
                 Round(this.AssociatedTypes, Granule),

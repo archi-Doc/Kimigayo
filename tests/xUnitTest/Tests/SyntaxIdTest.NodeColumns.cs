@@ -114,9 +114,11 @@ public partial class SyntaxIdTest
     [InlineData("CopyDeclarations", CopyPoint)]
     [InlineData("CopyByType", CopyPoint)]
     [InlineData("OverrideEntries", "open struct Base<T>\n    public func ordinary(self: objref/Self) -> i32 => 1\n    public virtual func read(self: objref/Self, other: objref/Leaf<T>) -> i32 => 1\nstruct Leaf<T> : Base<T>\n    override func read(self: objref/Self, other: objref/Leaf<T>) -> i32\n        return self.ordinary()\n()")]
+    [InlineData("SpecializationsByOriginal", "milestone:Milestone11")]
     public void AKeptFamilyAlternatesItsArenasAcrossEdits(string family, string? program)
     {
-        var c = MinimalEmissionTest.Analyze(program ?? Source);
+        var c = MinimalEmissionTest.Analyze(program is null ? Source
+            : program.StartsWith("milestone:", StringComparison.Ordinal) ? Repository.ReadText("tests", "milestones", program["milestone:".Length..] + ".kimi") : program);
         var field = typeof(NodeColumns).GetField(family, Members)!;
         var rows = Column().GetType().GetMethod("Enumerate", Members)!.Invoke(Column(), null)!;
         Assert.True((bool)rows.GetType().GetMethod("MoveNext")!.Invoke(rows, null)!, $"{family} holds no row of the program.");
