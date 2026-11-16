@@ -272,6 +272,7 @@ internal struct NodeColumns
     internal StampedColumn<EffectBoundKoto?, Binding.PassCounter> VirtualEffectBounds; // Pass: a virtual function's confining effect bound (Binding.EffectDeclarations.cs).
     internal StampedColumn<Binding.Specialization?, Binding.PassCounter> Specializations; // Pass: a verified explicit specialization's entry (Binding.Specializations.cs).
     internal PagedColumn<List<FunctionKoto>?> SpecializationsByOriginal; // Kept: an original's verified specializations, emptied each pass (Binding.Specializations.cs).
+    internal StampedColumn<OmittedBaseSelection?, Binding.PassCounter> ImplicitConstructorDecisions; // Pass: a derived structure's omitted-base decision (Binding.ImplicitConstructors.cs).
     internal PagedColumn<(SourceDocument Document, BindingScope? Scope)[]?> Documents; // Kept: Scopes' composite column, a module root's document scopes.
     internal PagedColumn<Binding.AssociatedInference?> AssociatedInference; // Kept: a conforming Type's inference batch (Binding.AssociatedInference.cs).
     internal PagedColumn<BoundOrigin?[]?> OriginAtoms; // Kept: a binder's Origin atoms, a KeyedRow by kind and slot (Binding.Origins.cs).
@@ -294,6 +295,7 @@ internal struct NodeColumns
         this.CopyByType.Grow(length);
         this.Scopes.Grow(length);
         this.Documents.Grow(length);
+        this.ImplicitConstructorDecisions.Grow(length);
         this.SpecializationsByOriginal.Grow(length);
         this.Specializations.Grow(length);
         this.VirtualEffectBounds.Grow(length);
@@ -346,6 +348,7 @@ internal struct NodeColumns
             CopyByType = this.CopyByType.Renumbered(length),
             Scopes = this.Scopes.Renumbered(length),
             Documents = this.Documents.Renumbered(length),
+            ImplicitConstructorDecisions = this.ImplicitConstructorDecisions.Renumbered(length),
             SpecializationsByOriginal = this.SpecializationsByOriginal.Renumbered(length),
             Specializations = this.Specializations.Renumbered(length),
             VirtualEffectBounds = this.VirtualEffectBounds.Renumbered(length),

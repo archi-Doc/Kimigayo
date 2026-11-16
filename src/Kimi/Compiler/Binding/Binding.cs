@@ -65,6 +65,7 @@ public sealed partial class Binding
         this.matches = new(this);
         this.adaptations = new(this);
         this.associatedInference = new(this);
+        this.implicitConstructorDecisions = new(this);
         this.specializationsByOriginal = new(this);
         this.specializations = new(this);
         this.virtualEffectBounds = new(this);
