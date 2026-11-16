@@ -93,7 +93,20 @@ public sealed partial class Binding
 
     private static LoanRequirement Min(LoanRequirement a, LoanRequirement b) => a < b ? a : b;
 
+    // activeOriginRequirements is the call's scratch, emptied on every exit (PLAN G949 S1-e), so a Bind that throws leaves the next none.
     private void ComputeOriginRequirements()
+    {
+        try
+        {
+            this.SolveOriginRequirements();
+        }
+        finally
+        {
+            this.activeOriginRequirements.Clear();
+        }
+    }
+
+    private void SolveOriginRequirements()
     {
         this.originRequirementQueue.Clear();
         // Retained work survives between passes so summaries and lists are reused. A pass
@@ -200,8 +213,6 @@ public sealed partial class Binding
                 }
             }
         }
-
-        this.activeOriginRequirements.Clear(); // Call scratch, emptied at the call's end (PLAN G949 S1-e).
     }
 
     private bool VisitRequirementTypes(OriginRequirementWork work, bool collectEdges)
