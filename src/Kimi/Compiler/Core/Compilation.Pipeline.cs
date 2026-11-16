@@ -182,13 +182,15 @@ public partial class Compilation
 
         var program = (this.mirAnalysis ??= new(this.Types)).Run(this.ConstructMir(), this.SourceModules.Length);
         this.Collect(program);
+        program.Seal(); // Later lookups read only (PLAN G951).
         return program;
     }
 
     /// <summary>Builds and validates the MIR of the latest Binding pass, once per pass: the first step of <see cref="BuildMir"/>, and the
     /// work <c>--compiler-pipeline</c>'s stage 3 times (R6-check H0 D-c5).</summary>
     /// <returns>The program, with its construction records and validator findings.</returns>
-    internal Mir.MirProgram ConstructMir() => (this.mirBuilder ??= new(this)).Build();
+    internal Mir.MirProgram ConstructMir()
+        => (this.mirBuilder ??= new(this)).Build(SyntaxTable.LibraryModule + 1); // Every body eagerly until PLAN G951 U2 (the source range).
 
     internal void InvalidateMir() => this.mir = null;
 
