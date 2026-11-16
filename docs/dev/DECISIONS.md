@@ -13689,7 +13689,7 @@ resumed by R4-M86 (2026-10-20).
   - **Each base is a store of its own** (C-376 condition 3): never a region of an overlay column; the overlay never copies it; it
     holds no `Compilation`, `Binding`, `TyCtxt` or collection. **Stage 2 moves** `LibraryLayer` and the library's `SyntaxTable` to
     `KimiLibrary.Of(key)`; it never copies or renumbers them.
-  - **The dense Type id.** `BoundType`, a sealed class, has private constructors behind one numbered factory, called by TyCtxt for
+  - **The dense Type id.** `BoundType`, a sealed class, has one constructor, which takes the id and is called only by TyCtxt for
     every Type it makes (`Intern`, `Parameter`) and by the static Types, which hold a fixed list of ids; no other code makes a
     `BoundType`. The library pass's Types are a prefix below `LibraryLayer.TypeCount`, as R8-M33's body ordinals: every lazy
     producer a program pass can reach for a library object (a Contract's `Self` among them) is eager in the library pass; every
