@@ -58,7 +58,7 @@ public sealed partial class Binding
     private readonly List<(int Storage, int Node, BoundType? Signature)> storageTargets = new(); // With the walked signature there (Admits).
     private readonly List<(int Storage, BoundType Signature)> storageBound = new(); // The written roots of the kept abstract Type's bindings, by storage (HiddenKinds).
     private readonly Dictionary<BoundType, int> storageResultSeen = new(ReferenceEqualityComparer.Instance); // ResultLeaves' walk: Enters' depths.
-    private readonly List<(BoundType? Type, BoundType? Written, BoundType? Holder, int Storage)> storageHolds = new();
+    private readonly List<(HoldAt At, int Storage)> storageHolds = new();
     private readonly List<int> retentionOwnNodes = new();
     private readonly List<int> retentionOccurrences = new();
     private readonly HashSet<(BoundType Type, bool Callable)> retentionOccurred = new();
@@ -149,7 +149,7 @@ public sealed partial class Binding
             named = this.Position(environment, type, at.Storage, at.Signature);
             if (at.Storage != ResultStorage && !bound)
             {
-                this.storageHolds.Add((type, at.Written, at.Holder, at.Storage)); // A hidden binding's layers add no reach (SPEC 15.6.4).
+                this.storageHolds.Add((new(type, at.Written, at.Holder, at.Signature), at.Storage)); // A hidden binding's layers add no reach (SPEC 15.6.4).
             }
 
             // The root of a binding of the callee's kept Type in this storage; in the result's, where the result holds it by value or a
@@ -254,7 +254,7 @@ public sealed partial class Binding
         var past = this.Past(environment, pointee, targets, step != HoldStep.Shared, layer, below);
         if ((content == HoldContent.Any || (at.Captured && step == HoldStep.Address)) && past >= 0 && past != ResultStorage)
         {
-            this.storageHolds.Add((null, null, null, past)); // Storage no Type states: a declaration's layer's, or a Closure's (C-352's C10).
+            this.storageHolds.Add((default, past)); // Storage no Type states: a declaration's layer's, or a Closure's (C-352's C10).
         }
 
         if (step == HoldStep.Exclusive)
@@ -795,6 +795,12 @@ public sealed partial class Binding
         // An input fold's walk from input `input`'s own value.
         internal static StorageAt Input(int input) => new(NoStorage, false, null, null, 0, new(input, Held: true, -1, 0));
     }
+
+    // A position of the hold walk as its declaration states it (Hold, Held; storageHolds): the Type there, the Type a struct's Field or
+    // an enum's Case payload declares there while it is a Tuple, a fixed array or a raw layer (Written), the instance holding it
+    // (Holder, whose case a declared slot's step reads), and the walked signature's declared Type there (Signature, as StorageAt's:
+    // DECISIONS BU-113; null where none pairs). A Type of null is storage no Type states.
+    private readonly record struct HoldAt(BoundType? Type, BoundType? Written, BoundType? Holder, BoundType? Signature = null);
 
     // The input fold's state at a Type (StorageAt): the input (-1 in an output's walk), whether the Type is held by value from the input or
     // reached through a layer, the node of the layer above (Related) and the path's id (its reduced prefix, Revision 10).

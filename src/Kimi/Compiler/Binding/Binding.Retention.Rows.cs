@@ -25,7 +25,7 @@ public sealed partial class Binding
     private readonly Dictionary<(BoundType Type, RetentionKind Kind), int> retentionHiddenSeen = new(); // HiddenKind's walk, per input: Enters' depths.
     private readonly List<BoundType> retentionArguments = new(); // The contract's instantiated inputs (Filled), per computation.
     private readonly Dictionary<(BoundType Position, int Input, bool Own), Fill> retentionFills = new(); // Filled's answers, per computation.
-    private readonly HashSet<(BoundType Type, BoundType? Written, BoundType? Holder, bool Lent, int Storage)> retentionMet = new();
+    private readonly HashSet<(HoldAt At, bool Lent, int Storage)> retentionMet = new();
     private readonly Dictionary<int, (int Start, int Count)> retentionClosures = new();
     private readonly List<int> retentionClosureNodes = new();
     private readonly List<RetentionKind[]> retentionKinds = new();
@@ -223,7 +223,7 @@ public sealed partial class Binding
         this.ResultLeaves(result, 0);
         this.StorageWalk(environment, result, StorageAt.Output(ResultStorage, writable: true) with { Signature = this.SignatureResult });
         var kept = this.Kept(inputs.Length);
-        var whole = ((BoundType?)result, (BoundType?)null, (BoundType?)null, ResultStorage);
+        var whole = (new HoldAt(result, null, null, this.SignatureResult), ResultStorage);
         var untied = this.Hold(environment, CallRetention.ResultOutput, new(in whole), inputs, (key, callee, premises), ref transfer);
         if (within >= 0)
         {
@@ -1000,7 +1000,7 @@ public sealed partial class Binding
     private bool Hold(
         OriginPremiseEnvironment environment,
         int output,
-        ReadOnlySpan<(BoundType? Type, BoundType? Written, BoundType? Holder, int Storage)> holds,
+        ReadOnlySpan<(HoldAt At, int Storage)> holds,
         ReadOnlySpan<BoundType> inputs,
         (Transfer Key, FunctionKoto? Callee, BindingScope? Premises) call,
         ref Transfer? transfer)
@@ -1010,9 +1010,9 @@ public sealed partial class Binding
         var count = this.storageTypes.Count;
         var met = Reused(ref this.retentionHolding, count);
         Array.Clear(met, 0, count);
-        foreach (var (type, written, holder, storage) in holds)
+        foreach (var (at, storage) in holds)
         {
-            met[storage] |= this.Held(type, written, holder, output, storage, lent: false);
+            met[storage] |= this.Held(at, output, storage, lent: false);
         }
 
         this.StatedFits(environment, output);
@@ -1138,16 +1138,16 @@ public sealed partial class Binding
     // growing one among them (PrepareTypeStorage's limits, DECISIONS BU-12), makes the contract CallRetention.Limit; Rejected storage is
     // walked as far as it substitutes (Readable, BU-36), and it and a part that does not (null) may be any Type: Loans and Any, failing
     // closed (Holding; superseding BU-36's "holds nothing" for the Chained verdict).
-    private Holding Held(BoundType? type, BoundType? written, BoundType? holder, int output, int storage, bool lent)
+    private Holding Held(in HoldAt at, int output, int storage, bool lent)
     {
-        if (type is null)
+        if (at.Type is not { } type)
         {
             return Holding.Loans | Holding.Any; // A part that does not substitute, or storage no Type states: it may be any Type.
         }
 
-        written = Written(written);
-        holder = written is null ? null : holder;
-        if (!this.retentionMet.Add((type, written, holder, lent, storage)))
+        var written = Written(at.Written);
+        var holder = written is null ? null : at.Holder;
+        if (!this.retentionMet.Add((new(type, written, holder), lent, storage)))
         {
             return Holding.None;
         }
@@ -1213,7 +1213,7 @@ public sealed partial class Binding
         {
             var part = this.retentionHeld[i];
             met |= part.Step == HoldStep.Abstract ? this.HeldComponents(type, output, storage, below)
-                : this.Held(part.Part, part.Written, part.Holder, output, storage, below);
+                : this.Held(new(part.Part, part.Written, part.Holder), output, storage, below);
         }
 
         this.retentionHeld.RemoveRange(run.Start, run.End - run.Start);
@@ -1227,7 +1227,7 @@ public sealed partial class Binding
         var met = Holding.None;
         for (var i = 0; i < type.Components.Count; i++)
         {
-            met |= this.Held(type.Components[i], null, null, output, storage, lent);
+            met |= this.Held(new(type.Components[i], null, null), output, storage, lent);
         }
 
         return met;
