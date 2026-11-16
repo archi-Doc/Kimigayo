@@ -549,7 +549,7 @@ public partial class LayoutTest
     public void StringReprIsPlacedAsTheStringRow()
     {
         var c = CompilationTestHelper.BindSuccess("()");
-        var placed = c.Layout.Of(c.Library.GetSymbol(KimiDeclarationId.StringRepr)!.Type!);
+        var placed = c.Layout.Of(LibrarySource.Declaration(c.Library, "Storage.StringRepr").SymbolOf()!.Type!);
         Assert.Equal(Layout.Outcome.Ok, placed.Outcome);
         var (layout, row) = (placed.Value!.Layout, Layout.Row(BoundType.String).Layout);
         Assert.Equal((row.Size, row.Alignment, row.Stride), (layout.Size, layout.Alignment, layout.Stride));
