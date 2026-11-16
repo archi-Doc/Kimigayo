@@ -5693,6 +5693,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
     ancestor rule (SPEC 15.1.1) report every placement into a `let`, and telling the two apart needs a new statement kind. A dynamic
     `Array`'s element has no Place (its buffer is read through `Index`), so its Never element stays placed: the stated limit (STATUS).
     Superseded for the Array literal by R4-M205.
+    Amended by R4-M208 (the Dictionary redesign's step 2): a carry's state is its source's own bit, and a whole temp that may hold
+    nothing on an assumed path also carries its own path to the component.
   - A construct that is no Never form and that no edge joins breaks the HIR contract (BU-101 publishes a construct with no source as a
     Never form): `InternalInvariant_Kd` at the construct, its ends joined so the body stays valid.
   - Effect: an assumed completion initializes nothing.
@@ -5965,6 +5967,12 @@ and migration obligations remain in force; no numeric cap changes are authorized
     `MirLocalRole` on key and value (also vocabulary; the key's lookup borrow weakens its contract; 219f17968); a new `MirCalleeKind` or
     `IntrinsicId` (reverses R8-M11); a sixth lane correlating a root's presence with a part's absence (decides nothing the part check does
     not).
+  - Superseded in part by R4-M206 (the Dictionary redesign's unit 1): the Rejected lane is A1's Unplaced lane (R4-M206's Why); the
+    Kept sentence on a Dictionary literal's storage ends (a whole use of a Dictionary with an incomplete entry is
+    `UninitializedPlace_Kd`); the Vocabulary's Validator and Readers: the Call's first operand is the construction's exclusive
+    borrow formed in its block (`MirBody.Construction`), and its readers are A1, MirMoveData, MirDump and the validator.
+  - Amended by R4-M208 (the redesign's step 2): in its Rule, "its carries give the state to the component" reads: a carry's state is
+    its source's own bit, and a whole temp that may hold nothing on an assumed path carries its own path to the component.
 - **R4-M189 A4: a function's summary is its declaration's, every implementation of its closed specialization set included (PLAN
   G663; the owner's O-109 (a), verbatim 「(a)」)** (Middle, 2026-11-09; Major, an acceptance mover; design reviews 1 REVISE, 2 ACCEPT;
   supersedes R4-M22's "an edge into each body the call may run (`TyCtxt.Implementation`, SPEC 8.13.3: the specialization a closed key
@@ -6452,6 +6460,192 @@ and migration obligations remain in force; no numeric cap changes are authorized
     unchanged (review N4).
   - Cost: an Array literal's Never parts cost what a fixed array's do; about 10,000 Never-call elements reach
     `OwnershipStorageLimit_Kd` as the fixed-array literal already did (review N6).
+  - Amended by R4-M206 (the Dictionary redesign's unit 1): an Array literal's element is no component path: no path is created for a
+    component no Place names, and its Never element goes to its owner's Unplaced lane (A1), reported where R4-M205 reports it. Its
+    Not covered closes: a Dictionary literal's entry (R4-M206) and a construction written where no Move Path exists (R4-M209).
+- **R4-M206 A construction's missing part is A1's Unplaced lane on the Move Path that holds it; no path is created for a component
+  no Place names (PLAN G909)** (2026-11-15; Middle, MIR analysis A1 and the `Places` contract; Major, an acceptance mover; the
+  owner's O-334 (a), O-342 Q1 (a) and Q2 (a); design review REVISE (DRV-B1, DRV-B2, both answered by O-342), implementation review
+  ACCEPT WITH NOTES (U1-N1 to U1-N7), C3 short check ACCEPT WITH NOTES (C3-N1, C3-N2, done by R4-M208); the Dictionary redesign's
+  unit 1, landing as one with its steps R4-M207 to R4-M210 (S3-N1: unit 1 and R4-M207 alone reject valid programs dev accepts);
+  supersedes R4-M188's Rejected clause "a sixth lane correlating a root's presence with a part's absence"; amends R4-M188's Kept
+  sentence "A Dictionary literal's storage has no component path, so a Dictionary received whole while an entry is incomplete is
+  accepted", its Validator and Readers lines, and R4-M205's "an Array literal's element i as the component path ConstIndex i") SPEC
+  12.4.3, 14.10.3, 15.1.2, 15.1.3, 16.2.1.
+  - Rule (MirMoveData): Move Paths only: a root, a constructor's Field or base, a path a Place of the body resolves to, and the
+    source counterparts the closure names, upward and backward through the carries by R4-M208's walk (one reverse pass, as a carry's
+    source lies in an earlier run and differs from its destination: MirValidator's shape contract, R4-M208). A Never part or carry
+    at a component no Place names goes to its owner, the nearest Move Path above it, as "its value lacks a part" (A1's Unplaced
+    lane); at a Move Path it is its initialization, as before. A Places Call's facts go to its construction's own Unplaced bit; the
+    construction is published (`IsConstruction`), and the location that takes it carries the bit to the taker's owner.
+  - Rule (A1, MirInit): lane 5 `Unplaced`, A1's alone, joined by union, set only where a definition reached; cleared by the binding
+    lifetime's start, a definition, a Move and a Drop. A use reports where MaybeUninit is set below its own bit for a temp (R4-M188)
+    or anywhere for a program Place, or where Unplaced is set in its subtree, except a construction's own bit, which only its take
+    reads (SPEC 15.1.2: the aggregate commits after all elements are placed; the literal's later lookups and insertions are its own
+    steps).
+  - Contract (`Places`, O-97 (a); no new vocabulary entry): the Call's first operand is the construction's exclusive borrow formed
+    in its block (`MirBody.Construction`, read by `MirValidator.Placed` and `MirMoveData`); readers: A1, MirMoveData, MirDump, the
+    validator. A2 and codegen read neither the attribute nor lane 5.
+  - Limit (R4-M15a, O-342 Q2 (a)): `MirDataflow.ByteLimit` is 6/5 of 64 MiB (80,530,636 bytes), so a body within the old limit with
+    five lanes stays within it. The limit is the analyses' one (D20), so A5's Loan arena and MirOrigins' rise by 6/5 too.
+  - Moves (Q13, U1-N1, U1-N2): invalid programs newly rejected, one `UninitializedPlace_Kd` at the whole use (the Dictionary unit's
+    table: a Dictionary literal entry without a value; the review's probes; qa3; l5's d1 and b1i). One record added on a program dev
+    already rejects: pn7 `takeKT([(y, y): 1, (y, fail()): 2])` gains a second `UninitializedPlace_Kd` on the same line (the
+    literal's whole use beside the later key's read). Valid programs newly accepted by the limit's rise: G901's big1, big2, big3 at
+    N = 10,000 (`let s: Array<i32> = [fail() x N]`, `[y, fail() x N-1]`, `[N of i32] = [y, fail() ...]`) lose
+    `OwnershipStorageLimit_Kd`; and any body whose A5 Loan arena or MirOrigins arena dev limits between 64 and 76.8 MiB is now
+    analyzed (its Resource record goes; it may gain the analyses' own records). No valid program is newly rejected; A1's own
+    threshold is unchanged (ar4000/ar4200 accepted, ar4500 limited on both; the Dictionary literal accepted at 4,000 entries and
+    limited at 4,500 on both).
+  - A2 against dev (O-342 Q1 (a)): a construction record's row or flag goes: check-only groups; bodies that need a Never value (a
+    flag removed, a never-written component destroyed by its parent's own bit in a body that cannot run); a runnable Open group
+    whose record came through a Never-form arm (`g8`: `.1 flag f1` removed, as f1 equalled f0 on every runtime path). Behavior equal
+    (natives, compare-fixtures).
+  - Why R4-M188's lane rejection no longer holds: its reason ("decides nothing the part check does not") assumed the part check
+    could decide an unnamed part through records in MaybeUninit; a record cannot be right for A1 and A2 at once where the whole
+    value is absent (B1, B3, DR1, na8). Without records the part check sees no unnamed part, so the lane decides what it cannot; and
+    the lane correlates nothing at the join.
+  - Reading (the planning session's): an entry without a value leaves an incomplete Dictionary (15.1.2), not "no value"; a temp that
+    holds nothing lacks no part (R4-M188).
+  - Kept: the whole returned value, a call taking the Never value itself, an unused, discarded or only cleaned-up literal, the
+    literal's own later entries, a placed part's read (R4-M188, R4-M175).
+  - Landed with it: an aggregate's operand temp that holds nothing on an assumed path (R4-M208: pj2, pj2t, qa1j, sm7, sm10, nc6; oc1
+    and oc1b, U1-N4); an incomplete value written where no Move Path exists, an indexed element or a Dictionary value, where this
+    entry's carries do not apply (R4-M209, PLAN G909's part (ii)); a Fill's operand (R4-M210: smf3).
+  - Invariant (DRV-N8): lane 5 is never set at a runtime Drop of a body that can run; asserted with the Never-read step (R4-M207).
+- **R4-M207 A read of a Place of Type Never ends its block: the code after it is check-only, and no runtime Drop finds an unplaced
+  part (the Dictionary redesign's step 3, its migration row 3; DRV-N3, DRV-N8)** (2026-11-15; Middle, MIR build and A1; an
+  acceptance mover, landing with R4-M206 as one; implementation review ACCEPT WITH NOTES (S3-N1: landing as one); on R4-M206; adds
+  to R5-M38's acquisition clause and to R4-M206) SPEC 14.9.3, 14.10.3, 16.2.1.
+  - Rule (`MirBuilder.Acquire`, `Diverge`): the unadapted acquisition of a Place of Type Never by a Never form (R5-M38, R4-M175)
+    writes its fresh Never temp and ends the block, `Unreachable` with the check-only continuation, by the routine an Opaque value
+    of a node that cannot complete uses (`Site`). No runtime edge leaves the read, so for every reader of the runtime reach
+    (`MirDataflow`'s phases for A1, A2, A4 and A5; `MirValidator`; `MirLints`; the instance collector; `FunctionCodegen`) the code
+    after it is check-only: A1 and A5 judge it on the join of the assumed paths, A2 does not judge its Drops (R4-M6a), A3 sees a
+    failure body that ends in such a read as not continuing (SPEC 14.11), and no code is generated for it.
+  - Invariant (`MirInit`, DRV-N8): no Unplaced bit (lane 5) is set in a Move Path's subtree at a Drop the runtime edges reach, which
+    A2 destroys whole by its own bit (R4-M206's reading: a value that lacks an unnamed part still holds a value, SPEC 16.2.1, 16.3),
+    and no definition the runtime edges reach keeps its path's state (R4-M208's kept definition; S2-N1), one `Broken` site; a
+    construction leaves a part unplaced only after a Never form, which now ends the runtime paths in every case. A broken one is
+    `InternalInvariant_Kd` at its location (the body is marked, no code).
+  - Why: SPEC 14.9.3 gives the read no normal candidate, but its block went on, so a join after it took only the arms that complete
+    (`let n = x` / `let q: i32 = if c => y else => fail()` / `use(q)` accepted) and the code after it was generated; with R4-M206, a
+    construction holding the read as a component then reached a runtime Drop with lane 5 set (MirDropTest's a1-a4).
+  - Kept: the read itself is in a runtime block (R5-M33); a pattern binding, a capture and an adapted acquisition (a borrow)
+    complete (R4-M175, R5-M38); a statement or Indented arm ending in a Never form does not continue to the join of a construct that
+    can complete (R4-M175 Joins; SPEC 14.10.3's last sentence).
+  - Rejected: A1 or `MirDataflow` deciding the phase inside a block (a second decider of completion); a diverging intrinsic Call for
+    the read (a vocabulary entry for what `Unreachable` with a `CheckTarget` says); the assertion in A2 (A2 never reads lane 5; A1
+    owns it and hands A2 the state).
+- **R4-M208 A whole temp that holds nothing on an assumed path places nothing: its own state is a carry to its component (the
+  Dictionary redesign's step 2)** (2026-11-15; Middle, MIR analysis A1 and MirValidator; an acceptance mover, landing with R4-M206
+  as one; implementation review ACCEPT WITH NOTES (S2-N1 done: the assertion below; S2-N3 left); on R4-M206 and R4-M207; amends
+  R4-M175's carry sentence, R4-M188's "its carries give the state to the component", and R4-M206's closure) SPEC 14.10.3, 15.1.2,
+  15.1.3.
+  - Rule (`MirMoveData.Nevers`): an aggregate's operand (a Fill's too, R4-M210) that takes a whole temp, not the Never value,
+    carries the temp's own path to its component, unless a location placed the temp whole earlier in the Assign's chain (a straight
+    line; `placed`). A Use carries it to its destination where that takes one placement in its lifetime (a whole temp, which then
+    may hold nothing and is not placed for its chain, or a let binding). A temp destination tracks the component, never its own
+    path. The destination fact follows R4-M206's lanes: a named component is uninitialized (holds nothing), an unnamed one its
+    owner's Unplaced lane. Into a destination without a Move Path the carries do not apply (R4-M209).
+  - A carry's state is its source's own bit (a Move Path's MaybeUninit, a complement's Unplaced; was the subtree for a Move Path,
+    which would unplace the placed parts R4-M175 keeps readable); the Places Call lists its operand's root and tracked facts, as
+    before.
+  - A1 (`MirInit.Uses`, `Define`): a carry onto a destination below the defined path gives it its fact after the definition; a carry
+    onto the defined path itself whose source holds nothing keeps that path's state, every lane (nothing is placed there). No
+    definition the runtime edges reach keeps its state (a kept definition sets MaybeInit, A2's lane, where nothing was placed); a
+    broken one is `InternalInvariant_Kd` at the location, beside DRV-N8's, one site (S2-N1; R4-M207).
+  - Closure (U1-N4): for each Assign carry, the source counterpart of the destination's nearest Move Path at or below the component
+    is a Move Path too (one reverse pass, lockstep up from both ends while both are unnamed; the operand's Place is a Move Path, so
+    the walk stays aligned), so a source's parts whose counterparts lie under different Move Paths never share an owner, for
+    construction facts (complements) too. A Places Call's carries are not mirrors and take no part. Without it the aggregate rule
+    rejected `return` / `let x: (i32, (i32, i32))` / `x = if c => (fail(), (y, if c => y else => y)) else => (y, (y, y))` /
+    `takeT(x.1)` (valid): an arm temp's last component, placed in the same chain, has no own carry, so its parts shared the temp's
+    bit with an earlier Never part; and unit 1's first closure (the source counterpart of a carry whose destination is one),
+    skipping construction facts, rejected `u = if c => ([1: y], [2: fail()]) else => ([1: y], [2: y])` / `takeD(u.0@move)` (valid).
+    This walk is R4-M206's closure.
+  - Contract (MirValidator, C3-N1; R1.3's "a source never equals its destination"): a placing Assign (a Use or an aggregate) into a
+    temp takes no operand of that temp (`TakesItself`), and no value operand of a Places Call is rooted at its construction
+    (`Placed`): Operation findings; MirMoveData trusts validated IR. Unit 1's release check of the carries (C3:
+    `InternalInvariant_Kd` at the body) does not land: its distinctness half is this contract, and its order half held by
+    construction (runs are appended, a temp's definition is visited before its take) and stays as a contract sentence (C3-N2).
+  - Kept: a real path, a placed part's read, the whole returned value, a call taking the Never value itself, an unused or only
+    cleaned-up construction (R4-M188, R4-M175); a var such a value overwrites keeps its value (R4-M62).
+  - Moves (against unit 1 alone; dev accepts both): valid programs unit 1 rejected, now accepted: a construction's sibling through a
+    let placed later (od9, oe2), one `UninitializedPlace_Kd` removed each.
+  - Landed with it: a Fill's operand (R4-M210: smf3, afl). Not covered: a Place placed more than once that a Use overwrites,
+    uninitialized before (its old value's Drop precedes the Use, `MirBuilder.Overwrite`; the owner's O-336 (a), O-371 (a): e9, e10;
+    PLAN G959).
+  - Rejected: a runtime-reach gate (rests on an unchecked claim about runtime temps); a carry for every whole-temp operand (A2's
+    Open groups gain rows in ordinary code); `Unplaced(destination)` for a Use's carry (a reassigned temp or let would lose what it
+    held); a `MayNeedDrop` test in MirMoveData for a var (a second copy of Overwrite's condition); A1 deciding the Use itself; a
+    third column naming each carry's top for the closure (the operand's Place is already a Move Path, which bounds the walk); a
+    MirDropTest pin for S2-N1 (covers listed forms only); removing repeated carry pairs after the collapse (S2-N3: compaction of the
+    carry run; linear as it is, RP8 measures).
+- **R4-M209 An incomplete value written where no Move Path exists is `UninitializedPlace_Kd` at the write (PLAN G909's part (ii);
+  the owner's O-319 (a); the Dictionary redesign's step 4)** (2026-11-16; Middle, MIR analysis A1; an acceptance mover, landing with
+  R4-M206 as one; implementation review ACCEPT WITH NOTES (N1's rows, N4's text); on R4-M208 and R4-M207; amends the transfer rule
+  of R4-M206 and R4-M208) SPEC 15.1.2, 15.1.3, 14.10.3.
+  - Rule (`MirInit`'s transfer): a placing Assign (a Use or an aggregate) transfers the whole temps its operands move only into a
+    destination with a Move Path (`Tracked`: `MirMoveData.Find` `Direct` under the view, by `Path`, the routine A1's uses read); at
+    a destination without one (through an Index or a Deref: an Array or Slice element, a fixed array's at a runtime index, a
+    referent, a Dictionary value through `indexUniq`; a raw Place; static storage; a PairLayer the view makes a reference) nothing
+    can take the temp's state, so the operand is used there and the location's facts (carries, Never parts) do not apply, as a
+    Places Call's apply only where it places: a value a construction left a part of unplaced (a Never part on a Move Path, or lane 5
+    `Unplaced` on the temp, a Dictionary literal's lacking entry included) is `UninitializedPlace_Kd` at the write, whether or not
+    the container is used whole after, and nowhere else (through a PairLayer in its reference view the binder keeps its state, as a
+    referent's owner does).
+  - Why: the owner's O-319 (a) (11-15): SPEC 15.1.3 "An operation that needs a Move Path is an error when none exists"; recording
+    which part stays unplaced is what a Move Path is for. One rule for every destination kind, no case per kind (O-319 (b)
+    rejected).
+  - A Dictionary literal's lacking entry (R4-M206: the construction's own lane 5, which only its take reads) reaches the write
+    through the assignment's secured temp: the literal's take is a Use into that temp (`MirBuilder.Dictionary`, `Overwrite`), whose
+    carry gives the temp's own lane 5, which the write's use reads.
+  - Kept: a destination with a Move Path (a local, a Field or Tuple element, a fixed array's at a constant index) keeps the carries
+    and the record at the whole use (an unused incomplete value stays valid); the Never value itself, or a value that holds nothing
+    on an assumed path, written anywhere places nothing (a temp's own bit is not a construction fact; R4-M188; R4-M62's Overwrite
+    keeps the target's value); a Places Call's construction is a temp, which has its path.
+  - Rejected: a Move Path per path-less destination kind in `MirMoveData` (a path SPEC says does not exist; a case per kind);
+    checking the container's later whole use (O-319 (b)).
+- **R4-M210 A Fill's elements no Place names give their facts to the Fill's own Unplaced lane; an operand absent on an assumed path
+  leaves every element unplaced (the Dictionary redesign's step 5)** (2026-11-16; Middle, MIR analysis A1's paths; an acceptance
+  mover, landing with R4-M206 as one; implementation review ACCEPT WITH NOTES (S5-N1, S5-N2, S5-N4 done), its follow-up ACCEPT
+  (F-N1); on R4-M208; amends R4-M208's closure) SPEC 4.3.3, 4.4.2, 8.3.3, 14.10.3, 15.1.2, 15.1.3.
+  - Rule (`MirMoveData.Elements`, read by `Nevers`' three Fill publications): a Fill of fixed length N has a component at each
+    constant index below N that the body's projections hold (whether it is a Move Path stays the closure's); the other elements,
+    which no use tells apart (a whole or a runtime-index use reads the Fill's path; a Move, a Drop and a definition apply to it),
+    have no path and give their facts to the Fill's own path as their owner (its Unplaced lane), as the renumbering does for any
+    unnamed component. The own carry of a whole operand temp that may hold nothing is published for a Fill as for every aggregate; a
+    tracked fact mirrored into the others is that owner's Unplaced lane. An open length names no element for every binding (SPEC
+    4.4.2: the body is checked for every binding that meets the public conditions; 8.3.3), so all of its elements are the others:
+    its facts go to the Fill's own Unplaced lane (the step 5 review's S5-N1; `return` / `let a: [L of i32] = [L of if c => y else =>
+    fail()]` / `keepL(a)` in `func g<length L>` with `g<2>` is UninitializedPlace_Kd at the use, as are `a[0]`, a runtime index; a
+    complete join and an unused Fill stay valid). A constant-expression length is closed.
+  - Closure: a carry onto the location's defined path itself names nothing (a Use's source there is the operand's Place, a Move Path
+    already; the others have no Move Path at or below them).
+  - Why: one fact per element is not bounded by the program (`[10000 of x]`); the elements no Place names have one state, their
+    owner's.
+  - Effect: `return` / `takeF([2 of if c => y else => fail()])` is `UninitializedPlace_Kd` at the whole use; a constant-index read
+    of an element, a runtime index, a Tuple component holding such a Fill and a temp holding it that holds nothing on another path
+    (`takeF(if c => [2 of if c => y else => fail()] else => fail())`) likewise; writing every element restores it; length 0, a real
+    path, an unused or discarded Fill stay valid. A Fill's paths and facts no longer grow with its length.
+  - Cost (the step 5 review's S5-N4; the Middle's decision 2026-11-16): `Elements` is read only where a fact needs it (a Never
+    operand, or an operand temp with a carry), so a Fill whose operand carries no fact creates no child: a body of F such Fills and
+    D distinct constant indices creates paths linear in F + D (pinned: `TypeDagScalingTest.AFillWithoutAFactCreatesNoChild`). A Fill
+    whose operand may hold nothing on an assumed path (a join temp, Absent) carries its own bit to each component: D + 1 carries per
+    Fill, O(F x D) for such a body (measured at F = D = 1,000 on a loaded machine: join 1,702 ms MIR build / 162.7 ms
+    MirMoveData.Build, after `return` 869 / 142.4 ms; the plain body 45.6 / 0.29 ms, step 2's MoveData 0.29). That is the price of
+    soundness: step 2 was cheap there only because it carried nothing for those shapes. Rejected: one carry onto the defined path
+    (the Use's kept definition) leaves the destination uninitialized, not constructed with unplaced elements, so `return` / `var f:
+    [3 of i32] = [3 of if c => y else => fail()]` / `f[0] = y` / `f[1] = y` / `f[2] = y` / `takeF3(f)` (valid, flre3v) would be
+    UninitializedPlace_Kd at `f[0] = y` (a definition needs every ancestor's own bit); the complement alone (`~path` for every
+    element) misses a named element's read: `return` / `let f: [2 of i32] = [2 of if c => y else => fail()]` / `use(f[0])` (invalid,
+    flc0) would be accepted (a use reads its path's subtree, never an ancestor's Unplaced lane); a named element's use reading its
+    Fill ancestor's complement (a second meaning of an owner's Unplaced lane); a carry expanded per element after the closure (a
+    second carry form, for a cost no corpus program pays; open if one does).
+  - Rejected: one fact per element; a representative element path for the others (the held 2ca3e8945: a path no Place names with its
+    own state, which the redesign removes); one past the largest named index (bounded by a literal's value); the builder lowering
+    such a Fill as N placements.
 - **Owner decisions, only when triggered:** O1 a MIR vocabulary member or `IntrinsicId`; O2 a total cap above 142,000;
   O3 an acceptance change outside plan Appendix B (C1–C6 and X1–X3 with a SPEC clause; T1–T4 belong to R7), any rejection
   of a milestone or library program, or a row reopening a SETTLED entry; O4 a general SPEC rule left Unsupported at the R4
