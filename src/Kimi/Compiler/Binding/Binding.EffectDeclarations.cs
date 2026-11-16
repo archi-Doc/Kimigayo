@@ -29,7 +29,7 @@ public sealed partial class Binding
     // The confined bound each original virtual function declares, or null (virtual-dispatch 6).
     private readonly Dictionary<FunctionKoto, EffectBoundKoto?> virtualEffectBounds = new(ReferenceEqualityComparer.Instance);
 
-    // SPEC 8.11.4: the Constraint clauses of this pass that carry an effect list.
+    // SPEC 8.11.4: the Constraint clauses of this pass that carry an effect list, the program part (CallableEffectClauses).
     private readonly List<IsKoto> callableEffectClauses = new();
 
     // The Contracts of this pass, recorded when their shapes are built, so the bound tables need no second scan of the nodes.
@@ -327,6 +327,9 @@ public sealed partial class Binding
         shape.EffectState = 2;
     }
 
+    // The pass's Constraint clauses that carry an effect list (DECISIONS BU-220): the program part, then the library's (LibraryLayer).
+    private LayerList<IsKoto> CallableEffectClauses => new(this.callableEffectClauses, this.Library.Layer.CallableEffectClauses);
+
     // Bounds are attached to clauses, never to interned propositions or applicability facts (SPEC 8.11.4).
     private void PrepareCallableEffects()
     {
@@ -377,7 +380,7 @@ public sealed partial class Binding
     // SPEC 8.11.1: the confined bound of each valid original virtual function, its slot's public guarantee.
     private void PrepareVirtualEffectBounds()
     {
-        foreach (var function in this.virtualDeclarations)
+        foreach (var function in this.VirtualDeclarations)
         {
             if (!function.IsVirtual || function.BindingFailure != BindingFailure.None)
             {

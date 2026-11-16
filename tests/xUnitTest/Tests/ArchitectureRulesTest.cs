@@ -100,7 +100,7 @@ public class ArchitectureRulesTest
         "FunctionKoto.WriteDeclarationTo=2;Koto.CopyDocumentation=1;Kotonoha.AddSources=2;Kotonoha.CheckNames=1;Kotonoha.ReplaceDocumentation=1;" +
         "MirDump.Write=2;Parser.ParseRequirementBody=1;Parser.ValidateReceiverParameters=1";
 
-    // The IL opcodes by value (InterfaceEnumerationsStayAtTheirSites).
+    // The IL opcodes by value (MethodCalls).
     private static readonly Dictionary<short, OpCode> OpCodesByValue = typeof(OpCodes).GetFields(BindingFlags.Public | BindingFlags.Static)
         .Select(static x => (OpCode)x.GetValue(null)!).ToDictionary(static x => x.Value);
 
@@ -406,9 +406,22 @@ public class ArchitectureRulesTest
     public void InterfaceEnumerationsStayAtTheirSites(string prefix, string sites)
     {
         var actual = typeof(Kimi.Compiler.Compilation).Assembly.GetTypes().Where(x => x.Namespace?.StartsWith(prefix, StringComparison.Ordinal) == true)
-            .SelectMany(InterfaceEnumerations).GroupBy(static x => x, StringComparer.Ordinal).Select(static x => $"{x.Key}={x.Count()}")
+            .SelectMany(MethodCalls).Where(static x => x.Called is { Name: "GetEnumerator", DeclaringType.IsInterface: true }).Select(static x => x.Site)
+            .GroupBy(static x => x, StringComparer.Ordinal).Select(static x => $"{x.Key}={x.Count()}")
             .Order(StringComparer.Ordinal).ToArray();
         Assert.True(sites.Split(';').Order(StringComparer.Ordinal).SequenceEqual(actual), $"Interface enumerations: {string.Join(";", actual)}; the sites are {sites}.");
+    }
+
+    // PLAN G949 S1-b2 (d11; DECISIONS BU-220): every Type carries the dense id its maker gave it, so only TyCtxt, which numbers each Type it
+    // makes (Intern, Parameter), and BoundType, whose statics hold one fixed list of ids (its type initializer, CreatePrimitives and
+    // CreateWrappingScalars), construct one. Read from the IL, where a target-typed `new(...)` is a constructor call like any other.
+    [Fact]
+    public void OnlyTyCtxtAndBoundTypeConstructTypes()
+    {
+        var sites = typeof(Kimi.Compiler.Compilation).Assembly.GetTypes().SelectMany(MethodCalls)
+            .Where(static x => x.Called is ConstructorInfo && x.Called.DeclaringType == typeof(Kimi.Compiler.BoundType)).Select(static x => x.Site)
+            .Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).ToArray();
+        Assert.Equal(new[] { "BoundType..cctor", "BoundType.CreatePrimitives", "BoundType.CreateWrappingScalars", "TyCtxt.Intern", "TyCtxt.Parameter" }, sites);
     }
 
     // R7-C2a: Enumerate is a leaf of the judgment graph (Binding.ContractSolver.cs's contract). The members of its walk call exactly
@@ -457,8 +470,9 @@ public class ArchitectureRulesTest
         _ => null,
     };
 
-    // The calls of an interface's GetEnumerator in a type's own method bodies, read from their IL, one `TopLevelType.Method` each.
-    private static IEnumerable<string> InterfaceEnumerations(Type type)
+    // The methods and constructors a type's own method bodies call, construct or load, read from their IL, each with its site
+    // `TopLevelType.Method`.
+    private static IEnumerable<(string Site, MethodBase Called)> MethodCalls(Type type)
     {
         const BindingFlags Declared = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.Static | BindingFlags.DeclaredOnly;
         var top = type;
@@ -479,9 +493,9 @@ public class ArchitectureRulesTest
                 i += code.Size;
                 if (code.OperandType == OperandType.InlineMethod && type.Module.ResolveMethod(
                     BitConverter.ToInt32(il, i), type.IsGenericType ? type.GetGenericArguments() : null, method.IsGenericMethod ? method.GetGenericArguments() : null)
-                    is { Name: "GetEnumerator", DeclaringType.IsInterface: true })
+                    is { } called)
                 {
-                    yield return $"{top.Name}.{name}";
+                    yield return ($"{top.Name}.{name}", called);
                 }
 
                 i += code.OperandType switch

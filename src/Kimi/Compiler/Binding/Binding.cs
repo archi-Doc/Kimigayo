@@ -14,7 +14,9 @@ namespace Kimi.Compiler;
 // - Outputs: Result, Issues, Obligations, LibraryImports, the Type context (Types), the facts published to readers outside Binding
 //   (Semantics; the HIR tables and Plans), and the diagnostics ReportDiagnostics records (Binding.Diagnostics.Report.cs).
 // - Invariants: a pass is never reentered; a pass that does not finish leaves no Result, and the later phases' facts are discarded
-//   when a pass starts; storage is reused across passes (ResetPass, Binding.Pass.cs).
+//   when a pass starts; storage is reused across passes (ResetPass, Binding.Pass.cs). The effect obligations' per-pass sources
+//   (virtual declarations, bounded Callable clauses and their uses) are LayerLists: a pass writes the part this driver hands it,
+//   the program part, until the library pass (PLAN G949 S1-r1) is handed the base part (LibraryLayer); readers read both.
 // - Prohibitions: no read of Mir or the Backend (COMPILER_ARCHITECTURE "Dependency rules"); readers outside Binding use its published
 //   facts, never its private state.
 

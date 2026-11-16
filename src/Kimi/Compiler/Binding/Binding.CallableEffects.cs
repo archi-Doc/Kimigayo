@@ -6,8 +6,11 @@ namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
-    private readonly List<CallableEffectUse> callableEffectUses = new(); // Each selected use of a bounded Callable clause, once per pass.
+    private readonly List<CallableEffectUse> callableEffectUses = new(); // The program part (CallableEffectUses).
     private readonly Dictionary<Koto, (IsKoto Clause, FunctionKoto Requirement)> callablePremiseFailures = new(ReferenceEqualityComparer.Instance);
+
+    // Each selected use of a bounded Callable clause, once per pass (DECISIONS BU-220): the program part, then the library's.
+    private LayerList<CallableEffectUse> CallableEffectUses => new(this.callableEffectUses, this.Library.Layer.CallableEffectUses);
 
     internal static BoundType? CallableCore(BoundType? type)
         => type is { Kind: BoundTypeKind.Semantics, Components.Count: 1 } ? type.Components[0] : type;
@@ -38,9 +41,10 @@ public sealed partial class Binding
                 continue;
             }
 
-            for (var i = 0; i < this.callableEffectClauses.Count; i++)
+            var clauses = this.CallableEffectClauses;
+            for (var i = 0; i < clauses.Count; i++)
             {
-                var clause = this.callableEffectClauses[i];
+                var clause = clauses[i];
                 if (!ReferenceEquals(clause.Parent, stated.Owner) || !ReferenceEquals(clause.BoundConstraint, raw))
                 {
                     continue;
@@ -89,7 +93,7 @@ public sealed partial class Binding
     private void CollectCallableEffectUses()
     {
         this.callableEffectUses.Clear();
-        for (var i = 0; i < this.nodes.Count && this.callableEffectClauses.Count != 0; i++)
+        for (var i = 0; i < this.nodes.Count && this.CallableEffectClauses.Count != 0; i++)
         {
             var node = this.nodes[i];
             if (node is InvocationKoto { BoundCall: { } call } && this.Library.PresentedTarget(call.Target).Declaration is FunctionKoto function)
@@ -169,5 +173,5 @@ public sealed partial class Binding
 
     // A selected use of a bounded Callable clause: where a failure is located, the use whose premises apply, the clause, and its substituted
     // subject, signature and receiver.
-    private readonly record struct CallableEffectUse(Koto At, Koto Use, IsKoto Clause, BoundType Subject, BoundType Signature, SemanticsKind Receiver);
+    internal readonly record struct CallableEffectUse(Koto At, Koto Use, IsKoto Clause, BoundType Subject, BoundType Signature, SemanticsKind Receiver);
 }
