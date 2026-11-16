@@ -301,6 +301,8 @@ public sealed partial class Binding
 
         var evidence = obligation.Use;
         var body = obligation.Body;
+        longer = this.OriginAtUse(longer, obligation);
+        shorter = this.OriginAtUse(shorter, obligation);
         Add(longer, shorter);
         if (obligation.Equality)
         {
@@ -309,8 +311,6 @@ public sealed partial class Binding
 
         void Add(BoundOrigin source, BoundOrigin target)
         {
-            source = this.OriginAtUse(source, evidence);
-            target = this.OriginAtUse(target, evidence);
             if (ReferenceEquals(source, target) || !BoundableIn(target, body))
             {
                 return;

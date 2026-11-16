@@ -214,6 +214,11 @@ public sealed partial class Binding
     private BoundOrigin OriginAtUse(BoundOrigin origin, Koto use, in CallableInstance comparison)
         => InComparison(comparison) ? this.SlotAtUse(origin, use) : this.OriginAtUse(origin, use);
 
+    // An end of a body row at its use, as the row's producer read it: a Callable comparison's row (Compared) as the comparison does. The
+    // readers of body rows (the C1-F4 view, the local-region graph) read their ends so.
+    private BoundOrigin OriginAtUse(BoundOrigin origin, in BindingObligation obligation)
+        => obligation.Compared ? this.SlotAtUse(origin, obligation.Use) : this.OriginAtUse(origin, obligation.Use);
+
     // An Origin at its use as written: OriginAtUse with a `let` region kept as the slot, not its value (RegionValueAtUse). A written
     // Origin binds so (BindOrigin), and a comparison's relation reads so (above); Binding.LocalRegions.cs's contract.
     private BoundOrigin SlotAtUse(BoundOrigin origin, Koto use) => this.ReceiverAtUse(this.DeclaredAtUse(origin, use), use);
@@ -518,8 +523,8 @@ public sealed partial class Binding
     // (a Constraint's proof, conformance, specialization, a contract match) reads the conjunct as not proven: premises alone.
     private bool LeavesBodyRows(BoundOrigin longer, BoundOrigin shorter, Koto use, in CallableInstance comparison, ulong condition, Koto? clause)
     {
-        longer = this.OriginAtUse(longer, use);
-        shorter = this.OriginAtUse(shorter, use);
+        longer = this.OriginAtUse(longer, use, comparison);
+        shorter = this.OriginAtUse(shorter, use, comparison);
         if (comparison.Rows is not { } rows || !RegionChain(longer, shorter, false, this.formingBody))
         {
             return false;
@@ -544,7 +549,7 @@ public sealed partial class Binding
             var operand = conjuncts == 1 ? longer : longer.Operands[i];
             if (HasLocalRegion(operand) && (conjuncts == 1 || !this.ProvesOriginOutlives(operand, shorter, use, comparison, condition)))
             {
-                rows.Add(new(BindingObligationKind.OriginOutlives, use, BindingDeadline.BodyOrigins, null, operand, bound, Clause: clause, Condition: condition));
+                rows.Add(new(BindingObligationKind.OriginOutlives, use, BindingDeadline.BodyOrigins, null, operand, bound, Clause: clause, Condition: condition) { Compared = true });
             }
         }
 

@@ -147,18 +147,41 @@ public sealed partial class Binding
                 continue;
             }
 
-            longer = this.CanonicalOrigin(this.OriginAtUse(longer, obligation.Use));
-            shorter = this.CanonicalOrigin(this.OriginAtUse(shorter, obligation.Use));
+            longer = this.CanonicalOrigin(this.OriginAtUse(longer, obligation));
+            shorter = this.CanonicalOrigin(this.OriginAtUse(shorter, obligation));
             if (!ReferenceEquals(longer, shorter))
             {
                 var source = obligation.Clause is not null ? OriginRowSource.Declared : obligation.WellFormed ? OriginRowSource.WellFormed : OriginRowSource.Fit;
                 var mask = this.BodyCaseMask(obligation);
                 var unit = this.OriginUnit(obligation.Body);
                 unit.Add(new(obligation.Use, longer, shorter, obligation.Equality, source, obligation.Clause, obligation.Type, mask));
+                if (obligation.Compared)
+                {
+                    this.AddRegionValueRows(unit, longer, obligation.Use, mask);
+                    this.AddRegionValueRows(unit, shorter, obligation.Use, mask);
+                }
             }
         }
 
         this.originRowsVersion = this.storageVersion; // Once the walk passed its checks (BU-102).
+    }
+
+    // PLAN G492-a (ii), the owner's O-363 (a): a comparison's row names a `let` region of its body as the region, an inference variable no
+    // other row of the body names (they read its value). Its value, which the declaration fixes, is its bound: the row `value outlives
+    // region` beside it, under its condition, so A5 solves the region from the value and the comparison alone. The value is read as every
+    // reader reads it (OriginAtUse, RegionValueAtUse); an end that is not a `let` region reads as itself and forms no row.
+    private void AddRegionValueRows(List<OriginRowDraft> unit, BoundOrigin end, Koto use, ulong mask)
+    {
+        var parts = end.Kind == OriginKind.Intersection ? end.Operands.Count : 1;
+        for (var i = 0; i < parts; i++)
+        {
+            var region = parts == 1 ? end : end.Operands[i];
+            var value = this.CanonicalOrigin(this.OriginAtUse(region, use));
+            if (!ReferenceEquals(value, region))
+            {
+                unit.Add(new(use, value, region, false, OriginRowSource.Fit, null, null, mask));
+            }
+        }
     }
 
     private List<OriginRowDraft> OriginUnit(ExecutableBody body)

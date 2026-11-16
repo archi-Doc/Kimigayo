@@ -348,6 +348,10 @@ public sealed class BoundOrigin
 public readonly record struct BindingObligation(BindingObligationKind Kind, Koto Use, BindingDeadline Deadline, BoundType? Type = null, BoundOrigin? Longer = null, BoundOrigin? Shorter = null, BoundLength? Length = null, bool Equality = false, Koto? Clause = null, bool WellFormed = false, OriginDischarge Discharge = OriginDischarge.Judgment, ulong Condition = 0)
 {
     internal ExecutableBody Body { get; init; }
+
+    // A Callable comparison's row (Binding.LeavesBodyRows, PLAN G492-a (ii)): its ends are read as the comparison reads them, a `let`
+    // region of the use's body as the region (Binding.OriginAtUse with an obligation; the owner's O-363 (a)).
+    internal bool Compared { get; init; }
 }
 
 internal enum TypePosition : byte
