@@ -76,17 +76,9 @@ public sealed class SemanticSnapshotTest
                 continue;
             }
 
-            var before = File.ReadAllText(Path.Combine(baseline, file)).Split('\n');
-            var after = Of(snapshots[index], kind).Split('\n');
-            var line = 0;
-            while (line < before.Length && line < after.Length && before[line] == after[line])
+            if (FirstDifference(File.ReadAllText(Path.Combine(baseline, file)), Of(snapshots[index], kind)) is { } difference)
             {
-                line++;
-            }
-
-            if (line < before.Length || line < after.Length)
-            {
-                differences.Add($"{file}:{line + 1}: {(line < before.Length ? before[line] : "<end>")} -> {(line < after.Length ? after[line] : "<end>")}");
+                differences.Add($"{file}:{difference}");
             }
         }
 
@@ -118,24 +110,39 @@ public sealed class SemanticSnapshotTest
     /// <returns>The bound compilation and the module the case prints: the library for the library case, else the program.</returns>
     internal static (Compilation Compilation, Kotonoha Module) Bind(string name)
     {
-        var slash = name.IndexOf('/');
-        var kind = slash < 0 ? name : name[..slash];
-        var subject = name[(slash + 1)..];
-        var source = kind switch
-        {
-            "library" => string.Empty,
-            "milestone" => File.ReadAllText(DiagnosticCorpus.RepositoryPath("tests", "milestones", subject + ".kimi")),
-            "mutation" => DiagnosticCorpus.Apply(DiagnosticCorpus.Mutation(subject)),
-            "syntax" => DiagnosticCorpus.Syntax(subject).Source,
-            _ => PairCases().Single(x => x.Name == subject).Source,
-        };
-
         var c = Compilation.CreateForTest();
         Assert.True(c.Prepare(WindowsProfile.Target));
-        c.Kotonoha.AddSource(new SourceDocument("Program.kimi", source));
+        c.Kotonoha.AddSource(new SourceDocument("Program.kimi", Source(name)));
         c.Bind();
         c.Binding.CheckStartup(OutputKind.Application);
-        return (c, kind == "library" ? c.Library.Kotonoha : c.Kotonoha);
+        return (c, name == "library" ? c.Library.Kotonoha : c.Kotonoha);
+    }
+
+    /// <summary>Gets the source of a case of the corpus or of the diagnostic snapshot's (<see cref="DiagnosticSnapshotTest.CaseNames"/>):
+    /// the library case's is empty and a pair case's its row's; every other kind's is the diagnostic snapshot's
+    /// (<see cref="DiagnosticSnapshotTest.Source"/>).</summary>
+    /// <param name="name">The case name.</param>
+    /// <returns>The source text.</returns>
+    internal static string Source(string name)
+        => name == "library" ? string.Empty
+            : name.StartsWith("pair/", StringComparison.Ordinal) ? PairCases().Single(x => x.Name == name[5..]).Source : DiagnosticSnapshotTest.Source(name);
+
+    /// <summary>Gets the first line at which two texts differ, as <c>line: before -> after</c> (<c>&lt;end&gt;</c> past a text's last
+    /// line), or null when they are equal.</summary>
+    /// <param name="before">The expected text.</param>
+    /// <param name="after">The actual text.</param>
+    /// <returns>The first difference, or null.</returns>
+    internal static string? FirstDifference(string before, string after)
+    {
+        var (earlier, later) = (before.Split('\n'), after.Split('\n'));
+        var line = 0;
+        while (line < earlier.Length && line < later.Length && earlier[line] == later[line])
+        {
+            line++;
+        }
+
+        return line < earlier.Length || line < later.Length
+            ? $"{line + 1}: {(line < earlier.Length ? earlier[line] : "<end>")} -> {(line < later.Length ? later[line] : "<end>")}" : null;
     }
 
     /// <summary>Takes the snapshot of a case; with <paramref name="hir"/> the HIR columns are published before the ownership analysis

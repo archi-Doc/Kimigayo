@@ -823,7 +823,7 @@ public sealed partial class HirFormsTest
         Assert.Equal(("Counter", 1), (CallPlan.Of(tally.BaseInitializer!)!.Target.Scope.Owner.SymbolOf()!.Name, AdtDef.Count(AdtDef.ReceiverType(tally)!)));
         Assert.Equal(HirOp.Literal, HirTables.Op(AdtDef.Field(AdtDef.ReceiverType(tally)!, 0).InitializerKoto!));
         BuiltinForm[] forms = [BuiltinForm.IsEmpty, BuiltinForm.Capacity, BuiltinForm.Indices];
-        Assert.Equal(forms, nodes.Select(static x => IntrinsicDisposition.FormOf(x)).Where(static x => x != BuiltinForm.None));
+        Assert.Equal(forms, nodes.Select(static x => Binding.FormOf(x)).Where(static x => x != BuiltinForm.None));
         Assert.Equal("Some", BoundEnumConstruction.Of(nodes.OfType<InvocationKoto>().Last())!.Case.Symbol.Name);
     }
 
