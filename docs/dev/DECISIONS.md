@@ -13677,11 +13677,12 @@ resumed by R4-M86 (2026-10-20).
     module), so a document whose items lie in two modules (after AST2's attachment at a generated function's `Body`, or one
     `SourceDocument` object parsed into two modules through the public `Kotonoha.AddSource`, `AddSources` or `CodeContext.Parse`)
     has a scope in each; an Origin by its owner node and slot; a conformance by its Type symbol; a composite key's entries are a row
-    of the family's composite column at its first id. A per-pass list whose library entries are read later is a `LayerList<T>`: the
-    program pass's part, then the library's, through one enumerator; the driver hands each pass its part, so no step tests which
-    pass runs, and a program pass's record at a library location goes in the program's part. A keyed `PassPart` collection is read
-    by one find, `PassPart.Find`: the layer's part first, then the running pass's when it is not the layer's map (a test of the map,
-    never of which pass runs); a write goes to the row the find returns or, for a key in neither part, to the running part; a keyed
+    of the family's composite column at its first id, entries with an ordered key sorted and found by binary search (`KeyedRow`), an
+    identity-keyed row scanned. A per-pass list whose library entries are read later is a `LayerList<T>`: the program pass's part,
+    then the library's, through one enumerator; the driver hands each pass its part, so no step tests which pass runs, and a program
+    pass's record at a library location goes in the program's part. A keyed `PassPart` collection is read by one find,
+    `PassPart.Find`: the layer's part first, then the running pass's when it is not the layer's map (a test of the map, never of
+    which pass runs); a write goes to the row the find returns or, for a key in neither part, to the running part; a keyed
     collection whose values index a per-pass list keeps that list in its own part. Interners stay content-hash tables; a program
     pass's memo over library keys stays the compilation's own memo, a program fact with no base.
   - **Base and overlay.** Each family has a base, the library pass's, and an overlay, the compilation's program pass's: a node
@@ -13698,11 +13699,15 @@ resumed by R4-M86 (2026-10-20).
     `BoundType`. The library pass's Types are a prefix below `LibraryLayer.TypeCount`, as R8-M33's body ordinals: every lazy
     producer a program pass can reach for a library object (a Contract's `Self` among them) is eager in the library pass; every
     later Type, one with only library parts included, follows. Equality stays reference equality.
-  - **Stamps replace the Clears.** Each store holds `ulong` pass and edit stamps; a row is current when its store's stamp is the
-    counter's or `Frozen`, else absent; the first write into a stale store empties it. `Frozen` is outside both counters (BU-105's
-    line names the pass stamp; this entry the edit stamp). `ResetPass` advances the pass counter and keeps its non-Clear work;
-    `Invalidate` advances the edit counter in place of each Clear whose store has converted; neither touches the base, which refuses
-    writes once `Frozen`.
+  - **Stamps replace the Clears.** A pass or edit column carries its own `ulong` stamp and follows the counter its declaration
+    names: `Binding.PassCounter` (the pass counter, which `ResetPass` advances) or `Binding.EditCounter` (the edit counter, which
+    only `Invalidate` advances). Its rows hold only while its stamp is that counter's value, else every row is absent (one
+    comparison, `StampedColumn<T, TCounter>.Holds`, where S1-1 adds `Frozen`). Its first write after the counter advances empties
+    it, keeping its capacity, and stamps it. A renumbering hands it over unmoved and emptied, its capacity and stamp kept, so no
+    removed node's row stays reachable. A kept column has no stamp and moves its rows with their nodes. `Frozen` is outside both
+    counters (BU-105's line names the pass stamp; this entry the edit stamp). `ResetPass` advances the pass counter and keeps its
+    non-Clear work; `Invalidate` advances the edit counter in place of each Clear whose store has converted; neither touches the
+    base, which refuses writes once `Frozen`.
   - **`ImplTable`.** The store is the conforming Type symbol's module (SPEC 8.6.1: no external registration), decided by one routing
     function, so the overlay never holds a library Type symbol. Reads compose the two stores through one enumerator, the program's
     part first. Stamps replace `Reset`: an identity or path carries the pass of its last reset and reads as unregistered while
@@ -13744,6 +13749,18 @@ resumed by R4-M86 (2026-10-20).
     slot. Rejected: a key by the recording body (a meet is shared across bodies; every reader would need the body); a dense Origin
     id (a new representation for one table that is not hot); a store decided by a meet's operands (a second rule deciding an
     Origin's store beside the recording pass's part).
+  - Amended by PLAN G949 D-9 (N5-5, the Origin families; the Front's design, the Back's seats): a composite column's row whose
+    entries have an ordered key is sorted and found by binary search; an identity-keyed row is scanned. The sorted row is one
+    helper, `KeyedRow` in `PagedColumn.cs` (Find and Put by binary search, room that doubles; `originAtoms`' rows by an atom's kind
+    and slot, `openOrigins`' by an open region's key). N5-1's `Documents` rows stay scanned: their key, a `SourceDocument`
+    reference, has no order, and a module root holds few documents. Reason: the required linear growth (N5-5's row n15: a function
+    of N reference parameters, N Input atoms on one row) fails with a scanned row (factor 4 as N doubles), and the sorted row grows
+    by N log N probes with linear bytes. Rejected: a scanned row for every composite key (quadratic on one owner's many atoms); a
+    hashed row (`PagedColumn`'s no-hashing prohibition and a second store form).
+  - Amended by PLAN G949 N5-1b (the Front, 2026-11-17): the stamp is a column's own, as the Stamps bullet now says, where the entry
+    had each store hold a pass and an edit stamp; one stamped form, `StampedColumn<T, TCounter>` in `PagedColumn.cs`, whose lifetime
+    is the counter it follows (no lifetime flag, no other stamp check). This ends N5-1's staging of the stamps and the Pass/Edit
+    hand-over; N5-5's edit family and N5-1b's and N5-2's pass families take this form.
 - **G209-1** (2026-10-24; structural unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source
   aliases their selected container and environment before ordinary lookup merges imports. These responsibilities were embedded in the
   general expression parser and `Binding.Types.Lookup`, with alias resolution beside Type formation. `Parser.RuntimeTypeTests` now
