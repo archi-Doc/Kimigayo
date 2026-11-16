@@ -3044,7 +3044,7 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
             this.effects.BeginProgram();
             this.Local(program, program.ProgramBodies);
             this.obligations.Clear();
-            this.effects.Run(program, this.obligations);
+            Assert.True(this.effects.Run(program, this.obligations, SyntaxTable.LibraryModule + 1));
         }
 
         // A segment's bodies' views' local facts.

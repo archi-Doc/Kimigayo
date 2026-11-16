@@ -2,7 +2,7 @@
 
 // Owns the site templates of the checked set (R5 package K 4.5, 4.7 and 4.8): one per body, the body's sites in location order, each with
 // whether a runtime path from the body's entry reaches it, which replaying an item's template resolves; the library segment's kept while
-// its library version holds, the program segment's built per program version (PLAN G950).
+// its library version holds, the program segment's built per program version (PLAN G950) and kept across its runs (PLAN G951).
 // Input: a built, validated MirProgram, its segments (LibraryBodies, ProgramBodies) and its library version (LibraryVersion); the Target
 // and Need columns of the intrinsic rows; LayoutNeeds and Layout.Indirect (DECISIONS R5-M149).
 // Output: each body's sites (none for a body with a finding, MirBody.HasFinding), which Replay reads, and its layout needs past its
@@ -13,11 +13,13 @@
 // X5) or whose intrinsic lays out its Type argument; a Drop; a case adaptation (an instance's creation, DECISIONS R5-M111); an aggregate;
 // an erasure to a Function Type; a function item constant; a cast or binary operation whose Types depend on slots (K 4.7, checked per
 // instance); a binary operation whose operator row has a layout need (a raw pointer's displacement, K 4.8).
-// Invariants: built before any item is replayed, the library segment's once per library version (Run compares its stamp once; the stamp
-// is valid for the one program its compilation's builder publishes); a template is a function of its body alone: the runtime bit is one MirReach walk without CheckTarget edges, and a template holds locations and the
-// body's Places only, no substitution or target.
+// Invariants: built before any item is replayed, the library segment's once per library version (Run compares its stamp; the stamp is
+// valid for the one program its compilation's builder publishes), the program segment's in build order over the bodies built since the
+// version's last walk, which a replay extends to the bodies a lookup built during the run (PLAN G951); a template is a function of its
+// body alone: the runtime bit is one MirReach walk without CheckTarget edges, and a template holds locations and the body's Places only,
+// no substitution or target.
 // Must not: resolve a target, read TyCtxt, an item or the root range, or record anything: the definition-stage capability check (A3b) is
-// judged work, run every version in Run's root loop (InstanceCollector.Capabilities.cs).
+// judged work, run in every run's root loop (InstanceCollector.Capabilities.cs).
 
 using Kimi.Compiler.Mir;
 
@@ -27,7 +29,8 @@ internal sealed partial class InstanceCollector
 {
     private readonly MirReach reach = new();
     private readonly TemplateStore libraryTemplates = new(); // The library segment's templates, kept while its library version holds.
-    private readonly TemplateStore programTemplates = new(); // The program segment's, built per program version.
+    private readonly TemplateStore programTemplates = new(); // The program segment's, built per program version, kept across its runs.
+    private int extent; // The build position up to which the program segment's bodies have templates in the version (PLAN G951).
 
     // K 4.5 rows 1-9: a call carries a target by its callee: a Fn, Requirement or Value callee, or an intrinsic whose row names one; a
     // Virtual call none, its receiver's VTable holding the entries (X5).
@@ -79,23 +82,25 @@ internal sealed partial class InstanceCollector
         return false;
     }
 
-    // Each body's template: the library segment's once per library version (its store's stamp, MirProgram.LibraryVersion), the program
-    // segment's once per program version.
+    // The templates of the bodies without one: the library segment's once per library version (its store's stamp,
+    // MirProgram.LibraryVersion), then the program segment's bodies built since the version's last walk, in build order (Run starts a
+    // version at LibraryCount; Replay calls it when a lookup built bodies during the run, PLAN G951).
     private void Templates(MirProgram program)
     {
         if (this.libraryTemplates.Version != program.LibraryVersion)
         {
+            this.libraryTemplates.Clear();
             Build(this.libraryTemplates, program.LibraryBodies);
             this.libraryTemplates.Version = program.LibraryVersion;
         }
 
-        Build(this.programTemplates, program.ProgramBodies);
+        Build(this.programTemplates, program.Bodies[this.extent..]);
+        this.extent = program.Bodies.Length;
 
-        // A segment's templates into its store, in body order; a body with a finding, which no consumer reads (DECISIONS R5-M183), has an
-        // empty range and is not read.
+        // Bodies' templates appended to their segment's store, in build order; a body with a finding, which no consumer reads (DECISIONS
+        // R5-M183), has an empty range and is not read.
         void Build(TemplateStore store, ReadOnlySpan<MirBody> bodies)
         {
-            store.Clear();
             foreach (var body in bodies)
             {
                 store.Begin(body.Ordinal);

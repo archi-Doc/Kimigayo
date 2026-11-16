@@ -4,12 +4,17 @@
 // Environment, Unknown, Limit, Derived and Deep (R4-M153) and atoms over the definition's abstract Types (Drop(T), a call through a Callable input T) — and
 // the `confined` obligations Binding publishes (TyCtxt.EffectObligations).
 // Input: validated bodies per MirCases view, their uses (MirUses), the blocks the runtime edges reach (MirDataflow.Begin), A2's verdicts
-// and its walk of a group (MirProgram.Drops, MirDropTable.Destroyed), TyCtxt's obligations and callee facts, and TyCtxt.Comparison for a tuple
-// operator's call (its distinct leaves;
-// DECISIONS R5-M166; a published requirement on a composite Type keeps Binding's legacy plan, TyCtxt.Witnesses, until A-12).
-// Output: IncompatibleContractImplementation_Kd,
-// UnsatisfiedEffectBound_Kd, Unsupported_Kd and OwnershipDepthLimit_Kd through MirReport, and for A5 the per-node summaries and a site's key row and classes
-// per view (Keys, Field).
+// and its walk of a group (MirProgram.Drops, MirDropTable.Destroyed), whether the driver has stepped a body (MirDropTable.Holds), TyCtxt's
+// obligations and callee facts, TyCtxt.Comparison for a tuple operator's call (its distinct leaves;
+// DECISIONS R5-M166; a published requirement on a composite Type keeps Binding's legacy plan, TyCtxt.Witnesses, until A-12), and the root
+// range.
+// Output: Run's result, whether its round was clean; IncompatibleContractImplementation_Kd,
+// UnsatisfiedEffectBound_Kd, Unsupported_Kd and OwnershipDepthLimit_Kd through MirReport for the obligations whose subject is in the root
+// range (the library's are the library check's, PLAN G951 E3), added by a clean round only; and for A5 the per-node summaries and a site's
+// key row and classes per view (Keys, Field).
+// The solve runs in rounds (PLAN G951): Compose is the one read of a body's nodes, and a read of a body A2 does not hold (one built since the
+// driver's last step, with no local facts) misses; the round goes on to its end, so it demands every body it reads, and commits nothing,
+// and the driver steps and runs the next round until one is clean.
 // Atoms compose through each call's substitution into the caller (an atom concrete there is resolved there, one on a projection with a
 // recursive base where it arises, SPEC 15.6.4: the fixed point is finite where the view finds the base, and a base G170 hides still ends at
 // G128's bound); requirement calls on an abstract Self and virtual calls take the bounds of the caller's own premises, a requirement on
