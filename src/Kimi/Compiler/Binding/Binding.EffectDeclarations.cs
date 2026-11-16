@@ -29,11 +29,11 @@ public sealed partial class Binding
     // The confined bound each original virtual function declares, or null (virtual-dispatch 6).
     private readonly Dictionary<FunctionKoto, EffectBoundKoto?> virtualEffectBounds = new(ReferenceEqualityComparer.Instance);
 
-    // SPEC 8.11.4: the Constraint clauses of this pass that carry an effect list.
-    private readonly List<IsKoto> callableEffectClauses = new();
-
     // The Contracts of this pass, recorded when their shapes are built, so the bound tables need no second scan of the nodes.
     private readonly List<BoundContract> contractShapes = [];
+
+    // SPEC 8.11.4: the Constraint clauses of this pass that carry an effect list: the running pass's part (PassPart, EnterPass).
+    private List<IsKoto> callableEffectClauses;
 
     // SPEC 8.11.1: the cause of each rejected effect item, and of a misplaced item's selector judged on its own (keyed by the selector),
     // recorded only when one fails. The store is reused across passes, so a warm rebind allocates nothing.

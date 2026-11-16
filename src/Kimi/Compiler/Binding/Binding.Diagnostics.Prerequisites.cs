@@ -19,7 +19,6 @@ public sealed partial class Binding
     // when consulted (BindNode, failures of other nodes, symbol uses), never searched in the tree afterwards. The storage is
     // reused across passes, so neither resolving nodes nor a warm rebind of invalid code allocates.
     private readonly List<Koto> consulted = [];
-    private readonly List<Koto> derivedIssues = [];
     private readonly List<Koto> prerequisiteStore = [];
     private readonly Dictionary<Koto, (int Start, int Count)> prerequisites = new(ReferenceEqualityComparer.Instance);
     private readonly Dictionary<Koto, Koto> partPrerequisites = new(ReferenceEqualityComparer.Instance);
@@ -29,8 +28,11 @@ public sealed partial class Binding
     private int consultationStart = -1;
     private Koto? consultationNode;
 
+    // The running pass's part (PassPart.DerivedIssues), which its Check writes (EnterPass).
+    private List<Koto> derivedIssues;
+
     /// <summary>Gets final failures that are explained by failed prerequisites; they are reported as derived problems.</summary>
-    internal IReadOnlyList<Koto> DerivedIssues => this.derivedIssues;
+    internal IReadOnlyList<Koto> DerivedIssues { get; }
 
     // A recovery node, an ErrorKoto or synthesized syntax kept in place of a rejected form, stands for its syntax error.
     internal static bool IsRecovery(Koto node, out DiagnosticKey cause)
