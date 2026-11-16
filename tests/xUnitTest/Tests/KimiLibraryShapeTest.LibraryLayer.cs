@@ -319,11 +319,6 @@ public partial class KimiLibraryShapeTest
                 }
             }
 
-            foreach (var value in ((IDictionary)typeof(Binding).GetField("scopes", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(c.Binding)!).Values)
-            {
-                layer.Row("scope", value);
-            }
-
             // The library's HIR rows (review C5): the parsed tree's, then each synthesized node's, each row headed by its node's id.
             var (hir, table) = (new Printer(true), c.Library.Kotonoha.Syntax);
             hir.Visit(c.Library.Kotonoha.RootKoto);

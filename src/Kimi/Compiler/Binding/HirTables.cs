@@ -255,12 +255,21 @@ internal struct HirTables
 internal struct NodeColumns
 {
     internal PagedColumn<Binding.SymbolRow> Symbols; // Kept: a declaration's symbols (Binding.Scopes.cs).
+    internal PagedColumn<Binding.ScopeRow> Scopes; // Kept: a node's scope, a module root's document scopes (Binding.Scopes.cs).
 
-    internal void Resize(int length) => this.Symbols.Grow(length);
+    internal void Resize(int length)
+    {
+        this.Symbols.Grow(length);
+        this.Scopes.Grow(length);
+    }
 
-    internal readonly NodeColumns Renumbered(int length) => new() { Symbols = this.Symbols.Renumbered(length) };
+    internal readonly NodeColumns Renumbered(int length) => new() { Symbols = this.Symbols.Renumbered(length), Scopes = this.Scopes.Renumbered(length) };
 
-    internal readonly void Move(int from, ref NodeColumns target, int to) => this.Symbols.MoveTo(ref target.Symbols, from, to);
+    internal readonly void Move(int from, ref NodeColumns target, int to)
+    {
+        this.Symbols.MoveTo(ref target.Symbols, from, to);
+        this.Scopes.MoveTo(ref target.Scopes, from, to);
+    }
 }
 
 /// <summary>

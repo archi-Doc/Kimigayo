@@ -23,8 +23,7 @@ public sealed partial class Binding
 {
     private readonly Compilation compilation;
     private readonly List<Koto> nodes = new(KimiLibrarySize.NodeCapacity(KimiLibrarySize.Stated.Nodes));
-    private readonly Dictionary<object, BindingScope> scopes = new(
-        KimiLibrarySize.KeyedCapacity(KimiLibrarySize.Stated.Scopes), ReferenceEqualityComparer.Instance);
+    private readonly KeptScopes scopes;
 
     private readonly DeclaredSymbols symbols;
     private readonly List<BindingIssue> issues = new();
@@ -42,6 +41,7 @@ public sealed partial class Binding
         this.impls = new(this.Library.Layer.Impls);
         this.types = new(this, this.Library);
         this.symbols = new(this);
+        this.scopes = new(this);
         foreach (var symbol in this.Library.RegisteredSymbols)
         {
             this.symbols.Add(symbol.Declaration, symbol);
@@ -84,12 +84,12 @@ public sealed partial class Binding
             this.substitutedParts.Count);
 
     /// <summary>Gets the free slots of the tables KimiLibrarySize sizes: each table's capacity less its entries. A node family's column
-    /// (symbols) is its module's own, so a program's rows never land in a store holding the library's: no capacity bounds them.</summary>
+    /// (symbols, scopes) is its module's own, so a program's rows never land in a store holding the library's: no capacity bounds them.</summary>
     internal KimiLibrarySize.Tables TableFree
         => new(
             this.nodes.Capacity - this.nodes.Count,
             int.MaxValue,
-            this.scopes.Capacity - this.scopes.Count,
+            int.MaxValue,
             this.types.KeyFree,
             this.constraints.Capacity - this.constraints.Count,
             this.pendingAssociatedTypes.Capacity - this.pendingAssociatedTypes.Count,
