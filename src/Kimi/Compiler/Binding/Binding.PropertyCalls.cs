@@ -9,7 +9,7 @@ public sealed partial class Binding
 {
     private readonly PropertyCallRows propertyCalls;
     private readonly StorageProjectionRows storageProjections;
-    private readonly Dictionary<Koto, MemberAccessKoto> propertyUpdateStorage = new(ReferenceEqualityComparer.Instance);
+    private readonly PropertyUpdateStorageRows propertyUpdateStorage;
     private readonly Dictionary<Koto, EvaluatedKoto> propertyUpdateInputs = new(ReferenceEqualityComparer.Instance);
 
     internal static bool IsGetterResult(Koto node)
@@ -394,5 +394,22 @@ public sealed partial class Binding
 
         internal bool TryGetValue(Koto node, [NotNullWhen(true)] out MemberAccessKoto? value)
             => (value = this.GetValueOrDefault(node)) is not null;
+    }
+
+    /// <summary>The `propertyUpdateStorage` family's one accessor (DECISIONS BU-220): a kept family, a property update's synthesized
+    /// storage access (SPEC 13.7.1), made once and reset in place by each pass (ResetSyntheticCalls), kept in its key node's module's
+    /// NodeColumns at its SyntaxId. Its members keep the names its readers use.</summary>
+    private readonly struct PropertyUpdateStorageRows(Binding binding)
+    {
+        internal FamilyRows<MemberAccessKoto?> Values => new(binding, static (table, _) => table.Hir.Families.PropertyUpdateStorage.Enumerate());
+
+        internal void Add(Koto node, MemberAccessKoto value)
+        {
+            ref var row = ref HirTables.Of(node).Families.PropertyUpdateStorage.Ref(node.SyntaxId);
+            row = row is null ? value : throw new ArgumentException($"`propertyUpdateStorage` already holds a row at `{node}`.", nameof(node));
+        }
+
+        internal bool TryGetValue(Koto node, [NotNullWhen(true)] out MemberAccessKoto? value)
+            => (value = node.SyntaxOwner is { } table ? table.Hir.Families.PropertyUpdateStorage.Get(node.SyntaxId) : null) is not null;
     }
 }

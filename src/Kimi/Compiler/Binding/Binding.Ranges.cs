@@ -143,7 +143,7 @@ public sealed partial class Binding
 
         foreach (var storage in this.propertyUpdateStorage.Values)
         {
-            this.ResetSynthetic(storage);
+            this.ResetSynthetic(storage!);
         }
 
         foreach (var input in this.propertyUpdateInputs.Values)

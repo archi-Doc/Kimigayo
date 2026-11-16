@@ -290,6 +290,7 @@ internal struct NodeColumns
     internal PagedColumn<Binding.OriginDeclaration?> InitializerOrigins; // Kept: the Origins a local's initializer omits (Binding.LocalOrigins.cs).
     internal PagedColumn<InvocationKoto?[]?> PropertyCalls; // Kept: a property access's synthesized accessor calls (Binding.PropertyCalls.cs).
     internal PagedColumn<MemberAccessKoto?> StorageProjections; // Kept: an accessor body's synthesized `self` storage projection (Binding.PropertyCalls.cs).
+    internal PagedColumn<MemberAccessKoto?> PropertyUpdateStorage; // Kept: a property update's synthesized storage access (Binding.PropertyCalls.cs).
 
     internal void Resize(int length)
     {
@@ -323,6 +324,7 @@ internal struct NodeColumns
         this.InitializerOrigins.Grow(length);
         this.PropertyCalls.Grow(length);
         this.StorageProjections.Grow(length);
+        this.PropertyUpdateStorage.Grow(length);
     }
 
     // The library's columns start at their stated slots (KimiLibrarySize: no program row lands in them).
@@ -386,6 +388,7 @@ internal struct NodeColumns
             InitializerOrigins = this.InitializerOrigins.Renumbered(length),
             PropertyCalls = this.PropertyCalls.Renumbered(length),
             StorageProjections = this.StorageProjections.Renumbered(length),
+            PropertyUpdateStorage = this.PropertyUpdateStorage.Renumbered(length),
         };
         return columns;
     }
@@ -413,6 +416,7 @@ internal struct NodeColumns
         this.InitializerOrigins.Retire();
         this.PropertyCalls.Retire();
         this.StorageProjections.Retire();
+        this.PropertyUpdateStorage.Retire();
     }
 
     // A kept family's row moves with its node; a stamped family's rows were handed over (Renumbered).
@@ -437,6 +441,7 @@ internal struct NodeColumns
         this.InitializerOrigins.MoveTo(ref target.InitializerOrigins, from, to);
         this.PropertyCalls.MoveTo(ref target.PropertyCalls, from, to);
         this.StorageProjections.MoveTo(ref target.StorageProjections, from, to);
+        this.PropertyUpdateStorage.MoveTo(ref target.PropertyUpdateStorage, from, to);
     }
 }
 
