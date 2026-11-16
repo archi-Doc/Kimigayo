@@ -1,6 +1,5 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
-using System.Collections;
 using System.Reflection;
 using Kimi.Compiler;
 using Kimi.Compiler.Mir;
@@ -56,11 +55,31 @@ public partial class KimiLibraryShapeTest
         var c = Bound(string.Empty);
         Assert.Equal(BindingMode.Final, c.Binding.Result.Mode);
         var pass = (ulong)typeof(Binding).GetField("storageVersion", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(c.Binding)!;
-        var symbols = (IDictionary)typeof(Binding).GetField("symbols", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(c.Binding)!;
-        var functions = symbols.Values.Cast<BindingSymbol>()
+        var functions = DeclaredSymbols(c)
             .Where(x => x.Kind == BindingSymbolKind.Function && ReferenceEquals(x.Declaration.CodeContext?.Kotonoha, c.Library.Kotonoha)).ToArray();
         Assert.NotEmpty(functions);
         Assert.Empty(functions.Where(x => x.QueryState(DeclQueryKind.SignatureVerdict, pass) != DeclState.Done).Select(static x => Line(x.Declaration)));
+    }
+
+    // PLAN G949 S1-r1a (review-r1a B2): CollectCallableEffectUses tests every pass's bounded Callable clauses before it collects a pass's
+    // uses, since a use may select a library callee's clause (SPEC 8.11.4). No program can show that read until the library declares
+    // such a clause: today every clause a use selects is the program's, in the pass's own part. The unit whose library declares the
+    // first one removes this Fact and adds the cross-part row: a program stating no bounded clause of its own calls that library
+    // function, and its use gets its effect obligation (S1-r1b's c15 extension, ruling 65, once the parts split).
+    [Fact]
+    public void TheLibraryDeclaresNoBoundedCallableClause()
+        => Assert.Empty(KotoTree.Walk(Bound(string.Empty).Library.Kotonoha.RootKoto).OfType<IsKoto>().Where(static x => x.EffectBounds.Count != 0).Select(static x => Line(x)));
+
+    // Binding's kept symbols (DECISIONS BU-220: the `symbols` family, read through SemanticQuery.Declarations).
+    private static List<BindingSymbol> DeclaredSymbols(Compilation c)
+    {
+        var symbols = new List<BindingSymbol>();
+        foreach (var symbol in c.Binding.Semantics.Declarations)
+        {
+            symbols.Add(symbol);
+        }
+
+        return symbols;
     }
 
     private static Compilation Analyzed(string program)

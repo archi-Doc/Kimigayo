@@ -100,7 +100,7 @@ public class ArchitectureRulesTest
         "FunctionKoto.WriteDeclarationTo=2;Koto.CopyDocumentation=1;Kotonoha.AddSources=2;Kotonoha.CheckNames=1;Kotonoha.ReplaceDocumentation=1;" +
         "MirDump.Write=2;Parser.ParseRequirementBody=1;Parser.ValidateReceiverParameters=1";
 
-    // The IL opcodes by value (InterfaceEnumerationsStayAtTheirSites).
+    // The IL opcodes by value (MethodCalls).
     private static readonly Dictionary<short, OpCode> OpCodesByValue = typeof(OpCodes).GetFields(BindingFlags.Public | BindingFlags.Static)
         .Select(static x => (OpCode)x.GetValue(null)!).ToDictionary(static x => x.Value);
 
@@ -167,6 +167,9 @@ public class ArchitectureRulesTest
     [InlineData("Binding reads and writes of BindingSymbol.Resolving (0 at R7-D2 d4)", "src/Kimi/Compiler/Binding", "*.cs", @"\.Resolving\b|\bResolving\s*:", 5)]
     // DECISIONS BU-111 (amended by G478): a Binding failure fact records typed parts, and its explanation text is formed only by the
     // diagnostics adapter. The one left is UnboundSlotFact.Note (PLAN's check-formed prose row).
+    // R7-N5, PLAN G949 S1-N5 (DECISIONS BU-220): a node-keyed table member of Binding (a Dictionary or HashSet keyed by a Koto type, or
+    // by object for the node tables) moves into NodeColumns batch by batch; each batch lowers the limit.
+    [InlineData("Node-keyed table members in Binding", "src/Kimi/Compiler/Binding", "*.cs", @"(?m)^\s*(?:private|internal|protected|public)[^=(\n]*\b(?:Dictionary|HashSet)<(?:\w*Koto|object)\b", 103)]
     [InlineData("String explanations in Binding failure facts", "src/Kimi/Compiler/Binding", "*.cs", @"\bstring (?:Condition|Reason|Note)\b(?=[,)])", 1)]
     // R7-E1b: a problem's fact keeps a Type or a closed row, and a check writes no text into one: the adapter owns each row's.
     [InlineData("Text a check keeps as a problem's fact", "src/Kimi/Compiler/Binding", "*.cs", @"\bKeep\((?:object\b|\$?"")|\bRecordMismatch\([^;\n]*\$?""", 0)]
@@ -257,10 +260,11 @@ public class ArchitectureRulesTest
     [InlineData("Readers of an Origin requirement work's Consumer mark", "src/Kimi/Compiler", @"\.Consumer\b|\bConsumer:", "Binding/Binding.OriginRequirements.cs=2")]
     [InlineData("Holders of an inline summary's Tarjan numbers", "src/Kimi/Compiler/Binding", @"\b(?:InlineSummary|inlineSummaries|inlineSummaryPool|inlineComponents|Summary)\b", "Binding.ComponentSummaries.cs=7;Binding.InlineLayouts.cs=43")]
     // PLAN G949 S1-0b r3 (the dump's epoch rule): the memos of one capability epoch are the program's because each pass begins with
-    // ResetCapabilities: its one call is ResetPass's, which Bind runs first in each pass and Invalidate on an edit. A further caller (G949
-    // S1-r1's pass driver among them) fails here until the epoch rule's premise is reviewed. Binding's own ResetPass calls are this.ResetPass
-    // (a member call's spelling); the conformance identities' and paths' ResetPass(ulong) (S1-b1) are other members of the name.
-    [InlineData("A pass's start ends the capability epoch", "src/Kimi/Compiler", @"\bResetCapabilities\(|\bthis\.ResetPass\(", "Binding/Binding.Capabilities.cs=1;Binding/Binding.Pass.cs=1;Binding/Binding.cs=2")]
+    // ResetCapabilities: its one call is ResetPass's, which the pass driver's RunPass runs first in each pass of each run (Binding.Passes.cs)
+    // and Invalidate on an edit (Binding.cs; G949 S1-r1a, its premise reviewed there). A further caller (S1-r1b's library pass among them)
+    // fails here until the epoch rule's premise is reviewed again. Binding's own ResetPass calls are this.ResetPass (a member call's
+    // spelling); the conformance identities' and paths' ResetPass(ulong) (S1-b1) are other members of the name.
+    [InlineData("A pass's start ends the capability epoch", "src/Kimi/Compiler", @"\bResetCapabilities\(|\bthis\.ResetPass\(", "Binding/Binding.Capabilities.cs=1;Binding/Binding.Pass.cs=1;Binding/Binding.Passes.cs=1;Binding/Binding.cs=1")]
     public void SourcePatternStaysAtItsSites(string rule, string directory, string regex, string sites)
     {
         var expression = new Regex(regex);
@@ -416,9 +420,35 @@ public class ArchitectureRulesTest
     public void InterfaceEnumerationsStayAtTheirSites(string prefix, string sites)
     {
         var actual = typeof(Kimi.Compiler.Compilation).Assembly.GetTypes().Where(x => x.Namespace?.StartsWith(prefix, StringComparison.Ordinal) == true)
-            .SelectMany(InterfaceEnumerations).GroupBy(static x => x, StringComparer.Ordinal).Select(static x => $"{x.Key}={x.Count()}")
+            .SelectMany(MethodCalls).Where(static x => x.Called is { Name: "GetEnumerator", DeclaringType.IsInterface: true }).Select(static x => x.Site)
+            .GroupBy(static x => x, StringComparer.Ordinal).Select(static x => $"{x.Key}={x.Count()}")
             .Order(StringComparer.Ordinal).ToArray();
         Assert.True(sites.Split(';').Order(StringComparer.Ordinal).SequenceEqual(actual), $"Interface enumerations: {string.Join(";", actual)}; the sites are {sites}.");
+    }
+
+    // G949 D2b-d's d13 (DECISIONS BU-220): NodeColumns holds Binding's private node families, read and written only through each
+    // family's accessor, so no source file outside Compiler/Binding names it.
+    [Fact]
+    public void NodeColumnsIsNamedOnlyInBinding()
+    {
+        var binding = Path.Combine(Repository.Root, "src", "Kimi", "Compiler", "Binding") + Path.DirectorySeparatorChar;
+        var name = new Regex(@"\bNodeColumns\b");
+        Assert.DoesNotContain(SourceFiles("src", "*.cs"), x => !x.StartsWith(binding, StringComparison.OrdinalIgnoreCase) && name.IsMatch(File.ReadAllText(x)));
+    }
+
+    // PLAN G949 S1-b2 (d11; DECISIONS BU-220): every Type carries the dense id its maker gave it, so only TyCtxt, which numbers each Type it
+    // makes (Intern, Parameter), and BoundType, whose statics hold one fixed list of ids (its type initializer, CreatePrimitives and
+    // CreateWrappingScalars), construct one, each site as many times as listed (the type initializer's four: Unit, Never, Boolean, Range),
+    // so a construction added inside an allowed method fails too. Read from the IL, where a target-typed `new(...)` is a constructor
+    // call like any other.
+    [Fact]
+    public void OnlyTyCtxtAndBoundTypeConstructTypes()
+    {
+        var sites = typeof(Kimi.Compiler.Compilation).Assembly.GetTypes().SelectMany(MethodCalls)
+            .Where(static x => x.Called is ConstructorInfo && x.Called.DeclaringType == typeof(Kimi.Compiler.BoundType))
+            .GroupBy(static x => x.Site, StringComparer.Ordinal).Select(static x => $"{x.Key}={x.Count()}").Order(StringComparer.Ordinal).ToArray();
+        Assert.Equal(
+            new[] { "BoundType..cctor=4", "BoundType.CreatePrimitives=1", "BoundType.CreateWrappingScalars=1", "TyCtxt.Intern=1", "TyCtxt.Parameter=1" }, sites);
     }
 
     // R7-C2a: Enumerate is a leaf of the judgment graph (Binding.ContractSolver.cs's contract). The members of its walk call exactly
@@ -467,8 +497,9 @@ public class ArchitectureRulesTest
         _ => null,
     };
 
-    // The calls of an interface's GetEnumerator in a type's own method bodies, read from their IL, one `TopLevelType.Method` each.
-    private static IEnumerable<string> InterfaceEnumerations(Type type)
+    // The methods and constructors a type's own method bodies call, construct or load, read from their IL, each with its site
+    // `TopLevelType.Method`.
+    private static IEnumerable<(string Site, MethodBase Called)> MethodCalls(Type type)
     {
         const BindingFlags Declared = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.Static | BindingFlags.DeclaredOnly;
         var top = type;
@@ -489,9 +520,9 @@ public class ArchitectureRulesTest
                 i += code.Size;
                 if (code.OperandType == OperandType.InlineMethod && type.Module.ResolveMethod(
                     BitConverter.ToInt32(il, i), type.IsGenericType ? type.GetGenericArguments() : null, method.IsGenericMethod ? method.GetGenericArguments() : null)
-                    is { Name: "GetEnumerator", DeclaringType.IsInterface: true })
+                    is { } called)
                 {
-                    yield return $"{top.Name}.{name}";
+                    yield return ($"{top.Name}.{name}", called);
                 }
 
                 i += code.OperandType switch
