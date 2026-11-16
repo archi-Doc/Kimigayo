@@ -10,7 +10,7 @@ public sealed partial class Binding
     private readonly PropertyCallRows propertyCalls;
     private readonly StorageProjectionRows storageProjections;
     private readonly PropertyUpdateStorageRows propertyUpdateStorage;
-    private readonly Dictionary<Koto, EvaluatedKoto> propertyUpdateInputs = new(ReferenceEqualityComparer.Instance);
+    private readonly PropertyUpdateInputRows propertyUpdateInputs;
 
     internal static bool IsGetterResult(Koto node)
         => KotoHelper.UnwrapParentheses(node) is not MemberAccessKoto { IsDirectStorage: true } &&
@@ -411,5 +411,27 @@ public sealed partial class Binding
 
         internal bool TryGetValue(Koto node, [NotNullWhen(true)] out MemberAccessKoto? value)
             => (value = node.SyntaxOwner is { } table ? table.Hir.Families.PropertyUpdateStorage.Get(node.SyntaxId) : null) is not null;
+    }
+
+    /// <summary>The `propertyUpdateInputs` family's one accessor (DECISIONS BU-220): a kept family, a property update's synthesized input
+    /// (SPEC 13.7.1), made once and reset in place by each pass (ResetSyntheticCalls), kept in its key node's module's NodeColumns at its
+    /// SyntaxId. Its members keep the names its readers use.</summary>
+    private readonly struct PropertyUpdateInputRows(Binding binding)
+    {
+        internal FamilyRows<EvaluatedKoto?> Values => new(binding, static (table, _) => table.Hir.Families.PropertyUpdateInputs.Enumerate());
+
+        internal EvaluatedKoto this[Koto node] => this.GetValueOrDefault(node) ?? throw new KeyNotFoundException($"No `propertyUpdateInputs` row at `{node}`.");
+
+        internal void Add(Koto node, EvaluatedKoto value)
+        {
+            ref var row = ref HirTables.Of(node).Families.PropertyUpdateInputs.Ref(node.SyntaxId);
+            row = row is null ? value : throw new ArgumentException($"`propertyUpdateInputs` already holds a row at `{node}`.", nameof(node));
+        }
+
+        internal EvaluatedKoto? GetValueOrDefault(Koto node)
+            => node.SyntaxOwner is { } table ? table.Hir.Families.PropertyUpdateInputs.Get(node.SyntaxId) : null;
+
+        internal bool TryGetValue(Koto node, [NotNullWhen(true)] out EvaluatedKoto? value)
+            => (value = this.GetValueOrDefault(node)) is not null;
     }
 }

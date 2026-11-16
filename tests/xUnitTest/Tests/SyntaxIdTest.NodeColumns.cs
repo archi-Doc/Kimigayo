@@ -122,6 +122,7 @@ public partial class SyntaxIdTest
     [InlineData("PropertyCalls", "milestone:Milestone26")]
     [InlineData("StorageProjections", "milestone:Milestone26")]
     [InlineData("PropertyUpdateStorage", "struct HY<S>\n    public var x: S\n        set(value: S) -> ()\n            storage = value@move\n    public init(x: S) => self.x = x@move\npublic func main()\n    var h = HY<i32>.init(x: 3)\n    h.x += 4\n")]
+    [InlineData("PropertyUpdateInputs", "struct HY<S>\n    public var x: S\n        set(value: S) -> ()\n            storage = value@move\n    public init(x: S) => self.x = x@move\npublic func main()\n    var h = HY<i32>.init(x: 3)\n    h.x += 4\n")]
     public void AKeptFamilyAlternatesItsArenasAcrossEdits(string family, string? program)
     {
         var c = MinimalEmissionTest.Analyze(program is null ? Source

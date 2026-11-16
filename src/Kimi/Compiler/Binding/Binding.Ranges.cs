@@ -148,7 +148,7 @@ public sealed partial class Binding
 
         foreach (var input in this.propertyUpdateInputs.Values)
         {
-            this.ResetSynthetic(input);
+            this.ResetSynthetic(input!);
         }
 
         this.resolvedSlices.Clear();
