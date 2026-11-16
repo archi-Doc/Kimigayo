@@ -23,7 +23,9 @@ namespace XunitTest;
 //   the per-query answer tables (TypeMemo) hold no fact after a pass and are not listed;
 // - every library declaration's symbol and scope, field by field: the Contract, Property, Schema and Adt contents, the slots R8-M32 does
 //   not print, and the declaration query states;
-// - the library's HIR rows, parsed and synthesized, as R8-M32's printer prints them (S1-0b r2, the dispositions review's C5);
+// - the library's nodes, parsed and synthesized, as R8-M32's printer prints them: each node's line by location and its HIR row by node
+//   id (S1-0b r2 and r3, the dispositions review's C5; a parsed id is fixed by the library's table, a synthesized one is equal across
+//   programs from G949 S1-e);
 // - the aggregates' library parts: Issues, Obligations, LibraryImports (Binding's lists) and the effect obligations.
 // Values print through declarations and nodes (by location), Types (by printed form) and pass stamps (by their distance from the latest
 // pass), so synthesized ids (R8-M32's Temporary 1) do not enter a table's row; rows compare as a sorted multiset. How a store compares
@@ -256,7 +258,7 @@ public partial class KimiLibraryShapeTest
         private static readonly HashSet<(Type, string)> Numbers = [.. Disposition.Where(static x => x.Value.Rule == Rule.Number)
             .Select(static x => NumberField(x.Key)).Where(static x => x.HasValue).Select(static x => x!.Value)];
 
-        // Compilation-wide roots and the source text: never listed (the HIR rows print through R8-M32's printer).
+        // Compilation-wide roots and the source text: never listed (the library's nodes print through R8-M32's printer).
         private static readonly HashSet<Type> Roots = [typeof(Compilation), typeof(Kotonoha), typeof(CodeContext), typeof(SyntaxTable), typeof(HirTables)];
 
         // Per-query answer tables (Binding.TypeMemo, DECISIONS BU-19): an entry is read only by the query that wrote it, and the next query
@@ -312,7 +314,8 @@ public partial class KimiLibraryShapeTest
                 }
             }
 
-            // The library's HIR rows (review C5): the parsed tree's, then each synthesized node's, each row headed by its node's id.
+            // The library's nodes as R8-M32's printer prints them (review C5), the parsed tree's, then each synthesized node's: a node's line
+            // (its binding state, failure, Type or Origin, symbol and call facts, by location) and its HIR row (headed by its node's id).
             var (hir, table) = (new Printer(true), c.Library.Kotonoha.Syntax);
             hir.Visit(c.Library.Kotonoha.RootKoto);
             for (var id = table.ParsedCount + 1; id <= table.Count; id++)
@@ -320,6 +323,7 @@ public partial class KimiLibraryShapeTest
                 hir.Node(table.Nodes[id]!);
             }
 
+            layer.rows.AddRange(hir.ToString().Split('\n', StringSplitOptions.RemoveEmptyEntries).Select(static x => "node " + x));
             layer.rows.AddRange(hir.Hir.Split('\n', StringSplitOptions.RemoveEmptyEntries).Select(static x => "hir " + x));
             var effects = new List<EffectObligation>(); // Computed on request (MIR's), after the tables: its lazy writes (census O5) stay out of them.
             c.Binding.EffectObligations(effects);
