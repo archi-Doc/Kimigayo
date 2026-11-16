@@ -84,6 +84,8 @@
 // takes beyond its library declaration (A5's; an intrinsic's declaration is a callee like any other, A3 E14), or expose its premise walk as
 // a view of its own (A3 9, item 9).
 
+using Kimi.Compiler.Parsing;
+
 namespace Kimi.Compiler;
 
 /// <summary>How a storage may retain an input (SPEC 15.6.4; DECISIONS R4-M154): flags, joined per input.</summary>
@@ -154,12 +156,21 @@ internal sealed class StorageRetention(RetentionKind[] kinds, (int Input, BoundO
 /// <summary>What a call may retain in the storage it may write through one input (<see cref="Output"/>; DECISIONS R4-M154): its root
 /// storage (<see cref="Own"/>, what the argument's direct Loans name) and the storage past that storage's exclusive layers
 /// (<see cref="Reached"/>: one entry per Origin-erased storage Type, in the contract's terms, and an Abstract entry, Type null, for what an
-/// abstract part hides), with <see cref="All"/>, the join of every Reached entry. Immutable.</summary>
-internal sealed class OutputRetention(int output, StorageRetention own, (BoundType? Type, StorageRetention Retention)[] reached, StorageRetention all)
+/// abstract part hides), with <see cref="All"/>, the join of every Reached entry. Every storage the output's walk enters past a layer has
+/// its entry, also where it retains nothing; a call has no OutputRetention for an output none of whose storages retains anything.
+/// <see cref="Kept"/>: the called function, where this output was read in its terms (SPEC 15.6.4's abstract-storage sentence; PLAN
+/// G935): a storage past a layer that lies in the binding of that function's own kept abstract Type then has its entry under that
+/// Type, a part of a mixed storage included (<c>TyCtxt.EntryType</c> names a storage's entry); null for a callee whose rows SPEC
+/// states, an erased callee and a by-value input that is the kept Type itself, which are read instantiated. A kept Type's entry and
+/// an instantiated Type's are one entry only where the call's Subst names the callee's own Types (a self-recursive generic call, a
+/// Closure or a nested function inside the callee): the Types are then one and their rows are joined. Immutable.</summary>
+internal sealed class OutputRetention(int output, StorageRetention own, (BoundType? Type, StorageRetention Retention)[] reached, StorageRetention all, FunctionKoto? kept)
 {
     private readonly (BoundType? Type, StorageRetention Retention)[] reached = reached;
 
     internal int Output { get; } = output;
+
+    internal FunctionKoto? Kept { get; } = kept;
 
     internal StorageRetention Own { get; } = own;
 

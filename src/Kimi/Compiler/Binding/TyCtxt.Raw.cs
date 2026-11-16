@@ -199,6 +199,17 @@ internal sealed partial class TyCtxt
     // (A5's), read a call's arguments or solved Origins, or test a Type's Kind or Semantics to restrict a form.
     internal bool OwnLayers(PlaceKey at, List<OwnLayer> into) => binding.OwnLayers(at, into);
 
+    // SPEC 15.6.4 (PLAN G935, C-370): the Type that names the Reached entry of the storage past a layer of `output`, at `key`, its
+    // Place on the called function's parameter path (TyCtxt.ParameterKey and the keys Select, Base, Leading and OwnLayers give past
+    // it): where the output was read in the callee's terms (OutputRetention.Kept) and the key lies in the binding of an abstract Type
+    // of the callee's own declaration (a Type parameter, or a pair target or projection rooted at one; kept below the binding's root
+    // whatever the binding holds, a Scalar included), that kept Type; else the storage's instantiated Type (the key's), Origins
+    // erased either way; null where the key has no Type. The one reading of OutputRetention.Reached's names (Binding's Written
+    // names each entry by its storage's erased Type, the kept Type's inside a kept binding), so no reader copies the rule; the
+    // root's rows are `output.Own`, whatever this names. A function of the output and the key; allocates nothing warm.
+    internal BoundType? EntryType(OutputRetention output, in PlaceKey key)
+        => key.Type is null ? null : this.Erase(binding.KeptType(output.Kept, key) ?? key.Type);
+
     // SPEC 5.7 Origins, Reading a Field, Writing a Field (C-189): the key of the Place `part` selects from `at`'s Place, one step of a
     // Place's path from its root (PlaceKey.Root), `part` numbered as MIR numbers it: a struct's Field, an enum's Case (then that payload's
     // component), a Tuple's or Closure's component; unread for a Type with one Place at or past its own address (a fixed array's element,

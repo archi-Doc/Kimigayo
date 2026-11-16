@@ -1574,6 +1574,44 @@ public sealed partial class RetentionTest
     public void TransferOperationsRetainBorrowedArgumentsByTheirChains(string source, string callee, string expected)
         => Assert.Equal(expected, string.Join(" | ", Calls(Bind(source), callee)));
 
+    // SPEC 15.6.4's abstract-storage sentence (PLAN G935 c3-4; the Middle's C-370): an output states whether it was read in the callee's
+    // terms (OutputRetention.Kept), the mode TyCtxt.EntryType reads: a callee whose rows its declared signature gives, whatever its T
+    // is bound to, a Scalar included (`trade`); not a published transfer operation, whose rows SPEC states (`swap`), nor a by-value
+    // input that is the kept Type itself, read instantiated (`takeT`'s x).
+    [Theory]
+    [InlineData("func trade<T>(a: uniq/T, b: uniq/T) => ()\nvar x: raw/u8 = null\nvar y: raw/u8 = null\ntrade(x@uniq, y@uniq)\n", "trade", "0 kept, 1 kept")]
+    [InlineData("func trade<T>(a: uniq/T, b: uniq/T) => ()\nvar x: u64 = 0\nvar y: u64 = 0\ntrade(x@uniq, y@uniq)\n", "trade", "0 kept, 1 kept")]
+    [InlineData("var x: raw/u8 = null\nvar y: raw/u8 = null\nKimi.Intrinsics.swap(x@uniq, y@uniq)\n", "swap", "0 shown, 1 shown")]
+    [InlineData("func takeT<T>(x: T, value: raw/u8) => ()\nvar c: raw/u8 = null\nvar v: raw/u8 = null\ntakeT(c@uniq, v)\n", "takeT", "0 shown")]
+    public void AnOutputStatesWhetherItWasReadInTheCalleesTerms(string source, string callee, string expected)
+        => Assert.Equal(expected, string.Join(" | ", Retentions(Bind(source), callee).Select(static x => string.Join(", ", x.Retention.Writes.ToArray().Select(static w => $"{w.Output} {(w.Kept is null ? "shown" : "kept")}")))));
+
+    // SPEC 15.6.4 (PLAN G935 c3-4; the Middle's C-370; F's ruling 25): TyCtxt.EntryType names the Reached entry of the storage at a
+    // parameter key: the callee's own kept T where the output was read in its terms (the storage past slot's two layers is storage of
+    // f's T, and its entry holds value, a T), the storage's instantiated Type for a callee that writes the Type itself.
+    [Theory]
+    [InlineData("func f<T>(slot: uniq/(uniq/T during a), value: T) => ()\n", "T")]
+    [InlineData("func f(slot: uniq/(uniq/(raw/u8) during a), value: raw/u8) => ()\n", "raw/u8")]
+    public void AStoragesEntryIsNamedInTheCalleesTerms(string callee, string expected)
+    {
+        var c = Bind(callee + "func g(x: uniq/(uniq/(raw/u8) during a), v: raw/u8)\n    f(x, v)\n");
+        var (call, retention) = Retentions(c, "f").Single();
+        var written = retention.Writes.ToArray().Single(static x => x.Output == 0);
+        var input = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(static x => x.Name == "g").Parameters[0].Type.TypeOf()!;
+        var key = TyCtxt.ParameterKey(call.Target, 0, input);
+        var into = new List<OwnLayer>();
+        for (var i = 0; i < 2; i++)
+        {
+            into.Clear();
+            Assert.True(c.Types.OwnLayers(key, into));
+            key = into.Single().Past; // Past slot's two layers: the storage value may be kept in.
+        }
+
+        var entry = c.Types.EntryType(written, key)!;
+        Assert.Equal(expected, Binding.DiagnosticTypeName(entry));
+        Assert.Contains(written.Reached.ToArray(), x => ReferenceEquals(x.Type, entry) && (x.Retention.Kinds[1] & RetentionKind.Value) != 0);
+    }
+
     // SPEC 4.9.6, 15.6.4 (DECISIONS BU-42, PLAN G255's C3): an operation of SPEC 4.6 to 4.9 writes the store at its receiver, an
     // exclusive borrow, only in the storage the receiver refers to (CallRetention.ReferentStores, `referent store j`), by declaring
     // identity whatever its element Type: an Array holding no raw layer (`Array<ref/i32>`; `Array<uniq/(ref/i32)>`, whose premise rows
@@ -1985,9 +2023,11 @@ public sealed partial class RetentionTest
     }
 
     // Each call of a named callee under its substitution, in its definition, in source order; a loop's entry is its call (SPEC 14.6.2).
-    private static string[] Calls(Compilation c, string name)
+    private static string[] Calls(Compilation c, string name) => [.. Retentions(c, name).Select(static x => Show(x.Retention))];
+
+    private static IEnumerable<(CallPlan Call, CallRetention Retention)> Retentions(Compilation c, string name)
         => KotoTree.Walk(c.Kotonoha.RootKoto).Where(static x => x is InvocationKoto or ForKoto).Select(static x => (Node: x, Call: CallPlan.Of(x, 0))).Where(x => x.Call is { Kind: not CalleeKind.Value } && x.Call.Target.Name == name)
-            .Select(x => Show(c.Types.Retains(x.Call!.Target, c.Types.SubstOf(x.Call), Definition(x.Node)))).ToArray();
+            .Select(x => (x.Call!, c.Types.Retains(x.Call!.Target, c.Types.SubstOf(x.Call), Definition(x.Node))));
 
     // Each Value call over its declared Callable signature, in its definition, in source order.
     private static string[] ValueCalls(Compilation c)

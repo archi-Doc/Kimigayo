@@ -240,7 +240,7 @@ public sealed partial class Binding
         var resultKinds = this.retentionKinds[ResultStorage];
         var resultRecord = new StorageRetention([.. resultKinds], this.Pairs(resultKinds, ResultStorage), untied);
         var resultWrites = this.ResultWrites(environment, links, inputs, result, (key, callee, premises), ref transfer) is { } past
-            ? new OutputRetention(CallRetention.ResultOutput, resultRecord, [.. past.Reached], past.All) : null;
+            ? new OutputRetention(CallRetention.ResultOutput, resultRecord, [.. past.Reached], past.All, past.Kept) : null;
         var writes = this.retentionWrites;
         writes.Clear();
         for (var output = 0; output < inputs.Length; output++)
@@ -825,7 +825,7 @@ public sealed partial class Binding
         var joined = this.Members();
         Array.Fill(joined, true, ResultStorage + 1, kinds.Count - ResultStorage - 1);
         joined[AbstractStorage] = hidden;
-        return new(output, own, [.. reached], new(all, this.Pairs(all, joined), untied));
+        return new(output, own, [.. reached], new(all, this.Pairs(all, joined), untied), this.retentionParametric ? this.retentionCallee : null);
     }
 
     // Whether a position's closure (marked `stamp`) reaches every layer of a source's path (RetentionSource.Path: the layers the premise

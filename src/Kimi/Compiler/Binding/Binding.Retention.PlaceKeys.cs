@@ -1,5 +1,7 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using Kimi.Compiler.Parsing;
+
 namespace Kimi.Compiler;
 
 // A Place's key by its path, and the layers at a Place (SPEC 5.7 Origins, Reading a Field, Writing a Field; C-189; contract in
@@ -170,6 +172,13 @@ public sealed partial class Binding
 
         return at with { Type = parent, Written = null, Holder = null, Case = -1, Signature = Below(declared, written) };
     }
+
+    // The kept abstract Type whose binding a parameter key of `callee` lies in (TyCtxt.EntryType): the key's declared counterpart
+    // where it is an abstract Type of that function's own declaration, the storage walk's test (Parametric,
+    // Binding.Retention.Storage.cs) for an output read in the callee's terms (OutputRetention.Kept, null otherwise); so an enclosing
+    // declaration's Type parameter, which a Closure's or a nested function's signature may name, is none.
+    internal BoundType? KeptType(FunctionKoto? callee, in PlaceKey key)
+        => callee is not null && OwnAbstract(key.Signature) is { } function && ReferenceEquals(function, callee) ? key.Signature : null;
 
     // OwnLayers from a part (Type, Written, Holder) and the Type the called function's declaration writes there (Signature, read in the
     // function's view, View; paired by the storage walk's rule, DeclaredRun and SignaturePast; kept inside a hidden binding, Below), each
