@@ -6,7 +6,6 @@ namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
-    private readonly Dictionary<(BoundConformancePath Path, BoundRequirement Associated), AssociatedBinding> associatedBindings = new();
     private readonly HashSet<(BoundType Type, BindingScope Scope)> normalizingAssociated = new();
     private HashSet<BoundRequirement>? ambiguousAssociatedMatches;
     private Dictionary<Koto, (BoundRequirement First, BoundRequirement Second, int Count)>? associatedAmbiguities;
@@ -505,10 +504,9 @@ public sealed partial class Binding
             // separately declared ancestor's conditions or specifications.
             for (var j = 0; j < shape.AssociatedTypes.Count; j++)
             {
-                var key = (path, shape.AssociatedTypes[j]);
-                if (!this.associatedBindings.ContainsKey(key))
+                if (this.AssociatedBindingOf(path, shape.AssociatedTypes[j]) is null)
                 {
-                    this.associatedBindings.Add(key, new());
+                    (path.AssociatedBindings ??= new()).Add((shape.AssociatedTypes[j], new()));
                 }
             }
 
@@ -576,7 +574,7 @@ public sealed partial class Binding
                 Collect(constraint.Right!, path, context);
             }
             else if (constraint is { Kind: ConstraintKind.TypeIdentity, RequiredType: { } required } &&
-                this.AssociatedIdentity(constraint.Subject, context) is { } identity && this.associatedBindings.TryGetValue((path, identity), out var binding))
+                this.AssociatedIdentity(constraint.Subject, context) is { } identity && this.AssociatedBindingOf(path, identity) is { } binding)
             {
                 required = context is null ? required : this.SubstituteContractReference(required, context, out _);
                 if (!binding.Candidates.Contains(required))
@@ -629,7 +627,7 @@ public sealed partial class Binding
         // Refinement paths have exactly the root declaration's D + P environment.
         // Share immutable normalized Types and candidate storage within that root only.
         path = path.RootPath;
-        if (!this.associatedBindings.TryGetValue((path, associated), out var binding))
+        if (this.AssociatedBindingOf(path, associated) is not { } binding)
         {
             return null;
         }
@@ -697,7 +695,25 @@ public sealed partial class Binding
         return found;
     }
 
-    private sealed class AssociatedBinding
+    // A root path's binding of an associated identity, kept with the path (BoundConformancePath.AssociatedBindings); null if none.
+    private AssociatedBinding? AssociatedBindingOf(BoundConformancePath path, BoundRequirement associated)
+    {
+        if (path.AssociatedBindings is { } bindings)
+        {
+            for (var i = 0; i < bindings.Count; i++)
+            {
+                if (bindings[i].Associated == associated)
+                {
+                    return bindings[i].Binding;
+                }
+            }
+        }
+
+        return null;
+    }
+
+    // A root path's binding of an associated identity; its per-pass state is reset in place with the path's (ImplTable).
+    internal sealed class AssociatedBinding
     {
         internal BindingScope? FormationScope { get; set; }
 
@@ -720,5 +736,20 @@ public sealed partial class Binding
         internal List<AssociatedEvidence> EvidenceSources { get; } = new();
 
         internal byte State { get; set; }
+
+        internal void Reset()
+        {
+            this.Candidates.Clear();
+            this.Result = null;
+            this.Inferred = null;
+            this.InferenceSource = null;
+            this.InferenceConflict = false;
+            this.Problem = InferenceProblem.None;
+            this.ProblemSource = null;
+            this.ProblemDetail = null;
+            this.EvidenceSources.Clear();
+            this.State = 0;
+            this.FormationScope?.Reset();
+        }
     }
 }
