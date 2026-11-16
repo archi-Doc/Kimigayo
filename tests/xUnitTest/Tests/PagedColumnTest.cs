@@ -149,6 +149,32 @@ public class PagedColumnTest
         Assert.Equal("a", second.Get(1));
     }
 
+    // KeyedRow (G949 N5-5; the Front's C-382 condition (1)): a composite column's row for an ordered key holds its entries in key order,
+    // then room that doubles when filled; Put puts an entry at its key in place of the one there; Find probes about log N of N entries.
+    [Fact]
+    public void AKeyedRowKeepsItsEntriesInKeyOrder()
+    {
+        string?[]? row = null;
+        long probes = 0;
+        foreach (var length in new[] { 3, 1, 5, 2, 4 })
+        {
+            KeyedRow.Put(ref row, new string('a', length), Length, ref probes);
+        }
+
+        Assert.Equal(new[] { "a", "aa", "aaa", "aaaa", "aaaaa", null, null, null }, row);
+        var replacing = new string('b', 3);
+        KeyedRow.Put(ref row, replacing, Length, ref probes);
+        Assert.Equal(8, row!.Length);
+        Assert.Same(replacing, KeyedRow.Find(row, 3, Length, ref probes));
+        Assert.Null(KeyedRow.Find(row, 6, Length, ref probes));
+        Assert.Null(KeyedRow.Find<string, int>(null, 1, Length, ref probes));
+        probes = 0;
+        Assert.Equal("a", KeyedRow.Find(row, 1, Length, ref probes));
+        Assert.InRange(probes, 1, 7);
+
+        static int Length(string entry) => entry.Length;
+    }
+
     private static PagedColumn<T> Column<T>(int count)
     {
         var column = default(PagedColumn<T>);

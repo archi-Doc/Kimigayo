@@ -197,3 +197,90 @@ internal struct PagedColumn<T>
         }
     }
 }
+
+// KeyedRow (DECISIONS BU-220): the form of a composite column's row for an ordered key (originAtoms', openOrigins'), beside the column.
+// - Responsibility: a row's entries in ascending key, then room (null) that doubles when filled; each operation once: Find and Put, each
+//   by binary search, so a row of N entries takes about log N probes and about 2N slots in all.
+// - Inputs: the row (null when it has none), a key and the entries' key (keyOf: one order for every Find and Put of the row), and the
+//   caller's probe counter. Outputs: the entry at a key, or the row with an entry put at its key in place of the one there.
+// - Prohibitions: an identity-keyed row (a key with no order, as Documents' SourceDocument) stays scanned by its accessor; no entry is
+//   removed; no key rule (the family's accessor decides it).
+internal static class KeyedRow
+{
+    /// <summary>Gets the entry at a key; none, null.</summary>
+    /// <typeparam name="T">The row's entry type, a class (null is room).</typeparam>
+    /// <typeparam name="TKey">The key type, ordered.</typeparam>
+    /// <param name="row">The row.</param>
+    /// <param name="key">The key sought.</param>
+    /// <param name="keyOf">An entry's key.</param>
+    /// <param name="probes">The probe counter.</param>
+    /// <returns>The entry at the key.</returns>
+    internal static T? Find<T, TKey>(T?[]? row, TKey key, Func<T, TKey> keyOf, ref long probes)
+        where T : class
+        where TKey : IComparable<TKey>
+        => Index(row, Count(row, ref probes), key, keyOf, ref probes) is >= 0 and var i ? row![i] : null;
+
+    /// <summary>Puts an entry at its key, in place of the one there, if any; a full row's room doubles.</summary>
+    /// <typeparam name="T">The row's entry type, a class (null is room).</typeparam>
+    /// <typeparam name="TKey">The key type, ordered.</typeparam>
+    /// <param name="row">The row.</param>
+    /// <param name="entry">The entry put.</param>
+    /// <param name="keyOf">An entry's key.</param>
+    /// <param name="probes">The probe counter.</param>
+    internal static void Put<T, TKey>(ref T?[]? row, T entry, Func<T, TKey> keyOf, ref long probes)
+        where T : class
+        where TKey : IComparable<TKey>
+    {
+        var count = Count(row, ref probes);
+        var i = Index(row, count, keyOf(entry), keyOf, ref probes);
+        if (i < 0)
+        {
+            if (count == (row?.Length ?? 0))
+            {
+                Array.Resize(ref row, Math.Max(1, count * 2));
+            }
+
+            i = ~i;
+            Array.Copy(row!, i, row!, i + 1, count - i);
+        }
+
+        row![i] = entry;
+    }
+
+    // The index of the entry at a key among a row's first count entries, else the bitwise complement of the index it goes at.
+    private static int Index<T, TKey>(T?[]? row, int count, TKey key, Func<T, TKey> keyOf, ref long probes)
+        where T : class
+        where TKey : IComparable<TKey>
+    {
+        var (low, high) = (0, count - 1);
+        while (low <= high)
+        {
+            probes++;
+            var middle = (low + high) >>> 1;
+            var order = keyOf(row![middle]!).CompareTo(key);
+            if (order == 0)
+            {
+                return middle;
+            }
+
+            (low, high) = order < 0 ? (middle + 1, high) : (low, middle - 1);
+        }
+
+        return ~low;
+    }
+
+    // A row's entries: its room after them is null.
+    private static int Count<T>(T?[]? row, ref long probes)
+        where T : class
+    {
+        var (low, high) = (0, row?.Length ?? 0);
+        while (low < high)
+        {
+            probes++;
+            var middle = (low + high) >>> 1;
+            (low, high) = row![middle] is null ? (low, middle) : (middle + 1, high);
+        }
+
+        return low;
+    }
+}

@@ -46,6 +46,7 @@ public sealed partial class Binding
         this.types = new(this, this.Library);
         this.symbols = new(this);
         this.scopes = new(this);
+        this.originAtoms = new(this);
         this.associatedOrigins = new(this);
         this.Library.Kotonoha.Syntax.Hir.Families.Reserve(KimiLibrarySize.Stated);
         foreach (var symbol in this.Library.RegisteredSymbols)
@@ -82,6 +83,7 @@ public sealed partial class Binding
             this.Library.Kotonoha.Syntax.Hir.Families.Symbols.Used,
             this.Library.Kotonoha.Syntax.Hir.Families.Parameters.Used,
             this.Library.Kotonoha.Syntax.Hir.Families.Scopes.Used,
+            this.Library.Kotonoha.Syntax.Hir.Families.OriginAtoms.Used,
             this.Library.Kotonoha.Syntax.Hir.Families.AssociatedOrigins.Used,
             this.types.KeyCount,
             this.constraints.Count,
@@ -92,13 +94,14 @@ public sealed partial class Binding
             this.substitutedParts.Count);
 
     /// <summary>Gets the free slots of the tables KimiLibrarySize sizes: each table's capacity less its entries; a node family's column
-    /// (symbols, their parameters, scopes, associated Origins) its arena's slots no page holds.</summary>
+    /// (symbols, their parameters, scopes, Origin atoms, associated Origins) its arena's slots no page holds.</summary>
     internal KimiLibrarySize.Tables TableFree
         => new(
             this.nodes.Capacity - this.nodes.Count,
             this.Library.Kotonoha.Syntax.Hir.Families.Symbols.Free,
             this.Library.Kotonoha.Syntax.Hir.Families.Parameters.Free,
             this.Library.Kotonoha.Syntax.Hir.Families.Scopes.Free,
+            this.Library.Kotonoha.Syntax.Hir.Families.OriginAtoms.Free,
             this.Library.Kotonoha.Syntax.Hir.Families.AssociatedOrigins.Free,
             this.types.KeyFree,
             this.constraints.Capacity - this.constraints.Count,

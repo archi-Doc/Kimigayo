@@ -144,6 +144,29 @@ public partial class SyntaxIdTest
         Assert.Equal(PagedColumn<int>.PageSize, c.Kotonoha.Syntax.Hir.Families.AssociatedOrigins.Used);
     }
 
+    // G949 N5-5's n15: an owner-keyed Origin interner's row (originAtoms, openOrigins) keeps its owner's atoms in key order, so a search
+    // probes about log N of its N atoms. A function of N reference parameters (N Input atoms on its row) and a call of it with N
+    // reference arguments (N open regions on the call's): a warm Bind's probes as N doubles from 128 to 512 grow within factor 3, where a
+    // scan of the rows (N squared) takes 4 and N log N about 2.2.
+    [Fact]
+    public void AnOriginInternerRowIsSearchedInLogarithmicProbes()
+    {
+        long[] probes = [.. new[] { 128, 256, 512 }.Select(Probes)];
+        Assert.True(MirBorrowsTest.Grows(probes, 3), $"probes {string.Join(", ", probes)}");
+
+        static long Probes(int count)
+        {
+            var c = CompilationTestHelper.Parse(
+                $"func f({string.Join(", ", Enumerable.Range(0, count).Select(static i => $"p{i}: ref/i32"))}) -> i32 => p0@follow\n" +
+                $"func g() -> i32\n    let n: i32 = 1\n    return f({string.Join(", ", Enumerable.Range(0, count).Select(static _ => "n@ref"))})\n",
+                "Hello.kimi");
+            Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c));
+            var before = c.Binding.OriginRowWork;
+            Assert.True(c.Bind().IsComplete);
+            return c.Binding.OriginRowWork - before;
+        }
+    }
+
     private static object NonDefault(Type type)
     {
         if (type.IsArray)
