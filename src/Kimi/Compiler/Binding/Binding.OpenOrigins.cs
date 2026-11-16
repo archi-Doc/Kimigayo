@@ -153,9 +153,10 @@ public sealed partial class Binding
     // Whether an Origin is a call's own region (OpenUnsolvedOrigins), keyed from UnsolvedKey, far from every argument evidence key.
     private static bool IsCallRegion(BoundOrigin origin) => origin is { Kind: OriginKind.Inference, Open: true } && origin.Slot < UnsolvedKey / 2;
 
-    // J2: whether an Origin is a call's region for a Type slot's Origin (SlotRegion's key range): the region of a solved variable,
-    // never an open position that later evidence fills (FillOpenOrigins).
-    private static bool IsSlotRegion(BoundOrigin origin) => IsCallRegion(origin) && origin.Slot <= SlotRegionKey;
+    // J2: whether an Origin is a call's region for a Type slot's Origin (SlotRegion's key range, the 2^28 keys down from
+    // SlotRegionKey): the region of a solved variable, never an open position that later evidence fills (FillOpenOrigins). A call's
+    // unsolved region (CallRegion), keyed from UnsolvedKey below that range, is not one: later evidence fills it (DECISIONS BU-104).
+    private static bool IsSlotRegion(BoundOrigin origin) => IsCallRegion(origin) && origin.Slot is <= SlotRegionKey and > SlotRegionKey - (1 << 28);
 
     // DECISIONS BU-104 (twelfth amendment), SPEC 15.6.1: whether a declared Origin relation is a row of a call: an end is a call's
     // region, or a meet holding one. "Every relation of the call over [its region] is a body row: Binding neither judges nor drops

@@ -74,7 +74,9 @@ public sealed partial class Binding
         internal bool FixedConstruction;
 
         // Whether this run is the candidate's first solve, the one that composes its retained rows (SolveLate; DECISIONS BU-104 R3):
-        // its openings start empty there (OpenWaited), and a later run keeps them.
+        // its openings start empty there (OpenWaited), and a later run keeps them. Every solution that reaches SolveLate carries a
+        // slice (TryCandidate's: an evaluation's, unset when the candidate's evaluation begins, or a fixed construction's re-check,
+        // which keeps the selected candidate's openings), so each evaluation's first solve clears them.
         internal bool FirstSolve;
         internal OriginInference? OriginInference;
 

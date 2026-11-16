@@ -524,7 +524,9 @@ public sealed partial class Binding
         internal bool Conditional { get; set; }
 
         // The evidence candidate of `region`'s variable: `solved`, kept at its opening; the kept one where `solved` already holds the
-        // region, a later run's value that the completed waiting part has entered.
+        // region, a later run's value that the completed waiting part has entered. Where such a value has no kept candidate, the
+        // variable had none at its opening (the first run wrote the region alone), so there is no E to read back: `solved` is that
+        // run's own solve over the region and is returned as it is.
         internal BoundOrigin Open(BoundOrigin region, BoundOrigin solved)
         {
             var later = HoldsOrigin(solved, region);
