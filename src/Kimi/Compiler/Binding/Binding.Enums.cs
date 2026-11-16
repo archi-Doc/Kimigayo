@@ -133,7 +133,8 @@ public sealed partial class Binding
             // SPEC 6.5.2 steps 2-3, 9.7: an omitted own list takes the expected owned Type of the same enum. A top-level enum is that Type
             // or, open in every slot, its declaration Type; a nested one (or a structure, which reaches here without own slots) keeps its
             // environment from the path (ConstructionTargetType).
-            var supplied = expected?.Semantics == SemanticsKind.Owner && ReferenceEquals(expected.Symbol, symbol) ? expected : null;
+            var expectedResult = ExpectedTypeOf(expected); // SPEC 10.8.1: a Case construction is an owner value, so U at an expected `ref/U`.
+            var supplied = expectedResult?.Semantics == SemanticsKind.Owner && ReferenceEquals(expectedResult.Symbol, symbol) ? expectedResult : null;
             type = symbol.Declaration is StructKoto || qualifier is MemberAccessKoto ||
                 (symbol.Schema is { GenericSlots.Count: > 0 } or { Origins.Count: > 0 } && symbol.Declaration.Parent is DeclarationContainerKoto { IsRoot: false })
                 ? this.ConstructionTargetType(qualifier, symbol, scope, supplied) : supplied ?? symbol.Type;
@@ -151,6 +152,7 @@ public sealed partial class Binding
             return null;
         }
 
+        expected = ExpectedTypeOf(expected); // SPEC 10.2, 10.8.1: the expected enum of a contextual Case at `ref/U` is U's.
         if (expected is not { Semantics: SemanticsKind.Owner, Symbol.Declaration: EnumKoto } || reference.Operands.Length != 1 || reference.Operands[0] is not IdentifierNameKoto name)
         {
             this.Fail(reference, BindingFailure.MissingType, true);
@@ -172,6 +174,7 @@ public sealed partial class Binding
     private BoundType? BindEnumConstruction(Koto use, Koto reference, BindingSymbol symbol, InvocationKoto? call, BindingScope scope, BoundType? expected)
     {
         var enumeration = symbol.EnumCase!;
+        expected = ExpectedTypeOf(expected); // SPEC 10.2, 10.8.1: a Case construction is an owner value; its expected result at `ref/U` is U.
         var declaration = (EnumKoto)enumeration.Owner.Declaration;
         var payload = enumeration.Payload;
         var count = call?.ArgumentNodes.Count ?? 0;

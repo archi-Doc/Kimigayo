@@ -195,6 +195,21 @@ public partial class ApplicabilityChainRegressionTest
         Assert.Equal(type, TyCtxt.Name(join.TypeOf()!));
     }
 
+    // SPEC 10.2.2 item 2 (PLAN G924 addendum): at an expected `ref/U` a returned value that is no borrow value is matched against U,
+    // a returned `ref/T` against `ref/U`. A bare slot that no evidence binds is a returned value: `identity(1)` at `ref/i64` is
+    // `identity<i64>`, its result the one temporary; an argument's Type stays established (`n: ref/i64` binds T = ref/i64).
+    [Theory]
+    [InlineData("kb1(identity(1))", "i64")]
+    [InlineData("kb1(identity(m))", "i64")]
+    [InlineData("kb1(identity(n))", "ref/i64")]
+    public void ABareSlotResultAtAReferenceIsMatchedAgainstItsReferent(string use, string type)
+    {
+        var c = MinimalEmissionTest.Analyze("func identity<T>(value: T) -> T => value@move\nfunc kb1(x: ref/i64) -> i32 => 0\nfunc w(n: ref/i64, m: i64) -> i32 => " + use + "\n()");
+        Assert.Empty(c.Binding.Issues);
+        var call = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>().Single(x => x.Method is IdentifierNameKoto { IdentifierName: "identity" });
+        Assert.Equal(type, TyCtxt.Name(call.CallOf()!.TypeArguments[0]!));
+    }
+
     // SPEC 10.5.1, 10.5.4 (DECISIONS BU-43): an anonymous function among a control-flow argument's results waits for the call, which
     // completes it as it completes a waiting argument at its position: at F it binds F, else it is checked against the selected
     // candidate's Type. A source holding it beside typed parts, also through a nested selection, waits with it and then takes the Type

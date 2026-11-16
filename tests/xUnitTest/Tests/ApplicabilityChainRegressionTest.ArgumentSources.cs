@@ -54,6 +54,8 @@ public partial class ApplicabilityChainRegressionTest
 
     private const string PickGenericFirst = "func pick<T>(value: T) -> i32 => 1\nfunc pick(values: Array<i32>) -> i32 => 0\nfunc w() -> i32\n    var y: i32 = 1\n";
 
+    private const string ReferenceCases = "func identity<T>(value: T) -> T => value@move\nfunc kr1(x: ref/Option<i64>) -> i32 => 0\nfunc kb1(x: ref/i64) -> i32 => 0\nfunc w(n: ref/i64, m: i64) -> i32\n";
+
     private const string ExpectedReferents = "struct Box<T>\n    public let value: T\n    public init(value: T) => self.value = value@move\nfunc wrap<T>(value: T) -> Box<T> => Box.init(value@move)\nfunc inspectBox(box: ref/Box<i64>) -> () => ()\nfunc w() -> i32\n";
 
     private const string HeldDeclarations = "func identity<T>(v: T) -> T => v@move\nfunc f(x: i64) -> i32 => 0\nfunc ft(x: (i64, i32)) -> i32 => 0\nfunc fa(x: Array<i64>) -> i32 => 0\nfunc fd(x: Dictionary<string, i64>) -> i32 => 0\nfunc k(c: bool, d: bool) -> i32\n";
@@ -455,6 +457,31 @@ public partial class ApplicabilityChainRegressionTest
     [InlineData("G924", "b1w", ExpectedReferents + "    inspectBox(wrap(1))\n    return 0\n", "")]
     [InlineData("G924", "b1n", ExpectedReferents + "    inspectBox(Box.init(true))\n    return 0\n", "*: inspectBox(Box.init(true)) | ...")]
     public void AnExpectedReferenceGivesTheResultItsReferent(string unit, string form, string program, string records)
+        => CompilationTestHelper.AssertRecordsAtLines($"{form} [{unit}]", program + "()", records);
+
+    // SPEC 10.2, 10.8.1, 12.3.1 (PLAN G924 addendum, F's rulings 68 and 71): a Case construction is an owner value, so at an expected
+    // `ref/U` it is checked against U and its one temporary is borrowed: contextual or qualified, at an argument or a declared Type
+    // (r1-1, r1q-1, lr1, lr1q fail before the addendum). The temporary is never extended for the borrow (lr1u, 10.2 Temporaries). A
+    // failed construction keeps its own record (ri: an undeclared payload name; rn: no such Case; rm: a payload misfit). SPEC 10.2.2
+    // item 2: a bare-slot result that no evidence binds is a returned value matched against U (bs1); an established binding stays
+    // (bs2, bs3).
+    [Theory]
+    [InlineData("G924", "r1-1", ReferenceCases + "    return kr1(.Some(identity(1)))\n", "")]
+    [InlineData("G924", "r1q-1", ReferenceCases + "    return kr1(Option.Some(identity(1)))\n", "")]
+    [InlineData("G924", "r1w-1", ReferenceCases + "    return kr1(Option<i64>.Some(1))\n", "")]
+    [InlineData("G924", "lr1", ReferenceCases + "    let r: ref/Option<i64> = .Some(identity(1))\n    return 0\n", "")]
+    [InlineData("G924", "lr1q", ReferenceCases + "    let r: ref/Option<i64> = Option.Some(identity(1))\n    return 0\n", "")]
+    [InlineData("G924", "lr1u", ReferenceCases + "    let r: ref/Option<i64> = .Some(identity(1))\n    return kr1(r)\n", "ComparisonLoanConflict_Kd: let r: ref/Option<i64> = .Some(identity(1))")]
+    [InlineData("G924", "ri1", ReferenceCases + "    return kr1(.Some(nosuch))\n", "UnresolvedBinding_Kd: return kr1(.Some(nosuch))")]
+    [InlineData("G924", "ri1q", ReferenceCases + "    return kr1(Option.Some(nosuch))\n", "UnresolvedBinding_Kd: return kr1(Option.Some(nosuch))")]
+    [InlineData("G924", "rn1", ReferenceCases + "    return kr1(.Nope(1))\n", "UnresolvedBinding_Kd: return kr1(.Nope(1))")]
+    [InlineData("G924", "rn1q", ReferenceCases + "    return kr1(Option.Nope(1))\n", "UnresolvedBinding_Kd: return kr1(Option.Nope(1))")]
+    [InlineData("G924", "rm1", ReferenceCases + "    return kr1(.Some(true))\n", "TypeMismatch_Kd: return kr1(.Some(true))")]
+    [InlineData("G924", "rm1q", ReferenceCases + "    return kr1(Option.Some(true))\n", "NoApplicableOverload_Kd: return kr1(Option.Some(true))")]
+    [InlineData("G924", "bs1", ReferenceCases + "    return kb1(identity(1))\n", "")]
+    [InlineData("G924", "bs2", ReferenceCases + "    return kb1(identity(n))\n", "")]
+    [InlineData("G924", "bs3", ReferenceCases + "    return kb1(identity(m))\n", "")]
+    public void AnOwnerValueAtAReferenceIsCheckedAgainstItsReferent(string unit, string form, string program, string records)
         => CompilationTestHelper.AssertRecordsAtLines($"{form} [{unit}]", program + "()", records);
 
     // SPEC 10.5.1 ¶1-2, 14.9.2, 4.3.1 Places (F's ruling 50, review-af2 B1): a join with a list source at a call argument reads the one

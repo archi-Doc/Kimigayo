@@ -288,9 +288,13 @@ public sealed partial class Binding
                 returnPattern = this.CallMemberPattern(self is null ? returnPattern : this.ContractType(returnPattern, scope, self), function, declaringType)!;
 
                 // SPEC 10.1 step 4, 15.6.1: the expected result fills the still-unbound slots by its structure; its Origin relations to
-                // the completed result are judged at the destination. SPEC 10.8.1, 12.3.1 (PLAN G924 s-b1): at an expected `ref/U` a result
-                // that is neither a borrow nor a bare slot is the owner temporary of U, so the expected result is U, which inverts nothing.
-                var resultExpected = returnPattern is { Kind: BoundTypeKind.Parameter } or { Kind: BoundTypeKind.Semantics } ? expected : ExpectedTypeOf(expected);
+                // the completed result are judged at the destination. SPEC 10.2.2 item 2, 10.8.1, 12.3.1 (PLAN G924): at an expected
+                // `ref/U` a returned value that is no borrow value (OwnerResult) is the owner temporary of U, so the expected result is
+                // U, which inverts nothing; a returned `ref/T` is matched against `ref/U`. A bare slot is what its evidence bound it
+                // to, and while unbound a returned value, which U then fills.
+                var referent = ExpectedTypeOf(expected);
+                var resultExpected = !ReferenceEquals(referent, expected) &&
+                    OwnerResult(returnPattern.Kind == BoundTypeKind.Parameter ? solution.Type(returnPattern) ?? returnPattern : returnPattern) ? referent : expected;
                 expectedStructure = this.Infer(returnPattern, resultExpected, CallSlotOwner(function), frame, true, true);
                 this.MatchResultOrigins(returnPattern, resultExpected, function, origins, inputs);
                 if (returnPattern.CarriesOrigin)

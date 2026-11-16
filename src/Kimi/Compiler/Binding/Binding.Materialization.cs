@@ -17,10 +17,18 @@ namespace Kimi.Compiler;
 //   aggregate or waiting results (PartKind.Join), whose value is its selected source's, every source fitted to U (one temporary at the
 //   join's position; a temporary inside a source stays the source's, 14.2.1). A join of Places and references only is no value. The
 //   part is fitted to U as at an expected U, so a misfit is its own record at U; a call's fit tests it (FitLiteral, FitComposite). A
-//   form that delivers its operand (a label, an expression body) passes the position to it.
+//   form that delivers its operand (a label, an expression body) passes the position to it. A call or a construction is no part of
+//   this list: its own binding lowers its expected result at `ref/U` (SPEC 10.2.2 item 2, 10.8.1: TryCandidateCore by OwnerResult,
+//   the one test of "no borrow value" for a result, SPEC 3.4.1; a Case construction, always an owner value, in the enum binder), and
+//   the common adaptation's row 2 borrows its value.
 // - Prohibitions: no fit, binding or record here; no second copy of the form list.
 public sealed partial class Binding
 {
+    // SPEC 3.4.1, 10.2.2 item 2: whether a result of this Type is an owner value, no borrow value: its outer Semantics is not `ref`,
+    // `uniq`, `objref` or `objuniq`, nor a pair binder's, which may be one. An owned handle and `raw/T` are owner values.
+    private static bool OwnerResult(BoundType result)
+        => result is not { Kind: BoundTypeKind.Semantics } || !(IsBorrow(result.Semantics) || result.Semantics == SemanticsKind.Parameter);
+
     // The Type U of the owner temporary that `part` at `type` is (the contract above); null at any other Type or part.
     private BoundType? Materialization(Koto part, BoundType? type, BindingScope scope)
     {
