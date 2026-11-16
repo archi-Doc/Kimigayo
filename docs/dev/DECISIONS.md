@@ -21594,6 +21594,37 @@ R8-M* and R9-M* by the stage of the recording unit.
       ConformancePath): Adt's DirectBase, VTable and layout flags, accessor contents and contract requirements.
     - The unprinted symbol slots (ConditionalDeclaration, SourceCause, SourceFact, MutableCapture, BindsReference,
       CaptureAcquisition) and the scope's Function and OriginSets.
+    - Amended by PLAN G949 S1-0b: compared now with the empty program's after a Final Bind
+      (`KimiLibraryShapeTest.TheLibraryLayerIsIndependentOfTheProgram`: R8-M32's ten programs and every milestone;
+      `TheLibraryLayerIsIndependentOfTheCorpus`: the other `docs/examples` and the diagnostic snapshot's mutations and syntax
+      cases): Binding's private tables' library rows, `ImplTable`'s, `TyCtxt`'s (the interned library Types, by printed form) and
+      `KimiLibrary`'s included, `Invalidate`'s cross-pass stores among them; every library declaration's symbol and scope, field by
+      field (the contents of Contract, Property, Schema and Adt, the slots R8-M32 does not print, the declaration query states); the
+      library's nodes, parsed and synthesized, as R8-M32's printer prints them, each node's line (its binding state, failure, Type
+      or Origin, symbol and call facts) by location and its HIR row by node id (a parsed id is fixed by the library's table, a
+      synthesized one is equal across programs from G949 S1-e); and the aggregates' library parts (Issues, Obligations,
+      LibraryImports, the effect obligations). A table row is the library's when its key names library declarations only; a node
+      prints by location, a Type by its printed form and a pass stamp by its distance from the latest pass, and rows compare as a
+      multiset. A store compares by its disposition, one table in the test (a store it does not name is a fact; an entry naming no
+      store or field fails `TheLibraryLayerDumpIsDeterministic`): **fact**, rows equal; **subset** for the content interners and
+      Type-keyed memos (`constraints`, `TyCtxt`'s Types, `originSummaries`, `erasureOutcomes`, `pendingAssociatedTypes`,
+      `boundContracts`, `storageMarks`), every row of the empty program's unchanged and a program's extra row its own level;
+      **epoch** for the memos of one capability epoch (component summaries, capability works, edges and queue, Enumerate's index,
+      kept rows, kept pool and heads), the program's and not printed: no entry is current after `ResetCapabilities`
+      (`TheCapabilityMemosEndWithTheirEpoch`), which each pass begins with (`ArchitectureRulesTest`'s row keeps its one call in
+      `ResetPass`); a capability work keeps its `Site`, read only by its own evaluation, and, until G949 S1-e empties it in `Reset`,
+      its payload `Fact`, read by a consumer before the work's next evaluation for record selection only; **number** for a walk's or
+      memo's order (an inline summary's Tarjan Index and Low, an Origin requirement work's Consumer mark, a scope's view serial and
+      state), printed as `#` with the rest of the row compared, its readers confined by `ArchitectureRulesTest`'s rows, which count
+      every name reaching the number (the fields, `SerialOf` and its callers, the inline summary's type, stores and `Summary`);
+      **pool** for `inlineSummaryPool`, its live prefix printed and asserted slot by slot to be `inlineSummaries`' values, its free
+      tail not. A difference is a program fact in the library's facts, moved to the program overlay by design (PLAN G949); the rows
+      are Explicit until none is left, and G949's S1-r1 waits for that. Still not compared: the per-query answer tables (`TypeMemo`,
+      BU-19: no entry is read outside its query); arrays and lists of plain numbers; the order of a list's library rows (c15
+      compares the aggregates' order); rows whose key names no declaration or a program one (the program's, design R1.3); the epoch
+      memos, the number fields, a pool's free tail and a subset store's program rows (by their rules above); and the library bodies'
+      A4 summaries, Field numbers and checked set (program-ordered by design: the library's MIR is built per compilation, G951;
+      O-381 (b)).
   - **Temporary 1: synthesized ids** (`KimiLibraryShapeTest.SynthesizedNodes`; R5-M168's recorded exception).
     - Nodes past the parsed count are compared by what they synthesize, not by id. Each compared line holds the node's facts, its
       HIR row and its own symbol's state, and the lines form a sorted multiset.
@@ -21602,11 +21633,17 @@ R8-M* and R9-M* by the stage of the recording unit.
     - A program's uses order the ids: on e40d3a99e, Milestone27 renumbers 94 of 96 and Milestone30 renumbers 72.
     - The Milestone27 row asserts that its ids differ, so U2's freeze, which numbers every library node, fails it. Removal: U2
       deletes the class, and the nodes compare by id.
+    - Removed by PLAN G949 S1-e, not U2: Binding makes every library accessor's execution function in the declaration steps
+      (`Binding.AccessorFunction` from `MakeLibraryAccessorFunctions`; before S1-e the first MIR build made them), so the library's
+      synthesized nodes have equal ids in every program and compare by id (c17, `TheLibraryPassNumbersEveryLibraryNode`, checks them
+      one by one over the ten programs and the corpus). `KimiLibraryShapeTest.SynthesizedNodes` and the Milestone27 row's assertion
+      that its ids differ are deleted.
   - **Temporary 2: no library parameter default** (`TheLibraryDeclaresNoParameterDefault`; M-N4, R2-N5).
     - The test checks three places, for functions and `init`: the declarations, `Hir.Defaults` after the Final Bind, and default
       templates in the library MIR.
     - Removal: U5b or a later unit freezes the templates' omission facts (`Recursive`, `Failed`, `Reads`).
-  - Rejected: comparing synthesized nodes by id now. It fails today (R5-M168), and only U2's freeze removes the cause.
+  - Rejected: comparing synthesized nodes by id now. It fails today (R5-M168), and only U2's freeze removes the cause. (Amended by
+    PLAN G949 S1-e: the cause, a program's uses ordering the ids, is gone before U2's freeze, so this reason no longer holds.)
 - **R8-M33 One MIR ordinal space with a library prefix, owned by `MirProgram`** (Back, 2026-11-11; R8-L1 U5a-1; the design
   `back\l1-design\design.md` M-B1, R2-N1, R3-N6, §8 U5a as B split it on 2026-11-11; the Middle's consent with conditions, C-248;
   implementation review 1 ACCEPT (B's reviewer); extends R8-M31).
