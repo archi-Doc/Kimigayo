@@ -7,14 +7,15 @@ namespace Kimi.Compiler;
 
 // PagedColumn<T> (DECISIONS BU-220): the one store form of Binding's per-module node families (NodeColumns, HirTables.cs).
 // - Responsibility: a column indexed by a dense id (a node's SyntaxId in its module) in pages of PageSize slots, carved from one arena
-//   at a page's first write; each operation once: Get, Ref, Empty, Grow, Reserve, Enumerate, MoveTo, and Renumbered for a renumbering.
+//   at a page's first write; each operation once: Get, Ref, Empty, Grow, Reserve, Enumerate, MoveTo, and Renumbered and Retire for a
+//   renumbering.
 // - Inputs: ids below the count Grow last gave (the module's id count, SyntaxTable.Allocate). Outputs: the rows, by value or by reference.
 // - Invariants: default(T) is an absent row, so the absent page reads default; the directory is allocated at the column's first write
 //   (a column without rows has none); a directory entry is 0 for an absent page, else the page's offset in the arena plus 1, so the first
 //   page (offset 0) is distinct from absent; a carved page never moves within the arena, which starts at its reserved size (Reserve: the
 //   library's stated size, KimiLibrarySize), grows by doubling, never past the module's dense size (every page carved), and keeps its
 //   capacity through Empty; a renumbering moves each present row into the spare arena, so a kept column's two arenas alternate and
-//   allocate again only when the module grew.
+//   allocate again only when the module grew, and clears the retired one once its moves end (Retire), so no removed row stays reachable.
 // - Prohibitions: no hashing; no store decision or key rule (a family's one accessor decides both); no read or write at or past Grow's
 //   count; a reference Ref returns is used before the column's next Ref, since a carve can replace the arena.
 internal struct PagedColumn<T>
@@ -115,17 +116,30 @@ internal struct PagedColumn<T>
         }
     }
 
-    /// <summary>Gives the empty column a renumbering moves this column's rows into (MoveTo): its arena the spare one, cleared, so no row of
-    /// the renumbering before last stays reachable, and this column's arena its spare.</summary>
+    /// <summary>Gives the empty column a renumbering moves this column's rows into (MoveTo): its arena the spare one, which Retire left
+    /// cleared, and this column's arena its spare.</summary>
     /// <param name="count">The renumbered module's id count.</param>
     /// <returns>The column.</returns>
     internal readonly PagedColumn<T> Renumbered(int count)
     {
-        var arena = this.spare ?? (this.arena is { } current ? new T[current.Length] : []);
-        Array.Clear(arena);
-        var column = new PagedColumn<T> { arena = arena, spare = this.arena, reserve = this.reserve };
+        var column = new PagedColumn<T>
+        {
+            arena = this.spare ?? (this.arena is { } current ? new T[current.Length] : []),
+            spare = this.arena,
+            reserve = this.reserve,
+        };
         column.Grow(count);
         return column;
+    }
+
+    /// <summary>Clears the spare arena once a renumbering's moves have ended: the retired arena's rows, those of removed nodes among
+    /// them, stay reachable no longer.</summary>
+    internal readonly void Retire()
+    {
+        if (this.spare is { } spare)
+        {
+            Array.Clear(spare);
+        }
     }
 
     // default(T) is all zero bytes, so a row is absent when its bytes are; a comparer would box a struct row.

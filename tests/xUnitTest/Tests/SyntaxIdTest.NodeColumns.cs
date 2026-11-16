@@ -14,9 +14,9 @@ public partial class SyntaxIdTest
 {
     private const BindingFlags Members = BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic;
 
-    // G949 D2b-d's d7: by reflection over NodeColumns' fields, so a family added without its Resize, Renumbered or Move line fails here.
-    // A kept family's row moves into the renumbered column's spare arena; an edit family (one the store's first edit write empties) is
-    // handed over unmoved with the store's stamp, every other field of the store.
+    // G949 D2b-d's d7: by reflection over NodeColumns' fields, so a family added without its Resize, Renumbered, Move or Retire line fails
+    // here. A kept family's row moves into the renumbered column's spare arena, which Retire clears; an edit family (one the store's first
+    // edit write empties) is handed over unmoved with the store's stamp, every other field of the store.
     [Fact]
     public void EveryNodeFamilyIsResizedRenumberedAndMoved()
     {
@@ -67,6 +67,9 @@ public partial class SyntaxIdTest
                 Assert.Equal(rows[field], read[field].Moved);
             }
         }
+
+        typeof(NodeColumns).GetMethod("Retire", Members)!.Invoke(moved[1], null);
+        Assert.All(fields.Where(x => !ReferenceEquals(targets[x].Arena, Read<Array>(targets[x].Column, "arena"))), x => Assert.All(Read<Array>(targets[x].Column, "spare").Cast<object?>(), static row => Assert.True(row is null || row.Equals(Activator.CreateInstance(row.GetType())))));
 
         static object? Get(object column, int id) => column.GetType().GetMethod("Get", Members)!.Invoke(column, [id]);
     }

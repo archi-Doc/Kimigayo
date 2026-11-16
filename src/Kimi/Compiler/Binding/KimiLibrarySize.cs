@@ -23,7 +23,8 @@ namespace Kimi.Compiler;
 // - Inputs: none; the counts are stated here and KimiLibraryShapeTest compares them with what a Bind of the empty program fills
 //   (Binding.TableCounts), so a library change that moves a count past its Granule fails there and restates it.
 // - Outputs: Stated (a library-only table starts at its count there), NodeRoom, KeyedRoom, NodeCapacity, KeyedCapacity.
-// - Invariants: each stated count is the library's count rounded up to the Granule (Tables.Rounded), so after a Bind of the library
+// - Invariants: each stated count is the library's count rounded up to the Granule, a node column's to the ColumnGranule
+//   (Tables.Rounded), so after a Bind of the library
 //   alone each table with a room keeps at least that room free (Binding.TableFree; KimiLibraryShapeTest): a program that adds fewer
 //   entries than the room never resizes the table, whatever the library holds, and a change of the library moves no resize into such
 //   a program. The rooms size the tables and bound no program: a program past a room, or one that fills a library-only table's
