@@ -345,6 +345,11 @@ public sealed partial class Binding
             return null;
         }
 
+        if (this.Supported(member, selected) is null)
+        {
+            return null;
+        }
+
         this.memberSelections[member] = typeMember is not null ? typeSelection : valueSide.Selection;
         this.memberSides[member] = typeMember is not null ? MemberSide.Type : MemberSide.Value;
         if (typeMember is not null)

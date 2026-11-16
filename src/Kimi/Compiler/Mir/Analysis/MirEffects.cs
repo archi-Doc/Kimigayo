@@ -170,11 +170,15 @@ internal sealed partial class MirEffects(TyCtxt types, MirCases cases, MirDatafl
         return below;
     }
 
-    private static byte Class(CompilerFunctionEffect effect) => effect switch
+    // SPEC 8.11.2: the class of a call of a function without a MIR body, by Binding's category of it (TyCtxt.Bodyless): an intrinsic's
+    // from MIR's own row of it (MirDescriptors: an environment effect where the row has one, else its inputs alone), a shim's its
+    // inputs, an import's an environment effect, a dependent's Derived, any other a limit.
+    private static byte Class(BindingSymbol function) => TyCtxt.Bodyless(function) switch
     {
-        CompilerFunctionEffect.Inputs => 0,
-        CompilerFunctionEffect.Environment => Environment,
-        CompilerFunctionEffect.Dependent => Derived,
+        BodylessKind.Intrinsic => (MirDescriptors.Of(function.Definition.Id).Effects & MirEffect.Environment) != 0 ? Environment : (byte)0,
+        BodylessKind.Shim => 0,
+        BodylessKind.Import => Environment,
+        BodylessKind.Dependent => Derived,
         _ => Limit,
     };
 
@@ -208,7 +212,7 @@ internal sealed partial class MirEffects(TyCtxt types, MirCases cases, MirDatafl
             this.Compared(program, body, contract, types.Comparison(contract, callee.Subst!.Self!, operators: true)!); // The builder's root.
         }
         else if (callee is { Kind: MirCalleeKind.Requirement, Subst: { Self: { } written } subst } && cases.Type(written) is var self &&
-            (callee.Symbol!.CompilerFunction != CompilerFunctionKind.None || !self.IsAbstract))
+            (callee.Symbol!.Definition.Kind != DispositionKind.Body || !self.IsAbstract))
         {
             // Binding's built-in target for its Self, or what a closed Self's witnesses run under the call's Contract reference at the call's
             // own Types and lengths (SPEC 8.6.3): the item keeps the call's substitution in the view, here alone its Self and its
