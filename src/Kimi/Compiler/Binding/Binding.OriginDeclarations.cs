@@ -11,7 +11,7 @@ public sealed partial class Binding
     // allocated for declarations with neither written relations nor binding-set names.
     private readonly OriginDeclarationRows originDeclarations;
 
-    private readonly Dictionary<Koto, List<string>> discoveredOrigins = new(ReferenceEqualityComparer.Instance);
+    private readonly DiscoveredOriginRows discoveredOrigins;
     private OriginRewriteVisitor? originRewriteVisitor;
 
     private static Koto? OriginOwner(Koto node)
@@ -177,7 +177,7 @@ public sealed partial class Binding
 
         foreach (var names in this.discoveredOrigins.Values)
         {
-            names.Clear();
+            names!.Clear();
             ((OriginNameList)names).Spans.Clear();
         }
 
@@ -713,5 +713,22 @@ public sealed partial class Binding
 
         internal bool TryGetValue(Koto node, [NotNullWhen(true)] out OriginDeclaration? value)
             => (value = this.GetValueOrDefault(node)) is not null;
+    }
+
+    /// <summary>The `discoveredOrigins` family's one accessor (DECISIONS BU-220): a kept family, a binder's discovered Origin names, an
+    /// OriginNameList made once and emptied in place by each pass (PrepareOriginDeclarations), kept in its key node's module's NodeColumns
+    /// at its SyntaxId. Its members keep the names its readers use.</summary>
+    private readonly struct DiscoveredOriginRows(Binding binding)
+    {
+        internal FamilyRows<List<string>?> Values => new(binding, static (table, _) => table.Hir.Families.DiscoveredOrigins.Enumerate());
+
+        internal void Add(Koto node, List<string> value)
+        {
+            ref var row = ref HirTables.Of(node).Families.DiscoveredOrigins.Ref(node.SyntaxId);
+            row = row is null ? value : throw new ArgumentException($"`discoveredOrigins` already holds a row at `{node}`.", nameof(node));
+        }
+
+        internal bool TryGetValue(Koto node, [NotNullWhen(true)] out List<string>? value)
+            => (value = node.SyntaxOwner is { } table ? table.Hir.Families.DiscoveredOrigins.Get(node.SyntaxId) : null) is not null;
     }
 }

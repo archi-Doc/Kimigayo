@@ -116,6 +116,7 @@ public partial class SyntaxIdTest
     [InlineData("OverrideEntries", "open struct Base<T>\n    public func ordinary(self: objref/Self) -> i32 => 1\n    public virtual func read(self: objref/Self, other: objref/Leaf<T>) -> i32 => 1\nstruct Leaf<T> : Base<T>\n    override func read(self: objref/Self, other: objref/Leaf<T>) -> i32\n        return self.ordinary()\n()")]
     [InlineData("SpecializationsByOriginal", "milestone:Milestone11")]
     [InlineData("OriginDeclarations", "milestone:Milestone13")]
+    [InlineData("DiscoveredOrigins", "milestone:Milestone13")]
     public void AKeptFamilyAlternatesItsArenasAcrossEdits(string family, string? program)
     {
         var c = MinimalEmissionTest.Analyze(program is null ? Source

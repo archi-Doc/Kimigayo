@@ -18,7 +18,8 @@ namespace Kimi.Compiler;
 //   (the owner's O-136 (a) and O-139 (a)) covers this until the removal condition holds.
 // - The library's node columns (Binding's `symbols`, its parameters' composite column, `scopes`, `originAtoms`, `openOrigins`,
 //   `associatedOrigins`, `specialReceivers`, `enumConstructions`, `copyDeclarations`, `copyByType`, `inheritedOriginTypes`,
-//   `deferredConstraints`, `matches`, `adaptations`, `specializations`, `specializationsByOriginal` and `originDeclarations`,
+//   `deferredConstraints`, `matches`, `adaptations`, `specializations`, `specializationsByOriginal`,
+//   `originDeclarations` and `discoveredOrigins`,
 //   DECISIONS BU-220): the library
 //   module's own columns, which no program row enters (a program's rows are its modules'), so each starts at its stated slots
 //   (PagedColumn.Reserve) and has no room; its count is the slots the library's pages hold, rounded up to ColumnGranule, and its free
@@ -70,6 +71,7 @@ internal static class KimiLibrarySize
         Specializations: 512,
         SpecializationsByOriginal: 512,
         OriginDeclarations: 512,
+        DiscoveredOrigins: 1024,
         TypeKeys: 3072,
         Constraints: 2048,
         AssociatedTypes: 2048,
@@ -108,6 +110,7 @@ internal static class KimiLibrarySize
         int Specializations, // The library's specializations column: the slots its pages hold.
         int SpecializationsByOriginal, // The library's specializationsByOriginal column: the slots its pages hold.
         int OriginDeclarations, // The library's originDeclarations column: the slots its pages hold.
+        int DiscoveredOrigins, // The library's discoveredOrigins column: the slots its pages hold.
         int TypeKeys, // TyCtxt's keys of the interned Types.
         int Constraints, // Binding's interned constraints.
         int AssociatedTypes, // Binding's associated-Type answers.
@@ -143,6 +146,7 @@ internal static class KimiLibrarySize
                 Round(this.Specializations, ColumnGranule),
                 Round(this.SpecializationsByOriginal, ColumnGranule),
                 Round(this.OriginDeclarations, ColumnGranule),
+                Round(this.DiscoveredOrigins, ColumnGranule),
                 Round(this.TypeKeys, Granule),
                 Round(this.Constraints, Granule),
                 Round(this.AssociatedTypes, Granule),

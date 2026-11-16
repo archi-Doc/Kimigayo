@@ -285,6 +285,7 @@ internal struct NodeColumns
     internal StampedColumn<BoundAdaptation, Binding.PassCounter> Adaptations; // Pass: the implicit adaptation selected for an expression (Binding.ArgumentOperations.cs).
     internal StampedColumn<int, Binding.PassCounter> ShapeContractHeads; // Pass: a function's first shape contract as the later of an overload pair, its index + 1 (Binding.ShapeContracts.cs).
     internal PagedColumn<Binding.OriginDeclaration?> OriginDeclarations; // Kept: an owner's declared Origins (Binding.OriginDeclarations.cs).
+    internal PagedColumn<List<string>?> DiscoveredOrigins; // Kept: a binder's discovered Origin names (Binding.OriginDeclarations.cs).
 
     internal void Resize(int length)
     {
@@ -313,6 +314,7 @@ internal struct NodeColumns
         this.Adaptations.Grow(length);
         this.ObjectErasures.Grow(length);
         this.OriginDeclarations.Grow(length);
+        this.DiscoveredOrigins.Grow(length);
     }
 
     // The library's columns start at their stated slots (KimiLibrarySize: no program row lands in them).
@@ -335,6 +337,7 @@ internal struct NodeColumns
         this.OpenOrigins.Reserve(stated.OpenOrigins);
         this.AssociatedOrigins.Reserve(stated.AssociatedOrigins);
         this.OriginDeclarations.Reserve(stated.OriginDeclarations);
+        this.DiscoveredOrigins.Reserve(stated.DiscoveredOrigins);
     }
 
     // A kept family's column gives a renumbering an empty column over its spare arena; a stamped family's is handed over unmoved and
@@ -368,6 +371,7 @@ internal struct NodeColumns
             Adaptations = this.Adaptations.Renumbered(length),
             ObjectErasures = this.ObjectErasures.Renumbered(length),
             OriginDeclarations = this.OriginDeclarations.Renumbered(length),
+            DiscoveredOrigins = this.DiscoveredOrigins.Renumbered(length),
         };
         return columns;
     }
@@ -390,6 +394,7 @@ internal struct NodeColumns
         this.OriginAtoms.Retire();
         this.OpenOrigins.Retire();
         this.OriginDeclarations.Retire();
+        this.DiscoveredOrigins.Retire();
     }
 
     // A kept family's row moves with its node; a stamped family's rows were handed over (Renumbered).
@@ -409,6 +414,7 @@ internal struct NodeColumns
         this.OriginAtoms.MoveTo(ref target.OriginAtoms, from, to);
         this.OpenOrigins.MoveTo(ref target.OpenOrigins, from, to);
         this.OriginDeclarations.MoveTo(ref target.OriginDeclarations, from, to);
+        this.DiscoveredOrigins.MoveTo(ref target.DiscoveredOrigins, from, to);
     }
 }
 
