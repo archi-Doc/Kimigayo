@@ -1479,6 +1479,75 @@ public sealed partial class MirBorrowsTest
                 x.v = 5
                 let y = n
             """,
+        ["rvCopyUseBad"] = """
+            func keep(slot: raw/(raw/u8), value: raw/u8) => ()
+            func rvCopyUseBad()
+                var kk: u8 = 1
+                let r = kk@uniq
+                var spare: raw/u8 = r@follow@raw
+                var w0: u64 = 3
+                keep(w0@raw@raw/(raw/u8), spare)
+                var d: u64 = 0
+                d = w0
+                kk = 2
+                let y = d
+            """,
+        ["rvPutROk"] = """
+            func keep(slot: raw/(raw/u8), value: raw/u8) => ()
+            func putR(slot: raw/u64, v: u64, f: ref/i32) => ()
+            func rvPutROk()
+                var kk: u8 = 1
+                let r = kk@uniq
+                var spare: raw/u8 = r@follow@raw
+                var w0: u64 = 3
+                keep(w0@raw@raw/(raw/u8), spare)
+                var d: u64 = 0
+                var i: i32 = 0
+                putR(d@raw, w0, i@ref)
+                kk = 2
+            """,
+        ["rvPutRNoKeepOk"] = """
+            func putR(slot: raw/u64, v: u64, f: ref/i32) => ()
+            func rvPutRNoKeepOk()
+                var kk: u8 = 1
+                let r = kk@uniq
+                var spare: raw/u8 = r@follow@raw
+                var w0: u64 = 3
+                var d: u64 = 0
+                var i: i32 = 0
+                putR(d@raw, w0, i@ref)
+                kk = 2
+                let y = d
+            """,
+        ["rvPutTROk"] = """
+            func keep(slot: raw/(raw/u8), value: raw/u8) => ()
+            func putTR<T>(slot: raw/T, v: T, f: ref/i32) => ()
+            func rvPutTROk()
+                var kk: u8 = 1
+                let r = kk@uniq
+                var spare: raw/u8 = r@follow@raw
+                var w0: u64 = 3
+                keep(w0@raw@raw/(raw/u8), spare)
+                var d: u64 = 0
+                var i: i32 = 0
+                putTR(d@raw, w0, i@ref)
+                kk = 2
+            """,
+        ["rvPickSpillOk"] = """
+            func keep(slot: raw/(raw/u8), value: raw/u8) => ()
+            func pickR<T>(a: T, b: ref/i32) -> T => a@move
+            func rvPickSpillOk()
+                var kk: u8 = 1
+                let r = kk@uniq
+                var spare: raw/u8 = r@follow@raw
+                var w0: u64 = 3
+                keep(w0@raw@raw/(raw/u8), spare)
+                var e: u64 = 0
+                let pe = e@raw
+                var i: i32 = 0
+                e = pickR(w0, i@ref)
+                kk = 2
+            """,
     };
 
     // The coverage table's rows (a5v-u6-state.md), by exposure.
@@ -1606,6 +1675,11 @@ public sealed partial class MirBorrowsTest
     [InlineData("rvReborrowUseBad", "rvReborrowUseBad: x.v = 5")] // I (O-364 (a)): the same used after x.v = 5
     [InlineData("rvReborrowUseOk", "")] // V
     [InlineData("rvDerefPlainOk", "")] // V, the control: r reaches x only, which carries nothing
+    [InlineData("rvCopyUseBad", "rvCopyUseBad: kk = 2")] // I, the Copy by assignment into an initialized local: d carries w0's Loans and is read after (15.6 Holders' Copy sentence)
+    [InlineData("rvPutROk", "")] // V, a Scalar argument the builder spills into a temporary before a borrow argument; d is not used after
+    [InlineData("rvPutRNoKeepOk", "")] // V, the same with d read after and no keep: w0 carries nothing, so neither does its Copy in the temporary
+    [InlineData("rvPutTROk", "")] // V, the spill before a borrow argument in a generic call (T = u64); d is not used after
+    [InlineData("rvPickSpillOk", "")] // V, the spill in a call whose result is stored into an exposed local; e is not used after
     public void AValueReadFromAHolderCarriesItsLoansWhateverItsType(string form, string expected)
     {
         var c = MirBuildTest.Compile(ExposedShapes + FlowForms[form] + "\npublic func main() => ()\n");

@@ -362,17 +362,20 @@ public group Text
             // Held so that the compiler does not destroy the buffer whose allocation this call releases or transfers
             // (SPEC 5.2.3).
             var held = Storage.InlineStorage<Text.HeapBuffer>.init(self@move)
-            let data = held.value.data
-            let length = held.value.length
-            let validated = held.value.validated
+            // The handover: the allocation's pointer is taken out of the held buffer through its address (SPEC 5.2.3),
+            // never read through `data`'s own step, whose pointers end with `held` (SPEC 5.2.1 condition 3).
+            let words = held@raw@raw/Storage.BufferRepr
             unsafe
+                let data = (*words).data@move
+                let length = (*words).length
+                let validated = (*words).validated
                 if not Text.validSuffix(data, validated, length)
                     Raw.release(data)
                     return .Err(Text.InvalidUtf8.init())
-            var kind: u8 = 0
-            if data != null => kind = 1
-            var text = Storage.InlineStorage<Storage.StringRepr>.init(Storage.StringRepr.init(data, length, kind))
-            unsafe => return .Ok((*(text@raw@raw/string))@move)
+                var kind: u8 = 0
+                if data != null => kind = 1
+                var text = Storage.InlineStorage<Storage.StringRepr>.init(Storage.StringRepr.init(data, length, kind))
+                return .Ok((*(text@raw@raw/string))@move)
 
     public struct Utf8Slice {source}
         Self is Copy
