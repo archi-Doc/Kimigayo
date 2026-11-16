@@ -105,7 +105,8 @@ public sealed partial class Binding
             }
         }
 
-        var unknownArgument = !this.PrepareCallArguments(call, scope, group);
+        var candidates = this.GroupOf(callee, group);
+        var unknownArgument = !this.PrepareCallArguments(call, scope, candidates);
 
         if (group is null)
         {
@@ -115,7 +116,7 @@ public sealed partial class Binding
             }
             else
             {
-                this.Fail(callee, callee.BindingFailure == BindingFailure.Ambiguous ? BindingFailure.Ambiguous : this.MissingFailure(callee, scope, BindingFailure.MissingName), true);
+                this.Fail(callee, callee.BindingFailure == BindingFailure.Ambiguous ? BindingFailure.Ambiguous : this.MissingFailure(callee, BindingFailure.MissingName), true);
             }
 
             return Complete(call, null);
@@ -126,9 +127,7 @@ public sealed partial class Binding
             return this.BindReference(callee, group, scope) is null ? Complete(call, null) : this.Fail(call, BindingFailure.NotCallable);
         }
 
-        var requirementGroup = callee is MemberAccessKoto requirementMember && this.requirementGroups.TryGetValue(requirementMember, out var foundGroup) && foundGroup.Active ? foundGroup : null;
-        var imports = this.importCandidates?.GetValueOrDefault(callee);
-        var candidates = new CallCandidates(group, requirementGroup, imports);
+        var requirementGroup = candidates.Requirements;
         var self = requirementGroup?.Self ?? (callee as RequirementCalleeKoto)?.Self;
         var shape = MeasureCandidates(candidates, self is not null || group.Scope.Owner is StructKoto or EnumKoto);
 
@@ -142,9 +141,8 @@ public sealed partial class Binding
 
         callee.BoundSymbol = group;
         callee.BindingState = BindingState.Resolved;
-        if (imports is { Count: > 1 } && this.CheckGatheredParameterShapes(callee, imports, aliasStage: true))
+        if (this.GatheredGroupFails(callee, candidates))
         {
-            // SPEC 7.4, 9.5.1: a function group gathered at the alias stage from several declaration sources is checked at the use.
             return Complete(call, null);
         }
 
@@ -391,6 +389,12 @@ public sealed partial class Binding
             if (!this.SolveSelected(ref evaluation, winnerIndex, selectedType))
             {
                 return null; // SPEC 10.5.1, 10.2.1: the nested call waits, or the call rests on its record (SolveSelected).
+            }
+
+            if (!this.SupportedFunction(callee, winner))
+            {
+                this.MarkWaitingHeaders(call); // As a failed selection (FailWaitingSelection); the record is the callee's (SPEC 22.1, R8).
+                return Complete(call, null);
             }
 
             if (evaluated[winnerIndex].State == CandidateApplicability.Waiting)

@@ -170,21 +170,30 @@ public sealed class MirModelTest
         Assert.Equal(-1, body.Inlining(nested));
     }
 
-    // Clearing a program returns its bodies to the pool, and the next build reuses them in order.
+    // A body is built in its segment's body, the library's prefix's or the program's, and stored at End in the next pooled body, which its
+    // key then finds; clearing a program returns its bodies to the pool, and the next build reuses them in order.
     [Fact]
     public void ProgramReusesItsBodiesInOrder()
     {
         var (_, types) = Fixture();
         var program = new MirProgram();
         var (fn, closure) = (new MirDefKey(types.Function, MirBodyKind.Fn), new MirDefKey(types.Function, MirBodyKind.Closure, 1));
-        var first = program.Begin(fn, new(0, 1));
-        var second = program.Begin(closure, default);
+        var built = program.Begin(fn, new(0, 1));
+        Assert.Null(program[fn]);
+        var first = program.End();
+        Assert.NotSame(built, first);
+        Assert.Same(built, program.Begin(closure, default));
+        var second = program.End();
         Assert.Same(second, program[closure]);
+        Assert.Equal((0, 1), (first.Ordinal, second.Ordinal));
         Assert.Null(program[closure with { Index = 2 }]);
-        Assert.Throws<ArgumentException>(() => program.Begin(fn, default));
+        program.EndLibrary();
+        Assert.NotSame(built, program.Begin(fn, default));
+        Assert.Throws<ArgumentException>(program.End);
         program.Clear();
         Assert.Null(program[fn]);
-        Assert.Same(first, program.Begin(closure, default));
+        program.Begin(closure, default);
+        Assert.Same(first, program.End());
         Assert.Equal(new[] { first }, program.Bodies.ToArray());
         Assert.Equal(closure, first.Key);
     }
@@ -220,6 +229,7 @@ public sealed class MirModelTest
             body.AddOpaque(default, roots);
             body.Static(new(types.Function, BoundType.I32, false, false));
             body.AddScope(0, MirScopeKind.Unsafe, default);
+            program.End();
         }));
     }
 

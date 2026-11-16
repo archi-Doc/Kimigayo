@@ -1,3 +1,4 @@
+#Lang("IntoIterable")
 public contract IntoIterable
     associate IteratorType is ::Kimi.LendingIterator
     func intoIterator(self: Self) -> Self.IteratorType
