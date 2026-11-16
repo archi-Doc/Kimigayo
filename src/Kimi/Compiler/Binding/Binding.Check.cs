@@ -7,9 +7,10 @@ namespace Kimi.Compiler;
 
 // The end of a Binding pass (Check; DECISIONS BU-81, refining R2b-D2).
 // - Responsibility: the pass's failure producers (the definition obligations, the needed conformance paths and capability sites, the
-//   call and runtime-test Constraint checks, the part prerequisites, Unvisited to Unresolved); in a Final pass, then, the HIR of every
-//   module, the library included (PublishPass), and H1's TransferRequired judgment over it (CheckTransfers, DECISIONS BU-84), with one
-//   republication when it failed a node; then the counting of the node states and the collection of the issues.
+//   call and runtime-test Constraint checks, the part prerequisites, Unvisited to Unresolved); in a Final pass, then, the HIR of the
+//   pass's modules (PublishPass; until PLAN G949 S1-r1b every module, the library included) and H1's TransferRequired judgment over it
+//   (CheckTransfers, DECISIONS BU-84), with one republication when it failed a node; then the counting of the node states and the
+//   collection of the issues.
 // - Inputs: the bound nodes, the obligations, the needed sites and paths, the facts the pass recorded.
 // - Outputs: every failure the pass decides; the published HIR columns of a Final pass; the pass summary, issues and derived issues.
 // - Invariants: every step that decides a failure runs before the publication, so the published columns describe the pass's final

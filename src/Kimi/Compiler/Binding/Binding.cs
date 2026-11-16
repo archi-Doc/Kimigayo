@@ -6,7 +6,7 @@ namespace Kimi.Compiler;
 
 // Binding (P2-P5s, COMPILER_ARCHITECTURE "Target pipeline"): the entry of the pass that resolves the selected syntax and publishes its facts.
 // - Responsibility: Bind(mode): its runs and passes through the pass driver (Binding.Passes.cs: BeginBind, then each run's BeginRun
-//   and passes, each pass ResetPass, IndexSources, IndexLibrary, BindDeclarations, BindBodies, ValidateBoundDeclarations and Check),
+//   and passes, each pass ResetPass, Index, BindDeclarations, BindBodies, ValidateBoundDeclarations and Check over its modules),
 //   then WalkLints in a Final Bind and the conformance table's sweep (ImplTable.Sweep); CheckBound repeats Check on a Final pass;
 //   Invalidate revokes the latest pass after an edit. Each step lives in its concern's file (Binding.<Concern>.cs); this file holds the
 //   entry points, the state the concerns share and the order of the declaration, body and validation steps.
@@ -245,15 +245,20 @@ public sealed partial class Binding
         return true;
     }
 
-    // Source bodies, then the library bodies outside the compiler-intrinsic declarations.
+    // The pass's bodies: its source modules', then, when it binds the library, the library's outside the compiler-intrinsic declarations.
     private void BindBodies()
     {
-        foreach (var module in this.compilation.SourceModules)
+        foreach (var module in this.pass.Sources)
         {
             this.BindNode(module.RootKoto, this.scopes[module.RootKoto]);
         }
 
-        var libraryRoot = this.Library.Kotonoha.RootKoto;
+        if (this.pass.Library is not { } library)
+        {
+            return;
+        }
+
+        var libraryRoot = library.RootKoto;
         for (var i = 0; i < libraryRoot.NestedContainers.Count; i++)
         {
             var declaration = libraryRoot.NestedContainers[i];
