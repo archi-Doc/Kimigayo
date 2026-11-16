@@ -61,7 +61,6 @@ public sealed partial class Binding
         this.obligations.Clear();
         this.ResetLocalRegions();
         this.obligationSet.Clear();
-        this.inheritedOriginTypes.Clear();
         this.ResetCapabilities(mode);
         this.ResetContracts();
         foreach (var scope in this.scopes.Values)

@@ -730,12 +730,13 @@ public partial class KimiLibraryShapeTest
         private string Stamp(ulong stamp)
             => stamp == 0 ? "0" : stamp <= this.pass ? $"pass-{this.pass - stamp}" : stamp.ToString(CultureInfo.InvariantCulture);
 
-        // A library object's row, field by field, a symbol's with its query states.
+        // A library object's row, field by field, a symbol's with its query states; a Type row by its printed form, as every Type value
+        // prints (a node family's row may be a Type: G949 N5-2's InheritedOriginTypes).
         private void Row(string store, object? value)
         {
             if (this.Owner(value, 0) == Side.Library)
             {
-                this.rows.Add($"{store} {this.Fields(value!, 0)}{(value is BindingSymbol s ? this.Queries(s) : string.Empty)}");
+                this.rows.Add($"{store} {(value is BoundType type ? this.Print(type, 0) : this.Fields(value!, 0))}{(value is BindingSymbol s ? this.Queries(s) : string.Empty)}");
             }
         }
 

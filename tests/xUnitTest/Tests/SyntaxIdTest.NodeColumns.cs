@@ -136,16 +136,20 @@ public partial class SyntaxIdTest
     // G949 D2b-d's d10, per pass or edit family: an edit's renumbering hands the family's column over, stale, so the Bind after each
     // edit empties it at its first write and rewrites its rows in the same arena (AssociatedOrigins: an associated Type's Origin
     // parameters; ShapeContractHeads: the shape contracts of an overload group whose every pair shares a slot; ObjectErasures: an
-    // override's call through its receiver's erased view, VirtualEntryErasureTest's program). Checked after each edit (N5-5's review C1):
+    // override's call through its receiver's erased view, VirtualEntryErasureTest's program; InheritedOriginTypes: Milestone11's omitted
+    // inherited Origins). Checked after each edit (N5-5's review C1):
     // a kept family's two arenas alternate, so after an even number of edits a kept column's arena is again its first.
     [Trait("Purpose", "Allocation")]
     [Theory]
     [InlineData("AssociatedOrigins", "contract C\n    associate Item(a) for ref/i32 during a\n")]
     [InlineData("ShapeContractHeads", "candidates")]
     [InlineData("ObjectErasures", "open struct Base<T>\n    public func ordinary(self: objref/Self) -> i32 => 1\n    public virtual func read(self: objref/Self, other: objref/Leaf<T>) -> i32 => 1\nstruct Leaf<T> : Base<T>\n    override func read(self: objref/Self, other: objref/Leaf<T>) -> i32\n        return self.ordinary()\n()")]
+    [InlineData("InheritedOriginTypes", "milestone:Milestone11")]
     public void AStampedFamilyKeepsItsArenaAcrossEdits(string family, string program)
     {
-        var c = CompilationTestHelper.Parse(program == "candidates" ? ConstructorInferenceWorkloads.Create(program, 4) : program, "Hello.kimi");
+        var source = program == "candidates" ? ConstructorInferenceWorkloads.Create(program, 4)
+            : program.StartsWith("milestone:", StringComparison.Ordinal) ? Repository.ReadText("tests", "milestones", program["milestone:".Length..] + ".kimi") : program;
+        var c = CompilationTestHelper.Parse(source, "Hello.kimi");
         Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c));
         var field = typeof(NodeColumns).GetField(family, Members)!;
         var (before, used) = (Arena(), Used());
