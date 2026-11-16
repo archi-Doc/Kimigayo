@@ -87,10 +87,30 @@ public sealed partial class Binding
         // from the retained rows (CollectPositionPremises) and read by each discovery (DiscoverPremiseOrigins); its solve returns it.
         internal SlotSet EvidenceNamed;
 
+        // SPEC 10.8 (Unbound slots), 4.3.1 Places: the Type slots that steps 3 and 4 of SPEC 10.1 leave unbound, published before the
+        // late walk (LeaveUnbound; SolveLate, SolveConstruction) and read by it alone (InferComposite): only such a slot takes its
+        // literals whole there; a slot those steps bound gives the parts at its positions their expected Type (10.8).
+        internal SlotSet Left;
+
         // The solution's Type and length slots, read-only: the frame's writes are InferCtxt's (DECISIONS R7-I2).
         internal readonly ReadOnlySpan<BoundType?> Types => this.Frame.Types;
 
         internal readonly ReadOnlySpan<BoundLength?> Lengths => this.Frame.Lengths;
+
+        // Publishes Left in `left`, the caller's scratch, which the late walk reads until the caller's next write of it.
+        internal void LeaveUnbound(ref SlotSet left)
+        {
+            left.Clear();
+            for (var g = 0; g < CallSlotCount(this.Binder); g++)
+            {
+                if (this.Types[g] is null)
+                {
+                    left.Add(g);
+                }
+            }
+
+            this.Left = left;
+        }
 
         // The slots' owner, whether it is a constructor's structure rather than the binder, and the binder's Origin count.
         internal readonly Koto SlotOwner => CallSlotOwner(this.Binder);

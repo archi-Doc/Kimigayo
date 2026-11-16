@@ -462,9 +462,12 @@ public sealed partial class Binding
             {
                 // SPEC 10.5.1, 10.8 Solving (WholeEvidence): a whole at a slot no fixed binding solves is gathered with the slot's
                 // other wholes and evidence and bound once, at the pass's end (BindWholes); an earlier argument's binding never shapes it.
+                // SPEC 4.3.1 Places, 10.8: in the late pass only a slot that steps 3 and 4 left unbound (Left) takes its literals
+                // whole; a slot they bound gives the parts their expected Type, as a fixed binding does.
                 var fixedType = FixedPattern.Of(binding, pattern, this.Fixed).Type;
                 var solved = ReferenceEquals(fixedType, pattern) ? binding.SubstituteType(pattern, this.SlotOwner, this.Types, this.Lengths) : fixedType;
-                if (!ReferenceEquals(solved, pattern) && ReferenceEquals(fixedType, pattern))
+                if (!ReferenceEquals(solved, pattern) && ReferenceEquals(fixedType, pattern) &&
+                    (solved is null || !late || this.Left.Contains(OwnSlot(pattern, this.SlotOwner))))
                 {
                     for (var i = start; i < end; i++)
                     {
@@ -666,14 +669,16 @@ public sealed partial class Binding
         }
 
         // SPEC 10.2.1 (O-341 (a)): records the own Type a part takes after selection (OwnType) in its Default column, keeping its kind (a
-        // Literal does not await its call: RecordPart's row). A literal its default does not fit is bound at it for its own record; a
-        // nested call is already resolved, and a failed resolution is its own record, on which the call rests (SPEC 23.1.2).
+        // Literal does not await its call: RecordPart's row). A literal its default does not fit is bound at it for its own record, on
+        // which the call rests; a nested call is already resolved. A part without an own Type takes none: one whose own binding failed
+        // (a failed resolution, a failed name beside a waiting part) keeps its own record and is no misfit, the slots at its position
+        // resting on it (SPEC 23.1.2; FailUnboundSlots, RestSlots).
         private readonly Koto? Default(Koto part, BoundType? type, ref bool applied)
         {
             var binding = this.Binding;
             if (type is null)
             {
-                return binding.HasFailureCauses(part) ? part : null;
+                return null;
             }
 
             var kind = binding.KindOf(part) == PartKind.Literal ? PartKind.Literal : PartKind.Call;

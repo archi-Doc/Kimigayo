@@ -309,7 +309,7 @@ public sealed partial class Binding
                 DefaultSlots(function, mapping.AsSpan(0, call.ArgumentNodes.Count), receiverSlot, ref defaults);
             }
 
-            if (!this.SolveLate(ref solution, mapping, defaults))
+            if (!this.SolveLate(ref solution, mapping, defaults, ref unboundSlots))
             {
                 return CandidateApplicability.Inapplicable;
             }
@@ -610,12 +610,14 @@ public sealed partial class Binding
     // applied to the selected candidate and range typing), then the arguments' root rows (Contribute) and the first solve of the
     // candidate's Origins, which the well-formedness of each Signature position (F1, R4-M164: each leaf row of an argument,
     // CollectPositionPremises, and each default it uses, `defaults`, DefaultSlots) shortens as an Evidence part's does (InferAdapted);
-    // false when the candidate is inapplicable.
-    private bool SolveLate(ref SlotSolution solution, int[] mapping, in SlotSet defaults)
+    // false when the candidate is inapplicable. Before the walk it publishes the slots that steps 3 and 4 left unbound in `left`
+    // (SlotSolution.Left): only they take their literals whole in it (SPEC 4.3.1 Places, 10.8).
+    private bool SolveLate(ref SlotSolution solution, int[] mapping, in SlotSet defaults, ref SlotSet left)
     {
         var call = solution.Call;
         var function = solution.Function;
         var wholes = this.wholes.Count;
+        solution.LeaveUnbound(ref left);
         for (var i = 0; i < call.ArgumentNodes.Count; i++)
         {
             if (function.Parameters[mapping[i]].Type.BoundType is { } parameter && solution.Pattern(parameter) is { } latePattern &&

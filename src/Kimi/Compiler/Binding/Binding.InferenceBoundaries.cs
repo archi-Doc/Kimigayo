@@ -148,18 +148,82 @@ public sealed partial class Binding
         return true;
     }
 
+    // SPEC 23.1.2, 10.8 (Unbound slots; DECISIONS U1.6h-1): the unsolved slots at whose position a part's own binding failed
+    // (PartFailed) rest on that part and leave `unsolved`, by the positions of [start, end) (a join's sources, an aggregate's
+    // elements: ChildPositions); the slots left are the call's own boundary. Returns such a part, null when there is none; `scratch`
+    // is empty before and after.
+    private Koto? RestSlots(int start, BoundType pattern, FunctionKoto selected, ref SlotSet unsolved, ref SlotSet scratch)
+    {
+        var end = this.positionParts.Count;
+        if (!MentionsSlots(pattern, CallSlotOwner(selected), unsolved))
+        {
+            return null;
+        }
+
+        for (var i = start; i < end; i++)
+        {
+            if (!this.PartFailed(this.positionParts[i]))
+            {
+                continue;
+            }
+
+            for (var g = 0; g < CallSlotCount(selected); g++)
+            {
+                scratch.Add(g);
+                if (unsolved.Contains(g) && MentionsSlots(pattern, CallSlotOwner(selected), scratch))
+                {
+                    unsolved.Remove(g);
+                }
+
+                scratch.Remove(g);
+            }
+
+            return this.positionParts[i];
+        }
+
+        Koto? failed = null;
+        for (var i = 0; i < this.ChildPositions(start, end); i++)
+        {
+            var child = this.positionParts.Count;
+            if (this.AddChildPosition(start, end, i, pattern) is { } element)
+            {
+                failed = this.RestSlots(child, element, selected, ref unsolved, ref scratch) ?? failed;
+            }
+
+            this.ClosePosition(child);
+        }
+
+        return failed;
+    }
+
     // SPEC 10.6, 10.8: the selected candidate leaves a required structural slot that neither explicit Type arguments nor evidence bind. The
     // call is UnboundTypeArgument_Kd, whose Reason names the first such slot in declaration order; the checks that need the slot are
     // derived. An anonymous argument whose fixed expected call signature has closed parameter Types is still checked with them, its result
     // inferred from its body, so that its independent problems stay visible; one with open parameter Types, and every other argument that
-    // the open slot leaves without a Type, rests on the call.
+    // the open slot leaves without a Type, rests on the call. Where every unsolved slot stands at a position with a part whose own
+    // binding failed (RestSlots), the call rests on such a part instead (SPEC 23.1.2; DECISIONS U1.6h-1): its record is that part's.
     private BoundType? FailUnboundSlots(InvocationKoto call, FunctionKoto selected, BindingScope scope, ReadOnlySpan<BoundType?> slots, ReadOnlySpan<BoundLength?> lengths, int[] mapping, ReadOnlySpan<BoundArgumentOperation> operations, BoundType? expected, BoundType? self, BoundOrigin[] origins, BoundOrigin[] inputs, BoundType? declaringType)
     {
         var unsolved = this.RentSlotSet(CallSlotCount(selected));
         this.UnsolvedSlots(call, selected, slots, lengths, mapping, ref unsolved);
         var firstSlot = this.RentSlotSet(CallSlotCount(selected));
+        var boundary = this.RentSlotSet(CallSlotCount(selected));
         try
         {
+            this.UnsolvedSlots(call, selected, slots, lengths, mapping, ref boundary);
+            Koto? failed = null;
+            for (var i = 0; i < call.ArgumentNodes.Count; i++)
+            {
+                var position = this.OpenPosition(call.ArgumentNodes[i]);
+                failed = this.RestSlots(position, selected.Parameters[mapping[i]].Type.BoundType!, selected, ref boundary, ref firstSlot) ?? failed;
+                this.ClosePosition(position);
+            }
+
+            if (failed is not null && boundary.IsEmpty)
+            {
+                return this.CompleteDependent(call, failed);
+            }
+
             var first = unsolved.First();
             firstSlot.Add(first);
             var name = CallOwnSlots(selected)[first].Identifier;
@@ -324,6 +388,7 @@ public sealed partial class Binding
         }
         finally
         {
+            this.ReturnSlotSet(boundary);
             this.ReturnSlotSet(firstSlot);
             this.ReturnSlotSet(unsolved);
         }

@@ -427,6 +427,7 @@ public sealed partial class Binding
         }
 
         var unsolved = this.RentSlotSet(CallSlotCount(solution.Binder));
+        var left = this.RentSlotSet(CallSlotCount(solution.Binder));
         try
         {
             for (var late = 0; late < 2; late++)
@@ -459,6 +460,8 @@ public sealed partial class Binding
                     this.CompleteDependent(use, misfit); // SPEC 12.3: the literals' own records, on which the construction rests.
                     return false;
                 }
+
+                solution.LeaveUnbound(ref left);
             }
 
             for (var i = 0; i < payload.Length && unsolved.IsEmpty; i++)
@@ -474,6 +477,7 @@ public sealed partial class Binding
         }
         finally
         {
+            this.ReturnSlotSet(left);
             this.ReturnSlotSet(unsolved);
         }
     }
