@@ -5,11 +5,11 @@ using Kimi.Compiler.Parsing;
 namespace Kimi.Compiler;
 
 // Binding (P2-P5s, COMPILER_ARCHITECTURE "Target pipeline"): the entry of the pass that resolves the selected syntax and publishes its facts.
-// - Responsibility: one pass per Bind(mode) in the order written here: SyntaxId numbering, ResetPass, IndexSources, IndexLibrary,
-//   BindDeclarations, BindBodies, ValidateBoundDeclarations, Check, WalkLints in a Final pass, and the conformance table's sweep
-//   (ImplTable.Sweep); CheckBound repeats Check on a Final
-//   pass; Invalidate revokes the latest pass after an edit. Each step lives in its concern's file (Binding.<Concern>.cs); this file
-//   holds the entry points, the state the concerns share and the pass order.
+// - Responsibility: Bind(mode): its runs and passes through the pass driver (Binding.Passes.cs: BeginBind, then each run's BeginRun
+//   and passes, each pass ResetPass, IndexSources, IndexLibrary, BindDeclarations, BindBodies, ValidateBoundDeclarations and Check),
+//   then WalkLints in a Final Bind and the conformance table's sweep (ImplTable.Sweep); CheckBound repeats Check on a Final pass;
+//   Invalidate revokes the latest pass after an edit. Each step lives in its concern's file (Binding.<Concern>.cs); this file holds the
+//   entry points, the state the concerns share and the order of the declaration, body and validation steps.
 // - Inputs: the compilation's source modules, the embedded Kimi library (Library) and the mode.
 // - Outputs: Result, Issues, Obligations, LibraryImports, the Type context (Types), the facts published to readers outside Binding
 //   (Semantics; the HIR tables and Plans), and the diagnostics ReportDiagnostics records (Binding.Diagnostics.Report.cs).
@@ -136,33 +136,8 @@ public sealed partial class Binding
         this.running = true;
         try
         {
-            // SyntaxIds: each module is renumbered only when parsing or an edit changed its syntax since it was last numbered. Its
-            // ordinal is its position; the library's is the fixed SyntaxTable.LibraryModule.
-            var modules = this.compilation.SourceModules;
-            for (var i = 0; i < modules.Length; i++)
-            {
-                modules[i].Syntax.Number(modules[i].RootKoto, (ushort)i);
-            }
-
-            this.Library.Kotonoha.Syntax.Number(this.Library.Kotonoha.RootKoto, SyntaxTable.LibraryModule);
-
-            // Every later phase rests on Binding, so its facts are discarded with Binding's; a pass that does not finish
-            // leaves no result behind.
-            this.Result = default;
-            this.compilation.Diagnostics.InvalidateSemantics();
-            this.compilation.InvalidateMir();
-            this.StartRuns(mode);
-            do
-            {
-                this.ResetPass(mode);
-                this.IndexSources();
-                this.IndexLibrary();
-            }
-            while (!this.BindDeclarations(mode));
-
-            this.BindBodies();
-            this.ValidateBoundDeclarations(mode);
-            this.Result = this.Check(mode);
+            this.BeginBind(mode);
+            this.Run(mode);
             if (mode == BindingMode.Final)
             {
                 this.WalkLints();
@@ -192,6 +167,7 @@ public sealed partial class Binding
         if (this.Result != default)
         {
             this.Result = default;
+            this.BeginRun();
             this.ResetPass(BindingMode.Provisional);
         }
 
