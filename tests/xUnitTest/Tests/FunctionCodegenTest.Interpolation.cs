@@ -42,10 +42,9 @@ public sealed partial class FunctionCodegenTest
         Assert.Equal("call void @(ptr %, ptr %, ptr null, ptr %) store i32 0, ptr %, align 4", Adapter(ir, c, function));
         Assert.Equal(["20", "0"], Hints(ir, c, function));
         Assert.Single(CallsOf(function), x => FunctionsOf(ir, c, "text").Contains(x.Callee));
-        Assert.Single(CallsOf(function), x => FunctionsOf(ir, c, "writeLine").Contains(x.Callee));
-        Assert.DoesNotContain(
-            CalleesOf(function),
-            x => FunctionsOf(ir, c, "heap").Contains(x) || FunctionsOf(ir, c, "intoString").Contains(x) || x == ir.Function("__kimi_write_line"));
+        var lines = FunctionsOf(ir, c, "writeLine");
+        Assert.Same(LineOf(ir, c, view: true), Assert.Single(CallsOf(function), x => lines.Contains(x.Callee)).Callee);
+        Assert.DoesNotContain(CalleesOf(function), x => FunctionsOf(ir, c, "heap").Contains(x) || FunctionsOf(ir, c, "intoString").Contains(x));
     }
 
     // SPEC 22.10.5 (DECISIONS R8-M24; R8-W2 c3b): a bounded interpolation that is not passed directly to writeLine, and an unbounded one,
@@ -96,12 +95,12 @@ public sealed partial class FunctionCodegenTest
         var ir = GeneratedIr.Parse(Generate(c));
         var at = Assert.Single(FunctionsOf(ir, c, "atLimit"));
         Assert.Equal(RegionShape + "1024 x i8] }, align 1", Region(ir, c, at).Region.Shape);
-        Assert.Equal([FunctionsOf(ir, c, "fixed")[0], Assert.Single(FunctionsOf(ir, c, "writeLine"))], Ends(ir, c, at));
+        Assert.Equal([FunctionsOf(ir, c, "fixed")[0], LineOf(ir, c, view: true)], Ends(ir, c, at));
         var past = Assert.Single(FunctionsOf(ir, c, "pastLimit"));
         var heap = Assert.Single(FunctionsOf(ir, c, "heap"));
         Assert.Matches(@"^call void @\(ptr %, i64 0, ptr @, i64 \d+\)$", Assert.Single(CallsOf(past), x => x.Callee == heap).Shape);
         Assert.Equal(
-            [heap, Assert.Single(FunctionsOf(ir, c, "finish")), Assert.Single(FunctionsOf(ir, c, "intoString")), ir.Function("__kimi_write_line")],
+            [heap, Assert.Single(FunctionsOf(ir, c, "finish")), Assert.Single(FunctionsOf(ir, c, "intoString")), LineOf(ir, c, view: false)],
             Ends(ir, c, past));
         var generic = Analyze(Interpolations, OutputKind.Library);
         var instances = GeneratedIr.Parse(Generate(generic));
@@ -189,7 +188,7 @@ public sealed partial class FunctionCodegenTest
     private static IrFunction[] Ends(GeneratedIr ir, Compilation c, IrFunction function)
     {
         IrFunction[] routines = [.. FunctionsOf(ir, c, "fixed"), .. FunctionsOf(ir, c, "heap"), .. FunctionsOf(ir, c, "finish"),
-            .. FunctionsOf(ir, c, "intoString"), .. FunctionsOf(ir, c, "writeLine"), ir.Function("__kimi_write_line")];
+            .. FunctionsOf(ir, c, "intoString"), .. FunctionsOf(ir, c, "writeLine")];
         return [.. CalleesOf(function).Where(routines.Contains)];
     }
 

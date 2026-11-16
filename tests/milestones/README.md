@@ -120,7 +120,7 @@ any explicitly recorded owner decision. The pending diagnostic baselines remain 
 | 38 | YES | PASS | PASS (O0/O2) | PASS (O0/O2) | IN_PROGRESS | O0/O2 target passes; exclusive receiver projections belong to OCC-X. Completion review remains with the owner. |
 | 39 | YES | FAIL | FAIL (prior native probe) | NOT_RUN | IN_PROGRESS | Binding: `UnresolvedBinding_Kd` at `view.extra`; flow refinement remains incomplete. |
 | 40 | YES | PASS | PASS (O0/O2) | PASS (O0/O2) | IN_PROGRESS | Original-source O0/O2 passes; U7 defects and completion audit remain in PLAN's [U7 row](../../docs/dev/PLAN.md#shared-object-track-alternating-sessions). |
-| 41 | YES | FAIL | NOT_RUN | NOT_RUN | TODO | Binding: `Unsupported_Kd` at `Weak`; Weak/cyclic construction declarations remain incomplete (G4). |
+| 41 | YES | FAIL | NOT_RUN | NOT_RUN | TODO | Binding: `Unsupported_Kd` at `Weak`; Weak and the cyclic factories are declared `#Unsupported` and not implemented (G4). |
 | 42 | YES | PASS | NOT_RUN | NOT_RUN | IN_PROGRESS | Binding passes; Ownership: `Unsupported_Kd` at `Registry`; static initialization/shutdown remain incomplete. |
 | 43 | YES | FAIL | NOT_RUN | NOT_RUN | TODO | Binding: `Unsupported_Kd` at `Weak`; also depends on refinement, object accessors and OCC-X. |
 | 44 | YES | PASS | PASS (O0/O2) | PASS (O0/O2) | DONE | Shared `objref` dispatch within the STATUS "Virtual calls" boundary; `Virtual*Test` cover neighboring forms. |

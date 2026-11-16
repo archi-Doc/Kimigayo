@@ -17,7 +17,7 @@ namespace XunitTest;
 // that does not hold is a declared relation, never InvalidOriginBinding_Kd (q31 f2): it is located at the initializer when the
 // initializer supplies one of its ends and relates the clause with the role `relation`. A local annotation also proves its Type's own
 // clauses, each a declared relation at the Type occurrence.
-public class LocalOriginClauseTest
+public partial class LocalOriginClauseTest
 {
     private const string Main = "public func main() => ()\n";
 
