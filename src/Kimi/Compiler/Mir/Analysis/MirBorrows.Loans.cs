@@ -8,16 +8,21 @@ namespace Kimi.Compiler.Mir;
 // (D5, R4-M98): a Loan, a guard candidate, whose guard-local Origin a check follows without a Loan (E7), a Drop of a mutable static (R3) or
 // a write rooted at a default template's PreparedInput (R26-access); for the effect rule (R4-M92) the view's effect roots, the mutable
 // statics its Loans are on, and each static's A4 Field number; whether the view has a raw Ref, whose address MirBorrows.Addresses
-// forms; and by local, whether a direct Loan or address names it (a flow holder) and whether it is an exposed holder (Exposed).
+// forms; and by local, whether a direct Loan or address names it (a flow holder), whether it is an exposed holder (Exposed) and the
+// Place its reference refers to wherever it is read (Referred).
 internal sealed partial class MirBorrows
 {
     private const byte NamedHolder = 1; // named: a direct Loan or address names the local, so it is a flow holder (MirBorrows.Holders).
     private const byte ExposedHolder = 2; // named: an exposed holder (Exposed).
+    private const byte DefinedOnce = 1; // defined: one Assign or Call stores into a Place rooted at the local.
+    private const byte DefinedAgain = 2; // defined: more than one does.
+    private const byte LentShared = 4; // defined: a shared Ref is stored into its whole Place (lent).
 
     private readonly List<int> effectRoots = []; // The root keys of the mutable statics the view's Loans are on, each once.
     private byte[] named = []; // By local: NamedHolder and ExposedHolder.
     private bool[] borrowed = []; // By root key (Key): whether a Loan's Place has that root.
     private MirPlace[] lent = []; // By local: the Place a Ref lent into it, or the local itself.
+    private byte[] defined = []; // By local: DefinedOnce, DefinedAgain and LentShared (Referred).
     private Loan[] loans = [];
     private MirStep[] loanSteps = []; // The Loans' Places, each a run.
     private int[] loanAt = []; // By location (Location): the Loan its Ref or Reborrowing PairAcquire issues, or -1.
@@ -38,6 +43,16 @@ internal sealed partial class MirBorrows
     // callee's scalar store, a pun); no other pointer reaches a local. A shared Loan gives no write authority (SPEC 5.2.1 condition 3).
     private bool Exposed(int local) => (this.named[local] & ExposedHolder) != 0;
 
+    // Whether a local's reference refers to one Place wherever the local is read, and that Place: the body's only store into a Place
+    // rooted at the local is a shared Ref of that Place into its whole Place, and no pointer the body formed may write the local
+    // (Exposed); an argument holds its caller's value. A read through the local then reads that Place: a shared Loan lets nothing write
+    // what it reaches while the reference is used (SPEC 5.2.1 condition 3). MirBorrows.Values' Unheld follows it.
+    private bool Referred(int local, out MirPlace place)
+    {
+        place = this.lent[local];
+        return this.defined[local] == (DefinedOnce | LentShared) && !this.Exposed(local) && this.body.Locals[local].Kind != MirLocalKind.Arg;
+    }
+
     // The Loans of the view (A3 4's issued, E3): a non-raw Ref of a Place that passes no shared borrow Deref and a PairAcquire the view makes a
     // Reborrow, of its Place's referent in its marker's mode (A3 E13 (4)), by location; each named by its whole Place, then ordered by group.
     private void Loans()
@@ -48,9 +63,11 @@ internal sealed partial class MirBorrows
         MirDataflow.Grow(ref this.borrowed, keys);
         MirDataflow.Grow(ref this.named, locals);
         MirDataflow.Grow(ref this.lent, locals);
+        MirDataflow.Grow(ref this.defined, locals);
         Array.Fill(this.loanAt, -1, 0, locations);
         Array.Clear(this.borrowed, 0, keys);
         Array.Clear(this.named, 0, locals);
+        Array.Clear(this.defined, 0, locals);
         foreach (var root in this.body.OpaqueRoots)
         {
             if (root >= 0)
@@ -86,6 +103,7 @@ internal sealed partial class MirBorrows
                 }
 
                 this.producing |= MirSteps.Prepared(this.body, statement.Place.Root);
+                this.Defined(statement.Place.Root);
                 var rvalue = statement.Rvalue.Kind == MirRvalueKind.Adapt ? cases.Adapt(statement.Rvalue, out _) : statement.Rvalue;
                 this.rawRefs |= rvalue is { Kind: MirRvalueKind.Ref or MirRvalueKind.Storage, Op: (byte)MirRefKind.Raw };
                 if (rvalue.Kind == MirRvalueKind.Ref && (MirRefKind)rvalue.Op != MirRefKind.Raw)
@@ -94,6 +112,7 @@ internal sealed partial class MirBorrows
                     if (statement.Place is { Projection: 0, Root: >= 0 } into)
                     {
                         this.lent[into.Root] = rvalue.Place;
+                        this.defined[into.Root] |= (MirRefKind)rvalue.Op == MirRefKind.Shared ? LentShared : (byte)0;
                     }
                 }
                 else if (this.Reborrowing(statement) is var kind and not MirRefKind.Raw)
@@ -104,6 +123,11 @@ internal sealed partial class MirBorrows
             }
 
             var terminator = data.Terminator;
+            if (terminator.Kind == MirTerminatorKind.Call)
+            {
+                this.Defined(terminator.Place.Root);
+            }
+
             this.producing |= this.DroppedStatic(terminator) >= 0 ||
                 (terminator.Kind == MirTerminatorKind.Call && MirSteps.Prepared(this.body, terminator.Place.Root));
         }
@@ -113,6 +137,15 @@ internal sealed partial class MirBorrows
         this.Order(moves.Paths.Length + this.body.Statics.Length);
         this.Renumber(this.loanAt.AsSpan(0, locations));
         this.Work += locations;
+    }
+
+    // One more store into a Place rooted at a local (Referred); a static has none to count.
+    private void Defined(int root)
+    {
+        if (root >= 0)
+        {
+            this.defined[root] |= (this.defined[root] & DefinedOnce) != 0 ? DefinedAgain : DefinedOnce;
+        }
     }
 
     // A Loan of a Place issued into a local (-1: none) at a location, or -1 past a shared borrow Deref (E3).

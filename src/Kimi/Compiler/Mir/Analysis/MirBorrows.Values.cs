@@ -9,20 +9,21 @@ namespace Kimi.Compiler.Mir;
 // reads (MirBorrows.Flow), and the value a Deref goes through (PointerOf); a raw Ref issues its address, a `during self` layer's read
 // carries what `@raw` of its storage carries (Layered); a Case payload of a holder that holds only calls' results carries nothing where
 // the Case's payload Type holds no Loan (Unheld; SPEC 15.6 Holders' Case-payload sentence, the owner's O-383 (b)). Must not decide which
-// holders a set reaches or a call's store writes (MirBorrows.Reach) or which locals hold only calls' results (MirBorrows.Holders).
+// holders a set reaches or a call's store writes (MirBorrows.Reach), which locals hold only calls' results (MirBorrows.Holders) or which
+// Place a local's reference refers to (MirBorrows.Loans).
 internal sealed partial class MirBorrows
 {
-    // val(rv) (A3 5) and the Loans it issues: an operand's, a Ref's (a raw one's and a Storage's its parents and address), the union of an aggregate's
-    // operands, a value-keeping Cast's operand's (between raw pointer Types, 5.4; none to usize, 5.5), a displacement's pointer's (5.3), an
-    // integer's pointer {Φ_E} (D8), an Opaque site's {Φ_E} (R4-M70: the site rests on a recorded error, so a problem only its roots' Loans
-    // would give never arises); under the view an Adapt is the rvalue its case selects (none: its operand's value).
+    // val(rv) (A3 5) and the Loans it issues: the union of the operands whose values it is (ValueOperands: an operand's, a value-keeping
+    // Cast's operand's, between raw pointer Types, 5.4; none to usize, 5.5; a displacement's pointer's, 5.3; an aggregate's), a Ref's (a
+    // raw one's and a Storage's its parents and address), an integer's pointer {Φ_E} (D8), an Opaque site's {Φ_E} (R4-M70: the site
+    // rests on a recorded error, so a problem only its roots' Loans would give never arises); under the view an Adapt is the rvalue its
+    // case selects (none: its operand's value).
     private (int Value, int Own) Value(ulong[] state, in MirRvalue rvalue, int location)
     {
-        if (this.Keeps(rvalue))
+        var (value, carried) = (0, this.ValueOperands(rvalue));
+        for (var o = rvalue.Start; o < rvalue.Start + carried; o++)
         {
-            var kept = this.Operand(state, rvalue.Start);
-            var displaced = rvalue.Kind == MirRvalueKind.BinaryOp ? this.Displaced(kept, cases.TypeOf(this.body.Operands[rvalue.Start])) : kept;
-            return (displaced, 0); // Δ off a grid (MirBorrows.Puns).
+            value = this.sets.Union(value, this.Operand(state, o));
         }
 
         switch (rvalue.Kind)
@@ -34,22 +35,23 @@ internal sealed partial class MirBorrows
             case MirRvalueKind.Ref:
                 return this.Issued(state, rvalue.Place, reborrow: false, this.loanAt[location]);
             case MirRvalueKind.Aggregate:
-                var value = 0;
-                for (var o = rvalue.Start; o < rvalue.Start + rvalue.Count; o++)
-                {
-                    value = this.sets.Union(value, this.Operand(state, o));
-                }
-
                 return (this.Indirect(value), 0); // Rule W: an aggregate holding a borrow is not the borrow.
+            case MirRvalueKind.BinaryOp when carried > 0:
+                return (this.Displaced(value, cases.TypeOf(this.body.Operands[rvalue.Start])), 0); // Δ off a grid (MirBorrows.Puns).
             case MirRvalueKind.Opaque:
                 return (this.escapedSet, 0);
             default:
-                return (0, 0);
+                return (value, 0);
         }
     }
 
+    // The leading operands whose values an rvalue's value is (val, A3 5), the one statement of that rule: its first where it keeps it
+    // (Keeps), all of an aggregate's (a Closure's environment included), none of another's. Value unions them on a state and
+    // MirBorrows.Holders' Flowing follows them.
+    private int ValueOperands(in MirRvalue rvalue) => this.Keeps(rvalue) ? 1 : rvalue.Kind == MirRvalueKind.Aggregate ? rvalue.Count : 0;
+
     // Whether an rvalue's value is its first operand's (val, A3 5): a Use, an Adapt, a value-keeping Cast (Erasure, Upcast, between raw
-    // pointer Types, 5.4) or a raw pointer's displacement (5.3); the may-set (Value) and the must-set (MirBorrows.Storing) read it.
+    // pointer Types, 5.4) or a raw pointer's displacement (5.3); the may-set (ValueOperands) and the must-set (MirBorrows.Storing) read it.
     private bool Keeps(in MirRvalue rvalue) => rvalue.Kind switch
     {
         MirRvalueKind.Use or MirRvalueKind.Adapt => true,
@@ -89,27 +91,40 @@ internal sealed partial class MirBorrows
     }
 
     // The Case bound (SPEC 15.6 Holders' Case-payload sentence; the owner's O-383 (b)): whether a Place is, or lies in, a Case payload
-    // directly of a local that holds only calls' results (MirBorrows.Holders' Returned) whose payload Type, the Case's in the callee's
-    // declared result Type as the view reads it, holds no Loan (Holds): the result holds none through that Case, so a value Moved or
-    // Copied out of the payload carries none, whatever the result holds through another Case. A Field or an element of the result, a
-    // payload read through a reference and any other holder's parts carry what the holder carries (O-364 (a)). Flowing asks it of an
-    // edge's operand and Read of every Place.
+    // whose Type, the Case's in the result's Type as the view instantiates it, holds no Loan (Holds), reached from a local that holds
+    // only calls' results (MirBorrows.Holders' Returned) through Case payloads alone (Payload), a payload of a payload included: the
+    // result holds none through that Case, so a value Moved or Copied out of the payload carries none, whatever the result holds through
+    // another Case. A read through a local's shared reference reads the Place it refers to (MirBorrows.Loans' Referred), so a Copy out of
+    // the payload through a shared match Subject is bounded like a Move. A Field or an element of the result or of a payload, and any
+    // other holder's parts, carry what the holder carries (O-364 (a)). The walk runs from the Place's last step to its root: a step that
+    // is no payload step drops the bound of the steps after it; each reference followed is counted as work. Flowing asks it of an edge's
+    // operand and Read of every Place.
     private bool Unheld(MirPlace place)
     {
-        if (place.Root < 0 || place.Projection == 0)
+        var (root, at, bound, hops) = (place.Root, place.Projection, false, 0);
+        while (at != 0 && root >= 0)
         {
-            return false;
+            var step = this.body.Projections[at];
+            if (step is { Kind: MirProjectionKind.Deref, Prefix: 0 } && hops < this.body.Locals.Length && this.Referred(root, out var referent))
+            {
+                (root, at, hops) = (referent.Root, referent.Projection, hops + 1);
+                continue;
+            }
+
+            bound = this.Payload(at) && (bound || (step.Kind == MirProjectionKind.Downcast && !this.Holds(cases.TypeOf(new MirPlace(root, at)), out _)));
+            at = step.Prefix;
         }
 
-        var projections = this.body.Projections;
-        var first = place.Projection;
-        while (projections[first].Prefix != 0)
-        {
-            first = projections[first].Prefix;
-        }
+        this.Work += hops;
+        return bound && root >= 0 && this.Returned(root);
+    }
 
-        return projections[first].Kind == MirProjectionKind.Downcast && !this.Holds(cases.TypeOf(place with { Projection = first }), out _) &&
-            this.Returned(place.Root);
+    // Whether a projection is a Case payload step: a Downcast, the payload Tuple of a Case, or the Field of that Tuple, a payload.
+    private bool Payload(int projection)
+    {
+        var step = this.body.Projections[projection];
+        return step.Kind == MirProjectionKind.Downcast ||
+            (step.Kind == MirProjectionKind.Field && this.body.Projections[step.Prefix].Kind == MirProjectionKind.Downcast);
     }
 
     // A raw address's value, a raw Ref's and a Storage's alike (O-92 (a)): the parents of its Place's step walk (a Storage's with the

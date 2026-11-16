@@ -1700,6 +1700,344 @@ public sealed partial class MirBorrowsTest
                         kk = 2
                         return e
             """,
+        ["rvCaseNestedTryOk"] = """
+            struct Full
+                public init() => ()
+            func reserve2(x: uniq/i32) -> Result<Result<uniq/i32, Full>, Full> => .Ok(.Ok(x))
+            func rvCaseNestedTryOk() -> Result<(), Full>
+                var a: i32 = 0
+                let inner = try reserve2(a@uniq)
+                let w = try inner@move
+                w@follow = 1
+                return .Ok(())
+            """,
+        ["rvCaseOptionOk"] = """
+            struct Full
+                public init() => ()
+            func next1(x: uniq/i32) -> Option<Result<uniq/i32, Full>> => .Some(.Ok(x))
+            func rvCaseOptionOk() -> Result<(), Full>
+                var a: i32 = 0
+                match next1(a@uniq)@move
+                    .Some(let item)
+                        let w = try item@move
+                        w@follow = 1
+                    .None => return .Ok(())
+                return .Ok(())
+            """,
+        ["rvCaseNestedOk"] = """
+            struct Full
+                public init() => ()
+            func reserve2(x: uniq/i32) -> Result<Result<uniq/i32, Full>, Full> => .Ok(.Ok(x))
+            func rvCaseNestedOk() -> Result<(), Full>
+                var a: i32 = 0
+                match reserve2(a@uniq)@move
+                    .Ok(let inner)
+                        match inner@move
+                            .Ok(let w) => w@follow = 1
+                            .Err(let e) => return .Err(e@move)
+                    .Err(let e) => return .Err(e@move)
+                return .Ok(())
+            """,
+        ["rvCaseNestedHoldsBad"] = """
+            struct Full
+                public init() => ()
+            func reserve2(x: uniq/i32) -> Result<Result<Full, uniq/i32>, Full> => .Ok(.Err(x))
+            func rvCaseNestedHoldsBad() -> i32
+                var a: i32 = 0
+                match reserve2(a@uniq)@move
+                    .Ok(let inner)
+                        match inner@move
+                            .Ok(_) => return 0
+                            .Err(let e)
+                                a = 2
+                                e@follow = 3
+                                return 1
+                    .Err(_) => return 0
+                return 0
+            """,
+        ["rvCaseNestedBuiltBad"] = """
+            struct Full
+                public init() => ()
+            func reserve2(x: uniq/i32) -> Result<Result<uniq/i32, Full>, Full> => .Ok(.Ok(x))
+            func rvCaseNestedBuiltBad(c: bool) -> Result<(), Full>
+                var a: i32 = 0
+                match reserve2(a@uniq)@move
+                    .Ok(var inner)
+                        if c => inner = .Err(Full.init())
+                        match inner@move
+                            .Ok(let w) => w@follow = 1
+                            .Err(let e) => return .Err(e@move)
+                    .Err(let e) => return .Err(e@move)
+                return .Ok(())
+            """,
+        ["rvCaseFieldResBad"] = """
+            struct Full
+                public init() => ()
+            struct Wrap {s}
+                public var res: Result<uniq/i32 during s, Full>
+                public init(res: Result<uniq/i32 during s, Full>) => self.res = res@move
+            func wrap(x: uniq/i32) -> Wrap => Wrap.init(res: .Ok(x))
+            func rvCaseFieldResBad() -> Result<(), Full>
+                var a: i32 = 0
+                var s = wrap(a@uniq)
+                match s.res@move
+                    .Ok(let w) => w@follow = 1
+                    .Err(let e) => return .Err(e@move)
+                return .Ok(())
+            """,
+        ["rvCasePayloadFieldBad"] = """
+            struct Full
+                public init() => ()
+            struct Wrap {s}
+                public var res: Result<uniq/i32 during s, Full>
+                public init(res: Result<uniq/i32 during s, Full>) => self.res = res@move
+            func wrap2(x: uniq/i32) -> Result<Wrap, Full> => .Ok(Wrap.init(res: .Ok(x)))
+            func rvCasePayloadFieldBad() -> Result<(), Full>
+                var a: i32 = 0
+                match wrap2(a@uniq)@move
+                    .Ok(var s)
+                        match s.res@move
+                            .Ok(let w) => w@follow = 1
+                            .Err(let e) => return .Err(e@move)
+                    .Err(let e) => return .Err(e@move)
+                return .Ok(())
+            """,
+        ["rvCaseUniqOk"] = """
+            struct Full
+                public init() => ()
+            func reserve(x: uniq/i32) -> Result<uniq/i32, Full> => .Ok(x)
+            func touchR(r: uniq/Result<uniq/i32 during s, Full>) => ()
+            func rvCaseUniqOk() -> Result<(), Full>
+                var a: i32 = 0
+                var r = reserve(a@uniq)
+                touchR(r@uniq)
+                match r@move
+                    .Ok(let w) => w@follow = 1
+                    .Err(let e) => return .Err(e@move)
+                return .Ok(())
+            """,
+        ["rvCaseRawOk"] = """
+            struct Full
+                public init() => ()
+            func reserve(x: uniq/i32) -> Result<uniq/i32, Full> => .Ok(x)
+            func rvCaseRawOk() -> Result<(), Full>
+                var a: i32 = 0
+                var r = reserve(a@uniq)
+                let p = r@raw
+                match r@move
+                    .Ok(let w) => w@follow = 1
+                    .Err(let e) => return .Err(e@move)
+                return .Ok(())
+            """,
+        ["rvCaseRefCodeOk"] = """
+            func count(x: uniq/i32) -> Result<uniq/i32, i32> => .Ok(x)
+            func rvCaseRefCodeOk() -> i32
+                var a: i32 = 0
+                let r = count(a@uniq)
+                match r
+                    .Ok(_) => return 0
+                    .Err(let code) => return code@follow
+            """,
+        ["rvCaseRefHoldsBad"] = """
+            func lend2(x: uniq/i32) -> Result<(), (uniq/i32, i32)> => .Err((x, 3))
+            func rvCaseRefHoldsBad() -> i32
+                var a: i32 = 0
+                let r = lend2(a@uniq)
+                match r
+                    .Ok(_) => return 0
+                    .Err(let e)
+                        let n = e@follow.1
+                        a = 2
+                        return n
+            """,
+        ["rvCaseRefBuiltBad"] = """
+            func rvCaseRefBuiltBad(c: bool) -> i32
+                var a: i32 = 0
+                var r: Result<uniq/i32, i32> = .Err(3)
+                if c => r = .Ok(a@uniq)
+                match r
+                    .Ok(_) => return 0
+                    .Err(let code) => return code@follow
+            """,
+        ["rvCaseAssignBad"] = """
+            func keep(slot: raw/(raw/u8), value: raw/u8) => ()
+            func mk(x: uniq/i32) -> Result<uniq/i32, u64> => .Ok(x)
+            func rvCaseAssignBad(a: uniq/i32, c: bool) -> u64
+                var kk: u8 = 1
+                let r = kk@uniq
+                var spare: raw/u8 = r@follow@raw
+                var w: u64 = 3
+                keep(w@raw@raw/(raw/u8), spare)
+                var res = mk(a)
+                if c => res = .Err(w)
+                match res@move
+                    .Ok(_) => return 0
+                    .Err(let e)
+                        kk = 2
+                        return e
+            """,
+        ["rvCaseRefWriteBad"] = """
+            func keep(slot: raw/(raw/u8), value: raw/u8) => ()
+            func mk(x: uniq/i32) -> Result<uniq/i32, u64> => .Ok(x)
+            func rvCaseRefWriteBad(a: uniq/i32) -> u64
+                var kk: u8 = 1
+                let r = kk@uniq
+                var spare: raw/u8 = r@follow@raw
+                var w: u64 = 3
+                keep(w@raw@raw/(raw/u8), spare)
+                var res = mk(a)
+                let rr = res@uniq
+                rr@follow = .Err(w)
+                match res@move
+                    .Ok(_) => return 0
+                    .Err(let e)
+                        kk = 2
+                        return e
+            """,
+        ["rvCaseLoopOk"] = """
+            struct Full
+                public init() => ()
+            func reserve(x: uniq/i32) -> Result<uniq/i32, Full> => .Ok(x)
+            func rvCaseLoopOk(c: bool) -> Result<(), Full>
+                var a: i32 = 0
+                var b: i32 = 0
+                var r = reserve(a@uniq)
+                if c => r = reserve(b@uniq)
+                match r@move
+                    .Ok(let w) => w@follow = 1
+                    .Err(let e) => return .Err(e@move)
+                return .Ok(())
+            """,
+        ["rvCaseSharedOk"] = """
+            struct Full
+                public init() => ()
+            func reserve(x: uniq/i32) -> Result<uniq/i32, Full> => .Ok(x)
+            func look(r: ref/Result<uniq/i32 during s, Full>) => ()
+            func rvCaseSharedOk() -> Result<(), Full>
+                var a: i32 = 0
+                var r = reserve(a@uniq)
+                look(r@ref)
+                match r@move
+                    .Ok(let w) => w@follow = 1
+                    .Err(let e) => return .Err(e@move)
+                return .Ok(())
+            """,
+        ["rvMatchBuiltBad"] = """
+            func rvMatchBuiltBad(c: bool) -> i32
+                var a: i32 = 1
+                var r: Result<ref/i32, i32> = .Err(3)
+                if c => r = .Ok(a@ref)
+                match r@move
+                    .Ok(_) => return 0
+                    .Err(let n)
+                        a = 2
+                        return n
+            """,
+        ["rvGenCaseBad"] = """
+            func keep(slot: raw/(raw/u8), value: raw/u8) => ()
+            func mkT<T>(x: uniq/i32, v: T) -> Result<uniq/i32, T> => .Err(v@move)
+            func rvGenCaseBad(a: uniq/i32) -> u64
+                var kk: u8 = 1
+                let r = kk@uniq
+                var spare: raw/u8 = r@follow@raw
+                var w0: u64 = 3
+                keep(w0@raw@raw/(raw/u8), spare)
+                match mkT(a, w0)@move
+                    .Ok(_) => return 0
+                    .Err(let e)
+                        kk = 2
+                        return e
+            """,
+        ["rvCaseKeptOk"] = """
+            struct Full
+                public init() => ()
+            func reserve(x: uniq/i32) -> Result<uniq/i32, Full> => .Ok(x)
+            func touchR(r: uniq/Result<uniq/i32 during s, Full>) => ()
+            func rvCaseKeptOk() -> Result<(), Full>
+                var a: i32 = 0
+                var r = reserve(a@uniq)
+                let rr = r@uniq
+                touchR(rr)
+                match r@move
+                    .Ok(let w) => w@follow = 1
+                    .Err(let e) => return .Err(e@move)
+                return .Ok(())
+            """,
+        ["rvCasePairOk"] = """
+            struct Full
+                public init() => ()
+            enum Two {s}
+                Both(Result<uniq/i32 during s, Full>, i32)
+                Neither
+            func both(x: uniq/i32) -> Two => .Both(.Ok(x), 3)
+            func rvCasePairOk() -> Result<(), Full>
+                var a: i32 = 0
+                match both(a@uniq)@move
+                    .Both(let item, let n)
+                        let w = try item@move
+                        w@follow = n
+                    .Neither => return .Ok(())
+                return .Ok(())
+            """,
+        ["rvCasePairPartBad"] = """
+            struct Full
+                public init() => ()
+            enum Two {s}
+                Both(Result<uniq/i32 during s, Full>, i32)
+                Neither
+            func both(x: uniq/i32) -> Two => .Both(.Ok(x), 3)
+            func rvCasePairPartBad() -> i32
+                var a: i32 = 0
+                match both(a@uniq)@move
+                    .Both(let item, let n)
+                        a = 2
+                        return n
+                    .Neither => return 0
+            """,
+        ["rvCaseRefNestedOk"] = """
+            func count2(x: uniq/i32) -> Result<Result<uniq/i32, i32>, i32> => .Ok(.Ok(x))
+            func rvCaseRefNestedOk() -> i32
+                var a: i32 = 0
+                let r = count2(a@uniq)
+                match r
+                    .Ok(let inner)
+                        match inner@follow
+                            .Ok(_) => return 0
+                            .Err(let code) => return code@follow
+                    .Err(let code) => return code@follow
+            """,
+        ["rvCaseRefUniqSubjectBad"] = """
+            func count(x: uniq/i32) -> Result<uniq/i32, i32> => .Ok(x)
+            func rvCaseRefUniqSubjectBad() -> i32
+                var a: i32 = 0
+                var r = count(a@uniq)
+                match r@uniq
+                    .Ok(_) => return 0
+                    .Err(let code) => return code@follow
+            """,
+        ["rvCaseElementBad"] = """
+            struct Full
+                public init() => ()
+            func pair(x: uniq/i32) -> (Result<uniq/i32, Full>, i32) => (.Ok(x), 3)
+            func rvCaseElementBad() -> Result<(), Full>
+                var a: i32 = 0
+                var t = pair(a@uniq)
+                match t.0@move
+                    .Ok(let w) => w@follow = 1
+                    .Err(let e) => return .Err(e@move)
+                return .Ok(())
+            """,
+        ["rvCaseFieldOfFreeOk"] = """
+            struct Code
+                public var n: i32
+                public init(n: i32) => self.n = n
+            func coded(x: uniq/i32) -> Result<uniq/i32, Code> => .Ok(x)
+            func rvCaseFieldOfFreeOk() -> i32
+                var a: i32 = 0
+                match coded(a@uniq)@move
+                    .Ok(_) => return 0
+                    .Err(let e) => return e.n
+            """,
     };
 
     // The coverage table's rows (a5v-u6-state.md), by exposure.
@@ -1769,9 +2107,10 @@ public sealed partial class MirBorrowsTest
 
     // H's coverage table (a5v-u6flow-design.md, section 1 and R1.2), each row labelled from SPEC 15.6 Holders and Loans (O-230 Q1 (a),
     // O-364 (a): as written, a Scalar part's Copy included), 15.6.4 and 5.7 Calls; rows marked "with G935's rule R" are invalid and keep
-    // today's acceptance until Binding retains an Origin-free input's own value (PLAN G935). The tryErr and case rows are the Case
-    // bound's (the owner's O-383 (b)): a value Moved out of a Case payload of a call's result carries the Loans the result holds through
-    // that Case, by the callee's declared result Type.
+    // today's acceptance until Binding retains an Origin-free input's own value (PLAN G935). The tryErr, case and rvCase rows are the
+    // Case bound's (the owner's O-383 (b)): a value Moved or Copied out of a Case payload of a call's result, a payload of a payload
+    // included, directly or through a shared reference to the result, carries only the Loans the result can hold through that Case;
+    // a Field of the result or of a payload, and a value the body built, keep O-364 (a)'s rule.
     [Theory]
     [InlineData("cpyOutBad", "cpyOutBad: kk = 2")] // I, z, a Copy of w (which carries r's Loan), is read after (15.6 Holders' Copy sentence; U6's F1)
     [InlineData("cpyOutOk", "")] // V
@@ -1845,8 +2184,33 @@ public sealed partial class MirBorrowsTest
     [InlineData("casePartHoldsBad", "casePartHoldsBad: a = 2")] // I (O-364 (a) within the Case): a Scalar beside the reference in the payload, copied out of the binding
     [InlineData("caseBuiltLocal", "caseBuiltLocal: var a: i32 = 0")] // I (O-364 (a); O-383 (b) bounds a call's result only): a value the body built, its Err payload returned past a's end
     [InlineData("callFieldSafeBad", "callFieldSafeBad: a = 2")] // I (O-364 (a)): a struct Field of a call's result, which O-383 (b) does not bound
-    [InlineData("tryErrRefRead", "tryErrRefRead: var a: i32 = 0")] // I (O-364 (a)): the boundary, a payload read through a reference to the result, not Moved out of its own Place
+    [InlineData("tryErrRefRead", "")] // V (O-383 (b); I before the Middle's reading of 2026-11-17): a Copy out of the payload through a shared reference to the result is bounded like a Move
     [InlineData("caseOwnValueBad", "")] // I; kk = 2 with G935's rule R read per Case: the Err Case, u64, then holds v's own value, which the payload Type does not show
+    [InlineData("rvCaseNestedTryOk", "")] // V (O-383 (b), a Case payload of a Case payload): through Ok then Err the result holds a Full; two `try`s
+    [InlineData("rvCaseOptionOk", "")] // V (O-383 (b)): through Some then Err, a fallible iterator's `Option<Result<..>>`
+    [InlineData("rvCaseNestedOk", "")] // V (O-383 (b)): the same by two nested matches
+    [InlineData("rvCaseNestedHoldsBad", "rvCaseNestedHoldsBad: a = 2")] // I, the other side: through Ok then Err the result holds the reference on a
+    [InlineData("rvCaseNestedBuiltBad", "rvCaseNestedBuiltBad: var a: i32 = 0")] // I (O-364 (a)): the payload's binding also receives a value the body built, so it is no Case payload of a call's result only
+    [InlineData("rvCaseFieldResBad", "rvCaseFieldResBad: var a: i32 = 0")] // I (O-364 (a)'s Field rule before the Case): a Case payload of a Field of a call's result carries what the holder carries
+    [InlineData("rvCasePayloadFieldBad", "rvCasePayloadFieldBad: var a: i32 = 0")] // I (O-364 (a)): the same Field rule inside a payload, a Case payload of a Field of the Ok payload
+    [InlineData("rvCaseUniqOk", "")] // V (O-383 (b)): an exclusive borrow of the call's result passed to a call does not unbound it (15.6.4: touchR retains nothing)
+    [InlineData("rvCaseRawOk", "")] // V (O-383 (b)): the result's address formed; raw writes stay under 15.6 Addresses
+    [InlineData("rvCaseRefCodeOk", "")] // V (O-383 (b)): a Copy out of the payload through the shared match Subject is bounded like a Move
+    [InlineData("rvCaseRefHoldsBad", "rvCaseRefHoldsBad: a = 2")] // I (O-364 (a) within the Case): through the shared Subject, a Scalar beside the reference in the payload
+    [InlineData("rvCaseRefBuiltBad", "rvCaseRefBuiltBad: var a: i32 = 0")] // I (O-364 (a)): the shared read of a value the body built is not bounded
+    [InlineData("rvCaseAssignBad", "rvCaseAssignBad: kk = 2")] // I (O-364 (a)): a value the body built assigned into the call's result holder; e carries what the holder carries
+    [InlineData("rvCaseRefWriteBad", "")] // I (O-364 (a)); kk = 2 once A5 reads a store through a reference into a call's result holder as the body's own value (a known limit; accepted on every build before H)
+    [InlineData("rvCaseLoopOk", "")] // V (O-383 (b)): two calls' results in one local
+    [InlineData("rvCaseSharedOk", "")] // V (O-383 (b)): a shared borrow of the result writes nothing (5.2.1 condition 3)
+    [InlineData("rvMatchBuiltBad", "rvMatchBuiltBad: a = 2")] // I (O-364 (a)): a body-built Result's Copy-type Err payload copied out while its Ok Case may hold a shared Loan on a
+    [InlineData("rvGenCaseBad", "")] // I; kk = 2 with G935's abstract-storage Value rows read per Case: the Err Case, T = u64, then holds v's own value (as caseOwnValueBad)
+    [InlineData("rvCaseKeptOk", "")] // V (O-383 (b)): an exclusive reference to the call's result kept in a local and never stored through does not unbound it
+    [InlineData("rvCasePairOk", "")] // V (O-383 (b)): an element of a Case payload Moved into a local is bounded as the result is
+    [InlineData("rvCasePairPartBad", "rvCasePairPartBad: a = 2")] // I (O-364 (a) within the Case): the Scalar beside the Result in the payload, whose Type holds the reference
+    [InlineData("rvCaseRefNestedOk", "")] // V (O-383 (b)): a Copy out of a nested Case payload through shared references
+    [InlineData("rvCaseRefUniqSubjectBad", "rvCaseRefUniqSubjectBad: var a: i32 = 0")] // I (O-364 (a)): the payload read through an exclusive Subject, which the bound does not follow
+    [InlineData("rvCaseElementBad", "rvCaseElementBad: var a: i32 = 0")] // I (O-364 (a)'s rule for an element before the Case): a Case payload of an element of a Tuple result
+    [InlineData("rvCaseFieldOfFreeOk", "")] // V (O-383 (b)): a Field of a Case payload whose Type holds no Loan lies in it
     public void AValueReadFromAHolderCarriesItsLoansWhateverItsType(string form, string expected)
     {
         var c = MirBuildTest.Compile(ExposedShapes + FlowForms[form] + "\npublic func main() => ()\n");
