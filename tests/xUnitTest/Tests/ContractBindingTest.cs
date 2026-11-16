@@ -916,17 +916,32 @@ public class ContractBindingTest
         Assert.Equal(["S: E", "T: D"], Impls(c).Identities.Where(static x => !x.Type.Declaration.Kotonoha.Syntax.IsLibrary).Select(static x => x.Type.Name + ": " + x.Contract.Name));
     }
 
-    // PLAN G949 S1-b1 c15 (the Front's RR3): Paths lists the program's paths in registration order, then the library's, which
-    // EffectObligations and every other reader of the pass's paths read in that order.
+    // PLAN G949 S1-b1 c15 (the Front's RR3, review C4): Paths lists the program's paths in registration order, declared, conditional
+    // and inherited, then the library's; the base interleaved them (program declared, library declared, program conditional, library
+    // conditional, program inherited, library inherited), and this row fails there on that order alone. The order is internal: the
+    // program completes with no record, its obligations are the library's alone as without its conformances, and EffectObligations'
+    // rows, which read Paths, are the program's in their order and the library's as without the program's conformances: only where the
+    // program's rows stand among the library's follows Paths.
     [Fact]
     public void PathsListTheProgramsPathsInRegistrationOrderThenTheLibrarys()
     {
-        var c = Sources("Self is C and E");
+        const string Contract = "contract C\n    func get(self: ref/Self) -> i32\n        effect confined\n";
+        var c = CompilationTestHelper.ParseSuccess(Contract + "open struct B\n    Self is C\n    public init() => ()\n    public func get(self: ref/Self) -> i32 => 1\n" +
+            "struct H : B\n    public init() => ()\n");
+        c.Kotonoha.AddSource(new SourceDocument("G.kimi", "struct G<T>\n    public init() => ()\n    Self is C when T is Copy\n        public func get(self: ref/Self) -> i32 => 2\n"));
+        Assert.True(c.Bind().IsComplete, Describe(c));
+        Assert.True(c.Analyze().IsVerified);
+        var library = CompilationTestHelper.ParseSuccess(Contract);
+        Assert.True(library.Bind().IsComplete, Describe(library));
+        Assert.Equal(library.Binding.Obligations.Select(static x => x.ToString()), c.Binding.Obligations.Select(static x => x.ToString()));
+        var rows = EffectRows(c);
+        Assert.Equal(["B: Self is C get", "G: Self is C get", "H: B get"], rows.Where(static x => !x.Library).Select(static x => x.Row));
+        Assert.NotEmpty(EffectRows(library));
+        Assert.Equal(EffectRows(library).Select(static x => x.Row), rows.Where(static x => x.Library).Select(static x => x.Row));
         var paths = Impls(c).Paths.ToList();
-        var library = paths.FindIndex(static x => x.Type.Declaration.Kotonoha.Syntax.IsLibrary);
-        Assert.True(library > 0);
-        Assert.DoesNotContain(paths.Skip(library), static x => !x.Type.Declaration.Kotonoha.Syntax.IsLibrary);
-        Assert.Equal(["S: C", "S: E", "T: D"], paths.Take(library).Select(static x => x.Type.Name + ": " + x.Contract.Name));
+        var first = paths.FindIndex(static x => x.Type.Declaration.Kotonoha.Syntax.IsLibrary);
+        Assert.Equal(["B: C", "G: C", "H: C"], paths.Take(first).Select(static x => x.Type.Name + ": " + x.Contract.Name));
+        Assert.DoesNotContain(paths.Skip(first), static x => !x.Type.Declaration.Kotonoha.Syntax.IsLibrary);
     }
 
     // PLAN G949 S1-b1 (the Front's RR2): a path the sweep removed is taken from the pool for the next new key, emptied of the
@@ -999,6 +1014,27 @@ public class ContractBindingTest
     }
 
     private static ImplTable Impls(Compilation c) => (ImplTable)typeof(Binding).GetField("impls", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(c.Binding)!;
+
+    // EffectObligations' rows of the latest pass in their order: a library row as its subject's reference and definition, a program
+    // row as its subject's declaration, the subject's first line and the definition.
+    private static List<(bool Library, string Row)> EffectRows(Compilation c)
+    {
+        var rows = new List<EffectObligation>();
+        c.Binding.EffectObligations(rows);
+        return [.. rows.Select(x => (x.Subject.IsLibrary, (x.Subject.IsLibrary ? x.Subject.ToString() : Site(c.SyntaxOf(x.Subject))) + " " + x.Definition?.Name))];
+    }
+
+    // A program node as its enclosing declaration's name and its own first line.
+    private static string Site(Koto node)
+    {
+        var owner = node.Parent;
+        while (owner is not DeclarationContainerKoto)
+        {
+            owner = owner!.Parent;
+        }
+
+        return ((DeclarationContainerKoto)owner).Name + ": " + node.ToString().Split('\n')[0];
+    }
 
     // A conformance identity's or path's state that Reuse and ResetPass empty or reset: each list and map, and each other settable
     // property but the key Reuse sets (Type, Contract, Identity), the pass stamp and the scope Reuse replaces.
