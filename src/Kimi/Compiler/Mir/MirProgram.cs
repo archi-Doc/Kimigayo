@@ -5,11 +5,14 @@
 // Input: built definitions, findings, records and problems. Output: reusable bodies identified by MirDefKey and numbered in order, the body
 // a callee runs (Callee), the initializer a staticEnsure names (StaticInit) and a record class's rows (Records, which MirDump, tests and
 // benchmarks read; publication reads MirReport.Merged, records included, DECISIONS R5-M185).
-// Owns the ordinal space, one with a library prefix (R8-L1 M-B1): the library's bodies are 0 to LibraryCount - 1, the program's follow,
-// each numbered here (Begin) and nowhere else. Body(ordinal) reads either segment. Bodies is the compilation's own bodies, which a walker
-// iterates: both segments while a compilation builds its library's bodies. Its walkers: MirAnalysis.Run, MirValidator's program pass,
-// MirOrigins.Findings, MirDump.Write, InstanceCollector's roots and templates, and the Benchmark's counts (CompilerPipelineBenchmark,
-// CollectionCostMeasurements, PairCaseMeasurements, StaticKeyMeasurements).
+// Owns the ordinal space, numbered in build order here (Begin) and nowhere else. In an eager build, whose root range holds the library,
+// it has a library prefix (R8-L1 M-B1): the library's bodies are 0 to LibraryCount - 1, the program's follow; in a build whose root range
+// is the program's, LibraryCount counts the library's templates and a demanded body takes the next ordinal (PLAN G951 U0; U2 gives
+// library bodies fixed ordinals, G950 R-4). Body(ordinal) reads either segment. Bodies is the compilation's own bodies, which a walker
+// iterates: both segments while a compilation builds its library's bodies. Its walkers: MirAnalysis.Run, MirOrigins.Findings,
+// MirDump.Write, InstanceCollector's roots and templates, and the Benchmark's counts (CompilerPipelineBenchmark,
+// CollectionCostMeasurements, PairCaseMeasurements, StaticKeyMeasurements); the program pass reads each body by ordinal from the
+// builder's build-order queue (MirBuilder.Name).
 // A body is built in its segment's reused body (Begin), one for the library's prefix and one for the program's bodies, so that neither
 // segment's construction allocates by the other's bodies, and stored in the next pooled body at End, which registers its key: a stored
 // body holds exactly its rows, and a building body's tables and interning grow once to its segment's largest body's.
@@ -53,8 +56,9 @@ internal sealed class MirProgram
     /// compilation builds it.</summary>
     internal ReadOnlySpan<MirBody> Bodies => this.pool.AsSpan(0, this.count);
 
-    /// <summary>Gets the number of the library's bodies, which hold ordinals 0 to the count less one in every compilation; the program's
-    /// bodies follow (R8-L1 M-B1).</summary>
+    /// <summary>Gets the number of the bodies built before the program's: in an eager build the library's, which hold ordinals 0 to the
+    /// count less one, the program's bodies following (R8-L1 M-B1); in a build whose root range is the program's, the library's templates
+    /// (PLAN G951).</summary>
     internal int LibraryCount { get; private set; }
 
     /// <summary>Gets or sets the Binding pass the bodies were built from (0: none).</summary>

@@ -48,7 +48,8 @@ internal sealed partial class MirBuilder(Compilation compilation)
     /// <summary>Builds and validates the MIR of the latest Binding pass, once per pass (PLAN G951): every module's default templates, the
     /// bodies of the modules below the root range, then each body's program pass; the version's lookups build any other body on demand
     /// (<see cref="Demand"/>) until it is sealed. One version is built with one range: a version asked for with another range is a
-    /// broken contract, since the analyses and the collector keep a version's facts by its <see cref="MirProgram.Version"/>.</summary>
+    /// broken contract, since the analyses and the collector keep a version's facts by its <see cref="MirProgram.Version"/>. Version 0
+    /// is no version: before any Binding pass the program is empty, whatever the range.</summary>
     /// <param name="rootModules">The root range: <see cref="Parsing.SyntaxTable.LibraryModule"/> + 1 builds every body eagerly, the
     /// source modules' count the program's.</param>
     /// <returns>The program, with its construction records and validator findings.</returns>
@@ -57,7 +58,7 @@ internal sealed partial class MirBuilder(Compilation compilation)
         var version = HirTables.Publish(compilation);
         if (version == this.program.Version)
         {
-            return rootModules == this.program.RootModules ? this.program
+            return version == 0 || rootModules == this.program.RootModules ? this.program
                 : throw new InvalidOperationException($"Version {version} was built with the root range {this.program.RootModules}, not {rootModules} (InternalInvariant).");
         }
 

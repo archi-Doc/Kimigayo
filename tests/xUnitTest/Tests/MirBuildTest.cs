@@ -39,6 +39,18 @@ public sealed partial class MirBuildTest(ITestOutputHelper output)
     private const string StopwatchAction = "let action: (uniq/::Kimi.Time.Stopwatch) -> () = ::Kimi.Time.Stopwatch.start\n" +
         "var watch = ::Kimi.Time.Stopwatch.init()\naction(watch@uniq)\n";
 
+    // A root module's main and its dependency Lib, whose definitions have the body kinds the library lacks (a Closure, a Setter; valid: SPEC
+    // 22.4.2, 18.4; 11.8 and 22.4.3, a static let; 7.2.2, a default; 7.7, an anonymous function; 11.3, stored custom accessors over storage;
+    // 6.3.6, Gauge's implicit constructor).
+    private const string DependencyMain = "public func main() -> ()\n    var gauge = Lib.Gauge.init()\n    gauge.level = 3\n    _ = gauge.level\n" +
+        "    _ = Lib.Api.twice(2)\n    _ = Lib.Api.take(1)\n    _ = Lib.Api.useCounter()\n    return\n";
+
+    private const string DependencyLib = "public group Api\n    public let counter: i32 = seed()\n    func seed() -> i32 => 7\n" +
+        "    public func useCounter() -> i32 => counter\n    public func take(x: i32, extra: i32 = 1) -> i32 => x + extra\n" +
+        "    public func twice(x: i32) -> i32\n        let f = func (y: i32) => y * 2\n        return f(x)\n" +
+        "public struct Gauge\n    public var level: i32 = 0\n        get() -> i32\n            return storage\n" +
+        "        set(value: i32) -> ()\n            storage = if value > 100 => 100 else => value\n";
+
     // The callees of the operand order tests and the start of their function f, which binds x (SPEC 12.2).
     private const string Operations = "func take(a: i32, b: ()) -> i32 => a\nfunc pair(t: (i32, ())) => ()\nfunc reset(p: uniq/i32) -> i32 => 0\n" +
         "func consume(a: string, b: ()) => ()\nfunc touch(p: uniq/Slice<i32>) -> isize => 0\nfunc jump(p: uniq/raw/i32) -> isize => 0\n" +
@@ -312,6 +324,44 @@ public sealed partial class MirBuildTest(ITestOutputHelper output)
         Assert.Empty(program.Records(MirRecordClass.Construction));
     }
 
+    // PLAN G951 U0 (M1, the design's R1.2): every definition of a module outside the root range is demanded as the module walk builds it,
+    // with the bodies its program pass demands, a Closure's and a Setter's included; the program pass runs on each body once, so after a
+    // nested drain (twice's pass demands its Closure) the next demand's pass runs (useCounter's demands counter's initializer).
+    [Fact]
+    public void ADependencyModuleIsDemandedAsBuilt()
+    {
+        var c = ModuleBindingTest.Create(DependencyMain, DependencyLib);
+        Assert.True(c.Bind().IsComplete);
+        Assert.True(c.Binding.CheckStartup(OutputKind.Application).IsComplete);
+        var eager = new MirBuilder(c).Build(SyntaxTable.LibraryModule + 1);
+        Assert.Empty(eager.Findings);
+        Assert.Empty(eager.Records(MirRecordClass.Construction));
+        static string Name(MirBody x) => $"{x.Key.Kind} {x.Key.Decl?.Name}".TrimEnd();
+        var demands = new List<string>();
+        foreach (var key in eager.Bodies.ToArray().Where(static x => x.Source.Module == 1 && x.Key.Kind != MirBodyKind.DefaultTemplate).Select(static x => x.Key))
+        {
+            var lazy = new MirBuilder(c).Build(1);
+            var count = lazy.Bodies.Length;
+            Assert.NotNull(lazy[key]);
+            var built = lazy.Bodies[count..].ToArray();
+            Assert.All(built, x => Assert.Equal(MirDumpTest.Unsited(eager, eager[x.Key]!), MirDumpTest.Unsited(lazy, x)));
+            demands.Add(string.Join(", ", built.Select(Name)));
+        }
+
+        Assert.Equal(
+            [
+                "StaticInit counter", "Fn seed", "Fn useCounter, StaticInit counter", "Fn take", "Fn twice, Closure", "Closure", "Getter level.Get",
+                "Setter level.Set", "Fn init",
+            ],
+            demands);
+        var program = new MirBuilder(c).Build(1);
+        Assert.NotNull(program[eager.Bodies.ToArray().Single(static x => x.Key is { Kind: MirBodyKind.Fn, Decl.Name: "twice" }).Key]);
+        var before = program.Bodies.Length;
+        Assert.NotNull(program[eager.Bodies.ToArray().Single(static x => x.Key is { Kind: MirBodyKind.Fn, Decl.Name: "useCounter" }).Key]);
+        Assert.Equal(["Fn useCounter", "StaticInit counter"], program.Bodies[before..].ToArray().Select(Name));
+        Assert.Empty(program.Findings);
+    }
+
     // PLAN G951 U0 (N6): null means only "no body": a key the HIR publishes no value for (a library function without a body), a key that is
     // not its definition's body (an accessor's executing function as Fn, whose body is its Getter's) and any lookup of a sealed version
     // build nothing; the root range's walk built every body below it, so an eager build never demands. X3 as above.
@@ -338,10 +388,11 @@ public sealed partial class MirBuildTest(ITestOutputHelper output)
 
     // PLAN G951 U0 (N4, R3-N2): a version is built with one root range: the same range finds the version's program as it is, demanded bodies
     // included, and another range for the same version is a broken contract, since the analyses and the collector keep a version's facts by
-    // its version.
+    // its version. Version 0 is no version: a compilation no Binding pass published builds the empty program in any range.
     [Fact]
     public void AVersionIsBuiltWithOneRootRange()
     {
+        Assert.Empty(new MirBuilder(Compilation.CreateForTest()).Build(SyntaxTable.LibraryModule + 1).Bodies.ToArray());
         var c = Compile(StopwatchAction);
         var start = Library(c.ConstructMir(), MirBodyKind.Fn, "start");
         var builder = new MirBuilder(c);

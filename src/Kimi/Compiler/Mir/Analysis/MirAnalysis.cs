@@ -4,9 +4,11 @@
 // Input: a built and validated MirProgram and its root modules, the range of Source.Module Compilation gives the collector too.
 // Output: its Problems for that version, which the analyses add through MirReport after the construction records (MirProgram.Clear resets
 // them with the bodies, R6-check H3-1).
-// Runs them once per version (a version is built with one root range, MirBuilder.Build, so the version alone keys the run), after build
-// and validation, in a fixed order, one line per step (a judged body's steps 1 and 2 together,
-// another body's step 2 only); a step's details are in the comment of the method that runs it or in its analysis's contract:
+// Runs them once per version, after build and validation: the version alone keys the run because an instance analyzes the programs of
+// one builder (Compilation pairs its analysis with its builder; a test or measurement makes both), which builds a version with one root
+// range (MirBuilder.Build); that build range is the builder's, not Run's rootModules. The steps run in a fixed order, one line per step
+// (a judged body's steps 1 and 2 together, another body's step 2 only); a step's details are in the comment of the method that runs it
+// or in its analysis's contract:
 // 1. per judged body, A3;
 // 2. per body, per view A1, then A2, then A4's local facts;
 // 3. A4 over the program;
