@@ -87,6 +87,7 @@ public sealed partial class Binding
             this.Library.Kotonoha.Syntax.Hir.Families.OriginAtoms.Used,
             this.Library.Kotonoha.Syntax.Hir.Families.OpenOrigins.Used,
             this.Library.Kotonoha.Syntax.Hir.Families.AssociatedOrigins.Used,
+            this.Library.Kotonoha.Syntax.Hir.Families.Receivers.Used,
             this.types.KeyCount,
             this.constraints.Count,
             this.pendingAssociatedTypes.Count,
@@ -96,7 +97,8 @@ public sealed partial class Binding
             this.substitutedParts.Count);
 
     /// <summary>Gets the free slots of the tables KimiLibrarySize sizes: each table's capacity less its entries; a node family's column
-    /// (symbols, their parameters, scopes, Origin atoms, open regions, associated Origins) its arena's slots no page holds.</summary>
+    /// (symbols, their parameters, scopes, Origin atoms, open regions, associated Origins, special receivers) its arena's slots no page
+    /// holds.</summary>
     internal KimiLibrarySize.Tables TableFree
         => new(
             this.nodes.Capacity - this.nodes.Count,
@@ -106,6 +108,7 @@ public sealed partial class Binding
             this.Library.Kotonoha.Syntax.Hir.Families.OriginAtoms.Free,
             this.Library.Kotonoha.Syntax.Hir.Families.OpenOrigins.Free,
             this.Library.Kotonoha.Syntax.Hir.Families.AssociatedOrigins.Free,
+            this.Library.Kotonoha.Syntax.Hir.Families.Receivers.Free,
             this.types.KeyFree,
             this.constraints.Capacity - this.constraints.Count,
             this.pendingAssociatedTypes.Capacity - this.pendingAssociatedTypes.Count,

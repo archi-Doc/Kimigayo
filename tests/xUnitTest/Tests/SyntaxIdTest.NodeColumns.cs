@@ -103,25 +103,31 @@ public partial class SyntaxIdTest
         Assert.Equal(PagedColumn<int>.PageSize, renumbered.AssociatedOrigins.Used);
     }
 
-    // G949 D2b-d's d10: an edit's renumbering moves a kept family's rows into the column's spare arena, so the second of two edits
-    // allocates no arena: the column's arena is again the one it had before the first.
+    // G949 D2b-d's d10, per kept family: an edit's renumbering moves a kept family's rows into the column's spare arena, so the second
+    // of two edits allocates no arena: the column's arena is again the one it had before the first, and its first row is the same object
+    // (Symbols: a declaration's symbol; Receivers: Point's implicit constructor's `self`).
     [Trait("Purpose", "Allocation")]
-    [Fact]
-    public void AKeptFamilyAlternatesItsArenasAcrossEdits()
+    [Theory]
+    [InlineData("Symbols")]
+    [InlineData("Receivers")]
+    public void AKeptFamilyAlternatesItsArenasAcrossEdits(string family)
     {
         var c = MinimalEmissionTest.Analyze(Source);
-        var statement = Statement(c, "p");
-        var symbol = c.Kotonoha.Syntax.Hir.Families.Symbols.Get(statement.SyntaxId);
-        var before = Read<Array>(c.Kotonoha.Syntax.Hir.Families.Symbols, "arena");
+        var field = typeof(NodeColumns).GetField(family, Members)!;
+        var rows = Column().Enumerate();
+        Assert.True(rows.MoveNext(), $"{family} holds no row of the program.");
+        var (id, row) = (rows.Id, rows.Current);
+        var before = Read<Array>(Column(), "arena");
         for (var i = 0; i < 2; i++)
         {
             c.Kotonoha.Syntax.Edit();
             Assert.True(c.Binding.Bind(BindingMode.Final).IsComplete);
         }
 
-        Assert.Same(before, Read<Array>(c.Kotonoha.Syntax.Hir.Families.Symbols, "arena"));
-        Assert.NotNull(symbol);
-        Assert.Same(symbol, c.Kotonoha.Syntax.Hir.Families.Symbols.Get(statement.SyntaxId));
+        Assert.Same(before, Read<Array>(Column(), "arena"));
+        Assert.Same(row, Column().Get(id));
+
+        PagedColumn<BindingSymbol?> Column() => (PagedColumn<BindingSymbol?>)field.GetValue(c.Kotonoha.Syntax.Hir.Families)!;
     }
 
     // G949 D2b-d's d10 for an edit family (N5-5's associatedOrigins): an edit's renumbering hands its column over, stale, so the Bind
