@@ -312,23 +312,24 @@ public sealed class HoverProjectionTest
     [Fact]
     public void TypeDisplayPreservesGroupingAndBoundsDepthAndRepeatedExpansion()
     {
-        var integer = new BoundType("i32", BoundTypeKind.Primitive);
-        var tuple = new BoundType(string.Empty, BoundTypeKind.Tuple, components: [integer]);
+        var types = CompilationTestHelper.BindSuccess("()").Types;
+        var integer = BoundType.I32;
+        var tuple = types.Tuple([integer]);
         Assert.Equal("(i32,)", Binding.HoverTypeName(tuple));
-        var function = new BoundType(string.Empty, BoundTypeKind.Function, components: [BoundType.Unit, integer]);
-        var reference = new BoundType(string.Empty, BoundTypeKind.Semantics, semantics: SemanticsKind.Ref, components: [function]);
+        var function = types.Intern(BoundTypeKind.Function, null, SemanticsKind.Owner, [BoundType.Unit, integer]);
+        var reference = types.Reference(SemanticsKind.Ref, function);
         Assert.Equal("ref/(() -> i32)", Binding.HoverTypeName(reference));
         var deep = integer;
         for (var i = 0; i < 128; i++)
         {
-            deep = new(string.Empty, BoundTypeKind.Tuple, components: [deep]);
+            deep = types.Tuple([deep]);
         }
 
         Assert.Throws<HoverLimitException>(() => Binding.HoverTypeName(deep));
         var repeated = integer;
         for (var i = 0; i < 24; i++)
         {
-            repeated = new(string.Empty, BoundTypeKind.Tuple, components: [repeated, repeated]);
+            repeated = types.Tuple([repeated, repeated]);
         }
 
         Assert.Throws<HoverLimitException>(() => Binding.HoverTypeName(repeated));

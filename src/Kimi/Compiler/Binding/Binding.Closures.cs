@@ -317,7 +317,7 @@ public sealed partial class Binding
         var originDeclaration = this.BeginOriginDeclaration(function, scope);
         for (var i = 0; i < function.Parameters.Count; i++)
         {
-            this.symbols[function.Parameters[i]].Type = expected is not null && function.Parameters[i].Type is SyntaxFormKoto { Akind: KotoKind.InferredType } inferred
+            this.ParameterSymbol(function, i).Type = expected is not null && function.Parameters[i].Type is SyntaxFormKoto { Akind: KotoKind.InferredType } inferred
                 ? Complete(inferred, expected.Components[0].Components[i]) : this.BindType(function.Parameters[i].Type, scope);
         }
 
@@ -328,7 +328,7 @@ public sealed partial class Binding
         this.CompleteOriginDeclaration(originDeclaration);
         for (var i = 0; i < function.Parameters.Count; i++)
         {
-            this.symbols[function.Parameters[i]].Type = function.Parameters[i].Type.BoundType;
+            this.ParameterSymbol(function, i).Type = function.Parameters[i].Type.BoundType;
         }
     }
 

@@ -475,7 +475,7 @@ public sealed partial class Binding
         }
     }
 
-    private readonly record struct MemberSelection(BindingSymbol? Member, BoundType? DeclaringType, BoundMemberPath? Path, bool Ambiguous = false, bool Pending = false, BindingSymbol? Hidden = null);
+    internal readonly record struct MemberSelection(BindingSymbol? Member, BoundType? DeclaringType, BoundMemberPath? Path, bool Ambiguous = false, bool Pending = false, BindingSymbol? Hidden = null);
 
     // One path of a member access (SPEC 9.6): the member it found (a requirement member or a nested declaration when its lookup found
     // none), its member lookup, and whether the path was formed (the qualifier bound as a Type or a group, or read as a value).

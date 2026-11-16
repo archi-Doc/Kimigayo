@@ -1106,6 +1106,31 @@ public class ConditionalConformanceBindingTest
         Assert.Equal(source.IndexOf(clause, StringComparison.Ordinal), diagnostic.Span.Start);
     }
 
+    // PLAN G949 S1-b1 (the review's N1; DECISIONS BU-220): a conditional block's declaring path is the path its clause registered in this
+    // pass. An edit making the clause's subject T keeps the conformance's key but registers it no more (SPEC 8.6.2, 8.8.2: a conditional
+    // conformance's subject is Self; InvalidConstraint_Kd): the next pass leaves the block no declaring path, and its records equal a
+    // cold compile's (before: the block kept the unregistered path, which the end-of-Bind sweep then pools).
+    [Fact]
+    public void AnEditThatUnregistersAConditionalConformanceLeavesItsBlockNoDeclaringPath()
+    {
+        const string Contract = "contract K\n    associate E\n    func get(self: ref/Self) -> i32\n";
+        const string Declared = "struct S<T>\n    Self is K when T is Copy\n        associate K.E is i32\n    public func get(self: ref/Self) -> i32 => 1\n";
+        const string Edited = "struct S<T>\n    T is K when T is Copy\n        associate K.E is i32\n    public func get(self: ref/Self) -> i32 => 1\n";
+        var c = CompilationTestHelper.ParseSuccess(Contract + Declared);
+        Assert.True(c.Bind().IsComplete, Describe(c));
+        var syntax = Container(c, "S").Members.OfType<SyntaxFormKoto>().Single();
+        Assert.NotNull(c.Binding.ConstraintScope(syntax).ConformancePath);
+        var target = (IsKoto)syntax.Operands[0];
+        var donor = ((IsKoto)Container(CompilationTestHelper.ParseSuccess(Edited), "S").Members.OfType<SyntaxFormKoto>().Single().Operands[0]).Left;
+        ParseTestHelper.Detach(donor, new CodeBlockKoto(donor.CodeContext));
+        Assert.True(KotoHelper.Replace(target, target.Left, donor));
+        Assert.False(c.Bind().IsComplete);
+        Assert.Null(c.Binding.ConstraintScope(syntax).ConformancePath);
+        var cold = CompilationTestHelper.ParseSuccess(Contract + Edited);
+        Assert.False(cold.Bind().IsComplete);
+        Assert.Equal(Records(cold), Records(c));
+    }
+
     private static DeclarationContainerKoto Container(Compilation c, string name) => KotoTree.Walk(c.Kotonoha.RootKoto).OfType<DeclarationContainerKoto>().Single(x => x.Name == name);
 
     private static FunctionKoto Function(Compilation c, string name) => KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(x => x.Name == name);
@@ -1113,4 +1138,8 @@ public class ConditionalConformanceBindingTest
     private static FunctionKoto Function(Compilation c, string name, bool implementation) => KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(x => x.Name == name && x.IsRequirement != implementation);
 
     private static string Describe(Compilation c) => string.Join("\n", c.Binding.Issues.Select(x => $"{x.Code}: {x.Node}"));
+
+    // A bound compilation's Binding records as `Code: node`, sorted (an edited tree holds a donor's document, so its published records
+    // cannot be read by path).
+    private static string[] Records(Compilation c) => [.. c.Binding.Issues.Select(static x => $"{x.Code}: {x.Node}").Order(StringComparer.Ordinal)];
 }
