@@ -8,7 +8,9 @@ namespace Kimi.Compiler;
 // The local-region graph (SPEC 15.3.6, 15.4.4): the region slots of a region owner's Type (IsRegionOwner: every local, a var Pattern
 // binding or a var for slot; LocalRegionSlot), the bounds recorded on them (RecordLocalRegionBound, RecordRegionBound), their finite
 // sources (LocalRegionSources) and the value that brought a source in (LocalRegionSourceUse), and the relations judged through those
-// sources (RegionContains, JudgeLocalRegion). The Types that carry the regions are Binding.LocalRegions.Types.cs's.
+// sources (RegionContains, JudgeLocalRegion). A row is read through one find (Region) and written through one create (WrittenRegion).
+// The rows are a pass part's (PassPart.Regions; DECISIONS BU-220's D-9 line): the find reads the library layer's part first, then the
+// running pass's, and a new row goes into the running pass's. The Types that carry the regions are Binding.LocalRegions.Types.cs's.
 // Output (PLAN G492-a (ii)): a `let` local's region has a value, the Origin its declaration fixes for the slot (PublishRegionValue: the
 // initializer's Origin there, or the omitted slot's solved candidate), also recorded as a bound of the region. Its readers at a use:
 // RegionValueAtUse (an Origin; SuppliedAtUse and so OriginAtUse read through it) and RegionValuesAt (a Type), RegionalAt through it.
@@ -26,10 +28,13 @@ namespace Kimi.Compiler;
 // body reads the region, fixed there (SPEC 15.3.4, DECISIONS BU-28).
 public sealed partial class Binding
 {
-    private readonly Dictionary<BoundOrigin, LocalRegion> localRegions = new(ReferenceEqualityComparer.Instance);
     private readonly List<BoundOrigin> regionWork = new();
     private readonly HashSet<BoundOrigin> regionVisited = new(ReferenceEqualityComparer.Instance);
     private readonly List<(Koto? Value, BoundOrigin? Parent)> regionEvidence = new();
+
+    // The running pass's part of the rows (PassPart.Regions), which its steps write and reset; the driver hands it over (EnterPass),
+    // Binding's own between Binds.
+    private Dictionary<BoundOrigin, LocalRegion> localRegions;
     private int regionVersion;
     private int regionValues;
 
@@ -74,7 +79,7 @@ public sealed partial class Binding
     // The graph stores contract bounds, never a current value. Ownership separately follows the definitions reaching each use.
     internal ReadOnlySpan<BoundOrigin> LocalRegionSources(BoundOrigin origin)
     {
-        if (!this.localRegions.TryGetValue(origin, out var region))
+        if (this.Region(origin) is not { } region)
         {
             return [];
         }
@@ -100,7 +105,7 @@ public sealed partial class Binding
                     continue;
                 }
 
-                if (this.localRegions.TryGetValue(current, out var parents))
+                if (this.Region(current) is { } parents)
                 {
                     for (var i = parents.Parents.Count - 1; i >= 0; i--)
                     {
@@ -131,11 +136,11 @@ public sealed partial class Binding
     // The `index`-th Origin a bound recorded as outliving `origin` directly, as stored, its receivers resolved (LocalRegionSources follows
     // them to the finite sources); null past the last.
     internal BoundOrigin? LocalRegionBound(BoundOrigin origin, int index)
-        => this.localRegions.TryGetValue(origin, out var region) && index < region.Parents.Count
+        => this.Region(origin) is { } region && index < region.Parents.Count
             ? this.ReceiverAtUse(region.Parents[index], region.Values[index]) : null;
 
     internal bool HasRegionBounds(BoundOrigin origin)
-        => IsLocalRegion(origin) || (this.localRegions.TryGetValue(origin, out var region) && region.Parents.Count != 0);
+        => IsLocalRegion(origin) || this.Region(origin) is { Parents.Count: not 0 };
 
     // The value that brought `source` into the region graph `region` reads, by LocalRegionSources' walk (each parent as stored, its
     // receivers resolved at its bound's value, meet operands expanded, a meet `region` through its region operands): the value of the bound
@@ -165,7 +170,7 @@ public sealed partial class Binding
                 continue;
             }
 
-            if (this.localRegions.TryGetValue(current, out var bounds))
+            if (this.Region(current) is { } bounds)
             {
                 for (var i = 0; i < bounds.Parents.Count; i++)
                 {
@@ -219,7 +224,7 @@ public sealed partial class Binding
     {
         if (origin.Kind != OriginKind.Intersection)
         {
-            return this.localRegions.TryGetValue(origin, out var region) && region.Value is { } value && ReferenceEquals(region.Body, body) ? value : origin;
+            return this.Region(origin) is { Value: { } value } region && ReferenceEquals(region.Body, body) ? value : origin;
         }
 
         var first = 0;
@@ -258,7 +263,7 @@ public sealed partial class Binding
     // that value's. A re-binding publishes the same region again (the same slot) with its value read anew.
     private void PublishRegionValue(BoundOrigin region, BoundOrigin value, Koto evidence)
     {
-        var record = this.localRegions[region];
+        var record = this.WrittenRegion(region);
         record.Body = BodyOwner(region.Binder!);
         record.Value = null;
         record.Value = this.RegionValueIn(value, record.Body);
@@ -266,6 +271,7 @@ public sealed partial class Binding
         this.RecordRegionBound(record.Value, region, evidence);
     }
 
+    // The running pass's rows, emptied in place; the version starts again per run (BeginRun).
     private void ResetLocalRegions()
     {
         foreach (var region in this.localRegions.Values)
@@ -279,19 +285,35 @@ public sealed partial class Binding
         }
 
         this.regionValues = 0;
-        this.regionVersion = 0;
         this.regionWork.Clear();
         this.regionVisited.Clear();
+    }
+
+    // The one find of a target Origin's row (PassPart.Find): the library layer's part first, then the running pass's; null when no
+    // bound or slot was recorded on it.
+    private LocalRegion? Region(BoundOrigin origin)
+    {
+        _ = PassPart.Find(this.Library.Layer.Part.Regions, this.localRegions, origin, out var region);
+        return region;
+    }
+
+    // A write's row: the one the find returns, else a new row in the running pass's part, so an Origin has one row.
+    private LocalRegion WrittenRegion(BoundOrigin origin)
+    {
+        if (this.Region(origin) is { } region)
+        {
+            return region;
+        }
+
+        region = new();
+        this.localRegions.Add(origin, region);
+        return region;
     }
 
     private BoundOrigin LocalRegionSlot(Koto owner, int slot)
     {
         var origin = this.OriginAtom(owner, OriginKind.Inference, slot);
-        if (!this.localRegions.ContainsKey(origin))
-        {
-            this.localRegions.Add(origin, new());
-        }
-
+        _ = this.WrittenRegion(origin);
         return origin;
     }
 
@@ -332,11 +354,7 @@ public sealed partial class Binding
             return;
         }
 
-        if (!this.localRegions.TryGetValue(target, out var region))
-        {
-            this.localRegions.Add(target, region = new());
-        }
-
+        var region = this.WrittenRegion(target);
         if (!region.Parents.Contains(source))
         {
             region.Parents.Add(source);
@@ -371,7 +389,9 @@ public sealed partial class Binding
         return result;
     }
 
-    private sealed class LocalRegion
+    // A target Origin's row: the bounds recorded on it (Parents, each with its Values entry), the memo of its sources (Sources, current
+    // while Version is the graph's version) and, for a `let` region, its value and the body that reads it so (PublishRegionValue).
+    internal sealed class LocalRegion
     {
         internal List<BoundOrigin> Parents { get; } = new();
 

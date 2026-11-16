@@ -25,9 +25,9 @@ public sealed partial class Binding
             diagnostics.Report(DiagnosticPartition.Binding, DiagnosticCode.InternalInvariant_Kd, this.compilation.Project.FilePath); // Binding.TypeHeight.cs
         }
 
-        for (var i = 0; i < this.issues.Count; i++)
+        for (var i = 0; i < this.issuesView.Count; i++)
         {
-            var issue = this.issues[i];
+            var issue = this.issuesView[i];
             if (issue.Failure == BindingFailure.Duplicate && this.duplicateDeclarations?.ContainsKey(issue.Node) == true)
             {
                 continue; // Pairwise declaration failures are normalized as one group below.
@@ -36,7 +36,7 @@ public sealed partial class Binding
             this.ReportIssue(issue);
         }
 
-        foreach (var node in this.derivedIssues)
+        foreach (var node in this.derivedIssuesView)
         {
             node.ReportDerived(DiagnosticRequirement.Binding(node.BindingFailure), this.PrerequisiteKeys(node));
         }
@@ -48,8 +48,7 @@ public sealed partial class Binding
 
             // SPEC 23.2.2: an incomplete Binding without an Error in it or an earlier phase reports one fallback at its
             // first incomplete node. It marks a missing report, a compiler defect to repair where it occurs.
-            if (!this.Result.IsComplete && !diagnostics.HasErrorsThrough(DiagnosticPartition.Binding) &&
-                this.nodes.Find(static x => x.BindingState != BindingState.Resolved) is { } first)
+            if (!this.Result.IsComplete && !diagnostics.HasErrorsThrough(DiagnosticPartition.Binding) && this.FirstIncompleteNode() is { } first)
             {
                 first.ReportDerived(DiagnosticRequirement.Binding(first.BindingFailure == BindingFailure.None ? BindingFailure.MissingType : first.BindingFailure), [DiagnosticKey.Unresolved]);
             }
@@ -79,6 +78,20 @@ public sealed partial class Binding
 
     private static string PermittedCallsText(SemanticsKind receiver)
         => receiver switch { SemanticsKind.Ref => "Shared calls only", SemanticsKind.Uniq => "Shared and Exclusive calls only", _ => "every call" };
+
+    // SPEC 23.2.2's fallback site: the first node not Resolved, the program part's nodes first, then the library layer's.
+    private Koto? FirstIncompleteNode()
+    {
+        foreach (var node in this.nodesView)
+        {
+            if (node.BindingState != BindingState.Resolved)
+            {
+                return node;
+            }
+        }
+
+        return null;
+    }
 
     // Publishes one direct failure with the facts its check recorded. Each fact table holds the explanation of its node's one
     // failure only (FailExplained), so at most one table answers for a node.

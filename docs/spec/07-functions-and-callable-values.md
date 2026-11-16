@@ -224,7 +224,7 @@ A violation among the same-name declarations of one scope, including a Contract'
 
 **Call contract.** A call without explicit Type arguments to a group whose declaration-time validity relies on correlated slots (step 2) must establish each relied-on correlation before candidates are filtered by count, labels, defaults, Constraints, conditions or expected results. A correlation holds when every compared candidate binds the slot from the same evidence: the same fixed explicit or environment binding; the same independently typable or Literal argument ([§10.5.1](10-overload-resolution-and-inference.md#1051-argument-kinds)) at corresponding parameters, matched by the same inference step of [§10.1](10-overload-resolution-and-inference.md#101-candidate-applicability) (structural or call-signature matching) along the same structural path (the Type constructors and argument indices from the parameter Type to the slot); or the call's expected result along the same structural path of the result Types. The argument's Type need not be resolved yet: a shared unresolved literal argument correlates the slot, and literal fitting and defaulting then proceed as usual ([§10.2.1](10-overload-resolution-and-inference.md#1021-literals)). An argument filled by a default gives no evidence. If any candidate has an additional evidence source for the slot, the correlation fails. Showing from this evidence that the overlapping positions get the same acquisition mode is sufficient; equal complete Types are not required. Candidate elimination, conversion search, associated-Type solving and waiting-argument analysis never establish a correlation. A call that cannot establish it is an error unless it writes explicit Type arguments.
 
-**Consequence.** Where keys overlap, every candidate acquires the argument the same way, and within a candidate a reference argument is acquired as its own Type decides ([§10.2.2](10-overload-resolution-and-inference.md#1022-inference-and-adaptation-classes)). A forgotten `@uniq` is an error at the only candidate ([§15.1.5](15-ownership-and-lifetime-analysis.md#1515-access-operations-and-acquisition)), never a silent selection of a by-value candidate. The single-mode guarantee holds only where keys overlap; for non-overlapping keys the argument's Type selects the candidate, as in `inspect(value: uniq/(uniq/Node))` versus `inspect(value: ref/Node)`.
+**Consequence.** Where keys overlap, every candidate acquires the argument the same way, and within a candidate a reference argument is acquired as its own Type decides ([§10.2.2](10-overload-resolution-and-inference.md#1022-inference-and-adaptation-classes)). A forgotten `@uniq` is an error at the only candidate ([§15.1.5](15-ownership-and-lifetime-analysis.md#1515-access-operations-and-acquisition)), never a silent selection of a by-value candidate. The single-mode guarantee holds only where keys overlap; for non-overlapping keys the argument's Type selects the candidate, as in `inspect(value: uniq/(uniq/Node during a))` versus `inspect(value: ref/Node)`.
 
 ```kimi
 func bump(score: Score ! flag: bool) => ()
@@ -236,7 +236,7 @@ func show(value: Node) => ()
 func show(value: objref/Node) => ()             // Valid: Value(Node) and Object(Node).
 func f(value: Node) => ()
 func f<T>(value: T) => ()                       // Valid: T has the owner case alone.
-func inspect(value: uniq/(uniq/Node)) => ()
+func inspect(value: uniq/(uniq/Node during a)) => ()
 func inspect(value: ref/Node) => ()             // Valid: different determined Semantics.
 
 struct Item<T>

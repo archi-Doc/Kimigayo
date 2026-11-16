@@ -2,9 +2,9 @@
 
 namespace Kimi.Compiler;
 
-// The pass reset (ResetPass), run when a pass starts and when an edit revokes the latest one (Invalidate).
+// The pass reset (ResetPass), run when a pass starts and when an edit revokes the latest one (Invalidate), after its run's BeginRun.
 // - Responsibility: every per-pass fact discarded, through the tables cleared here and the owning concerns' Reset* steps.
-// - Inputs: the mode (read by ResetCapabilities). Outputs: empty per-pass tables, reset scopes and symbols, the next storageVersion.
+// - Inputs: the mode (read by ResetCapabilities). Outputs: empty per-pass tables, reset scopes and symbols.
 // - Invariants: the cross-pass storage ResetPass's comment lists stays. R7-D2 b replaces the Clears with generation-stamped tables.
 // - Prohibitions: no fact is computed or recorded here; ResetPass only empties tables and resets state.
 public sealed partial class Binding
@@ -13,16 +13,8 @@ public sealed partial class Binding
     // symbols (reset here, removed by the prune steps), synthesized nodes, pooled plans and scratch buffers.
     private void ResetPass(BindingMode mode)
     {
-        this.ResetInferenceMetrics();
         this.inferredConstructionTargets.Clear();
         this.callInferenceFailures?.Clear();
-        this.storageVersion++;
-        this.signatureWalks = 0;
-        this.memberWalks = 0;
-        this.termWalks = 0;
-        this.baseSteps = 0;
-        this.inheritedSteps = 0;
-        this.inheritedPremiseSteps = 0;
         this.clausesBindable = false;
         this.verifiedClause = null;
         this.earlyReads?.Clear();

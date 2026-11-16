@@ -77,8 +77,7 @@ public sealed partial class Binding
 
             for (var i = 0; i < function.Parameters.Count; i++)
             {
-                var parameter = function.Parameters[i];
-                this.symbols[parameter].Type = this.BindType(parameter.Type, scope);
+                this.ParameterSymbol(function, i).Type = this.BindType(function.Parameters[i].Type, scope);
             }
 
             if (function.ReturnType is { } resultSyntax)
@@ -154,8 +153,7 @@ public sealed partial class Binding
         var originDeclaration = this.BeginOriginDeclaration(function, scope);
         for (var i = 0; i < function.Parameters.Count; i++)
         {
-            var parameter = function.Parameters[i];
-            this.symbols[parameter].Type = this.BindType(parameter.Type, scope);
+            this.ParameterSymbol(function, i).Type = this.BindType(function.Parameters[i].Type, scope);
         }
 
         // Named signatures never infer a result from their body or callers (SPEC 10.5).
@@ -165,7 +163,7 @@ public sealed partial class Binding
         {
             // BindType retains a partial value on the parameter symbol without publishing it on
             // syntax. A failed Type (null) is already an error, not an inference dependency.
-            pendingInputs |= this.symbols[function.Parameters[i]].Type is { } parameterType && this.PendingAssociatedType(parameterType);
+            pendingInputs |= this.ParameterSymbol(function, i).Type is { } parameterType && this.PendingAssociatedType(parameterType);
         }
 
         var pendingHeader = pendingInputs || (symbol.Type is { } resultType && this.PendingAssociatedType(resultType));
@@ -184,7 +182,7 @@ public sealed partial class Binding
         this.CompleteOriginDeclaration(originDeclaration ?? this.originDeclarations.GetValueOrDefault(function));
         for (var i = 0; i < function.Parameters.Count; i++)
         {
-            this.symbols[function.Parameters[i]].Type = function.Parameters[i].Type.BoundType;
+            this.ParameterSymbol(function, i).Type = function.Parameters[i].Type.BoundType;
         }
 
         if (symbol.ReceiverIndex >= 0)

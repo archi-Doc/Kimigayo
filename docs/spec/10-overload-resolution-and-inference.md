@@ -177,9 +177,9 @@ Pairwise comparison yields better, worse, equivalent or incomparable; only equiv
 Widths, Constraint strength, pattern generality and declaration order never rank candidates, and a later step never rescues an earlier incomparability. The two `inspect` keys below do not overlap ([§7.4](07-functions-and-callable-values.md#74-parameter-acquisition-shape)).
 
 ```kimi
-func inspect(value: uniq/(uniq/Node)) -> () => ()
+func inspect(value: uniq/(uniq/Node during a)) -> () => ()
 func inspect(value: ref/Node) -> () => ()
-func work(x: uniq/(uniq/Node))
+func work(x: uniq/(uniq/Node during a))
     inspect(x)          // The first: a same-Semantics Reborrow beats a cross-Semantics reference.
     inspect(x@follow)   // The second: only it adapts the selected uniq/Node Place.
 

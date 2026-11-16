@@ -10,12 +10,7 @@ namespace Kimi.Compiler.Backend;
 // of a root module's import signatures.
 internal sealed partial class InstanceCollector
 {
-    // K 4.8 (DECISIONS R5-M149): each body's projection steps whose layout need lies past its roots' storage, `needs` from
-    // `needStarts[body.Ordinal]`: the location, the step's Place and the PairLayer step whose case decides it (0: none).
-    private (MirLocation At, MirPlace Step, int Pair)[] needs = [];
-    private int[] needStarts = [];
     private int[] chain = []; // A Place's steps, last first (ListNeeds' scratch).
-    private int needCount;
 
     /// <summary>Gets the record of a Layout outcome (K 4.8; R5-M37: the collector alone maps Layout's outcomes). A size, count or depth limit
     /// is Resource (IMPL 21.3.2); a C-layout instance whose C layout is unavailable (open, derived, empty or storing a zero-sized Field), at
@@ -110,9 +105,8 @@ internal sealed partial class InstanceCollector
     // instance; a need past a PairLayer only where the item's view makes that layer leave its root's storage (LeavesStorage).
     private void LayOutNeeds(int item, MirBody body)
     {
-        for (var i = this.needStarts[body.Ordinal]; i < this.needStarts[body.Ordinal + 1]; i++)
+        foreach (var (at, step, pair) in this.TemplatesOf(body.Ordinal).Needs(body.Ordinal))
         {
-            var (at, step, pair) = this.needs[i];
             var block = body.Blocks[at.Block];
             var subject = this.Subject(item, body, at.Index == block.Count ? block.Terminator.Source : body.Statements[block.Start + at.Index].Source);
             if ((pair == 0 || this.LeavesStorage(item, body, step with { Projection = pair })) &&
@@ -146,10 +140,11 @@ internal sealed partial class InstanceCollector
         }
     }
 
-    // The needs of a location's Places past their roots' storage, appended to the list (a template's, once per body and version).
-    private void ListNeeds(MirBody body, MirLocation at)
+    // K 4.8 (DECISIONS R5-M149): the projection steps of a location's Places whose layout need lies past their roots' storage, appended to
+    // the body's template in its store (TemplateStore.Needs): the location, the step's Place and the PairLayer step whose case decides it.
+    private void ListNeeds(TemplateStore store, MirBody body, MirLocation at)
     {
-        var reader = new NeedReader(this, body, at);
+        var reader = new NeedReader(this, store, body, at);
         MirUses.ForEach(body, at, ref reader);
     }
 
@@ -157,7 +152,7 @@ internal sealed partial class InstanceCollector
     // a pair layer, whose case decides it per item (a pattern selects one, SPEC 14.8.1) when it is the first such step since the last need,
     // and every case after another (`((*r)@b0).1`; PLAN G157 (47)); the next step with a need (LayoutNeeds) is past that storage, a use,
     // after which the Type it read is the storage again.
-    private void ListNeeds(MirBody body, MirLocation at, MirPlace place)
+    private void ListNeeds(TemplateStore store, MirBody body, MirLocation at, MirPlace place)
     {
         var projections = body.Projections;
         var length = 0;
@@ -184,26 +179,10 @@ internal sealed partial class InstanceCollector
 
             if (past && LayoutNeeds.Of(row.Kind) != LayoutNeed.None)
             {
-                this.AddNeed(body.Ordinal, at, step, pair);
+                store.AddNeed(body.Ordinal, at, step, pair);
                 past = false;
             }
         }
-    }
-
-    // A need appended once per location and step of a body.
-    private void AddNeed(int body, MirLocation at, MirPlace step, int pair)
-    {
-        if (this.needCount > this.needStarts[body] && this.needs[this.needCount - 1] is var last && last.At == at && last.Step == step)
-        {
-            return;
-        }
-
-        if (this.needCount == this.needs.Length)
-        {
-            Array.Resize(ref this.needs, Math.Max(256, 2 * this.needCount));
-        }
-
-        this.needs[this.needCount++] = (at, step, pair);
     }
 
     // K 4.8 (DECISIONS R5-M108): a Function Type's inputs and result, each a by-value use at a site (an erasure's target: its adapter's entry
@@ -287,7 +266,7 @@ internal sealed partial class InstanceCollector
     }
 
     // The Places a location uses, each listed by its needs (ListNeeds).
-    private readonly struct NeedReader(InstanceCollector owner, MirBody body, MirLocation at) : IMirUses
+    private readonly struct NeedReader(InstanceCollector owner, TemplateStore store, MirBody body, MirLocation at) : IMirUses
     {
         public void Operand(in MirOperand operand)
         {
@@ -301,7 +280,7 @@ internal sealed partial class InstanceCollector
         {
             if (place.Projection != 0)
             {
-                owner.ListNeeds(body, at, place);
+                owner.ListNeeds(store, body, at, place);
             }
         }
     }

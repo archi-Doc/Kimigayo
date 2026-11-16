@@ -49,11 +49,9 @@ public partial class KimiLibraryShapeTest
     ];
 
     // Code generation and the runtime call these bodiless functions by position: parameter order,
-    // Types, overload position and constraints.
+    // Types, overload position and constraints. Those with a lang item by it, the others by their library path (UnnamedCompilerFunctionShapes).
     private static readonly (KimiDeclarationId Id, string Shape)[] CompilerFunctionShapes =
     [
-        (KimiDeclarationId.WriteLine, "public func writeLine(text: ref/string)"),
-        (KimiDeclarationId.ConsoleWriteStdout, "internal unsafe func writeStdout(data: raw/u8, length: isize)"),
         (KimiDeclarationId.TestTempDirectory, "public func tempDirectory() -> string"),
         (KimiDeclarationId.MakeObj, "public func makeObj<T>(value: T) -> obj/T\nT is ObjectPayload"),
         (KimiDeclarationId.MakeRc, "public func makeRc<T>(value: T) -> rc/T\nT is ObjectPayload"),
@@ -61,24 +59,29 @@ public partial class KimiLibraryShapeTest
         (KimiDeclarationId.Clone, "public func clone<s/T>(value: ref/(s/T)) -> s/T\ns is rc or arc"),
         (KimiDeclarationId.ArrayWithCapacity, "public init(! capacity: isize)"),
         (KimiDeclarationId.ArrayRepeating, "public init(! repeating: T, count: isize)\nT is Copy"),
-        (KimiDeclarationId.TextWriter, "public func writer<W>(destination: uniq/W) -> Utf8Writer\nW is BufferWriter"),
-        (KimiDeclarationId.StorageMissingDictionaryKey, "internal func missingDictionaryKey() -> Never"),
-        (KimiDeclarationId.StorageCountOverflow, "internal func countOverflow() -> Never"),
-        (KimiDeclarationId.StorageAllocationSizeExceeded, "internal func allocationSizeExceeded() -> Never"),
-        (KimiDeclarationId.StorageTryAllocateBytes, "internal func tryAllocateBytes(bytes: isize) -> raw/u8"),
         (KimiDeclarationId.StorageTransferBytes, "internal unsafe func transferBytes(destination: raw/u8, source: raw/u8, count: isize)"),
-        (KimiDeclarationId.StorageStride, "internal func stride<T>() -> isize"),
-        (KimiDeclarationId.StorageDestroyValues, "internal unsafe func destroyValues<T>(storage: raw/u8, count: isize)"),
-        (KimiDeclarationId.StorageErasedReserve,
-            "internal func erasedReserve(writer: uniq/Utf8Writer, minimum: isize) -> Result<WriteWindow during writer.target, BufferFull>"),
-        (KimiDeclarationId.StorageFormatFloat, "internal func formatFloat(bits: u64 ! narrow: bool, destination: uniq/[24 of u8]) -> isize"),
-        (KimiDeclarationId.StorageFormatInteger128, "internal func formatInteger128(value: u128 ! destination: uniq/[40 of u8]) -> isize"),
-        (KimiDeclarationId.RawAllocate, "public func allocate<T>(count: isize) -> raw/T"),
         (KimiDeclarationId.RawRelease, "public unsafe func release<T>(storage: raw/T)"),
         (KimiDeclarationId.RawInitialize, "public unsafe func initialize<T>(storage: raw/T, value: T)"),
         (KimiDeclarationId.RawSlice, "public unsafe func slice<T>(storage: raw/T, length: isize) -> Slice<T> during s"),
-        (KimiDeclarationId.StorageArgumentOutOfRange, "internal func argumentOutOfRange() -> Never"),
-        (KimiDeclarationId.StorageIndexBounds, "internal func indexBounds() -> Never"),
+    ];
+
+    // The bodiless compiler functions without a lang item (R8-G1 G1-6: no C# reader names them), by their library path.
+    private static readonly (string Path, string Shape)[] UnnamedCompilerFunctionShapes =
+    [
+        ("Console.writeStdout", "internal unsafe func writeStdout(data: raw/u8, length: isize)"),
+        ("Storage.missingDictionaryKey", "internal func missingDictionaryKey() -> Never"),
+        ("Storage.countOverflow", "internal func countOverflow() -> Never"),
+        ("Storage.allocationSizeExceeded", "internal func allocationSizeExceeded() -> Never"),
+        ("Storage.tryAllocateBytes", "internal func tryAllocateBytes(bytes: isize) -> raw/u8"),
+        ("Storage.stride", "internal func stride<T>() -> isize"),
+        ("Storage.destroyValues", "internal unsafe func destroyValues<T>(storage: raw/u8, count: isize)"),
+        ("Storage.erasedReserve", "internal func erasedReserve(writer: uniq/Utf8Writer, minimum: isize) -> Result<WriteWindow during writer.target, BufferFull>"),
+        ("Storage.reserveDispatch", "internal func reserveDispatch<W>() -> raw/u8 during static\nW is BufferWriter"),
+        ("Storage.formatFloat", "internal func formatFloat(bits: u64 ! narrow: bool, destination: uniq/[24 of u8]) -> isize"),
+        ("Storage.formatInteger128", "internal func formatInteger128(value: u128 ! destination: uniq/[40 of u8]) -> isize"),
+        ("Raw.allocate", "public func allocate<T>(count: isize) -> raw/T"),
+        ("Storage.argumentOutOfRange", "internal func argumentOutOfRange() -> Never"),
+        ("Storage.indexBounds", "internal func indexBounds() -> Never"),
     ];
 
     public static TheoryData<KimiDeclarationId> CatalogEntries
@@ -109,6 +112,20 @@ public partial class KimiLibraryShapeTest
         }
     }
 
+    public static TheoryData<string, string> UnnamedCompilerFunctions
+    {
+        get
+        {
+            var data = new TheoryData<string, string>();
+            foreach (var (path, shape) in UnnamedCompilerFunctionShapes)
+            {
+                data.Add(path, shape);
+            }
+
+            return data;
+        }
+    }
+
     [Fact]
     public void LibraryBindsCompletely()
     {
@@ -118,22 +135,23 @@ public partial class KimiLibraryShapeTest
         // Text.fixed and FixedBuffer.text, a direct line's (R8-W2 a2); Never (G704); bool, char, Unit format (R8-S2a); f32, f64 format,
         // formatFloat (R8-S2c); string, view and Wrapping<T> format (R8-S2d1); the integers' format (R8-S2b1); formatInteger128 (R8-S2b2);
         // Utf8Writer.deferLiteral, an owning interpolation's literal before a value (R8-W2 c1); Utf8Writer.finish, its end (R8-W2 c3a).
-        Assert.Equal(194, KimiLibraryCatalog.Entries.Length);
-        var unsourced = new List<KimiDeclarationId>();
+        // R8-G1 G1-6 (the owner's O-307 (a)): only the lang items a C# reader identifies are cataloged; 63 other declarations carry
+        // `#Intrinsic` or `#CallerLocation` and are registered unnamed (Storage.reserveDispatch, R8-W2 b2-1, among them).
+        // G1-3b-2: every entry is sourced, the Weak family written `#Unsupported`.
+        Assert.Equal(120, KimiLibraryCatalog.Entries.Length);
         foreach (var entry in KimiLibraryCatalog.Entries)
         {
-            if (c.Library.GetSymbol(entry.Id) is not { } symbol)
-            {
-                unsourced.Add(entry.Id);
-                continue;
-            }
+            Assert.NotNull(c.Library.GetSymbol(entry.Id));
+        }
 
+        var registered = c.Library.RegisteredSymbols.ToArray();
+        foreach (var symbol in registered)
+        {
             Assert.Same(symbol, symbol.Declaration.SymbolOf());
             Assert.Equal(BindingState.Resolved, symbol.Declaration.StateOf());
         }
 
-        // SPEC 22.1: the Weak family is cataloged but not yet declared in source.
-        Assert.Equal([KimiDeclarationId.Downgrade, KimiDeclarationId.Upgrade, KimiDeclarationId.MakeRcCyclic, KimiDeclarationId.MakeArcCyclic, KimiDeclarationId.Weak], unsourced);
+        Assert.Equal((120, 63), (registered.Count(static x => x.LibraryDeclaration is not null), registered.Count(static x => x.LibraryDeclaration is null)));
     }
 
     // KimiLibrarySize's statement: the library's size is what a Bind of the empty program fills, each count rounded up to the Granule.
@@ -168,19 +186,20 @@ public partial class KimiLibraryShapeTest
 
     // R5 K package 4.4 (P5, DECISIONS R5-M41): the bundled library collected with every module a root module, so every closed library body
     // is a root, has no collector record; with no library declaration under a compile-time Condition and one target profile, rooting it in
-    // each compilation would add none.
+    // each compilation would add none. Its own build has the library range, which builds every library body (PLAN G951).
     [Fact]
     public void TheLibraryCollectsWithoutRecords()
     {
         var c = Compilation.CreateForTest();
         Assert.True(c.Bind().IsComplete, string.Join('\n', c.Binding.Issues));
-        var set = new Kimi.Compiler.Backend.InstanceCollector(c.Types, c.Layout).Run(c.BuildMir(), SyntaxTable.LibraryModule + 1);
-        Assert.Empty(c.BuildMir().Records(Kimi.Compiler.Mir.MirRecordClass.Collection));
+        var program = new Kimi.Compiler.Mir.MirAnalysis(c.Types).Run(new Kimi.Compiler.Mir.MirBuilder(c).Build(SyntaxTable.LibraryModule + 1), c.SourceModules.Length);
+        var set = new Kimi.Compiler.Backend.InstanceCollector(c.Types, c.Layout).Run(program, SyntaxTable.LibraryModule + 1);
+        Assert.Empty(program.Records(Kimi.Compiler.Mir.MirRecordClass.Collection));
         Assert.True(set.RootCount > 50 && set.Items.Length > set.RootCount, $"{set.RootCount} roots, {set.Items.Length} items");
     }
 
-    // Recognition finds each cataloged declaration once in its container, at its overload position, with the body kind
-    // its role requires.
+    // Registration binds each cataloged entry to the one declaration whose `#Lang` names it (row L1), under that declaration's name and
+    // kind, in its declaring container's scope, with the body kind its role requires.
     [Theory]
     [MemberData(nameof(CatalogEntries))]
     public void CatalogEntriesResolveExactlyOnce(KimiDeclarationId id)
@@ -188,77 +207,116 @@ public partial class KimiLibraryShapeTest
         var c = Library.Value;
         var entry = KimiLibraryCatalog.Entries[KimiLibraryCatalog.Index(id)];
         var symbol = c.Library.GetSymbol(id);
-        Assert.Equal(entry.SourceExpected, symbol is not null);
-        if (symbol is null)
-        {
-            return;
-        }
-
+        Assert.NotNull(symbol);
         var declaration = symbol.Declaration;
-        var container = Container(declaration);
-        var path = entry.Owner ?? entry.Container switch
-        {
-            KimiLibraryContainer.Root => string.Empty,
-            KimiLibraryContainer.FixedBuffer or KimiLibraryContainer.HeapBuffer => "Text." + entry.Container,
-            KimiLibraryContainer.FixedArray => "Storage.FixedArray",
-            _ => entry.Container.ToString(),
-        };
-        Assert.Equal(path, Path(container));
-        var same = Declarations(container, entry.Name, entry.IsFunction);
-        Assert.Same(declaration, entry.Overload < 0 ? Assert.Single(same) : same[entry.Overload]);
+        Assert.Equal(id.ToString(), LangName(declaration));
+        Assert.Equal(declaration is FunctionKoto function ? (function.Name, BindingSymbolKind.Function) : (((DeclarationContainerKoto)declaration).Name, BindingSymbolKind.Type), (symbol.Name, symbol.Kind));
+        Assert.Same(Container(declaration), Assert.IsAssignableFrom<DeclarationContainerKoto>(symbol.Scope.Owner));
         if (entry.Intrinsic != IntrinsicKind.None)
         {
             Assert.Equal(entry.Intrinsic, symbol.Intrinsic);
-            Assert.Equal("public contract " + entry.Name, Shape(declaration));
+            Assert.Equal("public contract " + symbol.Name, Shape(declaration));
         }
 
-        if (entry.Function != CompilerFunctionKind.None || entry.Implementation is not null)
+        if (symbol.Definition.Kind == DispositionKind.Intrinsic || entry.Implementation is not null)
         {
-            Assert.Equal(entry.Function, symbol.CompilerFunction);
             Assert.False(HasBody(declaration));
         }
-
-        if (entry.SourceFunction)
+        else if (declaration is FunctionKoto)
         {
-            Assert.Equal(CompilerFunctionKind.None, symbol.CompilerFunction);
+            Assert.Equal(DispositionKind.Body, symbol.Definition.Kind);
             Assert.True(HasBody(declaration));
         }
 
-        // SPEC 22.1: a linked public declaration is defined by an internal source function of the same container.
+        // SPEC 22.1: a linked public declaration is defined by an internal source function of the same container, which carries the
+        // caller location (SPEC 22.5.1).
         if (entry.Implementation is { } implementation)
         {
-            var linked = Assert.IsType<FunctionKoto>(c.Library.GetSymbol(implementation)!.Declaration);
+            var linkedSymbol = c.Library.GetSymbol(implementation)!;
+            Assert.Equal((DispositionKind.Body, DispositionKind.Body), (symbol.Definition.Kind, linkedSymbol.Definition.Kind));
+            var linked = Assert.IsType<FunctionKoto>(linkedSymbol.Declaration);
             Assert.Equal(ModifierKind.Internal, linked.Modifier);
             Assert.True(HasBody(linked));
             Assert.Same(declaration.Parent, linked.Parent);
+            Assert.True(KimiLibraryCatalog.RequiresCallerLocation(linkedSymbol));
         }
     }
 
-    // A bodiless function outside a Contract is a cataloged compiler function or a foreign import, and the signature-only
-    // groups hold only registered compiler functions.
+    // Registration binds each declaration without a lang item that carries `#Intrinsic` or `#CallerLocation` (R8-G1 G1-6) under its name,
+    // as a function, in its declaring container's scope, with the body kind its `#Intrinsic` states.
+    [Fact]
+    public void UnnamedDeclarationsResolveExactlyOnce()
+    {
+        var c = Library.Value;
+        var unnamed = c.Library.RegisteredSymbols.ToArray().Where(static x => x.LibraryDeclaration is null).ToArray();
+        Assert.Equal(63, unnamed.Length);
+        foreach (var symbol in unnamed)
+        {
+            var function = Assert.IsType<FunctionKoto>(symbol.Declaration);
+            Assert.Null(LangName(function));
+            Assert.True(function.FindAttribute(AttributeKind.Intrinsic) is not null || function.FindAttribute(AttributeKind.CallerLocation) is not null, Line(function));
+            Assert.Equal((function.Name, BindingSymbolKind.Function), (symbol.Name, symbol.Kind));
+            Assert.Same(Container(function), Assert.IsAssignableFrom<DeclarationContainerKoto>(symbol.Scope.Owner));
+            Assert.Equal(IntrinsicKind.None, symbol.Intrinsic);
+            Assert.Equal(symbol.Definition.Kind != DispositionKind.Intrinsic, HasBody(function));
+        }
+    }
+
+    // IMPL 21.3.4 (R8-G1 row L2): a function or constructor without a definition, outside a Contract, is a foreign import, or a
+    // cataloged compiler function carrying `#Intrinsic` exactly when its symbol's Definition is an intrinsic, or a `#Lang`
+    // constructor the catalog links to the internal function that defines it; a function with a definition carries no `#Intrinsic`.
+    // An `#Unsupported` declaration omits its Body too (rows L9-L11, R8-G1 G1-3b-2). Every library source is ordinary
+    // (R8-G1 G1-5): such a declaration omits its Body by its Attribute (FunctionKoto.OmitsBody).
     [Fact]
     public void BodilessFunctionsAreCompilerFunctions()
     {
         var c = Library.Value;
-        foreach (var group in new GroupKoto[] { c.Library.Intrinsics, c.Library.Console, c.Library.Test })
+        var registered = c.Library.RegisteredSymbols.ToArray().ToHashSet();
+        Visit(c.Library.Kotonoha.RootKoto);
+
+        // Rows L9-L11 (SPEC 22.1, 3.2.2, 13.6.2, 13.6.3; IMPL 21.3.4): the `#Unsupported` declarations are Kimi.Intrinsics' four Weak
+        // functions, each the only declaration of its Name (so its group is wholly `#Unsupported`), and the struct Weak, which has no
+        // member and no synthesized constructor (`#Lang("Weak")`: ManagedRepresentation); none is specialized. Source order: Core.kimi is
+        // read before Intrinsics.kimi (R8-G1 G1-5: every library source is ordinary).
+        var intrinsics = Assert.IsType<GroupKoto>(c.Library.MakeObj.Declaration.Parent); // Kimi.Intrinsics, makeObj's group (R8-G1 G1-5).
+        var unsupported = LibraryAttributes(AttributeKind.Unsupported).Select(static x => x.Target).ToArray();
+        Assert.Equal(["Weak", "downgrade", "upgrade", "makeRcCyclic", "makeArcCyclic"], unsupported.Select(static x => x is FunctionKoto function ? function.Name : ((StructKoto)x).Name));
+        foreach (var function in unsupported.OfType<FunctionKoto>())
         {
-            Assert.All(group.Members, member => Assert.Contains(Assert.IsType<FunctionKoto>(member).SymbolOf()!, c.Library.RegisteredSymbols.ToArray()));
+            Assert.Same(intrinsics, function.Parent);
+            Assert.False(function.IsSpecialization || HasBody(function) || function.FindAttribute(AttributeKind.Intrinsic) is not null, Line(function));
+            Assert.Single(intrinsics.Members, x => x is FunctionKoto other && other.Name == function.Name);
         }
 
-        Visit(c.Library.Kotonoha.RootKoto);
+        var weak = Assert.IsType<StructKoto>(unsupported[0]);
+        Assert.Same(weak, c.Library.GetSymbol(KimiDeclarationId.Weak)?.Declaration);
+        Assert.Empty(weak.Members);
+        Assert.Null(weak.SynthesizedConstructor);
+        Assert.DoesNotContain(KotoTree.Walk(weak), static x => x.SymbolOf() is { Kind: BindingSymbolKind.Function });
 
         void Visit(DeclarationContainerKoto container)
         {
             for (var i = 0; container is not ContractKoto && i < container.Members.Count; i++)
             {
-                if (container.Members[i] is FunctionKoto { IsRequirement: false, AttributeChain: null } function && !HasBody(function))
+                if (container.Members[i] is not FunctionKoto { IsRequirement: false } function)
                 {
-                    var symbol = function.SymbolOf();
-                    Assert.True(
-                        symbol?.LibraryDeclaration is { } id && ReferenceEquals(c.Library.GetSymbol(id), symbol) &&
-                        (symbol.CompilerFunction != CompilerFunctionKind.None || KimiLibraryCatalog.ImplementationOf(id) is not null),
-                        Line(function));
+                    continue;
                 }
+
+                var intrinsic = function.FindAttribute(AttributeKind.Intrinsic) is not null;
+                if (HasBody(function) || function.FindAttribute(AttributeKind.LibraryImport) is not null || function.FindAttribute(AttributeKind.Unsupported) is not null)
+                {
+                    Assert.False(intrinsic, Line(function));
+                    continue;
+                }
+
+                // Its symbol is the one registration gives it: its lang item's, or an unnamed one (R8-G1 G1-6).
+                var symbol = function.SymbolOf();
+                Assert.True(symbol is not null && registered.Contains(symbol), Line(function));
+                Assert.True(symbol!.LibraryDeclaration is not { } id ? LangName(function) is null : ReferenceEquals(c.Library.GetSymbol(id), symbol) && LangName(function) == id.ToString(), Line(function));
+                var served = symbol.Definition.Kind == DispositionKind.Intrinsic;
+                var linked = function.IsConstructor && symbol.Definition.Kind == DispositionKind.Body && symbol.LibraryDeclaration is { } linkedId && KimiLibraryCatalog.ImplementationOf(linkedId) is not null;
+                Assert.True(intrinsic == served && (served || linked), Line(function));
             }
 
             foreach (var nested in container.NestedContainers)
@@ -271,51 +329,59 @@ public partial class KimiLibraryShapeTest
     [Fact]
     public void EveryCompilerFunctionHasAShape()
     {
-        var expected = new List<KimiDeclarationId>();
-        foreach (var entry in KimiLibraryCatalog.Entries)
+        // Every registered intrinsic or linked constructor, named or not (R8-G1 G1-6), and no other declaration, has its row.
+        var library = Library.Value.Library;
+        var expected = new HashSet<Koto>(ReferenceEqualityComparer.Instance);
+        foreach (var symbol in library.RegisteredSymbols)
         {
-            if ((entry.Function != CompilerFunctionKind.None || entry.Implementation is not null) && entry.SourceExpected)
+            if (symbol.Definition.Kind == DispositionKind.Intrinsic || (symbol.LibraryDeclaration is { } id && KimiLibraryCatalog.ImplementationOf(id) is not null))
             {
-                expected.Add(entry.Id);
+                expected.Add(symbol.Declaration);
             }
         }
 
-        Assert.Equal(expected, CompilerFunctionShapes.Select(x => x.Id));
+        Koto[] shaped =
+        [
+            .. CompilerFunctionShapes.Select(x => library.GetSymbol(x.Id)!.Declaration),
+            .. UnnamedCompilerFunctionShapes.Select(x => LibrarySource.Declaration(library, x.Path)),
+        ];
+        Assert.Equal((25, 25), (expected.Count, shaped.Length));
+        Assert.True(expected.SetEquals(shaped));
     }
 
-    // Plan 5.8: the intrinsic table gives every compiler function one disposition; an intrinsic serves at most one of them, except Fail,
-    // which carries a fixed SPEC 22.5.2 code; there are at most 27 intrinsics, the temporary ones of the owner's approvals of 2026-10-11
-    // gone (FormatBuffer at R8-W2 c3b, FormatFinish at c3a, FormatSegment, R5-M133's rename of FormatHint, at c2b).
+    // Plan 5.8: every library function and $abort has one disposition, its symbol's Definition: an intrinsic serves at most one of them,
+    // except Fail, which carries a fixed SPEC 22.5.2 code; a symbol of no compiler function has its Body; there are at most 27
+    // intrinsics, the temporary ones of the owner's approvals of 2026-10-11 gone (FormatBuffer at R8-W2 c3b, FormatFinish at c3a,
+    // FormatSegment, R5-M133's rename of FormatHint, at c2b). A built-in target's Shim is MirBuildTest's census key.
     [Fact]
     public void EveryCompilerFunctionHasOneDisposition()
     {
         var spec = File.ReadAllText(System.IO.Path.Combine(Repository.Root, "docs", "spec", "22-core-execution-and-foreign-functions.md"));
-        var rows = Enum.GetValues<CompilerFunctionKind>().Select(static x => (Kind: x, Row: IntrinsicDisposition.Of(x))).ToArray();
-        foreach (var (kind, row) in rows)
+        var library = Library.Value.Library;
+        var symbols = library.RegisteredSymbols.ToArray().Append(library.Abort).ToArray();
+        foreach (var symbol in symbols)
         {
+            var row = symbol.Definition;
             var coded = row.Code is null ? row.Id != IntrinsicId.Fail
                 : row.Id == IntrinsicId.Fail && (spec.Contains($"{row.Code} (", StringComparison.Ordinal) || spec.Contains($"`{row.Code}: ", StringComparison.Ordinal));
-            Assert.True((row.Kind == DispositionKind.Intrinsic) == (row.Id != IntrinsicId.None) && coded, kind.ToString());
+            Assert.True((row.Kind == DispositionKind.Intrinsic) == (row.Id != IntrinsicId.None) && row.Kind != DispositionKind.Shim && coded, symbol.Name);
         }
 
-        var served = rows.Select(static x => x.Row.Id).Where(static x => x is not (IntrinsicId.None or IntrinsicId.Fail)).ToArray();
+        var served = symbols.Select(static x => x.Definition.Id).Where(static x => x is not (IntrinsicId.None or IntrinsicId.Fail)).ToArray();
         Assert.Equal(served.Distinct(), served);
-        Assert.Equal(DispositionKind.Body, IntrinsicDisposition.Of(CompilerFunctionKind.None).Kind);
+        Assert.Equal(new IntrinsicDisposition(DispositionKind.Intrinsic, IntrinsicId.Abort), library.Abort.Definition);
         Assert.True(Enum.GetValues<IntrinsicId>().Length <= 34);
     }
 
-    // R3 decision 5: the MIR builder serves a built-in form (an Array literal, a slicing, a Dictionary literal) by an existing compiler
-    // function, whose declaration the library gives by kind.
+    // R3 decision 5: the MIR builder serves a built-in form (a slicing) by a library function it names by its lang item, which the
+    // library registers as the intrinsic it calls; a direct line's fixed arm invokes Text.writer's body since R8-W2 b2-1.
     [Fact]
-    public void CompilerFunctionsHaveTheirDeclarations()
+    public void ServedFunctionsHaveTheirDeclarations()
     {
         var library = Library.Value.Library;
-        foreach (var entry in KimiLibraryCatalog.Entries)
-        {
-            Assert.True(entry.Function == CompilerFunctionKind.None || ReferenceEquals(library.Function(entry.Function), library.GetSymbol(entry.Id)), entry.Id.ToString());
-        }
-
-        Assert.Null(library.Function(CompilerFunctionKind.None));
+        Assert.Equal(
+            [IntrinsicId.RawSlice],
+            new[] { KimiDeclarationId.RawSlice }.Select(x => library.GetSymbol(x)!.Definition.Id));
     }
 
     // SPEC 4.9.6, 12.4.3: each published row, as TyCtxt.Published gives it to the MIR: the requirement it runs and the parameter below
@@ -422,6 +488,11 @@ public partial class KimiLibraryShapeTest
     public void CompilerFunctionShapesAreFixed(KimiDeclarationId id, string shape)
         => Assert.Equal(shape, Shape(Library.Value.Library.GetSymbol(id)!.Declaration));
 
+    [Theory]
+    [MemberData(nameof(UnnamedCompilerFunctions))]
+    public void UnnamedCompilerFunctionShapesAreFixed(string path, string shape)
+        => Assert.Equal(shape, Shape(LibrarySource.Declaration(Library.Value.Library, path)));
+
     // SPEC 4.9.3, 4.9.5, 15.7, 22.2 (R8-A1a, A1b, U1): the operations that became bodies keep the headers their compiler function rows held.
     [Theory]
     [InlineData(KimiDeclarationId.Replace, "public func replace<T>(target: uniq/T ! with => value: T) -> ()")]
@@ -436,7 +507,6 @@ public partial class KimiLibraryShapeTest
     [InlineData(KimiDeclarationId.ArraySwap, "internal func swapAt(self: uniq/Self, first: isize, second: isize)")]
     [InlineData(KimiDeclarationId.ArrayClear, "public func clear(self: uniq/Self)")]
     [InlineData(KimiDeclarationId.ArrayShrinkToFit, "public func shrinkToFit(self: uniq/Self)")]
-    [InlineData(KimiDeclarationId.StorageShrinkArray, "internal unsafe func shrinkArray(handle: raw/ArrayRepr<u8>, stride: isize)")]
     [InlineData(KimiDeclarationId.StorageDestroyArray, "internal unsafe func destroyArray<E>(handle: raw/ArrayRepr<u8>)")]
     [InlineData(KimiDeclarationId.StorageDestroyDictionary, "internal unsafe func destroyDictionary<K, V>(handle: raw/DictionaryStorage.Handle)")]
     [InlineData(KimiDeclarationId.StorageReleaseDictionary, "internal unsafe func releaseDictionary(handle: raw/DictionaryStorage.Handle)")]
@@ -444,15 +514,19 @@ public partial class KimiLibraryShapeTest
     [InlineData(KimiDeclarationId.StorageArrayCapacity, "internal func arrayCapacity<E>(value: ref/Array<E> during a) -> isize")]
     [InlineData(KimiDeclarationId.DictionaryStorageCapacity, "internal func capacity<K, V>(value: ref/Dictionary<K, V> during a) -> isize")]
     [InlineData(KimiDeclarationId.TextHeap, "public func heap(capacity: isize) -> HeapBuffer")]
+    [InlineData(KimiDeclarationId.TextWriter, "public func writer<W>(destination: uniq/W) -> Utf8Writer\nW is BufferWriter")] // R8-W2 b2-1.
     [InlineData(KimiDeclarationId.TextToString, "public func toString<T>(value: ref/T) -> string\nT is Utf8Format")]
     [InlineData(KimiDeclarationId.TextTryFormat, "public func tryFormat<T, length N>(\nvalue: ref/T, destination: uniq/[N of u8]\n) -> Result<Utf8Slice during destination, BufferFull>\nT is Utf8Format")]
     [InlineData(KimiDeclarationId.WriteLineUtf8, "public func writeLine(text: Text.Utf8Slice)")]
+    [InlineData(KimiDeclarationId.WriteLine, "public func writeLine(text: ref/string) => Console.writeLine(Text.utf8(text))")]
     public void OperationBodiesKeepTheirHeaders(KimiDeclarationId id, string header)
         => Assert.Equal(header, HeaderLines(Library.Value.Library.GetSymbol(id)!.Declaration, header));
 
     // SPEC 22.9.2, 22.9.3, 22.9.4 (R8-W1a, W1c): the buffer and Text operations that became bodies keep the headers their compiler
-    // function rows held, found by their container's path and name, since most of them have no catalog entry.
+    // function rows held, found by their container's path and name, since most of them have no catalog entry; so does Storage's
+    // shrinkArray (R8-A1a), which has no lang item (R8-G1 G1-6).
     [Theory]
+    [InlineData("Storage", "shrinkArray", "internal unsafe func shrinkArray(handle: raw/ArrayRepr<u8>, stride: isize)")]
     [InlineData("Text.FixedBuffer", "bytes", "public func bytes(self: ref/Self) -> Slice<u8>")]
     [InlineData("Text.FixedBuffer", "text", "public func text(self: ref/Self) -> Result<Text.Utf8Slice, Text.InvalidUtf8>")]
     [InlineData("Text.FixedBuffer", "validate", "public func validate(self: uniq/Self) -> Result<(), Text.InvalidUtf8>")]
@@ -538,7 +612,7 @@ public partial class KimiLibraryShapeTest
     [InlineData("Wrapping", "public struct Wrapping<T>")]
     [InlineData("BufferFull", "public struct BufferFull")]
     [InlineData("WriteWindow", "public struct WriteWindow {source}\nlet state: raw/u8 during source\nlet start: isize\npublic var written: isize\npublic var remaining: isize\nlet loan: Loan<uniq/u8 during source>")]
-    [InlineData("Utf8Writer", "public struct Utf8Writer {target}\nlet destination: raw/u8 during target\nlet dispatch: raw/u8 during static\nlet kind: isize\nvar failed: bool\ninternal var hint: isize\nvar pending: raw/u8 during static\nvar pendingLength: isize\nlet logicalLength: isize\nlet loan: Loan<uniq/u8 during target>")]
+    [InlineData("Utf8Writer", "public struct Utf8Writer {target}\nlet destination: raw/u8 during target\nlet dispatch: raw/u8 during static\nlet kind: WriterDestination\nvar failed: bool\ninternal var hint: isize\nvar pending: raw/u8 during static\nvar pendingLength: isize\nlet loan: Loan<uniq/u8 during target>")]
     [InlineData("Text.FixedBuffer", "public struct FixedBuffer {source}\nlet data: raw/u8 during source\npublic let capacity: isize\npublic var length: isize\nvar validated: isize\nlet loan: Loan<uniq/u8 during source>")]
     [InlineData("Text.HeapBuffer", "public struct HeapBuffer\nvar data: raw/u8 during self\npublic var capacity: isize\npublic var length: isize\nvar validated: isize\ndrop")]
     [InlineData("Text.Utf8Slice", "public struct Utf8Slice {source}\nlet value: Slice<u8> during source")]
@@ -606,12 +680,14 @@ public partial class KimiLibraryShapeTest
         Assert.Equal(2, ordinal);
     }
 
-    // Layouts read at fixed offsets, each row by its reader: Utf8Writer's by the kept runtime (ErasedWriterRuntime.ll.in:
-    // __kimi_text_writer zeroes its size and stores destination, dispatch and kind; __kimi_erased_reserve loads destination and dispatch);
-    // WriteWindow's by __kimi_erased_reserve (written and remaining, in the Result's payload at byte 8); FixedBuffer's and HeapBuffer's
-    // equal Storage.BufferRepr's, as which the library reads a window's state (Formatting.kimi, WriteWindow.commit, commitUtf8 and next).
+    // Layouts read at fixed offsets, each row by its reader: Utf8Writer's destination and dispatch by the kept runtime
+    // (ErasedWriterRuntime.ll.in: __kimi_erased_reserve loads them), its hint at 16 by FunctionCodegenTest.Interpolation's Hint helper,
+    // and its size and other offsets, which nothing reads at a fixed offset, are pinned because every adapter's generated size and
+    // Field addresses follow them, so that a layout change is an explicit edit of this row; WriteWindow's by __kimi_erased_reserve
+    // (written and remaining, in the Result's payload at byte 8); FixedBuffer's and HeapBuffer's equal Storage.BufferRepr's, as which
+    // the library reads a window's state (Formatting.kimi, WriteWindow.commit, commitUtf8 and next).
     [Theory]
-    [InlineData("Utf8Writer", 64, "destination", 0, "dispatch", 8, "kind", 16, "hint", 24, "pending", 32, "pendingLength", 40, "logicalLength", 48, "failed", 56)]
+    [InlineData("Utf8Writer", 48, "destination", 0, "dispatch", 8, "hint", 16, "pending", 24, "pendingLength", 32, "kind", 40, "failed", 44)]
     [InlineData("Text.FixedBuffer", 32, "data", 0, "capacity", 8, "length", 16, "validated", 24)]
     [InlineData("Text.HeapBuffer", 32, "data", 0, "capacity", 8, "length", 16, "validated", 24)]
     [InlineData("WriteWindow", 32, "state", 0, "start", 8, "written", 16, "remaining", 24)]
@@ -626,9 +702,9 @@ public partial class KimiLibraryShapeTest
         }
     }
 
-    // The kept runtime's routines are glue over the library's named layouts (plan Q5, B4's guard): __kimi_text_writer zeroes
-    // Utf8Writer's size and stores destination, dispatch and kind at their offsets; __kimi_erased_reserve loads destination and dispatch
-    // and checks the window's written and remaining in the Result's payload at byte 8.
+    // The kept runtime's routine is glue over the library's named layouts (plan Q5, B4's guard): __kimi_erased_reserve loads destination
+    // and dispatch (R8-M18's lasting pair) and checks the window's written and remaining in the Result's payload at byte 8. Since R8-W2
+    // b2-1 Text.writer's body stores the adapter (fail-before: __kimi_text_writer zeroed its size and stored destination, dispatch, kind).
     [Fact]
     public void RuntimeGlueMatchesTheNamedLayouts()
     {
@@ -647,12 +723,9 @@ public partial class KimiLibraryShapeTest
         var (writer, writerType) = Layout("Utf8Writer");
         var (window, windowType) = Layout("WriteWindow");
         int At(TypeLayout layout, BoundType type, string field) => layout.FieldOffsets.Span[AdtDef.IndexOf(type, field)];
-        Assert.Equal(0, At(writer, writerType, "destination")); // Stored and loaded at the adapter's address.
+        Assert.Equal(0, At(writer, writerType, "destination")); // Loaded at the adapter's address.
         foreach (var glue in new[]
         {
-            $"  call void @llvm.memset.p0.i64(ptr %ret, i8 0, i64 {writer.Size}, i1 false)\n  store ptr %self, ptr %ret, align 8\n",
-            $"  %dispatchp = getelementptr i8, ptr %ret, i64 {At(writer, writerType, "dispatch")}\n" +
-                $"  %kindp = getelementptr i8, ptr %ret, i64 {At(writer, writerType, "kind")}\n",
             $"  %destination = load ptr, ptr %writer, align 8\n  %functionp = getelementptr i8, ptr %writer, i64 {At(writer, writerType, "dispatch")}\n",
             $"  %writtenp = getelementptr i8, ptr %ret, i64 {8 + At(window, windowType, "written")}\n" +
                 $"  %remainingp = getelementptr i8, ptr %ret, i64 {8 + At(window, windowType, "remaining")}\n",
@@ -734,7 +807,7 @@ public partial class KimiLibraryShapeTest
 
     // The same-named functions of a container, including those of its conditional conformance blocks, or its same-named
     // nested declarations, in source order (the order of catalog overload positions); an explicit specialization has no name
-    // (SPEC 8.13.3), so it is none of them, as in KimiLibrary.FindDeclaration.
+    // (SPEC 8.13.3), so it is none of them.
     private static List<Koto> Declarations(DeclarationContainerKoto container, string name, bool function)
     {
         var found = new List<Koto>();

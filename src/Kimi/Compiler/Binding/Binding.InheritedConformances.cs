@@ -330,8 +330,8 @@ public sealed partial class Binding
 
     // SPEC 8.8.2: each inherited path's conformance scope, the heir D and its premises P (Register copies the declared path's) at its
     // declared Self (BoundConformancePath.DeclaredPath), one step per path; none where that Self was refused. Built once per pass after
-    // the table's reset (ImplTable.Reset empties it) and before its readers, the inline layouts' heir nodes and
-    // VerifyInheritedConformance, which read it and never build it.
+    // the pass's registrations (ImplTable resets each path, its scope included, at its first access in the pass) and before its readers,
+    // the inline layouts' heir nodes and VerifyInheritedConformance, which read it and never build it.
     private void PrepareInheritedScopes()
     {
         foreach (var path in this.impls.Paths)

@@ -17,7 +17,7 @@ public sealed partial class Binding
 
     // Whole-contract equality includes fixed Origins and alpha-equivalent per-call binders, not just the storage Type.
     private static bool SameCallableSignature(BoundType a, BoundType b)
-        => ReferenceEquals(a, b) || (IsSubtype(a, b, FunctionTypeBinder(a)) && IsSubtype(b, a, FunctionTypeBinder(b)));
+        => ReferenceEquals(a, b) || (IsSubtype(a, b, a.Binder) && IsSubtype(b, a, b.Binder));
 
     private static bool SameProofPremise(BoundConstraint a, BoundConstraint b)
     {
@@ -210,7 +210,9 @@ public sealed partial class Binding
         {
             var candidate = this.callableSelectionParties[failure.Start + i];
             var at = candidate.Context;
-            foreach (var syntax in this.nodes)
+
+            // After the Bind (ReportDiagnostics): every pass's nodes.
+            foreach (var syntax in this.nodesView)
             {
                 if (syntax is IsKoto clause && ReferenceEquals(clause.BoundConstraint, candidate.Fact))
                 {

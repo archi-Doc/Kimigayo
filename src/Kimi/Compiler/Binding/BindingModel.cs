@@ -313,8 +313,6 @@ public sealed class BindingSymbol
 
     public IntrinsicKind Intrinsic { get; internal init; }
 
-    public CompilerFunctionKind CompilerFunction { get; internal init; }
-
     public Koto Declaration { get; }
 
     public BoundType? Type { get; internal set; }
@@ -334,6 +332,15 @@ public sealed class BindingSymbol
     public int ReceiverIndex { get; internal set; } = -1;
 
     internal KimiDeclarationId? LibraryDeclaration { get; init; }
+
+    // SPEC 22.5.1, IMPL 21.3.4: whether this library function's declaration carries `#CallerLocation`, set by the library's registration
+    // on the original declaration's symbol only; a specialization has it through its original (TyCtxt.Original).
+    internal bool CallerLocation { get; init; }
+
+    // Plan 5.8, IMPL 21.3.4: how a call of this function is served, set where the symbol is made: a library declaration's
+    // `#Intrinsic("Name")` (Fail with its code) by the library's registration on the original declaration's symbol, $abort's
+    // Intrinsic, a built-in target's Shim (PrepareBuiltinTargets); otherwise Body.
+    internal IntrinsicDisposition Definition { get; init; }
 
     internal List<BoundOrigin>? AggregateInputOrigins { get; set; }
 
@@ -413,9 +420,15 @@ public sealed class BindingSymbol
 }
 
 /// <summary>An immutable complete type; constructed types are interned within a compilation.</summary>
-/// <remarks>Interning makes identity the type equality, so equality and hashing never walk the fields.</remarks>
-public sealed record BoundType
+/// <remarks>Interning makes identity the type equality, so equality and hashing never walk the fields. TyCtxt makes every Type but the
+/// static ones below: the interned ones (TyCtxt.Intern) and the parameter Types (TyCtxt.Parameter). Each carries the dense id its
+/// maker gave it (DECISIONS BU-220), so the constructors are called only there; an ArchitectureRulesTest row reads the IL for it.</remarks>
+public sealed class BoundType : IEquatable<BoundType?>
 {
+    // DECISIONS BU-220: the static Types hold the ids 1..StaticCount from one fixed list: Unit, Never, Boolean, the sixteen other
+    // primitives in CreatePrimitives' order, Range, then the twelve wrapping Scalars; each compilation's TyCtxt numbers its own after them.
+    internal const int StaticCount = 32;
+
     private readonly NumericCategory numeric;
     private readonly byte width;
 
@@ -437,10 +450,12 @@ public sealed record BoundType
     private readonly bool hasAbstractPart;
     private readonly int height;
 
-    internal BoundType(string name, BoundTypeKind kind, BindingSymbol? symbol = null, SemanticsKind semantics = SemanticsKind.Owner, BoundType[]? components = null, long length = 0, BoundOrigin? origin = null, BoundOrigin[]? originArguments = null, BoundLength? lengthExpression = null, BoundLength?[]? lengthArguments = null, Subst? closureContext = null)
+    internal BoundType(int id, string name, BoundTypeKind kind, BindingSymbol? symbol = null, SemanticsKind semantics = SemanticsKind.Owner, BoundType[]? components = null, long length = 0, BoundOrigin? origin = null, BoundOrigin[]? originArguments = null, BoundLength? lengthExpression = null, BoundLength?[]? lengthArguments = null, Subst? closureContext = null, Koto? binder = null)
     {
+        this.Id = id;
         this.Name = name;
         this.Kind = kind;
+        this.Binder = binder;
         this.Symbol = symbol;
         this.Semantics = semantics;
         this.Components = components ?? [];
@@ -518,8 +533,9 @@ public sealed record BoundType
 
     // SPEC 3.1.1: the wrapping integer Scalar Wrapping<T> over one integer Type, which keeps T's representation and
     // signedness. It is a Primitive by Core identity: no declaration, components or storage, and identity by reference.
-    private BoundType(string name, BoundType integer)
+    private BoundType(int id, string name, BoundType integer)
     {
+        this.Id = id;
         this.Name = name;
         this.Kind = BoundTypeKind.Primitive;
         this.Semantics = SemanticsKind.Owner;
@@ -537,6 +553,12 @@ public sealed record BoundType
         Unsigned,
         Float,
     }
+
+    public static BoundType Unit { get; } = new(1, "()", BoundTypeKind.Primitive);
+
+    public static BoundType Never { get; } = new(2, "Never", BoundTypeKind.Primitive);
+
+    public static BoundType Boolean { get; } = new(3, "bool", BoundTypeKind.Primitive);
 
     /// <summary>Gets the canonical type name.</summary>
     public string Name { get; }
@@ -572,12 +594,6 @@ public sealed record BoundType
     /// <summary>Gets a value indicating whether this is a numeric Type: integer, wrapping integer or floating-point.</summary>
     public bool IsNumeric => this.numeric != NumericCategory.None;
 
-    public static BoundType Unit { get; } = new("()", BoundTypeKind.Primitive);
-
-    public static BoundType Never { get; } = new("Never", BoundTypeKind.Primitive);
-
-    public static BoundType Boolean { get; } = new("bool", BoundTypeKind.Primitive);
-
     internal static readonly Dictionary<string, BoundType> Primitives = CreatePrimitives();
 
     // Frequently requested primitives; they are the same instances as the Primitives entries.
@@ -589,7 +605,7 @@ public sealed record BoundType
     internal static readonly BoundType ISize = Primitives["isize"];
     internal static readonly BoundType USize = Primitives["usize"];
 
-    internal static readonly BoundType Range = new("Range", BoundTypeKind.Range);
+    internal static readonly BoundType Range = new(20, "Range", BoundTypeKind.Range); // After the sixteen primitives, 4..19.
 
     internal static readonly BoundType Char = Primitives["char"];
 
@@ -603,9 +619,18 @@ public sealed record BoundType
     /// <returns>The interned <c>Wrapping&lt;integer&gt;</c>.</returns>
     internal static BoundType WrappingOf(BoundType integer) => WrappingScalars[integer];
 
+    // DECISIONS BU-220: the Type's dense id, a key only (equality stays identity): 1..StaticCount a static's, else the order in which its
+    // compilation's TyCtxt made it, from StaticCount + 1; 0 is no Type.
+    internal int Id { get; }
+
     // A closure an instance closed keeps that instance's substitution (SPEC 6.1.3, 8.1.3; DECISIONS R5-M36), interned and shared by the instance's
     // closures, even when none of its slots occupy capture storage; a Field initializer's keeps its Type's instance (TyCtxt.HeldType, BU-60).
     internal Subst? ClosureContext { get; }
+
+    // SPEC 8.10, 15.3.4: a Function Type's per-call binder, the Function Type syntax that declares it, while it quantifies the outer
+    // Origin of one of its own direct inputs; null where it quantifies none and on every other kind. An Input Origin of another
+    // binder inside it is fixed, even at its own slot index. Part of the Type's identity (TyCtxt.Intern), kept by every rebuild.
+    internal Koto? Binder { get; }
 
     // Function Item length bindings use declaration slots; Type slots are null. Components contain only actual Types.
     internal BoundLength?[] LengthArguments { get; } = [];
@@ -706,6 +731,11 @@ public sealed record BoundType
     /// <inheritdoc/>
     public override int GetHashCode() => System.Runtime.CompilerServices.RuntimeHelpers.GetHashCode(this);
 
+    /// <summary>Gets the Type's diagnostic spelling (Binding.DiagnosticTypeName), which internal-invariant messages print; records
+    /// name a Type through the diagnostics adapter.</summary>
+    /// <returns>The spelling.</returns>
+    public override string ToString() => Binding.DiagnosticTypeName(this);
+
     // Whether two Types agree in every part of their own layer but their Origin and Origin arguments, which each identity compares in
     // its own way (exactly, modulo open Origins, except omitted ones). The Name is a primitive's whole layer (SPEC 3.1, 3.8: `i32` and
     // `i64`, `Wrapping<T>` and `T` differ), and a part of any other layer its Symbol or Kind already decides. A raw layer's Origin is
@@ -743,9 +773,10 @@ public sealed record BoundType
             ["()"] = Unit,
             ["bool"] = Boolean,
         };
+        var id = Boolean.Id;
         foreach (var name in new[] { "char", "string", "i8", "i16", "i32", "i64", "i128", "isize", "u8", "u16", "u32", "u64", "u128", "usize", "f32", "f64" })
         {
-            result.Add(name, new(name, BoundTypeKind.Primitive));
+            result.Add(name, new(++id, name, BoundTypeKind.Primitive));
         }
 
         return result;
@@ -754,11 +785,12 @@ public sealed record BoundType
     private static Dictionary<BoundType, BoundType> CreateWrappingScalars()
     {
         var result = new Dictionary<BoundType, BoundType>(12);
+        var id = Range.Id;
         foreach (var primitive in Primitives.Values)
         {
             if (primitive.IsInteger)
             {
-                result.Add(primitive, new("Wrapping<" + primitive.Name + ">", primitive));
+                result.Add(primitive, new(++id, "Wrapping<" + primitive.Name + ">", primitive));
             }
         }
 

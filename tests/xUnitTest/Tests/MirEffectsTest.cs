@@ -13,6 +13,8 @@ namespace XunitTest;
 /// the first line of its subject and its views.</summary>
 public sealed partial class MirEffectsTest(ITestOutputHelper output)
 {
+    private const int All = Kimi.Compiler.Parsing.SyntaxTable.LibraryModule + 1; // The root range of every module: every obligation judged.
+
     private const string Sink = "contract Sink\n    func put(self: uniq/Self, value: i32) -> Result<(), BufferFull>\n        effect confined\n";
 
     private const string Witness = "struct S\n    Self is Sink\n    var loud: Loud = Loud.init()\n" +
@@ -103,9 +105,7 @@ public sealed partial class MirEffectsTest(ITestOutputHelper output)
     [InlineData("    public func c() => H.a()\n", "")]
     [InlineData("    public func c()\n        H.a()\n        Console.writeLine(\"c\")\n", Failed)]
     public void SummariesAreTransitive(string last, string expected)
-        => Assert.Equal(
-            Expected(expected),
-            Problems(Sink + Loud + "group H\n    public func a() => H.b()\n    public func b() => H.c()\n" + last + Witness + "        H.a()\n        return .Ok(())\n"));
+        => Assert.Equal(Expected(expected), Problems(Transitive(last)));
 
     // SPEC 8.15, 8.11.3 (plan Appendix B X2): a requirement call in a generic body has the bounds of that body's own premises, never those
     // of an instance: the helper calls take under `S is Source`, which declares no confined bound, though Feed also proves Confined.
@@ -632,19 +632,61 @@ public sealed partial class MirEffectsTest(ITestOutputHelper output)
                 "    public init(key: K) => self.key = key@move\n    public func put(self: uniq/Self, value: i32) -> Result<(), BufferFull>\n" +
                 "        _ = self.table.tryGet(self.key)\n        return .Ok(())\n"));
 
-    // SPEC 8.11.2, 22.9.1 (R8-W1b-3, C-188): A4 classes a Storage.erasedReserve call, ErasedReserve's producer (MirDescriptors: no
-    // effect of its own), by its kind's family, Inputs, as Text.writer's ErasedWriter: the Writer's reserve it runs is checked against
-    // its confined bound where Text.writer erases it. S2a's built-in bodies are its first callers (AConfinedLeafWriteReportsNothing).
+    // SPEC 8.11.2 (R8-G1 rows D1, D2): a confined slot's call reaches a body-less intrinsic's class through a library body. Console
+    // output is an environment effect, so a slot whose body calls the view overload of Console.writeLine, whose body calls
+    // Console.writeStdout, fails its bound: one record at the slot (D1); its twin without the call reports none. Raw.allocate and
+    // Raw.release act on their inputs and the allocator, which confined permits (D2).
+    [Theory]
+    [InlineData("        let text = \"x\"\n        Console.writeLine(Text.utf8(text@ref))\n", "UnsatisfiedEffectBound_Kd public virtual func read(self: objref/Self) -> i32 1")]
+    [InlineData("        let x = 1\n", "")]
+    [InlineData("        let p = Kimi.Raw.allocate<i32>(count: 1)\n        unsafe\n            Kimi.Raw.release(storage: p)\n", "")]
+    public void AConfinedSlotOwesTheClassOfTheIntrinsicItReaches(string body, string expected)
+        => Assert.Equal(
+            Expected(expected),
+            Problems("open struct Base\n    public virtual func read(self: objref/Self) -> i32\n        effect confined\n" + body + "        return 1\n"));
+
+    // SPEC 8.11.2, 22.1's Test row (R8-G1 row D3): Test.tempDirectory, the case's temporary directory from the environment, is an
+    // environment effect, so a confined slot of a test-only source in a test build that calls it fails its bound: one record at the slot;
+    // its twin without the call reports none. A direct call takes the intrinsic's class from its descriptor; a call through its function
+    // item takes it from Binding's category of the function (MirEffects.Class): the same record, and none through Raw.allocate's item,
+    // whose Storage is created in the call (SPEC 8.11.2's table; Raw.release on it is a raw access, Allocation is permitted).
+    [Theory]
+    [InlineData("        let path = Test.tempDirectory()\n", "UnsatisfiedEffectBound_Kd public virtual func read(self: objref/Self) -> i32 1")]
+    [InlineData("        let path = \"x\"\n", "")]
+    [InlineData("        let f = Test.tempDirectory\n        let path = f()\n", "UnsatisfiedEffectBound_Kd public virtual func read(self: objref/Self) -> i32 1")]
+    [InlineData("        let f = Kimi.Raw.allocate<i32>\n        let p = f(1)\n        unsafe\n            Kimi.Raw.release(storage: p)\n", "")]
+    public void AConfinedTestSlotOwesTheTemporaryDirectorysClass(string body, string expected)
+    {
+        var c = Compilation.CreateForTest();
+        c.IsTestBuild = true;
+        Assert.True(c.Prepare(WindowsProfile.Target));
+        c.Kotonoha.AddSource(new SourceDocument(
+            "Tests.kimi",
+            "open struct Base\n    public virtual func read(self: objref/Self) -> i32\n        effect confined\n" + body + "        return 1\n#Test\nfunc sample() => ()\n",
+            isTestOnly: true));
+        Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c));
+        Assert.True(c.Binding.CheckTestStartup().IsComplete, MinimalEmissionTest.Describe(c));
+        Assert.Equal(Expected(expected), Problems(c, c.BuildMir()));
+    }
+
+    // SPEC 8.11.2, 22.9.1 (R8-W1b-3, C-188; R8-W2 b2-1): A4 classes a Storage.erasedReserve call, ErasedReserve's producer (MirDescriptors:
+    // no effect of its own), as an intrinsic (TyCtxt.Bodyless) by that row, Inputs, as Storage.reserveDispatch's, the call of Text.writer's
+    // body that erases the Writer's reserve: the reserve it runs is checked against its confined bound where Text.writer erases it. S2a's
+    // built-in bodies are its first callers (AConfinedLeafWriteReportsNothing).
     [Fact]
-    public void AnErasedReserveCallIsClassedByItsStorageFamily()
+    public void AnErasedReserveCallIsClassedByItsIntrinsicRow()
     {
         var library = Compilation.CreateForTest().Library;
-        Assert.Equal(CompilerFunctionEffect.Inputs, TyCtxt.Bodyless(library.Function(CompilerFunctionKind.StorageErasedReserve)!));
-        Assert.Equal(TyCtxt.Bodyless(library.Function(CompilerFunctionKind.TextWriter)!), TyCtxt.Bodyless(library.Function(CompilerFunctionKind.StorageErasedReserve)!));
+        var reserve = LibrarySource.Symbol(library, "Storage.erasedReserve");
+        var dispatch = LibrarySource.Symbol(library, "Storage.reserveDispatch");
+        Assert.Equal((BodylessKind.Intrinsic, IntrinsicId.ErasedReserve), (TyCtxt.Bodyless(reserve), reserve.Definition.Id));
+        Assert.Equal((BodylessKind.Intrinsic, IntrinsicId.ReserveDispatch), (TyCtxt.Bodyless(dispatch), dispatch.Definition.Id));
+        Assert.Equal(MirDescriptors.Of(IntrinsicId.ReserveDispatch).Effects, MirDescriptors.Of(IntrinsicId.ErasedReserve).Effects);
+        Assert.Equal((MirEffect.None, (sbyte)0), (MirDescriptors.Of(IntrinsicId.ReserveDispatch).Effects, MirDescriptors.Of(IntrinsicId.ReserveDispatch).Arity));
         Assert.Equal((MirEffect.None, (sbyte)2), (MirDescriptors.Of(IntrinsicId.ErasedReserve).Effects, MirDescriptors.Of(IntrinsicId.ErasedReserve).Arity));
     }
 
-    // SPEC 8.11.2, 22.10.2 (R8-S2c, C-244): A4 classes a Storage.formatFloat call, FormatFloat's producer, by its kind's family, Inputs; its
+    // SPEC 8.11.2, 22.10.2 (R8-S2c, C-244): A4 classes a Storage.formatFloat call, FormatFloat's producer, as an intrinsic by its row, Inputs; its
     // descriptor states no effect of its own over its three operands (the bits, the width flag and the destination), and its signature's
     // `uniq` destination states the one write (fail-before: the descriptor's arity was -1, the kind did not exist).
     [Fact]
@@ -653,12 +695,12 @@ public sealed partial class MirEffectsTest(ITestOutputHelper output)
         var library = Compilation.CreateForTest().Library;
         var descriptor = MirDescriptors.Of(IntrinsicId.FormatFloat);
         Assert.Equal(
-            (CompilerFunctionEffect.Inputs, (MirEffect.None, (sbyte)3)),
-            (TyCtxt.Bodyless(library.Function(CompilerFunctionKind.StorageFormatFloat)!), (descriptor.Effects, descriptor.Arity)));
+            (BodylessKind.Intrinsic, IntrinsicId.FormatFloat, (MirEffect.None, (sbyte)3)),
+            (TyCtxt.Bodyless(LibrarySource.Symbol(library, "Storage.formatFloat")), LibrarySource.Symbol(library, "Storage.formatFloat").Definition.Id, (descriptor.Effects, descriptor.Arity)));
     }
 
-    // SPEC 8.11.2, 22.10.2 (R8-S2b2, C-258): A4 classes a Storage.formatInteger128 call, FormatInteger128's producer, by its kind's family,
-    // Inputs; its descriptor states no effect of its own over its two operands (the value and the destination: the routine neither
+    // SPEC 8.11.2, 22.10.2 (R8-S2b2, C-258): A4 classes a Storage.formatInteger128 call, FormatInteger128's producer, as an intrinsic by its
+    // row, Inputs; its descriptor states no effect of its own over its two operands (the value and the destination: the routine neither
     // allocates nor Aborts), and its signature's `uniq` destination states the one write (fail-before: the kind did not exist, the
     // descriptor's arity was -1).
     [Fact]
@@ -667,8 +709,8 @@ public sealed partial class MirEffectsTest(ITestOutputHelper output)
         var library = Compilation.CreateForTest().Library;
         var descriptor = MirDescriptors.Of(IntrinsicId.FormatInteger128);
         Assert.Equal(
-            (CompilerFunctionEffect.Inputs, (MirEffect.None, (sbyte)2)),
-            (TyCtxt.Bodyless(library.Function(CompilerFunctionKind.StorageFormatInteger128)!), (descriptor.Effects, descriptor.Arity)));
+            (BodylessKind.Intrinsic, IntrinsicId.FormatInteger128, (MirEffect.None, (sbyte)2)),
+            (TyCtxt.Bodyless(LibrarySource.Symbol(library, "Storage.formatInteger128")), LibrarySource.Symbol(library, "Storage.formatInteger128").Definition.Id, (descriptor.Effects, descriptor.Arity)));
     }
 
     // SPEC 8.11.2, 22.9.1 (R8-S2a, C-188; R8-S2b1, C-254): a confined caller's write(true) runs BoolFormat's body and its write of an i64
@@ -690,6 +732,27 @@ public sealed partial class MirEffectsTest(ITestOutputHelper output)
     [InlineData("        var bytes = [3 of 0@u8]\n        var buffer = Text.fixed(bytes@uniq)\n", "340282366920938463463374607431768211455@u128")]
     public void AConfinedLeafWriteReportsNothing(string buffer, string value)
         => Assert.Empty(Problems(Sink + Loud + Witness + buffer + $"        var writer = Text.writer(buffer@uniq)\n        _ = writer.write({value})\n        return .Ok(())\n"));
+
+    // SPEC 8.11.2, 8.11.3, 22.9.1 (R8-W2 b2-1; the Middle's C-330 note N2, its twin ef2): a user Writer's reserve, confined by
+    // BufferWriter.reserve's bound, that makes a local adapter over a local user Writer and writes through it runs Text.writer's generic
+    // body, whose Storage.reserveDispatch call is classed by its intrinsic row, Inputs (AnErasedReserveCallIsClassedByItsIntrinsicRow), and
+    // the write's erased reserve is checked against Inner's own confined bound, so Outer reports nothing (the rows above reach only the
+    // two specializations). The counterpart, Inner's reserve writing to the console, is Inner's record at its clause and the only one:
+    // Outer's erased call still meets the bound it is checked against. Rows labelled from SPEC before running.
+    [Theory]
+    [InlineData("", "")]
+    [InlineData("        Console.writeLine(\"reserve\")\n", "IncompatibleContractImplementation_Kd Self is BufferWriter 1")]
+    public void AConfinedReservesAdapterOverAUserWriterReportsNothingOfItsOwn(string noise, string expected)
+        => Assert.Equal(
+            Expected(expected),
+            Problems(
+                "struct Inner\n    Self is BufferWriter\n    public var count: i32 = 0\n    public init() => ()\n" +
+                "    public func reserve(self: uniq/Self, minimum: isize) -> Result<WriteWindow, BufferFull>\n        self.count += 1\n" + noise +
+                "        return .Err(BufferFull.init())\nstruct Outer\n    Self is BufferWriter\n    public var calls: i32 = 0\n    public init() => ()\n" +
+                "    public func reserve(self: uniq/Self, minimum: isize) -> Result<WriteWindow, BufferFull>\n        var inner = Inner.init()\n" +
+                "        var writer = Text.writer(inner@uniq)\n        _ = (writer@uniq).write(1)\n        self.calls += inner.count\n" +
+                "        return .Err(BufferFull.init())\nfunc run() -> i32\n    var outer = Outer.init()\n    var writer = Text.writer(outer@uniq)\n" +
+                "    _ = (writer@uniq).write(5)\n    return outer.calls\n"));
 
     // SPEC 4.9.6, 8.11.3: a formatting function's row runs the value's Utf8Format witness: the witness table's bodies for the integers
     // (R8-S2b1: the IntegerFormat body's comparison and conversions on its I are built-in operators, no calls, so its summary is the same
@@ -926,11 +989,29 @@ public sealed partial class MirEffectsTest(ITestOutputHelper output)
         Assert.Equal(["Unsupported_Kd Self is Sink 1"], Problems(Sink + Loud + Chain + Witness + "        _ = G<i32>.init()\n        return .Ok(())\n"));
     }
 
-    // R4-M1 (G126): A4 records the program version MirProgram.Version names, whatever body comes first: a fresh A4 recording the bodies
-    // last first, so that body 0's first view comes last and must not start a version, finds the witness's failure, which composes its
-    // call of G.noisy (before, that view restarted the recording and lost every other body); the next version starts empty, so recording
-    // it in the driver's order takes a fresh A4's evaluations; and a version whose bodies Local never recorded, here one without bodies,
-    // solves no node (before, Run evaluated the previous version's nodes against it).
+    // PLAN G951 E3 (DECISIONS R5-M168's input rule): A4 judges the obligations whose subject is in the root range; one outside it is the
+    // library check's (MirAnalysisTest.TheLibraryHasNoAnalysisProblem, the library as a root module), so the failing witness of S
+    // (LocalRecordsTheProgramsVersion's program) is not judged under a root range that excludes its module.
+    [Fact]
+    public void AnObligationOutsideTheRootRangeIsNotJudged()
+    {
+        var c = MirBuildTest.Compile(Sink + Loud + "group G\n    public func noisy() => Console.writeLine(\"x\")\n" + Witness + "        G.noisy()\n" +
+            "        return .Ok(())\npublic func main() => ()\n");
+        var program = c.BuildMir();
+        var (cases, flow) = (new MirCases(c.Types), new MirDataflow(new MirReach()));
+        var (outside, inside) = (new MirReport(), new MirReport());
+        Analyze(new MirEffects(c.Types, cases, flow), flow, cases, program, outside, 0);
+        Analyze(new MirEffects(c.Types, cases, flow), flow, cases, program, inside, c.SourceModules.Length);
+        Assert.Empty(Problems(c, outside));
+        Assert.Equal([Failed], Problems(c, inside));
+    }
+
+    // R4-M1 (G126; PLAN G950's begin path): A4 records the segment its begin call starts (MirEffects.BeginLibrary, BeginProgram), whatever
+    // body comes first: a fresh A4 recording each segment's bodies last first, so that body 0's first view comes last and must not start a
+    // version, finds the witness's failure, which composes its call of G.noisy (before G126, that view restarted the recording and lost
+    // every other body); the next begin starts empty, so recording the next version in the driver's order takes a fresh A4's evaluations;
+    // and a begin with no body recorded, here over a program without bodies, solves no node (before G126, Run evaluated the previous
+    // version's nodes).
     [Fact]
     public void LocalRecordsTheProgramsVersion()
     {
@@ -943,14 +1024,25 @@ public sealed partial class MirEffectsTest(ITestOutputHelper output)
         program.Version++;
         Assert.Equal([Failed], Record(lastFirst: false));
         var fresh = new MirEffects(c.Types, cases, flow);
-        Analyze(fresh, flow, cases, program, new MirReport());
+        Analyze(fresh, flow, cases, program, new MirReport(), All);
         Assert.Equal(fresh.Evaluations, effects.Evaluations);
-        effects.Run(new MirProgram { Version = program.Version + 1 }, new MirReport());
+        effects.BeginLibrary();
+        Assert.True(effects.Run(new MirProgram { Version = program.Version + 1 }, new MirReport(), All));
         Assert.Equal(0, effects.Evaluations);
 
         string[] Record(bool lastFirst)
         {
-            var bodies = program.Bodies.ToArray();
+            effects.BeginLibrary();
+            Segment(program.LibraryBodies.ToArray(), lastFirst);
+            effects.BeginProgram();
+            Segment(program.ProgramBodies.ToArray(), lastFirst);
+            var report = new MirReport();
+            Assert.True(effects.Run(program, report, All));
+            return Problems(c, report);
+        }
+
+        void Segment(MirBody[] bodies, bool lastFirst)
+        {
             for (var i = 0; i < bodies.Length; i++)
             {
                 var body = bodies[lastFirst ? bodies.Length - 1 - i : i];
@@ -961,27 +1053,36 @@ public sealed partial class MirEffectsTest(ITestOutputHelper output)
                     effects.Local(program, body, view);
                 }
             }
-
-            var report = new MirReport();
-            effects.Run(program, report);
-            return Problems(c, report);
         }
     }
 
-    // The driver's A4 rows over a built program and its A2 table: each body begun, its views' local facts, then the run.
-    private static void Analyze(MirEffects effects, MirDataflow flow, MirCases cases, MirProgram program, MirReport report)
+    // SummariesAreTransitive's program: S.put, which implements Sink.put (effect confined), calls H.a, which reaches the last function,
+    // H.c, through H.b (G950KeptPathTest's row M4 reads it in later versions).
+    internal static string Transitive(string last)
+        => Sink + Loud + "group H\n    public func a() => H.b()\n    public func b() => H.c()\n" + last + Witness + "        H.a()\n        return .Ok(())\n";
+
+    // The driver's A4 rows over a built program and its A2 table: per segment, the segment begun, each body begun and its views' local
+    // facts; then the run, clean since the table holds every body.
+    private static void Analyze(MirEffects effects, MirDataflow flow, MirCases cases, MirProgram program, MirReport report, int rootModules)
     {
-        foreach (var body in program.Bodies)
+        effects.BeginLibrary();
+        Record(program.LibraryBodies);
+        effects.BeginProgram();
+        Record(program.ProgramBodies);
+        Assert.True(effects.Run(program, report, rootModules));
+
+        void Record(ReadOnlySpan<MirBody> bodies)
         {
-            flow.Begin(body);
-            for (var view = 0L; view < MirCases.Count(body); view++)
+            foreach (var body in bodies)
             {
-                cases.Select(body, view);
-                effects.Local(program, body, view);
+                flow.Begin(body);
+                for (var view = 0L; view < MirCases.Count(body); view++)
+                {
+                    cases.Select(body, view);
+                    effects.Local(program, body, view);
+                }
             }
         }
-
-        effects.Run(program, report);
     }
 
     private static string[] Expected(string expected) => expected.Length == 0 ? [] : expected.Split('|');
@@ -1044,7 +1145,7 @@ public sealed partial class MirEffectsTest(ITestOutputHelper output)
                 var flow = new MirDataflow(new MirReach());
                 var effects = new MirEffects(c.Types, cases, flow);
                 analyses[i] = (effects, flow, cases, program, report);
-                return () => Analyze(effects, flow, cases, program, report);
+                return () => Analyze(effects, flow, cases, program, report, All);
             });
             for (var i = 0; i < sizes.Length; i++)
             {
@@ -1052,9 +1153,9 @@ public sealed partial class MirEffectsTest(ITestOutputHelper output)
                 evaluations[i] = effects.Evaluations;
                 Assert.Equal(0, AllocationMeasurement.Measure(() =>
                 {
-                    program.Version++; // A new version of the same bodies, which Local starts.
+                    program.Version++; // A new version of the same bodies, which Analyze begins.
                     report.Clear();
-                    Analyze(effects, flow, cases, program, report);
+                    Analyze(effects, flow, cases, program, report, All);
                 }));
                 Assert.Equal(evaluations[i], effects.Evaluations);
             }
