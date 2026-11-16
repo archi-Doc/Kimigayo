@@ -474,6 +474,56 @@ public class BindingTest
         static int[] OriginRows(Compilation c) => c.Binding.Obligations.Where(static x => x.Body.IsBody).Select(x => c.Types.OriginRows(x.Body).Rows.Count).ToArray();
     }
 
+    // PLAN G949 (s1r1-design 8.9; n55-design 2.3 rule 2): a keyed PassPart collection's one find reads the layer's map first, so a key
+    // both parts hold reads the layer's row, and the running pass's map only for a key the layer's lacks; null when neither holds it.
+    [Fact]
+    public void AKeyedPartCollectionIsFoundInTheLayersPartFirst()
+    {
+        var layer = new Dictionary<int, string> { [1] = "layer" };
+        var running = new Dictionary<int, string> { [1] = "program", [2] = "program" };
+        Assert.Same(layer, Binding.PassPart.Find(layer, running, 1, out var value));
+        Assert.Equal("layer", value);
+        Assert.Same(running, Binding.PassPart.Find(layer, running, 2, out value));
+        Assert.Equal("program", value);
+        Assert.Null(Binding.PassPart.Find(layer, running, 3, out _));
+    }
+
+    // PLAN G949, the localRegions batch (n55-design 2.3 rules 1-3; DECISIONS BU-220's D-9 line): the local-region graph is a PassPart
+    // collection. A Bind records its rows in the running pass's part, Binding's own until S1-r1b splits the library pass off, so the
+    // layer's part stays empty; rows moved after the Bind into the layer's part are found there, and each region's sources, walked again
+    // through them, equal the program part's. `held`'s region reaches b's borrow only through `view`'s row, so the walk reads a moved
+    // row past its first find too.
+    [Fact]
+    public void ALocalRegionInTheLayersPartIsFoundThere()
+    {
+        // A var local's region takes the sources of every value stored in it, `held`'s through `view`'s region (SPEC 15.3.6, 15.4.4,
+        // 15.6.5): valid.
+        var c = CompilationTestHelper.Parse("let a = 1\nlet b = 2\nvar view = a@ref\nview = b@ref\nvar held = view\nheld = a@ref\n" +
+            "require view@follow == 2 and held@follow == 1 else => $abort(\"view\")\n");
+        c.Bind();
+        Assert.True(c.Binding.Result.IsComplete);
+        var layer = c.Binding.Library.Layer.Part.Regions;
+        var own = (Dictionary<BoundOrigin, Binding.LocalRegion>)typeof(Binding).GetField("localRegions", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(c.Binding)!;
+        Assert.Empty(layer);
+        var sources = own.Keys.Select(x => (Origin: x, Sources: c.Binding.LocalRegionSources(x).ToArray())).ToArray();
+        Assert.Contains(sources, static x => x.Origin.Binder is VariableKoto { NameKoto: var name } && name.ToString() == "held" && x.Sources.Length >= 2);
+        try
+        {
+            foreach (var (origin, region) in own)
+            {
+                region.Version = -1; // Walked again, through the rows' new part.
+                layer.Add(origin, region);
+            }
+
+            own.Clear();
+            Assert.All(sources, x => Assert.Equal(x.Sources, c.Binding.LocalRegionSources(x.Origin).ToArray()));
+        }
+        finally
+        {
+            layer.Clear();
+        }
+    }
+
     // Moves a list Binding's pass wrote, its own part's, into the library layer's part.
     private static void Move<T>(Compilation c, string field, List<T> layer)
     {

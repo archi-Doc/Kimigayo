@@ -194,6 +194,29 @@ public partial class SyntaxIdTest
         }
     }
 
+    // G949 D2b-d's d10 for `associatedInference` (PLAN G949 S1-b2 commit 4): a conforming Type's inference batch is kept at its Type's
+    // declaration (SPEC 8.6.1), so an edit's renumbering moves it with its node: after two edits it is the same batch at the declaration
+    // and the column's arena is again its first. S's `X` is inferred from `x`'s result (SPEC 8.3), so S's conformance has a batch.
+    [Trait("Purpose", "Allocation")]
+    [Fact]
+    public void AnInferenceBatchMovesWithItsTypeAcrossEdits()
+    {
+        var c = MinimalEmissionTest.Analyze("contract K\n    associate X\n    func x(self: ref/Self) -> Self.X\nstruct S\n    Self is K\n    public func x(self: ref/Self) -> i32 => 0\n()");
+        Assert.True(c.Binding.Result.IsComplete);
+        var s = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<StructKoto>().Single();
+        var batch = c.Kotonoha.Syntax.Hir.Families.AssociatedInference.Get(s.SyntaxId);
+        Assert.NotNull(batch);
+        var before = Read<Array>(c.Kotonoha.Syntax.Hir.Families.AssociatedInference, "arena");
+        for (var i = 0; i < 2; i++)
+        {
+            c.Kotonoha.Syntax.Edit();
+            Assert.True(c.Binding.Bind(BindingMode.Final).IsComplete);
+        }
+
+        Assert.Same(before, Read<Array>(c.Kotonoha.Syntax.Hir.Families.AssociatedInference, "arena"));
+        Assert.Same(batch, c.Kotonoha.Syntax.Hir.Families.AssociatedInference.Get(s.SyntaxId));
+    }
+
     private static bool IsKept(FieldInfo field) => field.FieldType.IsGenericType && field.FieldType.GetGenericTypeDefinition() == typeof(PagedColumn<>);
 
     private static bool IsStamped(FieldInfo field) => field.FieldType.IsGenericType && field.FieldType.GetGenericTypeDefinition() == typeof(StampedColumn<,>);
