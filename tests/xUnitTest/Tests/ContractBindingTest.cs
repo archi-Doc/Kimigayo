@@ -1,5 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using System.Reflection;
 using Kimi;
 using Kimi.Compiler;
 using Kimi.Compiler.Parsing;
@@ -26,6 +27,10 @@ public class ContractBindingTest
 
     private const string Get32 = "\n    public func get(self: ref/Self) -> i32 => 0";
     private const string Get64 = "\n    public func get(self: ref/Self) -> i64 => 0";
+
+    // PLAN G949 S1-b1: three Contracts with one requirement each (Sources adds Types of their own sources conforming to them).
+    private const string ThreeContracts = "contract C\n    func get(self: ref/Self) -> i32\ncontract D\n    func get(self: ref/Self) -> i32\n" +
+        "contract E\n    func get(self: ref/Self) -> i32\n";
 
     private const string NeedOf = "func need<T>(v: T) -> T\n    T is ";
     private const string UseOfC = "\n    return v@move\nfunc use<T>(v: T) -> T\n    T is C\n    return need(v@move)";
@@ -881,6 +886,96 @@ public class ContractBindingTest
         var c = MinimalEmissionTest.Check(source);
         Assert.Equal(codes, string.Join(" ", TestDiagnostics.Of(c).Select(static x => x.Code)));
     }
+
+    // PLAN G949 S1-b1 d4 (DECISIONS BU-220): an edit that removes a conformance keeps no identity or path of it after the next pass;
+    // the overlay drops what the pass did not register at the end of the Bind (before: the identity stayed, unregistered and named).
+    [Fact]
+    public void AnEditThatRemovesAConformanceKeepsNoIdentityOrPathOfIt()
+    {
+        var c = Sources("Self is C");
+        var (s, contract) = (Container(c, "S").SymbolOf()!, Container(c, "C").SymbolOf()!);
+        var impls = Impls(c);
+        Assert.NotNull(impls.Find(s, contract));
+        ReplaceSelfClause(c, "Self is E");
+        Assert.True(c.Bind().IsComplete, Describe(c));
+        Assert.Null(impls.Find(s, contract));
+        Assert.DoesNotContain(impls.Paths, x => ReferenceEquals(x.Contract, contract));
+        Assert.DoesNotContain(impls.Identities, x => ReferenceEquals(x.Contract, contract));
+    }
+
+    // PLAN G949 S1-b1 d8: after an edit that removes one conformance and adds another, Identities lists the pass's registrations in
+    // their order, the program's first (before: the removed identity kept its place and the added one followed every other).
+    [Fact]
+    public void IdentitiesAfterAnEditFollowTheRegistrationOrder()
+    {
+        var c = Sources("Self is C");
+        ReplaceSelfClause(c, "Self is E");
+        Assert.True(c.Bind().IsComplete, Describe(c));
+        Assert.Equal(["S: E", "T: D"], Impls(c).Identities.Where(x => !IsLibrary(c, x.Type)).Select(static x => x.Type.Name + ": " + x.Contract.Name));
+    }
+
+    // PLAN G949 S1-b1 c15 (the Front's RR3): Paths lists the program's paths in registration order, then the library's, which
+    // EffectObligations and every other reader of the pass's paths read in that order.
+    [Fact]
+    public void PathsListTheProgramsPathsInRegistrationOrderThenTheLibrarys()
+    {
+        var c = Sources("Self is C and E");
+        var paths = Impls(c).Paths.ToList();
+        var library = paths.FindIndex(x => IsLibrary(c, x.Type));
+        Assert.True(library > 0);
+        Assert.DoesNotContain(paths.Skip(library), x => !IsLibrary(c, x.Type));
+        Assert.Equal(["S: C", "S: E", "T: D"], paths.Take(library).Select(static x => x.Type.Name + ": " + x.Contract.Name));
+    }
+
+    // PLAN G949 S1-b1 (the Front's RR2): a path the sweep removed is taken from the pool for the next new key, emptied of the
+    // satellites and witnesses of its earlier conformance, and a warm rebind afterwards allocates nothing.
+    [Trait("Purpose", "Allocation")]
+    [Fact]
+    public void ANewPathReusesARemovedPathEmptiedAndAWarmRebindAllocatesNothing()
+    {
+        var c = Sources("Self is C");
+        var (s, d, e) = (Container(c, "S").SymbolOf()!, Container(c, "D").SymbolOf()!, Container(c, "E").SymbolOf()!);
+        var removed = Impls(c).Paths.Single(x => ReferenceEquals(x.Type, s));
+        Assert.NotEmpty(removed.FunctionWitnesses!);
+        ReplaceSelfClause(c, "Self is D");
+        Assert.True(c.Bind().IsComplete, Describe(c));
+        Assert.DoesNotContain(Impls(c).Paths, x => ReferenceEquals(x, removed));
+        ReplaceSelfClause(c, "Self is E");
+        Assert.True(c.Bind().IsComplete, Describe(c));
+        var reused = Impls(c).Paths.Single(x => ReferenceEquals(x.Type, s));
+        Assert.Same(removed, reused);
+        Assert.Same(e, reused.Contract);
+        Assert.All(reused.FunctionWitnesses!, x => Assert.Same(e, x.Requirement.Contract));
+        Assert.All(reused.WitnessScopes!, x => Assert.Same(e, x.Requirement.Contract));
+        Assert.Same(e, Assert.Single(reused.Witnesses).Identity.Contract);
+        Assert.DoesNotContain(Impls(c).Paths, x => ReferenceEquals(x.Type, s) && ReferenceEquals(x.Contract, d));
+        c.Binding.Bind(BindingMode.Final);
+        Assert.Equal(0, AllocationMeasurement.Measure(() => c.Binding.Bind(BindingMode.Final)));
+        Assert.True(c.Binding.Result.IsComplete, Describe(c));
+    }
+
+    // ThreeContracts, then S conforming by `clause` and T conforming to D, each in a source of its own; bound.
+    private static Compilation Sources(string clause)
+    {
+        var c = CompilationTestHelper.ParseSuccess(ThreeContracts);
+        c.Kotonoha.AddSource(new SourceDocument("S.kimi", "struct S\n    " + clause + "\n    public func get(self: ref/Self) -> i32 => 1"));
+        c.Kotonoha.AddSource(new SourceDocument("T.kimi", "struct T\n    Self is D\n    public func get(self: ref/Self) -> i32 => 2"));
+        Assert.True(c.Bind().IsComplete, Describe(c));
+        return c;
+    }
+
+    // Replaces the Contract S's Self clause names by the one `clause` names, an edit.
+    private static void ReplaceSelfClause(Compilation c, string clause)
+    {
+        var target = Assert.Single(Container(c, "S").ConstraintNodes);
+        var donor = Assert.Single(CompilationTestHelper.ParseSuccess("struct S\n    " + clause).Kotonoha.RootKoto.NestedContainers.Single().ConstraintNodes).Right;
+        ParseTestHelper.Detach(donor, new CodeBlockKoto(donor.CodeContext));
+        Assert.True(KotoHelper.Replace(target, target.Right, donor));
+    }
+
+    private static ImplTable Impls(Compilation c) => (ImplTable)typeof(Binding).GetField("impls", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(c.Binding)!;
+
+    private static bool IsLibrary(Compilation c, BindingSymbol type) => ReferenceEquals(type.Declaration.CodeContext.Kotonoha, c.Binding.Library.Kotonoha);
 
     // Whether `source` binds completely exactly when `codes` is empty, with these distinct issue codes.
     private static void AssertBindingCodes(string source, string codes)

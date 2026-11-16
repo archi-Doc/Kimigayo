@@ -98,24 +98,33 @@ public readonly record struct BoundWitness(BoundRequirement Identity, BindingSym
     public BindingSymbol Requirement => this.Identity.Symbol;
 }
 
+// DECISIONS BU-220 (PLAN G949 S1-b1): an identity's per-pass state is current only while its Stamp is its store's pass (ImplTable);
+// stale, it reads as unregistered, and ImplTable resets it at its first access in a pass. A pooled identity is re-keyed (Reuse).
+
 /// <summary>A stable declaration identity. Availability belongs to its evidence paths.</summary>
 public sealed class BoundConformance
 {
-    private static readonly IReadOnlyDictionary<BoundRequirement, BoundType> EmptyAssociated = new Dictionary<BoundRequirement, BoundType>();
+    internal static readonly IReadOnlyDictionary<BoundRequirement, BoundType> EmptyAssociated = new Dictionary<BoundRequirement, BoundType>();
+    private readonly ImplTable store;
 
-    internal BoundConformance(BindingSymbol type, BindingSymbol contract)
+    internal BoundConformance(BindingSymbol type, BindingSymbol contract, ImplTable store)
     {
         this.Type = type;
         this.Contract = contract;
+        this.store = store;
     }
 
-    public BindingSymbol Type { get; }
+    public BindingSymbol Type { get; private set; }
 
-    public BindingSymbol Contract { get; }
+    public BindingSymbol Contract { get; private set; }
 
-    public IReadOnlyList<BoundConformancePath> Paths => this.PathStorage;
+    public IReadOnlyList<BoundConformancePath> Paths => this.Current ? this.PathStorage : Array.Empty<BoundConformancePath>();
 
-    public bool IsVerified { get; internal set; }
+    public bool IsVerified
+    {
+        get => field && this.Current;
+        internal set;
+    }
 
     // Legacy access exposes only an unconditional, verified definition mapping.
     public IReadOnlyList<BoundWitness> Witnesses => this.UnconditionalPath?.Witnesses ?? Array.Empty<BoundWitness>();
@@ -129,6 +138,13 @@ public sealed class BoundConformance
     internal IsKoto? DirectClause { get; set; }
 
     internal bool Invalid { get; set; }
+
+    // The pass of the last reset of the per-pass state (ResetPass), and whether that pass listed the identity (ImplTable.Named).
+    internal ulong Stamp { get; private set; }
+
+    internal bool Listed { get; set; }
+
+    internal bool Current => this.Stamp == this.store.Pass;
 
     internal BoundConformancePath? UnconditionalPath
     {
@@ -152,23 +168,50 @@ public sealed class BoundConformance
     public BindingSymbol? GetImplementation(BoundRequirement requirement) => this.UnconditionalPath?.GetImplementation(requirement);
 
     public BoundPropertyWitness? GetPropertyWitness(BoundRequirement requirement, PropertyAccessorKind kind) => this.UnconditionalPath?.GetPropertyWitness(requirement, kind);
+
+    // The identity's state at the start of a pass, made current for it.
+    internal void ResetPass(ulong pass)
+    {
+        this.Stamp = pass;
+        this.IsVerified = false;
+        this.Invalid = false;
+        this.DirectClause = null;
+        this.PathStorage.Clear();
+        this.Listed = false;
+    }
+
+    // A pooled identity taken for a new key; stale, so its first access resets the rest.
+    internal BoundConformance Reuse(BindingSymbol type, BindingSymbol contract)
+    {
+        this.Type = type;
+        this.Contract = contract;
+        this.Stamp = 0;
+        return this;
+    }
 }
+
+// DECISIONS BU-220 (PLAN G949 S1-b1): a path's per-pass state is current only while its Stamp is its store's pass (ImplTable); stale,
+// it reads as unverified and empty, and ImplTable resets it at its first access in a pass. A pooled path is re-keyed and emptied of
+// every fact of its earlier conformance (Reuse).
 
 /// <summary>Reusable definition-side conformance metadata. Only verified mappings supply evidence.</summary>
 public sealed class BoundConformancePath : ICheckCause
 {
-    internal BoundConformancePath(BindingSymbol type, BindingSymbol contract)
+    private readonly ImplTable store;
+
+    internal BoundConformancePath(BindingSymbol type, BindingSymbol contract, ImplTable store)
     {
         this.Type = type;
         this.Contract = contract;
+        this.store = store;
         this.Scope = new(type.Declaration) { ConformancePath = this };
     }
 
     /// <summary>Gets the conforming Type declaration; generic slots remain definition-bound.</summary>
-    public BindingSymbol Type { get; }
+    public BindingSymbol Type { get; private set; }
 
     /// <summary>Gets the required Contract identity.</summary>
-    public BindingSymbol Contract { get; }
+    public BindingSymbol Contract { get; private set; }
 
     /// <summary>Gets the direct declaration from which this path is inherited.</summary>
     public IsKoto Declaration { get; internal set; } = null!;
@@ -178,19 +221,23 @@ public sealed class BoundConformancePath : ICheckCause
     public SyntaxFormKoto? Premises { get; internal set; }
 
     /// <summary>Gets a value indicating whether this pass has verified the declaration contract and every witness.</summary>
-    public bool IsVerified { get; internal set; }
+    public bool IsVerified
+    {
+        get => field && this.Current;
+        internal set;
+    }
 
     /// <summary>Gets requirement-to-member mappings, usable only while IsVerified is true.</summary>
-    public IReadOnlyList<BoundWitness> Witnesses => this.WitnessStorage;
+    public IReadOnlyList<BoundWitness> Witnesses => this.Current ? this.WitnessStorage : Array.Empty<BoundWitness>();
 
     /// <summary>Gets completed, normalized associated-Type bindings; provenance does not change Type identity.</summary>
-    public IReadOnlyDictionary<BoundRequirement, BoundType> AssociatedTypes => this.AssociatedStorage;
+    public IReadOnlyDictionary<BoundRequirement, BoundType> AssociatedTypes => this.Current ? this.AssociatedStorage : BoundConformance.EmptyAssociated;
 
     /// <summary>Gets inferred-binding provenance; this does not certify an unverified conformance.</summary>
-    public IReadOnlyList<BoundAssociatedTypeEvidence> InferenceEvidence => this.InferenceStorage;
+    public IReadOnlyList<BoundAssociatedTypeEvidence> InferenceEvidence => this.Current ? this.InferenceStorage : Array.Empty<BoundAssociatedTypeEvidence>();
 
     /// <summary>Gets the separately verified get/set mappings, valid only while IsVerified is true.</summary>
-    public IReadOnlyList<BoundPropertyWitness> PropertyWitnesses => this.PropertyWitnessStorage;
+    public IReadOnlyList<BoundPropertyWitness> PropertyWitnesses => this.Current ? this.PropertyWitnessStorage : Array.Empty<BoundPropertyWitness>();
 
     Koto ICheckCause.Use => this.Use;
 
@@ -200,7 +247,7 @@ public sealed class BoundConformancePath : ICheckCause
 
     internal BoundConformance Identity { get; set; } = null!;
 
-    internal BindingScope Scope { get; }
+    internal BindingScope Scope { get; private set; }
 
     internal BoundConformancePath RootPath { get; set; } = null!;
 
@@ -259,6 +306,11 @@ public sealed class BoundConformancePath : ICheckCause
 
     internal bool Invalid { get; set; }
 
+    // The pass of the last reset of the per-pass state (ResetPass).
+    internal ulong Stamp { get; private set; }
+
+    internal bool Current => this.Stamp == this.store.Pass;
+
     // The facts a component keeps by this path and a second key (DECISIONS BU-220), each a small list on the path, kept with it across
     // passes as ImplTable keeps the path, null until its first entry; the owning component's accessor is the list's one reader and writer.
     // Binding.FunctionWitnesses: a function requirement's callable correspondence (FunctionWitness).
@@ -311,4 +363,67 @@ public sealed class BoundConformancePath : ICheckCause
     void ICheckCause.Rest() => this.Needed |= this.Unsupported;
 
     internal BoundConformancePath InheritedSource(int index) => index == 0 ? this.InheritedFrom! : this.AdditionalInheritedSources![index - 1];
+
+    // The path's state at the start of a pass, made current for it: the verification flags, witnesses and their maps, associated and
+    // inference storage, the per-pass satellites (requirement matches, published inference, the associated bindings' state) and the
+    // scope; what the registration writes and the kept satellites stay.
+    internal void ResetPass(ulong pass)
+    {
+        this.Stamp = pass;
+        this.Active = false;
+        this.IsVerified = false;
+        this.Checking = false;
+        this.Reentries = 0;
+        this.RejectedSelfSignature = null;
+        this.Invalid = false;
+        this.WitnessStorage.Clear();
+        this.WitnessMap.Clear();
+        this.PropertyWitnessStorage.Clear();
+        this.PropertyWitnessMap.Clear();
+        this.Unsupported = false;
+        this.Needed = false;
+        this.AssociatedStorage.Clear();
+        this.InferenceStorage.Clear();
+        this.RequirementMatches?.Clear();
+        this.InferencePublished = false;
+        if (this.AssociatedBindings is { } bindings)
+        {
+            foreach (var (_, binding) in bindings)
+            {
+                binding.Reset();
+            }
+        }
+
+        this.Scope.Reset();
+    }
+
+    // The Front's RR2: a pooled path taken for a new key, emptied of every fact of its earlier conformance (the kept satellites, the
+    // registration's facts) with a scope of its own; stale, so its first access resets its per-pass state.
+    internal BoundConformancePath Reuse(BindingSymbol type, BindingSymbol contract, BoundConformance identity)
+    {
+        this.Type = type;
+        this.Contract = contract;
+        this.Identity = identity;
+        this.Stamp = 0;
+        this.Scope = new(type.Declaration) { ConformancePath = this };
+        this.FunctionWitnesses?.Clear();
+        this.WitnessScopes?.Clear();
+        this.PropertyWitnessOrigins?.Clear();
+        this.PropertyBridges?.Clear();
+        this.OverlapScopes?.Clear();
+        this.HopChains?.Clear();
+        this.InferenceConsumers?.Clear();
+        this.AssociatedBindings?.Clear();
+        this.InheritedFrom = null;
+        this.AdditionalInheritedSources?.Clear();
+        this.InheritedBase = null;
+        this.DeclaredPath = null;
+        this.DeclaredSelf = null;
+        this.Use = null!;
+        this.Declaration = null!;
+        this.RootContract = null!;
+        this.RootPath = null!;
+        this.Premises = null;
+        return this;
+    }
 }

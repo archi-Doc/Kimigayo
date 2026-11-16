@@ -179,6 +179,9 @@ public sealed partial class KimiLibrary
 
     internal BindingScope Scope { get; }
 
+    /// <summary>Gets the library's base stores (PLAN G949, DECISIONS BU-220): what the library leaves outside its SyntaxTable.</summary>
+    internal LibraryLayer Layer { get; } = new();
+
     /// <summary>Gets the ordinal of Option's Some Case, taken from the declaration (the Case named Some; AdtDef numbers Cases in
     /// declaration order), or -1 before Binding prepared the library's Cases: the one statement of where Some is (TyCtxt.NonnullSome, the
     /// for statement's Some position).</summary>
