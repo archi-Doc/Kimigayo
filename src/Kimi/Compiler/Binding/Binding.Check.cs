@@ -21,7 +21,7 @@ public sealed partial class Binding
     // Each call Binding synthesized in this pass, with its consumer (BindSynthesizedCall).
     private Dictionary<InvocationKoto, Koto>? synthesizedCalls;
 
-    private BindingResult Check(BindingMode mode)
+    private void Check(BindingMode mode)
     {
         this.ProduceFailures(mode);
         if (mode == BindingMode.Final)
@@ -35,7 +35,7 @@ public sealed partial class Binding
             }
         }
 
-        return this.CountStates(mode);
+        this.CountStates(mode);
     }
 
     // Every failure the pass decides at its end, in the order the nodes were bound.
@@ -126,8 +126,9 @@ public sealed partial class Binding
         }
     }
 
-    // The pass summary: each node's state, counted once the failures are decided, and each failed node's issue, or its derived issue.
-    private BindingResult CountStates(BindingMode mode)
+    // The pass's part of the summary (PassPart.Counts): each node's state, counted once the failures are decided, and each failed node's
+    // issue, or its derived issue.
+    private void CountStates(BindingMode mode)
     {
         var resolved = 0;
         var unresolved = 0;
@@ -163,6 +164,6 @@ public sealed partial class Binding
             }
         }
 
-        return new(mode, resolved, unresolved, invalid);
+        this.pass.Part.Counts = new(mode, resolved, unresolved, invalid);
     }
 }

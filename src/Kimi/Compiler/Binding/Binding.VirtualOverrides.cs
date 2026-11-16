@@ -225,7 +225,7 @@ public sealed partial class Binding
 
     private void PrepareVirtualOverrides()
     {
-        foreach (var function in this.VirtualDeclarations)
+        foreach (var function in this.virtualDeclarations)
         {
             if (!function.IsOverride || function.BindingFailure != BindingFailure.None || function.BoundSymbol?.Scope.Owner is not StructKoto { BoundSymbol: { } typeSymbol } structure)
             {

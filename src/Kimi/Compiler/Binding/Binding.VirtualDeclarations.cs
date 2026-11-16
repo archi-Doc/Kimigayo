@@ -7,7 +7,7 @@ namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
-    private readonly List<FunctionKoto> virtualDeclarations = new(); // The program part (VirtualDeclarations).
+    private List<FunctionKoto> virtualDeclarations; // The running pass's part (PassPart, EnterPass).
     private Dictionary<FunctionKoto, VirtualDeclarationCause>? virtualDeclarationFailures;
 
     // SPEC 6.4.1's eligibility and inherited-header rules, in check order; the adapter explains each (DECISIONS BU-111).
@@ -65,9 +65,6 @@ public sealed partial class Binding
         return null;
     }
 
-    // The pass's virtual and override declarations (DECISIONS BU-220): the program part, then the library's (LibraryLayer).
-    private LayerList<FunctionKoto> VirtualDeclarations => new(this.virtualDeclarations, this.Library.Layer.VirtualDeclarations);
-
     private void ResetVirtualDeclarations()
     {
         this.virtualDeclarations.Clear();
@@ -108,7 +105,7 @@ public sealed partial class Binding
     // through ordinary ownership checking. Exclusive OCC still needs its fixed point.
     private void GuardPendingVirtualDeclarations()
     {
-        foreach (var function in this.VirtualDeclarations)
+        foreach (var function in this.virtualDeclarations)
         {
             if (function.BindingFailure == BindingFailure.None && ReceiverShape(function.BoundSymbol!) != SemanticsKind.ObjRef)
             {

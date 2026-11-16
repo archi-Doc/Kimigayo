@@ -14,9 +14,10 @@ namespace Kimi.Compiler;
 // - Outputs: Result, Issues, Obligations, LibraryImports, the Type context (Types), the facts published to readers outside Binding
 //   (Semantics; the HIR tables and Plans), and the diagnostics ReportDiagnostics records (Binding.Diagnostics.Report.cs).
 // - Invariants: a pass is never reentered; a pass that does not finish leaves no Result, and the later phases' facts are discarded
-//   when a pass starts; storage is reused across passes (ResetPass, Binding.Pass.cs). The effect obligations' per-pass sources
-//   (virtual declarations, bounded Callable clauses and their uses) are LayerLists: a pass writes the part this driver hands it,
-//   the program part, until the library pass (PLAN G949 S1-r1) is handed the base part (LibraryLayer); readers read both.
+//   when a pass starts; storage is reused across passes (ResetPass, Binding.Pass.cs). The published per-pass lists (nodes, issues,
+//   derived issues, obligations, imports and the effect obligations' sources) are parts (PassPart, Binding.Passes.cs): a pass writes
+//   the part the driver hands it, Binding's own until the library pass (PLAN G949 S1-r1b) is handed LibraryLayer.Part, and a reader
+//   outside a pass reads the composed views, both parts.
 // - Prohibitions: no read of Mir or the Backend (COMPILER_ARCHITECTURE "Dependency rules"); readers outside Binding use its published
 //   facts, never its private state.
 
@@ -24,18 +25,20 @@ namespace Kimi.Compiler;
 public sealed partial class Binding
 {
     private readonly Compilation compilation;
-    private readonly List<Koto> nodes = new(KimiLibrarySize.NodeCapacity(KimiLibrarySize.Stated.Nodes));
     private readonly Dictionary<object, BindingScope> scopes = new(
         KimiLibrarySize.KeyedCapacity(KimiLibrarySize.Stated.Scopes), ReferenceEqualityComparer.Instance);
 
     private readonly Dictionary<object, BindingSymbol> symbols = new(
         KimiLibrarySize.KeyedCapacity(KimiLibrarySize.Stated.Declarations), ReferenceEqualityComparer.Instance);
 
-    private readonly List<BindingIssue> issues = new();
-    private readonly List<LibraryImport> libraryImports = new();
     private readonly TyCtxt types;
-    private readonly List<BindingObligation> obligations = new();
-    private readonly HashSet<BindingObligation> obligationSet = new();
+
+    // The running pass's part (PassPart), which its steps write; the driver hands it over (EnterPass), Binding's own between Binds.
+    private List<Koto> nodes;
+    private List<BindingIssue> issues;
+    private List<LibraryImport> libraryImports;
+    private List<BindingObligation> obligations;
+    private HashSet<BindingObligation> obligationSet;
     private bool running;
 
     internal Binding(Compilation compilation)
@@ -49,6 +52,18 @@ public sealed partial class Binding
         {
             this.symbols.Add(symbol.Declaration, symbol);
         }
+
+        var (own, layer) = (this.programPart, this.Library.Layer.Part);
+        this.nodesView = new(own.Nodes, layer.Nodes);
+        this.issuesView = new(own.Issues, layer.Issues);
+        this.derivedIssuesView = new(own.DerivedIssues, layer.DerivedIssues);
+        this.obligationsView = new(own.Obligations, layer.Obligations);
+        this.libraryImportsView = new(own.Imports, layer.Imports);
+        this.virtualDeclarationsView = new(own.VirtualDeclarations, layer.VirtualDeclarations);
+        this.callableEffectUsesView = new(own.CallableEffectUses, layer.CallableEffectUses);
+        this.callableEffectClausesView = new(own.CallableEffectClauses, layer.CallableEffectClauses);
+        (this.Issues, this.Obligations, this.LibraryImports, this.DerivedIssues) = (this.issuesView, this.obligationsView, this.libraryImportsView, this.derivedIssuesView);
+        this.EnterPass(this.ProgramPass);
     }
 
     /// <summary>Gets the latest pass summary. Results are replaced by the next Bind.</summary>
@@ -58,16 +73,16 @@ public sealed partial class Binding
     public KimiLibrary Library { get; }
 
     /// <summary>Gets final failures; provisional passes do not publish missing-name diagnostics.</summary>
-    public IReadOnlyList<BindingIssue> Issues => this.issues;
+    public IReadOnlyList<BindingIssue> Issues { get; }
 
     /// <summary>Gets requirements to discharge during subsequent semantic analysis.</summary>
-    public IReadOnlyList<BindingObligation> Obligations => this.obligations;
+    public IReadOnlyList<BindingObligation> Obligations { get; }
 
     /// <summary>Gets the valid foreign import declarations of the latest pass (SPEC 22.6), in source order.</summary>
-    internal IReadOnlyList<LibraryImport> LibraryImports => this.libraryImports;
+    internal IReadOnlyList<LibraryImport> LibraryImports { get; }
 
-    /// <summary>Gets the facts this Binding publishes to readers outside Binding.</summary>
-    internal SemanticQuery Semantics => field ??= new(this.compilation, this, this.nodes, this.symbols, this.impls);
+    /// <summary>Gets the facts this Binding publishes to readers outside Binding: the program pass's nodes (BoundNodes).</summary>
+    internal SemanticQuery Semantics => field ??= new(this.compilation, this, this.programPart.Nodes, this.symbols, this.impls);
 
     /// <summary>Gets the Type context: interned Types and substitutions.</summary>
     internal TyCtxt Types => this.types;
@@ -75,7 +90,7 @@ public sealed partial class Binding
     /// <summary>Gets the entries of the tables KimiLibrarySize sizes, as the latest pass left them.</summary>
     internal KimiLibrarySize.Tables TableCounts
         => new(
-            this.nodes.Count,
+            this.nodesView.Count,
             this.symbols.Count,
             this.scopes.Count,
             this.types.KeyCount,
@@ -89,7 +104,7 @@ public sealed partial class Binding
     /// <summary>Gets the free slots of the tables KimiLibrarySize sizes: each table's capacity less its entries.</summary>
     internal KimiLibrarySize.Tables TableFree
         => new(
-            this.nodes.Capacity - this.nodes.Count,
+            this.programPart.Nodes.Capacity + this.Library.Layer.Part.Nodes.Capacity - this.nodesView.Count,
             this.symbols.Capacity - this.symbols.Count,
             this.scopes.Capacity - this.scopes.Count,
             this.types.KeyFree,
@@ -114,10 +129,12 @@ public sealed partial class Binding
             throw new InvalidOperationException("Bound checking requires a final Binding pass.");
         }
 
-        // Check publishes both kinds of failure again.
+        // The program pass's Check publishes both kinds of failure again (until PLAN G949 S1-r1b the one pass's), on the part the
+        // fields hold between Binds, Binding's own.
         this.issues.Clear();
         this.derivedIssues.Clear();
-        return this.Result = this.Check(BindingMode.Final);
+        this.Check(BindingMode.Final);
+        return this.Result = this.ComposeResult();
     }
 
     /// <summary>Rebinds all selected syntax, reusing nodes, symbols, types, scopes, and collection capacity.</summary>
@@ -140,6 +157,7 @@ public sealed partial class Binding
         {
             this.BeginBind(mode);
             this.Run(mode);
+            this.Result = this.ComposeResult();
             if (mode == BindingMode.Final)
             {
                 this.WalkLints();
@@ -151,6 +169,7 @@ public sealed partial class Binding
         }
         finally
         {
+            this.EnterPass(this.ProgramPass); // Between Binds, and after a throw, the fields hold Binding's own part.
             this.running = false;
         }
     }
