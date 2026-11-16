@@ -126,6 +126,7 @@ public partial class SyntaxIdTest
     [InlineData("IndexerCalls", "milestone:Milestone27")]
     [InlineData("ViewRangeCalls", "var values: [2 of i32] = [1, 2]\nvar view = values.sliceUniq()\nlet part = view[1..]\nrequire part.length == 1 else => $abort(\"part\")\n")]
     [InlineData("RangeCalls", "milestone:Milestone23")]
+    [InlineData("ResolvedKeys", "milestone:Milestone27")]
     public void AKeptFamilyAlternatesItsArenasAcrossEdits(string family, string? program)
     {
         var c = MinimalEmissionTest.Analyze(program is null ? Source

@@ -17,7 +17,7 @@ public sealed partial class Binding
     // receiver's length by a synthesized PositionSyntax.resolved<P> or resolvedRange<R> call whose length argument reads
     // the receiver the selection evaluated (an EvaluatedKoto), so any receiver is evaluated once. A failed resolution
     // yields a value that the selection's own bounds check rejects. A ResolvedRange key is applied as written and rechecked.
-    private readonly Dictionary<IndexKoto, InvocationKoto> resolvedKeys = new(ReferenceEqualityComparer.Instance);
+    private readonly ResolvedKeyRows resolvedKeys;
     private readonly HashSet<IndexKoto> resolvedSlices = new(ReferenceEqualityComparer.Instance);
 
     private BoundType ResolvedRangeType => this.types.Intern(BoundTypeKind.Nominal, this.Library.ResolvedRange, SemanticsKind.Owner, []);
@@ -140,7 +140,7 @@ public sealed partial class Binding
 
         foreach (var call in this.resolvedKeys.Values)
         {
-            this.ResetSynthetic(call);
+            this.ResetSynthetic(call!);
         }
 
         foreach (var projection in this.storageProjections.Values)
@@ -565,5 +565,21 @@ public sealed partial class Binding
 
         internal bool TryGetValue(Koto node, [NotNullWhen(true)] out InvocationKoto? value)
             => (value = node.SyntaxOwner is { } table ? table.Hir.Families.RangeCalls.Get(node.SyntaxId) : null) is not null;
+    }
+
+    /// <summary>The `resolvedKeys` family's one accessor (DECISIONS BU-220): a kept family, a selection key's synthesized `resolved` call
+    /// (SPEC 4.6.3), made once and reset in place by each pass (ResetSyntheticCalls), kept in its key node's module's NodeColumns at its
+    /// SyntaxId. Its members keep the names its readers use.</summary>
+    private readonly struct ResolvedKeyRows(Binding binding)
+    {
+        internal FamilyRows<InvocationKoto?> Values => new(binding, static (table, _) => table.Hir.Families.ResolvedKeys.Enumerate());
+
+        internal InvocationKoto this[IndexKoto node]
+        {
+            set => HirTables.Of(node).Families.ResolvedKeys.Ref(node.SyntaxId) = value;
+        }
+
+        internal bool TryGetValue(IndexKoto node, [NotNullWhen(true)] out InvocationKoto? value)
+            => (value = node.SyntaxOwner is { } table ? table.Hir.Families.ResolvedKeys.Get(node.SyntaxId) : null) is not null;
     }
 }
