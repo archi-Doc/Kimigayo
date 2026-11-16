@@ -66,7 +66,7 @@ public sealed partial class Binding
             }
         }
 
-        foreach (var use in this.callableEffectUses)
+        foreach (var use in this.CallableEffectUses)
         {
             for (var e = 0; e < use.Clause.EffectBounds.Count; e++)
             {

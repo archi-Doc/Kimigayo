@@ -6,8 +6,11 @@ namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
-    private readonly List<CallableEffectUse> callableEffectUses = new(); // Each selected use of a bounded Callable clause, once per pass.
+    private readonly List<CallableEffectUse> callableEffectUses = new(); // The program part (CallableEffectUses).
     private readonly Dictionary<Koto, (IsKoto Clause, FunctionKoto Requirement)> callablePremiseFailures = new(ReferenceEqualityComparer.Instance);
+
+    // Each selected use of a bounded Callable clause, once per pass (DECISIONS BU-220): the program part, then the library's.
+    private LayerList<CallableEffectUse> CallableEffectUses => new(this.callableEffectUses, this.Library.Layer.CallableEffectUses);
 
     internal static BoundType? CallableCore(BoundType? type)
         => type is { Kind: BoundTypeKind.Semantics, Components.Count: 1 } ? type.Components[0] : type;
@@ -169,5 +172,5 @@ public sealed partial class Binding
 
     // A selected use of a bounded Callable clause: where a failure is located, the use whose premises apply, the clause, and its substituted
     // subject, signature and receiver.
-    private readonly record struct CallableEffectUse(Koto At, Koto Use, IsKoto Clause, BoundType Subject, BoundType Signature, SemanticsKind Receiver);
+    internal readonly record struct CallableEffectUse(Koto At, Koto Use, IsKoto Clause, BoundType Subject, BoundType Signature, SemanticsKind Receiver);
 }

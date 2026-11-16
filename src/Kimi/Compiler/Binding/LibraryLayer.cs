@@ -22,4 +22,7 @@ internal sealed class LibraryLayer
 
     /// <summary>Gets the library part of the virtual and override declarations (Binding.VirtualDeclarations).</summary>
     internal List<FunctionKoto> VirtualDeclarations { get; } = new();
+
+    /// <summary>Gets the library part of the selected uses of bounded Callable clauses (Binding.CallableEffectUses).</summary>
+    internal List<Binding.CallableEffectUse> CallableEffectUses { get; } = new();
 }
