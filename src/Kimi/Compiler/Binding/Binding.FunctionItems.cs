@@ -116,9 +116,10 @@ public sealed partial class Binding
         try
         {
             CopyItemArguments(type, function, own);
-            // Compiler entries and virtual Items consume already-acquired logical parameters. Their public
-            // contract operands serve effect checks without inventing a source invocation.
-            var operations = type.Symbol.CompilerFunction == CompilerFunctionKind.None && !function.IsVirtual ? [] : new BoundArgumentOperation[function.Parameters.Count];
+            // Compiler entries (a served function) and virtual Items consume already-acquired logical parameters. Their public contract
+            // operands serve effect checks without inventing a source invocation.
+            var compiler = type.Symbol.Definition.Kind != DispositionKind.Body;
+            var operations = !compiler && !function.IsVirtual ? [] : new BoundArgumentOperation[function.Parameters.Count];
             for (var i = 0; i < operations.Length; i++)
             {
                 var parameter = this.ItemType(function.Parameters[i].Type.BoundType!, type, function)!;
@@ -428,12 +429,18 @@ public sealed partial class Binding
         return true;
     }
 
-    private BoundType CompleteFunctionItem(Koto use, BindingSymbol symbol, ReadOnlySpan<BoundType?> typeArguments = default, BoundType? declaringType = null, ReadOnlySpan<BoundLength?> lengthArguments = default)
+    private BoundType? CompleteFunctionItem(Koto use, BindingSymbol symbol, ReadOnlySpan<BoundType?> typeArguments = default, BoundType? declaringType = null, ReadOnlySpan<BoundLength?> lengthArguments = default)
         => this.CompleteFunctionItem(use, this.FunctionItemType(symbol, typeArguments, declaringType, lengthArguments));
 
-    private BoundType CompleteFunctionItem(Koto use, BoundType type)
+    // A function item completed on its use, or null with the use failed when the selected function is `#Unsupported` (SPEC 7.3, 22.1).
+    private BoundType? CompleteFunctionItem(Koto use, BoundType type)
     {
         var symbol = type.Symbol!;
+        if (!this.SupportedFunction(use, symbol))
+        {
+            return null;
+        }
+
         while (use is ParenthesizedKoto parentheses)
         {
             use.BoundSymbol = symbol;

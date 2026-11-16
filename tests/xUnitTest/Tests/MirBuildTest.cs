@@ -575,7 +575,7 @@ public sealed partial class MirBuildTest(ITestOutputHelper output)
         }
         else if (op == HirOp.Call && CallPlan.Of(node) is { } call)
         {
-            var disposition = call.Kind == CalleeKind.Value ? default : IntrinsicDisposition.Of(call.Target.CompilerFunction);
+            var disposition = call.Kind == CalleeKind.Value ? default : call.Target.Definition;
             key += "." + (call.Kind != CalleeKind.Function ? call.Kind.ToString() : disposition.Kind != DispositionKind.Body ? disposition.Kind.ToString()
                 : CallPlan.Of(node, 1) is not null ? "Expansion" : !call.DefaultArguments.IsEmpty ? "Default" : CallPlan.Parameter(call.Target, -1) is not null ? "Constructor" : "Receiver");
         }

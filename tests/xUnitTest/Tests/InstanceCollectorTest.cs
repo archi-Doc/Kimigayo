@@ -1666,7 +1666,7 @@ public sealed partial class InstanceCollectorTest
             var (function, representative) = (set.Items[shim].Key.Symbol!, set.Items[shim].Representative);
             Assert.Same(set.Items[shim].RepresentativeType, representative?.Self);
             _ = TyCtxt.Signature(function, null, int.MaxValue, out var count);
-            var expected = function.CompilerFunction == CompilerFunctionKind.BuiltinEquals ? "bool" : "i32";
+            var expected = TyCtxt.Contract(function).LibraryDeclaration == KimiDeclarationId.Equatable ? "bool" : "i32";
             var types = Enumerable.Range(-1, count + 1).Select(x => TyCtxt.Name(collector.TypeOf(shim, TyCtxt.Signature(function, null, x, out _)!)!));
             Assert.Equal([expected, "ref/i32", "ref/i32"], types);
         }
@@ -2250,7 +2250,7 @@ public sealed partial class InstanceCollectorTest
         var expected = refused.Length == 0 ? [] : refused.Split('|').Select(static x => (DiagnosticCode.Unsupported_Kd, x)).Order().ToArray();
         Assert.Equal(expected, c.BuildMir().Records(MirRecordClass.Collection).Select(x => (x.Code, c.SyntaxOf(x.Subject).ToString())).Order());
         var shims = set.Items.ToArray().Where(static x => x.Key.Kind == MonoKind.Builtin);
-        Assert.Equal(refused.Length == 0, shims.Any(static x => x.Key.Symbol!.CompilerFunction == CompilerFunctionKind.BuiltinArithmetic));
+        Assert.Equal(refused.Length == 0, shims.Any(static x => ArithmeticContracts.IsArithmetic(TyCtxt.Contract(x.Key.Symbol!).LibraryDeclaration)));
     }
 
     // K 4.8, SPEC 6.7.1, 8.15.3, DECISIONS R5-M55: a by-value use whose Type places a C-layout instance storing a zero-sized Field, at any
@@ -2675,25 +2675,6 @@ public sealed partial class InstanceCollectorTest
     private static string[] Targets(MirProgram program, CheckedSet set, string label)
         => set.Targets(Item(program, set, label)).ToArray().Select(x => Label(program, set.Items[x.Item]) + (x.Runtime ? string.Empty : " (check)")).ToArray();
 
-    // The targets at each call site of an item's body whose callee is a compiler function or a value, joined (empty: none).
-    private static string[] AtCalls(MirProgram program, CheckedSet set, string label)
-    {
-        var item = Item(program, set, label);
-        var body = program.Body(set.Items[item].BodyOrdinal);
-        var sites = new List<string>();
-        for (var b = 0; b < body.Blocks.Length; b++)
-        {
-            if (body.Blocks[b].Terminator is { Kind: MirTerminatorKind.Call } call &&
-                (call.Callee.Kind == MirCalleeKind.Value || call.Callee.Symbol?.CompilerFunction is not (null or CompilerFunctionKind.None)))
-            {
-                var at = new MirLocation(b, body.Blocks[b].Count);
-                sites.Add(string.Join(", ", set.Targets(item).ToArray().Where(x => x.At == at).Select(x => Label(program, set.Items[x.Item]))));
-            }
-        }
-
-        return [.. sites];
-    }
-
     // An item's targets but the glue of the values its body drops.
     private static string[] Calls(MirProgram program, CheckedSet set, string label)
         => Targets(program, set, label).Where(static x => !x.StartsWith("DropGlue ", StringComparison.Ordinal)).ToArray();
@@ -2716,8 +2697,8 @@ public sealed partial class InstanceCollectorTest
         {
             var variant = item.Key.Kind switch
             {
-                MonoKind.Builtin when item.Key.Variant != 0 => $" {item.Key.Symbol!.CompilerFunction} {(ComparisonMode)item.Key.Variant}",
-                MonoKind.Builtin => " " + item.Key.Symbol!.CompilerFunction,
+                MonoKind.Builtin when item.Key.Variant != 0 => $" {Shim(item.Key.Symbol!)} {(ComparisonMode)item.Key.Variant}",
+                MonoKind.Builtin => " " + Shim(item.Key.Symbol!),
                 MonoKind.PropertyWitness => " " + (PropertyWitnessKind)item.Key.Variant,
                 _ => string.Empty,
             };
@@ -2743,6 +2724,15 @@ public sealed partial class InstanceCollectorTest
             FunctionKoto { IsAnonymous: false } named => named.Name,
             PropertyAccessorKoto accessor => ((PropertyKoto)accessor.Parent!).NameKoto.IdentifierName + "." + accessor.AccessorKind,
             _ => Enclosing(node.Parent!),
+        };
+
+        // A Builtin item's shim by its function's Contract (Binding.PrepareBuiltinTargets).
+        static string Shim(BindingSymbol function) => TyCtxt.Contract(function).LibraryDeclaration switch
+        {
+            KimiDeclarationId.Equatable => "BuiltinEquals",
+            KimiDeclarationId.Comparable => "BuiltinCompare",
+            var contract when ArithmeticContracts.IsArithmetic(contract) => "BuiltinArithmetic",
+            var contract => throw new InvalidOperationException($"{function.Name} of {contract} is no shim."),
         };
     }
 
