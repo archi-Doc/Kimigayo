@@ -4,7 +4,8 @@
 // R4-M71; R6-check H3-1); their records are MirProblem and ProblemFact (MirProblem.cs, Core/ProblemFact.cs).
 // Input: Add calls, each a problem with its requirement, which its recording rule names (R5-M23), its body (a record's MirRecordClass,
 // through MirProgram.Report) and its facts (related sites, added by their first producer); a round's problems, held until it commits
-// (Rounds below).
+// (Rounds below); and a library segment's rows, which their owner keeps as data (Keep, Kept) and replays at the step where it first added
+// them (Replay; PLAN G950), Cause values moved by the offset.
 // Output: one problem per code, subject, body and Reason (R4-M71: views number one body's cases; 2a0-D
 // D18: an Origin problem's relation, the default for other problems) with the views that have it merged, in insertion order (bodies in
 // program order), and each problem's facts by its index, which Add returns (R4-M132). A merge keeps the first problem, its requirement and
@@ -29,7 +30,8 @@
 // throws. While it is open, Add holds each problem of that body value, which no producer outside the round adds meanwhile and which
 // carries no facts (one with facts is a recording rule's defect, held as the round's, Defect); every other problem, such as a construction
 // record of a body a lookup builds during the round, is added at once. Commit adds the held problems in order as Add adds them; Drop
-// discards them, so a round that missed commits nothing; Clear closes a round.
+// discards them, so a round that missed commits nothing; Clear closes a round. A kept row (Keep, Replay) was committed when it was kept
+// and is replayed outside any round, so a round holds only its own version's problems.
 // Must not publish, decide acceptance, derive a requirement from a code, or keep a problem a rule of Add drops.
 
 using System.Runtime.InteropServices;
@@ -160,6 +162,39 @@ internal sealed partial class MirReport
         this.held.Clear();
     }
 
+    /// <summary>Keeps the problems added from an index on as data, each with its facts as Add left them: a library segment's rows
+    /// (PLAN G950), which <see cref="Replay"/> adds to a later version's report at the same step.</summary>
+    /// <param name="from">The index in <see cref="All"/> of the first problem kept.</param>
+    /// <param name="into">The kept rows, which an earlier keeping held.</param>
+    internal void Keep(int from, Kept into)
+    {
+        into.Clear(from);
+        for (var problem = from; problem < this.problems.Count; problem++)
+        {
+            into.Add(this.problems[problem], this.Facts(problem));
+        }
+    }
+
+    /// <summary>Adds kept rows after the problems added so far, each as its keeping found it, so the report equals the one their first adding
+    /// made at this step; a Cause fact naming a kept row moves by the rows' offset (a kept row's causes name kept rows only; -1 stays).</summary>
+    /// <param name="rows">The kept rows, none of whose keys the report holds.</param>
+    internal void Replay(Kept rows)
+    {
+        this.isMerged = false;
+        var offset = this.problems.Count - rows.From;
+        for (var row = 0; row < rows.Count; row++)
+        {
+            var problem = rows[row];
+            this.index.Add((problem.Code, problem.Subject, problem.Body, problem.Reason), this.problems.Count);
+            this.problems.Add(problem);
+            this.spans.Add((this.facts.Count, rows.Facts(row).Length));
+            foreach (var fact in rows.Facts(row))
+            {
+                this.facts.Add(fact.Kind == ProblemFactKind.Cause && fact.Value >= rows.From ? fact with { Value = fact.Value + offset } : fact);
+            }
+        }
+    }
+
     // The number of a fact span's trailing Cause facts.
     private static int Causes(ReadOnlySpan<ProblemFact> facts)
     {
@@ -231,6 +266,53 @@ internal sealed partial class MirReport
             this.facts.Add(cause);
             (count, held) = (count + 1, held + 1);
             this.spans[problem] = (start, count);
+        }
+    }
+
+    /// <summary>Rows of a report kept as data (<see cref="Keep"/>): the problems with their facts and the index the first had in its report,
+    /// from which <see cref="Replay"/> moves their Cause facts. It references no analysis, so its owner can hold it across versions.</summary>
+    internal sealed class Kept
+    {
+        private readonly List<MirProblem> problems = [];
+        private readonly List<ProblemFact> facts = [];
+        private readonly List<(int Start, int Count)> spans = []; // Each row's facts.
+
+        /// <summary>Gets the index in its report of the first row kept.</summary>
+        internal int From { get; private set; }
+
+        /// <summary>Gets the number of rows.</summary>
+        internal int Count => this.problems.Count;
+
+        /// <summary>Gets a row's problem.</summary>
+        /// <param name="row">The row.</param>
+        internal MirProblem this[int row] => this.problems[row];
+
+        /// <summary>Gets a row's facts.</summary>
+        /// <param name="row">The row.</param>
+        /// <returns>Its facts.</returns>
+        internal ReadOnlySpan<ProblemFact> Facts(int row) => CollectionsMarshal.AsSpan(this.facts).Slice(this.spans[row].Start, this.spans[row].Count);
+
+        /// <summary>Removes every row, keeping the storage, for rows kept from an index.</summary>
+        /// <param name="from">The index in its report of the first row to be kept.</param>
+        internal void Clear(int from)
+        {
+            this.From = from;
+            this.problems.Clear();
+            this.facts.Clear();
+            this.spans.Clear();
+        }
+
+        /// <summary>Adds a row.</summary>
+        /// <param name="problem">The problem.</param>
+        /// <param name="facts">Its facts.</param>
+        internal void Add(in MirProblem problem, ReadOnlySpan<ProblemFact> facts)
+        {
+            this.problems.Add(problem);
+            this.spans.Add((this.facts.Count, facts.Length));
+            foreach (var fact in facts)
+            {
+                this.facts.Add(fact);
+            }
         }
     }
 }

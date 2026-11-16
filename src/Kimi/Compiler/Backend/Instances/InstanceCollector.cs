@@ -19,9 +19,10 @@
 // and a PropertyWitness item's key signature (StorageSignature; DECISIONS R5-M141, the owner's R5-M142); a borrowing callee's owner Value
 // call also targets its operand's glue, after the body (DECISIONS R5-M102).
 // Roots (K 4.4): each body of a root module whose definition does not instantiate, a module's top-level statements included.
-// Edges (K 4.5): one template per body and version (InstanceCollector.Templates.cs) lists its sites that may carry a target (Fn,
-// Requirement and Value calls and the intrinsics the Target column names, a Virtual call none, X5; a Closure environment, an erasure and a
-// function item constant; a Drop), each with its runtime bit from one MirReach walk without CheckTarget edges. An item's targets are
+// Edges (K 4.5): one template per body (InstanceCollector.Templates.cs: the library segment's kept while its library version holds, PLAN
+// G950) lists its sites that may carry a target (Fn, Requirement and Value calls and the intrinsics the Target column names, a Virtual
+// call none, X5; a Closure environment, an erasure and a function item constant; a Drop), each with its runtime bit from one MirReach
+// walk without CheckTarget edges. An item's targets are
 // InstanceCollector.Edges.cs's: replaying a body item's template resolves each site's row under the item's representative, a callee's body
 // (InstanceCollector.Callees.cs), and a Requirement call's, a requirement Item's, a bodyless callee's published row's and an erased writer's
 // by the witness there (InstanceCollector.Witnesses.cs: a body, a Builtin or a property-witness shim keyed by its compiler function or Field
@@ -32,7 +33,8 @@
 // InstanceCollector.Objects.cs: a created payload's descriptor's glue and VTable, a VTable's slot bodies by VTableDef and Applies).
 // Capability (K 4.7, InstanceCollector.Capabilities.cs): the definition-stage check (A3b) of every operation of a root-module body whose
 // Types are closed, every block included, once per definition and location, and of a root-module static's declaration (static storage
-// P42 has not brought, a generic container's included, DECISIONS R5-M82); Binding's refusals are Opaque values, so it never repeats them.
+// P42 has not brought, a generic container's included, DECISIONS R5-M82), judged in the root loop every version before LayOutImports
+// (PLAN G950: never kept with a template); Binding's refusals are Opaque values, so it never repeats them.
 // An operation whose Types depend on slots is a template site, checked in each instance with its Types there, once per location.
 // Layout obligations (K 4.8, InstanceCollector.Layouts.cs): each item's by-value uses (its body's locals but drop flags and a constructor's
 // construction receiver, DECISIONS BU-48; its aggregates; the inputs and result of an erasure's target Function Type, DECISIONS R5-M108),
@@ -69,9 +71,10 @@
 // another; and it commits nothing: the report holds a run's records until it ends and drops a missed run's (MirReport's round, the one
 // commit A4's rounds share; a record made outside a run is added at once), a missed run makes no end-of-run record (RecordLimits) and its
 // checked set holds no version. Its driver (Compilation.Collect) steps the bodies built since (MirAnalysis.Step) and runs it again until
-// a run is clean. Templates extend over the bodies in build order as a replay meets one built during the run. A clean run replays only
-// stepped bodies from the same roots in the same FIFO order, so it equals the one run over a program whose bodies were all built before;
-// Work and RunCount sum the runs of the version of the latest run.
+// a run is clean. A template records nothing, so the templates are kept across a version's runs and extend over the bodies in build
+// order as a replay finds bodies built since (a lookup's during the run); A3b's records, made in each run's root loop, are the run's. A
+// clean run replays only stepped bodies from the same roots in the same FIFO order, so it equals the one run over a program whose bodies
+// were all built before; Work, RunCount and Templated sum the runs of the version of the latest run.
 // Records (DECISIONS R5-M151): every record goes through one path (Report). A broken contract is InternalInvariant_Kd where Binding is
 // complete; in an incomplete compilation a fact the collector reads may be undecided because it rests on a part Binding rejected, which the
 // collector cannot name, so the record is that error's dependent and is dropped (SPEC 23.1.2); the edge is refused all the same.
@@ -112,7 +115,7 @@ internal sealed partial class InstanceCollector
     private int[] declaring = []; // Declaration's memo per item: the item whose body holds its subjects, plus one (0: not walked).
     private MirProgram? program; // The program of the latest run, whose bodies Declaration reads and whose report takes the records.
     private int rootModules;
-    private ulong version; // The version of the latest run, whose runs Work and RunCount sum.
+    private ulong version; // The version of the latest run, whose runs Work, RunCount and Templated sum.
     private bool missed; // Whether the run replayed a body A2's table does not hold (Round).
 
     /// <summary>Initializes a new instance of the <see cref="InstanceCollector"/> class.</summary>
@@ -136,6 +139,11 @@ internal sealed partial class InstanceCollector
     /// <summary>Gets the runs of the latest run's version, each but a clean last one missed (PLAN G951).</summary>
     internal int RunCount { get; private set; }
 
+    /// <summary>Gets the bodies the runs of the latest run's version templated, each once, a body with a finding (an empty template)
+    /// included: every body where they built the library segment's templates, the program segment's where they kept them (PLAN G950's row
+    /// g8).</summary>
+    internal int Templated { get; private set; }
+
     /// <summary>Collects the checked set of a program version unless a clean run already did; a run that missed (Round) leaves a set of
     /// no version (<see cref="CheckedSet.Version"/> 0) and no record.</summary>
     /// <param name="program">The built, validated and stepped program.</param>
@@ -150,22 +158,33 @@ internal sealed partial class InstanceCollector
             return set;
         }
 
-        (this.Work, this.RunCount, this.version) = program.Version == this.version ? (this.Work, this.RunCount + 1, this.version) : (0, 1, program.Version);
+        if (program.Version != this.version)
+        {
+            (this.Work, this.RunCount, this.Templated, this.version, this.extent) = (0, 0, 0, program.Version, program.LibraryCount);
+            this.programTemplates.Clear(); // Kept across the version's runs (Round).
+        }
+
+        this.RunCount++;
         set.Clear(program.Version);
         this.counts.Clear();
         this.limits.Clear();
         this.refused.Clear();
         this.glueKeys.Clear();
         Array.Clear(this.declaring);
-        (this.program, this.rootModules, this.missed, this.templated, this.siteCount, this.needCount) = (program, rootModules, false, 0, 0, 0);
+        (this.program, this.rootModules, this.missed) = (program, rootModules, false);
         program.Problems.Begin((int)MirRecordClass.Collection);
         this.Templates(program);
         foreach (var body in program.Bodies)
         {
-            if (!body.HasFinding && body.Source.Module < rootModules && (body.Key.Decl is null || !this.types.Instantiates(body.Key.Decl)))
+            this.CheckStatic(body); // A3b, judged in every run (PLAN G950, G951), in body order: a static's declaration row first.
+            if (!body.HasFinding && body.Source.Module < rootModules)
             {
-                var key = new MonoKey(MonoKind.Body, new(body.Key, null), null, null, 0, null);
-                set.Add(new() { Key = key, BodyOrdinal = body.Ordinal, Parent = -1, Growth = new(1, 0, -1), Site = body.Source });
+                this.CheckOperations(body);
+                if (body.Key.Decl is null || !this.types.Instantiates(body.Key.Decl))
+                {
+                    var key = new MonoKey(MonoKind.Body, new(body.Key, null), null, null, 0, null);
+                    set.Add(new() { Key = key, BodyOrdinal = body.Ordinal, Parent = -1, Growth = new(1, 0, -1), Site = body.Source });
+                }
             }
         }
 

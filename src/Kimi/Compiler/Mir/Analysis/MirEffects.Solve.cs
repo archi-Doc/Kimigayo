@@ -59,7 +59,7 @@ internal sealed partial class MirEffects
         (this.program, this.report, this.missed) = (program, report, false);
         report.Begin(MirProblem.NoBody);
         (this.atomCount, this.dependentCount, this.Evaluations) = (0, 0, 0);
-        var count = program.Version == this.version ? this.nodeCount : 0; // A version Local recorded no view of has no node.
+        var count = this.NodeCount;
         MirDataflow.Grow(ref this.classes, count);
         MirDataflow.Grow(ref this.atomStarts, count);
         MirDataflow.Grow(ref this.atomCounts, count);
@@ -141,12 +141,14 @@ internal sealed partial class MirEffects
     // A node's summary from its local facts and its callees' current summaries: whether it grew.
     private bool Evaluate(int node)
     {
-        var body = this.program.Body(this.owners[node]);
+        var store = this.Of(node);
+        var (facts, start) = (store[node], this.Start(store, node));
+        var body = this.program.Body(facts.Owner);
         this.Evaluations++;
-        cases.Select(body, node - this.bases[this.owners[node]]);
-        (this.definition, this.reader, this.found, this.scratchCount) = (body.Key.Decl, node, this.local[node], 0);
+        cases.Select(body, node - this.Base(facts.Owner));
+        (this.definition, this.reader, this.found, this.scratchCount) = (body.Key.Decl, node, facts.Classes, 0);
         this.glued.Clear();
-        this.Inputs(node == 0 ? 0 : this.itemEnds[node - 1], this.itemEnds[node], node == 0 ? 0 : this.edgeEnds[node - 1], this.edgeEnds[node]);
+        this.Inputs(store, start.Items, facts.Items, start.Edges, facts.Edges);
         var found = this.Found;
         if (found == this.classes[node] && this.scratchCount == this.atomCounts[node])
         {
@@ -160,18 +162,20 @@ internal sealed partial class MirEffects
         return true;
     }
 
-    // A node's or a site's local inputs, items [item, itemEnd) and edges [edge, edgeEnd), into the current evaluation.
-    private void Inputs(int item, int itemEnd, int edge, int edgeEnd)
+    // A node's or a site's local inputs, a store's items [item, itemEnd) and edges [edge, edgeEnd), into the current evaluation.
+    private void Inputs(Locals store, int item, int itemEnd, int edge, int edgeEnd)
     {
+        var items = store.Items;
+        var edges = store.Edges;
         for (var i = item; i < itemEnd; i++)
         {
-            var local = this.items[i];
+            var local = items[i];
             this.Process(local.Type, local.Kind, local.Requirement, local.Contract, local.Call);
         }
 
         for (var e = edge; e < edgeEnd; e++)
         {
-            this.Compose(this.edges[e].Body, this.edges[e].Views, this.edges[e].Subst);
+            this.Compose(edges[e].Body, edges[e].Views, edges[e].Subst);
         }
     }
 
@@ -187,7 +191,7 @@ internal sealed partial class MirEffects
 
         for (var mask = views; mask != 0; mask &= mask - 1)
         {
-            var node = this.bases[body] + BitOperations.TrailingZeroCount(mask);
+            var node = this.Base(body) + BitOperations.TrailingZeroCount(mask);
             if (this.reader >= 0 && this.readers[node] != this.reader)
             {
                 this.readers[node] = this.reader;

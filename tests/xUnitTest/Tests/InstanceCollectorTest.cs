@@ -2182,6 +2182,33 @@ public sealed partial class InstanceCollectorTest
         Assert.Equal(gap ? [(DiagnosticCode.Unsupported_Kd, add.Source.Syntax)] : [], program.Records(MirRecordClass.Collection).Select(static x => (x.Code, x.Subject)));
     }
 
+    // PLAN G950 (the Back's C-378 (2); design §R1.4's M3 with a record, G950-0's review N1): A3b is judged work, run in the root loop every
+    // version and never kept with a library body's template: under the library's root range, one collector over two versions records a
+    // closed operation of the table seeded into a library body after each build (an i128 division of a new local in a new unreachable
+    // block, as above) in each version, at its location, once.
+    [Fact]
+    public void TheLibraryRangeChecksALibraryBodyInEveryVersion()
+    {
+        var c = Compilation.CreateForTest();
+        var (builder, analysis, collector) = (new MirBuilder(c), new MirAnalysis(c.Types), new InstanceCollector(c.Types, c.Layout));
+        var wide = BoundType.Primitives["i128"];
+        for (var version = 1; version <= 2; version++)
+        {
+            Assert.True(c.Bind().IsComplete, string.Join('\n', c.Binding.Issues));
+            var program = analysis.Run(builder.Build(SyntaxTable.LibraryModule + 1), 1); // The collector replays stepped bodies (PLAN G951).
+            var body = program.LibraryBodies[0];
+            var source = body.Blocks[0].Terminator.Source;
+            var operand = MirOperand.Copy(new(body.AddLocal(new(wide, MirLocalKind.Temp, source)))); // A stored body interns nothing.
+            var first = body.AddOperand(operand);
+            _ = body.AddOperand(operand);
+            var block = body.AddBlock();
+            body.Push(block, MirStatement.Assign(new(0), new(MirRvalueKind.BinaryOp, (byte)MirBinaryOp.Div, Start: first, Count: 2, Type: wide), source));
+            body.Terminate(block, MirTerminator.Unreachable(source));
+            _ = collector.Run(program, SyntaxTable.LibraryModule + 1);
+            Assert.Equal([(version, DiagnosticCode.Unsupported_Kd, body.Subject(source))], program.Records(MirRecordClass.Collection).Select(x => (version, x.Code, x.Subject)));
+        }
+    }
+
     // K 4.7: an operation whose Types depend on slots is no definition-stage record; without an instance it has none.
     [Fact]
     public void AnOpenOperationIsNoDefinitionStageRecord()

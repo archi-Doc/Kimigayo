@@ -6,8 +6,6 @@ namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
-    private readonly Dictionary<(BoundConformancePath Conformance, BoundRequirement Requirement), BindingScope> witnessScopes = new();
-
     private static bool SameGenericShape(FunctionKoto requirement, FunctionKoto implementation)
     {
         if (requirement.GenericArguments.Count != implementation.GenericArguments.Count)
@@ -54,6 +52,23 @@ public sealed partial class Binding
         return path.Unsupported ? ConstraintProof.Unknown : proof;
     }
 
+    // A function requirement's premises scope on its path, kept with the path (BoundConformancePath.WitnessScopes).
+    private static BindingScope WitnessScope(BoundConformancePath path, BoundRequirement identity, FunctionKoto requirement)
+    {
+        var scopes = path.WitnessScopes ??= new();
+        for (var i = 0; i < scopes.Count; i++)
+        {
+            if (scopes[i].Requirement == identity)
+            {
+                return scopes[i].Premises;
+            }
+        }
+
+        var premises = new BindingScope(requirement);
+        scopes.Add((identity, premises));
+        return premises;
+    }
+
     // SPEC 9.4: whether the accessibility of every Type a Type names covers a and b, each distinct part judged once per call (DECISIONS
     // BU-55, BU-58): a part met again was covered, or the walk has ended.
     private bool TypeAccessCovers(BoundType type, BindingSymbol a, BindingSymbol b)
@@ -79,7 +94,8 @@ public sealed partial class Binding
 
     // SPEC 8.8.2: a path's conforming Type in its conformance scope, normalized there as both sides of each requirement are (the scope's
     // identity premises included). Every reading of a path's Self (its verification, inherited or declared, its requirement
-    // identification and its associated bindings) is this one, so what is keyed by the path (requirementMatches) has one Self.
+    // identification and its associated bindings) is this one, so what the path keeps by a requirement (its RequirementMatches) has one
+    // Self.
     private BoundType ConformanceSelf(BoundConformancePath path) => this.ContractType(this.SelfType(path.Type), path.Scope);
 
     // A path keeps Proven (IsVerified) and Invalid only; Unknown and a non-Invalid Error are verified again at each read (Checking
@@ -208,7 +224,7 @@ public sealed partial class Binding
 
                     if (this.InferenceHole(conformance, identity))
                     {
-                        var binding = this.associatedBindings[(conformance.RootPath, identity)];
+                        var binding = this.AssociatedBindingOf(conformance.RootPath, identity)!;
                         if (binding.Problem is InferenceProblem.Missing or InferenceProblem.Ambiguous)
                         {
                             return Invalid(binding.Problem == InferenceProblem.Missing ? BindingFailure.MissingImplementation : BindingFailure.Ambiguous);
@@ -479,12 +495,7 @@ public sealed partial class Binding
         }
 
         var identity = new BoundRequirement(requirement.BoundSymbol!, conformance.Contract);
-        var key = (conformance, identity);
-        if (!this.witnessScopes.TryGetValue(key, out var premises))
-        {
-            this.witnessScopes.Add(key, premises = new(requirement));
-        }
-
+        var premises = WitnessScope(conformance, identity, requirement);
         premises.Reset();
         premises.Parent = scope;
         var environment = premises.Constraints ??= new();

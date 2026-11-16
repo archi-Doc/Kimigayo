@@ -51,18 +51,17 @@ internal sealed partial class InstanceCollector
         }
 
         var body = program.Body(set.Items[item].BodyOrdinal);
-        if (body.Ordinal >= this.templated)
+        if (this.extent < program.Bodies.Length)
         {
-            this.Templates(program); // A body a lookup built during the run (PLAN G951).
+            this.Templates(program); // Bodies a lookup built during the run (PLAN G951).
         }
 
         this.missed |= !program.Drops.Holds(body.Ordinal); // Round: a body the analyses have not stepped.
         this.LayOutLocals(item, body);
         this.LayOutNeeds(item, body);
-        for (var i = this.starts[body.Ordinal]; i < this.starts[body.Ordinal + 1]; i++)
+        foreach (var site in this.TemplatesOf(body.Ordinal).Sites(body.Ordinal))
         {
             this.Work++;
-            var site = this.sites[i];
             var (at, runtime) = site;
             var block = body.Blocks[at.Block];
             var target = at.Index == block.Count
