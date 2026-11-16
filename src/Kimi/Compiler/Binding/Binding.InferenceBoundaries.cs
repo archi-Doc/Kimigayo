@@ -149,7 +149,7 @@ public sealed partial class Binding
     }
 
     // SPEC 23.1.2, 10.8 (Unbound slots; DECISIONS U1.6h-1): the unsolved slots at whose position a part's own binding failed
-    // (PartFailed) rest on that part and leave `unsolved`, by the positions of [start, end) (a join's sources, an aggregate's
+    // (PartFailed) or rests on a failed part of its own rest on that part and leave `unsolved`, by the positions of [start, end) (a join's sources, an aggregate's
     // elements: ChildPositions); the slots left are the call's own boundary. Returns such a part, null when there is none; `scratch`
     // is empty before and after.
     private Koto? RestSlots(int start, BoundType pattern, FunctionKoto selected, ref SlotSet unsolved, ref SlotSet scratch)
@@ -162,7 +162,10 @@ public sealed partial class Binding
 
         for (var i = start; i < end; i++)
         {
-            if (!this.PartFailed(this.positionParts[i]))
+            // A failed part, or one the defaults resolved alone that rests on a failed part of its own (a nested call or
+            // construction over an anonymous function without a Type): HasFailureCauses, which PartFailed does not ask of a part
+            // its record still shows as waiting.
+            if (!this.PartFailed(this.positionParts[i]) && !this.HasFailureCauses(this.positionParts[i]))
             {
                 continue;
             }
