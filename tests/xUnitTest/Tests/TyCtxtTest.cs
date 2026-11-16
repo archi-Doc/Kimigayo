@@ -282,8 +282,13 @@ public sealed partial class TyCtxtTest
         {
             const System.Reflection.BindingFlags Private = System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance;
             var interned = ((Dictionary<int, List<BoundType>>)typeof(TyCtxt).GetField("types", Private)!.GetValue(c.Types)!).Values.SelectMany(static x => x);
-            var own = c.Binding.Semantics.Declarations.Values.SelectMany(static x => new[] { x.WholeType, x.Type, x.ContractSelf }).OfType<BoundType>();
-            int[] ids = [.. interned.Concat(own).Where(static x => x.Id > BoundType.StaticCount).Distinct().Select(static x => x.Id).Order()];
+            var own = new List<BoundType?>();
+            foreach (var symbol in c.Binding.Semantics.Declarations)
+            {
+                own.AddRange([symbol.WholeType, symbol.Type, symbol.ContractSelf]);
+            }
+
+            int[] ids = [.. interned.Concat(own.OfType<BoundType>()).Where(static x => x.Id > BoundType.StaticCount).Distinct().Select(static x => x.Id).Order()];
             Assert.Equal((int)typeof(TyCtxt).GetField("typeCount", Private)!.GetValue(c.Types)! - BoundType.StaticCount, ids.Length);
             return ids;
         }
