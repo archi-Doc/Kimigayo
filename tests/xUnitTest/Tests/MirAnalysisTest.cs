@@ -792,14 +792,18 @@ public sealed class MirAnalysisTest
     // PLAN G951 U1 (R2.4): a build whose root range is the program's, analyzed by the driver (A4's rounds over the one stepping path), judges
     // as the eager build of another compilation of the same source: the same merged problems with their requirement, record class,
     // ordinal, reason, members (body and views) and facts, the same validator findings and construction records, and each body it built
-    // with the eager body's A2 table; it builds fewer library bodies. Labels (SPEC): X1 valid (8.11.4; Stopwatch.reset has no environment
-    // effect, 8.11.2); X2 invalid (start reads the counter, an environment effect, so the confined bound fails at the argument:
-    // UnsatisfiedEffectBound_Kd, 8.11.4); X3 valid (10.5.3, 7.7.4); H1 valid (22.9.2, 16.2.1); the examples and milestones valid;
-    // Requirements invalid (one problem of each recording rule, above). X2 needs A4's second round (start, first named by its obligation);
-    // H1, Utf8Formatting and Milestone31 one for a destructor, a witness and storage bodies first named by the solve.
+    // with the eager body's A2 table; it builds fewer library bodies; and the version is Open after the run, for the collector's lookups.
+    // Labels (SPEC): X1 valid (8.11.4; Stopwatch.reset has no environment effect, 8.11.2); X2 invalid (start reads the counter, an
+    // environment effect, so the confined bound fails at the argument: UnsatisfiedEffectBound_Kd, 8.11.4); Yp invalid, the same record at
+    // each of its two arguments (start's, and noisy's Console output, an environment effect, 8.11.2; 23.1.2); X3 valid (10.5.3, 7.7.4); H1
+    // valid (22.9.2, 16.2.1); the examples and milestones valid; Requirements invalid (one problem of each recording rule, above). X2 needs
+    // A4's second round (start, first named by its obligation); Yp too, while noisy's obligation is decided in the first, so only the
+    // commit rule keeps the report's order; H1, Utf8Formatting and Milestone31 one for a destructor, a witness and storage bodies first
+    // named by the solve.
     [Theory]
     [InlineData("X1")]
     [InlineData("X2")]
+    [InlineData("Yp")]
     [InlineData("X3")]
     [InlineData("H1")]
     [InlineData("docs/examples/Hello/Hello.kimi")]
@@ -818,6 +822,7 @@ public sealed class MirAnalysisTest
         var tables = eager.Bodies.ToArray().ToDictionary(Key, x => Table(eager, x));
         Assert.All(lazy.Bodies.ToArray(), x => Assert.Equal(tables[Key(x)], Table(lazy, x)));
         Assert.True(Library(lazy) < Library(eager), $"{Library(lazy)} of {Library(eager)} library bodies");
+        Assert.Equal(MirProgram.Phase.Open, lazy.Demands);
     }
 
     // PLAN G951 U1 (moved from U0): Hello built with its own root range and analyzed builds the 5 library bodies its analyses read.
@@ -947,8 +952,8 @@ public sealed class MirAnalysisTest
     // The first line of a syntax's text.
     private static string Line(Compilation c, SourceRef syntax) => c.SyntaxOf(syntax).ToString().Split('\n')[0].Trim();
 
-    // A source of the lazy rows: PLAN G951's X1, X2 (a library function at a Callable binding declaring confined), X3, H1 (a library heap
-    // buffer dropped), Requirements, or a repository file.
+    // A source of the lazy rows: PLAN G951's X1, X2 (a library function at a Callable binding declaring confined), the review's Yp (X2's use,
+    // then a root function's), X3, H1 (a library heap buffer dropped), Requirements, or a repository file.
     private static string LazySource(string name)
     {
         const string apply = "func apply<F>(action: ref/F) -> ()\n    F is Callable<(uniq/::Kimi.Time.Stopwatch) -> ()>\n        effect confined\n" +
@@ -957,6 +962,8 @@ public sealed class MirAnalysisTest
         {
             "X1" => apply + "apply(::Kimi.Time.Stopwatch.reset)\n",
             "X2" => apply + "apply(::Kimi.Time.Stopwatch.start)\n",
+            "Yp" => apply + "func noisy(watch: uniq/::Kimi.Time.Stopwatch) -> ()\n    Console.writeLine(\"noisy\")\n\n" +
+                "apply(::Kimi.Time.Stopwatch.start)\napply(noisy)\n",
             "X3" => MirBuildTest.StopwatchAction,
             "H1" => "let buffer = ::Kimi.Text.heap(16)\n",
             "Requirements" => Requirements,

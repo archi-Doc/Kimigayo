@@ -385,8 +385,8 @@ public sealed partial class MirBuildTest(ITestOutputHelper output)
     }
 
     // PLAN G951 U1 (R2-N1, R3-N1): while the analyses judge (step 4 and MirOrigins.Findings), a lookup that builds a body is a broken
-    // contract and throws, and a definition without a body is null; the version is Open again afterwards, and a sealed version stays
-    // sealed. X3 as above.
+    // contract and throws, and a definition without a body is null; the version is Open again afterwards, a return to Open without
+    // Judging is a broken contract (so a Run that skipped Judging fails), and a sealed version stays sealed. X3 as above.
     [Fact]
     public void ALookupThatBuildsWhileJudgingThrows()
     {
@@ -398,6 +398,7 @@ public sealed partial class MirBuildTest(ITestOutputHelper output)
         Assert.Throws<InvalidOperationException>(() => program[Library(eager, MirBodyKind.Fn, "start")]);
         program.Enter(MirProgram.Phase.Open);
         Assert.NotNull(program[Library(eager, MirBodyKind.Fn, "reset")]);
+        Assert.Throws<InvalidOperationException>(() => program.Enter(MirProgram.Phase.Open));
         program.Enter(MirProgram.Phase.Sealed);
         program.Enter(MirProgram.Phase.Open);
         Assert.Equal(MirProgram.Phase.Sealed, program.Demands);

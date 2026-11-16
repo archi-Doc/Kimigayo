@@ -5,7 +5,8 @@
 // over MirMoveData's paths), each state event there and the paths A1's entry initializes (the arguments'; a constructing _0's own bit has
 // no subtree event, so no point); the selected view (MirCases). Output: MirProgram.Drops, per Drop its verdict groups (a group equal but
 // for its views to the Drop's previous group is merged into it; lookups are by view), the body's flags and their set and clear points,
-// the views judged (A1 and A2 completed them), the body's first A1 or A2 problem, an inline
+// the views judged (A1 and A2 completed them), whether the table holds a body (Holds: the driver's one stepping path closed its entry in
+// this version, which a round of A4 or the collector reads, PLAN G951), the body's first A1 or A2 problem, an inline
 // copy's included (its code, its subject in its location's scope and MirReport.Add's index, -1 for a copy's, which the report drops; both
 // set it after Add; the table is exact only without one, R4-M6a, R4-M102, R4-M132), and MovedPlace_Kd through MirReport where a layer
 // with its own drop may be incomplete at a runtime Drop, inside an inline default copy with the copy's call as its Inlined fact (R4-M69).
