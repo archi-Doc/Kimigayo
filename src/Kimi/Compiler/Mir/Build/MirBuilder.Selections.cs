@@ -216,7 +216,7 @@ internal sealed partial class MirBuilder
         this.arguments.Add(MirOperand.Move(pointer));
         this.arguments.Add(MirOperand.Copy(count));
         this.arguments.Add(backing);
-        this.Serve(destination, CompilerFunctionKind.RawSlice, null, [element], at, index);
+        this.Serve(destination, KimiDeclarationId.RawSlice, null, [element], at, index);
     }
 
     // SPEC 4.8.1, 8.15.3 (DECISIONS R8-M13; PLAN G597): a view's first element's address, the one statement of its form, from the view

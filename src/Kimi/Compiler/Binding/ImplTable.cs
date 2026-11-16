@@ -36,9 +36,8 @@ internal sealed class ImplTable
     private readonly List<List<BoundConformance>> typeLists = new();
     private readonly Dictionary<BindingSymbol, List<BoundConformance>> byType = new(ReferenceEqualityComparer.Instance);
 
-    // The overlay's base store and the library module that decides it; null in the base.
+    // The overlay's base store; null in the base.
     private readonly ImplTable? library;
-    private readonly Kotonoha? libraryModule;
     private Stack<BoundConformance>? identityPool;
     private Stack<BoundConformancePath>? pathPool;
     private ulong listPass;
@@ -49,10 +48,9 @@ internal sealed class ImplTable
     }
 
     // The compilation's overlay over the library's base store, which holds the library module's Types.
-    internal ImplTable(ImplTable library, Kotonoha libraryModule)
+    internal ImplTable(ImplTable library)
     {
         this.library = library;
-        this.libraryModule = libraryModule;
     }
 
     /// <summary>Gets the pass this store is current for (Begin).</summary>
@@ -208,7 +206,7 @@ internal sealed class ImplTable
 
     // SPEC 8.6.1: the store of a Type's identities and paths is its declaration's module's, the base for a library Type.
     private ImplTable StoreOf(BindingSymbol type)
-        => this.library is { } layer && ReferenceEquals(type.Declaration.CodeContext.Kotonoha, this.libraryModule) ? layer : this;
+        => this.library is { } layer && type.Declaration.Kotonoha.Syntax.IsLibrary ? layer : this;
 
     // The store's lists are the pass's: emptied at the store's first access in a pass.
     private ImplTable Fresh()

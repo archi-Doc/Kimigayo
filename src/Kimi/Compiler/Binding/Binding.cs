@@ -41,7 +41,7 @@ public sealed partial class Binding
         this.compilation = compilation;
         this.indexer = new(this);
         this.Library = new(compilation);
-        this.impls = new(this.Library.Layer.Impls, this.Library.Kotonoha);
+        this.impls = new(this.Library.Layer.Impls);
         this.types = new(this, this.Library);
         foreach (var symbol in this.Library.RegisteredSymbols)
         {
@@ -277,14 +277,7 @@ public sealed partial class Binding
         for (var i = 0; i < libraryRoot.NestedContainers.Count; i++)
         {
             var declaration = libraryRoot.NestedContainers[i];
-            if (this.Library.SignatureScope(declaration) is { } signatureScope)
-            {
-                for (var m = 0; m < declaration.Members.Count; m++)
-                {
-                    this.BindNode(declaration.Members[m], signatureScope);
-                }
-            }
-            else if (declaration.BoundSymbol?.Intrinsic == IntrinsicKind.None)
+            if (declaration.BoundSymbol?.Intrinsic == IntrinsicKind.None)
             {
                 this.BindNode(declaration, this.Library.Scope);
             }

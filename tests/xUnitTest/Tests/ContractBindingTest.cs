@@ -911,7 +911,7 @@ public class ContractBindingTest
         var c = Sources("Self is C");
         ReplaceSelfClause(c, "Self is E");
         Assert.True(c.Bind().IsComplete, Describe(c));
-        Assert.Equal(["S: E", "T: D"], Impls(c).Identities.Where(x => !IsLibrary(c, x.Type)).Select(static x => x.Type.Name + ": " + x.Contract.Name));
+        Assert.Equal(["S: E", "T: D"], Impls(c).Identities.Where(static x => !x.Type.Declaration.Kotonoha.Syntax.IsLibrary).Select(static x => x.Type.Name + ": " + x.Contract.Name));
     }
 
     // PLAN G949 S1-b1 c15 (the Front's RR3): Paths lists the program's paths in registration order, then the library's, which
@@ -921,9 +921,9 @@ public class ContractBindingTest
     {
         var c = Sources("Self is C and E");
         var paths = Impls(c).Paths.ToList();
-        var library = paths.FindIndex(x => IsLibrary(c, x.Type));
+        var library = paths.FindIndex(static x => x.Type.Declaration.Kotonoha.Syntax.IsLibrary);
         Assert.True(library > 0);
-        Assert.DoesNotContain(paths.Skip(library), x => !IsLibrary(c, x.Type));
+        Assert.DoesNotContain(paths.Skip(library), static x => !x.Type.Declaration.Kotonoha.Syntax.IsLibrary);
         Assert.Equal(["S: C", "S: E", "T: D"], paths.Take(library).Select(static x => x.Type.Name + ": " + x.Contract.Name));
     }
 
@@ -974,8 +974,6 @@ public class ContractBindingTest
     }
 
     private static ImplTable Impls(Compilation c) => (ImplTable)typeof(Binding).GetField("impls", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(c.Binding)!;
-
-    private static bool IsLibrary(Compilation c, BindingSymbol type) => ReferenceEquals(type.Declaration.CodeContext.Kotonoha, c.Binding.Library.Kotonoha);
 
     // Whether `source` binds completely exactly when `codes` is empty, with these distinct issue codes.
     private static void AssertBindingCodes(string source, string codes)

@@ -20,5 +20,5 @@ public sealed partial class Binding
     // one of a user Contract that refines either, is an error rather than a conformance.
     private bool IsClosedContractGrant(BindingSymbol contract, BindingSymbol type)
         => (IsRefinement(contract, this.Library.Position) || IsRefinement(contract, this.Library.PositionRange)) &&
-            !ReferenceEquals(type.Declaration.CodeContext.Kotonoha, this.Library.Kotonoha);
+            !type.Declaration.Kotonoha.Syntax.IsLibrary;
 }

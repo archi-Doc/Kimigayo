@@ -452,7 +452,7 @@ public sealed partial class Binding
             => this.ContractType(reference is null ? type : this.SubstituteContractReference(type, reference, out _), scope, self, normalize);
     }
 
-    private bool IsLibraryDeclaration(Koto declaration) => ReferenceEquals(declaration.CodeContext.Kotonoha, this.Library.Kotonoha);
+    private bool IsLibraryDeclaration(Koto declaration) => declaration.Kotonoha.Syntax.IsLibrary;
 
     private void ValidateConformances(BindingMode mode, bool final)
     {
