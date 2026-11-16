@@ -8,7 +8,7 @@ namespace Kimi.Compiler;
 // - Responsibility: reading a list's program part and its library part as one list, the program's part first (R1.1's composition
 //   order, owned by Binding's pass driver); Count, the indexer and an allocation-free foreach.
 // - Inputs: the two parts, each its store's own list (ImplTable: the overlay's and LibraryLayer's base's).
-// - Outputs: the composed reads; Program and Library, each part alone.
+// - Outputs: the composed reads; Program, the program part alone.
 // - Invariants: an index below the program part's Count reads the program part, any other the library part at the index less it;
 //   foreach reads the program part, then the library part, and fails as a List's does when a part changes during it.
 // - Precondition (the reader's): no entry joins either part while an index loop over the composed list runs, since a program entry
@@ -31,9 +31,6 @@ internal readonly struct LayerList<T> : IReadOnlyList<T>
 
     /// <summary>Gets the program part.</summary>
     internal List<T> Program => this.program;
-
-    /// <summary>Gets the library part.</summary>
-    internal List<T> Library => this.library;
 
     /// <summary>Gets an entry: the program part's, then the library part's.</summary>
     /// <param name="index">The index in the composed list.</param>

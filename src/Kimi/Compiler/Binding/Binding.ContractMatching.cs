@@ -94,7 +94,8 @@ public sealed partial class Binding
 
     // SPEC 8.8.2: a path's conforming Type in its conformance scope, normalized there as both sides of each requirement are (the scope's
     // identity premises included). Every reading of a path's Self (its verification, inherited or declared, its requirement
-    // identification and its associated bindings) is this one, so what is keyed by the path (requirementMatches) has one Self.
+    // identification and its associated bindings) is this one, so what the path keeps by a requirement (its RequirementMatches) has one
+    // Self.
     private BoundType ConformanceSelf(BoundConformancePath path) => this.ContractType(this.SelfType(path.Type), path.Scope);
 
     // A path keeps Proven (IsVerified) and Invalid only; Unknown and a non-Invalid Error are verified again at each read (Checking

@@ -14,14 +14,17 @@ using Kimi.Compiler.Parsing;
 //   Sweep at the end of a Bind (Binding.Bind).
 // - Outputs: Paths, Identities and ByType (LayerList: the overlay's part, then the base's), OfType(type), Find(type, contract),
 //   Path(key) and TryPath(key).
-// - Invariants: an identity or path carries the pass of its last reset (Stamp) and reads as unregistered while stale (Current); the
-//   table resets it at its first access in a pass, so no reader sees an earlier pass's state; a store's lists are emptied at its first
-//   access in a pass; a path joins Paths and its identity's paths only at its first registration in a pass, so both follow the
-//   registrars' order and a derived Type's follow its base's; Identities lists the pass's identities in the order the pass first names
-//   them; Register names the root path and the root's own call registers it; each key keeps one object while each pass registers it,
-//   with the facts other components keep by a path and a second key (its satellite lists); at the end of a Bind the overlay drops
-//   every identity and path the pass did not register into its pool, from which Named takes, emptied, before allocating. The lists are
-//   the table's own: no reader adds to or removes from them.
+// - Invariants: the overlay never holds a library Type, by construction: StoreOf routes each key by its Type's module, so no write is
+//   refused here (refusing program writes to the base is S1-1's); an identity or path carries the pass of its last reset (Stamp) and
+//   reads as unregistered while stale (Current); the table resets it at its first access through the table in a pass (Find, Path,
+//   TryPath, Register), so no reader sees an earlier pass's state; a path is Active from its registration in the pass to the end of the
+//   pass, a per-pass flag the reset clears (not "Stamp current": a lookup can reach a path before the pass registers it); a store's
+//   lists are emptied at its first access in a pass; a path joins Paths and its identity's paths only at its first registration in a
+//   pass, so both follow the registrars' order and a derived Type's follow its base's; Identities lists the pass's identities in the
+//   order the pass first names them; Register names the root path and the root's own call registers it; each key keeps one object
+//   while each pass registers it, with the facts other components keep by a path and a second key (its satellite lists); at the end of
+//   each Bind the overlay drops every identity and path the pass did not register into its pool (Sweep), from which Named takes,
+//   emptied, before allocating. The lists are the table's own: no reader adds to or removes from them.
 // - Prohibitions: no verification (Binding.ContractMatching, Binding.InheritedConformances), availability at a use
 //   (Binding.ResolveConformance), Self-clause rule or diagnostic here; no reader composes the two stores.
 namespace Kimi.Compiler;
