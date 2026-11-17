@@ -156,7 +156,7 @@ public sealed partial class MirEffectsTest
         var (cases, report) = (new MirCases(c.Types), new MirReport());
         var flow = new MirDataflow(new MirReach());
         var effects = new MirEffects(c.Types, cases, flow);
-        Analyze(effects, flow, cases, program, report);
+        Analyze(effects, flow, cases, program, report, All);
         return (effects, flow, program);
     }
 
