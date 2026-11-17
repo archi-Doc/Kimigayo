@@ -52,7 +52,7 @@ public sealed partial class Binding
         this.ResetSyntheticCalls();
         this.pairFollows.Clear();
         this.implicitPairFollows.Clear();
-        foreach (var construction in this.enumConstructions.Values)
+        foreach (var construction in this.enumConstructions.Values.In(this.pass))
         {
             construction!.IsValid = false;
         }
