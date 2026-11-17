@@ -402,6 +402,22 @@ public sealed partial class Binding
         }
     }
 
+    // PLAN G949 S1-e's call-scratch rule for a reader whose own use makes requests (the arithmetic direction check, x41n): at the use's
+    // end, outside any request, the pooled link lists its requests borrowed are emptied, capacity kept (EnumerateLink empties a list
+    // again when it lends it), so no row outlives the use that formed it.
+    private void EmptyPooledRows()
+    {
+        if (this.enumerateDepth != 0 || this.enumerateWalking != 0)
+        {
+            throw new InvalidOperationException("The pooled rows were emptied inside a request or a read (InternalInvariant; x41n).");
+        }
+
+        foreach (var rows in this.enumeratePool)
+        {
+            rows.Clear();
+        }
+    }
+
     // The outermost walk's rows of the view, kept for the epoch under the request's requirement Contract (pooled copies), each marked
     // with whether the walk recorded an identity row: a link's own walk records a subset of its request's. A request that deferred a
     // mate (PLAN G881b) marks them too: a deferred walk records none, so a link only it walked may record one in its own request.

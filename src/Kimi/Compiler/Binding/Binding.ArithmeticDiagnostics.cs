@@ -135,12 +135,21 @@ public sealed partial class Binding
         }
 
         var valid = true;
-        for (var i = start; valid && i < unique; i++)
+        try
         {
-            valid = this.ValidateArithmeticRows(this.directionSeeds[i], scope);
+            for (var i = start; valid && i < unique; i++)
+            {
+                valid = this.ValidateArithmeticRows(this.directionSeeds[i], scope);
+            }
+        }
+        finally
+        {
+            // The check's scratch, emptied at its end (PLAN G949 S1-e): its seeds, and the pooled lists its requests borrowed (the
+            // class build above included: EmptyPooledRows empties every pooled list).
+            this.directionSeeds.RemoveRange(start, this.directionSeeds.Count - start);
+            this.EmptyPooledRows();
         }
 
-        this.directionSeeds.RemoveRange(start, this.directionSeeds.Count - start);
         return valid;
     }
 
