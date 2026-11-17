@@ -8,9 +8,6 @@ public sealed partial class Binding
 {
     // Requirement Items retain the requirement declaration, the conforming Self and its bound declaring Contract.
     // These are type-level bindings, not a captured receiver or an implementation chosen by a later name lookup.
-    private RequirementGroup? ReferenceRequirements(Koto use)
-        => ReferenceName(use) is MemberAccessKoto member && this.requirementGroups.TryGetValue(member, out var group) && group.Active ? group : null;
-
     private BoundType? BindRequirementItem(Koto use, RequirementGroup group, BindingScope scope, BoundType? required = null, bool erase = false)
     {
         if (this.MemberSideOf((MemberAccessKoto)ReferenceName(use)) != MemberSide.Type)
@@ -85,7 +82,11 @@ public sealed partial class Binding
             return this.Fail(use, BindingFailure.DirectCallFunctionValue);
         }
 
-        this.CompleteFunctionItem(use, selected);
+        if (this.CompleteFunctionItem(use, selected) is null)
+        {
+            return null; // A requirement member is never `#Unsupported` (KimiLibraryShapeTest L11).
+        }
+
         if (erase && required is not null)
         {
             if (!this.ErasesToFunction(use, selected, required))

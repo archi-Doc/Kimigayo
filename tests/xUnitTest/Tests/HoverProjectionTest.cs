@@ -225,6 +225,15 @@ public sealed class HoverProjectionTest
         Assert.DoesNotContain("initRepeating", declaration.Header + string.Concat(declaration.Documentation.Select(static x => x.ToString())), StringComparison.Ordinal);
     }
 
+    // IMPL 21.3.4: a library declaration's header shows its implementation Attributes as written, through the ordinary syntax writers.
+    [Fact]
+    public void ALibraryDeclarationsHeaderShowsItsImplementationAttributes()
+    {
+        const string text = "var xs = Array<i32>.init(capacity: 4)\nxs.append(1)\n";
+        var declaration = Assert.Single(At(Project(text), text.IndexOf("append", StringComparison.Ordinal)).Declarations);
+        Assert.Equal("#Lang(\"ArrayAppend\") #CallerLocation\npublic func append(self: uniq/Self, value: T)", declaration.Header);
+    }
+
     [Fact]
     public void InvalidConstraintsNeverPublishCopyYes()
     {
@@ -303,23 +312,24 @@ public sealed class HoverProjectionTest
     [Fact]
     public void TypeDisplayPreservesGroupingAndBoundsDepthAndRepeatedExpansion()
     {
-        var integer = new BoundType("i32", BoundTypeKind.Primitive);
-        var tuple = new BoundType(string.Empty, BoundTypeKind.Tuple, components: [integer]);
+        var types = CompilationTestHelper.BindSuccess("()").Types;
+        var integer = BoundType.I32;
+        var tuple = types.Tuple([integer]);
         Assert.Equal("(i32,)", Binding.HoverTypeName(tuple));
-        var function = new BoundType(string.Empty, BoundTypeKind.Function, components: [BoundType.Unit, integer]);
-        var reference = new BoundType(string.Empty, BoundTypeKind.Semantics, semantics: SemanticsKind.Ref, components: [function]);
+        var function = types.Intern(BoundTypeKind.Function, null, SemanticsKind.Owner, [BoundType.Unit, integer]);
+        var reference = types.Reference(SemanticsKind.Ref, function);
         Assert.Equal("ref/(() -> i32)", Binding.HoverTypeName(reference));
         var deep = integer;
         for (var i = 0; i < 128; i++)
         {
-            deep = new(string.Empty, BoundTypeKind.Tuple, components: [deep]);
+            deep = types.Tuple([deep]);
         }
 
         Assert.Throws<HoverLimitException>(() => Binding.HoverTypeName(deep));
         var repeated = integer;
         for (var i = 0; i < 24; i++)
         {
-            repeated = new(string.Empty, BoundTypeKind.Tuple, components: [repeated, repeated]);
+            repeated = types.Tuple([repeated, repeated]);
         }
 
         Assert.Throws<HoverLimitException>(() => Binding.HoverTypeName(repeated));

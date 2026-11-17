@@ -5,15 +5,19 @@ using Kimi.Compiler.Parsing;
 namespace Kimi.Compiler;
 
 // Binding (P2-P5s, COMPILER_ARCHITECTURE "Target pipeline"): the entry of the pass that resolves the selected syntax and publishes its facts.
-// - Responsibility: one pass per Bind(mode) in the order written here: SyntaxId numbering, ResetPass, IndexSources, IndexLibrary,
-//   BindDeclarations, BindBodies, ValidateBoundDeclarations, Check, and WalkLints in a Final pass; CheckBound repeats Check on a Final
-//   pass; Invalidate revokes the latest pass after an edit. Each step lives in its concern's file (Binding.<Concern>.cs); this file
-//   holds the entry points, the state the concerns share and the pass order.
+// - Responsibility: Bind(mode): its runs and passes through the pass driver (Binding.Passes.cs: BeginBind, then each run's BeginRun
+//   and passes, each pass ResetPass, Index, BindDeclarations, BindBodies, ValidateBoundDeclarations and Check over its modules),
+//   then WalkLints in a Final Bind and the conformance table's sweep (ImplTable.Sweep); CheckBound repeats Check on a Final pass;
+//   Invalidate revokes the latest pass after an edit. Each step lives in its concern's file (Binding.<Concern>.cs); this file holds the
+//   entry points, the state the concerns share and the order of the declaration, body and validation steps.
 // - Inputs: the compilation's source modules, the embedded Kimi library (Library) and the mode.
 // - Outputs: Result, Issues, Obligations, LibraryImports, the Type context (Types), the facts published to readers outside Binding
 //   (Semantics; the HIR tables and Plans), and the diagnostics ReportDiagnostics records (Binding.Diagnostics.Report.cs).
 // - Invariants: a pass is never reentered; a pass that does not finish leaves no Result, and the later phases' facts are discarded
-//   when a pass starts; storage is reused across passes (ResetPass, Binding.Pass.cs).
+//   when a pass starts; storage is reused across passes (ResetPass, Binding.Pass.cs). The published per-pass lists (nodes, issues,
+//   derived issues, obligations, imports and the effect obligations' sources) are parts (PassPart, Binding.Passes.cs): a pass writes
+//   the part the driver hands it, Binding's own until the library pass (PLAN G949 S1-r1b) is handed LibraryLayer.Part, and a reader
+//   outside a pass reads the composed views, both parts.
 // - Prohibitions: no read of Mir or the Backend (COMPILER_ARCHITECTURE "Dependency rules"); readers outside Binding use its published
 //   facts, never its private state.
 
@@ -21,30 +25,81 @@ namespace Kimi.Compiler;
 public sealed partial class Binding
 {
     private readonly Compilation compilation;
-    private readonly List<Koto> nodes = new(KimiLibrarySize.NodeCapacity(KimiLibrarySize.Stated.Nodes));
-    private readonly Dictionary<object, BindingScope> scopes = new(
-        KimiLibrarySize.KeyedCapacity(KimiLibrarySize.Stated.Scopes), ReferenceEqualityComparer.Instance);
+    private readonly KeptScopes scopes;
 
-    private readonly Dictionary<object, BindingSymbol> symbols = new(
-        KimiLibrarySize.KeyedCapacity(KimiLibrarySize.Stated.Declarations), ReferenceEqualityComparer.Instance);
-
-    private readonly List<BindingIssue> issues = new();
-    private readonly List<LibraryImport> libraryImports = new();
+    private readonly DeclaredSymbols symbols;
+    private readonly InferenceBatches associatedInference;
     private readonly TyCtxt types;
-    private readonly List<BindingObligation> obligations = new();
-    private readonly HashSet<BindingObligation> obligationSet = new();
+
+    // The running pass's part (PassPart), which its steps write; the driver hands it over (EnterPass), Binding's own between Binds.
+    private List<Koto> nodes;
+    private List<BindingIssue> issues;
+    private List<LibraryImport> libraryImports;
+    private List<BindingObligation> obligations;
+    private HashSet<BindingObligation> obligationSet;
     private bool running;
+
+    // The edit counter: Invalidate alone advances it, never a pass, so an edit column (StampedColumn following EditCounter) holds across
+    // passes and reads absent after an edit until its first write.
+    private ulong edit;
 
     internal Binding(Compilation compilation)
     {
         this.compilation = compilation;
         this.indexer = new(this);
         this.Library = new(compilation);
+        this.impls = new(this.Library.Layer.Impls);
         this.types = new(this, this.Library);
+        this.symbols = new(this);
+        this.scopes = new(this);
+        this.originAtoms = new(this);
+        this.openOrigins = new(this);
+        this.associatedOrigins = new(this);
+        this.shapeContractHeads = new(this);
+        this.objectErasures = new(this);
+        this.enumConstructions = new(this);
+        this.copyDeclarations = new(this);
+        this.copyByType = new(this);
+        this.inheritedOriginTypes = new(this);
+        this.deferredConstraints = new(this);
+        this.matches = new(this);
+        this.adaptations = new(this);
+        this.associatedInference = new(this);
+        this.implicitConstructorDecisions = new(this);
+        this.specializationsByOriginal = new(this);
+        this.specializations = new(this);
+        this.virtualEffectBounds = new(this);
+        this.overrideEntries = new(this);
+        this.virtualOverrides = new(this);
+        this.originDeclarations = new(this);
+        this.discoveredOrigins = new(this);
+        this.initializerOrigins = new(this);
+        this.propertyCalls = new(this);
+        this.storageProjections = new(this);
+        this.propertyUpdateStorage = new(this);
+        this.propertyUpdateInputs = new(this);
+        this.indexerCalls = new(this);
+        this.viewRangeCalls = new(this);
+        this.rangeCalls = new(this);
+        this.resolvedKeys = new(this);
+        this.matchPlans = new(this);
+        this.Library.Kotonoha.Syntax.Hir.Families.Reserve(KimiLibrarySize.Stated);
         foreach (var symbol in this.Library.RegisteredSymbols)
         {
             this.symbols.Add(symbol.Declaration, symbol);
         }
+
+        var (own, layer) = (this.programPart, this.Library.Layer.Part);
+        this.nodesView = new(own.Nodes, layer.Nodes);
+        this.issuesView = new(own.Issues, layer.Issues);
+        this.derivedIssuesView = new(own.DerivedIssues, layer.DerivedIssues);
+        this.obligationsView = new(own.Obligations, layer.Obligations);
+        this.libraryImportsView = new(own.Imports, layer.Imports);
+        this.virtualDeclarationsView = new(own.VirtualDeclarations, layer.VirtualDeclarations);
+        this.callableEffectUsesView = new(own.CallableEffectUses, layer.CallableEffectUses);
+        this.callableEffectClausesView = new(own.CallableEffectClauses, layer.CallableEffectClauses);
+        (this.Issues, this.Obligations, this.LibraryImports, this.DerivedIssues) = (this.issuesView, this.obligationsView, this.libraryImportsView, this.derivedIssuesView);
+        this.EnterPass(this.ProgramPass);
     }
 
     /// <summary>Gets the latest pass summary. Results are replaced by the next Bind.</summary>
@@ -54,16 +109,16 @@ public sealed partial class Binding
     public KimiLibrary Library { get; }
 
     /// <summary>Gets final failures; provisional passes do not publish missing-name diagnostics.</summary>
-    public IReadOnlyList<BindingIssue> Issues => this.issues;
+    public IReadOnlyList<BindingIssue> Issues { get; }
 
     /// <summary>Gets requirements to discharge during subsequent semantic analysis.</summary>
-    public IReadOnlyList<BindingObligation> Obligations => this.obligations;
+    public IReadOnlyList<BindingObligation> Obligations { get; }
 
     /// <summary>Gets the valid foreign import declarations of the latest pass (SPEC 22.6), in source order.</summary>
-    internal IReadOnlyList<LibraryImport> LibraryImports => this.libraryImports;
+    internal IReadOnlyList<LibraryImport> LibraryImports { get; }
 
-    /// <summary>Gets the facts this Binding publishes to readers outside Binding.</summary>
-    internal SemanticQuery Semantics => field ??= new(this.compilation, this, this.nodes, this.symbols, this.impls);
+    /// <summary>Gets the facts this Binding publishes to readers outside Binding: the program pass's nodes (BoundNodes).</summary>
+    internal SemanticQuery Semantics => field ??= new(this.compilation, this, this.programPart.Nodes, this.symbols, this.impls);
 
     /// <summary>Gets the Type context: interned Types and substitutions.</summary>
     internal TyCtxt Types => this.types;
@@ -71,9 +126,30 @@ public sealed partial class Binding
     /// <summary>Gets the entries of the tables KimiLibrarySize sizes, as the latest pass left them.</summary>
     internal KimiLibrarySize.Tables TableCounts
         => new(
-            this.nodes.Count,
-            this.symbols.Count,
-            this.scopes.Count,
+            this.nodesView.Count,
+            this.Library.Kotonoha.Syntax.Hir.Families.Symbols.Used,
+            this.Library.Kotonoha.Syntax.Hir.Families.Parameters.Used,
+            this.Library.Kotonoha.Syntax.Hir.Families.Scopes.Used,
+            this.Library.Kotonoha.Syntax.Hir.Families.OriginAtoms.Used,
+            this.Library.Kotonoha.Syntax.Hir.Families.OpenOrigins.Used,
+            this.Library.Kotonoha.Syntax.Hir.Families.AssociatedOrigins.Used,
+            this.Library.Kotonoha.Syntax.Hir.Families.Receivers.Used,
+            this.Library.Kotonoha.Syntax.Hir.Families.EnumConstructions.Used,
+            this.Library.Kotonoha.Syntax.Hir.Families.CopyDeclarations.Used,
+            this.Library.Kotonoha.Syntax.Hir.Families.CopyByType.Used,
+            this.Library.Kotonoha.Syntax.Hir.Families.InheritedOriginTypes.Used,
+            this.Library.Kotonoha.Syntax.Hir.Families.DeferredConstraints.Used,
+            this.Library.Kotonoha.Syntax.Hir.Families.Matches.Used,
+            this.Library.Kotonoha.Syntax.Hir.Families.Adaptations.Used,
+            this.Library.Kotonoha.Syntax.Hir.Families.Specializations.Used,
+            this.Library.Kotonoha.Syntax.Hir.Families.SpecializationsByOriginal.Used,
+            this.Library.Kotonoha.Syntax.Hir.Families.OriginDeclarations.Used,
+            this.Library.Kotonoha.Syntax.Hir.Families.DiscoveredOrigins.Used,
+            this.Library.Kotonoha.Syntax.Hir.Families.OriginRequirementNodes.Used,
+            this.Library.Kotonoha.Syntax.Hir.Families.PropertyCalls.Used,
+            this.Library.Kotonoha.Syntax.Hir.Families.RangeCalls.Used,
+            this.Library.Kotonoha.Syntax.Hir.Families.ResolvedKeys.Used,
+            this.Library.Kotonoha.Syntax.Hir.Families.MatchPlans.Used,
             this.types.KeyCount,
             this.constraints.Count,
             this.pendingAssociatedTypes.Count,
@@ -82,12 +158,35 @@ public sealed partial class Binding
             this.capabilityNodes.Count,
             this.substitutedParts.Count);
 
-    /// <summary>Gets the free slots of the tables KimiLibrarySize sizes: each table's capacity less its entries.</summary>
+    /// <summary>Gets the free slots of the tables KimiLibrarySize sizes: each table's capacity less its entries; a node family's column
+    /// (symbols, their parameters, scopes, Origin atoms, open regions, associated Origins, special receivers) its arena's slots no page
+    /// holds.</summary>
     internal KimiLibrarySize.Tables TableFree
         => new(
-            this.nodes.Capacity - this.nodes.Count,
-            this.symbols.Capacity - this.symbols.Count,
-            this.scopes.Capacity - this.scopes.Count,
+            this.programPart.Nodes.Capacity + this.Library.Layer.Part.Nodes.Capacity - this.nodesView.Count,
+            this.Library.Kotonoha.Syntax.Hir.Families.Symbols.Free,
+            this.Library.Kotonoha.Syntax.Hir.Families.Parameters.Free,
+            this.Library.Kotonoha.Syntax.Hir.Families.Scopes.Free,
+            this.Library.Kotonoha.Syntax.Hir.Families.OriginAtoms.Free,
+            this.Library.Kotonoha.Syntax.Hir.Families.OpenOrigins.Free,
+            this.Library.Kotonoha.Syntax.Hir.Families.AssociatedOrigins.Free,
+            this.Library.Kotonoha.Syntax.Hir.Families.Receivers.Free,
+            this.Library.Kotonoha.Syntax.Hir.Families.EnumConstructions.Free,
+            this.Library.Kotonoha.Syntax.Hir.Families.CopyDeclarations.Free,
+            this.Library.Kotonoha.Syntax.Hir.Families.CopyByType.Free,
+            this.Library.Kotonoha.Syntax.Hir.Families.InheritedOriginTypes.Free,
+            this.Library.Kotonoha.Syntax.Hir.Families.DeferredConstraints.Free,
+            this.Library.Kotonoha.Syntax.Hir.Families.Matches.Free,
+            this.Library.Kotonoha.Syntax.Hir.Families.Adaptations.Free,
+            this.Library.Kotonoha.Syntax.Hir.Families.Specializations.Free,
+            this.Library.Kotonoha.Syntax.Hir.Families.SpecializationsByOriginal.Free,
+            this.Library.Kotonoha.Syntax.Hir.Families.OriginDeclarations.Free,
+            this.Library.Kotonoha.Syntax.Hir.Families.DiscoveredOrigins.Free,
+            this.Library.Kotonoha.Syntax.Hir.Families.OriginRequirementNodes.Free,
+            this.Library.Kotonoha.Syntax.Hir.Families.PropertyCalls.Free,
+            this.Library.Kotonoha.Syntax.Hir.Families.RangeCalls.Free,
+            this.Library.Kotonoha.Syntax.Hir.Families.ResolvedKeys.Free,
+            this.Library.Kotonoha.Syntax.Hir.Families.MatchPlans.Free,
             this.types.KeyFree,
             this.constraints.Capacity - this.constraints.Count,
             this.pendingAssociatedTypes.Capacity - this.pendingAssociatedTypes.Count,
@@ -110,10 +209,12 @@ public sealed partial class Binding
             throw new InvalidOperationException("Bound checking requires a final Binding pass.");
         }
 
-        // Check publishes both kinds of failure again.
+        // The program pass's Check publishes both kinds of failure again (until PLAN G949 S1-r1b the one pass's), on the part the
+        // fields hold between Binds, Binding's own.
         this.issues.Clear();
         this.derivedIssues.Clear();
-        return this.Result = this.Check(BindingMode.Final);
+        this.Check(BindingMode.Final);
+        return this.Result = this.ComposeResult();
     }
 
     /// <summary>Rebinds all selected syntax, reusing nodes, symbols, types, scopes, and collection capacity.</summary>
@@ -134,43 +235,21 @@ public sealed partial class Binding
         this.running = true;
         try
         {
-            // SyntaxIds: each module is renumbered only when parsing or an edit changed its syntax since it was last numbered. Its
-            // ordinal is its position; the library's is the fixed SyntaxTable.LibraryModule.
-            var modules = this.compilation.SourceModules;
-            for (var i = 0; i < modules.Length; i++)
-            {
-                modules[i].Syntax.Number(modules[i].RootKoto, (ushort)i);
-            }
-
-            this.Library.Kotonoha.Syntax.Number(this.Library.Kotonoha.RootKoto, SyntaxTable.LibraryModule);
-
-            // Every later phase rests on Binding, so its facts are discarded with Binding's; a pass that does not finish
-            // leaves no result behind.
-            this.Result = default;
-            this.compilation.Diagnostics.InvalidateSemantics();
-            this.compilation.InvalidateMir();
-            this.StartRuns(mode);
-            do
-            {
-                this.ResetPass(mode);
-                this.IndexSources();
-                this.IndexLibrary();
-            }
-            while (!this.BindDeclarations(mode));
-
-            this.BindBodies();
-            this.ValidateBoundDeclarations(mode);
-            this.Result = this.Check(mode);
+            this.BeginBind(mode);
+            this.Run(mode);
+            this.Result = this.ComposeResult();
             if (mode == BindingMode.Final)
             {
                 this.WalkLints();
             }
 
+            this.impls.Sweep(); // No identity or path an edit removed is kept (PLAN G949, DECISIONS BU-220).
             this.knownMode = mode; // knownBases, if any, are this completed Bind's (StartRuns).
             return this.Result;
         }
         finally
         {
+            this.EnterPass(this.ProgramPass); // Between Binds, and after a throw, the fields hold Binding's own part.
             this.running = false;
         }
     }
@@ -189,12 +268,14 @@ public sealed partial class Binding
         if (this.Result != default)
         {
             this.Result = default;
+            this.BeginRun();
             this.ResetPass(BindingMode.Provisional);
         }
 
         // The facts kept across unchanged passes are revoked by every edit, also after a pass that did not finish (a Bind that throws
-        // leaves no result): associated Origin parameters of the edited trees, local regions, item contexts and the Type context's view memos.
-        this.associatedOrigins.Clear();
+        // leaves no result): associated Origin parameters of the edited trees (the edit families: the edit counter's advance leaves every
+        // module's edit columns stale, StampedColumn), local regions, item contexts and the Type context's view memos.
+        this.edit++;
         this.knownBases?.Clear();
         this.localRegions.Clear();
         this.functionItemContexts.Clear();
@@ -254,6 +335,8 @@ public sealed partial class Binding
         this.ValidateConstraintEnvironments(mode);
         this.PrepareSpecializations();
         this.CompleteImplicitConstructors();
+        this.MakeLibraryAccessorFunctions(); // The library's facts a program may demand, complete before any body (PLAN G949 S1-e).
+        this.FormLibrarySignatures();
         if (this.CaptureOmittedBaseQueries)
         {
             this.CaptureOmittedBases();
@@ -262,26 +345,24 @@ public sealed partial class Binding
         return true;
     }
 
-    // Source bodies, then the library bodies outside the compiler-intrinsic declarations.
+    // The pass's bodies: its source modules', then, when it binds the library, the library's outside the compiler-intrinsic declarations.
     private void BindBodies()
     {
-        foreach (var module in this.compilation.SourceModules)
+        foreach (var module in this.pass.Sources)
         {
             this.BindNode(module.RootKoto, this.scopes[module.RootKoto]);
         }
 
-        var libraryRoot = this.Library.Kotonoha.RootKoto;
+        if (this.pass.Library is not { } library)
+        {
+            return;
+        }
+
+        var libraryRoot = library.RootKoto;
         for (var i = 0; i < libraryRoot.NestedContainers.Count; i++)
         {
             var declaration = libraryRoot.NestedContainers[i];
-            if (this.Library.SignatureScope(declaration) is { } signatureScope)
-            {
-                for (var m = 0; m < declaration.Members.Count; m++)
-                {
-                    this.BindNode(declaration.Members[m], signatureScope);
-                }
-            }
-            else if (declaration.BoundSymbol?.Intrinsic == IntrinsicKind.None)
+            if (declaration.BoundSymbol?.Intrinsic == IntrinsicKind.None)
             {
                 this.BindNode(declaration, this.Library.Scope);
             }
@@ -363,5 +444,19 @@ public sealed partial class Binding
 
         this.ValidateVirtualOverrideConditions();
         this.GuardPendingVirtualDeclarations();
+    }
+
+    /// <summary>The pass counter a pass family's column follows (StampedColumn, DECISIONS BU-220): storageVersion, which ResetPass
+    /// advances.</summary>
+    internal readonly struct PassCounter : IStampCounter
+    {
+        public static ulong Of(Binding binding) => binding.storageVersion;
+    }
+
+    /// <summary>The edit counter an edit family's column follows (StampedColumn, DECISIONS BU-220): edit, which only Invalidate
+    /// advances.</summary>
+    internal readonly struct EditCounter : IStampCounter
+    {
+        public static ulong Of(Binding binding) => binding.edit;
     }
 }

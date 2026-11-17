@@ -375,6 +375,20 @@ public sealed partial class MirOriginsTest
     public void AConstructorlessLayersRowsAreTheLocatedLimit(string source, params string[] sites)
         => Assert.Equal([.. sites.Select(static x => $"{nameof(DiagnosticCode.Unsupported_Kd)} {x}")], Origins(MirBuildTest.Compile(source + Main)));
 
+    // PLAN G951 E1 (DECISIONS R5-M168's input rule): a layer row outside the root range is the library check's, so the constructorless
+    // layer above (NoBase + LocalInit) adds its limit only under a root range that includes its module.
+    [Fact]
+    public void AConstructorlessLayerOutsideTheRootRangeIsNotJudged()
+    {
+        var c = MirBuildTest.Compile(NoBase + LocalInit + Main);
+        var program = c.BuildMir();
+        var (origins, outside, inside) = (new MirOrigins(c.Types, new MirCases(c.Types)), new MirReport(), new MirReport());
+        origins.Findings(program, outside, 0);
+        origins.Findings(program, inside, c.SourceModules.Length);
+        Assert.Empty(outside.All.ToArray());
+        Assert.Equal([DiagnosticCode.Unsupported_Kd], inside.All.ToArray().Select(static x => x.Code));
+    }
+
     // SPEC 23.1.2 (DECISIONS R4-M118): an end a Binding failure left Unbound is a Dependent node, never a source or a judged target, so a
     // chain that starts or ends at it needs the unresolved Origin and records nothing, Binding's failure explaining the rejection: a
     // `var`'s binding set with no initializer, a containment edge into a Dependent layer, and a Dependent meet at the shorter end whose
@@ -583,7 +597,7 @@ public sealed partial class MirOriginsTest
                 origins.Judge(body, MirCases.Count(body), report);
             }
 
-            origins.Findings(program, report);
+            origins.Findings(program, report, c.SourceModules.Length);
         }
 
         Run();

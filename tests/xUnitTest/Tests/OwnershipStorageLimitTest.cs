@@ -37,7 +37,7 @@ public class OwnershipStorageLimitTest
         Assert.Equal(independent ? [moved, limit] : [limit], result.Diagnostics.Select(static x => (x.Code, x.Span!.Value.Start)).Order());
         var reason = Assert.Single(result.Diagnostics, static x => x.Code == nameof(DiagnosticCode.OwnershipStorageLimit_Kd)).Reason!;
         Assert.Equal(["requiredBytes", "limitBytes", "table"], reason.Select(static x => x.Name));
-        Assert.Equal(("67108864", "Loans"), (reason[1].Value, reason[2].Value)); // 64 MiB, MirDataflow's ByteLimit.
-        Assert.True(long.Parse(reason[0].Value!, CultureInfo.InvariantCulture) > 64L * 1024 * 1024, reason[0].Value);
+        Assert.Equal(("80530636", "Loans"), (reason[1].Value, reason[2].Value)); // 6/5 of 64 MiB, MirDataflow's ByteLimit (O-342 Q2 (a)).
+        Assert.True(long.Parse(reason[0].Value!, CultureInfo.InvariantCulture) > 64L * 1024 * 1024 * 6 / 5, reason[0].Value);
     }
 }

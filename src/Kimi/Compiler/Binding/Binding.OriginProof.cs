@@ -108,7 +108,6 @@ public sealed partial class Binding
     // turns into ρ. A record's Supplier is this, at its use.
     internal BoundOrigin SuppliedAtUse(BoundOrigin origin, Koto use)
     {
-        var initializers = this.initializerOrigins.Count != 0;
         for (var node = use; node is not null; node = node.Parent)
         {
             if (this.originDeclarations.TryGetValue(node, out var declaration) && declaration.Resolves)
@@ -116,7 +115,7 @@ public sealed partial class Binding
                 origin = this.ResolveOrigin(origin, declaration);
             }
 
-            if (initializers && this.initializerOrigins.TryGetValue(node, out var inferred) && inferred.Resolves)
+            if (this.initializerOrigins.TryGetValue(node, out var inferred) && inferred.Resolves)
             {
                 origin = this.ResolveOrigin(origin, inferred);
             }

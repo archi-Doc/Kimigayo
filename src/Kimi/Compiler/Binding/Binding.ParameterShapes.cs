@@ -443,24 +443,31 @@ public sealed partial class Binding
 
     // SPEC 7.4, 9.5.1, 9.6: a group gathered at a use from several declaration sources is checked there, with the use as the
     // subject and one record relating every overlapping declaration; its arguments play no part.
-    private bool CheckGatheredParameterShapes(Koto use, IReadOnlyList<BindingSymbol> members, bool aliasStage)
+    private bool CheckGatheredParameterShapes(Koto use, in FunctionGroup members, bool aliasStage)
     {
         var facts = new ParameterShapeConflict(use is MemberAccessKoto access ? access.Right : use, default, default, default, null, false, true, aliasStage, this.parameterShapePartyStore.Count, 0);
         var found = false;
-        for (var b = 1; b < members.Count; b++)
+        var b = -1;
+        foreach (var laterMember in members)
         {
-            if (members[b].Declaration is not FunctionKoto later || later.IsSpecialization)
+            if (++b == 0 || laterMember.Declaration is not FunctionKoto later)
             {
                 continue;
             }
 
             for (var j = 0; j < later.Parameters.Count; j++)
             {
-                for (var a = 0; a < b; a++)
+                var a = 0;
+                foreach (var earlierMember in members)
                 {
-                    if (members[a].Declaration is FunctionKoto earlier && !earlier.IsSpecialization)
+                    if (a++ == b)
                     {
-                        this.CollectParameterShapeParties(earlier, members[a], later, members[b], j, ref facts, ref found);
+                        break; // Each pair once: the members before the later one.
+                    }
+
+                    if (earlierMember.Declaration is FunctionKoto earlier)
+                    {
+                        this.CollectParameterShapeParties(earlier, earlierMember, later, laterMember, j, ref facts, ref found);
                     }
                 }
             }
@@ -518,7 +525,6 @@ public sealed partial class Binding
     {
         this.shapeCallCandidates.Clear();
         this.shapeJudgments.Clear();
-        this.shapeContractHeads.Clear();
         this.shapeContracts.Clear();
         this.shapeDependencies.Clear();
         this.shapeSharedSlots.Clear();
