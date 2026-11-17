@@ -125,10 +125,31 @@ public class ForeignEmissionTest
     [InlineData("?value@@YAHXZ", "\"?value@@YAHXZ\"")]
     [InlineData("a\"b\\c d", "\"a\\22b\\5Cc d\"")]
     [InlineData("é\t", "\"\\C3\\A9\\09\"")]
-    public void ExternalNamesRoundTrip(string symbol, string name)
+    public void ExternalNamesAreSpelled(string symbol, string name)
+        => Assert.Equal(name, LlvmModuleText.ExternalName(symbol));
+
+    // R9-B1: the generation result states what the written module declares and requires for its link: each called import's external
+    // symbol, unspelled, with its dllimport form, one per symbol in declaration order (a kernel32 one the runtime declares included), the
+    // library and Kind of every validated import, called or not (SPEC 22.6: resolved when the program is built), and the output kind.
+    [Theory]
+    [InlineData(OutputKind.Application, "static")]
+    [InlineData(OutputKind.Library, "import")]
+    public void TheGenerationResultStatesTheModulesLinkFacts(OutputKind output, string kind)
     {
-        Assert.Equal(name, LlvmModuleText.ExternalName(symbol));
-        Assert.Equal(symbol, LlvmModuleText.SymbolFromName(name));
+        var c = AnalyzeAs(
+            "group Native\n    #LibraryImport(\"codec\", \"?value@@YAHXZ\")\n    public unsafe func value() -> i32\n" +
+            "    #LibraryImport(\"codec\", \"unused\")\n    public unsafe func unused() -> i32\n" +
+            "    #LibraryImport(\"kernel32\", \"GetLastError\")\n    public unsafe func lastError() -> u32\n" +
+            "public func main()\n    var v: i32 = 0\n    var e: u32 = 0\n    unsafe => v = Native.value()\n    unsafe => e = Native.lastError()",
+            kind,
+            output);
+        using var writer = new StringWriter();
+        Assert.True(c.Generate(writer), MinimalEmissionTest.Describe(c));
+        var module = c.Generated;
+        Assert.Equal(output, module.OutputKind);
+        Assert.Equal([("?value@@YAHXZ", kind == "import"), ("GetLastError", true)], module.Externals.Select(static x => (x.Symbol, x.DllImport)));
+        Assert.Equal(("codec", kind), Assert.Single(module.Libraries, static x => x.Library == "codec"));
+        Assert.Contains(("kernel32", "import"), module.Libraries);
     }
 
     [Fact]
@@ -1591,13 +1612,16 @@ public class ForeignEmissionTest
     }
 
     private static Compilation Analyze(string source, string kind)
+        => AnalyzeAs(source, kind, OutputKind.Application);
+
+    private static Compilation AnalyzeAs(string source, string kind, OutputKind output)
     {
         var c = Compilation.CreateForTest();
         c.Project.ProjectFile.NativeRequirements[WindowsProfile.Target] = new(StringComparer.Ordinal) { ["codec"] = new() { Kind = kind } };
         Assert.True(c.Prepare(WindowsProfile.Target));
         c.Kotonoha.AddSource(new SourceDocument("Hello.kimi", source));
         c.Bind();
-        c.Binding.CheckStartup(OutputKind.Application);
+        c.Binding.CheckStartup(output);
         c.Analyze();
         return c;
     }

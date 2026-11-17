@@ -24,10 +24,13 @@ function Expect-Failure([object] $data, [string] $bin, [string] $message) {
 }
 try {
     $data = $original | ConvertFrom-Json
-    $data.schemaVersion = 1
-    Expect-Failure $data $LlvmBin 'schema 3 is required'
     $data.schemaVersion = 2
-    Expect-Failure $data $LlvmBin 'schema 3 is required'
+    Expect-Failure $data $LlvmBin 'schema 4 is required'
+    $data.schemaVersion = 3
+    Expect-Failure $data $LlvmBin 'schema 4 is required'
+    $data = $original | ConvertFrom-Json
+    $data.externalDeclarations = @(@{ symbol = 'observer_notify'; dllimport = 'yes' })
+    Expect-Failure $data $LlvmBin 'Invalid external declaration'
     $data = $original | ConvertFrom-Json
     ($data.libraries | Where-Object name -CEQ 'kimi_backend') | Add-Member -NotePropertyName input -NotePropertyValue 'override.lib'
     Expect-Failure $data $LlvmBin 'Invalid backend toolchain resolution'

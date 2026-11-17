@@ -2,7 +2,8 @@
 
 // Owns the one generation entry of a compilation and its gate (R5 plan C0a, C0b1, package C 3.8, S2-S4 X17; DECISIONS R5-M64, R5-M65).
 // Input: the latest analysis; callers generate an accepted program version (Project and the test command, after check).
-// Output: the module text, written to the caller's writer only when generation succeeds, never in part; otherwise the generation
+// Output: the module text, written to the caller's writer only when generation succeeds, never in part, with what it states for its link
+// (Generated: the output kind, the required libraries and the external declarations; R9-B1); otherwise the generation
 // records in the Emission partition: ModuleCodegen's (a form the backend does not generate is the capability table's gap at check) and
 // InternalInvariant_Kd at a broken input contract, an inexact body reaching FunctionCodegen.Write among them (IC's contract: every such
 // body has a kept Error, so check rejects its program; DECISIONS R5-M96, R5-M185), each keyed by its location (Locate; a record carries
@@ -46,6 +47,11 @@ public partial class Compilation
     /// <summary>Gets the version of the latest MIR program (0: none), which a test build's discovery stamps on its catalog
     /// (TestCatalog.Version) and MIR code generation requires of it.</summary>
     internal ulong ProgramVersion => this.mir?.Version ?? 0;
+
+    /// <summary>Gets what the latest written module states for its link (R9-B1): its output kind, the startup selection's, which chose
+    /// its output roots (a test build's is an Application), and code generation's required libraries and external declarations. Valid
+    /// after <see cref="Generate"/> returned true, until the next generation request; the toolchain's publication is its reader.</summary>
+    internal GeneratedModule Generated => new(this.Binding.Startup.OutputKind, this.moduleCodegen!.Libraries, this.moduleCodegen.Externals);
 
     /// <summary>Generates the module of the latest analysis: the gate, then MIR code generation (R5 C0b1, K11; DECISIONS R5-M65, R5-M77)
     /// of an accepted program, ModuleCodegen over the Generated items of its checked set, which writes the complete module or records why

@@ -4,7 +4,6 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
 using Kimi.Compiler;
-using Kimi.Compiler.Backend;
 using Kimi.Diagnostics;
 using static Kimi.Build.ArtifactFiles;
 
@@ -52,9 +51,9 @@ internal static partial class NativeToolchain
 
     internal static void ValidateManifest(JsonElement root)
     {
-        if (root.GetProperty("schemaVersion").GetInt32() != 3)
+        if (root.GetProperty("schemaVersion").GetInt32() != 4)
         {
-            throw new InvalidDataException("Link manifest schema 3 is required. Re-emit the manifest for automatic backend toolchain resolution.");
+            throw new InvalidDataException("Link manifest schema 4 is required. Re-emit the manifest.");
         }
 
         var code = root.GetProperty("codegen");
@@ -80,6 +79,15 @@ internal static partial class NativeToolchain
         if (!valid)
         {
             throw new InvalidDataException("Invalid backend supply identity or runtime dependency.");
+        }
+
+        foreach (var declaration in root.GetProperty("externalDeclarations").EnumerateArray())
+        {
+            if (declaration.GetProperty("symbol").GetString() is not { Length: > 0 } ||
+                declaration.GetProperty("dllimport").ValueKind is not (JsonValueKind.True or JsonValueKind.False))
+            {
+                throw new InvalidDataException("Invalid external declaration.");
+            }
         }
     }
 
@@ -130,17 +138,16 @@ internal static partial class NativeToolchain
                 ("library", WindowsProfile.BackendLibrary)) &&
             SequenceEqual(support.GetProperty("providedSymbols"), WindowsProfile.ProvidedSymbols);
 
-    // The external functions of the hash-verified pre-optimization IR, keyed by symbol, with their dllimport form.
-    private static Dictionary<string, bool> ReadExternalDeclarations(string ir)
+    // The external functions the module declares, keyed by symbol, with their dllimport form: the manifest's externalDeclarations, which
+    // publication writes from the generation result (R9-B1); ValidateManifest checked their shape.
+    private static Dictionary<string, bool> ReadExternalDeclarations(JsonElement manifest)
     {
         var declared = new Dictionary<string, bool>(StringComparer.Ordinal);
-        foreach (var line in File.ReadLines(ir))
+        foreach (var declaration in manifest.GetProperty("externalDeclarations").EnumerateArray())
         {
-            // A quoted name escapes every quote, so its closing quote is the next one.
-            if (line.StartsWith("declare ", StringComparison.Ordinal) && line.IndexOf('@') is var at and >= 0 &&
-                (at + 1 < line.Length && line[at + 1] == '"' ? line.IndexOf('"', at + 2) + 1 : line.IndexOf('(', at)) is var end and > 0)
+            if (!declared.TryAdd(declaration.GetProperty("symbol").GetString()!, declaration.GetProperty("dllimport").GetBoolean()))
             {
-                declared[LlvmModuleText.SymbolFromName(line.AsSpan(at + 1, end - at - 1))] = line.StartsWith("declare dllimport ", StringComparison.Ordinal);
+                throw new InvalidDataException("Duplicate external declaration.");
             }
         }
 
@@ -380,8 +387,9 @@ internal static partial class NativeToolchain
             return obj;
         }
 
-        // The object's dependencies and shape: an undefined symbol is a backend helper, a runtime import or an external the IR declares
-        // in the same form; one _fltused definition, unwind information and no default library. Returns the undefined symbols' listing.
+        // The object's dependencies and shape: an undefined symbol is a backend helper, a runtime import or an external the module
+        // declares (the manifest's) in the same form; one _fltused definition, unwind information and no default library. Returns the undefined
+        // symbols' listing.
         private async Task<string> Inspect(string obj)
         {
             var undefined = await this.Tool("llvm-nm", "--undefined-only", "--format=posix", obj);
@@ -396,7 +404,7 @@ internal static partial class NativeToolchain
                 }
 
                 // SPEC 22.6: a foreign import is referenced through __imp_ when dllimport and directly otherwise.
-                declared ??= ReadExternalDeclarations(this.paths.Ir);
+                declared ??= ReadExternalDeclarations(this.manifest);
                 var imported = symbol.StartsWith("__imp_", StringComparison.Ordinal);
                 if (!declared.TryGetValue(imported ? symbol[6..] : symbol, out var dllimport) || dllimport != imported)
                 {
