@@ -184,7 +184,7 @@ public sealed partial class Binding
         {
             for (var i = 0; i < call.ArgumentNodes.Count; i++)
             {
-                this.CompleteUnselectedPart(call.ArgumentNodes[i], scope, call);
+                this.CompleteUnselectedPart(call.ArgumentNodes[i], scope);
             }
         }
         finally
@@ -195,8 +195,7 @@ public sealed partial class Binding
         return type;
     }
 
-    // `call` is the unselected call, whose own record the parts its slots would have typed rest on (rule W).
-    private void CompleteUnselectedPart(Koto part, BindingScope scope, Koto call)
+    private void CompleteUnselectedPart(Koto part, BindingScope scope)
     {
         var node = KotoHelper.UnwrapParentheses(part);
         if (node.BoundType is not null)
@@ -213,7 +212,7 @@ public sealed partial class Binding
 
             if (this.KindOf(node) == PartKind.Join)
             {
-                this.CompleteJoinResults(flow, scope, call);
+                this.CompleteJoinResults(flow, scope);
             }
 
             if (this.resultContexts.ContainsKey(flow))
@@ -230,16 +229,6 @@ public sealed partial class Binding
             return;
         }
 
-        // SPEC 10.1, 10.5.4, 23.1.2 (F's rulings 49 and 90): an anonymous function no candidate completed stays unbound: its call may be
-        // bound again in this pass, and that attempt must read what the first read (a Type published here would be evidence, and its
-        // body would select). Its omitted parameter Types would come from the call's slot and rest on the call's record (rule W;
-        // MarkOmittedHeaders, the one writer of that fact).
-        if (node is FunctionKoto closure && this.KindOf(node) == PartKind.Function)
-        {
-            this.MarkOmittedHeaders(closure, call);
-            return;
-        }
-
         var waitingCase = this.KindOf(node) == PartKind.Case;
         IReadOnlyList<Koto>? parts = node switch
         {
@@ -250,19 +239,19 @@ public sealed partial class Binding
         };
         for (var i = 0; parts is not null && i < parts.Count; i++)
         {
-            this.CompleteUnselectedPart(parts[i], scope, call);
+            this.CompleteUnselectedPart(parts[i], scope);
         }
     }
 
     // SPEC 23.1.2: each result of a Join a call completes none of, completed as an argument part is (CompleteUnselectedPart): a Tuple's
     // or array's parts, and a waiting Case's payloads bound alone, at any depth (U1.6 fix C: n13b's `(.Some(undefinedName), 3)`).
-    private void CompleteJoinResults(Koto join, BindingScope scope, Koto call)
+    private void CompleteJoinResults(Koto join, BindingScope scope)
     {
         var start = this.positionParts.Count;
         this.AddResults(join);
         for (var i = start; i < this.positionParts.Count; i++)
         {
-            this.CompleteUnselectedPart(this.positionParts[i], scope, call);
+            this.CompleteUnselectedPart(this.positionParts[i], scope);
         }
 
         this.ClosePosition(start);
