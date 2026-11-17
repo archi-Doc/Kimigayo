@@ -7,10 +7,11 @@ namespace Kimi.Compiler;
 
 // The pass driver (PLAN G949 S1-r1a; DECISIONS BU-220): a Bind's runs and, in each run, its passes in order.
 // - Responsibility: the three levels of a Bind's state: per Bind (BeginBind: the SyntaxIds, the Result discarded with the later
-//   phases' facts, StartRuns), per run (BeginRun: the counter every stamp compares, the work counters) and per pass (ResetPass); the
-//   runs, a new one whenever a pass asks for it (VerifyEarlyReads); each pass's steps in order over its module set (BindingPass); each
-//   pass's part of the published lists (PassPart), handed over as the fields every step writes (EnterPass); R1.1's one composition
-//   point per aggregate: the composed views, the program part then the library layer's, and the Bind's Result (ComposeResult).
+//   phases' facts, StartRuns), per run (BeginRun: the counter every stamp compares, the work counters, the local-region graph's
+//   version) and per pass (ResetPass); the runs, a new one whenever a pass asks for it (VerifyEarlyReads); each pass's steps in order
+//   over its module set (BindingPass); each pass's part of the per-pass collections (PassPart: the published lists and the local-region
+//   graph), handed over as the fields every step writes (EnterPass); R1.1's one composition point per aggregate: the composed views,
+//   the program part then the library layer's, and the Bind's Result (ComposeResult); a keyed collection's one find (PassPart.Find).
 // - Inputs: the compilation's modules, the mode. Outputs: the parts (Binding's own, programPart; LibraryLayer.Part), the composed
 //   views, the Result.
 // - Invariants: one counter value per run; a restart starts a new run of every pass, never a new Bind (StartRuns runs once per Bind,
@@ -65,10 +66,12 @@ public sealed partial class Binding
     }
 
     // Per run, a restart's included, and per edit (Invalidate): a new counter value, so no stamp of an earlier run reads current, and
-    // the work counters, which the scaling checks read as the last run's work.
+    // the work counters, which the scaling checks read as the last run's work. The local-region graph's version starts again: every
+    // bound a run records moves it, whichever part holds the row, so it only rises within a run (n55-design 2.4).
     private void BeginRun()
     {
         this.storageVersion++;
+        this.regionVersion = 0;
         this.signatureWalks = 0;
         this.memberWalks = 0;
         this.termWalks = 0;
@@ -109,7 +112,7 @@ public sealed partial class Binding
 
     // Hands a pass its part: the fields every step writes become the part's lists.
     [MemberNotNull(nameof(nodes), nameof(issues), nameof(derivedIssues), nameof(obligations), nameof(obligationSet), nameof(libraryImports))]
-    [MemberNotNull(nameof(virtualDeclarations), nameof(callableEffectUses), nameof(callableEffectClauses))]
+    [MemberNotNull(nameof(virtualDeclarations), nameof(callableEffectUses), nameof(callableEffectClauses), nameof(localRegions))]
     private void EnterPass(BindingPass pass)
     {
         this.pass = pass;
@@ -123,6 +126,7 @@ public sealed partial class Binding
         this.virtualDeclarations = part.VirtualDeclarations;
         this.callableEffectUses = part.CallableEffectUses;
         this.callableEffectClauses = part.CallableEffectClauses;
+        this.localRegions = part.Regions;
     }
 
     // R1.1's one composition point of the Bind's summary: the library layer's counts and the program part's, in the program pass's mode.
@@ -137,11 +141,14 @@ public sealed partial class Binding
         };
     }
 
-    // A pass's part of the published lists (DECISIONS BU-220's pass driver): exactly two for a Binding's life, Binding's own (the
-    // program pass's) and LibraryLayer.Part (the library pass's from PLAN G949 S1-r1b, empty until then). Its lists are never replaced,
-    // only emptied by its pass's resets and refilled, so a view built over them once stays current. Counts is the pass's contribution
-    // to the Bind's Result (ComposeResult), not a tally of the part's nodes, which only the views count: from S1-r1b a program pass's
-    // own nodes plus each foreign node's final state less its earlier one.
+    // A pass's part of the per-pass collections (DECISIONS BU-220's pass driver): exactly two for a Binding's life, Binding's own (the
+    // program pass's) and LibraryLayer.Part (the library pass's from PLAN G949 S1-r1b, empty until then). Its collections are never
+    // replaced, only emptied by its pass's resets and refilled, so a view built over them once stays current. A list is read through its
+    // composed view; a keyed collection (Regions) through one find (Find): the layer's part first, then the running pass's, a write going
+    // into the row found or, for a key in neither part, into the running pass's, so a key has one row; a keyed collection whose values
+    // index a per-pass list keeps that list in its own part. Counts is the pass's contribution to the Bind's Result (ComposeResult), not
+    // a tally of the part's nodes, which only the views count: from S1-r1b a program pass's own nodes plus each foreign node's final
+    // state less its earlier one.
     internal sealed class PassPart(int nodes)
     {
         internal List<Koto> Nodes { get; } = new(nodes);
@@ -162,7 +169,23 @@ public sealed partial class Binding
 
         internal List<IsKoto> CallableEffectClauses { get; } = new();
 
+        // The local-region graph's rows by their target Origin (Binding.LocalRegions.cs), keyed by reference.
+        internal Dictionary<BoundOrigin, LocalRegion> Regions { get; } = new(ReferenceEqualityComparer.Instance);
+
         internal BindingResult Counts { get; set; }
+
+        // The one find of a keyed collection: the layer's map, then the running pass's when it is not the layer's (a test of the map,
+        // never of which pass runs). Returns the map that holds the key, null when neither does.
+        internal static Dictionary<TKey, TValue>? Find<TKey, TValue>(Dictionary<TKey, TValue> layer, Dictionary<TKey, TValue> running, TKey key, out TValue? value)
+            where TKey : notnull
+        {
+            if (layer.TryGetValue(key, out value))
+            {
+                return layer;
+            }
+
+            return !ReferenceEquals(running, layer) && running.TryGetValue(key, out value) ? running : null;
+        }
     }
 
     // A pass's module set (DECISIONS BU-220's pass driver): its source modules by ordinal, then the library module when the pass binds

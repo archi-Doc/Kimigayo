@@ -63,12 +63,38 @@ public partial class KimiLibraryShapeTest
             .Concat(DiagnosticCorpus.SyntaxCases.Select(static x => "syntax/" + x.Name)))];
 
     // The dump itself: the empty program's layer twice, in two compilations, is the same (no hash order, identity or counter in a row);
-    // and each disposition names a store or field that exists, so none widens a rule silently.
+    // and each disposition names a store or field that exists, so none widens a rule silently; every node family (NodeColumns) with
+    // library rows has rows in it, so a family the walk misses fails here.
     [Fact]
     public void TheLibraryLayerDumpIsDeterministic()
     {
         Assert.Empty(LibraryLayer.Unresolved());
         SameLayerAsTheEmptyPrograms(string.Empty);
+        var c = Bound(string.Empty);
+        var dump = LibraryLayer.Dump(c);
+        Assert.All(
+            typeof(NodeColumns).GetFields(BindingFlags.Instance | BindingFlags.NonPublic).Where(x => LibraryLayer.RowObjects(x.GetValue(c.Library.Kotonoha.Syntax.Hir.Families)!, c.Binding).Any()),
+            x => Assert.Contains(dump, row => row.StartsWith(x.Name + " ", StringComparison.Ordinal)));
+    }
+
+    // G949 N5-5's n3 (C-380 F2): a library binder's atoms and a library source's open regions live in the library module's NodeColumns
+    // (originAtoms, openOrigins): after a second Bind, and after an edit to the program's module and a Bind, every atom the library's
+    // rows hold is the same object.
+    [Theory]
+    [MemberData(nameof(LayerPrograms))]
+    public void TheLibraryAtomsAreKeptAcrossBindsAndEdits(string program)
+    {
+        var c = Bound(program);
+        var atoms = LibraryAtoms(c);
+        Assert.NotEmpty(atoms);
+        c.Bind();
+        Assert.Equal(atoms, LibraryAtoms(c), ReferenceEqualityComparer.Instance);
+        c.NoteSyntaxEdit(c.Kotonoha.RootKoto);
+        c.Bind();
+        Assert.Equal(atoms, LibraryAtoms(c), ReferenceEqualityComparer.Instance);
+
+        static object[] LibraryAtoms(Compilation c)
+            => [.. LibraryLayer.Families().Where(static x => x.Name is "OriginAtoms" or "OpenOrigins").SelectMany(x => LibraryLayer.RowObjects(x.GetValue(c.Library.Kotonoha.Syntax.Hir.Families)!, c.Binding))];
     }
 
     // The epoch rule's invariant: ResetCapabilities, which begins every pass (its one call is ResetPass's, which the pass driver's RunPass
@@ -311,14 +337,16 @@ public partial class KimiLibraryShapeTest
         {
             var layer = new LibraryLayer(c);
             layer.Store("Binding", c.Binding, 0);
-            foreach (var (store, field) in new[] { ("symbol", "symbols"), ("scope", "scopes") })
+
+            // Binding's node families (NodeColumns, DECISIONS BU-220) live in each module's HIR tables, which no store walks. A family's store
+            // is its key's module, so its rows in the library's columns are the library layer's and a program's are its modules': by one
+            // rule every family's library rows, each row's objects (a row's fields, an array's and a pair's elements; a Type or a scalar by
+            // its printed form) by the family's name, whatever they name (a program fact there is a difference, never filtered).
+            foreach (var family in Families())
             {
-                foreach (var value in ((IDictionary)typeof(Binding).GetField(field, BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(c.Binding)!).Values)
+                foreach (var value in RowObjects(family.GetValue(c.Library.Kotonoha.Syntax.Hir.Families)!, c.Binding))
                 {
-                    if (layer.Owner(value, 0) == Side.Library)
-                    {
-                        layer.rows.Add($"{store} {layer.Fields(value!, 0)}{(value is BindingSymbol s ? layer.Queries(s) : string.Empty)}");
-                    }
+                    layer.FamilyRow(Name(family), value);
                 }
             }
 
@@ -365,6 +393,37 @@ public partial class KimiLibraryShapeTest
 
             return value;
         }
+
+        // NodeColumns' families: every field, each a column (a PagedColumn or a StampedColumn, SyntaxIdTest's d7 row).
+        internal static IEnumerable<FieldInfo> Families() => Fields(typeof(NodeColumns));
+
+        // A family column's present rows (PagedColumn.Enumerate; a stamped column's current ones, StampedColumn.Enumerate), each flattened
+        // to its objects: a composite column's list by its elements, a pair by its items.
+        internal static IEnumerable<object> RowObjects(object column, Binding binding)
+        {
+            var enumerate = column.GetType().GetMethod("Enumerate", BindingFlags.Instance | BindingFlags.NonPublic)!;
+            var rows = enumerate.Invoke(column, enumerate.GetParameters().Length == 0 ? null : [binding])!;
+            var (moveNext, current) = (rows.GetType().GetMethod("MoveNext")!, rows.GetType().GetProperty("Current")!);
+            while ((bool)moveNext.Invoke(rows, null)!)
+            {
+                var row = current.GetValue(rows)!;
+                foreach (var part in row is Array items ? items.Cast<object?>() : [row])
+                {
+                    foreach (var value in part is ITuple pair ? Enumerable.Range(0, pair.Length).Select(i => pair[i]) : [part])
+                    {
+                        if (value is not null)
+                        {
+                            yield return value;
+                        }
+                    }
+                }
+            }
+        }
+
+        // A library node family's row (FamilyRows' library module): an object field by field, a symbol's with its query states; a Type or
+        // a scalar by its printed form (G949 N5-2's InheritedOriginTypes and DeferredConstraints).
+        internal void FamilyRow(string family, object value)
+            => this.rows.Add($"{family} {(value is BoundType || Scalar(value) ? this.Print(value, 0) : this.Fields(value, 0))}{(value is BindingSymbol s ? this.Queries(s) : string.Empty)}");
 
         private static FieldInfo? FieldAt(string store)
         {

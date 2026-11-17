@@ -1,12 +1,13 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using System.Diagnostics.CodeAnalysis;
 using Kimi.Compiler.Parsing;
 
 namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
-    private readonly Dictionary<MatchKoto, BoundMatch> matches = new(ReferenceEqualityComparer.Instance);
+    private readonly MatchRows matches;
 
     // A match keeps its plan object across rebinds, so a retained plan never starts describing another match while its
     // own syntax is still selected; only the plans of removed matches return to the pool.
@@ -17,6 +18,7 @@ public sealed partial class Binding
     private readonly HashSet<Koto> candidateScopes = new();
     private readonly List<Koto> previousCandidateScopes = new();
     private readonly List<PatternWarning> patternWarnings = new();
+    private int indexedMatches; // The matches this pass indexed: the plans PruneMatchPlans keeps.
     private PatternMarker? patternMarker;
     private UnsupportedMarker? unsupportedMarker;
 
@@ -66,12 +68,14 @@ public sealed partial class Binding
 
     private void ResetMatches()
     {
-        foreach (var plan in this.matches.Values)
+        // The pass counter already left the last pass's matches stale, so every kept plan is reset: the last pass's, the same objects, and
+        // a pass's that threw before PruneMatchPlans; Reset(null) sets fixed values, so the extra resets change nothing.
+        foreach (var plan in this.matchPlans.Values)
         {
             plan.Reset(null);
         }
 
-        this.matches.Clear();
+        this.indexedMatches = 0;
         foreach (var guard in this.candidateScopes)
         {
             this.previousCandidateScopes.Add(guard);
@@ -134,11 +138,12 @@ public sealed partial class Binding
 
         plan.Reset(match);
         this.matches.Add(match, plan);
+        this.indexedMatches++;
     }
 
     private void PruneMatchPlans()
     {
-        if (this.matchPlans.Count == this.matches.Count)
+        if (this.matchPlans.Count == this.indexedMatches)
         {
             return;
         }
@@ -602,8 +607,10 @@ public sealed partial class Binding
 
     private void CompletePatternAcquisitions()
     {
-        foreach (var plan in this.matches.Values)
+        // D2b-d's d8 order: the source modules by ordinal, then the library, each by ascending id (the walk's order on a cold compile).
+        foreach (var row in this.matches.Values)
         {
+            var plan = row!;
             var scope = this.ConstraintScope(plan.Syntax);
             for (var i = 0; i < plan.PositionStorage.Count; i++)
             {
@@ -797,5 +804,26 @@ public sealed partial class Binding
 
             node.VisitChildren(this);
         }
+    }
+
+    /// <summary>The `matches` family's one accessor (DECISIONS BU-220): a pass family, the plan of each match the pass indexed (the plan
+    /// matchPlans keeps for it), in the match's module's NodeColumns at its SyntaxId; absent after a pass until the column's first write.
+    /// Its members keep the names its readers use.</summary>
+    private readonly struct MatchRows(Binding binding)
+    {
+        internal FamilyRows<BoundMatch?> Values => new(binding, static (table, b) => table.Hir.Families.Matches.Enumerate(b));
+
+        internal BoundMatch this[MatchKoto match] => this.TryGetValue(match, out var plan) ? plan : throw new KeyNotFoundException($"`{match}` was not indexed in this pass.");
+
+        internal void Add(MatchKoto match, BoundMatch plan)
+        {
+            ref var row = ref HirTables.Of(match).Families.Matches.Ref(match.SyntaxId, binding);
+            row = row is null ? plan : throw new ArgumentException($"`{match}` was already indexed in this pass.", nameof(match));
+        }
+
+        internal bool ContainsKey(MatchKoto match) => this.TryGetValue(match, out _);
+
+        internal bool TryGetValue(MatchKoto match, [NotNullWhen(true)] out BoundMatch? plan)
+            => (plan = match.SyntaxOwner is { } table ? table.Hir.Families.Matches.Get(match.SyntaxId, binding) : null) is not null;
     }
 }
