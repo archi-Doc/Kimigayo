@@ -55,7 +55,8 @@ public sealed partial class Binding
 
         // A member's Origin position whose relation only an inferred or body-local region decides (the judge proves it through the
         // region's sources, or finds it Unrepresentable; SPEC 15.6.5): the located limit until region-inference edges exist, recorded as
-        // the plain position's search records it (design-r2 Amendment 1, A1), never in a whole-contract comparison (OriginPart.Contract).
+        // the plain position's search records it (design-r2 Amendment 1, A1); in a whole-contract comparison (OriginPart.Contract) only
+        // an implementation's per-call Origin no bound of which reaches a fixed Origin (SolveOriginInference; SPEC 15.3.6).
         Limit,
     }
 
