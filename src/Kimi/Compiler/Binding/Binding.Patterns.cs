@@ -69,7 +69,7 @@ public sealed partial class Binding
     {
         // The pass counter already left the last pass's matches stale, so every kept plan is reset: the last pass's, the same objects, and
         // a pass's that threw before PruneMatchPlans; Reset(null) sets fixed values, so the extra resets change nothing.
-        foreach (var plan in this.matchPlans.Values)
+        foreach (var plan in this.matchPlans.Values.In(this.pass))
         {
             plan!.Reset(null);
         }
@@ -138,10 +138,10 @@ public sealed partial class Binding
         this.matches.Add(match, plan);
     }
 
-    // A match the pass did not index (removed from its tree, or not selected) returns its plan to the pool.
+    // A match of the pass's modules that the pass did not index (removed from its tree, or not selected) returns its plan to the pool.
     private void PruneMatchPlans()
     {
-        for (var plans = this.matchPlans.Values; plans.MoveNext();)
+        for (var plans = this.matchPlans.Values.In(this.pass); plans.MoveNext();)
         {
             var match = (MatchKoto)plans.Node;
             if (!this.matches.ContainsKey(match))
