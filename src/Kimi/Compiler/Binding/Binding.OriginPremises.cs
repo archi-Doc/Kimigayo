@@ -165,7 +165,6 @@ public sealed partial class Binding
     // The declarations whose published substitutions resolve an Origin at the use, in the order OriginAtUse applies them.
     private void CollectOriginResolvers(OriginPremiseEnvironment environment)
     {
-        var initializers = this.initializerOrigins.Count != 0;
         for (var node = environment.Use; node is not null; node = node.Parent)
         {
             if (this.originDeclarations.TryGetValue(node, out var declaration) && declaration.Resolves)
@@ -173,7 +172,7 @@ public sealed partial class Binding
                 environment.Resolvers.Add(declaration);
             }
 
-            if (initializers && this.initializerOrigins.TryGetValue(node, out var inferred) && inferred.Resolves)
+            if (this.initializerOrigins.TryGetValue(node, out var inferred) && inferred.Resolves)
             {
                 environment.Resolvers.Add(inferred);
             }

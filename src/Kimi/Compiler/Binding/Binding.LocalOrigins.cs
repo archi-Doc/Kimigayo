@@ -21,7 +21,6 @@ public sealed partial class Binding
     // Origins omitted in a local initializer's own Type expressions (SPEC 15.4.4), inferred while that initializer binds. They
     // are kept apart from declared Origin contracts, which are completed before bodies bind; entries are reused across binds.
     private readonly InitializerOriginRows initializerOrigins;
-    private int initializerOriginCount;
 
     // One bound of an Origin a local's initializer omits (SPEC 15.4.4), met with its earlier bounds.
     private void MeetInitializerBound(OriginDeclaration pending, BoundOrigin variable, BoundOrigin bound)
@@ -270,14 +269,10 @@ public sealed partial class Binding
     {
         internal FamilyRows<OriginDeclaration?> Values => new(binding, static (table, _) => table.Hir.Families.InitializerOrigins.Enumerate());
 
-        // The rows ever added, a dictionary's Count: no row is removed, so it only grows.
-        internal int Count => binding.initializerOriginCount;
-
         internal void Add(Koto node, OriginDeclaration value)
         {
             ref var row = ref HirTables.Of(node).Families.InitializerOrigins.Ref(node.SyntaxId);
             row = row is null ? value : throw new ArgumentException($"`initializerOrigins` already holds a row at `{node}`.", nameof(node));
-            binding.initializerOriginCount++;
         }
 
         internal bool TryGetValue(Koto node, [NotNullWhen(true)] out OriginDeclaration? value)
