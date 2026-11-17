@@ -22513,8 +22513,8 @@ R8-M* and R9-M* by the stage of the recording unit.
   - Rejected: program-level arrays with per-body ranges (they still grow by doubling unless presized, take a body's storage out of
     `MirBody`, and the library segment G950 keeps across versions needs self-contained bodies).
   - Cost: one copy of the stored rows per warm build (Hello 1.55 MB over 320 bodies, about 0.3 ms unpinned), nearly all of it the
-    library's, which G950 keeps. When G950-R and G951 U2 build library bodies into fixed slots (G950 R-4, C-sep), the building body
-    and the store follow the definition's segment and slot.
+    library's, which G950 keeps. When G951 U2-K builds library bodies into fixed slots (G950 R-4, C-sep), the building body and the
+    store follow the definition's segment and slot.
 - **R8-M50 The library's MIR segment is kept across a compilation's versions (PLAN G950)** (Middle, 2026-11-16; the owner's order of
   11-16 11:4x approving K's survey rank 1, O-379 (a) for this design and its plan order, O-381 (b) for its Stage 2 form; the Back's
   consent C-378, amended under (b) (11-16 20:14), for the collector hunk and the store form; extends R8-M33 and supersedes its
@@ -22881,9 +22881,10 @@ R8-M* and R9-M* by the stage of the recording unit.
     stepping position and the template extent kept with their segment in build order), F1 with K-A (a library body first demanded
     during a program version is stepped into the program stores for that version and into the library stores at the next library
     step; "the library store holds the body" is one published per-ordinal fact read by A2's `Of`, A4's `Base` and the collector's
-    `TemplatesOf`, the Back's A3) and F2 with R-K2' (a demanded library body with a record ends the kept segment, so no kept
-    caller's A4 edge names an empty slot; the shipped library has no record), and the rows H3 and K1 (a body built but never stepped
-    through Compilation; K1 on the kept path is C1's fail-before row; H3 through Compilation removes U2-H's reflection seam,
+    `TemplatesOf`, the Back's A3) and F2 with R-K2' (the kept segment ends at a demanded library body with a record or at a library
+    body its version built and A2 does not hold, so no kept caller's A4 edge names an empty slot and no kept body is unstepped; the
+    shipped library has no record; the Back's B1 on C-378, 09:17), and the rows H3 and K1 (a body built but never stepped through
+    Compilation; K1 on the kept path is C1's fail-before row; H3 through Compilation removes U2-H's reflection seam,
     `MirAnalysisTest.ABodyBuiltButNotSteppedIsNotJudged`'s injection of `Compilation.mir`) and two rows in Compilation's form:
     `G950KeptPathTest.ALaterVersionKeepsTheLibrarysBodies` (g8: a later version keeps the library bodies the compilation demanded)
     and `G950KeptPathTest.AKeptLibraryRowIsPublishedInEveryVersion` (M2, which becomes row K2-a: an injected finding is not
