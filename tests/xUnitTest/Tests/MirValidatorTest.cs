@@ -164,7 +164,7 @@ public sealed class MirValidatorTest(ITestOutputHelper output)
         var pointer = MirModelTest.Local(body, c.Types.Pointer(BoundType.I32));
         _ = TyCtxt.Layer(types.Pair, out var payload, out _);
         var value = MirModelTest.Local(body, payload!);
-        PairBinder.Collect(types.Generic, body.Binders);
+        PairBinder.Collect(c.Binding, types.Generic, body.Binders);
         var shared = body.Static(new(types.Function, BoundType.I32, false, true));
         var (ensure, entry, abort, drop, exit) = (body.AddBlock(), body.AddBlock(), body.AddBlock(), body.AddBlock(), body.AddBlock()); // The ensure first.
         var result = new MirPlace(0);
@@ -476,7 +476,7 @@ public sealed class MirValidatorTest(ITestOutputHelper output)
         var py = KotoTree.Walk(function).OfType<VariableKoto>().Single(static x => x.NameKoto.IdentifierName == "y").SymbolOf()!.Type!;
         Assert.Equal(BoundTypeKind.SemanticsAdaptation, py.Kind);
         var y = MirModelTest.Local(body, py);
-        PairBinder.Collect(function, body.Binders);
+        PairBinder.Collect(c.Binding, function, body.Binders);
         var block = body.AddBlock();
         void Read(MirOperand operand, BoundType type, SourceInfo source) => body.Push(block, MirStatement.Assign(
             MirModelTest.Local(body, type),
@@ -522,7 +522,7 @@ public sealed class MirValidatorTest(ITestOutputHelper output)
         body.AddLocal(new(BoundType.Unit, MirLocalKind.Return, At));
         var (pa, pb) = (function.Parameters[0].Type.TypeOf()!, function.Parameters[1].Type.TypeOf()!);
         var (a, b) = (MirModelTest.Local(body, pa, MirLocalKind.Arg), MirModelTest.Local(body, pb, MirLocalKind.Arg));
-        PairBinder.Collect(function, body.Binders);
+        PairBinder.Collect(c.Binding, function, body.Binders);
         var (first, second) = (MirModelTest.Local(body, pa, MirLocalKind.Temp), MirModelTest.Local(body, pb, MirLocalKind.Temp));
         var (tuple, number) = (MirModelTest.Local(body, c.Types.Tuple([pa, BoundType.I32])), MirModelTest.Local(body, BoundType.I32));
         var (block, next) = (body.AddBlock(), body.AddBlock());
@@ -988,7 +988,7 @@ public sealed class MirValidatorTest(ITestOutputHelper output)
         var tuple = c.Types.Tuple([BoundType.I32, BoundType.Boolean]);
         var prepared = new MirPlace(body.AddLocal(new(
             Layer(SemanticsKind.Ref, form == "slot ref" ? Layer(SemanticsKind.Ref, tuple) : BoundType.I32), MirLocalKind.Arg, At, Role: MirLocalRole.PreparedInput)));
-        PairBinder.Collect(types.Generic, body.Binders); // Its binder admits owner or uniq.
+        PairBinder.Collect(c.Binding, types.Generic, body.Binders); // Its binder admits owner or uniq.
         if (form == "pair ref")
         {
             body.Binders[0] = body.Binders[0] with { Admitted = SemanticsMask.Ref | SemanticsMask.Uniq };
@@ -1068,7 +1068,7 @@ public sealed class MirValidatorTest(ITestOutputHelper output)
         var (c, types) = Fixture.Value;
         var body = MirModelTest.NewBody(types);
         var pair = MirModelTest.Local(body, types.Pair, MirLocalKind.Arg);
-        PairBinder.Collect(types.Generic, body.Binders);
+        PairBinder.Collect(c.Binding, types.Generic, body.Binders);
         var layer = body.Project(pair, MirProjectionKind.PairLayer, 0);
         var copied = form == "owned" ? MirModelTest.Local(body, types.Point) : MirModelTest.Local(body, BoundType.I32);
         var (entry, exit) = (body.AddBlock(), body.AddBlock());
@@ -1125,7 +1125,7 @@ public sealed class MirValidatorTest(ITestOutputHelper output)
     {
         var (c, types) = Fixture.Value;
         var body = MirModelTest.NewBody(types);
-        PairBinder.Collect(types.Generic, body.Binders);
+        PairBinder.Collect(c.Binding, types.Generic, body.Binders);
         var admitted = form switch
         {
             "acquire copy" => SemanticsMask.Ref,
@@ -1646,7 +1646,7 @@ public sealed class MirValidatorTest(ITestOutputHelper output)
     public void ViewsOutsideTheCaseBoundAreAFinding()
     {
         var binders = new List<PairBinder>();
-        PairBinder.Collect(Fixture.Value.Types.Generic, binders);
+        PairBinder.Collect(Fixture.Value.Compilation.Binding, Fixture.Value.Types.Generic, binders);
         var binder = binders[0] with { Admitted = SemanticsMask.Owner | SemanticsMask.Uniq };
         var body = new MirBody();
         body.Reset(new(null, MirBodyKind.Fn), default);
@@ -1675,7 +1675,7 @@ public sealed class MirValidatorTest(ITestOutputHelper output)
         var validator = new MirValidator(Fixture.Value.Compilation.Types);
         var findings = new List<MirFinding>();
         var binders = new List<PairBinder>();
-        PairBinder.Collect(Fixture.Value.Types.Generic, binders);
+        PairBinder.Collect(Fixture.Value.Compilation.Binding, Fixture.Value.Types.Generic, binders);
         var binder = binders[0] with { Admitted = SemanticsMask.Owner | SemanticsMask.Uniq };
         Assert.True(Verdict(Typed("assign")));
         var unordered = Build(null);
@@ -2114,7 +2114,7 @@ public sealed class MirValidatorTest(ITestOutputHelper output)
 
         var parent = MirModelTest.Local(body, types.Base);
 
-        PairBinder.Collect(types.Generic, body.Binders);
+        PairBinder.Collect(c.Binding, types.Generic, body.Binders);
         var scope = body.AddScope(0, MirScopeKind.Unsafe, default);
         var shared = body.Static(new(types.Function, BoundType.I32, false, false));
         if (broken == MirViolation.NoBlocks)
