@@ -22,7 +22,7 @@ public class CallableConstraintRecordTest(ITestOutputHelper output)
 
     [Theory]
     [InlineData("EnvironmentResult", Apply + "public func main() -> ()\n    let n = 7\n    let f = func [n] () => n@ref\n    let v = apply(f@ref)\n", "f@ref", "the result", "closure", "call receiver", "static", "hidden environment receiver (SPEC 8.10)")]
-    [InlineData("CapturedBorrow", Apply + "public func main() -> ()\n    let n = 7\n    let view = n@ref\n    let f = func [view] () => view\n    let v = apply(f@ref)\n", "f@ref", "the result", "borrow", "n", "static", "judged from the premises alone")]
+    [InlineData("CapturedBorrow", Apply + "public func main() -> ()\n    let n = 7\n    let f = func [n@ref] () => n\n    let v = apply(f@ref)\n", "f@ref", "the result", "borrow", "n", "static", "judged from the premises alone")]
     [InlineData("EnvironmentOverInput", ApplyInput + "public func main() -> ()\n    let n = 7\n    let f = func [n] (x: ref/i32) => n@ref\n    let m = 1\n    let v = apply(f@ref, m@ref)\n", "f@ref", "the result", "closure", "call receiver", "ref/i32", "hidden environment receiver (SPEC 8.10)")]
     [InlineData("FixedInput", "func callIt<F>(f: uniq/F, x: ref/i32) -> i32\n    F is Callable<uniq, (ref/i32) -> ref/i32>\n    let r = f(x)\n    return r@follow\nfunc use(x: ref/i32) -> i32\n    let start: ref/i32 during x = x\n    var c = func [var start] (n: ref/i32 during x) -> ref/i32 during x\n        let old = start\n        start = n\n        return old\n    return callIt(c@uniq, x)\npublic func main() -> ()\n    let a: i32 = 3\n    Console.writeLine(\"\\(use(a@ref))\")\n", "c@uniq", "the 1st parameter", "omitted", "ref/i32", "x", "judged from the premises alone")]
     [InlineData("FixedParameter", "func apply<F>(f: ref/F, x: ref/i32) -> i32\n    F is Callable<(ref/i32) -> i32>\n    return f(x)\nfunc pick(x: ref/i32 during static) -> i32 => x@follow\npublic func main() -> ()\n    let m = 1\n    let v = apply(pick, m@ref)\n", "pick", "the 1st parameter", "omitted", "ref/i32", "static", "judged from the premises alone")]
@@ -45,6 +45,19 @@ public class CallableConstraintRecordTest(ITestOutputHelper output)
 
         // SPEC 8.10: a Callable signature writes no `during`, so no repair candidate is offered.
         Assert.Null(error.Repairs);
+    }
+
+    // SPEC 8.3, 15.6.1 (PLAN G492-a (ii); the owner's O-363 (a), O-385 (a)): a captured `let` view's slot is its region, so a contract
+    // record names the comparison's end as held, the region, with no Borrow related (R4-M133's display is a relation record's), as its
+    // `var view` twin on dev does; CapturedBorrow above keeps the captured Borrow's record.
+    [Fact]
+    public void ACapturedLetViewIsNamedAsItsRegion()
+    {
+        var source = Apply + "public func main() -> ()\n    let n = 7\n    let view = n@ref\n    let f = func [view] () => view\n    let v = apply(f@ref)\n";
+        var error = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics);
+        Assert.Equal((nameof(DiagnosticCode.UnprovenConstraint_Kd), "f@ref"), (error.Code, Text(source, error.Span)));
+        Assert.Contains("the result requires the omitted Origin of view outlives static", error.Note, StringComparison.Ordinal);
+        Assert.DoesNotContain(error.Related!, static x => x.Role == "origin");
     }
 
     // SPEC 10.5, 8.3: an Unknown Constraint proves neither applicability nor its negation, so another applicable candidate is not selected;
