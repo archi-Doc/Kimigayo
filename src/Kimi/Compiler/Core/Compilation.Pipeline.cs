@@ -155,15 +155,17 @@ public partial class Compilation
     }
 
     /// <summary>Gets whether the latest <see cref="Analyze"/> judged a function's own body without a problem (R6-check H6, H0b §2.1;
-    /// GR-1a): its MIR body exists, the analyses ran on it (no validator finding, <c>MirBody.HasFinding</c>, DECISIONS R5-M183), no
-    /// construction record lies in it (<c>MirBody.HasConstructionRecord</c>) and no merged problem of the report has a member in it
-    /// (DECISIONS R5-M185); hover's ownership line reads it. A record made without a body in hand, a collection record or a module's broken
-    /// HIR contract, is outside it.</summary>
+    /// GR-1a): its MIR body exists, the analyses ran on it (no validator finding, <c>MirBody.HasFinding</c>, DECISIONS R5-M183, and A2's
+    /// table holds it, <c>MirDropTable.Holds</c>: the one stepping path stepped it, so a body a lookup built and nothing stepped is not
+    /// judged, PLAN G951), no construction record lies in it (<c>MirBody.HasConstructionRecord</c>) and no merged problem of the report
+    /// has a member in it (DECISIONS R5-M185); hover's ownership line reads it. A record made without a body in hand, a collection record or
+    /// a module's broken HIR contract, is outside it.</summary>
     /// <param name="function">The function's symbol.</param>
     /// <returns>Whether its body was judged without a problem; false before an analysis, after invalidation and without a body.</returns>
     internal bool JudgedWithoutProblem(BindingSymbol function)
     {
-        if (this.mir is not { } program || program[new(function, Mir.MirBodyKind.Fn)] is not { HasFinding: false, HasConstructionRecord: false } body)
+        if (this.mir is not { } program || program[new(function, Mir.MirBodyKind.Fn)] is not { HasFinding: false, HasConstructionRecord: false } body
+            || !program.Drops.Holds(body.Ordinal))
         {
             return false;
         }
@@ -207,10 +209,10 @@ public partial class Compilation
     }
 
     /// <summary>Builds and validates the MIR of the latest Binding pass, once per pass: the first step of <see cref="BuildMir"/>, and the
-    /// work <c>--compiler-pipeline</c>'s stage 3 times (R6-check H0 D-c5).</summary>
+    /// work <c>--compiler-pipeline</c>'s stage 3 times (R6-check H0 D-c5). The root range is the source modules' (PLAN G951 U2, DECISIONS
+    /// R9-M9): their bodies and the library's default templates; a library body is built where a lookup of the version demands it.</summary>
     /// <returns>The program, with its construction records and validator findings.</returns>
-    internal Mir.MirProgram ConstructMir()
-        => (this.mirBuilder ??= new(this)).Build(SyntaxTable.LibraryModule + 1); // Every body eagerly until PLAN G951 U2 (the source range).
+    internal Mir.MirProgram ConstructMir() => (this.mirBuilder ??= new(this)).Build(this.SourceModules.Length);
 
     internal void InvalidateMir() => this.mir = null;
 }

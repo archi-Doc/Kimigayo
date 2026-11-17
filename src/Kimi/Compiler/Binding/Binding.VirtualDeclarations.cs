@@ -68,10 +68,12 @@ public sealed partial class Binding
     private void ResetVirtualDeclarations()
     {
         this.virtualDeclarations.Clear();
-        this.virtualEffectBounds.Clear();
         this.virtualDeclarationFailures?.Clear();
-        this.virtualOverrides.Clear();
-        this.overrideEntries.Clear();
+        foreach (var entries in this.overrideEntries.Values.In(this.pass))
+        {
+            entries!.Clear();
+        }
+
         this.overrideFailures?.Clear();
         this.baseCallFailures?.Clear();
     }

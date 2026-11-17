@@ -304,6 +304,31 @@ public sealed class MirInitTest
         Assert.Equal(FillShape(4), large);
     }
 
+    // SPEC 15.1.3, 6.3 (PLAN G951 U2-R, W-243's failure): a constructor's base is a Move Path of its _0 whatever the sizes of the path
+    // arrays when it is added: for each count of the heir's constructor's parameters from 1 to 33 (each one more root before the
+    // base's path, so the counts pass every size the arrays grow at up to 33 paths), over a fresh MirMoveData, the constructor's paths
+    // hold _0's base (local 0, step Base 1), and the compilation's own analysis, which steps the program's bodies over its small arrays
+    // first (PLAN G951 U2: no library body grew them), accepts the program. Each program is valid (SPEC 6.3: a base initializer, then
+    // the Field placed once). Fail-before: where adding the base's path grew the arrays, its mark was written through the array read
+    // before the growth: IndexOutOfRangeException at the counts where the paths so far filled the arrays.
+    [Fact]
+    public void AConstructorsBaseIsAMovePathAtEveryArraySize()
+    {
+        for (var count = 1; count <= 33; count++)
+        {
+            var parameters = Enumerable.Range(0, count);
+            var c = MirBuildTest.Compile("open struct Base\n    let b: i32\n    protected init(b: i32) => self.b = b\nstruct Leaf : Base\n" +
+                $"    let f: i32\n    public init({string.Join(", ", parameters.Select(static i => $"p{i}: i32"))}) : base(p0)\n        self.f = p0\n" +
+                $"let leaf = Leaf.init({string.Join(", ", parameters)})\n");
+            Assert.True(c.Analyze().IsVerified, $"{count} parameters");
+            var body = c.BuildMir().Bodies.ToArray().Last(static x => x.Key.Kind == MirBodyKind.Fn && AdtDef.IsConstructor(x.Key.Decl));
+            var (flow, moves) = (new MirDataflow(new MirReach()), new MirMoveData());
+            flow.Begin(body);
+            moves.Build(body, flow);
+            Assert.Contains(moves.Paths.ToArray(), static x => (x.Local, x.Kind, x.Arg) == (0, MirProjectionKind.Base, 1));
+        }
+    }
+
     // SPEC 15.1.3 (DECISIONS R4-M21, R4-M146): Build empties the paths of a large body whole and a small body's entry by entry (MirTable),
     // and a body after either gets the paths a fresh instance gives: the paths, the flow paths and each Place's path, so no child or Place
     // of an earlier body, keyed by indices that restart, answers for it.

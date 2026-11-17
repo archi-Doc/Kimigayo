@@ -65,6 +65,24 @@ public sealed partial class Binding
         this.matches = new(this);
         this.adaptations = new(this);
         this.associatedInference = new(this);
+        this.implicitConstructorDecisions = new(this);
+        this.specializationsByOriginal = new(this);
+        this.specializations = new(this);
+        this.virtualEffectBounds = new(this);
+        this.overrideEntries = new(this);
+        this.virtualOverrides = new(this);
+        this.originDeclarations = new(this);
+        this.discoveredOrigins = new(this);
+        this.initializerOrigins = new(this);
+        this.propertyCalls = new(this);
+        this.storageProjections = new(this);
+        this.propertyUpdateStorage = new(this);
+        this.propertyUpdateInputs = new(this);
+        this.indexerCalls = new(this);
+        this.viewRangeCalls = new(this);
+        this.rangeCalls = new(this);
+        this.resolvedKeys = new(this);
+        this.matchPlans = new(this);
         this.Library.Kotonoha.Syntax.Hir.Families.Reserve(KimiLibrarySize.Stated);
         foreach (var symbol in this.Library.RegisteredSymbols)
         {
@@ -123,6 +141,15 @@ public sealed partial class Binding
             this.Library.Kotonoha.Syntax.Hir.Families.DeferredConstraints.Used,
             this.Library.Kotonoha.Syntax.Hir.Families.Matches.Used,
             this.Library.Kotonoha.Syntax.Hir.Families.Adaptations.Used,
+            this.Library.Kotonoha.Syntax.Hir.Families.Specializations.Used,
+            this.Library.Kotonoha.Syntax.Hir.Families.SpecializationsByOriginal.Used,
+            this.Library.Kotonoha.Syntax.Hir.Families.OriginDeclarations.Used,
+            this.Library.Kotonoha.Syntax.Hir.Families.DiscoveredOrigins.Used,
+            this.Library.Kotonoha.Syntax.Hir.Families.OriginRequirementNodes.Used,
+            this.Library.Kotonoha.Syntax.Hir.Families.PropertyCalls.Used,
+            this.Library.Kotonoha.Syntax.Hir.Families.RangeCalls.Used,
+            this.Library.Kotonoha.Syntax.Hir.Families.ResolvedKeys.Used,
+            this.Library.Kotonoha.Syntax.Hir.Families.MatchPlans.Used,
             this.types.KeyCount,
             this.constraints.Count,
             this.pendingAssociatedTypes.Count,
@@ -151,6 +178,15 @@ public sealed partial class Binding
             this.Library.Kotonoha.Syntax.Hir.Families.DeferredConstraints.Free,
             this.Library.Kotonoha.Syntax.Hir.Families.Matches.Free,
             this.Library.Kotonoha.Syntax.Hir.Families.Adaptations.Free,
+            this.Library.Kotonoha.Syntax.Hir.Families.Specializations.Free,
+            this.Library.Kotonoha.Syntax.Hir.Families.SpecializationsByOriginal.Free,
+            this.Library.Kotonoha.Syntax.Hir.Families.OriginDeclarations.Free,
+            this.Library.Kotonoha.Syntax.Hir.Families.DiscoveredOrigins.Free,
+            this.Library.Kotonoha.Syntax.Hir.Families.OriginRequirementNodes.Free,
+            this.Library.Kotonoha.Syntax.Hir.Families.PropertyCalls.Free,
+            this.Library.Kotonoha.Syntax.Hir.Families.RangeCalls.Free,
+            this.Library.Kotonoha.Syntax.Hir.Families.ResolvedKeys.Free,
+            this.Library.Kotonoha.Syntax.Hir.Families.MatchPlans.Free,
             this.types.KeyFree,
             this.constraints.Capacity - this.constraints.Count,
             this.pendingAssociatedTypes.Capacity - this.pendingAssociatedTypes.Count,

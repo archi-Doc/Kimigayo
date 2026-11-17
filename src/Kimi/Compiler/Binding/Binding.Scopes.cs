@@ -88,12 +88,14 @@ public sealed partial class Binding
         return symbol;
     }
 
-    /// <summary>A node family's present rows over the compilation's modules in G949 D2b-d's d8 order: the source modules by ordinal, then
-    /// the library, each module's by ascending id. The column's rows come from its selector, which takes the module's table and the Binding
-    /// (a stamped column's current rows, StampedColumn.Enumerate), so no enumeration allocates.</summary>
+    /// <summary>A node family's present rows over a module set in G949 D2b-d's d8 order: the source modules by ordinal, then the library,
+    /// each module's by ascending id. The set is the compilation's every module (the accessor's Values, for readers outside a pass), or a
+    /// pass's (In: a step reads its own pass's rows, PLAN G949 S1-r2). The column's rows come from its selector, which takes the module's
+    /// table and the Binding (a stamped column's current rows, StampedColumn.Enumerate), so no enumeration allocates.</summary>
     /// <typeparam name="TRow">The family's row.</typeparam>
     internal struct FamilyRows<TRow>(Binding binding, Func<SyntaxTable, Binding, PagedColumn<TRow>.Enumerator> column)
     {
+        private BindingPass modules = binding.Modules;
         private int module = -1;
         private SyntaxTable? table;
         private PagedColumn<TRow>.Enumerator rows;
@@ -111,20 +113,22 @@ public sealed partial class Binding
         // The current module's next row, else the next module's first.
         public bool MoveNext()
         {
-            var modules = binding.compilation.SourceModules;
-            while (this.module > modules.Length || this.module < 0 || !this.rows.MoveNext())
+            while (this.module < 0 || this.module >= this.modules.Count || !this.rows.MoveNext())
             {
-                if (++this.module > modules.Length)
+                if (++this.module >= this.modules.Count)
                 {
                     return false;
                 }
 
-                this.table = this.module < modules.Length ? modules[this.module].Syntax : binding.Library.Kotonoha.Syntax;
+                this.table = this.modules[this.module].Syntax;
                 this.rows = column(this.table, binding);
             }
 
             return true;
         }
+
+        // The same rows over a pass's modules, in the same order.
+        internal readonly FamilyRows<TRow> In(BindingPass pass) => this with { modules = pass };
     }
 
     /// <summary>A kept family's values in d8's order (DECISIONS BU-220): each id's value in the family's column, then the values of the
@@ -178,6 +182,9 @@ public sealed partial class Binding
                 }
             }
         }
+
+        // The same values over a pass's modules, in the same order.
+        internal readonly KeptValues<T, TPart> In(BindingPass pass) => new(values.In(pass), lists.In(pass), part);
     }
 
     /// <summary>The `symbols` family's one accessor (DECISIONS BU-220): a symbol is kept in its declaration's module, the node's
