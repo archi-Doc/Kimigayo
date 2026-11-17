@@ -32,7 +32,10 @@ public sealed partial class Binding
     private int enumeratePoolNext;
     private int enumerateDepth;
     private int enumerateWalking;
-    private Completion enumerateCompletion; // the outermost walk's: the meet of its availability reads (the class header's Kept rows)
+
+    // The outermost request's own scratch value (the class header's Kept rows): the meet of its walk's availability reads (WalkAvailable),
+    // set at each outermost walk's start and read at its end (KeepRows' condition); no collection, so no store the library-layer dump lists.
+    private Completion enumerateCompletion;
     private IdentityClasses? enumerateClasses; // R7-C2c2: the current request's view's identity classes, or null
 
     // The scaling rows' measure: the pairs Closure(view)'s entries indexed in this compilation, in every row (a fact of a row kind,

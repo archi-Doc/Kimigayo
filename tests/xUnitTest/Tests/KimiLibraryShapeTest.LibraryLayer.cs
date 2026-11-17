@@ -99,9 +99,9 @@ public partial class KimiLibraryShapeTest
 
     // The epoch rule's invariant: ResetCapabilities, which begins every pass (its one call is ResetPass's, which the pass driver's RunPass
     // runs first in each pass: ArchitectureRulesTest's row), ends the capability epoch, so no entry of a per-epoch memo is current after
-    // it. Every component summary is stale (its Epoch is not summaryEpoch); Enumerate's kept pool is free (enumerateKeptPoolNext 0: the kept lists are
-    // enumerateKept's, review C1); every capability work holds CapabilityWork.Reset's state, its Fact included; every other epoch store
-    // is empty. Reset leaves only a work's Site (review N2): the limit site of the work's own Closure signature, its Use that signature's
+    // it. Every component summary is stale (its Epoch is not summaryEpoch); every capability work holds CapabilityWork.Reset's state, its
+    // Fact included; every other epoch store is empty, Enumerate's view index among them, whose entries hold its kept rows (ViewIndex.Rows,
+    // R7-C2e2 e2-3a). Reset leaves only a work's Site (review N2): the limit site of the work's own Closure signature, its Use that signature's
     // binder and its Needed flag cleared by ResetCapabilities (ClearNeededSites); only the work's own evaluation reads it. Fact, the U fact
     // of its last Unknown, is payload no fixpoint compares (design-r2 Amendment 4), and a consumer that requests the work while it waits
     // in the queue reads it beside the reset Unknown (RequestCapability's read of the queued work), for record selection only; Reset
@@ -132,9 +132,6 @@ public partial class KimiLibraryShapeTest
                     Assert.NotEmpty(value);
                     Assert.Empty(((IDictionary)value).Values.Cast<object>()
                         .SelectMany(x => reset.Where(name => Property(x, name) is not (null or false or ConstraintProof.Unknown or ICollection { Count: 0 }))));
-                    break;
-                case "Binding.enumerateKeptPool":
-                    Assert.Equal(0, (int)LibraryLayer.ValueAt(binding, "Binding.enumerateKeptPoolNext"));
                     break;
                 default:
                     Assert.Empty(value);
@@ -266,15 +263,13 @@ public partial class KimiLibraryShapeTest
             ["Binding.boundContracts"] = (Rule.Subset, null),
             ["Binding.storageMarks"] = (Rule.Subset, null),
 
-            // Memos of one capability epoch (ClearCapabilityResults): component summaries, capability works and Enumerate's kept rows,
-            // whose pool lends its lists to enumerateKept alone (C1).
+            // Memos of one capability epoch (ClearCapabilityResults): component summaries, capability works, Enumerate's view index, whose
+            // entries hold its kept rows (ViewIndex.Rows, R7-C2e2 e2-3a), and a Contract's head depths.
             ["Binding.summaries"] = (Rule.Epoch, null),
             ["Binding.capabilityNodes"] = (Rule.Epoch, null),
             ["Binding.capabilityEdges"] = (Rule.Epoch, null),
             ["Binding.capabilityQueue"] = (Rule.Epoch, null),
             ["Binding.enumerateIndex"] = (Rule.Epoch, null),
-            ["Binding.enumerateKept"] = (Rule.Epoch, null),
-            ["Binding.enumerateKeptPool"] = (Rule.Epoch, null),
             ["Binding.enumerateHeads"] = (Rule.Epoch, null),
 
             // Numbers: Tarjan's visit order, the Origin requirement walk's consumer mark, a scope's view serial and the chain state it names.
