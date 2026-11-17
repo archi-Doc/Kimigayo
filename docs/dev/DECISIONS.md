@@ -18830,6 +18830,9 @@ structure is recorded here by the unit that first implements it.
     and no other program reaches generation's exceptions without a production seam. U9b deletes the `generating` exclusion and its state:
     `Publish` classifies its steps before and after code generation in two catches, and generation runs between them, outside both, so the
     rule above holds by structure (no test observes it: no seam).
+  - Amended by R9-M10: the project's own result (`Project.BuildTargetsAndPublish`) and the build's own result (`Project.Build`) end
+    as Faulted the same way, beside the front end's and the Emission result; under `Project.Build` the toolchain's classification
+    applies only around its own calls.
 - **R5-M170 The instance collector limits growth, not depth (G332 U1)** (2026-10-31, PLAN G332; the owner approved the departure from K
   package 4.6/KD9 together with BU-71, verbatim 「まとめて承認します」 (2026-10-31); supersedes KD9's whole limit clause and amends R5-M166's Known
   limit)
@@ -23059,6 +23062,8 @@ R8-M* and R9-M* by the stage of the recording unit.
   - Amends: R5-M163, R5-M167 row 15 and R5-M174 ("`C/Emission` keeps the toolchain ... until R9"): the files are `src/Kimi/Build`'s.
   - Amended by R9-M7: the reader theory's types are the folder's top-level ones (a nested type is named through its containing
     type); this entry's verdict is unchanged (Build's only nested type, `NativeToolchain.NativeBuild`, is private).
+  - Amended by R9-M10: Build reads `CompilationBuildMetadata` as the value `Project.Build` passes (`RecordLibrary`'s argument), not
+    through `Project.BuildMetadata`.
 - **R9-M7 Documentation is `Kimi.Documentation`, outside the compiler; the association stays in Core** (Middle, 2026-11-11; R9-M1
   part 1, the R7-R9 plan's §5.3 unit M1; Major, behavior-preserving; design reviews 1 REVISE, 2 ACCEPT; implementation review
   ACCEPT; the Front's consent C-224 and the Back's C-225)
@@ -23269,3 +23274,46 @@ R8-M* and R9-M* by the stage of the recording unit.
     decisions would land without a reachable path); one range per builder (it forbids adding a module); the range in the kept
     library stamp (G950-R's two rules for kept facts); a step after the clean collector run to give unstepped bodies A1/A2 problems
     (C-378 (3) as amended; hover reads `Holds` instead).
+- **R9-M10 The toolchain boundary's rule: a compiler exception under `Project.Build` is its result's fault (R9-B2, PLAN G345)**
+  (Middle, 2026-11-18; the R7-R9 plan's §5.3 unit B2; Major; under DIAGNOSTICS rule 9, R5-M169 and R9-M6; design review ACCEPT WITH
+  NOTES, the Middle's rulings on F1-F8; implementation review ACCEPT)
+  - Rule: under `Project.Build`, the toolchain's classification (`NativeToolchain.IsToolchainFailure`) applies only around the
+    toolchain's own calls: (a) the artifact paths with the record's invalidation, (b) the native build or the Library record; such a
+    failure fails the build with its message (`Project.ToolchainFailed`, the one rendering; IMPL 20.3, SPEC 23.2.2). The compiler's
+    steps run between (a) and (b), outside both catches: the project's own checks, each target's front end and Emission, and the
+    Library record's metadata read (`Project.Build` reads `buildMetadata.Single()` and passes it to `RecordLibrary`). Every other
+    exception under the build ends a result as Faulted, through `Project.Faults` and `Project.Publish`: one `CheckFaulted_Kd`
+    (Exception, its message the note) at the project file, beside that result's valid records. The project's own result
+    (`BuildTargetsAndPublish`, shared by `check`, `emit` and `build`: its configuration, lock and target-selection records) gains
+    that fault path as `BuildTarget` has it, for its own checks and a target's report after its results (`Emit`); the build's own
+    result (an empty owner with the fault, after the front-end and Emission results) is rendered by `Build`'s outer catch, for the
+    metadata read, the rendering of a toolchain failure and an exception the toolchain leaves unclassified.
+  - Holds by structure (R5-M169's amendment for generation): no flag and no second predicate; `IsToolchainFailure`'s set is
+    unchanged.
+  - Known limits: (1) inside the toolchain's calls the set still classifies by type whatever raised the exception: a listed type
+    thrown by the host's report callback (the toolchain's "Built: " line) or by a `Kimi.Build` defect prints as a toolchain failure.
+    Form J (PLAN G983: the toolchain-file readers turn `JsonElement`'s accessor failures into `InvalidDataException`) removes the
+    set's `KeyNotFoundException` and `InvalidOperationException`; publication's kinds (`ArgumentException` with its subtypes,
+    `NotSupportedException`; R5-M165) stay. (2) An exception in a target's preparation before `BuildTarget`'s front end
+    (`DependencyResolver.Resolve`, `DependencyLock.Validate`, `new Compilation`) ends the project's own result, and that target's
+    own records (its registered project file, lock or resolution records) are not rendered; no command input reaches it (resolution
+    and lock failures are records); `BuildTarget`'s finalization is not widened here (PLAN G829's area). (3) Outside
+    `Project.Build`, `CommandExecution` and `TestCommand` still apply the set over compiler steps (PLAN G984).
+  - Tests: `NativeToolchainTest.ABuildFailsByTheToolchainBoundarysRule` (project checks: a null target list escaped the build;
+    report: the host's `InvalidOperationException` after generation printed as a toolchain failure; the toolchain's message: the
+    host console failing at `ToolchainFailed`'s line escaped the build, now the build's own fault, the row that observes `Build`'s
+    outer catch; three toolchain rows keep their message); `EmissionArtifactsTest.AnExceptionEndsTheCommandsResultAsFaulted`
+    (`Check()` and `Generate` with a null target list, `Generate`'s report; each escaped). No production seam: the triggers are the
+    host's console and the caller's project values; the metadata read itself has none (one target is checked whenever the front end
+    accepts).
+  - Rejected: removing the two accessor types from the set alone (a malformed manifest, record or installation file would escape
+    every command unhandled); form J in this unit (about 50 accessor sites over five documents; the manifest's reader is R9-B1's row
+    table; its own PLAN row); a toolchain exception type (the framework's failures would still be classified by type at its
+    entries); a local flag steering one catch (R5-M175 removed `generating` for structure); every exception from a toolchain call as
+    the toolchain's (a `Kimi.Build` defect would print as a toolchain failure); the fault path only in `Build` (a fault ending the
+    project's own result would follow it as a second result, and `check`/`emit` would keep the escape); one helper for the four
+    finalization points' "try, `Faults`, finally `Publish`" (each differs: `BuildTarget`'s `rejected`, `PublishArtifacts` publishes
+    only on failure, `Build`'s empty owner; not shorter).
+  - Amends R9-M6 (the dependency rule's "`CompilationBuildMetadata`, through `Project.BuildMetadata`": Build reads the value
+    `Project.Build` passes) and R5-M169 (the results with a fault path: the project's own and the build's, beside the front end's
+    and the Emission result; DIAGNOSTICS §7).
