@@ -133,6 +133,70 @@ public partial class CallableOriginForwardingTest
 
     private const string KPre = "func k(b: ref/i32, c: ref/i32, f: (ref/i32 during c) -> i32) -> i32\n    origin c outlives b\n    return h(f@move, 1, b)\n";
 
+    private const string HStatic = "func h(x: (ref/i32 during static) -> i32, n: i64, b: ref/i32) -> i32 => 1\n";
+
+    private const string KCl = "func k(b: ref/i32, c: ref/i32) -> i32\n    origin c outlives b\n";
+
+    private const string KClReady = "func k(b: ref/i32, c: ref/i32, ready: bool) -> i32\n    origin c outlives b\n";
+
+    private const string LetCl = "    let cl = func [] (x: ref/i32 during c) -> i32 => 0\n";
+
+    private const string LetCm = "    let cm = func [] (x: ref/i32 during c) -> i32 => 1\n";
+
+    private const string ClJoin = "    return h(if ready => cl@move else => cm@move, 1, b)\n";
+
+    private const string ClWritten = "    return h(func [] (x: ref/i32 during c) -> i32 => 0, 1, b)\n";
+
+    private const string Gs = "func gs(x: ref/i32 during static) -> i32 => 0\n";
+
+    private const string HNb3 = "func h(x: i32, a: ref/i32, b: ref/i32, f: (ref/i32 during a) -> i32) -> i32 => 0\nfunc h<T>(x: T, a: ref/i32, b: ref/i32, f: (ref/i32 during b) -> i32) -> i32 => 1\n";
+
+    private const string HNb3b = "func h(x: i32, a: ref/i32, b: ref/i32, f: (ref/i32 during b) -> i32) -> i32 => 0\nfunc h<T>(x: T, a: ref/i32, b: ref/i32, f: (ref/i32 during a) -> i32) -> i32 => 1\n";
+
+    private const string LetC = "    let c = func [] (z: ref/i32 during a) -> i32 => z@follow\n";
+
+    private const string LetD = "    let d = func [] (z: ref/i32 during a) -> i32 => 0\n";
+
+    private const string Nb3K = "func k(a: ref/i32, b: ref/i32) -> i32\n" + LetC + "    let v: i32 = 1\n";
+
+    private const string Nb3KReady = "func k(a: ref/i32, b: ref/i32, ready: bool) -> i32\n" + LetC;
+
+    private const string Rank2Uniq = "func h(f: (ref/i32 during a) -> i32, a: ref/i32, b: ref/i32, n: uniq/(uniq/i32 during q)) -> i32 => 0\n";
+
+    private const string Rank2Ref = "func h(f: (ref/i32 during b) -> i32, a: ref/i32, b: ref/i32, n: ref/i32) -> i32 => 1\n";
+
+    private const string Rank2bUniq = "func h(f: (ref/i32 during b) -> i32, a: ref/i32, b: ref/i32, n: uniq/(uniq/i32 during q)) -> i32 => 0\n";
+
+    private const string Rank2bRef = "func h(f: (ref/i32 during a) -> i32, a: ref/i32, b: ref/i32, n: ref/i32) -> i32 => 1\n";
+
+    private const string Rank2K = "func k(a: ref/i32, b: ref/i32, x: uniq/(uniq/i32 during q)) -> i32\n" + LetC;
+
+    private const string Rank2KReady = "func k(a: ref/i32, b: ref/i32, x: uniq/(uniq/i32 during q), ready: bool) -> i32\n" + LetC + LetD;
+
+    private const string Rank3A = "func h(f: () -> ref/i32 during a, a: ref/i32, n: uniq/(uniq/i32 during q)) -> i32 => 0\nfunc h(f: () -> ref/i32 during static, a: ref/i32, n: ref/i32) -> i32 => 1\n";
+
+    private const string Rank3Static = "func h(f: () -> ref/i32 during static, a: ref/i32, n: uniq/(uniq/i32 during q)) -> i32 => 0\nfunc h(f: () -> ref/i32 during a, a: ref/i32, n: ref/i32) -> i32 => 1\n";
+
+    private const string Rank3K = "func k(a: ref/i32, c: ref/i32, x: uniq/(uniq/i32 during q), ready: bool) -> i32\n    origin c outlives a\n    let g1 = func [] () -> ref/i32 during c => $abort(\"x\")\n";
+
+    private const string LetG2 = "    let g2 = func [] () -> ref/i32 during c => $abort(\"y\")\n";
+
+    private const string HOsel2 = "func h(f: (ref/i32 during a) -> i32, a: ref/i32, b: ref/i32, n: i32) -> i32 => 0\nfunc h<T>(f: (ref/i32 during b) -> i32, a: ref/i32, b: ref/i32, n: T) -> i32 => 1\n";
+
+    private const string LetCOsel2 = "    let c = func [] (z: ref/i32 during b) -> i32 => z@follow\n    let v: i32 = 1\n";
+
+    private const string K3Named = "func k3(q: ref/i32, f: (ref/i32 during q) -> i32) -> i32 => 0\n";
+
+    private const string ZHost = "func host(a: ref/i32, b: ref/i32, s: ref/i32 during a, c: bool) -> i32\n";
+
+    private const string LetCb = "    let cb = func [] (x: ref/i32 during b) -> i32 => 6\n    return k3(s, cb)\n";
+
+    private const string NestedHn = "    origin s outlives t\n    func hn(x: ref/i32 during t) -> i32 => 5\n";
+
+    private const string Pick = "func pick(n: ref/i32) -> ref/i32 => n\n";
+
+    private const string UseStaticResult = "func use(f: (ref/i32) -> ref/i32 during static) -> i32 => 0\nfunc host() -> i32\n";
+
     private const string CallableApply = "func apply<F>(action: ref/F) -> i32\n    F is Callable<(ref/i32) -> Option<ref/(ref/i32)>>\n    return 0\nfunc k(s: ref/i32) -> i32\n";
 
     private const string FlatApply = "func apply<F>(f: ref/F) -> i32\n    F is Callable<() -> ref/i32>\n    return 0\n";
@@ -415,6 +479,18 @@ public partial class CallableOriginForwardingTest
     // i32 candidate (sel4run, as dev selects it) are selected and their comparison is the record; pre1b and apre, a Function Type's member
     // Origin, are ambiguous (dev accepted them); two Function values at one slot (slot1) differ only in Origins, so T takes the first and
     // the second's comparison is the record, and with `b outlives a` it holds (slot1cba; dev rejected it).
+    // PLAN G379 (a) (SPEC 15.6.1, 10.8, 10.4, 10.7): a Closure's erasure fits by its structural part alone, its Origin part judged once
+    // after selection at the argument: ambiguous where only an Origin differs (clsel, as its Function-value control clfv; a join with a
+    // Never source clselif1, a join of two Closures clselif, a literal clselw, a payload clselarr), and with a lone candidate the
+    // erasure's Proof record at the argument (clselctl1n, nb1n, the literal's clselctl1nw, the join's sources clselctl1nif, escc) or
+    // nothing where a premise proves it (clselctl1, nb1, clselctl1w, clselctl1if; G519's r04n and z02n). Ranking reads no Origin: step 3
+    // picks the non-generic (nb3, its join nb3if and Never-source join nb3if1 valid; nb3b, nb3bif, nb3bif1 its Proof record) and step 1
+    // the `uniq` or the `a` candidate (rank2*, rank3*), its failing erasure then the record; the Front's twins put the Origin in the result
+    // (tw-res), on another parameter (tw-osel2, tw-joinsel1; tw-osel2-ok's selection is AClosuresOriginPartNeverSelectsACandidate's
+    // fixture) and the stand-in at one candidate only (tw-mixsel). Dev accepted clsel, clselif1, nb3b, nb3bif1, rank2bc, rank3i1, tw-res,
+    // tw-osel2, tw-joinsel1 and tw-mixsel and rejected clselctl1, nb1, r04n and z02n. The Item arm and a function reference are PLAN G379
+    // (b)'s: their invalid forms are Explicit until R7-P4 T2 (itsel, frsel, frselctl1n, and G514's t4q, u2, u2g); itselctl1 and G519's
+    // Item forms r06n and r06 are accepted already.
     [Theory]
     [InlineData("sel2", MkC + MkT + CallMk, "AmbiguousBinding_Kd mk(1, a, b, c)")]
     [InlineData("sel1", "struct S {a, b, c}\n" + CB + "    public func p(self: ref/Self) -> i32\n        let r: Option<" + FnB + "> = self.mk(1)\n        return 0\n    public init() => ()\n    public func mk(self: ref/Self, x: i32) -> Option<" + FnC + "> => .None\n    public func mk<T>(self: ref/Self, x: T) -> Option<" + FnB + "> => .None\n", "AmbiguousBinding_Kd self.mk(1)")]
@@ -432,6 +508,55 @@ public partial class CallableOriginForwardingTest
     [InlineData("apre1", HPre + KPre, "UnprovenOriginContract_Kd f@move")]
     [InlineData("slot1", PairFG + CB + "    return pair(f@move, g@move)\n", "UnprovenOriginContract_Kd g@move")]
     [InlineData("slot1cba", PairFG + CBA + "    return pair(f@move, g@move)\n", "")]
+    [InlineData("clsel", HPre + HStatic + KCl + LetCl + "    return h(cl@move, 1, b)\n", "AmbiguousBinding_Kd h(cl@move, 1, b)")]
+    [InlineData("clfv", HPre + HStatic + KCl + LetCl + "    let fv: (ref/i32 during c) -> i32 = cl@move\n    return h(fv@move, 1, b)\n", "AmbiguousBinding_Kd h(fv@move, 1, b)")]
+    [InlineData("clselctl1", HPre + KCl + "    origin b outlives c\n" + LetCl + "    return h(cl@move, 1, b)\n", "")]
+    [InlineData("clselctl1n", HPre + KCl + LetCl + "    return h(cl@move, 1, b)\n", "UnprovenOriginContract_Kd cl@move")]
+    [InlineData("clselif1", HPre + HStatic + KClReady + LetCl + "    return h(if ready => cl@move else => $abort(\"x\"), 1, b)\n", "AmbiguousBinding_Kd h(if ready => cl@move else => $abort(\"x\"), 1, b)")]
+    [InlineData("clselif", HPre + HStatic + KClReady + LetCl + LetCm + ClJoin, "AmbiguousBinding_Kd h(if ready => cl@move else => cm@move, 1, b)")]
+    [InlineData("clselctl1if", HPre + KClReady + "    origin b outlives c\n" + LetCl + LetCm + ClJoin, "")]
+    [InlineData("clselctl1nif", HPre + KClReady + LetCl + LetCm + ClJoin, "UnprovenOriginContract_Kd cl@move; UnprovenOriginContract_Kd cm@move")]
+    [InlineData("clselw", HPre + HStatic + KCl + ClWritten, "AmbiguousBinding_Kd h(func [] (x: ref/i32 during c) -> i32 => 0, 1, b)")]
+    [InlineData("clselctl1w", HPre + KCl + "    origin b outlives c\n" + ClWritten, "")]
+    [InlineData("clselctl1nw", HPre + KCl + ClWritten, "UnprovenOriginContract_Kd func [] (x: ref/i32 during c) -> i32 => 0")]
+    [InlineData("clselarr", "func h(x: Option<(ref/i32 during b) -> i32>, n: i32, b: ref/i32) -> i32 => 0\nfunc h(x: Option<(ref/i32 during static) -> i32>, n: i64, b: ref/i32) -> i32 => 1\n" + KCl + LetCl + "    return h(.Some(cl@move), 1, b)\n", "AmbiguousBinding_Kd h(.Some(cl@move), 1, b)")]
+    [InlineData("nb1", "func use(q: ref/i32, f: (ref/i32 during q) -> i32) -> i32 => f(q)\nfunc k(p: ref/i32, q: ref/i32) -> i32\n    origin q outlives p\n    let c = func [] (x: ref/i32 during p) -> i32 => x@follow\n    return use(q, c@move)\n", "")]
+    [InlineData("nb1n", "func use(q: ref/i32, f: (ref/i32 during q) -> i32) -> i32 => f(q)\nfunc k(p: ref/i32, q: ref/i32) -> i32\n    let c = func [] (x: ref/i32 during p) -> i32 => x@follow\n    return use(q, c@move)\n", "UnprovenOriginContract_Kd c@move")]
+    [InlineData("escc", "func make<T>(v: ref/i32 during x, action: (ref/i32 during x) -> T) -> T => action(v)\nfunc g() -> ref/i32 during static\n    let local: i32 = 6\n    let c = func (k: ref/i32) => k\n    return make(local@ref, c)\n", "UnprovenOriginContract_Kd c")]
+    [InlineData("nb3", HNb3 + Nb3K + "    return h(v, a, b, c@move)\n", "")]
+    [InlineData("nb3b", HNb3b + Nb3K + "    return h(v, a, b, c@move)\n", "UnprovenOriginContract_Kd c@move")]
+    [InlineData("nb3if", HNb3 + Nb3KReady + LetD + "    let v: i32 = 1\n    return h(v, a, b, if ready => c@move else => d@move)\n", "")]
+    [InlineData("nb3bif", HNb3b + Nb3KReady + LetD + "    let v: i32 = 1\n    return h(v, a, b, if ready => c@move else => d@move)\n", "UnprovenOriginContract_Kd c@move; UnprovenOriginContract_Kd d@move")]
+    [InlineData("nb3if1", HNb3 + Nb3KReady + "    let v: i32 = 1\n    return h(v, a, b, if ready => c@move else => $abort(\"x\"))\n", "")]
+    [InlineData("nb3bif1", HNb3b + Nb3KReady + "    let v: i32 = 1\n    return h(v, a, b, if ready => c@move else => $abort(\"x\"))\n", "UnprovenOriginContract_Kd if ready => c@move else => $abort(\"x\")")]
+    [InlineData("rank2if", Rank2Uniq + Rank2Ref + Rank2KReady + "    return h(if ready => c@move else => d@move, a, b, x)\n", "")]
+    [InlineData("rank2bif", Rank2bUniq + Rank2bRef + Rank2KReady + "    return h(if ready => c@move else => d@move, a, b, x)\n", "UnprovenOriginContract_Kd c@move; UnprovenOriginContract_Kd d@move")]
+    [InlineData("rank2c", Rank2Uniq + Rank2Ref + Rank2K + "    return h(c@move, a, b, x)\n", "")]
+    [InlineData("rank2bc", Rank2bUniq + Rank2bRef + Rank2K + "    return h(c@move, a, b, x)\n", "UnprovenOriginContract_Kd c@move")]
+    [InlineData("rank3v", Rank3A + Rank3K + LetG2 + "    return h(if ready => g1@move else => g2@move, a, x)\n", "")]
+    [InlineData("rank3v1", Rank3A + Rank3K + "    return h(if ready => g1@move else => $abort(\"y\"), a, x)\n", "")]
+    [InlineData("rank3vc", Rank3A + Rank3K + "    return h(g1@move, a, x)\n", "")]
+    [InlineData("rank3i", Rank3Static + Rank3K + LetG2 + "    return h(if ready => g1@move else => g2@move, a, x)\n", "UnprovenOriginContract_Kd g1@move; UnprovenOriginContract_Kd g2@move")]
+    [InlineData("rank3i1", Rank3Static + Rank3K + "    return h(if ready => g1@move else => $abort(\"y\"), a, x)\n", "UnprovenOriginContract_Kd if ready => g1@move else => $abort(\"y\")")]
+    [InlineData("r04n", K3Named + PremiseHost + "    origin s outlives t\n    let c = func [] (x: ref/i32 during t) -> i32 => 5\n    return k3(s, c)\n", "")]
+    [InlineData("r04n_bad", K3Named + PremiseHost + "    let c = func [] (x: ref/i32 during t) -> i32 => 5\n    return k3(s, c)\n", "UnprovenOriginContract_Kd c")]
+    [InlineData("z02n", K3Named + ZHost + "    origin a outlives b\n" + LetCb, "")]
+    [InlineData("z02n_bad", K3Named + ZHost + "    origin b outlives a\n" + LetCb, "UnprovenOriginContract_Kd cb")]
+    [InlineData("r06n", K3Named + PremiseHost + NestedHn + "    return k3(s, hn)\n", "")]
+    [InlineData("r06", K3Named + PremiseHost + NestedHn + "    let g = k3\n    return g(s, hn)\n", "")]
+    [InlineData("t4q_ok", "func h3(x: ref/i32 during static) -> i32 => 5\nfunc host(s: ref/i32 during static) -> i32\n    func run(q: ref/i32, f: (ref/i32 during q) -> i32) -> i32 => 0\n    return run(s, h3)\n", "")]
+    [InlineData("itsel [T2]", HPre + HStatic + KCl + "    func it(x: ref/i32 during c) -> i32 => 0\n    return h(it, 1, b)\n", "AmbiguousBinding_Kd h(it, 1, b)", Explicit = true)] // until R7-P4 T2 (PLAN G379 (b))
+    [InlineData("itselctl1", HPre + KCl + "    origin b outlives c\n    func it(x: ref/i32 during c) -> i32 => 0\n    return h(it, 1, b)\n", "")]
+    [InlineData("tw-res", "func h(f: (ref/i32 during a) -> ref/i32 during a, n: i32, a: ref/i32) -> i32 => 0\nfunc h(f: (ref/i32 during a) -> ref/i32 during static, n: i64, a: ref/i32) -> i32 => 1\nfunc k(a: ref/i32) -> i32\n    let c = func [] (z: ref/i32 during a) -> ref/i32 during a => z\n    return h(c@move, 1, a)\n", "AmbiguousBinding_Kd h(c@move, 1, a)")]
+    [InlineData("tw-osel2", HOsel2 + "func k(a: ref/i32, b: ref/i32) -> i32\n" + LetCOsel2 + "    return h(c@move, a, b, v)\n", "UnprovenOriginContract_Kd c@move")]
+    [InlineData("tw-osel2-ok", HOsel2 + "func k(a: ref/i32, b: ref/i32) -> i32\n    origin a outlives b\n" + LetCOsel2 + "    return h(c@move, a, b, v)\n", "")]
+    [InlineData("tw-joinsel1", HOsel2 + "func k(a: ref/i32, b: ref/i32, ready: bool) -> i32\n" + LetCOsel2 + "    return h(if ready => c@move else => $abort(\"x\"), a, b, v)\n", "UnprovenOriginContract_Kd if ready => c@move else => $abort(\"x\")")]
+    [InlineData("tw-mixsel", "func make<T>(v: ref/i32 during x, action: (ref/i32 during x) -> T, n: i32) -> i32 => 0\nfunc make(v: ref/i32 during x, action: (ref/i32 during x) -> ref/i32 during static, n: i64) -> i32 => 1\nfunc run()\n    let n: i32 = 6\n    let c = func (k: ref/i32) => k\n    let r = make(n@ref, c, 1)\n", "AmbiguousBinding_Kd make(n@ref, c, 1)")]
+    [InlineData("frsel [T2]", HPre + HStatic + Gs + KCl + "    return h(gs, 1, b)\n", "AmbiguousBinding_Kd h(gs, 1, b)", Explicit = true)] // until R7-P4 T2 (PLAN G379 (b))
+    [InlineData("frselctl1n [T2]", HPre + Gs + KCl + "    return h(gs, 1, b)\n", "UnprovenOriginContract_Kd gs", Explicit = true)] // until R7-P4 T2 (PLAN G379 (b))
+    [InlineData("t4q [T2]", "func h3(x: ref/i32 during static) -> i32 => 5\nfunc host(s: ref/i32) -> i32\n    func run(q: ref/i32, f: (ref/i32 during q) -> i32) -> i32 => 0\n    return run(s, h3)\n", "UnprovenOriginContract_Kd h3", Explicit = true)] // until R7-P4 T2 (PLAN G379 (b))
+    [InlineData("u2 [T2]", Pick + UseStaticResult + "    return use(pick)\n", "UnprovenOriginContract_Kd pick", Explicit = true)] // until R7-P4 T2 (PLAN G379 (b))
+    [InlineData("u2g [T2]", "func identity<T>(v: T) -> T => v@move\n" + UseStaticResult + "    return use(identity)\n", "UnprovenOriginContract_Kd identity", Explicit = true)] // until R7-P4 T2 (PLAN G379 (b))
     public void ApplicabilityJudgesOnlyTheStructuralPart(string form, string body, string records)
         => OriginRelationDiagnosticTest.AssertRecords(form, body, records, null);
 

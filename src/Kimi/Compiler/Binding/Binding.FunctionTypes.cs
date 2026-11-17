@@ -205,10 +205,11 @@ public sealed partial class Binding
         return true;
     }
 
-    // SPEC 7.7.4, 10.5, 10.7: the signature part of an erasure, which a call's applicability uses; the Shared receiver, the Owned
-    // environment and a Closure's Origin conditions are judged after selection, at the argument (SPEC 15.6.1), and a failure there never
-    // selects another candidate. A Function Item's Origin conditions belong to its signature, proven from the required contract at `use`
-    // (SPEC 15.3.7).
+    // SPEC 7.7.4, 10.5, 10.7, 10.8, 15.6.1: the signature part of an erasure, which a call's applicability uses. A Closure's is the
+    // structural part of its signature's compatibility (FitsStructuralPartAt, every pre-selection fit's one entry, DECISIONS R4-M155):
+    // its Origin part, its Shared receiver and its Owned environment are judged after selection, at the argument (ErasesToFunction),
+    // and a failure there never selects another candidate. A Function Item's Origin conditions still belong to its signature, proven
+    // from the required contract at `use` (SPEC 15.3.7; PLAN G379's Item half).
     private bool ErasureSignatureFits(BoundType actual, BoundType expected, Koto use, out ComparisonFailure failure)
     {
         failure = default;
@@ -216,7 +217,7 @@ public sealed partial class Binding
             ((actual.Kind == BoundTypeKind.FunctionItem && this.FunctionItemSignature(actual) is { } signature &&
             this.ItemContractFits(actual, signature, expected, use, out failure)) ||
             (actual.Kind == BoundTypeKind.Closure && this.ClosureSignature(actual) is { } closureSignature &&
-            this.CallableSubtype(closureSignature, expected, SignatureOwner(actual), out failure)));
+            this.FitsStructuralPartAt(closureSignature, this.CompatibleSignature(closureSignature, expected), use)));
     }
 
     // SPEC 10.7, 15.3.7: the implementation's per-call Origins are solved against the required signature, whose quantifiers and fixed

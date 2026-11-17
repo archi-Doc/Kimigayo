@@ -447,11 +447,12 @@ public sealed partial class Binding
                         }
                     }
 
-                    var applicability = this.FitArgument(call.ArgumentNodes[i], type, scope, call, out var operation);
-                    if (applicability == CandidateApplicability.Inapplicable && type.Kind == BoundTypeKind.Function)
-                    {
-                        applicability = solution.FitPerCall(call.ArgumentNodes[i], type, out operation);
-                    }
+                    // SPEC 10.7, 10.8: an argument with a per-call stand-in is decided by it (FitPerCall), a fact of the solve, never by
+                    // its fit failing first.
+                    BoundArgumentOperation operation;
+                    var applicability = solution.HasPerCallStandIn(call.ArgumentNodes[i], type)
+                        ? solution.FitPerCall(call.ArgumentNodes[i], type, out operation)
+                        : this.FitArgument(call.ArgumentNodes[i], type, scope, call, out operation);
 
                     if (operation.Source is not null)
                     {
