@@ -1389,6 +1389,9 @@ on the round's F3, 「以下で決定します。(b) BU-28 を SPEC の読みに
   paragraph and IMPL §21.3.4 (R8-SP2), with no per-section statement since no section claims a supplied definition; `writeLine` a
   body with no text, §22.7 stating behaviour only. §22.9.1, §22.10.5 and IMPL §21.4.4 already match the bodies; W2 kept §22.10.5's
   closed list. Nothing frozen; no SPECJ change.
+- Revision 89 (2026-11-18, plan §14; the Back's D-754, with R8-I1): §5.2's I1 row records the landing (DECISIONS R8-M52); RQ16
+  takes its else branch, since R8's formatter does not format i128, so `FormatInteger128` is removed in a post-reduction unit by
+  measurement; RQ16's rows unchanged. Nothing frozen.
 - Revision 16 (2026-11-07, plan §14; the owner's O-41 and O-43, verbatim 「推奨の内容でOKです。処理を継続してください。」): R1 splits into R1a, R1b and R1c, and the structs' contract is IMPL §21.1.3's (DECISIONS
   R8-M1). Nothing frozen.
 - Revision 17 (2026-11-07, plan §14; the Front's D-64): C1 done; C2 takes G563; G187 closed. Nothing frozen.
