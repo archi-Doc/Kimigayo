@@ -16,6 +16,7 @@
 // - Prohibitions: no bound is searched for in implementations; no other component decides an effect item in the tree.
 
 using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using Kimi.Compiler.Parsing;
 using Kimi.Diagnostics;
 
@@ -27,7 +28,7 @@ public sealed partial class Binding
     private readonly List<BoundEffectBound> boundedRequirements = [];
 
     // The confined bound each original virtual function declares, or null (virtual-dispatch 6).
-    private readonly Dictionary<FunctionKoto, EffectBoundKoto?> virtualEffectBounds = new(ReferenceEqualityComparer.Instance);
+    private readonly VirtualEffectBoundRows virtualEffectBounds;
 
     // The Contracts of this pass, recorded when their shapes are built, so the bound tables need no second scan of the nodes.
     private readonly List<BoundContract> contractShapes = [];
@@ -639,6 +640,22 @@ public sealed partial class Binding
 
     // Target: the declaration the item bounds (a function requirement, an original virtual function or a Callable Constraint).
     private readonly record struct EffectBoundRejection(EffectRejection Kind, Koto? Target = null, EffectBoundKoto? Earlier = null, BindingSymbol? Symbol = null, int Count = 0);
+
+    /// <summary>The `virtualEffectBounds` family's one accessor (DECISIONS BU-220): a pass family, a virtual function's confining effect bound,
+    /// kept in its module's NodeColumns at its SyntaxId; no bound (null) and no row are the same to every reader, so null is the column's
+    /// absent row; absent after a pass until the column's first write. Its members keep the names its readers use.</summary>
+    private readonly struct VirtualEffectBoundRows(Binding binding)
+    {
+        internal EffectBoundKoto? this[FunctionKoto function]
+        {
+            set => HirTables.Of(function).Families.VirtualEffectBounds.Ref(function.SyntaxId, binding) = value;
+        }
+
+        internal EffectBoundKoto? GetValueOrDefault(FunctionKoto function)
+            => function.SyntaxOwner is { } table ? table.Hir.Families.VirtualEffectBounds.Get(function.SyntaxId, binding) : null;
+
+        internal bool TryGetValue(FunctionKoto function, [NotNullWhen(true)] out EffectBoundKoto? bound) => (bound = this.GetValueOrDefault(function)) is not null;
+    }
 }
 
 // One premise or public guarantee behind an available effect bound, collected only for Hover provenance.

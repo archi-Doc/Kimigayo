@@ -1,5 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using System.Diagnostics.CodeAnalysis;
 using Kimi.Compiler.Parsing;
 
 namespace Kimi.Compiler;
@@ -10,13 +11,13 @@ public sealed partial class Binding
     // internal Kimi group PositionSyntax. Each synthesized call pins its target declaration, so neither a same-named source
     // declaration nor the source's access rules affect it; its arguments are the source operands, bound beforehand under the
     // ordinary rules. A key applied directly (below) constructs no value and has no call.
-    private readonly Dictionary<Koto, InvocationKoto> rangeCalls = new(ReferenceEqualityComparer.Instance);
+    private readonly RangeCallRows rangeCalls;
 
     // SPEC 4.6.3, 4.7.1: a position or range key of a built-in selection that is not applied directly resolves against the
     // receiver's length by a synthesized PositionSyntax.resolved<P> or resolvedRange<R> call whose length argument reads
     // the receiver the selection evaluated (an EvaluatedKoto), so any receiver is evaluated once. A failed resolution
     // yields a value that the selection's own bounds check rejects. A ResolvedRange key is applied as written and rechecked.
-    private readonly Dictionary<IndexKoto, InvocationKoto> resolvedKeys = new(ReferenceEqualityComparer.Instance);
+    private readonly ResolvedKeyRows resolvedKeys;
     private readonly HashSet<IndexKoto> resolvedSlices = new(ReferenceEqualityComparer.Instance);
 
     private BoundType ResolvedRangeType => this.types.Intern(BoundTypeKind.Nominal, this.Library.ResolvedRange, SemanticsKind.Owner, []);
@@ -100,49 +101,62 @@ public sealed partial class Binding
         this.ClearFailure(node);
     }
 
-    // Synthesized calls and Places are reused across passes. Each pass rebinds the ones its syntax still needs, so one left
-    // by an earlier pass, such as after an edit changed its node's role, is never Resolved for a lookup.
+    // Synthesized calls and Places are reused across passes, each reset in place by its module's pass (In). Each pass rebinds the
+    // ones its syntax still needs, so one left by an earlier pass, such as after an edit changed its node's role, is never Resolved
+    // for a lookup.
     private void ResetSyntheticCalls()
     {
         this.synthesizedCalls?.Clear(); // Each pass records its own (BindSynthesizedCall).
-        foreach (var call in this.propertyCalls.Values)
+        foreach (var calls in this.propertyCalls.Values.In(this.pass))
         {
-            this.ResetSynthetic(call);
+            foreach (var call in calls!)
+            {
+                if (call is not null)
+                {
+                    this.ResetSynthetic(call);
+                }
+            }
         }
 
-        foreach (var call in this.indexerCalls.Values)
+        foreach (var calls in this.indexerCalls.Values.In(this.pass))
         {
-            this.ResetSynthetic(call);
+            foreach (var call in calls!)
+            {
+                if (call is not null)
+                {
+                    this.ResetSynthetic(call);
+                }
+            }
         }
 
-        foreach (var call in this.viewRangeCalls.Values)
+        foreach (var call in this.viewRangeCalls.Values.In(this.pass))
         {
-            this.ResetSynthetic(call);
+            this.ResetSynthetic(call!);
         }
 
-        foreach (var call in this.rangeCalls.Values)
+        foreach (var call in this.rangeCalls.Values.In(this.pass))
         {
-            this.ResetSynthetic(call);
+            this.ResetSynthetic(call!);
         }
 
-        foreach (var call in this.resolvedKeys.Values)
+        foreach (var call in this.resolvedKeys.Values.In(this.pass))
         {
-            this.ResetSynthetic(call);
+            this.ResetSynthetic(call!);
         }
 
-        foreach (var projection in this.storageProjections.Values)
+        foreach (var projection in this.storageProjections.Values.In(this.pass))
         {
-            this.ResetSynthetic(projection);
+            this.ResetSynthetic(projection!);
         }
 
-        foreach (var storage in this.propertyUpdateStorage.Values)
+        foreach (var storage in this.propertyUpdateStorage.Values.In(this.pass))
         {
-            this.ResetSynthetic(storage);
+            this.ResetSynthetic(storage!);
         }
 
-        foreach (var input in this.propertyUpdateInputs.Values)
+        foreach (var input in this.propertyUpdateInputs.Values.In(this.pass))
         {
-            this.ResetSynthetic(input);
+            this.ResetSynthetic(input!);
         }
 
         this.resolvedSlices.Clear();
@@ -545,4 +559,36 @@ public sealed partial class Binding
 
     private BindingSymbol? PositionSyntaxMember(string name)
         => this.Library.PositionSyntax is { } group && this.scopes.TryGetValue(group, out var members) && members.Values.TryGetValue(name, out var member) ? member : null;
+
+    /// <summary>The `rangeCalls` family's one accessor (DECISIONS BU-220): a kept family, a range or position key's synthesized
+    /// PositionSyntax call (SPEC 4.6.1), made once and reset in place by each pass (ResetSyntheticCalls), kept in its key node's module's
+    /// NodeColumns at its SyntaxId. Its members keep the names its readers use.</summary>
+    private readonly struct RangeCallRows(Binding binding)
+    {
+        internal FamilyRows<InvocationKoto?> Values => new(binding, static (table, _) => table.Hir.Families.RangeCalls.Enumerate());
+
+        internal InvocationKoto this[Koto node]
+        {
+            set => HirTables.Of(node).Families.RangeCalls.Ref(node.SyntaxId) = value;
+        }
+
+        internal bool TryGetValue(Koto node, [NotNullWhen(true)] out InvocationKoto? value)
+            => (value = node.SyntaxOwner is { } table ? table.Hir.Families.RangeCalls.Get(node.SyntaxId) : null) is not null;
+    }
+
+    /// <summary>The `resolvedKeys` family's one accessor (DECISIONS BU-220): a kept family, a selection key's synthesized `resolved` call
+    /// (SPEC 4.6.3), made once and reset in place by each pass (ResetSyntheticCalls), kept in its key node's module's NodeColumns at its
+    /// SyntaxId. Its members keep the names its readers use.</summary>
+    private readonly struct ResolvedKeyRows(Binding binding)
+    {
+        internal FamilyRows<InvocationKoto?> Values => new(binding, static (table, _) => table.Hir.Families.ResolvedKeys.Enumerate());
+
+        internal InvocationKoto this[IndexKoto node]
+        {
+            set => HirTables.Of(node).Families.ResolvedKeys.Ref(node.SyntaxId) = value;
+        }
+
+        internal bool TryGetValue(IndexKoto node, [NotNullWhen(true)] out InvocationKoto? value)
+            => (value = node.SyntaxOwner is { } table ? table.Hir.Families.ResolvedKeys.Get(node.SyntaxId) : null) is not null;
+    }
 }
