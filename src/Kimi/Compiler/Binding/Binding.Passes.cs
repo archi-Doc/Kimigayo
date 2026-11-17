@@ -181,7 +181,7 @@ public sealed partial class Binding
     [MemberNotNull(nameof(nodes), nameof(issues), nameof(derivedIssues), nameof(obligations), nameof(obligationSet), nameof(libraryImports))]
     [MemberNotNull(nameof(virtualDeclarations), nameof(callableEffectUses), nameof(callableEffectClauses), nameof(localRegions))]
     [MemberNotNull(nameof(keepers), nameof(contractShapes), nameof(boundedRequirements), nameof(importDeclarations), nameof(foreignFailures))]
-    [MemberNotNull(nameof(enumerateIndex), nameof(enumerateIndexPool), nameof(aliasesByDocument))]
+    [MemberNotNull(nameof(enumerateIndex), nameof(enumerateIndexPool), nameof(aliasesByDocument), nameof(boundContracts))]
     private void EnterPass(BindingPass pass)
     {
         this.pass = pass;
@@ -206,6 +206,7 @@ public sealed partial class Binding
         this.enumerateIndex = part.EnumerateIndex;
         this.enumerateIndexPool = part.EnumerateIndexPool;
         this.aliasesByDocument = part.AliasesByDocument;
+        this.boundContracts = part.BoundContracts;
     }
 
     // R1.1's one composition point of the Bind's summary: the library layer's counts and the program part's, in the program pass's mode.
@@ -223,7 +224,7 @@ public sealed partial class Binding
     // A pass's part of the per-pass collections (DECISIONS BU-220's pass driver): exactly two for a Binding's life, Binding's own (the
     // program pass's) and LibraryLayer.Part (the library pass's, PLAN G949 S1-r1b). Its collections are never
     // replaced, only emptied by its pass's resets and refilled, so a view built over them once stays current. A list is read through its
-    // composed view; a keyed collection (Regions, Keepers) through one find (Find): the layer's part first, then the running pass's, a
+    // composed view; a keyed collection (Regions, Keepers, BoundContracts) through one find (Find): the layer's part first, then the running pass's, a
     // write going into the row found or, for a key in neither part, into the running pass's, so a key has one row, and a reader then
     // reads the stamp of the part the row was found in (Keepers: RequirementCall); a keyed collection whose values index a per-pass list
     // keeps that list in its own part. An in-pass read of a list another pass also fills reads the pass's view: the running part, then
@@ -265,6 +266,11 @@ public sealed partial class Binding
         internal Dictionary<OriginParameter, KeeperList> Keepers { get; } = new(ReferenceEqualityComparer.Instance);
 
         internal uint RequirementCall { get; set; }
+
+        // The bound Contract references by their reference Type (Binding.BoundContracts.cs): each made and reset (ResetContracts) by its
+        // pass, so the layer's part holds exactly the entries the library pass made, each filled from entries found first in the layer's
+        // part, and a program pass makes, resets and rebuilds its own (PLAN G949 S1-1, E3; census O15).
+        internal Dictionary<BoundType, BindingSymbol> BoundContracts { get; } = new(ReferenceEqualityComparer.Instance);
 
         // The pass's Contract shapes and the effect bounds they declare (Binding.EffectDeclarations.cs).
         internal List<BoundContract> ContractShapes { get; } = new();

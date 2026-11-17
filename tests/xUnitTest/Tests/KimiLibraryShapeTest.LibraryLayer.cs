@@ -290,6 +290,7 @@ public partial class KimiLibraryShapeTest
             ["Binding.erasureOutcomes"] = Rule.Subset,
             ["Binding.pendingAssociatedTypes"] = Rule.Subset,
             ["Binding.boundContracts"] = Rule.Subset,
+            ["Binding.programPart.BoundContracts"] = Rule.Subset, // the same entries, the program pass's part (PLAN G949 S1-1)
             ["Binding.storageMarks"] = Rule.Subset,
 
             // Memos of one capability epoch (ClearCapabilityResults): component summaries, capability works and Enumerate's kept rows,

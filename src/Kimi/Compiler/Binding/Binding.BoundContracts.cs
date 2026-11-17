@@ -20,8 +20,10 @@ namespace Kimi.Compiler;
 //   library Contract) take symbols the compiler holds, never a written Contract.
 public sealed partial class Binding
 {
-    private readonly Dictionary<BoundType, BindingSymbol> boundContracts = new(ReferenceEqualityComparer.Instance);
     private readonly Dictionary<CollisionTerm, CollisionTerm> collisionSubstitutions = new();
+
+    // The running pass's bound Contract references (PassPart.BoundContracts, EnterPass); a lookup finds the layer's part first.
+    private Dictionary<BoundType, BindingSymbol> boundContracts;
 
     // SPEC 8.6.1, 9.7.1 (R7-N1e2-1R): a Contract use names its declaration, the selection its lookup published (its Symbols entry, written
     // once, never a bound reference), and the bound reference its Type arguments formed is its Type (the Meaning column). This writes
@@ -165,7 +167,7 @@ public sealed partial class Binding
             return reference.Symbol;
         }
 
-        if (this.boundContracts.TryGetValue(reference, out var cached) && cached.Contract!.State == 2)
+        if (PassPart.Find(this.Library.Layer.Part.BoundContracts, this.boundContracts, reference, out var cached) is not null && cached!.Contract!.State == 2)
         {
             return cached;
         }
