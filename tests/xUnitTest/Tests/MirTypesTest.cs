@@ -423,7 +423,8 @@ public sealed partial class MirTypesTest(ITestOutputHelper output)
         Assert.False(MirTypes.StartsAtStorage(null));
     }
 
-    // R4-M36, R4-M116: every local Type of every library body is classified and none is deep; a borrow or raw layer always holds a Loan.
+    // R4-M36, R4-M116: every local Type of every library body (the library check's root range, PLAN G951 U2-T) is classified and none is
+    // deep; a borrow or raw layer always holds a Loan.
     // The output gives the counts.
     [Fact]
     public void LibraryTypesClassify()
@@ -432,7 +433,7 @@ public sealed partial class MirTypesTest(ITestOutputHelper output)
         var walked = new Dictionary<MirHoldingKey, MirModeDepths>();
         var entered = new Dictionary<BoundType, byte>(ReferenceEqualityComparer.Instance);
         var (locals, holding, observing) = (0, 0, 0);
-        foreach (var body in c.BuildMir().Bodies)
+        foreach (var body in new MirBuilder(c).Build(SyntaxTable.LibraryModule + 1).Bodies)
         {
             foreach (var local in body.Locals.ToArray())
             {

@@ -1865,14 +1865,14 @@ public sealed partial class TyCtxtTest
         return (c, probe.Parameters.ToDictionary(static x => x.InternalName, static x => x.Type.TypeOf()!));
     }
 
-    // The struct and enum instances the MIR locals hold, added to `instances`, and the names of those whose erased instance does not store
-    // the erasure of what they store.
+    // The struct and enum instances the MIR locals hold (the library's bodies' included: the library check's root range, PLAN G951 U2-T),
+    // added to `instances`, and the names of those whose erased instance does not store the erasure of what they store.
     private static List<string> ErasedStoreProblems(Compilation c, List<BoundType> instances)
     {
         var types = c.Types;
         var seen = new HashSet<BoundType>();
         var problems = new List<string>();
-        foreach (var body in c.BuildMir().Bodies)
+        foreach (var body in new MirBuilder(c).Build(SyntaxTable.LibraryModule + 1).Bodies)
         {
             foreach (var local in body.Locals)
             {
