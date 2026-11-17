@@ -10707,10 +10707,10 @@ resumed by R4-M86 (2026-10-20).
   - Amended by PLAN G949 S1-r2: a demand before the first `ValidateConformances` (`contractHeadersReady`) is outside the query, as a
     demand under `activeRequirementContract` is. It forms the signature in the reader's scope without entering the row, so no
     Running state is set and no Done is read before the gate, for every subject. It is still counted as a signature walk
-    (`SignatureWalkWork`). The row's "a demand before the first `ValidateConformances` ... abandoned and computed at the next
-    read" is replaced by this rule. A kept Proven therefore answers only from the gate on, which keeps this row's timing once a
-    library's verdicts are finished before a program pass (PLAN G949; BU-219's readiness bullet). Removal condition: R7-C2, with
-    the compute (as the `activeRequirementContract` bullet).
+    (`SignatureWalkWork`). The row's "a demand before the first `ValidateConformances` ... abandoned and computed at the next read"
+    is replaced by this rule. A kept Proven therefore answers only from the gate on, which keeps this row's timing once a library's
+    verdicts are finished before a program pass (PLAN G949; the library readiness rule PLAN G949 S1-r1b records). Removal condition:
+    R7-C2, with the compute (as the `activeRequirementContract` bullet).
   - The row has no reader inside verification, which is why `conformanceChecks` cannot change a kept Proven. A row reader inside verification
     would end this reason.
   - A Proven stays read after a later failure, by calls and references. That failure keeps its own record; `ValidateConstraintUses` and
