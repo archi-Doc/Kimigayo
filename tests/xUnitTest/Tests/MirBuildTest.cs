@@ -94,6 +94,7 @@ public sealed partial class MirBuildTest(ITestOutputHelper output)
             }
 
             c.Binding.Bind(mode);
+            Assert.NotEqual(0ul, HirTables.LibraryVersion(c)); // Its publication's version, set by its own pass in every mode.
             var mir = new StringBuilder();
             MirDump.Write(new MirBuilder(c).Build(SyntaxTable.LibraryModule + 1), SyntaxTable.LibraryModule, mir);
             return mir.ToString();

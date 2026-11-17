@@ -5,7 +5,8 @@ using Kimi.Compiler.Parsing;
 
 namespace Kimi.Compiler;
 
-// The pass driver (PLAN G949 S1-r1a; DECISIONS BU-220): a Bind's runs and, in each run, its passes in order.
+// The pass driver (PLAN G949 S1-r1a and S1-r1b; DECISIONS BU-220): a Bind's runs and, in each run, its passes in order: the library
+// pass (the library module, LibraryLayer.Part), then the program pass (the source modules, Binding's own part).
 // - Responsibility: the three levels of a Bind's state: per Bind (BeginBind: the SyntaxIds, the Result discarded with the later
 //   phases' facts, StartRuns), per run (BeginRun: the counter every stamp compares, the work counters, the local-region graph's
 //   version) and per pass (ResetPass); the runs, a new one whenever a pass asks for it (VerifyEarlyReads); each pass's steps in order
@@ -19,14 +20,17 @@ namespace Kimi.Compiler;
 // - Invariants: one counter value per run; a restart starts a new run of every pass, never a new Bind (StartRuns runs once per Bind,
 //   so a second run cannot ask again and the runs end); a step walks the running pass's modules, in their order, and writes its part;
 //   between Binds, and after a throw, the running pass is the program pass with Binding's own part, and a reader outside a pass reads
-//   the views, never a field a pass writes; until PLAN G949 S1-r1b one pass binds every module (ProgramPass) and the layer's part is
-//   empty.
+//   the views, never a field a pass writes; the pass that binds the library publishes its module at its end in every mode and sets
+//   the library's publication version (PublishLibrary, RB1) and the library's size (LibraryLayer.Size); a library declaration's Origin
+//   requirement work is never an edge source in the program pass (its Pass is the library pass's requirement call, which
+//   CollectRequirementEdges compares with the running pass's).
 // - Prohibitions: no step body here; no flag or mode steering a step; no second copy of a step for the library; no consumer
 //   composing parts.
 public sealed partial class Binding
 {
-    // Binding's own part of the published lists: the program pass's (until PLAN G949 S1-r1b the one pass's, every module's).
-    private readonly PassPart programPart = new(KimiLibrarySize.NodeCapacity(KimiLibrarySize.Stated.Nodes));
+    // Binding's own part of the published lists: the program pass's. Its node list starts at the program's room (the library's nodes
+    // are the layer's part's, which starts at the library's stated count: KimiLibrarySize).
+    private readonly PassPart programPart = new(KimiLibrarySize.NodeRoom);
 
     // The empty second part of a pass's view when the pass's own part is the library layer's (selectableEffectClauses); never written.
     private readonly List<IsKoto> noClauses = new();
@@ -52,12 +56,14 @@ public sealed partial class Binding
     // reader after a Bind sees every pass's clauses.
     private LayerList<IsKoto> selectableEffectClauses;
 
-    // The program pass: the source modules, with Binding's own part; until PLAN G949 S1-r1b splits the library pass off, also the
-    // library (the one pass).
-    private BindingPass ProgramPass => new(this.compilation.SourceModules, this.Library.Kotonoha, this.programPart);
+    // The library pass (PLAN G949 S1-r1b): the library module, with the library layer's part; first in every run.
+    private BindingPass LibraryPass => new([], this.Library.Kotonoha, this.Library.Layer.Part);
+
+    // The program pass: the source modules, with Binding's own part.
+    private BindingPass ProgramPass => new(this.compilation.SourceModules, null, this.programPart);
 
     // Every module of the compilation, the set a reader outside a pass walks (a family's Values; the composed views' modules): the source
-    // modules, then the library, with Binding's own part. Until PLAN G949 S1-r1b it equals the program pass's set.
+    // modules, then the library, with Binding's own part.
     private BindingPass Modules => new(this.compilation.SourceModules, this.Library.Kotonoha, this.programPart);
 
     // Per Bind: the SyntaxIds, the Result and the later phases' facts discarded, the runs started.
@@ -98,14 +104,25 @@ public sealed partial class Binding
         this.ResetInferenceMetrics();
     }
 
-    // The runs: each runs every pass in order; a pass whose declarations ask for a rerun ends its run, and the next run starts.
+    // The runs: each runs every pass in order, the library pass, then the program pass; a pass whose declarations ask for a rerun ends
+    // its run, and the next run starts with the library pass again (until S1-1 freezes the library).
     private void Run(BindingMode mode)
     {
         do
         {
             this.BeginRun();
         }
-        while (!this.RunPass(this.ProgramPass, mode));
+        while (!(this.RunPass(this.LibraryPass, mode) && this.RunPass(this.ProgramPass, mode)));
+    }
+
+    // An edit's revocation of the latest Bind (Invalidate): each pass's facts discarded as its next run would discard them, the
+    // library's first, and then the fields hold Binding's own part again (between Binds).
+    private void ResetPasses()
+    {
+        this.EnterPass(this.LibraryPass);
+        this.ResetPass(BindingMode.Provisional);
+        this.EnterPass(this.ProgramPass);
+        this.ResetPass(BindingMode.Provisional);
     }
 
     // One pass over its modules: its reset, indexing, declarations, bodies, the bound-declaration validations and Check. False: its
@@ -123,6 +140,15 @@ public sealed partial class Binding
         this.BindBodies();
         this.ValidateBoundDeclarations(mode);
         this.Check(mode);
+        if (pass.Library is { } library)
+        {
+            // The library module's place in the pass's set, never which pass runs (RB1): its publication at its pass's end, and the
+            // library's size, the pass's table counts before the program pass empties its per-pass tables (O8 (a)): the layer's part's
+            // nodes, not the composed view's.
+            this.PublishLibrary(library, mode);
+            this.Library.Layer.Size = this.TableCounts with { Nodes = this.nodes.Count };
+        }
+
         return true;
     }
 
@@ -170,7 +196,7 @@ public sealed partial class Binding
     }
 
     // A pass's part of the per-pass collections (DECISIONS BU-220's pass driver): exactly two for a Binding's life, Binding's own (the
-    // program pass's) and LibraryLayer.Part (the library pass's from PLAN G949 S1-r1b, empty until then). Its collections are never
+    // program pass's) and LibraryLayer.Part (the library pass's, PLAN G949 S1-r1b). Its collections are never
     // replaced, only emptied by its pass's resets and refilled, so a view built over them once stays current. A list is read through its
     // composed view; a keyed collection (Regions, Keepers) through one find (Find): the layer's part first, then the running pass's, a
     // write going into the row found or, for a key in neither part, into the running pass's, so a key has one row, and a reader then
@@ -184,8 +210,8 @@ public sealed partial class Binding
     // so a member that ratchet counts never returns to Binding (DECISIONS BU-220: node-keyed tables leave Binding batch by batch).
     // ForeignFailures lists the nodes of a module the pass does not bind that it failed, each with its state before the failure (the
     // recorder, Binding.Diagnostics.Prerequisites.cs): their records and counts are the failing pass's (CountStates). Counts is the pass's
-    // contribution to the Bind's Result (ComposeResult), not a tally of the part's nodes, which only the views count: from S1-r1b a
-    // program pass's own nodes plus each foreign node's final state less its earlier one.
+    // contribution to the Bind's Result (ComposeResult), not a tally of the part's nodes, which only the views count: a program pass's
+    // own nodes plus each foreign node's final state less its earlier one.
     internal sealed class PassPart(int nodes)
     {
         internal List<Koto> Nodes { get; } = new(nodes);

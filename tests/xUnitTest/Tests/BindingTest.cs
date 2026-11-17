@@ -476,8 +476,8 @@ public class BindingTest
 
     // PLAN G949 S1-r1b (s1r1-design 3.3, RC2's recorder): a pass binds the modules of its set, the library's table when it holds the
     // library module and a source module's when it holds the sources; a node of another module that it fails is a foreign failure,
-    // listed with its earlier state. While one pass binds every module no node is foreign, so the list stays empty after a Bind
-    // that fails nodes.
+    // listed with its earlier state. No pass fails another module's node today (the census: no program-pass write to a library node),
+    // so both parts' lists stay empty after a Bind that fails nodes.
     [Fact]
     public void APassBindsTheModulesOfItsSet()
     {
@@ -492,6 +492,36 @@ public class BindingTest
         Assert.Empty(part.ForeignFailures);
         var own = (Binding.PassPart)typeof(Binding).GetField("programPart", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!.GetValue(c.Binding)!;
         Assert.Empty(own.ForeignFailures);
+    }
+
+    // PLAN G949 S1-r1b (v5; s1r1-design 3.3, RC2's recorder; review-s1r1b N2): a library node the program pass fails is listed once in
+    // the program part's foreign failures, with the state the library pass counted it in. No program fails one today (the census: no
+    // program-pass write to a library node over the corpus), so the row fails one through the private Fail after a Final Bind, as a
+    // check of the program pass would: CheckBound then records it after the program's issues, the Bind's Result counts it once by its
+    // final state (Resolved - 1 and Invalid + 1 against the Bind's), a second CheckBound publishes the one record again, not twice, and
+    // a second failure of the node adds no listing, also after a check cleared its failure (N2: the recorder skips a listed node).
+    [Fact]
+    public void ALibraryNodeTheProgramPassFailsIsRecordedOnce()
+    {
+        var c = CompilationTestHelper.Parse("let x: Missing = 1\n");
+        var bound = c.Bind();
+        Assert.False(bound.IsComplete);
+        var program = c.Binding.Issues.Select(static x => x.Node).ToArray();
+        Assert.NotEmpty(program);
+        Koto node = KotoTree.Walk(c.Library.Kotonoha.RootKoto).OfType<NumberLiteralKoto>().First(static x => x.StateOf() == BindingState.Resolved);
+        var fail = typeof(Binding).GetMethod("Fail", BindingFlags.Instance | BindingFlags.NonPublic)!;
+        fail.Invoke(c.Binding, [node, BindingFailure.TypeMismatch, false]);
+        fail.Invoke(c.Binding, [node, BindingFailure.TypeMismatch, false]);
+        c.Binding.ClearFailure(node); // A check's retry (ClearFailure), then the node failed again in the same pass.
+        fail.Invoke(c.Binding, [node, BindingFailure.TypeMismatch, false]);
+        var own = (Binding.PassPart)typeof(Binding).GetField("programPart", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(c.Binding)!;
+        Assert.Equal((node, BindingState.Resolved), Assert.Single(own.ForeignFailures));
+        Assert.Empty(c.Library.Layer.Part.ForeignFailures);
+        for (var check = 0; check < 2; check++)
+        {
+            Assert.Equal(bound with { ResolvedCount = bound.ResolvedCount - 1, InvalidCount = bound.InvalidCount + 1 }, c.Binding.CheckBound());
+            Assert.Equal(program.Append(node), c.Binding.Issues.Select(static x => x.Node));
+        }
     }
 
     // PLAN G949 (s1r1-design 8.9; n55-design 2.3 rule 2): a keyed PassPart collection's one find reads the layer's map first, so a key
@@ -509,10 +539,10 @@ public class BindingTest
     }
 
     // PLAN G949, the localRegions batch (n55-design 2.3 rules 1-3; DECISIONS BU-220's D-9 line): the local-region graph is a PassPart
-    // collection. A Bind records its rows in the running pass's part, Binding's own until S1-r1b splits the library pass off, so the
-    // layer's part stays empty; rows moved after the Bind into the layer's part are found there, and each region's sources, walked again
-    // through them, equal the program part's. `held`'s region reaches b's borrow only through `view`'s row, so the walk reads a moved
-    // row past its first find too.
+    // collection. A Bind records its rows in the running pass's part, the library pass's in the layer's and the program pass's in
+    // Binding's own (S1-r1b), so the layer's part holds no program row; the program's rows moved after the Bind into the layer's part
+    // are found there, and each region's sources, walked again through them, equal the program part's. `held`'s region reaches b's
+    // borrow only through `view`'s row, so the walk reads a moved row past its first find too.
     [Fact]
     public void ALocalRegionInTheLayersPartIsFoundThere()
     {
@@ -524,7 +554,7 @@ public class BindingTest
         Assert.True(c.Binding.Result.IsComplete);
         var layer = c.Binding.Library.Layer.Part.Regions;
         var own = (Dictionary<BoundOrigin, Binding.LocalRegion>)typeof(Binding).GetField("localRegions", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(c.Binding)!;
-        Assert.Empty(layer);
+        Assert.DoesNotContain(own.Keys, layer.ContainsKey);
         var sources = own.Keys.Select(x => (Origin: x, Sources: c.Binding.LocalRegionSources(x).ToArray())).ToArray();
         Assert.Contains(sources, static x => x.Origin.Binder is VariableKoto { NameKoto: var name } && name.ToString() == "held" && x.Sources.Length >= 2);
         try
@@ -540,7 +570,10 @@ public class BindingTest
         }
         finally
         {
-            layer.Clear();
+            foreach (var (origin, _) in sources)
+            {
+                layer.Remove(origin);
+            }
         }
     }
 

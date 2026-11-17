@@ -261,17 +261,24 @@ public class ArchitectureRulesTest
     [InlineData("Readers of an Origin requirement work's Consumer mark", "src/Kimi/Compiler", @"\.Consumer\b|\bConsumer:", "Binding/Binding.OriginRequirements.cs=2")]
     [InlineData("Holders of an inline summary's Tarjan numbers", "src/Kimi/Compiler/Binding", @"\b(?:InlineSummary|inlineSummaries|inlineSummaryPool|inlineComponents|Summary)\b", "Binding.ComponentSummaries.cs=7;Binding.InlineLayouts.cs=43")]
     // PLAN G949 S1-0b r3 (the dump's epoch rule): the memos of one capability epoch are the program's because each pass begins with
-    // ResetCapabilities: its one call is ResetPass's, which the pass driver's RunPass runs first in each pass of each run (Binding.Passes.cs)
-    // and Invalidate on an edit (Binding.cs; G949 S1-r1a, its premise reviewed there). A further caller (S1-r1b's library pass among them)
-    // fails here until the epoch rule's premise is reviewed again. Binding's own ResetPass calls are this.ResetPass (a member call's
-    // spelling); the conformance identities' and paths' ResetPass(ulong) (S1-b1) are other members of the name.
-    [InlineData("A pass's start ends the capability epoch", "src/Kimi/Compiler", @"\bResetCapabilities\(|\bthis\.ResetPass\(", "Binding/Binding.Capabilities.cs=1;Binding/Binding.Pass.cs=1;Binding/Binding.Passes.cs=1;Binding/Binding.cs=1")]
+    // ResetCapabilities: its one call is ResetPass's, which the pass driver's RunPass runs first in each pass of each run, the library
+    // pass's and the program pass's, and ResetPasses for each pass on an edit (Invalidate; Binding.Passes.cs; G949 S1-r1a and S1-r1b, the
+    // premise reviewed there: an epoch store a pass reads is its own part's or ends at that pass's start, so after a Bind the program
+    // pass's epoch is the one the shared stores hold, and the layer's part's closure index the library pass's). A further caller fails
+    // here until the epoch rule's premise is reviewed again. Binding's own ResetPass calls are this.ResetPass (a member call's spelling);
+    // the conformance identities' and paths' ResetPass(ulong) (S1-b1) are other members of the name.
+    [InlineData("A pass's start ends the capability epoch", "src/Kimi/Compiler", @"\bResetCapabilities\(|\bthis\.ResetPass\(", "Binding/Binding.Capabilities.cs=1;Binding/Binding.Pass.cs=1;Binding/Binding.Passes.cs=3")]
     // PLAN G949 S1-r1b (review-r1a RC1, review-s1r1 Re-check 3 RC-c): the running part's bounded Callable clauses are written by their
     // owner (Binding.EffectDeclarations.cs) and handed over by the driver (Binding.Passes.cs); every reader reads the pass's view
     // (selectableEffectClauses), which holds the library layer's clauses too. A read of the running part alone (CollectCallableEffectUses'
     // guard, AvailableCallableEffects) would skip a library callee's bounded clause in a program that states none, which no program
     // can show until the library declares one (KimiLibraryShapeTest.TheLibraryDeclaresNoBoundedCallableClause).
     [InlineData("The running part's Callable effect clauses are read through the pass's view", "src/Kimi/Compiler", @"\bthis\.callableEffectClauses\b", "Binding/Binding.EffectDeclarations.cs=2;Binding/Binding.Passes.cs=1")]
+    // PLAN G949 S1-r1b (review-s1r1b N-c): AvailableEffectBounds reads the composed view of every pass's effect bounds, which holds the
+    // program part of the previous Bind while the library pass runs, so only readers after the Bind call it: EffectObligations (MIR's
+    // effect solve), SemanticQuery and the hover (and its own overload). An in-pass caller fails here; it takes the pass's view, as
+    // selectableEffectClauses does for the Callable clauses (PassPart's in-pass rule).
+    [InlineData("Every pass's effect bounds are read after the Bind", "src/Kimi", @"\bAvailableEffectBounds\(", "Checking/Hover/HoverBuilder.Effects.cs=2;Compiler/Binding/Binding.EffectDeclarations.cs=3;Compiler/Binding/Binding.EffectObligations.cs=2;Compiler/Binding/SemanticQuery.cs=2")]
     // PLAN G949 S1-r1b (rule (a), F's ruling 170): inside a pass Binding reads a conformance identity's paths only through ImplTable.PathsOf,
     // the one read that applies the running pass's admission to a library identity (from S1-r1b's split its point-1 paths while the
     // conditional registrar has not run: OwningIterator's and BorrowingIterator's LendingIterator identity gains its Iterator ancestor's path
