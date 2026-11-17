@@ -112,7 +112,7 @@ public partial class KimiLibraryShapeTest
 
         var flagged = registered.Where(static x => KimiLibraryCatalog.RequiresCallerLocation(x)).ToArray();
         Assert.True(declared.SetEquals(flagged));
-        Assert.Equal((82, 82), (declared.Count, flagged.Length));
+        Assert.Equal((93, 93), (declared.Count, flagged.Length)); // PLAN G71: the Array wrappers, three splitAt, four format bodies.
     }
 
     // The library's Attributes of one kind, each with the declaration it is written on, in source order.

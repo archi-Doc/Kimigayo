@@ -66,6 +66,7 @@ public struct Array<T>
     ///
     /// - abort: `index` does not resolve against the current length.
     #Lang("ArrayInsertPosition")
+    #CallerLocation
     public func insert<P>(self: uniq/Self, index: P, value: T)
         P is Position
         // Each path calls insertAt, so a resolved position reaches it unmerged and `^1` moves one element; -1 fails
@@ -79,6 +80,7 @@ public struct Array<T>
     /// - return: The removed element; the caller takes ownership.
     /// - abort: `index` does not resolve to an element position.
     #Lang("ArrayRemovePosition")
+    #CallerLocation
     public func remove<P>(self: uniq/Self, index: P) -> T
         P is Position
         // As insert: a resolved position reaches removeAt unmerged; -1 fails removeAt's own check.
@@ -90,6 +92,7 @@ public struct Array<T>
     ///
     /// - abort: A position does not resolve to an element position.
     #Lang("ArraySwapPositions")
+    #CallerLocation
     public func swap<P, Q>(self: uniq/Self, first: P, second: Q)
         P is Position
         Q is Position
@@ -115,6 +118,7 @@ public struct Array<T>
     /// Splits the elements at the boundary `index` resolves to, `p`, into the Slices `[0, p)` and `[p, length)`.
     ///
     /// - abort: `index` does not resolve against the current length.
+    #CallerLocation
     public func splitAt<P>(self, index: P) -> (Slice<T> during self, Slice<T> during self)
         P is Position
         let position = PositionSyntax.resolved(index, self.length)
@@ -152,6 +156,7 @@ public struct Array<T>
     /// - return: The removed element; the caller takes ownership.
     /// - abort: `index` does not resolve to an element position.
     #Lang("ArraySwapRemove")
+    #CallerLocation
     public func swapRemove<P>(self: uniq/Self, index: P) -> T
         P is Position
         // As remove: swapAt's one check rejects -1, the end boundary and an empty Array, so pop then has an element.

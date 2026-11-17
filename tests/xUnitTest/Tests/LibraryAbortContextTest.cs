@@ -40,6 +40,9 @@ public class LibraryAbortContextTest
     [InlineData("ClosedRange", "let r = 3..=1\nlet value = r.resolve(4)", "Hello.kimi:2:13")]
     [InlineData("ClosedEnd", "let r = 0..=5\nlet value = r.resolve(5)", "Hello.kimi:2:13")]
     [InlineData("ResolvedRange", "let r = (0..1).resolve(1)\nlet value = r.resolve(0)", "Hello.kimi:2:13")]
+    [InlineData("ArraySplitAt", "let values: Array<i32> = [1]\nlet parts = values.splitAt(2)", "Hello.kimi:2:13")] // PLAN G71: no library line.
+    [InlineData("SliceSplitAt", "let values: Array<i32> = [1]\nlet parts = values.slice().splitAt(^2)", "Hello.kimi:2:13")]
+    [InlineData("FixedSplitAt", "let values: [2 of i32] = [1, 2]\nlet parts = values.splitAt(3)", "Hello.kimi:2:13")]
     public void FailedResolutionReportsTheSourceOperation(string name, string source, string location)
         => ScalarEmissionTest.EmitFixture("LibraryAbortContext" + name, source, string.Empty, 1, location + ": abort KIMI_E_INDEX_BOUNDS: Index out of bounds\n");
 
