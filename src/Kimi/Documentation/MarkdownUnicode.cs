@@ -6,19 +6,24 @@ namespace Kimi.Documentation;
 
 internal static class MarkdownUnicode
 {
-    // CommonMark's character classes (2.1), each a generated Latin-1 map of MarkdownUnicodeData (Unicode 15.0.0) read below 256 and
-    // a generated row read above it: whitespace is Zs plus TAB, LF, FF and CR (neither VT nor NEL), punctuation the P and S categories.
-    // Outside the text (scalar < 0) is whitespace, not punctuation. Above the Whitespace row's last scalar (U+3000) one compare
-    // answers, as for kana and Kanji.
+    // CommonMark's character classes (2.1), each generated into MarkdownUnicodeData (Unicode 15.0.0) as a Latin-1 map read below 256
+    // and a row of its ranges above U+00FF read between the row's first and last scalars, so a scalar outside them takes two compares
+    // (for whitespace: Greek, Cyrillic and the rest below U+1680; kana, Kanji and the rest above U+3000). Whitespace is Zs plus TAB,
+    // LF, FF and CR (neither VT nor NEL), punctuation the P and S categories. Outside the text (scalar < 0) is whitespace, not
+    // punctuation.
     internal static bool IsWhitespace(int scalar)
         => scalar < 256
             ? scalar < 0 || InLatin1(MarkdownUnicodeData.WhitespaceLatin1, scalar)
-            : scalar <= MarkdownUnicodeData.WhitespaceLast && InRanges(MarkdownUnicodeData.Whitespace, scalar);
+            : scalar >= MarkdownUnicodeData.WhitespaceFirst && scalar <= MarkdownUnicodeData.WhitespaceLast
+                && InRanges(MarkdownUnicodeData.Whitespace, scalar);
 
     internal static bool IsAsciiPunctuation(char value) => value is (>= '!' and <= '/') or (>= ':' and <= '@') or (>= '[' and <= '`') or (>= '{' and <= '~');
 
     internal static bool IsPunctuation(int scalar)
-        => scalar < 256 ? scalar >= 0 && InLatin1(MarkdownUnicodeData.PunctuationLatin1, scalar) : InRanges(MarkdownUnicodeData.Punctuation, scalar);
+        => scalar < 256
+            ? scalar >= 0 && InLatin1(MarkdownUnicodeData.PunctuationLatin1, scalar)
+            : scalar >= MarkdownUnicodeData.PunctuationFirst && scalar <= MarkdownUnicodeData.PunctuationLast
+                && InRanges(MarkdownUnicodeData.Punctuation, scalar);
 
     internal static int Before(ReadOnlySpan<char> text, int offset)
     {

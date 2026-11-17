@@ -142,13 +142,23 @@ public class DocumentationMarkdownParserTest
     {
         Assert.True(MarkdownUnicode.IsPunctuation(0x1FAE8)); // Shaking face, assigned in 15.0.
         Assert.False(MarkdownUnicode.IsPunctuation(0x1FAE9)); // Unassigned in 15.0.
-        Assert.True(MarkdownUnicode.IsPunctuation(0x1FBCA)); // The Punctuation row's last scalar, and the one after it.
-        Assert.False(MarkdownUnicode.IsPunctuation(0x1FBCB));
-        Assert.True(MarkdownUnicode.IsPunctuation(0x00F7)); // The Latin-1 map's last punctuation, and its last scalar.
+        Assert.False(MarkdownUnicode.IsPunctuation(-1)); // Outside the text, before the maps.
+        Assert.True(MarkdownUnicode.IsWhitespace(-1));
+        Assert.True(MarkdownUnicode.IsPunctuation(0x00F7)); // The Latin-1 maps' last punctuation, last scalar, and the first scalar after them.
         Assert.False(MarkdownUnicode.IsPunctuation(0x00FF));
-        Assert.True(MarkdownUnicode.IsWhitespace(0x2007));
-        Assert.True(MarkdownUnicode.IsWhitespace(0x00A0)); // The Whitespace row's first range above ASCII, and its last.
+        Assert.False(MarkdownUnicode.IsWhitespace(0x00FF));
+        Assert.False(MarkdownUnicode.IsPunctuation(0x0100));
+        Assert.False(MarkdownUnicode.IsWhitespace(0x0100));
+        Assert.False(MarkdownUnicode.IsPunctuation(0x02C1)); // The Punctuation row's first and last scalars, each with its neighbour outside.
+        Assert.True(MarkdownUnicode.IsPunctuation(0x02C2));
+        Assert.True(MarkdownUnicode.IsPunctuation(0x1FBCA));
+        Assert.False(MarkdownUnicode.IsPunctuation(0x1FBCB));
+        Assert.False(MarkdownUnicode.IsWhitespace(0x167F)); // The Whitespace row's first and last scalars, each with its neighbour outside.
+        Assert.True(MarkdownUnicode.IsWhitespace(0x1680));
         Assert.True(MarkdownUnicode.IsWhitespace(0x3000));
+        Assert.False(MarkdownUnicode.IsWhitespace(0x3001));
+        Assert.True(MarkdownUnicode.IsWhitespace(0x2007));
+        Assert.True(MarkdownUnicode.IsWhitespace(0x00A0)); // The Whitespace map's only scalar above ASCII.
         Assert.False(MarkdownUnicode.IsWhitespace(0x180E)); // Zs until Unicode 6.3.
         Assert.False(MarkdownUnicode.IsWhitespace(0x0085));
         Assert.False(MarkdownUnicode.IsWhitespace(0x000B));
