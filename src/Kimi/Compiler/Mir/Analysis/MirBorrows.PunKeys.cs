@@ -14,7 +14,8 @@ namespace Kimi.Compiler.Mir;
 // the call walk's gate (Below). Must not: decide a pun (MirBorrows.PunTypes' judge).
 internal sealed partial class MirBorrows
 {
-    private readonly Dictionary<PlaceKey, int> punKeyIndex = []; // The version's keys, indexed.
+    private readonly Dictionary<(PlaceKey Key, int Fold), int> punKeyIndex = []; // The version's keys, indexed by key and fold (PROTOTYPE R5).
+    private readonly List<BoundType[]> punFolds = [[]]; // PROTOTYPE R5: the Handed lists keys are folded under, by fold; 0 the empty one. Kept across versions (a list is its content), so a warm run allocates none.
     private readonly List<PunKey> punKeys = []; // By index: a key's folded facts.
     private readonly List<BoundType> punViewTypes = []; // The keys' write Types (PunKey's spans).
     private readonly List<OwnLayer> punLayers = []; // OwnLayers' scratch.
@@ -59,7 +60,7 @@ internal sealed partial class MirBorrows
         }
 
         var loan = this.loans[entry];
-        var index = this.Key(this.KeyOf(loan.Place.Root, this.loanSteps.AsSpan(loan.Start, loan.Count)));
+        var index = this.Key(this.KeyOf(loan.Place.Root, this.loanSteps.AsSpan(loan.Start, loan.Count)), 0);
         this.entryKeys[entry] = index + 1;
         return index;
     }
@@ -87,10 +88,11 @@ internal sealed partial class MirBorrows
     // address; whether every raw layer there states an Origin other than `static` (Own, Shared, Exclusive); whether any states an Origin,
     // `static` included (AnyStated, the storing rule's); whether one has no answer (Unsupported); the write Types (the Part past each raw
     // layer and each exclusive borrow) and whether an abstract part leaves them unknown. A key at Binding's Limit is unknown.
-    private int Key(PlaceKey key)
+    // PROTOTYPE R5: under `fold` (Fold: an output's Handed list), a hidden layer whose kept Type the list holds is folded as shown.
+    private int Key(in PlaceKey key, int fold)
     {
         this.PunRun();
-        if (this.punKeyIndex.TryGetValue(key, out var index))
+        if (this.punKeyIndex.TryGetValue((key, fold), out var index))
         {
             return index;
         }
@@ -123,9 +125,13 @@ internal sealed partial class MirBorrows
             }
 
             // A layer hidden in a called function's own Type parameter's binding adds no reach of its own (SPEC 15.6.4; OwnLayer.Hidden at
-            // a parameter key, TyCtxt.ParameterKey): no write Type, no key past it.
-            facts = own.Hidden ? facts with { Hidden = true } : facts with { Shown = true };
-            if ((layer is not null || step == HoldStep.Exclusive) && past.Type is { } to && !own.Hidden)
+            // a parameter key, TyCtxt.ParameterKey): no write Type, no key past it. PROTOTYPE R5: unless a callable the callee's declaration
+            // hands its body writes that layer's kept Type (the fold's Handed list holds OwnLayer.Kept; SPEC 15.6.4 "through its result or
+            // its writes"): then the layer is read as shown (hidRawWTwoBad, handedSameBad, hidPunWBad), and another kept Type's stays hidden
+            // (handedOtherOk).
+            var hidden = own.Hidden && !Lists(this.punFolds[fold], own.Kept!);
+            facts = hidden ? facts with { Hidden = true } : facts with { Shown = true };
+            if ((layer is not null || step == HoldStep.Exclusive) && past.Type is { } to && !hidden && (R2NoLoan || !own.Loan)) // PROTOTYPE R2 (b2)
             {
                 this.punViewTypes.Add(cases.Type(to));
                 this.punPastKeys.Add(past);
@@ -137,9 +143,63 @@ internal sealed partial class MirBorrows
         this.punKeys.Add(facts with
         {
             FirstStart = start, FirstCount = this.punViewTypes.Count - start, PastStart = pastStart, PastCount = this.punPastKeys.Count - pastStart,
+            Fold = fold,
         });
-        this.punKeyIndex.Add(key, index);
+        this.punKeyIndex.Add((key, fold), index);
         return index;
+    }
+
+    // PROTOTYPE R5 (R2, R3): the fold of a call's output, the one read of OutputRetention.Handed (the kept Types a callable the callee's
+    // declaration hands its body writes; SPEC 15.6.4 "through its result or its writes"): 0 for none, else the list's index in
+    // punFolds, equal lists one fold. W's walk of the output and the pun rule at the output's input both read it (Keep, PunCall).
+    private int Fold(OutputRetention? output)
+    {
+        this.PunRun();
+        var handed = R4NoHandedFold || output is null ? default : output.Handed;
+        if (handed.IsEmpty)
+        {
+            return 0;
+        }
+
+        for (var fold = 1; fold < this.punFolds.Count; fold++)
+        {
+            if (Same(handed, this.punFolds[fold]))
+            {
+                return fold;
+            }
+        }
+
+        this.punFolds.Add(handed.ToArray());
+        return this.punFolds.Count - 1;
+    }
+
+    // PROTOTYPE R5: whether a fold's list holds `kept`: OwnLayer.Kept and OutputRetention.Handed name a kept Type by the one interned
+    // erased Type (TyCtxt.Erase), compared by identity.
+    private static bool Lists(ReadOnlySpan<BoundType> list, BoundType kept)
+    {
+        foreach (var type in list)
+        {
+            if (ReferenceEquals(type, kept))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    // PROTOTYPE R5: whether two Handed lists are one (Fold), by identity.
+    private static bool Same(ReadOnlySpan<BoundType> list, ReadOnlySpan<BoundType> other)
+    {
+        for (var i = 0; list.Length == other.Length && i < list.Length; i++)
+        {
+            if (!ReferenceEquals(list[i], other[i]))
+            {
+                return false;
+            }
+        }
+
+        return list.Length == other.Length;
     }
 
     // A key's write Types (its first step's).
@@ -166,7 +226,7 @@ internal sealed partial class MirBorrows
             below = at.FirstUnknown || this.AnyScalar(at.FirstStart, at.FirstCount);
             for (var p = at.PastStart; !below && p < at.PastStart + at.PastCount; p++)
             {
-                var next = this.Key(this.punPastKeys[p]);
+                var next = this.Key(this.punPastKeys[p], at.Fold);
                 if (this.punKeys[next].Stamp != stamp)
                 {
                     this.punKeys[next] = this.punKeys[next] with { Stamp = stamp };
@@ -230,5 +290,7 @@ internal sealed partial class MirBorrows
         internal int PastCount { get; init; }
 
         internal int Stamp { get; init; } // The last Below walk that reached the key.
+
+        internal int Fold { get; init; } // PROTOTYPE R5: the fold the key was folded under (Fold); its past keys are folded under it too.
     }
 }

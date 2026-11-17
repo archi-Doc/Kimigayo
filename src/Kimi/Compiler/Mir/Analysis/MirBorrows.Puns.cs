@@ -111,7 +111,7 @@ internal sealed partial class MirBorrows
             return;
         }
 
-        var index = this.Key(this.InputKey(call, position, input));
+        var index = this.Key(this.InputKey(call, position, input), this.Fold(this.OutputAt(position))); // PROTOTYPE R5 (R3): Keep's fold.
         if (!this.Below(index))
         {
             return;
@@ -127,6 +127,20 @@ internal sealed partial class MirBorrows
             this.Children(this.Scan(Placed(held), this.punQueue[i + 1]));
             this.Children(this.Scan(Shared(held), this.punQueue[i + 1]));
         }
+    }
+
+    // PROTOTYPE R5 (R3): the call's output through the input at `position` (the plan's Writes, as Keep reads them), null where none.
+    private OutputRetention? OutputAt(int position)
+    {
+        foreach (var written in this.planned is null ? default : this.planned.Writes)
+        {
+            if (this.slotPositions[written.Output] == position)
+            {
+                return written;
+            }
+        }
+
+        return null;
     }
 
     // SPEC 5.2 Placement, 5.6: whether the call's contract stores no value through the input at `position` (TyCtxt.NoStore by slot; a
@@ -226,7 +240,7 @@ internal sealed partial class MirBorrows
 
             for (var p = facts.PastStart; p < facts.PastStart + facts.PastCount; p++)
             {
-                var past = this.Key(this.punPastKeys[p]);
+                var past = this.Key(this.punPastKeys[p], facts.Fold);
                 if (this.punKeys[past] is { FirstCount: > 0 } or { FirstUnknown: true })
                 {
                     this.scanChildren.Add(this.loans[entry].Named);
