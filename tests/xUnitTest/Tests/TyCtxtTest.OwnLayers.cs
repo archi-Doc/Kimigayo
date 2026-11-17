@@ -20,7 +20,8 @@ public sealed partial class TyCtxtTest
         "func probe<T>(x: uniq/u8 during a, tuple: (raw/u8 during a, i32), option: Option<raw/u8 during a>, field: Wrap<raw/u8 during a>,\n" +
         "    nested: Option<Outer<raw/u8 during a>>, array: Array<raw/u8 during a>, selfHeld: SelfHeld, borrow: (uniq/u8 during a, raw/u8 during static),\n" +
         "    loan: Loan<uniq/u8 during a>, empty: Empty<raw/u8 during a>, scalar: i32, bare: raw/u8, rc: rc/Wrap<raw/u8 during a>,\n" +
-        "    abstract: (T, raw/u8 during a), slot: Slot<raw/u8 during a>, derived: Derived, object: obj/Wrap<raw/u8 during a>) -> ()\n    return ()\n" +
+        "    abstract: (T, raw/u8 during a), slot: Slot<raw/u8 during a>, derived: Derived, object: obj/Wrap<raw/u8 during a>,\n" +
+        "    loanPair: (Loan<uniq/u8 during a>, raw/u8 during a), loanRaw: Loan<uniq/(raw/u8) during a>) -> ()\n    return ()\n" +
         "func pairs<b/B>(x: uniq/u8 during a, pair: b/(raw/u8 during a)) -> ()\n    b is owner or uniq\n    return ()\n" +
         "public func main() => ()\n";
 
@@ -53,6 +54,24 @@ public sealed partial class TyCtxtTest
         var into = new List<OwnLayer>();
         Assert.True(c.Types.OwnLayers(PlaceKey.Root(p[parameter]), into));
         Assert.Equal(expected, string.Join("; ", into.Select(static x => $"{(x.Layer is null ? "-" : Binding.DiagnosticTypeName(x.Layer))} {x.Step}")));
+    }
+
+    // SPEC 15.3.5 (a Type argument has no address; the Middle's C-370, its landing hunk's R2 (b2')): a part the key walk lists past a
+    // Loan's Type argument, which it walks by value until U3a, is marked Loan (L), so a reader takes no write Type and no key past it:
+    // the Loan's exclusive borrow, alone, beside a raw layer the Tuple states (not marked) and over a raw pointee; an exclusive borrow
+    // that is no Loan's argument, and the layers beside it, are not marked. Fail-before: no Loan mark on 4d510bf64.
+    [Theory]
+    [InlineData("loan", "- Exclusive L")]
+    [InlineData("loanPair", "- Exclusive L; raw/u8 Exclusive")]
+    [InlineData("loanRaw", "- Exclusive L")]
+    [InlineData("x", "- Exclusive")]
+    [InlineData("borrow", "- Exclusive; raw/u8 Static")]
+    public void APartPastALoansTypeArgumentIsMarked(string parameter, string expected)
+    {
+        var (c, p) = OwnLayersForms();
+        var into = new List<OwnLayer>();
+        Assert.True(c.Types.OwnLayers(PlaceKey.Root(p[parameter]), into));
+        Assert.Equal(expected, string.Join("; ", into.Select(static x => $"{(x.Layer is null ? "-" : Binding.DiagnosticTypeName(x.Layer))} {x.Step}{(x.Loan ? " L" : string.Empty)}")));
     }
 
     // A Closure part as the contract's body sees it (DECISIONS R4-M148, the storage walk's BodyRun): its environment's bindings, a raw layer

@@ -180,7 +180,8 @@ internal sealed partial class TyCtxt
     // its path from its root. At its own address means the storage walk's by-value relation (Binding.ByValue) applied recursively at any
     // holder: Tuple and fixed-array elements, a struct's Fields and base, an enum's Case payloads (a Case key: its payload's components with
     // the Case's written Types), a Closure's environment bindings, a pair layer's owner case, an own step's payload or elements (`obj/T`,
-    // Array, Dictionary, `string`) and a `Loan<T>`'s argument; any other Type argument adds nothing. Each part is read once per call through
+    // Array, Dictionary, `string`) and a `Loan<T>`'s argument (each part listed past it marked OwnLayer.Loan: a Type argument has no address,
+    // SPEC 15.3.5, so a reader takes no write Type or key past it; until U3a); any other Type argument adds nothing. Each part is read once per call through
     // Holdings as the contract's body sees it (a Closure part by ClosureEnvironment, DECISIONS R4-M148). Output, appended to `into` in walk
     // order: (layer, step, Past) for each raw layer met there, not gone past, its step that at the Place: DeclaredStep under its holding
     // instance, except that a `during self` layer, where the key's path dereferences, has the step of the Origin reading it gives (SPEC 5.7

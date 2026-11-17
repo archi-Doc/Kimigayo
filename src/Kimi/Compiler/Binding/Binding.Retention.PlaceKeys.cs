@@ -74,11 +74,18 @@ internal readonly record struct OwnLayer(BoundType? Layer, HoldStep Step, PlaceK
     /// such a raw layer or reference reaches is the reader's (15.6.4: a raw layer adds no reach of its own; a safe reference keeps the
     /// routes).</summary>
     internal bool Hidden { get; init; }
+
+    /// <summary>Gets a value indicating whether the part lies past a Loan's Type argument, which has no address and grants no access
+    /// (SPEC 15.3.5; MirTypes' holding walk never steps there, HoldStep.Loan): the key walk lists it only because ByValue walks a
+    /// Loan's Type argument by value until U3a (G416 D4), so a reader takes no write Type and no key past it. Removal: U3a, when ByValue
+    /// stops walking a Loan's Type argument and no such part is listed.</summary>
+    internal bool Loan { get; init; }
 }
 
 public sealed partial class Binding
 {
-    private readonly HashSet<(BoundType Type, BoundType? Written, BoundType? Holder, BoundType? Signature)> ownSeen = new(); // OwnLayers' walked keys, reused.
+    private readonly HashSet<(BoundType Type, BoundType? Written, BoundType? Holder, BoundType? Signature, bool Loan)> ownSeen = new(); // OwnLayers' walked keys, reused.
+    private int ownLoans; // OwnParts' depth past a Loan's Type argument (OwnLayer.Loan; until U3a).
 
     // SPEC 5.2.1 Retained dependencies, 5.7 Calls, 15.6.4 (PLAN G583, G598, C-189; contract in TyCtxt.Raw.cs): the parts the value at a
     // Place's key holds at its own address, by ByValue at any holder, each part as the body sees it (BodySees, as the storage walk's
@@ -182,12 +189,13 @@ public sealed partial class Binding
 
     // OwnLayers from a part (Type, Written, Holder) and the Type the called function's declaration writes there (Signature, read in the
     // function's view, View; paired by the storage walk's rule, DeclaredRun and SignaturePast; kept inside a hidden binding, Below), each
-    // (Type, Written, Holder, Signature) once per call; retentionHeld is read as a stack (each run removed). It reads Holdings only, never
-    // HeldRun, so it sets no storage-walk state (retentionLimit).
+    // (Type, Written, Holder, Signature) once per call and per whether it lies past a Loan's Type argument (OwnLayer.Loan, marked on
+    // every part listed there: ByValue's Loan row, until U3a); retentionHeld is read as a stack (each run removed). It reads Holdings
+    // only, never HeldRun, so it sets no storage-walk state (retentionLimit).
     private bool OwnParts(BoundType type, BoundType? written, BoundType? holder, BoundType? signature, in PlaceKey at, List<OwnLayer> into)
     {
         signature = this.View(signature);
-        if (!this.ownSeen.Add((type, written, holder, signature)))
+        if (!this.ownSeen.Add((type, written, holder, signature, this.ownLoans > 0)))
         {
             return true;
         }
@@ -200,7 +208,7 @@ public sealed partial class Binding
         {
             var layer = this.retentionHeld[start];
             var past = new PlaceKey(layer.Part, layer.Written, layer.Holder, -1, this.PastThrough(type, layer, at), this.SignaturePast(signature, type, layer));
-            into.Add(new(type, this.LayerStep(layer.Step, at), past) { Hidden = hidden });
+            into.Add(new(type, this.LayerStep(layer.Step, at), past) { Hidden = hidden, Loan = this.ownLoans > 0 });
         }
 
         var declared = raw || !complete ? default : this.DeclaredRun(signature, type, run);
@@ -209,12 +217,15 @@ public sealed partial class Binding
             var entry = this.retentionHeld[i];
             if (this.ByValue(type, entry) && entry.Part is { } part)
             {
+                var loan = entry.Step == HoldStep.Loan ? 1 : 0; // A Loan's Type argument, walked by value until U3a (ByValue).
+                this.ownLoans += loan;
                 complete = this.OwnParts(part, entry.Written, entry.Holder, this.DeclaredPart(signature, declared, run, i), at, into);
+                this.ownLoans -= loan;
             }
             else if (entry.Step != HoldStep.Loan || entry.Part is null)
             {
                 var (through, reached) = (this.PastThrough(type, entry, at), this.SignaturePast(signature, type, entry));
-                into.Add(new(null, entry.Step, new(entry.Part, entry.Written, entry.Holder, -1, through, reached)) { Hidden = hidden });
+                into.Add(new(null, entry.Step, new(entry.Part, entry.Written, entry.Holder, -1, through, reached)) { Hidden = hidden, Loan = this.ownLoans > 0 });
             }
         }
 
