@@ -163,6 +163,26 @@ public partial class LocalRegionInferenceTest(ITestOutputHelper output)
         string Text(SourceSpan? span) => span is { } value ? source.Substring(value.Start, value.Length) : string.Empty;
     }
 
+    // The owner's O-385 (a) (PLAN G492-a (ii), revision 4; DECISIONS R4-M133 as amended): the local-region graph stores a comparison's
+    // bound as the comparison read it, the slot, and its readers take a parent as stored. Two comparisons give `w outlives z` and `z
+    // outlives x` over three `let` regions, so x's region reaches w's source, the Borrow n@ref, through z's region: sib2 (Exclusive
+    // layers, which also need the Middle's O-375 Q2 (a) solve) and its one-direction form over `idf`. Each read the stored slot of z
+    // back as z's value `p`, so x's sources were `p` alone.
+    [Theory]
+    [InlineData("sib2", null)]
+    [InlineData("chain", "func idf(w: ref/i64 during a) -> ref/i64 during a => w\nfunc outer(p: ref/i64) -> i32\n    let n: i64 = 1\n    let w = n@ref\n    let z = p\n    let x = p\n    let f1: (ref/i64 during w) -> ref/i64 during z = idf\n    let f2: (ref/i64 during z) -> ref/i64 during x = idf\n    return 0\n")]
+    public void AComparedRegionsSourcesReachThroughTheStoredSlot(string row, string? body)
+    {
+        var c = MirBuildTest.Compile((body ?? OriginPremiseCatalogTest.StoredReadingRows.Single(x => x.Data.Item1 == row).Data.Item2) + MainDeclaration);
+        var outer = Assert.Single(c.BuildMir().Bodies.ToArray(), static x => x.Key.Decl?.Name == "outer");
+        var (x, w) = (Region("x"), Region("w"));
+        var borrow = Assert.Single(c.Binding.LocalRegionSources(w).ToArray(), static s => s.Kind is not (OriginKind.Input or OriginKind.Parameter));
+        var sources = c.Binding.LocalRegionSources(x).ToArray();
+        Assert.True(sources.Contains(borrow), $"{row}: {sources.Length} sources of x, {string.Join(", ", sources.Select(static s => s.Kind))}");
+
+        BoundOrigin Region(string name) => Assert.Single(outer.Locals.ToArray(), l => l.Name == name).Type.Origin!;
+    }
+
     // SPEC 15.3.6: a body variable of a local whose row has no candidate is a local region of the local, never invented as static, so each
     // program is valid (DECISIONS R4-M112): an initializer's call qualifier slot outside the local's Type, a variable
     // bounded only by variables, and a contravariant slot with no principal lower bound, whose bounds hold through the region's one
