@@ -1114,12 +1114,16 @@ public sealed class MirInitTest
     // there too); any other operation makes a value of a value-less operand. A first placement keeps its destination's state where its
     // temp holds nothing, whatever the destination: a var initialized or bound through a temp is uninitialized on the value-less path
     // (vi, vb, g1, vm, rt3), as a let is. Targets: an Array, a Copy value, a Tuple part, a let, a function value; an access path that
-    // builds code is located on both kinds of path (tg). Run-time twins (no Never form before) stay as written. Rows by table and name
-    // in the trailing comments (the design's r2-r4 and t8-t10, the design reviews' rv, q1-q3 and x1, x3, x4), each labelled from SPEC
-    // before any run. Fail-before (the redesign's step 5, which kept a temp's or a let's state only): most invalid rows were accepted
-    // (a var through a temp: vi1, vi2, vb1, g1a, g1e, rt3; a target left Moved or uninitialized on a value-less path: la4, la6, la7,
-    // ln1i, lb1, ns2, pt3, yd4, yd5, nd2, o1i-o12i, nw1i, the t8-t10 and rv rows), and lo3, lo4, lo2, ex5, o2i, o15i, lp5 lacked
-    // their record at the code after.
+    // builds code is located on both kinds of path (tg). A form whose every path has no value has none (SPEC 14.9.2 gives it a Type
+    // all the same: `fail() and fail()` is a bool), so no path reaches the overwrite: a short-circuit of such operands, nested, as an
+    // arm's, a label exit's or a loop exit's value, keeps the target's state (lg1, lv); as a condition or an initializer it is no
+    // overwrite's value (lv8, lv12). Run-time twins (no Never form before) stay as written. Rows by table and name in the trailing
+    // comments (the design's r2-r4 and t8-t10, the design reviews' rv, q1-q3 and x1, x3, x4, the implementation review's p1, p2),
+    // each labelled from SPEC before any run. Fail-before (the redesign's step 5, which kept a temp's or a let's state only): most
+    // invalid rows were accepted (a var through a temp: vi1, vi2, vb1, g1a, g1e, rt3; a target left Moved or uninitialized on a
+    // value-less path: la4, la6, la7, ln1i, lb1, ns2, pt3, yd4, yd5, nd2, o1i-o12i, nw1i, the t8-t10 and rv rows, lg1i, lv11, lv15),
+    // and lo3, lo4, lo2, ex5, o2i, o15i, lp5 lacked their record at the code after; step 6's first version gave InternalInvariant_Kd
+    // on lg1, lg1i, lv1-lv7, lv10, lv11 and lv15 (the operation's join without a predecessor).
     [Theory]
     [InlineData("var f: (i32) -> i32 = g\n    return\n    f = if c => g else => fail()\n    use(f(1))", "")] // q1 ad1
     [InlineData("var f: (i32) -> i32\n    return\n    f = if c => g else => fail()\n    use(f(1))", "UninitializedPlace_Kd f 1")] // q1 ad1i
@@ -1258,6 +1262,20 @@ public sealed class MirInitTest
     [InlineData("var a: Array<i32> = [y]\n    return\n    takeA(a@move)\n    a = (label w: do\n        let t: Array<i32> = [y]\n        if c => exit to w t@move\n        exit to w eat(t@move)\n    )\n    takeA(a@move)", "MovedPlace_Kd a 1")] // rv nl3
     [InlineData("var a: Array<i32> = [y]\n    return\n    takeA(a@move)\n    let t: Array<i32> = [y]\n    a = (match y\n        0 => t@move\n        _ => eat(t@move)\n    )\n    takeA(a@move)", "MovedPlace_Kd a 1")] // rv nl4
     [InlineData("var p: (i32, Array<i32>) = (y, [y])\n    return\n    takeA(p.1@move)\n    let t: Array<i32> = [y]\n    p.1 = if c => t@move else => eat(t@move)\n    takeTA(p@move)", "MovedPlace_Kd p 1")] // rv nl5
+    [InlineData("var b: bool = true\n    return\n    b = fail() and fail()\n    useB(b)", "")] // p1 lg1
+    [InlineData("var b: bool\n    return\n    b = fail() and fail()\n    useB(b)", "UninitializedPlace_Kd useB(b) 1")] // p1 lg1i
+    [InlineData("var b: bool = true\n    return\n    b = fail() or fail()\n    useB(b)", "")] // p2 lv1
+    [InlineData("var b: bool = true\n    return\n    b = if c => (fail() and fail()) else => true\n    useB(b)", "")] // p2 lv2
+    [InlineData("var b: bool = true\n    return\n    b = (label w: do\n        exit to w (fail() and fail())\n    )\n    useB(b)", "")] // p2 lv3
+    [InlineData("var b: bool = true\n    return\n    b = fail() and (fail() and fail())\n    useB(b)", "")] // p2 lv4
+    [InlineData("var b: bool = true\n    return\n    b = (fail() and fail()) and c\n    useB(b)", "")] // p2 lv5
+    [InlineData("var b: bool = true\n    b = fail() and fail()\n    useB(b)", "")] // p2 lv6
+    [InlineData("var b: bool = true\n    return\n    b = if c => (fail() and fail()) else => (fail() or fail())\n    useB(b)", "")] // p2 lv7
+    [InlineData("return\n    var x: bool = fail() and fail()\n    useB(x)", "UninitializedPlace_Kd useB(x) 1")] // p2 lv8
+    [InlineData("var b: bool = true\n    return\n    b = loop\n        exit (fail() and fail())\n    useB(b)", "")] // p2 lv10
+    [InlineData("var b: bool\n    return\n    b = fail() or fail()\n    useB(b)", "UninitializedPlace_Kd useB(b) 1")] // p2 lv11
+    [InlineData("var x: i32 = 1\n    return\n    x = if (fail() and fail()) => 2 else => 3\n    use(x)", "")] // p2 lv12
+    [InlineData("var b: bool\n    b = fail() and fail()\n    useB(b)", "UninitializedPlace_Kd useB(b) 1")] // p2 lv15
     public void AnOverwriteIsReachedOnlyByThePathsThatHoldItsValue(string body, string expected)
         => Assert.Equal(expected.Length == 0 ? [] : expected.Split(" | "), Problems(Overwrites + "    " + body + "\n"));
 

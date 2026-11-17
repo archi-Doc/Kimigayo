@@ -132,12 +132,13 @@ internal sealed partial class MirBuilder
     // destination's consumer takes its value-less paths apart (Wanted), so does the operation: the paths on which the left has no value
     // get a test of their own, whose undecided side goes on to the right operand with the paths that hold the left's value (the
     // operation's value there is the right's) and whose decided side has no value of the operation; those and the right operand's
-    // value-less paths are the operation's, left for its consumer (TakeLeft).
+    // value-less paths are the operation's, handed to its consumer (Hand), and where neither operand has a value on any path, the
+    // operation has none.
     private void Logical(MirPlace destination, BinaryKoto logical)
     {
         var wanted = this.Wanted(destination);
         var left = this.Hold(BoundType.Boolean, logical.Left);
-        var none = -1; // The left operand's value-less paths (SPEC 14.10.3), which get a test of their own.
+        var none = (Block: -1, Valueless: false); // The left operand's value-less paths (SPEC 14.10.3), which get a test of their own.
         if (wanted)
         {
             none = this.AssignApart(left, logical.Left);
@@ -149,12 +150,12 @@ internal sealed partial class MirBuilder
 
         this.Made(left);
         var right = this.body.AddBlock();
-        var decided = wanted && IsNeverForm(logical.Left) ? -1 : this.body.AddBlock();
+        var decided = none.Valueless ? -1 : this.body.AddBlock();
         var join = this.body.AddBlock();
         var and = logical.Akind == KotoKind.And;
         if (decided < 0)
         {
-            none = this.current; // The left's whole continuation has no value.
+            none.Block = this.current; // The left's whole continuation has no value.
         }
         else
         {
@@ -165,32 +166,33 @@ internal sealed partial class MirBuilder
         }
 
         var aside = -1; // The operation's value-less paths, which its consumer takes on.
-        if (none >= 0)
+        if (none.Block >= 0)
         {
             // SPEC 13.4, 14.10.3: a left without a value is tested on its own paths; the side it would decide gives the operation none.
-            (this.current, aside) = (none, this.body.AddBlock());
+            (this.current, aside) = (none.Block, this.body.AddBlock());
             this.Branch(left, logical.Left, and ? aside : right, and ? right : aside);
         }
 
         this.current = right;
         this.Assign(destination, logical.Right);
-        var rest = this.TakeLeft(); // The right operand's value-less paths.
-        if (wanted && IsNeverForm(logical.Right))
+        var rest = this.TakeLeft(logical.Right); // The right operand's value-less paths.
+        var valueless = wanted && rest.Valueless; // SPEC 14.10.3: a right operand without a value gives the operation none on that path.
+        if (valueless)
         {
-            rest = this.body.AddBlock(); // SPEC 14.10.3: a right operand without a value gives the operation none on that path.
-            this.body.Terminate(this.current, MirTerminator.Unreachable(this.Info(logical.Right), rest));
+            rest.Block = this.body.AddBlock();
+            this.body.Terminate(this.current, MirTerminator.Unreachable(this.Info(logical.Right), rest.Block));
         }
         else
         {
             this.Join(join, logical.Right);
         }
 
-        if (rest >= 0 && aside >= 0)
+        if (rest.Block >= 0 && aside >= 0)
         {
-            this.body.Terminate(rest, MirTerminator.Goto(aside, this.Info(logical.Right)));
+            this.body.Terminate(rest.Block, MirTerminator.Goto(aside, this.Info(logical.Right)));
         }
 
-        (this.current, this.left) = (join, aside >= 0 ? aside : rest);
+        this.Hand(join, aside >= 0 ? aside : rest.Block, decided >= 0 || !valueless, this.Info(logical));
     }
 
     // SPEC 13.5.4, 13.6.1, 5.4: a numeric, wrapping, bit, pointer or object conversion, a Cast of its operand, Proven where it checks

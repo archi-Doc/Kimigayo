@@ -17,7 +17,7 @@ internal sealed partial class MirBuilder
     private readonly List<Target> targets = []; // The constructs around the code being built that a transfer may target, innermost last.
     private readonly List<(int Block, SourceInfo Info)> ends = []; // The open constructs' non-value ends, innermost last, which Close ends.
     private MirPlace? apart; // The Place whose consumer takes its value-less paths apart (AssignApart), which a construct built into it reads (Wanted).
-    private int left = -1; // The block the form built last left its value-less paths at (Target.Apart), which its consumer takes (TakeLeft); else -1.
+    private (int Block, bool Valueless) left = (-1, false); // What the form built last left for its consumer (Hand), which it takes (TakeLeft).
 
     // The Place of a derived jump's operand (Transfer): a Place its Adjust would acquire (bare: Copied, moved, Reborrowed or by case)
     // designated in place, a local's or a static's, any other operand built; none for a constant.
@@ -38,9 +38,9 @@ internal sealed partial class MirBuilder
     // target its plan row names (a function's return block, built at its first return); for the checks it goes on to the code after it,
     // where those calls continue with their reservations. SPEC 14.10.3: an explicit source counts in unreachable code, so an operand that
     // does not complete leaves an assumed delivery, secured by none, through the drop tree to the target's join (Join), which places the
-    // operand's value as Set places it; into a target that takes its value-less paths apart (Target.Wants), a delivery of the Never value
-    // goes on at the target's Apart, and an operand whose form left value-less paths (Splits, AssignApart) delivers them there too,
-    // through the drop tree, and they go on after the transfer as its value paths do.
+    // operand's value as Set places it; into a target that takes its value-less paths apart (Target.Wants), a delivery of an operand
+    // with no value path (TakeLeft) places nothing and goes on at the target's Apart, and an operand whose form left value-less paths
+    // (Splits, AssignApart) delivers them there too, through the drop tree, and they go on after the transfer as its value paths do.
     private void Transfer(JumpKoto jump)
     {
         var plan = HirTables.PlanOf(jump).Plan;
@@ -72,11 +72,11 @@ internal sealed partial class MirBuilder
 
         var continues = HirTables.Op(jump) == HirOp.Continue;
         MirOperand value = default;
-        var aside = -1; // The block the operand's value-less paths are left at (SPEC 14.10.3), which deliver nothing.
+        var rest = (Block: -1, Valueless: operand is not null && IsNeverForm(operand)); // The operand's value-less paths (SPEC 14.10.3).
         if (!continues && operand is not null && this.targets[index].Wants && this.Splits(operand))
         {
             var held = this.Hold(HirTables.TypeOf(operand) ?? this.body.TypeOf(this.targets[index].Destination)!, operand);
-            aside = this.AssignApart(held, operand);
+            rest = this.AssignApart(held, operand);
             value = MirOperand.Move(this.Made(held));
         }
         else if (!continues)
@@ -85,11 +85,12 @@ internal sealed partial class MirBuilder
         }
 
         var assumed = operand is not null && !Completes(operand);
+        var valueless = assumed && this.targets[index].Wants && rest.Valueless; // A delivery that goes on at the target's Apart.
         var secures = !continues && !assumed; // Whether it has a result to secure (SPEC 16.2.2): an assumed delivery secures none.
         value = secures ? this.Secure(value, operand ?? jump) : value;
         var info = this.Info(jump);
         ref var target = ref this.Reach(index);
-        target.Joined |= !continues;
+        target.Joined |= !continues && !valueless;
         var inner = info with { StatementStart = false };
         if (secures && !target.Delivers && this.Departs(target.At.Depth))
         {
@@ -108,9 +109,9 @@ internal sealed partial class MirBuilder
         }
 
         var (place, join) = target.Delivery(completes: !assumed);
-        if (assumed && target.Wants && IsNeverForm(operand!))
+        if (valueless)
         {
-            join = this.Aside(index); // A delivery of the Never value places nothing: it goes on apart from the deliveries of a value.
+            join = this.Aside(index); // A delivery of no value places nothing: it goes on apart from the deliveries of a value.
         }
 
         var mark = target.At.Mark;
@@ -126,7 +127,7 @@ internal sealed partial class MirBuilder
             }
         }
 
-        if (!continues && assumed)
+        if (!continues && assumed && !valueless)
         {
             // SPEC 14.10.3: an assumed delivery places its operand's value as Set places any: nothing of the Never value, and of a
             // construction holding a Never part its other parts (MirMoveData's Never parts), into the join's own Destination (Into),
@@ -153,10 +154,10 @@ internal sealed partial class MirBuilder
         var next = this.body.AddBlock();
         this.body.Terminate(this.current, MirTerminator.Goto(entry, info, next));
         this.current = next;
-        if (aside >= 0)
+        if (rest.Block >= 0)
         {
             // The operand's value-less paths: an assumed delivery of nothing through the drop tree to the target's Apart, and on after the transfer.
-            this.body.Terminate(aside, MirTerminator.Goto(this.Exit(target.At.Depth, this.Aside(index)), inner, next));
+            this.body.Terminate(rest.Block, MirTerminator.Goto(this.Exit(target.At.Depth, this.Aside(index)), inner, next));
         }
 
         if (secures && value.Kind == MirOperandKind.Move && this.body.Locals[value.Place.Root] is var secured &&
@@ -220,15 +221,16 @@ internal sealed partial class MirBuilder
         CollectionsMarshal.AsSpan(this.targets)[^1].Joined = true;
     }
 
-    // Closes the innermost construct, building on after it. SPEC 14.10.3: an assumed path adds no normal completion, so its non-value
-    // ends go on to its Check; that check target, -1 for none, a loop's head takes too. A construct no edge joins is a Never form (SPEC
-    // 14.9.2), which Binding publishes so (BU-101): one that is not breaks the HIR contract, and its ends join, so the body stays valid
-    // and the record is the only one.
+    // Closes the innermost construct, building on after it, its value-less paths handed to its consumer (Hand). SPEC 14.10.3: an
+    // assumed path adds no normal completion, so its non-value ends go on to its Check; that check target, -1 for none, a loop's head
+    // takes too. A construct no value joins is a Never form (SPEC 14.9.2), which Binding publishes so (BU-101), or one whose every
+    // value-less end and delivery went on at its Apart: one that is neither breaks the HIR contract, and its ends join, so the body
+    // stays valid and the record is the only one.
     private int Close(int after)
     {
         var target = this.targets[^1];
         var check = target.Check;
-        if (!target.Joined && check < 0)
+        if (!target.Joined && check < 0 && target.Apart < 0)
         {
             this.Record(target.Node, DiagnosticCode.InternalInvariant_Kd);
             check = after;
@@ -241,8 +243,22 @@ internal sealed partial class MirBuilder
 
         this.ends.RemoveRange(target.At.Ends, this.ends.Count - target.At.Ends);
         this.targets.RemoveAt(this.targets.Count - 1);
-        (this.current, this.left) = (after, target.Apart);
+        this.Hand(after, target.Apart, target.Joined, this.Info(target.Node));
         return check;
+    }
+
+    // SPEC 14.10.3: a form closes at its join, where building goes on, and hands the block its value-less paths were left at (-1 for
+    // none) to its consumer, which takes it right after it (TakeLeft). SPEC 14.9.2 gives a form a Type also where no path holds its value
+    // (an `and` of two Never operands is a bool): where no value reaches the join (valued), those paths are its whole continuation,
+    // which goes on at the join, only the checks reaching it, and the form is value-less, which its consumer takes as a Never form.
+    private void Hand(int join, int aside, bool valued, in SourceInfo info)
+    {
+        if (!valued && aside >= 0)
+        {
+            this.body.Terminate(aside, MirTerminator.Goto(join, info));
+        }
+
+        (this.current, this.left) = (join, valued || aside < 0 ? (aside, false) : (-1, true));
     }
 
     // Whether a Place's consumer takes its value-less paths apart: the Place AssignApart builds into (an overwrite's value, a wanted
@@ -252,24 +268,24 @@ internal sealed partial class MirBuilder
         => destination == this.apart || (this.targets.Count > 0 && this.targets[^1].Wants && destination == this.targets[^1].Ending.Place);
 
     // SPEC 14.10.3, 13.7.1 (DECISIONS R4-M62): a value built into a Place whose consumer takes the value's value-less paths apart, as
-    // Assign builds it: the block the paths on which the value's form has none were left at, -1 for none. The hand-off's one set-up
-    // and read-back: a construct built into the Place wants (Wanted, Open) and leaves those paths at its Apart where it closes (Close).
-    private int AssignApart(MirPlace place, Koto value)
+    // Assign builds it, and what its form left (TakeLeft). The hand-off's one set-up and read-back: a construct built into the Place
+    // wants (Wanted, Open) and leaves those paths at its Apart where it closes (Close, Hand).
+    private (int Block, bool Valueless) AssignApart(MirPlace place, Koto value)
     {
         var outer = this.apart;
-        (this.apart, this.left) = (place, -1);
+        (this.apart, this.left) = (place, (-1, false));
         this.Assign(place, value);
         this.apart = outer;
-        return this.TakeLeft();
+        return this.TakeLeft(value);
     }
 
-    // The block the form built last left its value-less paths at (Close, Logical), which its consumer takes once, right after it: -1
-    // for none.
-    private int TakeLeft()
+    // What the form built last left for its consumer, which takes it once, right after it: the block its value-less paths go on at
+    // (Hand), -1 for none, and whether the form has no value path: a Never form, or one no value reaches the join of (Hand).
+    private (int Block, bool Valueless) TakeLeft(Koto form)
     {
-        var aside = this.left;
-        this.left = -1;
-        return aside;
+        var rest = this.left;
+        this.left = (-1, false);
+        return (rest.Block, rest.Valueless || IsNeverForm(form));
     }
 
     // Whether a transfer's operand is a form that delivers its value as it is built (InPlace: no literal, no Place an expansion located),
@@ -315,7 +331,8 @@ internal sealed partial class MirBuilder
         // Whether its Destination and Break are a result temp and the block delivering it after a Scope Exit (SPEC 16.2.2).
         internal readonly bool Delivers => this.Break != this.Join;
 
-        // Whether an edge reaches its join: a delivery, assumed too, or another edge Joins builds.
+        // Whether a value reaches its join: a delivery of one, assumed too, or another edge Joins builds; a delivery or an end without a
+        // value goes on at its Apart instead.
         internal bool Joined { get; set; }
 
         // Whether its consumer takes its value-less paths apart (an overwrite's value, a body's value or a transfer's operand delivered to

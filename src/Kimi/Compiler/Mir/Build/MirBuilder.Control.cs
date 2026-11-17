@@ -179,20 +179,22 @@ internal sealed partial class MirBuilder
     // a Never value for the checks only (R4-M62); an end arrival that does not complete to the target's Check for the checks only. Where
     // it goes on to no block, it is cleaned up inline: a function's end that completes before a return built its return block (Reach)
     // returns there, and any other is a non-value end its owner ends (Close; a function's, Body). The scopes stay open for the body's
-    // owner to remove (Pop). Where the target's consumer takes its value-less paths apart (Target.Wants), a value end whose value is a
-    // Never form goes on at the target's Apart, not its delivery, and the value-less paths the value's own form left (TakeLeft) leave
-    // the scopes through the Apart's drop tree, so their cleanups are checked on their own path (SPEC 14.10.3, 16.1.2).
+    // owner to remove (Pop). Where the target's consumer takes its value-less paths apart (Target.Wants), a value end whose value has
+    // no value path (TakeLeft) goes on at the target's Apart, not its delivery, which it does not join, and the value-less paths the
+    // value's own form left leave the scopes through the Apart's drop tree, so their cleanups are checked on their own path (SPEC
+    // 14.10.3, 16.1.2).
     private void End(Koto body, bool value)
     {
         var target = this.targets[^1];
-        var aside = this.TakeLeft();
-        if (aside >= 0)
+        var rest = this.TakeLeft(body);
+        if (rest.Block >= 0)
         {
-            this.body.Terminate(aside, MirTerminator.Unreachable(this.Info(body), this.Exit(target.At.Depth, this.Aside(this.targets.Count - 1))));
+            this.body.Terminate(rest.Block, MirTerminator.Unreachable(this.Info(body), this.Exit(target.At.Depth, this.Aside(this.targets.Count - 1))));
         }
 
         var joins = target.Continue < 0 && (Completes(body) || value);
-        var delivery = joins && value && target.Wants && IsNeverForm(body) ? this.Aside(this.targets.Count - 1) : target.Ending.Continuation;
+        var valueless = joins && value && target.Wants && rest.Valueless;
+        var delivery = valueless ? this.Aside(this.targets.Count - 1) : target.Ending.Continuation;
         var next = target.Continue >= 0 ? target.Continue : joins ? delivery : target.Check;
         var entry = this.Inline(target.At.Depth, next);
         if (next < 0 && Completes(body))
@@ -203,7 +205,7 @@ internal sealed partial class MirBuilder
         {
             this.ends.Add((this.current, this.Info(body)));
         }
-        else if (joins)
+        else if (joins && !valueless)
         {
             this.Joins(this.Edge(entry, body));
         }
