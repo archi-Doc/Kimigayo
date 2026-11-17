@@ -135,7 +135,7 @@ public sealed partial class Binding
     // The k-th callable a contract hands the body, from its two lists (the Callable bounds' and requirements' signatures, then the
     // Function parts its Types hold; Filled, HandsWriter): false past the last; `callable` null for one that is no Function Type, which
     // neither takes nor writes an input.
-    private static bool Handed(List<BoundType> handed, List<BoundType> callables, int k, out BoundType? callable)
+    private static bool HandedAt(List<BoundType> handed, List<BoundType> callables, int k, out BoundType? callable)
     {
         var listed = k < handed.Count + callables.Count;
         var found = !listed ? null : k < handed.Count ? handed[k] : callables[k - handed.Count];
@@ -613,7 +613,7 @@ public sealed partial class Binding
         if (!this.retentionFills.TryGetValue((position, input, own), out var fill))
         {
             var (handed, callables) = own ? (this.retentionOwnHanded, this.retentionOwnCallables) : (this.retentionHanded, this.retentionCallables);
-            for (var k = 0; fill != Fill.Writes && Handed(handed, callables, k, out var callable); k++)
+            for (var k = 0; fill != Fill.Writes && HandedAt(handed, callables, k, out var callable); k++)
             {
                 if (callable is not null && this.Takes(callable, argument))
                 {
@@ -848,7 +848,7 @@ public sealed partial class Binding
     {
         foreach (var kept in this.storageKept)
         {
-            for (var k = 0; Handed(this.retentionOwnHanded, this.retentionOwnCallables, k, out var callable); k++)
+            for (var k = 0; HandedAt(this.retentionOwnHanded, this.retentionOwnCallables, k, out var callable); k++)
             {
                 if (callable is not null && this.Writes(callable, kept))
                 {
