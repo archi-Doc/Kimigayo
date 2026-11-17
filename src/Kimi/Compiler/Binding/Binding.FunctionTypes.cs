@@ -292,6 +292,31 @@ public sealed partial class Binding
         return false;
     }
 
+    // SPEC 10.7: the member of a declared Type that a contract walk's failure names by its path through nested Callable signatures
+    // (ComparisonFailure.Path: one step per member, the outermost highest; a parameter n + 1 or the result), or null where the
+    // failure is the Type's own or its path leaves the Function Types.
+    private static BoundType? FailedMember(BoundType declared, in ComparisonFailure failure)
+    {
+        var member = declared;
+        for (var depth = failure.Depth - 1; depth >= 0; depth--)
+        {
+            var step = (byte)(failure.Path >> (8 * depth));
+            if (member is not { Kind: BoundTypeKind.Function, Components: [var inputs, var result] })
+            {
+                return null;
+            }
+
+            if (step != ComparisonFailure.ResultStep && (step == 0 || step > inputs.Components.Count))
+            {
+                return null;
+            }
+
+            member = step == ComparisonFailure.ResultStep ? result : inputs.Components[step - 1];
+        }
+
+        return failure.Depth == 0 ? null : member;
+    }
+
     // DECISIONS D3 (temporary, PLAN G886): whether a Closure or Function Item value at a common Function Type carries the located limit
     // its erasure reported for an unformed split (ErasesToFunction).
     private static bool RestsOnErasure(Koto node, BoundType actual, BoundType expected)
@@ -508,11 +533,7 @@ public sealed partial class Binding
             if (!walk.Fits(parameters.Components[i], parameter, instance: comparison))
             {
                 this.contractFailure = walk.Failure.Within((byte)(i + 1));
-                if (walk.Failure.Kind != ComparisonFailureKind.Shape)
-                {
-                    this.EnterJointSplitPart();
-                }
-
+                BlameMisfit(function.Parameters[i].Type.BoundType!, walk.Failure);
                 return false;
             }
 
@@ -553,11 +574,7 @@ public sealed partial class Binding
         if (!resultWalk.Fits(result, CompatibleResult(result, required.Components[1]), instance: comparison))
         {
             this.contractFailure = resultWalk.Failure.Within(ComparisonFailure.ResultStep);
-            if (resultWalk.Failure.Kind != ComparisonFailureKind.Shape)
-            {
-                this.EnterJointSplitPart();
-            }
-
+            BlameMisfit(output, resultWalk.Failure);
             return false;
         }
 
@@ -571,6 +588,24 @@ public sealed partial class Binding
         }
 
         return true;
+
+        // DECISIONS D3 (G812 rulings 103 D1, 105; temporary, removed with (R)): in a split search, what a failed part of the contract is
+        // blamed on. Any failure but a structural one joins every part (an Origin, a premise, a clause: the solve). A structural
+        // misfit belongs to the layer that misfits: where the walk's failure names a member inside the part's nested Callable
+        // signatures (FailedMember), that member is the failing part, formed again on its own, so the run blames the bindings its
+        // layer reads and not those of its siblings; otherwise the whole part, as formed.
+        void BlameMisfit(BoundType declared, in ComparisonFailure failure)
+        {
+            if (failure.Kind != ComparisonFailureKind.Shape)
+            {
+                this.EnterJointSplitPart();
+            }
+            else if (this.splitOpen && FailedMember(declared, failure) is { } member)
+            {
+                this.EnterSplitPart();
+                _ = Bound(member) is { } layer ? Substitute(layer) : null;
+            }
+        }
 
         BoundType? Bound(BoundType type)
         {
