@@ -14006,10 +14006,11 @@ resumed by R4-M86 (2026-10-20).
     order decides them. A selection judges no bound; a comparison judges every bound against the representative and its walk every
     member. The meet does not change call selection: SPEC 10.4 step 2 ignores Origins and 15.6.1 keeps Origin relations out of a
     selection.
-  - A variable with bounds but no representative (no upper bound, no lower bound outliving the others) stays open: in a call a
-    region of the body (SPEC 15.3.6), in a comparison the solve fails at its first such pair of lower bounds, a located
-    `BoundFailure` (rv14u, rv18u; rv17v the call). Such a variable, whose lower bounds only `static` outlives, is never replaced by
-    `static`; the labels of rv14u and rv18u stay unsettled (the Middle's N7).
+  - A variable with bounds but no representative (no upper bound, no lower bound outliving the others) stays open: in a call in an
+    executable body it is a region of the body (SPEC 15.3.6), elsewhere an annotation is needed; in a comparison the solve fails at
+    its first such pair of lower bounds, a located `BoundFailure`. Such a variable, none of whose lower bounds outlives the others,
+    is never replaced by `static`: rv14u and rv18u (conversions) are invalid by SPEC 15.3.6 and 15.6.1, a comparison being judged
+    from premises alone, and rv17v (a call) is valid (the Middle's N7).
   - Removed: the pair skip `PerCallShape(.., any: true)` (BU-215's kept interim, whose removal condition is this unit) and what only
     it reached: `PerCallShape`, `PerCallSignature`, `StaticOnly`, `InputDependentBinder` with `OverInputs`, `PerCallInputs`. No code
     takes an Input Origin of any binder at its own slot for a per-call one any more. Revision 2: the invariant conflict failure
