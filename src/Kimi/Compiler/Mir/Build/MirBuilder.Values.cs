@@ -304,7 +304,8 @@ internal sealed partial class MirBuilder
 
     // SPEC 13.7.1: the value secured first, then the target located, its old value dropped where its Type may need it, and the value placed;
     // a target that is not a Place is a Property's, designated through its parentheses, whose setter (its last call, after any getter)
-    // takes the value, evaluated first.
+    // takes the value, evaluated first. SPEC 14.10.3 (DECISIONS R4-M62): only a value is delivered, so the paths on which the right
+    // side has no value (AssignApart) go around the old value's Drop and the Use: they locate the target and go on after the Use.
     private void Replace(MirPlace destination, BinaryKoto assignment)
     {
         if (HirTables.PlaceOf(assignment.Left).Kind is HirPlaceKind.Unset or HirPlaceKind.Value)
@@ -325,9 +326,21 @@ internal sealed partial class MirBuilder
         // Of the Type it is placed at, or the Never value of a right side of Type Never, which is not placed (Overwrite).
         var source = ReferenceEquals(TypeOf(assignment.Right), BoundType.Never) ? assignment.Right : assignment.Left;
         var value = this.Hold(TypeOf(source), source);
-        this.Assign(value, assignment.Right);
+        var aside = this.AssignApart(value, assignment.Right);
         this.Made(value);
         this.Overwrite(this.Place(assignment.Left), value, assignment);
+        if (aside >= 0)
+        {
+            // SPEC 13.7.1, 14.10.3: a path on which the right side has no value locates the target and neither destroys nor places.
+            var info = this.Info(assignment) with { StatementStart = false };
+            var next = this.body.AddBlock();
+            this.body.Terminate(this.current, MirTerminator.Goto(next, info));
+            this.current = aside;
+            this.Place(assignment.Left);
+            this.body.Terminate(this.current, MirTerminator.Unreachable(info, next));
+            this.current = next;
+        }
+
         this.Unit(destination, assignment);
     }
 

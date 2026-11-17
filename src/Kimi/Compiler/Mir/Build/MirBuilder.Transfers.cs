@@ -7,11 +7,17 @@ namespace Kimi.Compiler.Mir;
 
 // Transfers (SPEC 14.5, 16.2.2): a transfer branches at run time to its target and, for the checks only, to the code after it (CheckTarget,
 // SPEC 14.10.3, plan 5.6.3), its result secured where it is evaluated (Secure); the constructs a transfer may target, opened and closed
-// around their bodies.
+// around their bodies. SPEC 13.7.1, 14.10.3 (DECISIONS R4-M62): only a value is delivered into an overwrite, so a construct whose value
+// an overwrite takes (the assignment's right side, a body's value or a transfer's operand delivered to such a construct, a short-circuit's
+// operand there) joins the ends and deliveries that have no value at a block of its own (Target.Apart), which its consumer takes on
+// (AssignApart, TakeLeft): they leave the scopes through that block's drop tree and go around the overwrite's Drop and Use. Every other
+// construct joins them with its values (a first placement, whose destination no value's construct can touch: MirInit keeps its state).
 internal sealed partial class MirBuilder
 {
     private readonly List<Target> targets = []; // The constructs around the code being built that a transfer may target, innermost last.
     private readonly List<(int Block, SourceInfo Info)> ends = []; // The open constructs' non-value ends, innermost last, which Close ends.
+    private MirPlace? apart; // The Place whose consumer takes its value-less paths apart (AssignApart), which a construct built into it reads (Wanted).
+    private int left = -1; // The block the form built last left its value-less paths at (Target.Apart), which its consumer takes (TakeLeft); else -1.
 
     // The Place of a derived jump's operand (Transfer): a Place its Adjust would acquire (bare: Copied, moved, Reborrowed or by case)
     // designated in place, a local's or a static's, any other operand built; none for a constant.
@@ -32,7 +38,9 @@ internal sealed partial class MirBuilder
     // target its plan row names (a function's return block, built at its first return); for the checks it goes on to the code after it,
     // where those calls continue with their reservations. SPEC 14.10.3: an explicit source counts in unreachable code, so an operand that
     // does not complete leaves an assumed delivery, secured by none, through the drop tree to the target's join (Join), which places the
-    // operand's value as Set places it.
+    // operand's value as Set places it; into a target that takes its value-less paths apart (Target.Wants), a delivery of the Never value
+    // goes on at the target's Apart, and an operand whose form left value-less paths (Splits, AssignApart) delivers them there too,
+    // through the drop tree, and they go on after the transfer as its value paths do.
     private void Transfer(JumpKoto jump)
     {
         var plan = HirTables.PlanOf(jump).Plan;
@@ -64,7 +72,14 @@ internal sealed partial class MirBuilder
 
         var continues = HirTables.Op(jump) == HirOp.Continue;
         MirOperand value = default;
-        if (!continues)
+        var aside = -1; // The block the operand's value-less paths are left at (SPEC 14.10.3), which deliver nothing.
+        if (!continues && operand is not null && this.targets[index].Wants && this.Splits(operand))
+        {
+            var held = this.Hold(HirTables.TypeOf(operand) ?? this.body.TypeOf(this.targets[index].Destination)!, operand);
+            aside = this.AssignApart(held, operand);
+            value = MirOperand.Move(this.Made(held));
+        }
+        else if (!continues)
         {
             value = operand is null ? this.UnitOperand() : this.Operand(operand, this.body.TypeOf(this.targets[index].Destination));
         }
@@ -93,6 +108,11 @@ internal sealed partial class MirBuilder
         }
 
         var (place, join) = target.Delivery(completes: !assumed);
+        if (assumed && target.Wants && IsNeverForm(operand!))
+        {
+            join = this.Aside(index); // A delivery of the Never value places nothing: it goes on apart from the deliveries of a value.
+        }
+
         var mark = target.At.Mark;
         var entry = this.Exit(target.At.Depth, continues ? target.Continue : join);
         var runtime = continues ? -1 : this.body.AddBlock(); // The runtime edge's first block: the abandoned borrows end, the result is placed.
@@ -133,6 +153,12 @@ internal sealed partial class MirBuilder
         var next = this.body.AddBlock();
         this.body.Terminate(this.current, MirTerminator.Goto(entry, info, next));
         this.current = next;
+        if (aside >= 0)
+        {
+            // The operand's value-less paths: an assumed delivery of nothing through the drop tree to the target's Apart, and on after the transfer.
+            this.body.Terminate(aside, MirTerminator.Goto(this.Exit(target.At.Depth, this.Aside(index)), inner, next));
+        }
+
         if (secures && value.Kind == MirOperandKind.Move && this.body.Locals[value.Place.Root] is var secured &&
             MirTypes.MayNeedDrop(secured.Type, this.walked))
         {
@@ -180,8 +206,9 @@ internal sealed partial class MirBuilder
     private int Open(Koto node, MirPlace destination, int next = -1)
     {
         var after = this.body.AddBlock();
+        var wants = !IsNeverForm(node) && this.Wanted(destination);
         this.targets.Add(new(
-            node, destination, after, next, IsNeverForm(node) ? after : -1, new(this.arguments.Count, this.scopes.Count, this.scope, this.ends.Count)));
+            node, destination, after, next, IsNeverForm(node) ? after : -1, new(this.arguments.Count, this.scopes.Count, this.scope, this.ends.Count)) { Wants = wants });
         return after;
     }
 
@@ -214,8 +241,48 @@ internal sealed partial class MirBuilder
 
         this.ends.RemoveRange(target.At.Ends, this.ends.Count - target.At.Ends);
         this.targets.RemoveAt(this.targets.Count - 1);
-        this.current = after;
+        (this.current, this.left) = (after, target.Apart);
         return check;
+    }
+
+    // Whether a Place's consumer takes its value-less paths apart: the Place AssignApart builds into (an overwrite's value, a wanted
+    // short-circuit's left operand or a transfer's operand into a wanting target), or the delivery place of the innermost target
+    // where that wants (a body's value in tail position).
+    private bool Wanted(MirPlace destination)
+        => destination == this.apart || (this.targets.Count > 0 && this.targets[^1].Wants && destination == this.targets[^1].Ending.Place);
+
+    // SPEC 14.10.3, 13.7.1 (DECISIONS R4-M62): a value built into a Place whose consumer takes the value's value-less paths apart, as
+    // Assign builds it: the block the paths on which the value's form has none were left at, -1 for none. The hand-off's one set-up
+    // and read-back: a construct built into the Place wants (Wanted, Open) and leaves those paths at its Apart where it closes (Close).
+    private int AssignApart(MirPlace place, Koto value)
+    {
+        var outer = this.apart;
+        (this.apart, this.left) = (place, -1);
+        this.Assign(place, value);
+        this.apart = outer;
+        return this.TakeLeft();
+    }
+
+    // The block the form built last left its value-less paths at (Close, Logical), which its consumer takes once, right after it: -1
+    // for none.
+    private int TakeLeft()
+    {
+        var aside = this.left;
+        this.left = -1;
+        return aside;
+    }
+
+    // Whether a transfer's operand is a form that delivers its value as it is built (InPlace: no literal, no Place an expansion located),
+    // so its value-less paths can be told from the paths that hold the value (AssignApart); a Never form has no value path at all.
+    private bool Splits(Koto operand)
+        => !IsNeverForm(operand) && InPlace(HirTables.AdjustOf(operand)) && HirTables.Op(operand) != HirOp.Literal && this.Located(operand) is null;
+
+    // The block a target's value-less ends and deliveries go on at, apart from its join, built at the first of them. By index, as
+    // building a cleanup may grow the targets.
+    private int Aside(int index)
+    {
+        ref var target = ref CollectionsMarshal.AsSpan(this.targets)[index];
+        return target.Apart >= 0 ? target.Apart : target.Apart = this.body.AddBlock();
     }
 
     // The innermost target's index where a node is the body its owner is building (Target.Body), else -1: while a body is built, its
@@ -250,6 +317,12 @@ internal sealed partial class MirBuilder
 
         // Whether an edge reaches its join: a delivery, assumed too, or another edge Joins builds.
         internal bool Joined { get; set; }
+
+        // Whether its consumer takes its value-less paths apart (an overwrite's value, a body's value or a transfer's operand delivered to
+        // such a target), and the block they go on at, -1 until one is built (Aside).
+        internal bool Wants { get; init; }
+
+        internal int Apart { get; set; } = -1;
 
         // Its own Destination, which an assumed delivery places into: Destination before a delivery made it a result temp (Delivers).
         internal MirPlace Into { get; } = Destination;

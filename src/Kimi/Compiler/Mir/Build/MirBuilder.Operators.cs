@@ -128,24 +128,69 @@ internal sealed partial class MirBuilder
 
     // SPEC 13.4: `and` and `or` evaluate the right operand only where the left does not decide the result: the left into a bool, then the
     // branch on it to the right operand into the destination or, where the left decides the result (false for `and`, true for `or`), to the
-    // left's value into it, so that each path writes the destination once (a let binding is initialized once).
+    // left's value into it, so that each path writes the destination once (a let binding is initialized once). SPEC 14.10.3: where the
+    // destination's consumer takes its value-less paths apart (Wanted), so does the operation: the paths on which the left has no value
+    // get a test of their own, whose undecided side goes on to the right operand with the paths that hold the left's value (the
+    // operation's value there is the right's) and whose decided side has no value of the operation; those and the right operand's
+    // value-less paths are the operation's, left for its consumer (TakeLeft).
     private void Logical(MirPlace destination, BinaryKoto logical)
     {
+        var wanted = this.Wanted(destination);
         var left = this.Hold(BoundType.Boolean, logical.Left);
-        this.Assign(left, logical.Left);
+        var none = -1; // The left operand's value-less paths (SPEC 14.10.3), which get a test of their own.
+        if (wanted)
+        {
+            none = this.AssignApart(left, logical.Left);
+        }
+        else
+        {
+            this.Assign(left, logical.Left);
+        }
+
         this.Made(left);
         var right = this.body.AddBlock();
-        var decided = this.body.AddBlock();
+        var decided = wanted && IsNeverForm(logical.Left) ? -1 : this.body.AddBlock();
         var join = this.body.AddBlock();
         var and = logical.Akind == KotoKind.And;
-        this.Branch(left, logical.Left, and ? decided : right, and ? right : decided);
-        this.current = decided;
-        this.Use(destination, MirOperand.Copy(left), logical);
-        this.body.Terminate(decided, MirTerminator.Goto(join, this.Info(logical)));
+        if (decided < 0)
+        {
+            none = this.current; // The left's whole continuation has no value.
+        }
+        else
+        {
+            this.Branch(left, logical.Left, and ? decided : right, and ? right : decided);
+            this.current = decided;
+            this.Use(destination, MirOperand.Copy(left), logical);
+            this.body.Terminate(decided, MirTerminator.Goto(join, this.Info(logical)));
+        }
+
+        var aside = -1; // The operation's value-less paths, which its consumer takes on.
+        if (none >= 0)
+        {
+            // SPEC 13.4, 14.10.3: a left without a value is tested on its own paths; the side it would decide gives the operation none.
+            (this.current, aside) = (none, this.body.AddBlock());
+            this.Branch(left, logical.Left, and ? aside : right, and ? right : aside);
+        }
+
         this.current = right;
         this.Assign(destination, logical.Right);
-        this.Join(join, logical.Right);
-        this.current = join;
+        var rest = this.TakeLeft(); // The right operand's value-less paths.
+        if (wanted && IsNeverForm(logical.Right))
+        {
+            rest = this.body.AddBlock(); // SPEC 14.10.3: a right operand without a value gives the operation none on that path.
+            this.body.Terminate(this.current, MirTerminator.Unreachable(this.Info(logical.Right), rest));
+        }
+        else
+        {
+            this.Join(join, logical.Right);
+        }
+
+        if (rest >= 0 && aside >= 0)
+        {
+            this.body.Terminate(rest, MirTerminator.Goto(aside, this.Info(logical.Right)));
+        }
+
+        (this.current, this.left) = (join, aside >= 0 ? aside : rest);
     }
 
     // SPEC 13.5.4, 13.6.1, 5.4: a numeric, wrapping, bit, pointer or object conversion, a Cast of its operand, Proven where it checks

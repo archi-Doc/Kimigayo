@@ -78,6 +78,9 @@ public sealed class MirInitTest
         "struct B\n    public var t: (i32, i32)\n    public init(t: (i32, i32)) => self.t = t\n" +
         "public func main() -> ()\n    let y: i32 = 5\n    let c: bool = y > 2\n";
 
+    // The declarations before the bodies of AnOverwriteIsReachedOnlyByThePathsThatHoldItsValue.
+    private const string Overwrites = "func eat(a: Array<i32>) -> Never => $abort(\"no\")\nfunc fail() -> Never => $abort(\"no\")\nfunc g(n: i32) -> i32 => n\nfunc idx(a: ref/Array<i32>) -> usize => 0\nfunc keepA(a: Array<i32>) -> Array<i32> => a@move\nfunc mkA(n: i32) -> Array<i32> => [n]\nfunc mkO(n: i32) -> Array<i32>? => .Some([n])\nfunc mkR(c: bool) -> Result<Array<i32>, i32>\n    if c => return .Ok([1])\n    return .Err(1)\nfunc mkR2(a: Array<i32>, c: bool) -> Result<Array<i32>, i32>\n    if c => return .Ok(a@move)\n    return .Err(1)\nfunc peek(a: ref/Array<i32>) -> () => ()\nfunc pos(a: Array<i32>) -> usize => 0\nfunc takeA(a: Array<i32>) -> () => ()\nfunc takeO(o: Array<i32>?) -> () => ()\nfunc use(n: i32) -> () => ()\nfunc useB(b: bool) -> () => ()\nfunc pos2(n: i32) -> usize => 0\nfunc takeTA(t: (i32, Array<i32>)) -> () => ()\nfunc use64(n: i64) -> () => ()\nfunc idB(b: bool) -> bool => b\nfunc peekI(r: ref/i32) -> () => ()\npublic func main() -> ()\n    let y: i32 = 5\n    let c: bool = y > 2\n";
+
     // SPEC 15.1.1: a use needs its Place initialized on every incoming runtime path.
     [Fact]
     public void AUseNeedsInitializationOnEveryPath()
@@ -1100,6 +1103,135 @@ public sealed class MirInitTest
     [InlineData("_ = 0\nfunc put(b: uniq/B, y: i32, c: bool) -> ()\n    return\n    b@follow.t = (y, if c => y else => fail())", "UninitializedPlace_Kd b@follow.t = (y, if c => y 1")] // mself
     public void AnIncompleteValueWrittenWithoutAMovePathIsReportedAtTheWrite(string body, string expected)
         => Assert.Equal(expected.Length == 0 ? [] : expected.Split(" | "), Problems(Writes + "    " + body + "\n"));
+
+    // SPEC 13.7.1, 14.10.3, 15.1 (DECISIONS R4-M62, per value and so per path; the owner's O-336 (a), O-371 (a)): only a value is
+    // delivered into an overwrite, so a path on which the right side has no value goes around the overwrite and the target keeps its
+    // own state there: Initialized where it was (valid), Moved, uninitialized or partly Moved where it was (its record at the use
+    // after), while the paths that hold the value Move, destroy and re-place the target as written
+    // (`a = if c => keepA(a@move) else => fail()` is valid). The forms that deliver a value as it is: a group, a construct's arm or
+    // body value (if, match, do, loop, try), a transfer's operand (a label exit, a loop exit, a yield: its assumed continuation
+    // follows a value-less operand too, and the cleanups of a value-less delivery are checked on their own path), and a
+    // short-circuit's left and right operands (a left without a value is tested on its own paths, so the right operand is checked
+    // there too); any other operation makes a value of a value-less operand. A first placement keeps its destination's state where its
+    // temp holds nothing, whatever the destination: a var initialized or bound through a temp is uninitialized on the value-less path
+    // (vi, vb, g1, vm, rt3), as a let is. Targets: an Array, a Copy value, a Tuple part, a let, a function value; an access path that
+    // builds code is located on both kinds of path (tg). Run-time twins (no Never form before) stay as written. Rows by table and name
+    // in the trailing comments (the design's r2-r4, the design reviews' q1-q3 and x1, x3, x4), each labelled from SPEC before any
+    // run. Fail-before (the redesign's step 5, which kept a temp's or a let's state only): most invalid rows were accepted (a var
+    // through a temp: vi1, vi2, vb1, g1a, g1e, rt3; a target left Moved or uninitialized on a value-less path: la4, la6, la7, ln1i,
+    // lb1, ns2, pt3, yd4, yd5, nd2, o1i-o12i, nw1i), and lo3, lo4, ex5, o2i, o15i, lp5 lacked their record at the code after.
+    [Theory]
+    [InlineData("var f: (i32) -> i32 = g\n    return\n    f = if c => g else => fail()\n    use(f(1))", "")] // q1 ad1
+    [InlineData("var f: (i32) -> i32\n    return\n    f = if c => g else => fail()\n    use(f(1))", "UninitializedPlace_Kd f 1")] // q1 ad1i
+    [InlineData("var b: bool = true\n    return\n    b = (if c => true else => fail()) and c\n    useB(b)", "")] // q1 la1
+    [InlineData("var b: bool = true\n    b = (if c => true else => fail()) and c\n    useB(b)", "")] // q1 la1r
+    [InlineData("var b: bool = true\n    return\n    b = fail() and c\n    useB(b)", "")] // q1 la2
+    [InlineData("var b: bool = true\n    return\n    b = (c and fail()) and c\n    useB(b)", "")] // q1 la3
+    [InlineData("var b: bool\n    return\n    b = (if c => true else => fail()) and fail()\n    useB(b)", "UninitializedPlace_Kd useB(b) 1")] // q1 la4
+    [InlineData("var b: bool = true\n    return\n    b = (label w: do\n        exit to w ((if c => true else => fail()) and c)\n    )\n    useB(b)", "")] // q1 la5
+    [InlineData("var b: bool = true\n    return\n    b = c and (if y > 3 => fail() else => true)\n    useB(b)", "")] // q1 lc1
+    [InlineData("var b: bool = true\n    return\n    b = (if c => false else => fail()) or c\n    useB(b)", "")] // q1 lr1
+    [InlineData("let x = tr(true)\nfunc tr(c: bool) -> Result<i32, i32>\n    var a: Array<i32> = [1]\n    return .Ok(0)\n    a = try mkR(c)\n    takeA(a@move)\n    return .Ok(1)", "")] // q1 mt3
+    [InlineData("let x = tr(true)\nfunc tr(c: bool) -> Result<i32, i32>\n    var a: Array<i32> = [1]\n    return .Ok(0)\n    a = try mkR2(a@move, c)\n    takeA(a@move)\n    return .Ok(1)", "MovedPlace_Kd a 1")] // q1 mt3i
+    [InlineData("var a: Array<i32> = [y]\n    return\n    a = (label w: do\n        exit to w (label v: do\n            exit to v (if c => keepA(a@move) else => fail())\n        )\n    )\n    takeA(a@move)", "")] // q1 nx1
+    [InlineData("var a: Array<i32> = [y]\n    return\n    a = (label w: do\n        exit to w (label v: do\n            exit to v (if c => [y] else => eat(a@move))\n        )\n    )\n    takeA(a@move)", "MovedPlace_Kd a 1")] // q1 nx1i
+    [InlineData("var q: [2 of i32] = [1, 2]\n    return\n    q[(if c => 0 else => 1)] = if c => 3 else => fail()\n    use(q[0])", "")] // q1 tg3
+    [InlineData("var q: [2 of i32] = [1, 2]\n    var a: Array<i32> = [y]\n    return\n    q[(if c => pos(a@move) else => 1)] = if c => 3 else => fail()\n    takeA(a@move)", "MovedPlace_Kd a 1")] // q1 tg4
+    [InlineData("var q: [2 of i32] = [1, 2]\n    var a: Array<i32> = [y]\n    takeA(a@move)\n    return\n    q[(if c => pos(a@move) else => 1)] = if c => 3 else => fail()", "MovedPlace_Kd a 1")] // q1 tg5
+    [InlineData("var q: [2 of i32] = [1, 2]\n    return\n    q[idx(mkA(y)@ref)] = if c => 3 else => fail()\n    use(q[0])", "")] // q1 tg6
+    [InlineData("var q: [2 of i32] = [1, 2]\n    q[idx(mkA(y)@ref)] = if c => 3 else => fail()\n    use(q[0])", "")] // q1 tg6r
+    [InlineData("var a: Array<i32> = [y]\n    return\n    a = (label w: do\n        unsafe\n            defer => peek(a@ref)\n            exit to w (if c => [y] else => fail())\n    )\n    takeA(a@move)", "")] // q1 us2
+    [InlineData("var a: Array<i32> = [y]\n    return\n    a = (label w: do\n        unsafe\n            defer => peek(a@ref)\n            exit to w (if c => [y] else => eat(a@move))\n    )\n    takeA(a@move)", "MovedPlace_Kd a@ref 1 | MovedPlace_Kd a 1")] // q1 us2i
+    [InlineData("return\n    let r: Array<i32> = (match (if c => [y] else => fail())\n        var v => [y]\n    )\n    takeA(r@move)", "")] // q1 vb1v
+    [InlineData("return\n    let r: Array<i32> = (match (if c => [y] else => fail())\n        let v => keepA(v@move)\n    )\n    takeA(r@move)", "UninitializedPlace_Kd v 1")] // q1 vb2
+    [InlineData("return\n    var a: Array<i32> = (label w: do\n        exit to w (if c => [y] else => fail())\n    )\n    a = [y]\n    takeA(a@move)", "")] // q1 vi1v
+    [InlineData("return\n    var b: bool = (if c => true else => fail()) and c\n    b = true\n    useB(b)", "")] // q1 vi2v
+    [InlineData("return\n    let b: bool = (if c => true else => fail()) and c\n    useB(b)", "UninitializedPlace_Kd useB(b) 1")] // q1 vi3
+    [InlineData("var o: Array<i32>? = .Some([y])\n    var a: Array<i32> = [y]\n    return\n    a = (match o\n        .Some(let v) => keepA(a@move)\n        .None => fail()\n    )\n    takeO(o@move)\n    takeA(a@move)", "")] // q2 mt1b
+    [InlineData("var o: Array<i32>? = .Some([y])\n    var a: Array<i32> = [y]\n    return\n    a = (match o\n        .Some(let v) => keepA(a@move)\n        .None => eat(a@move)\n    )\n    takeO(o@move)\n    takeA(a@move)", "MovedPlace_Kd a 1")] // q2 mt1bi
+    [InlineData("let r: Array<i32> = (match (if c => [y] else => fail())\n        var v => keepA(v@move)\n    )\n    takeA(r@move)", "")] // q2 vb1r
+    [InlineData("var a: Array<i32> = (label w: do\n        exit to w (if c => [y] else => fail())\n    )\n    takeA(a@move)", "")] // q2 vi1r
+    [InlineData("var b: bool = (if c => true else => fail()) and c\n    useB(b)", "")] // q2 vi2r
+    [InlineData("var x: i32 = (label w: do\n        exit to w (if c => y else => fail())\n    )\n    use(x)", "")] // q2 vi4r
+    [InlineData("var b: bool = true\n    useB(b@move)\n    return\n    b = (if c => true else => fail()) and c\n    useB(b)", "MovedPlace_Kd useB(b) 1")] // q3 la6
+    [InlineData("var b: bool\n    return\n    b = (if c => true else => fail()) and c\n    useB(b)", "UninitializedPlace_Kd useB(b) 1")] // q3 la7
+    [InlineData("var x: i32 = 1\n    return\n    x = (label w: do\n        exit to w (if c => x@move else => fail())\n    )\n    use(x)", "")] // r2 cp2
+    [InlineData("var x: i32 = 1\n    return\n    x = (label w: do\n        exit to w (if c => x@move else => fail())\n        use(x)\n        exit to w 2\n    )\n    use(x)", "MovedPlace_Kd use(x) 1")] // r2 cp3
+    [InlineData("var a: Array<i32> = [y]\n    return\n    a = (label w: do\n        exit to w (if c => [y] else => fail())\n        peek(a@ref)\n        exit to w [y]\n    )\n    takeA(a@move)", "")] // r2 ex4v
+    [InlineData("var a: Array<i32> = [y]\n    return\n    a = (label w: do\n        exit to w (if c => [y] else => eat(a@move))\n        peek(a@ref)\n        exit to w [y]\n    )\n    takeA(a@move)", "MovedPlace_Kd a@ref 1 | MovedPlace_Kd a 1")] // r2 ex5
+    [InlineData("var a: Array<i32> = [y]\n    return\n    a = (label w: do\n        if c => exit to w keepA(a@move)\n        exit to w eat(a@move)\n    )\n    takeA(a@move)", "MovedPlace_Kd a 1")] // r2 lb1
+    [InlineData("var a: Array<i32> = [y]\n    return\n    a = (label w: do\n        if c => exit to w keepA(a@move)\n        exit to w fail()\n    )\n    takeA(a@move)", "")] // r2 lb1v
+    [InlineData("var a: Array<i32> = [y]\n    return\n    a = loop\n        exit (if c => keepA(a@move) else => fail())\n    takeA(a@move)", "MovedPlace_Kd a 1 | MovedPlace_Kd a 1")] // r2 lo3
+    [InlineData("var a: Array<i32> = [y]\n    return\n    a = loop\n        exit (if c => [y] else => eat(a@move))\n    takeA(a@move)", "MovedPlace_Kd a 1 | MovedPlace_Kd a 1")] // r2 lo4
+    [InlineData("var a: Array<i32> = [y]\n    return\n    a = if y > 3 => (if c => keepA(a@move) else => fail()) else => [y]\n    takeA(a@move)", "")] // r2 ns1
+    [InlineData("var a: Array<i32> = [y]\n    return\n    a = if y > 3 => (if c => [y] else => eat(a@move)) else => [y]\n    takeA(a@move)", "MovedPlace_Kd a 1")] // r2 ns2
+    [InlineData("var a: Array<i32> = [y]\n    return\n    a = (match y\n        0 => (if c => keepA(a@move) else => fail())\n        _ => keepA(a@move)\n    )\n    takeA(a@move)", "")] // r2 ns3
+    [InlineData("var p: (i32, Array<i32>) = (y, [y])\n    return\n    p.1 = (label w: do\n        exit to w (if c => keepA(p.1@move) else => fail())\n    )\n    takeTA(p@move)", "")] // r2 pt2
+    [InlineData("var p: (i32, Array<i32>) = (y, [y])\n    return\n    p.1 = (label w: do\n        exit to w (if c => [y] else => eat(p.1@move))\n    )\n    takeTA(p@move)", "MovedPlace_Kd p 1")] // r2 pt3
+    [InlineData("var a: Array<i32> = [y]\n    a = (label w: do\n        exit to w (if c => keepA(a@move) else => fail())\n    )\n    takeA(a@move)", "")] // r2 rt1
+    [InlineData("var a: Array<i32> = [y]\n    a = (label w: do\n        exit to w (if c => keepA(a@move) else => fail())\n        peek(a@ref)\n        exit to w [y]\n    )\n    takeA(a@move)", "MovedPlace_Kd a@ref 1")] // r2 rt2
+    [InlineData("var a: Array<i32> = [y]\n    var q: [2 of i32] = [1, 2]\n    return\n    q[pos(a@move)] = if c => 3 else => fail()\n    takeA(a@move)", "MovedPlace_Kd a 1")] // r2 tg1
+    [InlineData("var a: Array<i32> = [y]\n    var q: [2 of i32] = [1, 2]\n    return\n    q[pos2(y)] = if c => 3 else => fail()\n    takeA(a@move)\n    use(q[0])", "")] // r2 tg1v
+    [InlineData("var a: Array<i32> = [y]\n    return\n    a = if y > 3\n        defer => peek(a@ref)\n        yield (if c => keepA(a@move) else => fail())\n    else => [y]\n    takeA(a@move)", "MovedPlace_Kd a@ref 1")] // r2 yd3
+    [InlineData("var a: Array<i32> = [y]\n    return\n    a = if y > 3\n        defer => use(y)\n        yield (if c => keepA(a@move) else => fail())\n    else => [y]\n    takeA(a@move)", "")] // r2 yd3v
+    [InlineData("var a: Array<i32> = [y]\n    return\n    a = if y > 3\n        defer => use(y)\n        yield (if c => [y] else => eat(a@move))\n    else => [y]\n    takeA(a@move)", "MovedPlace_Kd a 1")] // r2 yd4
+    [InlineData("var a: Array<i32> = [y]\n    return\n    a = if y > 3\n        defer => takeA(a@move)\n        yield (if c => [y] else => fail())\n    else => [y]\n    takeA(a@move)", "MovedPlace_Kd a 1")] // r2 yd5
+    [InlineData("var a: Array<i32> = [y]\n    return\n    a = if y > 3\n        defer => takeA(a@move)\n        yield (if c => [y] else => [y, y])\n    else => [y]\n    takeA(a@move)", "")] // r2 yd5v
+    [InlineData("return\n    let b: Array<i32> = (label w: do\n        defer => use(y)\n        if c => exit to w [y]\n        exit to w fail()\n    )\n    takeA(b@move)", "UninitializedPlace_Kd b 1")] // r3 lt2
+    [InlineData("return\n    let b: Array<i32> = (label w: do\n        defer => use(y)\n        if c => exit to w [y]\n        exit to w [y, y]\n    )\n    takeA(b@move)", "")] // r3 lt2v
+    [InlineData("var a: Array<i32> = [y]\n    var b: Array<i32> = [y]\n    return\n    a = (label w: do\n        defer => b = (if c => keepA(b@move) else => fail())\n        if c => exit to w keepA(a@move)\n        exit to w fail()\n    )\n    takeA(a@move)\n    takeA(b@move)", "")] // r3 nd1
+    [InlineData("var a: Array<i32> = [y]\n    var b: Array<i32> = [y]\n    return\n    a = (label w: do\n        defer => b = (if c => [y] else => eat(b@move))\n        if c => exit to w keepA(a@move)\n        exit to w fail()\n    )\n    takeA(a@move)\n    takeA(b@move)", "MovedPlace_Kd b 1")] // r3 nd2
+    [InlineData("var a: Array<i32> = [y]\n    return\n    a = (label w: do\n        exit to w (if c => fail() else => fail())\n    )\n    takeA(a@move)", "")] // r3 nv1
+    [InlineData("var a: Array<i32> = [y]\n    return\n    a = (label w: do\n        exit to w (if c => eat(a@move) else => fail())\n    )\n    takeA(a@move)", "MovedPlace_Kd a 1")] // r3 nv2
+    [InlineData("var a: Array<i32> = [y]\n    var q: [2 of i32] = [1, 2]\n    takeA(a@move)\n    return\n    q[pos(a@move)] = if c => 3 else => fail()", "MovedPlace_Kd a 1")] // r3 tg2
+    [InlineData("var b: bool = true\n    return\n    b = ((if c => true else => fail()) or c) and c\n    useB(b)", "")] // r4 ln1
+    [InlineData("var b: bool = true\n    useB(b@move)\n    return\n    b = ((if c => true else => fail()) or c) and c\n    useB(b)", "MovedPlace_Kd useB(b) 1")] // r4 ln1i
+    [InlineData("var a: Array<i32> = [y]\n    var b: bool = true\n    return\n    b = fail() and (if c => true else => eat(a@move))\n    takeA(a@move)", "MovedPlace_Kd a 1")] // r4 ln2
+    [InlineData("var x: i32 = 1\n    return\n    x = if (if c => true else => fail()) and c => 2 else => 3\n    use(x)", "")] // r4 ln3
+    [InlineData("return\n    var a: Array<i32> = (match y\n        0 => fail()\n        _ => [y]\n    )\n    takeA(a@move)", "UninitializedPlace_Kd a 1")] // r4 vm1
+    [InlineData("return\n    var a: Array<i32> = (match y\n        0 => fail()\n        _ => [y]\n    )\n    a = [y]\n    takeA(a@move)", "")] // r4 vm1v
+    [InlineData("takeA(h(true))\nfunc h(c: bool) -> Array<i32>\n    return [1]\n    return (label w: do\n        exit to w (if c => [1] else => fail())\n    )", "")] // r4 vr1
+    [InlineData("return\n    var a: Array<i32> = loop\n        exit (if c => [y] else => fail())\n    a = [y]\n    takeA(a@move)", "")] // x1 g1av
+    [InlineData("return\n    var b: bool = c and (if y > 3 => true else => fail())\n    useB(b)", "UninitializedPlace_Kd useB(b) 1")] // x1 g1b
+    [InlineData("return\n    var b: bool = c and (if y > 3 => true else => fail())\n    b = true\n    useB(b)", "")] // x1 g1bv
+    [InlineData("useB(h(c))\nfunc h(c: bool) -> bool\n    return true\n    (if c => true else => fail()) and c", "")] // x1 g1d
+    [InlineData("return\n    var a: Array<i32> = if c\n        yield (if y > 3 => [y] else => fail())\n    else => [y]\n    a = [y]\n    takeA(a@move)", "")] // x1 g1ev
+    [InlineData("var x: i32 = 1\n    return\n    x = (label w: do\n        if c => exit to w 2\n        exit to w fail()\n    )\n    use(x)", "")] // x1 o1
+    [InlineData("var b: bool = true\n    return\n    b = (((if c => true else => fail()) and c) or c) and c\n    useB(b)", "")] // x1 o10
+    [InlineData("var b: bool\n    return\n    b = (((if c => true else => fail()) and c) or c) and c\n    useB(b)", "UninitializedPlace_Kd useB(b) 1")] // x1 o10i
+    [InlineData("var b: bool = true\n    return\n    b = loop\n        exit ((if c => true else => fail()) and c)\n    useB(b)", "")] // x1 o11
+    [InlineData("var b: bool\n    return\n    b = loop\n        exit ((if c => true else => fail()) and c)\n    useB(b)", "UninitializedPlace_Kd useB(b) 1")] // x1 o11i
+    [InlineData("var a: Array<i32> = [y]\n    return\n    a = (match y\n        0 if c => fail()\n        _ => keepA(a@move)\n    )\n    takeA(a@move)", "")] // x1 o12
+    [InlineData("var a: Array<i32> = [y]\n    return\n    a = (match y\n        0 if c => eat(a@move)\n        _ => keepA(a@move)\n    )\n    takeA(a@move)", "MovedPlace_Kd a 1")] // x1 o12i
+    [InlineData("var b: bool = true\n    return\n    b = (label w: do\n        let t = (if c => true else => fail()) and c\n        exit to w t\n    )\n    useB(b)", "UninitializedPlace_Kd t 1")] // x1 o13i
+    [InlineData("var p: (bool, i32) = (true, 1)\n    return\n    p.0 = (if c => true else => fail()) and c\n    useB(p.0)", "")] // x1 o14
+    [InlineData("var x: i32 = 1\n    return\n    x = (label w: do\n        let t: i32 = (if c => exit to w (if y > 3 => 2 else => fail()) else => 3)\n        exit to w t\n    )\n    use(x)", "UninitializedPlace_Kd t 1")] // x1 o15
+    [InlineData("var x: i32\n    return\n    x = (label w: do\n        let t: i32 = (if c => exit to w (if y > 3 => 2 else => fail()) else => 3)\n        exit to w t\n    )\n    use(x)", "UninitializedPlace_Kd t 1 | UninitializedPlace_Kd use(x) 1")] // x1 o15i
+    [InlineData("var x: i32\n    return\n    x = (label w: do\n        if c => exit to w 2\n        exit to w fail()\n    )\n    use(x)", "UninitializedPlace_Kd use(x) 1")] // x1 o1i
+    [InlineData("var a: Array<i32> = [y]\n    return\n    a = loop\n        if c => exit keepA(a@move)\n        exit fail()\n    takeA(a@move)", "")] // x1 o2
+    [InlineData("var a: Array<i32> = [y]\n    return\n    a = loop\n        if c => exit keepA(a@move)\n        exit eat(a@move)\n    takeA(a@move)", "MovedPlace_Kd a 1 | MovedPlace_Kd a 1 | MovedPlace_Kd a 1")] // x1 o2i
+    [InlineData("var b: bool = true\n    return\n    b = (fail() or c)\n    useB(b)", "")] // x1 o3
+    [InlineData("var b: bool\n    return\n    b = (fail() or c)\n    useB(b)", "UninitializedPlace_Kd useB(b) 1")] // x1 o3i
+    [InlineData("var b: bool = true\n    return\n    b = if y > 3 => ((if c => true else => fail()) and c) else => false\n    useB(b)", "")] // x1 o4
+    [InlineData("var b: bool\n    return\n    b = if y > 3 => ((if c => true else => fail()) and c) else => false\n    useB(b)", "UninitializedPlace_Kd useB(b) 1")] // x1 o4i
+    [InlineData("var b: bool = true\n    return\n    b = c and ((if y > 3 => true else => fail()) or c)\n    useB(b)", "")] // x1 o5
+    [InlineData("var b: bool\n    return\n    b = c and ((if y > 3 => true else => fail()) or c)\n    useB(b)", "UninitializedPlace_Kd useB(b) 1")] // x1 o5i
+    [InlineData("var b: bool = true\n    return\n    b = idB((if c => true else => fail()) and c)\n    useB(b)", "")] // x1 o6
+    [InlineData("var b: bool = true\n    return\n    b = not ((if c => true else => fail()) and c)\n    useB(b)", "")] // x1 o7
+    [InlineData("var a: Array<i32> = [y]\n    var b: bool = true\n    return\n    b = (if c => true else => fail()) and (if y > 3 => true else => eat(a@move))\n    takeA(a@move)", "MovedPlace_Kd a 1")] // x1 o8
+    [InlineData("var a: Array<i32> = [y]\n    var b: bool = true\n    return\n    b = (if c => true else => fail()) and (if y > 3 => true else => eat(a@move))\n    a = [y]\n    takeA(a@move)", "")] // x1 o8v
+    [InlineData("var b: bool = true\n    return\n    b = (label w: do\n        if c => exit to w true\n        exit to w fail()\n    ) and c\n    useB(b)", "")] // x1 o9
+    [InlineData("var b: bool\n    return\n    b = (label w: do\n        if c => exit to w true\n        exit to w fail()\n    ) and c\n    useB(b)", "UninitializedPlace_Kd useB(b) 1")] // x1 o9i
+    [InlineData("var x: i32 = 1\n    return\n    x += (if c => 1 else => fail())\n    use(x)", "")] // x3 ca1
+    [InlineData("var a: Array<i32> = [y]\n    return\n    a = (label w: do\n        loop\n            exit to w (if c => keepA(a@move) else => fail())\n    )\n    takeA(a@move)", "MovedPlace_Kd a 1 | MovedPlace_Kd a 1")] // x3 lp5
+    [InlineData("let x: i32\n    return\n    x = if c => 1 else => fail()\n    use(x)", "UninitializedPlace_Kd use(x) 1")] // x3 lt1
+    [InlineData("let x: i32 = 1\n    return\n    x = if c => 2 else => fail()\n    use(x)", "ReassignedLet_Kd x = if c => 2 1")] // x3 lt2
+    [InlineData("var a: Array<i32> = [y]\n    var b: Array<i32> = [y]\n    return\n    a = (label w: do\n        b = (label v: do\n            if c => exit to w (if y > 3 => keepA(a@move) else => fail())\n            exit to v [y]\n        )\n        exit to w [y]\n    )\n    takeA(a@move)\n    takeA(b@move)", "")] // x3 nw1
+    [InlineData("var a: Array<i32> = [y]\n    var b: Array<i32> = [y]\n    return\n    a = (label w: do\n        b = (label v: do\n            if c => exit to w (if y > 3 => keepA(a@move) else => eat(a@move))\n            exit to v [y]\n        )\n        exit to w [y]\n    )\n    takeA(a@move)\n    takeA(b@move)", "MovedPlace_Kd a 1")] // x3 nw1i
+    [InlineData("return\n    var n: i32 = 0\n    loop\n        var t: Array<i32> = (label w: do\n            defer => use(y)\n            if c => exit to w (if y > 3 => [y] else => fail())\n            exit to w [y]\n        )\n        t = [y]\n        takeA(t@move)\n        n += 1\n        if n > 2 => exit", "")] // x4 rt3v
+    [InlineData("var a: Array<i32> = [y]\n    return\n    a = (match (if c => [y] else => fail())\n        var v => [y]\n    )\n    takeA(a@move)", "")] // x4 vb3v
+    public void AnOverwriteIsReachedOnlyByThePathsThatHoldItsValue(string body, string expected)
+        => Assert.Equal(expected.Length == 0 ? [] : expected.Split(" | "), Problems(Overwrites + "    " + body + "\n"));
 
     // Plan 5.6.1, SPEC 13.5.5: a PairLayer is the Place itself in the owner case and a Deref in a reference case, so writing through an
     // unset pair layer is a problem in the uniq view only; a body whose accesses no view decides is analyzed once, for every view.
