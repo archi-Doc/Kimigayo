@@ -171,7 +171,11 @@ public sealed partial class Binding
     // reads the stamp of the part the row was found in (Keepers: RequirementCall); a keyed collection whose values index a per-pass list
     // keeps that list in its own part. An in-pass read of a list another pass also fills reads the pass's view: the running part, then
     // the layer's when the running part is not the layer's (R1.1's list order), which the driver hands over with the part
-    // (selectableEffectClauses), so no pass reads another pass's part of the previous Bind. Counts is the pass's contribution to the Bind's Result (ComposeResult), not
+    // (selectableEffectClauses), so no pass reads another pass's part of the previous Bind. Two forms of access, by meaning: a composed
+    // list and a collection found by the find are handed over as the fields their steps write (EnterPass); a per-pass node-keyed table
+    // (a member the "Node-keyed table members in Binding" ratchet counts: PatternNodes and CandidateScopes, with their previous-run
+    // lists) is declared here once and read through the running pass's part (this.pass.Part), so a member that ratchet counts never
+    // returns to Binding (DECISIONS BU-220: node-keyed tables leave Binding batch by batch). Counts is the pass's contribution to the Bind's Result (ComposeResult), not
     // a tally of the part's nodes, which only the views count: from S1-r1b a program pass's own nodes plus each foreign node's final
     // state less its earlier one.
     internal sealed class PassPart(int nodes)

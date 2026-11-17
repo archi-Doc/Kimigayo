@@ -455,6 +455,8 @@ public sealed partial class Binding
 
             (container.BoundSymbol!.Adt ??= new()).SetCases(this.storedCases);
         }
+
+        this.storedCases.Clear(); // The step's scratch is empty at its end (PLAN G949 S1-e's rule): the last container's cases are no fact.
     }
 
     private void PrepareStorage()
@@ -548,6 +550,7 @@ public sealed partial class Binding
             shape.Version = this.storageVersion;
         }
 
+        this.storedFields.Clear(); // The step's scratch is empty at its end (PLAN G949 S1-e's rule).
         this.ValidateEnumProjections();
     }
 

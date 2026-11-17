@@ -808,7 +808,7 @@ public sealed partial class Binding
     }
 
     /// <summary>The `matchPlans` family's one accessor (DECISIONS BU-220): a kept family, the plan object a match keeps across rebinds (each
-    /// pass resets it, ResetMatches, and a match the pass did not index returns it to the pool, PruneMatchPlans), in the match's module's
+    /// pass resets it, ResetMatches, and a match the pass did not index drops it, PruneMatchPlans), in the match's module's
     /// NodeColumns at its SyntaxId. Its members keep the names its readers use.</summary>
     private readonly struct MatchPlanRows(Binding binding)
     {
