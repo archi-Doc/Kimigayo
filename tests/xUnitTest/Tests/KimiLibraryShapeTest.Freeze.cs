@@ -53,6 +53,13 @@ public partial class KimiLibraryShapeTest
         ["NodeColumns.ShapeContractHeads"] = "never written: the library declares no shape contract (TheLibraryDeclaresNoShapeContract)",
     };
 
+    // w1's counters: an instance's Version (n9), the run whose substitution formed a memo row (Binding.instances), its currency, not its
+    // content, printed as #.
+    private static readonly HashSet<string> MemoStamps = ["InstanceStorage.Version"];
+
+    // The empty program's layer with w1's counters (NoLaterStepWritesTheLibraryLayer).
+    private static readonly Lazy<string[]> EmptyProgramGuardedLayer = new(() => LibraryLayer.Dump(Bound(string.Empty), MemoStamps));
+
     // The empty program's L (EveryLibraryTypeIsInTheLibrarysPrefix).
     private static readonly Lazy<int> EmptyProgramTypeCount = new(() => Bound(string.Empty).Library.Layer.TypeCount);
 
@@ -299,6 +306,20 @@ public partial class KimiLibraryShapeTest
         }
     }
 
+    // w1 (the write guard; design R1.4, c2's new rows; G949 ruling 199): the library layer's dump after the empty program's first Bind is
+    // the dump after each later step of a compilation of each of c2's programs: Analyze, a second Bind, a Provisional Bind and an edit then
+    // a Bind (the first Bind's is TheLibraryLayerIsIndependentOfTheProgram's), each store by its disposition: a fact equal, a memo a
+    // superset with every earlier row unchanged (MemoStamps), an epoch or program store not compared. Before S1-1 every run's library
+    // pass rewrote the layer; before w1 (i) Analyze formed the effect bounds of the library's `#Lang` marker Contracts (Copy's EffectState
+    // 0 -> 2), and before ruling 199's dispositions the rows MIR's reads add to Binding's memos and scratch read as facts.
+    [Theory]
+    [MemberData(nameof(ReferencePrograms))]
+    public void NoLaterStepWritesTheLibraryLayer(string program) => SameLayerAfterEachStep(program);
+
+    [Theory(Explicit = true)] // Its length (PLAN G949 S1-0b): run with the library-layer corpus row.
+    [MemberData(nameof(LayerCorpus))]
+    public void NoLaterStepWritesTheLibraryLayerOfTheCorpus(string program) => SameLayerAfterEachStep(program);
+
     // e3 (O15; s11-design E3 and 6.3): the library's bound Contract references are the layer part's, complete when the freeze stamps the
     // library: every entry's State 2 with its effect bounds built (EffectState 2), and every reference an entry's Contract holds (its
     // ancestors, its requirements' and associated Types' declaring Contracts) a declaration's own symbol or an entry of the part. After
@@ -428,6 +449,23 @@ public partial class KimiLibraryShapeTest
             .SelectMany(x => c.Binding.Semantics.Conformances(x) ?? []).SelectMany(static x => x.Paths).ToArray();
         Assert.NotEmpty(paths);
         Assert.Empty(paths.Where(static x => x.InferenceConsumers is { Count: not 0 }).Select(static x => $"{x.Type.Name} is {x.Contract.Name}"));
+    }
+
+    // w1's comparison after each later step.
+    private static void SameLayerAfterEachStep(string program)
+    {
+        var c = Bound(program);
+        c.Analyze();
+        Same("Analyze");
+        c.Bind();
+        Same("a second Bind");
+        c.Binding.Bind(BindingMode.Provisional);
+        Same("a Provisional Bind");
+        c.NoteSyntaxEdit(c.Kotonoha.RootKoto);
+        c.Bind();
+        Same("an edit then a Bind");
+
+        void Same(string step) => SameLayer($"{program} after {step}", EmptyProgramGuardedLayer.Value, LibraryLayer.Dump(c, MemoStamps), c.Library.Layer.TypeCount);
     }
 
     // f1's findings: each selected field off Frozen, by its declaring Type and name, with the first holder and the count.

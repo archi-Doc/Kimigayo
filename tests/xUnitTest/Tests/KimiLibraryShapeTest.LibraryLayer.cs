@@ -358,6 +358,20 @@ public partial class KimiLibraryShapeTest
             ["Binding.pendingAssociatedTypes"] = Rule.Memo,
             ["Binding.storageMarks"] = Rule.Memo,
 
+            // Memos the reads after a Bind (MIR's, at Analyze) fill too (PLAN G949 S1-1, ruling 199 w1 (ii)): a row is a function of its key,
+            // whose Types are interned and whose declarations are frozen, so a later step adds rows and never changes or drops one (an edit's
+            // ResetViews drops only TyCtxt's view memos, which a later read forms again, equal).
+            ["Binding.instances"] = Rule.Memo, // An ADT's storage at a Type (n9): Fields and parts a function of the Type; Version the run's currency.
+            ["Binding.types.instances"] = Rule.Memo, // Whether a definition instantiates: a function of its scope chain.
+            ["Binding.types.copies"] = Rule.Memo, // A premises node's Copy facts, each a function of the node and the Type proven.
+            ["Binding.types.retentions"] = Rule.Memo, // A callee's retention by callee, Subst, premise scope and region version.
+            ["Binding.types.handedCallables"] = Rule.Memo, // HandedCallables' answer per interned Type.
+            ["Binding.types.comparisons"] = Rule.Memo, // A comparison's composition by Contract, Type and operator form.
+            ["Binding.types.witnesses"] = Rule.Memo, // A requirement's target by requirement, Contract and Subst.
+            ["Binding.types.erasedTypes"] = Rule.Memo, // A Type's erased form, structural.
+            ["Binding.types.erasedSubsts"] = Rule.Memo, // A substitution's erased form, structural.
+            ["Binding.types.substs"] = Rule.Memo, // The substitution interner: a row is its own key, keyed by no Type (constraints' class).
+
             // Memos of one capability epoch (ClearCapabilityResults): component summaries, capability works and Enumerate's kept rows,
             // whose pool lends its lists to enumerateKept alone (C1).
             ["Binding.summaries"] = Rule.Epoch,
@@ -370,6 +384,9 @@ public partial class KimiLibraryShapeTest
             ["Binding.enumerateKept"] = Rule.Epoch,
             ["Binding.enumerateKeptPool"] = Rule.Epoch,
             ["Binding.enumerateHeads"] = Rule.Epoch,
+            ["Binding.readings"] = Rule.Epoch, // A view's readings (ResetCapabilities; G949 S1-1, w1 (ii)).
+            ["Binding.identityClasses"] = Rule.Epoch, // A view's identity tables (ResetIdentityClasses, from ResetCapabilities).
+            ["Binding.identityLent"] = Rule.Epoch, // The tables lent to them, returned to identityPool at the epoch's end.
 
             // Numbers: Tarjan's visit order, the Origin requirement walk's consumer mark, a scope's view serial and the chain state it names.
             ["InlineSummary.Index"] = Rule.Number,
@@ -387,6 +404,35 @@ public partial class KimiLibraryShapeTest
             ["Binding.resultStructure.cache"] = Rule.Program, // The result walk's Completion memo of the body it walked last (M4).
             ["Binding.resultStructure.transferPool"] = Rule.Program, // That walk's transfer sets, rented by its cursor for each body.
             ["Binding.hirPublisher.completion.transferPool"] = Rule.Program, // The publisher's transfer sets for the body it published last (M4).
+
+            // A run's view, a per-run cache and a walk's reused scratch the reads after a Bind (MIR's) use too (PLAN G949 S1-1, ruling 199 w1
+            // (ii)): rebuilt at the run's first read, current in one run, or cleared at the walk's start, so after a step it holds what the
+            // program's last read left.
+            ["Binding.originUnitIndex"] = Rule.Program, // The C1-F4 view's units of the run's obligations, rebuilt at its first read (PrepareOriginRows).
+            ["Binding.originUnits"] = Rule.Program, // Their rows, in the units' reused lists.
+            ["Binding.comparisonPlans"] = Rule.Program, // The legacy comparison plans, each current in the run that formed it (n7).
+            ["Binding.enumerateIndexPool"] = Rule.Program, // The running part's free epoch index entries (EnumerateIndex's, returned at the epoch's end).
+            ["Binding.programPart.EnumerateIndexPool"] = Rule.Program, // The same pool, the program pass's part's.
+            ["Binding.retentionContracts"] = Rule.Program, // HandedSignatures' walk.
+            ["Binding.retentionReached"] = Rule.Program,
+            ["Binding.retentionWalk"] = Rule.Program,
+            ["Binding.retentionScope"] = Rule.Program, // BeginRetention's walk and its erased signatures'.
+            ["Binding.retentionErasedScope"] = Rule.Program,
+            ["Binding.retentionPositions"] = Rule.Program,
+            ["Binding.retentionSources"] = Rule.Program, // The retention sources' walk.
+            ["Binding.retentionWalked"] = Rule.Program,
+            ["Binding.retentionMet"] = Rule.Program, // The retention rows' walk.
+            ["Binding.ownSeen"] = Rule.Program, // OwnLayers' walk.
+            ["Binding.storageSeen"] = Rule.Program, // The storage walk (BeginStorages).
+            ["Binding.storageHolds"] = Rule.Program,
+            ["Binding.storageTargeted"] = Rule.Program,
+            ["Binding.retentionOccurred"] = Rule.Program,
+            ["Binding.types.handedFound"] = Rule.Program, // HandedCallables' walk.
+            ["Binding.types.handedSeen"] = Rule.Program,
+            ["Binding.types.retentionBounds"] = Rule.Program, // A retention computation's Callable bounds.
+            ["Binding.types.composedTypes"] = Rule.Program, // Compose's bindings before interning.
+            ["Binding.types.composedOrigins"] = Rule.Program,
+            ["Binding.types.witnessOrigins"] = Rule.Program, // A witness instance's Origins before interning.
         };
 
         // The number rule's fields, by declaring type and name.
