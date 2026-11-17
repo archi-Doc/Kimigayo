@@ -129,8 +129,10 @@ internal sealed class MirProgram
     /// acceptance (DECISIONS R5-M185); <see cref="Clear"/> resets them with the bodies, and <see cref="ClearProgram"/> to the library's records.</summary>
     internal MirReport Problems { get; } = new();
 
-    /// <summary>Gets drop elaboration's verdicts and flags in this version, by body ordinal (A2, DECISIONS R4-M6a); only
-    /// <see cref="MirAnalysis"/> resets them: the library segment's once per library version, the program's once per version.</summary>
+    /// <summary>Gets drop elaboration's verdicts and flags in this version, by body ordinal (A2, DECISIONS R4-M6a): its program store is
+    /// cleared where a version starts (<see cref="ClearProgram"/>, <see cref="Clear"/>) and its library store where a library segment
+    /// starts (<see cref="Clear"/>; <see cref="MirAnalysis"/> again where its library state is another program's or segment's); only
+    /// MirAnalysis's library step writes the library store.</summary>
     internal MirDropTable Drops { get; } = new();
 
     /// <summary>Gets or sets the work of the builder's layer walks in this version (PLAN G647): one per iteration of a walk (a layer's
@@ -179,7 +181,8 @@ internal sealed class MirProgram
     /// <returns>The body, null for a static no staticEnsure of a validated body names.</returns>
     internal MirBody? StaticInit(MirBody body, int slot) => this[new(body.Statics[slot].Symbol, MirBodyKind.StaticInit)];
 
-    /// <summary>Returns both segments' bodies to the pool and clears the report, the findings and the work, for a new library version.</summary>
+    /// <summary>Returns both segments' bodies to the pool and clears the report, A2's table, the findings and the work, for a new library
+    /// segment.</summary>
     internal void Clear()
     {
         foreach (var body in this.Bodies)
@@ -189,6 +192,7 @@ internal sealed class MirProgram
 
         this.bodies.Clear();
         this.Problems.Clear();
+        this.Drops.Clear(); // F18: no step fact of an earlier version reaches the next version.
         this.Findings.Clear();
         this.count = this.library = this.next = this.LibraryCount = this.libraryFindings = 0;
         this.LibraryVersion = 0;
@@ -229,7 +233,8 @@ internal sealed class MirProgram
     /// <summary>Returns the version's bodies (<see cref="VersionBodies"/>) to the pool, removing their keys, for a new program version over
     /// the kept library segment, a library body a lookup demanded included (its slot is empty again): the next ordinal numbered here is
     /// the first past the library's range, the findings keep the library's prefix, the report starts with the library's records again
-    /// (MirReport.Replay) and the work counts the new version's.</summary>
+    /// (MirReport.Replay), A2's program store is cleared (F18; its library store, the library step's, is kept) and the work counts the
+    /// new version's.</summary>
     internal void ClearProgram()
     {
         foreach (var body in this.VersionBodies)
@@ -242,6 +247,7 @@ internal sealed class MirProgram
         this.Findings.RemoveRange(this.libraryFindings, this.Findings.Count - this.libraryFindings);
         this.Problems.Clear();
         this.Problems.Replay(this.libraryRecords);
+        this.Drops.ClearProgram(); // F18: no step fact of this version reaches the next version.
         this.LayerWalkWork = 0;
     }
 

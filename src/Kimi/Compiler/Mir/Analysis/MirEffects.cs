@@ -100,6 +100,15 @@ internal sealed partial class MirEffects(TyCtxt types, MirCases cases, MirDatafl
         this.writing = this.libraryLocals;
     }
 
+    /// <summary>Continues the library segment's local facts in a later version of a kept library segment (driver step 0, PLAN G951 U2-K):
+    /// the program's facts and the Field numbers it gave cleared; <see cref="Local"/> records into the library's store after its nodes,
+    /// so the library's nodes stay the first, until <see cref="BeginProgram"/>.</summary>
+    internal void ContinueLibrary()
+    {
+        this.BeginProgram();
+        this.writing = this.libraryLocals;
+    }
+
     /// <summary>Begins the program segment's local facts for a program version over the library segment's, which stay: the program's facts
     /// and the Field numbers it gave cleared; <see cref="Local"/> records into the program's store.</summary>
     internal void BeginProgram()

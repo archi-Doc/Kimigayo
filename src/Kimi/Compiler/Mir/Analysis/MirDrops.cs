@@ -195,8 +195,8 @@ internal sealed partial class MirDropTable
     internal void Close(int body, int flags, long views, (DiagnosticCode Code, SourceInfo Source)? incomplete)
         => this.writing.Close(body, flags, views, incomplete);
 
-    /// <summary>Removes every body, keeping the storage, for a new library version: the bodies closed next are the library store's (the
-    /// driver's library step).</summary>
+    /// <summary>Removes every body, keeping the storage, for a new library segment (MirProgram.Clear; the driver's library step of a
+    /// segment it begins): the bodies closed next are the library store's.</summary>
     internal void Clear()
     {
         this.library.Clear();
@@ -204,14 +204,20 @@ internal sealed partial class MirDropTable
         this.writing = this.library;
     }
 
-    /// <summary>Ends the library step: the bodies closed so far are the library store's, those closed next the program store's.</summary>
+    /// <summary>Continues the library step in a later version of a kept library segment (PLAN G951 U2-K; A4's
+    /// MirEffects.ContinueLibrary): the bodies closed next are the library store's, after the entries it holds.</summary>
+    internal void ContinueLibrary() => this.writing = this.library;
+
+    /// <summary>Ends the library step: the bodies closed so far are the library store's, those closed next the program store's, which
+    /// starts empty.</summary>
     internal void EndLibrary()
     {
         this.ClearProgram();
         this.writing = this.program;
     }
 
-    /// <summary>Removes the program store's bodies, keeping the library's and the storage, for a new program version.</summary>
+    /// <summary>Removes the program store's bodies, keeping the library's and the storage, for a new program version (MirProgram.ClearProgram;
+    /// the driver's library step again, EndLibrary).</summary>
     internal void ClearProgram() => this.program.Clear();
 
     // The store of a body's entry: the library's where it holds the body (LibraryHolds), else the program's; each is indexed by the ordinal.
