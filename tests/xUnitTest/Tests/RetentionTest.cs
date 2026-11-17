@@ -1624,7 +1624,7 @@ public sealed partial class RetentionTest
             key = into.Single().Past; // Past slot's two layers: the storage value may be kept in.
         }
 
-        var entry = c.Types.EntryType(written, key)!;
+        var entry = c.Types.EntryType(written, key).Type!;
         Assert.Equal(expected, Binding.DiagnosticTypeName(entry));
         Assert.Contains(written.Reached.ToArray(), x => ReferenceEquals(x.Type, entry) && (x.Retention.Kinds[1] & RetentionKind.Value) != 0);
     }
@@ -1647,7 +1647,7 @@ public sealed partial class RetentionTest
             key = into.Single().Past; // Past slot's two layers: the Tuple.
         }
 
-        var (whole, part) = (c.Types.EntryType(written, key)!, c.Types.EntryType(written, c.Types.Select(key, 0))!);
+        var (whole, part) = (c.Types.EntryType(written, key).Type!, c.Types.EntryType(written, c.Types.Select(key, 0)).Type!);
         Assert.Equal("T", Binding.DiagnosticTypeName(part));
         Assert.NotSame(whole, part);
         Assert.Contains(written.Reached.ToArray(), x => ReferenceEquals(x.Type, part) && (x.Retention.Kinds[1] & RetentionKind.Value) != 0);

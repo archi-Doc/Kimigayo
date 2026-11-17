@@ -223,6 +223,37 @@ public sealed partial class TyCtxtTest
         Assert.Equal(expected, Hiding(c.Types, key, 0));
     }
 
+    // SPEC 15.6.4's abstract-storage sentence (PLAN G935; the Middle's C-370, its N5): TyCtxt.EntryType names a storage's entry and
+    // says whether the name is the callee's kept Type, one answer of one rule. Kept: past slot's two layers, storage of f's T (the
+    // output read in f's terms). Not kept: the same storage of a callee that writes the Type itself; past a raw layer T's binding
+    // holds (T = `raw/(raw/u8)`: the holder it addresses, read as the input writes it, c3-5); and a wholly hidden key of an output
+    // not read in the callee's terms (a by-value input that is the kept Type itself, T = `uniq/(raw/u8)`), whose answer stays the
+    // instantiated Type. Fail-before: no Kept answer on 53dee7570.
+    [Theory]
+    [InlineData("func f<T>(slot: uniq/(uniq/T during a), value: T) => ()\n", "uniq/(uniq/(raw/u8) during a)", 2, "T kept")]
+    [InlineData("func f(slot: uniq/(uniq/(raw/u8) during a), value: raw/u8) => ()\n", "uniq/(uniq/(raw/u8) during a)", 2, "raw/u8 instantiated")]
+    [InlineData("func f<T>(slot: uniq/(uniq/T during a), value: raw/u8) => ()\n", "uniq/(uniq/(raw/(raw/u8)) during a)", 2, "T kept")]
+    [InlineData("func f<T>(slot: uniq/(uniq/T during a), value: raw/u8) => ()\n", "uniq/(uniq/(raw/(raw/u8)) during a)", 3, "raw/u8 instantiated")]
+    [InlineData("func f<T>(slot: T, value: raw/u8) => ()\n", "uniq/(raw/u8)", 1, "raw/u8 instantiated")]
+    public void AnEntryTypeSaysWhetherItIsTheKeptType(string callee, string input, int steps, string expected)
+    {
+        var c = MinimalEmissionTest.Analyze(callee + $"func g(x: {input}, v: raw/u8)\n    f(x, v)\n");
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
+        var g = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(static x => x.Name == "g");
+        var call = KotoTree.Walk(g).OfType<InvocationKoto>().Select(static x => x.CallOf()).OfType<CallPlan>().Single();
+        var written = c.Types.Retains(call.Target, c.Types.SubstOf(call), g.SymbolOf()).Writes.ToArray().Single(static x => x.Output == 0);
+        var (key, into) = (TyCtxt.ParameterKey(call.Target, 0, g.Parameters[0].Type.TypeOf()!), new List<OwnLayer>());
+        for (var i = 0; i < steps; i++)
+        {
+            into.Clear();
+            Assert.True(c.Types.OwnLayers(key, into));
+            key = into.Single().Past;
+        }
+
+        var (type, kept) = c.Types.EntryType(written, key);
+        Assert.Equal(expected, $"{Binding.DiagnosticTypeName(type!)} {(kept ? "kept" : "instantiated")}");
+    }
+
     // Base steps a parameter key's Signature by Select's rule (SPEC 8.2.3, 15.6.4; review N3, N5): a generic derived struct's base, its
     // Field of U hidden beside the Field RB states, shown under the premise `U is raw/u8` and at a body's key (labels.md b1-b3).
     [Theory]

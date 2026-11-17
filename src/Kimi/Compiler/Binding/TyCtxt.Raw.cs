@@ -201,14 +201,16 @@ internal sealed partial class TyCtxt
 
     // SPEC 15.6.4 (PLAN G935, C-370): the Type that names the Reached entry of the storage past a layer of `output`, at `key`, its
     // Place on the called function's parameter path (TyCtxt.ParameterKey and the keys Select, Base, Leading and OwnLayers give past
-    // it): where the output was read in the callee's terms (OutputRetention.Kept) and the key lies in the binding of an abstract Type
-    // of the callee's own declaration (a Type parameter, or a pair target or projection rooted at one; kept below the binding's root
-    // whatever the binding holds, a Scalar included), that kept Type; else the storage's instantiated Type (the key's), Origins
-    // erased either way; null where the key has no Type. The one reading of OutputRetention.Reached's names (Binding's Written
-    // names each entry by its storage's erased Type, the kept Type's inside a kept binding), so no reader copies the rule; the
+    // it), and whether that Type is the kept one: where the output was read in the callee's terms (OutputRetention.Kept) and the key
+    // lies in the binding of an abstract Type of the callee's own declaration (a Type parameter, or a pair target or projection rooted
+    // at one; kept below the binding's root up to a raw layer the binding holds, a Scalar included), that kept Type, Kept; else the
+    // storage's instantiated Type (the key's), not Kept; Origins erased either way; (null, false) where the key has no Type. Both
+    // halves are one answer of the one rule (Binding.KeptType), so a reader that must tell a kept storage's entry from an instantiated
+    // one (A5's E past a reading layer) reads Kept and copies nothing. The one reading of OutputRetention.Reached's names (Binding's
+    // Written names each entry by its storage's erased Type, the kept Type's inside a kept binding), so no reader copies the rule; the
     // root's rows are `output.Own`, whatever this names. A function of the output and the key; allocates nothing warm.
-    internal BoundType? EntryType(OutputRetention output, in PlaceKey key)
-        => key.Type is null ? null : this.Erase(binding.KeptType(output.Kept, key) ?? key.Type);
+    internal (BoundType? Type, bool Kept) EntryType(OutputRetention output, in PlaceKey key)
+        => key.Type is null ? (null, false) : binding.KeptType(output.Kept, key) is { } kept ? (this.Erase(kept), true) : (this.Erase(key.Type), false);
 
     // SPEC 5.7 Origins, Reading a Field, Writing a Field (C-189): the key of the Place `part` selects from `at`'s Place, one step of a
     // Place's path from its root (PlaceKey.Root), `part` numbered as MIR numbers it: a struct's Field, an enum's Case (then that payload's
