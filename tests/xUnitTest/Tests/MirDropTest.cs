@@ -389,7 +389,9 @@ public sealed partial class MirDropTest
 
     // PLAN G951 U2-K (row PE-2): a store keeps each closed body's own entry by its ordinal, closed in any ordinal order and with holes:
     // a body's rows are the ones added since the last body closed in its store, whatever the ordinals; an ordinal no store closed is not
-    // held and reads empty; the program store's entries go with a new program version and the library's stay.
+    // held and reads empty; the program store's entries go with a new program version and the library's stay. The library store holds
+    // exactly the bodies closed in the library step (LibraryHolds, the one fact), whatever their ordinals: a body closed after it with an
+    // ordinal below the library's is the program store's.
     [Fact]
     public void AStoreKeepsEachBodysOwnEntryByOrdinal()
     {
@@ -400,11 +402,13 @@ public sealed partial class MirDropTest
         table.EndLibrary();
         Close(300, 3, 1);
         Close(7, 0, 2);
-        Assert.Equal([(5, 1, 3), (2, 2, 0), (300, 3, 1), (7, 0, 2)], new[] { 5, 2, 300, 7 }.Select(Entry));
-        Assert.Equal([5, 2, 2, 300, 300, 300], new[] { 5, 2, 300, 7 }.SelectMany(x => table.RowsOf(x).ToArray().Select(static row => row.Block)));
-        Assert.All(new[] { 0, 1, 3, 4, 6, 8, 299, 301 }, x => Assert.Equal((false, 0, 0, 0L), (table.Holds(x), table.RowsOf(x).Length, table.FlagsOf(x), table.ViewsOf(x))));
+        Close(3, 1, 5); // Below the library store's greatest ordinal, in the program store.
+        Assert.Equal([(5, 1, 3), (2, 2, 0), (300, 3, 1), (7, 0, 2), (3, 1, 5)], new[] { 5, 2, 300, 7, 3 }.Select(Entry));
+        Assert.Equal([5, 2, 2, 300, 300, 300, 3], new[] { 5, 2, 300, 7, 3 }.SelectMany(x => table.RowsOf(x).ToArray().Select(static row => row.Block)));
+        Assert.Equal([true, true, false, false, false], new[] { 5, 2, 300, 7, 3 }.Select(table.LibraryHolds));
+        Assert.All(new[] { 0, 1, 4, 6, 8, 299, 301 }, x => Assert.Equal((false, 0, 0, 0L), (table.Holds(x), table.RowsOf(x).Length, table.FlagsOf(x), table.ViewsOf(x))));
         table.ClearProgram();
-        Assert.Equal([true, true, false, false], new[] { 5, 2, 300, 7 }.Select(table.Holds));
+        Assert.Equal([true, true, false, false, false], new[] { 5, 2, 300, 7, 3 }.Select(table.Holds));
         Close(7, 1, 4);
         Assert.Equal([(5, 1, 3), (2, 2, 0), (7, 1, 4)], new[] { 5, 2, 7 }.Select(Entry));
 

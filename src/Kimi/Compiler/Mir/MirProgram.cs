@@ -15,9 +15,9 @@
 // are the segments, each the span a walker of that segment takes as its input: MirAnalysis's library step and steps 1 and 2,
 // InstanceCollector's templates and StaticKeyMeasurements' local facts. The program pass reads each body by ordinal from the builder's
 // build-order queue (MirBuilder.Name), the library segment's drained before EndLibrary. No walker tests an ordinal against LibraryCount
-// itself; an owner keeping per-body entries in a store per segment reads them by the ordinal itself through one split rule, the
-// library's store below the library's count (R8-L1 M-B1; the Back's C-378 (1)(a)): MirDropTable.Of (its library store's count),
-// MirEffects.Base and InstanceCollector.TemplatesOf (LibraryCount).
+// itself; an owner keeping per-body entries in a store per segment reads them by the ordinal itself through one published fact, A2's
+// MirDropTable.LibraryHolds (its library store holds the body's closed entry; PLAN G951 U2-K, the Back's C-378 (1)(a) as amended):
+// MirDropTable.Of, MirEffects.Base and InstanceCollector.TemplatesOf read it.
 // Owns the segments' versions (PLAN G950): the library segment, its bodies, their keys and findings and its construction records, is kept
 // while its library version holds (LibraryVersion, EndLibrary), the program segment rebuilt per program version over it (ClearProgram);
 // the library's findings stay the prefix of Findings and its records are replayed into the version's report first, where the builder's
