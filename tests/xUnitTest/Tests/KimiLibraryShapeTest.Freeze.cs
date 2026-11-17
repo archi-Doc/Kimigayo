@@ -27,4 +27,45 @@ public partial class KimiLibraryShapeTest
         Assert.NotEmpty(paths);
         Assert.Empty(paths.SelectMany(static x => x.PropertyWitnesses.Where(static w => w.Kind != PropertyWitnessKind.AccessorCall).Select(w => $"{x.Type.Name} is {x.Contract.Name}: {w.Kind}")));
     }
+
+    // k4 (B1: E3's effect bounds, E7, R): the library pass completes the facts a later pass would otherwise form lazily on a library
+    // object, so a program pass reads them and writes none: every bound Contract reference of the layer's part has its effect bounds
+    // (EffectState 2), every library scope, and every scope of a library path (its own, its requirements' premises, its overlaps'),
+    // denotes its current view (SerialOf would write none), and every local region of the layer's part has its sources formed. Before B1,
+    // after the empty program's Bind, 4 of 5 bound references had no effect bounds, 595 of 1,187 library scopes and 123 of 171 path
+    // scopes a view SerialOf would write, and all 19 regions had no sources (Version -1).
+    [Fact]
+    public void TheLibraryPassLeavesNoLazyFactOnTheLibrary()
+    {
+        var c = Bound(string.Empty);
+        var layer = c.Library.Layer.Part;
+        Assert.NotEmpty(layer.BoundContracts);
+        Assert.Empty(layer.BoundContracts.Values.Where(static x => x.Contract!.EffectState != 2).Select(static x => x.Type!.ToString()));
+        var scopes = new List<BindingScope>();
+        foreach (var scope in c.Library.Kotonoha.Syntax.Hir.Families.Scopes.Enumerate())
+        {
+            if (scope is not null)
+            {
+                scopes.Add(scope);
+            }
+        }
+
+        foreach (var path in DeclaredSymbols(c)
+            .Where(x => x.Kind == BindingSymbolKind.Type && ReferenceEquals(x.Declaration.CodeContext?.Kotonoha, c.Library.Kotonoha))
+            .SelectMany(x => c.Binding.Semantics.Conformances(x) ?? []).SelectMany(static x => x.Paths))
+        {
+            scopes.Add(path.Scope);
+            scopes.AddRange((path.WitnessScopes ?? []).Select(static x => x.Premises));
+            scopes.AddRange((path.OverlapScopes ?? []).Select(static x => x.Scope));
+        }
+
+        Assert.Empty(scopes.Where(static x => State(x) != x.ViewState).Select(static x => x.Owner?.ToString()));
+        Assert.NotEmpty(layer.Regions);
+        Assert.Empty(layer.Regions.Where(static x => x.Value.Version == -1).Select(static x => x.Key.ToString()));
+
+        // The chain state SerialOf compares with a scope's ViewState, read without writing (ContractSolver.SerialOf).
+        static (int, int, int) State(BindingScope scope) => (scope.Constraints?.Version ?? 0, scope.LinkVersion, scope.Parent is { } parent ? Serial(parent) : 0);
+
+        static int Serial(BindingScope scope) => State(scope) != scope.ViewState ? scope.ViewSerial + 1 : scope.ViewSerial;
+    }
 }

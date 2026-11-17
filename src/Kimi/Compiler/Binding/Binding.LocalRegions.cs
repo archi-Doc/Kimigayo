@@ -177,6 +177,16 @@ public sealed partial class Binding
             => value is null || parent is null ? null : (value is VariableKoto { InitializerKoto: { } initializer } ? initializer : value, parent);
     }
 
+    // O25 (PLAN G949 S1-1, R): every row of the running part has its sources for the run's version, so no later pass forms a source
+    // list on a row another pass made.
+    private void CompleteLocalRegions()
+    {
+        foreach (var origin in this.localRegions.Keys)
+        {
+            this.LocalRegionSources(origin);
+        }
+    }
+
     // The running pass's rows, emptied in place; the version starts again per run (BeginRun).
     private void ResetLocalRegions()
     {

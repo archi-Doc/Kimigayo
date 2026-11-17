@@ -22,6 +22,9 @@ public sealed partial class Binding
 {
     private readonly Dictionary<CollisionTerm, CollisionTerm> collisionSubstitutions = new();
 
+    // CompleteBoundEffectBounds' scratch: the running part's entries, copied before EnsureEffectBounds may add one; empty between uses.
+    private readonly List<BindingSymbol> boundScratch = new();
+
     // The running pass's bound Contract references (PassPart.BoundContracts, EnterPass); a lookup finds the layer's part first.
     private Dictionary<BoundType, BindingSymbol> boundContracts;
 
@@ -247,6 +250,24 @@ public sealed partial class Binding
         }
 
         return bound;
+    }
+
+    // SPEC 8.11.1 (PLAN G949 S1-1, E3): every bound Contract reference of the running part has its effect bounds, the references its
+    // bounds substitute included (EnsureEffectBounds may add one), so no later pass computes the effect bounds of an entry another pass
+    // made (census O5, O15).
+    private void CompleteBoundEffectBounds()
+    {
+        for (var done = -1; done != this.boundContracts.Count;)
+        {
+            done = this.boundContracts.Count;
+            this.boundScratch.AddRange(this.boundContracts.Values);
+            for (var i = 0; i < this.boundScratch.Count; i++)
+            {
+                this.EnsureEffectBounds(this.boundScratch[i].Contract!);
+            }
+
+            this.boundScratch.Clear();
+        }
     }
 
     private BindingSymbol SubstituteRequirementContract(BindingSymbol contract, BoundType reference)
