@@ -10854,6 +10854,15 @@ resumed by R4-M86 (2026-10-20).
     Origin arguments are likewise its call's regions (`CallRegion`, read by `BindTryWrite` and `OpenUnsolvedOrigins`; SPEC 22.10.4
     acquires it as `uniq/Utf8Writer`, and 15.3.6 never replaces such an Origin by static). This supersedes 5881e0a62's static
     Origin arguments, chosen before call regions existed.
+  - Amended by BU-223 (PLAN G936, J2): a callee variable that covariant evidence binds and a waiting position also names is solved,
+    not left open: its value is `(E and ρ)` in every run, ρ a region of the call (a Type slot's `SlotRegion`, keyed down from
+    `SlotRegionKey` between the `CallRegion` keys and `UnsolvedKey / 2`, or an Origin parameter's `CallRegion`) whose recorded
+    bounds are E and the longer ends of the relations over the solution; `FillOpenOrigins` fills no slot region, and the call
+    regions above keep their meaning. A declared Origin relation of a Type with an end that is or holds a call's region is that
+    call's row (`CallRowRelation`): the formation proof (`CheckTypeOriginRelations`) neither judges nor drops it. A call's result
+    Type (a constructor's construction Type included) has its declared relations over the call's region formed as rows of the call
+    by step 3's clause judge (`VisitTypeClause`), as an input's are; a Type derived from it rests on that row. Every other class of
+    a result Type's declared relation stays the formation proof's.
 
 - **BU-102 The C1-F4 view is its own validator: a broken contract throws in a complete compilation** (2026-11-05; PLAN G423, G263's
   item 3: R4's recommendation (c), accepted in G263's review N5; R4's consent C-20 for the MIR lines; supersedes in part R4-M101 E2 and
@@ -14136,6 +14145,90 @@ resumed by R4-M86 (2026-10-20).
     (its revision 2); the instance as an Item Component (a Closure's Components are its captures; a function's instance is no
     Type); the reviewer's nearest-declaration rule (O-258 (b)); Origins kept in a held instance (BU-60's rejection stands; G300
     opens them per use).
+- **BU-223 A callee variable that covariant evidence binds and a waiting argument also names is a region of the call, solved as
+  `(E and ρ)`; a call's step-3 clause judge proves every Type the call instantiates, its result included** (2026-11-17; Front,
+  Binding; PLAN G936 (J2) with its stated limits G942-G944; Q17 class 3; Major, an acceptance mover; the owner's O-358 (a), verbatim
+  「両方とも (a)」, O-362 (a), verbatim 「O-362 a」, O-368 (a), verbatim 「すべて推奨どおり でお願いします」, and O-395 (a), verbatim 「O-395 a」 (J2 lands as
+  it stands, with no further full review, though its third design review was REVISE); F's J2 rulings (`front\notes\J2\ruling.md`);
+  design `J2\design.md` and its fix `J2\design-fix.md` revision 3, Re-check 5 ACCEPT; the Middle's CONSENT on C-383) SPEC 10.5.1,
+  10.8, 10.8.1, 15.2.2, 15.3.3, 15.3.6, 15.3.7, 15.6.1, 15.6.4 step 3, 8.3. Amends BU-104.
+  - Rule (O-358 (a), O-362 (a)): a callee variable, a Type slot's Origin or a written Origin parameter, that evidence binds at a
+    covariant position and a position without evidence also names is bounded by both, so it is a region of the call:
+    `same3<T>(x: Option<ref/T during c>, y: ref/T during c)` called as `same3(.Some(a@ref), b@ref)` over two `var` captures in a
+    Closure gives T = `ref/i32 during (R_a and R_b)` (rc3v; o2v its written-Origin twin). In a candidate's late solve (`SolveLate`
+    -> `SlotSolution.OpenWaited`), one walk of the retained F1 rows and the receiver (`CollectPositionNames`) records each callee
+    variable as named by a position without evidence (a Signature leaf row, or a Signature root without child rows), by evidence at
+    a covariant position (`EvidenceNames`' reading), or blocked: evidence at another variance, any position inside a Function Type,
+    and a Constraint of the candidate. A variable named by the first two and not blocked is opened.
+  - Solution (D1): an opened variable is solved as any covariant variable, to its evidence candidate E (so a variable its clauses
+    bound through it is solved as without the waiting part), and written as 15.3.6's covariant candidate `(E and ρ)`, ρ a region of
+    the call standing for the bounds the waiting part gives after selection (ρ alone where E is `static`). A Type slot bound without
+    an invariant binding and fixed by no explicit or declaring Type has each Origin at a covariant position of its solution so
+    written (`OpenSlotOrigins`, in pre-order; ρ a `SlotRegion(call, slot, ordinal)`, keyed
+    `SlotRegionKey - ((slot & 0x3FFF) << 14 | ordinal & 0x3FFF)` with `SlotRegionKey = UnsolvedKey / 2 - 1`, so `IsCallRegion` holds
+    and every key lies above the `CallRegion` keys; past 2^14 slots or positions regions are shared, which only joins bounds). An
+    Origin parameter is published to the solve (`OriginInference.WaitingNamed`), which writes the meet with its `CallRegion` once
+    its variables are solved. Kept as the evidence binds them: an open region, a raw anchor, a Constraint set's slot, a meet holding
+    one, a raw layer's Origin. Every run of the candidate (the first, the re-run after `CompleteWaiting`, 10.8.1's fixed-binding
+    re-check) writes the same spelling, so every reader (the formation proof, the re-check, the fill of open Origins, the solve of
+    the callee's other variables, A5) reads one value. Structure and Semantics stay the evidence's: applicability, ranking and
+    selection are unchanged, and no candidate is solved twice.
+  - Bounds (D1c): E is kept beside ρ per candidate in its retained solve state (`OriginInference.Opened`, written by `Open`, cleared
+    at the candidate's first solve) and is never read back from a meet. At step 3 the selected candidate's pairs become the region
+    graph's records (`RecordOpenings`, `RecordOpening`): E bounds ρ, and a relation whose shorter end is the variable's own solution
+    records its longer end as ρ's bound (`LocalRegion.Solved`, read by `RecordRegionBound`); both are free by 15.2.2. A5 reads them
+    through `UniversalRelations.Outlives` and `SourcesIn`, as any region's, and solves ρ with the body's other regions (BU-104).
+    Every relation is judged after selection at its source: the evidence's fit, the waiting part's own judgment, the uses of the
+    result. A default is no waiting argument. The display of a call region is omitted (BU-104; F's P1).
+  - Fill (D2): `FillOpenOrigins` fills no slot region (`IsSlotRegion`, the `SlotRegion` key range), which stands for a solved
+    variable; BU-104's unsolved regions (`CallRegion`) keep their meaning and are filled as before.
+  - One judge (D3a, D3b, Revision 3): a declared Origin relation of a Type, an end of which is or holds a call's region, is that
+    call's row (`CallRowRelation`; BU-104 as amended). The formation proof (`CheckTypeOriginRelations`) leaves it, and step 3's
+    clause judge `VisitTypeClause` (under `Require`: the selected call only) forms it for every Type the call instantiates: its
+    inputs as before, and its result down to its slots (`RequireResultPremises`, which publishes the rows with the call's), a
+    constructor's construction Type included (`JudgeCallClauses` hands each substituted relation of the owner Type to the same
+    judge). For a result only that class is formed; every other class of its declared relations stays the formation proof's, so no
+    record moves outside it. Derived places (a field read, a pattern's payload, a local, a returned value, the argument of a nested
+    or later call) form no row: they hold the region only through the forming call's Types and rest on its row.
+  - Constraints (D4; O-368 (a)): a variable that a Constraint of the candidate reads keeps the evidence's binding, since a
+    Constraint is proven from premises (8.3), which read no bound of a region. The Constraints are `CandidateClauses`, the one
+    enumeration `StepFiveConjunction` proves: the callee's own and, at a constructor, its owner structure's (SPEC 10.9, 10.8.1).
+  - Why only these (F's rulings 3 and 4; O-368 (a)): 15.3.6's covariant candidate, the meet of the upper bounds, is what a region of
+    the body is; a contravariant Origin's candidate is a lower bound and an invariant one's the equality; a Function Type's Origins
+    are compared as a contract (15.3.7: the required Origins are rigid). Stated limits (valid programs rejected, Q17 class 3, after
+    R7's exit): PLAN G942 (a variable named inside a Function Type: rv25, rv26, rv08), G943 (a Case construction's own payloads:
+    rv23), G944 (a Constraint of the callee, a constructor's owner Type's included; rv17, rv28 and rv34 stay accepted as on dev).
+  - Records (F's ruling 27 (i); Q13): where a callee clause and the clause of its result Type substitute to one relation (rt2i,
+    rk1i, c3c3), both are reported, the clause's row at the input and the result's at the call: two declared relations, G913's two
+    sites.
+  - Moves (against G913 65af7d7f4; labels from SPEC first; census `J2\implfix\census-s4.md`, confirmed by C-383): valid, newly
+    accepted: e2m, e2v, h9g, h9ok, j2b, j2p, k1v, k2v, k4v, l1v, o2v, o4v, ov1, rc3v, rc5v, rv05, rv12, rv13, rv19, rv20, rv21,
+    rv22, rv27, rv33, rv35, rv36, tp1, w2v (the Middle's 88); eq2v, fr1v, gc2c, hole6_ok, hole9_ok, rc1v, rc2v, rf13, rf7, rk5, t5v,
+    t6v, t7c0, t7v, tr2v, tr5v (the design rows); c3b3v, qa1v. Invalid, newly rejected: cap15, a located `Unsupported_Kd`. Records
+    only, on programs both reject (Q13): the Middle's R1 rows (c3e1, c3t1, c3p1, c3u1, d4e1 Refuted; c3e2, c3e3, c3e4, c3b3, d4e3
+    Unknown) each give one record at the forming call, where G913 gave the formation proof's `UnprovenConstraint_Kd`; cap7-cap10 the
+    limit beside their relation record; l1i, l2i `ComparisonLoanConflict_Kd` at the write; qx1, qx2 (grouping) and qs7, qs7c
+    (R4-M162). The A5 rows k3i, w1i, l1i, l2i stay rejected; none on the corpus (snapshot 0). `MirOriginsTest`'s source-region limit
+    row is h9h (hole9_ok with `d` and `e` also named inside a Function Type); hole6_ok and hole9_ok are `CallOriginRelationTest`
+    rows. cl2 (invalid, accepted on G913 and here; PLAN G962) is a row stating the SPEC verdict, marked `Explicit`.
+  - Cost (RP8 in its window): per opened Origin one interned meet, per opened slot one interned `Rebuild`; one range test per filled
+    open Origin (D2), one class test per declared relation (D3a) and one walk of the owner's relations per constructor call;
+    `OriginInference.Open`'s linear scan is O(k²) in a candidate's opened Origins (stated).
+  - Rejected: G913's solve fed with the waiting bound (a second solve and re-check); opening every evidence-bound slot (it moves
+    every generic call's T and A5's load with no SPEC need); opening every Origin of T's solution, a contravariant or invariant one
+    or one inside a Function Type too (fn1v and `CallableOriginForwardingTest` arg2 rejected); displaying the meet after A5 (Binding
+    has no A5 result); leaving a waited Origin parameter null until `OpenUnsolvedOrigins` (rc5: `Unsupported_Kd` and
+    `UnprovenOriginRelation_Kd` on the first prototype); opening a variable a Constraint reads (rv17 `UnprovenConstraint_Kd`, rv28
+    `Unsupported_Kd`, valid and accepted on dev: the review's B1, B2; O-368 (b), A5 judging such Constraints, is G944's fix); the
+    first head's open region alone, a solved variable in the representation of an unsolved one, which each reader judged differently
+    (the Middle's C-373 C1, C2), and a case per reader for it; widening the stated limit to every variable under a Type with
+    declared relations (two more reader clauses); revision 0's `BodyChain` judge in the formation proof (unsound at constructions:
+    rc1i, rc2i accepted); bounds read back from the meet's operands (revision 2b: nothing recorded for a waited Origin parameter,
+    rq1; BU-104's own regions recorded as sources, h9h accepted); a row per derived position (a position missed is a hole: the
+    Middle's R1 on a01be036f); skipping a result relation equal to a substituted callee clause (a suppression after the fact).
+  - Closes PLAN G936. Open: G942-G944 (above); a Closure's value call never proves its result's clauses, since
+    `CarriesResultPremises` excludes anonymous functions (PLAN G962, to reuse this judge); pre-existing on G913 and found by the
+    Middle's consent re-check: PLAN G966, G967 and the G710 and G870 additions.
 - **G209-1** (2026-10-24; structural unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source
   aliases their selected container and environment before ordinary lookup merges imports. These responsibilities were embedded in the
   general expression parser and `Binding.Types.Lookup`, with alias resolution beside Type formation. `Parser.RuntimeTypeTests` now
