@@ -61,6 +61,22 @@ public sealed partial class Binding
 
     internal ConstraintProof ProveSealed(BoundType type, BindingScope scope) => this.RequestCapability(type, this.Library.Sealed, scope);
 
+    // SPEC 3.5.2, 8.7.2, 8.7.3: what a set of outer Semantics, other than owner alone, states of an intrinsic capability of a layer
+    // whatever its target: a shared or raw layer Copies and an exclusive or object layer does not; a Sealed or ObjectPayload Type has
+    // an owner case. The one statement of the rule: the solver's Semantics-fact arm reads it, and so does the case set of a binding
+    // that forms no Type (SplitCases).
+    private static ConstraintProof LayerEvidence(IntrinsicKind intrinsic, SemanticsMask mask)
+    {
+        const SemanticsMask copy = SemanticsMask.Ref | SemanticsMask.ObjRef | SemanticsMask.Raw;
+        const SemanticsMask nonCopy = SemanticsMask.Uniq | SemanticsMask.ObjUniq | SemanticsMask.Object;
+        return intrinsic switch
+        {
+            IntrinsicKind.Copy => (mask & ~copy) == 0 ? ConstraintProof.Proven : (mask & ~nonCopy) == 0 ? ConstraintProof.Refuted : ConstraintProof.Unknown,
+            IntrinsicKind.Sealed or IntrinsicKind.ObjectPayload when (mask & SemanticsMask.Owner) == 0 => ConstraintProof.Refuted,
+            _ => ConstraintProof.Unknown,
+        };
+    }
+
     private static bool TryLeafCapability(BoundType type, IntrinsicKind kind, out ConstraintProof result)
     {
         result = ConstraintProof.Unknown;
@@ -1005,8 +1021,6 @@ public sealed partial class Binding
                 }
                 else if (fact.Kind == ConstraintKind.Semantics)
                 {
-                    const SemanticsMask copy = SemanticsMask.Ref | SemanticsMask.ObjRef | SemanticsMask.Raw;
-                    const SemanticsMask nonCopy = SemanticsMask.Uniq | SemanticsMask.ObjUniq | SemanticsMask.Object;
                     if (fact.Mask == SemanticsMask.Owner)
                     {
                         var target = appliedSemantics ? work.Type.Components[0] : work.Type.Symbol?.Type;
@@ -1015,13 +1029,9 @@ public sealed partial class Binding
                             evidence = this.ProveConstraint(this.InternConstraint(new(ConstraintKind.Contract, target, contract: work.Intrinsic)), work.Scope);
                         }
                     }
-                    else if (work.Intrinsic.Intrinsic == IntrinsicKind.Copy)
+                    else if (work.Intrinsic.Intrinsic is IntrinsicKind.Copy or IntrinsicKind.Sealed or IntrinsicKind.ObjectPayload)
                     {
-                        evidence = (fact.Mask & ~copy) == 0 ? ConstraintProof.Proven : (fact.Mask & ~nonCopy) == 0 ? ConstraintProof.Refuted : ConstraintProof.Unknown;
-                    }
-                    else if (work.Intrinsic.Intrinsic is IntrinsicKind.Sealed or IntrinsicKind.ObjectPayload && (fact.Mask & SemanticsMask.Owner) == 0)
-                    {
-                        evidence = ConstraintProof.Refuted;
+                        evidence = LayerEvidence(work.Intrinsic.Intrinsic, fact.Mask);
                     }
                     else if (work.Intrinsic.Intrinsic == IntrinsicKind.Owned && fact.Mask == SemanticsMask.Raw)
                     {
