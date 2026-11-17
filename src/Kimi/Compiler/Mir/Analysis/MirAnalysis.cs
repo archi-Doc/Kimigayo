@@ -15,20 +15,26 @@
 //    library bodies' A3 (the library check's root range only), which is judged work and runs every version;
 // 1. per judged program body, A3;
 // 2. per program body, per view A1, then A2, then A4's local facts;
-// 3. A4 over the program;
+// 3. A4 over the program, in rounds;
 // 4. per judged body, A5: the Origin stratum's judgment, which adds its problems, then the Loan stratum per view; then, once per program,
 //    the rows of layers no constructor body includes (MirOrigins.Findings);
 // 5. A6 inside MirReport.
-// Input rule (DECISIONS R5-M168): steps 1 and 4 judge the bodies of the root modules (Judged), whose problems are the program's; a body
-// outside them is built from its library definition alone, so its A3 and A5 verdicts are the same in every program. Steps 2 and 3 visit
-// every body without a validator finding (step 2 of a library body at the library step): A4 composes library callees' local facts and
-// code generation reads A2's tables. The library's own A3 and A5 verdicts are MirAnalysisTest.TheLibraryHasNoAnalysisProblem's, the
-// check every unit changing A3 or A5 runs.
+// Steps 1 and 2 have one path (Step): the program segment's bodies built since the last step, in build order, a body a lookup builds
+// meanwhile included (MirProgram's demand point, PLAN G951); the library step has stepped the library segment's, whose facts are kept or
+// new, so a version's stepping starts at LibraryCount. A round of a consumer of step-2 facts (A4's here, the collector's) that reads a
+// body built since then misses and commits nothing (MirDropTable.Holds); the consumer's driver steps and runs it again until a round is
+// clean. While step 4 judges, the program's demand table is Judging: no lookup may build a body.
+// Input rule (DECISIONS R5-M168, PLAN G951): steps 1 and 4 judge the bodies of the root modules (Judged), step 3 the obligations whose
+// subject is in them and MirOrigins.Findings their layers' rows, whose problems are the program's; a body or declaration outside them is
+// built from its library definition alone, so its verdicts are the same in every program. Steps 2 and 3 visit every body without a
+// validator finding (step 2 of a library body at the library step): A4 composes library callees' local facts and code generation reads
+// A2's tables. The library's own verdicts are MirAnalysisTest.TheLibraryHasNoAnalysisProblem's, the check every unit changing the
+// library, MIR construction, the validator or A1-A5 runs.
 // Owns one instance of each analysis and their shared scratch for the compilation's lifetime, arrays reset by counts; each analysis unit
-// adds its field and its pass row at its step: step 2 in Body, steps 1, 3 and 4 in Run (A5 with its own loop over the bodies after A4's,
-// Borrows per body). A2's table (MirProgram.Drops) is per version, like the problems: its library store per library version. The library
-// state is keyed on the program whose library segment it holds and on that segment's library version, so any other program takes the
-// library step.
+// adds its field and its pass row at its step: step 1 in Steps, step 2 in Body, steps 0, 3 and 4 in Run (A5 with its own loop over the
+// bodies after A4's, Borrows per body). A2's table (MirProgram.Drops) is per version, like the problems: its library store per library
+// version. The library state is keyed on the program whose library segment it holds and on that segment's library version, so any other
+// program takes the library step.
 // Must not read syntax, HIR or plans, publish, decide acceptance, or read a body with a validator finding (MirBody.HasFinding, DECISIONS
 // R5-M183): steps 1, 2 and 4 skip it (MirDrops.Exclude closes its empty table entry); A4 composes a body with one as Derived
 // (MirEffects.Views); the initialization proof that consults one rests on it (MirBorrows.Unproved).
@@ -50,6 +56,7 @@ internal sealed class MirAnalysis
     private readonly MirOrigins origins;
     private readonly MirReport.Kept libraryProblems = new(); // The library step's problems, replayed in a version that keeps its facts.
     private ulong version; // The program version whose problems the program holds (0: none).
+    private int stepped; // The bodies of the version steps 1 and 2 have run on, in build order, the library step's included.
     private (MirProgram? Program, ulong Version) library; // The program and library version whose step-2 facts the analyses hold (none yet).
 
     /// <summary>Initializes a new instance of the <see cref="MirAnalysis"/> class.</summary>
@@ -75,9 +82,9 @@ internal sealed class MirAnalysis
     /// <summary>Analyzes a program unless this version already was: a new version starts with its construction records only (MirProgram.Clear
     /// or ClearProgram), and a body with a validator finding is not analyzed (DECISIONS R5-M183).</summary>
     /// <param name="program">The built and validated program.</param>
-    /// <param name="rootModules">The root range: steps 1 and 4 judge the bodies whose module is below it (DECISIONS R5-M168). Any bound is
-    /// a range: Compilation passes the source modules' count, and <see cref="Parsing.SyntaxTable.LibraryModule"/> + 1 includes the
-    /// library's bodies.</param>
+    /// <param name="rootModules">The root range: steps 1 and 4 judge the bodies whose module is below it, step 3 the obligations and
+    /// MirOrigins.Findings the layer rows located there (DECISIONS R5-M168, PLAN G951). Any bound is a range: Compilation passes the source
+    /// modules' count, and <see cref="Parsing.SyntaxTable.LibraryModule"/> + 1 includes the library's.</param>
     /// <returns>The program.</returns>
     internal MirProgram Run(MirProgram program, int rootModules)
     {
@@ -117,18 +124,16 @@ internal sealed class MirAnalysis
             }
         }
 
-        foreach (var body in program.ProgramBodies)
-        {
-            if (!body.HasFinding && Judged(body, rootModules))
-            {
-                this.lints.Run(body, program.Problems); // 1. A3 per judged body.
-                this.Judgments++;
-            }
+        this.stepped = program.LibraryCount; // The library step's bodies are stepped.
+        this.Steps(program, rootModules); // 1 and 2.
 
-            this.Body(program, body); // 2. per body.
+        // 3. A4's rounds over the program, until one is clean.
+        while (!this.effects.Run(program, program.Problems, rootModules))
+        {
+            this.Step(program, rootModules);
         }
 
-        this.effects.Run(program, program.Problems); // 3. A4's summaries and obligations over the program.
+        program.Enter(MirProgram.Phase.Judging);
         foreach (var body in program.Bodies)
         {
             if (Judged(body, rootModules) && !body.HasFinding)
@@ -138,12 +143,45 @@ internal sealed class MirAnalysis
             }
         }
 
-        this.origins.Findings(program, program.Problems); // 4. once per program.
+        this.origins.Findings(program, program.Problems, rootModules); // 4. once per program.
+        program.Enter(MirProgram.Phase.Open);
         return program;
+    }
+
+    /// <summary>Runs steps 1 and 2 over the bodies built since the last step, in build order, before a consumer's next round after its
+    /// round missed (A4's in <see cref="Run"/>, the collector's): the one stepping path (PLAN G951). A round misses only at a body built
+    /// since the last step, so a miss with none is a broken contract (R3-N2), never a rerun.</summary>
+    /// <param name="program">The program of the version <see cref="Run"/> analyzes.</param>
+    /// <param name="rootModules">The root range of that run.</param>
+    internal void Step(MirProgram program, int rootModules)
+    {
+        if (this.stepped == program.Bodies.Length)
+        {
+            throw new InvalidOperationException($"A round of version {program.Version} missed with every body stepped (InternalInvariant).");
+        }
+
+        this.Steps(program, rootModules);
     }
 
     // Whether steps 1 and 4 judge a body: a root module's (DECISIONS R5-M168).
     private static bool Judged(MirBody body, int rootModules) => body.Source.Module < rootModules;
+
+    // Steps 1 and 2 of each body built since the last step, in build order (the program segment's: the library step steps the library's);
+    // a lookup in step 2 appends a body the loop reaches, so A2's entry of each body is its build position (MirDropTable.Holds).
+    private void Steps(MirProgram program, int rootModules)
+    {
+        for (; this.stepped < program.Bodies.Length; this.stepped++)
+        {
+            var body = program.Body(this.stepped);
+            if (!body.HasFinding && Judged(body, rootModules))
+            {
+                this.lints.Run(body, program.Problems); // 1. A3 per judged body.
+                this.Judgments++;
+            }
+
+            this.Body(program, body); // 2. per body.
+        }
+    }
 
     // Step 2 of one body: its block order and move paths, then per view A1, then A2, a body whose A1 arena exceeds the analyses' limit
     // stopping those views (R4-M15a), then per view A4's local facts; a body with a validator finding, which no consumer reads (R5-M183), an

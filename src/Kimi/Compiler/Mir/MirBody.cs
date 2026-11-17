@@ -193,6 +193,26 @@ internal sealed class MirBody
         return call;
     }
 
+    /// <summary>Gets the construction a Places Call inserts into (PLAN G442): the Place that its first operand, a whole temp, borrows
+    /// exclusively in the Call's block, the one reading of that contract (MirValidator's Placed).</summary>
+    /// <param name="block">The block a Places Call ends, its operand range valid.</param>
+    /// <returns>The construction, or null when the block does not form that borrow.</returns>
+    internal MirPlace? Construction(int block)
+    {
+        ref readonly var data = ref this.blocks[block];
+        for (var i = data.Count - 1; i >= 0 && data.Terminator.Count > 0; i--)
+        {
+            ref readonly var statement = ref this.statements[data.Start + i];
+            if (statement.Kind == MirStatementKind.Assign && statement.Place == this.operands[data.Terminator.Start].Place)
+            {
+                var exclusive = (MirRefKind)statement.Rvalue.Op is MirRefKind.Uniq or MirRefKind.TwoPhaseUniq;
+                return statement.Rvalue.Kind == MirRvalueKind.Ref && exclusive ? statement.Rvalue.Place : null;
+            }
+        }
+
+        return null;
+    }
+
     /// <summary>Gets the Type of a Place: its last projection's, or its root's.</summary>
     /// <param name="place">A Place of the body.</param>
     /// <returns>The Type, or null when a projection is not admitted.</returns>

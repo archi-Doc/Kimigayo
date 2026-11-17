@@ -14,7 +14,8 @@ namespace XunitTest;
 // (Compilation.Check: the Final Bind, the startup check, then Analyze: the MIR's construction, validation, A1-A5 and the collector),
 // compared with the empty program's check, fact by fact: the library table's parsed count; every parsed node's facts and HIR row as the
 // semantic snapshot prints them; every library declaration's own symbol state; the library's scopes; the catalog; the library imports;
-// and the library's MIR dump. Not compared:
+// the library's MIR dump; and the `confined` obligations Binding lists with a library subject, which the library check alone judges
+// (PLAN G951 E3), so a program must not add or change one. Not compared:
 // - the Type interners (TyCtxt), which hold the program's instantiations by design (C7); F-B3's identity test (U3+U4) guards them;
 // - the declaration query states, valid only under Binding's private pass stamp; U2's Frozen stamp (F-B2) pins them;
 // - the library bodies' A4 summaries and Field numbers and the checked set, program-ordered by design (C8 rev. 1; U5b, U5c).
@@ -172,6 +173,8 @@ public partial class KimiLibraryShapeTest
 
         var mir = new StringBuilder();
         MirDump.Write(c.ConstructMir(), SyntaxTable.LibraryModule, mir); // The program the check analyzed, memoized per pass.
+        var obligations = new List<EffectObligation>();
+        c.Types.EffectObligations(obligations);
         return
         [
             ("parsed count", [table.ParsedCount.ToString(CultureInfo.InvariantCulture)]),
@@ -183,6 +186,8 @@ public partial class KimiLibraryShapeTest
             ("library imports", [.. c.Binding.LibraryImports.Where(x => x.Decl.Declaration.CodeContext.Kotonoha == library.Kotonoha)
                 .Select(static x => $"{x.Library} {x.Symbol} {x.Kind} {Where(x.Decl)}")]),
             ("library MIR", mir.ToString().Split('\n')),
+            ("library obligations", [.. obligations.Where(static x => x.Subject.IsLibrary).Select(x => $"{x.Code} {x.Requirement} at " +
+                $"{Where(c.SyntaxOf(x.Subject))} owes {Where(x.Definition)} callable={x.Callable is not null}").Order(StringComparer.Ordinal)]),
             ("synthesized nodes", Synthesized(table, printer)),
         ];
     }
