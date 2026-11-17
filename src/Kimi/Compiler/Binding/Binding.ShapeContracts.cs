@@ -7,7 +7,7 @@ namespace Kimi.Compiler;
 public sealed partial class Binding
 {
     private readonly Dictionary<ShapePair, ShapeJudgment> shapeJudgments = new();
-    private readonly Dictionary<FunctionKoto, int> shapeContractHeads = new(ReferenceEqualityComparer.Instance);
+    private readonly ShapeContractHeadRows shapeContractHeads;
     private readonly List<ShapeContract> shapeContracts = [];
     private readonly List<int> shapeDependencies = [];
     private readonly List<int> shapeSharedSlots = [];
@@ -92,5 +92,22 @@ public sealed partial class Binding
         {
             this.CollectShapeDependencies(type.Components[i], function);
         }
+    }
+
+    /// <summary>The `shapeContractHeads` family's one accessor (DECISIONS BU-220): a pass family, the first of a function's shape contracts
+    /// as the later function of an overload pair (its list runs through ShapeContract.Next), kept in the function's module's NodeColumns at
+    /// its SyntaxId as the contract's index + 1, so the column's default is no contract; absent after a pass until the column's first
+    /// write. Its members keep the names its readers use.</summary>
+    private readonly struct ShapeContractHeadRows(Binding binding)
+    {
+        internal int this[FunctionKoto function]
+        {
+            set => HirTables.Of(function).Families.ShapeContractHeads.Ref(function.SyntaxId, binding) = value + 1;
+        }
+
+        internal int GetValueOrDefault(FunctionKoto function, int absent)
+            => function.SyntaxOwner is { } table && table.Hir.Families.ShapeContractHeads.Get(function.SyntaxId, binding) is var head and not 0 ? head - 1 : absent;
+
+        internal bool ContainsKey(FunctionKoto function) => this.GetValueOrDefault(function, -1) >= 0;
     }
 }

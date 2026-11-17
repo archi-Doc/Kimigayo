@@ -60,7 +60,7 @@ public sealed partial class Binding
 {
     private readonly ScratchBuffers<BoundArgumentOperation> argumentOperationScratch = new();
     private readonly Dictionary<Koto, BoundArgumentOperation> receiverOperations = new(ReferenceEqualityComparer.Instance);
-    private readonly Dictionary<Koto, BoundAdaptation> adaptations = new(ReferenceEqualityComparer.Instance);
+    private readonly AdaptationRows adaptations;
 
     /// <summary>Gets whether an expression of Type <c>ref/T</c> or <c>uniq/T</c> is read as its Copy referent where a <c>T</c> is expected (SPEC 3.5.3).</summary>
     /// <param name="node">The bound expression; its BoundType remains the reference Type.</param>
@@ -551,5 +551,29 @@ public sealed partial class Binding
         var origin = actual.IsObjectBorrow ? this.ReferentOrigin(source, actual)! : this.PlaceOrigin(source);
         adapted = this.types.Intern(BoundTypeKind.Semantics, null, pattern.Semantics, [actual.Components[0]], origin: origin);
         return true;
+    }
+
+    /// <summary>The `adaptations` family's one accessor (DECISIONS BU-220): a pass family, the implicit adaptation selected for an
+    /// expression (SPEC 10.2), kept in its node's module's NodeColumns at its SyntaxId (an adaptation always has its Type, so the column's
+    /// default is none); absent after a pass until the column's first write. Its members keep the names its readers use.</summary>
+    private readonly struct AdaptationRows(Binding binding)
+    {
+        internal BoundAdaptation this[Koto node]
+        {
+            set => HirTables.Of(node).Families.Adaptations.Ref(node.SyntaxId, binding) = value;
+        }
+
+        internal bool ContainsKey(Koto node) => this.TryGetValue(node, out _);
+
+        internal void Remove(Koto node)
+        {
+            if (this.TryGetValue(node, out _))
+            {
+                this[node] = default;
+            }
+        }
+
+        internal bool TryGetValue(Koto node, out BoundAdaptation adaptation)
+            => (adaptation = node.SyntaxOwner is { } table ? table.Hir.Families.Adaptations.Get(node.SyntaxId, binding) : default) != default;
     }
 }

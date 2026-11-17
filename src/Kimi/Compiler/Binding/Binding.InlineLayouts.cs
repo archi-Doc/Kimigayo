@@ -59,7 +59,7 @@ public sealed partial class Binding
             }
         }
 
-        foreach (var conformance in this.impls.Identities)
+        foreach (var conformance in this.impls.InPass.Identities)
         {
             for (var p = 0; p < conformance.PathStorage.Count; p++)
             {

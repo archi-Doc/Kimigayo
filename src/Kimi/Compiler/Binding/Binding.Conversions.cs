@@ -181,9 +181,7 @@ public sealed partial class Binding
 
         for (var parent = source.Parent; parent is not null; parent = parent.Parent)
         {
-            if (this.scopes.TryGetValue(parent, out var enclosing) ||
-                (parent.Parent is CodeBlockKoto { Parent: FunctionKoto { IsGenerated: true } } &&
-                parent.CodeContext.SourceDocument is { } document && this.scopes.TryGetValue(document, out enclosing)))
+            if (this.ScopeOf(parent) is { } enclosing)
             {
                 scope = enclosing;
                 break;

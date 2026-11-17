@@ -525,7 +525,6 @@ public sealed partial class Binding
     {
         this.shapeCallCandidates.Clear();
         this.shapeJudgments.Clear();
-        this.shapeContractHeads.Clear();
         this.shapeContracts.Clear();
         this.shapeDependencies.Clear();
         this.shapeSharedSlots.Clear();

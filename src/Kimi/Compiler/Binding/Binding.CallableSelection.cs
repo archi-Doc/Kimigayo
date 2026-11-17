@@ -210,7 +210,9 @@ public sealed partial class Binding
         {
             var candidate = this.callableSelectionParties[failure.Start + i];
             var at = candidate.Context;
-            foreach (var syntax in this.nodes)
+
+            // After the Bind (ReportDiagnostics): every pass's nodes.
+            foreach (var syntax in this.nodesView)
             {
                 if (syntax is IsKoto clause && ReferenceEquals(clause.BoundConstraint, candidate.Fact))
                 {
