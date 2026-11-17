@@ -104,7 +104,8 @@ public partial class SyntaxIdTest
     // of two edits allocates no arena: the column's arena is again the one it had before the first, and its first row is the same object
     // at its node's id, which a synthesized node's renumbering may change (Symbols: a declaration's symbol; Receivers: Point's implicit
     // constructor's `self`; EnumConstructions: `.Some(1)`'s plan; CopyDeclarations: a `Self is Copy` clause's declaration; CopyByType:
-    // its container's list). The column is read by reflection, since the families' rows differ.
+    // its container's list; OverrideEntries: a Type's implementations by original). The column is read by reflection, since the
+    // families' rows differ.
     [Trait("Purpose", "Allocation")]
     [Theory]
     [InlineData("Symbols", null)]
@@ -112,9 +113,12 @@ public partial class SyntaxIdTest
     [InlineData("EnumConstructions", null)]
     [InlineData("CopyDeclarations", CopyPoint)]
     [InlineData("CopyByType", CopyPoint)]
+    [InlineData("OverrideEntries", "open struct Base<T>\n    public func ordinary(self: objref/Self) -> i32 => 1\n    public virtual func read(self: objref/Self, other: objref/Leaf<T>) -> i32 => 1\nstruct Leaf<T> : Base<T>\n    override func read(self: objref/Self, other: objref/Leaf<T>) -> i32\n        return self.ordinary()\n()")]
+    [InlineData("SpecializationsByOriginal", "milestone:Milestone11")]
     public void AKeptFamilyAlternatesItsArenasAcrossEdits(string family, string? program)
     {
-        var c = MinimalEmissionTest.Analyze(program ?? Source);
+        var c = MinimalEmissionTest.Analyze(program is null ? Source
+            : program.StartsWith("milestone:", StringComparison.Ordinal) ? Repository.ReadText("tests", "milestones", program["milestone:".Length..] + ".kimi") : program);
         var field = typeof(NodeColumns).GetField(family, Members)!;
         var rows = Column().GetType().GetMethod("Enumerate", Members)!.Invoke(Column(), null)!;
         Assert.True((bool)rows.GetType().GetMethod("MoveNext")!.Invoke(rows, null)!, $"{family} holds no row of the program.");
@@ -138,7 +142,7 @@ public partial class SyntaxIdTest
     // parameters; ShapeContractHeads: the shape contracts of an overload group whose every pair shares a slot; ObjectErasures: an
     // override's call through its receiver's erased view, VirtualEntryErasureTest's program; InheritedOriginTypes: Milestone11's omitted
     // inherited Origins; DeferredConstraints: Milestone10's clause decisions; Matches: Milestone10's match plans; Adaptations: Milestone10's
-    // implicit adaptations). Checked after each edit (N5-5's review C1):
+    // implicit adaptations; VirtualOverrides: that program's override). Checked after each edit (N5-5's review C1):
     // a kept family's two arenas alternate, so after an even number of edits a kept column's arena is again its first.
     [Trait("Purpose", "Allocation")]
     [Theory]
@@ -149,6 +153,10 @@ public partial class SyntaxIdTest
     [InlineData("DeferredConstraints", "milestone:Milestone10")]
     [InlineData("Matches", "milestone:Milestone10")]
     [InlineData("Adaptations", "milestone:Milestone10")]
+    [InlineData("VirtualOverrides", "open struct Base<T>\n    public func ordinary(self: objref/Self) -> i32 => 1\n    public virtual func read(self: objref/Self, other: objref/Leaf<T>) -> i32 => 1\nstruct Leaf<T> : Base<T>\n    override func read(self: objref/Self, other: objref/Leaf<T>) -> i32\n        return self.ordinary()\n()")]
+    [InlineData("Specializations", "milestone:Milestone11")]
+    [InlineData("ImplicitConstructorDecisions", "open struct Base\n    public init() => ()\nstruct Derived : Base\n    public var y: i32 = 2\nlet d = Derived.init()\n")]
+    [InlineData("VirtualEffectBounds", "milestone:Milestone44")]
     public void AStampedFamilyKeepsItsArenaAcrossEdits(string family, string program)
     {
         var source = program == "candidates" ? ConstructorInferenceWorkloads.Create(program, 4)
