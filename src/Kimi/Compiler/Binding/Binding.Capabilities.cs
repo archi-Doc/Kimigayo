@@ -61,34 +61,10 @@ public sealed partial class Binding
 
     internal ConstraintProof ProveSealed(BoundType type, BindingScope scope) => this.RequestCapability(type, this.Library.Sealed, scope);
 
-    // Whether a capability judgment reads a Type's declaration (a struct, enum or other container) rather than its parts (SPEC 4.5: a
-    // collection by its element Types, whatever its Symbol).
-    private static bool JudgedByDeclaration(BoundType type)
-        => type.Kind is not (BoundTypeKind.Array or BoundTypeKind.Dictionary) && type.Symbol?.Declaration is DeclarationContainerKoto;
-
-    // A requirement Item's Contract reference: metadata, of which only the bound Type arguments are retained bindings.
-    private static BoundType? RequirementReference(BoundType type)
-        => type.Kind == BoundTypeKind.FunctionItem && type.Symbol?.Declaration is FunctionKoto { IsRequirement: true } && type.Components.Count > 1
-            ? type.Components[1] : null;
-
     // Whether a binder (an atom's, or a Type parameter's declaration) is inherited by `function`, nested in `body`: it is outside the
     // function and is no Container that the function is a member of below the body.
     private static bool Inherited(Koto binder, FunctionKoto function, Koto body)
         => !IsWithin(binder, function) && !(IsWithin(function, binder) && !IsWithin(body, binder));
-
-    // The declaration a Type parameter's syntax belongs to (a function or a Container, a Contract's Self included).
-    private static Koto DeclaringNode(Koto declaration)
-    {
-        for (var current = declaration; current is not null; current = current.Parent)
-        {
-            if (current is DeclarationKoto)
-            {
-                return current;
-            }
-        }
-
-        return declaration;
-    }
 
     // The body a declaration is nested in: its nearest enclosing function or accessor, the execution scope's generated function for a root
     // function (which lies there with the top-level bindings, SPEC 6.1.1); null outside every body (a Container's member).
@@ -229,7 +205,7 @@ public sealed partial class Binding
             return EnclosingBody(definition) is { } body ? (this.InheritedEnvironment(definition, body), definition) : null;
         }
 
-        return (type.ClosureContext is not null && TyCtxt.ClosureInstance(type) is null ? null : this.ClosureSignature(type), definition);
+        return (type.InstanceContext is not null && TyCtxt.NestedInstance(type) is null ? null : this.ClosureSignature(type), definition);
     }
 
     private void ResetCapabilities(BindingMode mode)
@@ -783,7 +759,7 @@ public sealed partial class Binding
             }
 
             var owned = ConstraintProof.Proven;
-            foreach (var (part, _, _) in new CapabilityParts(work.Type))
+            foreach (var (part, _, _) in new CapabilityParts(work.Type, BoundType.Unit))
             {
                 owned = part is null ? owned : CombineProof(owned, this.RequestCapability(part, work.Intrinsic, work.Scope), true);
             }
@@ -798,7 +774,19 @@ public sealed partial class Binding
 
         // Owned records each part that is not Proven with its member and Origin (CapabilityWork.Parts, R4-M161).
         var result = ConstraintProof.Proven;
-        var parts = new CapabilityParts(work.Type);
+        // A nested definition's inherited arguments are OwnedOrigins' parts (SPEC 15.2.3), so Owned reads them; Copy reads a Closure's
+        // captures only (SPEC 3.2.1). An unreadable instance (InheritedArguments) answers BU-22's limit with the definition as the site.
+        var inherited = work.Intrinsic.Intrinsic == IntrinsicKind.Owned ? this.InheritedArguments(work.Type) : BoundType.Unit;
+        if (inherited is null)
+        {
+            var saved = this.ScopeReads.Origin;
+            this.ScopeReads.Origin = null;
+            var proof = this.ReadVerdict(ConstraintProof.Unknown, work.Site ??= new(this.neededSites) { Use = work.Type.Symbol!.Declaration }, null);
+            result = CombineProof(result, proof, true);
+            this.ScopeReads.Origin = work.Part(work.Type.Components.Count, proof, this.ScopeReads.Origin, saved);
+        }
+
+        var parts = new CapabilityParts(work.Type, inherited ?? BoundType.Unit);
         while (parts.MoveNext())
         {
             var (part, origin, argument) = parts.Current;
@@ -845,12 +833,13 @@ public sealed partial class Binding
         }
     }
 
-    // SPEC 15.3.4 (last bullet), 15.2.3: what a named function nested in a body (a root function in the execution scope's) inherits, read
-    // from its declaration as its Item is formed: the Origins and Type parameters its declared signature names whose binder lies outside it
-    // and is no Container it is a member of below that body (whose slots its bound arguments instantiate), as one environment Tuple
-    // (EnvironmentTuple). Atoms bound inside its declaration (its own Origins, a Constraint set's slot, a nested Function Type's inputs)
-    // are per-call, and a Type a projection or a bound argument derives from them is never judged itself (15.2.3 counts the arguments).
-    // Null when a declared Type did not bind.
+    // SPEC 15.3.4 (last bullet), 15.2.3: what a named function nested in a body (a root function in the execution scope's) depends on by
+    // naming it, beyond its inherited parameters (CapabilityParts' environment parts, SPEC 6.1.3), read from its declaration as its Item is
+    // formed: the Origins its declared signature names whose binder lies outside it and is no Container it is a member of below that body,
+    // an enclosing Container's Origin slot excepted (an inherited parameter), as one environment Tuple (EnvironmentTuple): an enclosing
+    // function's Origins (SPEC 15.3: no function Origin parameter list) and a local's. Atoms bound inside its declaration (its own Origins,
+    // a Constraint set's slot, a nested Function Type's inputs) are per-call, and a Type a projection or a bound argument derives from them
+    // is never judged itself (15.2.3 counts the arguments). Null when a declared Type did not bind.
     private BoundType? InheritedEnvironment(FunctionKoto function, Koto body)
     {
         if (function.BoundSymbol?.Type is not { } result)
@@ -876,18 +865,15 @@ public sealed partial class Binding
             var signature = this.types.Tuple(declared.AsSpan(0, count + 1));
             var summary = this.SummaryOf(signature);
             var origins = this.originScratch.Rent(summary.Nodes.Length + summary.RawNodes.Length);
-            var types = this.RentTypes(this.InheritedParameters(signature, function, body, null, 0, this.visitedParts.Begin(this.storageVersion)));
             try
             {
                 var o = InheritedOrigins(summary.Nodes, function, body, origins, 0);
                 o = InheritedOrigins(summary.RawNodes, function, body, origins, o);
-                var t = this.InheritedParameters(signature, function, body, types, 0, this.visitedParts.Begin(this.storageVersion));
-                return this.EnvironmentTuple(types.AsSpan(0, t), origins.AsSpan(0, o));
+                return this.EnvironmentTuple([], origins.AsSpan(0, o));
             }
             finally
             {
                 this.originScratch.Return(origins, clearArray: true);
-                this.typeScratch.Return(types, clearArray: true);
             }
         }
         finally
@@ -899,7 +885,8 @@ public sealed partial class Binding
         {
             for (var i = 0; i < nodes.Length; i++)
             {
-                if (nodes[i] is { Kind: not (OriginKind.Static or OriginKind.Intersection), Binder: { } binder } atom && Inherited(binder, function, body))
+                if (nodes[i] is { Kind: not (OriginKind.Static or OriginKind.Intersection), Binder: { } binder } atom && Inherited(binder, function, body) &&
+                    !(atom.Kind == OriginKind.Parameter && binder is DeclarationContainerKoto))
                 {
                     into[count++] = atom;
                 }
@@ -908,43 +895,6 @@ public sealed partial class Binding
             return count;
         }
     }
-
-    // The Type parameters a declared signature inherits, each part visited once per walk (DECISIONS BU-19): counted, or written into `into`.
-    private int InheritedParameters(BoundType type, FunctionKoto function, Koto body, BoundType[]? into, int count, uint query)
-    {
-        if (type.Kind == BoundTypeKind.Parameter)
-        {
-            if (type.Symbol?.Declaration is { } declaration && Inherited(DeclaringNode(declaration), function, body))
-            {
-                if (into is not null)
-                {
-                    into[count] = type;
-                }
-
-                count++;
-            }
-
-            return count;
-        }
-
-        for (var i = 0; i < type.Components.Count; i++)
-        {
-            var part = type.Components[i];
-            if (part.HasAbstractPart && this.FirstVisit(part, query))
-            {
-                count = this.InheritedParameters(part, function, body, into, count, query);
-            }
-        }
-
-        return count;
-    }
-
-    // An environment's parts as one Type (SPEC 7.7.4, 15.2.3): a Tuple of its Type parts whose Origin arguments are its Origin parts, which
-    // CapabilityParts reads back in this order; Unit when it has none. Invariant: it is the only Tuple whose Origin arguments are Origin
-    // parts, and the only producer of a Tuple with Origin arguments (TyCtxt.Tuple gives none); it is a capability subject (the erasure's,
-    // an Item's signature part), never a value's Type. A new producer of a Tuple with Origin arguments must not reach CapabilityParts.
-    private BoundType EnvironmentTuple(ReadOnlySpan<BoundType> types, ReadOnlySpan<BoundOrigin> origins)
-        => types.IsEmpty && origins.IsEmpty ? BoundType.Unit : this.types.Intern(BoundTypeKind.Tuple, null, SemanticsKind.Owner, types, originArguments: origins);
 
     // Copy's derivation over the stored Types of a declaration's Self (SPEC 3.5.2); Owned reads component summaries.
     private ConstraintProof StoredCapability(CapabilityWork work, AdtDef shape)
@@ -1044,88 +994,5 @@ public sealed partial class Binding
         }
 
         return positive && negative ? ConstraintProof.Error : positive ? ConstraintProof.Proven : negative ? ConstraintProof.Refuted : ConstraintProof.Unknown;
-    }
-
-    // The parts a capability judgment decomposes a Type into when no declaration judges it (SPEC 15.2.3): its components, a requirement
-    // Item's Contract reference replaced by that reference's Type arguments (Argument), then its Origin parts: that reference's Origin
-    // arguments (a Contract's inherited Origins, SPEC 6.1.3), or an environment Tuple's (EnvironmentTuple). An environment's parts have
-    // this one numbering for the erasure and the Owned proof alike (DECISIONS BU-73: a Closure's capture index). StructuralCapability,
-    // ErasureSubject and the component summaries' walk read this one enumeration.
-    private ref struct CapabilityParts(BoundType type)
-    {
-        private readonly BoundType type = type;
-        private readonly BoundType? reference = RequirementReference(type);
-        private int index = -1;
-        private int argument = -1;
-        private int origin = -1;
-
-        // A Type part, or an Origin part (Part null); Argument for a requirement reference's Type argument.
-        public (BoundType? Part, BoundOrigin? Origin, bool Argument) Current { readonly get; private set; }
-
-        // The current part's member: its component's index; a requirement reference's Type and Origin arguments are member 1; an
-        // environment Tuple's Origin part follows its components.
-        public readonly int Member => this.argument >= 0 || (this.origin >= 0 && this.reference is not null) ? 1
-            : this.origin >= 0 ? this.type.Components.Count + this.origin : this.index;
-
-        // The Origin parts: a requirement reference's Origin arguments, or an environment Tuple's, read by EnvironmentTuple's invariant
-        // that only an environment Tuple has Origin arguments.
-        private readonly IReadOnlyList<BoundOrigin> Origins => this.reference?.OriginArguments ?? (this.type.Kind == BoundTypeKind.Tuple ? this.type.OriginArguments : []);
-
-        // The member of the part at an ordinal of this enumeration, an environment Tuple's member (ErasureSubject).
-        public static int MemberAt(BoundType type, int ordinal)
-        {
-            var parts = new CapabilityParts(type);
-            for (var i = 0; parts.MoveNext(); i++)
-            {
-                if (i == ordinal)
-                {
-                    return parts.Member;
-                }
-            }
-
-            throw new InvalidOperationException($"`{type}` has no part {ordinal} (InternalInvariant; BU-73).");
-        }
-
-        public readonly CapabilityParts GetEnumerator() => this;
-
-        public bool MoveNext()
-        {
-            if (this.origin >= 0 || this.index >= this.type.Components.Count)
-            {
-                this.origin++;
-                if (this.origin < this.Origins.Count)
-                {
-                    this.Current = (null, this.Origins[this.origin], false);
-                    return true;
-                }
-
-                return false;
-            }
-
-            if (this.argument >= 0 && ++this.argument < this.reference!.Components.Count)
-            {
-                this.Current = (this.reference.Components[this.argument], null, true);
-                return true;
-            }
-
-            this.argument = -1;
-            while (++this.index < this.type.Components.Count)
-            {
-                if (this.index != 1 || this.reference is null)
-                {
-                    this.Current = (this.type.Components[this.index], null, false);
-                    return true;
-                }
-
-                if (this.reference.Components.Count != 0)
-                {
-                    this.argument = 0;
-                    this.Current = (this.reference.Components[0], null, true);
-                    return true;
-                }
-            }
-
-            return this.MoveNext();
-        }
     }
 }
