@@ -22656,6 +22656,15 @@ R8-M* and R9-M* by the stage of the recording unit.
     - Record placement: g15x and the alias rows at the alias (1:1). `milestone/Milestone41` and `Milestone43`, which name `Weak`,
       keep their `Unsupported_Kd` (8:26 in Milestone41) at the same place, where the base's `MissingFailure` gave it (G1-3b-2's
       re-check, R2).
+  - **RP8 (W-232's slot T-W232; the owner's acceptance, verbatim 「W-232  (a) このまま着地させる」, K's dialog, 2026-11-16 14:4x).**
+    A a63b1598b, B bcf64ffc2 (with PLAN G952), 12 rounds: O2 unchanged (13 kernels, code differs in 0); one Bind row beyond, Hello
+    cold B/A' 1.039 over RP8's 1.03 and outside its A'/A 1.027; every other Bind row within or better; cold bytes -2.2 MB (G952's),
+    warm 0 B. The owner accepted the Hello row as R8-G1's cost: its library-side symbols (`BindingSymbol` 192 -> 208 B, 19 more
+    symbols, the `#Lang` Attributes), about +210 KB of cold Bind allocation per compilation, the same on every program. T-302 (W-232
+    alone, blocking GC) read RawStores' cold Bind B/A' 1.112 and Hello's 1.037, warm Bind within on all three programs: the extra
+    bytes move which of the 8 cold rounds take a gen2 collection, so the median steps by about half a gen2 pause. The owner's O-387
+    (a) (verbatim 「質問の回答は、すべて推奨通り」, 2026-11-17) puts it under the same acceptance, with no recovery unit and no harness
+    change. Removal: G949 Stage 2 (R8-L1), the per-process freeze of the library's Binding and HIR.
   - **Supersedes in part:** BU-118's "one enum member" sentence (four facts, one read of the Name); R4-M23's and R8-M42's `Bodyless`
     facts (`BodylessKind`, read from `Definition`); R8-M22's producer kind `ConsoleWriteStdout` and its signature-only
     `Console.kimi`; R8-M30's `FindDeclaration`; R8-M46's `StorageReserveDispatch` member; R8-M48's `None` row of the Body
