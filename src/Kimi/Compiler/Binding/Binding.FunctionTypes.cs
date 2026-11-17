@@ -332,10 +332,8 @@ public sealed partial class Binding
     // consumer rests: a call argument, a payload, a Tuple or array element, a grouping, a join arm.
     private bool ErasesToFunction(Koto node, BoundType actual, BoundType expected)
     {
-        var failure = default(ComparisonFailure);
-        var receiver = BoundClosure.Of(actual)?.Receiver ?? SemanticsKind.Ref; // An Item, or a closure with no signature, has none.
         var unformedMark = this.unformedWrites;
-        var fits = this.ErasureFits(actual, expected, node, out failure);
+        var fits = this.ErasureFits(actual, expected, node, out var failure);
         if (this.UnformedSince(unformedMark))
         {
             // DECISIONS D3 (temporary, PLAN G886): the Item's signature rests on a Type no binding represents (ItemSignatureFits), so the
@@ -348,6 +346,17 @@ public sealed partial class Binding
             return false;
         }
 
+        return this.DecideErasure(node, actual, expected, fits, failure);
+    }
+
+    // SPEC 7.7.4: an erasure's decision from the verdict of its receiver and signature part (`fits`, with the `failure` of a
+    // signature that does not fit), and its published outcome. The verdict is ErasesToFunction's own (ErasureFits), or a Function
+    // reference's, whose candidate search decided that its bound Item's signature meets the required Type in no case of its split
+    // (BindFunctionReference; DECISIONS D3, temporary, PLAN G886), so that decision is not searched a second time.
+    private bool DecideErasure(Koto node, BoundType actual, BoundType expected, bool fits, in ComparisonFailure failure)
+    {
+        var receiver = BoundClosure.Of(actual)?.Receiver ?? SemanticsKind.Ref; // An Item, or a closure with no signature, has none.
+        var unformedMark = this.unformedWrites;
         var signature = this.ClosureSignature(actual) ?? this.FunctionItemSignature(actual);
         this.unformedWrites = unformedMark; // An Item that no case of its split fits fails by itself (ItemSignatureFits).
         OwnedFact owned = default;

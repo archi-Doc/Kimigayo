@@ -190,10 +190,10 @@ public sealed partial class Binding
                     if (this.UnformedSince(signatureMark))
                     {
                         // DECISIONS D3 (temporary, PLAN G886): the bound Item's signature forms no Type, and no combination of its split
-                        // cases meets S (SplitState): the record names the Item, its Note the erasure's shape part, which that
-                        // search decided (no second search).
+                        // cases meets S (SplitState): the record names the Item, its Note the erasure's part, decided from that
+                        // search's verdict (DecideErasure; no second search).
                         this.unformedWrites = signatureMark;
-                        (this.erasureOutcomes ??= new())[(candidateItem, required)] = new(ErasurePart.Shape, false, SemanticsKind.Ref, default);
+                        _ = this.DecideErasure(use, candidateItem, required, fits: false, default);
                         return this.FailMismatch(use, use, candidateItem, required, default);
                     }
 
