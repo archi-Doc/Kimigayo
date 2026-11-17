@@ -29,7 +29,8 @@ public class CompilerPipelineBenchmark
 
     internal string Source => this.source;
 
-    /// <summary>Gets the number of MIR bodies each compilation builds: the source's and the library's.</summary>
+    /// <summary>Gets the number of MIR bodies each compilation builds: the source's, the library's templates and the library bodies its
+    /// lookups demand (PLAN G951 U2).</summary>
     internal int MirBodies { get; private set; }
 
     /// <summary>Constructs the input outside measurement and validates full emission.</summary>
@@ -79,8 +80,9 @@ public class CompilerPipelineBenchmark
     }
 
     // Each operation owns a fresh Compilation. Boundaries are contiguous; lowering runs only once. Stage 3 builds and validates the MIR
-    // (ConstructMir), memoized per program version; stage 4's Analyze (DECISIONS R5-M156) runs the
-    // MIR analyses and the instance collector over it and keeps them for the generation gate (R6-check H0 D-c5). Stage 5 is empty and
+    // (ConstructMir), memoized per program version: the source modules' bodies and the library's templates (PLAN G951 U2); stage 4's
+    // Analyze (DECISIONS R5-M156) runs the MIR analyses and the instance collector over it, building each library body a lookup demands,
+    // and keeps them for the generation gate (R6-check H0 D-c5). Stage 5 is empty and
     // stage 6 is the generation entry, MIR code generation (R5-M94, R5-M160).
     internal Compilation Compile(TextWriter output, Span<long> timestamps = default, Span<long> allocations = default)
     {

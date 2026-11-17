@@ -1,6 +1,7 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using Kimi.Compiler;
+using Kimi.Compiler.Mir;
 using Kimi.Compiler.Parsing;
 using Xunit;
 
@@ -204,10 +205,11 @@ public sealed partial class TyCtxtTest
         }));
     }
 
+    // The Types of every MIR local of a compilation, the library's bodies' included (the library check's root range, PLAN G951 U2-T).
     private static List<BoundType?> LocalTypes(Compilation c)
     {
         var locals = new List<BoundType?>();
-        foreach (var body in c.BuildMir().Bodies)
+        foreach (var body in new MirBuilder(c).Build(SyntaxTable.LibraryModule + 1).Bodies)
         {
             foreach (var local in body.Locals)
             {

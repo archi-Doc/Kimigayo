@@ -81,7 +81,7 @@ public sealed partial class Binding
     private bool ValidPropertyWritePath(Koto node, BindingScope scope)
     {
         node = KotoHelper.UnwrapParentheses(node);
-        while (node is BinaryKoto projection && (projection is MemberAccessKoto || ElementAccess.IsSyntax(projection)))
+        while (node is BinaryKoto projection && (projection is MemberAccessKoto || ElementAccess.IsSyntax(this, projection)))
         {
             node = KotoHelper.UnwrapParentheses(projection.Left);
             if (node.BoundType?.Semantics != SemanticsKind.Owner)

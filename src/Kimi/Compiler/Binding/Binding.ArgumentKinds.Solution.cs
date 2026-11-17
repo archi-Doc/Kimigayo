@@ -72,6 +72,12 @@ public sealed partial class Binding
         internal BoundOrigin[] Origins;
         internal BoundOrigin[] Inputs;
         internal bool FixedConstruction;
+
+        // Whether this run is the candidate's first solve, the one that composes its retained rows (SolveLate; DECISIONS BU-104 R3):
+        // its openings start empty there (OpenWaited), and a later run keeps them. Every solution that reaches SolveLate carries a
+        // slice (TryCandidate's: an evaluation's, unset when the candidate's evaluation begins, or a fixed construction's re-check,
+        // which keeps the selected candidate's openings), so each evaluation's first solve clears them.
+        internal bool FirstSolve;
         internal OriginInference? OriginInference;
 
         // F1 (R4-M164): each argument's root row for this candidate's call (Contribute; Binding.ArgumentKinds.Rows.cs), a slice of the
@@ -209,6 +215,74 @@ public sealed partial class Binding
             }
         }
 
+        // J2 (SPEC 10.5.1, 10.8, 15.3.6; the owner's O-358 (a), O-362 (a), F's ruling 3; PLAN G936): a callee variable that evidence
+        // names only at covariant positions and a position without evidence also names, neither inside a Function Type nor read by a
+        // Constraint of the callee (CollectPositionNames; O-368 (a)), is an Origin variable that the waiting part's check bounds as well as the evidence's fit, so the call
+        // opens it as its region; each relation is then judged after selection at its own source (JudgeSelectedCall, the waiting part's
+        // completion, the uses of the result) and ownership analysis solves the region with the body's other regions: with covariant
+        // uses exactly the meet of the bounds (SPEC 15.2.2). Such a Type slot, bound without an invariant binding and fixed by no
+        // explicit or declaring Type, takes its solution with the Origins at its covariant positions opened (OpenSlotOrigins); its
+        // structure and Semantics stay the evidence's, so applicability and ranking are unchanged and no candidate is solved twice. Such
+        // an Origin parameter is published to the solve (OriginInference.WaitingNamed), which writes a covariant one as its evidence
+        // candidate met with the call's region (CallRegion). Either way the solution is `(E and region)`, SPEC 15.3.6's candidate
+        // with the region for the bounds not known yet, and E is kept in the candidate's openings (OriginInference.Opened), which
+        // start empty at its first solve. A candidate without a Signature row reads nothing more.
+        internal readonly void OpenWaited()
+        {
+            var signature = false;
+            for (var i = 0; !signature && i < this.Rows.Length; i++)
+            {
+                signature = this.Rows[i].Contribution == Contribution.Signature;
+            }
+
+            if (!signature)
+            {
+                return;
+            }
+
+            var binding = this.Binding;
+            var opened = binding.InferenceOf(this.Call, this.Function);
+            if (this.FirstSolve)
+            {
+                opened.Opened.Clear();
+            }
+
+            var slots = CallSlotCount(this.Binder);
+            var waiting = binding.RentSlotSet(slots + this.OriginCount);
+            var covariant = binding.RentSlotSet(slots + this.OriginCount);
+            var blocked = binding.RentSlotSet(slots + this.OriginCount);
+            try
+            {
+                binding.CollectPositionNames(this, ref waiting, ref covariant, ref blocked);
+                for (var g = 0; g < CallOwnSlots(this.Function).Count; g++)
+                {
+                    if (Opens(g, waiting, covariant, blocked) && this.Types[g] is { CarriesOrigin: true } solution &&
+                        !binding.invariantSlots.Contains(g) && !this.FixedSlot(g))
+                    {
+                        var ordinal = 0;
+                        this.Frame.SetType(g, binding.OpenSlotOrigins(solution, this.Call, g, 1, ref ordinal, opened));
+                    }
+                }
+
+                for (var k = 0; this.OriginInference is not null && k < this.OriginCount; k++)
+                {
+                    if (Opens(slots + k, waiting, covariant, blocked))
+                    {
+                        this.OriginInference.WaitingNamed.Add(k);
+                    }
+                }
+            }
+            finally
+            {
+                binding.ReturnSlotSet(blocked);
+                binding.ReturnSlotSet(covariant);
+                binding.ReturnSlotSet(waiting);
+            }
+
+            static bool Opens(int index, in SlotSet waiting, in SlotSet covariant, in SlotSet blocked)
+                => waiting.Contains(index) && covariant.Contains(index) && !blocked.Contains(index);
+        }
+
         // Each operation's parameter Type with the solution substituted, where it is complete.
         internal readonly void CompleteOperationTypes(Span<BoundArgumentOperation> operations)
         {
@@ -282,6 +356,11 @@ public sealed partial class Binding
         private readonly bool FitsCallable(Koto node, BoundType type)
             => node.BoundType is { } actual
                 ? this.Binding.ErasureSignatureFits(actual, type, node, out _) : this.Binding.FunctionGroupFits(node, node.BoundSymbol!, type, this.Scope);
+
+        // Whether the Type slot `slot` is fixed before any evidence (FixCallSlots): an explicit Type argument, or a constructor's slot
+        // that its declaring Type gives (an open construction slot is its own parameter there).
+        private readonly bool FixedSlot(int slot)
+            => slot < this.Fixed.Types.Length && this.Fixed.Types[slot] is { } bound && OwnSlot(bound, this.SlotOwner) != slot;
 
         private readonly Span<BoundOrigin> InputSpan() => this.Inputs.AsSpan(0, Math.Min(this.Inputs.Length, InputOriginCount(this.Binder)));
 
