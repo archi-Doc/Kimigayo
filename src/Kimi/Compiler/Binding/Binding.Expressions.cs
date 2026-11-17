@@ -307,7 +307,7 @@ public sealed partial class Binding
         // SPEC 10.2: one implicit operation of the common adaptation, recorded once for every later stage; a fitting stored exclusive
         // reference is Reborrowed (SPEC 3.5.1, 10.2.2), as at a bare acquisition position.
         if (expected is not null && actual is not null && node.ErasedFunctionType is null &&
-            (!Compatible(actual, expected) || StoresExclusiveReference(node, actual)) &&
+            (!Compatible(actual, expected) || this.StoresExclusiveReference(node, actual)) &&
             this.ExpectedAdaptation(node, actual, expected) is { } adaptation)
         {
             this.adaptations[node] = adaptation;
