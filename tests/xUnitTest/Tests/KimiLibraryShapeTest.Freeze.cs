@@ -1,5 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using System.Reflection;
 using Kimi.Compiler;
 using Xunit;
 
@@ -26,6 +27,29 @@ public partial class KimiLibraryShapeTest
             .ToArray();
         Assert.NotEmpty(paths);
         Assert.Empty(paths.SelectMany(static x => x.PropertyWitnesses.Where(static w => w.Kind != PropertyWitnessKind.AccessorCall).Select(w => $"{x.Type.Name} is {x.Contract.Name}: {w.Kind}")));
+    }
+
+    // DeclQuery's Frozen column (B3; s11-design section 5, D-721's line on BU-105): a declaration query state stamped Frozen is the library
+    // pass's in every pass, and a program pass's demand writes none of it: Running and NotStarted leave it (a not-Done SignatureVerdict
+    // is then formed at each use, PLAN G375), and a completion is a broken contract. The stamp and states are set here by reflection on
+    // one library function (from B4 the freeze writes them; e2 reads the per-use path through a program). Before B3 the Running write
+    // took the frozen state (Current reads a Frozen stamp as the pass's).
+    [Fact]
+    public void AFrozenQueryStateIsNeverWritten()
+    {
+        var c = Bound(string.Empty);
+        var function = DeclaredSymbols(c).First(x => x.Kind == BindingSymbolKind.Function && ReferenceEquals(x.Declaration.CodeContext?.Kotonoha, c.Library.Kotonoha));
+        var stamp = typeof(BindingSymbol).GetField("queryPass", BindingFlags.Instance | BindingFlags.NonPublic)!;
+        stamp.SetValue(function, Binding.Frozen32);
+        typeof(BindingSymbol).GetField("queries", BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(function, (ushort)((int)DeclState.Done << ((int)DeclQueryKind.Signature * 2)));
+        var pass = (ulong)typeof(Binding).GetField("storageVersion", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(c.Binding)! + 1;
+        function.SetQueryState(DeclQueryKind.SignatureVerdict, pass, DeclState.Running);
+        function.SetQueryState(DeclQueryKind.Signature, pass, DeclState.NotStarted);
+        var refused = Assert.Throws<InvalidOperationException>(() => function.SetQueryState(DeclQueryKind.SignatureVerdict, pass, DeclState.Done));
+        Assert.Contains("(InternalInvariant; PLAN G949 S1-1)", refused.Message, StringComparison.Ordinal);
+        Assert.Equal(Binding.Frozen32, stamp.GetValue(function));
+        Assert.Equal(DeclState.NotStarted, function.QueryState(DeclQueryKind.SignatureVerdict, pass));
+        Assert.Equal(DeclState.Done, function.QueryState(DeclQueryKind.Signature, pass));
     }
 
     // k4 (B1: E3's effect bounds, E7, R): the library pass completes the facts a later pass would otherwise form lazily on a library

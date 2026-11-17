@@ -402,12 +402,27 @@ public sealed class BindingSymbol
     /// <returns>The state, NotStarted when set in another pass.</returns>
     internal DeclState QueryState(DeclQueryKind kind, ulong pass) => Binding.Current(this.queryPass, (uint)pass) ? (DeclState)((this.queries >> ((int)kind * 2)) & 3) : DeclState.NotStarted;
 
-    /// <summary>Sets a declaration query's state in a pass (Binding.DeclQuery only).</summary>
+    /// <summary>Gets a value indicating whether the declaration's query states are its library pass's, stamped Frozen by PLAN G949
+    /// S1-1's freeze (Binding.DeclQuery's Frozen column); read only by Binding.DeclQuery.</summary>
+    internal bool QueriesFrozen => this.queryPass == Binding.Frozen32;
+
+    /// <summary>Sets a declaration query's state in a pass (Binding.DeclQuery only). Frozen states are never written: a Running or
+    /// NotStarted write leaves them, and a Done write is a broken contract (a library fact completed in a program pass).</summary>
     /// <param name="kind">The query's kind.</param>
     /// <param name="pass">The pass stamp.</param>
     /// <param name="state">The state.</param>
     internal void SetQueryState(DeclQueryKind kind, ulong pass, DeclState state)
     {
+        if (this.QueriesFrozen)
+        {
+            if (state == DeclState.Done)
+            {
+                throw new InvalidOperationException($"A program pass completed the {kind} query of the frozen library declaration `{this.Name}` (InternalInvariant; PLAN G949 S1-1).");
+            }
+
+            return;
+        }
+
         if (!Binding.Current(this.queryPass, (uint)pass))
         {
             this.queries = 0;

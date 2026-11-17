@@ -14,20 +14,27 @@ namespace Kimi.Compiler;
 //   in any of the 2^32 - 1 passes before a read aliases one 2^32 passes old (about 4.3 * 10^9 Binds of one Binding). NotStarted
 //   becomes Running only through BeginQuery, which answers the prior state (the caller computes only on NotStarted); Running becomes
 //   Done (CompleteQuery) or NotStarted (AbandonQuery: the output waits on a fact not yet published). Done is final in the pass. A
-//   demand of a Running query is a re-entry, answered by its kind's rule, never by computing again.
+//   demand of a Running query is a re-entry, answered by its kind's rule, never by computing again. A state stamped Frozen (PLAN G949
+//   S1-1's freeze of the library pass's declarations; DECISIONS BU-105 as BU-219 amends it) reads as set in every pass and is never
+//   written: BeginQuery answers it and writes nothing, AbandonQuery writes nothing, and CompleteQuery on it is a broken contract
+//   (InternalInvariant: a library fact completed in a program pass). Each kind's answer for a Frozen state that is not Done is its row's
+//   "Frozen" clause.
 // - Kinds (one row each): Signature. Re-entry: an inferred stored Property's is CyclicBinding_Kd at the declaration; another header's
-//   reads no evidence and records nothing. Not ready: a header waiting on an associated Type is abandoned. No Error state before its
-//   writer (R7-D2 d2). SignatureVerdict (Binding.ConstraintValidation.Formation): output, the state itself: Done means Proven in this
-//   pass. Re-entry: Unknown, no evidence (SPEC 8.3.3). Not ready: any other answer, or a demand before the first ValidateConformances
-//   (contractHeadersReady), is abandoned and computed again at each read until R7-C2 (PLAN G375). A requirement's call is outside the
-//   query, and no reader runs inside verification, so the answer is the declaration's own. A Proven stays read after a later failure.
-//   DirectBase (Binding.BaseLayers): output AdtDef.DirectBase, a clean read's name or a failed clause's; a bound clause's Type answers
-//   first. Re-entry: the chain ends there, counted (SPEC 9.5). Not ready: abandoned and counted; a read that moved the count stores
-//   nothing (interim until R7-D2 d3). InheritedConformances (Binding.InheritedConformances, SPEC 8.6.2): output the struct's inherited
-//   paths in ImplTable, its answer whether it is Done; demanded by every by-type read of ImplTable once clauses are bindable. Re-entry:
-//   not Done, so the heir is abandoned; on a base cycle every member stays NotStarted for the pass, and the records are the base walk's
-//   and formation's, none here. Not ready: a reading of its clause by DirectBase that moved the not-ready count (BaseLayers' answer:
-//   in progress or not ready), or its base not Done.
+//   reads no evidence and records nothing. Not ready: a header waiting on an associated Type is abandoned. Frozen: Done (the freeze
+//   verifies every library header Done). No Error state before its writer (R7-D2 d2). SignatureVerdict
+//   (Binding.ConstraintValidation.Formation): output, the state itself: Done means Proven in this pass. Re-entry: Unknown, no evidence
+//   (SPEC 8.3.3). Not ready: any other answer, or a demand before the first ValidateConformances (contractHeadersReady), is abandoned
+//   and computed again at each read until R7-C2 (PLAN G375). A requirement's call is outside the query, and no reader runs inside
+//   verification, so the answer is the declaration's own. A Proven stays read after a later failure. Frozen, not Done: formed at each
+//   use in the user's scope and abandoned, writing nothing (PLAN G375's per-use form, never a kept "nothing"). DirectBase
+//   (Binding.BaseLayers): output AdtDef.DirectBase, a clean read's name or a failed clause's; a bound clause's Type answers first.
+//   Re-entry: the chain ends there, counted (SPEC 9.5). Not ready: abandoned and counted; a read that moved the count stores nothing
+//   (interim until R7-D2 d3). Frozen: never asked (no library struct has a base clause, so DirectBase returns before its query).
+//   InheritedConformances (Binding.InheritedConformances, SPEC 8.6.2): output the struct's inherited paths in ImplTable, its answer
+//   whether it is Done; demanded by every by-type read of ImplTable once clauses are bindable. Re-entry: not Done, so the heir is
+//   abandoned; on a base cycle every member stays NotStarted for the pass, and the records are the base walk's and formation's, none
+//   here. Not ready: a reading of its clause by DirectBase that moved the not-ready count (BaseLayers' answer: in progress or not
+//   ready), or its base not Done. Frozen: Done (the freeze verifies every library struct's Done).
 // - Interims (removal stages): a Signature re-entry's CyclicBinding_Kd is recorded by the demanders that record it today
 //   (BindReference, BindVariableCore) until R7-D2 d2 moves it into the kind's rule with the Error state; BindHeader's guard reads the
 //   variable binding's Resolving and BindVariableCore's guard reads Signature's Running state until R7-D2 d4 makes the variable binding
@@ -91,7 +98,7 @@ public sealed partial class Binding
 
     private void AbandonQuery(BindingSymbol symbol, DeclQueryKind kind)
     {
-        Debug.Assert(this.QueryState(symbol, kind) == DeclState.Running, "Only a running query is abandoned.");
+        Debug.Assert(this.QueryState(symbol, kind) == DeclState.Running || symbol.QueriesFrozen, "Only a running query, or a frozen one, is abandoned.");
         symbol.SetQueryState(kind, this.storageVersion, DeclState.NotStarted);
     }
 }
