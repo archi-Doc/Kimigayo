@@ -26,12 +26,19 @@ namespace XunitTest;
 /// nothing, valid.</summary>
 public sealed class G950KeptPathTest
 {
-    // The programs the class writes: Bad, and row M4's (the focused re-review), whose record rests on a library callee's A4 summary.
+    // The library's generic swap erased at a declared Function Type (SPEC 10.5.3, 7.7.4) over a Type: the Back's program for row K1-K.
+    private const string Swap = "let action: (uniq/{0}, uniq/{0}) -> () = ::Kimi.Intrinsics.swap\n";
+
+    // The programs the class writes: Bad, row M4's (the focused re-review), whose record rests on a library callee's A4 summary, and
+    // PLAN G951 U2-K's: X3 (MirBuildTest's) and swap at u8 and at 70 nested arrays.
     private static readonly Dictionary<string, string> Own = new(StringComparer.Ordinal)
     {
         ["bad"] = "let text: string = 1\n::Kimi.Console.writeLine(\"Hello, world!\")\n",
         ["confined"] = MirEffectsTest.Transitive("    public func c() => Console.writeLine(\"c\")\n") + "public func main() => ()\n",
         ["pure"] = MirEffectsTest.Transitive("    public func c() => ()\n") + "public func main() => ()\n",
+        ["x3"] = MirBuildTest.StopwatchAction,
+        ["swap"] = string.Format(Swap, "u8"),
+        ["swap70"] = string.Format(Swap, string.Concat(Enumerable.Repeat("[1 of ", 70)) + "u8" + new string(']', 70)),
     };
 
     // g7's sequences: each tests/mir program after a warm rebind and after Provisional then Final; the design review's six edits into
@@ -80,6 +87,66 @@ public sealed class G950KeptPathTest
     {
         var (own, fresh) = Later(program, then);
         Assert.Equal(fresh, own);
+    }
+
+    // PLAN G951 U2-K (the design review's N1 rows on the product path; their kept-path twins are U2-K-b's): every version of a longer
+    // sequence equals a fresh pipeline: (a) a library body demanded in one version and not in the next ones, then again; (c) the library's
+    // generic instances across versions, and a library generic function refused at one Type and collected at another; (d) an edit that
+    // removes the caller that demanded library bodies. Labels (SPEC, before any output): Hello, X3, the milestones and swap at u8 valid;
+    // swap at 70 nested [1 of ...] valid (SPEC 10.5.3, 7.7.4; no rule bounds a Type's nesting), rejected by the implementation's storage
+    // bound with one located Unsupported_Kd (PLAN G128).
+    [Theory]
+    [InlineData("example/Hello x3 example/Hello warm x3")]
+    [InlineData("milestone/Milestone26 milestone/Milestone31 milestone/Milestone26 warm")]
+    [InlineData("swap70 swap swap70 swap")]
+    [InlineData("milestone/Milestone27 example/Hello milestone/Milestone27")]
+    public void EveryVersionOfASequenceEqualsAFreshPipeline(string sequence)
+    {
+        var steps = sequence.Split(' ');
+        var c = Compile(steps[0]);
+        _ = c.Analyze();
+        foreach (var then in steps[1..])
+        {
+            var (own, fresh) = Next(c, then);
+            Assert.Equal(fresh, own);
+        }
+    }
+
+    // N1 (b): two compilations in one process, each warm and then edited into the other's program alternately: every version equals a
+    // fresh pipeline (a keeper of library facts is keyed on its own program, never on a stamp two compilations may share). Hello and X3
+    // valid.
+    [Fact]
+    public void TwoCompilationsVersionsEachEqualAFreshPipeline()
+    {
+        var (first, second) = (Compile("example/Hello"), Compile("x3"));
+        _ = (first.Analyze(), second.Analyze());
+        foreach (var (c, then) in new[] { (first, "warm"), (second, "warm"), (first, "x3"), (second, "example/Hello"), (first, "example/Hello"), (second, "x3") })
+        {
+            var (own, fresh) = Next(c, then);
+            Assert.Equal(fresh, own);
+        }
+    }
+
+    // Row K1-K on the product path (the Back's C1 on C-378; U2-K-b's kept twin rests on it): a library body its version built and no
+    // step stepped. swap erased at 70 nested [1 of ...u8] is valid (SPEC 10.5.3, 7.7.4) and rejected by the implementation's storage
+    // bound (PLAN G128: one located Unsupported_Kd, made where the collector refuses the instance after its lookup built swap's body),
+    // so the version ends with swap built and not held by A2's table: the premise, asserted, and Transitional: it holds until R7 removes
+    // the bound, and the row then needs another refusal. The next version, the same erasure at u8 (valid), equals a fresh pipeline and
+    // steps swap. (Its ordinal is the library check's from U2-K-b's slots on.)
+    [Fact]
+    public void ARefusedLibraryInstanceLeavesItsBodyBuiltAndUnstepped()
+    {
+        var c = Compile("swap70");
+        _ = c.Analyze();
+        Assert.Equal([DiagnosticCode.Unsupported_Kd], c.Problems.Select(static x => x.Code));
+        var program = c.BuildMir();
+        var swap = Assert.Single(program.Bodies.ToArray(), static x => x.Source.IsLibrary);
+        Assert.Equal(("swap", false), (swap.Key.Decl?.Name, program.Drops.Holds(swap.Ordinal)));
+        var (own, fresh) = Next(c, "swap");
+        Assert.Equal(fresh, own);
+        Assert.Empty(c.Problems);
+        var later = c.BuildMir();
+        Assert.True(later.Drops.Holds(Assert.Single(later.Bodies.ToArray(), static x => x.Source.IsLibrary).Ordinal));
     }
 
     // g7 (a) over every case of the diagnostic snapshot (N11), a warm rebind each, in parallel as SemanticSnapshotTest's corpus run, so
@@ -192,6 +259,13 @@ public sealed class G950KeptPathTest
     {
         var c = Compile(program);
         _ = c.Analyze();
+        return Next(c, then);
+    }
+
+    // The next version of an analyzed compilation (a warm rebind, Provisional then Final, or an edit into another program) and its two
+    // snapshots (Later).
+    private static (string Own, string Fresh) Next(Compilation c, string then)
+    {
         if (then == "provisional")
         {
             c.Binding.Bind(BindingMode.Provisional);
