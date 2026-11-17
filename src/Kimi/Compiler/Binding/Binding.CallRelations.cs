@@ -64,6 +64,7 @@ public sealed partial class Binding
         InvocationKoto call, in SlotSolution solution, ReadOnlySpan<BoundArgumentOperation> operations, ReadOnlySpan<BoundDefaultArgument> defaults)
     {
         var selected = solution.Function;
+        this.RecordOpenings(call, solution);
         this.callRelationScratch.Clear();
         var argumentCount = operations.Length - 1;
         var receiver = operations[argumentCount];
@@ -117,6 +118,27 @@ public sealed partial class Binding
         this.CollectFitBounds(operations, argumentCount);
     }
 
+    // J2 (PLAN G936): the selected candidate's openings become the region graph's records (RecordOpening), before its fits and
+    // clauses are judged; only a candidate with a Signature row opened anything (SlotSolution.OpenWaited).
+    private void RecordOpenings(Koto call, in SlotSolution solution)
+    {
+        for (var i = 0; i < solution.Rows.Length; i++)
+        {
+            if (solution.Rows[i].Contribution == Contribution.Signature)
+            {
+                if (this.originInferences.TryGetValue((call, solution.Function), out var inference))
+                {
+                    foreach (var (region, bound) in inference.Opened)
+                    {
+                        this.RecordOpening(region, bound, call);
+                    }
+                }
+
+                return;
+            }
+        }
+    }
+
     // SPEC 15.4.4, 10.7: the bounds that a selected call's fits give the Origins omitted in open initializers at the Function Type
     // positions that CollectCallRelations leaves to applicability. Applicability compares such a position as a whole contract and
     // finds the Origin satisfiable (FitsOriginOutlives); the same fit of each selected input, collected at its source as the call's
@@ -159,6 +181,22 @@ public sealed partial class Binding
                 var longer = this.SubstituteClauseOrigin(relation.Longer, selected, origins, inputs, declaringType);
                 var shorter = this.SubstituteClauseOrigin(relation.Shorter, selected, origins, inputs, declaringType);
                 this.JudgeCallPosition(at, longer, shorter, relation.Equality, null, relation.Syntax, declared: true);
+            }
+        }
+
+        // SPEC 15.3.3, 15.6.4 step 3 (J2, PLAN G936): a constructor proves nothing of its owner Type's clauses, which are premises
+        // inside the Type and obligations of each use, and it carries no result premises (CarriesResultPremises). Its result is the
+        // construction Type, whose declared relations go to the result's clause judge (VisitTypeClause): a row of the call over a
+        // region of the construction, the formation proof's otherwise.
+        if (selected.IsConstructor && declaringType is { Symbol: { } owner } &&
+            this.originDeclarations.TryGetValue(owner.Declaration, out var ownerDeclaration) && ownerDeclaration.Completed)
+        {
+            var visit = new WellFormedVisit(WellFormedSubject.NamedResult, selected, call, WellFormedAction.Require);
+            foreach (var relation in ownerDeclaration.Relations)
+            {
+                var longer = this.SubstituteStoredOrigin(relation.Longer, owner.Declaration, (BoundOrigin[])declaringType.OriginArguments);
+                var shorter = this.SubstituteStoredOrigin(relation.Shorter, owner.Declaration, (BoundOrigin[])declaringType.OriginArguments);
+                _ = this.VisitTypeClause(longer, shorter, relation.Equality, relation.Syntax, visit);
             }
         }
 

@@ -137,7 +137,7 @@ public sealed partial class Binding
     // keeps its Type. The owner accepted the support reduction (2026-10-31). Removal: imaging a container's atoms (PLAN, after R6-check).
     private FunctionKoto? UnimagedClosure(BoundProperty property)
     {
-        if (property.Type is not { ContainsClosure: true } inferred)
+        if (property.Type is not { ContainsNested: true } inferred)
         {
             return null;
         }

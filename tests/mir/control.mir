@@ -156,14 +156,14 @@ fn iterate @48
   _7: bool temp @64 s2
   _8: () temp @67 s2
   _9: () temp @68 s3
-  _10: i32 temp @69 s3
+  _10: i32 temp (Assigned) @69 s3
   _11: () temp @73 s3
   _12: bool temp @74 s3
   _13: () temp @79 s3
   _14: bool temp @80 s3
   _15: () temp @57 s1
   _16: () temp @85 s2
-  _17: i32 temp @86 s2
+  _17: i32 temp (Assigned) @86 s2
   _18: i32 var found @90 s1
   _19: Never temp @93 s1
   _20: i32 temp @95 s6
@@ -354,7 +354,7 @@ fn statements @98
   _12: () temp @123 s1
   _13: [2 of i32] var mut buffer @125 s5
   _14: () temp @131 s5
-  _15: i32 temp @132 s5
+  _15: i32 temp (Assigned) @132 s5
   _16: string temp @137 s1
   _17: i32 temp @141 s1
   s1: lexical in s0 @102
@@ -539,10 +539,10 @@ fn deadTail @160
   _3: Never temp @166 s1
   _4: bool temp @167 s1
   _5: () temp @169 s2
-  _6: i32 temp @170 s2
+  _6: i32 temp (Assigned) @170 s2
   _7: () temp (Result) @160
   _8: () temp @174 s3
-  _9: i32 temp @175 s3
+  _9: i32 temp (Assigned) @175 s3
   _10: () temp @178 s1
   _11: string temp @182 s1
   _12: ref/string temp @182 s1

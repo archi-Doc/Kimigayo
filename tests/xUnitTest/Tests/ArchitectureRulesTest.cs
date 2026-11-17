@@ -266,6 +266,10 @@ public class ArchitectureRulesTest
     // fails here until the epoch rule's premise is reviewed again. Binding's own ResetPass calls are this.ResetPass (a member call's
     // spelling); the conformance identities' and paths' ResetPass(ulong) (S1-b1) are other members of the name.
     [InlineData("A pass's start ends the capability epoch", "src/Kimi/Compiler", @"\bResetCapabilities\(|\bthis\.ResetPass\(", "Binding/Binding.Capabilities.cs=1;Binding/Binding.Pass.cs=1;Binding/Binding.Passes.cs=1;Binding/Binding.cs=1")]
+    // PLAN G949 Stage 2 (R8-L1 under O-381 (b)): a reader reaches its Binding's facts through its own Binding, never through a node's
+    // compilation, so a compilation's MIR builder can read library nodes after the freeze's Binding is dropped. The route's sites, file
+    // by file: the route units lower them (U0b-1, U0b-6, U0b-P3, U0b-N5) to CodeContext's and the parser's, which R7 owns.
+    [InlineData("Routes from a node to its compilation", "src/Kimi", @"CodeContext\.Compilation|Kotonoha\.Compilation", "Compiler/Binding/AdtDef.cs=2;Compiler/Binding/Binding.AssociatedOrigins.cs=1;Compiler/Binding/Binding.ClosureInstances.cs=1;Compiler/Binding/Binding.Documentation.cs=1;Compiler/Binding/Binding.Enums.cs=1;Compiler/Binding/Binding.Lints.cs=1;Compiler/Binding/Binding.OriginDiagnostics.cs=1;Compiler/Binding/Binding.Patterns.Model.cs=1;Compiler/Binding/Binding.PlaceOrigins.cs=1;Compiler/Binding/Binding.Retention.cs=1;Compiler/Binding/Binding.TypeRelations.Origins.cs=2;Compiler/Binding/BindingModel.cs=1;Compiler/Binding/CallPlan.cs=5;Compiler/Binding/ExpansionPlan.cs=1;Compiler/Binding/HirTables.cs=2;Compiler/Binding/TestDefinition.cs=2;Compiler/Binding/TyCtxt.cs=2;Compiler/Core/CodeContext.cs=1;Compiler/Parsing/Koto/Declarations/DeclarationContainers/DeclarationContainerKoto.cs=2;Compiler/Parsing/Koto/Koto.Ownership.cs=3;Compiler/Parsing/Parser.Directives.cs=3;Compiler/Parsing/Parser.PrimaryExpressions.cs=3")]
     public void SourcePatternStaysAtItsSites(string rule, string directory, string regex, string sites)
     {
         var expression = new Regex(regex);
