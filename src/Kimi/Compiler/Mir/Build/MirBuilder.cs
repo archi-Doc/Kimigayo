@@ -48,19 +48,27 @@ internal sealed partial class MirBuilder(Compilation compilation)
     /// <summary>Builds and validates the MIR of the latest Binding pass, once per pass (PLAN G951): every module's default templates, the
     /// bodies of the modules below the root range, then each body's program pass, the library segment's once per library version before
     /// the program segment's (PLAN G950); the version's lookups build any other body on demand (<see cref="Demand"/>) until it is sealed.
-    /// One version is built with one range: a version asked for with another range is a broken contract, since the analyses and the
-    /// collector keep a version's facts by its <see cref="MirProgram.Version"/>. Version 0 is no version: before any Binding pass the
-    /// program is empty, whatever the range.</summary>
+    /// One version is built with one range, and every version of a builder with the library on one side of its range (D1 per builder,
+    /// PLAN G951 U2): a version asked for with another range, or a later version with the library on the other side, is a broken
+    /// contract, since the analyses and the collector keep a version's facts by its <see cref="MirProgram.Version"/> and a kept library
+    /// segment (<see cref="MirProgram.LibraryVersion"/>, which holds no range) has the shape of its builder's side: every library body
+    /// inside, the library's templates only outside. A range that grows (a module added) keeps the side. Version 0 is no version: before
+    /// any Binding pass the program is empty, whatever the range.</summary>
     /// <param name="rootModules">The root range: <see cref="Parsing.SyntaxTable.LibraryModule"/> + 1 builds every body eagerly, the
     /// source modules' count the program's.</param>
     /// <returns>The program, with its construction records and validator findings.</returns>
     internal MirProgram Build(int rootModules)
     {
         var version = HirTables.Publish(compilation);
+        var (library, built) = (compilation.Library.Kotonoha.Syntax, this.program.RootModules);
+        if (this.program.Version != 0 && (version == this.program.Version ? rootModules != built : (library.Module < rootModules) != (library.Module < built)))
+        {
+            throw new InvalidOperationException($"Version {version} asks for the root range {rootModules} after version {this.program.Version} was built with {built} (InternalInvariant).");
+        }
+
         if (version == this.program.Version)
         {
-            return version == 0 || rootModules == this.program.RootModules ? this.program
-                : throw new InvalidOperationException($"Version {version} was built with the root range {this.program.RootModules}, not {rootModules} (InternalInvariant).");
+            return this.program;
         }
 
         this.program.Open(this, rootModules);
@@ -75,7 +83,6 @@ internal sealed partial class MirBuilder(Compilation compilation)
             // the bodies that omit them copy: a library body omits the library's only, so the library's nodes of the omission graph are its
             // prefix. The templates are built in every build, a demanded body's included (G951 M2). A library body names library bodies
             // only (SPEC 18), so the library segment's program passes run here, before the program's (G191).
-            var library = compilation.Library.Kotonoha.Syntax;
             this.Module(library, templates: true);
             if (library.Module < rootModules)
             {
