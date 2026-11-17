@@ -85,6 +85,11 @@ public class RangeDiagnosticTest(ITestOutputHelper output)
 
     // SPEC 4.6.2, 23.1.2 (PLAN G924): each boundary that misfits the expected S or E is its own record; the range adds none.
     [InlineData("let n: i64 = 3\nlet m: i64 = 4\nlet r: Range<i32, i32> = m..n", "TypeMismatch_Kd,TypeMismatch_Kd")]
+
+    // SPEC 4.6.2, 23.1.2 (PLAN G924): a literal-only boundary takes the S or E of the range's expected Type, so its misfit is its own
+    // record beside the other boundary's, in either order.
+    [InlineData("let n: i64 = 3\nlet r: Range<i32, i32> = n..3000000000", "InvalidNumericLiteral_Kd,TypeMismatch_Kd")]
+    [InlineData("let n: i64 = 3\nlet r: Range<i32, i32> = 3000000000..n", "InvalidNumericLiteral_Kd,TypeMismatch_Kd")]
     public void PrerequisitesAndIndependentErrorsRemainExplained(string source, string codes)
         => Assert.Equal(codes.Split(',').Order(StringComparer.Ordinal), Errors(Analyze(source)).Select(static x => x.Code).Order(StringComparer.Ordinal));
 

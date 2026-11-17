@@ -406,14 +406,21 @@ public sealed partial class Binding
         var fitted = expected is { Kind: BoundTypeKind.Constructed, Components.Count: 2 } && ReferenceEquals(expected.Symbol, shape) ? expected : null;
         var start = this.IndependentBoundary(range.Start, scope, ExpectedChild(range, 0, fitted), out var startInteger, out var startFailed);
         var end = this.IndependentBoundary(range.End, scope, ExpectedChild(range, 1, fitted), out var endInteger, out var endFailed);
-        if (startFailed || endFailed)
+        // SPEC 4.6.2, 23.1.2: beside a boundary whose own check failed the range rests on it. A literal-only boundary is still fitted
+        // where the range's expected Type gives its S or E: that fit reads nothing of the failed boundary, so its record is
+        // independent. Where its Type would come from the other boundary's integer Type it rests with the range.
+        var rests = startFailed || endFailed;
+        if (!startFailed && (!rests || fitted is not null))
         {
-            return Complete(range, null);
+            start = range.Start is null ? this.StartType : start ?? this.FitRangeBoundary(range.Start, scope, fitted?.Components[0], endInteger);
         }
 
-        start = range.Start is null ? this.StartType : start ?? this.FitRangeBoundary(range.Start, scope, fitted?.Components[0], endInteger);
-        end = range.End is null ? this.EndType : end ?? this.FitRangeBoundary(range.End, scope, fitted?.Components[1], startInteger);
-        if (start is null || end is null)
+        if (!endFailed && (!rests || fitted is not null))
+        {
+            end = range.End is null ? this.EndType : end ?? this.FitRangeBoundary(range.End, scope, fitted?.Components[1], startInteger);
+        }
+
+        if (rests || start is null || end is null)
         {
             return Complete(range, null);
         }
