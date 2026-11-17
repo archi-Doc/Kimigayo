@@ -282,6 +282,7 @@ public sealed partial class Binding
             region.Version = -1;
             region.Value = null;
             region.Body = null;
+            region.Solved = null;
         }
 
         this.regionValues = 0;
@@ -361,6 +362,39 @@ public sealed partial class Binding
             region.Values.Add(evidence);
             this.regionVersion++;
         }
+
+        // J2: a bound of a waited variable's own solution `(E and region)` bounds its region too (RecordOpening).
+        if (region.Solved is { } solved && BoundsSolved(source, target, solved))
+        {
+            this.RecordRegionBound(source, solved, evidence);
+        }
+    }
+
+    // J2 (SPEC 15.3.6, 15.2.2; the owner's O-358 (a), O-362 (a); PLAN G936): the record of a region the selected call's late solve
+    // opened beside the evidence candidate `bound` (OriginInference.Opened). The region lies within `bound`, and within the longer
+    // end of every relation whose shorter end is the variable's own solution `(bound and region)`: the waiting part's fit, recorded
+    // at its completion before this, a well-formedness relation over the solution, and any relation formed later
+    // (RecordRegionBound reads Solved). Both are free: with the shorter end exactly the solution, replacing the region by its meet
+    // with the longer end keeps every requirement over the solution (SPEC 15.2.2). So the region has the sources that the oracle's
+    // reading of a region needs (UniversalRelations.Outlives, SourcesIn), and no row is added. A trial records nothing.
+    private void RecordOpening(BoundOrigin region, BoundOrigin bound, Koto call)
+    {
+        this.RecordRegionBound(bound, region, call);
+        var solution = this.Meet(bound, region);
+        if (ReferenceEquals(solution, region))
+        {
+            return; // `bound` is static: the solution is the region itself, whose bounds are recorded on it.
+        }
+
+        var entry = this.WrittenRegion(solution);
+        entry.Solved = region;
+        for (var i = 0; i < entry.Parents.Count; i++)
+        {
+            if (BoundsSolved(entry.Parents[i], solution, region))
+            {
+                this.RecordRegionBound(entry.Parents[i], region, entry.Values[i]);
+            }
+        }
     }
 
     private OriginJudgment JudgeLocalRegion(BoundOrigin longer, BoundOrigin shorter, Koto use, ExecutableBody body, ulong condition = 0)
@@ -404,5 +438,8 @@ public sealed partial class Binding
         internal Koto? Body { get; set; }
 
         internal int Version { get; set; } = -1;
+
+        // J2: for a waited variable's own solution `(E and region)`, its region (RecordOpening); null for any other Origin.
+        internal BoundOrigin? Solved { get; set; }
     }
 }

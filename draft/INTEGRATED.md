@@ -1389,6 +1389,9 @@ on the round's F3, 「以下で決定します。(b) BU-28 を SPEC の読みに
   paragraph and IMPL §21.3.4 (R8-SP2), with no per-section statement since no section claims a supplied definition; `writeLine` a
   body with no text, §22.7 stating behaviour only. §22.9.1, §22.10.5 and IMPL §21.4.4 already match the bodies; W2 kept §22.10.5's
   closed list. Nothing frozen; no SPECJ change.
+- Revision 90 (2026-11-18, plan §14; the Back's D-752): §10.2 item 3 names `IntrinsicDisposition.Of` and `Effect`, which R8-M45
+  deleted, as RP20 does; the record stays. Revision 30's `IntrinsicId` 27 replaces the 28 left in §0's summary, §1.1's R8 row and
+  §12's COMPILER_ARCHITECTURE row; RQ9 and RP18 unchanged. Nothing frozen.
 - Revision 16 (2026-11-07, plan §14; the owner's O-41 and O-43, verbatim 「推奨の内容でOKです。処理を継続してください。」): R1 splits into R1a, R1b and R1c, and the structs' contract is IMPL §21.1.3's (DECISIONS
   R8-M1). Nothing frozen.
 - Revision 17 (2026-11-07, plan §14; the Front's D-64): C1 done; C2 takes G563; G187 closed. Nothing frozen.

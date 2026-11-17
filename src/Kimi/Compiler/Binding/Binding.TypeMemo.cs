@@ -21,7 +21,7 @@ public sealed partial class Binding
     private readonly TypeMemo<BoundType, BoundType?> substitutedParts = new(
         KimiLibrarySize.KeyedCapacity(KimiLibrarySize.Stated.SubstitutedParts)); // SubstituteType's images.
 
-    private readonly TypeMemo<BoundType, BoundType?> closedParts = new(); // CloseClosureTypes' images.
+    private readonly TypeMemo<BoundType, BoundType?> closedParts = new(); // CloseNestedTypes' images.
 
     // The images of the leaf rewrites, WithoutRawOrigins, WithUnstatedOrigins, WithoutUnstated, SubstituteStoredOrigins, PublishedResult and
     // ResolveLocalResultOrigins (DECISIONS BU-58, BU-63; PLAN G492-a (ii)), RegionValuesAt, and LocalBorrowType's opening of a `let`

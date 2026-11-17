@@ -56,7 +56,9 @@ public sealed partial class Binding
         // A member's Origin position whose relation only an inferred or body-local region decides (the judge proves it through the
         // region's sources, or finds it Unrepresentable; SPEC 15.6.5): the located limit until region-inference edges exist, recorded as
         // the plain position's search records it (design-r2 Amendment 1, A1); in a whole-contract comparison (OriginPart.Contract) only
-        // an implementation's per-call Origin no bound of which reaches a fixed Origin (SolveOriginInference; SPEC 15.3.6).
+        // an implementation's per-call Origin no bound of which reached a fixed Origin when SolveOriginInference took the
+        // representatives: none at all (SPEC 15.3.6), or one only through another variable without a principal solution, until PLAN
+        // G960 gives every variable its value inside the fixpoint.
         Limit,
     }
 
@@ -212,7 +214,7 @@ public sealed partial class Binding
         {
             var inferredLength = expected.Kind == BoundTypeKind.FixedArray && expected.Length < 0;
             return actual.Kind == expected.Kind && actual.Semantics == expected.Semantics && ReferenceEquals(actual.Symbol, expected.Symbol) &&
-                ReferenceEquals(actual.ClosureContext, expected.ClosureContext) && actual.LengthArguments.AsSpan().SequenceEqual(expected.LengthArguments) &&
+                ReferenceEquals(actual.InstanceContext, expected.InstanceContext) && actual.LengthArguments.AsSpan().SequenceEqual(expected.LengthArguments) &&
                 (inferredLength || (actual.Length == expected.Length && ReferenceEquals(actual.LengthExpression, expected.LengthExpression))) &&
                 actual.Components.Count == expected.Components.Count && actual.OriginArguments.Count == expected.OriginArguments.Count;
         }

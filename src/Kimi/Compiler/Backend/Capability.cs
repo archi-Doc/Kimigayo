@@ -33,7 +33,7 @@ internal enum CapabilityGap : byte
     // substitution that does not carry the enclosing instance, so no key holds the enclosing arguments (SPEC 8.13.3; DECISIONS R5-M40,
     // R5-M43), a function declared in a Field initializer or a getter included; and a Closure that no instance
     // closed, so its body is requested in its own identity (TyCtxt.SubstOfClosure; DECISIONS R5-M157, BU-60): one in a Field or static
-    // initializer whose held instance has an Origin position (TyCtxt.ClosureInstance), until PLAN G300's per-use opening, and one in a
+    // initializer whose held instance has an Origin position (TyCtxt.NestedInstance), until PLAN G300's per-use opening, and one in a
     // generic container's group static, whose group has no instance (R5-M82's static-storage row, X33 (a)), until P42 keys that storage.
     [Transitional("R7", Reason = "G149: a call's enclosing-instance chain (PD27, R5-M146); G300: Origin-carrying owners opened per use; P42: group statics.")]
     EnclosingInstance,

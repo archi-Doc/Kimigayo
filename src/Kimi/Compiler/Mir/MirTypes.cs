@@ -318,7 +318,7 @@ internal static partial class MirTypes
             return false;
         }
 
-        return ReferenceEquals(left.ClosureContext, right.ClosureContext) && left.Components.Count == right.Components.Count &&
+        return ReferenceEquals(left.InstanceContext, right.InstanceContext) && left.Components.Count == right.Components.Count &&
             left.LengthArguments.AsSpan().SequenceEqual(right.LengthArguments);
     }
 

@@ -44,7 +44,7 @@ public sealed partial class Binding
         var source = KotoHelper.UnwrapParentheses(place);
         for (var depth = 0; depth < 64; depth++)
         {
-            var step = NextPathStep(source, out var next);
+            var step = this.NextPathStep(source, out var next);
             if (field is null && selected >= 0)
             {
                 if (source is MemberAccessKoto { BoundSymbol.Property.IsStored: true } member)
@@ -83,7 +83,7 @@ public sealed partial class Binding
                 return this.Dereferenced(followed);
             case PathStep.PairFollow or PathStep.RawFollow when next.BoundType is { } layer:
                 return this.Reached(layer);
-            case PathStep.UserIndex when ElementAccess.IndexerCall(source, exclusive: false)?.BoundType is { } element:
+            case PathStep.UserIndex when this.IndexerCall(source, exclusive: false)?.BoundType is { } element:
                 return this.Reached(element);
             case PathStep.SliceElement when (next.BoundType?.Kind == BoundTypeKind.Slice ? next.BoundType : next.BoundType?.Components[0]) is { } slice:
                 return this.Dereferenced(slice);
