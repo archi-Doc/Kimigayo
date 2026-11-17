@@ -24,10 +24,12 @@ public struct Array<T>
         T is Copy
 
     /// Lends the element at `key` for shared access; a key outside the elements Aborts at the caller's access.
+    #CallerLocation
     public func index(self: ref/Self, key: ref/isize) -> ref/T during self
         return self[key]@ref
 
     /// Lends the element at `key` for exclusive access; a key outside the elements Aborts at the caller's access.
+    #CallerLocation
     public func indexUniq(self: uniq/Self, key: ref/isize) -> uniq/T during self
         return self[key]@uniq
 
@@ -190,6 +192,7 @@ public struct Array<T>
 
     /// Moves every element of `other` to the end, in order; `other` is consumed.
     #Lang("ArrayAppendAll")
+    #CallerLocation
     public func appendAll(self: uniq/Self, other: Array<T>)
         var source = other@move
         self.reserve(additional: source.length)
@@ -379,6 +382,7 @@ public struct Array<T>
     /// `matching` is called once per element in increasing index order with a shared reference. The removed
     /// elements are destroyed after the last call, in an unspecified order.
     #Lang("ArrayRemoveAll")
+    #CallerLocation
     public func removeAll<F>(self: uniq/Self, matching: F)
         F is Callable<(ref/T) -> bool>
         let count = self.length

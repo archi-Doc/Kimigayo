@@ -43,8 +43,25 @@ public class LibraryAbortContextTest
     [InlineData("ArraySplitAt", "let values: Array<i32> = [1]\nlet parts = values.splitAt(2)", "Hello.kimi:2:13")] // PLAN G71: no library line.
     [InlineData("SliceSplitAt", "let values: Array<i32> = [1]\nlet parts = values.slice().splitAt(^2)", "Hello.kimi:2:13")]
     [InlineData("FixedSplitAt", "let values: [2 of i32] = [1, 2]\nlet parts = values.splitAt(3)", "Hello.kimi:2:13")]
+    [InlineData("GenericIndex", "func first<S>(items: ref/S) -> S.(Indexable<isize>).Element\n    S is Indexable<isize>\n    S.(Indexable<isize>).Element is Copy\n    return items[5]\nlet values: Array<i32> = [1]\nlet x = first(values)", "Hello.kimi:4:12")]
+    [InlineData("GenericIndexUniq", "func touch<S>(items: uniq/S)\n    S is UniqIndexable<isize>\n    let slot = items[5]@uniq\nvar values: Array<i32> = [1]\ntouch(values@uniq)", "Hello.kimi:3:16")]
     public void FailedResolutionReportsTheSourceOperation(string name, string source, string location)
         => ScalarEmissionTest.EmitFixture("LibraryAbortContext" + name, source, string.Empty, 1, location + ": abort KIMI_E_INDEX_BOUNDS: Index out of bounds\n");
+
+    // SPEC 22.5.1, 21.4.3 (PLAN G71): a release failure while a Kimi operation destroys elements, Array.removeAll's truncation and
+    // Dictionary.clear's entries, reports the user's call.
+    [Theory]
+    [InlineData("ArrayRemoveAll", "var values: Array<Array<i32>> = [[1], [2]]\nvalues.removeAll(matching: func (v) => v@follow.length > 0)", "Hello.kimi:2:1")]
+    [InlineData("DictionaryClear", "var entries: Dictionary<i32, Array<i32>> = [:]\n_ = entries.tryInsert(1, [1, 2])\nentries.clear()", "Hello.kimi:3:1")]
+    public void ReleaseFailureReportsTheSourceOperation(string name, string source, string location)
+    {
+        var ir = CompilationTestHelper.WriteIr(MinimalEmissionTest.Analyze(source))
+            .Replace("call i32 @HeapFree(", "call i32 @fail_release(", StringComparison.Ordinal)
+            .Replace("call i32 @GetLastError()", "call i32 @fail_release_error()", StringComparison.Ordinal) +
+            "\ndefine internal i32 @fail_release(ptr %heap, i32 %flags, ptr %memory) {\nentry:\n  ret i32 0\n}\n" +
+            "define internal i32 @fail_release_error() {\nentry:\n  ret i32 5\n}\n";
+        ScalarEmissionTest.WriteFixture("LibraryAbortContextRelease" + name, ir, string.Empty, 1, location + ": abort KIMI_E_FREE: Failed to free memory (win32=5)\n");
+    }
 
     [Fact]
     public void UserAbortAndSameSpelledHelpersKeepTheirOwnMeaning()

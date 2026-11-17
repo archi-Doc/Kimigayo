@@ -14,6 +14,11 @@ public class DynamicArrayCapacityLimitTest
         ScalarEmissionTest.EmitFixture("DynamicArrayCapacityAppend", FullArray("u8", long.MaxValue) + "values.append(1)", string.Empty, 1, "Hello.kimi:13:1: abort KIMI_E_INT_OVERFLOW: Integer overflow\n");
     }
 
+    // SPEC 4.9.3, 22.5.1 (PLAN G71): appendAll's reservation reaches the same limit, at the user's appendAll call.
+    [Fact]
+    public void AppendAllChecksTheIncreasedLengthAtItsCall()
+        => ScalarEmissionTest.EmitFixture("DynamicArrayCapacityAppendAll", FullArray("u8", long.MaxValue) + "var more: Array<u8> = [1]\nvalues.appendAll(more@move)", string.Empty, 1, "Hello.kimi:14:1: abort KIMI_E_INT_OVERFLOW: Integer overflow\n");
+
     // R8-A1b, SPEC 4.9.3, 4.9.7, 22.5.1 (PLAN G71): insert's Abort paths from source, each before any buffer access, the buffer null, at the
     // user's insert call: the sum, an invalid position first over a full Array, and a byte size past the limit through growArray.
     [Theory]
