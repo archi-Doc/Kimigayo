@@ -20,12 +20,12 @@ public sealed partial class Binding
 
     private void BindCopyDeclarations()
     {
-        foreach (var declaration in this.copyDeclarations.Values)
+        foreach (var declaration in this.copyDeclarations.Values.In(this.pass))
         {
             declaration!.Active = false;
         }
 
-        foreach (var declarations in this.copyByType.Values)
+        foreach (var declarations in this.copyByType.Values.In(this.pass))
         {
             declarations!.Clear();
         }
