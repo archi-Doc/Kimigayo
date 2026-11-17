@@ -4,7 +4,10 @@
 // Environment, Unknown, Limit, Derived and Deep (R4-M153) and atoms over the definition's abstract Types (Drop(T), a call through a Callable input T) — and
 // the `confined` obligations Binding publishes (TyCtxt.EffectObligations).
 // Input: validated bodies per MirCases view, their uses (MirUses), the blocks the runtime edges reach (MirDataflow.Begin), A2's verdicts
-// and its walk of a group (MirProgram.Drops, MirDropTable.Destroyed), whether the driver has stepped a body (MirDropTable.Holds), TyCtxt's
+// and its walk of a group (MirProgram.Drops, MirDropTable.Destroyed), whether the driver has stepped a body (MirDropTable.Holds) and
+// into which store (MirDropTable.LibraryHolds: the driver records a body's local facts in the store it began, BeginLibrary or
+// BeginProgram, in the step that closes the body's A2 entry in A2's store of that segment, so A4's library store and A2's hold the same
+// bodies; a driver that fills one without the other breaks Base), TyCtxt's
 // obligations and callee facts, TyCtxt.Comparison for a tuple operator's call (its distinct leaves;
 // DECISIONS R5-M166; a published requirement on a composite Type keeps Binding's legacy plan, TyCtxt.Witnesses, until A-12), and the root
 // range.
@@ -22,8 +25,8 @@
 // the least fixed point; storage is pooled and reset by counts, so a warm version allocates nothing. The local facts are recorded per
 // segment (PLAN G950): the library segment's nodes first, into a store of their own (Locals) kept while its library version holds
 // (BeginLibrary), then the program's, into a store cleared per program version (BeginProgram); each store holds its nodes' and bodies'
-// entries by the node id and the ordinal themselves, and a reader takes the library's store below its node count or MirProgram's
-// LibraryCount (R8-L1 M-B1's split rule; no offset).
+// entries by the node id and the ordinal themselves, and a reader takes a node's store by the library's node count (its nodes come
+// first) and a body's by A2's fact (MirDropTable.LibraryHolds, PLAN G951 U2-K; no offset, no ordinal tested against LibraryCount).
 // Must not read syntax or HIR, re-derive premises, bounds or obligations, report a failure that only an Opaque site or a callee
 // Binding rejected causes (derived, R4-M10), or read a body with a validator finding (Views: derived, R5-M183).
 
@@ -369,8 +372,9 @@ internal sealed partial class MirEffects(TyCtxt types, MirCases cases, MirDatafl
     // Where a node's local facts begin in its store: the previous node's ends there, none for a segment's first node.
     private NodeFacts Start(Locals store, int node) => node == 0 || node == this.libraryLocals.End ? default : store[node - 1];
 
-    // The first node of a body of the last Run's program: its store's, the library segment's below MirProgram.LibraryCount (R8-L1 M-B1).
-    private int Base(int body) => (body < this.program.LibraryCount ? this.libraryLocals : this.programLocals).Base(body);
+    // The first node of a body of the last Run's program: its store's, the library's where A2's library store holds the body
+    // (MirDropTable.LibraryHolds, the one fact; the driver's library step wrote both).
+    private int Base(int body) => (this.program.Drops.LibraryHolds(body) ? this.libraryLocals : this.programLocals).Base(body);
 
     // The views of a body a call, a destruction or an obligation enters that its substitution selects; none for a body with a finding,
     // which no consumer reads (R5-M183): what rests on it is that finding's dependent (Derived, R4-M10).

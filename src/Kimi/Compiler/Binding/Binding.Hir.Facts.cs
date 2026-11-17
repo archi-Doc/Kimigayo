@@ -84,10 +84,10 @@ public sealed partial class Binding
             case HirOp.Interpolation:
                 return HirTables.Meaning(node) is not null && node.Formatting is { Writes.Count: > 0 } format && Formats(node, format);
             case HirOp.For:
-                return HirTables.Meaning(node) is not null && BoundMatch.Of(node) is not null && CallPlan.Of(node) is { } entry &&
+                return HirTables.Meaning(node) is not null && BoundMatch.Of(this, node) is not null && CallPlan.Of(node) is { } entry &&
                     CallPlan.Of(node, 1) is { Receiver: { } receiver } step && Complete(entry) && Complete(step) && HirTables.Symbol(receiver) is not null;
             case HirOp.Match or HirOp.Try:
-                return BoundMatch.Of(node) is { IsCurrent: true };
+                return BoundMatch.Of(this, node) is { IsCurrent: true };
             case HirOp.DictionaryLiteral:
                 return CallPlan.Of(node) is { } find && Complete(find);
             case HirOp.Closure:
