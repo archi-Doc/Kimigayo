@@ -75,13 +75,17 @@ public sealed partial class MirBuildTest(ITestOutputHelper output)
     // publisher reads for library nodes (receiverOperations among them), so the library's module is published at the end of its own
     // pass in every mode; a head that publishes it after the program pass (the lazy PublishHir) fails here on the trial split
     // (25,859 lines against 26,127). SPEC 18: a library body names library bodies only, so the library segment is the same for the
-    // empty program and for Hello.
+    // empty program and for Hello. The bodies are built over the library check's root range (every library body, PLAN G951 U2-T), since
+    // the compilation's own build (ConstructMir) holds the source modules' range from G951 U2 and builds a library body only on demand.
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
     public void TheLibrarysBodiesAfterAProvisionalBindAreTheFinalBinds(bool hello)
     {
-        Assert.Equal(LibraryMir(BindingMode.Final), LibraryMir(BindingMode.Provisional));
+        var final = LibraryMir(BindingMode.Final);
+        var lines = final.Count(static x => x == '\n');
+        Assert.True(lines > 10_000, $"the library segment is near empty: {lines} lines"); // Every library body (review-s1r1b Part 2, N4).
+        Assert.Equal(final, LibraryMir(BindingMode.Provisional));
 
         string LibraryMir(BindingMode mode)
         {
@@ -93,8 +97,9 @@ public sealed partial class MirBuildTest(ITestOutputHelper output)
             }
 
             c.Binding.Bind(mode);
+            Assert.NotEqual(0ul, HirTables.LibraryVersion(c)); // Its publication's version, set by its own pass in every mode.
             var mir = new StringBuilder();
-            MirDump.Write(LibraryRange(c), SyntaxTable.LibraryModule, mir);
+            MirDump.Write(new MirBuilder(c).Build(SyntaxTable.LibraryModule + 1), SyntaxTable.LibraryModule, mir);
             return mir.ToString();
         }
     }

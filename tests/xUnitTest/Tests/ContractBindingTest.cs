@@ -1019,6 +1019,77 @@ public class ContractBindingTest
         Assert.Same(path, path.Scope.ConformancePath);
     }
 
+    // PLAN G949 S1-r1b, rule (a) (F's rulings 169 and 170; the S1-r2 note's v6: R5, R6, R10; SPEC 8.6.1, 8.5.2, 9.6): a program pass reads a
+    // library Type's conformances as registered only from its own registrar's step. A Self clause binds before the program's conformance
+    // declarations register (pass 0), so a projection over a library Type there finds no associated Type yet; it is an early read judged
+    // again at point 1 (VerifyEarlyProjections, G621: a member it finds then rests on its location-only Unsupported_Kd, R5, R6), and a
+    // conditional conformance (Range's Iterable when S is PrimitiveInteger) is not registered at point 1 either (R10: no IteratorType).
+    // These are today's records; from the split the library pass registers the base before the program pass, and a program pass that read
+    // the base from its start would find Array's Element at once (R5 and R6 lose their Unsupported_Kd) and Range's IteratorType at point 1
+    // (R10 moves: on the trial split it read three InvalidConstraint_Kd and an AmbiguousBinding_Kd).
+    [Theory]
+    [InlineData("contract K<T>\nstruct W\n    Self is K<Kimi.Array<i32>.Element>", "InvalidConstraint_Kd Unsupported_Kd")]
+    [InlineData("contract K<T>\nstruct V\n    Self is K<i32>\nstruct W\n    Self is K<Kimi.Dictionary<i32, i32>.Element>", "InvalidConstraint_Kd Unsupported_Kd")]
+    [InlineData("contract K<T>\nstruct W\n    Self is K<Kimi.Range<i32, i32>.IteratorType>", "InvalidConstraint_Kd UnresolvedBinding_Kd")]
+    public void ALibraryConformanceIsReadFromItsRegistrarsStep(string source, string codes) => AssertBindingCodes(source, codes);
+
+    // PLAN G949 S1-r1b, rule (a) at ImplTable's lookups (F's ruling 170 condition (2), and g9 of the S1-r2 note's C7): a reader that does not
+    // bind the library reads a library identity with the paths of the registrar steps it reached. OwningIterator's and BorrowingIterator's
+    // LendingIterator identity has its direct path from the Self-clause registrar (point 1) and the ancestor path of `Self is Iterator when
+    // I is Iterator` from the conditional registrar (point 2): one path at point 1, two at point 2. Range's Iterable is conditional only: not
+    // found and not in Range's list at point 1, found with its path at point 2. The reader's step is set on the compilation's overlay after a
+    // Bind (the one pass binds the library, so its own reads are every row's).
+    [Fact]
+    public void ALibraryIdentityReadsThePathsOfTheStepsItsReaderReached()
+    {
+        var c = CompilationTestHelper.ParseSuccess(string.Empty);
+        Assert.True(c.Bind().IsComplete);
+        var impls = Impls(c);
+        var identities = impls.Identities.ToArray();
+        var (owning, lending) = Named("OwningIterator", "LendingIterator");
+        var (borrowing, _) = Named("BorrowingIterator", "LendingIterator");
+        var (range, iterable) = Named("Range", "Iterable");
+        var direct = impls.PathsOf(impls.Find(owning, lending)!)[0];
+        var all = (impls.Paths.Count, impls.Identities.Count, impls.ByType.Count);
+        typeof(ImplTable).GetField("holdsBase", BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(impls, false);
+        var counts = new List<(int, int, int)>();
+        foreach (var point in Enum.GetValues<ImplTable.AdmissionPoint>())
+        {
+            // Every step (review-s1r1b Part 2, N1): the composed lists' base parts are their prefixes at the step, and a path is found
+            // by its key from its point on.
+            typeof(ImplTable).GetField("step", BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(impls, point);
+            counts.Add((impls.Paths.Count, impls.Identities.Count, impls.ByType.Count));
+            Assert.Equal(point != ImplTable.AdmissionPoint.PassStart, impls.TryPath(direct.Type, direct.Contract, direct.Declaration, direct.RootContract) is not null);
+            if (point is ImplTable.AdmissionPoint.PassStart or ImplTable.AdmissionPoint.AssociatedBindings)
+            {
+                Assert.Equal(point == ImplTable.AdmissionPoint.PassStart, impls.Find(owning, lending) is null);
+                Assert.Equal(point == ImplTable.AdmissionPoint.PassStart, impls.OfType(range) is not { Count: not 0 });
+                continue;
+            }
+
+            var first = point == ImplTable.AdmissionPoint.SelfClauses;
+            foreach (var adapter in (BindingSymbol[])[owning, borrowing])
+            {
+                var identity = impls.Find(adapter, lending);
+                Assert.NotNull(identity);
+                Assert.Equal(first ? 1 : 2, impls.PathsOf(identity).Count);
+            }
+
+            var conditional = impls.Find(range, iterable);
+            Assert.Equal(first, conditional is null);
+            Assert.Equal(first ? 0 : 1, conditional is null ? 0 : impls.PathsOf(conditional).Count);
+            Assert.Equal(!first, impls.OfType(range)?.Exists(x => ReferenceEquals(x.Contract, iterable)) == true);
+        }
+
+        Assert.Equal((0, 0, 0), counts[0]);
+        Assert.Equal(all, counts[^1]);
+        Assert.All(counts.Zip(counts.Skip(1)), x => Assert.True(x.First.Item1 <= x.Second.Item1 && x.First.Item2 <= x.Second.Item2 && x.First.Item3 <= x.Second.Item3, string.Join(", ", counts)));
+        Assert.True(counts[1].Item1 < counts[2].Item1, $"point 2 adds paths: {string.Join(", ", counts)}");
+
+        (BindingSymbol Type, BindingSymbol Contract) Named(string type, string contract)
+            => identities.Where(x => x.Type.Name == type && x.Contract.Name == contract).Select(static x => (x.Type, x.Contract)).Single();
+    }
+
     // ThreeContracts, then S conforming by `clause` and T conforming to D, each in a source of its own; bound.
     private static Compilation Sources(string clause)
     {
@@ -1094,7 +1165,7 @@ public class ContractBindingTest
             }
             else if (property.GetSetMethod(true) is { } setter)
             {
-                var value = type == typeof(bool) ? true : type == typeof(int) ? 1
+                var value = type == typeof(bool) ? true : type == typeof(int) ? 1 : type.IsEnum ? Enum.ToObject(type, 1)
                     : values.FirstOrDefault(type.IsInstanceOfType) ?? (type.IsAbstract || type.IsValueType ? null : RuntimeHelpers.GetUninitializedObject(type));
                 setter.Invoke(model, [value]);
             }
@@ -1107,7 +1178,7 @@ public class ContractBindingTest
         foreach (var property in PassState(model))
         {
             var value = property.GetValue(model);
-            Assert.True(value is null or false or 0 || value is ICollection { Count: 0 }, $"{model.GetType().Name}.{property.Name}: {value}");
+            Assert.True(value is null or false or 0 || value is ICollection { Count: 0 } || (value is Enum e && Convert.ToInt64(e) == 0), $"{model.GetType().Name}.{property.Name}: {value}");
         }
     }
 

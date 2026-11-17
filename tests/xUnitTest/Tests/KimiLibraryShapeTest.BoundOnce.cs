@@ -10,13 +10,14 @@ using Printer = XunitTest.SemanticSnapshotTest.SemanticPrinter;
 namespace XunitTest;
 
 // PLAN G949 Stage 1 (the design's coverage rows c13 and c17): the library pass binds the Kimi library once per compilation, and every
-// later Bind is a program pass over the source modules. c13 fails at dev a63b1598b and is Explicit until G949 S1-1 lands the library
-// pass; c17 passes since S1-e (S1-1's SyntaxTable refusal lands only after it), its corpus row Explicit as the library-layer corpus row is.
+// later Bind is a program pass over the source modules. c13 passes from G949 S1-r1b's split (the library pass binds the library's nodes
+// into the layer's part); c17 passes since S1-e (S1-1's SyntaxTable refusal lands only after it), its corpus row Explicit as the
+// library-layer corpus row is.
 public partial class KimiLibraryShapeTest
 {
     // c13 (bound once): after the first Bind, a second Bind's node table holds the program's nodes only, while its Result keeps the
     // library layer's counts (design R1.1, c15). S1-1 adds the library's publication version (R1.3), unchanged by the second pass.
-    [Fact(Explicit = true)] // Until G949 S1-1.
+    [Fact]
     public void ASecondBindBindsNoLibraryNode()
     {
         var c = Compilation.CreateForTest();
@@ -91,6 +92,21 @@ public partial class KimiLibraryShapeTest
         var c = Bound(string.Empty);
         var recursive = (List<BindingSymbol>)typeof(Binding).GetMethod("RecursiveContracts", BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(c.Binding, null)!;
         Assert.Empty(recursive.Select(static x => x.Name));
+    }
+
+    // PLAN G949 S1-r1b (review-s1r1b Part 2, C1; F's ruling 176): rule (a)'s premise (ImplTable). The base keeps one earlier snapshot per
+    // identity and per Type list, exact while every base row registers at point 1 (the Self-clause registrar) or 2 (the conditional
+    // registrar). The inherited registrar registers after point 2 (point 3, and again after BindConstraints and at ConformancesOf's
+    // demand, past every point), so a library struct with a base (SPEC 6.2.2) would give base rows that a pass without the library reads
+    // wrongly at step 1 and never admits after its last point. No library struct names a base today: a tripwire, true today.
+    [Fact]
+    public void TheLibraryDeclaresNoStructWithABase()
+    {
+        var bases = KotoTree.Walk(Bound(string.Empty).Library.Kotonoha.RootKoto).OfType<StructKoto>().Where(static x => x.BaseClause is not null).Select(static x => Line(x)).ToArray();
+        var build = "A library struct names a base, so rule (a)'s base rows of the inherited registrar register past point 2: before it " +
+            "lands, ImplTable keeps per-point prefixes (an identity's paths, a Type's list and the composed lists' prefix at each point, " +
+            "the inherited registrar's points admitted) in place of the one point-1 snapshot (PointOnePaths, pointOneLists): ";
+        Assert.True(bases.Length == 0, build + string.Join(", ", bases));
     }
 
     // The empty program's synthesized library nodes after its first Analyze, by id (c17's reference).

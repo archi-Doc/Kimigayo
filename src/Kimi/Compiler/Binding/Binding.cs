@@ -16,9 +16,9 @@ namespace Kimi.Compiler;
 // - Invariants: a pass is never reentered; a pass that does not finish leaves no Result, and the later phases' facts are discarded
 //   when a pass starts; storage is reused across passes (ResetPass, Binding.Pass.cs). The published per-pass lists (nodes, issues,
 //   derived issues, obligations, imports, the effect obligations' sources, the Contract shapes, the effect bounds and the import
-//   declarations) and the slots' keepers are parts (PassPart, Binding.Passes.cs): a pass writes
-//   the part the driver hands it, Binding's own until the library pass (PLAN G949 S1-r1b) is handed LibraryLayer.Part, and a reader
-//   outside a pass reads the composed views, both parts.
+//   declarations) and the slots' keepers are parts (PassPart, Binding.Passes.cs): a pass writes the part the driver hands it, the
+//   library pass LibraryLayer.Part and the program pass Binding's own (PLAN G949 S1-r1b), and a reader outside a pass reads the
+//   composed views, both parts.
 // - Prohibitions: no read of Mir or the Backend (COMPILER_ARCHITECTURE "Dependency rules"); readers outside Binding use its published
 //   facts, never its private state.
 
@@ -214,8 +214,8 @@ public sealed partial class Binding
             throw new InvalidOperationException("Bound checking requires a final Binding pass.");
         }
 
-        // The program pass's Check publishes both kinds of failure again (until PLAN G949 S1-r1b the one pass's), on the part the
-        // fields hold between Binds, Binding's own.
+        // The program pass's Check publishes both kinds of failure again, on the part the fields hold between Binds, Binding's own; the
+        // library pass's records stay in the layer's part.
         this.issues.Clear();
         this.derivedIssues.Clear();
         this.Check(BindingMode.Final);
@@ -269,12 +269,13 @@ public sealed partial class Binding
             return;
         }
 
-        // An edit revokes the whole pass, exactly as the next Bind discards it, unless no pass has finished since the last revocation.
+        // An edit revokes the whole Bind, every pass of it, exactly as the next Bind discards it, unless no pass has finished since the
+        // last revocation.
         if (this.Result != default)
         {
             this.Result = default;
             this.BeginRun();
-            this.ResetPass(BindingMode.Provisional);
+            this.ResetPasses();
         }
 
         // The facts kept across unchanged passes are revoked by every edit, also after a pass that did not finish (a Bind that throws
