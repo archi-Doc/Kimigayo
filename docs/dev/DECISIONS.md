@@ -6576,7 +6576,7 @@ and migration obligations remain in force; no numeric cap changes are authorized
     let placed later (od9, oe2), one `UninitializedPlace_Kd` removed each.
   - Landed with it: a Fill's operand (R4-M210: smf3, afl). Not covered: a Place placed more than once that a Use overwrites,
     uninitialized before (its old value's Drop precedes the Use, `MirBuilder.Overwrite`; the owner's O-336 (a), O-371 (a): e9, e10;
-    PLAN G959).
+    PLAN G959; covered by R4-M211).
   - Rejected: a runtime-reach gate (rests on an unchecked claim about runtime temps); a carry for every whole-temp operand (A2's
     Open groups gain rows in ordinary code); `Unplaced(destination)` for a Use's carry (a reassigned temp or let would lose what it
     held); a `MayNeedDrop` test in MirMoveData for a var (a second copy of Overwrite's condition); A1 deciding the Use itself; a
@@ -6647,6 +6647,50 @@ and migration obligations remain in force; no numeric cap changes are authorized
   - Rejected: one fact per element; a representative element path for the others (the held 2ca3e8945: a path no Place names with its
     own state, which the redesign removes); one past the largest named index (bounded by a literal's value); the builder lowering
     such a Fill as N placements.
+- **R4-M211 An overwrite is reached only by the paths that hold its value (the Dictionary redesign's step 6, PLAN G959)**
+  (2026-11-17; Middle, MIR build and A1; an acceptance mover; design review ACCEPT WITH NOTES after REJECT and REVISE,
+  implementation review ACCEPT WITH NOTES after REVISE (F1, F2); the owner's O-336 (a), O-371 (a) and O-390 (a); amends R4-M175's
+  joins and R4-M62's `Overwrite` line; supersedes the redesign's R1.4 sentence "The lanes are unions, so the overwrite rule is per
+  lane, not per path") SPEC 14.9.2, 14.10.3.
+  - Rule: a construct whose value an overwrite takes (the assignment's right side, a body's value delivered to such a construct, the
+    operand of a transfer to one, a short-circuit's left and right operands there, a group) joins its value-less ends and
+    deliveries, those of a Never form, at a block of their own (`Target.Apart`); they leave the scopes through that block's drop
+    tree, follow a transfer's assumed continuation as its value paths do, locate the assignment's target and go on after its Use. A
+    form of that list whose join no value reaches (an `and` or `or` whose operands have no value on any path, a construct whose
+    every end and delivery has none) has no value path, as a Never form has none, though SPEC 14.9.2 gives it a Type: the builder
+    decides it once, where the form closes (`MirBuilder.Hand`, from `Close` and `Logical`), routing its value-less paths into its
+    join, and every consumer (`End`, `Transfer`, `Logical`, `Replace`) reads it through the one hand-off read (`TakeLeft`).
+    `MirBuilder.Replace` holds the value in a temp of role `MirLocalRole.Assigned`. A1 keeps the destination's state at any Use
+    whose whole temp may hold nothing, which is exact where the value's construct cannot touch the destination (a first placement: a
+    temp, a `let` or `var` initialization or binding, the return local; `MirMoveData` publishes the carry for every destination),
+    and such a Use of an `Assigned` temp, on any path, or any such Use on a runtime path, is `InternalInvariant_Kd`.
+    `MirBuilder.Leave` places a derived Opaque value where a container completes into a destination of another Type than Unit, so no
+    temp is empty on a runtime path.
+  - Representation: `MirLocalRole.Assigned` (a closed-vocabulary entry: the owner's O-390 (a), 「O-390 a」), `Target.Apart`,
+    `Target.Wants` (`Target.Joined` means that a value reaches the join) and the builder's `apart`/`left` pair, the hand-off
+    carrying the block and the value-less fact (`(Block, Valueless)`), with its one set-up and read-back (`AssignApart`,
+    `TakeLeft`); O-336 (a)'s `MirTerminator.Overwrites` is not added.
+  - Why: the target's state on the value-less paths is a pairing A1's union loses at the first block the two kinds of path share
+    (ch2, ch3, ex4, ex4v: no assignment of the existing lanes is exact); the builder knows each value-less end statically.
+  - Effect: e10, ev1, ev3 rejected and e15 accepted (O-336 (a)'s outcome); w1-w8 accepted, ev6 and the 17 invalid rows rejected
+    (O-371 (a)'s); a read of the target in a cleanup or after a transfer is judged from its actual state; a `var` initialized
+    through a temp whose form has a value-less path is uninitialized there (vi1, vi2, vb1 rejected); lg1, lv1-lv7, lv10 (valid)
+    accepted and lg1i, lv11, lv15 (invalid) `UninitializedPlace_Kd` at the use (dev accepted them). On a value-less path the
+    overwrite's Drop and Use are not built, so A5 (and A2) see no destruction and no write there: a Loan of the target that is live
+    after the assignment conflicts only on the paths that hold the value (ln1, ln2 valid, newly accepted), and a reference the
+    assignment would replace keeps its Loan on the value-less path (lk1 invalid, newly rejected), as for the static `x = fail()`.
+    Nested cleanups each holding an overwrite with a value-less exit are built 3^k times against the base's 2^k, so the body budget
+    (IMPL 21.3.2) is reached at depth 8 instead of 11: the valid nd08, nd09 and nd10 get `OwnershipStorageLimit_Kd` and
+    `ExpansionLimit_Kd` (a named move; never a Language record; STATUS).
+  - Rejected: (a) the per-lane union (R1.4; B1); (b) restoring `first` alone (O-336 (a)'s rows accepted); (c) the early placement at
+    a value temp's definition with a window (Revision 1); (d) the early placement at the edge into the join; (e) a second set of the
+    target's lanes per overwrite; (f) O-336 (a)'s link with `Kept` (exact only while the target's old state is the same on every
+    path); (g) a first placement read off the destination's kind (a `var`'s initialization through a temp is one); (h) O-336 (a)'s
+    Drop link as the invariant's anchor (a Copy target's overwrite has no Drop); (i) A1's freshness test with no published fact (a
+    result temp in a loop is kept with a state an earlier iteration left: rt3v would be `InternalInvariant_Kd`); (j) a left
+    operand's value-less paths sent straight to the operation's aside, with no test of their own; (k) sharing a cleanup's blocks
+    between the value and the value-less routes (it joins the two kinds of path R2.1 keeps apart); (l) a clause for `and`/`or` or a
+    Type test at the consumers (the Middle's decision on F1).
 - **Owner decisions, only when triggered:** O1 a MIR vocabulary member or `IntrinsicId`; O2 a total cap above 142,000;
   O3 an acceptance change outside plan Appendix B (C1–C6 and X1–X3 with a SPEC clause; T1–T4 belong to R7), any rejection
   of a milestone or library program, or a row reopening a SETTLED entry; O4 a general SPEC rule left Unsupported at the R4
@@ -9457,6 +9501,11 @@ resumed by R4-M86 (2026-10-20).
     closure's identity for an instance with an Origin position): lossy, so a walk could not decide again after normalization. Formation
     in the closing step alone: correctness by call order over about 70 callers. I as a Closure Type component: components are the
     capture storage (`Binding.Closures.cs`).
+  - Amended by BU-222 (PLAN G846, G856): the context (`BoundType.InstanceContext`, renamed from ClosureContext) is the held
+    instance of every nested definition's Type, the Item of a function declared in a body included, from the same closing step (its
+    gate `ContainsNested`, renamed from ContainsClosure) and producer; the readers' view is `TyCtxt.NestedInstance` (renamed from
+    ClosureInstance), and `InheritedArguments` also withholds a definition held by a Container with an Origin slot (the owner's
+    O-262 (a)).
 
 - **BU-62 A declaration's rows through an Origin its declaration's failure left unbound are judged by R4-M118's rule, a Transitional
   copy in the declaration judge, and rest on the part that failed, `OriginDeclaration.PendingFailure`** (superseded in part by BU-69:
@@ -13409,6 +13458,10 @@ resumed by R4-M86 (2026-10-20).
     - judging the substituted signature, as revision 1 did (it rejects valid x1fnarg and x4assocfn);
     - judging the whole signature as a Type (it rejects valid p1projgen, r2reqok, p7selfreq and b8setk);
     - an erasure Tuple without Origin parts (it accepts invalid w3era, w6unusedera, w9eraneed and w12setform).
+  - Amended by BU-222 (PLAN G846, G856): every enclosing parameter's argument (`InheritedArguments`, read through the held
+    instance) is an environment part of an Item and of a Closure, used or not, so j09bunused, j14bunused, j18callableowned and
+    j21genmethod are rejected; the signature part (`InheritedEnvironment`) keeps only the Origins the declared signature names from
+    its enclosing body that are no parameter (an enclosing function's or a local's), and `InheritedParameters` is removed.
 
 - **BU-201 A pair layer is a well-formedness layer at every use, judged in its borrow cases (PLAN G831)** (2026-11-13; Front,
   Binding; Major with design reviews 1-2 and an implementation review, the Back's reviewer; the Middle's C-312 consent) SPEC 15.6.1,
@@ -14031,6 +14084,58 @@ resumed by R4-M86 (2026-10-20).
     (snapshot 0). No valid program newly rejected, no invalid one newly accepted. c0v (PLAN G905, a Closure) is not this cause.
   - Closes PLAN G913. Open: two variables without a principal solution related by a clause, each read where the other is still
     open (PLAN G960).
+- **BU-222 A nested definition's Type carries the instance it was formed in; its inherited arguments are Owned parts read
+  through it** (2026-11-14; Front, designed and implemented at the Back's seat (C-305); Binding; PLAN G846, G856; Q17 class 1;
+  Major, an acceptance mover; the owner's O-249 Q4 (a), verbatim 「Q1〜Q4 は、すべてa」, O-258 (a), verbatim 「O-258 a」, O-262 (a),
+  verbatim 「O-262 (a) 制限付きで今着地」, and O-273 (a) and O-277 (a), verbatim 「O-273〜O-277 を、すべて推奨どおり (a) でお願いします」;
+  F's G826b ruling 2 and its ruling of 2026-11-14; the Middle's RP17 consent C-324) SPEC 3.2.1, 6.1.3, 15.2.3, 7.7.4, 15.3.
+  Amends BU-60 and BU-198.
+  - Representation: the instance context a Closure Type holds (BU-60, R5-M36; `BoundType.InstanceContext`, renamed from
+    ClosureContext) is the held instance of every nested definition's Type. The Item of a function declared in a body takes it from
+    the same closing step (`ClosePartCore`, gate `ContainsNested`, renamed from ContainsClosure) and the same producer
+    (`TyCtxt.HeldContext`), under the same identity test and the same readers' view (`TyCtxt.NestedInstance`, renamed from
+    ClosureInstance). A withheld Closure's signature closes its nested definitions under the held instance, so they are withheld
+    with it.
+  - Readers: `ItemDeclaringType` returns a held Type instance, so the Item's signature is read in its instance and `SubstOfItem`
+    carries it as the declaring Type (R5-M157's condition for a function declared in a Field initializer's Closure: its Item is
+    admitted per instance; its direct call stays G149's gap). `InheritedArguments`: the enclosing parameters' arguments (the generic
+    slots of the enclosing functions and the nearest Container's generic and Origin slots, used or not; no length slot; no function
+    Origin, SPEC 15.3), imaged by the held instance, are environment parts of an Item and of a Closure (`CapabilityParts`, member
+    `Components.Count`, one numbering), read by the Owned proof and the erasure; Copy reads none; a summary adds nothing for its
+    declaration's own definitions.
+  - Located limits (O-262 (a)), `Unsupported_Kd`: a withheld instance (a held instance with an Origin position, or a definition held
+    by a Container with an Origin slot, its own or inherited from a Container it is nested in, SPEC 6.1.3) at the definition (BU-22's
+    limit; removal PLAN G300); an erasure in a generic Container's inferred Field header at the literal, also with `T is Owned`
+    (BU-107's limit; removal R7-D2 d).
+  - New rejections (class 1, `UnprovenConstraint_Kd` at the use needing Owned or at the erased value): an Item of a nested function
+    or a Closure whose enclosing parameter is not Owned, used or not: Q4's twins (j09bunused, j14bunused, j18callableowned,
+    j21genmethod) and G826b revision 1's rows; k18clo, k19cloera, c3fieldcloT, c4innercloT, c5selfclo, c6fieldcloera;
+    w2fieldItemT, w3blocalItemT, w6bfieldItemEraseT, w7innerTowned, w9bselfT, w10binnereraseU; and thirteen existing rows' programs,
+    restated with their Owned premise (the originals kept as invalid rows): the twelve the unit's phase 2 restated, and r-l3
+    (`ContractBindingTest.AConformanceProvenAtDepthGivesItsMembers`, R7-C2c2 c2-3a's row: `cap<T>` with `T is CL1` alone erases a
+    Closure formed in it).
+  - Record selection on programs dev already rejects: the owner's O-273 (a), `ErasureAfterSelectionTest.r_geninst_nc_unowned`
+    (`UnprovenConstraint_Kd f` takes the node; the lost `TransferRequired_Kd f` is PLAN G870, one failure per node); the owner's
+    O-277 (a), `PropertyBindingTest` x1pk, x3pk, x5pk and x9pk (the Middle's x1, x3, x5, x9: the Item of a function declared in the
+    Field Closure of a Container with an Origin slot, needed Owned or erased): dev's `UnprovenConstraint_Kd` or
+    `UnprovenOriginContract_Kd` at the use becomes the one located `Unsupported_Kd` at `func pk`, since the use reads a Type the
+    limited definition did not form.
+  - Contract (Binding.ClosureInstances.cs's header, the review's N2): a nested definition's Type without a context is read in its
+    enclosing declaration's frame, or through an instance equal to that frame modulo Origins (BU-60), which every reader treats as
+    withheld when the declaration's identity has an Origin position (`TyCtxt.NestedInstance`, `InheritedArguments`; PLAN G300); the
+    closing step is the one producer of a nested definition's context.
+  - Structure (the review's B2; the owner's O-273 (a)): a behaviour-preserving split first moved `JudgedByDeclaration`,
+    `RequirementReference`, `EnvironmentTuple` and `CapabilityParts` to `Binding.CapabilityParts.cs`, which `InheritedArguments`
+    joins; the renames, with `CloseClosureTypes` -> `CloseNestedTypes` and `CloseHeldClosures` -> `CloseHeldNested`, are an
+    identifier-only commit.
+  - Removes (the review's N9): BU-198's formal walk of inherited Type parameters (`InheritedParameters`, `DeclaringNode`), replaced
+    by `InheritedArguments` read through the held instance; the collector's `EnclosingInstance` gap for the Item of a function
+    declared in a Field initializer's Closure (R5-M157's condition now holds: its substitution carries its declaring Type); dev's
+    false `TypeMismatch_Kd` for such an Item's signature read through an instance (w11sig: `pk(x: T)` read with `S`'s formal `T`).
+  - Rejected: the formal slots judged wherever the value is read (G826b's revision 1: B2, B3); a scope test with a located limit
+    (its revision 2); the instance as an Item Component (a Closure's Components are its captures; a function's instance is no
+    Type); the reviewer's nearest-declaration rule (O-258 (b)); Origins kept in a held instance (BU-60's rejection stands; G300
+    opens them per use).
 - **G209-1** (2026-10-24; structural unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source
   aliases their selected container and environment before ordinary lookup merges imports. These responsibilities were embedded in the
   general expression parser and `Binding.Types.Lookup`, with alias resolution beside Type formation. `Parser.RuntimeTypeTests` now
@@ -22589,8 +22694,8 @@ R8-M* and R9-M* by the stage of the recording unit.
   - Rejected: program-level arrays with per-body ranges (they still grow by doubling unless presized, take a body's storage out of
     `MirBody`, and the library segment G950 keeps across versions needs self-contained bodies).
   - Cost: one copy of the stored rows per warm build (Hello 1.55 MB over 320 bodies, about 0.3 ms unpinned), nearly all of it the
-    library's, which G950 keeps. When G950-R and G951 U2 build library bodies into fixed slots (G950 R-4, C-sep), the building body
-    and the store follow the definition's segment and slot.
+    library's, which G950 keeps. When G951 U2-K builds library bodies into fixed slots (G950 R-4, C-sep), the building body and the
+    store follow the definition's segment and slot.
 - **R8-M50 The library's MIR segment is kept across a compilation's versions (PLAN G950)** (Middle, 2026-11-16; the owner's order of
   11-16 11:4x approving K's survey rank 1, O-379 (a) for this design and its plan order, O-381 (b) for its Stage 2 form; the Back's
   consent C-378, amended under (b) (11-16 20:14), for the collector hunk and the store form; extends R8-M33 and supersedes its
@@ -22605,8 +22710,9 @@ R8-M* and R9-M* by the stage of the recording unit.
       collector's A3b) runs every version over both segments' root-range bodies; no stamp holds the range.
     - One body pool and one key map: `Bodies` one span, `LibraryBodies` and `ProgramBodies` read-only views of it, `Body(ordinal)`
       one read, `this[key]` one lookup, `ClearProgram` removing only the program's keys (by walking `ProgramBodies`). They follow
-      G951's holes within R8-M33's library range (`LibraryCount` and the split rule `ordinal < D` stay; C-378 (1)(b) as amended);
-      R8-M33's Staging line is superseded by G951's entry (R9-M9, "Library bodies are built on demand"), not by this one.
+      G951's holes within R8-M33's library range (from U2-K, DECISIONS R9-M9's Staged bullet; until then a lazy build's library
+      range holds the library's templates; `LibraryCount` and the split rule `ordinal < D` stay; C-378 (1)(b) as amended); R8-M33's
+      Staging line is superseded by G951's entry (R9-M9, "Library bodies are built on demand"), not by this one.
     - Every per-ordinal or per-node library entry lives in its owner's data-only library store beside that store's rows and is read
       through M-B1's one split rule (`ordinal < D`; A4's nodes below the library's node count): A2's per-body ends (`MirDropTable`'s
       segment store, `MirDropTable.Of`), A4's `bases` and node entries (`MirEffects.Locals`, `MirEffects.Base`), the collector's
@@ -22850,7 +22956,8 @@ R8-M* and R9-M* by the stage of the recording unit.
   Major; U0 is behavior-preserving. Extends R5-M168 and R8-M31; amends R5-M183 and R8-M33 as below. U1, U1b and U2 amend this entry.
   - **Adopted (U0, the builder's half).**
     - `MirBuilder.Build(rootModules)` builds every module's default templates, the library's in every build, then the bodies of the
-      modules below the root range. Compilation passes `SyntaxTable.LibraryModule + 1`, every body eagerly, until U2.
+      modules below the root range. Compilation passes `SyntaxTable.LibraryModule + 1`, every body eagerly, until U2, which passes
+      the source modules' count.
     - `MirProgram`'s lookups (`this[key]`, `Callee`, `StaticInit`) are the one demand point. A key without a body is looked up by
       the version's row of the demand table `MirProgram.Phase`:
       - Open (from `Build`): `MirBuilder.Demand` builds the body of any other definition the HIR publishes with a value, through
@@ -22871,14 +22978,14 @@ R8-M* and R9-M* by the stage of the recording unit.
   - **Amends.** R5-M183: the program pass `Validate(program)` is now `Validate(program, body)`, which still sets `HasFinding` on the
     ensuring body of a G191 StaticSlot finding. R8-M33: the library prefix (ordinals 0 to `LibraryCount` - 1) holds in an eager
     build; in a build whose root range is the program's, `LibraryCount` counts the library's templates and a demanded body takes the
-    next ordinal until U2 adopts G950 R-4's fixed library slots. `MirValidator`'s program pass leaves `Bodies`' walkers: it reads
+    next ordinal until U2-K adopts G950 R-4's fixed library slots. `MirValidator`'s program pass leaves `Bodies`' walkers: it reads
     each body by ordinal from the builder's queue. Supersedes R8-M33's Staging (`Bodies` the program's suffix at U5b): under G951
     the library range keeps R8-M33's prefix and split rule with holes, and `Bodies` follows G951's build-order list; R8-L1 has no
     U5b (PLAN G949 Stage 2 under O-381 (b)).
   - **Reason.** A one-shot compile of Hello built and analyzed 318 library bodies to use 5 (G337; K's 11-16 survey rank 2). U0
     changes no output; it gives U1 (A4's round rule, `MirAnalysis.Step`, `MirDropTable.Holds`, the Judging row), U1b (the
-    collector's round rule) and U2 (the switch to the source range, G950 R-4's slots, the records rule) one demand point and one
-    map.
+    collector's round rule), U2 (the switch to the source range, the records rule) and U2-K (G950 R-4's slots) one demand point and
+    one map.
   - **Rejected (U0's).**
     - Keying the analysis on the range as well as the version: `MirEffects`, `MirBorrows` and the collector key a version's facts by
       its version, so a same-version rebuild would reuse stale A4 nodes, and an eager, lazy, eager sequence defeats a (version,
@@ -22926,8 +23033,8 @@ R8-M* and R9-M* by the stage of the recording unit.
       run), each read from its segment's store (`TemplatesOf`, `ordinal < D`). The driver (`Compilation.Collect`) steps the bodies
       built since (`MirAnalysis.Step`) and runs again until a run is clean; a clean run replays only stepped bodies from the same
       roots in the same FIFO order, so it equals one run over an eager build, and every body code generation reads is stepped, with
-      no step after it within a version (across versions under the kept library segment: U2, the Back's C1). `Work`, `RunCount` and
-      `Templated` sum the runs of one version.
+      no step after it within a version (across versions under the kept library segment: U2-K, the Back's C1). `Work`, `RunCount`
+      and `Templated` sum the runs of one version.
   - **Amends R8-M50:** A3b runs in the collector's root loop in every run (inside the run's round, so a missed run's A3b records
     drop with it), not once per version; `Templated` counts the version's runs.
   - **Rejected (U1's and U1b's).** Ending a round at its first missed read (one round per body); a per-ordinal A4 stamp beside A2's
@@ -22937,4 +23044,35 @@ R8-M* and R9-M* by the stage of the recording unit.
     bodies built during the round); a step after the clean collector run (no body a clean run replays is unstepped); a throw for a
     held problem with facts (a second form of a recording rule's defect); the templates walked again from the first body in every
     run (they record nothing since R8-M50, the Back's N4); the extension triggered by comparing a body's ordinal with the build
-    position (two index spaces under U2's holes).
+    position (two index spaces under U2-K's holes).
+  - **Adopted (U2, the switch; Plan B).** `Compilation.ConstructMir` builds with the source modules' root range
+    (`SourceModules.Length`): a compilation builds its source modules' bodies, the library's default templates and the bodies its
+    lookups demand. A builder keeps the library on one side of its root range in every version (D1 per builder: a later version with
+    the library on the other side throws; a range that grows keeps the side), so a kept library segment always has its builder's
+    shape and no stamp holds a range (G950-R's range note; R-c's `LibraryVersion`-only stamp). Hover's ownership line
+    (`Compilation.JudgedWithoutProblem`) also reads A2's `Holds`: "completed" only for a body the one stepping path stepped. Records
+    (reading R-3, the Middle's under Q13): a library body shows its construction records and validator findings in a program that
+    builds it and its A1/A2 problems in a program that steps it; the shipped library has none, so no published record moves.
+    `CollectionCostMeasurements` and `CompilerPipelineBenchmark` measure this configuration (stage 3 builds the source modules'
+    bodies and the library's templates; `MirBodies` counts the built ones; the cold collection is `Compilation.Collect`'s loop with
+    its steps untimed and its run count reported); tests of the library's bodies read a build with the library check's root range
+    (`MirBuildTest.LibraryRange` and `LibraryBuild`), the library's census and the c17 rows included (U2-F).
+  - **Staged (U2-K, with or before G950-K; the Back's C-378 A1).** G950 R-4's fixed library slots ("holes"): a demanded library body
+    built into its library-walk ordinal and kept with the library segment. U2-K carries the Back's C1 (A2's per-entry `Holds`; the
+    stepping position and the template extent kept with their segment in build order), F1 with K-A (a library body first demanded
+    during a program version is stepped into the program stores for that version and into the library stores at the next library
+    step; "the library store holds the body" is one published per-ordinal fact read by A2's `Of`, A4's `Base` and the collector's
+    `TemplatesOf`, the Back's A3) and F2 with R-K2' (the kept segment ends at a demanded library body with a record or at a library
+    body its version built and A2 does not hold, so no kept caller's A4 edge names an empty slot and no kept body is unstepped; the
+    shipped library has no record; the Back's B1 on C-378, 09:17), and the rows H3 and K1 (a body built but never stepped through
+    Compilation; K1 on the kept path is C1's fail-before row; H3 through Compilation removes U2-H's reflection seam,
+    `MirAnalysisTest.ABodyBuiltButNotSteppedIsNotJudged`'s injection of `Compilation.mir`) and two rows in Compilation's form:
+    `G950KeptPathTest.ALaterVersionKeepsTheLibrarysBodies` (g8: a later version keeps the library bodies the compilation demanded)
+    and `G950KeptPathTest.AKeptLibraryRowIsPublishedInEveryVersion` (M2, which becomes row K2-a: an injected finding is not
+    republished under R-K2', and its record shows where the body is rebuilt; its premise, asserted first, fails until U2-K), both
+    G950-K's prerequisites. Until then a lazy build's library range holds the library's templates and a demanded body takes the next
+    program ordinal (U0), so no library body survives its version.
+  - **Rejected (U2's).** The holes inside U2 (needed only by G950's kept segment, unreachable until G950-K; three kept-segment
+    decisions would land without a reachable path); one range per builder (it forbids adding a module); the range in the kept
+    library stamp (G950-R's two rules for kept facts); a step after the clean collector run to give unstepped bodies A1/A2 problems
+    (C-378 (3) as amended; hover reads `Holds` instead).

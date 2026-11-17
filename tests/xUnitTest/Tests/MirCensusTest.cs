@@ -53,26 +53,30 @@ public sealed class MirCensusTest(ITestOutputHelper output)
         (Ownership(OwnershipRequirement.DepthLimit), DiagnosticCode.OwnershipDepthLimit_Kd, "U"),
     ];
 
-    // R4-M12, V17: the library bodies have no problems; the library case binds an empty program.
+    // R4-M12, V17: the library bodies have no problems. The library case binds an empty program, whose compilation builds none of them
+    // (PLAN G951 U2: a compilation builds the library bodies its program reaches), so the census reads the library check's build of it
+    // (MirBuildTest.LibraryRange, analyzed as Compilation analyzes its own) after asserting its premise: the census covers every body of
+    // that build, the library's bodies, as many as the build holds and at least one.
     [Fact]
     public void TheLibraryHasNoProblems()
-        => this.Census("library", Corpus(static x => x == "library"));
+        => this.Census("library", LibraryBuilt, Corpus(static x => x == "library"));
 
-    // R4-M12: nor have the milestone programs Binding accepts, and the others have no A5 problem.
+    // R4-M12: nor have the milestone programs Binding accepts, and the others have no A5 problem. Its domain is the bodies each program's
+    // compilation builds, the library bodies it reaches included (PLAN G951 U2); the library's own are TheLibraryHasNoProblems'.
     [Fact]
     public void MilestonesHaveNoProblems()
-        => this.Census("milestones", Corpus(static x => x.StartsWith("milestone/", StringComparison.Ordinal)));
+        => this.Census("milestones", Built, Corpus(static x => x.StartsWith("milestone/", StringComparison.Ordinal)));
 
-    // Nor have the MIR goldens' programs, as the milestones.
+    // Nor have the MIR goldens' programs, as the milestones, over the same domain.
     [Fact]
     public void GoldensHaveNoProblems()
-        => this.Census("goldens", MirDumpTest.Programs.Select(static x => (x.Data, MirDumpTest.Compile(x.Data))));
+        => this.Census("goldens", Built, MirDumpTest.Programs.Select(static x => (x.Data, MirDumpTest.Compile(x.Data))));
 
     // Nor has a SPEC example variant without an Error record on MIR (its MIR expectation, as VerifiedSpecExampleTest reads it), as the
     // milestones.
     [Fact]
     public void AcceptedSpecVariantsHaveNoProblems()
-        => this.Census("spec", DiagnosticCorpus.SpecCases.SelectMany(static x => x.Variants.Select((y, i) => (Name: $"{x.Name}/{i}", Example: x, Variant: y)))
+        => this.Census("spec", Built, DiagnosticCorpus.SpecCases.SelectMany(static x => x.Variants.Select((y, i) => (Name: $"{x.Name}/{i}", Example: x, Variant: y)))
             .Where(static x => (x.Variant.Mir?.Records ?? x.Variant.Expected).Length == 0)
             .Select(static x => (x.Name, VerifiedSpecExampleTest.Bind(DiagnosticCorpus.Source(x.Example, x.Variant)))));
 
@@ -156,12 +160,27 @@ public sealed class MirCensusTest(ITestOutputHelper output)
 
     private static DiagnosticRequirement Ownership(OwnershipRequirement requirement) => DiagnosticRequirement.Ownership(requirement);
 
-    // Builds and analyzes each program as it comes, writes the set's rows when asked, lists the programs Binding rejects with their rows
-    // not asserted, and requires a Binding-complete program and no asserted row: a finding, a defect or an A5 problem in any program,
-    // any record or problem in a Binding-complete one.
-    private void Census(string set, IEnumerable<(string Name, Compilation Compilation)> programs)
+    // A program's own build: its compilation's.
+    private static MirProgram Built(Compilation c) => c.BuildMir();
+
+    // The library case's build for TheLibraryHasNoProblems, after its premise: every body of the library check's build, each a library body
+    // the analysis stepped (A2's table holds it), at least one.
+    private static MirProgram LibraryBuilt(Compilation c)
     {
-        var (rows, rejected, count) = (new List<(string Text, bool Asserted)>(), new List<string>(), 0);
+        var program = MirBuildTest.LibraryRange(c);
+        var bodies = program.Bodies.ToArray();
+        Assert.True(
+            bodies.Length > 0 && program.LibraryCount == bodies.Length && bodies.All(x => x.Source.IsLibrary && program.Drops.Holds(x.Ordinal)),
+            $"the census reads {bodies.Length} bodies, {program.LibraryCount} of the library");
+        return program;
+    }
+
+    // Builds and analyzes each program as it comes (build), writes the set's rows when asked, lists the programs Binding rejects with their
+    // rows not asserted, and requires a Binding-complete program and no asserted row: a finding, a defect or an A5 problem in any program,
+    // any record or problem in a Binding-complete one. The output names the bodies the census covered.
+    private void Census(string set, Func<Compilation, MirProgram> build, IEnumerable<(string Name, Compilation Compilation)> programs)
+    {
+        var (rows, rejected, count, bodies) = (new List<(string Text, bool Asserted)>(), new List<string>(), 0, 0);
         foreach (var (name, c) in programs)
         {
             count++;
@@ -171,7 +190,8 @@ public sealed class MirCensusTest(ITestOutputHelper output)
                 rejected.Add(name);
             }
 
-            var program = c.BuildMir();
+            var program = build(c);
+            bodies += program.Bodies.Length;
             foreach (var record in program.Records(MirRecordClass.Construction))
             {
                 rows.Add(Row(name, complete, "B", record.Code, c.SyntaxOf(record.Subject), complete));
@@ -200,7 +220,7 @@ public sealed class MirCensusTest(ITestOutputHelper output)
             File.WriteAllLines(Path.Combine(directory, $"census-{set}.tsv"), ["program\tsection\tanalysis\tcode\tsubject", .. rows.Select(static x => x.Text)], new UTF8Encoding(false));
         }
 
-        output.WriteLine($"{set}: {count - rejected.Count} Binding-complete programs; Binding rejects {string.Join(", ", rejected.DefaultIfEmpty("none"))}, " +
+        output.WriteLine($"{set}: {bodies} bodies; {count - rejected.Count} Binding-complete programs; Binding rejects {string.Join(", ", rejected.DefaultIfEmpty("none"))}, " +
             $"rows not asserted:\n{string.Join('\n', rows.Where(static x => !x.Asserted).Select(static x => x.Text).DefaultIfEmpty("none"))}");
         var asserted = rows.Where(static x => x.Asserted).Select(static x => x.Text).ToList();
         Assert.True(rejected.Count < count, $"{set}: no Binding-complete program");
