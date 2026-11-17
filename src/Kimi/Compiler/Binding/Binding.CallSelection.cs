@@ -15,6 +15,7 @@ public sealed partial class Binding
         InvalidDeclaration,
         FailedSignature,
         Unproven,
+        UnformedSplit,
         IncompleteSignature,
         NoneApplicable,
         Ambiguous,
@@ -108,9 +109,9 @@ public sealed partial class Binding
     // SPEC 10.1, 10.4, 10.5.1, 8.3 (G812 rulings 122, 123, 126): whether a named call awaiting its call fails by its own selection at
     // the Type its call gives it, judged in full as BindCall judges it, as a query that does not publish (BeginSelectionQuery): the
     // evaluation BindCall makes (NewEvaluation, RentEvaluation, BindExplicitArguments, EvaluateSelection), failing where BindCall
-    // records the call's own failure: no candidate, an ambiguity, or a premise of the candidates not proven (Unproven: Constraints
-    // take part in applicability), but for one that rests on an unformed split (D3), where BindCall rests. A callee that names no
-    // function group, or explicit arguments it does not choose, select nothing to judge.
+    // records the call's own failure (ClassifySelection's outcome, which BindCall dispatches on): no candidate, an ambiguity, or a
+    // premise of the candidates not proven (Unproven: Constraints take part in applicability); not UnformedSplit, where BindCall
+    // rests. A callee that names no function group, or explicit arguments it does not choose, select nothing to judge.
     private bool ProbeSelectionFails(InvocationKoto call, BindingScope scope, BoundType expected)
     {
         var method = KotoHelper.UnwrapParentheses(call.Method);
@@ -126,12 +127,8 @@ public sealed partial class Binding
         this.RentEvaluation(ref evaluation, shape);
         try
         {
-            return this.BindExplicitArguments(ref evaluation, candidates) && this.EvaluateSelection(ref evaluation, candidates).Kind switch
-            {
-                CallSelection.NoneApplicable or CallSelection.Ambiguous => true,
-                CallSelection.Unproven => !evaluation.Unformed,
-                _ => false,
-            };
+            return this.BindExplicitArguments(ref evaluation, candidates) &&
+                this.EvaluateSelection(ref evaluation, candidates).Kind is CallSelection.NoneApplicable or CallSelection.Ambiguous or CallSelection.Unproven;
         }
         finally
         {
@@ -350,7 +347,9 @@ public sealed partial class Binding
     }
 
     // The selection the evaluated candidates determine. A failed candidate declaration or signature leaves the selection resting on
-    // that failure (SPEC 23.1.2); an Unknown premise defers it only when it can affect it (SPEC 8.3.3).
+    // that failure (SPEC 23.1.2); an Unknown premise defers it only when it can affect it (SPEC 8.3.3). A candidate unproven through an
+    // unformed split (DECISIONS D3, temporary, PLAN G886: never premise-only, unrankable) makes the selection UnformedSplit: the call is
+    // one located Unsupported_Kd, however many are pending (FailUnformedCall).
     private (CallSelection Kind, int Winner) ClassifySelection(ref CallEvaluation evaluation)
     {
         var candidates = evaluation.Evaluated.AsSpan(0, evaluation.Count);
@@ -362,7 +361,8 @@ public sealed partial class Binding
         if (evaluation.Pending && (evaluation.FailedPendingSignature is not null || !evaluation.PremisesOnly || evaluation.Applicable == 0 ||
             !this.PremisesCannotAffect(evaluation.Call, candidates, evaluation.Operations, evaluation.OperationStride)))
         {
-            return (evaluation.FailedPendingSignature is null ? CallSelection.Unproven : CallSelection.FailedSignature, -1);
+            return (evaluation.FailedPendingSignature is not null ? CallSelection.FailedSignature
+                : evaluation.Unformed ? CallSelection.UnformedSplit : CallSelection.Unproven, -1);
         }
 
         if (evaluation.Applicable == 0)

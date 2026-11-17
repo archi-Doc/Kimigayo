@@ -150,7 +150,8 @@ public sealed partial class Binding
                 // A call that fails in every case of the split layer fails by itself (ValueCallRestsOnSplit; SPEC 10.1.1, 10.2), or rests on
                 // the waiting Call whose own selection failed its run (CompleteFailedWaitingCall).
                 return this.ValueCallRestsOnSplit(call, scope, callableType!, expected, unformedMark) ? this.Fail(call, BindingFailure.Unsupported, true)
-                    : this.waitingSelectionFailure is { } cause ? this.CompleteFailedWaitingCall(call, cause, scope) : this.Fail(call, BindingFailure.NoApplicableCandidate);
+                    : this.waitingSelectionFailure is ({ } cause, { } formed) ? this.CompleteFailedWaitingCall(call, cause, formed, scope)
+                    : this.Fail(call, BindingFailure.NoApplicableCandidate);
             }
 
             if (callable)
@@ -259,13 +260,15 @@ public sealed partial class Binding
                 return this.CompleteDependent(call, evaluation.FailedPendingSignature!);
             }
 
+            if (selection == CallSelection.UnformedSplit)
+            {
+                return this.FailUnformedCall(ref evaluation); // DECISIONS D3 (temporary, PLAN G886; ClassifySelection).
+            }
+
             if (selection == CallSelection.Unproven)
             {
-                // SPEC 8.3.3: an Unknown premise that can affect the selection defers it. Omitted header Types rest on the call. A
-                // candidate unproven through an unformed split (DECISIONS D3, temporary, PLAN G886: never premise-only, unrankable) makes
-                // the call one located Unsupported_Kd, however many are pending.
-                return evaluation.Unformed ? this.FailUnformedCall(ref evaluation)
-                    : evaluation.PendingCount == 1 && evaluation.CallableFailure is { } callable ? this.FailCallableSelection(call, callable)
+                // SPEC 8.3.3: an Unknown premise that can affect the selection defers it. Omitted header Types rest on the call.
+                return evaluation.PendingCount == 1 && evaluation.CallableFailure is { } callable ? this.FailCallableSelection(call, callable)
                     : evaluation.PendingCount == 1 && evaluation.ConstraintFailure is { } constraint ? this.FailPendingConstraint(call, constraint)
                     : evaluation.PendingCount == 1 && evaluation.PendingJudgment is { } judgment ? this.FailPendingJudgment(call, judgment)
                     : this.FailWaitingSelection(call, BindingFailure.UnprovenConstraint);
