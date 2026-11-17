@@ -51,7 +51,7 @@ public sealed partial class MirEffectsTest
             }
             else if (program.Callee(new(MirCalleeKind.Fn, operation)) is { } body)
             {
-                Check(entry.Name, operation, body);
+                Check(operation.Name, operation, body);
                 bodies++;
             }
         }

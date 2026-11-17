@@ -34,7 +34,7 @@ namespace Kimi.Compiler;
 /// <see cref="Group"/>: evaluates its one operand (parentheses, a label, and <c>@move</c>, <c>@copy</c> or a same-Type
 /// conversion, which acquire it). <see cref="Call"/>: the calls <see cref="CallPlan.Of"/> lists. <see cref="Jump"/> and
 /// <see cref="Continue"/>: the transfer to the target the node's plan row records. <see cref="For"/>, <see cref="Try"/>,
-/// <see cref="Interpolation"/>, <see cref="DictionaryLiteral"/>, <see cref="Range"/>, <see cref="Index"/>, <see cref="CompoundAssign"/> and a user
+/// <see cref="Interpolation"/>, <see cref="DictionaryLiteral"/>, <see cref="Index"/>, <see cref="CompoundAssign"/> and a user
 /// or view index's <see cref="Call"/>: the expansion its <see cref="ExpansionPlan"/> describes.</remarks>
 internal enum HirOp : byte
 {

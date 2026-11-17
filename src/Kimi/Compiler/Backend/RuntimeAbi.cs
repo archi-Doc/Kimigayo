@@ -65,12 +65,6 @@ internal static class RuntimeAbi
         Unit.ComputationType,
         [new("ptr", "data", LogicalIndex: 0), new("i64", "length", LogicalIndex: 1), Location, LocationLength]);
 
-    // SPEC 22.1-22.5.5: writeLine borrows its string handle and releases nothing.
-    internal static readonly FunctionAbi WriteLine = new(
-        "__kimi_write_line",
-        Unit.ComputationType,
-        [new(StringReference.ArgumentType!, "text", AbiParameterKind.SharedReference, 0), Location, LocationLength]);
-
     internal static readonly FunctionAbi DestroyString = new("__kimi_destroy_string", Unit.ComputationType, OwnedStringParameters);
 
     internal static readonly FunctionAbi CloneRc = new(
@@ -103,19 +97,6 @@ internal static class RuntimeAbi
         "__kimi_transfer_bytes",
         Unit.ComputationType,
         [new("ptr", "destination", AbiParameterKind.Value, 0), new("ptr", "source", AbiParameterKind.Value, 1), new("i64", "size", AbiParameterKind.Value, 2)]);
-
-    // SPEC 22.9.2, 22.9.4: Text.writer's adapter over its destination, given the destination's writer kind and the dispatch word of its
-    // reserve witness (FunctionCodegen.Writer): the ErasedWriter intrinsic's routine, defined by the kept ErasedWriterRuntime.ll.in.
-    internal static readonly FunctionAbi TextWriter = new(
-        "__kimi_text_writer",
-        Unit.ComputationType,
-        [
-            new("ptr", "ret", AbiParameterKind.ResultSlot), new("ptr", "self", LogicalIndex: 0), new("i64", "kind", AbiParameterKind.Context),
-            new("ptr", "dispatch", AbiParameterKind.Context),
-        ])
-    {
-        ResultSlot = true,
-    };
 
     // SPEC 22.9.4, 22.10.1: a user Writer's reservation through an adapter's dispatch word, its window checked (written 0, remaining at
     // least the minimum; tag 1 on a violation): the ErasedReserve intrinsic's routine, defined by the kept ErasedWriterRuntime.ll.in.
@@ -166,7 +147,7 @@ internal static class RuntimeAbi
         [new("i32", "which", AbiParameterKind.Value, 0), new("i16", "kind"), new("i16", "width"), new("i128", "bits")]);
 
     /// <summary>Gets the compiler-facing runtime definitions expanded into WindowsRuntime.ll.in.</summary>
-    internal static readonly FunctionAbi[] RuntimeDefinitions = [Exit, DestroyString, WriteLine, Abort, AbortMessage];
+    internal static readonly FunctionAbi[] RuntimeDefinitions = [Exit, DestroyString, Abort, AbortMessage];
 
     // The constants a runtime template spells through a marker, by the marker's name (Expand).
     private static readonly (string Name, long Value)[] Constants =

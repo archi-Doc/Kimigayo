@@ -41,16 +41,16 @@ public class ArchitectureRulesTest
     private const string DocumentationReaders = "Checking/Hover/HoverBuilder.cs;Checking/HoverFacts.cs;Checking/HoverPlacement.cs;Lsp/HoverRenderer.cs";
 
     // R7-N1e2-1R (LookupEntriesStayAtTheirSites): the evaluation entries and their sites, the use entries and theirs (the census).
-    private const string NameEvaluations = "ResolvePath|ResolveName|ResolveMember|ResolveRootPath|ResolveAdaptationTarget|ProbePath|ReadAgain|PublishPath";
+    private const string NameEvaluations = "ResolvePath|ResolveName|ResolveValue|ResolveMember|ResolveRootPath|ResolveAdaptationTarget|ProbePath|ReadAgain|PublishPath";
 
-    private const string NameEvaluationSites = "Binding.BaseLayers.cs=3;Binding.Calls.cs=1;Binding.Qualification.cs=2;Binding.ResolvePath.cs=19;" +
+    private const string NameEvaluationSites = "Binding.BaseLayers.cs=3;Binding.Calls.cs=1;Binding.Qualification.cs=2;Binding.ResolvePath.cs=20;" +
         "Binding.Types.cs=2";
 
     private const string UseLookups = "NamePath|TypeName|LookupAdaptationTarget";
 
     private const string UseLookupSites = "Binding.Aliases.cs=1;Binding.AssociatedTypes.cs=3;" +
         "Binding.Constraints.Requirements.cs=1;Binding.Constraints.cs=2;Binding.ContainerReferences.cs=1;Binding.Contracts.cs=1;" +
-        "Binding.Conversions.cs=1;Binding.Diagnostics.cs=2;Binding.EffectDeclarations.cs=1;" +
+        "Binding.Conversions.cs=1;Binding.Diagnostics.cs=1;Binding.EffectDeclarations.cs=1;" +
         "Binding.Lengths.cs=1;Binding.MemberLookup.cs=2;Binding.OriginDeclarations.cs=1;Binding.Patterns.cs=1;Binding.ResolvePath.cs=2;" +
         "Binding.Structs.cs=1;Binding.Types.cs=3";
 
@@ -100,7 +100,7 @@ public class ArchitectureRulesTest
         "FunctionKoto.WriteDeclarationTo=2;Koto.CopyDocumentation=1;Kotonoha.AddSources=2;Kotonoha.CheckNames=1;Kotonoha.ReplaceDocumentation=1;" +
         "MirDump.Write=2;Parser.ParseRequirementBody=1;Parser.ValidateReceiverParameters=1";
 
-    // The IL opcodes by value (InterfaceEnumerationsStayAtTheirSites).
+    // The IL opcodes by value (MethodCalls).
     private static readonly Dictionary<short, OpCode> OpCodesByValue = typeof(OpCodes).GetFields(BindingFlags.Public | BindingFlags.Static)
         .Select(static x => (OpCode)x.GetValue(null)!).ToDictionary(static x => x.Value);
 
@@ -167,6 +167,9 @@ public class ArchitectureRulesTest
     [InlineData("Binding reads and writes of BindingSymbol.Resolving (0 at R7-D2 d4)", "src/Kimi/Compiler/Binding", "*.cs", @"\.Resolving\b|\bResolving\s*:", 5)]
     // DECISIONS BU-111 (amended by G478): a Binding failure fact records typed parts, and its explanation text is formed only by the
     // diagnostics adapter. The one left is UnboundSlotFact.Note (PLAN's check-formed prose row).
+    // R7-N5, PLAN G949 S1-N5 (DECISIONS BU-220): a node-keyed table member of Binding (a Dictionary or HashSet keyed by a Koto type, a
+    // tuple whose first item is one, or by object for the node tables) moves into NodeColumns batch by batch; each batch lowers the limit.
+    [InlineData("Node-keyed table members in Binding", "src/Kimi/Compiler/Binding", "*.cs", @"(?m)^\s*(?:private|internal|protected|public)[^=(\n]*\b(?:Dictionary|HashSet)<(?:\(?\w*Koto|object)\b", 96)]
     [InlineData("String explanations in Binding failure facts", "src/Kimi/Compiler/Binding", "*.cs", @"\bstring (?:Condition|Reason|Note)\b(?=[,)])", 1)]
     // R7-E1b: a problem's fact keeps a Type or a closed row, and a check writes no text into one: the adapter owns each row's.
     [InlineData("Text a check keeps as a problem's fact", "src/Kimi/Compiler/Binding", "*.cs", @"\bKeep\((?:object\b|\$?"")|\bRecordMismatch\([^;\n]*\$?""", 0)]
@@ -179,6 +182,8 @@ public class ArchitectureRulesTest
     [InlineData("The RawStep vocabulary", "src/Kimi/Compiler", "*.cs", @"\bRawStep\b", 0)]
     // G416 U1: a value's parts are Holdings' entries, read by every fit and fold; the private walks stay gone (RP6).
     [InlineData("Private walks of what a value holds", "src/Kimi/Compiler/Binding", "*.cs", @"\b(?:HeldParts|BorrowShaped|BorrowTarget|PartPlace|HeldPart|Stores)\b(?=\()|\bPartPlace\b", 0)]
+    // R7-N4 (RP6): Binding names no attribute by string; AttributeKoto.Classify is the one read of an attribute's Name.
+    [InlineData("Attribute Name strings in Binding", "src/Kimi/Compiler/Binding", "*.cs", @"""(?:Layout|LibraryImport|Test|Lang|Intrinsic|CallerLocation|Unsupported)""", 0)]
     public void SourcePatternDoesNotGrow(string rule, string directory, string pattern, string regex, int limit)
     {
         var expression = new Regex(regex);
@@ -212,9 +217,8 @@ public class ArchitectureRulesTest
     // (src/Benchmark) are not tests. A letter in brackets keeps the pattern from matching its source.
     [InlineData("Allocation windows outside AllocationMeasurement", "tests", @"\bGC\.GetAllocatedBytesForCurrentThrea[d]\b", "xUnitTest/AllocationMeasurement.cs=7")]
     // R7-N4 (RP6): the parser classifies an attribute by its Name once, so AttributeKoto.Classify is the one read of the Name, and Binding
-    // names no attribute by string (its two hits are the Kimi.Test group's Name). A Name the compiler reads joins the second pattern.
+    // names no attribute by string (SourcePatternDoesNotGrow's row; its two hits were the deleted Kimi.Test shell's Name, R8-G1 G1-5).
     [InlineData("Reads of an attribute's Name", "src/Kimi/Compiler", @"\bIdentifierKoto\b", "Parsing/Koto/Expressions/UnaryKoto.cs=2")]
-    [InlineData("Attribute Name strings in Binding", "src/Kimi/Compiler/Binding", @"""(?:Layout|LibraryImport|Test)""", "KimiLibrary.cs=2")]
     // R7-N2a (RP6): a struct has one base clause (SPEC 6.2.2), read through StructKoto.BaseClause. `.Bases` stays only where the container may
     // be an enum, which keeps its whole list until PrepareStorage fails it, or a Contract, whose refinements are many (BuildContract).
     [InlineData("A container's base clauses", "src/Kimi/Compiler/Binding", @"\.Bases\b|\{ Bases\b", "Binding.Contracts.cs=2;Binding.Expressions.cs=2;Binding.OriginProof.cs=2;Binding.Storage.cs=3")]
@@ -242,6 +246,25 @@ public class ArchitectureRulesTest
     // forming the declaration it names (the type's file: the member and its contract's three mentions). Every other read is one of
     // OriginDeclaration's read members, so the readers of a declaration, a failed one included, are those members' callers.
     [InlineData("Formation of an Origin declaration", "src/Kimi/Compiler", @"\bForming\b", "Binding/Binding.LocalOrigins.cs=27;Binding/Binding.OriginDeclarations.Failures.cs=5;Binding/Binding.OriginDeclarations.cs=29;Binding/Binding.OriginInheritance.cs=6;Binding/Binding.Origins.Model.cs=4")]
+    // PLAN G949 S1-0b r2 and r3 (the library-layer dump's number rule, KimiLibraryShapeTest.LibraryLayer): a number naming a walk's or
+    // memo's order is read only by the walk or memo that assigns it, so the dump prints it as # and compares the rest of its row. Each row
+    // counts every name through which the number is reached, its holder and a member returning it included:
+    // - a scope's view serial and the chain state it names: declared in BindingModel and read by ContractSolver's SerialOf, whose callers
+    //   compare the serial for equality only (ContractSolver, its Rows and TypeIdentity's memo);
+    // - an Origin requirement work's Consumer mark: read by OriginRequirements' edge collection;
+    // - an inline summary's Tarjan Index and Low: read in InlineLayouts, the one file that names the summary, its stores or Summary, the
+    //   member returning one (ComponentSummaries' own Summary shares the name and is counted too). All are Binding's private members, so
+    //   only Binding's partial files, in its directory, reach them.
+    // A further reader fails here until the dump's rule is reviewed.
+    [InlineData("Readers of a scope's view serial and state", "src/Kimi/Compiler", @"\bView(?:Serial|State)\b|\bSerialOf\b", "Binding/Binding.ContractSolver.Rows.cs=3;Binding/Binding.ContractSolver.cs=8;Binding/Binding.TypeIdentity.cs=3;Binding/BindingModel.cs=3")]
+    [InlineData("Readers of an Origin requirement work's Consumer mark", "src/Kimi/Compiler", @"\.Consumer\b|\bConsumer:", "Binding/Binding.OriginRequirements.cs=2")]
+    [InlineData("Holders of an inline summary's Tarjan numbers", "src/Kimi/Compiler/Binding", @"\b(?:InlineSummary|inlineSummaries|inlineSummaryPool|inlineComponents|Summary)\b", "Binding.ComponentSummaries.cs=7;Binding.InlineLayouts.cs=43")]
+    // PLAN G949 S1-0b r3 (the dump's epoch rule): the memos of one capability epoch are the program's because each pass begins with
+    // ResetCapabilities: its one call is ResetPass's, which the pass driver's RunPass runs first in each pass of each run (Binding.Passes.cs)
+    // and Invalidate on an edit (Binding.cs; G949 S1-r1a, its premise reviewed there). A further caller (S1-r1b's library pass among them)
+    // fails here until the epoch rule's premise is reviewed again. Binding's own ResetPass calls are this.ResetPass (a member call's
+    // spelling); the conformance identities' and paths' ResetPass(ulong) (S1-b1) are other members of the name.
+    [InlineData("A pass's start ends the capability epoch", "src/Kimi/Compiler", @"\bResetCapabilities\(|\bthis\.ResetPass\(", "Binding/Binding.Capabilities.cs=1;Binding/Binding.Pass.cs=1;Binding/Binding.Passes.cs=1;Binding/Binding.cs=1")]
     public void SourcePatternStaysAtItsSites(string rule, string directory, string regex, string sites)
     {
         var expression = new Regex(regex);
@@ -397,9 +420,35 @@ public class ArchitectureRulesTest
     public void InterfaceEnumerationsStayAtTheirSites(string prefix, string sites)
     {
         var actual = typeof(Kimi.Compiler.Compilation).Assembly.GetTypes().Where(x => x.Namespace?.StartsWith(prefix, StringComparison.Ordinal) == true)
-            .SelectMany(InterfaceEnumerations).GroupBy(static x => x, StringComparer.Ordinal).Select(static x => $"{x.Key}={x.Count()}")
+            .SelectMany(MethodCalls).Where(static x => x.Called is { Name: "GetEnumerator", DeclaringType.IsInterface: true }).Select(static x => x.Site)
+            .GroupBy(static x => x, StringComparer.Ordinal).Select(static x => $"{x.Key}={x.Count()}")
             .Order(StringComparer.Ordinal).ToArray();
         Assert.True(sites.Split(';').Order(StringComparer.Ordinal).SequenceEqual(actual), $"Interface enumerations: {string.Join(";", actual)}; the sites are {sites}.");
+    }
+
+    // G949 D2b-d's d13 (DECISIONS BU-220): NodeColumns holds Binding's private node families, read and written only through each
+    // family's accessor, so no source file outside Compiler/Binding names it.
+    [Fact]
+    public void NodeColumnsIsNamedOnlyInBinding()
+    {
+        var binding = Path.Combine(Repository.Root, "src", "Kimi", "Compiler", "Binding") + Path.DirectorySeparatorChar;
+        var name = new Regex(@"\bNodeColumns\b");
+        Assert.DoesNotContain(SourceFiles("src", "*.cs"), x => !x.StartsWith(binding, StringComparison.OrdinalIgnoreCase) && name.IsMatch(File.ReadAllText(x)));
+    }
+
+    // PLAN G949 S1-b2 (d11; DECISIONS BU-220): every Type carries the dense id its maker gave it, so only TyCtxt, which numbers each Type it
+    // makes (Intern, Parameter), and BoundType, whose statics hold one fixed list of ids (its type initializer, CreatePrimitives and
+    // CreateWrappingScalars), construct one, each site as many times as listed (the type initializer's four: Unit, Never, Boolean, Range),
+    // so a construction added inside an allowed method fails too. Read from the IL, where a target-typed `new(...)` is a constructor
+    // call like any other.
+    [Fact]
+    public void OnlyTyCtxtAndBoundTypeConstructTypes()
+    {
+        var sites = typeof(Kimi.Compiler.Compilation).Assembly.GetTypes().SelectMany(MethodCalls)
+            .Where(static x => x.Called is ConstructorInfo && x.Called.DeclaringType == typeof(Kimi.Compiler.BoundType))
+            .GroupBy(static x => x.Site, StringComparer.Ordinal).Select(static x => $"{x.Key}={x.Count()}").Order(StringComparer.Ordinal).ToArray();
+        Assert.Equal(
+            new[] { "BoundType..cctor=4", "BoundType.CreatePrimitives=1", "BoundType.CreateWrappingScalars=1", "TyCtxt.Intern=1", "TyCtxt.Parameter=1" }, sites);
     }
 
     // R7-C2a: Enumerate is a leaf of the judgment graph (Binding.ContractSolver.cs's contract). The members of its walk call exactly
@@ -448,8 +497,9 @@ public class ArchitectureRulesTest
         _ => null,
     };
 
-    // The calls of an interface's GetEnumerator in a type's own method bodies, read from their IL, one `TopLevelType.Method` each.
-    private static IEnumerable<string> InterfaceEnumerations(Type type)
+    // The methods and constructors a type's own method bodies call, construct or load, read from their IL, each with its site
+    // `TopLevelType.Method`.
+    private static IEnumerable<(string Site, MethodBase Called)> MethodCalls(Type type)
     {
         const BindingFlags Declared = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.Static | BindingFlags.DeclaredOnly;
         var top = type;
@@ -470,9 +520,9 @@ public class ArchitectureRulesTest
                 i += code.Size;
                 if (code.OperandType == OperandType.InlineMethod && type.Module.ResolveMethod(
                     BitConverter.ToInt32(il, i), type.IsGenericType ? type.GetGenericArguments() : null, method.IsGenericMethod ? method.GetGenericArguments() : null)
-                    is { Name: "GetEnumerator", DeclaringType.IsInterface: true })
+                    is { } called)
                 {
-                    yield return $"{top.Name}.{name}";
+                    yield return ($"{top.Name}.{name}", called);
                 }
 
                 i += code.OperandType switch

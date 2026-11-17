@@ -96,7 +96,8 @@ public class UnaryKoto : ExpressionKoto
 
 /// <summary>
 /// The closed classification of an attribute by its Name (SPEC 6.7). A Name the compiler reads is one member here and one row of
-/// <see cref="AttributeKoto.Classify"/>; every other Name is <see cref="Unknown"/>. Argument values are no part of it.
+/// <see cref="AttributeKoto.Classify"/>; every other Name is <see cref="Unknown"/>. Argument values are no part of it. The
+/// implementation Attributes (IMPL 21.3.4), from <see cref="Lang"/> on, are recognized only in the Kimi library's own sources.
 /// </summary>
 public enum AttributeKind : byte
 {
@@ -111,6 +112,18 @@ public enum AttributeKind : byte
 
     /// <summary><c>#LibraryImport</c> (SPEC 22.6).</summary>
     LibraryImport,
+
+    /// <summary><c>#Lang("Name")</c>: the one declaration the compiler knows as Name (IMPL 21.3.4).</summary>
+    Lang,
+
+    /// <summary><c>#Intrinsic("Name")</c>, <c>#Intrinsic("Fail", "Code")</c>: a definition the compiler generates (IMPL 21.3.4).</summary>
+    Intrinsic,
+
+    /// <summary><c>#CallerLocation</c>: failures report the invoking user expression (SPEC 22.5.1, IMPL 21.3.4).</summary>
+    CallerLocation,
+
+    /// <summary><c>#Unsupported</c>: every use is reported as Unsupported (SPEC 22.1, IMPL 21.3.4).</summary>
+    Unsupported,
 }
 
 /// <summary>Represents an attribute expression.</summary>
@@ -129,6 +142,10 @@ public sealed class AttributeKoto : UnaryKoto
     /// <summary>Gets the kind of this attribute's Name; the compiler reads this, never the Name.</summary>
     public AttributeKind Kind { get; private set; }
 
+    /// <summary>Gets a value indicating whether this is an implementation Attribute (IMPL 21.3.4): a fact about its declaration that the
+    /// Kimi library states to the compiler, never an expression. The kinds from <see cref="AttributeKind.Lang"/> on.</summary>
+    public bool IsImplementation => this.Kind >= AttributeKind.Lang;
+
     /// <summary>Gets the attribute identifier.</summary>
     public Koto IdentifierKoto
         => this.Operand is InvocationKoto { Method: IdentifierNameKoto identifier } ? identifier : this.Operand;
@@ -145,15 +162,21 @@ public sealed class AttributeKoto : UnaryKoto
             this.Operand is InvocationKoto { ArgumentNodes.Count: 1 } call && call.GetArgumentLabel(0) is null &&
             call.ArgumentNodes[0] is StringLiteralKoto literal && literal.Literal is "C" or "Kimigayo" ? literal.Literal : null;
 
-    // The one read of the Name: when the parser builds the node and when an edit replaces the Name (Koto.ReplaceChild).
+    // The one read of the Name: when the parser builds the node and when an edit replaces the Name (Koto.ReplaceChild). The
+    // implementation Attributes are recognized only where the node's own Kotonoha is the Kimi library (SPEC 6.7), whose table is
+    // marked from its creation (SyntaxTable.IsLibrary); elsewhere they are Unknown.
     internal void Classify()
-        => this.Kind = this.IdentifierKoto is IdentifierNameKoto name ? name.IdentifierName switch
+        => this.Kind = this.IdentifierKoto is not IdentifierNameKoto name ? AttributeKind.Unknown : (name.IdentifierName, this.Kotonoha.Syntax.IsLibrary) switch
         {
-            "Layout" => AttributeKind.Layout,
-            "LibraryImport" => AttributeKind.LibraryImport,
-            "Test" => AttributeKind.Test,
+            ("Layout", _) => AttributeKind.Layout,
+            ("LibraryImport", _) => AttributeKind.LibraryImport,
+            ("Test", _) => AttributeKind.Test,
+            ("Lang", true) => AttributeKind.Lang,
+            ("Intrinsic", true) => AttributeKind.Intrinsic,
+            ("CallerLocation", true) => AttributeKind.CallerLocation,
+            ("Unsupported", true) => AttributeKind.Unsupported,
             _ => AttributeKind.Unknown,
-        } : AttributeKind.Unknown;
+        };
 }
 
 /// <summary>Represents a macro expression.</summary>

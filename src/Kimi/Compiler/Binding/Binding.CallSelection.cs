@@ -23,7 +23,7 @@ public sealed partial class Binding
     // The scratch sizes a candidate set needs. Origins are solved when the caller or the enclosing Type can carry them, or when a
     // candidate declares one, returns one or takes one. Receiver: the group has a receiver shape (SPEC 7.3.2), some candidate taking a
     // receiver (ReceiverIndex), so a value-qualified call acquires its Receiver Expression by the Name before selection.
-    private static CandidateShape MeasureCandidates(CallCandidates candidates, bool solveOrigins)
+    private static CandidateShape MeasureCandidates(FunctionGroup candidates, bool solveOrigins)
     {
         var shape = new CandidateShape { SolveOrigins = solveOrigins };
         foreach (var candidate in candidates)
@@ -75,7 +75,7 @@ public sealed partial class Binding
 
     // SPEC 10.1, 15.4.4: evaluates every candidate. A fit there is pure (FitOrigin): a candidate that is not selected bounds no
     // omitted Origin, and the selected one's bounds are recorded after selection (JudgeSelectedCall).
-    private void EvaluateCallCandidates(ref CallEvaluation evaluation, in CallCandidates candidates)
+    private void EvaluateCallCandidates(ref CallEvaluation evaluation, in FunctionGroup candidates)
     {
         this.candidateTrials++;
         var selection = this.OpenFrame(); // Each trial hands its facts to the selection, which reads them per candidate (r2-6).

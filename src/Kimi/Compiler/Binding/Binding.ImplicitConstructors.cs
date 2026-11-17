@@ -60,7 +60,7 @@ public sealed partial class Binding
             return new(OmittedBaseOutcome.NoBaseConstructor);
         }
 
-        var candidates = new CallCandidates(group, null, null);
+        var candidates = FunctionGroup.Of(group);
         var shape = MeasureCandidates(candidates, true);
         var obligationCount = this.obligations.Count;
         var acquisition = this.acquisitionFailure;

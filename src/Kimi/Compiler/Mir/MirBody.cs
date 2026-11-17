@@ -1,11 +1,12 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 // Owns the indexed storage of one MIR body and its projection chains.
-// Input: the forms the builder appends (MirForms.cs). Output: reusable arrays of locals, blocks, statements and associated records,
-// the validator's verdict (HasFinding), which only MirValidator writes; no consumer reads a body that has one (DECISIONS R5-M183); and
-// whether a construction record lies in it (HasConstructionRecord), which only the builder's record path writes (R5-M183's GR-1a line).
-// References use body-local indices; projection chains are interned and ProjectedType owns their Type rule.
-// Must not resolve syntax or introduce a parallel representation for the same body.
+// Input: the forms the builder appends (MirForms.cs) to a body it began (Reset), or a built body stored (Store). Output: reusable arrays
+// of locals, blocks, statements and associated records, a stored body's grown only to exactly the rows stored in it; the validator's
+// verdict (HasFinding), which only MirValidator writes; no consumer reads a body that has one (DECISIONS R5-M183); and whether a
+// construction record lies in it (HasConstructionRecord), which only the builder's record path writes (R5-M183's GR-1a line).
+// References use body-local indices; projection chains are interned while a body is built and ProjectedType owns their Type rule.
+// Must not resolve syntax or introduce a parallel representation for the same body; a stored body is read, never appended to.
 
 using System.Runtime.InteropServices;
 using SemanticsKind = Kimi.Compiler.Parsing.SemanticsKind;
@@ -15,12 +16,13 @@ namespace Kimi.Compiler.Mir;
 /// <summary>The MIR of one body (plan 5.4): struct arrays that the builder appends to (<see cref="AddLocal"/>, <see cref="AddBlock"/>,
 /// <see cref="Push"/>, <see cref="Terminate"/>, <see cref="AddOperand"/>, <see cref="Const"/>, <see cref="Project"/>,
 /// <see cref="AddMustNotComplete"/> and the other adders)
-/// and that a reset keeps, so a pooled body rebuilt to the same size allocates nothing.</summary>
+/// and that a reset keeps; <see cref="MirProgram"/> builds each body in one such body and stores it in a pooled one (<see cref="Store"/>),
+/// so a pooled body is grown only to exactly the rows stored in it and one rebuilt to no larger size allocates nothing.</summary>
 internal sealed class MirBody
 {
     private static readonly MirTerminator Unterminated = new(MirTerminatorKind.Goto, default);
-    private readonly Dictionary<MirProjection, int> projectionIds = new();
-    private readonly Dictionary<MirConst, int> constIds = new();
+    private Dictionary<MirProjection, int>? projectionIds; // Created at the first projection interned, so a stored body has none.
+    private Dictionary<MirConst, int>? constIds; // Created at the first constant interned, so a stored body has none.
     private MirLocal[] locals = [];
     private MirBlock[] blocks = [];
     private MirStatement[] statements = [];
@@ -191,6 +193,26 @@ internal sealed class MirBody
         return call;
     }
 
+    /// <summary>Gets the construction a Places Call inserts into (PLAN G442): the Place that its first operand, a whole temp, borrows
+    /// exclusively in the Call's block, the one reading of that contract (MirValidator's Placed).</summary>
+    /// <param name="block">The block a Places Call ends, its operand range valid.</param>
+    /// <returns>The construction, or null when the block does not form that borrow.</returns>
+    internal MirPlace? Construction(int block)
+    {
+        ref readonly var data = ref this.blocks[block];
+        for (var i = data.Count - 1; i >= 0 && data.Terminator.Count > 0; i--)
+        {
+            ref readonly var statement = ref this.statements[data.Start + i];
+            if (statement.Kind == MirStatementKind.Assign && statement.Place == this.operands[data.Terminator.Start].Place)
+            {
+                var exclusive = (MirRefKind)statement.Rvalue.Op is MirRefKind.Uniq or MirRefKind.TwoPhaseUniq;
+                return statement.Rvalue.Kind == MirRvalueKind.Ref && exclusive ? statement.Rvalue.Place : null;
+            }
+        }
+
+        return null;
+    }
+
     /// <summary>Gets the Type of a Place: its last projection's, or its root's.</summary>
     /// <param name="place">A Place of the body.</param>
     /// <returns>The Type, or null when a projection is not admitted.</returns>
@@ -253,11 +275,35 @@ internal sealed class MirBody
         (this.Key, this.Source, this.HasFinding, this.HasConstructionRecord) = (key, source, false, false);
         this.localCount = this.blockCount = this.statementCount = this.operandCount = this.caseCount = this.constCount = 0;
         this.projectionCount = this.scopeCount = this.staticCount = this.opaqueCount = this.opaqueRootCount = this.endCount = this.guessedSiteCount = 0;
-        this.projectionIds.Clear();
-        this.constIds.Clear();
+        this.projectionIds?.Clear();
+        this.constIds?.Clear();
         this.Binders.Clear();
         Add(ref this.projections, ref this.projectionCount, default);
         Add(ref this.scopes, ref this.scopeCount, new MirScope(-1, MirScopeKind.Lexical, source));
+    }
+
+    /// <summary>Stores a built body in this one, its definition, ordinal, verdicts, binders and tables: each table in this body's array
+    /// where that holds the rows, else in a new array of exactly their count; the built body's interning stays with it.</summary>
+    /// <param name="built">The body built.</param>
+    internal void Store(MirBody built)
+    {
+        (this.Key, this.Source, this.Ordinal, this.HasFinding, this.HasConstructionRecord) =
+            (built.Key, built.Source, built.Ordinal, built.HasFinding, built.HasConstructionRecord);
+        this.Binders.Clear();
+        this.Binders.AddRange(built.Binders);
+        this.localCount = Store(ref this.locals, built.Locals);
+        this.blockCount = Store(ref this.blocks, built.Blocks);
+        this.statementCount = Store(ref this.statements, built.Statements);
+        this.operandCount = Store(ref this.operands, built.Operands);
+        this.caseCount = Store(ref this.cases, built.Cases);
+        this.constCount = Store(ref this.consts, built.Consts);
+        this.projectionCount = Store(ref this.projections, built.Projections);
+        this.scopeCount = Store(ref this.scopes, built.Scopes);
+        this.staticCount = Store(ref this.statics, built.Statics);
+        this.opaqueCount = Store(ref this.opaques, built.OpaqueSites);
+        this.opaqueRootCount = Store(ref this.opaqueRoots, built.OpaqueRoots);
+        this.endCount = Store(ref this.ends, built.MustNotComplete);
+        this.guessedSiteCount = Store(ref this.guessedSites, built.GuessedSites);
     }
 
     internal int AddLocal(in MirLocal local) => Add(ref this.locals, ref this.localCount, local);
@@ -296,7 +342,7 @@ internal sealed class MirBody
     /// <returns>The id the body's equal constants share.</returns>
     internal int Const(in MirConst constant)
     {
-        ref var id = ref CollectionsMarshal.GetValueRefOrAddDefault(this.constIds, constant, out var exists);
+        ref var id = ref CollectionsMarshal.GetValueRefOrAddDefault(this.constIds ??= new(), constant, out var exists);
         if (!exists)
         {
             id = Add(ref this.consts, ref this.constCount, constant);
@@ -314,7 +360,7 @@ internal sealed class MirBody
     internal MirPlace Project(MirPlace place, MirProjectionKind kind, int arg)
     {
         var row = new MirProjection(place.Projection, kind, arg, this.ProjectedType(this.TypeOf(place), kind, arg));
-        ref var id = ref CollectionsMarshal.GetValueRefOrAddDefault(this.projectionIds, row, out var exists);
+        ref var id = ref CollectionsMarshal.GetValueRefOrAddDefault(this.projectionIds ??= new(), row, out var exists);
         if (!exists)
         {
             id = Add(ref this.projections, ref this.projectionCount, row);
@@ -367,5 +413,16 @@ internal sealed class MirBody
 
         items[count] = item;
         return count++;
+    }
+
+    private static int Store<T>(ref T[] items, ReadOnlySpan<T> rows)
+    {
+        if (items.Length < rows.Length)
+        {
+            items = new T[rows.Length];
+        }
+
+        rows.CopyTo(items);
+        return rows.Length;
     }
 }

@@ -1042,13 +1042,13 @@ public sealed partial class RetentionTest
     // clone its handle's payload only (Content), Raw.initialize its value into the raw storage, also a raw pointer's own value (`c01`)
     // into an unstated layer, which unties the storage (R-B2), and the storage a read through it (SPEC 15.6.4 as DECISIONS R4-M116
     // revised it: a pointer is never part of its own pointee);
-    // Text.writer its destination, its Utf8Writer untied by the unstated raw Fields it stores; Raw.slice's result, a fresh anchor, is
-    // untied unless its pointee's Origins tie it, and lies within its storage, which it retains (D14, R4-M116 item 4) with a read through
-    // it; Raw.allocate's, a raw pointer without an Origin, retains every argument with its chain and is untied (SPEC 15.6.4's rule A,
-    // DECISIONS BU-40), as Raw.initialize's unstated `slot` pointee retains `p` and its own chain. A raw input's pointee is its own
-    // writable storage, which retains it as a read through it, except where the operation contract stores no value through the input
-    // (SPEC 5.2 Placement, 5.6; KimiLibraryCatalog.NoStore, PLAN G780), e.g. Raw.slice's storage: no writable storage there, an unstated
-    // layer included (fail-before: rule A's untied store 0 and store 1).
+    // Text.writer, a body since R8-W2 b2-1 whose summary is derived, its destination, its Utf8Writer untied by the unstated raw Fields
+    // Utf8Writer.init stores; Raw.slice's result, a fresh anchor, is untied unless its pointee's Origins tie it, and lies within its
+    // storage, which it retains (D14, R4-M116 item 4) with a read through it; Raw.allocate's, a raw pointer without an Origin, retains
+    // every argument with its chain and is untied (SPEC 15.6.4's rule A, DECISIONS BU-40), as Raw.initialize's unstated `slot` pointee
+    // retains `p` and its own chain. A raw input's pointee is its own writable storage, which retains it as a read through it, except
+    // where the operation contract stores no value through the input (SPEC 5.2 Placement, 5.6; KimiLibraryCatalog.NoStore, PLAN G780),
+    // e.g. Raw.slice's storage: no writable storage there, an unstated layer included (fail-before: rule A's untied store 0 and store 1).
     [Theory]
     [InlineData(Lent + "let h = Kimi.Intrinsics.makeObj(Lent.init(r: x@ref))\n", "makeObj", "result {0 Value}")]
     [InlineData(Lent + "let h = Kimi.Intrinsics.makeRc(Lent.init(r: x@ref))\n", "makeRc", "result {0 Value}")]
@@ -1074,12 +1074,12 @@ public sealed partial class RetentionTest
     // DictionaryStorage.grow writes the Handle its `raw/Handle` addresses, whose `buffer` states `self`: through it a call stores what
     // the Handle's Type admits, nothing here, so the handle is no untied store (SPEC 5.7 Calls).
     [Theory]
-    [InlineData(KimiDeclarationId.DictionaryStoragePlaceEntry, "store 0: own {0 Content, 1 Value, 2 Value}, reached {}")]
-    [InlineData(KimiDeclarationId.DictionaryStorageGrow, "")]
-    public void StorageOperationsRetainTheirRawArguments(KimiDeclarationId id, string expected)
+    [InlineData("DictionaryStorage.placeEntry", "store 0: own {0 Content, 1 Value, 2 Value}, reached {}")]
+    [InlineData("DictionaryStorage.grow", "")]
+    public void StorageOperationsRetainTheirRawArguments(string path, string expected)
     {
         var c = Bind(string.Empty);
-        Assert.Equal(expected, Show(c.Types.Retains(c.Library.GetSymbol(id)!, null, null)));
+        Assert.Equal(expected, Show(c.Types.Retains(LibrarySource.Symbol(c.Library, path), null, null)));
     }
 
     // SPEC 15.6.4 (OQ-3, DECISIONS R4-M116; G160-2c): a raw argument is retained as a borrowed one, its pointee as the referent. An Origin
@@ -1476,7 +1476,7 @@ public sealed partial class RetentionTest
         var drops = KotoTree.Walk(c.Library.Kotonoha.RootKoto).OfType<FunctionKoto>().Where(static x => x.IsDestructor)
             .Select(x => $"{x.Parent!.SymbolOf()!.Name}: {Show(c.Types.Retains(x.SymbolOf()!, null, null))}");
         Assert.Equal(
-            ["HeapBuffer: ", "ArrayOwningIterator: store 0: own {0 Content}, reached {}", "DictionaryOwnedRemainder: store 0: own {0 Content}, reached {}", "FixedOwnedRemainder: store 0: own {0 Content}, reached {}"],
+            ["ArrayOwningIterator: store 0: own {0 Content}, reached {}", "DictionaryOwnedRemainder: store 0: own {0 Content}, reached {}", "FixedOwnedRemainder: store 0: own {0 Content}, reached {}", "HeapBuffer: "],
             drops);
     }
 
@@ -1602,7 +1602,7 @@ public sealed partial class RetentionTest
             {
                 var value = call.Kind == CalleeKind.Value;
                 var callee = call is { Kind: CalleeKind.Virtual, VirtualIsDirect: true } ? call.VirtualImplementation?.SymbolOf() : call.Target;
-                if (callee is null || (callee.LibraryDeclaration is null && IntrinsicDisposition.Of(callee.CompilerFunction).Kind == DispositionKind.Intrinsic))
+                if (callee is null || ReferenceEquals(callee, c.Library.Abort))
                 {
                     continue; // The compiler-only $abort has no declaration MIR names (SPEC 17.4).
                 }

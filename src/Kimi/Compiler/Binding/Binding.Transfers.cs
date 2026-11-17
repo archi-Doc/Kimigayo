@@ -46,13 +46,13 @@ public sealed partial class Binding
         return HirTables.ResOf(current) == HirRes.PreparedParam;
     }
 
-    // H1 after the Final publication: fails every subject; true when one failed, so the modules are published again.
+    // H1 after the Final publication: fails every subject of the pass's modules; true when one failed, so they are published again.
     private bool CheckTransfers()
     {
         var failed = false;
-        for (var i = 0; i <= this.compilation.SourceModules.Length; i++)
+        for (var i = 0; i < this.pass.Count; i++)
         {
-            var nodes = this.TransferTable(i).Nodes;
+            var nodes = this.pass[i].Syntax.Nodes;
             for (var id = 1; id < nodes.Length; id++)
             {
                 if (nodes[id] is { } node && this.TransferSubject(node))
@@ -70,9 +70,9 @@ public sealed partial class Binding
     // was failed before the first publication, so the republished columns hold no subject; one that does is an internal error.
     private void AssertTransfers()
     {
-        for (var i = 0; i <= this.compilation.SourceModules.Length; i++)
+        for (var i = 0; i < this.pass.Count; i++)
         {
-            var nodes = this.TransferTable(i).Nodes;
+            var nodes = this.pass[i].Syntax.Nodes;
             for (var id = 1; id < nodes.Length; id++)
             {
                 if (nodes[id] is { } node && this.TransferSubject(node))
@@ -82,10 +82,6 @@ public sealed partial class Binding
             }
         }
     }
-
-    // The modules in publication order, the library last.
-    private SyntaxTable TransferTable(int i)
-        => i < this.compilation.SourceModules.Length ? this.compilation.SourceModules[i].Syntax : this.Library.Kotonoha.Syntax;
 
     // S1: a written Place (not a value, not a formatting plan's storage) in a value Op whose Adjust moves it, unless its parent is the
     // explicit Move (`x@move`). S2: such a Place in Discard Context whose Adjust is Unset and whose bare acquisition moves, with a

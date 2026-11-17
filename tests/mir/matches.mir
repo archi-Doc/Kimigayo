@@ -478,13 +478,13 @@ fn quarter @199
   _3: Option<i32> temp (Subject) @209 s1
   _4: isize temp @212 s1
   _5: i32 var $try.value @216 s2
-  _6: isize temp @721 s1
+  _6: isize temp @719 s1
   _7: Option<i32> temp @723 s3
   _8: Option<i32> temp (Result) @199
   _9: Option<i32> temp @235 s1
   s1: lexical in s0 @205
   s2: lexical in s1 @212
-  s3: lexical in s1 @721
+  s3: lexical in s1 @719
   bb0:
       StorageLive(_2) @206 s1
       StorageLive(_3) @209 s1
@@ -494,15 +494,15 @@ fn quarter @199
       _4 = discriminant(_3) @212 s1
       switch copy _4 [0: bb4, otherwise: bb3] @212 s1
   bb2:
-      StorageDead(_6) @721 s1
+      StorageDead(_6) @719 s1
       StorageDead(_4) @212 s1
       StorageDead(_3) @209 s1
       StorageLive(_9) @235 s1
     * _9 = half(copy _2) -> bb14 @235 s1
   bb3:
-      StorageLive(_6) @721 s1
-      _6 = discriminant(_3) @721 s1
-      switch copy _6 [1: bb6, otherwise: bb5] @721 s1
+      StorageLive(_6) @719 s1
+      _6 = discriminant(_3) @719 s1
+      switch copy _6 [1: bb6, otherwise: bb5] @719 s1
   bb4:
       StorageLive(_5) @216 s2
       _5 = copy (_3 as case 0).0 @216 s2
@@ -524,7 +524,7 @@ fn quarter @199
       StorageDead(_2) @206 s1
       goto bb8 @199
   bb10:
-      StorageDead(_6) @721 s1
+      StorageDead(_6) @719 s1
       StorageDead(_4) @212 s1
       StorageDead(_3) @209 s1
       goto bb9 @199
@@ -1978,23 +1978,23 @@ fn bodyBindings @698
       return @700
 fn init @713
   _0: Base return (Receiver) @713
-  _1: () temp @715
-  s1: lexical in s0 @715
+  _1: () temp @714
+  s1: lexical in s0 @714
   bb0:
-      StorageLive(_1) @715
-    * _1 = const () @715 s1
+      StorageLive(_1) @714
+    * _1 = const () @714 s1
       FakeRead(_0) @713 s1
-      StorageDead(_1) @715
-      return @715
-fn init @714
-  _0: Leaf return (Receiver) @714
-  _1: () temp @718
-  s1: lexical in s0 @718
+      StorageDead(_1) @714
+      return @714
+fn init @715
+  _0: Leaf return (Receiver) @715
+  _1: () temp @716
+  s1: lexical in s0 @716
   bb0:
-      StorageLive(_1) @718
-    * _0.base1 = init() -> bb1 @717
+      StorageLive(_1) @716
+    * _0.base1 = init() -> bb1 @718
   bb1:
-    * _1 = const () @718 s1
-      FakeRead(_0) @714 s1
-      StorageDead(_1) @718
-      return @718
+    * _1 = const () @716 s1
+      FakeRead(_0) @715 s1
+      StorageDead(_1) @716
+      return @716

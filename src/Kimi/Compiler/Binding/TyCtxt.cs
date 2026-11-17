@@ -7,7 +7,8 @@
 // Interned identity is equality; values live with the compilation and survive warm rebinds. No instance or Item states a raw Origin on
 // a pair slot's argument: Intern binds each by PairBinding (SPEC 8.1.1; DECISIONS BU-34), but Unstated in kept parts, so there one SPEC
 // Type is two interned Types, a declaration's (`PS<raw/u8 during Unstated>`) and a parameter's (`PS<raw/u8>`) (DECISIONS BU-46).
-// Must not resolve source expressions or let consumers duplicate Type construction.
+// Must not resolve source expressions or let consumers duplicate Type construction: every Type but BoundType's statics is made and
+// numbered here (Intern, Parameter; the dense id, DECISIONS BU-220).
 
 using System.Runtime.CompilerServices;
 using Kimi.Compiler.Parsing;
@@ -21,6 +22,7 @@ namespace Kimi.Compiler;
 internal sealed partial class TyCtxt(Binding binding, KimiLibrary library)
 {
     private readonly Dictionary<int, List<BoundType>> types = new(KimiLibrarySize.KeyedCapacity(KimiLibrarySize.Stated.TypeKeys));
+    private int typeCount = BoundType.StaticCount; // DECISIONS BU-220: the last id this compilation gave a Type (Intern, Parameter).
 
     /// <summary>Gets the number of keys the interned Types take.</summary>
     internal int KeyCount => this.types.Count;
@@ -111,10 +113,21 @@ internal sealed partial class TyCtxt(Binding binding, KimiLibrary library)
     // over its direct target, which the MIR's case views give every Type by.
     internal BoundType CaseType(BoundType type, ReadOnlySpan<PairCase> cases) => binding.CaseType(type, cases);
 
+    // A Type parameter's own Type, which no interning shares: a generic parameter's whole Type and a pair parameter's target
+    // projection (Binding.Indexing), a Contract's Self (Binding.ContractSelfType); each is made once and kept on its symbol.
+    internal BoundType Parameter(string name, BoundTypeKind kind, BindingSymbol symbol) => new(++this.typeCount, name, kind, symbol);
+
     // A Type by its parts, one instance per parts. `origin` is the layer's stated Origin, whose role the Semantics decides: a raw layer's raw
     // Origin (BoundType.RawOrigin; Pointer and Rebuild write it), any other layer's Origin (DECISIONS BU-24).
-    internal BoundType Intern(BoundTypeKind kind, BindingSymbol? symbol, SemanticsKind semantics, ReadOnlySpan<BoundType> components, long length = 0, BoundOrigin? origin = null, ReadOnlySpan<BoundOrigin> originArguments = default, BoundLength? lengthExpression = null, Subst? closureContext = null, ReadOnlySpan<BoundLength?> lengthArguments = default)
+    internal BoundType Intern(BoundTypeKind kind, BindingSymbol? symbol, SemanticsKind semantics, ReadOnlySpan<BoundType> components, long length = 0, BoundOrigin? origin = null, ReadOnlySpan<BoundOrigin> originArguments = default, BoundLength? lengthExpression = null, Subst? closureContext = null, ReadOnlySpan<BoundLength?> lengthArguments = default, Koto? binder = null)
     {
+        // SPEC 8.10: a Function Type keeps its per-call binder only while it quantifies one of its direct inputs, so equal Types
+        // intern to one instance whichever path formed them.
+        if (binder is not null && !(kind == BoundTypeKind.Function && components.Length == 2 && QuantifiesInput(components[0], binder)))
+        {
+            binder = null;
+        }
+
         if (kind == BoundTypeKind.SemanticsAdaptation && components.Length > 0)
         {
             var same = true;
@@ -175,6 +188,7 @@ internal sealed partial class TyCtxt(Binding binding, KimiLibrary library)
         var hash = default(HashCode);
         hash.Add(kind);
         hash.Add(closureContext is null ? 0 : RuntimeHelpers.GetHashCode(closureContext));
+        hash.Add(binder is null ? 0 : RuntimeHelpers.GetHashCode(binder));
         hash.Add(symbol is null ? 0 : RuntimeHelpers.GetHashCode(symbol));
         hash.Add(semantics);
         hash.Add(length);
@@ -201,7 +215,7 @@ internal sealed partial class TyCtxt(Binding binding, KimiLibrary library)
             for (var i = 0; i < bucket.Count; i++)
             {
                 var type = bucket[i];
-                if (type.Kind != kind || type.Symbol != symbol || !ReferenceEquals(type.ClosureContext, closureContext) || type.Semantics != semantics || type.Length != length || !ReferenceEquals(type.LengthExpression, lengthExpression) || !lengthArguments.SequenceEqual(type.LengthArguments) || type.Components.Count != components.Length || !ReferenceEquals(type.Origin ?? type.RawOrigin, origin) || type.OriginArguments.Count != originArguments.Length)
+                if (type.Kind != kind || type.Symbol != symbol || !ReferenceEquals(type.ClosureContext, closureContext) || !ReferenceEquals(type.Binder, binder) || type.Semantics != semantics || type.Length != length || !ReferenceEquals(type.LengthExpression, lengthExpression) || !lengthArguments.SequenceEqual(type.LengthArguments) || type.Components.Count != components.Length || !ReferenceEquals(type.Origin ?? type.RawOrigin, origin) || type.OriginArguments.Count != originArguments.Length)
                 {
                     continue;
                 }
@@ -228,9 +242,22 @@ internal sealed partial class TyCtxt(Binding binding, KimiLibrary library)
             this.types.Add(key, bucket = new(1));
         }
 
-        var created = new BoundType(symbol?.Name ?? kind.ToString(), kind, symbol, semantics, components.ToArray(), length, origin, originArguments.ToArray(), lengthExpression, lengthArguments.ToArray(), closureContext);
+        var created = new BoundType(++this.typeCount, symbol?.Name ?? kind.ToString(), kind, symbol, semantics, components.ToArray(), length, origin, originArguments.ToArray(), lengthExpression, lengthArguments.ToArray(), closureContext, binder);
         bucket.Add(created);
         return created;
+
+        static bool QuantifiesInput(BoundType inputs, Koto binder)
+        {
+            for (var i = 0; i < inputs.Components.Count; i++)
+            {
+                if (inputs.Components[i].Origin is { Kind: OriginKind.Input, Occurrence: null } origin && ReferenceEquals(origin.Binder, binder) && origin.Slot == i)
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
     }
 
     // SPEC 3.4: the reference of a Semantics kind (ref, uniq, objref, objuniq) to a referent; a null Origin is the ownership analysis's to infer.
@@ -261,7 +288,8 @@ internal sealed partial class TyCtxt(Binding binding, KimiLibrary library)
             originArguments,
             type.LengthExpression,
             type.ClosureContext,
-            type.LengthArguments);
+            type.LengthArguments,
+            type.Binder);
 
     internal BoundType Tuple(ReadOnlySpan<BoundType> elements) => this.Intern(BoundTypeKind.Tuple, null, SemanticsKind.Owner, elements);
 
