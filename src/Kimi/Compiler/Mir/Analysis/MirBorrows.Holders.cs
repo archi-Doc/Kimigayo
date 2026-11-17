@@ -315,7 +315,7 @@ internal sealed partial class MirBorrows
     }
 
     // The write slots (A3 3): a local a call's write source may store in (written) that holds only calls' results takes one in the flow
-    // region, which the call's write source joins (MirBorrows.Calls' Keep) and a whole Move or Copy passes on (MirBorrows.Flow), so a
+    // region, which the call's write source joins (MirBorrows.Calls' Keep) and a whole store replaces (Rewrite), so a
     // Case payload the Case bound empties carries what the writes stored (MirBorrows.Values' Read); the count.
     private int WriteSlots()
     {
@@ -358,20 +358,29 @@ internal sealed partial class MirBorrows
     }
 
     // Whether a call of the view has a write source (an output with an input it sources, SourcedSlot), so Mixing decides the written
-    // locals before the slots are numbered (Holders); a view without one keeps Mixing lazy.
+    // locals before the slots are numbered (Holders); a view without one keeps Mixing lazy. Each block, each call's retention lookup
+    // and each input SourcedSlot tests count as Work.
     private bool WriteSourced()
     {
         this.Work += this.body.Blocks.Length;
         for (var b = 0; b < this.body.Blocks.Length; b++)
         {
-            if (this.body.Blocks[b].Terminator is { Kind: MirTerminatorKind.Call } call && !this.Broken(call) && this.Retaining(call) is { IsLimit: false } retention)
+            if (this.body.Blocks[b].Terminator is not { Kind: MirTerminatorKind.Call } call)
             {
-                foreach (var written in retention.Writes)
+                continue;
+            }
+
+            this.Work++;
+            if (this.Broken(call) || this.Retaining(call) is not { IsLimit: false } retention)
+            {
+                continue;
+            }
+
+            foreach (var written in retention.Writes)
+            {
+                if (this.SourcedSlot(call, retention, written, this.Receiver(call), 0) >= 0)
                 {
-                    if (this.SourcedSlot(call, retention, written, this.Receiver(call), 0) >= 0)
-                    {
-                        return true;
-                    }
+                    return true;
                 }
             }
         }
@@ -384,6 +393,7 @@ internal sealed partial class MirBorrows
     {
         for (var slot = from; slot < retention.Result.Kinds.Length; slot++)
         {
+            this.Work++;
             if (this.Sourced(this.Input(call, Position(call.Callee, receiver, slot)), written, slot))
             {
                 return slot;
@@ -394,7 +404,10 @@ internal sealed partial class MirBorrows
     }
 
     // Whether an output's store may put an input's value in a Loan-free Case payload, a write source: the input is no constant, the
-    // output's storage may hold it, and its Type holds no Loan (a value of a Type that holds one reaches no such payload).
+    // output's storage may hold it, and its Type holds no Loan. An input whose Type holds one is no write source though the payload may
+    // hold a Loan-free part it holds by value (SPEC 15.6.4) or reference bits written through a raw pointer: the cost the owner's
+    // O-383 (b) accepted ("bounds a Case payload by its Case's Type"), as for a call's result (the rows rvResPartBad, rvwPartBad).
+    // Written reaches the output argument's first referent only; a deeper target makes the program invalid by 15.6.4 already.
     private bool Sourced(in MirOperand input, OutputRetention written, int slot)
         => input.Kind != MirOperandKind.Const && (written.Own.Holds(slot) || written.All.Holds(slot)) && !this.Holds(cases.TypeOf(input), out _);
 
@@ -462,14 +475,20 @@ internal sealed partial class MirBorrows
         return false;
     }
 
-    // A whole Move or Copy into a local with a write slot (Whole) joins the write slot of the local it reads, if any, into it: the value
-    // moved carries what the writes stored in its source (MirBorrows.Flow's Assign).
-    private void PassWrites(ulong[] state, in MirStatement statement)
+    // A whole store into a local with a write slot, the start or end of its storage included, replaces the slot (SPEC 15.6 Holders: a
+    // holder completely replaced no longer carries the Loans of its old value; the review's B2): cleared, then joined with the write slot
+    // of the local whose whole value or Case payload a Move or Copy stores (Whole), if any, so the value moved carries what the writes
+    // stored in its source and nothing older; a call's result stored has none (MirBorrows.Flow's Assign and storage statements,
+    // MirBorrows.Calls' Call). A slot grows only by the writes and Moves between two such stores.
+    private void Rewrite(ulong[] state, int to, int from)
     {
-        if (statement.Place is { Projection: 0, Root: >= 0 and var to } && this.writeSlots[to] >= 0 && this.Whole(statement.Rvalue) is >= 0 and var from &&
-            this.writeSlots[from] >= 0)
+        if (this.writeSlots[to] >= 0)
         {
-            this.AddSlot(this.writeSlots[to], this.Set(state[this.writeSlots[from]]), 0, Joined, issue: false);
+            this.AddSlot(this.writeSlots[to], 0, 0, Cleared, issue: false);
+            if (from >= 0 && this.writeSlots[from] >= 0)
+            {
+                this.AddSlot(this.writeSlots[to], this.Set(state[this.writeSlots[from]]), 0, Joined, issue: false);
+            }
         }
     }
 

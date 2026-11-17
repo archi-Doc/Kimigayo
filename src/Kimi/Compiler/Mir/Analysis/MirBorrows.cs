@@ -40,7 +40,9 @@
 // (MirBorrows.Loans' Exposed: a pointer the body formed may write it, whatever its Type) or that a store of the body gives a value read
 // from a holder (SPEC 15.6 Holders, whatever its Type; MirBorrows.Holders), or E, the storage the
 // body does not own, static storage included (a direct Loan on a static names E), or a holder's drop slot, whose state is always empty
-// (drop-liveness, MirBorrows.Holders; R4-M153); its state is two MirLoanSets nodes, Placed and Shared, whose union σ(h) every reader
+// (drop-liveness, MirBorrows.Holders; R4-M153), or a local's write slot, in the flow region, whose state is what a call's write source
+// stored in the local since its last whole store, which only a read the Case bound empties reads (MirBorrows.Holders' WriteSlots,
+// MirBorrows.Values' Sources; SPEC 15.6 Holders' Case-payload sentence, the owner's O-383 (b)); its state is two MirLoanSets nodes, Placed and Shared, whose union σ(h) every reader
 // reads (MirBorrows.States, R4-M160), of Loans, addresses and markers, of which only Loans conflict and only Loans, with their
 // indirect markers, an ending removes (Φ_E, Φ_W, Φ_N, Δ, the per-local markers of the role table, Marker, and rule W's indirect markers,
 // MirBorrows.Causes); Φ_W is always beside Φ_E, and only reads through a shared Loan drop it (MirBorrows.Reach, R4-M170); Φ_N is in

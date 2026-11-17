@@ -24,7 +24,9 @@ namespace Kimi.Compiler.Mir;
 // Input: the state before the Call, its inspection Loans ended (R-a, MirBorrows.Endings), its terminator, and whether the checks replay
 // runs; the Call's plan.
 // Output: the Call's entries: its arguments' Moves, its inputs' values into the result and into the holders W reaches ({Φ_E} besides into
-// an untied storage), and the result into the destination; Φ_E for an untied result; in the checks replay, whether a store is undecided,
+// an untied storage), the values of the inputs an output sources into the write slot of each holder its store reaches (Keep, Sourcing;
+// MirBorrows.Holders' WriteSlots), and the result into the destination, which replaces the destination's write slot (Rewrite); Φ_E for an
+// untied result; in the checks replay, whether a store is undecided,
 // two facts: the limit, where its W reached a
 // holder the guard leaves undecided (MirWrites.Limit, R4-M147), or a record's pair whose Origins the view's Origin class does not class
 // where its Value would store one (R4-M154); and the depth fact (R4-M153), where the step from a holder W met whose guard is Deep would
@@ -124,6 +126,10 @@ internal sealed partial class MirBorrows
         }
 
         this.Store(state, call.Place, result, 0, issue: false);
+        if (this.writeCount > 0 && call.Place is { Projection: 0, Root: >= 0 and var into })
+        {
+            this.Rewrite(state, into, -1); // A new call's result replaces its holder's write slot (MirBorrows.Holders' WriteSlots).
+        }
     }
 
     // The store through one output: W from its argument's value (at a referent store, its first step alone; R4-M143), each holder taking its
