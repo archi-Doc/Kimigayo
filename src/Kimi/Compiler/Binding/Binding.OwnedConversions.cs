@@ -154,7 +154,7 @@ public sealed partial class Binding
     {
         this.failedCause = null;
         var proof = this.ProveOwned(this.ErasureSubject(actual), node, out var rest);
-        owned = proof == ConstraintProof.Proven ? default : this.OwnedMember(proof == ConstraintProof.Error ? this.HoldCause() : null, rest);
+        owned = proof == ConstraintProof.Proven ? default : this.OwnedMember(proof == ConstraintProof.Error ? this.HoldCause() : null, rest, node);
         return proof;
     }
 
@@ -200,15 +200,17 @@ public sealed partial class Binding
 
     // SPEC 15.2.3, 15.6.1 (BU's n6): the member an Owned failure names, from the parts the engine found not Proven: each member in member
     // order with the Origin of its first part; the first whose Origin is Refuted in the forming body (a body-local borrow) wins, else the
-    // first. -1 when no part failed; -2 when no work judged the subject.
-    private OwnedFact OwnedMember(ICheckCause? cause, in OwnedRest rest)
+    // first. -1 when no part failed; -2 when no work judged the subject. A part's Origin is read at the erasure's use (SuppliedAtUse: a
+    // `let` region of the use's own body is its value, PLAN G492-a (ii)), before the receiver resolution, as a record's Supplier is.
+    private OwnedFact OwnedMember(ICheckCause? cause, in OwnedRest rest, Koto use)
     {
         var first = new OwnedFact(cause, rest.Judged ? -1 : -2, null, false);
         var refuted = first;
         var parts = rest.Parts;
         for (var p = 0; parts is not null && p < parts.Count; p++)
         {
-            var (member, origin) = parts[p];
+            var (member, written) = parts[p];
+            var origin = written is null ? null : this.SuppliedAtUse(written, use);
             var earlier = false;
             for (var q = 0; q < p && !earlier; q++)
             {
