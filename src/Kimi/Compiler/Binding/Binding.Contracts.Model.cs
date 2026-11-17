@@ -135,8 +135,9 @@ public sealed class BoundConformance
 
     internal List<BoundConformancePath> PathStorage { get; } = new();
 
-    // Rule (a) (ImplTable): the point of the identity's first path and of its last, and, when a later point's path joined paths of an
-    // earlier one, those earlier paths as they stood (the identity's paths at that point); written by the pass that registers it.
+    // Rule (a) (ImplTable): the point of the identity's first path and of its last, and, for a base identity, its paths before the last
+    // later point's join (its paths at point 1 while every base row registers at point 1 or 2: ImplTable's premise); written by the pass
+    // that registers it.
     internal ImplTable.AdmissionPoint Point { get; private set; }
 
     internal ImplTable.AdmissionPoint LastPoint { get; private set; }
@@ -197,9 +198,9 @@ public sealed class BoundConformance
         {
             this.Point = point;
         }
-        else if (point > this.LastPoint)
+        else if (point > this.LastPoint && this.store.IsBase)
         {
-            (this.PointOnePaths ??= new()).Clear();
+            (this.PointOnePaths ??= new()).Clear(); // Only a pass without the library reads it (ImplTable.PathsOf), and only for a base row.
             this.PointOnePaths.AddRange(this.PathStorage);
         }
 

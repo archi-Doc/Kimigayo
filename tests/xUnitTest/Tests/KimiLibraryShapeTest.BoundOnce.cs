@@ -94,6 +94,21 @@ public partial class KimiLibraryShapeTest
         Assert.Empty(recursive.Select(static x => x.Name));
     }
 
+    // PLAN G949 S1-r1b (review-s1r1b Part 2, C1; F's ruling 176): rule (a)'s premise (ImplTable). The base keeps one earlier snapshot per
+    // identity and per Type list, exact while every base row registers at point 1 (the Self-clause registrar) or 2 (the conditional
+    // registrar). The inherited registrar registers after point 2 (point 3, and again after BindConstraints and at ConformancesOf's
+    // demand, past every point), so a library struct with a base (SPEC 6.2.2) would give base rows that a pass without the library reads
+    // wrongly at step 1 and never admits after its last point. No library struct names a base today: a tripwire, true today.
+    [Fact]
+    public void TheLibraryDeclaresNoStructWithABase()
+    {
+        var bases = KotoTree.Walk(Bound(string.Empty).Library.Kotonoha.RootKoto).OfType<StructKoto>().Where(static x => x.BaseClause is not null).Select(static x => Line(x)).ToArray();
+        var build = "A library struct names a base, so rule (a)'s base rows of the inherited registrar register past point 2: before it " +
+            "lands, ImplTable keeps per-point prefixes (an identity's paths, a Type's list and the composed lists' prefix at each point, " +
+            "the inherited registrar's points admitted) in place of the one point-1 snapshot (PointOnePaths, pointOneLists): ";
+        Assert.True(bases.Length == 0, build + string.Join(", ", bases));
+    }
+
     // The empty program's synthesized library nodes after its first Analyze, by id (c17's reference).
     private static readonly Lazy<string[]> EmptyProgramSynthesized = new(() => SynthesizedLines(Analyzed(string.Empty)));
 

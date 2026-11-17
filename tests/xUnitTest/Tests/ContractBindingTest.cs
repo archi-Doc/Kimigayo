@@ -1049,10 +1049,24 @@ public class ContractBindingTest
         var (owning, lending) = Named("OwningIterator", "LendingIterator");
         var (borrowing, _) = Named("BorrowingIterator", "LendingIterator");
         var (range, iterable) = Named("Range", "Iterable");
+        var direct = impls.PathsOf(impls.Find(owning, lending)!)[0];
+        var all = (impls.Paths.Count, impls.Identities.Count, impls.ByType.Count);
         typeof(ImplTable).GetField("holdsBase", BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(impls, false);
-        foreach (var point in (ImplTable.AdmissionPoint[])[ImplTable.AdmissionPoint.SelfClauses, ImplTable.AdmissionPoint.ConditionalClauses])
+        var counts = new List<(int, int, int)>();
+        foreach (var point in Enum.GetValues<ImplTable.AdmissionPoint>())
         {
+            // Every step (review-s1r1b Part 2, N1): the composed lists' base parts are their prefixes at the step, and a path is found
+            // by its key from its point on.
             typeof(ImplTable).GetField("step", BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(impls, point);
+            counts.Add((impls.Paths.Count, impls.Identities.Count, impls.ByType.Count));
+            Assert.Equal(point != ImplTable.AdmissionPoint.PassStart, impls.TryPath(direct.Type, direct.Contract, direct.Declaration, direct.RootContract) is not null);
+            if (point is ImplTable.AdmissionPoint.PassStart or ImplTable.AdmissionPoint.AssociatedBindings)
+            {
+                Assert.Equal(point == ImplTable.AdmissionPoint.PassStart, impls.Find(owning, lending) is null);
+                Assert.Equal(point == ImplTable.AdmissionPoint.PassStart, impls.OfType(range) is not { Count: not 0 });
+                continue;
+            }
+
             var first = point == ImplTable.AdmissionPoint.SelfClauses;
             foreach (var adapter in (BindingSymbol[])[owning, borrowing])
             {
@@ -1066,6 +1080,11 @@ public class ContractBindingTest
             Assert.Equal(first ? 0 : 1, conditional is null ? 0 : impls.PathsOf(conditional).Count);
             Assert.Equal(!first, impls.OfType(range)?.Exists(x => ReferenceEquals(x.Contract, iterable)) == true);
         }
+
+        Assert.Equal((0, 0, 0), counts[0]);
+        Assert.Equal(all, counts[^1]);
+        Assert.All(counts.Zip(counts.Skip(1)), x => Assert.True(x.First.Item1 <= x.Second.Item1 && x.First.Item2 <= x.Second.Item2 && x.First.Item3 <= x.Second.Item3, string.Join(", ", counts)));
+        Assert.True(counts[1].Item1 < counts[2].Item1, $"point 2 adds paths: {string.Join(", ", counts)}");
 
         (BindingSymbol Type, BindingSymbol Contract) Named(string type, string contract)
             => identities.Where(x => x.Type.Name == type && x.Contract.Name == contract).Select(static x => (x.Type, x.Contract)).Single();

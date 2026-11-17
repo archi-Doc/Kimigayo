@@ -35,7 +35,11 @@ using Kimi.Compiler.Parsing;
 //   apply it (OfType, Find, TryPath, Path, PathsOf, the composed lists' base parts): a base row before its point is not found, a Type's
 //   base list is its list as it stood at the step, an identity's paths are its paths of the points reached. No base field refers to an
 //   overlay; a pass that does not bind the library neither begins nor resets the base. A pass that binds the library reads every row
-//   it registered (the one pass, the library pass).
+//   it registered (the library pass). Premise: the base keeps one earlier snapshot per identity (PointOnePaths) and per Type list
+//   (pointOneLists), exact while every base row registers at point 1 or 2. The inherited registrar (RegisterInheritedConformances)
+//   registers later (point 3, and again at the declarations' end), which no base row reaches while the library declares no struct
+//   with a base (KimiLibraryShapeTest.TheLibraryDeclaresNoStructWithABase, the tripwire; the unit that declares one builds per-point
+//   prefixes).
 // - Prohibitions: no verification (Binding.ContractMatching, Binding.InheritedConformances), availability at a use
 //   (Binding.ResolveConformance), Self-clause rule or diagnostic here; no reader composes the two stores.
 namespace Kimi.Compiler;
@@ -112,6 +116,9 @@ internal sealed class ImplTable
 
     /// <summary>Gets the pass this store is current for (Begin).</summary>
     internal ulong Pass { get; private set; }
+
+    /// <summary>Gets a value indicating whether this is the base store (LibraryLayer.Impls), which has no base of its own.</summary>
+    internal bool IsBase => this.library is null;
 
     /// <summary>Gets the paths registered in this pass, the overlay's then the base's, each in registration order.</summary>
     internal LayerList<BoundConformancePath> Paths => new(this.Fresh().active, this.library!.Fresh().active, this.Admitted(this.library.activeAt));

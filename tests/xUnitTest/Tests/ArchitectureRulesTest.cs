@@ -284,7 +284,7 @@ public class ArchitectureRulesTest
     // conditional registrar has not run: OwningIterator's and BorrowingIterator's LendingIterator identity gains its Iterator ancestor's path
     // at point 2). PathStorage is ImplTable's and the model's own; the public Paths serves readers after the Bind and tests. The one other
     // match is an inference batch's Paths (Binding.AssociatedInference.cs), not an identity's.
-    [InlineData("Binding reads an identity's paths through ImplTable.PathsOf", "src/Kimi/Compiler/Binding", @"\.PathStorage\b|(?<!InPass|impls|batch)\.Paths\b|\{ Paths\.", "Binding.AssociatedInference.cs=1;Binding.Contracts.Model.cs=7;ImplTable.cs=4")]
+    [InlineData("Binding reads an identity's paths through ImplTable.PathsOf", "src/Kimi/Compiler/Binding", @"\.PathStorage\b|(?<!InPass|impls|batch)\.Paths\b|\{ (?:Paths|PathStorage)(?:\.|:)", "Binding.AssociatedInference.cs=1;Binding.Contracts.Model.cs=7;ImplTable.cs=4")]
     public void SourcePatternStaysAtItsSites(string rule, string directory, string regex, string sites)
     {
         var expression = new Regex(regex);

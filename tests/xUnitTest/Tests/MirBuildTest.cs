@@ -82,7 +82,10 @@ public sealed partial class MirBuildTest(ITestOutputHelper output)
     [InlineData(true)]
     public void TheLibrarysBodiesAfterAProvisionalBindAreTheFinalBinds(bool hello)
     {
-        Assert.Equal(LibraryMir(BindingMode.Final), LibraryMir(BindingMode.Provisional));
+        var final = LibraryMir(BindingMode.Final);
+        var lines = final.Count(static x => x == '\n');
+        Assert.True(lines > 10_000, $"the library segment is near empty: {lines} lines"); // Every library body (review-s1r1b Part 2, N4).
+        Assert.Equal(final, LibraryMir(BindingMode.Provisional));
 
         string LibraryMir(BindingMode mode)
         {
