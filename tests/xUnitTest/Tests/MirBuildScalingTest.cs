@@ -1,6 +1,7 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using System.Text;
+using Kimi;
 using Kimi.Compiler.Mir;
 using Xunit;
 
@@ -46,20 +47,7 @@ public class MirBuildScalingTest(ITestOutputHelper output)
         var blocks = new long[7];
         for (var depth = 1; depth <= 6; depth++)
         {
-            var text = new StringBuilder(Prelude);
-            for (var i = 1; i <= depth; i++)
-            {
-                text.Append(System.Globalization.CultureInfo.InvariantCulture, $"    var a{i}: Array<i32> = [y]\n");
-            }
-
-            text.Append("    return\n");
-            Level(text, 1, depth, 1);
-            for (var i = 1; i <= depth; i++)
-            {
-                text.Append(System.Globalization.CultureInfo.InvariantCulture, $"    takeA(a{i}@move)\n");
-            }
-
-            blocks[depth] = Blocks(text.ToString());
+            blocks[depth] = Blocks(Nested(depth));
         }
 
         output.WriteLine($"depth 1-6: blocks {string.Join(", ", blocks[1..])}");
@@ -67,6 +55,41 @@ public class MirBuildScalingTest(ITestOutputHelper output)
         {
             Assert.True(blocks[depth + 1] <= (3 * blocks[depth]) + 8, $"blocks {string.Join(", ", blocks[1..])}");
         }
+    }
+
+    // G5's named move (the design's R3.5; STATUS): the nested shape reaches the body budget (IMPL 21.3.2) at depth 8, so the valid
+    // depths 8, 9 and 10, which dev accepts, get only the Resource records ExpansionLimit_Kd and OwnershipStorageLimit_Kd: no Language
+    // record and no finding.
+    [Theory]
+    [InlineData(8)]
+    [InlineData(9)]
+    [InlineData(10)]
+    public void NestedCleanupsPastTheBodyBudgetGetOnlyResourceRecords(int depth)
+    {
+        var program = MirBuildTest.Compile(Nested(depth)).BuildMir();
+        Assert.Empty(program.Findings);
+        Assert.Equal(
+            [DiagnosticCode.ExpansionLimit_Kd, DiagnosticCode.OwnershipStorageLimit_Kd],
+            program.Problems.All.ToArray().Select(static x => x.Code).Distinct().OrderBy(static x => x.ToString()));
+    }
+
+    // The nested shape at a depth: K overwrites, each in the previous one's defer, then each target used.
+    private static string Nested(int depth)
+    {
+        var text = new StringBuilder(Prelude);
+        for (var i = 1; i <= depth; i++)
+        {
+            text.Append(System.Globalization.CultureInfo.InvariantCulture, $"    var a{i}: Array<i32> = [y]\n");
+        }
+
+        text.Append("    return\n");
+        Level(text, 1, depth, 1);
+        for (var i = 1; i <= depth; i++)
+        {
+            text.Append(System.Globalization.CultureInfo.InvariantCulture, $"    takeA(a{i}@move)\n");
+        }
+
+        return text.ToString();
     }
 
     // One level of the nested shape and the levels inside its defer, at an indentation.
