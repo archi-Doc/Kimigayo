@@ -21,8 +21,9 @@ internal sealed partial class MirBuilder
     // expected Type names. An implicit exclusive borrow of a call's input is two-phase: reserved here, activated at the Call (SPEC 15.6.7).
     // SPEC 3.8, 14.10.3 (DECISIONS R4-M62, R5-M38, R4-M175): any acquisition takes the Never value as it is, which fits any operand
     // position; a named Place of Type Never that a Never form acquires with no adaptation, a Copy or a Move, is acquired so into a fresh
-    // Never temp and gives that Never value, so whatever takes it places nothing; an adapted one (a borrow), or one a node that is no
-    // Never form acquires (a Pattern binding, a capture), is built as Binding publishes it.
+    // Never temp and gives that Never value, so whatever takes it places nothing, and the read does not complete (SPEC 14.9.3): its
+    // block ends there, and what follows is built where only the checks reach (Diverge); an adapted one (a borrow), or one a node that
+    // is no Never form acquires (a Pattern binding, a capture), is built as Binding publishes it.
     private MirOperand Acquire(HirAdjust adjust, MirPlace place, BoundType? expected, bool input, Koto node, MirPlace? into = null)
     {
         if (this.IsNeverValue(place))
@@ -38,6 +39,7 @@ internal sealed partial class MirBuilder
         var value = this.Hold(BoundType.Never, node);
         var acquired = this.body.AddOperand(this.Acquired(adjust, place, expected, input, node));
         this.body.Push(this.current, MirStatement.Assign(value, MirRvalue.Use(acquired), this.Info(node)));
+        this.Diverge(node);
         return MirOperand.Move(this.Made(value));
     }
 

@@ -10,7 +10,8 @@ namespace Kimi.Compiler;
 //   scope, which its top-level statements in one module share, DocumentScope); the scope kept for a node (ScopeOf) and the one it
 //   binds in (NodeScope); a symbol's declaration in its scope's Type or value table with the duplicate rule (Declare); a function
 //   parameter's symbol by its function and index, declared (DeclareParameter) and read (ParameterSymbol); the `symbols` and `scopes`
-//   families' accessors (DeclaredSymbols, KeptScopes), their order over the modules (FamilyRows) and their values (KeptValues).
+//   families' accessors (DeclaredSymbols, KeptScopes), the order of any node family's rows over the modules (FamilyRows) and the kept
+//   families' values (KeptValues).
 // - Inputs: the indexing walk and the declaration steps that declare a symbol. Outputs: scopes, symbols, each declaring node's
 //   BoundSymbol, Duplicate failures.
 // - Invariants: scopes and symbols are kept across passes in their key's module's NodeColumns and reset by ResetPass (DECISIONS
@@ -88,20 +89,27 @@ public sealed partial class Binding
     }
 
     /// <summary>A node family's present rows over the compilation's modules in G949 D2b-d's d8 order: the source modules by ordinal, then
-    /// the library, each module's by ascending id.</summary>
+    /// the library, each module's by ascending id. The column's rows come from its selector, which takes the module's table and the Binding
+    /// (a stamped column's current rows, StampedColumn.Enumerate), so no enumeration allocates.</summary>
     /// <typeparam name="TRow">The family's row.</typeparam>
-    internal struct FamilyRows<TRow>(Binding binding, Func<SyntaxTable, PagedColumn<TRow>> column)
+    internal struct FamilyRows<TRow>(Binding binding, Func<SyntaxTable, Binding, PagedColumn<TRow>.Enumerator> column)
     {
         private int module = -1;
+        private SyntaxTable? table;
         private PagedColumn<TRow>.Enumerator rows;
 
-        internal readonly TRow Current => this.rows.Current;
+        public readonly TRow Current => this.rows.Current;
 
         // The current row's module ordinal (the library's last) and id: the key of d8's order.
         internal readonly (int Module, int Id) Key => (this.module, this.rows.Id);
 
+        // The current row's node: its module's node at the row's id.
+        internal readonly Koto Node => this.table!.Nodes[this.rows.Id]!;
+
+        public readonly FamilyRows<TRow> GetEnumerator() => this;
+
         // The current module's next row, else the next module's first.
-        internal bool MoveNext()
+        public bool MoveNext()
         {
             var modules = binding.compilation.SourceModules;
             while (this.module > modules.Length || this.module < 0 || !this.rows.MoveNext())
@@ -111,7 +119,8 @@ public sealed partial class Binding
                     return false;
                 }
 
-                this.rows = column(this.module < modules.Length ? modules[this.module].Syntax : binding.Library.Kotonoha.Syntax).Enumerate();
+                this.table = this.module < modules.Length ? modules[this.module].Syntax : binding.Library.Kotonoha.Syntax;
+                this.rows = column(this.table, binding);
             }
 
             return true;
@@ -178,7 +187,7 @@ public sealed partial class Binding
     {
         /// <summary>Gets every kept symbol in <see cref="KeptValues{T, TPart}"/>' order: a declaration's symbol, then its parameters'.</summary>
         internal KeptValues<BindingSymbol, BindingSymbol?> Values
-            => new(new(binding, static table => table.Hir.Families.Symbols), new(binding, static table => table.Hir.Families.Parameters), static x => x);
+            => new(new(binding, static (table, _) => table.Hir.Families.Symbols.Enumerate()), new(binding, static (table, _) => table.Hir.Families.Parameters.Enumerate()), static x => x);
 
         internal BindingSymbol this[Koto node] => this.GetValueOrDefault(node) ?? throw new KeyNotFoundException($"No symbol is declared at `{node}`.");
 
@@ -225,7 +234,7 @@ public sealed partial class Binding
     {
         /// <summary>Gets every kept scope in <see cref="KeptValues{T, TPart}"/>' order: a node's scope, then a module root's document scopes.</summary>
         internal KeptValues<BindingScope, (SourceDocument Document, BindingScope? Scope)> Values
-            => new(new(binding, static table => table.Hir.Families.Scopes), new(binding, static table => table.Hir.Families.Documents), static x => x.Scope);
+            => new(new(binding, static (table, _) => table.Hir.Families.Scopes.Enumerate()), new(binding, static (table, _) => table.Hir.Families.Documents.Enumerate()), static x => x.Scope);
 
         internal BindingScope this[Koto node]
         {
