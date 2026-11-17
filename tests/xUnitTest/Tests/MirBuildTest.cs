@@ -75,7 +75,8 @@ public sealed partial class MirBuildTest(ITestOutputHelper output)
     // publisher reads for library nodes (receiverOperations among them), so the library's module is published at the end of its own
     // pass in every mode; a head that publishes it after the program pass (the lazy PublishHir) fails here on the trial split
     // (25,859 lines against 26,127). SPEC 18: a library body names library bodies only, so the library segment is the same for the
-    // empty program and for Hello.
+    // empty program and for Hello. The bodies are built over the library check's root range (every library body, PLAN G951 U2-T), since
+    // the compilation's own build (ConstructMir) holds the source modules' range from G951 U2 and builds a library body only on demand.
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
@@ -94,12 +95,12 @@ public sealed partial class MirBuildTest(ITestOutputHelper output)
 
             c.Binding.Bind(mode);
             var mir = new StringBuilder();
-            MirDump.Write(c.ConstructMir(), SyntaxTable.LibraryModule, mir);
+            MirDump.Write(new MirBuilder(c).Build(SyntaxTable.LibraryModule + 1), SyntaxTable.LibraryModule, mir);
             return mir.ToString();
         }
     }
 
-    // V9: builds every body of the corpus and counts the bodies, those with an Opaque value, the records per HirOp and the bodies per number
+    // V9: builds every body of the corpus (the library check's root range: every library body, PLAN G951 U2-T) and counts the bodies, those with an Opaque value, the records per HirOp and the bodies per number
     // of Semantics case views; with KIMI_MIR_CENSUS naming a file, writes the census there as TSV. Every built body is valid and within the
     // case bound (plan 5.6.1); the bodies one body names, each staticEnsure's initializer, called default template and created Closure, are
     // the validator's program pass's (plan 5.6.2, DECISIONS R4-M121).
@@ -113,7 +114,7 @@ public sealed partial class MirBuildTest(ITestOutputHelper output)
         foreach (var name in HirColumnsTest.Corpus.Select(static x => x.Data))
         {
             var (c, module) = SemanticSnapshotTest.Bind(name);
-            var program = c.BuildMir();
+            var program = new MirBuilder(c).Build(SyntaxTable.LibraryModule + 1);
             Assert.True(program.Findings.Count == 0, $"{name}: {string.Join(", ", program.Findings.Take(20))}");
             int[] counts = [0, 0, 0, 0];
             foreach (var body in program.Bodies)
@@ -162,7 +163,8 @@ public sealed partial class MirBuildTest(ITestOutputHelper output)
 
     // SPEC 3.6, 16.2.1 (DECISIONS R4-M129): every temp with storage of its own, of a Type that may need drop and written whole, is made, so
     // its body drops it (a held temp that no Made registered has no Drop, and its value would leak), over the goldens, the library and the
-    // milestone programs. A transfer's result temp has no storage of its own (DECISIONS R5-M50).
+    // milestone programs, each built with the library check's root range (every library body, PLAN G951 U2-T). A transfer's result temp
+    // has no storage of its own (DECISIONS R5-M50).
     [Fact]
     public void EveryWrittenTempIsMade()
     {
@@ -170,7 +172,7 @@ public sealed partial class MirBuildTest(ITestOutputHelper output)
             .Concat(HirColumnsTest.Corpus.Select(static x => (x.Data, SemanticSnapshotTest.Bind(x.Data).Compilation)));
         foreach (var (name, c) in programs)
         {
-            foreach (var body in c.BuildMir().Bodies)
+            foreach (var body in new MirBuilder(c).Build(SyntaxTable.LibraryModule + 1).Bodies)
             {
                 var unmade = Unmade(body);
                 Assert.True(unmade is null, $"{name}: {body.Key.Decl?.Name}'s _{unmade} is never dropped");
@@ -179,15 +181,16 @@ public sealed partial class MirBuildTest(ITestOutputHelper output)
     }
 
     // SPEC 14.8.1, 22.10.1 (R8-W2 N3): a case test, a Case position's or a synthesized call's Result's, is MirBuilder.CaseTest's: its
-    // discriminant's StorageLive, its one write and the SwitchInt that reads it lie in one block, over the goldens' programs. A guard, not a
-    // fail-before row (N3 changed MIR text only), so that a re-blessed golden cannot bring back a discriminant held across its call's operands
-    // or shared by two tests.
+    // discriminant's StorageLive, its one write and the SwitchInt that reads it lie in one block, over the goldens' programs, as each
+    // compilation builds them, and the library (LibraryBuild, PLAN G951 U2). A guard, not a fail-before row (N3 changed MIR text only), so
+    // that a re-blessed golden cannot bring back a discriminant held across its call's operands or shared by two tests.
     [Fact]
     public void ACaseTestsDiscriminantIsWrittenOnceInTheBlockThatReadsIt()
     {
-        foreach (var name in MirDumpTest.Programs.Select(static x => x.Data))
+        var programs = MirDumpTest.Programs.Select(static x => (Name: x.Data, Program: MirDumpTest.Compile(x.Data).BuildMir())).Append(("library", LibraryBuild()));
+        foreach (var (name, program) in programs)
         {
-            foreach (var body in MirDumpTest.Compile(name).BuildMir().Bodies)
+            foreach (var body in program.Bodies)
             {
                 var statements = body.Statements.ToArray();
                 foreach (var block in body.Blocks)
@@ -313,21 +316,43 @@ public sealed partial class MirBuildTest(ITestOutputHelper output)
     }
 
     // R8-L1 M-B1: the library's bodies hold the ordinals 0 to LibraryCount - 1 and the program's follow, a default template and a Closure
-    // included, each the body its ordinal reads, in the first build and after a rebind.
+    // included, each the body its ordinal reads, in the first build and after a rebind, in an eager build (the library check's root range;
+    // a build with the program's range is N3-b's lazy twin, PLAN G951 U2).
     [Fact]
     public void TheLibrarysBodiesAreTheOrdinalsPrefix()
     {
         var c = Compile("func scale(x: i32, by: i32 = 2) -> i32 => x * by\nfunc main()\n    let g = func [] (y: i32) -> i32 => y\n" +
             "    _ = scale(g(1))\n");
+        var builder = new MirBuilder(c);
         for (var build = 0; build < 2; build++)
         {
-            var program = c.BuildMir();
+            var program = builder.Build(SyntaxTable.LibraryModule + 1);
             var bodies = program.Bodies.ToArray();
             Assert.InRange(program.LibraryCount, 1, bodies.Length - 4);
             Assert.All(bodies, x => Assert.Equal(x.Ordinal < program.LibraryCount, x.Source.IsLibrary));
             Assert.All(bodies, x => Assert.Same(x, program.Body(x.Ordinal)));
             Assert.Contains(bodies[program.LibraryCount..], static x => x.Key.Kind == MirBodyKind.DefaultTemplate);
             Assert.Contains(bodies[program.LibraryCount..], static x => x.Key.Kind == MirBodyKind.Closure);
+            c.Binding.Bind(BindingMode.Final);
+        }
+    }
+
+    // PLAN G951 U2 (N3-b's lazy twin; DECISIONS R9-M9 amending R8-M33): Compilation builds with the source modules' root range, so its
+    // library segment holds the library's templates only (none: KimiLibraryShapeTest.TheLibraryDeclaresNoParameterDefault) and each
+    // library body its lookups demand follows the program's bodies, in the first build and after a rebind. X3 as below. Fail-before:
+    // Compilation built the library's bodies as the ordinals' prefix.
+    [Fact]
+    public void ACompilationsLibraryBodiesFollowItsProgramsBodies()
+    {
+        var c = Compile(StopwatchAction);
+        for (var build = 0; build < 2; build++)
+        {
+            var program = c.BuildMir();
+            var bodies = program.Bodies.ToArray();
+            Assert.All(program.LibraryBodies.ToArray(), static x => Assert.Equal(MirBodyKind.DefaultTemplate, x.Key.Kind));
+            var first = Array.FindIndex(bodies, static x => x.Source.IsLibrary && x.Key.Kind != MirBodyKind.DefaultTemplate);
+            Assert.InRange(first, program.LibraryCount + 1, bodies.Length - 1);
+            Assert.All(bodies[first..], static x => Assert.True(x.Source.IsLibrary));
             c.Binding.Bind(BindingMode.Final);
         }
     }
@@ -340,7 +365,7 @@ public sealed partial class MirBuildTest(ITestOutputHelper output)
     public void ADemandedBodyIsBuiltWithItsProgramPass()
     {
         var c = Compile(StopwatchAction);
-        var eager = c.ConstructMir();
+        var eager = new MirBuilder(c).Build(SyntaxTable.LibraryModule + 1);
         var (start, frequency) = (Library(eager, MirBodyKind.Fn, "start"), Library(eager, MirBodyKind.StaticInit, "counterFrequency"));
         var program = new MirBuilder(c).Build(c.SourceModules.Length);
         var count = program.Bodies.Length;
@@ -399,7 +424,7 @@ public sealed partial class MirBuildTest(ITestOutputHelper output)
     public void ALookupWithoutABodyBuildsNothing()
     {
         var c = Compile(StopwatchAction);
-        var eager = c.ConstructMir();
+        var eager = new MirBuilder(c).Build(SyntaxTable.LibraryModule + 1);
         var getter = eager.Bodies.ToArray().First(static x => x.Source.IsLibrary && x.Key.Kind == MirBodyKind.Getter).Key;
         var program = new MirBuilder(c).Build(c.SourceModules.Length);
         var count = program.Bodies.Length;
@@ -421,7 +446,7 @@ public sealed partial class MirBuildTest(ITestOutputHelper output)
     public void ALookupThatBuildsWhileJudgingThrows()
     {
         var c = Compile(StopwatchAction);
-        var eager = c.ConstructMir();
+        var eager = new MirBuilder(c).Build(SyntaxTable.LibraryModule + 1);
         var program = new MirBuilder(c).Build(c.SourceModules.Length);
         program.Enter(MirProgram.Phase.Judging);
         Assert.Null(program.Callee(Bodyless(eager)));
@@ -437,12 +462,16 @@ public sealed partial class MirBuildTest(ITestOutputHelper output)
     // PLAN G951 U0 (N4, R3-N2): a version is built with one root range: the same range finds the version's program as it is, demanded bodies
     // included, and another range for the same version is a broken contract, since the analyses and the collector keep a version's facts by
     // its version. Version 0 is no version: a compilation no Binding pass published builds the empty program in any range.
+    // PLAN G951 U2-D (D1 per builder; G950-R's range note): every version of a builder keeps the library on the side of the range its first
+    // version had, since a kept library segment's shape is that side's and its stamp holds no range: a later version with the library on
+    // the other side is a broken contract either way (D1a: source range, then library range; library, then source), and a range that grows
+    // with the library outside builds (D1b: Lib's module joins the root range). X3 as above; Lib as in ADependencyModuleIsDemandedAsBuilt.
     [Fact]
     public void AVersionIsBuiltWithOneRootRange()
     {
         Assert.Empty(new MirBuilder(Compilation.CreateForTest()).Build(SyntaxTable.LibraryModule + 1).Bodies.ToArray());
         var c = Compile(StopwatchAction);
-        var start = Library(c.ConstructMir(), MirBodyKind.Fn, "start");
+        var start = Library(new MirBuilder(c).Build(SyntaxTable.LibraryModule + 1), MirBodyKind.Fn, "start");
         var builder = new MirBuilder(c);
         var program = builder.Build(c.SourceModules.Length);
         Assert.NotNull(program[start]);
@@ -450,6 +479,23 @@ public sealed partial class MirBuildTest(ITestOutputHelper output)
         Assert.Same(program, builder.Build(c.SourceModules.Length));
         Assert.Equal(count, program.Bodies.Length);
         Assert.Throws<InvalidOperationException>(() => builder.Build(SyntaxTable.LibraryModule + 1));
+        foreach (var (first, later) in new[] { (c.SourceModules.Length, SyntaxTable.LibraryModule + 1), (SyntaxTable.LibraryModule + 1, c.SourceModules.Length) })
+        {
+            var sided = new MirBuilder(c);
+            Assert.Equal(first, sided.Build(first).RootModules);
+            c.Binding.Bind(BindingMode.Final);
+            Assert.Throws<InvalidOperationException>(() => sided.Build(later));
+        }
+
+        var dependency = ModuleBindingTest.Create(DependencyMain, DependencyLib);
+        Assert.True(dependency.Bind().IsComplete);
+        var growing = new MirBuilder(dependency);
+        var one = growing.Build(1).Bodies.Length;
+        Assert.True(dependency.Bind().IsComplete);
+        var two = growing.Build(2);
+        Assert.Equal(2, two.RootModules);
+        Assert.InRange(one, 1, two.Bodies.Length - 1);
+        Assert.Empty(two.Findings);
     }
 
     // V11: publishing, building and validating an unchanged compilation again, and selecting every Semantics case view of its bodies with
@@ -619,13 +665,24 @@ public sealed partial class MirBuildTest(ITestOutputHelper output)
         return c;
     }
 
+    // PLAN G951 U2-T: every body of a compilation, the library's included, built by a builder of its own with the library check's root
+    // range and analyzed with the source modules as roots, as Compilation built and analyzed its own before U2's switch: the program a test
+    // of the library's bodies or their A2 and A4 facts reads, since Compilation's own build holds only the library bodies its program reaches.
+    internal static MirProgram LibraryRange(Compilation c)
+        => new MirAnalysis(c.Types).Run(new MirBuilder(c).Build(SyntaxTable.LibraryModule + 1), c.SourceModules.Length);
+
+    // PLAN G951 U2-F: every library body, built with the library check's root range from the library case (an empty program, so the
+    // library's bodies alone): the library's row of a rule over every MIR body, whose programs' compilations build only the library bodies
+    // they reach.
+    internal static MirProgram LibraryBuild() => new MirBuilder(SemanticSnapshotTest.Bind("library").Compilation).Build(SyntaxTable.LibraryModule + 1);
+
+    // The key of a library body an eager build built, by its kind and definition's name.
+    internal static MirDefKey Library(MirProgram program, MirBodyKind kind, string name)
+        => program.Bodies.ToArray().Single(x => x.Source.IsLibrary && x.Key.Kind == kind && x.Key.Decl?.Name == name).Key;
+
     // A Fn callee of a library body an eager build built whose function has no body (an intrinsic, an import).
     private static MirCallee Bodyless(MirProgram eager) => eager.Bodies.ToArray().Where(static x => x.Source.IsLibrary).SelectMany(static x => x.Blocks.ToArray())
         .Select(static x => x.Terminator.Callee).First(x => x is { Kind: MirCalleeKind.Fn, Arg: 0, Symbol: not null } && eager.Callee(x) is null);
-
-    // The key of a library body an eager build built, by its kind and definition's name.
-    private static MirDefKey Library(MirProgram program, MirBodyKind kind, string name)
-        => program.Bodies.ToArray().Single(x => x.Source.IsLibrary && x.Key.Kind == kind && x.Key.Decl?.Name == name).Key;
 
     // The body of a function of a source, built without validator findings.
     private static MirBody Body(string source, string name)
@@ -730,12 +787,13 @@ public sealed partial class MirBuildTest(ITestOutputHelper output)
         return null;
     }
 
+    // A compilation's MIR dump: its program's, as Compilation builds it, and every library body's, as the library check builds them (PLAN
+    // G951 U2-T: Compilation's own build holds only the library bodies its program reaches).
     private static string Dump(Compilation c)
     {
         var text = new StringBuilder();
-        var program = c.BuildMir();
-        MirDump.Write(program, 0, text);
-        MirDump.Write(program, c.Library.Kotonoha.Syntax.Module, text);
+        MirDump.Write(c.BuildMir(), 0, text);
+        MirDump.Write(LibraryRange(c), SyntaxTable.LibraryModule, text);
         return text.ToString();
     }
 
