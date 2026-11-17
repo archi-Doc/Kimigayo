@@ -165,17 +165,17 @@ public sealed partial class Binding
 
     private void PrepareOriginDeclarations()
     {
-        foreach (var declaration in this.originDeclarations.Values)
+        foreach (var declaration in this.originDeclarations.Values.In(this.pass))
         {
             declaration!.Reset();
         }
 
-        foreach (var declaration in this.initializerOrigins.Values)
+        foreach (var declaration in this.initializerOrigins.Values.In(this.pass))
         {
             declaration!.Reset();
         }
 
-        foreach (var names in this.discoveredOrigins.Values)
+        foreach (var names in this.discoveredOrigins.Values.In(this.pass))
         {
             names!.Clear();
             ((OriginNameList)names).Spans.Clear();
