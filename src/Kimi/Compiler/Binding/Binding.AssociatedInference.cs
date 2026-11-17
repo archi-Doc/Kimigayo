@@ -95,7 +95,7 @@ public sealed partial class Binding
         this.inferenceSources.Clear();
 
         this.pendingAssociatedTypes.Clear();
-        for (var batches = this.associatedInference.Values; batches.MoveNext();)
+        for (var batches = this.associatedInference.Values.In(this.pass); batches.MoveNext();)
         {
             var batch = batches.Current!;
             batch.State = 0;
