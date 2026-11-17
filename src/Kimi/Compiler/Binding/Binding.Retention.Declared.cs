@@ -156,11 +156,20 @@ public sealed partial class Binding
             : DeclaredComponent(declared, type, 0);
     }
 
-    // SPEC 15.6.4, 5.7 Calls' last sentence: whether an entry is a raw layer the binding of an abstract Type of the walked function's
-    // own declaration holds, where the declared counterpart ends (SignaturePast): the holder it addresses is one the value carries the
-    // address of (the file's contract). An operation whose writes SPEC states keeps the Type there (StatesWrites).
+    // SPEC 15.6.4, 5.7 Calls' last sentence (PLAN G964): whether an entry is a raw layer the binding of an abstract Type of the walked
+    // function's own declaration holds, where the declared counterpart ends (SignaturePast): the holder it addresses is reached by route
+    // 1 and read by its own Type, and past that holder a generic body writes only by the routes (StorageAt.Routed). An operation whose
+    // writes SPEC states keeps the Type there (StatesWrites).
     private bool HiddenLayer(BoundType? declared, in Hold entry)
         => (entry.Flags & HoldFlags.Raw) != 0 && OwnAbstract(declared) is { } function && !this.StatesWrites(function);
+
+    // SPEC 5.7 Calls' last sentence, 15.6.4 ("its calls and destruction store within that reach"; PLAN G964, F's ruling 4): whether the
+    // walk is Routed past the holder a hidden layer addresses: only a generic body acts there, by the routes. The declaring code's own
+    // actions there act by the declaration's statement: a `drop` of a struct of the kept binding holding the layer by value (Dropped)
+    // and a callable the callee's declaration hands its body that writes the kept Type (HandWrites, OutputRetention.Handed's test).
+    // Past the holder no declaration's statement applies otherwise, the holder's own Type's included (F's ruling 7, F1).
+    private bool Routes(in StorageAt at, in Hold entry)
+        => this.HiddenLayer(at.Signature, entry) && !at.Dropped && !this.HandWrites(at.Signature!);
 
     // The declared counterparts of a run's parts by value, the one pairing (Parts, OwnParts; DECISIONS BU-113): the declared Type's entries
     // (Holdings) on retentionHeld after the run, in the run's order, where the declared Type has the instantiated one's constructor (Same)

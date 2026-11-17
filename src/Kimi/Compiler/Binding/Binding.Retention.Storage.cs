@@ -50,7 +50,7 @@ public sealed partial class Binding
     // null for any value), the Content targets (every Origin occurrence's node) and an input's holds; reused.
     private readonly List<BoundType?> storageTypes = new();
     private readonly Dictionary<BoundType, int> storageOf = new(ReferenceEqualityComparer.Instance);
-    private readonly Dictionary<(int Storage, bool Writable, bool Captured, SourceAt Source, BoundType Type, BoundType? Signature), (int Depth, int Layer)> storageSeen = new();
+    private readonly Dictionary<(int Storage, bool Writable, bool Captured, bool Routed, bool Dropped, SourceAt Source, BoundType Type, BoundType? Signature), (int Depth, int Layer)> storageSeen = new();
     private readonly HashSet<(int Storage, BoundType Type, BoundType? Signature)> storageTargeted = new();
     private readonly List<(int Storage, int Node, BoundType? Type, BoundType? Signature)> storagePositions = new();
     private readonly HashSet<int> storageBorrowed = new(); // The storages the walk entered past a borrow or pair layer (R's exclusion, Storages).
@@ -83,6 +83,10 @@ public sealed partial class Binding
     // Origin, which holds a value of any Type in the fits (SPEC 5.7, 5.2: raw storage holds what is written there, a punned Place any
     // punnable Type over its bytes).
     private static bool RawStorage(in Hold entry) => (entry.Flags & HoldFlags.Raw) != 0 && entry.Step is HoldStep.Address or HoldStep.Own;
+
+    // SPEC 15.6.4 ("A destruction retains as a call of each drop it runs"; PLAN G964, F's ruling 7): whether a struct declares a `drop`,
+    // the declaring code its destruction runs, which Parts reads per Type of the kept binding (Dropped).
+    private static bool DeclaresDrop(BoundType type) => AdtDef.Destructor(type) is not null;
 
     // Begins a storage walk: no storage but the three fixed ones.
     private void BeginStorages()
@@ -136,7 +140,7 @@ public sealed partial class Binding
             return;
         }
 
-        var visit = (at.Storage, at.Writable, at.Captured, at.Source with { Above = -1 }, type, at.Signature); // The layer above is no part of the key.
+        var visit = (at.Storage, at.Writable, at.Captured, at.Routed, at.Dropped, at.Source with { Above = -1 }, type, at.Signature); // The layer above is no part of the key.
         ref var seen = ref CollectionsMarshal.GetValueRefOrAddDefault(this.storageSeen, visit, out var met);
         if (!Enters(ref seen.Depth, met, source ? at.Depth : 0))
         {
@@ -151,7 +155,7 @@ public sealed partial class Binding
             named = this.Position(environment, type, at.Storage, at.Signature);
             if (at.Storage != ResultStorage && !bound)
             {
-                this.storageHolds.Add((new(type, at.Written, at.Holder, at.Signature), at.Storage)); // A hidden binding's layers add no reach (SPEC 15.6.4).
+                this.storageHolds.Add((new(type, at.Written, at.Holder, at.Signature, at.Routed), at.Storage)); // A hidden binding's layers add no reach (SPEC 15.6.4).
             }
 
             // The root of a binding of the callee's kept Type in this storage; in the result's, where the result holds it by value or a
@@ -258,8 +262,11 @@ public sealed partial class Binding
             return;
         }
 
+        // The holder a kept binding's raw layer addresses is written by route 1 as this layer states it; past that holder the walk is
+        // Routed unless the declaring code acts there (Routes), so no layer met there makes storage of no Type (PLAN G964).
+        below = below with { Routed = at.Routed || this.Routes(at, this.retentionHeld[run.Start]) };
         var past = this.Past(environment, pointee, targets, step != HoldStep.Shared, layer, below);
-        if ((content == HoldContent.Any || (at.Captured && step == HoldStep.Address)) && past >= 0 && past != ResultStorage)
+        if (!at.Routed && (content == HoldContent.Any || (at.Captured && step == HoldStep.Address)) && past >= 0 && past != ResultStorage)
         {
             this.storageHolds.Add((default, past)); // Storage no Type states: a declaration's layer's, or a Closure's (C-352's C10).
         }
@@ -348,6 +355,7 @@ public sealed partial class Binding
     private void Parts(OriginPremiseEnvironment environment, BoundType type, StorageAt at, HeldRange run)
     {
         var captured = at.Captured || type.Kind == BoundTypeKind.Closure; // A Closure's parts are its environment's bindings.
+        var dropped = at.Dropped || (Hides(at.Signature) && DeclaresDrop(type)); // The kept binding's own `drop` (Routes).
         var declared = this.DeclaredRun(at.Captured ? null : at.Signature, type, run);
         for (var i = run.Start; i < run.End; i++)
         {
@@ -356,7 +364,7 @@ public sealed partial class Binding
             {
                 var signature = this.DeclaredPart(at.Signature, declared, run, i);
                 var holder = type.Kind == BoundTypeKind.Closure ? at.Holder : part.Holder; // A binding lies in the storage holding the Closure.
-                var below = at with { Written = part.Written, Holder = holder, Depth = at.Depth + 1, Captured = captured, Signature = signature };
+                var below = at with { Written = part.Written, Holder = holder, Depth = at.Depth + 1, Captured = captured, Signature = signature, Dropped = dropped };
                 if (at.Storage > ResultStorage && this.Parametric(signature) && !this.Parametric(at.Signature))
                 {
                     below = below with { Storage = this.StorageOf(signature!) }; // The T part of a mixed storage: its own entry (PLAN G935 R1.2).
@@ -790,11 +798,15 @@ public sealed partial class Binding
     // RetentionPlace.Captured); the walked signature's declared Type at the position (Signature, DECISIONS BU-113: inside the binding of an
     // abstract Type of the walked function's own declaration that abstract Type, Below; null inside another Type parameter's image, in a
     // Closure's environment and below a part whose declared counterpart differs), and whether the walk is already inside that kept
-    // Type's binding (Bound: below its root, whose storage takes the callee's-terms rows, storageBound). For the input fold, its own
-    // state (Source).
+    // Type's binding (Bound: below its root, whose storage takes the callee's-terms rows, storageBound), whether it lies in or past a
+    // holder that a raw layer of that binding addresses where only a generic body acts (Routed, Routes: there it writes only by SPEC
+    // 15.6.4's routes, 5.7 Calls' last sentence, so no layer's declaration statement, Holds Any, makes storage of no Type there; PLAN
+    // G964), and whether a struct of the kept binding holding it by value declares a `drop` (Dropped: that destruction, the declaring
+    // code, may act on it; a generic container's `drop` is a generic body, which acts by the routes).
+    // For the input fold, its own state (Source).
     private readonly record struct StorageAt(
         int Storage, bool Writable, BoundType? Written, BoundType? Holder, int Depth, SourceAt Source, bool Captured = false, BoundType? Signature = null,
-        bool Bound = false)
+        bool Bound = false, bool Routed = false, bool Dropped = false)
     {
         // An output's walk from a storage.
         internal static StorageAt Output(int storage, bool writable) => new(storage, writable, null, null, 0, new(-1, Held: false, -1, 0));
@@ -806,8 +818,9 @@ public sealed partial class Binding
     // A position of the hold walk as its declaration states it (Hold, Held; storageHolds): the Type there, the Type a struct's Field or
     // an enum's Case payload declares there while it is a Tuple, a fixed array or a raw layer (Written), the instance holding it
     // (Holder, whose case a declared slot's step reads), and the walked signature's declared Type there (Signature, as StorageAt's:
-    // DECISIONS BU-113; null where none pairs). A Type of null is storage no Type states.
-    private readonly record struct HoldAt(BoundType? Type, BoundType? Written, BoundType? Holder, BoundType? Signature = null);
+    // DECISIONS BU-113; null where none pairs), and whether it is Routed (StorageAt's: no layer there is unbounded). A Type of null is
+    // storage no Type states.
+    private readonly record struct HoldAt(BoundType? Type, BoundType? Written, BoundType? Holder, BoundType? Signature = null, bool Routed = false);
 
     // The input fold's state at a Type (StorageAt): the input (-1 in an output's walk), whether the Type is held by value from the input or
     // reached through a layer, the node of the layer above (Related) and the path's id (its reduced prefix, Revision 10).

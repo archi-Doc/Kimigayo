@@ -867,6 +867,28 @@ public sealed partial class RetentionTest
         Assert.Equal(kept, Calls(c, "f").Single().Split("reached")[1].Contains("1 Value", StringComparison.Ordinal));
     }
 
+    // SPEC 5.7 Calls' last sentence, 15.6.4 (S3; "A destruction retains as a call of each drop it runs"; a handed callable "by this
+    // section applied to that callable's signature") (PLAN G964; F's rulings 4 and 7): past the holder that a raw layer of the callee's
+    // kept binding addresses, a generic body writes only by the routes, so no declaration's statement (BU-46's Holds Any) reaches the
+    // storage past that holder, the holder's own Type's included (`reached {}`; rule A's rows stay at the holder, `own`). A holder of an
+    // Origin-less raw layer of its own composes (guDeep's `raw/(raw/u8)`), and a declaration shown to the call keeps its statement
+    // (`f(x: P8, ..)`). The declaring code's own actions keep it too: a `drop` of a struct of the kept binding (an enclosing one, or
+    // the kept Type's own with f's write from another argument) and a callable the callee's declaration hands its body that writes
+    // the kept Type; a generic container's `drop` is a generic body. Fail-before on 18b027449: rows 1, 2 and 7 kept rule A's rows past
+    // the holder. Each exception row fails without its condition: rows 5 and 6 without Dropped, row 7 with Dropped under any struct,
+    // row 8 without HandWrites.
+    [Theory]
+    [InlineData(Box + "struct Pl\n    public var p: raw/(raw/u8)\n    public init() => self.p = null\nfunc f<T>(x: B<T>, q: raw/u8) => ()\nfunc g(q: raw/u8)\n    var slot: raw/u8 = null\n    var x = Pl.init()\n    x.p = slot@raw\n    f(B.init(item: x@move), q)\n", "reached {} untied")]
+    [InlineData(Box + "struct Hd\n    public var r: raw/u8\n    public init() => self.r = null\nstruct P8\n    public var p: raw/Hd\n    public init() => self.p = null\nfunc f<T>(x: B<T>, q: raw/u8) => ()\nfunc g(q: raw/u8)\n    var h = Hd.init()\n    var x = P8.init()\n    x.p = h@raw\n    f(B.init(item: x@move), q)\n", "reached {} untied")]
+    [InlineData(Box + "struct Pl3\n    public var p: raw/(raw/(raw/u8))\n    public init() => self.p = null\nfunc f<T>(x: B<T>, q: raw/u8) => ()\nfunc g(q: raw/u8)\n    var slot2: raw/(raw/u8) = null\n    var x = Pl3.init()\n    x.p = slot2@raw\n    f(B.init(item: x@move), q)\n", "reached {0 Chain, 1 Value Chain} untied")]
+    [InlineData("struct Hd\n    public var r: raw/u8\n    public init() => self.r = null\nstruct P8\n    public var p: raw/Hd\n    public init() => self.p = null\nfunc f(x: P8, q: raw/u8) => ()\nfunc g(q: raw/u8)\n    var h = Hd.init()\n    var x = P8.init()\n    x.p = h@raw\n    f(x@move, q)\n", "reached {0 Chain, 1 Value Chain} untied")]
+    [InlineData(Box + "struct Pl\n    public var p: raw/(raw/u8)\n    public init() => self.p = null\nstruct Outer\n    public var w: Pl\n    public var q: raw/u8\n    public init(w: Pl)\n        self.w = w@move\n        self.q = null\n    drop\n        unsafe => *((*self.w.p)@raw/(raw/u8)) = self.q\nfunc f<T>(x: B<T>, q: raw/u8) => ()\nfunc g(q: raw/u8)\n    var slot: raw/u8 = null\n    var pl = Pl.init()\n    pl.p = slot@raw\n    f(B.init(item: Outer.init(w: pl@move)), q)\n", "reached {0 Chain, 1 Value Chain} untied")]
+    [InlineData(Box + "struct Wr\n    public var p: raw/(raw/u8)\n    public var q: raw/u8\n    public init()\n        self.p = null\n        self.q = null\n    drop\n        unsafe => *((*self.p)@raw/(raw/u8)) = self.q\nfunc f<T>(x: B<T>, q: raw/u8) => ()\nfunc g(q: raw/u8)\n    var slot: raw/u8 = null\n    var x = Wr.init()\n    x.p = slot@raw\n    f(B.init(item: x@move), q)\n", "reached {0 Chain, 1 Value Chain} untied")]
+    [InlineData("struct Pl\n    public var p: raw/(raw/u8)\n    public init() => self.p = null\nstruct BD<T>\n    public var item: T\n    public init(item: T) => self.item = item@move\n    drop => ()\nfunc f<T>(x: BD<T>, q: raw/u8) => ()\nfunc g(q: raw/u8)\n    var slot: raw/u8 = null\n    var x = Pl.init()\n    x.p = slot@raw\n    f(BD.init(item: x@move), q)\n", "reached {} untied")]
+    [InlineData(Box + "struct Pl\n    public var p: raw/(raw/u8)\n    public init() => self.p = null\nfunc put(x: Pl, q: raw/u8)\n    unsafe => *((*x.p)@raw/(raw/u8)) = q\nfunc f<T, E>(x: B<T>, q: E, set: (T, E) -> ()) => ()\nfunc g(q: raw/u8)\n    var slot: raw/u8 = null\n    var pl = Pl.init()\n    pl.p = slot@raw\n    f(B.init(item: pl@move), q, put)\n", "reached {0 Chain, 1 Value Chain, 2 Value Chain} untied")]
+    public void PastTheHolderOfAHiddenLayerOnlyTheDeclaringCodeActsByItsStatement(string source, string reached)
+        => Assert.Equal(reached, Calls(Bind(source), "f").Single().Split(", reached")[1].Insert(0, "reached"));
+
     // Review r3's B3: an erased callable's carrier output is a fixed Origin its fixed inputs reach, so `mk`'s result `a` retains the
     // View borrowing `*q` (under `v.source == c`, `use`'s result retains `q`), and a generic caller passing its own carriers to `map`
     // retains `a` through the bound `map`'s call instantiates.

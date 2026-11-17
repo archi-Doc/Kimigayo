@@ -862,7 +862,7 @@ public sealed partial class Binding
     }
 
     // Whether a callable the callee's declaration hands its body (retentionOwnHanded, retentionOwnCallables) writes a kept Type (Writes):
-    // OutputRetention.Handed's one test (HandedTypes).
+    // the one test of OutputRetention.Handed (HandedTypes) and of the walk's Routed state (Routes, PLAN G964).
     private bool HandWrites(BoundType kept)
     {
         for (var k = 0; HandedAt(this.retentionOwnHanded, this.retentionOwnCallables, k, out var callable); k++)
@@ -1212,7 +1212,7 @@ public sealed partial class Binding
 
         var written = Written(at.Written);
         var holder = written is null ? null : at.Holder;
-        if (!this.retentionMet.Add((new(type, written, holder), lent, storage)))
+        if (!this.retentionMet.Add((new(type, written, holder, Routed: at.Routed), lent, storage)))
         {
             return Holding.None;
         }
@@ -1238,7 +1238,7 @@ public sealed partial class Binding
             step ??= layer ? entry.Step : null;
             refers &= Dereference(entry);
             stepped |= layer && entry.Step != HoldStep.Address;
-            unbounded |= layer && entry is { Step: HoldStep.Address, Holds: HoldContent.Any }; // A layer a declaration wrote (TyCtxt.RawStated).
+            unbounded |= !at.Routed && layer && entry is { Step: HoldStep.Address, Holds: HoldContent.Any }; // A layer a declaration wrote (TyCtxt.RawStated), not Routed.
             loans |= !layer && !(entry.PassesOn && entry.Holds == HoldContent.Its); // Hold.PassesOn, the row MirTypes.HoldsLoans reads.
             hidden |= entry.Step == HoldStep.Abstract;
         }
@@ -1277,8 +1277,8 @@ public sealed partial class Binding
         for (var i = run.Start; i < run.End; i++)
         {
             var part = this.retentionHeld[i];
-            met |= part.Step == HoldStep.Abstract ? this.HeldComponents(type, output, storage, below)
-                : this.Held(new(part.Part, part.Written, part.Holder), output, storage, below);
+            met |= part.Step == HoldStep.Abstract ? this.HeldComponents(at, type, output, storage, below)
+                : this.Held(new(part.Part, part.Written, part.Holder, Routed: at.Routed), output, storage, below);
         }
 
         this.retentionHeld.RemoveRange(run.Start, run.End - run.Start);
@@ -1287,12 +1287,12 @@ public sealed partial class Binding
 
     // An abstract part's components (a projection's base and Contract, an adaptation's cases), which rule A's hold walk goes through though
     // row 17 publishes none: dev's answer, removed at U3b, where rule A reads entries (G416).
-    private Holding HeldComponents(BoundType type, int output, int storage, bool lent)
+    private Holding HeldComponents(in HoldAt at, BoundType type, int output, int storage, bool lent)
     {
         var met = Holding.None;
         for (var i = 0; i < type.Components.Count; i++)
         {
-            met |= this.Held(new(type.Components[i], null, null), output, storage, lent);
+            met |= this.Held(new(type.Components[i], null, null, Routed: at.Routed), output, storage, lent);
         }
 
         return met;
