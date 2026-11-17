@@ -61,9 +61,9 @@ internal sealed partial class MirBorrows
         this.Unfollow();
         this.Flowing();
         this.flowed = true;
-        if (this.mixedKnown && this.mixedWrites)
+        if (this.mixedKnown ? this.mixedWrites : this.WriteSourced())
         {
-            this.Mixing(); // Again with the holders (Carries), before the write slots are numbered.
+            this.Mixing(); // With the holders (Carries), before the write slots are numbered: none runs after where a call writes.
         }
 
         var deep = this.DroppedDeep();
@@ -230,8 +230,8 @@ internal sealed partial class MirBorrows
     // a raw write is SPEC 15.6 Addresses', and a store of the body through a reference to it is not read here (a known limit: the row
     // rvCaseRefWriteBad). A call's write may store a value a Loan-free Case payload may hold and that may carry a Loan in a local
     // (Writes): the local stays a call's result, written, as is a local such a Move or Copy gives its value, and its write slot carries
-    // what the writes store (WriteSlots); where the slots were numbered before Mixing ran, it is mixed instead. An edge per such Move or
-    // Copy, then a worklist from the others, each edge once, linear in the body.
+    // what the writes store (WriteSlots; a view with a write source runs Mixing before the slots are numbered, WriteSourced). An edge
+    // per such Move or Copy, then a worklist from the others, each edge once, linear in the body.
     private void Mixing()
     {
         var locals = this.body.Locals;
@@ -273,7 +273,6 @@ internal sealed partial class MirBorrows
         for (var i = 0; i < locals.Length; i++)
         {
             this.written[i] |= lost && this.Exposed(i);
-            this.mixed[i] |= this.written[i] && this.writeCount >= 0;
             writes |= this.written[i];
         }
 
@@ -345,10 +344,9 @@ internal sealed partial class MirBorrows
         var (receiver, lost) = (this.Receiver(call), false);
         foreach (var written in retention.Writes)
         {
-            for (var slot = 0; slot < retention.Result.Kinds.Length; slot++)
+            for (var slot = this.SourcedSlot(call, retention, written, receiver, 0); slot >= 0; slot = this.SourcedSlot(call, retention, written, receiver, slot + 1))
             {
-                var input = this.Input(call, Position(call.Callee, receiver, slot));
-                if (this.Sourced(input, written, slot) && this.Carries(input.Place.Root))
+                if (this.Carries(this.Input(call, Position(call.Callee, receiver, slot)).Place.Root))
                 {
                     lost |= this.Written(this.Input(call, Position(call.Callee, receiver, written.Output)));
                     break;
@@ -357,6 +355,42 @@ internal sealed partial class MirBorrows
         }
 
         return lost;
+    }
+
+    // Whether a call of the view has a write source (an output with an input it sources, SourcedSlot), so Mixing decides the written
+    // locals before the slots are numbered (Holders); a view without one keeps Mixing lazy.
+    private bool WriteSourced()
+    {
+        this.Work += this.body.Blocks.Length;
+        for (var b = 0; b < this.body.Blocks.Length; b++)
+        {
+            if (this.body.Blocks[b].Terminator is { Kind: MirTerminatorKind.Call } call && !this.Broken(call) && this.Retaining(call) is { IsLimit: false } retention)
+            {
+                foreach (var written in retention.Writes)
+                {
+                    if (this.SourcedSlot(call, retention, written, this.Receiver(call), 0) >= 0)
+                    {
+                        return true;
+                    }
+                }
+            }
+        }
+
+        return false;
+    }
+
+    // The first input slot from `from` on whose value an output's store may put in a Loan-free Case payload (Sourced), -1 for none.
+    private int SourcedSlot(in MirTerminator call, CallRetention retention, OutputRetention written, int receiver, int from)
+    {
+        for (var slot = from; slot < retention.Result.Kinds.Length; slot++)
+        {
+            if (this.Sourced(this.Input(call, Position(call.Callee, receiver, slot)), written, slot))
+            {
+                return slot;
+            }
+        }
+
+        return -1;
     }
 
     // Whether an output's store may put an input's value in a Loan-free Case payload, a write source: the input is no constant, the

@@ -2635,8 +2635,8 @@ public sealed partial class MirBorrowsTest
     [InlineData("caseWriteR2LaterBad", "")] // I (O-364 (a)); kk = 2 with G935's rule R: the write slot keeps the value written, though w is overwritten after the call
     [InlineData("caseWriteR2ExposedBad", "")] // I; kk = 2 with G935's rule R: put writes through an exposed reference local, so every exposed local is written (Written's lost argument)
     [InlineData("caseWriteR2ExposedUseOk", "")] // V: the same with e used after a = 2; the lost argument's targets keep their bound
-    [InlineData("caseWriteR2BindUseOk", "")] // V: e's address taken, so Mixing first runs after the slots are numbered; with G935's rule R the fallback mixes res: a = 2 (a false error; phase 8's row)
-    [InlineData("caseWriteR2BindBad", "")] // I; kk = 2 with G935's rule R, through the same fallback
+    [InlineData("caseWriteR2BindUseOk", "")] // V: e's address taken, so no store of Flowing reads the bounded payload; Mixing runs before the slots are numbered where a call writes (MirBorrows.Holders' WriteSourced), so res keeps its write slot (a = 2 with G935's rule R while a later Mixing mixed res)
+    [InlineData("caseWriteR2BindBad", "")] // I; kk = 2 with G935's rule R, through the same path
     public void AValueReadFromAHolderCarriesItsLoansWhateverItsType(string form, string expected)
     {
         var c = MirBuildTest.Compile(ExposedShapes + FlowForms[form] + "\npublic func main() => ()\n");
@@ -2676,7 +2676,9 @@ public sealed partial class MirBorrowsTest
     // A read that reaches a write slot keeps its answer like any other follow (MirBorrows.Values' Sources): N calls writing one result
     // holder, a shared reference stored N more times with its Err payload's reference, then N Copies through it (N = 16, 32, 64; valid
     // by the owner's O-383 (b) at every N, which Measured asserts). The writes are write sources only where Binding retains the
-    // written u64 (G935's rule R); on dev's retention this measures the plain follows.
+    // written u64 (G935's rule R); on dev's retention this measures the plain follows. The numbers are the evidence, not the assertion,
+    // which passes before the answers were kept too: on the G935 probe, work 183608, 202328, 252248 (x2.67 per doubling) before and
+    // 181438, 193886, 218974 (x2.02) after (H phase 8).
     [Fact]
     public void AReadOfAWrittenHolderIsFollowedInLinearWork()
     {
