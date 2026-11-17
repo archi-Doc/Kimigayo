@@ -66,6 +66,15 @@ public sealed partial class Binding
     internal bool FitsStructuralPartAt(BoundType actual, BoundType expected, Koto use)
         => NeverFits(actual) || new RelationWalk(this, use, OriginPart.Everywhere).Fits(actual, expected);
 
+    // The same fit, with the Tuple elements down to its failure where it does not hold (TupleElements; none where it holds).
+    internal bool FitsStructuralPartAt(BoundType actual, BoundType expected, Koto use, out TupleElements failed)
+    {
+        var walk = new RelationWalk(this, use, OriginPart.Everywhere);
+        var fits = NeverFits(actual) || walk.Fits(actual, expected);
+        failed = fits ? default : walk.Elements;
+        return fits;
+    }
+
     // SPEC 5.2, 3.8, 15.6.1 (C-189): normalized Type identity with Origins treated as equal: the structural part alone, no Never
     // root rule, so it is symmetric. It reads no premise; with no use scope the walk reads `use` only in InactiveOuterOrigin, which then
     // reads an adaptation selector's own scope: a use scope only narrows what it admits, so its absence can only turn "same" into
