@@ -101,12 +101,13 @@ public sealed partial class Binding
         this.ClearFailure(node);
     }
 
-    // Synthesized calls and Places are reused across passes. Each pass rebinds the ones its syntax still needs, so one left
-    // by an earlier pass, such as after an edit changed its node's role, is never Resolved for a lookup.
+    // Synthesized calls and Places are reused across passes, each reset in place by its module's pass (In). Each pass rebinds the
+    // ones its syntax still needs, so one left by an earlier pass, such as after an edit changed its node's role, is never Resolved
+    // for a lookup.
     private void ResetSyntheticCalls()
     {
         this.synthesizedCalls?.Clear(); // Each pass records its own (BindSynthesizedCall).
-        foreach (var calls in this.propertyCalls.Values)
+        foreach (var calls in this.propertyCalls.Values.In(this.pass))
         {
             foreach (var call in calls!)
             {
@@ -117,7 +118,7 @@ public sealed partial class Binding
             }
         }
 
-        foreach (var calls in this.indexerCalls.Values)
+        foreach (var calls in this.indexerCalls.Values.In(this.pass))
         {
             foreach (var call in calls!)
             {
@@ -128,32 +129,32 @@ public sealed partial class Binding
             }
         }
 
-        foreach (var call in this.viewRangeCalls.Values)
+        foreach (var call in this.viewRangeCalls.Values.In(this.pass))
         {
             this.ResetSynthetic(call!);
         }
 
-        foreach (var call in this.rangeCalls.Values)
+        foreach (var call in this.rangeCalls.Values.In(this.pass))
         {
             this.ResetSynthetic(call!);
         }
 
-        foreach (var call in this.resolvedKeys.Values)
+        foreach (var call in this.resolvedKeys.Values.In(this.pass))
         {
             this.ResetSynthetic(call!);
         }
 
-        foreach (var projection in this.storageProjections.Values)
+        foreach (var projection in this.storageProjections.Values.In(this.pass))
         {
             this.ResetSynthetic(projection!);
         }
 
-        foreach (var storage in this.propertyUpdateStorage.Values)
+        foreach (var storage in this.propertyUpdateStorage.Values.In(this.pass))
         {
             this.ResetSynthetic(storage!);
         }
 
-        foreach (var input in this.propertyUpdateInputs.Values)
+        foreach (var input in this.propertyUpdateInputs.Values.In(this.pass))
         {
             this.ResetSynthetic(input!);
         }
