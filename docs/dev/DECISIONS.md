@@ -22796,32 +22796,27 @@ R8-M* and R9-M* by the stage of the recording unit.
   - **Adopted.**
     - `MirProgram`'s library segment (ordinals 0..D-1, the library walk's order) is built, validated and step-2-analyzed (A1, A2,
       A4's local facts), and its site templates and layout needs are listed, once per library version, stamped
-      `MirProgram.LibraryVersion` (the builder's keep test; a keeper of library facts compares the program and its `LibrarySegment`,
-      R9-M9 (U2-K-a)); the program segment is rebuilt per program version over it (`ClearProgram`). The segment is kept per
-      compilation across that compilation's versions and never shared between compilations (O-381 (b): no MIR freeze, no M-B4
+      `MirProgram.LibraryVersion`; the program segment is rebuilt per program version over it (`ClearProgram`). The segment is kept
+      per compilation across that compilation's versions and never shared between compilations (O-381 (b): no MIR freeze, no M-B4
       refusal, no U5b or U5c for MIR).
     - A kept fact is a function of the library segment alone. Every judgment over the root range (A3, A5, `MirOrigins.Findings`, the
       collector's A3b) runs every version over both segments' root-range bodies; no stamp holds the range.
     - One body pool and one key map: `Bodies` one span, `LibraryBodies` and `ProgramBodies` read-only views of it, `Body(ordinal)`
-      one read, `this[key]` one lookup, `ClearProgram` removing only the program's keys (by walking `ProgramBodies`) (partly
-      superseded by R9-M9 (U2-K-a): `Bodies` is the build-order list over a pool by ordinal, `ProgramBodies` is `VersionBodies`, and
-      `MirDropTable.LibraryHolds` replaces the split rule `ordinal < D`). They follow G951's holes within R8-M33's library range
-      (from U2-K-b, DECISIONS R9-M9's Staged bullet; until then a lazy build's library range holds the library's templates and
-      `LibraryCount` stays; C-378 (1)(b) as amended); R8-M33's Staging line is superseded by G951's entry (R9-M9, "Library bodies
-      are built on demand"), not by this one.
+      one read, `this[key]` one lookup, `ClearProgram` removing only the program's keys (by walking `ProgramBodies`). They follow
+      G951's holes within R8-M33's library range (from U2-K, DECISIONS R9-M9's Staged bullet; until then a lazy build's library
+      range holds the library's templates; `LibraryCount` and the split rule `ordinal < D` stay; C-378 (1)(b) as amended); R8-M33's
+      Staging line is superseded by G951's entry (R9-M9, "Library bodies are built on demand"), not by this one.
     - Every per-ordinal or per-node library entry lives in its owner's data-only library store beside that store's rows and is read
       through M-B1's one split rule (`ordinal < D`; A4's nodes below the library's node count): A2's per-body ends (`MirDropTable`'s
       segment store, `MirDropTable.Of`), A4's `bases` and node entries (`MirEffects.Locals`, `MirEffects.Base`), the collector's
-      `starts` and `needStarts` (`InstanceCollector.TemplateStore`, `TemplatesOf`) (the per-ordinal split superseded by R9-M9
-      (U2-K-a): each store keeps a body's own entry by its ordinal and reads no neighbour's, the store named by
-      `MirDropTable.LibraryHolds`; A4's nodes keep the node-count split). A program store is indexed by the ordinal or node id
-      itself, with no offset, so each owner has one index space over G951's fixed library ordinals and no store records a view's
-      offset; the unused prefix [0, D) of each program store is its price (C-378 (1)(a)). Append-order stores (A2's rows and points,
-      A4's items, edges and local keys, the collector's sites and needs) have a data-only library store and a program store. A4's
-      Field numbers are one map (`MirEffects`' `fieldIds`), each store listing the Fields it numbered and `BeginProgram` removing
-      the program's; the library declares no mutable static Field, so the map's library part is empty (C-381 M3; G950-K's tripwire
-      `KimiLibraryShapeTest.TheLibraryDeclaresNoMutableStaticField` until a unit declares one, which then publishes the list from
-      Binding's `LibraryLayer` and splits the map by the declaring module).
+      `starts` and `needStarts` (`InstanceCollector.TemplateStore`, `TemplatesOf`). A program store is indexed by the ordinal or
+      node id itself, with no offset, so each owner has one index space over G951's fixed library ordinals and no store records a
+      view's offset; the unused prefix [0, D) of each program store is its price (C-378 (1)(a)). Append-order stores (A2's rows and
+      points, A4's items, edges and local keys, the collector's sites and needs) have a data-only library store and a program store.
+      A4's Field numbers are one map (`MirEffects`' `fieldIds`), each store listing the Fields it numbered and `BeginProgram`
+      removing the program's; the library declares no mutable static Field, so the map's library part is empty (C-381 M3; G950-K's
+      tripwire `KimiLibraryShapeTest.TheLibraryDeclaresNoMutableStaticField` until a unit declares one, which then publishes the
+      list from Binding's `LibraryLayer` and splits the map by the declaring module).
     - The segment's rows (construction and broken-HIR records, findings, A1/A2 problems) are kept as data and replayed by their
       owner at the step position where it first added them (`MirReport.Keep`/`Replay`, Cause values moved by the offset), into the
       one per-version report every reader reads. The validator's program pass (G191) runs per segment at its walk's end, so the
@@ -22832,16 +22827,13 @@ R8-M* and R9-M* by the stage of the recording unit.
       (G950's RN2).
     - The collector's library template store is one data-only object (`TemplateStore`: sites, needs, their per-ordinal spans and the
       stamp `MirProgram.LibraryVersion` it was built under), held by the collector per compilation and kept across the compilation's
-      versions; `Run` compares the stamp once and re-templates `LibraryBodies` when it differs (the stamp and the re-templating
-      superseded by R9-M9 (U2-K-a): the store is keyed on the program and its `LibrarySegment`, and the version's one walk templates
-      each body its store does not hold). A template is a function of one body and records nothing; A3b (`CheckStatic`, then
-      `CheckOperation` over every statement of a root body without a finding) runs in `Run`'s root loop every version, before
-      `LayOutImports`, in today's order (C-378 (2)). No range bit, no side table.
+      versions; `Run` compares the stamp once and re-templates `LibraryBodies` when it differs. A template is a function of one body
+      and records nothing; A3b (`CheckStatic`, then `CheckOperation` over every statement of a root body without a finding) runs in
+      `Run`'s root loop every version, before `LayOutImports`, in today's order (C-378 (2)). No range bit, no side table.
     - Which program a library state belongs to: `MirAnalysis`'s library state is keyed on the program object and its library version
       (its A2 library store lives in that program's `Drops`); the collector's store is stamped with the library version alone, valid
       for the one program its compilation's builder publishes (Compilation pairs one builder with one analysis and one collector),
-      until G950-K keys its "current" on the program object too (C-378 (2) as amended), so both owners end with one form (superseded
-      by R9-M9 (U2-K-a): both owners key it on the program object and its `LibrarySegment`).
+      until G950-K keys its "current" on the program object too (C-378 (2) as amended), so both owners end with one form.
     - The library version is Binding's library pass publication (G949 Stage 1, `HirTables.LibraryVersion`). Until G950-K it is the
       pass version, so the segment is rebuilt every version.
   - **Supersedes R8-M33's** Rejected "a physical two-segment layout of every table now, with both segments built per compilation: a
@@ -23083,8 +23075,7 @@ R8-M* and R9-M* by the stage of the recording unit.
     reader (G557's rule would need two selectors).
 - **R9-M9 Library bodies are built on demand (PLAN G951)** (Middle, 2026-11-16; the owner's option (a), m-log 11:49, and O-378; the
   design `g951-design.md` §R1 as amended by §R2, its third review ACCEPT WITH NOTES; U0's implementation review ACCEPT WITH NOTES)
-  Major; U0 is behavior-preserving. Extends R5-M168 and R8-M31; amends R5-M183 and R8-M33 as below. U1, U1b, U2 and U2-K-a amend
-  this entry.
+  Major; U0 is behavior-preserving. Extends R5-M168 and R8-M31; amends R5-M183 and R8-M33 as below. U1, U1b and U2 amend this entry.
   - **Adopted (U0, the builder's half).**
     - `MirBuilder.Build(rootModules)` builds every module's default templates, the library's in every build, then the bodies of the
       modules below the root range. Compilation passes `SyntaxTable.LibraryModule + 1`, every body eagerly, until U2, which passes
@@ -23109,11 +23100,10 @@ R8-M* and R9-M* by the stage of the recording unit.
   - **Amends.** R5-M183: the program pass `Validate(program)` is now `Validate(program, body)`, which still sets `HasFinding` on the
     ensuring body of a G191 StaticSlot finding. R8-M33: the library prefix (ordinals 0 to `LibraryCount` - 1) holds in an eager
     build; in a build whose root range is the program's, `LibraryCount` counts the library's templates and a demanded body takes the
-    next ordinal until U2-K-b adopts G950 R-4's fixed library slots. `MirValidator`'s program pass leaves `Bodies`' walkers: it
-    reads each body from the builder's queue (by ordinal until U2-K-a, by its position in the build-order list since). Supersedes
-    R8-M33's Staging (`Bodies` the program's suffix at U5b): under G951 the library range keeps R8-M33's prefix with holes (U2-K-b)
-    and its split rule until U2-K-a (`MirDropTable.LibraryHolds` since), and `Bodies` follows G951's build-order list (U2-K-a);
-    R8-L1 has no U5b (PLAN G949 Stage 2 under O-381 (b)).
+    next ordinal until U2-K adopts G950 R-4's fixed library slots. `MirValidator`'s program pass leaves `Bodies`' walkers: it reads
+    each body by ordinal from the builder's queue. Supersedes R8-M33's Staging (`Bodies` the program's suffix at U5b): under G951
+    the library range keeps R8-M33's prefix and split rule with holes, and `Bodies` follows G951's build-order list; R8-L1 has no
+    U5b (PLAN G949 Stage 2 under O-381 (b)).
   - **Reason.** A one-shot compile of Hello built and analyzed 318 library bodies to use 5 (G337; K's 11-16 survey rank 2). U0
     changes no output; it gives U1 (A4's round rule, `MirAnalysis.Step`, `MirDropTable.Holds`, the Judging row), U1b (the
     collector's round rule), U2 (the switch to the source range, the records rule) and U2-K (G950 R-4's slots) one demand point and
@@ -23126,9 +23116,8 @@ R8-M* and R9-M* by the stage of the recording unit.
     - A second node-to-key map for `Demand`; reading an unbuilt body as bodyless; building the whole library on its first lookup.
   - **Adopted (U1, the driver's half).**
     - Steps 1 and 2 have one path, `MirAnalysis.Step`: every program-segment body built since the last step, in build order, a body
-      a lookup builds meanwhile included, so A2's entry of each body is its build position (since U2-K-a, its own entry by its
-      ordinal); the library step (R8-M50) steps the library segment's bodies, so a version's stepping starts at `LibraryCount`
-      (since U2-K-a, at the library list's length, a position) whether the segment is kept or new. A2 publishes
+      a lookup builds meanwhile included, so A2's entry of each body is its build position; the library step (R8-M50) steps the
+      library segment's bodies, so a version's stepping starts at `LibraryCount` whether the segment is kept or new. A2 publishes
       `MirDropTable.Holds(ordinal)`, the fact that the body's entry is closed in its segment's store (a kept library body's in its
       library version). A round of a consumer of step-2 facts that reads a body A2 does not hold misses: it adds nothing, goes on to
       its end and commits nothing; the consumer's driver steps and runs it again until a round is clean. A4 reads a body's nodes
@@ -23163,11 +23152,11 @@ R8-M* and R9-M* by the stage of the recording unit.
       record path (R5-M151).
     - A template records nothing (R8-M50), so the program segment's templates are kept across a version's runs and extend in build
       order over the bodies built since (`extent`, a build position; `Replay` extends them when a lookup built bodies during the
-      run), each read from its segment's store (`TemplatesOf`, by `ordinal < D` until U2-K-a, by `MirDropTable.LibraryHolds` since).
-      The driver (`Compilation.Collect`) steps the bodies built since (`MirAnalysis.Step`) and runs again until a run is clean; a
-      clean run replays only stepped bodies from the same roots in the same FIFO order, so it equals one run over an eager build,
-      and every body code generation reads is stepped, with no step after it within a version (across versions under the kept
-      library segment: U2-K-b, the Back's C1). `Work`, `RunCount` and `Templated` sum the runs of one version.
+      run), each read from its segment's store (`TemplatesOf`, `ordinal < D`). The driver (`Compilation.Collect`) steps the bodies
+      built since (`MirAnalysis.Step`) and runs again until a run is clean; a clean run replays only stepped bodies from the same
+      roots in the same FIFO order, so it equals one run over an eager build, and every body code generation reads is stepped, with
+      no step after it within a version (across versions under the kept library segment: U2-K, the Back's C1). `Work`, `RunCount`
+      and `Templated` sum the runs of one version.
   - **Amends R8-M50:** A3b runs in the collector's root loop in every run (inside the run's round, so a missed run's A3b records
     drop with it), not once per version; `Templated` counts the version's runs.
   - **Rejected (U1's and U1b's).** Ending a round at its first missed read (one round per body); a per-ordinal A4 stamp beside A2's
@@ -23190,26 +23179,21 @@ R8-M* and R9-M* by the stage of the recording unit.
     bodies and the library's templates; `MirBodies` counts the built ones; the cold collection is `Compilation.Collect`'s loop with
     its steps untimed and its run count reported); tests of the library's bodies read a build with the library check's root range
     (`MirBuildTest.LibraryRange` and `LibraryBuild`), the library's census and the c17 rows included (U2-F).
-  - **Adopted (U2-K-a, the build-order list and the one per-ordinal fact).** `MirProgram` keeps a body's storage by its ordinal (a
-    pool: `Body(ordinal)`, the one read by ordinal; an ordinal no body of the version is built at is a broken contract,
-    `InternalInvariant`, and a returned body carries no ordinal) and the bodies in build order: the library list (`LibraryBodies`,
-    the bodies built when the library segment ended), then the version's bodies (`VersionBodies`: the bodies built past the library
-    segment in the version, each library body a lookup of the version demanded included). `MirBuilder`'s naming position,
-    `MirAnalysis`'s stepping position and the collector's extent are positions in that list, never ordinals. A2's table publishes
-    the one per-ordinal fact "the library store holds the body" (`MirDropTable.LibraryHolds`; one writer, the library step; stable
-    within a version), which A2's `Of`, A4's `Base` and the collector's `TemplatesOf` read in place of `ordinal < LibraryCount`;
-    each store (A2's segments, the collector's `TemplateStore`) keeps a body's own entry by its ordinal and reads no neighbour's
-    entry. A keeper of library facts (the analysis's library state, the collector's library templates) compares the program and its
-    `LibrarySegment` (the count of library segments the program built); `LibraryVersion` stays the builder's own keep test.
-  - **Staged (U2-K-b, with G950-K).** The library's fixed ordinals (a library definition's ordinal is its position in the library
-    walk, numbered by `MirBuilder` once per library segment and kept with it, so `[0, LibraryCount)` is the library's range in every
-    build and a demanded library body is built into its slot; the Middle 11-17 12:0x: numbered at the library step, not per
-    version), the kept library list and the library step over it from its kept position in every version (the Back's C1); the kept
-    segment ends at a demanded library body with a record or one A2 does not hold (R-K2''), so a version's report equals a fresh
-    pipeline's row for row. The owner's O-396 (a): `MirProgram.Clear` and `ClearProgram` clear A2's per-version store where a
-    version starts, so the keep test reads only its own version's step facts; U2-K-b lands after G949 S1-1. Until then a lazy
-    build's library list holds the library's templates and a demanded library body takes the next ordinal (U0), so no library body
-    survives its version.
+  - **Staged (U2-K, with or before G950-K; the Back's C-378 A1).** G950 R-4's fixed library slots ("holes"): a demanded library body
+    built into its library-walk ordinal and kept with the library segment. U2-K carries the Back's C1 (A2's per-entry `Holds`; the
+    stepping position and the template extent kept with their segment in build order), F1 with K-A (a library body first demanded
+    during a program version is stepped into the program stores for that version and into the library stores at the next library
+    step; "the library store holds the body" is one published per-ordinal fact read by A2's `Of`, A4's `Base` and the collector's
+    `TemplatesOf`, the Back's A3) and F2 with R-K2' (the kept segment ends at a demanded library body with a record or at a library
+    body its version built and A2 does not hold, so no kept caller's A4 edge names an empty slot and no kept body is unstepped; the
+    shipped library has no record; the Back's B1 on C-378, 09:17), and the rows H3 and K1 (a body built but never stepped through
+    Compilation; K1 on the kept path is C1's fail-before row; H3 through Compilation removes U2-H's reflection seam,
+    `MirAnalysisTest.ABodyBuiltButNotSteppedIsNotJudged`'s injection of `Compilation.mir`) and two rows in Compilation's form:
+    `G950KeptPathTest.ALaterVersionKeepsTheLibrarysBodies` (g8: a later version keeps the library bodies the compilation demanded)
+    and `G950KeptPathTest.AKeptLibraryRowIsPublishedInEveryVersion` (M2, which becomes row K2-a: an injected finding is not
+    republished under R-K2', and its record shows where the body is rebuilt; its premise, asserted first, fails until U2-K), both
+    G950-K's prerequisites. Until then a lazy build's library range holds the library's templates and a demanded body takes the next
+    program ordinal (U0), so no library body survives its version.
   - **Rejected (U2's).** The holes inside U2 (needed only by G950's kept segment, unreachable until G950-K; three kept-segment
     decisions would land without a reachable path); one range per builder (it forbids adding a module); the range in the kept
     library stamp (G950-R's two rules for kept facts); a step after the clean collector run to give unstepped bodies A1/A2 problems
