@@ -1,12 +1,13 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using System.Diagnostics.CodeAnalysis;
 using Kimi.Compiler.Parsing;
 
 namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
-    private readonly Dictionary<Koto, BoundType> inheritedOriginTypes = new(ReferenceEqualityComparer.Instance);
+    private readonly InheritedOriginTypeRows inheritedOriginTypes;
 
     private static OriginContractFact? ImplementationOriginMismatch(Koto at, FunctionKoto definition, BoundType expected, BoundType actual, string member)
     {
@@ -408,4 +409,18 @@ public sealed partial class Binding
     // holds by an end that rests on a failed part of the original (HoldsResting), which gives no evidence against it.
     private bool ClaimHolds(BoundOrigin longer, BoundOrigin shorter, FunctionKoto function)
         => this.ProvesOriginOutlives(longer, shorter, function) || this.HoldsResting(longer, shorter, 0, new ProofLeaf(this, function, default));
+
+    /// <summary>The `inheritedOriginTypes` family's one accessor (DECISIONS BU-220): a pass family, the inherited contract's Type whose
+    /// Origins an omitted Origin at a syntax node takes (InheritOriginContract), kept in the node's module's NodeColumns at its SyntaxId;
+    /// absent after a pass until the column's first write. Its members keep the names its readers use.</summary>
+    private readonly struct InheritedOriginTypeRows(Binding binding)
+    {
+        internal BoundType this[Koto syntax]
+        {
+            set => HirTables.Of(syntax).Families.InheritedOriginTypes.Ref(syntax.SyntaxId, binding) = value;
+        }
+
+        internal bool TryGetValue(Koto use, [NotNullWhen(true)] out BoundType? type)
+            => (type = use.SyntaxOwner is { } table ? table.Hir.Families.InheritedOriginTypes.Get(use.SyntaxId, binding) : null) is not null;
+    }
 }

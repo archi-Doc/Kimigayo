@@ -14,7 +14,8 @@ public sealed partial class Binding
             var evidence = 0;
             var paths = 0;
             var evidenceCapacity = 0;
-            var graphCapacity = this.associatedInference.EnsureCapacity(0) + this.pendingAssociatedTypes.EnsureCapacity(0) + this.completeTypeIdentities.EnsureCapacity(0) +
+            var batches = 0;
+            var graphCapacity = this.associatedInference.Capacity + this.pendingAssociatedTypes.EnsureCapacity(0) + this.completeTypeIdentities.EnsureCapacity(0) +
                 this.inferenceFailures.EnsureCapacity(0) + this.inferenceSources.Capacity + this.inferenceInvalidation.EnsureCapacity(0);
             for (var i = 0; i < this.impls.Paths.Count; i++)
             {
@@ -30,8 +31,9 @@ public sealed partial class Binding
                 }
             }
 
-            foreach (var batch in this.associatedInference.Values)
+            for (var rows = this.associatedInference.Values; rows.MoveNext(); batches++)
             {
+                var batch = rows.Current!;
                 paths += batch.Paths.Capacity;
                 graphCapacity += batch.Evidence.EnsureCapacity(0) + batch.Normalized.EnsureCapacity(0) + batch.Holes.EnsureCapacity(0) + batch.Pairs.EnsureCapacity(0) + batch.CheckedTypes.EnsureCapacity(0) + batch.ProblemTypes.EnsureCapacity(0);
                 foreach (var entries in batch.Evidence.Values)
@@ -41,7 +43,7 @@ public sealed partial class Binding
                 }
             }
 
-            return new(this.associatedInference.Count, matches, evidence, paths, evidenceCapacity, graphCapacity);
+            return new(batches, matches, evidence, paths, evidenceCapacity, graphCapacity);
         }
     }
 }

@@ -17,8 +17,6 @@ public sealed partial class Binding
     private const int StorageCapped = int.MaxValue - 1;
     private const int StorageRejected = -1;
 
-    private readonly Dictionary<FunctionKoto, BindingSymbol> specialReceivers = new(ReferenceEqualityComparer.Instance);
-
     // The storage walk's marks for the pass, by Type: a finished Type's height (StorageRefused when refused) with Open 0, or
     // StorageRejected when its storage is Rejected; or an open Type's position on the walk's stack (Open), which every query leaves empty;
     // ResetPass clears both, after a walk a fault aborted too.
@@ -44,7 +42,7 @@ public sealed partial class Binding
         Limit,
     }
 
-    internal BindingSymbol? SpecialReceiver(FunctionKoto function) => this.specialReceivers.GetValueOrDefault(function);
+    internal BindingSymbol? SpecialReceiver(FunctionKoto function) => SpecialReceiverRows.GetValueOrDefault(function);
 
     // A Type's storage verdict (StorageOutcome): Limit when its height passes 64 or a walk from it passes 256 Types, else Rejected when it
     // reaches a part that does not substitute, else Prepared. A limit marks every Type left open Refused, each of which reaches the
@@ -308,11 +306,8 @@ public sealed partial class Binding
             return;
         }
 
-        if (!this.specialReceivers.TryGetValue(function, out var receiver))
-        {
-            this.specialReceivers.Add(function, receiver = new("self", BindingSymbolKind.Parameter, function, scope) { Slot = ReceiverSlot });
-        }
-
+        // The kept slot is read and written first: a later column write may carve a page and move the arena it points into.
+        var receiver = SpecialReceiverRows.Slot(function) ??= new("self", BindingSymbolKind.Parameter, function, scope) { Slot = ReceiverSlot };
         receiver.Scope = scope;
         receiver.Type = scope.Parent?.Owner.BoundSymbol?.Type;
         if (!scope.Values.TryAdd("self", receiver))
@@ -544,6 +539,16 @@ public sealed partial class Binding
             this.originScratch.Return(origins, clearArray: true);
             this.acquisitionFailure = acquisition;
         }
+    }
+
+    /// <summary>The `specialReceivers` family's one accessor (DECISIONS BU-220): a kept family, a constructor's or destructor's receiver
+    /// <c>self</c> (SPEC 6.3) kept in its function's module's NodeColumns at the function's SyntaxId, made once and reset in place by each
+    /// pass's indexing (IndexSpecialReceiver).</summary>
+    private readonly struct SpecialReceiverRows
+    {
+        internal static ref BindingSymbol? Slot(FunctionKoto function) => ref HirTables.Of(function).Families.Receivers.Ref(function.SyntaxId);
+
+        internal static BindingSymbol? GetValueOrDefault(FunctionKoto function) => function.SyntaxOwner is { } table ? table.Hir.Families.Receivers.Get(function.SyntaxId) : null;
     }
 
     // One reusable visitor walks a destructor's body to each Closure it creates, judging the bound ones; it stops at a Closure, whose
