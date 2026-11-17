@@ -299,20 +299,28 @@ internal sealed partial class MirBuilder
     // is held at the Type its consumer expects (expected), as Unsupported holds a derived one: SPEC 14.9.2 makes a construct's Type the
     // fixed expectation, which Binding does not publish for one it left unresolved (DECISIONS R4-M88; PLAN G103 R1). An Error node's value is
     // held there also where Binding gave the node a Type, and it is never taken from where an expansion located the node: each consumer
-    // receives its own derived value, whose site names the located root (SiteRoots; DECISIONS R4-M109). The temp an Error node's value is
-    // held in is an Opaque temp, which nothing lends (Unlent; DECISIONS R4-M149).
+    // receives its own derived value, whose site names the located root (SiteRoots; DECISIONS R4-M109).
     private MirPlace Value(Koto node, MirPlace? into = null, bool input = false, BoundType? expected = null)
     {
-        var derived = HirTables.Op(node) == HirOp.Error;
-        if (!derived && this.Located(node) is { } located)
+        if (HirTables.Op(node) != HirOp.Error && this.Located(node) is { } located)
         {
             return located;
         }
 
+        var held = this.Held(node, expected, into);
+        this.Into(held, node, input);
+        return held == into ? held : this.Made(held);
+    }
+
+    // The place a node's value is held in (Value; a transfer's operand whose value-less paths it delivers apart, Transfer): the place
+    // given where that has the value's Type, else a new temp of it, which its holder makes; the Type Binding gave, else the expected
+    // one, and an Error node's always the expected one, in an Opaque temp, which nothing lends (Unlent; DECISIONS R4-M149).
+    private MirPlace Held(Koto node, BoundType? expected, MirPlace? into)
+    {
+        var derived = HirTables.Op(node) == HirOp.Error;
         var type = (derived ? expected : null) ?? HirTables.TypeOf(node) ?? expected ?? BoundType.Unit;
         if (this.Given(into, type) is { } place)
         {
-            this.Into(place, node, input);
             return place;
         }
 
@@ -322,7 +330,6 @@ internal sealed partial class MirBuilder
             this.opaqueTemps.Add(temp.Root);
         }
 
-        this.Into(temp, node, input);
-        return this.Made(temp);
+        return temp;
     }
 }
