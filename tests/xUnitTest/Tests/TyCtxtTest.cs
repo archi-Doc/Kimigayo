@@ -597,9 +597,14 @@ public sealed partial class TyCtxtTest
             nodes.OfType<VariableKoto>().Single(static x => x.NameKoto.IdentifierName == "a").SymbolOf()!.Type!,
             nodes.OfType<VariableKoto>().Single(static x => x.NameKoto.IdentifierName == "b").SymbolOf()!.Type!,
         ];
-        Assert.Same(r, layers[1].RawOrigin);
-        Assert.Same(r, layers[2].RawOrigin);
+        Assert.Equal(OriginKind.Inference, r!.Kind); // r's slot is its region; a read in its own body takes the value (PLAN G492-a (ii)).
+        var value = c.Binding.RegionValueAtUse(r!, r!.Binder!);
         Assert.Contains(layers[0].RawOrigin!.Kind, new[] { OriginKind.Inference, OriginKind.Projection });
+        Assert.Same(value, layers[1].RawOrigin);
+
+        // A call's result is a producer at the call (the owner's O-385 (a)): its argument's Origin is read there, r's value, as the raw
+        // view's is; stored as r's region it differs where b is named in a nested body (PLAN G492-a (ii) phase 4: brow2).
+        Assert.Same(value, layers[2].RawOrigin);
     }
 
     // SPEC 5.7 (design-final §15; DECISIONS BU-24, BU-41): a raw layer an instance stores has the step of its declared Field Type or Case
