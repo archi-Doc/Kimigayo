@@ -384,8 +384,8 @@ public sealed partial class Binding
         return (index, keep);
     }
 
-    // A request returns: its enclosing request's classes are back, and the outermost one empties the request tables and drops the
-    // entries it formed unless Kept.
+    // A request returns: its enclosing request's classes are back, and the outermost one empties the request tables, the pooled link
+    // lists it lent among them (capacity kept: no row outlives its request), and drops the entries it formed unless Kept.
     private void LeaveRows(IdentityClasses? enclosing)
     {
         this.enumerateClasses = enclosing;
@@ -394,27 +394,16 @@ public sealed partial class Binding
             this.enumerateMemo.Clear();
             this.enumerateSeed.Clear();
             this.DropOwnedEntries();
+            for (var i = 0; i < this.enumeratePoolNext; i++)
+            {
+                this.enumeratePool[i].Clear();
+            }
+
             this.enumeratePoolNext = 0;
             if (!this.KeepsAcrossRequests)
             {
                 this.ClearKeptRows(); // Before the capability phase the epoch is this request.
             }
-        }
-    }
-
-    // PLAN G949 S1-e's call-scratch rule for a reader whose own use makes requests (the arithmetic direction check, x41n): at the use's
-    // end, outside any request, the pooled link lists its requests borrowed are emptied, capacity kept (EnumerateLink empties a list
-    // again when it lends it), so no row outlives the use that formed it.
-    private void EmptyPooledRows()
-    {
-        if (this.enumerateDepth != 0 || this.enumerateWalking != 0)
-        {
-            throw new InvalidOperationException("The pooled rows were emptied inside a request or a read (InternalInvariant; x41n).");
-        }
-
-        foreach (var rows in this.enumeratePool)
-        {
-            rows.Clear();
         }
     }
 

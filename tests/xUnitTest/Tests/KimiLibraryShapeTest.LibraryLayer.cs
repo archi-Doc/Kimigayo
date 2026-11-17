@@ -149,6 +149,14 @@ public partial class KimiLibraryShapeTest
     [MemberData(nameof(LayerPrograms))]
     public void TheLibraryLayerIsIndependentOfTheProgram(string program) => SameLayerAsTheEmptyPrograms(program);
 
+    // ContractSolver's request tables (Rows.cs): the outermost request empties, capacity kept, the pooled link lists it lent (LeaveRows;
+    // PLAN x41n, F's ruling 188 X1), so no row outlives its request and Enumerate's pool is empty after every Bind; the library-layer row
+    // above then holds for the pool because it is empty, not because the requests that ran last left the same rows.
+    [Theory]
+    [MemberData(nameof(LayerPrograms))]
+    public void ThePooledRowListsAreEmptyAfterABind(string program)
+        => Assert.All(((IEnumerable)LibraryLayer.ValueAt(Bound(program).Binding, "Binding.enumeratePool")).Cast<ICollection>(), static rows => Assert.Empty(rows));
+
     [Theory(Explicit = true)] // Its length (PLAN G949 S1-0b): run by each G949 unit and window.
     [MemberData(nameof(LayerCorpus))]
     public void TheLibraryLayerIsIndependentOfTheCorpus(string program) => SameLayerAsTheEmptyPrograms(program);
