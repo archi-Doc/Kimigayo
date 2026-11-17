@@ -100,6 +100,34 @@ public partial class SyntaxIdTest
         }
     }
 
+    // PLAN G949 S1-r2: a step reads its pass's rows (In), the family's rows over every module restricted to the pass's modules, in d8's
+    // order: over a set of the source modules, the program's symbols; over the library alone, the library's; the two in sequence are every
+    // module's (the accessor's Values, for readers outside a pass).
+    [Fact]
+    public void AFamilysRowsInAPassAreItsModulesRows()
+    {
+        var c = MinimalEmissionTest.Analyze(Source);
+        var every = c.Binding.Semantics.Declarations;
+        var sources = Rows(every.In(new(c.SourceModules, null, new(0))));
+        var library = Rows(every.In(new([], c.Binding.Library.Kotonoha, new(0))));
+        Assert.NotEmpty(sources);
+        Assert.NotEmpty(library);
+        Assert.All(sources, symbol => Assert.False(symbol.Declaration.Kotonoha.Syntax.IsLibrary));
+        Assert.All(library, symbol => Assert.True(symbol.Declaration.Kotonoha.Syntax.IsLibrary));
+        Assert.Equal(Rows(every), [.. sources, .. library]);
+
+        static List<BindingSymbol> Rows(Binding.KeptValues<BindingSymbol, BindingSymbol?> values)
+        {
+            var rows = new List<BindingSymbol>();
+            foreach (var symbol in values)
+            {
+                rows.Add(symbol);
+            }
+
+            return rows;
+        }
+    }
+
     // G949 D2b-d's d10, per kept family: an edit's renumbering moves a kept family's rows into the column's spare arena, so the second
     // of two edits allocates no arena: the column's arena is again the one it had before the first, and its first row is the same object
     // at its node's id, which a synthesized node's renumbering may change (Symbols: a declaration's symbol; Receivers: Point's implicit
