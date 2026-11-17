@@ -12,8 +12,8 @@ namespace Kimi.Compiler.Backend;
 // reason, Raw.initialize's copy, Raw.slice's record, a staticEnsure's state test (FunctionCodegen.Statics), a runtime Type test (FunctionCodegen.Objects), a
 // reserve witness's code address (FunctionCodegen.Formatting) and a verification's compared value, which the test runtime holds for its observation (Record;
 // DECISIONS R5-M136). Each takes its operands at its declaration's slots (ArgumentPosition) and ends through Finish; a call whose row's Target column names
-// an item carries the collector's target, read once by the cursor (I8) and given to the row's writer; a call of a row no MIR producer makes (Unproduced) is a
-// broken contract at the call (DECISIONS R5-M146). In a caller-location body a location is C3b's row (Location).
+// an item carries the collector's target, read once by the cursor (I8) and given to the row's writer. In a caller-location body a location is C3b's row
+// (Location).
 internal sealed partial class FunctionCodegen
 {
     private readonly Value[] slotless = new Value[1]; // A routine row's slot-less value (Routine): an allocation's stride, a creation's control.
@@ -58,9 +58,6 @@ internal sealed partial class FunctionCodegen
                 return;
             case IntrinsicWriter.Create or IntrinsicWriter.Clone:
                 return; // A broken contract, recorded by Routine.
-            case IntrinsicWriter.Unproduced:
-                this.Report(DiagnosticCode.InternalInvariant_Kd, call.Source); // No MIR producer makes its call (IntrinsicRows).
-                return;
             default:
                 throw new InvalidOperationException($"The intrinsic writer {row.Writer} has no code generation row.");
         }
@@ -69,7 +66,7 @@ internal sealed partial class FunctionCodegen
     // SPEC 7.7.4 (DECISIONS R5-M108): a compiler function's routine row by its disposition, what its Item's adapter entry calls
     // (FunctionCodegen.Closures' Runs) with the target it carries, and its Item's Value call: an intrinsic's routine row (below) with the
     // Item's Type argument (its own substitution's, TyCtxt.SubstOfItem); null for any other row, which is not one routine call (a
-    // Shim's, an instruction writer's, an Unproduced row's), and after a broken contract's record (an intrinsic row's, below).
+    // Shim's, an instruction writer's), and after a broken contract's record (an intrinsic row's, below).
     private FunctionAbi? Routine(BoundType item, BoundType? result, int target, out ReadOnlySpan<Value> given)
     {
         given = default;
