@@ -186,12 +186,12 @@ internal sealed class MirAnalysis
 
     // Step 2 of one body: its block order and move paths, then per view A1, then A2, a body whose A1 arena exceeds the analyses' limit
     // stopping those views (R4-M15a), then per view A4's local facts; a body with a validator finding, which no consumer reads (R5-M183), an
-    // empty table entry, which keeps the table's ordinals.
+    // empty table entry.
     private void Body(MirProgram program, MirBody body)
     {
         if (body.HasFinding)
         {
-            this.drops.Exclude(program);
+            this.drops.Exclude(program, body);
             return;
         }
 

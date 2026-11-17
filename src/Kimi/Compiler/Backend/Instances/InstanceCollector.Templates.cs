@@ -146,35 +146,36 @@ internal sealed partial class InstanceCollector
     }
 
     // A segment's site templates and layout needs (PLAN G950; the Back's C-378), data only, so the library segment's are kept across its
-    // compilation's versions while its library version holds: its bodies' sites and needs in body order, each body's first
-    // site and first need by the body's ordinal itself (the program's from the library's count, no offset), the next ordinal's entry
-    // ending them, and the library version it was built under (0: none; Binding's library publication is never 0).
+    // compilation's versions while its library version holds: its bodies' sites and needs in the order they were templated, each
+    // body's own sites and own needs by the body's ordinal itself (no offset; the ordinals may have holes, PLAN G951 U2-K), and the
+    // library version it was built under (0: none; Binding's library publication is never 0).
     private sealed class TemplateStore
     {
         private (MirLocation At, bool Runtime)[] sites = [];
         private (MirLocation At, MirPlace Step, int Pair)[] needs = [];
-        private int[] starts = []; // By ordinal, a body's first site.
-        private int[] needStarts = []; // By ordinal, a body's first need.
+        private (int Start, int End)[] siteRanges = []; // By ordinal, a body's own sites.
+        private (int Start, int End)[] needRanges = []; // By ordinal, a body's own needs.
         private int siteCount;
         private int needCount;
 
         internal ulong Version { get; set; }
 
         // A body's sites.
-        internal ReadOnlySpan<(MirLocation At, bool Runtime)> Sites(int body) => this.sites.AsSpan(this.starts[body]..this.starts[body + 1]);
+        internal ReadOnlySpan<(MirLocation At, bool Runtime)> Sites(int body) => this.sites.AsSpan(this.siteRanges[body].Start..this.siteRanges[body].End);
 
         // A body's layout needs: the location, the step's Place and the PairLayer step whose case decides it (0: none).
-        internal ReadOnlySpan<(MirLocation At, MirPlace Step, int Pair)> Needs(int body) => this.needs.AsSpan(this.needStarts[body]..this.needStarts[body + 1]);
+        internal ReadOnlySpan<(MirLocation At, MirPlace Step, int Pair)> Needs(int body) => this.needs.AsSpan(this.needRanges[body].Start..this.needRanges[body].End);
 
         // Begins a body: its sites and needs are the ones added until its End.
         internal void Begin(int body)
         {
-            MirDataflow.Grow(ref this.starts, body + 2);
-            MirDataflow.Grow(ref this.needStarts, body + 2);
-            (this.starts[body], this.needStarts[body]) = (this.siteCount, this.needCount);
+            MirDataflow.Grow(ref this.siteRanges, body + 1);
+            MirDataflow.Grow(ref this.needRanges, body + 1);
+            (this.siteRanges[body], this.needRanges[body]) = ((this.siteCount, this.siteCount), (this.needCount, this.needCount));
         }
 
-        internal void End(int body) => (this.starts[body + 1], this.needStarts[body + 1]) = (this.siteCount, this.needCount);
+        // Ends the body begun.
+        internal void End(int body) => (this.siteRanges[body].End, this.needRanges[body].End) = (this.siteCount, this.needCount);
 
         internal void AddSite(MirLocation at, bool runtime)
         {
@@ -189,7 +190,7 @@ internal sealed partial class InstanceCollector
         // A need of the body begun, once per location and step.
         internal void AddNeed(int body, MirLocation at, MirPlace step, int pair)
         {
-            if (this.needCount > this.needStarts[body] && this.needs[this.needCount - 1] is var last && last.At == at && last.Step == step)
+            if (this.needCount > this.needRanges[body].Start && this.needs[this.needCount - 1] is var last && last.At == at && last.Step == step)
             {
                 return;
             }
