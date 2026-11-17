@@ -344,10 +344,27 @@ public sealed partial class Binding
         return false;
     }
 
+    // One node's records in sequence, a discarded tail's innermost root first; the comparison is total, so the order is stable.
+    private static int CompareLints((Koto Node, LintRow Row, Koto? Root) x, (Koto Node, LintRow Row, Koto? Root) y)
+    {
+        var order = x.Node.SyntaxOwner!.Module.CompareTo(y.Node.SyntaxOwner!.Module);
+        if (order == 0)
+        {
+            order = x.Node.SyntaxId.CompareTo(y.Node.SyntaxId);
+        }
+
+        if (order == 0)
+        {
+            order = ((byte)x.Row).CompareTo((byte)y.Row);
+        }
+
+        return order != 0 ? order : (y.Root?.SyntaxId ?? 0).CompareTo(x.Root?.SyntaxId ?? 0);
+    }
+
     // SPEC 5, 4.3.4, 7.6: whether an operation needs an unsafe context: forming a raw Place (ElementAccess.IsRawRoot), pointer
     // arithmetic, noinit, or one of the node's calls whose selected target is an unsafe function (the requirement is checked after
     // selection); null while Binding has not resolved an expression, whose need is then unknown.
-    private static bool? RequiresUnsafe(Koto node)
+    private bool? RequiresUnsafe(Koto node)
     {
         if (node.BindingState != BindingState.Resolved)
         {
@@ -370,24 +387,7 @@ public sealed partial class Binding
 
         // SPEC 5.7: a claim needs an unsafe context unless the premises prove that its operand's Origin fits.
         return node is ConversionKoto { ConversionBinding: ConversionBinding.Pointer, Right.BoundType.RawOrigin: { } claimed } claim &&
-            !claim.CodeContext.Compilation.Binding.ClaimFits(claim, claimed) ? null : false;
-    }
-
-    // One node's records in sequence, a discarded tail's innermost root first; the comparison is total, so the order is stable.
-    private static int CompareLints((Koto Node, LintRow Row, Koto? Root) x, (Koto Node, LintRow Row, Koto? Root) y)
-    {
-        var order = x.Node.SyntaxOwner!.Module.CompareTo(y.Node.SyntaxOwner!.Module);
-        if (order == 0)
-        {
-            order = x.Node.SyntaxId.CompareTo(y.Node.SyntaxId);
-        }
-
-        if (order == 0)
-        {
-            order = ((byte)x.Row).CompareTo((byte)y.Row);
-        }
-
-        return order != 0 ? order : (y.Root?.SyntaxId ?? 0).CompareTo(x.Root?.SyntaxId ?? 0);
+            !this.ClaimFits(claim, claimed) ? null : false;
     }
 
     // The last step of a Final pass: one walk of each source module (the library is not linted).
@@ -681,7 +681,7 @@ public sealed partial class Binding
         // Unsafe Block's permission, which an operation whose need is unknown may also use.
         private void LintUnsafe(Koto node)
         {
-            switch (RequiresUnsafe(node))
+            switch (binding.RequiresUnsafe(node))
             {
                 case true when !KotoHelper.IsUnsafeContext(node):
                     binding.lints.Add((node, LintRow.UnsafeBlockRequired, null));

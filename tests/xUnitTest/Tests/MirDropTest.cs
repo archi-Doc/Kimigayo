@@ -428,6 +428,45 @@ public sealed partial class MirDropTest
         Assert.Equal(marked, Incomplete(c, c.BuildMir(), "f"));
     }
 
+    // PLAN G951 U2-K (row PE-2): a store keeps each closed body's own entry by its ordinal, closed in any ordinal order and with holes:
+    // a body's rows are the ones added since the last body closed in its store, whatever the ordinals; an ordinal no store closed is not
+    // held and reads empty; the program store's entries go with a new program version and the library's stay. The library store holds
+    // exactly the bodies closed in the library step (LibraryHolds, the one fact), whatever their ordinals: a body closed after it with an
+    // ordinal below the library's is the program store's.
+    [Fact]
+    public void AStoreKeepsEachBodysOwnEntryByOrdinal()
+    {
+        var table = new MirDropTable();
+        table.Clear();
+        Close(5, 1, 3);
+        Close(2, 2, 0); // Below the last closed, with holes at 0, 1, 3 and 4.
+        table.EndLibrary();
+        Close(300, 3, 1);
+        Close(7, 0, 2);
+        Close(3, 1, 5); // Below the library store's greatest ordinal, in the program store.
+        Assert.Equal([(5, 1, 3), (2, 2, 0), (300, 3, 1), (7, 0, 2), (3, 1, 5)], new[] { 5, 2, 300, 7, 3 }.Select(Entry));
+        Assert.Equal([5, 2, 2, 300, 300, 300, 3], new[] { 5, 2, 300, 7, 3 }.SelectMany(x => table.RowsOf(x).ToArray().Select(static row => row.Block)));
+        Assert.Equal([true, true, false, false, false], new[] { 5, 2, 300, 7, 3 }.Select(table.LibraryHolds));
+        Assert.All(new[] { 0, 1, 4, 6, 8, 299, 301 }, x => Assert.Equal((false, 0, 0, 0L), (table.Holds(x), table.RowsOf(x).Length, table.FlagsOf(x), table.ViewsOf(x))));
+        table.ClearProgram();
+        Assert.Equal([true, true, false, false, false], new[] { 5, 2, 300, 7, 3 }.Select(table.Holds));
+        Close(7, 1, 4);
+        Assert.Equal([(5, 1, 3), (2, 2, 0), (7, 1, 4)], new[] { 5, 2, 7 }.Select(Entry));
+
+        // Closes a body with a count of rows naming it (their Block) and flags.
+        void Close(int body, int rows, int flags)
+        {
+            for (var i = 0; i < rows; i++)
+            {
+                table.Rows.Add(new(body, 1, MirDropVerdict.Keep, -1, 0, default, 0));
+            }
+
+            table.Close(body, flags, 1, null);
+        }
+
+        (int Body, int Rows, int Flags) Entry(int body) => table.Holds(body) ? (body, table.RowsOf(body).Length, table.FlagsOf(body)) : default;
+    }
+
     private static MirProgram Built(string source)
     {
         var c = MirBuildTest.Compile(source);
@@ -641,9 +680,9 @@ public sealed partial class MirDropTest
             });
             for (var i = 0; i < sizes.Length; i++)
             {
-                var (_, sink) = analyses[i];
+                var (body, sink) = analyses[i];
                 Assert.Equal(0, sink.Problems.All.Length);
-                flags[i] = sink.Drops.FlagsOf(0);
+                flags[i] = sink.Drops.FlagsOf(body.Ordinal);
             }
 
             output.WriteLine($"N {string.Join(", ", sizes)}: flags {string.Join(", ", flags)}, cold analysis allocation {string.Join(", ", allocated)}");

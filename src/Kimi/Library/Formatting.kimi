@@ -692,8 +692,8 @@ internal group IntegerFormat
         // ASCII digits and `-` are valid UTF-8 (Utf8Slice.init's contract).
         return writer.writeUtf8(Text.Utf8Slice.init(digits.slice(index..)))
 
-    // SPEC 22.10.2: a 128-bit value's digits come from Storage.formatInteger128 (interim by RQ16 (a): the backend
-    // generates no 128-bit division, IMPL 21.3.3), its sign from the body; i128's minimum has 39 digits and its `-`.
+    // SPEC 22.10.2: a 128-bit value's digits come from Storage.formatInteger128 (interim by RQ16 (a): R8 formats no i128
+    // in Kimigayo; post-reduction, by measurement), its sign from the body; i128's minimum has 39 digits and its `-`.
     specialize func format<i128>(self: ref/i128, writer: uniq/Utf8Writer) -> Result<(), BufferFull>
         let value = self@follow
         // `-(value + 1)` fits i128 for every negative value, so the magnitude is computed without overflow.
