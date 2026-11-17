@@ -10,7 +10,7 @@ namespace Kimi.Compiler;
 //   phases' facts, StartRuns), per run (BeginRun: the counter every stamp compares, the work counters, the local-region graph's
 //   version) and per pass (ResetPass); the runs, a new one whenever a pass asks for it (VerifyEarlyReads); each pass's steps in order
 //   over its module set (BindingPass); each pass's part of the per-pass collections (PassPart: the published lists, the local-region
-//   graph, the slots' keepers, the Contract shapes, the effect bounds and the import declarations), handed over as the fields every
+//   graph, the slots' keepers, the Contract shapes, the effect bounds, the import declarations and the prune steps' sets), handed over as the fields every
 //   step writes (EnterPass); R1.1's one composition point per aggregate: the composed views,
 //   the program part then the library layer's, and the Bind's Result (ComposeResult); a keyed collection's one find (PassPart.Find).
 // - Inputs: the compilation's modules, the mode. Outputs: the parts (Binding's own, programPart; LibraryLayer.Part), the composed
@@ -210,6 +210,18 @@ public sealed partial class Binding
 
         // The pass's import declarations (Binding.Attributes.cs).
         internal List<BindingSymbol> ImportDeclarations { get; } = new();
+
+        // The pattern nodes and guard scopes the pass indexed, and those of its previous run, which its prune steps compare
+        // (Binding.Patterns.cs: PruneCandidateScopes, PrunePatternScopes): each pass's own, so a pass prunes against its own previous
+        // run and never removes a scope or symbol another pass indexed. Their one declaration is here (a node-keyed table is counted
+        // once, DECISIONS BU-220's ratchet), so their steps read them through the running pass's part.
+        internal HashSet<Koto> PatternNodes { get; } = new(ReferenceEqualityComparer.Instance);
+
+        internal List<Koto> PreviousPatternNodes { get; } = new();
+
+        internal HashSet<Koto> CandidateScopes { get; } = new();
+
+        internal List<Koto> PreviousCandidateScopes { get; } = new();
 
         internal BindingResult Counts { get; set; }
 
