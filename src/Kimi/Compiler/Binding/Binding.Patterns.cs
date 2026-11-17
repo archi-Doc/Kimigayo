@@ -12,7 +12,6 @@ public sealed partial class Binding
     // A match keeps its plan object across rebinds, so a retained plan never starts describing another match while its
     // own syntax is still selected; only the plans of removed matches return to the pool.
     private readonly MatchPlanRows matchPlans;
-    private readonly List<BoundMatch> matchPool = new();
     private readonly HashSet<Koto> patternNodes = new(ReferenceEqualityComparer.Instance);
     private readonly List<Koto> previousPatternNodes = new();
     private readonly HashSet<Koto> candidateScopes = new();
@@ -120,17 +119,7 @@ public sealed partial class Binding
     {
         if (!this.matchPlans.TryGetValue(match, out var plan))
         {
-            var last = this.matchPool.Count - 1;
-            if (last >= 0)
-            {
-                plan = this.matchPool[last];
-                this.matchPool.RemoveAt(last);
-            }
-            else
-            {
-                plan = new();
-            }
-
+            plan = new();
             this.matchPlans.Add(match, plan);
         }
 
@@ -146,7 +135,6 @@ public sealed partial class Binding
             var match = (MatchKoto)plans.Node;
             if (!this.matches.ContainsKey(match))
             {
-                this.matchPool.Add(plans.Current!);
                 this.matchPlans.Remove(match);
             }
         }
