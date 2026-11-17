@@ -5,6 +5,7 @@ using System.Xml.Linq;
 using Kimi;
 using Kimi.Build;
 using Kimi.Compiler;
+using Kimi.Diagnostics;
 using Xunit;
 
 namespace XunitTest;
@@ -245,6 +246,72 @@ public sealed class NativeToolchainTest : IDisposable
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => project.Build(cancelled.Token));
         using var record = JsonDocument.Parse(File.ReadAllText(ArtifactPaths.Create(project).Record));
         Assert.Equal("incomplete", record.RootElement.GetProperty("status").GetString());
+    }
+
+    // The toolchain boundary (R9-B2): under Project.Build the toolchain's classification applies only around the toolchain's own calls,
+    // whose failures fail the build with their message (IMPL 20.3; SPEC 23.2.2: a toolchain, output or configuration failure); any other
+    // exception, a compiler step's outside generation among them, ends its result as Faulted: one CheckFaulted_Kd (Exception) at the
+    // project file (DIAGNOSTICS rule 9). Rows, the expected record first:
+    // - CheckFaulted_Kd, the project's own result (BuildTargetsAndPublish): "project checks", which read a null target list, a caller
+    //   contract no command input reaches (it escaped the build); "report", the host's console throwing InvalidOperationException, a type
+    //   the toolchain's JSON reads throw, at the report of the published pair, after generation and before the toolchain (it printed as a
+    //   toolchain failure).
+    // - CheckFaulted_Kd, the build's own result (Build's outer catch): "toolchain's message", the host's console throwing at the line that
+    //   renders a toolchain failure, outside the toolchain's call (it escaped the build).
+    // - The toolchain's message and no code: a missing tool, a tool that does not start, a configuration value the artifact paths read.
+    // No production seam: the console is the host's, and the project file's values are the caller's.
+    [Theory]
+    [InlineData("project checks", null, null)]
+    [InlineData("report", "Generated LLVM inputs", null)]
+    [InlineData("toolchain's message", "Toolchain file not found", null)]
+    [InlineData("toolchain", null, "Toolchain file not found")]
+    [InlineData("tool start", null, "not a valid")]
+    [InlineData("configuration", null, "Optimization must be O0 or O2.")]
+    public async Task ABuildFailsByTheToolchainBoundarysRule(string origin, string? failingLine, string? toolchainFailure)
+    {
+        var file = Path.Combine(this.directory, "Hello.kimiproj");
+        File.WriteAllText(file, $"Targets={{\"{WindowsProfile.Target}\"}} OutputPath=\"out/Hello.ll\"");
+        File.WriteAllText(Path.Combine(this.directory, "main.kimi"), "::Kimi.Console.writeLine(\"Hello\")");
+        var console = new DiagnosticContractTest.DiagnosticConsole { FailingLine = failingLine };
+        Assert.True(Project.TryCreate(new Kimigayo(console), null, file, out var project));
+        project.ProjectFile.LlvmBin = "missing LLVM directory";
+        if (origin == "project checks")
+        {
+            project.ProjectFile.Targets = null!;
+        }
+        else if (origin == "configuration")
+        {
+            project.ProjectFile.Optimization = "O3";
+        }
+        else if (origin == "tool start")
+        {
+            // Every file the native build resolves exists, and opt.exe is not an executable.
+            var root = Path.Combine(this.directory, "toolchain");
+            Directory.CreateDirectory(Path.Combine(root, "windows_x64"));
+            File.WriteAllText(Path.Combine(root, "windows_x64", "kernel32.lib"), "not a library");
+            File.WriteAllText(Path.Combine(root, "windows_x64", ToolchainIdentity.BackendFile), "not an archive");
+            foreach (var tool in new[] { "opt", "llc", "lld-link", "llvm-nm", "llvm-readobj" })
+            {
+                File.WriteAllText(Path.Combine(root, tool + ".exe"), "not an executable");
+            }
+
+            project.KimiOptions.ToolchainRoot = root;
+            project.ProjectFile.LlvmBin = null;
+        }
+
+        Assert.False(await project.Build(TestContext.Current.CancellationToken), console.Text);
+        Assert.Equal(toolchainFailure is null ? 1 : 0, console.Text.Split(nameof(DiagnosticCode.CheckFaulted_Kd)).Length - 1);
+        if (toolchainFailure is null)
+        {
+            Assert.Contains(DiagnosticFaults.Describe(DiagnosticFault.Exception), console.Text, StringComparison.Ordinal);
+            Assert.Contains("Hello.kimiproj", console.Text, StringComparison.Ordinal);
+        }
+        else
+        {
+            Assert.Contains(toolchainFailure, console.Text, StringComparison.Ordinal);
+        }
+
+        Assert.False(File.Exists(Path.Combine(this.directory, "out", "Hello.O2.exe")));
     }
 
     private Project Create(string source = "::Kimi.Console.writeLine(\"Hello\")")

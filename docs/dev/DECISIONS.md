@@ -17728,6 +17728,8 @@ structure is recorded here by the unit that first implements it.
       source or its successor's Assign (a consumer deciding by shape); writing phases through intrinsic rows with no MIR call.
     - In shared structure: phase routines in `TestRuntime.ll` (a declared legacy `.ll` change for the same meaning); a MIR producer
       (PD22); a builder `replace` mark on Drop (a MIR form change for an implementation-defined label).
+  - Amended by R8-M52 (R8-I1): the limit after R8 is 27, not 28 (plan revision 30), set by R8-I1; the members are 27 since R8-W2 c2b
+    (R8-M44).
 - **R5-M138 The owner confirms C10a's two departures** (owner, 2026-10-27, after C10a's design; verbatim 「C10a の逸脱 2 件（(i)
   テストランタイムが記録値を観測まで保持するための旧生成器 .ll 変更、(ii) ARCH の Backend 依存注記を Testing のカタログのサイト番号・ケース／成果物 ID・ランタイムテキスト・エントリ書き出し・値種別へ広げること）を承認します。」) The
   departures R5-M136 records are confirmed:
@@ -17979,6 +17981,8 @@ structure is recorded here by the unit that first implements it.
     (R8 and PD21 plan them); a capability row for the import Item (more code than its call).
   - Superseded in part by R8-M16: the buffer half of `BodylessWitness` (FixedBuffer's and HeapBuffer's `reserve`) ended; the import half
     stays until G2.
+  - Superseded in part by R8-M52 (R8-I1): the `Unproduced` intrinsic row of its broken-contract list; `IntrinsicWriter.Unproduced` is
+    deleted, every member having a MIR producer and a writer since R8-S2c (R8-M34).
 - **R5-M147 X1's exit sweep, and an address-matched control for O2 corpus A/Bs** (owner, 2026-10-28 and 2026-10-29; extends R5-M135) X1
   (plan §4 row X1, §5.3) ran at dev `17cd554ab`: sel fails exactly the 110 decided P42 rows (R5-M144, R5-M145); the native outcomes of all
   6,089 fixtures are equal, 6 of them under decided deviations; the LLVM verifier passes both generators, and sel's `.ll` is identical to
@@ -18826,6 +18830,9 @@ structure is recorded here by the unit that first implements it.
     and no other program reaches generation's exceptions without a production seam. U9b deletes the `generating` exclusion and its state:
     `Publish` classifies its steps before and after code generation in two catches, and generation runs between them, outside both, so the
     rule above holds by structure (no test observes it: no seam).
+  - Amended by R9-M10: the project's own result (`Project.BuildTargetsAndPublish`) and the build's own result (`Project.Build`) end
+    as Faulted the same way, beside the front end's and the Emission result; under `Project.Build` the toolchain's classification
+    applies only around its own calls.
 - **R5-M170 The instance collector limits growth, not depth (G332 U1)** (2026-10-31, PLAN G332; the owner approved the departure from K
   package 4.6/KD9 together with BU-71, verbatim 「まとめて承認します」 (2026-10-31); supersedes KD9's whole limit clause and amends R5-M166's Known
   limit)
@@ -21023,10 +21030,11 @@ R8-M* and R9-M* by the stage of the recording unit.
     other signatures in `IntrinsicOperations.kimi`): `replace` destroys the old value in place and places the new one (`Raw.initialize`);
     `exchange` takes, places and returns the old value; `swap` holds the first, places the second, then the held one. Callers keep the
     identity contract: the published rows, `Binding.Retention.Transfers`' keys and BU-42's `ReferentStores` (empty).
-  - **Temporary: `replace`'s destruction.** `replace` destroys through `Storage.destroyValues<T>(place@raw/u8, 1)`, because
-    `_ = (*p)@move` destroys a temporary copy today (PLAN G670). Removal: when G670 lands (the Middle's fix of `MirBuilder.Discard`), a
-    Back Minor unit moves `replace` to `_ = (*place)@move`, which then destroys the Place itself (SPEC 5.2.3) and is the library's one
-    form for destroying one value in place; `destroyValues` stays the form for a sequence of n values.
+  - **`replace`'s destruction** (temporary ended, 2026-11-18, 6664a43f0; its event: PLAN G670, DECISIONS R4-M194): `replace`
+    destroys the target through `_ = (*place)@move`, which since G670 destroys the Place itself, its `drop` included (SPEC 5.2.3,
+    14.2.4), with no temporary; it is the library's one form for destroying one value in place, the form `exchange` and `swap` take
+    through. `destroyValues` stays the form for a sequence of n values (`Array`, `Storage`; its other callers keep it). Generated
+    code changes, observable behaviour does not (the commits, 6664a43f0 and 49cff49b8).
   - **Rows.** `replace` takes `CallerLocation` (its glue receives the call's location, SPEC 22.5.1) and keeps `Row: Replace`. `exchange`
     and `swap` gain `Row: None`. Only A4 read the old bodiless `Inputs` class, and it composes the empty row instead, the same summary;
     the borrow readers (`Destroying`'s `Destroys`, `InPlaceTarget`'s `InPlace`) give the same answer for a `None` row as for no row, and
@@ -22652,6 +22660,15 @@ R8-M* and R9-M* by the stage of the recording unit.
     - Record placement: g15x and the alias rows at the alias (1:1). `milestone/Milestone41` and `Milestone43`, which name `Weak`,
       keep their `Unsupported_Kd` (8:26 in Milestone41) at the same place, where the base's `MissingFailure` gave it (G1-3b-2's
       re-check, R2).
+  - **RP8 (W-232's slot T-W232; the owner's acceptance, verbatim 「W-232  (a) このまま着地させる」, K's dialog, 2026-11-16 14:4x).**
+    A a63b1598b, B bcf64ffc2 (with PLAN G952), 12 rounds: O2 unchanged (13 kernels, code differs in 0); one Bind row beyond, Hello
+    cold B/A' 1.039 over RP8's 1.03 and outside its A'/A 1.027; every other Bind row within or better; cold bytes -2.2 MB (G952's),
+    warm 0 B. The owner accepted the Hello row as R8-G1's cost: its library-side symbols (`BindingSymbol` 192 -> 208 B, 19 more
+    symbols, the `#Lang` Attributes), about +210 KB of cold Bind allocation per compilation, the same on every program. T-302 (W-232
+    alone, blocking GC) read RawStores' cold Bind B/A' 1.112 and Hello's 1.037, warm Bind within on all three programs: the extra
+    bytes move which of the 8 cold rounds take a gen2 collection, so the median steps by about half a gen2 pause. The owner's O-387
+    (a) (verbatim 「質問の回答は、すべて推奨通り」, 2026-11-17) puts it under the same acceptance, with no recovery unit and no harness
+    change. Removal: G949 Stage 2 (R8-L1), the per-process freeze of the library's Binding and HIR.
   - **Supersedes in part:** BU-118's "one enum member" sentence (four facts, one read of the Name); R4-M23's and R8-M42's `Bodyless`
     facts (`BodylessKind`, read from `Definition`); R8-M22's producer kind `ConsoleWriteStdout` and its signature-only
     `Console.kimi`; R8-M30's `FindDeclaration`; R8-M46's `StorageReserveDispatch` member; R8-M48's `None` row of the Body
@@ -22796,27 +22813,32 @@ R8-M* and R9-M* by the stage of the recording unit.
   - **Adopted.**
     - `MirProgram`'s library segment (ordinals 0..D-1, the library walk's order) is built, validated and step-2-analyzed (A1, A2,
       A4's local facts), and its site templates and layout needs are listed, once per library version, stamped
-      `MirProgram.LibraryVersion`; the program segment is rebuilt per program version over it (`ClearProgram`). The segment is kept
-      per compilation across that compilation's versions and never shared between compilations (O-381 (b): no MIR freeze, no M-B4
+      `MirProgram.LibraryVersion` (the builder's keep test; a keeper of library facts compares the program and its `LibrarySegment`,
+      R9-M9 (U2-K-a)); the program segment is rebuilt per program version over it (`ClearProgram`). The segment is kept per
+      compilation across that compilation's versions and never shared between compilations (O-381 (b): no MIR freeze, no M-B4
       refusal, no U5b or U5c for MIR).
     - A kept fact is a function of the library segment alone. Every judgment over the root range (A3, A5, `MirOrigins.Findings`, the
       collector's A3b) runs every version over both segments' root-range bodies; no stamp holds the range.
     - One body pool and one key map: `Bodies` one span, `LibraryBodies` and `ProgramBodies` read-only views of it, `Body(ordinal)`
-      one read, `this[key]` one lookup, `ClearProgram` removing only the program's keys (by walking `ProgramBodies`). They follow
-      G951's holes within R8-M33's library range (from U2-K, DECISIONS R9-M9's Staged bullet; until then a lazy build's library
-      range holds the library's templates; `LibraryCount` and the split rule `ordinal < D` stay; C-378 (1)(b) as amended); R8-M33's
-      Staging line is superseded by G951's entry (R9-M9, "Library bodies are built on demand"), not by this one.
+      one read, `this[key]` one lookup, `ClearProgram` removing only the program's keys (by walking `ProgramBodies`) (partly
+      superseded by R9-M9 (U2-K-a): `Bodies` is the build-order list over a pool by ordinal, `ProgramBodies` is `VersionBodies`, and
+      `MirDropTable.LibraryHolds` replaces the split rule `ordinal < D`). They follow G951's holes within R8-M33's library range
+      (from U2-K-b, DECISIONS R9-M9's Staged bullet; until then a lazy build's library range holds the library's templates and
+      `LibraryCount` stays; C-378 (1)(b) as amended); R8-M33's Staging line is superseded by G951's entry (R9-M9, "Library bodies
+      are built on demand"), not by this one.
     - Every per-ordinal or per-node library entry lives in its owner's data-only library store beside that store's rows and is read
       through M-B1's one split rule (`ordinal < D`; A4's nodes below the library's node count): A2's per-body ends (`MirDropTable`'s
       segment store, `MirDropTable.Of`), A4's `bases` and node entries (`MirEffects.Locals`, `MirEffects.Base`), the collector's
-      `starts` and `needStarts` (`InstanceCollector.TemplateStore`, `TemplatesOf`). A program store is indexed by the ordinal or
-      node id itself, with no offset, so each owner has one index space over G951's fixed library ordinals and no store records a
-      view's offset; the unused prefix [0, D) of each program store is its price (C-378 (1)(a)). Append-order stores (A2's rows and
-      points, A4's items, edges and local keys, the collector's sites and needs) have a data-only library store and a program store.
-      A4's Field numbers are one map (`MirEffects`' `fieldIds`), each store listing the Fields it numbered and `BeginProgram`
-      removing the program's; the library declares no mutable static Field, so the map's library part is empty (C-381 M3; G950-K's
-      tripwire `KimiLibraryShapeTest.TheLibraryDeclaresNoMutableStaticField` until a unit declares one, which then publishes the
-      list from Binding's `LibraryLayer` and splits the map by the declaring module).
+      `starts` and `needStarts` (`InstanceCollector.TemplateStore`, `TemplatesOf`) (the per-ordinal split superseded by R9-M9
+      (U2-K-a): each store keeps a body's own entry by its ordinal and reads no neighbour's, the store named by
+      `MirDropTable.LibraryHolds`; A4's nodes keep the node-count split). A program store is indexed by the ordinal or node id
+      itself, with no offset, so each owner has one index space over G951's fixed library ordinals and no store records a view's
+      offset; the unused prefix [0, D) of each program store is its price (C-378 (1)(a)). Append-order stores (A2's rows and points,
+      A4's items, edges and local keys, the collector's sites and needs) have a data-only library store and a program store. A4's
+      Field numbers are one map (`MirEffects`' `fieldIds`), each store listing the Fields it numbered and `BeginProgram` removing
+      the program's; the library declares no mutable static Field, so the map's library part is empty (C-381 M3; G950-K's tripwire
+      `KimiLibraryShapeTest.TheLibraryDeclaresNoMutableStaticField` until a unit declares one, which then publishes the list from
+      Binding's `LibraryLayer` and splits the map by the declaring module).
     - The segment's rows (construction and broken-HIR records, findings, A1/A2 problems) are kept as data and replayed by their
       owner at the step position where it first added them (`MirReport.Keep`/`Replay`, Cause values moved by the offset), into the
       one per-version report every reader reads. The validator's program pass (G191) runs per segment at its walk's end, so the
@@ -22827,13 +22849,16 @@ R8-M* and R9-M* by the stage of the recording unit.
       (G950's RN2).
     - The collector's library template store is one data-only object (`TemplateStore`: sites, needs, their per-ordinal spans and the
       stamp `MirProgram.LibraryVersion` it was built under), held by the collector per compilation and kept across the compilation's
-      versions; `Run` compares the stamp once and re-templates `LibraryBodies` when it differs. A template is a function of one body
-      and records nothing; A3b (`CheckStatic`, then `CheckOperation` over every statement of a root body without a finding) runs in
-      `Run`'s root loop every version, before `LayOutImports`, in today's order (C-378 (2)). No range bit, no side table.
+      versions; `Run` compares the stamp once and re-templates `LibraryBodies` when it differs (the stamp and the re-templating
+      superseded by R9-M9 (U2-K-a): the store is keyed on the program and its `LibrarySegment`, and the version's one walk templates
+      each body its store does not hold). A template is a function of one body and records nothing; A3b (`CheckStatic`, then
+      `CheckOperation` over every statement of a root body without a finding) runs in `Run`'s root loop every version, before
+      `LayOutImports`, in today's order (C-378 (2)). No range bit, no side table.
     - Which program a library state belongs to: `MirAnalysis`'s library state is keyed on the program object and its library version
       (its A2 library store lives in that program's `Drops`); the collector's store is stamped with the library version alone, valid
       for the one program its compilation's builder publishes (Compilation pairs one builder with one analysis and one collector),
-      until G950-K keys its "current" on the program object too (C-378 (2) as amended), so both owners end with one form.
+      until G950-K keys its "current" on the program object too (C-378 (2) as amended), so both owners end with one form (superseded
+      by R9-M9 (U2-K-a): both owners key it on the program object and its `LibrarySegment`).
     - The library version is Binding's library pass publication (G949 Stage 1, `HirTables.LibraryVersion`). Until G950-K it is the
       pass version, so the segment is rebuilt every version.
   - **Supersedes R8-M33's** Rejected "a physical two-segment layout of every table now, with both segments built per compilation: a
@@ -22849,10 +22874,12 @@ R8-M* and R9-M* by the stage of the recording unit.
     reader); a MIR-side "library never changes" stamp (a second copy of G949's decision); A3b inline in the program's template walk
     plus a walk over kept root bodies (two paths for one check: C-378 (2) form (ii)).
 - **R8-M51 A reader reads its Binding's facts through its own Binding: the route units and the route row (PLAN G949 Stage 2,
-  R8-L1 U0b)** (Back, 2026-11-17; U0b-T2, Major, behavior-preserving; G949 Stage 2's plan of record, the design
+  R8-L1 U0b)** (Back, 2026-11-17; U0b-T2 and U0b-N5, each Major, behavior-preserving; G949 Stage 2's plan of record, the design
   `back\notes\l1-s2\design.md` §7b (Revision 2b) under the owner's O-381 (b), with C-376's condition 1; U0b-T2's design
   `back\notes\l1-s2\u0b-t2-design.md` Revision 1, its review ACCEPT WITH NOTES, B's rulings `rulings-t2.md` and `rulings-t2b.md`;
-  the Front's implementation review ACCEPT WITH CONDITIONS on C-380 (F5); extends R8-M31).
+  the Front's implementation review ACCEPT WITH CONDITIONS on C-380 (F5); U0b-N5's design `back\notes\l1-s2\u0b-n5-design.md`, its
+  review ACCEPT WITH NOTES, B's rulings `rulings-n5.md` and `rulings-n5b.md`, the Front's review on C-380 (F5) and the Middle's on
+  C-384; extends R8-M31).
   - **Adopted.** A Binding fact is read from the reader's Binding (a Binding member's `this`, the Binding a caller passes, the HIR
     publisher's and `ClosureEffects`' `binding`), never from a node's compilation (`CodeContext.Compilation`,
     `Kotonoha.Compilation`), so that a compilation's MIR builder can read library nodes after the freeze's Binding is dropped
@@ -22871,12 +22898,51 @@ R8-M* and R9-M* by the stage of the recording unit.
     O1's `Binding.OriginDiagnostics.cs:137` (reached from Core's problem publication through `OriginRelationFacts`). C2's guards on
     `IsResolvedSlice`, `PairAdmitted` and `HasExclusiveIndexer` (s23) form U0b-C2 after S1-1, whose `Frozen` states "after the
     library pass".
+  - **U0b-N5's form.** U0b-N5 removes `Binding.Patterns.Model.cs:116`, `BindingModel.cs:122`, `Binding.PlaceOrigins.cs:50`,
+    `Binding.Lints.cs:373` and O1's `Binding.OriginDiagnostics.cs:137` in one behavior-preserving commit (the route row 38 -> 33, in 17
+    files; in `Compiler/Binding` 26 -> 21). A static of another type that MIR or Core reaches takes the reader's Binding as its first
+    parameter (`BoundMatch.Of`, `PairBinder.Collect`; MIR passes its compilation's Binding, Binding `this`); a member of `Binding`
+    that reads Binding becomes an instance member, also when Core reaches it (`PlaceOriginBinder`, `RequiresUnsafe`, `BorrowSource`
+    and the two statics that reach it, `OriginRelationFacts`, which Core's problem publication calls on `this.Binding` as it calls
+    `RestingCauses`, and `ReportOriginRelation`). `PairBinder.Collect` stays although it only forwards to `Binding.PairBinders`: it is
+    the published entry of the canonical Semantics cases component (COMPILER_ARCHITECTURE's Canonical components), not one of the four
+    Binding views Mir/Build's dependency row names.
   - **Rejected.** T2 alone with `PlaceAuthority` fetching the route to pass on (the row would rise: a second copy of the route the
     units remove); U0b-N5 first (symmetric); `ElementAccess` as a Binding partial (DECISIONS BU-166, R4-M194 and two
     `ArchitectureRulesTest` rows name the component and its file; revisited only if a later unit makes `ElementAccess` Binding-only
     by contract); `IndexerCall` and `IsResolvedSlice` kept as forwarders (wrappers without semantics; the second repeated
     `Binding.IsResolvedSlice`'s `IndexKoto` test); C2's guards in U0b-T2 or U0b-N5 (before S1-1's `Frozen` any condition is never
-    true or a temporary pass test S1-1 would replace).
+    true or a temporary pass test S1-1 would replace). U0b-N5: a Binding parameter on Binding's own statics (two receivers;
+    `ReportOriginRelation` would exceed six parameters); deleting `PairBinder.Collect` (Mir/Build would read `Binding.PairBinders`
+    as a fifth Binding view); O1 as a second commit (both parts are behavior-preserving; a second commit needs its own
+    behavior-preserving comparison).
+- **R8-M52 The intrinsic table is closed at 27 (R8-I1)** (Back, 2026-11-17; R8-I1; Major; plan §5.2's I1 row; RQ9, RQ16, RP18;
+  behaviour unchanged apart from the tightened limit).
+  - **Counts (RQ9).** `IntrinsicId` 27 with `None` (unchanged since R8-W2 c2b, R8-M44); `IntrinsicRows` one row per member but `None`,
+    in order (`Complete`); `IntrinsicWriter` 15 -> 14 (`Unproduced` deleted); `LayoutNeed` 4, unchanged (verified: every member read;
+    the rows' Need column gives `TypeArguments` to RawAllocate, Stride and DestroyValues and `None` elsewhere).
+  - **The limit.** COMPILER_ARCHITECTURE's `IntrinsicId` row 34 -> 27, and
+    `KimiLibraryShapeTest.EveryCompilerFunctionHasOneDisposition`'s assertion `<= 34` -> `<= 27`, as its comment states. A reduced
+    bound needs no owner approval (COMPILER_ARCHITECTURE; RP18).
+  - **`IntrinsicWriter.Unproduced` deleted** with its code generation arm (`FunctionCodegen.Intrinsics`' `InternalInvariant_Kd`
+    record) and the contract sentences naming it (`IntrinsicRows`' and `FunctionCodegen.Intrinsics`' headers, `Routine`'s comment).
+    No row carries it since R8-S2c (R8-M34: `FormatFloat` `Unproduced` -> `Requested`, after `WriteStdout` and `FormatInteger128`), so
+    its contract, "the unit that first produces one writes its row", has no subject. The other `IntrinsicWriter` switches keep their
+    arms: `Intrinsic`'s default still throws for Routine, Requested and Allocate (a routine row whose routine is null is a broken
+    table); `Routine`'s default returns null for every non-routine writer; `CopySlots`' default takes the routine's slots.
+    Supersedes in part R5-M146's broken-contract list ("an `Unproduced` intrinsic row ... record at their sites"): the reason, intrinsic
+    rows without a MIR producer, no longer holds (every member has a producer and a writer since R8-S2c).
+  - **RQ16: the "else" branch.** RQ16 removes `formatInteger128` at R9 if R8-W2's Kimigayo formatter reaches i128 within variance,
+    else in a post-reduction unit (the owner's answer (a): "R9 or after, by measurement"). The else branch holds because R8's Kimigayo
+    formatter does not format i128: the S2b2 specializations `format<i128>` and `format<u128>` call `Storage.formatInteger128` (R8-M30).
+    `Storage.formatInteger128` (`IntrinsicId.FormatInteger128`, `FormatInteger128Runtime.ll.in`'s two defines) therefore stays an
+    interim intrinsic, removed in a post-reduction unit, by measurement: that unit writes the Kimigayo body and measures it against the
+    intrinsic in an O2 kernel row. Such a body is expressible today: a base-2^32 limb division over u64 `/` and `%` needs only the
+    128-bit operations IMPL 21.3.3 supports, the method of `__kimi_decimal_div10` itself. So the limb prototype is that unit's
+    measurement, and no other removal condition is added. The u128 division that R8-M30 says "the backend does not generate" is a fact
+    about the backend; it does not make the intrinsic inexpressible in Kimigayo.
+  - **Comment.** `IntrinsicId.FormatFloat`'s group comment (`KimiLibraryKinds.cs:83`) said "i128 until Kimigayo formats it"; it now
+    says "i128 until a Kimigayo body replaces it (RQ16: a post-reduction unit, by measurement)".
 - **R9-M1 A check's phase sequence is `Compilation.Check`** (2026-11-08; R9-F5; Major, behavior-preserving; review 1 REVISE, then
   review 2). SPEC 23.1.2, 23.2.2; IMPL 20.6.1. Supersedes in part R5-M65 (`Project` reads `Accepts`) and R5-M77 (`Project` discovers
   the test catalog after acceptance and owns it).
@@ -22996,6 +23062,8 @@ R8-M* and R9-M* by the stage of the recording unit.
   - Amends: R5-M163, R5-M167 row 15 and R5-M174 ("`C/Emission` keeps the toolchain ... until R9"): the files are `src/Kimi/Build`'s.
   - Amended by R9-M7: the reader theory's types are the folder's top-level ones (a nested type is named through its containing
     type); this entry's verdict is unchanged (Build's only nested type, `NativeToolchain.NativeBuild`, is private).
+  - Amended by R9-M10: Build reads `CompilationBuildMetadata` as the value `Project.Build` passes (`RecordLibrary`'s argument), not
+    through `Project.BuildMetadata`.
 - **R9-M7 Documentation is `Kimi.Documentation`, outside the compiler; the association stays in Core** (Middle, 2026-11-11; R9-M1
   part 1, the R7-R9 plan's §5.3 unit M1; Major, behavior-preserving; design reviews 1 REVISE, 2 ACCEPT; implementation review
   ACCEPT; the Front's consent C-224 and the Back's C-225)
@@ -23075,7 +23143,8 @@ R8-M* and R9-M* by the stage of the recording unit.
     reader (G557's rule would need two selectors).
 - **R9-M9 Library bodies are built on demand (PLAN G951)** (Middle, 2026-11-16; the owner's option (a), m-log 11:49, and O-378; the
   design `g951-design.md` §R1 as amended by §R2, its third review ACCEPT WITH NOTES; U0's implementation review ACCEPT WITH NOTES)
-  Major; U0 is behavior-preserving. Extends R5-M168 and R8-M31; amends R5-M183 and R8-M33 as below. U1, U1b and U2 amend this entry.
+  Major; U0 is behavior-preserving. Extends R5-M168 and R8-M31; amends R5-M183 and R8-M33 as below. U1, U1b, U2 and U2-K-a amend
+  this entry.
   - **Adopted (U0, the builder's half).**
     - `MirBuilder.Build(rootModules)` builds every module's default templates, the library's in every build, then the bodies of the
       modules below the root range. Compilation passes `SyntaxTable.LibraryModule + 1`, every body eagerly, until U2, which passes
@@ -23100,10 +23169,11 @@ R8-M* and R9-M* by the stage of the recording unit.
   - **Amends.** R5-M183: the program pass `Validate(program)` is now `Validate(program, body)`, which still sets `HasFinding` on the
     ensuring body of a G191 StaticSlot finding. R8-M33: the library prefix (ordinals 0 to `LibraryCount` - 1) holds in an eager
     build; in a build whose root range is the program's, `LibraryCount` counts the library's templates and a demanded body takes the
-    next ordinal until U2-K adopts G950 R-4's fixed library slots. `MirValidator`'s program pass leaves `Bodies`' walkers: it reads
-    each body by ordinal from the builder's queue. Supersedes R8-M33's Staging (`Bodies` the program's suffix at U5b): under G951
-    the library range keeps R8-M33's prefix and split rule with holes, and `Bodies` follows G951's build-order list; R8-L1 has no
-    U5b (PLAN G949 Stage 2 under O-381 (b)).
+    next ordinal until U2-K-b adopts G950 R-4's fixed library slots. `MirValidator`'s program pass leaves `Bodies`' walkers: it
+    reads each body from the builder's queue (by ordinal until U2-K-a, by its position in the build-order list since). Supersedes
+    R8-M33's Staging (`Bodies` the program's suffix at U5b): under G951 the library range keeps R8-M33's prefix with holes (U2-K-b)
+    and its split rule until U2-K-a (`MirDropTable.LibraryHolds` since), and `Bodies` follows G951's build-order list (U2-K-a);
+    R8-L1 has no U5b (PLAN G949 Stage 2 under O-381 (b)).
   - **Reason.** A one-shot compile of Hello built and analyzed 318 library bodies to use 5 (G337; K's 11-16 survey rank 2). U0
     changes no output; it gives U1 (A4's round rule, `MirAnalysis.Step`, `MirDropTable.Holds`, the Judging row), U1b (the
     collector's round rule), U2 (the switch to the source range, the records rule) and U2-K (G950 R-4's slots) one demand point and
@@ -23116,8 +23186,9 @@ R8-M* and R9-M* by the stage of the recording unit.
     - A second node-to-key map for `Demand`; reading an unbuilt body as bodyless; building the whole library on its first lookup.
   - **Adopted (U1, the driver's half).**
     - Steps 1 and 2 have one path, `MirAnalysis.Step`: every program-segment body built since the last step, in build order, a body
-      a lookup builds meanwhile included, so A2's entry of each body is its build position; the library step (R8-M50) steps the
-      library segment's bodies, so a version's stepping starts at `LibraryCount` whether the segment is kept or new. A2 publishes
+      a lookup builds meanwhile included, so A2's entry of each body is its build position (since U2-K-a, its own entry by its
+      ordinal); the library step (R8-M50) steps the library segment's bodies, so a version's stepping starts at `LibraryCount`
+      (since U2-K-a, at the library list's length, a position) whether the segment is kept or new. A2 publishes
       `MirDropTable.Holds(ordinal)`, the fact that the body's entry is closed in its segment's store (a kept library body's in its
       library version). A round of a consumer of step-2 facts that reads a body A2 does not hold misses: it adds nothing, goes on to
       its end and commits nothing; the consumer's driver steps and runs it again until a round is clean. A4 reads a body's nodes
@@ -23152,11 +23223,11 @@ R8-M* and R9-M* by the stage of the recording unit.
       record path (R5-M151).
     - A template records nothing (R8-M50), so the program segment's templates are kept across a version's runs and extend in build
       order over the bodies built since (`extent`, a build position; `Replay` extends them when a lookup built bodies during the
-      run), each read from its segment's store (`TemplatesOf`, `ordinal < D`). The driver (`Compilation.Collect`) steps the bodies
-      built since (`MirAnalysis.Step`) and runs again until a run is clean; a clean run replays only stepped bodies from the same
-      roots in the same FIFO order, so it equals one run over an eager build, and every body code generation reads is stepped, with
-      no step after it within a version (across versions under the kept library segment: U2-K, the Back's C1). `Work`, `RunCount`
-      and `Templated` sum the runs of one version.
+      run), each read from its segment's store (`TemplatesOf`, by `ordinal < D` until U2-K-a, by `MirDropTable.LibraryHolds` since).
+      The driver (`Compilation.Collect`) steps the bodies built since (`MirAnalysis.Step`) and runs again until a run is clean; a
+      clean run replays only stepped bodies from the same roots in the same FIFO order, so it equals one run over an eager build,
+      and every body code generation reads is stepped, with no step after it within a version (across versions under the kept
+      library segment: U2-K-b, the Back's C1). `Work`, `RunCount` and `Templated` sum the runs of one version.
   - **Amends R8-M50:** A3b runs in the collector's root loop in every run (inside the run's round, so a missed run's A3b records
     drop with it), not once per version; `Templated` counts the version's runs.
   - **Rejected (U1's and U1b's).** Ending a round at its first missed read (one round per body); a per-ordinal A4 stamp beside A2's
@@ -23179,22 +23250,70 @@ R8-M* and R9-M* by the stage of the recording unit.
     bodies and the library's templates; `MirBodies` counts the built ones; the cold collection is `Compilation.Collect`'s loop with
     its steps untimed and its run count reported); tests of the library's bodies read a build with the library check's root range
     (`MirBuildTest.LibraryRange` and `LibraryBuild`), the library's census and the c17 rows included (U2-F).
-  - **Staged (U2-K, with or before G950-K; the Back's C-378 A1).** G950 R-4's fixed library slots ("holes"): a demanded library body
-    built into its library-walk ordinal and kept with the library segment. U2-K carries the Back's C1 (A2's per-entry `Holds`; the
-    stepping position and the template extent kept with their segment in build order), F1 with K-A (a library body first demanded
-    during a program version is stepped into the program stores for that version and into the library stores at the next library
-    step; "the library store holds the body" is one published per-ordinal fact read by A2's `Of`, A4's `Base` and the collector's
-    `TemplatesOf`, the Back's A3) and F2 with R-K2' (the kept segment ends at a demanded library body with a record or at a library
-    body its version built and A2 does not hold, so no kept caller's A4 edge names an empty slot and no kept body is unstepped; the
-    shipped library has no record; the Back's B1 on C-378, 09:17), and the rows H3 and K1 (a body built but never stepped through
-    Compilation; K1 on the kept path is C1's fail-before row; H3 through Compilation removes U2-H's reflection seam,
-    `MirAnalysisTest.ABodyBuiltButNotSteppedIsNotJudged`'s injection of `Compilation.mir`) and two rows in Compilation's form:
-    `G950KeptPathTest.ALaterVersionKeepsTheLibrarysBodies` (g8: a later version keeps the library bodies the compilation demanded)
-    and `G950KeptPathTest.AKeptLibraryRowIsPublishedInEveryVersion` (M2, which becomes row K2-a: an injected finding is not
-    republished under R-K2', and its record shows where the body is rebuilt; its premise, asserted first, fails until U2-K), both
-    G950-K's prerequisites. Until then a lazy build's library range holds the library's templates and a demanded body takes the next
-    program ordinal (U0), so no library body survives its version.
+  - **Adopted (U2-K-a, the build-order list and the one per-ordinal fact).** `MirProgram` keeps a body's storage by its ordinal (a
+    pool: `Body(ordinal)`, the one read by ordinal; an ordinal no body of the version is built at is a broken contract,
+    `InternalInvariant`, and a returned body carries no ordinal) and the bodies in build order: the library list (`LibraryBodies`,
+    the bodies built when the library segment ended), then the version's bodies (`VersionBodies`: the bodies built past the library
+    segment in the version, each library body a lookup of the version demanded included). `MirBuilder`'s naming position,
+    `MirAnalysis`'s stepping position and the collector's extent are positions in that list, never ordinals. A2's table publishes
+    the one per-ordinal fact "the library store holds the body" (`MirDropTable.LibraryHolds`; one writer, the library step; stable
+    within a version), which A2's `Of`, A4's `Base` and the collector's `TemplatesOf` read in place of `ordinal < LibraryCount`;
+    each store (A2's segments, the collector's `TemplateStore`) keeps a body's own entry by its ordinal and reads no neighbour's
+    entry. A keeper of library facts (the analysis's library state, the collector's library templates) compares the program and its
+    `LibrarySegment` (the count of library segments the program built); `LibraryVersion` stays the builder's own keep test.
+  - **Staged (U2-K-b, with G950-K).** The library's fixed ordinals (a library definition's ordinal is its position in the library
+    walk, numbered by `MirBuilder` once per library segment and kept with it, so `[0, LibraryCount)` is the library's range in every
+    build and a demanded library body is built into its slot; the Middle 11-17 12:0x: numbered at the library step, not per
+    version), the kept library list and the library step over it from its kept position in every version (the Back's C1); the kept
+    segment ends at a demanded library body with a record or one A2 does not hold (R-K2''), so a version's report equals a fresh
+    pipeline's row for row. The owner's O-396 (a): `MirProgram.Clear` and `ClearProgram` clear A2's per-version store where a
+    version starts, so the keep test reads only its own version's step facts; U2-K-b lands after G949 S1-1. Until then a lazy
+    build's library list holds the library's templates and a demanded library body takes the next ordinal (U0), so no library body
+    survives its version.
   - **Rejected (U2's).** The holes inside U2 (needed only by G950's kept segment, unreachable until G950-K; three kept-segment
     decisions would land without a reachable path); one range per builder (it forbids adding a module); the range in the kept
     library stamp (G950-R's two rules for kept facts); a step after the clean collector run to give unstepped bodies A1/A2 problems
     (C-378 (3) as amended; hover reads `Holds` instead).
+- **R9-M10 The toolchain boundary's rule: a compiler exception under `Project.Build` is its result's fault (R9-B2, PLAN G345)**
+  (Middle, 2026-11-18; the R7-R9 plan's §5.3 unit B2; Major; under DIAGNOSTICS rule 9, R5-M169 and R9-M6; design review ACCEPT WITH
+  NOTES, the Middle's rulings on F1-F8; implementation review ACCEPT)
+  - Rule: under `Project.Build`, the toolchain's classification (`NativeToolchain.IsToolchainFailure`) applies only around the
+    toolchain's own calls: (a) the artifact paths with the record's invalidation, (b) the native build or the Library record; such a
+    failure fails the build with its message (`Project.ToolchainFailed`, the one rendering; IMPL 20.3, SPEC 23.2.2). The compiler's
+    steps run between (a) and (b), outside both catches: the project's own checks, each target's front end and Emission, and the
+    Library record's metadata read (`Project.Build` reads `buildMetadata.Single()` and passes it to `RecordLibrary`). Every other
+    exception under the build ends a result as Faulted, through `Project.Faults` and `Project.Publish`: one `CheckFaulted_Kd`
+    (Exception, its message the note) at the project file, beside that result's valid records. The project's own result
+    (`BuildTargetsAndPublish`, shared by `check`, `emit` and `build`: its configuration, lock and target-selection records) gains
+    that fault path as `BuildTarget` has it, for its own checks and a target's report after its results (`Emit`); the build's own
+    result (an empty owner with the fault, after the front-end and Emission results) is rendered by `Build`'s outer catch, for the
+    metadata read, the rendering of a toolchain failure and an exception the toolchain leaves unclassified.
+  - Holds by structure (R5-M169's amendment for generation): no flag and no second predicate; `IsToolchainFailure`'s set is
+    unchanged.
+  - Known limits: (1) inside the toolchain's calls the set still classifies by type whatever raised the exception: a listed type
+    thrown by the host's report callback (the toolchain's "Built: " line) or by a `Kimi.Build` defect prints as a toolchain failure.
+    Form J (PLAN G983: the toolchain-file readers turn `JsonElement`'s accessor failures into `InvalidDataException`) removes the
+    set's `KeyNotFoundException` and `InvalidOperationException`; publication's kinds (`ArgumentException` with its subtypes,
+    `NotSupportedException`; R5-M165) stay. (2) An exception in a target's preparation before `BuildTarget`'s front end
+    (`DependencyResolver.Resolve`, `DependencyLock.Validate`, `new Compilation`) ends the project's own result, and that target's
+    own records (its registered project file, lock or resolution records) are not rendered; no command input reaches it (resolution
+    and lock failures are records); `BuildTarget`'s finalization is not widened here (PLAN G829's area). (3) Outside
+    `Project.Build`, `CommandExecution` and `TestCommand` still apply the set over compiler steps (PLAN G984).
+  - Tests: `NativeToolchainTest.ABuildFailsByTheToolchainBoundarysRule` (project checks: a null target list escaped the build;
+    report: the host's `InvalidOperationException` after generation printed as a toolchain failure; the toolchain's message: the
+    host console failing at `ToolchainFailed`'s line escaped the build, now the build's own fault, the row that observes `Build`'s
+    outer catch; three toolchain rows keep their message); `EmissionArtifactsTest.AnExceptionEndsTheCommandsResultAsFaulted`
+    (`Check()` and `Generate` with a null target list, `Generate`'s report; each escaped). No production seam: the triggers are the
+    host's console and the caller's project values; the metadata read itself has none (one target is checked whenever the front end
+    accepts).
+  - Rejected: removing the two accessor types from the set alone (a malformed manifest, record or installation file would escape
+    every command unhandled); form J in this unit (about 50 accessor sites over five documents; the manifest's reader is R9-B1's row
+    table; its own PLAN row); a toolchain exception type (the framework's failures would still be classified by type at its
+    entries); a local flag steering one catch (R5-M175 removed `generating` for structure); every exception from a toolchain call as
+    the toolchain's (a `Kimi.Build` defect would print as a toolchain failure); the fault path only in `Build` (a fault ending the
+    project's own result would follow it as a second result, and `check`/`emit` would keep the escape); one helper for the four
+    finalization points' "try, `Faults`, finally `Publish`" (each differs: `BuildTarget`'s `rejected`, `PublishArtifacts` publishes
+    only on failure, `Build`'s empty owner; not shorter).
+  - Amends R9-M6 (the dependency rule's "`CompilationBuildMetadata`, through `Project.BuildMetadata`": Build reads the value
+    `Project.Build` passes) and R5-M169 (the results with a fault path: the project's own and the build's, beside the front end's
+    and the Emission result; DIAGNOSTICS §7).

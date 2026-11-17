@@ -389,7 +389,7 @@ public sealed partial class TyCtxtTest
         var pair = function.Parameters[0].Type.TypeOf()!;
         var application = function.Parameters[1].Type.TypeOf()!;
         var binders = new List<PairBinder>();
-        PairBinder.Collect(function, binders);
+        PairBinder.Collect(c.Binding, function, binders);
         Assert.Equal(HirPlaceKind.Deref, TyCtxt.Layer(types.Reference(SemanticsKind.Uniq, BoundType.I32), out var below, out var binder));
         Assert.Same(BoundType.I32, below);
         Assert.Null(binder);
