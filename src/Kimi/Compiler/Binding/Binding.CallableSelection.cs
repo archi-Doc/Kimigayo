@@ -193,8 +193,9 @@ public sealed partial class Binding
     // that component: the fit names it (argumentMisfit), and the declared component, formed again on its own, is the failing
     // part, so the run blames the bindings its layers read and not its siblings' (the owner's O-392 (c), G812 rulings 109, 111;
     // the contract fit's member is the same reading, ContractFits). A failure at the own shape of a part that formation keeps
-    // (a Tuple's arity, an array's kind) reads no binding: the failing part forms nothing, so the run blames none (ruling 116). A
-    // contextual Case that awaits its call is judged at the parameter, which its call completes it at (FitCaseAt; ruling 118).
+    // (a Tuple's arity, an array's kind) reads no binding: the failing part forms nothing, so the run blames none (ruling 116). The
+    // Item is the selected candidate, so a contextual Case met in the fit is judged at the Type the run formed (splitCall,
+    // FitCaseAt; rulings 118, 120).
     private bool ItemCallFails(InvocationKoto call, BindingScope scope, BoundType item, BoundType? expected)
     {
         if (item is not { Kind: BoundTypeKind.FunctionItem, Symbol: { Type: { } result, Declaration: FunctionKoto function } })
@@ -216,9 +217,12 @@ public sealed partial class Binding
                 return true;
             }
 
-            if (this.ItemPart(declared, item, function, scope) is { } parameter &&
-                this.FitArgument(call.ArgumentNodes[i], parameter, scope, call, out _) is var fit &&
-                (fit == CandidateApplicability.Waiting ? this.FitCaseAt(call.ArgumentNodes[i], parameter, scope) : fit) == CandidateApplicability.Inapplicable)
+            var enclosing = this.splitCall;
+            this.splitCall = call;
+            var fails = this.ItemPart(declared, item, function, scope) is { } parameter &&
+                this.FitArgument(call.ArgumentNodes[i], parameter, scope, call, out _) == CandidateApplicability.Inapplicable;
+            this.splitCall = enclosing;
+            if (fails)
             {
                 if (this.argumentMisfit.Names(declared!, out var element))
                 {
