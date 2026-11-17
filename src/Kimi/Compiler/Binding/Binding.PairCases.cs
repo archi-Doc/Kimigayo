@@ -471,7 +471,7 @@ public sealed partial class Binding
         }
 
         return type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Uniq or SemanticsKind.ObjUniq, Components.Count: 1 } &&
-                PathAuthority(node, assignment) != SemanticsKind.Ref ? HirAcquire.Reborrow : HirAcquire.Move;
+                this.PathAuthority(node, assignment) != SemanticsKind.Ref ? HirAcquire.Reborrow : HirAcquire.Move;
     }
 
     // BareAcquisition under a case assignment (BareAcquire's): every pair layer, an adaptation family included (TryAdaptationSelector),
