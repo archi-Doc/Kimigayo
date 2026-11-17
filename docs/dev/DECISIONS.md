@@ -22856,6 +22856,35 @@ R8-M* and R9-M* by the stage of the recording unit.
     keeping the segment only when it is clean (a fallback); A4's library solve now (R-2); counters keeping library totals (R-3; no
     reader); a MIR-side "library never changes" stamp (a second copy of G949's decision); A3b inline in the program's template walk
     plus a walk over kept root bodies (two paths for one check: C-378 (2) form (ii)).
+- **R8-M51 A reader reads its Binding's facts through its own Binding: the route units and the route row (PLAN G949 Stage 2,
+  R8-L1 U0b)** (Back, 2026-11-17; U0b-T2, Major, behavior-preserving; G949 Stage 2's plan of record, the design
+  `back\notes\l1-s2\design.md` §7b (Revision 2b) under the owner's O-381 (b), with C-376's condition 1; U0b-T2's design
+  `back\notes\l1-s2\u0b-t2-design.md` Revision 1, its review ACCEPT WITH NOTES, B's rulings `rulings-t2.md` and `rulings-t2b.md`;
+  the Front's implementation review ACCEPT WITH CONDITIONS on C-380 (F5); extends R8-M31).
+  - **Adopted.** A Binding fact is read from the reader's Binding (a Binding member's `this`, the Binding a caller passes, the HIR
+    publisher's and `ClosureEffects`' `binding`), never from a node's compilation (`CodeContext.Compilation`,
+    `Kotonoha.Compilation`), so that a compilation's MIR builder can read library nodes after the freeze's Binding is dropped
+    (O-381 (b): Stage 2 freezes Binding and HIR only; the library's MIR is built per compilation, G951). `ArchitectureRulesTest`'s
+    `SourcePatternStaysAtItsSites` row "Routes from a node to its compilation" names the route's sites over `src/Kimi` by file and
+    occurrence (C-376's condition 1: a named list, so a new route fails it). U0b-T2 introduces it at 38 occurrences in 22 files (52
+    before; 26 in `Compiler/Binding`); U0b-1, U0b-6, U0b-P3 and U0b-N5 lower it by 11, 6, 4 and 5 to its 12 sites outside Binding,
+    `CodeContext`'s property and the parser's, which R7 owns (U3's end state).
+  - **Route units' grouping (U0b-T2, U0b-N5, U0b-C2).** `ElementAccess`'s statics and `Binding.PlaceAuthority`'s statics call each
+    other, so one unit converts both: U0b-T2 takes the 8 `ElementAccess.cs` lines and `Binding.PlaceAuthority.cs:141, 150, 274, 319,
+    414` (on e12b222ed; 14 occurrences). `ElementAccess` stays a static class: its 19 Binding-reading statics take the reader's
+    Binding as their first parameter; its forwarding members `IndexerCall` and `IsResolvedSlice` are deleted, their callers calling
+    Binding's own; the 24 Binding members (25 declarations) that reach them become instance members. `ElementAccess.TryType` and
+    `StaticSelector` stay parameterless: they reach Binding only through `AdtDef`'s route (`AdtDef.cs:162`), which U0b-1 removes.
+    U0b-N5 keeps `Binding.Patterns.Model.cs:116`, `BindingModel.cs:122`, `Binding.PlaceOrigins.cs:50`, `Binding.Lints.cs:373` and
+    O1's `Binding.OriginDiagnostics.cs:137` (reached from Core's problem publication through `OriginRelationFacts`). C2's guards on
+    `IsResolvedSlice`, `PairAdmitted` and `HasExclusiveIndexer` (s23) form U0b-C2 after S1-1, whose `Frozen` states "after the
+    library pass".
+  - **Rejected.** T2 alone with `PlaceAuthority` fetching the route to pass on (the row would rise: a second copy of the route the
+    units remove); U0b-N5 first (symmetric); `ElementAccess` as a Binding partial (DECISIONS BU-166, R4-M194 and two
+    `ArchitectureRulesTest` rows name the component and its file; revisited only if a later unit makes `ElementAccess` Binding-only
+    by contract); `IndexerCall` and `IsResolvedSlice` kept as forwarders (wrappers without semantics; the second repeated
+    `Binding.IsResolvedSlice`'s `IndexKoto` test); C2's guards in U0b-T2 or U0b-N5 (before S1-1's `Frozen` any condition is never
+    true or a temporary pass test S1-1 would replace).
 - **R9-M1 A check's phase sequence is `Compilation.Check`** (2026-11-08; R9-F5; Major, behavior-preserving; review 1 REVISE, then
   review 2). SPEC 23.1.2, 23.2.2; IMPL 20.6.1. Supersedes in part R5-M65 (`Project` reads `Accepts`) and R5-M77 (`Project` discovers
   the test catalog after acceptance and owns it).
