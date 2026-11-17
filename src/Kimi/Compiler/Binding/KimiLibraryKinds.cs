@@ -80,7 +80,7 @@ internal enum IntrinsicId : byte
     Abort, // $abort (SPEC 17.4).
     Fail, // A fixed SPEC 22.5.2 code.
     WriteStdout, // SPEC 22.1, 22.5.
-    FormatFloat, // Formatting (SPEC 22.9.1): Ryu, the code of a Writer's reserve, the erased reserve through it, i128 while the backend has no 128-bit division (RQ16).
+    FormatFloat, // Formatting (SPEC 22.9.1): Ryu, the code of a Writer's reserve, the erased reserve through it, i128 until a Kimigayo body replaces it (RQ16: a post-reduction unit, by measurement).
     ReserveDispatch,
     ErasedReserve,
     FormatInteger128,
