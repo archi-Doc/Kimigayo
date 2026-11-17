@@ -474,7 +474,13 @@ public sealed partial class Binding
         {
             // SPEC 8.1.2: matched as the Type it forms (SourcedLayer): a layer, in the caller's terms, by its target against the actual's
             // part below the same layer; an owner binding's target, in the callee's terms, or a family as the Type it is.
+            // DECISIONS D3 (G812 ruling 104, C-E5): in a structural walk each compared split layer is its own part of a split search.
             var target = pattern.Components[0];
+            if (structural)
+            {
+                this.EnterSplitPart();
+            }
+
             return this.SourcedLayer(pattern, actual, function, frame, out var formed) && (formed is null || (IsFormedLayer(formed, target)
                 ? LayerTarget(formed, actual) is { } below && this.Infer(
                     target,

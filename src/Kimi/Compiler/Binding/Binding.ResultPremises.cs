@@ -92,6 +92,7 @@ public sealed partial class Binding
 
         if (HasOpenOrigin(required, evidenceOnly: true))
         {
+            this.EnterJointSplitPart(); // DECISIONS D3: the known-signature comparison reads the whole formed signature.
             if (!this.CallableSubtype(this.ContractType(signature, this.ConstraintScope(use)), required, SignatureOwner(item), out failure))
             {
                 return false;

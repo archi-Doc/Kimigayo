@@ -65,22 +65,22 @@ public class InferenceSlotScalingTest
         }
     }
 
-    // DECISIONS D3 (C-359 C1, G812 rulings 97, 99; SPEC 8.15.2): a check over n bindings that form no Type, its misfit (a Tag at the last
-    // `s/Box`) failing in every combination of their cases, is not judged in 9^n combinations: a binding takes a case only when a
-    // run meets it. A reference `put<U0, ...>` at S costs 8n + 1: each earlier binding the 8 cases that fail at its own part. The
-    // value call of the same Item costs 8(2^n - 1) + 1: a moved Box fits two cases of `s/Box`, so each earlier binding doubles. The
-    // search stops after PairBinder.CaseBound combinations (the check then rests on the split), so no search judges more than 65.
+    // DECISIONS D3 (C-359 C1, E2, E3; G812 rulings 97, 99, 104; SPEC 8.15.2): a check over n bindings that form no Type, its misfit (a
+    // Tag at the last `s/Box`) failing in every combination of their cases, is judged in the 9 cases of the one binding its failing
+    // part reads, at every n: a failing run blames only that part's bindings, and the bindings earlier, passing parts read keep
+    // their case. So for a reference `put<U0, ...>` at S and for the value call of the same Item (32f0cde25: 8n + 1 and
+    // 8(2^n - 1) + 1 combinations, resting on the split at the bound from 8 and 4 bindings).
     [Theory]
-    [InlineData(false, 1, 9)]
-    [InlineData(false, 2, 17)]
-    [InlineData(false, 4, 33)]
-    [InlineData(false, 8, 65)]
-    [InlineData(false, 16, 65)]
-    [InlineData(true, 1, 9)]
-    [InlineData(true, 2, 25)]
-    [InlineData(true, 3, 57)]
-    [InlineData(true, 4, 65)]
-    public void ASplitCaseSearchGrowsWithItsBindingsUpToTheCaseBound(bool call, int bindings, long combinations)
+    [InlineData(false, 1)]
+    [InlineData(false, 2)]
+    [InlineData(false, 4)]
+    [InlineData(false, 8)]
+    [InlineData(false, 16)]
+    [InlineData(true, 1)]
+    [InlineData(true, 2)]
+    [InlineData(true, 4)]
+    [InlineData(true, 8)]
+    public void ASplitCaseSearchJudgesOnlyTheCasesOfItsFailingPart(bool call, int bindings)
     {
         var all = Enumerable.Range(0, bindings).ToArray();
         var reference = $"    let f: ({List(i => $"U{i}")}, {string.Join(", ", Enumerable.Repeat("Box", bindings - 1).Append("Tag"))}) -> i32 = put<{List(i => $"U{i}")}>\n    return 0\n";
@@ -93,9 +93,8 @@ public class InferenceSlotScalingTest
             string.Concat(all.Select(i => $"    t{i} is owner or ref\n    U{i} is Owned\n")) + (call ? valueCall : reference);
         var c = MinimalEmissionTest.Analyze(source);
         Assert.False(c.Binding.Result.IsComplete);
-        Assert.Equal(combinations, c.Binding.SplitCaseRuns);
-        var failure = combinations > PairBinder.CaseBound ? BindingFailure.Unsupported : call ? BindingFailure.NoApplicableCandidate : BindingFailure.TypeMismatch;
-        Assert.Contains(c.Binding.Issues, x => x.Failure == failure);
+        Assert.Equal(9, c.Binding.SplitCaseRuns);
+        Assert.Contains(c.Binding.Issues, x => x.Failure == (call ? BindingFailure.NoApplicableCandidate : BindingFailure.TypeMismatch));
 
         string List(Func<int, string> item) => string.Join(", ", all.Select(item));
     }

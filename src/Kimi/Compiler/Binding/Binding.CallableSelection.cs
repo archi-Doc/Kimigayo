@@ -203,6 +203,7 @@ public sealed partial class Binding
 
         for (var i = 0; i < call.ArgumentNodes.Count; i++)
         {
+            this.EnterSplitPart();
             if (call.GetArgumentLabel(i) is not null || (this.ItemPart(function.Parameters[i].Type.BoundType, item, function, scope) is { } parameter &&
                 this.FitArgument(call.ArgumentNodes[i], parameter, scope, call, out _) == CandidateApplicability.Inapplicable))
             {
@@ -210,6 +211,7 @@ public sealed partial class Binding
             }
         }
 
+        this.EnterSplitPart();
         return expected is not null && this.ItemPart(result, item, function, scope) is { } formed && !this.FitsStructuralPartAt(formed, expected, call) &&
             this.ExpectedAdaptation(call, formed, expected, recordPair: false) is null;
     }

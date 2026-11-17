@@ -16,6 +16,18 @@ public sealed partial class Binding
 
     private (int Slot, ReferenceSlotFailure Failure) referenceSlotFailure;
 
+    // The identity of a frame's first `count` slot bindings, by which a part that bound one is told (InferReferencePart).
+    private static int SlotsIdentity(SlotFrame frame, int count)
+    {
+        var identity = 0;
+        for (var i = 0; i < count && i < frame.Types.Length; i++)
+        {
+            identity = HashCode.Combine(identity, System.Runtime.CompilerServices.RuntimeHelpers.GetHashCode(frame.Types[i]!));
+        }
+
+        return identity;
+    }
+
     // Ordinary members of Origin-bearing containers remain limited; constrained requirements use RequirementItems.
     // An instance member is referenced unbound through its Type (SPEC 7.3).
     private static bool UnsupportedReference(BindingSymbol candidate, bool unbound, BoundType? declaringType)
@@ -85,10 +97,13 @@ public sealed partial class Binding
                     slotFailure = this.referenceSlotFailure;
                 }
 
-                if (this.RestsOnSplit(use, candidate, required, scope, unformedMark, state))
+                if (this.UnformedSince(unformedMark))
                 {
-                    resting = true;
-                    state = CandidateApplicability.Pending;
+                    // DECISIONS D3: the candidate's own run left its unformed parts unknown, so its state, and a Constraint fact its
+                    // proof left over an unformed Type, are the split's: the combinations decide (SplitState).
+                    state = this.SplitState(use, candidate, required, scope, unformedMark, state);
+                    resting |= state == CandidateApplicability.Pending;
+                    constraint = state == CandidateApplicability.Inapplicable ? null : constraint;
                 }
 
                 evaluated[index++] = new(candidate, state, null, 0, ConstraintFailure: constraint);
@@ -170,10 +185,11 @@ public sealed partial class Binding
                     var candidateSignature = this.FunctionItemSignature(candidateItem);
                     if (this.UnformedSince(signatureMark))
                     {
-                        // DECISIONS D3 (temporary, PLAN G886): the bound Item's signature forms no Type, and no case of its split meets S
-                        // (RestsOnSplit): the record names the Item, its Note the erasure's failed part (ErasesToFunction).
+                        // DECISIONS D3 (temporary, PLAN G886): the bound Item's signature forms no Type, and no combination of its split
+                        // cases meets S (SplitState): the record names the Item, its Note the erasure's shape part, which that
+                        // search decided (no second search).
                         this.unformedWrites = signatureMark;
-                        _ = this.ErasesToFunction(use, candidateItem, required);
+                        (this.erasureOutcomes ??= new())[(candidateItem, required)] = new(ErasurePart.Shape, false, SemanticsKind.Ref, default);
                         return this.FailMismatch(use, use, candidateItem, required, default);
                     }
 
@@ -296,7 +312,12 @@ public sealed partial class Binding
             var unformedMark = this.unformedWrites;
             var state = this.Accessible(candidate, scope)
                 ? this.FunctionReferenceApplicability(use, candidate, function, required, scope, out _) : CandidateApplicability.Inapplicable;
-            if (state != CandidateApplicability.Inapplicable || this.RestsOnSplit(use, candidate, required, scope, unformedMark, state))
+            if (this.UnformedSince(unformedMark))
+            {
+                state = this.SplitState(use, candidate, required, scope, unformedMark, state);
+            }
+
+            if (state != CandidateApplicability.Inapplicable)
             {
                 return true; // One that rests on the split leaves its writes: the trial that fits this part rests on it too.
             }
@@ -305,17 +326,27 @@ public sealed partial class Binding
         return false;
     }
 
-    // DECISIONS D3 with rule W (BU-79; C-359 C1; temporary, PLAN G886): whether a candidate whose check at S formed a Type no binding
-    // represents (a write since `mark`) rests on that split. A reference's binder is fixed before any evidence, so the same check is
-    // judged in each combination of split cases (RestsOnSplitCases). A candidate that is inapplicable, or in Error, in every combination
-    // as in its own check (`state`) is so by itself, its Language record the reference's (SPEC 23.1.2); any other rests on the split
-    // (a proof that reads an unformed Type writes in every case).
-    private bool RestsOnSplit(Koto use, BindingSymbol candidate, BoundType required, BindingScope scope, int mark, CandidateApplicability state)
-        => this.UnformedSince(mark) && (state is not (CandidateApplicability.Inapplicable or CandidateApplicability.Error) || this.RestsOnSplitCases(
+    // DECISIONS D3 with rule W (BU-79; C-359 C1, E2; temporary, PLAN G886): the state of a candidate whose check at S formed a Type no
+    // binding represents (a write since `mark`). A reference's binder is fixed before any evidence, so the same check is judged in
+    // each combination of split cases (RestsOnSplitCases), whatever its own run gave: that run left its unformed parts unknown. A
+    // candidate inapplicable in every combination is inapplicable by itself, its Language record the reference's (SPEC 23.1.2);
+    // one whose own check was an Error and is one in every combination keeps it; any other rests on the split: Pending.
+    private CandidateApplicability SplitState(Koto use, BindingSymbol candidate, BoundType required, BindingScope scope, int mark, CandidateApplicability state)
+    {
+        if (!this.SplitStateRests(use, candidate, required, scope, mark, CandidateApplicability.Inapplicable))
+        {
+            return CandidateApplicability.Inapplicable;
+        }
+
+        return state == CandidateApplicability.Error && !this.SplitStateRests(use, candidate, required, scope, mark, state) ? state : CandidateApplicability.Pending;
+    }
+
+    private bool SplitStateRests(Koto use, BindingSymbol candidate, BoundType required, BindingScope scope, int mark, CandidateApplicability failing)
+        => this.RestsOnSplitCases(
             mark,
-            (use, candidate, required, scope, state),
+            (use, candidate, required, scope, failing),
             static (binding, check) => binding.FunctionReferenceApplicability(
-                check.use, check.candidate, (FunctionKoto)check.candidate.Declaration, check.required, check.scope, out _) == check.state));
+                check.use, check.candidate, (FunctionKoto)check.candidate.Declaration, check.required, check.scope, out _) == check.failing);
 
     // SPEC 10.5: a generic candidate's own slots are bound by matching its parameter Types against those of S and its result
     // against the result of S, without adaptations; it applies when every slot is bound and its Constraints are Proven.
@@ -427,31 +458,25 @@ public sealed partial class Binding
         {
             open = false;
             sourced = SourcedSlots(frame);
-            for (var i = 0; i < function.Parameters.Count; i++)
+            for (var i = 0; i < function.Parameters.Count + (result ? 1 : 0); i++)
             {
-                if (function.Parameters[i].Type.BoundType is not { } written || this.MemberType(written, container) is not { } parameter)
+                // DECISIONS D3 with rule W (BU-79; C-359 E2): each parameter and the result is a part of the check a split search
+                // judges. One whose own Type or match formed no Type is unknown, and the next part is judged, so that a part
+                // which reads no unformed formation still fails by itself.
+                var last = i == function.Parameters.Count;
+                this.EnterSplitPart();
+                if ((last ? symbol.Type : function.Parameters[i].Type.BoundType) is not { } written || this.MemberType(written, container) is not { } part)
                 {
+                    if (this.SplitPartUnknown())
+                    {
+                        continue;
+                    }
+
                     return false;
                 }
 
-                open |= this.HasOpenApplication(parameter, function, frame);
-                if (!this.Infer(
-                    parameter, parameters.Components[i], function, frame, inferOrigins: true, lengths: true, commonOrigins: commonOrigins, structural: true))
-                {
-                    return false;
-                }
-            }
-
-            if (result)
-            {
-                if (symbol.Type is not { } writtenResult || this.MemberType(writtenResult, container) is not { } bound)
-                {
-                    return false;
-                }
-
-                open |= this.HasOpenApplication(bound, function, frame);
-                if (!this.Infer(
-                    bound, required.Components[1], function, frame, inferOrigins: true, lengths: true, commonOrigins: commonOrigins, structural: true))
+                open |= this.HasOpenApplication(part, function, frame);
+                if (!this.InferReferencePart(part, last ? required.Components[1] : parameters.Components[i], function, frame, commonOrigins))
                 {
                     return false;
                 }
@@ -459,7 +484,24 @@ public sealed partial class Binding
         }
         while (open && SourcedSlots(frame) != sourced);
 
+        this.EnterJointSplitPart(); // What follows the parts (the written arguments' agreement, the proof, the contract) reads them all.
         return true;
+    }
+
+    // SPEC 10.5, 10.8: one part of a reference's signature matched against its part of S (InferReferenceSlots), as a part of the
+    // check a split search judges (DECISIONS D3): unknown, so true, where its match formed no Type; one that bound a slot, or an
+    // Origin in one, in its case hands its reads to the later parts, which read that binding (CarrySplitPart).
+    private bool InferReferencePart(BoundType part, BoundType actual, FunctionKoto function, SlotFrame frame, bool commonOrigins)
+    {
+        var stamp = this.splitPartStamp;
+        var bound = SlotsIdentity(frame, function.GenericArguments.Count);
+        var matched = this.Infer(part, actual, function, frame, inferOrigins: true, lengths: true, commonOrigins: commonOrigins, structural: true);
+        if (SlotsIdentity(frame, function.GenericArguments.Count) != bound)
+        {
+            this.CarrySplitPart(stamp);
+        }
+
+        return matched || this.SplitPartUnknown();
     }
 
     // SPEC 10.5: explicit Type arguments agree with the binding from S when they are the same normalized Type: identical, or equivalent

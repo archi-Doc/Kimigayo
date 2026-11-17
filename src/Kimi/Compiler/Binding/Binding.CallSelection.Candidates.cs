@@ -247,42 +247,52 @@ public sealed partial class Binding
         return unformed && solution.Type(type) is { Kind: BoundTypeKind.Function } required && !this.ItemSignatureFits(item, required, part, out _);
     }
 
-    // SPEC 10.2, 10.8 (O3; the owner's O-366 (a)): whether a typed part fits its application (an exact source of an evidenced binder
-    // is LeafDisagrees') with the split layer open: the common adaptation itself (AdaptInput) judges the layer over the target the frame
-    // completes case by case, as it judges a pair layer. A binder that explicit Type arguments fixed forms that layer in each
-    // combination of its binding's cases (RestsOnSplitCases; C-359 C1: a Tag at the closed leaf `s/Box`); a binder its sources gave
-    // evidence, in each case of the callee's admitted set (a typed bool at `s/Option<Box>`). A part that no case adapts fails
-    // case-independently; one that some case adapts, or whose target keeps an unbound slot, rests on the split.
+    // SPEC 10.2, 10.8 (O3; the owner's O-366 (a)): whether a typed part fits its parameter with the split layer open: the common
+    // adaptation itself (AdaptInput) judges the layer case by case, as it judges a pair layer. A part that no case adapts fails
+    // case-independently; one that some case adapts, or whose Type keeps an unbound slot, rests on the split.
+    // - A binder that sources gave evidence (an own slot with selector evidence): an exact source is LeafDisagrees'; a structured
+    //   application's layer over the target the frame completes is judged in each case of the callee's admitted set (a typed bool
+    //   at `s/Option<Box>`).
+    // - A binder fixed before any evidence, whose parameter forms no Type: explicit Type arguments (a Tag at the closed leaf `s/Box`,
+    //   C-359 C1) or the receiver's container binder (`x.g(g)` over `S<U>`, E1). The part is judged at the Type its parameter forms
+    //   in each combination of split cases (RestsOnSplitCases over its member pattern and the frame, as SlotSolution.Pattern and
+    //   the substitution form it), whichever binding that formation meets.
     private bool FitsOpenLayer(ref SlotSolution solution, BoundType type, Koto part)
     {
-        if (part.BoundType is not { } actual ||
-            solution.Pattern(type) is not { Kind: BoundTypeKind.SemanticsApplication, Symbol: { WholeType: { } whole } pair, Components: [var open] } application ||
-            IsEvidencedSource(application, solution.SlotOwner, solution.Frame) ||
-            this.SubstituteType(open, solution.SlotOwner, solution.Types, solution.Lengths) is not { } target)
+        if (part.BoundType is not { } actual)
         {
             return true;
         }
 
         var frame = solution.Frame;
-        if (ContainerSlot(solution.SlotOwner, pair) is >= 0 and var slot && slot < frame.Types.Length && frame.Selectors[slot] is null)
+        var pattern = solution.Pattern(type);
+        if (pattern is { Kind: BoundTypeKind.SemanticsApplication, Symbol: { WholeType: { } whole } pair, Components: [var open] } &&
+            ContainerSlot(solution.SlotOwner, pair) is >= 0 and var slot && slot < frame.Types.Length && frame.Selectors[slot] is not null)
         {
-            return this.RestsOnSplitCases(
-                this.unformedWrites,
-                (frame, slot, target, part, actual, solution.Scope, solution.DeclaringType),
-                static (binding, check) => !binding.AdaptsAtLayer(
-                    check.part, check.actual, binding.FormedUnder(check.frame, check.slot, check.target, null, out var layer) ? layer : null, check.Scope, check.DeclaringType));
-        }
-
-        var admitted = this.AdmittedSemantics(whole, this.ConstraintScope(solution.Function));
-        foreach (var mode in SemanticsOrder)
-        {
-            if ((admitted & mode.ToMask()) != 0 && this.AdaptsAtLayer(part, actual, this.Form(mode, target, null), solution.Scope, solution.DeclaringType))
+            if (IsExactSource(pattern, solution.SlotOwner, frame) || this.SubstituteType(open, solution.SlotOwner, solution.Types, solution.Lengths) is not { } target)
             {
                 return true;
             }
+
+            var admitted = this.AdmittedSemantics(whole, this.ConstraintScope(solution.Function));
+            foreach (var mode in SemanticsOrder)
+            {
+                if ((admitted & mode.ToMask()) != 0 && this.AdaptsAtLayer(part, actual, this.Form(mode, target, null), solution.Scope, solution.DeclaringType))
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
 
-        return false;
+        return pattern is not null and not { Kind: BoundTypeKind.SemanticsApplication } || this.RestsOnSplitCases(
+            this.unformedWrites,
+            (type, solution.Binder, solution.SlotOwner, frame, solution.Scope, solution.Self, solution.DeclaringType, part, actual),
+            static (binding, check) =>
+                binding.CallMemberPattern(check.type, check.Binder, check.DeclaringType) is { } member &&
+                binding.SubstituteType(binding.ContractType(member, check.Scope, check.Self), check.SlotOwner, check.frame.Types, check.frame.Lengths) is { } formed &&
+                !binding.AdaptsAtLayer(check.part, check.actual, formed, check.Scope, check.DeclaringType));
     }
 
     // SPEC 10.2: whether a typed part adapts at one case's layer of its application and fits it (FitsOpenLayer); none where the layer

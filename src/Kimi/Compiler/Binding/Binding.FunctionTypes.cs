@@ -428,16 +428,15 @@ public sealed partial class Binding
     {
         failure = default;
         var mark = this.unformedWrites;
+        this.CarrySplitPart(this.splitPartStamp); // In a split search: what the enclosing part read before (the required Type) is handed on.
         if (this.FunctionItemSignature(item) is { } signature)
         {
+            this.EnterSplitPart(); // The contract's inputs and result are parts of their own, each forming its own Type again.
             return this.ItemContractFits(item, signature, expected, use, out failure);
         }
 
         return this.UnformedSince(mark) && this.RestsOnSplitCases(
-            mark,
-            (item, expected, use),
-            static (binding, check) => binding.FunctionItemSignature(check.item) is not { } inCase ||
-                !binding.ItemContractFits(check.item, inCase, check.expected, check.use, out _));
+            mark, (item, expected, use), static (binding, check) => !binding.ItemSignatureFits(check.item, check.expected, check.use, out _));
     }
 
     // SPEC 10.7, 15.3.7: the implementation's per-call Origins are solved against the required signature, whose quantifiers and fixed
@@ -461,6 +460,10 @@ public sealed partial class Binding
         var inputCount = InputOriginCount(function);
 
         // The owner's (a): every proof of the comparison, its solve's too, assumes the required signature's own well-formedness.
+        // DECISIONS D3 (G812 ruling 103 D1): in a split search each input and the result is a part of the check; a part's structural
+        // misfit is blamed on the bindings its own Type reads, with those the required signature read before (CarrySplitPart), and
+        // any other failure (an Origin, a premise, a clause) on the whole run: the solve joins every part.
+        this.CarrySplitPart(this.splitPartStamp);
         var comparison = new CallableInstance(null, null, required, required.Binder, null);
         var inference = this.BeginOriginInference(use, function);
         inference.Comparison = comparison;
@@ -495,6 +498,7 @@ public sealed partial class Binding
 
         for (var i = 0; i < function.Parameters.Count; i++)
         {
+            this.EnterSplitPart();
             if (Substitute(Bound(function.Parameters[i].Type.BoundType!)!) is not { } parameter)
             {
                 return false;
@@ -504,8 +508,15 @@ public sealed partial class Binding
             if (!walk.Fits(parameters.Components[i], parameter, instance: comparison))
             {
                 this.contractFailure = walk.Failure.Within((byte)(i + 1));
+                if (walk.Failure.Kind != ComparisonFailureKind.Shape)
+                {
+                    this.EnterJointSplitPart();
+                }
+
                 return false;
             }
+
+            this.EnterJointSplitPart();
 
             this.failedResultPremise = null;
             if (!this.ProvesInputPremises(parameter, parameters.Components[i], use, comparison))
@@ -532,6 +543,7 @@ public sealed partial class Binding
             return false;
         }
 
+        this.EnterSplitPart();
         if (symbol.Type is not { } output || Bound(output) is not { } boundResult || Substitute(boundResult) is not { } result)
         {
             return false;
@@ -541,8 +553,15 @@ public sealed partial class Binding
         if (!resultWalk.Fits(result, CompatibleResult(result, required.Components[1]), instance: comparison))
         {
             this.contractFailure = resultWalk.Failure.Within(ComparisonFailure.ResultStep);
+            if (resultWalk.Failure.Kind != ComparisonFailureKind.Shape)
+            {
+                this.EnterJointSplitPart();
+            }
+
             return false;
         }
+
+        this.EnterJointSplitPart();
 
         this.failedResultPremise = null;
         if (!this.ProvesResultPremises(function, result, use, comparison))
