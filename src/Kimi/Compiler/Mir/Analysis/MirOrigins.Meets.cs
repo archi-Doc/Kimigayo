@@ -142,7 +142,7 @@ internal sealed partial class MirOrigins
     {
         gained = false;
         var ins = this.DerivedIns(m, out var site);
-        var (at, operands) = (this.Operands(m, site), this.slice.Atoms[m].Atom.Operands.Count);
+        var (at, operands) = (this.Operands(m, site), this.MeetOperands(m));
         MirDataflow.Grow(ref this.choiceStart, operands + 1);
         MirDataflow.Grow(ref this.digits, operands);
         var (found, product) = (0, 1L);
@@ -341,7 +341,7 @@ internal sealed partial class MirOrigins
         }
 
         var at = this.Operands(edge.Head, edge.Site);
-        return this.operandNodes.AsSpan(at, this.slice.Atoms[edge.Head].Atom.Operands.Count).Contains(edge.Tail);
+        return this.operandNodes.AsSpan(at, this.MeetOperands(edge.Head)).Contains(edge.Tail);
     }
 
     // A meet's operand nodes, named once (as the view holds them, TyCtxt.MeetOperand); where they start in operandNodes.

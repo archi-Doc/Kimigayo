@@ -9,8 +9,8 @@
 // each Ref's causes and whether a receiving Type's Origins are Fixed, an Inferred one where every class of the run's views makes it equal
 // to a Fixed one (MirOrigins.Causes.cs, R4-M132; PLAN G824).
 // - Inputs: a validated body and the views A1 and A2 completed (MirDropTable.ViewsOf); MirCases (a view's borrow binders and case Types);
-//   MirSteps (a Ref's classed steps); the C1-F4 view (TyCtxt.OriginRows, OriginAtom, MeetAtom, an atom's part and whether it is an
-//   enclosing body's call region), keyed by MirDefKey.Body, its
+//   MirSteps (a Ref's classed steps); the C1-F4 view (TyCtxt.OriginRows, OriginAtom, MeetAtom, MeetOperand, an atom's part and whether
+//   it is an enclosing body's call region), keyed by MirDefKey.Body, its
 //   fixed-fixed oracles (TyCtxt.UniversalRelations: the body's, and its layer's for the layer's part) and its layer units with rows
 //   (TyCtxt.OriginLayers), beside the program's constructor bodies and the root range; the view throws at a broken contract (DECISIONS BU-102); after Judge,
 //   its queries (Outlives, Fixed) re-form a class's edges from these (IndexClass).
@@ -30,10 +30,11 @@
 //   constructor body's slice includes, G215's located limit (R4-M168; removal condition: a body of the layer's own); a row outside the
 //   root range is the library check's (PLAN G951 E1).
 // - Invariants: no liveness, CFG order, Loan set or syntax is read; every Origin comes through the view, a row's ends by index and a Ref's
-//   or a dereferenced layer's through OriginAtom at the Ref's site; a chain's verdict does not depend on reachability; views whose active
-//   rows and containment edges are equal form one class, judged once, under the borrow binders all its views share (SPEC 15.6.5); an edge
-//   of the layer's part is judged with the layer's oracle (R4-M101 E4); a Ref inside an Inlined scope adds no containment (a default's rows
-//   are its template's, R4-M101 (b)); storage is pooled, so a warm run allocates nothing.
+//   or a dereferenced layer's through OriginAtom at the Ref's site, a meet's operands as the view holds them (MeetOperand); a chain's
+//   verdict does not depend on reachability; views whose active rows and containment edges are equal form one class, judged once, under
+//   the borrow binders all its views share (SPEC 15.6.5); an edge of the layer's part is judged with the layer's oracle (R4-M101 E4); a
+//   Ref inside an Inlined scope adds no containment (a default's rows are its template's, R4-M101 (b)); storage is pooled, so a warm run
+//   allocates nothing.
 // - Must not: judge a relation Binding judged directly (it forms no row, D1); decode a slot or read a binder or forming body (only the view
 //   does); port the preserves-results skip or the top-like Anchor (PD9); or drop a problem (MirReport's).
 
