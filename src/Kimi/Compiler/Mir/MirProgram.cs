@@ -10,8 +10,8 @@
 // one node-to-definition filter without building (MirBuilder.Library, Slot; Reserve states the range), so a library body has one
 // ordinal in an eager and a lazy build and in every version of a library segment, and a slot whose definition no lookup demanded is
 // empty; this class numbers every other body from LibraryCount in build order (Begin). A slot is built exactly when the key map holds
-// its definition. LibraryCount's readers are this class (Reserve, ClearProgram: the next ordinal it numbers), the tests' premise rows
-// and the dump; no consumer tests an ordinal against it.
+// its definition. LibraryCount's readers are this class (Reserve and ClearProgram: the next ordinal it numbers; ClearProgram and Keeps:
+// a library slot), the tests' premise rows and the dump; no consumer tests an ordinal against it.
 // Keeps a body's storage by its ordinal (the pool) and the bodies in build order (PLAN G951 U2-K). Body(ordinal), the one read by
 // ordinal, reads the pool and fails for an ordinal no body of the version is built at. Bodies is the build-order list, the compilation's
 // own bodies, which a walker of the whole program iterates. Its walkers: MirAnalysis's step 4, MirOrigins.Findings, MirDump.Write,
@@ -26,10 +26,14 @@
 // itself; an owner keeping per-body entries in a store per segment reads them by the ordinal itself through one published fact, A2's
 // MirDropTable.LibraryHolds (its library store holds the body's closed entry; PLAN G951 U2-K, the Back's C-378 (1)(a) as amended):
 // MirDropTable.Of, MirEffects.Base and InstanceCollector.TemplatesOf read it.
-// Owns the segments' versions (PLAN G950): the library segment, its bodies, their keys and findings and its construction records, is kept
-// while its library version holds (LibraryVersion, EndLibrary), the program segment rebuilt per program version over it (ClearProgram);
+// Owns the segments' versions (PLAN G950, G951 U2-K): the library segment, its bodies, their keys and findings and its construction
+// records, is kept while its library version holds (LibraryVersion, EndLibrary) and each version keeps it (Keeps: R-K2''), the library
+// list growing by the recordless library bodies A2 holds that the version demanded, the rest rebuilt per program version (ClearProgram);
 // the library's findings stay the prefix of Findings and its records are replayed into the version's report first, where the builder's
-// library walk added them, so a kept version's report and findings equal a rebuild's row for row.
+// library walk added them, so a kept version's report and findings equal a rebuild's row for row. A2's table (Drops) is per version
+// like the report: where a version starts, after Keeps read it, Clear clears both of its stores and ClearProgram its program store
+// (PLAN G951 U2-K-b, F18), so Keeps reads only the step facts of the versions since the last clear: of the version it judges once
+// that version is analyzed, and none of a version built and not analyzed, whose next version then starts a new segment.
 // A body is built in its segment's reused body (Begin), one for the library's prefix and one for the program's bodies, so that neither
 // segment's construction allocates by the other's bodies, and stored in the next pooled body at End, which registers its key: a stored
 // body is grown only to exactly the rows stored in it, and a building body's tables and interning grow once to its segment's largest
@@ -130,9 +134,10 @@ internal sealed class MirProgram
     internal MirReport Problems { get; } = new();
 
     /// <summary>Gets drop elaboration's verdicts and flags in this version, by body ordinal (A2, DECISIONS R4-M6a): its program store is
-    /// cleared where a version starts (<see cref="ClearProgram"/>, <see cref="Clear"/>) and its library store where a library segment
-    /// starts (<see cref="Clear"/>; <see cref="MirAnalysis"/> again where its library state is another program's or segment's); only
-    /// MirAnalysis's library step writes the library store.</summary>
+    /// cleared where a version starts (<see cref="ClearProgram"/>, <see cref="Clear"/>, after <see cref="Keeps"/> read it) and its library
+    /// store where a library segment starts (<see cref="Clear"/>; <see cref="MirAnalysis"/> again where its library state is another
+    /// program's or segment's); only MirAnalysis's library step writes the library store, which from that step's end to the version's end
+    /// holds exactly the library list's bodies (<see cref="LibraryBodies"/>, MirDropTable.LibraryHolds).</summary>
     internal MirDropTable Drops { get; } = new();
 
     /// <summary>Gets or sets the work of the builder's layer walks in this version (PLAN G647): one per iteration of a walk (a layer's
@@ -192,7 +197,7 @@ internal sealed class MirProgram
 
         this.bodies.Clear();
         this.Problems.Clear();
-        this.Drops.Clear(); // F18: no step fact of an earlier version reaches the next version.
+        this.Drops.Clear(); // F18: no step fact of an earlier version reaches the next keep test.
         this.Findings.Clear();
         this.count = this.library = this.next = this.LibraryCount = this.libraryFindings = 0;
         this.LibraryVersion = 0;
@@ -230,25 +235,54 @@ internal sealed class MirProgram
         this.Problems.Keep(0, this.libraryRecords);
     }
 
-    /// <summary>Returns the version's bodies (<see cref="VersionBodies"/>) to the pool, removing their keys, for a new program version over
-    /// the kept library segment, a library body a lookup demanded included (its slot is empty again): the next ordinal numbered here is
-    /// the first past the library's range, the findings keep the library's prefix, the report starts with the library's records again
-    /// (MirReport.Replay), A2's program store is cleared (F18; its library store, the library step's, is kept) and the work counts the
-    /// new version's.</summary>
+    /// <summary>Clears the version for a new program version over the kept library segment, after <see cref="Keeps"/> held: each
+    /// library slot of the version's bodies (<see cref="VersionBodies"/>), a library body a lookup demanded, joins the library list in
+    /// build order, its key kept; every other body is returned to the pool, its key removed. In place, stable, without allocating. The
+    /// next ordinal numbered here is the first past the library's range, the findings keep the library's prefix (a kept body has none),
+    /// the report starts with the library's records again (MirReport.Replay), A2's program store is cleared (F18; its library store,
+    /// the library step's, is kept) and the work counts the new version's.</summary>
     internal void ClearProgram()
     {
+        var kept = this.library;
         foreach (var body in this.VersionBodies)
         {
+            if (body.Ordinal < this.LibraryCount)
+            {
+                this.order[kept++] = body; // A library slot: the library list's next.
+                continue;
+            }
+
             this.bodies.Remove(body.Key);
             body.Ordinal = -1; // Returned: no ordinal reads it (Body).
         }
 
-        (this.count, this.next) = (this.library, this.LibraryCount);
+        (this.count, this.library, this.next) = (kept, kept, this.LibraryCount);
         this.Findings.RemoveRange(this.libraryFindings, this.Findings.Count - this.libraryFindings);
         this.Problems.Clear();
         this.Problems.Replay(this.libraryRecords);
-        this.Drops.ClearProgram(); // F18: no step fact of this version reaches the next version.
+        this.Drops.ClearProgram(); // F18: no step fact of this version reaches the next keep test.
         this.LayerWalkWork = 0;
+    }
+
+    /// <summary>Gets whether the next program version keeps the library segment (R-K2'', PLAN G951 U2-K, the Back's B1 fix (a)): every
+    /// library slot of the version's bodies has no record (no validator finding, no construction record, no A1 or A2 problem) and A2's
+    /// table holds it, so the library step that keeps it adds nothing (R5-M168) and a version's report equals a fresh pipeline's row
+    /// for row. A version ends the segment at a demanded library body with a record or one no step of the version stepped. The table's
+    /// entries it reads are this version's own steps of these bodies (A2's per-version clear, F18): a version built and not analyzed
+    /// holds none. A body with a validator finding is refused by its finding, which decides its exclusion (MirAnalysis: its empty entry,
+    /// held and without a record, MirDrops.Exclude), never by that entry.</summary>
+    /// <returns>Whether the version's library slots may join the library list.</returns>
+    internal bool Keeps()
+    {
+        foreach (var body in this.VersionBodies)
+        {
+            if (body.Ordinal < this.LibraryCount && (body.HasFinding || body.HasConstructionRecord || !this.Drops.Holds(body.Ordinal) || this.Drops.Incomplete(body.Ordinal) is not null))
+            {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     /// <summary>Records a construction or collection record at its location, a ControlFlow problem of every view, once per class, code and

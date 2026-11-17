@@ -5,8 +5,8 @@
 // the `confined` obligations Binding publishes (TyCtxt.EffectObligations).
 // Input: validated bodies per MirCases view, their uses (MirUses), the blocks the runtime edges reach (MirDataflow.Begin), A2's verdicts
 // and its walk of a group (MirProgram.Drops, MirDropTable.Destroyed), whether the driver has stepped a body (MirDropTable.Holds) and
-// into which store (MirDropTable.LibraryHolds: the driver records a body's local facts in the store it began, BeginLibrary or
-// BeginProgram, in the step that closes the body's A2 entry in A2's store of that segment, so A4's library store and A2's hold the same
+// into which store (MirDropTable.LibraryHolds: the driver records a body's local facts in the store it began or continued, BeginLibrary,
+// ContinueLibrary or BeginProgram, in the step that closes the body's A2 entry in A2's store of that segment, so A4's library store and A2's hold the same
 // bodies; a driver that fills one without the other breaks Base), TyCtxt's
 // obligations and callee facts, TyCtxt.Comparison for a tuple operator's call (its distinct leaves;
 // DECISIONS R5-M166; a published requirement on a composite Type keeps Binding's legacy plan, TyCtxt.Witnesses, until A-12), and the root
@@ -23,8 +23,9 @@
 // G128's bound); requirement calls on an abstract Self and virtual calls take the bounds of the caller's own premises, a requirement on
 // another Self what its witnesses run; one worklist with recorded dependencies solves
 // the least fixed point; storage is pooled and reset by counts, so a warm version allocates nothing. The local facts are recorded per
-// segment (PLAN G950): the library segment's nodes first, into a store of their own (Locals) kept while its library version holds
-// (BeginLibrary), then the program's, into a store cleared per program version (BeginProgram); each store holds its nodes' and bodies'
+// segment (PLAN G950): the library segment's nodes first, into a store of their own (Locals) kept while its library segment holds
+// (BeginLibrary; ContinueLibrary appends a kept segment's newly listed bodies, PLAN G951 U2-K), then the program's, into a store cleared
+// per program version (BeginProgram); each store holds its nodes' and bodies'
 // entries by the node id and the ordinal themselves, and a reader takes a node's store by the library's node count (its nodes come
 // first) and a body's by A2's fact (MirDropTable.LibraryHolds, PLAN G951 U2-K; no offset, no ordinal tested against LibraryCount).
 // Must not read syntax or HIR, re-derive premises, bounds or obligations, report a failure that only an Opaque site or a callee

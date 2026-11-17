@@ -125,6 +125,10 @@ internal sealed class MirAnalysis
         {
             program.Problems.Keep(first, this.libraryProblems);
         }
+        else if (program.Problems.All.Length != first)
+        {
+            throw new InvalidOperationException($"A kept library body's step added a problem in version {program.Version} (InternalInvariant).");
+        }
 
         program.Drops.EndLibrary();
         this.library = (program, program.LibrarySegment, stepped);

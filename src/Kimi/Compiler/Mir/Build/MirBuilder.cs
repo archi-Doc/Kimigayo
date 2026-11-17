@@ -52,8 +52,10 @@ internal sealed partial class MirBuilder(Compilation compilation)
     private int templates; // The library's templates, built before its walk: the ordinals before the slots.
 
     /// <summary>Builds and validates the MIR of the latest Binding pass, once per pass (PLAN G951): every module's default templates, the
-    /// bodies of the modules below the root range, then each body's program pass, the library segment's once per library version before
-    /// the program segment's (PLAN G950); the version's lookups build any other body on demand (<see cref="Demand"/>) until it is sealed.
+    /// bodies of the modules below the root range, then each body's program pass, the library segment's before the program segment's,
+    /// once per library segment: a version keeps its segment while the library version holds and the version before it keeps it
+    /// (<see cref="MirProgram.Keeps"/>, R-K2'', PLAN G950, G951 U2-K), else builds a new one; the version's lookups build any other body
+    /// on demand (<see cref="Demand"/>) until it is sealed.
     /// One version is built with one range, and every version of a builder with the library on one side of its range (D1 per builder,
     /// PLAN G951 U2): a version asked for with another range, or a later version with the library on the other side, is a broken
     /// contract, since the analyses and the collector keep a version's facts by its <see cref="MirProgram.Version"/> and a kept library
@@ -79,7 +81,7 @@ internal sealed partial class MirBuilder(Compilation compilation)
 
         this.program.Open(this, rootModules);
         var libraryVersion = version; // The Binding pass until G949's library publication version replaces it (G950-K).
-        if (libraryVersion != this.program.LibraryVersion)
+        if (libraryVersion != this.program.LibraryVersion || !this.program.Keeps())
         {
             this.program.Clear();
             this.visited.Clear();
