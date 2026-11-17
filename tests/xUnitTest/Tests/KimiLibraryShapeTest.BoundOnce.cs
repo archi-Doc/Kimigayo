@@ -70,6 +70,33 @@ public partial class KimiLibraryShapeTest
     public void TheLibraryDeclaresNoBoundedCallableClause()
         => Assert.Empty(KotoTree.Walk(Bound(string.Empty).Library.Kotonoha.RootKoto).OfType<IsKoto>().Where(static x => x.EffectBounds.Count != 0).Select(static x => Line(x)));
 
+    // G949 D2b-d's d12 (N5-3): the library's explicit specializations (SPEC 8.13: tryResolve's, writer's and format's) are their
+    // originals' after a second Bind of a program that runs one (an i128 formatted), as MIR's Implementation reads them through
+    // Specializations. S1-1, which binds the library once, must keep them where a program pass reads them (else a program call of a
+    // specialized library function would run the generic body: wrong code).
+    [Fact]
+    public void TheLibrarySpecializationsAreTheirOriginalsAfterASecondBind()
+    {
+        var c = CompilationTestHelper.Parse("let x: i128 = 5\nConsole.writeLine(\"\\(x)\")\n");
+        Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c));
+        Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c));
+        var specializations = KotoTree.Walk(c.Library.Kotonoha.RootKoto).OfType<FunctionKoto>().Where(static x => x.IsSpecialization).ToArray();
+        Assert.Equal(7, specializations.Length);
+        foreach (var specialization in specializations)
+        {
+            var original = c.Binding.GetSpecializationOriginal(specialization);
+            Assert.NotNull(original);
+            BindingSymbol? symbol = null;
+            foreach (var declared in c.Binding.Semantics.Declarations)
+            {
+                symbol = ReferenceEquals(declared.Declaration, original) ? declared : symbol;
+            }
+
+            Assert.NotNull(symbol);
+            Assert.Contains(specialization, c.Binding.Specializations(symbol) ?? []);
+        }
+    }
+
     // Binding's kept symbols (DECISIONS BU-220: the `symbols` family, read through SemanticQuery.Declarations).
     private static List<BindingSymbol> DeclaredSymbols(Compilation c)
     {
