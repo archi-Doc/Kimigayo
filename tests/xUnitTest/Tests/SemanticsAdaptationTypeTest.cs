@@ -161,9 +161,9 @@ public class SemanticsAdaptationTypeTest
         var local = new BoundOrigin(OriginKind.Input, function, name: "payload");
         var reference = c.Types.Reference(SemanticsKind.Ref, BoundType.I32, local);
         var longer = c.Types.Reference(SemanticsKind.Ref, BoundType.I32, BoundOrigin.Static);
-        var actual = new BoundType("s/ref/i32", BoundTypeKind.SemanticsApplication, pair, SemanticsKind.Parameter, [reference], origin: local);
-        var same = new BoundType("s/ref/i32", BoundTypeKind.SemanticsApplication, pair, SemanticsKind.Parameter, [reference], origin: BoundOrigin.Static);
-        var expected = new BoundType("s/ref/i32", BoundTypeKind.SemanticsApplication, pair, SemanticsKind.Parameter, [longer], origin: local);
+        var actual = c.Types.Intern(BoundTypeKind.SemanticsApplication, pair, SemanticsKind.Parameter, [reference], origin: local);
+        var same = c.Types.Intern(BoundTypeKind.SemanticsApplication, pair, SemanticsKind.Parameter, [reference], origin: BoundOrigin.Static);
+        var expected = c.Types.Intern(BoundTypeKind.SemanticsApplication, pair, SemanticsKind.Parameter, [longer], origin: local);
         Assert.Equal(SemanticsMask.Ref, c.Binding.ResultSemantics(actual, pair.Scope));
         Assert.True(c.Binding.FitsTypeAt(actual, same, function, out _));
         Assert.False(c.Binding.FitsTypeAt(actual, expected, function, out _));
@@ -257,7 +257,7 @@ public class SemanticsAdaptationTypeTest
         var call = new CallPlan();
         call.Set(callee.SymbolOf()!, BoundType.Unit, null, [0], [type], origins: [BoundOrigin.Static], inputOrigins: [BoundOrigin.Static]);
         var original = callee.Parameters[0].Type.TypeOf()!;
-        var written = new BoundType(original.Name, original.Kind, original.Symbol, original.Semantics, origin: BoundOrigin.Static);
+        var written = c.Types.Intern(original.Kind, original.Symbol, original.Semantics, [], origin: BoundOrigin.Static);
         var substituted = c.Binding.InstantiateStorageType(written, call);
         Assert.NotNull(substituted);
         ReadOnlySpan<PairCase> borrow = [new(pair, SemanticsKind.ObjRef)];
