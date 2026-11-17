@@ -1033,7 +1033,7 @@ public sealed partial class MirEffectsTest(ITestOutputHelper output)
             effects.BeginLibrary();
             Segment(program.LibraryBodies.ToArray(), lastFirst);
             effects.BeginProgram();
-            Segment(program.ProgramBodies.ToArray(), lastFirst);
+            Segment(program.VersionBodies.ToArray(), lastFirst);
             var report = new MirReport();
             Assert.True(effects.Run(program, report, All));
             return Problems(c, report);
@@ -1066,7 +1066,7 @@ public sealed partial class MirEffectsTest(ITestOutputHelper output)
         effects.BeginLibrary();
         Record(program.LibraryBodies);
         effects.BeginProgram();
-        Record(program.ProgramBodies);
+        Record(program.VersionBodies);
         Assert.True(effects.Run(program, report, rootModules));
 
         void Record(ReadOnlySpan<MirBody> bodies)
