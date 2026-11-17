@@ -163,14 +163,24 @@ internal sealed class StorageRetention(RetentionKind[] kinds, (int Input, BoundO
 /// Type, a part of a mixed storage included (<c>TyCtxt.EntryType</c> names a storage's entry); null for a callee whose rows SPEC
 /// states, an erased callee and a by-value input that is the kept Type itself, which are read instantiated. A kept Type's entry and
 /// an instantiated Type's are one entry only where the call's Subst names the callee's own Types (a self-recursive generic call, a
-/// Closure or a nested function inside the callee): the Types are then one and their rows are joined. Immutable.</summary>
-internal sealed class OutputRetention(int output, StorageRetention own, (BoundType? Type, StorageRetention Retention)[] reached, StorageRetention all, FunctionKoto? kept)
+/// Closure or a nested function inside the callee): the Types are then one and their rows are joined. <see cref="Handed"/>: where
+/// <see cref="Kept"/> is not null, whether a callable the callee's declaration hands its body writes a kept Type this output's walk
+/// meets (SPEC 15.6.4 "through its result or its writes"; PLAN G935, C-370). Immutable.</summary>
+internal sealed class OutputRetention(int output, StorageRetention own, (BoundType? Type, StorageRetention Retention)[] reached, StorageRetention all, FunctionKoto? kept, bool handed)
 {
     private readonly (BoundType? Type, StorageRetention Retention)[] reached = reached;
 
     internal int Output { get; } = output;
 
     internal FunctionKoto? Kept { get; } = kept;
+
+    /// <summary>Gets a value indicating whether a callable the called function's declaration hands its body (a Callable bound, a
+    /// requirement of a Contract premise, a Self receiver's included, or a callable value an input holds; the list Binding's fills read
+    /// in a kept binding) has a parameter reaching a value of a kept Type this output's walk meets through no shared layer (Binding's
+    /// Writes): a call through such a callable writes past the binding's references by SPEC 15.6.4's routes, so "a raw layer the binding
+    /// holds adds no reach of its own" is not the whole of the call's reach there. False where <see cref="Kept"/> is null.
+    /// Input-agnostic: a writer that takes only the kept Type still writes what the value holds.</summary>
+    internal bool Handed { get; } = handed;
 
     internal StorageRetention Own { get; } = own;
 

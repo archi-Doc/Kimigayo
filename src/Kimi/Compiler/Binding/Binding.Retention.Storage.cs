@@ -57,6 +57,7 @@ public sealed partial class Binding
     private readonly HashSet<BoundType> storageResultLeaves = new(ReferenceEqualityComparer.Instance); // ResultLeaves' answer, per computation.
     private readonly List<(int Storage, int Node, BoundType? Signature)> storageTargets = new(); // With the walked signature there (Admits).
     private readonly List<(int Storage, BoundType Signature)> storageBound = new(); // The written roots of the kept abstract Type's bindings, by storage (HiddenKinds).
+    private readonly HashSet<BoundType> storageKept = new(ReferenceEqualityComparer.Instance); // The kept abstract Types the output's walk met (Written's Handed).
     private readonly Dictionary<BoundType, int> storageResultSeen = new(ReferenceEqualityComparer.Instance); // ResultLeaves' walk: Enters' depths.
     private readonly List<(HoldAt At, int Storage)> storageHolds = new();
     private readonly List<int> retentionOwnNodes = new();
@@ -95,6 +96,7 @@ public sealed partial class Binding
         this.storageBorrowed.Clear();
         this.storageTargets.Clear();
         this.storageBound.Clear();
+        this.storageKept.Clear();
         this.storageHolds.Clear();
     }
 
@@ -158,6 +160,11 @@ public sealed partial class Binding
             {
                 this.storageBound.Add((at.Storage, at.Signature!));
             }
+        }
+
+        if (bound && !at.Bound)
+        {
+            this.storageKept.Add(at.Signature!); // Entered at any position, written or not (a by-value input's part included).
         }
 
         at = at with { Bound = bound };

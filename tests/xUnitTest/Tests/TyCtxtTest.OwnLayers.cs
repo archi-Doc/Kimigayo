@@ -273,6 +273,32 @@ public sealed partial class TyCtxtTest
         Assert.Equal(expected, $"{Binding.DiagnosticTypeName(type!)} {(kept ? "kept" : "instantiated")}");
     }
 
+    // SPEC 15.6.4 "or where a callable the instantiated contract hands the callee's body ... through its result or its writes" (PLAN G935;
+    // the Middle's C-370, F's ruling 40): OutputRetention.Handed says whether a callable the callee's declaration hands its body writes a
+    // kept Type the output's walk meets, so a kept binding's "no reach of its own" is not the call's whole reach there. Handed: a Function
+    // value writing through `uniq/T` (writerFn's), a requirement with a `uniq/Self` receiver (writerReq's), a writer taking only the T.
+    // Not: a requirement returning Self (mkConc's), a callable reaching T only through a shared borrow, a writer through another kept
+    // Type (output 0 beside output 1), and a by-value input that is the kept Type itself, read instantiated (Kept null). Fail-before: no
+    // Handed member on 804d8eb51.
+    [Theory]
+    [InlineData("func f<T, E>(slot: uniq/T, y: E, set: (uniq/T, E) -> ()) => set(slot, y@move)\n", "x: uniq/(raw/(raw/u8)), v: raw/u8, set: (uniq/(raw/(raw/u8)), raw/u8) -> ()", "x, v, set@move", "0 kept handed")]
+    [InlineData("contract Absorb<E>\n    func absorb(self: uniq/Self, r: E) -> ()\nstruct HoldR\n    Self is Absorb<raw/u8>\n    public var held: raw/(raw/u8)\n    public init() => self.held = null\n    public func absorb(self: uniq/Self, r: raw/u8) -> () => ()\nfunc f<T, E>(slot: uniq/T, y: E)\n    T is Absorb<E>\n    slot.absorb(y@move)\n", "x: uniq/HoldR, v: raw/u8", "x, v", "0 kept handed")]
+    [InlineData("func f<T, E>(slot: uniq/T, y: E, set: (uniq/T) -> ()) => set(slot)\n", "x: uniq/(raw/(raw/u8)), v: raw/u8, set: (uniq/(raw/(raw/u8))) -> ()", "x, v, set@move", "0 kept handed")]
+    [InlineData("contract MakeW\n    func make(p: raw/(raw/u8), q: raw/u8) -> Self\nstruct Wk\n    Self is MakeW\n    public var k: raw/(raw/(raw/u8))\n    public init() => self.k = null\n    public func make(p: raw/(raw/u8), q: raw/u8) -> Self => Wk.init()\nfunc f<T>(dst: uniq/T, p: raw/u8)\n    T is MakeW\n    return\n", "x: uniq/Wk, v: raw/u8", "x, v", "0 kept")]
+    [InlineData("func f<T, E>(slot: uniq/T, y: E, get: (ref/T, E) -> ()) => ()\n", "x: uniq/(raw/(raw/u8)), v: raw/u8, get: (ref/(raw/(raw/u8)), raw/u8) -> ()", "x, v, get@move", "0 kept")]
+    [InlineData("func f<T, U, E>(x: uniq/T, u: uniq/U, y: E, set: (uniq/U, E) -> ()) => set(u, y@move)\n", "x: uniq/(raw/(raw/u8)), u: uniq/(raw/(raw/u8)), v: raw/u8, set: (uniq/(raw/(raw/u8)), raw/u8) -> ()", "x, u, v, set@move", "0 kept | 1 kept handed")]
+    [InlineData("func f<T, E>(slot: T, y: E, set: (uniq/T, E) -> ()) => ()\n", "x: raw/(raw/u8), v: raw/u8, set: (uniq/(raw/(raw/u8)), raw/u8) -> ()", "x, v, set@move", "0 instantiated")]
+    public void AnOutputSaysWhetherAHandedCallableWritesItsKeptType(string callee, string parameters, string arguments, string expected)
+    {
+        var c = MinimalEmissionTest.Analyze(callee + $"func g({parameters})\n    f({arguments})\n");
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
+        var g = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(static x => x.Name == "g");
+        var call = KotoTree.Walk(g).OfType<InvocationKoto>().Select(static x => x.CallOf()).OfType<CallPlan>().Single(static x => x.Target.Name == "f");
+        var writes = c.Types.Retains(call.Target, c.Types.SubstOf(call), g.SymbolOf()).Writes.ToArray();
+        var outputs = expected.Count(static x => x == '|') + 1; // The outputs holding a kept part: the first one, or the first two.
+        Assert.Equal(expected, string.Join(" | ", writes.Where(x => x.Output < outputs).Select(static x => $"{x.Output} {(x.Kept is null ? "instantiated" : x.Handed ? "kept handed" : "kept")}")));
+    }
+
     // Base steps a parameter key's Signature by Select's rule (SPEC 8.2.3, 15.6.4; review N3, N5): a generic derived struct's base, its
     // Field of U hidden beside the Field RB states, shown under the premise `U is raw/u8` and at a body's key (labels.md b1-b3).
     [Theory]

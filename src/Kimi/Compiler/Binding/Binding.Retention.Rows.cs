@@ -240,7 +240,7 @@ public sealed partial class Binding
         var resultKinds = this.retentionKinds[ResultStorage];
         var resultRecord = new StorageRetention([.. resultKinds], this.Pairs(resultKinds, ResultStorage), untied);
         var resultWrites = this.ResultWrites(environment, links, inputs, result, (key, callee, premises), ref transfer) is { } past
-            ? new OutputRetention(CallRetention.ResultOutput, resultRecord, [.. past.Reached], past.All, past.Kept) : null;
+            ? new OutputRetention(CallRetention.ResultOutput, resultRecord, [.. past.Reached], past.All, past.Kept, past.Handed) : null;
         var writes = this.retentionWrites;
         writes.Clear();
         for (var output = 0; output < inputs.Length; output++)
@@ -772,7 +772,8 @@ public sealed partial class Binding
     // An output's record from the storages' kinds and pairs (Storages): its root's, the storages past it joined by Origin-erased Type, each
     // storage in one entry (an Origin-only difference between them is in their pairs, DECISIONS R4-M154, Revision 2), the Abstract one
     // where the walk met an abstract part or a handed callable's write keeps a row there (retentionFilled), and All, their join with every one of their pairs; every one untied where the output is; null
-    // where the call keeps nothing there.
+    // where the call keeps nothing there. Read in the callee's terms, it names the callee (Kept) and whether a handed callable writes a
+    // kept Type the walk met (Handed, HandsWriter).
     private OutputRetention? Written(int output, bool untied)
     {
         var kinds = this.retentionKinds;
@@ -825,7 +826,30 @@ public sealed partial class Binding
         var joined = this.Members();
         Array.Fill(joined, true, ResultStorage + 1, kinds.Count - ResultStorage - 1);
         joined[AbstractStorage] = hidden;
-        return new(output, own, [.. reached], new(all, this.Pairs(all, joined), untied), this.retentionParametric ? this.retentionCallee : null);
+        var kept = this.retentionParametric ? this.retentionCallee : null;
+        return new(output, own, [.. reached], new(all, this.Pairs(all, joined), untied), kept, kept is not null && this.HandsWriter());
+    }
+
+    // OutputRetention.Handed (SPEC 15.6.4 "or where a callable the instantiated contract hands the callee's body ... through its result
+    // or its writes"; PLAN G935, C-370): whether a callable the callee's declaration hands its body (the list Filled reads in a kept
+    // binding: retentionOwnHanded, retentionOwnCallables) writes a kept Type the output's walk met (storageKept), by the one test Filled's
+    // writes take (Writes); input-agnostic. One Writes walk per (kept Type, callable); none where the contract hands no callable.
+    private bool HandsWriter()
+    {
+        var (handed, callables) = (this.retentionOwnHanded, this.retentionOwnCallables);
+        foreach (var kept in this.storageKept)
+        {
+            for (var k = 0; k < handed.Count + callables.Count; k++)
+            {
+                var callable = k < handed.Count ? handed[k] : callables[k - handed.Count];
+                if (callable.Kind == BoundTypeKind.Function && this.Writes(callable, kept))
+                {
+                    return true;
+                }
+            }
+        }
+
+        return false;
     }
 
     // Whether a position's closure (marked `stamp`) reaches every layer of a source's path (RetentionSource.Path: the layers the premise
