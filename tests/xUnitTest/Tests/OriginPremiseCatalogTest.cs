@@ -114,13 +114,16 @@ public partial class OriginPremiseCatalogTest
     // between fixed Origins a body's: `(p and z) outlives q` needs `p outlives q` (SPEC 15.3.6, 15.6.1), also where 15.3.6 solves it,
     // as `g5`'s `a := (p and z)` whose well-formedness needs `a outlives q` (r5, the inferred form of r1; SPEC 15.2.2 absorbs no meet
     // by a body relation). For `p outlives w`, `w = y@ref`, only the Origins stored in `y` outlive `w`: `x`'s, which a required input
-    // names through `z`, take no part, so `p outlives q` remains (x1, and x1m with a meet).
+    // names through `z`, take no part, so `p outlives q` remains (x1, and x1m with a meet). Where both operands are `let` locals over a
+    // body local (`(x and z)`, `x = y@ref`; opc5), the comparison reads their slots as regions, each bounded by its value (PLAN G492-a
+    // (ii) with (iii); the owner's O-363 (a)), so `(x and z) outlives q` is the body's row and Refuted: the Borrow of `y` cannot outlive
+    // `q` (SPEC 15.6.5; Binding's contract record before).
     [Theory]
     [InlineData(Ranked + Outer + Lent + "    let f: (ref/(ref/i64 during z) during q, ref/i64 during p, ref/i64 during w) -> ref/i64 during w = g3\n    return 0\n", nameof(DiagnosticCode.UnprovenOriginContract_Kd))]
     [InlineData(Ranked + Outer + Lent + "    let f: (ref/(ref/i64 during z) during q, ref/i64 during p, ref/i64 during (q and w)) -> ref/i64 during (q and w) = g3\n    return 0\n", nameof(DiagnosticCode.UnprovenOriginContract_Kd))]
     [InlineData("func g5(w: ref/(ref/i64 during a) during b, v: ref/i64 during c) -> ref/i64 during b\n    origin c outlives a\n    return w@follow\n" + Outer + "    let f: (ref/(ref/i64 during z) during q, ref/i64 during p) -> ref/i64 during q = g5\n    return 0\n", nameof(DiagnosticCode.UnprovenOriginContract_Kd))]
     [InlineData(Converted + Outer + "    let f: (ref/(ref/i64 during z) during q, ref/i64 during (p and z)) -> ref/i64 during q = g\n    return 0\n", nameof(DiagnosticCode.UnprovenOriginContract_Kd))]
-    [InlineData(Converted + "func outer(p: ref/i64, q: ref/i64) -> i32\n    let y: i64 = 1\n    let x = y@ref\n    let z = x@ref\n    let f: (ref/(ref/i64 during z) during q, ref/i64 during (x and z)) -> ref/i64 during q = g\n    return 0\n", nameof(DiagnosticCode.UnprovenOriginContract_Kd))]
+    [InlineData(Converted + "func outer(p: ref/i64, q: ref/i64) -> i32\n    let y: i64 = 1\n    let x = y@ref\n    let z = x@ref\n    let f: (ref/(ref/i64 during z) during q, ref/i64 during (x and z)) -> ref/i64 during q = g\n    return 0\n", nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd))]
     [InlineData("func h2(w: ref/(ref/i64 during a) during b, v: ref/i64 during c) -> ref/i64 during c\n    origin a outlives c\n    return w@follow\n" + Outer + "    let f: (ref/(ref/i64 during x) during z, ref/i64 during z) -> ref/i64 during z = h2\n    return 0\n", null)]
     [InlineData(Outer + "    let f = func() -> i32\n        let w: ref/i64 during z = x\n        return 0\n    return f()\n", nameof(DiagnosticCode.UnprovenOriginRelation_Kd))]
     [InlineData(Outer + "    let f = func() -> ref/i64 during z => x\n    let k = f()\n    return 0\n", nameof(DiagnosticCode.UnprovenOriginRelation_Kd))]

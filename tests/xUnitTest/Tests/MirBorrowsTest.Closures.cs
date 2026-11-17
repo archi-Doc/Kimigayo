@@ -19,7 +19,9 @@ public sealed partial class MirBorrowsTest
     // Semantics layer) keep the argument's Loan in the environment, as a direct call storing a captured value through a captured exclusive
     // referent keeps that value's Loan in the referent (directStoreBad, directStoreTypedBad: PLAN G269's class B), where the dev MIR
     // accepted them all; a store past a captured exclusive reference also stores the receiver's own content (rule G's self-store, OQ-F7-3
-    // (a)), so the read of `holder` or `slot` after the call errs.
+    // (a)), so the read of `holder` or `slot` after the call errs. blockBad's captured `let start` is written `during r`: unwritten, its
+    // slot is its own region (PLAN G492-a (ii)), fixed in the Closure body, whose store is then Unknown before any Loan is followed
+    // (InputDependentValueCallTest.AFixedInputIsNoPerCallInput).
     // A Closure captured into another Closure is read as its body sees it too (nestedVarStoreBad: the `var` local's own Type names the
     // Origins its initializer infers, so its store into `last` was lost on the dev MIR and at 5c5d47ff2; BU's review B1).
     // A `let` binding (letOk, updateOk), a read before the write (exchangeOk), a referent no later use reads (directStoreOk,
@@ -62,7 +64,7 @@ public sealed partial class MirBorrowsTest
                 func blockBad() -> i32
                     let x: i32 = 4
                     let r = x@ref
-                    let start = r
+                    let start: ref/i32 during r = r
                     var c = func [var start] (n: ref/i32 during r) -> ref/i32 during r
                         let old = start
                         start = n

@@ -2603,14 +2603,16 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
 
     // A3 6.4 (DIAGNOSTICS A6 `Store`): a holder whose next use lies past the chain, after the `if` it leaves, is witnessed by its
     // declaration, the value retaining the Loan: a chain between body Origins (OriginRelationDiagnosticTest) and a fixed input's capture
-    // (InputDependentValueCallTest).
+    // (InputDependentValueCallTest), its slot written `during r`: unwritten, a captured `let` local's slot is its own region (PLAN G492-a
+    // (ii)), a fixed Origin of the Closure body no premise relates to r's, so the body's store is Unknown and no Loan is followed
+    // (InputDependentValueCallTest.AFixedInputIsNoPerCallInput's row; the owner's O-261 Q1 (a)).
     [Theory]
     [InlineData(
         "struct H {s}\n    public let item: ref/i32 during s\n    public init(item: ref/i32 during s) => self.item = item\nfunc f() -> ()\n    let v = 7\n    let h = H.init(v@ref)\n" +
         "    var keep = h.item\n    if true\n        let w = 9\n        let r: ref/i32 during h.s = w@ref\n        keep = r\n    Console.writeLine(\"\\(keep@follow)\")\npublic func main() => ()\n",
         "let w = 9: Anchor w@ref, Store var keep = h.item")]
     [InlineData(
-        "func use() -> i32\n    let x: i32 = 4\n    let r = x@ref\n    let start = r\n    var c = func [var start] (n: ref/i32 during r) -> ref/i32 during r\n        let old = start\n" +
+        "func use() -> i32\n    let x: i32 = 4\n    let r = x@ref\n    let start: ref/i32 during r = r\n    var c = func [var start] (n: ref/i32 during r) -> ref/i32 during r\n        let old = start\n" +
         "        start = n\n        return old\n    if x > 0\n        let y: i32 = 5\n        c(y@ref)\n    let z = c(r)\n    return z@follow\npublic func main() => ()\n",
         "let y: i32 = 5: Anchor y@ref, Store var c = func [var start](n: ref/i32 during r) -> ref/i32 during r")]
     public void AHolderUsedPastTheChainIsWitnessedByItsDeclaration(string source, string problem)

@@ -420,7 +420,9 @@ public class ClosureEnvironmentOriginTest
     // is Refuted. dev accepted the first rows and read the dead argument natively (`leak 41`); the class S rows (TwoRegions
     // to StaticDirect) are memory-safe and rejected because SPEC 15.6.5 stays (the owner, 2026-10-23), their rewrites over a written Origin
     // being PLAN's open issue (a). A local clause over a capture's Origin is Binding's record at the initializer, as one over an enclosing
-    // parameter's (the final review's B1). The body is bound, so its own errors stay (BodyError, BU's N15). Since the MIR decides (R6-check
+    // parameter's (the final review's B1; ClauseOverCaptureFromInput); where the initializer's capture is a `let` local, its Origin is
+    // that local's region, an enclosing region of the Closure, so the relation is A5's row and its one record is at the clause (PLAN
+    // G492-a (ii), superseding BU-28 in part; BU-127: ClauseOverParameter and ClauseOverCapture, at the initializer before). The body is bound, so its own errors stay (BodyError, BU's N15). Since the MIR decides (R6-check
     // H5), CopyStore and MovedStore, whose borrow reaches the environment through the aggregate `.Some(...)`, also have A5's
     // ComparisonLoanConflict_Kd at the local's declaration (`conflict`): H3b family F-b, class 4, an independent record by SPEC 15.6.5
     // rule W's letter (R4's F-b verdict, h3b-round2.md; both programs were rejected on the base).
@@ -444,8 +446,8 @@ public class ClosureEnvironmentOriginTest
     [InlineData(CapturedBorrow, Unproven, "r)")]
     [InlineData(StaticThroughLocal, Unproven, "tmp[0]\n")]
     [InlineData(StaticDirect, Unproven, "arr[0]\n")]
-    [InlineData(ClauseOverParameter, Unproven, "H.init(r)")]
-    [InlineData(ClauseOverCapture, Unproven, "H.init(r)")]
+    [InlineData(ClauseOverParameter, Unproven, "origin x.s outlives p")]
+    [InlineData(ClauseOverCapture, Unproven, "origin x.s outlives q")]
     [InlineData(ClauseOverCaptureFromInput, Unproven, "H.init(y)")]
     [InlineData(BodyError, nameof(DiagnosticCode.TypeMismatch_Kd), "5\n")]
     public void AStoreIntoTheEnvironmentIsJudgedAgainstItsFixedOrigins(string source, string code, string at, string? conflict = null)
@@ -551,8 +553,10 @@ public class ClosureEnvironmentOriginTest
     }
 
     // The forms BU-56 leaves to their judges: an enclosing parameter's Origin, also through a local annotated with it (d6b's store of the
-    // call's own input stays Unknown) or through a slot the local's Type completes from it, where the body binds the header again (dev
-    // accepted the store `during r.s` of `r: ref/W during a`; it is Unknown as d6b's), an enclosing contract's (SPEC 15.3.4's `pass`),
+    // call's own input stays Unknown) or through a slot the local's Type completes from it (`during r.s` of `let r: ref/W during a`: the
+    // omitted slot is the local's own region, PLAN G492-a (ii), and a nested signature naming it at a fixed end is the located
+    // `Unsupported_Kd` its `var` twin has, a1p's limit; the store's relation reads `slot`'s Type from that signature, a resting input,
+    // so its Unknown at `v`, d6b's, is not reported beside it), an enclosing contract's (SPEC 15.3.4's `pass`),
     // an unannotated local's value, whose Type the body gives it before it binds the header again (d6u; LocalRegionCompletionTest's
     // NestedNamedFinite; its input row is the signature's premise, DECISIONS BU-89, and a call that cannot prove it keeps the call's
     // record, `put(rr)`), a name that selects no Origin (a non-borrow local, an absent slot: InvalidOriginBinding_Kd, SPEC 15.2.1,
@@ -587,8 +591,8 @@ public class ClosureEnvironmentOriginTest
     [InlineData(
         WStruct + "func leak(a: ref/W) -> i32\n    let r: ref/W during a = a\n" +
             "    func keep(slot: uniq/Array<ref/i32 during r.s>, v: ref/i32) => slot@follow.append(v)\n    return 0\npublic func main() => ()\n",
-        Unproven,
-        "v)")]
+        nameof(DiagnosticCode.Unsupported_Kd),
+        "r.s>")]
     [InlineData(NestedHead + "    func get(v: ref/i32 during w) -> i32 => v@follow\n    return 0\npublic func main() => ()\n", InvalidOrigin, "w)")]
     [InlineData(NestedHead + "    func get(v: ref/i32 during w.zz) -> i32 => v@follow\n    return 0\npublic func main() => ()\n", InvalidOrigin, "zz)")]
     [InlineData(NestedHead + "    func get(v: ref/i32 during x.zz) -> i32 => v@follow\n    return 0\npublic func main() => ()\n", InvalidOrigin, "zz)")]
@@ -639,7 +643,8 @@ public class ClosureEnvironmentOriginTest
     // SPEC 23.1 (DECISIONS R4-M126 §8; 2c-3B reviews B2, F1): a record's end ρ shows as the closure's call receiver, related at the
     // Closure literal; a Borrow of an environment binding, whose Origin resolves to ρ at its use, stays the shown and related borrow (g65a,
     // SPEC 15.8.2's `invalid`, a local annotation's fit at its initializer, d1); G6's store (g6b) and n2b name ρ. Each was the Closure
-    // literal's text.
+    // literal's text. n2b's shorter end, `during u` in the inner signature, is the `let` local `u`'s own region named in a nested body
+    // (SPEC 15.3.4; PLAN G492-a (ii)), shown as its omitted Origin (its value, "the borrow x", before).
     [Theory]
     [InlineData(EnvBorrow + "    let c = func [n] () -> ref/i32 during p => n@ref\n    return 0\n", "n@ref", "the borrow n@ref outlives p", "n@ref")]
     [InlineData(SpecInvalid, "other@ref", "the borrow other@ref outlives static", "other@ref")]
@@ -649,7 +654,7 @@ public class ClosureEnvironmentOriginTest
     [InlineData(TupleReturned, "t.0", "the borrow n@ref outlives p", "n@ref")]
     [InlineData(LocalStored, "r\n", "the borrow n@ref outlives p", "n@ref")]
     [InlineData(G6bStore, "p\n", "the closure's call receiver outlives p", "func [p@move, q@move]")]
-    [InlineData(N2bStore, "u@move", "the closure's call receiver outlives the borrow x", "func [u] () -> i32")]
+    [InlineData(N2bStore, "u@move", "the closure's call receiver outlives the omitted Origin of u", "func [u] () -> i32")]
     public void ARecordNamingTheCallReceiverShowsTheClosure(string function, string at, string relation, string related)
     {
         var source = function + "public func main() => ()\n";
@@ -773,7 +778,8 @@ public class ClosureEnvironmentOriginTest
 
     // The valid twins (DECISIONS R4-M126 §1): under `owner/Self` ρ is no borrow, so a Reborrow through a captured reference keeps its Origin
     // (t4e, t4f, the Consuming outer of n2b, a result over it, which ρ never makes call-local); a nested exclusive slot entry, a Consuming
-    // body's nested entry and SPEC 7.7.3's example; D-13's three forms under Shared and Exclusive receivers; a nested bare entry of a pair
+    // body's nested entry and SPEC 7.7.3's example; D-13's three forms under a Shared receiver and its Option form under an Exclusive one
+    // (its `swap` and its store over `let` locals under an Exclusive receiver are the next theory's); a nested bare entry of a pair
     // capture, whose binding meets ρ on the pair layer's outer slot. A call whose relations need the receiver's well-formedness, `p outlives
     // ρ` (SPEC 15.6.1, 15.8.2; DECISIONS R4-M152, PLAN G270: a premise of the body, R2 of its receiver input): an exclusive input with its
     // clause (also in a nested Closure and through a local Reborrow), and the contextual parts over a captured Borrow that a call judging
@@ -790,11 +796,8 @@ public class ClosureEnvironmentOriginTest
         "        var inner = func [count@uniq] () => count@follow += 1\n        inner()\n        consume(item@move)\n        return count\n    return outer@move()\n")]
     [InlineData(Resource + "func use() -> i32\n    let count: i32 = 0\n    var next = func [var count] () -> i32\n        count += 1\n        return count\n" +
         "    let first = next()\n    let item = makeResource()\n    let take = func [item@move] () => item@move\n    let taken = take@move()\n    return first\n")]
-    [InlineData("func swap<T>(x: uniq/T, y: uniq/T) => ()\nfunc use(p: ref/i32) -> i32\n    let a = p\n    let b = p\n    var c = func [var a, var b] () -> ()\n" +
-        "        swap(a@uniq, b@uniq)\n    c()\n    return 0\n")]
     [InlineData("func same<T>(x: ref/T, y: ref/T) => ()\nfunc use(p: ref/i32) -> i32\n    let a = p\n    let b = p\n    let c = func [a, b] () -> ()\n" +
         "        same(a@ref, b@ref)\n    c()\n    return 0\n")]
-    [InlineData("func use(p: ref/i32) -> i32\n    let a = p\n    let r = p\n    var c = func [var a, r] () -> ()\n        let q = a@uniq\n        q@follow = r\n    c()\n    return 0\n")]
     [InlineData("func use(p: ref/i32) -> i32\n    let a = p\n    let r = p\n    let c = func [a, r] () -> i32\n        let q = a@ref\n        let v = q@follow\n" +
         "        return v@follow + r@follow\n    return c()\n")]
     [InlineData("func use(p: ref/i32) -> i32\n    let a: Option<ref/i32 during p> = .Some(p)\n    let c = func [a] () -> i32\n        let q = a@ref\n        let w = q@follow\n" +
@@ -808,8 +811,6 @@ public class ClosureEnvironmentOriginTest
         "            fu(a@uniq)\n        d()\n    c()\n    return 0\n")]
     [InlineData(ExclusiveClause + "func use(p: ref/i32) -> i32\n    let a = p\n    var c = func [var a] () -> ()\n        let r = a@uniq\n        fu(r)\n    c()\n    return 0\n")]
     [InlineData("func same3<T>(x: Option<ref/T during c>, y: ref/T during c) => ()\n" + TwoCaptures + "    let f = func [a, b] () -> ()\n        same3(.Some(a@ref), b@ref)\n" + CallF)]
-    [InlineData("func swap3<T>(x: Option<uniq/T during c>, y: uniq/T during c) => ()\n" + TwoCaptures + "    var f = func [var a, var b] () -> ()\n" +
-        "        swap3(.Some(a@uniq), b@uniq)\n" + CallF)]
     [InlineData("func same4<T>(x: (ref/T during c, Option<ref/T during c>), y: ref/T during c) => ()\n" + TwoCaptures + "    let f = func [a, b] () -> ()\n" +
         "        same4((a@ref, .None), b@ref)\n" + CallF)]
     [InlineData("func same5<T>(x: [2 of Option<ref/T during c>], y: ref/T during c) => ()\n" + TwoCaptures + "    let f = func [a, b] () -> ()\n" +
@@ -825,7 +826,10 @@ public class ClosureEnvironmentOriginTest
     // captured references of independent Origins are not equal (`swap` and `swap3` instantiate one `T`), and a Borrow of a Closure local
     // stored into an environment binding does not outlive that binding's Origin. Under `owner/Self` the receiver is the environment by
     // value, with no ρ, so a captured reference returned as a static one stays Unproven (BU's own3, the guard's twin). Each keeps its
-    // record.
+    // record. Two `let` locals of one source are two regions (PLAN G492-a (ii); SPEC 7.7.2, 15.6.5; the owner's O-261 Q1 (a)): a
+    // capture's slot is a fixed Origin of the Closure body with no premise relating it to another capture's or to `p`, so `swap` and
+    // `swap3` over `[var a, var b]` and the store of `r` through `a@uniq` are Unknown, as their `var` twins (rc1, rc4, rc2; each was
+    // accepted before).
     [Theory]
     [InlineData(
         "func swap<T>(x: uniq/T, y: uniq/T) => ()\n" + IndependentCaptures + "    var c = func [var a, var b] () -> ()\n        swap(a@uniq, b@uniq)\n" +
@@ -843,6 +847,16 @@ public class ClosureEnvironmentOriginTest
         Consume + "func use(p: ref/i32) -> i32\n    let a = p\n    let t = \"t\"\n    let c = func [a, t@move] () -> ref/i32\n        consumeText(t@move)\n" +
             "        return a\n    _ = c@move()\n    return 0\n",
         "a\n")]
+    [InlineData(
+        "func swap<T>(x: uniq/T, y: uniq/T) => ()\n" + TwoCaptures + "    var c = func [var a, var b] () -> ()\n        swap(a@uniq, b@uniq)\n    c()\n    return 0\n",
+        "b@uniq")]
+    [InlineData(
+        "func swap3<T>(x: Option<uniq/T during c>, y: uniq/T during c) => ()\n" + TwoCaptures + "    var f = func [var a, var b] () -> ()\n" +
+            "        swap3(.Some(a@uniq), b@uniq)\n" + CallF,
+        "a@uniq")]
+    [InlineData(
+        "func use(p: ref/i32) -> i32\n    let a = p\n    let r = p\n    var c = func [var a, r] () -> ()\n        let q = a@uniq\n        q@follow = r\n    c()\n    return 0\n",
+        "r\n")]
     public void TheReceiversWellFormednessProvesOnlyItsStoredOrigins(string function, string at)
     {
         var source = function + "public func main() => ()\n";
