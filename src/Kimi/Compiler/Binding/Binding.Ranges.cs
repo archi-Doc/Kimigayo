@@ -434,8 +434,8 @@ public sealed partial class Binding
     }
 
     // The Type of a written range boundary, checked against its expected S or E or known on its own, read through references; null
-    // for an omitted or literal-only boundary, and for one whose own check failed (`failed`: the range rests on it). `integer` is the
-    // integer Type a literal-only other boundary takes from it.
+    // for an omitted or literal-only boundary, and for one whose own check failed (`failed`: RequireType gives no Type, and the range
+    // rests on it). `integer` is the integer Type a literal-only other boundary takes from it.
     private BoundType? IndependentBoundary(Koto? boundary, BindingScope scope, BoundType? expected, out BoundType? integer, out bool failed)
     {
         integer = null;
@@ -450,14 +450,6 @@ public sealed partial class Binding
         {
             failed = type is null;
             return type;
-        }
-
-        // SPEC 23.1.2: a boundary whose own check failed keeps its Type when the range is bound again; the range rests on it at every
-        // attempt, so its own Type is never formed from a failed boundary (that would be a second record of the one failure).
-        if (this.PartFailed(boundary))
-        {
-            failed = true;
-            return null;
         }
 
         if (this.IsIntegerOperand(type, scope))

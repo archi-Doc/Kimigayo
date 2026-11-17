@@ -632,12 +632,15 @@ public sealed partial class Binding
         return this.Fail(node, BindingFailure.Unsupported, true);
     }
 
+    // The node bound at `expected` and fitted to it. SPEC 23.1.2: a node whose fit failed supplies no Type: its record is its own, and
+    // what reads the result rests on it instead of judging the misfitting Type once more.
     private BoundType? RequireType(Koto node, BindingScope scope, BoundType? expected)
     {
         var actual = this.BindNode(node, scope, expected);
         if (expected is not null && actual is not null && !this.FitsValueAt(actual, expected, node, node, out var failure))
         {
             this.FailMismatch(node, node, actual, expected, failure);
+            return null;
         }
 
         return actual;
