@@ -143,7 +143,7 @@ public sealed partial class Binding
         this.reentryReads = 0;
         this.contractHeadersReady = false;
         this.bindingConstraintTypes = false;
-        this.impls.Begin(this.storageVersion); // Every identity and path is stale (DECISIONS BU-220).
+        this.impls.Begin(this.storageVersion, this.pass); // Every identity and path is stale (DECISIONS BU-220); the pass view is the pass's.
         this.conformancesRegistered = false;
 
         this.projectionUses.Clear();
@@ -474,9 +474,9 @@ public sealed partial class Binding
         }
 
         this.PublishSourceStates();
-        for (var i = 0; i < this.impls.Paths.Count; i++)
+        for (var i = 0; i < this.impls.InPass.Paths.Count; i++)
         {
-            var conformance = this.impls.Paths[i];
+            var conformance = this.impls.InPass.Paths[i];
             this.failedCause = null;
             var frame = this.BeginConsultation(conformance.Use); // The proof's reads of other nodes (RequireConstraintInFrame).
             var proof = this.VerifyConformance(conformance);
@@ -496,7 +496,7 @@ public sealed partial class Binding
         if (final)
         {
             this.InvalidateAssociatedEvidence();
-            foreach (var identity in this.impls.Identities)
+            foreach (var identity in this.impls.InPass.Identities)
             {
                 if (identity.PathStorage.Count != 0)
                 {
