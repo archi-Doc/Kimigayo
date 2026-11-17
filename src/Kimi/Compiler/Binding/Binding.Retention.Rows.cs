@@ -34,6 +34,7 @@ public sealed partial class Binding
     private readonly List<(int Storage, BoundOrigin Origin)> retentionStated = new(); // The stated raw layers the hold walk met (Held).
     private readonly List<(BoundType? Type, StorageRetention Retention)> retentionEntries = new();
     private readonly List<OutputRetention> retentionWrites = new();
+    private readonly List<BoundType> retentionHandedTypes = new(); // HandedTypes' answer for the output being written, reused.
     private readonly List<(int Storage, int Input, int Start, int Count)> retentionPairs = new(); // Each a run of retentionConjuncts.
     private readonly List<(BoundOrigin Longer, BoundOrigin Shorter)> retentionConjuncts = new();
     private int[] retentionFirst = []; // The links of RetentionRows by node and by atom or source, and the closure marks by node, reused.
@@ -133,7 +134,7 @@ public sealed partial class Binding
     }
 
     // The k-th callable a contract hands the body, from its two lists (the Callable bounds' and requirements' signatures, then the
-    // Function parts its Types hold; Filled, HandsWriter): false past the last; `callable` null for one that is no Function Type, which
+    // Function parts its Types hold; Filled, HandedTypes): false past the last; `callable` null for one that is no Function Type, which
     // neither takes nor writes an input.
     private static bool HandedAt(List<BoundType> handed, List<BoundType> callables, int k, out BoundType? callable)
     {
@@ -251,7 +252,7 @@ public sealed partial class Binding
         var resultKinds = this.retentionKinds[ResultStorage];
         var resultRecord = new StorageRetention([.. resultKinds], this.Pairs(resultKinds, ResultStorage), untied);
         var resultWrites = this.ResultWrites(environment, links, inputs, result, (key, callee, premises), ref transfer) is { } past
-            ? new OutputRetention(CallRetention.ResultOutput, resultRecord, [.. past.Reached], past.All, past.Kept, past.Handed) : null;
+            ? new OutputRetention(CallRetention.ResultOutput, resultRecord, [.. past.Reached], past.All, past.Kept, [.. past.Handed]) : null;
         var writes = this.retentionWrites;
         writes.Clear();
         for (var output = 0; output < inputs.Length; output++)
@@ -783,7 +784,7 @@ public sealed partial class Binding
     // storage in one entry (an Origin-only difference between them is in their pairs, DECISIONS R4-M154, Revision 2), the Abstract one
     // where the walk met an abstract part or a handed callable's write keeps a row there (retentionFilled), and All, their join with every one of their pairs; every one untied where the output is; null
     // where the call keeps nothing there. Read in the callee's terms, it names the callee (Kept) and whether a handed callable writes a
-    // kept Type the walk met (Handed, HandsWriter).
+    // kept Type the walk met (Handed, HandedTypes).
     private OutputRetention? Written(int output, bool untied)
     {
         var kinds = this.retentionKinds;
@@ -837,27 +838,31 @@ public sealed partial class Binding
         Array.Fill(joined, true, ResultStorage + 1, kinds.Count - ResultStorage - 1);
         joined[AbstractStorage] = hidden;
         var kept = this.retentionParametric ? this.retentionCallee : null;
-        return new(output, own, [.. reached], new(all, this.Pairs(all, joined), untied), kept, kept is not null && this.HandsWriter());
+        return new(output, own, [.. reached], new(all, this.Pairs(all, joined), untied), kept, kept is null ? [] : this.HandedTypes());
     }
 
     // OutputRetention.Handed (SPEC 15.6.4 "or where a callable the instantiated contract hands the callee's body ... through its result
-    // or its writes"; PLAN G935, C-370): whether a callable the callee's declaration hands its body (the list Filled reads in a kept
-    // binding: retentionOwnHanded, retentionOwnCallables) writes a kept Type the output's walk met (storageKept), by the one test Filled's
-    // writes take (Writes); input-agnostic. One Writes walk per (kept Type, callable); none where the contract hands no callable.
-    private bool HandsWriter()
+    // or its writes"; PLAN G935, C-370, the owner's O-398 (a)): each kept Type the output's walk met (storageKept) that a callable the
+    // callee's declaration hands its body (the list Filled reads in a kept binding: retentionOwnHanded, retentionOwnCallables) writes, by
+    // the one test Filled's writes take (Writes), erased as TyCtxt.EntryType names it; input-agnostic. One Writes walk per (kept Type,
+    // callable) until one writes it; none where the contract hands no callable; an array only where one does.
+    private BoundType[] HandedTypes()
     {
+        var written = this.retentionHandedTypes;
+        written.Clear();
         foreach (var kept in this.storageKept)
         {
             for (var k = 0; HandedAt(this.retentionOwnHanded, this.retentionOwnCallables, k, out var callable); k++)
             {
                 if (callable is not null && this.Writes(callable, kept))
                 {
-                    return true;
+                    written.Add(this.types.Erase(kept));
+                    break;
                 }
             }
         }
 
-        return false;
+        return written.Count == 0 ? [] : [.. written];
     }
 
     // Whether a position's closure (marked `stamp`) reaches every layer of a source's path (RetentionSource.Path: the layers the premise
