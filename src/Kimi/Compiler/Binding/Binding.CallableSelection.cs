@@ -13,7 +13,7 @@ public sealed partial class Binding
 
     // DECISIONS D3 with rule W (G812 rulings 123, 124, 126, 128; temporary with the search): of a value call's split check, the part
     // awaiting its call whose own selection failed the current run, with the Type the run formed for its position (runSelectionFailure,
-    // WaitingFails), and the one at which every failing run failed, with the first run's Type (waitingSelectionFailure,
+    // WaitingFails), and the one at which every failing run failed, with the canonical case's Type (waitingSelectionFailure,
     // FoldRunFailure: the value call itself before the first run, none from the first run that failed elsewhere or at another part).
     // A call that fails in every combination at such a part rests on it, and only it of the call's deferred parts is completed as a
     // call, at that Type (CompleteFailedWaitingCall).
@@ -202,7 +202,9 @@ public sealed partial class Binding
 
     // G812 ruling 126: a failing run keeps the check's waiting part (waitingSelectionFailure) only where it failed at that same part.
     // Every such run failed at the Type it formed for the part (ruling 128), but how it failed can differ with the Type (`pick(.None)`
-    // is ambiguous at `Box` and has no candidate at `raw/Box`), so the part keeps the first run's: the search's initial case.
+    // is ambiguous at `Box` and has no candidate at `raw/Box`), so the part keeps the Type of the canonical case: each binding at its
+    // first admitted Semantics (SemanticsOrder), the combination the first run takes whatever order later runs take (ruling 130;
+    // SPEC 8.15.2 leaves the enumeration unspecified, 23.1.2 groups one failure found under several cases).
     private bool FoldRunFailure(InvocationKoto call, bool fails)
     {
         if (fails)

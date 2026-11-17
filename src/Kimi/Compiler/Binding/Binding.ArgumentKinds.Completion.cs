@@ -199,9 +199,9 @@ public sealed partial class Binding
     // SPEC 23.1.2, 10.5.1 (DECISIONS D3 with rule W; G812 rulings 124, 126, 128): a value call on the split that fails in every case,
     // every run failing at the same waiting named Call's own selection at the Type it formed for the Call's position
     // (waitingSelectionFailure), rests on that Call; so that Call, deferred to the call, is completed as a call at that Type (`formed`,
-    // the first run's), where its selection fails as that run found, outside the probes and outside the call's consultation, and that
-    // failure is its record. Every other deferred call stays completed by its outer call (CompleteUnselectedPart): what only the
-    // missing expectation causes is dependent.
+    // the canonical case's: each binding at its first admitted Semantics), where its selection fails as that run found, outside the
+    // probes and outside the call's consultation, and that failure is its record. Every other deferred call stays completed by its
+    // outer call (CompleteUnselectedPart): what only the missing expectation causes is dependent.
     private BoundType? CompleteFailedWaitingCall(InvocationKoto call, Koto failed, BoundType formed, BindingScope scope)
     {
         var consultation = this.SuspendConsultation();
