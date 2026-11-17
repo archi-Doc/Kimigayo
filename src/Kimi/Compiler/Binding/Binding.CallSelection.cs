@@ -73,6 +73,98 @@ public sealed partial class Binding
         return erased;
     }
 
+    // SPEC 10.1-10.4: a call's selection at its evaluation's expected Type: every candidate evaluated, from no acquisition or cause fact
+    // of an earlier selection, and the selection classified. The one evaluation and classification of a named call (BindCall), of an
+    // omitted base clause and of a part that awaits its call; a query that must not publish brackets it (BeginSelectionQuery).
+    private (CallSelection Kind, int Winner) EvaluateSelection(ref CallEvaluation evaluation, in FunctionGroup candidates)
+    {
+        this.acquisitionFailure = null;
+        this.failedCause = null;
+        this.EvaluateCallCandidates(ref evaluation, candidates);
+        return this.ClassifySelection(ref evaluation);
+    }
+
+    // The state a selection's evaluation touches beside its scratch: the obligations its trials add, the acquisition and cause facts,
+    // the active requirement contract and the inference counters; a query that must not publish saves it and restores it after.
+    private SelectionQuery BeginSelectionQuery()
+        => new(this.obligations.Count, this.acquisitionFailure, this.failedCause, this.activeRequirementContract, (this.inferenceMappings, this.inferenceComparisons, this.inferenceCandidateChecks));
+
+    private void EndSelectionQuery(in SelectionQuery query)
+    {
+        for (var i = query.Obligations; i < this.obligations.Count; i++)
+        {
+            this.obligationSet.Remove(this.obligations[i]);
+        }
+
+        this.obligations.RemoveRange(query.Obligations, this.obligations.Count - query.Obligations);
+        this.acquisitionFailure = query.Acquisition;
+        this.failedCause = query.Cause;
+        this.activeRequirementContract = query.Contract;
+        (this.inferenceMappings, this.inferenceComparisons, this.inferenceCandidateChecks) = query.Counters;
+    }
+
+    // The scratch of a named call's evaluation (BindCall), sized by its candidates' shape, with the bases of the rows and classes its
+    // trials retain; ReturnEvaluation returns it in the reverse order.
+    private void RentEvaluation(ref CallEvaluation evaluation, in CandidateShape shape)
+    {
+        var call = evaluation.Call;
+        var arguments = call.ArgumentNodes.Count;
+        var explicitCount = evaluation.Generic?.TypeArguments.Count ?? 0;
+        var saved = shape.Count > 1 ? shape.Count : 0;
+        evaluation.MaxGenerics = shape.Generics;
+        evaluation.OriginSlots = shape.SolveOrigins ? shape.Origins : 0;
+        evaluation.InputSlots = shape.SolveOrigins ? shape.InputOrigins : 0;
+        evaluation.SavedCandidates = saved;
+        evaluation.Frame = this.infer.Rent(Math.Max(1, shape.Generics), call);
+        evaluation.ExplicitTypes = this.typeScratch.Rent(explicitCount);
+        evaluation.ExplicitLengths = this.lengthScratch.Rent(explicitCount);
+        evaluation.Mapping = this.indexScratch.Rent(Math.Max(1, arguments));
+        evaluation.Used = this.flagScratch.Rent(Math.Max(1, shape.Parameters));
+        evaluation.CompletedWaiting = this.flagScratch.Rent(arguments);
+        evaluation.WaitingContexts = this.typeScratch.Rent(arguments);
+        evaluation.CompletedWaiting.AsSpan(0, arguments).Clear();
+        evaluation.Origins = this.originScratch.Rent(evaluation.OriginSlots);
+        evaluation.Inputs = this.originScratch.Rent(evaluation.InputSlots);
+        evaluation.Evaluated = this.candidateScratch.Rent(shape.Count);
+        evaluation.AllTypes = this.typeScratch.Rent(saved * shape.Generics);
+        evaluation.AllSelectors = this.typeScratch.Rent(saved * shape.Generics);
+        evaluation.AllLengths = this.lengthScratch.Rent(saved * shape.Generics);
+        evaluation.AllMaps = this.indexScratch.Rent(saved * arguments);
+        evaluation.AllOrigins = this.originScratch.Rent(saved * evaluation.OriginSlots);
+        evaluation.AllInputs = this.originScratch.Rent(saved * evaluation.InputSlots);
+        evaluation.OperationStride = arguments + 1;
+        evaluation.Operations = this.argumentOperationScratch.Rent(shape.Count * evaluation.OperationStride);
+        evaluation.Rows = this.rowScratch.Rent(shape.Count * arguments);
+        evaluation.ChildSlices = this.indexScratch.Rent(shape.Count * 2);
+        evaluation.ChildBase = this.childRows.Count;
+        evaluation.ClassBase = this.positionClasses.Count;
+    }
+
+    private void ReturnEvaluation(in CallEvaluation evaluation)
+    {
+        this.argumentOperationScratch.Return(evaluation.Operations, clearArray: true);
+        this.rowScratch.Return(evaluation.Rows, clearArray: true);
+        this.indexScratch.Return(evaluation.ChildSlices);
+        this.childRows.RemoveRange(evaluation.ChildBase, this.childRows.Count - evaluation.ChildBase); // R3: the evaluation's retained rows end with it.
+        this.positionClasses.RemoveRange(evaluation.ClassBase, this.positionClasses.Count - evaluation.ClassBase);
+        this.originScratch.Return(evaluation.AllInputs, clearArray: true);
+        this.originScratch.Return(evaluation.AllOrigins, clearArray: true);
+        this.indexScratch.Return(evaluation.AllMaps);
+        this.typeScratch.Return(evaluation.AllSelectors, clearArray: true);
+        this.typeScratch.Return(evaluation.AllTypes, clearArray: true);
+        this.lengthScratch.Return(evaluation.AllLengths, clearArray: true);
+        this.lengthScratch.Return(evaluation.ExplicitLengths, clearArray: true);
+        this.candidateScratch.Return(evaluation.Evaluated, clearArray: true);
+        this.originScratch.Return(evaluation.Inputs, clearArray: true);
+        this.originScratch.Return(evaluation.Origins, clearArray: true);
+        this.typeScratch.Return(evaluation.WaitingContexts, clearArray: true);
+        this.typeScratch.Return(evaluation.ExplicitTypes, clearArray: true);
+        this.flagScratch.Return(evaluation.CompletedWaiting);
+        this.flagScratch.Return(evaluation.Used);
+        this.indexScratch.Return(evaluation.Mapping);
+        this.infer.Return(evaluation.Frame);
+    }
+
     // SPEC 10.1, 15.4.4: evaluates every candidate. A fit there is pure (FitOrigin): a candidate that is not selected bounds no
     // omitted Origin, and the selected one's bounds are recorded after selection (JudgeSelectedCall).
     private void EvaluateCallCandidates(ref CallEvaluation evaluation, in FunctionGroup candidates)
@@ -285,6 +377,10 @@ public sealed partial class Binding
         internal bool Receiver;
     }
 
+    // What BeginSelectionQuery saves (see there).
+    private readonly record struct SelectionQuery(
+        int Obligations, AcquisitionFailure? Acquisition, ICheckCause? Cause, BindingSymbol? Contract, (long, long, long) Counters);
+
     // The inputs and rented scratch of one call's candidate evaluation, and the facts it accumulates for the selection. The saved
     // arrays retain each applicable candidate's slots and mapping only when several candidates are compared.
     private struct CallEvaluation
@@ -301,6 +397,8 @@ public sealed partial class Binding
         internal BoundLength?[] ExplicitLengths;
         internal int[] Mapping;
         internal bool[] Used;
+        internal bool[] CompletedWaiting;
+        internal BoundType?[] WaitingContexts;
         internal BoundOrigin[] Origins;
         internal BoundOrigin[] Inputs;
         internal EvaluatedCandidate[] Evaluated;
@@ -318,6 +416,8 @@ public sealed partial class Binding
         internal int MaxGenerics;
         internal int OriginSlots;
         internal int InputSlots;
+        internal int ChildBase;
+        internal int ClassBase;
         internal int Count;
         internal int Applicable;
         internal int Winner;

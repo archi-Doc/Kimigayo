@@ -26,6 +26,57 @@ public sealed partial class Binding
         }
     }
 
+    // SPEC 10.8, 22.1: a named call's explicit Type and length arguments, bound into its evaluation; a spelling that both a Type and a
+    // length slot of an accessible candidate can take is not chosen (false). Binding an already bound argument binds nothing again.
+    private bool BindExplicitArguments(ref CallEvaluation evaluation, in FunctionGroup candidates)
+    {
+        var (generic, callee, scope) = (evaluation.Generic, evaluation.Callee, evaluation.Scope);
+        for (var i = 0; generic is not null && i < generic.TypeArguments.Count; i++)
+        {
+            var syntax = generic.TypeArguments[i];
+            var isLength = this.IsLengthArgument(syntax, scope);
+            var argumentName = UnwrapTypeSyntax(syntax);
+            while (argumentName is ParenthesizedTypeKoto parentheses)
+            {
+                argumentName = UnwrapTypeSyntax(parentheses.Type);
+            }
+
+            // A question, not the argument's lookup (R7-N1e2-1R): whether its spelling also names a Type, in a Type position's row.
+            // It publishes nothing: the argument is then looked up once, as a length (a value) or by its BindType.
+            if (isLength && this.ProbePath(argumentName, scope, UseRow(argumentName), 0) is not null)
+            {
+                var typeSlot = false;
+                var lengthSlot = false;
+                foreach (var candidate in candidates)
+                {
+                    if (candidate.Declaration is FunctionKoto declaration && declaration.GenericArguments.Count == generic.TypeArguments.Count &&
+                        (callee is SyntheticKoto || this.Accessible(candidate, scope, receiverType: this.CallReceiver(callee)?.BoundType)))
+                    {
+                        lengthSlot |= declaration.GenericArguments[i] is LengthParameterKoto;
+                        typeSlot |= declaration.GenericArguments[i] is GenericParameterKoto;
+                    }
+                }
+
+                if (typeSlot && lengthSlot)
+                {
+                    return false;
+                }
+
+                isLength = !typeSlot;
+            }
+
+            evaluation.ExplicitLengths[i] = isLength ? this.BindLength(syntax, scope) : null;
+            if (evaluation.ExplicitLengths[i] is null && syntax.BindingFailure == BindingFailure.None)
+            {
+                this.BindType(syntax, scope);
+            }
+
+            evaluation.ExplicitTypes[i] = evaluation.ExplicitLengths[i] is null ? syntax.BoundType : null;
+        }
+
+        return true;
+    }
+
     private BoundType? BindCallCore(InvocationKoto call, BindingScope scope, BoundType? expected)
     {
         var callee = call.Method;
@@ -158,125 +209,37 @@ public sealed partial class Binding
             return Complete(call, null);
         }
 
-        var candidateCount = shape.Count;
-        var maxParameters = shape.Parameters;
-        var maxGenerics = shape.Generics;
-        var solveOrigins = shape.SolveOrigins;
         var argumentCount = call.ArgumentNodes.Count;
-        var originSlots = solveOrigins ? shape.Origins : 0;
-        var inputSlots = solveOrigins ? shape.InputOrigins : 0;
-        var savedCandidates = candidateCount > 1 ? candidateCount : 0;
-        var solveFrame = this.infer.Rent(Math.Max(1, maxGenerics), call);
-        var explicitTypes = this.typeScratch.Rent(generic?.TypeArguments.Count ?? 0);
-        var explicitLengths = this.lengthScratch.Rent(generic?.TypeArguments.Count ?? 0);
-        var mapping = this.indexScratch.Rent(Math.Max(1, argumentCount));
-        var used = this.flagScratch.Rent(Math.Max(1, maxParameters));
-        var completedWaiting = this.flagScratch.Rent(argumentCount);
-        var waitingContexts = this.typeScratch.Rent(argumentCount);
-        completedWaiting.AsSpan(0, argumentCount).Clear();
-        var origins = this.originScratch.Rent(originSlots);
-        var inputs = this.originScratch.Rent(inputSlots);
-        var evaluated = this.candidateScratch.Rent(candidateCount);
-        var allTypes = this.typeScratch.Rent(savedCandidates * maxGenerics);
-        var allSelectors = this.typeScratch.Rent(savedCandidates * maxGenerics);
-        var allLengths = this.lengthScratch.Rent(savedCandidates * maxGenerics);
-        var allMaps = this.indexScratch.Rent(savedCandidates * argumentCount);
-        var allOrigins = this.originScratch.Rent(savedCandidates * originSlots);
-        var allInputs = this.originScratch.Rent(savedCandidates * inputSlots);
-        var operationStride = argumentCount + 1;
-        var operations = this.argumentOperationScratch.Rent(candidateCount * operationStride);
-        var rows = this.rowScratch.Rent(candidateCount * argumentCount);
-        var childSlices = this.indexScratch.Rent(candidateCount * 2);
-        var childBase = this.childRows.Count;
-        var classBase = this.positionClasses.Count;
+        var evaluation = new CallEvaluation
+        {
+            Call = call,
+            Callee = callee,
+            Generic = generic,
+            Scope = scope,
+            Expected = expected,
+            Self = self,
+            Requirements = requirementGroup,
+            Winner = -1,
+            PremisesOnly = true,
+        };
+        this.RentEvaluation(ref evaluation, shape);
+        var (solveFrame, explicitTypes, explicitLengths, mapping) = (evaluation.Frame, evaluation.ExplicitTypes, evaluation.ExplicitLengths, evaluation.Mapping);
+        var (origins, inputs, evaluated, operations) = (evaluation.Origins, evaluation.Inputs, evaluation.Evaluated, evaluation.Operations);
+        var (allTypes, allSelectors, allLengths, allMaps) = (evaluation.AllTypes, evaluation.AllSelectors, evaluation.AllLengths, evaluation.AllMaps);
+        var (allOrigins, allInputs, completedWaiting, waitingContexts) = (evaluation.AllOrigins, evaluation.AllInputs, evaluation.CompletedWaiting, evaluation.WaitingContexts);
+        var (operationStride, savedCandidates, maxGenerics) = (evaluation.OperationStride, evaluation.SavedCandidates, evaluation.MaxGenerics);
+        var (originSlots, inputSlots, solveOrigins) = (evaluation.OriginSlots, evaluation.InputSlots, shape.SolveOrigins);
         BoundDefaultArgument[]? defaults = null;
         try
         {
-            if (generic is not null)
+            if (!this.BindExplicitArguments(ref evaluation, candidates))
             {
-                for (var i = 0; i < generic.TypeArguments.Count; i++)
-                {
-                    var syntax = generic.TypeArguments[i];
-                    var isLength = this.IsLengthArgument(syntax, scope);
-                    var argumentName = UnwrapTypeSyntax(syntax);
-                    while (argumentName is ParenthesizedTypeKoto parentheses)
-                    {
-                        argumentName = UnwrapTypeSyntax(parentheses.Type);
-                    }
-
-                    // A question, not the argument's lookup (R7-N1e2-1R): whether its spelling also names a Type, in a Type position's row.
-                    // It publishes nothing: the argument is then looked up once, as a length (a value) or by its BindType.
-                    if (isLength && this.ProbePath(argumentName, scope, UseRow(argumentName), 0) is not null)
-                    {
-                        var typeSlot = false;
-                        var lengthSlot = false;
-                        foreach (var candidate in candidates)
-                        {
-                            if (candidate.Declaration is FunctionKoto declaration && declaration.GenericArguments.Count == generic.TypeArguments.Count &&
-                                (callee is SyntheticKoto || this.Accessible(candidate, scope, receiverType: this.CallReceiver(callee)?.BoundType)))
-                            {
-                                lengthSlot |= declaration.GenericArguments[i] is LengthParameterKoto;
-                                typeSlot |= declaration.GenericArguments[i] is GenericParameterKoto;
-                            }
-                        }
-
-                        if (typeSlot && lengthSlot)
-                        {
-                            // Both namespaces can supply this spelling. Do not silently choose
-                            // a kind before candidate-local dual-namespace binding is available.
-                            return this.Fail(call, BindingFailure.Unsupported, true);
-                        }
-
-                        isLength = !typeSlot;
-                    }
-
-                    explicitLengths[i] = isLength ? this.BindLength(syntax, scope) : null;
-                    if (explicitLengths[i] is null && syntax.BindingFailure == BindingFailure.None)
-                    {
-                        this.BindType(syntax, scope);
-                    }
-
-                    explicitTypes[i] = explicitLengths[i] is null ? syntax.BoundType : null;
-                }
+                // Both namespaces can supply a spelling. Do not silently choose a kind before candidate-local dual-namespace binding is
+                // available.
+                return this.Fail(call, BindingFailure.Unsupported, true);
             }
 
-            var evaluation = new CallEvaluation
-            {
-                Call = call,
-                Callee = callee,
-                Generic = generic,
-                Scope = scope,
-                Expected = expected,
-                Self = self,
-                Requirements = requirementGroup,
-                Frame = solveFrame,
-                ExplicitTypes = explicitTypes,
-                ExplicitLengths = explicitLengths,
-                Mapping = mapping,
-                Used = used,
-                Origins = origins,
-                Inputs = inputs,
-                Evaluated = evaluated,
-                Operations = operations,
-                Rows = rows,
-                ChildSlices = childSlices,
-                OperationStride = operationStride,
-                SavedCandidates = savedCandidates,
-                AllTypes = allTypes,
-                AllSelectors = allSelectors,
-                AllLengths = allLengths,
-                AllMaps = allMaps,
-                AllOrigins = allOrigins,
-                AllInputs = allInputs,
-                MaxGenerics = maxGenerics,
-                OriginSlots = originSlots,
-                InputSlots = inputSlots,
-                Winner = -1,
-                PremisesOnly = true,
-            };
-            this.acquisitionFailure = null;
-            this.failedCause = null;
-            this.EvaluateCallCandidates(ref evaluation, candidates);
+            var (selection, winnerIndex) = this.EvaluateSelection(ref evaluation, candidates);
             var count = evaluation.Count;
             var applicable = evaluation.Applicable;
             if (evaluation.Error)
@@ -292,7 +255,6 @@ public sealed partial class Binding
                 return Complete(call, null);
             }
 
-            var (selection, winnerIndex) = this.ClassifySelection(ref evaluation);
             if (unknownArgument && AnyArgumentsMatch(evaluated.AsSpan(0, count), generic, explicitLengths))
             {
                 // SPEC 10.1, 23.1.2 (DECISIONS BU-79, its G455 amendment): beside an unprepared argument the call reports only the checks
@@ -589,27 +551,7 @@ public sealed partial class Binding
                 this.defaultArgumentScratch.Return(defaults, clearArray: true);
             }
 
-            this.argumentOperationScratch.Return(operations, clearArray: true);
-            this.rowScratch.Return(rows, clearArray: true);
-            this.indexScratch.Return(childSlices);
-            this.childRows.RemoveRange(childBase, this.childRows.Count - childBase); // R3: the evaluation's retained rows end with it.
-            this.positionClasses.RemoveRange(classBase, this.positionClasses.Count - classBase);
-            this.originScratch.Return(allInputs, clearArray: true);
-            this.originScratch.Return(allOrigins, clearArray: true);
-            this.indexScratch.Return(allMaps);
-            this.typeScratch.Return(allSelectors, clearArray: true);
-            this.typeScratch.Return(allTypes, clearArray: true);
-            this.lengthScratch.Return(allLengths, clearArray: true);
-            this.lengthScratch.Return(explicitLengths, clearArray: true);
-            this.candidateScratch.Return(evaluated, clearArray: true);
-            this.originScratch.Return(inputs, clearArray: true);
-            this.originScratch.Return(origins, clearArray: true);
-            this.typeScratch.Return(waitingContexts, clearArray: true);
-            this.typeScratch.Return(explicitTypes, clearArray: true);
-            this.flagScratch.Return(completedWaiting);
-            this.flagScratch.Return(used);
-            this.indexScratch.Return(mapping);
-            this.infer.Return(solveFrame);
+            this.ReturnEvaluation(evaluation);
         }
     }
 

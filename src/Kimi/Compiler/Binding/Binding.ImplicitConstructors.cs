@@ -62,11 +62,7 @@ public sealed partial class Binding
 
         var candidates = FunctionGroup.Of(group);
         var shape = MeasureCandidates(candidates, true);
-        var obligationCount = this.obligations.Count;
-        var acquisition = this.acquisitionFailure;
-        var failedCause = this.failedCause;
-        var requirementContract = this.activeRequirementContract;
-        var (mappings, comparisons, checks) = (this.inferenceMappings, this.inferenceComparisons, this.inferenceCandidateChecks);
+        var query = this.BeginSelectionQuery();
         var frame = this.infer.Rent(Math.Max(1, shape.Generics), constructor);
         var mapping = this.indexScratch.Rent(1);
         var used = this.flagScratch.Rent(Math.Max(1, shape.Parameters));
@@ -105,10 +101,7 @@ public sealed partial class Binding
                 Winner = -1,
                 PremisesOnly = true,
             };
-            this.acquisitionFailure = null;
-            this.failedCause = null;
-            this.EvaluateCallCandidates(ref evaluation, candidates);
-            var (selection, winner) = this.ClassifySelection(ref evaluation);
+            var (selection, winner) = this.EvaluateSelection(ref evaluation, candidates);
 
             // A winner whose own slots stay unsolved is selected as by a written base call, whose binding then reports them.
             return selection switch
@@ -127,16 +120,7 @@ public sealed partial class Binding
         }
         finally
         {
-            for (var i = obligationCount; i < this.obligations.Count; i++)
-            {
-                this.obligationSet.Remove(this.obligations[i]);
-            }
-
-            this.obligations.RemoveRange(obligationCount, this.obligations.Count - obligationCount);
-            this.acquisitionFailure = acquisition;
-            this.failedCause = failedCause;
-            this.activeRequirementContract = requirementContract;
-            (this.inferenceMappings, this.inferenceComparisons, this.inferenceCandidateChecks) = (mappings, comparisons, checks);
+            this.EndSelectionQuery(query);
             this.argumentOperationScratch.Return(operations, clearArray: true);
             this.indexScratch.Return(childSlices);
             this.candidateScratch.Return(evaluated, clearArray: true);
