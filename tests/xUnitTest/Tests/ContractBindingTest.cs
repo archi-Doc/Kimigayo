@@ -969,6 +969,38 @@ public class ContractBindingTest
         Assert.DoesNotContain(paths.Skip(first), static x => !x.Type.Declaration.Kotonoha.Syntax.IsLibrary);
     }
 
+    // PLAN G949 S1-r1b (c15's extension, F's ruling 65; s1r1-design 8.8): EffectObligations reads three per-pass sources in order:
+    // ImplTable's paths, the virtual declarations and the selected uses of bounded Callable clauses, each list Binding's own part's
+    // entries, then LibraryLayer.Part's (S1-b2's commits 3a-3c). From the split the library pass fills the layer's part and the program
+    // pass Binding's own; the library declares no `virtual` and no bounded Callable clause, so the layer's three lists (the virtual
+    // declarations, the uses and the clauses) are empty and Binding's own part holds every row: the program's obligations stand in the
+    // three sources' order, and AvailableCallableEffects finds apply's bound in the program part's clause. Fails on a head that hands
+    // the program pass the layer's lists or composes them first. Valid: each confined body is confined (SPEC 8.11.2-8.11.4).
+    [Fact]
+    public void TheEffectSourcesAreTheProgramPartsInTheirOrder()
+    {
+        const string Contract = "contract C\n    func get(self: ref/Self) -> i32\n        effect confined\n";
+        var c = CompilationTestHelper.ParseSuccess(Contract + "struct S\n    Self is C\n    public init() => ()\n    public func get(self: ref/Self) -> i32 => 1\n" +
+            "open struct Base\n    public init() => ()\n    public virtual func score(self: objref/Self) -> i32\n        effect confined\n        return 1\n" +
+            "func apply<F>(f: ref/F) -> i32\n    F is Callable<() -> i32>\n        effect confined\n    return f()\n" +
+            "func entry() -> i32\n    let f = func [] () -> i32 => 12\n    return apply(f@ref)\n");
+        Assert.True(c.Bind().IsComplete, Describe(c));
+        Assert.True(c.Analyze().IsVerified);
+        Assert.Equal(["S: Self is C get", "Base: public virtual func score(self: objref/Self) -> i32 score", ": f@ref entry"], EffectRows(c).Where(static x => !x.Library).Select(static x => x.Row));
+        var (layer, own) = (c.Library.Layer.Part, (Binding.PassPart)typeof(Binding).GetField("programPart", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(c.Binding)!);
+        Assert.Equal((0, 0, 0), (layer.VirtualDeclarations.Count, layer.CallableEffectUses.Count, layer.CallableEffectClauses.Count));
+        Assert.Equal("score", Assert.Single(own.VirtualDeclarations).BoundSymbol!.Name);
+        var clause = Assert.Single(own.CallableEffectClauses);
+        var use = Assert.Single(own.CallableEffectUses);
+        Assert.Equal("f@ref", use.At.ToString());
+        Assert.Same(clause, use.Clause);
+        var call = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>(), static x => x.ValueCallOf() is not null);
+        var plan = call.ValueCallOf()!;
+        var evidence = new List<EffectEvidence>();
+        Assert.True(c.Binding.AvailableCallableEffects(plan.CalleeType.Components[0], plan.DeclaredSignature, plan.ReceiverKind, c.Binding.ConstraintScope(call), evidence));
+        Assert.Same(clause, Assert.Single(evidence).Clause);
+    }
+
     // PLAN G949 S1-b1 (the Front's RR2): a path the sweep removed is taken from the pool for the next new key, emptied of the
     // satellites and witnesses of its earlier conformance, and a warm rebind afterwards allocates nothing.
     [Trait("Purpose", "Allocation")]
