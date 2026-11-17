@@ -1,5 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using System.Diagnostics.CodeAnalysis;
 using Kimi.Compiler.Parsing;
 
 namespace Kimi.Compiler;
@@ -10,7 +11,7 @@ public sealed partial class Binding
     // index, and of indexUniq for updates and exclusive borrows. The synthesized calls are ordinary method calls of the
     // conforming Type's implementations, so receiver acquisition, key adaptation, reference results and generic instantiation
     // follow the ordinary rules; the index expression designates the referent of the reference the selected call returns (LentElement).
-    private readonly Dictionary<(IndexKoto Source, bool Exclusive), InvocationKoto> indexerCalls = new();
+    private readonly IndexerCallRows indexerCalls;
 
     // The UniqIndexable side of each user or view index expression, the fact indexUniq's binding and SharedIndexNote read: whether
     // indexUniq is available here, and the receiver's UniqIndexable conformance the check selected by declaration or by the key (none
@@ -235,4 +236,21 @@ public sealed partial class Binding
 
     // A user or view index expression's UniqIndexable fact (uniqIndexing).
     private readonly record struct UniqIndexing(bool Exclusive, BoundConformance? Conformance);
+
+    /// <summary>The `indexerCalls` family's one accessor (DECISIONS BU-220): a kept family, an index expression's synthesized `index` and
+    /// `indexUniq` calls (SPEC 4.7.1), its composite key (the source node, whether it is exclusive) kept in the source's module's
+    /// NodeColumns at its SyntaxId as a row of two calls indexed directly by whether it is exclusive. Each call is made once and reset in
+    /// place by each pass (ResetSyntheticCalls). Its members keep the names its readers use.</summary>
+    private readonly struct IndexerCallRows(Binding binding)
+    {
+        internal FamilyRows<InvocationKoto?[]?> Values => new(binding, static (table, _) => table.Hir.Families.IndexerCalls.Enumerate());
+
+        internal InvocationKoto this[(IndexKoto Source, bool Exclusive) key]
+        {
+            set => (HirTables.Of(key.Source).Families.IndexerCalls.Ref(key.Source.SyntaxId) ??= new InvocationKoto?[2])[key.Exclusive ? 1 : 0] = value;
+        }
+
+        internal bool TryGetValue((IndexKoto Source, bool Exclusive) key, [NotNullWhen(true)] out InvocationKoto? value)
+            => (value = key.Source.SyntaxOwner is { } table && table.Hir.Families.IndexerCalls.Get(key.Source.SyntaxId) is { } row ? row[key.Exclusive ? 1 : 0] : null) is not null;
+    }
 }
