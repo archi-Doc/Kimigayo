@@ -9,8 +9,8 @@ namespace XunitTest;
 public class FunctionApiCertificateBindingTest
 {
     [Theory]
-    [InlineData("Source.Hidden.Element", "i32")]
-    [InlineData("i32", "Source.Hidden.Element")]
+    [InlineData("Source.(Hidden).Element", "i32")]
+    [InlineData("i32", "Source.(Hidden).Element")]
     public void InvalidProjectionSignatureCannotCertifyWitness(string input, string result)
     {
         var c = MinimalEmissionTest.Analyze("contract Hidden\n    associate Element\npublic struct Source\n    Self is Hidden\n    associate Hidden.Element is i32\npublic contract Export\n    func identity(self: ref/Self, value: i32) -> i32\npublic struct S\n    Self is Export\n    public func identity(self: ref/Self, value: " + input + ") -> " + result + " => value");
@@ -46,12 +46,12 @@ public class FunctionApiCertificateBindingTest
     [Fact]
     public void RebindingChangedSignatureInvalidatesAndRestoresWitness()
     {
-        var source = Source("internal", "public").Replace("value: Source.Hidden.Element", "value: i32", StringComparison.Ordinal);
+        var source = Source("internal", "public").Replace("value: Source.(Hidden).Element", "value: i32", StringComparison.Ordinal);
         var c = MinimalEmissionTest.Analyze(source);
         Assert.False(c.Binding.Result.IsComplete);
         var function = c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "S").Members.OfType<FunctionKoto>().Single();
         var original = function.ReturnType!;
-        var donor = MinimalEmissionTest.Analyze(source.Replace("-> Source.Hidden.Element", "-> i32", StringComparison.Ordinal));
+        var donor = MinimalEmissionTest.Analyze(source.Replace("-> Source.(Hidden).Element", "-> i32", StringComparison.Ordinal));
         var replacement = donor.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "S").Members.OfType<FunctionKoto>().Single().ReturnType!;
         ParseTestHelper.Detach(replacement, new CodeBlockKoto(replacement.CodeContext));
         Assert.True(KotoHelper.Replace(function, original, replacement));
@@ -83,7 +83,7 @@ public class FunctionApiCertificateBindingTest
     }
 
     private static string Source(string hiddenAccess, string typeAccess)
-        => hiddenAccess + " contract Hidden\n    associate Element\npublic struct Source\n    Self is Hidden\n    associate Hidden.Element is i32\npublic contract Export\n    func identity(self: ref/Self, value: i32) -> i32\n" + typeAccess + " struct S\n    Self is Export\n    public func identity(self: ref/Self, value: Source.Hidden.Element) -> Source.Hidden.Element => value";
+        => hiddenAccess + " contract Hidden\n    associate Element\npublic struct Source\n    Self is Hidden\n    associate Hidden.Element is i32\npublic contract Export\n    func identity(self: ref/Self, value: i32) -> i32\n" + typeAccess + " struct S\n    Self is Export\n    public func identity(self: ref/Self, value: Source.(Hidden).Element) -> Source.(Hidden).Element => value";
 
     private static BoundConformance Definition(Compilation c)
     {

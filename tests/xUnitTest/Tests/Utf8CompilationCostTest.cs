@@ -100,7 +100,7 @@ public class Utf8CompilationCostTest
         Assert.True(c.Analyze().IsVerified);
         using var output = new StringWriter();
         Assert.True(c.Generate(output), MinimalEmissionTest.Describe(c));
-        Assert.Contains("alloca [26 x i8]", output.ToString());
+        Assert.Contains("alloca { [0 x i8], [26 x i8] }", output.ToString()); // The region, a [26 of u8] local (R8-W2 a2).
         ScalarEmissionTest.WriteFixture("Utf8CompilationReload", output.ToString(), "value=42\n");
     }
 }

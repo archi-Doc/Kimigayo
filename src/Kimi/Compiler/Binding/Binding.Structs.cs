@@ -17,9 +17,6 @@ public sealed partial class Binding
     private const int StorageCapped = int.MaxValue - 1;
     private const int StorageRejected = -1;
 
-    private readonly Dictionary<FunctionKoto, BindingSymbol> specialReceivers = new(ReferenceEqualityComparer.Instance);
-    private readonly HashSet<Koto> inferredConstructorTargets = new(ReferenceEqualityComparer.Instance);
-
     // The storage walk's marks for the pass, by Type: a finished Type's height (StorageRefused when refused) with Open 0, or
     // StorageRejected when its storage is Rejected; or an open Type's position on the walk's stack (Open), which every query leaves empty;
     // ResetPass clears both, after a walk a fault aborted too.
@@ -45,7 +42,7 @@ public sealed partial class Binding
         Limit,
     }
 
-    internal BindingSymbol? SpecialReceiver(FunctionKoto function) => this.specialReceivers.GetValueOrDefault(function);
+    internal BindingSymbol? SpecialReceiver(FunctionKoto function) => SpecialReceiverRows.GetValueOrDefault(function);
 
     // A Type's storage verdict (StorageOutcome): Limit when its height passes 64 or a walk from it passes 256 Types, else Rejected when it
     // reaches a part that does not substitute, else Prepared. A limit marks every Type left open Refused, each of which reaches the
@@ -93,8 +90,7 @@ public sealed partial class Binding
     {
         var binder = subst.Binder;
         var originBinder = binder is FunctionKoto function ? function.OriginBinder : binder;
-        var result = this.MemberType(type, subst.Declaring) is { } member
-            ? this.SubstituteType(member, binder, subst.Types, subst.Lengths, subst.Origins, subst.Inputs, originBinder) : null;
+        var result = this.Substitute(type, new CallSubstitution(originBinder, subst.Types, subst.Lengths, subst.Origins) { SlotOwner = binder, Images = subst.Inputs, Declaring = subst.Declaring });
         if (result is not null)
         {
             result = this.ContractType(result, this.ConstraintScope(binder), subst.Self);
@@ -310,11 +306,8 @@ public sealed partial class Binding
             return;
         }
 
-        if (!this.specialReceivers.TryGetValue(function, out var receiver))
-        {
-            this.specialReceivers.Add(function, receiver = new("self", BindingSymbolKind.Parameter, function, scope) { Slot = ReceiverSlot });
-        }
-
+        // The kept slot is read and written first: a later column write may carve a page and move the arena it points into.
+        var receiver = SpecialReceiverRows.Slot(function) ??= new("self", BindingSymbolKind.Parameter, function, scope) { Slot = ReceiverSlot };
         receiver.Scope = scope;
         receiver.Type = scope.Parent?.Owner.BoundSymbol?.Type;
         if (!scope.Values.TryAdd("self", receiver))
@@ -331,17 +324,27 @@ public sealed partial class Binding
             return null;
         }
 
-        var qualifier = this.TypeName(member.Left, scope, LookupRole.Any, arity: -1);
-        if (qualifier is null)
+        var path = this.NamePath(member.Left, scope, arity: -1);
+        var projection = path.End == PathEnd.Projection ? UseNode(member.Left) as MemberAccessKoto : null;
+        var projected = projection is not null ? this.BindAssociatedProjection(projection, scope) : null;
+        if (path.Symbol is null && projected is null)
         {
             // A qualifier that names no Type is reported by the call as missing or inaccessible (BindCall).
             return null;
         }
 
-        var type = this.ConstructorQualifierType(member.Left, qualifier, scope);
+        // SPEC 6.3.2, 8.5.2: a projection qualifier constructs its normal form.
+        var type = projected is not null ? Complete(member.Left, projected) : this.ConstructorQualifierType(member.Left, path.Symbol!, scope);
         if (type is not { Semantics: SemanticsKind.Owner, Symbol.Declaration: StructKoto declaration } ||
             !this.scopes[declaration].Values.TryGetValue("init", out var constructor))
         {
+            // DECISIONS BU-61, BU-184 (SPEC 23.1.2): a projection that stays one names no structure; its absence rests on the projection's
+            // use, the qualifier formed above.
+            if (projection is not null && projected is not null)
+            {
+                this.AddPendingPrerequisite(member, projection);
+            }
+
             this.FailConstructorAbsence(member, type);
             return null;
         }
@@ -349,6 +352,7 @@ public sealed partial class Binding
         member.Right.BindingState = BindingState.Resolved;
         member.Right.BoundSymbol = constructor;
         member.BoundSymbol = constructor;
+        this.memberSides[member] = MemberSide.Type; // SPEC 6.3.2: a constructor is never called on a receiver.
         return constructor;
     }
 
@@ -366,18 +370,12 @@ public sealed partial class Binding
         }
 
         if (unwrapped is GenericsKoto || TypeSpelling(unwrapped) == "Self" ||
-            symbol.Declaration is not StructKoto { GenericParameterNodes.Count: > 0 } declaration)
+            symbol.Declaration is not StructKoto { GenericParameterNodes.Count: > 0 })
         {
             return this.EnumQualifierType(syntax, symbol, scope, null);
         }
 
-        var pattern = this.SelfType(symbol);
-        var type = this.BindContainerReference(syntax, symbol, scope, this.TypeContext(syntax, scope), ((BoundType[])pattern.Components).AsSpan(0, declaration.GenericParameterNodes.Count));
-        if (type is not null)
-        {
-            this.inferredConstructorTargets.Add(syntax);
-        }
-
+        var type = this.ConstructionTargetType(syntax, symbol, scope, null);
         syntax.BoundSymbol = symbol;
         return Complete(syntax, type);
     }
@@ -496,8 +494,9 @@ public sealed partial class Binding
     private BoundType ConstructorType(InvocationKoto call, FunctionKoto function, BindingScope scope, ReadOnlySpan<int> mapping, BoundType? expected)
     {
         var owner = (StructKoto)function.BoundSymbol!.Scope.Owner;
-        var type = call.Parent is FunctionKoto { IsConstructor: true } constructor && ReferenceEquals(constructor.BaseInitializer, call)
-            ? AdtDef.Base(this.SelfType(constructor.BoundSymbol!.Scope.Owner.BoundSymbol!))!
+        var baseInitializer = call.Parent is FunctionKoto { IsConstructor: true } constructor && ReferenceEquals(constructor.BaseInitializer, call);
+        var type = baseInitializer
+            ? AdtDef.Base(this.SelfType(((FunctionKoto)call.Parent!).BoundSymbol!.Scope.Owner.BoundSymbol!))!
             : ((MemberAccessKoto)call.Method).Left.BoundType!;
         var count = owner.BoundSymbol!.Schema!.Origins.Count;
         if (count == 0)
@@ -515,11 +514,13 @@ public sealed partial class Binding
 
         try
         {
+            // SPEC 10.8.1, 10.2: each argument is adapted as the trial adapts it, at the pattern under the slots its construction Type fixes.
+            var fixedSlots = ConstructionSlots(function, type, !baseInitializer && this.InfersConstruction(call));
             for (var i = 0; i < call.ArgumentNodes.Count; i++)
             {
                 var slot = mapping[i];
                 if (function.Parameters[slot].Type.BoundType is { } pattern && call.ArgumentNodes[i].BoundType is { } actual &&
-                    this.AdaptInput(call.ArgumentNodes[i], pattern, actual, scope, null, null, out var adapted, out _, out _, deferAcquisition: true))
+                    this.AdaptInput(call.ArgumentNodes[i], FixedPattern.Of(this, pattern, fixedSlots), actual, scope, null, null, out var adapted, out _, out _, deferAcquisition: true))
                 {
                     this.MatchInputOrigins(this.StoredType(pattern, type)!, adapted, owner, origins, []);
                 }
@@ -538,6 +539,16 @@ public sealed partial class Binding
             this.originScratch.Return(origins, clearArray: true);
             this.acquisitionFailure = acquisition;
         }
+    }
+
+    /// <summary>The `specialReceivers` family's one accessor (DECISIONS BU-220): a kept family, a constructor's or destructor's receiver
+    /// <c>self</c> (SPEC 6.3) kept in its function's module's NodeColumns at the function's SyntaxId, made once and reset in place by each
+    /// pass's indexing (IndexSpecialReceiver).</summary>
+    private readonly struct SpecialReceiverRows
+    {
+        internal static ref BindingSymbol? Slot(FunctionKoto function) => ref HirTables.Of(function).Families.Receivers.Ref(function.SyntaxId);
+
+        internal static BindingSymbol? GetValueOrDefault(FunctionKoto function) => function.SyntaxOwner is { } table ? table.Hir.Families.Receivers.Get(function.SyntaxId) : null;
     }
 
     // One reusable visitor walks a destructor's body to each Closure it creates, judging the bound ones; it stops at a Closure, whose

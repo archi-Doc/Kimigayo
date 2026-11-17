@@ -13,7 +13,7 @@ embedded and implemented.
   functions belong inside declaration containers such as groups or structs.
 - `Slice.kimi` and `Array.kimi` declare the compiler-managed sequence Types; their storage and
   metadata are supplied by the compiler. Array's operations move to Kimigayo bodies over
-  `Storage.ArrayRepr<T>` family by family (`ArrayOperations.kimi`, DECISIONS R8-M2, R8-M3, R8-M5); the rest are
+  `Storage.ArrayRepr<T>` family by family (`Array.kimi`'s two linked constructors, DECISIONS R8-M2, R8-M3, R8-M5); the rest are
   supplied by the compiler until their R8 unit.
   The internal group `Kimi.Storage.FixedArray` in `Storage.kimi` holds the fixed-array receiver
   functions. The `length` and `indices` of a fixed array stay compiler sequence metadata, shared
@@ -45,11 +45,12 @@ embedded and implemented.
   are emitted. The private `counterFrequency` is initialized by the ordinary first-access static
   protocol; it has no compiler-recognized name or special startup hook.
 - `Iteration.kimi` declares the public `Kimi.Iteration` adapters (`owning`, `borrowing`, `OwningIterator<I>`, `BorrowingIterator<I>`) as ordinary Kimigayo.
-- `Intrinsics.kimi`, `Console.kimi`, `Test.kimi`, `ArrayOperations.kimi`, `StorageOperations.kimi` and `RawOperations.kimi` contain signatures without source bodies.
-  Their private loader supplies the owning container (a group, the `Array` struct for its constructor and mutation operations, the
-  internal `Storage` group of `Storage.kimi` for the standard storage boundary, or the public `Raw` group of `Raw.kimi` for raw storage; a struct also admits bodiless `init` signatures).
-  Within these signature resources, only catalog-registered compiler implementations may omit bodies
-  without an ordinary `#LibraryImport` declaration. A catalog link may instead name an internal source function of the same
+- A declaration the compiler implements is written in its container without a Body and carries `#Intrinsic` (or
+  `#Unsupported`; a linked constructor carries `#Lang`): `Console.writeStdout` in `Formatting.kimi`, the object
+  factories and `clone` in `Intrinsics.kimi` (with the four `#Unsupported` Weak operations), Array's two constructors in
+  `Array.kimi`, the storage operations in `Storage.kimi`, the raw operations in `Raw.kimi` and `Test.tempDirectory` in
+  `Test.kimi`.
+  A catalog link may instead name an internal source function of the same
   struct as a bodiless constructor's definition (`Array.init(! capacity:)` → `Array.initCapacity` and
   `Array.init(! repeating:count:)` → `Array.initRepeating`, SPEC 22.1); calls select and present the public constructor and
   execute the implementation. Ordinary
@@ -62,13 +63,15 @@ embedded and implemented.
   Its owning remainder destroys unreturned elements in reverse order in a concrete
   generic `drop`, then calls `Raw.release`. Only handle
   construction, capability creation and raw region release remain compiler operations.
-- Register compiler-recognized identities in `KimiLibraryCatalog`; `KimiLibraryShapeTest` fixes the shapes the
-  compiler and the runtime rely on, so a change to them updates that test with its compiler consumer. Append new
-  stable declaration IDs; never derive them from source order. Ordinary helper declarations need no ID. A
-  `SourceExpected` declaration that is missing or duplicated fails library construction; the other entries are APIs
-  whose source is not implemented yet.
+- A recognized declaration carries `#Lang("<KimiDeclarationId member>")`, and only a declaration a C# reader names has a
+  member (the owner's O-307 (a)); a `KimiLibraryCatalog` entry holds only the facts its source cannot state.
+  `KimiLibraryShapeTest` fixes the shapes the compiler and the runtime rely on, so a change to them updates that test
+  with its compiler consumer. `KimiDeclarationId` values are in-process indices (the catalog's members first, in the
+  order of its entries, the internal declarations last); never derive them from source order. Ordinary helper
+  declarations need no ID. A catalog entry without its declaration, or a `#Lang` that names no member or names one
+  twice, fails library construction.
 - Preserve reference identity through binding. Call lowering must use the
-  recognized symbol or compiler-function kind, never a user-visible spelling.
+  recognized symbol (its lang item or its `Definition`), never a user-visible spelling.
 
 Source text and successfully lexed immutable tokens are cached and shared. Source
 documents, ASTs, symbols and binding state remain compilation-local; no cached
@@ -77,9 +80,9 @@ are reported per compilation rather than cached. Rebinding does not perform
 resource IO, lexing or parsing. Keep the allocation checks in `CoreCatalogTest` and use
 `KimiLibraryBenchmark` for initialization and warm-binding measurements.
 
-Recognition does not prove runtime support. Missing API entries do not create
-placeholder declarations. Use `GetSymbol` for ID lookup. The old ObjectOwnership
-ID is reserved.
+Recognition does not prove runtime support. A declaration this implementation does not support is written with
+`#Unsupported`; every use outside such a declaration is `Unsupported_Kd` (SPEC 22.1, IMPL 21.3.4). Every catalog entry has a
+source declaration. Use `GetSymbol` for ID lookup.
 
 ## Dictionary implementation policy
 
@@ -105,7 +108,8 @@ Subscripts, direct calls and generic Contract calls share these bodies; catalog 
 physical ABI so the missing-key primitive reports the access rather than the embedded source.
 The same catalog metadata and private ABI carry the caller context through Position/range `resolve`, integer range
 iteration entries and their `starting` helpers, and Array `truncate`. Their Kimigayo bodies choose the failure;
-`Storage.argumentOutOfRange` only reports its canonical code at the forwarded location. Ordinary user `$abort` is unchanged.
+`Storage.indexBounds` reports every failure of an aborting position or range operation and `Storage.argumentOutOfRange` only a
+numeric argument out of range; both at the forwarded location. Ordinary user `$abort` is unchanged.
 `tryInsert` and `insertOrReplace` search through the shared storage remainder in ordinary source. The private
 `DictionaryStorage.placeEntry` appends one slot and places the acquired pair, carrying the standard operation's caller location
 for growth failure; `DictionaryStorage.replaceValue` moves a live entry's value out through `DictionaryStorage.valueAt` and

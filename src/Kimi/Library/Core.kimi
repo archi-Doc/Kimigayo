@@ -1,16 +1,24 @@
+#Lang("Copy")
 public contract Copy
+#Lang("Owned")
 public contract Owned
+#Lang("Callable")
 public contract Callable
+#Lang("Sealed")
 public contract Sealed
+#Lang("ObjectPayload")
 public contract ObjectPayload
+#Lang("PrimitiveInteger")
 public contract PrimitiveInteger
 
 /// A boundary of a target of length `L` that resolves to an integer in `[0, L]` (SPEC 4.6.1).
 ///
 /// A closed Contract: the twelve integer Types, `FromEnd<T>`, `Start` and `End` conform, and no other Type can.
+#Lang("Position")
 public contract Position: Equatable, Utf8Format
     Self is Copy
     Self is Owned
+    effect Utf8Format.format confined
 
     /// Resolves this position against `length`, or returns `None` when `length < 0` or the position lies outside
     /// `[0, length]`.
@@ -19,9 +27,11 @@ public contract Position: Equatable, Utf8Format
 /// An interval of positions that resolves against a length to a validated half-open interval (SPEC 4.6.3).
 ///
 /// A closed Contract: `Range<S, E>`, `ClosedRange<S, E>` and `ResolvedRange` conform, and no other Type can.
+#Lang("PositionRange")
 public contract PositionRange: Equatable, Utf8Format
     Self is Copy
     Self is Owned
+    effect Utf8Format.format confined
 
     /// Resolves this range against `length`, or returns `None` when `length < 0`, a boundary does not resolve or the
     /// resolved boundaries are reversed.
@@ -29,6 +39,7 @@ public contract PositionRange: Equatable, Utf8Format
 
 // SPEC 4.6.1, 8.7: the built-in integer conformance to Position. The compiler binds an integer's `tryResolve`
 // requirement to this receiver function; integers gain no members.
+#Lang("IntegerPosition")
 internal group IntegerPosition
     /// Returns `self` as an isize boundary when `0 <= self <= length`, or None; no wide value is truncated first.
     public func tryResolve<I>(self: I, length: isize) -> Option<isize>
@@ -50,19 +61,27 @@ internal group IntegerPosition
         require length >= 0 and self <= length@usize else => return .None
         return .Some(self@isize)
 
+#Lang("Option")
 public enum Option<T>
     Self is Copy when T is Copy
     Some(T)
     None
 
+#Lang("Result")
 public enum Result<T, E>
     Self is Copy when T is Copy, E is Copy
     Ok(T)
     Err(E)
 
+/// The uninhabited value Type (SPEC 3.1.3): it has no values, members or constructors. `return`, `exit`, `continue`,
+/// `yield` and `$abort(...)` have it, and a function that never returns states it as its result.
+#Lang("Never")
+public struct Never
+
 /// A zero-sized Field that keeps the dependency of a borrow value of Type `T` without storing it (SPEC 15.3.5). `T` is a
 /// complete `ref`, `uniq`, `objref` or `objuniq` borrow Type. A `Loan<T>` Field is analyzed as storing a `T`, so the slots
 /// it uses take their Loan requirements and variance from it; it has no address, reads nothing and grants no access.
+#Lang("Loan")
 public struct Loan<T>
     Self is Copy when T is Copy
 
@@ -79,6 +98,7 @@ public struct Loan<T>
 /// Division by zero and an invalid shift count still Abort. The Type has no members: enter and leave it with
 /// `x@Wrapping<T>` and `w@T`. It is neither `PrimitiveInteger` nor a `Position`, so it is a value, never an index,
 /// a range boundary, a length or a shift count.
+#Lang("Wrapping")
 public struct Wrapping<T>
     T is PrimitiveInteger
     Self is Copy
@@ -87,6 +107,7 @@ public struct Wrapping<T>
 ///
 /// Construction checks nothing: `^(-1)` is a valid value that fails to resolve. `^0` is the end boundary and `^1`
 /// the last element.
+#Lang("FromEnd")
 public struct FromEnd<T>
     T is PrimitiveInteger
     Self is Copy
@@ -110,10 +131,11 @@ public struct FromEnd<T>
     /// Resolves to `length - offset`.
     ///
     /// - abort: `offset` lies outside `[0, length]`.
+    #CallerLocation
     public func resolve(self: Self, length: isize) -> isize
         match self.tryResolve(length)
             .Some(let position) => return position
-            .None => Kimi.Storage.argumentOutOfRange()
+            .None => Kimi.Storage.indexBounds()
 
     /// Writes `^` followed by the offset.
     public func format(self: ref/Self, writer: uniq/Utf8Writer) -> Result<(), BufferFull>
@@ -121,6 +143,7 @@ public struct FromEnd<T>
         return writer.write(self.offset)
 
 /// The start boundary of a target, which an omitted range start denotes (SPEC 4.6.1).
+#Lang("Start")
 public struct Start
     Self is Copy
     Self is Equatable
@@ -140,15 +163,18 @@ public struct Start
     /// Resolves to `0`.
     ///
     /// - abort: `length < 0`.
+    #CallerLocation
     public func resolve(self: Self, length: isize) -> isize
-        require length >= 0 else => Kimi.Storage.argumentOutOfRange()
-        return 0
+        match self.tryResolve(length)
+            .Some(let position) => return position
+            .None => Kimi.Storage.indexBounds()
 
     /// Writes nothing: the boundary that range syntax omits.
     public func format(self: ref/Self, writer: uniq/Utf8Writer) -> Result<(), BufferFull>
         return .Ok(())
 
 /// The end boundary of a target, which an omitted range end denotes (SPEC 4.6.1).
+#Lang("End")
 public struct End
     Self is Copy
     Self is Equatable
@@ -168,9 +194,11 @@ public struct End
     /// Resolves to `length`.
     ///
     /// - abort: `length < 0`.
+    #CallerLocation
     public func resolve(self: Self, length: isize) -> isize
-        require length >= 0 else => Kimi.Storage.argumentOutOfRange()
-        return length
+        match self.tryResolve(length)
+            .Some(let position) => return position
+            .None => Kimi.Storage.indexBounds()
 
     /// Writes nothing: the boundary that range syntax omits.
     public func format(self: ref/Self, writer: uniq/Utf8Writer) -> Result<(), BufferFull>
@@ -181,6 +209,7 @@ public struct End
 /// Range syntax `a..b`, `a..`, `..b` and `..` constructs it; an omitted boundary is `Start` or `End`. Construction
 /// checks nothing, so a reversed range is a valid value that fails to resolve. It is iterable when both boundaries
 /// have one integer Type.
+#Lang("Range")
 public struct Range<S, E>
     S is Position
     E is Position
@@ -213,10 +242,11 @@ public struct Range<S, E>
     /// Resolves both boundaries against `length` into `[start, end)`.
     ///
     /// - abort: A boundary does not resolve, or the resolved start exceeds the resolved end.
+    #CallerLocation
     public func resolve(self: Self, length: isize) -> ResolvedRange
         match self.tryResolve(length)
             .Some(let resolved) => return resolved
-            .None => Kimi.Storage.argumentOutOfRange()
+            .None => Kimi.Storage.indexBounds()
 
     /// Writes the start, `..` and the end, each boundary in its own representation: `1..^1`, `2..`.
     public func format(self: ref/Self, writer: uniq/Utf8Writer) -> Result<(), BufferFull>
@@ -230,6 +260,7 @@ public struct Range<S, E>
         /// Starts a shared enumeration from `start` upward; the iterator keeps no borrow of the range.
         ///
         /// - abort: `start > end`.
+        #CallerLocation
         public func iterate(self: ref/Self during source) -> RangeIterator<S>
             return RangeIterator<S>.starting(self.start, self.end)
 
@@ -239,6 +270,7 @@ public struct Range<S, E>
         /// Starts an enumeration through an exclusive borrow; the range itself does not change.
         ///
         /// - abort: `start > end`.
+        #CallerLocation
         public func iterateUniq(self: uniq/Self during source) -> RangeIterator<S>
             return RangeIterator<S>.starting(self.start, self.end)
 
@@ -248,6 +280,7 @@ public struct Range<S, E>
         /// Starts an enumeration of the consumed range value.
         ///
         /// - abort: `start > end`.
+        #CallerLocation
         public func intoIterator(self: Self) -> RangeIterator<S>
             return RangeIterator<S>.starting(self.start, self.end)
 
@@ -255,6 +288,7 @@ public struct Range<S, E>
 ///
 /// Range syntax `a..=b` and `..=b` constructs it; its end resolves as an element position. Construction checks
 /// nothing. It is iterable when both boundaries have one integer Type.
+#Lang("ClosedRange")
 public struct ClosedRange<S, E>
     S is Position
     E is Position
@@ -287,10 +321,11 @@ public struct ClosedRange<S, E>
     /// Resolves the range against `length` into the half-open `[start, end + 1)`.
     ///
     /// - abort: A boundary does not resolve, the end is not an element position or the start exceeds the end.
+    #CallerLocation
     public func resolve(self: Self, length: isize) -> ResolvedRange
         match self.tryResolve(length)
             .Some(let resolved) => return resolved
-            .None => Kimi.Storage.argumentOutOfRange()
+            .None => Kimi.Storage.indexBounds()
 
     /// Writes the start, `..=` and the end, each boundary in its own representation: `1..=3`, `..=^1`.
     public func format(self: ref/Self, writer: uniq/Utf8Writer) -> Result<(), BufferFull>
@@ -304,6 +339,7 @@ public struct ClosedRange<S, E>
         /// Starts a shared enumeration from `start` through `end`; the iterator keeps no borrow of the range.
         ///
         /// - abort: `start > end`.
+        #CallerLocation
         public func iterate(self: ref/Self during source) -> ClosedRangeIterator<S>
             return ClosedRangeIterator<S>.starting(self.start, self.end)
 
@@ -313,6 +349,7 @@ public struct ClosedRange<S, E>
         /// Starts an enumeration through an exclusive borrow; the range itself does not change.
         ///
         /// - abort: `start > end`.
+        #CallerLocation
         public func iterateUniq(self: uniq/Self during source) -> ClosedRangeIterator<S>
             return ClosedRangeIterator<S>.starting(self.start, self.end)
 
@@ -322,6 +359,7 @@ public struct ClosedRange<S, E>
         /// Starts an enumeration of the consumed range value.
         ///
         /// - abort: `start > end`.
+        #CallerLocation
         public func intoIterator(self: Self) -> ClosedRangeIterator<S>
             return ClosedRangeIterator<S>.starting(self.start, self.end)
 
@@ -342,6 +380,7 @@ public struct RangeIterator<T>
     /// Starts at `start` after checking the order of a range entry.
     ///
     /// - abort: `start > end`.
+    #CallerLocation
     internal func starting(start: T, end: T) -> RangeIterator<T>
         require start <= end else => Kimi.Storage.argumentOutOfRange()
         return RangeIterator<T>.init(start, end)
@@ -377,6 +416,7 @@ public struct ClosedRangeIterator<T>
     /// Starts at `start` after checking the order of a range entry.
     ///
     /// - abort: `start > end`.
+    #CallerLocation
     internal func starting(start: T, end: T) -> ClosedRangeIterator<T>
         require start <= end else => Kimi.Storage.argumentOutOfRange()
         if ClosedRangeIterator<T>.isMaximum(end) => return ClosedRangeIterator<T>.init(start, end, true)
@@ -403,6 +443,7 @@ public struct ClosedRangeIterator<T>
 // SPEC 4.6.1-4.6.4: prefix `^` and range syntax construct their Types through these functions, and a position or range
 // key of a built-in sequence selection that the compiler does not apply directly resolves through them. The compiler
 // calls them by declaration, so neither a same-named source declaration nor the source's access rules affect them.
+#Lang("PositionSyntax")
 internal group PositionSyntax
     /// Constructs `^offset`.
     internal func fromEnd<T>(offset: T) -> FromEnd<T>
@@ -460,8 +501,9 @@ internal group PositionSyntax
 
 /// A validated absolute half-open interval `[start, end)` with `0 <= start <= end` (SPEC 4.6.2).
 ///
-/// Only `indices`, `resolve` and `tryResolve` produce it. A `for` loop over it runs the same positions as its
-/// entries without an iterator value; selection with a ResolvedRange still checks `end` against the target's length.
+/// Only `indices`, `resolve` and `tryResolve` produce it. Selection with a ResolvedRange still checks `end` against the
+/// target's length.
+#Lang("ResolvedRange")
 public struct ResolvedRange
     Self is Copy
     Self is Equatable
@@ -502,10 +544,11 @@ public struct ResolvedRange
     /// Returns this interval when its end does not exceed `length`.
     ///
     /// - abort: The end exceeds `length`.
+    #CallerLocation
     public func resolve(self: Self, length: isize) -> ResolvedRange
         match self.tryResolve(length)
             .Some(let resolved) => return resolved
-            .None => Kimi.Storage.argumentOutOfRange()
+            .None => Kimi.Storage.indexBounds()
 
     /// Writes `start..end`, as the Range<isize, isize> with the same boundaries is written.
     public func format(self: ref/Self, writer: uniq/Utf8Writer) -> Result<(), BufferFull>
@@ -525,8 +568,10 @@ public struct ResolvedRange
     public func intoIterator(self: Self) -> RangeIterator<isize>
         return RangeIterator<isize>.unchecked(self.start, self.end)
 
-// SPEC 13.4.1, 22.1: the bodies of string's built-in conformances to Equatable and Comparable: the witness table's
-// String row selects them (Binding.WitnessGroup), and every comparison of strings calls them; string gains no members.
+// SPEC 13.4.1, 22.10.2, 22.1: the bodies of string's built-in conformances to Equatable, Comparable and Utf8Format: the
+// witness table's String row selects them (Binding.WitnessGroup), and every comparison and write of a string calls them;
+// string gains no members.
+#Lang("StringWitness")
 internal group StringWitness
     func equals(self: ref/string, other: ref/string) -> bool
         unsafe
@@ -540,6 +585,13 @@ internal group StringWitness
             let right = other@follow@raw@raw/Storage.StringRepr
             return StringBytes.order((*left).data, (*left).length, (*right).data, (*right).length)
 
+    /// Writes the string's bytes, valid UTF-8 (SPEC 3.1.2), once through the writer's leaf; `#CallerLocation`
+    /// passes the user's location to the leaf (SPEC 22.5.1, through its private ABI).
+    #Lang("StringWitnessFormat")
+    #CallerLocation
+    func format(self: ref/string, writer: uniq/Utf8Writer) -> Result<(), BufferFull>
+        return writer.writeUtf8(Text.utf8(self))
+
 // The byte comparisons of two strings' storage. A string's bytes have no alignment, so whole words are read as byte
 // copies into a local, which O2 folds into one load; no u64 or u32 Place is read at a string's address.
 internal group StringBytes
@@ -550,37 +602,42 @@ internal group StringBytes
         unsafe
             if leftLength != rightLength => return false
             if leftLength >= 8
-                let last = leftLength - 8
+                // `leftLength >= 8` bounds the difference, and `index < last` the step.
+                let last = (leftLength@Wrapping<isize> - 8@Wrapping<isize>)@isize
                 var index: isize = 0
                 while index < last
                     if word(left + index) != word(right + index) => return false
-                    index += 8
+                    index = (index@Wrapping<isize> + 8@Wrapping<isize>)@isize
                 return word(left + last) == word(right + last)
             if leftLength >= 4
                 return half(left) == half(right) and half(left + leftLength - 4) == half(right + leftLength - 4)
             var index: isize = 0
             while index < leftLength
                 if *(left + index) != *(right + index) => return false
-                index += 1
+                // `index < leftLength` bounds the step.
+                index = (index@Wrapping<isize> + 1@Wrapping<isize>)@isize
             return true
 
     /// Returns the sign of the order of the two ranges (SPEC 13.4.1): unsigned bytes, the shorter first on a tie.
     ///
-    /// - safety: each range lies within its pointer's provenance and is readable.
+    /// - safety: `leftLength >= 0` and `rightLength >= 0`, and each range lies within its pointer's provenance and is
+    ///   readable.
     internal unsafe func order(left: raw/u8, leftLength: isize, right: raw/u8, rightLength: isize) -> i32
         unsafe
             let count = if leftLength < rightLength => leftLength else => rightLength
+            // A range's length is not negative, which bounds the difference; each loop's guard bounds its step.
+            let lastWord = (count@Wrapping<isize> - 8@Wrapping<isize>)@isize
             var index: isize = 0
-            while index <= count - 8
+            while index <= lastWord
                 if word(left + index) != word(right + index) => exit
-                index += 8
+                index = (index@Wrapping<isize> + 8@Wrapping<isize>)@isize
             while index < count
                 let leftByte = *(left + index)
                 let rightByte = *(right + index)
                 if leftByte != rightByte
                     if leftByte < rightByte => return -1
                     return 1
-                index += 1
+                index = (index@Wrapping<isize> + 1@Wrapping<isize>)@isize
             if leftLength == rightLength => return 0
             if leftLength < rightLength => return -1
             return 1
@@ -602,3 +659,9 @@ internal group StringBytes
         unsafe
             Storage.transferBytes(value@raw@raw/u8, source, 4)
         return value
+/// A weak reference (SPEC 3.2.2, 13.6.3): a compiler-managed Non-Copy struct; this implementation reports every use as
+/// Unsupported (IMPL 21.3.4).
+#Lang("Weak")
+#Unsupported
+public struct Weak<s/T>
+    s is rc or arc

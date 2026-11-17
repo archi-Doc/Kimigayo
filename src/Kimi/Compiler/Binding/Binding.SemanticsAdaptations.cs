@@ -11,7 +11,6 @@ public sealed partial class Binding
     // Only the selecting binder is a dependency; no source expression or operation plan is retained.
     private enum FamilyTransform : byte
     {
-        Adapt,
         Target,
         Origin,
         Apply,
@@ -42,9 +41,10 @@ public sealed partial class Binding
     /// <param name="pair">The selector's pair target Symbol.</param>
     /// <param name="source">The independently fixed input Type.</param>
     /// <param name="origin">The Origin of a newly produced borrow.</param>
+    /// <param name="scope">The adaptation's scope, whose premises give each binder's admitted cases (SPEC 8.3.4).</param>
     /// <returns>An interned family, collapsed when every case is identical.</returns>
-    internal BoundType SemanticsAdaptation(BindingSymbol pair, BoundType source, BoundOrigin? origin)
-        => this.AdaptationFamily(pair, source, origin);
+    internal BoundType SemanticsAdaptation(BindingSymbol pair, BoundType source, BoundOrigin? origin, BindingScope scope)
+        => this.AdaptationFamily(pair, source, origin, scope);
 
     /// <summary>Gets the possible outer Semantics of a complete Type or finite result-Type family.</summary>
     /// <param name="type">The complete Type.</param>
@@ -86,8 +86,9 @@ public sealed partial class Binding
     /// <param name="semantics">The selected Semantics.</param>
     /// <param name="source">The complete input Type.</param>
     /// <param name="origin">The Origin of a newly produced borrow.</param>
+    /// <param name="scope">The adaptation's scope, whose premises give each binder's admitted cases (SPEC 8.3.4).</param>
     /// <returns>The normalized ordinary Type or a finite family over an independent source selector.</returns>
-    internal BoundType AdaptedType(SemanticsKind semantics, BoundType source, BoundOrigin? origin)
+    internal BoundType AdaptedType(SemanticsKind semantics, BoundType source, BoundOrigin? origin, BindingScope scope)
     {
         if (ReferenceEquals(source, BoundType.Never) || semantics == SemanticsKind.Owner)
         {
@@ -96,14 +97,9 @@ public sealed partial class Binding
 
         if (IsObjectSemantics(semantics))
         {
-            if (source.Kind == BoundTypeKind.SemanticsAdaptation)
+            if (TryAdaptationSelector(source, out var whole))
             {
-                return this.TransformFamily(source, FamilyTransform.Adapt, origin, semantics);
-            }
-
-            if (TryPairLayer(source, out var whole, out _))
-            {
-                return this.AdaptationFamily(whole.Symbol!, source, origin, semantics);
+                return this.AdaptationFamily(whole.Symbol!, source, origin, scope, semantics);
             }
 
             if (semantics == SemanticsKind.ObjRef && source.Semantics == SemanticsKind.ObjRef)
@@ -133,10 +129,14 @@ public sealed partial class Binding
         return (mask & bit) == 0 ? null : family.Components[BitOperations.PopCount(mask & (bit - 1))];
     }
 
-    // Short adaptations select the output mode with the input case; a fixed mode maps every input case.
-    private BoundType AdaptationFamily(BindingSymbol pair, BoundType source, BoundOrigin? origin, SemanticsKind? fixedMode = null)
+    // Short adaptations select the output mode with the input case; a fixed mode maps every input case. The cases are the binder's
+    // admitted set at the adaptation (SPEC 8.3.4, 8.15.2: a conditional member's or block's premises included), not at its declaration,
+    // within a family source's own cases. A family never reaches a scope wider than where it was formed (result and parameter Types are
+    // declared, SPEC 7.1, and a nested scope only adds premises), so the cases any reader selects lie within its mask.
+    private BoundType AdaptationFamily(BindingSymbol pair, BoundType source, BoundOrigin? origin, BindingScope scope, SemanticsKind? fixedMode = null)
     {
-        var admitted = this.AdmittedSemantics(pair.WholeType!, pair.Scope);
+        var admitted = this.AdmittedSemantics(pair.WholeType!, scope) &
+            (source.Kind == BoundTypeKind.SemanticsAdaptation && ReferenceEquals(source.Symbol, pair) ? (SemanticsMask)source.Length : SemanticsMask.All);
         var children = this.RentTypes(BitOperations.PopCount((uint)admitted));
         var cases = this.adaptationCaseScratch.Rent(1);
         try
@@ -147,7 +147,7 @@ public sealed partial class Binding
                 if (admitted.Contains(mode))
                 {
                     cases[0] = new(pair, mode);
-                    children[count++] = this.AdaptedType(fixedMode ?? mode, this.CaseType(source, cases.AsSpan(0, 1)), origin);
+                    children[count++] = this.AdaptedType(fixedMode ?? mode, this.CaseType(source, cases.AsSpan(0, 1)), origin, scope);
                 }
             }
 
@@ -180,10 +180,68 @@ public sealed partial class Binding
         return this.ResultSemantics(type, scope) == SemanticsMask.Owner;
     }
 
+    // A family is interned only when no pair application has its cases: SPEC 13.5.1's `p@s` abbreviates `p@s/U`, whose Type is the
+    // application `s/U` (8.2.3: one Type, one representation), so a case list that one application's cases (CaseType) give is that
+    // application, as a list of identical cases is that case (TyCtxt.Intern).
     private BoundType TypeFamily(BindingSymbol pair, SemanticsMask admitted, ReadOnlySpan<BoundType> children)
-        => this.types.Intern(BoundTypeKind.SemanticsAdaptation, pair, SemanticsKind.Parameter, children, length: (long)admitted);
+        => this.FamilyApplication(pair, admitted, children) ??
+            this.types.Intern(BoundTypeKind.SemanticsAdaptation, pair, SemanticsKind.Parameter, children, length: (long)admitted);
 
-    private BoundType TransformFamily(BoundType family, FamilyTransform operation, BoundOrigin? origin = null, SemanticsKind semantics = SemanticsKind.Owner, BoundType? target = null)
+    // The pair application `s/U` (with the outer Origin its borrow cases state) whose case Types over the family's mask are `children` in
+    // SemanticsOrder, or null. `U` and the Origin are read off a layer case; the owner case is `U` itself. The mask is the binder's
+    // admitted set where the family is formed, and no reader of it is in a wider scope (DECISIONS BU-172), so only the cases compare.
+    private BoundType? FamilyApplication(BindingSymbol pair, SemanticsMask admitted, ReadOnlySpan<BoundType> children)
+    {
+        // One case stays that case (TyCtxt.Intern), the concrete Type its application's determined head forms (SPEC 8.2.3).
+        if (children.Length < 2 || pair.WholeType is not { } whole)
+        {
+            return null;
+        }
+
+        BoundType? target = null;
+        BoundOrigin? origin = null;
+        var count = 0;
+        foreach (var mode in SemanticsOrder)
+        {
+            if (admitted.Contains(mode))
+            {
+                var child = children[count++];
+                if (mode == SemanticsKind.Owner)
+                {
+                    target ??= child;
+                }
+                else if (child is { Kind: BoundTypeKind.Semantics, Components: [var below] } && child.Semantics == mode)
+                {
+                    target ??= below;
+                    origin ??= IsBorrow(mode) ? child.Origin : null;
+                }
+            }
+        }
+
+        if (target is null)
+        {
+            return null;
+        }
+
+        var application = ReferenceEquals(target, pair.Type) && (origin is null || ReferenceEquals(origin, this.PairOuterOrigin(pair))) ? whole
+            : this.types.Intern(BoundTypeKind.SemanticsApplication, pair, SemanticsKind.Parameter, [target], origin: origin);
+        count = 0;
+        foreach (var mode in SemanticsOrder)
+        {
+            if (admitted.Contains(mode))
+            {
+                ReadOnlySpan<PairCase> selected = [new(pair, mode)];
+                if (!ReferenceEquals(this.CaseType(application, selected), children[count++]))
+                {
+                    return null;
+                }
+            }
+        }
+
+        return application;
+    }
+
+    private BoundType TransformFamily(BoundType family, FamilyTransform operation, BoundOrigin? origin = null, BoundType? target = null)
     {
         var children = this.RentTypes(family.Components.Count);
         var cases = this.adaptationCaseScratch.Rent(1);
@@ -198,7 +256,6 @@ public sealed partial class Binding
                     cases[0] = new(family.Symbol!, mode);
                     children[count++] = operation switch
                     {
-                        FamilyTransform.Adapt => this.AdaptedType(semantics, child, origin),
                         FamilyTransform.Target => this.DirectTarget(child),
                         FamilyTransform.Origin => IsBorrow(child.Semantics) || child.IsAbstract ? this.WithOrigins(child, origin, (BoundOrigin[])child.OriginArguments) : child,
                         _ => this.ApplySemantics(child, this.CaseType(target!, cases.AsSpan(0, 1)), origin),
@@ -228,13 +285,15 @@ public sealed partial class Binding
         _ => this.Form(whole.Semantics, target, origin),
     };
 
-    private BoundType? SubstituteFamilyArgument(
-        BoundType family, Koto binder, ReadOnlySpan<BoundType?> arguments, ReadOnlySpan<BoundLength?> lengths, Koto originBinder, ReadOnlySpan<BoundOrigin> origins, PerCallImages images, int slot, BoundType whole)
+    private BoundType? SubstituteFamilyArgument(BoundType family, in CallSubstitution substitution, int slot, BoundType whole)
     {
+        // A slot the slot owner's column does not bind is the declaring Type's (CallSubstitution.Slot), whose occurrence then takes each case in turn.
+        var declaring = substitution.OwnsSlot(ContainerSlot(substitution.SlotOwner, family.Symbol!)) ? null : substitution.Declaring;
+        var slots = declaring is null ? substitution.Types : (BoundType[])declaring.Components;
         var children = this.RentTypes(whole.Components.Count);
-        var caseArguments = this.typeScratch.Rent(arguments.Length);
+        var caseArguments = this.typeScratch.Rent(slots.Length);
         var cases = this.adaptationCaseScratch.Rent(1);
-        arguments.CopyTo(caseArguments);
+        slots.CopyTo(caseArguments);
         try
         {
             var count = 0;
@@ -244,7 +303,10 @@ public sealed partial class Binding
                 {
                     cases[0] = new(whole.Symbol!, mode);
                     caseArguments[slot] = whole.Components[count];
-                    if (this.SubstituteType(family, binder, caseArguments.AsSpan(0, arguments.Length), lengths, origins, images, originBinder) is not { } child)
+                    var caseSlots = caseArguments.AsSpan(0, slots.Length);
+                    var caseSubstitution = declaring is null ? substitution with { Types = caseSlots }
+                        : substitution with { Declaring = this.types.Rebuild(declaring, caseSlots!, declaring.Origin, (BoundOrigin[])declaring.OriginArguments) };
+                    if (this.Substitute(family, caseSubstitution) is not { } child)
                     {
                         return null;
                     }

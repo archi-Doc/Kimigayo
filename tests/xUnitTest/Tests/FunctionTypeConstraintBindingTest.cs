@@ -61,7 +61,7 @@ public class FunctionTypeConstraintBindingTest
     [InlineData("[2 of (i32) -> bool]", "not Copy", true)]
     public void FunctionTypesRetainCapabilitiesAndIdentity(string type, string requirement, bool valid)
     {
-        var c = MinimalEmissionTest.Analyze("public struct Target<T>\n    T is " + requirement + "\npublic func use(value: Target<" + type + ">) => ()");
+        var c = MinimalEmissionTest.Analyze("public struct Target<T>\n    T is " + requirement + "\nfunc use(value: Target<" + type + ">) => ()");
         Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
         Assert.Equal(valid, c.Binding.Result.IsComplete);
         Assert.Equal(BindingState.Resolved, c.Kotonoha.RootKoto.NestedContainers.Single().StateOf());
@@ -120,7 +120,7 @@ public class FunctionTypeConstraintBindingTest
     [Fact]
     public void WarmFunctionConditionChecksAllocateNothing()
     {
-        var c = MinimalEmissionTest.Analyze("public struct Target<T>\n    T is (i32) -> bool and Owned\npublic func use(value: Target<(i32) -> bool>) => ()");
+        var c = MinimalEmissionTest.Analyze("public struct Target<T>\n    T is (i32) -> bool and Owned\nfunc use(value: Target<(i32) -> bool>) => ()");
         Assert.True(c.Bind().IsComplete);
         Assert.Equal(0, AllocationMeasurement.Measure(() =>
         {

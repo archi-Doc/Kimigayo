@@ -7,15 +7,14 @@
 // Rows: the instance gaps of storage nesting past Binding's bound (PLAN G128, R5 PD30), whose substitution TyCtxt.Apply cannot make, and of
 // a nested function called without its enclosing instance (until PLAN G149) or a Closure no instance closed (a held instance with an Origin
 // position until PLAN G300's per-use opening, a generic container's group static until P42; DECISIONS R5-M157, BU-60), and of a
-// requirement call whose inherited witness cannot preserve its receiver (OCC-X, DECISIONS R5-M67), and of a requirement call or Item whose
-// witness has no MIR body (DECISIONS R5-M146);
+// requirement call whose inherited witness cannot preserve its receiver (OCC-X, DECISIONS R5-M67);
 // the declaration row of a static whose storage P42 has not brought, a generic
 // container's included (DECISIONS R5-M82, superseding R5-M60's access row); the operation rows of IMPL
 // 21.3.3's 128-bit subset, division and remainder of i128 and u128 (a compound form builds as the same operation) and numeric conversions
 // between them and f32 or f64 (a direct literal conversion is a constant, Binding having fitted the literal, so it is no Cast).
-// Input: for an operation, its MIR rvalue, or its kind, operator and Cast target (an arithmetic shim's, BuiltinArithmetic), and its first
-// operand's closed Type. Output: a gap's record, Unsupported_Kd at the subject the collector's location rule gives (a declaration row's:
-// the declaration), once per subject.
+// Input: for an operation, its MIR rvalue, or its kind, operator and Cast target (an arithmetic shim's, MirTypes.ArithmeticOperation),
+// and its first operand's closed Type. Output: a gap's record, Unsupported_Kd at the subject the collector's location rule gives (a
+// declaration row's: the declaration), once per subject.
 // Must not: be restated in a Supports* gate or another table, or decide acceptance.
 
 using Kimi.Compiler.Mir;
@@ -30,8 +29,9 @@ internal enum CapabilityGap : byte
     StorageNesting,
 
     // A function nested in a body (a block of a generic function, a function nested in one, a method or a specialization of a generic
-    // container) called by a substitution that does not carry the enclosing instance, so no key holds the enclosing arguments (SPEC
-    // 8.13.3; DECISIONS R5-M40, R5-M43), a function declared in a Field initializer or a getter included; and a Closure that no instance
+    // container, or one level into a function with a length slot, whose declaring Type holds no length, PLAN G149-w) called by a
+    // substitution that does not carry the enclosing instance, so no key holds the enclosing arguments (SPEC 8.13.3; DECISIONS R5-M40,
+    // R5-M43), a function declared in a Field initializer or a getter included; and a Closure that no instance
     // closed, so its body is requested in its own identity (TyCtxt.SubstOfClosure; DECISIONS R5-M157, BU-60): one in a Field or static
     // initializer whose held instance has an Origin position (TyCtxt.ClosureInstance), until PLAN G300's per-use opening, and one in a
     // generic container's group static, whose group has no instance (R5-M82's static-storage row, X33 (a)), until P42 keys that storage.
@@ -41,12 +41,6 @@ internal enum CapabilityGap : byte
     // A requirement call whose witness is inherited and takes a receiver, which lends only its base prefix and so preserves no exclusive
     // or owning requirement receiver (OCC-X, SPEC 12.7.1; Binding's refused witness, DECISIONS R5-M22, R5-M67).
     ExclusiveInheritedWitness,
-
-    // A requirement call or requirement Item whose witness is a function without a MIR body (SPEC 8.6.4, 7.7.4; DECISIONS R5-M146,
-    // R5-M148): a #LibraryImport function (SPEC 22.6) until R8's G2, when the collector publishes the import as the call's target; a witness
-    // runs as a body item or a shim item. FixedBuffer's and HeapBuffer's reserve are Kimigayo bodies since R8-W1a.
-    [Transitional("R8", Reason = "R8's G2 publishes an import as its call's target (R5-M146, R5-M148).")]
-    BodylessWitness,
 
     // A static whose storage P42 has not brought (SPEC 22.4, 22.4.4; STATUS "Static members"): one a root module declares that can be set,
     // whose Type is not a scalar, or in a generic container's group, whose storage the MIR keys by its symbol alone (X33 (a)), used or not,
@@ -68,7 +62,6 @@ internal static class Capability
         CapabilityGap.StorageNesting => DiagnosticCode.Unsupported_Kd,
         CapabilityGap.EnclosingInstance => DiagnosticCode.Unsupported_Kd,
         CapabilityGap.ExclusiveInheritedWitness => DiagnosticCode.Unsupported_Kd,
-        CapabilityGap.BodylessWitness => DiagnosticCode.Unsupported_Kd,
         CapabilityGap.StaticStorage => DiagnosticCode.Unsupported_Kd,
         CapabilityGap.WideDivision => DiagnosticCode.Unsupported_Kd,
         CapabilityGap.WideFloatConversion => DiagnosticCode.Unsupported_Kd,
@@ -82,7 +75,7 @@ internal static class Capability
     internal static CapabilityGap? Of(in MirRvalue rvalue, BoundType operand) => Of(rvalue.Kind, rvalue.Op, operand, rvalue.Type);
 
     /// <summary>Gets the row of an operation the backend does not generate (IMPL 21.3.3), or none, by its kind and operator: a statement's
-    /// or an arithmetic shim's (BuiltinArithmetic).</summary>
+    /// or an arithmetic shim's (MirTypes.ArithmeticOperation).</summary>
     /// <param name="kind">The operation's rvalue kind.</param>
     /// <param name="op">Its operator or cast kind.</param>
     /// <param name="operand">The closed Type of its first operand.</param>
@@ -90,7 +83,7 @@ internal static class Capability
     /// <returns>The row, or null.</returns>
     internal static CapabilityGap? Of(MirRvalueKind kind, byte op, BoundType operand, BoundType? target) => kind switch
     {
-        MirRvalueKind.BinaryOp when (MirBinaryOp)op is MirBinaryOp.Div or MirBinaryOp.Rem && ScalarTypes.Width(operand) == 128 =>
+        MirRvalueKind.BinaryOp when (MirBinaryOp)op is MirBinaryOp.Div or MirBinaryOp.Rem && operand.Width == 128 =>
             CapabilityGap.WideDivision,
         MirRvalueKind.Cast when (MirCastKind)op == MirCastKind.Numeric && IsWideFloat(operand, target!) => CapabilityGap.WideFloatConversion,
         _ => null,
@@ -98,5 +91,5 @@ internal static class Capability
 
     // Whether a numeric conversion is between a 128-bit integer and a floating-point Type.
     private static bool IsWideFloat(BoundType source, BoundType target)
-        => (ScalarTypes.Width(source) == 128 && target.IsFloatingPoint) || (source.IsFloatingPoint && ScalarTypes.Width(target) == 128);
+        => (source.Width == 128 && target.IsFloatingPoint) || (source.IsFloatingPoint && target.Width == 128);
 }

@@ -3,11 +3,13 @@
 // Owns the checked set (SPEC 8.15.3, IMPL 21.3.1; R5 package K 4.3-4.9; DECISIONS R5-M35, R5-M40, R5-M43, R5-M44, R5-M52-55, R5-M60,
 // R5-M67, R5-M70, R5-M74, R5-M146, R5-M149, R5-M150): every body instance, type-driven item and shim a root requires through runtime or
 // check-only edges, its instance-stage records, and the one resolution of each site's target that code generation reads.
-// Input: a built, validated MirProgram; the number of root modules (a range of Source.Module, not a mode); TyCtxt (Instantiates, Erase,
+// Input: a built, validated MirProgram whose bodies the MIR analyses' stepping path has stepped (A2's table holds them, MirDropTable.Holds:
+// a run that replays a body it does not hold misses, Round below), as code generation reads them; the root range (Source.Module below it,
+// not a mode); TyCtxt (Instantiates, Erase,
 // Compose, Instance, BindingComplete, Implementation, Witness, Comparison, OwnRequirement, Published, Bodyless, Signature,
 // SubstOfClosure, SubstOfItem, Synthesized, Applies, Imports, SignatureSite); MirCases (Views, an item's view for a PairLayer's case,
-// an Adapt's AdaptSource and Operation); MirUses; MirTypes.MayNeedDrop; DropGlue.Parts; AdtDef.FindField; VTableDef;
-// MirProgram.StaticInit; the Target and Need columns of the intrinsic rows and the legacy rows; LayoutNeeds; the capability table; the
+// an Adapt's AdaptSource and Operation); MirUses; MirTypes.MayNeedDrop; DropGlue.Destroyed, Level and Parts; AdtDef.FindField; VTableDef;
+// MirProgram.StaticInit; the Target and Need columns of the intrinsic rows; LayoutNeeds; the capability table; the
 // compilation's Layout (Indirect), whose outcomes the collector alone maps (R5-M37).
 // Output: the CheckedSet of the program version: the roots, in MirProgram.Bodies order, then the items a FIFO worklist admits, each with one
 // target per resolved site of its body, in location order, with whether a runtime path reaches the site; and its records, the program's
@@ -17,20 +19,22 @@
 // and a PropertyWitness item's key signature (StorageSignature; DECISIONS R5-M141, the owner's R5-M142); a borrowing callee's owner Value
 // call also targets its operand's glue, after the body (DECISIONS R5-M102).
 // Roots (K 4.4): each body of a root module whose definition does not instantiate, a module's top-level statements included.
-// Edges (K 4.5): one template per body and version (InstanceCollector.Templates.cs) lists its sites that may carry a target (Fn,
-// Requirement and Value calls and the intrinsics the Target column names, a Virtual call none, X5; a Closure environment, an erasure and a
-// function item constant; a Drop), each with its runtime bit from one MirReach walk without CheckTarget edges. An item's targets are
+// Edges (K 4.5): one template per body (InstanceCollector.Templates.cs: the library segment's kept while its library version holds, PLAN
+// G950) lists its sites that may carry a target (Fn, Requirement and Value calls and the intrinsics the Target column names, a Virtual
+// call none, X5; a Closure environment, an erasure and a function item constant; a Drop), each with its runtime bit from one MirReach
+// walk without CheckTarget edges. An item's targets are
 // InstanceCollector.Edges.cs's: replaying a body item's template resolves each site's row under the item's representative, a callee's body
 // (InstanceCollector.Callees.cs), and a Requirement call's, a requirement Item's, a bodyless callee's published row's and an erased writer's
 // by the witness there (InstanceCollector.Witnesses.cs: a body, a Builtin or a property-witness shim keyed by its compiler function or Field
 // and the erased Self, or a gap); a Dictionary from none targets the body of DictionaryStorage.initialize (Declared); a
 // type-driven item's targets follow from its representative Type by its kind's row (Expand: an adapter's Item; InstanceCollector.Glue.cs:
-// a DropGlue's direct parts, DropGlue.Parts, a collection's its one destruction body (Collection); InstanceCollector.Witnesses.cs: a
+// a DropGlue's level, DropGlue.Level, a collection's its one destruction body (Collection); InstanceCollector.Witnesses.cs: a
 // comparison item's direct parts' items and witnesses (Comparison, DECISIONS R5-M166), a property-witness setter's Field glue;
 // InstanceCollector.Objects.cs: a created payload's descriptor's glue and VTable, a VTable's slot bodies by VTableDef and Applies).
 // Capability (K 4.7, InstanceCollector.Capabilities.cs): the definition-stage check (A3b) of every operation of a root-module body whose
 // Types are closed, every block included, once per definition and location, and of a root-module static's declaration (static storage
-// P42 has not brought, a generic container's included, DECISIONS R5-M82); Binding's refusals are Opaque values, so it never repeats them.
+// P42 has not brought, a generic container's included, DECISIONS R5-M82), judged in the root loop every version before LayOutImports
+// (PLAN G950: never kept with a template); Binding's refusals are Opaque values, so it never repeats them.
 // An operation whose Types depend on slots is a template site, checked in each instance with its Types there, once per location.
 // Layout obligations (K 4.8, InstanceCollector.Layouts.cs): each item's by-value uses (its body's locals but drop flags and a constructor's
 // construction receiver, DECISIONS BU-48; its aggregates; the inputs and result of an erasure's target Function Type, DECISIONS R5-M108),
@@ -45,7 +49,7 @@
 // Storage (DECISIONS BU-36, BU-38): TyCtxt's verdict on a Type or substitution of an item's instance is read once, at its requesting site
 // (Made): Prepared makes it; Rejected rests on a part Binding rejected, as Layout's Rejected, which a complete compilation has none of
 // (TyCtxt.BindingComplete), so it is a broken contract at its site (Report); a limit is the storage-nesting gap. Every row reads a Type of
-// an instance at its site through In, Below or Instantiable, so through Made, never through TypeOf, TyCtxt.Apply or TyCtxt.Signature
+// an instance at its site through In or Instantiable, so through Made, never through TypeOf, TyCtxt.Apply or TyCtxt.Signature
 // under a substitution; those read no verdict and serve code generation and a Type whose verdict its site already read (Rest's operand and
 // environment, Agrees' signature under a witness's substitution whose Self the call's composition made, Bodyless's intrinsic row's Type
 // argument, a part of the Item Type its site made).
@@ -61,6 +65,16 @@
 // 128 is its erased Type's limit, recorded as a Layout limit is (DECISIONS R5-M171); a
 // representative that is open or leaves its body open, and a requirement call of a closed Self without a witness, are broken contracts.
 // A refused edge is dropped and collection continues.
+// Round (PLAN G951; A4's round rule, MirEffects.Solve.cs): a run that replays a body item whose body A2's table does not hold, one a lookup
+// built during the run, misses: it goes on to its end and makes every demand but those of that body's Drop sites, which read A2's facts
+// (DropTargets requests nothing for a body A2 does not hold), so their targets wait for the next run and a chain through them takes
+// another; and it commits nothing: the report holds a run's records until it ends and drops a missed run's (MirReport's round, the one
+// commit A4's rounds share; a record made outside a run is added at once), a missed run makes no end-of-run record (RecordLimits) and its
+// checked set holds no version. Its driver (Compilation.Collect) steps the bodies built since (MirAnalysis.Step) and runs it again until
+// a run is clean. A template records nothing, so the templates are kept across a version's runs and extend over the bodies in build
+// order as a replay finds bodies built since (a lookup's during the run); A3b's records, made in each run's root loop, are the run's. A
+// clean run replays only stepped bodies from the same roots in the same FIFO order, so it equals the one run over a program whose bodies
+// were all built before; Work, RunCount and Templated sum the runs of the version of the latest run.
 // Records (DECISIONS R5-M151): every record goes through one path (Report). A broken contract is InternalInvariant_Kd where Binding is
 // complete; in an incomplete compilation a fact the collector reads may be undecided because it rests on a part Binding rejected, which the
 // collector cannot name, so the record is that error's dependent and is dropped (SPEC 23.1.2); the edge is refused all the same.
@@ -69,12 +83,13 @@
 // that holds its subject (Declaration; an import's own).
 // Invariants: deterministic; one item per key; every representative is closed and closes its body (K 4.3); one target per site of a body,
 // plus the operand's glue at a borrowing callee's owner Value call, after its body (SPEC 8.10; DECISIONS R5-M102); a type-driven item's
-// targets are at its default site, a DropGlue's in DropGlue.Parts' order, a ClosureErasure's body before its environment's glue; a repeated
-// run of a version is a no-op; a body with a finding (MirBody.HasFinding) is no template, root or item (DECISIONS R5-M183: the Templates
-// walk, the root loop and Admit are the only ways a body enters, so what rests on it has no record); a warm run of a program as large as
-// an earlier one allocates nothing.
-// Must not: read syntax, HIR or plans; depend on the MIR analyses' results or edit their driver; decide acceptance or publish its records
-// (Compilation does); prove anything on an erased value; add an IntrinsicId, CompilerFunctionKind or BindingFailure (PD21).
+// targets are at its default site, a DropGlue's in DropGlue.Level's order, a ClosureErasure's body before its environment's glue; a repeated
+// run of a version a clean run collected is a no-op; a body with a finding (MirBody.HasFinding) is no template, root or item (DECISIONS
+// R5-M183: the Templates walk, the root loop and Admit are the only ways a body enters, so what rests on it has no record); a warm run of a
+// program as large as an earlier one allocates nothing.
+// Must not: read syntax, HIR or plans; depend on the MIR analyses' problems (it reads A2's table only: DropTargets, and Holds for its
+// round) or edit their driver; decide acceptance or publish its records (Compilation does); prove anything on an erased value; add an
+// IntrinsicId or BindingFailure (PD21).
 
 using Kimi.Compiler.Mir;
 
@@ -93,11 +108,15 @@ internal sealed partial class InstanceCollector
     private readonly Dictionary<(MonoKind Kind, MirDefKey Definition), int> counts = new(); // Items per identity (X19, DECISIONS R5-M170).
     private readonly HashSet<BoundType> seen = new(); // MirTypes.MayNeedDrop's scratch.
     private readonly List<DropPart> parts = new(); // DropGlue.Parts' scratch.
+    private readonly List<DropStep> steps = new(); // DropGlue.Destroyed's and DropGlue.Level's steps.
+    private readonly List<MirDropStep> walk = new(); // Their scratch of Mir's steps.
     private readonly Dictionary<BoundType, MonoKey> glueKeys = new(ReferenceEqualityComparer.Instance); // GlueKey's per handle Type, per run.
     private readonly Dictionary<ComparisonNode, byte> uses = new(ReferenceEqualityComparer.Instance); // Uses' positions of each node walked.
     private int[] declaring = []; // Declaration's memo per item: the item whose body holds its subjects, plus one (0: not walked).
     private MirProgram? program; // The program of the latest run, whose bodies Declaration reads and whose report takes the records.
     private int rootModules;
+    private ulong version; // The version of the latest run, whose runs Work, RunCount and Templated sum.
+    private bool missed; // Whether the run replayed a body A2's table does not hold (Round).
 
     /// <summary>Initializes a new instance of the <see cref="InstanceCollector"/> class.</summary>
     /// <param name="types">The Type context of the programs.</param>
@@ -113,13 +132,23 @@ internal sealed partial class InstanceCollector
     /// <summary>Gets the checked set of the latest run.</summary>
     internal CheckedSet Set { get; } = new();
 
-    /// <summary>Gets the work of the latest run: the sites replayed, the items admitted and the identity items admission reads (at most the
-    /// window per key), which grow linearly with the instances.</summary>
+    /// <summary>Gets the work of the runs of the latest run's version (PLAN G951): the sites replayed, the items admitted and the identity
+    /// items admission reads (at most the window per key), which grow linearly with the instances.</summary>
     internal int Work { get; private set; }
 
-    /// <summary>Collects the checked set of a program version unless this version already was.</summary>
-    /// <param name="program">The built and validated program.</param>
-    /// <param name="rootModules">The number of root modules: the bodies of modules below it are roots.</param>
+    /// <summary>Gets the runs of the latest run's version, each but a clean last one missed (PLAN G951).</summary>
+    internal int RunCount { get; private set; }
+
+    /// <summary>Gets the bodies the runs of the latest run's version templated, each once, a body with a finding (an empty template)
+    /// included: every body where they built the library segment's templates, the program segment's where they kept them (PLAN G950's row
+    /// g8).</summary>
+    internal int Templated { get; private set; }
+
+    /// <summary>Collects the checked set of a program version unless a clean run already did; a run that missed (Round) leaves a set of
+    /// no version (<see cref="CheckedSet.Version"/> 0) and no record.</summary>
+    /// <param name="program">The built, validated and stepped program.</param>
+    /// <param name="rootModules">The root range: the bodies whose module is below it are roots. Any bound is a range: Compilation passes
+    /// the source modules' count, and <see cref="Parsing.SyntaxTable.LibraryModule"/> + 1 includes the library's bodies.</param>
     /// <returns>The checked set.</returns>
     internal CheckedSet Run(MirProgram program, int rootModules)
     {
@@ -129,20 +158,33 @@ internal sealed partial class InstanceCollector
             return set;
         }
 
+        if (program.Version != this.version)
+        {
+            (this.Work, this.RunCount, this.Templated, this.version, this.extent) = (0, 0, 0, program.Version, program.LibraryCount);
+            this.programTemplates.Clear(); // Kept across the version's runs (Round).
+        }
+
+        this.RunCount++;
         set.Clear(program.Version);
         this.counts.Clear();
         this.limits.Clear();
         this.refused.Clear();
         this.glueKeys.Clear();
         Array.Clear(this.declaring);
-        (this.program, this.rootModules, this.Work) = (program, rootModules, 0);
+        (this.program, this.rootModules, this.missed) = (program, rootModules, false);
+        program.Problems.Begin((int)MirRecordClass.Collection);
         this.Templates(program);
         foreach (var body in program.Bodies)
         {
-            if (!body.HasFinding && body.Source.Module < rootModules && (body.Key.Decl is null || !this.types.Instantiates(body.Key.Decl)))
+            this.CheckStatic(body); // A3b, judged in every run (PLAN G950, G951), in body order: a static's declaration row first.
+            if (!body.HasFinding && body.Source.Module < rootModules)
             {
-                var key = new MonoKey(MonoKind.Body, new(body.Key, null), null, null, 0, null);
-                set.Add(new() { Key = key, BodyOrdinal = body.Ordinal, Parent = -1, Growth = new(1, 0, -1), Site = body.Source });
+                this.CheckOperations(body);
+                if (body.Key.Decl is null || !this.types.Instantiates(body.Key.Decl))
+                {
+                    var key = new MonoKey(MonoKind.Body, new(body.Key, null), null, null, 0, null);
+                    set.Add(new() { Key = key, BodyOrdinal = body.Ordinal, Parent = -1, Growth = new(1, 0, -1), Site = body.Source });
+                }
             }
         }
 
@@ -153,7 +195,15 @@ internal sealed partial class InstanceCollector
             this.Replay(program, item);
         }
 
+        if (this.missed)
+        {
+            program.Problems.Drop(); // Round: a missed run commits nothing.
+            set.Clear(0);
+            return set;
+        }
+
         this.RecordLimits();
+        program.Problems.Commit();
         return set;
     }
 
@@ -164,6 +214,14 @@ internal sealed partial class InstanceCollector
     /// <param name="type">A Type of its body.</param>
     /// <returns>The Type in the instance, or null when its storage is not Prepared (a site maps the verdict, In).</returns>
     internal BoundType? TypeOf(int item, BoundType type) => this.Instance(item, type) is ({ } closed, Binding.StorageOutcome.Prepared) ? closed : null;
+
+    /// <summary>Gets a length of an item's body in the item's instance (SPEC 4.4.1: a Length constant's value), TypeOf's rule for a length:
+    /// the length itself for a closed item, else its instance under the representative (TyCtxt.InstanceLength).</summary>
+    /// <param name="item">The item.</param>
+    /// <param name="length">A length of its body.</param>
+    /// <returns>The length in the instance, or null where the representative does not complete it.</returns>
+    internal BoundLength? LengthOf(int item, BoundLength length)
+        => this.Set.Items[item].Representative is { } representative ? this.types.InstanceLength(length, representative) : length;
 
     /// <summary>Gets whether a storage verdict of TyCtxt makes the instance a site requests, the collector's one reading of it (DECISIONS
     /// BU-36, BU-38, R5-M37): Prepared does; Rejected rests on a part Binding rejected, a broken contract (Report); Limit is the

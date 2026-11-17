@@ -13,6 +13,32 @@ public sealed partial class Binding
         => syntax.Parent is TypeSemanticsKoto { SemanticsKind: SemanticsKind.Obj or SemanticsKind.Rc or SemanticsKind.Arc or SemanticsKind.ObjRef or SemanticsKind.ObjUniq } application &&
         ReferenceEquals(application.Type, syntax);
 
+    // Whether a walk's failing use is a qualifier of the path `syntax` names (a left of its member steps; `::A.B` and `A<T>.B` name the
+    // path of their operand and their identifier), so its record belongs there and not at the path (SPEC 23.1.2).
+    private static bool StoppedAtQualifier(Koto use, Koto syntax)
+    {
+        var path = UnwrapTypeSyntax(syntax);
+        if (path is SyntaxFormKoto { Akind: KotoKind.RootName, Operands.Length: 1 } root)
+        {
+            path = UnwrapTypeSyntax(root.Operands[0]);
+        }
+
+        if (path is GenericsKoto generic)
+        {
+            path = UnwrapTypeSyntax(generic.Identifier!);
+        }
+
+        for (var left = (UseNode(path) as MemberAccessKoto)?.Left; left is not null; left = (UseNode(left) as MemberAccessKoto)?.Left)
+        {
+            if (ReferenceEquals(UseNode(left), use))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     private static Koto UnwrapTypeSyntax(Koto node)
     {
         while (node is TypeSemanticsKoto { Type: { } inner, SemanticsKind: SemanticsKind.Owner, SemanticsParameter: null, ConversionOperation: null })
@@ -161,7 +187,7 @@ public sealed partial class Binding
                 // Bare self has a fixed shared receiver Type; the body supplies no inference.
                 return this.types.Intern(BoundTypeKind.Semantics, null, SemanticsKind.Ref, [this.DeclarationSelf(functionSymbol.Scope.Owner.BoundSymbol!)]);
             case SyntaxFormKoto { Akind: KotoKind.RootName } root when root.Operands.Length == 1 && UnwrapTypeSyntax(root.Operands[0]) is GenericsKoto rootedGeneric:
-                var rootDefinition = this.TypeName(root, scope, LookupRole.NoContainer);
+                var rootDefinition = this.TypeName(root, scope);
                 var rootType = this.BindConstructedType(rootedGeneric, rootDefinition, scope, context);
                 root.BoundSymbol = rootDefinition;
                 root.Operands[0].BoundSymbol = rootDefinition;
@@ -191,7 +217,7 @@ public sealed partial class Binding
                             targetSyntax = grouped.Type;
                         }
 
-                        var target = this.TypeName(targetSyntax, scope, LookupRole.NoContainer);
+                        var target = this.TypeName(targetSyntax, scope);
                         if (target?.Kind == BindingSymbolKind.SemanticsTarget &&
                             targetSyntax is not TypeSemanticsKoto { HasOrigin: true })
                         {
@@ -217,7 +243,7 @@ public sealed partial class Binding
                         }
 
                         var mark = this.nameSteps.Count;
-                        var parameter = this.PublishPath(this.ResolveName(semantics.SemanticsParameter, scope, syntax, LookupRole.Semantics, 0), mark);
+                        var parameter = this.PublishPath(this.ResolveName(semantics.SemanticsParameter, scope, syntax, LookupRole.TypeSemantics, 0), mark);
                         if (parameter?.Kind != BindingSymbolKind.SemanticsParameter)
                         {
                             return this.Fail(syntax, BindingFailure.InvalidTypeFormation);
@@ -254,7 +280,7 @@ public sealed partial class Binding
                     {
                         // SPEC 8.7.3: the target must be an Object Target. Generic targets and a Contract's
                         // Self are proven from their premises at the definition deadline.
-                        if (inner.Kind is BoundTypeKind.Parameter or BoundTypeKind.TargetProjection or BoundTypeKind.AssociatedProjection)
+                        if (inner.IsProofDecided)
                         {
                             this.AddObligation(new(BindingObligationKind.TypeRole, syntax, BindingDeadline.Definition, inner));
                         }
@@ -303,19 +329,26 @@ public sealed partial class Binding
                 return element is null ? null : this.types.Intern(BoundTypeKind.FixedArray, null, SemanticsKind.Owner, [element], length.IsConstant ? length.Value : 0, lengthExpression: length.IsConstant ? null : length);
             case OriginApplicationKoto application:
                 return this.BindAssociatedApplication(application, scope);
-            case GenericsKoto generic:
-                var definition = this.TypeName(generic, scope, LookupRole.NoContainer);
-                return this.BindConstructedType(generic, definition, scope, context);
         }
 
-        var symbol = this.TypeName(syntax, scope, LookupRole.NoContainer);
-        if (syntax is MemberAccessKoto projection && symbol is null)
+        return this.BindNamedType(syntax, scope, context, applyingOrigins);
+    }
+
+    // The named Type a use's one lookup selected: the lookup published on the use (a requirement's, a qualifier's, a Contract parent's,
+    // an Origin set's), else BindType's own, the use's first. Nothing here looks the name up again; a failed lookup's facts (a
+    // qualification stop, an ambiguity) are the ones FailMissing explains.
+    private BoundType? BindNamedType(Koto syntax, BindingScope scope, TypeBindingContext context, bool applyingOrigins)
+    {
+        var head = this.NamePath(syntax, scope);
+        if (syntax is GenericsKoto generic)
         {
-            var associated = this.BindAssociatedProjection(projection, scope);
-            if (associated is not null)
-            {
-                return associated;
-            }
+            return this.BindConstructedType(generic, head.Symbol, scope, context);
+        }
+
+        var symbol = head.Symbol;
+        if (syntax is MemberAccessKoto projection && head.End == PathEnd.Projection)
+        {
+            return this.BindAssociatedProjection(projection, scope) ?? this.FailMissing(syntax, scope, BindingFailure.MissingType);
         }
 
         if (symbol is null && this.EnclosingContractSelf(scope) is { } contractSelf && syntax is TypeSemanticsKoto { Type: null } or IdentifierNameKoto)
@@ -326,12 +359,14 @@ public sealed partial class Binding
 
         if (symbol is null)
         {
-            return this.FailMissing(syntax, scope, BindingFailure.MissingType);
+            // SPEC 23.1.2: an unresolved walk failed at its failing step (its use), as `S.Missing` of `S.Missing.X`, when that step is a
+            // qualifier of the path; an ambiguity or a qualification stop keeps its own record at the path.
+            return this.FailMissing(head.End == PathEnd.Unresolved && StoppedAtQualifier(head.Use, syntax) ? head.Use : syntax, scope, BindingFailure.MissingType);
         }
 
         syntax.BoundSymbol = symbol;
         var isSelf = syntax is TypeSemanticsKoto { Identifier: "Self" } or IdentifierNameKoto { IdentifierName: "Self" };
-        if (symbol.Kind is BindingSymbolKind.Container or BindingSymbolKind.SemanticsParameter || (symbol.Declaration is ContractKoto && !isSelf))
+        if (symbol.Kind is BindingSymbolKind.Container or BindingSymbolKind.SemanticsParameter || symbol.IsContract)
         {
             return this.Fail(syntax, BindingFailure.InvalidTypeFormation);
         }
@@ -368,9 +403,15 @@ public sealed partial class Binding
             this.AddObligation(new(BindingObligationKind.TypeRole, syntax, BindingDeadline.Definition, symbol.Type));
         }
 
+        if (symbol.Kind == BindingSymbolKind.TypeParameter)
+        {
+            // A Type parameter is its own Type, a Contract's Self among them (SPEC 9.1).
+            return symbol.Type;
+        }
+
         if (isSelf)
         {
-            return this.DeclarationSelf(symbol);
+            return this.SelfType(symbol);
         }
 
         return symbol.Declaration is DeclarationContainerKoto
@@ -420,8 +461,9 @@ public sealed partial class Binding
             return;
         }
 
-        foreach (var argument in written.TypeArguments)
+        for (var i = 0; i < written.TypeArguments.Count; i++)
         {
+            var argument = written.TypeArguments[i];
             this.BindType(argument, scope, context);
         }
     }

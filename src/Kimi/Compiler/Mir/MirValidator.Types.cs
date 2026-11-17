@@ -7,9 +7,10 @@ namespace Kimi.Compiler.Mir;
 // The Type tier (SPEC 3.2-3.4, 8.2, 8.14, 8.15, 13.2-13.5).
 // - Responsibility: the Types values flow between agree (Agree, by MirTypes.Agrees: MirTypes.Agree, modulo Origins, or as the body's
 //   premises make them); an rvalue's Type agrees with its destination's and each operation admits its operands' Types (Types, Casts, Component,
-//   Adapts; a comparison BinaryOp compares no string, OperandsCompare); every Semantics case view resolves each Adapt and PairAcquire
-//   (Views), whose exclusive borrow or Reborrow there is W1 rule 1's (MirValidator.SharedPaths); and the temps whose Type the tier reads
-//   as unknown (Unknown).
+//   Adapts; an operator takes its operands in the operator table's domain, Operates; a keyed Storage's key is one whose start is
+//   open by the one rule of the start, MirTypes.StartsAtStorage: Keyed); every Semantics case view resolves each
+//   Adapt and PairAcquire (Views), whose exclusive borrow or Reborrow there is W1 rule 1's (MirValidator.SharedPaths); and the temps whose
+//   Type the tier reads as unknown (Unknown).
 // - Inputs: an rvalue whose arity holds, with its destination's Type, and an aggregate's shape (MirValidator.Rvalues' Shape); operands
 //   and their Places; the body's case views (MirCases).
 // - Outputs: Type, Operation and SharedPath findings; the case sites for Views (caseSites: the Adapts whose Places and token are in range
@@ -140,15 +141,12 @@ internal sealed partial class MirValidator
         // which stops the walk; unknown (null) for the Never value. A check over Binding's decision, never a reader of it.
         private readonly BoundType? PremisedTerminal(BoundType? type) => type is null ? null : Terminal(MirTypes.Premised(body, type));
 
-        // SPEC 13.4: a comparison BinaryOp's operands agree at what they compare (PremisedTerminal, one statement per operand), which is no
-        // string, since a library witness compares a string (R8-S1d2, R8-S1e-b). It covers only the string row of the open family "a
-        // comparison BinaryOp at a Type the operator table does not lower"; the family's closed form, a whitelist over that table's domain,
-        // is PLAN's (the Middle's open issue).
-        private readonly bool OperandsCompare(BoundType? first, BoundType? second)
-        {
-            var (left, right) = (this.PremisedTerminal(first), this.PremisedTerminal(second));
-            return MirTypes.Agree(left, right) && !ReferenceEquals(left ?? right, BoundType.String);
-        }
+        // SPEC 13.2-13.4, 5.3, 8.2.3: an operator rvalue's operation takes its operand at its premised terminal (PremisedTerminal; the
+        // Backend's column reads the instance's terminal too), the right one's where the left is the Never value, whose unknown Type takes
+        // it: the operator table's domain (MirTypes.Operates, a Never terminal's comparison included; a string's comparison is its library
+        // witness's, R8-S1e-b), an abstract operand's or Wrapping over one's on Binding's proof per group.
+        private readonly bool Operates(in MirRvalue rvalue, BoundType? first, BoundType? second)
+            => (this.PremisedTerminal(first) ?? this.PremisedTerminal(second)) is not { } type || MirTypes.Operates(rvalue.Kind, rvalue.Op, type);
 
         // An operand's Type, unknown (null) for a Place out of range or a local an Opaque value defines, and for the Never value, which
         // fits any operand position (SPEC 3.8; DECISIONS R4-M62).
@@ -183,11 +181,20 @@ internal sealed partial class MirValidator
                 operands[1] is { Kind: MirOperandKind.Const, Arg: var token } &&
                 ((uint)token >= (uint)body.Consts.Length || body.Consts[token].Kind == MirConstKind.TypeToken);
 
+        // SPEC 4.8.1, 8.15.3 (G597): a Storage has no operand, or a key selection's two: its start position, an isize, and the token of its
+        // key's Type, whose start is open in the body (MirTypes.StartsAtStorage: a key that decides it takes the unkeyed form, displaced
+        // by a proven Add at a position; one form for each answer). A constant out of range is the walk's finding.
+        private readonly bool Keyed(ReadOnlySpan<MirOperand> operands, BoundType? start)
+            => operands.Length == 0 || ((start is null || ReferenceEquals(start, BoundType.ISize)) &&
+                operands[1] is { Kind: MirOperandKind.Const, Arg: var token } &&
+                ((uint)token >= (uint)body.Consts.Length ||
+                (body.Consts[token] is { Kind: MirConstKind.TypeToken, Type: var key } && MirTypes.StartsAtStorage(key) is null)));
+
         // SPEC 3.2-3.4, 13.2-13.5: the Type an rvalue gives agrees with its destination's: a Use's or a unary operator's operand's, another
-        // operator's left operand's, a comparison's bool, a Discriminant's or Len's isize, else its own Type. An operator's operands agree (a
-        // comparison's at their premised terminals, at no string: OperandsCompare) but for a shift count, any integer, and a raw pointer's
-        // displacement, an isize (SPEC 5.3); a Cast converts what its kind admits; a Ref's Type is its kind's reference to its Place; an
-        // aggregate's operands are its components; an Adapt gives its target Type.
+        // operator's left operand's, a comparison's bool, a Discriminant's or Len's isize, else its own Type. An operator takes its operands
+        // in the operator table's domain (Operates); they agree (a comparison's at their premised terminals) but for a shift count, any
+        // integer, and a raw pointer's displacement, an isize (SPEC 5.3); a Cast converts what its kind admits; a Ref's Type is its kind's
+        // reference to its Place; an aggregate's operands are its components; an Adapt gives its target Type.
         private void Types(in MirRvalue rvalue, BoundType? destination)
         {
             var operands = body.Operands.Slice(rvalue.Start, rvalue.Count);
@@ -197,11 +204,12 @@ internal sealed partial class MirValidator
             var place = rvalue.Kind is MirRvalueKind.Ref or MirRvalueKind.Storage && this.IsValid(rvalue.Place) ? body.TypeOf(rvalue.Place) : null;
             var (type, admitted) = rvalue.Kind switch
             {
-                MirRvalueKind.Use or MirRvalueKind.UnaryOp => (first, true),
-                MirRvalueKind.BinaryOp => (op >= MirBinaryOp.Eq ? BoundType.Boolean : first, op switch
+                MirRvalueKind.Use => (first, true),
+                MirRvalueKind.UnaryOp => (first, this.Operates(rvalue, first, null)),
+                MirRvalueKind.BinaryOp => (op >= MirBinaryOp.Eq ? BoundType.Boolean : first, this.Operates(rvalue, first, second) && op switch
                 {
                     MirBinaryOp.Shl or MirBinaryOp.Shr => second is null || second.IsInteger || second.IsAbstract,
-                    >= MirBinaryOp.Eq => this.OperandsCompare(first, second),
+                    >= MirBinaryOp.Eq => MirTypes.Agree(this.PremisedTerminal(first), this.PremisedTerminal(second)),
                     MirBinaryOp.Add or MirBinaryOp.Sub when first?.Semantics == SemanticsKind.Raw => second is null || ReferenceEquals(second, BoundType.ISize),
                     _ => MirTypes.Agrees(body, first, second),
                 }),
@@ -210,7 +218,7 @@ internal sealed partial class MirValidator
                 MirRvalueKind.Storage => (rvalue.Type, place is null ||
                     (place.Kind is BoundTypeKind.FixedArray or BoundTypeKind.Array or BoundTypeKind.Slice &&
                     rvalue.Type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Raw, Components: [var element] } &&
-                    MirTypes.Agrees(body, element, place.Components[0]))),
+                    MirTypes.Agrees(body, element, place.Components[0]) && this.Keyed(operands, first))),
                 MirRvalueKind.Cast => (rvalue.Type, first is null || rvalue.Type is null || Casts((MirCastKind)rvalue.Op, first, rvalue.Type)),
                 MirRvalueKind.Adapt => (rvalue.Type, this.Adapts(rvalue, operands)),
                 MirRvalueKind.Ref => (rvalue.Type, place is null ||

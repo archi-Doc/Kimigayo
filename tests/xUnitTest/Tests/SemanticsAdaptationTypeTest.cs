@@ -17,7 +17,7 @@ public class SemanticsAdaptationTypeTest
     public void ObjectCasesKeepTheViewAndReferenceCasesWrapTheSlot(SemanticsKind mode)
     {
         var (c, function, pair) = Parse("func f<s/T>(value: s/T)\n    s is object or ref\n    T is ObjectPayload\n    ()");
-        var type = c.Binding.SemanticsAdaptation(pair, pair.WholeType!, BoundOrigin.Static);
+        var type = c.Binding.SemanticsAdaptation(pair, pair.WholeType!, BoundOrigin.Static, pair.Scope);
         ReadOnlySpan<PairCase> objects = [new(pair, mode)];
         ReadOnlySpan<PairCase> references = [new(pair, SemanticsKind.Ref)];
         Assert.True(type.ContainsParameter && type.ContainsPairLayer);
@@ -40,7 +40,7 @@ public class SemanticsAdaptationTypeTest
     {
         var (c, function, selector) = Parse("func f<s/T, u/U>(value: u/U)\n    s is object\n    u is owner or obj\n    T is ObjectPayload\n    U is ObjectPayload\n    ()");
         var source = function.SymbolOf()!.Schema!.GenericSlots[1].Symbol;
-        var type = c.Binding.SemanticsAdaptation(selector, source.WholeType!, null);
+        var type = c.Binding.SemanticsAdaptation(selector, source.WholeType!, null, selector.Scope);
         ReadOnlySpan<PairCase> select = [new(selector, SemanticsKind.Obj)];
         var pending = c.Binding.CaseType(type, select);
         Assert.Equal(BoundTypeKind.Semantics, pending.Kind);
@@ -57,11 +57,72 @@ public class SemanticsAdaptationTypeTest
         Assert.Same(created, c.Binding.CaseType(type, both));
     }
 
+    // SPEC 13.5.1, 8.2.3 (PLAN G759): `p@s` abbreviates `p@s/U`, so a family whose cases are exactly those of the application `s/U` is
+    // that application, and a case list no application gives stays a family: under `s is ref or objref` the ref case borrows the
+    // handle's slot (`ref/(obj/i32)`) while the objref case views its payload.
+    [Theory]
+    [InlineData("s is objref or objuniq", true)]
+    [InlineData("s is obj or objref or objuniq", true)]
+    [InlineData("s is ref or objref", false)]
+    public void AFamilyWithAnApplicationsCasesIsThatApplication(string premise, bool application)
+    {
+        var (c, _, pair) = Parse($"func f<s/T>(value: s/T)\n    {premise}\n    ()");
+        var handle = c.Binding.AdaptedType(SemanticsKind.Obj, BoundType.I32, null, pair.Scope);
+        var type = c.Binding.SemanticsAdaptation(pair, handle, BoundOrigin.Static, pair.Scope);
+        Assert.Equal(application ? BoundTypeKind.SemanticsApplication : BoundTypeKind.SemanticsAdaptation, type.Kind);
+        Assert.Equal(application, Binding.TryPairLayer(type, out var whole, out var target));
+        if (application)
+        {
+            Assert.Same(pair.WholeType, whole);
+            Assert.Same(BoundType.I32, target);
+            Assert.Same(BoundOrigin.Static, type.Origin);
+        }
+    }
+
+    // SPEC 13.5.1, 8.2.3 (PLAN G759): the Type of `p@s` is the written `s/Node`, also inside a Tuple and as a borrowed slot's referent.
+    // Labels from SPEC: the first four are valid; the next three name a Type that is not `s/Node` (another binder, another target, a
+    // concrete layer the objuniq case is not); the last two move or write `p` while the application local `y` borrowing it lives (15.6).
+    [Theory]
+    [InlineData("    let y: s/Node = p@s\n", "")]
+    [InlineData("    let y = p@s\n    let r: ref/(s/Node) = y@ref\n", "")]
+    [InlineData("    let y: s/Node = p@s\n    let r: ref/(s/Node) = y@ref\n", "")]
+    [InlineData("    let t: (s/Node, i32) = (p@s, 1)\n", "")]
+    [InlineData("    let y: t/Node = p@s\n", nameof(DiagnosticCode.TypeMismatch_Kd))]
+    [InlineData("    let y: s/Other = p@s\n", nameof(DiagnosticCode.TypeMismatch_Kd))]
+    [InlineData("    let y: s/Node = p@objref\n", nameof(DiagnosticCode.TypeMismatch_Kd))]
+    [InlineData("    let y: s/Node = p@s\n    let z = p@move\n    let v = y.n\n", nameof(DiagnosticCode.ComparisonLoanConflict_Kd))]
+    [InlineData("    let y: s/Node = p@s\n    p.n = 2\n    let v = y.n\n", nameof(DiagnosticCode.ComparisonLoanConflict_Kd))]
+    public void AnObjectShorthandHasItsWrittenApplicationType(string body, string code)
+    {
+        var check = DiagnosticCorpus.Check(
+            "struct Node\n    public var n: i32\n    public init(n: i32) => self.n = n\nstruct Other\n    public var k: i32\n    public init(k: i32) => self.k = k\n" +
+            "func f<s/T, t/U>(m: s/T, k: t/U, o: obj/Node) -> i32\n    s is objref or objuniq\n    t is objref or objuniq\n    var p = o@move\n" + body +
+            "    return 0\npublic func main()\n    Console.writeLine(\"p\")\n");
+        var codes = string.Join("; ", check.Diagnostics.Select(static x => x.Code));
+        Assert.True(code.Length == 0 ? check.Accepted && check.Diagnostics.Length == 0 : !check.Accepted && codes.Contains(code, StringComparison.Ordinal), codes);
+    }
+
+    // SPEC 13.5.1, 13.5.6 (PLAN G759): `x = p@t` under `t is objectborrow` is the application `t/Node`, so `x@s` adapts a pair layer as
+    // any (dev: InternalInvariant_Kd on a two-case family local). Labels from SPEC: a read through `y` is valid; a write through the
+    // objref `y` is invalid (13.5.5), with the concrete record only.
+    [Theory]
+    [InlineData("    return y.n\n", "")]
+    [InlineData("    y.n = 1\n    return 0\n", nameof(DiagnosticCode.SharedPathAccess_Kd))]
+    public void AShortAdaptationOfAnApplicationLocalIsAnAdaptation(string body, string code)
+    {
+        var check = DiagnosticCorpus.Check(
+            "struct Node\n    public var n: i32\n    public init(n: i32) => self.n = n\n" +
+            "func f<s/T, t/U>(o: obj/Node) -> i32\n    s is objref\n    t is objectborrow\n    var p = o@move\n    let x = p@t\n    let y = x@s\n" + body +
+            "public func main()\n    Console.writeLine(\"p\")\n");
+        var codes = string.Join("; ", check.Diagnostics.Select(static x => x.Code));
+        Assert.True(code.Length == 0 ? check.Accepted && check.Diagnostics.Length == 0 : !check.Accepted && codes == code, codes);
+    }
+
     [Fact]
     public void ASharedObjectViewKeepsItsExistingOrigin()
     {
         var (c, _, pair) = Parse("func f<s/T>(value: s/T)\n    s is objref\n    ()");
-        var type = c.Binding.SemanticsAdaptation(pair, pair.WholeType!, BoundOrigin.Static);
+        var type = c.Binding.SemanticsAdaptation(pair, pair.WholeType!, BoundOrigin.Static, pair.Scope);
         ReadOnlySpan<PairCase> cases = [new(pair, SemanticsKind.ObjRef)];
         var source = c.Binding.CaseType(pair.WholeType!, cases);
         var result = c.Binding.CaseType(type, cases);
@@ -77,7 +138,7 @@ public class SemanticsAdaptationTypeTest
         var (c, _, pair) = Parse("func f<s/T>(value: s/T)\n    s is objuniq\n    ()");
         ReadOnlySpan<PairCase> cases = [new(pair, SemanticsKind.ObjUniq)];
         var source = c.Binding.CaseType(pair.WholeType!, cases);
-        var result = c.Binding.AdaptedType(target, source, BoundOrigin.Static);
+        var result = c.Binding.AdaptedType(target, source, BoundOrigin.Static, pair.Scope);
         Assert.Equal(target, result.Semantics);
         Assert.Same(source.Components[0], result.Components[0]);
         Assert.Same(source.Origin, result.Origin);
@@ -89,7 +150,7 @@ public class SemanticsAdaptationTypeTest
     {
         var (c, _, pair) = Parse("func f<s/T>(value: s/T)\n    s is owner or objref\n    ()");
         var source = c.Types.Reference(SemanticsKind.Ref, BoundType.I32, BoundOrigin.Static);
-        var type = c.Binding.SemanticsAdaptation(pair, source, BoundOrigin.Static);
+        var type = c.Binding.SemanticsAdaptation(pair, source, BoundOrigin.Static, pair.Scope);
         Assert.Equal(SemanticsMask.Ref | SemanticsMask.ObjRef, c.Binding.ResultSemantics(type, pair.Scope));
     }
 
@@ -100,9 +161,9 @@ public class SemanticsAdaptationTypeTest
         var local = new BoundOrigin(OriginKind.Input, function, name: "payload");
         var reference = c.Types.Reference(SemanticsKind.Ref, BoundType.I32, local);
         var longer = c.Types.Reference(SemanticsKind.Ref, BoundType.I32, BoundOrigin.Static);
-        var actual = new BoundType("s/ref/i32", BoundTypeKind.SemanticsApplication, pair, SemanticsKind.Parameter, [reference], origin: local);
-        var same = new BoundType("s/ref/i32", BoundTypeKind.SemanticsApplication, pair, SemanticsKind.Parameter, [reference], origin: BoundOrigin.Static);
-        var expected = new BoundType("s/ref/i32", BoundTypeKind.SemanticsApplication, pair, SemanticsKind.Parameter, [longer], origin: local);
+        var actual = c.Types.Intern(BoundTypeKind.SemanticsApplication, pair, SemanticsKind.Parameter, [reference], origin: local);
+        var same = c.Types.Intern(BoundTypeKind.SemanticsApplication, pair, SemanticsKind.Parameter, [reference], origin: BoundOrigin.Static);
+        var expected = c.Types.Intern(BoundTypeKind.SemanticsApplication, pair, SemanticsKind.Parameter, [longer], origin: local);
         Assert.Equal(SemanticsMask.Ref, c.Binding.ResultSemantics(actual, pair.Scope));
         Assert.True(c.Binding.FitsTypeAt(actual, same, function, out _));
         Assert.False(c.Binding.FitsTypeAt(actual, expected, function, out _));
@@ -125,10 +186,10 @@ public class SemanticsAdaptationTypeTest
     public void AReachableRawCaseKeepsTheInputTypeInvariant()
     {
         var (c, function, pair) = Parse("func f<s/T>(value: s/T)\n    s is raw or objref\n    ()");
-        var longer = c.Binding.AdaptedType(SemanticsKind.ObjRef, BoundType.I32, BoundOrigin.Static);
-        var shorter = c.Binding.AdaptedType(SemanticsKind.ObjRef, BoundType.I32, c.Binding.PairOuterOrigin(pair));
-        var actual = c.Binding.SemanticsAdaptation(pair, longer, BoundOrigin.Static);
-        var expected = c.Binding.SemanticsAdaptation(pair, shorter, BoundOrigin.Static);
+        var longer = c.Binding.AdaptedType(SemanticsKind.ObjRef, BoundType.I32, BoundOrigin.Static, pair.Scope);
+        var shorter = c.Binding.AdaptedType(SemanticsKind.ObjRef, BoundType.I32, c.Binding.PairOuterOrigin(pair), pair.Scope);
+        var actual = c.Binding.SemanticsAdaptation(pair, longer, BoundOrigin.Static, pair.Scope);
+        var expected = c.Binding.SemanticsAdaptation(pair, shorter, BoundOrigin.Static, pair.Scope);
         Assert.False(c.Binding.FitsTypeAt(actual, expected, function, out _));
         ReadOnlySpan<PairCase> cases = [new(pair, SemanticsKind.Raw)];
         Assert.False(Binding.FitsType(c.Binding.CaseType(actual, cases), c.Binding.CaseType(expected, cases)));
@@ -138,7 +199,7 @@ public class SemanticsAdaptationTypeTest
     public void ClosedCallSubstitutionUsesTheSameNormalization()
     {
         var (c, _, pair) = Parse("func f<s/T>(value: s/T)\n    s is object or ref\n    T is ObjectPayload\n    ()\nlet handle = 7@obj\nf(handle@move)\nlet number = 7\nf(number@ref)");
-        var type = c.Binding.SemanticsAdaptation(pair, pair.WholeType!, BoundOrigin.Static);
+        var type = c.Binding.SemanticsAdaptation(pair, pair.WholeType!, BoundOrigin.Static, pair.Scope);
         var calls = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>().Where(x => x.CallOf()?.Target.Name == "f").ToArray();
         Assert.Equal(2, calls.Length);
         var owner = c.Binding.InstantiateStorageType(type, calls[0].CallOf()!);
@@ -173,8 +234,8 @@ public class SemanticsAdaptationTypeTest
         var (c, _, pair) = Parse("func take<u/U>(value: u/i32)\n    u is objref\n    ()\n" +
             "func f<s/T>(value: s/T)\n    s is owner or objref\n    ()");
         var callee = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>(), x => x.Name == "take");
-        var view = c.Binding.AdaptedType(SemanticsKind.ObjRef, BoundType.I32, c.Binding.PairOuterOrigin(pair));
-        var type = c.Binding.SemanticsAdaptation(pair, view, BoundOrigin.Static);
+        var view = c.Binding.AdaptedType(SemanticsKind.ObjRef, BoundType.I32, c.Binding.PairOuterOrigin(pair), pair.Scope);
+        var type = c.Binding.SemanticsAdaptation(pair, view, BoundOrigin.Static, pair.Scope);
         var call = new CallPlan();
         call.Set(callee.SymbolOf()!, BoundType.Unit, null, [0], [type], origins: [BoundOrigin.Static], inputOrigins: [BoundOrigin.Static]);
         var substituted = c.Binding.InstantiateStorageType(callee.Parameters[0].Type.TypeOf()!, call);
@@ -191,12 +252,12 @@ public class SemanticsAdaptationTypeTest
         var (c, _, pair) = Parse("func take<u/U>(value: u/U)\n    u is objref or ref\n    ()\n" +
             "func f<s/T>(value: s/T)\n    s is objref or ref\n    ()");
         var callee = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>(), x => x.Name == "take");
-        var view = c.Binding.AdaptedType(SemanticsKind.ObjRef, BoundType.I32, c.Binding.PairOuterOrigin(pair));
-        var type = c.Binding.SemanticsAdaptation(pair, view, BoundOrigin.Static);
+        var view = c.Binding.AdaptedType(SemanticsKind.ObjRef, BoundType.I32, c.Binding.PairOuterOrigin(pair), pair.Scope);
+        var type = c.Binding.SemanticsAdaptation(pair, view, BoundOrigin.Static, pair.Scope);
         var call = new CallPlan();
         call.Set(callee.SymbolOf()!, BoundType.Unit, null, [0], [type], origins: [BoundOrigin.Static], inputOrigins: [BoundOrigin.Static]);
         var original = callee.Parameters[0].Type.TypeOf()!;
-        var written = new BoundType(original.Name, original.Kind, original.Symbol, original.Semantics, origin: BoundOrigin.Static);
+        var written = c.Types.Intern(original.Kind, original.Symbol, original.Semantics, [], origin: BoundOrigin.Static);
         var substituted = c.Binding.InstantiateStorageType(written, call);
         Assert.NotNull(substituted);
         ReadOnlySpan<PairCase> borrow = [new(pair, SemanticsKind.ObjRef)];
@@ -216,12 +277,49 @@ public class SemanticsAdaptationTypeTest
         NativeAllocationAudit.WriteFixture("GenericAdaptationNestedSelectors", Source, 2, 2, 40);
     }
 
+    // SPEC 8.3.4, 7.5, 8.8.2 (PLAN G764): a short adaptation's family has the cases its binder admits where the adaptation is written,
+    // so in a conditional member or a `when` block of `Holder<s/T>` it has the member's or block's cases, as in a function whose own
+    // premise it is. Labels from SPEC: the first four are valid (an objref read and shared receiver, an objuniq write, a block member's
+    // read); the others are invalid with their function twins' records (a write and an exclusive receiver through objref, a Move of
+    // the borrowed source, a block member's write).
+    [Theory]
+    [InlineData("s is objref", false, "return y.n", "")]
+    [InlineData("s is objref", false, "return y.get()", "")]
+    [InlineData("s is objuniq", false, "y.n = 1|return y.n", "")]
+    [InlineData("s is objref", true, "return y.n", "")]
+    [InlineData("s is objref", false, "y.n = 1|return 0", nameof(DiagnosticCode.SharedPathAccess_Kd))]
+    [InlineData("s is objref", false, "y.bump()|return 0", nameof(DiagnosticCode.NoApplicableOverload_Kd))]
+    [InlineData("s is objref", false, "let z = p@move|return y.n", nameof(DiagnosticCode.ComparisonLoanConflict_Kd))]
+    [InlineData("s is objref", true, "y.n = 1|return 0", nameof(DiagnosticCode.SharedPathAccess_Kd))]
+    public void AFamilyHasTheCasesAdmittedWhereItIsFormed(string premise, bool block, string body, string code)
+    {
+        var indent = block ? "            " : "        ";
+        var member = block ? $"    Self is Peek when {premise}\n        public func view(self: ref/Self, o: obj/Node) -> i32\n"
+            : $"    public func view(self: ref/Self, o: obj/Node) -> i32\n{indent}{premise}\n";
+        AssertNodeProgram(
+            "contract Peek\n    func view(self: ref/Self, o: obj/Node) -> i32\nstruct Holder<s/T>\n    public var k: i32\n" +
+            "    public init(k: i32) => self.k = k\n" + member + Statements(indent, "var p = o@move|let y = p@s|" + body),
+            code);
+    }
+
+    // SPEC 8.3.4, 13.5.6 (PLAN G764): `q@s` over another binder's layer `q: t/Node` maps each case of `t` admitted where it is written,
+    // both binders narrowed by the member (the Type premise keeps the struct within the case bound). Labels from SPEC: the read is
+    // valid; the write through the objref case is invalid with its function twin's record.
+    [Theory]
+    [InlineData("return y.n", "")]
+    [InlineData("y.n = 1|return 0", nameof(DiagnosticCode.SharedPathAccess_Kd))]
+    public void ANestedFamilyHasTheCasesAdmittedWhereItIsFormed(string body, string code)
+        => AssertNodeProgram(
+            "struct Holder<s/T, t/U>\n    t is borrow\n    public func view(self: ref/Self, q: t/Node) -> i32\n        s is objref\n" +
+            "        t is objref\n" + Statements("        ", "let y = q@s|" + body),
+            code);
+
     [Trait("Purpose", "Allocation")]
     [Fact]
     public void RepeatedCaseNormalizationReusesInternedTypes()
     {
         var (c, _, pair) = Parse("func f<s/T>(value: s/T)\n    s is object or ref\n    T is ObjectPayload\n    ()");
-        var type = c.Binding.SemanticsAdaptation(pair, pair.WholeType!, BoundOrigin.Static);
+        var type = c.Binding.SemanticsAdaptation(pair, pair.WholeType!, BoundOrigin.Static, pair.Scope);
         PairCase[] objects = [new(pair, SemanticsKind.Obj)];
         PairCase[] references = [new(pair, SemanticsKind.Ref)];
         var objectType = c.Binding.CaseType(type, objects);
@@ -229,12 +327,25 @@ public class SemanticsAdaptationTypeTest
         var valid = true;
         Assert.Equal(0, AllocationMeasurement.Measure(() =>
         {
-            valid &= ReferenceEquals(type, c.Binding.SemanticsAdaptation(pair, pair.WholeType!, BoundOrigin.Static));
+            valid &= ReferenceEquals(type, c.Binding.SemanticsAdaptation(pair, pair.WholeType!, BoundOrigin.Static, pair.Scope));
             valid &= ReferenceEquals(objectType, c.Binding.CaseType(type, objects));
             valid &= ReferenceEquals(referenceType, c.Binding.CaseType(type, references));
         }));
         Assert.True(valid);
     }
+
+    // Checks `declarations` after a Node with a shared and an exclusive method; `code` is the exact record list, empty when accepted.
+    private static void AssertNodeProgram(string declarations, string code)
+    {
+        var check = DiagnosticCorpus.Check(
+            "struct Node\n    public var n: i32\n    public init(n: i32) => self.n = n\n    public func get(self: ref/Self) -> i32 => self.n\n" +
+            "    public func bump(self: uniq/Self) => self.n += 1\n" + declarations + "public func main()\n    Console.writeLine(\"p\")\n");
+        var codes = string.Join("; ", check.Diagnostics.Select(static x => x.Code));
+        Assert.True(code.Length == 0 ? check.Accepted : !check.Accepted, codes);
+        Assert.Equal(code, codes);
+    }
+
+    private static string Statements(string indent, string lines) => string.Concat(lines.Split('|').Select(x => indent + x + "\n"));
 
     private static (Compilation Compilation, FunctionKoto Function, BindingSymbol Pair) Parse(string source)
     {

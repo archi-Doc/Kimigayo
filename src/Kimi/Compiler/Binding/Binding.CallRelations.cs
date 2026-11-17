@@ -170,24 +170,15 @@ public sealed partial class Binding
         }
     }
 
-    // SPEC 15.6.4 step 3: an Origin of a callee's declared relation (an accessor's, its binder's) as a call substitutes it: the declaring
-    // Type's stored slots, then the callee's own Origins and inputs, as many as the call gives.
+    // SPEC 15.6.4 step 3: an Origin of a callee's declared relation (an accessor's, its binder's) as a call substitutes it: the callee's
+    // own Origins and inputs, as many as the call gives, and the declaring Type's stored slots, in one pass (Binding.CallSubstitution).
     private BoundOrigin SubstituteClauseOrigin(
         BoundOrigin origin,
         FunctionKoto selected,
         ReadOnlySpan<BoundOrigin> origins,
         ReadOnlySpan<BoundOrigin> inputs,
         BoundType? declaringType)
-    {
-        if (declaringType?.Symbol is { } owner)
-        {
-            origin = this.SubstituteStoredOrigin(origin, owner.Declaration, (BoundOrigin[])declaringType.OriginArguments);
-        }
-
-        var binder = selected.OriginBinder;
-        var originCount = Math.Min(origins.Length, selected.Accessor?.Declaration?.Origins.Count ?? selected.BoundSymbol?.Schema?.Origins.Count ?? 0);
-        return this.SubstituteStoredOrigin(origin, binder, origins[..originCount], inputs[..Math.Min(inputs.Length, InputOriginCount(binder))]);
-    }
+        => this.Substitute(origin, SubstitutionOf(selected.OriginBinder, declaringType, default, default, origins, inputs));
 
     // The receiver (index == argumentCount) or argument whose adapted Type is fitted to its completed parameter Type; a selected input that
     // borrows a static root is first the located limit (FailStaticBorrow), its relations (SPEC 11.8, a fit to static) waiting for P42,
@@ -211,20 +202,21 @@ public sealed partial class Binding
 
         var pattern = operation.ParameterIndex >= 0 && operation.ParameterIndex < selected.Parameters.Count ? selected.Parameters[operation.ParameterIndex].Type.BoundType : null;
         var context = new CallFit(selected, operations, argumentCount, at, parameter);
-        this.CollectCallRelations(adapted, parameter, pattern, false, context, 0, null);
+        this.CollectCallRelations(adapted, parameter, pattern, false, context, null);
     }
 
     // SPEC 15.6.1: the Origin positions of a fit, in the order of the outer borrow layer, the Semantics target, then slots and Type
     // arguments, each with the variance of the relation table; `pattern` follows the uninstantiated parameter while it has the same
     // structure, so that a fresh Origin's equality can be related to the input that fixed it; `slot` is the callee's Type parameter
     // whose solution holds the positions below it, so that an equality with that solution is related to the input that fixed it.
-    private void CollectCallRelations(BoundType actual, BoundType expected, BoundType? pattern, bool invariant, in CallFit context, int depth, BoundType? slot)
+    private void CollectCallRelations(BoundType actual, BoundType expected, BoundType? pattern, bool invariant, in CallFit context, BoundType? slot)
     {
-        if (depth > 64 || actual.Kind == BoundTypeKind.Function || actual.Components.Count != expected.Components.Count || actual.OriginArguments.Count != expected.OriginArguments.Count)
+        if (actual.Kind == BoundTypeKind.Function || actual.Components.Count != expected.Components.Count || actual.OriginArguments.Count != expected.OriginArguments.Count)
         {
             return; // SPEC 10.7: a Function Type is a whole contract, compared during applicability.
         }
 
+        this.termWalks++;
         if (pattern is { Kind: BoundTypeKind.Parameter, Symbol: { } parameter } && ContainerSlot(context.Selected, parameter) >= 0)
         {
             slot = pattern;
@@ -241,10 +233,10 @@ public sealed partial class Binding
             this.JudgeCallPosition(context.At, longer, shorter, invariant, pattern is null ? null : this.OuterOrigin(pattern), null, context: context, slot: slot, condition: SlotCondition(actual, this, context.At));
         }
 
-        var exclusive = IsInvariantLayer(actual, this);
+        var exclusive = IsInvariantLayer(actual, this, context.At, default);
         for (var i = 0; i < actual.Components.Count && actual.Kind is BoundTypeKind.Semantics or BoundTypeKind.SemanticsApplication; i++)
         {
-            this.CollectCallRelations(actual.Components[i], expected.Components[i], pattern?.Components[i], invariant || exclusive, context, depth + 1, slot);
+            this.CollectCallRelations(actual.Components[i], expected.Components[i], pattern?.Components[i], invariant || exclusive, context, slot);
         }
 
         for (var i = 0; i < actual.OriginArguments.Count; i++)
@@ -269,21 +261,21 @@ public sealed partial class Binding
                 var variance = schema.GenericSlots[i].OriginVariance;
                 if (invariant || variance is OriginVariance.Invariant or OriginVariance.Unused)
                 {
-                    this.CollectCallRelations(actual.Components[i], expected.Components[i], part, true, context, depth + 1, slot);
+                    this.CollectCallRelations(actual.Components[i], expected.Components[i], part, true, context, slot);
                 }
                 else if (variance == OriginVariance.Covariant)
                 {
-                    this.CollectCallRelations(actual.Components[i], expected.Components[i], part, false, context, depth + 1, slot);
+                    this.CollectCallRelations(actual.Components[i], expected.Components[i], part, false, context, slot);
                 }
                 else
                 {
-                    this.CollectCallRelations(expected.Components[i], actual.Components[i], null, false, context, depth + 1, slot);
+                    this.CollectCallRelations(expected.Components[i], actual.Components[i], null, false, context, slot);
                 }
 
                 continue;
             }
 
-            this.CollectCallRelations(actual.Components[i], expected.Components[i], part, invariant, context, depth + 1, slot);
+            this.CollectCallRelations(actual.Components[i], expected.Components[i], part, invariant, context, slot);
         }
     }
 
@@ -296,7 +288,7 @@ public sealed partial class Binding
             return;
         }
 
-        if (!equality && longer.Kind == OriginKind.Intersection && !this.FitOriginOutlives(longer, shorter, at, default, condition))
+        if (!equality && longer.Kind == OriginKind.Intersection && !this.FitOriginOutlives(this.OriginAtUse(longer, at), this.OriginAtUse(shorter, at), at, default, condition))
         {
             for (var i = 0; i < longer.Operands.Count; i++)
             {
@@ -307,8 +299,8 @@ public sealed partial class Binding
         }
 
         // Complete initializer-owned holes before deferring finite constraints to the body graph.
-        var forwardProven = this.FitOriginOutlives(longer, shorter, at, default, condition);
-        var backwardProven = !equality || this.FitOriginOutlives(shorter, longer, at, default, condition);
+        var forwardProven = this.FitOriginOutlives(this.OriginAtUse(longer, at), this.OriginAtUse(shorter, at), at, default, condition);
+        var backwardProven = !equality || this.FitOriginOutlives(this.OriginAtUse(shorter, at), this.OriginAtUse(longer, at), at, default, condition);
         if (BodyChain(longer, shorter, equality, this.formingBody))
         {
             this.AddObligation(new(BindingObligationKind.OriginOutlives, at, BindingDeadline.BodyOrigins, declared ? null : context.Parameter, longer, shorter, Equality: equality, Clause: declared ? clause : null, WellFormed: wellFormed, Condition: condition));

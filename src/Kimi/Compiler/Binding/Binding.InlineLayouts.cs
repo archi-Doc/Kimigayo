@@ -59,7 +59,7 @@ public sealed partial class Binding
             }
         }
 
-        foreach (var conformance in this.impls.Identities)
+        foreach (var conformance in this.impls.InPass.Identities)
         {
             for (var p = 0; p < conformance.PathStorage.Count; p++)
             {
@@ -353,7 +353,7 @@ public sealed partial class Binding
         {
             var subject = step.Components[0];
             var contract = step.Symbol!.Scope.Owner.BoundSymbol!;
-            if (subject.Kind is not (BoundTypeKind.Parameter or BoundTypeKind.TargetProjection or BoundTypeKind.AssociatedProjection) ||
+            if (!subject.IsProofDecided ||
                 this.RecursiveInStorage(contract) ||
                 this.ProveConstraint(this.InternConstraint(new(ConstraintKind.Contract, subject, contract: contract)), summary.Scope) != ConstraintProof.Proven)
             {

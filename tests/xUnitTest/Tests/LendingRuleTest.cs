@@ -57,6 +57,7 @@ public class LendingRuleTest
     [Theory]
     [InlineData("func take(text: string) => ()\nlet text = \"a\"\ntake(text)", DiagnosticCode.TransferRequired_Kd)]
     [InlineData("func bump(n: uniq/i32) => ()\nvar n = 1\nbump(n)", DiagnosticCode.ExclusiveBorrowRequired_Kd)]
+    [InlineData("func bump(n: uniq/i32) => ()\nfunc f(p: raw/i32)\n    unsafe => bump(*p)", DiagnosticCode.ExclusiveBorrowRequired_Kd)] // A raw Place (SPEC 3.4.1).
     public void BindingNamesTheRequiredSpellingOrBoundary(string source, DiagnosticCode code)
     {
         var c = MinimalEmissionTest.Analyze(source);

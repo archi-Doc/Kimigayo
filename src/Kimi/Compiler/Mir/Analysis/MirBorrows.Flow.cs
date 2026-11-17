@@ -24,7 +24,7 @@ internal sealed partial class MirBorrows
     // makes; a Call's.
     private void Plan(ulong[] state, int block, int index, bool checks)
     {
-        (this.entryCount, this.planLocation) = (0, this.Location(block, index));
+        (this.entryCount, this.planLocation, this.mustValue, this.mustKept) = (0, this.Location(block, index), 0, 0);
         foreach (var set in this.read)
         {
             this.reads[set] = default;
@@ -62,6 +62,13 @@ internal sealed partial class MirBorrows
                 own = this.sets.Add(own, Markers + into.Root); // E7: a value issued into a guard candidate H carries γ_H.
             }
 
+            if (this.replaying && this.contract is not null)
+            {
+                // The must-set (MirBorrows.Storing): a Reborrow's is the pointer's it reborrows, else the rvalue's.
+                this.mustValue = this.Reborrowing(statement) != MirRefKind.Raw ? this.MustOperand(rvalue.Start) : this.MustOf(rvalue);
+                this.mustKept = statement.Place is { Projection: 0, Root: >= 0 } whole && !this.Exposed(whole.Root) ? this.mustValue : 0;
+            }
+
             this.Moves(rvalue.Start, rvalue.Count);
             var issue = rvalue.Kind is MirRvalueKind.Ref or MirRvalueKind.Storage || this.Reborrowing(statement) != MirRefKind.Raw;
             this.Store(state, statement.Place, value, own, issue);
@@ -81,6 +88,10 @@ internal sealed partial class MirBorrows
                 JoinedThrough => State(Placed(state[slot]), this.sets.Union(Shared(state[slot]), value)),
                 _ => State(this.sets.Union(Placed(state[slot]), value), Shared(state[slot])),
             };
+            if (this.replaying && this.contract is not null)
+            {
+                this.must[slot] = op == Replaced ? this.mustKept : 0; // M (MirBorrows.Storing): a whole store keeps its value's, any other change none.
+            }
         }
     }
 
@@ -103,13 +114,14 @@ internal sealed partial class MirBorrows
     // raw pointer, the holders it addresses, and E where it carries Φ_E), into a static E joined; Φ_N into each exposed holder it writes.
     private void Store(ulong[] state, MirPlace place, int value, int own, bool issue)
     {
-        var (count, last) = (this.placeSteps.Walk(this.body, place, reborrow: false, ref this.walk), -1);
+        this.Storing(place); // The storing rule (MirBorrows.Storing), before the walk buffer is filled.
+        var (count, last) = (this.placeSteps.Walk(place, reborrow: false, ref this.walk), -1);
         for (var i = 0; i < count; i++)
         {
             last = this.walk[i].Class is MirStepClass.Shared or MirStepClass.Uniq or MirStepClass.Raw ? i : last;
         }
 
-        var receiving = this.wCount == 0 ? null : cases.Type(this.body.TypeOf(place)!); // Rule W's receiving part (MirBorrows.Causes).
+        var receiving = this.wCount == 0 ? null : cases.TypeOf(place); // Rule W's receiving part (MirBorrows.Causes).
         if (last < 0)
         {
             var slot = place.Root < 0 ? Escaped : this.slots[place.Root];
@@ -133,8 +145,11 @@ internal sealed partial class MirBorrows
             var (target, root) = (this.targets[t], this.targetRoots[t]);
             var arrived = this.Arrive(target, receiving, false, through, value);
             arrived = root >= 0 && this.Exposed(root) ? this.sets.Union(arrived, this.unformedSet) : arrived;
+            arrived = target == Escaped ? this.Rested(arrived, pointer) : arrived; // An undecided write's E (MirBorrows.Puns).
             this.AddSlot(target, arrived, this.Arrive(target, receiving, false, through, own), JoinedThrough, issue);
         }
+
+        this.Punning(pointer, place); // The pun rule (MirBorrows.Puns).
     }
 
     // A Move of a whole root empties it.

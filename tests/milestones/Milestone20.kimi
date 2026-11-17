@@ -23,18 +23,18 @@ struct Wrapper<T>
 
     // Storage is valid without this premise; the Source capability is conditional.
     Self is Source when T is Source
-        associate Source.Element is T.Source.Element
-        public func read(self: ref/Self) -> T.Source.Element
+        associate Source.Element is T.(Source).Element
+        public func read(self: ref/Self) -> T.(Source).Element
             return self.value.read()
 
-func readTwice<T>(source: ref/T) -> (T.Source.Element, T.Source.Element)
+func readTwice<T>(source: ref/T) -> (T.(Source).Element, T.(Source).Element)
     T is Source
-    let first: T.Source.Element = source.read()
+    let first: T.(Source).Element = source.read()
     return (first, source.read())
 
 func readNumber<T>(source: ref/T) -> i32
     T is Source
-    T.Source.Element is i32
+    T.(Source).Element is i32
     return source.read()
 
 public func main()

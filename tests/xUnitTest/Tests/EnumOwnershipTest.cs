@@ -150,9 +150,9 @@ public class EnumOwnershipTest
         var c = Parse(source);
         Assert.True(c.Analyze().IsVerified, MinimalEmissionTest.Describe(c));
         var program = c.BuildMir();
-        var ordinal = Array.FindIndex(program.Bodies.ToArray(), static x => x.Key.Decl is null && x.Source.Module == 0);
-        Assert.DoesNotContain(program.Bodies[ordinal].Blocks.ToArray(), static x => x.Terminator.Kind == MirTerminatorKind.Call);
-        return MirDumpTest.Unsited(program, ordinal);
+        var body = Array.Find(program.Bodies.ToArray(), static x => x.Key.Decl is null && x.Source.Module == 0)!;
+        Assert.DoesNotContain(body.Blocks.ToArray(), static x => x.Terminator.Kind == MirTerminatorKind.Call);
+        return MirDumpTest.Unsited(program, body);
     }
 
     // The bound Type of the local `x`.

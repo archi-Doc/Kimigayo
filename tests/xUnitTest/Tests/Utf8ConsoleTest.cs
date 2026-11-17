@@ -36,10 +36,12 @@ public class Utf8ConsoleTest
         NativeAllocationAudit.WriteFixture("Utf8ConsoleStack", Source, 0, 0, 0, "My number is 42\n");
         var c = MinimalEmissionTest.Analyze(Source);
         var outputIr = CompilationTestHelper.WriteIr(c);
-        Assert.Contains("alloca [33 x i8], align 1", outputIr); // The region's own name is code generation's (R5-M12 class I).
+        Assert.Contains("alloca { [0 x i8], [33 x i8] }, align 1", outputIr); // The region, a [33 of u8] local; its name is code generation's (R5-M12 class I).
     }
 
     // Each side of the limit with a region partly empty (7 writes one of i8's four bytes), and the limit's region full (i8's widest value).
+    // Past the limit the owning buffer starts empty and grows once to the written bytes, the deferred literal and the value (R8-W2 c3b;
+    // fail-before: the estimate, 1,025).
     [Trait("Purpose", "Allocation")]
     [Theory]
     [InlineData("1023", 1023, "7", 0)]
@@ -50,11 +52,11 @@ public class Utf8ConsoleTest
     {
         var text = new string('x', bound - 4);
         var source = "func next() -> i8\n    Console.writeLine(\"once\")\n    return " + value + "\nConsole.writeLine(\"" + text + "\\(next())\")";
-        NativeAllocationAudit.WriteFixture("Utf8ConsoleLimit" + name, source, allocations, allocations, allocations * bound, "once\n" + text + value + "\n");
+        NativeAllocationAudit.WriteFixture("Utf8ConsoleLimit" + name, source, allocations, allocations, allocations * (text.Length + value.Length), "once\n" + text + value + "\n");
     }
 
-    // SPEC 22.10.5 (G286): a direct interpolation of one value at its formatting kind's widest value fills its stack region exactly
-    // (DECISIONS R5-M131's premise: the HeapBuffer arm of the runtime's reserve never grows a region), so a bound one byte short fails.
+    // SPEC 22.10.5 (G286): a direct interpolation of one value at its formatting kind's widest value fills its stack region exactly (rule
+    // L: the region, Text.fixed's argument, holds every reservation of its FixedBuffer), so a bound one byte short fails.
     [Trait("Purpose", "Allocation")]
     [Theory]
     [InlineData("I8", "-128@i8", "-128")]
@@ -76,11 +78,32 @@ public class Utf8ConsoleTest
     {
         var source = "let v = " + value + "\nConsole.writeLine(\"\\(v)\")";
         NativeAllocationAudit.WriteFixture("Utf8ConsoleWidest" + kind, source, 0, 0, 0, text + "\n");
-        var ir = GeneratedIr.Parse(CompilationTestHelper.WriteIr(MinimalEmissionTest.Analyze(source)));
-        var region = Assert.Single(
-            ir.Functions.SelectMany(static x => x.Instructions),
-            x => x.Callee == ir.Function("__kimi_text_fixed") && x.Operands[1].Opcode == "alloca").Operands[1];
-        Assert.Equal($"alloca [{Encoding.UTF8.GetByteCount(text)} x i8], align 1", region.Shape);
+        var c = MinimalEmissionTest.Analyze(source);
+        var ir = GeneratedIr.Parse(CompilationTestHelper.WriteIr(c));
+        var instructions = ir.Functions.SelectMany(static x => x.Instructions).ToArray();
+        var fixedBodies = FunctionCodegenTest.FunctionsOf(ir, c, "fixed");
+        var call = Assert.Single(instructions, x => x.Opcode == "call" && fixedBodies.Contains(x.Callee!)); // Not by shape: CharFormat's array shares it.
+        var borrow = Assert.Single(call.Operands, static x => x.Opcode == "load").Operands[0]; // Text.fixed's argument.
+        var region = Assert.Single(instructions, x => x.Opcode == "store" && x.Operands[^1] == borrow).Operands[0];
+        Assert.Equal($"alloca {{ [0 x i8], [{Encoding.UTF8.GetByteCount(text)} x i8] }}, align 1", region.Shape);
+    }
+
+    // SPEC 22.10.3, 22.10.5, rule L (R8-W2 design §4b): a direct line's FixedBuffer adapter (the Fixed tag) carries a literal deferred before a
+    // value, which the value's reservation prepends (the shared tail), for each bounded kind other than an integer, and in a generic body's
+    // fixed arm (T = bool): the exact text, so a dropped pending literal fails, and no allocation.
+    [Trait("Purpose", "Allocation")]
+    [Theory]
+    [InlineData("Bool", "let v = true", "b=", "true")]
+    [InlineData("Char", "let v = 'é'", "c=", "é")]
+    [InlineData("Unit", "let v = ()", "u=", "()")]
+    [InlineData("F32", "let v = 1.5@f32", "f=", "1.5")]
+    [InlineData("F64", "let v = 2.5", "d=", "2.5")]
+    [InlineData("Wrapping", "let v: Wrapping<u8> = 200", "w=", "200")]
+    [InlineData("Generic", "func show<T>(value: ref/T)\n    T is Utf8Format\n    Console.writeLine(\"b=\\(value)\")\nshow(true)", "", "b=true")]
+    public void AFixedRegionPrependsAPendingLiteralBeforeEachKind(string kind, string prefix, string literal, string text)
+    {
+        var source = literal.Length == 0 ? prefix : prefix + "\nConsole.writeLine(\"" + literal + "\\(v)\")";
+        NativeAllocationAudit.WriteFixture("Utf8ConsolePending" + kind, source, 0, 0, 0, literal + text + "\n");
     }
 
     [Trait("Purpose", "Allocation")]
@@ -125,11 +148,12 @@ public class Utf8ConsoleTest
     }
 
     // SPEC 22.10.5: a direct interpolation whose only unbounded value is one Utf8Slice preceded only by literal text allocates at most once;
-    // a nested one allocates at most once for each interpolation (the inner, bounded, is the outer's embedded expression).
+    // a nested one allocates at most once for each interpolation (the inner, bounded, is the outer's embedded expression: 3 bytes, its
+    // deferred literal, its value and the hint of its last literal, since R8-W2 c3b; fail-before: its estimate, 13).
     [Trait("Purpose", "Allocation")]
     [Theory]
     [InlineData("View", "let t = \"君\"\nlet s = Text.utf8(t)\nConsole.writeLine(\"v=\\(s)\\(7)\")", "v=君7", 1, 16)]
-    [InlineData("Nested", "Console.writeLine(\"<\\(\"[\\(7)]\")>\")", "<[7]>", 2, 18)]
+    [InlineData("Nested", "Console.writeLine(\"<\\(\"[\\(7)]\")>\")", "<[7]>", 2, 8)]
     public void DirectUnboundedFormsAllocateOncePerInterpolation(string name, string source, string expected, int allocations, int bytes)
         => NativeAllocationAudit.WriteFixture("Utf8ConsoleUnbounded" + name, source, allocations, allocations, bytes, expected + "\n");
 

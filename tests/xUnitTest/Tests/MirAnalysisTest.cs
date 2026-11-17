@@ -1,5 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using System.Reflection;
 using System.Text;
 using System.Text.RegularExpressions;
 using Kimi;
@@ -171,6 +172,63 @@ public sealed class MirAnalysisTest
         Assert.Equal(new[] { new Problem(DiagnosticCode.Unsupported_Kd, site) }, program.Records(MirRecordClass.Collection));
         program.Clear();
         Assert.Equal(0, program.Problems.All.Length);
+    }
+
+    // PLAN G951's round rule (MirReport's Rounds; the Back's review C3 and N1): while a round is open, a problem of another body value (a
+    // construction record of a body a lookup builds during the round) is added at once and stays when the round is dropped; the round's own
+    // problems are held, so a dropped round adds none and a committed one adds each once, merged, after the problems added during it; a
+    // held problem with facts is a recording rule's defect, held as the round's; a round opened in an open round, or ended with none open,
+    // is a broken contract. Fail-before (a report reverted to the round's start): the construction record is lost.
+    [Fact]
+    public void ARoundHoldsOnlyItsOwnProblems()
+    {
+        var (program, site) = (new MirProgram(), new SourceRef(0, 5));
+        var report = program.Problems;
+        var construction = new MirProblem(DiagnosticCode.Unsupported_Kd, DiagnosticRequirement.ControlFlow, site, (int)MirRecordClass.Construction, ulong.MaxValue);
+        var collection = construction with { Body = (int)MirRecordClass.Collection };
+        report.Begin((int)MirRecordClass.Collection);
+        program.Report(site);
+        program.Report(site, DiagnosticCode.Unsupported_Kd, MirRecordClass.Collection);
+        report.Drop();
+        Assert.Equal([construction], report.All.ToArray());
+        report.Begin((int)MirRecordClass.Collection);
+        program.Report(site, DiagnosticCode.Unsupported_Kd, MirRecordClass.Collection);
+        program.Report(site, DiagnosticCode.Unsupported_Kd, MirRecordClass.Collection);
+        Assert.Throws<InvalidOperationException>(() => report.Begin(MirProblem.NoBody));
+        Assert.Equal([construction], report.All.ToArray());
+        report.Commit();
+        Assert.Equal([construction, collection], report.All.ToArray());
+        Assert.Throws<InvalidOperationException>(report.Commit);
+        Assert.Throws<InvalidOperationException>(report.Drop);
+        report.Begin(MirProblem.NoBody);
+        Assert.Equal(-1, report.Add(Conflict with { Body = MirProblem.NoBody }, [new(ProblemFactKind.Anchor, site)]));
+        report.Commit();
+        var defect = DiagnosticRequirement.Ownership(OwnershipRequirement.Internal);
+        Assert.Equal(new MirProblem(DiagnosticCode.InternalInvariant_Kd, defect, Conflict.Subject, MirProblem.NoBody, Conflict.Views), report.All[2]);
+    }
+
+    // PLAN G950: rows kept from an index (MirReport.Keep) and replayed after other problems (Replay) equal their first adding at that step,
+    // merged views and facts included: a Cause naming a kept row moves by the offset, -1 stays, and a later Add of a kept key merges into
+    // the replayed row.
+    [Fact]
+    public void KeptRowsReplayAtTheirStep()
+    {
+        var (first, second) = (new MirProblem(DiagnosticCode.MovedPlace_Kd, Moved, new(0, 5), 0, 0b01), new MirProblem(DiagnosticCode.MovedPlace_Kd, Moved, new(0, 6), 0, 0b01));
+        var report = new MirReport();
+        report.Add(new(DiagnosticCode.Unsupported_Kd, Moved, new(0, 4), MirProblem.NoBody, 1));
+        report.Add(first);
+        report.Add(second, [new(ProblemFactKind.Cause, new(0, 1), 1), new(ProblemFactKind.Cause, new(0, 7), -1)]);
+        report.Add(first with { Views = 0b10 });
+        var kept = new MirReport.Kept();
+        report.Keep(1, kept);
+        var replayed = new MirReport();
+        replayed.Add(new(DiagnosticCode.Unsupported_Kd, Moved, new(0, 3), MirProblem.NoBody, 1));
+        replayed.Add(new(DiagnosticCode.Unsupported_Kd, Moved, new(0, 4), MirProblem.NoBody, 1));
+        replayed.Replay(kept);
+        Assert.Equal(report.All[1..].ToArray(), replayed.All[2..].ToArray());
+        Assert.Equal([new(ProblemFactKind.Cause, new(0, 1), 2), new(ProblemFactKind.Cause, new(0, 7), -1)], replayed.Facts(3).ToArray());
+        Assert.Equal(2, replayed.Add(first with { Views = 0b100 }));
+        Assert.Equal(0b111UL, replayed.All[2].Views);
     }
 
     // R5-M23: the problems a key merges name one requirement, the first's; a problem that names another is a recording rule's defect, one
@@ -432,15 +490,16 @@ public sealed class MirAnalysisTest
     }
 
     // R6-check H3-2 (Q-R4-2): every analysis InternalInvariant_Kd names Ownership.Internal (MirReport's defects and Merged's disagreement
-    // record, A5's broken contracts; the C1-F4 view throws at its own, DECISIONS BU-102), so the disagreement record never disagrees again:
-    // each site of the code in the analyses states that requirement before it in its block, and a new site joins this list after review.
+    // record, A5's broken contracts, A1's broken invariants at a runtime location (DRV-N8, S2-N1); the C1-F4 view throws at its own,
+    // DECISIONS BU-102), so the disagreement record never disagrees again: each site of the code in the analyses states that requirement
+    // before it in its block, and a new site joins this list after review.
     [Fact]
     public void EveryAnalysisInternalInvariantNamesOwnershipInternal()
     {
         var code = new Regex(@"DiagnosticCode\.InternalInvariant_Kd");
         var pinned = new Regex(@"OwnershipRequirement\.Internal\)[^}]*?DiagnosticCode\.InternalInvariant_Kd");
         Assert.Equal(
-            ["MirBorrows.Reports.cs 1 1", "MirReport.Merged.cs 1 1", "MirReport.cs 1 1"],
+            ["MirBorrows.Reports.cs 1 1", "MirInit.cs 1 1", "MirReport.Merged.cs 1 1", "MirReport.cs 1 1"],
             Directory.EnumerateFiles(Path.Combine(Repository.Root, "src/Kimi/Compiler/Mir/Analysis"), "*.cs")
                 .Select(x => (Name: Path.GetFileName(x), Text: File.ReadAllText(x))).Where(x => code.IsMatch(x.Text))
                 .Select(x => $"{x.Name} {code.Count(x.Text)} {pinned.Count(x.Text)}").Order(StringComparer.Ordinal));
@@ -552,8 +611,8 @@ public sealed class MirAnalysisTest
                 "ComparisonLoanConflict_Kd a = 2 in public init(k: i32, extra: i32) => self.k = k + extra: 1",
                 "ComparisonLoanConflict_Kd a = 2 in public init(t: s/T): 3", "ComparisonLoanConflict_Kd a = 2 in public init(t: s/T, n: i32): 511",
             ],
-            problems.Select(x => $"{x.Code} {Line(c, x.Subject)} in {Line(c, program.Bodies[x.Body].Source)}: {x.Views}"));
-        Assert.All(problems, x => Assert.Equal(0UL, x.Views >> (int)MirCases.Count(program.Bodies[x.Body])));
+            problems.Select(x => $"{x.Code} {Line(c, x.Subject)} in {Line(c, program.Body(x.Body).Source)}: {x.Views}"));
+        Assert.All(problems, x => Assert.Equal(0UL, x.Views >> (int)MirCases.Count(program.Body(x.Body))));
     }
 
     // R5-M23, DIAGNOSTICS rule 1: each recording rule names the requirement it judged, beside its code: A1's uses, Moves without a Move
@@ -604,7 +663,7 @@ public sealed class MirAnalysisTest
                 "UnsatisfiedEffectBound_Kd override func read(self: objref/Self) -> i32 -",
             ],
             program.Problems.All.ToArray().Where(static x => !x.IsRecord && x.Subject.Module == 0)
-                .Select(x => $"{x.Code} {Line(c, x.Subject)} {(x.Body == MirProblem.NoBody ? "-" : program.Bodies[x.Body].Key.Decl!.Name)}")
+                .Select(x => $"{x.Code} {Line(c, x.Subject)} {(x.Body == MirProblem.NoBody ? "-" : program.Body(x.Body).Key.Decl!.Name)}")
                 .Order(StringComparer.Ordinal));
     }
 
@@ -615,7 +674,7 @@ public sealed class MirAnalysisTest
     {
         var (c, _) = SemanticSnapshotTest.Bind("milestone/Milestone1");
         var program = c.BuildMir();
-        program.Problems.Add(new(DiagnosticCode.MovedPlace_Kd, Moved, program.Bodies[0].Source, 0, 1));
+        program.Problems.Add(new(DiagnosticCode.MovedPlace_Kd, Moved, program.Body(0).Source, 0, 1));
         Assert.Equal(1, c.BuildMir().Problems.All.Length);
         c.Binding.Bind(BindingMode.Final);
         Assert.Equal(0, c.BuildMir().Problems.All.Length);
@@ -653,10 +712,10 @@ public sealed class MirAnalysisTest
     {
         var c = MirBuildTest.Compile(source);
         Assert.Empty(c.Binding.Issues);
-        var analyzed = c.BuildMir();
+        var analyzed = MirBuildTest.LibraryRange(c); // Every body's views, the library's included (PLAN G951 U2-T).
         Assert.Empty(analyzed.Findings);
         var views = analyzed.Bodies.ToArray().Select(x => analyzed.Drops.ViewsOf(x.Ordinal)).ToArray();
-        var program = new MirBuilder(c).Build(); // Unanalyzed: a version's problems are reset only with its bodies (MirProgram.Clear).
+        var program = new MirBuilder(c).Build(SyntaxTable.LibraryModule + 1); // Unanalyzed: a version's problems are reset only with its bodies (MirProgram.Clear).
         var broken = program.Bodies.ToArray().Single(x => x.Key.Kind == MirBodyKind.Fn && x.Key.Decl?.Name == name);
         program.Findings.Add(new(MirViolation.Callee, broken.Source)); // As MirValidator gives a finding and the body's verdict.
         broken.HasFinding = true;
@@ -664,7 +723,7 @@ public sealed class MirAnalysisTest
         Assert.Equal(
             expected.Split('|'),
             program.Problems.All.ToArray().Where(static x => x.Subject.Module == 0)
-                .Select(x => $"{x.Code} {Line(c, x.Subject)} {(x.Body == MirProblem.NoBody ? "-" : program.Bodies[x.Body].Key.Decl!.Name)}")
+                .Select(x => $"{x.Code} {Line(c, x.Subject)} {(x.Body == MirProblem.NoBody ? "-" : program.Body(x.Body).Key.Decl!.Name)}")
                 .Order(StringComparer.Ordinal));
         views[broken.Ordinal] = 0; // MirDrops.Exclude: an empty entry, every other body's unshifted.
         Assert.Equal(views, program.Bodies.ToArray().Select(x => program.Drops.ViewsOf(x.Ordinal)));
@@ -701,8 +760,8 @@ public sealed class MirAnalysisTest
     }
 
     // R6-check IC (MirDrops' invariant, H0b §2.1): a body A2's table marks (R4-M102) has an Error problem in MirReport, so generation's
-    // check (H5) can read a marked body reaching it as InternalInvariant_Kd: the problem its index names, of its code at its subject, or for
-    // an inline default copy's (-1) its template's of that code and subject (R4-M69). The forms: A1's state rules and A2's incomplete layer
+    // check (H5) can read a marked body reaching it as InternalInvariant_Kd: the problem of its code at its subject in the body (one per key,
+    // MirReport.Add), or for an inline default copy's, which the report drops, its template's of that code and subject (R4-M69). The forms: A1's state rules and A2's incomplete layer
     // (Requirements), a default copy (MirDropTest.Indices) and A1's arena limit (A5ChecksTheViewsA1Completed's); none merges a disagreement.
     [Fact]
     public void AMarkedBodyHasAnError()
@@ -716,14 +775,14 @@ public sealed class MirAnalysisTest
             var problems = program.Problems.All.ToArray();
             foreach (var body in program.Bodies.ToArray())
             {
-                if (program.Drops.Incomplete(body.Ordinal) is (var code, var at, var index))
+                if (program.Drops.Incomplete(body.Ordinal) is (var code, var at))
                 {
                     var subject = body.Subject(at);
-                    var kept = index >= 0 ? (problems[index].Code, problems[index].Subject, problems[index].Body) == (code, subject, body.Ordinal)
-                        : Array.Exists(problems, x => (x.Code, x.Subject) == (code, subject));
+                    var own = Array.Exists(problems, x => (x.Code, x.Subject, x.Body) == (code, subject, body.Ordinal));
+                    var kept = own || Array.Exists(problems, x => (x.Code, x.Subject) == (code, subject));
                     var error = DiagnosticEntries.TryGet(code, out var entry) && entry.Severity == DiagnosticSeverity.Error;
-                    Assert.True(kept && error, $"{body.Key.Kind} {code} #{index}");
-                    marks.Add($"{body.Key.Kind} {code} {(index >= 0 ? "own" : "copy")}");
+                    Assert.True(kept && error, $"{body.Key.Kind} {code}");
+                    marks.Add($"{body.Key.Kind} {code} {(own ? "own" : "copy")}");
                 }
             }
         }
@@ -752,27 +811,227 @@ public sealed class MirAnalysisTest
         }
     }
 
-    // DECISIONS R5-M168: at check, steps 1 and 4 (A3, A5) judge only the root modules' bodies, so this is the library's A3 and A5 check, on
-    // each target, at full strength through the driver check uses with the library as a root module: a library construction record,
-    // validator finding or analysis problem fails it (the library ships with the compiler), A1's arena limit included, and a broken C1-F4
-    // view contract throws (DECISIONS BU-102). It reuses the compilation's TyCtxt, whose view throws again at every later read. Every unit
-    // changing A3 or A5 runs it.
+    // DECISIONS R5-M168, PLAN G951 (E1, E3): at check, steps 1 and 4 (A3, A5) judge only the root modules' bodies, step 3 only their
+    // obligations and MirOrigins.Findings only their layers' rows, so this is the library's check of them, on each target, at full strength
+    // through the driver check uses with the library as a root module: a library construction record, validator finding or analysis problem
+    // fails it (the library ships with the compiler), A1's arena limit included, and a broken C1-F4 view contract throws (DECISIONS BU-102).
+    // It reuses the compilation's TyCtxt, whose view throws again at every later read. Every unit changing the library, MIR construction,
+    // the validator or A1-A5 runs it. PLAN G950's row M3 (design §R1.4, re-review RN4): the check, the checked set's records included
+    // (A3b), runs in two versions of one compilation through one builder, analysis and collector and finds none in either, and each version
+    // judges every body with A3 and A5 and collects the same checked set again: a library segment kept across versions (G950-K) is still
+    // judged in each.
     [Theory]
     [InlineData(WindowsProfile.Target)]
+    [InlineData("i686-unknown-linux-gnu")]
     public void TheLibraryHasNoAnalysisProblem(string target)
     {
         var c = Compilation.CreateForTest();
         Assert.True(c.Prepare(target));
         c.Kotonoha.AddSource(new SourceDocument("Program.kimi", "public func main() => ()\n"));
-        Assert.True(c.Bind().IsComplete);
-        var program = new MirBuilder(c).Build(); // Unanalyzed: a version's problems are reset only with its bodies (MirProgram.Clear).
-        var library = c.SourceModules.Length;
-        Assert.Contains(program.Bodies.ToArray(), x => x.Source.Module == library);
-        new MirAnalysis(c.Types).Run(program, library + 1);
-        Assert.Equal([], program.Records(MirRecordClass.Construction).Select(x => $"record {x.Code} {Line(c, x.Subject)}")
-            .Concat(program.Findings.Select(x => $"finding {x.Rule} {Line(c, x.Subject)}"))
-            .Concat(program.Problems.All.ToArray().Where(static x => !x.IsRecord).Select(x =>
-                $"{x.Requirement} {x.Code} in {(x.Body >= 0 ? program.Bodies[x.Body].Key.Decl?.Name : "-")}: {Line(c, x.Subject)}")));
+        var (builder, analysis, collector) = (new MirBuilder(c), new MirAnalysis(c.Types), new Kimi.Compiler.Backend.InstanceCollector(c.Types, c.Layout));
+        var collected = (0, 0);
+        for (var version = 1; version <= 2; version++)
+        {
+            Assert.True(c.Bind().IsComplete);
+            var program = builder.Build(SyntaxTable.LibraryModule + 1); // Unanalyzed: a version's problems are reset only with its bodies (MirProgram.Clear).
+            Assert.Contains(program.Bodies.ToArray(), static x => x.Source.IsLibrary);
+            analysis.Run(program, SyntaxTable.LibraryModule + 1);
+            var set = collector.Run(program, SyntaxTable.LibraryModule + 1);
+            Assert.Equal([], program.Records(MirRecordClass.Construction).Concat(program.Records(MirRecordClass.Collection))
+                .Select(x => $"version {version}: record {x.Code} {Line(c, x.Subject)}")
+                .Concat(program.Findings.Select(x => $"version {version}: finding {x.Rule} {Line(c, x.Subject)}"))
+                .Concat(program.Problems.All.ToArray().Where(static x => !x.IsRecord).Select(x =>
+                    $"version {version}: {x.Requirement} {x.Code} in {(x.Body >= 0 ? program.Body(x.Body).Key.Decl?.Name : "-")}: {Line(c, x.Subject)}")));
+            var now = (set.RootCount, set.Items.Length);
+            Assert.Equal((version, 2 * program.Bodies.Length, program.Version, version == 1 ? now : collected), (version, analysis.Judgments, set.Version, now));
+            collected = now;
+        }
+    }
+
+    // PLAN G951 U1 (R2.4): a build whose root range is the program's, analyzed by the driver (A4's rounds over the one stepping path), judges
+    // as the eager build of another compilation of the same source: the same merged problems with their requirement, record class,
+    // ordinal, reason, members (body and views) and facts, the same validator findings and construction records, and each body it built
+    // with the eager body's A2 table; it builds fewer library bodies; and the version is Open after the run, for the collector's lookups.
+    // Labels (SPEC): X1 valid (8.11.4; Stopwatch.reset has no environment effect, 8.11.2); X2 invalid (start reads the counter, an
+    // environment effect, so the confined bound fails at the argument: UnsatisfiedEffectBound_Kd, 8.11.4); Yp invalid, the same record at
+    // each of its two arguments (start's, and noisy's Console output, an environment effect, 8.11.2; 23.1.2); X3 valid (10.5.3, 7.7.4); H1
+    // valid (22.9.2, 16.2.1); the examples and milestones valid; Requirements invalid (one problem of each recording rule, above). X2 needs
+    // A4's second round (start, first named by its obligation); Yp too, while noisy's obligation is decided in the first, so only the
+    // commit rule keeps the report's order; H1, Utf8Formatting and Milestone31 one for a destructor, a witness and storage bodies first
+    // named by the solve.
+    [Theory]
+    [InlineData("X1")]
+    [InlineData("X2")]
+    [InlineData("Yp")]
+    [InlineData("X3")]
+    [InlineData("H1")]
+    [InlineData("docs/examples/Hello/Hello.kimi")]
+    [InlineData("tests/milestones/Milestone26.kimi")]
+    [InlineData("docs/examples/Utf8Formatting/Utf8Formatting.kimi")]
+    [InlineData("docs/examples/Ranges/Ranges.kimi")]
+    [InlineData("tests/milestones/Milestone31.kimi")]
+    [InlineData("tests/milestones/Milestone35.kimi")]
+    [InlineData("Requirements")]
+    public void ALazyBuildIsAnalyzedAsTheEagerOne(string name)
+    {
+        var source = LazySource(name);
+        var eager = Analyzed(source, static _ => SyntaxTable.LibraryModule + 1);
+        var lazy = Analyzed(source, static c => c.SourceModules.Length);
+        Assert.Equal(Facts(eager), Facts(lazy));
+        var tables = eager.Bodies.ToArray().ToDictionary(Key, x => Table(eager, x));
+        Assert.All(lazy.Bodies.ToArray(), x => Assert.Equal(tables[Key(x)], Table(lazy, x)));
+        Assert.True(Library(lazy) < Library(eager), $"{Library(lazy)} of {Library(eager)} library bodies");
+        Assert.Equal(MirProgram.Phase.Open, lazy.Demands);
+    }
+
+    // PLAN G951 U1 (moved from U0): Hello built with its own root range and analyzed builds the 5 library bodies its analyses read.
+    [Fact]
+    public void ALazyHelloBuildsTheLibraryBodiesItReads()
+        => Assert.Equal(5, Library(Analyzed(LazySource("docs/examples/Hello/Hello.kimi"), static c => c.SourceModules.Length)));
+
+    // PLAN G951 U1 (R3-N2): a consumer steps after its round missed, and a round misses only at a body built since the last step, so a step
+    // with every body stepped is a broken contract, never a rerun (its loop would not end). X2 as above.
+    [Fact]
+    public void AStepWithEveryBodySteppedIsABrokenContract()
+    {
+        var c = MirBuildTest.Compile(LazySource("X2"));
+        var analysis = new MirAnalysis(c.Types);
+        var program = analysis.Run(new MirBuilder(c).Build(c.SourceModules.Length), c.SourceModules.Length);
+        Assert.Throws<InvalidOperationException>(() => analysis.Step(program, c.SourceModules.Length));
+    }
+
+    // PLAN G951 U2-H (U1 review N7; the Back's C-378 A2): Compilation.JudgedWithoutProblem, hover's ownership line, requires A2's entry of
+    // the body (MirDropTable.Holds): a body a lookup built after the version's steps and nothing stepped has no A1 or A2 facts, so it is not
+    // judged without a problem; once the one stepping path steps it, it is. An explicit builder with the program's root range builds X3 and
+    // its analysis runs; a lookup then builds Stopwatch.reset, which X3 never reaches; the premise (a body built after the run, not held)
+    // is asserted before the judgment is read; the program stands for the compilation's latest analysis's, injected as R5-M183's hover rows
+    // inject a fact. Fail-before: the judgment read the body's existence, findings, records and problems only, so the unstepped body read
+    // as judged. X3 as above.
+    [Fact]
+    public void ABodyBuiltButNotSteppedIsNotJudged()
+    {
+        var c = MirBuildTest.Compile(LazySource("X3"));
+        var reset = MirBuildTest.Library(new MirBuilder(c).Build(SyntaxTable.LibraryModule + 1), MirBodyKind.Fn, "reset");
+        var analysis = new MirAnalysis(c.Types);
+        var program = analysis.Run(new MirBuilder(c).Build(c.SourceModules.Length), c.SourceModules.Length);
+        var count = program.Bodies.Length;
+        var body = program[reset]!;
+        Assert.Equal(count, body.Ordinal);
+        Assert.False(program.Drops.Holds(body.Ordinal));
+        typeof(Compilation).GetField("mir", BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(c, program);
+        Assert.False(c.JudgedWithoutProblem(reset.Decl!));
+        analysis.Step(program, c.SourceModules.Length);
+        Assert.True(program.Drops.Holds(body.Ordinal));
+        Assert.True(c.JudgedWithoutProblem(reset.Decl!));
+    }
+
+    // PLAN G951 U2 (the review's N1: hover's rows H1 and H2 restated at Compilation.JudgedWithoutProblem, since hover writes the ownership
+    // line only for a virtual or override declaration and the library declares none): after Hello's analysis Console.writeLine, which
+    // Hello reaches, is judged without a problem, and Stopwatch.start, which it never reaches, is not: the compilation built no body for
+    // it (DECISIONS R9-M9; a sealed lookup reads only). Hello is valid (SPEC 22.7). Fail-before: Compilation built and analyzed every
+    // library body, so start read as judged.
+    [Fact]
+    public void ALibraryFunctionTheProgramNeverReachesIsNotJudged()
+    {
+        var c = MirBuildTest.Compile(LazySource("docs/examples/Hello/Hello.kimi"));
+        var start = MirBuildTest.Library(new MirBuilder(c).Build(SyntaxTable.LibraryModule + 1), MirBodyKind.Fn, "start");
+        Assert.True(c.Analyze().IsVerified, MinimalEmissionTest.Describe(c));
+        Assert.True(c.JudgedWithoutProblem(c.Library.GetSymbol(KimiDeclarationId.WriteLine)!));
+        Assert.Null(c.BuildMir()[start]);
+        Assert.False(c.JudgedWithoutProblem(start.Decl!));
+    }
+
+    // PLAN G951 U2, rows S1 and its guard (the design's §4; the review's N3): the record rule (SPEC 23.1.2, 23.2.2; DECISIONS R5-M168; the
+    // owner's O-378 (a)) as a MIR-layer model, in which the root range 1 makes Lib stand for the library, whose bodies a program builds
+    // and steps only where it reaches them. Labels: as SPEC programs both are invalid (Lib is a source module of the unit, and 23.1.2
+    // reports broken's UninitializedPlace_Kd, SPEC 15.1.1, called or not); in the model, root calling ok is accepted and its twin
+    // calling broken is rejected at Lib's `return n`. The library check's range (every body built) rejects both; through Compilation,
+    // whose root range is its source modules, Lib's included, both stay rejected (the guard: the range is the source modules', not
+    // module 0's). The model passes before U2 too (explicit builders): it pins the rule; the declared move itself is the CLI probe's.
+    [Theory]
+    [InlineData("ok()", false)]
+    [InlineData("broken(true)", true)]
+    public void ALibraryBodysRecordIsWhereAProgramReachesIt(string call, bool reaches)
+    {
+        const string Lib = "public group Api\n    public func ok() -> i32 => 1\n    public func broken(c: bool) -> i32\n        var n: i32\n" +
+            "        if c\n            n = 1\n        return n\n";
+        var source = $"public func main() -> ()\n    _ = Lib.Api.{call}\n    return\n";
+        string[] record = ["UninitializedPlace_Kd n"];
+        foreach (var (range, expected) in new[] { (SyntaxTable.LibraryModule + 1, record), (1, reaches ? record : []) })
+        {
+            var c = Bound(source, Lib);
+            Assert.Equal(expected, Errors(c, new MirAnalysis(c.Types).Run(new MirBuilder(c).Build(range), 1)));
+        }
+
+        var compiled = Bound(source, Lib);
+        Assert.Equal(record, Errors(compiled, compiled.BuildMir()));
+
+        static Compilation Bound(string root, string lib)
+        {
+            var c = ModuleBindingTest.Create(root, lib);
+            Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c));
+            Assert.True(c.Binding.CheckStartup(OutputKind.Application).IsComplete);
+            return c;
+        }
+
+        static string[] Errors(Compilation c, MirProgram program)
+            => [.. program.Problems.All.ToArray().Where(static x => !x.IsRecord).Select(x => $"{x.Code} {Line(c, x.Subject)}")];
+    }
+
+    // PLAN G951 U2, rows P1 and P2 with the review's P4 and P5 (the record move the owner's O-378 (a) and O-381 (b) declare): a library
+    // body's records show only in a program that reaches it, directly, through another library body or through a generic instance.
+    // The probe adds defective bodies to the library (SPEC 15.1.1: `first` and `second` are not initialized on every path; a defective
+    // library body is a compiler defect, SPEC 23.1.1, judged by its own inputs, DECISIONS R5-M168): broken, caller (a library body
+    // calling broken) and the generic brokenOf. Labels: each program is valid as a program (SPEC 22.7, 7.2.3); its expected records are
+    // those of the defective bodies it reaches. Fail-before: Compilation built and stepped every library body, so each program showed
+    // both records (as `kimi check` did in the design's and the review's CLI probes, cli-p1p2.log and cli-p1p5.log).
+    [Theory]
+    [InlineData("Console.writeLine(\"Hello, world!\")", "")]
+    [InlineData("_ = Kimi.G951Probe.broken(true)", "first")]
+    [InlineData("_ = Kimi.G951Probe.caller()", "first")]
+    [InlineData("_ = Kimi.G951Probe.brokenOf(1, true)", "second")]
+    public void AProgramShowsALibraryBodysRecordsOnlyWhereItReachesIt(string program, string reached)
+    {
+        const string Probe = "public group G951Probe\n    public func broken(condition: bool) -> i32\n        var first: i32\n        if condition\n" +
+            "            first = 1\n        return first\n    public func caller() -> i32 => G951Probe.broken(true)\n" +
+            "    public func brokenOf<T>(value: T, condition: bool) -> i32\n        var second: i32\n        if condition\n" +
+            "            second = 2\n        return second\n";
+        var c = CompilationTestHelper.Parse(program + "\n");
+        c.Library.Kotonoha.AddSource(new("G951Probe.kimi", Probe));
+        Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c));
+        Assert.True(c.Binding.CheckStartup(OutputKind.Application).IsComplete);
+        string[] expected = reached.Length == 0 ? [] : [$"UninitializedPlace_Kd {reached}"];
+        Assert.Equal(expected.Length == 0, c.Analyze().IsVerified);
+        Assert.Equal(expected, c.Problems.Select(x => $"{x.Code} {Line(c, x.Subject)}"));
+    }
+
+    // PLAN G950 (design §R1.1 (b), the implementation review's M1): the library step's problems (step 2's A1 and A2) are kept as data and
+    // replayed at the library step in a version that keeps the library segment: one analysis over two versions of one compilation reports
+    // an A1 problem seeded into a library body after each build (a copy of a new Var no path initializes, in a new block the entry block
+    // enters first) in each version, at its location, once. Every version takes the library step until G950-K, so the row pins the replay
+    // on the kept path (as InstanceCollectorTest.TheLibraryRangeChecksALibraryBodyInEveryVersion pins A3b there).
+    [Fact]
+    public void ALibraryStepProblemIsInEveryVersion()
+    {
+        var c = Compilation.CreateForTest();
+        var (builder, analysis) = (new MirBuilder(c), new MirAnalysis(c.Types));
+        for (var version = 1; version <= 2; version++)
+        {
+            Assert.True(c.Bind().IsComplete, string.Join('\n', c.Binding.Issues));
+            var program = builder.Build(SyntaxTable.LibraryModule + 1);
+            var body = program.LibraryBodies[0];
+            var source = body.Blocks[0].Terminator.Source;
+            var unset = new MirPlace(body.AddLocal(new(BoundType.I32, MirLocalKind.Var, source)));
+            var into = new MirPlace(body.AddLocal(new(BoundType.I32, MirLocalKind.Var, source)));
+            var block = body.AddBlock();
+            body.Push(block, MirStatement.Assign(into, MirRvalue.Use(body.AddOperand(MirOperand.Copy(unset))), source));
+            body.Terminate(block, body.Blocks[0].Terminator);
+            body.Terminate(0, MirTerminator.Goto(block, source));
+            analysis.Run(program, 0);
+            Assert.Equal(
+                [(version, DiagnosticCode.UninitializedPlace_Kd, body.Subject(source), body.Ordinal)],
+                program.Problems.All.ToArray().Where(static x => !x.IsRecord).Select(x => (version, x.Code, x.Subject, x.Body)));
+        }
     }
 
     // V16: a warm report allocates nothing: clearing keeps the storage the problems of a version need.
@@ -865,6 +1124,14 @@ public sealed class MirAnalysisTest
         return text.Append("    x = 2\n    inspect(r)\n    return x\n").ToString();
     }
 
+    // A body's A2 table: its rows, points, flags, views and first problem (InstanceCollectorTest's lazy rows read it too).
+    internal static string Table(MirProgram program, MirBody body)
+    {
+        var drops = program.Drops;
+        return $"{string.Join(", ", drops.RowsOf(body.Ordinal).ToArray())} | {string.Join(", ", drops.PointsOf(body.Ordinal).ToArray())} | " +
+            $"{drops.FlagsOf(body.Ordinal)} {drops.ViewsOf(body.Ordinal)} {drops.Incomplete(body.Ordinal)?.Code}";
+    }
+
     // N requires whose failure bodies complete: in sequence in sequence(), nested in nest().
     private static string RequireEnds(int n)
     {
@@ -885,6 +1152,55 @@ public sealed class MirAnalysisTest
 
     // The first line of a syntax's text.
     private static string Line(Compilation c, SourceRef syntax) => c.SyntaxOf(syntax).ToString().Split('\n')[0].Trim();
+
+    // A source of the lazy rows: PLAN G951's X1, X2 (a library function at a Callable binding declaring confined), the review's Yp (X2's use,
+    // then a root function's), X3, H1 (a library heap buffer dropped), Requirements, or a repository file.
+    private static string LazySource(string name)
+    {
+        const string apply = "func apply<F>(action: ref/F) -> ()\n    F is Callable<(uniq/::Kimi.Time.Stopwatch) -> ()>\n        effect confined\n" +
+            "    var watch = ::Kimi.Time.Stopwatch.init()\n    action(watch@uniq)\n\n";
+        return name switch
+        {
+            "X1" => apply + "apply(::Kimi.Time.Stopwatch.reset)\n",
+            "X2" => apply + "apply(::Kimi.Time.Stopwatch.start)\n",
+            "Yp" => apply + "func noisy(watch: uniq/::Kimi.Time.Stopwatch) -> ()\n    Console.writeLine(\"noisy\")\n\n" +
+                "apply(::Kimi.Time.Stopwatch.start)\napply(noisy)\n",
+            "X3" => MirBuildTest.StopwatchAction,
+            "H1" => "let buffer = ::Kimi.Text.heap(16)\n",
+            "Requirements" => Requirements,
+            _ => Repository.ReadText(name.Split('/')),
+        };
+    }
+
+    // A compilation of a source, built with a root range and analyzed with its source modules as roots, as Compilation's driver does.
+    private static MirProgram Analyzed(string source, Func<Compilation, int> range)
+    {
+        var c = MirBuildTest.Compile(source);
+        return new MirAnalysis(c.Types).Run(new MirBuilder(c).Build(range(c)), c.SourceModules.Length);
+    }
+
+    // Every merged problem in report order with its requirement, record class, ordinal, reason, members (body and views) and facts, then
+    // the validator findings and the construction records.
+    private static string[] Facts(MirProgram program)
+    {
+        var report = program.Problems;
+        var rows = new List<string>();
+        for (var i = 0; i < report.Merged.Length; i++)
+        {
+            var merged = report.Merged[i];
+            var members = report.Members(i).ToArray().Select(x => report.All[x].Body is >= 0 and var body ? $"{Key(program.Body(body))}/{report.All[x].Views:x}" : $"{report.All[x].Body}");
+            var facts = report.MergedFacts(i).ToArray().Select(static x => $"{x.Kind}@{x.Site}={x.Value}");
+            rows.Add($"{merged.Code} {merged.Subject} {merged.Requirement} {merged.Class} {merged.Ordinal} {merged.Reason} [{string.Join(", ", members)}] [{string.Join(", ", facts)}]");
+        }
+
+        return [.. rows, .. program.Findings.Select(static x => $"finding {x.Rule} {x.Subject}"),
+            .. program.Records(MirRecordClass.Construction).Select(static x => $"record {x.Code} {x.Subject}")];
+    }
+
+    // A body's definition across compilations: its kind, index and syntax.
+    private static string Key(MirBody body) => $"{body.Key.Kind} {body.Key.Index} {body.Source}";
+
+    private static int Library(MirProgram program) => program.Bodies.ToArray().Count(static x => x.Source.IsLibrary);
 
     [Collection<AllocationIsolationCollection>]
     [Trait("Purpose", "Allocation")]

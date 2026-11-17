@@ -22,6 +22,19 @@ public class BindingTest
         Assert.Equal(0, AllocationMeasurement.Measure(() => compilation.Bind()));
     }
 
+    // PLAN G724, B4: a member access's side is published beside its selection in a table cleared each pass, so a warm Bind of Type-side,
+    // value-side, constructor and Case accesses allocates nothing.
+    [Trait("Purpose", "Allocation")]
+    [Fact]
+    public void WarmBindOfMemberSidesAllocatesNothing()
+    {
+        var compilation = CompilationTestHelper.ParseSuccess(
+            "enum Message\n    Quit\n    Write(i32)\nstruct S\n    public init() => ()\n    public func m(self: ref/Self) -> i32 => 1\n" +
+            "    public func make() -> S => S.init()\nfunc f(s: ref/S) -> i32 => s.m()\nfunc g() -> Message => Message.Write(1)\nfunc h() -> S => S.make()");
+        Assert.True(compilation.Bind().IsComplete, Describe(compilation));
+        Assert.Equal(0, AllocationMeasurement.Measure(() => compilation.Bind()));
+    }
+
     [Fact]
     public void PipelineBindsExistingNodesAndRetainsCallPlans()
     {
@@ -406,6 +419,117 @@ public class BindingTest
         Assert.Same(old.CodeContext, replacement.CodeContext);
         Assert.Equal(old.Span, replacement.Span);
         Assert.Throws<InvalidOperationException>(() => call.ReplaceArgument(0, call.Method));
+    }
+
+    // PLAN G949 S1-r1a (s1r1-design 2.1, v8): a reader outside a pass reads each published list's composed view, the program part's
+    // entries, then the library layer's (LibraryLayer.Part, empty until S1-r1b), never the list a pass writes. Every node, issue, derived
+    // issue and obligation moved after a Bind from Binding's own part to the layer's is still listed, reported with its related
+    // locations (a Callable selection's candidate clauses, found among the nodes: review-r1a B1), counted and read by the Origin rows as
+    // in a twin compilation; a reader of the written list loses it.
+    [Fact]
+    public void AnEntryOfTheLayersPartReachesEveryReaderOutsideAPass()
+    {
+        // Missing is an issue; the header resting on the parser's error in the length slot (SPEC 4.4) a derived one; no Callable
+        // signature of both's is better than the other for action(1) (SPEC 8.10, 10.4: AmbiguousBinding_Kd, each candidate at its clause).
+        const string source = "func f(x: Missing) -> i32 => 1\nstruct Cursor<length N>\n    public init() => ()\n" +
+            "func both<F>(action: ref/F) -> i32\n    F is Callable<(i32) -> i32>\n    F is Callable<(i64) -> i32>\n    return action(1)\n";
+        var twin = CompilationTestHelper.Parse(source);
+        twin.Bind();
+        twin.Binding.ReportDiagnostics();
+        var c = CompilationTestHelper.Parse(source);
+        c.Bind();
+        var (issues, derived, obligations) = (c.Binding.Issues.ToArray(), c.Binding.DerivedIssues.ToArray(), c.Binding.Obligations.ToArray());
+        Assert.NotEmpty(issues);
+        Assert.NotEmpty(derived);
+        Assert.Contains(obligations, static x => x.Body.IsBody);
+        Assert.Contains(Records(twin), static x => x.StartsWith("AmbiguousBinding_Kd", StringComparison.Ordinal) && x.Contains("[candidate", StringComparison.Ordinal));
+        var layer = c.Binding.Library.Layer.Part;
+        Move(c, "nodes", layer.Nodes);
+        Move(c, "issues", layer.Issues);
+        Move(c, "derivedIssues", layer.DerivedIssues);
+        Move(c, "obligations", layer.Obligations);
+        try
+        {
+            Assert.Equal(issues, c.Binding.Issues);
+            Assert.Equal(derived, c.Binding.DerivedIssues);
+            Assert.Equal(obligations, c.Binding.Obligations);
+            c.Binding.ReportDiagnostics();
+            Assert.Equal(Records(twin), Records(c));
+            Assert.Equal(twin.Binding.TableCounts, c.Binding.TableCounts);
+            Assert.Equal(OriginRows(twin), OriginRows(c));
+        }
+        finally
+        {
+            layer.Nodes.Clear();
+            layer.Issues.Clear();
+            layer.DerivedIssues.Clear();
+            layer.Obligations.Clear();
+        }
+
+        // Each published record with its related locations.
+        static string[] Records(Compilation c) => c.Diagnostics.Finalize().Diagnostics
+            .Select(static x => $"{x.Code} {x.Span} {x.Message} [{string.Join(", ", (x.Related ?? []).Select(static r => $"{r.Role} {r.Span}"))}]").ToArray();
+
+        // The Origin rows of each body an obligation names, in the obligations' order.
+        static int[] OriginRows(Compilation c) => c.Binding.Obligations.Where(static x => x.Body.IsBody).Select(x => c.Types.OriginRows(x.Body).Rows.Count).ToArray();
+    }
+
+    // PLAN G949 (s1r1-design 8.9; n55-design 2.3 rule 2): a keyed PassPart collection's one find reads the layer's map first, so a key
+    // both parts hold reads the layer's row, and the running pass's map only for a key the layer's lacks; null when neither holds it.
+    [Fact]
+    public void AKeyedPartCollectionIsFoundInTheLayersPartFirst()
+    {
+        var layer = new Dictionary<int, string> { [1] = "layer" };
+        var running = new Dictionary<int, string> { [1] = "program", [2] = "program" };
+        Assert.Same(layer, Binding.PassPart.Find(layer, running, 1, out var value));
+        Assert.Equal("layer", value);
+        Assert.Same(running, Binding.PassPart.Find(layer, running, 2, out value));
+        Assert.Equal("program", value);
+        Assert.Null(Binding.PassPart.Find(layer, running, 3, out _));
+    }
+
+    // PLAN G949, the localRegions batch (n55-design 2.3 rules 1-3; DECISIONS BU-220's D-9 line): the local-region graph is a PassPart
+    // collection. A Bind records its rows in the running pass's part, Binding's own until S1-r1b splits the library pass off, so the
+    // layer's part stays empty; rows moved after the Bind into the layer's part are found there, and each region's sources, walked again
+    // through them, equal the program part's. `held`'s region reaches b's borrow only through `view`'s row, so the walk reads a moved
+    // row past its first find too.
+    [Fact]
+    public void ALocalRegionInTheLayersPartIsFoundThere()
+    {
+        // A var local's region takes the sources of every value stored in it, `held`'s through `view`'s region (SPEC 15.3.6, 15.4.4,
+        // 15.6.5): valid.
+        var c = CompilationTestHelper.Parse("let a = 1\nlet b = 2\nvar view = a@ref\nview = b@ref\nvar held = view\nheld = a@ref\n" +
+            "require view@follow == 2 and held@follow == 1 else => $abort(\"view\")\n");
+        c.Bind();
+        Assert.True(c.Binding.Result.IsComplete);
+        var layer = c.Binding.Library.Layer.Part.Regions;
+        var own = (Dictionary<BoundOrigin, Binding.LocalRegion>)typeof(Binding).GetField("localRegions", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(c.Binding)!;
+        Assert.Empty(layer);
+        var sources = own.Keys.Select(x => (Origin: x, Sources: c.Binding.LocalRegionSources(x).ToArray())).ToArray();
+        Assert.Contains(sources, static x => x.Origin.Binder is VariableKoto { NameKoto: var name } && name.ToString() == "held" && x.Sources.Length >= 2);
+        try
+        {
+            foreach (var (origin, region) in own)
+            {
+                region.Version = -1; // Walked again, through the rows' new part.
+                layer.Add(origin, region);
+            }
+
+            own.Clear();
+            Assert.All(sources, x => Assert.Equal(x.Sources, c.Binding.LocalRegionSources(x.Origin).ToArray()));
+        }
+        finally
+        {
+            layer.Clear();
+        }
+    }
+
+    // Moves a list Binding's pass wrote, its own part's, into the library layer's part.
+    private static void Move<T>(Compilation c, string field, List<T> layer)
+    {
+        var own = (List<T>)typeof(Binding).GetField(field, BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(c.Binding)!;
+        layer.AddRange(own);
+        own.Clear();
     }
 
     private sealed class TestReplacement(CodeContext context) : ExpressionKoto(context, default)

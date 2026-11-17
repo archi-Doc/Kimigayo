@@ -157,7 +157,7 @@ fn divergentReplacement @52
       StorageLive(_3) @62 s1
     * goto bb8 check bb9 @73 s2
   bb1:
-      drop _1[0] -> bb14 @61 s1
+      drop _1[0] -> bb14 [keep] @61 s1
   bb2:
       _3 = move _4 @66 s1
       goto bb1 @66 s1
@@ -212,7 +212,7 @@ fn divergentReplacement @52
       StorageDead(_3) @62 s1
       StorageDead(_2) @61 s1
       _0 = const () @53 s1
-      drop _1 -> bb16 @54 s1
+      drop _1 -> bb16 [keep] @54 s1
   bb16:
       StorageDead(_1) @54 s1
       return @53
@@ -311,7 +311,7 @@ fn divergentReplacementIndex @75
       StorageDead(_3) @85 s1
       StorageDead(_2) @84 s1
       _0 = const () @76 s1
-      drop _1 -> bb16 @77 s1
+      drop _1 -> bb16 [keep] @77 s1
   bb16:
       StorageDead(_1) @77 s1
       return @76
@@ -363,7 +363,7 @@ fn noncompletingWrite @99
       _4 = const () @106 s2
       StorageDead(_5) @108 s2
       StorageDead(_4) @106 s2
-      drop _3 -> bb11 @103 s2
+      drop _3 -> bb11 [keep] @103 s2
   bb11:
       StorageDead(_3) @103 s2
       StorageDead(_2) @102 s1

@@ -25,8 +25,8 @@ internal static class RuntimeAbi
     internal const int StaticReleaseKind = 0;
 
     /// <summary>The Heap string releaseKind: bytes of a process heap block, which the string's destruction frees. A buffer's string
-    /// takes its kind as `zext i1 %heap to i8` (the formatting runtime's __kimi_buffer_into_string and __kimi_format_take_string), so
-    /// Heap is 1 and Static 0 (Kernel32ImportsTest.TheRuntimeTemplatesUnmarkedFactsHold).</summary>
+    /// takes its kind as the library's HeapBuffer.intoString writes it, 1 for an allocation and 0 for none, so Heap is 1 and Static 0
+    /// (Kernel32ImportsTest.TheRuntimeTemplatesUnmarkedFactsHold).</summary>
     internal const int HeapReleaseKind = 1;
 
     /// <summary>The buffer address of an Array with zero-sized elements (SPEC 4.5): nonnull and page-aligned, so aligned for every
@@ -58,11 +58,12 @@ internal static class RuntimeAbi
     internal static readonly AbiParameter[] OwnedStringParameters =
         [new(String.ArgumentType!, "text", AbiParameterKind.OwnedSlot, 0), Location, LocationLength];
 
-    // SPEC 22.1-22.5.5: writeLine borrows its string handle and releases nothing.
-    internal static readonly FunctionAbi WriteLine = new(
-        "__kimi_write_line",
+    // SPEC 22.7, 22.5.1: Console.writeStdout, the WriteStdout intrinsic's routine: the bytes to standard output, KIMI_E_STDOUT at the
+    // call's location (a caller-location body's received one).
+    internal static readonly FunctionAbi Stdout = new(
+        "__kimi_stdout",
         Unit.ComputationType,
-        [new(StringReference.ArgumentType!, "text", AbiParameterKind.SharedReference, 0), Location, LocationLength]);
+        [new("ptr", "data", LogicalIndex: 0), new("i64", "length", LogicalIndex: 1), Location, LocationLength]);
 
     internal static readonly FunctionAbi DestroyString = new("__kimi_destroy_string", Unit.ComputationType, OwnedStringParameters);
 
@@ -97,6 +98,30 @@ internal static class RuntimeAbi
         Unit.ComputationType,
         [new("ptr", "destination", AbiParameterKind.Value, 0), new("ptr", "source", AbiParameterKind.Value, 1), new("i64", "size", AbiParameterKind.Value, 2)]);
 
+    // SPEC 22.9.4, 22.10.1: a user Writer's reservation through an adapter's dispatch word, its window checked (written 0, remaining at
+    // least the minimum; tag 1 on a violation): the ErasedReserve intrinsic's routine, defined by the kept ErasedWriterRuntime.ll.in.
+    internal static readonly FunctionAbi ErasedReserve = new(
+        "__kimi_erased_reserve",
+        "void",
+        [new("ptr", "ret", AbiParameterKind.ResultSlot), new("ptr", "writer", AbiParameterKind.Value, 0), new("i64", "amount", AbiParameterKind.Value, 1)])
+    {
+        ResultSlot = true,
+    };
+
+    // SPEC 22.10.2: a float's shortest round-trip text into a 24-byte destination, its length returned: the FormatFloat intrinsic's
+    // routine (Storage.formatFloat, R8-S2c), defined by the float formatting part (LlvmModuleText.FormatFloat).
+    internal static readonly FunctionAbi FormatFloat = new(
+        "__kimi_format_float",
+        "i64",
+        [new("i64", "bits", AbiParameterKind.Value, 0), new("i1", "narrow", AbiParameterKind.Value, 1), new("ptr", "destination", AbiParameterKind.Value, 2)]);
+
+    // SPEC 22.10.2: a u128's ASCII decimal digits at the end of a 40-byte destination, their count returned: the FormatInteger128
+    // intrinsic's routine (Storage.formatInteger128, R8-S2b2), defined by its module part (LlvmModuleText.FormatInteger128).
+    internal static readonly FunctionAbi FormatInteger128 = new(
+        "__kimi_format_integer128",
+        "i64",
+        [new("i128", "value", AbiParameterKind.Value, 0), new("ptr", "destination", AbiParameterKind.Value, 1)]);
+
     internal static readonly FunctionAbi AbortMessage = new("__kimi_abort_message", Unit.ComputationType, OwnedStringParameters) { NoReturn = true };
 
     // The test runtime's routines (Kimi.Testing's TestRuntime.ll, SPEC 17.6): a verification's observation, which numbers a failure's issue
@@ -122,7 +147,7 @@ internal static class RuntimeAbi
         [new("i32", "which", AbiParameterKind.Value, 0), new("i16", "kind"), new("i16", "width"), new("i128", "bits")]);
 
     /// <summary>Gets the compiler-facing runtime definitions expanded into WindowsRuntime.ll.in.</summary>
-    internal static readonly FunctionAbi[] RuntimeDefinitions = [Exit, DestroyString, WriteLine, Abort, AbortMessage];
+    internal static readonly FunctionAbi[] RuntimeDefinitions = [Exit, DestroyString, Abort, AbortMessage];
 
     // The constants a runtime template spells through a marker, by the marker's name (Expand).
     private static readonly (string Name, long Value)[] Constants =

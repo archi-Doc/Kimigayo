@@ -3,6 +3,9 @@
 // Capture formation (SPEC 7.7.2): which binding a capture entry or a use in an omitted-list Closure captures, the environment binding
 // it initializes and how (CaptureAcquisition), and the repeated names of a written list. A failed capture's facts and record belong to
 // Binding.CaptureDiagnostics; a Closure's conversion and signature to Binding.Closures, its call receiver to Binding.ClosureReceivers.
+// Interim (DECISIONS BU-184; Capture): a captured pair layer other than the original `s/T` whose plan Reborrows in some case (until
+// PLAN G254's unit), and a captured pair target or projection under an identity premise (until PLAN G170's query), are a located
+// Unsupported_Kd at a written entry; an omitted list's use of one reports InvalidCaptureBinding_Kd instead.
 
 using Kimi.Compiler.Parsing;
 using Kimi.Diagnostics;
@@ -16,51 +19,6 @@ internal readonly record struct CaptureRepeat(SourceSpan Later, SourceSpan Earli
 
 public sealed partial class Binding
 {
-    // SPEC 7.7.2: each capture name that an earlier entry repeats, then each that a parameter repeats; null for a valid list, which
-    // allocates nothing.
-    private static CaptureRepeat[]? RepeatedCaptures(FunctionKoto function, CaptureKoto[] captures)
-    {
-        List<CaptureRepeat>? repeats = null;
-        for (var i = 0; i < captures.Length; i++)
-        {
-            var name = captures[i].Name;
-            var repeated = false;
-            for (var j = 0; j < i && !repeated; j++)
-            {
-                if (captures[j].Name == name)
-                {
-                    (repeats ??= new()).Add(new(captures[i].Span, captures[j].Span, name, false));
-                    repeated = true;
-                }
-            }
-
-            for (var p = 0; p < function.Parameters.Count && !repeated; p++)
-            {
-                if (function.Parameters[p].InternalName == name)
-                {
-                    (repeats ??= new()).Add(new(function.Parameters[p].ExternalNameSpan, captures[i].Span, name, true));
-                    repeated = true;
-                }
-            }
-        }
-
-        return repeats?.ToArray();
-    }
-
-    // The later entry of a repeated name declares nothing, so the list binds only the entry it repeats.
-    private static bool RepeatsEarlierEntry(CaptureRepeat[] repeats, CaptureKoto capture)
-    {
-        for (var i = 0; i < repeats.Length; i++)
-        {
-            if (!repeats[i].Parameter && repeats[i].Later == capture.Span)
-            {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
     // SPEC 7.7.2: the receiver `self` of a named function, accessor, constructor or destructor, and a setter's `value`.
     private static bool IsContextualBinding(BindingSymbol symbol)
         => symbol.Kind == BindingSymbolKind.Parameter && symbol.Declaration switch
@@ -70,9 +28,53 @@ public sealed partial class Binding
             _ => false,
         };
 
-    // The environment binding of `source` in `function`, null when it cannot hold it, or `source` itself when its Type failed. An
-    // unsupported captured Type is reported at the written capture entry when there is one, resting on the projection use that formed
-    // it (BU-61).
+    // SPEC 7.7.2: each capture name that an earlier entry repeats, then each that a parameter repeats, as a range of captureRepeatRows;
+    // empty for a valid list.
+    private (int Start, int Count) RepeatedCaptures(FunctionKoto function, CaptureKoto[] captures)
+    {
+        var start = this.captureRepeatRows.Count;
+        for (var i = 0; i < captures.Length; i++)
+        {
+            var name = captures[i].Name;
+            var repeated = false;
+            for (var j = 0; j < i && !repeated; j++)
+            {
+                if (captures[j].Name == name)
+                {
+                    this.captureRepeatRows.Add(new(captures[i].Span, captures[j].Span, name, false));
+                    repeated = true;
+                }
+            }
+
+            for (var p = 0; p < function.Parameters.Count && !repeated; p++)
+            {
+                if (function.Parameters[p].InternalName == name)
+                {
+                    this.captureRepeatRows.Add(new(function.Parameters[p].ExternalNameSpan, captures[i].Span, name, true));
+                    repeated = true;
+                }
+            }
+        }
+
+        return (start, this.captureRepeatRows.Count - start);
+    }
+
+    // The later entry of a repeated name declares nothing, so the list binds only the entry it repeats.
+    private bool RepeatsEarlierEntry((int Start, int Count) repeats, CaptureKoto capture)
+    {
+        for (var i = repeats.Start; i < repeats.Start + repeats.Count; i++)
+        {
+            if (!this.captureRepeatRows[i].Parameter && this.captureRepeatRows[i].Later == capture.Span)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    // The environment binding of `source` in `function`, null when it cannot hold it, or `source` itself when its Type failed. Any
+    // Type is held but those of the interim rows below (PLAN G254, G170).
     private BindingSymbol? Capture(FunctionKoto function, BindingSymbol source, BindingScope scope, CaptureKoto? entry = null)
     {
         if (entry is null && IsContextualBinding(source))
@@ -108,22 +110,17 @@ public sealed partial class Binding
             return source;
         }
 
-        // Concrete environments preserve complete captured Types and dependencies.
-        // Common-function erasure retains its independent Owned requirement.
-        // SPEC 7.7.2: an environment holds any Type with slot storage, including enums (Option, Result), Arrays, Dictionaries,
-        // Slices, object Views and raw pointers. All safe borrows use the same representation boundary.
-        if (!(ScalarTypes.Supports(type) || ReferenceEquals(type, BoundType.Unit) ||
-                (function.ClosureStorage?.EnvironmentType is not null && (type.Kind == BoundTypeKind.Parameter || SlotTypes.IsResult(type) ||
-                    ReferenceTypes.IsBorrow(type) || ReferenceTypes.IsPointer(type)))))
+        // Interim rows, as before G721: a located Unsupported_Kd at a written entry, and for an omitted list a function-level Unsupported
+        // that surfaces no record, so the use reports InvalidCaptureBinding_Kd (a pre-existing Language error on a valid program).
+        // (1) Removal condition PLAN G254's unit: a pair layer (SPEC 13.5.5) other than the original `s/T` whose bare acquisition the
+        // one plan (SPEC 8.14) makes a Reborrow in some admitted case, the owner case's own included (BareReborrows): a body's bare use
+        // of it would Reborrow there, and no rule contains that Reborrow in the call receiver (G254). The original (a Parameter) was
+        // captured before G721 and stays: its forms are G254's own.
+        // (2) Removal condition PLAN G170's identity query: an abstract Type dev did not capture (a pair target, a projection) where an
+        // identity premise is available in scope (HasTypeIdentity, SPEC 8.2.3), which may make it a pair layer that no plan reads.
+        if ((type is { IsPairLayer: true, Kind: not BoundTypeKind.Parameter } && this.BareReborrows(type, function)) ||
+            (type is { IsAbstract: true, IsPairLayer: false, Kind: not BoundTypeKind.Parameter } && HasTypeIdentity(this.ConstraintScope(function))))
         {
-            // DECISIONS BU-61 (SPEC 23.1.2): a projection whose use's conformance check rejects it names no Type, so the failure rests
-            // on the use judged on the closure's own scope chain. Only the closure's first failure records it, so an earlier independent
-            // failure stays direct.
-            if (function.BindingFailure == BindingFailure.None && this.ProjectionUseOf(type, this.ConstraintScope(function)) is { } use)
-            {
-                this.AddPendingPrerequisite(function, use);
-            }
-
             if (entry is { } written)
             {
                 this.FailUnsupportedAt(function, written.Span);
@@ -136,6 +133,8 @@ public sealed partial class Binding
             return null;
         }
 
+        // SPEC 7.7.2, 8.15: an environment binding holds the source's complete Type, whatever it is, as a local would; each instance
+        // lowers it at its case Type (a pair target, a projection, a Type parameter alike).
         var plan = function.ClosureStorage!;
         for (var i = 0; i < plan.Storage.Count; i++)
         {
@@ -170,9 +169,10 @@ public sealed partial class Binding
     // SPEC 7.7.2: each explicit entry initializes one environment binding exactly as `let x = x` or `let x = x@op` would.
     // A bare entry Copies a Copy binding and Reborrows a binding storing an exclusive reference; `x@ref` and `x@uniq`
     // borrow the outer binding's slot, adding a reference layer, and an exclusive slot borrow needs a writable slot. A bare entry that
-    // Reborrows, in every or some admitted case, an enclosing Closure's environment binding `u: uniq/T during o` is contained in that
-    // Closure's call receiver too, so its binding has `uniq/T during meet(o, ρ)`, a pair layer that meet on its outer-Origin slot
-    // (DECISIONS R4-M123's 7.7.2, R4-M126 P4); an enclosing local's or parameter's keeps its Type (BU-28).
+    // Reborrows an enclosing Closure's environment binding `u: uniq/T during o` is contained in that Closure's call receiver too, so its
+    // binding has `uniq/T during meet(o, ρ)`, a pair layer that meet on its outer-Origin slot where its plan Reborrows the layer: the bare
+    // Reborrow's one rule, BareReborrowLayer and ReborrowedType (DECISIONS R4-M123's 7.7.2, R4-M126 P4, PLAN G254); an enclosing local's
+    // or parameter's keeps its Type (BU-28).
     private BindingFailure? CaptureEntry(FunctionKoto function, CaptureKoto capture, BindingSymbol source, BindingSymbol environment)
     {
         var type = source.Type!;
@@ -190,10 +190,10 @@ public sealed partial class Binding
                 }
 
                 environment.CaptureAcquisition = bare == HirAcquire.Copy ? CaptureAcquisition.Copy : bare == HirAcquire.ByCase ? CaptureAcquisition.Bare : CaptureAcquisition.Reborrow;
-                if ((bare == HirAcquire.Reborrow || (bare == HirAcquire.ByCase && this.BareReborrows(type, function))) &&
-                    this.EnvironmentContainment(source) is { } receiver && this.OuterOrigin(type) is { } outer)
+                if (bare is HirAcquire.Reborrow or HirAcquire.ByCase && this.EnvironmentContainment(source) is { } receiver &&
+                    this.BareReborrowLayer(type, function) is { } layer)
                 {
-                    environment.Type = this.types.Rebuild(type, (BoundType[])type.Components, this.Meet(outer, receiver), (BoundOrigin[])type.OriginArguments);
+                    environment.Type = this.ReborrowedType(type, layer, receiver);
                 }
 
                 return null;

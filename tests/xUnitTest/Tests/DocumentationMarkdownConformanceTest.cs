@@ -2,7 +2,7 @@
 
 using System.Security.Cryptography;
 using System.Text.Json;
-using Kimi.Compiler.Documentation;
+using Kimi.Documentation;
 using Markdig;
 using Xunit;
 

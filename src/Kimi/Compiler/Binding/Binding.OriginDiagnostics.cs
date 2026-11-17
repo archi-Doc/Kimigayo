@@ -14,6 +14,7 @@
 //   formed.
 // - Prohibitions: no inference, proof or judgment re-run to explain a failure; no failure decided here.
 
+using System.Runtime.InteropServices;
 using System.Text;
 using Kimi.Compiler.Parsing;
 using Kimi.Diagnostics;
@@ -217,8 +218,9 @@ public sealed partial class Binding
             return null;
         }
 
-        foreach (var parameter in owner.Parameters)
+        for (var i = 0; i < owner.Parameters.Count; i++)
         {
+            var parameter = owner.Parameters[i];
             if (ReferenceEquals(parameter.Type, occurrence) || (parameter.Type is TypeSemanticsKoto { Type: { } target } && ReferenceEquals(target, occurrence)))
             {
                 return parameter.InternalName + "." + slots[slot].Name;
@@ -259,8 +261,11 @@ public sealed partial class Binding
                 return new("expression", origin.Binder is DeclarationContainerKoto && !typeLevel ? "self." + origin.Name : origin.Name);
             case OriginKind.ConstraintSet:
                 return new("expression", SetSlotName(origin)); // SPEC 15.3.4: the set's slot as written, `m.at`.
-            case OriginKind.Inference when origin.Binder is VariableKoto local:
-                return new("omitted", local.NameKoto.IdentifierName); // A local's region (LocalRegionSlot), as a Closure body names it.
+            case OriginKind.Inference when origin.Binder is { } local && IsRegionOwner(local):
+                // A local's region (LocalRegionSlot) by the local's name, as a Closure body names it. A VariableKoto's name is its
+                // NameKoto's: its symbol, keyed by the declaration, keeps its first name when an edit replaces the NameKoto (Indexing
+                // redeclares only a renamed Pattern binding, and a for slot's name is its own key).
+                return new("omitted", local is VariableKoto declared ? declared.NameKoto.IdentifierName : local.BoundSymbol!.Name);
             case OriginKind.Holder:
                 return new("expression", "self"); // SPEC 5.7: `during self`.
             case OriginKind.Projection when origin.Binder is FunctionKoto { IsAnonymous: true } &&
@@ -309,7 +314,7 @@ public sealed partial class Binding
     // as ` in the Semantics case s = owner`: per binder, its Semantics joined by `or`; binders joined by `, ` where every binder must give
     // the class (`none`, the weakest: a product) and listed by `; ` where one suffices (`uniq`, the strongest: a union); empty for none, a
     // failure in every case.
-    private static string CaseText(LoanRequirement failing, PairCase[] cases)
+    private static string CaseText(LoanRequirement failing, ReadOnlySpan<PairCase> cases)
     {
         var union = failing == LoanRequirement.Uniq;
         var text = new StringBuilder();
@@ -382,8 +387,9 @@ public sealed partial class Binding
             return false;
         }
 
-        foreach (var parameter in function.Parameters)
+        for (var i = 0; i < function.Parameters.Count; i++)
         {
+            var parameter = function.Parameters[i];
             if (parameter.Type.BoundType is { } input && input.Symbol == this.Library.Option && this.MentionsOrigin(input, actual.Origin))
             {
                 return true;
@@ -442,7 +448,7 @@ public sealed partial class Binding
         if (this.invalidStaticOriginSlots?.TryGetValue(node, out var invalid) == true)
         {
             var slot = invalid.Slot;
-            var found = CaseText(invalid.Failing, invalid.Cases);
+            var found = CaseText(invalid.Failing, CollectionsMarshal.AsSpan(this.pairCaseRows).Slice(invalid.Cases.Start, invalid.Cases.Count));
             node.Report(
                 requirement,
                 code,
@@ -455,7 +461,7 @@ public sealed partial class Binding
         if (this.phantomRawOrigins?.TryGetValue(node, out var phantom) == true)
         {
             var slot = phantom.Slot;
-            var found = CaseText(phantom.Failing, phantom.Cases);
+            var found = CaseText(phantom.Failing, CollectionsMarshal.AsSpan(this.pairCaseRows).Slice(phantom.Cases.Start, phantom.Cases.Count));
             var note = $"a raw layer states a slot that no stored safe reference or Loan<T> Field keeps{found}; add a Loan Field over {slot.Name}";
             node.Report(
                 requirement,

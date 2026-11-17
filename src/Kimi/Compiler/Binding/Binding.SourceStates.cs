@@ -30,7 +30,7 @@ public sealed partial class Binding
     // Every declaration container's own symbol, in the pass's order (ResetSourceStates).
     private readonly List<BindingSymbol> sourceDeclarations = new();
 
-    // The checks this pass's publications ran.
+    // The checks this run's publications ran (BeginRun).
     private int sourceChecks;
 
     /// <summary>Gets the declaration checks the latest pass's publications ran, which a scaling check reads.</summary>
@@ -54,12 +54,11 @@ public sealed partial class Binding
         return false;
     }
 
-    // Every declaration container's own symbol is Pending before the pass adds any premise (BindConstraints).
+    // Every declaration container's own symbol of the pass's modules is Pending before the pass adds any premise (BindConstraints).
     private void ResetSourceStates()
     {
         this.sourceDeclarations.Clear();
-        this.sourceChecks = 0;
-        foreach (var symbol in this.symbols.Values)
+        foreach (var symbol in this.symbols.Values.In(this.pass))
         {
             if (symbol.Declaration is DeclarationContainerKoto { BoundSymbol: { } own } && ReferenceEquals(own, symbol))
             {
@@ -118,7 +117,9 @@ public sealed partial class Binding
 
                 this.ScopeReads = default;
                 this.sourceChecks++;
+                var frame = this.BeginConsultation(symbol.Declaration); // A site frame: the state's declaration publishes it.
                 var proof = this.CheckClosedDeclarationConstraints((DeclarationContainerKoto)symbol.Declaration);
+                this.DropConsultation(frame);
                 var cause = this.ProofCause(proof);
                 stateChanged |= proof != ConstraintProof.Unknown;
                 limitChanged |= (cause is null) != (symbol.SourceCause is null);

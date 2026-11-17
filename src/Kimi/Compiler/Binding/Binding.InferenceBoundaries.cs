@@ -21,11 +21,11 @@ public sealed partial class Binding
         => type.Kind is BoundTypeKind.Parameter or BoundTypeKind.SemanticsApplication or BoundTypeKind.SemanticsAdaptation or BoundTypeKind.TargetProjection &&
             type.Symbol is { } symbol ? ContainerSlot(function, symbol) : -1;
 
-    // Whether `type` names one of the callee's Type slots in `slots`, directly, as the selector of an `s/U` application or as the target
-    // projection of a pair slot.
-    private static bool MentionsSlots(BoundType type, Koto function, SlotSet slots, int depth = 0)
+    // Whether `type` names one of the callee's slots in `slots`: a Type slot directly, as the selector of an `s/U` application or as the
+    // target projection of a pair slot, or a length slot in a fixed array's length.
+    private static bool MentionsSlots(BoundType type, Koto function, SlotSet slots)
     {
-        if (slots.IsEmpty || depth > 64)
+        if (slots.IsEmpty)
         {
             return false;
         }
@@ -35,9 +35,14 @@ public sealed partial class Binding
             return true;
         }
 
+        if (type.LengthExpression is { } length && MentionsLength(length, function, slots))
+        {
+            return true;
+        }
+
         for (var i = 0; i < type.Components.Count; i++)
         {
-            if (MentionsSlots(type.Components[i], function, slots, depth + 1))
+            if (MentionsSlots(type.Components[i], function, slots))
             {
                 return true;
             }
@@ -46,13 +51,18 @@ public sealed partial class Binding
         return false;
     }
 
-    // The callee's Type slots that are still unbound.
-    private static SlotSet UnboundTypeSlots(FunctionKoto function, BoundType?[] arguments, ref SlotSet slots)
+    // Whether a length names one of the callee's length slots in `slots`.
+    private static bool MentionsLength(BoundLength length, Koto function, SlotSet slots)
+        => length.Parameter is { } parameter ? ContainerSlot(function, parameter) is >= 0 and var slot && slots.Contains(slot)
+            : (length.Left is { } left && MentionsLength(left, function, slots)) || (length.Right is { } right && MentionsLength(right, function, slots));
+
+    // The callee's Type and length slots that are still unbound (SPEC 10.8: a slot is either).
+    private static SlotSet UnboundSlots(FunctionKoto function, ReadOnlySpan<BoundType?> arguments, ReadOnlySpan<BoundLength?> lengths, ref SlotSet slots)
     {
         slots.Clear();
         for (var g = 0; g < CallOwnSlots(function).Count; g++)
         {
-            if (CallOwnSlots(function)[g] is GenericParameterKoto && arguments[g] is null)
+            if (CallOwnSlots(function)[g] is LengthParameterKoto ? lengths[g] is null : arguments[g] is null)
             {
                 slots.Add(g);
             }
@@ -69,24 +79,11 @@ public sealed partial class Binding
         node.Report(requirement, code, evidence: [fact.Slot], related: related, note: fact.Note);
     }
 
-    // SPEC 10.8: the required structural slots that no evidence binds, other than an F that a waiting argument binds (SPEC 10.5).
-    // An unresolved length remains pending; structural slots have no fixed-width limit.
-    private void UnsolvedSlots(InvocationKoto call, FunctionKoto function, BoundType?[] arguments, BoundLength?[] lengths, int[] mapping, ref SlotSet unsolved, out bool unrepresentable)
+    // SPEC 10.8: the required structural and length slots that no evidence binds, other than an F that a waiting argument binds (SPEC
+    // 10.5).
+    private void UnsolvedSlots(InvocationKoto call, FunctionKoto function, ReadOnlySpan<BoundType?> arguments, ReadOnlySpan<BoundLength?> lengths, int[] mapping, ref SlotSet unsolved)
     {
-        unrepresentable = false;
-        unsolved.Clear();
-        for (var g = 0; g < CallOwnSlots(function).Count; g++)
-        {
-            if (CallOwnSlots(function)[g] is LengthParameterKoto)
-            {
-                unrepresentable |= lengths[g] is null;
-            }
-            else if (arguments[g] is null)
-            {
-                unsolved.Add(g);
-            }
-        }
-
+        UnboundSlots(function, arguments, lengths, ref unsolved);
         var waiting = new WaitingSlots(ref unsolved, CallSlotOwner(function));
         for (var a = 0; a < call.ArgumentNodes.Count; a++)
         {
@@ -156,10 +153,10 @@ public sealed partial class Binding
     // derived. An anonymous argument whose fixed expected call signature has closed parameter Types is still checked with them, its result
     // inferred from its body, so that its independent problems stay visible; one with open parameter Types, and every other argument that
     // the open slot leaves without a Type, rests on the call.
-    private BoundType? FailUnboundSlots(InvocationKoto call, FunctionKoto selected, BindingScope scope, BoundType?[] slots, BoundLength?[] lengths, int[] mapping, ReadOnlySpan<BoundArgumentOperation> operations, BoundType? expected, BoundType? self, BoundOrigin[] origins, BoundOrigin[] inputs, BoundType? declaringType)
+    private BoundType? FailUnboundSlots(InvocationKoto call, FunctionKoto selected, BindingScope scope, ReadOnlySpan<BoundType?> slots, ReadOnlySpan<BoundLength?> lengths, int[] mapping, ReadOnlySpan<BoundArgumentOperation> operations, BoundType? expected, BoundType? self, BoundOrigin[] origins, BoundOrigin[] inputs, BoundType? declaringType)
     {
         var unsolved = this.RentSlotSet(CallSlotCount(selected));
-        this.UnsolvedSlots(call, selected, slots, lengths, mapping, ref unsolved, out _);
+        this.UnsolvedSlots(call, selected, slots, lengths, mapping, ref unsolved);
         var firstSlot = this.RentSlotSet(CallSlotCount(selected));
         try
         {
@@ -201,7 +198,7 @@ public sealed partial class Binding
                         if (parameters is not null)
                         {
                             // SPEC 10.5: the closed parts of S guide the body; its inferred result is never evidence for the slot.
-                            this.BindClosureArgument(argument, closure, scope, this.types.Intern(BoundTypeKind.Function, null, SemanticsKind.Owner, [parameters, result ?? BoundType.Unit]), openResult: result is null);
+                            this.BindClosureArgument(argument, closure, scope, this.types.Intern(BoundTypeKind.Function, null, SemanticsKind.Owner, [parameters, result ?? BoundType.Unit], binder: signature!.Binder), openResult: result is null);
                         }
                         else
                         {
@@ -215,13 +212,13 @@ public sealed partial class Binding
                     {
                         if (holds && ReferenceEquals(waiting, argument))
                         {
-                            var group = inner.BoundSymbol!;
-                            overloads = group.Next is not null;
-                            for (var candidate = group; candidate is not null && reference is null; candidate = candidate.Next)
+                            var group = this.GroupOf(inner, inner.BoundSymbol);
+                            overloads = group.Single is null;
+                            foreach (var candidate in group)
                             {
-                                if (candidate.Declaration is FunctionKoto { GenericArguments.Count: > 0 } generic)
+                                if (reference is null && candidate.Declaration is FunctionKoto { GenericArguments.Count: > 0 } generic)
                                 {
-                                    reference = $"{group.Name}<{string.Join(", ", Enumerable.Repeat("Type", generic.GenericArguments.Count))}>";
+                                    reference = $"{candidate.Name}<{string.Join(", ", Enumerable.Repeat("Type", generic.GenericArguments.Count))}>";
                                 }
                             }
                         }
@@ -289,7 +286,7 @@ public sealed partial class Binding
 
             // Explicit Type arguments are a complete list (SPEC 8.1): every slot must be writable, so a slot that a waiting argument binds or
             // that holds a Closure or Function Item Type leaves none to write.
-            static bool NameableSlots(FunctionKoto function, BoundType?[] slots, SlotSet unsolved)
+            static bool NameableSlots(FunctionKoto function, ReadOnlySpan<BoundType?> slots, SlotSet unsolved)
             {
                 for (var g = 0; g < CallOwnSlots(function).Count; g++)
                 {
@@ -298,7 +295,7 @@ public sealed partial class Binding
                         continue;
                     }
 
-                    if (slots[g] is { } bound ? Unnameable(bound, 0) : !unsolved.Contains(g))
+                    if (slots[g] is { } bound ? Unnameable(bound) : !unsolved.Contains(g))
                     {
                         return false;
                     }
@@ -307,16 +304,16 @@ public sealed partial class Binding
                 return true;
             }
 
-            static bool Unnameable(BoundType type, int depth)
+            static bool Unnameable(BoundType type)
             {
                 if (type.Kind is BoundTypeKind.Closure or BoundTypeKind.FunctionItem)
                 {
                     return true;
                 }
 
-                for (var i = 0; i < type.Components.Count && depth < 64; i++)
+                for (var i = 0; i < type.Components.Count; i++)
                 {
-                    if (Unnameable(type.Components[i], depth + 1))
+                    if (Unnameable(type.Components[i]))
                     {
                         return true;
                     }
@@ -336,8 +333,9 @@ public sealed partial class Binding
     // independent written-Type error stays its own record.
     private void MarkOmittedHeaders(FunctionKoto closure, Koto cause)
     {
-        foreach (var parameter in closure.Parameters)
+        for (var i = 0; i < closure.Parameters.Count; i++)
         {
+            var parameter = closure.Parameters[i];
             if (parameter.Type is SyntaxFormKoto { Akind: KotoKind.InferredType } inferred)
             {
                 this.CompleteDependent(inferred, cause);

@@ -7,7 +7,7 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using Kimi.Compiler;
-using Kimi.Compiler.Documentation;
+using Kimi.Documentation;
 using Markdig;
 using Markdig.Syntax;
 using Markdig.Syntax.Inlines;

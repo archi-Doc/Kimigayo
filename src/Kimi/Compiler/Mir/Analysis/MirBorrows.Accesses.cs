@@ -53,7 +53,7 @@ internal sealed partial class MirBorrows
     }
 
     // How a Drop under the view destroys its Place (A3 5's access, R4-M6): observing what it holds where its case Type observes and A2 keeps
-    // some of it (no group: only the checks reach it and it may destroy something), else shallowly.
+    // some of it (a group that is not Elide, or none), else shallowly.
     private AccessKind Dropping(int block, MirPlace place)
     {
         if (this.program.Drops.Elides(this.body.Ordinal, block, this.view))
@@ -61,7 +61,7 @@ internal sealed partial class MirBorrows
             return AccessKind.Destroy;
         }
 
-        return this.Destruction(cases.Type(this.body.TypeOf(place)!));
+        return this.Destruction(cases.TypeOf(place));
     }
 
     // How destroying a value of a case Type accesses it, read off the walks' answer (MirTypes.Observation): observing where decided or Limit,
@@ -162,7 +162,8 @@ internal sealed partial class MirBorrows
             var (taking, reborrows) = (this.inOperand ? this.operands - 1 : TakesStores, this.inOperand && this.operand.Kind == MirOperandKind.PairAcquire &&
                 reborrow != MirRefKind.Raw && this.operand.Place == place);
             this.inOperand &= this.operand.Place != place; // An operand's index locals precede its Place.
-            if (!MirDescriptors.IsOpaqueRoot(access) && owner.KindOf(at, place, reborrows ? access | MirAccess.Borrows : access, reborrows ? reborrow : kind) is { } known)
+            if (!MirDescriptors.IsOpaqueRoot(access) &&
+                owner.KindOf(at, place, reborrows ? access | MirAccess.Borrows : access, reborrows ? reborrow : kind) is { } known)
             {
                 if (known == AccessKind.Write)
                 {

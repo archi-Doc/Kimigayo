@@ -103,7 +103,7 @@ public sealed partial class Binding
         {
             for (var parent = container; parent is not null && !parent.IsRoot; parent = parent.Parent as DeclarationContainerKoto)
             {
-                proof = CombineProof(proof, this.CheckConstraints(parent.ConstraintNodes, container, (BoundType[])type.Components, scope, origins: (BoundOrigin[])type.OriginArguments), true);
+                proof = CombineProof(proof, this.CheckConstraints(parent.ConstraintNodes, new CallSubstitution(container, (BoundType[])type.Components, origins: (BoundOrigin[])type.OriginArguments), scope), true);
             }
         }
 
@@ -155,11 +155,18 @@ public sealed partial class Binding
     // A callee's declared signature, formed in its own scope by the declaration walk, at a call's candidate evaluation and a function
     // reference. Its Proven is a declaration query (DeclQueryKind.SignatureVerdict; PLAN G375), which leaves nothing to its reader. Any
     // other answer depends on who asks (a cause written to the channel), so each use computes it in its own scope (PLAN G375, until R7-C2).
-    // A requirement's call is proven under its reference, not as its declaration, so that demand stays outside the query until R7-C2.
+    // A requirement's call is proven under its reference, not as its declaration, so that demand stays outside the query until R7-C2. So
+    // does a demand before the gate (contractHeadersReady; DECISIONS BU-120's line, PLAN G949 S1-r2): it forms the signature without
+    // entering the row, so no Running state is set and no Done is read before the gate, for every subject, and it counts as a walk.
     private ConstraintProof CheckSignatureTypeConstraints(FunctionKoto function)
     {
-        if (this.activeRequirementContract is not null)
+        if (this.activeRequirementContract is not null || !this.contractHeadersReady)
         {
+            if (this.activeRequirementContract is null)
+            {
+                this.signatureWalks++; // A pre-gate demand counts its walk, as the query's did (the S1-r2 note's C4).
+            }
+
             return this.FormSignature(function);
         }
 
@@ -175,7 +182,7 @@ public sealed partial class Binding
 
         this.signatureWalks++;
         var proof = this.FormSignature(function);
-        if (proof == ConstraintProof.Proven && this.contractHeadersReady)
+        if (proof == ConstraintProof.Proven)
         {
             this.CompleteQuery(symbol, DeclQueryKind.SignatureVerdict);
         }
@@ -185,6 +192,24 @@ public sealed partial class Binding
         }
 
         return proof;
+    }
+
+    // PLAN G949 S1-e: every library function's SignatureVerdict, formed by the last declaration step, after the gate (contractHeadersReady,
+    // set by ValidateConformances), each in its own proof frame as a call's trial forms it (Solution). A Proven one is kept (Done), so a
+    // program's use reads it and computes nothing; any other answer is abandoned, as at a use. The library's are all Proven in a Final pass
+    // (KimiLibraryShapeTest). An accessor's execution function, made by the step before, is no node here and is not formed.
+    private void FormLibrarySignatures()
+    {
+        var library = this.Library.Kotonoha;
+        for (var i = 0; i < this.nodes.Count; i++)
+        {
+            if (this.nodes[i] is FunctionKoto function && ReferenceEquals(function.CodeContext?.Kotonoha, library) &&
+                function.BoundSymbol is { Kind: BindingSymbolKind.Function } symbol && ReferenceEquals(symbol.Declaration, function))
+            {
+                this.BeginProof();
+                this.EndProof(this.CheckSignatureTypeConstraints(function));
+            }
+        }
     }
 
     private ConstraintProof FormSignature(FunctionKoto function)

@@ -474,7 +474,10 @@ public partial class ApplicabilityChainRegressionTest
         Assert.False(rejected.Accepted);
         var error = Assert.Single(rejected.Diagnostics);
         Assert.Equal(nameof(DiagnosticCode.UnprovenOriginContract_Kd), error.Code);
-        Assert.Equal("the result requires x == y, which is not proven", error.Label);
+        // The record names the first failing bound, `y outlives x` (PLAN G913's Revision 2, the owner's O-348 (a): a conversion's
+        // comparison gives the variable a representative and the walk judges the members, as LocalOriginClauseTest's veqin);
+        // `requires x == y` before it.
+        Assert.Equal("the result requires y outlives x, which is not proven", error.Label);
         Assert.True(DiagnosticCorpus.Check(Source.Replace("during y", "during x", StringComparison.Ordinal)).Accepted);
     }
 
@@ -527,6 +530,38 @@ public partial class ApplicabilityChainRegressionTest
         Assert.True(c.Binding.CheckStartup(OutputKind.Application).IsComplete);
         Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Analyze().IsVerified));
         Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Generate(TextWriter.Null)));
+        Assert.True(valid, MinimalEmissionTest.Describe(c));
+    }
+
+    // PLAN G765: a failed selection's rejected candidates are rows reused between passes, so a warm rebind of the rejected call allocates
+    // nothing: no applicable candidate (one, two), an ambiguous call (SPEC 10.4), an unfixed and a mismatched function reference (SPEC
+    // 10.5), and a call whose recovered argument list rejects every candidate without a record of its own (SPEC 23.1.2).
+    [Theory]
+    [Trait("Purpose", "Allocation")]
+    [InlineData("func f(x: i32) -> i32 => x\npublic func main() -> ()\n    let y = f(true)\n", "NoApplicableOverload_Kd")]
+    [InlineData("func f(x: i32) -> i32 => x\nfunc f(x: i64) -> i64 => x\npublic func main() -> ()\n    let y = f(true)\n", "NoApplicableOverload_Kd")]
+    [InlineData("func choose(value: i32) -> () => ()\nfunc choose(value: i64) -> () => ()\npublic func main() -> ()\n    choose(1)\n", "AmbiguousBinding_Kd")]
+    [InlineData("func f(x: i32) -> i32 => x\nfunc f(x: i64) -> i64 => x\npublic func main() -> ()\n    let g = f\n", "AmbiguousBinding_Kd")]
+    [InlineData("func f(x: i32) -> i32 => x\nfunc f(x: i64) -> i64 => x\npublic func main() -> ()\n    let g: (bool) -> i32 = f\n", "NoApplicableOverload_Kd")]
+    [InlineData("func f(a: i32, b: i32) -> i32 => a\npublic func main()\n    var y = f(1,, 2)\n", null)]
+    public void WarmRejectedSelectionsReuseTheirCandidateFacts(string source, string? code)
+    {
+        var c = MinimalEmissionTest.Analyze(source);
+        var rejected = true;
+        Assert.Equal(0, AllocationMeasurement.Measure(() => rejected &= !c.Bind().IsComplete));
+        Assert.True(rejected);
+        Assert.Equal(code is null ? [] : [code], c.Binding.Issues.Select(static x => x.Code.ToString()));
+    }
+
+    // PLAN G729: a joined position of two references at `ref/i32 during a` (two Origins, one region covering both) allocates nothing in a
+    // warm rebind (the adapted parts' scratch, SlotSolution.InferAdaptedParts).
+    [Trait("Purpose", "Allocation")]
+    [Fact]
+    public void WarmJoinedBorrowPositionAllocatesNothing()
+    {
+        var c = MinimalEmissionTest.Analyze(JoinPositions + "    let q = pick(if c => (n, 1) else => (m, 2))\n    return q\n()");
+        var valid = true;
+        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Bind().IsComplete));
         Assert.True(valid, MinimalEmissionTest.Describe(c));
     }
 }

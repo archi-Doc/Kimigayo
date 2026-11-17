@@ -63,10 +63,20 @@ public class SpecConformanceParseTest
     }
 
     [Theory]
-    [InlineData("func f<T>()\n    other is Comparable\n    return")]
     [InlineData("func f<T>()\n    run()\n    T is Comparable\n    return")]
     public void RejectsInvalidFunctionConstraintDeclarations(string source)
         => Assert.NotEmpty(TestDiagnostics.Of(Parse(source)));
+
+    // SPEC 7.5 (G507): a leading clause whose subject is no generic parameter is a Constraint the parser keeps without a record;
+    // Binding rejects its subject, one record.
+    [Fact]
+    public void KeepsALeadingConstraintWhoseSubjectBindingRejects()
+    {
+        Assert.Empty(TestDiagnostics.Of(Parse("func f<T>()\n    other is Comparable\n    return")));
+        var c = CompilationTestHelper.Parse("func f<T>()\n    other is Comparable\n    return");
+        Assert.False(c.Bind().IsComplete);
+        Assert.Equal(["UnresolvedBinding_Kd"], c.Binding.Issues.Select(static x => x.Code.ToString()));
+    }
 
     [Fact]
     public void ParsesContractPropertyRequirementsAndDestructor()

@@ -1,5 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using System.Reflection;
 using Kimi;
 using Kimi.Compiler;
 using Kimi.Compiler.Parsing;
@@ -14,7 +15,7 @@ public class BaseInputFormationBindingTest
     [InlineData(true)]
     public void NormalizedBaseCannotHideInvalidQualifier(bool reverseOrder)
     {
-        const string middle = "open struct Middle: Source<string>.Origin.Item\n";
+        const string middle = "open struct Middle: Source<string>.(Origin).Item\n";
         const string child = "struct S: Middle\n    Self is C\n";
         var c = MinimalEmissionTest.Analyze(Prefix + "contract C\n" + (reverseOrder ? child + middle : middle + child));
         Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
@@ -30,12 +31,12 @@ public class BaseInputFormationBindingTest
     }
 
     [Theory]
-    [InlineData("Source<string>.Origin.Item", false)]
-    [InlineData("(Source<string>.Origin.Item, i32)", false)]
-    [InlineData("[2 of Source<string>.Origin.Item]", false)]
-    [InlineData("Source<i32>.Origin.Item", true)]
-    [InlineData("(Source<i32>.Origin.Item, i32)", true)]
-    [InlineData("[2 of Source<i32>.Origin.Item]", true)]
+    [InlineData("Source<string>.(Origin).Item", false)]
+    [InlineData("(Source<string>.(Origin).Item, i32)", false)]
+    [InlineData("[2 of Source<string>.(Origin).Item]", false)]
+    [InlineData("Source<i32>.(Origin).Item", true)]
+    [InlineData("(Source<i32>.(Origin).Item, i32)", true)]
+    [InlineData("[2 of Source<i32>.(Origin).Item]", true)]
     public void NestedBaseProjectionArgumentsRetainValidity(string argument, bool valid)
     {
         var c = MinimalEmissionTest.Analyze(Prefix + "open struct Generic<T>\ncontract C\nstruct S: Generic<" + argument + ">\n    Self is C");
@@ -45,8 +46,8 @@ public class BaseInputFormationBindingTest
     }
 
     [Theory]
-    [InlineData("struct S: Source<i32>.Origin.Item\n    Self is C")]
-    [InlineData("struct S<U>: Source<U>.Origin.Item\n    U is i32\n    Self is C")]
+    [InlineData("struct S: Source<i32>.(Origin).Item\n    Self is C")]
+    [InlineData("struct S<U>: Source<U>.(Origin).Item\n    U is i32\n    Self is C")]
     public void ValidBaseInputsUseDeclarationEvidence(string declaration)
     {
         var c = MinimalEmissionTest.Analyze(Prefix + "contract C\n" + declaration);
@@ -60,7 +61,7 @@ public class BaseInputFormationBindingTest
     [Fact]
     public void ReplacingBaseQualifierRestoresSameCertificate()
     {
-        const string source = Prefix + "contract C\nstruct S: Source<i32>.Origin.Item\n    Self is C";
+        const string source = Prefix + "contract C\nstruct S: Source<i32>.(Origin).Item\n    Self is C";
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete);
         var definition = Definition(c);
@@ -82,7 +83,7 @@ public class BaseInputFormationBindingTest
     [Fact]
     public void WarmBaseInputChecksAllocateNothing()
     {
-        var c = MinimalEmissionTest.Analyze(Prefix + "contract C\nstruct S: Source<i32>.Origin.Item\n    Self is C");
+        var c = MinimalEmissionTest.Analyze(Prefix + "contract C\nstruct S: Source<i32>.(Origin).Item\n    Self is C");
         Assert.True(c.Bind().IsComplete);
         Assert.Equal(0, AllocationMeasurement.Measure(() =>
         {
@@ -96,14 +97,14 @@ public class BaseInputFormationBindingTest
     // SPEC 9.4.2, 9.5, 9.6 (R7-N2d): a name read before a projected base can be bound is read again once it is; a difference binds the
     // declarations once more with the base known. j4, rj10, nt33 and nt34 were rejected before; the others are guards.
     [Theory]
-    [InlineData("contract HasBase\n    associate Parent\nstruct Source\n    Self is HasBase\n    associate HasBase.Parent is Middle\nopen struct Middle\n    public func m(self) -> i32 => 1\n    protected func pm(self) -> i32 => 1\n    protected struct N\n        public init() => ()\n    public init() => ()\ncontract K<T>\nstruct D: Source.HasBase.Parent\n    Self is K<D.N>\n    public init(): base() => ()")]
-    [InlineData("contract HasBase\n    associate Parent\ncontract HasItem\n    associate Item\nstruct Source\n    Self is HasBase\n    associate HasBase.Parent is Middle\nopen struct Middle\n    Self is HasItem\n    associate HasItem.Item is i32\n    public struct N\n    public init() => ()\ncontract K<T>\ncontract K2<T>\nstruct D: Source.HasBase.Parent\n    Self is K<D.N>\n    Self is K2<D.(HasItem).Item>\n    public init(): base() => ()")]
-    [InlineData("contract K<T>\ncontract HasBase\n    associate Parent\nstruct Source\n    Self is HasBase\n    associate HasBase.Parent is Q\nopen struct Q\n    public struct N\n    public init() => ()\nstruct T: Source.HasBase.Parent\n    Self is K<Self.N>\n    public init(): base() => ()")]
-    [InlineData("contract HasBase\n    associate Parent\nstruct Source\n    Self is HasBase\n    associate HasBase.Parent is Q\nopen struct Q\n    public open struct N\n        public init() => ()\n    public init() => ()\nstruct T: Source.HasBase.Parent\n    public init(): base() => ()\nstruct S2\n    Self is HasBase\n    associate HasBase.Parent is T.N\nstruct V: S2.HasBase.Parent\n    public init(): base() => ()")]
-    [InlineData("contract K<T>\ncontract HasBase\n    associate Parent\nstruct Source\n    Self is HasBase\n    associate HasBase.Parent is Q\nopen struct Q\n    public init() => ()\nopen struct B\n    public struct Inner\n    public init() => ()\nstruct T: Source.HasBase.Parent\n    public init(): base() => ()\n    public struct U: B\n        public init(): base() => ()\nstruct W\n    Self is K<T.U.Inner>")]
-    [InlineData("contract HasBase\n    associate Parent\nstruct S1\n    Self is HasBase\n    associate HasBase.Parent is T2.N\nstruct S2\n    Self is HasBase\n    associate HasBase.Parent is T1.M\nopen struct T1: S1.HasBase.Parent\n    public open struct M\n        public init() => ()\n    public init(): base() => ()\nopen struct T2: S2.HasBase.Parent\n    public open struct N\n        public init() => ()\n    public init(): base() => ()")]
-    [InlineData("contract K<T>\ncontract HasBase\n    associate Parent\nstruct Source\n    Self is HasBase\n    associate HasBase.Parent is Q\nopen struct Q: R\n    protected open struct N\n        public init() => ()\n    public init() => ()\nopen struct R\n    private open struct N\n        public func far(self) -> i32 => 2\n        public init() => ()\n    public init() => ()\n    struct T: Source.HasBase.Parent\n        Self is K<Q.N>\n        public init(): base() => ()\nstruct S2\n    Self is HasBase\n    associate HasBase.Parent is Q\nopen struct M: S2.HasBase.Parent\n    public open struct X\n        public init() => ()\n    public init(): base() => ()\nstruct S3\n    Self is HasBase\n    associate HasBase.Parent is M.X\nstruct V: S3.HasBase.Parent\n    public init(): base() => ()")]
-    [InlineData("contract K<T>\ncontract HasBase\n    associate Parent\nstruct Source\n    Self is HasBase\n    associate HasBase.Parent is Q<i32>\nopen struct Q<X>: R\n    protected open struct N\n        public init() => ()\n    public var x: X\n    public init(x: X) => self.x = x@move\nopen struct R\n    private open struct N\n        public init() => ()\n    public init() => ()\n    struct T: Source.HasBase.Parent\n        Self is K<Q<i32>.N>\n        public init(): base(1) => ()")]
+    [InlineData("contract HasBase\n    associate Parent\nstruct Source\n    Self is HasBase\n    associate HasBase.Parent is Middle\nopen struct Middle\n    public func m(self) -> i32 => 1\n    protected func pm(self) -> i32 => 1\n    protected struct N\n        public init() => ()\n    public init() => ()\ncontract K<T>\nstruct D: Source.(HasBase).Parent\n    Self is K<D.N>\n    public init(): base() => ()")]
+    [InlineData("contract HasBase\n    associate Parent\ncontract HasItem\n    associate Item\nstruct Source\n    Self is HasBase\n    associate HasBase.Parent is Middle\nopen struct Middle\n    Self is HasItem\n    associate HasItem.Item is i32\n    public struct N\n    public init() => ()\ncontract K<T>\ncontract K2<T>\nstruct D: Source.(HasBase).Parent\n    Self is K<D.N>\n    Self is K2<D.(HasItem).Item>\n    public init(): base() => ()")]
+    [InlineData("contract K<T>\ncontract HasBase\n    associate Parent\nstruct Source\n    Self is HasBase\n    associate HasBase.Parent is Q\nopen struct Q\n    public struct N\n    public init() => ()\nstruct T: Source.(HasBase).Parent\n    Self is K<Self.N>\n    public init(): base() => ()")]
+    [InlineData("contract HasBase\n    associate Parent\nstruct Source\n    Self is HasBase\n    associate HasBase.Parent is Q\nopen struct Q\n    public open struct N\n        public init() => ()\n    public init() => ()\nstruct T: Source.(HasBase).Parent\n    public init(): base() => ()\nstruct S2\n    Self is HasBase\n    associate HasBase.Parent is T.N\nstruct V: S2.(HasBase).Parent\n    public init(): base() => ()")]
+    [InlineData("contract K<T>\ncontract HasBase\n    associate Parent\nstruct Source\n    Self is HasBase\n    associate HasBase.Parent is Q\nopen struct Q\n    public init() => ()\nopen struct B\n    public struct Inner\n    public init() => ()\nstruct T: Source.(HasBase).Parent\n    public init(): base() => ()\n    public struct U: B\n        public init(): base() => ()\nstruct W\n    Self is K<T.U.Inner>")]
+    [InlineData("contract HasBase\n    associate Parent\nstruct S1\n    Self is HasBase\n    associate HasBase.Parent is T2.N\nstruct S2\n    Self is HasBase\n    associate HasBase.Parent is T1.M\nopen struct T1: S1.(HasBase).Parent\n    public open struct M\n        public init() => ()\n    public init(): base() => ()\nopen struct T2: S2.(HasBase).Parent\n    public open struct N\n        public init() => ()\n    public init(): base() => ()")]
+    [InlineData("contract K<T>\ncontract HasBase\n    associate Parent\nstruct Source\n    Self is HasBase\n    associate HasBase.Parent is Q\nopen struct Q: R\n    protected open struct N\n        public init() => ()\n    public init() => ()\nopen struct R\n    private open struct N\n        public func far(self) -> i32 => 2\n        public init() => ()\n    public init() => ()\n    struct T: Source.(HasBase).Parent\n        Self is K<Q.N>\n        public init(): base() => ()\nstruct S2\n    Self is HasBase\n    associate HasBase.Parent is Q\nopen struct M: S2.(HasBase).Parent\n    public open struct X\n        public init() => ()\n    public init(): base() => ()\nstruct S3\n    Self is HasBase\n    associate HasBase.Parent is M.X\nstruct V: S3.(HasBase).Parent\n    public init(): base() => ()")]
+    [InlineData("contract K<T>\ncontract HasBase\n    associate Parent\nstruct Source\n    Self is HasBase\n    associate HasBase.Parent is Q<i32>\nopen struct Q<X>: R\n    protected open struct N\n        public init() => ()\n    public var x: X\n    public init(x: X) => self.x = x@move\nopen struct R\n    private open struct N\n        public init() => ()\n    public init() => ()\n    struct T: Source.(HasBase).Parent\n        Self is K<Q<i32>.N>\n        public init(): base(1) => ()")]
     public void AProjectedBaseIsReadOnceItIsBound(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);
@@ -113,8 +114,8 @@ public class BaseInputFormationBindingTest
     // SPEC 9.4.2 (R7-N2d): T derives from Q through its projected base, so Q's own protected N is reached, not R's private one, which was
     // selected before: in T's own Constraint (rx1) and in a struct nested in T (rx1b).
     [Theory]
-    [InlineData("contract K<T>\ncontract HasBase\n    associate Parent\nstruct Source\n    Self is HasBase\n    associate HasBase.Parent is Q\nopen struct Q: R\n    protected open struct N\n        public init() => ()\n    public init() => ()\nopen struct R\n    private open struct N\n        public func far(self) -> i32 => 2\n        public init() => ()\n    public init() => ()\n    struct T: Source.HasBase.Parent\n        Self is K<Q.N>\n        public init(): base() => ()", "T")]
-    [InlineData("contract K<T>\ncontract HasBase\n    associate Parent\nstruct Source\n    Self is HasBase\n    associate HasBase.Parent is Q\nopen struct Q: R\n    protected open struct N\n        public init() => ()\n    public init() => ()\nopen struct R\n    private open struct N\n        public func far(self) -> i32 => 2\n        public init() => ()\n    public init() => ()\n    struct T: Source.HasBase.Parent\n        public init(): base() => ()\n        struct U\n            Self is K<Q.N>", "U")]
+    [InlineData("contract K<T>\ncontract HasBase\n    associate Parent\nstruct Source\n    Self is HasBase\n    associate HasBase.Parent is Q\nopen struct Q: R\n    protected open struct N\n        public init() => ()\n    public init() => ()\nopen struct R\n    private open struct N\n        public func far(self) -> i32 => 2\n        public init() => ()\n    public init() => ()\n    struct T: Source.(HasBase).Parent\n        Self is K<Q.N>\n        public init(): base() => ()", "T")]
+    [InlineData("contract K<T>\ncontract HasBase\n    associate Parent\nstruct Source\n    Self is HasBase\n    associate HasBase.Parent is Q\nopen struct Q: R\n    protected open struct N\n        public init() => ()\n    public init() => ()\nopen struct R\n    private open struct N\n        public func far(self) -> i32 => 2\n        public init() => ()\n    public init() => ()\n    struct T: Source.(HasBase).Parent\n        public init(): base() => ()\n        struct U\n            Self is K<Q.N>", "U")]
     public void AConstraintThroughAProjectedBaseSelectsTheNearDeclaration(string source, string owner)
     {
         var c = MinimalEmissionTest.Analyze(source);
@@ -129,7 +130,7 @@ public class BaseInputFormationBindingTest
     [Fact]
     public void AWarmBindAfterASecondRunAllocatesNothing()
     {
-        var c = MinimalEmissionTest.Analyze("contract HasBase\n    associate Parent\nstruct Source\n    Self is HasBase\n    associate HasBase.Parent is Middle\nopen struct Middle\n    public func m(self) -> i32 => 1\n    protected func pm(self) -> i32 => 1\n    protected struct N\n        public init() => ()\n    public init() => ()\ncontract K<T>\nstruct D: Source.HasBase.Parent\n    Self is K<D.N>\n    public init(): base() => ()");
+        var c = MinimalEmissionTest.Analyze(J4);
         Assert.True(c.Bind().IsComplete);
         Assert.Equal(0, AllocationMeasurement.Measure(() =>
         {
@@ -140,13 +141,38 @@ public class BaseInputFormationBindingTest
         }));
     }
 
+    // PLAN G949 S1-r1a (s1r1-design 1.3, v2 and v3): j4's Bind after an edit restarts. Its second run has a counter value of its own, one
+    // past the first run's, and runs as a second run (StartRuns once per Bind, so the runs end); the work counters are the last run's,
+    // equal to a warm Bind's one run. A restart that kept the first run's counter, or a work counter zeroed once per Bind, fails here; one
+    // that ran StartRuns again would restart without end (review-r1a N3: a hang, not a failed assertion).
+    [Fact]
+    public void ARestartStartsARunOfItsOwnWithinItsBind()
+    {
+        var c = MinimalEmissionTest.Analyze(J4);
+        c.Binding.Invalidate(); // An edit: the next Bind starts from no known base.
+        var counter = Counter(c);
+        Assert.True(c.Bind().IsComplete);
+        Assert.Equal(counter + 2, Counter(c));
+        Assert.True((bool)typeof(Binding).GetField("secondRun", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(c.Binding)!);
+        var work = Work(c);
+        Assert.True(c.Bind().IsComplete);
+        Assert.Equal(counter + 3, Counter(c));
+        Assert.Equal(work, Work(c));
+
+        static ulong Counter(Compilation c) => (ulong)typeof(Binding).GetField("storageVersion", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(c.Binding)!;
+
+        static (int, int, int, int, int, int, long) Work(Compilation c)
+            => (c.Binding.BaseLayerWork, c.Binding.SignatureWalkWork, c.Binding.MemberWalkWork, c.Binding.InheritedConformanceWork,
+                c.Binding.InheritedPremiseWork, c.Binding.SourceCheckWork, c.Binding.EvidenceNameWork);
+    }
+
     // R7-N2d: the invalid twins keep their own records; nt46's second run differs, so its use is outside the implemented subset.
     [Theory]
-    [InlineData("contract HasBase\n    associate Parent\nstruct Source\n    Self is HasBase\n    associate HasBase.Parent is Q\nopen struct Q: R\n    protected open struct N\n        public init() => ()\n    public init() => ()\nopen struct R\n    private open struct N\n        public func far(self) -> i32 => 2\n        public init() => ()\n    public init() => ()\n    struct T: Source.HasBase.Parent\n        public init(): base() => ()\n        struct U: Q.N\n            public init() => ()\n            func g(self) -> i32 => self.far()", DiagnosticCode.UnresolvedBinding_Kd)]
-    [InlineData("contract HasBase\n    associate Parent\nstruct Source\n    Self is HasBase\n    associate HasBase.Parent is Other\nopen struct Other\n    public init() => ()\nopen struct Q: R\n    protected open struct N\n        public func near(self) -> i32 => 1\n        public init() => ()\n    public init() => ()\nopen struct R\n    private open struct N\n        public func far(self) -> i32 => 2\n        public init() => ()\n    public init() => ()\n    struct T: Source.HasBase.Parent\n        public init(): base() => ()\n        struct U: Q.N\n            public init() => ()\n            func g(self) -> i32 => self.near()", DiagnosticCode.UnresolvedBinding_Kd)]
-    [InlineData("contract HasBase\n    associate Parent\nstruct Source\n    Self is HasBase\n    associate HasBase.Parent is Q\nopen struct Q\n    public open struct N\n        public init() => ()\n    public init() => ()\nstruct T: Source.HasBase.Parent\n    public init(): base() => ()\nstruct S2\n    Self is HasBase\n    associate HasBase.Parent is T.Nope\nstruct V: S2.HasBase.Parent\n    public init(): base() => ()", DiagnosticCode.UnresolvedBinding_Kd)]
+    [InlineData("contract HasBase\n    associate Parent\nstruct Source\n    Self is HasBase\n    associate HasBase.Parent is Q\nopen struct Q: R\n    protected open struct N\n        public init() => ()\n    public init() => ()\nopen struct R\n    private open struct N\n        public func far(self) -> i32 => 2\n        public init() => ()\n    public init() => ()\n    struct T: Source.(HasBase).Parent\n        public init(): base() => ()\n        struct U: Q.N\n            public init() => ()\n            func g(self) -> i32 => self.far()", DiagnosticCode.UnresolvedBinding_Kd)]
+    [InlineData("contract HasBase\n    associate Parent\nstruct Source\n    Self is HasBase\n    associate HasBase.Parent is Other\nopen struct Other\n    public init() => ()\nopen struct Q: R\n    protected open struct N\n        public func near(self) -> i32 => 1\n        public init() => ()\n    public init() => ()\nopen struct R\n    private open struct N\n        public func far(self) -> i32 => 2\n        public init() => ()\n    public init() => ()\n    struct T: Source.(HasBase).Parent\n        public init(): base() => ()\n        struct U: Q.N\n            public init() => ()\n            func g(self) -> i32 => self.near()", DiagnosticCode.UnresolvedBinding_Kd)]
+    [InlineData("contract HasBase\n    associate Parent\nstruct Source\n    Self is HasBase\n    associate HasBase.Parent is Q\nopen struct Q\n    public open struct N\n        public init() => ()\n    public init() => ()\nstruct T: Source.(HasBase).Parent\n    public init(): base() => ()\nstruct S2\n    Self is HasBase\n    associate HasBase.Parent is T.Nope\nstruct V: S2.(HasBase).Parent\n    public init(): base() => ()", DiagnosticCode.UnresolvedBinding_Kd)]
     [InlineData("contract K<T>\nstruct D: Nope\n    Self is K<D.N>", DiagnosticCode.UnresolvedBinding_Kd)]
-    [InlineData("contract K<T>\ncontract HasBase\n    associate Parent\nstruct Source\n    Self is HasBase\n    associate HasBase.Parent is Q\nopen struct Q\n    public init() => ()\nstruct T: Source.HasBase.Parent\n    Self is K<T.Nope>\n    public init(): base() => ()", DiagnosticCode.UnresolvedBinding_Kd)]
+    [InlineData("contract K<T>\ncontract HasBase\n    associate Parent\nstruct Source\n    Self is HasBase\n    associate HasBase.Parent is Q\nopen struct Q\n    public init() => ()\nstruct T: Source.(HasBase).Parent\n    Self is K<T.Nope>\n    public init(): base() => ()", DiagnosticCode.UnresolvedBinding_Kd)]
     [InlineData(Paradox, DiagnosticCode.Unsupported_Kd)]
     public void AProjectedBaseKeepsItsInvalidTwinsRecords(string source, DiagnosticCode code)
     {
@@ -175,7 +201,46 @@ public class BaseInputFormationBindingTest
         }
     }
 
-    private const string Paradox = "contract HasBase\n    associate Parent\nopen struct Q: R\n    protected open struct N\n        public init() => ()\n    public init() => ()\nopen struct R\n    private open struct N: Q\n        public init(): base() => ()\n    public init() => ()\n    struct T: T.S.HasBase.Parent\n        public init(): base() => ()\n        struct S\n            Self is HasBase\n            associate HasBase.Parent is Q.N";
+    // PLAN G578 rx4 (SPEC 9.5): a value name's lookup that saw a base clause not ready is an early read as a Type name's, so the layer
+    // that stops it is found once the projected base is bound: a length constant in a conformance declaration (rx4; written before
+    // its base's declarations), through `Source.Parent`, in a nested struct (stage 3), in a member's Constraint, in an associated
+    // specification, under a generic base and at the second layer. Each was accepted, selecting G.n; each valid twin (Q declares m)
+    // selects G.n, and a later Bind of the unchanged program reports what the first reported.
+    [Theory]
+    [InlineData(Rx4Contracts + Rx4Source + Rx4Q + Rx4G + Rx4T)]
+    [InlineData(Rx4Contracts + Rx4G + Rx4T + Rx4Q + Rx4Source)]
+    [InlineData(Rx4Contracts + Rx4Source + Rx4Q + Rx4G + "    struct T: Source.Parent\n        Self is K<[n of i32]>\n        public init(): base() => ()\n")]
+    [InlineData(Rx4Contracts + Rx4Source + Rx4Q + Rx4G + "    struct T: Source.(HasBase).Parent\n        public init(): base() => ()\n        struct U\n            Self is K<[n of i32]>\n")]
+    [InlineData(Rx4Contracts + Rx4Source + Rx4Q + Rx4G + "    struct T: Source.(HasBase).Parent\n        public init(): base() => ()\n        func h<X>(self, x: ref/X) -> i32\n            X is K<[n of i32]>\n            return 1\n")]
+    [InlineData("contract HasItem\n    associate Item\n" + Rx4Contracts + Rx4Source + Rx4Q + Rx4G + "    struct T: Source.(HasBase).Parent\n        Self is HasItem\n        associate HasItem.Item is [n of i32]\n        public init(): base() => ()\n")]
+    [InlineData(Rx4Contracts + "struct Source<A>\n    Self is HasBase\n    associate HasBase.Parent is Q\n" + Rx4Q + Rx4G + "    struct T<A>: Source<A>.(HasBase).Parent\n        Self is K<[n of i32]>\n        public init(): base() => ()\n")]
+    [InlineData(Rx4Contracts + "struct Source\n    Self is HasBase\n    associate HasBase.Parent is Mid\nstruct Source2\n    Self is HasBase\n    associate HasBase.Parent is Q\nopen struct Mid: Source2.(HasBase).Parent\n    public init(): base() => ()\n" + Rx4Q + Rx4G + Rx4T)]
+    public void AValueNameStopsAtAProjectedBasesLayer(string source)
+    {
+        var c = MinimalEmissionTest.Analyze(source);
+        Assert.False(c.Binding.Result.IsComplete);
+        Assert.Single(c.Binding.Issues, static x => x.Code == DiagnosticCode.QualificationRequired_Kd);
+        var fresh = Records(c);
+        Assert.False(c.Bind().IsComplete);
+        Assert.Equal(fresh, Records(c));
+        var valid = MinimalEmissionTest.Analyze(source.Replace("public let n: isize = 3", "public let m: isize = 3"));
+        Assert.True(valid.Binding.Result.IsComplete, MinimalEmissionTest.Describe(valid));
+    }
+
+    private const string Rx4Contracts = "contract K<T>\ncontract HasBase\n    associate Parent\n";
+
+    private const string Rx4Source = "struct Source\n    Self is HasBase\n    associate HasBase.Parent is Q\n";
+
+    private const string Rx4Q = "open struct Q\n    public let n: isize = 3\n    public init() => ()\n";
+
+    private const string Rx4G = "group G\n    public let n: isize = 2\n";
+
+    private const string Rx4T = "    struct T: Source.(HasBase).Parent\n        Self is K<[n of i32]>\n        public init(): base() => ()\n";
+
+    private const string Paradox = "contract HasBase\n    associate Parent\nopen struct Q: R\n    protected open struct N\n        public init() => ()\n    public init() => ()\nopen struct R\n    private open struct N: Q\n        public init(): base() => ()\n    public init() => ()\n    struct T: T.S.(HasBase).Parent\n        public init(): base() => ()\n        struct S\n            Self is HasBase\n            associate HasBase.Parent is Q.N";
+
+    // R7-N2d: j4, whose first Bind runs its declarations twice.
+    private const string J4 = "contract HasBase\n    associate Parent\nstruct Source\n    Self is HasBase\n    associate HasBase.Parent is Middle\nopen struct Middle\n    public func m(self) -> i32 => 1\n    protected func pm(self) -> i32 => 1\n    protected struct N\n        public init() => ()\n    public init() => ()\ncontract K<T>\nstruct D: Source.(HasBase).Parent\n    Self is K<D.N>\n    public init(): base() => ()";
 
     private const string Prefix = "open struct Base\ncontract Origin\n    associate Item\nstruct Source<T>\n    T is i32\n    Self is Origin\n    associate Origin.Item is Base\n";
 

@@ -96,12 +96,15 @@ public class Utf8UserFormatTest
         NativeAllocationAudit.WriteFixture("Utf8UserFormatGenericWriter", Source, 0, 0, 0);
     }
 
+    // SPEC 22.9.4: the adapter checks each user window (written == 0, remaining >= minimum) before writing into it. The Char row
+    // reaches the user's reserve through the witness table's char body and its one leaf write of the exact encoded length (SPEC 22.10.1).
     [Trait("Purpose", "Allocation")]
     [Theory]
-    [InlineData("Valid", "return self.buffer.reserve(minimum)", true, 3)]
-    [InlineData("Short", "let window = try self.buffer.reserve(minimum)\n        return .Ok((window@move).limit(minimum - 1))", false, 3)]
-    [InlineData("Written", "var window = try self.buffer.reserve(minimum + 1)\n        try (window@uniq).push(120@u8)\n        return .Ok(window@move)", false, 4)]
-    public void ErasedReservationsValidateUserWindows(string name, string reserve, bool valid, int bytes)
+    [InlineData("Valid", "return self.buffer.reserve(minimum)", "\"abc\"", true, 3)]
+    [InlineData("Short", "let window = try self.buffer.reserve(minimum)\n        return .Ok((window@move).limit(minimum - 1))", "\"abc\"", false, 3)]
+    [InlineData("Written", "var window = try self.buffer.reserve(minimum + 1)\n        try (window@uniq).push(120@u8)\n        return .Ok(window@move)", "\"abc\"", false, 4)]
+    [InlineData("Char", "return self.buffer.reserve(minimum)", "'é'", true, 2)]
+    public void ErasedReservationsValidateUserWindows(string name, string reserve, string value, bool valid, int bytes)
     {
         var source = """
             struct Destination
@@ -118,11 +121,11 @@ public class Utf8UserFormatTest
                         .Err(_) => $abort("utf8")
             var destination = Destination.init()
             var writer = Text.writer(destination@uniq)
-            match (writer@uniq).write("abc")@move
-            """ + (valid ? "\n    .Ok(_) => ()\n    .Err(_) => $abort(\"valid window\")" : "\n    .Ok(_) => $abort(\"malformed window\")\n    .Err(_) => ()") + "\nrequire destination.count == 1 else => $abort(\"reserve once\")\ndestination.output()";
+            """ + "\nmatch (writer@uniq).write(" + value + ")@move" +
+            (valid ? "\n    .Ok(_) => ()\n    .Err(_) => $abort(\"valid window\")" : "\n    .Ok(_) => $abort(\"malformed window\")\n    .Err(_) => ()") + "\nrequire destination.count == 1 else => $abort(\"reserve once\")\ndestination.output()";
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete, string.Join("\n", c.Binding.Issues.Select(x => x.Code + ": " + x.Node)));
-        NativeAllocationAudit.WriteFixture("Utf8UserFormatWindow" + name, source, 1, 1, bytes, valid ? "abc\n" : "\n");
+        NativeAllocationAudit.WriteFixture("Utf8UserFormatWindow" + name, source, 1, 1, bytes, valid ? value[1..^1] + "\n" : "\n");
     }
 
     private static string Program(string operation)

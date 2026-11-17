@@ -33,6 +33,14 @@ public class StringComparisonEmissionTest
             if leftLength < rightLength => return -1
             return 1
 
+        // The Contracts' requirements, called through a Constraint (SPEC 8.6.4): a built-in conformance adds no member (13.4.1).
+        func contractOrder<T>(left: ref/T, right: ref/T) -> i32
+            T is Comparable
+            return left.compare(right)
+        func contractEqual<T>(left: ref/T, right: ref/T) -> bool
+            T is Equatable
+            return left.equals(right)
+
 
         """;
 
@@ -187,12 +195,12 @@ public class StringComparisonEmissionTest
                         let left = cases[i]@ref
                         let right = cases[j]@ref
                         let rule = expected(left, right)
-                        let compared = sign(left.compare(right))
+                        let compared = sign(contractOrder(left, right))
                         let equal = left == right
                         let less = left < right
                         hash = (hash * 31 + (compared + 2)@i64 * 4 + (if equal => 2@i64 else => 0@i64) + (if less => 1@i64 else => 0@i64)) & 0xFFFF_FFFF
                         if compared != rule or equal != (rule == 0) or less != (rule < 0) => mismatches += 1
-                        if left.equals(right) != (rule == 0) or (left != right) != (rule != 0) => mismatches += 1
+                        if contractEqual(left, right) != (rule == 0) or (left != right) != (rule != 0) => mismatches += 1
                         if (left <= right) != (rule <= 0) or (left > right) != (rule > 0) or (left >= right) != (rule >= 0) => mismatches += 1
                 Console.writeLine("pairs \(cases.length * cases.length) mismatches \(mismatches) hash \(hash)")
             """;
@@ -244,9 +252,9 @@ public class StringComparisonEmissionTest
                 let a = view(left, leftLength)
                 let b = view(right, rightLength)
                 let rule = order(left, leftLength, right, rightLength)
-                let compared = a.compare(b)
+                let compared = contractOrder(a@ref, b@ref)
                 var found: i64 = 0
-                if (a == b) != (rule == 0) or a.equals(b) != (rule == 0) or (a != b) != (rule != 0) => found += 1
+                if (a == b) != (rule == 0) or contractEqual(a@ref, b@ref) != (rule == 0) or (a != b) != (rule != 0) => found += 1
                 if (a < b) != (rule < 0) or (a <= b) != (rule <= 0) or (a > b) != (rule > 0) or (a >= b) != (rule >= 0) => found += 1
                 if (compared < 0) != (rule < 0) or (compared > 0) != (rule > 0) => found += 1
                 return found

@@ -616,8 +616,8 @@ public class CallableSignatureInferenceTest(ITestOutputHelper output)
     [Theory]
     // SPEC 10.8, 10.2, 7.7.4 (PLAN G356): an explicit Type argument fixes the parameter, so an Item at it is erased, alone and through a join; its
     // result-position forms it1 and it2 wait for PLAN's SPEC reading.
-    [InlineData("I3", "gt1", ItemDeclarations + "    return g<(i64) -> i64>(twice)\n", "", Explicit = true)]
-    [InlineData("I3", "gt2", ItemDeclarations + "    return g<(i64) -> i64>(if c1 => twice else => twice)\n", "", Explicit = true)]
+    [InlineData("guard", "gt1", ItemDeclarations + "    return g<(i64) -> i64>(twice)\n", "")]
+    [InlineData("guard", "gt2", ItemDeclarations + "    return g<(i64) -> i64>(if c1 => twice else => twice)\n", "")]
     [InlineData("I3", "gt3", ItemDeclarations + "    return g<(i64) -> i64>(if c1 => twice else if c2 => func [] (v: i64) -> i64 => v else => func [] (v: i64) -> i64 => v)\n", "", Explicit = true)]
     [InlineData("guard", "gt4", ItemDeclarations + "    return g<(i64) -> i64>(func [] (v: i64) -> i64 => v)\n", "")]
     [InlineData("guard", "gt1n", ItemDeclarations + "    return g<(i64) -> bool>(twice)\n", "*: return g<(i64) -> bool>(twice) | ...")]

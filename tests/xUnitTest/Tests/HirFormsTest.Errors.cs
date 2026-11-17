@@ -58,7 +58,7 @@ public sealed partial class HirFormsTest
         Assert.NotEqual(BindingState.Resolved, node.StateOf());
         Assert.Equal(BindingFailure.None, node.FailureOf());
         Assert.Equal(op, HirTables.Op(node).ToString());
-        var keeps = node.ChildNodes.Where(static x => HirTables.AdjustOf(x) == new HirAdjust(HirAcquire.None, HirAdaptation.None) && HirTables.Op(x) != HirOp.Syntax);
+        var keeps = node.Children().Where(static x => HirTables.AdjustOf(x) == new HirAdjust(HirAcquire.None, HirAdaptation.None) && HirTables.Op(x) != HirOp.Syntax);
         Assert.True(kept is null || kept == string.Join(" ", keeps.Select(static x => x.ToString())), string.Join(" ", keeps.Select(static x => x.ToString())));
     }
 
@@ -173,6 +173,33 @@ public sealed partial class HirFormsTest
         Assert.Equal(BindingFailure.OriginRelation, error.FailureOf());
         Assert.Equal(new HirAdjust(HirAcquire.Temporary, HirAdaptation.None), HirTables.AdjustOf(error));
         Assert.All(nodes.Where(x => !ReferenceEquals(x, error)), static x => Assert.Equal(new HirAdjust(HirAcquire.None, HirAdaptation.SharedBorrow), HirTables.AdjustOf(x)));
+    }
+
+    // SPEC 13.7.1, 23.1.2 (DECISIONS R5-M195): a plain write Binding rejected for its value's fit after admitting its destination keeps
+    // Assign, its target its own Op (a local's Name, a setter's Call) and its value, which Binding resolved, the Error taken as its derived
+    // value (Temporary, None); a write its destination check refuses (a Field of a computed Property's value, SPEC 3.4) and a compound
+    // update Binding rejected stay Error, their children replaced (fail-before: the local's and the setter's writes were Error too).
+    [Theory]
+    [InlineData("func f()\n    var x: i32 = 0\n    x = \"a\"\n", "x = \"a\"", "Assign Name Error Temporary/None")]
+    [InlineData(
+        "struct C\n    public var count: i32 = 0\n    public computed doubled: i32\n        get() -> i32 => self.count * 2\n" +
+        "        set(value: i32) -> () => self.count = value / 2\n    public init() => ()\nfunc h(c: uniq/C)\n    c.doubled = \"a\"\n",
+        "c.doubled = \"a\"",
+        "Assign Call Error Temporary/None")]
+    [InlineData(
+        "struct In\n    public var v: i32 = 0\n    public init() => ()\nstruct B\n    public computed inner: In\n        get() -> In => In.init()\n" +
+        "    public init() => ()\nfunc h(b: uniq/B)\n    b.inner.v = \"a\"\n",
+        "b.inner.v = \"a\"",
+        "Error Syntax Syntax Unset/None")]
+    [InlineData("func f()\n    var x: i32 = 0\n    x += \"a\"\n", "x += \"a\"", "Error Syntax Syntax Unset/None")]
+    public void ARejectedWriteKeepsItsWriteWithADerivedValue(string source, string text, string rows)
+    {
+        var c = MinimalEmissionTest.Analyze(source);
+        HirTables.Publish(c);
+        var write = Reachable(c.Kotonoha).OfType<BinaryKoto>().First(x => x.ToString() == text);
+        Assert.NotEqual(BindingFailure.None, write.FailureOf());
+        var value = HirTables.AdjustOf(write.Right);
+        Assert.Equal(rows, $"{HirTables.Op(write)} {HirTables.Op(write.Left)} {HirTables.Op(write.Right)} {value.Acquire}/{value.Adaptation}");
     }
 
     // SPEC 23.1.2 (PLAN G122): a char literal the lexer could not read has no value (the lexer's published absence,

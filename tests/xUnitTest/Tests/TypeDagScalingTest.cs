@@ -32,6 +32,63 @@ public partial class TypeDagScalingTest
         }
     }
 
+    // R7-C2e2 e2-5a: a component summary lists only the constrained instances its own storage writes (never a component's, mapped), so
+    // a family whose storage recurses through ever larger instance arguments, n levels deep and back to itself, is summarized once per
+    // declaration; a list that grew with the mapping stalled here (prototype efda54a52), so the check has a deadline and fails, never hangs.
+    [Theory]
+    [InlineData(1)]
+    [InlineData(16)]
+    [InlineData(64)]
+    public async Task AnInstanceFamilyIsSummarizedOncePerDeclaration(int depth)
+    {
+        var source = "contract C\nstruct Box<T>\n    T is C\n    Self is C\n" +
+            string.Concat(Enumerable.Range(0, depth).Select(i => $"struct D{i}<T>\n    T is C\n    let next: Array<D{(i + 1) % depth}<Box<T>>>\n")) +
+            "struct S\n    Self is C\nstruct H\n    let d: D0<S>\nfunc inspect(a: H) -> ()\n    let g: () -> () = func [a@move] () => ()\n    return\n";
+        var cancel = TestContext.Current.CancellationToken;
+        var run = Task.Run(() => MinimalEmissionTest.Analyze(source), cancel);
+        Assert.Same(run, await Task.WhenAny(run, Task.Delay(TimeSpan.FromSeconds(60), cancel)));
+        var c = await run;
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
+    }
+
+    // SPEC 15.3.5 Fixed points, 8.3.3 (R7-C2e2 e2-5a, Revision 2's chain row): a chain of N declarations, each storing a constrained
+    // instance of the next (S<D(i+1)>, S needing its argument Owned), open or closed into a ring of Owned works, is formed once per
+    // declaration: the capability evaluations per added declaration stay flat from N = 16 to 256 and the coinductive steps do not grow
+    // (the engine's bound is O(N (N + M)) per request), and the program is valid either way (a ring of Owned works alone is Owned's
+    // greatest fixed point).
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task AChainOfStoredInstancesIsFormedOncePerDeclaration(bool ring)
+    {
+        var cancel = TestContext.Current.CancellationToken;
+        var counts = new List<(int N, int Evaluations, int Steps)>();
+        foreach (var n in new[] { 16, 64, 256 })
+        {
+            var source = "struct S<U>\n    U is Owned\n    public var u: U\n" +
+                string.Concat(Enumerable.Range(0, n).Select(i => i + 1 < n || ring ? $"struct D{i}\n    let next: Array<S<D{(i + 1) % n}>>\n" : $"struct D{i}\n    let x: i32\n")) +
+                "func needOwned<V>(v: ref/V)\n    V is Owned\n    ()\nfunc use1(d: ref/D0) -> ()\n    needOwned(d)\n";
+            var run = Task.Run(
+                () =>
+                {
+                    var c = CompilationTestHelper.ParseSuccess(source);
+                    Assert.True(c.Bind().IsComplete, string.Join('\n', c.Binding.Issues));
+                    return (n, c.Binding.CapabilityEvaluationWork, c.Binding.CoinductiveStepWork);
+                },
+                cancel);
+            Assert.Same(run, await Task.WhenAny(run, Task.Delay(TimeSpan.FromSeconds(60), cancel)));
+            counts.Add(await run);
+        }
+
+        var text = string.Join(", ", counts.Select(static x => $"N {x.N}: {x.Evaluations} evaluations, {x.Steps} coinductive steps"));
+        TestContext.Current.TestOutputHelper?.WriteLine(text);
+        // Per added declaration (the library's fixed part cancels): 15 evaluations from N = 16 to 64 and from 64 to 256 on 6b91a1305.
+        var low = (counts[1].Evaluations - counts[0].Evaluations) / 48.0;
+        var high = (counts[2].Evaluations - counts[1].Evaluations) / 192.0;
+        Assert.True(high <= low * 1.5, text);
+        Assert.True(counts[0].Steps == counts[2].Steps, text);
+    }
+
     // Binding's walks: the instance Types of a Tuple chain (TyCtxt.Apply, from the checked set), the capability proofs of HIR publication
     // over inferred shared Tuples, closed and generic, through the MIR, its analyses and the checked set.
     [Theory]
@@ -71,6 +128,58 @@ public partial class TypeDagScalingTest
             var c = CompilationTestHelper.ParseSuccess($"{head}\n    public func top(self) -> i32 => 1\n{chain}func f(v: ref/C{layers - 1}) -> i32\n{misses}    return v.top()\n");
             c.Bind();
             return c.Binding.MemberWalkWork;
+        }
+    }
+
+    // SPEC 8.6.2 (PLAN G602): a reversed chain of clauses through inherited conformances (L_i: S_i.(HasBase).Parent, S_i's Parent L_(i-1),
+    // declared from the far end) binds with no stack failure, and the InheritedConformances query's clause readings beyond those of the
+    // same chain written nominally are linear in its length.
+    [Fact]
+    public void InheritedConformanceDemandsAreLinearInTheChain()
+    {
+        var work = new[] { 64, 128, 256 }.Select(static levels => Work(levels, true) - Work(levels, false)).ToArray();
+        Assert.True(work[0] > 0 && work[2] - work[1] <= (2 * (work[1] - work[0])) + 64, string.Join(' ', work));
+
+        static int Work(int levels, bool projected)
+        {
+            var chain = string.Concat(Enumerable.Range(1, levels).Reverse().Select(i => (projected ? $"open struct L{i}: S{i}.(HasBase).Parent\n" : $"open struct L{i}: L{i - 1}\n") + $"    public init(): base() => ()\nstruct S{i}\n    Self is HasBase\n    associate HasBase.Parent is L{i - 1}\n"));
+            var c = CompilationTestHelper.ParseSuccess($"contract HasBase\n    associate Parent\nopen struct Root\n    public func r(self) -> i32 => 1\n    public init() => ()\nstruct D: L{levels}.(HasBase).Parent\n    public init(): base() => ()\nfunc f(d: ref/D) -> i32 => d.r()\n{chain}open struct L0\n    Self is HasBase\n    associate HasBase.Parent is Root\n    public init() => ()\n");
+            Assert.True(c.Bind().IsComplete);
+            return c.Binding.InheritedConformanceWork;
+        }
+    }
+
+    // SPEC 8.8.2 (PLAN G665): an inherited path's scope and conditions read its declared path's premises at the declared Self composed at
+    // registration, so on a deep-heir chain of a conditional conformance with a use at every level the premise steps are linear in its depth.
+    [Fact]
+    public void InheritedPremiseStepsAreLinearInTheChain()
+    {
+        var work = new[] { 64, 128, 256 }.Select(static depth => Work(depth)).ToArray();
+        Assert.True(work[0] > 0 && work[2] - work[1] <= (2 * (work[1] - work[0])) + 64, string.Join(' ', work));
+
+        static int Work(int depth)
+        {
+            var c = CompilationTestHelper.ParseSuccess(ConditionalHeirChain(depth));
+            Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c));
+            return c.Binding.InheritedPremiseWork;
+        }
+    }
+
+    // SPEC 6.2.2 (PLAN G602, design review N2): on a base cycle every member's InheritedConformances query stays NotStarted for the pass,
+    // so each conformance read of a member walks the cycle again: the query's clause readings for ten more reads are linear in its length.
+    [Fact]
+    public void AConformanceReadOfABaseCycleIsLinearInTheCycle()
+    {
+        var work = new[] { 64, 128, 256 }.Select(static length => Work(length, 20) - Work(length, 10)).ToArray();
+        Assert.True(work[0] > 0 && work[2] - work[1] <= (2 * (work[1] - work[0])) + 64, string.Join(' ', work));
+
+        static int Work(int length, int reads)
+        {
+            var ring = string.Concat(Enumerable.Range(0, length).Select(i => $"open struct A{i}: A{(i + 1) % length}\n    public init(): base() => ()\n"));
+            var uses = string.Concat(Enumerable.Range(0, reads).Select(static i => $"func g{i}(a: ref/A0.(HasBase).Parent) => ()\n"));
+            var c = CompilationTestHelper.ParseSuccess($"contract HasBase\n    associate Parent\n{ring}{uses}");
+            Assert.False(c.Bind().IsComplete);
+            return c.Binding.InheritedConformanceWork;
         }
     }
 
@@ -400,6 +509,19 @@ public partial class TypeDagScalingTest
         return text.Append($"struct D : L{depth - 1}<Option<i32>>\nfunc use(x: D.(C).Item) -> i32 => 1\n").ToString();
     }
 
+    // A deep-heir chain of a conditional conformance (valid, SPEC 8.8.1, 8.8.2, 8.6.2): L0 conforms when X is Copy, L(k) : L(k-1), and a
+    // use of L(k)<i32>.(C).Item at every level.
+    private static string ConditionalHeirChain(int depth)
+    {
+        var text = new System.Text.StringBuilder("contract C\n    associate Item\nopen struct L0<X>\n    Self is C when X is Copy\n        associate C.Item is X\n");
+        for (var i = 1; i < depth; i++)
+        {
+            text.Append($"open struct L{i}<X> : L{i - 1}<X>\nfunc use{i}(x: L{i}<i32>.(C).Item) -> i32 => 1\n");
+        }
+
+        return text.ToString();
+    }
+
     private static string[] Codes(string code) => code.Length == 0 ? [] : [code];
 
     // A main sharing `value@ref` at depth 0 of a Tuple 10 levels high and of one `depth` levels high, in either order, then maybe writing it.
@@ -449,6 +571,16 @@ public partial class TypeDagScalingTest
             });
             Assert.All(compilations, static c => Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c)));
             Assert.True(bytes[0] < bytes[1] && MirBorrowsTest.Grows(bytes, 3), $"bytes {string.Join(", ", bytes)}");
+        }
+
+        // SPEC 8.6.2, 8.8.2 (PLAN G665): a warm rebind of a conditional inheritance chain, every heir's scope and every level's
+        // conditions included, allocates nothing.
+        [Fact]
+        public void AWarmRebindOfAnInheritanceChainAllocatesNothing()
+        {
+            var c = CompilationTestHelper.ParseSuccess(ConditionalHeirChain(64));
+            Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c));
+            Assert.Equal(0, AllocationMeasurement.Measure(() => c.Bind()));
         }
     }
 }

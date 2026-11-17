@@ -6,12 +6,15 @@ namespace Kimi.Compiler;
 
 // The Type relation's one walk (SPEC 3.8, 10.7, 15.6.1).
 // - Responsibility: whether `actual` is a subtype of `expected`, part by part, and a Function Type by one Callable comparison
-//   (FunctionFits), whose implementation conditions it judges at every nesting when it has a Binding.
+//   (FunctionFits), two at an invariant position, one each way (SPEC 3.8, 15.3.5), whose implementation conditions it judges at every
+//   nesting when it has a Binding.
 // - Inputs: the query: the Binding and use whose premises and Origins the Origin part reads (none: the relation as written), and which
 //   Origin bindings count (OriginPart).
 // - Outputs: whether the relation holds and, when it does not, its first failure where the walk found it (ComparisonFailure), which the
 //   reader that records the failure takes from the walk that decided; a recording root's walk also keeps one fact per failing position
-//   (comparisonFacts, design-r2 Amendment 1 A2).
+//   (comparisonFacts, design-r2 Amendment 1 A2), and CheckTypeUse's root one result per part it walks outside every Callable comparison
+//   (FitPart, in walk order), which CheckTypeUse decomposes instead of walking each part again (it walks again only an invariant part
+//   that this walk meets reversed, under a contravariant one).
 // - Invariants: one order of the parts: the outer Origin, the Origin arguments, then the components; within a Callable comparison its
 //   inputs, its result, then the implementation's own well-formedness. A Callable comparison stops at its first failure, which is its
 //   one fact (SPEC 15.6.1); outside every comparison a recording root's walk goes on past an Origin position's or a Function
@@ -87,6 +90,13 @@ public sealed partial class Binding
             this with { Path = this.Path | ((ulong)step << (8 * this.Depth)), Depth = (byte)(this.Depth + 1) };
     }
 
+    // SPEC 15.6.1, 23.1.2: one part of CheckTypeUse's walk outside every Callable comparison, as a walk rooted at it would answer it: the
+    // pair as walked, whether the relation holds there, whether a position in it held by resting (fitRested), its first failure, whether
+    // its own shape held (Shaped: the walk did not end at the pair itself), its facts' range in comparisonFacts and the index after its
+    // own parts. A part that identity discharges has none.
+    internal readonly record struct FitPart(
+        BoundType Actual, BoundType Expected, bool Holds, bool Rested, bool Shaped, ComparisonFailure Failure, int FactStart, int FactEnd, int End);
+
     // Which Origin bindings a relation walk compares: every one (Judged), every one as a whole-contract comparison's Origin part, from the
     // premises alone, so a member that only an inferred or body-local region decides is no limit (Contract, SPEC 15.6.1, 15.3.7: a
     // Callable signature fit or a conversion's contract comparison; DECISIONS BU-93), none outside Function Types (Structural, SPEC
@@ -105,16 +115,19 @@ public sealed partial class Binding
         private readonly Binding? binding;
         private readonly Koto? use;
         private readonly List<ComparisonFailure>? facts;
+        private readonly List<FitPart>? parts;
         private readonly int start;
         private OriginPart part;
         private ComparisonFailure failure;
         private bool ended;
+        private int endedAt;
 
         internal RelationWalk(Binding? binding, Koto? use, OriginPart part)
         {
             this.binding = binding;
             this.use = use;
             this.part = part;
+            this.endedAt = -1;
         }
 
         // A recording root's walk: its facts follow `facts`' current end, which the root truncates back once it has read them.
@@ -125,6 +138,13 @@ public sealed partial class Binding
             this.start = facts.Count;
         }
 
+        // CheckTypeUse's root: also one FitPart per part outside every Callable comparison, appended to `parts`, which the root truncates.
+        internal RelationWalk(Binding binding, Koto use, List<ComparisonFailure> facts, List<FitPart> parts)
+            : this(binding, use, facts)
+        {
+            this.parts = parts;
+        }
+
         // The first failure of the walk's last false answer.
         internal readonly ComparisonFailure Failure => this.facts is { } kept && kept.Count > this.start ? kept[this.start] : this.failure;
 
@@ -133,6 +153,37 @@ public sealed partial class Binding
         // that already fixed it; `instance` is the Callable comparison whose per-call Origins the parts are compared under.
         internal bool Fits(
             BoundType actual, BoundType expected, bool invariant = false, bool skipOrigin = false, CallableInstance instance = default, Koto? own = null)
+        {
+            if (this.parts is not { } parts || instance.Expected is not null || this.Discharged(actual, expected))
+            {
+                return this.Relate(actual, expected, invariant, skipOrigin, instance, own);
+            }
+
+            // A part's resting is its own (FitOrigin sets fitRested), and the enclosing part's includes it.
+            var entry = parts.Count;
+            var factStart = this.facts!.Count;
+            var outerRested = this.binding!.fitRested;
+            parts.Add(default);
+            this.binding.fitRested = false;
+            var holds = this.Relate(actual, expected, invariant, skipOrigin, instance, own);
+            var first = holds ? default : this.facts.Count > factStart ? this.facts[factStart] : this.failure;
+            parts[entry] = new(actual, expected, holds, this.binding.fitRested, this.endedAt != entry, first, factStart, this.facts.Count, parts.Count);
+            this.binding.fitRested |= outerRested;
+            return holds;
+        }
+
+        // The parts of the relation no Origin binding decides: Kind, Semantics, Symbol, Closure context, lengths and arity; an inferred
+        // length (`[_ of T]`) admits any.
+        private static bool SameShape(BoundType actual, BoundType expected)
+        {
+            var inferredLength = expected.Kind == BoundTypeKind.FixedArray && expected.Length < 0;
+            return actual.Kind == expected.Kind && actual.Semantics == expected.Semantics && ReferenceEquals(actual.Symbol, expected.Symbol) &&
+                ReferenceEquals(actual.ClosureContext, expected.ClosureContext) && actual.LengthArguments.AsSpan().SequenceEqual(expected.LengthArguments) &&
+                (inferredLength || (actual.Length == expected.Length && ReferenceEquals(actual.LengthExpression, expected.LengthExpression))) &&
+                actual.Components.Count == expected.Components.Count && actual.OriginArguments.Count == expected.OriginArguments.Count;
+        }
+
+        private bool Relate(BoundType actual, BoundType expected, bool invariant, bool skipOrigin, in CallableInstance instance, Koto? own)
         {
             if (this.Discharged(actual, expected))
             {
@@ -148,10 +199,10 @@ public sealed partial class Binding
             var (outer, longer, shorter) = (OuterOriginFit.None, BoundOrigin.Static, BoundOrigin.Static);
             if (!skipOrigin)
             {
-                outer = FitOuterOrigins(actual, expected, this.binding, this.use, out longer, out shorter);
+                outer = FitOuterOrigins(actual, expected, this.binding, this.use, out longer, out shorter, instance);
             }
 
-            var condition = outer == OuterOriginFit.Relation && !structural ? SlotCondition(actual, this.binding, this.use) : 0;
+            var condition = outer == OuterOriginFit.Relation && !structural ? SlotCondition(actual, this.binding, this.use, instance) : 0;
             if (outer == OuterOriginFit.Mismatch)
             {
                 return this.End(instance);
@@ -194,8 +245,13 @@ public sealed partial class Binding
 
             if (actual.Kind == BoundTypeKind.Function && actual.Components.Count == 2)
             {
-                // A Function component is one comparison: its first failure is one fact of the walk that reached it.
-                if (this.FunctionFits(actual, expected, invariant, Comparison(actual, own, expected, instance.Enclosing)))
+                // A Function component is one comparison: its first failure is one fact of the walk that reached it. At an invariant
+                // position the two Function Types relate both ways (SPEC 3.8, 15.3.5): a Callable comparison is oriented (it instantiates
+                // only the implementation's per-call inputs and judges only its well-formedness, SPEC 10.7), so the comparison as written
+                // is followed by the one with the sides exchanged, whose members relate one way since the first related them both ways.
+                var comparison = Comparison(actual, own, expected, instance);
+                if (this.FunctionFits(actual, expected, invariant, comparison) &&
+                    (!invariant || ReferenceEquals(actual, expected) || this.FunctionFits(expected, actual, false, comparison.Exchanged)))
                 {
                     return holds;
                 }
@@ -224,7 +280,7 @@ public sealed partial class Binding
                     continue;
                 }
 
-                if (!this.Fits(a, b, invariant || IsInvariantLayer(actual, this.binding), instance: instance))
+                if (!this.Fits(a, b, invariant || IsInvariantLayer(actual, this.binding, this.use, instance), instance: instance))
                 {
                     holds = false;
                     if (!this.Goes(instance))
@@ -235,17 +291,6 @@ public sealed partial class Binding
             }
 
             return holds;
-        }
-
-        // The parts of the relation no Origin binding decides: Kind, Semantics, Symbol, Closure context, lengths and arity; an inferred
-        // length (`[_ of T]`) admits any.
-        private static bool SameShape(BoundType actual, BoundType expected)
-        {
-            var inferredLength = expected.Kind == BoundTypeKind.FixedArray && expected.Length < 0;
-            return actual.Kind == expected.Kind && actual.Semantics == expected.Semantics && ReferenceEquals(actual.Symbol, expected.Symbol) &&
-                ReferenceEquals(actual.ClosureContext, expected.ClosureContext) && actual.LengthArguments.AsSpan().SequenceEqual(expected.LengthArguments) &&
-                (inferredLength || (actual.Length == expected.Length && ReferenceEquals(actual.LengthExpression, expected.LengthExpression))) &&
-                actual.Components.Count == expected.Components.Count && actual.OriginArguments.Count == expected.OriginArguments.Count;
         }
 
         // Whether identity decides the relation of two parts: always, except in a whole-contract comparison (Contract), where a part that
@@ -294,16 +339,18 @@ public sealed partial class Binding
             return true;
         }
 
-        // A structural failure: the walk's last fact, and it ends the walk.
+        // A structural failure: the walk's last fact, and it ends the walk at the last part entered (inside a Callable comparison, the
+        // comparison's part).
         private bool End(in CallableInstance instance)
         {
             _ = this.Keep(ComparisonFailure.Shape, instance);
             this.ended = true;
+            this.endedAt = this.parts is { } parts ? parts.Count - 1 : -1;
             return false;
         }
 
         private readonly bool OriginFits(BoundOrigin a, BoundOrigin b, in CallableInstance instance, ulong condition = 0)
-            => instance.Actual is not null ? InstanceOutlives(a, b, instance, this.binding, this.use, 0) :
+            => instance.Actual is not null ? InstanceOutlives(a, b, instance, this.binding, this.use, condition) :
                 this.binding is null ? OriginOutlives(a, b) : this.binding.FitOrigin(a, b, this.use!, instance, condition);
 
         // SPEC 10.7, 15.3.7: an implementation fits a required signature when its inputs accept the required inputs and its result fits

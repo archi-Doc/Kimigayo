@@ -38,11 +38,9 @@ internal readonly record struct ExpansionPlan(ExpansionKind Kind, CallPlan? Firs
                 return new(ExpansionKind.Try);
             case HirOp.Interpolation:
                 var output = node.Parent as InvocationKoto;
-                return new(ExpansionKind.Format, Direct: node is InterpolatedStringKoto && output is { ArgumentNodes: [var text], BoundCall.Target.CompilerFunction: CompilerFunctionKind.WriteLine } && ReferenceEquals(text, node));
+                return new(ExpansionKind.Format, Direct: node is InterpolatedStringKoto && output is { ArgumentNodes: [var text], BoundCall.Target.LibraryDeclaration: KimiDeclarationId.WriteLine } && ReferenceEquals(text, node));
             case HirOp.DictionaryLiteral:
                 return new(ExpansionKind.DictionaryLiteral);
-            case HirOp.Range:
-                return new(ExpansionKind.Range);
             case HirOp.CompoundAssign:
                 var target = node is BinaryKoto update ? update.Left : ((UnaryKoto)node).Operand;
                 var setter = binding.PropertyCall(target, PropertyAccessorKind.Set)?.CallStorage;
@@ -58,18 +56,18 @@ internal readonly record struct ExpansionPlan(ExpansionKind Kind, CallPlan? Firs
 }
 
 /// <summary>The expansions the MIR builder desugars (plan 5.3); each names its calls in <see cref="CallPlan.Of"/>'s order. A step without
-/// a call is served as the rows of <see cref="IntrinsicDisposition"/> are (plan 5.8): an interpolation's buffer, steps and end are the
-/// temporary intrinsics FormatBuffer, FormatSegment (a step per write position, a literal segment's text its operand, no write) and
-/// FormatFinish over the estimates its instance computes (SPEC 22.10.5, 22.7), and a failed write a Fail of KIMI_E_FORMAT; a dictionary
+/// a call is served as the rows of <see cref="IntrinsicDisposition"/> are (plan 5.8): an interpolation's hints are the builder's stores of
+/// the adapter's Field (Utf8Writer.hint, before each write position; SPEC 22.10.5), its literal texts and its end library calls the builder
+/// names (Utf8Writer.deferLiteral or string's format; Utf8Writer.finish and HeapBuffer.intoString), and a failed write a Fail of
+/// KIMI_E_FORMAT; a dictionary
 /// literal's duplicate key (found by its findEntry call) a Fail of KIMI_E_DUPLICATE_KEY and its insertion the placeEntry body; a `^x` key
 /// the receiver's MIR length minus x.</summary>
 internal enum ExpansionKind : byte
 {
-    Iteration, // A for loop: a user loop's entry and step calls with its Some/None Pattern plan; a ResolvedRange loop has none and binds each isize position.
+    Iteration, // A for loop: its entry and step calls with its Some/None Pattern plan (SPEC 14.6.2).
     Try, // Its Pattern plan's arms: the payload, or the failure the generated return transfers (SPEC 17.3).
     Format, // An interpolation's buffer and adapter calls, then its writes; a $tryWrite's writes, then its status (SPEC 22.10).
     DictionaryLiteral, // Its key lookup (SPEC 12.4.3), for each entry before its insertion.
-    Range, // A key applied directly: each written boundary an isize position, a `^x` one the length of the selection's receiver minus x.
     Index, // A built-in element or slice, by its key or its key's resolution, or a user or view selection's selected call (SPEC 4.7.1).
     CompoundAssign, // Its Place, or its Property's getter and setter, read and written once; its arithmetic call, or a primitive operation.
 }

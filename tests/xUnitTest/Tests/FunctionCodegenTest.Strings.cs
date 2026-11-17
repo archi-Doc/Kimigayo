@@ -82,6 +82,12 @@ public sealed partial class FunctionCodegenTest
     public void StringProgramsRun(string name, string source, string stdout)
         => ScalarEmissionTest.EmitFixture(name, source, stdout);
 
+    // DECISIONS R8-M2, R8-M18 (PLAN G693): the byte comparisons' word and byte steps are bounded by their loop guards and a string's
+    // nonnegative length, so they check no arithmetic.
+    [Fact]
+    public void StringByteComparisonsCheckNoBoundedArithmetic()
+        => AssertNoCheckedArithmetic(Analyze(Comparisons, OutputKind.Library), "equal", "order");
+
     // SPEC 8.2.3, 13.4: under an identity premise an operand of a Type identical to string is a string, so each instance's comparison is
     // the witness's call, as the Literal Pattern on the same Subject's is: Witnessed asks Binding's one decision (TyCtxt.OperandTerminal,
     // the premises applied before the layer walk; R8-OT).

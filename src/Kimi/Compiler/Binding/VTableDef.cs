@@ -12,7 +12,7 @@
 // a failure later in the pass keeps the table and leaves Binding's result incomplete); refilled per pass into the same arrays.
 // Must not: sort by path or span, or decide applicability (TyCtxt.Applies), ABI, receiver adaptation or a CallPlan.
 // Consumer rule (K8, C6c): slot i of a closed T runs Implementations[i] in the first layer on T's AdtDef.Base chain that declares it, under
-// TyCtxt.Synthesized(implementation, layer, []) (a virtual function has no own generic parameters); where TyCtxt.Applies of the slot's
+// TyCtxt.Synthesized(implementation, layer, [], []) (a virtual function has no own generic parameters); where TyCtxt.Applies of the slot's
 // original at the layer that declares the original is false, the entry is null and the body is checked only (R4-M28); a call that
 // dispatches loads SlotOf of the function it runs (a Virtual callee names the original, X5; a virtual witness, SPEC 6.4.6).
 

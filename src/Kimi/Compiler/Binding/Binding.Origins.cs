@@ -1,18 +1,28 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using Kimi.Compiler.Parsing;
 
 namespace Kimi.Compiler;
 
-// Origin expressions (SPEC 15.3.1, 15.3.6): atoms interned per binder, kind and slot (OriginAtom), meets interned in one canonical
-// operand order (Meet, CompareOrigins) and the context-free outlives facts (OriginOutlives); an obligation's record is
+// Origin expressions (SPEC 15.3.1, 15.3.6): atoms interned per binder, kind and slot (OriginAtom, kept in the binder's module's
+// NodeColumns: OriginAtomRows, DECISIONS BU-220), meets interned in one canonical operand order (Meet, CompareOrigins) and the
+// context-free outlives facts (OriginOutlives); an obligation's record is
 // Binding.Obligations.cs's. Declaration schemas are Binding.Origins.Schemas.cs's; a Type position's written and omitted Origins
 // Binding.Origins.Annotations.cs's.
 public sealed partial class Binding
 {
-    private readonly Dictionary<(Koto Binder, OriginKind Kind, int Slot), BoundOrigin> originAtoms = new();
+    // An owner-keyed interner's row key (KeyedRow: originAtoms, openOrigins): an atom's kind, then its slot.
+    private static readonly Func<BoundOrigin, (OriginKind Kind, int Slot)> AtomKey = static x => (x.Kind, x.Slot);
+
+    private readonly OriginAtomRows originAtoms;
     private readonly Dictionary<int, List<BoundOrigin>> originExpressions = new();
+    private long originRowProbes;
+
+    /// <summary>Gets the entries the owner-keyed Origin interners' row searches (KeyedRow: originAtoms, openOrigins) probed over the
+    /// Binding's lifetime, which a scaling check reads.</summary>
+    internal long OriginRowWork => this.originRowProbes;
 
     internal static bool IsBorrow(SemanticsKind semantics) => semantics is SemanticsKind.Ref or SemanticsKind.Uniq or SemanticsKind.ObjRef or SemanticsKind.ObjUniq;
 
@@ -33,28 +43,7 @@ public sealed partial class Binding
 
         if (a.Binder is { } left && b.Binder is { } right)
         {
-            order = StringComparer.Ordinal.Compare(left.CodeContext.Kotonoha.Name, right.CodeContext.Kotonoha.Name);
-            if (order == 0)
-            {
-                order = StringComparer.Ordinal.Compare(left.CodeContext.SourceDocument?.Path, right.CodeContext.SourceDocument?.Path);
-            }
-
-            if (order == 0)
-            {
-                order = left.Span.Start.CompareTo(right.Span.Start);
-            }
-
-            if (order == 0)
-            {
-                order = left.Span.End.CompareTo(right.Span.End);
-            }
-
-            // Source-less generated fragments still have immutable source snapshots. Never order by addresses.
-            if (order == 0)
-            {
-                order = StringComparer.Ordinal.Compare(left.CodeContext.SourceDocument?.SourceText, right.CodeContext.SourceDocument?.SourceText);
-            }
-
+            order = CompareNodes(left, right);
             if (order != 0)
             {
                 return order;
@@ -74,6 +63,29 @@ public sealed partial class Binding
         }
 
         return order;
+    }
+
+    // A declaration node's place among every source: its module, its source path, its span and, for a source-less generated fragment,
+    // its immutable source snapshot. Never order by addresses.
+    private static int CompareNodes(Koto left, Koto right)
+    {
+        var order = StringComparer.Ordinal.Compare(left.CodeContext.Kotonoha.Name, right.CodeContext.Kotonoha.Name);
+        if (order == 0)
+        {
+            order = StringComparer.Ordinal.Compare(left.CodeContext.SourceDocument?.Path, right.CodeContext.SourceDocument?.Path);
+        }
+
+        if (order == 0)
+        {
+            order = left.Span.Start.CompareTo(right.Span.Start);
+        }
+
+        if (order == 0)
+        {
+            order = left.Span.End.CompareTo(right.Span.End);
+        }
+
+        return order != 0 ? order : StringComparer.Ordinal.Compare(left.CodeContext.SourceDocument?.SourceText, right.CodeContext.SourceDocument?.SourceText);
     }
 
     /// <summary>Proves only context-independent outlives facts; lack of proof is not equality.</summary>
@@ -133,6 +145,11 @@ public sealed partial class Binding
 
         return false;
     }
+
+    // The atom an owner-keyed interner puts at its owner's key (KeyedRow: originAtoms, openOrigins), which is its own.
+    private static BoundOrigin Interned(BoundOrigin atom, Koto owner, (OriginKind Kind, int Slot) key)
+        => ReferenceEquals(atom.Binder, owner) && (atom.Kind, atom.Slot) == key ? atom
+            : throw new InvalidOperationException($"{atom} was interned at ({owner}, {key.Kind}, {key.Slot}) (InternalInvariant; DECISIONS BU-220).");
 
     private BoundOrigin OriginAtom(Koto binder, OriginKind kind, int slot, string? name = null)
     {
@@ -248,6 +265,30 @@ public sealed partial class Binding
         finally
         {
             this.originScratch.Return(scratch, clearArray: true);
+        }
+    }
+
+    /// <summary>The `originAtoms` family's one accessor (DECISIONS BU-220): a kept interner, a binder's atoms in its module's NodeColumns
+    /// at its SyntaxId, one KeyedRow of them by kind and slot, never reset; a renumbering moves the row with its binder. Its members keep
+    /// the names and the tuple key its readers use.</summary>
+    private readonly struct OriginAtomRows(Binding binding)
+    {
+        internal BoundOrigin this[(Koto Binder, OriginKind Kind, int Slot) key]
+        {
+            set => KeyedRow.Put(ref HirTables.Of(key.Binder).Families.OriginAtoms.Ref(key.Binder.SyntaxId), Interned(value, key.Binder, (key.Kind, key.Slot)), AtomKey, ref binding.originRowProbes);
+        }
+
+        internal bool TryGetValue((Koto Binder, OriginKind Kind, int Slot) key, [NotNullWhen(true)] out BoundOrigin? origin)
+            => (origin = key.Binder.SyntaxOwner is { } table ? KeyedRow.Find(table.Hir.Families.OriginAtoms.Get(key.Binder.SyntaxId), (key.Kind, key.Slot), AtomKey, ref binding.originRowProbes) : null) is not null;
+
+        internal void Add((Koto Binder, OriginKind Kind, int Slot) key, BoundOrigin origin)
+        {
+            if (this.TryGetValue(key, out _))
+            {
+                throw new ArgumentException($"An atom is already interned at {key}.", nameof(key));
+            }
+
+            this[key] = origin;
         }
     }
 }

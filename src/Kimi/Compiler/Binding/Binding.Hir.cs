@@ -2,7 +2,7 @@
 
 // Owns publication of HIR facts from the Binding pass: a Final pass's Check publishes between its failure producers and its counting.
 // Input: that pass's decisions and syntax slots. Output: Op, Completion, Adjust and Place columns (the jump binding writes the jump
-// target rows).
+// target rows) and the plan rows' published facts, an explicit discard's in-place destruction among them (DestroysInPlace).
 // Publication is versioned and reused; it decides nothing beyond Binding's existing facts.
 // The walk is a lasting component: it holds what a node's parent gives it (the parent, its Op, the position, the capability its use needs,
 // whether it is an unresolved operation) and passes those to the rows' rules, which read no walk state.
@@ -24,7 +24,7 @@ public sealed partial class Binding
 
     // SPEC 22.10.5: whether a formatting write writes a literal text (a text segment, or a string literal written as a value), whose bytes
     // are known and which needs no Type argument; the one classification the published formatting facts (HasFacts) and the MIR builder's
-    // capacity estimate read (DECISIONS R5-M79).
+    // interpolation terms read (DECISIONS R5-M79).
     internal static bool WritesText(CallPlan write) => write.ArgumentOperations[1].Source is StringLiteralKoto;
 
     // Returns the pass the published columns describe (0: none), by which the MIR builder caches its program. A Final pass published
@@ -40,17 +40,15 @@ public sealed partial class Binding
         return this.hirVersion;
     }
 
-    // The columns of every module, the library included, from the pass's facts.
+    // The columns of the pass's modules, in their order, from the pass's facts.
     private void PublishPass()
     {
         this.hirVersion = this.storageVersion;
         var publisher = this.hirPublisher ??= new(this);
-        foreach (var module in this.compilation.SourceModules)
+        for (var i = 0; i < this.pass.Count; i++)
         {
-            publisher.Publish(module.Syntax, module.RootKoto);
+            publisher.Publish(this.pass[i].Syntax, this.pass[i].RootKoto);
         }
-
-        publisher.Publish(this.Library.Kotonoha.Syntax, this.Library.Kotonoha.RootKoto);
     }
 
     // One walk of the tree through its child slots; each node's position follows from the slot its parent holds it in.
@@ -118,6 +116,11 @@ public sealed partial class Binding
 
                 // Every node a publish reaches gets its discarded Type, null where it is none, so no row keeps an earlier pass's (BU-98).
                 HirTables.PlanFor(node, discardedType is not null).DiscardedType = discardedType;
+                if (node is DiscardKoto discard)
+                {
+                    var inPlace = DestroysInPlace(discard); // SPEC 14.2.4: a raw Place's Take destroyed in place (HirTables.DestroysInPlace).
+                    HirTables.PlanFor(node, inPlace).Flag = inPlace;
+                }
             }
 
             // Every take of the node has written its row: its consumer's, then its container's discard row (DECISIONS BU-8).
@@ -185,7 +188,7 @@ public sealed partial class Binding
             if (op == HirOp.Literal && KotoHelper.SignedNumber(node, out var negative) is { } number)
             {
                 var value = node.BoundType is { IsFloatingPoint: true } type ? ScalarTypes.TryFloatLiteral(number, type, negative, out var bits) ? (Int128)bits : null
-                    : number.TryGetIntegerMagnitude(out var magnitude) ? (Int128?)ScalarTypes.Normalize(unchecked((Int128)(negative ? 0 - magnitude : magnitude)), ScalarTypes.Width(node.BoundType))
+                    : number.TryGetIntegerMagnitude(out var magnitude) ? (Int128?)ScalarTypes.Normalize(unchecked((Int128)(negative ? 0 - magnitude : magnitude)), node.BoundType?.Width ?? 0)
                     : null;
                 HirTables.PlanFor(node, value is not null).Folded = value;
             }
@@ -241,13 +244,13 @@ public sealed partial class Binding
         // The layers a node's consumer follows before it projects or borrows the node (SPEC 3.4.3, 13.5.5): every reference, object
         // handle and pair layer of the receiver of a stored Field, a Tuple element, a sequence's metadata or a built-in element, and the pair
         // layers Binding follows at a receiver or Subject down to their terminal target.
-        private byte Layers(Koto node, Koto? parent, HirOp parentOp)
+        private ushort Layers(Koto node, Koto? parent, HirOp parentOp)
         {
             var projected = (parentOp is HirOp.Field or HirOp.Index || (parentOp == HirOp.PrimitiveOp && parent is MemberAccessKoto)) && ReferenceEquals(Operand(parent), node);
             var terminal = projected || !TryPairLayer(node.BoundType, out _, out _) || binding.ImplicitPairAdmitted(node) == SemanticsMask.None ? null : binding.PairTerminalOf(node);
             var type = node.BoundType;
-            byte layers = 0;
-            while ((projected || terminal is not null) && layers < 16 && !ReferenceEquals(type, terminal) && TyCtxt.Layer(type, out type, out _) != HirPlaceKind.Value)
+            ushort layers = 0;
+            while ((projected || terminal is not null) && !ReferenceEquals(type, terminal) && TyCtxt.Layer(type, out type, out _) != HirPlaceKind.Value)
             {
                 layers++;
             }

@@ -22,7 +22,7 @@ public class FunctionParameterIdentityBindingTest
     [InlineData("() -> () -> bool", "() -> (()) -> bool", false)]
     public void ParameterListIdentityPreservesArityAndTupleElements(string left, string right, bool same)
     {
-        var c = MinimalEmissionTest.Analyze("public struct Target<T>\n    T is " + right + "\npublic func use(value: Target<" + left + ">) => ()");
+        var c = MinimalEmissionTest.Analyze("public struct Target<T>\n    T is " + right + "\nfunc use(value: Target<" + left + ">) => ()");
         Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
         Assert.Equal(same, c.Binding.Result.IsComplete);
         Assert.Equal(same, c.Bind().IsComplete);
@@ -83,7 +83,7 @@ public class FunctionParameterIdentityBindingTest
     [InlineData("((T,))", "((i32,))", true)]
     public void SubstitutionRetainsParameterListStructure(string parameters, string required, bool valid)
     {
-        var c = MinimalEmissionTest.Analyze("public struct Target<T, U>\n    U is " + parameters + " -> bool\npublic func use(value: Target<i32, " + required + " -> bool>) => ()");
+        var c = MinimalEmissionTest.Analyze("public struct Target<T, U>\n    U is " + parameters + " -> bool\nfunc use(value: Target<i32, " + required + " -> bool>) => ()");
         Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
         Assert.Equal(valid, c.Binding.Result.IsComplete);
         Assert.Equal(valid, CompilationTestHelper.Reload(c).Bind().IsComplete);
@@ -92,7 +92,7 @@ public class FunctionParameterIdentityBindingTest
     [Fact]
     public void ChangingParameterArityRevokesAndRestoresProofs()
     {
-        const string source = "public struct Target<T>\n    T is () -> bool\npublic func use(value: Target<() -> bool>) => ()";
+        const string source = "public struct Target<T>\n    T is () -> bool\nfunc use(value: Target<() -> bool>) => ()";
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete);
         var function = Assert.IsType<FunctionTypeKoto>(c.Kotonoha.RootKoto.NestedContainers.Single().ConstraintNodes[0].Right);
@@ -110,7 +110,7 @@ public class FunctionParameterIdentityBindingTest
     [Fact]
     public void WarmCanonicalParameterListsAllocateNothing()
     {
-        var c = MinimalEmissionTest.Analyze("public struct Target<T, U>\n    T is (i32,) -> bool\n    U is ((),) -> bool\npublic func use(value: Target<(i32) -> bool, (()) -> bool>) => ()");
+        var c = MinimalEmissionTest.Analyze("public struct Target<T, U>\n    T is (i32,) -> bool\n    U is ((),) -> bool\nfunc use(value: Target<(i32) -> bool, (()) -> bool>) => ()");
         Assert.True(c.Bind().IsComplete);
         Assert.Equal(0, AllocationMeasurement.Measure(() =>
         {

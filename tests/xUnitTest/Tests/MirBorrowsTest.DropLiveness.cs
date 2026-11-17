@@ -75,8 +75,8 @@ public sealed partial class MirBorrowsTest
 
     // SPEC 5.2.1 condition 3, 23.1.2 (R4-M153's revision 2, implementation review 2's N-b): a location records the departure a counted pass
     // gives before one only the drop tier gives, whatever the order its entries were found in: `t@follow = …` departs t.y's pointer, which
-    // the live s keeps (its Warning, anchored at t.y.data and witnessed by s's next use), and t.x's, which only the deep d keeps, so only
-    // the first is recorded, with no depth limit, in both orders of the declarations; at depth 10 d's Drop is no use.
+    // the live s keeps (its Warning, which carries no fact, G673), and t.x's, which only the deep d keeps, so only the first is recorded,
+    // with no depth limit, which the drop tier's would add, in both orders of the declarations; at depth 10 d's Drop is no use.
     [Theory]
     [InlineData("y first", 40)]
     [InlineData("x first", 40)]
@@ -91,7 +91,7 @@ public sealed partial class MirBorrowsTest
             "    t@follow = BB.init()\n    let e = s\n    return\n");
         var program = Analyze(c);
         Assert.Equal(["t@follow = BB.init() OwnStepDeparture_Kd"], DepthRecords(c, program, "h").Select(static x => $"{x.Line} {x.Code}"));
-        Assert.Equal(["Anchor t.y.data", "Use s"], FactsOf(c, program, "h"));
+        Assert.Empty(FactsOf(c, program, "h"));
     }
 
     // SPEC 23.1.1, 23.1.2 (R4-M153's revision 2, implementation review 2's B2): where an unsupported part and a part past the bound meet at

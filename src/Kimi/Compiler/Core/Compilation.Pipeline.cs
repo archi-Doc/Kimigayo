@@ -107,6 +107,25 @@ public partial class Compilation
         this.PublishMirRecords();
     }
 
+    /// <summary>Collects the checked set of an analyzed program (SPEC 8.15.3: its layout obligations are judged at check), whose records join
+    /// the program's report, by the collector's round rule (PLAN G951): a run that missed (its set holds no version) built bodies the
+    /// analyses' one stepping path steps before the next run, until a run is clean.</summary>
+    /// <param name="analysis">The analysis that ran on the program.</param>
+    /// <param name="collector">The collector.</param>
+    /// <param name="program">The program.</param>
+    /// <param name="rootModules">The root range of both.</param>
+    /// <returns>The checked set.</returns>
+    internal static Backend.CheckedSet Collect(Mir.MirAnalysis analysis, Backend.InstanceCollector collector, Mir.MirProgram program, int rootModules)
+    {
+        var set = collector.Run(program, rootModules);
+        for (; set.Version != program.Version; set = collector.Run(program, rootModules))
+        {
+            analysis.Step(program, rootModules);
+        }
+
+        return set;
+    }
+
     /// <summary>Checks the established inputs (SPEC 23.2.2): the one phase sequence of a check, which every command and the check service
     /// run through <c>Project</c>. Final Binding, the startup check (a test build's test startup, else the project's output kind; IMPL
     /// 20.6.1) and the analysis each run whatever an earlier one found (SPEC 23.1.2) and publish their records; an accepted test build
@@ -136,15 +155,17 @@ public partial class Compilation
     }
 
     /// <summary>Gets whether the latest <see cref="Analyze"/> judged a function's own body without a problem (R6-check H6, H0b §2.1;
-    /// GR-1a): its MIR body exists, the analyses ran on it (no validator finding, <c>MirBody.HasFinding</c>, DECISIONS R5-M183), no
-    /// construction record lies in it (<c>MirBody.HasConstructionRecord</c>) and no merged problem of the report has a member in it
-    /// (DECISIONS R5-M185); hover's ownership line reads it. A record made without a body in hand, a collection record or a module's broken
-    /// HIR contract, is outside it.</summary>
+    /// GR-1a): its MIR body exists, the analyses ran on it (no validator finding, <c>MirBody.HasFinding</c>, DECISIONS R5-M183, and A2's
+    /// table holds it, <c>MirDropTable.Holds</c>: the one stepping path stepped it, so a body a lookup built and nothing stepped is not
+    /// judged, PLAN G951), no construction record lies in it (<c>MirBody.HasConstructionRecord</c>) and no merged problem of the report
+    /// has a member in it (DECISIONS R5-M185); hover's ownership line reads it. A record made without a body in hand, a collection record or
+    /// a module's broken HIR contract, is outside it.</summary>
     /// <param name="function">The function's symbol.</param>
     /// <returns>Whether its body was judged without a problem; false before an analysis, after invalidation and without a body.</returns>
     internal bool JudgedWithoutProblem(BindingSymbol function)
     {
-        if (this.mir is not { } program || program[new(function, Mir.MirBodyKind.Fn)] is not { HasFinding: false, HasConstructionRecord: false } body)
+        if (this.mir is not { } program || program[new(function, Mir.MirBodyKind.Fn)] is not { HasFinding: false, HasConstructionRecord: false } body
+            || !program.Drops.Holds(body.Ordinal))
         {
             return false;
         }
@@ -168,7 +189,7 @@ public partial class Compilation
     /// <param name="source">The reference.</param>
     /// <returns>The node.</returns>
     internal Koto SyntaxOf(SourceRef source)
-        => (source.Module < this.SourceModules.Length ? this.SourceModules[source.Module] : this.Library.Kotonoha).Syntax.Nodes[source.Id]!;
+        => (source.IsLibrary ? this.Library.Kotonoha : this.SourceModules[source.Module]).Syntax.Nodes[source.Id]!;
 
     /// <summary>Analyzes the MIR of the latest Binding pass that <see cref="ConstructMir"/> builds and validates, once per pass, and
     /// collects its checked set after the analyses, whatever they found (K package 4.3).</summary>
@@ -180,21 +201,20 @@ public partial class Compilation
             return CompilerThread.Run(this, static s => s.BuildMir());
         }
 
-        var program = (this.mirAnalysis ??= new(this.Types)).Run(this.ConstructMir(), this.SourceModules.Length);
-        this.Collect(program);
+        var analysis = this.mirAnalysis ??= new(this.Types);
+        var program = analysis.Run(this.ConstructMir(), this.SourceModules.Length);
+        Collect(analysis, this.instances ??= new(this.Types, this.Layout), program, this.SourceModules.Length);
+        program.Enter(Mir.MirProgram.Phase.Sealed); // Later lookups read only (PLAN G951).
         return program;
     }
 
     /// <summary>Builds and validates the MIR of the latest Binding pass, once per pass: the first step of <see cref="BuildMir"/>, and the
-    /// work <c>--compiler-pipeline</c>'s stage 3 times (R6-check H0 D-c5).</summary>
+    /// work <c>--compiler-pipeline</c>'s stage 3 times (R6-check H0 D-c5). The root range is the source modules' (PLAN G951 U2, DECISIONS
+    /// R9-M9): their bodies and the library's default templates; a library body is built where a lookup of the version demands it.</summary>
     /// <returns>The program, with its construction records and validator findings.</returns>
-    internal Mir.MirProgram ConstructMir() => (this.mirBuilder ??= new(this)).Build();
+    internal Mir.MirProgram ConstructMir() => (this.mirBuilder ??= new(this)).Build(this.SourceModules.Length);
 
     internal void InvalidateMir() => this.mir = null;
-
-    // The checked set of a built and validated program (SPEC 8.15.3: its layout obligations are judged at check), whose
-    // records join the program's report.
-    private void Collect(Mir.MirProgram program) => (this.instances ??= new(this.Types, this.Layout)).Run(program, this.SourceModules.Length);
 }
 
 /// <summary>The summary of a compilation's analysis.</summary>

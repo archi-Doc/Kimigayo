@@ -194,7 +194,7 @@ internal static class NativeAllocationAudit
                 continue;
             }
 
-            foreach (var block in program.Bodies[set.Items[item].BodyOrdinal].Blocks)
+            foreach (var block in program.Body(set.Items[item].BodyOrdinal).Blocks)
             {
                 if (block.Terminator is { Kind: MirTerminatorKind.Call, Callee.Symbol.LibraryDeclaration: KimiDeclarationId.StorageTransferBytes })
                 {

@@ -10,7 +10,7 @@ namespace XunitTest;
 public class PropertyProjectionApiAccessBindingTest
 {
     [Theory]
-    [InlineData("public let item: S.C.Element\n        private get")]
+    [InlineData("public let item: S.(C).Element\n        private get")]
     [InlineData("public computed item: S.Element\n        private get() -> i32 => 1")]
     public void RestrictedAccessorsCannotHideHeaderProjectionDomains(string declaration)
     {
@@ -23,8 +23,8 @@ public class PropertyProjectionApiAccessBindingTest
     }
 
     [Theory]
-    [InlineData("get() -> S.C.Element => 1")]
-    [InlineData("get() -> i32 => 1\n        set(value: S.C.Element) -> () => ()")]
+    [InlineData("get() -> S.(C).Element => 1")]
+    [InlineData("get() -> i32 => 1\n        set(value: S.(C).Element) -> () => ()")]
     public void AdditionalAccessorSignaturesRetainProjectionDomains(string accessors)
     {
         var c = MinimalEmissionTest.Analyze($"contract C\n    associate Element\npublic struct S\n    Self is C\n    associate C.Element is i32\npublic group Api\n    public computed item: i32\n        {accessors}");
@@ -40,16 +40,16 @@ public class PropertyProjectionApiAccessBindingTest
     [InlineData("public", "public", true)]
     public void HeaderQualifiersAndContractsUseTheirEffectiveDomains(string typeAccess, string contractAccess, bool valid)
     {
-        var c = MinimalEmissionTest.Analyze($"{contractAccess} contract C\n    associate Element\n{typeAccess} struct S\n    Self is C\n    associate C.Element is i32\npublic struct Api\n    public let item: S.C.Element");
+        var c = MinimalEmissionTest.Analyze($"{contractAccess} contract C\n    associate Element\n{typeAccess} struct S\n    Self is C\n    associate C.Element is i32\npublic struct Api\n    public let item: S.(C).Element");
         Check(c, valid, accessor: false);
     }
 
     [Theory]
     [InlineData("S.Element")]
-    [InlineData("(S.C.Element)")]
-    [InlineData("(i32, [1 of S.C.Element])")]
-    [InlineData("ref/S.C.Element during static")]
-    [InlineData("(S.C.Element) -> ()")]
+    [InlineData("(S.(C).Element)")]
+    [InlineData("(i32, [1 of S.(C).Element])")]
+    [InlineData("ref/S.(C).Element during static")]
+    [InlineData("(S.(C).Element) -> ()")]
     public void NestedHeaderProjectionsRetainAccessChecks(string type)
     {
         var c = MinimalEmissionTest.Analyze($"public contract C\n    associate Element\nstruct S\n    Self is C\n    associate C.Element is i32\npublic struct Api\n    public let item: {type}");
@@ -59,7 +59,7 @@ public class PropertyProjectionApiAccessBindingTest
     [Fact]
     public void ConstructedHeaderQualifierChecksItsArguments()
     {
-        var c = MinimalEmissionTest.Analyze("struct Hidden\npublic contract C\n    associate Element\npublic struct Box<T>\n    Self is C\n    associate C.Element is i32\npublic struct Api\n    public let item: Box<Hidden>.C.Element");
+        var c = MinimalEmissionTest.Analyze("struct Hidden\npublic contract C\n    associate Element\npublic struct Box<T>\n    Self is C\n    associate C.Element is i32\npublic struct Api\n    public let item: Box<Hidden>.(C).Element");
         Check(c, false, accessor: false);
     }
 
@@ -68,7 +68,7 @@ public class PropertyProjectionApiAccessBindingTest
     [InlineData("internal", true)]
     public void RequirementHeadersUseTheContractDomain(string access, bool valid)
     {
-        var c = MinimalEmissionTest.Analyze($"contract C\n    associate Element\npublic struct S\n    Self is C\n    associate C.Element is i32\n{access} contract Api\n    property item: S.C.Element has get");
+        var c = MinimalEmissionTest.Analyze($"contract C\n    associate Element\npublic struct S\n    Self is C\n    associate C.Element is i32\n{access} contract Api\n    property item: S.(C).Element has get");
         Check(c, valid, accessor: false);
     }
 
@@ -78,7 +78,7 @@ public class PropertyProjectionApiAccessBindingTest
     [InlineData("internal ", true)]
     public void SetterInputProjectionUsesItsOwnDomain(string restriction, bool valid)
     {
-        var c = MinimalEmissionTest.Analyze($"contract C\n    associate Element\npublic struct S\n    Self is C\n    associate C.Element is i32\npublic struct Api\n    public computed item: i32\n        get() -> i32 => 1\n        {restriction}set(value: (i32, S.C.Element)) -> () => ()");
+        var c = MinimalEmissionTest.Analyze($"contract C\n    associate Element\npublic struct S\n    Self is C\n    associate C.Element is i32\npublic struct Api\n    public computed item: i32\n        get() -> i32 => 1\n        {restriction}set(value: (i32, S.(C).Element)) -> () => ()");
         Check(c, valid, accessor: true);
     }
 
@@ -87,7 +87,7 @@ public class PropertyProjectionApiAccessBindingTest
     [InlineData("private ", true)]
     public void GetterResultProjectionUsesItsOwnDomain(string restriction, bool valid)
     {
-        var c = MinimalEmissionTest.Analyze($"contract C\n    associate Element\npublic struct S\n    Self is C\n    associate C.Element is i32\npublic struct Api\n    public computed item: i32\n        {restriction}get() -> S.C.Element => 1");
+        var c = MinimalEmissionTest.Analyze($"contract C\n    associate Element\npublic struct S\n    Self is C\n    associate C.Element is i32\npublic struct Api\n    public computed item: i32\n        {restriction}get() -> S.(C).Element => 1");
         Check(c, valid, accessor: true);
     }
 
@@ -96,7 +96,7 @@ public class PropertyProjectionApiAccessBindingTest
     [InlineData("private ", true)]
     public void NormalizedReceiverProjectionUsesItsOwnDomain(string restriction, bool valid)
     {
-        var c = MinimalEmissionTest.Analyze($"contract C\n    associate Element\npublic struct Api\n    Self is C\n    associate C.Element is Api\n    public computed item: i32\n        {restriction}get(self: ref/Api.C.Element) -> i32 => 1");
+        var c = MinimalEmissionTest.Analyze($"contract C\n    associate Element\npublic struct Api\n    Self is C\n    associate C.Element is Api\n    public computed item: i32\n        {restriction}get(self: ref/Api.(C).Element) -> i32 => 1");
         Check(c, valid, accessor: true);
     }
 
@@ -105,15 +105,15 @@ public class PropertyProjectionApiAccessBindingTest
     [InlineData("internal", true)]
     public void RequirementAccessorSignaturesUseTheContractDomain(string access, bool valid)
     {
-        var c = MinimalEmissionTest.Analyze($"contract C\n    associate Element\npublic struct S\n    Self is C\n    associate C.Element is i32\n{access} contract Api\n    property item: i32\n        get() -> S.C.Element");
+        var c = MinimalEmissionTest.Analyze($"contract C\n    associate Element\npublic struct S\n    Self is C\n    associate C.Element is i32\n{access} contract Api\n    property item: i32\n        get() -> S.(C).Element");
         Check(c, valid, accessor: true);
     }
 
     [Theory]
-    [InlineData("public struct Api\n    private let item: S.C.Element")]
-    [InlineData("struct Api\n    public let item: S.C.Element\n        private get")]
-    [InlineData("public struct Api\n    public computed item: i32\n        get() -> i32\n            let value: S.C.Element = 1\n            return value")]
-    [InlineData("public group Api\n    public let item: i32 = 1@S.C.Element")]
+    [InlineData("public struct Api\n    private let item: S.(C).Element")]
+    [InlineData("struct Api\n    public let item: S.(C).Element\n        private get")]
+    [InlineData("public struct Api\n    public computed item: i32\n        get() -> i32\n            let value: S.(C).Element = 1\n            return value")]
+    [InlineData("public group Api\n    public let item: i32 = 1@S.(C).Element")]
     public void PrivateDomainsAndImplementationUsesRemainValid(string declaration)
     {
         var c = MinimalEmissionTest.Analyze($"contract C\n    associate Element\npublic struct S\n    Self is C\n    associate C.Element is i32\n{declaration}");
@@ -125,8 +125,8 @@ public class PropertyProjectionApiAccessBindingTest
     [InlineData(true)]
     public void InvalidProjectionSignaturesCannotPublishConformanceWitnesses(bool inAccessor)
     {
-        var header = inAccessor ? "i32" : "S.C.Element";
-        var result = inAccessor ? "S.C.Element" : "i32";
+        var header = inAccessor ? "i32" : "S.(C).Element";
+        var result = inAccessor ? "S.(C).Element" : "i32";
         var c = MinimalEmissionTest.Analyze($"contract C\n    associate Element\npublic struct S\n    Self is C\n    associate C.Element is i32\npublic contract Required\n    property item: i32 has get\npublic struct Api\n    Self is Required\n    public computed item: {header}\n        get() -> {result} => 1");
         Check(c, false, inAccessor);
         var api = c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "Api");
@@ -144,8 +144,8 @@ public class PropertyProjectionApiAccessBindingTest
     public void RebindingAndReloadRecheckProjectionDomains(bool inAccessor, string access, bool valid)
     {
         var declaration = inAccessor
-            ? $"public computed item: i32\n        {(access == "public" ? string.Empty : access + " ")}get() -> S.C.Element => 1"
-            : $"{access} let item: S.C.Element";
+            ? $"public computed item: i32\n        {(access == "public" ? string.Empty : access + " ")}get() -> S.(C).Element => 1"
+            : $"{access} let item: S.(C).Element";
         var c = MinimalEmissionTest.Analyze($"contract C\n    associate Element\npublic struct S\n    Self is C\n    associate C.Element is i32\npublic struct Api\n    {declaration}");
         Check(c, valid, inAccessor);
         Assert.Equal(valid, c.Bind().IsComplete);
@@ -161,7 +161,7 @@ public class PropertyProjectionApiAccessBindingTest
     public void ReplacementClearsAndRestoresPropertyVerification(bool inAccessor)
     {
         const string prefix = "contract C\n    associate Element\npublic struct S\n    Self is C\n    associate C.Element is i32\npublic struct Api\n    ";
-        var c = MinimalEmissionTest.Analyze(prefix + (inAccessor ? "public computed item: i32\n        get() -> S.C.Element => 1" : "public let item: S.C.Element"));
+        var c = MinimalEmissionTest.Analyze(prefix + (inAccessor ? "public computed item: i32\n        get() -> S.(C).Element => 1" : "public let item: S.(C).Element"));
         Check(c, false, inAccessor);
         var property = Property(c);
         var original = inAccessor ? (Koto)property.GetAccessor(PropertyAccessorKind.Get)! : property.TypeKoto!;
@@ -184,7 +184,7 @@ public class PropertyProjectionApiAccessBindingTest
     [Fact]
     public void WarmPropertyProjectionChecksAllocateNothing()
     {
-        var c = MinimalEmissionTest.Analyze("public contract C\n    associate Element\npublic struct S\n    Self is C\n    associate C.Element is i32\npublic struct Api\n    public computed item: S.C.Element\n        get() -> S.Element => 1\n        set(value: S.C.Element) -> () => ()");
+        var c = MinimalEmissionTest.Analyze("public contract C\n    associate Element\npublic struct S\n    Self is C\n    associate C.Element is i32\npublic struct Api\n    public computed item: S.(C).Element\n        get() -> S.Element => 1\n        set(value: S.(C).Element) -> () => ()");
         Assert.True(c.Bind().IsComplete);
         Assert.Equal(0, AllocationMeasurement.Measure(() =>
         {

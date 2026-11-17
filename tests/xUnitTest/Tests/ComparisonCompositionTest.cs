@@ -224,7 +224,7 @@ public class ComparisonCompositionTest
         let seven = 7
         let held = Held<i32>.init(seven@ref)
         let box = Box<Box<Key>>.init(Box<Key>.init(Key.init(3)))
-        require (a@ref, 0.5) < (b@ref, 0.5) and (1, (2.0, a@ref)) != (1, (2.0, b@ref)) and pair.equals(pair@ref) else => $abort("closed")
+        require (a@ref, 0.5) < (b@ref, 0.5) and (1, (2.0, a@ref)) != (1, (2.0, b@ref)) and pair == pair@ref else => $abort("closed")
         require (held@ref, 1) == (held@ref, 1) and (box@ref, 0.5) <= (box@ref, 1.5) else => $abort("conditional")
         require same(3, 3) and before(4, 5) else => $abort("generic")
         """;
@@ -329,7 +329,7 @@ public class ComparisonCompositionTest
     [Theory]
     [InlineData("let x = (1, true) < (1, false)")]
     [InlineData("let x = (1, 2) == (true, 2)")]
-    [InlineData("let a = (0.0, 1)\nlet b = (1.0, 2)\nlet invalid = a.compare(b@ref)")]
+    [InlineData("func order<T>(left: ref/T, right: ref/T) -> i32\n    T is Comparable\n    return left.compare(right)\nlet a = (0.0, 1)\nlet b = (1.0, 2)\nlet invalid = order(a@ref, b@ref)")]
     public void CompositionDoesNotInventMissingCapabilitiesOrCoreConversions(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);
@@ -537,16 +537,12 @@ public class ComparisonCompositionTest
     private static IEnumerable<CallPlan> Comparisons(Kotonoha module)
         => KotoTree.Walk(module.RootKoto)
             .SelectMany(static x => Enumerable.Range(0, 8).Select(i => CallPlan.Of(x, i)).TakeWhile(static y => y is not null).OfType<CallPlan>())
-            .Where(static x => x is { Target.CompilerFunction: CompilerFunctionKind.BuiltinEquals or CompilerFunctionKind.BuiltinCompare } and
-                { ConformingType: not null });
+            .Where(static x => x is { Target.Definition.Kind: DispositionKind.Shim, ConformingType: not null } &&
+                TyCtxt.Contract(x.Target).LibraryDeclaration is KimiDeclarationId.Equatable or KimiDeclarationId.Comparable);
 
     // The view of a comparison call: its Contract (the built-in target's), Self and mode.
     private static ComparisonNode? View(Compilation c, CallPlan call)
-    {
-        var equality = call.Target.CompilerFunction == CompilerFunctionKind.BuiltinEquals;
-        var contract = c.Library.GetSymbol(equality ? KimiDeclarationId.Equatable : KimiDeclarationId.Comparable)!;
-        return c.Types.Comparison(contract, call.ConformingType!, call.TupleOperator);
-    }
+        => c.Types.Comparison(TyCtxt.Contract(call.Target), call.ConformingType!, call.TupleOperator);
 
     // A node: parts in parentheses, a built-in Type, a witness and its declaring instance, the requirement on a Self, or none.
     private static string Show(ComparisonNode node) => node.Kind switch
@@ -597,10 +593,12 @@ public class ComparisonCompositionTest
         // and its targets are the view's witness leaves, each at the same instance, in walk order.
         static bool Same(Compilation c, CallPlan call, ComparisonNode node)
         {
-            var contract = c.Library.GetSymbol(call.Target.CompilerFunction == CompilerFunctionKind.BuiltinEquals ? KimiDeclarationId.Equatable : KimiDeclarationId.Comparable)!;
+            var contract = TyCtxt.Contract(call.Target);
             var expected = new List<(BindingSymbol Target, Subst Instance)>();
             var leaves = new List<(BindingSymbol Target, Subst Instance)>();
-            return c.Types.Witnesses(contract.Contract!.OwnRequirement()!, call.ConformingType!, contract, null, null, expected) && Leaves(node, leaves) &&
+            var requirement = contract.Contract!.OwnRequirement()!;
+            var on = c.Types.Synthesized(requirement, call.ConformingType!, contract.Type!);
+            return c.Types.Witnesses(requirement, contract, on, null, expected) && Leaves(node, leaves) &&
                 expected.Count == leaves.Count && expected.Zip(leaves).All(static x => ReferenceEquals(x.First.Target, x.Second.Target) &&
                     ReferenceEquals(x.First.Instance, x.Second.Instance));
         }

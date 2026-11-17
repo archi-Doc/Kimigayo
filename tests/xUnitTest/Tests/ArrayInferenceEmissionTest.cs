@@ -73,7 +73,7 @@ public class ArrayInferenceEmissionTest
         var c = MinimalEmissionTest.Analyze("let value: u8 = 2\nlet row: [2 of _] = [1, value]\nif row[0] == 1 => Console.writeLine(\"ok\")");
         using var original = new StringWriter();
         Assert.True(c.Generate(original), MinimalEmissionTest.Describe(c));
-        var variable = c.Kotonoha.GeneratedFunction!.Body!.ChildNodes.OfType<VariableKoto>().Single(x => x.NameKoto.IdentifierName == "row");
+        var variable = c.Kotonoha.GeneratedFunction!.Body!.Children().OfType<VariableKoto>().Single(x => x.NameKoto.IdentifierName == "row");
         var array = Assert.IsType<FixedArrayTypeKoto>(variable.TypeKoto);
         array.ElementType.SetType(BoundType.String);
         Assert.True(c.Bind().IsComplete);

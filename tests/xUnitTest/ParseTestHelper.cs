@@ -18,14 +18,14 @@ internal static class ParseTestHelper
         Assert.True(KotoHelper.Replace(parent, node, placeholder));
         Assert.Null(node.Parent);
         Assert.Same(parent, placeholder.Parent);
-        Assert.Contains(placeholder, parent.ChildNodes);
-        Assert.DoesNotContain(node, parent.ChildNodes);
+        Assert.Contains(placeholder, parent.Children());
+        Assert.DoesNotContain(node, parent.Children());
         return node;
     }
 
     internal static void VerifyParents(Koto parent)
     {
-        foreach (var child in parent.ChildNodes)
+        foreach (var child in parent.Children())
         {
             Assert.Same(parent, child.Parent);
             if (parent.CodeContext.SourceDocument is not null)

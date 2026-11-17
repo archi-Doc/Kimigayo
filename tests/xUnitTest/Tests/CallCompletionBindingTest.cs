@@ -9,8 +9,8 @@ namespace XunitTest;
 public class CallCompletionBindingTest
 {
     [Theory]
-    [InlineData("Source.Hidden.Element", "i32")]
-    [InlineData("i32", "Source.Hidden.Element")]
+    [InlineData("Source.(Hidden).Element", "i32")]
+    [InlineData("i32", "Source.(Hidden).Element")]
     public void LateApiFailureInvalidatesEarlierCallPlan(string input, string result)
     {
         var c = MinimalEmissionTest.Analyze("contract Hidden\n    associate Element\npublic struct Source\n    Self is Hidden\n    associate Hidden.Element is i32\npublic group Api\n    public func identity(value: " + input + ") -> " + result + " => value\ngroup Consumer\n    func call() => Api.identity(1)");
@@ -63,7 +63,7 @@ public class CallCompletionBindingTest
         var c = MinimalEmissionTest.Analyze(Source("internal", "public"));
         var target = c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "Api").Members.OfType<FunctionKoto>().Single();
         var original = target.ReturnType!;
-        var donor = MinimalEmissionTest.Analyze(Source("internal", "public").Replace("-> Source.Hidden.Element", "-> i32", StringComparison.Ordinal));
+        var donor = MinimalEmissionTest.Analyze(Source("internal", "public").Replace("-> Source.(Hidden).Element", "-> i32", StringComparison.Ordinal));
         var replacement = donor.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "Api").Members.OfType<FunctionKoto>().Single().ReturnType!;
         ParseTestHelper.Detach(replacement, new CodeBlockKoto(replacement.CodeContext));
         Assert.True(KotoHelper.Replace(target, original, replacement));
@@ -95,7 +95,7 @@ public class CallCompletionBindingTest
     }
 
     private static string Source(string contractAccess, string apiAccess)
-        => contractAccess + " contract Hidden\n    associate Element\npublic struct Source\n    Self is Hidden\n    associate Hidden.Element is i32\n" + apiAccess + " group Api\n    public func identity(value: i32) -> Source.Hidden.Element => value\ngroup Consumer\n    func call() => Api.identity(1)";
+        => contractAccess + " contract Hidden\n    associate Element\npublic struct Source\n    Self is Hidden\n    associate Hidden.Element is i32\n" + apiAccess + " group Api\n    public func identity(value: i32) -> Source.(Hidden).Element => value\ngroup Consumer\n    func call() => Api.identity(1)";
 
     private static InvocationKoto Call(Compilation c)
         => Assert.IsType<InvocationKoto>(c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "Consumer").Members.OfType<FunctionKoto>().Single(x => x.Name == "call").ExpressionBody);

@@ -10,8 +10,8 @@ namespace XunitTest;
 // SPEC 23.4 to 23.4 end to end: documents, discovery, units and publication through the real check entry.
 public sealed class LspProjectDiagnosticTest : IDisposable
 {
-    private const string Valid = "public func one() -> i32 => 1\n";
-    private const string Broken = "public func one() -> i32 => 1 +\n";
+    private const string Valid = "func one() -> i32 => 1\n";
+    private const string Broken = "func one() -> i32 => 1 +\n";
     private const string Related = "{\"textDocument\":{\"publishDiagnostics\":{\"relatedInformation\":true},\"hover\":{\"contentFormat\":[\"markdown\"]}}}";
 
     private readonly string directory = Path.Combine(Path.GetTempPath(), "kimi-lsp-" + Guid.NewGuid().ToString("N"));
@@ -122,12 +122,12 @@ public sealed class LspProjectDiagnosticTest : IDisposable
         await client.OpenAsync(main, Valid);
         await client.ReceiveAsync(x => LspTestClient.IsLog(x, project + " (Product"));
 
-        await client.ChangeAsync(main, 2, LspTestClient.Range(0, 29, 0, 29, " +"));
+        await client.ChangeAsync(main, 2, LspTestClient.Range(0, 22, 0, 22, " +"));
         var diagnostics = await client.PublishAsync(main);
         Assert.NotEqual(0, diagnostics.GetArrayLength());
         Assert.Equal(1, diagnostics[0].GetProperty("severity").GetInt32());
 
-        await client.ChangeAsync(main, 3, LspTestClient.Range(0, 29, 0, 31, string.Empty));
+        await client.ChangeAsync(main, 3, LspTestClient.Range(0, 22, 0, 24, string.Empty));
         Assert.Equal(0, (await client.PublishAsync(main)).GetArrayLength());
     }
 
@@ -205,14 +205,14 @@ public sealed class LspProjectDiagnosticTest : IDisposable
     {
         var project = this.WriteProject("App", ("main.kimi", Valid));
         var other = this.PathOf("App", "other.kimi");
-        File.WriteAllText(other, "public func two() -> i32 => 2 +\n");
+        File.WriteAllText(other, "func two() -> i32 => 2 +\n");
         await using var client = new LspTestClient();
         await client.InitializeAsync();
         await client.OpenAsync(this.PathOf("App", "main.kimi"), Valid);
         Assert.NotEqual(0, (await client.PublishAsync(other)).GetArrayLength());
         Assert.Contains(client.Received, x => LspTestClient.IsLog(x, $"{project} (Product {WindowsProfile.Target})"));
 
-        File.WriteAllText(other, "public func two() -> i32 => 2\n");
+        File.WriteAllText(other, "func two() -> i32 => 2\n");
         await client.NotifyAsync("workspace/didChangeWatchedFiles", $"{{\"changes\":[{{\"uri\":\"{LspTestClient.Uri(other)}\",\"type\":2}}]}}");
         Assert.Equal(0, (await client.PublishAsync(other)).GetArrayLength());
     }
@@ -289,7 +289,7 @@ public sealed class LspProjectDiagnosticTest : IDisposable
     [Fact]
     public async Task DependencyDiagnosticsAreReportedByTheirConsumers()
     {
-        var library = this.WriteProject("Lib", ("main.kimi", "public func two() -> i32 => 2 +\n"), "PackageId=\"lib\" PackageVersion=\"1\"");
+        var library = this.WriteProject("Lib", ("main.kimi", "func two() -> i32 => 2 +\n"), "PackageId=\"lib\" PackageVersion=\"1\"");
         var project = this.WriteProject("App", ("main.kimi", Valid), string.Empty, "Lib={PackageId=\"lib\" PackageVersion=\"1\" Project=\"../Lib/Lib.kimiproj\"}");
         var resolution = DependencyResolver.Resolve(project, WindowsProfile.Target, Compilation.CurrentLanguageVersion, TestContext.Current.CancellationToken);
         DependencyLock.Update(DependencyLock.PathForProject(project), resolution, TestContext.Current.CancellationToken); // A check never restores.

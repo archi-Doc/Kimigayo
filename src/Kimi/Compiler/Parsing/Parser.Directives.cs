@@ -89,13 +89,10 @@ public static partial class Parser
 
         /// <summary>Moves to the next arm body or invalid item segment; the scan reported invalid placement and missing bodies.</summary>
         /// <param name="reader">The token reader inside the arm list.</param>
-        /// <param name="selected">Whether this arm is the one the <c>#switch</c> selects.</param>
-        /// <param name="header">The arm header, the excluding directive of an unselected arm.</param>
-        /// <param name="invalidItems">Whether the owner must source-check and discard items up to the next arm or list end.</param>
+        /// <param name="arm">The arm or invalid item segment at the reader.</param>
         /// <returns><see langword="false"/> after the arm list, whose <see cref="TokenKind.EndBlock"/> is then consumed.</returns>
-        internal bool TryNext(ref TokenReader reader, out bool selected, out SourceSpan header, out bool invalidItems)
+        internal bool TryNext(ref TokenReader reader, out CompileTimeSwitchArm arm)
         {
-            invalidItems = false;
             while (this.inArmList)
             {
                 reader.SkipSeparators();
@@ -112,29 +109,26 @@ public static partial class Parser
 
                 if (!IsCompileTimeCaseStart(ref reader))
                 {
-                    selected = false;
-                    header = default;
-                    invalidItems = true;
+                    arm = new(CompileTimeSwitchArmKind.InvalidItems, default);
                     return true;
                 }
 
                 var start = reader.CurrentTokenRange.Start;
                 reader.Advance(2);
                 SkipCompileTimeHeaderRemainder(ref reader);
-                header = SourceSpan.FromBounds(start, reader.PreviousEnd);
-                var arm = this.next++;
+                var header = SourceSpan.FromBounds(start, reader.PreviousEnd);
+                var index = this.next++;
                 if (!reader.TrySkipSeparatorsTo(TokenKind.StartBlock))
                 {
                     continue;
                 }
 
-                selected = arm == this.selection.Selected;
+                arm = new(index == this.selection.Selected ? CompileTimeSwitchArmKind.Selected : CompileTimeSwitchArmKind.Excluded, header);
                 return true;
             }
 
             this.inArmList = false;
-            selected = false;
-            header = default;
+            arm = default;
             return false;
         }
 
@@ -203,14 +197,7 @@ public static partial class Parser
         var groupStart = scan.CurrentTokenRange.Start;
         var header = scan.CurrentTokenRange;
         scan.Advance(2); // #switch has no subject or condition on its header.
-        var invalidSyntax = false;
-        if (scan.CanRead && scan.CurrentTokenKind is not (TokenKind.Separator or TokenKind.StartBlock or TokenKind.EndBlock))
-        {
-            scan.Expect(SyntaxForm.LineEnd);
-            SkipCompileTimeHeaderRemainder(ref scan);
-            invalidSyntax = true;
-        }
-
+        var invalid = !ExpectCompileTimeHeaderEnd(ref scan);
         if (!scan.TrySkipSeparatorsTo(TokenKind.StartBlock))
         {
             scan.Diagnostic.Add(header, DiagnosticCode.EmptyCompileTimeSwitch_Kd);
@@ -220,10 +207,7 @@ public static partial class Parser
         scan.Advance(); // The arm list is not a new lookup scope.
         var armCount = 0;
         var selected = -1;
-        var invalidCondition = false;
-        var fallbackSeen = false;
-        var fallbackMustBeLastReported = false;
-        var fallbackSpan = default(SourceSpan);
+        var fallback = default(CaseFallbackRule);
         while (scan.CanRead)
         {
             scan.SkipSeparators();
@@ -241,7 +225,7 @@ public static partial class Parser
             if (!IsCompileTimeCaseStart(ref scan))
             {
                 scan.AddDiagnostic(DiagnosticCode.InvalidCompileTimeSwitchItem_Kd);
-                invalidSyntax = true;
+                invalid = true;
                 SkipCompileTimeHeaderRemainder(ref scan);
                 if (scan.TrySkipSeparatorsTo(TokenKind.StartBlock))
                 {
@@ -251,44 +235,10 @@ public static partial class Parser
                 continue;
             }
 
-            if (fallbackSeen && !fallbackMustBeLastReported)
-            {
-                scan.Diagnostic.Add(fallbackSpan, DiagnosticCode.CompileTimeCaseFallbackMustBeLast_Kd);
-                fallbackMustBeLastReported = true;
-                invalidSyntax = true;
-            }
-
-            var sharp = scan.Read();
-            scan.Advance(); // The loop saw '#' and 'case'.
-            CompileTimeConditionResult result;
-            if (scan.CurrentTokenKind == TokenKind.Underscore)
-            {
-                var fallbackToken = scan.Read();
-                if (fallbackSeen)
-                {
-                    scan.Diagnostic.Add(fallbackToken.Span, DiagnosticCode.DuplicateCompileTimeCaseFallback_Kd);
-                }
-                else
-                {
-                    fallbackSeen = true;
-                    fallbackSpan = SourceSpan.FromBounds(sharp.Span.Start, fallbackToken.Span.End);
-                }
-
-                result = CompileTimeConditionResult.True;
-            }
-            else
-            {
-                var condition = ParseRequiredCompileTimeCondition(ref scan);
-                result = CompileTimeConditionEvaluator.Evaluate(scan.CodeContext.Compilation, condition);
-            }
-
-            if (scan.CanRead && scan.CurrentTokenKind is not (TokenKind.Separator or TokenKind.StartBlock or TokenKind.EndBlock))
-            {
-                scan.Expect(SyntaxForm.LineEnd);
-                SkipCompileTimeHeaderRemainder(ref scan);
-                invalidSyntax = true;
-            }
-
+            // SwitchArm := "#" "case" (CompileCondition | "_") IndentedList<Item> (SPEC F.11), part by part.
+            var result = ScanCompileTimeCaseCondition(ref scan, ref fallback);
+            invalid |= result == CompileTimeConditionResult.Error;
+            invalid |= !ExpectCompileTimeHeaderEnd(ref scan);
             if (scan.TrySkipSeparatorsTo(TokenKind.StartBlock))
             {
                 scan.SkipCurrentBlock();
@@ -297,10 +247,9 @@ public static partial class Parser
             {
                 // An arm without a body leaves the Case Group invalid, as a malformed header does (SPEC 19.3).
                 scan.Expect(SyntaxForm.Body);
-                invalidSyntax = true;
+                invalid = true;
             }
 
-            invalidCondition |= result == CompileTimeConditionResult.Error;
             if (selected < 0 && result == CompileTimeConditionResult.True)
             {
                 selected = armCount;
@@ -315,7 +264,7 @@ public static partial class Parser
             return new(-1, scan.Diagnostic.LastError);
         }
 
-        if (invalidSyntax || invalidCondition)
+        if (invalid || fallback.Broken)
         {
             return new(-1, scan.Diagnostic.LastError);
         }
@@ -350,9 +299,43 @@ public static partial class Parser
     private static bool IsCompileTimeCaseStart(ref TokenReader reader)
         => reader.CurrentTokenKind == TokenKind.Sharp && reader.PeekKind(1) == TokenKind.Case;
 
+    /// <summary>Scans the <c>"#" "case" (CompileCondition | "_")</c> of an arm (SPEC F.11) and evaluates it.</summary>
+    /// <param name="scan">The scanning reader positioned at <c>#case</c>.</param>
+    /// <param name="fallback">The <c>#case _</c> rule of the arm list.</param>
+    /// <returns>The Condition's result; a <c>_</c> is True.</returns>
+    private static CompileTimeConditionResult ScanCompileTimeCaseCondition(ref TokenReader scan, ref CaseFallbackRule fallback)
+    {
+        if (fallback.TryRead(ref scan))
+        {
+            return CompileTimeConditionResult.True;
+        }
+
+        var condition = ParseRequiredCompileTimeCondition(ref scan);
+        return CompileTimeConditionEvaluator.Evaluate(scan.CodeContext.Compilation, condition);
+    }
+
+    // A directive header ends with its line: a NEWLINE or an IndentedList follows it (SPEC F.11).
+    private static bool IsCompileTimeHeaderEnd(ref TokenReader reader)
+        => !reader.CanRead || reader.CurrentTokenKind is TokenKind.Separator or TokenKind.StartBlock or TokenKind.EndBlock;
+
+    /// <summary>Ends a directive header: tokens left on its line are reported once and skipped.</summary>
+    /// <param name="reader">The token reader positioned after the header's last part.</param>
+    /// <returns><see langword="false"/> when tokens were left on the line.</returns>
+    private static bool ExpectCompileTimeHeaderEnd(ref TokenReader reader)
+    {
+        if (IsCompileTimeHeaderEnd(ref reader))
+        {
+            return true;
+        }
+
+        reader.Expect(SyntaxForm.LineEnd);
+        SkipCompileTimeHeaderRemainder(ref reader);
+        return false;
+    }
+
     private static void SkipCompileTimeHeaderRemainder(ref TokenReader reader)
     {
-        while (reader.CanRead && reader.CurrentTokenKind is not (TokenKind.Separator or TokenKind.StartBlock or TokenKind.EndBlock))
+        while (!IsCompileTimeHeaderEnd(ref reader))
         {
             reader.Advance();
         }
@@ -378,13 +361,7 @@ public static partial class Parser
         // Every Condition is validated, including inside excluded syntax (SPEC 19.3).
         reader.Advance(2); // The caller saw '#' and 'if'.
         var condition = ParseRequiredCompileTimeCondition(ref reader);
-        var invalidHeader = reader.CanRead && reader.CurrentTokenKind is not (TokenKind.Separator or TokenKind.StartBlock or TokenKind.EndBlock);
-        if (invalidHeader)
-        {
-            reader.Expect(SyntaxForm.LineEnd);
-            SkipCompileTimeHeaderRemainder(ref reader);
-        }
-
+        var invalidHeader = !ExpectCompileTimeHeaderEnd(ref reader);
         var result = CompileTimeConditionEvaluator.Evaluate(reader.CodeContext.Compilation, condition);
         if (invalidHeader || result != CompileTimeConditionResult.True)
         {
@@ -409,12 +386,7 @@ public static partial class Parser
             _ = CompileTimeConditionEvaluator.Evaluate(reader.CodeContext.Compilation, condition);
         }
 
-        if (reader.CanRead && reader.CurrentTokenKind is not (TokenKind.Separator or TokenKind.StartBlock or TokenKind.EndBlock))
-        {
-            reader.Expect(SyntaxForm.LineEnd);
-            SkipCompileTimeHeaderRemainder(ref reader);
-        }
-
+        _ = ExpectCompileTimeHeaderEnd(ref reader);
         var header = SourceSpan.FromBounds(start, reader.PreviousEnd);
         if (!reader.TrySkipSeparatorsTo(TokenKind.StartBlock))
         {
@@ -491,10 +463,69 @@ public static partial class Parser
     /// <param name="PreviousDirective">The enclosing excluding directive.</param>
     internal readonly record struct ExcludedRegion(int Start, int DocumentationStart, SourceSpan PreviousDirective);
 
+    /// <summary>One step of the arm walk: a SwitchArm (SPEC F.11) with its selection, or the items misplaced between arms.</summary>
+    /// <param name="Kind">What the owner parses at the reader.</param>
+    /// <param name="Header">The arm header, the excluding directive of an excluded arm; empty for invalid items.</param>
+    internal readonly record struct CompileTimeSwitchArm(CompileTimeSwitchArmKind Kind, SourceSpan Header);
+
+    /// <summary>What the arm walk leaves at the reader for the owner's item grammar (SPEC 19.4).</summary>
+    internal enum CompileTimeSwitchArmKind : byte
+    {
+        /// <summary>The body of the arm the <c>#switch</c> selects.</summary>
+        Selected,
+
+        /// <summary>The body of an arm the <c>#switch</c> does not select: excluded syntax of its header.</summary>
+        Excluded,
+
+        /// <summary>Items misplaced in the arm list, up to the next arm or the list's end: source-checked and discarded.</summary>
+        InvalidItems,
+    }
+
     /// <summary>The arm a <c>#switch</c> would select.</summary>
     /// <param name="Selected">The selected arm index, or -1 when the <c>#switch</c> selects nothing.</param>
     /// <param name="Cause">The Error that keeps the <c>#switch</c> from selecting an arm, if one was reported.</param>
     private readonly record struct CompileTimeSwitchSelection(int Selected, DiagnosticKey? Cause);
+
+    /// <summary>The <c>#case _</c> rule over one arm list: it occurs at most once, as the last arm (SPEC F.11).</summary>
+    private struct CaseFallbackRule
+    {
+        private SourceSpan? first;
+
+        /// <summary>Gets a value indicating whether an arm followed <c>#case _</c>, which leaves the Case Group invalid.</summary>
+        public bool Broken { get; private set; }
+
+        /// <summary>Reads the <c>"#" "case"</c> of an arm and its <c>_</c>, if written.</summary>
+        /// <param name="scan">The scanning reader positioned at <c>#case</c>.</param>
+        /// <returns><see langword="true"/> for <c>#case _</c>; otherwise the reader is at the arm's Condition.</returns>
+        /// <remarks>The first <c>#case _</c> is reported once when an arm follows it, and each later one as a duplicate.</remarks>
+        public bool TryRead(ref TokenReader scan)
+        {
+            if (this.first is { } fallback && !this.Broken)
+            {
+                scan.Diagnostic.Add(fallback, DiagnosticCode.CompileTimeCaseFallbackMustBeLast_Kd);
+                this.Broken = true;
+            }
+
+            var sharp = scan.Read();
+            scan.Advance(); // The arm list saw '#' and 'case'.
+            if (scan.CurrentTokenKind != TokenKind.Underscore)
+            {
+                return false;
+            }
+
+            var underscore = scan.Read();
+            if (this.first is null)
+            {
+                this.first = SourceSpan.FromBounds(sharp.Span.Start, underscore.Span.End);
+            }
+            else
+            {
+                scan.Diagnostic.Add(underscore.Span, DiagnosticCode.DuplicateCompileTimeCaseFallback_Kd);
+            }
+
+            return true;
+        }
+    }
 
     /// <summary>The Constraint-prefix state of one executable body, shared by its directive targets and arms (SPEC 7.5, 19.4).</summary>
     /// <param name="function">The function whose body this is, if any.</param>

@@ -1,6 +1,5 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
-using Kimi.Compiler.Lexing;
 using Kimi.Compiler.Parsing;
 using Kimi.Diagnostics;
 
@@ -16,7 +15,16 @@ public partial class Compilation
     private Dictionary<Kotonoha, ProjectFile>? moduleConfigurations;
     private string[] rootAliases = RequiredAliases;
 
+    /// <summary>Gets the source modules by ordinal. A prepared Compilation may have none (<see cref="AnalyzesNoModule"/>): R5-M25's
+    /// <c>SourceModules[0]</c> is <c>Compilation.Kotonoha</c> only when AnalyzesNoModule is false, and <c>Compilation.Check()</c>
+    /// never runs on a Compilation without a source module.</summary>
     internal Kotonoha[] SourceModules { get; private set; }
+
+    /// <summary>Gets a value indicating whether a successful preparation established no source module, the one outcome of a refusal
+    /// that leaves nothing to analyze (IMPL 21.3.2: the module count's). The configuration is checked; the sources, which the resolver
+    /// has read, are neither established nor parsed, and no phase runs: the check is Completed, rejected by the refusal's Error
+    /// (SPEC 23.2.2), and no fact of a parsed source exists.</summary>
+    internal bool AnalyzesNoModule => this.SourceModules.Length == 0;
 
     internal static string[] EffectiveAliases(string[] additions)
     {
@@ -41,7 +49,9 @@ public partial class Compilation
             throw new InvalidOperationException("Create a new Compilation to change inputs after parsing source.");
         }
 
-        if (!graph.IsResolved || graph.Nodes.Length == 0 || !ReferenceEquals(graph.Nodes[0].Input.Configuration, this.Project.ProjectFile))
+        // An unresolved graph's failures are its resolver's caller's records (IMPL 20.5); the root's checks read no graph and still run
+        // (SPEC 23.1.2), and the graph's, which read it, are left out.
+        if (graph.IsResolved && (graph.Nodes.Length == 0 || !ReferenceEquals(graph.Nodes[0].Input.Configuration, this.Project.ProjectFile)))
         {
             throw new ArgumentException("Compilation requires the resolved root configuration snapshot.", nameof(graph));
         }
@@ -62,12 +72,20 @@ public partial class Compilation
     internal string[] DefaultAliases(Kotonoha module)
         => ReferenceEquals(module, this.Kotonoha) ? this.rootAliases : this.moduleAliases?.GetValueOrDefault(module) ?? RequiredAliases;
 
-    private bool PrepareModules()
+    // failed is the root's verdict. The graph's checks below read no root fact it rests on, so they run after a root failure, each
+    // failure its own record (SPEC 23.1.2); the modules are established only when no check failed. A module's variables start from the
+    // root's, empty after a root failure, and then stay unused.
+    private bool PrepareModules(bool failed)
     {
         this.rootAliases = EffectiveAliases(this.Project.ProjectFile.Alias);
         if (this.dependencyGraph is not { } graph)
         {
-            return true;
+            return !failed;
+        }
+
+        if (!graph.IsResolved)
+        {
+            return false;
         }
 
         var modules = new Kotonoha[graph.Nodes.Length];
@@ -76,7 +94,6 @@ public partial class Compilation
         this.moduleVariables = new(modules.Length);
         this.moduleAliases = new(modules.Length);
         this.moduleConfigurations = new(modules.Length);
-        var failed = false;
         for (var i = 0; i < modules.Length; i++)
         {
             var node = graph.Nodes[i];
@@ -99,15 +116,14 @@ public partial class Compilation
 
             foreach (var (name, setting) in node.Input.Configuration.CompileTimeSettings)
             {
-                if (!this.TryGetIdentifier(name, out _) || !TokenHelper.GetKeywordOrIdentifierKind(name).IsIdentifierOrContextualKeyword() ||
-                    variables.ContainsKey(name) || setting is null || !setting.TryGetValue(out var value))
+                if (this.TryGetSetting(node.Input.Path, name, setting, out var value))
                 {
-                    this.Diagnostics.Report(DiagnosticPartition.Input, DiagnosticCode.InvalidCompileTimeSetting_Kd, node.Input.Path, name);
-                    failed = true;
-                    continue;
+                    variables.Add(name, value);
                 }
-
-                variables.Add(name, value);
+                else
+                {
+                    failed = true;
+                }
             }
 
             this.moduleVariables.Add(module, variables);
@@ -121,6 +137,16 @@ public partial class Compilation
             var (module, note) = supplies![i];
             this.Diagnostics.Report(DiagnosticPartition.Input, DiagnosticCode.InvalidDependencyConfiguration_Kd, graph.Nodes[module].Input.Path, note: note);
             failed = true;
+        }
+
+        // IMPL A.4, 21.3.2: a module's ordinal is below SyntaxTable.LibraryModule, so a graph of more modules is refused here, before
+        // any ordinal is narrowed: one Resource record at the root project file, and no source module is established (AnalyzesNoModule).
+        // The module Kotonohas and per-module dictionaries built above stay, unused, until the Compilation is released.
+        if (modules.Length > SyntaxTable.LibraryModule)
+        {
+            this.Diagnostics.Report(
+                DiagnosticPartition.Input, DiagnosticCode.ModuleCountLimit_Kd, this.Project.FilePath, (long)modules.Length, (long)SyntaxTable.LibraryModule);
+            modules = [];
         }
 
         if (failed)

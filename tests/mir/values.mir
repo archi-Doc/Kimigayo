@@ -403,7 +403,7 @@ fn unfinished @199
       drop _3 -> bb14 [elide] @209 s1
   bb14:
       StorageDead(_3) @209 s1
-      drop _2 -> bb15 @202 s1
+      drop _2 -> bb15 [keep] @202 s1
   bb15:
       StorageDead(_2) @202 s1
       unreachable @201

@@ -1,5 +1,7 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using Kimi.Diagnostics;
+
 namespace Kimi.Compiler.Mir;
 
 // A5's location driver (A3 5, Check sets and err(conflict), with E5 and E13 (1)): at each location of the checks replay, its accesses of
@@ -11,15 +13,15 @@ namespace Kimi.Compiler.Mir;
 // undecided past a walk's bound (MirBorrows.Calls), each OwnershipDepthLimit_Kd (R4-M153), a Value call whose contract is broken (G136,
 // MirBorrows.CallRows' Broken) InternalInvariant_Kd, the
 // location's activations (MirBorrows.Activations), its own-step departures (MirBorrows.OwnSteps), its
-// effects (MirBorrows.Effects, whose keys select other case views) and at a default template's Return R26-borrow.
+// effects (MirBorrows.Effects, whose keys select other case views), a default template's stores in E and at its Return R26-borrow.
 // Must not decide whether an access meets a Loan (MirBorrows.Checks) or which problem a conflict becomes (MirBorrows.Reports).
 internal sealed partial class MirBorrows
 {
     private MirStep[] accessSteps = [];
 
     // The checks at a location (A3 5, E13 (1)): its accesses of borrowed roots, a guard candidate's EndBorrow, its activations, its
-    // own-step departures and its effects, on the check sets of one gather; the first conflicting Loan of each access is its problem; at a
-    // Return, R26-borrow on its own gather.
+    // own-step departures and its effects, on the check sets of one gather; the first conflicting Loan of each access is its problem; a
+    // default template's stores in E (R26-borrow's place); at a Return, R26-borrow on its own gather.
     private void Check(ulong[] state, int block, int index, int location)
     {
         this.accessCount = 0;
@@ -45,7 +47,7 @@ internal sealed partial class MirBorrows
                 continue;
             }
 
-            var count = this.placeSteps.Walk(this.body, access.Place, access.Reborrow, ref this.accessSteps);
+            var count = this.placeSteps.Walk(access.Place, access.Reborrow, ref this.accessSteps);
             if (this.Conflict(this.Key(access.Place.Root), this.accessSteps.AsSpan(0, count), access.Kind, access.Taking, scope, -1) is var c and not None)
             {
                 this.Report(this.Code(this.candidates[c], access.Kind, DiagnosticCode.ComparisonLoanConflict_Kd), c, access.Taking, at, -1, null);
@@ -72,6 +74,12 @@ internal sealed partial class MirBorrows
         }
 
         (this.limit, this.deep) = (false, false);
+        if (this.overstored > 0)
+        {
+            // The storing rule (MirBorrows.Storing): at the store, with no fact (an Anchor reads as a Loan's; DECISIONS Q13).
+            this.Record(DiagnosticCode.UnretainedRawStore_Kd, OwnershipRequirement.UnretainedRawStore, this.Subject(at), []);
+            this.overstored = 0;
+        }
 
         if (terminator && this.Broken(this.body.Blocks[block].Terminator))
         {
@@ -85,6 +93,7 @@ internal sealed partial class MirBorrows
             this.Effects(at, this.accesses[accessed].Taking);
         }
 
+        this.DefaultStores(location);
         if (index == this.body.Blocks[block].Count && this.body.Blocks[block].Terminator.Kind == MirTerminatorKind.Return)
         {
             this.DefaultBorrows(state);

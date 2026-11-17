@@ -1,29 +1,26 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
-// Owns the source-ordered child-slot walk used for visits, collection and replacement.
+// Owns the source-ordered child-slot walk used for visits and replacement.
 // Input: one node's declared slots and one requested operation. Output: visited nodes or updated slots.
 // Every child shape has one slot definition; non-replacement walks preserve the tree.
-// Must not infer semantic children or maintain a second traversal.
+// Must not infer semantic children or maintain a second traversal (a collected child list is one: a reader visits).
 
 using System.Runtime.CompilerServices;
 
 namespace Kimi.Compiler.Parsing;
 
 /// <summary>
-/// The one walk over the child slots of a node, in source order: it visits them, collects them, or replaces the slot that
-/// holds one child. A node lists its slots once (<see cref="Koto.ForEachChildSlot"/>), writing each back as
-/// <c>this.Child = slots.Slot(this.Child)</c>; outside a replacement the slot keeps its child.
+/// The one walk over the child slots of a node, in source order: it visits them or replaces the slot that holds one child. A node
+/// lists its slots once (<see cref="Koto.ForEachChildSlot"/>), writing each back as <c>this.Child = slots.Slot(this.Child)</c>;
+/// outside a replacement the slot keeps its child.
 /// </summary>
 public ref struct ChildSlots
 {
     private readonly KotoVisitor? visitor;
-    private readonly List<Koto>? collected;
     private readonly Koto? original;
     private readonly Koto? replacement;
 
     internal ChildSlots(KotoVisitor visitor) => this.visitor = visitor;
-
-    internal ChildSlots(List<Koto> collected) => this.collected = collected;
 
     internal ChildSlots(Koto original, Koto replacement)
     {
@@ -78,13 +75,6 @@ public ref struct ChildSlots
                 visitor.Visit(children[i]);
             }
         }
-        else if (this.collected is { } collected)
-        {
-            for (var i = 0; i < children.Count; i++)
-            {
-                collected.Add(children[i]);
-            }
-        }
         else if (this.Replacement is T replacement && children is IList<T> mutable && (!mutable.IsReadOnly || children is T[]))
         {
             for (var i = 0; i < children.Count; i++)
@@ -117,11 +107,7 @@ public ref struct ChildSlots
             return child;
         }
 
-        if (this.collected is { } collected)
-        {
-            collected.Add(child);
-        }
-        else if (ReferenceEquals(child, this.original) && this.Replacement is T replacement)
+        if (ReferenceEquals(child, this.original) && this.Replacement is T replacement)
         {
             this.Replaced = true;
             return replacement;

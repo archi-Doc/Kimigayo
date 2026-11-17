@@ -62,6 +62,22 @@ public class AssociatedInferenceTest
 
     private const string PbLastField = "struct PB\n    Self is Q\n    public func w(self: ref/Self) -> PA.(P).Z => 0\n    public func y(self: ref/Self) -> i64 => 0\n";
 
+    // PLAN G949 S1-b2 C4: PA infers P.X from PB's Q.Y and PB infers Q.W from PA<i32>'s P.Z; PA's conformance is conditional, so it registers
+    // after PB's although PA is declared first.
+    private const string Mutual = PqContracts +
+        "struct PA<T>\n    public init() => ()\n    Self is P when T is Copy\n        public func x(self: ref/Self) -> PB.(Q).Y => 0\n        public func z(self: ref/Self) -> i32 => 0\n" +
+        "struct PB\n    public init() => ()\n    Self is Q\n    public func y(self: ref/Self) -> i64 => 0\n    public func w(self: ref/Self) -> PA<i32>.(P).Z => 0\n";
+
+    private const string MutualRecords = "IncompatibleContractImplementation_Kd: Self is P when T is Copy | InvalidConstraint_Kd: public func x(self: ref/Self) -> PB.(Q).Y => 0 | " +
+        "AssociatedTypeInferenceFailed_Kd: Self is Q | InvalidConstraint_Kd: public func w(self: ref/Self) -> PA<i32>.(P).Z => 0";
+
+    private const string MutualUses = "func use(a: ref/PA<i32>, b: ref/PB) -> ()\n    let x: i64 = a.x()\n    let z: i32 = a.z()\n    let y: i64 = b.y()\n    let w: i32 = b.w()\n    ()\n()";
+
+    private const string MutualMismatch = "func use(a: ref/PA<i32>, b: ref/PB) -> ()\n    let x: bool = a.x()\n    let z: bool = a.z()\n    let y: bool = b.y()\n    let w: bool = b.w()\n    ()\n()";
+
+    private const string MismatchRecords = " | NoApplicableOverload_Kd: let x: bool = a.x() | NoApplicableOverload_Kd: let z: bool = a.z() | " +
+        "NoApplicableOverload_Kd: let y: bool = b.y() | NoApplicableOverload_Kd: let w: bool = b.w()";
+
     private const string AltContracts = "contract DC\n    associate X\n    func a(self: ref/Self) -> Self.X\n    func b(self: ref/Self) -> Self.X\ncontract EC\n    associate W\n    func w(self: ref/Self) -> Self.W\n";
 
     private const string AltD = "struct D\n    Self is DC\n    public func a(self: ref/Self) -> i32 => 0\n    public func b(self: ref/Self) -> E.(EC).W => 0\n";
@@ -73,6 +89,8 @@ public class AssociatedInferenceTest
     private const string ChainA = "struct A\n    Self is HA\n    public func item(self: ref/Self) -> i32 => 0\n    public func other(self: ref/Self) -> B.(HB).Value => 0\n";
 
     private const string ChainB = "struct B\n    Self is HB\n    public func value(self: ref/Self) -> A.(HA).Item => 0\n";
+
+    private const string InferredBase = "open struct B0<X>\n    public func get(self: ref/Self) -> i32 => 1\n";
 
     // PLAN G375: a signature completed by associated inference is judged complete; its clause fails or holds as written.
     [Theory]
@@ -222,6 +240,17 @@ public class AssociatedInferenceTest
         var c = CompilationTestHelper.ParseSuccess("contract P\n    associate Item\ncontract C: P\n    func read() -> Self.Item\nstruct S<T>\n    T is Copy\n    Self is P\n    Self is C when T is " + condition + "\n    public func read() -> i32 => 1");
         Assert.Equal(valid, c.Bind().IsComplete);
     }
+
+    // SPEC 8.5.5, 8.8.2 (PLAN G695): inference identifies a requirement's implementation with the path's Self normalized in its
+    // conformance scope, as verification does, under an identity condition: declared on the Type or found in its base, E is i32; where
+    // the condition is refuted the use has no conformance, never a missing implementation. `Y is Copy` is the control.
+    [Theory]
+    [InlineData("open struct B1<Y>\n    Self is D when Y is Option<i32>\n    public func get(self: ref/Self) -> i32 => 1\n", "B1<Option<i32>>", "clean")]
+    [InlineData(InferredBase + "open struct B1<Y> : B0<Y>\n    Self is D when Y is Option<i32>\n", "B1<Option<i32>>", "clean")]
+    [InlineData(InferredBase + "open struct B1<Y> : B0<Y>\n    Self is D when Y is Option<i32>\n", "B1<i64>", "1*NoApplicableOverload_Kd")]
+    [InlineData(InferredBase + "open struct B1<Y> : B0<Y>\n    Self is D when Y is Copy\n", "B1<i32>", "clean")]
+    public void InferenceUnderAnIdentityConditionIdentifiesTheImplementation(string declarations, string use, string records)
+        => Assert.Equal(records, DiagnosticCorpus.RecordProfile("contract D\n    associate E\n    func get(self: ref/Self) -> E\nfunc use<T>(value: ref/T)\n    T is D\n    ()\n" + declarations + "func t(v: ref/" + use + ") => use(v)\n"));
 
     [Fact]
     public void LaterInvalidEvidenceCannotCertifyARedundantParent()
@@ -472,6 +501,18 @@ public class AssociatedInferenceTest
     [InlineData("guard", "chain-x", ChainContracts + "struct A\n    Self is HA\n    associate HA.Item is i32\n    public func item(self: ref/Self) -> i32 => 0\n    public func other(self: ref/Self) -> B.(HB).Value => 0\n" + ChainB, "")]
     public void AssociatedValuesFollowTheirEvidenceInEveryOrder(string unit, string form, string program, string records)
         => CompilationTestHelper.AssertRecordsAtLines($"{form} [{unit}]", program + "()", records);
+
+    // PLAN G949 S1-b2 C4 (Q13): the inference batches run in declaration order (NodeColumns, DECISIONS BU-220), so of two definitions that
+    // infer from each other the first declared starts first. Before S1-b2's commit 4 they ran in registration order, and these two
+    // conformances' records stood the other way round (AssociatedTypeInferenceFailed_Kd at PA, IncompatibleContractImplementation_Kd at
+    // PB; the same codes, count and acceptance). `mutual` is valid by SPEC 8.5.5 (each value is determined directly from a declared
+    // result), yet rejected as a Type-value cycle: the PLAN open issue posted as D-732, whose fix moves these records on purpose.
+    // `mutual-mismatch` is invalid (bool annotations of the inferred i64 and i32) and keeps the same conformance records.
+    [Theory]
+    [InlineData("mutual", Mutual + MutualUses, MutualRecords)]
+    [InlineData("mutual-mismatch", Mutual + MutualMismatch, MutualRecords + MismatchRecords)]
+    public void MutualInferenceRecordsFollowDeclarationOrder(string form, string program, string records)
+        => CompilationTestHelper.AssertRecordsAtLines(form, program, records);
 
     private static Compilation Bound(string source)
     {

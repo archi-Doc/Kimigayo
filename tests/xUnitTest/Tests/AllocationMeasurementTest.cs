@@ -11,6 +11,9 @@ namespace XunitTest;
 
 public class AllocationMeasurementTest
 {
+    // The variable under which the test apphost's pools read High memory pressure: the GC's high-memory threshold at 10% of RAM.
+    private static readonly (string Name, string Value) HighPressure = ("DOTNET_GCHighMemPercent", "0xA");
+
     [Fact]
     public void NestedAllocationClassesBelongToOneIsolatedCollection()
     {
@@ -143,7 +146,7 @@ public class AllocationMeasurementTest
     [Trait("Purpose", "Allocation")]
     [Fact]
     public Task DiscardsWindowsWhosePooledAllocationsFollowTrims()
-        => FreshProcess.RunExplicit(typeof(AllocationMeasurementTest), nameof(AllocationMeasurementTest.TrimsUnderHighPressure), ("DOTNET_GCHighMemPercent", "0xA"));
+        => FreshProcess.RunExplicit(typeof(AllocationMeasurementTest), nameof(AllocationMeasurementTest.TrimsUnderHighPressure), HighPressure);
 
     // Under High memory pressure: a full collection before the first measured operation's Rent invalidates that window and
     // the next measures nothing; one before every operation's Rent invalidates all three windows, (4 + 12) + (4 + 28) +
@@ -154,8 +157,7 @@ public class AllocationMeasurementTest
     {
         var first = 0;
         var bytes = AllocationMeasurement.Measure(() => RentAfterTrim(++first == AllocationMeasurement.WarmupOperations + 1));
-        var memory = GC.GetGCMemoryInfo();
-        Assert.SkipUnless(memory.MemoryLoadBytes >= memory.HighMemoryLoadThresholdBytes * 0.9, "Pools read High pressure only in the process that DiscardsWindowsWhosePooledAllocationsFollowTrims starts.");
+        SkipUnlessHighPressure(nameof(AllocationMeasurementTest.DiscardsWindowsWhosePooledAllocationsFollowTrims));
         Assert.Equal(0, bytes);
         Assert.True(first > AllocationMeasurement.WarmupOperations + AllocationMeasurement.MeasuredOperations, $"{first} operations");
         var every = 0;
@@ -170,8 +172,7 @@ public class AllocationMeasurementTest
         {
             if (trim)
             {
-                GC.Collect(2, GCCollectionMode.Forced, blocking: true);
-                GC.WaitForPendingFinalizers();
+                Trim();
             }
 
             ArrayPool<PoolItem>.Shared.Return(ArrayPool<PoolItem>.Shared.Rent(16));
@@ -255,6 +256,20 @@ public class AllocationMeasurementTest
         Assert.Same(failure, Assert.Throws<InvalidOperationException>(() => AllocationMeasurement.Measure(() => throw failure)));
     }
 
+    // A full collection and its finalizers, the pools' trim among them: under High pressure it empties every thread's pooled buffers.
+    private static void Trim()
+    {
+        GC.Collect(2, GCCollectionMode.Forced, blocking: true);
+        GC.WaitForPendingFinalizers();
+    }
+
+    // Read after a collection: an Explicit child of HighPressure's process measures only there.
+    private static void SkipUnlessHighPressure(string parent)
+    {
+        var memory = GC.GetGCMemoryInfo();
+        Assert.SkipUnless(memory.MemoryLoadBytes >= memory.HighMemoryLoadThresholdBytes * 0.9, $"Pools read High pressure only in the process that {parent} starts.");
+    }
+
     // Compiled at its first call for each value Type, which creates the Type's default comparer there.
     [MethodImpl(MethodImplOptions.NoInlining)]
     private static bool CreateComparer<T>()
@@ -286,6 +301,40 @@ public class AllocationMeasurementTest
             });
             Assert.All(allocated.Select(static (x, i) => (x, i)), static x => Assert.InRange(x.x, 64 << x.i, 1024));
             Assert.Equal([0, 0, 1, 2], made);
+        }
+
+        // G650 (B): a thread's pooled buffers are process state that a High-pressure trim, or whatever the thread ran before,
+        // changes between two runs, so every run of a series, the unmeasured one too, has a new compiler thread, whose own pooled
+        // buffers are empty. In a process whose pools read High pressure it runs ASeriesUnderHighPressure.
+        [Fact]
+        public Task EveryRunOfASeriesPaysThePooledBuffersItRents()
+            => FreshProcess.RunExplicit(typeof(AllocationTests), nameof(AllocationTests.ASeriesUnderHighPressure), HighPressure);
+
+        // Each run rents and returns one PoolItem[] of a length that nothing else in the process rents, 16 KB at the first size.
+        // With a trim before run 1, and with none, every run pays its buffer once: on one thread for the whole series, run 0
+        // found the unmeasured run's buffer and only the run after the trim paid (0 / 16,408 / 0 B). A rented length that grows
+        // with the size shows in the bytes as it is.
+        [Fact(Explicit = true)]
+        public void ASeriesUnderHighPressure()
+        {
+            const int Length = 1 << 14;
+            var same = AllocationMeasurement.MeasureSeries(3, i =>
+            {
+                if (i == 1)
+                {
+                    Trim();
+                }
+
+                return static () => ArrayPool<PoolItem>.Shared.Return(ArrayPool<PoolItem>.Shared.Rent(Length));
+            });
+            SkipUnlessHighPressure(nameof(AllocationTests.EveryRunOfASeriesPaysThePooledBuffersItRents));
+            Assert.True(same.All(static x => x is >= Length and < 2 * Length), string.Join(" / ", same));
+            var growing = AllocationMeasurement.MeasureSeries(3, i =>
+            {
+                var length = Length << i;
+                return () => ArrayPool<PoolItem>.Shared.Return(ArrayPool<PoolItem>.Shared.Rent(length));
+            });
+            Assert.True(growing.Select(static (x, i) => (Bytes: x, Buffer: (long)Length << i)).All(static x => x.Bytes >= x.Buffer && x.Bytes < 2 * x.Buffer), string.Join(" / ", growing));
         }
     }
 

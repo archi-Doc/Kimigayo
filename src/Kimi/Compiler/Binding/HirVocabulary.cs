@@ -28,11 +28,13 @@ namespace Kimi.Compiler;
 /// the expression, or it lacks its Op's facts (an operation Binding left unresolved lacks its Type; a form no member describes that
 /// Binding left unresolved has none), which for a node Binding resolved is a broken contract the publisher lists
 /// (<see cref="HirTables.Broken"/>); its value is derived, after the operands the HIR keeps (DECISIONS R5-M63, R4-M88). A construct, a
-/// statement, a call or a name Binding left unresolved keeps its Op where it has its facts. <see cref="Name"/>: its Res says what it reads.
+/// statement, a call or a name Binding left unresolved keeps its Op where it has its facts, and so does a plain write Binding rejected
+/// for its value's fit after admitting its destination (<c>Binding.AdmittedMisfit</c>): its <see cref="Assign"/> places its value, which is
+/// the Error, a value Binding resolved included (DECISIONS R5-M195). <see cref="Name"/>: its Res says what it reads.
 /// <see cref="Group"/>: evaluates its one operand (parentheses, a label, and <c>@move</c>, <c>@copy</c> or a same-Type
 /// conversion, which acquire it). <see cref="Call"/>: the calls <see cref="CallPlan.Of"/> lists. <see cref="Jump"/> and
 /// <see cref="Continue"/>: the transfer to the target the node's plan row records. <see cref="For"/>, <see cref="Try"/>,
-/// <see cref="Interpolation"/>, <see cref="DictionaryLiteral"/>, <see cref="Range"/>, <see cref="Index"/>, <see cref="CompoundAssign"/> and a user
+/// <see cref="Interpolation"/>, <see cref="DictionaryLiteral"/>, <see cref="Index"/>, <see cref="CompoundAssign"/> and a user
 /// or view index's <see cref="Call"/>: the expansion its <see cref="ExpansionPlan"/> describes.</remarks>
 internal enum HirOp : byte
 {
@@ -191,8 +193,9 @@ internal enum HirAcquire : byte
 /// handle layer as a Deref, a pair layer as a PairLayer) that its consumer follows implicitly before it projects or borrows the node.</summary>
 /// <param name="Kind">The form of the node's Place.</param>
 /// <param name="Layers">The layers its consumer follows: of a stored Field's, a Tuple element's, a sequence metadata's or a built-in
-/// element's receiver down to the projected value, and the pair layers Binding follows at a receiver or Subject (SPEC 7.3, 15.1.6).</param>
-internal readonly record struct HirPlace(HirPlaceKind Kind, byte Layers);
+/// element's receiver down to the projected value, and the pair layers Binding follows at a receiver or Subject (SPEC 7.3, 15.1.6). The
+/// count is exact: a Type has at most H = 8,192 layers (IMPL A.4's Type height), so it fits.</param>
+internal readonly record struct HirPlace(HirPlaceKind Kind, ushort Layers);
 
 /// <summary>The form of a node's Place (SPEC 3.4, 3.5); the closed projection kinds the MIR builder starts from.</summary>
 internal enum HirPlaceKind : byte

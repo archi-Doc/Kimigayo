@@ -66,7 +66,7 @@ public sealed partial class Binding
         this.permitClosureReceivers = true;
         try
         {
-            var permitted = solution.Prove(solution.Types.AsSpan(0, CallOwnSlots(solution.Function).Count), waitingCallables);
+            var permitted = solution.Prove(solution.Types[..CallOwnSlots(solution.Function).Count], waitingCallables);
             return permitted == ConstraintProof.Proven ? mismatch : null;
         }
         finally
@@ -118,7 +118,7 @@ public sealed partial class Binding
     // and results written over a fixed Origin of the enclosing body stay as written.
     private BoundType ClosureExpectation(FunctionKoto function, BoundType expected)
     {
-        if (expected.Kind != BoundTypeKind.Function || !expected.CarriesAnyOrigin || FunctionTypeBinder(expected) is not { } binder ||
+        if (expected.Kind != BoundTypeKind.Function || !expected.CarriesAnyOrigin || expected.Binder is not { } binder ||
             ReferenceEquals(binder, function))
         {
             return expected;
@@ -317,7 +317,7 @@ public sealed partial class Binding
         var originDeclaration = this.BeginOriginDeclaration(function, scope);
         for (var i = 0; i < function.Parameters.Count; i++)
         {
-            this.symbols[function.Parameters[i]].Type = expected is not null && function.Parameters[i].Type is SyntaxFormKoto { Akind: KotoKind.InferredType } inferred
+            this.ParameterSymbol(function, i).Type = expected is not null && function.Parameters[i].Type is SyntaxFormKoto { Akind: KotoKind.InferredType } inferred
                 ? Complete(inferred, expected.Components[0].Components[i]) : this.BindType(function.Parameters[i].Type, scope);
         }
 
@@ -328,7 +328,7 @@ public sealed partial class Binding
         this.CompleteOriginDeclaration(originDeclaration);
         for (var i = 0; i < function.Parameters.Count; i++)
         {
-            this.symbols[function.Parameters[i]].Type = function.Parameters[i].Type.BoundType;
+            this.ParameterSymbol(function, i).Type = function.Parameters[i].Type.BoundType;
         }
     }
 
@@ -344,10 +344,10 @@ public sealed partial class Binding
         // SPEC 7.7.2: a repeated capture name and a collision with a parameter are judged from the written list, so a closure bound
         // again keeps the environment bindings of its earlier binding. The other entries are still bound, and the first that
         // fails on its own is reported beside the repeats (SPEC 23.1.2).
-        var repeats = RepeatedCaptures(function, captures);
+        var repeats = this.RepeatedCaptures(function, captures);
         foreach (var capture in captures)
         {
-            if (repeats is not null && RepeatsEarlierEntry(repeats, capture))
+            if (this.RepeatsEarlierEntry(repeats, capture))
             {
                 continue;
             }
@@ -370,7 +370,7 @@ public sealed partial class Binding
             if (source is null || this.Capture(function, source, scope, capture) is not { } environment || ReferenceEquals(environment, source))
             {
                 // An entry whose binding failed derives from that failure (its TypeSource) and adds nothing to the repeats.
-                failed = source is { Type: null } ? repeats is null ? this.CompleteDependent(function, TypeSource(source) ?? source.Declaration) : this.FailCaptureEntry(function, repeats, BindingFailure.None, null)
+                failed = source is { Type: null } ? repeats.Count == 0 ? this.CompleteDependent(function, TypeSource(source) ?? source.Declaration) : this.FailCaptureEntry(function, repeats, BindingFailure.None, null)
                     : this.FailCaptureEntry(function, repeats, BindingFailure.Capture, null);
                 return true;
             }
@@ -383,7 +383,7 @@ public sealed partial class Binding
             }
         }
 
-        if (repeats is not null)
+        if (repeats.Count != 0)
         {
             failed = this.FailCaptureEntry(function, repeats, BindingFailure.None, null);
             return true;

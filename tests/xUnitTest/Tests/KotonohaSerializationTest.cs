@@ -44,7 +44,7 @@ public class KotonohaSerializationTest
         Assert.All(Descendants(restored.RootKoto), node =>
         {
             Assert.Same(restored, node.Kotonoha);
-            Assert.All(node.ChildNodes, child => Assert.Same(node, child.Parent));
+            Assert.All(node.Children(), child => Assert.Same(node, child.Parent));
         });
 
         // Reinitializing must neither append documents nor retain old tree nodes.
@@ -68,7 +68,7 @@ public class KotonohaSerializationTest
         restored.OnDeserialized(compilation);
 
         Assert.Empty(restored.SourceDocuments);
-        Assert.Empty(restored.RootKoto.ChildNodes);
+        Assert.Empty(restored.RootKoto.Children());
         Assert.Null(restored.GeneratedFunction);
     }
 
@@ -138,7 +138,7 @@ public class KotonohaSerializationTest
 
     private static IEnumerable<Koto> Descendants(Koto node)
     {
-        foreach (var child in node.ChildNodes)
+        foreach (var child in node.Children())
         {
             yield return child;
             foreach (var descendant in Descendants(child))

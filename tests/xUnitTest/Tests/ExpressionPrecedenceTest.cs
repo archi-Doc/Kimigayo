@@ -73,6 +73,20 @@ public class ExpressionPrecedenceTest
     [InlineData("builder@move.finish()", "(builder@move).finish()")]
     [InlineData("values@ref[0]", "(values@ref)[0]")]
     [InlineData("holder@uniq.items.append(1)", "((holder@uniq).items).append(1)")]
+
+    // SPEC F.9.4: a group or a fixed array after "@" is a DelimitedTarget, so its "." is the adapted value's PostfixSuffix (F.9.1), on a
+    // chain line too (F.4.6); a BoundContainerQualifier is no target, and a projection target is grouped (F.5's notes).
+    [InlineData("pair@(i32, u8).0", "(pair@(i32, u8)).0")]
+    [InlineData("pair@(i32, u8)\n    .0", "(pair@(i32, u8)).0")]
+    [InlineData("pair@ref/(i32, u8).0", "(pair@ref/(i32, u8)).0")]
+    [InlineData("pair@(i32, u8).(C).Item", "(pair@(i32, u8)).(C).Item")]
+    [InlineData("pair@().(C).Item", "(pair@()).(C).Item")]
+    [InlineData("pair@(S{k}).Item", "(pair@(S{k})).Item")]
+    [InlineData("pair@((i32, u8).(C).Item).0", "(pair@((i32, u8).(C).Item)).0")]
+    [InlineData("items@[2 of i32].length", "(items@[2 of i32]).length")]
+    [InlineData("items@[2 of i32]\n    .length", "(items@[2 of i32]).length")]
+    [InlineData("items@ref/[2 of i32].length", "(items@ref/[2 of i32]).length")]
+    [InlineData("items@[2 of i32].0", "(items@[2 of i32]).0")]
     [InlineData("try pending@move * 2", "(try (pending@move)) * 2")]
     [InlineData("try prepare() + 1", "(try prepare()) + 1")]
     [InlineData("try prepare().count", "try (prepare().count)")]
@@ -211,6 +225,121 @@ public class ExpressionPrecedenceTest
         Assert.IsType<ConversionKoto>(Assert.IsType<ParenthesizedKoto>(beforeNegation.Operand).Operand);
     }
 
+    // SPEC F.9.4 and 19.4: Adapted := Prefix ("@" (ClosedTarget PostfixSuffix* | OpenTarget))*. A form outside the production is one
+    // grammar record at the marked token, the same in selected and excluded syntax; a suffix after an OpenTarget is read over the
+    // adaptation (the grouping the repair writes), so a second suffix adds no record.
+    [Theory]
+    [InlineData("items@Array<i32>[0]", "[0]", "postfix suffix after an open adaptation target")]
+    [InlineData("p@P(1)", "(1)", "postfix suffix after an open adaptation target")]
+    [InlineData("p@P(1).v", "(1)", "postfix suffix after an open adaptation target")]
+    [InlineData("p@ref/P[0]", "[0]", "postfix suffix after an open adaptation target")]
+    [InlineData("p@Box<Box<i32>>(1)", "(1)", "postfix suffix after an open adaptation target")]
+    [InlineData("p@P{k}.v", ".v", "postfix suffix after an open adaptation target")]
+    [InlineData("x@i32?.foo", ".foo", "postfix suffix after an open adaptation target")]
+    [InlineData("x@i32?\n    .foo", ".foo", "postfix suffix after an open adaptation target")]
+    [InlineData("pair@(i32, u8)?.0", ".0", "postfix suffix after an open adaptation target")]
+    [InlineData("a@[2 of i32]?[0]", "[0]", "postfix suffix after an open adaptation target")]
+    [InlineData("x@i64++", "++", "postfix suffix after an open adaptation target")]
+    [InlineData("x@i64--", "--", "postfix suffix after an open adaptation target")]
+    [InlineData("p@P@follow", "@follow", "postfix suffix after an open adaptation target")]
+    [InlineData("f(p@(P)@P(1))", "(1)", "postfix suffix after an open adaptation target")]
+
+    // SPEC F.3.2, F.9.4: wrap and bits are keywords directly before "<", and the OpenTarget ends at its Type arguments.
+    [InlineData("x@wrap<u8>.foo", ".foo", "postfix suffix after an open adaptation target")]
+    [InlineData("x@bits<u32>.foo", ".foo", "postfix suffix after an open adaptation target")]
+    [InlineData("x@wrap<u8>.(C).Item", ".(C)", "postfix suffix after an open adaptation target")]
+    [InlineData("x@wrap<u8>(1)", "(1)", "postfix suffix after an open adaptation target")]
+    [InlineData("x@bits<u32>[0]", "[0]", "postfix suffix after an open adaptation target")]
+
+    // SPEC 13.5.1, F.5: a bound Container qualifier never heads the target's own path, through any grouping or Semantics prefix.
+    [InlineData("x@((S{k}).Item)", "(S{k})", "bound Container qualifier in an adaptation target")]
+    [InlineData("x@((S during z).Item)", "(S during z)", "bound Container qualifier in an adaptation target")]
+    [InlineData("x@((S{k}).(K).Item)", "(S{k})", "bound Container qualifier in an adaptation target")]
+    [InlineData("x@((S{k}).Item<i32>)", "(S{k})", "bound Container qualifier in an adaptation target")]
+    [InlineData("x@(((S{k}).Item))", "(S{k})", "bound Container qualifier in an adaptation target")]
+    [InlineData("x@ref/((S{k}).Item)", "(S{k})", "bound Container qualifier in an adaptation target")]
+    [InlineData("x@(ref/(S{k}).Item)", "(S{k})", "bound Container qualifier in an adaptation target")]
+    public void AnAdaptationOutsideItsGrammarIsOneRecordInEverySelection(string expression, string at, string phrase)
+    {
+        foreach (var excluded in (bool[])[false, true])
+        {
+            var source = (excluded ? "#if false\n    let result = " + expression.Replace("\n", "\n    ", StringComparison.Ordinal) : "let result = " + expression) + "\nlet next = 42";
+            var diagnostic = Assert.Single(Parse(source).Diagnostics);
+            Assert.Equal(nameof(DiagnosticCode.MisplacedSyntax_Kd), diagnostic.Code);
+            Assert.Contains(phrase, diagnostic.Message, StringComparison.Ordinal);
+            Assert.Equal(source.IndexOf(at, StringComparison.Ordinal), diagnostic.Span.Start);
+        }
+    }
+
+    // SPEC F.9.4: "wrap" TypeArguments and "bits" TypeArguments end the target, so a "?" or a binding set after it is no part of it and
+    // the statement ends there: one record at that token in selected and excluded syntax.
+    [Theory]
+    [InlineData("x@wrap<u8>?", "?")]
+    [InlineData("x@bits<u32>?", "?")]
+    [InlineData("x@wrap<u8>?.foo", "?")]
+    [InlineData("x@wrap<u8>{k}", "{k}")]
+    [InlineData("x@bits<u32>{k}", "{k}")]
+    public void AConversionOperationTargetEndsAtItsTypeArguments(string expression, string at)
+    {
+        foreach (var source in (string[])["let result = " + expression + "\nlet next = 42", "#if false\n    let result = " + expression + "\nlet next = 42"])
+        {
+            var diagnostic = Assert.Single(Parse(source).Diagnostics);
+            Assert.Equal(nameof(DiagnosticCode.ExpectedSyntax_Kd), diagnostic.Code);
+            Assert.Contains("the end of the line", diagnostic.Message, StringComparison.Ordinal);
+            Assert.Equal(source.IndexOf(at, StringComparison.Ordinal), diagnostic.Span.Start);
+        }
+    }
+
+    // The valid twins: a ClosedTarget takes the value's suffixes, a grouped adaptation any suffix, an OpenTarget none, and "." continues
+    // an open Type head (a PathSuffix); a second "@" follows any target.
+    [Theory]
+    [InlineData("(items@Array<i32>)[0]")]
+    [InlineData("(p@P)(1)")]
+    [InlineData("(pair@(i32, u8)?).0")]
+    [InlineData("p@(P)(1)")]
+    [InlineData("a@[2 of i32][0]")]
+    [InlineData("a@(Array<i32>)[0]")]
+    [InlineData("x@(S{k}).Item")] // F.9.4: (x@(S{k})).Item, a ClosedTarget and the value's selection.
+    [InlineData("x@(i32?)[0]")]
+    [InlineData("x@(i64)++")]
+    [InlineData("p@(P)@follow")]
+    [InlineData("pair@ref/(i32, u8).0")]
+    [InlineData("a@uniq[0]")]
+    [InlineData("p@move(1)")]
+    [InlineData("p@P.Item")]
+    [InlineData("p@P{k}")]
+    [InlineData("p@P@ref.v")]
+    [InlineData("x@i32?@ref.foo")]
+    [InlineData("x@i32? == y")]
+    [InlineData("f(p@P)(1)")]
+    [InlineData("a[x@isize]")]
+    [InlineData("[x@i64, 1]")]
+    [InlineData("x@wrap<u8>")]
+    [InlineData("x@wrap<Wrapping<u8>> + 1")]
+    [InlineData("x@bits<u32> == y")]
+    [InlineData("(x@wrap<u8>).foo")]
+    [InlineData("x@bits<u32>@ref.foo")]
+    [InlineData("x@ref/wrap<u8>.foo")]
+    [InlineData("x@(wrap<u8>).foo")]
+
+    // SPEC 13.5.1, F.5: another PathQualifier is grouped as a target, a plain path and a binding set are no qualifier, and a Type nested
+    // in the target's Core (a Type argument, an Optional's payload, a Tuple or fixed array element, a Function Type's part) keeps the form.
+    [InlineData("x@((i32, u8).(C).Item)")]
+    [InlineData("x@(((i32) -> i32).(C).Item)")]
+    [InlineData("x@([2 of i32].(C).Item)")]
+    [InlineData("x@(S.Item)")]
+    [InlineData("x@(S{k})")]
+    [InlineData("x@Option<(S{k}).Item>")]
+    [InlineData("x@((S{k}).Item)?")]
+    [InlineData("x@((S{k}).Item, i32)")]
+    [InlineData("x@[2 of (S{k}).Item]")]
+    [InlineData("x@(((S{k}).Item) -> i32)")]
+    public void AnAdaptationInsideItsGrammarHasNoRecordInEverySelection(string expression)
+    {
+        Assert.Empty(Parse("let result = " + expression + "\nlet next = 42").Diagnostics);
+        Assert.Empty(Parse("#if false\n    let result = " + expression + "\nlet next = 42").Diagnostics);
+    }
+
     private static Koto ParseExpression(string expression)
     {
         var (body, diagnostics) = Parse("let result = " + expression);
@@ -233,7 +362,7 @@ public class ExpressionPrecedenceTest
             return Describe(parentheses.Operand);
         }
 
-        var children = koto.ChildNodes.ToArray();
+        var children = koto.Children().ToArray();
         return children.Length == 0
             ? $"{koto.Akind}:{koto}"
             : $"{koto.Akind}({string.Join(", ", children.Select(Describe))})";

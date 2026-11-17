@@ -1,6 +1,7 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using System.Text;
+using System.Text.RegularExpressions;
 using Kimi;
 using Kimi.Compiler;
 using Kimi.Compiler.Mir;
@@ -193,6 +194,37 @@ public sealed partial class MirBuildTest
             body.Operands[statement.Rvalue.Start].Kind == MirOperandKind.PairAcquire;
     }
 
+    // PLAN G703 (SPEC 3.5.3, 10.2; the Middle's C-219 N2 and condition 1): a value read through qualifying pair layers at an annotated
+    // let, an argument, an operand and a result, through one layer and through 17 and 18, is a Copy of the projection that takes every
+    // layer in the one body every Semantics case shares, and forms no reference.
+    [Theory]
+    [InlineData("    let v: i32 = x\n    return v\n", 1)]
+    [InlineData("    return h(x)\n", 1)]
+    [InlineData("    return x\n", 1)]
+    [InlineData("    let v: i32 = x\n    return v + h(x) + x\n", 17)]
+    [InlineData("    let v: i32 = x\n    return v + h(x) + x\n", 18)]
+    public void AValueReadThroughAPairLayerCopiesItsProjection(string read, int layers)
+    {
+        var body = Body($"func h(v: i32) -> i32 => v\nfunc f<s/T>(x: {TypeDagScalingTest.PairLayers(layers, "i32")}, m: s/T) -> i32\n    s is value or valueborrow\n" + read, "f");
+        Assert.DoesNotContain(body.Statements.ToArray(), static x => x is { Kind: MirStatementKind.Assign, Rvalue.Kind: MirRvalueKind.Ref });
+        Assert.Contains(body.Operands.ToArray(), x => x.Kind == MirOperandKind.Copy && PairLayerSteps(x.Place.Projection) == layers);
+
+        // The steps of a projection chain that takes only pair layers, else -1.
+        int PairLayerSteps(int projection)
+        {
+            var steps = 0;
+            for (var id = projection; id != 0; id = body.Projections[id].Prefix, steps++)
+            {
+                if (body.Projections[id].Kind != MirProjectionKind.PairLayer)
+                {
+                    return -1;
+                }
+            }
+
+            return steps;
+        }
+    }
+
     // A3 E13 (4): a pair-layer acquisition is always the whole rvalue of its own Assign to a local, marked with the Reborrow its exclusive
     // case makes: TwoPhaseUniq where it produces an invocation's input, else Uniq (a local's initializer, a tuple's element, a capture);
     // an Adapt that produces an input has its input bit, so its exclusive case is a two-phase borrow there (MirCases.Adapt).
@@ -265,6 +297,58 @@ public sealed partial class MirBuildTest
     [InlineData("func f() -> i32\n    var a: [1 of i32] = [0]\n    ++a[(return 42)]\n    return 0\n")]
     [InlineData("func f() -> i32\n    return true\n")]
     public void TheNeverValueValidatesWhereOnlyTheChecksContinue(string source) => _ = Body(source, "f");
+
+    // SPEC 8.2.3, 3.8, 3.1.3, 14.10.3 (PLAN G704, G355; the owner's O-147 (c)): a Place whose Type the body's identity premises make Never
+    // (a: T under `T is Never`, through `owner/`, the root path or a chain) is a Place of Type Never (MirTypes.IsNever): a Never form
+    // acquires it into the Never value and a call whose result the premises make Never diverges, so each body validates and gets the
+    // records of its non-generic twin (a: Never), the first form; `let b: i32 = a` leaves b uninitialized (fail-before: the Place's Copy
+    // at T where another Type is expected, MirValidator's Type or Operation finding, InternalInvariant_Kd). A call of `k: () -> T` diverges
+    // (fail-before: a returning Call wrote the Never value, MirValidator's NeverWrite; the Middle's f37), and a local it or the value
+    // initializes stays uninitialized (f33, f38: accepted on dev under `owner/Never`). The assumed path after the value is still checked
+    // (14.10.3; the last rows, design review 2's adversarial twins L1-L4, M1, M2): a Loan conflict across a `let`, an argument, a
+    // comparison or a `return`, and a read after a Move, stay rejected. `{A}` in a row is the value's Type.
+    [Theory]
+    [InlineData("return a", "i32", "clean")]
+    [InlineData("return a + 1", "i32", "clean")]
+    [InlineData("return 1 + a", "i32", "clean")]
+    [InlineData("return a == 1", "bool", "clean")]
+    [InlineData("return not a", "bool", "clean")]
+    [InlineData("let b: i32 = a\n    return b", "i32", "1*UninitializedPlace_Kd")]
+    [InlineData("let b: i32 = a@move\n    return 0", "i32", "clean")]
+    [InlineData("return if c => a else => 1", "i32", "clean")]
+    [InlineData("return g(a)", "i32", "clean")]
+    [InlineData("let t: (i32, i32) = (a, 2)\n    return 0", "i32", "clean")]
+    [InlineData("while a\n        ()\n    return 0", "i32", "clean")]
+    [InlineData("return id(a)", "i32", "clean")]
+    [InlineData("return k()", "i32", "clean")]
+    [InlineData("let b = a\n    return b", "i32", "1*UninitializedPlace_Kd")]
+    [InlineData("let b: {A} = k()\n    return b", "i32", "1*UninitializedPlace_Kd")]
+    [InlineData("var x: i32 = 1\n    let r = x@uniq\n    let b: i32 = a\n    x = 2\n    use(r)", "()", "1*ComparisonLoanConflict_Kd")]
+    [InlineData("var x: i32 = 1\n    let r = x@uniq\n    let d = g(a@move)\n    x = 2\n    use(r)", "()", "1*ComparisonLoanConflict_Kd")]
+    [InlineData("var x: i32 = 1\n    let r = x@uniq\n    let d = a == 1\n    x = 2\n    use(r)", "()", "1*ComparisonLoanConflict_Kd")]
+    [InlineData("var x: i32 = 1\n    let r = x@uniq\n    return a\n    x = 2\n    use(r)\n    return 0", "i32", "1*ComparisonLoanConflict_Kd")]
+    [InlineData("pass(a@move, a)", "()", "1*MovedPlace_Kd")]
+    [InlineData("let b = a@move\n    return a", "i32", "1*MovedPlace_Kd")]
+    public void APlaceThePremisesMakeNeverIsAcquiredAsTheNeverValue(string statements, string result, string records)
+    {
+        const string helpers = "func g(x: i32) -> i32 => x\nfunc id<U>(x: U) -> U => x@move\nfunc use(r: uniq/i32) -> () => ()\nfunc pass(x: i32, y: i32) -> () => ()\n";
+        (string Generics, string Type, string Premises)[] forms =
+        [
+            (string.Empty, "Never", string.Empty), ("<T>", "T", "    T is Never\n"), ("<T>", "T", "    T is owner/Never\n"),
+            ("<T>", "T", "    T is ::Kimi.Never\n"), ("<T, U>", "T", "    T is U\n    U is Never\n"),
+        ];
+        foreach (var (generics, type, premises) in forms)
+        {
+            var source = $"{helpers}func f{generics}(a: {type}, c: bool, k: () -> {type}) -> {result}\n{premises}    {statements.Replace("{A}", type)}\n";
+            Assert.Empty(Compile(source).BuildMir().Findings);
+            Assert.Equal(records, DiagnosticCorpus.RecordProfile(source));
+        }
+    }
+
+    // SPEC 8.2.3, 3.8 (PLAN G704): a Field a conditional member's premise makes Never is such a Place too (fail-before: a Type finding).
+    [Fact]
+    public void AFieldAMembersPremiseMakesNeverIsAcquiredAsTheNeverValue()
+        => _ = Body("struct Box<E>\n    var v: E\n    public func f(self: ref/Self) -> i32\n        E is Never\n        return self.v\n", "f");
 
     // SPEC 13.4, package F 4.8 (DECISIONS R5-M75): a tuple operator whose leaf's storage nests past Binding's bound has no comparison (a
     // Limit of TyCtxt.Comparison): one located Unsupported_Kd at the operator, with its Opaque value (fail-before: none, the tuple's call),
@@ -429,7 +513,7 @@ public sealed partial class MirBuildTest
             steps);
     }
 
-    // SPEC 22.10.4, 22.10.1 (PLAN G157 (35), DECISIONS R5-M131): a $tryWrite evaluates an embedded expression only after a test that its
+    // SPEC 22.10.4, 22.10.1 (PLAN G157 (35)): a $tryWrite evaluates an embedded expression only after a test that its
     // adapter is healthy: a first segment that is an expression follows the adapter's status, and a text's write returns the recorded failure
     // itself, so a text first needs none (fail-before: next() ran first, on an adapter that may have failed already).
     [Theory]
@@ -486,24 +570,181 @@ public sealed partial class MirBuildTest
                 .Select(x => $"{x.Code} {c.SyntaxOf(x.Subject)}"));
     }
 
-    // SPEC 22.10.3, 22.10.5 (DECISIONS R5-M133): an owning interpolation is one FormatSegment step per write position, the later literal bytes
-    // and values' Types its hint: a literal segment's text is its step's operand and no write, and so is an embedded string literal's (as if
-    // written: a constant has no effect); a value's position has the empty text and its write follows. The block a failed write goes to exists
-    // only where a write is tested, so text alone builds without validator findings (fail-before: each literal was a write<string> after
-    // FormatHint; then text alone left that block unreachable). A $tryWrite's text stays a write (above).
+    // SPEC 22.10.3, 22.10.5 (DECISIONS R5-M133; R8-W2 c1, c2b): before each write position an owning interpolation stores its hint, the
+    // term of the later literal bytes and values' Types, into the writer's Field Utf8Writer.hint: an Integer where it folds, as in every
+    // closed body, else a Length its instance decides (the generic row); then the position's write: a value's is its write; a literal
+    // segment's is no write but its text's constant record through the library, Utf8Writer.deferLiteral where a value follows in the
+    // template, else string's built-in format, and so is an embedded string literal's (as if written: a constant has no effect). Each is
+    // tested, so text alone has the failed block too (fail-before: each hint was a FormatSegment step over the later bytes and a token of
+    // the later values' Types; before c1 the text was its operand too; before R5-M133 each literal was a write<string>). A $tryWrite's text
+    // stays a write (above).
     [Theory]
     [InlineData(
         "func f(n: i32) -> string => \"n=\\(n)!\"\n",
-        new[] { "FormatBuffer", "ErasedWriter", "FormatSegment \"n=\" 1 1", "FormatSegment \"\" 1 0", "write", "FormatSegment \"!\" 0 0", "FormatFinish" })]
+        new[] { "heap", "writer", "hint 12", "deferLiteral \"n=\"", "hint 1", "write", "hint 0", "format \"!\"", "finish", "intoString" })]
     [InlineData(
         "func f(n: i32) -> string => \"\\(\"lit\")\\(n)\"\n",
-        new[] { "FormatBuffer", "ErasedWriter", "FormatSegment \"lit\" 0 1", "FormatSegment \"\" 0 0", "write", "FormatFinish" })]
-    [InlineData("func f() -> string => \"\\(\"only\")\"\n", new[] { "FormatBuffer", "ErasedWriter", "FormatSegment \"only\" 0 0", "FormatFinish" })]
+        new[] { "heap", "writer", "hint 11", "deferLiteral \"lit\"", "hint 0", "write", "finish", "intoString" })]
+    [InlineData(
+        "func f() -> string => \"\\(\"only\")\"\n",
+        new[] { "heap", "writer", "hint 0", "format \"only\"", "finish", "intoString" })]
     [InlineData(
         "func f() -> string => \"x\\(\"y\")z\"\n",
-        new[] { "FormatBuffer", "ErasedWriter", "FormatSegment \"x\" 2 0", "FormatSegment \"y\" 1 0", "FormatSegment \"z\" 0 0", "FormatFinish" })]
-    public void AnOwningInterpolationsLiteralTextIsItsSegmentStep(string source, string[] steps)
+        new[] { "heap", "writer", "hint 2", "format \"x\"", "hint 1", "format \"y\"", "hint 0", "format \"z\"", "finish", "intoString" })]
+    [InlineData(
+        "func f(n: i32) -> string => \"a\\(\"b\")\\(n)\"\n",
+        new[] { "heap", "writer", "hint 12", "deferLiteral \"a\"", "hint 11", "deferLiteral \"b\"", "hint 0", "write", "finish", "intoString" })]
+    [InlineData(
+        "func f<T>(a: ref/string, b: ref/T) -> string\n    T is Utf8Format\n    return \"\\(a)\\(b)\"\n",
+        new[] { "heap", "writer", "hint (0 + hint(T))", "write", "hint 0", "write", "finish", "intoString" })]
+    public void AnOwningInterpolationsLiteralTextIsALibraryCall(string source, string[] steps)
         => Assert.Equal(steps, HealthyPath(Body(source, "f"), int.MaxValue));
+
+    // SPEC 22.7, 22.10.3, rule L (R8-W2 a2; consents C-180): a direct line is one expansion over one writer local of Binding's plan writer
+    // Type. A constant term builds one form: the fixed one, a zero-filled region of exactly the literal bytes and the values' bounds
+    // (2 + 11), Text.fixed, its writer, the writes, text() and writeLine(Utf8Slice); or the owning one (an unbounded value), Text.heap,
+    // its writer, the writes, finish, intoString and writeLine(ref/string). A generic body's term (Len of the region) branches twice: both
+    // buffers' calls and both ends, each once, around writes built once (fail-before: the stack form was FormatBuffer's region home, and
+    // a generic line's MIR had no fixed form). The owning path is the healthy path here (the test's 0 arm).
+    [Theory]
+    [InlineData(
+        "func f(n: i32) => Console.writeLine(\"n=\\(n)\")\n",
+        "[13 of u8]",
+        new[] { "fixed", "writer", "hint 11", "deferLiteral \"n=\"", "hint 0", "write", "text", "writeLine" },
+        new[] { "deferLiteral", "fixed", "text", "write", "writeLine", "writer" })]
+    [InlineData(
+        "func f(s: ref/string) => Console.writeLine(\"s=\\(s)\")\n",
+        null,
+        new[] { "heap", "writer", "hint 0", "deferLiteral \"s=\"", "hint 0", "write", "finish", "intoString", "writeLine" },
+        new[] { "deferLiteral", "finish", "heap", "intoString", "write", "writeLine", "writer" })]
+#pragma warning disable SA1118 // The generic line's healthy path, wrapped at the 160-character line limit.
+    [InlineData(
+        "func f<T>(v: ref/T)\n    T is Utf8Format\n    Console.writeLine(\"v=\\(v)\")\n",
+        "[(2 + bound(T)) of u8]",
+        new[]
+        {
+            "fixed", "heap", "writer", "hint (0 + hint(T))", "deferLiteral \"v=\"", "hint 0", "write", "finish", "intoString", "writeLine",
+        },
+        new[] { "deferLiteral", "finish", "fixed", "heap", "intoString", "text", "write", "writeLine", "writeLine", "writer", "writer" })]
+#pragma warning restore SA1118
+    public void ADirectLineIsOneExpansionOverOneWriter(string source, string? region, string[] healthy, string[] calls)
+    {
+        var body = Body(source, "f");
+        Assert.Equal(healthy, HealthyPath(body, int.MaxValue));
+        Assert.Equal(calls, body.Blocks.ToArray().Where(static x => x.Terminator.Kind == MirTerminatorKind.Call).Select(x => Step(body, x.Terminator).Split(' ')[0])
+            .Where(static x => x != "Fail").Order(StringComparer.Ordinal));
+        Assert.Equal(region, Enumerable.Range(0, body.Locals.Length).Select(x => body.Locals[x].Type)
+            .Where(static x => x.Kind == BoundTypeKind.FixedArray).Select(TyCtxt.Name).SingleOrDefault());
+        var writers = Enumerable.Range(0, body.Locals.Length).Where(x => body.Locals[x].Type.Symbol?.LibraryDeclaration == KimiDeclarationId.Utf8Writer);
+        Assert.Single(writers); // One writer local, both arms' (consent 1).
+    }
+
+    // SPEC 22.10.5 (DECISIONS R8-M24 as amended at R8-W2 c3b): an owning interpolation's buffer is the plan's first call, Text.heap, of the
+    // constant capacity 0. A generic direct line makes both buffers before its first branch, Text.fixed over the region, whose Len the
+    // branch's test read first, then Text.heap, and each arm makes only the writer; so each end reads a buffer initialized on every path,
+    // and the owning buffer's one Drop is MirDrops' ordinary flagged one, since the owning end's intoString moves it (R8-W2 c3a; at c3b
+    // Keep, with no flag) (fail-before: FormatBuffer of the instance's estimate; each buffer made in its arm, the fixed end's read
+    // accepted by A1's rule for a temp).
+    [Fact]
+    public void AGenericLinesBuffersAreMadeBeforeItsFirstBranch()
+    {
+        var program = Compile("func f<T>(v: ref/T)\n    T is Utf8Format\n    Console.writeLine(\"v=\\(v)\")\n").BuildMir();
+        Assert.Empty(program.Findings);
+        Assert.Empty(program.Problems.All.ToArray());
+        var body = program.Bodies.ToArray().Single(static x => x.Key is { Kind: MirBodyKind.Fn } && x.Key.Decl?.Name == "f");
+        int Next(int block, List<string> calls)
+        {
+            for (; body.Blocks[block].Terminator is { Kind: MirTerminatorKind.Call or MirTerminatorKind.Goto } terminator; block = terminator.Target)
+            {
+                if (terminator.Kind == MirTerminatorKind.Call)
+                {
+                    calls.Add(Step(body, terminator));
+                }
+            }
+
+            return block;
+        }
+
+        var before = new List<string>();
+        var branch = body.Blocks[Next(0, before)].Terminator;
+        Assert.Equal(MirTerminatorKind.SwitchInt, branch.Kind);
+        Assert.Equal(["fixed", "heap"], before);
+        var heap = body.Blocks.ToArray().Single(x => x.Terminator is { Kind: MirTerminatorKind.Call, Callee.Symbol.Name: "heap" }).Terminator;
+        Assert.Equal(MirConstKind.Integer, body.Consts[body.Operands[heap.Start].Arg].Kind);
+        Assert.Equal(Int128.Zero, body.Consts[body.Operands[heap.Start].Arg].Bits);
+        foreach (var arm in new[] { Assert.Single(body.Cases.Slice(branch.Start, branch.Count).ToArray()).Target, branch.Target })
+        {
+            var calls = new List<string>();
+            _ = Next(arm, calls);
+            Assert.Equal("writer", calls[0]); // Each arm makes only the writer (Text.writer's call, R8-W2 b2-1); the writes follow their join.
+        }
+
+        var lines = MirDumpTest.Unsited(program, body).Split('\n').Select(static x => x.TrimStart(' ', '*')).ToArray();
+        Assert.Equal(["flags 1"], lines.Where(static x => x.StartsWith("flags", StringComparison.Ordinal)));
+        Assert.Single(lines, x => x.StartsWith($"drop _{heap.Place.Root} ", StringComparison.Ordinal) && x.Contains("[flag f0]", StringComparison.Ordinal));
+    }
+
+    // SPEC 22.7, 22.10.2, 22.10.3 (R8-W2 b2-1; the Middle's C-330 note N3, its twin g2): a direct line embedded in another formatting
+    // plan is its own expansion inside that plan's writes: the outer plan's buffer and its writer, then, where the embedded expression
+    // is evaluated, the inner line's region of exactly its bytes, Text.fixed, its own Text.writer call, its writes and its end, then the
+    // outer write of the line's Unit ("()"); the outer position's hint is stored before its expression is evaluated (the builder's
+    // order, which no program observes). Rows labelled from SPEC before running, both valid, without a finding or a problem: a line in
+    // a line, two regions (1 + 2 and 1 + 11 bytes) and two writers over two FixedBuffers; a line in an owning interpolation, the
+    // HeapBuffer's writer and the FixedBuffer's (the nested rows above embed an owning interpolation, whose line never reaches Erase).
+    [Theory]
+    [InlineData(
+        "func f(n: i32) => Console.writeLine(\"o\\(Console.writeLine(\"i\\(n)\"))\")\n",
+        new[] { "[3 of u8]", "[12 of u8]" },
+        new[] { "FixedBuffer", "FixedBuffer" },
+        new[] { "fixed", "writer", "hint 2", "deferLiteral \"o\"", "hint 0", "fixed", "writer", "hint 11", "deferLiteral \"i\"", "hint 0", "write", "text", "writeLine", "write", "text", "writeLine" })]
+    [InlineData(
+        "func f(n: i32) -> string => \"a\\(Console.writeLine(\"m=\\(n)\"))b\"\n",
+        new[] { "[13 of u8]" },
+        new[] { "HeapBuffer", "FixedBuffer" },
+        new[] { "heap", "writer", "hint 3", "deferLiteral \"a\"", "hint 1", "fixed", "writer", "hint 11", "deferLiteral \"m=\"", "hint 0", "write", "text", "writeLine", "write", "hint 0", "format \"b\"", "finish", "intoString" })]
+    public void ADirectLineInsideAnotherPlanIsItsOwnExpansion(string source, string[] regions, string[] writers, string[] healthy)
+    {
+        var program = Compile(source).BuildMir();
+        Assert.Empty(program.Findings);
+        Assert.Empty(program.Problems.All.ToArray());
+        var body = program.Bodies.ToArray().Single(static x => x.Key is { Kind: MirBodyKind.Fn } && x.Key.Decl?.Name == "f");
+        Assert.Equal(healthy, HealthyPath(body, int.MaxValue));
+        var locals = Enumerable.Range(0, body.Locals.Length).Select(x => body.Locals[x].Type).ToArray();
+        Assert.Equal(regions, locals.Where(static x => x.Kind == BoundTypeKind.FixedArray).Select(TyCtxt.Name));
+        Assert.Equal(writers, Regex.Matches(MirDumpTest.Unsited(program, body), @"= writer<(\w+)>\(").Select(static x => x.Groups[1].Value));
+        Assert.Equal(writers.Length, locals.Count(static x => x.Symbol?.LibraryDeclaration == KimiDeclarationId.Utf8Writer)); // One writer local for each plan.
+    }
+
+    // SPEC 22.10.3, 22.9.3 (R8-W2 c3a): an owning interpolation's end is Utf8Writer.finish, the writer's last use, so its Loan on the buffer
+    // ends there, then HeapBuffer.intoString of the moved buffer. Rows labelled from SPEC before running, none with a Binding issue: valid,
+    // so accepted (22.10.3), an owning interpolation in a let, a generic body's owning instance and a nested one in a direct line; the
+    // builder's shape written out (EndShape), the writer's status for its finish: valid with the writer's last use before intoString, and
+    // exactly one Loan conflict with intoString moving the buffer while the writer is used after it, by its status or by a write. A guard,
+    // not a fail-before row: rows 1-3, the interpolations, call FormatFinish on the base, which took the writer by move and gave no
+    // problem, and only the three EndShape rows call no FormatFinish, so every row passes before c3a.
+    [Theory]
+    [InlineData("func f(x: i32) -> string\n    let t = \"a\\(x)b\"\n    return t@move\n", null)]
+    [InlineData("func g<T>(v: ref/T) -> string\n    T is Utf8Format\n    return \"v=\\(v)\"\nfunc f() -> string => g(\"abc\")\n", null)]
+    [InlineData("func f(x: i32) => Console.writeLine(\"o\\(\"i\\(x)\")\")\n", null)]
+    [InlineData(EndShape + "    _ = writer.status()\n    let taken = (buffer@move).intoString()\n" + EndTaken, null)]
+    [InlineData(EndShape + "    let taken = (buffer@move).intoString()\n    _ = writer.status()\n" + EndTaken, DiagnosticCode.ComparisonLoanConflict_Kd)]
+    [InlineData(EndShape + "    let taken = (buffer@move).intoString()\n    _ = (writer@uniq).write(n)\n" + EndTaken, DiagnosticCode.ComparisonLoanConflict_Kd)]
+    public void AnOwningEndTakesTheBufferAfterTheWritersLastUse(string source, DiagnosticCode? conflict)
+    {
+        var c = Compile(source);
+        Assert.Empty(c.Binding.Issues);
+        var program = c.BuildMir();
+        Assert.Empty(program.Findings);
+        Assert.Equal(conflict is { } code ? [code] : [], program.Problems.All.ToArray().Select(static x => x.Code));
+    }
+
+    // The builder's owning end written out (AnOwningEndTakesTheBufferAfterTheWritersLastUse): the buffer, its writer, a `var` for the
+    // writer's uniq/Self methods (SPEC 7.3.3), and one write.
+    private const string EndShape =
+        "func f(n: i32) -> string\n    var buffer = Text.heap(0)\n    var writer = Text.writer(buffer@uniq)\n    _ = (writer@uniq).write(n)\n";
+
+    // The owning end's string taken from intoString's Result (AnOwningEndTakesTheBufferAfterTheWritersLastUse).
+    private const string EndTaken = "    match taken@move\n        .Ok(let s) => return s@move\n        .Err(_) => $abort(\"invalid\")\n";
 
     // DECISIONS R5-M133: an interpolation of text alone leaves the program analyzable, so a true error elsewhere in it is still reported
     // (fail-before: its unreachable failure block was a validator finding, and the analyses ran on no body).
@@ -517,14 +758,14 @@ public sealed partial class MirBuildTest
         Assert.Contains(program.Problems.All.ToArray(), static x => x.Code == DiagnosticCode.ComparisonLoanConflict_Kd);
     }
 
-    // The calls on a body's healthy path from its entry, at most count: a call's, a goto's or a Drop's target and a Result test's Ok arm
-    // continue it. An intrinsic is named by its id, a FormatSegment with its text, later bytes and later values' count; another call by its
-    // function's name.
+    // The steps on a body's healthy path from its entry, at most count: a call's, a goto's or a Drop's target and a Result test's Ok arm
+    // continue it. A block's hint stores (Hints) come before its call (Step).
     private static List<string> HealthyPath(MirBody body, int count)
     {
         var path = new List<string>();
         for (var block = 0; block >= 0 && path.Count < count;)
         {
+            path.AddRange(Hints(body, body.Blocks[block]));
             var terminator = body.Blocks[block].Terminator;
             if (terminator.Kind == MirTerminatorKind.Call)
             {
@@ -540,18 +781,39 @@ public sealed partial class MirBuildTest
         }
 
         return path;
+    }
 
-        static string Step(MirBody body, in MirTerminator call)
+    // A call's step (HealthyPath): an intrinsic by its id; another call by its function's name, with the text of a constant record among
+    // its operands (a literal position's).
+    private static string Step(MirBody body, in MirTerminator call)
+    {
+        if (call.Callee.Kind == MirCalleeKind.Intrinsic)
         {
-            if (call.Callee.Kind != MirCalleeKind.Intrinsic)
-            {
-                return call.Callee.Symbol!.Name;
-            }
+            return ((IntrinsicId)call.Callee.Arg).ToString();
+        }
 
-            var id = (IntrinsicId)call.Callee.Arg;
-            var operands = body.Operands.Slice(call.Start, call.Count);
-            return id != IntrinsicId.FormatSegment ? id.ToString()
-                : $"{id} \"{body.Consts[operands[1].Arg].Value}\" {body.Consts[operands[2].Arg].Bits} {body.Consts[operands[3].Arg].Type.Components.Count}";
+        var records = body.Operands.Slice(call.Start, call.Count).ToArray().Where(x => x.Kind == MirOperandKind.Const && body.Consts[x.Arg].IsRecord)
+            .Select(x => $" \"{body.Consts[x.Arg].Value}\"");
+        return call.Callee.Symbol!.Name + string.Concat(records);
+    }
+
+    // A block's stores of an owning interpolation's hint (R8-W2 c2b), the writer's Field Utf8Writer.hint, each a Use of a Const (asserted)
+    // as `hint` and its constant: an Integer's value, or a Length's term as diagnostics spell it.
+    private static IEnumerable<string> Hints(MirBody body, MirBlock block)
+    {
+        foreach (var statement in body.Statements.Slice(block.Start, block.Count).ToArray())
+        {
+            if (statement is { Kind: MirStatementKind.Assign, Place: { Projection: > 0 } place } &&
+                body.Projections[place.Projection] is { Kind: MirProjectionKind.Field, Prefix: 0 } field &&
+                body.Locals[place.Root].Type is { Symbol.LibraryDeclaration: KimiDeclarationId.Utf8Writer } writer &&
+                field.Arg == AdtDef.IndexOf(writer, "hint"))
+            {
+                Assert.Equal(MirRvalueKind.Use, statement.Rvalue.Kind);
+                var operand = body.Operands[statement.Rvalue.Start];
+                Assert.Equal(MirOperandKind.Const, operand.Kind);
+                var constant = body.Consts[operand.Arg];
+                yield return "hint " + (constant.Kind == MirConstKind.Length ? TyCtxt.Name((BoundLength)constant.Value!) : $"{constant.Bits}");
+            }
         }
     }
 

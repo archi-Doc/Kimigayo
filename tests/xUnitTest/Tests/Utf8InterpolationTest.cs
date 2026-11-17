@@ -13,10 +13,12 @@ public class Utf8InterpolationTest
         Assert.True(c.Binding.Result.IsComplete, string.Join("\n", c.Binding.Issues.Select(x => x.Code + ": " + x.Node.ToString())));
     }
 
+    // SPEC 22.10.5 (R8-W2 c3b): the buffer starts empty (Text.heap(0)), and the first reservation grows it once by its bytes, the deferred
+    // literal and the hint of the later positions: here the literal's 13 bytes and the value's 2 (fail-before: the estimate, 13 + 20).
     [Trait("Purpose", "Allocation")]
     [Fact]
     public void BoundedOwningInterpolationUsesOneAllocation()
-        => NativeAllocationAudit.WriteFixture("Utf8InterpolationBounded", "let n = 42@i64\nlet text = \"My number is \\(n)\"\nConsole.writeLine(text)", 1, 1, 33, "My number is 42\n");
+        => NativeAllocationAudit.WriteFixture("Utf8InterpolationBounded", "let n = 42@i64\nlet text = \"My number is \\(n)\"\nConsole.writeLine(text)", 1, 1, 15, "My number is 42\n");
 
     [Trait("Purpose", "Allocation")]
     [Fact]
@@ -117,6 +119,17 @@ public class Utf8InterpolationTest
         NativeAllocationAudit.WriteFixture("Utf8InterpolationPendingEmpty", Source, 1, 1, 2, "ab\n");
     }
 
+    // SPEC 22.10.5, 22.10.3 (R8-W2 c3a): a deferred literal still held at the end, the value after it having written no bytes, is the
+    // string's: Utf8Writer.finish writes it through reserve(0), which grows the empty buffer once by its 3 bytes (the end's hint is 0),
+    // and commits it. A guard: FormatFinish's runtime flush grew the buffer by the same rule.
+    [Trait("Purpose", "Allocation")]
+    [Fact]
+    public void ALiteralStillDeferredAtTheEndUsesOneAllocation()
+    {
+        const string Source = "let e = \"\"\nlet text = \"abc\\(e)\"\nConsole.writeLine(text)";
+        NativeAllocationAudit.WriteFixture("Utf8InterpolationPendingEnd", Source, 1, 1, 3, "abc\n");
+    }
+
     [Trait("Purpose", "Allocation")]
     [Fact]
     public void NestedReservationsRetainTheOuterHint()
@@ -137,8 +150,9 @@ public class Utf8InterpolationTest
     // SPEC 22.10.5 (DECISIONS R5-M133): MIR code generation defers a segment's literal text exactly when a value follows, so these forms keep
     // the old generator's allocations and bytes: the O2 corpus kernel's line (literals before bounded values and a user
     // formatter reserving twice), a deferred literal written at the first reservation, then grown by an unbounded string (a literal before
-    // a bounded value after a value that writes nothing is OneUnboundedValueUsesOneAllocationIncludingThePendingPrefix's Empty row), and an
-    // owning interpolation inside another (fail-before under MIR code generation: C9c's interim record).
+    // a bounded value after a value that writes nothing is OneUnboundedValueUsesOneAllocationIncludingThePendingPrefix's Empty row), an
+    // owning interpolation inside another (fail-before under MIR code generation: C9c's interim record), and a bool's body whose leaf write
+    // takes the deferred literal and grows once by the hint of the literal after it (Utf8Writer.reserve, R8-M18).
     [Trait("Purpose", "Allocation")]
     [Theory]
     [InlineData(
@@ -154,6 +168,7 @@ public class Utf8InterpolationTest
         34,
         "x5abcdefghijklmnopqrstuvwxyz0123\n")]
     [InlineData("Nested", "let s = \"abc\"\nlet text = \"<\\(\"[\\(s)]\")>\"\nConsole.writeLine(text)", 2, 12, "<[abc]>\n")]
+    [InlineData("BoundedGrowsByItsHint", "let text = \"\\(Empty.init())x\\(true)tail\"\nConsole.writeLine(text)", 1, 9, "xtruetail\n")]
     public void DeferredLiteralTextKeepsTheOldGeneratorsAllocations(string name, string statements, int allocations, int bytes, string expected)
     {
         const string Formatters = """
@@ -171,13 +186,29 @@ public class Utf8InterpolationTest
         NativeAllocationAudit.WriteFixture("Utf8InterpolationLiteral" + name, Formatters + "\n" + statements, allocations, allocations, bytes, expected);
     }
 
-    // SPEC 22.10.1, 22.10.5: an interpolated literal passed to `write`, or embedded in a $tryWrite, first builds its owning string, a
-    // bounded one in at most one allocation; writing that string into a FixedBuffer, or a HeapBuffer with enough capacity, allocates nothing.
+    // SPEC 22.10.5 (R8-W2 c2b): a generic body's hint is a Length its instance decides, the later literal bytes and values' bounds, an
+    // unbounded value counting 0. At T = i32 the first write grows the empty buffer by its 3 bytes and the hint 11, so the value fits; at
+    // T = string the value counts 0 and the trailing literal's 3 bytes fit. A guard: at T = i32 a hint without the later values, and at
+    // T = string one refolded by the bound's rule (rule L gives a line with an unbounded value 0), allocate twice.
     [Trait("Purpose", "Allocation")]
     [Theory]
-    [InlineData("Fixed", "var bytes = [8 of 0@u8]\nvar buffer = Text.fixed(bytes@uniq)", "(writer@uniq).write(\"n=\\(42)\")", "n=42", 1, 13)]
-    [InlineData("Heap", "var buffer = Text.heap(4)", "(writer@uniq).write(\"n=\\(42)\")", "n=42", 2, 17)]
-    [InlineData("TryWrite", "var bytes = [8 of 0@u8]\nvar buffer = Text.fixed(bytes@uniq)", "$tryWrite(writer@uniq, \"<\\(\"[\\(7)]\")>\")", "<[7]>", 1, 13)]
+    [InlineData("I32", "\\(a)\\(b)", "42@i32", 14, "abc42\n")]
+    [InlineData("String", "\\(a)\\(b)xyz", "\"\"", 6, "abcxyz\n")]
+    public void AGenericValuesHintIsItsInstancesBound(string name, string template, string argument, int bytes, string expected)
+    {
+        var source = "func pair<T>(a: ref/string, b: ref/T) -> string\n    T is Utf8Format\n    return \"" + template + "\"\n" +
+            "let text = pair(\"abc\", " + argument + ")\nConsole.writeLine(text)";
+        NativeAllocationAudit.WriteFixture("Utf8InterpolationGenericHint" + name, source, 1, 1, bytes, expected);
+    }
+
+    // SPEC 22.10.1, 22.10.5: an interpolated literal passed to `write`, or embedded in a $tryWrite, first builds its owning string, a
+    // bounded one in at most one allocation, of its written bytes when no bounded value follows the first (R8-W2 c3b; fail-before: the
+    // estimate, 13); writing that string into a FixedBuffer, or a HeapBuffer with enough capacity, allocates nothing.
+    [Trait("Purpose", "Allocation")]
+    [Theory]
+    [InlineData("Fixed", "var bytes = [8 of 0@u8]\nvar buffer = Text.fixed(bytes@uniq)", "(writer@uniq).write(\"n=\\(42)\")", "n=42", 1, 4)]
+    [InlineData("Heap", "var buffer = Text.heap(4)", "(writer@uniq).write(\"n=\\(42)\")", "n=42", 2, 8)]
+    [InlineData("TryWrite", "var bytes = [8 of 0@u8]\nvar buffer = Text.fixed(bytes@uniq)", "$tryWrite(writer@uniq, \"<\\(\"[\\(7)]\")>\")", "<[7]>", 1, 3)]
     public void AnInterpolatedWriteValueAllocatesOnlyItsString(string name, string setup, string write, string expected, int allocations, int bytes)
     {
         var source = setup + "\nvar writer = Text.writer(buffer@uniq)\nmatch " + write + "\n    .Ok(_) => ()\n    .Err(_) => $abort(\"full\")\n" +
@@ -186,15 +217,17 @@ public class Utf8InterpolationTest
     }
 
     // The O2 corpus's Interpolation kernel and its checksum (benchmark-o2-corpus.ps1). Per round, its owning interpolation with a user
-    // formatter allocates at most twice (DeferredLiteralTextKeepsTheOldGeneratorsAllocations' Kernel row), and its $tryWrite into the
-    // cleared fixed buffer and its last line nothing (SPEC 22.10.5): a bound the adapter may lower but not raise.
+    // formatter allocates at most twice (DeferredLiteralTextKeepsTheOldGeneratorsAllocations' Kernel row) and its $tryWrite into the
+    // cleared fixed buffer nothing (SPEC 22.10.5); its last line, a direct bounded line, allocates nothing by rule L (its region is a fixed
+    // array local; R8-W2 a2), not by SPEC 22.10.5. The count is exact, frees equal to allocations, so a per-round leak fails; the adapter
+    // may lower it (a strengthening that edits the count) but not raise it.
     [Trait("Purpose", "Allocation")]
     [Fact]
     public void TheInterpolationKernelKeepsItsChecksumWithinItsAllocations()
     {
-        const long Bound = 2 * 1048576;
+        const long Rounds = 1048576;
         var source = File.ReadAllText(DiagnosticCorpus.RepositoryPath("src", "Benchmark", "Kimi", "Corpus", "Interpolation.kimi"));
-        NativeAllocationAudit.WriteFixture("Utf8InterpolationKernel", source, new(0, Bound), new(0, Bound), NativeAllocationAudit.Bound.Any, "checksum 1676251827\n");
+        NativeAllocationAudit.WriteFixture("Utf8InterpolationKernel", source, 2 * Rounds, 2 * Rounds, NativeAllocationAudit.Bound.Any, "checksum 1676251827\n");
     }
 
     [Fact]

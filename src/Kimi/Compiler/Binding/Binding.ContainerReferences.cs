@@ -8,6 +8,9 @@ namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
+    // The construction qualifiers that leave their own slots open (ConstructionTargetType), for the pass.
+    private readonly HashSet<Koto> inferredConstructionTargets = new(ReferenceEqualityComparer.Instance);
+
     // A container keeps its own slots first, followed by its parent's effective slots.
     // Slot symbols retain their original binder and ordinal; spelling is not identity.
     internal static int ContainerSlot(Koto binder, BindingSymbol parameter)
@@ -64,37 +67,6 @@ public sealed partial class Binding
     // arguments.
     private static BoundOrigin? QualifierSlot(BoundType qualified, int slot)
         => qualified.Kind == BoundTypeKind.Slice ? slot == 0 ? qualified.Origin : null : slot < qualified.OriginArguments.Count ? qualified.OriginArguments[slot] : null;
-
-    private static bool NamesOrigin(BoundType type, BoundOrigin origin)
-    {
-        if (!type.CarriesOrigin)
-        {
-            return false;
-        }
-
-        if (type.Origin is { } own && ContainsOrigin(own, origin))
-        {
-            return true;
-        }
-
-        for (var i = 0; i < type.OriginArguments.Count; i++)
-        {
-            if (ContainsOrigin(type.OriginArguments[i], origin))
-            {
-                return true;
-            }
-        }
-
-        for (var i = 0; i < type.Components.Count; i++)
-        {
-            if (NamesOrigin(type.Components[i], origin))
-            {
-                return true;
-            }
-        }
-
-        return false;
-    }
 
     private static BoundOrigin? InferenceAtom(BoundOrigin origin)
     {
@@ -238,10 +210,10 @@ public sealed partial class Binding
             return null;
         }
 
-        ConsiderSet(this.originDeclarations.GetValueOrDefault(owner)?.Sets.GetValueOrDefault(name));
+        ConsiderSet(this.originDeclarations.GetValueOrDefault(owner)?.Set(name));
         for (var current = this.NameScope(annotation); current is not null; current = current.Parent)
         {
-            ConsiderSet(this.originDeclarations.GetValueOrDefault(current.Owner)?.Sets.GetValueOrDefault(name));
+            ConsiderSet(this.originDeclarations.GetValueOrDefault(current.Owner)?.Set(name));
             ConsiderSet(current.OriginSets?.GetValueOrDefault(name));
             if (current.Values.TryGetValue(name, out var value) && value.Kind is BindingSymbolKind.Local or BindingSymbolKind.Parameter or BindingSymbolKind.Capture)
             {
@@ -282,6 +254,22 @@ public sealed partial class Binding
         }
     }
 
+    // SPEC 9.7, 9.7.1, 10.8.1: a construction qualifier whose own Type-argument list is omitted: its environment from the path, its own
+    // arguments those of `supplied`, else its own parameters, open, and the qualifier an inferred construction target, which the
+    // construction completes with its solved Type.
+    private BoundType? ConstructionTargetType(Koto syntax, BindingSymbol symbol, BindingScope scope, BoundType? supplied)
+    {
+        var own = ((DeclarationContainerKoto)symbol.Declaration).GenericParameterNodes.Count;
+        var arguments = own == 0 ? default : ((BoundType[])(supplied ?? this.SelfType(symbol)).Components).AsSpan(0, own);
+        var type = this.BindContainerReference(syntax, symbol, scope, this.TypeContext(syntax, scope), arguments);
+        if (type is not null && own != 0 && supplied is null)
+        {
+            this.inferredConstructionTargets.Add(syntax);
+        }
+
+        return type;
+    }
+
     private BoundType? BindContainerReference(Koto syntax, BindingSymbol symbol, BindingScope scope, TypeBindingContext context, ReadOnlySpan<BoundType> own)
     {
         var declaration = (DeclarationContainerKoto)symbol.Declaration;
@@ -311,13 +299,18 @@ public sealed partial class Binding
 
         if (path is MemberAccessKoto member)
         {
-            var qualifier = this.TypeName(member.Left, scope, LookupRole.Any);
+            var qualifier = this.TypeName(member.Left, scope);
             if (qualifier?.Declaration is DeclarationContainerKoto container && !container.IsRoot)
             {
                 environment = this.BindContainerQualifier(member.Left, qualifier, scope, context);
                 if (environment is null)
                 {
                     return null;
+                }
+
+                if (IsCore(qualifier) && symbol.Kind == BindingSymbolKind.Type && this.AlsoAssociated(environment, symbol.Name, member, scope))
+                {
+                    return this.Fail(member, BindingFailure.Ambiguous, unresolved: true); // SPEC 9.7.3: it resolves both ways.
                 }
 
                 if (!ReferenceEquals(container, parent))

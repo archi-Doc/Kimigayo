@@ -17,10 +17,16 @@ internal sealed partial class MirBuilder
     }
 
     // A node's call (CallPlan.Of; a Property read's getter; a user or view index's selected call, SPEC 4.7.1); a constructor's builds its
-    // object in the destination (SPEC 6.3.2); a comparison operator's is Compare's (SPEC 13.4, 13.4.1).
+    // object in the destination (SPEC 6.3.2); a comparison operator's is Compare's (SPEC 13.4, 13.4.1); a direct line's is Line's (SPEC 22.7).
     private void Call(MirPlace destination, Koto node)
     {
         var call = (ExpansionPlan.Of(node) is { } plan ? plan.Second : CallPlan.Of(node))!;
+        if (call.ArgumentOperations is [{ Source: { } text }] && HirTables.Op(text) == HirOp.Interpolation && ExpansionPlan.Of(text) is { Direct: true })
+        {
+            this.Line(destination, call, node, text);
+            return;
+        }
+
         if (node is not BinaryKoto binary || BinaryOp(binary.Akind) is not (>= MirBinaryOp.Eq and MirBinaryOp relation))
         {
             this.Call(destination, call, node, first: null);
@@ -36,8 +42,8 @@ internal sealed partial class MirBuilder
     // secured before a later argument that builds code or that the operand order puts before it: a named one (SPEC 10.1.1), an unbound
     // reference's receiver supplied after earlier parameters (SPEC 7.3.4), a setter's receiver after its value (SPEC 13.7.1), A3 E13 (2);
     // or in its pending slot), then its omitted defaults (Defaults), passed by parameter slot, the receiver first. A compiler function is its
-    // intrinsic where the table gives one (IntrinsicDisposition), naming its library declaration (A3 E14), with the operands it takes beyond
-    // the written arguments (Extra), $abort's at its macro (SPEC 22.5.1), and a direct base call the implementation the virtual selection
+    // intrinsic where its Definition gives one (its declaration's `#Intrinsic`), naming its library declaration (A3 E14), with the operands
+    // it takes beyond the written arguments (Extra), $abort's at its macro (SPEC 22.5.1), and a direct base call the implementation the virtual selection
     // names. A call of a Never function or a diverging intrinsic has no runtime successor and continues for the checks (SPEC 14.10); a call
     // whose operand does not complete enters no callee at run time (SPEC 15.6.7), but for the checks it continues where that operand's code
     // continues, its later operands, defaults and activation checked there (SPEC 14.10.3), each operand as built: a Never form's is the
@@ -114,13 +120,13 @@ internal sealed partial class MirBuilder
             this.Defaults(call, function!, subst, start, node);
         }
 
-        var disposition = function is null ? default : IntrinsicDisposition.Of(function.CompilerFunction);
+        var disposition = function?.Definition ?? default;
         if (this.Extra(disposition) is { } extra)
         {
             this.arguments.Add(extra);
         }
 
-        var declaration = function?.LibraryDeclaration is null ? null : function; // The compiler-only $abort has none (SPEC 17.4).
+        var declaration = ReferenceEquals(function, compilation.Library.Abort) ? null : function; // The compiler-only $abort has none (SPEC 17.4).
         var callee = disposition.Kind == DispositionKind.Intrinsic ? MirCallee.Intrinsic(disposition.Id, declaration, subst) : call.Kind switch
         {
             CalleeKind.Requirement => new(MirCalleeKind.Requirement, function, subst, Contract: call.RequirementContract),
@@ -134,7 +140,7 @@ internal sealed partial class MirBuilder
             callee,
             start,
             node,
-            ReferenceEquals(call.ReturnType, BoundType.Never) || MirDescriptors.Of(disposition.Id).Diverges,
+            MirTypes.IsNever(this.body, call.ReturnType) || MirDescriptors.Of(disposition.Id).Diverges,
             function is null ? this.arguments[pending] : default);
         this.arguments.RemoveRange(pending, start - pending);
     }

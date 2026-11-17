@@ -3,6 +3,7 @@
 using System.Text.Json;
 using System.Xml.Linq;
 using Kimi;
+using Kimi.Build;
 using Kimi.Compiler;
 using Xunit;
 

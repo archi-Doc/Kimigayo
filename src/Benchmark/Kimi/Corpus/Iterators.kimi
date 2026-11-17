@@ -1,4 +1,5 @@
-// O2 timing corpus (O2Corpus.md): a user Iterator through a generic consumer, Slice and range iteration, and the owning adapter.
+// O2 timing corpus (O2Corpus.md): user Iterators through a generic consumer, Slice, range and `indices` iteration (the entry's
+// temporary and a stored interval), a Slice search, and the owning adapter.
 struct Countdown
     Self is Iterator
     associate Iterator.Item is i64
@@ -9,9 +10,32 @@ struct Countdown
         self.remaining -= 1
         return .Some(self.remaining)
 
+// Four slots handed out once each, each taken by `exchange` with `.None` (Milestone 29's shape; R8-U1's `exchange` row).
+struct Slots<T>
+    Self is Iterator
+    associate Iterator.Item is T
+    var first: Option<T>
+    var second: Option<T>
+    var third: Option<T>
+    var fourth: Option<T>
+    var position: i32 = 0
+    public init(a: T, b: T, c: T, d: T)
+        self.first = .Some(a@move)
+        self.second = .Some(b@move)
+        self.third = .Some(c@move)
+        self.fourth = .Some(d@move)
+    public func next(self: uniq/Self) -> Option<T>
+        require self.position < 4 else => return .None
+        self.position = self.position + 1
+        return match self.position
+            1 => Kimi.Intrinsics.exchange(self.first@uniq, with: .None)
+            2 => Kimi.Intrinsics.exchange(self.second@uniq, with: .None)
+            3 => Kimi.Intrinsics.exchange(self.third@uniq, with: .None)
+            _ => Kimi.Intrinsics.exchange(self.fourth@uniq, with: .None)
+
 func drain<I>(iterator: uniq/I) -> i64
     I is Iterator
-    I.Iterator.Item is i64
+    I.(Iterator).Item is i64
     var total: i64 = 0
     loop
         match iterator.next()
@@ -30,12 +54,23 @@ public func main()
     var values: Array<i64> = []
     for i in 0..64
         values.append(i@i64)
+    let all = values.indices
     for round in 0..8388608
         var down = Countdown.init((round % 64)@i64)
         var sum = drain(down@uniq)
         for value in values[1..^1]
             sum ^= value + round@i64
+        for i in values.indices
+            sum ^= (values[i] << 8) + round@i64
+        for i in all
+            sum ^= (values[i] << 12) + round@i64
+        let needle = (round % 80)@i64
+        match values[..].firstIndex(of: needle)
+            .Some(let at) => sum ^= (at@i64 << 16) + round@i64
+            .None => sum ^= (round@i64 << 1) + 1
         for value in Kimi.Iteration.owning(Countdown.init(32))
             sum ^= (value << 4) + round@i64
+        var slots = Slots<i64>.init(round@i64, sum, (round >> 3)@i64, 7)
+        sum ^= drain(slots@uniq)
         checksum = fold(checksum, sum)
     Console.writeLine("checksum \(checksum)")

@@ -1,5 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using System.Diagnostics.CodeAnalysis;
 using Kimi.Compiler.Parsing;
 
 namespace Kimi.Compiler;
@@ -8,9 +9,9 @@ public sealed partial class Binding
 {
     // Persist declaration storage across provisional/final binding passes. No environment is
     // allocated for declarations with neither written relations nor binding-set names.
-    private readonly Dictionary<Koto, OriginDeclaration> originDeclarations = new(ReferenceEqualityComparer.Instance);
+    private readonly OriginDeclarationRows originDeclarations;
 
-    private readonly Dictionary<Koto, List<string>> discoveredOrigins = new(ReferenceEqualityComparer.Instance);
+    private readonly DiscoveredOriginRows discoveredOrigins;
     private OriginRewriteVisitor? originRewriteVisitor;
 
     private static Koto? OriginOwner(Koto node)
@@ -83,7 +84,7 @@ public sealed partial class Binding
     // layers (IsInvariantLayer).
     private static OriginVariance ComponentVariance(BoundType type, int component, Binding? binding) => type.Kind switch
     {
-        BoundTypeKind.Semantics or BoundTypeKind.SemanticsApplication when IsInvariantLayer(type, binding) => OriginVariance.Invariant,
+        BoundTypeKind.Semantics or BoundTypeKind.SemanticsApplication when IsInvariantLayer(type, binding, null, default) => OriginVariance.Invariant,
         BoundTypeKind.Function when type.Components.Count == 2 && component == 0 => OriginVariance.Contravariant,
         BoundTypeKind.Constructed when type.Symbol?.Schema is { } schema && component < schema.GenericSlots.Count => schema.GenericSlots[component].OriginVariance,
         _ => OriginVariance.Covariant,
@@ -100,7 +101,7 @@ public sealed partial class Binding
     private bool ConstraintSet(Koto use)
     {
         if (use is not TypeSemanticsKoto { BindingSetName: { } label } || OriginOwner(use) is not { } owner ||
-            this.originDeclarations.GetValueOrDefault(owner)?.Sets.GetValueOrDefault(label) is not { } set || !ReferenceEquals(set, use))
+            this.originDeclarations.GetValueOrDefault(owner)?.Set(label) is not { } set || !ReferenceEquals(set, use))
         {
             return false;
         }
@@ -154,7 +155,7 @@ public sealed partial class Binding
 
         bool Pending(Koto syntax) => syntax switch
         {
-            IdentifierNameKoto name => declaration.Sets.TryGetValue(name.IdentifierName, out var set) && set.BoundType is null,
+            IdentifierNameKoto name => declaration.Set(name.IdentifierName) is { BoundType: null },
             ParenthesizedKoto parentheses => Pending(parentheses.Operand),
             MemberAccessKoto member => Pending(member.Left),
             BinaryKoto binary => Pending(binary.Left) || Pending(binary.Right),
@@ -164,19 +165,19 @@ public sealed partial class Binding
 
     private void PrepareOriginDeclarations()
     {
-        foreach (var declaration in this.originDeclarations.Values)
+        foreach (var declaration in this.originDeclarations.Values.In(this.pass))
         {
-            declaration.Reset();
+            declaration!.Reset();
         }
 
-        foreach (var declaration in this.initializerOrigins.Values)
+        foreach (var declaration in this.initializerOrigins.Values.In(this.pass))
         {
-            declaration.Reset();
+            declaration!.Reset();
         }
 
-        foreach (var names in this.discoveredOrigins.Values)
+        foreach (var names in this.discoveredOrigins.Values.In(this.pass))
         {
-            names.Clear();
+            names!.Clear();
             ((OriginNameList)names).Spans.Clear();
         }
 
@@ -198,7 +199,7 @@ public sealed partial class Binding
             if (annotation.BindingSetName is { } label)
             {
                 var declaration = this.OriginDeclarationFor(owner);
-                if (!declaration.Sets.TryAdd(label, annotation))
+                if (!declaration.Forming.Sets.TryAdd(label, annotation))
                 {
                     this.Fail(annotation, BindingFailure.Duplicate);
                 }
@@ -303,7 +304,7 @@ public sealed partial class Binding
                 if (current.Origins?.ContainsKey(name) == true ||
                     (current.Values.TryGetValue(name, out var value) && value.Kind is BindingSymbolKind.Local or BindingSymbolKind.Parameter or BindingSymbolKind.Capture &&
                         (value.Kind != BindingSymbolKind.Local || value.Declaration.Span.Start <= owner.Span.Start)) ||
-                    this.originDeclarations.GetValueOrDefault(current.Owner)?.Sets.ContainsKey(name) == true)
+                    this.originDeclarations.GetValueOrDefault(current.Owner)?.Set(name) is not null)
                 {
                     names.RemoveAt(i);
                     ((OriginNameList)names).Spans.RemoveAt(i);
@@ -326,14 +327,14 @@ public sealed partial class Binding
 
     private OriginDeclaration? BeginOriginDeclaration(Koto owner, BindingScope scope)
     {
-        if (!this.originDeclarations.TryGetValue(owner, out var declaration) || declaration.State != 0)
+        if (!this.originDeclarations.TryGetValue(owner, out var declaration) || declaration.Forming.State != 0)
         {
             return null;
         }
 
-        (declaration.Scope, declaration.Body, declaration.State) = (scope, this.formingBody, 1);
+        (declaration.Forming.Scope, declaration.Forming.Body, declaration.Forming.State) = (scope, this.formingBody, 1);
         this.originStateVersion++;
-        foreach (var entry in declaration.Sets)
+        foreach (var entry in declaration.Forming.Sets)
         {
             for (var current = scope; current is not null; current = current.Parent)
             {
@@ -342,7 +343,7 @@ public sealed partial class Binding
                     (symbol.Kind != BindingSymbolKind.Local || symbol.Declaration.Span.Start <= owner.Span.Start);
                 // Like a value, a local's set is visible only to declarations that follow it (SPEC 15.3.1, 15.4.4).
                 var local = current.OriginSets?.GetValueOrDefault(entry.Key);
-                var set = this.originDeclarations.GetValueOrDefault(current.Owner)?.Sets.GetValueOrDefault(entry.Key) ??
+                var set = this.originDeclarations.GetValueOrDefault(current.Owner)?.Set(entry.Key) ??
                     (local is not null && OriginOwner(local) is { } localOwner && localOwner.Span.Start <= owner.Span.Start ? local : null);
                 if (scalar || value || (set is not null && !ReferenceEquals(set, entry.Value)))
                 {
@@ -375,42 +376,52 @@ public sealed partial class Binding
             return known;
         }
 
-        var symbol = this.TypeName(syntax, scope, LookupRole.Any);
-        return symbol?.Declaration is GroupKoto
-            ? this.BindContainerQualifier(syntax, symbol, scope, this.TypeContext(syntax, scope))
+        // SPEC 9.2, 9.7.2: `(Outer<T>.G{o}).f` puts the set's Type at a qualifier position; elsewhere it is a Type occurrence (15.3.1).
+        var path = this.NamePath(syntax, scope);
+        return path.Symbol?.Declaration is GroupKoto
+            ? this.BindContainerQualifier(syntax, path.Symbol, scope, this.TypeContext(syntax, scope))
             : this.BindType(syntax, scope);
+    }
+
+    // A local's binding sets bind their Types before its declaration completes (BindVariableCore).
+    private void BindOriginSetTypes(OriginDeclaration declaration, BindingScope scope)
+    {
+        foreach (var set in declaration.Forming.Sets.Values)
+        {
+            this.BindOriginSetType(set, scope);
+        }
     }
 
     private BoundOrigin? PendingOrigin(Koto use, BindingScope scope, TypeBindingContext context, LoanRequirement requirement, int slot, BindingSymbol? borrowCondition)
     {
         var owner = OriginOwner(use);
-        if (owner is null || !this.originDeclarations.TryGetValue(owner, out var declaration) || declaration.State != 1 ||
+        if (owner is null || !this.originDeclarations.TryGetValue(owner, out var declaration) || declaration.Forming.State != 1 ||
             (context.Position == TypePosition.Parameter && slot < 0 && context.Direct))
         {
             return null;
         }
 
-        for (var i = 0; i < declaration.Pending.Count; i++)
+        for (var i = 0; i < declaration.Forming.Pending.Count; i++)
         {
-            if (ReferenceEquals(declaration.Pending[i].Use, use) && declaration.Pending[i].Slot == slot)
+            if (ReferenceEquals(declaration.Forming.Pending[i].Use, use) && declaration.Forming.Pending[i].Slot == slot)
             {
-                return declaration.Pending[i].Origin;
+                return declaration.Forming.Pending[i].Origin;
             }
         }
 
         var origin = this.OriginAtom(use, OriginKind.Unbound, slot);
-        declaration.Pending.Add(new(use, scope, context, requirement, slot, origin, borrowCondition));
+        declaration.Forming.Pending.Add(new(use, scope, context, requirement, slot, origin, borrowCondition));
         return origin;
     }
 
     private BoundOrigin ResolveOrigin(BoundOrigin origin, OriginDeclaration declaration, int depth = 0)
     {
-        if (depth > declaration.Replacements.Count)
+        if (depth > declaration.Substitutions)
         {
             return origin;
         }
 
-        if (declaration.Replacements.TryGetValue(origin, out var replacement))
+        if (declaration.Substitution(origin) is { } replacement)
         {
             return this.ResolveOrigin(replacement, declaration, depth + 1);
         }
@@ -429,12 +440,12 @@ public sealed partial class Binding
         return origin;
     }
 
-    // SPEC 15.3.3, 15.4.1: a declaration's completion binds its clauses; a failed clause makes its contract unavailable, or a local's
-    // rests the slots it names (Binding.OriginDeclarations.Failures.cs); otherwise its equalities substitute, its pending slots
-    // complete, and its Types and Origins are rewritten to the completed Origins.
+    // SPEC 15.3.3, 15.4.1: a declaration's completion binds its clauses, a failed one resting the slots it names
+    // (Binding.OriginDeclarations.Failures.cs); its equalities substitute, its pending slots complete, and its Types and Origins are
+    // rewritten to the completed Origins.
     private void CompleteOriginDeclaration(OriginDeclaration? declaration)
     {
-        if (declaration is null || declaration.State != 1)
+        if (declaration is null || declaration.Forming.State != 1)
         {
             return;
         }
@@ -443,22 +454,17 @@ public sealed partial class Binding
         for (var i = 0; i < clauses.Count; i++)
         {
             var clause = clauses[i];
-            var a = this.BindOrigin(clause.Left, declaration.Scope!);
-            var b = this.BindOrigin(clause.Right, declaration.Scope!);
+            var a = this.BindOrigin(clause.Left, declaration.Forming.Scope!);
+            var b = this.BindOrigin(clause.Right, declaration.Forming.Scope!);
             if (IsRecovery(clause, out _) || a is null || b is null)
             {
                 this.FailOriginClause(declaration, clause, a, b);
             }
             else
             {
-                declaration.Relations.Add(new(a, b, clause.IsEquality, clause));
+                declaration.Forming.Relations.Add(new(a, b, clause.IsEquality, clause));
                 clause.BindingState = BindingState.Resolved;
             }
-        }
-
-        if (declaration.Failure is { } failure && this.FailOriginDeclaration(declaration, failure))
-        {
-            return;
         }
 
         this.SubstituteOriginEqualities(declaration);
@@ -467,17 +473,17 @@ public sealed partial class Binding
         visitor.Declaration = declaration;
         visitor.Visit(declaration.Owner);
         visitor.Declaration = null;
-        for (var i = 0; i < declaration.Relations.Count; i++)
+        for (var i = 0; i < declaration.Forming.Relations.Count; i++)
         {
-            var relation = declaration.Relations[i];
-            declaration.Relations[i] = relation with
+            var relation = declaration.Forming.Relations[i];
+            declaration.Forming.Relations[i] = relation with
             {
                 Longer = this.ResolveOrigin(relation.Longer, declaration),
                 Shorter = this.ResolveOrigin(relation.Shorter, declaration),
             };
         }
 
-        declaration.State = 3;
+        declaration.Forming.State = 3;
         this.originStateVersion++;
     }
 
@@ -485,10 +491,10 @@ public sealed partial class Binding
     // each substitution so chains are independent of clause order.
     private void SubstituteOriginEqualities(OriginDeclaration declaration)
     {
-        for (var pass = 0; pass <= declaration.Relations.Count; pass++)
+        for (var pass = 0; pass <= declaration.Forming.Relations.Count; pass++)
         {
             var changed = false;
-            foreach (var relation in declaration.Relations)
+            foreach (var relation in declaration.Forming.Relations)
             {
                 if (!relation.Equality)
                 {
@@ -511,7 +517,7 @@ public sealed partial class Binding
 
                 if (Flexibility(a) != 0 && !ContainsOrigin(b, a))
                 {
-                    declaration.Replacements[a] = b;
+                    declaration.Forming.Replacements[a] = b;
                     this.originStateVersion++;
                     changed = true;
                 }
@@ -529,7 +535,7 @@ public sealed partial class Binding
             {
                 // An enclosing input can complete an equality class containing a nested
                 // signature or result. Such dependent occurrences must not elide first.
-                foreach (var pending in declaration.Pending)
+                foreach (var pending in declaration.Forming.Pending)
                 {
                     if (ReferenceEquals(pending.Origin, origin))
                     {
@@ -550,9 +556,9 @@ public sealed partial class Binding
     // outlives clause names as an aggregate input, any other by the position rule (OmittedOrigin).
     private void CompletePendingOrigins(OriginDeclaration declaration)
     {
-        declaration.State = 2; // Further omission performs the established position rule.
+        declaration.Forming.State = 2; // Further omission performs the established position rule.
         this.originStateVersion++;
-        foreach (var pending in declaration.Pending)
+        foreach (var pending in declaration.Forming.Pending)
         {
             var origin = this.ResolveOrigin(pending.Origin, declaration);
             if (origin.Kind != OriginKind.Unbound || !ReferenceEquals(origin, pending.Origin) || this.RestsOnFailedClause(declaration, origin))
@@ -565,7 +571,7 @@ public sealed partial class Binding
             var quantified = false;
             if (pending.Context.Position == TypePosition.Result && ReferenceEquals(pending.Context.Owner, declaration.Owner) && pending.Slot >= 0)
             {
-                foreach (var relation in declaration.Relations)
+                foreach (var relation in declaration.Forming.Relations)
                 {
                     var a = this.ResolveOrigin(relation.Longer, declaration);
                     var b = this.ResolveOrigin(relation.Shorter, declaration);
@@ -610,7 +616,7 @@ public sealed partial class Binding
 
             if (completed is not null && !ReferenceEquals(completed, origin))
             {
-                declaration.Replacements[origin] = completed;
+                declaration.Forming.Replacements[origin] = completed;
                 this.originStateVersion++;
             }
         }
@@ -643,7 +649,7 @@ public sealed partial class Binding
                 origin = this.ResolveOrigin(raw, declaration);
             }
 
-            return this.types.Intern(type.Kind, type.Symbol, type.Semantics, components.AsSpan(0, type.Components.Count), type.Length, origin, arguments.AsSpan(0, type.OriginArguments.Count), type.LengthExpression, type.ClosureContext, type.LengthArguments);
+            return this.types.Intern(type.Kind, type.Symbol, type.Semantics, components.AsSpan(0, type.Components.Count), type.Length, origin, arguments.AsSpan(0, type.OriginArguments.Count), type.LengthExpression, type.ClosureContext, type.LengthArguments, type.Binder);
         }
         finally
         {
@@ -685,5 +691,44 @@ public sealed partial class Binding
 
             node.VisitChildren(this);
         }
+    }
+
+    /// <summary>The `originDeclarations` family's one accessor (DECISIONS BU-220): a kept family, an owner's declared Origins (SPEC 15.3),
+    /// made once and reset in place by each pass (PrepareOriginDeclarations), kept in its key node's module's NodeColumns at its SyntaxId.
+    /// Its members keep the names its readers use.</summary>
+    private readonly struct OriginDeclarationRows(Binding binding)
+    {
+        internal FamilyRows<OriginDeclaration?> Values => new(binding, static (table, _) => table.Hir.Families.OriginDeclarations.Enumerate());
+
+        internal void Add(Koto node, OriginDeclaration value)
+        {
+            ref var row = ref HirTables.Of(node).Families.OriginDeclarations.Ref(node.SyntaxId);
+            row = row is null ? value : throw new ArgumentException($"`originDeclarations` already holds a row at `{node}`.", nameof(node));
+        }
+
+        internal bool ContainsKey(Koto node) => this.TryGetValue(node, out _);
+
+        internal OriginDeclaration? GetValueOrDefault(Koto node)
+            => node.SyntaxOwner is { } table ? table.Hir.Families.OriginDeclarations.Get(node.SyntaxId) : null;
+
+        internal bool TryGetValue(Koto node, [NotNullWhen(true)] out OriginDeclaration? value)
+            => (value = this.GetValueOrDefault(node)) is not null;
+    }
+
+    /// <summary>The `discoveredOrigins` family's one accessor (DECISIONS BU-220): a kept family, a binder's discovered Origin names, an
+    /// OriginNameList made once and emptied in place by each pass (PrepareOriginDeclarations), kept in its key node's module's NodeColumns
+    /// at its SyntaxId. Its members keep the names its readers use.</summary>
+    private readonly struct DiscoveredOriginRows(Binding binding)
+    {
+        internal FamilyRows<List<string>?> Values => new(binding, static (table, _) => table.Hir.Families.DiscoveredOrigins.Enumerate());
+
+        internal void Add(Koto node, List<string> value)
+        {
+            ref var row = ref HirTables.Of(node).Families.DiscoveredOrigins.Ref(node.SyntaxId);
+            row = row is null ? value : throw new ArgumentException($"`discoveredOrigins` already holds a row at `{node}`.", nameof(node));
+        }
+
+        internal bool TryGetValue(Koto node, [NotNullWhen(true)] out List<string>? value)
+            => (value = node.SyntaxOwner is { } table ? table.Hir.Families.DiscoveredOrigins.Get(node.SyntaxId) : null) is not null;
     }
 }

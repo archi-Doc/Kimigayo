@@ -65,6 +65,34 @@ public sealed partial class Binding
         return origin.Binder is { } binder && OriginOwner(binder) is FieldKoto;
     }
 
+    // SPEC 8.13.1: whether a node is one of a `specialize func` header's Type arguments.
+    private static bool IsSpecializationArgument(FunctionKoto function, Koto node)
+    {
+        for (var i = 0; function.IsSpecialization && i < function.GenericArguments.Count; i++)
+        {
+            if (ReferenceEquals(function.GenericArguments[i], node))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    // Whether a node lies in a `specialize func` header's Type argument (the nearest enclosing function's).
+    private static bool InSpecializationArgument(Koto node)
+    {
+        for (var current = node; current.Parent is { } parent; current = parent)
+        {
+            if (parent is FunctionKoto function)
+            {
+                return IsSpecializationArgument(function, current);
+            }
+        }
+
+        return false;
+    }
+
     private BoundType? BoundInputType(Koto owner, int index)
         => ReferenceEquals(owner, this.closureHeader) && InputType(owner, index) is SyntaxFormKoto { Akind: KotoKind.InferredType }
             ? this.closureHeaderInputs!.Components[index]
@@ -101,7 +129,11 @@ public sealed partial class Binding
                     }
                 }
 
-                return new(TypePosition.Explicit, function);
+                // SPEC 8.13.2, 15.4.2 ("Accessor or specialization: the inherited contract first"): a specialization's Type argument
+                // is the original's T, whose Origins each call supplies: an omitted aggregate slot is the header's universal input
+                // Origin, which the restated contract then inherits (CompleteImplementationOrigins); none is written
+                // (PrepareSpecializations' Unwritten). It is no parameter: InputIndex stays -1.
+                return IsSpecializationArgument(function, current) ? new(TypePosition.Parameter, function, -1) : new(TypePosition.Explicit, function);
             }
 
             if (parent is VariableKoto variable)
@@ -237,7 +269,7 @@ public sealed partial class Binding
         repeated = null;
         var owner = OriginOwner(use);
         if (owner is not null && !ReferenceEquals(owner, scope.Owner) &&
-            this.originDeclarations.GetValueOrDefault(owner)?.Sets.TryGetValue(name, out var localSet) == true)
+            this.originDeclarations.GetValueOrDefault(owner)?.Set(name) is { } localSet)
         {
             carrier = this.BindOriginSetType(localSet, scope);
             repeated = RepeatedSet(localSet) ? localSet : null;
@@ -249,14 +281,14 @@ public sealed partial class Binding
             var visibleValue = current.Values.TryGetValue(name, out var competing) &&
                 competing.Kind is BindingSymbolKind.Local or BindingSymbolKind.Parameter or BindingSymbolKind.Capture &&
                 (competing.Kind != BindingSymbolKind.Local || ReferenceEquals(competing.Declaration, owner) || competing.Declaration.Span.End <= use.Span.Start);
-            var sets = this.originDeclarations.GetValueOrDefault(current.Owner)?.Sets;
-            if (visibleValue && (current.Origins?.ContainsKey(name) == true || sets?.ContainsKey(name) == true))
+            var set = this.originDeclarations.GetValueOrDefault(current.Owner)?.Set(name);
+            if (visibleValue && (current.Origins?.ContainsKey(name) == true || set is not null))
             {
                 this.Fail(use, BindingFailure.Duplicate);
                 return true;
             }
 
-            if (sets?.TryGetValue(name, out var set) == true)
+            if (set is not null)
             {
                 carrier = this.BindOriginSetType(set, current);
                 repeated = RepeatedSet(set) ? set : null;
@@ -346,7 +378,9 @@ public sealed partial class Binding
     {
         if (this.inheritedOriginTypes.TryGetValue(use, out var inherited))
         {
-            var origin = aggregateSlot < 0 ? inherited.Origin : aggregateSlot < inherited.OriginArguments.Count ? inherited.OriginArguments[aggregateSlot] : null;
+            // A Slice's aggregate slot 0 is its Origin (CompleteOrigins).
+            var origin = aggregateSlot < 0 || inherited.Kind == BoundTypeKind.Slice ? inherited.Origin
+                : aggregateSlot < inherited.OriginArguments.Count ? inherited.OriginArguments[aggregateSlot] : null;
             if (origin is not null)
             {
                 return origin;
@@ -385,6 +419,17 @@ public sealed partial class Binding
             };
             slots.Add(origin);
             return origin;
+        }
+
+        if (context is { Position: TypePosition.Parameter, Direct: false, Owner: FunctionKoto { IsSpecialization: true } })
+        {
+            // SPEC 8.13.2, 15.4.2 (PLAN G863): an omitted borrow layer in a specialization's Type argument, or nested in a restated
+            // input (where T's binding or the original's written layer puts one, which this probe cannot read before the target), is
+            // the inherited contract's, which the input row above cannot give (an input's nested layer is an error): a located limit
+            // until a Type argument position of its own completes it. A restated input whose target is found inherits the layer
+            // instead (CompleteImplementationOrigins rebinds it).
+            this.Fail(use, BindingFailure.Unsupported);
+            return null;
         }
 
         if (context.Position == TypePosition.Parameter && context.Direct)
@@ -440,6 +485,16 @@ public sealed partial class Binding
 
                 return !guaranteedBorrow && aggregateSlot >= 0 && OwnedWithoutConditionalBorrows() is not ConstraintProof.Proven and var unowned
                     ? this.MissingOrigin(use, unowned) : meet;
+            }
+
+            if (InSpecializationArgument(context.Owner))
+            {
+                // SPEC 8.13.2, 15.4.2 (PLAN G863): a Function Type result in a specialization's Type argument that no input of its own
+                // gives is the call's T-Origin, not a default (the key excludes Origins): the borrow layer's located limit above. Removed
+                // with it when the Type argument has a TypePosition of its own (PLAN G863's remainder), which TypeContext decides once
+                // instead of this syntax walk (InSpecializationArgument).
+                this.Fail(use, BindingFailure.Unsupported);
+                return null;
             }
 
             if (requirement != LoanRequirement.Uniq)

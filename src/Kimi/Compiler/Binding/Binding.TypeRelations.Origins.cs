@@ -29,9 +29,11 @@ public sealed partial class Binding
             return null;
         }
 
-        if ((left.Origin is null) != (right.Origin is null) && !InactiveOuterOrigin(left, this, null))
+        // SPEC 8.1.2: a pair layer's slot is its OuterOrigin, the original's implicit `o` included (PLAN G758).
+        var (leftSlot, rightSlot) = (this.OuterOrigin(left), this.OuterOrigin(right));
+        if ((leftSlot is null) != (rightSlot is null) && !InactiveOuterOrigin(left, this, null, default))
         {
-            failure = Unmet(this.OuterOrigin(right), this.OuterOrigin(left));
+            failure = Unmet(rightSlot, leftSlot);
             return null;
         }
 
@@ -41,7 +43,7 @@ public sealed partial class Binding
         {
             for (var i = 0; i < left.Components.Count; i++)
             {
-                var covariant = !IsInvariantLayer(left, this) &&
+                var covariant = !IsInvariantLayer(left, this, null, default) &&
                     !(left.Kind == BoundTypeKind.Function && i == 0) &&
                     (left.Kind != BoundTypeKind.Constructed || left.Symbol?.Schema?.GenericSlots[i].OriginVariance == OriginVariance.Covariant);
                 var (l, r) = (left.Components[i], right.Components[i]);
@@ -76,12 +78,12 @@ public sealed partial class Binding
 
             // SPEC 5.7 (Q-O6): differing raw Origins have the unstated common Type, never a meet.
             var origin = ReferenceEquals(left.RawOrigin, right.RawOrigin) ? left.RawOrigin : null;
-            if (!InactiveOuterOrigin(left, this, null) && left.Origin is { } a)
+            if (!InactiveOuterOrigin(left, this, null, default) && leftSlot is { } a)
             {
-                origin = this.Meet(a, right.Origin!);
+                origin = this.Meet(a, rightSlot!);
             }
 
-            var result = this.types.Intern(left.Kind, left.Symbol, left.Semantics, components.AsSpan(0, left.Components.Count), left.Length, origin, origins.AsSpan(0, left.OriginArguments.Count), left.LengthExpression, left.ClosureContext, left.LengthArguments);
+            var result = this.types.Intern(left.Kind, left.Symbol, left.Semantics, components.AsSpan(0, left.Components.Count), left.Length, origin, origins.AsSpan(0, left.OriginArguments.Count), left.LengthExpression, left.ClosureContext, left.LengthArguments, left.Binder);
             if (IsSubtype(left, result) && IsSubtype(right, result))
             {
                 return result;
@@ -113,7 +115,7 @@ public sealed partial class Binding
     }
 
     // SPEC 8.1.2: a pair's conditional outer Origin participates only in admitted borrow cases. Internal Origins remain checked.
-    private static bool InactiveOuterOrigin(BoundType type, Binding? binding, Koto? use)
+    private static bool InactiveOuterOrigin(BoundType type, Binding? binding, Koto? use, in CallableInstance comparison)
     {
         if (!TryAdaptationSelector(type, out var whole) || whole.Symbol is not { } selector)
         {
@@ -121,7 +123,7 @@ public sealed partial class Binding
         }
 
         binding ??= selector.Declaration.CodeContext.Compilation.Binding;
-        var scope = use is null ? selector.Scope : binding.ConstraintScope(use);
+        var scope = AdmittedScope(selector, binding.RelationScope(use, comparison));
         // An owner application preserves the target's borrow Origin, not the application's conditional slot.
         var semantics = type.Kind == BoundTypeKind.SemanticsAdaptation ? binding.ResultSemantics(type, scope)
             : binding.AdmittedSemantics(whole, scope);
@@ -132,9 +134,9 @@ public sealed partial class Binding
     // relate their slots, the implicit `o` of an original `s/T` included, so the original `W` fits `s/T during a` when `o` outlives `a`. A
     // pair layer that stores no slot although a borrow case is admitted is unformed: its formation failure is recorded where it is
     // declared, so the fit derives from that failure instead of adding a mismatch. Any other difference in presence is structural.
-    // Without a Binding no failure is visible, so only written Origins relate and every other difference stays a mismatch.
+    // A walk without a Binding reads the binder's from its declaration, so the decision is the same with or without one (PLAN G758).
     // RelationWalk, CheckTypeUse, CollectCallRelations and FailedOriginRelation share this one decision.
-    private static OuterOriginFit FitOuterOrigins(BoundType actual, BoundType expected, Binding? binding, Koto? use, out BoundOrigin longer, out BoundOrigin shorter)
+    private static OuterOriginFit FitOuterOrigins(BoundType actual, BoundType expected, Binding? binding, Koto? use, out BoundOrigin longer, out BoundOrigin shorter, in CallableInstance comparison = default)
     {
         longer = shorter = null!;
         if (actual.Semantics == SemanticsKind.Raw && actual.Kind == BoundTypeKind.Semantics)
@@ -145,7 +147,7 @@ public sealed partial class Binding
             return ReferenceEquals(actual.RawOrigin, expected.RawOrigin) ? OuterOriginFit.None : OuterOriginFit.Relation;
         }
 
-        if (ReferenceEquals(actual.Origin, expected.Origin) || InactiveOuterOrigin(actual, binding, use))
+        if (ReferenceEquals(actual.Origin, expected.Origin) || InactiveOuterOrigin(actual, binding, use, comparison))
         {
             return OuterOriginFit.None;
         }
@@ -157,11 +159,14 @@ public sealed partial class Binding
             return OuterOriginFit.Relation;
         }
 
-        if (binding is null || !TryPairLayer(actual, out _, out _))
+        if (!TryPairLayer(actual, out var whole, out _) || whole.Symbol is not { } binder)
         {
             return OuterOriginFit.Mismatch;
         }
 
+        // As InactiveOuterOrigin: `o` is the binder's (PairOuterOrigin), interned when its binder was bound, so a walk after publication
+        // reads the atom and adds none.
+        binding ??= binder.Declaration.CodeContext.Compilation.Binding;
         if (binding.OuterOrigin(actual) is not { } slot || binding.OuterOrigin(expected) is not { } other)
         {
             return OuterOriginFit.None;
@@ -173,6 +178,6 @@ public sealed partial class Binding
     }
 
     // SPEC 15.6.5: a pair layer's slot exists only in its binder's borrow cases, whose premises the relation may use.
-    private static ulong SlotCondition(BoundType actual, Binding? binding, Koto? use)
-        => binding is not null && use is not null && actual.ContainsPairLayer ? RequiredCondition(binding.PairSlotCondition(actual, use)) : 0;
+    private static ulong SlotCondition(BoundType actual, Binding? binding, Koto? use, in CallableInstance comparison = default)
+        => binding is not null && use is not null && actual.ContainsPairLayer ? RequiredCondition(binding.PairSlotCondition(actual, use, comparison)) : 0;
 }

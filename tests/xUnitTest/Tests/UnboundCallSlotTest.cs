@@ -135,11 +135,35 @@ public class UnboundCallSlotTest(ITestOutputHelper output)
     [InlineData("func run(action: (i32) -> i32) -> i32 => action(1)\nfunc run<T>(action: (T) -> T, extra: i32 = 0) -> i32 => 0\npublic func main() -> ()\n    let r = run(func (n) => n + 1)\n", "run(func (n) => n + 1)")]
     [InlineData("func h(value: i32) -> i32 => 1\nfunc h<T>(value: T) -> i32 => 2\npublic func main() -> ()\n    let r = h(1)\n", "h(1)")]
     [InlineData("func g2(value: f64) -> i32 => 1\nfunc g2<T>(value: T) -> i32 => 2\npublic func main() -> ()\n    let r = g2(1.5)\n", "g2(1.5)")]
+    // SPEC 10.2.2's Literal row, 12.3.1 (PLAN G915): under ref both candidates borrow the Literal's temporary (at an expected ref/U the
+    // Literal is that temporary), the open one whatever V binds, so step 1 ties and step 2 decides: a Literal, a control-flow Literal and
+    // a literal-only expression, in either order, and between two generic candidates.
+    [InlineData("func kr2(m: ref/i64, y: ref/i32) -> i32 => 1\nfunc kr2<V>(m: ref/i64, y: ref/V) -> i32 => 0\npublic func main() -> ()\n    let b: i64 = 2\n    let r = kr2(b@ref, 5)\n", "kr2(b@ref, 5)")]
+    [InlineData("func kg<W>(m: ref/W, y: ref/i32) -> i32 => 1\nfunc kg<W, V>(m: ref/W, y: ref/V) -> i32 => 0\npublic func main() -> ()\n    let b: i64 = 2\n    let r = kg(b@ref, 5)\n", "kg(b@ref, 5)")]
+    [InlineData("func kr2s(m: ref/i32, y: ref/i64) -> i32 => 1\nfunc kr2s<V>(m: ref/V, y: ref/i64) -> i32 => 0\npublic func main() -> ()\n    let b: i64 = 2\n    let r = kr2s(5, b@ref)\n", "kr2s(5, b@ref)")]
+    [InlineData("func k3(m: ref/i32, y: ref/i32) -> i32 => 1\nfunc k3<V>(m: ref/V, y: ref/V) -> i32 => 0\npublic func main() -> ()\n    let r = k3(5, 6)\n", "k3(5, 6)")]
+    [InlineData("func kr2(m: ref/i64, y: ref/i32) -> i32 => 1\nfunc kr2<V>(m: ref/i64, y: ref/V) -> i32 => 0\npublic func main() -> ()\n    let b: i64 = 2\n    let f = true\n    let r = kr2(b@ref, if f => 5 else => 6)\n", "kr2(b@ref, if f => 5 else => 6)")]
+    [InlineData("func kr2(m: ref/i64, y: ref/i32) -> i32 => 1\nfunc kr2<V>(m: ref/i64, y: ref/V) -> i32 => 0\npublic func main() -> ()\n    let b: i64 = 2\n    let r = kr2(b@ref, 5 + 1)\n", "kr2(b@ref, 5 + 1)")]
     public void OpenParameterTypesAreIncomparable(string source, string at)
     {
         var error = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics);
         Assert.Equal((nameof(DiagnosticCode.AmbiguousBinding_Kd), at), (error.Code, Text(source, error.Span)));
         Assert.Equal(2, error.Related!.Count(static x => x.Role == "candidate"));
+    }
+
+    // SPEC 10.2.2's Literal row, 12.3.1, 10.4 (PLAN G915): an open Literal position under ref ties with a candidate that borrows the
+    // Literal's temporary, so another argument decides step 1 (a Same-Semantics Reborrow beats one shared reference), in either declaration
+    // order, or evidence binds the slot and step 3 does. The plain candidate returns bool and the generic one i64; the result read into
+    // `selected` shows the selection.
+    [Theory]
+    [InlineData("func kx2(a: uniq/(uniq/Node during p) during q, y: ref/i32) -> bool => true\nfunc kx2<V>(a: ref/Node, y: ref/V) -> i64 => 0\n", "kx2(x, 5)", "bool")]
+    [InlineData("func kx2<V>(a: ref/Node, y: ref/V) -> i64 => 0\nfunc kx2(a: uniq/(uniq/Node during p) during q, y: ref/i32) -> bool => true\n", "kx2(x, 5)", "bool")]
+    [InlineData("func kx(a: ref/Node, y: ref/i32) -> bool => true\nfunc kx<V>(a: uniq/(uniq/Node during p) during q, y: ref/V) -> i64 => 0\n", "kx(x, 5)", "i64")]
+    [InlineData("func k3(m: ref/i32, y: ref/i32) -> bool => true\nfunc k3<V>(m: ref/V, y: ref/V) -> i64 => 0\n", "k3(5@i32, 6)", "bool")]
+    public void AnOpenLiteralIsRankedByTheBorrowItsPatternNeeds(string group, string call, string selected)
+    {
+        var source = "struct Node\n    public var n: i32 = 0\n" + group + "func use(x: uniq/(uniq/Node during p) during q) -> ()\n    let r = " + call + "\n    let t: " + selected + " = r\npublic func main() -> () => ()\n";
+        Assert.Empty(DiagnosticCorpus.Check(source).Diagnostics);
     }
 
     // SPEC 10.5, 23.1.2: the body of the selected candidate's argument keeps its own error without a fallback to another candidate, and
@@ -150,11 +174,40 @@ public class UnboundCallSlotTest(ITestOutputHelper output)
     [InlineData("func run<F>(action: ref/F, x: i32) -> i32\n    F is Callable<(i32) -> i32>\n    return action(x)\npublic func main() -> ()\n    let r = run(func (n) => n + 1, true)\n", nameof(DiagnosticCode.NoApplicableOverload_Kd), "run(func (n) => n + 1, true)")]
     [InlineData("func run<F>(action: ref/F) -> i32\n    return 0\npublic func main() -> ()\n    let r = run(func (n) => n + 1)\n", nameof(DiagnosticCode.UnresolvedBinding_Kd), "n")]
     [InlineData("func f<T>(x: T) => ()\npublic func main() -> ()\n    f(3000000000)\n", nameof(DiagnosticCode.InvalidNumericLiteral_Kd), "3000000000")]
-    [InlineData("func fi<T>(x: T)\n    T is PrimitiveInteger\n    return\npublic func main() -> ()\n    fi(1.5)\n", nameof(DiagnosticCode.NoApplicableOverload_Kd), "fi(1.5)")]
+    [InlineData("func fi<T>(x: T)\n    T is PrimitiveInteger\n    return\npublic func main() -> ()\n    fi(1.5)\n", nameof(DiagnosticCode.UnsatisfiedConstraint_Kd), "fi(1.5)")]
     public void OneRecordPerIndependentProblem(string source, string code, string at)
     {
         var error = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics);
         Assert.Equal((code, at), (error.Code, Text(source, error.Span)));
+    }
+
+    // SPEC 10.1, 10.2.1 (PLAN G680): a Constraint that fails only once the defaults apply is the selected call's obligation, Refuted as
+    // Unknown: its clause record at the call, never "no applicable candidate", and no other candidate is selected past it. A slot the
+    // defaults leave unbound is still the inference boundary. The null rows are the valid counterparts: the default satisfies the clause.
+    [Theory]
+    [InlineData("contract Put<T>\n    func put<U>(self: uniq/Self, u: U)\n        U is T\nfunc run<C>(c: uniq/C)\n    C is Put<bool>\n    c.put(5)\npublic func main() -> () => ()\n", "c.put(5)", nameof(DiagnosticCode.UnsatisfiedConstraint_Kd))]
+    [InlineData("contract Put<T>\n    func put<U>(self: uniq/Self, u: U)\n        U is T\nfunc run<C, V>(c: uniq/C, v: V)\n    C is Put<V>\n    c.put(5)\npublic func main() -> () => ()\n", "c.put(5)", nameof(DiagnosticCode.UnprovenConstraint_Kd))]
+    [InlineData("func put<U>(u: U)\n    U is bool\n    return\npublic func main() -> ()\n    put(5)\n", "put(5)", nameof(DiagnosticCode.UnsatisfiedConstraint_Kd))]
+    [InlineData("func put<U>(u: U)\n    U is i32\n    return\npublic func main() -> ()\n    put(5)\n", "put(5)", null)]
+    [InlineData("struct Quiet\n    public var n: i32 = 0\nfunc put<U>(u: U, r: uniq/(uniq/Quiet during a) during b)\n    U is bool\n    return\nfunc put(u: i64, r: ref/Quiet) => ()\nfunc run(x: uniq/(uniq/Quiet during a) during b) => put(5, x)\npublic func main() -> () => ()\n", "put(5, x)", nameof(DiagnosticCode.UnsatisfiedConstraint_Kd))]
+    [InlineData("struct Quiet\n    public var n: i32 = 0\nfunc put<U>(u: U, r: uniq/(uniq/Quiet during a) during b)\n    U is i32\n    return\nfunc put(u: i64, r: ref/Quiet) => ()\nfunc run(x: uniq/(uniq/Quiet during a) during b) => put(5, x)\npublic func main() -> () => ()\n", "put(5, x)", null)]
+    [InlineData("func w<U, F>(u: U, f: ref/F)\n    U is bool\n    F is Callable<(i64) -> i64>\n    return\npublic func main() -> ()\n    w(5, func (n) => n)\n", "w(5, func (n) => n)", nameof(DiagnosticCode.UnsatisfiedConstraint_Kd))]
+    [InlineData("func w<U, F>(u: U, f: ref/F)\n    U is i32\n    F is Callable<(i64) -> i64>\n    return\npublic func main() -> ()\n    w(5, func (n) => n)\n", "w(5, func (n) => n)", null)]
+    public void AConstraintThatFailsOnlyAfterTheDefaultsIsTheSelectedCallsRecord(string source, string at, string? code)
+    {
+        var errors = DiagnosticCorpus.Check(source).Diagnostics;
+        Assert.Equal(code is null ? [] : new[] { (code, at) }, errors.Select(x => (x.Code, Text(source, x.Span))).ToArray());
+        Assert.All(errors, static x => Assert.DoesNotContain(x.Related ?? [], static r => r.Role == "candidate"));
+    }
+
+    // SPEC 10.2.1: a slot that the defaults leave unbound is the inference boundary even when a Constraint also fails after them.
+    [Fact]
+    public void ASlotTheDefaultsLeaveUnboundStaysTheInferenceBoundary()
+    {
+        var source = "func h<U, W>(u: U, w: Option<W>)\n    U is bool\n    return\npublic func main() -> ()\n    h(5, .None)\n";
+        var errors = DiagnosticCorpus.Check(source).Diagnostics.Select(x => (x.Code, Text(source, x.Span))).ToArray();
+        Assert.Contains((nameof(DiagnosticCode.UnboundTypeArgument_Kd), "h(5, .None)"), errors);
+        Assert.DoesNotContain(errors, static x => x.Code is nameof(DiagnosticCode.NoApplicableOverload_Kd) or nameof(DiagnosticCode.InternalInvariant_Kd));
     }
 
     // SPEC 10.5.1, 10.5.3, 10.5.4 (D4; owner decision 2026-10-18): a nested call or construction whose slot only a waiting callable binds

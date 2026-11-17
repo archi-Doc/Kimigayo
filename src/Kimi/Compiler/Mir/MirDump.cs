@@ -13,17 +13,18 @@ namespace Kimi.Compiler.Mir;
 
 /// <summary>The deterministic text of MIR (R3: the dump goldens and the MIR snapshot). A body is its header, one line per local, scope,
 /// pair binder, static, Opaque site and failure body that must not complete (<c>must not complete bb4 from bb2</c>: its end from its
-/// entry), then each block's statements and terminator. Every line that comes from syntax ends with it,
-/// <c>@id</c> (<c>@module:id</c> outside module 0), and its scope (<c>s1</c>) when it is not the body's; <c>*</c> marks where a source
-/// statement starts. Types are spelled as diagnostics spell them (<see cref="TyCtxt.Name"/>). Places: <c>(*p)</c> Deref,
+/// entry), then each block's statements and terminator. Every line that comes from syntax ends with it, <c>@id</c> (<c>@module:id</c>
+/// outside module 0, <c>@Kimi:id</c> in the library), and its scope (<c>s1</c>) when it is not the body's; <c>*</c> marks where a source
+/// statement starts. Types and lengths are spelled as diagnostics spell them (TyCtxt.Name). Places: <c>(*p)</c> Deref,
 /// <c>p.0</c> Field, <c>p.base1</c> Base, <c>p[_3]</c> Index, <c>p[2]</c> ConstIndex, <c>(p as case 1)</c> Downcast and <c>(p@b0)</c>
-/// PairLayer; borrows <c>&amp;</c>, <c>&amp;uniq</c>, <c>&amp;uniq two-phase</c> and <c>&amp;raw</c>; an Opaque value <c>opaque 0: T</c>; a case
+/// PairLayer; borrows <c>&amp;</c>, <c>&amp;uniq</c>, <c>&amp;uniq two-phase</c> and <c>&amp;raw</c>; a view's start <c>storage(_1)</c>, keyed
+/// <c>storage(_1, copy _2, const type R)</c>; an Opaque value <c>opaque 0: T</c>; a case
 /// adaptation <c>adapt(copy _1, const type T) payload (_1@b0): s/T shorthand</c>, its payload where it is not the operand's Place and
 /// <c>shorthand</c> for the Semantics shorthand; a default template, as a body and as a callee, <c>f#1</c>. An analyzed body adds drop
 /// elaboration's output (DECISIONS R4-M6a): its flags with the points at its entry (<c>flags 2 [set f0]</c>), each Drop's verdict groups
 /// with their views where they are not all (<c>[keep]</c>, <c>[flag f0]</c>, <c>[elide in v0; open f1 (.0 elide, .1 flag f2) in v1]</c>)
-/// and each location's flag points (<c>[clear f0]</c>, <c>[set f0-f2 in v1]</c>); a Drop only the checks reach has the verdict <c>[elide]</c> where
-/// nothing of it is initialized, else none.</summary>
+/// and each location's flag points (<c>[clear f0]</c>, <c>[set f0-f2 in v1]</c>); a Drop only the checks reach has its flagless group where it
+/// has a Move Path, else none.</summary>
 internal static partial class MirDump
 {
     /// <summary>Writes the bodies of one module, then the construction records and validator findings located there.</summary>
@@ -32,11 +33,11 @@ internal static partial class MirDump
     /// <param name="text">The output.</param>
     internal static void Write(MirProgram program, ushort module, StringBuilder text)
     {
-        for (var ordinal = 0; ordinal < program.Bodies.Length; ordinal++)
+        foreach (var body in program.Bodies)
         {
-            if (program.Bodies[ordinal].Source.Module == module)
+            if (body.Source.Module == module)
             {
-                Write(program.Bodies[ordinal], text, program.Drops, ordinal);
+                Write(body, text, program.Drops);
             }
         }
 
@@ -54,9 +55,9 @@ internal static partial class MirDump
     /// <summary>Writes one body.</summary>
     /// <param name="body">The body.</param>
     /// <param name="text">The output.</param>
-    /// <param name="drops">The drop table of the body's program, whose verdicts and flags are written (none for a body it does not hold).</param>
-    /// <param name="ordinal">The body's ordinal in the table.</param>
-    internal static void Write(MirBody body, StringBuilder text, MirDropTable drops, int ordinal)
+    /// <param name="drops">The drop table of the body's program, whose verdicts and flags of the body's ordinal are written (none for a
+    /// body it does not hold).</param>
+    internal static void Write(MirBody body, StringBuilder text, MirDropTable drops)
     {
         var name = body.Key.Decl?.Name ?? "top-level"; // A Closure has no name.
         text.Append(body.Key.Kind.ToString().ToLowerInvariant()).Append(name.Length == 0 ? string.Empty : " ").Append(name);
@@ -119,14 +120,14 @@ internal static partial class MirDump
             text.Append('\n');
         }
 
-        Blocks(text, body, drops, ordinal);
+        Blocks(text, body, drops);
     }
 
     // The flags, then each block's statements and terminator with their flag points and each Drop's verdicts (DECISIONS R4-M6a).
-    private static void Blocks(StringBuilder text, MirBody body, MirDropTable drops, int ordinal)
+    private static void Blocks(StringBuilder text, MirBody body, MirDropTable drops)
     {
-        var points = drops.PointsOf(ordinal);
-        if (drops.FlagsOf(ordinal) is > 0 and var flags)
+        var points = drops.PointsOf(body.Ordinal);
+        if (drops.FlagsOf(body.Ordinal) is > 0 and var flags)
         {
             Points(text.Append("  flags ").Append(flags), body, points, new(0, -1)).Append('\n');
         }
@@ -153,15 +154,19 @@ internal static partial class MirDump
             Terminator(text.Append(terminator.Source.StatementStart ? "    * " : "      "), body, terminator);
             if (terminator.Kind == MirTerminatorKind.Drop)
             {
-                Verdicts(text, body, drops, ordinal, i);
+                Verdicts(text, body, drops, i);
             }
 
             Info(Points(text, body, points[first..next], new(i, block.Count)), terminator.Source);
         }
     }
 
-    private static StringBuilder Source(StringBuilder text, SourceRef source) => text.Append(source.Module == 0 ? " @" : $" @{source.Module}:")
-        .Append(source.Id);
+    private static StringBuilder Source(StringBuilder text, SourceRef source) => text.Append(source switch
+    {
+        { IsLibrary: true } => " @Kimi:",
+        { Module: 0 } => " @",
+        _ => $" @{source.Module}:",
+    }).Append(source.Id);
 
     private static void Info(StringBuilder text, SourceInfo info) => Source(text, info.Syntax).Append(
         info.Scope == 0 ? string.Empty

@@ -106,7 +106,7 @@ fn inner @34
       _3 = const () @46 s1
       goto bb3 @46 s1
   bb6:
-      drop _1 -> bb7 @41
+      drop _1 -> bb7 [elide] @41
   bb7:
       unreachable @45
 fn named @47

@@ -246,7 +246,7 @@ public class PropertyRevisionParseTest
 
     private static void VerifyParents(Koto node)
     {
-        foreach (var child in node.ChildNodes)
+        foreach (var child in node.Children())
         {
             Assert.Same(node, child.Parent);
             VerifyParents(child);

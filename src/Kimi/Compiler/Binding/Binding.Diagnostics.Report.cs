@@ -1,5 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using System.Runtime.InteropServices;
 using Kimi.Compiler.Parsing;
 using Kimi.Diagnostics;
 
@@ -24,9 +25,9 @@ public sealed partial class Binding
             diagnostics.Report(DiagnosticPartition.Binding, DiagnosticCode.InternalInvariant_Kd, this.compilation.Project.FilePath); // Binding.TypeHeight.cs
         }
 
-        for (var i = 0; i < this.issues.Count; i++)
+        for (var i = 0; i < this.issuesView.Count; i++)
         {
-            var issue = this.issues[i];
+            var issue = this.issuesView[i];
             if (issue.Failure == BindingFailure.Duplicate && this.duplicateDeclarations?.ContainsKey(issue.Node) == true)
             {
                 continue; // Pairwise declaration failures are normalized as one group below.
@@ -35,7 +36,7 @@ public sealed partial class Binding
             this.ReportIssue(issue);
         }
 
-        foreach (var node in this.derivedIssues)
+        foreach (var node in this.derivedIssuesView)
         {
             node.ReportDerived(DiagnosticRequirement.Binding(node.BindingFailure), this.PrerequisiteKeys(node));
         }
@@ -47,8 +48,7 @@ public sealed partial class Binding
 
             // SPEC 23.2.2: an incomplete Binding without an Error in it or an earlier phase reports one fallback at its
             // first incomplete node. It marks a missing report, a compiler defect to repair where it occurs.
-            if (!this.Result.IsComplete && !diagnostics.HasErrorsThrough(DiagnosticPartition.Binding) &&
-                this.nodes.Find(static x => x.BindingState != BindingState.Resolved) is { } first)
+            if (!this.Result.IsComplete && !diagnostics.HasErrorsThrough(DiagnosticPartition.Binding) && this.FirstIncompleteNode() is { } first)
             {
                 first.ReportDerived(DiagnosticRequirement.Binding(first.BindingFailure == BindingFailure.None ? BindingFailure.MissingType : first.BindingFailure), [DiagnosticKey.Unresolved]);
             }
@@ -79,6 +79,20 @@ public sealed partial class Binding
     private static string PermittedCallsText(SemanticsKind receiver)
         => receiver switch { SemanticsKind.Ref => "Shared calls only", SemanticsKind.Uniq => "Shared and Exclusive calls only", _ => "every call" };
 
+    // SPEC 23.2.2's fallback site: the first node not Resolved, the program part's nodes first, then the library layer's.
+    private Koto? FirstIncompleteNode()
+    {
+        foreach (var node in this.nodesView)
+        {
+            if (node.BindingState != BindingState.Resolved)
+            {
+                return node;
+            }
+        }
+
+        return null;
+    }
+
     // Publishes one direct failure with the facts its check recorded. Each fact table holds the explanation of its node's one
     // failure only (FailExplained), so at most one table answers for a node.
     private void ReportIssue(BindingIssue issue)
@@ -106,7 +120,12 @@ public sealed partial class Binding
         }
         else if (issue.Failure == BindingFailure.ArithmeticDirection && this.arithmeticDirectionFailures?.TryGetValue(issue.Node, out var direction) == true)
         {
-            issue.Node.Report(requirement, issue.Code, ArithmeticOperatorText(ArithmeticContracts.Operator(direction.Id)), evidence: [DiagnosticTypeName(direction.Left), DiagnosticTypeName(direction.Right), direction.Ordinary.Name, direction.Reverse.Name], related: [("ordinary", direction.OrdinaryUse, direction.Ordinary.Name), ("reverse", direction.ReverseUse, direction.Reverse.Name)]);
+            issue.Node.Report(
+                requirement,
+                issue.Code,
+                ArithmeticOperatorText(ArithmeticContractSyntax.Operator(direction.Id)),
+                evidence: [DiagnosticTypeName(direction.Left), DiagnosticTypeName(direction.Right), direction.Ordinary.Name, direction.Reverse.Name],
+                related: [("ordinary", direction.OrdinaryUse, direction.Ordinary.Name), ("reverse", direction.ReverseUse, direction.Reverse.Name)]);
         }
         else if (issue.Failure == BindingFailure.CaseLimit)
         {
@@ -121,8 +140,7 @@ public sealed partial class Binding
             this.ReportQualification(issue.Node, requirement);
         }
         else if (issue.Code == DiagnosticCode.InvalidConstraint_Kd &&
-            this.constraintDiagnosticCauses?.TryGetValue(issue.Node, out var cause) == true &&
-            cause.BindingFailure is BindingFailure.MissingName or BindingFailure.MissingType or BindingFailure.Unsupported)
+            this.constraintDiagnosticCauses?.TryGetValue(issue.Node, out var cause) == true && IsMissingInformation(cause))
         {
             // The recorded missing Name of the Constraint is its prerequisite.
             issue.Node.ReportDerived(requirement, [cause.KeyOf(DiagnosticRequirement.Binding(cause.BindingFailure))]);
@@ -204,8 +222,9 @@ public sealed partial class Binding
                 related: [("candidate", associated.First.Symbol.Declaration, first), ("candidate", associated.Second.Symbol.Declaration, second)],
                 note: $"{first} and {second} are distinct associated-Type identities; the declaring Contract's bindings are part of each identity (SPEC 8.4.3-3)");
         }
-        else if (issue.Code is DiagnosticCode.NoApplicableOverload_Kd or DiagnosticCode.AmbiguousBinding_Kd && this.rejectedCandidates?.TryGetValue(issue.Node, out var rejected) == true)
+        else if (issue.Code is DiagnosticCode.NoApplicableOverload_Kd or DiagnosticCode.AmbiguousBinding_Kd && this.rejectedCandidates?.TryGetValue(issue.Node, out var range) == true)
         {
+            var rejected = CollectionsMarshal.AsSpan(this.rejectedRows).Slice(range.Start, range.Count);
             var relatedCount = rejected.Length;
             foreach (var candidate in rejected)
             {

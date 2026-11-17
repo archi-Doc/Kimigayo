@@ -4,6 +4,7 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using Kimi;
+using Kimi.Build;
 using Kimi.Compiler;
 using Kimi.Compiler.Parsing;
 using Kimi.Diagnostics;

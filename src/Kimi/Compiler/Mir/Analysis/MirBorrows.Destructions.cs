@@ -38,7 +38,7 @@ internal sealed partial class MirBorrows
             ref readonly var data = ref this.body.Blocks[block];
             this.receivers[block] = data.Terminator is { Kind: MirTerminatorKind.Drop, Place: { Root: >= 0 } place } &&
                 this.Dropping(block, place) == AccessKind.Observe
-                ? this.Address(place.Root, -1, direct: true, this.Location(block, data.Count), []) : -1;
+                ? this.Address(new(place.Root), ~0, this.Location(block, data.Count)) : -1;
         }
 
         this.Work += this.body.Blocks.Length;
@@ -50,7 +50,7 @@ internal sealed partial class MirBorrows
         if (this.receivers[block] >= 0)
         {
             var call = drop with { Operand = MirOperand.Copy(drop.Place) };
-            this.Compose(state, call, this.sets.Add(0, this.loanBase + this.receivers[block]), cases.Type(this.body.TypeOf(drop.Place)!), checks);
+            this.Compose(state, call, this.sets.Add(0, this.loanBase + this.receivers[block]), cases.TypeOf(drop.Place), checks);
         }
     }
 
@@ -134,7 +134,7 @@ internal sealed partial class MirBorrows
         else if (AdtDef.DestructorSymbol(type) is { } destructor)
         {
             this.Work++;
-            this.dropRows.Add(types.Retains(destructor, types.Synthesized(destructor, type, []), definition));
+            this.dropRows.Add(types.Retains(destructor, types.Synthesized(destructor, type, [], []), definition));
             return MirTypes.Parts(type, ref composer, depth);
         }
 

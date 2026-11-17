@@ -9,6 +9,19 @@ namespace XunitTest;
 
 public partial class ModuleBindingTest
 {
+    private const string HolderLibrary = "public open struct Base\n    public init() => ()\n    protected internal contract Holder\n        associate Item\n    protected struct Token\n";
+    private const string MakerLibrary = "public open struct Base\n    public init() => ()\n    protected internal contract Maker\n        func tag() -> i32\n    protected func tag() -> i32 => 1\n";
+    private const string HolderMine = "struct Mine: Lib.Base\n    public init(): base() => ()\n    Self is Lib.Base.Holder\n    associate Lib.Base.Holder.Item is ";
+    private const string MakerMine = "struct Mine: Lib.Base\n    public init(): base() => ()\n    Self is Lib.Base.Maker\n";
+    private const string HolderOuter = "public open struct Outer: Lib.Base\n    public init(): base() => ()\n";
+    private const string HolderNested = " struct Mine\n        Self is Lib.Base.Holder\n        associate Lib.Base.Holder.Item is ";
+    private const string ReaderLibrary = "public open struct Base\n    public init() => ()\n    protected internal contract Reader\n        property size: i32 has get\n    protected var size: i32 = 1\n";
+    private const string ReaderMine = "struct Mine: Lib.Base\n    public init(): base() => ()\n    Self is Lib.Base.Reader\n";
+    private const string ChildBase = "public open struct Base2\n    public init() => ()\n    protected struct Token2\n";
+    private const string ChildHolder = ChildBase + "    protected internal contract Holder2\n        associate Item\n";
+    private const string DerivedBase = "public open struct Base: Child.Base2\n    public init(): base() => ()\n";
+    private const string Holder2Mine = "struct Mine: Lib.Base\n    public init(): base() => ()\n    Self is Child.Base2.Holder2\n    associate Child.Base2.Holder2.Item is ";
+
     [Theory]
     [InlineData("public func main() => Lib.Api.value()", true)]
     [InlineData("alias Lib.Api\npublic func main() => value()", true)]
@@ -42,9 +55,9 @@ public partial class ModuleBindingTest
     }
 
     [Theory]
-    [InlineData("public func unused() => missing()", false, true)]
-    [InlineData("public func unused()\n    let text = \"moved\"\n    _ = text@move\n    ::Kimi.Console.writeLine(text)", true, false)]
-    [InlineData("public func unused() => ()", true, true)]
+    [InlineData("func unused() => missing()", false, true)]
+    [InlineData("func unused()\n    let text = \"moved\"\n    _ = text@move\n    ::Kimi.Console.writeLine(text)", true, false)]
+    [InlineData("func unused() => ()", true, true)]
     public void UnusedDependencyBodiesAreChecked(string library, bool bound, bool owned)
     {
         var compilation = Create("public func main() => ()", library);
@@ -72,7 +85,7 @@ public partial class ModuleBindingTest
         Assert.True(compilation.Bind().IsComplete);
         Assert.True(compilation.Binding.CheckStartup(OutputKind.Application).IsComplete);
         Assert.True(compilation.Analyze().IsVerified);
-        compilation.Kotonoha.AddSource(new SourceDocument("bad.kimi", "public func bad() => Lib.Api.test()"));
+        compilation.Kotonoha.AddSource(new SourceDocument("bad.kimi", "func bad() => Lib.Api.test()"));
         Assert.False(compilation.Bind().IsComplete);
     }
 
@@ -80,7 +93,7 @@ public partial class ModuleBindingTest
     public void AliasesDoNotLeakBetweenDocumentsOrModules()
     {
         var compilation = Create("alias Lib.Api\npublic func main() => value()", "public group Api\n    public func value() => ()");
-        compilation.Kotonoha.AddSource(new SourceDocument("other.kimi", "public func other() => value()"));
+        compilation.Kotonoha.AddSource(new SourceDocument("other.kimi", "func other() => value()"));
         Assert.False(compilation.Bind().IsComplete);
     }
 
@@ -91,7 +104,7 @@ public partial class ModuleBindingTest
         Assert.True(compilation.Bind().IsComplete);
         Assert.True(compilation.Binding.CheckStartup(OutputKind.Application).IsComplete);
         Assert.True(compilation.Analyze().IsVerified);
-        compilation.Kotonoha.AddSource(new SourceDocument("bad.kimi", "public func bad() => Child.Api.value()"));
+        compilation.Kotonoha.AddSource(new SourceDocument("bad.kimi", "func bad() => Child.Api.value()"));
         Assert.False(compilation.Bind().IsComplete);
     }
 
@@ -106,7 +119,7 @@ public partial class ModuleBindingTest
         Assert.False(compilation.Analysis.IsVerified);
         compilation.Binding.CheckStartup(OutputKind.Application);
         Assert.True(compilation.Analyze().IsVerified);
-        compilation.SourceModules[1].AddSource(new SourceDocument("bad.kimi", "public func broken() => missing()"));
+        compilation.SourceModules[1].AddSource(new SourceDocument("bad.kimi", "func broken() => missing()"));
         Assert.False(compilation.Bind().IsComplete);
         compilation.Analyze();
         Assert.False(compilation.Accepts); // Since the MIR decides acceptance (R6-check H5), Binding's record rejects the program.
@@ -116,7 +129,7 @@ public partial class ModuleBindingTest
     [Fact]
     public void CompileTimeSettingsBelongToEachModule()
     {
-        var compilation = Create("#if feature\npublic func main() => Lib.Api.value()", "#if feature\npublic func broken() => missing()\n#if not feature\npublic group Api\n    public func value() => ()", configure: (root, library) =>
+        var compilation = Create("#if feature\npublic func main() => Lib.Api.value()", "#if feature\nfunc broken() => missing()\n#if not feature\npublic group Api\n    public func value() => ()", configure: (root, library) =>
         {
             root.CompileTimeSettings.Add("feature", new() { Bool = true });
             library.CompileTimeSettings.Add("feature", new() { Bool = false });
@@ -141,7 +154,7 @@ public partial class ModuleBindingTest
     public void ADefaultAliasOpensNoFormalParameter()
     {
         // SPEC 18.2.1, 18.2.3 (PLAN G574): a default alias opens its target's direct members, never its formal parameters.
-        var compilation = Create("public struct Box<T>\n    public var a: i32 = 0\npublic func f(x: T) => ()", "public group Api", configure: (root, _) => root.Alias = ["Box"]);
+        var compilation = Create("public struct Box<T>\n    public var a: i32 = 0\nfunc f(x: T) => ()", "public group Api", configure: (root, _) => root.Alias = ["Box"]);
         Assert.False(compilation.Bind().IsComplete);
         var issue = Assert.Single(compilation.Binding.Issues);
         Assert.Equal(DiagnosticCode.UnresolvedBinding_Kd, issue.Code);
@@ -153,7 +166,7 @@ public partial class ModuleBindingTest
     {
         var compilation = Create("public func main() => Lib.Api.value()", "public group Api\n    public func value() => helper()\nprivate group Implementation\n    public func helper() => ()", configure: (_, library) => library.Alias = ["Implementation"]);
         Assert.True(compilation.Bind().IsComplete);
-        compilation.Kotonoha.AddSource(new SourceDocument("bad.kimi", "public func bad() => helper()"));
+        compilation.Kotonoha.AddSource(new SourceDocument("bad.kimi", "func bad() => helper()"));
         Assert.False(compilation.Bind().IsComplete);
     }
 
@@ -184,7 +197,7 @@ public partial class ModuleBindingTest
     {
         var compilation = Create("alias Local\npublic group Local\n    public func value() -> i32 => 1\npublic func main()\n    let x: i32 = value()", "public group Api\n    public func value() -> bool => true", configure: (root, _) => root.Alias = ["Lib.Api"]);
         Assert.True(compilation.Bind().IsComplete);
-        compilation.Kotonoha.AddSource(new SourceDocument("bad.kimi", "alias Api\npublic func bad() => ()"));
+        compilation.Kotonoha.AddSource(new SourceDocument("bad.kimi", "alias Api\nfunc bad() => ()"));
         Assert.False(compilation.Bind().IsComplete);
     }
 
@@ -222,7 +235,7 @@ public partial class ModuleBindingTest
     [Fact]
     public void AliasTargetAccessIsCheckedAtItsDeclaration()
     {
-        var compilation = Create("alias Outer.Hidden\npublic group Outer\n    private group Hidden\n        public func value() => ()\n    public func use() => value()\npublic func main() => Outer.use()", "public func unused() => ()");
+        var compilation = Create("alias Outer.Hidden\npublic group Outer\n    private group Hidden\n        public func value() => ()\n    public func use() => value()\npublic func main() => Outer.use()", "func unused() => ()");
         Assert.False(compilation.Bind().IsComplete);
     }
 
@@ -257,14 +270,14 @@ public partial class ModuleBindingTest
     }
 
     [Theory]
-    [InlineData("public", false, "func expose(value: Source.C.Element) => ()")]
-    [InlineData("internal", true, "func expose(value: Source.C.Element) => ()")]
-    [InlineData("public", false, "let value: Source.C.Element = 1")]
-    [InlineData("internal", true, "let value: Source.C.Element = 1")]
-    [InlineData("public", false, "enum Result\n        Item(Source.C.Element)")]
-    [InlineData("internal", true, "enum Result\n        Item(Source.C.Element)")]
-    [InlineData("public", false, "struct Result<T>\n        T is Source.C.Element")]
-    [InlineData("internal", true, "struct Result<T>\n        T is Source.C.Element")]
+    [InlineData("public", false, "func expose(value: Source.(C).Element) => ()")]
+    [InlineData("internal", true, "func expose(value: Source.(C).Element) => ()")]
+    [InlineData("public", false, "let value: Source.(C).Element = 1")]
+    [InlineData("internal", true, "let value: Source.(C).Element = 1")]
+    [InlineData("public", false, "enum Result\n        Item(Source.(C).Element)")]
+    [InlineData("internal", true, "enum Result\n        Item(Source.(C).Element)")]
+    [InlineData("public", false, "struct Result<T>\n        T is Source.(C).Element")]
+    [InlineData("internal", true, "struct Result<T>\n        T is Source.(C).Element")]
     public void UnusedDependencyApisRetainProjectionAccess(string access, bool valid, string declaration)
     {
         var c = Create("public func main() => ()", "public group Api\n    internal contract C\n        associate Element\n    public struct Source\n        Self is C\n        associate C.Element is i32\n    " + access + " " + declaration);
@@ -285,9 +298,9 @@ public partial class ModuleBindingTest
 
     [Theory]
     [InlineData(false, "Source.Element")]
-    [InlineData(false, "Source.C.Element")]
+    [InlineData(false, "Source.(C).Element")]
     [InlineData(true, "Source.Element")]
-    [InlineData(true, "Source.C.Element")]
+    [InlineData(true, "Source.(C).Element")]
     public void ImportedProjectionUsesTheOriginalDomains(bool defaults, string type)
     {
         var c = Create((defaults ? string.Empty : "alias Lib.Api\n") + "public group Export\n    public func identity(value: " + type + ") -> i32 => value", "public group Api\n    public contract C\n        associate Element\n    public struct Source\n        Self is C\n        associate C.Element is i32", configure: (root, _) => root.Alias = defaults ? ["Lib.Api"] : []);
@@ -300,7 +313,7 @@ public partial class ModuleBindingTest
     [InlineData(true)]
     public void ConsumerAliasesCannotWidenLibraryApiDomains(bool defaults)
     {
-        var c = Create((defaults ? string.Empty : "alias Lib.Api\n") + "public func main() => ()", "public group Api\n    contract C\n        associate Element\n    public struct Source\n        Self is C\n        associate C.Element is i32\n    public enum Result\n        Item(Source.C.Element)", configure: (root, _) => root.Alias = defaults ? ["Lib.Api"] : []);
+        var c = Create((defaults ? string.Empty : "alias Lib.Api\n") + "public func main() => ()", "public group Api\n    contract C\n        associate Element\n    public struct Source\n        Self is C\n        associate C.Element is i32\n    public enum Result\n        Item(Source.(C).Element)", configure: (root, _) => root.Alias = defaults ? ["Lib.Api"] : []);
         Assert.False(c.Bind().IsComplete);
         Assert.Contains(c.Binding.Issues, x => x.Node.CodeContext.Kotonoha == c.SourceModules[1] && x.Node.FailureOf() == BindingFailure.Access);
     }
@@ -421,6 +434,36 @@ public partial class ModuleBindingTest
         }
     }
 
+    // SPEC 9.4.2, 9.4.6: Access(Mine) ∩ Access(Contract) over two Kotonoha (KA, KL). An intersection that holds a Kotonoha or Body atom
+    // of each is empty; Derived(Base) is of neither (PLAN G610). The Contract is a protected internal member of Lib's open Base
+    // (KL ∪ Body(Base) ∪ Derived(Base)); the binding or the implementation is a protected member (Body(Base) ∪ Derived(Base)).
+    // A third Kotonoha (KC, Child; App names it too): the member or the Contract belongs to Child's open Base2, which Lib's Base derives from.
+    [Theory]
+    [InlineData(HolderMine + "Lib.Base.Token\n", HolderLibrary, null, null)] // KA∩KL, KA∩Body(Base) are empty; Derived(Base) is in U
+    [InlineData("public " + HolderMine + "Lib.Base.Token\n", HolderLibrary, null, DiagnosticCode.InaccessibleBinding_Kd)] // a public Mine: KL alone is not empty
+    [InlineData(HolderMine + "Own\n    private struct Own\n", HolderLibrary, null, DiagnosticCode.InaccessibleBinding_Kd)] // KA∩Derived(Base) is not empty, U is Body(Mine)
+    [InlineData(MakerMine, MakerLibrary, null, null)] // the inherited protected tag implements the requirement
+    [InlineData("public " + MakerMine, MakerLibrary, null, DiagnosticCode.IncompatibleContractImplementation_Kd)]
+    [InlineData(ReaderMine, ReaderLibrary, null, null)] // the inherited protected Field implements the Property requirement
+    [InlineData("public " + ReaderMine, ReaderLibrary, null, DiagnosticCode.IncompatibleContractImplementation_Kd)]
+    [InlineData(HolderOuter + "    protected internal" + HolderNested + "Lib.Base.Token\n", HolderLibrary, null, null)] // each chain's Derived atom is in U
+    [InlineData(HolderOuter + "    private struct Own\n    protected" + HolderNested + "Own\n", HolderLibrary, null, DiagnosticCode.InaccessibleBinding_Kd)] // Derived(Outer)∩KL is not empty
+    [InlineData(HolderOuter + "    protected struct Own2\n    protected internal" + HolderNested + "Own2\n", HolderLibrary, null, DiagnosticCode.InaccessibleBinding_Kd)] // KA∩Derived(Base) is not empty
+    [InlineData("", HolderLibrary + "struct Mine: Base\n    public init(): base() => ()\n    Self is Base.Holder\n    associate Base.Holder.Item is Base.Token\n", null, DiagnosticCode.InaccessibleBinding_Kd)] // one Kotonoha: K∩K is not empty
+    [InlineData(HolderMine + "Child.Base2.Token2\n", DerivedBase + "    protected internal contract Holder\n        associate Item\n", ChildBase, null)] // U is Body(Base2) ∪ Derived(Base2): Derived(Base) is in it
+    [InlineData("public open struct Outer: Child.Base2\n    public init(): base() => ()\n    protected internal struct Mine: Lib.Base\n        public init(): base() => ()\n        Self is Lib.Base.Holder\n        associate Lib.Base.Holder.Item is Child.Base2.Token2\n", HolderLibrary, ChildBase, DiagnosticCode.InaccessibleBinding_Kd)] // Base does not derive from Base2: KA∩Derived(Base) is not empty
+    [InlineData(Holder2Mine + "Child.Base2.Token2\n", DerivedBase, ChildHolder, null)] // KA∩KC, KA∩Body(Base2) are empty; Derived(Base2) is in U
+    [InlineData(Holder2Mine + "Lib.Base.TokL\n", DerivedBase + "    protected struct TokL\n", ChildHolder, DiagnosticCode.InaccessibleBinding_Kd)] // Derived(Base2) is not in Derived(Base)
+    public void ConformanceDomainsOverTwoKotonohaReadEmptyIntersections(string root, string library, string? child, DiagnosticCode? rejected)
+    {
+        var c = Create(root, library, child, rootReferencesChild: child is not null);
+        Assert.Equal(rejected is null, c.Bind().IsComplete);
+        if (rejected is { } code)
+        {
+            Assert.Equal(code, Assert.Single(c.Binding.Issues).Code);
+        }
+    }
+
     [Theory]
     [InlineData(false, "i32", true)]
     [InlineData(true, "i32", true)]
@@ -463,9 +506,10 @@ public partial class ModuleBindingTest
         void Verify()
         {
             Assert.Equal(valid, c.Bind().IsComplete);
+            Assert.Equal(valid ? string.Empty : "UnsatisfiedConstraint_Kd Box<string>", string.Join(" | ", c.Binding.Issues.Select(static x => $"{x.Code} {x.Node}")));
             var structure = c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "S");
             var contract = c.SourceModules[1].RootKoto.NestedContainers.Single(x => x.Name == "Api").NestedContainers.Single(x => x.Name == "C");
-            Assert.Equal(valid, c.Binding.GetConformanceDefinition(structure.TypeOf()!, contract.SymbolOf()!)!.IsVerified);
+            Assert.True(c.Binding.GetConformanceDefinition(structure.TypeOf()!, contract.SymbolOf()!)!.IsVerified); // O-54 (a)
         }
     }
 
@@ -506,7 +550,7 @@ public partial class ModuleBindingTest
     public void ImportedExpressionProjectionsRetainInputConstraints(bool defaults, bool runtime, string argument, bool valid)
     {
         var library = "public group Api\n    public contract Origin\n        associate Item\n    public struct Source<T>\n        T is i32\n        Self is Origin\n        associate Origin.Item is i32";
-        var c = Create((defaults ? string.Empty : "alias Lib.Api\n") + ProjectionConsumer(runtime, "Source<" + argument + ">.Origin.Item"), library, configure: (root, _) => root.Alias = defaults ? ["Lib.Api"] : []);
+        var c = Create((defaults ? string.Empty : "alias Lib.Api\n") + ProjectionConsumer(runtime, "Source<" + argument + ">.(Origin).Item"), library, configure: (root, _) => root.Alias = defaults ? ["Lib.Api"] : []);
         VerifyImportedProjectionCertificate(c, runtime, valid);
     }
 
@@ -521,8 +565,8 @@ public partial class ModuleBindingTest
     [InlineData(true, true, "internal", false)]
     public void ImportedExpressionProjectionsRetainWitnessValidity(bool defaults, bool runtime, string access, bool valid)
     {
-        var library = "public group Api\n    " + access + " contract Hidden\n        associate Item\n    public struct Local\n        Self is Hidden\n        associate Hidden.Item is i32\n    public contract Origin\n        associate Item\n        func f(self: ref/Self, x: i32) -> i32\n    public struct Source\n        Self is Origin\n        associate Origin.Item is i32\n        public func f(self: ref/Self, x: Local.Hidden.Item) -> i32 => x";
-        var c = Create((defaults ? string.Empty : "alias Lib.Api\n") + ProjectionConsumer(runtime, "Source.Origin.Item"), library, configure: (root, _) => root.Alias = defaults ? ["Lib.Api"] : []);
+        var library = "public group Api\n    " + access + " contract Hidden\n        associate Item\n    public struct Local\n        Self is Hidden\n        associate Hidden.Item is i32\n    public contract Origin\n        associate Item\n        func f(self: ref/Self, x: i32) -> i32\n    public struct Source\n        Self is Origin\n        associate Origin.Item is i32\n        public func f(self: ref/Self, x: Local.(Hidden).Item) -> i32 => x";
+        var c = Create((defaults ? string.Empty : "alias Lib.Api\n") + ProjectionConsumer(runtime, "Source.(Origin).Item"), library, configure: (root, _) => root.Alias = defaults ? ["Lib.Api"] : []);
         VerifyImportedProjectionCertificate(c, runtime, valid);
     }
 
@@ -557,16 +601,16 @@ public partial class ModuleBindingTest
     [InlineData(6, true, true)]
     public void ImportedDeclarationProjectionsRetainLateWitnessValidity(int form, bool defaults, bool valid)
     {
-        var library = "public group Api\n    " + (valid ? "public" : "internal") + " contract Hidden\n        associate Item\n    public struct Local\n        Self is Hidden\n        associate Hidden.Item is i32\n    public open struct Base<T>\n    public contract Origin\n        associate Item\n        func f(self: ref/Self, x: i32) -> i32\n    public struct Source\n        Self is Origin\n        associate Origin.Item is i32\n        public func f(self: ref/Self, x: Local.Hidden.Item) -> i32 => x";
+        var library = "public group Api\n    " + (valid ? "public" : "internal") + " contract Hidden\n        associate Item\n    public struct Local\n        Self is Hidden\n        associate Hidden.Item is i32\n    public open struct Base<T>\n    public contract Origin\n        associate Item\n        func f(self: ref/Self, x: i32) -> i32\n    public struct Source\n        Self is Origin\n        associate Origin.Item is i32\n        public func f(self: ref/Self, x: Local.(Hidden).Item) -> i32 => x";
         var consumer = form switch
         {
-            0 => "group Consumer\n    func take(x: Source.Origin.Item) -> i32 => x\n    func call() -> i32 => take(1)",
-            1 => "struct S\n    var field: Source.Origin.Item",
-            2 => "contract C\nenum S\n    A(Source.Origin.Item)\n    Self is C",
-            3 => "contract C\nstruct S: Base<Source.Origin.Item>\n    Self is C",
-            4 => "contract C\n    associate Item\nstruct S\n    Self is C\n    associate C.Item is Source.Origin.Item",
-            5 => "contract C\n    associate Item is Source.Origin.Item\nstruct S\n    Self is C",
-            _ => "contract C\n    associate Item\nstruct S<T>\n    Self is C when T is Copy\n        associate C.Item is Source.Origin.Item",
+            0 => "group Consumer\n    func take(x: Source.(Origin).Item) -> i32 => x\n    func call() -> i32 => take(1)",
+            1 => "struct S\n    var field: Source.(Origin).Item",
+            2 => "contract C\nenum S\n    A(Source.(Origin).Item)\n    Self is C",
+            3 => "contract C\nstruct S: Base<Source.(Origin).Item>\n    Self is C",
+            4 => "contract C\n    associate Item\nstruct S\n    Self is C\n    associate C.Item is Source.(Origin).Item",
+            5 => "contract C\n    associate Item is Source.(Origin).Item\nstruct S\n    Self is C",
+            _ => "contract C\n    associate Item\nstruct S<T>\n    Self is C when T is Copy\n        associate C.Item is Source.(Origin).Item",
         };
         var c = Create((defaults ? string.Empty : "alias Lib.Api\n") + consumer, library, configure: (root, _) => root.Alias = defaults ? ["Lib.Api"] : []);
         Verify();
@@ -638,7 +682,7 @@ public partial class ModuleBindingTest
         return compilation;
     }
 
-    internal static Compilation Create(string rootSource, string librarySource, string? childSource = null, Action<ProjectFile, ProjectFile>? configure = null)
+    internal static Compilation Create(string rootSource, string librarySource, string? childSource = null, Action<ProjectFile, ProjectFile>? configure = null, bool rootReferencesChild = false)
     {
         var compilation = Compilation.CreateForTest();
         var project = compilation.Project;
@@ -652,6 +696,12 @@ public partial class ModuleBindingTest
         {
             var child = new DependencyNode("child@1", new("child.kimiproj", new() { OutputKind = OutputKind.Library }, [], []), 1, "Child");
             library.Edges.Add("Child", child.Key);
+            if (rootReferencesChild)
+            {
+                project.ProjectFile.Dependencies.Add("Child", new() { PackageId = "child", PackageVersion = "1", Project = "child.kimiproj" });
+                root.Edges.Add("Child", child.Key);
+            }
+
             nodes = [root, library, child];
         }
 

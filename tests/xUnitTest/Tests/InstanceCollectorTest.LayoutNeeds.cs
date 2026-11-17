@@ -91,7 +91,30 @@ public sealed partial class InstanceCollectorTest
             [LayoutNeed.Parts, LayoutNeed.Parts, LayoutNeed.Element, LayoutNeed.Element, LayoutNeed.None, LayoutNeed.None, LayoutNeed.None],
             kinds.Select(LayoutNeeds.Of));
         Assert.Equal(LayoutNeed.TypeArguments, IntrinsicRows.Of(IntrinsicId.RawAllocate).Need);
-        Assert.Equal(LayoutNeed.TypeArguments, LegacyRuntimeHelpers.Row(CompilerFunctionKind.Swap)!.Value.Need);
+    }
+
+    // SPEC 8.15.3 (PLAN G597): a keyed Storage is a site whose need is its key's in the item's instance (LayoutNeeds.Of(key)): the
+    // instance whose key starts at the storage lays out nothing, the one whose key displaces its element (LayoutNeeds.TypeOf), here the
+    // one use of S, whose C layout is unavailable. In the generic body the key is open and the row has no need, without a fault
+    // (fail-before: no keyed Storage was built, and the displaced form made the stride a use of every instance).
+    [Theory]
+    [InlineData("h(v, ..)", "")]
+    [InlineData("h(v, ..2)", "")]
+    [InlineData("h(v, 1..)", "InvalidCLayout_Kd v[r]")]
+    [InlineData("h(v, ..) + h(v, 1..)", "InvalidCLayout_Kd v[r]")]
+    public void AKeyedStorageNeedsItsElementWhereItsInstancesKeyDisplaces(string calls, string records)
+    {
+        var c = MirBuildTest.Compile("#Layout(\"C\")\nstruct S\n    public var n: i32\n    public var u: ()\nfunc h<R>(v: ref/Array<S>, r: R) -> isize\n" +
+            $"    R is PositionRange\n    return v[r].length\nfunc f(v: ref/Array<S>) -> isize => {calls}\nlet zz = 1\n");
+        var program = c.BuildMir();
+        _ = new InstanceCollector(c.Types, c.Layout).Run(program, 1);
+        Assert.Equal(
+            records,
+            string.Join("|", program.Records(MirRecordClass.Collection).Select(x => $"{x.Code} {c.SyntaxOf(x.Subject).ToString().Split('\n')[0]}")));
+        var body = program.Bodies.ToArray().Single(static x => x.Key.Decl?.Name == "h");
+        var keyed = body.Statements.ToArray().Single(static x => x is { Kind: MirStatementKind.Assign, Rvalue: { Kind: MirRvalueKind.Storage, Count: 2 } });
+        Assert.Equal("S", TyCtxt.Name(LayoutNeeds.TypeOf(body, keyed.Rvalue)));
+        Assert.Null(LayoutNeeds.Of(body.Consts[body.Operands[keyed.Rvalue.Start + 1].Arg].Type));
     }
 
     // K 4.10 (DECISIONS R5-M149, the owner's Q1 (a)): a root constructor whose Type has no layout, an unavailable C layout or a size over the
@@ -106,7 +129,7 @@ public sealed partial class InstanceCollectorTest
         var program = c.BuildMir();
         var collector = new InstanceCollector(c.Types, c.Layout);
         var set = collector.Run(program, 1);
-        var init = Assert.Single(Enumerable.Range(0, set.RootCount), x => program.Bodies[set.Items[x].BodyOrdinal].Locals[0].Role == MirLocalRole.Receiver);
+        var init = Assert.Single(Enumerable.Range(0, set.RootCount), x => program.Body(set.Items[x].BodyOrdinal).Locals[0].Role == MirLocalRole.Receiver);
         Assert.Equal(generated, collector.Generates(program, init));
     }
 }

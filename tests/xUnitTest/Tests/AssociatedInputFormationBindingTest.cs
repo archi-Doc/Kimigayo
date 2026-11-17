@@ -9,9 +9,9 @@ namespace XunitTest;
 public class AssociatedInputFormationBindingTest
 {
     [Theory]
-    [InlineData("Source<string>.Origin.Item")]
-    [InlineData("(Source<string>.Origin.Item, i32)")]
-    [InlineData("[2 of Source<string>.Origin.Item]")]
+    [InlineData("Source<string>.(Origin).Item")]
+    [InlineData("(Source<string>.(Origin).Item, i32)")]
+    [InlineData("[2 of Source<string>.(Origin).Item]")]
     public void NormalizationCannotHideInvalidDefinitionInputs(string definition)
     {
         var c = MinimalEmissionTest.Analyze(Prefix + "contract C\n    associate Item\nstruct S\n    Self is C\n    associate C.Item is " + definition);
@@ -26,9 +26,9 @@ public class AssociatedInputFormationBindingTest
     }
 
     [Theory]
-    [InlineData("Source<i32>.Origin.Item")]
-    [InlineData("(Source<i32>.Origin.Item, i32)")]
-    [InlineData("[2 of Source<i32>.Origin.Item]")]
+    [InlineData("Source<i32>.(Origin).Item")]
+    [InlineData("(Source<i32>.(Origin).Item, i32)")]
+    [InlineData("[2 of Source<i32>.(Origin).Item]")]
     public void ValidNormalizedDefinitionsStillCertify(string definition)
     {
         var c = MinimalEmissionTest.Analyze(Prefix + "contract C\n    associate Item\nstruct S\n    Self is C\n    associate C.Item is " + definition);
@@ -40,9 +40,9 @@ public class AssociatedInputFormationBindingTest
     }
 
     [Theory]
-    [InlineData("contract C\n    associate Item is Source<string>.Origin.Item\nstruct S\n    Self is C")]
-    [InlineData("contract Parent\n    associate Item is Source<string>.Origin.Item\ncontract C: Parent\nstruct S\n    Self is C")]
-    [InlineData("contract C\n    associate Item\nstruct S<U>\n    Self is C when U is Copy\n        associate C.Item is Source<string>.Origin.Item")]
+    [InlineData("contract C\n    associate Item is Source<string>.(Origin).Item\nstruct S\n    Self is C")]
+    [InlineData("contract Parent\n    associate Item is Source<string>.(Origin).Item\ncontract C: Parent\nstruct S\n    Self is C")]
+    [InlineData("contract C\n    associate Item\nstruct S<U>\n    Self is C when U is Copy\n        associate C.Item is Source<string>.(Origin).Item")]
     public void FixedInheritedAndConditionalInputsAreChecked(string declarations)
     {
         var c = MinimalEmissionTest.Analyze(Prefix + declarations);
@@ -52,8 +52,8 @@ public class AssociatedInputFormationBindingTest
     }
 
     [Theory]
-    [InlineData("struct S<U>\n    U is i32\n    Self is C\n    associate C.Item is Source<U>.Origin.Item")]
-    [InlineData("struct S<U>\n    Self is C when U is i32\n        associate C.Item is Source<U>.Origin.Item")]
+    [InlineData("struct S<U>\n    U is i32\n    Self is C\n    associate C.Item is Source<U>.(Origin).Item")]
+    [InlineData("struct S<U>\n    Self is C when U is i32\n        associate C.Item is Source<U>.(Origin).Item")]
     public void DependentProjectionInputsUsePathEvidence(string declarations)
     {
         var c = MinimalEmissionTest.Analyze(Prefix + "contract C\n    associate Item\n" + declarations);
@@ -64,7 +64,7 @@ public class AssociatedInputFormationBindingTest
     [Fact]
     public void ReplacingProjectionInputRestoresSameCertificate()
     {
-        const string source = Prefix + "contract C\n    associate Item\nstruct S\n    Self is C\n    associate C.Item is Source<i32>.Origin.Item";
+        const string source = Prefix + "contract C\n    associate Item\nstruct S\n    Self is C\n    associate C.Item is Source<i32>.(Origin).Item";
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete);
         var definition = Definition(c);
@@ -86,7 +86,7 @@ public class AssociatedInputFormationBindingTest
     [Fact]
     public void WarmInputChecksAllocateNothing()
     {
-        var c = MinimalEmissionTest.Analyze(Prefix + "contract C\n    associate Item\nstruct S\n    Self is C\n    associate C.Item is Source<i32>.Origin.Item");
+        var c = MinimalEmissionTest.Analyze(Prefix + "contract C\n    associate Item\nstruct S\n    Self is C\n    associate C.Item is Source<i32>.(Origin).Item");
         Assert.True(c.Bind().IsComplete);
         Assert.Equal(0, AllocationMeasurement.Measure(() =>
         {

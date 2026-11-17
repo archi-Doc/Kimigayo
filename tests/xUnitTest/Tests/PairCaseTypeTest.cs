@@ -13,6 +13,8 @@ public class PairCaseTypeTest
 {
     private const string Box = "struct Box<E>\n    public var item: E\n    public init(item: E) => self.item = item@move\n";
 
+    private const string Node = "struct Node\n    public var n: i32\n    public init(n: i32) => self.n = n\n";
+
     [Fact]
     public void CaseTypeFormsTheCompleteTypeOfEachCase()
     {
@@ -110,15 +112,22 @@ public class PairCaseTypeTest
     [InlineData("s is value or valueborrow\n    T is Copy", SemanticsMask.None, SemanticsMask.Uniq)]
     [InlineData("s is owner or rc\n    T is Copy", SemanticsMask.Rc, SemanticsMask.None)]
     [InlineData("s is objref or objuniq", SemanticsMask.None, SemanticsMask.ObjUniq)]
-    public void BareAcquisitionPlansEachAdmittedCase(string premises, SemanticsMask failing, SemanticsMask reborrow)
+    [InlineData("s is uniq or objuniq", SemanticsMask.None, SemanticsMask.Uniq | SemanticsMask.ObjUniq, true)]
+    public void BareAcquisitionPlansEachAdmittedCase(string premises, SemanticsMask failing, SemanticsMask reborrow, bool family = false)
     {
-        var c = Parse($"func f<s/T>(value: s/T) -> ()\n    {premises}\n    ()");
+        // A family row plans the body local `y = p@s`, an adaptation family (SPEC 13.5.5; PLAN G755): each case is its complete child;
+        // its uniq case borrows the handle's slot, so no application has its cases (PLAN G759).
+        var c = Parse(family
+            ? Node + $"func f<s/T>(value: s/T, o: obj/Node) -> ()\n    {premises}\n    var p = o@move\n    let y = p@s\n    ()"
+            : $"func f<s/T>(value: s/T) -> ()\n    {premises}\n    ()");
         c.Bind();
         var f = Function(c, "f");
-        var type = f.Parameters[0].Type.TypeOf()!;
-        Assert.Equal(failing, c.Binding.BareAcquisition(type, f.Parameters[0].Type, out var reborrowed));
+        Koto node = family ? KotoTree.Walk(f).OfType<VariableKoto>().Single(static x => x.NameKoto.IdentifierName == "y") : f.Parameters[0].Type;
+        var type = family ? node.SymbolOf()!.Type! : f.Parameters[0].Type.TypeOf()!;
+        Assert.Equal(family, type.Kind == BoundTypeKind.SemanticsAdaptation);
+        Assert.Equal(failing, c.Binding.BareAcquisition(type, node, out var reborrowed));
         Assert.Equal(reborrow, reborrowed);
-        Assert.Equal(SemanticsMask.None, c.Binding.BareAcquisition(BoundType.I32, f.Parameters[0].Type, out var none));
+        Assert.Equal(SemanticsMask.None, c.Binding.BareAcquisition(BoundType.I32, node, out var none));
         Assert.Equal(SemanticsMask.None, none);
     }
 
@@ -148,6 +157,18 @@ public class PairCaseTypeTest
         Assert.Equal(3, binders.Count);
         Assert.Equal("H", binders[0].Target.Name);
         Assert.Equal("T", binders[1].Target.Name);
+    }
+
+    // SPEC 8.3.4, 8.15 (PLAN G750, C-285): a binder that admits no case makes the product 0, read before any division, even after the
+    // product saturated; the product of the others saturates as before.
+    [Fact]
+    public void CaseProductIsZeroWhenABinderAdmitsNoCase()
+    {
+        var none = new PairBinder(null!, SemanticsMask.None);
+        var all = none with { Admitted = SemanticsMask.All };
+        Assert.Equal(0, PairBinder.CaseProduct([all, none, all]));
+        Assert.Equal(0, PairBinder.CaseProduct([.. Enumerable.Repeat(all, 30), none]));
+        Assert.Equal(long.MaxValue, PairBinder.CaseProduct([.. Enumerable.Repeat(all, 30)]));
     }
 
     // SPEC 8.1.1, 15.6.1: in the admitted borrow cases a pair layer is a borrow of its target within its outer-Origin slot, so the

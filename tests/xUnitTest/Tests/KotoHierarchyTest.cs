@@ -52,8 +52,8 @@ public class KotoHierarchyTest
         Assert.Same(root, groupA.Parent);
         Assert.Same(groupA, groupB.Parent);
         Assert.IsType<PropertyKoto>(Assert.Single(groupB.Members));
-        Assert.Contains(groupA, root.ChildNodes);
-        Assert.Contains(groupB, groupA.ChildNodes);
+        Assert.Contains(groupA, root.Children());
+        Assert.Contains(groupB, groupA.Children());
     }
 
     [Fact]
@@ -68,21 +68,21 @@ public class KotoHierarchyTest
         Assert.True(generatedFunction.IsGenerated);
         Assert.Equal(Constants.GeneratedFunctionName, generatedFunction.Name);
         Assert.Same(root, generatedFunction.Parent);
-        Assert.Contains(generatedFunction, root.ChildNodes);
+        Assert.Contains(generatedFunction, root.Children());
 
         var body = Assert.IsType<CodeBlockKoto>(generatedFunction.Body);
         Assert.Same(generatedFunction, body.Parent);
         var field = Assert.IsType<FieldKoto>(Assert.Single(body.Items));
         Assert.Same(body, field.Parent);
         Assert.Collection(
-            field.ChildNodes,
+            field.Children(),
             child => Assert.IsType<IdentifierNameKoto>(child),
             child => Assert.IsAssignableFrom<TypeKoto>(child),
             child => ParseTestHelper.Binary(KotoKind.Plus, child));
 
         var addition = ParseTestHelper.Binary(KotoKind.Plus, field.InitializerKoto);
-        Assert.Equal(2, addition.ChildNodes.Count());
-        Assert.All(addition.ChildNodes, child => Assert.Same(addition, child.Parent));
+        Assert.Equal(2, addition.Children().Count());
+        Assert.All(addition.Children(), child => Assert.Same(addition, child.Parent));
     }
 
     [Fact]

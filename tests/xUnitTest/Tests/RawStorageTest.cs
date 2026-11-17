@@ -59,6 +59,12 @@ public class RawStorageTest
 
     private const string Resource = "struct Resource\n    public var value: i32\n    public init(value: i32) => self.value = value\n    drop => Console.writeLine(\"drop\")\n";
 
+    // A `during self` raw Field read through a shared receiver, and a Field whose exclusive receiver lends its slot, reached through a
+    // pointer stating an exclusive borrow of its holder.
+    private const string SelfStore = "struct Store\n    internal var data: raw/i32 during self\n    public init() => self.data = null\n";
+    private const string Slots = "struct Counter\n    public var value: i32 = 0\n    public func slot(self: uniq/Self) -> uniq/i32 during self => self.value@uniq\n" +
+        "struct Pair\n    public var n: i32 = 0\n    public var c: Counter = Counter.init()\nfunc f() -> i32\n    var b = Pair.init()\n    let u = b@uniq\n    let p = u@follow@raw\n";
+
     [Fact]
     public void StorageIsAllocatedInitializedTakenAndReleased()
     {
@@ -231,16 +237,13 @@ public class RawStorageTest
     public void ABufferOwnsItsStorageThroughSelf()
         => Assert.Empty(RawPointerSyntaxTest.Records(Buffer + "func use()\n    var b = Buffer<i32>.init(capacity: 4)\n    b.push(1)\n    let v = b.view()\n    require v.get(0) == 1 else => $abort(\"view\")"));
 
-    // SPEC 5.7: a constructor states the stored Origin; an unstated pointer needs the claim. Since the MIR decides acceptance (R6-check
-    // H5), the write Binding rejects initializes nothing, so A1 also records UninitializedPlace_Kd at that write and at the constructor
-    // (PLAN G105), published directly until A6's 2g-1 (DECISIONS R5-M184; H3b T51, class 4).
+    // SPEC 5.7: a constructor states the stored Origin; an unstated pointer needs the claim. The write Binding rejects for its value's
+    // Origin fit still places a value derived from that failure (DECISIONS R5-M195), so A1 records nothing at it or at the constructor
+    // (Q13: the two dependent UninitializedPlace_Kd, PLAN G105's, went).
     [Fact]
     public void AConstructorFillsSelfStorageWithAClaim()
         => Assert.Equal(
-            [
-                "UninitializedPlace_Kd: init() => self.data = Raw.allocate<i32>(1)", "UninitializedPlace_Kd: self.data = Raw.allocate<i32>(1)",
-                "UnsatisfiedOriginRelation_Kd: Raw.allocate<i32>(1)",
-            ],
+            ["UnsatisfiedOriginRelation_Kd: Raw.allocate<i32>(1)"],
             RawPointerSyntaxTest.Records("struct B\n    internal let data: raw/i32 during self\n    public init() => self.data = Raw.allocate<i32>(1)"));
 
     // SPEC 5.7 (DECISIONS R4-M105, OQ-R1 (a); R4-M110): through no dereference, except through `self` in the constructors and drop of
@@ -271,9 +274,32 @@ public class RawStorageTest
     [InlineData("()", "_ = Kimi.Intrinsics.exchange(b.pair@uniq, with: (null, 1))", "UnsatisfiedOriginRelation_Kd: b.pair@uniq")]
     [InlineData("()", "let w = b.arr@(uniq/[2 of raw/u8])", "UnsatisfiedOriginRelation_Kd: b.arr@(uniq/[2 of raw/u8])")]
     [InlineData("()", "var s = b.arr.sliceUniq()\n    s[0] = fresh", "UnsatisfiedOriginRelation_Kd: b.arr")]
-    [InlineData("()", "let s = b.arr.iterateUniq()", "UnsatisfiedOriginRelation_Kd: b.arr")]
+    [InlineData("()", "for _ in b.arr@uniq => _ = 0", "UnsatisfiedOriginRelation_Kd: b.arr@uniq")]
     [InlineData("()", "let w = b.data@move\n    b.data = fresh", "MovedPlace_Kd: var b = Block.init() | MovedPlace_Kd: b.data = fresh | UnsatisfiedOriginRelation_Kd: b.data = fresh")]
     [InlineData("()", "let t = b.pair@move", "Unsupported_Kd: b.pair@move")]
+    // Rule W (DECISIONS Q13, BU-79; PLAN G789): a failed part at a layer's position is no evidence of what the write puts there, so only
+    // its own record is reported; another layer's non-null source and an update, which reads no value, keep their records.
+    [InlineData("()", "b.data = nope", "UnresolvedBinding_Kd: nope")]
+    [InlineData("()", "b.pair = (nope, 1)", "UnresolvedBinding_Kd: nope")]
+    [InlineData("()", "b.pair = nope", "UnresolvedBinding_Kd: nope")]
+    [InlineData("()", "b.data = 5", "TypeMismatch_Kd: 5")]
+    [InlineData("()", "b.arr = [nope, shared]", "UnsatisfiedOriginRelation_Kd: b.arr = [nope, shared] | UnresolvedBinding_Kd: nope")]
+    [InlineData("()", "unsafe => b.data += nope", "UnsatisfiedOriginRelation_Kd: b.data += nope | UnresolvedBinding_Kd: nope")]
+    // A Case payload's layers are judged over its failed parts as a write's are: a non-null source at a layer beside a failed part keeps
+    // its record, a failed part at the layer gives none.
+    [InlineData("()", "let c = Cell.Two((fresh, nope))", "UnsatisfiedOriginRelation_Kd: (fresh, nope) | UnresolvedBinding_Kd: nope")]
+    [InlineData("()", "let c = Cell.Two((nope, 1))", "UnresolvedBinding_Kd: nope")]
+    [InlineData("()", "let c = Cell.Some(nope)", "UnresolvedBinding_Kd: nope")]
+    // Only the elements the stored Tuple has are read: a longer Tuple literal's misfit is its fit's record, and a layer inside the arity
+    // is still judged (the misfit's record beside U is lost, PLAN G262). A longer fixed-array literal fails as a whole (rule W).
+    [InlineData("()", "b.pair = (nope, 1, 2)", "UnresolvedBinding_Kd: nope")]
+    [InlineData("()", "b.pair = (fresh, 1, 2)", "UnsatisfiedOriginRelation_Kd: b.pair = (fresh, 1, 2)")]
+    [InlineData("()", "let c = Cell.Two((nope, 1, 2))", "UnresolvedBinding_Kd: nope")]
+    [InlineData("()", "let c = Cell.Two((fresh, 1, 2))", "UnsatisfiedOriginRelation_Kd: (fresh, 1, 2)")]
+    [InlineData("()", "let c = Cell.Two((null, 1, 2))", "UnresolvedBinding_Kd: null")]
+    [InlineData("()", "b.arr = [fresh, null, null]", "TypeMismatch_Kd: [fresh, null, null]")]
+    [InlineData("()", "b.pair = (null, 1, 2)", "UnresolvedBinding_Kd: null")]
+    [InlineData("()", "b.arr = [nope, null, null]", "TypeMismatch_Kd: [nope, null, null] | UnresolvedBinding_Kd: nope")]
     public void ASelfLayerReachedThroughNoDereferenceIsWrittenWithNullOnly(string construction, string use, string records)
         => Assert.Equal(records.Split(" | "), RawPointerSyntaxTest.Records(Block.Replace("{0}", construction, StringComparison.Ordinal).Replace("{1}", use, StringComparison.Ordinal)));
 
@@ -441,14 +467,41 @@ public class RawStorageTest
         => Assert.Equal(records is null ? [] : records.Split(" | "), RawPointerSyntaxTest.Records(declarations));
 
     // SPEC 5.2.2, 5.6, 5.7 (D14): a borrow of a raw Place, and Raw.slice's result, lie within the Origin the pointer states, so neither
-    // reaches past the borrow the pointer was read through.
+    // reaches past the borrow the pointer was read through, whose Loan stays live while the borrow is used (SPEC 15.6.2). An implicit
+    // borrow (SPEC 10.2: a returned or stored value, a receiver, a Subject, an argument) is the same borrow (PLAN G688): the pointer's
+    // Origin stated by a local typed path, a `during self` Field read through the receiver, or a slot Field.
     [Theory]
     [InlineData("func f(b: ref/Buffer<i32>) -> ref/i32 during static\n    unsafe => return b.data[0]@ref", "UnprovenOriginRelation_Kd: b.data[0]@ref")]
     [InlineData("func f(b: ref/Buffer<i32>) -> Slice<i32> during static\n    unsafe => return Raw.slice(b.data, b.length)", "UnprovenOriginRelation_Kd: b.data")]
     [InlineData("func f(b: ref/Buffer<i32>) -> ref/i32 during b\n    unsafe => return b.data[0]@ref", null)]
     [InlineData("func f(b: ref/Buffer<i32>) -> Slice<i32> during b\n    unsafe => return Raw.slice(b.data, b.length)", null)]
+    [InlineData("func pick(anchor: ref/i32 during a, b: ref/i32 during c) -> ref/i32 during c\n    let p = anchor@follow@raw\n    unsafe => return *p", "UnprovenOriginRelation_Kd: *p")]
+    [InlineData("func pick(anchor: ref/i32 during a) -> ref/i32 during a\n    let p = anchor@follow@raw\n    unsafe => return *p", null)]
+    [InlineData("func put(anchor: ref/i32, b: ref/i32, h: uniq/(ref/i32 during b))\n    let p = anchor@follow@raw\n    unsafe => h@follow = *p", "UnprovenOriginRelation_Kd: *p")]
+    [InlineData("func put(anchor: ref/i32, h: uniq/(ref/i32 during anchor))\n    let p = anchor@follow@raw\n    unsafe => h@follow = *p", null)]
+    [InlineData(SelfStore + "    public func get(self: ref/Self, other: ref/i32) -> ref/i32 during other\n        unsafe => return *self.data", "UnprovenOriginRelation_Kd: *self.data")]
+    [InlineData(SelfStore + "    public func get(self: ref/Self) -> ref/i32 during self\n        unsafe => return *self.data", null)]
+    [InlineData(View + "func read(lens: ref/View<i32>, other: ref/i32) -> ref/i32 during other\n    unsafe => return *lens.at", "UnprovenOriginRelation_Kd: *lens.at")]
+    [InlineData(View + "func read(lens: ref/View<i32>) -> ref/i32 during lens.source\n    unsafe => return *lens.at", null)]
+    [InlineData(View + "func f() -> i32\n    var b: i32 = 1\n    let u = b@uniq\n    let p = u@follow@raw\n    unsafe\n        let lens = View<i32>.init(*p)\n        b = 2\n        return *lens.at", "ComparisonLoanConflict_Kd: b = 2")]
+    [InlineData(Slots + "    unsafe\n        let k = (*p).c.slot()\n        b.n = 9\n        k@follow += 1\n    return b.n", "ComparisonLoanConflict_Kd: b.n = 9")]
+    [InlineData(Slots + "    unsafe\n        let k = (*p).c.slot()\n        k@follow += 1\n        b.n = 9\n    return b.n", null)]
+    [InlineData("func f() -> i32\n    var o: Option<i32> = .Some(1)\n    let m: i32 = 0\n    var keep: ref/i32 = m@ref\n    let u = o@uniq\n    let p = u@follow@raw\n    unsafe\n        match (*p)\n            .Some(let x) => keep = x\n            _ => ()\n    o = .None\n    return keep@follow", "ComparisonLoanConflict_Kd: o = .None")]
+    [InlineData("func f() -> i32\n    var o: Option<i32> = .Some(1)\n    let m: i32 = 0\n    var keep: ref/i32 = m@ref\n    let u = o@uniq\n    let p = u@follow@raw\n    unsafe\n        match (*p)\n            .Some(let x) => keep = x\n            _ => ()\n    let v = keep@follow\n    o = .None\n    return v", null)]
+    [InlineData("func f() -> i32\n    var arr: Array<i32> = [1, 2]\n    let m: i32 = 0\n    var keep: ref/i32 = m@ref\n    let u = arr@uniq\n    let p = u@follow@raw\n    unsafe\n        for x in (*p)\n            keep = x\n    arr = []\n    return keep@follow", "ComparisonLoanConflict_Kd: arr = []")]
+    [InlineData("func f() -> i32\n    var arr: Array<i32> = [1, 2]\n    let m: i32 = 0\n    var keep: ref/i32 = m@ref\n    let u = arr@uniq\n    let p = u@follow@raw\n    unsafe\n        for x in (*p)\n            keep = x\n    let v = keep@follow\n    arr = []\n    return v", null)]
     public void ARawPlaceBorrowLiesWithinThePointersOrigin(string declarations, string? record)
         => Assert.Equal(record is null ? [] : [record], RawPointerSyntaxTest.Records(Buffer + declarations));
+
+    // SPEC 5.2.2, 15.6.5: a pointer stating a body-local borrow's Origin rejects the returned borrow, implicit or explicit; the verdict
+    // only, as A5 records a Refuted returned borrow at the Return and at the borrow, in either form (PLAN G720).
+    [Theory]
+    [InlineData("*p")]
+    [InlineData("(*p)@ref")]
+    public void ABodyLocalPointerOriginRejectsAReturnedRawPlaceBorrow(string borrow)
+        => Assert.Contains(
+            RawPointerSyntaxTest.Records("func make(c: ref/i32) -> ref/i32 during c\n    let n: i32 = 1\n    let r = n@ref\n    let p = r@follow@raw\n    unsafe => return " + borrow),
+            static x => x.StartsWith(nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd), StringComparison.Ordinal));
 
     // A valid program on H5's (e) list under PQ-10: Binding completes, and the check's only Error records are A5's located Unsupported_Kd,
     // one at the subject in each context.

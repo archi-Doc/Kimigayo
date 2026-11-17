@@ -99,6 +99,11 @@ internal enum HoldFlags : byte
 
     /// <summary>On an <see cref="HoldContent.AnyOf"/> entry: some Origin of its set may keep an exclusive Loan.</summary>
     ExclusiveOrigin = 8,
+
+    /// <summary>With <see cref="Repeated"/>: elements of which there are none (SPEC 4.1, a constant length 0). No Place lies there, so no
+    /// borrow of one is formed and nothing lies below; a view of the run is (SPEC 4.8.1: it Loans the whole array, also when empty), and a
+    /// value a fill stores keeps its Loans (4.3.3).</summary>
+    Empty = 16,
 }
 
 /// <summary>One part or layer a value of a Type holds: read on through <see cref="Binding.Holdings"/> with (Part, Written, Holder).</summary>
@@ -146,7 +151,13 @@ public sealed partial class Binding
                 InlineParts(type, written, holder, HoldFlags.None, into);
                 return true;
             case BoundTypeKind.FixedArray:
-                InlineParts(type, written, holder, type is { LengthExpression: null, Length: 1 } ? HoldFlags.None : HoldFlags.Repeated, into);
+                var count = type switch
+                {
+                    { LengthExpression: null, Length: 1 } => HoldFlags.None,
+                    { LengthExpression: null, Length: 0 } => HoldFlags.Repeated | HoldFlags.Empty, // SPEC 4.1: no element.
+                    _ => HoldFlags.Repeated,
+                };
+                InlineParts(type, written, holder, count, into);
                 return true;
             case BoundTypeKind.Closure:
                 InlineParts(type, null, null, HoldFlags.None, into); // A function of the given Type; a fold asks with the body's environment.

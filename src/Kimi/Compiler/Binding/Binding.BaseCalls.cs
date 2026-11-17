@@ -126,6 +126,7 @@ public sealed partial class Binding
             }
 
             this.memberSelections[member] = selection;
+            this.memberSides[member] = MemberSide.Value;
             member.BoundSymbol = selected;
             name.BoundSymbol = selected;
             name.BindingState = BindingState.Resolved;

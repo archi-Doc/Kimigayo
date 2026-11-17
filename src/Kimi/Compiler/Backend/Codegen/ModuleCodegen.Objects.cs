@@ -126,7 +126,7 @@ internal sealed partial class ModuleCodegen
         foreach (var implementation in implementations)
         {
             var paired = next < targets.Length &&
-                ReferenceEquals(this.program.Bodies[this.set.Items[targets[next].Item].BodyOrdinal].Key.Decl, implementation);
+                ReferenceEquals(this.program.Body(this.set.Items[targets[next].Item].BodyOrdinal).Key.Decl, implementation);
             this.entries.Add(paired ? this.Signature(targets[next++].Item) : null);
         }
 

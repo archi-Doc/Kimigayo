@@ -13,6 +13,12 @@ namespace XunitTest;
 /// case bound.</summary>
 public sealed partial class MirBuildTest
 {
+    // PLAN G750's O1: a conformance block whose `when` premise empties the admitted set D leaves, with a member whose body would fail in
+    // D's case (ABinderThatAdmitsNoCaseGivesItsDefinitionNoCase).
+    private const string EmptyingWhen = "    Self is Copy when s is ref\n        public func put(x: s/i32";
+    private const string EmptyingBlock = EmptyingWhen + " during b, target: uniq/(ref/(s/i32 during b) during a))\n" +
+        "            var local = x@move\n            target@follow = local@ref\n";
+
     // Plan 5.6.1, SPEC 8.14, 8.15, 13.5.5: one body serves every Semantics case. Under each view of tests/mir/cases (one binder, two
     // binders, a Closure, which has its enclosing function's binders, a default template and its copy, which names the omitting caller's
     // binder), a PairLayer step is its Place itself in the owner case and the referent of the case's reference otherwise, and a
@@ -241,6 +247,39 @@ public sealed partial class MirBuildTest
         var program = c.BuildMir();
         Assert.Empty(program.Findings);
         Assert.All(program.Bodies.ToArray().Where(static x => x.Source.Module == 0), static x => Assert.True(x.Key.Decl is null || x.Key.Decl.Name == "main", x.Key.ToString()));
+    }
+
+    // SPEC 8.3.4, 8.8.1, 8.15.2 (PLAN G750): every Semantics premise at a point counts, an Invalid environment's too, and a binder whose
+    // premises empty its set admits no case, so its definition has no case and none of its parts is built: a conformance block member
+    // whose `when` premise excludes D's set (only the struct's `init` is built, in D's case), and every member under the struct's own
+    // emptying clauses; the environment's InvalidConstraint_Kd is the set's one record, and no part adds an ownership record. A failed
+    // clause beside a Semantics premise leaves the premise: the member's binder admits owner alone (mask 1), not all nine. Row 2's
+    // initialized Field and accessor pin only that they stay unbuilt: no base builds them (the struct's Invalid environment fails them),
+    // so CheckCaseBound's Property branch at no case is unverified; its init fails before (511 cases). Rows 5 to 7 (an operator, a read
+    // and a comparison through the emptied layer) were built in D's case, which P excludes, and gave InternalInvariant_Kd. The built
+    // bodies pin C-285's condition: no MIR body of a no-case definition.
+    [Theory]
+    [InlineData("    s is owner\n", EmptyingBlock, "Fn init 1")]
+    [InlineData("    s is owner\n    s is ref\n", "    public var n: i32 = 1 + 2\n    computed size: i32\n        get(self: ref/Self) -> i32 => self.n + 1\n", "")]
+    [InlineData("    s is owner and ref\n", "    public func get(self: ref/Self) -> i32 => 0\n", "")]
+    [InlineData("    s is owner\n    T is Missing\n", "", "Fn init 1")]
+    [InlineData("    s is owner\n", EmptyingWhen + ") -> i32\n            return x + 1\n", "Fn init 1")]
+    [InlineData("    s is owner\n", EmptyingWhen + ") -> ()\n            let y: i32 = x\n            _ = y\n", "Fn init 1")]
+    [InlineData("    s is owner\n", EmptyingWhen + ") -> bool\n            return x == 1\n", "Fn init 1")]
+    public void ABinderThatAdmitsNoCaseGivesItsDefinitionNoCase(string premises, string members, string built)
+    {
+        var c = Compile("struct Cell<s/T>\n" + premises + "    public var v: s/T\n    public init(v: s/T) => self.v = v@move\n" + members +
+            "public func main() => ()\n");
+        Assert.Contains(c.Binding.Issues, static x => x.Code == DiagnosticCode.InvalidConstraint_Kd);
+        var program = c.BuildMir();
+        Assert.Empty(program.Findings);
+        var bodies = program.Bodies.ToArray().Where(static x => x.Source.Module == 0 && x.Key.Decl is { Name: not "main" });
+        Assert.Equal(built, string.Join("; ", bodies.Select(static x => $"{x.Key.Kind} {x.Key.Decl!.Name} {string.Join(", ", x.Binders.Select(static b => (int)b.Admitted))}")));
+        if (built.Length == 0 || members.Length != 0)
+        {
+            c.Analyze();
+            Assert.DoesNotContain(c.Problems, static x => x.Code is DiagnosticCode.UnsatisfiedOriginRelation_Kd or DiagnosticCode.UninitializedPlace_Kd or DiagnosticCode.InternalInvariant_Kd);
+        }
     }
 
     // SPEC 8.15 (DECISIONS R4-M139, R5's conditions): a call selects the view of its binder's case, the Semantics of the binder's whole

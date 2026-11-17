@@ -25,6 +25,7 @@ public class ImplicitReceiverTest
     [InlineData("let c = Counter.init()\nc.bump()")]
     [InlineData("func plot(c: Counter) => c.bump()")]
     [InlineData("func plotRef(c: ref/Counter) => c.bump()")]
+    [InlineData("func f(c: ref/Counter, p: raw/(ref/Counter during c, i32))\n    unsafe => (*p).0.bump()")] // A shared layer inside a raw Place (SPEC 15.6.2).
     public void AnUnwritableLendingPointCannotSupplyAnExclusiveReceiver(string body)
     {
         var c = MinimalEmissionTest.Analyze(Counter + body);
@@ -36,10 +37,19 @@ public class ImplicitReceiverTest
     [InlineData("Counter.init().bump()")] // An owned temporary.
     [InlineData("func touch(c: uniq/Counter) => c.bump()")] // A borrow value is reborrowed.
     [InlineData("struct Game\n    public var items: Array<i32> = []\n    public func play(self: uniq/Self) => self.items.append(1)")] // Through an exclusive reference.
+    // An inline part of a raw Place (SPEC 5.2, 5.7: lent in either mode): a Field, an Array Field, its element, an Array element, a
+    // Dictionary element written through a Field, a from-end element (PLAN G688).
+    [InlineData("struct Box2\n    public var c: Counter\nfunc f(q: raw/Box2)\n    unsafe => (*q).c.bump()")]
+    [InlineData("struct Holder\n    public var a: Array<Counter>\nfunc f(p: raw/Holder)\n    unsafe => (*p).a.append(Counter.init())")]
+    [InlineData("struct Holder\n    public var a: Array<Counter>\nfunc f(p: raw/Holder)\n    unsafe => (*p).a[0].bump()")]
+    [InlineData("func f(q: raw/Array<Counter>)\n    unsafe => (*q)[0].bump()")]
+    [InlineData("struct Table\n    public var d: Dictionary<i32, Counter>\nfunc f(p: raw/Table)\n    unsafe => (*p).d[1] = Counter.init()")]
+    [InlineData("func f(p: raw/[2 of Counter])\n    unsafe => (*p)[^1].bump()")]
     public void ReceiverExpressionsAreAcquiredWhateverTheirValueKind(string body)
     {
         var c = MinimalEmissionTest.Analyze(Counter + body);
         Assert.True(c.Binding.Result.IsComplete, string.Join('\n', c.Binding.Issues));
+        Assert.True(c.Analysis.IsVerified, string.Join('\n', c.Problems));
     }
 
     [Theory]

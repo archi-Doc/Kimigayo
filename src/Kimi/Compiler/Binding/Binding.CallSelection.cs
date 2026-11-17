@@ -23,7 +23,7 @@ public sealed partial class Binding
     // The scratch sizes a candidate set needs. Origins are solved when the caller or the enclosing Type can carry them, or when a
     // candidate declares one, returns one or takes one. Receiver: the group has a receiver shape (SPEC 7.3.2), some candidate taking a
     // receiver (ReceiverIndex), so a value-qualified call acquires its Receiver Expression by the Name before selection.
-    private static CandidateShape MeasureCandidates(CallCandidates candidates, bool solveOrigins)
+    private static CandidateShape MeasureCandidates(FunctionGroup candidates, bool solveOrigins)
     {
         var shape = new CandidateShape { SolveOrigins = solveOrigins };
         foreach (var candidate in candidates)
@@ -49,7 +49,7 @@ public sealed partial class Binding
 
     // SPEC 10.1, 15.4.4: evaluates every candidate. A fit there is pure (FitOrigin): a candidate that is not selected bounds no
     // omitted Origin, and the selected one's bounds are recorded after selection (JudgeSelectedCall).
-    private void EvaluateCallCandidates(ref CallEvaluation evaluation, in CallCandidates candidates)
+    private void EvaluateCallCandidates(ref CallEvaluation evaluation, in FunctionGroup candidates)
     {
         this.candidateTrials++;
         var selection = this.OpenFrame(); // Each trial hands its facts to the selection, which reads them per candidate (r2-6).
@@ -84,7 +84,7 @@ public sealed partial class Binding
         evaluation.ChildSlices[(index * 2) + 1] = -1; // R3: composed at the candidate's first solve.
         var declaringType = evaluation.Self is null ? this.CallDeclaringType(callee, candidate) : null;
         var state = CandidateApplicability.Inapplicable;
-        evaluation.Scratch.AsSpan(0, CallSlotCount(function)).Clear();
+        evaluation.Frame.ClearTypes(CallSlotCount(function));
         if (this.MeasureCallInference)
         {
             this.inferenceMappings++;
@@ -110,7 +110,6 @@ public sealed partial class Binding
             this.activeRequirementContract = evaluation.Requirements?.Contracts[index] ?? (callee as RequirementCalleeKoto)?.Contract;
             state = this.TryCandidate(
                 this.Solution(evaluation, index, function, declaringType),
-                evaluation.ExplicitLengths,
                 evaluation.Mapping,
                 argumentMap,
                 evaluation.Expected,
@@ -126,7 +125,7 @@ public sealed partial class Binding
 
         if (function.IsConstructor && declaringType is not null)
         {
-            declaringType = this.ConstructionType(function, declaringType, evaluation.Scratch) ?? declaringType;
+            declaringType = this.ConstructionType(function, declaringType, evaluation.Frame.Types) ?? declaringType;
         }
 
         evaluation.Evaluated[index] = new(candidate, state, declaringType, defaultsUsed, unsolved, closureReceiver, argumentMap, accessible, function.IsConstructor && StableConstructionPremises(state, unsolved, declaringType, operations), independentRejection, rejectedConstraint, premiseUnknown);
@@ -166,8 +165,8 @@ public sealed partial class Binding
         evaluation.Winner = index;
         if (saved)
         {
-            evaluation.Scratch.AsSpan(0, CallSlotCount(function)).CopyTo(evaluation.AllTypes.AsSpan(index * evaluation.MaxGenerics));
-            evaluation.LengthArguments.AsSpan(0, CallSlotCount(function)).CopyTo(evaluation.AllLengths.AsSpan(index * evaluation.MaxGenerics));
+            evaluation.Frame.Types[..CallSlotCount(function)].CopyTo(evaluation.AllTypes.AsSpan(index * evaluation.MaxGenerics));
+            evaluation.Frame.Lengths[..CallSlotCount(function)].CopyTo(evaluation.AllLengths.AsSpan(index * evaluation.MaxGenerics));
             evaluation.Origins.AsSpan(0, evaluation.OriginSlots).CopyTo(evaluation.AllOrigins.AsSpan(index * evaluation.OriginSlots));
             evaluation.Inputs.AsSpan(0, evaluation.InputSlots).CopyTo(evaluation.AllInputs.AsSpan(index * evaluation.InputSlots));
         }
@@ -239,8 +238,8 @@ public sealed partial class Binding
         internal BoundType? Expected;
         internal BoundType? Self;
         internal RequirementGroup? Requirements;
-        internal BoundType?[] Scratch;
-        internal BoundLength?[] LengthArguments;
+        internal SlotFrame Frame;
+        internal BoundType?[] ExplicitTypes;
         internal BoundLength?[] ExplicitLengths;
         internal int[] Mapping;
         internal bool[] Used;

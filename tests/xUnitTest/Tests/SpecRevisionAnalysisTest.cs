@@ -27,7 +27,7 @@ public class SpecRevisionAnalysisTest
         {
             Assert.NotNull(getter.ReturnType);
             Assert.Same(getter, getter.ReturnType.Parent);
-            Assert.Contains(getter.ReturnType, getter.ChildNodes);
+            Assert.Contains(getter.ReturnType, getter.Children());
         }
 
         var text = property.ToString();

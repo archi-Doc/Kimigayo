@@ -7,17 +7,18 @@ namespace Kimi.Compiler.Mir;
 // entry), and Shared in its high 32 bits, what stores through a reference gave it (P10's refs^k targets and every W target); σ(h) is
 // Placed ∪ Shared. One store's value reaches every holder it writes as the same Shared id, so a walk reads each distinct Shared id once.
 // Input: the slots MirBorrows.Solve carries and MirBorrows.Flow commits. Output: a state's parts and σ(h) as one set (Set), its elements
-// in ascending order without forming it (ElementsOf), the per-walk mark by which a W walk, a Chain closure or a part list reads each
-// distinct Shared id once (Step, Steps), and the part of a holder's state a gather pass reads (Scanned).
+// in ascending order without forming it (ElementsOf), the per-walk mark by which a Chain closure or a part list reads each distinct
+// Shared id once and a W walk each distinct part, Placed or Shared (Step, Steps), and the part of a holder's state a gather pass reads
+// at a read's tier (Scanned).
 // Invariants: every reader depends only on σ(h), never on which part holds an element; a gather iterates σ(h) ascending, as one set's
-// elements; the transfers work per part (Commit, End, Join), so each part's operation is memoized by MirLoanSets; a Shared id read once
+// elements; the transfers work per part (Commit, End, Join), so each part's operation is memoized by MirLoanSets; a part's id read once
 // by a walk is a no-op when read again there, because each reader's step is idempotent.
 // Must not number elements or keep a set in another form (MirLoanSets), or branch a reader's facts on the part an element is in.
 internal sealed partial class MirBorrows
 {
-    private long[] steppedBy = []; // By Shared set: the walk level that read it (Steps).
+    private long[] steppedBy = []; // By set: the walk level that read it (Steps).
     private long stepping; // The walk's base level, even (level + 1: a set's indirect form; Steps); never reset, so a long (an int wraps at 2^30 walks).
-    private (int Instance, int Via, int Count)[] scannedBy = []; // By Shared set: the pass instance that read it, its first via, the vias.
+    private (int Instance, int Via, int Count)[] scannedBy = []; // By Shared set and read tier (Scanned): its pass instance, first via, vias.
     private int instance; // The gather's pass instances (Pass).
 
     // A state's parts and a state of parts.
@@ -36,10 +37,10 @@ internal sealed partial class MirBorrows
     // σ(h)'s elements in ascending order, each once, without forming the union.
     private StateElements ElementsOf(ulong state) => new(this.sets.Elements(Placed(state)), this.sets.Elements(Shared(state)));
 
-    // Starts a walk that reads each distinct Shared id once per level.
+    // Starts a walk that reads each distinct part's id once per level.
     private void Step() => this.stepping += 2;
 
-    // Whether the walk reads a Shared id at a level (0: as it is, 1: its indirect form, which covers level 0) for the first time, marking it.
+    // Whether the walk reads a part's id at a level (0: as it is, 1: its indirect form, which covers level 0) for the first time, marking it.
     private bool Steps(int shared, int level)
     {
         if (shared == 0)
@@ -57,13 +58,17 @@ internal sealed partial class MirBorrows
         return true;
     }
 
-    // The part of a holder's state a gather pass instance reads under it (via): σ(h), but Placed alone once two distinct vias that are
-    // not special read its Shared set in the instance. A special via, which always reads it, is a reservation holder (a two-phase Loan's
-    // mode depends on it) or, where rule W runs, an escape holder (Kept depends on it). Exact: within an instance the pass, its operand and
-    // the drop tier's holder are fixed, so a candidate's flags, values and roots are; the first via (Tags.Via, a marker's, an own-step
-    // entry's) is already tagged; an activation's two holders (ActVia, ActOther) are set once two distinct vias tagged its Loan; Kept,
-    // a Loan's mode and the holders a Loan or address names (Reach) are the same under every non-special via.
-    private ulong Scanned(ulong held, int via)
+    // The part of a holder's state a gather pass instance reads under it (via) at the read's tier `at` (MirBorrows.Candidates' ReadTier):
+    // σ(h), but Placed alone once two distinct vias that are not special read its Shared set in the instance at that tier. A special via,
+    // which always reads it, is a reservation holder (a two-phase Loan's mode depends on it) or, where rule W runs, an escape holder (Kept
+    // depends on it). Exact: within an instance and a tier the pass, its operand, the drop tier's holder and the tier a candidate is
+    // tagged at are fixed, so a candidate's flags, values and roots are; the first via (Tags.Via, a marker's, an own-step entry's) is
+    // already tagged; an activation's two holders (ActVia, ActOther) are set once two distinct vias tagged its Loan; Kept, a Loan's mode
+    // and the holders a Loan or address names (Reach, under the tier's read key) are the same under every non-special via. A read at
+    // Limit and one at the pass's tier tag apart and reach under different keys, so the record is per tier (PLAN G775): a decided read
+    // is never cut by Limit reads, whatever the order the gather reads the holders in. A cut read is scanned at `at`, the tier of σ(h)
+    // the record is keyed by, never at one of its Placed part alone, so a holder's read tags at one tier whichever via it is.
+    private ulong Scanned(ulong held, int via, MirOutcome at)
     {
         var shared = Shared(held);
         if (shared == 0 || this.reserves[via] || (this.wCount > 0 && this.escape[via]))
@@ -71,8 +76,9 @@ internal sealed partial class MirBorrows
             return held;
         }
 
-        MirDataflow.Grow(ref this.scannedBy, shared + 1);
-        ref var record = ref this.scannedBy[shared];
+        var key = (2 * shared) + (at.IsLimit ? 1 : 0);
+        MirDataflow.Grow(ref this.scannedBy, key + 1);
+        ref var record = ref this.scannedBy[key];
         if (record.Instance != this.instance)
         {
             record = (this.instance, via, 1);

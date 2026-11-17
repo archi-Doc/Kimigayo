@@ -49,4 +49,31 @@ public class Utf8WriterTest
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.Contains(c.Problems, x => x.Code.IsLoanConflict());
     }
+
+    // SPEC 22.5.1, 22.10.1, 8.13.2 (R8-W1b-4, R8-S2a, R8-S2c, R8-S2d1, R8-S2b1, R8-S2b2): Utf8Writer.write, the witness table's bool, char,
+    // Unit, f32, f64, string, Wrapping<T> and integer bodies and the view's format have CallerLocation rows, which IntegerFormat's i128 and
+    // u128 specializations keep (TyCtxt.Original), so an allocation that fails inside a built-in write's leaf write Aborts at the user's
+    // write, not at a library line.
+    [Theory]
+    [InlineData("", "12345")]
+    [InlineData("Bool", "true")]
+    [InlineData("Char", "'é'")]
+    [InlineData("Unit", "()")]
+    [InlineData("F32", "1.5@f32")]
+    [InlineData("F64", "1.5")]
+    [InlineData("String", "\"hello\"")]
+    [InlineData("View", "Text.utf8(\"hello\")")]
+    [InlineData("Wrapping", "(200@u8)@Wrapping<u8>")]
+    [InlineData("U64", "18446744073709551615@u64")]
+    [InlineData("I8", "-128@i8")]
+    [InlineData("I128", "-170141183460469231731687303715884105728@i128")]
+    [InlineData("U128", "340282366920938463463374607431768211455@u128")]
+    public void AFailedAllocationInsideABuiltinWriteReportsTheWrite(string name, string value)
+    {
+        var ir = CompilationTestHelper.WriteIr(MinimalEmissionTest.Analyze("var buffer = Text.heap(0)\nvar writer = Text.writer(buffer@uniq)\n_ = writer.write(" + value + ")"));
+        Assert.Contains("call ptr @HeapAlloc(", ir, StringComparison.Ordinal);
+        ir = ir.Replace("call ptr @HeapAlloc(", "call ptr @fail_allocate(", StringComparison.Ordinal);
+        ir += "\ndefine internal ptr @fail_allocate(ptr %heap, i32 %flags, i64 %size) { ret ptr null }\n";
+        ScalarEmissionTest.WriteFixture("Utf8WriterBuiltinWriteFailure" + name, ir, string.Empty, 1, "Hello.kimi:3:5: abort KIMI_E_ALLOC: Failed to allocate memory\n");
+    }
 }

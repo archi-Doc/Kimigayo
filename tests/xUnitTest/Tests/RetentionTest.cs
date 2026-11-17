@@ -82,6 +82,19 @@ public sealed partial class RetentionTest
     // A struct whose Field a Type argument supplies (SPEC 5.7 Calls' `Wrap`).
     private const string Wrap = "struct Wrap<E>\n    internal var value: E\n";
 
+    // PLAN G571's two uses of an `R` whose Fields reach P's borrow of x, `{write}` where the write goes: the input fold (a call that may store
+    // d's borrow in *slot) and the hold fit (a result borrowed through d, of a part R holds by value; SPEC 15.6.4, 15.6.3).
+    private const string StoreUse = "func make(x: ref/i32 during q) -> R during q => $abort(\"x\")\nfunc f(dst: uniq/(ref/i32 during q), d: R during q) => ()\n" +
+        "func g()\n    var x = 1\n    var y = 2\n    var slot = y@ref\n    var d = make(x@ref)\n    f(slot@uniq, d@move)\n{write}    let k = slot@follow\n";
+
+    private const string ThroughUse = "func make(x: ref/i32 during q) -> R during q => $abort(\"x\")\n" +
+        "func entry(d: ref/(R during c) during o) -> ref/(i32, ref/i32 during c) during o => $abort(\"x\")\n" +
+        "func g()\n    var x = 1\n    var r = make(x@ref)\n    let k = entry(r@ref)\n{write}    let z = k@follow\n";
+
+    // The row of `f(target: uniq/(raw/u8) during a, q: …)` where q holds a layer stating `a` by value: through it, target's referent (PLAN G583).
+    private const string HeldLayerRow =
+        "store 0: own {0 Chain, 1 Value Chain}, reached {0 Chain, 1 Value Chain} untied, store 1: own {0 Value Chain, 1 Chain}, reached {0 Value Chain, 1 Chain} untied";
+
     // A holder whose slot an exclusive Loan Field keeps (PLAN G148 (1)'s review B-1: its raw layers stating `s` are exclusive).
     private const string SlotKept = "struct HS {s}\n    let loan: Loan<uniq/(raw/u8) during s>\n";
 
@@ -164,6 +177,12 @@ public sealed partial class RetentionTest
         "struct H {a, b}\n    public var g: (ref/i32, ref/i32 during a) -> ref/i32 during b\n    public var k: (ref/i32 during a) -> ref/i32 during b\n" +
         "func make(h: uniq/H{s})\n    origin s.a outlives s.b\n    h.g = second2\n    h.k = first2\n" +
         "func apply(f: ref/((ref/i32 during a) -> ref/i32 during b), x: ref/i32 during a) -> ref/i32 during b => f(x)\n";
+
+    // G810's shapes: S is not punnable (SPEC 5.2), so a `ref/S` formed through b needs an S Place in `*b`; Dim's lengths read as Constants.
+    private const string ZeroShapes = "func inspect<T>(value: ref/T) => ()\nstruct S\n    public var v: u8\n" +
+        "group Dim\n    public let Zero: isize = 0\n    public let One: isize = 1\n";
+
+    private const string ZeroCall = "    f(t@uniq)\n    inspect(t@ref)\n";
 
     // SPEC 15.6.4, 15.6.1, 15.3.3: a result during an input retains it, a meet retains each operand, a declared `outlives` clause or the
     // well-formedness of a borrowed input makes another input reachable, and an Origin of no output's atoms' closure is not retained. A
@@ -319,6 +338,46 @@ public sealed partial class RetentionTest
     public void TheBoundCountsEntries(string open, string close, int levels, string records)
         => Assert.Equal(records, NestRecords(string.Concat(Enumerable.Repeat(open, levels)) + "ref/i32 during q" + string.Concat(Enumerable.Repeat(close, levels))));
 
+    // PLAN G571 (SPEC 15.6.4): the walks that stop at the bound enter a part at the shallowest depth it is met at (Enters), so what lies
+    // below it does not depend on the route that meets it first: the input fold's (`Store`, StoreUse) and the hold fit's (`Through`,
+    // ThroughUse). Each Field is P at its depth: `long` 30 Tuple levels down, where P's borrow lies past the bound, `mid` 20 and `short`
+    // 0, within it; Field order decides nothing. Each valid twin writes nothing while the borrow is used.
+    [Theory]
+    [InlineData("long short", "Store", "    x = 3\n", "ComparisonLoanConflict_Kd x = 3")]
+    [InlineData("short long", "Store", "    x = 3\n", "ComparisonLoanConflict_Kd x = 3")]
+    [InlineData("long short", "Store", "", "")]
+    [InlineData("long short", "Through", "    r = make(x@ref)\n", "ComparisonLoanConflict_Kd r = make(x@ref)")]
+    [InlineData("short long", "Through", "    r = make(x@ref)\n", "ComparisonLoanConflict_Kd r = make(x@ref)")]
+    [InlineData("long mid", "Through", "    r = make(x@ref)\n", "ComparisonLoanConflict_Kd r = make(x@ref)")]
+    [InlineData("long short", "Through", "", "")]
+    public void APartIsWalkedAtTheShallowestDepthItIsMetAt(string fields, string use, string write, string records)
+    {
+        var levels = new Dictionary<string, int> { ["long"] = 30, ["mid"] = 20, ["short"] = 0 };
+        var shapes = "struct P {s}\n    public var tag: (i32, (i32, (i32, (i32, (i32, ref/i32 during s)))))\nstruct R {s}\n" + string.Concat(fields.Split(' ').Select(
+            x => $"    public var {x}: {string.Concat(Enumerable.Repeat("(i32, ", levels[x]))}P during s{new string(')', levels[x])}\n"));
+        Assert.Equal(records, MirBorrowsTest.Records(shapes + (use == "Store" ? StoreUse : ThroughUse).Replace("{write}", write, StringComparison.Ordinal) + "public func main() => ()\n"));
+    }
+
+    // PLAN G571, the handed-callable walk (TyCtxt.Handed; SPEC 15.6.4: a callable an input holds is handed to the callee's body): `h` holds
+    // CB's callable on two routes, `f30` (the Function Type 34 entries down, past HandedBound) and `f0` (4 down); the deep Field first
+    // decides nothing. w's address may be stored where t reaches, so y's write while t lives conflicts (15.6); `zok` writes z, which no
+    // Loan names (the Middle's C-314 twins).
+    [Theory]
+    [InlineData("f30 f0", "bad", "ComparisonLoanConflict_Kd y = 5")]
+    [InlineData("f0 f30", "bad", "ComparisonLoanConflict_Kd y = 5")]
+    [InlineData("f30 f0", "zok", "")]
+    public void AHandedCallableIsFoundAtTheShallowestDepthItIsMetAt(string fields, string body, string records)
+    {
+        var shapes = "struct CB<T>\n    public var x: (i32, (i32, (raw/u8) -> T))\nstruct H<T>\n" + string.Concat(fields.Split(' ').Select(
+            x => $"    public var {x}: {string.Concat(Enumerable.Repeat("(i32, ", x == "f30" ? 30 : 0))}CB<T>{new string(')', x == "f30" ? 30 : 0)}\n"));
+        var use = body == "bad"
+            ? "    var y: i32 = 1\n    var w: ref/i32 = y@ref\n    useH(t@uniq, w@raw@raw/i32, h@move)\n    y = 5\n    consume(t@move)\n"
+            : "    var z: i32 = 1\n    useH(t@uniq, z@raw, h@move)\n    consume(t@move)\n    z = 5\n";
+        Assert.Equal(records, MirBorrowsTest.Records(
+            shapes + "func consume<T>(x: T) => ()\nfunc useH<T>(dst: uniq/T, p: raw/i32, h: H<T>) => ()\n" +
+            $"func {body}<T>(x: T, h: H<T>) -> ()\n    var t = x@move\n" + use + "public func main() => ()\n"));
+    }
+
     // The recorded limit (the owner's O-47 and O-49 (a); PLAN G408's class; the Front's, Binding's `StorageBound`): a storage nest past 32 entries,
     // however few Dictionaries it holds: one under 31 others is enough. These invalid programs are newly accepted, each with no Language record, a
     // limit and no contract: the 32-entry twin of each keeps the conflict.
@@ -392,6 +451,44 @@ public sealed partial class RetentionTest
         Assert.Equal(row, Declared(Bind(form), "f"));
         Assert.Equal(records, MirBorrowsTest.Records(form + $"func g(m: {type})\n    var v = m\n    let w = f(v@ref)\n    v = m\n    let k = {use}\npublic func main() => ()\n"));
     }
+
+    // SPEC 4.1, 15.6.3, 15.6.4 (G810): a constant length 0 holds no element (HoldFlags.Empty), so `*b` has no S Place and `.0` cannot hold a
+    // borrow formed through b: each Ok row's `inspect` is free, after an instantiation or a Constant too, where each twin of length 1 keeps
+    // b's exclusive Loan. A view's run is held also when empty (4.8.1), at the Empty part's own level only: rvSliceBad and
+    // rvSliceInnerEmptyBad keep the Loan, and vSliceEmptyOk's `[2 of S]` lies in no element.
+    [Theory]
+    [InlineData("func f(b: uniq/(ref/S during q, [0 of S]) during q) => ()\nfunc zTupOk(x: S, a: [0 of S])\n    var t: (ref/S, [0 of S]) = (x@ref, a@move)\n", "")]
+    [InlineData("func f(b: uniq/(ref/S during q, [1 of S]) during q) => ()\nfunc zTupBad(x: S, a: [1 of S])\n    var t: (ref/S, [1 of S]) = (x@ref, a@move)\n", "ComparisonLoanConflict_Kd t@ref")]
+    [InlineData("func f(b: uniq/(ref/S during q, [0 of [2 of S]]) during q) => ()\nfunc zNestOk(x: S, a: [0 of [2 of S]])\n    var t: (ref/S, [0 of [2 of S]]) = (x@ref, a@move)\n", "")]
+    [InlineData("func f(b: uniq/(ref/S during q, [1 of [2 of S]]) during q) => ()\nfunc zNestBad(x: S, a: [1 of [2 of S]])\n    var t: (ref/S, [1 of [2 of S]]) = (x@ref, a@move)\n", "ComparisonLoanConflict_Kd t@ref")]
+    [InlineData("func f(b: uniq/(ref/S during q, [2 of [0 of S]]) during q) => ()\nfunc zInnerOk(x: S, a: [2 of [0 of S]])\n    var t: (ref/S, [2 of [0 of S]]) = (x@ref, a@move)\n", "")]
+    [InlineData("func f(b: uniq/(ref/S during q, [2 of [1 of S]]) during q) => ()\nfunc zInnerBad(x: S, a: [2 of [1 of S]])\n    var t: (ref/S, [2 of [1 of S]]) = (x@ref, a@move)\n", "ComparisonLoanConflict_Kd t@ref")]
+    [InlineData("func f(b: uniq/(ref/S during q, [(Dim.Zero) of S]) during q) => ()\nfunc zConstOk(x: S, a: [0 of S])\n    var t: (ref/S, [0 of S]) = (x@ref, a@move)\n", "")]
+    [InlineData("func f(b: uniq/(ref/S during q, [(Dim.One) of S]) during q) => ()\nfunc zConstBad(x: S, a: [1 of S])\n    var t: (ref/S, [1 of S]) = (x@ref, a@move)\n", "ComparisonLoanConflict_Kd t@ref")]
+    [InlineData("func f<T>(b: uniq/(ref/T during q, [0 of T]) during q) => ()\nfunc zGenOk(x: S, a: [0 of S])\n    var t: (ref/S, [0 of S]) = (x@ref, a@move)\n", "")]
+    [InlineData("func f<T>(b: uniq/(ref/T during q, [1 of T]) during q) => ()\nfunc zGenBad(x: S, a: [1 of S])\n    var t: (ref/S, [1 of S]) = (x@ref, a@move)\n", "ComparisonLoanConflict_Kd t@ref")]
+    [InlineData("func f<T>(b: uniq/(ref/S during q, T) during q) => ()\nfunc rvGenTOk(x: S, a: [0 of S])\n    var t: (ref/S, [0 of S]) = (x@ref, a@move)\n", "")]
+    [InlineData("func f<T>(b: uniq/(ref/S during q, T) during q) => ()\nfunc rvGenTBad(x: S, a: [1 of S])\n    var t: (ref/S, [1 of S]) = (x@ref, a@move)\n", "ComparisonLoanConflict_Kd t@ref")]
+    [InlineData("func f<length N>(b: uniq/(ref/S during q, [N of S]) during q) => ()\nfunc zLenOk(x: S, a: [0 of S])\n    var t: (ref/S, [0 of S]) = (x@ref, a@move)\n", "")]
+    [InlineData("func f<length N>(b: uniq/(ref/S during q, [N of S]) during q) => ()\nfunc zLenBad(x: S, a: [1 of S])\n    var t: (ref/S, [1 of S]) = (x@ref, a@move)\n", "ComparisonLoanConflict_Kd t@ref")]
+    [InlineData("struct H {q}\n    public var r: ref/S during q\n    public var z: [0 of S]\nfunc f(b: uniq/H{h} during q)\n    origin h.q == q\n    _ = 0\nfunc zFieldOk(h: H{p})\n    var t = h@move\n", "")]
+    [InlineData("struct H {q}\n    public var r: ref/S during q\n    public var z: [1 of S]\nfunc f(b: uniq/H{h} during q)\n    origin h.q == q\n    _ = 0\nfunc zFieldBad(h: H{p})\n    var t = h@move\n", "ComparisonLoanConflict_Kd t@ref")]
+    [InlineData("func f(b: uniq/(Slice<S> during q, [0 of [2 of S]]) during q) => ()\nfunc vSliceEmptyOk(v: Slice<S>, a: [0 of [2 of S]])\n    var t: (Slice<S>, [0 of [2 of S]]) = (v@move, a@move)\n", "")]
+    [InlineData("func f(b: uniq/(Slice<S> during q, [1 of [2 of S]]) during q) => ()\nfunc vSliceInnerBad(v: Slice<S>, a: [1 of [2 of S]])\n    var t: (Slice<S>, [1 of [2 of S]]) = (v@move, a@move)\n", "ComparisonLoanConflict_Kd t@ref")]
+    [InlineData("func f(b: uniq/(Slice<S> during q, [0 of S]) during q) => ()\nfunc rvSliceBad(v: Slice<S>, a: [0 of S])\n    var t: (Slice<S>, [0 of S]) = (v@move, a@move)\n", "ComparisonLoanConflict_Kd t@ref")]
+    [InlineData("func f(b: uniq/(Slice<S> during q, [2 of [0 of S]]) during q) => ()\nfunc rvSliceInnerEmptyBad(v: Slice<S>, a: [2 of [0 of S]])\n    var t: (Slice<S>, [2 of [0 of S]]) = (v@move, a@move)\n", "ComparisonLoanConflict_Kd t@ref")]
+    public void AZeroLengthArrayHoldsNoPlace(string form, string records)
+        => Assert.Equal(records, MirBorrowsTest.Records(ZeroShapes + form + ZeroCall + "public func main() => ()\n"));
+
+    // SPEC 4.3.3 (G810): an Empty element keeps its Loans, so a value a call may store there (zWrite: `b@follow = [0 of s]`) or return
+    // (zPass) carries the argument's Loan, and the write of x conflicts while the array lives.
+    [Theory]
+    [InlineData("func f(b: uniq/[0 of ref/i32 during q] during q, s: ref/i32 during q) => ()\nfunc zWriteBad()\n    var x = 1\n    var a: [0 of ref/i32] = []\n    f(a@uniq, x@ref)\n    x = 3\n    inspect(a@ref)\n", "ComparisonLoanConflict_Kd x = 3")]
+    [InlineData("func f(b: uniq/[0 of ref/i32 during q] during q, s: ref/i32 during q) => ()\nfunc zWriteOk()\n    var x = 1\n    var a: [0 of ref/i32] = []\n    f(a@uniq, x@ref)\n    inspect(a@ref)\n    x = 3\n", "")]
+    [InlineData("func pass(a: [0 of ref/i32 during p]) -> [0 of ref/i32 during p] => a@move\nfunc zPassBad()\n    var x = 1\n    let r = pass([0 of x@ref])\n    x = 2\n    inspect(r@ref)\n", "ComparisonLoanConflict_Kd x = 2")]
+    [InlineData("func pass(a: [0 of ref/i32 during p]) -> [0 of ref/i32 during p] => a@move\nfunc zPassOk()\n    var x = 1\n    let r = pass([0 of x@ref])\n    inspect(r@ref)\n    x = 2\n", "")]
+    public void AZeroLengthArrayKeepsItsElementsLoans(string form, string records)
+        => Assert.Equal(records, MirBorrowsTest.Records(ZeroShapes + form + "public func main() => ()\n"));
 
     // SPEC 15.6.4, 5.2.1 (DECISIONS BU-1): an element appended to an Array brings its whole Type into the receiver's writable storage, so
     // an Origin below an rc or arc element's layer is stored there as one in an owned or obj element is.
@@ -807,7 +904,9 @@ public sealed partial class RetentionTest
     // A layer a Type argument supplies (`Wrap<raw/… during b>`) is judged by the same inputs (DECISIONS BU-108): with `b` a `ref` input
     // the call writes nothing past it (`reached {}`), with a `uniq` one, or a `ref` and a `uniq` one, its referent; and a holder's method
     // reads a layer stating its slot `s`, which an exclusive Loan Field keeps, as exclusive, declared (`b: raw/…`) or supplied
-    // (`b: Box2<raw/…>`), so it may store `v` past it (the review's B-1).
+    // (`b: Box2<raw/…>`), so it may store `v` past it (the review's B-1). A stated layer an input holds by value writes its members'
+    // referents wherever it lies, as a Tuple's does (SPEC 15.6.4 "a Tuple element, an Option payload, a Field or a Type argument
+    // included"; PLAN G583): an Option payload, a Field of `T`, a Tuple inside an Option.
     [Theory]
     [InlineData("func f(x: ref/i32, n: i32) -> raw/i32 => null", "result {0 Value Chain, 1 Value Chain}, untied")]
     [InlineData("func f(x: ref/i32, n: isize) -> (raw/u8, isize) => (null, n)", "result {0 Value Chain, 1 Value Chain}, untied")]
@@ -845,6 +944,11 @@ public sealed partial class RetentionTest
         "store 1: own {0 Content, 1 Content, 2 Content, 3 Value}, reached {}, store 2: own {0 Value, 1 Value, 2 Content, 3 Content}, reached {0 Content, 1 Content, 2 Content, 3 Value}")]
     [InlineData(SlotKept + "    let b: raw/(raw/u8) during s\n    public func f(self: uniq/Self, v: raw/u8) => ()", "store 0: own {0 Chain, 1 Value Chain}, reached {0 Chain, 1 Value Chain} untied")]
     [InlineData("struct Box2<E>\n    public var value: E\n" + SlotKept + "    var b: Box2<raw/(raw/u8) during s>\n    public func f(self: uniq/Self, v: raw/u8) => ()", "store 0: own {0 Chain, 1 Value Chain}, reached {0 Chain, 1 Value Chain} untied")]
+    [InlineData("func f(target: uniq/(raw/u8) during a, q: (raw/u8 during a, i32)) => ()", HeldLayerRow)]
+    [InlineData("func f(target: uniq/(raw/u8) during a, q: Option<raw/u8 during a>) => ()", HeldLayerRow)]
+    [InlineData(Wrap + "func f(target: uniq/(raw/u8) during a, q: Wrap<raw/u8 during a>) => ()", HeldLayerRow)]
+    [InlineData("func f(target: uniq/(raw/u8) during a, q: Option<(raw/u8 during a, i32)>) => ()", HeldLayerRow)]
+    [InlineData("func f(target: uniq/(raw/u8) during a, q: Option<raw/u8 during static>) => ()", "store 0: own {0 Chain, 1 Value Chain}, reached {0 Chain, 1 Value Chain} untied")]
     public void RawLayersRetainByTheirOrigins(string function, string expected)
         => Assert.Equal(expected, Declared(Bind(function + "\n"), "f"));
 
@@ -938,11 +1042,13 @@ public sealed partial class RetentionTest
     // clone its handle's payload only (Content), Raw.initialize its value into the raw storage, also a raw pointer's own value (`c01`)
     // into an unstated layer, which unties the storage (R-B2), and the storage a read through it (SPEC 15.6.4 as DECISIONS R4-M116
     // revised it: a pointer is never part of its own pointee);
-    // Text.writer its destination, its Utf8Writer untied by the unstated raw Fields it stores; Raw.slice's result, a fresh anchor, is
-    // untied unless its pointee's Origins tie it, and lies within its storage, which it retains (D14, R4-M116 item 4) with a read through
-    // it; Raw.allocate's, a raw pointer without an Origin, retains every argument with its chain and is untied (SPEC 15.6.4's rule A,
-    // DECISIONS BU-40), as Raw.initialize's unstated `slot` pointee retains `p` and its own chain. A raw input's pointee is its own
-    // writable storage, which retains it as a read through it.
+    // Text.writer, a body since R8-W2 b2-1 whose summary is derived, its destination, its Utf8Writer untied by the unstated raw Fields
+    // Utf8Writer.init stores; Raw.slice's result, a fresh anchor, is untied unless its pointee's Origins tie it, and lies within its
+    // storage, which it retains (D14, R4-M116 item 4) with a read through it; Raw.allocate's, a raw pointer without an Origin, retains
+    // every argument with its chain and is untied (SPEC 15.6.4's rule A, DECISIONS BU-40), as Raw.initialize's unstated `slot` pointee
+    // retains `p` and its own chain. A raw input's pointee is its own writable storage, which retains it as a read through it, except
+    // where the operation contract stores no value through the input (SPEC 5.2 Placement, 5.6; KimiLibraryCatalog.NoStore, PLAN G780),
+    // e.g. Raw.slice's storage: no writable storage there, an unstated layer included (fail-before: rule A's untied store 0 and store 1).
     [Theory]
     [InlineData(Lent + "let h = Kimi.Intrinsics.makeObj(Lent.init(r: x@ref))\n", "makeObj", "result {0 Value}")]
     [InlineData(Lent + "let h = Kimi.Intrinsics.makeRc(Lent.init(r: x@ref))\n", "makeRc", "result {0 Value}")]
@@ -951,10 +1057,13 @@ public sealed partial class RetentionTest
     [InlineData("var x = 1\nlet p: raw/(ref/i32) = Raw.allocate(1)\nunsafe => Raw.initialize(p, x@ref)\n", "initialize", "store 0: own {0 Content, 1 Value}, reached {}")]
     [InlineData("let slot: raw/(raw/i32) = Raw.allocate(1)\nlet p: raw/i32 = Raw.allocate(1)\nunsafe => Raw.initialize(slot, p)\n", "initialize", "store 0: own {0 Chain, 1 Value Chain}, reached {0 Chain, 1 Value Chain} untied")]
     [InlineData("let p: raw/i32 = Raw.allocate(1)\nunsafe\n    let s = Raw.slice(p, 1)\n", "slice", "result {0 Value}, untied")]
-    [InlineData("let p: raw/(ref/i32) = Raw.allocate(1)\nunsafe\n    let s = Raw.slice(p, 1)\n", "slice", "result {0 Value Content}, store 0: own {0 Content}, reached {}")]
+    [InlineData("let p: raw/(ref/i32) = Raw.allocate(1)\nunsafe\n    let s = Raw.slice(p, 1)\n", "slice", "result {0 Value Content}")]
+    [InlineData("let p: raw/(raw/i32) = Raw.allocate(1)\nunsafe\n    let s = Raw.slice(p, 1)\n", "slice", "result {0 Value Chain}, untied")]
+    [InlineData("let slot: raw/(raw/(raw/i32)) = Raw.allocate(1)\nlet p: raw/(raw/i32) = Raw.allocate(1)\nunsafe => Raw.initialize(slot, p)\n", "initialize", "store 0: own {0 Chain, 1 Value Chain}, reached {0 Chain, 1 Value Chain} untied")]
     [InlineData("var b = Text.heap(8)\nlet w = Text.writer(b@uniq)\n", "writer", "result {0 Value}, untied")]
     [InlineData("let p: raw/(ref/i32) = Raw.allocate(1)\nunsafe => Raw.release(p)\n", "allocate", "result {0 Value Chain}, untied")]
-    [InlineData("let p: raw/(ref/i32) = Raw.allocate(1)\nunsafe => Raw.release(p)\n", "release", "store 0: own {0 Content}, reached {}")]
+    [InlineData("let p: raw/(ref/i32) = Raw.allocate(1)\nunsafe => Raw.release(p)\n", "release", "")]
+    [InlineData("let p: raw/(raw/i32) = Raw.allocate(1)\nunsafe => Raw.release(p)\n", "release", "")]
     public void IntrinsicsRetainAsTheirDeclarationsSay(string source, string name, string expected)
         => Assert.Equal([expected], Calls(Bind(source), name));
 
@@ -965,12 +1074,12 @@ public sealed partial class RetentionTest
     // DictionaryStorage.grow writes the Handle its `raw/Handle` addresses, whose `buffer` states `self`: through it a call stores what
     // the Handle's Type admits, nothing here, so the handle is no untied store (SPEC 5.7 Calls).
     [Theory]
-    [InlineData(KimiDeclarationId.DictionaryStoragePlaceEntry, "store 0: own {0 Content, 1 Value, 2 Value}, reached {}")]
-    [InlineData(KimiDeclarationId.DictionaryStorageGrow, "")]
-    public void StorageOperationsRetainTheirRawArguments(KimiDeclarationId id, string expected)
+    [InlineData("DictionaryStorage.placeEntry", "store 0: own {0 Content, 1 Value, 2 Value}, reached {}")]
+    [InlineData("DictionaryStorage.grow", "")]
+    public void StorageOperationsRetainTheirRawArguments(string path, string expected)
     {
         var c = Bind(string.Empty);
-        Assert.Equal(expected, Show(c.Types.Retains(c.Library.GetSymbol(id)!, null, null)));
+        Assert.Equal(expected, Show(c.Types.Retains(LibrarySource.Symbol(c.Library, path), null, null)));
     }
 
     // SPEC 15.6.4 (OQ-3, DECISIONS R4-M116; G160-2c): a raw argument is retained as a borrowed one, its pointee as the referent. An Origin
@@ -1008,6 +1117,28 @@ public sealed partial class RetentionTest
     [InlineData("func f<s/T>(dst: uniq/(s/T), p: raw/i32)\n    s is owner or uniq\n    return", "store 0: own {0 Content}, reached {0 Content}")]
     public void AnAbstractPartHoldsARawArgumentWhereThePremisesOrAnErasedCallableMakeItOne(string function, string expected)
         => Assert.Equal(expected, Declared(Bind("contract MakeW\n    func make(p: raw/(raw/u8), q: raw/u8) -> Self\n" + function + "\n"), "f"));
+
+    // PLAN G647 (SPEC 15.6.4's abstract-Type sentence; DECISIONS BU-66): a carrier occurs in an abstract part at any depth of its
+    // components, so a chain of projections over T keeps a raw argument's own value where `T is MakeW` hands the body a callee that
+    // may retain it in a T: the row through 34 projections is the row through one. A pin, not a regression: the walk (Occurs) once
+    // stopped at 32 components, and this pair has the same rows with that count, so no missed retention was shown.
+    [Theory]
+    [InlineData(2)]
+    [InlineData(34)]
+    public void ACarrierOccursInAnAbstractPartAtAnyDepth(int depth)
+    {
+        Assert.Contains("1 Value", Row(1), StringComparison.Ordinal);
+        Assert.Equal(Row(1), Row(depth));
+
+        static string Part(int projections) => "T" + string.Concat(Enumerable.Repeat(".(Chain).Next", projections));
+
+        static string Row(int projections)
+            => Declared(
+                Bind("contract MakeW\n    func make(p: raw/(raw/u8), q: raw/u8) -> Self\ncontract Chain\n    associate Next\n" +
+                    $"func f<T>(dst: uniq/{Part(projections)}, p: raw/u8)\n    T is MakeW\n" +
+                    string.Concat(Enumerable.Range(0, projections).Select(static i => $"    {Part(i)} is Chain\n")) + "    return\n"),
+                "f");
+    }
 
     // The call records of the rule above: a user call of the G297 shape and an erased requirement callee (DECISIONS BU-66).
     [Fact]
@@ -1300,7 +1431,7 @@ public sealed partial class RetentionTest
     [InlineData("var r = (0..2).resolve(5)\nlet it = r.iterateUniq()\n", "iterateUniq", "referent store 0")]
     [InlineData("var f: [2 of raw/u8] = [null, null]\nlet s = f.sliceUniq()\n", "sliceUniq", "result {0 Value Chain}, store 0: own {0 Chain}, reached {0 Chain} untied, referent store 0")]
     [InlineData(
-        "var f: [2 of raw/u8] = [null, null]\nlet it = f.iterateUniq()\n",
+        "var f: [2 of raw/u8] = [null, null]\nfor _ in f@uniq => _ = 0\n",
         "iterateUniq",
         "result {0 Value Chain}, untied, store 0: own {0 Chain}, reached {0 Chain} untied, referent store 0")]
     [InlineData(
@@ -1332,7 +1463,7 @@ public sealed partial class RetentionTest
         var at = Function(c, "at").SymbolOf()!;
         var layer = TyCtxt.Signature(at, null, 0, out _)!.Components[0];
         Assert.Equal((declared, declared), (Show(c.Types.Retains(drop, null, null)), Declared(c, "flush")));
-        Assert.Equal((instance, instance), (Show(c.Types.Retains(drop, c.Types.Synthesized(drop, layer, []), at)), Calls(c, "flush").Single()));
+        Assert.Equal((instance, instance), (Show(c.Types.Retains(drop, c.Types.Synthesized(drop, layer, [], []), at)), Calls(c, "flush").Single()));
     }
 
     // SPEC 15.6.4, 16.3.1 (DECISIONS BU-47): the library's drops retain over their destruction receivers as their contracts say: the owning
@@ -1345,7 +1476,7 @@ public sealed partial class RetentionTest
         var drops = KotoTree.Walk(c.Library.Kotonoha.RootKoto).OfType<FunctionKoto>().Where(static x => x.IsDestructor)
             .Select(x => $"{x.Parent!.SymbolOf()!.Name}: {Show(c.Types.Retains(x.SymbolOf()!, null, null))}");
         Assert.Equal(
-            ["HeapBuffer: ", "ArrayOwningIterator: store 0: own {0 Content}, reached {}", "DictionaryOwnedRemainder: store 0: own {0 Content}, reached {}", "FixedOwnedRemainder: store 0: own {0 Content}, reached {}"],
+            ["ArrayOwningIterator: store 0: own {0 Content}, reached {}", "DictionaryOwnedRemainder: store 0: own {0 Content}, reached {}", "FixedOwnedRemainder: store 0: own {0 Content}, reached {}", "HeapBuffer: "],
             drops);
     }
 
@@ -1471,7 +1602,7 @@ public sealed partial class RetentionTest
             {
                 var value = call.Kind == CalleeKind.Value;
                 var callee = call is { Kind: CalleeKind.Virtual, VirtualIsDirect: true } ? call.VirtualImplementation?.SymbolOf() : call.Target;
-                if (callee is null || (callee.LibraryDeclaration is null && IntrinsicDisposition.Of(callee.CompilerFunction).Kind == DispositionKind.Intrinsic))
+                if (callee is null || ReferenceEquals(callee, c.Library.Abort))
                 {
                     continue; // The compiler-only $abort has no declaration MIR names (SPEC 17.4).
                 }
@@ -1567,7 +1698,7 @@ public sealed partial class RetentionTest
                     : c.Types.Retains(call.Target, c.Types.SubstOf(call), definition);
             }
 
-            _ = c.Types.Retains(drop, c.Types.Synthesized(drop, writer, []), null);
+            _ = c.Types.Retains(drop, c.Types.Synthesized(drop, writer, [], []), null);
             _ = c.Types.RetainsErasedDestruction(part, gen);
         }));
     }
@@ -1676,9 +1807,9 @@ public sealed partial class RetentionTest
         return null;
     }
 
-    // Each call of a named callee under its substitution, in its definition, in source order.
+    // Each call of a named callee under its substitution, in its definition, in source order; a loop's entry is its call (SPEC 14.6.2).
     private static string[] Calls(Compilation c, string name)
-        => KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>().Select(static x => (Node: x, Call: x.CallOf())).Where(x => x.Call is { Kind: not CalleeKind.Value } && x.Call.Target.Name == name)
+        => KotoTree.Walk(c.Kotonoha.RootKoto).Where(static x => x is InvocationKoto or ForKoto).Select(static x => (Node: x, Call: CallPlan.Of(x, 0))).Where(x => x.Call is { Kind: not CalleeKind.Value } && x.Call.Target.Name == name)
             .Select(x => Show(c.Types.Retains(x.Call!.Target, c.Types.SubstOf(x.Call), Definition(x.Node)))).ToArray();
 
     // Each Value call over its declared Callable signature, in its definition, in source order.

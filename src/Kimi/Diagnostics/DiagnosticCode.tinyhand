@@ -177,7 +177,7 @@
 
   + Name="ClosedContractConformance_Kd"
     Category="Language"
-    Message="Only the Types that the language designates conform to this Contract, such as Position, PositionRange or PrimitiveInteger, or to a Contract that refines it; a user Type cannot declare the conformance"
+    Message="Only the Types that the language designates conform to this Contract, such as PrimitiveInteger, Position, PositionRange or a Contract that refines Position or PositionRange; a user Type cannot declare the conformance"
 
   + Name="NotIndexable_Kd"
     Category="Language"
@@ -546,9 +546,10 @@
     Category="Language"
     Message="LibraryImport declarations of one external symbol must agree on their requirement Kind, which selects dllimport generation"
 
-  + Name="UnsafeFunctionValue_Kd"
+  + Name="DirectCallFunctionValue_Kd"
     Category="Language"
-    Message="An unsafe function supports direct calls only; it cannot be acquired as a value, assigned or passed as an argument"
+    Message="A function that may only be called directly is used as a value"
+    Note="An unsafe function, whose call carries its caller's obligation, and a LibraryImport function, which is foreign code, support direct calls only: neither can be acquired as a value, assigned, passed as an argument or converted"
 
   + Name="UnavailableReservedImport_Kd"
     Category="Language"
@@ -629,7 +630,7 @@
 
   + Name="DefaultArgumentBorrow_Kd"
     Category="Language"
-    Message="A default result cannot retain a new Borrow or Reborrow of a preceding prepared argument"
+    Message="A default cannot keep a new Borrow or Reborrow of a preceding prepared argument in its result or in storage it does not own"
     Evidence="case:Text"
 
   + Name="TransferRequired_Kd"
@@ -745,6 +746,11 @@
     Evidence="case:Text"
     Label="the owning value may leave its holder here"
 
+  + Name="UnretainedRawStore_Kd"
+    Category="Language"
+    Message="This store puts a parameter's own value in raw storage reached from that parameter, where its contract does not retain it"
+    Evidence="case:Text"
+
   + Name="InternalInvariant_Kd"
     Category="Internal"
     Message="An internal compiler invariant was violated while analyzing this construct; no artifact is produced. Please report this input"
@@ -810,6 +816,11 @@
     Category="Resource"
     Message="The Semantics cases of this definition exceed the implementation bound: {0} cases, where at most {1} are analyzed"
     Arguments="cases:Number,limit:Number"
+
+  + Name="ModuleCountLimit_Kd"
+    Category="Resource"
+    Message="The program's dependency graph has {0} modules, where at most {1} are supported"
+    Arguments="modules:Number,limit:Number"
 
   + Name="ProjectPreparationFailed_Kd"
     Category="Input"

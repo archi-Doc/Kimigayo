@@ -16,14 +16,12 @@ public sealed partial class Binding
             {
                 var key = dictionary.Components[0];
                 var actual = this.BindNode(source.Right, scope, key);
-                // A lookup borrows K itself, including when K is a reference value.
-                // An existing ref/K is reborrowed; it is never read into a key snapshot.
-                var written = source.Right.BoundType;
-                if (written is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 } &&
-                    !IsSubtype(written, key) && IsSubtype(written.Components[0], key))
+                // A lookup borrows K itself, including when K is a reference value. A key whose layers reach K is the index call's
+                // ref/K argument (KeyBelowLayers); it is never read into a key snapshot.
+                if (this.KeyBelowLayers(source.Right.BoundType, key, scope) is { } reached)
                 {
                     this.adaptations.Remove(source.Right);
-                    actual = written.Components[0];
+                    actual = reached;
                 }
 
                 if (actual is null)
@@ -73,7 +71,10 @@ public sealed partial class Binding
                 return Complete(source, receiver.Components[0]); // SPEC 4.8.2: the shared element Place.
             }
 
-            if (this.TryBindIndexer((IndexKoto)source, scope, receiver, out var indexed))
+            // SPEC 3.4.3, 4.7.1: a concrete sequence, through every layer, is indexed by position and never through an Indexable
+            // conformance (Array states one for generic use); one these arms do not reach yet is the limit below.
+            var terminal = receiver is null ? null : this.OperandTerminal(source.Left, receiver);
+            if (!ElementAccess.IsSequence(terminal) && this.TryBindIndexer((IndexKoto)source, scope, receiver, out var indexed))
             {
                 return indexed; // SPEC 4.7.1: a user Indexable conformance.
             }
@@ -88,7 +89,7 @@ public sealed partial class Binding
 
                 // SPEC 3.4.3, 4.7.1: a sequence reached here, such as through reference or pair layers, is an implementation limit;
                 // any other receiver, including a range key on an Indexable Type, cannot be indexed by the key.
-                var sequence = this.OperandTerminal(source.Left, receiver).Kind is BoundTypeKind.FixedArray or BoundTypeKind.Slice or BoundTypeKind.Array or BoundTypeKind.Dictionary;
+                var sequence = ElementAccess.IsSequence(terminal) || terminal!.Kind == BoundTypeKind.Dictionary;
                 return this.Fail(source, sequence ? BindingFailure.Unsupported : BindingFailure.NotIndexable);
             }
 
@@ -133,5 +134,26 @@ public sealed partial class Binding
         }
 
         return Complete(source, element);
+    }
+
+    // SPEC 4.7.1, 3.4.3, 10.2: the Type below the safe value-reference layers of a written key (LayerBelow) that first fits the key
+    // Type K, where the key itself does not: the index call's ref/K parameter then takes the key as one shared reference to it (an
+    // existing ref/K Reborrowed, more layers by the shared-reference row); null for a key of Type K or one whose layers never reach it.
+    private BoundType? KeyBelowLayers(BoundType? written, BoundType key, BindingScope scope)
+    {
+        if (written is null || IsSubtype(written, key))
+        {
+            return null;
+        }
+
+        for (var type = written; this.LayerBelow(type, scope) is { } below; type = below)
+        {
+            if (IsSubtype(below, key))
+            {
+                return below;
+            }
+        }
+
+        return null;
     }
 }

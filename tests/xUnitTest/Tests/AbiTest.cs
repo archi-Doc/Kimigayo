@@ -27,6 +27,7 @@ public class AbiTest
     [InlineData("()", (int)Abi.Flags.ResultSlot, "void (ptr ret ResultSlot -1, " + Logical + ") slot")]
     [InlineData("i32", (int)(Abi.Flags.ErasedClosure | Abi.Flags.CallerLocation), Erased)]
     [InlineData("(i32, i64)", (int)Abi.Flags.ConcreteClosure, Concrete)]
+    [InlineData("i32", (int)Abi.Flags.OutOfLine, "i32 (" + Logical + ") noinline")]
     public void TheInternalConventionOrdersKindsAndOmits(string result, int flags, string expected)
     {
         // IMPL 21.3.1: [environment] [ret] a0..an [context] [location, location_length]; a string is passed by its owned slot, a slot
@@ -52,6 +53,7 @@ public class AbiTest
         Assert.False(Abi.Matches(abi, c.Layout, Abi.Convention.Internal, Abi.Flags.ConcreteClosure | Abi.Flags.CallerLocation, i32, parameters));
         Assert.False(Abi.Matches(abi, c.Layout, Abi.Convention.Internal, Abi.Flags.ErasedClosure, i32, parameters));
         Assert.False(Abi.Matches(abi, c.Layout, Abi.Convention.Internal, ErasedFlags | Abi.Flags.ResultSlot, i32, parameters));
+        Assert.False(Abi.Matches(abi, c.Layout, Abi.Convention.Internal, ErasedFlags | Abi.Flags.OutOfLine, i32, parameters));
         Assert.False(Abi.Matches(abi, c.Layout, Abi.Convention.Internal, ErasedFlags, BoundType.Primitives["i64"], parameters));
         Assert.False(Abi.Matches(abi, c.Layout, Abi.Convention.Internal, ErasedFlags, i32, parameters.AsSpan(0, 4)));
         Assert.False(Abi.Matches(abi, c.Layout, Abi.Convention.Internal, ErasedFlags, i32, [parameters[1], .. parameters]));
@@ -106,5 +108,6 @@ public class AbiTest
 
     private static string Describe(FunctionAbi abi)
         => abi.Result + " (" + string.Join(", ", abi.Parameters.Select(static x => $"{x.Type} {x.Name} {x.Kind} {x.LogicalIndex}")) + ")" +
-            (abi.ResultSlot ? " slot" : string.Empty) + (abi.CallerLocation ? " location" : string.Empty) + (abi.NoReturn ? " noreturn" : string.Empty);
+            (abi.ResultSlot ? " slot" : string.Empty) + (abi.CallerLocation ? " location" : string.Empty) + (abi.NoReturn ? " noreturn" : string.Empty) +
+            (abi.OutOfLine ? " noinline" : string.Empty);
 }

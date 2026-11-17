@@ -4,7 +4,8 @@ namespace Kimi.Compiler.Mir;
 
 // A body's blocks and control flow (plan 5.4; SPEC 14.7, 14.10.3).
 // - Responsibility: each block's statement range and its locations in order (Block); a statement's kind rules (Statement: a storage
-//   statement of a Var or Temp, an EndBorrow of a reference local, the Never value's writers, WritesNever, DECISIONS R5-M38) and the
+//   statement of a Var or Temp, an EndBorrow of a reference local, the Never value's writers, WritesNever, DECISIONS R5-M38, a placing
+//   Assign into a temp taking no operand of it, TakesItself) and the
 //   operand positions it marks for the operand visitor (A3 E13 (4), G154; a delivery into _0, R4-M132; a case site's, BU-88); a
 //   terminator's (Terminator: a Goto's target, successors, case range and check target in range, a check target only where it may
 //   stand, a SwitchInt's tested Type, a Return's _0); every block reached from the entry through runtime or check edges (Reach); and
@@ -193,7 +194,29 @@ internal sealed partial class MirValidator
         private readonly bool WritesNever(in MirRvalue rvalue) => rvalue.Kind == MirRvalueKind.Opaque ||
             (rvalue is { Kind: MirRvalueKind.Use, Op: 0, Count: 1 } &&
                 body.Operands[rvalue.Start] is { Kind: MirOperandKind.Copy or MirOperandKind.Move } operand &&
-                this.IsValid(operand.Place) && ReferenceEquals(body.TypeOf(operand.Place), BoundType.Never));
+                this.IsValid(operand.Place) && MirTypes.IsNever(body, body.TypeOf(operand.Place)));
+
+        // Whether a placing Assign, a Use or an aggregate, into a temp's Place takes an operand of that temp: the builder never emits one,
+        // and MirMoveData carries what each operand takes into its component, apart from it (its closure's invariant).
+        private readonly bool TakesItself(in MirStatement statement)
+        {
+            var root = statement.Place.Root;
+            if (statement.Rvalue.Kind is not (MirRvalueKind.Use or MirRvalueKind.Aggregate) || (uint)root >= (uint)body.Locals.Length ||
+                body.Locals[root].Kind != MirLocalKind.Temp)
+            {
+                return false;
+            }
+
+            foreach (ref readonly var operand in body.Operands.Slice(statement.Rvalue.Start, statement.Rvalue.Count))
+            {
+                if (operand.Kind != MirOperandKind.Const && operand.Place.Root == root)
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
 
         // False when MirUses cannot walk it.
         private bool Statement(MirLocation location, in MirStatement statement)
@@ -225,6 +248,11 @@ internal sealed partial class MirValidator
                 !this.WritesNever(statement.Rvalue))
             {
                 this.Report(MirViolation.NeverWrite); // R5-M38: the Never value's writers are a whitelist.
+            }
+
+            if (statement.Kind == MirStatementKind.Assign && this.TakesItself(statement))
+            {
+                this.Report(MirViolation.Operation); // MirMoveData carries what each operand takes into its component.
             }
 
             this.Lend(statement);
@@ -297,6 +325,11 @@ internal sealed partial class MirValidator
             if (terminator.Kind == MirTerminatorKind.Call && !this.Call(terminator))
             {
                 return false;
+            }
+
+            if (terminator is { Kind: MirTerminatorKind.Call, Places: true } && !this.Placed(location.Block, terminator))
+            {
+                this.Report(MirViolation.Operation); // PLAN G442: a construction's insertion transfers whole temps into it.
             }
 
             this.calling = terminator.Kind == MirTerminatorKind.Call;

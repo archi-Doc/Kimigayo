@@ -82,7 +82,7 @@ public sealed partial class Binding
     // SPEC 14.9.3, 14.10.3 (DECISIONS BU-6): an operand of Type Never that is no Place is a Never value, which a conversion only passes
     // on (Abrupt); an explicit acquisition of a Place of Type Never (a move, a copy, a borrow) keeps its operation and its effect.
     private static bool IsNeverValue(Koto operand, BoundType type)
-        => ReferenceEquals(type, BoundType.Never) && !IsBarePlace(operand) && !ElementAccess.IsRawPlace(operand);
+        => ReferenceEquals(type, BoundType.Never) && !IsBarePlace(operand);
 
     // SPEC 3.5: a same-Type acquisition Copies a proven-Copy value and transfers a temporary; a Non-Copy Place needs @move.
     private BoundType? CompleteIdentity(ConversionKoto conversion, BoundType type)
@@ -181,9 +181,7 @@ public sealed partial class Binding
 
         for (var parent = source.Parent; parent is not null; parent = parent.Parent)
         {
-            if (this.scopes.TryGetValue(parent, out var enclosing) ||
-                (parent.Parent is CodeBlockKoto { Parent: FunctionKoto { IsGenerated: true } } &&
-                parent.CodeContext.SourceDocument is { } document && this.scopes.TryGetValue(document, out enclosing)))
+            if (this.ScopeOf(parent) is { } enclosing)
             {
                 scope = enclosing;
                 break;
@@ -230,9 +228,14 @@ public sealed partial class Binding
             if (TryPairLayer(reference, out _, out _))
             {
                 // SPEC 13.5.5: a pair layer is followed only when its admitted set lies in value or valueborrow.
-                if (this.FollowablePair(reference, scope, out var pairTarget) is var admitted && admitted == SemanticsMask.None)
+                if (this.FollowablePair(reference, scope, out var pairTarget) is not { } admitted)
                 {
                     return this.Fail(conversion, BindingFailure.UnprovenConstraint);
+                }
+
+                if (admitted == SemanticsMask.None)
+                {
+                    return this.RestOnEmptiedSet(conversion, scope);
                 }
 
                 this.pairFollows[conversion] = admitted;
@@ -291,7 +294,7 @@ public sealed partial class Binding
                 return this.Fail(conversion, BindingFailure.TypeMismatch);
             }
 
-            if (pattern.Semantics is SemanticsKind.Ref or SemanticsKind.Uniq && pattern.Origin is null && ElementAccess.IsRawPlace(conversion.Left))
+            if (pattern.Semantics is SemanticsKind.Ref or SemanticsKind.Uniq && pattern.Origin is null && ElementAccess.IsRawRooted(conversion.Left))
             {
                 return this.BorrowRawPlace(conversion, pattern.Semantics, actual);
             }
@@ -309,7 +312,7 @@ public sealed partial class Binding
             var failure = default(ComparisonFailure);
             var fits = pattern.IsObjectBorrow
                 ? this.AdaptObjectBorrow(conversion.Left, pattern, actual, scope, true, out adapted, out _, out _)
-                : this.AdaptInput(conversion.Left, pattern, actual, scope, null, null, out adapted, out _, out _, explicitBorrow: true);
+                : this.AdaptInput(conversion.Left, FixedPattern.Open(pattern), actual, scope, null, null, out adapted, out _, out _, explicitBorrow: true);
             if (!fits ||
                 !IsSubtype(adapted.Components[0], pattern.Components[0]) ||
                 (pattern.Origin is not null && !this.CheckTypeUse(adapted, pattern, conversion, out failure)))
@@ -404,7 +407,7 @@ public sealed partial class Binding
                 return Complete(conversion, adapted);
             }
 
-            if (semantics is SemanticsKind.Ref or SemanticsKind.Uniq && ElementAccess.IsRawPlace(conversion.Left))
+            if (semantics is SemanticsKind.Ref or SemanticsKind.Uniq && ElementAccess.IsRawRooted(conversion.Left))
             {
                 return this.BorrowRawPlace(conversion, semantics, operandType);
             }
@@ -414,7 +417,7 @@ public sealed partial class Binding
                 // SPEC 13.5.6: @ref/@uniq borrow the immediately written slot whatever it stores; a stored
                 // reference is Reborrowed only through @follow or at a fixed expected Type (SPEC 10.2).
                 var pattern = this.types.Intern(BoundTypeKind.Semantics, null, semantics, [operandType]);
-                if (!this.AdaptInput(conversion.Left, pattern, operandType, scope, null, null, out var adapted, out _, out _, explicitBorrow: true))
+                if (!this.AdaptInput(conversion.Left, FixedPattern.Open(pattern), operandType, scope, null, null, out var adapted, out _, out _, explicitBorrow: true))
                 {
                     return this.Fail(conversion, this.BorrowFailure(conversion.Left, scope, semantics == SemanticsKind.Uniq));
                 }
@@ -469,7 +472,7 @@ public sealed partial class Binding
         var signed = KotoHelper.SignedNumber(operand, out _);
         var literal = signed is { IsInteger: true };
         var floatingLiteral = signed is { IsInteger: false };
-        if (plain && floatingLiteral && target is { IsInteger: true } && ScalarTypes.Width(target) != 0)
+        if (plain && floatingLiteral && target is { IsInteger: true })
         {
             return this.BindTruncatedLiteral(conversion, target, operand);
         }
@@ -500,6 +503,14 @@ public sealed partial class Binding
             return Complete(conversion, BoundType.Never);
         }
 
+        // SPEC 13.5.2: the operand of a numeric conversion, or of an Identity Acquisition to a read Type, is a read position, so
+        // safe value-reference layers ending in a read Type supply its value, a qualifying pair layer included: such an operand is
+        // read in every case and selects no case. Borrow, follow and object targets took the reference above.
+        if (plain && target.HandleMode is null && !TryAdaptationSelector(target, out _))
+        {
+            source = this.ReadReferent(conversion.Left, source)!;
+        }
+
         if (TryAdaptationSelector(target, out _) || TryAdaptationSelector(source, out _))
         {
             return this.BindCaseAdaptation(conversion, scope, source, target);
@@ -508,13 +519,6 @@ public sealed partial class Binding
         if (target.HandleMode is not null)
         {
             return this.BindObjectAdaptation(conversion, scope, source, target);
-        }
-
-        // SPEC 13.5.2: the operand of a numeric conversion, or of an Identity Acquisition to a read Type, is a read position, so
-        // safe reference layers ending in a read Type supply its value; borrow, follow and object targets took the reference above.
-        if (plain)
-        {
-            source = this.ReadReferent(conversion.Left, source)!;
         }
 
         if (ReferenceTypes.IsPointer(source) || ReferenceTypes.IsPointer(target))
@@ -567,13 +571,12 @@ public sealed partial class Binding
                 return Complete(conversion, target);
             }
 
-            // SPEC 13.5.4: an integer conversion is checked against the target's range, whatever its width; only lowering
-            // needs the width of isize and usize.
-            if (!(source.IsInteger && target.IsInteger) &&
-                (ScalarTypes.Width(source) == 0 || ScalarTypes.Width(target) == 0))
+            // SPEC 13.5.4: a conversion between an integer and a floating-point Type; a valid one of a 128-bit integer remains an
+            // implementation boundary. An integer conversion is checked against the target's range, whatever its width.
+            if (!(source.IsInteger && target.IsInteger))
             {
                 var integer = source.IsInteger ? source : target;
-                if (ScalarTypes.Width(integer) is > 0 and <= 64)
+                if (integer.Width <= 64)
                 {
                     conversion.ConversionBinding = ConversionBinding.Numeric;
                     return Complete(conversion, target);

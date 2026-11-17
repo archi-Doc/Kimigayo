@@ -14,8 +14,8 @@ public class AssociatedSpecificationAccessBindingTest
     public void AssociatedSpecificationsCannotHideRestrictedProjectionContracts(bool conditional)
     {
         var declaration = conditional
-            ? "public struct Api<T>\n    Self is Export when T is Copy\n        associate Export.Item is Source.Hidden.Element"
-            : "public struct Api\n    Self is Export\n    associate Export.Item is Source.Hidden.Element";
+            ? "public struct Api<T>\n    Self is Export when T is Copy\n        associate Export.Item is Source.(Hidden).Element"
+            : "public struct Api\n    Self is Export\n    associate Export.Item is Source.(Hidden).Element";
         var c = MinimalEmissionTest.Analyze("contract Hidden\n    associate Element\npublic struct Source\n    Self is Hidden\n    associate Hidden.Element is i32\npublic contract Export\n    associate Item\n" + declaration);
         Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
         Assert.False(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
@@ -32,7 +32,7 @@ public class AssociatedSpecificationAccessBindingTest
     [InlineData("public", "private", "public", "internal", true)]
     public void OrdinarySpecificationUsesTheIntersection(string typeAccess, string exportAccess, string contractAccess, string sourceAccess, bool valid)
     {
-        Check($"{contractAccess} contract Hidden\n    associate Element\n{sourceAccess} struct Source\n    Self is Hidden\n    associate Hidden.Element is i32\n{exportAccess} contract Export\n    associate Item\n{typeAccess} struct Api\n    Self is Export\n    associate Export.Item is Source.Hidden.Element", valid);
+        Check($"{contractAccess} contract Hidden\n    associate Element\n{sourceAccess} struct Source\n    Self is Hidden\n    associate Hidden.Element is i32\n{exportAccess} contract Export\n    associate Item\n{typeAccess} struct Api\n    Self is Export\n    associate Export.Item is Source.(Hidden).Element", valid);
     }
 
     [Theory]
@@ -42,7 +42,7 @@ public class AssociatedSpecificationAccessBindingTest
     [InlineData("public", "public", "public", true)]
     public void ConditionalSpecificationUsesTheIntersection(string typeAccess, string exportAccess, string contractAccess, bool valid)
     {
-        Check($"{contractAccess} contract Hidden\n    associate Element\npublic struct Source\n    Self is Hidden\n    associate Hidden.Element is i32\n{exportAccess} contract Export\n    associate Item\n{typeAccess} struct Api<T>\n    Self is Export when T is Copy\n        associate Export.Item is Source.Hidden.Element", valid);
+        Check($"{contractAccess} contract Hidden\n    associate Element\npublic struct Source\n    Self is Hidden\n    associate Hidden.Element is i32\n{exportAccess} contract Export\n    associate Item\n{typeAccess} struct Api<T>\n    Self is Export when T is Copy\n        associate Export.Item is Source.(Hidden).Element", valid);
     }
 
     [Theory]
@@ -51,16 +51,16 @@ public class AssociatedSpecificationAccessBindingTest
     public void NarrowChildCannotHideAnAncestorsAssociatedExposure(bool conditional)
     {
         var declaration = conditional
-            ? "public struct Api<T>\n    Self is Child when T is Copy\n        associate Export.Item is Source.Hidden.Element"
-            : "public struct Api\n    Self is Child\n    associate Export.Item is Source.Hidden.Element";
+            ? "public struct Api<T>\n    Self is Child when T is Copy\n        associate Export.Item is Source.(Hidden).Element"
+            : "public struct Api\n    Self is Child\n    associate Export.Item is Source.(Hidden).Element";
         Check("contract Hidden\n    associate Element\npublic struct Source\n    Self is Hidden\n    associate Hidden.Element is i32\npublic contract Export\n    associate Item\ncontract Child: Export\n" + declaration, false);
     }
 
     [Theory]
     [InlineData("Source.Element")]
-    [InlineData("[1 of Source.Hidden.Element]")]
-    [InlineData("(i32, Source.Hidden.Element)")]
-    [InlineData("Box<Source.Hidden.Element>")]
+    [InlineData("[1 of Source.(Hidden).Element]")]
+    [InlineData("(i32, Source.(Hidden).Element)")]
+    [InlineData("Box<Source.(Hidden).Element>")]
     public void CompoundSpecificationsRetainProjectionDomains(string type)
     {
         Check("contract Hidden\n    associate Element\npublic struct Source\n    Self is Hidden\n    associate Hidden.Element is i32\npublic struct Box<T>\npublic contract Export\n    associate Item\npublic struct Api\n    Self is Export\n    associate Export.Item is " + type, false);
@@ -69,7 +69,7 @@ public class AssociatedSpecificationAccessBindingTest
     [Fact]
     public void NarrowConditionalPathDoesNotBorrowAnotherPathsDomain()
     {
-        Check("contract Hidden\n    associate Element\npublic struct Source\n    Self is Hidden\n    associate Hidden.Element is i32\npublic contract Export\n    associate Item\ncontract Local\n    associate Other\npublic struct Api<T>\n    Self is Export when T is Copy\n        associate Export.Item is i32\n    Self is Local when T is Owned\n        associate Local.Other is Source.Hidden.Element", true);
+        Check("contract Hidden\n    associate Element\npublic struct Source\n    Self is Hidden\n    associate Hidden.Element is i32\npublic contract Export\n    associate Item\ncontract Local\n    associate Other\npublic struct Api<T>\n    Self is Export when T is Copy\n        associate Export.Item is i32\n    Self is Local when T is Owned\n        associate Local.Other is Source.(Hidden).Element", true);
     }
 
     [Theory]
@@ -77,7 +77,7 @@ public class AssociatedSpecificationAccessBindingTest
     [InlineData("internal", true)]
     public void ReloadAndRebindRetainAccess(string access, bool valid)
     {
-        var c = Check("contract Hidden\n    associate Element\npublic struct Source\n    Self is Hidden\n    associate Hidden.Element is i32\n" + access + " contract Export\n    associate Item\npublic struct Api<T>\n    Self is Export when T is Copy\n        associate Export.Item is Source.Hidden.Element", valid);
+        var c = Check("contract Hidden\n    associate Element\npublic struct Source\n    Self is Hidden\n    associate Hidden.Element is i32\n" + access + " contract Export\n    associate Item\npublic struct Api<T>\n    Self is Export when T is Copy\n        associate Export.Item is Source.(Hidden).Element", valid);
         Assert.Equal(valid, c.Bind().IsComplete);
         var restored = Compilation.CreateForTest();
         Assert.True(restored.Prepare(WindowsProfile.Target));
@@ -93,7 +93,7 @@ public class AssociatedSpecificationAccessBindingTest
     [Fact]
     public void WarmSpecificationChecksAllocateNothing()
     {
-        var c = Check("contract Hidden\n    associate Element\npublic struct Source\n    Self is Hidden\n    associate Hidden.Element is i32\ncontract Export\n    associate Item\npublic struct Api<T>\n    Self is Export when T is Copy\n        associate Export.Item is Source.Hidden.Element", true);
+        var c = Check("contract Hidden\n    associate Element\npublic struct Source\n    Self is Hidden\n    associate Hidden.Element is i32\ncontract Export\n    associate Item\npublic struct Api<T>\n    Self is Export when T is Copy\n        associate Export.Item is Source.(Hidden).Element", true);
         Assert.True(c.Bind().IsComplete);
         Assert.Equal(0, AllocationMeasurement.Measure(() =>
         {

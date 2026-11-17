@@ -66,10 +66,10 @@ public sealed partial class Binding
     {
         var container = DeclaringContainer(declaration) switch
         {
-            DeclarationContainerKoto { IsRoot: true } or FunctionKoto { IsGenerated: true } => "the source root",
+            DeclarationContainerKoto { IsRoot: true } => "the source root",
             GroupKoto group => $"group {group.Name}",
             EnumKoto enumeration => $"enum {enumeration.Name}",
-            FunctionKoto => "a function body",
+            FunctionKoto or ContractKoto => throw new InvalidOperationException("A declaration of a body or of a Contract holds an access word the parser rejects (InternalInvariant; G689)."),
             _ => "a Container other than a struct",
         };
 
@@ -116,8 +116,9 @@ public sealed partial class Binding
         return null;
     }
 
-    // SPEC 9.4.1, 9.4.2: Access(a) ∩ Access(b) ⊆ Access(member), decided on atoms. Each union U of member's chain (AccessUnions) holds
-    // when one union of a's or b's chain has every atom included in U; the unions of a chain intersect.
+    // SPEC 9.4.1, 9.4.2: Access(a) ∩ Access(b) ⊆ Access(member), decided on atoms. Each union U of member's chain (AccessUnions) must
+    // hold: every intersection of a's and b's unions is empty (atoms of two Kotonoha) or has an atom included in U (UnionCovered); the
+    // unions of a chain intersect.
     private bool AccessCovers(BindingSymbol member, BindingSymbol a, BindingSymbol b, ModifierKind? memberAccess = null)
     {
         foreach (var (level, union) in new AccessUnions(member, memberAccess))
@@ -131,21 +132,36 @@ public sealed partial class Binding
         return true;
     }
 
+    // SPEC 9.4.2: every intersection of Access(a) ∩ Access(b) is empty or holds an atom included in the union U that `access` gives at
+    // `level`. One union of a chain has every atom in U; or a and b belong to two Kotonoha and each chain has a union whose Derived atom
+    // is in U, so that every intersection with no atom in U takes a Kotonoha or Body atom of each and is empty.
     private bool UnionCovered(ModifierKind access, BindingSymbol level, BindingSymbol a, BindingSymbol b)
     {
+        var chains = 0;
         for (var pass = 0; pass < 2; pass++)
         {
             foreach (var (current, own) in new AccessUnions(pass == 0 ? a : b, null))
             {
-                if (this.UnionIncluded(own, current.Scope, access, level))
+                if (this.DerivedIncluded(own, current.Scope.Owner, access, level.Scope.Owner))
                 {
-                    return true;
+                    if (this.UnionIncluded(own, current.Scope, access, level))
+                    {
+                        return true;
+                    }
+
+                    chains |= 1 << pass;
                 }
             }
         }
 
-        return false;
+        return chains == 3 && !ReferenceEquals(a.Declaration.CodeContext.Kotonoha, b.Declaration.CodeContext.Kotonoha);
     }
+
+    // SPEC 9.4.2: the Derived(S) atom of the union `own` gives in `owner`, if it has one, is included in U: U holds Derived(C) and S is or
+    // derives from C. Derived(S) is empty unless S is an open struct.
+    private bool DerivedIncluded(ModifierKind own, Koto owner, ModifierKind access, Koto target)
+        => !(own is ModifierKind.Protected or ModifierKind.ProtectedOrInternal && IsOpenStruct(owner)) ||
+            (access is ModifierKind.Protected or ModifierKind.ProtectedOrInternal && IsOpenStruct(target) && this.DerivesFrom(owner.BoundSymbol, target.BoundSymbol!));
 
     // SPEC 9.4.1, 9.4.2: every atom of the union `own` gives at scope `at` (a declaration's scope, or a use's read as private: a point of
     // Body(its Container)) is included in the union `access` gives at `level`; both are single unions (AccessUnions). A level at the root
@@ -181,9 +197,7 @@ public sealed partial class Binding
             }
         }
 
-        // Derived(S) of an open S: included only in Derived(C) for S that is or derives from C.
-        var ownDerived = owner is not DeclarationContainerKoto { IsRoot: true } && own is ModifierKind.Protected or ModifierKind.ProtectedOrInternal;
-        return !(ownDerived && IsOpenStruct(owner)) || (derived && this.DerivesFrom(owner.BoundSymbol, target.BoundSymbol!));
+        return this.DerivedIncluded(own, owner, access, target);
     }
 
     private bool ProjectionAccessCovers(Koto use, BoundType qualifier, BindingSymbol contract, BindingSymbol domain, BindingSymbol? intersection = null)
@@ -216,9 +230,9 @@ public sealed partial class Binding
             var owner = scope.Owner;
             if (owner is SyntaxFormKoto { Akind: KotoKind.ConditionalConformance } conditional && ReferenceEquals(clause.Parent, conditional.Operands[1]))
             {
-                for (var p = 0; p < this.impls.Paths.Count; p++)
+                for (var p = 0; p < this.impls.InPass.Paths.Count; p++)
                 {
-                    var path = this.impls.Paths[p];
+                    var path = this.impls.InPass.Paths[p];
                     if (ReferenceEquals(path.Premises, clause.Parent) &&
                         !this.ProjectionAccessCovers(use.Use, use.Type, use.Contract, path.Type, path.Contract))
                     {
@@ -249,9 +263,9 @@ public sealed partial class Binding
             if (clause.IsAssociatedConstraint && owner is not ContractKoto && this.AssociatedIdentity(clause.Left.BoundType) is { } associated)
             {
                 var type = scope.ConformancePath?.Type ?? owner.BoundSymbol;
-                for (var p = 0; p < this.impls.Paths.Count; p++)
+                for (var p = 0; p < this.impls.InPass.Paths.Count; p++)
                 {
-                    var path = this.impls.Paths[p];
+                    var path = this.impls.InPass.Paths[p];
                     if (!ReferenceEquals(path.Type, type) || !path.Contract.Contract!.SeenRequirements.Contains(associated) ||
                         (scope.ConformancePath is { } declaringPath && !ReferenceEquals(path.RootPath, declaringPath.RootPath)))
                     {
@@ -375,12 +389,12 @@ public sealed partial class Binding
     {
         for (var i = 0; i < this.nodes.Count; i++)
         {
-            // SPEC 9.4: a protected form is invalid on root and group declarations, group members, enum members and local
-            // declarations: every declaration whose declaring Container is not a struct. A Contract requirement takes no
-            // modifier at all, which the parser reports (MisplacedSyntax_Kd).
+            // SPEC 9.4: a protected form is invalid on root Containers and on group and enum members: every declaration that takes an
+            // access word and whose declaring Container is not a struct. A root function, a local function or binding and a Contract
+            // item take no access word at all, which the parser rejects and drops (Parser.RejectAccessWord; SPEC 6.1.1, 9.3, F.6.2).
             if (this.nodes[i].BoundSymbol is { } declared && ReferenceEquals(declared.Declaration, this.nodes[i]) &&
                 WrittenAccess(this.nodes[i]) is ModifierKind.Protected or ModifierKind.ProtectedAndInternal or ModifierKind.ProtectedOrInternal &&
-                DeclaringContainer(this.nodes[i]) is not (StructKoto or ContractKoto))
+                DeclaringContainer(this.nodes[i]) is not StructKoto)
             {
                 this.Fail(this.nodes[i], BindingFailure.ProtectedPlacement);
             }
@@ -404,8 +418,7 @@ public sealed partial class Binding
                     var clause = container.ConstraintNodes[c];
                     // Self conformances have the intersection of the Type and
                     // Contract domains; their separate witness checks own this case.
-                    if (!IsSelfConstraint(clause) && !clause.IsAssociatedConstraint &&
-                        clause.BoundConstraint is { } constraint &&
+                    if (!IsSelfConstraint(clause) && clause.BoundConstraint is { } constraint &&
                         (!this.ConstraintAccessCovers(constraint, domain) ||
                             (clause.Left.BoundType is { } subject && !this.TypeAccessCovers(subject, domain, domain))))
                     {
@@ -489,7 +502,7 @@ public sealed partial class Binding
 
     private bool Accessible(BindingSymbol symbol, BindingScope use, ModifierKind? operationAccess = null, BoundType? receiverType = null, bool declarationOnly = false)
     {
-        if (symbol.CompilerFunction == CompilerFunctionKind.TestTempDirectory && (!this.compilation.IsTestBuild || !TestDefinition.IsTestOnly(use.Owner)))
+        if (symbol.LibraryDeclaration == KimiDeclarationId.TestTempDirectory && (!this.compilation.IsTestBuild || !TestDefinition.IsTestOnly(use.Owner)))
         {
             return false;
         }

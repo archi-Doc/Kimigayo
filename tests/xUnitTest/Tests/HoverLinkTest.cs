@@ -2,7 +2,7 @@
 
 using Kimi.Checking;
 using Kimi.Compiler;
-using Kimi.Compiler.Documentation;
+using Kimi.Documentation;
 using Kimi.Lsp;
 using Xunit;
 

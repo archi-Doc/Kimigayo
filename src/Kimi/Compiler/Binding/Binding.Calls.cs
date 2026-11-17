@@ -105,7 +105,8 @@ public sealed partial class Binding
             }
         }
 
-        var unknownArgument = !this.PrepareCallArguments(call, scope, group);
+        var candidates = this.GroupOf(callee, group);
+        var unknownArgument = !this.PrepareCallArguments(call, scope, candidates);
 
         if (group is null)
         {
@@ -115,7 +116,7 @@ public sealed partial class Binding
             }
             else
             {
-                this.Fail(callee, callee.BindingFailure == BindingFailure.Ambiguous ? BindingFailure.Ambiguous : this.MissingFailure(callee, scope, BindingFailure.MissingName), true);
+                this.Fail(callee, callee.BindingFailure == BindingFailure.Ambiguous ? BindingFailure.Ambiguous : this.MissingFailure(callee, BindingFailure.MissingName), true);
             }
 
             return Complete(call, null);
@@ -126,9 +127,7 @@ public sealed partial class Binding
             return this.BindReference(callee, group, scope) is null ? Complete(call, null) : this.Fail(call, BindingFailure.NotCallable);
         }
 
-        var requirementGroup = callee is MemberAccessKoto requirementMember && this.requirementGroups.TryGetValue(requirementMember, out var foundGroup) && foundGroup.Active ? foundGroup : null;
-        var imports = this.importCandidates?.GetValueOrDefault(callee);
-        var candidates = new CallCandidates(group, requirementGroup, imports);
+        var requirementGroup = candidates.Requirements;
         var self = requirementGroup?.Self ?? (callee as RequirementCalleeKoto)?.Self;
         var shape = MeasureCandidates(candidates, self is not null || group.Scope.Owner is StructKoto or EnumKoto);
 
@@ -142,9 +141,8 @@ public sealed partial class Binding
 
         callee.BoundSymbol = group;
         callee.BindingState = BindingState.Resolved;
-        if (imports is { Count: > 1 } && this.CheckGatheredParameterShapes(callee, imports, aliasStage: true))
+        if (this.GatheredGroupFails(callee, candidates))
         {
-            // SPEC 7.4, 9.5.1: a function group gathered at the alias stage from several declaration sources is checked at the use.
             return Complete(call, null);
         }
 
@@ -156,8 +154,8 @@ public sealed partial class Binding
         var originSlots = solveOrigins ? shape.Origins : 0;
         var inputSlots = solveOrigins ? shape.InputOrigins : 0;
         var savedCandidates = candidateCount > 1 ? candidateCount : 0;
-        var scratch = this.typeScratch.Rent(Math.Max(1, maxGenerics));
-        var lengthArguments = this.lengthScratch.Rent(maxGenerics);
+        var solveFrame = this.infer.Rent(Math.Max(1, maxGenerics));
+        var explicitTypes = this.typeScratch.Rent(generic?.TypeArguments.Count ?? 0);
         var explicitLengths = this.lengthScratch.Rent(generic?.TypeArguments.Count ?? 0);
         var mapping = this.indexScratch.Rent(Math.Max(1, argumentCount));
         var used = this.flagScratch.Rent(Math.Max(1, maxParameters));
@@ -177,6 +175,7 @@ public sealed partial class Binding
         var rows = this.rowScratch.Rent(candidateCount * argumentCount);
         var childSlices = this.indexScratch.Rent(candidateCount * 2);
         var childBase = this.childRows.Count;
+        var classBase = this.positionClasses.Count;
         BoundDefaultArgument[]? defaults = null;
         try
         {
@@ -192,7 +191,9 @@ public sealed partial class Binding
                         argumentName = UnwrapTypeSyntax(parentheses.Type);
                     }
 
-                    if (isLength && this.TypeName(argumentName, scope, LookupRole.Any) is not null)
+                    // A question, not the argument's lookup (R7-N1e2-1R): whether its spelling also names a Type, in a Type position's row.
+                    // It publishes nothing: the argument is then looked up once, as a length (a value) or by its BindType.
+                    if (isLength && this.ProbePath(argumentName, scope, UseRow(argumentName), 0) is not null)
                     {
                         var typeSlot = false;
                         var lengthSlot = false;
@@ -221,6 +222,8 @@ public sealed partial class Binding
                     {
                         this.BindType(syntax, scope);
                     }
+
+                    explicitTypes[i] = explicitLengths[i] is null ? syntax.BoundType : null;
                 }
             }
 
@@ -233,8 +236,8 @@ public sealed partial class Binding
                 Expected = expected,
                 Self = self,
                 Requirements = requirementGroup,
-                Scratch = scratch,
-                LengthArguments = lengthArguments,
+                Frame = solveFrame,
+                ExplicitTypes = explicitTypes,
                 ExplicitLengths = explicitLengths,
                 Mapping = mapping,
                 Used = used,
@@ -270,7 +273,7 @@ public sealed partial class Binding
                     : this.Fail(call, BindingFailure.InvalidConstraint);
             }
 
-            if (!this.CheckCallShapeContracts(call, generic, scope, expected, evaluated.AsSpan(0, count), allMaps, maxGenerics))
+            if (!this.CheckCallShapeContracts(call, explicitTypes.AsSpan(0, generic?.TypeArguments.Count ?? 0), explicitLengths.AsSpan(0, generic?.TypeArguments.Count ?? 0), scope, expected, evaluated.AsSpan(0, count), allMaps, maxGenerics))
             {
                 return Complete(call, null);
             }
@@ -314,25 +317,25 @@ public sealed partial class Binding
                 if (failure == BindingFailure.NoApplicableCandidate && call.BindingFailure == BindingFailure.None)
                 {
                     // The candidates that were considered explain the failed selection; recorded only when it fails.
-                    var rejected = new RejectedCandidate[count];
+                    var start = this.rejectedRows.Count;
                     for (var i = 0; i < count; i++)
                     {
-                        rejected[i] = new((FunctionKoto)evaluated[i].Symbol!.Declaration, null, null, ConstraintFailure: evaluated[i].ConstraintFailure);
+                        var rejected = new RejectedCandidate((FunctionKoto)evaluated[i].Symbol!.Declaration, null, null, ConstraintFailure: evaluated[i].ConstraintFailure);
                         var rejectedReceiver = operations[(i * operationStride) + operationStride - 1];
                         if (rejectedReceiver.SourceType is { } receiverActual && rejectedReceiver.ParameterType is { } receiverExpected && SharedObjectAuthorityMismatch(receiverActual, receiverExpected))
                         {
-                            rejected[i] = rejected[i] with { Actual = receiverActual, Expected = receiverExpected, SharedReceiver = true };
+                            rejected = rejected with { Actual = receiverActual, Expected = receiverExpected, SharedReceiver = true };
                         }
 
                         if (evaluated[i].Symbol!.LibraryDeclaration == KimiDeclarationId.Clone && call.ArgumentNodes is [var cloneInput] &&
                             cloneInput.BoundType is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref, Components: [{ Semantics: SemanticsKind.Obj }] })
                         {
-                            rejected[i] = rejected[i] with { ObjectClone = true };
+                            rejected = rejected with { ObjectClone = true };
                         }
 
                         if (evaluated[i].ClosureReceiver is { } receivers)
                         {
-                            rejected[i] = rejected[i] with { ActualReceiver = receivers.Actual, RequiredReceiver = receivers.Required, ReceiverParameter = receivers.Parameter };
+                            rejected = rejected with { ActualReceiver = receivers.Actual, RequiredReceiver = receivers.Required, ReceiverParameter = receivers.Parameter };
                         }
 
                         for (var a = 0; a < argumentCount; a++)
@@ -340,20 +343,22 @@ public sealed partial class Binding
                             var operation = operations[(i * operationStride) + a];
                             if (operation.SourceType is { } actual && operation.ParameterType is { } parameter && DifferentRangeShapes(actual, parameter))
                             {
-                                rejected[i] = rejected[i] with { Actual = actual, Expected = parameter };
+                                rejected = rejected with { Actual = actual, Expected = parameter };
                                 break;
                             }
 
                             // Signature-refusal facts have no selected parameter operation.
                             if (operation.ParameterIndex == -1 && operation.SourceType is { Kind: BoundTypeKind.Function } signature && operation.ParameterType is { Kind: BoundTypeKind.Function } required)
                             {
-                                rejected[i] = rejected[i] with { Actual = signature, Expected = required, CallableSignature = true };
+                                rejected = rejected with { Actual = signature, Expected = required, CallableSignature = true };
                                 break;
                             }
                         }
+
+                        this.rejectedRows.Add(rejected);
                     }
 
-                    (this.rejectedCandidates ??= new(ReferenceEqualityComparer.Instance))[call] = rejected;
+                    this.RecordRejected(call, start);
                 }
                 else if (this.acquisitionFailure is { } acquisition)
                 {
@@ -374,8 +379,8 @@ public sealed partial class Binding
             var selectedType = evaluated[winnerIndex].DeclaringType;
             if (savedCandidates != 0)
             {
-                allTypes.AsSpan(winnerIndex * maxGenerics, CallSlotCount(selected)).CopyTo(scratch);
-                allLengths.AsSpan(winnerIndex * maxGenerics, CallSlotCount(selected)).CopyTo(lengthArguments);
+                solveFrame.CopyTypes(allTypes.AsSpan(winnerIndex * maxGenerics, CallSlotCount(selected)));
+                solveFrame.CopyLengths(allLengths.AsSpan(winnerIndex * maxGenerics, CallSlotCount(selected)));
                 allMaps.AsSpan(winnerIndex * argumentCount, argumentCount).CopyTo(mapping);
                 allOrigins.AsSpan(winnerIndex * originSlots, originSlots).CopyTo(origins);
                 allInputs.AsSpan(winnerIndex * inputSlots, inputSlots).CopyTo(inputs);
@@ -384,6 +389,12 @@ public sealed partial class Binding
             if (!this.SolveSelected(ref evaluation, winnerIndex, selectedType))
             {
                 return null; // SPEC 10.5.1, 10.2.1: the nested call waits, or the call rests on its record (SolveSelected).
+            }
+
+            if (!this.SupportedFunction(callee, winner))
+            {
+                this.MarkWaitingHeaders(call); // As a failed selection (FailWaitingSelection); the record is the callee's (SPEC 22.1, R8).
+                return Complete(call, null);
             }
 
             if (evaluated[winnerIndex].State == CandidateApplicability.Waiting)
@@ -401,7 +412,6 @@ public sealed partial class Binding
 
                 var state = this.TryCandidate(
                     this.Solution(evaluation, winnerIndex, selected, selectedType),
-                    explicitLengths,
                     mapping,
                     evaluated[winnerIndex].ArgumentMap,
                     expected,
@@ -410,9 +420,9 @@ public sealed partial class Binding
                     out _,
                     out _,
                     out _,
-                    out _,
+                    out var failure,
                     out _);
-                if (state != CandidateApplicability.Applicable)
+                if (AsSelected(state, failure, CandidateApplicability.Applicable) != CandidateApplicability.Applicable)
                 {
                     var rejected = new RejectedCandidate(selected, null, null, Selected: true);
                     for (var i = 0; i < argumentCount; i++)
@@ -426,14 +436,15 @@ public sealed partial class Binding
                         }
                     }
 
-                    (this.rejectedCandidates ??= new(ReferenceEqualityComparer.Instance))[call] = [rejected];
+                    this.rejectedRows.Add(rejected);
+                    this.RecordRejected(call, this.rejectedRows.Count - 1);
                     return this.Fail(call, state == CandidateApplicability.Pending ? BindingFailure.UnprovenConstraint : BindingFailure.NoApplicableCandidate, true);
                 }
             }
 
             for (var i = 0; i < CallOwnSlots(selected).Count; i++)
             {
-                if (CallOwnSlots(selected)[i] is LengthParameterKoto ? lengthArguments[i] is null : scratch[i] is null)
+                if (CallOwnSlots(selected)[i] is LengthParameterKoto ? solveFrame.Lengths[i] is null : solveFrame.Types[i] is null)
                 {
                     return this.Fail(call, BindingFailure.MissingType, true);
                 }
@@ -441,21 +452,21 @@ public sealed partial class Binding
 
             if (selected.IsConstructor && selectedType is not null)
             {
-                selectedType = this.ConstructionType(selected, selectedType, scratch);
+                selectedType = this.ConstructionType(selected, selectedType, solveFrame.Types);
             }
 
-            if (selected.IsConstructor && selectedType is not null && callee is MemberAccessKoto constructorMember && this.inferredConstructorTargets.Contains(constructorMember.Left) &&
-                !this.ValidateFixedConstruction(call, scope, expected, selectedType, evaluated.AsSpan(0, count), winnerIndex, allMaps, mapping, scratch, lengthArguments, origins, inputs, allOrigins, allInputs, originSlots, inputSlots, operations, operationStride, completedWaiting, waitingContexts))
+            if (selected.IsConstructor && selectedType is not null && callee is MemberAccessKoto constructorMember && this.inferredConstructionTargets.Contains(constructorMember.Left) &&
+                !this.ValidateFixedConstruction(call, scope, expected, selectedType, evaluated.AsSpan(0, count), winnerIndex, allMaps, mapping, solveFrame, origins, inputs, allOrigins, allInputs, originSlots, inputSlots, operations, operationStride, completedWaiting, waitingContexts))
             {
                 return Complete(call, null);
             }
 
-            if (selected.IsConstructor && selectedType is not null && callee is MemberAccessKoto constructedMember && this.inferredConstructorTargets.Contains(constructedMember.Left))
+            if (selected.IsConstructor && selectedType is not null && callee is MemberAccessKoto constructedMember && this.inferredConstructionTargets.Contains(constructedMember.Left))
             {
                 Complete(constructedMember.Left, selectedType);
             }
 
-            var result = winner.Type is { } returnType ? this.CallType(returnType, selected, scratch, scope, self, origins, inputs, selectedType, lengthArguments) : null;
+            var result = winner.Type is { } returnType ? this.CallType(returnType, selected, solveFrame.Types, scope, self, origins, inputs, selectedType, solveFrame.Lengths) : null;
             if (result is null)
             {
                 return this.Fail(call, BindingFailure.MissingType, true);
@@ -466,7 +477,7 @@ public sealed partial class Binding
             if (receiverOperation.Source is not null)
             {
                 if (receiverOperation.BasePath is { } objectBase && receiverOperation.ParameterType is { IsObjectBorrow: true } &&
-                    !this.RequireObjectErasure(call, receiverOperation.Source, ReferenceTypes.ViewTarget(receiverOperation.SourceType)!, objectBase.Type))
+                    !this.RequireObjectErasure(call, receiverOperation.Source, this.ViewTarget(receiverOperation.SourceType, receiverOperation.Source)!, objectBase.Type))
                 {
                     return null;
                 }
@@ -487,7 +498,7 @@ public sealed partial class Binding
                 if (selectedOperations[i].MissingOrigin)
                 {
                     // SPEC 15.3.6, 10.8: judged after selection; it never made the candidate inapplicable.
-                    return this.FailPerCallOrigin(call, selected, scratch, call.ArgumentNodes[i]);
+                    return this.FailPerCallOrigin(call, selected, solveFrame.Types, call.ArgumentNodes[i]);
                 }
             }
 
@@ -541,7 +552,7 @@ public sealed partial class Binding
             }
 
             var basePath = callee is MemberAccessKoto memberCallee && this.memberSelections.TryGetValue(memberCallee, out var memberSelection) ? memberSelection.Path : null;
-            (call.CallStorage ??= new()).Set(executed, result, this.CallReceiver(callee), mapping.AsSpan(0, argumentCount), scratch.AsSpan(0, selected.GenericArguments.Count), self, selectedType, origins.AsSpan(0, solveOrigins ? selected.Origins.Count : 0), inputs.AsSpan(0, solveOrigins ? InputOriginCount(selected) : 0), selectedOperations[..argumentCount], receiverOperation, basePath, defaults.AsSpan(0, evaluated[winnerIndex].DefaultsUsed), lengthArguments.AsSpan(0, selected.GenericArguments.Count));
+            (call.CallStorage ??= new()).Set(executed, result, this.CallReceiver(callee), mapping.AsSpan(0, argumentCount), solveFrame.Types[..selected.GenericArguments.Count], self, selectedType, origins.AsSpan(0, solveOrigins ? selected.Origins.Count : 0), inputs.AsSpan(0, solveOrigins ? InputOriginCount(selected) : 0), selectedOperations[..argumentCount], receiverOperation, basePath, defaults.AsSpan(0, evaluated[winnerIndex].DefaultsUsed), solveFrame.Lengths[..selected.GenericArguments.Count]);
             if (selected.IsRequirement)
             {
                 // Retain the bound Contract selected by member lookup or by an operator.
@@ -563,21 +574,22 @@ public sealed partial class Binding
             this.rowScratch.Return(rows, clearArray: true);
             this.indexScratch.Return(childSlices);
             this.childRows.RemoveRange(childBase, this.childRows.Count - childBase); // R3: the evaluation's retained rows end with it.
+            this.positionClasses.RemoveRange(classBase, this.positionClasses.Count - classBase);
             this.originScratch.Return(allInputs, clearArray: true);
             this.originScratch.Return(allOrigins, clearArray: true);
             this.indexScratch.Return(allMaps);
             this.typeScratch.Return(allTypes, clearArray: true);
             this.lengthScratch.Return(allLengths, clearArray: true);
             this.lengthScratch.Return(explicitLengths, clearArray: true);
-            this.lengthScratch.Return(lengthArguments, clearArray: true);
             this.candidateScratch.Return(evaluated, clearArray: true);
             this.originScratch.Return(inputs, clearArray: true);
             this.originScratch.Return(origins, clearArray: true);
             this.typeScratch.Return(waitingContexts, clearArray: true);
+            this.typeScratch.Return(explicitTypes, clearArray: true);
             this.flagScratch.Return(completedWaiting);
             this.flagScratch.Return(used);
             this.indexScratch.Return(mapping);
-            this.typeScratch.Return(scratch, clearArray: true);
+            this.infer.Return(solveFrame);
         }
     }
 
@@ -592,18 +604,17 @@ public sealed partial class Binding
         }
 
         var evaluated = evaluation.Evaluated;
-        var remaining = new RejectedCandidate[evaluation.Applicable];
-        var next = 0;
+        var start = this.rejectedRows.Count;
         var erasure = ErasureIncomparable(evaluated.AsSpan(0, evaluation.Count), evaluation.Operations, evaluation.OperationStride, call.ArgumentNodes.Count);
         for (var i = 0; i < evaluation.Count; i++)
         {
             if (evaluated[i].State is CandidateApplicability.Applicable or CandidateApplicability.Waiting)
             {
-                remaining[next++] = new((FunctionKoto)evaluated[i].Symbol!.Declaration, null, null, ErasureIncomparable: erasure);
+                this.rejectedRows.Add(new((FunctionKoto)evaluated[i].Symbol!.Declaration, null, null, ErasureIncomparable: erasure));
             }
         }
 
-        (this.rejectedCandidates ??= new(ReferenceEqualityComparer.Instance))[call] = remaining;
+        this.RecordRejected(call, start);
         return this.FailWaitingSelection(call, BindingFailure.Ambiguous);
     }
 
@@ -661,6 +672,7 @@ public sealed partial class Binding
         }
     }
 
+    // A call's receiver: a synthetic callee's own, or a member access's qualifier when its published side is Value (PLAN G724, B4).
     private Koto? CallReceiver(Koto callee)
-        => callee is SyntheticKoto synthetic ? synthetic.Receiver : callee is MemberAccessKoto member && (this.requirementGroups.TryGetValue(member, out var group) && group.Active ? !group.TypeAccess : member.Left.BoundSymbol?.Kind is not (BindingSymbolKind.Type or BindingSymbolKind.Container)) ? member.Left : null;
+        => callee is SyntheticKoto synthetic ? synthetic.Receiver : callee is MemberAccessKoto member && this.MemberSideOf(member) == MemberSide.Value ? member.Left : null;
 }

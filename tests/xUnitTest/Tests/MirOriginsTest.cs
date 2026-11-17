@@ -20,8 +20,8 @@ public sealed partial class MirOriginsTest
     // names `a` instead, reports the escape at `local@ref`.
     internal const string FailedClause = ClauseHead + "zz" + ClauseTail;
 
-    // A repeated binding set: `{x}` is already bound by the parameter's Type, so the clause names no bound Origin, the local's slots stay
-    // Unbound (DECISIONS BU-68) and its row `k` meets two.
+    // A repeated binding set: `{x}` is already bound by the parameter's Type, so the clause names no bound Origin and rests nothing
+    // (SPEC 15.3.3, H11b-0 B1); the repeated set rests its uses on the duplicate.
     internal const string RepeatedSet = "struct Holder {a}\n    public let item: ref/i32 during a\n" +
         "    public init(item: ref/i32 during a) => self.item = item\n    public func peek(self: ref/Self) -> i32 => self.item@follow\n" +
         "func run(h: ref/Holder{x}) -> i32\n    let k: ref/Holder{x} = h\n        origin x.a == zz\n    return k.peek()\n";
@@ -335,7 +335,7 @@ public sealed partial class MirOriginsTest
     }
 
     // 2a0-D §3 row 9 and D19: a row with an Unclassed end forms no edge and is the located limit at its Site, whatever Binding's
-    // completeness (DECISIONS R4-M113); a callee's own Parameter atoms no longer reach a caller's rows (I-1, PLAN G195: a call's Origins
+    // completeness (DECISIONS R4-M113); a callee's own Parameter atoms no longer reach a caller's rows (I-1, closed by G216 (a) U3a-r: a call's Origins
     // are its call regions, AValidChainHasNoOriginProblem). An end a Binding failure left Unbound is Dependent instead (R4-M118). A nested
     // result's row with a per-call end lies in the evaluating body, Unclassed, the located limit for valid and invalid alike (r1, r2 and their twins; SPEC
     // 15.3.4, R4-M162: before H5 the invalid ones were Binding's or the old analysis's records), until PLAN G216 (b)'s U-O3 (the front,
@@ -367,10 +367,25 @@ public sealed partial class MirOriginsTest
     public void AConstructorlessLayersRowsAreTheLocatedLimit(string source, params string[] sites)
         => Assert.Equal([.. sites.Select(static x => $"{nameof(DiagnosticCode.Unsupported_Kd)} {x}")], Origins(MirBuildTest.Compile(source + Main)));
 
+    // PLAN G951 E1 (DECISIONS R5-M168's input rule): a layer row outside the root range is the library check's, so the constructorless
+    // layer above (NoBase + LocalInit) adds its limit only under a root range that includes its module.
+    [Fact]
+    public void AConstructorlessLayerOutsideTheRootRangeIsNotJudged()
+    {
+        var c = MirBuildTest.Compile(NoBase + LocalInit + Main);
+        var program = c.BuildMir();
+        var (origins, outside, inside) = (new MirOrigins(c.Types, new MirCases(c.Types)), new MirReport(), new MirReport());
+        origins.Findings(program, outside, 0);
+        origins.Findings(program, inside, c.SourceModules.Length);
+        Assert.Empty(outside.All.ToArray());
+        Assert.Equal([DiagnosticCode.Unsupported_Kd], inside.All.ToArray().Select(static x => x.Code));
+    }
+
     // SPEC 23.1.2 (DECISIONS R4-M118): an end a Binding failure left Unbound is a Dependent node, never a source or a judged target, so a
     // chain that starts or ends at it needs the unresolved Origin and records nothing, Binding's failure explaining the rejection: a
-    // repeated binding set and the meet of its slots, a `var`'s binding set with no initializer, a containment edge into a Dependent
-    // layer, and a Dependent meet at the shorter end whose slot's Type occurrence a later pass resolves.
+    // `var`'s binding set with no initializer, a containment edge into a Dependent layer, and a Dependent meet at the shorter end whose
+    // slot's Type occurrence a later pass resolves. RepeatedSet stays as the control: since H11b-0 B1 its local's failed clause rests
+    // nothing (SPEC 15.3.3), so it has no Dependent end, and its chain still records nothing.
     [Theory]
     [InlineData(RepeatedSet)]
     [InlineData("struct V<T> {source}\n    public let value: ref/T during source\n" +
@@ -388,15 +403,16 @@ public sealed partial class MirOriginsTest
 
     // SPEC 23.1.2 and 15.6.5 (DECISIONS R4-M118): a chain through a Dependent node holds whatever the unresolved Origin is, so it is judged
     // between its ends at its last edge: T1's local Borrow returned `during a` (also with the clause omitted, and with a plain local), a
-    // fixed source the premises do not order, FailedClause's escape (its last edge at the failed `let h`), and BU's forms through a slot
-    // no failed clause names (one local's, a Tuple's second set, an assignment's). Such a slot completes (DECISIONS BU-68): the records
+    // fixed source the premises do not order, FailedClause's escape (its last edge at the failed `let h`, and at the row its value fit
+    // leaves at `h0@move` now that the fit over the resting slot holds: an added record, DECISIONS Q13, PLAN G739), and BU's forms
+    // through a slot no failed clause names (one local's, a Tuple's second set, an assignment's). Such a slot completes (DECISIONS BU-68): the records
     // stay, the assignment's at `p.q`.
     [Theory]
     [InlineData(Escape + "    let h: C{x} = h0@move\n        origin x.s outlives zz\n    return h.r\n", "Unsatisfied", "return h.r")]
     [InlineData(Escape + "    let h: C{x} = h0@move\n    return h.r\n", "Unsatisfied", "return h.r")]
     [InlineData(Escape + "    let h = h0@move\n    return h.r\n", "Unsatisfied", "return h.r")]
     [InlineData(Unordered + "    let h: C{x} = h0@move\n        origin x.s outlives zz\n    return h.r\n", "Unproven", "return h.r")]
-    [InlineData(FailedClause, "Unsatisfied", "let h: C{x} = h0@move")]
+    [InlineData(FailedClause, "Unsatisfied", "h0@move", "let h: C{x} = h0@move")]
     [InlineData(Pair + "    let p: P{x} = P.init(a, l@ref)\n        origin x.s outlives zz\n    return p.q\n", "Unsatisfied", "return p.q")]
     [InlineData(
         HeldLocal + "    let h: (C{x}, C{y}) = (C.init(a), C.init(l@ref))\n        origin x.s == zz\n    return h.1.r\n",
@@ -406,8 +422,8 @@ public sealed partial class MirOriginsTest
         Pair + "    var p: P{x} = P.init(a, a)\n        origin x.s outlives zz\n    p = P.init(a, l@ref)\n    return p.q\n",
         "Unsatisfied",
         "p.q")]
-    public void AChainThroughADependentNodeIsJudgedBetweenItsEnds(string source, string verdict, string site)
-        => Assert.Equal([$"{verdict}OriginRelation_Kd {site}"], Origins(MirBuildTest.Compile(source + Main)));
+    public void AChainThroughADependentNodeIsJudgedBetweenItsEnds(string source, string verdict, params string[] sites)
+        => Assert.Equal([.. sites.Select(x => $"{verdict}OriginRelation_Kd {x}")], Origins(MirBuildTest.Compile(source + Main)));
 
     // SPEC 23.1.2 and MeetNode's rule (2a0-D D15): at the longer end each operand of a meet must outlive the shorter end, so a classed
     // operand's edge beside a Dependent one is an independent judgment: a local's Borrow returned `during a` through `pick`'s meet with the
@@ -432,6 +448,47 @@ public sealed partial class MirOriginsTest
             "        let c = count@ref\n        let l = limit@ref\n        return c@follow + l@follow\n" + Main);
         Assert.Equal([DiagnosticCode.Unsupported_Kd, DiagnosticCode.Unsupported_Kd], c.Binding.Issues.Select(static x => x.Code));
         Assert.Empty(Origins(c));
+    }
+
+    // DECISIONS R4-M154 (Revision 4; MirOrigins.Outlives' contract): the walk from an end stops at a Fixed node, its own included, so
+    // the Fixed nodes at or above c are c alone; c outlives b by z's implied premise (SPEC 15.3.3), so the pair holds; the body's Refuted
+    // store of `local@ref` into p.* (a Finite node above c, Judge's own problem) lies past c. b need not outlive c. Fail-before: a walk
+    // reaching a Fixed node read every edge of the nodes up to its index, so the Finite node joined c's bounds and the pair failed.
+    [Fact]
+    public void AnOutlivesWalkStopsAtAFixedNode()
+    {
+        const string Source = "func f(p: uniq/(ref/i32 during c) during u, z: ref/(ref/i32 during c) during b) -> i32\n    let local = 1\n" +
+            "    p@follow = local@ref\n    return 0\n";
+        var (origins, body, _) = Judged(Source, "f");
+        var z = body.Locals.ToArray().Single(static x => x.Name == "z");
+        var (b, c, site) = (z.Type.Origin!, z.Type.Components[0].Origin!, body.Subject(z.Source));
+        Assert.Equal((true, false), (origins.Outlives(body, 0, c, b, site), origins.Outlives(body, 0, b, c, site)));
+    }
+
+    // PLAN G824 (SPEC 15.6.1, 15.6.5; MirOrigins.Fixed's contract): an Inferred Origin is Fixed under a run's views where its class's
+    // edges reach one Fixed node from it and back, neither path through another Fixed node. r's referent slot equals a (uniq's invariance)
+    // and b reaches it too: Fixed, but not under no view. s and t lie on one cycle through two Fixed nodes (a -> s -> b -> t -> a), each
+    // between a and b: not Fixed. a reaches w, which reaches no Fixed node: not Fixed. Each is a reassignable local's Inferred atom (a
+    // `let` local takes its initializer's Type).
+    [Fact]
+    public void AnInferredOriginIsFixedOnACycleThroughOneFixedNode()
+    {
+        const string Source = "func f(p: uniq/(ref/i32 during a) during u, o: uniq/(ref/i32 during b) during v, q: ref/i32 during a, " +
+            "y: ref/i32 during b) -> i32\n    var s = q\n    o@follow = s\n    var t = y\n    p@follow = t\n    var w = q\n    let lb = 1\n" +
+            "    var r = p@move\n    r@follow = o@follow\n    r@follow = lb@ref\n    return w@follow\n";
+        var (origins, body, c) = Judged(Source, "f");
+        var (rows, views, locals) = (c.Types.OriginRows(body.Key.Body), MirCases.Every(body), body.Locals.ToArray());
+        bool Fixed(string name, bool referent, ulong under)
+        {
+            var local = locals.Single(x => x.Name == name);
+            var (type, site) = (referent ? local.Type.Components[0] : local.Type, body.Subject(local.Source));
+            Assert.Equal(OriginAtomKind.Inferred, rows.Atoms[c.Types.OriginAtom(body.Key.Body, type.Origin!, site)].Kind);
+            return origins.Fixed(type, site, under);
+        }
+
+        Assert.Equal(
+            (true, false, false, false, false),
+            (Fixed("r", true, views), Fixed("r", true, 0), Fixed("s", false, views), Fixed("t", false, views), Fixed("w", false, views)));
     }
 
     // V16 "F4 Refuted" (2a0-D §6.4): N finite Borrows into one chain into one fixed Origin keep the work within c·(N_o + E_o·⌈Fin/64⌉), one
@@ -532,7 +589,7 @@ public sealed partial class MirOriginsTest
                 origins.Judge(body, MirCases.Count(body), report);
             }
 
-            origins.Findings(program, report);
+            origins.Findings(program, report, c.SourceModules.Length);
         }
 
         Run();

@@ -7,9 +7,7 @@ namespace Kimi.Compiler;
 public sealed partial class Binding
 {
     private readonly ScratchBuffers<ConstraintProof> conformanceProofScratch = new();
-    private readonly Dictionary<BoundType, BoundType> associatedIdentityChecks = new(ReferenceEqualityComparer.Instance);
     private readonly List<(Koto Use, BoundType Type, BindingSymbol Contract)> projectionUses = new();
-    private readonly Dictionary<(BoundType Type, BindingScope Scope), Koto> projectionForms = new(); // ProjectionUseOf
     private readonly List<(ForKoto Loop, BoundType Subject, BoundType Iterator, BindingSymbol Entry)> userIterations = new();
     private bool contractHeadersReady;
     private bool bindingConstraintTypes;
@@ -19,14 +17,14 @@ public sealed partial class Binding
     /// <param name="contract">The required Contract identity.</param>
     /// <returns>The verified unconditional definition, or null. Type-formation prerequisites are not discharged.</returns>
     public BoundConformance? GetConformance(BoundType type, BindingSymbol contract)
-        => type.Symbol is { } symbol && this.impls.Find(symbol, contract) is { } result && result.UnconditionalPath is not null ? result : null;
+        => type.Symbol is { } symbol && this.ConformanceOf(symbol, contract) is { } result && result.UnconditionalPath is not null ? result : null;
 
     /// <summary>Gets definition metadata, without asserting availability for any substitution.</summary>
     /// <param name="type">The nominal or constructed Type identifying the declaration.</param>
     /// <param name="contract">The Contract declaration identity.</param>
     /// <returns>The registered definition and paths, or null if absent.</returns>
     public BoundConformance? GetConformanceDefinition(BoundType type, BindingSymbol contract)
-        => type.Symbol is { } symbol && this.impls.Find(symbol, contract) is { } result && result.Paths.Count != 0 ? result : null;
+        => type.Symbol is { } symbol && this.ConformanceOf(symbol, contract) is { } result && result.Paths.Count != 0 ? result : null;
 
     /// <summary>Proves use-site availability and returns a definition-verified evidence path.</summary>
     /// <param name="type">The actual Type, including its generic arguments.</param>
@@ -60,8 +58,9 @@ public sealed partial class Binding
         return false;
     }
 
-    // SPEC 8.4.3, 8.6.1: a Contract named without Type arguments, as an associated Type's owner is, is satisfied by any
-    // bound reference of its declaration.
+    // SPEC 8.4.3, 8.6.1: a query by Contract declaration, which the compiler asks (an associated Type's owner, a library Contract), is
+    // satisfied by any bound reference of that declaration. A written Contract is never such a query: with Type parameters it names a
+    // bound reference (QualifierReference, SPEC 8.5.1, 9.7).
     private static bool SatisfiesDeclaration(BindingSymbol candidate, BindingSymbol parent)
         => IsBoundContractReference(candidate) && !IsBoundContractReference(parent) && ReferenceEquals(candidate.Declaration, parent.Declaration);
 
@@ -78,21 +77,6 @@ public sealed partial class Binding
             GenericsKoto { Identifier: { } identifier } => IsRefinementName(identifier), // SPEC 8.4.3: a parent with Type arguments.
             _ => false,
         };
-
-    // SPEC 8.4.3: the Type-argument application of a refinement parent, below transparent wrappers and a root-name form.
-    private static GenericsKoto? GenericParentApplication(Koto name)
-    {
-        if (name is SyntaxFormKoto { Akind: KotoKind.RootName, Operands: [{ } rooted] })
-        {
-            name = rooted;
-            while (name is TypeSemanticsKoto { IsTransparentWrapper: true, Type: { } inner, OriginName: null, OriginExpression: null, OriginArguments: null })
-            {
-                name = inner;
-            }
-        }
-
-        return name as GenericsKoto;
-    }
 
     private bool ConstraintAccessCovers(BoundConstraint constraint, BindingSymbol contract, BindingSymbol? intersection = null)
     {
@@ -116,12 +100,12 @@ public sealed partial class Binding
     private BoundConformance? ConformanceByDeclaration(BindingSymbol type, BindingSymbol contract, out bool ambiguous)
     {
         ambiguous = false;
-        if (this.impls.Find(type, contract) is { } direct)
+        if (this.ConformanceOf(type, contract) is { } direct)
         {
             return direct;
         }
 
-        if (IsBoundContractReference(contract) || this.impls.OfType(type) is not { } identities)
+        if (IsBoundContractReference(contract) || this.ConformancesOf(type) is not { } identities)
         {
             return null;
         }
@@ -156,46 +140,28 @@ public sealed partial class Binding
 
         this.ResetAssociatedInference();
         this.failedCause = null;
+        this.reentryReads = 0;
         this.contractHeadersReady = false;
         this.bindingConstraintTypes = false;
-        this.impls.Reset();
+        this.impls.Begin(this.storageVersion, this.pass); // Every identity and path is stale (DECISIONS BU-220); the pass view is the pass's.
         this.conformancesRegistered = false;
 
         this.projectionUses.Clear();
-        this.projectionForms.Clear();
         this.userIterations.Clear();
         this.associatedApplications.Clear();
         this.associatedAmbiguities?.Clear();
         this.contractAgreementFailures?.Clear();
         this.ambiguousAssociatedMatches?.Clear();
         this.memberSelections.Clear();
+        this.memberSides.Clear();
         foreach (var group in this.requirementGroups.Values)
         {
             group.Active = false;
-        }
-
-        foreach (var binding in this.associatedBindings.Values)
-        {
-            binding.Candidates.Clear();
-            binding.Result = null;
-            binding.Inferred = null;
-            binding.InferenceSource = null;
-            binding.InferenceConflict = false;
-            binding.Problem = InferenceProblem.None;
-            binding.ProblemSource = null;
-            binding.ProblemDetail = null;
-            binding.EvidenceSources.Clear();
-            binding.State = 0;
-            binding.FormationScope?.Reset();
         }
     }
 
     private void PrepareContracts()
     {
-        this.Library.Copy.Contract ??= new(this.Library.Copy) { State = 2 };
-        this.Library.Owned.Contract ??= new(this.Library.Owned) { State = 2 };
-        this.Library.Sealed.Contract ??= new(this.Library.Sealed) { State = 2 };
-        this.Library.ObjectPayload.Contract ??= new(this.Library.ObjectPayload) { State = 2 };
         for (var n = 0; n < this.nodes.Count; n++)
         {
             if (this.nodes[n] is not ContractKoto contract)
@@ -251,12 +217,10 @@ public sealed partial class Binding
     private void DeclareAssociatedType(Koto declaration, ContractKoto contract)
     {
         var head = AssociatedHead(declaration);
-        var name = head is OriginApplicationKoto application ? UnwrapTransparentType(application.Type) : head;
-        if (name is not (IdentifierNameKoto or TypeSemanticsKoto { Type: null }) || TypeSpelling(name) is not { } spelling)
-        {
-            return; // A qualified specification refines an existing requirement.
-        }
+        var name = head is OriginApplicationKoto application ? UnwrapTransparentType(application.Type)! : head!;
 
+        // Only a declaration reaches here, and its head is a Name: the parser places every specification among the members.
+        var spelling = TypeSpelling(name) ?? throw new InvalidOperationException($"`{declaration}` declares no Name (InternalInvariant; G683).");
         var symbol = this.Declare(declaration, spelling, BindingSymbolKind.AssociatedType, declaration, this.scopes[contract]);
         symbol.Type = this.types.Intern(BoundTypeKind.AssociatedProjection, symbol, SemanticsKind.Owner, [this.ContractSelfType(contract.BoundSymbol!), this.SelfType(contract.BoundSymbol!)], originArguments: this.AssociatedParameters(declaration));
         name.BoundSymbol = symbol;
@@ -300,69 +264,55 @@ public sealed partial class Binding
                 name = inner;
             }
 
-            // SPEC 8.4.3: a parent with Type parameters takes exactly its arguments, possibly below a root-name form, and a
-            // parent without takes none; an empty list is never an application, and a generic parent is never deferred.
-            var generic = GenericParentApplication(name);
-            var parent = this.TypeName(name, this.scopes[contract], LookupRole.Any);
-            if (parent is null && generic is null && this.capabilityMode == BindingMode.Provisional)
+            var generic = ContractApplication(name);
+            var parentPath = this.NamePath(name, this.scopes[contract]);
+            var parent = parentPath.Symbol;
+            if (parent is null && this.PendingReference(syntax, null, this.scopes[contract]))
             {
-                this.BindType(syntax, this.scopes[contract]);
-                if (this.HasUnresolvedConstraintSyntax(syntax, this.scopes[contract]))
-                {
-                    shape.HasUnresolvedParents = true;
-                    continue;
-                }
+                // A missing parent, generic or not, is pending (BU-151, O-216 (a)): a later source may declare it.
+                shape.HasUnresolvedParents = true;
+                continue;
             }
 
-            if (parent?.Declaration is not ContractKoto || parent.Contract is not { } inherited ||
-                (generic?.TypeArguments.Count ?? 0) != ((DeclarationContainerKoto)parent.Declaration).GenericParameterNodes.Count || generic is { TypeArguments.Count: 0 })
+            if (parent is not { IsContract: true } || parent.Contract is not { } inherited)
+            {
+                // A failed parent forms no reference; its Type arguments keep their own records (SPEC 23.1.2), as BindConstructedType's do.
+                this.BindUnappliedArguments(generic, this.scopes[contract], this.TypeContext(syntax, this.scopes[contract]).Nested);
+                this.Fail(syntax, BindingFailure.InvalidConstraint);
+                valid = false;
+                continue;
+            }
+
+            if (!this.BuildContract(inherited))
+            {
+                syntax.BoundSymbol = parent;
+                Complete(syntax, BoundType.Unit);
+                name.BoundSymbol = parent;
+                Complete(name, BoundType.Unit);
+                valid = false;
+                continue;
+            }
+
+            // SPEC 8.4.3, 9.7.1: a parent is a written Contract reference, formed as every one is (BindContractReference: its arity, its
+            // own Type arguments and its outer ones), so its requirements carry the child's own parameters
+            // (contract UniqIndexable<Key>: Indexable<Key>).
+            var selection = parent;
+            parent = this.BindContractReference(name, selection, this.scopes[contract]);
+            if (parent is null && this.PendingReference(syntax, selection, this.scopes[contract]))
+            {
+                shape.HasUnresolvedParents = true; // A Type argument is missing (SPEC 9.7.1): pending as a missing parent is.
+                continue;
+            }
+
+            if (parent is null)
             {
                 this.Fail(syntax, BindingFailure.InvalidConstraint);
                 valid = false;
                 continue;
             }
 
-            syntax.BoundSymbol = parent;
-            Complete(syntax, BoundType.Unit);
-            name.BoundSymbol = parent;
-            Complete(name, BoundType.Unit);
-            if (!this.BuildContract(inherited))
-            {
-                valid = false;
-                continue;
-            }
-
-            // The parent with Type arguments is refined as its bound reference, whose requirements carry the child's own
-            // parameters (contract UniqIndexable<Key>: Indexable<Key>).
-            if (generic is not null)
-            {
-                // The wrappers between a root-name form and its application resolve with the parent.
-                for (var wrapper = name is SyntaxFormKoto { Akind: KotoKind.RootName, Operands: [{ } rooted] } ? rooted : name; !ReferenceEquals(wrapper, generic); wrapper = ((TypeSemanticsKoto)wrapper).Type!)
-                {
-                    wrapper.BoundSymbol = parent;
-                    Complete(wrapper, BoundType.Unit);
-                }
-
-                generic.BoundSymbol = parent;
-                Complete(generic, BoundType.Unit);
-                generic.Identifier!.BoundSymbol = parent;
-                Complete(generic.Identifier, BoundType.Unit);
-                var arguments = this.BindTypeList(
-                    generic.TypeArguments,
-                    this.scopes[contract],
-                    this.TypeContext(generic, this.scopes[contract]).Nested,
-                    BoundTypeKind.Constructed,
-                    parent);
-                if (arguments is null)
-                {
-                    this.Fail(syntax, BindingFailure.InvalidConstraint);
-                    valid = false;
-                    continue;
-                }
-
-                parent = this.BoundContractReference(this.types.Intern(BoundTypeKind.Constructed, parent, SemanticsKind.Owner, (BoundType[])arguments.Components));
-                inherited = parent.Contract!;
-            }
+            CompleteQualifier(syntax, selection, parent);
+            inherited = parent.Contract!;
 
             shape.HasUnresolvedParents |= inherited.HasUnresolvedParents;
 
@@ -395,9 +345,16 @@ public sealed partial class Binding
                 AddAssociated(new(associated, shape.Symbol));
                 Complete(member, BoundType.Unit);
             }
-            else if (member is not EffectBoundKoto)
+            else if (member is IsKoto { IsAssociatedConstraint: true } specification)
             {
-                // An effect specification is checked with the bounds of the Contract (BindEffectBound).
+                // SPEC 8.5.3: a specification constrains an inherited associated Type; its bound requirement (BindAssociatedSpecification)
+                // is one of the Contract's clauses, inherited and checked as they are.
+                shape.ClauseStorage.Add(specification);
+            }
+            else if (member is not EffectBoundKoto && member is not FunctionKoto { Placement: not null })
+            {
+                // An effect specification is checked with the bounds of the Contract (BindEffectBound); a misplaced specialization
+                // (SPEC F.6.2) is no member: it stands for its placement Error, so the Contract's verdict does not rest on it.
                 this.Fail(member, BindingFailure.InvalidConstraint);
                 valid = false;
             }
@@ -462,30 +419,14 @@ public sealed partial class Binding
 
     private ConstraintProof ProveConformance(BoundType type, BindingSymbol contract, BindingScope scope)
     {
-        // Refinement assumptions are input evidence, not in-progress registrations.
-        var premise = IsContractSelf(type) && type.Symbol!.SelfOf is { } own && this.AvailableContractPremise(own) && IsRefinement(own, contract);
+        // SPEC 8.7.4: a proven PrimitiveInteger supplies PrimitiveIntegerSupplies; Wrapping<T> over it has the comparison
+        // conformances of its argument but is never a Position (SPEC 3.1.1). Its Utf8Format is the witness table's WrappingFormat
+        // row, for an abstract T too (Binding.WitnessGroup, R8-S2d1), which ResolveConformance below proves.
+        var premise = contract.LibraryDeclaration is { } supplied && Array.IndexOf(PrimitiveIntegerSupplies, supplied) >= 0 && this.IsGenericInteger(type, scope);
+        premise |= contract.LibraryDeclaration is KimiDeclarationId.Equatable or KimiDeclarationId.Comparable && this.IsGenericWrapping(type, scope);
 
-        // SPEC 8.7.4: a proven PrimitiveInteger supplies the built-in comparison and formatting conformances of the twelve
-        // Types and their conformance to the closed Contract Position; Wrapping<T> over it has the comparison and formatting
-        // conformances of its argument but is never a Position (SPEC 3.1.1).
-        premise |= contract.LibraryDeclaration is KimiDeclarationId.Equatable or KimiDeclarationId.Comparable or KimiDeclarationId.Utf8Format or KimiDeclarationId.Position && this.IsGenericInteger(type, scope);
-        premise |= contract.LibraryDeclaration is KimiDeclarationId.Equatable or KimiDeclarationId.Comparable or KimiDeclarationId.Utf8Format && this.IsGenericWrapping(type, scope);
-        for (var current = scope; current is not null && !premise; current = current.Parent)
-        {
-            if (current.Constraints is not { Invalid: false } environment)
-            {
-                continue;
-            }
-
-            foreach (var fact in environment.Facts)
-            {
-                if (fact.Kind == ConstraintKind.Contract && AssociatedIdentityMatches(fact.Subject, type) && this.AvailableConstraintFact(environment, fact) && this.AvailableContractPremise(fact.Contract!) && IsRefinement(this.AppliedAssociatedContract(fact, type), contract))
-                {
-                    premise = true;
-                    break;
-                }
-            }
-        }
+        // Refinement assumptions are input evidence, not in-progress registrations (PremiseRefines, the refinement row's one predicate).
+        premise = premise || this.PremiseRefines(type, contract, scope);
 
         // Definition evidence is still resolved so that its errors are never hidden by an assumption.
         var proof = this.ResolveConformance(type, contract, scope, out _);
@@ -508,10 +449,10 @@ public sealed partial class Binding
         return constraint.Subject is null ? constraint : this.InternConstraint(new(constraint.Kind, Instantiate(constraint.Subject), constraint.RequiredType is { } required ? Instantiate(required) : null, contract, constraint.Mask));
 
         BoundType Instantiate(BoundType type)
-            => this.ContractType(reference is null ? type : this.SubstituteContractReference(type, reference), scope, self, normalize);
+            => this.ContractType(reference is null ? type : this.SubstituteContractReference(type, reference, out _), scope, self, normalize);
     }
 
-    private bool IsLibraryDeclaration(Koto declaration) => ReferenceEquals(declaration.CodeContext.Kotonoha, this.Library.Kotonoha);
+    private bool IsLibraryDeclaration(Koto declaration) => declaration.Kotonoha.Syntax.IsLibrary;
 
     private void ValidateConformances(BindingMode mode, bool final)
     {
@@ -520,28 +461,22 @@ public sealed partial class Binding
         {
             // Body/header validation may invalidate an earlier declaration-side witness of the sources. The Kimi library's
             // declarations are valid and fixed (a malformed library fails the pass), so a library conformance proven before the
-            // bodies stays proven, and only an unproven one is judged again.
-            foreach (var identity in this.impls.Identities)
+            // bodies stays proven, and only an unproven one is judged again: the sources' are the program part (ImplTable's store rule).
+            foreach (var identity in this.impls.Identities.Program)
             {
-                if (!this.IsLibraryDeclaration(identity.Type.Declaration))
-                {
-                    identity.IsVerified = false;
-                }
+                identity.IsVerified = false;
             }
 
-            for (var i = 0; i < this.impls.Paths.Count; i++)
+            foreach (var path in this.impls.Paths.Program)
             {
-                if (!this.IsLibraryDeclaration(this.impls.Paths[i].Type.Declaration))
-                {
-                    this.impls.Paths[i].IsVerified = false;
-                }
+                path.IsVerified = false;
             }
         }
 
         this.PublishSourceStates();
-        for (var i = 0; i < this.impls.Paths.Count; i++)
+        for (var i = 0; i < this.impls.InPass.Paths.Count; i++)
         {
-            var conformance = this.impls.Paths[i];
+            var conformance = this.impls.InPass.Paths[i];
             this.failedCause = null;
             var frame = this.BeginConsultation(conformance.Use); // The proof's reads of other nodes (RequireConstraintInFrame).
             var proof = this.VerifyConformance(conformance);
@@ -561,12 +496,13 @@ public sealed partial class Binding
         if (final)
         {
             this.InvalidateAssociatedEvidence();
-            foreach (var identity in this.impls.Identities)
+            foreach (var identity in this.impls.InPass.Identities)
             {
                 if (identity.PathStorage.Count != 0)
                 {
                     this.failedCause = null;
                     this.conformanceChecks++;
+                    var frame = this.BeginConsultation(identity.PathStorage[0].Use); // The agreement's judgment is at its first path's use.
                     var agreement = this.VerifyConformanceAgreement(identity);
                     this.conformanceChecks--;
                     var explicitPath = false;
@@ -577,7 +513,11 @@ public sealed partial class Binding
 
                     if (explicitPath || agreement == ConstraintProof.Error)
                     {
-                        this.RequireConstraint(identity.PathStorage[0].Use, agreement, mode);
+                        this.RequireConstraintInFrame(identity.PathStorage[0].Use, agreement, mode, frame);
+                    }
+                    else
+                    {
+                        this.DropConsultation(frame);
                     }
                 }
             }
@@ -603,28 +543,7 @@ public sealed partial class Binding
             }
 
             var scope = this.scopes[this.nodes[n]];
-            this.ValidateAssociatedOverlapAgreement(scope);
-            if (scope.Constraints is { } environment)
-            {
-                this.associatedIdentityChecks.Clear();
-                foreach (var a in environment.Facts)
-                {
-                    if (a is not { Kind: ConstraintKind.TypeIdentity, Subject.Kind: BoundTypeKind.AssociatedProjection, RequiredType: { } ta } ||
-                        this.DependentType(ta))
-                    {
-                        continue;
-                    }
-
-                    if (this.associatedIdentityChecks.TryGetValue(a.Subject, out var previous) && !this.SameCompleteType(ta, previous))
-                    {
-                        environment.Invalid = true;
-                        this.Fail(scope.Owner, BindingFailure.InvalidAssociatedType);
-                    }
-
-                    this.associatedIdentityChecks[a.Subject] = ta;
-                }
-            }
-
+            this.ValidateAssociatedOverlapAgreement(scope); // SPEC 8.2.3's premise error is the identity classes' (Binding.TypeIdentity).
             if (scope.Owner is not ContractKoto contract || contract.BoundSymbol!.Contract is not { } shape)
             {
                 continue;
@@ -686,7 +605,7 @@ public sealed partial class Binding
                                 break;
                             }
 
-                            sameSignature &= SignatureEquals(this.ContractType(this.SubstituteContractReference(ta, members[i].Contract), scope), this.ContractType(this.SubstituteContractReference(tb, members[j].Contract), scope), a, b);
+                            sameSignature &= SignatureEquals(this.ContractType(this.SubstituteContractReference(ta, members[i].Contract, out _), scope), this.ContractType(this.SubstituteContractReference(tb, members[j].Contract, out _), scope), a, b);
                             differentLabels |= a.Parameters[p].ExternalName != b.Parameters[p].ExternalName;
                         }
 

@@ -110,7 +110,7 @@ internal ref struct Tokenizer
 
     internal bool DocumentationFailed { get; private set; }
 
-    internal Documentation.DocumentationSource? Documentation { get; private set; }
+    internal DocumentationSource? Documentation { get; private set; }
 
     /// <summary>
     /// Gets the character following the current one, or NUL at the end of the source.

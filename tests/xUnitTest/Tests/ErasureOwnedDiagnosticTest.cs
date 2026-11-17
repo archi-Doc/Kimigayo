@@ -130,7 +130,7 @@ public class ErasureOwnedDiagnosticTest
     [InlineData("func use(s: S) -> ()\n    let g: () -> () = func [s@move] () => ()\n    let h: () -> () = g@move\n    return\n", null)]
     public void AnOwnedFailureOnAFailedDeclarationIsDerived(string uses, string? own)
         => Assert.Equal(
-            ["InvalidConstraint_Kd contract", "InvalidConstraint_Kd Missing", "InvalidTypeFormation_Kd struct", "InvalidTypeFormation_Kd C", .. own is null ? Array.Empty<string>() : [own]],
+            ["InvalidConstraint_Kd contract", "InvalidConstraint_Kd Missing", "InvalidTypeFormation_Kd struct", "UnresolvedBinding_Kd C", .. own is null ? Array.Empty<string>() : [own]],
             Records("contract C: Missing\n    func m(self) -> i32\n\nstruct S: C\n    let x: i32\n    func m(self) -> i32 => 1\n\n" + uses + "\n" + Main + "    return\n"));
 
     // The valid twins: the same captures of a declaration that formed convert with no record.
@@ -151,7 +151,7 @@ public class ErasureOwnedDiagnosticTest
     public void AnOwnedFailureOnAFailedStoredTypeIsDerived(string uses, string? own)
     {
         Assert.Equal(
-            ["InvalidConstraint_Kd contract", "InvalidConstraint_Kd Missing", "InvalidTypeFormation_Kd struct", "InvalidTypeFormation_Kd C", .. own is null ? Array.Empty<string>() : [own]],
+            ["InvalidConstraint_Kd contract", "InvalidConstraint_Kd Missing", "InvalidTypeFormation_Kd struct", "UnresolvedBinding_Kd C", .. own is null ? Array.Empty<string>() : [own]],
             Records("contract C: Missing\n    func m(self) -> i32\n\nstruct S: C\n    let x: i32\n    func m(self) -> i32 => 1\n\n" + uses + "\n" + Main + "    return\n"));
         Assert.Empty(Records("struct S\n    let x: i32\n\n" + uses + "\n" + Main + "    return\n"));
     }
@@ -189,7 +189,7 @@ public class ErasureOwnedDiagnosticTest
     // InternalInvariant_Kd at the closure.
     [Theory]
     [InlineData("ch-opt", "contract K\n    associate B\ncontract Has2\n    associate Out\nstruct Q<X>\n    Self is K\n    associate K.B is PH<W<(X, X)>>\nstruct W<X>\n    Self is Has2\n    associate Has2.Out is Q<X>\nstruct PH<T>\n    T is Has2\n    T.(Has2).Out is K\n    let v: T.(Has2).Out.(K).B\nstruct S\n    let p: Option<PH<W<i32>>>\nfunc inspect(a: S) -> ()\n    let g: () -> () = func [a@move] () => ()\n    return\n\n", "InvalidInlineLayout_Kd K.B is PH<W<(X, X)>> | InvalidConstraint_Kd PH<W<(X, X)>> | InvalidConstraint_Kd let p: Option<PH<W<i32>>> | InvalidConstraint_Kd PH<W<i32>> | InvalidConstraint_Kd PH<W<i32>>")]
-    [InlineData("ch2", "contract K\n    associate B\ncontract Has2\n    associate Out\nstruct Q<X>\n    X is Has2\n    Self is K\n    associate K.B is PH<W<(X, X)>>\nstruct W<X>\n    Self is Has2\n    associate Has2.Out is Q<W<(X, X)>>\nstruct PH<T>\n    T is Has2\n    T.(Has2).Out is K\n    let v: T.(Has2).Out.(K).B\nstruct S\n    let p: Option<PH<W<i32>>>\nfunc inspect(a: S) -> ()\n    let g: () -> () = func [a@move] () => ()\n    return\n\n", "InvalidConstraint_Kd struct | InvalidInlineLayout_Kd K.B is PH<W<(X, X)>> | InvalidConstraint_Kd PH<W<(X, X)>> | UnprovenConstraint_Kd Self is Has2 | InvalidConstraint_Kd Q<W<(X, X)>> | PrerequisiteUnavailable_Kd let p: Option<PH<W<i32>>> | InvalidConstraint_Kd PH<W<i32>> | InvalidConstraint_Kd PH<W<i32>>")]
+    [InlineData("ch2", "contract K\n    associate B\ncontract Has2\n    associate Out\nstruct Q<X>\n    X is Has2\n    Self is K\n    associate K.B is PH<W<(X, X)>>\nstruct W<X>\n    Self is Has2\n    associate Has2.Out is Q<W<(X, X)>>\nstruct PH<T>\n    T is Has2\n    T.(Has2).Out is K\n    let v: T.(Has2).Out.(K).B\nstruct S\n    let p: Option<PH<W<i32>>>\nfunc inspect(a: S) -> ()\n    let g: () -> () = func [a@move] () => ()\n    return\n\n", "InvalidConstraint_Kd struct | InvalidInlineLayout_Kd K.B is PH<W<(X, X)>> | InvalidConstraint_Kd PH<W<(X, X)>> | InvalidConstraint_Kd Self is Has2 | PrerequisiteUnavailable_Kd let p: Option<PH<W<i32>>> | InvalidConstraint_Kd PH<W<i32>> | InvalidConstraint_Kd PH<W<i32>>")]
     [InlineData("r-opt", "contract Has2\n    associate Out\nstruct V<Y>\n    Self is Has2\n    associate Has2.Out is i32\nstruct W<X>\n    Self is Has2\n    associate Has2.Out is PH<W<(X, X)>>\nstruct PH<T>\n    T is Has2\n    let v: T.(Has2).Out\nstruct S\n    let p: Option<PH<W<i32>>>\nfunc inspect(a: S) -> ()\n    let g: () -> () = func [a@move] () => ()\n    return\n\n", "InvalidInlineLayout_Kd Has2.Out is PH<W<(X, X)>> | InvalidConstraint_Kd PH<W<(X, X)>> | InvalidConstraint_Kd let p: Option<PH<W<i32>>> | InvalidConstraint_Kd PH<W<i32>> | InvalidConstraint_Kd PH<W<i32>>")]
     [InlineData("r-tup", "contract Has2\n    associate Out\nstruct V<Y>\n    Self is Has2\n    associate Has2.Out is i32\nstruct W<X>\n    Self is Has2\n    associate Has2.Out is PH<W<(X, X)>>\nstruct PH<T>\n    T is Has2\n    let v: T.(Has2).Out\nstruct S\n    let p: (PH<W<i32>>, i32)\nfunc inspect(a: S) -> ()\n    let g: () -> () = func [a@move] () => ()\n    return\n\n", "InvalidInlineLayout_Kd Has2.Out is PH<W<(X, X)>> | InvalidConstraint_Kd PH<W<(X, X)>> | InvalidConstraint_Kd let p: (PH<W<i32>>, i32) | InvalidConstraint_Kd PH<W<i32>> | InvalidConstraint_Kd PH<W<i32>>")]
     [InlineData("r-arr", "contract Has2\n    associate Out\nstruct V<Y>\n    Self is Has2\n    associate Has2.Out is i32\nstruct W<X>\n    Self is Has2\n    associate Has2.Out is PH<W<(X, X)>>\nstruct PH<T>\n    T is Has2\n    let v: T.(Has2).Out\nstruct S\n    let p: Array<PH<W<i32>>>\nfunc inspect(a: S) -> ()\n    let g: () -> () = func [a@move] () => ()\n    return\n\n", "InvalidInlineLayout_Kd Has2.Out is PH<W<(X, X)>> | InvalidConstraint_Kd PH<W<(X, X)>> | InvalidConstraint_Kd let p: Array<PH<W<i32>>> | InvalidConstraint_Kd PH<W<i32>> | InvalidConstraint_Kd PH<W<i32>>")]
@@ -242,10 +242,12 @@ public class ErasureOwnedDiagnosticTest
     // Owned, so the capture's record is independent (SPEC 15.2.3, 23.1.2) of the two at inspect's signature, whose premises inspect cannot
     // prove. The row with one conformance fewer (S is Invalid) pins a dependent UnprovenConstraint_Kd at the closure: an interim the owner
     // approved under PLAN G354 (3), removed with G354 (3)'s settle for Unknown Owned verdicts on a context that fails by the prologue.
+    // In that row `let p` reads S's Invalid environment, which names its failed node (PLAN G651 U1), so its dependent record rests on that
+    // node's reported one (rule W, DECISIONS Q13).
     [Theory]
     [InlineData(2, 3, "UnprovenConstraint_Kd S<Y> | UnprovenConstraint_Kd S<Y> | UnprovenConstraint_Kd func [a@move] () => ()")]
     [InlineData(140, 141, "UnprovenConstraint_Kd S<Y> | UnprovenConstraint_Kd S<Y> | UnprovenConstraint_Kd func [a@move] () => ()")]
-    [InlineData(2, 2, "InvalidConstraint_Kd struct | InvalidConstraint_Kd Y0.(Has2).Out | InvalidConstraint_Kd Y1.(Has2).Out | UnprovenConstraint_Kd PH<W<Y2>> | InvalidConstraint_Kd W<Y2> | InvalidConstraint_Kd W<Y2> | PrerequisiteUnavailable_Kd let p: PH<W<Y0>> | InvalidConstraint_Kd p | InvalidConstraint_Kd PH<W<Y0>> | InvalidConstraint_Kd PH<W<Y0>> | InvalidConstraint_Kd W<Y0> | InvalidConstraint_Kd W<Y0> | UnprovenConstraint_Kd S<Y> | UnprovenConstraint_Kd S<Y> | UnprovenConstraint_Kd func [a@move] () => ()")]
+    [InlineData(2, 2, "InvalidConstraint_Kd struct | InvalidConstraint_Kd Y0.(Has2).Out | InvalidConstraint_Kd Y1.(Has2).Out | UnprovenConstraint_Kd PH<W<Y2>> | InvalidConstraint_Kd W<Y2> | InvalidConstraint_Kd W<Y2> | InvalidConstraint_Kd p | InvalidConstraint_Kd PH<W<Y0>> | InvalidConstraint_Kd PH<W<Y0>> | InvalidConstraint_Kd W<Y0> | InvalidConstraint_Kd W<Y0> | UnprovenConstraint_Kd S<Y> | UnprovenConstraint_Kd S<Y> | UnprovenConstraint_Kd func [a@move] () => ()")]
     public void AnIdentityStepIsWalkedNotTestedForReEntry(int identities, int conformances, string records)
     {
         var parameters = string.Join(", ", Enumerable.Range(0, identities + 1).Select(static i => "Y" + i));

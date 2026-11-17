@@ -17,11 +17,12 @@ public sealed partial class Binding
             Call = evaluation.Call,
             Binder = function,
             Generic = evaluation.Generic,
+            ExplicitTypes = evaluation.ExplicitTypes.AsSpan(0, evaluation.Generic?.TypeArguments.Count ?? 0),
+            ExplicitLengths = evaluation.ExplicitLengths.AsSpan(0, evaluation.Generic?.TypeArguments.Count ?? 0),
             Scope = evaluation.Scope,
             Self = evaluation.Self,
             DeclaringType = declaringType,
-            Types = evaluation.Scratch,
-            Lengths = evaluation.LengthArguments,
+            Frame = evaluation.Frame,
             Origins = evaluation.Origins,
             Inputs = evaluation.Inputs,
         };
@@ -33,8 +34,7 @@ public sealed partial class Binding
         InvocationKoto? call,
         EnumKoto declaration,
         BindingScope scope,
-        BoundType?[] slots,
-        BoundLength?[] lengths,
+        SlotFrame frame,
         BoundOrigin[] origins)
         => new()
         {
@@ -42,31 +42,33 @@ public sealed partial class Binding
             Call = call!,
             Binder = declaration,
             Scope = scope,
-            Types = slots,
-            Lengths = lengths,
+            Frame = frame,
             Origins = origins,
             Inputs = [],
             FixedConstruction = true,
         };
 
     // The SPEC 10.8 solve state of one candidate or one Case construction (DECISIONS BU-2): its Type, length and Origin slots and its
-    // input Origins, with what substitution reads (scope, Self, declaring Type), its explicit Type arguments, whether a construction's
-    // inferred Type is checked fixed (ValidateFixedConstruction), the Origin inference its evidence begins, and a candidate's
-    // root rows, what each argument's position contributes to its call (F1, Rows; DECISIONS R4-M164). The binder (a function or
-    // an enum) binds the Origins; the slots belong to the SlotOwner: the binder, or the structure for a constructor. Invariant: a Case
-    // construction supplies data, and no operation of the shared walks (Pattern, Type, the evidence walk, the defaults, the
-    // waiting-binds-F rule) reads Function; only a candidate's operations (its Constraints, its call's arguments) do.
+    // input Origins, with what substitution reads (scope, Self, declaring Type), its explicit Type arguments (their syntax and their
+    // Types and lengths, bound once per call), whether a construction's inferred Type is checked fixed (ValidateFixedConstruction), the
+    // slot bindings fixed before any evidence (Fixed, which FixCallSlots publishes as it seeds the frame), the Origin inference its
+    // evidence begins, and a candidate's root rows, what each argument's position contributes to its call (F1, Rows; DECISIONS R4-M164).
+    // The binder (a function or an enum) binds the Origins; the slots belong to the SlotOwner: the binder, or the structure for a
+    // constructor. Invariant: a Case construction supplies data, and no operation of the shared walks (Pattern, Type, the evidence walk,
+    // the defaults, the waiting-binds-F rule) reads Function; only a candidate's operations (its Constraints, its call's arguments) do.
     private ref partial struct SlotSolution
     {
         internal Binding Binding;
         internal InvocationKoto Call;
         internal Koto Binder;
         internal GenericsKoto? Generic;
+        internal ReadOnlySpan<BoundType?> ExplicitTypes;
+        internal ReadOnlySpan<BoundLength?> ExplicitLengths;
+        internal FixedSlots Fixed;
         internal BindingScope Scope;
         internal BoundType? Self;
         internal BoundType? DeclaringType;
-        internal BoundType?[] Types;
-        internal BoundLength?[] Lengths;
+        internal SlotFrame Frame;
         internal BoundOrigin[] Origins;
         internal BoundOrigin[] Inputs;
         internal bool FixedConstruction;
@@ -85,6 +87,11 @@ public sealed partial class Binding
         // from the retained rows (CollectPositionPremises) and read by each discovery (DiscoverPremiseOrigins); its solve returns it.
         internal SlotSet EvidenceNamed;
 
+        // The solution's Type and length slots, read-only: the frame's writes are InferCtxt's (DECISIONS R7-I2).
+        internal readonly ReadOnlySpan<BoundType?> Types => this.Frame.Types;
+
+        internal readonly ReadOnlySpan<BoundLength?> Lengths => this.Frame.Lengths;
+
         // The slots' owner, whether it is a constructor's structure rather than the binder, and the binder's Origin count.
         internal readonly Koto SlotOwner => CallSlotOwner(this.Binder);
 
@@ -94,6 +101,10 @@ public sealed partial class Binding
 
         // The candidate's function, for the operations of a call.
         internal readonly FunctionKoto Function => (FunctionKoto)this.Binder;
+
+        // The candidate's substitution over `slots`, its Type slots as solved or as a proof supposes them (Binding.CallSubstitution).
+        internal readonly CallSubstitution Substitution(ReadOnlySpan<BoundType?> slots)
+            => SubstitutionOf(this.Binder, this.DeclaringType, slots, this.Lengths, this.Origins, this.Inputs);
 
         // The pattern with the solution substituted, or null while it holds an unbound slot.
         internal readonly BoundType? Type(BoundType pattern)
@@ -122,7 +133,7 @@ public sealed partial class Binding
             var unsolved = this.Binding.RentSlotSet(CallSlotCount(this.Function));
             try
             {
-                this.Binding.UnsolvedSlots(this.Call, this.Function, this.Types, this.Lengths, mapping, ref unsolved, out _);
+                this.Binding.UnsolvedSlots(this.Call, this.Function, this.Types, this.Lengths, mapping, ref unsolved);
                 var open = new OpenWaitingSlots(ref unsolved, this);
                 for (var i = 0; i < this.Call.ArgumentNodes.Count; i++)
                 {
@@ -148,15 +159,15 @@ public sealed partial class Binding
             {
                 // SPEC 10.7, 10.8: first instantiate each argument's per-call input at a required input over a fixed Origin; when every
                 // Constraint then holds, that instantiation solves the slots and nothing is reported.
-                this.Types.AsSpan(0, count).CopyTo(restored);
+                this.Types[..count].CopyTo(restored);
                 if (this.StandIns(mapping, restored.AsSpan(0, count), marks, true) && this.Prove(restored.AsSpan(0, count), false) == ConstraintProof.Proven)
                 {
-                    restored.AsSpan(0, count).CopyTo(this.Types);
+                    this.Frame.CopyTypes(restored.AsSpan(0, count));
                     this.CompleteOperationTypes(marks);
                     return true;
                 }
 
-                this.Types.AsSpan(0, count).CopyTo(restored);
+                this.Types[..count].CopyTo(restored);
                 var marked = this.StandIns(mapping, restored.AsSpan(0, count), marks, false);
                 if (!marked || this.Prove(restored.AsSpan(0, count), false) != ConstraintProof.Proven)
                 {
@@ -195,12 +206,13 @@ public sealed partial class Binding
             var binding = this.Binding;
             var function = this.Function;
             var constructor = function.IsConstructor;
-            var arguments = constructor ? this.Types.AsSpan(0, CallSlotCount(function)) : slots;
+            var arguments = constructor ? this.Types[..CallSlotCount(function)] : slots;
             binding.BeginProof(); // A candidate's applicability is one conjunction (DECISIONS BU-22).
             var closedOwner = this.DeclaringType is { } declaringType
                 ? (constructor ? binding.ConstructionType(function, declaringType, this.Types) : declaringType) : null;
+            var reference = binding.activeRequirementContract; // The Contract reference CallSelection tries the candidate under (SPEC 8.6.4).
             var bindings = new CandidateBindings(
-                function, function.BoundSymbol!, arguments, this.Lengths, this.Self, this.DeclaringType, closedOwner, unbound, constructor);
+                function, function.BoundSymbol!, this.Substitution(arguments), this.Self, this.DeclaringType, closedOwner, reference, unbound, constructor);
             var proof = binding.StepFiveConjunction(bindings, this.Scope, incomplete, this.SlotOwner);
             proof = CombineProof(proof, binding.CheckSignatureTypeConstraints(function), true); // The trial's alone until R7-C2 (b) (PLAN G375).
             var fact = binding.ProofCause(proof) is null ? binding.ProofFact(proof) : null; // A limit takes precedence.
@@ -230,7 +242,7 @@ public sealed partial class Binding
 
             if (binding.PerCallStandIn(type, argument, type, true) is { } instantiated && this.FitsCallable(node, instantiated))
             {
-                binding.InstantiateOpenOrigins(this.Types.AsSpan(0, CallOwnSlots(this.Function).Count), argument, type);
+                binding.InstantiateOpenOrigins(this.Frame, CallOwnSlots(this.Function).Count, argument, type);
                 operation = new(argument, node.BoundType, instantiated, ArgumentOperationKind.Value, ArgumentAdaptation.Erasure);
                 return CandidateApplicability.Applicable;
             }
@@ -248,14 +260,6 @@ public sealed partial class Binding
         private readonly bool FitsCallable(Koto node, BoundType type)
             => node.BoundType is { } actual
                 ? this.Binding.ErasureSignatureFits(actual, type, node, out _) : this.Binding.FunctionGroupFits(node, node.BoundSymbol!, type, this.Scope);
-
-        // Whether the call infers a construction's Type from its arguments (SPEC 10.8.1), and its target.
-        private readonly bool InfersConstruction(out Koto? target)
-        {
-            target = !this.FixedConstruction && this.Call.Method is MemberAccessKoto member && this.Binding.inferredConstructorTargets.Contains(member.Left)
-                ? member.Left : null;
-            return target is not null;
-        }
 
         private readonly Span<BoundOrigin> InputSpan() => this.Inputs.AsSpan(0, Math.Min(this.Inputs.Length, InputOriginCount(this.Binder)));
 

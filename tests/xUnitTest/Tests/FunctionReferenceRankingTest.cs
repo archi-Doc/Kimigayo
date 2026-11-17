@@ -48,7 +48,7 @@ public class FunctionReferenceRankingTest(ITestOutputHelper output)
     {
         var c = MinimalEmissionTest.Analyze(Types + Broad + "unsafe " + Narrow + "let action: ((i32) -> Never) -> i32 = choose");
         Assert.False(c.Binding.Result.IsComplete);
-        Assert.Equal(DiagnosticCode.UnsafeFunctionValue_Kd, Assert.Single(c.Binding.Issues).Code);
+        Assert.Equal(DiagnosticCode.DirectCallFunctionValue_Kd, Assert.Single(c.Binding.Issues).Code);
     }
 
     [Theory]

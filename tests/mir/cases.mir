@@ -81,13 +81,13 @@ fn keep @4
       drop _8 -> bb16 [elide] @35 s1
   bb16:
       StorageDead(_8) @35 s1
-      drop _4 -> bb17 @24 s1
+      drop _4 -> bb17 [keep in v0; elide in v1] @24 s1
   bb17:
       StorageDead(_4) @24 s1
-      drop _3 -> bb18 @19 s1
+      drop _3 -> bb18 [keep in v0; elide in v1] @19 s1
   bb18:
       StorageDead(_3) @19 s1
-      drop _2 -> bb19 @16
+      drop _2 -> bb19 [keep] @16
   bb19:
       drop _1 -> bb20 [elide] @14
   bb20:
@@ -178,18 +178,18 @@ fn both @38
   bb19:
       StorageDead(_11) @86 s1
       StorageDead(_10) @85 s1
-      drop _8 -> bb20 @77 s1
+      drop _8 -> bb20 [keep in v0; elide in v1; keep in v2; elide in v3] @77 s1
   bb20:
       StorageDead(_8) @77 s1
-      drop _7 -> bb21 @74 s1
+      drop _7 -> bb21 [keep in v0; elide in v1; keep in v2; elide in v3] @74 s1
   bb21:
       StorageDead(_7) @74 s1
-      drop _4 -> bb22 @64 s1
+      drop _4 -> bb22 [keep in v0, v1; elide in v2, v3] @64 s1
   bb22:
       StorageDead(_4) @64 s1
-      drop _3 -> bb23 @61
+      drop _3 -> bb23 [keep] @61
   bb23:
-      drop _2 -> bb24 @59
+      drop _2 -> bb24 [keep in v0; elide in v1; keep in v2; elide in v3] @59
   bb24:
       drop _1 -> bb25 [elide] @57
   bb25:
@@ -239,9 +239,9 @@ fn peek @87
       drop _3 -> bb10 [elide] @106 s1
   bb10:
       StorageDead(_3) @106 s1
-      drop _2 -> bb11 @99
+      drop _2 -> bb11 [keep] @99
   bb11:
-      drop _1 -> bb12 @97
+      drop _1 -> bb12 [keep in v0; elide in v1] @97
   bb12:
       unreachable @104
 fn caller @107
@@ -305,7 +305,7 @@ fn caller @107
   bb15:
       StorageDead(_3) @124 s1
       StorageDead(_2) @122 s1
-      drop _1 -> bb16 @117
+      drop _1 -> bb16 [keep in v0; elide in v1] @117
   bb16:
       unreachable @120
 fn exclusive @125

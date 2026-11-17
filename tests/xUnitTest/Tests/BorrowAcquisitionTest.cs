@@ -130,10 +130,12 @@ public class BorrowAcquisitionTest
     }
 
     // SPEC 3.5.1, 8.15.2 (DECISIONS BU-45): the pair layer's Reborrow through an exclusive path, and through the acquiring binder's own
-    // layers into a payload, keeps its plan in every case, so check accepts the program.
+    // layers into a payload, keeps its plan in every case, so check accepts the program. G254a (PLAN G254; Q17 class 1; SPEC 15.6.3): the
+    // payload's Reborrow is contained in `b` too (WF gives `a outlives b`), so its valid payload is `Option<s/T during b>`; the former
+    // `Option<s/T during a>` needs `b outlives a` and is APayloadsAcquisitionAndFitAreEachRecorded's row, as its concrete twin.
     [Theory]
     [InlineData("x: uniq/(s/T during a) during b", "let y = x@follow\n    _ = y@move")]
-    [InlineData("x: s/(s/T during a) during b", "let o = Option<s/T during a>.Some(x@follow)\n    _ = o@move")]
+    [InlineData("x: s/(s/T during a) during b", "let o = Option<s/T during b>.Some(x@follow)\n    _ = o@move")]
     public void APairLayersReborrowThroughExclusiveLayersIsAccepted(string parameters, string use)
         => Assert.Empty(DiagnosticCorpus.Check($"func f<s/T>({parameters})\n    s is ref or uniq\n    {use}\npublic func main() => ()\n").Diagnostics);
 
@@ -150,6 +152,8 @@ public class BorrowAcquisitionTest
     [InlineData("r: ref/i32", "s is ref", "var q = 1\n    let o: Option<uniq/i32 during r> = .Some(q)\n    _ = o@move", "ExclusiveBorrowRequired_Kd q; UnsatisfiedOriginRelation_Kd q")]
     [InlineData("r: ref/i32", "s is ref", "var q = 1\n    let o: Option<uniq/i32 during r> = .Some(q@uniq)\n    _ = o@move", "UnsatisfiedOriginRelation_Kd q@uniq")]
     [InlineData("r: ref/i32", "s is ref", "var q = 1\n    let o: Option<uniq/i64> = .Some(q)\n    _ = o@move", "TypeMismatch_Kd .Some(q)")]
+    [InlineData("x: s/(s/T during a) during b", "s is ref or uniq", "let o = Option<s/T during a>.Some(x@follow)\n    _ = o@move", "UnprovenOriginRelation_Kd x@follow")]
+    [InlineData("x: uniq/(uniq/T during a) during b", "s is ref", "let o = Option<uniq/T during a>.Some(x@follow)\n    _ = o@move", "UnprovenOriginRelation_Kd x@follow")]
     public void APayloadsAcquisitionAndFitAreEachRecorded(string parameters, string constraints, string use, string errors)
     {
         var source = $"func f<s/T>({parameters}) -> ()\n    {constraints}\n    {use}\n";

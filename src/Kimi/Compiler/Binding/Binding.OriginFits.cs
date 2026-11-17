@@ -24,6 +24,10 @@ public sealed partial class Binding
     // The failed chains of one fit (FailedOriginRelation with `all`), which RecordOriginFitFailure publishes.
     private readonly List<OriginRelationFact> relationScratch = new();
 
+    // SPEC 23.1.2 (PLAN G739): whether an Origin position of the recording fit being walked held by resting (FitOrigin), cleared at the
+    // fit's entry (FitsTypeAt, CheckTypeUseCore), which forms the fit's rows from it (CheckTypeUse).
+    private bool fitRested;
+
     // The pass's twin nodes (DECISIONS R4-M108, R4-M111): a fit's node with a recorded body chain and a local clause whose record is one,
     // each added where its rows are formed.
     private HashSet<Koto>? originTwins;
@@ -72,7 +76,7 @@ public sealed partial class Binding
     // records (RecordOriginChains). A position the relation judge fails records every failed chain; a position that is only unproven is
     // recorded when an end is unresolved and is otherwise Unsupported, unless a failed Origin environment explains it. A record at a
     // body chain (2a0-D D1, ends resolved at the use) gives every position of the fit, fixed-fixed ones included, a row of its body for
-    // A5 (CheckTypeUse's obligations, up to its first differing Function Type component); the records stay Binding's until R7
+    // A5 (CheckTypeUse's obligations, which go on past a differing Function Type component); the records stay Binding's until R7
     // (DECISIONS R4-M108).
     private bool RecordOriginFitFailure(Koto node, Koto at, BoundType actual, BoundType expected)
     {
@@ -169,8 +173,13 @@ public sealed partial class Binding
     // - Invariants: reads proof and judgment only and changes no inference, obligation or declaration state; an `outlives` record names a
     //   failing operand's chain, the whole longer end only when no operand fails alone; a value of the struct allocates nothing.
     // - Prohibitions: no record or failure (the callers record); no body read from the forming context.
-    private readonly struct OriginFitSearch(Binding binding, Koto use, ExecutableBody body, OriginFitMode mode, List<OriginRelationFact>? all = null)
+    private readonly struct OriginFitSearch(Binding binding, Koto use, ExecutableBody body, OriginFitMode mode, List<OriginRelationFact>? all = null) : IOriginConjunct
     {
+        // The search's leaf of HoldsResting: one conjunct's ordinary answer.
+        public bool Holds(BoundOrigin longer, BoundOrigin shorter, ulong condition)
+            => binding.ProvesOriginOutlives(longer, shorter, use, condition) ||
+                (mode == OriginFitMode.Judged && !binding.OriginRelationFails(longer, shorter, use, body, condition));
+
         // SPEC 15.6.1: the first Origin position of a fit, in the order of the outer borrow layer, the Semantics target, then slots and
         // Type arguments, whose relation fails; `==` at an invariant position. It is Refuted when the longer end is a body-local finite
         // Origin and the shorter end a fixed one, and Unknown otherwise. With `all`, every failing position, and every failing operand of
@@ -178,14 +187,11 @@ public sealed partial class Binding
         // `polarity` is the variance of the compared position within the fitted Type, composed as RelationWalk and CheckTypeUse compose
         // it (SPEC 15.3.5): a contravariant position names the reverse relation, and an invariant or unused one an `==`, also for every
         // position nested in it, such as the slots of a Type argument stored through `uniq/T` or read by `(T) -> i32`.
-        internal OriginRelationFact? FailedOriginRelation(BoundType actual, BoundType expected, OriginVariance polarity, int depth = 0)
+        internal OriginRelationFact? FailedOriginRelation(BoundType actual, BoundType expected, OriginVariance polarity)
         {
-            if (depth > 64)
-            {
-                return null;
-            }
-
             OriginRelationFact? first = null;
+            binding.termWalks++;
+
             // SPEC 8.1.2, 15.6.5: the outer Origins as the fit relates them; a pair layer's slot exists only in its binder's borrow cases,
             // whose premises the relation may use.
             if (FitOuterOrigins(actual, expected, binding, use, out var outer, out var required) == OuterOriginFit.Relation &&
@@ -206,12 +212,12 @@ public sealed partial class Binding
                 return first;
             }
 
-            var exclusive = IsInvariantLayer(actual, binding);
+            var exclusive = IsInvariantLayer(actual, binding, use, default);
             for (var i = 0; i < actual.Components.Count && i < expected.Components.Count &&
                 actual.Kind is BoundTypeKind.Semantics or BoundTypeKind.SemanticsApplication; i++)
             {
                 var target = exclusive ? OriginVariance.Invariant : polarity;
-                if (this.FailedOriginRelation(actual.Components[i], expected.Components[i], target, depth + 1) is { } failed)
+                if (this.FailedOriginRelation(actual.Components[i], expected.Components[i], target) is { } failed)
                 {
                     if (all is null)
                     {
@@ -243,7 +249,7 @@ public sealed partial class Binding
                     ? schema.GenericSlots[i].OriginVariance
                     : actual.Kind == BoundTypeKind.Function && actual.Components.Count == 2 && i == 0 ? OriginVariance.Contravariant
                     : OriginVariance.Covariant;
-                if (this.FailedOriginRelation(actual.Components[i], expected.Components[i], ComposeVariance(polarity, position), depth + 1) is { } argument)
+                if (this.FailedOriginRelation(actual.Components[i], expected.Components[i], ComposeVariance(polarity, position)) is { } argument)
                 {
                     if (all is null)
                     {
@@ -337,10 +343,11 @@ public sealed partial class Binding
             return added;
         }
 
-        // Whether a relation is not proven and, judged, the relation judge fails it in the search's body (SPEC 15.6.5).
+        // Whether a relation is not proven and, judged, the relation judge fails it in the search's body (SPEC 15.6.5), unless it holds
+        // by a resting end as the fit decides it (HoldsResting, FitOrigin; SPEC 23.1.2, DECISIONS Q13 rule W): a meet at the longer end
+        // fails by an operand that does not rest.
         private bool OriginPartFails(BoundOrigin longer, BoundOrigin shorter, ulong condition)
-            => !binding.ProvesOriginOutlives(longer, shorter, use, condition) &&
-                (mode != OriginFitMode.Judged || binding.OriginRelationFails(longer, shorter, use, body, condition));
+            => !this.Holds(longer, shorter, condition) && !binding.HoldsResting(longer, shorter, condition, this);
 
         // SPEC 15.6.5: the failing operand that the record names follows the judgment, a Refuted chain, which decides the record's code,
         // before an Unknown one, each first in the meet's order; with `refuted`, only a Refuted chain counts.

@@ -437,7 +437,7 @@ public sealed partial class HirFormsTest
 
     // SPEC 4.7.1, 11.6, 13.4, SPEC 22.7: a Property update names its getter and its setter, which takes the computed value; a user
     // index its selected index or indexUniq call, a view its element or slice call; a key resolution reads the evaluated receiver's length;
-    // an interpolation passed directly to writeLine is marked; a ResolvedRange loop Copies its positions.
+    // an interpolation passed directly to writeLine is marked; a ResolvedRange loop names its entry and step (SPEC 4.6.4, 14.6.2).
     [Fact]
     public void ExpansionPlansNameTheirCalls()
     {
@@ -465,8 +465,30 @@ public sealed partial class HirFormsTest
         ];
         Assert.Equal(expected, plans);
         var loop = Reachable(c.Kotonoha).OfType<ForKoto>().Single();
-        Assert.Null(BoundMatch.Of(loop));
-        Assert.Equal(new HirAdjust(HirAcquire.Copy, HirAdaptation.None), HirTables.AdjustOf(loop.Bindings[0]));
+        Assert.NotNull(BoundMatch.Of(loop));
+        Assert.Equal(("intoIterator", "next"), (CallPlan.Of(loop)!.Target.Name, CallPlan.Of(loop, 1)!.Target.Name));
+    }
+
+    // SPEC 4.6.4, 14.6.2: a ResolvedRange Subject's mode selects its entry, as every Iterable's: a Shared Subject (a Place, a
+    // ref/ResolvedRange value) calls iterate and an Exclusive one (`r@uniq`, a uniq/ResolvedRange value) iterateUniq. The Subject is
+    // acquired as SPEC 15.1.6 states (a Place borrowed in place, an `@uniq` value as it is, a stored reference Reborrowed in its own
+    // mode: a ref/ copied, a uniq/ Reborrowed) and the entry's receiver by reference-path selection (SPEC 3.4.3), so a stored
+    // reference's referent is not read first. Each row: the entry, the step, whether the Subject reads its referent, its Adjust.
+    [Theory]
+    [InlineData("let r = (0..2).resolve(2)\nfor i in r\n    total += i\n", "iterate next False None/SharedBorrow")]
+    [InlineData("var r = (0..2).resolve(2)\nfor i in r@uniq\n    total += i\n", "iterateUniq next False Temporary/None")]
+    [InlineData("let r = (0..2).resolve(2)\nlet w = r@ref\nfor i in w\n    total += i\n", "iterate next False Copy/None")]
+    [InlineData("var r = (0..2).resolve(2)\nlet u = r@uniq\nfor i in u\n    total += i\n", "iterateUniq next False Reborrow/None")]
+    public void AResolvedRangeSubjectsModeSelectsItsEntry(string body, string expected)
+    {
+        var c = MinimalEmissionTest.Analyze("var total: isize = 0\n" + body);
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
+        HirTables.Publish(c);
+        Assert.Empty(Problems(c.Kotonoha));
+        var loop = Reachable(c.Kotonoha).OfType<ForKoto>().Single();
+        var subject = HirTables.AdjustOf(loop.Iterable);
+        Assert.Equal(expected, $"{CallPlan.Of(loop)?.Target.Name} {CallPlan.Of(loop, 1)?.Target.Name} {c.Binding.ReadsReferent(loop.Iterable)} {subject.Acquire}/{subject.Adaptation}");
+        Assert.NotNull(BoundMatch.Of(loop));
     }
 
     // SPEC 4.7.1, 4.7.2, 5.2, 7.3, 10.2, 13.5.5, 15.6.2 (DECISIONS BU-8): a user index whose element Place's use needs write or exclusive
@@ -801,7 +823,7 @@ public sealed partial class HirFormsTest
         Assert.Equal(("Counter", 1), (CallPlan.Of(tally.BaseInitializer!)!.Target.Scope.Owner.SymbolOf()!.Name, AdtDef.Count(AdtDef.ReceiverType(tally)!)));
         Assert.Equal(HirOp.Literal, HirTables.Op(AdtDef.Field(AdtDef.ReceiverType(tally)!, 0).InitializerKoto!));
         BuiltinForm[] forms = [BuiltinForm.IsEmpty, BuiltinForm.Capacity, BuiltinForm.Indices];
-        Assert.Equal(forms, nodes.Select(static x => IntrinsicDisposition.FormOf(x)).Where(static x => x != BuiltinForm.None));
+        Assert.Equal(forms, nodes.Select(static x => Binding.FormOf(x)).Where(static x => x != BuiltinForm.None));
         Assert.Equal("Some", BoundEnumConstruction.Of(nodes.OfType<InvocationKoto>().Last())!.Case.Symbol.Name);
     }
 
@@ -936,6 +958,31 @@ public sealed partial class HirFormsTest
             rows);
         var group = Reachable(c.Kotonoha).First(x => IsWithin(x, f) && x is ParenthesizedKoto);
         Assert.Same(HirTables.Meaning(group), HirTables.PlanOf(group).DiscardedType);
+    }
+
+    // SPEC 14.2.4, 5.2.3, 15.1.5 (PLAN G670): an explicit discard destroys in place (its plan row Flag, HirTables.DestroysInPlace) exactly
+    // when Binding allowed its operand `P@move`, parenthesized or not, as a raw Place's Take: the raw Place, its Field or element, `p[n]`.
+    // A local's Take does not, nor does a raw Take Binding rejected: a Slice element inside a raw Place (SharedPathAccess_Kd) and a
+    // referent past a pair layer (ExclusivePathTake_Kd). The Flag states the Take's judgment alone: a raw Place formed outside an unsafe
+    // context is its own error (UnsafeBlockRequired_Kd), and the Take Binding allowed still marks the discard. Each row: the operand, its
+    // discard's Flag.
+    [Fact]
+    public void AnExplicitDiscardDestroysInPlaceWhereBindingAllowedARawTake()
+    {
+        const string Source = "struct Res\n    drop => ()\nfunc f(q: raw/Res, p: raw/(i64, Res), s: raw/Slice<Res>, r: Res)\n    unsafe\n" +
+            "        _ = (*q)@move\n        _ = ((*p).1)@move\n        _ = (q[0]@move)\n        _ = r@move\n        _ = (*s)[0]@move\n" +
+            "func g<s/T>(p: raw/(s/T))\n    s is owner\n    unsafe => _ = (*p)@follow@move\nfunc h(q: raw/Res)\n    _ = (*q)@move\n" +
+            "public func main() => ()\n";
+        var c = MinimalEmissionTest.Analyze(Source);
+        HirTables.Publish(c);
+        Assert.Equal(
+            ["(*q)@move True", "((*p).1)@move True", "(q[0]@move) True", "r@move False", "(*s)[0]@move False", "(*p)@follow@move False",
+                "(*q)@move True"],
+            Reachable(c.Kotonoha).OfType<DiscardKoto>()
+                .Select(x => $"{Source.Substring(x.Operand.Span.Start, x.Operand.Span.Length)} {HirTables.DestroysInPlace(x)}"));
+        Assert.Equal(
+            ["SharedPathAccess_Kd", "ExclusivePathTake_Kd", "UnsafeBlockRequired_Kd"],
+            CompilationTestHelper.BindingErrors(c).Select(static x => x.Code));
     }
 
     // SPEC 4.7.1, 13.7.2, 14.6.2, 15.1.6 (R7-Y1c, superseding BU-8's and R4-M142's accumulation): a user index's selection as ExpansionPlan

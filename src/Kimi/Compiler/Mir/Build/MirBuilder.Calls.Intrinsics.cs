@@ -18,13 +18,13 @@ internal sealed partial class MirBuilder
         _ => null,
     };
 
-    // A call the builder synthesizes of the compiler function serving a built-in form (R3 decision 5) on the operands pushed since start,
-    // under the substitution of its declaring Type's instance and its Type arguments.
-    private void Serve(MirPlace destination, CompilerFunctionKind kind, BoundType? declaring, ReadOnlySpan<BoundType?> types, int start, Koto node)
+    // A call the builder synthesizes of the library function serving a built-in form (R3 decision 5), by its lang item, on the operands
+    // pushed since start, under the substitution of its declaring Type's instance and its Type arguments.
+    private void Serve(MirPlace destination, KimiDeclarationId id, BoundType? declaring, ReadOnlySpan<BoundType?> types, int start, Koto node)
     {
-        var function = compilation.Library.Function(kind)!;
-        var disposition = IntrinsicDisposition.Of(kind);
-        var subst = compilation.Types.Synthesized(function, declaring, types);
+        var function = compilation.Library.GetSymbol(id)!;
+        var disposition = function.Definition;
+        var subst = compilation.Types.Synthesized(function, declaring, types, []);
         var callee = disposition.Kind == DispositionKind.Intrinsic
             ? MirCallee.Intrinsic(disposition.Id, function, subst)
             : new(MirCalleeKind.Fn, function, subst);

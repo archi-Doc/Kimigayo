@@ -54,7 +54,7 @@ public sealed partial class Binding
             }
         }
 
-        foreach (var function in this.virtualDeclarations)
+        foreach (var function in this.virtualDeclarationsView)
         {
             var original = function.IsVirtual ? function : this.virtualOverrides.GetValueOrDefault(function).Slot.Original;
             var bounded = original is not null && this.virtualEffectBounds.GetValueOrDefault(original) is not null;
@@ -66,7 +66,7 @@ public sealed partial class Binding
             }
         }
 
-        foreach (var use in this.callableEffectUses)
+        foreach (var use in this.callableEffectUsesView)
         {
             for (var e = 0; e < use.Clause.EffectBounds.Count; e++)
             {
@@ -89,7 +89,8 @@ public sealed partial class Binding
             return null;
         }
 
-        // SPEC 8.7: every implementation of a closed Contract reads only its boundaries and the length and has no other effect.
+        // SPEC 8.7.5: every `tryResolve` implementation, the one requirement a closed Contract declares, reads only its boundaries and
+        // the length and has no other effect. The `format` they inherit is Utf8Format's and takes its bound from their effect item.
         return callee.Scope.Owner.BoundSymbol?.LibraryDeclaration is KimiDeclarationId.Position or KimiDeclarationId.PositionRange
             ? true : this.AvailableEffectBounds(function, self, this.EffectPremises(definition), reference: contract);
     }

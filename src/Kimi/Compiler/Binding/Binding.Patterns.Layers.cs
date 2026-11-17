@@ -11,7 +11,8 @@ namespace Kimi.Compiler;
 //   the access past the layers, the dependency of the Place reached and whether it may lie in the owned Subject or item).
 // - Inputs: the position's matched Type, whether its Pattern is structural, the parent's reach, the plan (its Subject Place
 //   and whether it extracts a value, SPEC 17.3) and the admitted sets of the pair binders in scope.
-// - Outputs: the selected Type, the number of layers and the reach after them; BindingTypeOf.
+// - Outputs: the selected Type, the number of layers and the reach after them; BindingTypeOf, the Type of the local a Binding position
+//   declares: the bound value's, opened into the binding's own region slots when it is reassignable (LocalBorrowType).
 // - Invariants: a structural position selects the referent of every safe value-reference layer that lacks its structure, a
 //   qualifying pair layer included; a Binding (structural: false) selects only a qualifying pair layer it reaches with owned
 //   access, which offers no Take (13.5.5), and then binds a reference to the layer's selected Place in the mode past it; a
@@ -49,8 +50,8 @@ public sealed partial class Binding
                 return type;
             }
 
-            var admitted = this.FollowablePair(type, scope, out var target);
-            if (admitted == SemanticsMask.None)
+            // A layer admitting no case selects nothing (stopped: the pattern would have to rest; PLAN G750).
+            if (this.FollowablePair(type, scope, out var target) is not { } admitted || admitted == SemanticsMask.None)
             {
                 return type;
             }
@@ -87,9 +88,14 @@ public sealed partial class Binding
 
     // SPEC 15.1.6 (Bindings): a part of an owned Subject or item reached with owned access is bound as its stored Type; a Place reached
     // with shared or exclusive access binds ref/T or uniq/T of the Place the step selected, also for a Copy T.
-    private BoundType BindingTypeOf(BoundType selected, in PatternReach reach)
-        => reach.Access == PatternAccessMode.Owned ? selected : this.types.Intern(
+    // The binding is a local initialized by that value (SPEC 14.8.2, 15.4.4): a reassignable one has its own region slots, as a var
+    // local does (LocalBorrowType, PLAN G817).
+    private BoundType BindingTypeOf(BoundType selected, in PatternReach reach, Koto declaration)
+    {
+        var bound = reach.Access == PatternAccessMode.Owned ? selected : this.types.Intern(
             BoundTypeKind.Semantics, null, reach.Access == PatternAccessMode.Shared ? SemanticsKind.Ref : SemanticsKind.Uniq, [selected], origin: reach.Origin);
+        return this.LocalBorrowType(bound, declaration, declaration, -1);
+    }
 
     /// <summary>What a Pattern path has reached (SPEC 13.5.5's mode M and dependencies p, 15.1.6): the access the Place reached so far
     /// grants, Owned before any layer; the dependency of that Place; and whether it may lie in the owned Subject or iteration item.</summary>

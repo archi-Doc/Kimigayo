@@ -9,11 +9,13 @@ public class Utf8ConversionTest
 {
     private const string User = "struct Value\n    Self is Utf8Format\n    public init() => ()\n    public func format(self: ref/Self, writer: uniq/Utf8Writer) -> Result<(), BufferFull> => writer.write(\"word\")\n";
 
+    // SPEC 22.9.2, 22.10.5: toString is the owning interpolation of its one value, whose buffer starts empty (Text.heap(0), R8-W2 c3b), so
+    // its one allocation is the value's written bytes (fail-before: the value Type's bound, 11 for an i32 and 5 for a bool).
     [Trait("Purpose", "Allocation")]
     [Theory]
-    [InlineData("Integer", "123", "123", 1, 11)]
+    [InlineData("Integer", "123", "123", 1, 3)]
     [InlineData("Wide", "340282366920938463463374607431768211455@u128", "340282366920938463463374607431768211455", 1, 39)]
-    [InlineData("Bool", "true", "true", 1, 5)]
+    [InlineData("Bool", "true", "true", 1, 4)]
     [InlineData("Char", "'😀'", "😀", 1, 4)]
     [InlineData("Unit", "()", "()", 1, 2)]
     [InlineData("String", "\"a君😀\"", "a君😀", 1, 8)]
@@ -25,7 +27,7 @@ public class Utf8ConversionTest
 
     [Trait("Purpose", "Allocation")]
     [Theory]
-    [InlineData("Builtin", "", "123", "123", 11)]
+    [InlineData("Builtin", "", "123", "123", 3)]
     [InlineData("User", User, "Value.init()", "word", 4)]
     public void GenericOwningConversionSelectsTheFormatter(string name, string prefix, string value, string expected, int bytes)
     {
@@ -99,4 +101,11 @@ public class Utf8ConversionTest
         var source = User.Replace("writer.write(\"word\")", ".Err(BufferFull.init())", StringComparison.Ordinal) + "_ = Text.toString(Value.init())";
         ScalarEmissionTest.EmitFixture("Utf8ConversionAbort", source, string.Empty, 1, "Hello.kimi:5:5: abort KIMI_E_FORMAT: Formatting failed\n");
     }
+
+    // SPEC 22.5.1, 22.9.2 (R8-W1c-2): toString is a caller-location body whose write forwards the location it received, so its one
+    // allocation, the growth inside the write (a string's estimate is 0), failing Aborts at the user's conversion, not at a library line.
+    [Fact]
+    public void AFailedConversionAllocationReportsTheConversion()
+        => NativeAllocationAudit.WriteFixture(
+            "Utf8ConversionAllocationFailure", "_ = Text.toString(\"a君😀\")", 1, 0, 8, failAllocation: 1, exit: 1, stderr: "Hello.kimi:1:5: abort KIMI_E_ALLOC: Failed to allocate memory\n");
 }

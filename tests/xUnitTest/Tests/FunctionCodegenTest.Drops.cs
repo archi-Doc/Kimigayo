@@ -59,6 +59,10 @@ public sealed partial class FunctionCodegenTest
         "    return pair.0@move\nfunc use(a: string, b: string, x: string, y: string, k: string)\n    give(true, (1, 2))\n" +
         "    give(true, (a@move, b@move))\n    let one = view((x@move, y@move))\n    let two = view((k@ref, k@ref))\n";
 
+    // A value destroyed in place through a raw Place (SPEC 5.2.3; R8-U1 review).
+    private const string RawDestruction =
+        "struct Res\n    public init() => ()\n    drop => Console.writeLine(\"res\")\nfunc discard(p: raw/Res)\n    unsafe\n        _ = (*p)@move\n";
+
     // A whole fixed array's indices after one element moved out, which A1 rejects (MovedPlace_Kd at a.indices) and the old analysis
     // accepts: MIR difference row a1-whole-incomplete.
     private const string WholeIncomplete =
@@ -75,14 +79,16 @@ public sealed partial class FunctionCodegenTest
     [Fact]
     public void EachInitializedStringIsDestroyedOnce()
     {
-        var ir = GeneratedIr.Parse(Generate(Drops));
+        var c = Analyze(Drops);
+        var ir = GeneratedIr.Parse(Generate(c));
+        var line = LineOf(ir, c, view: false);
         var body = ir.Startup;
         var strings = body.Instructions.Where(static x => x.Shape == "alloca %kimi.string, align 8").ToArray();
         var literals = body.Instructions.Where(static x => x.Opcode == "store" && x.Shape.StartsWith("store %kimi.string", StringComparison.Ordinal))
             .Select(static x => Assert.Single(x.Operands)).ToArray();
         var borrows = body.Instructions.Where(static x => x.Shape == "store ptr %, ptr %, align 8").Select(static x => x.Operands[0]).ToArray();
-        var writes = body.Instructions.Where(x => x.Opcode == "call" && x.Callee == ir.Function("__kimi_write_line")).ToArray();
-        var drops = body.Instructions.Where(x => x.Opcode == "call" && x.Callee != ir.Function("__kimi_write_line")).ToArray();
+        var writes = body.Instructions.Where(x => x.Opcode == "call" && x.Callee == line).ToArray();
+        var drops = body.Instructions.Where(x => x.Opcode == "call" && x.Callee != line).ToArray();
         Assert.Equal(3, strings.Length);
         Assert.Equal(2, literals.Distinct().Count());
         Assert.Equal(literals, borrows);
@@ -334,11 +340,12 @@ public sealed partial class FunctionCodegenTest
 
     // Package C 3.2 I8 (PLAN G157 (17), (44)): the collector targets a destroyed value's glue exactly when its instance Type may need a drop
     // (MirTypes.MayNeedDrop), so a destruction without that target is a broken contract, InternalInvariant_Kd at its site: a Keep Drop of a
-    // string temporary, a replace's old string and a property witness's Set of a Resource Field. The subject item (named by its definition
+    // string temporary, an in-place destruction through a raw Place (`_ = (*p)@move`, SPEC 5.2.3, whose Drop is of the Place `(*p)`
+    // itself, G670) and a property witness's Set of a Resource Field. The subject item (named by its definition
     // or Field) loses its DropGlue targets in the checked set to make it so.
     [Theory]
     [InlineData("Console.writeLine(\"a\")\n", OutputKind.Application, null, "\"a\"")]
-    [InlineData(Updates, OutputKind.Library, "replaceText", "Kimi.Intrinsics.replace(t, with: \"new\")")]
+    [InlineData(RawDestruction, OutputKind.Library, "discard", "(*p)")]
     [InlineData(Witnesses, OutputKind.Library, "item", "x.item = value@move")]
     public void ADestructionWithoutItsGlueTargetIsABrokenContract(string source, OutputKind output, string? subject, string site)
     {
@@ -404,7 +411,7 @@ public sealed partial class FunctionCodegenTest
         {
             if (bodies[i].Key is { Kind: MirBodyKind.Fn, Decl.Name: "f" })
             {
-                table.Close(0, 0, (DiagnosticCode.OwnershipStorageLimit_Kd, default, -1));
+                table.Close(0, 0, (DiagnosticCode.OwnershipStorageLimit_Kd, default));
                 continue;
             }
 
@@ -436,7 +443,7 @@ public sealed partial class FunctionCodegenTest
     {
         var program = c.BuildMir();
         var body = program.Bodies.ToArray().Single(static x => x.Key is { Kind: MirBodyKind.Fn, Decl: null });
-        var first = program.Bodies.ToArray().Take(body.Ordinal).Sum(x => program.Drops.RowsOf(x.Ordinal).Length);
+        var first = program.ProgramBodies.ToArray().Where(x => x.Ordinal < body.Ordinal).Sum(x => program.Drops.RowsOf(x.Ordinal).Length); // In the program's store.
         var row = Assert.Single(program.Drops.RowsOf(body.Ordinal).ToArray());
         program.Drops.Rows[first] = row with { Block = body.Blocks.Length };
     }
@@ -475,10 +482,6 @@ public sealed partial class FunctionCodegenTest
         var test = function.Blocks.SingleOrDefault(x => x.Terminator.Shape == "br i1 %, label %, label %" && x.Successors[0] == block);
         return test?.Terminator.Operands[0].Operands[0].Operands[0];
     }
-
-    // The functions of a definition's body items, one per instance (ItemTexts).
-    private static IrFunction[] FunctionsOf(GeneratedIr ir, Compilation c, string name)
-        => [.. ItemTexts(c, name).Select(x => ir.Function(Regex.Match(x, @"define internal \S+ @(__kimi_f\d+)\(").Groups[1].Value))];
 
     // A function's drop flags (DECISIONS R5-M99): its entry block's i8 slots, each stored only the constants 0 and 1.
     private static IrValue[] FlagsOf(IrFunction function) => [.. function.Blocks[0].Instructions.Where(x => x.Shape == "alloca i8, align 1" &&

@@ -5,22 +5,27 @@ using Kimi.Compiler.Parsing;
 namespace Kimi.Compiler;
 
 // The effect facts Binding decided, in MIR terms (DECISIONS R4-M22, R4-M23): who owes `confined`, the bounds a call may use under a
-// definition's premises, what a function without a MIR body does, the bodies a call may run, and the Copy and Sealed facts its summaries
-// read, all under one premise scope per definition (Binding.EffectPremises).
+// definition's premises, what a function without a MIR body does, the bodies a call may run and the original a specialization implements,
+// whose call contract and ABI its body keeps (SPEC 8.13.2), and the Copy and Sealed facts its summaries read, all under one premise scope
+// per definition (Binding.EffectPremises).
 internal sealed partial class TyCtxt
 {
     private readonly Dictionary<Koto, CopyFacts> copies = new(ReferenceEqualityComparer.Instance); // By premises node (a view, ResetViews).
     private bool callsRowsChecked; // Whether CheckCallsRows has held: the catalog's Calls rows are checked once, not at each read.
 
-    // SPEC 8.11.2: what a call of a function without a MIR body does: a compiler function's class (IntrinsicDisposition.Effect), a
-    // definition Binding rejected a dependent of that error (R4-M18: its parts are not published), a foreign function (SPEC 22.6) an
-    // environment effect; any other is unclassified.
-    internal static CompilerFunctionEffect Bodyless(BindingSymbol function) => function switch
+    // SPEC 8.11.2, 22.1, 22.6: what a function without a MIR body is, the one decider, from facts fixed when Binding is final: an
+    // intrinsic or a shim by its Definition (the library's `#Intrinsic`, Binding.PrepareBuiltinTargets); a definition Binding rejected
+    // (R4-M18: its parts are not published) or whose Body the parser recorded missing (SPEC 14.2.1; MissingBody is set with its record;
+    // PLAN G890) a dependent of that error; a foreign function (`#LibraryImport`) an import; any other is unclassified. Its readers, A4
+    // (MirEffects, which reads an intrinsic's MirDescriptors row by its Definition's IntrinsicId) and the instance collector
+    // (InstanceCollector.Callees), key on the category; neither reads syntax.
+    internal static BodylessKind Bodyless(BindingSymbol function) => function switch
     {
-        { CompilerFunction: not CompilerFunctionKind.None } => IntrinsicDisposition.Effect(function.CompilerFunction),
-        { Declaration.BindingState: not BindingState.Resolved } => CompilerFunctionEffect.Dependent,
-        { Declaration: FunctionKoto declaration } when declaration.FindAttribute(AttributeKind.LibraryImport) is not null => CompilerFunctionEffect.Environment,
-        _ => CompilerFunctionEffect.Unclassified,
+        { Definition.Kind: DispositionKind.Intrinsic } => BodylessKind.Intrinsic,
+        { Definition.Kind: DispositionKind.Shim } => BodylessKind.Shim,
+        { Declaration.BindingState: not BindingState.Resolved } or { Declaration: FunctionKoto { MissingBody: true } } => BodylessKind.Dependent,
+        { Declaration: FunctionKoto declaration } when declaration.FindAttribute(AttributeKind.LibraryImport) is not null => BodylessKind.Import,
+        _ => BodylessKind.Unclassified,
     };
 
     // SPEC 4.9.6, 12.4.3: an operation's published row in MIR terms (KimiLibraryCatalog.Row): the requirement it runs on the Type below
@@ -43,11 +48,15 @@ internal sealed partial class TyCtxt
         return (requirement, row.On, row.Destroys, row.InPlace, row.Calls);
     }
 
-    // SPEC 8.11.3: what a requirement runs on a Self that is not abstract under the Contract reference its call recorded (MirCallee.Contract)
-    // and that reference in the call's substitution (Subst.Declaring), as Witness reads them (Binding.Witnesses), appended to a caller-owned
-    // list with the instance each target runs at; false where none resolves.
-    internal bool Witnesses(BindingSymbol requirement, BoundType self, BindingSymbol? contract, BoundType? reference, BindingSymbol? definition, List<(BindingSymbol Target, Subst Instance)> into)
-        => binding.Witnesses(requirement, self, contract, reference, definition, into);
+    // SPEC 8.11.3: what a requirement call runs on a Self that is not abstract under the Contract reference it recorded (MirCallee.Contract)
+    // and its substitution, as Witness reads them (Binding.Witnesses), appended to a caller-owned list with the instance each target runs
+    // at; false where none resolves. `call` holds the Self, the reference instantiated (Subst.Declaring) and the call's own Types and
+    // lengths, at which a Conformance target's instance is the witness under its declaring instance by position (SPEC 8.6.3), as Witness's
+    // Conformance binds them; a requirement no call names (a published row's) has Synthesized(requirement, self, reference), which binds
+    // no own slot.
+    internal bool Witnesses(
+        BindingSymbol requirement, BindingSymbol? contract, Subst call, BindingSymbol? definition, List<(BindingSymbol Target, Subst Instance)> into)
+        => binding.Witnesses(requirement, contract, call, definition, into);
 
     // R4-M22: the confined obligations of the latest pass (Binding.EffectObligations), appended to a caller-owned list.
     internal void EffectObligations(List<EffectObligation> rows) => binding.EffectObligations(rows);
@@ -85,6 +94,9 @@ internal sealed partial class TyCtxt
 
     // SPEC 8.13.3: a body a call of a function with a substitution may run, by index (Binding.Implementation); null past the last.
     internal BindingSymbol? Implementation(BindingSymbol function, Subst? subst, int index) => binding.Implementation(function, subst, index);
+
+    // SPEC 8.13.2: the function whose call contract and ABI a body keeps: a specialization's original, else the function itself.
+    internal BindingSymbol? Original(BindingSymbol? function) => binding.SpecializationOriginal(function) ?? function;
 
     // The catalog's contract (DECISIONS BU-70), checked for every row once, before the first Calls row is formed: a row's Callable input is
     // called through a shared borrow, which its premise declares; a violation is a defect of the compiler build.

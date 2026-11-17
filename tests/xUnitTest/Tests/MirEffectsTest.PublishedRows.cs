@@ -51,13 +51,13 @@ public sealed partial class MirEffectsTest
             }
             else if (program.Callee(new(MirCalleeKind.Fn, operation)) is { } body)
             {
-                Check(entry.Name, operation, body);
+                Check(operation.Name, operation, body);
                 bodies++;
             }
         }
 
         Assert.Equal([AppendAllDropsItsEmptiedSource], outside);
-        Assert.Equal(30, bodies);
+        Assert.Equal(36, bodies); // Utf8Writer.write's FormatsValue row joined at R8-W1b-4, Text.toString's and tryFormat's Formats rows at W1c-2.
 
         void Check(string name, BindingSymbol operation, MirBody body)
         {

@@ -159,6 +159,22 @@ public sealed partial class FunctionCodegenTest
         Assert.Equal([.. own.Skip(1).Take(own.Count - 4), own[^2], own[^1]], body.Operands);
     }
 
+    // SPEC 22.6, 7.7.4 (DECISIONS R8-M19): a requirement's Function Item is a function value whatever its witness; erased with an import as
+    // its witness, its adapter's entry calls the import by its C signature, as the import's direct call does.
+    [Fact]
+    public void AnErasedRequirementItemCallsItsImportWitness()
+    {
+        var c = Analyze(
+            "contract Clock\n    func now() -> u32\nstruct Win\n    Self is Clock\n    #LibraryImport(\"kernel32\", \"GetLastError\")\n" +
+            "    public func now() -> u32\nfunc erased<C>() -> () -> u32\n    C is Clock\n    C is Owned\n    return C.now\n" +
+            "func h() -> () -> u32 => erased<Win>()\n",
+            OutputKind.Library);
+        var text = Generate(c);
+        var ir = GeneratedIr.Parse(text);
+        var entry = ir.Function(TableOf(text, Assert.Single(ItemTexts(c, "erased"))).Entry);
+        Assert.Single(CallsOf(entry), x => x.Callee == ir.Function("GetLastError"));
+    }
+
     // SPEC 16.4, 8.10 (DECISIONS R5-M102, R5-M104 as G182 amends it): a Function value's glue calls its table's drop entry, when present,
     // with the address of its word's copy in an entry slot, so the value's own address does not escape, and its own location and length; a
     // parameter's Drop destroys it so, and an owner call of the erased value destroys the value after the call.
@@ -225,7 +241,7 @@ public sealed partial class FunctionCodegenTest
 
     // SPEC 7.7.4, 22.5.1 (DECISIONS R5-M108): an erased compiler function's Item runs its direct call's routine row from its entry, with the
     // entry's own parameters, the row's slot-less values and the location the entry received (the erased call's): Raw.allocate's count, its
-    // element's stride and the location; the console writeLine's borrowed string and the location.
+    // element's stride and the location.
     [Fact]
     public void AnErasedCompilerFunctionItemRunsItsRoutine()
     {
@@ -238,9 +254,20 @@ public sealed partial class FunctionCodegenTest
         Assert.Same(ir.Function("__kimi_raw_allocate"), call.Callee);
         Assert.Equal("call ptr @(i64 %, i64 1, ptr %, i64 %)", call.Shape);
         Assert.Equal([allocate.Parameters[1], allocate.Parameters[3], allocate.Parameters[4]], call.Operands);
+    }
+
+    // SPEC 7.7.4, 22.5.1, 22.7 (R8-W2 d): an erased caller-location body's Item runs its body from its entry, with the entry's own
+    // parameters and the location the entry received (the erased call's): the console writeLine's borrowed string and the location, so
+    // KIMI_E_STDOUT reports the call through the value.
+    [Fact]
+    public void AnErasedCallerLocationBodyItemRunsItsBodyAtTheCallsLocation()
+    {
+        var c = Analyze(Erasures, OutputKind.Library);
+        var text = Generate(c);
+        var ir = GeneratedIr.Parse(text);
         var write = ir.Function(TableOf(text, Assert.Single(ItemTexts(c, "wl"))).Entry);
         var line = Assert.Single(CallsOf(write));
-        Assert.Same(ir.Function("__kimi_write_line"), line.Callee);
+        Assert.Same(LineOf(ir, c, view: false), line.Callee);
         Assert.Equal([write.Parameters[1], write.Parameters[3], write.Parameters[4]], line.Operands);
     }
 
@@ -250,16 +277,16 @@ public sealed partial class FunctionCodegenTest
     public void ErasedTargetsRun()
         => ScalarEmissionTest.EmitFixture("ErasureTargets", ErasureTargets, "write\n", 1, "Hello.kimi:1:25: abort KIMI_E_ABORT: never\n");
 
-    // SPEC 7.7.4 (DECISIONS R5-M104): a compiler function's Item whose direct call is a legacy runtime row (the console writeLine) calls that
-    // row, over the call's operands and its location.
+    // SPEC 7.7.4 (DECISIONS R5-M104; R8-W2 d): the console writeLine's Item, a CallerLocation body's, calls that body over the call's
+    // operands and its location (fail-before: its legacy runtime row).
     [Fact]
-    public void AConsoleItemCallsItsLegacyRow()
+    public void AConsoleItemCallsItsBody()
     {
         var c = Analyze(
             "func call<F>(f: ref/F)\n    F is Callable<(ref/string) -> ()>\n    f(\"x\")\nfunc show() => call(Console.writeLine)\n", OutputKind.Library);
         var text = Generate(c);
         var ir = GeneratedIr.Parse(text);
-        var call = Assert.Single(CallsOf(Assert.Single(FunctionsOf(ir, c, "call"))), x => x.Callee == ir.Function("__kimi_write_line"));
+        var call = Assert.Single(CallsOf(Assert.Single(FunctionsOf(ir, c, "call"))), x => x.Callee == LineOf(ir, c, view: false));
         Assert.Matches(@"^call void @\(ptr noundef nonnull align 8 dereferenceable\(24\) %, ptr @, i64 \d+\)$", call.Shape);
         Assert.Contains(Constant("Hello.kimi:3:5"), text);
     }
@@ -272,7 +299,7 @@ public sealed partial class FunctionCodegenTest
     // A requirement whose witness's result is Never (SPEC 10.7), its Item taken in a generic function at the requirement's result.
     private const string NeverWitness = "contract Empty\n    func empty() -> Self\nstruct Impossible\n    Self is Empty\n    public let x: i64 = 0\n" +
         "    public func empty() -> Never => $abort(\"no value\")\nfunc g<T>() -> () -> T\n    T is Empty\n    T is Owned\n    return T.empty\n" +
-        "public func h() -> () -> Impossible => g<Impossible>()\n";
+        "func h() -> () -> Impossible => g<Impossible>()\n";
 
     // The table an item's text stores into its Function value, read from the module's text: its entry's and its drop entry's names (null:
     // none).

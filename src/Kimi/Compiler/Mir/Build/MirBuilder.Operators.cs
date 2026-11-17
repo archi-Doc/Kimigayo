@@ -89,7 +89,7 @@ internal sealed partial class MirBuilder
     // byte Slice. SPEC 4.9.5: an Array's or a Dictionary's capacity is the call of its library Field read on a shared view of the handle.
     private void Metadata(MirPlace destination, MemberAccessKoto member)
     {
-        var form = IntrinsicDisposition.FormOf(member);
+        var form = Binding.FormOf(member);
         if (form == BuiltinForm.None)
         {
             this.Unsupported(member, destination);
@@ -104,7 +104,7 @@ internal sealed partial class MirBuilder
             var collection = this.body.TypeOf(sequence)!;
             var read = compilation.Library.GetSymbol(
                 collection.Kind == BoundTypeKind.Array ? KimiDeclarationId.StorageArrayCapacity : KimiDeclarationId.DictionaryStorageCapacity)!;
-            var subst = compilation.Types.Synthesized(read, null, [.. collection.Components]);
+            var subst = compilation.Types.Synthesized(read, null, [.. collection.Components], []);
             this.Invoke(destination, new MirCallee(MirCalleeKind.Fn, read, subst), start, member);
             return;
         }
@@ -156,7 +156,7 @@ internal sealed partial class MirBuilder
     {
         ref readonly var row = ref HirTables.PlanOf(conversion);
         var binding = row.Conversion;
-        if (row.Folded is { } wrapped && binding == ConversionBinding.Wrap && ScalarTypes.Width(type) == 0)
+        if (row.Folded is { } wrapped && binding == ConversionBinding.Wrap && type.Width == 0)
         {
             // DECISIONS R7-M14 (G658): a folded wrap to a Type whose instance decides its width holds the exact value modulo 2^128
             // (Binding, ScalarTypes.Normalize); MIR states the wrap as a Wrap Cast of that i128 constant, which takes each instance's low
@@ -232,7 +232,7 @@ internal sealed partial class MirBuilder
     {
         var temporary = HirTables.AdjustOf(conversion.Left).Acquire == HirAcquire.Temporary;
         var operand = temporary ? this.Value(conversion.Left) : this.Place(conversion.Left);
-        var payload = this.Follow(operand, 1);
+        var payload = this.FollowLayers(operand, 1);
         if (this.Unlent(payload, plan.Target) is { } derived)
         {
             this.Set(destination, derived, conversion);
@@ -255,8 +255,8 @@ internal sealed partial class MirBuilder
         {
             MirBinaryOp.Add or MirBinaryOp.Sub or MirBinaryOp.Mul => type.IsFloatingPoint || type.IsWrappingInteger || type.Semantics == SemanticsKind.Raw,
             MirBinaryOp.Div or MirBinaryOp.Rem => type.IsFloatingPoint || (literal is { } divisor && divisor != 0 && (divisor != -1 ||
-                op == MirBinaryOp.Rem || !type.IsInteger || type.IsUnsignedInteger)),
-            MirBinaryOp.Shl or MirBinaryOp.Shr => literal is { } count && count >= 0 && count < ScalarTypes.Width(type),
+                op == MirBinaryOp.Rem || !type.IsInteger || !type.IsSigned)),
+            MirBinaryOp.Shl or MirBinaryOp.Shr => literal is { } count && count >= 0 && count < type.Width,
             _ => true,
         };
     }
@@ -265,13 +265,13 @@ internal sealed partial class MirBuilder
     // them checks nothing; false where an instance decides a width.
     private bool Within(BoundType source, BoundType target)
     {
-        var (from, to) = (ScalarTypes.Width(source), ScalarTypes.Width(target));
+        var (from, to) = (source.Width, target.Width);
         if (from == 0 || to == 0)
         {
             return false;
         }
 
-        var (signed, wide) = (ScalarTypes.Signed(source), ScalarTypes.Signed(target));
+        var (signed, wide) = (source.IsSigned, target.IsSigned);
         return (wide || !signed) && from - (signed ? 1 : 0) <= to - (wide ? 1 : 0);
     }
 }

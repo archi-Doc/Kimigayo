@@ -13,13 +13,8 @@ public class RefinementNameBindingTest
     [InlineData("Api.Origin", true)]
     [InlineData("::Origin", true)]
     [InlineData("::Api.Origin", true)]
-    [InlineData("ref/Origin", false)]
-    [InlineData("ref/::Origin", false)]
-    [InlineData("(Origin)", false)]
     [InlineData("::Origin<i32>", false)]
     [InlineData("::Api.Origin<i32>", false)]
-    [InlineData("::ref/Origin", false)]
-    [InlineData("::(Origin)", false)]
     public void RefinementParentsAreContractNames(string parent, bool valid)
     {
         var c = MinimalEmissionTest.Analyze("public contract Origin\npublic group Api\n    public contract Origin\npublic contract Child: " + parent);
@@ -42,7 +37,12 @@ public class RefinementNameBindingTest
     [InlineData("Api.Origin<>")]
     [InlineData("::Origin<>")]
     [InlineData("::Api.Origin<>")]
-    public void EmptyGenericListsRemainSyntaxErrors(string parent)
+    [InlineData("::ref/Origin")] // SPEC F.5: only a TypeSegment follows '::'.
+    [InlineData("::(Origin)")]
+    [InlineData("ref/Origin")] // SPEC F.6.2: a Contract parent is an InheritanceReference.
+    [InlineData("ref/::Origin")]
+    [InlineData("(Origin)")]
+    public void ParentsOutsideTheGrammarAreSyntaxErrors(string parent)
     {
         var c = MinimalEmissionTest.Analyze("public contract Origin\npublic group Api\n    public contract Origin\npublic contract Child: " + parent);
         Assert.NotEmpty(TestDiagnostics.Of(c, "Hello.kimi"));
@@ -54,12 +54,15 @@ public class RefinementNameBindingTest
     [InlineData("Future<i32>")]
     [InlineData("::Future<i32>")]
     [InlineData("Api.Future<i32>")]
-    public void MissingNamesDoNotMakeGenericParentsDeferrable(string parent)
+    // A missing generic parent is pending as a non-generic one is (BU-151: a missing name decides nothing; SPEC 6.1.2: a later fragment
+    // of Api may declare it), and rejected at the final pass.
+    public void MissingNamesLeaveGenericParentsPending(string parent)
     {
         var c = MinimalEmissionTest.Analyze("public group Api\npublic contract Child: " + parent);
         Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
-        Assert.True(c.Binding.Bind(BindingMode.Provisional).InvalidCount > 0);
-        Assert.Equal(BindingState.Invalid, c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "Child").StateOf());
+        Assert.Equal(0, c.Binding.Bind(BindingMode.Provisional).InvalidCount);
+        Assert.Equal(BindingState.Unresolved, c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "Child").StateOf());
+        Assert.False(c.Bind().IsComplete);
     }
 
     [Trait("Purpose", "Allocation")]

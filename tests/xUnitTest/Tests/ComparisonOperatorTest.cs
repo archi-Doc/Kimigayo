@@ -31,9 +31,12 @@ public class ComparisonOperatorTest
             func equal<T>(left: ref/T, right: ref/T) -> bool
                 T is Equatable
                 return left == right
+            func contractEqual<T>(left: ref/T, right: ref/T) -> bool
+                T is Equatable
+                return left == right
             specialize func equal<f64>(left: ref/f64, right: ref/f64) -> bool
                 Console.writeLine("specialized")
-                return left.equals(right)
+                return contractEqual(left, right)
             func forward<T>(left: ref/T, right: ref/T) -> bool
                 T is Equatable
                 return equal<T>(left, right)

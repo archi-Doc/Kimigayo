@@ -6,8 +6,9 @@ namespace Kimi.Compiler.Mir;
 
 // A5's problem codes and witness sites (A3 5's A6 table, 6.4): a conflict's code (a Loan found in its reservation holder is a reservation
 // conflict, else the check's), a location's subject and source (its statement's or terminator's), a Loan's anchor (its issuing location's
-// subject, D14), a holder's declaration, a witness holder's next use in its chain, and a Loan problem's or the own-step Warning's subject
-// and facts built from them (Facts), which MirBorrows.Reports records.
+// subject, D14), a holder's declaration, a witness holder's next use in its chain, a Loan problem's subject and facts built from them
+// (Facts), and a problem's subject with, inside an inline default copy, its Evaluated fact (Evaluated), which Facts ends with and the
+// own-step Warning's record is alone (G673); MirBorrows.Reports records them.
 // Must not record a problem or decide which problem a conflict becomes (MirBorrows.Reports).
 internal sealed partial class MirBorrows
 {
@@ -71,8 +72,8 @@ internal sealed partial class MirBorrows
     // holder's next use, from the location itself for a reservation's check set, or, where that lies in a later chain, the holder's
     // declaration, the value retaining the Loan, as a Store (none for local 0, whose next use is the caller's, R4-M156); the location for a
     // value it takes, a transit value's or E's store, or none (None: a destruction's own hold, which no value carries); the reservation's
-    // anchor; the static Field an effect met (R4-M92); and last, inside an inline default copy, the default's operation, at the omitting
-    // call (D13), which is then the subject.
+    // anchor; the static Field an effect met (R4-M92); and last its subject and, inside an inline default copy, the default's operation
+    // (Evaluated).
     private (SourceRef Subject, int Count) Facts(SourceRef anchor, int via, MirLocation at, int reservation, ProblemFact? effect)
     {
         var (operation, from) = (this.Subject(at), reservation >= 0 ? at : at with { Index = at.Index + 1 });
@@ -104,6 +105,14 @@ internal sealed partial class MirBorrows
             this.facts[count++] = met;
         }
 
+        return this.Evaluated(at, count);
+    }
+
+    // A problem's subject at a location, after the count facts built (D13): inside an inline default copy the outermost omitting call, with
+    // the default's operation as an Evaluated fact; else the location's subject.
+    private (SourceRef Subject, int Count) Evaluated(MirLocation at, int count)
+    {
+        var operation = this.Subject(at);
         var call = this.body.OmittingCall(this.Source(at).Scope);
         if (call is not null)
         {

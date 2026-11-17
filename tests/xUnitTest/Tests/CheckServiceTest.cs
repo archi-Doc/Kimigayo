@@ -15,8 +15,8 @@ namespace XunitTest;
 // SPEC 23.2: the shared check entry, compilation-owned diagnostics and immutable check output.
 public sealed partial class CheckServiceTest : IDisposable
 {
-    private const string Valid = "public func one() -> i32 => 1\n";
-    private const string Broken = "public func one() -> i32 => 1 +\n";
+    private const string Valid = "func one() -> i32 => 1\n";
+    private const string Broken = "func one() -> i32 => 1 +\n";
 
     private readonly string directory = Path.Combine(Path.GetTempPath(), "kimi-check-" + Guid.NewGuid().ToString("N"));
 
@@ -69,7 +69,7 @@ public sealed partial class CheckServiceTest : IDisposable
     {
         var project = this.WriteProject("App");
         var folder = Path.GetDirectoryName(project)!;
-        const string other = "public func two() -> i32 => 2\n";
+        const string other = "func two() -> i32 => 2\n";
         var inputs = new OverlayInputSource(new() { [Path.Combine(folder, first)] = Valid, [Path.Combine(folder, second)] = other });
         var output = this.Run(project, inputs: inputs);
         if (!equal)
@@ -179,6 +179,44 @@ public sealed partial class CheckServiceTest : IDisposable
         Assert.Single(output.Diagnostics, static x => x.Note!.Contains("B.kimiproj", StringComparison.Ordinal));
     }
 
+    // SPEC 23.1.2: the root's language version (IMPL 20.2.2), target (IMPL 20.2.1) and settings (SPEC 19.2.1) read neither the graph nor
+    // the lock, so each is reported beside a dependency that fails to load (IMPL 20.1: a glob TestSources entry; rows P1-P3) or beside a
+    // missing lock over a resolved graph (IMPL 20.5; row L1), in a product and a test check; the check is Blocked (SPEC 23.2.2). A test
+    // check of an unsupported target is refused at its target selection, so P2 is a product row.
+    [Theory]
+    [InlineData("LangVersion=\"9.9.9\"", "", nameof(DiagnosticCode.UnsupportedLanguageVersion_Kd), true, CheckMode.Product)]
+    [InlineData("LangVersion=\"9.9.9\"", "", nameof(DiagnosticCode.UnsupportedLanguageVersion_Kd), true, CheckMode.Test)]
+    [InlineData("Targets={\"unknown-none-elf\"}", "unknown-none-elf", nameof(DiagnosticCode.UnsupportedTarget_Kd), true, CheckMode.Product)]
+    [InlineData("CompileTimeSettings={os={Bool=true}}", "", nameof(DiagnosticCode.InvalidCompileTimeSetting_Kd), true, CheckMode.Product)]
+    [InlineData("CompileTimeSettings={os={Bool=true}}", "", nameof(DiagnosticCode.InvalidCompileTimeSetting_Kd), true, CheckMode.Test)]
+    [InlineData("LangVersion=\"9.9.9\"", "", nameof(DiagnosticCode.UnsupportedLanguageVersion_Kd), false, CheckMode.Product)]
+    [InlineData("LangVersion=\"9.9.9\"", "", nameof(DiagnosticCode.UnsupportedLanguageVersion_Kd), false, CheckMode.Test)]
+    public void TheRootIsCheckedWhateverTheGraph(string settings, string target, string code, bool leafFails, CheckMode mode)
+    {
+        var project = this.WriteLeafUser(settings, leafFails);
+        var output = this.Run(project, mode, target);
+        Assert.Equal(CheckOutcome.Blocked, output.Outcome);
+        Assert.Equal(2, output.Diagnostics.Length);
+        Assert.Single(output.Diagnostics, x => x.Code == code);
+        var graph = Assert.Single(output.Diagnostics, static x => x.Code == nameof(DiagnosticCode.ProjectPreparationFailed_Kd));
+        Assert.Contains(leafFails ? "Leaf.kimiproj" : "Dependency lock is missing", graph.Note, StringComparison.Ordinal);
+    }
+
+    // SPEC 23.1.2: artifact production's target restriction reads the configured targets, the graph's resolution and the root's target
+    // read their own inputs, so a build reports all three (row P2 of a build); no phase runs (SPEC 23.2.2).
+    [Fact]
+    public async Task ArtifactProductionReportsTheTargetsOwnRecords()
+    {
+        var path = this.WriteLeafUser("Targets={\"unknown-none-elf\"}", true);
+        var console = new CapturingConsole();
+        Assert.True(Project.TryCreate(new Kimigayo(console), null, path, out var project));
+        Assert.False(await project.Generate(TestContext.Current.CancellationToken));
+        Assert.Contains("Artifact production currently requires", console.Output, StringComparison.Ordinal);
+        Assert.Contains(nameof(DiagnosticCode.UnsupportedTarget_Kd), console.Output, StringComparison.Ordinal);
+        Assert.Contains("Leaf.kimiproj", console.Output, StringComparison.Ordinal);
+        Assert.DoesNotContain(nameof(DiagnosticCode.CheckFaulted_Kd), console.Output, StringComparison.Ordinal);
+    }
+
     // SPEC 23.1.2: preparation reports each configuration failure beside the TestSources comparison; a duplicate of an entry that breaks
     // the path syntax depends on that failure and is left out.
     [Theory]
@@ -206,13 +244,13 @@ public sealed partial class CheckServiceTest : IDisposable
     [InlineData(true)]
     public void EveryModulesNamesAreCheckedWithinTheModule(bool invalid)
     {
-        this.WriteLibrary("Lib", "lib", "public func value() -> i32 => 2\n");
+        this.WriteLibrary("Lib", "lib", "func value() -> i32 => 2\n");
         const string dependency = "Lib={PackageId=\"lib\" PackageVersion=\"1\" Project=\"../Lib/Lib.kimiproj\"}";
         var project = this.WriteProject("App", ("Main.kimi", Valid), dependencies: dependency);
         if (invalid)
         {
-            File.WriteAllText(this.PathOf("App", "o\u0308.kimi"), "public func app() -> i32 => 3\n");
-            File.WriteAllText(this.PathOf("Lib", "e\u0301.kimi"), "public func lib() -> i32 => 4\n");
+            File.WriteAllText(this.PathOf("App", "o\u0308.kimi"), "func app() -> i32 => 3\n");
+            File.WriteAllText(this.PathOf("Lib", "e\u0301.kimi"), "func lib() -> i32 => 4\n");
         }
 
         var resolution = DependencyResolver.Resolve(project, WindowsProfile.Target, Compilation.CurrentLanguageVersion, TestContext.Current.CancellationToken);
@@ -263,15 +301,15 @@ public sealed partial class CheckServiceTest : IDisposable
     [Fact]
     public void SourcesAreParsedInLogicalDeclarationOrder()
     {
-        var project = this.WriteProject("App", ("c.kimi", "public func c() -> i32 => 3\n"), settings: "TestSources={\"b.kimi\"}");
-        File.WriteAllText(this.PathOf("App", "a.kimi"), "public func a() -> i32 => 1\n");
+        var project = this.WriteProject("App", ("c.kimi", "func c() -> i32 => 3\n"), settings: "TestSources={\"b.kimi\"}");
+        File.WriteAllText(this.PathOf("App", "a.kimi"), "func a() -> i32 => 1\n");
         File.WriteAllText(this.PathOf("App", "b.kimi"), "#Test\nfunc check()\n    $expect(true)\n");
-        File.WriteAllText(this.PathOf("App", "\U0001F600.kimi"), "public func smile() -> i32 => 4\n");
-        File.WriteAllText(this.PathOf("App", "\uFF21.kimi"), "public func wide() -> i32 => 5\n");
+        File.WriteAllText(this.PathOf("App", "\U0001F600.kimi"), "func smile() -> i32 => 4\n");
+        File.WriteAllText(this.PathOf("App", "\uFF21.kimi"), "func wide() -> i32 => 5\n");
         Assert.True(
             Project.TryCreate(Kimigayo.CreateSilent(), null, project, CheckInputSource.Disk, out var loaded, out var failures),
             string.Join(", ", failures));
-        loaded.AddSource(this.PathOf("App", "a0.kimi"), "public func a0() -> i32 => 0\n");
+        loaded.AddSource(this.PathOf("App", "a0.kimi"), "func a0() -> i32 => 0\n");
         var module = Assert.IsType<Compilation>(loaded.PrepareTests(TestContext.Current.CancellationToken)).Kotonoha;
         Assert.Equal(["a.kimi", "a0.kimi", "b.kimi", "c.kimi", "\uFF21.kimi", "\U0001F600.kimi"], module.SourceDocuments.Select(module.LogicalName));
     }
@@ -284,7 +322,7 @@ public sealed partial class CheckServiceTest : IDisposable
         Assert.True(
             Project.TryCreate(Kimigayo.CreateSilent(), null, project, CheckInputSource.Disk, out var loaded, out var failures),
             string.Join(", ", failures));
-        loaded.AddSource(Path.Combine(Path.GetDirectoryName(project)!, "main.kimi"), "public func twin() -> i32 => 2\n");
+        loaded.AddSource(Path.Combine(Path.GetDirectoryName(project)!, "main.kimi"), "func twin() -> i32 => 2\n");
         var output = CheckService.Run(loaded, WindowsProfile.Target, CheckMode.Product, false, CheckInputSource.Disk, TestContext.Current.CancellationToken);
         Assert.Equal(CheckOutcome.Blocked, output.Outcome);
         Assert.Equal(nameof(DiagnosticCode.ProjectPreparationFailed_Kd), Assert.Single(output.Diagnostics).Code);
@@ -343,7 +381,7 @@ public sealed partial class CheckServiceTest : IDisposable
         var project = this.WriteProject("ReadFailures", ("a.kimi", Valid));
         var first = this.PathOf("ReadFailures", "a.kimi");
         var second = this.PathOf("ReadFailures", "b.kimi");
-        File.WriteAllText(second, "public func two() -> i32 => 2\n");
+        File.WriteAllText(second, "func two() -> i32 => 2\n");
         using (new FileStream(first, FileMode.Open, FileAccess.Read, FileShare.None))
         using (new FileStream(second, FileMode.Open, FileAccess.Read, FileShare.None))
         {
@@ -431,8 +469,8 @@ public sealed partial class CheckServiceTest : IDisposable
     [Fact]
     public async Task ConflictingDependencyInputsUnderALockReportTheCommandMessage()
     {
-        this.WriteLibrary("LeafA", "leaf", "public func a() -> i32 => 1\n");
-        this.WriteLibrary("LeafB", "leaf", "public func b() -> i32 => 2\n");
+        this.WriteLibrary("LeafA", "leaf", "func a() -> i32 => 1\n");
+        this.WriteLibrary("LeafB", "leaf", "func b() -> i32 => 2\n");
         var project = this.WriteProject(
             "App",
             ("main.kimi", Valid),
@@ -455,7 +493,7 @@ public sealed partial class CheckServiceTest : IDisposable
         var project = this.WriteProject("App", ("main.kimi", Valid));
         var main = this.PathOf("App", "main.kimi");
         var added = this.PathOf("App", "added.kimi");
-        var inputs = new OverlayInputSource(new() { [main] = Broken, [added] = "public func two() -> i32 => 2\n" });
+        var inputs = new OverlayInputSource(new() { [main] = Broken, [added] = "func two() -> i32 => 2\n" });
         var output = this.Run(project, inputs: inputs);
 
         Assert.Contains(output.Diagnostics, x => Location(output, x) == SourceIdentity.FromPath(main) && x.Severity == DiagnosticSeverity.Error);
@@ -534,7 +572,7 @@ public sealed partial class CheckServiceTest : IDisposable
     [Fact]
     public void ATestMarkerOnALocalFunctionIsFoundAndThenRejected()
     {
-        const string Source = "public func outer() -> ()\n    #Test\n    func inner() -> () => ()\n    inner()\n";
+        const string Source = "func outer() -> ()\n    #Test\n    func inner() -> () => ()\n    inner()\n";
         var project = this.WriteProject("Local", ("main.kimi", Source));
         Assert.Equal(TestPresence.Yes, this.Run(project).Presence);
         var output = this.Run(project, CheckMode.Test);
@@ -589,6 +627,18 @@ public sealed partial class CheckServiceTest : IDisposable
         Directory.CreateDirectory(folder);
         File.WriteAllText(Path.Combine(folder, name + ".kimiproj"), $"OutputKind=\"Library\" PackageId=\"{id}\" PackageVersion=\"1\" Targets={{\"{WindowsProfile.Target}\"}}");
         File.WriteAllText(Path.Combine(folder, "main.kimi"), source);
+    }
+
+    // A root App with the given settings and one dependency Leaf, whose configuration fails at load when asked (IMPL 20.1: a glob
+    // TestSources entry); no lock is written.
+    private string WriteLeafUser(string settings, bool leafFails)
+    {
+        var folder = this.PathOf("Leaf");
+        Directory.CreateDirectory(folder);
+        var tests = leafFails ? " TestSources={\"*.kimi\"}" : string.Empty;
+        File.WriteAllText(Path.Combine(folder, "Leaf.kimiproj"), $"OutputKind=\"Library\" PackageId=\"leaf\" PackageVersion=\"1\" Targets={{\"{WindowsProfile.Target}\"}}{tests}");
+        File.WriteAllText(Path.Combine(folder, "main.kimi"), Valid);
+        return this.WriteProject("App", ("main.kimi", Valid), settings, "Use={PackageId=\"leaf\" PackageVersion=\"1\" Project=\"../Leaf/Leaf.kimiproj\"}");
     }
 
     private sealed class OverlayInputSource(Dictionary<string, string> overlays) : CheckInputSource

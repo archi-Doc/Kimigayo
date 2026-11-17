@@ -3,7 +3,7 @@
 // Owns A5's Place steps (SPEC 15.6.2, 15.6.3; design A3 3, E13 (4), E17; DECISIONS R4-M94 D12, R4-M100): a Place's projections under the
 // selected view as classed steps, root first. MirBorrows reads them now (it compares them by prefix and walks them for reads and stores),
 // and MirOrigins from 2a-1a (DECISIONS R4-M94 D12).
-// Input: a Place of a validated body (its projections, Types and the roles of its locals) and the selected view (MirCases). Output: Walk's
+// Input: the selected view (MirCases) and a Place of its validated body (its projections, Types and the roles of its locals). Output: Walk's
 // steps, each with its projection kind and argument, its MirStepClass and its Prefix, the projection id of the Place the step applies to (0 at
 // the root; the whole Place for a Reborrow's added Deref), whose case Type a Deref's class is read from; and Prepared, whether a root is a
 // default template's PreparedInput.
@@ -52,14 +52,13 @@ internal sealed class MirSteps(MirCases cases)
     /// (SPEC 13.5.5) and another a Deref, the step a borrow Deref of its case is (A3 E13 (4), review N3), a default template's Deref
     /// directly on a PreparedInput is the caller's pending slot itself, Inline (A3 E17, SPEC 7.2.3; MirBorrows.Defaults), and a Reborrow
     /// adds its referent's exclusive Deref.</summary>
-    /// <param name="body">The body of the Place.</param>
-    /// <param name="place">The Place.</param>
+    /// <param name="place">A Place of the selected view's body (<see cref="MirCases.Body"/>).</param>
     /// <param name="reborrow">Whether the Place is a Reborrow's, which adds its referent's exclusive Deref.</param>
     /// <param name="into">The steps, grown as needed.</param>
     /// <returns>The number of steps.</returns>
-    internal int Walk(MirBody body, MirPlace place, bool reborrow, ref MirStep[] into)
+    internal int Walk(MirPlace place, bool reborrow, ref MirStep[] into)
     {
-        var projections = body.Projections;
+        var projections = cases.Body.Projections;
         var length = 0;
         for (var id = place.Projection; id > 0; id = projections[id].Prefix)
         {
@@ -74,10 +73,10 @@ internal sealed class MirSteps(MirCases cases)
             var prefix = place with { Projection = row.Prefix };
             var @class = row.Kind switch
             {
-                MirProjectionKind.Deref => row.Prefix == 0 && Prepared(body, place.Root)
-                    ? MirStepClass.Inline : Deref(cases.Type(body.TypeOf(prefix)!).Semantics),
+                MirProjectionKind.Deref => row.Prefix == 0 && Prepared(cases.Body, place.Root)
+                    ? MirStepClass.Inline : Deref(cases.TypeOf(prefix).Semantics),
                 MirProjectionKind.PairLayer => cases.Layer(place with { Projection = id }) is { } layer ? Deref(layer.Semantics) : (MirStepClass?)null,
-                MirProjectionKind.Index => MirTypes.View(cases.Type(body.TypeOf(prefix)!)) is { } view ? Deref(view) : MirStepClass.Index,
+                MirProjectionKind.Index => this.Index(prefix),
                 _ => MirStepClass.Inline,
             };
 
@@ -98,13 +97,12 @@ internal sealed class MirSteps(MirCases cases)
         return count;
     }
 
-    // A sequence Place's element step after its count steps, as an Index of it walks above: a view's Deref, else an Index step; a Storage's
-    // walk (O-92 (a)). Returns the new count.
-    internal int Element(MirBody body, MirPlace place, int count, ref MirStep[] into)
+    // A sequence Place's element step after its count steps, classed as an Index of it walks (Index); a Storage's walk (O-92 (a)). Returns
+    // the new count.
+    internal int Element(MirPlace place, int count, ref MirStep[] into)
     {
         MirDataflow.Grow(ref into, count + 1);
-        var @class = MirTypes.View(cases.Type(body.TypeOf(place)!)) is { } view ? Deref(view) : MirStepClass.Index;
-        into[count] = new(MirProjectionKind.Index, @class, -1, place.Projection);
+        into[count] = new(MirProjectionKind.Index, this.Index(place), -1, place.Projection);
         return count + 1;
     }
 
@@ -117,4 +115,7 @@ internal sealed class MirSteps(MirCases cases)
         SemanticsKind.Raw => MirStepClass.Raw,
         _ => MirStepClass.Own,
     };
+
+    // An Index step's class by its sequence's Type: a view's Deref (a Slice's index is a shared one, E6), else an Index into inline storage.
+    private MirStepClass Index(MirPlace sequence) => MirTypes.View(cases.TypeOf(sequence)) is { } view ? Deref(view) : MirStepClass.Index;
 }

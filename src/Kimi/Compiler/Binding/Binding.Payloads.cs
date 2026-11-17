@@ -12,32 +12,34 @@ public sealed partial class Binding
     private bool TryPayloadProjection(Koto source, BoundType pattern, BoundType actual, BindingScope scope, out BoundType result)
     {
         result = actual;
-        if (!IsObjectSemantics(actual.Semantics) || actual.Components.Count != 1 ||
+        var objects = this.ObjectCases(actual, scope, out var view); // Every case an object form of `view` (a pair layer's included).
+        if (objects == SemanticsMask.None ||
             pattern is not { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 } ||
-            !ReferenceEquals(actual.Components[0], pattern.Components[0]))
+            !ReferenceEquals(view, pattern.Components[0]))
         {
             return false;
         }
 
-        if (this.ProveSealed(actual.Components[0], scope) != ConstraintProof.Proven)
+        if (this.ProveSealed(view, scope) != ConstraintProof.Proven)
         {
             return false;
         }
 
-        // SPEC 13.5.5: exclusive payload access needs exclusive authority along the whole path, also to an objuniq view.
+        // SPEC 13.5.5: exclusive payload access needs exclusive authority along the whole path and through the receiver's own layer, a
+        // pair layer's weakest case included: the authority a member write through it reads (PlaceAuthority, ExclusivelyAcquirable).
         var exclusive = pattern.Semantics == SemanticsKind.Uniq;
-        if (exclusive && ((actual.Semantics != SemanticsKind.ObjUniq && actual.HandleMode is not { PayloadAuthority: LoanRequirement.Uniq }) || ReachedThroughShared(source)))
+        if (exclusive && !ExclusivelyAcquirable(source))
         {
             return false;
         }
 
         // A receiver's implicit Borrow is lent as SPEC lends it (BorrowablePlace).
-        if (actual.Semantics is not (SemanticsKind.ObjRef or SemanticsKind.ObjUniq) && !this.LendsHandle(source, scope, exclusive, out _))
+        if ((objects & SemanticsMask.Object) != 0 && !this.LendsHandle(source, scope, exclusive, out _))
         {
             return false;
         }
 
-        result = this.types.Intern(BoundTypeKind.Semantics, null, pattern.Semantics, [actual.Components[0]], origin: this.PlaceOrigin(source));
+        result = this.types.Intern(BoundTypeKind.Semantics, null, pattern.Semantics, [view], origin: this.PlaceOrigin(source));
         return true;
     }
 }

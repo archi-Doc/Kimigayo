@@ -262,6 +262,38 @@ public sealed partial class TyCtxtTest
         CheckInstantiations(c, c.Kotonoha.RootKoto);
     }
 
+    // PLAN G949 S1-b2 (DECISIONS BU-220): the statics hold the ids 1..StaticCount from one fixed list, the same objects in every
+    // compilation; a compilation's TyCtxt numbers every Type it makes after them, the interned ones and the parameter Types (a generic
+    // parameter's whole Type and target projection, a Contract's Self), each id once and with no gap, in the order it makes them, so two
+    // compilations of one program number alike.
+    [Fact]
+    public void TypeIdsAreDenseAndUnique()
+    {
+        var statics = new[] { BoundType.Unit, BoundType.Never, BoundType.Boolean, BoundType.Range }.Concat(BoundType.Primitives.Values)
+            .Concat(BoundType.WrappingScalars.Values).Distinct().Select(static x => x.Id).Order();
+        Assert.Equal(Enumerable.Range(1, BoundType.StaticCount), statics);
+        var first = Made(CompilationTestHelper.BindSuccess("()"));
+        var second = Made(CompilationTestHelper.BindSuccess("()"));
+        Assert.Equal(Enumerable.Range(BoundType.StaticCount + 1, first.Length), first);
+        Assert.Equal(first, second);
+
+        // The ids of every Type the compilation's TyCtxt made (its interned ones, each declared symbol's own Types), as many as its count.
+        static int[] Made(Compilation c)
+        {
+            const System.Reflection.BindingFlags Private = System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance;
+            var interned = ((Dictionary<int, List<BoundType>>)typeof(TyCtxt).GetField("types", Private)!.GetValue(c.Types)!).Values.SelectMany(static x => x);
+            var own = new List<BoundType?>();
+            foreach (var symbol in c.Binding.Semantics.Declarations)
+            {
+                own.AddRange([symbol.WholeType, symbol.Type, symbol.ContractSelf]);
+            }
+
+            int[] ids = [.. interned.Concat(own.OfType<BoundType>()).Where(static x => x.Id > BoundType.StaticCount).Distinct().Select(static x => x.Id).Order()];
+            Assert.Equal((int)typeof(TyCtxt).GetField("typeCount", Private)!.GetValue(c.Types)! - BoundType.StaticCount, ids.Length);
+            return ids;
+        }
+    }
+
     // SPEC 6.1.3, 8.1.3: a closure an instance closed is in that instance's substitution and has its signature; a closure no instance closed is
     // in the identity of the function enclosing it, which keeps every Type.
     [Fact]
@@ -342,7 +374,7 @@ public sealed partial class TyCtxtTest
         var subst = c.Types.SubstOf(call)!;
         Assert.Equal(1, subst.Lengths.Length);
         Assert.Same(subst, c.Types.SubstOfItem(item));
-        Assert.Same(subst, c.Types.Synthesized(call.Target, null, call.TypeArguments));
+        Assert.Same(subst, c.Types.Synthesized(call.Target, null, call.TypeArguments, []));
     }
 
     // SPEC 3.4.3, 13.5.5: selection follows a reference or object handle as a Deref and a pair layer, the original s/T or an application
@@ -1347,7 +1379,11 @@ public sealed partial class TyCtxtTest
 
     // DECISIONS R5-M61 (F package 4.5): every requirement call in a generic body, in the instance a closed call of that body makes, resolves
     // under Witness to a Body, Builtin or Storage target, over every such call of the generic library and the milestones and over
-    // WitnessSource's kinds; a bound Contract reference is the substitution's declaring Type.
+    // WitnessSource's kinds; a bound Contract reference is the substitution's declaring Type. The corpus's string, view and wrapping
+    // integer format calls resolve to bodies since R8-S2d1 (114 of them: Builtin 173 -> 59, Body 38 -> 152), and the integers' up to 64
+    // bits since R8-S2b1 (56 more: Builtin 59 -> 3, Body 152 -> 208), and u128's since R8-S2b2 (Builtin 3 -> 2, Body 208 -> 209). The 3
+    // left are a tuple's Comparable (Milestone25), f64's Equatable in Milestone25's contractEqual (G776-a: its specialization no longer
+    // calls `equals` as a member, Builtin 2 -> 3) and Wrapping<u8>'s Equatable (Milestone31).
     [Fact]
     public void WitnessResolvesEveryRequirementCallOfTheCorpus()
     {
@@ -1365,7 +1401,7 @@ public sealed partial class TyCtxtTest
         WitnessProblems(direct, direct.Kotonoha, "direct", kinds, problems);
         var counts = $"corpus {Counts(corpus)}; direct {Counts(kinds)}";
         Assert.True(
-            problems.Count == 0 && counts == "corpus Body 34, Builtin 2, Storage 1, bound 3; direct Body 11, Builtin 2, Storage 3, bound 3",
+            problems.Count == 0 && counts == "corpus Body 209, Builtin 3, Storage 1, bound 3; direct Body 11, Builtin 2, Storage 3, bound 3",
             $"{counts}; {problems.Count} differ:\n{string.Join('\n', problems.Take(40))}");
 
         static string Counts(SortedDictionary<string, int> kinds) => string.Join(", ", kinds.Select(static x => $"{x.Key} {x.Value}"));
@@ -1555,7 +1591,8 @@ public sealed partial class TyCtxtTest
 
     // SPEC 8.11.3, 8.13.3, 22.1 (PLAN G589, G663): a requirement on a Type of the library witness table runs the group's function at the
     // Self's arguments, the instance A4 is given (Witnesses), and that closed instance selects the specialization its key names, the
-    // original elsewhere: IntegerPosition's tryResolve at i32 and isize its specializations, at u8 its original (fail-before: no target).
+    // original elsewhere: IntegerPosition's tryResolve at i32 and isize its specializations, at u8 its original (fail-before: no target);
+    // each one's Original is the target, whose call contract and ABI it keeps (R8-S2b2; fail-before: no Original).
     [Theory]
     [InlineData("i32", true)]
     [InlineData("isize", true)]
@@ -1566,13 +1603,49 @@ public sealed partial class TyCtxtTest
         var self = BoundType.Primitives[name];
         var contract = c.Library.GetSymbol(KimiDeclarationId.Position)!;
         var targets = new List<(BindingSymbol Target, Subst Instance)>();
-        Assert.True(c.Types.Witnesses(contract.Contract!.OwnRequirement()!, self, contract, null, null, targets));
+        var requirement = contract.Contract!.OwnRequirement()!;
+        Assert.True(c.Types.Witnesses(requirement, contract, c.Types.Synthesized(requirement, self, contract.Type!), null, targets));
         var (target, instance) = Assert.Single(targets);
         Assert.Equal([self], instance.Types);
         var selected = c.Types.Implementation(target, instance, 0)!;
         Assert.Equal(specialized, selected.Declaration is FunctionKoto { IsSpecialization: true });
         Assert.Equal(specialized, !ReferenceEquals(selected, target));
+        Assert.Same(target, c.Types.Original(selected)); // SPEC 8.13.2: the call contract and ABI a specialization's body keeps (R8-S2b2).
         Assert.Null(c.Types.Implementation(target, instance, 1));
+    }
+
+    // SPEC 8.6.3 (PLAN G663): the instance A4 is given for a conformance witness (Witnesses) under a requirement call's substitution is the
+    // witness under its declaring instance at the call's own Types and lengths by position, a renamed or reordered slot and a length slot
+    // included, as Witness's Conformance binds them: the two agree but for the Origins, which the analyses relate; a requirement no call
+    // names (Synthesized on the Self) leaves the witness's own slots unbound (fail-before: the instance bound none for any call). A call in
+    // a view (InView) is the call itself where its Self and reference are the view's, else the call at them with its own Types and lengths.
+    [Theory]
+    [InlineData("f<T, U>(self: ref/Self, x: T, y: U)", "f<U, T>(self: ref/Self, x: U, y: T)", "1, true")]
+    [InlineData("f<T, length N>(self: ref/Self, x: [N of T])", "f<U, length M>(self: ref/Self, x: [M of U])", "[1, 2]")]
+    public void AConformanceWitnessIsGivenItsCallsOwnTypesAndLengths(string requirement, string witness, string arguments)
+    {
+        var c = MinimalEmissionTest.Analyze(
+            $"contract Gen\n    func {requirement} -> bool\nstruct S\n    Self is Gen\n    public init() => ()\n    public func {witness} -> bool => true\n" +
+            $"func use<C>(c: ref/C) -> bool\n    C is Gen\n    return c.f({arguments})\nlet s = S.init()\n_ = use(s)\n");
+        var call = Assert.Single(RequirementCalls(c, c.Kotonoha));
+        var subst = Composed(c, call)!;
+        var body = Witness(c, call);
+        Assert.Equal(RequirementTargetKind.Body, body.Kind);
+        Assert.Equal(2, subst.Types.Length);
+        var targets = new List<(BindingSymbol Target, Subst Instance)>();
+        var (requires, contract) = (call.Inner.Target, call.Inner.RequirementContract);
+        Assert.True(c.Types.Witnesses(requires, contract, subst, null, targets));
+        Assert.True(c.Types.Witnesses(requires, contract, c.Types.Synthesized(requires, subst.Self!, TyCtxt.Contract(requires).Type!), null, targets));
+        Assert.Equal(2, targets.Count);
+        Assert.All(targets, x => Assert.Same(body.Target, x.Target));
+        Assert.All(targets, x => Assert.Same(body.Subst!.Declaring, x.Instance.Declaring));
+        var instance = targets[0].Instance;
+        Assert.True(instance.Types.SequenceEqual(body.Subst!.Types) && instance.Lengths.SequenceEqual(body.Subst.Lengths));
+        Assert.True(instance.Types.SequenceEqual(subst.Types) && instance.Lengths.SequenceEqual(subst.Lengths));
+        Assert.Equal(0, targets[1].Instance.Types.Length);
+        Assert.Same(subst, c.Types.InView(subst, subst.Self!, subst.Declaring));
+        var moved = c.Types.InView(subst, BoundType.I32, null);
+        Assert.True(ReferenceEquals(moved.Self, BoundType.I32) && moved.Types.SequenceEqual(subst.Types) && moved.Lengths.SequenceEqual(subst.Lengths));
     }
 
     // SPEC 6.5.1, 23.1.2 (G242; DECISIONS BU-37): an enum instance publishes each Case its substitution forms, and a Case whose payload
@@ -1787,14 +1860,14 @@ public sealed partial class TyCtxtTest
         return (c, probe.Parameters.ToDictionary(static x => x.InternalName, static x => x.Type.TypeOf()!));
     }
 
-    // The struct and enum instances the MIR locals hold, added to `instances`, and the names of those whose erased instance does not store
-    // the erasure of what they store.
+    // The struct and enum instances the MIR locals hold (the library's bodies' included: the library check's root range, PLAN G951 U2-T),
+    // added to `instances`, and the names of those whose erased instance does not store the erasure of what they store.
     private static List<string> ErasedStoreProblems(Compilation c, List<BoundType> instances)
     {
         var types = c.Types;
         var seen = new HashSet<BoundType>();
         var problems = new List<string>();
-        foreach (var body in c.BuildMir().Bodies)
+        foreach (var body in new MirBuilder(c).Build(SyntaxTable.LibraryModule + 1).Bodies)
         {
             foreach (var local in body.Locals)
             {

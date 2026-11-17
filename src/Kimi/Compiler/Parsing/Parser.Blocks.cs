@@ -157,16 +157,16 @@ public static partial class Parser
         if (IsCompileTimeSwitchStart(ref reader))
         {
             var arms = CompileTimeSwitchArms.Begin(ref reader);
-            while (arms.TryNext(ref reader, out var selected, out var header, out var invalidItems))
+            while (arms.TryNext(ref reader, out var arm))
             {
-                if (invalidItems)
+                if (arm.Kind == CompileTimeSwitchArmKind.InvalidItems)
                 {
                     list.EnterExcluded(ref reader);
                     var start = BeginInvalidSwitchItems(ref reader);
                     ParseItems(ref reader, ref list, stopAtCaseGroupBoundary: true);
                     EndInvalidSwitchItems(ref reader, start);
                 }
-                else if (selected)
+                else if (arm.Kind == CompileTimeSwitchArmKind.Selected)
                 {
                     reader.Advance(); // StartBlock
                     ParseItems(ref reader, ref list);
@@ -174,7 +174,7 @@ public static partial class Parser
                 else
                 {
                     list.EnterExcluded(ref reader);
-                    var region = BeginExcludedRegion(ref reader, header, header.Start);
+                    var region = BeginExcludedRegion(ref reader, arm.Header, arm.Header.Start);
                     reader.Advance(); // StartBlock
                     ParseItems(ref reader, ref list);
                     EndExcludedRegion(ref reader, region);
@@ -231,6 +231,7 @@ public static partial class Parser
         if (IsOriginRelationStart(ref reader))
         {
             ReportPendingAttributes(ref reader);
+            RejectAccessWord(ref reader);
             var relation = ParseOriginRelation(ref reader);
             if ((function ?? state.OriginOwner) is { } owner && !state.SeenExecutableItem && function is not { IsAnonymous: true } and not { IsDestructor: true })
             {
@@ -253,37 +254,45 @@ public static partial class Parser
             return;
         }
 
-        // SPEC 7.5: every function, constructor, destructor and accessor body begins with its Constraint prefix, whatever
-        // the declaration's generic parameters; a leading `value is Dog` is never an expression statement.
-        if ((function is not null || state.OriginOwner is PropertyAccessorKoto) && IsFunctionConstraintStart(ref reader, function))
+        // SPEC 7.5: every function, constructor, destructor and accessor body begins with its leading region, whatever the declaration's
+        // generic parameters: an unparenthesized item that derives ConstraintClause is a Constraint there, never an expression statement,
+        // and Binding judges its subject; after the region only one whose subject is rooted in a generic parameter is (a misplaced one).
+        // A subject alone (a Name path, Self or a primitive) is read where it starts; any other is the expression parser's operand,
+        // decided at its `is` by its shape (AsConstraintSubject), so the one parse of the shared prefix serves both readings.
+        var body = function is not null || state.OriginOwner is PropertyAccessorKoto;
+        var rooted = body && IsRootedInGenericParameter(ref reader, function);
+        if (body && (HasSimpleConstraintSubject(ref reader) || (reader.CurrentTokenKind.IsPrimitiveType() && reader.PeekKind(1) == TokenKind.Is)) &&
+            (!state.SeenExecutableItem || rooted))
         {
-            // A root-qualified subject is never a generic parameter; do not read "::" as an identifier. A destructor or
-            // accessor is never a conditional member, so no subject is permitted in its body.
-            var rootQualified = reader.CurrentTokenKind == TokenKind.ColonColon;
-            var subject = rootQualified ? default : reader.GetSpan(reader.CurrentToken);
-            var isGenericParameter = !rootQualified && function is { IsDestructor: false } && (function.IsGenericParameter(subject) || function.IsDeclaringTypeParameter(subject));
-            if (!state.SeenExecutableItem || isGenericParameter)
-            {
-                ReportPendingAttributes(ref reader);
-                var misplaced = state.SeenExecutableItem || !isGenericParameter ? reader.Unexpected(SyntaxForm.ConstraintPrefix) : default(DiagnosticKey?);
-                var constraint = ParseTypeConstraint(ref reader);
-                if (constraint is not null && function is { IsDestructor: false } && !excluded)
-                {
-                    // The prefix stays a Constraint of the function (SPEC 7.5); a misplaced one is a recovery, so Binding's own judgement of it is derived.
-                    function.AddTypeConstraint(constraint);
-                    if (misplaced is { } cause)
-                    {
-                        reader.CodeContext.RecordRecovery(constraint, cause);
-                    }
-                }
+            ReportPendingAttributes(ref reader);
+            RejectAccessWord(ref reader);
+            var misplaced = MisplacedConstraint(ref reader, state, function, reader.CurrentTokenRange);
+            AddBodyConstraint(ref reader, function, ParseTypeConstraint(ref reader), misplaced, excluded);
+            return;
+        }
 
+        var oldPosition = reader.Position;
+        Koto? item;
+        if (!body)
+        {
+            item = ParseBlockItem(ref reader);
+        }
+        else if (!TryParseStatementItem(ref reader, out item))
+        {
+            var start = reader.CurrentTokenRange;
+            var lastError = reader.Diagnostic.LastError;
+            var operand = ParseExpression(ref reader, ComparisonBindingPower + 1);
+            if (reader.CurrentTokenKind == TokenKind.Is && (!state.SeenExecutableItem || rooted) && AsConstraintSubject(ref reader, operand) is { } subject)
+            {
+                var misplaced = MisplacedConstraint(ref reader, state, function, start);
+                AddBodyConstraint(ref reader, function, FinishConstraint(ref reader, subject, lastError, finishLine: true), misplaced, excluded);
                 return;
             }
+
+            item = ContinueExpression(ref reader, operand, 0);
         }
 
         state.SeenExecutableItem = true;
-        var oldPosition = reader.Position;
-        var item = ParseBlockItem(ref reader);
         if (item is not null && !excluded)
         {
             items.Add(item);
@@ -309,6 +318,23 @@ public static partial class Parser
         }
     }
 
+    // SPEC 7.5: a Constraint after the leading region, or in a destructor's or an accessor's body, which takes none, is misplaced.
+    private static DiagnosticKey? MisplacedConstraint(ref TokenReader reader, in ExecutableItemState state, FunctionKoto? function, SourceSpan subject)
+        => state.SeenExecutableItem || function is not { IsDestructor: false } ? reader.Unexpected(SyntaxForm.ConstraintPrefix, subject) : null;
+
+    // The prefix stays a Constraint of the function (SPEC 7.5); a misplaced one is a recovery, so Binding's own judgement of it is derived.
+    private static void AddBodyConstraint(ref TokenReader reader, FunctionKoto? function, IsKoto constraint, DiagnosticKey? misplaced, bool excluded)
+    {
+        if (function is { IsDestructor: false } && !excluded)
+        {
+            function.AddTypeConstraint(constraint);
+            if (misplaced is { } cause)
+            {
+                reader.CodeContext.RecordRecovery(constraint, cause);
+            }
+        }
+    }
+
     /// <summary>
     /// Gets whether a Container keyword at the current token declares a Container. The contextual keyword is a Name (SPEC F.3)
     /// where an expression continues after it, through an operator, a member access, a call or an index, and where its line ends
@@ -318,7 +344,7 @@ public static partial class Parser
     /// <returns><see langword="true"/> for a Container declaration.</returns>
     internal static bool IsContainerDeclarationStart(ref TokenReader reader)
     {
-        if (reader.CurrentTokenKind is not (TokenKind.Group or TokenKind.Struct or TokenKind.Enum or TokenKind.Extension or TokenKind.Contract))
+        if (HeaderWords[(byte)reader.CurrentTokenKind] != HeaderWord.ContainerIntroducer)
         {
             return false;
         }
@@ -332,14 +358,81 @@ public static partial class Parser
         };
     }
 
+    // Whether a declaration follows an executable item's modifiers: the header table's introducers (Appendix F.6.1), a Container
+    // word and `func` only where their declaration starts, and a SpecializationDeclaration's `specialize func` (F.6.3).
+    // `alias` and `rootgroup` are answered apart from the table, as before R9-F6-10: the table holds `rootgroup` and not `alias`,
+    // this reader the reverse. SPEC F.3.2 makes both declaration introducers; the two arms go when both readers read one set.
     private static bool IntroducesDeclaration(ref TokenReader reader)
-        => IsContainerDeclarationStart(ref reader) ||
-            reader.CurrentTokenKind is TokenKind.Let or TokenKind.Var or TokenKind.Init or TokenKind.Drop or TokenKind.Computed or TokenKind.Property or TokenKind.Associate or TokenKind.Alias ||
-            (reader.CurrentTokenKind == TokenKind.Func && reader.PeekKind(1) is not (TokenKind.OpenParenthesis or TokenKind.OpenBracket)) ||
-            (reader.IsCurrentIdentifier("specialize") && reader.PeekKind(1) == TokenKind.Func);
+        => reader.CurrentTokenKind switch
+        {
+            TokenKind.Func => IsFunctionDefinitionStart(ref reader),
+            TokenKind.Alias => true,
+            TokenKind.RootGroup => false,
+            var kind => HeaderWords[(byte)kind] switch
+            {
+                HeaderWord.ContainerIntroducer => IsContainerDeclarationStart(ref reader),
+                HeaderWord.DeclarationIntroducer => true,
+                _ => IsSpecializationStart(ref reader),
+            },
+        };
+
+    /// <summary>Whether a SpecializationDeclaration starts here (SPEC F.6.3): the contextual keyword <c>specialize</c> before <c>func</c>.</summary>
+    /// <param name="reader">The token reader.</param>
+    /// <returns><see langword="true"/> at a specialization.</returns>
+    internal static bool IsSpecializationStart(ref TokenReader reader)
+        => reader.IsCurrentIdentifier("specialize") && reader.PeekKind(1) == TokenKind.Func;
+
+    /// <summary>Parses a specialization in an item list that takes none (SPEC 8.13.1, F.6: an executable body or a Contract): it is
+    /// reported at its introducer, <c>specialize func</c>, parsed whole, so its header's and body's own records stay (SPEC 8.13.2;
+    /// DECISIONS BU-149's specialization row), and kept in its list with its placement Error (<see cref="FunctionKoto.Placement"/>),
+    /// on which the checks that need its declaration scope rest; Binding matches it to no target.</summary>
+    /// <param name="reader">The token reader at the specialization (<see cref="IsSpecializationStart"/>).</param>
+    /// <returns>The specialization, or <see langword="null"/> when its header failed.</returns>
+    internal static FunctionKoto? ParseMisplacedSpecialization(ref TokenReader reader)
+    {
+        var introducer = SourceSpan.FromBounds(reader.CurrentToken.Span.Start, reader.PeekToken(1).Span.End);
+        var cause = reader.Unexpected(SyntaxForm.SpecializationDeclaration, introducer);
+        var function = ParseSpecialization(ref reader);
+        if (function is not null)
+        {
+            function.Placement = new ErrorKoto(reader.CodeContext, introducer) { Cause = cause };
+        }
+
+        return function;
+    }
+
+    /// <summary>Whether a named function definition starts here (Appendix F.6.1 FunctionDeclaration, F.10 LocalFunction): <c>func</c>
+    /// before a Name. <c>func</c> before a parameter or generic parameter list is an anonymous function, an expression (SPEC 9.4).</summary>
+    /// <param name="reader">The token reader.</param>
+    /// <returns><see langword="true"/> at a named function definition.</returns>
+    internal static bool IsFunctionDefinitionStart(ref TokenReader reader)
+        => reader.CurrentTokenKind == TokenKind.Func && reader.PeekKind(1) is not (TokenKind.OpenParenthesis or TokenKind.OpenBracket);
+
+    /// <summary>Parses a named function definition of the execution scope or of a body, with its Body.</summary>
+    /// <param name="reader">The token reader at <c>func</c> (<see cref="IsFunctionDefinitionStart"/>).</param>
+    /// <returns>The function, or <see langword="null"/> when its header failed.</returns>
+    internal static FunctionKoto? ParseFunctionItem(ref TokenReader reader)
+    {
+        reader.Advance();
+        var function = ParseFuncDeclaration(ref reader, FunctionForm.Function);
+        if (function is null)
+        {
+            return null;
+        }
+
+        ParseNamedFunctionBody(ref reader, function);
+        return function;
+    }
 
     internal static Koto? ParseBlockItem(ref TokenReader reader)
+        => TryParseStatementItem(ref reader, out var item) ? item : ParseExpression(ref reader);
+
+    // SPEC F.10.1: an executable item that is no expression statement (a declaration, a statement, a discard, a test verification,
+    // a skipped modifier line): true with the item, or null for a line skipped as one; false where the item is an expression, which
+    // the caller parses.
+    private static bool TryParseStatementItem(ref TokenReader reader, out Koto? item)
     {
+        item = null;
         if (reader.ModifierKind != ModifierKind.NoModifier && !IntroducesDeclaration(ref reader))
         {
             // Modifiers introduce a declaration; the line and the body it would have introduced are skipped as one.
@@ -351,10 +444,10 @@ public static partial class Parser
             }
 
             SkipDeclarationLine(ref reader);
-            return null;
+            return true;
         }
 
-        if (reader.AttributeKoto is { } attribute && (reader.CurrentTokenKind != TokenKind.Func || reader.PeekKind(1) is TokenKind.OpenParenthesis or TokenKind.OpenBracket))
+        if (reader.AttributeKoto is { } attribute && !IsFunctionDefinitionStart(ref reader))
         {
             // Only a named function among executable items takes attributes (SPEC 6.7, F.10); a misplaced one attaches to nothing,
             // so the item it precedes is checked on its own.
@@ -367,7 +460,8 @@ public static partial class Parser
             var discardToken = reader.Read();
             reader.Advance();
             var value = ParseRequiredExpression(ref reader);
-            return new DiscardKoto(ref reader, SourceSpan.FromBounds(discardToken.Span.Start, Math.Max(discardToken.Span.End, value.Span.End)), value);
+            item = new DiscardKoto(ref reader, SourceSpan.FromBounds(discardToken.Span.Start, Math.Max(discardToken.Span.End, value.Span.End)), value);
+            return true;
         }
 
         if (reader.CurrentTokenKind == TokenKind.Dollar && reader.PeekKind(1) is TokenKind.Identifier or TokenKind.Require)
@@ -382,7 +476,8 @@ public static partial class Parser
                 if (!reader.TryConsume(TokenKind.OpenParenthesis))
                 {
                     reader.Expect(SyntaxForm.OpenParenthesis);
-                    return reader.NewErrorKoto();
+                    item = reader.NewErrorKoto();
+                    return true;
                 }
 
                 var arguments = ParseArgumentList(ref reader, out var labels);
@@ -404,23 +499,29 @@ public static partial class Parser
 
                 // A malformed list keeps its condition; a second argument stands as a recovery, so no message check repeats the Error.
                 var message = arguments.Length > 1 ? (malformed is { } cause ? new ErrorKoto(ref reader, arguments[1].Span) { Cause = cause } : arguments[1]) : null;
-                return new TestVerificationKoto(ref reader, SourceSpan.FromBounds(start.Span.Start, reader.PreviousSyntaxEnd), require, arguments.Length > 0 ? arguments[0] : reader.NewErrorKoto(), message);
+                item = new TestVerificationKoto(ref reader, SourceSpan.FromBounds(start.Span.Start, reader.PreviousSyntaxEnd), require, arguments.Length > 0 ? arguments[0] : reader.NewErrorKoto(), message);
+                return true;
             }
         }
 
-        if (reader.IsCurrentIdentifier("specialize") && reader.PeekKind(1) == TokenKind.Func)
+        if (IsSpecializationStart(ref reader))
         {
-            return ParseSpecialization(ref reader);
+            // A specialization belongs to the source root or a Container (SPEC 8.13.1, F.6.1; the root reads its own,
+            // GroupKoto.ParseRootItem); no executable body takes one (F.6.3, F.10.1).
+            item = ParseMisplacedSpecialization(ref reader);
+            return true;
         }
 
         if (reader.CurrentTokenKind == TokenKind.Require)
         {
-            return ParseRequire(ref reader);
+            item = ParseRequire(ref reader);
+            return true;
         }
 
         if (IsBlockStatementStart(ref reader))
         {
-            return ParseBlockStatement(ref reader);
+            item = ParseBlockStatement(ref reader);
+            return true;
         }
 
         var token = reader.CurrentToken;
@@ -428,7 +529,7 @@ public static partial class Parser
         {
             // No Container nests in an executable block (SPEC 6.1.1); the declaration is skipped with its body.
             OmitDeclaration(ref reader, reader.Unexpected(token.Kind == TokenKind.Extension ? SyntaxForm.ExtensionDeclaration : SyntaxForm.ContainerDeclaration, token.Span));
-            return null;
+            return true;
         }
 
         switch (token.Kind)
@@ -436,26 +537,22 @@ public static partial class Parser
             case TokenKind.Let:
             case TokenKind.Var:
                 reader.Advance();
-                return ParseField(ref reader, token);
+                item = ParseField(ref reader, token);
+                return true;
 
             case TokenKind.Func:
-                if (reader.PeekKind(1) is TokenKind.OpenParenthesis or TokenKind.OpenBracket)
+                if (!IsFunctionDefinitionStart(ref reader))
                 {
-                    return ParseExpression(ref reader);
+                    return false;
                 }
 
-                reader.Advance();
-                var function = ParseFuncDeclaration(ref reader);
-                if (function is null)
-                {
-                    return null;
-                }
-
-                ParseNamedFunctionBody(ref reader, function);
-                return function;
+                // A local function takes no access word (SPEC 9.3, F.10 LocalFunction).
+                RejectAccessWord(ref reader);
+                item = ParseFunctionItem(ref reader);
+                return true;
 
             default:
-                return ParseExpression(ref reader);
+                return false;
         }
     }
 

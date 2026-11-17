@@ -21,8 +21,9 @@ internal sealed partial class MirBuilder
     // expected Type names. An implicit exclusive borrow of a call's input is two-phase: reserved here, activated at the Call (SPEC 15.6.7).
     // SPEC 3.8, 14.10.3 (DECISIONS R4-M62, R5-M38, R4-M175): any acquisition takes the Never value as it is, which fits any operand
     // position; a named Place of Type Never that a Never form acquires with no adaptation, a Copy or a Move, is acquired so into a fresh
-    // Never temp and gives that Never value, so whatever takes it places nothing; an adapted one (a borrow), or one a node that is no
-    // Never form acquires (a Pattern binding, a capture), is built as Binding publishes it.
+    // Never temp and gives that Never value, so whatever takes it places nothing, and the read does not complete (SPEC 14.9.3): its
+    // block ends there, and what follows is built where only the checks reach (Diverge); an adapted one (a borrow), or one a node that
+    // is no Never form acquires (a Pattern binding, a capture), is built as Binding publishes it.
     private MirOperand Acquire(HirAdjust adjust, MirPlace place, BoundType? expected, bool input, Koto node, MirPlace? into = null)
     {
         if (this.IsNeverValue(place))
@@ -30,7 +31,7 @@ internal sealed partial class MirBuilder
             return MirOperand.Move(place);
         }
 
-        if (!this.IsNever(place) || adjust.Adaptation != HirAdaptation.None || !IsNeverForm(node))
+        if (adjust.Adaptation != HirAdaptation.None || !IsNeverForm(node) || !this.IsNever(place))
         {
             return this.Acquired(adjust, place, expected, input, node, into);
         }
@@ -38,6 +39,7 @@ internal sealed partial class MirBuilder
         var value = this.Hold(BoundType.Never, node);
         var acquired = this.body.AddOperand(this.Acquired(adjust, place, expected, input, node));
         this.body.Push(this.current, MirStatement.Assign(value, MirRvalue.Use(acquired), this.Info(node)));
+        this.Diverge(node);
         return MirOperand.Move(this.Made(value));
     }
 
@@ -50,14 +52,18 @@ internal sealed partial class MirBuilder
         switch (adaptation)
         {
             case HirAdaptation.None when adjust.Acquire == HirAcquire.ByCase:
-                if (this.ByCase(place, type, input) is not { } formed)
+                // SPEC 8.14, 15.6.3 (DECISIONS BU-27; PLAN G254): of the Type its consumer expects where that is the stored one but
+                // for Origins (MirTypes.Agree; no identity premise, BU-72), Binding's name for the by-case Reborrow (its met slot), as
+                // Reborrowed types a stored `uniq`'s; else of the stored Type, as a Copy-only plan or a consumer without one takes it.
+                var named = expected is not null && MirTypes.Agree(expected, type) ? expected : type;
+                if (this.ByCase(place, named, input) is not { } formed)
                 {
                     return MirOperand.Copy(place);
                 }
 
                 // A PairAcquire, a marked Use, goes only into the whole Place of a local; a Reborrow into any place of its Type.
                 var destination = formed.Kind == MirRvalueKind.Use && into is not { Projection: 0, Root: >= 0 } ? null : into;
-                return this.Temporary(type, formed, node, destination);
+                return this.Temporary(named, formed, node, destination);
             case HirAdaptation.None:
                 return adjust.Acquire switch
                 {
@@ -66,7 +72,7 @@ internal sealed partial class MirBuilder
                     _ => MirOperand.Move(place),
                 };
             case HirAdaptation.ReferentRead:
-                return MirOperand.Copy(this.Follow(place, 16, expected));
+                return MirOperand.Copy(this.FollowTo(place, expected));
             case HirAdaptation.Erasure: // SPEC 7.7.4: of the value its ordinary acquisition gives.
                 var source = this.Acquire(adjust with { Adaptation = HirAdaptation.None }, place, null, input, node);
                 return this.Temporary(
@@ -75,10 +81,10 @@ internal sealed partial class MirBuilder
                     node,
                     into);
             case HirAdaptation.ReferenceRead:
-                place = this.Follow(place, 16, target);
+                place = this.FollowTo(place, target);
                 break;
-            case HirAdaptation.PayloadProjection:
-                place = this.body.Project(place, MirProjectionKind.Deref, 0);
+            case HirAdaptation.PayloadProjection: // The handle's or view's own layer: a Deref, or a pair layer's PairLayer (TyCtxt.Layer).
+                place = this.FollowLayers(place, 1);
                 break;
         }
 
@@ -90,13 +96,13 @@ internal sealed partial class MirBuilder
 
     // SPEC 15.1.5, 15.6.3 (DECISIONS BU-27): a stored exclusive reference Reborrowed in its own mode, of the Type its consumer expects,
     // which is Binding's name for the Reborrow (a receiver's, an argument's or a payload's AdaptedType, a Subject's borrow, a destination's
-    // Type) and a same-mode reference to the stored referent; as Acquired types every other borrow by `expected`. Any other expected Type is
-    // a broken contract: InternalInvariant_Kd, the value a derived Opaque of the stored Type in an Opaque temp, whose site names only the
-    // Place's root, built already (R5-M63, R5-M84).
+    // Type) and a same-mode reference to the stored referent, which it names as the body's premises make it (SPEC 8.2.3: MirTypes.Agrees);
+    // as Acquired types every other borrow by `expected`. Any other expected Type is a broken contract: InternalInvariant_Kd, the value a
+    // derived Opaque of the stored Type in an Opaque temp, whose site names only the Place's root, built already (R5-M63, R5-M84).
     private MirOperand Reborrowed(MirPlace place, BoundType stored, BoundType? expected, bool input, Koto node, MirPlace? into)
     {
         if (expected is not { Kind: BoundTypeKind.Semantics, Components: [var named] } || expected.Semantics != stored.Semantics ||
-            stored.Components is not [var referent] || !MirTypes.Agree(named, referent))
+            stored.Components is not [var referent] || !MirTypes.Agrees(this.body, named, referent))
         {
             this.Record(node, DiagnosticCode.InternalInvariant_Kd);
             var temp = this.Temp(stored, node);
@@ -135,13 +141,14 @@ internal sealed partial class MirBuilder
         ? MirRvalue.Opaque(type, this.body.AddOpaque(this.body.Locals[place.Root].Source.Syntax, [place.Root])) : null;
 
     // SPEC 13.5.6, 6.2.2: the Place a reference of a Type to a Place lends: the Place's layer whose Type is the reference's referent (an
-    // object borrow's payload, a reborrow's referent) or its base that is (a base view).
+    // object borrow's payload, a reborrow's referent) or its base that is (a base view), as the body's premises make it (MirTypes.Agrees).
     private MirPlace Lent(MirPlace place, BoundType reference)
     {
         var referent = reference.Components is [var target] ? target : null;
         var depth = 0;
-        place = referent is null ? place : this.Follow(place, 16, referent);
-        for (var layer = this.body.TypeOf(place); referent is not null && layer is not null && !MirTypes.Agree(layer, referent); layer = AdtDef.Base(layer))
+        place = referent is null ? place : this.FollowTo(place, referent);
+        for (var layer = this.body.TypeOf(place); referent is not null && layer is not null && !MirTypes.Agrees(this.body, referent, layer);
+            layer = AdtDef.Base(layer))
         {
             depth = AdtDef.Base(layer) is null ? 0 : depth + 1;
         }

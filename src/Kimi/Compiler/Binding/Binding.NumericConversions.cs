@@ -32,15 +32,7 @@ public sealed partial class Binding
     // The fixed width of an integer or wrapping integer Type that @bits accepts: 32 or 64, never a platform-dependent or
     // 128-bit one (SPEC 13.5.4).
     private static int BitWidth(BoundType type)
-    {
-        if (!type.HasIntegerArithmetic || type.Underlying.Name is "isize" or "usize")
-        {
-            return 0;
-        }
-
-        var width = ScalarTypes.Width(type);
-        return width is 32 or 64 ? width : 0;
-    }
+        => type.Width is 32 or 64 && !ReferenceEquals(type.Underlying, BoundType.ISize) && !ReferenceEquals(type.Underlying, BoundType.USize) ? type.Width : 0;
 
     // SPEC 13.5.4: E@wrap<U> wraps an integer or wrapping integer value to the integer or wrapping integer Type U, concrete
     // or generic, without a check. A direct integer literal is wrapped at compile time from its exact value; it never fails.
@@ -65,7 +57,7 @@ public sealed partial class Binding
             // N (SPEC 8.7.4) keeps it modulo 2^128, whose low N bits are each instance's (ScalarTypes.Normalize).
             var payload = negative ? (UInt128)0 - magnitude : magnitude;
             Complete(conversion.Right, target);
-            return CompleteFolded(conversion, number, target, ScalarTypes.Normalize(unchecked((Int128)payload), ScalarTypes.Width(target)), ConversionBinding.Wrap);
+            return CompleteFolded(conversion, number, target, ScalarTypes.Normalize(unchecked((Int128)payload), target.Width), ConversionBinding.Wrap);
         }
 
         var source = this.BindNode(conversion.Left, scope);

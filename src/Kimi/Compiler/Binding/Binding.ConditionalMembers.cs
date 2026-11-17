@@ -32,9 +32,13 @@ public sealed partial class Binding
             return ConstraintProof.Proven;
         }
 
+        if (this.scopes[declaration].Constraints is { Invalid: true } invalid)
+        {
+            return this.InvalidEnvironment(invalid);
+        }
+
         if (declaration.BindingState == BindingState.Invalid ||
-            this.InvalidDeclarationCause(member.Declaration) is not null ||
-            this.scopes[declaration].Constraints?.Invalid == true)
+            this.InvalidDeclarationCause(member.Declaration) is not null)
         {
             return ConstraintProof.Error;
         }
@@ -72,7 +76,7 @@ public sealed partial class Binding
         if (!valid)
         {
             this.Fail(syntax, BindingFailure.InvalidConstraint);
-            (this.scopes[syntax].Constraints ??= new()).Invalid = true;
+            (this.scopes[syntax].Constraints ??= new()).Fail(syntax);
         }
     }
 
@@ -85,8 +89,10 @@ public sealed partial class Binding
                 continue;
             }
 
+            // The block's declaring path is the one its clause registered in this pass (DECISIONS BU-220): a path an earlier pass
+            // registered and this one did not is not a conformance, and the end-of-Bind sweep pools it.
             var scope = this.scopes[syntax];
-            if (syntax.Operands[0] is IsKoto { BoundConstraint.Contract: { } contract } target && this.impls.TryPath(owner.BoundSymbol!, contract, target, contract) is { } path)
+            if (syntax.Operands[0] is IsKoto { BoundConstraint.Contract: { } contract } target && this.impls.TryPath(owner.BoundSymbol!, contract, target, contract) is { Active: true } path)
             {
                 scope.ConformancePath = path;
             }

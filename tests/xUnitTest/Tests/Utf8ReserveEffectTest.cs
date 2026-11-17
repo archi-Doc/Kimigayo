@@ -43,12 +43,6 @@ public class Utf8ReserveEffectTest
         AssertRefused(Analyze(prefix, values + "\n        _ = " + expression), StateStorage);
     }
 
-    [Theory]
-    [InlineData("first.equals(last@ref)")]
-    [InlineData("first.compare(last@ref)")]
-    public void IntrinsicComparisonWitnessesHaveOnlyInputEffects(string expression)
-        => EffectBoundImplementationTest.AssertBound(Analyze(EqualHelper, Integers + expression), valid: true, "Self is BufferWriter");
-
     // SPEC 8.11.3 (A4's X2, DECISIONS R4-M22): a requirement call on an abstract Self uses the bounds of the Contracts its premises prove,
     // never an implementation's, and Equatable bounds no effect of equals, so `equal<T>`'s `left == right` has unknown effects even over
     // i32's intrinsic witness, and Writer's confined reserve is refused (R6-check H3b T-12: 1r; Binding's old pass accepted it).

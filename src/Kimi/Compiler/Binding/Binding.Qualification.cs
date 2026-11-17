@@ -124,7 +124,7 @@ public sealed partial class Binding
 
     private QualificationFact? InheritedStop(BindingScope container, BindingScope scope, Koto use, string name, LookupRole role, int arity)
     {
-        if (role == LookupRole.Semantics || container.Owner is not StructKoto { BaseClause: { } clause } structure)
+        if (role == LookupRole.TypeSemantics || container.Owner is not StructKoto { BaseClause: { } clause } structure)
         {
             return null;
         }
@@ -202,7 +202,7 @@ public sealed partial class Binding
             }
 
             if (qualifier is null && container.Declaration is DeclarationContainerKoto { GenericParameterNodes.Count: 0, OriginNames.Count: 0 } &&
-                ReferenceEquals(this.ProbePath(container.Name, fact.Scope, node, LookupRole.Any), container) &&
+                ReferenceEquals(this.ProbePath(container.Name, fact.Scope, node, LookupRole.Qualifier), container) &&
                 (fact.Type || this.ProbePath(container.Name, fact.Scope, node, LookupRole.Value) is null))
             {
                 qualifier = container.Name + ".";

@@ -47,8 +47,8 @@ public class WrappingIntegerTest
         Assert.True(wrapping.IsNumeric);
         Assert.False(wrapping.IsUnsignedInteger);
         Assert.Same(primitive, wrapping.Underlying);
-        Assert.Equal(ScalarTypes.Width(primitive), ScalarTypes.Width(wrapping));
-        Assert.Equal(ScalarTypes.Signed(primitive), ScalarTypes.Signed(wrapping));
+        Assert.Equal(primitive.Width, wrapping.Width);
+        Assert.Equal(primitive.IsSigned, wrapping.IsSigned);
         Assert.Equal(ConstraintProof.Proven, c.Binding.ProveCopy(wrapping, a));
         Assert.Equal(ConstraintProof.Refuted, c.Binding.ProvePrimitiveInteger(wrapping, a));
         Assert.Same(wrapping, variables["b"].NameKoto.TypeOf());
@@ -62,6 +62,59 @@ public class WrappingIntegerTest
         Assert.Same(wrapping, variables["n"].NameKoto.TypeOf()); // Unary minus exists for unsigned arguments too.
         Assert.Same(wrapping, variables["m"].NameKoto.TypeOf());
         Assert.Same(Layout.Row(primitive), Layout.Row(wrapping));
+    }
+
+    // SPEC 3.1, 3.1.1, 22: Width is an integer Type's storage size in bits, isize's and usize's the profile's, Wrapping<T>'s that of T,
+    // and eight times its IMPL 21.1.3 row's size; no other Type has one.
+    [Theory]
+    [InlineData("i8", 8)]
+    [InlineData("u8", 8)]
+    [InlineData("i16", 16)]
+    [InlineData("u16", 16)]
+    [InlineData("i32", 32)]
+    [InlineData("u32", 32)]
+    [InlineData("i64", 64)]
+    [InlineData("u64", 64)]
+    [InlineData("i128", 128)]
+    [InlineData("u128", 128)]
+    [InlineData("isize", 64)]
+    [InlineData("usize", 64)]
+    [InlineData("f32", 0)]
+    [InlineData("f64", 0)]
+    [InlineData("char", 0)]
+    [InlineData("bool", 0)]
+    [InlineData("string", 0)]
+    [InlineData("()", 0)]
+    public void OnlyIntegersAndTheirWrappingTypesHaveAWidth(string name, int width)
+    {
+        var type = BoundType.Primitives[name];
+        Assert.Equal(width, type.Width);
+        if (width != 0)
+        {
+            Assert.Equal(width, BoundType.WrappingOf(type).Width);
+            Assert.Equal(width, 8 * Layout.Row(type).Layout.Size);
+        }
+    }
+
+    // SPEC 3.1, 3.1.1: IsSigned is the representation's signedness, Wrapping<T>'s that of T; no other Type is signed, whatever its name.
+    [Fact]
+    public void OnlySignedIntegersAndTheirWrappingTypesAreSigned()
+    {
+        foreach (var integer in new[] { "i8", "u8", "i16", "u16", "i32", "u32", "i64", "u64", "i128", "u128", "isize", "usize" })
+        {
+            var signed = integer[0] == 'i';
+            Assert.Equal(signed, BoundType.Primitives[integer].IsSigned);
+            Assert.Equal(signed, BoundType.WrappingOf(BoundType.Primitives[integer]).IsSigned);
+        }
+
+        var c = MinimalEmissionTest.Analyze("struct item\n    let id: i32\n\n    public init(id: i32)\n        self.id = id\n\nlet s = item.init(1)");
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
+        var user = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<VariableKoto>().Single(x => x.NameKoto.IdentifierName == "s").NameKoto.TypeOf();
+        Assert.Equal("item", user!.Name);
+        foreach (var type in new[] { BoundType.Char, BoundType.Boolean, BoundType.F32, BoundType.F64, user })
+        {
+            Assert.False(type.IsSigned, type.Name);
+        }
     }
 
     [Theory]

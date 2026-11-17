@@ -14,7 +14,9 @@ namespace Kimi.Compiler;
 //   whether a Place offers Write (Writable); whether a receiver can be exclusively acquired for indexUniq or an exclusive view
 //   (ExclusivelyAcquirable, SPEC 15.1.5); whether a Place offers Take (OffersTake, and TakeJudgment for a repair candidate) and may be
 //   borrowed in a mode (BorrowablePlace; as SPEC lends it: LendsPlace and, for a handle, LendsHandle, with the static root), with the
-//   one diagnostic for a written Borrow it may not (BorrowFailure) and for a final implicit Borrow of a static root (FailStaticBorrow).
+//   one diagnostic for a written Borrow it may not (BorrowFailure) and for a final implicit Borrow of a static root (FailStaticBorrow);
+//   whether an explicit discard's allowed Take of a raw Place destroys it in place (DestroysInPlace, SPEC 14.2.4; the HIR publisher
+//   writes it).
 //   The in-place reads it decides the paths of are Binding.InPlaceReads'.
 // - Inputs: the bound syntax (Types, symbols, conversions), the selected index and getter calls, the pair-layer facts (PairAdmitted,
 //   PairCapability), a named root's reassignability (Reassignable) and a special receiver's authority (Receiver).
@@ -32,7 +34,7 @@ public sealed partial class Binding
     internal static AcquisitionJudgment TakeJudgment(Koto place)
     {
         place = KotoHelper.UnwrapParentheses(place);
-        if (place is DereferenceKoto || (place is IndexKoto raw && ReferenceTypes.IsPointer(raw.Left.BoundType)))
+        if (ElementAccess.IsRawRoot(place))
         {
             return AcquisitionJudgment.Verified;
         }
@@ -95,7 +97,7 @@ public sealed partial class Binding
     {
         for (; type is { Kind: BoundTypeKind.Semantics, Components.Count: 1 }; type = type.Components[0])
         {
-            if (type.Semantics is SemanticsKind.Ref or SemanticsKind.ObjRef or SemanticsKind.Rc or SemanticsKind.Arc)
+            if (SharedLayer(type.Semantics))
             {
                 return true;
             }
@@ -179,14 +181,12 @@ public sealed partial class Binding
                     return authority;
             }
 
-            switch (layer)
+            if (SharedLayer(layer))
             {
-                case SemanticsKind.Ref or SemanticsKind.ObjRef or SemanticsKind.Rc or SemanticsKind.Arc:
-                    return SemanticsKind.Ref;
-                case SemanticsKind.Uniq or SemanticsKind.ObjUniq:
-                    authority = SemanticsKind.Uniq;
-                    break;
+                return SemanticsKind.Ref;
             }
+
+            authority = layer is SemanticsKind.Uniq or SemanticsKind.ObjUniq ? SemanticsKind.Uniq : authority;
 
             source = KotoHelper.UnwrapParentheses(next);
         }
@@ -212,11 +212,8 @@ public sealed partial class Binding
             case ConversionKoto { ConversionBinding: ConversionBinding.PairFollow } pair:
                 next = pair.Left;
                 return PathStep.PairFollow;
-            case DereferenceKoto dereference:
-                next = dereference.Operand;
-                return PathStep.RawFollow;
-            case IndexKoto raw when ReferenceTypes.IsPointer(raw.Left.BoundType):
-                next = raw.Left;
+            case Koto when ElementAccess.IsRawRoot(source):
+                next = source is DereferenceKoto dereference ? dereference.Operand : ((BinaryKoto)source).Left;
                 return PathStep.RawFollow;
             case IndexKoto userIndex when ElementAccess.IsUserIndex(userIndex):
                 next = userIndex.Left;
@@ -256,12 +253,7 @@ public sealed partial class Binding
 
         // SPEC 5.2, 5.7: binding mutability does not decide pointee write permission, nor does any raw Origin (condition 3 of SPEC 5.2.1
         // bounds the access at run time); a safe shared layer inside the pointee does.
-        if (node is DereferenceKoto dereference)
-        {
-            return ReferenceTypes.IsPointer(dereference.Operand.BoundType) && !ReachedThroughShared(node);
-        }
-
-        if ((node is IndexKoto index && ReferenceTypes.IsPointer(index.Left.BoundType)) || ElementAccess.IsPointerPath(node))
+        if (ElementAccess.IsRawRoot(node) || ElementAccess.IsPointerPath(node))
         {
             return !ReachedThroughShared(node);
         }
@@ -366,7 +358,7 @@ public sealed partial class Binding
         for (var type = KotoHelper.UnwrapParentheses(place).BoundType; BelowLayer(type) is { } below; type = below)
         {
             var layer = LayerStep(place, type!, assignment, out _);
-            if (layer is SemanticsKind.Ref or SemanticsKind.ObjRef or SemanticsKind.Rc or SemanticsKind.Arc)
+            if (SharedLayer(layer))
             {
                 return SemanticsKind.Ref;
             }
@@ -376,6 +368,14 @@ public sealed partial class Binding
 
         return authority;
     }
+
+    // SPEC 3.4.3, 13.5.5, 15.6.2: whether the outer layer of a Place's own Type grants shared access only (a pair layer by its weakest
+    // case, LayerStep): the write and exclusive-use test of a receiver's own layer.
+    private static bool SharesOwnLayer(Koto place)
+        => KotoHelper.UnwrapParentheses(place).BoundType is { } type && BelowLayer(type) is not null && SharedLayer(LayerStep(place, type, [], out _));
+
+    // SPEC 3.4.3, 13.5.5: a layer step that grants shared access only: a shared reference, an objref view or an rc or arc handle.
+    private static bool SharedLayer(SemanticsKind? layer) => layer is SemanticsKind.Ref or SemanticsKind.ObjRef or SemanticsKind.Rc or SemanticsKind.Arc;
 
     // SPEC 3.4.3, 13.5.5: the Type below one layer of a Type (a reference, handle or object view, raw pointer or pair layer); null
     // for a Type without one.
@@ -457,12 +457,20 @@ public sealed partial class Binding
         return !IsBarePlace(place) || (PathAuthority(place, [], out _, out var layers) == SemanticsKind.Owner && layers == SemanticsMask.None);
     }
 
+    // SPEC 14.2.4, 5.2.3: whether an explicit discard destroys its operand's Place in place: an operand `P@move`, parenthesized or not,
+    // a Transfer (its plan row's conversion, which CompleteTransfer sets only after OffersTake allowed the Take) through OffersTake's raw
+    // branch (ElementAccess.IsRawPlace), which transfers nothing. The HIR publisher writes it as the discard's plan row Flag
+    // (HirTables.DestroysInPlace).
+    private static bool DestroysInPlace(DiscardKoto discard)
+        => KotoHelper.UnwrapParentheses(discard.Operand) is ConversionKoto transfer &&
+            HirTables.PlanOf(transfer).Conversion == ConversionBinding.Transfer && ElementAccess.IsRawPlace(transfer.Left);
+
     // SPEC 3.5: a bare Place, as opposed to a Temporary Value or an explicit @ operation. Only a Place's
-    // acquisition is restricted by the lending rule; a temporary transfers its ownership freely.
+    // acquisition is restricted by the lending rule; a temporary transfers its ownership freely. SPEC 3.4.1, 5.2: a raw Place is a Place.
     private static bool IsBarePlace(Koto source)
     {
         source = KotoHelper.UnwrapParentheses(source);
-        return IsStaticField(source) || source switch
+        return IsStaticField(source) || ElementAccess.IsRawRoot(source) || source switch
         {
             IdentifierNameKoto => source.BoundSymbol?.Kind is BindingSymbolKind.Local or BindingSymbolKind.Parameter or BindingSymbolKind.Storage or BindingSymbolKind.Capture or BindingSymbolKind.PatternCandidate,
             ConversionKoto { ConversionBinding: ConversionBinding.Follow or ConversionBinding.PayloadFollow or ConversionBinding.PairFollow } => true, // SPEC 13.5.5: a selected referent is a Place.
@@ -522,6 +530,12 @@ public sealed partial class Binding
     private static bool StaticStorageAccess(BindingSymbol symbol, BindingScope scope)
         => symbol.Kind == BindingSymbolKind.Storage && IsStatic(symbol.Declaration.BoundSymbol) && scope.Function != symbol.Scope.Function;
 
+    // SPEC 3.4.2, 13.5.5, 13.5.6: whether an object view lends its object in a mode, as BorrowablePlace says of a slot: a Reborrow's
+    // lending point is the object, not the slot storing the view, so `objuniq/T` lends exclusively also from a `let` slot unless a shared
+    // layer on its path denies (SPEC 15.6.2), and any view lends shared.
+    private static bool LendsView(Koto source, BoundType view, bool exclusive)
+        => !exclusive || (view.Semantics == SemanticsKind.ObjUniq && !ReachedThroughShared(source));
+
     // SPEC 13.5.5, 13.5.6, 15.6.2: whether SPEC lends an owning handle's object or payload, from a Place it lends (LendsPlace, with the
     // static Field at the root of the handle Place's path) or from a Temporary Value materialized for the operation; the handle's own
     // authority (shared for rc/arc) is checked by the caller.
@@ -573,6 +587,11 @@ public sealed partial class Binding
         if (exclusive && ReachedThroughShared(source))
         {
             return false; // SPEC 15.6.2: a shared layer anywhere on the path denies an exclusive borrow.
+        }
+
+        if (ElementAccess.IsRawRoot(source))
+        {
+            return true; // SPEC 5.2.2, 5.7: a raw Place is lent in either mode, never as static storage; only a safe shared layer inside it denies (above).
         }
 
         if (source is ConversionKoto { ConversionBinding: ConversionBinding.Follow } followed)

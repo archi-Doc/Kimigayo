@@ -16,14 +16,18 @@ public class ClosureReceiverClassificationTest
         "func total(values: ref/Array<i32>) -> i32 => 7\n";
 
     // The valid bodies of f (PairHead) whose Closures TheMarksAreThePublishedByCaseTakes reads: by-value positions, a nested bare entry,
-    // the discarded forms, a shared use and none.
+    // the discarded forms, a shared use and none. G254a (PLAN G254): an assignment's, a value call's and a Dictionary entry's by-value use
+    // are the valid twins of the forms AByValueUseOfAPairLayerCaptureIsExclusiveInItsReborrowCases now rejects: a `var` local whose Type
+    // is the Reborrow's (its met slot), a value call in a Consuming call (no receiver borrow contains the Reborrow, SPEC 15.8.2) and an
+    // unannotated Dictionary literal (its element Type is the Reborrow's). Their former forms store the Reborrow, contained in the call
+    // receiver, at the binder's `o` (SPEC 8.1.1, 8.1.2): class 1, ClosureEnvironmentOriginTest and the AByValueUse rows.
     public static TheoryData<string> MarkedPrograms => new()
     {
         "    var h = func [value] () -> ()\n        let local = value\n        _ = local\n    h()\n",
         "    var h = func [value] () -> ()\n        take(value)\n        take((value))\n    h()\n",
-        "    var h = func [value] (q: s/T) -> ()\n        var local = q\n        local = value\n        _ = local\n",
-        "    let g = func (y: s/T) -> () => ()\n    var h = func [value, g@ref] () -> ()\n        g(value)\n",
-        "    var h = func [value] () -> ()\n        let d: Dictionary<i32, s/T> = [1: value]\n",
+        "    var h = func [value] () -> ()\n        var local = value\n        local = value\n        _ = local\n    h()\n",
+        "    let g = func (y: s/T) -> () => ()\n    var h = func [value, g] () -> ()\n        g(value)\n        let k = g@move\n",
+        "    var h = func [value] () -> ()\n        let d = [1: value]\n        let k = d.length\n",
         "    var h = func [value] () -> ()\n        var g = func [value] () -> ()\n            let local = value\n            _ = local\n        g()\n    h()\n",
         "    var h = func [value] (c: bool) -> ()\n        value\n        (value)\n        if c\n            value\n        match c\n            true => value\n            false => ()\n    h(true)\n",
         "    var h = func [value] () -> ()\n        let k = value@ref\n        _ = k\n    h()\n",
@@ -132,6 +136,19 @@ public class ClosureReceiverClassificationTest
     [InlineData("        o.set(2)\n", true)]
     public void AnExclusiveUseOfAPlaceReachedFromACaptureIsAnExclusiveCall(string body, bool exclusive)
         => AssertCallReceiver(Places + body + "        return 0\n    let v = f()\n", exclusive);
+
+    // R8-W3's coverage rows c1 and cx1 (SPEC 7.7.3, 14.6.2; DECISIONS R4-M130) and their Range twins c1r and cx1r: a captured
+    // `uniq/ResolvedRange` taken as a bare `for` Subject is Exclusive (its entry iterateUniq), so a `var` Closure runs, called twice, and
+    // the call of a `let` one is invalid.
+    [Theory]
+    [InlineData("c1", "var r = (0..3).resolve(3)\nlet rv = r@uniq\n")]
+    [InlineData("c1r", "var q: Range<isize, isize> = 0..3\nlet rv = q@uniq\n")]
+    public void ACapturedRangeTakenAsAForSubjectIsAnExclusiveCall(string row, string head)
+    {
+        const string Closure = "f = func [rv] () -> isize\n    var k: isize = 0\n    for i in rv\n        k += i\n    return k\nlet first = f()\n";
+        ScalarEmissionTest.EmitFixture("ClosureReceiverRow_" + row, head + "var " + Closure + "let second = f()\nConsole.writeLine(\"\\(first) \\(second)\")\n", "3 3\n");
+        Assert.Equal("InvalidAssignment_Kd f", Records(head + "let " + Closure));
+    }
 
     // SPEC 7.7.3, 5.2.1 condition 3, 5.3, 5.4 (DECISIONS R4-M134; PLAN G251 (1); the owner's O-76 (c) (i)): an access that needs write
     // capability through a raw pointer read from the environment, through a raw Place it reaches included, or a pointer derived from one
@@ -381,23 +398,28 @@ public class ClosureReceiverClassificationTest
     // `g@ref`'s Loan where `g`'s storage ends, so since the MIR decides (R6-check H5; H3b T30) it publishes, under `s = uniq`, a located
     // Unsupported_Kd and a ComparisonLoanConflict_Kd at `let g = ...` (PendingGxs). H5's (e) list (the owner, 2026-11-03, 「推奨どおり」,
     // board O-1): PLAN G148 (2), GXS's proposal, which reconciles SPEC 15.6.4 with 15.8.2's retention, restores the acceptance and
-    // re-points these rows back to no record.
+    // re-points these rows back to no record. G254a (PLAN G254; Q17 class 1; SPEC 8.1.1, 8.1.2, 15.4.2, 15.6.3, 15.8.2): under `s = uniq`
+    // the use Reborrows the captured `x` within the call receiver, and `g`'s parameter and the annotated Dictionary element are the
+    // binder's `o`, so `g(x)` and the entry are UnprovenOriginRelation_Kd at the use on both twins (the literal's fit and the entry's); the
+    // assignment into `var local = q` is valid, a `var` local's pair slot being a region of the local (PLAN G758, which removed G254a's
+    // interim `Unsupported_Kd`). Their valid twins are MarkedPrograms' bodies 3-5.
     [Theory]
     [InlineData("        take(x)\n", "owner or uniq", true, PendingGxs)]
     [InlineData("        take(x)\n", "owner or ref", false)]
     [InlineData("        var local = q\n        local = x\n        _ = local\n", "owner or uniq", true, PendingGxs)]
     [InlineData("        var local = q\n        local = x\n        _ = local\n", "owner or ref", false)]
-    [InlineData("        g(x)\n", "owner or uniq", true, PendingGxs)]
+    [InlineData("        g(x)\n", "owner or uniq", true, PendingGxs + "; UnprovenOriginRelation_Kd x", "UnprovenOriginRelation_Kd x; ")]
     [InlineData("        g(x)\n", "owner or ref", false)]
-    [InlineData("        let d: Dictionary<i32, s/T> = [1: x]\n        let k = d.length\n", "owner or uniq", true, PendingGxs)]
+    [InlineData("        let d: Dictionary<i32, s/T> = [1: x]\n        let k = d.length\n", "owner or uniq", true, PendingGxs + "; UnprovenOriginRelation_Kd [1: x]; UnprovenOriginRelation_Kd x", "UnprovenOriginRelation_Kd [1: x]; UnprovenOriginRelation_Kd x; ")]
     [InlineData("        let d: Dictionary<i32, s/T> = [1: x]\n        let k = d.length\n", "owner or ref", false)]
-    public void AByValueUseOfAPairLayerCaptureIsExclusiveInItsReborrowCases(string use, string admitted, bool exclusive, string varRecords = "")
+    public void AByValueUseOfAPairLayerCaptureIsExclusiveInItsReborrowCases(string use, string admitted, bool exclusive, string varRecords = "", string letBefore = "")
         => AssertCallReceiver(
             "func take<t/U>(y: t/U)\n    t is " + admitted + "\n    U is Copy\n    return\nfunc outer<s/T>(x: s/T, y: s/T)\n    s is " + admitted + "\n" +
                 "    T is Copy\n    let g = func (z: s/T) -> () => ()\n    let f = func [x, g@ref] (q: s/T) -> i32\n" + use + "        return 0\n    let v = f(y)\n" +
                 "public func main() -> ()\n    var n = 1\n    var m = 2\n    outer(n, m)\n",
             exclusive,
-            varRecords);
+            varRecords,
+            letBefore);
 
     // SPEC 3.5, 14.2.2, 23.1.2 (DECISIONS R4-M145; the owner, 2026-10-26): a captured pair layer in Discard Context (a statement, in
     // parentheses, a discarded selection body) is acquired by bare acquisition, as at a value position, so it Reborrows in its exclusive
@@ -419,7 +441,10 @@ public class ClosureReceiverClassificationTest
     [InlineData("        pair(missing, value)\n", "UnresolvedBinding_Kd missing", "UnresolvedBinding_Kd missing")]
     [InlineData("        missing = value\n", "UnresolvedBinding_Kd missing", "UnresolvedBinding_Kd missing")]
     [InlineData("        match c\n            true => value\n            false => missing\n", MissingAndExclusive, "UnresolvedBinding_Kd missing")]
-    [InlineData("        let o: Option<s/T> = .Some(value)\n        _ = o\n", "TransferRequired_Kd o; InvalidAssignment_Kd h", "TransferRequired_Kd o")]
+    // G254a (PLAN G254; Q17 class 1; SPEC 8.1.1, 8.1.2, 15.6.3, 15.8.2): the payload, a Reborrow of `value` contained in the call receiver,
+    // is fitted to `Option<s/T>`, the binder's `o`: UnprovenOriginRelation_Kd at it (its valid twin: the payload outside the Closure,
+    // ClosureEnvironmentOriginTest's nst row).
+    [InlineData("        let o: Option<s/T> = .Some(value)\n        _ = o\n", "UnprovenOriginRelation_Kd value; TransferRequired_Kd o; InvalidAssignment_Kd h", "UnprovenOriginRelation_Kd value; TransferRequired_Kd o")]
     // DECISIONS: G572 U2a (Q13, SPEC 23.1.2): t's Type string holds with the write's obligation pending, so `_ = t`, a bare acquisition, is
     // judged on its own.
     [InlineData("        let t = \"\\(value)\"\n        _ = t\n", "UnprovenConstraint_Kd \"\\(value)\"; TransferRequired_Kd t", "UnprovenConstraint_Kd \"\\(value)\"; TransferRequired_Kd t")]
@@ -543,10 +568,12 @@ public class ClosureReceiverClassificationTest
     // SPEC 3.5 (2c-2 re-check R2, R3): an enum Case's payload is a listed input, so `.Some(value)` of a captured pair layer Reborrows in
     // the uniq case: the capture is marked and a `let` Closure's call is Exclusive (SPEC 7.7.3), which its `let` slot cannot lend
     // (InvalidAssignment_Kd at `h`, as for `take(value)`). The payload is acquired by case (SPEC 6.5.2, 8.14; DECISIONS BU-45), as outside a
-    // Closure, so it has no TransferRequired_Kd; Binding's records.
+    // Closure, so it has no TransferRequired_Kd; Binding's records. G254a (PLAN G254; Q17 class 1; SPEC 8.1.1, 8.1.2, 15.6.3): that
+    // Reborrow is contained in the call receiver and fitted to `Option<s/T>`, the binder's `o`, so it is UnprovenOriginRelation_Kd at
+    // `value` (its valid twin: a Reborrow kept in the call and a store outside a Closure, ClosureEnvironmentOriginTest's loc and nst rows).
     [Theory]
-    [InlineData("let", "InvalidAssignment_Kd h")]
-    [InlineData("var", "")]
+    [InlineData("let", "UnprovenOriginRelation_Kd value; InvalidAssignment_Kd h")]
+    [InlineData("var", "UnprovenOriginRelation_Kd value")]
     public void AnEnumPayloadOfAPairLayerCaptureIsAListedInput(string binding, string records)
     {
         var source = PairHead + "    " + binding + " h = func [value] () -> ()\n        let o: Option<s/T> = .Some(value)\n        _ = o@move\n    h()\n" + PairMain;
@@ -669,9 +696,10 @@ public class ClosureReceiverClassificationTest
         return SemanticsKind.Ref;
     }
 
-    // The one Closure's call receiver, and its `let f` call: an `InvalidAssignment_Kd` with the general Note when Exclusive, valid
-    // otherwise; the same program with `var f` has `varRecords` (none but an (e) row's).
-    private static void AssertCallReceiver(string source, bool exclusive, string varRecords = "")
+    // The one Closure's call receiver, and its `let f` call: an `InvalidAssignment_Kd` with the general Note when Exclusive, after the
+    // body's own records `letBefore` (G254a's class 1 rows), valid otherwise; the same program with `var f` has `varRecords` (none but an
+    // (e) row's and those records).
+    private static void AssertCallReceiver(string source, bool exclusive, string varRecords = "", string letBefore = "")
     {
         var c = MinimalEmissionTest.Analyze(source);
         var closure = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>(), static x => x.IsAnonymous && x.Parent is VariableKoto { NameKoto: var name } && name.ToString() == "f");
@@ -684,8 +712,57 @@ public class ClosureReceiverClassificationTest
             return;
         }
 
-        var error = Assert.Single(errors);
+        Assert.Equal(letBefore + "InvalidAssignment_Kd f", Records(source));
+        var error = Assert.Single(errors, static x => x.Code == nameof(DiagnosticCode.InvalidAssignment_Kd));
         Assert.Equal((nameof(DiagnosticCode.InvalidAssignment_Kd), "f"), (error.Code, error.Span is { } span ? source.Substring(span.Start, span.Length) : string.Empty));
         Assert.Equal(ExclusiveCallNote, error.Note);
+    }
+
+    [Collection<AllocationIsolationCollection>]
+    [Trait("Purpose", "Allocation")]
+    public class AllocationTests(ITestOutputHelper output)
+    {
+        // G622: ClosureEffects' store is sized by the nodes a Classify meets, never by the module. A cold Bind's bytes of a program with a
+        // capturing Closure, less those of its twin that classifies no capture use, are what the classification pays (valid programs:
+        // plain functions, SPEC 7.1; a Copy capture or a local read, SPEC 7.7.2, 7.7.3 Shared). Their growth from the small size to the
+        // large one is what the added units cost:
+        // - A function beside the Closure adds nothing (one capture use, 500 and 8,000 plain functions; the twin has no Closure, since
+        //   any Closure's Classify would pay a store by the module): 0 B, bounded by 4 B a function either way. A store by the module's
+        //   syntax ids costs eight ids a function (1 B an id: 60,000 B).
+        // - A capture use of one consumer adds its node's row, 32 B and a 4-byte bucket, which the table's doubling keeps under 96 B a use
+        //   (4,000 and 8,000 elements of one literal, 303,136 B, 76 B a use; the twin's `c` is the Closure's body local).
+        // The series opens with the large capturing program, unread: a process's first Bind of a size also pays what it keeps across
+        // compilations. The sizes give the bounds room for the one reading a series cannot hold still: the kept compilations grow the
+        // heap into a background collection, and the Bind its pause falls in is charged up to one allocation context's tail (8 KB) more
+        // or less. Without the concurrent collector every reading is the same in every run.
+        [Theory]
+        [InlineData(false, 500, 8000, -4, 4)]
+        [InlineData(true, 4000, 8000, 36, 96)]
+        public void AColdClassificationPaysByTheNodesItMeets(bool uses, int small, int large, int least, int most)
+        {
+            var compilations = new Compilation[5];
+            var bytes = AllocationMeasurement.MeasureSeries(compilations.Length, i =>
+            {
+                var c = compilations[i] = CompilationTestHelper.Parse(Source(uses, capture: (i & 1) == 0, i is 1 or 2 ? small : large), "Hello.kimi");
+                return () => c.Bind();
+            });
+            Assert.All(compilations, static x => Assert.True(x.Binding.Result.IsComplete, MinimalEmissionTest.Describe(x)));
+            var growth = (bytes[4] - bytes[3]) - (bytes[2] - bytes[1]);
+            var units = large - small;
+            output.WriteLine($"cold Bind bytes {string.Join(", ", bytes)}; the store's growth {growth} B over {units} units");
+            Assert.True(growth >= (least * units) - 64 && growth <= (most * units) + 64, $"cold Bind bytes {string.Join(", ", bytes)}; the store's growth {growth} B over {units} units");
+
+            static string Source(bool uses, bool capture, int size)
+            {
+                if (uses)
+                {
+                    var (outer, head, inner) = capture ? ("    let c: i32 = 1\n", "[c] ", string.Empty) : (string.Empty, string.Empty, "        let c: i32 = 1\n");
+                    return $"func g() -> isize\n{outer}    let f = func {head}() -> isize\n{inner}        let xs: Array<i32> = [{string.Join(", ", Enumerable.Repeat("c", size))}]\n        return xs.length\n    return f()\n()\n";
+                }
+
+                return string.Concat(Enumerable.Range(0, size).Select(static k => $"func f{k}(a: i32) -> i32 => a + {k} * 2\n")) +
+                    (capture ? "func g() -> i32\n    let c: i32 = 1\n    let f = func [c] () -> i32\n        return c\n    return f()\n()\n" : "func g() -> i32\n    let c: i32 = 1\n    return c\n()\n");
+            }
+        }
     }
 }

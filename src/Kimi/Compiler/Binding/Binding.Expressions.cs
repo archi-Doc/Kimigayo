@@ -18,7 +18,13 @@ public sealed partial class Binding
 
     private static bool Compatible(BoundType actual, BoundType expected) => FitsType(actual, expected);
 
-    // SPEC 7: an unsafe function supports direct calls only, so every appearance of its name
+    // SPEC 7.6, 22.6: the functions that support direct calls only: an unsafe function and a #LibraryImport function, the latter by
+    // its Attribute whatever the Attribute's verdict. A requirement is never an import, so a requirement's Item is a value whatever
+    // its witness.
+    private static bool DirectCallOnly(FunctionKoto function)
+        => (function.Modifier & ModifierKind.Unsafe) != 0 || function.FindAttribute(AttributeKind.LibraryImport) is not null;
+
+    // SPEC 7.6, 22.6: such a function supports direct calls only, so every appearance of its name
     // that is not the callee of a direct call acquires it as a value. This is the complement of
     // the callee position, not a list of acquisition positions, so no position stays unchecked.
     private static bool IsValueUse(Koto node)
@@ -236,7 +242,27 @@ public sealed partial class Binding
         }
 
         // SPEC 14.9.2: a result target that waited for its position takes the Type that position supplies, or the outcome its root gave it.
-        var actual = this.WaitedResult(node) is { } waited ? this.DecideWaiting(node, waited, expected) : this.BindNodeCore(node, scope, expected);
+        // SPEC 10.2 row 2: a literal at ref/U is bound as its owner temporary at U, which the common adaptation below borrows. Its Type is
+        // U also where it rests on a failed part (a join, SPEC 23.1.2: no record of its own), so the value its kept sources build still
+        // takes the borrow its position needs.
+        BoundType? actual;
+        if (this.WaitedResult(node) is { } waited)
+        {
+            actual = this.DecideWaiting(node, waited, expected);
+        }
+        else if (this.TemporaryTarget(node, expected, scope) is { } temporary)
+        {
+            actual = this.BindNodeCore(node, scope, temporary);
+            if (actual is null && node.BindingFailure == BindingFailure.None && this.prerequisites.ContainsKey(node))
+            {
+                actual = node.BoundType = temporary;
+            }
+        }
+        else
+        {
+            actual = this.BindNodeCore(node, scope, expected);
+        }
+
         if (expected is not null && actual is not null && HasArrayLengthHole(expected))
         {
             expected = this.CompleteArrayExpectation(expected, actual);
@@ -356,10 +382,7 @@ public sealed partial class Binding
                 }
                 else
                 {
-                    foreach (var part in recovered.ChildNodes)
-                    {
-                        this.BindNode(part, scope);
-                    }
+                    this.BindUnknownChildren(recovered, scope);
                 }
 
                 return Complete(node, null);
@@ -386,7 +409,8 @@ public sealed partial class Binding
                     this.BindType(container.GenericParameterNodes[i], scope);
                 }
 
-                for (var i = 0; i < container.Bases.Count; i++)
+                // A Contract's parents are ContractReferences (F.6) bound by its registration (BuildContract), never Type occurrences.
+                for (var i = 0; container is not ContractKoto && i < container.Bases.Count; i++)
                 {
                     this.BindType(container.Bases[i], scope);
                 }

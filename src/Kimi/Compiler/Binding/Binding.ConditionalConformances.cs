@@ -1,54 +1,96 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using System.Runtime.InteropServices;
 using Kimi.Compiler.Parsing;
 
 namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
-    private readonly HashSet<(BoundType Type, BindingSymbol Contract, BindingScope Scope)> conformanceQueries = new();
-    private readonly Dictionary<(BoundConformancePath Left, BoundConformancePath Right), BindingScope> conformanceOverlapScopes = new();
+    // SPEC 8.3.3 Recursion: a nominal obligation `T is C` is open while ResolveConformance proves it; a request reaching an
+    // open obligation reads no evidence (Unknown), from whichever scope it asks (the obligation, not the requester, is the key). Its
+    // value counts those requests while it is open (reentryReads).
+    private readonly Dictionary<(BoundType Type, BindingSymbol Contract), int> openObligations = new();
 
+    // SPEC 8.3.3 Finality: the re-entry reads of the obligations now open, the open set's and a path's being verified (Checking). An
+    // answer computed while the count grows read no evidence at an obligation still pending, so it is no fact once that obligation's
+    // proof ends; an obligation's reads leave the count with its proof, so an answer enclosing the whole proof rests on its settled
+    // result. Its reader is the capability engine, which keeps no such work past its outermost request (ForgetPendingCapabilities).
+    // Temporary carrier; removal: R7-C2e2 e2-5b, with e2-3's Completion on the answer.
+    private int reentryReads;
+
+    // A pair's overlap scope, kept with its left path (BoundConformancePath.OverlapScopes); both paths share their Type, so their store.
+    private static BindingScope OverlapScope(BoundConformancePath a, BoundConformancePath b)
+    {
+        var scopes = a.OverlapScopes ??= new();
+        for (var i = 0; i < scopes.Count; i++)
+        {
+            if (ReferenceEquals(scopes[i].Right, b))
+            {
+                return scopes[i].Scope;
+            }
+        }
+
+        var scope = new BindingScope(a.Declaration);
+        scopes.Add((b, scope));
+        return scope;
+    }
+
+    // SPEC 8.9.1: two conformances' conditions exclude each other when a's chain and b's hold facts of one subject that cannot both
+    // hold: identities to different complete Types, or Semantics sets that share no member. Each TypeIdentity or Semantics fact of a's
+    // chain meets b's facts of its kind and subject key in Closure(view of b)'s row (ContractSolver's Readers: nothing here proves).
     private bool DisjointConformanceFacts(BindingScope a, BindingScope b)
     {
-        for (var left = a; left is not null; left = left.Parent)
+        ViewIndex? index = null;
+        try
         {
-            if (left.Constraints is not { Invalid: false } x)
+            for (var left = a; left is not null; left = left.Parent)
             {
-                continue;
-            }
-
-            for (var right = b; right is not null; right = right.Parent)
-            {
-                if (right.Constraints is not { Invalid: false } y)
+                if (left.Constraints is not { Invalid: false } x)
                 {
                     continue;
                 }
 
-                foreach (var p in x.Facts)
+                for (var right = b; right is not null; right = right.Parent)
                 {
-                    foreach (var q in y.Facts)
+                    if (right.Constraints is not { Invalid: false } y)
                     {
-                        if (p.Subject is null || !ReferenceEquals(p.Subject, q.Subject) || !this.AvailableConstraintFact(x, p) || !this.AvailableConstraintFact(y, q))
+                        continue;
+                    }
+
+                    foreach (var p in x.Facts)
+                    {
+                        if (p is not { Kind: ConstraintKind.TypeIdentity or ConstraintKind.Semantics, Subject: { } subject } ||
+                            (index ??= this.BeginClosureRead(b)).Buckets.GetValueOrDefault((right, p.Kind, SubjectKey(subject).Symbol, SubjectKey(subject).Type)) is not { } bucket)
                         {
                             continue;
                         }
 
-                        // Substitute explicit identities, then compare determined concrete atoms.
-                        // No case splitting, contrapositive, or general satisfiability solver.
-                        if (p.Kind == ConstraintKind.TypeIdentity && q.Kind == ConstraintKind.TypeIdentity &&
-                            p.RequiredType is { } pt && q.RequiredType is { } qt &&
-                            !this.DependentType(pt) && !this.DependentType(qt) && !this.SameCompleteType(pt, qt))
+                        foreach (var (q, _) in bucket)
                         {
-                            return true;
-                        }
+                            if (!ReferenceEquals(subject, q.Subject) || !this.AvailableConstraintFact(x, p, out _) || !this.AvailableConstraintFact(y, q, out _))
+                            {
+                                continue;
+                            }
 
-                        if (p.Kind == ConstraintKind.Semantics && q.Kind == ConstraintKind.Semantics && (p.Mask & q.Mask) == 0)
-                        {
-                            return true;
+                            // Substitute explicit identities, then compare determined concrete atoms.
+                            // No case splitting, contrapositive, or general satisfiability solver.
+                            if (p.Kind == ConstraintKind.TypeIdentity ?
+                                p.RequiredType is { } pt && q.RequiredType is { } qt && !this.DependentType(pt) && !this.DependentType(qt) && !this.SameCompleteType(pt, qt) :
+                                (p.Mask & q.Mask) == 0)
+                            {
+                                return true;
+                            }
                         }
                     }
                 }
+            }
+        }
+        finally
+        {
+            if (index is not null)
+            {
+                this.EndClosureRead();
             }
         }
 
@@ -114,27 +156,14 @@ public sealed partial class Binding
                     continue;
                 }
 
-                if (!this.conformanceOverlapScopes.TryGetValue((a, b), out var scope))
-                {
-                    this.conformanceOverlapScopes.Add((a, b), scope = new(a.Declaration));
-                }
+                var scope = OverlapScope(a, b);
 
+                // SPEC 8.9.2: the pair's intersection is a's conformance scope with every premise of b's, read along b's scope chain where
+                // b keeps them (a declared path's in its block, an inherited path's in its own scope), as the Contract agreement check
+                // reads them, so the judgment does not depend on which path is declared first.
                 scope.Reset();
                 scope.Parent = a.Scope;
-                var environment = scope.Constraints ??= new();
-                if (b.Scope.Parent?.Constraints is { } other)
-                {
-                    foreach (var fact in other.DirectFacts)
-                    {
-                        this.AddConstraintFact(environment, fact);
-                    }
-
-                    for (var f = 0; f < other.DerivedFacts.Count; f++)
-                    {
-                        var derived = other.DerivedFacts[f];
-                        this.AddConstraintFact(environment, derived.Fact, derived.Source);
-                    }
-                }
+                this.AddOverlapFacts(scope, b.Scope);
 
                 var same = a.WitnessStorage.Count == b.WitnessStorage.Count && a.AssociatedStorage.Count == b.AssociatedStorage.Count && a.PropertyWitnessStorage.Count == b.PropertyWitnessStorage.Count;
                 for (var w = 0; w < a.WitnessStorage.Count; w++)
@@ -207,11 +236,18 @@ public sealed partial class Binding
             {
                 this.ValidateConditionalBlock(syntax, container);
                 this.BindConstraint(target, outer);
-                if (container.BoundSymbol!.Schema!.GenericSlots.Count == 0 || target.Left is not IdentifierNameKoto { IdentifierName: "Self" } || target.BoundConstraint is not { Kind: ConstraintKind.Contract, Contract: { } contract } || premises.Operands.Length == 0)
+                if (container.BoundSymbol!.Schema!.GenericSlots.Count == 0 || target.Left is not IdentifierNameKoto { IdentifierName: "Self" } || target.BoundConstraint is not { Kind: ConstraintKind.Contract or ConstraintKind.Unresolved } || premises.Operands.Length == 0)
                 {
                     this.Fail(syntax, BindingFailure.InvalidConstraint);
                     continue;
                 }
+
+                if (target.BoundConstraint.Kind == ConstraintKind.Unresolved)
+                {
+                    continue; // A pending Contract reference (SPEC 9.2, 9.5) registers nothing yet; the pending loop leaves the conformance and its Type pending (PendingDeclaration).
+                }
+
+                var contract = target.BoundConstraint.Contract!;
 
                 if (this.IsClosedContractGrant(contract, container.BoundSymbol!))
                 {
@@ -224,7 +260,7 @@ public sealed partial class Binding
                 else
                 {
                     this.RegisterConformanceDeclaration(container.BoundSymbol!, contract, target, scope, premises);
-                    if (IsRefinement(contract, this.Library.Copy))
+                    if (ReferenceEquals(contract, this.Library.Copy))
                     {
                         this.RegisterCopy(target, container, scope, premises);
                     }
@@ -259,8 +295,9 @@ public sealed partial class Binding
                         subject = subject.Components[0];
                     }
 
+                    // A pending subject (BindConstraint) is judged by its root, the base its projection chain published.
                     valid &= condition.BoundConstraint is { } requirement && PositiveRequirement(requirement) &&
-                        subject?.Symbol is { } parameter && ContainerSlot(container, parameter) >= 0;
+                        (subject?.Symbol ?? SubjectBase(condition.Left).BoundSymbol) is { } parameter && ContainerSlot(container, parameter) >= 0;
                 }
 
                 this.ExpandScopeContractPremises(scope);
@@ -274,7 +311,7 @@ public sealed partial class Binding
             else
             {
                 this.Fail(syntax, BindingFailure.InvalidConstraint);
-                (scope.Constraints ??= new()).Invalid = true;
+                (scope.Constraints ??= new()).Fail(syntax);
             }
         }
     }
@@ -284,18 +321,13 @@ public sealed partial class Binding
         evidence = null;
         for (var current = scope; current is not null; current = current.Parent)
         {
-            if (current.Constraints?.Invalid == true)
+            if (current.Constraints is { Invalid: true } invalid)
             {
-                return ConstraintProof.Error;
+                return this.InvalidEnvironment(invalid);
             }
         }
 
         if (this.contractHeadersReady && this.BuiltinArithmeticConformance(type, contract, scope))
-        {
-            return contract.Declaration.BindingState == BindingState.Invalid ? ConstraintProof.Error : ConstraintProof.Proven;
-        }
-
-        if (this.contractHeadersReady && contract.LibraryDeclaration == KimiDeclarationId.Utf8Format && FormattingTypes.IsBuiltin(type))
         {
             return contract.Declaration.BindingState == BindingState.Invalid ? ConstraintProof.Error : ConstraintProof.Proven;
         }
@@ -339,8 +371,8 @@ public sealed partial class Binding
             return ConstraintProof.Error;
         }
 
-        var identity = this.impls.Find(symbol, contract);
-        if (identity is null && contract.Type is { } contractReference && !ReferenceEquals(contractReference.Symbol, contract) && this.impls.OfType(symbol) is { } bindings)
+        var identity = this.ConformanceOf(symbol, contract);
+        if (identity is null && contract.Type is { } contractReference && !ReferenceEquals(contractReference.Symbol, contract) && this.ConformancesOf(symbol) is { } bindings)
         {
             foreach (var candidate in bindings)
             {
@@ -365,7 +397,7 @@ public sealed partial class Binding
 
         if (identity is null || identity.PathStorage.Count == 0)
         {
-            return !this.DependentType(type) && this.capabilityMode == BindingMode.Final ? ConstraintProof.Refuted : ConstraintProof.Unknown;
+            return !this.DependentType(type) && this.capabilityMode == BindingMode.Final && !this.PathNotRuledOut(type, symbol, contract, scope) ? ConstraintProof.Refuted : ConstraintProof.Unknown;
         }
 
         if (identity.Invalid)
@@ -373,9 +405,12 @@ public sealed partial class Binding
             return ConstraintProof.Error;
         }
 
-        var key = (type, contract, scope);
-        if (!this.conformanceQueries.Add(key))
+        var key = (type, contract);
+        ref var reentries = ref CollectionsMarshal.GetValueRefOrAddDefault(this.openObligations, key, out var open);
+        if (open)
         {
+            reentries++;
+            this.reentryReads++;
             return ConstraintProof.Unknown;
         }
 
@@ -403,9 +438,9 @@ public sealed partial class Binding
                 }
             }
 
-            if (result == ConstraintProof.Proven && symbol.Declaration is DeclarationContainerKoto && symbol.Schema is { GenericSlots.Count: > 0 })
+            if (result == ConstraintProof.Proven)
             {
-                result = CombineProof(result, type.Components.Count == symbol.Schema.GenericSlots.Count ? this.CheckTypeConstraints(type, scope) : ConstraintProof.Unknown, true);
+                result = CombineProof(result, this.InstanceFormation(type, scope), true);
             }
 
             if (result != ConstraintProof.Proven)
@@ -417,7 +452,77 @@ public sealed partial class Binding
         }
         finally
         {
-            this.conformanceQueries.Remove(key);
+            this.openObligations.Remove(key, out var read);
+            this.reentryReads -= read;
+        }
+    }
+
+    // A request reaching a path being verified reads no evidence (SPEC 8.3.3 Recursion), counted as the open set's is.
+    private ConstraintProof ReentryRead(BoundConformancePath path)
+    {
+        path.Reentries++;
+        this.reentryReads++;
+        return ConstraintProof.Unknown;
+    }
+
+    // Ends a path's verification: its re-entry reads leave the count.
+    private void EndChecking(BoundConformancePath path)
+    {
+        path.Checking = false;
+        this.reentryReads -= path.Reentries;
+        path.Reentries = 0;
+    }
+
+    // SPEC 8.6.1, 8.3.1: evidence about an instance of a generic declaration (a conformance or a capability) holds only for
+    // the bindings the declaration's Constraints allow, so it rests on the instance's formation, which proves each Constraint with
+    // SPEC 8.3.3's re-entry rule: a Constraint whose obligation is open supplies none.
+    private ConstraintProof InstanceFormation(BoundType type, BindingScope scope)
+        => type.Symbol is not { Declaration: DeclarationContainerKoto, Schema.GenericSlots.Count: > 0 } symbol ? ConstraintProof.Proven
+            : type.Components.Count == symbol.Schema.GenericSlots.Count ? this.CheckTypeConstraints(type, scope) : ConstraintProof.Unknown;
+
+    // SPEC 8.3.2's closed world before ResolveConformance refutes: a conformance to the required reference's Contract declaration is a
+    // path not ruled out unless its reference, in the conforming Type's terms, is known to differ from the required one, in the
+    // scope's (IdentityRefuted), or each of its paths' own conditions is Refuted (PLAN G866). The walk opens the obligation as
+    // ResolveConformance does (openObligations); a request reaching it open reads no evidence and rules out nothing.
+    private bool PathNotRuledOut(BoundType type, BindingSymbol symbol, BindingSymbol contract, BindingScope scope)
+    {
+        if (contract.Type is not { } required || ReferenceEquals(required.Symbol, contract) || this.ConformancesOf(symbol) is not { } bindings)
+        {
+            return false;
+        }
+
+        var key = (type, contract);
+        ref var reentries = ref CollectionsMarshal.GetValueRefOrAddDefault(this.openObligations, key, out var open);
+        if (open)
+        {
+            reentries++;
+            this.reentryReads++;
+            return true;
+        }
+
+        try
+        {
+            for (var i = 0; i < bindings.Count; i++)
+            {
+                if (bindings[i].Contract.Type is { } formal && ReferenceEquals(formal.Symbol, required.Symbol) && this.StoredType(formal, type) is { } instance &&
+                    !this.IdentityRefuted(instance, required, scope, type))
+                {
+                    for (var p = 0; p < bindings[i].PathStorage.Count; p++)
+                    {
+                        if (this.ProveConformanceConditions(bindings[i].PathStorage[p], type, scope) != ConstraintProof.Refuted)
+                        {
+                            return true;
+                        }
+                    }
+                }
+            }
+
+            return false;
+        }
+        finally
+        {
+            this.openObligations.Remove(key, out var read);
+            this.reentryReads -= read;
         }
     }
 
@@ -425,23 +530,20 @@ public sealed partial class Binding
     {
         if (path.InheritedFrom is not null)
         {
-            if (this.StoredType(path.InheritedBase!, type) is not { } parent)
+            // SPEC 8.8.2: the declared path's conditions at the declared Self at this Type (BoundConformancePath.DeclaredPath); where the
+            // generic Self was refused, the instance's is formed one base clause at a time. A Type past the limit is refused here.
+            this.inheritedPremiseSteps++;
+            if (path.DeclaredSelf is { } layer)
             {
-                return ConstraintProof.Unknown;
+                return this.StoredType(layer, type) is { } declared ? this.ProveConformanceConditions(path.DeclaredPath!, declared, scope) : ConstraintProof.Unknown;
             }
 
-            var proof = ConstraintProof.Proven;
-            for (var i = 0; i < path.InheritedSourceCount; i++)
-            {
-                proof = CombineProof(proof, this.ProveConformanceConditions(path.InheritedSource(i), parent, scope), true);
-            }
-
-            return proof;
+            return this.StoredType(path.InheritedBase!, type) is { } parent ? this.ProveConformanceConditions(path.InheritedFrom, parent, scope) : ConstraintProof.Unknown;
         }
 
-        if (path.Scope.Parent?.Constraints?.Invalid == true)
+        if (path.Scope.Parent?.Constraints is { Invalid: true } invalid)
         {
-            return ConstraintProof.Error;
+            return this.InvalidEnvironment(invalid);
         }
 
         return this.ProveConditionalPremises(path.Premises, type, scope);
@@ -454,7 +556,9 @@ public sealed partial class Binding
             return ConstraintProof.Proven;
         }
 
-        if (premises.Parent?.BindingState == BindingState.Invalid)
+        // The conditional conformance's own failure, as its owner decides it: a premise error keeps the context (SPEC 8.2.3), so the
+        // conditions are judged and the error is the scope's one record, not the target's again.
+        if (premises.Parent is { } conditional && this.InvalidDeclarationCause(conditional) is not null)
         {
             return ConstraintProof.Error;
         }

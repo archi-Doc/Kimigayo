@@ -142,10 +142,10 @@ fn largest @4
       drop _19 -> bb26 [elide] @37 s1
   bb26:
       StorageDead(_19) @37 s1
-      drop _3 -> bb27 @19 s1
+      drop _3 -> bb27 [keep] @19 s1
   bb27:
       StorageDead(_3) @19 s1
-      drop _2 -> bb28 @16
+      drop _2 -> bb28 [keep] @16
   bb28:
       unreachable @18
 fn use @38
@@ -176,12 +176,12 @@ fn unwrapTry @61
   _3: Option<T> temp (Subject) @71
   _4: isize temp @74
   _5: T var $try.value @78 s1
-  _6: isize temp @113
+  _6: isize temp @111
   _7: Option<T> temp @115 s2
   _8: Option<T> temp (Result) @61
   _9: Option<T> temp @115 s2
   s1: lexical in s0 @74
-  s2: lexical in s0 @113
+  s2: lexical in s0 @111
   bb0:
       StorageLive(_2) @70
       StorageLive(_3) @71
@@ -190,13 +190,13 @@ fn unwrapTry @61
       _4 = discriminant(_3) @74
       switch copy _4 [0: bb3, otherwise: bb2] @74
   bb1:
-      StorageDead(_6) @113
+      StorageDead(_6) @111
       StorageDead(_4) @74
       drop _3 -> bb19 [open ((_ as case 0) open (.0 elide))] @71
   bb2:
-      StorageLive(_6) @113
-      _6 = discriminant(_3) @113
-      switch copy _6 [1: bb6, otherwise: bb5] @113
+      StorageLive(_6) @111
+      _6 = discriminant(_3) @111
+      switch copy _6 [1: bb6, otherwise: bb5] @111
   bb3:
       StorageLive(_5) @78 s1
       _5 = move (_3 as case 0).0 @78 s1
@@ -224,7 +224,7 @@ fn unwrapTry @61
       StorageDead(_2) @70
       goto bb9 @61
   bb12:
-      StorageDead(_6) @113
+      StorageDead(_6) @111
       StorageDead(_4) @74
       drop _3 -> bb13 [keep] @71
   bb13:

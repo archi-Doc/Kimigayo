@@ -53,11 +53,7 @@ public sealed partial class Binding
 
         if (originDeclaration is not null)
         {
-            foreach (var set in originDeclaration.Sets.Values)
-            {
-                this.BindOriginSetType(set, scope);
-            }
-
+            this.BindOriginSetTypes(originDeclaration, scope);
             this.CompleteOriginDeclaration(originDeclaration);
             declared = variable.TypeKoto?.BoundType ?? declared;
         }
@@ -72,7 +68,7 @@ public sealed partial class Binding
         {
             inferred = variable.InitializerKoto is { } initializer ? this.BindExpected(initializer, scope, declared, variable.TypeKoto) : null;
             symbol.Resolving = false;
-            if (inferred is not null && this.initializerOrigins.TryGetValue(variable, out var initializerOrigins) && initializerOrigins.State < 2)
+            if (inferred is not null && this.initializerOrigins.TryGetValue(variable, out var initializerOrigins) && !initializerOrigins.Resolves)
             {
                 // SPEC 15.4.4: finish all initializer acquisition bounds before checking the local's fixed Type.
                 inferred = this.ResolveInitializerOrigins(inferred, initializerOrigins, variable, scope, ref slot);

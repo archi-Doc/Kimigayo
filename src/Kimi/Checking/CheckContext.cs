@@ -8,7 +8,7 @@ namespace Kimi.Checking;
 /// <summary>Carries one check through the shared check entry (SPEC 23.2.2).</summary>
 /// <remarks>
 /// Commands pass no context: they read the disk and render each result themselves. A context supplies the inputs and
-/// collects what its caller finalizes: every diagnostic of the request in one owner, and the compilation whose front end ran.
+/// collects what its caller finalizes: every diagnostic of the request in one owner, and the compilation of a Completed check.
 /// </remarks>
 /// <param name="inputs">The input source of the check.</param>
 /// <param name="collectHover">Whether to collect optional editor information before releasing the compilation.</param>
@@ -24,8 +24,9 @@ internal sealed class CheckContext(CheckInputSource inputs, bool collectHover = 
     public DiagnosticOwner Diagnostics { get; } = new();
 
     /// <summary>
-    /// Gets or sets the compilation whose front end ran (SPEC 23.2.2, step 3), or <see langword="null"/> while input preparation
-    /// has not established every input, which blocks the check (SPEC 23.2.2).
+    /// Gets or sets the compilation whose front end ran (SPEC 23.2.2, step 3) or whose preparation left it no module to analyze
+    /// (<c>Compilation.AnalyzesNoModule</c>), or <see langword="null"/> while input preparation has not established every input,
+    /// which blocks the check (SPEC 23.2.2).
     /// </summary>
     public Compilation? Compilation { get; set; }
 }

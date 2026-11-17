@@ -102,10 +102,10 @@ public class ClosedTypeConstraintBindingTest
         var c = MinimalEmissionTest.Analyze("public contract Origin\npublic struct Source\n    Self is Origin\nfunc f<T>()\n    " + clause + "\n    ()");
         Assert.False(c.Binding.Result.IsComplete);
 
-        // The parser reports the prefix whose subject the function does not permit (SPEC 7.5); Binding's own restriction rests on that Error.
-        Assert.Contains(c.Binding.DerivedIssues, x => x.FailureOf() == BindingFailure.InvalidConstraint);
-        Assert.DoesNotContain(c.Binding.Issues, x => x.Node.FailureOf() == BindingFailure.InvalidConstraint);
-        Assert.Contains(TestDiagnostics.Of(c), x => x.Code == nameof(DiagnosticCode.MisplacedSyntax_Kd));
+        // G507: the subject is judged by Binding, not the parser (SPEC 7.5): the function does not permit it, one direct record.
+        Assert.Contains(c.Binding.Issues, x => x.Node is IsKoto && x.Node.FailureOf() == BindingFailure.InvalidConstraint);
+        Assert.DoesNotContain(TestDiagnostics.Of(c), x => x.Code == nameof(DiagnosticCode.MisplacedSyntax_Kd));
+        Assert.Single(c.Binding.Issues, x => x.Code == DiagnosticCode.InvalidConstraint_Kd);
     }
 
     [Fact]

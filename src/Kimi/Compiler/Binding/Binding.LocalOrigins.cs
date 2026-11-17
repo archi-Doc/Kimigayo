@@ -1,5 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using System.Diagnostics.CodeAnalysis;
 using Kimi.Compiler.Parsing;
 
 namespace Kimi.Compiler;
@@ -19,7 +20,15 @@ public sealed partial class Binding
 {
     // Origins omitted in a local initializer's own Type expressions (SPEC 15.4.4), inferred while that initializer binds. They
     // are kept apart from declared Origin contracts, which are completed before bodies bind; entries are reused across binds.
-    private readonly Dictionary<Koto, OriginDeclaration> initializerOrigins = new(ReferenceEqualityComparer.Instance);
+    private readonly InitializerOriginRows initializerOrigins;
+
+    // One bound of an Origin a local's initializer omits (SPEC 15.4.4), met with its earlier bounds.
+    private void MeetInitializerBound(OriginDeclaration pending, BoundOrigin variable, BoundOrigin bound)
+    {
+        var replacements = pending.Forming.Replacements;
+        replacements[variable] = replacements.TryGetValue(variable, out var previous) ? this.Meet(previous, bound) : bound;
+        this.originStateVersion++;
+    }
 
     // SPEC 15.4.4, 15.3.6: `local`'s initializer has acquired every bound. An Origin its initializer omits whose bounds reach no Origin
     // but its own variables (none, or a cycle among them) has no candidate and is a local region of `local` (DECISIONS R4-M112); each
@@ -35,12 +44,12 @@ public sealed partial class Binding
                 continue;
             }
 
-            var bound = declaration.Replacements.ContainsKey(pending);
-            if (!bound || declaration.Replacements.ContainsKey(this.ResolveOrigin(pending, declaration)))
+            var bound = declaration.Forming.Replacements.ContainsKey(pending);
+            if (!bound || declaration.Forming.Replacements.ContainsKey(this.ResolveOrigin(pending, declaration)))
             {
                 if (IsWithin(pending.Binder!, local.InitializerKoto!) && ReferenceEquals(this.OpenInitializer(pending, obligation.Use), local))
                 {
-                    declaration.Replacements[pending] = this.LocalRegionSlot(local, slot--);
+                    declaration.Forming.Replacements[pending] = this.LocalRegionSlot(local, slot--);
                 }
                 else if (!bound)
                 {
@@ -52,10 +61,10 @@ public sealed partial class Binding
             this.obligations.RemoveAt(i);
         }
 
-        declaration.Scope = scope;
-        declaration.State = 3;
+        declaration.Forming.Scope = scope;
+        declaration.Forming.State = 3;
         this.originStateVersion++;
-        foreach (var replacement in declaration.Replacements)
+        foreach (var replacement in declaration.Forming.Replacements)
         {
             this.RecordRegionBound(this.ResolveOrigin(replacement.Value, declaration), replacement.Key, local);
         }
@@ -81,7 +90,7 @@ public sealed partial class Binding
             return declared;
         }
 
-        if (declaration?.Inferred is { Count: > 0 } inferred)
+        if (declaration?.Forming.Inferred is { Count: > 0 } inferred)
         {
             this.SolveLocalBounds(declaration, inferred, owner, ref slot);
         }
@@ -94,7 +103,7 @@ public sealed partial class Binding
                 continue;
             }
 
-            if (declaration?.Replacements.ContainsKey(pending) != true)
+            if (declaration?.Forming.Replacements.ContainsKey(pending) != true)
             {
                 if (!IsWithin(pending.Binder!, owner.TypeKoto!))
                 {
@@ -102,7 +111,7 @@ public sealed partial class Binding
                 }
 
                 declaration ??= this.OriginDeclarationFor(owner);
-                declaration.Replacements[pending] = this.LocalRegionSlot(owner, slot--);
+                declaration.Forming.Replacements[pending] = this.LocalRegionSlot(owner, slot--);
             }
 
             this.obligationSet.Remove(obligation);
@@ -114,8 +123,8 @@ public sealed partial class Binding
             return declared;
         }
 
-        declaration.Scope = scope;
-        declaration.State = 3;
+        declaration.Forming.Scope = scope;
+        declaration.Forming.State = 3;
         this.originStateVersion++;
         var visitor = this.originRewriteVisitor ??= new(this);
         visitor.Declaration = declaration;
@@ -154,9 +163,9 @@ public sealed partial class Binding
                 declaration ??= this.OriginDeclarationFor(owner);
                 if (IsMutableDeclaration(owner))
                 {
-                    var region = declaration.Replacements.TryGetValue(pending, out var previous) && IsLocalRegion(previous)
+                    var region = declaration.Forming.Replacements.TryGetValue(pending, out var previous) && IsLocalRegion(previous)
                         ? previous : this.LocalRegionSlot(owner, slot--);
-                    declaration.Replacements[pending] = region;
+                    declaration.Forming.Replacements[pending] = region;
                     this.originStateVersion++;
                     if (!ReferenceEquals(value, pending))
                     {
@@ -166,15 +175,15 @@ public sealed partial class Binding
                 else
                 {
                     // SPEC 15.3.6: the slot itself is no candidate, so a slot bound only to itself is a local region (DECISIONS R4-M112).
-                    declaration.Replacements[pending] = declaration.Replacements.TryGetValue(pending, out var previous) ? this.Meet(previous, value)
+                    declaration.Forming.Replacements[pending] = declaration.Forming.Replacements.TryGetValue(pending, out var previous) ? this.Meet(previous, value)
                         : ReferenceEquals(value, pending) ? this.LocalRegionSlot(owner, slot--) : value;
                     this.originStateVersion++;
                 }
 
-                if (declaration.Relations.Count != 0)
+                if (declaration.Forming.Relations.Count != 0)
                 {
                     // Local clauses use this composed variance when solving their bounds.
-                    var inferred = declaration.Inferred ??= new(ReferenceEqualityComparer.Instance);
+                    var inferred = declaration.Forming.Inferred ??= new(ReferenceEqualityComparer.Instance);
                     inferred[pending] = inferred.TryGetValue(pending, out var seen) && seen != polarity ? OriginVariance.Invariant : polarity;
                 }
             }
@@ -187,10 +196,10 @@ public sealed partial class Binding
     // `slot` (DECISIONS R4-M112): one decision, whatever the clause order.
     private void SolveLocalBounds(OriginDeclaration declaration, Dictionary<BoundOrigin, OriginVariance> inferred, VariableKoto owner, ref int slot)
     {
-        for (var pass = 0; pass <= declaration.Relations.Count; pass++)
+        for (var pass = 0; pass <= declaration.Forming.Relations.Count; pass++)
         {
             var changed = false;
-            foreach (var relation in declaration.Relations)
+            foreach (var relation in declaration.Forming.Relations)
             {
                 if (relation.Equality)
                 {
@@ -198,19 +207,19 @@ public sealed partial class Binding
                 }
 
                 if (inferred.TryGetValue(relation.Longer, out var lowerVariance) && lowerVariance == OriginVariance.Contravariant &&
-                    declaration.Replacements.TryGetValue(relation.Longer, out var lowerCandidate) && !IsLocalRegion(lowerCandidate))
+                    declaration.Forming.Replacements.TryGetValue(relation.Longer, out var lowerCandidate) && !IsLocalRegion(lowerCandidate))
                 {
                     var lower = this.ResolveOrigin(relation.Shorter, declaration);
                     if (!this.ProvesOriginOutlives(lowerCandidate, lower, relation.Syntax) && this.ProvesOriginOutlives(lower, lowerCandidate, relation.Syntax))
                     {
-                        declaration.Replacements[relation.Longer] = lower;
+                        declaration.Forming.Replacements[relation.Longer] = lower;
                         this.originStateVersion++;
                         changed = true;
                     }
                 }
 
                 if (!inferred.TryGetValue(relation.Shorter, out var variance) || variance != OriginVariance.Covariant ||
-                    !declaration.Replacements.TryGetValue(relation.Shorter, out var current))
+                    !declaration.Forming.Replacements.TryGetValue(relation.Shorter, out var current))
                 {
                     continue;
                 }
@@ -225,7 +234,7 @@ public sealed partial class Binding
                 var met = this.Meet(current, longer);
                 if (!ReferenceEquals(met, current))
                 {
-                    declaration.Replacements[relation.Shorter] = met;
+                    declaration.Forming.Replacements[relation.Shorter] = met;
                     this.originStateVersion++;
                     changed = true;
                 }
@@ -237,19 +246,36 @@ public sealed partial class Binding
             }
         }
 
-        foreach (var relation in declaration.Relations)
+        foreach (var relation in declaration.Forming.Relations)
         {
             if (relation.Equality || inferred.GetValueOrDefault(relation.Longer) != OriginVariance.Contravariant ||
-                !declaration.Replacements.TryGetValue(relation.Longer, out var candidate) || IsLocalRegion(candidate))
+                !declaration.Forming.Replacements.TryGetValue(relation.Longer, out var candidate) || IsLocalRegion(candidate))
             {
                 continue;
             }
 
             if (!this.ProvesOriginOutlives(candidate, this.ResolveOrigin(relation.Shorter, declaration), relation.Syntax))
             {
-                declaration.Replacements[relation.Longer] = this.LocalRegionSlot(owner, slot--);
+                declaration.Forming.Replacements[relation.Longer] = this.LocalRegionSlot(owner, slot--);
                 this.originStateVersion++;
             }
         }
+    }
+
+    /// <summary>The `initializerOrigins` family's one accessor (DECISIONS BU-220): a kept family, the Origins a local's initializer omits
+    /// (SPEC 15.4.4), made once and reset in place by each pass (PrepareOriginDeclarations), kept in its key node's module's NodeColumns at
+    /// its SyntaxId. Its members keep the names its readers use.</summary>
+    private readonly struct InitializerOriginRows(Binding binding)
+    {
+        internal FamilyRows<OriginDeclaration?> Values => new(binding, static (table, _) => table.Hir.Families.InitializerOrigins.Enumerate());
+
+        internal void Add(Koto node, OriginDeclaration value)
+        {
+            ref var row = ref HirTables.Of(node).Families.InitializerOrigins.Ref(node.SyntaxId);
+            row = row is null ? value : throw new ArgumentException($"`initializerOrigins` already holds a row at `{node}`.", nameof(node));
+        }
+
+        internal bool TryGetValue(Koto node, [NotNullWhen(true)] out OriginDeclaration? value)
+            => (value = node.SyntaxOwner is { } table ? table.Hir.Families.InitializerOrigins.Get(node.SyntaxId) : null) is not null;
     }
 }

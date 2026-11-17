@@ -47,14 +47,14 @@ internal sealed partial class MirBuilder
             {
                 var rejected = this.body.AddBlock();
                 var accepted = this.body.AddBlock();
-                this.scope = (ushort)this.body.AddScope(outer, MirScopeKind.Guard, SourceRef.Of(guard));
+                this.scope = this.body.AddScope(outer, MirScopeKind.Guard, SourceRef.Of(guard));
                 var test = this.Guard(guard, rejected, accepted, plan, arm.Pattern, start);
                 this.Enter(rejected, test);
                 this.body.Terminate(rejected, MirTerminator.Goto(next, this.Info(guard)));
                 this.Enter(accepted, test);
             }
 
-            this.scope = (ushort)this.body.AddScope(outer, MirScopeKind.Lexical, SourceRef.Of(arm.Syntax.Pattern));
+            this.scope = this.body.AddScope(outer, MirScopeKind.Lexical, SourceRef.Of(arm.Syntax.Pattern));
             var bindings = this.temporaries = this.OpenScope(block: true);
             this.Bind(plan, arm.Pattern, start);
             var value = this.TargetBody(arm.Syntax.Body, input);
@@ -106,7 +106,7 @@ internal sealed partial class MirBuilder
         var position = plan.Positions[index];
         var tested = false;
         this.selected[start + index] = place;
-        place = this.Follow(place, position.ImplicitFollows);
+        place = this.FollowLayers(place, position.ImplicitFollows);
         if (position.Kind == BoundPatternKind.Literal)
         {
             this.LiteralTest(position, place, next);
@@ -114,9 +114,7 @@ internal sealed partial class MirBuilder
         }
         else if (position is { Kind: BoundPatternKind.Case, Case.Ordinal: var ordinal })
         {
-            var discriminant = this.Temp(BoundType.ISize, position.Source);
-            this.Set(discriminant, MirRvalue.Discriminant(place), position.Source);
-            this.Pass(MirOperand.Copy(discriminant), ordinal, next, position.Source);
+            this.CaseTest(place, ordinal, next, position.Source);
             (place, tested) = (this.body.Project(place, MirProjectionKind.Downcast, ordinal), true);
         }
 
@@ -165,6 +163,16 @@ internal sealed partial class MirBuilder
         }
 
         this.Pass(MirOperand.Copy(this.Made(value)), 1, next, position.Source);
+    }
+
+    // SPEC 14.8.1, 22.10.1: the one test of a Place's case, a Case position's or a call's Result's (Ok, case 0): its discriminant in a temp
+    // made where it is read, so that its StorageLive, write and read lie in one block (A1 numbers it chain-local); building goes on in a new
+    // block where it is the ordinal, else at next.
+    private void CaseTest(MirPlace place, long ordinal, int next, Koto node)
+    {
+        var discriminant = this.Temp(BoundType.ISize, node);
+        this.Set(discriminant, MirRvalue.Discriminant(place), node);
+        this.Pass(MirOperand.Copy(discriminant), ordinal, next, node);
     }
 
     // A test's branch: on in a new block where the value is the expected one, else to the next arm.

@@ -70,6 +70,9 @@
 // Fields, payloads and elements are no storage the operation writes). An operation of SPEC 4.6 to 4.9 writes the store at its
 // borrowed receiver only in the storage that receiver refers to (ReferentStores; 4.9.6).
 // Content and Chain are two measures: Content what one read through the input carries (premises, step 4), Chain any chain of reads.
+// An input through which the callee's operation contract stores no value (KimiLibraryCatalog.NoStore, C-189, e.g. Raw.slice's storage;
+// SPEC 5.2 Placement, 5.6) is no output: the call writes no storage through it, so it has no Writes entry, rule A forms no row there
+// and nothing unties it (PLAN G780).
 // Keeps: whether the result or a storage the call may write may hold an input (MirValidator.ConstantRecords).
 // Files: this one (the contract and its records RetentionKind, StorageRetention, OutputRetention, CallRetention); TyCtxt.Retention.Calls.cs
 // (TyCtxt.Retains, RetainsErasedDestruction and their memo, the callables handed to a body); Binding.Retention.cs with .Atoms.cs,

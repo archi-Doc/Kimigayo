@@ -1,5 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using Kimi;
 using Xunit;
 
 namespace XunitTest;
@@ -46,9 +47,10 @@ public class AssociatedParameterRefinementTest
     [InlineData("", false)]
     public void RefinedContractUsesSubstitutedFormationDomain(string domain, bool valid)
     {
-        var source = "contract C<E>\n    associate Item(a)" + domain + "\ncontract D<F>: C<F>\n    associate C.Item(b) is ref/F during b";
+        var source = "contract C<E>\n    associate Item(a)" + domain + "\ncontract D<F>: C<F>\n    associate C<F>.Item(b) is ref/F during b";
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(valid == c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
+        Assert.Equal(!valid, c.Binding.Issues.Any(static x => x.Code == DiagnosticCode.InvalidOriginBinding_Kd));
     }
 
     [Theory]

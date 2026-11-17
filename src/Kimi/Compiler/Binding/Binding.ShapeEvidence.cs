@@ -277,7 +277,7 @@ public sealed partial class Binding
     // supply no evidence; a failure at another source position does not discard a binding here.
     // A slot not fixed in both candidates needs the same evidence (SameArgumentEvidence, the expected
     // result's included) before its collected Types or modes count: equal Types along other paths are none (SPEC 7.4.4).
-    private bool CheckCallShapeContracts(InvocationKoto call, GenericsKoto? generic, BindingScope scope, BoundType? expected, ReadOnlySpan<EvaluatedCandidate> candidates, int[] allMaps, int slotStride)
+    private bool CheckCallShapeContracts(InvocationKoto call, ReadOnlySpan<BoundType?> explicitTypes, ReadOnlySpan<BoundLength?> explicitLengths, BindingScope scope, BoundType? expected, ReadOnlySpan<EvaluatedCandidate> candidates, int[] allMaps, int slotStride)
     {
         var needed = false;
         this.shapeCallCandidates.Clear();
@@ -301,7 +301,7 @@ public sealed partial class Binding
         var types = this.typeScratch.Rent(candidates.Length * slotStride);
         // Per candidate and slot: bits 1, 2 and 4 the collected modes, 8 differing witnesses, 16 the expected result's fill reached it.
         var modes = this.indexScratch.Rent(candidates.Length * slotStride);
-        var bindings = this.typeScratch.Rent(slotStride);
+        var bindings = this.infer.Rent(slotStride);
         var fixedSlots = this.flagScratch.Rent(candidates.Length * slotStride);
         var savedAcquisition = this.acquisitionFailure;
         try
@@ -318,17 +318,12 @@ public sealed partial class Binding
                 var owner = CallSlotOwner(function);
                 var count = CallSlotCount(function);
                 var declaring = function.IsConstructor && call.Method is MemberAccessKoto member ? member.Left.BoundType : candidates[c].DeclaringType;
-                this.InitializeCallSlots(call, function, declaring, bindings);
+                var candidateSlots = this.FixCallSlots(call, function, declaring, explicitTypes, explicitLengths, bindings);
                 fixedSlots.AsSpan(c * slotStride, slotStride).Clear();
                 for (var g = 0; g < count; g++)
                 {
-                    if (!function.IsConstructor && generic is not null && g < generic.TypeArguments.Count)
-                    {
-                        bindings[g] = generic.TypeArguments[g].BoundType;
-                    }
-
-                    fixedSlots[(c * slotStride) + g] = bindings[g] is not null;
-                    if (bindings[g] is { } fixedType)
+                    fixedSlots[(c * slotStride) + g] = bindings.Types[g] is not null;
+                    if (bindings.Types[g] is { } fixedType)
                     {
                         modes[(c * slotStride) + g] = (int)this.ShapeOf(fixedType, function, true).Modes;
                     }
@@ -339,7 +334,7 @@ public sealed partial class Binding
                     var mapped = allMaps[(c * call.ArgumentNodes.Count) + a];
                     if (mapped >= 0 && function.Parameters[mapped].Type.BoundType is { } pattern && this.CallMemberPattern(pattern, function, declaring) is { } memberPattern)
                     {
-                        CollectArgument(memberPattern, call.ArgumentNodes[a]);
+                        CollectArgument(memberPattern, call.ArgumentNodes[a], candidateSlots);
                     }
                 }
 
@@ -349,9 +344,11 @@ public sealed partial class Binding
                     CollectTypes(result, expected, fillOnly: true);
                 }
 
-                bindings.AsSpan(0, count).CopyTo(types.AsSpan(c * slotStride));
+                bindings.Types[..count].CopyTo(types.AsSpan(c * slotStride));
 
-                void CollectArgument(BoundType pattern, Koto source)
+                // Collects the open slots' evidence (CollectTypes skips a fixed slot, whose mode FixCallSlots gives); the argument is
+                // adapted, and a Function Type takes its call signature, at the pattern under the candidate's fixed bindings, as in its trial.
+                void CollectArgument(BoundType pattern, Koto source, in FixedSlots candidateSlots)
                 {
                     source = KotoHelper.UnwrapParentheses(source);
                     if (source is FunctionKoto { IsAnonymous: true } literal)
@@ -377,12 +374,13 @@ public sealed partial class Binding
 
                     if (source.BoundType is { } actual)
                     {
-                        if (this.AdaptInput(source, pattern, actual, scope, null, declaring, out var adapted, out _, out _, deferAcquisition: true))
+                        var fixedPattern = FixedPattern.Of(this, pattern, candidateSlots);
+                        if (this.AdaptInput(source, fixedPattern, actual, scope, null, declaring, out var adapted, out _, out _, deferAcquisition: true))
                         {
                             actual = adapted;
                         }
 
-                        actual = this.SignatureAtFunction(pattern, actual);
+                        actual = this.SignatureAtFunction(fixedPattern.Type, actual);
                         CollectTypes(pattern, actual, false);
                         if (CallableSlotType(pattern, CallSlotOwner(function)) is not null &&
                             this.ExpectedCallSignature(function, pattern) is { } requiredSignature &&
@@ -403,14 +401,14 @@ public sealed partial class Binding
                     {
                         for (var e = 0; e < tuple.Elements.Count; e++)
                         {
-                            CollectArgument(pattern.Components[e], tuple.Elements[e]);
+                            CollectArgument(pattern.Components[e], tuple.Elements[e], candidateSlots);
                         }
                     }
                     else if (source is ArrayLiteralKoto array && pattern.Kind is BoundTypeKind.FixedArray or BoundTypeKind.Array)
                     {
                         for (var e = 0; e < array.Elements.Count; e++)
                         {
-                            CollectArgument(pattern.Components[0], array.Elements[e]);
+                            CollectArgument(pattern.Components[0], array.Elements[e], candidateSlots);
                         }
                     }
                 }
@@ -433,11 +431,11 @@ public sealed partial class Binding
                         var mode = (int)this.ShapeOf(actual, function, true).Modes;
                         if (modes[at] == 0)
                         {
-                            bindings[slot] = actual;
+                            bindings.SetType(slot, actual);
                         }
-                        else if (bindings[slot] is not { } previous || !SameShapeBinding(previous, actual))
+                        else if (bindings.Types[slot] is not { } previous || !SameShapeBinding(previous, actual))
                         {
-                            bindings[slot] = null;
+                            bindings.SetType(slot, null);
                             mode |= 8; // Keep differing witnesses; equal acquisition modes may still suffice.
                         }
 
@@ -512,7 +510,7 @@ public sealed partial class Binding
         {
             this.acquisitionFailure = savedAcquisition;
             this.flagScratch.Return(fixedSlots);
-            this.typeScratch.Return(bindings, clearArray: true);
+            this.infer.Return(bindings);
             this.indexScratch.Return(modes);
             this.typeScratch.Return(types, clearArray: true);
         }

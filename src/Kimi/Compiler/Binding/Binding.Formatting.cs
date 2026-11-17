@@ -8,7 +8,6 @@ public sealed partial class Binding
 {
     [Transitional("R7", Reason = "The legacy comparison composition's leaves (A-12, else R7).")]
     private readonly Dictionary<(BindingSymbol Site, BoundType Type, KimiDeclarationId Contract, string? Name), (ulong Version, CallPlan Call)> requirementCalls = new();
-    private BindingSymbol? builtinFormat;
     private BindingSymbol? builtinEquals;
     private BindingSymbol? builtinCompare;
 
@@ -110,7 +109,8 @@ public sealed partial class Binding
 
     private BindingSymbol CompilerRequirementTarget(BindingSymbol selected, BoundType? self)
     {
-        if (self is not null && ArithmeticContracts.Identity(selected.Scope.Owner.BoundSymbol) is { } arithmetic && ArithmeticContracts.Supports(self, arithmetic))
+        if (self is not null && ArithmeticContractSyntax.Identity(selected.Scope.Owner.BoundSymbol) is { } arithmetic &&
+            ArithmeticContracts.Supports(self, arithmetic))
         {
             return Prepared(this.builtinArithmetic[ArithmeticSlot(arithmetic)]);
         }
@@ -121,8 +121,7 @@ public sealed partial class Binding
             return Prepared(contract.LibraryDeclaration == KimiDeclarationId.Equatable ? this.builtinEquals : this.builtinCompare);
         }
 
-        return self is not null && FormattingTypes.IsBuiltin(self) && selected.Scope.Owner.BoundSymbol?.LibraryDeclaration == KimiDeclarationId.Utf8Format
-            ? Prepared(this.builtinFormat) : selected;
+        return selected;
 
         // A built-in target exists from the first pass's PrepareBuiltinTargets on; no requirement is resolved before it.
         static BindingSymbol Prepared(BindingSymbol? target)
@@ -133,22 +132,21 @@ public sealed partial class Binding
     // declaration, result Type and receiver slot, taken once per pass after headers, so resolving a requirement writes nothing.
     private void PrepareBuiltinTargets()
     {
-        Prepare(ref this.builtinEquals, KimiDeclarationId.Equatable, CompilerFunctionKind.BuiltinEquals);
-        Prepare(ref this.builtinCompare, KimiDeclarationId.Comparable, CompilerFunctionKind.BuiltinCompare);
-        Prepare(ref this.builtinFormat, KimiDeclarationId.Utf8Format, CompilerFunctionKind.BuiltinFormat);
+        Prepare(ref this.builtinEquals, KimiDeclarationId.Equatable);
+        Prepare(ref this.builtinCompare, KimiDeclarationId.Comparable);
         for (var id = KimiDeclarationId.Addable; id <= KimiDeclarationId.Negatable; id++)
         {
             if (!ArithmeticContracts.IsLeft(id))
             {
-                Prepare(ref this.builtinArithmetic[ArithmeticSlot(id)], id, CompilerFunctionKind.BuiltinArithmetic);
+                Prepare(ref this.builtinArithmetic[ArithmeticSlot(id)], id);
             }
         }
 
-        void Prepare(ref BindingSymbol? target, KimiDeclarationId id, CompilerFunctionKind kind)
+        void Prepare(ref BindingSymbol? target, KimiDeclarationId id)
         {
             if (this.Library.GetSymbol(id)!.Contract!.OwnRequirement() is { } requirement)
             {
-                target ??= new(requirement.Name, requirement.Kind, requirement.Declaration, requirement.Scope) { CompilerFunction = kind };
+                target ??= new(requirement.Name, requirement.Kind, requirement.Declaration, requirement.Scope) { Definition = new(DispositionKind.Shim) };
                 target.Type = requirement.Type;
                 target.ReceiverIndex = requirement.ReceiverIndex;
             }

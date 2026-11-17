@@ -8,12 +8,9 @@ public sealed partial class Binding
 {
     // Requirement Items retain the requirement declaration, the conforming Self and its bound declaring Contract.
     // These are type-level bindings, not a captured receiver or an implementation chosen by a later name lookup.
-    private RequirementGroup? ReferenceRequirements(Koto use)
-        => ReferenceName(use) is MemberAccessKoto member && this.requirementGroups.TryGetValue(member, out var group) && group.Active ? group : null;
-
     private BoundType? BindRequirementItem(Koto use, RequirementGroup group, BindingScope scope, BoundType? required = null, bool erase = false)
     {
-        if (!group.TypeAccess)
+        if (this.MemberSideOf((MemberAccessKoto)ReferenceName(use)) != MemberSide.Type)
         {
             return this.Fail(use, BindingFailure.BoundMethodValue);
         }
@@ -61,17 +58,16 @@ public sealed partial class Binding
 
             if (pending || matches != 1)
             {
-                var rejected = new RejectedCandidate[matches == 0 ? count : matches];
-                var next = 0;
+                var start = this.rejectedRows.Count;
                 for (var i = 0; i < count; i++)
                 {
                     if (matches == 0 || applicable[i])
                     {
-                        rejected[next++] = new((FunctionKoto)group.Members[i].Declaration, signatures[i], required, CallableSignature: required is not null, ReferenceSignature: required is not null, UnfixedReference: required is null);
+                        this.rejectedRows.Add(new((FunctionKoto)group.Members[i].Declaration, signatures[i], required, CallableSignature: required is not null, ReferenceSignature: required is not null, UnfixedReference: required is null));
                     }
                 }
 
-                (this.rejectedCandidates ??= new(ReferenceEqualityComparer.Instance))[use] = rejected;
+                this.RecordRejected(use, start);
                 return this.Fail(use, pending ? BindingFailure.UnprovenConstraint : matches == 0 ? BindingFailure.NoApplicableCandidate : BindingFailure.Ambiguous);
             }
         }
@@ -81,12 +77,16 @@ public sealed partial class Binding
             this.flagScratch.Return(applicable, clearArray: true);
         }
 
-        if ((((FunctionKoto)selected!.Symbol!.Declaration).Modifier & ModifierKind.Unsafe) != 0)
+        if (DirectCallOnly((FunctionKoto)selected!.Symbol!.Declaration))
         {
-            return this.Fail(use, BindingFailure.UnsafeFunctionValue);
+            return this.Fail(use, BindingFailure.DirectCallFunctionValue);
         }
 
-        this.CompleteFunctionItem(use, selected);
+        if (this.CompleteFunctionItem(use, selected) is null)
+        {
+            return null; // A requirement member is never `#Unsupported` (KimiLibraryShapeTest L11).
+        }
+
         if (erase && required is not null)
         {
             if (!this.ErasesToFunction(use, selected, required))

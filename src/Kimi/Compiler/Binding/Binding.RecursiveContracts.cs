@@ -82,30 +82,38 @@ public sealed partial class Binding
         var scope = this.supplyScope ??= new(this.Library.Kotonoha.RootKoto) { Constraints = new() };
         var environment = scope.Constraints!;
         var self = this.ContractSelfType(shape.Symbol);
-        environment.Reset();
-        this.suppliedExpansions.Clear();
-        this.suppliedExpansions.Add((shape.Symbol, true));
-        this.AddContractPremises(shape, self, scope);
-        for (var i = 0; i < environment.DerivedFacts.Count; i++)
+        try
         {
-            var fact = environment.DerivedFacts[i].Fact;
-            if (fact is not { Kind: ConstraintKind.Contract, Contract: { Contract: { } supplied } contract, Subject: { } subject } ||
-                !OfSearchSelf(subject, self) || !this.AvailableConstraintFact(environment, fact))
+            this.suppliedExpansions.Add((shape.Symbol, true));
+            this.AddContractPremises(shape, self, scope);
+            for (var i = 0; i < environment.DerivedFacts.Count; i++)
             {
-                continue;
+                var fact = environment.DerivedFacts[i].Fact;
+                if (fact is not { Kind: ConstraintKind.Contract, Contract: { Contract: { } supplied } contract, Subject: { } subject } ||
+                    !OfSearchSelf(subject, self) || !this.AvailableConstraintFact(environment, fact, out _))
+                {
+                    continue;
+                }
+
+                if (!ReferenceEquals(subject, self) && IsRefinement(contract, shape.Symbol))
+                {
+                    return true;
+                }
+
+                if (this.suppliedExpansions.Add((contract.Declaration.BoundSymbol!, ReferenceEquals(subject, self))))
+                {
+                    this.AddContractPremises(supplied, subject, scope);
+                }
             }
 
-            if (!ReferenceEquals(subject, self) && IsRefinement(contract, shape.Symbol))
-            {
-                return true;
-            }
-
-            if (this.suppliedExpansions.Add((contract.Declaration.BoundSymbol!, ReferenceEquals(subject, self))))
-            {
-                this.AddContractPremises(supplied, subject, scope);
-            }
+            return false;
         }
-
-        return false;
+        finally
+        {
+            // Call scratch, emptied on every exit (PLAN G949 S1-e): the search's premises and the declarations it expanded. The
+            // environment's Version moves as when it was reset at the next call's start (Reset counts a non-empty environment only).
+            environment.Reset();
+            this.suppliedExpansions.Clear();
+        }
     }
 }

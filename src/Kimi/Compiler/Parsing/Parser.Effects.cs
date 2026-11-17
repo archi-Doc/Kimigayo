@@ -80,7 +80,7 @@ public static partial class Parser
         DiagnosticKey? cause = null;
         if (reader.CurrentTokenKind is TokenKind.OpenParenthesis or TokenKind.ColonColon || reader.PeekKind(1) is TokenKind.Dot or TokenKind.LessThan)
         {
-            ParseEffectTarget(ref reader, out selector, out name);
+            selector = ParseEffectTarget(ref reader, out name);
             cause = (name as ErrorKoto)?.Cause;
         }
 
@@ -134,6 +134,7 @@ public static partial class Parser
     internal static DiagnosticKey? ParseBodyEffect(ref TokenReader reader, FunctionKoto? leading)
     {
         ReportPendingAttributes(ref reader);
+        RejectAccessWord(ref reader);
         var effect = ParseEffectBound(ref reader);
         if (leading is null)
         {
@@ -148,26 +149,25 @@ public static partial class Parser
         return null;
     }
 
-    // ContractSelector "." Name, where ContractSelector is a ContainerPath or "(" ContractReference ")" (Appendix F). The last
-    // segment of the path is the requirement Name.
-    private static void ParseEffectTarget(ref TokenReader reader, out Koto selector, out Koto name)
+    // ContractSelector "." Name, where ContractSelector is a ContainerPath or "(" ContractReference ")" (Appendix F). The group holds
+    // one reference, so its Type and closer are read in every position (an empty group or a list is a syntax Error there), and it is
+    // the node of every grouped Contract reference; Binding reads the reference in it (WrittenReference). The last segment of the
+    // path is the requirement Name. Returns the ContractSelector; name is the requirement Name, an Error where the path names none.
+    private static Koto ParseEffectTarget(ref TokenReader reader, out Koto name)
     {
-        Koto path;
+        Koto? group = null;
         if (reader.CurrentTokenKind == TokenKind.OpenParenthesis)
         {
             var open = reader.Read().Span.Start;
-            var reference = ParseType(ref reader, TypeContext.Type);
+            var reference = ParseType(ref reader, TypeContext.Element);
             reader.ExpectCloser(TokenKind.CloseParenthesis, out var close);
-            path = new ParenthesizedKoto(ref reader, SourceSpan.FromBounds(open, Math.Max(reference.Span.End, close.End)), reference);
-        }
-        else
-        {
-            path = reader.CurrentTokenKind == TokenKind.ColonColon ? ParseRootName(ref reader) : ParseName(ref reader);
+            group = new ParenthesizedTypeKoto(ref reader, SourceSpan.FromBounds(open, Math.Max(reference.Span.End, close.End)), reference);
         }
 
+        var path = group ?? (reader.CurrentTokenKind == TokenKind.ColonColon ? ParseRootName(ref reader) : ParseName(ref reader));
         while (true)
         {
-            if (reader.CurrentTokenKind == TokenKind.LessThan && path is not ParenthesizedKoto)
+            if (reader.CurrentTokenKind == TokenKind.LessThan && !ReferenceEquals(path, group))
             {
                 path = ParseGenericsPostfix(ref reader, path);
             }
@@ -184,14 +184,13 @@ public static partial class Parser
 
         if (path is MemberAccessKoto member)
         {
-            selector = member.Left;
             name = member.Right;
-            return;
+            return member.Left;
         }
 
         // The selector names no requirement; the Name is missing where the bound would follow.
-        selector = path;
         reader.Expect(SyntaxForm.Name);
         name = reader.NewErrorKoto();
+        return path;
     }
 }

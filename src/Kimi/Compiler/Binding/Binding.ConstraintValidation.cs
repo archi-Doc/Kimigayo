@@ -37,7 +37,8 @@ public sealed partial class Binding
     /// <summary>
     /// Computes the admitted set of a Semantics binding from every available premise on it (SPEC 8.3):
     /// names and categories contribute their members, and/or/not intersect, unite and complement,
-    /// separate clauses intersect, and no premise admits all nine Semantics.
+    /// separate clauses intersect, and no premise admits all nine Semantics. An Invalid environment's Semantics premises stay premises
+    /// (a failed clause's fact is an Error, never a Semantics premise), so None is the 8.3.4 Error: the binder admits no case.
     /// </summary>
     /// <param name="whole">The pair's whole Type.</param>
     /// <param name="scope">The scope whose premises apply.</param>
@@ -47,14 +48,14 @@ public sealed partial class Binding
         var admitted = SemanticsMask.All;
         for (var current = scope; current is not null; current = current.Parent)
         {
-            if (current.Constraints is not { Invalid: false } environment)
+            if (current.Constraints is not { } environment)
             {
                 continue;
             }
 
             foreach (var fact in environment.Facts)
             {
-                if (SemanticsPremise(fact, whole) && this.AvailableConstraintFact(environment, fact))
+                if (SemanticsPremise(fact, whole) && this.AvailableConstraintFact(environment, fact, out _))
                 {
                     admitted &= SemanticsSet(fact);
                 }
@@ -93,6 +94,17 @@ public sealed partial class Binding
             ConstraintKind.Not => ClauseSubject(constraint.Left!),
             _ => constraint.Subject,
         };
+
+    // The declaration a clause pending in Provisional mode leaves pending (BU-151; SPEC 8.6.2: a conformance is Refuted only when every
+    // path fails): its own declaration, or for a conditional conformance's target the Type, whose conformances wait on the Contract
+    // (SPEC 8.8.1, 8.8.3). A condition is a premise: a proof applying the conformance reads its pending atom as Unknown
+    // (CheckConstraints), so it leaves no declaration pending.
+    private static DeclarationKoto? PendingDeclaration(IsKoto clause) => clause.Parent switch
+    {
+        DeclarationKoto declaration => declaration,
+        SyntaxFormKoto { Akind: KotoKind.ConditionalConformance, Parent: DeclarationKoto type, Operands: [var target, ..] } when ReferenceEquals(target, clause) => type,
+        _ => null,
+    };
 
     private static Koto? ProjectionDeclarationOwner(Koto use)
     {
@@ -171,130 +183,11 @@ public sealed partial class Binding
         return null;
     }
 
-    private ConstraintProof CheckCallTypeConstraints(CallPlan call, BindingScope scope)
-    {
-        // A linked constructor is judged as the public declaration it selected (SPEC 22.1).
-        var target = this.Library.PresentedTarget(call.Target);
-        if (this.InvalidDeclarationContext(target.Declaration))
-        {
-            return ConstraintProof.Error;
-        }
-
-        // SPEC 10.1: the selected candidate's obligation is its trial's conjunction (StepFiveConjunction), as one proof that keeps its
-        // facts for the record, then the selected call's own Types.
-        this.BeginProof();
-        ConstraintProof proof;
-        if (target.Declaration is FunctionKoto function)
-        {
-            // The declared signature stays the trial's part until R7-C2 (b) (PLAN G375): read here it would fault on library declarations.
-            var bindings = new CandidateBindings(
-                function, target, call.TypeArguments, call.LengthArguments, call.ConformingType, call.DeclaringType, call.DeclaringType, default, false);
-            proof = this.StepFiveConjunction(bindings, scope, false, null);
-        }
-        else
-        {
-            proof = call.DeclaringType is { } declaringType ? this.CheckTypeConstraints(declaringType, scope) : ConstraintProof.Proven;
-            proof = CombineProof(proof, this.ProveMemberConditions(target, call.DeclaringType, scope), true);
-        }
-
-        // The slots past the callee's own (a constructor's owner slots) keep the Final check's formation read.
-        var first = target.Declaration is FunctionKoto callee ? System.Math.Min(call.TypeArguments.Length, CallOwnSlots(callee).Count) : 0;
-        for (var i = first; i < call.TypeArguments.Length; i++)
-        {
-            if (call.TypeArguments[i] is { } argument)
-            {
-                proof = CombineProof(proof, this.CheckTypeConstraints(argument, scope), true);
-            }
-        }
-
-        if (UnresolvedTypeDeclarationContext(target.Declaration))
-        {
-            proof = CombineProof(proof, ConstraintProof.Unknown, true);
-        }
-
-        proof = CombineProof(proof, this.CheckTypeConstraints(call.ReturnType, scope), true);
-        if (call.ConformingType is { } conformingType)
-        {
-            proof = CombineProof(proof, this.CheckTypeConstraints(conformingType, scope), true);
-        }
-
-        proof = CombineProof(proof, this.CheckOperationTypeConstraints(call.ReceiverOperation, scope), true);
-        foreach (var operation in call.ArgumentOperations)
-        {
-            proof = CombineProof(proof, this.CheckOperationTypeConstraints(operation, scope), true);
-        }
-
-        var fact = this.ProofCause(proof) is null ? this.ProofFact(proof) : null;
-        var clause = this.ProofClause(proof);
-        proof = this.EndProof(proof);
-        this.LeaveUnknown(fact, proof);
-        this.LeaveClause(clause, proof);
-        return proof;
-    }
-
-    // SPEC 10.1 step 5, 8.1.3 (DECISIONS: G572 U2a): a candidate's Constraints and premises over its bindings, one conjunction in
-    // one order: the callee's Constraints, its owner Type's formation, each own binding's formation (a length slot bound, a Type slot
-    // formed, an unsolved slot only where 10.8 leaves it unbound), the member's conditions. The candidate trial (SlotSolution.Prove) and
-    // the selected call's obligation (CheckCallTypeConstraints) judge it over the same value; the declared signature stays the trial's
-    // (C2 (b), PLAN G375). `incomplete` and `slotOwner` are the trial's: a waiting argument's open slots (10.5.1, 10.8).
-    private ConstraintProof StepFiveConjunction(in CandidateBindings bindings, BindingScope scope, bool incomplete, Koto? slotOwner)
-    {
-        var function = bindings.Function;
-        var open = !bindings.Unbound.IsEmpty;
-        var clauseOwner = bindings.InfersOwner ? null : bindings.DeclaringType; // A constructor inferring its owner's slots (10.8.1) has none yet.
-        var proof = this.CheckConstraints(
-            function.TypeConstraints,
-            function,
-            bindings.Slots,
-            scope,
-            bindings.Self,
-            clauseOwner,
-            bindings.Lengths,
-            incomplete: incomplete || open,
-            skipUnresolved: open,
-            slotOwner: slotOwner);
-        if (bindings.Owner is { } owner)
-        {
-            proof = CombineProof(proof, this.CheckTypeConstraints(owner, scope), true);
-        }
-        else if (bindings.InfersOwner && bindings.DeclaringType is not null && slotOwner is StructKoto openOwner)
-        {
-            // A constructor whose owner Type is not closed yet judges its owner's clauses over the slots inferred so far (10.8.1).
-            proof = CombineProof(
-                proof,
-                this.CheckConstraints(openOwner.ConstraintNodes, openOwner, bindings.Slots, scope, incomplete: true, skipUnresolved: !bindings.Unbound.IsEmpty),
-                true);
-        }
-
-        var own = CallOwnSlots(function);
-        var lengths = bindings.Lengths;
-        for (var i = 0; i < own.Count && i < bindings.Slots.Length; i++)
-        {
-            var slot = own[i] is LengthParameterKoto ? (i < lengths.Length && lengths[i] is not null ? ConstraintProof.Proven : ConstraintProof.Unknown)
-                : bindings.Slots[i] is { } argument ? this.CheckTypeConstraints(argument, scope)
-                : bindings.Unbound.Contains(i) ? ConstraintProof.Proven : ConstraintProof.Unknown;
-            proof = CombineProof(proof, slot, true);
-        }
-
-        return CombineProof(proof, this.ProveMemberConditions(bindings.Target, bindings.DeclaringType, scope), true);
-    }
-
-    private ConstraintProof CheckOperationTypeConstraints(in BoundArgumentOperation operation, BindingScope scope)
-    {
-        var proof = operation.SourceType is { } source ? this.CheckTypeConstraints(source, scope) : ConstraintProof.Proven;
-        if (operation.ParameterType is { } parameter && !ReferenceEquals(parameter, operation.SourceType))
-        {
-            proof = CombineProof(proof, this.CheckTypeConstraints(parameter, scope), true);
-        }
-
-        return proof;
-    }
-
     // Late witness/Effect failures invalidate declarations even when normalization already erased
     // their projections. Reuse the ordinary validation until declaration states stop changing.
     private void InvalidateProjectionCertificates(BindingMode mode)
     {
-        while (this.ValidateClosedTypeConstraints(mode) | this.ValidateDeclarationProjectionInputs(mode) | this.ValidateConstraintEnvironments(sourcesOnly: true))
+        while (this.ValidateClosedTypeConstraints(mode) | this.ValidateDeclarationProjectionInputs(mode) | this.ValidateConstraintEnvironments(mode, sourcesOnly: true))
         {
             this.ClearCapabilityResults();
             this.ValidateBaseDeclarations(mode);
@@ -303,6 +196,52 @@ public sealed partial class Binding
         }
 
         this.ClearCapabilityResults();
+    }
+
+    // A later run judges the source environments only: the Kimi library's environments are fixed and valid, and the first run
+    // already judged them.
+    private bool ValidateConstraintEnvironments(BindingMode mode, bool sourcesOnly = false)
+    {
+        var changed = false;
+        foreach (var scope in this.scopes.Values.In(this.pass))
+        {
+            if (scope.Constraints is not { } environment || (sourcesOnly && this.IsLibraryDeclaration(scope.Owner)))
+            {
+                continue;
+            }
+
+            if (!environment.Invalid && !this.ValidateArithmeticDirections(scope, environment))
+            {
+                environment.Fail(scope.Owner); // ValidateArithmeticDirections failed the owner.
+                changed = true;
+                continue;
+            }
+
+            changed |= this.RecordIdentityPremiseError(scope, mode); // SPEC 8.2.3: once per pass, so the certificate rounds terminate.
+            foreach (var fact in environment.Facts)
+            {
+                // The environment's judgment is its owner's, the node its record names: the proof runs in the owner's frame.
+                this.failedCause = null;
+                var frame = this.BeginConsultation(scope.Owner);
+                var proof = this.ProveConstraint(fact, scope);
+                if (proof != ConstraintProof.Error)
+                {
+                    this.DropConsultation(frame);
+                    continue;
+                }
+
+                var previous = scope.Owner.BindingState;
+                changed |= !environment.Invalid;
+                environment.Fail(scope.Owner);
+                // Other input facts can have independent contradictions. Record a
+                // sole missing-name cause only when this is the entire environment.
+                this.RequireConstraintInFrame(scope.Owner, proof, mode, frame, environment.Facts.Count == 1 ? this.FindConformanceDiagnosticCause(scope.Owner, fact) : null);
+                changed |= previous != scope.Owner.BindingState;
+                break;
+            }
+        }
+
+        return changed;
     }
 
     private bool ValidateDeclarationProjectionInputs(BindingMode mode)
@@ -366,17 +305,25 @@ public sealed partial class Binding
         var changed = false;
         for (var i = 0; i < this.nodes.Count; i++)
         {
-            if (this.nodes[i] is IsKoto { BoundConstraint.HasUnresolved: true, Parent: DeclarationKoto owner } pending)
+            if (this.nodes[i] is IsKoto { BoundConstraint.HasUnresolved: true } pending && PendingDeclaration(pending) is { } owner)
             {
+                // In the declaration's scope: a conditional target is bound in its Type's, never under the conformance's premises.
                 var previous = owner.BindingState;
-                var pendingProof = this.ProveConstraint(pending.BoundConstraint!, this.ConstraintScope(pending));
+                var pendingFrame = this.BeginConsultation(pending);
+                var pendingProof = this.ProveConstraint(pending.BoundConstraint!, this.ConstraintScope(owner));
                 if (pendingProof == ConstraintProof.Proven)
                 {
                     pendingProof = ConstraintProof.Unknown;
                 }
 
-                this.RequireConstraint(pending, pendingProof, mode);
-                this.RequireConstraint(owner, pendingProof, mode);
+                // The clause, then a conditional conformance between it and its Type, and the declaration: their outcomes are the clause's.
+                this.RequireConstraintInFrame(pending, pendingProof, mode, pendingFrame);
+                for (Koto? node = pending.Parent; node is not null; node = ReferenceEquals(node, owner) ? null : node.Parent)
+                {
+                    var nodeFrame = this.BeginConsultation(node);
+                    this.RequireConstraintInFrame(node, pendingProof, mode, nodeFrame, pending);
+                }
+
                 changed |= previous != owner.BindingState;
             }
 
@@ -426,10 +373,12 @@ public sealed partial class Binding
 
             // Closed clauses are declaration obligations, never assumptions or new conformances.
             var scope = this.scopes[container];
+            var frame = this.BeginConsultation(clause);
             var proof = CombineProof(this.CheckTypeConstraints(subject, scope), this.ProveConstraint(constraint, scope), true);
             var state = container.BindingState;
-            this.RequireConstraint(clause, proof, mode);
-            this.RequireConstraint(container, proof, mode);
+            this.RequireConstraintInFrame(clause, proof, mode, frame);
+            var containerFrame = this.BeginConsultation(container); // The owner's outcome is its clause's.
+            this.RequireConstraintInFrame(container, proof, mode, containerFrame, clause);
             changed |= state != container.BindingState;
         }
 
@@ -441,17 +390,19 @@ public sealed partial class Binding
         for (var i = 0; i < this.nodes.Count; i++)
         {
             var node = this.nodes[i];
-            if (node is IsKoto { BoundConstraint: { } constraint } clause && clause.Parent is not ContractKoto && clause.Left.BoundType?.Kind != BoundTypeKind.AssociatedProjection && !(this.copyDeclarations.TryGetValue(clause, out var copy) && copy.Active) && clause.Left.BoundSymbol?.Kind is not (BindingSymbolKind.TypeParameter or BindingSymbolKind.SemanticsTarget or BindingSymbolKind.SemanticsParameter))
+            if (node is IsKoto { BoundConstraint: { } constraint } clause && clause.Parent is not ContractKoto && clause.Left.BoundType?.Kind != BoundTypeKind.AssociatedProjection && !(this.copyDeclarations.TryGetValue(clause, out var copy) && copy.Active) && clause.Left.BoundSymbol is not { IsGenericInput: true })
             {
-                this.RequireConstraint(clause, this.ProveConstraint(constraint, this.ConstraintScope(clause)), mode);
+                var frame = this.BeginConsultation(clause);
+                this.RequireConstraintInFrame(clause, this.ProveConstraint(constraint, this.ConstraintScope(clause)), mode, frame);
             }
 
-            if (node.BoundType is { Kind: BoundTypeKind.Constructed or BoundTypeKind.Dictionary, Symbol.Declaration: DeclarationContainerKoto container } type && container.ConstraintNodes.Count != 0 && !this.inferredConstructorTargets.Contains(node) &&
+            if (node.BoundType is { Kind: BoundTypeKind.Constructed or BoundTypeKind.Dictionary, Symbol.Declaration: DeclarationContainerKoto container } type && container.ConstraintNodes.Count != 0 && !this.inferredConstructionTargets.Contains(node) &&
                 (type.Kind != BoundTypeKind.Dictionary || type.Components.Count != 0))
             {
                 var scope = this.ConstraintScope(node);
-                var result = this.CheckConstraints(container.ConstraintNodes, container, (BoundType[])type.Components, scope, origins: (BoundOrigin[])type.OriginArguments);
-                this.RequireConstraint(node, result, mode);
+                var frame = this.BeginConsultation(node);
+                var result = this.CheckConstraints(container.ConstraintNodes, new CallSubstitution(container, (BoundType[])type.Components, origins: (BoundOrigin[])type.OriginArguments), scope);
+                this.RequireConstraintInFrame(node, result, mode, frame);
                 if (node.BindingState == BindingState.Invalid)
                 {
                     // Invalid type formation in a clause must not remain available as evidence.
@@ -459,7 +410,7 @@ public sealed partial class Binding
                     {
                         if (parent is IsKoto { BoundConstraint: not null })
                         {
-                            (scope.Constraints ??= new()).Invalid = true;
+                            (scope.Constraints ??= new()).Fail(node);
                             break;
                         }
 
@@ -614,10 +565,10 @@ public sealed partial class Binding
     // SPEC 23.1.2: the outcome of a validation pass's proof at a use, inside the use's frame (opened before the proof). What the proof
     // read of other nodes becomes the prerequisite of its outcome when the outcome is the use's record; a record the use's own check
     // owns (the conformance's verdict, or a failure it held before the outcome) never derives from the frame, which is dropped.
-    private void RequireConstraintInFrame(Koto use, ConstraintProof proof, BindingMode mode, (int Start, Koto? Node) frame)
+    private void RequireConstraintInFrame(Koto use, ConstraintProof proof, BindingMode mode, (int Start, Koto? Node) frame, Koto? diagnosticCause = null)
     {
         var owned = use.BindingFailure != BindingFailure.None;
-        this.RequireConstraint(use, proof, mode);
+        this.RequireConstraint(use, proof, mode, diagnosticCause);
         if (owned)
         {
             this.DropConsultation(frame);
@@ -675,9 +626,9 @@ public sealed partial class Binding
     // Binding.Check's Final prologue, before the summaries' sites (FailNeededSites) and the derived uses resting on either (BU-76).
     private void PublishNeededLimits()
     {
-        for (var i = 0; i < this.impls.Paths.Count; i++)
+        for (var i = 0; i < this.impls.InPass.Paths.Count; i++)
         {
-            if (this.impls.Paths[i] is { Needed: true } path)
+            if (this.impls.InPass.Paths[i] is { Needed: true } path)
             {
                 this.Fail(path.Use, BindingFailure.Unsupported);
             }
@@ -709,11 +660,13 @@ public sealed partial class Binding
 
         // SPEC 8.1.1, 8.1.2: every admitted Semantics of `s` must form a valid Type with `U`; object-family bindings additionally need `U`
         // to be an Object Target.
+        // An empty set is the 8.3.4 Error of the environment that emptied it, its one record (ValidateConstraintEnvironments): no case
+        // forms here, so the occurrence has no cause of its own.
         var admitted = this.AdmittedSemantics(whole, scope);
         const SemanticsMask objectFamily = SemanticsMask.Object | SemanticsMask.ObjectBorrow;
         if (admitted == SemanticsMask.None)
         {
-            return TypeRoleCause.Role;
+            return TypeRoleCause.None;
         }
 
         var causes = TypeRoleCause.None;
@@ -810,56 +763,5 @@ public sealed partial class Binding
     {
         var admitted = this.AdmittedSemantics(whole, scope);
         return admitted != SemanticsMask.None && (admitted & ~allowed) == 0;
-    }
-
-    // SPEC 10.1 steps 3 to 5 (DECISIONS: G572 U2a): a candidate's bindings as inference leaves them and the selected call publishes
-    // them; the one input of step 5's conjunction (StepFiveConjunction).
-    // - Inputs: the trial's solution (SlotSolution.Prove) or the selected call's plan (CheckCallTypeConstraints, CallPlan's columns).
-    // - Invariants: Slots holds the call's slots, the callee's own first (CallOwnSlots), a constructor's owner slots after them; a null Type
-    //   slot is unsolved, and Unbound lists those 10.8 leaves unbound (none in a plan); Lengths is per slot; DeclaringType is the Type the
-    //   member is found in, Owner its closed formation (a constructor's ConstructionType), null while its slots are open; InfersOwner holds
-    //   while a constructor's trial infers its owner's slots (10.8.1), never in a plan.
-    // - Prohibitions: no judgment but step 5's conjunction reads it; it holds no verdict.
-    private readonly ref struct CandidateBindings
-    {
-        internal CandidateBindings(
-            FunctionKoto function,
-            BindingSymbol target,
-            ReadOnlySpan<BoundType?> slots,
-            ReadOnlySpan<BoundLength?> lengths,
-            BoundType? self,
-            BoundType? declaringType,
-            BoundType? owner,
-            SlotSet unbound,
-            bool infersOwner)
-        {
-            this.Function = function;
-            this.Target = target;
-            this.Slots = slots;
-            this.Lengths = lengths;
-            this.Self = self;
-            this.DeclaringType = declaringType;
-            this.Owner = owner;
-            this.Unbound = unbound;
-            this.InfersOwner = infersOwner;
-        }
-
-        internal FunctionKoto Function { get; }
-
-        internal BindingSymbol Target { get; }
-
-        internal ReadOnlySpan<BoundType?> Slots { get; }
-
-        internal ReadOnlySpan<BoundLength?> Lengths { get; }
-
-        internal BoundType? Self { get; }
-
-        internal BoundType? DeclaringType { get; }
-
-        internal BoundType? Owner { get; }
-
-        internal SlotSet Unbound { get; }
-
-        internal bool InfersOwner { get; }
     }
 }

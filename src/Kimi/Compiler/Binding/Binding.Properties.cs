@@ -498,7 +498,7 @@ public sealed partial class Binding
         var owner = accessor.Property.Symbol.Scope.Owner.BoundSymbol!;
         var shaped = this.types.Intern(BoundTypeKind.Semantics, null, accessor.Kind == PropertyAccessorKind.Get ? SemanticsKind.Ref : SemanticsKind.Uniq, [this.DeclarationSelf(owner)], origin: this.OriginAtom(declaration, OriginKind.Input, 0));
         var required = declaringType is null ? shaped : this.MemberType(shaped, declaringType);
-        if (required is null || !this.AdaptInput(receiver, required, actual, scope, path, declaringType, out _, out _, out _, explicitBorrow: explicitBorrow, receiver: true))
+        if (required is null || !this.AdaptInput(receiver, FixedPattern.Open(required), actual, scope, path, declaringType, out _, out _, out _, explicitBorrow: explicitBorrow, receiver: true))
         {
             return false;
         }

@@ -33,7 +33,7 @@ public class AssociatedProjectionCertificateBindingTest
     [InlineData(3)]
     public void ValidNestedDefinitionsPreserveCertificates(int form)
     {
-        var c = MinimalEmissionTest.Analyze(Prefix("public") + Consumer(form).Replace("Source.Origin.Item", "([2 of Source.Origin.Item], i32)", StringComparison.Ordinal));
+        var c = MinimalEmissionTest.Analyze(Prefix("public") + Consumer(form).Replace("Source.(Origin).Item", "([2 of Source.(Origin).Item], i32)", StringComparison.Ordinal));
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.All(Definition(c).Paths, path => Assert.True(path.IsVerified));
         var restored = CompilationTestHelper.Reload(c);
@@ -60,8 +60,8 @@ public class AssociatedProjectionCertificateBindingTest
     public void IndependentAssociatedPathRemainsVerified(bool conditional)
     {
         var source = Prefix("internal") + "contract C\n    associate Item\ncontract D\n    associate Other\n" + (conditional
-            ? "struct S<U>\n    Self is C when U is Copy\n        associate C.Item is Source.Origin.Item\n    Self is D when U is Owned\n        associate D.Other is i32"
-            : "struct S\n    Self is C\n    associate C.Item is Source.Origin.Item\n    Self is D\n    associate D.Other is i32");
+            ? "struct S<U>\n    Self is C when U is Copy\n        associate C.Item is Source.(Origin).Item\n    Self is D when U is Owned\n        associate D.Other is i32"
+            : "struct S\n    Self is C\n    associate C.Item is Source.(Origin).Item\n    Self is D\n    associate D.Other is i32");
         var c = MinimalEmissionTest.Analyze(source);
         Assert.False(c.Binding.Result.IsComplete);
         Assert.All(Definition(c).Paths, path => Assert.False(path.IsVerified));
@@ -80,7 +80,7 @@ public class AssociatedProjectionCertificateBindingTest
         Assert.All(Definition(c).Paths, path => Assert.False(path.IsVerified));
         var function = c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "Source").Members.OfType<FunctionKoto>().Single();
         var original = function.Parameters[1].Type;
-        var donor = MinimalEmissionTest.Analyze(source.Replace("x: Local.Hidden.Item", "x: i32", StringComparison.Ordinal));
+        var donor = MinimalEmissionTest.Analyze(source.Replace("x: Local.(Hidden).Item", "x: i32", StringComparison.Ordinal));
         var replacement = donor.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "Source").Members.OfType<FunctionKoto>().Single().Parameters[1].Type;
         ParseTestHelper.Detach(replacement, new CodeBlockKoto(replacement.CodeContext));
         Assert.True(KotoHelper.Replace(function, original, replacement));
@@ -94,7 +94,7 @@ public class AssociatedProjectionCertificateBindingTest
     [Fact]
     public void SelfProjectionPreservesAcyclicAssociatedEvidence()
     {
-        var c = MinimalEmissionTest.Analyze("contract C\n    associate Item\n    associate Other\nstruct S\n    Self is C\n    associate C.Item is i32\n    associate C.Other is Self.C.Item");
+        var c = MinimalEmissionTest.Analyze("contract C\n    associate Item\n    associate Other\nstruct S\n    Self is C\n    associate C.Item is i32\n    associate C.Other is Self.(C).Item");
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.True(Definition(c).IsVerified);
     }
@@ -115,14 +115,14 @@ public class AssociatedProjectionCertificateBindingTest
     }
 
     private static string Prefix(string access)
-        => access + " contract Hidden\n    associate Item\npublic struct Local\n    Self is Hidden\n    associate Hidden.Item is i32\npublic contract Origin\n    associate Item\n    func f(self: ref/Self, x: i32) -> i32\npublic struct Source\n    Self is Origin\n    associate Origin.Item is i32\n    public func f(self: ref/Self, x: Local.Hidden.Item) -> i32 => x\n";
+        => access + " contract Hidden\n    associate Item\npublic struct Local\n    Self is Hidden\n    associate Hidden.Item is i32\npublic contract Origin\n    associate Item\n    func f(self: ref/Self, x: i32) -> i32\npublic struct Source\n    Self is Origin\n    associate Origin.Item is i32\n    public func f(self: ref/Self, x: Local.(Hidden).Item) -> i32 => x\n";
 
     private static string Consumer(int form) => form switch
     {
-        1 => "contract C\n    associate Item is Source.Origin.Item\nstruct S\n    Self is C",
-        2 => "contract Parent\n    associate Item is Source.Origin.Item\ncontract C: Parent\nstruct S\n    Self is C",
-        3 => "contract C\n    associate Item\nstruct S<U>\n    Self is C when U is Copy\n        associate C.Item is Source.Origin.Item",
-        _ => "contract C\n    associate Item\nstruct S\n    Self is C\n    associate C.Item is Source.Origin.Item",
+        1 => "contract C\n    associate Item is Source.(Origin).Item\nstruct S\n    Self is C",
+        2 => "contract Parent\n    associate Item is Source.(Origin).Item\ncontract C: Parent\nstruct S\n    Self is C",
+        3 => "contract C\n    associate Item\nstruct S<U>\n    Self is C when U is Copy\n        associate C.Item is Source.(Origin).Item",
+        _ => "contract C\n    associate Item\nstruct S\n    Self is C\n    associate C.Item is Source.(Origin).Item",
     };
 
     private static BoundConformance Definition(Compilation c)

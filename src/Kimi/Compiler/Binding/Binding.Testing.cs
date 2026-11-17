@@ -19,37 +19,7 @@ public sealed partial class Binding
         return this.Startup = new(OutputKind.Application, StartupKind.Test, null, null, this.Result.IsComplete);
     }
 
-    private static bool ValidMessageTransfers(Koto node, Koto root)
-    {
-        if (node is FunctionKoto)
-        {
-            return true;
-        }
-
-        if (node is JumpKoto jump)
-        {
-            var target = KotoHelper.ResolveTransferTarget(jump);
-            while (target is not null && !ReferenceEquals(target, root))
-            {
-                target = target.Parent;
-            }
-
-            if (target is null)
-            {
-                return false;
-            }
-        }
-
-        foreach (var child in node.ChildNodes)
-        {
-            if (!ValidMessageTransfers(child, root))
-            {
-                return false;
-            }
-        }
-
-        return true;
-    }
+    private MessageTransfers? messageTransfers;
 
     private void IndexInvalidTestAttribute(AttributeKoto attribute)
     {
@@ -65,9 +35,48 @@ public sealed partial class Binding
         if (node.Message is { } message)
         {
             this.RequireType(message, scope, BoundType.String);
-            valid &= ValidMessageTransfers(message, message);
+            var transfers = this.messageTransfers ??= new();
+            transfers.Root = message;
+            transfers.Valid = true;
+            transfers.Visit(message);
+            transfers.Root = null;
+            valid &= transfers.Valid;
         }
 
         return valid ? Complete(node, BoundType.Unit) : this.Fail(node, BindingFailure.InvalidTestDefinition);
+    }
+
+    // A message's transfers stay inside the message; a nested function's are its own. Root is the message during the walk only, so
+    // the cached visitor keeps no edited-away tree alive.
+    private sealed class MessageTransfers : KotoVisitor
+    {
+        internal Koto? Root { get; set; }
+
+        internal bool Valid { get; set; }
+
+        public override void Visit(Koto node)
+        {
+            if (!this.Valid || node is FunctionKoto)
+            {
+                return;
+            }
+
+            if (node is JumpKoto jump)
+            {
+                var target = KotoHelper.ResolveTransferTarget(jump);
+                while (target is not null && !ReferenceEquals(target, this.Root))
+                {
+                    target = target.Parent;
+                }
+
+                if (target is null)
+                {
+                    this.Valid = false;
+                    return;
+                }
+            }
+
+            node.VisitChildren(this);
+        }
     }
 }

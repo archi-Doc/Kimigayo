@@ -1,45 +1,56 @@
 // Shared arithmetic requirements. Output and failure behavior belong to each conformance.
+#Lang("Addable")
 public contract Addable<Rhs>
     associate Output
     func added(self: ref/Self, right: ref/Rhs) -> Self.Output
 
+#Lang("Subtractable")
 public contract Subtractable<Rhs>
     associate Output
     func subtracted(self: ref/Self, right: ref/Rhs) -> Self.Output
 
+#Lang("Multipliable")
 public contract Multipliable<Rhs>
     associate Output
     func multiplied(self: ref/Self, right: ref/Rhs) -> Self.Output
 
+#Lang("Dividable")
 public contract Dividable<Rhs>
     associate Output
     func divided(self: ref/Self, right: ref/Rhs) -> Self.Output
 
+#Lang("RemainderProvider")
 public contract RemainderProvider<Rhs>
     associate Output
     func remainder(self: ref/Self, right: ref/Rhs) -> Self.Output
 
 // Left requirements compute left op self; parameter order preserves source evaluation order.
+#Lang("LeftAddable")
 public contract LeftAddable<Lhs>
     associate Output
     func addedFrom(left: ref/Lhs, self: ref/Self) -> Self.Output
 
+#Lang("LeftSubtractable")
 public contract LeftSubtractable<Lhs>
     associate Output
     func subtractedFrom(left: ref/Lhs, self: ref/Self) -> Self.Output
 
+#Lang("LeftMultipliable")
 public contract LeftMultipliable<Lhs>
     associate Output
     func multipliedFrom(left: ref/Lhs, self: ref/Self) -> Self.Output
 
+#Lang("LeftDividable")
 public contract LeftDividable<Lhs>
     associate Output
     func dividedFrom(left: ref/Lhs, self: ref/Self) -> Self.Output
 
+#Lang("LeftRemainderProvider")
 public contract LeftRemainderProvider<Lhs>
     associate Output
     func remainderFrom(left: ref/Lhs, self: ref/Self) -> Self.Output
 
+#Lang("Negatable")
 public contract Negatable
     associate Output
     func negated(self: ref/Self) -> Self.Output

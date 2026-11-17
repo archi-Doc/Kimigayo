@@ -133,15 +133,28 @@ internal sealed partial class TyCtxt
     // The substitution that binds none of a binder's slots: its own body's.
     internal Subst Identity(Koto binder) => this.Intern(binder.BoundSymbol!, null, null, [], [], [], []);
 
-    // A call the MIR builder synthesizes, of the function serving a built-in form (R3 decision 5): its declaring Type's instance and its Type
-    // arguments; its Origins are the analyses' to relate.
-    internal Subst Synthesized(BindingSymbol target, BoundType? declaring, ReadOnlySpan<BoundType?> types) => this.Intern(target, null, declaring, types, [], [], []);
+    // A call the MIR builder synthesizes, of the function serving a built-in form (R3 decision 5), or the instance an analysis enters a
+    // target at: its declaring Type's instance, its Type arguments and its length arguments by slot (a direct line's Text.fixed, R8-W2;
+    // empty: no length argument at any slot, Intern's rule); its Origins are the analyses' to relate.
+    internal Subst Synthesized(BindingSymbol target, BoundType? declaring, ReadOnlySpan<BoundType?> types, ReadOnlySpan<BoundLength?> lengths)
+        => this.Intern(target, null, declaring, types, lengths, [], []);
+
+    // A requirement call's substitution in a Semantics view (SPEC 8.15; A4's Requires item, for Witnesses): on the case Type of its Self
+    // through that of its Contract reference, which the view's owner gives (MirCases.Type); its own Types, lengths and Origins are the
+    // call's, so it is the call itself where the view changes neither.
+    internal Subst InView(Subst call, BoundType self, BoundType? reference)
+        => this.Intern(call.Target, self, reference, call.Types, call.Lengths, call.Origins, call.Inputs);
 
     // A call of a requirement on a Self through a Contract reference that a compiler function or a requirement's function item makes (a
     // comparison's Requirement leaf, a compiler function's call of a user witness, an Item's call): a bound reference is its declaring Type
     // (F fact 5, as SubstOf holds a call's), a Contract's own Type binds nothing; its Origins are the analyses' to relate.
     internal Subst Synthesized(BindingSymbol requirement, BoundType self, BoundType reference)
         => this.Intern(requirement, self, ReferenceEquals(reference.Symbol?.Type, reference) ? null : reference, [], [], [], []);
+
+    // SPEC 4.4.1, 8.1.3: a length in the instance a substitution makes, Binding.InstanceLength, the one statement of an instance's length
+    // (Compose's lengths), which a default's copy and code generation's Length constant read (MirBuilder.Inline, InstanceCollector.LengthOf);
+    // the identity keeps it; null where the substitution does not complete it.
+    internal BoundLength? InstanceLength(BoundLength length, Subst subst) => subst.IsIdentity ? length : binding.InstanceLength(length, subst);
 
     // SPEC 8.1.3, 8.15.1: a declared Type in the instance a substitution makes whose storage is Prepared (Instance); null otherwise.
     internal BoundType? Apply(BoundType type, Subst subst) => this.Instance(type, subst) is ({ } instance, Binding.StorageOutcome.Prepared) ? instance : null;
@@ -161,7 +174,8 @@ internal sealed partial class TyCtxt
     }
 
     // Plan 5.6.2: the substitution of a call in a body that another substitution instantiates, as a call in a default template folds under
-    // the substitution of the call omitting the default: each binding of the inner one in the outer instance, so applying
+    // the substitution of the call omitting the default: each binding of the inner one in the outer instance (a length's interpolation-bound
+    // term over its value Types' instance, Binding.InstanceLength), so applying
     // Compose(inner, outer).Subst to a declared Type of the callee applies inner, then outer (TyCtxtTest's two-step oracle); with the
     // verdict of its parts' storage in the outer instance (Instance), the worst one, so a limit wins (DECISIONS BU-36, BU-38). Rejected
     // keeps the composed substitution, its Types instantiated; null and Limit when the outer instance does not substitute an
@@ -190,7 +204,7 @@ internal sealed partial class TyCtxt
 
         for (var i = 0; i < lengths.Length; i++)
         {
-            lengths[i] = inner.Lengths[i] is { } length ? binding.SubstituteLength(length, outer.Binder, outer.Lengths) : null;
+            lengths[i] = inner.Lengths[i] is { } length ? binding.InstanceLength(length, outer) : null;
             if (lengths[i] is null && inner.Lengths[i] is not null && storage != Binding.StorageOutcome.Limit)
             {
                 (storage, part) = (Binding.StorageOutcome.Limit, null);

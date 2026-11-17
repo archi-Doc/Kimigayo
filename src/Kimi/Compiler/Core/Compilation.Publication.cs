@@ -175,7 +175,7 @@ public partial class Compilation
                 return null;
             }
 
-            var text = Binding.CaseFact(program.Bodies[member.Body].Binders, member.Views, i == 0 ? this.caseBinders : this.memberBinders, out var one);
+            var text = Binding.CaseFact(program.Body(member.Body).Binders, member.Views, i == 0 ? this.caseBinders : this.memberBinders, out var one);
             if (i == 0)
             {
                 (found, single) = (text, one);
@@ -206,7 +206,7 @@ public partial class Compilation
             return Binding.OriginRelationFacts(new(this.SyntaxOf(fact.Site), longer, longer, shorter, equality, null, refuted, WellFormed: true), "wellFormed");
         }
 
-        var row = this.Types.OriginRows(program.Bodies[body].Key.Body).Rows[(int)fact.Value];
+        var row = this.Types.OriginRows(program.Body(body).Key.Body).Rows[(int)fact.Value];
         var source = row.Source switch
         {
             OriginRowSource.Fit => "fit",

@@ -29,11 +29,11 @@ public sealed partial class Binding
             return false;
         }
 
-        var width = ScalarTypes.Width(node.BoundType);
-        var signed = ScalarTypes.Signed(node.BoundType!);
+        var width = node.BoundType!.Width;
+        var signed = node.BoundType!.IsSigned;
         // Resolution only admits [0, isize.MaxValue]. Saturate outside that interval before forming inequalities,
         // so even a u128 maximum or a negated i128 minimum cannot overflow their arithmetic.
-        var limit = (Int128)1 << (ScalarTypes.SizeWidth - 1);
+        var limit = (Int128)1 << (BoundType.ISize.Width - 1);
         value = signed ? Int128.Clamp(SignedLiteral(bits, width), -limit, limit) : bits >= (UInt128)limit ? limit : (Int128)bits;
         return true;
     }
@@ -43,12 +43,12 @@ public sealed partial class Binding
     {
         bits = 0;
         node = KotoHelper.UnwrapParentheses(node);
-        if (node.BoundType is not { IsInteger: true } type || ScalarTypes.Width(type) is not (> 0 and var width))
+        if (node.BoundType is not { IsInteger: true, Width: var width } type)
         {
             return false;
         }
 
-        var signed = ScalarTypes.Signed(type);
+        var signed = type.IsSigned;
         var mask = UInt128.MaxValue >> (128 - width);
         var sign = (UInt128)1 << (width - 1);
         switch (node)
@@ -158,7 +158,7 @@ public sealed partial class Binding
     // operation's position or range parameter, or the receiver of `resolve`/`tryResolve` on a position or range Type.
     private void CheckLiteralArguments(InvocationKoto call)
     {
-        if (call.BoundCall is not { Target.Declaration: FunctionKoto function } bound || !ReferenceEquals(function.CodeContext.Kotonoha, this.Library.Kotonoha))
+        if (call.BoundCall is not { Target.Declaration: FunctionKoto function } bound || !function.Kotonoha.Syntax.IsLibrary)
         {
             return;
         }

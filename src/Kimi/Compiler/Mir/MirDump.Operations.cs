@@ -48,7 +48,13 @@ internal static partial class MirDump
                 break;
             case MirRvalueKind.Discriminant or MirRvalueKind.Len or MirRvalueKind.Storage:
                 var name = rvalue.Kind switch { MirRvalueKind.Len => "len(", MirRvalueKind.Storage => "storage(", _ => "discriminant(" };
-                Place(text.Append(name), body, rvalue.Place).Append(')');
+                Place(text.Append(name), body, rvalue.Place);
+                for (var i = 0; i < rvalue.Count; i++)
+                {
+                    Operand(text.Append(", "), body, body.Operands[rvalue.Start + i]);
+                }
+
+                text.Append(')');
                 break;
             case MirRvalueKind.Adapt:
                 Operands(text.Append("adapt"), body, rvalue.Start, rvalue.Count);
@@ -151,6 +157,7 @@ internal static partial class MirDump
                         "\n",
                         "\\n")).Append('"'),
                     MirConstKind.Location => Source(text.Append("location"), constant.Site),
+                    MirConstKind.Length => text.Append("length ").Append(TyCtxt.Name((BoundLength)constant.Value!)),
                     _ => text.Append(constant.Kind == MirConstKind.FnItem ? "fn " : "type ").Append(Type(constant.Type)),
                 };
             case MirOperandKind.PairAcquire:

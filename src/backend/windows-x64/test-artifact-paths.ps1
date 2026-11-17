@@ -1,5 +1,6 @@
 $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'artifact-paths.ps1')
+. (Join-Path $PSScriptRoot 'expected-output.ps1')
 $project = 'C:\Users\Example Person\work\Project'
 $user = 'C:\Users\Example Person'
 foreach ($root in @($project, $project.ToLowerInvariant(), $project.Replace('\', '/'), $project.Replace('\', '\\'))) {
@@ -29,8 +30,9 @@ try {
         $actual -notlike '*directory: "/_/project"*' -or -not $actual.Contains($constant)) {
         throw 'LLVM metadata normalization changed program data or left a private path'
     }
+    $normalized = [IO.File]::ReadAllBytes($path)
     Protect-KimiLlvmPaths $path
-    if ([IO.File]::ReadAllText($path) -cne $actual) { throw 'Normalization is not idempotent' }
+    if (-not (Test-KimiExpectedOutput $normalized ([IO.File]::ReadAllBytes($path)))) { throw 'Normalization is not idempotent' }
 }
 finally {
     Remove-Item -LiteralPath $path -Force

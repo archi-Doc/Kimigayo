@@ -1,6 +1,9 @@
-// Compiler-managed dynamic Array (SPEC 4.5, 4.9): storage, length/capacity metadata and the operations of
-// ArrayOperations.kimi are supplied by the compiler; other operations and helpers are functions here.
+// Compiler-managed dynamic Array (SPEC 4.5, 4.9): the compiler supplies storage and the length/capacity metadata;
+// the bodies of `initCapacity` and `initRepeating` define its two linked constructors (IMPL 21.3.4).
+#Lang("Array")
 public struct Array<T>
+    Self is UniqIndexable<isize>
+    associate Element is T
     Self is Iterable
     associate Iterable.IteratorType(source) is ArrayIterator<T> during source
     Self is UniqIterable
@@ -8,10 +11,31 @@ public struct Array<T>
     Self is IntoIterable
     associate IntoIterable.IteratorType is ArrayOwningIterator<T>
 
+    /// Creates an empty Array whose capacity is at least `capacity`; a negative argument aborts and zero allocates nothing.
+    ///
+    /// The compiler supplies this constructor's definition from `initCapacity` (SPEC 4.9.5, 22.1).
+    #Lang("ArrayWithCapacity")
+    public init(! capacity: isize)
+    /// Creates an Array of `count` Copies of `repeating`; a negative count aborts and zero allocates nothing.
+    ///
+    /// The compiler supplies this constructor's definition from `initRepeating` (SPEC 4.9.5, 22.1).
+    #Lang("ArrayRepeating")
+    public init(! repeating: T, count: isize)
+        T is Copy
+
+    /// Lends the element at `key` for shared access; a key outside the elements Aborts at the caller's access.
+    public func index(self: ref/Self, key: ref/isize) -> ref/T during self
+        return self[key]@ref
+
+    /// Lends the element at `key` for exclusive access; a key outside the elements Aborts at the caller's access.
+    public func indexUniq(self: uniq/Self, key: ref/isize) -> uniq/T during self
+        return self[key]@uniq
+
     /// Borrows the complete contiguous storage without copying elements.
     public func slice(self: ref/Self) -> Slice<T> during self
         return self[..]
 
+    #CallerLocation
     public func slice<R>(self: ref/Self, range: R) -> Slice<T> during self
         R is PositionRange
         return self[range]
@@ -20,6 +44,7 @@ public struct Array<T>
     public func sliceUniq(self: uniq/Self) -> UniqSlice<T> during self
         return UniqSlice<T>.init(Storage.borrowStorageUniq(self))
 
+    #CallerLocation
     public func sliceUniq<R>(self: uniq/Self, range: R) -> UniqSlice<T> during self
         R is PositionRange
         return Storage.sliceUniq(Storage.borrowStorageUniq(self), range)
@@ -40,6 +65,7 @@ public struct Array<T>
     /// Inserts `value` before the boundary `index` resolves to; `insert(^0, value)` appends (SPEC 4.9.3).
     ///
     /// - abort: `index` does not resolve against the current length.
+    #Lang("ArrayInsertPosition")
     public func insert<P>(self: uniq/Self, index: P, value: T)
         P is Position
         // Each path calls insertAt, so a resolved position reaches it unmerged and `^1` moves one element; -1 fails
@@ -52,6 +78,7 @@ public struct Array<T>
     ///
     /// - return: The removed element; the caller takes ownership.
     /// - abort: `index` does not resolve to an element position.
+    #Lang("ArrayRemovePosition")
     public func remove<P>(self: uniq/Self, index: P) -> T
         P is Position
         // As insert: a resolved position reaches removeAt unmerged; -1 fails removeAt's own check.
@@ -62,6 +89,7 @@ public struct Array<T>
     /// Exchanges the elements `first` and `second` resolve to; positions resolving to one element change nothing.
     ///
     /// - abort: A position does not resolve to an element position.
+    #Lang("ArraySwapPositions")
     public func swap<P, Q>(self: uniq/Self, first: P, second: Q)
         P is Position
         Q is Position
@@ -123,13 +151,16 @@ public struct Array<T>
     ///
     /// - return: The removed element; the caller takes ownership.
     /// - abort: `index` does not resolve to an element position.
+    #Lang("ArraySwapRemove")
     public func swapRemove<P>(self: uniq/Self, index: P) -> T
         P is Position
         // As remove: swapAt's one check rejects -1, the end boundary and an empty Array, so pop then has an element.
         let count = self.length
+        // `0 <= count` bounds the difference.
+        let last = (count@Wrapping<isize> - 1@Wrapping<isize>)@isize
         match index.tryResolve(count)
-            .Some(let position) => self.swapAt(first: position, second: count - 1)
-            .None => self.swapAt(first: -1, second: count - 1)
+            .Some(let position) => self.swapAt(first: position, second: last)
+            .None => self.swapAt(first: -1, second: last)
         match self.pop()
             .Some(let removed) => return removed@move
             .None => $abort("Array index out of range")
@@ -139,16 +170,21 @@ public struct Array<T>
     /// A length at or above the current length changes nothing.
     ///
     /// - abort: `length` is negative.
+    #Lang("ArrayTruncate")
+    #CallerLocation
     public func truncate(self: uniq/Self, length: isize)
         require length >= 0 else => Kimi.Storage.argumentOutOfRange()
         unsafe
             let handle = self@follow@raw@raw/Storage.ArrayRepr<T>
             let count = (*handle).length
             if length >= count => return
-            Storage.destroyValues<T>(((*handle).data + length)@raw/u8, count - length)
+            // `0 <= length < count` bounds the difference.
+            let removed = (count@Wrapping<isize> - length@Wrapping<isize>)@isize
+            Storage.destroyValues<T>(((*handle).data + length)@raw/u8, removed)
             (*handle).length = length
 
     /// Moves every element of `other` to the end, in order; `other` is consumed.
+    #Lang("ArrayAppendAll")
     public func appendAll(self: uniq/Self, other: Array<T>)
         var source = other@move
         self.reserve(additional: source.length)
@@ -161,6 +197,8 @@ public struct Array<T>
     /// Defines `init(! capacity:)`: an empty Array that reserves `capacity` once (SPEC 4.9.5).
     ///
     /// - abort: `capacity` is negative.
+    #Lang("ArrayCapacityImplementation")
+    #CallerLocation
     internal func initCapacity(capacity: isize) -> Self
         var result: Array<T> = []
         result.reserve(additional: capacity)
@@ -169,6 +207,8 @@ public struct Array<T>
     /// Defines `init(! repeating:count:)`: `count` Copies of `repeating` placed in one reserved buffer (SPEC 4.9.5).
     ///
     /// - abort: `count` is negative; the capacity constructor aborts before any element is placed.
+    #Lang("ArrayRepeatingImplementation")
+    #CallerLocation
     internal func initRepeating(repeating: T, count: isize) -> Self
         T is Copy
         var result = Array<T>.init(capacity: count)
@@ -180,11 +220,14 @@ public struct Array<T>
             var index: isize = 0
             while index < count
                 Raw.initialize(storage + index, repeating)
-                index += 1
+                // `index < count` bounds the step.
+                index = (index@Wrapping<isize> + 1@Wrapping<isize>)@isize
             (*handle).length = count
         return result@move
 
     /// Copies each element of `values` to the end, in order.
+    #Lang("ArrayAppendCopies")
+    #CallerLocation
     public func appendCopies(self: uniq/Self, values: Slice<T>)
         T is Copy
         let count = values.length
@@ -199,11 +242,14 @@ public struct Array<T>
             // source Loan excludes overlapping storage. Only the newly reserved tail is initialized.
             for index in values.indices
                 Raw.initialize(storage + offset + index, values[index])
-            (*handle).length = offset + count
+            // `reserve` returned, so `offset + count <= capacity`.
+            (*handle).length = (offset@Wrapping<isize> + count@Wrapping<isize>)@isize
 
     /// Ensures `capacity >= length + additional`, and moves nothing when the capacity suffices (SPEC 4.9.5).
     ///
     /// - abort: `additional` is negative, `length + additional` overflows, or growth fails.
+    #Lang("ArrayReserve")
+    #CallerLocation
     public func reserve(self: uniq/Self, additional: isize)
         require additional >= 0 else => Storage.argumentOutOfRange()
         unsafe
@@ -216,6 +262,8 @@ public struct Array<T>
     /// Moves `value` to the end, growing the storage first when it is full (SPEC 4.9.3).
     ///
     /// - abort: The length overflows, which only zero-sized elements reach, or growth fails.
+    #Lang("ArrayAppend")
+    #CallerLocation
     public func append(self: uniq/Self, value: T)
         unsafe
             let handle = self@follow@raw@raw/Storage.ArrayRepr<T>
@@ -231,6 +279,8 @@ public struct Array<T>
     ///
     /// - abort: `index` is outside `[0, length]`, the length overflows, which only zero-sized elements reach, or growth
     ///   fails.
+    #Lang("ArrayInsert")
+    #CallerLocation
     internal func insertAt(self: uniq/Self, index: isize, value: T)
         unsafe
             let handle = self@follow@raw@raw/Storage.ArrayRepr<T>
@@ -244,25 +294,30 @@ public struct Array<T>
             // From the end: each element moves into the slot the previous step vacated (SPEC 5.2.3).
             var position = length
             while position > index
-                let previous = position - 1
+                // `position > index >= 0` bounds the step.
+                let previous = (position@Wrapping<isize> - 1@Wrapping<isize>)@isize
                 Raw.initialize(data + position, data[previous]@move)
                 position = previous
             Raw.initialize(data + index, value@move)
             (*handle).length = needed
 
     /// Removes and returns the last element, or returns `None` when the Array is empty (SPEC 4.9.3).
+    #Lang("ArrayPop")
     public func pop(self: uniq/Self) -> Option<T>
         unsafe
             let handle = self@follow@raw@raw/Storage.ArrayRepr<T>
             let length = (*handle).length
             require length > 0 else => return .None
-            let last = length - 1
+            // The guard `length > 0` bounds the difference.
+            let last = (length@Wrapping<isize> - 1@Wrapping<isize>)@isize
             (*handle).length = last
             return .Some((*handle).data[last]@move)
 
     /// Removes and returns the element at `index`, moving the following elements down one slot, in order (SPEC 4.9.3).
     ///
     /// - abort: `index` is outside `[0, length)`.
+    #Lang("ArrayRemove")
+    #CallerLocation
     internal func removeAt(self: uniq/Self, index: isize) -> T
         unsafe
             let handle = self@follow@raw@raw/Storage.ArrayRepr<T>
@@ -270,11 +325,12 @@ public struct Array<T>
             require index >= 0 and index < length else => Storage.indexBounds()
             let data = (*handle).data
             let removed = data[index]@move
-            let last = length - 1
+            // `0 <= index < length` bounds the difference, and `position < last` each step.
+            let last = (length@Wrapping<isize> - 1@Wrapping<isize>)@isize
             // From `index`: each element moves into the slot the previous step vacated (SPEC 5.2.3).
             var position = index
             while position < last
-                let next = position + 1
+                let next = (position@Wrapping<isize> + 1@Wrapping<isize>)@isize
                 Raw.initialize(data + position, data[next]@move)
                 position = next
             (*handle).length = last
@@ -283,6 +339,8 @@ public struct Array<T>
     /// Exchanges the elements at `first` and `second`; equal positions change nothing (SPEC 4.9.3).
     ///
     /// - abort: A position is outside `[0, length)`.
+    #Lang("ArraySwap")
+    #CallerLocation
     internal func swapAt(self: uniq/Self, first: isize, second: isize)
         unsafe
             let handle = self@follow@raw@raw/Storage.ArrayRepr<T>
@@ -294,6 +352,8 @@ public struct Array<T>
             Kimi.Intrinsics.swap(data[first]@uniq, data[second]@uniq)
 
     /// Destroys the elements in decreasing index order and keeps the capacity (SPEC 4.9.1, 4.9.7).
+    #Lang("ArrayClear")
+    #CallerLocation
     public func clear(self: uniq/Self)
         unsafe
             let handle = self@follow@raw@raw/Storage.ArrayRepr<T>
@@ -302,6 +362,8 @@ public struct Array<T>
 
     /// Reduces the capacity toward the length, keeping values, order and length; a failed allocation changes nothing
     /// (SPEC 4.9.5).
+    #Lang("ArrayShrinkToFit")
+    #CallerLocation
     public func shrinkToFit(self: uniq/Self)
         unsafe
             let handle = self@follow@raw@raw/Storage.ArrayRepr<T>
@@ -311,26 +373,30 @@ public struct Array<T>
     ///
     /// `matching` is called once per element in increasing index order with a shared reference. The removed
     /// elements are destroyed after the last call, in an unspecified order.
+    #Lang("ArrayRemoveAll")
     public func removeAll<F>(self: uniq/Self, matching: F)
         F is Callable<(ref/T) -> bool>
         let count = self.length
         var kept: isize = 0
         var index: isize = 0
+        // `kept <= index < count` bounds both steps.
         while index < count
             if not matching(self[index])
                 if kept != index => self.swapAt(first: kept, second: index)
-                kept += 1
-            index += 1
+                kept = (kept@Wrapping<isize> + 1@Wrapping<isize>)@isize
+            index = (index@Wrapping<isize> + 1@Wrapping<isize>)@isize
         self.truncate(kept)
 
     /// Reverses the order of the elements.
+    #Lang("ArrayReverse")
     public func reverse(self: uniq/Self)
         var low: isize = 0
-        var high = self.length - 1
+        // `0 <= length` bounds the difference, and `0 <= low < high` both steps.
+        var high = (self.length@Wrapping<isize> - 1@Wrapping<isize>)@isize
         while low < high
             self.swapAt(first: low, second: high)
-            low += 1
-            high -= 1
+            low = (low@Wrapping<isize> + 1@Wrapping<isize>)@isize
+            high = (high@Wrapping<isize> - 1@Wrapping<isize>)@isize
 
     /// Sorts the elements in nondecreasing `compare` order, without allocation; not stable.
     public func sort(self: uniq/Self)
@@ -341,16 +407,20 @@ public struct Array<T>
         var start = end / 2
         while end > 1
             var parent: isize = 0
+            // `start > 0` and `end > 1` bound the steps.
             if start > 0
-                start -= 1
+                start = (start@Wrapping<isize> - 1@Wrapping<isize>)@isize
                 parent = start
             else
-                end -= 1
+                end = (end@Wrapping<isize> - 1@Wrapping<isize>)@isize
                 self.swapAt(first: 0, second: end)
-            // Only parents with a child compute 2 * parent + 1, so the index cannot overflow.
+            // Only parents with a child compute 2 * parent + 1, so the index cannot overflow: `parent < end / 2` gives
+            // `child < end`, and the sibling is at most `end`.
             while parent < end / 2
-                var child = parent * 2 + 1
-                if child + 1 < end and self[child].compare(self[child + 1]) < 0 => child += 1
+                let doubled = (parent@Wrapping<isize> * 2@Wrapping<isize>)@isize
+                var child = (doubled@Wrapping<isize> + 1@Wrapping<isize>)@isize
+                let sibling = (child@Wrapping<isize> + 1@Wrapping<isize>)@isize
+                if sibling < end and self[child].compare(self[sibling]) < 0 => child = sibling
                 if self[parent].compare(self[child]) >= 0 => exit
                 self.swapAt(first: parent, second: child)
                 parent = child
@@ -367,15 +437,19 @@ public struct Array<T>
             // The first phase builds the heap from start = length / 2 down to 0; the second moves the maximum
             // to the end and restores the heap on the shorter prefix.
             var parent: isize = 0
+            // `start > 0` and `end > 1` bound the steps.
             if start > 0
-                start -= 1
+                start = (start@Wrapping<isize> - 1@Wrapping<isize>)@isize
                 parent = start
             else
-                end -= 1
+                end = (end@Wrapping<isize> - 1@Wrapping<isize>)@isize
                 self.swapAt(first: 0, second: end)
+            // As the Comparable overload: `parent < end / 2` gives `child < end`, and the sibling is at most `end`.
             while parent < end / 2
-                var child = parent * 2 + 1
-                if child + 1 < end and by(self[child], self[child + 1]) < 0 => child += 1
+                let doubled = (parent@Wrapping<isize> * 2@Wrapping<isize>)@isize
+                var child = (doubled@Wrapping<isize> + 1@Wrapping<isize>)@isize
+                let sibling = (child@Wrapping<isize> + 1@Wrapping<isize>)@isize
+                if sibling < end and by(self[child], self[sibling]) < 0 => child = sibling
                 if by(self[parent], self[child]) >= 0 => exit
                 self.swapAt(first: parent, second: child)
                 parent = child
@@ -425,8 +499,9 @@ public struct ArrayOwningIterator<T>
     public func next(self: uniq/Self) -> Option<T>
         require self.count > 0 else => return .None
         let position = self.position
-        self.position += 1
-        self.count -= 1
+        // `count > 0` bounds both steps: the Array holds `position + count` elements.
+        self.position = (position@Wrapping<isize> + 1@Wrapping<isize>)@isize
+        self.count = (self.count@Wrapping<isize> - 1@Wrapping<isize>)@isize
         unsafe => return .Some(self.array.data[position]@move)
 
 /// The standard owning fixed-array iterator: each `next` transfers the next unreturned element out, and the unreturned

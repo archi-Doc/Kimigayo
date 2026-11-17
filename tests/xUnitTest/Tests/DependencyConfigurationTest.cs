@@ -2,7 +2,9 @@
 
 using System.Text;
 using Kimi;
+using Kimi.Checking;
 using Kimi.Compiler;
+using Kimi.Diagnostics;
 using Tinyhand;
 using Xunit;
 
@@ -170,6 +172,38 @@ public class DependencyConfigurationTest
         Assert.Equal(valid, c.Prepare(WindowsProfile.Target, new([rootNode, libraryNode, otherNode])));
     }
 
+    // IMPL A.4, 21.3.2: a Compilation has at most 65,535 modules, the ordinals below SyntaxTable.LibraryModule. One more is refused by
+    // one Resource record at preparation, which still succeeds and publishes its one outcome, AnalyzesNoModule: the sources, which the
+    // resolver has read, are neither established nor parsed, no phase runs, the check completes rejected (SPEC 23.2.2;
+    // Project.CheckFrontEnd) and its test presence is Unknown, since no source was parsed (SPEC 23.3).
+    [Theory]
+    [InlineData(65_535, true)]
+    [InlineData(65_536, false)]
+    public void ModuleCountIsLimitedBelowTheLibraryOrdinal(int count, bool supported)
+    {
+        var c = Compilation.CreateForTest();
+        var input = new DependencyInput("library.kimiproj", new() { OutputKind = OutputKind.Library }, [], []);
+        var nodes = new DependencyNode[count];
+        nodes[0] = new("root", new("root.kimiproj", c.Project.ProjectFile, [], []), -1, string.Empty);
+        for (var i = 1; i < count; i++)
+        {
+            nodes[i] = new($"library@{i}", input, 0, string.Empty);
+        }
+
+        Assert.True(c.Prepare(WindowsProfile.Target, new(nodes)));
+        Assert.Equal(supported ? count : 0, c.SourceModules.Length);
+        Assert.Equal((!supported, supported ? TestPresence.No : TestPresence.Unknown), (c.AnalyzesNoModule, CheckService.ScanTestPresence(c)));
+        if (supported)
+        {
+            Assert.Empty(TestDiagnostics.Of(c));
+            return;
+        }
+
+        var error = Assert.Single(c.Diagnostics.Finalize(rejected: true).Diagnostics);
+        Assert.Equal((nameof(DiagnosticCode.ModuleCountLimit_Kd), DiagnosticCategory.Resource, DiagnosticSeverity.Error), (error.Code, error.Category, error.Severity));
+        Assert.Equal([("modules", "65536"), ("limit", "65535")], error.Reason!.Select(static x => (x.Name, x.Value)));
+    }
+
     private sealed class NativeSuppliesComparer : IEqualityComparer<ProjectFile?>
     {
         public static readonly NativeSuppliesComparer Instance = new();
@@ -250,6 +284,50 @@ public class DependencyConfigurationTest
         var records = TestDiagnostics.Of(c);
         Assert.Equal(2, records.Count(static x => x.Code == nameof(DiagnosticCode.InvalidCompileTimeSetting_Kd)));
         Assert.Equal(3, ConfigurationNotes(c).Length);
+    }
+
+    // SPEC 23.1.2, IMPL 21.3.2: the graph's checks (each dependency setting, each supply, the module count) read its modules'
+    // configurations and its shape, never the root's target, language version or settings (SPEC 19.2.1: Condition Names are fixed), so
+    // each is reported beside the root's failure, which still fails preparation.
+    [Theory]
+    [InlineData(DiagnosticCode.UnsupportedTarget_Kd, DiagnosticCode.InvalidCompileTimeSetting_Kd)]
+    [InlineData(DiagnosticCode.UnsupportedLanguageVersion_Kd, DiagnosticCode.InvalidDependencyConfiguration_Kd)]
+    [InlineData(DiagnosticCode.InvalidCompileTimeSetting_Kd, DiagnosticCode.ModuleCountLimit_Kd)]
+    public void ARootFailureLeavesTheGraphChecked(DiagnosticCode rootFailure, DiagnosticCode graphFailure)
+    {
+        var c = Compilation.CreateForTest();
+        var root = c.Project.ProjectFile;
+        var library = new ProjectFile { OutputKind = OutputKind.Library, PackageId = "library", PackageVersion = "1" };
+        if (rootFailure == DiagnosticCode.UnsupportedLanguageVersion_Kd)
+        {
+            root.LangVersion = "future";
+        }
+        else if (rootFailure == DiagnosticCode.InvalidCompileTimeSetting_Kd)
+        {
+            root.CompileTimeSettings["os"] = new() { Bool = true };
+        }
+
+        if (graphFailure == DiagnosticCode.InvalidCompileTimeSetting_Kd)
+        {
+            library.CompileTimeSettings["os"] = new() { Bool = true };
+        }
+        else if (graphFailure == DiagnosticCode.InvalidDependencyConfiguration_Kd)
+        {
+            root.NativeLibraries[WindowsProfile.Target] = new() { Packaged = [new() { Name = "codec", Package = new() { PackageId = "library", PackageVersion = "1" }, ContractId = "other", Input = "codec.lib" }] };
+            library.NativeRequirements[WindowsProfile.Target] = new(StringComparer.Ordinal) { ["codec"] = new() { Kind = "static", ContractId = "c.v1" } };
+        }
+
+        var nodes = new DependencyNode[graphFailure == DiagnosticCode.ModuleCountLimit_Kd ? 65_536 : 2];
+        nodes[0] = new("root", new("root.kimiproj", root, [], []), -1, string.Empty);
+        var input = new DependencyInput("library.kimiproj", library, [], []);
+        for (var i = 1; i < nodes.Length; i++)
+        {
+            nodes[i] = new($"library@{i}", input, 0, string.Empty);
+        }
+
+        Assert.False(c.Prepare(rootFailure == DiagnosticCode.UnsupportedTarget_Kd ? "unknown-none-elf" : WindowsProfile.Target, new(nodes)));
+        Assert.Null(c.BuildMetadata);
+        Assert.Equal(new[] { rootFailure.ToString(), graphFailure.ToString() }.Order(StringComparer.Ordinal), TestDiagnostics.Of(c).Select(static x => x.Code).Order(StringComparer.Ordinal));
     }
 
     // SPEC 23.1.2: an invalid packaged supply leaves the merge of the valid ones checked (two records, not one).

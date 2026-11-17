@@ -19,35 +19,38 @@ public sealed partial class Binding
 
     // SPEC 3.4.3, 8.2.3, 13.4, 13.5.5: the Type a built-in operator's operand or a selection's receiver denotes, in the operand's scope, in
     // one order: its Type as the scope's premises make it (CallableContractType: its associated projections normalized, then its identity
-    // premises substituted, the premising MirTypes.Premised reads through TyCtxt.Premised), then below each qualifying pair layer, then
-    // below its ref and uniq layers: the one statement of it, which TyCtxt.OperandTerminal publishes to the MIR builder, whose Types keep a
-    // premised parameter or projection (DECISIONS BU-72). Premises change only abstract parts, so a Type without one is its own image; the
-    // Contract environment's rewrite of a closed Type's Origins alone is not applied, as no premise is in it (MirTypes.Agree ignores Origins).
+    // premises substituted, the premising MirTypes.Premised reads through TyCtxt.Premised), then below each of its ref, uniq and qualifying
+    // pair layers: the one statement of it, which TyCtxt.OperandTerminal publishes to the MIR builder, whose Types keep a premised parameter
+    // or projection (DECISIONS BU-72). Premises change only abstract parts, so a Type without one is its own image; the Contract
+    // environment's rewrite of a closed Type's Origins alone is not applied, as no premise is in it (MirTypes.Agree ignores Origins). Each
+    // step descends into a component of the Type, so the walk ends within the Type's height (IMPL A.4) and needs no limit of its own.
     internal BoundType OperandTerminal(Koto operand, BoundType type)
     {
-        var premised = type.HasAbstractPart ? this.CallableContractType(type, this.ConstraintScope(operand)) : type;
-        return ComparisonReferent(this.ComparisonThroughPairs(operand, premised));
+        // A Type without an abstract part has no pair layer and no premise.
+        var scope = type.HasAbstractPart ? this.ConstraintScope(operand) : null;
+        return scope is null ? ComparisonReferent(type) : this.LayersTerminal(this.CallableContractType(type, scope), scope);
     }
 
-    // SPEC 13.4, 13.5.5: the Type a comparison operand denotes once its qualifying pair layers are followed; the operand is
-    // then shared-borrowed through the layer where a reference to it is required. The operand's scope is read only at a pair layer.
-    private BoundType ComparisonThroughPairs(Koto operand, BoundType type)
+    // SPEC 3.4.3: the Type below the ref, uniq and qualifying pair layers of `type` in `scope`, in any order: the one walk of the safe
+    // value-reference layers, shared by an operand's terminal, a value read's (ReadTypeReferent) and the shared-reference row's
+    // (SharedReferenceThroughLayers), one LayerBelow each step. It ends within the Type's height.
+    private BoundType LayersTerminal(BoundType type, BindingScope scope)
     {
-        BindingScope? scope = null;
-        for (var depth = 0; depth < 8; depth++)
+        while (this.LayerBelow(type, scope) is { } below)
         {
-            var terminal = ComparisonReferent(type);
-            if (!TryPairLayer(terminal, out _, out _) ||
-                this.FollowablePair(terminal, scope ??= this.ConstraintScope(operand), out var target) == SemanticsMask.None)
-            {
-                return depth == 0 ? type : terminal;
-            }
-
-            type = target;
+            this.termWalks++;
+            type = below;
         }
 
         return type;
     }
+
+    // SPEC 3.4.3, 13.5.5: the referent below one safe value-reference layer (ref, uniq, or a pair layer whose admitted set in `scope` lies
+    // in value or valueborrow), or null for any other Type. A layer admitting no case ends the walk (stopped: it has no node to rest; its
+    // operand's consumer would; PLAN G750).
+    private BoundType? LayerBelow(BoundType type, BindingScope scope)
+        => type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components: [var referent] } ? referent
+            : this.FollowablePair(type, scope, out var target) is { } admitted && admitted != SemanticsMask.None ? target : null;
 
     private BoundType? CompleteComparison(
         BinaryKoto binary, BoundType left, BoundType right, BindingScope scope, OperatorApplicability decision)
@@ -73,10 +76,13 @@ public sealed partial class Binding
             this.adaptations[binary.Right] = new(ExpectedAdaptationKind.ReferentRead, BoundType.Unit);
         }
 
+        var operand = right;
         left = this.OperandTerminal(binary.Left, left);
         right = this.OperandTerminal(binary.Right, right);
 
-        if (!FitsType(right, left, out var failure))
+        // SPEC 13.4, 3.8: the terminal Types are equal under the Type relation, which relates Never only to itself, or one operand is Never:
+        // the right one's own Type here, as applicability fitted a Never left one to the right; a Never terminal below a layer is ordinary.
+        if (!ReferenceEquals(operand, BoundType.Never) && !IsSubtype(right, left, out var failure))
         {
             if (this.CommonOriginType(left, right, out _) is not { } common)
             {

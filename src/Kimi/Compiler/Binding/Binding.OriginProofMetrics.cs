@@ -49,6 +49,10 @@ internal sealed class OriginProofMetrics
     /// <summary>Gets the local regions the fixed-fixed oracle read through their bounds (<c>UniversalRelations.Outlives</c>).</summary>
     internal long RegionReads { get; private set; }
 
+    /// <summary>Gets the declaration judge's chain work (<c>TyCtxt.OriginChains.Work</c> of its graphs, PLAN G318): the core's only, as
+    /// the minimal-condition rule at a last edge is quadratic in its key's conditions by design (at most 64 binders), as the copy's was.</summary>
+    internal long ChainWork { get; private set; }
+
     /// <summary>Gets the worklist insertions of all closures.</summary>
     internal long Insertions { get; private set; }
 
@@ -89,11 +93,14 @@ internal sealed class OriginProofMetrics
         this.Decrements = 0;
         this.BoundViolations = 0;
         this.ClosureTicks = 0;
+        this.ChainWork = 0;
         Array.Clear(this.edges);
         this.queries.Clear();
     }
 
     internal void RegionRead() => this.RegionReads++;
+
+    internal void Chained(long work) => this.ChainWork += work;
 
     internal void Enter(BoundOrigin longer, BoundOrigin shorter, Koto use, int depth)
     {

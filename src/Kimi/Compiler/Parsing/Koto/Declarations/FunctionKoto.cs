@@ -142,6 +142,13 @@ public sealed class FunctionKoto : DeclarationKoto
     /// body is supplied instead (<see cref="Parse(ref TokenReader)"/>).</summary>
     internal bool MissingBody { get; set; }
 
+    /// <summary>Gets a value indicating whether the declaration omits its Body because the compiler supplies its definition (SPEC 22.1,
+    /// IMPL 21.3.4): a function or constructor carrying <c>#Intrinsic</c> or <c>#Unsupported</c>, or a constructor carrying <c>#Lang</c>
+    /// (a linked constructor). Those kinds exist only in the Kimi library (<see cref="AttributeKoto"/>'s classification), so no user
+    /// declaration omits its Body.</summary>
+    internal bool OmitsBody => this.FindAttribute(AttributeKind.Intrinsic) is not null || this.FindAttribute(AttributeKind.Unsupported) is not null ||
+        (this.IsConstructor && this.FindAttribute(AttributeKind.Lang) is not null);
+
     private List<string>? origins;
 
     private List<Koto>? typeConstraints;
@@ -182,6 +189,11 @@ public sealed class FunctionKoto : DeclarationKoto
 
     /// <summary>Gets a value indicating whether <see cref="BaseInitializer"/> is the retained call of an omitted base clause.</summary>
     internal bool HasOmittedBaseInitializer => this.BaseInitializer is not null && ReferenceEquals(this.BaseInitializer, this.implicitBaseInitializer);
+
+    /// <summary>Gets or sets the placement Error of a specialization written where its item list takes none (SPEC 8.13.1, F.6): a
+    /// recovery carrying the misplaced syntax's record, on which every check that needs the declaration scope rests (its target search
+    /// and the verdicts over it); the checks of the written declaration stay direct. Null for any other function.</summary>
+    internal ErrorKoto? Placement { get; set; }
 
     internal void PrepareBaseInitializer()
     {
@@ -421,17 +433,30 @@ public sealed class FunctionKoto : DeclarationKoto
             return;
         }
 
-        // A declaration whose body is missing is bodyless (MissingBody). A function expression is a value whose Closure is built with
-        // its body, so its indented body, present or missing, is a required body as every body-bearing expression's is: a token left
-        // on its header's line and a missing body follow ParseRequiredBlock, the latter a supplied, recorded recovery (DIAGNOSTICS §4.4).
+        // A declaration whose body is missing is bodyless (MissingBody), and one that omits its Body (OmitsBody) has no record for it. A
+        // function expression is a value whose Closure is built with its body, so its indented body, present or missing, is a required
+        // body as every body-bearing expression's is: a token left on its header's line and a missing body follow ParseRequiredBlock, the
+        // latter a supplied, recorded recovery (DIAGNOSTICS §4.4).
         if (!this.IsAnonymous && !reader.TrySkipSeparatorsTo(TokenKind.StartBlock))
         {
-            reader.Expect(SyntaxForm.Body);
-            this.MissingBody = true;
+            if (!this.OmitsBody)
+            {
+                reader.Expect(SyntaxForm.Body);
+                this.MissingBody = true;
+            }
+
             return;
         }
 
-        this.Body = Parser.ParseRequiredBlock(ref reader, this);
+        // SPEC 7.5: the block's leading region holds the declaration's clauses; one that omits its Body and has no executable item after
+        // them has no Body.
+        var body = Parser.ParseRequiredBlock(ref reader, this);
+        if (body.Items.Count == 0 && this.OmitsBody)
+        {
+            return;
+        }
+
+        this.Body = body;
         this.Body.Parent = this;
         this.Span = SourceSpan.FromBounds(this.Span.Start, this.Body.Span.End);
     }

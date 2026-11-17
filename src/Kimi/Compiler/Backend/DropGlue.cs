@@ -1,34 +1,40 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 // Owns the drop glue of a Type (SPEC 16.3, 16.4; R5 package K 4.5 "DropGlue", package C 3.6, S2-S4 X3, X23, X27; DECISIONS R5-M60, R5-M78,
-// R5-M95): what destroying a value of a closed Type destroys directly, in destruction order, the one enumeration (Parts) the instance
-// collector's DropGlue items target and FunctionCodegen writes their functions from, so the two cannot disagree; and the row of a Type's
-// glue function (Row), which FunctionCodegen writes through its call writer (PD3): a string's calls the runtime release (PD18's string
-// row, C0c); a struct's, Tuple's, enum's, fixed array's or Closure environment's destroys its parts (C4a, C5a); an erased function's
-// calls its drop entry (C5b), an owning handle's releases its object (C6b); a collection's, an Array's or a Dictionary's, calls its one
-// destruction body (DECISIONS R8-M5, R8-K1c).
-// Input: a closed Type of a compilation and its TyCtxt (Sealed). Output: a Type's row, the string row's routine and a glue function's
-// parameters; the Type's direct parts in destruction order, each with its position in its aggregate: a declared destructor alone for a
-// struct that declares one (its body destroys the Fields and the base, R4-M6b); else a struct's Fields in reverse logical declaration order,
-// then its base; a Tuple's elements in decreasing index; a fixed array's element (each element, from the last); an enum's Case payload
-// elements, each Case's in reverse declaration order; a Closure environment's captures in reverse initialization order (X23); an Array's
-// or Dictionary's element Types, which its destruction destroys (through its glue's one target, destroyArray's or destroyDictionary's
-// instance, DECISIONS R8-M5) and lays out (X34); an owning handle's
-// payload when the payload is proven Sealed (else the object descriptor's finalizer runs the actual Type's glue, K8). Strings, scalars,
+// R5-M95 as PLAN G702 amends it): the row of a Type's glue function (Row), which FunctionCodegen writes through its call writer (PD3): a
+// string's calls the runtime release (PD18's string row, C0c); a struct's, Tuple's, enum's, fixed array's or Closure environment's
+// destroys its parts (C4a, C5a); an erased function's calls its drop entry (C5b), an owning handle's releases its object (C6b); a
+// collection's, an Array's or a Dictionary's, calls its one destruction body (DECISIONS R8-M5, R8-K1c); the direct parts only the Backend
+// knows (Parts); and the glue steps of what destroying a value destroys, Mir's steps (MirDrops.Destroyed.cs, the one statement of a
+// level's order, SPEC 16.3.2) each mapped to its glue part: a drop group's walk (Destroyed) and a glue function's level (Level), the
+// steps the instance collector targets a Drop's site and a DropGlue item by, and FunctionCodegen writes the Drop and the glue function
+// from, so the two cannot disagree. No order of an aggregate's parts is stated here.
+// Input: a closed Type of a compilation and its TyCtxt (Sealed); for a group, the drop table (A2's MirDropTable), the body and the
+// group's row. Output: a Type's row, the string row's routine and a glue function's parameters; a group's or a level's steps in
+// destruction order (Destroyed, Level), each aggregate part with its position in its aggregate (a struct's Fields, then its base; a
+// Tuple's elements; a fixed array's elements; an enum's Case payload elements under the Case's ordinal; a Closure environment's
+// captures, X23: Mir's order); the Backend's own parts (Parts): a declared destructor alone for a struct that declares one (its body
+// destroys the Fields and the base, R4-M6b); an Array's or Dictionary's element Types, which its destruction destroys (through its
+// glue's one target, destroyArray's or destroyDictionary's instance, DECISIONS R8-M5) and lays out (X34); an owning handle's payload
+// when the payload is proven Sealed (else the object descriptor's finalizer runs the actual Type's glue, K8). Strings, scalars,
 // references, raw pointers, Slices, Function values (their environment's destruction is erased) and InlineStorage, whose owner destroys
 // its contents, have none.
-// Invariants: deterministic; the parts are the components MirTypes.Destruction descends into, in destruction order, and a Sealed handle's
-// payload, which that walk visits without descending (InstanceCollectorTest.DropGlueParts agree); a position is the component's index in
-// the aggregate writer's numbering (FunctionCodegen.Component: a struct's base first, then its Fields; a Tuple's elements; a Case
-// payload's elements under the Case's ordinal).
-// Must not: decide whether a part needs a drop (MirTypes.MayNeedDrop, the consumer's), read syntax or proofs other than Sealed, name a glue
-// function (ModuleCodegen names its items) or write text.
+// Invariants: deterministic; a level's parts are the components MirTypes.Destruction descends into, in destruction order, and a Sealed
+// handle's payload, which that walk visits without descending (InstanceCollectorTest.DropGlueParts agree); a position is the component's
+// index in the aggregate writer's numbering (FunctionCodegen.Component: a struct's base first, then its Fields; a Tuple's elements; a
+// Case payload's elements under the Case's ordinal); the steps' order is Mir's, the order code generation reads a Drop's targets in
+// (InstanceCollectorTest.AnOpenDropTargetsWhatItsGroupDestroysInWalkOrder).
+// Must not: state the order of an aggregate's parts (Mir's level, MirDropTable.Level); decide whether a part needs a drop
+// (MirTypes.MayNeedDrop, the consumer's), a row's verdict (A2's) or what a group's row destroys (MirDropTable.Destroyed: no row is read
+// here); read syntax or proofs other than Sealed, name a glue function (ModuleCodegen names its items) or write text.
 
+using Kimi.Compiler.Mir;
 using SemanticsKind = Kimi.Compiler.Parsing.SemanticsKind;
 
 namespace Kimi.Compiler.Backend;
 
-/// <summary>What a direct part of a destroyed value is (<see cref="DropGlue.Parts"/>).</summary>
+/// <summary>What a direct part of a destroyed value is: Part from the mapping of Mir's steps (<see cref="DropGlue.Destroyed"/>,
+/// <see cref="DropGlue.Level"/>), the others the Backend's own (<see cref="DropGlue.Parts"/>).</summary>
 internal enum DropPartKind : byte
 {
     Destructor, // The struct's declared destructor, which destroys all the rest (R4-M6b).
@@ -57,6 +63,16 @@ internal enum DropGlueRow : byte
 /// a Tuple's or a Case payload's elements, a capture); -1 for a fixed array's element, which stands for every element, and for a part
 /// without a position (a destructor, a collection's element Type, a Sealed payload).</param>
 internal readonly record struct DropPart(DropPartKind Kind, BoundType Type, int Ordinal = 0, int Index = -1);
+
+/// <summary>A glue step of a drop group's walk or of a glue function's level (<see cref="DropGlue.Destroyed"/>,
+/// <see cref="DropGlue.Level"/>).</summary>
+/// <param name="Kind">What the step is.</param>
+/// <param name="Part">The part (the destroyed value's own Type at the top), its position in its aggregate the part's.</param>
+/// <param name="Parent">The row whose own bit a part without a row, or a Run, follows; -1 for none (set on every path).</param>
+/// <param name="Row">The part's governing row, or -1.</param>
+/// <param name="First">A fixed array element's position, or a Run's first; -1 for any other part.</param>
+/// <param name="Last">A Run's last position.</param>
+internal readonly record struct DropStep(MirDropStepKind Kind, DropPart Part, int Parent, int Row, long First, long Last = -1);
 
 /// <summary>The drop glue of the Backend (SPEC 16.3.2).</summary>
 internal static class DropGlue
@@ -95,7 +111,9 @@ internal static class DropGlue
         };
     }
 
-    /// <summary>Appends the direct parts destroying a value of a closed Type destroys, in destruction order (SPEC 16.3.2, 16.4).</summary>
+    /// <summary>Appends the direct parts of a destroyed value only the Backend knows, which no move path names (SPEC 16.3.2, 16.4): a
+    /// declared destructor alone, a collection's element Types, a Sealed owning handle's payload. An aggregate's parts are Mir's
+    /// (<see cref="Level"/>).</summary>
     /// <param name="types">The Type context, whose Sealed proofs decide an owning handle's payload.</param>
     /// <param name="type">The closed Type.</param>
     /// <param name="into">The list the parts are appended to.</param>
@@ -104,64 +122,136 @@ internal static class DropGlue
         if (AdtDef.Destructor(type) is not null)
         {
             into.Add(new(DropPartKind.Destructor, type));
-            return;
         }
-
-        switch (type.Kind)
+        else if (type.Kind is BoundTypeKind.Array or BoundTypeKind.Dictionary)
         {
-            case BoundTypeKind.Tuple or BoundTypeKind.Closure:
-                Reversed(type.Components, DropPartKind.Part, 0, into);
-                return;
-            case BoundTypeKind.FixedArray:
-                into.Add(new(DropPartKind.Part, type.Components[0])); // Every element, from the last.
-                return;
-            case BoundTypeKind.Array or BoundTypeKind.Dictionary:
-                Reversed(type.Components, DropPartKind.Element, 0, into);
-                return;
-            case BoundTypeKind.Semantics when type.Semantics is SemanticsKind.Obj or SemanticsKind.Rc or SemanticsKind.Arc:
-                if (types.Sealed(null, type.Components[0]))
-                {
-                    into.Add(new(DropPartKind.Payload, type.Components[0]));
-                }
-
-                return;
-        }
-
-        if (AdtDef.IsInlineStorage(type))
-        {
-            return;
-        }
-
-        var cases = AdtDef.CaseTypes(type) ?? [];
-        for (var ordinal = 0; ordinal < cases.Length; ordinal++)
-        {
-            if (cases[ordinal] is { } payload)
+            for (var i = type.Components.Count - 1; i >= 0; i--)
             {
-                Reversed(payload.Components, DropPartKind.Part, ordinal, into);
+                into.Add(new(DropPartKind.Element, type.Components[i]));
             }
         }
-
-        var parent = AdtDef.Base(type);
-        for (var i = AdtDef.IsStruct(type) ? AdtDef.Count(type) - 1 : -1; i >= 0; i--)
+        else if (type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Obj or SemanticsKind.Rc or SemanticsKind.Arc } &&
+            types.Sealed(null, type.Components[0]))
         {
-            if (AdtDef.FieldType(type, i) is { } field)
-            {
-                into.Add(new(DropPartKind.Part, field, 0, parent is null ? i : i + 1));
-            }
-        }
-
-        if (parent is not null)
-        {
-            into.Add(new(DropPartKind.Part, parent, 0, 0));
+            into.Add(new(DropPartKind.Payload, type.Components[0]));
         }
     }
 
-    // A Tuple's, Closure's, Case payload's or collection's components, the last first, each at its index (an Element at none).
-    private static void Reversed(IReadOnlyList<BoundType> parts, DropPartKind kind, int ordinal, List<DropPart> into)
+    /// <summary>Appends a glue function's level of a closed Type, which no row governs (SPEC 16.3.2): for an aggregate whose parts move
+    /// paths name (a struct without a declared destructor, a Tuple, an enum, a fixed array, a Closure environment), Mir's level of the
+    /// Type (<see cref="MirDropTable.Level"/>, the level a drop group's walk composes with its rows), each step mapped to its glue part
+    /// as a group's are (<see cref="Destroyed"/>); else an Open step, the Backend's own parts (<see cref="Parts"/>) Whole and the End
+    /// step.</summary>
+    /// <param name="types">The Type context, whose Sealed proofs decide an owning handle's payload.</param>
+    /// <param name="type">The glue item's closed Type.</param>
+    /// <param name="parts">The scratch list of <see cref="Parts"/>, left as it was.</param>
+    /// <param name="walk">The scratch list of Mir's steps, left as it was.</param>
+    /// <param name="into">The list the steps are appended to.</param>
+    internal static void Level(TyCtxt types, BoundType type, List<DropPart> parts, List<MirDropStep> walk, List<DropStep> into)
     {
-        for (var i = parts.Count - 1; i >= 0; i--)
+        if (Row(type) == DropGlueRow.Parts && AdtDef.Destructor(type) is null && !AdtDef.IsInlineStorage(type))
         {
-            into.Add(new(kind, parts[i], ordinal, kind == DropPartKind.Part ? i : -1));
+            var first = walk.Count;
+            MirDropTable.Level(type, walk);
+            _ = Glue(walk, first, null, 0, into);
+            walk.RemoveRange(first, walk.Count - first);
+            return;
         }
+
+        var start = parts.Count;
+        DropPart value = new(DropPartKind.Part, type);
+        into.Add(new(MirDropStepKind.Open, value, -1, -1, -1));
+        Parts(types, type, parts);
+        for (var i = start; i < parts.Count; i++)
+        {
+            into.Add(new(MirDropStepKind.Whole, parts[i], -1, -1, -1));
+        }
+
+        parts.RemoveRange(start, parts.Count - start);
+        into.Add(new(MirDropStepKind.End, value, -1, -1, -1));
+    }
+
+    /// <summary>Appends what destroying a closed Type's value by a row of a drop group destroys, in destruction order (SPEC 16.3.2,
+    /// 15.1.3; R4-M6a): Mir's walk of the group (<see cref="MirDropTable.Destroyed"/>, the one statement of what a group destroys and
+    /// by which row), each step mapped to the glue's part: its position in its aggregate (the aggregate writer's numbering: a struct's
+    /// base 0 and its Fields after it), a fixed array's element by its position, and an enum's Case payload, which has no glue of its
+    /// own, as its parts under the payload's rows: an Open payload's steps, a payload destroyed whole the parts of Mir's level of the
+    /// payload Tuple (<see cref="MirDropTable.Level"/>).</summary>
+    /// <param name="drops">The drop table.</param>
+    /// <param name="body">The ordinal of the body whose row it is.</param>
+    /// <param name="row">The row.</param>
+    /// <param name="type">The row's closed Type.</param>
+    /// <param name="walk">The scratch list of Mir's steps, left as it was.</param>
+    /// <param name="into">The list the steps are appended to.</param>
+    internal static void Destroyed(MirDropTable drops, int body, int row, BoundType type, List<MirDropStep> walk, List<DropStep> into)
+    {
+        var start = walk.Count;
+        drops.Destroyed(body, row, type, walk);
+        for (var i = start; i < walk.Count;)
+        {
+            i = Glue(walk, i, null, 0, into);
+        }
+
+        walk.RemoveRange(start, walk.Count - start);
+    }
+
+    // Maps Mir's step at an index, a part of its level's Type (null at the top) under a Case ordinal (a payload's element's, else 0), and
+    // an Open step's level with it; the index after it.
+    private static int Glue(List<MirDropStep> walk, int index, BoundType? owner, int ordinal, List<DropStep> into)
+    {
+        var step = walk[index];
+        var (type, payload) = (step.Type, owner is not null && step.Step == MirProjectionKind.Downcast);
+        if (payload && step.Kind == MirDropStepKind.Whole)
+        {
+            // A payload destroyed whole has no glue of its own: the parts of Mir's level of the payload Tuple, which no row governs,
+            // each mapped under the Case's ordinal, then governed as the payload is (its row, or its parent's own bit).
+            var (level, mapped) = (walk.Count, into.Count);
+            MirDropTable.Level(type, walk);
+            for (var i = level + 1; walk[i].Kind != MirDropStepKind.End;)
+            {
+                i = Glue(walk, i, type, (int)step.Arg, into);
+            }
+
+            walk.RemoveRange(level, walk.Count - level);
+            for (; mapped < into.Count; mapped++)
+            {
+                into[mapped] = into[mapped] with { Parent = step.Parent, Row = step.Row };
+            }
+
+            return index + 1;
+        }
+
+        // The aggregate writer's numbering: a struct's base first, then its Fields; a fixed array's element at its position.
+        var array = owner?.Kind == BoundTypeKind.FixedArray;
+        var based = owner is not null && AdtDef.Base(owner) is not null ? 1 : 0;
+        var position = step.Step == MirProjectionKind.Base ? 0 : (int)step.Arg + based;
+        if (owner is null || array)
+        {
+            position = -1;
+        }
+
+        DropPart part = new(DropPartKind.Part, type, ordinal, position);
+        var (first, last) = (array ? step.Arg : -1, step.Last);
+        if (!payload)
+        {
+            into.Add(new(step.Kind, part, step.Parent, step.Row, first, last));
+        }
+
+        if (step.Kind != MirDropStepKind.Open)
+        {
+            return index + 1;
+        }
+
+        for (index++; walk[index].Kind != MirDropStepKind.End;)
+        {
+            index = Glue(walk, index, type, payload ? (int)step.Arg : 0, into);
+        }
+
+        if (!payload)
+        {
+            into.Add(new(MirDropStepKind.End, part, step.Parent, step.Row, first));
+        }
+
+        return index + 1;
     }
 }

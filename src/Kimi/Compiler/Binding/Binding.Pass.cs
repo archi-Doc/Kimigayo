@@ -2,10 +2,13 @@
 
 namespace Kimi.Compiler;
 
-// The pass reset (ResetPass), run when a pass starts and when an edit revokes the latest one (Invalidate).
+// The pass reset (ResetPass), run when a pass starts and when an edit revokes the latest one (Invalidate), after its run's BeginRun.
 // - Responsibility: every per-pass fact discarded, through the tables cleared here and the owning concerns' Reset* steps.
-// - Inputs: the mode (read by ResetCapabilities). Outputs: empty per-pass tables, reset scopes and symbols, the next storageVersion.
-// - Invariants: the cross-pass storage ResetPass's comment lists stays. R7-D2 b replaces the Clears with generation-stamped tables.
+// - Inputs: the mode (read by ResetCapabilities) and the running pass (its modules). Outputs: empty per-pass tables, reset scopes
+//   and symbols.
+// - Invariants: the cross-pass storage ResetPass's comment lists stays. A kept family's rows are reset in place over the running
+//   pass's modules only (In, PLAN G949 S1-r2), so no pass resets another pass's rows. R7-D2 b replaces the Clears with
+//   generation-stamped tables.
 // - Prohibitions: no fact is computed or recorded here; ResetPass only empties tables and resets state.
 public sealed partial class Binding
 {
@@ -13,13 +16,8 @@ public sealed partial class Binding
     // symbols (reset here, removed by the prune steps), synthesized nodes, pooled plans and scratch buffers.
     private void ResetPass(BindingMode mode)
     {
-        this.ResetInferenceMetrics();
-        this.inferredConstructorTargets.Clear();
+        this.inferredConstructionTargets.Clear();
         this.callInferenceFailures?.Clear();
-        this.storageVersion++;
-        this.signatureWalks = 0;
-        this.memberWalks = 0;
-        this.baseSteps = 0;
         this.clausesBindable = false;
         this.verifiedClause = null;
         this.earlyReads?.Clear();
@@ -47,7 +45,6 @@ public sealed partial class Binding
         this.ResetSpecializations();
         this.ResetVirtualDeclarations();
         this.receiverOperations.Clear();
-        this.adaptations.Clear();
         this.inferredArrayLengths.Clear();
         this.arrayInferenceShapes.Clear();
         this.arrayInferenceFailures?.Clear();
@@ -55,9 +52,9 @@ public sealed partial class Binding
         this.ResetSyntheticCalls();
         this.pairFollows.Clear();
         this.implicitPairFollows.Clear();
-        foreach (var construction in this.enumConstructions.Values)
+        foreach (var construction in this.enumConstructions.Values.In(this.pass))
         {
-            construction.IsValid = false;
+            construction!.IsValid = false;
         }
 
         this.nodes.Clear();
@@ -66,15 +63,14 @@ public sealed partial class Binding
         this.obligations.Clear();
         this.ResetLocalRegions();
         this.obligationSet.Clear();
-        this.inheritedOriginTypes.Clear();
         this.ResetCapabilities(mode);
         this.ResetContracts();
-        foreach (var scope in this.scopes.Values)
+        foreach (var scope in this.scopes.Values.In(this.pass))
         {
             scope.Reset();
         }
 
-        foreach (var symbol in this.symbols.Values)
+        foreach (var symbol in this.symbols.Values.In(this.pass))
         {
             if (symbol.Property is { } property)
             {

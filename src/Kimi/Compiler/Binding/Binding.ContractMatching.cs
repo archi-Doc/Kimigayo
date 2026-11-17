@@ -6,8 +6,6 @@ namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
-    private readonly Dictionary<(BoundConformancePath Conformance, BoundRequirement Requirement), BindingScope> witnessScopes = new();
-
     private static bool SameGenericShape(FunctionKoto requirement, FunctionKoto implementation)
     {
         if (requirement.GenericArguments.Count != implementation.GenericArguments.Count)
@@ -54,6 +52,23 @@ public sealed partial class Binding
         return path.Unsupported ? ConstraintProof.Unknown : proof;
     }
 
+    // A function requirement's premises scope on its path, kept with the path (BoundConformancePath.WitnessScopes).
+    private static BindingScope WitnessScope(BoundConformancePath path, BoundRequirement identity, FunctionKoto requirement)
+    {
+        var scopes = path.WitnessScopes ??= new();
+        for (var i = 0; i < scopes.Count; i++)
+        {
+            if (scopes[i].Requirement == identity)
+            {
+                return scopes[i].Premises;
+            }
+        }
+
+        var premises = new BindingScope(requirement);
+        scopes.Add((identity, premises));
+        return premises;
+    }
+
     // SPEC 9.4: whether the accessibility of every Type a Type names covers a and b, each distinct part judged once per call (DECISIONS
     // BU-55, BU-58): a part met again was covered, or the walk has ended.
     private bool TypeAccessCovers(BoundType type, BindingSymbol a, BindingSymbol b)
@@ -76,6 +91,12 @@ public sealed partial class Binding
 
         return true;
     }
+
+    // SPEC 8.8.2: a path's conforming Type in its conformance scope, normalized there as both sides of each requirement are (the scope's
+    // identity premises included). Every reading of a path's Self (its verification, inherited or declared, its requirement
+    // identification and its associated bindings) is this one, so what the path keeps by a requirement (its RequirementMatches) has one
+    // Self.
+    private BoundType ConformanceSelf(BoundConformancePath path) => this.ContractType(this.SelfType(path.Type), path.Scope);
 
     // A path keeps Proven (IsVerified) and Invalid only; Unknown and a non-Invalid Error are verified again at each read (Checking
     // answers Unknown): on-demand verification, staged to C3's scheduler (DECISIONS BU-59). The conforming declaration's own check is
@@ -111,6 +132,10 @@ public sealed partial class Binding
             {
                 this.failedCause ??= conformance.RootPath; // The evidence: the failed root the proof read (RestsOnRecoveryOrLimit).
             }
+            else if (conformance.Scope.Parent?.Constraints is { Invalid: true } invalid)
+            {
+                return this.InvalidEnvironment(invalid);
+            }
 
             return ConstraintProof.Error;
         }
@@ -126,9 +151,12 @@ public sealed partial class Binding
             return ConstraintProof.Proven;
         }
 
+        // SPEC 8.3.3 Recursion at the declaration's own obligation (any instance of the path): the second guard beside the open set
+        // (ResolveConformance), which keys an instance's obligation by (Type, Contract) and so cannot also key a path being verified
+        // without one answer for both; removal: R7-C2e2 e2-5b, when the obligation table keys both (e2-3's Completion carriers).
         if (conformance.Checking)
         {
-            return ConstraintProof.Unknown;
+            return this.ReentryRead(conformance);
         }
 
         conformance.Checking = true;
@@ -142,7 +170,7 @@ public sealed partial class Binding
         {
             var shape = conformance.Contract.Contract!;
             var scope = conformance.Scope;
-            var self = this.ContractType(this.SelfType(conformance.Type), scope);
+            var self = this.ConformanceSelf(conformance);
             var declarationProof = this.ReadSourceState(conformance.Type);
             if (!this.ValidArithmeticConformance(conformance, self))
             {
@@ -163,15 +191,17 @@ public sealed partial class Binding
                 }
             }
 
-            if (IntrinsicContract.Of(conformance.Contract.Intrinsic).ConformanceJudged)
+            if (IntrinsicContract.Of(conformance.Contract.Intrinsic).Judged)
             {
-                var intrinsicProof = CombineProof(declarationProof, this.RequestCapability(self, conformance.Contract, scope, derivation: conformance.Contract.Intrinsic == IntrinsicKind.Copy), true);
+                // SPEC 8.7.1: the judgment of `Self is K`, as a Contract clause is proven; a declared Copy is validated where it opts in.
+                var intrinsicProof = CombineProof(declarationProof, this.RequestCapability(self, conformance.Contract, scope), true);
                 conformance.IsVerified = intrinsicProof == ConstraintProof.Proven;
                 return intrinsicProof;
             }
 
             var proof = declarationProof;
             IsKoto? specification = null;
+            Koto? failedRequirement = null;
             for (var i = 0; i < shape.AssociatedTypes.Count; i++)
             {
                 if (!conformance.AssociatedStorage.TryGetValue(shape.AssociatedTypes[i], out var associated))
@@ -185,9 +215,16 @@ public sealed partial class Binding
                         continue;
                     }
 
+                    if (this.HasFailureCauses(identity.Symbol.Declaration))
+                    {
+                        // SPEC 23.1.2: a requirement that failed in its Contract has no Type to bind; the absence rests on it (G686).
+                        failedRequirement ??= identity.Symbol.Declaration;
+                        continue;
+                    }
+
                     if (this.InferenceHole(conformance, identity))
                     {
-                        var binding = this.associatedBindings[(conformance.RootPath, identity)];
+                        var binding = this.AssociatedBindingOf(conformance.RootPath, identity)!;
                         if (binding.Problem is InferenceProblem.Missing or InferenceProblem.Ambiguous)
                         {
                             return Invalid(binding.Problem == InferenceProblem.Missing ? BindingFailure.MissingImplementation : BindingFailure.Ambiguous);
@@ -204,21 +241,17 @@ public sealed partial class Binding
                 {
                     return Invalid(BindingFailure.Access);
                 }
-
-                // Normalized identity/Core shape alone does not prove nested input constraints.
-                var formationScope = this.AssociatedFormationScope(conformance, shape.AssociatedTypes[i], scope);
-                proof = CombineProof(proof, this.CheckTypeConstraints(associated, formationScope), true);
-                var inputs = this.associatedBindings[(conformance.RootPath, shape.AssociatedTypes[i])].Candidates;
-                for (var input = 0; input < inputs.Count; input++)
-                {
-                    // Projection normalization may erase an invalid constructed qualifier.
-                    proof = CombineProof(proof, this.CheckTypeConstraints(inputs[input], formationScope), true);
-                }
             }
 
             if (specification is not null)
             {
                 return RestOnSpecification(specification);
+            }
+
+            if (failedRequirement is not null)
+            {
+                this.partPrerequisites[conformance.Use] = failedRequirement;
+                return Invalid(BindingFailure.InvalidAssociatedType);
             }
 
             if (inheritedProof is { } inheritedResult)
@@ -289,7 +322,7 @@ public sealed partial class Binding
             for (var i = 0; i < container.Members.Count; i++)
             {
                 if (container.Members[i] is IsKoto { IsAssociatedConstraint: true, BoundConstraint: { } constraint } clause && this.AssociatedIdentity(clause.Left.BoundType) is { } identity && shape.SeenRequirements.Contains(identity) &&
-                    SpecifiesContract(clause, conformance.Contract))
+                    this.SpecifiesContract(clause, conformance.Contract))
                 {
                     if (clause.BindingState == BindingState.Invalid)
                     {
@@ -333,7 +366,7 @@ public sealed partial class Binding
                     return ConstraintProof.Unknown;
                 }
 
-                var match = this.IdentifyRequirement(conformance, identity, self);
+                var match = this.IdentifyRequirement(conformance, identity);
                 if (match.State == RequirementMatchState.Ambiguous)
                 {
                     return Invalid(BindingFailure.Ambiguous);
@@ -371,7 +404,7 @@ public sealed partial class Binding
         }
         finally
         {
-            conformance.Checking = false;
+            this.EndChecking(conformance);
             conformance.Unsupported &= completed; // An interrupted verification records no limit.
             this.conformanceChecks--;
         }
@@ -462,12 +495,7 @@ public sealed partial class Binding
         }
 
         var identity = new BoundRequirement(requirement.BoundSymbol!, conformance.Contract);
-        var key = (conformance, identity);
-        if (!this.witnessScopes.TryGetValue(key, out var premises))
-        {
-            this.witnessScopes.Add(key, premises = new(requirement));
-        }
-
+        var premises = WitnessScope(conformance, identity, requirement);
         premises.Reset();
         premises.Parent = scope;
         var environment = premises.Constraints ??= new();
@@ -495,7 +523,13 @@ public sealed partial class Binding
                 arguments[i] = requirement.BoundSymbol!.Schema!.GenericSlots[i].Symbol.WholeType;
             }
 
-            var proof = this.ProveMemberConditions(implementation.BoundSymbol!, selection.DeclaringType, premises);
+            // SPEC 15.3.7: the implementation's Origins are solved first (CompareCallableContracts), and its clauses are read under the
+            // one substitution its signature is (PLAN G700, G707).
+            var proof = CombineProof(
+                this.ProveMemberConditions(implementation.BoundSymbol!, selection.DeclaringType, premises),
+                this.CompareCallableContracts(new(requirement), new(implementation), premises, self, selection.DeclaringType, arguments, origins, inputs, selection.Path),
+                true);
+            var substitution = SubstitutionOf(implementation, selection.DeclaringType, arguments.AsSpan(0, requirement.GenericArguments.Count), default, origins, inputs);
             for (var i = 0; i < implementation.TypeConstraints.Count; i++)
             {
                 if (((IsKoto)implementation.TypeConstraints[i]).BoundConstraint is not { } constraint)
@@ -503,11 +537,7 @@ public sealed partial class Binding
                     return ConstraintProof.Unknown;
                 }
 
-                var substituted = this.SubstituteConstraint(constraint, implementation, arguments.AsSpan(0, requirement.GenericArguments.Count));
-                if (selection.DeclaringType is { Symbol: not null } declaring)
-                {
-                    substituted = this.StoredConstraint(substituted, declaring);
-                }
+                var substituted = this.SubstituteConstraint(constraint, substitution);
 
                 proof = CombineProof(proof, this.ProveConstraint(this.ContractConstraint(substituted, premises, self), premises), true);
                 var clause = (IsKoto)implementation.TypeConstraints[i];
@@ -533,7 +563,6 @@ public sealed partial class Binding
                 }
             }
 
-            proof = CombineProof(proof, this.CompareCallableContracts(new(requirement), new(implementation), premises, self, selection.DeclaringType, arguments, origins, inputs, selection.Path), true);
             var witness = this.FunctionWitness(conformance, identity);
             witness.DeclaringType = selection.DeclaringType!;
             witness.BasePath = selection.Path;

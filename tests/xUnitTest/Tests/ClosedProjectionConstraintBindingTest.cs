@@ -15,7 +15,7 @@ public class ClosedProjectionConstraintBindingTest
     [InlineData("enum")]
     public void ConcreteProjectionSubjectIsProvedAtTheDeclaration(string kind)
     {
-        var c = MinimalEmissionTest.Analyze(Source(kind, "Source.Origin.Item is Copy"));
+        var c = MinimalEmissionTest.Analyze(Source(kind, "Source.(Origin).Item is Copy"));
         Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.True(c.Bind().IsComplete);
@@ -23,11 +23,11 @@ public class ClosedProjectionConstraintBindingTest
     }
 
     [Theory]
-    [InlineData("Source.Origin.Item is i32", true)]
-    [InlineData("Source.Origin.Item is string", false)]
-    [InlineData("Source.Origin.Item is not i32", false)]
-    [InlineData("Source.Origin.Item is Copy and Owned", true)]
-    [InlineData("Source.Origin.Item is string or Copy", true)]
+    [InlineData("Source.(Origin).Item is i32", true)]
+    [InlineData("Source.(Origin).Item is string", false)]
+    [InlineData("Source.(Origin).Item is not i32", false)]
+    [InlineData("Source.(Origin).Item is Copy and Owned", true)]
+    [InlineData("Source.(Origin).Item is string or Copy", true)]
     public void ClosedProjectionIdentityAndCapabilitiesAreJudged(string clause, bool valid)
     {
         var c = MinimalEmissionTest.Analyze(Source("struct", clause));
@@ -42,7 +42,7 @@ public class ClosedProjectionConstraintBindingTest
     [InlineData(true)]
     public void QualifierInputConstraintsCannotBeErasedByProjectionNormalization(bool valid)
     {
-        var source = Source("struct", "Source<" + (valid ? "i32" : "string") + ">.Origin.Item is i32")
+        var source = Source("struct", "Source<" + (valid ? "i32" : "string") + ">.(Origin).Item is i32")
             .Replace("struct Source\n", "struct Source<T>\n    T is Copy\n", StringComparison.Ordinal);
         var c = MinimalEmissionTest.Analyze(source);
         Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
@@ -57,7 +57,8 @@ public class ClosedProjectionConstraintBindingTest
     public void LateInvalidConformanceRevokesOwnerAndProperty(bool reverse)
     {
         const string source = "public struct Source\n    string is Copy\n    Self is Origin\n    associate Origin.Item is i32\n";
-        const string target = "public struct Target\n    Source.Origin.Item is i32\n    public computed value: i32\n        get(self: ref/Self) -> i32 => 1\n";
+        const string target = "public struct Target\n    Source.(Origin).Item is i32\n    public computed value: i32\n" +
+            "        get(self: ref/Self) -> i32 => 1\n";
         var c = MinimalEmissionTest.Analyze("public contract Origin\n    associate Item\n" + (reverse ? target + source : source + target));
         Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
         Assert.False(c.Binding.Result.IsComplete);
@@ -70,7 +71,7 @@ public class ClosedProjectionConstraintBindingTest
     [InlineData("internal", false)]
     public void ClosedProjectionSubjectsRetainTheirQualifierApiDomain(string access, bool valid)
     {
-        var c = MinimalEmissionTest.Analyze(Source("struct", "Source.Origin.Item is Copy").Replace("public struct Source", access + " struct Source", StringComparison.Ordinal));
+        var c = MinimalEmissionTest.Analyze(Source("struct", "Source.(Origin).Item is Copy").Replace("public struct Source", access + " struct Source", StringComparison.Ordinal));
         Assert.Equal(valid, c.Binding.Result.IsComplete);
         if (!valid)
         {
@@ -81,10 +82,10 @@ public class ClosedProjectionConstraintBindingTest
     [Fact]
     public void ReplacingTheAssociatedSpecificationRechecksTheObligation()
     {
-        var c = MinimalEmissionTest.Analyze(Source("struct", "Source.Origin.Item is Copy"));
+        var c = MinimalEmissionTest.Analyze(Source("struct", "Source.(Origin).Item is Copy"));
         var clause = c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "Source").Members.OfType<IsKoto>().Single();
         var original = clause.Right;
-        var donor = MinimalEmissionTest.Analyze(Source("struct", "Source.Origin.Item is Copy").Replace("Item is i32", "Item is string", StringComparison.Ordinal));
+        var donor = MinimalEmissionTest.Analyze(Source("struct", "Source.(Origin).Item is Copy").Replace("Item is i32", "Item is string", StringComparison.Ordinal));
         var replacement = donor.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "Source").Members.OfType<IsKoto>().Single().Right;
         ParseTestHelper.Detach(replacement, new CodeBlockKoto(replacement.CodeContext));
         Assert.True(KotoHelper.Replace(clause, original, replacement));
@@ -98,7 +99,7 @@ public class ClosedProjectionConstraintBindingTest
     [Fact]
     public void WarmClosedProjectionProofsAllocateNothing()
     {
-        var c = MinimalEmissionTest.Analyze(Source("struct", "Source.Origin.Item is Copy"));
+        var c = MinimalEmissionTest.Analyze(Source("struct", "Source.(Origin).Item is Copy"));
         Assert.True(c.Bind().IsComplete);
         Assert.Equal(0, AllocationMeasurement.Measure(() =>
         {

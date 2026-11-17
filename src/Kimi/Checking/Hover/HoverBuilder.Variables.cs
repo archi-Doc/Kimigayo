@@ -12,19 +12,21 @@ internal sealed partial class HoverBuilder
 
     private void IndexVariables()
     {
-        foreach (var entry in query.Declarations)
+        foreach (var symbol in query.Declarations)
         {
-            var symbol = entry.Value;
             if (symbol.Kind is not (BindingSymbolKind.Local or BindingSymbolKind.Parameter) || symbol.Type is not { } type ||
                 symbol.Declaration.CodeContext.SourceDocument is not { } source || !this.documents.TryGetValue(source, out var entries))
             {
                 continue;
             }
 
+            // A parameter's symbol is declared by its function at its slot (Binding.DeclareParameter).
             SourceSpan span;
             Koto context;
-            if (entry.Key is FunctionParameterKoto parameter)
+            FunctionParameterKoto? parameter = null;
+            if (symbol is { Kind: BindingSymbolKind.Parameter, Declaration: FunctionKoto function, Slot: var slot } && (uint)slot < (uint)function.Parameters.Count)
             {
+                parameter = function.Parameters[slot];
                 context = parameter.Type;
                 span = parameter.InternalNameSpan;
             }
@@ -49,7 +51,7 @@ internal sealed partial class HoverBuilder
 
             var info = this.Variable(symbol, type, context);
             entries[span] = new(context, info, 2);
-            if (entry.Key is FunctionParameterKoto { ExternalNameSpan: { Length: > 0 } external } && external != span)
+            if (parameter is { ExternalNameSpan: { Length: > 0 } external } && external != span)
             {
                 entries[external] = new(context, info, 2);
             }
@@ -188,7 +190,7 @@ internal sealed partial class HoverBuilder
             return name + " — Semantics parameter." + (constraints is null ? string.Empty : "\n" + constraints);
         }
 
-        if (type.Kind is BoundTypeKind.Parameter or BoundTypeKind.TargetProjection or BoundTypeKind.AssociatedProjection)
+        if (type.IsAbstractType)
         {
             return "Undetermined for " + this.TypeName(type) + ". See the declared constraints.";
         }

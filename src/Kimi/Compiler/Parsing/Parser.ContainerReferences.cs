@@ -21,10 +21,12 @@ public static partial class Parser
         return QualifierDot(ref reader, 0, ref borrowOrigin) > 0;
     }
 
-    // SPEC F.5 and 8.5.2: whether the "." after a grouped Type continues it: any PathSuffix after a BoundContainerQualifier, and only a
-    // Contract-qualified projection .(C).Name after another group.
-    private static bool ContinuesGroupedType(ref TokenReader reader, bool qualifier)
-        => reader.CurrentTokenKind == TokenKind.Dot && (qualifier || reader.PeekKind() == TokenKind.OpenParenthesis);
+    // SPEC F.5: whether the "." after a grouped Type continues it, ContainerPath := PathQualifier PathSuffix+: the group is a
+    // PathQualifier, a BoundContainerQualifier (qualifier, which the scan decided before the group was read), a Unit or Tuple Type, or a
+    // grouped Function Type, and either PathSuffix follows. No other group is a PathQualifier: `(S).Item` and `(S?).(C).Item` end the Type
+    // at the ".", which the enclosing construct reports.
+    private static bool ContinuesGroupedType(ref TokenReader reader, Koto group, bool qualifier)
+        => reader.CurrentTokenKind == TokenKind.Dot && (qualifier || group is TupleTypeKoto or ParenthesizedTypeKoto { Type: FunctionTypeKoto });
 
     // The offset of the PathSuffix "." after the qualifier whose "(" is at the offset, or -1.
     private static int QualifierDot(ref TokenReader reader, int offset, ref bool borrowOrigin)
@@ -197,6 +199,37 @@ public static partial class Parser
 
             return new TypeSemanticsKoto(ref reader, reader.Read());
         }
+    }
+
+    // SPEC F.6.1, F.6.2: InheritanceReference := NamedReference | ContainerPath BorrowOrigin, the reference of a BaseClause and of a
+    // ContractParentList, with F.5's NamedReference := ContainerPath OriginBindingSet?: a path from a TypeSegment or a root name, or a
+    // PathQualifier with its PathSuffixes, and at most a binding set or a BorrowOrigin (the single-slot binding, whose slot count
+    // Binding judges, SPEC 15.3.1); no Semantics prefix, bare group, Tuple, fixed array, '?', OriginApplication or Function Type. What
+    // is written there is read as the Type it writes, so nothing of it is left to the enclosing construct; a Type that is no
+    // InheritanceReference is one record over it, a written Type outside its grammar.
+    private static Koto ParseInheritanceReference(ref TokenReader reader)
+    {
+        var type = ParseType(ref reader, TypeContext.Type);
+        var path = type is TypeSemanticsKoto { IsTransparentWrapper: true, Type: { } wrapped } ? wrapped : type;
+        var head = ContainerPathHead(path);
+        if (IsRecoveredType(ref reader, type) || head is TypeSemanticsKoto { Type: null } or SyntaxFormKoto { Akind: KotoKind.RootName } ||
+            (!ReferenceEquals(head, path) && head is ParenthesizedTypeKoto or TupleTypeKoto or FixedArrayTypeKoto))
+        {
+            return type;
+        }
+
+        return RecoverWrittenType(ref reader, type, type.Expected(SyntaxForm.InheritanceReference));
+    }
+
+    // The head of a ContainerPath read as a Type (SPEC F.5): the node its PathSuffixes and Type arguments continue.
+    private static Koto ContainerPathHead(Koto path)
+    {
+        while (path is MemberAccessKoto or GenericsKoto { Identifier: not null })
+        {
+            path = path is MemberAccessKoto member ? member.Left : ((GenericsKoto)path).Identifier!;
+        }
+
+        return path;
     }
 
     internal static bool IsBoundContainerReference(ref TokenReader reader)

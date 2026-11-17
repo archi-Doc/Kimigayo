@@ -17,7 +17,7 @@ public class FunctionBodyParseTest
     {
         var function = ParseSingleFunction(
             """
-            public func Main(flag: bool) -> i32
+            func Main(flag: bool) -> i32
                 var x = 0
                 while x < 10
                     if (x == 5)

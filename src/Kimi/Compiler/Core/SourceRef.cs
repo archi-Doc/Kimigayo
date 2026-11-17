@@ -15,6 +15,9 @@ namespace Kimi.Compiler;
 /// <param name="Id">The node's id in that module; 0 is no node.</param>
 internal readonly record struct SourceRef(ushort Module, int Id)
 {
+    /// <summary>Gets a value indicating whether the node is the Kimi library's (<see cref="SyntaxTable.LibraryModule"/>).</summary>
+    internal bool IsLibrary => this.Module == SyntaxTable.LibraryModule;
+
     /// <summary>Gets the reference of a node without numbering it, as a table's read does: no semantic write reached a node without an id, so
     /// no table has it.</summary>
     /// <param name="node">The node.</param>
@@ -36,4 +39,4 @@ internal readonly record struct SourceRef(ushort Module, int Id)
 /// <param name="Syntax">The syntax.</param>
 /// <param name="Scope">The index of its scope in the body's scope table.</param>
 /// <param name="StatementStart">Whether it starts a source statement.</param>
-internal readonly record struct SourceInfo(SourceRef Syntax, ushort Scope, bool StatementStart);
+internal readonly record struct SourceInfo(SourceRef Syntax, int Scope, bool StatementStart);

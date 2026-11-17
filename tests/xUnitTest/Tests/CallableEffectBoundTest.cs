@@ -176,6 +176,25 @@ public class CallableEffectBoundTest
         }
     }
 
+    // S11 (SPEC 8.11.4, 8.11.2; R8-W2 d's coverage table): the library's Console.writeLine itself as a confined Callable's argument is an
+    // environment effect, its record at that argument (its class is its body's summary); a quiet user function of the same Type keeps the
+    // bound.
+    [Theory]
+    [InlineData("func quiet(s: ref/string) => ()\n", "quiet")]
+    [InlineData("", "Console.writeLine")]
+    public void S11TheConsoleFunctionItselfViolatesAConfinedBoundAtItsArgument(string declarations, string argument)
+    {
+        var source = "func run<F>(f: ref/F)\n    F is Callable<(ref/string) -> ()>\n        effect confined\n    f(\"x\")\n" + declarations + $"run({argument})\n";
+        if (declarations.Length != 0)
+        {
+            Assert.Empty(DiagnosticCorpus.Check(source).Diagnostics);
+        }
+        else
+        {
+            AssertA4Record(source, DiagnosticCode.UnsatisfiedEffectBound_Kd, MirTargetSide.At($"run({argument})", argument));
+        }
+    }
+
     // SPEC 8.11.4, 8.11.3 (the adopted proposal Abstract Calls Reach by Paths): a call through a Callable-constrained value reaches by
     // path what its receiver and arguments reach; an earlier result that keeps no Loan of those Places does not conflict with a later
     // call of the same value (CallEffectConflict_Kd and R1g's Unsupported_Kd before the adoption).
@@ -220,6 +239,31 @@ public class CallableEffectBoundTest
             Assert.Equal("IncompatibleContractImplementation_Kd", diagnostic.Code);
             Assert.Contains("confined", diagnostic.Label);
         }
+    }
+
+    // SPEC 8.11.4, 8.6.4 (PLAN G671): a selected requirement call's Callable clause reads the Contract's parameters at its reference, so under
+    // `C is Mapper<i32>` map's `F is Callable<(T) -> i32>` is `(i32) -> i32`, which G's premise meets; only its bound decides the call. Under
+    // `D is Mapper<bool>` it is `(bool) -> i32`, which G's premise does not meet.
+    [Theory]
+    [InlineData("<C, G>(c: uniq/C, g: ref/G) -> i32\n        C is Mapper<i32>\n        G is Callable<(i32) -> i32>\n            effect confined\n        return c.map(g)\n", "clean")]
+    [InlineData("<C, G>(c: uniq/C, g: ref/G) -> i32\n        C is Mapper<i32>\n        G is Callable<(i32) -> i32>\n        return c.map(g)\n", "UnsatisfiedEffectBound_Kd@g")]
+    [InlineData(
+        "<C, D, G>(c: uniq/C, d: uniq/D, g: ref/G) -> i32\n        C is Mapper<i32>\n        D is Mapper<bool>\n        G is Callable<(i32) -> i32>\n            effect confined\n        return d.map(g)\n",
+        "NoApplicableOverload_Kd@d.map(g)")]
+    // Two references in scope: `c.map(g)`'s effect site reads C's, so G's bound at `(i32) -> i32` decides; D's would read `(bool) -> i32` and
+    // swap the two verdicts.
+    [InlineData(
+        "<C, D, G>(c: uniq/C, d: uniq/D, g: ref/G) -> i32\n        C is Mapper<i32>\n        D is Mapper<bool>\n        G is Callable<(i32) -> i32>\n            effect confined\n        G is Callable<(bool) -> i32>\n        return c.map(g)\n",
+        "clean")]
+    [InlineData(
+        "<C, D, G>(c: uniq/C, d: uniq/D, g: ref/G) -> i32\n        C is Mapper<i32>\n        D is Mapper<bool>\n        G is Callable<(i32) -> i32>\n        G is Callable<(bool) -> i32>\n            effect confined\n        return c.map(g)\n",
+        "UnsatisfiedEffectBound_Kd@g")]
+    public void ARequirementsCallableClauseReadsItsContractReference(string run, string records)
+    {
+        var source = "contract Mapper<T>\n    func map<F>(self: uniq/Self, transform: ref/F) -> i32\n        F is Callable<(T) -> i32>\n            effect confined\n" +
+            "group M\n    public func run" + run;
+        var actual = DiagnosticCorpus.Check(source, "Library").Diagnostics.Select(x => $"{x.Code}@{source.Substring(x.Span!.Value.Start, x.Span.Value.Length)}");
+        Assert.Equal(records, string.Join(" | ", actual.DefaultIfEmpty("clean")));
     }
 
     [Theory]
@@ -397,6 +441,17 @@ public class CallableEffectBoundTest
     [Fact]
     public void ConfinedCallbacksRunNatively()
         => ScalarEmissionTest.EmitFixture("CallableEffectsConfined", Apply + "let f = func [] () -> i32 => 19\nrequire apply(f@ref) == 19 else => $abort(\"callback\")\n", string.Empty);
+
+    // R7-C2c2 c2-3b (SPEC 8.11.4, 8.3.2): a Contract's Callable clause at an unspelled depth proves the callee's Constraint and
+    // carries no bound list, so the bound alone is unsatisfied, as at depth 1 (kdpc2; before c2-3b the proof failed too).
+    [Fact]
+    public void AContractWideClauseAtDepthProvesTheConstraintWithoutItsBound()
+    {
+        const string Program = Apply + "contract Holder\n    associate Next is Holder\n    associate F\n    Self.(Holder).F is Callable<() -> i32>\n" +
+            "    func deep(self: ref/Self) -> ref/Self.(Holder).Next.(Holder).F\n" +
+            "func probe<T>(t: ref/T) -> i32\n    T is Holder\n    let g = t.deep()\n    return apply(g)\npublic func main() => ()\n";
+        CompilationTestHelper.AssertRecordsAtLines("kdpc2", Program, "UnsatisfiedEffectBound_Kd: return apply(g)");
+    }
 
     // A generic function that takes a first result through a Callable value, then makes a second call.
     internal static string Replacing(string second)

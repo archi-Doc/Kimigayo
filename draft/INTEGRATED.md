@@ -1332,6 +1332,58 @@ on the round's F3, 「以下で決定します。(b) BU-28 を SPEC の読みに
 - Revision 49 (2026-11-09, plan §14; the owner's 「Adopt now」): quiet slots by one guard (`quiet_guard.py`) and a begin handshake. Nothing frozen.
 - Revision 50 (2026-11-09, plan §14; the owner's 「Adopt all three」): R7 spread over the three sessions (DECISIONS Q18). Nothing frozen.
 - Revision 47 (2026-11-09, plan §14; the Front's D-186): P5's row after G589's `EffectsLimit` removal. Nothing frozen.
+- R8-SP3 (2026-11-09; the Back's D-181; drafted by R8-U1's designer, independent review ACCEPT): SPEC §15.7's first sentence
+  states `replace`, `exchange` and `swap` as safe functions with bodies whose unsafe obligations the section's rules meet, and
+  a call is checked against those rules, never a body. §15.7.1 is unchanged (the reviewer chose the draft's second option). No
+  rule changes; SPECJ follows (RQ10). Nothing frozen.
+- R8-SP2 and R8-SP4 (2026-11-09; the Back's D-214; drafted by R8-G1's designer, independent reviews ACCEPT, SP2's after the owner's
+  O-121 (a)): PLAN10's (`Proposals/2026-10-10 Compiler Size Reduction and Single MIR Plan.md`) §5.8 「識別」 and its §11 row "SPEC §6.5,
+  §22.1, IMPL §21" go into SPEC §6.7, §6.3.1, §14.2.1, §22.1, Appendix F and IMPL §21.3.4: some Kimi declarations have no Kimigayo
+  definition and may omit their Body; the Kimi Kotonoha's own sources may carry implementation Attributes, which identify a declaration
+  and add no rule or form; IMPL §21.3.4 names `#Lang`, `#Intrinsic`, `#CallerLocation` and `#Unsupported`; Appendix F's
+  `ForeignFunctionDeclaration` becomes `BodilessFunctionDeclaration`. SETTLED's constructor entry states that the Attributes grant no
+  rule, and RQ11's entry (the managed Types as ordinary structs) is added. No user program changes validity or record; SPECJ follows
+  (RQ10). Frozen: 「識別」's first three sentences (its implementation sentences stay plan text); the R7/R8/R9 plan's text is not.
+- Revision 51 (2026-11-09, plan §14; the Middle's D-209): F4's row after R9-F4's landing (DECISIONS R9-M5). Nothing frozen.
+- Revision 52 (2026-11-10, plan §14; the Front's D-273): I2's row after I2-core's store landed (DECISIONS R7-M18; O-129 (a)). Nothing frozen.
+- Revision 53 (2026-11-11, plan §14; the Middle's D-311): M2's row after R9-M2 landed (DECISIONS R9-M6); B1's row gains R9-M2's notes. Nothing frozen.
+- Revision 54 (2026-11-11, plan §14; the Front's D-317): C2's parts and order after the owner's O-148 (b) (part e first, e1 then a1). Nothing frozen.
+- Revision 55 (2026-11-11, plan §14; the Front's D-319): C2's part b keeps its own part after c2; §4.4 names C2e1. Nothing frozen.
+- Revision 56 (2026-11-11, plan §14; the Middle's D-323): M1's row after R9-M1 part 1 landed (DECISIONS R9-M7), with parts 2 and 3, the splits of Documentation's members over a structure limit, as new §5.3 rows. Nothing frozen.
+- Revision 57 (2026-11-11, plan §14; the Middle's D-371): M1 part 2's row after R9-M1 part 2 landed (no DECISIONS entry); M1 part 3's row corrected (`ParseInlines` nesting 6, `IndexParentheses` dropped) and given `SetInlineText`'s and `TryEntity`'s nested conditionals. Nothing frozen.
+- Revision 58 (2026-11-11, plan §14; the Back's D-379): RQ13's outcome: R8-L1 adopted by the owner's O-170 (a) on the Back's T-122 measurement (Hello cold Bind +54.7% over R8's start); §5.2's L1 row updated. Nothing frozen.
+- Revision 59 (2026-11-11, plan §14; the Front's D-332): C2's row after R7-C2e1 landed (DECISIONS R7-M20; RP8 by the owner's O-176 (a)). Nothing frozen.
+- Revision 60 (2026-11-11, plan §14; the owner's decision in K's session): RP8 scoped: an open-issue fix books no timing slot; timing stays for a hot-path change, a back unit's generated code and the plan's units; a checkpoint after every fifth landed window (DECISIONS R7-M21). Nothing frozen.
+- Revision 61 (2026-11-11, plan §14; the owner's decision in K's session): §3.3's seat caps: the Front 4 implementers and 4 designers and reviewers, the Middle and the Back 2 and 2 each; one Front implementer and one designer seat kept on R7's core chain. Nothing frozen.
+- Revision 62 (2026-11-12, plan §14; the Back's D-462): after R8-S2b2 (DECISIONS R8-M30) `formatInteger128`'s two defines are `FormatInteger128Runtime.ll.in`'s, so W2 deletes `Utf8FormatRuntime.ll.in` whole (§5.2's W2 and X1 rows, §10.2's item 3). Nothing frozen.
+- Revision 63 (2026-11-12, plan §14; the owner's decision in K's session): RP8 for a behaviour-preserving R7 unit: no per-unit timing slot; the deterministic checks and the checkpoints after every fifth landed window (DECISIONS R7-M22). Nothing frozen.
+- Revision 64 (2026-11-13, plan §14; the Middle's D-514, the Front's D-503): M1 part 3's row after R9-M1 part 3 landed (no DECISIONS entry; `MarkdownUnicode.IsWhitespace` deferred to PLAN G818); the O3 row's G195 item done. Nothing frozen.
+- Revision 65 (2026-11-13, plan §14; the Back's D-518): after R8-S2d2 (DECISIONS R8-M30) §5.2's S2 row records S2d2 done (the shim's removal), and the L0 and S2 rows name `formatInteger128`'s runtime as `FormatInteger128Runtime.ll.in`'s `__kimi_format_integer128` and `__kimi_decimal_div10` (since R8-S2b2). Nothing frozen; the R8, S2 and W2 rows name `FormatKind` by S2d2's name, `StringFormatKind`.
+- Revision 66 (2026-11-13, plan §14; the owner's approval of K's slot proposals (1) and (2) in K's session, verbatim 「(1) と (2)を適用して下さい」): §3.2 and §3.3's build gap between two quiet slots is 5 minutes (was 15) and none between one session's consecutive slots; a slot still starts only when quiet_guard reports FREE. Nothing frozen.
+- Revision 67 (2026-11-13, plan §14; the Middle's D-545): §5.3 gains the F6 row, R9-F6 "parser member limits" (twelve behaviour-preserving units in four batches; batch A done with R9-F6 batch A). Nothing frozen.
+- Revision 68 (2026-11-13, plan §14; the Back's D-540): after R8-W2 c1 (DECISIONS R8-M39) §5.2's W2 row records part c's c0 and c1 done, next c3b and c3a. Nothing frozen.
+- Revision 69 (2026-11-13, plan §14; the owner's adoption of K's three R7 proposals in K's session, verbatim 「O-244 a O-245 a R7 の 3 案（A・B・C） ABC全て で決定します。」): §3.3's R7 core seats are two and two, open issues during R7 are fixed at once only for class 1, wrong code or a blocker (the others go to the R7 unit rewriting their component or after R7's exit), and small fixes in one component are bundled into one unit. Nothing frozen.
+- Revision 70 (2026-11-13, plan §14; the Back's D-557): after R8-W2 c3b (DECISIONS R8-M24's amendment) §5.2's W2 row records part c's c3b done, next c3a. Nothing frozen.
+- Revision 71 (2026-11-13, plan §14; the Back's D-558): after R8-W2 c3a (DECISIONS R8-M24's c3a amendment) §5.2's W2 row records part c's c3a done, next c2a and c2t, c2b, c4. Nothing frozen.
+- Revision 72 (2026-11-13, plan §14; the Front's D-559, its planning decision after C2b's design): §4.2 and §5.0's C2 row: b1 stays C2b, b1' joins c2's part 3, b2 and V5b-2 join e2 as the nominal re-entry rule's first reader, b3 follows e2 and c3; PLAN G588/G629 name e2. Nothing frozen.
+- Revision 73 (2026-11-13, plan §14; the Front's D-571): after R7-C2a a1 (DECISIONS BU-199; the owner's O-246 (a), verbatim 「a」) §5.0's C2 row states part a (`Enumerate`, a1 landed, its RP8 recovery condition on c3 and e2), a0 as C9's (§5.1 moves it from C2's row to C9's; revision 42's sentence superseded), c2 as its own Major unit, c3's added condition, and e2 and f as later Major units with their own design reviews; §5.0 gains the C2 census table; §4.2 reads "C2" as C2a1 for C3-C6 and P3. Nothing frozen.
+- Revision 74 (2026-11-13, plan §14; the owner's O-248 (b) in K's session, verbatim 「O-248 b」, with the Front's D-573): §4.2 and §5.0's C2 row: R7-C2 c1' withdrawn, its row (2) fix in c2-2 and its six lookups in c2-3. Nothing frozen.
+- Revision 75 (2026-11-13, plan §14; the owner's adoption of the Middle's combined oracle in the Middle's session, verbatim "Yes, adopt it", the Middle's D-584): §3.3's RP17 bullet and §7.1's Acceptance row: one A5 oracle per window for the units landing together. Nothing frozen.
+- Revision 76 (2026-11-14, plan §14; the Front's D-619, with R7-C2c2 c2-2): §5.0's e2 entry: e2-3 extends only depth-1 requests (c2-2), restating c2's design review note B. Nothing frozen.
+- Revision 77 (2026-11-14, plan §14; the Front's D-635, with R7-C2e2 e2-1 and the owner's O-281 (a)): §5.0's e2 entry in six parts with e2-1's lifetime; §4.2's e2-1 order. Nothing frozen.
+- Revision 78 (2026-11-14, plan §14; the Middle's D-638, with R9-F6 batch B): §5.3's F6 row marks batch B done. Nothing frozen.
+- Revision 79 (2026-11-14, plan §14; the Middle's D-639, with R9-F6 batch C): §5.3's F6 row marks batch C done. Nothing frozen.
+- Revision 80 (2026-11-14, plan §14; the Middle's D-640, with R9-F6 batch D): §5.3's F6 row marks batch D done. Nothing frozen.
+- Revision 81 (2026-11-14, plan §14; the Front's D-641 and D-633, with R7-C2e2 e2-2): §5.0's e2 entry (e2-2 in three parts, e2-2c closed), c2's arithmetic part, c3's `IsRecursive`, the C2 table's rows. Nothing frozen.
+- Revision 82 (2026-11-14, plan §14; the Back's D-649, from R8-W3's design census): §5.6's R8-W3 hold row names the files W3 edits
+  (`MirBuilder.Expansions.cs`, and `Binding.Sequences.cs`, `Binding.Hir.Adjust.cs`, `HirVocabulary.cs` beside `ExpansionPlan.cs`);
+  §5.2's W3 row's kernel and size (about −70 in src); RP20's shim count (three). Nothing frozen.
+- Revision 83 (2026-11-14, plan §14; the owner's removal of every line, character and size limit, DECISIONS Q19): the statement,
+  token and line-length limits, PLAN's 500 lines and the commit message's length are gone; F6's and M1's rows stand as records; X1's
+  structure check reads the remaining limits; D1-D3 drops G438 (closed) and §5.4's G289 (5) its 171-character clause. Nothing frozen.
+- Revision 84 (2026-11-15, plan §14; the Front's D-659, with R7-C2c2 c2-3): §5.0's C2 row: e2 also completes name discovery through
+  the view's identity closure (dm1); c2-5's and c2-4's completion conditions (c2-3b's staged removal, the Callable rows' identity
+  normalization); e2-2c's entry (e2-2's index takes c2-3b's `RowKind`); c2-3's Semantics part is c2-3e. Nothing frozen.
 - Revision 16 (2026-11-07, plan §14; the owner's O-41 and O-43, verbatim 「推奨の内容でOKです。処理を継続してください。」): R1 splits into R1a, R1b and R1c, and the structs' contract is IMPL §21.1.3's (DECISIONS
   R8-M1). Nothing frozen.
 - Revision 17 (2026-11-07, plan §14; the Front's D-64): C1 done; C2 takes G563; G187 closed. Nothing frozen.

@@ -138,11 +138,18 @@ public sealed partial class FunctionCodegenTest
     };
 
     // The first programs (R5 C0b2, C0c): console output through writeLine, one line, several lines, an empty line and non-ASCII text: the
-    // literal, its borrow, the call and the temporary's destruction (DECISIONS R5-M73, R5-M78).
+    // literal, its borrow, the call and the temporary's destruction (DECISIONS R5-M73, R5-M78). S3 (SPEC 22.7; R8-W2 d's coverage table):
+    // every byte as written, NUL, a CR LF inside the text and an unnormalized combining sequence, each line ending in one LF.
     public static TheoryData<string, string, string> Hellos => new()
     {
         { "HelloWorld", "Console.writeLine(\"Hello, world!\")\n", "Hello, world!\n" },
         { "HelloLines", "Console.writeLine(\"one\")\nConsole.writeLine(\"\")\nConsole.writeLine(\"日本語\")\n", "one\n\n日本語\n" },
+        {
+            "S3HelloBytes",
+            "Console.writeLine(\"one\")\nConsole.writeLine(\"\")\nConsole.writeLine(\"日本語\")\nConsole.writeLine(\"a\\0b\")\n" +
+            "Console.writeLine(\"c\\r\\nd\")\nConsole.writeLine(\"e\\u(301)\")\n",
+            "one\n\n日本語\na\0b\nc\r\nd\ne\u0301\n"
+        },
     };
 
     // The operator rows' programs (R5 C1a; DECISIONS R5-M76): each tests its results and divides by zero when one is wrong, so a normal exit
@@ -325,7 +332,10 @@ public sealed partial class FunctionCodegenTest
 
     // The rvalue rows' programs (R5 C2b; DECISIONS R5-M87), self-checking as the operator rows' are: Tuples built, copied, nested and read,
     // zero-sized values borrowed (SPEC 4.3, IMPL 21.1.3); enum Cases built and matched by their discriminant and payload (SPEC 6.5, 14.8);
-    // lengths and indices (SPEC 4.7.3); arrays of values in memory built and filled (SPEC 4.3.3); a string moved, then written.
+    // lengths and indices (SPEC 4.7.3); arrays of values in memory built and filled (SPEC 4.3.3); a string moved, then written; the keyed
+    // Storage's instances (SPEC 8.15.3; PLAN G597): a generic key's and a forwarded one's that start at the storage and that displace, a
+    // default's copy in each (the fold's unkeyed and displaced forms) and through a generic caller (its keyed one), a resolved key, and
+    // the library's slice instances, each reading its view's first element.
     public static TheoryData<string, string, string> RvaluePrograms => new()
     {
         {
@@ -356,6 +366,17 @@ public sealed partial class FunctionCodegenTest
             string.Empty
         },
         { "RvalueString", "let t = \"moved\"\nlet u = t@move\nConsole.writeLine(u)\n", "moved\n" },
+        {
+            "RvalueKeyedStorage",
+            "func h<R>(v: ref/Array<i32>, r: R, n: i32 = v[r][0]) -> i32\n    R is PositionRange\n    return n\n" +
+            "func k<R>(v: ref/Array<i32>, r: R) -> i32\n    R is PositionRange\n    return v[r][0]\n" +
+            "func g<Q>(v: ref/Array<i32>, q: Q) -> i32\n    Q is PositionRange\n    return h(v, q)\n" +
+            "func w(v: ref/Array<i32>) -> i32 => v.slice(..)[0] + v.slice(1..3)[0]\n" +
+            "let a: Array<i32> = [10, 20, 30]\nlet x1 = h(a, 1..)\nlet x2 = h(a, ..)\nlet x3 = g(a, 2..)\nlet x4 = g(a, ..)\nlet x5 = k(a, 1..3)\n" +
+            "let x6 = k(a, ..2)\nlet x7 = h(a, (1..).resolve(a.length))\nlet x8 = h(a, (..).resolve(a.length))\nlet x9 = w(a)\n" +
+            "Console.writeLine(\"\\(x1) \\(x2) \\(x3) \\(x4) \\(x5) \\(x6) \\(x7) \\(x8) \\(x9)\")\n",
+            "20 10 30 10 20 10 20 10 30\n"
+        },
     };
 
     // A requirement's witnesses (SPEC 8.6.3-8.6.4; DECISIONS R5-M93): a conformance's body, an inherited one and a generic Type's instance.
@@ -547,7 +568,7 @@ public sealed partial class FunctionCodegenTest
     [Fact]
     public void AFixedArrayBehindAReferenceIsIndexedWithoutItsLayout()
     {
-        var c = Analyze("public func f(p: ref/[300000000 of i64], i: isize) -> i64 => p[i]\n", OutputKind.Library);
+        var c = Analyze("func f(p: ref/[300000000 of i64], i: isize) -> i64 => p[i]\n", OutputKind.Library);
         Assert.True(c.Accepts, string.Join(", ", Records(c)));
         using var writer = new StringWriter();
         Assert.True(c.Generate(writer), string.Join(", ", Records(c)));
@@ -589,16 +610,23 @@ public sealed partial class FunctionCodegenTest
     public void RawProgramsRun(string name, string source, string stderr)
         => ScalarEmissionTest.EmitFixture(name, source, string.Empty, stderr.Length == 0 ? 0 : 1, stderr);
 
-    // The console writeLine is a compiler function's legacy runtime row (RuntimeAbi.WriteLine): the routine is called with the string borrow
-    // loaded from its local and the call site's location text (SPEC 22.5.1), a header constant. A string constant is stored whole into its
-    // local, its bytes a header constant and its release kind Static (IMPL 21.1.3); the empty string has no bytes.
+    // SPEC 22.7 (R8-W2 d): the console writeLine of a string is a Kimigayo body with a CallerLocation row: it is called with the string
+    // borrow loaded from its local and the call site's location text (SPEC 22.5.1), a header constant, and views the string's bytes for
+    // the view overload at the location it received (fail-before: the runtime routine __kimi_write_line, a legacy row). A string
+    // constant is stored whole into its local, its bytes a header constant and its release kind Static (IMPL 21.1.3); the empty string
+    // has no bytes.
     [Fact]
-    public void WriteLineCallsTheConsoleRuntimeRow()
+    public void WriteLineCallsTheConsoleBody()
     {
-        var text = Generate(Analyze(Strings, OutputKind.Library));
+        var c = Analyze(Strings, OutputKind.Library);
+        var text = Generate(c);
         var ir = GeneratedIr.Parse(text);
         var call = Assert.Single(ir.Single("internal void (ptr noundef nonnull align 8 dereferenceable(24))").Instructions, static x => x.Opcode == "call");
-        Assert.Same(ir.Function("__kimi_write_line"), call.Callee);
+        var line = LineOf(ir, c, view: false);
+        Assert.Same(line, call.Callee);
+        var view = Assert.Single(CallsOf(line), x => x.Callee == LineOf(ir, c, view: true));
+        Assert.Equal(line.Parameters.TakeLast(2), view.Operands.TakeLast(2));
+        Assert.DoesNotContain("__kimi_write_line", text, StringComparison.Ordinal);
         Assert.Equal("call void @(ptr noundef nonnull align 8 dereferenceable(24) %, ptr @, i64 15)", call.Shape);
         Assert.Equal("load ptr, ptr %, align 8", Assert.Single(call.Operands).Shape);
         Assert.Contains(Constant("Hello.kimi:1:32"), text);
@@ -609,6 +637,20 @@ public sealed partial class FunctionCodegenTest
         Assert.Equal(
             "store %kimi.string { ptr null, i64 0, i8 0 }, ptr %, align 8",
             Assert.Single(ir.Single("internal void (ptr, i1)").Instructions, static x => x.Opcode == "store" && x.Shape.Contains("kimi.string")).Shape);
+    }
+
+    // D5/L1 (SPEC 9, 22.7; R8-W2 d's coverage table): a user function writeLine(text: ref/string), the string overload's name and
+    // parameters, is the program's own function. LineOf finds each overload's body by its cataloged declaration beside it, and the startup
+    // calls the user's function, then the string overload's body.
+    [Fact]
+    public void D5AUserWriteLineOfTheStringOverloadsParametersIsItsOwnFunction()
+    {
+        var c = Analyze("func writeLine(text: ref/string) => Console.writeLine(\"user \\(text)\")\nwriteLine(\"x\")\nConsole.writeLine(\"lib\")\n");
+        var ir = GeneratedIr.Parse(Generate(c));
+        var line = LineOf(ir, c, view: false);
+        var writers = FunctionsOf(ir, c, "writeLine");
+        var user = Assert.Single(writers.Except([line, LineOf(ir, c, view: true)]));
+        Assert.Equal([user, line], ir.Startup.Instructions.Select(static x => x.Callee).Where(x => x is not null && writers.Contains(x)));
     }
 
     // The operator rows (R5 C1a; DECISIONS R5-M76; SPEC 13.3.1, IMPL 21.3.3): a checked integer operation is its overflow intrinsic, whose
@@ -816,6 +858,20 @@ public sealed partial class FunctionCodegenTest
         Assert.Equal(2, texts.Length);
         Assert.Single(texts, static x => x.Contains("sext i32 %t0 to i64\n", StringComparison.Ordinal) && !x.Contains("__kimi_abort", StringComparison.Ordinal));
         Assert.Single(texts, static x => x.Contains("icmp ugt i64 %t0, 9223372036854775807\n", StringComparison.Ordinal) && x.Contains("__kimi_abort", StringComparison.Ordinal));
+    }
+
+    // SPEC 8.15.3 (PLAN G597): a keyed Storage is written by its key's need in the item's instance (LayoutNeeds.Of(key)): the instance
+    // whose key starts at the storage stores the sequence's buffer as it is; the one whose key displaces adds the start times its
+    // element's stride, the statement a raw p + n uses (Displace) (fail-before: both instances displaced, one by a zero start).
+    [Fact]
+    public void AKeyedStorageDisplacesWhereItsInstancesKeyDoes()
+    {
+        var source = "func h<R>(v: ref/Array<i64>, r: R) -> isize\n    R is PositionRange\n    return v[r].length\n" +
+            "let a: Array<i64> = [1, 2, 3]\nlet x = h(a, ..)\nlet y = h(a, 1..)\n";
+        var texts = ItemTexts(Analyze(source), "h");
+        Assert.Equal(2, texts.Length);
+        Assert.Single(texts, static x => !x.Contains(" = mul ", StringComparison.Ordinal));
+        Assert.Single(texts, static x => Regex.IsMatch(x, @" = mul i64 %t\d+, 8\n  %t\d+ = getelementptr i8, ptr %t\d+, i64 %t\d+\n"));
     }
 
     // The place writer (R5 C2a; DECISIONS R5-M83, package C 3.2 I7 and I9): a Place's address is its root's home, then each step at the offset
@@ -1225,6 +1281,22 @@ public sealed partial class FunctionCodegenTest
     public void LayeredComparisonsRun()
         => ScalarEmissionTest.WriteFixture("RawComparisonLayers", Generate(LayeredComparisons), string.Empty);
 
+    // DECISIONS R8-M2, R8-M18 (PLAN G693): a contiguous remainder's steps and splits, a selected view's start and a Slice iterator's step
+    // are bounded by the remainder's invariant or a dominating guard, so their bodies check no arithmetic.
+    [Fact]
+    public void RemainderBodiesCheckNoBoundedArithmetic()
+    {
+        const string Source =
+            "func rmTotal(values: ref/Array<i32>) -> i32\n    var sum: i32 = 0\n    for v in values => sum += v\n    return sum\n" +
+            "func rmZero(values: uniq/Array<i32>)\n    for v in values\n        v@follow = 0\n" +
+            "func rmDrain(values: [3 of i32]) -> i32\n    var sum: i32 = 0\n    for v in values@move => sum += v\n    return sum\n" +
+            "func rmEach(values: Slice<i32>) -> i32\n    var sum: i32 = 0\n    for v in values => sum += v\n    return sum\n" +
+            "func rmPair(values: uniq/Array<i32>) -> bool\n    match values.tryGetPairUniq(first: 0, second: 1)\n" +
+            "        .Some(_) => return true\n        .None => return false\n" +
+            "func rmView(values: uniq/Array<i32>) -> i32\n    var view = values.sliceUniq(1..)\n    return view[0]\n";
+        AssertNoCheckedArithmetic(Analyze(Source, OutputKind.Library), "splitFirst", "takeFirst", "tryGetPairUniq", "sliceUniq", "next");
+    }
+
     // SPEC 5.3: a raw pointer to a zero-sized Type is displaced by nothing, so p + n is the pointer itself.
     [Fact]
     public void AZeroStrideDisplacementKeepsThePointer()
@@ -1271,12 +1343,9 @@ public sealed partial class FunctionCodegenTest
     [Fact]
     public void EveryMirFailCodeHasAReason()
     {
-        CompilerFunctionKind[] served =
-        [
-            CompilerFunctionKind.StorageIndexBounds, CompilerFunctionKind.StorageMissingDictionaryKey, CompilerFunctionKind.StorageArgumentOutOfRange,
-            CompilerFunctionKind.StorageCountOverflow, CompilerFunctionKind.StorageAllocationSizeExceeded,
-        ];
-        string[] codes = [.. served.Select(static x => IntrinsicDisposition.Of(x).Code!), "KIMI_E_DUPLICATE_KEY", "KIMI_E_FORMAT"];
+        string[] served = ["Storage.indexBounds", "Storage.missingDictionaryKey", "Storage.argumentOutOfRange", "Storage.countOverflow", "Storage.allocationSizeExceeded"];
+        var library = Compilation.CreateForTest().Library;
+        string[] codes = [.. served.Select(x => LibrarySource.Symbol(library, x).Definition.Code!), "KIMI_E_DUPLICATE_KEY", "KIMI_E_FORMAT"];
         Assert.Equal(7, codes.Distinct().Count());
         Assert.All(codes, static x => Assert.StartsWith(x + ":", AbortReasons.All[AbortReasons.Of(x)].Text, StringComparison.Ordinal));
         Assert.Equal(-1, AbortReasons.Of("KIMI_E_UNKNOWN"));
@@ -1341,19 +1410,6 @@ public sealed partial class FunctionCodegenTest
             Assert.True(written, string.Join(", ", module.Records));
             return Assert.IsType<FunctionAbi>(module.Import(Mix(c.Kotonoha.RootKoto).SymbolOf()!));
         }
-    }
-
-    // SPEC 7.7.4, 22.6 (DECISIONS R5-M146): a safe #LibraryImport function's Item, which has no body target, is called by the import's C
-    // signature, as its direct call is (fail-before: one located Unsupported_Kd at the Value call).
-    [Fact]
-    public void AnImportsItemCallsTheImport()
-    {
-        var c = Analyze(
-            "group Native\n    #LibraryImport(\"kernel32\", \"GetLastError\")\n    public func lastError() -> u32\nfunc last() -> u32\n" +
-            "    let f = Native.lastError\n    return f()\n",
-            OutputKind.Library);
-        _ = Generate(c);
-        Assert.Single(Regex.Matches(Assert.Single(ItemTexts(c, "last")), @"= call i32 @GetLastError\(\)\n"));
     }
 
     // X13, SPEC 13.5.5: a PairLayer step is decided by the item's view: in the owner case the Place itself, so the write stores into the
@@ -1450,8 +1506,8 @@ public sealed partial class FunctionCodegenTest
         Assert.Equal(expected, GeneratedIr.Parse(ir).Single("internal i32 (i1)").Blocks.Skip(1).Select(static x => x.Label));
     }
 
-    // DECISIONS R5-M146 (X2): every form of an accepted program is written, with no record (a requirement whose witness has no MIR body is
-    // the collector's BodylessWitness gap at check, InstanceCollectorTest). A string's Move into another local is written since C2b
+    // DECISIONS R5-M146 (X2): every form of an accepted program is written, with no record (a requirement whose witness is an import calls
+    // it through its Import item since R8-G2, ForeignEmissionTest). A string's Move into another local is written since C2b
     // (DECISIONS R5-M87), a function's call since C3a, a generic callee's instance whose Keep of a T instanced at i32 needs no drop
     // included (R5-M78, R5-M89), a requirement's since C3b (R5-M93), a Builtin shim's since C8f (R5-M126) and a property witness's since
     // C3c (R5-M141); a Fn call of a formatting row is written since C9a (DECISIONS R5-M128), the Utf8Slice overload of writeLine included,
@@ -1582,9 +1638,9 @@ public sealed partial class FunctionCodegenTest
     }
 
     // K11 (ModuleCodegen.Requested; DECISIONS R5-M77): every request naming an item outside Generated is that broken contract, at the item's
-    // site: a static's ensure function and a user formatter's wrapper, each item (by kind and
-    // definition) kept out of Generated by making its requesters' targets non-runtime, since Mark follows runtime targets only. The wrapper's
-    // row held before Wrapper read Requested: the wrapper's definition requests its target's Signature.
+    // site: a static's ensure function and a user formatter's format, each item (by kind and
+    // definition) kept out of Generated by making its requesters' targets non-runtime, since Mark follows runtime targets only. The format's
+    // row is a Signature request: the write body's requirement call requests its target's Signature.
     [Theory]
     [InlineData("group Values\n    public let count: i32 = start()\n    func start() -> i32 => 4\nlet x = Values.count\n", "Body", "count", "let count: i32 = start()")]
     [InlineData(
@@ -1782,16 +1838,51 @@ public sealed partial class FunctionCodegenTest
     // The definitions of a definition's body items (null: the top-level statements), each written directly whatever records the module's
     // other items make: an instance a call names (the call is C3a's row) or a body beside a broken one. Every body item is an output
     // root.
-    internal static string[] ItemTexts(Compilation c, string? name)
+    internal static string[] ItemTexts(Compilation c, string? name) => ItemTexts(c, (_, definition) => definition?.Name == name);
+
+    // The program's own body items, those whose MIR body is defined from the program's source and not from the library's (MirBody.Source,
+    // SourceRef.IsLibrary), written as ItemTexts writes them: the subject of a check on what the program's code does, whatever library
+    // bodies its module carries.
+    internal static string[] ProgramTexts(Compilation c) => ItemTexts(c, static (body, _) => !body.Source.IsLibrary);
+
+    // Console.writeLine's function in a module by overload (SPEC 22.7; R8-W2 d), the body item of the cataloged declaration: the string
+    // overload's or the view overload's.
+    internal static IrFunction LineOf(GeneratedIr ir, Compilation c, bool view)
+    {
+        var id = view ? KimiDeclarationId.WriteLineUtf8 : KimiDeclarationId.WriteLine;
+        return Assert.Single(Functions(ir, ItemTexts(c, (_, definition) => definition?.LibraryDeclaration == id)));
+    }
+
+    // The functions of a definition's body items, one per instance (ItemTexts).
+    internal static IrFunction[] FunctionsOf(GeneratedIr ir, Compilation c, string name) => Functions(ir, ItemTexts(c, name));
+
+    // DECISIONS R8-M2: each named definition has a written body, and none of them checks an arithmetic step.
+    internal static void AssertNoCheckedArithmetic(Compilation c, params string[] names)
+    {
+        foreach (var name in names)
+        {
+            var texts = ItemTexts(c, name);
+            Assert.NotEmpty(texts);
+            Assert.All(texts, x => Assert.DoesNotContain("with.overflow", x));
+        }
+    }
+
+    // The body items a selection takes, by each item's MIR body and its definition's symbol (null: top-level statements), each written
+    // directly (ItemTexts).
+    private static string[] ItemTexts(Compilation c, Func<MirBody, BindingSymbol?, bool> selects)
     {
         var (program, collector, module, bodies) = WrittenModule(c);
-        return [.. bodies.Where(x => collector.Set.Items[x].Key.Body.Def.Decl?.Name == name).Select(x =>
+        return [.. bodies.Where(x => selects(program.Body(collector.Set.Items[x].BodyOrdinal), collector.Set.Items[x].Key.Body.Def.Decl)).Select(x =>
         {
             using var writer = new StringWriter();
             new FunctionCodegen(module, c.Types).Write(program, collector, x, writer);
             return writer.ToString();
         })];
     }
+
+    // The module's functions that body items' texts define.
+    private static IrFunction[] Functions(GeneratedIr ir, string[] items)
+        => [.. items.Select(x => ir.Function(Regex.Match(x, @"define internal \S+ @(__kimi_f\d+)\(").Groups[1].Value))];
 
     // A program analyzed for an output form; a source that declares a test is a test build's test-only source, its catalog discovered
     // after acceptance as `Compilation.Check` discovers it.

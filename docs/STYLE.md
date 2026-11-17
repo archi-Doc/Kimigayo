@@ -38,7 +38,7 @@ programs. Hypothetical APIs do not imply support; see [STATUS.md](STATUS.md).
 | function | lowerCamelCase operation name; see the variants below | `append`, `validateUtf8`, `toString` |
 | Property | lowerCamelCase noun; Boolean names use `is`, `has` or `can` | `length`, `capacity`, `isEmpty` |
 | parameter, local | lowerCamelCase name describing its role | `index`, `destination` |
-| file | UpperCamelCase `.kimi`, named for its main declaration or topic | `Array.kimi`, `ArrayOperations.kimi` |
+| file | UpperCamelCase `.kimi`, named for its main declaration or topic | `Array.kimi`, `DictionaryStorage.kimi` |
 
 - `[Language]` Names are case-sensitive and must be in NFC; `_` alone is not a Name
   ([SPEC §2.5](spec/02-source-and-lexical-structure.md#25-names)).
@@ -75,7 +75,6 @@ For example, `iterateUniq` need not yield exclusive references. Failure-related 
   `=> item` on the header's ending line or an indented block
   ([SPEC §2.1](spec/02-source-and-lexical-structure.md#21-source-text-and-lines)).
 - `[Kimi]` Use `=>` for a short, single-item body that fits on one line. Otherwise use a block.
-- `[Kimi]` Keep source lines within 120 columns.
 - `[Kimi]` Write the task slot and the task argument `task;` with no space before the `;` and one space after it
   when an item follows on the same line: `(task;)`, `(task; url: ref/Url)`, `fetch(task; url)`
   ([SPEC §24.2.1](spec/24-suspension-and-asynchronous-tasks.md#2421-form)).

@@ -116,24 +116,28 @@ internal readonly record struct PairBinder(BindingSymbol Target, SemanticsMask A
 
     /// <summary>Collects the pair binders in scope of a body (SPEC 8.15): those of its own declaration, of its containers and, for a
     /// Closure, an accessor or a static initializer, of the enclosing declarations, outer to inner in slot order, each with its admitted
-    /// set; the MIR body's binders, whose resolved ones give its Semantics cases.</summary>
+    /// set; the MIR body's binders, which give its Semantics cases.</summary>
     /// <param name="body">The body's declaration.</param>
     /// <param name="binders">The caller-owned list to fill; it is cleared first.</param>
     internal static void Collect(Koto body, List<PairBinder> binders) => body.CodeContext.Compilation.Binding.PairBinders(body, binders);
 
     /// <summary>Counts the Semantics cases of a body without overflowing the resource counter (SPEC 8.15).</summary>
     /// <param name="binders">The body's pair binders and their admitted sets.</param>
-    /// <returns>The product of the resolved binders' admitted sets, saturated at the largest representable count.</returns>
+    /// <returns>The product of the binders' admitted sets, saturated at the largest representable count; 0 when one admits none (SPEC
+    /// 8.3.4: no case), read before any division; only Binding reads 0 (<c>CheckCaseBound</c>, a case adaptation's rows): it publishes no
+    /// part of a definition with no case, so a published body's count, which MIR reads, is at least 1.</returns>
     internal static long CaseProduct(IReadOnlyList<PairBinder> binders)
     {
         var product = 1L;
         for (var i = 0; i < binders.Count; i++)
         {
-            if (binders[i].Resolved)
+            var count = BitOperations.PopCount((uint)binders[i].Admitted);
+            if (count == 0)
             {
-                var count = BitOperations.PopCount((uint)binders[i].Admitted);
-                product = product > long.MaxValue / count ? long.MaxValue : product * count;
+                return 0;
             }
+
+            product = product > long.MaxValue / count ? long.MaxValue : product * count;
         }
 
         return product;
@@ -187,7 +191,7 @@ internal enum BindingFailure : byte
     ConflictingImportSignature,
     ConflictingRuntimeSymbol,
     ConflictingImportSupply,
-    UnsafeFunctionValue,
+    DirectCallFunctionValue,
     UnavailableReservedImport,
     SplitCLayoutStorage,
     InvalidInlineLayout,
@@ -309,8 +313,6 @@ public sealed class BindingSymbol
 
     public IntrinsicKind Intrinsic { get; internal init; }
 
-    public CompilerFunctionKind CompilerFunction { get; internal init; }
-
     public Koto Declaration { get; }
 
     public BoundType? Type { get; internal set; }
@@ -331,12 +333,30 @@ public sealed class BindingSymbol
 
     internal KimiDeclarationId? LibraryDeclaration { get; init; }
 
+    // SPEC 22.5.1, IMPL 21.3.4: whether this library function's declaration carries `#CallerLocation`, set by the library's registration
+    // on the original declaration's symbol only; a specialization has it through its original (TyCtxt.Original).
+    internal bool CallerLocation { get; init; }
+
+    // Plan 5.8, IMPL 21.3.4: how a call of this function is served, set where the symbol is made: a library declaration's
+    // `#Intrinsic("Name")` (Fail with its code) by the library's registration on the original declaration's symbol, $abort's
+    // Intrinsic, a built-in target's Shim (PrepareBuiltinTargets); otherwise Body.
+    internal IntrinsicDisposition Definition { get; init; }
+
     internal List<BoundOrigin>? AggregateInputOrigins { get; set; }
 
     internal BoundType? WholeType { get; set; }
 
     // The stored shape of a struct or enum declaration, refilled by each pass.
     internal AdtDef? Adt { get; set; }
+
+    // SPEC 8.4, 9.2: whether this symbol names a Contract: a Contract declaration or a bound reference to one, never a Contract's Self Type
+    // parameter, which the Contract declares too.
+    internal bool IsContract => this.Declaration is ContractKoto && this.SelfOf is null;
+
+    // SPEC 8.1.1, 8.2.3, 9.1: whether this symbol is a generic input of its declaration: a Type parameter, a pair target or a Semantics
+    // parameter. A Contract's Self Type parameter is none: it stands for the conforming Type, so a condition on it is an implementation
+    // requirement checked at the conformance, never a reference input condition (SPEC 6.1.4, 8.7.1).
+    internal bool IsGenericInput => this.Kind is BindingSymbolKind.TypeParameter or BindingSymbolKind.SemanticsTarget or BindingSymbolKind.SemanticsParameter && this.SelfOf is null;
 
     // SPEC 8.4: the Contract whose dedicated Self Type parameter this symbol is; null for any other symbol.
     internal BindingSymbol? SelfOf { get; set; }
@@ -400,10 +420,17 @@ public sealed class BindingSymbol
 }
 
 /// <summary>An immutable complete type; constructed types are interned within a compilation.</summary>
-/// <remarks>Interning makes identity the type equality, so equality and hashing never walk the fields.</remarks>
-public sealed record BoundType
+/// <remarks>Interning makes identity the type equality, so equality and hashing never walk the fields. TyCtxt makes every Type but the
+/// static ones below: the interned ones (TyCtxt.Intern) and the parameter Types (TyCtxt.Parameter). Each carries the dense id its
+/// maker gave it (DECISIONS BU-220), so the constructors are called only there; an ArchitectureRulesTest row reads the IL for it.</remarks>
+public sealed class BoundType : IEquatable<BoundType?>
 {
+    // DECISIONS BU-220: the static Types hold the ids 1..StaticCount from one fixed list: Unit, Never, Boolean, the sixteen other
+    // primitives in CreatePrimitives' order, Range, then the twelve wrapping Scalars; each compilation's TyCtxt numbers its own after them.
+    internal const int StaticCount = 32;
+
     private readonly NumericCategory numeric;
+    private readonly byte width;
 
     // The integer Type whose representation a wrapping integer Scalar shares (SPEC 3.1.1); the Type itself otherwise.
     private readonly BoundType underlying;
@@ -423,10 +450,12 @@ public sealed record BoundType
     private readonly bool hasAbstractPart;
     private readonly int height;
 
-    internal BoundType(string name, BoundTypeKind kind, BindingSymbol? symbol = null, SemanticsKind semantics = SemanticsKind.Owner, BoundType[]? components = null, long length = 0, BoundOrigin? origin = null, BoundOrigin[]? originArguments = null, BoundLength? lengthExpression = null, BoundLength?[]? lengthArguments = null, Subst? closureContext = null)
+    internal BoundType(int id, string name, BoundTypeKind kind, BindingSymbol? symbol = null, SemanticsKind semantics = SemanticsKind.Owner, BoundType[]? components = null, long length = 0, BoundOrigin? origin = null, BoundOrigin[]? originArguments = null, BoundLength? lengthExpression = null, BoundLength?[]? lengthArguments = null, Subst? closureContext = null, Koto? binder = null)
     {
+        this.Id = id;
         this.Name = name;
         this.Kind = kind;
+        this.Binder = binder;
         this.Symbol = symbol;
         this.Semantics = semantics;
         this.Components = components ?? [];
@@ -443,7 +472,7 @@ public sealed record BoundType
         this.LengthExpression = lengthExpression;
         this.LengthArguments = lengthArguments ?? [];
         this.ClosureContext = closureContext;
-        this.numeric = kind == BoundTypeKind.Primitive ? Categorize(name) : NumericCategory.None;
+        (this.numeric, this.width) = kind == BoundTypeKind.Primitive ? Row(name) : default;
         this.underlying = this;
 
         // Components are complete before interning, so these summaries are exact and never revisited.
@@ -452,7 +481,7 @@ public sealed record BoundType
         var slot = found || raw || kind == BoundTypeKind.Parameter;
         var parameter = kind is BoundTypeKind.Parameter or BoundTypeKind.SemanticsAdaptation;
         var original = kind == BoundTypeKind.Parameter && symbol?.Kind == BindingSymbolKind.SemanticsTarget;
-        var pair = original || kind is BoundTypeKind.SemanticsApplication or BoundTypeKind.SemanticsAdaptation;
+        var pair = this.IsPairLayer;
         var stores = found || original;
         var abstractPart = this.IsAbstract;
         var closure = kind == BoundTypeKind.Closure;
@@ -479,6 +508,13 @@ public sealed record BoundType
             parameter |= argument is { IsConstant: false };
         }
 
+        // R8-W2: a fixed array's interpolation-bound term over abstract value Types is an abstract part, open until its instance folds it.
+        if (lengthExpression is { HasAbstractPart: true })
+        {
+            parameter = true;
+            abstractPart = true;
+        }
+
         // DECISIONS BU-60: a closure's context its own Type's instance holds (a Field initializer's, target the closure itself) is a part
         // of the Type, open when that instance is; it carries no Origin (TyCtxt.HeldContext erases it).
         if (closureContext is { Declaring: { } held } && ReferenceEquals(closureContext.Target, symbol))
@@ -497,14 +533,16 @@ public sealed record BoundType
 
     // SPEC 3.1.1: the wrapping integer Scalar Wrapping<T> over one integer Type, which keeps T's representation and
     // signedness. It is a Primitive by Core identity: no declaration, components or storage, and identity by reference.
-    private BoundType(string name, BoundType integer)
+    private BoundType(int id, string name, BoundType integer)
     {
+        this.Id = id;
         this.Name = name;
         this.Kind = BoundTypeKind.Primitive;
         this.Semantics = SemanticsKind.Owner;
         this.Components = [];
         this.OriginArguments = [];
         this.numeric = integer.numeric;
+        this.width = integer.width;
         this.underlying = integer;
     }
 
@@ -515,6 +553,12 @@ public sealed record BoundType
         Unsigned,
         Float,
     }
+
+    public static BoundType Unit { get; } = new(1, "()", BoundTypeKind.Primitive);
+
+    public static BoundType Never { get; } = new(2, "Never", BoundTypeKind.Primitive);
+
+    public static BoundType Boolean { get; } = new(3, "bool", BoundTypeKind.Primitive);
 
     /// <summary>Gets the canonical type name.</summary>
     public string Name { get; }
@@ -550,12 +594,6 @@ public sealed record BoundType
     /// <summary>Gets a value indicating whether this is a numeric Type: integer, wrapping integer or floating-point.</summary>
     public bool IsNumeric => this.numeric != NumericCategory.None;
 
-    public static BoundType Unit { get; } = new("()", BoundTypeKind.Primitive);
-
-    public static BoundType Never { get; } = new("Never", BoundTypeKind.Primitive);
-
-    public static BoundType Boolean { get; } = new("bool", BoundTypeKind.Primitive);
-
     internal static readonly Dictionary<string, BoundType> Primitives = CreatePrimitives();
 
     // Frequently requested primitives; they are the same instances as the Primitives entries.
@@ -567,7 +605,7 @@ public sealed record BoundType
     internal static readonly BoundType ISize = Primitives["isize"];
     internal static readonly BoundType USize = Primitives["usize"];
 
-    internal static readonly BoundType Range = new("Range", BoundTypeKind.Range);
+    internal static readonly BoundType Range = new(20, "Range", BoundTypeKind.Range); // After the sixteen primitives, 4..19.
 
     internal static readonly BoundType Char = Primitives["char"];
 
@@ -581,9 +619,18 @@ public sealed record BoundType
     /// <returns>The interned <c>Wrapping&lt;integer&gt;</c>.</returns>
     internal static BoundType WrappingOf(BoundType integer) => WrappingScalars[integer];
 
+    // DECISIONS BU-220: the Type's dense id, a key only (equality stays identity): 1..StaticCount a static's, else the order in which its
+    // compilation's TyCtxt made it, from StaticCount + 1; 0 is no Type.
+    internal int Id { get; }
+
     // A closure an instance closed keeps that instance's substitution (SPEC 6.1.3, 8.1.3; DECISIONS R5-M36), interned and shared by the instance's
     // closures, even when none of its slots occupy capture storage; a Field initializer's keeps its Type's instance (TyCtxt.HeldType, BU-60).
     internal Subst? ClosureContext { get; }
+
+    // SPEC 8.10, 15.3.4: a Function Type's per-call binder, the Function Type syntax that declares it, while it quantifies the outer
+    // Origin of one of its own direct inputs; null where it quantifies none and on every other kind. An Input Origin of another
+    // binder inside it is fixed, even at its own slot index. Part of the Type's identity (TyCtxt.Intern), kept by every rebuild.
+    internal Koto? Binder { get; }
 
     // Function Item length bindings use declaration slots; Type slots are null. Components contain only actual Types.
     internal BoundLength?[] LengthArguments { get; } = [];
@@ -624,17 +671,33 @@ public sealed record BoundType
     internal int Height => this.height;
 
     /// <summary>Gets a value indicating whether this subtree contains a pair layer (SPEC 13.5.5): the original <c>s/T</c>, an
-    /// annotated occurrence of it or an application <c>s/U</c>; a Semantics case substitutes only such Types (SPEC 8.15).</summary>
+    /// annotated occurrence of it, an application <c>s/U</c> or an adaptation family (<see cref="IsPairLayer"/>); a Semantics case
+    /// substitutes only such Types (SPEC 8.15).</summary>
     internal bool ContainsPairLayer => this.containsPairLayer;
+
+    /// <summary>Gets a value indicating whether this Type is itself a pair layer (SPEC 13.5.5: its outer Semantics is a pair binder),
+    /// in each of its representations: the original <c>s/T</c> (a Parameter whose symbol is the pair's SemanticsTarget), an
+    /// application <c>s/U</c> and an adaptation family <c>p@s</c> (SemanticsAdaptation).</summary>
+    internal bool IsPairLayer => this.Kind is BoundTypeKind.SemanticsApplication or BoundTypeKind.SemanticsAdaptation ||
+        (this.Kind == BoundTypeKind.Parameter && this.Symbol?.Kind == BindingSymbolKind.SemanticsTarget);
 
     // Whether this subtree contains a Closure Type, which an instance closes (Binding.CloseClosureTypes).
     internal bool ContainsClosure => this.containsClosure;
 
+    /// <summary>Gets a value indicating whether this is an integer or wrapping integer Type with a signed representation (SPEC 3.1;
+    /// <c>Wrapping&lt;T&gt;</c> has T's, SPEC 3.1.1); false for every other Type.</summary>
+    internal bool IsSigned => this.numeric == NumericCategory.Signed;
+
+    /// <summary>Gets the width in bits of an integer or wrapping integer Type (SPEC 3.1's storage size; <c>Wrapping&lt;T&gt;</c> has T's,
+    /// SPEC 3.1.1; <c>isize</c> and <c>usize</c> the profile's, <see cref="ScalarTypes.SizeWidth"/>); 0 for every other Type, among them
+    /// a Type whose instance decides its width (SPEC 8.7.4).</summary>
+    internal int Width => this.width;
+
     // Only an unsigned integer Type rejects unary minus; a wrapping integer Type has it for every argument (SPEC 13.3.1).
     internal bool IsUnsignedInteger => this.numeric == NumericCategory.Unsigned && !this.IsWrappingInteger;
 
-    /// <summary>Gets the integer Type whose representation, signedness and width a wrapping integer Type shares, or this
-    /// Type itself. Every Scalar query about width, signedness, layout or formatting goes through it.</summary>
+    /// <summary>Gets the integer Type whose representation a wrapping integer Type shares, or this Type itself; its signedness and
+    /// width are the Type's own, <see cref="IsSigned"/> and <see cref="Width"/>.</summary>
     internal BoundType Underlying => this.underlying;
 
     internal bool IsFloatingPoint => this.numeric == NumericCategory.Float;
@@ -642,6 +705,16 @@ public sealed record BoundType
     /// <summary>Gets a value indicating whether this Type stands for any complete Type of an instance: a Type parameter, a
     /// projection or a dependent Semantics term.</summary>
     internal bool IsAbstract => this.Kind is BoundTypeKind.Parameter or BoundTypeKind.AssociatedProjection or BoundTypeKind.TargetProjection or BoundTypeKind.SemanticsApplication or BoundTypeKind.SemanticsAdaptation;
+
+    /// <summary>Gets a value indicating whether a proof alone decides this Type's built-in conformances and roles (SPEC 8.7.3): an
+    /// abstract Type, by a premise, or a pair's own <c>s/T</c>, by its admitted set (one admitted Semantics gives its head, SPEC
+    /// 8.2.3). The proof judges the admitted set; no reader of this property does.</summary>
+    internal bool IsProofDecided => this.Kind is BoundTypeKind.Parameter or BoundTypeKind.TargetProjection or BoundTypeKind.AssociatedProjection;
+
+    /// <summary>Gets a value indicating whether this is SPEC 8.2.3's abstract Type, whose only evidence is a premise: a Type
+    /// parameter, a pair target, a Contract's Self or an unresolved projection. A pair's own <c>s/T</c> is a pair application, not an
+    /// abstract Type (Binding.TryPairLayer decomposes every Parameter whose symbol is a pair's).</summary>
+    internal bool IsAbstractType => this.IsProofDecided && this is not { Kind: BoundTypeKind.Parameter, Symbol.Kind: BindingSymbolKind.SemanticsTarget };
 
     /// <summary>Gets a value indicating whether this Type is abstract or has an abstract part, whose Loans its Origins do not show.</summary>
     internal bool HasAbstractPart => this.hasAbstractPart;
@@ -658,6 +731,11 @@ public sealed record BoundType
     /// <inheritdoc/>
     public override int GetHashCode() => System.Runtime.CompilerServices.RuntimeHelpers.GetHashCode(this);
 
+    /// <summary>Gets the Type's diagnostic spelling (Binding.DiagnosticTypeName), which internal-invariant messages print; records
+    /// name a Type through the diagnostics adapter.</summary>
+    /// <returns>The spelling.</returns>
+    public override string ToString() => Binding.DiagnosticTypeName(this);
+
     // Whether two Types agree in every part of their own layer but their Origin and Origin arguments, which each identity compares in
     // its own way (exactly, modulo open Origins, except omitted ones). The Name is a primitive's whole layer (SPEC 3.1, 3.8: `i32` and
     // `i64`, `Wrapping<T>` and `T` differ), and a part of any other layer its Symbol or Kind already decides. A raw layer's Origin is
@@ -668,12 +746,24 @@ public sealed record BoundType
             this.LengthArguments.AsSpan().SequenceEqual(other.LengthArguments) && this.Components.Count == other.Components.Count &&
             this.OriginArguments.Count == other.OriginArguments.Count && ReferenceEquals(this.RawOrigin, other.RawOrigin);
 
-    private static NumericCategory Categorize(string name) => name switch
+    // SPEC 3.1's row of a numeric Core, the one table of its category and an integer Core's width in bits; isize and usize have the
+    // profile's (SPEC 22; DECISIONS BU-130). A wrapping integer Type copies its argument's row (SPEC 3.1.1).
+    private static (NumericCategory Numeric, byte Width) Row(string name) => name switch
     {
-        "i8" or "i16" or "i32" or "i64" or "i128" or "isize" => NumericCategory.Signed,
-        "u8" or "u16" or "u32" or "u64" or "u128" or "usize" => NumericCategory.Unsigned,
-        "f32" or "f64" => NumericCategory.Float,
-        _ => NumericCategory.None,
+        "i8" => (NumericCategory.Signed, 8),
+        "i16" => (NumericCategory.Signed, 16),
+        "i32" => (NumericCategory.Signed, 32),
+        "i64" => (NumericCategory.Signed, 64),
+        "i128" => (NumericCategory.Signed, 128),
+        "isize" => (NumericCategory.Signed, (byte)ScalarTypes.SizeWidth),
+        "u8" => (NumericCategory.Unsigned, 8),
+        "u16" => (NumericCategory.Unsigned, 16),
+        "u32" => (NumericCategory.Unsigned, 32),
+        "u64" => (NumericCategory.Unsigned, 64),
+        "u128" => (NumericCategory.Unsigned, 128),
+        "usize" => (NumericCategory.Unsigned, (byte)ScalarTypes.SizeWidth),
+        "f32" or "f64" => (NumericCategory.Float, 0),
+        _ => default,
     };
 
     private static Dictionary<string, BoundType> CreatePrimitives()
@@ -681,12 +771,12 @@ public sealed record BoundType
         var result = new Dictionary<string, BoundType>(StringComparer.Ordinal)
         {
             ["()"] = Unit,
-            ["Never"] = Never,
             ["bool"] = Boolean,
         };
+        var id = Boolean.Id;
         foreach (var name in new[] { "char", "string", "i8", "i16", "i32", "i64", "i128", "isize", "u8", "u16", "u32", "u64", "u128", "usize", "f32", "f64" })
         {
-            result.Add(name, new(name, BoundTypeKind.Primitive));
+            result.Add(name, new(++id, name, BoundTypeKind.Primitive));
         }
 
         return result;
@@ -695,11 +785,12 @@ public sealed record BoundType
     private static Dictionary<BoundType, BoundType> CreateWrappingScalars()
     {
         var result = new Dictionary<BoundType, BoundType>(12);
+        var id = Range.Id;
         foreach (var primitive in Primitives.Values)
         {
             if (primitive.IsInteger)
             {
-                result.Add(primitive, new("Wrapping<" + primitive.Name + ">", primitive));
+                result.Add(primitive, new(++id, "Wrapping<" + primitive.Name + ">", primitive));
             }
         }
 
@@ -707,11 +798,29 @@ public sealed record BoundType
     }
 }
 
+// A scope's link (Parent, the Constraints object, ConformancePath) is written only through its setters, each counting a change in
+// LinkVersion, which the view's serial reads (ContractSolver.ViewOf).
 internal sealed class BindingScope(Koto owner)
 {
+    private BindingScope? parent;
+    private ConstraintEnvironment? constraints;
+    private BoundConformancePath? conformancePath;
+
     internal Koto Owner { get; } = owner;
 
-    internal BindingScope? Parent { get; set; }
+    internal BindingScope? Parent
+    {
+        get => this.parent;
+        set => this.Link(ref this.parent, value);
+    }
+
+    // The number of changes of this scope's link.
+    internal int LinkVersion { get; private set; }
+
+    // The view this scope last denoted (ContractSolver.SerialOf): its serial and the chain state it named.
+    internal int ViewSerial { get; set; }
+
+    internal (int Environment, int Link, int Parent) ViewState { get; set; }
 
     internal FunctionKoto? Function { get; set; }
 
@@ -723,12 +832,20 @@ internal sealed class BindingScope(Koto owner)
 
     internal Dictionary<string, TypeSemanticsKoto>? OriginSets { get; set; }
 
-    internal ConstraintEnvironment? Constraints { get; set; }
+    internal ConstraintEnvironment? Constraints
+    {
+        get => this.constraints;
+        set => this.Link(ref this.constraints, value);
+    }
 
     // Retained with the declaration scope; never includes an implementation's own conditional block.
     internal BindingScope? ImplementationPremises { get; set; }
 
-    internal BoundConformancePath? ConformancePath { get; set; }
+    internal BoundConformancePath? ConformancePath
+    {
+        get => this.conformancePath;
+        set => this.Link(ref this.conformancePath, value);
+    }
 
     internal void Reset()
     {
@@ -737,6 +854,16 @@ internal sealed class BindingScope(Koto owner)
         this.Origins?.Clear();
         this.OriginSets?.Clear();
         this.Constraints?.Reset();
+    }
+
+    private void Link<T>(ref T? field, T? value)
+        where T : class
+    {
+        if (!ReferenceEquals(field, value))
+        {
+            field = value;
+            this.LinkVersion++;
+        }
     }
 }
 

@@ -1,30 +1,33 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using System.Diagnostics.CodeAnalysis;
 using Kimi.Compiler.Parsing;
 
 namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
-    private readonly Dictionary<Koto, CopyDeclaration> copyDeclarations = new(ReferenceEqualityComparer.Instance);
-    private readonly Dictionary<DeclarationContainerKoto, List<CopyDeclaration>> copyByType = new(ReferenceEqualityComparer.Instance);
+    private readonly CopyDeclarationRows copyDeclarations;
+    private readonly CopyByTypeRows copyByType;
 
+    // A pending atom (Provisional: its name is missing) names a Contract or a complete Type once found, both positive (SPEC 8.8.1).
     private static bool PositiveRequirement(BoundConstraint constraint)
-        => constraint.Kind == ConstraintKind.And ? PositiveRequirement(constraint.Left!) && PositiveRequirement(constraint.Right!) : constraint.Kind is ConstraintKind.TypeIdentity or ConstraintKind.Semantics or ConstraintKind.Contract or ConstraintKind.Callable;
+        => constraint.Kind == ConstraintKind.And ? PositiveRequirement(constraint.Left!) && PositiveRequirement(constraint.Right!) : constraint.Kind is ConstraintKind.TypeIdentity or ConstraintKind.Semantics or ConstraintKind.Contract or ConstraintKind.Callable or ConstraintKind.Unresolved;
 
+    // SPEC 3.5.2, 8.7.1: only the Type's own `Self is Copy` opts in; a Contract that requires Copy, as a parent or a clause, never does.
     private bool DeclaresCopy(BoundConstraint constraint)
-        => constraint.Kind == ConstraintKind.And ? this.DeclaresCopy(constraint.Left!) || this.DeclaresCopy(constraint.Right!) : constraint.Kind == ConstraintKind.Contract && IsRefinement(constraint.Contract!, this.Library.Copy);
+        => constraint.Kind == ConstraintKind.And ? this.DeclaresCopy(constraint.Left!) || this.DeclaresCopy(constraint.Right!) : constraint.Kind == ConstraintKind.Contract && ReferenceEquals(constraint.Contract, this.Library.Copy);
 
     private void BindCopyDeclarations()
     {
-        foreach (var declaration in this.copyDeclarations.Values)
+        foreach (var declaration in this.copyDeclarations.Values.In(this.pass))
         {
-            declaration.Active = false;
+            declaration!.Active = false;
         }
 
-        foreach (var declarations in this.copyByType.Values)
+        foreach (var declarations in this.copyByType.Values.In(this.pass))
         {
-            declarations.Clear();
+            declarations!.Clear();
         }
 
         for (var n = 0; n < this.nodes.Count; n++)
@@ -49,13 +52,12 @@ public sealed partial class Binding
     {
         if (!this.copyDeclarations.TryGetValue(clause, out var declaration))
         {
-            declaration = new(clause, container, scope, premises);
-            this.copyDeclarations.Add(clause, declaration);
+            CopyDeclarationRows.Slot(clause) = declaration = new(clause, container, scope, premises);
         }
 
         if (!this.copyByType.TryGetValue(container, out var list))
         {
-            this.copyByType.Add(container, list = new());
+            CopyByTypeRows.Slot(container) = list = new();
         }
 
         declaration.Active = true;
@@ -67,9 +69,10 @@ public sealed partial class Binding
 
     private void ValidateCopyDeclarations(BindingMode mode)
     {
-        foreach (var declarations in this.copyByType.Values)
+        // D2b-d's d8 order: the source modules by ordinal, then the library, each by ascending id (the walk's order on a cold compile).
+        foreach (var declarations in this.copyByType.Values.In(this.pass))
         {
-            for (var i = 0; i < declarations.Count; i++)
+            for (var i = 0; i < declarations!.Count; i++)
             {
                 var declaration = declarations[i];
                 var proof = this.RequestCapability(this.SelfType(declaration.Container.BoundSymbol!), this.Library.Copy, declaration.Scope, derivation: true);
@@ -78,7 +81,7 @@ public sealed partial class Binding
         }
     }
 
-    private sealed class CopyDeclaration(IsKoto clause, DeclarationContainerKoto container, BindingScope scope, SyntaxFormKoto? premises)
+    internal sealed class CopyDeclaration(IsKoto clause, DeclarationContainerKoto container, BindingScope scope, SyntaxFormKoto? premises)
     {
         internal IsKoto Clause { get; } = clause;
 
@@ -89,5 +92,31 @@ public sealed partial class Binding
         internal SyntaxFormKoto? Premises { get; set; } = premises;
 
         internal bool Active { get; set; }
+    }
+
+    /// <summary>The `copyDeclarations` family's one accessor (DECISIONS BU-220): a kept family, a `Self is Copy` clause's declaration kept in its
+    /// clause's module's NodeColumns at its SyntaxId, made once and reset in place by each pass (BindCopyDeclarations' Active). Its members
+    /// keep the names its readers use.</summary>
+    private readonly struct CopyDeclarationRows(Binding binding)
+    {
+        internal FamilyRows<CopyDeclaration?> Values => new(binding, static (table, _) => table.Hir.Families.CopyDeclarations.Enumerate());
+
+        internal static ref CopyDeclaration? Slot(Koto clause) => ref HirTables.Of(clause).Families.CopyDeclarations.Ref(clause.SyntaxId);
+
+        internal bool TryGetValue(Koto clause, [NotNullWhen(true)] out CopyDeclaration? declaration)
+            => (declaration = clause.SyntaxOwner is { } table ? table.Hir.Families.CopyDeclarations.Get(clause.SyntaxId) : null) is not null;
+    }
+
+    /// <summary>The `copyByType` family's one accessor (DECISIONS BU-220): a kept family, a container's Copy declarations kept in its module's
+    /// NodeColumns at its SyntaxId, the list made once and refilled by each pass (BindCopyDeclarations). Its members keep the names its
+    /// readers use.</summary>
+    private readonly struct CopyByTypeRows(Binding binding)
+    {
+        internal FamilyRows<List<CopyDeclaration>?> Values => new(binding, static (table, _) => table.Hir.Families.CopyByType.Enumerate());
+
+        internal static ref List<CopyDeclaration>? Slot(DeclarationContainerKoto container) => ref HirTables.Of(container).Families.CopyByType.Ref(container.SyntaxId);
+
+        internal bool TryGetValue(DeclarationContainerKoto container, [NotNullWhen(true)] out List<CopyDeclaration>? declarations)
+            => (declarations = container.SyntaxOwner is { } table ? table.Hir.Families.CopyByType.Get(container.SyntaxId) : null) is not null;
     }
 }

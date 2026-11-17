@@ -272,7 +272,7 @@ fn nestedProjections @158
       StorageDead(_6) @187 s1
       StorageDead(_5) @177 s1
       StorageDead(_4) @170 s1
-      drop _1 -> bb8 @161 s1
+      drop _1 -> bb8 [keep] @161 s1
   bb8:
       StorageDead(_1) @161 s1
       unreachable @160

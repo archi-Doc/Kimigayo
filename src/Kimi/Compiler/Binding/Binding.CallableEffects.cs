@@ -6,8 +6,10 @@ namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
-    private readonly List<CallableEffectUse> callableEffectUses = new(); // Each selected use of a bounded Callable clause, once per pass.
     private readonly Dictionary<Koto, (IsKoto Clause, FunctionKoto Requirement)> callablePremiseFailures = new(ReferenceEqualityComparer.Instance);
+
+    // Each selected use of a bounded Callable clause, once per pass: the running pass's part (PassPart, EnterPass).
+    private List<CallableEffectUse> callableEffectUses;
 
     internal static BoundType? CallableCore(BoundType? type)
         => type is { Kind: BoundTypeKind.Semantics, Components.Count: 1 } ? type.Components[0] : type;
@@ -23,22 +25,26 @@ public sealed partial class Binding
 
     internal bool AvailableCallableEffects(BoundType type, BoundType signature, SemanticsKind receiver, BindingScope scope, List<EffectEvidence>? evidence = null)
     {
+        // SPEC 8.11.4: the evidence is a premise on the Type with the signature, an equal or stronger receiver and the bound: the
+        // Type's available Callable rows whose Source is a written premise (a Contract-wide clause carries no bound list), each
+        // with the bounds its clause declares in the scope stating it (ContractSolver's FirstRows).
         var confined = false;
-        for (var current = scope; current is not null; current = current.Parent)
+        var required = this.CallableContractType(signature, scope);
+        var start = this.premiseRows.Count;
+        this.FirstRows(this.CallableContractType(type, scope), scope, this.premiseRows);
+        for (var r = start; r < this.premiseRows.Count; r++)
         {
-            if (current.Constraints is not { Invalid: false } environment)
+            if (this.premiseRows[r] is not { Available: true, Clause: { Kind: ConstraintKind.Callable } fact, Raw: { } raw, Stated: { } stated } ||
+                !SameCallableSignature(this.CallableContractType(fact.RequiredType!, scope), required) || !ReceiverCovers(fact.Mask, receiver))
             {
                 continue;
             }
 
-            for (var i = 0; i < this.callableEffectClauses.Count; i++)
+            var clauses = this.callableEffectClausesView;
+            for (var i = 0; i < clauses.Count; i++)
             {
-                var clause = this.callableEffectClauses[i];
-                if (!ReferenceEquals(clause.Parent, current.Owner) || clause.BoundConstraint is not { Kind: ConstraintKind.Callable } fact ||
-                    !this.AvailableConstraintFact(environment, fact) ||
-                    !ReferenceEquals(this.CallableContractType(fact.Subject!, scope), this.CallableContractType(type, scope)) ||
-                    !SameCallableSignature(this.CallableContractType(fact.RequiredType!, scope), this.CallableContractType(signature, scope)) ||
-                    !ReceiverCovers(fact.Mask, receiver))
+                var clause = clauses[i];
+                if (!ReferenceEquals(clause.Parent, stated.Owner) || !ReferenceEquals(clause.BoundConstraint, raw))
                 {
                     continue;
                 }
@@ -52,11 +58,12 @@ public sealed partial class Binding
                     }
 
                     confined = true;
-                    evidence?.Add(new(effect, current.Owner, fact, clause));
+                    evidence?.Add(new(effect, stated.Owner, raw, clause));
                 }
             }
         }
 
+        this.premiseRows.RemoveRange(start, this.premiseRows.Count - start);
         return confined;
     }
 
@@ -85,12 +92,14 @@ public sealed partial class Binding
     private void CollectCallableEffectUses()
     {
         this.callableEffectUses.Clear();
-        for (var i = 0; i < this.nodes.Count && this.callableEffectClauses.Count != 0; i++)
+        // A use may select a library callee's bounded clause, so the test reads every pass's clauses (review-r1a B2), as
+        // AvailableCallableEffects does; the uses collected are the pass's own (its nodes).
+        for (var i = 0; i < this.nodes.Count && this.callableEffectClausesView.Count != 0; i++)
         {
             var node = this.nodes[i];
             if (node is InvocationKoto { BoundCall: { } call } && this.Library.PresentedTarget(call.Target).Declaration is FunctionKoto function)
             {
-                this.CheckCallableEffectUses(node, function.TypeConstraints, function, call.TypeArguments, call.DeclaringType, call, call.LengthArguments);
+                this.CheckCallableEffectUses(node, function.TypeConstraints, SubstitutionOf(function, call), call);
             }
 
             if (node.BoundType is { Kind: BoundTypeKind.FunctionItem, Symbol.Declaration: FunctionKoto referenced } item &&
@@ -103,7 +112,7 @@ public sealed partial class Binding
                     try
                     {
                         CopyItemArguments(item, referenced, arguments);
-                        this.CheckCallableEffectUses(node, referenced.TypeConstraints, referenced, arguments.AsSpan(0, slots), ItemDeclaringType(item, referenced), null, item.LengthArguments);
+                        this.CheckCallableEffectUses(node, referenced.TypeConstraints, SubstitutionOf(referenced, ItemDeclaringType(item, referenced), arguments.AsSpan(0, slots), item.LengthArguments), null);
                     }
                     finally
                     {
@@ -115,12 +124,12 @@ public sealed partial class Binding
             if (node.BoundType is { Kind: BoundTypeKind.Constructed, Symbol.Declaration: DeclarationContainerKoto container } type &&
                 node.Parent?.BoundType != type)
             {
-                this.CheckCallableEffectUses(node, container.ConstraintNodes, container, (BoundType[])type.Components, null, null, origins: (BoundOrigin[])type.OriginArguments);
+                this.CheckCallableEffectUses(node, container.ConstraintNodes, new CallSubstitution(container, (BoundType[])type.Components, origins: (BoundOrigin[])type.OriginArguments), null);
             }
         }
     }
 
-    private void CheckCallableEffectUses(Koto use, IReadOnlyList<Koto> clauses, Koto binder, ReadOnlySpan<BoundType?> arguments, BoundType? declaring, CallPlan? call, ReadOnlySpan<BoundLength?> lengths = default, ReadOnlySpan<BoundOrigin> origins = default)
+    private void CheckCallableEffectUses(Koto use, IReadOnlyList<Koto> clauses, in CallSubstitution substitution, CallPlan? call)
     {
         var scope = this.ConstraintScope(use);
         for (var i = 0; i < clauses.Count; i++)
@@ -130,13 +139,10 @@ public sealed partial class Binding
                 continue;
             }
 
-            var substituted = this.SubstituteConstraint(fact, binder, arguments, lengths, origins: origins);
-            if (declaring?.Symbol is not null)
-            {
-                substituted = this.StoredConstraint(substituted, declaring);
-            }
+            var substituted = this.SubstituteConstraint(fact, substitution);
 
-            substituted = this.ContractConstraint(substituted, scope, null);
+            // SPEC 8.6.4: a selected requirement call's clause reads the Contract's parameters at its reference, as AvailableEffectBounds does.
+            substituted = this.ContractConstraint(substituted, scope, null, reference: call?.RequirementContract);
             var subject = substituted.Subject!;
             var receiver = substituted.Mask == SemanticsMask.Ref ? SemanticsKind.Ref : substituted.Mask == SemanticsMask.Uniq ? SemanticsKind.Uniq : SemanticsKind.Owner;
             var at = use;
@@ -168,5 +174,5 @@ public sealed partial class Binding
 
     // A selected use of a bounded Callable clause: where a failure is located, the use whose premises apply, the clause, and its substituted
     // subject, signature and receiver.
-    private readonly record struct CallableEffectUse(Koto At, Koto Use, IsKoto Clause, BoundType Subject, BoundType Signature, SemanticsKind Receiver);
+    internal readonly record struct CallableEffectUse(Koto At, Koto Use, IsKoto Clause, BoundType Subject, BoundType Signature, SemanticsKind Receiver);
 }

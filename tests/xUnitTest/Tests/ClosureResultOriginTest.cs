@@ -87,6 +87,8 @@ public partial class ClosureResultOriginTest
     [InlineData("func pick(a: ref/i32, b: ref/i32) -> ref/i32 => a\nlet n = 7\nlet f = func [n] (x: ref/i32) => pick(n@ref, x)\nlet m = 8\nlet r = f(m@ref)")]
     [InlineData("let n = 7\nlet r = (func [n] () => n@ref)()")]
     [InlineData("var n = 7\nlet view = n@uniq\nvar f = func [view] () => view\nlet r = f()")]
+    [InlineData("func id<V>(x: V) -> V => x@move\nvar n = 7\nlet view = n@uniq\nvar f = func [view] () => id(view)\nlet r = f()")]
+    [InlineData("func id<V>(x: V) -> V => x@move\nvar n = 7\nlet view = n@uniq\nvar f = func [view@move] () => id(view)\nlet r = f()")]
     [InlineData("var n = 7\nlet view = n@uniq\nlet take = func [view@move] () => view@move\nlet r = take@move()")]
     [InlineData("let n = 7\nlet outer = func [n] () => func [n@ref] () => n\nlet inner = outer()")]
     [InlineData("func apply(f: () -> i32) -> i32 => f()\nlet n: i32 = 4\nlet get = func [n] () => n@ref\nlet r = apply(func [get] () => get()@follow)")]

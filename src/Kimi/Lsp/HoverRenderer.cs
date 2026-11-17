@@ -4,7 +4,7 @@ using System.Globalization;
 using System.Text;
 using Kimi.Checking;
 using Kimi.Compiler;
-using Kimi.Compiler.Documentation;
+using Kimi.Documentation;
 
 namespace Kimi.Lsp;
 

@@ -31,8 +31,6 @@ public class UnresolvedRefinementBindingTest
 
     [Theory]
     [InlineData("i32")]
-    [InlineData("Api")]
-    [InlineData("Target")]
     [InlineData("Future<i32>")]
     public void AvailableNonContractOrGenericParentsRemainInvalid(string parent)
     {
@@ -75,7 +73,6 @@ public class UnresolvedRefinementBindingTest
     }
 
     [Theory]
-    [InlineData("public struct Future")]
     [InlineData("public contract Future: Child")]
     public void SuppliedInvalidParentsAreRechecked(string declaration)
     {
@@ -84,6 +81,32 @@ public class UnresolvedRefinementBindingTest
         c.Kotonoha.AddSource(new SourceDocument("Generated.kimi", declaration));
         Assert.True(c.Binding.Bind(BindingMode.Provisional).InvalidCount > 0);
         Assert.False(c.Bind().IsComplete);
+    }
+
+    // A role filters candidates by declaration kind, and lookup stops only at a stage with an eligible declaration (SPEC 9.2, 9.5): a
+    // declaration of the name that the role excludes, of any kind, decides nothing. The name is missing: pending while Provisional,
+    // since a later source can still supply it, and a missing name's records at the final Bind.
+    [Theory]
+    // A parent (Contract Reference): a struct or a group of its name beside it, a struct supplied later, and a nearer group passed
+    // for the Contract a later source supplies (v07).
+    [InlineData("public group Api\npublic struct Target\npublic contract Future\npublic contract Child: Target", null, "InvalidConstraint_Kd Target|InvalidConstraint_Kd contract Child")]
+    [InlineData("public group Api\npublic struct Target\npublic contract Future\npublic contract Child: Api", null, "InvalidConstraint_Kd Api|InvalidConstraint_Kd contract Child")]
+    [InlineData("public contract Child: Future", "public struct Future", "InvalidConstraint_Kd Future|InvalidConstraint_Kd contract Child")]
+    [InlineData("public group G\n    group Future\n        func z() -> i32 => 0\n    public contract Child: Future", "public contract Future", "")]
+    // A requirement's Type argument (Core): a Contract of its name (v11).
+    [InlineData("public contract C\n    func m(self: ref/Self) -> i32\npublic struct Box<T>\ngroup G\n    func f<T>(x: T)\n        T is Box<C>\n        ()", null, "InvalidConstraint_Kd Box<C>|InvalidConstraint_Kd func f<T>(x: T)\n    T is Box<C>\n    ()|UnresolvedBinding_Kd C")]
+    public void ADeclarationTheRoleExcludesLeavesTheNameMissing(string source, string? supplied, string records)
+    {
+        var c = Parse(source);
+        Assert.Equal(0, c.Binding.Bind(BindingMode.Provisional).InvalidCount);
+        if (supplied is not null)
+        {
+            c.Kotonoha.AddSource(new SourceDocument("Generated.kimi", supplied));
+            Assert.Equal(0, c.Binding.Bind(BindingMode.Provisional).InvalidCount);
+        }
+
+        Assert.Equal(records.Length == 0, c.Bind().IsComplete);
+        Assert.Equal(records, string.Join('|', c.Binding.Issues.Select(static x => $"{x.Code} {x.Node}").Order(StringComparer.Ordinal)));
     }
 
     [Fact]

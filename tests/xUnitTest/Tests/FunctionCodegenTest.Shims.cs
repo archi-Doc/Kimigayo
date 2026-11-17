@@ -163,10 +163,10 @@ public sealed partial class FunctionCodegenTest
         Assert.Equal(["argument", "argument"], witness.Operands.Select(static x => x.Opcode));
     }
 
-    // SPEC 13.3.3, 22.5.1 (DECISIONS R5-M126): an arithmetic shim is its Contract's MIR operation (BuiltinArithmetic) through the operator
-    // table's row on its loaded operands with the row's check, which Aborts at the location the shim received: i32 addition through its
-    // overflow intrinsic, i32 division after its zero divisor and minimum / -1 checks, Wrapping<u8> addition unchecked, f64 negation fneg
-    // (keeping -0.0).
+    // SPEC 13.3.3, 22.5.1 (DECISIONS R5-M126): an arithmetic shim is its Contract's MIR operation (MirTypes.ArithmeticOperation) through
+    // the operator table's row on its loaded operands with the row's check, which Aborts at the location the shim received: i32 addition
+    // through its overflow intrinsic, i32 division after its zero divisor and minimum / -1 checks, Wrapping<u8> addition unchecked, f64
+    // negation fneg (keeping -0.0).
     [Fact]
     public void AnArithmeticShimIsItsContractsOperation()
     {

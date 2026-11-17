@@ -10,6 +10,10 @@ namespace Kimi.Compiler.Mir;
 // A4's summaries and verdicts (DECISIONS R4-M22): the least fixed point of the summaries over one worklist, each node re-evaluated when a
 // summary it read grows, then P5's static keys joined (Spread in MirEffects.Keys, R4-M38), then each obligation judged with its remaining
 // atoms resolved by its definition's premises: an owing body per view, a Callable binding as a call through it.
+// A round's rule (PLAN G951): Compose is the one read of a body's nodes, and a read of a body A2's table does not hold (MirDropTable.Holds:
+// a body built since the driver's last step, which has no local facts) misses: it adds nothing, and the round goes on to its end, so it
+// demands every body it reads; the report holds its obligations' problems until it ends (MirReport.Begin, the round rule's one commit,
+// which the instance collector's runs share): a clean round commits them, a missed one drops them.
 internal sealed partial class MirEffects
 {
     private readonly List<EffectObligation> rows = [];
@@ -26,11 +30,13 @@ internal sealed partial class MirEffects
     private int[] dependentHeads = []; // and each node's readers, a list in dependents.
     private (int Node, int Next)[] dependents = [];
     private MirProgram program = null!;
+    private MirReport report = null!; // The round's report, which holds its obligations' problems until the round ends.
     private BindingSymbol? definition; // The definition whose premises resolve atoms: the evaluated node's, or an obligation's.
     private int reader; // The evaluated node, -1 while judging an obligation, whose atoms are resolved at once.
     private int atomCount;
     private int scratchCount;
     private int dependentCount;
+    private bool missed; // Whether the round read a body A2's table does not hold.
 
     /// <summary>Gets the node evaluations of the last <see cref="Run"/>, linear in the program's calls (V16).</summary>
     internal int Evaluations { get; private set; }
@@ -39,16 +45,21 @@ internal sealed partial class MirEffects
     // never entered within it (MirDepths: a slot left Past).
     private byte Found => (byte)(this.found | (this.glued.ContainsValue(MirDepths.Past) ? Deep : 0));
 
-    /// <summary>Solves the summaries of the nodes <see cref="Local"/> recorded (driver step 3) and judges each <c>confined</c> obligation:
-    /// per view of its target an environment or unknown effect is its code at its subject, else a limit <c>Unsupported_Kd</c>; a failure the
-    /// premises decide covers every view.</summary>
+    /// <summary>Solves the summaries of the nodes <see cref="Local"/> recorded (driver step 3, a round) and judges each <c>confined</c>
+    /// obligation whose subject is in the root range (the library's are the library check's, PLAN G951 E3): per view of its target an
+    /// environment or unknown effect is its code at its subject, else a limit <c>Unsupported_Kd</c>; a failure the premises decide covers
+    /// every view. A round that read a body A2's table does not hold missed and adds no problem; the driver steps the bodies built since
+    /// its last step and runs the next round.</summary>
     /// <param name="program">The program whose bodies were recorded.</param>
     /// <param name="report">The problems of the program version.</param>
-    internal void Run(MirProgram program, MirReport report)
+    /// <param name="rootModules">The root range: the obligations whose subject's module is below it are judged (DECISIONS R5-M168).</param>
+    /// <returns>Whether the round was clean and added its problems.</returns>
+    internal bool Run(MirProgram program, MirReport report, int rootModules)
     {
-        this.program = program;
+        (this.program, this.report, this.missed) = (program, report, false);
+        report.Begin(MirProblem.NoBody);
         (this.atomCount, this.dependentCount, this.Evaluations) = (0, 0, 0);
-        var count = program.Version == this.version ? this.nodeCount : 0; // A version Local recorded no view of has no node.
+        var count = this.NodeCount;
         MirDataflow.Grow(ref this.classes, count);
         MirDataflow.Grow(ref this.atomStarts, count);
         MirDataflow.Grow(ref this.atomCounts, count);
@@ -95,39 +106,49 @@ internal sealed partial class MirEffects
             this.Spread(count);
         }
 
-        this.Obligations(report);
+        this.Obligations(rootModules);
+        if (this.missed)
+        {
+            report.Drop();
+            return false;
+        }
+
+        report.Commit();
+        return true;
     }
 
     // An obligation row's verdict, at Binding's row, which no body describes (R4-M71), by its classes' one answer (Outcome): decided (an
     // Environment or Unknown effect) fails it; a Limit is the located Unsupported_Kd and Deep the depth limit (R4-M153).
-    private static void Verdict(MirReport report, in EffectObligation row, byte found, ulong views)
+    private void Verdict(in EffectObligation row, byte found, ulong views)
     {
         var outcome = Outcome(found);
         if (outcome.IsDecided)
         {
-            report.Add(new(row.Code, row.Requirement, row.Subject, MirProblem.NoBody, views));
+            this.report.Add(new(row.Code, row.Requirement, row.Subject, MirProblem.NoBody, views));
         }
         else if (outcome.IsLimit)
         {
             var requirement = DiagnosticRequirement.Ownership(OwnershipRequirement.Unsupported);
-            report.Add(new(DiagnosticCode.Unsupported_Kd, requirement, row.Subject, MirProblem.NoBody, views));
+            this.report.Add(new(DiagnosticCode.Unsupported_Kd, requirement, row.Subject, MirProblem.NoBody, views));
         }
         else if (outcome.IsDeep)
         {
             var requirement = DiagnosticRequirement.Ownership(OwnershipRequirement.DepthLimit);
-            report.Add(new(DiagnosticCode.OwnershipDepthLimit_Kd, requirement, row.Subject, MirProblem.NoBody, views));
+            this.report.Add(new(DiagnosticCode.OwnershipDepthLimit_Kd, requirement, row.Subject, MirProblem.NoBody, views));
         }
     }
 
     // A node's summary from its local facts and its callees' current summaries: whether it grew.
     private bool Evaluate(int node)
     {
-        var body = this.program.Bodies[this.owners[node]];
+        var store = this.Of(node);
+        var (facts, start) = (store[node], this.Start(store, node));
+        var body = this.program.Body(facts.Owner);
         this.Evaluations++;
-        cases.Select(body, node - this.bases[this.owners[node]]);
-        (this.definition, this.reader, this.found, this.scratchCount) = (body.Key.Decl, node, this.local[node], 0);
+        cases.Select(body, node - this.Base(facts.Owner));
+        (this.definition, this.reader, this.found, this.scratchCount) = (body.Key.Decl, node, facts.Classes, 0);
         this.glued.Clear();
-        this.Inputs(node == 0 ? 0 : this.itemEnds[node - 1], this.itemEnds[node], node == 0 ? 0 : this.edgeEnds[node - 1], this.edgeEnds[node]);
+        this.Inputs(store, start.Items, facts.Items, start.Edges, facts.Edges);
         var found = this.Found;
         if (found == this.classes[node] && this.scratchCount == this.atomCounts[node])
         {
@@ -141,28 +162,36 @@ internal sealed partial class MirEffects
         return true;
     }
 
-    // A node's or a site's local inputs, items [item, itemEnd) and edges [edge, edgeEnd), into the current evaluation.
-    private void Inputs(int item, int itemEnd, int edge, int edgeEnd)
+    // A node's or a site's local inputs, a store's items [item, itemEnd) and edges [edge, edgeEnd), into the current evaluation.
+    private void Inputs(Locals store, int item, int itemEnd, int edge, int edgeEnd)
     {
+        var items = store.Items;
+        var edges = store.Edges;
         for (var i = item; i < itemEnd; i++)
         {
-            var local = this.items[i];
-            this.Process(local.Type, local.Kind, local.Requirement, local.Contract, local.Reference);
+            var local = items[i];
+            this.Process(local.Type, local.Kind, local.Requirement, local.Contract, local.Call);
         }
 
         for (var e = edge; e < edgeEnd; e++)
         {
-            this.Compose(this.edges[e].Body, this.edges[e].Views, this.edges[e].Subst);
+            this.Compose(edges[e].Body, edges[e].Views, edges[e].Subst);
         }
     }
 
     // The summaries of a body's views a call selects, composed through its substitution under the selected view, their keys unchanged
-    // (P5); read nodes record the reader.
+    // (P5); read nodes record the reader. A body A2's table does not hold has no node yet: the round misses (PLAN G951).
     private void Compose(int body, ulong views, Subst? subst)
     {
+        if (views != 0 && !this.program.Drops.Holds(body))
+        {
+            this.missed = true;
+            return;
+        }
+
         for (var mask = views; mask != 0; mask &= mask - 1)
         {
-            var node = this.bases[body] + BitOperations.TrailingZeroCount(mask);
+            var node = this.Base(body) + BitOperations.TrailingZeroCount(mask);
             if (this.reader >= 0 && this.readers[node] != this.reader)
             {
                 this.readers[node] = this.reader;
@@ -179,7 +208,7 @@ internal sealed partial class MirEffects
                 // An atom in the call's instance as every reader reads one (TyCtxt.ReadableInstance, DECISIONS R4-M139): Rejected storage is the
                 // instance, whose rejected parts destroy nothing (MirTypes.Destruction); null, a Limit.
                 var type = subst is null ? atom.Type : types.ReadableInstance(atom.Type, subst);
-                this.Process(type is null ? null : cases.Type(type), atom.Kind, atom.Requirement, atom.Contract, atom.Reference);
+                this.Process(type is null ? null : cases.Type(type), atom.Kind, atom.Requirement, atom.Contract, atom.Call);
             }
         }
     }
@@ -187,11 +216,11 @@ internal sealed partial class MirEffects
     // An input of a summary in the selected view: a part destroyed (every part its destruction reaches), a published requirement on a Type
     // (Require), or a call through a Callable value (SPEC 8.11.4): a Closure's or a function item's body entered through its substitution,
     // a common Function Type unknown (erasure keeps no bound), an abstract input by the definition's premises.
-    private void Process(BoundType? type, byte kind, BindingSymbol? requirement = null, BindingSymbol? contract = null, BoundType? reference = null)
+    private void Process(BoundType? type, byte kind, BindingSymbol? requirement = null, BindingSymbol? contract = null, Subst? call = null)
     {
         if (type is not null && kind == Requires)
         {
-            this.Require(type, requirement!, contract, reference);
+            this.Require(type, requirement!, contract, call);
             return;
         }
 
@@ -232,12 +261,7 @@ internal sealed partial class MirEffects
                     break;
                 }
 
-                for (var i = 0; types.Implementation(function, item, i) is { } implementation; i++)
-                {
-                    var own = ReferenceEquals(implementation, function);
-                    this.Enter(this.program.Callee(new(MirCalleeKind.Fn, implementation)), own ? item : null, implementation);
-                }
-
+                this.Enter(this.program.Callee(new(MirCalleeKind.Fn, function)), item, function); // Its declaration (SPEC 15.6.4, Local).
                 break;
             default:
                 this.found |= type.Kind == BoundTypeKind.Function ? Unknown : Limit;
@@ -273,7 +297,7 @@ internal sealed partial class MirEffects
 
         if (body is null)
         {
-            this.found |= Class(TyCtxt.Bodyless(symbol));
+            this.found |= Class(symbol);
             return;
         }
 
@@ -284,12 +308,14 @@ internal sealed partial class MirEffects
     // implementation: the requirement is nothing where the definition's premises declare it confined, else the summary's atom, composed at
     // the callers (unknown at the top), which keeps the recorded Contract alone (the reference names a conformance only of a closed Self; a
     // built-in target's requirement, the one a Terminator records on an abstract Self, resolves without it). Any other Type runs each
-    // target Binding resolves under that reference and those premises, at the instance Binding gives it (TyCtxt.Witnesses: a compiler
-    // function, a composite comparison's leaf witnesses, a witness body, a library witness at the Self's arguments among them, or an
-    // accessor as a dynamic edge, a virtual witness by its slot's bound, DispatchBounds: a built-in target keeps its requirement's
-    // declaration), each implementation that instance selects entered as a call enters it (SPEC 8.13.3, TyCtxt.Implementation), and none
-    // resolving (a composite with an abstract part, a standard Property witness) is a limit.
-    private void Require(BoundType type, BindingSymbol requirement, BindingSymbol? contract, BoundType? reference)
+    // target Binding resolves under that reference and those premises, at the instance Binding gives it for the call (a conformance witness
+    // at the call's own Types and lengths, SPEC 8.6.3; TyCtxt.Witnesses: a compiler function, a composite comparison's leaf witnesses, a
+    // witness body, a library witness at the Self's arguments among them, or an accessor as a dynamic edge, a virtual witness by its slot's
+    // bound, DispatchBounds: a built-in target keeps its requirement's declaration), each entered at that instance as a call enters it (its
+    // declaration's summary, specializations included: SPEC 15.6.4), and none resolving (a composite with an abstract part, a standard
+    // Property witness) is a limit. The call is the item's, in its view (Terminator); a requirement no call names (a summary's atom, a
+    // published row's) is the requirement on the Type under its own Contract, which binds no own slot.
+    private void Require(BoundType type, BindingSymbol requirement, BindingSymbol? contract, Subst? call)
     {
         if (type.IsAbstract)
         {
@@ -302,21 +328,18 @@ internal sealed partial class MirEffects
         }
 
         var start = this.targets.Count;
-        this.found |= types.Witnesses(requirement, type, contract, reference, this.definition, this.targets) ? (byte)0 : Limit;
+        call ??= types.Synthesized(requirement, type, TyCtxt.Contract(requirement).Type!);
+        this.found |= types.Witnesses(requirement, contract, call, this.definition, this.targets) ? (byte)0 : Limit;
         for (var i = start; i < this.targets.Count; i++)
         {
             var (target, instance) = this.targets[i];
-            if (target.CompilerFunction == CompilerFunctionKind.None && types.DispatchBounds(this.definition, target, null, null) is { } dispatched)
+            if (target.Definition.Kind == DispositionKind.Body && types.DispatchBounds(this.definition, target, null, null) is { } dispatched)
             {
                 this.found |= dispatched ? (byte)0 : Unknown; // SPEC 6.4.6: a virtual witness dispatches; its slot's bound decides.
             }
             else
             {
-                for (var j = 0; types.Implementation(target, instance, j) is { } implementation; j++)
-                {
-                    var own = ReferenceEquals(implementation, target); // SPEC 8.13.3: what the instance's key selects, as a call enters it.
-                    this.Enter(this.program.Callee(new(MirCalleeKind.Fn, implementation)), own ? instance : null, implementation);
-                }
+                this.Enter(this.program.Callee(new(MirCalleeKind.Fn, target)), instance, target); // As a call enters it (SPEC 15.6.4, Local).
             }
         }
 
@@ -347,7 +370,7 @@ internal sealed partial class MirEffects
         }
         else if (AdtDef.DestructorSymbol(type) is { } destructor)
         {
-            this.Enter(this.program.Callee(new(MirCalleeKind.Fn, destructor)), types.Synthesized(destructor, type, []), destructor);
+            this.Enter(this.program.Callee(new(MirCalleeKind.Fn, destructor)), types.Synthesized(destructor, type, [], []), destructor);
         }
     }
 
@@ -378,10 +401,11 @@ internal sealed partial class MirEffects
 
     // R4-M22: each obligation Binding published. A Callable binding is a call through its subject with the selected receiver, judged in
     // every view under the use's premises with no caller view (its open pair layers admit every case), and an owner acquisition also
-    // destroys the remaining environment; a failure the premises decide is reported in every view. Every implementation of an owing
-    // definition owes (SPEC 8.4: specializations included): its own body per view; a specialization, closed, and a function without a
-    // body (what Binding classifies) in every view at once.
-    private void Obligations(MirReport report)
+    // destroys the remaining environment; a failure the premises decide is reported in every view. An owing definition owes with every
+    // implementation (SPEC 8.4), which its summary includes (Owe).
+    // A row whose subject is outside the root range is the library check's (PLAN G951 E3, DECISIONS R5-M168's input rule): Binding lists a
+    // library declaration's rows from the library alone, so their verdicts are the same in every program.
+    private void Obligations(int rootModules)
     {
         this.rows.Clear();
         types.EffectObligations(this.rows);
@@ -389,6 +413,11 @@ internal sealed partial class MirEffects
         this.reader = -1;
         foreach (var row in this.rows)
         {
+            if (row.Subject.Module >= rootModules)
+            {
+                continue;
+            }
+
             (this.found, this.scratchCount, this.definition) = (0, 0, row.Definition);
             this.glued.Clear();
             if (row.Callable is { } callable)
@@ -399,43 +428,39 @@ internal sealed partial class MirEffects
                     this.Process(callable, Drop);
                 }
 
-                Verdict(report, row, this.Found, ulong.MaxValue);
+                this.Verdict(row, this.Found, ulong.MaxValue);
             }
             else if (row.Definition is not { } target)
             {
-                report.Add(new(row.Code, row.Requirement, row.Subject, MirProblem.NoBody, ulong.MaxValue));
+                this.report.Add(new(row.Code, row.Requirement, row.Subject, MirProblem.NoBody, ulong.MaxValue));
             }
             else
             {
-                for (var i = 0; types.Implementation(target, null, i) is { } implementation; i++)
-                {
-                    this.Owe(report, row, implementation, own: i == 0);
-                }
+                this.Owe(row, target);
             }
         }
     }
 
-    // An implementation an owing row judges (SPEC 8.4): the definition's own body per view; a specialization, which is closed, and a
-    // function without a body in every view at once.
-    private void Owe(MirReport report, in EffectObligation row, BindingSymbol implementation, bool own)
+    // An owing definition (SPEC 8.4: every implementation, which its summary includes, SPEC 15.6.4, Local): its body per view; a function
+    // without a body in every view at once.
+    private void Owe(in EffectObligation row, BindingSymbol definition)
     {
-        var body = this.program.Callee(new(MirCalleeKind.Fn, implementation));
-        var perView = own && body is not null;
-        for (var mask = perView ? this.Views(body!, null) : 1UL; mask != 0; mask &= mask - 1)
+        var body = this.program.Callee(new(MirCalleeKind.Fn, definition));
+        for (var mask = body is null ? 1UL : this.Views(body, null); mask != 0; mask &= mask - 1)
         {
-            var view = perView ? 1UL << BitOperations.TrailingZeroCount(mask) : ulong.MaxValue;
+            var view = body is null ? ulong.MaxValue : 1UL << BitOperations.TrailingZeroCount(mask);
             (this.found, this.scratchCount) = (0, 0);
             this.glued.Clear();
-            if (perView)
+            if (body is null)
             {
-                this.Compose(body!.Ordinal, view, null);
+                this.Enter(null, null, definition);
             }
             else
             {
-                this.Enter(body, null, implementation);
+                this.Compose(body.Ordinal, view, null);
             }
 
-            Verdict(report, row, this.Found, view);
+            this.Verdict(row, this.Found, view);
         }
     }
 

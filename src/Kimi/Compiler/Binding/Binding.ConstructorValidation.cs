@@ -88,7 +88,7 @@ public sealed partial class Binding
 
     // The reference check restores the original declaration group, including inference-rejected
     // candidates. Syntax mappings are unchanged; only binding-dependent applicability is rerun.
-    private bool ValidateFixedConstruction(InvocationKoto call, BindingScope scope, BoundType? expected, BoundType construction, ReadOnlySpan<EvaluatedCandidate> original, int selected, int[] allMaps, int[] mapping, BoundType?[] arguments, BoundLength?[] lengths, BoundOrigin[] origins, BoundOrigin[] inputs, BoundOrigin[] allOrigins, BoundOrigin[] allInputs, int originStride, int inputStride, BoundArgumentOperation[] operations, int stride, bool[] completedWaiting, BoundType?[] waitingContexts)
+    private bool ValidateFixedConstruction(InvocationKoto call, BindingScope scope, BoundType? expected, BoundType construction, ReadOnlySpan<EvaluatedCandidate> original, int selected, int[] allMaps, int[] mapping, SlotFrame frame, BoundOrigin[] origins, BoundOrigin[] inputs, BoundOrigin[] allOrigins, BoundOrigin[] allInputs, int originStride, int inputStride, BoundArgumentOperation[] operations, int stride, bool[] completedWaiting, BoundType?[] waitingContexts)
     {
         var count = original.Length;
         var argumentCount = call.ArgumentNodes.Count;
@@ -97,6 +97,7 @@ public sealed partial class Binding
         var rows = this.rowScratch.Rent(argumentCount);
         var childSlice = this.indexScratch.Rent(2);
         var childBase = this.childRows.Count;
+        var classBase = this.positionClasses.Count;
         var selectedFunction = (FunctionKoto)original[selected].Symbol!.Declaration;
         FunctionKoto? unproven = null;
         try
@@ -148,15 +149,13 @@ public sealed partial class Binding
                         Binder = function,
                         Scope = scope,
                         DeclaringType = construction,
-                        Types = arguments,
-                        Lengths = lengths,
+                        Frame = frame,
                         Origins = origins,
                         Inputs = inputs,
                         FixedConstruction = true,
                         Rows = rows.AsSpan(0, argumentCount), // F1 of the re-check; the selected call reads its first evaluation's (R4-M164).
                         ChildSlice = ResetSlice(childSlice), // R3: the re-check's own composition, at its first solve.
                     },
-                    [],
                     mapping,
                     previous.ArgumentMap,
                     expected,
@@ -165,8 +164,11 @@ public sealed partial class Binding
                     out var unbound,
                     out var receiver,
                     out _,
-                    out _,
+                    out var failure,
                     out var premiseUnknown);
+                // SPEC 10.1, 10.2.1 (PLAN G680): the selected constructor, its waiting arguments completed, keeps its selection past a
+                // refuted clause, which is the call's obligation (AsSelected), never a changed selection.
+                state = i == selected ? AsSelected(state, failure, CandidateApplicability.Applicable) : state;
                 checkedCandidates[i] = new(previous.Symbol, state, construction, defaults, unbound, receiver, previous.ArgumentMap, PremiseUnknown: premiseUnknown);
                 if ((state == CandidateApplicability.Pending && !premiseUnknown) || state == CandidateApplicability.Error || unbound)
                 {
@@ -187,7 +189,7 @@ public sealed partial class Binding
                         var pattern = function.Parameters[mapping[a]].Type.BoundType!;
                         // SPEC 10.5, 10.8: the context its completion used, S for a waiting callable and else the parameter Type.
                         var contextPattern = this.WasWaitingCallable(call.ArgumentNodes[a]) ? this.ExpectedCallSignature(function, pattern) : pattern;
-                        var context = contextPattern is null ? null : this.CallType(contextPattern, function, arguments, scope, null, origins, inputs, construction, lengths);
+                        var context = contextPattern is null ? null : this.CallType(contextPattern, function, frame.Types, scope, null, origins, inputs, construction, frame.Lengths);
                         var usedContext = waitingContexts[a];
                         if (!ReferenceEquals(context, usedContext) &&
                             (context is null || usedContext is null || !IsSubtype(context, usedContext) || !IsSubtype(usedContext, context)))
@@ -231,7 +233,7 @@ public sealed partial class Binding
             }
 
             checkedOperations.AsSpan(selected * stride, stride).CopyTo(operations.AsSpan(selected * stride, stride));
-            this.InitializeCallSlots(call, selectedFunction, construction, arguments, fixedConstruction: true);
+            _ = this.FixCallSlots(call, selectedFunction, construction, [], [], frame, fixedConstruction: true);
             if (count > 1)
             {
                 allMaps.AsSpan(selected * argumentCount, argumentCount).CopyTo(mapping);
@@ -246,6 +248,7 @@ public sealed partial class Binding
             this.rowScratch.Return(rows, clearArray: true);
             this.indexScratch.Return(childSlice);
             this.childRows.RemoveRange(childBase, this.childRows.Count - childBase);
+            this.positionClasses.RemoveRange(classBase, this.positionClasses.Count - classBase);
             this.argumentOperationScratch.Return(checkedOperations, clearArray: true);
             this.candidateScratch.Return(checkedCandidates, clearArray: true);
         }

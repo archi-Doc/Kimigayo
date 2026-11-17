@@ -17,15 +17,15 @@ internal sealed partial class MirBorrows
     // would give never arises); under the view an Adapt is the rvalue its case selects (none: its operand's value).
     private (int Value, int Own) Value(ulong[] state, in MirRvalue rvalue, int location)
     {
+        if (this.Keeps(rvalue))
+        {
+            var kept = this.Operand(state, rvalue.Start);
+            var displaced = rvalue.Kind == MirRvalueKind.BinaryOp ? this.Displaced(kept, cases.TypeOf(this.body.Operands[rvalue.Start])) : kept;
+            return (displaced, 0); // Δ off a grid (MirBorrows.Puns).
+        }
+
         switch (rvalue.Kind)
         {
-            case MirRvalueKind.Use:
-            case MirRvalueKind.Adapt:
-            case MirRvalueKind.Cast when (MirCastKind)rvalue.Op is MirCastKind.Erasure or MirCastKind.Upcast ||
-                ((MirCastKind)rvalue.Op == MirCastKind.Pointer && rvalue.Type?.Semantics == SemanticsKind.Raw):
-            case MirRvalueKind.BinaryOp when (MirBinaryOp)rvalue.Op is MirBinaryOp.Add or MirBinaryOp.Sub &&
-                this.TypeOf(rvalue.Start)?.Semantics == SemanticsKind.Raw:
-                return (this.Operand(state, rvalue.Start), 0);
             case MirRvalueKind.Cast when (MirCastKind)rvalue.Op == MirCastKind.IntToPointer:
                 return (this.escapedSet, 0);
             case MirRvalueKind.Ref or MirRvalueKind.Storage when (MirRefKind)rvalue.Op == MirRefKind.Raw:
@@ -47,6 +47,18 @@ internal sealed partial class MirBorrows
         }
     }
 
+    // Whether an rvalue's value is its first operand's (val, A3 5): a Use, an Adapt, a value-keeping Cast (Erasure, Upcast, between raw
+    // pointer Types, 5.4) or a raw pointer's displacement (5.3); the may-set (Value) and the must-set (MirBorrows.Storing) read it.
+    private bool Keeps(in MirRvalue rvalue) => rvalue.Kind switch
+    {
+        MirRvalueKind.Use or MirRvalueKind.Adapt => true,
+        MirRvalueKind.Cast => (MirCastKind)rvalue.Op is MirCastKind.Erasure or MirCastKind.Upcast ||
+            ((MirCastKind)rvalue.Op == MirCastKind.Pointer && rvalue.Type?.Semantics == SemanticsKind.Raw),
+        MirRvalueKind.BinaryOp => (MirBinaryOp)rvalue.Op is MirBinaryOp.Add or MirBinaryOp.Sub &&
+            cases.TypeOf(this.body.Operands[rvalue.Start]).Semantics == SemanticsKind.Raw,
+        _ => false,
+    };
+
     // An operand's value: a constant's none, a Place's read (a PairAcquire's that Copies; one that Reborrows is its Use's issue, Plan).
     private int Operand(ulong[] state, int index)
         => this.body.Operands[index] is { Kind: not MirOperandKind.Const } operand ? this.Read(state, operand.Place) : 0;
@@ -65,7 +77,7 @@ internal sealed partial class MirBorrows
     // val(X) = content^k(σ(root(X))) over its k Derefs: the step walk's layer over all its steps, read as Layered reads it.
     private int Read(ulong[] state, MirPlace place)
     {
-        var (layer, parents) = this.Prefix(state, place.Root, this.placeSteps.Walk(this.body, place, reborrow: false, ref this.walk));
+        var (layer, parents) = this.Prefix(state, place.Root, this.placeSteps.Walk(place, reborrow: false, ref this.walk));
         return this.Layered(place.Root, place.Projection, layer, parents);
     }
 
@@ -73,7 +85,8 @@ internal sealed partial class MirBorrows
     // element step, AddressWalk) with the address entry its location issued, formed (Φ_E where untracked).
     private int RawAddress(ulong[] state, MirPlace place, int location)
     {
-        var parents = this.Prefix(state, place.Root, this.AddressWalk(place, location)).Parents;
+        var count = this.AddressWalk(place, location);
+        var parents = this.Interior(this.Prefix(state, place.Root, count).Parents, place, count); // Δ past a raw Deref (MirBorrows.Puns).
         return this.Formed(this.loanAt[location] >= 0 ? this.sets.Add(parents, this.loanBase + this.loanAt[location]) : parents);
     }
 
@@ -81,7 +94,8 @@ internal sealed partial class MirBorrows
     // step walk's parents).
     private (int Value, int Own) Issued(ulong[] state, MirPlace place, bool reborrow, int loan)
     {
-        var parents = this.Prefix(state, place.Root, this.placeSteps.Walk(this.body, place, reborrow, ref this.walk)).Parents;
+        var count = this.placeSteps.Walk(place, reborrow, ref this.walk);
+        var parents = this.Interior(this.Prefix(state, place.Root, count).Parents, place, count); // Δ past a raw Deref (MirBorrows.Puns).
         return (parents, loan >= 0 ? this.sets.Add(0, this.loanBase + loan) : 0);
     }
 

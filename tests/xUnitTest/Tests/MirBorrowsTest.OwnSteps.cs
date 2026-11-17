@@ -174,17 +174,23 @@ public sealed partial class MirBorrowsTest
                     usep(p)
                 """));
 
-    // DECISIONS R4-M116 OQ-2 (PD31's fact rows): the Anchor is the pointer's first formation (the location reading the layer); the witness
-    // is a live holder's next use (past the chain, as past a copy, its declaration as a Store), the store of a value E keeps, or the call
-    // for an operand it takes; inside a copy the default's operation is Evaluated at the omitting call.
+    // G673 (SPEC 5.4, 5.2.1 condition 3; DECISIONS R4-M116 OQ-2's facts superseded): a pointer formed through an own step, by reading a
+    // `during self` layer or by `@raw` past an object payload (payloadRaw), creates no Loan, so the Warning carries no Anchor or witness,
+    // whose text names a Loan, whatever holds the pointer: a live holder (moved, payloadRaw), E (stored, the owner's storage end too) or a
+    // call's operand (byCall); inside a copy the default's operation is Evaluated at the omitting call.
     [Fact]
-    public void TheWarningCarriesItsFacts()
+    public void TheWarningCarriesNoLoanFact()
     {
         var c = MirBuildTest.Compile(Prelude + RawShapes + OwnStepShapes + """
             func moved()
                 var b = Buf<i32>.init(4)
                 let p = b.data
                 let c = b@move
+                usep(p)
+            func payloadRaw()
+                var k = Keeper.init(h: Kimi.Intrinsics.makeObj<Cell>(Cell.init()))
+                let p = k.h@follow.x@raw
+                let m = k@move
                 usep(p)
             func stored(slot: uniq/(raw/i32))
                 var b = Buf<i32>.init(4)
@@ -208,13 +214,10 @@ public sealed partial class MirBorrowsTest
         var problems = program.Problems.All.ToArray();
         Assert.Equal(
             [
-                "b: Anchor b.data, Use usep(p)", "b: Anchor keepIn(slot, b.data), Store b",
-                "var b = Buf<i32>.init(4): Anchor keepIn(slot, b.data), Store var b = Buf<i32>.init(4)",
-                "takeBoth(b@uniq, b.data): Anchor takeBoth(b@uniq, b.data), Use takeBoth(b@uniq, b.data)",
-                "withStatic(): Anchor G.buf.data, Store let p = G.buf.data, Evaluated G.buf = Buf<i32>.init(2)",
+                "b", "k", "b", "var b = Buf<i32>.init(4)", "takeBoth(b@uniq, b.data)", "withStatic(), Evaluated G.buf = Buf<i32>.init(2)",
             ],
             problems.Select((x, i) => (x, i)).Where(static x => x.x.Code == DiagnosticCode.OwnStepDeparture_Kd && x.x.Subject.Module == 0).Select(x =>
-                $"{Line(c, x.x.Subject)}: {string.Join(", ", program.Problems.Facts(x.i).ToArray().Select(f => $"{f.Kind} {Line(c, f.Site)}"))}"));
+                $"{Line(c, x.x.Subject)}{string.Concat(program.Problems.Facts(x.i).ToArray().Select(f => $", {f.Kind} {Line(c, f.Site)}"))}"));
     }
 
     // V16 (B §7, shape 3): N pointers into N owning Places of one root (a Tuple of N buffers) live to the end and N writes replacing the

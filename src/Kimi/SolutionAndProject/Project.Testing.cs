@@ -18,56 +18,47 @@ public partial class Project
     /// <exception cref="InvalidDataException">The test target cannot be selected.</exception>
     internal Compilation? PrepareTests(CancellationToken cancellationToken, CheckContext? context)
     {
-        var inputs = context?.Inputs ?? CheckInputSource.Disk;
         cancellationToken.ThrowIfCancellationRequested();
 
-        // As for a product build, each configuration, test setting and resolution failure is its own record (SPEC 23.1.2), blocking the
-        // check before the front end (SPEC 23.2.2); a command renders them.
+        // The product build's preparation sequence (BuildTargets) with the test settings: each failure is its own record (SPEC 23.1.2),
+        // blocking the check before the front end (SPEC 23.2.2); a command renders them.
         var diagnostics = context?.Diagnostics ?? new DiagnosticOwner();
-        var valid = this.ValidateConfiguration(diagnostics, out var sources);
-        valid &= !this.Reported(diagnostics, this.ProjectFile.Test.Validate());
-        if (Testing.TestCatalog.TryProjectIdOf(this) is null)
+        try
         {
-            this.Fail(diagnostics, Testing.TestCatalog.InvalidProjectId);
-            valid = false;
-        }
-
-        if (!valid)
-        {
-            this.Publish(diagnostics, DiagnosticPartition.Input, DiagnosticPartition.Input, context);
-            return null;
-        }
-
-        var target = this.KimiOptions.Target;
-        if (string.IsNullOrEmpty(target))
-        {
-            if (this.ProjectFile.Targets.Length != 1)
+            if (!this.ValidateConfiguration(diagnostics, out var sources))
             {
-                throw new InvalidDataException("Select --Target when a test project has more than one configured target.");
-            }
-
-            target = this.ProjectFile.Targets[0];
-        }
-
-        if (target != WindowsProfile.Target || !this.ProjectFile.Targets.Contains(target, StringComparer.Ordinal))
-        {
-            throw new InvalidDataException("Testing requires a configured Windows x64 target.");
-        }
-
-        DependencyPartition? graph = null;
-        if (this.FilePath is { } path)
-        {
-            var resolution = DependencyResolver.Resolve(path, target, this.ProjectFile.LangVersion ?? this.SolutionLanguageVersion ?? Compilation.CurrentLanguageVersion, cancellationToken, TinyhandSerializer.SerializeToUtf8(this.ProjectFile), true, inputs);
-            if (this.Reported(diagnostics, DependencyLock.Validate(DependencyLock.PathForProject(path), resolution, true, inputs)))
-            {
-                this.Publish(diagnostics, DiagnosticPartition.Input, DiagnosticPartition.Input, context);
                 return null;
             }
 
-            graph = resolution.Test;
-        }
+            var valid = !this.Reported(diagnostics, this.ProjectFile.Test.Validate());
+            if (Testing.TestCatalog.TryProjectIdOf(this) is null)
+            {
+                this.Fail(diagnostics, Testing.TestCatalog.InvalidProjectId);
+                valid = false;
+            }
 
-        Compilation? result = null;
-        return this.BuildTarget(target, false, null, sources, graph, c => result = c, context) ? result : null;
+            var target = this.KimiOptions.Target;
+            if (string.IsNullOrEmpty(target))
+            {
+                if (this.ProjectFile.Targets.Length != 1)
+                {
+                    throw new InvalidDataException("Select --Target when a test project has more than one configured target.");
+                }
+
+                target = this.ProjectFile.Targets[0];
+            }
+
+            if (target != WindowsProfile.Target || !this.ProjectFile.Targets.Contains(target, StringComparer.Ordinal))
+            {
+                throw new InvalidDataException("Testing requires a configured Windows x64 target.");
+            }
+
+            Compilation? result = null;
+            return this.BuildTarget(target, valid, false, null, sources, cancellationToken, c => result = c, context) ? result : null;
+        }
+        finally
+        {
+            this.Publish(diagnostics, DiagnosticPartition.Input, DiagnosticPartition.Input, context);
+        }
     }
 }

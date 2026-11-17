@@ -131,14 +131,14 @@ fn make @111
       goto bb14 @156 s1
   bb16:
       StorageDead(_7) @157 s1
-      drop _5 -> bb17 @144 s1
+      drop _5 -> bb17 [keep] @144 s1
   bb17:
       StorageDead(_5) @144 s1
-      drop _3 -> bb18 @128 s1
+      drop _3 -> bb18 [keep] @128 s1
   bb18:
       StorageDead(_3) @128 s1
       StorageDead(_2) @122 s1
-      drop _1 -> bb19 @114 s1
+      drop _1 -> bb19 [keep] @114 s1
   bb19:
       StorageDead(_1) @114 s1
       unreachable @113
@@ -352,7 +352,7 @@ fn returnInPayload @222
       _6 = const () @236 s2
       goto bb7 @236 s2
   bb10:
-      drop _5 -> bb11 @233 s2
+      drop _5 -> bb11 [keep] @233 s2
   bb11:
       StorageDead(_5) @233 s2
       unreachable @232 s1
@@ -591,7 +591,7 @@ fn abortPayload @307
     * _2 = halt() -> ! check bb1 @314 s1
   bb1:
       _1 = Adt case 0(const "a", move _2): Pay @309 s1
-      drop _1 -> bb2 @309 s1
+      drop _1 -> bb2 [keep] @309 s1
   bb2:
       StorageDead(_2) @314 s1
       StorageDead(_1) @309 s1

@@ -3,6 +3,7 @@
 using Kimi;
 using Kimi.Compiler;
 using Kimi.Compiler.Parsing;
+using Kimi.Diagnostics;
 using Tinyhand;
 using Xunit;
 
@@ -45,10 +46,8 @@ public class StartupBindingTest
     [InlineData("")]
     [InlineData("func helper() => ()")]
     [InlineData("func main() => ()")]
-    [InlineData("public func Main() => ()")]
     [InlineData("group G\n    public func main() => ()")]
     [InlineData("struct S\n    public func main() => ()")]
-    [InlineData("func outer()\n    public func main() => ()")]
     [InlineData("#if false\nConsole.writeLine(\"excluded\")")]
     public void DeclarationFragmentsBindWithoutBecomingApplications(string source)
     {
@@ -59,6 +58,22 @@ public class StartupBindingTest
         Assert.True(c.Binding.CheckStartup(OutputKind.Library).IsComplete, Describe(c));
         Assert.Equal(StartupKind.None, c.Binding.Startup.Kind);
         Assert.Empty(c.Binding.Issues);
+    }
+
+    // SPEC 6.1.1, 9.3, 22.4: only the root's `public func main` keeps an access word; every near miss is a root or local function,
+    // which takes none: it is reported at the word and selects no startup function. The valid twins are the `public func main`
+    // rows above and the fragments theory's `func main` and member rows.
+    [Theory]
+    [InlineData("public func Main() => ()", "public")]
+    [InlineData("private func main() => ()", "private")]
+    [InlineData("internal func main() => ()", "internal")]
+    [InlineData("protected internal func main() => ()", "protected")]
+    [InlineData("func outer()\n    public func main() => ()", "public")]
+    public void OnlyTheRootsPublicMainKeepsItsAccessWord(string source, string word)
+    {
+        var records = DiagnosticCorpus.Check(source).Diagnostics;
+        Assert.Equal([nameof(DiagnosticCode.MisplacedSyntax_Kd), nameof(DiagnosticCode.MissingStartupBody_Kd)], records.Select(static x => x.Code));
+        Assert.Equal(new SourceSpan(source.IndexOf(word, StringComparison.Ordinal), word.Length), records[0].Span);
     }
 
     [Theory]
@@ -174,7 +189,8 @@ public class StartupBindingTest
         Assert.True(c.Bind().IsComplete, Describe(c));
         var call = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>()).CallOf()!;
         Assert.Same(c.Library.WriteLine, call.Target);
-        Assert.Equal(CompilerFunctionKind.WriteLine, call.Target.CompilerFunction);
+        Assert.Equal(KimiDeclarationId.WriteLine, call.Target.LibraryDeclaration);
+        Assert.Equal(DispositionKind.Body, call.Target.Definition.Kind); // A Kimigayo body (R8-W2 d).
         Assert.Null(call.Receiver);
         Assert.Equal("()", call.ReturnType.Name);
         Assert.Equal(new[] { 0 }, call.ArgumentToParameter.ToArray());
@@ -183,7 +199,7 @@ public class StartupBindingTest
         Assert.Equal((BoundTypeKind.Semantics, SemanticsKind.Ref), (parameter.Kind, parameter.Semantics));
         Assert.Equal("string", Assert.Single(parameter.Components).Name);
         Assert.Null(function.Body);
-        Assert.Null(function.ExpressionBody);
+        Assert.NotNull(function.ExpressionBody); // SPEC 22.1: a library body, the view overload's call over Text.utf8 (R8-W2 d).
     }
 
     [Theory]
@@ -208,7 +224,8 @@ public class StartupBindingTest
         Assert.True(c.Bind().IsComplete, Describe(c));
         var target = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>()).CallOf()!.Target;
         Assert.NotSame(c.Library.WriteLine, target);
-        Assert.Equal(CompilerFunctionKind.None, target.CompilerFunction);
+        Assert.Null(target.LibraryDeclaration);
+        Assert.Equal(DispositionKind.Body, target.Definition.Kind);
     }
 
     [Fact]
@@ -291,7 +308,7 @@ public class StartupBindingTest
     [Fact]
     public void LocalHelpersRemainSourceLocal()
     {
-        var c = Parse("public func helper() => ()", "public func main() => helper()");
+        var c = Parse("func helper() => ()", "public func main() => helper()");
         Assert.False(c.Bind().IsComplete);
         Assert.Contains(c.Binding.Issues, x => x.Code == DiagnosticCode.UnresolvedBinding_Kd);
     }
@@ -302,7 +319,7 @@ public class StartupBindingTest
         var c = Parse("alias Core\ngroup Core\n    public func writeLine(text: string) => ()\nCore.writeLine(\"user\")\n::Kimi.Console.writeLine(\"compiler\")\nwriteLine(\"alias\")");
         Assert.True(c.Bind().IsComplete, Describe(c));
         var calls = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>().ToArray();
-        Assert.Equal(CompilerFunctionKind.None, calls[0].CallOf()!.Target.CompilerFunction);
+        Assert.Equal(DispositionKind.Body, calls[0].CallOf()!.Target.Definition.Kind);
         Assert.Same(c.Library.WriteLine, calls[1].CallOf()!.Target);
         Assert.Same(calls[0].CallOf()!.Target, calls[2].CallOf()!.Target);
     }

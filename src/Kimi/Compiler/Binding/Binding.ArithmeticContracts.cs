@@ -29,7 +29,7 @@ public sealed partial class Binding
 
     private bool ValidArithmeticConformance(BoundConformancePath path, BoundType self)
     {
-        if (ArithmeticContracts.Identity(path.Contract) is not { } id)
+        if (ArithmeticContractSyntax.Identity(path.Contract) is not { } id)
         {
             return true;
         }
@@ -71,7 +71,7 @@ public sealed partial class Binding
     // are obligations, never environment assumptions, so they cannot establish their own counterpart eligibility.
     private void AddArithmeticPremises(BoundContract declaration, BoundType self, ConstraintEnvironment environment, BindingSymbol source)
     {
-        if (ArithmeticContracts.Identity(declaration.Symbol) is not { } id)
+        if (ArithmeticContractSyntax.Identity(declaration.Symbol) is not { } id)
         {
             return;
         }

@@ -35,11 +35,11 @@ public partial class LayoutAttributeBindingTest
         }
     }
 
-    // A conflicting Layout invalidates its target through its Attribute and keeps an earlier Origin cause as the target's own failure
-    // (InvalidateAttributeTarget): the struct fails with InvalidOrigin, both records stay, and removing the conflicting Attribute leaves the
-    // Origin record alone.
+    // A conflicting Layout invalidates its target through its Attribute (InvalidateAttributeTarget) beside a failed Origin clause, which
+    // fails only itself (SPEC 15.3.3, 23.1.2; H11b-0 B1): the struct holds no failure of its own and rests on the conflicting Attribute,
+    // both records stay, and removing the conflicting Attribute leaves the Origin record alone.
     [Fact]
-    public void ALayoutConflictPreservesAnEarlierOriginCause()
+    public void ALayoutConflictBesideAFailedOriginClauseKeepsBothRecords()
     {
         var c = CompilationTestHelper.ParseSuccess("#Layout(\"C\")\nstruct S {a}\n    origin missing outlives a\n#Layout(\"Kimigayo\")\nstruct S {a}");
         var type = c.Kotonoha.RootKoto.NestedContainers.Single();
@@ -47,10 +47,10 @@ public partial class LayoutAttributeBindingTest
         {
             Assert.False(c.Bind().IsComplete);
             Assert.Equal(BindingState.Invalid, type.StateOf());
-            Assert.Equal(BindingFailure.InvalidOrigin, type.FailureOf());
-            Assert.Contains(type, c.Binding.DerivedIssues);
+            Assert.Equal(BindingFailure.None, type.FailureOf());
+            var conflicting = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<AttributeKoto>().Single(static x => x.FailureOf() != BindingFailure.None);
             var key = Assert.Single(c.Binding.FailureCauses(type)!);
-            Assert.Equal(type.KeyOf(Kimi.Diagnostics.DiagnosticRequirement.Binding(BindingFailure.InvalidOrigin)), key);
+            Assert.Equal(conflicting.KeyOf(Kimi.Diagnostics.DiagnosticRequirement.Binding(conflicting.FailureOf())), key);
             var codes = CompilationTestHelper.BindingErrors(c).Select(x => x.Code).Order(StringComparer.Ordinal);
             Assert.Equal(["ConflictingLayout_Kd", "MissingOriginBinding_Kd"], codes);
         }

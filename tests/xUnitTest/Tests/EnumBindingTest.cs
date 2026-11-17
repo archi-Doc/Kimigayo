@@ -295,7 +295,6 @@ public class EnumBindingTest
     [InlineData("func f(x: ref/i32 during a, y: ref/i32 during c) -> Option<ref/i32 during c>\n    origin c outlives a\n    return Option<ref/i32 during a>.Some(x)\n", nameof(DiagnosticCode.UnprovenOriginRelation_Kd), "Option<ref/i32 during a>.Some(x)")]
     [InlineData("func f(x: ref/i32 during a) -> Option<ref/i32 during static>\n    return Option<ref/i32 during a>.Some(x)\n", nameof(DiagnosticCode.UnprovenOriginRelation_Kd), "Option<ref/i32 during a>.Some(x)")]
     [InlineData("func f(x: ref/i32 during a, y: ref/i32 during c) -> Option<ref/i32 during c>\n    origin a outlives c\n    return Option<ref/i32 during a>.Some(y)\n", nameof(DiagnosticCode.UnprovenOriginRelation_Kd), "y")]
-    [InlineData("func f(x: ref/i32 during a, y: ref/i32 during c) -> Option<ref/i32 during c>\n    origin a outlives c\n    return Option<ref/i32 during a>.Some(1)\n", nameof(DiagnosticCode.TypeMismatch_Kd), "1")]
     [InlineData("func f(x: ref/i32 during a, y: ref/i32 during c) -> Option<ref/i32 during c>\n    origin a outlives c\n    return Option<ref/i64 during a>.None\n", nameof(DiagnosticCode.TypeMismatch_Kd), "Option<ref/i64 during a>.None")]
     [InlineData("func f(x: uniq/i32 during a, y: ref/i32 during c) -> Option<ref/i32 during c>\n    origin a outlives c\n    return Option<uniq/i32 during a>.Some(x)\n", nameof(DiagnosticCode.TypeMismatch_Kd), "Option<uniq/i32 during a>.Some(x)")]
     [InlineData("func f(x: ref/i32 during a, y: ref/i32 during c) -> Option<ref/i32 during c>\n    origin a outlives c\n    return Option<uniq/i32 during a>.None\n", nameof(DiagnosticCode.TypeMismatch_Kd), "Option<uniq/i32 during a>.None")]
@@ -305,6 +304,20 @@ public class EnumBindingTest
     {
         var error = Assert.Single(DiagnosticCorpus.Check(source + "public func main() -> () => ()\n").Diagnostics);
         Assert.Equal((code, at), (error.Code, source.Substring(error.Span!.Value.Start, error.Span.Value.Length)));
+    }
+
+    // SPEC 15.6.1, 10.2 row 2 (PLAN G585, G430; DECISIONS Q13, R4-M108, R4-M111): a payload borrowed from a body Place, a literal's
+    // temporary or a local, that does not outlive the Case's Origin is UnsatisfiedOriginRelation_Kd at the payload, twice: Binding's
+    // record and A5's row of the same body chain, the twin pair of PLAN G430. R7's twin removal makes each row one record.
+    [Theory]
+    [InlineData("    return Option<ref/i32 during a>.Some(1)\n", "1")]
+    [InlineData("    let n = 1\n    return Option<ref/i32 during a>.Some(n)\n", "n")]
+    public void ABorrowedPayloadThatDoesNotOutliveItsCaseIsTheTwinPair(string body, string at)
+    {
+        var source = "func f(x: ref/i32 during a, y: ref/i32 during c) -> Option<ref/i32 during c>\n    origin a outlives c\n" + body + "public func main() -> () => ()\n";
+        var errors = DiagnosticCorpus.Check(source).Diagnostics.OrderBy(static x => x.Span!.Value.Start);
+        (string Code, string Text)[] expected = [(nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd), at), (nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd), at)];
+        Assert.Equal(expected, errors.Select(x => (x.Code, source.Substring(x.Span!.Value.Start, x.Span.Value.Length))));
     }
 
     // SPEC 6.5.2, 10.8.1 (PLAN G381): a Case constructed in a Field initializer reports its own Type mismatch, and only it: the Field
@@ -318,18 +331,22 @@ public class EnumBindingTest
         Assert.Equal(expected, errors.Select(x => (x.Code, Source.Substring(x.Span!.Value.Start, x.Span.Value.Length))));
     }
 
-    // SPEC 6.5.2, 7.7.4 (DECISIONS BU-107, PLAN G381): a payload erased in a Field initializer, bound with the Field's header before the
-    // capability engine judges, is one located Unsupported_Kd at the converted Closure or Function Item with bound Type arguments, the
-    // only record: the Field has no stored Type, which its constructor does not require (SPEC 23.1.2; PLAN G105, G522; DECISIONS Q13).
-    // It was the construction's TypeMismatch_Kd; typed and local twins are valid.
+    // SPEC 6.5.2, 7.7.4 (DECISIONS BU-107, PLAN G381, G826): a payload erased in a Field initializer, bound with the Field's header before
+    // the capability engine judges, is one located Unsupported_Kd at a converted Function Item with bound Type arguments, the only
+    // record: the Field has no stored Type, which its constructor does not require (SPEC 23.1.2; PLAN G105, G522; DECISIONS Q13). It was
+    // the construction's TypeMismatch_Kd; typed and local twins are valid. A Closure there captures nothing (SPEC 7.7.2, 6.1.3), so its
+    // environment is empty and decided (it was the located limit before G826). In a group the Field is static storage: its Closure
+    // storage limit sits at the `let`, with the located limit at a use, as its annotated twin has them (v45; it was one located limit at
+    // the literal before G826).
     [Theory]
-    [InlineData("struct S\n    public let e = E.A(func (x: i32) -> i32 => x)\n", "(x: i32) -> i32")]
+    [InlineData("struct S\n    public let e = E.A(func (x: i32) -> i32 => x)\n")]
     [InlineData("group K\n    public func idg<T>(x: i32) -> i32 => x\nstruct S\n    public let e = E.A(K.idg<i32>)\n", "K.idg<i32>")]
-    public void APayloadErasedInAFieldHeaderIsTheLocatedLimit(string declarations, string at)
+    [InlineData("group S5\n    public let e = E.A(func (x: i32) -> i32 => x)\nfunc h() -> i32\n    let r = S5.e@ref\n    return 0\n", "let e = E.A(func (x: i32) -> i32 => x)", "S5.e@ref")]
+    public void APayloadErasedInAFieldHeaderIsTheLocatedLimitWithBoundArguments(string declarations, params string[] at)
     {
         var source = "enum E\n    A((i32) -> i32)\n    B\n" + declarations + "public func main() -> () => ()\n";
         var errors = DiagnosticCorpus.Check(source).Diagnostics.OrderBy(static x => x.Span!.Value.Start);
-        (string Code, string Text)[] expected = [(nameof(DiagnosticCode.Unsupported_Kd), at)];
+        var expected = at.Select(static x => (nameof(DiagnosticCode.Unsupported_Kd), x));
         Assert.Equal(expected, errors.Select(x => (x.Code, source.Substring(x.Span!.Value.Start, x.Span.Value.Length))));
     }
 

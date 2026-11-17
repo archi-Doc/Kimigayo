@@ -220,7 +220,7 @@ public sealed partial class Binding
 
         var subject = type is { Kind: BoundTypeKind.Constructed, Components.Count: 1 } &&
             type.Symbol?.LibraryDeclaration == KimiDeclarationId.Wrapping ? type.Components[0] : type;
-        if (subject.Kind is BoundTypeKind.Parameter or BoundTypeKind.AssociatedProjection)
+        if (subject.IsProofDecided)
         {
             return this.OperatorRequirement(subject, this.Library.PrimitiveInteger, scope, failure);
         }
@@ -235,7 +235,7 @@ public sealed partial class Binding
             return default;
         }
 
-        return type.Kind is BoundTypeKind.Parameter or BoundTypeKind.AssociatedProjection
+        return type.IsProofDecided
             ? this.OperatorRequirement(type, this.Library.PrimitiveInteger, scope, BindingFailure.InvalidShiftCount)
             : new(null, null, BindingFailure.InvalidShiftCount, null, null, type, type);
     }
@@ -279,7 +279,7 @@ public sealed partial class Binding
             return this.IntegerApplicability(type, scope, BindingFailure.NonIntegerOperand);
         }
 
-        if (type.Kind is BoundTypeKind.Parameter or BoundTypeKind.AssociatedProjection)
+        if (type.IsProofDecided)
         {
             return this.OperatorRequirement(type, this.Library.GetSymbol(KimiDeclarationId.Negatable)!, scope, BindingFailure.UnsatisfiedConstraint);
         }

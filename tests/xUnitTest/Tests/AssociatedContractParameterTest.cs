@@ -23,8 +23,9 @@ public class AssociatedContractParameterTest
     [InlineData("", false)]
     public void ImplementationUsesOnlyTheSubstitutedPublicDomain(string domain, bool valid)
     {
-        var c = MinimalEmissionTest.Analyze("contract C<E>\n    associate Item(a)" + domain + "\nstruct S<T>\n    Self is C<T>\n    associate C.Item(b) is ref/T during b");
+        var c = MinimalEmissionTest.Analyze("contract C<E>\n    associate Item(a)" + domain + "\nstruct S<T>\n    Self is C<T>\n    associate C<T>.Item(b) is ref/T during b");
         Assert.True(valid == c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
+        Assert.Equal(!valid, c.Binding.Issues.Any(static x => x.Code == DiagnosticCode.InvalidOriginBinding_Kd));
     }
 
     [Theory]

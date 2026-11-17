@@ -160,6 +160,7 @@ public enum DiagnosticCode
     GenerationResourceLimit_Kd,
     OwnershipStorageLimit_Kd,
     OwnershipCaseLimit_Kd,
+    ModuleCountLimit_Kd,
 
     InternalInvariant_Kd,
     ComparisonLoanConflict_Kd,
@@ -167,6 +168,7 @@ public enum DiagnosticCode
     CallActivationConflict_Kd,
     PlacementActivationConflict_Kd,
     OwnStepDeparture_Kd,
+    UnretainedRawStore_Kd,
 
     InvalidDependencyConfiguration_Kd,
     UnresolvedDependencyGraph_Kd,
@@ -179,7 +181,7 @@ public enum DiagnosticCode
     ConflictingImportSignature_Kd,
     ConflictingRuntimeSymbol_Kd,
     ConflictingImportSupply_Kd,
-    UnsafeFunctionValue_Kd,
+    DirectCallFunctionValue_Kd,
     UnavailableReservedImport_Kd,
     SplitCLayoutStorage_Kd,
     InvalidCLayout_Kd,

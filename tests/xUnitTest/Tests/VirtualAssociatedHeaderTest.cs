@@ -14,7 +14,7 @@ public class VirtualAssociatedHeaderTest
     public void ClosedAndDerivedBindingsNormalizeAssociatedSignatures(bool concrete)
     {
         const string Prefix = "contract Catalog\n    associate Element\n    Element is Copy\nstruct Entry\n    Self is Catalog\n    associate Catalog.Element is i32\nopen struct Base<T>\n    public init() => ()\n    public virtual func read(self: objref/Self, value: ref/T.Element) -> T.Element\n        T is Catalog\n        return value@follow\n";
-        var derived = concrete ? "struct Derived : Base<Entry>\n" : "struct Derived<U> : Base<U>\n    U is Catalog\n    U.Catalog.Element is i32\n";
+        var derived = concrete ? "struct Derived : Base<Entry>\n" : "struct Derived<U> : Base<U>\n    U is Catalog\n    U.(Catalog).Element is i32\n";
         var source = Prefix + derived + "    public init() => ()\n    override func read(self: objref/Self, value: ref/i32) -> i32 => value@follow\n" +
             (concrete ? "let owner = Derived.init()@obj\nlet n = 7\nrequire owner.read(n@ref) == 7 else => $abort(\"projection\")\nlet item = Derived.read\nrequire item(owner@objref/Base<Entry>, n@ref) == 7 else => $abort(\"item\")\nlet erased: (objref/Base<Entry>, ref/i32) -> i32 = Derived.read\nrequire erased(owner@objref/Base<Entry>, n@ref) == 7 else => $abort(\"erased\")" : "()");
         var c = MinimalEmissionTest.Analyze(source);
@@ -30,15 +30,15 @@ public class VirtualAssociatedHeaderTest
     [InlineData(true)]
     public void DifferentSlotPremisesDoNotGuessAnAssociatedName(bool qualified)
     {
-        var element = qualified ? "U.First.Element" : "U.Element";
-        var source = "contract First\n    associate Element\ncontract Second\n    associate Element\nopen struct Base<T>\n    public virtual func read(self: objref/Self, value: ref/T.First.Element) -> i32\n        T is First\n        return 1\n    public virtual func read(self: objref/Self, value: ref/T.Second.Element) -> i32\n        T is Second\n        return 2\nstruct Derived<U> : Base<U>\n    override func read(self: objref/Self, value: ref/" + element + ") -> i32 => 3\n()";
+        var element = qualified ? "U.(First).Element" : "U.Element";
+        var source = "contract First\n    associate Element\ncontract Second\n    associate Element\nopen struct Base<T>\n    public virtual func read(self: objref/Self, value: ref/T.(First).Element) -> i32\n        T is First\n        return 1\n    public virtual func read(self: objref/Self, value: ref/T.(Second).Element) -> i32\n        T is Second\n        return 2\nstruct Derived<U> : Base<U>\n    override func read(self: objref/Self, value: ref/" + element + ") -> i32 => 3\n()";
         var c = MinimalEmissionTest.Analyze(source);
         Assert.Equal(qualified, c.Binding.Result.IsComplete);
         if (qualified)
         {
             var implementation = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(x => x.IsOverride);
             Assert.True(c.Binding.TryGetVirtualOverride(implementation, out var selected));
-            Assert.Contains("First.Element", selected.Slot.Original.Parameters[1].Type.ToString(), StringComparison.Ordinal);
+            Assert.Contains("(First).Element", selected.Slot.Original.Parameters[1].Type.ToString(), StringComparison.Ordinal);
         }
         else
         {
@@ -55,7 +55,7 @@ public class VirtualAssociatedHeaderTest
     public void NormalizedAssociatedInputsMatchThePublishedType(bool concrete)
     {
         const string Contract = "contract Catalog\n    associate Element\nstruct Entry\n    Self is Catalog\n    associate Catalog.Element is i32\n";
-        const string Base = "open struct Base<T>\n    public virtual func read(self: objref/Self, value: ref/T.Element) -> i32\n        T is Catalog\n        T.Catalog.Element is i32\n        return value@follow\n";
+        const string Base = "open struct Base<T>\n    public virtual func read(self: objref/Self, value: ref/T.Element) -> i32\n        T is Catalog\n        T.(Catalog).Element is i32\n        return value@follow\n";
         var derived = concrete ? "struct Derived : Base<Entry>\n    override func read(self: objref/Self, value: ref/i32) -> i32 => value@follow\n"
             : "struct Derived<U> : Base<U>\n    override func read(self: objref/Self, value: ref/U.Element) -> i32 => value@follow\n";
         var c = MinimalEmissionTest.Analyze(Contract + Base + derived + "()");
@@ -69,7 +69,7 @@ public class VirtualAssociatedHeaderTest
     [InlineData(true, true)]
     public void OverrideHeadersInheritAssociatedTypePremises(bool qualified, bool reversed)
     {
-        var element = qualified ? "U.Catalog.Element" : "U.Element";
+        var element = qualified ? "U.(Catalog).Element" : "U.Element";
         const string Contract = "contract Catalog\n    associate Element\n    Element is Copy\n";
         const string Base = "open struct Base<T>\n    public virtual func read(self: objref/Self, value: ref/T.Element) -> T.Element\n        T is Catalog\n        return value@follow\n";
         var derived = $"struct Derived<U> : Base<U>\n    override func read(self: objref/Self, value: ref/{element}) -> {element} => value@follow\n";
@@ -107,7 +107,7 @@ public class VirtualAssociatedHeaderTest
     [Fact]
     public void ResultNamesAreCompletedAfterUniqueInputSelection()
     {
-        var source = "contract First\n    associate Element\ncontract Second\n    associate Element\nopen struct Base<T>\n    public virtual func read(self: objref/Self, value: i32) -> T.First.Element\n        T is First\n        $abort(\"unused\")\n    public virtual func read(self: objref/Self, value: bool) -> T.Second.Element\n        T is Second\n        $abort(\"unused\")\nstruct Derived<U> : Base<U>\n    override func read(self: objref/Self, value: i32) -> U.Element => $abort(\"unused\")\n()";
+        var source = "contract First\n    associate Element\ncontract Second\n    associate Element\nopen struct Base<T>\n    public virtual func read(self: objref/Self, value: i32) -> T.(First).Element\n        T is First\n        $abort(\"unused\")\n    public virtual func read(self: objref/Self, value: bool) -> T.(Second).Element\n        T is Second\n        $abort(\"unused\")\nstruct Derived<U> : Base<U>\n    override func read(self: objref/Self, value: i32) -> U.Element => $abort(\"unused\")\n()";
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete && c.Analysis.IsVerified, MinimalEmissionTest.Describe(c));
     }

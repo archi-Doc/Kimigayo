@@ -1,12 +1,13 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using System.Diagnostics.CodeAnalysis;
 using Kimi.Compiler.Parsing;
 
 namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
-    private readonly Dictionary<Koto, BoundType> inheritedOriginTypes = new(ReferenceEqualityComparer.Instance);
+    private readonly InheritedOriginTypeRows inheritedOriginTypes;
 
     private static OriginContractFact? ImplementationOriginMismatch(Koto at, FunctionKoto definition, BoundType expected, BoundType actual, string member)
     {
@@ -199,16 +200,16 @@ public sealed partial class Binding
             if (originalDeclaration is not null || inheritedDeclaration is not null)
             {
                 inheritedDeclaration ??= this.OriginDeclarationFor(function);
-                inheritedDeclaration.Scope = scope;
-                inheritedDeclaration.State = 3;
+                inheritedDeclaration.Forming.Scope = scope;
+                inheritedDeclaration.Forming.State = 3;
                 this.originStateVersion++;
                 // A written implementation clause is a claim to check, never its own premise.
                 // Rebuild the environment solely from the original before rebinding the header.
-                inheritedDeclaration.Replacements.Clear();
-                inheritedDeclaration.Relations.Clear();
+                inheritedDeclaration.Forming.Replacements.Clear();
+                inheritedDeclaration.Forming.Relations.Clear();
                 if (originalDeclaration is not null)
                 {
-                    foreach (var replacement in originalDeclaration.Replacements)
+                    foreach (var replacement in originalDeclaration.SubstitutionPairs)
                     {
                         if (ReferenceEquals(replacement.Key.Binder, definition) && replacement.Key.Kind is OriginKind.Parameter or OriginKind.Input)
                         {
@@ -216,7 +217,7 @@ public sealed partial class Binding
                             var to = BindContractOrigin(this.ResolveOrigin(replacement.Value, originalDeclaration));
                             if (!ReferenceEquals(from, to))
                             {
-                                inheritedDeclaration.Replacements[from] = to;
+                                inheritedDeclaration.Forming.Replacements[from] = to;
                                 this.originStateVersion++;
                             }
                         }
@@ -224,7 +225,7 @@ public sealed partial class Binding
 
                     foreach (var relation in originalDeclaration.Relations)
                     {
-                        inheritedDeclaration.Relations.Add(new(BindContractOrigin(relation.Longer), BindContractOrigin(relation.Shorter), relation.Equality, relation.Syntax));
+                        inheritedDeclaration.Forming.Relations.Add(new(BindContractOrigin(relation.Longer), BindContractOrigin(relation.Shorter), relation.Equality, relation.Syntax));
                     }
                 }
             }
@@ -248,7 +249,7 @@ public sealed partial class Binding
                 this.InheritOriginContract(syntax, pattern);
                 Reset(syntax);
                 var actual = this.BindType(syntax, scope);
-                this.symbols[function.Parameters[i]].Type = actual;
+                this.ParameterSymbol(function, i).Type = actual;
                 // SPEC 5.7, 15.3.7: an input whose raw Origins differ must accept the required one.
                 var fits = ReferenceEquals(pattern, actual) || (actual is not null && SameExceptRawOrigins(pattern, actual) && IsSubtype(pattern, actual));
                 valid &= fits;
@@ -291,7 +292,7 @@ public sealed partial class Binding
 
                 var a = this.BindOrigin(clause.Left, scope);
                 var b = this.BindOrigin(clause.Right, scope);
-                if (a is null || b is null || !this.ProvesOriginOutlives(a, b, function) || (clause.IsEquality && !this.ProvesOriginOutlives(b, a, function)))
+                if (a is null || b is null || !this.ClaimHolds(a, b, function) || (clause.IsEquality && !this.ClaimHolds(b, a, function)))
                 {
                     if (a is not null && b is not null)
                     {
@@ -402,5 +403,24 @@ public sealed partial class Binding
             // the newly completed contract instead of restoring old elision.
             visitor.Snapshots.RemoveRange(start, visitor.Snapshots.Count - start);
         }
+    }
+
+    // SPEC 15.3.7, 23.1.2 (DECISIONS Q13 rule W; PLAN G739): an implementation's claim is proven from the original's environment, or
+    // holds by an end that rests on a failed part of the original (HoldsResting), which gives no evidence against it.
+    private bool ClaimHolds(BoundOrigin longer, BoundOrigin shorter, FunctionKoto function)
+        => this.ProvesOriginOutlives(longer, shorter, function) || this.HoldsResting(longer, shorter, 0, new ProofLeaf(this, function, default));
+
+    /// <summary>The `inheritedOriginTypes` family's one accessor (DECISIONS BU-220): a pass family, the inherited contract's Type whose
+    /// Origins an omitted Origin at a syntax node takes (InheritOriginContract), kept in the node's module's NodeColumns at its SyntaxId;
+    /// absent after a pass until the column's first write. Its members keep the names its readers use.</summary>
+    private readonly struct InheritedOriginTypeRows(Binding binding)
+    {
+        internal BoundType this[Koto syntax]
+        {
+            set => HirTables.Of(syntax).Families.InheritedOriginTypes.Ref(syntax.SyntaxId, binding) = value;
+        }
+
+        internal bool TryGetValue(Koto use, [NotNullWhen(true)] out BoundType? type)
+            => (type = use.SyntaxOwner is { } table ? table.Hir.Families.InheritedOriginTypes.Get(use.SyntaxId, binding) : null) is not null;
     }
 }

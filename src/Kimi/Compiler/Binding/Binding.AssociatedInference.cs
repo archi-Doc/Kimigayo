@@ -1,20 +1,43 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using System.Diagnostics.CodeAnalysis;
 using Kimi.Compiler.Parsing;
 
 namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
-    private readonly Dictionary<BindingSymbol, AssociatedInference> associatedInference = new(ReferenceEqualityComparer.Instance);
-    private readonly Dictionary<(BoundConformancePath Path, BoundRequirement Requirement), RequirementMatch> requirementMatches = new();
-    private readonly Dictionary<BoundType, bool> pendingAssociatedTypes = new(ReferenceEqualityComparer.Instance);
+    private readonly Dictionary<BoundType, bool> pendingAssociatedTypes = new(
+        KimiLibrarySize.KeyedCapacity(KimiLibrarySize.Stated.AssociatedTypes), ReferenceEqualityComparer.Instance);
+
     private readonly Dictionary<Koto, (BoundRequirement Identity, AssociatedBinding Binding)> inferenceFailures = new(ReferenceEqualityComparer.Instance);
-    private readonly Dictionary<BoundConformancePath, List<BoundConformancePath>> inferenceConsumers = new(ReferenceEqualityComparer.Instance);
+
+    // The pass's inference sources, each path whose consumer list (BoundConformancePath.InferenceConsumers) this pass filled, in the order
+    // first filled: InvalidateAssociatedEvidence's order, and the lists ResetAssociatedInference empties.
+    private readonly List<BoundConformancePath> inferenceSources = new();
     private readonly Queue<BoundConformancePath> inferenceInvalidation = new();
-    private readonly HashSet<BoundConformancePath> publishedInference = new(ReferenceEqualityComparer.Instance);
     private AssociatedInference? collectingAssociated;
     private bool associatedInferenceReady;
+
+    // Symbolic parameter projections are complete public Types; an unresolved projection on a nominal
+    // declaration still needs a Type value. This query never searches bodies or introduces a proof. KimiLibraryShapeTest states with it
+    // that no projection of the library's Type syntax is pending (PLAN G949 S1-r2, rule (c)).
+    internal bool PendingAssociatedType(BoundType type)
+    {
+        if (this.pendingAssociatedTypes.TryGetValue(type, out var pending))
+        {
+            return pending;
+        }
+
+        pending = type.Kind == BoundTypeKind.AssociatedProjection && type.Components[0].Symbol?.Declaration is StructKoto or EnumKoto;
+        for (var i = 0; !pending && i < type.Components.Count; i++)
+        {
+            pending = this.PendingAssociatedType(type.Components[i]);
+        }
+
+        this.pendingAssociatedTypes[type] = pending;
+        return pending;
+    }
 
     private static bool InferenceBinderInScope(Koto binder, BindingSymbol owner)
     {
@@ -81,19 +104,20 @@ public sealed partial class Binding
     {
         this.associatedInferenceReady = false;
         this.collectingAssociated = null;
-        this.requirementMatches.Clear();
         this.completeTypeIdentities.Clear();
         this.inferenceFailures.Clear();
         this.inferenceInvalidation.Clear();
-        this.publishedInference.Clear();
-        foreach (var consumers in this.inferenceConsumers.Values)
+        foreach (var source in this.inferenceSources)
         {
-            consumers.Clear();
+            source.InferenceConsumers!.Clear();
         }
 
+        this.inferenceSources.Clear();
+
         this.pendingAssociatedTypes.Clear();
-        foreach (var batch in this.associatedInference.Values)
+        for (var batches = this.associatedInference.Values.In(this.pass); batches.MoveNext();)
         {
+            var batch = batches.Current!;
             batch.State = 0;
             batch.Active = false;
             batch.Paths.Clear();
@@ -111,24 +135,19 @@ public sealed partial class Binding
 
     private void PrepareAssociatedInference()
     {
-        foreach (var path in this.impls.Paths)
+        foreach (var path in this.impls.InPass.Paths)
         {
             foreach (var identity in path.Contract.Contract!.AssociatedStorage)
             {
                 if (this.InferenceHole(path, identity))
                 {
-                    if (!this.associatedInference.TryGetValue(path.Type, out var batch))
-                    {
-                        this.associatedInference.Add(path.Type, batch = new(path.Type));
-                    }
-
-                    batch.Active = true;
+                    InferenceBatches.Batch(path.Type).Active = true;
                     break;
                 }
             }
         }
 
-        foreach (var path in this.impls.Paths)
+        foreach (var path in this.impls.InPass.Paths)
         {
             if (this.associatedInference.TryGetValue(path.Type, out var batch) && batch.Active)
             {
@@ -136,18 +155,18 @@ public sealed partial class Binding
             }
         }
 
-        foreach (var entry in this.associatedInference)
+        for (var batches = this.associatedInference.Values.In(this.pass); batches.MoveNext();)
         {
-            if (!entry.Value.Active)
+            if (batches.Current is { Active: false } inactive)
             {
-                this.associatedInference.Remove(entry.Key);
+                InferenceBatches.Remove(inactive);
             }
         }
 
         this.associatedInferenceReady = true;
-        foreach (var batch in this.associatedInference.Values)
+        for (var batches = this.associatedInference.Values.In(this.pass); batches.MoveNext();)
         {
-            if (batch.Paths.Count != 0)
+            if (batches.Current is { Paths.Count: > 0 } batch)
             {
                 this.InferAssociatedTypes(batch);
             }
@@ -155,19 +174,25 @@ public sealed partial class Binding
 
         // Explicit equations may point at a newly completed binding. Normalize their values again,
         // preserving their original candidates for final formation/projection verification.
-        foreach (var binding in this.associatedBindings.Values)
+        foreach (var path in this.impls.InPass.Paths)
         {
-            binding.State = 0;
+            if (path.AssociatedBindings is { } bindings)
+            {
+                foreach (var (_, binding) in bindings)
+                {
+                    binding.State = 0;
+                }
+            }
         }
 
-        foreach (var path in this.impls.Paths)
+        foreach (var path in this.impls.InPass.Paths)
         {
             foreach (var identity in path.Contract.Contract!.AssociatedStorage)
             {
                 if (this.ResolveAssociated(path, identity, out _) is { } result && !this.PendingAssociatedType(result))
                 {
                     path.AssociatedStorage[identity] = result;
-                    if (this.associatedBindings.TryGetValue((path.RootPath, identity), out var binding))
+                    if (this.AssociatedBindingOf(path.RootPath, identity) is { } binding)
                     {
                         foreach (var evidence in binding.EvidenceSources)
                         {
@@ -179,7 +204,7 @@ public sealed partial class Binding
             }
         }
 
-        foreach (var path in this.impls.Paths)
+        foreach (var path in this.impls.InPass.Paths)
         {
             this.PublishInheritedInference(path);
         }
@@ -192,9 +217,10 @@ public sealed partial class Binding
             return;
         }
 
-        if (!this.inferenceConsumers.TryGetValue(source, out var consumers))
+        var consumers = source.InferenceConsumers ??= new();
+        if (consumers.Count == 0)
         {
-            this.inferenceConsumers.Add(source, consumers = new());
+            this.inferenceSources.Add(source);
         }
 
         if (!consumers.Contains(target))
@@ -205,10 +231,12 @@ public sealed partial class Binding
 
     private void PublishInheritedInference(BoundConformancePath path)
     {
-        if (path.InheritedFrom is null || !this.publishedInference.Add(path))
+        if (path.InheritedFrom is null || path.InferencePublished)
         {
             return;
         }
+
+        path.InferencePublished = true;
 
         for (var i = 0; i < path.InheritedSourceCount; i++)
         {
@@ -259,7 +287,7 @@ public sealed partial class Binding
                     continue;
                 }
 
-                var self = this.SelfType(path.Type);
+                var self = this.ConformanceSelf(path);
                 foreach (var identity in path.Contract.Contract!.RequirementStorage)
                 {
                     if (identity.Contract != path.Contract || identity.Symbol.Declaration is not FunctionKoto requirement)
@@ -268,7 +296,7 @@ public sealed partial class Binding
                     }
 
                     this.BindHeader(identity.Symbol);
-                    var match = this.IdentifyRequirement(path, identity, self);
+                    var match = this.IdentifyRequirement(path, identity);
                     if (match.State != RequirementMatchState.Unique && identity.Symbol.Type is { } waitingResult)
                     {
                         batch.Pairs.Clear();
@@ -317,7 +345,7 @@ public sealed partial class Binding
                         continue;
                     }
 
-                    var binding = this.associatedBindings[(path, identity)];
+                    var binding = this.AssociatedBindingOf(path, identity)!;
                     foreach (var source in evidence)
                     {
                         if (!this.SameConformanceType(source.Identity.Contract.Type!, identity.Contract.Type!, path.Scope) ||
@@ -352,7 +380,7 @@ public sealed partial class Binding
 
     private bool InferenceHole(BoundConformancePath path, BoundRequirement identity)
         => path.InheritedFrom is null && this.AssociatedParameters(identity.Symbol.Declaration).Length == 0 &&
-        this.associatedBindings.TryGetValue((path.RootPath, identity), out var binding) && binding.Candidates.Count == 0 &&
+        this.AssociatedBindingOf(path.RootPath, identity) is { Candidates.Count: 0 } &&
         this.SpecificationPart(path, identity) is null;
 
     // SPEC 15.3.3, 15.4.4, 23.1.2: the explicit specification of an associated identity in the conformance's declaration or its
@@ -388,7 +416,7 @@ public sealed partial class Binding
         // Copy` specifies i32), or one that did not bind and so cannot be told apart; a capability-only clause (`is Copy`) fixes nothing
         // and leaves the identity to inference.
         IsKoto? Failed(Koto item)
-            => item is IsKoto { IsAssociatedConstraint: true } clause && SpecifiesContract(clause, root.RootContract) &&
+            => item is IsKoto { IsAssociatedConstraint: true } clause && this.SpecifiesContract(clause, root.RootContract) &&
                 ReferenceEquals(clause.Left.BoundSymbol ?? AssociatedHead(clause)?.BoundSymbol, identity.Symbol) &&
                 (clause.BindingFailure != BindingFailure.None || clause.BindingState != BindingState.Resolved ||
                     clause.BoundConstraint is null or { Kind: ConstraintKind.Error or ConstraintKind.Unresolved } ||
@@ -459,25 +487,6 @@ public sealed partial class Binding
         {
             this.ExtractAssociatedEvidence(batch, path, required.Components[i], actual.Components[i], source);
         }
-    }
-
-    // Symbolic parameter projections are complete public Types; an unresolved projection on a nominal
-    // declaration still needs a Type value. This query never searches bodies or introduces a proof.
-    private bool PendingAssociatedType(BoundType type)
-    {
-        if (this.pendingAssociatedTypes.TryGetValue(type, out var pending))
-        {
-            return pending;
-        }
-
-        pending = type.Kind == BoundTypeKind.AssociatedProjection && type.Components[0].Symbol?.Declaration is StructKoto or EnumKoto;
-        for (var i = 0; !pending && i < type.Components.Count; i++)
-        {
-            pending = this.PendingAssociatedType(type.Components[i]);
-        }
-
-        this.pendingAssociatedTypes[type] = pending;
-        return pending;
     }
 
     private bool InferenceTypeInScope(BoundType type, BindingSymbol owner, AssociatedInference batch, out Koto? invalid)
@@ -574,7 +583,7 @@ public sealed partial class Binding
                 path.Scope) is { } identity &&
             this.InferenceHole(path, identity))
         {
-            var binding = this.associatedBindings[(path.RootPath, identity)];
+            var binding = this.AssociatedBindingOf(path.RootPath, identity)!;
             if (problem > binding.Problem)
             {
                 binding.Problem = problem;
@@ -594,7 +603,7 @@ public sealed partial class Binding
 
     private void InvalidateAssociatedEvidence()
     {
-        foreach (var source in this.inferenceConsumers.Keys)
+        foreach (var source in this.inferenceSources)
         {
             if (!source.IsVerified)
             {
@@ -604,7 +613,7 @@ public sealed partial class Binding
 
         while (this.inferenceInvalidation.TryDequeue(out var source))
         {
-            if (!this.inferenceConsumers.TryGetValue(source, out var consumers))
+            if (source.InferenceConsumers is not { } consumers)
             {
                 continue;
             }
@@ -668,14 +677,17 @@ public sealed partial class Binding
         return true;
     }
 
-    private RequirementMatch IdentifyRequirement(BoundConformancePath path, BoundRequirement identity, BoundType self)
+    // The pass's identification of a requirement in a path, kept on the path (BoundConformancePath.RequirementMatches) until the pass
+    // ends; a pending one is identified again.
+    private RequirementMatch IdentifyRequirement(BoundConformancePath path, BoundRequirement identity)
     {
-        var key = (path, identity);
-        if (this.requirementMatches.TryGetValue(key, out var known) && known.State != RequirementMatchState.Pending)
+        var identified = path.RequirementMatches ??= new();
+        if (MatchIndex(identified, identity) is var known and >= 0 && identified[known].Match.State != RequirementMatchState.Pending)
         {
-            return known;
+            return identified[known].Match;
         }
 
+        var self = this.ConformanceSelf(path);
         var selection = this.LookupTypeMember(self, identity.Symbol.Name, path.Scope, self);
         var requirement = (FunctionKoto)identity.Symbol.Declaration;
         BindingSymbol? selected = null;
@@ -705,11 +717,40 @@ public sealed partial class Binding
 
         var state = selection.Ambiguous || matches > 1 ? RequirementMatchState.Ambiguous : pending ? RequirementMatchState.Pending : selected is null ? RequirementMatchState.Missing : RequirementMatchState.Unique;
         var result = new RequirementMatch(state, selected, selection);
-        this.requirementMatches[key] = result;
+        if (MatchIndex(identified, identity) is var index and >= 0)
+        {
+            identified[index] = (identity, result); // The identification above may have stored one for the same requirement.
+        }
+        else
+        {
+            identified.Add((identity, result));
+        }
+
         return result;
+
+        static int MatchIndex(List<(BoundRequirement Requirement, RequirementMatch Match)> list, BoundRequirement identity)
+        {
+            for (var i = 0; i < list.Count; i++)
+            {
+                if (list[i].Requirement == identity)
+                {
+                    return i;
+                }
+            }
+
+            return -1;
+        }
     }
 
-    private enum InferenceProblem : byte
+    internal enum RequirementMatchState : byte
+    {
+        Unique,
+        Missing,
+        Ambiguous,
+        Pending,
+    }
+
+    internal enum InferenceProblem : byte
     {
         None,
         Shape,
@@ -721,19 +762,53 @@ public sealed partial class Binding
         Ambiguous,
     }
 
-    private enum RequirementMatchState : byte
+    internal readonly record struct RequirementMatch(RequirementMatchState State, BindingSymbol? Member, MemberSelection Selection);
+
+    internal readonly record struct AssociatedEvidence(BoundConformancePath Path, BoundRequirement Identity, BoundType Type, FunctionKoto Source);
+
+    // The `associatedInference` family's one accessor (DECISIONS BU-220): a conforming Type's batch is kept in its Type's declaration's
+    // module at the declaration's SyntaxId (SPEC 8.6.1: a conformance is declared in its Type's declaration, ImplTable's store rule),
+    // across passes: ResetAssociatedInference resets each in place, and PrepareAssociatedInference drops one no inference hole needs.
+    internal readonly struct InferenceBatches(Binding binding)
     {
-        Unique,
-        Missing,
-        Ambiguous,
-        Pending,
+        // Every kept batch in G949 D2b-d's d8 order: the source modules by ordinal, then the library, each by ascending id.
+        internal FamilyRows<AssociatedInference?> Values => new(binding, static (table, _) => table.Hir.Families.AssociatedInference.Enumerate());
+
+        // The slots the family's columns hold over the compilation's modules (AssociatedMetrics' retained storage).
+        internal int Capacity
+        {
+            get
+            {
+                var capacity = Slots(binding.Library.Kotonoha.Syntax);
+                foreach (var module in binding.compilation.SourceModules)
+                {
+                    capacity += Slots(module.Syntax);
+                }
+
+                return capacity;
+
+                static int Slots(SyntaxTable table) => table.Hir.Families.AssociatedInference.Used + table.Hir.Families.AssociatedInference.Free;
+            }
+        }
+
+        // A conforming Type's batch, made at its first need.
+        internal static AssociatedInference Batch(BindingSymbol type)
+            => Own(HirTables.Of(type.Declaration).Families.AssociatedInference.Ref(type.Declaration.SyntaxId) ??= new(type), type)!;
+
+        // An enumerated batch's row: present, so the write carves nothing.
+        internal static void Remove(AssociatedInference batch) => HirTables.Of(batch.Type.Declaration).Families.AssociatedInference.Ref(batch.Type.Declaration.SyntaxId) = null;
+
+        internal bool TryGetValue(BindingSymbol type, [NotNullWhen(true)] out AssociatedInference? batch)
+            => (batch = Own(type.Declaration.SyntaxOwner is { } table ? table.Hir.Families.AssociatedInference.Get(type.Declaration.SyntaxId) : null, type)) is not null;
+
+        // A declaration's row is its Type symbol's, the one a path names (a container's BoundSymbol): any other symbol of the declaration
+        // reaching it is a broken contract (DECISIONS BU-220's symbol rule).
+        private static AssociatedInference? Own(AssociatedInference? batch, BindingSymbol type)
+            => batch is null || ReferenceEquals(batch.Type, type) ? batch
+                : throw new InvalidOperationException($"`{type.Name}` reads the inference batch of `{batch.Type.Name}` (InternalInvariant; DECISIONS BU-220).");
     }
 
-    private readonly record struct RequirementMatch(RequirementMatchState State, BindingSymbol? Member, MemberSelection Selection);
-
-    private readonly record struct AssociatedEvidence(BoundConformancePath Path, BoundRequirement Identity, BoundType Type, FunctionKoto Source);
-
-    private sealed class AssociatedInference(BindingSymbol type)
+    internal sealed class AssociatedInference(BindingSymbol type)
     {
         internal BindingSymbol Type { get; } = type;
 

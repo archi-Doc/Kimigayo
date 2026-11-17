@@ -10,6 +10,7 @@ public class LengthStorageEmissionTest
 {
     private const string Keep = "func keep<length N, T>(value: [N of T]) -> [N of T] => value@move\n";
     private const string Choose = "func choose<length N, T>(a: [N of T], b: [N of T], first: bool) -> [N of T] => if first => a@move else => b@move\n";
+    private const string Size = "func size<length N>(values: [N of i32]) -> isize => N\n";
     private const string Token = "struct Token\n    let id: i32\n    public init(id: i32) => self.id = id\n    drop\n        if self.id == 1 => Console.writeLine(\"one\")\n        if self.id == 2 => Console.writeLine(\"two\")\n        if self.id == 3 => Console.writeLine(\"three\")\n        if self.id == 4 => Console.writeLine(\"four\")\n";
 
     [Trait("Purpose", "Allocation")]
@@ -40,6 +41,16 @@ public class LengthStorageEmissionTest
         { "EmptyMetadata", "func count<length N, T>(a: ref/[N of T]) -> isize => a.length\nlet a: [0 of string] = []\nrequire count(a@ref) == 0 else => $abort(\"empty\")", string.Empty },
         { "ZeroSizedMetadata", "func count<length N, T>(a: ref/[N of T]) -> isize => a.length\nlet a: [3 of ()] = [(), (), ()]\nrequire count(a@ref) == 3 else => $abort(\"zero stride\")", string.Empty },
         { "BorrowedMoveMetadata", Token + "func count<length N, T>(a: ref/[N of T]) -> isize => a.length\ndo\n    let a: [2 of Token] = [Token.init(1), Token.init(2)]\n    require count(a@ref) == 2 else => $abort(\"borrow\")\n    Console.writeLine(\"inspected\")", "inspected\ntwo\none\n" },
+
+        // SPEC 4.4.1, 4.4.2, 7.2.3, 7.7.2 (R8-W2 c2a): a length slot read as an isize value, each instance's (fail-before: Unsupported_Kd at
+        // each read): in a body, two instances of one generic, a Constant-readable Binding (SPEC 4.4.2's example), a Closure, a default
+        // omitted by a closed and by a generic caller, and an instance whose slot is its caller's.
+        { "SlotValue", Size + "require size([1, 2, 3]) == 3 else => $abort(\"slot\")", string.Empty },
+        { "SlotValueInstances", Size + "require size([1, 2, 3]) == 3 and size([1, 2]) == 2 else => $abort(\"instances\")", string.Empty },
+        { "SlotValueBinding", "func f<length N>(a: [(N + 1) of u8]) -> isize\n    let k: isize = N + 1\n    let b: [k of u8] = a\n    return k * 10 + b.length\nrequire f<1>([2 of 0]) == 22 else => $abort(\"binding\")", string.Empty },
+        { "SlotValueClosure", "func size<length N>(values: [N of i32]) -> isize\n    let read = func () -> isize => N\n    return read()\nrequire size([1, 2, 3]) == 3 else => $abort(\"closure\")", string.Empty },
+        { "SlotValueDefault", "func count<length N>(values: [N of i32], n: isize = N) -> isize => n\nfunc outer<length M>(values: [M of i32]) -> isize => count(values)\nrequire count([1, 2]) == 2 and outer([1, 2, 3]) == 3 else => $abort(\"default\")", string.Empty },
+        { "SlotValueNested", Size + "func twice<length M>(values: [M of i32]) -> isize => size(values) + M\nrequire twice([1, 2, 3]) == 6 else => $abort(\"nested\")", string.Empty },
     };
 
     [Theory]
@@ -61,6 +72,16 @@ public class LengthStorageEmissionTest
         using var writer = new StringWriter();
         Assert.False(c.Generate(writer));
         Assert.Empty(writer.ToString());
+    }
+
+    // SPEC 4.4.1, 23.1.2 (R8-W2 c2a's invalid twin): a length slot's Name outside its function resolves nothing, Binding's one record,
+    // while the read inside is its value, no record (fail-before: Unsupported_Kd at the inside read too).
+    [Fact]
+    public void ALengthSlotReadOutsideItsFunctionIsUnresolved()
+    {
+        var source = Size + "let m: isize = N";
+        var c = MinimalEmissionTest.Check(source);
+        Assert.Equal([(nameof(DiagnosticCode.UnresolvedBinding_Kd), source.Length - 1)], TestDiagnostics.Of(c).Select(static x => (x.Code, x.Span.Start)));
     }
 
     [Fact]

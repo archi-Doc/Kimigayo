@@ -1,5 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using System.Diagnostics.CodeAnalysis;
 using System.Numerics;
 using Kimi.Compiler.Parsing;
 
@@ -7,9 +8,12 @@ namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
-    private readonly Dictionary<Koto, OriginRequirementWork> originRequirementNodes = new(ReferenceEqualityComparer.Instance);
     private readonly List<OriginRequirementWork> activeOriginRequirements = new();
     private readonly Queue<OriginRequirementWork> originRequirementQueue = new();
+
+    // The rows of every failed slot's FailingCase range, cleared by ResetPrerequisites with their capacity kept, so a warm rebind
+    // allocates none. A range is contiguous: FailingCase appends, and removes, only its own rows, with no other append between.
+    private readonly List<PairCase> pairCaseRows = [];
     private uint originRequirementPass;
     private uint originRequirementConsumer;
 
@@ -89,9 +93,28 @@ public sealed partial class Binding
 
     private static LoanRequirement Min(LoanRequirement a, LoanRequirement b) => a < b ? a : b;
 
+    // The call's scratch, emptied on every exit (PLAN G949 S1-e), so a Bind that throws leaves the next none: the active works and their
+    // Dependents (the edges to their consumers, read only inside the call). Only an active work gains an edge (CollectRequirementEdges
+    // reads the call's pass stamp), so between calls every work's Dependents is empty.
     private void ComputeOriginRequirements()
     {
-        this.activeOriginRequirements.Clear();
+        try
+        {
+            this.SolveOriginRequirements();
+        }
+        finally
+        {
+            foreach (var work in this.activeOriginRequirements)
+            {
+                work.Dependents.Clear();
+            }
+
+            this.activeOriginRequirements.Clear();
+        }
+    }
+
+    private void SolveOriginRequirements()
+    {
         this.originRequirementQueue.Clear();
         // Retained work survives between passes so summaries and lists are reused. A pass
         // stamp keeps declarations that dropped out from accumulating dependents forever.
@@ -124,13 +147,12 @@ public sealed partial class Binding
                 schema.GenericSlots[0].OriginVariance = OriginVariance.Covariant;
             }
 
-            if (!this.originRequirementNodes.TryGetValue(node, out var work))
+            if (!OriginRequirementRows.TryGetValue(node, out var work))
             {
-                this.originRequirementNodes.Add(node, work = new(node, schema));
+                OriginRequirementRows.Add(node, work = new(node, schema));
             }
 
             work.Schema = schema;
-            work.Dependents.Clear();
             work.Pass = this.originRequirementPass;
             work.Queued = true;
             this.activeOriginRequirements.Add(work);
@@ -265,7 +287,7 @@ public sealed partial class Binding
     // once per consumer (its Consumer mark), so a part met again adds nothing (DECISIONS BU-55, BU-58).
     private void CollectRequirementEdges(BoundType type, OriginRequirementWork consumer, uint query)
     {
-        if (type.Symbol?.Declaration is { } declaration && this.originRequirementNodes.TryGetValue(declaration, out var source) &&
+        if (type.Symbol?.Declaration is { } declaration && OriginRequirementRows.TryGetValue(declaration, out var source) &&
             source.Pass == this.originRequirementPass && source.Consumer != this.originRequirementConsumer)
         {
             source.Consumer = this.originRequirementConsumer;
@@ -357,7 +379,7 @@ public sealed partial class Binding
         }
 
         binder = null;
-        return argument.Kind is BoundTypeKind.Parameter or BoundTypeKind.TargetProjection or BoundTypeKind.AssociatedProjection
+        return argument.IsAbstractType
             ? SemanticsMask.None : CaseSemantics(argument);
     }
 
@@ -382,12 +404,13 @@ public sealed partial class Binding
     // SPEC 23.1.2, 15.3.5 (DECISIONS BU-44): the Semantics cases a slot's requirement is `failing` in at an instance, its failure's typed
     // fact: per binder of it that the instance leaves open (SelectedCases: a pair layer's or a family's, or the declaring binder with no
     // instance), its cases of that class where they are some but not all of its cases; none when every case fails, as the concrete twin's
-    // record names none. Formed only on failure.
-    private PairCase[] FailingCase(OriginParameter slot, BoundType? instance, LoanRequirement failing)
+    // record names none. Formed only on failure, as a range of pairCaseRows.
+    private (int Start, int Count) FailingCase(OriginParameter slot, BoundType? instance, LoanRequirement failing)
     {
         var (weakest, strongest) = this.RequirementAt(slot, instance);
         var schema = ListingSchema(slot, instance);
-        var cases = new List<PairCase>();
+        var cases = this.pairCaseRows;
+        var first = cases.Count;
         var binders = weakest == strongest ? default : slot.Requirement.Binders;
         for (var ordinal = binders.Next(0); ordinal >= 0; ordinal = binders.Next(ordinal + 1))
         {
@@ -408,10 +431,10 @@ public sealed partial class Binding
             }
         }
 
-        return [.. cases];
+        return (first, cases.Count - first);
     }
 
-    private sealed class OriginRequirementWork(Koto owner, DeclarationSchema schema)
+    internal sealed class OriginRequirementWork(Koto owner, DeclarationSchema schema)
     {
         internal Koto Owner { get; } = owner;
 
@@ -424,5 +447,20 @@ public sealed partial class Binding
         internal uint Consumer { get; set; }
 
         internal bool Queued { get; set; }
+    }
+
+    /// <summary>The `originRequirementNodes` family's one accessor (DECISIONS BU-220): a kept family, a declaration's Origin requirement
+    /// work, made once and reused by each pass (ComputeOriginRequirements), kept in its key node's module's NodeColumns at its SyntaxId.
+    /// Its members keep the names its readers use.</summary>
+    private readonly struct OriginRequirementRows
+    {
+        internal static void Add(Koto node, OriginRequirementWork value)
+        {
+            ref var row = ref HirTables.Of(node).Families.OriginRequirementNodes.Ref(node.SyntaxId);
+            row = row is null ? value : throw new ArgumentException($"`originRequirementNodes` already holds a row at `{node}`.", nameof(node));
+        }
+
+        internal static bool TryGetValue(Koto node, [NotNullWhen(true)] out OriginRequirementWork? value)
+            => (value = node.SyntaxOwner is { } table ? table.Hir.Families.OriginRequirementNodes.Get(node.SyntaxId) : null) is not null;
     }
 }

@@ -76,17 +76,9 @@ public sealed class SemanticSnapshotTest
                 continue;
             }
 
-            var before = File.ReadAllText(Path.Combine(baseline, file)).Split('\n');
-            var after = Of(snapshots[index], kind).Split('\n');
-            var line = 0;
-            while (line < before.Length && line < after.Length && before[line] == after[line])
+            if (FirstDifference(File.ReadAllText(Path.Combine(baseline, file)), Of(snapshots[index], kind)) is { } difference)
             {
-                line++;
-            }
-
-            if (line < before.Length || line < after.Length)
-            {
-                differences.Add($"{file}:{line + 1}: {(line < before.Length ? before[line] : "<end>")} -> {(line < after.Length ? after[line] : "<end>")}");
+                differences.Add($"{file}:{difference}");
             }
         }
 
@@ -118,24 +110,39 @@ public sealed class SemanticSnapshotTest
     /// <returns>The bound compilation and the module the case prints: the library for the library case, else the program.</returns>
     internal static (Compilation Compilation, Kotonoha Module) Bind(string name)
     {
-        var slash = name.IndexOf('/');
-        var kind = slash < 0 ? name : name[..slash];
-        var subject = name[(slash + 1)..];
-        var source = kind switch
-        {
-            "library" => string.Empty,
-            "milestone" => File.ReadAllText(DiagnosticCorpus.RepositoryPath("tests", "milestones", subject + ".kimi")),
-            "mutation" => DiagnosticCorpus.Apply(DiagnosticCorpus.Mutation(subject)),
-            "syntax" => DiagnosticCorpus.Syntax(subject).Source,
-            _ => PairCases().Single(x => x.Name == subject).Source,
-        };
-
         var c = Compilation.CreateForTest();
         Assert.True(c.Prepare(WindowsProfile.Target));
-        c.Kotonoha.AddSource(new SourceDocument("Program.kimi", source));
+        c.Kotonoha.AddSource(new SourceDocument("Program.kimi", Source(name)));
         c.Bind();
         c.Binding.CheckStartup(OutputKind.Application);
-        return (c, kind == "library" ? c.Library.Kotonoha : c.Kotonoha);
+        return (c, name == "library" ? c.Library.Kotonoha : c.Kotonoha);
+    }
+
+    /// <summary>Gets the source of a case of the corpus or of the diagnostic snapshot's (<see cref="DiagnosticSnapshotTest.CaseNames"/>):
+    /// the library case's is empty and a pair case's its row's; every other kind's is the diagnostic snapshot's
+    /// (<see cref="DiagnosticSnapshotTest.Source"/>).</summary>
+    /// <param name="name">The case name.</param>
+    /// <returns>The source text.</returns>
+    internal static string Source(string name)
+        => name == "library" ? string.Empty
+            : name.StartsWith("pair/", StringComparison.Ordinal) ? PairCases().Single(x => x.Name == name[5..]).Source : DiagnosticSnapshotTest.Source(name);
+
+    /// <summary>Gets the first line at which two texts differ, as <c>line: before -> after</c> (<c>&lt;end&gt;</c> past a text's last
+    /// line), or null when they are equal.</summary>
+    /// <param name="before">The expected text.</param>
+    /// <param name="after">The actual text.</param>
+    /// <returns>The first difference, or null.</returns>
+    internal static string? FirstDifference(string before, string after)
+    {
+        var (earlier, later) = (before.Split('\n'), after.Split('\n'));
+        var line = 0;
+        while (line < earlier.Length && line < later.Length && earlier[line] == later[line])
+        {
+            line++;
+        }
+
+        return line < earlier.Length || line < later.Length
+            ? $"{line + 1}: {(line < earlier.Length ? earlier[line] : "<end>")} -> {(line < later.Length ? later[line] : "<end>")}" : null;
     }
 
     /// <summary>Takes the snapshot of a case; with <paramref name="hir"/> the HIR columns are published before the ownership analysis
@@ -156,7 +163,9 @@ public sealed class SemanticSnapshotTest
                 HirTables.Publish(c);
             }
 
-            var program = mir ? c.BuildMir() : null;
+            // The library case dumps every library body, as the library check builds them (PLAN G951 U2-T: Compilation's own build holds
+            // only the library bodies its program reaches); a program's case dumps Compilation's build.
+            var program = !mir ? null : module == c.Library.Kotonoha ? MirBuildTest.LibraryRange(c) : c.BuildMir();
             c.Analyze();
             if (program is not null)
             {
@@ -200,14 +209,9 @@ public sealed class SemanticSnapshotTest
     // A case's semantic snapshot (kind 0), HIR snapshot (1) or MIR dump (2).
     private static string Of((string Text, string Hir, string Mir) snapshot, int kind) => kind switch { 0 => snapshot.Text, 1 => snapshot.Hir, _ => snapshot.Mir };
 
-    /// <summary>One row of <c>tests/diagnostics/pair-cases.json</c>; only its name and source are read here.</summary>
-    /// <param name="Name">The case name.</param>
-    /// <param name="Source">The source text.</param>
-    private sealed record PairCaseRow(string Name, string Source);
-
     /// <summary>Prints one line per node in pre-order and then the published records. Every fact the snapshot compares is read here,
     /// so a change of where the compiler stores a fact changes only this printer.</summary>
-    private sealed class SemanticPrinter(bool hir) : KotoVisitor
+    internal sealed class SemanticPrinter(bool hir) : KotoVisitor
     {
         private readonly StringBuilder text = new();
         private readonly StringBuilder? hir = hir ? new() : null;
@@ -232,6 +236,28 @@ public sealed class SemanticSnapshotTest
 
         public override string ToString()
             => this.text.ToString();
+
+        internal static string Origin(BoundOrigin origin)
+        {
+            var builder = new StringBuilder();
+            builder.Append(origin.Kind);
+            if (origin.Name != origin.Kind.ToString())
+            {
+                builder.Append(':').Append(origin.Name);
+            }
+
+            if (origin.Binder is { } binder)
+            {
+                builder.Append('@').Append(CompilationTestHelper.Location(binder)).Append('#').Append(origin.Slot);
+            }
+
+            if (origin.Operands.Count != 0)
+            {
+                builder.Append('(').AppendJoin('&', origin.Operands.Select(Origin)).Append(')');
+            }
+
+            return builder.ToString();
+        }
 
         // The tree, the outcome of each phase, the MIR side (MirTargetSide.MirSide: Binding's records without the twins, then the MIR's
         // rows; R6-check H10a D8) and the published records.
@@ -267,36 +293,7 @@ public sealed class SemanticSnapshotTest
         internal void Fail(Exception exception)
             => this.text.Append("exception ").Append(exception.GetType().Name).Append(": ").Append(exception.Message.Split('\n')[0]).Append('\n');
 
-        private static string Symbol(BindingSymbol? symbol)
-            => symbol is null ? "-" : $"{symbol.Kind}:{symbol.Name}@{CompilationTestHelper.Location(symbol.Declaration)}";
-
-        private static string Length(BoundLength? length)
-            => length is null ? "_" : length.IsConstant ? length.Value.ToString(CultureInfo.InvariantCulture) :
-                length.Parameter is { } parameter ? "$" + parameter.Name + "@" + CompilationTestHelper.Location(parameter.Declaration) : $"({Length(length.Left)} {length.Operation} {Length(length.Right)})";
-
-        private static string Origin(BoundOrigin origin)
-        {
-            var builder = new StringBuilder();
-            builder.Append(origin.Kind);
-            if (origin.Name != origin.Kind.ToString())
-            {
-                builder.Append(':').Append(origin.Name);
-            }
-
-            if (origin.Binder is { } binder)
-            {
-                builder.Append('@').Append(CompilationTestHelper.Location(binder)).Append('#').Append(origin.Slot);
-            }
-
-            if (origin.Operands.Count != 0)
-            {
-                builder.Append('(').AppendJoin('&', origin.Operands.Select(Origin)).Append(')');
-            }
-
-            return builder.ToString();
-        }
-
-        private string Type(BoundType? type)
+        internal string Type(BoundType? type)
         {
             if (type is null)
             {
@@ -355,7 +352,7 @@ public sealed class SemanticSnapshotTest
             return known;
         }
 
-        private void Node(Koto node)
+        internal void Node(Koto node)
         {
             if (this.hir is { } hir)
             {
@@ -507,6 +504,13 @@ public sealed class SemanticSnapshotTest
             text.Append('\n');
         }
 
+        private static string Symbol(BindingSymbol? symbol)
+            => symbol is null ? "-" : $"{symbol.Kind}:{symbol.Name}@{CompilationTestHelper.Location(symbol.Declaration)}";
+
+        private static string Length(BoundLength? length)
+            => length is null ? "_" : length.IsConstant ? length.Value.ToString(CultureInfo.InvariantCulture) :
+                length.Parameter is { } parameter ? "$" + parameter.Name + "@" + CompilationTestHelper.Location(parameter.Declaration) : $"({Length(length.Left)} {length.Operation} {Length(length.Right)})";
+
         // The call facts: callee kind, target, result Type and mode, Type and length arguments, and the argument mapping.
         private void Call(string label, InvocationKoto? invocation)
         {
@@ -542,4 +546,9 @@ public sealed class SemanticSnapshotTest
             }
         }
     }
+
+    /// <summary>One row of <c>tests/diagnostics/pair-cases.json</c>; only its name and source are read here.</summary>
+    /// <param name="Name">The case name.</param>
+    /// <param name="Source">The source text.</param>
+    private sealed record PairCaseRow(string Name, string Source);
 }

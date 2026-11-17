@@ -2,20 +2,22 @@
 
 // Owns the body a callee runs in an item's instance (R5 package K 4.5; SPEC 8.13.3; DECISIONS R5-M30, R5-M36, R5-M70, R5-M74, R5-M116): a
 // Closure's body under its context, a function item's function or a requirement Item's witness, the implementation a function's
-// substitution selects, and for a function without a MIR body the requirement its published row runs, the glue of what it destroys in
-// place (each on the Type below a parameter, Below), or what its intrinsic's row names (and, where the row says so, its Type argument's
-// layout verdict, K 4.8); and the body of a DictionaryStorage function the Dictionary runtime declares as its callee (Declared; DECISIONS
-// R5-M124).
+// substitution selects, and for a function without a MIR body what its intrinsic's row names (and, where the row says so, its Type
+// argument's layout verdict, K 4.8), or for a #LibraryImport function its Import item (Imported; DECISIONS R8-M19); and the body of a
+// DictionaryStorage function the Dictionary runtime declares as its callee (Declared; DECISIONS R5-M124).
 // Input: a closed Closure or function item Type, or a function with its composed substitution; the program's bodies; TyCtxt
-// (SubstOfClosure, SubstOfItem, Dispatches, Witness(item), Implementation, Published, Signature, DictionaryStorage); the intrinsic
-// dispositions and rows; the legacy rows' layout needs.
-// Output: the admitted item (Admit, the witness rows of InstanceCollector.Witnesses.cs, a glue of InstanceCollector.Glue.cs or an
-// intrinsic's row), or -1 for a virtual slot's Item (X5), a Function Type value (its erasure's adapter carries it), a callee without a
-// body or row (a foreign function) or a refused edge.
+// (SubstOfClosure, SubstOfItem, Dispatches, Witness(item), Implementation, DictionaryStorage, Bodyless); the intrinsic dispositions and
+// rows.
+// Output: the admitted item (Admit, the witness rows of InstanceCollector.Witnesses.cs, a glue of InstanceCollector.Glue.cs, an
+// intrinsic's row or an Import item), or -1 for a virtual slot's Item (X5), a Function Type value (its erasure's adapter carries it), a
+// compiler function without a row or a refused edge.
 // Invariants: the substitution admitted is the one the body runs under, so Admit keys and represents it; a Closure's body is the
-// program's, read unchecked (the validator's program pass guarantees it, MirValidator.Program, G191).
-// Must not: read a site or a template, or record anything itself (Admit, the layout verdict, the witness and glue rows do) but Below's
-// verdict and a declared callee without a body, a broken contract.
+// program's where a read body creates the Closure (the validator's program pass, MirValidator.Program, G191); a called Closure without
+// one is a Closure of a declaration Binding rejected, its request checked and then resting on Binding's record (Callee; PLAN G867).
+// Must not: read a site or a template, or record anything itself (Admit, Requested, the layout verdict, the witness and glue rows do) but
+// broken contracts: a declared callee without a body and a bodyless function that is no intrinsic, shim or import, each
+// unless its definition rests on a recorded error (TyCtxt.Bodyless: Dependent), and, in a complete compilation, a called Closure without
+// a body.
 
 using Kimi.Compiler.Mir;
 
@@ -32,7 +34,23 @@ internal sealed partial class InstanceCollector
     {
         if (callable is { Kind: BoundTypeKind.Closure, Symbol: { } closure })
         {
-            return this.Admit(item, subject, program[new(closure, MirBodyKind.Closure)]!, this.types.SubstOfClosure(callable));
+            var subst = this.types.SubstOfClosure(callable);
+            if (program[new(closure, MirBodyKind.Closure)] is { } body)
+            {
+                return this.Admit(item, subject, body, subst);
+            }
+
+            // The program has no body of a Closure whose literal Binding did not publish, one in a declaration it rejected (a static whose
+            // Type is not Owned): the validator names a Closure's body only where a read body creates it (MirValidator.Program), and this
+            // call reads its value from a failed access. Its request is checked as any other (Requested) and then rests on Binding's
+            // record, as a target with a finding does (DECISIONS R5-M183): Report keeps the broken contract of a complete compilation,
+            // which rejected no declaration.
+            if (this.Requested(subject, closure, subst, out _))
+            {
+                this.Report(DiagnosticCode.InternalInvariant_Kd, subject);
+            }
+
+            return -1;
         }
 
         if (callable is not { Kind: BoundTypeKind.FunctionItem, Symbol: { } symbol })
@@ -61,36 +79,22 @@ internal sealed partial class InstanceCollector
         return program.Callee(new(MirCalleeKind.Fn, implementation));
     }
 
-    // K 4.5 rows 2, 6 and 8 (DECISIONS R5-M30, R5-M74, R5-M116): a callee without a MIR body whose published row runs a requirement on the
-    // Type below a parameter (Utf8Format's format, for Text.toString, Text.tryFormat and Utf8Writer.write), that requirement's witness on
-    // that Type under the composed substitution; one whose published row destroys the Type below a parameter in place (replace, SPEC 15.7:
-    // Binding's one fact, which A3's borrows and the effect summary read too), that Type's glue when it may need a drop (GlueOf); the
-    // function of an intrinsic, reached by its Item (a call of it is an Intrinsic callee), the target its row names under the Item's Type
-    // argument, a part of the Item Type its site made (In), read only for a row that reads one (IntrinsicRow.ReadsTypeArgument, as at an
-    // intrinsic call's site, Edge; DECISIONS R5-M136); -1 for another (a foreign function, an intrinsic whose row reads no Type argument).
-    // A legacy or intrinsic row whose need is TypeArguments (a whole-value update, IntrinsicRow.Need) makes each of the call's Type
-    // arguments a use at the call first (K 4.8; DECISIONS R5-M108, R5-M149).
+    // K 4.5 row 8 (DECISIONS R5-M30, R5-M74): a callee without a MIR body, by Binding's category of it (TyCtxt.Bodyless): an intrinsic,
+    // reached by its Item (a call of it is an Intrinsic callee), the target its row names under the Item's Type argument, a part of the
+    // Item Type its site made (In), read only for a row that reads one (IntrinsicRow.ReadsTypeArgument, as at an intrinsic call's site,
+    // Edge; DECISIONS R5-M136), else -1; a shim, -1; any other, what Imported makes of it.
+    // An intrinsic row whose need is TypeArguments (IntrinsicRow.Need) makes each of the call's Type arguments a use at the call first
+    // (K 4.8; DECISIONS R5-M108, R5-M149).
     private int Bodyless(MirProgram program, int item, SourceRef subject, BindingSymbol function, Subst? subst)
     {
-        if (subst is not null && LegacyRuntimeHelpers.Row(function.CompilerFunction) is { Need: LayoutNeed.TypeArguments })
+        if (TyCtxt.Bodyless(function) is not BodylessKind.Intrinsic and var kind)
         {
-            this.LaysOutArguments(item, subject, subst);
+            return kind == BodylessKind.Shim ? -1 : this.Imported(item, subject, function);
         }
 
-        if (this.types.Published(function) is { Runs: { } requirement, On: var on })
+        if (IntrinsicRows.Of(function.Definition.Id) is not { ReadsTypeArgument: true } row)
         {
-            return this.Below(subject, function, subst, on) is { } below ? this.Runs(program, item, subject, requirement, below) : -1;
-        }
-
-        if (this.types.Published(function) is { InPlace: true, Destroys: >= 0 and var destroys })
-        {
-            return this.Below(subject, function, subst, destroys) is { } destroyed ? this.GlueOf(item, subject, destroyed) : -1;
-        }
-
-        if (IntrinsicDisposition.Of(function.CompilerFunction) is not { Kind: DispositionKind.Intrinsic, Id: var id } ||
-            IntrinsicRows.Of(id) is not { ReadsTypeArgument: true } row)
-        {
-            return -1; // A foreign function, or an intrinsic whose row reads no Type argument (Test.tempDirectory's has none to read).
+            return -1; // An intrinsic whose row reads no Type argument (Test.tempDirectory's has none to read).
         }
 
         if (row.Need == LayoutNeed.TypeArguments)
@@ -101,26 +105,38 @@ internal sealed partial class InstanceCollector
         return this.Intrinsic(program, item, subject, row, subst!.Types[0]);
     }
 
-    // K 4.5 rows 2 and 7 (DECISIONS BU-38): the Type below a bodyless callee's parameter at a slot in its call's instance (TyCtxt.Instance of
-    // the declared Type; the declared Type without a substitution), its verdict read at the site (Made); null unless Prepared. A Prepared
-    // slot without a Type below is a broken contract (a published row past the parameters).
-    private BoundType? Below(SourceRef subject, BindingSymbol function, Subst? subst, int slot)
+    // SPEC 22.6 (DECISIONS R8-M19): what a call of a function without a MIR body that is no intrinsic or shim runs, its direct call or a
+    // requirement's or requirement Item's whose witness it is (Called; Binding rejects its own Item): an import's item (TyCtxt.Bodyless:
+    // Import), keyed by the function alone (an import is never generic), with no target; code generation calls it by its C signature
+    // (FunctionCodegen.Calls' Witness). None for a dependent of a recorded error (TyCtxt.Bodyless: Dependent; no record); any other, an
+    // intrinsic or a shim taken as a witness included, is a broken contract.
+    private int Imported(int item, SourceRef subject, BindingSymbol function)
     {
-        var declared = TyCtxt.Signature(function, null, slot, out _);
-        var (type, storage) = declared is null || subst is null ? (declared, Binding.StorageOutcome.Prepared) : this.types.Instance(declared, subst);
-        _ = TyCtxt.Layer(type, out var below, out _);
-        if (storage == Binding.StorageOutcome.Prepared && below is null)
+        switch (TyCtxt.Bodyless(function))
         {
-            this.Report(DiagnosticCode.InternalInvariant_Kd, subject);
-        }
+            case BodylessKind.Dependent:
+                return -1;
+            case BodylessKind.Import:
+                var key = new MonoKey(MonoKind.Import, default, null, function, 0, null);
+                if (this.Set.Find(key) is >= 0 and var found)
+                {
+                    return found;
+                }
 
-        return this.Made(storage, subject) ? below : null;
+                this.Work++;
+                return this.Set.Add(new() { Key = key, BodyOrdinal = -1, Parent = item, Growth = new(0, 0, this.Above(item)), Site = subject });
+            default:
+                this.Report(DiagnosticCode.InternalInvariant_Kd, subject);
+                return -1;
+        }
     }
 
     // X4 (DECISIONS R5-M124, R8-A1d, R8-K1c): the one owner of a target the compiler names: the body of a cataloged library function (a
     // Dictionary from none's initialize; a nonempty Array literal's growArray; a collection glue's destroyArray, destroyDictionary or
-    // releaseDictionary), admitted for a site under the substitution given (a generic one's; null for one that does not instantiate); a
-    // declared callee without a body is a broken contract.
+    // releaseDictionary) or of a struct's declared destructor (Destructor), admitted for a site under the substitution given (a generic
+    // one's; null for one that does not instantiate). A declared callee without a body whose definition rests on a recorded error
+    // (TyCtxt.Bodyless: Dependent; one Binding rejected, or a drop whose Body the parser recorded missing) is that error's dependent (no
+    // record); any other is a broken contract, which Report keeps in a complete compilation (DECISIONS R5-M151; PLAN G890).
     private int Declared(MirProgram program, int item, SourceRef site, BindingSymbol function, Subst? subst)
     {
         if (program[new(function, MirBodyKind.Fn)] is { } body)
@@ -128,7 +144,11 @@ internal sealed partial class InstanceCollector
             return this.Admit(item, site, body, subst);
         }
 
-        this.Report(DiagnosticCode.InternalInvariant_Kd, site);
+        if (TyCtxt.Bodyless(function) != BodylessKind.Dependent)
+        {
+            this.Report(DiagnosticCode.InternalInvariant_Kd, site);
+        }
+
         return -1;
     }
 }

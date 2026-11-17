@@ -125,7 +125,8 @@ public sealed partial class MirBorrowsTest
     // SPEC 15.6 Addresses and reach (G184, G160 (b), D2): `w@raw` addresses w's holder, so a read through it carries what w holds and a
     // write through it adds to w, also through a raw chain; a pointer keeps the holders it addresses used (D2) though nothing reads
     // through it; a Raw Place borrow of w's referent carries what the pointer reaches (5.2.2); an Adapt the view resolves to a raw Ref
-    // (`w@s` under `s is raw`, SPEC 8.14) addresses w's holder as `w@raw` does; the dead twins are valid.
+    // (`w@s` under `s is raw`, SPEC 8.14) addresses w's holder as `w@raw` does; the dead twins are valid, and so is partAddresses
+    // (PartAddressesInOneHolderCostAsTheirEntries' form at N = 4: kk's Loan stored through part addresses of h, and kk not written after).
     [Fact]
     public void ARawPointerCarriesTheHoldersItAddresses()
         => Assert.Equal(
@@ -184,7 +185,7 @@ public sealed partial class MirBorrowsTest
                     var w: ref/i32 = y@ref
                     let p = w@s
                     y = 5
-                """));
+                """ + "\n" + PartAddresses(4)));
 
     // SPEC 15.6 Addresses (DECISIONS R4-M146): A5 empties the addresses and layer entries of a view that formed many whole and a small
     // view's entry by entry (MirTable), so the views after one with 400 of each report what they report alone (the test above).
@@ -633,6 +634,74 @@ public sealed partial class MirBorrowsTest
                     consume(x@move)
                     y = 5
                     usep(slot)
+                """));
+
+    // SPEC 15.6 Holders, 15.6.4, 5.2.1 (PLAN G582): a keeper held by value (no dereference: a Field or a Tuple element of the argument)
+    // is that argument's own value, so a raw layer without an Origin that the call writes through it never keeps the keeper's Loan, and
+    // `usep(slot)` is valid (keeperOk, keeperTupOk, as uBad's `usep(slot)`). That exclusion is 15.6.4's raw-layer sentence only: safe
+    // storage that can hold a part or a borrow formed through the argument keeps its Loans, and a stated layer retains as its borrow
+    // would (5.7 Calls, PLAN G339). A keeper reached past a dereference, in a borrowed argument's referent (keeperBorrowedBad, as the
+    // drop forms of ADestructionRetainsAsItsDropsCall) or behind a borrow a by-value argument holds (keeperChainBad), is what a chain of
+    // reads through the argument carries, so that raw layer keeps it. Another argument's storage (keeperOtherBad) and a raw result
+    // (keeperResultBad, keeperTupResultBad) keep the by-value argument's own value, the keeper's Loan with it.
+    [Fact]
+    public void AByValueKeeperIsItsArgumentsOwnValue()
+        => Assert.Equal(
+            [
+                "keeperBorrowedBad: usep(slot)", "keeperChainBad: usep(slot)", "keeperOtherBad: slot = null", "keeperResultBad: usep(slot)",
+                "keeperTupResultBad: usep(slot)",
+            ],
+            Problems("""
+                func usep<T>(p: raw/T) => ()
+                struct K {s}
+                    public var r: uniq/(raw/u8) during s
+                    public init(r: uniq/(raw/u8) during s) => self.r = r
+                func f(w: K during a) => ()
+                func fTup(w: (uniq/(raw/u8) during a, i32)) => ()
+                func fBorrowed(w: uniq/(K during a)) => ()
+                func fChain(w: (uniq/(K during a) during b, i32)) => ()
+                func fOther(w: K during a, t: uniq/(raw/u8)) => ()
+                func fResult(w: K during a) -> raw/u8
+                    return null
+                func fTupResult(w: (uniq/(raw/u8) during a, i32)) -> raw/u8
+                    return null
+                func keeperOk()
+                    var slot: raw/u8 = null
+                    var w = K.init(r: slot@uniq)
+                    f(w@move)
+                    usep(slot)
+                func keeperTupOk()
+                    var slot: raw/u8 = null
+                    fTup((slot@uniq, 1))
+                    usep(slot)
+                func keeperBorrowedBad()
+                    var slot: raw/u8 = null
+                    var w = K.init(r: slot@uniq)
+                    fBorrowed(w@uniq)
+                    usep(slot)
+                func keeperChainBad()
+                    var slot: raw/u8 = null
+                    var kk = K.init(r: slot@uniq)
+                    fChain((kk@uniq, 1))
+                    usep(slot)
+                func keeperOtherBad()
+                    var other: raw/u8 = null
+                    var slot: raw/u8 = null
+                    var w = K.init(r: slot@uniq)
+                    fOther(w@move, other@uniq)
+                    slot = null
+                    usep(other)
+                func keeperResultBad()
+                    var slot: raw/u8 = null
+                    var w = K.init(r: slot@uniq)
+                    let x = fResult(w@move)
+                    usep(slot)
+                    usep(x)
+                func keeperTupResultBad()
+                    var slot: raw/u8 = null
+                    let x = fTupResult((slot@uniq, 1))
+                    usep(slot)
+                    usep(x)
                 """));
 
     // SPEC 4.9.6, 15.6.4 (DECISIONS BU-52, BU-40): `append` and `insertOrReplace` write only their result and their receiver's element
@@ -1222,6 +1291,25 @@ public sealed partial class MirBorrowsTest
         Assert.True(Grows(work, 2), $"work {string.Join(", ", work)}");
     }
 
+    // V16 (PLAN G667a): an address names its Place (SPEC 5.2.1 condition 1), so the N part addresses of one root h that one holder t
+    // holds are N entries, which each of the N stores through t's elements reads: Work and bytes grow as N², within the class's quadratic
+    // bound (5; DECISIONS R4-M159). Work and bytes at N 16, 32, 64 with their growth factors: dev (4562e91f0, one root address) 124,823,
+    // 128,842, 136,877 (2.00) and 4,444 flat; G667a 126,068, 133,647, 155,714 (2.91) and 5,044, 6,676, 13,012 (3.88). Its verdict twin
+    // is ARawPointerCarriesTheHoldersItAddresses's partAddresses.
+    [Fact]
+    public void PartAddressesInOneHolderCostAsTheirEntries()
+    {
+        var (sizes, work, bytes) = (new[] { 16, 32, 64 }, new long[3], new long[3]);
+        for (var i = 0; i < sizes.Length; i++)
+        {
+            (work[i], bytes[i]) = Measured(Prelude + PartAddresses(sizes[i]));
+        }
+
+        output.WriteLine($"N {string.Join(", ", sizes)}: work {string.Join(", ", work)}, bytes {string.Join(", ", bytes)}");
+        Assert.True(Grows(work, 5), $"work {string.Join(", ", work)}");
+        Assert.True(Grows(bytes, 5), $"bytes {string.Join(", ", bytes)}");
+    }
+
     // SPEC 15.6.4's chain clause (DECISIONS R4-M131 Q4 (a), BU-40, R4-M138): a Chain row carries what any chain of reads through its
     // argument carries, so a pointee the call may retain two or more reads deep keeps its Loan even when a holder on the way is replaced
     // after the call: a result two raw layers below the argument (also through a reference), a raw slot written from them, the written
@@ -1382,6 +1470,146 @@ public sealed partial class MirBorrowsTest
                     let h = make(big@ref, one@ref)
                     inspect(h.r)
                     big = 3
+
+                """));
+
+    // SPEC 4.8.4, 5.6, 15.6.4 (PLAN G780; C-189): a range selection, a written Raw.slice and Raw.release store nothing through their
+    // storage, so the holder array `values` keeps `cell`'s address alone and `keep` stores `spare` (r's Loan) in `cell`: valid while
+    // `cell` is dead after `kk = 2` (range, written, released); Raw.initialize stores through its storage, here a pointer from an integer
+    // (SPEC 5.5), and a read of `cell` after `kk = 2` keeps the Loan live (the Bad twins). The narrowing follows the declaration, not its
+    // signature: a user function of Raw.slice's shape may store through its storage (userBad, 15.6.4's public contract). `released`
+    // releases a stack element's address and `initializedBad` initializes an Initialized Place: both break 5.6's run-time preconditions
+    // and only probe the analysis. A reslice's range selection stores nothing through its backing either, its Slice tied to that backing
+    // (DECISIONS R4-M63's amendment): subRange `sl[0..1]`, nested `values[..][1..]`, whole `sl[..]` and ending `sl[..1]` are valid while
+    // `values` is dead after `kk = 2`; nestedReadAfter reads it after (ARangeSelectionsSliceReachesWhatItsBackingReaches holds the other
+    // twins). Fails on dev 63878b639: range, written and released conflict (Raw.slice's storage took rule A's untied store); the
+    // reslices on dev 3dc197857.
+    [Fact]
+    public void ASliceOrReleaseStoresNothingThroughItsStorage()
+        => Assert.Equal(
+            ["rangeBad: kk = 2", "writtenBad: kk = 2", "userBad: kk = 2", "initializedBad: kk = 2", "nestedReadAfter: kk = 2"],
+            Problems("""
+                func keep(slot: raw/(raw/u8), value: raw/u8) => ()
+                func mine(storage: raw/(raw/(raw/u8)), length: isize) => ()
+                func range()
+                    var kk: u8 = 1
+                    let r = kk@uniq
+                    var spare: raw/u8 = r@follow@raw
+                    var cell: raw/u8 = null
+                    let values: [2 of raw/(raw/u8)] = [cell@raw, cell@raw]
+                    let sl = values[..]
+                    keep(values[0], spare)
+                    kk = 2
+                func rangeBad()
+                    var kk: u8 = 1
+                    let r = kk@uniq
+                    var spare: raw/u8 = r@follow@raw
+                    var cell: raw/u8 = null
+                    let values: [2 of raw/(raw/u8)] = [cell@raw, cell@raw]
+                    let sl = values[..]
+                    keep(values[0], spare)
+                    kk = 2
+                    let z = cell
+                func written()
+                    var kk: u8 = 1
+                    let r = kk@uniq
+                    var spare: raw/u8 = r@follow@raw
+                    var cell: raw/u8 = null
+                    let values: [2 of raw/(raw/u8)] = [cell@raw, cell@raw]
+                    unsafe
+                        let w = Raw.slice(values[0]@raw, 2)
+                    keep(values[0], spare)
+                    kk = 2
+                func writtenBad()
+                    var kk: u8 = 1
+                    let r = kk@uniq
+                    var spare: raw/u8 = r@follow@raw
+                    var cell: raw/u8 = null
+                    let values: [2 of raw/(raw/u8)] = [cell@raw, cell@raw]
+                    unsafe
+                        let w = Raw.slice(values[0]@raw, 2)
+                    keep(values[0], spare)
+                    kk = 2
+                    let z = cell
+                func userBad()
+                    var kk: u8 = 1
+                    let r = kk@uniq
+                    var spare: raw/u8 = r@follow@raw
+                    var cell: raw/u8 = null
+                    var values: [2 of raw/(raw/u8)] = [cell@raw, cell@raw]
+                    mine(values[0]@raw, 2)
+                    keep(values[0], spare)
+                    kk = 2
+                func released()
+                    var kk: u8 = 1
+                    let r = kk@uniq
+                    var spare: raw/u8 = r@follow@raw
+                    var cell: raw/u8 = null
+                    let values: [2 of raw/(raw/u8)] = [cell@raw, cell@raw]
+                    unsafe
+                        Raw.release(values[1]@raw)
+                    keep(values[0], spare)
+                    kk = 2
+                func initializedBad(n: usize)
+                    var kk: u8 = 1
+                    let r = kk@uniq
+                    var spare: raw/u8 = r@follow@raw
+                    var cell: raw/u8 = null
+                    var values: [2 of raw/(raw/u8)] = [cell@raw, cell@raw]
+                    let q = n@raw/(raw/u8)
+                    unsafe
+                        Raw.initialize(values[0]@raw, q)
+                    keep(values[0], spare)
+                    kk = 2
+                func subRange()
+                    var kk: u8 = 1
+                    let r = kk@uniq
+                    var spare: raw/u8 = r@follow@raw
+                    let values: [2 of raw/u8] = [null, null]
+                    let sl = values[..]
+                    let part = sl[0..1]
+                    let p = part[0]@raw
+                    keep(p, spare)
+                    kk = 2
+                func nested()
+                    var kk: u8 = 1
+                    let r = kk@uniq
+                    var spare: raw/u8 = r@follow@raw
+                    let values: [2 of raw/u8] = [null, null]
+                    let part = values[..][1..]
+                    let p = part[0]@raw
+                    keep(p, spare)
+                    kk = 2
+                func whole()
+                    var kk: u8 = 1
+                    let r = kk@uniq
+                    var spare: raw/u8 = r@follow@raw
+                    let values: [2 of raw/u8] = [null, null]
+                    let sl = values[..]
+                    let part = sl[..]
+                    let p = part[0]@raw
+                    keep(p, spare)
+                    kk = 2
+                func ending()
+                    var kk: u8 = 1
+                    let r = kk@uniq
+                    var spare: raw/u8 = r@follow@raw
+                    let values: [2 of raw/u8] = [null, null]
+                    let sl = values[..]
+                    let part = sl[..1]
+                    let p = part[0]@raw
+                    keep(p, spare)
+                    kk = 2
+                func nestedReadAfter()
+                    var kk: u8 = 1
+                    let r = kk@uniq
+                    var spare: raw/u8 = r@follow@raw
+                    let values: [2 of raw/u8] = [null, null]
+                    let part = values[..][1..]
+                    let p = part[0]@raw
+                    keep(p, spare)
+                    kk = 2
+                    let z = part[0]
 
                 """));
 
@@ -1729,4 +1957,13 @@ public sealed partial class MirBorrowsTest
             .Append(System.Globalization.CultureInfo.InvariantCulture, $"func rd(d: ref/D1<{leaf}>) -> {leaf}\n")
             .Append(System.Globalization.CultureInfo.InvariantCulture, $"    let v = d{path}.x\n    return v{first}\n").ToString();
     }
+
+    // The addresses of N parts of one fixed array h (constant indices: N Places), stored into one holder t, then a store through each of
+    // a pointer carrying kk's Loan (which makes the view a Loan-stratum producer, D5).
+    private static string PartAddresses(int n)
+        => Expand(
+            $"func partAddresses()\n    var kk: u8 = 1\n    let r = kk@uniq\n    var spare: raw/u8 = r@follow@raw\n    var h: [{n} of raw/u8] = [null«K:, null»]\n" +
+                $"    var t: [{n} of raw/(raw/u8)] = [null«K:, null»]\n«N:    t[{{0}}] = h[{{0}}]@raw\n»«N:    unsafe => *(t[{{0}}]) = spare\n»",
+            n,
+            n - 1);
 }

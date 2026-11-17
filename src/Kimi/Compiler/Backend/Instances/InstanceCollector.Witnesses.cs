@@ -26,7 +26,7 @@ internal sealed partial class InstanceCollector
     /// follow: TyCtxt.Comparison of its function's Contract (TyCtxt.Contract) on its key's Type at the template when that has a parameter,
     /// else on its representative Self, under source operators for an operator mode, else the Contract's mapping; its parts' Types in the
     /// instance are the representative Self's components.</summary>
-    /// <param name="item">The BuiltinEquals or BuiltinCompare item.</param>
+    /// <param name="item">The Builtin item of an Equatable or Comparable shim.</param>
     /// <returns>The node; null for a Self whose storage does not complete (Witness's Limit).</returns>
     internal ComparisonNode? Comparison(int item)
     {
@@ -75,12 +75,12 @@ internal sealed partial class InstanceCollector
         return this.AdmitType(item, subject, key, target.Subst!.Self!, target.Subst);
     }
 
-    // K 4.5 rows 3, 5 and 13 (DECISIONS R5-M146): the target of a requirement call or of a requirement Item, where it is formed, called or
-    // erased, which code generation runs as a body or shim item (FunctionCodegen.Calls' Witness). A Body witness without a MIR body is
-    // decided by TyCtxt.Bodyless, the one classification of such a function: a compiler function or a #LibraryImport function is the
-    // BodylessWitness gap at each such site, whatever else Binding rejected (SPEC 23.1.2); one Binding rejected is that error's dependent
-    // (no record); any other is a broken contract (Report). The other edges a requirement runs on (a compiler function's published row,
-    // Text.writer's reserve witness) keep Requirement's -1 for such a witness: their writers read the function itself.
+    // K 4.5 rows 3, 5 and 13 (DECISIONS R5-M146, R8-M19): the target of a requirement call or of a requirement Item, where it is formed,
+    // called or erased, which code generation runs as a body, shim or import item (FunctionCodegen.Calls' Witness). A Body witness without a
+    // MIR body is an import's item (Imported, SPEC 22.6), whose own rule also covers a witness Binding rejected and a broken contract; a
+    // compiler function is no requirement's witness (the library's bodyless functions implement no Contract), so its row, which its direct
+    // call runs, is never taken here. The other edges a requirement runs on (a compiler function's published row, Text.writer's reserve
+    // witness) take Requirement's row: their requirements take a receiver, which an import never has.
     private int Called(MirProgram program, int item, SourceRef subject, BindingSymbol requirement, in RequirementTarget target)
     {
         if (target.Kind != RequirementTargetKind.Body)
@@ -88,29 +88,13 @@ internal sealed partial class InstanceCollector
             return this.Requirement(program, item, subject, requirement, target);
         }
 
-        if (this.Selected(program, target.Target!, target.Subst, out var implementation) is { } body)
-        {
-            return this.Admit(item, subject, body, target.Subst);
-        }
-
-        DiagnosticCode? record = TyCtxt.Bodyless(implementation) switch
-        {
-            CompilerFunctionEffect.Dependent => null,
-            CompilerFunctionEffect.Unclassified when implementation.CompilerFunction == CompilerFunctionKind.None => DiagnosticCode.InternalInvariant_Kd,
-            _ => Capability.Code(CapabilityGap.BodylessWitness),
-        };
-
-        if (record is { } code)
-        {
-            this.Report(code, subject);
-        }
-
-        return -1;
+        return this.Selected(program, target.Target!, target.Subst, out var implementation) is { } body
+            ? this.Admit(item, subject, body, target.Subst) : this.Imported(item, subject, implementation);
     }
 
-    // K 4.5 rows 2 and 6, F 4.5: a compiler function's call of a requirement on a Type of the item's instance, through the requirement's own
-    // Contract under the Self-bearing factory (TyCtxt.Synthesized), a Type whose verdict its caller read (Below; an intrinsic's argument In
-    // or Edge's Compose).
+    // K 4.5 row 6, F 4.5: a compiler function's call of a requirement on a Type of the item's instance, through the requirement's own
+    // Contract under the Self-bearing factory (TyCtxt.Synthesized), a Type whose verdict its caller read (an intrinsic's argument In or
+    // Edge's Compose).
     private int Runs(MirProgram program, int item, SourceRef subject, BindingSymbol requirement, BoundType self)
     {
         var contract = TyCtxt.Contract(requirement);
@@ -167,8 +151,9 @@ internal sealed partial class InstanceCollector
         bool Same(BoundType? declared, BoundType? key) => declared is not null && key is not null && ReferenceEquals(this.types.Erase(declared), key);
     }
 
-    // K 4.3: a shim's targets, at its default site: a comparison item's are its direct parts' (Parts); a formatting or arithmetic shim's
-    // scalar Self calls no witness (FormattingTypes.IsBuiltin, ArithmeticContracts.Supports); a setter's property witness drops the Field's
+    // K 4.3: a shim's targets, at its default site, by its function's Contract (TyCtxt.ShimContract; Binding.PrepareBuiltinTargets): a
+    // comparison item's (Equatable, Comparable) are its direct parts' (Parts); an arithmetic shim's scalar Self
+    // calls no witness (ArithmeticContracts.Supports); a setter's property witness drops the Field's
     // old value (its glue), the Field Agrees found in the representative Self at admission, so a Self without it is a broken contract.
     private void Shim(MirProgram program, int item, SourceRef site, in MonoKey key, BoundType self)
     {
@@ -189,15 +174,15 @@ internal sealed partial class InstanceCollector
             return;
         }
 
-        switch (key.Symbol!.CompilerFunction)
+        switch (TyCtxt.ShimContract(key.Symbol!))
         {
-            case CompilerFunctionKind.BuiltinEquals or CompilerFunctionKind.BuiltinCompare:
+            case KimiDeclarationId.Equatable or KimiDeclarationId.Comparable:
                 this.Parts(program, item, site, key, self);
                 return;
-            case CompilerFunctionKind.BuiltinFormat or CompilerFunctionKind.BuiltinArithmetic:
+            case var contract when ArithmeticContracts.IsArithmetic(contract):
                 return;
             default:
-                throw new InvalidOperationException($"The shim {key.Symbol.CompilerFunction} has no target row.");
+                throw new InvalidOperationException($"The shim {key.Symbol!.Name} has no target row.");
         }
     }
 

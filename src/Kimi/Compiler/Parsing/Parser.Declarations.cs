@@ -33,7 +33,7 @@ public static partial class Parser
 
         if (supportsGenerics && reader.CurrentTokenKind == TokenKind.LessThan)
         {
-            genericArguments = ParseGenericArguments(ref reader);
+            genericArguments = ParseGenericParameters(ref reader);
         }
 
         if (supportsOrigins)
@@ -46,7 +46,7 @@ public static partial class Parser
             var types = default(TemporaryKotoList);
             do
             {
-                types.Add(ParseType(ref reader, TypeContext.Type));
+                types.Add(ParseInheritanceReference(ref reader)); // SPEC F.6.1 BaseClause, F.6.2 ContractParentList.
             }
             while (reader.TryConsume(TokenKind.Comma));
             bases = types.ToArray();
@@ -110,6 +110,8 @@ Exit:
     /// <returns>The parsed declaration, or <see langword="null"/> after an error.</returns>
     private static FieldKoto? ParseField(ref TokenReader reader, Token token)
     {
+        // A local binding takes no access word, at the root and in a body alike (SPEC F.6.3 LocalBinding).
+        RejectAccessWord(ref reader);
         var variableContext = reader.TakeContext();
         if (ParseDeclarationName(ref reader) is not { } nameKoto)
         {
@@ -158,7 +160,7 @@ Exit:
 
         var fieldKoto = new FieldKoto(ref reader, token, nameKoto, typeKoto, initializerKoto);
         fieldKoto.SetAttributeChain(variableContext.AttributeKoto);
-        reader.Document(fieldKoto, SourceSpan.FromBounds(token.Span.Start, nameKoto.Span.End), variableContext.AttributeKoto);
+        reader.Document(fieldKoto, nameKoto.Span.End, variableContext.AttributeKoto);
 
         ParseAttachedOriginBlock(ref reader, fieldKoto);
         reader.ExpectLineEnd();

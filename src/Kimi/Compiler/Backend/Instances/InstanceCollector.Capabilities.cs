@@ -14,17 +14,32 @@ internal sealed partial class InstanceCollector
         => OperandType(body, body.Operands[rvalue.Start]).ContainsParameter || rvalue.Type is { ContainsParameter: true };
 
     // IMPL 21.3.3 (DECISIONS R5-M126): the gap of a Builtin witness's operation, an arithmetic shim's Contract's MIR operator
-    // (BuiltinArithmetic, SPEC 13.3.3) on the target's closed Self, which Requirement records at each site that requests the shim, as a
-    // statement's operation is at its location; none for any other compiler function.
+    // (MirTypes.ArithmeticOperation, SPEC 13.3.3) on the target's closed Self, which Requirement records at each site that requests the
+    // shim, as a statement's operation is at its location; none for any other target (a Shim of another Contract included).
     private static CapabilityGap? ArithmeticGap(in RequirementTarget target)
     {
-        if (target.Target!.CompilerFunction != CompilerFunctionKind.BuiltinArithmetic)
+        var contract = TyCtxt.ShimContract(target.Target!);
+        if (!ArithmeticContracts.IsArithmetic(contract))
         {
             return null;
         }
 
-        var (kind, op) = BuiltinArithmetic.Operation(TyCtxt.Contract(target.Target).LibraryDeclaration);
+        var (kind, op) = MirTypes.ArithmeticOperation(contract);
         return Capability.Of(kind, op, target.Subst!.Self!, null);
+    }
+
+    // A3b over a root-module body without a finding, in Run's root loop every version (judged work, never kept with a template; PLAN G950):
+    // each statement of each block, in block and statement order.
+    private void CheckOperations(MirBody body)
+    {
+        var blocks = body.Blocks;
+        for (var block = 0; block < blocks.Length; block++)
+        {
+            for (var index = 0; index < blocks[block].Count; index++)
+            {
+                this.CheckOperation(body, body.Statements[blocks[block].Start + index]);
+            }
+        }
     }
 
     // A3b: an operation of a root-module body whose Types are closed, checked once per definition and location in whichever block it lies

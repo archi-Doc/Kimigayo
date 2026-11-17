@@ -1,5 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using Kimi;
 using Kimi.Compiler;
 using Kimi.Compiler.Mir;
 using Kimi.Compiler.Parsing;
@@ -20,16 +21,23 @@ public sealed class MirModelTest
 
     private static readonly SourceInfo At = default;
 
-    // The source modules hold their positions as ordinals and the library the next one, so a SourceRef finds its node again.
-    [Fact]
-    public void SourceRefNamesANodeByModuleAndId()
+    // The source modules hold their positions as ordinals and the library the fixed SyntaxTable.LibraryModule whatever the program's module
+    // count, so a SourceRef finds its node again and names a library node by its module alone.
+    [Theory]
+    [InlineData(1)]
+    [InlineData(3)]
+    public void SourceRefNamesANodeByModuleAndId(int count)
     {
-        var c = MinimalEmissionTest.Analyze(Source);
-        var modules = c.SourceModules.Append(c.Library.Kotonoha).ToArray();
-        Assert.Equal(Enumerable.Range(0, modules.Length).Select(static x => (ushort)x), modules.Select(static x => x.Syntax.Module));
-        foreach (var node in KotoTree.Walk(c.Kotonoha.RootKoto).Concat(KotoTree.Walk(c.Library.Kotonoha.RootKoto).Take(500)))
+        var c = count == 1 ? MinimalEmissionTest.Analyze(Source) : ModuleBindingTest.Create(Source, "public func lib() => ()\n", "public func child() => ()\n");
+        Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c));
+        Assert.Equal(
+            Enumerable.Range(0, count).Select(static x => (ushort)x).Append(SyntaxTable.LibraryModule),
+            c.SourceModules.Append(c.Library.Kotonoha).Select(static x => x.Syntax.Module));
+        foreach (var node in c.SourceModules.SelectMany(static x => KotoTree.Walk(x.RootKoto)).Concat(KotoTree.Walk(c.Library.Kotonoha.RootKoto).Take(500)))
         {
-            Assert.Same(node, c.SyntaxOf(SourceRef.Of(node)));
+            var source = SourceRef.Of(node);
+            Assert.Equal(ReferenceEquals(node.Kotonoha, c.Library.Kotonoha), source.IsLibrary);
+            Assert.Same(node, c.SyntaxOf(source));
         }
     }
 
@@ -163,23 +171,65 @@ public sealed class MirModelTest
         Assert.Equal(-1, body.Inlining(nested));
     }
 
-    // Clearing a program returns its bodies to the pool, and the next build reuses them in order.
+    // A body is built in its segment's body, the library's prefix's or the program's, and stored at End in the next pooled body, which its
+    // key then finds; clearing a program returns its bodies to the pool, and the next build reuses them in order.
     [Fact]
     public void ProgramReusesItsBodiesInOrder()
     {
         var (_, types) = Fixture();
         var program = new MirProgram();
         var (fn, closure) = (new MirDefKey(types.Function, MirBodyKind.Fn), new MirDefKey(types.Function, MirBodyKind.Closure, 1));
-        var first = program.Begin(fn, new(0, 1));
-        var second = program.Begin(closure, default);
+        var built = program.Begin(fn, new(0, 1));
+        Assert.Null(program[fn]);
+        var first = program.End();
+        Assert.NotSame(built, first);
+        Assert.Same(built, program.Begin(closure, default));
+        var second = program.End();
         Assert.Same(second, program[closure]);
+        Assert.Equal((0, 1), (first.Ordinal, second.Ordinal));
         Assert.Null(program[closure with { Index = 2 }]);
-        Assert.Throws<ArgumentException>(() => program.Begin(fn, default));
+        program.EndLibrary(1);
+        Assert.NotSame(built, program.Begin(fn, default));
+        Assert.Throws<ArgumentException>(program.End);
         program.Clear();
         Assert.Null(program[fn]);
-        Assert.Same(first, program.Begin(closure, default));
+        program.Begin(closure, default);
+        Assert.Same(first, program.End());
         Assert.Equal(new[] { first }, program.Bodies.ToArray());
         Assert.Equal(closure, first.Key);
+    }
+
+    // PLAN G950: a program version over a kept library segment (ClearProgram) returns the program's bodies to the pool and removes their
+    // keys only: the library's bodies, keys, version, findings and construction records stay, the records first in the report again, and
+    // the next program body is stored in the program's pooled body.
+    [Fact]
+    public void ClearProgramKeepsTheLibrarySegment()
+    {
+        var (_, types) = Fixture();
+        var program = new MirProgram();
+        var (fn, closure) = (new MirDefKey(types.Function, MirBodyKind.Fn), new MirDefKey(types.Function, MirBodyKind.Closure, 1));
+        var (librarySite, programSite) = (new SourceRef(0, 1), new SourceRef(0, 2));
+        program.Begin(fn, librarySite);
+        var library = program.End();
+        program.Report(librarySite);
+        program.Findings.Add(new(MirViolation.Callee, librarySite));
+        program.EndLibrary(7);
+        program.Begin(closure, programSite);
+        var made = program.End();
+        program.Report(programSite);
+        program.Findings.Add(new(MirViolation.Callee, programSite));
+        program.ClearProgram();
+        Assert.Equal((7UL, 1), (program.LibraryVersion, program.LibraryCount));
+        Assert.Equal(new[] { library }, program.Bodies.ToArray());
+        Assert.Equal(0, program.ProgramBodies.Length);
+        Assert.Same(library, program[fn]);
+        Assert.Null(program[closure]);
+        Assert.Equal(new[] { new Problem(DiagnosticCode.Unsupported_Kd, librarySite) }, program.Records(MirRecordClass.Construction));
+        Assert.Equal([new MirFinding(MirViolation.Callee, librarySite)], program.Findings);
+        program.Begin(closure, programSite);
+        Assert.Same(made, program.End());
+        Assert.Same(made, program[closure]);
+        Assert.Equal(new[] { library, made }, program.Bodies.ToArray());
     }
 
     // V11: rebuilding a pooled body of the same shape allocates nothing.
@@ -213,6 +263,7 @@ public sealed class MirModelTest
             body.AddOpaque(default, roots);
             body.Static(new(types.Function, BoundType.I32, false, false));
             body.AddScope(0, MirScopeKind.Unsafe, default);
+            program.End();
         }));
     }
 

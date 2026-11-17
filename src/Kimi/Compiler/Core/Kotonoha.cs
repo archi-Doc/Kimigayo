@@ -207,16 +207,16 @@ public sealed partial class Kotonoha
     [IgnoreMember]
     private string[]? nameFailures;
 
-    private List<Documentation.DocumentationSource>? documentationSources;
+    private List<DocumentationSource>? documentationSources;
 
     [IgnoreMember]
     private List<DiagnosticKey>? omittedDeclarations;
 
     /// <summary>Gets optional source-backed documentation, including generated source parses.</summary>
     [IgnoreMember]
-    public IEnumerable<Documentation.DocumentationSource> DocumentationSources => this.documentationSources ?? Enumerable.Empty<Documentation.DocumentationSource>();
+    public IReadOnlyList<DocumentationSource> DocumentationSources => (IReadOnlyList<DocumentationSource>?)this.documentationSources ?? [];
 
-    internal void RecordDocumentation(Documentation.DocumentationSource? documentation)
+    internal void RecordDocumentation(DocumentationSource? documentation)
     {
         if (documentation is not null)
         {
@@ -368,6 +368,14 @@ public sealed partial class Kotonoha
             this.Add(document);
         }
     }
+
+    /// <summary>Creates the Kimi library's Kotonoha, whose syntax table is the library's from its creation
+    /// (<see cref="SyntaxTable.ForLibrary"/>), so its sources parse under the library mark (SPEC 6.7).</summary>
+    /// <param name="compilation">The owning compilation.</param>
+    /// <param name="url">The library's URL.</param>
+    /// <returns>The Kotonoha, before any source is parsed into it.</returns>
+    internal static Kotonoha ForKimiLibrary(Compilation compilation, string url)
+        => new(compilation, "Kimi", url) { Syntax = SyntaxTable.ForLibrary() };
 
     /// <summary>Records a document parsed into the root for subsequent serialization.</summary>
     /// <param name="sourceDocument">The original source document.</param>

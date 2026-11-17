@@ -20,8 +20,7 @@ namespace Kimi.Compiler.Backend;
 // received (Forward): a ClosureErasure's Shared Closure body with its environment (the word spilled for an inline one, the heap pointer) and
 // a null context; an ItemAdapter's what its Item's call runs (FunctionCodegen.Closures' Runs: a function's body, a requirement Item's
 // witness, a virtual function's slot through the receiver parameter's object, a compiler function's routine row with its slot-less values,
-// any other a broken contract at the adapter's site; an update Item's entry writes the update over its own parameters,
-// FunctionCodegen.Updates, DECISIONS R5-M116); a Never-result callee leaves the entry's result unused and ends it unreachable (SPEC 10.7),
+// any other a broken contract at the adapter's site); a Never-result callee leaves the entry's result unused and ends it unreachable (SPEC 10.7),
 // also where the entry's own result is another (a slot's signature is its Item's own, ModuleCodegen.Slot).
 // A Function value's glue row (DestroyErased, only in its glue function): its table's drop entry, when present, at the address of a copy
 // of its environment word in a slot of the glue's own, so the value's address does not escape into the call and an optimizer can drop
@@ -36,14 +35,13 @@ internal sealed partial class FunctionCodegen
     private static readonly TypeLayout PointerLayout = RuntimeAbi.StringReference.Layout;
 
     /// <summary>Gets whether an adapter's own parameter passes what a callee's parameter of the same logical index takes (Forward; DECISIONS
-    /// R5-M121): one of the same kind, or a SharedReference and a Value of the same Type when that Type is a pointer, since a SharedReference
-    /// is a Value with attributes (<see cref="AbiParameter.Attributes"/>), so both lower to the same pointer (a string borrow at a legacy
-    /// helper's by-value pointer input). One rule for every adapter; a Value of another Type or an OwnedSlot is not passed so.</summary>
+    /// R5-M121): one of the same kind. One rule for every adapter: a parameter's kind is its Type's (<see cref="Abi.Kind"/>) in the entry's
+    /// signature and in every callee's, a body's, a slot's and a shim's, and no hand-written routine takes a string borrow by value since
+    /// the formatting helpers and writeLine are bodies (R8-W1c, R8-W2 d), so no callee takes a SharedReference's pointer as a Value.</summary>
     /// <param name="own">The adapter's parameter.</param>
     /// <param name="parameter">The callee's parameter.</param>
     /// <returns>Whether the one passes the other.</returns>
-    internal static bool Passes(in AbiParameter own, in AbiParameter parameter)
-        => own.Kind == parameter.Kind || (own.Type == parameter.Type && own.Type == PointerLayout.StorageType && ByValue(own.Kind) && ByValue(parameter.Kind));
+    internal static bool Passes(in AbiParameter own, in AbiParameter parameter) => own.Kind == parameter.Kind;
 
     /// <summary>Writes the table and functions of a ClosureErasure or ItemAdapter item, or records why not.</summary>
     /// <param name="collector">The collector of the checked set.</param>
@@ -57,12 +55,6 @@ internal sealed partial class FunctionCodegen
         var key = collector.Set.Items[item].Key;
         var represented = collector.Set.Items[item].RepresentativeType!;
         var closure = key.Kind == MonoKind.ClosureErasure;
-        if (!closure && LegacyRuntimeHelpers.Row(represented.Symbol?.CompilerFunction ?? CompilerFunctionKind.None) is { Updates: true } row)
-        {
-            this.WriteUpdateEntry(item, entry, row.Writer, targets.Length > 0 ? targets[0].Item : -1); // Its direct call's row (FunctionCodegen.Updates).
-            return;
-        }
-
         var given = default(ReadOnlySpan<Value>);
         Run? run;
         if (closure)
@@ -105,9 +97,6 @@ internal sealed partial class FunctionCodegen
             this.Release(item, glue);
         }
     }
-
-    // Whether a parameter of a kind passes its value itself, a Value or a SharedReference (a Value with attributes).
-    private static bool ByValue(AbiParameterKind kind) => kind is AbiParameterKind.Value or AbiParameterKind.SharedReference;
 
     // An environment of more than 8 bytes or of an alignment above 8 is allocated (IMPL 21.1.3).
     private static bool Heap(TypeLayout environment) => environment.Size > 8 || environment.Alignment > 8;
@@ -208,12 +197,9 @@ internal sealed partial class FunctionCodegen
     }
 
     // An adapter's call of its callee (PD3): each callee parameter takes the adapter's own of its kind and logical index (a value, the
-    // result slot, the location the erased call passed, SPEC 22.5.1), a capacity Context the length of the fixed array its parameter
-    // receives, measured from the entry's own input Type, its target Function Type's at that index (Measure; DECISIONS R5-M128; read only
-    // there, so an item without a Function Type forwards its parameters too when its callee measures nothing), a parameter
-    // without an operand (Given: an environment, a context or a formatting row's kind) the next given value, then the call of its callee
-    // value, which the slot it runs through, if any, makes (EntryOf); its value (none for a void callee). False, with InternalInvariant_Kd,
-    // where the adapter has no such parameter.
+    // result slot, the location the erased call passed, SPEC 22.5.1), a parameter without an operand (Given: an environment or a context)
+    // the next given value, then the call of its callee value, which the slot it runs through, if any, makes (EntryOf); its value (none
+    // for a void callee). False, with InternalInvariant_Kd, where the adapter has no such parameter.
     private bool Forward(FunctionAbi callee, ReadOnlySpan<Value> given, BindingSymbol? slot, out Value? result)
     {
         result = null;
@@ -225,17 +211,6 @@ internal sealed partial class FunctionCodegen
             if (Given(parameters[i]))
             {
                 this.arguments[i] = given[next++];
-                continue;
-            }
-
-            if (parameters[i].Kind == AbiParameterKind.Context)
-            {
-                if (this.Measure(this.collector.Set.Items[this.item].Key.Function!.Components[0].Components[parameters[i].LogicalIndex]) is not { } length)
-                {
-                    return false; // Recorded.
-                }
-
-                this.arguments[i] = length;
                 continue;
             }
 

@@ -41,7 +41,7 @@ public class SignatureProjectionCertificateBindingTest
     public void TransitiveWitnessesDoNotDependOnSourceOrder(bool property, bool reverse, string access, bool valid)
     {
         var middle = Consumer(property).Replace("contract C\n", "contract C\n    associate Item\n", StringComparison.Ordinal).Replace("Self is C\n", "Self is C\n    associate C.Item is i32\n", StringComparison.Ordinal);
-        const string last = "contract D\n    func end(x: i32) -> i32\nstruct Last\n    Self is D\n    public func end(x: S.C.Item) -> i32 => x\n";
+        const string last = "contract D\n    func end(x: i32) -> i32\nstruct Last\n    Self is D\n    public func end(x: S.(C).Item) -> i32 => x\n";
         var c = MinimalEmissionTest.Analyze(reverse ? last + middle + Prefix(access) : Prefix(access) + middle + last);
         Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
         Assert.Equal(valid, c.Binding.Result.IsComplete);
@@ -68,7 +68,7 @@ public class SignatureProjectionCertificateBindingTest
         Assert.False(Definition(c).IsVerified);
         var function = c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "Source").Members.OfType<FunctionKoto>().Single();
         var original = function.Parameters[1].Type;
-        var donor = MinimalEmissionTest.Analyze(source.Replace("x: Local.Hidden.Item", "x: i32", StringComparison.Ordinal));
+        var donor = MinimalEmissionTest.Analyze(source.Replace("x: Local.(Hidden).Item", "x: i32", StringComparison.Ordinal));
         var replacement = donor.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "Source").Members.OfType<FunctionKoto>().Single().Parameters[1].Type;
         ParseTestHelper.Detach(replacement, new CodeBlockKoto(replacement.CodeContext));
         Assert.True(KotoHelper.Replace(function, original, replacement));
@@ -84,7 +84,7 @@ public class SignatureProjectionCertificateBindingTest
     [InlineData(true)]
     public void ValidSelfProjectionDoesNotLoseItsEvidence(bool property)
     {
-        var source = Consumer(property).Replace("contract C\n", "contract C\n    associate Item\n", StringComparison.Ordinal).Replace("Self is C\n", "Self is C\n    associate C.Item is i32\n", StringComparison.Ordinal).Replace("Source.Origin.Item", "Self.C.Item", StringComparison.Ordinal);
+        var source = Consumer(property).Replace("contract C\n", "contract C\n    associate Item\n", StringComparison.Ordinal).Replace("Self is C\n", "Self is C\n    associate C.Item is i32\n", StringComparison.Ordinal).Replace("Source.(Origin).Item", "Self.(C).Item", StringComparison.Ordinal);
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         Assert.True(Definition(c).IsVerified);
@@ -94,7 +94,7 @@ public class SignatureProjectionCertificateBindingTest
     [Fact]
     public void InvalidFunctionSignatureCannotRetainDirectCall()
     {
-        var c = MinimalEmissionTest.Analyze(Prefix("internal") + "group G\n    func take(x: Source.Origin.Item) -> i32 => x\n    func call() -> i32 => take(1)");
+        var c = MinimalEmissionTest.Analyze(Prefix("internal") + "group G\n    func take(x: Source.(Origin).Item) -> i32 => x\n    func call() -> i32 => take(1)");
         Assert.False(c.Binding.Result.IsComplete);
         var call = c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "G").Members.OfType<FunctionKoto>().Single(x => x.Name == "call");
         Assert.Null(Assert.IsType<InvocationKoto>(call.ExpressionBody).CallOf());
@@ -116,12 +116,12 @@ public class SignatureProjectionCertificateBindingTest
     }
 
     private static string Prefix(string access)
-        => access + " contract Hidden\n    associate Item\npublic struct Local\n    Self is Hidden\n    associate Hidden.Item is i32\npublic contract Origin\n    associate Item\n    func f(self: ref/Self, x: i32) -> i32\npublic struct Source\n    Self is Origin\n    associate Origin.Item is i32\n    public func f(self: ref/Self, x: Local.Hidden.Item) -> i32 => x\n";
+        => access + " contract Hidden\n    associate Item\npublic struct Local\n    Self is Hidden\n    associate Hidden.Item is i32\npublic contract Origin\n    associate Item\n    func f(self: ref/Self, x: i32) -> i32\npublic struct Source\n    Self is Origin\n    associate Origin.Item is i32\n    public func f(self: ref/Self, x: Local.(Hidden).Item) -> i32 => x\n";
 
     private static string Consumer(bool property)
         => property
-            ? "contract C\n    property value: i32 has get\nstruct S\n    Self is C\n    public let value: Source.Origin.Item\n"
-            : "contract C\n    func g(self: ref/Self, x: i32) -> i32\nstruct S\n    Self is C\n    public func g(self: ref/Self, x: Source.Origin.Item) -> i32 => x\n";
+            ? "contract C\n    property value: i32 has get\nstruct S\n    Self is C\n    public let value: Source.(Origin).Item\n"
+            : "contract C\n    func g(self: ref/Self, x: i32) -> i32\nstruct S\n    Self is C\n    public func g(self: ref/Self, x: Source.(Origin).Item) -> i32 => x\n";
 
     private static DeclarationContainerKoto Structure(Compilation c)
         => c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "S");

@@ -220,7 +220,7 @@ internal sealed partial class MirBorrows
         }
 
         this.Work++;
-        var keep = this.escape[slot] ? origins.Fixed(receiving, this.body.Subject(this.Source(this.planLocation)))
+        var keep = this.escape[slot] ? origins.Fixed(receiving, this.body.Subject(this.Source(this.planLocation)), this.views)
             : whole || (through != 0 && this.WholeTarget(through, slot));
         return keep ? value : marked;
     }
@@ -287,8 +287,9 @@ internal sealed partial class MirBorrows
         }
     }
 
-    // The record's Cause facts after its other facts (ProblemFact's order), the conflict's causes consumed.
-    private int CauseFacts(int count)
+    // The record's facts: its count other facts, then its Cause facts (ProblemFact's order), the conflict's causes consumed; the span is
+    // taken after the growth, never of the array before it (G786).
+    private ReadOnlySpan<ProblemFact> CauseFacts(int count)
     {
         var problems = this.program.Problems.All;
         MirDataflow.Grow(ref this.facts, count + this.causes.Count);
@@ -298,6 +299,6 @@ internal sealed partial class MirBorrows
         }
 
         this.causes.Clear();
-        return count;
+        return this.facts.AsSpan(0, count);
     }
 }

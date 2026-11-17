@@ -1,8 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
-using Kimi.Compiler.Documentation;
 using Kimi.Compiler.Lexing;
-using Kimi.Compiler.Parsing;
 
 namespace Kimi.Compiler;
 
@@ -33,28 +31,21 @@ public sealed partial class KimiLibrary
             Read("DictionaryStorage.kimi"),
             Read("Storage.kimi"),
             Read("Raw.kimi"),
+            Read("Intrinsics.kimi"),
             Read("Formatting.kimi"),
-            Read("Text.kimi", KimiLibraryContainer.Text, signatures: true),
-            Read("WriteWindow.kimi", KimiLibraryContainer.WriteWindow, signatures: true),
-            Read("Utf8Writer.kimi", KimiLibraryContainer.Utf8Writer, signatures: true),
-            Read("ArrayOperations.kimi", KimiLibraryContainer.Array, signatures: true),
-            Read("StorageOperations.kimi", KimiLibraryContainer.Storage, signatures: true),
-            Read("RawOperations.kimi", KimiLibraryContainer.Raw, signatures: true),
-            Read("Intrinsics.kimi", KimiLibraryContainer.Intrinsics, signatures: true),
-            Read("Console.kimi", KimiLibraryContainer.Console, signatures: true),
-            Read("Test.kimi", KimiLibraryContainer.Test, signatures: true),
+            Read("Test.kimi"),
         ];
 
-        private static Source Read(string name, KimiLibraryContainer container = KimiLibraryContainer.Root, bool signatures = false)
+        private static Source Read(string name)
         {
             using var stream = typeof(KimiLibrary).Assembly.GetManifestResourceStream("Kimi.Library." + name)
                 ?? throw new InvalidOperationException("Missing embedded Kimi source: " + name);
             using var reader = new StreamReader(stream, new System.Text.UTF8Encoding(false, true));
-            return new("compiler://Kimi/" + Compilation.CurrentLanguageVersion + "/" + name, reader.ReadToEnd(), container, signatures);
+            return new("compiler://Kimi/" + Compilation.CurrentLanguageVersion + "/" + name, reader.ReadToEnd());
         }
     }
 
-    private sealed class Source(string path, string text, KimiLibraryContainer container, bool signatures)
+    private sealed class Source(string path, string text)
     {
         private Token[]? tokens;
         private DocumentationSource.Candidate[]? documentation;
@@ -62,10 +53,6 @@ public sealed partial class KimiLibrary
         internal string Path { get; } = path;
 
         internal string Text { get; } = text;
-
-        internal KimiLibraryContainer Container { get; } = container;
-
-        internal bool Signatures { get; } = signatures;
 
         internal ReadOnlySpan<Token> GetTokens(CodeContext context)
         {
@@ -115,101 +102,22 @@ public sealed partial class KimiLibrary
         }
     }
 
-    private static void ParseSource(ref TokenReader reader, bool signatures, DeclarationContainerKoto container)
-    {
-        if (!signatures)
-        {
-            container.Parse(ref reader);
-            return;
-        }
-
-        // This mode is private to embedded, compiler-implemented signatures.
-        // Each loaded member must subsequently match a registered intrinsic.
-        while (reader.CanRead)
-        {
-            Parser.ConsumeAttributeAndModifier(ref reader, out var end);
-            if (end)
-            {
-                break;
-            }
-
-            // A constructor signature is admitted in a struct; the compiler supplies its construction too.
-            var constructor = reader.CurrentTokenKind == TokenKind.Init && container is StructKoto;
-            if (reader.CurrentTokenKind != TokenKind.Func && !constructor)
-            {
-                reader.Expect(SyntaxForm.Declaration);
-                break;
-            }
-
-            if (!constructor)
-            {
-                reader.Advance();
-            }
-
-            var declaration = Parser.ParseFuncDeclaration(ref reader, constructor: constructor);
-            if (declaration is null)
-            {
-                break;
-            }
-
-            if (constructor)
-            {
-                declaration.DeclaringContainer = container;
-            }
-
-            Parser.ParseSignatureClauses(ref reader, declaration);
-            if (container is StructKoto)
-            {
-                Parser.ValidateReceiverParameters(declaration);
-            }
-
-            container.AddLast(declaration);
-        }
-    }
-
-    private DeclarationContainerKoto? FormattingContainer(KimiLibraryContainer kind)
-        => kind == KimiLibraryContainer.Text ? this.Text :
-            kind is KimiLibraryContainer.FixedBuffer or KimiLibraryContainer.HeapBuffer
-                ? FindDeclaration(this.Text, kind.ToString(), false) as DeclarationContainerKoto :
-            kind is KimiLibraryContainer.WriteWindow or KimiLibraryContainer.Utf8Writer
-                ? FindDeclaration(this.Kotonoha.RootKoto, kind.ToString(), false) as DeclarationContainerKoto : null;
-
+    // Each source is an ordinary Kimigayo source of the library's root (SPEC 22.1); a declaration the compiler implements omits its
+    // Body by its implementation Attribute (FunctionKoto.OmitsBody).
     private void LoadSources()
     {
         foreach (var source in Sources.All)
         {
-            var container = source.Container switch
+            var document = new SourceDocument(source.Path, source.Text);
+            var context = new CodeContext(this.Kotonoha, sourceDocument: document);
+            var reader = new TokenReader(context, document.AsSpan(), source.GetTokens(context));
+            this.Kotonoha.RootKoto.Parse(ref reader);
+            if (context.Documentation is { } documentation)
             {
-                KimiLibraryContainer.Console => this.Console,
-                KimiLibraryContainer.Intrinsics => this.Intrinsics,
-                KimiLibraryContainer.Test => this.Test,
-                KimiLibraryContainer.Array => FindDeclaration(this.Kotonoha.RootKoto, "Array", false) as DeclarationContainerKoto, // Array.kimi is read first.
-                KimiLibraryContainer.Dictionary => FindDeclaration(this.Kotonoha.RootKoto, "Dictionary", false) as DeclarationContainerKoto,
-                KimiLibraryContainer.Storage => FindDeclaration(this.Kotonoha.RootKoto, "Storage", false) as DeclarationContainerKoto, // Storage.kimi is read first.
-                KimiLibraryContainer.Raw => FindDeclaration(this.Kotonoha.RootKoto, "Raw", false) as DeclarationContainerKoto, // Raw.kimi is read first.
-                KimiLibraryContainer.Root => this.Kotonoha.RootKoto,
-                _ => this.FormattingContainer(source.Container),
-            };
-            if (container is null)
-            {
-                continue; // A missing Array struct fails library construction (SourceExpected).
+                documentation.SetLocation(this.Kotonoha.LogicalName(document));
+                documentation.Finish(context.Compilation.Diagnostics.HasSyntaxErrors(document));
+                this.Kotonoha.RecordDocumentation(documentation);
             }
-
-            this.ParseSource(source, container);
-        }
-    }
-
-    private void ParseSource(Source source, DeclarationContainerKoto container)
-    {
-        var document = new SourceDocument(source.Path, source.Text);
-        var context = new CodeContext(this.Kotonoha, sourceDocument: document);
-        var reader = new TokenReader(context, document.AsSpan(), source.GetTokens(context));
-        ParseSource(ref reader, source.Signatures, container);
-        if (context.Documentation is { } documentation)
-        {
-            documentation.SetLocation(this.Kotonoha.LogicalName(document));
-            documentation.Finish(context.Compilation.Diagnostics.HasSyntaxErrors(document));
-            this.Kotonoha.RecordDocumentation(documentation);
         }
     }
 }

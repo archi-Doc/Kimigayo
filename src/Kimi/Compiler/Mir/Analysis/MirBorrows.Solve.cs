@@ -30,13 +30,17 @@ internal sealed partial class MirBorrows
         (this.loanBase, this.writableSet) = (Markers + body.Locals.Length, this.sets.Add(0, Writable));
         this.escapedSet = this.sets.Add(this.writableSet, Escaped);
         this.unformedSet = this.sets.Add(0, Unformed);
+        this.offgridSet = this.sets.Add(0, Offgrid);
+        (this.maybeSet, this.undecidedSet) = (this.sets.Add(this.escapedSet, Maybe), this.sets.Add(0, Undecided));
         this.Loans();
         this.Addresses();
         this.Receivers();
+        this.BeginStoring();
+        this.producing |= this.owning; // The storing rule reads an own part formed without a Loan (MirBorrows.Storing; PLAN G581).
         if (!this.producing)
         {
-            // No input of a Loan-stratum producer, no problem (A3 6.1, D5; E7's γ, R3, a slot write, PQ-10 and an own-step entry an access may
-            // depart need no Loan, R4-M141).
+            // No input of a Loan-stratum producer, no problem (A3 6.1, D5; E7's γ, R3, a slot write, PQ-10, an own-step entry an access may
+            // depart and the storing rule's own part formed without a Loan need no Loan, R4-M141).
             return;
         }
 
@@ -87,10 +91,15 @@ internal sealed partial class MirBorrows
     // terminator's inspection Loans end before its plan (R-a).
     private void Carry(ulong[] state, int block, bool checks)
     {
+        this.replaying = checks;
         if (checks && flow.Head(block) != this.chainHead)
         {
             (this.chainHead, this.chainFirst) = (flow.Head(block), block);
             this.Enter(this.chainHead);
+            if (this.contract is not null)
+            {
+                this.EnterStoring();
+            }
         }
 
         var count = this.body.Blocks[block].Count;

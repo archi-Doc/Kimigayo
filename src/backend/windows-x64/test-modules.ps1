@@ -6,12 +6,15 @@ param(
 )
 $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'toolchain.ps1')
+. (Join-Path $PSScriptRoot 'expected-output.ps1')
 $ToolchainRoot = Resolve-KimiToolchainRoot $ToolchainRoot
 $repo = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../../..'))
 $compiler = Join-Path $repo "src/Kimi/bin/$Configuration/net10.0/Kimi.dll"
 $work = Join-Path ([IO.Path]::GetFullPath($ResultRoot)) ([guid]::NewGuid().ToString('N'))
 $null = New-Item -ItemType Directory -Path $work
 $checks = [Collections.Generic.List[object]]::new()
+$utf8 = [Text.UTF8Encoding]::new($false)
+# Returns the captured stdout bytes; both streams are kept byte for byte.
 function Invoke-Kimi([string] $Name, [string[]] $Arguments, [int] $ExpectedExit = 0) {
     $start = [Diagnostics.ProcessStartInfo]::new((Get-Command dotnet).Source)
     $start.UseShellExecute = $false
@@ -23,16 +26,20 @@ function Invoke-Kimi([string] $Name, [string[]] $Arguments, [int] $ExpectedExit 
     foreach ($argument in $Arguments) { $start.ArgumentList.Add($argument) }
     $process = [Diagnostics.Process]::Start($start)
     try {
-        $stdout = $process.StandardOutput.ReadToEndAsync()
-        $stderr = $process.StandardError.ReadToEndAsync()
+        $stdout = [IO.MemoryStream]::new()
+        $stderr = [IO.MemoryStream]::new()
+        $copies = @($process.StandardOutput.BaseStream.CopyToAsync($stdout), $process.StandardError.BaseStream.CopyToAsync($stderr))
         if (-not $process.WaitForExit(60000)) { throw "Timed out: $Name" }
-        $output = $stdout.GetAwaiter().GetResult()
-        $errorText = $stderr.GetAwaiter().GetResult()
-        [IO.File]::WriteAllText((Join-Path $work "$Name.stdout"), $output)
-        [IO.File]::WriteAllText((Join-Path $work "$Name.stderr"), $errorText)
+        foreach ($copy in $copies) { $null = $copy.GetAwaiter().GetResult() }
+        $output = $stdout.ToArray()
+        $errorOutput = $stderr.ToArray()
+        [IO.File]::WriteAllBytes((Join-Path $work "$Name.stdout"), $output)
+        [IO.File]::WriteAllBytes((Join-Path $work "$Name.stderr"), $errorOutput)
         $checks.Add(@{ name = $Name; exit = $process.ExitCode; expectedExit = $ExpectedExit; arguments = $Arguments })
-        if ($process.ExitCode -ne $ExpectedExit) { throw "Unexpected exit for ${Name}: $($process.ExitCode)`n$output`n$errorText" }
-        return $output
+        if ($process.ExitCode -ne $ExpectedExit) {
+            throw "Unexpected exit for ${Name}: $($process.ExitCode)`n$($utf8.GetString($output))`n$($utf8.GetString($errorOutput))"
+        }
+        return ,$output
     }
     finally {
         if (-not $process.HasExited) { $process.Kill($true); $process.WaitForExit() }
@@ -78,12 +85,14 @@ Dependencies={Lib={PackageId="library" PackageVersion="1" Project="../Library/Li
         $recordPath = Join-Path $work 'App/bin/x86_64-pc-windows-msvc/App.link.build.json'
         $record = Get-Content -LiteralPath $recordPath -Raw | ConvertFrom-Json
         if ($record.status -cne 'linked' -or $record.toolchainVerification -cne 'not-performed' -or $null -ne $record.reportedVersionsMatched -or -not $record.unverifiedToolchain) { throw 'Unverified module native build' }
+        $expected = $utf8.GetBytes("module`nmodule`n")
+        # A project run may print build lines first, so its stdout ends with the program's.
         $output = Invoke-Kimi "$level-run" @('run', $project, '--no-build')
-        if (-not $output.EndsWith("module`nmodule`n", [StringComparison]::Ordinal)) { throw "Project module output mismatch: $output" }
+        if (-not (Test-KimiExpectedOutput $expected ([Linq.Enumerable]::ToArray([Linq.Enumerable]::TakeLast($output, $expected.Length))))) { throw "Project module output mismatch: $($utf8.GetString($output))" }
         $output = Invoke-Kimi "$level-executable" @('run', (Join-Path $work "App/bin/x86_64-pc-windows-msvc/App.$level.exe"))
-        if ($output -cne "module`nmodule`n") { throw "Module output mismatch: $output" }
+        if (-not (Test-KimiExpectedOutput $expected $output)) { throw "Module output mismatch: $($utf8.GetString($output))" }
         $output = Invoke-Kimi "$level-tests" @('test', $project, '--format', 'json')
-        $tests = $output | ConvertFrom-Json
+        $tests = $utf8.GetString($output) | ConvertFrom-Json
         if ($tests.summary.selected -ne 1 -or $tests.summary.passed -ne 1) { throw 'Dependency tests leaked or the root test did not pass' }
     }
     ($library + "`nfunc unused() => missing()") | Set-Content -LiteralPath $librarySource -Encoding utf8

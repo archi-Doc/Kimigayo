@@ -29,26 +29,27 @@ internal sealed class MirCases(TyCtxt types)
     internal MirBody Body { get; private set; } = null!;
 
     /// <summary>Gets the number of views of a body: the product of its binders' admitted sets (<see cref="PairBinder.CaseProduct"/>), 1
-    /// without a binder, at most <see cref="PairBinder.CaseBound"/>: Binding decides the bound once per definition and binds no part of a
-    /// definition beyond it (SPEC 8.15, 23.1.1), and <see cref="MirValidator"/> checks it, so the analyses run every view.</summary>
+    /// without a binder, from 1 to <see cref="PairBinder.CaseBound"/>: Binding decides the cases once per definition and publishes no part
+    /// of a definition beyond the bound or whose binders admit no case (SPEC 8.15, 8.3.4, 23.1.1), and <see cref="MirValidator"/> checks
+    /// it, so every binder of a validated body admits a case and the analyses run every view.</summary>
     /// <param name="body">The body.</param>
-    /// <returns>The number of views, saturated at the largest count.</returns>
+    /// <returns>The number of views, saturated at the largest count; 0 where a binder admits no case.</returns>
     internal static long Count(MirBody body) => PairBinder.CaseProduct(body.Binders);
 
     /// <summary>Gets every view of a body, the one form of "every view" of its problems and verdicts (<see cref="MirProblem"/>'s views):
-    /// bits 0 to <see cref="Count"/> less one. The shift is defined: <see cref="MirValidator"/> bounds the count by
-    /// <see cref="PairBinder.CaseBound"/> (64), and the count is at least 1, a product from 1 of non-empty admitted sets.</summary>
+    /// bits 0 to <see cref="Count"/> less one. The shift is defined: <see cref="MirValidator"/> bounds the count from 1 to
+    /// <see cref="PairBinder.CaseBound"/> (64).</summary>
     /// <param name="body">The validated body.</param>
     /// <returns>The views, bit i for view i.</returns>
     internal static ulong Every(MirBody body) => ulong.MaxValue >> (64 - (int)Count(body));
 
-    /// <summary>Gets the index in a body's <see cref="MirBody.Binders"/> of the binder a pair layer Type names (TyCtxt.Layer).</summary>
+    /// <summary>Gets the index in a body's <see cref="MirBody.Binders"/> of the binder a pair layer Type names (TyCtxt.PairBinder).</summary>
     /// <param name="body">The body.</param>
     /// <param name="type">The Type.</param>
     /// <returns>The binder's index; -1 for another Type.</returns>
     internal static int Binder(MirBody body, BoundType? type)
     {
-        _ = TyCtxt.Layer(type, out _, out var target);
+        var target = TyCtxt.PairBinder(type);
         var binder = body.Binders.Count - 1;
         while (binder >= 0 && !ReferenceEquals(body.Binders[binder].Target, target))
         {
@@ -81,10 +82,8 @@ internal sealed class MirCases(TyCtxt types)
     internal static ConversionBinding Operation(BoundType source, BoundType target, in MirRvalue adapt)
         => TyCtxt.Adaptation(source, target, (adapt.Op & MirRvalue.AdaptShorthand) != 0);
 
-    /// <summary>Selects a view of a body: for each resolved binder, the admitted Semantics its digit of <paramref name="index"/> picks. A
-    /// binder without an admitted Semantics (a Binding error) has no case: its entry is empty, so its layers keep their declared Types and
-    /// its steps and acquisitions read as the owner case's.</summary>
-    /// <param name="body">The body.</param>
+    /// <summary>Selects a view of a body: for each binder, the admitted Semantics its digit of <paramref name="index"/> picks.</summary>
+    /// <param name="body">A validated body (<see cref="Count"/>).</param>
     /// <param name="index">The view, below <see cref="Count"/>.</param>
     /// <returns>The view: the case of each binder, by the binder's index.</returns>
     internal ReadOnlySpan<PairCase> Select(MirBody body, long index)
@@ -98,12 +97,6 @@ internal sealed class MirCases(TyCtxt types)
         (this.Body, this.width) = (body, binders.Count);
         for (var b = binders.Count - 1; b >= 0; b--)
         {
-            this.view[b] = default;
-            if (!binders[b].Resolved)
-            {
-                continue;
-            }
-
             var admitted = (uint)binders[b].Admitted;
             var size = BitOperations.PopCount(admitted);
             for (var digit = index % size; digit > 0; digit--)
@@ -131,7 +124,7 @@ internal sealed class MirCases(TyCtxt types)
         var bits = 0UL;
         for (var b = 0; b < this.width; b++)
         {
-            if (this.view[b].Target is not null && MirTypes.IsBorrow(this.view[b].Semantics))
+            if (MirTypes.IsBorrow(this.view[b].Semantics))
             {
                 bits |= 1UL << b;
             }
@@ -141,12 +134,12 @@ internal sealed class MirCases(TyCtxt types)
     }
 
     /// <summary>Gets the views of a callee body that a call with a substitution selects under the selected view (SPEC 8.15): for each
-    /// resolved binder of the callee, the case of its whole Type in the substitution, the Semantics of that Type's case Type, or every
+    /// binder of the callee, the case of its whole Type in the substitution, the Semantics of that Type's case Type, or every
     /// admitted case while that Type is still abstract or its instance a Limit. The instance is read as every reader reads one
     /// (<see cref="TyCtxt.ReadableInstance"/>, DECISIONS R4-M139): over Rejected storage its case is the instance's Semantics, which no rejected part
     /// changes, so the view is the one its repair selects. Views are decoded as <see cref="Select"/> numbers them; the selected view is
     /// kept.</summary>
-    /// <param name="callee">The callee body.</param>
+    /// <param name="callee">A validated callee body (<see cref="Count"/>).</param>
     /// <param name="subst">The call's substitution, or null for the callee's own (every view).</param>
     /// <returns>The views, bit i for view i.</returns>
     internal ulong Views(MirBody callee, Subst? subst)
@@ -156,8 +149,8 @@ internal sealed class MirCases(TyCtxt types)
         for (var b = callee.Binders.Count - 1; b >= 0 && subst is not null; b--)
         {
             var binder = callee.Binders[b];
-            var size = binder.Resolved ? BitOperations.PopCount((uint)binder.Admitted) : 1;
-            if (binder.Resolved && binder.Target.WholeType is { } whole && types.ReadableInstance(whole, subst) is { } actual &&
+            var size = BitOperations.PopCount((uint)binder.Admitted);
+            if (binder.Target.WholeType is { } whole && types.ReadableInstance(whole, subst) is { } actual &&
                 this.Type(actual) is { IsAbstract: false } type)
             {
                 var bit = 1u << (int)type.Semantics;
@@ -180,6 +173,20 @@ internal sealed class MirCases(TyCtxt types)
     /// <returns>The case Type.</returns>
     internal BoundType Type(BoundType type) => types.CaseType(type, this.view.AsSpan(0, this.width));
 
+    /// <summary>Gets the Type a Place of the selected body has under the selected view: its Type (<see cref="MirBody.TypeOf"/>), which a
+    /// validated body states for every Place (<see cref="MirValidator"/> checks each Place a location names, a diverging Call's
+    /// destination included), as a case Type (<see cref="Type"/>), the one form every case reader of a Place takes.</summary>
+    /// <param name="place">A Place of the selected body.</param>
+    /// <returns>The case Type.</returns>
+    internal BoundType TypeOf(MirPlace place) => this.Type(this.Body.TypeOf(place)!);
+
+    /// <summary>Gets the Type an operand of the selected body has under the selected view: its constant's Type as a case Type
+    /// (<see cref="Type"/>) or its Place's (<see cref="TypeOf(MirPlace)"/>), the one form every case reader of an operand takes.</summary>
+    /// <param name="operand">An operand of the selected body.</param>
+    /// <returns>The case Type.</returns>
+    internal BoundType TypeOf(in MirOperand operand)
+        => operand.Kind == MirOperandKind.Const ? this.Type(this.Body.Consts[operand.Arg].Type) : this.TypeOf(operand.Place);
+
     /// <summary>Gets what a PairLayer step of the selected body is under the selected view (SPEC 13.5.5): the Place it applies to itself
     /// in the owner case, else the referent of the reference or object handle that Place stores in the case. The Place selected has the
     /// case Type of the step's Type either way.</summary>
@@ -188,7 +195,7 @@ internal sealed class MirCases(TyCtxt types)
     internal BoundType? Layer(MirPlace step)
     {
         var row = this.Body.Projections[step.Projection];
-        return this.view[row.Arg].Semantics == SemanticsKind.Owner ? null : this.Type(this.Body.TypeOf(step with { Projection = row.Prefix })!);
+        return this.view[row.Arg].Semantics == SemanticsKind.Owner ? null : this.TypeOf(step with { Projection = row.Prefix });
     }
 
     /// <summary>Gets whether a PairAcquire of the selected body Reborrows under the selected view (SPEC 8.14): its Place's case Type is an
@@ -196,7 +203,7 @@ internal sealed class MirCases(TyCtxt types)
     /// exclusively in that Semantics; in any other case it Copies its Place, a reference or a value Binding proved Copy.</summary>
     /// <param name="acquire">A PairAcquire operand.</param>
     /// <returns>Whether it Reborrows.</returns>
-    internal bool Reborrows(in MirOperand acquire) => MirTypes.IsExclusive(this.Type(this.Body.TypeOf(acquire.Place)!));
+    internal bool Reborrows(in MirOperand acquire) => MirTypes.IsExclusive(this.TypeOf(acquire));
 
     /// <summary>Gets what an Adapt of the selected body is under the selected view (SPEC 8.14, 13.5.3): the operation Binding selects
     /// (<see cref="TyCtxt.Adaptation"/>) from the case Type of its source token to the case Type of its target, as that operation's

@@ -1,7 +1,9 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using System.Reflection;
 using Kimi;
 using Kimi.Compiler;
+using Kimi.Compiler.Mir;
 using Kimi.Compiler.Parsing;
 using Xunit;
 
@@ -29,6 +31,13 @@ public partial class EffectBoundImplementationTest
     private const string Stepped = "struct Cursor\n    Self is Step\n    public var count: i32 = 0\n    public func step(self: uniq/Self)\n        do\n            let cleanup = Cleanup.init(self)\n";
 
     private const string Main = "public func main() => ()\n";
+
+    // ASuppliedContractsBoundIsReadAtEveryDepth's conformances: the call's conforming Type is a requirement's result, or a Type an
+    // identity premise makes one with a projection at depth 2.
+    private const string DeepMeter = "struct Meter<T>\n    T is Node\n    Self is Report\n    var reading: T\n    public func report(self: ref/Self) -> i32\n        return self.reading.deep().ping()\n";
+
+    private const string IdentityMeter = "struct Meter<T>\n    T is Node\n    T.(Node).Other is T.(Node).Next.(Node).Item\n    Self is Report\n    var reading: T.(Node).Other\n" +
+        "    public func report(self: ref/Self) -> i32\n        return self.reading.ping()\n";
 
     // P42's StaticStorage record at Sink's settable static, Metrics.puts (DECISIONS R5-M82; STATUS Static members): a MIR row of every
     // program with Sink.
@@ -133,28 +142,52 @@ public partial class EffectBoundImplementationTest
         static string First(Koto node) => node.ToString().Split('\n')[0].Trim();
     }
 
-    // SPEC 8.11.2: every compiler function has one effect class. The Storage and Raw families act only on their inputs and the
-    // allocator; Console output and the test temporary directory are environment effects; the formatting entries are unclassified,
-    // since A4 composes their published rows first. A new kind is unclassified until it is placed here.
+    // SPEC 8.11.2: every function the compiler serves has one effect class, Binding's category of it (TyCtxt.Bodyless) and, for an
+    // intrinsic, MIR's row of it (MirDescriptors; MirEffects reads the two). Every library function or $abort that is no body is an
+    // intrinsic, and of those Console output and the test temporary directory alone are environment effects (the Storage and Raw
+    // families, the handles, Text.writer and the fixed failures act only on their inputs and the allocator); a library body is no
+    // bodyless category; each of the eight built-in targets (Binding.PrepareBuiltinTargets: equality, comparison and the six arithmetic
+    // operations) is a shim, which acts on its inputs (MirEffects.Class's Shim arm), and the tuple comparisons' calls target two of them.
     [Fact]
     public void EveryCompilerFunctionHasOneEffectClass()
     {
-        foreach (var kind in Enum.GetValues<CompilerFunctionKind>())
+        var library = Compilation.CreateForTest().Library;
+        var environment = new List<IntrinsicId>();
+        foreach (var symbol in library.RegisteredSymbols.ToArray().Append(library.Abort))
         {
-            var expected = kind switch
+            var kind = TyCtxt.Bodyless(symbol);
+            Assert.True(symbol.Definition.Kind == DispositionKind.Body ? kind is not (BodylessKind.Intrinsic or BodylessKind.Shim) : kind == BodylessKind.Intrinsic, symbol.Name);
+            if (kind == BodylessKind.Intrinsic && (MirDescriptors.Of(symbol.Definition.Id).Effects & MirEffect.Environment) != 0)
             {
-                CompilerFunctionKind.None => CompilerFunctionEffect.Unclassified,
-                CompilerFunctionKind.WriteLine or CompilerFunctionKind.WriteLineUtf8 or CompilerFunctionKind.TestTempDirectory => CompilerFunctionEffect.Environment,
-                CompilerFunctionKind.WriterWrite or CompilerFunctionKind.TextToString or CompilerFunctionKind.TextTryFormat => CompilerFunctionEffect.Unclassified,
-                _ => CompilerFunctionEffect.Inputs,
-            };
-            Assert.True(expected == IntrinsicDisposition.Effect(kind), kind.ToString());
+                environment.Add(symbol.Definition.Id);
+            }
         }
+
+        Assert.Equal(new[] { IntrinsicId.WriteStdout, IntrinsicId.TestTempDirectory }, environment.Order().ToArray());
+        var c = MinimalEmissionTest.Analyze("let same = (1, 2) == (1, 2)\nlet less = (1, 2) < (3, 4)");
+        var shims = KotoTree.Walk(c.Kotonoha.RootKoto)
+            .SelectMany(static x => Enumerable.Range(0, 8).Select(i => CallPlan.Of(x, i)).TakeWhile(static y => y is not null).OfType<CallPlan>())
+            .Where(static x => x.Target.Definition.Kind == DispositionKind.Shim).Select(static x => x.Target).Distinct().ToArray();
+        var contracts = shims.Select(static x => TyCtxt.Contract(x).LibraryDeclaration!.Value).ToArray();
+        Assert.Equal(2, contracts.Length);
+        Assert.Contains(KimiDeclarationId.Equatable, contracts);
+        Assert.Contains(KimiDeclarationId.Comparable, contracts);
+        var targets = new[] { (BindingSymbol?)Field("builtinEquals"), (BindingSymbol?)Field("builtinCompare") }
+            .Concat((BindingSymbol?[])Field("builtinArithmetic")!).Select(static x => x!).ToArray();
+        Assert.Subset(targets.ToHashSet(), shims.ToHashSet());
+        Assert.Equal(
+            new[] { KimiDeclarationId.Equatable, KimiDeclarationId.Comparable, KimiDeclarationId.Addable, KimiDeclarationId.Subtractable, KimiDeclarationId.Multipliable, KimiDeclarationId.Dividable, KimiDeclarationId.RemainderProvider, KimiDeclarationId.Negatable },
+            targets.Select(static x => TyCtxt.Contract(x).LibraryDeclaration!.Value));
+        Assert.All(targets, static x => Assert.Equal(BodylessKind.Shim, TyCtxt.Bodyless(x)));
+
+        // A built-in target Binding prepares (Binding.PrepareBuiltinTargets), by its field.
+        object? Field(string name) => typeof(Binding).GetField(name, BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(c.Binding);
     }
 
-    // SPEC 8.11.3, 8.11.2: confined is judged over every body the witness reaches, which its calls select: a helper, a recursive generic
-    // helper, every specialization the call may still select (by Type, length or a compound key), the accessor or indexer a Place's use
-    // selects, and a destructor ownership analysis plans; a member no call reaches is not judged. (These forms were preserves results
+    // SPEC 8.11.3, 8.11.2, 15.6.4: confined is judged over every body the witness reaches, which its calls select: a helper, a recursive
+    // generic helper, a called function's one summary per declaration over its whole closed specialization set, whatever its key (by Type,
+    // length or a compound key, matching or not), the accessor or indexer a Place's use selects, and a destructor ownership analysis plans;
+    // a member no call reaches is not judged. (These forms were preserves results
     // checks of Iterator conformances before the adopted proposal Abstract Calls Reach by Paths removed that bound.)
     [Theory]
     [InlineData("struct Cursor\n    Self is Step\n    var count: i32 = 0\n    func update(self: uniq/Self)\n        Console.writeLine(\"step\")\n    public func step(self: uniq/Self) => self.update()\n", false)]
@@ -164,12 +197,12 @@ public partial class EffectBoundImplementationTest
     [InlineData("struct Cursor\n    Self is Step\n    var count: i32 = 0\n    func update(self: uniq/Self) => Console.writeLine(\"step\")\n    public func step(self: uniq/Self) => self.count += 1\n", true)]
     [InlineData("struct Cursor<T>\n    Self is Step\n    var count: i32 = 0\n    func update<U>(self: uniq/Self) => self.count += 1\n    specialize func update<i32>(self: uniq/Self) => Console.writeLine(\"step\")\n    public func step(self: uniq/Self) => self.update<T>()\n", false)]
     [InlineData("struct Cursor<T>\n    Self is Step\n    var count: i32 = 0\n    func update<U>(self: uniq/Self) => self.count += 1\n    specialize func update<i32>(self: uniq/Self) => self.count += 1\n    public func step(self: uniq/Self) => self.update<T>()\n", true)]
-    [InlineData("struct Cursor<T>\n    Self is Step\n    var count: i32 = 0\n    func update<U>(self: uniq/Self) => self.count += 1\n    specialize func update<i32>(self: uniq/Self) => Console.writeLine(\"step\")\n    public func step(self: uniq/Self) => self.update<bool>()\n", true)]
+    [InlineData("struct Cursor<T>\n    Self is Step\n    var count: i32 = 0\n    func update<U>(self: uniq/Self) => self.count += 1\n    specialize func update<i32>(self: uniq/Self) => Console.writeLine(\"step\")\n    public func step(self: uniq/Self) => self.update<bool>()\n", false)]
     [InlineData("struct Cursor<T>\n    Self is Step\n    var count: i32 = 0\n    func update<U>(self: uniq/Self) => self.count += 1\n    specialize func update<i32>(self: uniq/Self) => Console.writeLine(\"step\")\n    public func step(self: uniq/Self) => self.update<i32>()\n", false)]
-    [InlineData("struct Cursor\n    Self is Step\n    var count: i32 = 0\n    func update<length M>(self: uniq/Self) => self.count += 1\n    specialize func update<3>(self: uniq/Self) => Console.writeLine(\"step\")\n    public func step(self: uniq/Self) => self.update<2>()\n", true)]
+    [InlineData("struct Cursor\n    Self is Step\n    var count: i32 = 0\n    func update<length M>(self: uniq/Self) => self.count += 1\n    specialize func update<3>(self: uniq/Self) => Console.writeLine(\"step\")\n    public func step(self: uniq/Self) => self.update<2>()\n", false)]
     [InlineData("struct Cursor\n    Self is Step\n    var count: i32 = 0\n    func update<length M>(self: uniq/Self) => self.count += 1\n    specialize func update<3>(self: uniq/Self) => Console.writeLine(\"step\")\n    public func step(self: uniq/Self) => self.update<3>()\n", false)]
     [InlineData("struct Cursor<T>\n    Self is Step\n    var count: i32 = 0\n    func update<U>(self: uniq/Self) => self.count += 1\n    specialize func update<(i32, bool)>(self: uniq/Self) => Console.writeLine(\"step\")\n    public func step(self: uniq/Self) => self.update<(T, bool)>()\n", false)]
-    [InlineData("struct Cursor<T>\n    Self is Step\n    var count: i32 = 0\n    func update<U>(self: uniq/Self) => self.count += 1\n    specialize func update<(i32, bool)>(self: uniq/Self) => Console.writeLine(\"step\")\n    public func step(self: uniq/Self) => self.update<(T, i32)>()\n", true)]
+    [InlineData("struct Cursor<T>\n    Self is Step\n    var count: i32 = 0\n    func update<U>(self: uniq/Self) => self.count += 1\n    specialize func update<(i32, bool)>(self: uniq/Self) => Console.writeLine(\"step\")\n    public func step(self: uniq/Self) => self.update<(T, i32)>()\n", false)]
     [InlineData("struct Cursor\n    Self is Step\n    var count: i32 = 0\n        set(value: i32) -> () => Console.writeLine(\"step\")\n    public func step(self: uniq/Self) => self.count = 1\n", false)]
     [InlineData("struct Cursor\n    Self is Step\n    var count: i32 = 0\n        set(value: i32) -> () => storage = value\n    public func step(self: uniq/Self) => self.count = 1\n", true)]
     [InlineData(Box + "struct Cursor\n    Self is Step\n    var box: Box\n    public func step(self: uniq/Self) => self.box[0] += 1\n", false)]
@@ -265,6 +298,24 @@ public partial class EffectBoundImplementationTest
     [InlineData("guard", "g234n", StableSources + "contract C\n    associate Item(s) is Source and Copy\n    func get(self: uniq/Self during s) -> Self.Item(s)\n        effect confined\n" + Step + TakingCursor, "IncompatibleContractImplementation_Kd: Self is Step")]
     public void ABoundReachesAnAssociatedFamily(string unit, string form, string program, string records)
         => CompilationTestHelper.AssertRecordsAtLines($"{form} [{unit}]", program + "()", records);
+
+    // R7-C2c2 c2-3b (SPEC 8.11.3, 8.3.2, 8.2.3): a requirement call uses the bounds of the Contracts its premises prove for the
+    // conforming Type, at every depth and whatever its spelling: a Type that is a requirement's result (ebd) or stands behind an
+    // identity premise (ebi). Where the supplied Contract declares no bound, the conformance is rejected at its Self clause.
+    [Theory]
+    [InlineData("ebd2", "Quiet", "    func deep(self: ref/Self) -> ref/Self.(Node).Next.(Node).Item\n        effect confined\n", DeepMeter, "")]
+    [InlineData("ebd3", "Quiet", "    func deep(self: ref/Self) -> ref/Self.(Node).Next.(Node).Next.(Node).Item\n        effect confined\n", DeepMeter, "")]
+    [InlineData("ebd2n", "Loud", "    func deep(self: ref/Self) -> ref/Self.(Node).Next.(Node).Item\n        effect confined\n", DeepMeter, "IncompatibleContractImplementation_Kd: Self is Report")]
+    [InlineData("ebi2", "Quiet", "", IdentityMeter, "")]
+    [InlineData("ebi2n", "Loud", "", IdentityMeter, "IncompatibleContractImplementation_Kd: Self is Report")]
+    [InlineData("ebi4", "Quiet", "", "struct Meter<T, U>\n    T is Quiet\n    T is U\n    Self is Report\n    var reading: U\n    public func report(self: ref/Self) -> i32\n        return self.reading.ping()\n", "")]
+    public void ASuppliedContractsBoundIsReadAtEveryDepth(string form, string item, string requirement, string meter, string records)
+    {
+        var program = "contract Quiet\n    func ping(self: ref/Self) -> i32\n        effect confined\ncontract Loud\n    func ping(self: ref/Self) -> i32\n" +
+            $"contract Node\n    associate Next is Node\n    associate Item is {item}\n    associate Other\n{requirement}" +
+            "contract Report\n    func report(self: ref/Self) -> i32\n        effect confined\n" + meter + Main;
+        CompilationTestHelper.AssertRecordsAtLines(form, program, records);
+    }
 
     // R6-check H3b T40: since the MIR decides acceptance (H5, DECISIONS R5-M185), A4 judges an effect bound where Binding did. Binding
     // completes; a violated bound refuses the program with A4's IncompatibleContractImplementation_Kd at the conformance's `Self is C`
