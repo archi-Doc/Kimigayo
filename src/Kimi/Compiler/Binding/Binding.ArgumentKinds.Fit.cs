@@ -71,6 +71,53 @@ public sealed partial class Binding
         }
     }
 
+    // SPEC 6.5.2, 10.5.1 (G812 ruling 118): a part that FitArgument leaves Waiting, at the Type of the one candidate that completes it
+    // (a value call's Function Item): a contextual Case resolves in that Type's enum with its payload count (its own shape,
+    // ShapeFits), its payloads are prepared as a call's arguments are (PrepareCallArguments, once per pass; the value call on the
+    // split completes the Case alone in any case), and each fits its Type there as an argument, read only; a payload whose declared
+    // Type is the enum's slot leaves the Type at that argument (ComponentPath), any other none. A nested call is completed by its
+    // call (Waiting).
+    private CandidateApplicability FitCaseAt(Koto part, BoundType type, BindingScope scope)
+    {
+        var node = KotoHelper.UnwrapParentheses(part);
+        if (!NeedsEnumContext(node))
+        {
+            return CandidateApplicability.Waiting;
+        }
+
+        var call = node as InvocationKoto;
+        var name = ((SyntaxFormKoto)(call?.Method ?? node)).Operands is [IdentifierNameKoto identifier] ? identifier.IdentifierName : null;
+        var payloads = AdtDef.CaseTypes(type);
+        var ordinal = -1;
+        for (var i = 0; payloads is not null && i < payloads.Length && ordinal < 0; i++)
+        {
+            ordinal = AdtDef.Case(type, i)?.Symbol.Name == name ? i : -1;
+        }
+
+        var found = ordinal >= 0 ? AdtDef.Case(type, ordinal) : null;
+        if (!this.ShapeFits(found is not null && payloads![ordinal] is not null && EnumArityMatches(found.Payload.Length, call)))
+        {
+            return CandidateApplicability.Inapplicable;
+        }
+
+        if (call is not null && !this.PrepareCallArguments(call, scope, callableContext: true))
+        {
+            return CandidateApplicability.Waiting; // A payload's own failure, on which the Case rests (SPEC 23.1.2).
+        }
+
+        for (var i = 0; call is not null && i < call.ArgumentNodes.Count; i++)
+        {
+            if (this.FitArgument(call.ArgumentNodes[i], payloads![ordinal]!.Components[i], scope, call, out _) == CandidateApplicability.Inapplicable)
+            {
+                this.argumentMisfit = found!.Payload[i].BoundType is { Kind: BoundTypeKind.Parameter, Symbol: { } slot } &&
+                    ContainerSlot(type.Symbol!.Declaration, slot) is var index and >= 0 ? this.argumentMisfit.Within(index) : default;
+                return CandidateApplicability.Inapplicable;
+            }
+        }
+
+        return CandidateApplicability.Applicable;
+    }
+
     // SPEC 4.3, 4.6.2, 10.5.1: a Tuple or array literal or a mixed range fits a candidate's Type by its shape and parts, read only: each
     // element as an argument at its position (FitElement), so a nested literal fits a ref/(...) position as a borrowed temporary.
     private CandidateApplicability ProbeAggregateArgument(Koto source, BoundType expected, BindingScope scope)
