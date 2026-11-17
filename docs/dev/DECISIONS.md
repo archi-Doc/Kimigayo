@@ -21027,10 +21027,11 @@ R8-M* and R9-M* by the stage of the recording unit.
     other signatures in `IntrinsicOperations.kimi`): `replace` destroys the old value in place and places the new one (`Raw.initialize`);
     `exchange` takes, places and returns the old value; `swap` holds the first, places the second, then the held one. Callers keep the
     identity contract: the published rows, `Binding.Retention.Transfers`' keys and BU-42's `ReferentStores` (empty).
-  - **Temporary: `replace`'s destruction.** `replace` destroys through `Storage.destroyValues<T>(place@raw/u8, 1)`, because
-    `_ = (*p)@move` destroys a temporary copy today (PLAN G670). Removal: when G670 lands (the Middle's fix of `MirBuilder.Discard`), a
-    Back Minor unit moves `replace` to `_ = (*place)@move`, which then destroys the Place itself (SPEC 5.2.3) and is the library's one
-    form for destroying one value in place; `destroyValues` stays the form for a sequence of n values.
+  - **`replace`'s destruction** (temporary ended, 2026-11-18, 6664a43f0; its event: PLAN G670, DECISIONS R4-M194): `replace`
+    destroys the target through `_ = (*place)@move`, which since G670 destroys the Place itself, its `drop` included (SPEC 5.2.3,
+    14.2.4), with no temporary; it is the library's one form for destroying one value in place, the form `exchange` and `swap` take
+    through. `destroyValues` stays the form for a sequence of n values (`Array`, `Storage`; its other callers keep it). Generated
+    code changes, observable behaviour does not (the commits, 6664a43f0 and 49cff49b8).
   - **Rows.** `replace` takes `CallerLocation` (its glue receives the call's location, SPEC 22.5.1) and keeps `Row: Replace`. `exchange`
     and `swap` gain `Row: None`. Only A4 read the old bodiless `Inputs` class, and it composes the empty row instead, the same summary;
     the borrow readers (`Destroying`'s `Destroys`, `InPlaceTarget`'s `InPlace`) give the same answer for a `None` row as for no row, and
