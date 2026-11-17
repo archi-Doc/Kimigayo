@@ -6,6 +6,7 @@ using System.Globalization;
 using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Text;
+using System.Text.RegularExpressions;
 using Kimi;
 using Kimi.Compiler;
 using Kimi.Compiler.Parsing;
@@ -39,7 +40,10 @@ namespace XunitTest;
 //   shapeCallCandidates, storedCases, storedFields and the Origin summaries' forming lists likewise (G949 S1-r1b,
 //   ACallsScratchIsEmptyAfterABind);
 // - subset: a content interner or Type-keyed memo keeps every row of the empty program's unchanged, and a program's extra row is the
-//   program's level (D2b-d §1.1, §1.5);
+//   program's level (D2b-d §1.1, §1.5). The table classes each subset store (G949 ruling 167 Q4): a Type interner's extra row is
+//   keyed by a Type the program made, its key naming a Type id above L (LibraryLayer.TypeCount; the subset Fact, over the stores keyed
+//   by Type: a row keyed by the library's Types alone is a library fact a later pass made); a memo's extra rows, and those of an
+//   interner keyed by no Type (constraints), are the program's whatever their key;
 // - epoch: a memo of one capability epoch is the program's (D2b-d §1.1, census O16) and is not printed; its invariant is
 //   TheCapabilityMemosEndWithTheirEpoch's;
 // - number: a number naming a walk's or memo's order prints as #, the rest of its row compared; ArchitectureRulesTest's rows confine
@@ -113,7 +117,7 @@ public partial class KimiLibraryShapeTest
         var c = CompilationTestHelper.Parse(BaseInputFormationBindingTest.J4);
         Assert.True(c.Bind().IsComplete);
         Assert.True((bool)typeof(Binding).GetField("secondRun", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(c.Binding)!);
-        SameLayer("j4 after its restart", LibraryLayer.Dump(Bound(string.Empty), RestartCounters), LibraryLayer.Dump(c, RestartCounters));
+        SameLayer("j4 after its restart", LibraryLayer.Dump(Bound(string.Empty), RestartCounters), LibraryLayer.Dump(c, RestartCounters), c.Library.Layer.TypeCount);
     }
 
     // G949 N5-5's n3 (C-380 F2): a library binder's atoms and a library source's open regions live in the library module's NodeColumns
@@ -231,10 +235,11 @@ public partial class KimiLibraryShapeTest
     {
         var c = Bound(program);
         LibraryLayer.AssertLivePrefix(c.Binding, "Binding.inlineSummaryPool", "Binding.inlineSummaries");
-        SameLayer(program, EmptyProgramLayer.Value, LibraryLayer.Dump(c));
+        SameLayer(program, EmptyProgramLayer.Value, LibraryLayer.Dump(c), c.Library.Layer.TypeCount);
     }
 
-    private static void SameLayer(string program, string[] expected, string[] actual)
+    // The comparison of a layer with the empty program's; `library` is the compilation's L (the subset Fact).
+    private static void SameLayer(string program, string[] expected, string[] actual, int library)
     {
         var differences = new List<string>();
         var (e, a) = (0, 0);
@@ -247,9 +252,9 @@ public partial class KimiLibraryShapeTest
                 continue;
             }
 
-            if (order > 0 && LibraryLayer.RuleOf(actual[a]) == LibraryLayer.Rule.Subset)
+            if (order > 0 && LibraryLayer.RuleOf(actual[a]) is var rule && (rule == LibraryLayer.Rule.Memo || (rule == LibraryLayer.Rule.Interner && LibraryLayer.KeyIds(actual[a]).Any(x => x > library))))
             {
-                a++; // The subset rule: the program's own row in a content interner or Type-keyed memo.
+                a++; // The subset rule: the program's own row in a Type-keyed memo, or in a content interner under a Type the program made.
                 continue;
             }
 
@@ -279,6 +284,14 @@ public partial class KimiLibraryShapeTest
     // A program read from the repository or the diagnostic corpus, after its Final Bind.
     private static Compilation Bound(string program)
     {
+        var c = Prepared(program);
+        c.Bind();
+        return c;
+    }
+
+    // A program read from the repository or the diagnostic corpus, prepared.
+    private static Compilation Prepared(string program)
+    {
         var c = Compilation.CreateForTest();
         var kind = program.Length == 0 ? string.Empty : program[..program.IndexOf('/', StringComparison.Ordinal)];
         var subject = program[(kind.Length == 0 ? 0 : kind.Length + 1)..];
@@ -300,7 +313,6 @@ public partial class KimiLibraryShapeTest
             c.Kotonoha.AddSource(new SourceDocument("Program.kimi", source));
         }
 
-        c.Bind();
         return c;
     }
 
@@ -335,15 +347,16 @@ public partial class KimiLibraryShapeTest
         // number by its type and field. A store not named here is a fact.
         private static readonly Dictionary<string, Rule> Disposition = new(StringComparer.Ordinal)
         {
-            // Content interners and Type-keyed memos: the program's instantiations at builtin Types are its own rows.
-            ["Binding.constraints"] = Rule.Subset,
-            ["Binding.types.types"] = Rule.Subset,
-            ["Binding.originSummaries"] = Rule.Subset,
-            ["Binding.erasureOutcomes"] = Rule.Subset,
-            ["Binding.pendingAssociatedTypes"] = Rule.Subset,
-            ["Binding.boundContracts"] = Rule.Subset,
-            ["Binding.programPart.BoundContracts"] = Rule.Subset, // the same entries, the program pass's part (PLAN G949 S1-1)
-            ["Binding.storageMarks"] = Rule.Subset,
+            // Content interners and Type-keyed memos (the subset rule; G949 ruling 167 Q4 classes each): the program's instantiations at
+            // builtin Types are its own rows.
+            ["Binding.types.types"] = Rule.Interner,
+            ["Binding.boundContracts"] = Rule.Interner,
+            ["Binding.programPart.BoundContracts"] = Rule.Interner, // the same entries, the program pass's part (PLAN G949 S1-1)
+            ["Binding.constraints"] = Rule.Memo, // A content interner keyed by a constraint, no Type: a program's question over library Types (i32 is Position) is its own row.
+            ["Binding.originSummaries"] = Rule.Memo,
+            ["Binding.erasureOutcomes"] = Rule.Memo,
+            ["Binding.pendingAssociatedTypes"] = Rule.Memo,
+            ["Binding.storageMarks"] = Rule.Memo,
 
             // Memos of one capability epoch (ClearCapabilityResults): component summaries, capability works and Enumerate's kept rows,
             // whose pool lends its lists to enumerateKept alone (C1).
@@ -409,7 +422,8 @@ public partial class KimiLibraryShapeTest
         internal enum Rule
         {
             Fact,
-            Subset,
+            Interner, // The subset rule over a Type interner: an extra row is keyed by a Type above L (the subset Fact).
+            Memo, // The subset rule over a memo, or an interner keyed by no Type: an extra row is the program's.
             Epoch,
             Number,
             Program,
@@ -481,6 +495,14 @@ public partial class KimiLibraryShapeTest
         }
 
         internal static IEnumerable<string> StoresOf(Rule rule) => Disposition.Where(x => x.Value == rule).Select(static x => x.Key);
+
+        // The Type ids a row's key names (a Type prints with its id, `#n`; a number-keyed table's element is its own key).
+        internal static IEnumerable<int> KeyIds(string row)
+        {
+            var key = row[(row.IndexOf(' ', StringComparison.Ordinal) + 1)..];
+            key = key.IndexOf(" = ", StringComparison.Ordinal) is var end and >= 0 ? key[..end] : key;
+            return Regex.Matches(key, "#([0-9]+)").Select(static x => int.Parse(x.Groups[1].Value, CultureInfo.InvariantCulture));
+        }
 
         // The dispositions naming no store or field: a store's path from Binding, a number's field of an integer or a tuple of integers.
         internal static IEnumerable<string> Unresolved()
