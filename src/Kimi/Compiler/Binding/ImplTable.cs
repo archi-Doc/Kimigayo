@@ -15,7 +15,7 @@ using Kimi.Compiler.Parsing;
 //   Sweep at the end of a Bind (Binding.Bind).
 // - Outputs: Paths, Identities and ByType (LayerList: the overlay's part, then the base's), InPass (the same lists of the running
 //   pass's stores only, PLAN G949 S1-r2), OfType(type), Find(type, contract),
-//   Path(key) and TryPath(key).
+//   Path(key) and TryPath(key); PathsOf(identity), the one read of an identity's paths inside a pass.
 // - Invariants: the overlay never holds a library Type, by construction: StoreOf routes each key by its Type's module, so no write is
 //   refused here (refusing program writes to the base is S1-1's); an identity or path carries the pass of its last reset (Stamp) and
 //   reads as unregistered while stale (Current); the table resets it at its first access through the table in a pass (Find, Path,
@@ -47,6 +47,10 @@ internal sealed class ImplTable
     // A store no pass registers into, so its lists stay empty: the pass view's part for a store outside the pass (the overlay's; null in
     // the base).
     private readonly ImplTable? none;
+
+    // An identity's paths while it reads as unregistered (PathsOf); never written.
+    private readonly List<BoundConformancePath> noPaths = new();
+
     private Stack<BoundConformance>? identityPool;
     private Stack<BoundConformancePath>? pathPool;
     private ulong listPass;
@@ -109,6 +113,12 @@ internal sealed class ImplTable
     /// <param name="type">The conforming Type declaration.</param>
     /// <returns>The list, possibly empty.</returns>
     internal List<BoundConformance>? OfType(BindingSymbol type) => this.StoreOf(type).Fresh().byType.GetValueOrDefault(type);
+
+    /// <summary>Gets an identity's paths as the running pass reads them: its paths while it is current, none while it is stale. Binding reads an
+    /// identity's paths only here (the public Paths is for readers after the Bind).</summary>
+    /// <param name="identity">An identity this table handed out.</param>
+    /// <returns>The paths, in registration order; the list is the table's own, never written by a reader.</returns>
+    internal List<BoundConformancePath> PathsOf(BoundConformance identity) => identity.Current ? identity.PathStorage : this.noPaths;
 
     /// <summary>Gets the identity of a Type and Contract, registered in this pass or not, or null if not named.</summary>
     /// <param name="type">The conforming Type declaration.</param>

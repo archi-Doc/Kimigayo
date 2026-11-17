@@ -272,6 +272,12 @@ public class ArchitectureRulesTest
     // guard, AvailableCallableEffects) would skip a library callee's bounded clause in a program that states none, which no program
     // can show until the library declares one (KimiLibraryShapeTest.TheLibraryDeclaresNoBoundedCallableClause).
     [InlineData("The running part's Callable effect clauses are read through the pass's view", "src/Kimi/Compiler", @"\bthis\.callableEffectClauses\b", "Binding/Binding.EffectDeclarations.cs=2;Binding/Binding.Passes.cs=1")]
+    // PLAN G949 S1-r1b (rule (a), F's ruling 170): inside a pass Binding reads a conformance identity's paths only through ImplTable.PathsOf,
+    // the one read that applies the running pass's admission to a library identity (from S1-r1b's split its point-1 paths while the
+    // conditional registrar has not run: OwningIterator's and BorrowingIterator's LendingIterator identity gains its Iterator ancestor's path
+    // at point 2). PathStorage is ImplTable's and the model's own; the public Paths serves readers after the Bind and tests. The one other
+    // match is an inference batch's Paths (Binding.AssociatedInference.cs), not an identity's.
+    [InlineData("Binding reads an identity's paths through ImplTable.PathsOf", "src/Kimi/Compiler/Binding", @"\.PathStorage\b|(?<!InPass|impls|batch)\.Paths\b|\{ Paths\.", "Binding.AssociatedInference.cs=1;Binding.Contracts.Model.cs=4;ImplTable.cs=5")]
     public void SourcePatternStaysAtItsSites(string rule, string directory, string regex, string sites)
     {
         var expression = new Regex(regex);

@@ -188,7 +188,7 @@ public sealed partial class Binding
     private bool AlsoAssociated(BoundType qualifier, string name, MemberAccessKoto path, BindingScope scope)
     {
         var search = this.SearchAssociated(qualifier, scope, name, null);
-        var both = search.Found is { } associated && (search.Alternative is not null || search.Source is not { } source || Unconditional(source) ||
+        var both = search.Found is { } associated && (search.Alternative is not null || search.Source is not { } source || Unconditional(this.impls.PathsOf(source)) ||
             this.ProveConstraint(this.InternConstraint(new(ConstraintKind.Contract, qualifier, contract: search.Reference ?? associated.Scope.Owner.BoundSymbol!)), scope) == ConstraintProof.Proven);
         if (!both && !this.contractHeadersReady)
         {
@@ -197,11 +197,11 @@ public sealed partial class Binding
 
         return both;
 
-        static bool Unconditional(BoundConformance source)
+        static bool Unconditional(List<BoundConformancePath> paths)
         {
-            for (var i = 0; i < source.Paths.Count; i++)
+            for (var i = 0; i < paths.Count; i++)
             {
-                if (source.Paths[i].Premises is null)
+                if (paths[i].Premises is null)
                 {
                     return true;
                 }
@@ -448,7 +448,7 @@ public sealed partial class Binding
         var associated = TypeSpelling(name!) is { } spelling ? this.FindAssociated(self, scope, spelling, qualifier, clause, out reference) : null;
         var ambiguous = false;
         if (associated is null || (owner.Declaration is not ContractKoto &&
-            (this.ConformanceByDeclaration(self.Symbol!, reference ?? qualifier ?? associated.Scope.Owner.BoundSymbol!, out ambiguous) is not { } conformance || conformance.Paths.Count == 0)))
+            (this.ConformanceByDeclaration(self.Symbol!, reference ?? qualifier ?? associated.Scope.Owner.BoundSymbol!, out ambiguous) is not { } conformance || this.impls.PathsOf(conformance).Count == 0)))
         {
             return this.Fail(clause, ambiguous ? BindingFailure.Ambiguous : BindingFailure.InvalidAssociatedType);
         }
@@ -487,7 +487,7 @@ public sealed partial class Binding
     private bool SelectorQualifies(BindingSymbol owner, BoundType self, BindingSymbol contract)
         => owner.Declaration is ContractKoto
             ? !ReferenceEquals(contract, owner) && IsRefinement(owner, contract)
-            : this.ConformanceByDeclaration(self.Symbol!, contract, out _) is { Paths.Count: > 0 };
+            : this.ConformanceByDeclaration(self.Symbol!, contract, out _) is { } declared && this.impls.PathsOf(declared).Count > 0;
 
     private void PrepareAssociatedBindings()
     {

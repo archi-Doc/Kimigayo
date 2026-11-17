@@ -173,9 +173,9 @@ public sealed partial class Binding
             for (var i = 0; i < conformances.Count; i++)
             {
                 var conformance = conformances[i];
-                for (var p = 0; p < conformance.Paths.Count; p++)
+                for (var p = 0; p < this.impls.PathsOf(conformance).Count; p++)
                 {
-                    var path = conformance.Paths[p];
+                    var path = this.impls.PathsOf(conformance)[p];
                     if (path.IsVerified && this.ProveConformanceConditions(path, conforming, scope) == ConstraintProof.Proven)
                     {
                         Add(this.SubstituteRequirementContract(conformance.Contract, conforming).Contract!, type.Declaration, null, path.Declaration);
