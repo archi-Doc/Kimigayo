@@ -311,6 +311,36 @@ public sealed partial class TyCtxtTest
         static string Listed(BoundType[] types) => types.Length == 0 ? "-" : string.Join(", ", types.Select(static x => Binding.DiagnosticTypeName(x)).Order(StringComparer.Ordinal));
     }
 
+    // SPEC 15.6.4 (PLAN G935; the Middle's C-370, F's ruling 47): a hidden layer names the kept Type whose binding it lies in
+    // (OwnLayer.Kept), the same interned Type OutputRetention.Handed lists, so a reader of the layer asks Handed for it by identity. One
+    // output meeting T and U at the key `(T, U)` past slot's layer: the Middle's handedOtherOk (V: the writer writes T, U's raw layer stays
+    // hidden), handedSameBad and handedBothBad (I: the writer writes U, or the pair); hidPunOtherOk (V: the writer writes U, T's raw layer
+    // stays hidden) and hidPunSameBad (I: the writer writes T). A layer the declaration shows has no kept Type. Fail-before: no Kept member
+    // on 110b7ff24.
+    [Theory]
+    [InlineData("func f<T, U, E>(slot: uniq/(T, U), y: E, set: (uniq/T, E) -> ()) => ()\n", "x: uniq/(u64, raw/(raw/u8)), v: raw/u8, set: (uniq/u64, raw/u8) -> ()", "raw/raw/u8 U not listed")]
+    [InlineData("func f<T, U, E>(slot: uniq/(T, U), y: E, set: (uniq/U, E) -> ()) => ()\n", "x: uniq/(u64, raw/(raw/u8)), v: raw/u8, set: (uniq/(raw/(raw/u8)), raw/u8) -> ()", "raw/raw/u8 U listed")]
+    [InlineData("func f<T, U, E>(slot: uniq/(T, U), y: E, set: (uniq/(T, U), E) -> ()) => ()\n", "x: uniq/(u64, raw/(raw/u8)), v: raw/u8, set: (uniq/(u64, raw/(raw/u8)), raw/u8) -> ()", "raw/raw/u8 U listed")]
+    [InlineData("func f<T, U, E>(slot: uniq/(T, U), y: E, set: (uniq/U, E) -> ()) => ()\n", "x: uniq/(raw/usize, u64), v: usize, set: (uniq/u64, usize) -> ()", "raw/usize T not listed")]
+    [InlineData("func f<T, U, E>(slot: uniq/(T, U), y: E, set: (uniq/T, E) -> ()) => ()\n", "x: uniq/(raw/usize, u64), v: usize, set: (uniq/(raw/usize), usize) -> ()", "raw/usize T listed")]
+    [InlineData("func f<U, E>(slot: uniq/(raw/(raw/u8), U), y: E, set: (uniq/U, E) -> ()) => ()\n", "x: uniq/(raw/(raw/u8), u64), v: raw/u8, set: (uniq/u64, raw/u8) -> ()", "raw/raw/u8 shown")]
+    public void AHiddenLayerNamesTheKeptTypeHandedLists(string callee, string parameters, string expected)
+    {
+        var c = MinimalEmissionTest.Analyze(callee + $"func g({parameters})\n    f(x, v, set@move)\n");
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
+        var g = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(static x => x.Name == "g");
+        var call = KotoTree.Walk(g).OfType<InvocationKoto>().Select(static x => x.CallOf()).OfType<CallPlan>().Single(static x => x.Target.Name == "f");
+        var handed = c.Types.Retains(call.Target, c.Types.SubstOf(call), g.SymbolOf()).Writes.ToArray().Single(static x => x.Output == 0).Handed.ToArray();
+        var (key, into) = (TyCtxt.ParameterKey(call.Target, 0, g.Parameters[0].Type.TypeOf()!), new List<OwnLayer>());
+        Assert.True(c.Types.OwnLayers(key, into));
+        key = into.Single().Past; // Past slot's own layer: the Tuple holding both parts.
+        into.Clear();
+        Assert.True(c.Types.OwnLayers(key, into));
+        Assert.Equal(expected, string.Join(" | ", into.Where(static x => x.Layer is not null).Select(x => x.Kept is not { } kept
+            ? $"{Binding.DiagnosticTypeName(x.Layer!)} shown"
+            : $"{Binding.DiagnosticTypeName(x.Layer!)} {Binding.DiagnosticTypeName(kept)} {(handed.Any(y => ReferenceEquals(y, kept)) ? "listed" : "not listed")}")));
+    }
+
     // Base steps a parameter key's Signature by Select's rule (SPEC 8.2.3, 15.6.4; review N3, N5): a generic derived struct's base, its
     // Field of U hidden beside the Field RB states, shown under the premise `U is raw/u8` and at a body's key (labels.md b1-b3).
     [Theory]

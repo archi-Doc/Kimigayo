@@ -8,11 +8,11 @@ namespace Kimi.Compiler;
 // TyCtxt.Raw.cs). Responsibility: the one step of a Place's path (Select, Base), from a root's key (PlaceKey.Root, or a called
 // function's parameter key, TyCtxt.ParameterKey), and the parts the value at a key holds at its own address with each raw layer's step at
 // the Place (OwnLayers, over OwnParts: the storage walk's by-value criterion, ByValue); on a parameter path, each key's declared
-// counterpart (Signature) and whether a part lies in a binding the declaration does not show (OwnLayer.Hidden, SPEC 15.6.4; PLAN G823).
+// counterpart (Signature) and the kept Type whose binding the declaration does not show a part lies in (OwnLayer.Kept, SPEC 15.6.4; PLAN G823).
 // Inputs: Holdings' entries and the stored parts Binding's instances keep (Instance, WrittenAt); a path's dereference is PathOrigin's one
 // rule (Dereferenced over Reached, Binding.PlaceAuthority.Raw.cs), a `during self` layer read as ReadHolder reads it (ReplaceHolder); the
 // declaring function's identity classes (Binding.TypeIdentity, the one judge: View).
-// Outputs: a key per Place (Types only), and per key its layers with their steps, their Hidden bit and the key past each; rows are listed
+// Outputs: a key per Place (Types only), and per key its layers with their steps, their kept Type (Kept) and the key past each; rows are listed
 // once per (Type, Written, Holder, Signature), so a parameter key may list a part a root key of the same Type lists once.
 // Invariants: a function of the key (and of the selected part); every producer of a key (Select, Base, Leading, a Past key) steps the
 // Signature by the one rule (View, then Binding.Retention.Declared.cs's pairing and Below); Hidden only where the declared counterpart, in the declaring
@@ -69,11 +69,17 @@ internal enum RawPlacesAnswer : byte
 /// where no Type states it).</summary>
 internal readonly record struct OwnLayer(BoundType? Layer, HoldStep Step, PlaceKey Past)
 {
-    /// <summary>Gets a value indicating whether the part lies in the binding of an abstract Type of the called function's own declaration
-    /// that its declared Type does not show (SPEC 15.6.4, 5.7 Calls; PLAN G823): only on a parameter path (TyCtxt.ParameterKey). What
-    /// such a raw layer or reference reaches is the reader's (15.6.4: a raw layer adds no reach of its own; a safe reference keeps the
-    /// routes).</summary>
-    internal bool Hidden { get; init; }
+    /// <summary>Gets the abstract Type of the called function's own declaration whose binding the part lies in, where its declared Type
+    /// does not show it (SPEC 15.6.4, 5.7 Calls; PLAN G823, G935 C-370): only on a parameter path (TyCtxt.ParameterKey); Origins erased,
+    /// the interned Type <c>TyCtxt.EntryType</c> gives a kept storage's entry and <c>OutputRetention.Handed</c> lists, so a reader
+    /// compares it with those by identity. Null for a part no such binding hides. What such a raw layer or reference reaches is the
+    /// reader's (15.6.4: a raw layer adds no reach of its own, unless a callable the contract hands the body writes that Type,
+    /// OutputRetention.Handed; a safe reference keeps the routes).</summary>
+    internal BoundType? Kept { get; init; }
+
+    /// <summary>Gets a value indicating whether the part lies in a binding its declared Type does not show: <see cref="Kept"/> is not
+    /// null.</summary>
+    internal bool Hidden => this.Kept is not null;
 
     /// <summary>Gets a value indicating whether the part lies past a Loan's Type argument, which has no address and grants no access
     /// (SPEC 15.3.5; MirTypes' holding walk never steps there, HoldStep.Loan): the key walk lists it only because ByValue walks a
@@ -200,7 +206,7 @@ public sealed partial class Binding
             return true;
         }
 
-        var (start, sees, hidden) = (this.retentionHeld.Count, this.BodySees(type), Hides(signature));
+        var (start, sees, kept) = (this.retentionHeld.Count, this.BodySees(type), Hides(signature) ? this.types.Erase(signature!) : null);
         var complete = sees is not null && this.Holdings(sees, written, holder, this.retentionHeld);
         var run = new HeldRange(start, this.retentionHeld.Count);
         var raw = start < run.End && (this.retentionHeld[start].Flags & HoldFlags.Raw) != 0 && !TryPairLayer(type, out _, out _);
@@ -208,7 +214,7 @@ public sealed partial class Binding
         {
             var layer = this.retentionHeld[start];
             var past = new PlaceKey(layer.Part, layer.Written, layer.Holder, -1, this.PastThrough(type, layer, at), this.SignaturePast(signature, type, layer));
-            into.Add(new(type, this.LayerStep(layer.Step, at), past) { Hidden = hidden, Loan = this.ownLoans > 0 });
+            into.Add(new(type, this.LayerStep(layer.Step, at), past) { Kept = kept, Loan = this.ownLoans > 0 });
         }
 
         var declared = raw || !complete ? default : this.DeclaredRun(signature, type, run);
@@ -225,7 +231,7 @@ public sealed partial class Binding
             else if (entry.Step != HoldStep.Loan || entry.Part is null)
             {
                 var (through, reached) = (this.PastThrough(type, entry, at), this.SignaturePast(signature, type, entry));
-                into.Add(new(null, entry.Step, new(entry.Part, entry.Written, entry.Holder, -1, through, reached)) { Hidden = hidden, Loan = this.ownLoans > 0 });
+                into.Add(new(null, entry.Step, new(entry.Part, entry.Written, entry.Holder, -1, through, reached)) { Kept = kept, Loan = this.ownLoans > 0 });
             }
         }
 
