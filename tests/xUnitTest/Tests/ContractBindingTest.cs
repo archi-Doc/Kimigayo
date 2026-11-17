@@ -1,5 +1,8 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using System.Collections;
+using System.Reflection;
+using System.Runtime.CompilerServices;
 using Kimi;
 using Kimi.Compiler;
 using Kimi.Compiler.Parsing;
@@ -26,6 +29,10 @@ public class ContractBindingTest
 
     private const string Get32 = "\n    public func get(self: ref/Self) -> i32 => 0";
     private const string Get64 = "\n    public func get(self: ref/Self) -> i64 => 0";
+
+    // PLAN G949 S1-b1: three Contracts with one requirement each (Sources adds Types of their own sources conforming to them).
+    private const string ThreeContracts = "contract C\n    func get(self: ref/Self) -> i32\ncontract D\n    func get(self: ref/Self) -> i32\n" +
+        "contract E\n    func get(self: ref/Self) -> i32\n";
 
     private const string NeedOf = "func need<T>(v: T) -> T\n    T is ";
     private const string UseOfC = "\n    return v@move\nfunc use<T>(v: T) -> T\n    T is C\n    return need(v@move)";
@@ -880,6 +887,228 @@ public class ContractBindingTest
     {
         var c = MinimalEmissionTest.Check(source);
         Assert.Equal(codes, string.Join(" ", TestDiagnostics.Of(c).Select(static x => x.Code)));
+    }
+
+    // PLAN G949 S1-b1 d4 (DECISIONS BU-220): an edit that removes a conformance keeps no identity or path of it after the next pass;
+    // the overlay drops what the pass did not register at the end of the Bind (before: the identity stayed, unregistered and named).
+    [Fact]
+    public void AnEditThatRemovesAConformanceKeepsNoIdentityOrPathOfIt()
+    {
+        var c = Sources("Self is C");
+        var (s, contract) = (Container(c, "S").SymbolOf()!, Container(c, "C").SymbolOf()!);
+        var impls = Impls(c);
+        Assert.NotNull(impls.Find(s, contract));
+        ReplaceSelfClause(c, "Self is E");
+        Assert.True(c.Bind().IsComplete, Describe(c));
+        Assert.Null(impls.Find(s, contract));
+        Assert.DoesNotContain(impls.Paths, x => ReferenceEquals(x.Contract, contract));
+        Assert.DoesNotContain(impls.Identities, x => ReferenceEquals(x.Contract, contract));
+    }
+
+    // PLAN G949 S1-r2 (s1r1-design 1.4; review-s1r2 C1): ImplTable's pass view lists only the stores of the pass's modules. Begun again
+    // at the run's own value (so no row goes stale) with the source modules alone, it lists the program's paths, identities and Type
+    // lists and no library one; with the library alone, the library's; with both, the composed lists.
+    [Fact]
+    public void ThePassViewListsOnlyThePassModulesStores()
+    {
+        var c = Sources("Self is C");
+        Assert.True(c.Bind().IsComplete, Describe(c));
+        var impls = Impls(c);
+        impls.Begin(impls.Pass, new(c.SourceModules, null, new(0)));
+        Assert.NotEmpty(impls.InPass.Paths);
+        Assert.All(impls.InPass.Paths, static x => Assert.False(Library(x.Type)));
+        Assert.All(impls.InPass.Identities, static x => Assert.False(Library(x.Type)));
+        Assert.All(impls.InPass.ByType, static x => Assert.All(x, static y => Assert.False(Library(y.Type))));
+        impls.Begin(impls.Pass, new([], c.Binding.Library.Kotonoha, new(0)));
+        Assert.NotEmpty(impls.InPass.Paths);
+        Assert.All(impls.InPass.Paths, static x => Assert.True(Library(x.Type)));
+        Assert.All(impls.InPass.Identities, static x => Assert.True(Library(x.Type)));
+        impls.Begin(impls.Pass, new(c.SourceModules, c.Binding.Library.Kotonoha, new(0)));
+        Assert.Equal(impls.Paths.ToList(), impls.InPass.Paths.ToList());
+        Assert.Equal(impls.Identities.ToList(), impls.InPass.Identities.ToList());
+
+        static bool Library(BindingSymbol type) => type.Declaration.Kotonoha.Syntax.IsLibrary;
+    }
+
+    // PLAN G949 S1-b1 d8: after an edit that removes one conformance and adds another, Identities lists the pass's registrations in
+    // their order, the program's first (before: the removed identity kept its place and the added one followed every other).
+    [Fact]
+    public void IdentitiesAfterAnEditFollowTheRegistrationOrder()
+    {
+        var c = Sources("Self is C");
+        ReplaceSelfClause(c, "Self is E");
+        Assert.True(c.Bind().IsComplete, Describe(c));
+        Assert.Equal(["S: E", "T: D"], Impls(c).Identities.Where(static x => !x.Type.Declaration.Kotonoha.Syntax.IsLibrary).Select(static x => x.Type.Name + ": " + x.Contract.Name));
+    }
+
+    // PLAN G949 S1-b1 c15 (the Front's RR3, review C4): Paths lists the program's paths in registration order, declared, conditional
+    // and inherited, then the library's; the base interleaved them (program declared, library declared, program conditional, library
+    // conditional, program inherited, library inherited), and this row fails there on that order alone. The order is internal: the
+    // program completes with no record, its obligations are the library's alone as without its conformances, and EffectObligations'
+    // rows, which read Paths, are the program's in their order and the library's as without the program's conformances: only where the
+    // program's rows stand among the library's follows Paths.
+    [Fact]
+    public void PathsListTheProgramsPathsInRegistrationOrderThenTheLibrarys()
+    {
+        const string Contract = "contract C\n    func get(self: ref/Self) -> i32\n        effect confined\n";
+        var c = CompilationTestHelper.ParseSuccess(Contract + "open struct B\n    Self is C\n    public init() => ()\n    public func get(self: ref/Self) -> i32 => 1\n" +
+            "struct H : B\n    public init() => ()\n");
+        c.Kotonoha.AddSource(new SourceDocument("G.kimi", "struct G<T>\n    public init() => ()\n    Self is C when T is Copy\n        public func get(self: ref/Self) -> i32 => 2\n"));
+        Assert.True(c.Bind().IsComplete, Describe(c));
+        Assert.True(c.Analyze().IsVerified);
+        var library = CompilationTestHelper.ParseSuccess(Contract);
+        Assert.True(library.Bind().IsComplete, Describe(library));
+        Assert.Equal(library.Binding.Obligations.Select(static x => x.ToString()), c.Binding.Obligations.Select(static x => x.ToString()));
+        var rows = EffectRows(c);
+        Assert.Equal(["B: Self is C get", "G: Self is C get", "H: B get"], rows.Where(static x => !x.Library).Select(static x => x.Row));
+        Assert.NotEmpty(EffectRows(library));
+        Assert.Equal(EffectRows(library).Select(static x => x.Row), rows.Where(static x => x.Library).Select(static x => x.Row));
+        var paths = Impls(c).Paths.ToList();
+        var first = paths.FindIndex(static x => x.Type.Declaration.Kotonoha.Syntax.IsLibrary);
+        Assert.Equal(["B: C", "G: C", "H: C"], paths.Take(first).Select(static x => x.Type.Name + ": " + x.Contract.Name));
+        Assert.DoesNotContain(paths.Skip(first), static x => !x.Type.Declaration.Kotonoha.Syntax.IsLibrary);
+    }
+
+    // PLAN G949 S1-b1 (the Front's RR2): a path the sweep removed is taken from the pool for the next new key, emptied of the
+    // satellites and witnesses of its earlier conformance, and a warm rebind afterwards allocates nothing.
+    [Trait("Purpose", "Allocation")]
+    [Fact]
+    public void ANewPathReusesARemovedPathEmptiedAndAWarmRebindAllocatesNothing()
+    {
+        var c = Sources("Self is C");
+        var (s, d, e) = (Container(c, "S").SymbolOf()!, Container(c, "D").SymbolOf()!, Container(c, "E").SymbolOf()!);
+        var removed = Impls(c).Paths.Single(x => ReferenceEquals(x.Type, s));
+        Assert.NotEmpty(removed.FunctionWitnesses!);
+        ReplaceSelfClause(c, "Self is D");
+        Assert.True(c.Bind().IsComplete, Describe(c));
+        Assert.DoesNotContain(Impls(c).Paths, x => ReferenceEquals(x, removed));
+        ReplaceSelfClause(c, "Self is E");
+        Assert.True(c.Bind().IsComplete, Describe(c));
+        var reused = Impls(c).Paths.Single(x => ReferenceEquals(x.Type, s));
+        Assert.Same(removed, reused);
+        Assert.Same(e, reused.Contract);
+        Assert.All(reused.FunctionWitnesses!, x => Assert.Same(e, x.Requirement.Contract));
+        Assert.All(reused.WitnessScopes!, x => Assert.Same(e, x.Requirement.Contract));
+        Assert.Same(e, Assert.Single(reused.Witnesses).Identity.Contract);
+        Assert.DoesNotContain(Impls(c).Paths, x => ReferenceEquals(x.Type, s) && ReferenceEquals(x.Contract, d));
+        c.Binding.Bind(BindingMode.Final);
+        Assert.Equal(0, AllocationMeasurement.Measure(() => c.Binding.Bind(BindingMode.Final)));
+        Assert.True(c.Binding.Result.IsComplete, Describe(c));
+    }
+
+    // PLAN G949 S1-b1 (the Front's RR2, review C2): Reuse, then ResetPass as the first access in a pass runs it, leaves a used path and
+    // identity no entry and no state of their earlier conformance. Their lists, maps and settable fields are found by reflection, so one
+    // added later without its line in Reuse or ResetPass fails here.
+    [Fact]
+    public void AReusedPathAndIdentityKeepNoEntryOrStateOfTheirEarlierConformance()
+    {
+        var c = Sources("Self is C");
+        var (s, e) = (Container(c, "S").SymbolOf()!, Container(c, "E").SymbolOf()!);
+        var path = Impls(c).Paths.Single(x => ReferenceEquals(x.Type, s));
+        var (identity, scope) = (path.Identity, path.Scope);
+        object?[] values = [path, s, s.Type, path.Declaration];
+        Spoil(path, values);
+        Spoil(identity, values);
+        identity.Reuse(s, e).ResetPass(Impls(c).Pass);
+        path.Reuse(s, e, identity).ResetPass(Impls(c).Pass);
+        AssertEmptied(path);
+        AssertEmptied(identity);
+        Assert.Same(e, path.Contract);
+        Assert.Same(identity, path.Identity);
+        Assert.NotSame(scope, path.Scope);
+        Assert.Same(path, path.Scope.ConformancePath);
+    }
+
+    // ThreeContracts, then S conforming by `clause` and T conforming to D, each in a source of its own; bound.
+    private static Compilation Sources(string clause)
+    {
+        var c = CompilationTestHelper.ParseSuccess(ThreeContracts);
+        c.Kotonoha.AddSource(new SourceDocument("S.kimi", "struct S\n    " + clause + "\n    public func get(self: ref/Self) -> i32 => 1"));
+        c.Kotonoha.AddSource(new SourceDocument("T.kimi", "struct T\n    Self is D\n    public func get(self: ref/Self) -> i32 => 2"));
+        Assert.True(c.Bind().IsComplete, Describe(c));
+        return c;
+    }
+
+    // Replaces the Contract S's Self clause names by the one `clause` names, an edit.
+    private static void ReplaceSelfClause(Compilation c, string clause)
+    {
+        var target = Assert.Single(Container(c, "S").ConstraintNodes);
+        var donor = Assert.Single(CompilationTestHelper.ParseSuccess("struct S\n    " + clause).Kotonoha.RootKoto.NestedContainers.Single().ConstraintNodes).Right;
+        ParseTestHelper.Detach(donor, new CodeBlockKoto(donor.CodeContext));
+        Assert.True(KotoHelper.Replace(target, target.Right, donor));
+    }
+
+    private static ImplTable Impls(Compilation c) => (ImplTable)typeof(Binding).GetField("impls", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(c.Binding)!;
+
+    // EffectObligations' rows of the latest pass in their order: a library row as its subject's reference and definition, a program
+    // row as its subject's declaration, the subject's first line and the definition.
+    private static List<(bool Library, string Row)> EffectRows(Compilation c)
+    {
+        var rows = new List<EffectObligation>();
+        c.Binding.EffectObligations(rows);
+        return [.. rows.Select(x => (x.Subject.IsLibrary, (x.Subject.IsLibrary ? x.Subject.ToString() : Site(c.SyntaxOf(x.Subject))) + " " + x.Definition?.Name))];
+    }
+
+    // A program node as its enclosing declaration's name and its own first line.
+    private static string Site(Koto node)
+    {
+        var owner = node.Parent;
+        while (owner is not DeclarationContainerKoto)
+        {
+            owner = owner!.Parent;
+        }
+
+        return ((DeclarationContainerKoto)owner).Name + ": " + node.ToString().Split('\n')[0];
+    }
+
+    // A conformance identity's or path's state that Reuse and ResetPass empty or reset: each list and map, and each other settable
+    // property but the key Reuse sets (Type, Contract, Identity), the pass stamp and the scope Reuse replaces.
+    private static IEnumerable<PropertyInfo> PassState(object model)
+        => model.GetType().GetProperties(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic).Where(static x =>
+            x.Name is not ("Type" or "Contract" or "Identity" or "Stamp" or "Scope") && (IsCollection(x.PropertyType) || x.GetSetMethod(true) is not null));
+
+    private static bool IsCollection(Type type) => type.IsGenericType && type.GetGenericTypeDefinition() is var definition && (definition == typeof(List<>) || definition == typeof(Dictionary<,>));
+
+    // Gives each list and map of PassState one more entry (a map's key the first of `values` its type accepts, else a default or an
+    // uninitialized instance) and each other settable property a value other than its default: true, 1, the first of `values` its type
+    // accepts, else an instance of a concrete type.
+    private static void Spoil(object model, object?[] values)
+    {
+        foreach (var property in PassState(model))
+        {
+            var type = property.PropertyType;
+            if (type.IsGenericType && type.GetGenericTypeDefinition() == typeof(List<>))
+            {
+                var list = (IList)(property.GetValue(model) ?? Activator.CreateInstance(type)!);
+                var entry = type.GetGenericArguments()[0];
+                list.Add(entry.IsValueType ? Activator.CreateInstance(entry) : null);
+                property.GetSetMethod(true)?.Invoke(model, [list]);
+            }
+            else if (type.IsGenericType && type.GetGenericTypeDefinition() == typeof(Dictionary<,>))
+            {
+                var map = (IDictionary)(property.GetValue(model) ?? Activator.CreateInstance(type)!);
+                var (key, value) = (type.GetGenericArguments()[0], type.GetGenericArguments()[1]);
+                map[key.IsValueType ? Activator.CreateInstance(key)! : values.FirstOrDefault(key.IsInstanceOfType) ?? RuntimeHelpers.GetUninitializedObject(key)] =
+                    value.IsValueType ? Activator.CreateInstance(value) : null;
+                property.GetSetMethod(true)?.Invoke(model, [map]);
+            }
+            else if (property.GetSetMethod(true) is { } setter)
+            {
+                var value = type == typeof(bool) ? true : type == typeof(int) ? 1
+                    : values.FirstOrDefault(type.IsInstanceOfType) ?? (type.IsAbstract || type.IsValueType ? null : RuntimeHelpers.GetUninitializedObject(type));
+                setter.Invoke(model, [value]);
+            }
+        }
+    }
+
+    // Each PassState property of a model object reads empty, null, false or 0.
+    private static void AssertEmptied(object model)
+    {
+        foreach (var property in PassState(model))
+        {
+            var value = property.GetValue(model);
+            Assert.True(value is null or false or 0 || value is ICollection { Count: 0 }, $"{model.GetType().Name}.{property.Name}: {value}");
+        }
     }
 
     // Whether `source` binds completely exactly when `codes` is empty, with these distinct issue codes.

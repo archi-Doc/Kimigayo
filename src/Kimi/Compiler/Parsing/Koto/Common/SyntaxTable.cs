@@ -140,6 +140,8 @@ public sealed class SyntaxTable
                 node.SyntaxId = 0;
             }
         }
+
+        this.Hir.Retire();
     }
 
     private readonly record struct Walked(Koto Node, SyntaxTable? Owner, int Id);
@@ -171,7 +173,8 @@ public sealed class SyntaxTable
         }
 
         // The walk fills a pooled buffer, so the table keeps one array per column: the tree, then room for the nodes outside it.
-        // A row follows its node only within this table. Foreign semantic state cannot cross a module boundary.
+        // A row follows its node only within this table. Foreign semantic state cannot cross a module boundary. Binding's node
+        // families take their kept rows over into their spare arenas (HirTables.Renumbered).
         internal int Run(Koto root, int previousCount, int room)
         {
             this.walked = ArrayPool<Walked>.Shared.Rent(Math.Max(256, previousCount + 1));
@@ -180,7 +183,7 @@ public sealed class SyntaxTable
             var nodes = new Koto?[this.count + room + 1];
 
             // About one node in fourteen has a plan row (the library: 658 of 9,596).
-            var hir = new HirTables(nodes.Length, Math.Max(table.Hir.PlanCount, this.count / 8) + 16);
+            var hir = table.Hir.Renumbered(nodes.Length, Math.Max(table.Hir.PlanCount, this.count / 8) + 16);
             for (var id = 1; id <= this.count; id++)
             {
                 var (node, owner, previous) = this.walked[id];

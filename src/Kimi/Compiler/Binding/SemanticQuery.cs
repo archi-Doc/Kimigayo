@@ -12,7 +12,7 @@ namespace Kimi.Compiler;
 
 /// <summary>The facts one Binding publishes to Hover, the LSP and tests (docs/dev/COMPILER_ARCHITECTURE.md). Readers outside
 /// Binding ask these members instead of Koto semantic slots or Binding state, so the slots can move without changing them.</summary>
-internal sealed class SemanticQuery(Compilation compilation, Binding binding, List<Koto> nodes, Dictionary<object, BindingSymbol> declarations, ImplTable impls)
+internal sealed class SemanticQuery(Compilation compilation, Binding binding, List<Koto> nodes, Binding.DeclaredSymbols declarations, ImplTable impls)
 {
     internal Compilation Compilation => compilation;
 
@@ -21,8 +21,8 @@ internal sealed class SemanticQuery(Compilation compilation, Binding binding, Li
     /// <summary>Gets every syntax node of the current pass.</summary>
     internal IReadOnlyList<Koto> BoundNodes => nodes;
 
-    /// <summary>Gets each declared symbol by its declaration syntax (a parameter by its parameter syntax). Read only.</summary>
-    internal Dictionary<object, BindingSymbol> Declarations => declarations;
+    /// <summary>Gets every declared symbol; a parameter's is its function's at its slot.</summary>
+    internal Binding.KeptValues<BindingSymbol, BindingSymbol?> Declarations => declarations.Values;
 
     internal BoundType? TypeOf(Koto node) => HirTables.TypeOf(node);
 
