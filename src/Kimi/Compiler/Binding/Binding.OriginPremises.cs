@@ -24,7 +24,7 @@ public sealed partial class Binding
     {
         get
         {
-            var (nodes, edges, retains) = (0, 0, this.premiseSession.Environments.Count != 0);
+            var (nodes, edges, retains) = (0, 0, this.premiseSession.Anchors.Count != 0);
             Measure(this.originPremiseEnvironments);
             Measure(this.premiseSession.Pool);
             return (this.originPremiseEnvironments.Count + this.premiseSession.Pool.Count, nodes, edges, retains);
@@ -193,19 +193,8 @@ public sealed partial class Binding
     // adds its endpoints and R5 over the nodes they introduce, which only point into them, then closes from its target.
     private bool EntailsInSession(BoundOrigin longer, BoundOrigin shorter, Koto use, ulong condition)
     {
-        var session = this.premiseSession;
-        var key = (this.PremiseAnchor(use), this.resultPremiseExcluded);
-        if (!session.Environments.TryGetValue(key, out var environment))
-        {
-            if (session.Pool.Count == session.Environments.Count)
-            {
-                session.Pool.Add(new());
-            }
-
-            environment = session.Pool[session.Environments.Count];
-            session.Environments.Add(key, environment);
-        }
-
+        var anchor = this.PremiseAnchor(use);
+        var environment = this.premiseSession.Environment(anchor, this.resultPremiseExcluded);
         var start = this.OriginProofMetrics is null ? 0 : Stopwatch.GetTimestamp();
         this.originPremiseDepth++;
         try
@@ -215,7 +204,7 @@ public sealed partial class Binding
             if (built)
             {
                 environment.Clear();
-                environment.Use = key.Item1;
+                environment.Use = anchor;
                 environment.Version = this.originStateVersion;
                 this.CollectOriginResolvers(environment);
                 this.ExtractOriginPremises(environment, environment.Use);
@@ -695,23 +684,61 @@ public sealed partial class Binding
     // PLAN G778: a premise session, open while a judge that makes many requests runs (the declaration judge, a well-formedness visit, an
     // Origin inference): its environments by anchor and excluded result premise, the storage they reuse, and whether it is open. An
     // environment lives until the session closes, never across passes, and is rebuilt when the Origin state changed; no opener's request
-    // writes the other premise inputs (scopes, bound input Types, a Closure's classification).
+    // writes the other premise inputs (scopes, bound input Types, a Closure's classification). The session is the one accessor of the
+    // kept family NodeColumns.PremiseSessions (DECISIONS BU-220; F's ruling 176): an anchor's row is its first session environment's
+    // index in Pool, 1-based, and each environment names the next one at its anchor (an identity key, the excluded result premise,
+    // scanned). Close resets each row it wrote to absent, so a row is present only while its session is open: no row outlives the
+    // session, in a program's column or the library's (whose anchors a program's sessions reach too), and none crosses a pass.
     private sealed class OriginPremiseSession
     {
-        internal Dictionary<(Koto Anchor, FunctionKoto? Excluded), OriginPremiseEnvironment> Environments { get; } = new();
+        // For each environment the session took from Pool, in Pool's order: its excluded result premise and the next environment at its
+        // anchor, 1-based (0: none).
+        private readonly List<FunctionKoto?> exclusions = new();
+        private readonly List<int> links = new();
 
         internal List<OriginPremiseEnvironment> Pool { get; } = new();
 
+        // The anchor of each environment the session took from Pool, in Pool's order: the rows Close resets.
+        internal List<Koto> Anchors { get; } = new();
+
         internal bool Open { get; set; }
+
+        // The environment at `anchor` under the excluded result premise `excluded`, taken from Pool at its first request in the session.
+        internal OriginPremiseEnvironment Environment(Koto anchor, FunctionKoto? excluded)
+        {
+            ref var first = ref HirTables.Of(anchor).Families.PremiseSessions.Ref(anchor.SyntaxId);
+            for (var i = first - 1; i >= 0; i = this.links[i] - 1)
+            {
+                if (ReferenceEquals(this.exclusions[i], excluded))
+                {
+                    return this.Pool[i];
+                }
+            }
+
+            var index = this.Anchors.Count;
+            this.links.Add(first);
+            first = index + 1; // The kept slot is written before any other column write may move its arena.
+            this.Anchors.Add(anchor);
+            this.exclusions.Add(excluded);
+            if (this.Pool.Count == index)
+            {
+                this.Pool.Add(new());
+            }
+
+            return this.Pool[index];
+        }
 
         internal void Close()
         {
-            foreach (var environment in this.Environments.Values)
+            for (var i = 0; i < this.Anchors.Count; i++)
             {
-                environment.Clear();
+                HirTables.Of(this.Anchors[i]).Families.PremiseSessions.Ref(this.Anchors[i].SyntaxId) = 0;
+                this.Pool[i].Clear();
             }
 
-            this.Environments.Clear();
+            this.Anchors.Clear();
+            this.exclusions.Clear();
+            this.links.Clear();
             this.Open = false;
         }
     }
