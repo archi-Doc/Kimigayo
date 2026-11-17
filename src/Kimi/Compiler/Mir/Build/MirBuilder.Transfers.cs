@@ -72,7 +72,7 @@ internal sealed partial class MirBuilder
 
         var continues = HirTables.Op(jump) == HirOp.Continue;
         MirOperand value = default;
-        var rest = (Block: -1, Valueless: operand is not null && IsNeverForm(operand)); // The operand's value-less paths (SPEC 14.10.3).
+        var rest = (Block: -1, Valueless: false); // The operand's value-less paths (SPEC 14.10.3), as its form left them (TakeLeft).
         if (!continues && operand is not null && this.targets[index].Wants && this.Splits(operand))
         {
             var held = this.Held(operand, this.body.TypeOf(this.targets[index].Destination), null);
@@ -82,6 +82,7 @@ internal sealed partial class MirBuilder
         else if (!continues)
         {
             value = operand is null ? this.UnitOperand() : this.Operand(operand, this.body.TypeOf(this.targets[index].Destination));
+            rest = operand is null ? rest : this.TakeLeft(operand); // Built into a temp of its own, which wants nothing (Wanted).
         }
 
         var assumed = operand is not null && !Completes(operand);
