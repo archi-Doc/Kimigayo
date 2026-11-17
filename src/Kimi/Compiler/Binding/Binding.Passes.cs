@@ -10,10 +10,10 @@ namespace Kimi.Compiler;
 //   phases' facts, StartRuns), per run (BeginRun: the counter every stamp compares, the work counters, the local-region graph's
 //   version) and per pass (ResetPass); the runs, a new one whenever a pass asks for it (VerifyEarlyReads); each pass's steps in order
 //   over its module set (BindingPass); each pass's part of the per-pass collections (PassPart: the published lists, the local-region
-//   graph, the slots' keepers, the Contract shapes, the effect bounds, the import declarations, the prune steps' sets and the contract
-//   solver's Closure(view) entries), handed over as the fields every step writes (EnterPass); R1.1's one composition point per
-//   aggregate: the composed views, the program part then the library layer's, and the Bind's Result (ComposeResult); a keyed
-//   collection's one find (PassPart.Find).
+//   graph, the slots' keepers, the Contract shapes, the effect bounds, the import declarations, the prune steps' sets, the contract
+//   solver's Closure(view) entries and the documents' unnamed aliases), handed over as the fields every step writes (EnterPass);
+//   R1.1's one composition point per aggregate: the composed views, the program part then the library layer's, and the Bind's Result
+//   (ComposeResult); a keyed collection's one find (PassPart.Find).
 // - Inputs: the compilation's modules, the mode. Outputs: the parts (Binding's own, programPart; LibraryLayer.Part), the composed
 //   views, the Result.
 // - Invariants: one counter value per run; a restart starts a new run of every pass, never a new Bind (StartRuns runs once per Bind,
@@ -130,7 +130,7 @@ public sealed partial class Binding
     [MemberNotNull(nameof(nodes), nameof(issues), nameof(derivedIssues), nameof(obligations), nameof(obligationSet), nameof(libraryImports))]
     [MemberNotNull(nameof(virtualDeclarations), nameof(callableEffectUses), nameof(callableEffectClauses), nameof(localRegions))]
     [MemberNotNull(nameof(keepers), nameof(contractShapes), nameof(boundedRequirements), nameof(importDeclarations), nameof(foreignFailures))]
-    [MemberNotNull(nameof(enumerateIndex), nameof(enumerateIndexPool))]
+    [MemberNotNull(nameof(enumerateIndex), nameof(enumerateIndexPool), nameof(aliasesByDocument))]
     private void EnterPass(BindingPass pass)
     {
         this.pass = pass;
@@ -154,6 +154,7 @@ public sealed partial class Binding
         this.foreignFailures = part.ForeignFailures;
         this.enumerateIndex = part.EnumerateIndex;
         this.enumerateIndexPool = part.EnumerateIndexPool;
+        this.aliasesByDocument = part.AliasesByDocument;
     }
 
     // R1.1's one composition point of the Bind's summary: the library layer's counts and the program part's, in the program pass's mode.
@@ -242,6 +243,11 @@ public sealed partial class Binding
         internal Dictionary<(EvidenceView View, BindingSymbol? Requirement), ViewIndex> EnumerateIndex { get; } = new();
 
         internal Stack<ViewIndex> EnumerateIndexPool { get; } = new();
+
+        // The unnamed aliases of each source document of the pass (Binding.Aliases.cs: PrepareAliases, read by the name lookups): each
+        // pass's own, emptied by its reset and pruned of its emptied documents by its own PrepareAliases, so the library pass, which
+        // declares no alias, never removes a program document's entry that the program pass would then make again.
+        internal Dictionary<SourceDocument, List<AliasImport>> AliasesByDocument { get; } = new();
 
         // The nodes outside the pass's modules that the pass failed, in the order it failed them, each with its earlier state.
         internal List<(Koto Node, BindingState Before)> ForeignFailures { get; } = new();
