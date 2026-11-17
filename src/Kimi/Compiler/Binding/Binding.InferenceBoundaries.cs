@@ -396,13 +396,14 @@ public sealed partial class Binding
     }
 
     // SPEC 23.1.2: omitted header Types need the selection's expectation; they rest on the call without the body being checked, and an
-    // independent written-Type error stays its own record.
+    // independent written-Type error stays its own record. Only an omitted Type that no check has reached is marked: one that
+    // already holds its own record (a parameter with no Type and no call to give it one) keeps it. The one writer of the fact.
     private void MarkOmittedHeaders(FunctionKoto closure, Koto cause)
     {
         for (var i = 0; i < closure.Parameters.Count; i++)
         {
             var parameter = closure.Parameters[i];
-            if (parameter.Type is SyntaxFormKoto { Akind: KotoKind.InferredType } inferred)
+            if (parameter.Type is SyntaxFormKoto { Akind: KotoKind.InferredType, BindingState: BindingState.Unvisited } inferred)
             {
                 this.CompleteDependent(inferred, cause);
             }

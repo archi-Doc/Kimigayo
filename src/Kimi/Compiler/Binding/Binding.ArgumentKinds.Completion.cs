@@ -232,17 +232,11 @@ public sealed partial class Binding
 
         // SPEC 10.1, 10.5.4, 23.1.2 (F's rulings 49 and 90): an anonymous function no candidate completed stays unbound: its call may be
         // bound again in this pass, and that attempt must read what the first read (a Type published here would be evidence, and its
-        // body would select). Its omitted parameter Types would come from the call's slot and rest on the call's record (rule W).
+        // body would select). Its omitted parameter Types would come from the call's slot and rest on the call's record (rule W;
+        // MarkOmittedHeaders, the one writer of that fact).
         if (node is FunctionKoto closure && this.KindOf(node) == PartKind.Function)
         {
-            for (var i = 0; i < closure.Parameters.Count; i++)
-            {
-                if (closure.Parameters[i].Type is SyntaxFormKoto { Akind: KotoKind.InferredType } omitted && omitted.BindingState == BindingState.Unvisited)
-                {
-                    _ = this.CompleteDependent(omitted, call);
-                }
-            }
-
+            this.MarkOmittedHeaders(closure, call);
             return;
         }
 
