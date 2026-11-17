@@ -115,7 +115,7 @@ public sealed partial class Binding
 
     private void PrepareAssociatedInference()
     {
-        foreach (var path in this.impls.Paths)
+        foreach (var path in this.impls.InPass.Paths)
         {
             foreach (var identity in path.Contract.Contract!.AssociatedStorage)
             {
@@ -127,7 +127,7 @@ public sealed partial class Binding
             }
         }
 
-        foreach (var path in this.impls.Paths)
+        foreach (var path in this.impls.InPass.Paths)
         {
             if (this.associatedInference.TryGetValue(path.Type, out var batch) && batch.Active)
             {
@@ -135,7 +135,7 @@ public sealed partial class Binding
             }
         }
 
-        for (var batches = this.associatedInference.Values; batches.MoveNext();)
+        for (var batches = this.associatedInference.Values.In(this.pass); batches.MoveNext();)
         {
             if (batches.Current is { Active: false } inactive)
             {
@@ -144,7 +144,7 @@ public sealed partial class Binding
         }
 
         this.associatedInferenceReady = true;
-        for (var batches = this.associatedInference.Values; batches.MoveNext();)
+        for (var batches = this.associatedInference.Values.In(this.pass); batches.MoveNext();)
         {
             if (batches.Current is { Paths.Count: > 0 } batch)
             {
@@ -154,7 +154,7 @@ public sealed partial class Binding
 
         // Explicit equations may point at a newly completed binding. Normalize their values again,
         // preserving their original candidates for final formation/projection verification.
-        foreach (var path in this.impls.Paths)
+        foreach (var path in this.impls.InPass.Paths)
         {
             if (path.AssociatedBindings is { } bindings)
             {
@@ -165,7 +165,7 @@ public sealed partial class Binding
             }
         }
 
-        foreach (var path in this.impls.Paths)
+        foreach (var path in this.impls.InPass.Paths)
         {
             foreach (var identity in path.Contract.Contract!.AssociatedStorage)
             {
@@ -184,7 +184,7 @@ public sealed partial class Binding
             }
         }
 
-        foreach (var path in this.impls.Paths)
+        foreach (var path in this.impls.InPass.Paths)
         {
             this.PublishInheritedInference(path);
         }
