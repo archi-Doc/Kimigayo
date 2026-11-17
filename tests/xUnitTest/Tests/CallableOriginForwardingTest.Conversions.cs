@@ -181,6 +181,17 @@ public partial class CallableOriginForwardingTest
 
     private const string LetG2 = "    let g2 = func [] () -> ref/i32 during c => $abort(\"y\")\n";
 
+    private const string SelW = "func h(f: (ref/i32 during a) -> i32, a: ref/i32, b: ref/i32, w: ref/i32, n: i32) -> ref/i32 during w => w\n";
+
+    private const string SelA = "func h<T>(f: (ref/i32 during b) -> i32, a: ref/i32, b: ref/i32, w: ref/i32, n: T) -> ref/i32 during a => a\n";
+
+    private const string SelK = "func see(p: ref/i32) => ()\nfunc k(a: ref/i32, b: ref/i32)\n    origin a outlives b\n    var z: i32 = 1\n" +
+        "    let c = func [] (y: ref/i32 during b) -> i32 => y@follow\n    let v: i32 = 1\n    let r = h(c@move, a, b, z@ref, v)\n    z = 2\n    see(r)\n";
+
+    private const string RunPair = "func run(q: ref/i32, f: (ref/i32 during q) -> i32) -> i32 => 0\nfunc run<F>(q: ref/i32, f: F) -> i32 => 1\n";
+
+    private const string OwnK = "func k(p: ref/i32, q: ref/i32) -> i32\n    var a: i32 = 1\n    let r = a@ref\n";
+
     private const string HOsel2 = "func h(f: (ref/i32 during a) -> i32, a: ref/i32, b: ref/i32, n: i32) -> i32 => 0\nfunc h<T>(f: (ref/i32 during b) -> i32, a: ref/i32, b: ref/i32, n: T) -> i32 => 1\n";
 
     private const string LetCOsel2 = "    let c = func [] (z: ref/i32 during b) -> i32 => z@follow\n    let v: i32 = 1\n";
@@ -490,7 +501,12 @@ public partial class CallableOriginForwardingTest
     // fixture) and the stand-in at one candidate only (tw-mixsel). Dev accepted clsel, clselif1, nb3b, nb3bif1, rank2bc, rank3i1, tw-res,
     // tw-osel2, tw-joinsel1 and tw-mixsel and rejected clselctl1, nb1, r04n and z02n. The Item arm and a function reference are PLAN G379
     // (b)'s: their invalid forms are Explicit until R7-P4 T2 (itsel, frsel, frselctl1n, and G514's t4q, u2, u2g); itselctl1 and G519's
-    // Item forms r06n and r06 are accepted already.
+    // Item forms r06n and r06 are accepted already. The Middle's consent rows (C-387): the selected callee's result decides the Loan (d-selI
+    // its conflict, d-selR none; dev selected the generic one), an erasure beside a generic `F` candidate is incomparable (e-owu, e-owv;
+    // dev accepted them), and an Origin nested in an input's result or referent is proven by premises (c-nfnv, c-nrefv2). SPEC 10.1 and
+    // 15.6.1 make an erasure's Owned a Constraint of applicability, so a Closure holding a body-local borrow leaves `run<F>` selected
+    // (e-owr, e-owr0); Binding judges that Owned Unknown at selection and Refuted only at finality, so they are Explicit (G379-OW) until
+    // the owner's O-402, and f-cap keeps its record at the argument.
     [Theory]
     [InlineData("sel2", MkC + MkT + CallMk, "AmbiguousBinding_Kd mk(1, a, b, c)")]
     [InlineData("sel1", "struct S {a, b, c}\n" + CB + "    public func p(self: ref/Self) -> i32\n        let r: Option<" + FnB + "> = self.mk(1)\n        return 0\n    public init() => ()\n    public func mk(self: ref/Self, x: i32) -> Option<" + FnC + "> => .None\n    public func mk<T>(self: ref/Self, x: T) -> Option<" + FnB + "> => .None\n", "AmbiguousBinding_Kd self.mk(1)")]
@@ -557,6 +573,15 @@ public partial class CallableOriginForwardingTest
     [InlineData("t4q [T2]", "func h3(x: ref/i32 during static) -> i32 => 5\nfunc host(s: ref/i32) -> i32\n    func run(q: ref/i32, f: (ref/i32 during q) -> i32) -> i32 => 0\n    return run(s, h3)\n", "UnprovenOriginContract_Kd h3", Explicit = true)] // until R7-P4 T2 (PLAN G379 (b))
     [InlineData("u2 [T2]", Pick + UseStaticResult + "    return use(pick)\n", "UnprovenOriginContract_Kd pick", Explicit = true)] // until R7-P4 T2 (PLAN G379 (b))
     [InlineData("u2g [T2]", "func identity<T>(v: T) -> T => v@move\n" + UseStaticResult + "    return use(identity)\n", "UnprovenOriginContract_Kd identity", Explicit = true)] // until R7-P4 T2 (PLAN G379 (b))
+    [InlineData("d-selI", SelW + SelA + SelK, "ComparisonLoanConflict_Kd z = 2")]
+    [InlineData("d-selR", "func h(f: (ref/i32 during a) -> i32, a: ref/i32, b: ref/i32, w: ref/i32, n: i32) -> ref/i32 during a => a\nfunc h<T>(f: (ref/i32 during b) -> i32, a: ref/i32, b: ref/i32, w: ref/i32, n: T) -> ref/i32 during w => w\n" + SelK, "")]
+    [InlineData("e-owu", "func run(f: () -> ref/i32 during static) -> i32 => 0\nfunc run<F>(f: F) -> i32 => 1\nfunc t(x: ref/i32 during static) -> i32\n    var s = x\n    let c = func [s] () => s\n    return run(c@move)\n", "AmbiguousBinding_Kd run(c@move)")]
+    [InlineData("e-owv", RunPair + "func k(p: ref/i32, q: ref/i32) -> i32\n    origin q outlives p\n    let c = func [] (x: ref/i32 during p) -> i32 => x@follow\n    return run(q, c@move)\n", "AmbiguousBinding_Kd run(q, c@move)")]
+    [InlineData("c-nfnv", "func two(p: ref/i32, f: (() -> ref/i32 during p) -> i32) -> i32 => 0\nfunc k(p: ref/i32, q: ref/i32) -> i32\n    origin p outlives q\n    let c = func [] (g: () -> ref/i32 during q) -> i32 => 0\n    return two(p, c@move)\n", "")]
+    [InlineData("c-nrefv2", "func use(p: ref/i32, f: (ref/(ref/i32 during p)) -> i32) -> i32 => 0\nfunc k(p: ref/i32, q: ref/i32) -> i32\n    origin p outlives q\n    origin q outlives p\n    let c = func [] (x: ref/(ref/i32 during q)) -> i32 => 0\n    return use(p, c@move)\n", "")]
+    [InlineData("f-cap", "func keep(q: ref/i32, f: (ref/i32 during q) -> i32) -> (ref/i32 during q) -> i32 => f@move\n" + OwnK + "    let c = func [r] (x: ref/i32 during p) -> i32 => r@follow\n    let h = keep(q, c@move)\n    a = 2\n    return h(q)\n", "UnsatisfiedConstraint_Kd c@move")] // the record site pending O-402
+    [InlineData("e-owr [G379-OW]", RunPair + OwnK + "    let c = func [r] (x: ref/i32 during p) -> i32 => r@follow\n    return run(q, c@move)\n", "", Explicit = true)] // until the owner's O-402
+    [InlineData("e-owr0 [G379-OW]", RunPair + OwnK + "    let c = func [r] (x: ref/i32 during q) -> i32 => r@follow\n    return run(q, c@move)\n", "", Explicit = true)] // until the owner's O-402
     public void ApplicabilityJudgesOnlyTheStructuralPart(string form, string body, string records)
         => OriginRelationDiagnosticTest.AssertRecords(form, body, records, null);
 
