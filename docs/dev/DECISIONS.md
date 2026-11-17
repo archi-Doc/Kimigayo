@@ -9501,6 +9501,11 @@ resumed by R4-M86 (2026-10-20).
     closure's identity for an instance with an Origin position): lossy, so a walk could not decide again after normalization. Formation
     in the closing step alone: correctness by call order over about 70 callers. I as a Closure Type component: components are the
     capture storage (`Binding.Closures.cs`).
+  - Amended by BU-222 (PLAN G846, G856): the context (`BoundType.InstanceContext`, renamed from ClosureContext) is the held
+    instance of every nested definition's Type, the Item of a function declared in a body included, from the same closing step (its
+    gate `ContainsNested`, renamed from ContainsClosure) and producer; the readers' view is `TyCtxt.NestedInstance` (renamed from
+    ClosureInstance), and `InheritedArguments` also withholds a definition held by a Container with an Origin slot (the owner's
+    O-262 (a)).
 
 - **BU-62 A declaration's rows through an Origin its declaration's failure left unbound are judged by R4-M118's rule, a Transitional
   copy in the declaration judge, and rest on the part that failed, `OriginDeclaration.PendingFailure`** (superseded in part by BU-69:
@@ -13453,6 +13458,10 @@ resumed by R4-M86 (2026-10-20).
     - judging the substituted signature, as revision 1 did (it rejects valid x1fnarg and x4assocfn);
     - judging the whole signature as a Type (it rejects valid p1projgen, r2reqok, p7selfreq and b8setk);
     - an erasure Tuple without Origin parts (it accepts invalid w3era, w6unusedera, w9eraneed and w12setform).
+  - Amended by BU-222 (PLAN G846, G856): every enclosing parameter's argument (`InheritedArguments`, read through the held
+    instance) is an environment part of an Item and of a Closure, used or not, so j09bunused, j14bunused, j18callableowned and
+    j21genmethod are rejected; the signature part (`InheritedEnvironment`) keeps only the Origins the declared signature names from
+    its enclosing body that are no parameter (an enclosing function's or a local's), and `InheritedParameters` is removed.
 
 - **BU-201 A pair layer is a well-formedness layer at every use, judged in its borrow cases (PLAN G831)** (2026-11-13; Front,
   Binding; Major with design reviews 1-2 and an implementation review, the Back's reviewer; the Middle's C-312 consent) SPEC 15.6.1,
@@ -14075,6 +14084,58 @@ resumed by R4-M86 (2026-10-20).
     (snapshot 0). No valid program newly rejected, no invalid one newly accepted. c0v (PLAN G905, a Closure) is not this cause.
   - Closes PLAN G913. Open: two variables without a principal solution related by a clause, each read where the other is still
     open (PLAN G960).
+- **BU-222 A nested definition's Type carries the instance it was formed in; its inherited arguments are Owned parts read
+  through it** (2026-11-14; Front, designed and implemented at the Back's seat (C-305); Binding; PLAN G846, G856; Q17 class 1;
+  Major, an acceptance mover; the owner's O-249 Q4 (a), verbatim 「Q1〜Q4 は、すべてa」, O-258 (a), verbatim 「O-258 a」, O-262 (a),
+  verbatim 「O-262 (a) 制限付きで今着地」, and O-273 (a) and O-277 (a), verbatim 「O-273〜O-277 を、すべて推奨どおり (a) でお願いします」;
+  F's G826b ruling 2 and its ruling of 2026-11-14; the Middle's RP17 consent C-324) SPEC 3.2.1, 6.1.3, 15.2.3, 7.7.4, 15.3.
+  Amends BU-60 and BU-198.
+  - Representation: the instance context a Closure Type holds (BU-60, R5-M36; `BoundType.InstanceContext`, renamed from
+    ClosureContext) is the held instance of every nested definition's Type. The Item of a function declared in a body takes it from
+    the same closing step (`ClosePartCore`, gate `ContainsNested`, renamed from ContainsClosure) and the same producer
+    (`TyCtxt.HeldContext`), under the same identity test and the same readers' view (`TyCtxt.NestedInstance`, renamed from
+    ClosureInstance). A withheld Closure's signature closes its nested definitions under the held instance, so they are withheld
+    with it.
+  - Readers: `ItemDeclaringType` returns a held Type instance, so the Item's signature is read in its instance and `SubstOfItem`
+    carries it as the declaring Type (R5-M157's condition for a function declared in a Field initializer's Closure: its Item is
+    admitted per instance; its direct call stays G149's gap). `InheritedArguments`: the enclosing parameters' arguments (the generic
+    slots of the enclosing functions and the nearest Container's generic and Origin slots, used or not; no length slot; no function
+    Origin, SPEC 15.3), imaged by the held instance, are environment parts of an Item and of a Closure (`CapabilityParts`, member
+    `Components.Count`, one numbering), read by the Owned proof and the erasure; Copy reads none; a summary adds nothing for its
+    declaration's own definitions.
+  - Located limits (O-262 (a)), `Unsupported_Kd`: a withheld instance (a held instance with an Origin position, or a definition held
+    by a Container with an Origin slot, its own or inherited from a Container it is nested in, SPEC 6.1.3) at the definition (BU-22's
+    limit; removal PLAN G300); an erasure in a generic Container's inferred Field header at the literal, also with `T is Owned`
+    (BU-107's limit; removal R7-D2 d).
+  - New rejections (class 1, `UnprovenConstraint_Kd` at the use needing Owned or at the erased value): an Item of a nested function
+    or a Closure whose enclosing parameter is not Owned, used or not: Q4's twins (j09bunused, j14bunused, j18callableowned,
+    j21genmethod) and G826b revision 1's rows; k18clo, k19cloera, c3fieldcloT, c4innercloT, c5selfclo, c6fieldcloera;
+    w2fieldItemT, w3blocalItemT, w6bfieldItemEraseT, w7innerTowned, w9bselfT, w10binnereraseU; and thirteen existing rows' programs,
+    restated with their Owned premise (the originals kept as invalid rows): the twelve the unit's phase 2 restated, and r-l3
+    (`ContractBindingTest.AConformanceProvenAtDepthGivesItsMembers`, R7-C2c2 c2-3a's row: `cap<T>` with `T is CL1` alone erases a
+    Closure formed in it).
+  - Record selection on programs dev already rejects: the owner's O-273 (a), `ErasureAfterSelectionTest.r_geninst_nc_unowned`
+    (`UnprovenConstraint_Kd f` takes the node; the lost `TransferRequired_Kd f` is PLAN G870, one failure per node); the owner's
+    O-277 (a), `PropertyBindingTest` x1pk, x3pk, x5pk and x9pk (the Middle's x1, x3, x5, x9: the Item of a function declared in the
+    Field Closure of a Container with an Origin slot, needed Owned or erased): dev's `UnprovenConstraint_Kd` or
+    `UnprovenOriginContract_Kd` at the use becomes the one located `Unsupported_Kd` at `func pk`, since the use reads a Type the
+    limited definition did not form.
+  - Contract (Binding.ClosureInstances.cs's header, the review's N2): a nested definition's Type without a context is read in its
+    enclosing declaration's frame, or through an instance equal to that frame modulo Origins (BU-60), which every reader treats as
+    withheld when the declaration's identity has an Origin position (`TyCtxt.NestedInstance`, `InheritedArguments`; PLAN G300); the
+    closing step is the one producer of a nested definition's context.
+  - Structure (the review's B2; the owner's O-273 (a)): a behaviour-preserving split first moved `JudgedByDeclaration`,
+    `RequirementReference`, `EnvironmentTuple` and `CapabilityParts` to `Binding.CapabilityParts.cs`, which `InheritedArguments`
+    joins; the renames, with `CloseClosureTypes` -> `CloseNestedTypes` and `CloseHeldClosures` -> `CloseHeldNested`, are an
+    identifier-only commit.
+  - Removes (the review's N9): BU-198's formal walk of inherited Type parameters (`InheritedParameters`, `DeclaringNode`), replaced
+    by `InheritedArguments` read through the held instance; the collector's `EnclosingInstance` gap for the Item of a function
+    declared in a Field initializer's Closure (R5-M157's condition now holds: its substitution carries its declaring Type); dev's
+    false `TypeMismatch_Kd` for such an Item's signature read through an instance (w11sig: `pk(x: T)` read with `S`'s formal `T`).
+  - Rejected: the formal slots judged wherever the value is read (G826b's revision 1: B2, B3); a scope test with a located limit
+    (its revision 2); the instance as an Item Component (a Closure's Components are its captures; a function's instance is no
+    Type); the reviewer's nearest-declaration rule (O-258 (b)); Origins kept in a held instance (BU-60's rejection stands; G300
+    opens them per use).
 - **G209-1** (2026-10-24; structural unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source
   aliases their selected container and environment before ordinary lookup merges imports. These responsibilities were embedded in the
   general expression parser and `Binding.Types.Lookup`, with alias resolution beside Type formation. `Parser.RuntimeTypeTests` now
