@@ -134,4 +134,22 @@ public class CopyOperationTest
         => Assert.Equal(
             records is null ? [] : records.Split('|'),
             RawPointerSyntaxTest.Records("struct C\n    Self is Copy\n    let p: raw/i32" + annotation + "\n    public init() => self.p = null\nfunc f(c: C) -> C => c@copy"));
+
+    // G949 S1-r2 (s1r1-design's v13; SPEC 3.5.2, 8.7.1): a program's Copy proof of a library container reads the library's Copy
+    // declaration, Option's `Self is Copy when T is Copy` (the copyByType family), which each pass resets over its own modules only, so the
+    // proof holds after a second Bind and, from PLAN G949 S1-r1b, after a program pass. Labelled from SPEC first: Option<Point> is Copy
+    // (Point declares Copy): no record; Option<Node> is not (Node declares none): NonCopyOperand_Kd at the copy.
+    [Theory]
+    [InlineData("Point", "")]
+    [InlineData("Node", nameof(DiagnosticCode.NonCopyOperand_Kd))]
+    public void ALibraryContainersCopyProofHoldsAcrossBinds(string element, string records)
+    {
+        var c = MinimalEmissionTest.Analyze("struct Point\n    Self is Copy\n    public var x: i32 = 1\nstruct Node\n    public var v: i32 = 0\nfunc f(o: Option<" + element + ">) -> Option<" + element + "> => o@copy\npublic func main() => ()\n");
+        var first = Records(c);
+        c.Bind();
+        Assert.Equal(records, first);
+        Assert.Equal(first, Records(c));
+
+        static string Records(Compilation c) => string.Join('|', c.Binding.Issues.Select(static x => x.Code.ToString()));
+    }
 }
