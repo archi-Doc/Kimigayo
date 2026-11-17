@@ -490,15 +490,16 @@ public sealed class MirAnalysisTest
     }
 
     // R6-check H3-2 (Q-R4-2): every analysis InternalInvariant_Kd names Ownership.Internal (MirReport's defects and Merged's disagreement
-    // record, A5's broken contracts; the C1-F4 view throws at its own, DECISIONS BU-102), so the disagreement record never disagrees again:
-    // each site of the code in the analyses states that requirement before it in its block, and a new site joins this list after review.
+    // record, A5's broken contracts, A1's broken invariants at a runtime location (DRV-N8, S2-N1); the C1-F4 view throws at its own,
+    // DECISIONS BU-102), so the disagreement record never disagrees again: each site of the code in the analyses states that requirement
+    // before it in its block, and a new site joins this list after review.
     [Fact]
     public void EveryAnalysisInternalInvariantNamesOwnershipInternal()
     {
         var code = new Regex(@"DiagnosticCode\.InternalInvariant_Kd");
         var pinned = new Regex(@"OwnershipRequirement\.Internal\)[^}]*?DiagnosticCode\.InternalInvariant_Kd");
         Assert.Equal(
-            ["MirBorrows.Reports.cs 1 1", "MirReport.Merged.cs 1 1", "MirReport.cs 1 1"],
+            ["MirBorrows.Reports.cs 1 1", "MirInit.cs 1 1", "MirReport.Merged.cs 1 1", "MirReport.cs 1 1"],
             Directory.EnumerateFiles(Path.Combine(Repository.Root, "src/Kimi/Compiler/Mir/Analysis"), "*.cs")
                 .Select(x => (Name: Path.GetFileName(x), Text: File.ReadAllText(x))).Where(x => code.IsMatch(x.Text))
                 .Select(x => $"{x.Name} {code.Count(x.Text)} {pinned.Count(x.Text)}").Order(StringComparer.Ordinal));

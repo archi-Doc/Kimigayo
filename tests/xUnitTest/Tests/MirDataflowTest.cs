@@ -66,14 +66,14 @@ public sealed class MirDataflowTest
         var body = MirBuildTest.Compile("func f() => ()\n").BuildMir().Bodies.ToArray().Single(static x => x.Key.Decl?.Name == "f");
         var report = new MirReport();
         report.Add(new(DiagnosticCode.Unsupported_Kd, DiagnosticRequirement.Ownership(OwnershipRequirement.Unsupported), body.Source, body.Ordinal, 1));
-        var words = (8L * 1024 * 1024) + 1;
+        var words = (64L * 1024 * 1024 * 6 / 5 / 8) + 1; // Above the limit, 6/5 of 64 MiB (A1's sixth lane; the owner's O-342 Q2 (a)).
         Assert.False(MirDataflow.Within(words));
         Assert.Equal(1, MirDataflow.StorageLimit(report, body, 0b11, MirStorageTable.Origins, words));
         var requirement = DiagnosticRequirement.Ownership(OwnershipRequirement.StorageLimit);
         Assert.Equal(new MirProblem(DiagnosticCode.OwnershipStorageLimit_Kd, requirement, body.Source, body.Ordinal, 0b11), report.All[1]);
         Assert.Equal(
             [
-                new ProblemFact(ProblemFactKind.Required, body.Source, words * 8), new(ProblemFactKind.Limit, body.Source, 64L * 1024 * 1024),
+                new ProblemFact(ProblemFactKind.Required, body.Source, words * 8), new(ProblemFactKind.Limit, body.Source, 64L * 1024 * 1024 * 6 / 5),
                 new(ProblemFactKind.Table, body.Source, (long)MirStorageTable.Origins),
             ],
             report.Facts(1).ToArray());
