@@ -33,8 +33,10 @@ public sealed partial class Binding
 
         if (adt is null || instance.Version != this.storageVersion || !Current(adt.Version, this.storageVersion))
         {
+            // An instance is current exactly when the ADT it was formed from is: one formed from a stale ADT (before PrepareStorage
+            // refreshes it in this run) is never current, so the refreshed ADT forms it again.
             this.Substitute(type, adt, instance);
-            instance.Version = this.storageVersion;
+            instance.Version = adt is not null && Current(adt.Version, this.storageVersion) ? this.storageVersion : 0;
         }
 
         return instance;
