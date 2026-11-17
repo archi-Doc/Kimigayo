@@ -14,14 +14,14 @@ public class DynamicArrayCapacityLimitTest
         ScalarEmissionTest.EmitFixture("DynamicArrayCapacityAppend", FullArray("u8", long.MaxValue) + "values.append(1)", string.Empty, 1, "Hello.kimi:13:1: abort KIMI_E_INT_OVERFLOW: Integer overflow\n");
     }
 
-    // R8-A1b, SPEC 4.9.3, 4.9.7: insert's Abort paths from source, each at insertAt's call in its entry and before any buffer access, the buffer
-    // null: the sum, an invalid position first over a full Array, and a byte size past the limit through growArray.
+    // R8-A1b, SPEC 4.9.3, 4.9.7, 22.5.1 (PLAN G71): insert's Abort paths from source, each before any buffer access, the buffer null, at the
+    // user's insert call: the sum, an invalid position first over a full Array, and a byte size past the limit through growArray.
     [Theory]
-    [InlineData("Insert", "u8", long.MaxValue, "values.insert(0, 1)", "self.insertAt(position, value@move)", "KIMI_E_INT_OVERFLOW: Integer overflow")]
-    [InlineData("BoundsFirst", "u8", long.MaxValue, "let position: isize = -1\nvalues.insert(position, 1)", "self.insertAt(-1", "KIMI_E_INDEX_BOUNDS: Index out of bounds")]
-    [InlineData("InsertSize", "(i64, i64)", 576460752303423487, "values.insert(5, (1, 2))", "self.insertAt(position, value@move)", "KIMI_E_ALLOC_SIZE: Allocation size exceeds limit")]
-    public void InsertAbortsAtItsEntry(string name, string element, long length, string statement, string anchor, string abort)
-        => ScalarEmissionTest.EmitFixture("DynamicArrayCapacity" + name, FullArray(element, length) + statement, string.Empty, 1, LibrarySource.Location("Array.kimi", anchor) + $": abort {abort}\n");
+    [InlineData("Insert", "u8", long.MaxValue, "values.insert(0, 1)", 13, "KIMI_E_INT_OVERFLOW: Integer overflow")]
+    [InlineData("BoundsFirst", "u8", long.MaxValue, "let position: isize = -1\nvalues.insert(position, 1)", 14, "KIMI_E_INDEX_BOUNDS: Index out of bounds")]
+    [InlineData("InsertSize", "(i64, i64)", 576460752303423487, "values.insert(5, (1, 2))", 13, "KIMI_E_ALLOC_SIZE: Allocation size exceeds limit")]
+    public void InsertAbortsAtItsCall(string name, string element, long length, string statement, int line, string abort)
+        => ScalarEmissionTest.EmitFixture("DynamicArrayCapacity" + name, FullArray(element, length) + statement, string.Empty, 1, $"Hello.kimi:{line}:1: abort {abort}\n");
 
     // R8-A1a, SPEC 4.9.5, 22.5.2: `reserve`'s Abort paths through `growArray`, each with its code at the call: a negative request, a sum past
     // `isize` (also over zero-sized elements), a byte size past the limit (the unrepresentable minimum among them) and a failed allocation.
