@@ -1389,9 +1389,6 @@ on the round's F3, 「以下で決定します。(b) BU-28 を SPEC の読みに
   paragraph and IMPL §21.3.4 (R8-SP2), with no per-section statement since no section claims a supplied definition; `writeLine` a
   body with no text, §22.7 stating behaviour only. §22.9.1, §22.10.5 and IMPL §21.4.4 already match the bodies; W2 kept §22.10.5's
   closed list. Nothing frozen; no SPECJ change.
-- Revision 89 (2026-11-18, plan §14; the Back's D-754, with R8-I1): §5.2's I1 row records the landing (DECISIONS R8-M52); RQ16
-  takes its else branch, since R8's formatter does not format i128, so `FormatInteger128` is removed in a post-reduction unit by
-  measurement; RQ16's rows unchanged. Nothing frozen.
 - Revision 90 (2026-11-18, plan §14; the Back's D-752): §10.2 item 3 names `IntrinsicDisposition.Of` and `Effect`, which R8-M45
   deleted, as RP20 does; the record stays. Revision 30's `IntrinsicId` 27 replaces the 28 left in §0's summary, §1.1's R8 row and
   §12's COMPILER_ARCHITECTURE row; RQ9 and RP18 unchanged. Nothing frozen.
