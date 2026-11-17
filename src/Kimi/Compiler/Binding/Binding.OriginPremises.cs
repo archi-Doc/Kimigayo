@@ -24,7 +24,7 @@ public sealed partial class Binding
     {
         get
         {
-            var (nodes, edges, retains) = (0, 0, this.premiseSession.Anchors.Count != 0);
+            var (nodes, edges, retains) = (0, 0, this.premiseSession.Holds);
             Measure(this.originPremiseEnvironments);
             Measure(this.premiseSession.Pool);
             return (this.originPremiseEnvironments.Count + this.premiseSession.Pool.Count, nodes, edges, retains);
@@ -684,61 +684,50 @@ public sealed partial class Binding
     // PLAN G778: a premise session, open while a judge that makes many requests runs (the declaration judge, a well-formedness visit, an
     // Origin inference): its environments by anchor and excluded result premise, the storage they reuse, and whether it is open. An
     // environment lives until the session closes, never across passes, and is rebuilt when the Origin state changed; no opener's request
-    // writes the other premise inputs (scopes, bound input Types, a Closure's classification). The session is the one accessor of the
-    // kept family NodeColumns.PremiseSessions (DECISIONS BU-220; F's ruling 176): an anchor's row is its first session environment's
-    // index in Pool, 1-based, and each environment names the next one at its anchor (an identity key, the excluded result premise,
-    // scanned). Close resets each row it wrote to absent, so a row is present only while its session is open: no row outlives the
-    // session, in a program's column or the library's (whose anchors a program's sessions reach too), and none crosses a pass.
+    // writes the other premise inputs (scopes, bound input Types, a Closure's classification). The environments are the session's own
+    // scratch (PLAN G949 S1-e's call-scratch rule; F's ruling 187): each found by its key, the anchor and the excluded result premise
+    // (identity keys, scanned from the latest), taken from Pool in order and emptied at Close, which ends the session; no Binding table
+    // holds them, in a program's module or the library's.
     private sealed class OriginPremiseSession
     {
-        // For each environment the session took from Pool, in Pool's order: its excluded result premise and the next environment at its
-        // anchor, 1-based (0: none).
-        private readonly List<FunctionKoto?> exclusions = new();
-        private readonly List<int> links = new();
+        // The key of each environment the session took from Pool, in Pool's order.
+        private readonly List<(Koto Anchor, FunctionKoto? Excluded)> keys = new();
 
         internal List<OriginPremiseEnvironment> Pool { get; } = new();
 
-        // The anchor of each environment the session took from Pool, in Pool's order: the rows Close resets.
-        internal List<Koto> Anchors { get; } = new();
-
         internal bool Open { get; set; }
+
+        // Whether the session holds an environment (OriginPremiseStorage's Retains: only while it is open).
+        internal bool Holds => this.keys.Count != 0;
 
         // The environment at `anchor` under the excluded result premise `excluded`, taken from Pool at its first request in the session.
         internal OriginPremiseEnvironment Environment(Koto anchor, FunctionKoto? excluded)
         {
-            ref var first = ref HirTables.Of(anchor).Families.PremiseSessions.Ref(anchor.SyntaxId);
-            for (var i = first - 1; i >= 0; i = this.links[i] - 1)
+            for (var i = this.keys.Count - 1; i >= 0; i--)
             {
-                if (ReferenceEquals(this.exclusions[i], excluded))
+                if (ReferenceEquals(this.keys[i].Anchor, anchor) && ReferenceEquals(this.keys[i].Excluded, excluded))
                 {
                     return this.Pool[i];
                 }
             }
 
-            var index = this.Anchors.Count;
-            this.links.Add(first);
-            first = index + 1; // The kept slot is written before any other column write may move its arena.
-            this.Anchors.Add(anchor);
-            this.exclusions.Add(excluded);
-            if (this.Pool.Count == index)
+            if (this.Pool.Count == this.keys.Count)
             {
                 this.Pool.Add(new());
             }
 
-            return this.Pool[index];
+            this.keys.Add((anchor, excluded));
+            return this.Pool[this.keys.Count - 1];
         }
 
         internal void Close()
         {
-            for (var i = 0; i < this.Anchors.Count; i++)
+            for (var i = 0; i < this.keys.Count; i++)
             {
-                HirTables.Of(this.Anchors[i]).Families.PremiseSessions.Ref(this.Anchors[i].SyntaxId) = 0;
                 this.Pool[i].Clear();
             }
 
-            this.Anchors.Clear();
-            this.exclusions.Clear();
-            this.links.Clear();
+            this.keys.Clear();
             this.Open = false;
         }
     }

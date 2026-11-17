@@ -297,7 +297,6 @@ internal struct NodeColumns
     internal PagedColumn<InvocationKoto?> RangeCalls; // Kept: a range or position key's synthesized PositionSyntax call (Binding.Ranges.cs).
     internal PagedColumn<InvocationKoto?> ResolvedKeys; // Kept: a selection key's synthesized `resolved` call (Binding.Ranges.cs).
     internal PagedColumn<BoundMatch?> MatchPlans; // Kept: the plan object a match keeps across rebinds (Binding.Patterns.cs).
-    internal PagedColumn<int> PremiseSessions; // Kept, present only in a premise session: an anchor's first session environment, 1-based (Binding.OriginPremises.cs).
 
     internal void Resize(int length)
     {
@@ -338,7 +337,6 @@ internal struct NodeColumns
         this.RangeCalls.Grow(length);
         this.ResolvedKeys.Grow(length);
         this.MatchPlans.Grow(length);
-        this.PremiseSessions.Grow(length);
     }
 
     // The library's columns start at their stated slots (KimiLibrarySize: no program row lands in them).
@@ -412,7 +410,6 @@ internal struct NodeColumns
             RangeCalls = this.RangeCalls.Renumbered(length),
             ResolvedKeys = this.ResolvedKeys.Renumbered(length),
             MatchPlans = this.MatchPlans.Renumbered(length),
-            PremiseSessions = this.PremiseSessions.Renumbered(length),
         };
         return columns;
     }
@@ -447,7 +444,6 @@ internal struct NodeColumns
         this.RangeCalls.Retire();
         this.ResolvedKeys.Retire();
         this.MatchPlans.Retire();
-        this.PremiseSessions.Retire();
     }
 
     // A kept family's row moves with its node; a stamped family's rows were handed over (Renumbered).
@@ -479,7 +475,6 @@ internal struct NodeColumns
         this.RangeCalls.MoveTo(ref target.RangeCalls, from, to);
         this.ResolvedKeys.MoveTo(ref target.ResolvedKeys, from, to);
         this.MatchPlans.MoveTo(ref target.MatchPlans, from, to);
-        this.PremiseSessions.MoveTo(ref target.PremiseSessions, from, to);
     }
 }
 
