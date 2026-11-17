@@ -97,7 +97,7 @@ public partial class ApplicabilityChainRegressionTest
     [InlineData("guard", "p3f", LengthSources + "    return g(if c => [1@i64, 2@i64] else => zeros())\n", "*: return g(if c => [1@i64, 2@i64] else => zeros()) | ...")]
     [InlineData("let", "q2a", Sources + SourcesBody + "    let j = if c => [u@ref] else => [y]\n    return r\n", "", Explicit = true)] // V (O-352 (a)); owed to the let unit (ruling 23): the independent literal's place rule.
     [InlineData("let", "r02", Sources + SourcesBody + "    let j = [u@ref, y]\n    return r\n", "", Explicit = true)] // V (O-352 (a)); owed to the let unit (ruling 23): the independent literal's place rule.
-    [InlineData("guard", "r01", Sources + SourcesBody + "    r = ha([u@ref, y])\n    return r\n", "*: r = ha([u@ref, y]) | ...")]
+    [InlineData("open issue", "r01", Sources + SourcesBody + "    r = ha([u@ref, y])\n    return r\n", "", Explicit = true)] // V (SPEC 10.5.1 paragraph 2, the owner's O-352 (a), as p43, q2e, r09); an under-acceptance, PLAN open issue (K's N10, F's ruling 97).
     [InlineData("guard", "p43", Sources + SourcesBody + "    let t = identity([u@ref, y])\n    return r\n", "")] // SPEC 14.9.2 step 2 at every place, the owner's O-352 (a): accepted.
     [InlineData("guard", "q2d", Sources + SourcesBody + "    r = ha(if c => [u@ref, y] else => [y, u])\n    return r\n", "")] // SPEC 14.9.2 step 2 at every place (O-352 (a)); label-w5joins.md, label-p7a.md.
     [InlineData("guard", "q2e", Sources + SourcesBody + "    r = ha(if c => [u@ref, y] else => [y, y])\n    return r\n", "")] // SPEC 14.9.2 step 2 at every place (O-352 (a)); label-w5joins.md, label-p7a.md.
