@@ -11,7 +11,7 @@ fn grow @4
   _3: () temp @12 s1
   _4: uniq/Array<i32> temp @14 s1
   _5: () temp @17 s1
-  _6: i32 temp @18 s1
+  _6: i32 temp (Assigned) @18 s1
   _7: ref/Array<i32> temp @18 s1
   _8: isize temp @18 s1
   _9: isize temp @23 s1

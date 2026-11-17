@@ -67,7 +67,7 @@ public sealed partial class OriginRowsTest
     {
         foreach (var (name, c, library) in Census())
         {
-            var program = c.BuildMir();
+            var program = MirBuildTest.LibraryRange(c); // Every library body, the library case's layers' constructors included (PLAN G951 U2-T).
             foreach (var body in program.Bodies)
             {
                 var slice = c.Types.OriginRows(body.Key.Body);
