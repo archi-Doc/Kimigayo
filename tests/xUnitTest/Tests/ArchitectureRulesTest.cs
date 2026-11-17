@@ -95,21 +95,22 @@ public class ArchitectureRulesTest
         @"\b(?:FixedArrayWitness|RentFixedArrayArguments|ReturnFixedArrayArguments|FixedArraySlots)\b|" +
         @"\b(?:Is|Instantiate)IntegerPosition\b|\bIntegerPosition(?:Witness|Slot)\b|(?:Kind|TyCtxt|this)\.IntegerPosition\b|\bComparisonTypes\.IsBuiltin\b";
 
-    // The R7-R9 plan's §10.2 item 3 (R8-X1): the components, kinds and templates R8 deleted (DECISIONS R8-M6, R8-M11, R8-M12, R8-M14,
-    // R8-M18, R8-M22, R8-M30, R8-M39, R8-M44, R8-M45, R8-M46, R8-M48) and its Transitional tag; no source or test names one. A letter in
+    // The R7-R9 plan's §10.2 item 3 (R8-X1): the components, members, kinds and templates R8 deleted (DECISIONS R8-M6, R8-M11, R8-M12,
+    // R8-M14, R8-M18, R8-M22, R8-M24, R8-M30, R8-M39, R8-M44, R8-M45, R8-M46, R8-M48, R8-M52) and its Transitional tag; no source, test or
+    // project file names one. The intrinsic writer's deleted member counts only qualified, its bare name being an English word. A letter in
     // brackets keeps the pattern from matching its source.
     private const string DeletedByR8 =
         @"\bLegacyRuntimeHelper[s]|\bLegacyWrite[r]\b|\b(?:StorageKernel|Format|StringFormat|Writer)Kin[d]\b|" +
         @"\b(?:Array|Dictionary)Helpe[r](?:Row|Kind)?\b|\bDictionaryCalle[e]\b|\b(?:KimiLibrary|TyCtxt)\.DictionaryStorag[e]\b|\bLengthWor[d]\b|" +
         @"\bHelperNeed[s]\b|\bUtf8(?:Buffer|Format)Runtim[e]\b|\bCompilerFunctio[n](?:Kind|Effect)?\b|\bIntrinsicDispositio[n]\.(?:Of|Effect)\b|" +
         @"\bKimiLibraryContaine[r]\b|\bIs(?:Storage|Raw)Operatio[n]\b|\bIsUnsource[d]\b|\bRuntimeAb[i]\.(?:TextWriter|WriteLine)\b|" +
-        @"\bFormatEstimat[e]\b|Transitional\(""R[8]""";
+        @"\bFormattin[g](?:Helper)?Row\b|\bForma[t](?:Estimate|Fixed|Heap)\b|\bIntrinsicWriter\.Unproduce[d]\b|Transitional\(""R[8]""";
 
-    // The same for R8's deleted names that tests keep in their fail-before notes (DECISIONS R8-M11, R8-M19, R8-M24, R8-M30, R8-M44,
-    // R8-M48, R8-M52): only the sources must not name them.
+    // The same for the seven names R8 deleted that tests still use (DECISIONS R8-M11, R8-M19, R8-M24, R8-M30, R8-M44, R8-M48): six in
+    // fail-before and history comments, one as the label of FunctionCodegenTest's first FormattingPrograms row, a live test name. Only the
+    // sources and the project file must not name them.
     private const string DeletedByR8InSources =
-        @"\bBodylessWitnes[s]\b|\bLegacyRo[w]\b|\bBuiltinForma[t]\b|\bFormattin[g](?:HelperRow|Rows?)\b|" +
-        @"\bForma[t](?:Buffer|Finish|Segment|Fixed|Heap)\b|\bUnproduce[d]\b";
+        @"\bBodylessWitnes[s]\b|\bLegacyRo[w]\b|\bBuiltinForma[t]\b|\bFormattin[g]Rows\b|\bForma[t](?:Buffer|Finish|Segment)\b";
 
     // PLAN G609 (InterfaceEnumerationsStayAtTheirSites): the compiler's cold interface enumerations, by top-level type and method.
     private const string InterfaceEnumerationSites = "DeclarationContainerKoto.TryParsePropertyOrFunction=1;DeclarationContainerKoto.WriteAsBlockItem=2;" +
@@ -157,7 +158,7 @@ public class ArchitectureRulesTest
     // The R7-R9 plan's §10.2 item 3 (R8-X1): the same for R8's deleted components, the project file included (it lists every embedded
     // template).
     [InlineData("Source references to R8's deleted components", "src", "*.cs", DeletedByR8 + "|" + DeletedByR8InSources, 0)]
-    [InlineData("Project references to R8's deleted components", "src/Kimi", "*.csproj", DeletedByR8, 0)]
+    [InlineData("Project references to R8's deleted components", "src/Kimi", "*.csproj", DeletedByR8 + "|" + DeletedByR8InSources, 0)]
     [InlineData("Test references to R8's deleted components", "tests", "*.cs", DeletedByR8, 0)]
     // R7-I2 (RP6): a slot frame is private to InferCtxt (the type system admits no unlogged write); SlotSolution's trial copies of
     // its frame fall to 0 with part c.
