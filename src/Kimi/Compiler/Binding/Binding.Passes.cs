@@ -20,10 +20,10 @@ namespace Kimi.Compiler;
 // - Invariants: one counter value per run; a restart starts a new run of every pass, never a new Bind (StartRuns runs once per Bind,
 //   so a second run cannot ask again and the runs end); a step walks the running pass's modules, in their order, and writes its part;
 //   between Binds, and after a throw, the running pass is the program pass with Binding's own part, and a reader outside a pass reads
-//   the views, never a field a pass writes; the pass that binds the library publishes its module at its end in every mode and sets
-//   the library's publication version (PublishLibrary, RB1) and the library's size (LibraryLayer.Size); a library declaration's Origin
-//   requirement work is never an edge source in the program pass (its Pass is the library pass's requirement call, which
-//   CollectRequirementEdges compares with the running pass's).
+//   the views, never a field a pass writes; the library pass runs Final whatever the Bind's mode (PLAN G949 S1-1, B2: no library fact
+//   is a Provisional pass's), so its Check publishes the library module, and its end sets the library's publication version (RB1)
+//   and the library's size (LibraryLayer.Size); a library declaration's Origin requirement work is never an edge source in the
+//   program pass (its Pass is the library pass's requirement call, which CollectRequirementEdges compares with the running pass's).
 // - Prohibitions: no step body here; no flag or mode steering a step; no second copy of a step for the library; no consumer
 //   composing parts.
 public sealed partial class Binding
@@ -129,15 +129,16 @@ public sealed partial class Binding
         this.ResetInferenceMetrics();
     }
 
-    // The runs: each runs every pass in order, the library pass, then the program pass; a pass whose declarations ask for a rerun ends
-    // its run, and the next run starts with the library pass again (until S1-1 freezes the library).
+    // The runs: each runs every pass in order, the library pass, Final whatever the Bind's mode (no Provisional answer on a library
+    // object; a Provisional Bind's program pass reads Final library facts), then the program pass; a pass whose declarations ask for a
+    // rerun ends its run, and the next run starts with the library pass again (until S1-1 freezes the library).
     private void Run(BindingMode mode)
     {
         do
         {
             this.BeginRun();
         }
-        while (!(this.RunPass(this.LibraryPass, mode) && this.RunPass(this.ProgramPass, mode)));
+        while (!(this.RunPass(this.LibraryPass, BindingMode.Final) && this.RunPass(this.ProgramPass, mode)));
     }
 
     // An edit's revocation of the latest Bind (Invalidate): each pass's facts discarded as its next run would discard them, the
@@ -165,17 +166,17 @@ public sealed partial class Binding
         this.BindBodies();
         this.ValidateBoundDeclarations(mode);
         this.Check(mode);
-        if (pass.Library is { } library)
+        if (pass.Library is not null)
         {
             // The library module's place in the pass's set, never which pass runs (RB1): the facts a later pass would otherwise form
             // lazily on a library object completed (PLAN G949 S1-1, B1: the bound references' effect bounds, the scopes' view serials,
-            // the local regions' sources, each its owner's step over the pass's own stores), its publication at its pass's end, and the
-            // library's size, the pass's table counts before the program pass empties its per-pass tables (O8 (a)): the layer's part's
-            // nodes, not the composed view's.
+            // the local regions' sources, each its owner's step over the pass's own stores), the version of its publication (its
+            // Check's, Final), and the library's size, the pass's table counts before the program pass empties its per-pass tables
+            // (O8 (a)): the layer's part's nodes, not the composed view's.
             this.CompleteBoundEffectBounds();
             this.SettleViewSerials();
             this.CompleteLocalRegions();
-            this.PublishLibrary(library, mode);
+            this.libraryVersion = this.storageVersion;
             this.Library.Layer.Size = this.TableCounts with { Nodes = this.nodes.Count };
         }
 

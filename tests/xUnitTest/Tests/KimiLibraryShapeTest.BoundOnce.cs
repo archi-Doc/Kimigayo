@@ -1,6 +1,7 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using System.Reflection;
+using System.Text;
 using Kimi.Compiler;
 using Kimi.Compiler.Mir;
 using Kimi.Compiler.Parsing;
@@ -28,6 +29,42 @@ public partial class KimiLibraryShapeTest
         var second = c.Bind();
         Assert.Equal(first, second);
         Assert.DoesNotContain(c.Binding.Semantics.BoundNodes, x => ReferenceEquals(x.Kotonoha, c.Library.Kotonoha));
+    }
+
+    // c4/c15 (PLAN G949 S1-1, B2; s11-design 1.2 "Mode", E2): the library pass runs Final whatever the Bind's mode, so no library fact S1-1
+    // freezes is a Provisional pass's. After a Provisional first Bind of Hello the layer's part holds a Final first Bind's counts and
+    // obligations, and the Bind's Result composes them with the program part's Provisional counts (c15's declared Provisional
+    // difference: before B2 the layer's counts were the Provisional pass's). The library pass's publication is the library module's
+    // (LibraryVersion), never the program's, so the program's modules are published after the Provisional Bind (PublishHir) and their
+    // MIR is a Final Bind's.
+    [Fact]
+    public void AProvisionalBindComposesTheLibrarysFinalCounts()
+    {
+        var (final, provisional) = (Hello(BindingMode.Final), Hello(BindingMode.Provisional));
+        var layer = provisional.Library.Layer.Part;
+        Assert.Equal(final.Library.Layer.Part.Counts, layer.Counts);
+        Assert.Equal(final.Library.Layer.Part.Obligations.Select(static x => (x.Kind, x.Use.SyntaxId, x.Deadline)), layer.Obligations.Select(static x => (x.Kind, x.Use.SyntaxId, x.Deadline)));
+        var program = ((Binding.PassPart)typeof(Binding).GetField("programPart", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(provisional.Binding)!).Counts;
+        var (resolved, unresolved, invalid) = (layer.Counts.ResolvedCount + program.ResolvedCount, layer.Counts.UnresolvedCount + program.UnresolvedCount, layer.Counts.InvalidCount + program.InvalidCount);
+        Assert.Equal(new BindingResult(BindingMode.Provisional, resolved, unresolved, invalid), provisional.Binding.Result);
+        Assert.Equal(ProgramMir(final), ProgramMir(provisional));
+
+        static Compilation Hello(BindingMode mode)
+        {
+            var c = Compilation.CreateForTest();
+            Assert.True(c.Prepare(WindowsProfile.Target));
+            c.Kotonoha.AddSource(new SourceDocument("Program.kimi", Repository.ReadText("docs/examples/Hello/Hello.kimi".Split('/'))));
+            Assert.Equal(mode, c.Binding.Bind(mode).Mode);
+            return c;
+        }
+
+        static string ProgramMir(Compilation c)
+        {
+            var mir = new StringBuilder();
+            MirDump.Write(c.ConstructMir(), 0, mir);
+            Assert.NotEqual(0, mir.Length);
+            return mir.ToString();
+        }
     }
 
     // PLAN G949 S1-r1b (r1b-5; review-s1r1 Re-check 3, RC-a): the import declarations are a part of each pass (PassPart), read after a
