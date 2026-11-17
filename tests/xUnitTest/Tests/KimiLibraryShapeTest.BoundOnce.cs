@@ -114,6 +114,18 @@ public partial class KimiLibraryShapeTest
         Assert.True(bases.Length == 0, build + string.Join(", ", bases));
     }
 
+    // PLAN G949 S1-r1b (commit 9's premise; review-s1r1b Part 3, F's ruling 179): the documents' unnamed aliases are a per-pass map
+    // (PassPart.AliasesByDocument), and the library declares no unnamed alias, so the library pass's PrepareAliases prunes no entry a
+    // program document needs and the layer's map stays empty. A tripwire, true today: the unit that gives the library its first unnamed
+    // alias checks that each pass keeps and prunes its own documents' entries only.
+    [Fact]
+    public void TheLibraryDeclaresNoUnnamedAlias()
+    {
+        var c = Bound(string.Empty);
+        Assert.Empty(KotoTree.Walk(c.Library.Kotonoha.RootKoto).OfType<AliasKoto>().Where(static x => x.Name is null).Select(static x => Line(x)));
+        Assert.Empty(c.Library.Layer.Part.AliasesByDocument);
+    }
+
     // The empty program's synthesized library nodes after its first Analyze, by id (c17's reference).
     private static readonly Lazy<string[]> EmptyProgramSynthesized = new(() => SynthesizedLines(Analyzed(string.Empty)));
 
