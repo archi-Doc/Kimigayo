@@ -19,8 +19,9 @@
 // and a PropertyWitness item's key signature (StorageSignature; DECISIONS R5-M141, the owner's R5-M142); a borrowing callee's owner Value
 // call also targets its operand's glue, after the body (DECISIONS R5-M102).
 // Roots (K 4.4): each body of a root module whose definition does not instantiate, a module's top-level statements included.
-// Edges (K 4.5): one template per body (InstanceCollector.Templates.cs: the library segment's kept while its library version holds, PLAN
-// G950) lists its sites that may carry a target (Fn, Requirement and Value calls and the intrinsics the Target column names, a Virtual
+// Edges (K 4.5): one template per body (InstanceCollector.Templates.cs: in the library store, kept while its library segment holds, PLAN
+// G950, for a body A2's library store holds, MirDropTable.LibraryHolds, which is stable within a version; else in the program store)
+// lists its sites that may carry a target (Fn, Requirement and Value calls and the intrinsics the Target column names, a Virtual
 // call none, X5; a Closure environment, an erasure and a function item constant; a Drop), each with its runtime bit from one MirReach
 // walk without CheckTarget edges. An item's targets are
 // InstanceCollector.Edges.cs's: replaying a body item's template resolves each site's row under the item's representative, a callee's body
@@ -87,9 +88,9 @@
 // run of a version a clean run collected is a no-op; a body with a finding (MirBody.HasFinding) is no template, root or item (DECISIONS
 // R5-M183: the Templates walk, the root loop and Admit are the only ways a body enters, so what rests on it has no record); a warm run of a
 // program as large as an earlier one allocates nothing.
-// Must not: read syntax, HIR or plans; depend on the MIR analyses' problems (it reads A2's table only: DropTargets, and Holds for its
-// round) or edit their driver; decide acceptance or publish its records (Compilation does); prove anything on an erased value; add an
-// IntrinsicId or BindingFailure (PD21).
+// Must not: read syntax, HIR or plans; depend on the MIR analyses' problems (it reads A2's table only: DropTargets, Holds for its round
+// and LibraryHolds for a body's template store) or edit their driver; decide acceptance or publish its records (Compilation does); prove
+// anything on an erased value; add an IntrinsicId or BindingFailure (PD21).
 
 using Kimi.Compiler.Mir;
 
@@ -140,8 +141,8 @@ internal sealed partial class InstanceCollector
     internal int RunCount { get; private set; }
 
     /// <summary>Gets the bodies the runs of the latest run's version templated, each once, a body with a finding (an empty template)
-    /// included: every body where they built the library segment's templates, the program segment's where they kept them (PLAN G950's row
-    /// g8).</summary>
+    /// included: every body its store did not hold, so all of them where the library store was cleared and the bodies outside the kept
+    /// library store otherwise (PLAN G950's row g8).</summary>
     internal int Templated { get; private set; }
 
     /// <summary>Collects the checked set of a program version unless a clean run already did; a run that missed (Round) leaves a set of
@@ -160,7 +161,7 @@ internal sealed partial class InstanceCollector
 
         if (program.Version != this.version)
         {
-            (this.Work, this.RunCount, this.Templated, this.version, this.extent) = (0, 0, 0, program.Version, program.LibraryCount);
+            (this.Work, this.RunCount, this.Templated, this.version, this.extent) = (0, 0, 0, program.Version, 0);
             this.programTemplates.Clear(); // Kept across the version's runs (Round).
         }
 

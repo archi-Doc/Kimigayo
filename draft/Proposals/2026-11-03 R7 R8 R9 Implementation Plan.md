@@ -34,7 +34,7 @@ re-measures before relying on a count.
 収束しなかった過去の原因（持ち主が 2 つある規則、文字列検索による漏れ、設計文面での選択、記録選択への完璧主義、1 時間を超える単位）を
 手順で塞ぐ（§8）。R8 は Array → Dictionary → 文字列と組み込み witness → Text/Buffer/Window/Writer → 補間アダプターの順に Kimigayo へ移し、
 `LegacyRuntimeHelpers`（約 1,850 行）、`.ll.in` の約 1,100 行、`CompilerFunctionKind`（76）、`KimiDeclarationId` の大半、`Layout` のハンドル行を
-消し、`IntrinsicId` を 28 にする。R9 は構文の残り（項目ループ、型文法の入口、属性文脈）、Documentation と ツールチェーンの切り出し、
+消し、`IntrinsicId` を 27 にする。R9 は構文の残り（項目ループ、型文法の入口、属性文脈）、Documentation と ツールチェーンの切り出し、
 IMPL §20.8.3 のマニフェスト、最終文書を行う。
 
 **体制。** 前段（構文・Binding）が R7 の本線、中段（HIR・MIR 解析）が切り替え後の解析欠陥・R9・R7 の HIR 側、後段（コード生成・ライブラリ）が
@@ -44,7 +44,7 @@ R8 の本線。Coordinator が dev への取り込み（window）、PLAN と DEC
 
 **出口の計測。** R7：構造の行（Koto キーの表 0、転送プロパティ 0、合成 Koto 0、`BindingFailure` 0、`[Transitional("R7")]` 0、能力行
 EnclosingInstance/StorageNesting 消滅）と、Bind の cold/warm 時間・割り当て・保持メモリが開始時以下、規模試験が線形、受理の移動が
-名前付きの一覧だけ。R8：`IntrinsicId` 28、`[Transitional("R8")]` 0、O2 コーパス全カーネルが揺れの範囲、割り当て回数不変、フィクスチャ
+名前付きの一覧だけ。R8：`IntrinsicId` 27、`[Transitional("R8")]` 0、O2 コーパス全カーネルが揺れの範囲、割り当て回数不変、フィクスチャ
 一致、Bind の増分が閾値内（超えればライブラリの共有 L1）。R9：移設が挙動不変、構造上限の免除がなく、依存規則と文書が現状を記す。
 
 **オーナーの判断事項**（英文の詳細は §2.2 と §11）。2026-11-03 に RQ1〜RQ17 を推奨どおり回答済みで、改訂 5 と 6 が RQ1、RQ6、RQ10 の一部を
@@ -79,7 +79,7 @@ EnclosingInstance/StorageNesting 消滅）と、Bind の cold/warm 時間・割�
 | Stage | ARCH ledger scope | What moved in or out since PLAN10 |
 | --- | --- | --- |
 | R7 | Binding consolidation: resolver, inference context, Contract solver (premise supply already `Binding.ContractSolver`, BU-29), CallPlan pipeline, Problem records | Out: every Binding fact A5 and R5 read, published in R7's target shape (R4-M35 OD2): `TyCtxt.OriginRows`, `Retains`, `RawStep`, `ArgumentKinds`, `ComponentSummaries`, `SourceStates`, `VTableDef`, `Witness`, `Comparison`, `Instantiates`, `Erase`. In: Binding's reads of the 36 Koto forwarding properties and the properties (R5-M9; about 1,150 reads: `.BoundSymbol` 475, `.BoundType` 408, `.BindingState` 204, `.ConversionBinding` 37, `.BoundCall` 22), the synthetic Kotos (R5-M9; 13 Binding files), `TyCtxt.StorageSubst` (R5-M36), `InstantiateRequirementCall` and `RequirementImplementation` (the R5 and R6 plan's Q8, G186), the legacy comparison composition (R5-M68), `EnclosingInstance` (G149, R5-M43, R5-M146, R5-M157), `StorageNesting` (G128, the R5 and R6 plan's PD30, BU-12), G157 (5) and (16), R1e, `MirDefKey` by declaration (R3-6), the three declaration-table views still waiting for readers (R2b-D3: `ImplTable`, `EffectBoundTable`, `AvailableBounds`; `VTableDef` and `UniversalRelations` exist), case enumeration in `PairBinder`, the Koto-keyed tables (ARCH code rules: 107 sites in 31 Binding files), the root helpers' Binding reads (PLAN10 §9: `ReferenceTypes` 29 files, `ElementAccess` 17, `ScalarTypes` 14, `ComparisonTypes` 5, `FormattingTypes` 4, `DefaultParameters` 2, `SlotTypes`, `SharedReadTypes`, `StrictBestCandidate`), and BU's open families (§5.1's mapping) |
-| R8 | Library algorithms in Kimigayo, about 28 intrinsics | In: `LegacyRuntimeHelpers` (1,850 lines; 20 of the 29 `[Transitional("R8")]` declarations at the base, 28 in all at R6-gen's record), `Layout`'s handle rows (R5-M19), `MonoKind.LegacyRow` (R5-M121), `KimiLibrary.DictionaryStorage` and `TyCtxt.DictionaryStorage` (R5-M28, R5-M124), the `BodylessWitness` capability row (R5-M146), `BuiltinForm.Capacity` and the four temporary intrinsics (R3-9, R3-10, R5-M137: `IntrinsicId` 32 of 34, 28 after R8), `StringFormatKind`/`WriterKind`/`FormatBound`/`FormatEstimate` (R5-M128, R5-M130, R5-M131), G150, G157 (2) and (31), G337 O2/O3 (after R7, the owner's 「(b) 先送り」), §16-8 |
+| R8 | Library algorithms in Kimigayo, 27 intrinsics | In: `LegacyRuntimeHelpers` (1,850 lines; 20 of the 29 `[Transitional("R8")]` declarations at the base, 28 in all at R6-gen's record), `Layout`'s handle rows (R5-M19), `MonoKind.LegacyRow` (R5-M121), `KimiLibrary.DictionaryStorage` and `TyCtxt.DictionaryStorage` (R5-M28, R5-M124), the `BodylessWitness` capability row (R5-M146), `BuiltinForm.Capacity` and the four temporary intrinsics (R3-9, R3-10, R5-M137: `IntrinsicId` 32 of 34, 27 after R8, revision 30), `StringFormatKind`/`WriterKind`/`FormatBound`/`FormatEstimate` (R5-M128, R5-M130, R5-M131), G150, G157 (2) and (31), G337 O2/O3 (after R7, the owner's 「(b) 先送り」), §16-8 |
 | R9 | Remaining front-end cleanup, Documentation and toolchain moved out, final documentation | In: the toolchain, publication and profile files in `C/Emission` (1,364 lines; `WindowsProfile`'s target half already in Core, R5-M174), their structure-limit exemption (ARCH), IMPL §20.8.3 (`NativeToolchain.ReadExternalDeclarations` re-parses IR text), G345, PLAN10 §9's front-end rows (item loops, type grammar entries, the attribute context, keyword sets, `CompilerHelper`), the final records |
 
 ### 1.2 Sizes at the base (lines)
@@ -874,8 +874,9 @@ a session asks the owner and closed with the verbatim answer and where it is rec
 2. O2 corpus: every kernel within variance against R8's start and the `49cb2b5d` chain (address-matched control where needed); O0 recorded;
    the allocation-count tests and audits unchanged; warm 0 B; SPEC §22.10.5's bounds and `Utf8ConsoleTest`'s counts.
 3. `IntrinsicId` 27; no `[Transitional("R8")]`; `LegacyRuntimeHelpers*`, `Layout`'s handle rows, `KimiLibrary.DictionaryStorage`,
-   `TyCtxt.DictionaryStorage`, `MonoKind.LegacyRow`, `BodylessWitness`, `CompilerFunctionKind`, `IntrinsicDisposition` gone; `.ll.in` Buffer
-   and Format gone (`formatInteger128`'s two defines are `FormatInteger128Runtime.ll.in`'s since R8-S2b2; RQ16), Float reduced to its entry; each
+   `TyCtxt.DictionaryStorage`, `MonoKind.LegacyRow`, `BodylessWitness`, `CompilerFunctionKind`, `IntrinsicDisposition.Of` and `Effect`
+   gone (RP20; the record stays as `BindingSymbol.Definition`'s type, DECISIONS R8-M45); `.ll.in` Buffer and Format gone
+   (`formatInteger128`'s two defines are `FormatInteger128Runtime.ll.in`'s since R8-S2b2; RQ16), Float reduced to its entry; each
    body's A4 summary agrees with its published row.
 4. Bind and MIR build cost with the grown library recorded; L1 adopted or declined under RQ13.
 5. SPEC §22.1, §15.7, §6.7 and IMPL §21.1.3, §21.3.4 texts landed (SP2, SP3, R1a); SP1 absorbed without text (revision 88); SETTLED's entry; LIBRARY, STATUS, README, STYLE; `r8-exit-areas.md`;
@@ -926,7 +927,7 @@ See §2.2 for the questions. The reasoning behind the recommendations that are n
 | Document | Change |
 | --- | --- |
 | DECISIONS | A new section "R7, R8 and R9 (adopted …)" with the OQ answers, RP1–RP20 (those not waiting for their first unit), the arrangement (RQ1) superseding R4-M119's and R5-M113's session names, and RQ7's amendment of R5-M7 |
-| COMPILER_ARCHITECTURE | The ledger's R7, R8 and R9 rows (state Active with this plan as the plan; the exit gates by reference); "Rules during the migration": the hold record moves to the board (RQ7); the vocabulary table's R8 line (`IntrinsicId` 28) and the `BindingFailure` row's fate (RQ9); the Syntax restriction's R7 clause unchanged |
+| COMPILER_ARCHITECTURE | The ledger's R7, R8 and R9 rows (state Active with this plan as the plan; the exit gates by reference); "Rules during the migration": the hold record moves to the board (RQ7); the vocabulary table's R8 line (`IntrinsicId` 28 at adoption, 27 since revision 30) and the `BindingFailure` row's fate (RQ9); the Syntax restriction's R7 clause unchanged |
 | PLAN | §3's position: the three sessions, their lanes and the window rule; the R7, R8, R9 paragraphs with their first units; the open-issue rows that §5.1 absorbs gain their R7 unit in the Owner column; §6 next actions; within 300 lines (the R4, R5 and BU paragraphs condensed into the session paragraphs, their history to PLAN_HISTORY on the owner's instruction) |
 | INTEGRATED | This plan as 一部取り込み (a working plan; no text frozen); each SPEC revision of §5 registered when it lands |
 | VERIFICATION | No change until a unit changes a procedure (the window's heavy set is the existing Session and bases) |
@@ -1067,3 +1068,4 @@ frozen.
 | 86 | 2026-11-15 | The owner's timing-slot decision (K's session), verbatim 「計時スロットの改善策 1と2と3の適用をお願いします。」, adopting K's options 1-3 of four (option 4, builds during a slot on separate cores, not adopted) | RP8's row, §7.3 and §7.4: a timed unit is measured in its window's one slot on the window's merge, alone only beyond a bound, separate units sharing one slot's A and A′; W-228 opened before the remaining slots (DECISIONS R7-M36) |
 | 87 | 2026-11-16 | The owner's further timing-slot decision (K's session), verbatim 「O0 の記録を外す案も適用してください」, on K's proposal after W-228's slot | RP8's row: a window's slot records no O0 (about 34 minutes per B instead of 45); O0 stays recorded at the stage exit (DECISIONS R7-M36's amendment) |
 | 88 | 2026-11-17 | R8-SP1's census (the Back's D-750; `back\notes\r8-next\sp1.md`) | §5.2's SP1-SP4 row: SP1 is absorbed with no SPEC or IMPL text (each section already matches what landed); W2's row states §22.10.5's closed list as the bounds (R8-M21); §10.2 item 5 names the texts that landed (SP2, SP3, R1a). |
+| 90 | 2026-11-18 | R8-X1's early census (the Back's D-752 item 4; `back\notes\r8-next\x1-early.md` E2; R8-I1's review N2) | §10.2 item 3 names what R8-M45 deleted, `IntrinsicDisposition.Of` and `Effect`, as RP20 does, not the record, which stays as `BindingSymbol.Definition`'s type; the owner's review of exceptions at X1 still lists it (E2). Revision 30's `IntrinsicId` 27 replaces the 28 it left in §0's summary (R8's plan and exit measure), §1.1's R8 row and §12's COMPILER_ARCHITECTURE row (28 at adoption, 27 since revision 30); RQ9 and RP18 stay as approved. |

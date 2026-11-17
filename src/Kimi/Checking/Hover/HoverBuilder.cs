@@ -604,7 +604,7 @@ internal sealed partial class HoverBuilder(SemanticQuery query)
         parts[1] = this.OriginIdentity(type.Origin);
         parts[2] = this.LengthIdentity(type.LengthExpression);
         // Hidden storage still depends on the complete static context, even when the public signature is unchanged.
-        parts[3] = type.ClosureContext is { } context ? this.SubstIdentity(context) : HoverKey.Missing;
+        parts[3] = type.InstanceContext is { } context ? this.SubstIdentity(context) : HoverKey.Missing;
         var index = 4;
         foreach (var component in type.Components)
         {
