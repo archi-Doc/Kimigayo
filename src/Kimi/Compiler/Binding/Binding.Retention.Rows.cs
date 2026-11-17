@@ -25,6 +25,7 @@ public sealed partial class Binding
     private readonly Dictionary<(BoundType Type, RetentionKind Kind), int> retentionHiddenSeen = new(); // HiddenKind's walk, per input: Enters' depths.
     private readonly List<BoundType> retentionArguments = new(); // The contract's instantiated inputs (Filled), per computation.
     private readonly Dictionary<(BoundType Position, int Input, bool Own), Fill> retentionFills = new(); // Filled's answers, per computation.
+    private readonly Dictionary<BoundType, bool> retentionHandWrites = new(ReferenceEqualityComparer.Instance); // HandWrites' answers, per computation.
     private readonly HashSet<(HoldAt At, bool Lent, int Storage)> retentionMet = new();
     private readonly Dictionary<int, (int Start, int Count)> retentionClosures = new();
     private readonly List<int> retentionClosureNodes = new();
@@ -177,6 +178,7 @@ public sealed partial class Binding
         this.retentionCallee = callee;
         this.retentionArguments.Clear();
         this.retentionFills.Clear();
+        this.retentionHandWrites.Clear();
         foreach (var input in inputs)
         {
             this.retentionArguments.Add(input);
@@ -853,8 +855,8 @@ public sealed partial class Binding
     // OutputRetention.Handed (SPEC 15.6.4 "or where a callable the instantiated contract hands the callee's body ... through its result
     // or its writes"; PLAN G935, C-370, the owner's O-398 (a)): each kept Type the output's walk met (storageKept) that a callable the
     // callee's declaration hands its body (the list Filled reads in a kept binding: retentionOwnHanded, retentionOwnCallables) writes, by
-    // the one test Filled's writes take (Writes), erased as TyCtxt.EntryType names it; input-agnostic. One Writes walk per (kept Type,
-    // callable) until one writes it; none where the contract hands no callable; an array only where one does.
+    // the one test Filled's writes take (Writes), erased as TyCtxt.EntryType names it; input-agnostic. HandWrites decides each kept Type
+    // once per computation; no walk where the contract hands no callable; an array only where one writes a kept Type.
     private BoundType[] HandedTypes()
     {
         var written = this.retentionHandedTypes;
@@ -871,18 +873,23 @@ public sealed partial class Binding
     }
 
     // Whether a callable the callee's declaration hands its body (retentionOwnHanded, retentionOwnCallables) writes a kept Type (Writes):
-    // the one test of OutputRetention.Handed (HandedTypes) and of the walk's Routed state (Routes, PLAN G964).
+    // the one test of OutputRetention.Handed (HandedTypes) and of the walk's Routed state (Routes, PLAN G964). A function of the kept
+    // Type and the contract's declared handed lists alone, so each kept Type is decided once per computation (retentionHandWrites,
+    // cleared with retentionFills where the computation begins), however many hidden layers and outputs ask it.
     private bool HandWrites(BoundType kept)
     {
-        for (var k = 0; HandedAt(this.retentionOwnHanded, this.retentionOwnCallables, k, out var callable); k++)
+        if (this.retentionHandWrites.TryGetValue(kept, out var writes))
         {
-            if (callable is not null && this.Writes(callable, kept))
-            {
-                return true;
-            }
+            return writes;
         }
 
-        return false;
+        for (var k = 0; !writes && HandedAt(this.retentionOwnHanded, this.retentionOwnCallables, k, out var callable); k++)
+        {
+            writes = callable is not null && this.Writes(callable, kept);
+        }
+
+        this.retentionHandWrites[kept] = writes;
+        return writes;
     }
 
     // Whether a position's closure (marked `stamp`) reaches every layer of a source's path (RetentionSource.Path: the layers the premise
