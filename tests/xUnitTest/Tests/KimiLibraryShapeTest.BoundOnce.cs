@@ -46,6 +46,52 @@ public partial class KimiLibraryShapeTest
         }
     }
 
+    // PLAN G949 S1-r1b (s1r1-design 8.1, v9, at the layer below MIR's holding check: no existing row observes a library slot's keepers,
+    // r1b/plan.md 11.3): a library slot's keepers are current after each Bind. A slot's list is found by the parts' one find (the
+    // library layer's part first) and is current when its Pass is the RequirementCall of the part that holds it, the requirement
+    // counter's value at that part's latest call. On the trial split without the parts the program pass's calls advanced the one
+    // counter, and every read of a library slot's keepers after the Bind was stale (357,327 reads over 28 classes). The library keeps
+    // 59 slots today (BorrowingIterator's `source` among them); the same slots are current after a second Bind.
+    [Fact]
+    public void ALibrarySlotsKeepersAreCurrentAfterEachBind()
+    {
+        var c = Compilation.CreateForTest();
+        Assert.True(c.Prepare(WindowsProfile.Target));
+        c.Kotonoha.AddSource(new SourceDocument("Program.kimi", Repository.ReadText("docs/examples/Hello/Hello.kimi".Split('/'))));
+        var own = (Binding.PassPart)typeof(Binding).GetField("programPart", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(c.Binding)!;
+        var layer = c.Library.Layer.Part;
+        var first = -1;
+        for (var bind = 0; bind < 2; bind++)
+        {
+            Assert.True(c.Bind().IsComplete);
+            var kept = own.Keepers.Concat(layer.Keepers)
+                .Where(x => x.Value.Count != 0 && x.Key.Origin.Binder is { } binder && ReferenceEquals(binder.Kotonoha, c.Library.Kotonoha)).ToArray();
+            Assert.NotEmpty(kept);
+            foreach (var (slot, list) in kept)
+            {
+                var holder = Binding.PassPart.Find(layer.Keepers, own.Keepers, slot, out var found);
+                Assert.Same(list, found);
+                Assert.Equal(ReferenceEquals(holder, layer.Keepers) ? layer.RequirementCall : own.RequirementCall, list.Pass);
+            }
+
+            first = first < 0 ? kept.Length : first;
+            Assert.Equal(first, kept.Length);
+        }
+    }
+
+    // PLAN G949 S1-r1b (s1r1-design 8.2, v10): the Contract shapes are a part of each pass, and RecursiveContracts reads every pass's
+    // shapes after a Bind. No library Contract is recursive today (SPEC 8.3.3: none of the library's 24 Contracts constrains an
+    // associated Type of its own to itself), so no program can show a lost library shape: on the trial split without the part, 54
+    // walks after the Bind saw no library shape and no answer moved. The unit that declares the first recursive library Contract
+    // removes this Fact and adds the RecursiveBase row over it (RecursiveContractTest.AProjectionHasARecursiveBase).
+    [Fact]
+    public void TheLibraryDeclaresNoRecursiveContract()
+    {
+        var c = Bound(string.Empty);
+        var recursive = (List<BindingSymbol>)typeof(Binding).GetMethod("RecursiveContracts", BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(c.Binding, null)!;
+        Assert.Empty(recursive.Select(static x => x.Name));
+    }
+
     // The empty program's synthesized library nodes after its first Analyze, by id (c17's reference).
     private static readonly Lazy<string[]> EmptyProgramSynthesized = new(() => SynthesizedLines(Analyzed(string.Empty)));
 
