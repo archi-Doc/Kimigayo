@@ -196,9 +196,9 @@ public sealed partial class Binding
         return type;
     }
 
-    // SPEC 23.1.2, 10.5.1 (DECISIONS D3 with rule W; G812 ruling 124): a value call on the split that fails in every case, its run
-    // failing at a waiting named Call's own selection at the Type the run formed (waitingSelectionFailure), rests on that Call, whose
-    // failure no expectation of the call can remove; so that Call, deferred to the call, is completed as a call with no outer
+    // SPEC 23.1.2, 10.5.1 (DECISIONS D3 with rule W; G812 rulings 124, 126): a value call on the split that fails in every case, every
+    // run failing at the same waiting named Call's own selection at the Type it formed (waitingSelectionFailure), rests on that Call,
+    // whose failure no expectation of the call can remove; so that Call, deferred to the call, is completed as a call with no outer
     // expectation, outside the probes under which it would defer again and outside the call's consultation, and its own selection's
     // failure is the record. Every other deferred call stays completed by its outer call (CompleteUnselectedPart): what only the
     // missing expectation causes is dependent.

@@ -11,9 +11,12 @@ public sealed partial class Binding
     private readonly Dictionary<Koto, (int Start, int Count, int Position, AcquisitionMode Mode, AcquisitionMode Other)> callableSelectionFailures = new(ReferenceEqualityComparer.Instance);
     private readonly List<CallableCandidate> callableSelectionParties = [];
 
-    // DECISIONS D3 with rule W (G812 rulings 123, 124; temporary with the search): the part awaiting its call whose own selection failed
-    // the last run of a value call's split check (WaitingFails); a call that fails in every combination there rests on it, and only it
-    // of the call's deferred parts is completed as a call (CompleteFailedWaitingCall).
+    // DECISIONS D3 with rule W (G812 rulings 123, 124, 126; temporary with the search): of a value call's split check, the part awaiting
+    // its call whose own selection failed the current run (runSelectionFailure, WaitingFails), and the one at which every failing run
+    // failed (waitingSelectionFailure, FoldRunFailure: the value call itself before the first run, null from the first run that failed
+    // elsewhere or at another part). A call that fails in every combination at such a part rests on it, and only it of the call's
+    // deferred parts is completed as a call (CompleteFailedWaitingCall).
+    private Koto? runSelectionFailure;
     private Koto? waitingSelectionFailure;
 
     // SPEC 8.2, 8.4: a Type as a scope's premises make it, its associated projections normalized and its Type-identity premises substituted.
@@ -187,12 +190,25 @@ public sealed partial class Binding
         }
 
         var classBase = this.positionClasses.Count;
+        this.waitingSelectionFailure = call;
         var rests = this.RestsOnSplitCases(
             mark,
             (call, scope, item: this.CalledThrough(callee, scope), expected),
-            static (binding, check) => binding.ItemCallFails(check.call, check.scope, check.item, check.expected));
+            static (binding, check) => binding.FoldRunFailure(check.call, binding.ItemCallFails(check.call, check.scope, check.item, check.expected)));
         this.positionClasses.RemoveRange(classBase, this.positionClasses.Count - classBase);
         return rests;
+    }
+
+    // G812 ruling 126: a failing run keeps the check's waiting part (waitingSelectionFailure) only where it failed at that same part.
+    private bool FoldRunFailure(InvocationKoto call, bool fails)
+    {
+        if (fails)
+        {
+            var run = this.runSelectionFailure;
+            this.waitingSelectionFailure = ReferenceEquals(this.waitingSelectionFailure, call) || ReferenceEquals(this.waitingSelectionFailure, run) ? run : null;
+        }
+
+        return fails;
     }
 
     // SPEC 10.1.1, 10.5.1, 12.5.2: whether a value call fails against a Function Item's signature, probed as against a Callable
@@ -208,7 +224,7 @@ public sealed partial class Binding
     // (WaitingPartFails; rulings 118, 122, 123).
     private bool ItemCallFails(InvocationKoto call, BindingScope scope, BoundType item, BoundType? expected)
     {
-        this.waitingSelectionFailure = null;
+        this.runSelectionFailure = null;
         if (item is not { Kind: BoundTypeKind.FunctionItem, Symbol: { Type: { } result, Declaration: FunctionKoto function } })
         {
             return false;
@@ -273,16 +289,16 @@ public sealed partial class Binding
     }
 
     // One waiting part at its position's Type: a contextual Case by FitCaseAt, whose own waiting parts join the judged ones below it;
-    // a named Call by its own selection there (ProbeSelection): no candidate or an ambiguous selection is its failure, at its
-    // position. Any other selection, or another part, waits for its call.
+    // a named Call by its own selection there, judged in full (ProbeSelectionFails: no candidate, an ambiguity or an unproven premise
+    // is its failure, at its position). Any other selection, or another part, waits for its call.
     private bool WaitingFails(in WaitingPart waiting, BindingScope scope)
     {
         var node = KotoHelper.UnwrapParentheses(waiting.Part);
         if (this.KindOf(node) != PartKind.Case)
         {
-            var fails = node is InvocationKoto nested && this.ProbeSelection(nested, scope, waiting.Type) is CallSelection.NoneApplicable or CallSelection.Ambiguous;
+            var fails = node is InvocationKoto nested && this.ProbeSelectionFails(nested, scope, waiting.Type);
             this.argumentMisfit = waiting.Path; // After the probe, whose own fits clear it.
-            this.waitingSelectionFailure = fails ? node : null;
+            this.runSelectionFailure = fails ? node : null;
             return fails;
         }
 

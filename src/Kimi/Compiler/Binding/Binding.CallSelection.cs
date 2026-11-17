@@ -105,17 +105,19 @@ public sealed partial class Binding
         return (evaluation, MeasureCandidates(candidates, self is not null || group.Scope.Owner is StructKoto or EnumKoto));
     }
 
-    // SPEC 10.1, 10.4, 10.5.1 (G812 rulings 122, 123): the selection of a named call awaiting its call, at the Type its call gives it,
-    // as a query that does not publish (BeginSelectionQuery): the evaluation BindCall makes (NewEvaluation, RentEvaluation,
-    // BindExplicitArguments, EvaluateSelection). A callee that names no function group, or explicit arguments it does not choose,
-    // select nothing to judge (Unproven).
-    private CallSelection ProbeSelection(InvocationKoto call, BindingScope scope, BoundType expected)
+    // SPEC 10.1, 10.4, 10.5.1, 8.3 (G812 rulings 122, 123, 126): whether a named call awaiting its call fails by its own selection at
+    // the Type its call gives it, judged in full as BindCall judges it, as a query that does not publish (BeginSelectionQuery): the
+    // evaluation BindCall makes (NewEvaluation, RentEvaluation, BindExplicitArguments, EvaluateSelection), failing where BindCall
+    // records the call's own failure: no candidate, an ambiguity, or a premise of the candidates not proven (Unproven: Constraints
+    // take part in applicability), but for one that rests on an unformed split (D3), where BindCall rests. A callee that names no
+    // function group, or explicit arguments it does not choose, select nothing to judge.
+    private bool ProbeSelectionFails(InvocationKoto call, BindingScope scope, BoundType expected)
     {
         var method = KotoHelper.UnwrapParentheses(call.Method);
         var callee = method is GenericsKoto { Identifier: { } identifier } ? identifier : method;
         if (callee.BoundSymbol is not { Kind: BindingSymbolKind.Function } group)
         {
-            return CallSelection.Unproven;
+            return false;
         }
 
         var candidates = this.GroupOf(callee, group);
@@ -124,7 +126,12 @@ public sealed partial class Binding
         this.RentEvaluation(ref evaluation, shape);
         try
         {
-            return this.BindExplicitArguments(ref evaluation, candidates) ? this.EvaluateSelection(ref evaluation, candidates).Kind : CallSelection.Unproven;
+            return this.BindExplicitArguments(ref evaluation, candidates) && this.EvaluateSelection(ref evaluation, candidates).Kind switch
+            {
+                CallSelection.NoneApplicable or CallSelection.Ambiguous => true,
+                CallSelection.Unproven => !evaluation.Unformed,
+                _ => false,
+            };
         }
         finally
         {
