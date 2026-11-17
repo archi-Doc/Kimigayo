@@ -9,10 +9,17 @@ namespace XunitTest;
 // fit's walk of the Type relation. The fit walks the relation once and reads each part's answer from that walk; an invariant part that
 // the relation meets reversed is walked once more in the fit's own orientation. Every row's records are those of a walk rooted at each
 // part, which the fit made before. The row whose result differs from its label is not here: the `var` limit's (veqiv, G492-a (iii)).
+// w4L4 (valid, rejected) is here with the open issue that changes its record, and r4aL (valid) with the located limit until PLAN G960.
 // A Function Type at an invariant position relates both ways (PLAN G900): rq1w, rq2a, rq2av and n1f are rejected as labelled.
 public partial class LocalOriginClauseTest
 {
     private const string Reader2 = "struct R2<T, U>\n    public let call: (T, U) -> i32\n    public init(call: (T, U) -> i32) => self.call = call@move\n\n";
+
+    // A Function Item whose per-call Origins `a`, `b` are only a meet's operands (SPEC 15.3.6: a meet on the right is never split).
+    private const string MeetOnly = "func m1(w: ref/i64 during (a and b)) -> i32\n    return 0\n";
+
+    // MeetOnly's operands related by clauses to `c`, which is at an input contravariant in its slot (SPEC 15.3.5) and a covariant input.
+    private const string MeetToInvariant = "struct Sink {a}\n    public let g: (ref/i64 during a) -> i32\nfunc m3(w: ref/i64 during (a and b), s: Sink during c, v: ref/i64 during c) -> i32\n    origin a outlives c\n    origin b outlives c\n    return 0\n";
 
     // Each row: its name, the program without `main`, and its records in order as `code@line:column label`, joined by `|`.
     public static TheoryData<string, string, string> UseSiteFitRows => new()
@@ -45,10 +52,10 @@ public partial class LocalOriginClauseTest
         { "e4a", "func f(p: ref/i64, q: ref/i64) -> (ref/i64 during p, ref/i64 during p)\n    var t = (p, p)\n    t = (q, t.0)\n    return t\n", "UnprovenOriginRelation_Kd@4:12 requires q outlives p, which is not proven" },
         // valid: the clause `a == c` holds for `x`'s Origin `p`.
         { "veqi", "func eqi(w: uniq/(ref/i64 during a), v: uniq/(ref/i64 during c)) -> i32\n    origin a == c\n    return 0\nfunc outer(p: ref/i64) -> i32\n    let x = p\n    let f: (uniq/(ref/i64 during x), uniq/(ref/i64 during p)) -> i32 = eqi\n    return 0\n", string.Empty },
-        // invalid: `q == p` is not proven. The record names the first failing bound, `p outlives q` (PLAN G913's Revision 2, the
-        // owner's O-348 (a): a conversion's comparison gives the variable a representative and the walk judges the members, as ob2i);
-        // `requires q == p` before it.
-        { "veqin", "func eqi(w: uniq/(ref/i64 during a), v: uniq/(ref/i64 during c)) -> i32\n    origin a == c\n    return 0\nfunc outer(p: ref/i64, q: ref/i64) -> i32\n    let x = q\n    let f: (uniq/(ref/i64 during x), uniq/(ref/i64 during p)) -> i32 = eqi\n    return 0\n", "UnprovenOriginContract_Kd@6:72 the 2nd parameter requires p outlives q, which is not proven" },
+        // invalid: `q == p` is not proven. A comparison's solve judges no bound (PLAN G492-a (iii)), so the record is the member's
+        // that the walk judges after it, at the invariant layer: `p == q` (G913 alone names the solve's first failing bound, `p
+        // outlives q`: the same record at the same place, record selection).
+        { "veqin", "func eqi(w: uniq/(ref/i64 during a), v: uniq/(ref/i64 during c)) -> i32\n    origin a == c\n    return 0\nfunc outer(p: ref/i64, q: ref/i64) -> i32\n    let x = q\n    let f: (uniq/(ref/i64 during x), uniq/(ref/i64 during p)) -> i32 = eqi\n    return 0\n", "UnprovenOriginContract_Kd@6:72 the 2nd parameter requires p == q, which is not proven" },
 
         // An invariant part the relation meets reversed (`uniq/X` in R's contravariant slot, SPEC 15.3.5): its facts are those of its own
         // walk in the fit's orientation, a Function Type's one oriented comparison included (10.7).
@@ -152,6 +159,26 @@ public partial class LocalOriginClauseTest
         // invalid: a failed Function part, then a nested part whose `c == d` comes before a Type mismatch, then `c == d`: the mismatch
         // ends the fit (PLAN G900); the nested `c == d` before it is kept.
         { "w2", "func f(b: ref/i32, c: ref/i32, d: ref/i32, p: ref/i32, q: ref/i32, r0: (uniq/((ref/i32) -> i32) during p, (uniq/(ref/i32 during c) during p, uniq/i32 during p), uniq/(ref/i32 during c) during p)) -> i32\n    origin p outlives q\n    origin b outlives q\n    origin c outlives q\n    origin d outlives q\n    let r: (uniq/((ref/i32 during b) -> i32) during q, (uniq/(ref/i32 during d) during q, uniq/i64 during q), uniq/(ref/i32 during d) during q) = r0@move\n    return 0\n", "UnprovenOriginRelation_Kd@6:5 requires c == d, which is not proven|TypeMismatch_Kd@6:147 expected (uniq/(ref/i32) -> i32, (uniq/ref/i32, uniq/i64), uniq/ref/i32), found (uniq/(ref/i32) -> i32, (uniq/ref/i32, uniq/i32), uniq/ref/i32)" },
+
+        // A Function Item compared with a Function Type whose solve leaves a per-call Origin with no bound that reached a fixed Origin
+        // when the representatives were taken (SPEC 15.3.6, 15.3.7; PLAN G492-a (iii)): the located limit where the comparison's failure
+        // is recorded (a `let`, a default argument), never an internal error.
+        // invalid: no bound reaches `a` or `b`, so they have no candidate; the limit is the record (record selection).
+        { "r3M", MeetOnly + "func outer(p: ref/i64) -> i32\n    let f: (ref/i64 during p) -> i32 = m1\n    return 0\n", "Unsupported_Kd@4:40" },
+        // invalid: r3M as a default argument's value, checked at its declaration (SPEC 7.2.3).
+        { "w4X4", MeetOnly + "func h(g: (ref/i64 during static) -> i32 = m1) -> i32\n    return 0\n", "Unsupported_Kd@3:44" },
+        // valid: `c` is invariant without a proven equality, so it takes p, checked against q by the premise, and `a`, `b` take `c`. The
+        // solve takes the representatives of `c` and of `a`, `b` at once, so `a`, `b` reach no fixed Origin: the limit until PLAN G960.
+        { "r4aL", MeetToInvariant + "func outer(p: ref/i64, q: ref/i64) -> i32\n    origin p outlives q\n    let f: (ref/i64 during p, Sink during q, ref/i64 during p) -> i32 = m3\n    return 0\n", "Unsupported_Kd@9:73" },
+        // invalid: `c` lies between p and q, and p outlives q is not proven. The solve stops at its first open end, so that member's
+        // record is not reported: the limit is the one record (record selection).
+        { "r4aLn", MeetToInvariant + "func outer(p: ref/i64, q: ref/i64) -> i32\n    let f: (ref/i64 during p, Sink during q, ref/i64 during p) -> i32 = m3\n    return 0\n", "Unsupported_Kd@8:73" },
+        // valid: r4aL at a call argument (p and q are fixed in `take3`, SPEC 15.3.4). The record is dev's: applicability discards the
+        // solve's located limit and finds the one candidate inapplicable, though inference never makes a candidate inapplicable (SPEC
+        // 15.3.6; PLAN: a call argument's applicability discards a comparison's located limit).
+        { "w4L4", MeetToInvariant + "func outer(p: ref/i64, q: ref/i64) -> i32\n    origin p outlives q\n    func take3(g: (ref/i64 during p, Sink during q, ref/i64 during p) -> i32) -> i32\n        return 0\n    return take3(m3)\n", "NoApplicableOverload_Kd@11:12 none of 1 candidates applies" },
+        // valid: w4L4 without the meet.
+        { "w4L4c", "struct Sink {a}\n    public let g: (ref/i64 during a) -> i32\nfunc m3(w: ref/i64 during a, s: Sink during c, v: ref/i64 during c) -> i32\n    origin a outlives c\n    return 0\nfunc outer(p: ref/i64, q: ref/i64) -> i32\n    origin p outlives q\n    func take3(g: (ref/i64 during p, Sink during q, ref/i64 during p) -> i32) -> i32\n        return 0\n    return take3(m3)\n", string.Empty },
     };
 
     [Theory]
