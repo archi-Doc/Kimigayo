@@ -132,7 +132,7 @@ public sealed class EmissionArtifactsTest : IDisposable
         Assert.False(manifest.RootElement.TryGetProperty("toolchain", out _));
         NativeToolchain.ValidateManifest(manifest.RootElement);
         using var oldManifest = JsonDocument.Parse(json.Replace("\"schemaVersion\": 4", "\"schemaVersion\": 3", StringComparison.Ordinal));
-        Assert.Contains("schema 4", Assert.Throws<InvalidDataException>(() => NativeToolchain.ValidateManifest(oldManifest.RootElement)).Message);
+        Assert.Contains("'schemaVersion' is not this compiler's", Assert.Throws<InvalidDataException>(() => NativeToolchain.ValidateManifest(oldManifest.RootElement)).Message);
     }
 
     [Fact]
@@ -474,16 +474,16 @@ public sealed class EmissionArtifactsTest : IDisposable
 
     // R9-B1: a manifest whose external declaration is not a nonempty symbol with a boolean dllimport form is rejected before any tool.
     [Theory]
-    [InlineData("[{\"symbol\": \"\", \"dllimport\": true}]")]
-    [InlineData("[{\"symbol\": \"encode\", \"dllimport\": \"yes\"}]")]
-    public void AMalformedExternalDeclarationIsRejected(string declarations)
+    [InlineData("[{\"symbol\": \"\", \"dllimport\": true}]", "Invalid external declaration")]
+    [InlineData("[{\"symbol\": \"encode\", \"dllimport\": \"yes\"}]", "'dllimport' is missing or not a JSON boolean")]
+    public void AMalformedExternalDeclarationIsRejected(string declarations, string failure)
     {
         var c = this.Create();
         Assert.True(EmissionArtifacts.Publish(c, null, out var path), MinimalEmissionTest.Describe(c));
         var json = File.ReadAllText(Path.ChangeExtension(path!, ".link.json"));
         Assert.Contains("\"externalDeclarations\": []", json, StringComparison.Ordinal);
         using var malformed = JsonDocument.Parse(json.Replace("\"externalDeclarations\": []", "\"externalDeclarations\": " + declarations, StringComparison.Ordinal));
-        Assert.Contains("Invalid external declaration", Assert.Throws<InvalidDataException>(() => NativeToolchain.ValidateManifest(malformed.RootElement)).Message);
+        Assert.Contains(failure, Assert.Throws<InvalidDataException>(() => NativeToolchain.ValidateManifest(malformed.RootElement)).Message);
     }
 
     [Fact]

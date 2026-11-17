@@ -88,10 +88,17 @@ public static class EmissionArtifacts
                 using (var json = new Utf8JsonWriter(stream, new JsonWriterOptions { Indented = true }))
                 {
                     json.WriteStartObject();
-                    WriteProfile(json, settings.Optimization);
+                    LinkManifest.WriteFixed(json);
+                    json.WriteString("optimization", settings.Optimization);
                     WriteOutput(json, Path.GetFileName(destination), hash, module);
                     WriteLibraries(json, backend, foreign, directory, outputDirectory);
-                    WriteLinkInputs(json, llvm);
+                    if (llvm is not null)
+                    {
+                        json.WriteStartObject("toolchain"); // The configured LLVM directory.
+                        json.WriteString("llvmBin", llvm);
+                        json.WriteEndObject();
+                    }
+
                     json.WriteEndObject();
                 }
 
@@ -241,32 +248,6 @@ public static class EmissionArtifacts
         }
     }
 
-    // The manifest's fixed head (schema 4; the format is implementation-defined, IMPL 20.3.2): the target, the profile's code generation
-    // settings with the project's optimization, and the adopted backend supply's identity.
-    private static void WriteProfile(Utf8JsonWriter json, string optimization)
-    {
-        json.WriteNumber("schemaVersion", 4);
-        json.WriteString("target", WindowsProfile.Target);
-        json.WriteStartObject("codegen");
-        json.WriteString("profile", WindowsProfile.Name);
-        json.WriteString("llvmVersion", ToolchainIdentity.LlvmVersion);
-        json.WriteString("cpu", WindowsProfile.Cpu);
-        WriteStrings(json, "features", [WindowsProfile.Features]);
-        json.WriteString("relocationModel", WindowsProfile.RelocationModel);
-        json.WriteString("codeModel", WindowsProfile.CodeModel);
-        json.WriteString("unwindTables", WindowsProfile.UnwindTables);
-        json.WriteString("optimization", optimization);
-        json.WriteEndObject();
-        json.WriteStartObject("backendSupport");
-        json.WriteString("packageId", ToolchainIdentity.BackendPackageId);
-        json.WriteNumber("abiVersion", ToolchainIdentity.BackendAbiVersion);
-        json.WriteString("packageVersion", ToolchainIdentity.BackendVersion);
-        json.WriteString("library", WindowsProfile.BackendLibrary);
-        json.WriteString("artifactSha256", ToolchainIdentity.BackendSha256);
-        WriteStrings(json, "providedSymbols", WindowsProfile.ProvidedSymbols);
-        json.WriteEndObject();
-    }
-
     // The published module, from the generation result: the IR file with its hash, the output kind with an Application's entry and
     // subsystem, and the external functions it declares, which the native build's object inspection reads (SPEC 22.6).
     private static void WriteOutput(Utf8JsonWriter json, string irFile, string irHash, GeneratedModule module)
@@ -345,31 +326,6 @@ public static class EmissionArtifacts
         }
 
         string Relative(string input) => HasDirectory(input) ? Path.GetRelativePath(outputDirectory, Path.GetFullPath(input, projectDirectory)) : input;
-    }
-
-    // What the link takes beside the libraries: the runtime symbols the module provides, no expected undefined symbol, and the
-    // configured LLVM directory.
-    private static void WriteLinkInputs(Utf8JsonWriter json, string? llvm)
-    {
-        WriteStrings(json, "providedRuntimeSymbols", [WindowsProfile.FloatMarker]);
-        WriteStrings(json, "expectedUndefinedSymbols", []);
-        if (llvm is not null)
-        {
-            json.WriteStartObject("toolchain");
-            json.WriteString("llvmBin", llvm);
-            json.WriteEndObject();
-        }
-    }
-
-    private static void WriteStrings(Utf8JsonWriter json, string name, ReadOnlySpan<string> values)
-    {
-        json.WriteStartArray(name);
-        foreach (var value in values)
-        {
-            json.WriteStringValue(value);
-        }
-
-        json.WriteEndArray();
     }
 
     private static void DeleteTemporary(string? path)
