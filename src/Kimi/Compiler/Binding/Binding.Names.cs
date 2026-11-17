@@ -174,7 +174,7 @@ public sealed partial class Binding
 
             var operation = write ? property.Setter : property.Getter;
             var sourceReceiver = (node as MemberAccessKoto)?.Left;
-            if ((write || update) && sourceReceiver is not null && SharesOwnLayer(sourceReceiver))
+            if ((write || update) && sourceReceiver is not null && this.SharesOwnLayer(sourceReceiver))
             {
                 return this.FailWrite(node, node);
             }

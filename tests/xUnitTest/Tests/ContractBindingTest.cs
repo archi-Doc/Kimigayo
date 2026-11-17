@@ -61,7 +61,8 @@ public class ContractBindingTest
         "    var slot: Option<ref/T.(Tree).Child.(Tree).Child> = .None\n    put<T.(Tree).Child.(Tree).Child>(v@ref, slot@uniq)\n    match slot\n" +
         "        .Some(let s) => return s.peek()\n        .None => return 0\n";
 
-    // A depth-3 chain of clause rows (CL1 -> CL2 -> CL3) used by a member call, a copy, a capture and an erasure, instantiated with S1.
+    // A depth-3 chain of clause rows (CL1 -> CL2 -> CL3) used by a member call, a copy, a capture and an erasure, instantiated with S1:
+    // DepthThreeChain ends at `cap<T>`'s clause `T is CL1`; DepthThreeCap is `cap`'s body, which erases a Closure formed in it, and main.
     private const string DepthThreeChain = "contract L3\n    associate Item\ncontract CL3: L3\n    Self.(L3).Item is Copy\n    Self.(L3).Item is Owned\n" +
         "    func get(self: ref/Self) -> i32\ncontract L2\n    associate Inner is L3\ncontract CL2: L2\n    Self.(L2).Inner is CL3\ncontract L1\n" +
         "    associate Mid is L2\ncontract CL1: L1\n    Self.(L1).Mid is CL2\nstruct P\n    Self is Copy\n    public let x: i32\n" +
@@ -71,8 +72,9 @@ public class ContractBindingTest
         "func keep<V>(x: ref/V) -> i32\n    V is CL3\n    return x.get()\n" +
         "func dup<T>(v: T.(L1).Mid.(L2).Inner.(L3).Item) -> (T.(L1).Mid.(L2).Inner.(L3).Item, T.(L1).Mid.(L2).Inner.(L3).Item)\n    T is CL1\n" +
         "    return (v, v)\nfunc read<T>(v: T.(L1).Mid.(L2).Inner) -> i32\n    T is CL1\n    let n = keep<T.(L1).Mid.(L2).Inner>(v@ref)\n" +
-        "    return n + v.get()\nfunc cap<T>(v: T.(L1).Mid.(L2).Inner.(L3).Item) -> i32\n    T is CL1\n" +
-        "    let c = func () -> (T.(L1).Mid.(L2).Inner.(L3).Item, T.(L1).Mid.(L2).Inner.(L3).Item) => (v, v)\n    let d = c\n    let p = c()\n" +
+        "    return n + v.get()\nfunc cap<T>(v: T.(L1).Mid.(L2).Inner.(L3).Item) -> i32\n    T is CL1";
+
+    private const string DepthThreeCap = "\n    let c = func () -> (T.(L1).Mid.(L2).Inner.(L3).Item, T.(L1).Mid.(L2).Inner.(L3).Item) => (v, v)\n    let d = c\n    let p = c()\n" +
         "    let q = d()\n    let f: () -> (T.(L1).Mid.(L2).Inner.(L3).Item, T.(L1).Mid.(L2).Inner.(L3).Item) = c\n    let s = f()\n" +
         "    return need(v) + need(s.0)\npublic func main() -> ()\n    let p = dup<S1>(P.init(x: 3))\n    let n = read<S1>(S3.init(5))\n" +
         "    let m = cap<S1>(P.init(x: 4))\n    if p.0.x + p.1.x == 6 and n == 10 and m == 2 => Console.writeLine(\"ok\")\n    else => Console.writeLine(\"bad\")\n";
@@ -878,11 +880,15 @@ public class ContractBindingTest
     // SPEC 8.3.2, 8.6.4, 15.6: a Contract a clause row proves at depth gives its members (the Middle's R7-C2a a1 consent, R1; an
     // UnresolvedBinding_Kd before R7-C2c2 c2-3a read Enumerate's rows): a member call (f-member-v), one through a stored reference
     // (f-store-v) and a depth-3 chain (r-l3) are accepted; a write while the call's Loan is live is the Loan's conflict (f-member-n).
+    // r-l3's `cap<T>` erases a Closure formed in it, whose instantiation holds the inherited `T` (SPEC 3.2.1, 6.1.3), so the erasure
+    // needs `T is Owned` beside the capture's row at depth (7.7.4, 15.2.3; PLAN G856, the owner's O-249 Q4 (a)); with `T is CL1` alone,
+    // as c2-3a wrote it, the erasure is the Constraint failure (r-l3-unowned).
     [Theory]
     [InlineData(PeekTree + PeekProbe + "    let r = v.peek()\n    return r\n" + PeekMain, "")]
     [InlineData(PeekTree + PeekProbe + "    let r = v.peek()\n    v = b\n    return r\n" + PeekMain, "ComparisonLoanConflict_Kd")]
     [InlineData(PeekTree + PeekStore + PeekMain, "")]
-    [InlineData(DepthThreeChain, "")]
+    [InlineData(DepthThreeChain + " and Owned" + DepthThreeCap, "")]
+    [InlineData(DepthThreeChain + DepthThreeCap, "UnprovenConstraint_Kd")]
     public void AConformanceProvenAtDepthGivesItsMembers(string source, string codes)
     {
         var c = MinimalEmissionTest.Check(source);
@@ -967,6 +973,38 @@ public class ContractBindingTest
         var first = paths.FindIndex(static x => x.Type.Declaration.Kotonoha.Syntax.IsLibrary);
         Assert.Equal(["B: C", "G: C", "H: C"], paths.Take(first).Select(static x => x.Type.Name + ": " + x.Contract.Name));
         Assert.DoesNotContain(paths.Skip(first), static x => !x.Type.Declaration.Kotonoha.Syntax.IsLibrary);
+    }
+
+    // PLAN G949 S1-r1b (c15's extension, F's ruling 65; s1r1-design 8.8): EffectObligations reads three per-pass sources in order:
+    // ImplTable's paths, the virtual declarations and the selected uses of bounded Callable clauses, each list Binding's own part's
+    // entries, then LibraryLayer.Part's (S1-b2's commits 3a-3c). From the split the library pass fills the layer's part and the program
+    // pass Binding's own; the library declares no `virtual` and no bounded Callable clause, so the layer's three lists (the virtual
+    // declarations, the uses and the clauses) are empty and Binding's own part holds every row: the program's obligations stand in the
+    // three sources' order, and AvailableCallableEffects finds apply's bound in the program part's clause. Fails on a head that hands
+    // the program pass the layer's lists or composes them first. Valid: each confined body is confined (SPEC 8.11.2-8.11.4).
+    [Fact]
+    public void TheEffectSourcesAreTheProgramPartsInTheirOrder()
+    {
+        const string Contract = "contract C\n    func get(self: ref/Self) -> i32\n        effect confined\n";
+        var c = CompilationTestHelper.ParseSuccess(Contract + "struct S\n    Self is C\n    public init() => ()\n    public func get(self: ref/Self) -> i32 => 1\n" +
+            "open struct Base\n    public init() => ()\n    public virtual func score(self: objref/Self) -> i32\n        effect confined\n        return 1\n" +
+            "func apply<F>(f: ref/F) -> i32\n    F is Callable<() -> i32>\n        effect confined\n    return f()\n" +
+            "func entry() -> i32\n    let f = func [] () -> i32 => 12\n    return apply(f@ref)\n");
+        Assert.True(c.Bind().IsComplete, Describe(c));
+        Assert.True(c.Analyze().IsVerified);
+        Assert.Equal(["S: Self is C get", "Base: public virtual func score(self: objref/Self) -> i32 score", ": f@ref entry"], EffectRows(c).Where(static x => !x.Library).Select(static x => x.Row));
+        var (layer, own) = (c.Library.Layer.Part, (Binding.PassPart)typeof(Binding).GetField("programPart", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(c.Binding)!);
+        Assert.Equal((0, 0, 0), (layer.VirtualDeclarations.Count, layer.CallableEffectUses.Count, layer.CallableEffectClauses.Count));
+        Assert.Equal("score", Assert.Single(own.VirtualDeclarations).Name);
+        var clause = Assert.Single(own.CallableEffectClauses);
+        var use = Assert.Single(own.CallableEffectUses);
+        Assert.Equal("f@ref", use.At.ToString());
+        Assert.Same(clause, use.Clause);
+        var call = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>(), static x => x.ValueCallOf() is not null);
+        var plan = call.ValueCallOf()!;
+        var evidence = new List<EffectEvidence>();
+        Assert.True(c.Binding.AvailableCallableEffects(plan.CalleeType.Components[0], plan.DeclaredSignature, plan.ReceiverKind, c.Binding.ConstraintScope(call), evidence));
+        Assert.Same(clause, Assert.Single(evidence).Clause);
     }
 
     // PLAN G949 S1-b1 (the Front's RR2): a path the sweep removed is taken from the pool for the next new key, emptied of the

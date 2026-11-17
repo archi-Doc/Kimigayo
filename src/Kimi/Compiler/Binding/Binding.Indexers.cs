@@ -130,7 +130,7 @@ public sealed partial class Binding
 
         // SPEC 4.7.1, 15.1.5: indexUniq is selected for updates and exclusive borrows. It is bound when the conformance offers it and
         // the receiver can be exclusively acquired; a use that needs it through another path is diagnosed by that path.
-        if (exclusiveAvailable && ExclusivelyAcquirable(source.Left))
+        if (exclusiveAvailable && this.ExclusivelyAcquirable(source.Left))
         {
             this.BindIndexerCall(source, scope, true);
         }

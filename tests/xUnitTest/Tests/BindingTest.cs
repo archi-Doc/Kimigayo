@@ -548,6 +548,50 @@ public class BindingTest
         }
     }
 
+    // PLAN G949 S1-r1b (v4; s1r1-design 1.3): CheckBound reruns the program pass's Check only, on Binding's own part, and composes the
+    // Result again: after a Final Bind it equals the Bind's Result and issues, and the library layer's counts stay the library pass's.
+    [Fact]
+    public void CheckBoundKeepsTheLibraryLayersCounts()
+    {
+        var c = CompilationTestHelper.Parse("let x: Missing = 1\n");
+        var bound = c.Bind();
+        var (issues, layer) = (c.Binding.Issues.ToArray(), c.Library.Layer.Part.Counts);
+        Assert.NotEqual(0, layer.ResolvedCount);
+        Assert.Equal(bound, c.Binding.CheckBound());
+        Assert.Equal(issues, c.Binding.Issues);
+        Assert.Equal(layer, c.Library.Layer.Part.Counts);
+    }
+
+    // PLAN G949 S1-r1b (c15 per review-s1r1 Re-check 3 RC-d: composition identities, not totals): the Bind's Result is the library
+    // layer's counts plus the program part's (ComposeResult); the layer's counts, imports and obligations are the empty program's (the
+    // library pass binds the library alone); each composed list is the program part's entries, then the layer's (R1.1's order), so after
+    // a Provisional Bind too the obligations list the program's rows first and the library's declaration rows after them (M2's order).
+    // The corpus compare of the aggregates (base against head) is an evidence run (O6).
+    [Theory]
+    [InlineData(BindingMode.Final)]
+    [InlineData(BindingMode.Provisional)]
+    public void TheBindsAggregatesAreTheProgramPartThenTheLibraryLayers(BindingMode mode)
+    {
+        var empty = CompilationTestHelper.Parse(string.Empty);
+        empty.Binding.Bind(mode);
+        // A missing Type (an issue) and a symbolic length (a program TypeFormation obligation; SPEC 4.4): invalid by the first.
+        var c = CompilationTestHelper.Parse("let x: Missing = 1\ngroup Dimensions\n    private let Width: isize = 4\n" +
+            "    public func f<length N>(row: [(N + Width) of u8]) => ()\n");
+        var result = c.Binding.Bind(mode);
+        var (layer, own) = (c.Library.Layer.Part, (Binding.PassPart)typeof(Binding).GetField("programPart", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(c.Binding)!);
+        Assert.Equal(
+            (mode, layer.Counts.ResolvedCount + own.Counts.ResolvedCount, layer.Counts.UnresolvedCount + own.Counts.UnresolvedCount, layer.Counts.InvalidCount + own.Counts.InvalidCount),
+            (result.Mode, result.ResolvedCount, result.UnresolvedCount, result.InvalidCount));
+        Assert.Equal(empty.Library.Layer.Part.Counts, layer.Counts);
+        Assert.Equal(empty.Library.Layer.Part.Imports.Select(static x => (x.Decl.Name, x.Library, x.Symbol, x.Kind)), layer.Imports.Select(static x => (x.Decl.Name, x.Library, x.Symbol, x.Kind)));
+        Assert.Equal(empty.Library.Layer.Part.Obligations.Select(static x => x.ToString()), layer.Obligations.Select(static x => x.ToString()));
+        Assert.NotEmpty(own.Obligations);
+        Assert.NotEmpty(layer.Obligations);
+        Assert.Equal(own.Obligations.Concat(layer.Obligations), c.Binding.Obligations);
+        Assert.Equal(own.Imports.Concat(layer.Imports), c.Binding.LibraryImports);
+        Assert.Equal(own.Issues.Concat(layer.Issues), c.Binding.Issues);
+    }
+
     // PLAN G949 (s1r1-design 8.9; n55-design 2.3 rule 2): a keyed PassPart collection's one find reads the layer's map first, so a key
     // both parts hold reads the layer's row, and the running pass's map only for a key the layer's lacks; null when neither holds it.
     [Fact]
