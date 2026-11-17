@@ -135,6 +135,14 @@ public sealed class BoundConformance
 
     internal List<BoundConformancePath> PathStorage { get; } = new();
 
+    // Rule (a) (ImplTable): the point of the identity's first path and of its last, and, when a later point's path joined paths of an
+    // earlier one, those earlier paths as they stood (the identity's paths at that point); written by the pass that registers it.
+    internal ImplTable.AdmissionPoint Point { get; private set; }
+
+    internal ImplTable.AdmissionPoint LastPoint { get; private set; }
+
+    internal List<BoundConformancePath>? PointOnePaths { get; private set; }
+
     internal IsKoto? DirectClause { get; set; }
 
     internal bool Invalid { get; set; }
@@ -178,6 +186,25 @@ public sealed class BoundConformance
         this.DirectClause = null;
         this.PathStorage.Clear();
         this.Listed = false;
+        (this.Point, this.LastPoint) = (ImplTable.AdmissionPoint.PassStart, ImplTable.AdmissionPoint.PassStart);
+        this.PointOnePaths?.Clear();
+    }
+
+    // A path joins the identity at its registration (ImplTable.Register), at its registrar step's point (rule (a)).
+    internal void AddPath(BoundConformancePath path, ImplTable.AdmissionPoint point)
+    {
+        if (this.PathStorage.Count == 0)
+        {
+            this.Point = point;
+        }
+        else if (point > this.LastPoint)
+        {
+            (this.PointOnePaths ??= new()).Clear();
+            this.PointOnePaths.AddRange(this.PathStorage);
+        }
+
+        this.LastPoint = point;
+        this.PathStorage.Add(path);
     }
 
     // A pooled identity taken for a new key; stale, so its first access resets the rest.
@@ -298,6 +325,9 @@ public sealed class BoundConformancePath : ICheckCause
 
     internal bool Active { get; set; }
 
+    // Rule (a) (ImplTable): the registrar step's point at the path's registration.
+    internal ImplTable.AdmissionPoint Point { get; set; }
+
     internal bool Checking { get; set; }
 
     // The requests that reached it while it is being verified (Binding.ReentryRead), until its verification ends. Temporary carrier
@@ -395,6 +425,7 @@ public sealed class BoundConformancePath : ICheckCause
         }
 
         this.Scope.Reset();
+        this.Point = ImplTable.AdmissionPoint.PassStart;
     }
 
     // The Front's RR2: a pooled path taken for a new key, emptied of every fact of its earlier conformance (the kept satellites, the

@@ -216,7 +216,7 @@ public sealed partial class Binding
     // register (VerifyEarlyProjections).
     private void NoteEarlyProjection(MemberAccessKoto use, BoundType type, BindingScope scope, string name, BindingSymbol? qualifier)
     {
-        if (!this.conformancesRegistered && type.Symbol?.Declaration is StructKoto or EnumKoto)
+        if (!this.impls.Reached(ImplTable.AdmissionPoint.SelfClauses) && type.Symbol?.Declaration is StructKoto or EnumKoto)
         {
             this.earlyProjections.Add((use, PathEnd.Projection, type, scope, name, qualifier));
         }
@@ -698,7 +698,7 @@ public sealed partial class Binding
     // A root path's binding of an associated identity, kept with the path (BoundConformancePath.AssociatedBindings); null if none.
     private AssociatedBinding? AssociatedBindingOf(BoundConformancePath path, BoundRequirement associated)
     {
-        if (path.AssociatedBindings is { } bindings)
+        if (path.AssociatedBindings is { } bindings && this.impls.Admits(path.Type, ImplTable.AdmissionPoint.AssociatedBindings))
         {
             for (var i = 0; i < bindings.Count; i++)
             {

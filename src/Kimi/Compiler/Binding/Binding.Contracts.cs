@@ -143,8 +143,7 @@ public sealed partial class Binding
         this.reentryReads = 0;
         this.contractHeadersReady = false;
         this.bindingConstraintTypes = false;
-        this.impls.Begin(this.storageVersion, this.pass); // Every identity and path is stale (DECISIONS BU-220); the pass view is the pass's.
-        this.conformancesRegistered = false;
+        this.impls.Begin(this.storageVersion, this.pass); // Every identity and path is stale (DECISIONS BU-220); the pass view and step are the pass's.
 
         this.projectionUses.Clear();
         this.userIterations.Clear();

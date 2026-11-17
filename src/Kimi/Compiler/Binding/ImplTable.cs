@@ -27,6 +27,15 @@ using Kimi.Compiler.Parsing;
 //   while each pass registers it, with the facts other components keep by a path and a second key (its satellite lists); at the end of
 //   each Bind the overlay drops every identity and path the pass did not register into its pool (Sweep), from which Named takes,
 //   emptied, before allocating. The lists are the table's own: no reader adds to or removes from them.
+// - Rule (a) (PLAN G949 S1-r1b; DECISIONS BU-220 as amended by BU-219): a pass that does not bind the library reads a base row as
+//   registered only from its own registrar step that registers it: a path and its identity from the Self-clause registrar
+//   (AdmissionPoint.SelfClauses) or the conditional registrar (ConditionalClauses), a path's associated bindings from
+//   PrepareAssociatedBindings (AssociatedBindings). The step is the overlay's (Begin resets it, Advance moves it); the base keeps each
+//   row's point, set by the pass that binds the library at the row's registration, and its lists' prefixes at each point. The lookups
+//   apply it (OfType, Find, TryPath, Path, PathsOf, the composed lists' base parts): a base row before its point is not found, a Type's
+//   base list is its list as it stood at the step, an identity's paths are its paths of the points reached. No base field refers to an
+//   overlay; a pass that does not bind the library neither begins nor resets the base. A pass that binds the library reads every row
+//   it registered (the one pass, the library pass).
 // - Prohibitions: no verification (Binding.ContractMatching, Binding.InheritedConformances), availability at a use
 //   (Binding.ResolveConformance), Self-clause rule or diagnostic here; no reader composes the two stores.
 namespace Kimi.Compiler;
@@ -48,8 +57,17 @@ internal sealed class ImplTable
     // the base).
     private readonly ImplTable? none;
 
-    // An identity's paths while it reads as unregistered (PathsOf); never written.
+    // An identity's paths while it reads as unregistered (PathsOf), and a base Type's identities before point 1 (OfType); never written.
     private readonly List<BoundConformancePath> noPaths = new();
+    private readonly List<BoundConformance> noIdentities = new();
+
+    // Rule (a), the base's (written only by the pass that binds the library): each list's length at each point that pass reached
+    // (Advance), and each Type list a later point extends, as it stood at point 1 (its lists reused).
+    private readonly int[] activeAt = new int[4];
+    private readonly int[] namedAt = new int[4];
+    private readonly int[] typeListsAt = new int[4];
+    private readonly Dictionary<BindingSymbol, List<BoundConformance>> pointOneLists = new(ReferenceEqualityComparer.Instance);
+    private readonly Stack<List<BoundConformance>> pointOnePool = new();
 
     private Stack<BoundConformance>? identityPool;
     private Stack<BoundConformancePath>? pathPool;
@@ -58,6 +76,10 @@ internal sealed class ImplTable
     // The running pass's view (Begin): each store when the pass binds a module it holds, else none.
     private ImplTable? passOverlay;
     private ImplTable? passBase;
+
+    // Rule (a), the overlay's: the running pass's registrar step (Advance) and whether the pass binds the library module.
+    private AdmissionPoint step;
+    private bool holdsBase;
 
     // The base store (LibraryLayer.Impls).
     internal ImplTable()
@@ -71,18 +93,35 @@ internal sealed class ImplTable
         this.none = new();
     }
 
+    /// <summary>The registrar steps of a pass, in order (rule (a)): a base row registered by the library pass's step is read by another pass
+    /// from the same step on.</summary>
+    internal enum AdmissionPoint : byte
+    {
+        /// <summary>The pass's start: no base row is admitted.</summary>
+        PassStart,
+
+        /// <summary>The Self-clause registrar ran (RegisterConformances): direct and refinement paths, their identities, the opt-outs.</summary>
+        SelfClauses,
+
+        /// <summary>The conditional registrar ran (BindConditionalDeclarations): conditional paths and the ancestors they register.</summary>
+        ConditionalClauses,
+
+        /// <summary>PrepareAssociatedBindings ran: the paths' associated bindings.</summary>
+        AssociatedBindings,
+    }
+
     /// <summary>Gets the pass this store is current for (Begin).</summary>
     internal ulong Pass { get; private set; }
 
     /// <summary>Gets the paths registered in this pass, the overlay's then the base's, each in registration order.</summary>
-    internal LayerList<BoundConformancePath> Paths => new(this.Fresh().active, this.library!.Fresh().active);
+    internal LayerList<BoundConformancePath> Paths => new(this.Fresh().active, this.library!.Fresh().active, this.Admitted(this.library.activeAt));
 
     /// <summary>Gets the identities this pass named, the overlay's then the base's, each in the order first named; one without paths is
     /// not registered.</summary>
-    internal LayerList<BoundConformance> Identities => new(this.Fresh().named, this.library!.Fresh().named);
+    internal LayerList<BoundConformance> Identities => new(this.Fresh().named, this.library!.Fresh().named, this.Admitted(this.library.namedAt));
 
     /// <summary>Gets each Type's identities registered in this pass, the overlay's Types then the base's, in registration order.</summary>
-    internal LayerList<List<BoundConformance>> ByType => new(this.Fresh().typeLists, this.library!.Fresh().typeLists);
+    internal LayerList<List<BoundConformance>> ByType => new(this.Fresh().typeLists, this.library!.Fresh().typeLists, this.Admitted(this.library.typeListsAt));
 
     /// <summary>Gets the running pass's view (PLAN G949 S1-r2): the paths, identities and Type lists of the stores of the pass's modules
     /// (Begin), each the overlay's then the base's, in registration order; a store outside the pass lists nothing.</summary>
@@ -94,7 +133,7 @@ internal sealed class ImplTable
     /// <param name="modules">The running pass's modules.</param>
     internal void Begin(ulong pass, Binding.BindingPass modules)
     {
-        this.Pass = this.library!.Pass = pass;
+        this.Pass = pass;
         (this.passOverlay, this.passBase) = (this.none, this.none);
         for (var i = 0; i < modules.Count; i++)
         {
@@ -107,18 +146,60 @@ internal sealed class ImplTable
                 this.passOverlay = this;
             }
         }
+
+        // Rule (a): only the pass that binds the library begins the base (its stamps and its points); another pass reads it by its step.
+        this.holdsBase = ReferenceEquals(this.passBase, this.library);
+        this.step = AdmissionPoint.PassStart;
+        if (this.holdsBase)
+        {
+            this.library!.Pass = pass;
+            this.library.ClearPoints();
+        }
     }
+
+    /// <summary>Records that the running pass's registrar step reached a point (rule (a)): from here a pass that does not bind the library
+    /// reads the base rows of that point; the pass that binds it records the base lists' lengths at the point.</summary>
+    /// <param name="point">The point reached.</param>
+    internal void Advance(AdmissionPoint point)
+    {
+        this.step = point;
+        if (this.holdsBase)
+        {
+            var store = this.library!.Fresh();
+            (store.activeAt[(int)point], store.namedAt[(int)point], store.typeListsAt[(int)point]) = (store.active.Count, store.named.Count, store.typeLists.Count);
+        }
+    }
+
+    /// <summary>Gets whether the running pass's registrar step reached a point (point 1: the pass's conformance declarations registered).</summary>
+    /// <param name="point">The point.</param>
+    /// <returns>Whether the step reached it.</returns>
+    internal bool Reached(AdmissionPoint point) => this.step >= point;
+
+    /// <summary>Gets whether the running pass reads a Type's rows of a point as registered (rule (a)): a program Type's always, a library
+    /// Type's in the pass that binds the library and in another pass from that point on (the ObjectPayload opt-out: point 1).</summary>
+    /// <param name="type">The Type declaration.</param>
+    /// <param name="point">The point of the rows.</param>
+    /// <returns>Whether they are admitted.</returns>
+    internal bool Admits(BindingSymbol type, AdmissionPoint point) => this.holdsBase || !ReferenceEquals(this.StoreOf(type), this.library) || this.step >= point;
 
     /// <summary>Gets a Type's identities registered in this pass, or null for a Type never registered.</summary>
     /// <param name="type">The conforming Type declaration.</param>
     /// <returns>The list, possibly empty.</returns>
-    internal List<BoundConformance>? OfType(BindingSymbol type) => this.StoreOf(type).Fresh().byType.GetValueOrDefault(type);
+    internal List<BoundConformance>? OfType(BindingSymbol type)
+    {
+        var store = this.StoreOf(type);
+        var list = store.Fresh().byType.GetValueOrDefault(type);
+        return list is null || this.Admits(type, AdmissionPoint.ConditionalClauses) ? list
+            : this.step == AdmissionPoint.PassStart ? store.noIdentities : store.pointOneLists.GetValueOrDefault(type, list);
+    }
 
     /// <summary>Gets an identity's paths as the running pass reads them: its paths while it is current, none while it is stale. Binding reads an
     /// identity's paths only here (the public Paths is for readers after the Bind).</summary>
     /// <param name="identity">An identity this table handed out.</param>
     /// <returns>The paths, in registration order; the list is the table's own, never written by a reader.</returns>
-    internal List<BoundConformancePath> PathsOf(BoundConformance identity) => identity.Current ? identity.PathStorage : this.noPaths;
+    internal List<BoundConformancePath> PathsOf(BoundConformance identity)
+        => !identity.Current || !this.Admits(identity.Type, identity.Point) ? this.noPaths
+            : this.Admits(identity.Type, identity.LastPoint) ? identity.PathStorage : identity.PointOnePaths!;
 
     /// <summary>Gets the identity of a Type and Contract, registered in this pass or not, or null if not named.</summary>
     /// <param name="type">The conforming Type declaration.</param>
@@ -127,7 +208,7 @@ internal sealed class ImplTable
     internal BoundConformance? Find(BindingSymbol type, BindingSymbol contract)
     {
         var store = this.StoreOf(type);
-        return store.identities.GetValueOrDefault((type, contract)) is { } identity ? store.Touch(identity) : null;
+        return store.identities.GetValueOrDefault((type, contract)) is { } identity ? this.Read(store, identity) : null;
     }
 
     /// <summary>Gets a path named in a registration: an ancestor path of the same declaration and root.</summary>
@@ -139,7 +220,9 @@ internal sealed class ImplTable
     internal BoundConformancePath Path(BindingSymbol type, BindingSymbol contract, IsKoto declaration, BindingSymbol root)
     {
         var store = this.StoreOf(type);
-        return store.Touch(store.paths[(type, contract, declaration, root)]);
+        var path = store.paths[(type, contract, declaration, root)];
+        return this.Read(store, path)
+            ?? throw new InvalidOperationException($"A registration named the path of `{type.Name}` to `{contract.Name}` before its registrar step (InternalInvariant; PLAN G949 S1-r1b rule (a)).");
     }
 
     /// <summary>Gets a path, registered in this pass or not, or null if not named.</summary>
@@ -151,7 +234,7 @@ internal sealed class ImplTable
     internal BoundConformancePath? TryPath(BindingSymbol type, BindingSymbol contract, IsKoto declaration, BindingSymbol root)
     {
         var store = this.StoreOf(type);
-        return store.paths.GetValueOrDefault((type, contract, declaration, root)) is { } path ? store.Touch(path) : null;
+        return store.paths.GetValueOrDefault((type, contract, declaration, root)) is { } path ? this.Read(store, path) : null;
     }
 
     /// <summary>Registers a path in this pass, in its Type's store: on its first registration it joins Paths and its identity's paths.</summary>
@@ -170,7 +253,9 @@ internal sealed class ImplTable
         if (!result.Active)
         {
             var identity = result.Identity;
+            var point = this.step + 1; // The registrar step that ends at the next point (rule (a)).
             result.Active = true;
+            result.Point = point;
             result.InheritedFrom = null;
             result.AdditionalInheritedSources?.Clear();
             result.InheritedBase = null;
@@ -197,10 +282,15 @@ internal sealed class ImplTable
                     store.typeLists.Add(list);
                 }
 
+                if (point > AdmissionPoint.SelfClauses && !ReferenceEquals(store, this))
+                {
+                    store.KeepPointOne(type, list);
+                }
+
                 list.Add(identity);
             }
 
-            identity.PathStorage.Add(result);
+            identity.AddPath(result, point);
         }
 
         return result;
@@ -267,6 +357,40 @@ internal sealed class ImplTable
 
         return this;
     }
+
+    // A row of `store` as the running pass reads it: the pass that holds the store resets a stale row at its first access in the pass
+    // (Touch); a pass that does not bind the library reads a base row as the library pass left it, from its point on (rule (a)).
+    private BoundConformance? Read(ImplTable store, BoundConformance identity)
+        => ReferenceEquals(store, this) || this.holdsBase ? store.Touch(identity) : this.step >= identity.Point && identity.Current ? identity : null;
+
+    private BoundConformancePath? Read(ImplTable store, BoundConformancePath path)
+        => ReferenceEquals(store, this) || this.holdsBase ? store.Touch(path) : this.step >= path.Point && path.Current ? path : null;
+
+    // The base keeps a Type's list as it stood at point 1 when a later point's registration extends it (rule (a): OfType at point 1).
+    private void KeepPointOne(BindingSymbol type, List<BoundConformance> list)
+    {
+        if (!this.pointOneLists.ContainsKey(type))
+        {
+            var kept = this.pointOnePool.Count != 0 ? this.pointOnePool.Pop() : new();
+            kept.AddRange(list);
+            this.pointOneLists.Add(type, kept);
+        }
+    }
+
+    // The base's points begin again with the pass that binds the library.
+    private void ClearPoints()
+    {
+        foreach (var list in this.pointOneLists.Values)
+        {
+            list.Clear();
+            this.pointOnePool.Push(list);
+        }
+
+        this.pointOneLists.Clear();
+    }
+
+    // The base part of a composed list the running pass reads: all of it in the pass that binds the library, else its prefix at the step.
+    private int Admitted(int[] at) => this.holdsBase ? int.MaxValue : at[(int)this.step];
 
     private BoundConformance Touch(BoundConformance identity)
     {
