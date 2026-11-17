@@ -535,7 +535,7 @@ internal readonly record struct TypeBindingContext(TypePosition Position, Koto O
 // - Prohibitions: no read member writes or decides; no second copy of a state member; `Forming` outside the formation's files.
 public sealed partial class Binding
 {
-    private sealed class OriginDeclaration(Koto owner)
+    internal sealed class OriginDeclaration(Koto owner)
     {
         private readonly Dictionary<string, TypeSemanticsKoto> sets = new(StringComparer.Ordinal);
         private readonly Dictionary<BoundOrigin, BoundOrigin> replacements = new(ReferenceEqualityComparer.Instance);
@@ -655,7 +655,7 @@ public sealed partial class Binding
         }
     }
 
-    private readonly record struct PendingOriginSlot(Koto Use, BindingScope Scope, TypeBindingContext Context, LoanRequirement Requirement, int Slot, BoundOrigin Origin, BindingSymbol? BorrowCondition);
+    internal readonly record struct PendingOriginSlot(Koto Use, BindingScope Scope, TypeBindingContext Context, LoanRequirement Requirement, int Slot, BoundOrigin Origin, BindingSymbol? BorrowCondition);
 
-    private readonly record struct OriginRelation(BoundOrigin Longer, BoundOrigin Shorter, bool Equality, OriginRelationKoto Syntax);
+    internal readonly record struct OriginRelation(BoundOrigin Longer, BoundOrigin Shorter, bool Equality, OriginRelationKoto Syntax);
 }

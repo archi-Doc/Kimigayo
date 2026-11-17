@@ -20,12 +20,12 @@ public sealed partial class Binding
 
     private void BindCopyDeclarations()
     {
-        foreach (var declaration in this.copyDeclarations.Values)
+        foreach (var declaration in this.copyDeclarations.Values.In(this.pass))
         {
             declaration!.Active = false;
         }
 
-        foreach (var declarations in this.copyByType.Values)
+        foreach (var declarations in this.copyByType.Values.In(this.pass))
         {
             declarations!.Clear();
         }
@@ -70,7 +70,7 @@ public sealed partial class Binding
     private void ValidateCopyDeclarations(BindingMode mode)
     {
         // D2b-d's d8 order: the source modules by ordinal, then the library, each by ascending id (the walk's order on a cold compile).
-        foreach (var declarations in this.copyByType.Values)
+        foreach (var declarations in this.copyByType.Values.In(this.pass))
         {
             for (var i = 0; i < declarations!.Count; i++)
             {

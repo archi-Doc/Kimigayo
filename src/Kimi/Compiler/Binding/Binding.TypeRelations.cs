@@ -78,10 +78,6 @@ public sealed partial class Binding
     private static CallableInstance Comparison(BoundType actual, Koto? own, BoundType expected, in CallableInstance enclosing, List<BindingObligation>? rows)
         => new(actual, own ?? actual.Binder, expected, expected.Binder, enclosing.Enclosing) { Scope = enclosing.Scope, Rows = rows };
 
-    // A signature whose inputs are fresh per-call borrows and whose result has no Origin or one over those inputs alone.
-    private static bool PerCallShape(BoundType signature, Koto? own, bool any = false)
-        => PerCallSignature(signature, own, any) || InputDependentBinder(signature, own, any) is not null;
-
     // SPEC 10.7: within one Callable comparison, `a` outlives `b` after the implementation's call-time Origins are instantiated. The
     // required per-call Origins are rigid: one outlives another only at the same position or by the own well-formedness of the
     // comparison's required signatures (the owner's (a)), and a fixed Origin outlives one only when it is static, since the call that

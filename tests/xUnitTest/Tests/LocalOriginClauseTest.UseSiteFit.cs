@@ -45,8 +45,10 @@ public partial class LocalOriginClauseTest
         { "e4a", "func f(p: ref/i64, q: ref/i64) -> (ref/i64 during p, ref/i64 during p)\n    var t = (p, p)\n    t = (q, t.0)\n    return t\n", "UnprovenOriginRelation_Kd@4:12 requires q outlives p, which is not proven" },
         // valid: the clause `a == c` holds for `x`'s Origin `p`.
         { "veqi", "func eqi(w: uniq/(ref/i64 during a), v: uniq/(ref/i64 during c)) -> i32\n    origin a == c\n    return 0\nfunc outer(p: ref/i64) -> i32\n    let x = p\n    let f: (uniq/(ref/i64 during x), uniq/(ref/i64 during p)) -> i32 = eqi\n    return 0\n", string.Empty },
-        // invalid: `q == p` is not proven.
-        { "veqin", "func eqi(w: uniq/(ref/i64 during a), v: uniq/(ref/i64 during c)) -> i32\n    origin a == c\n    return 0\nfunc outer(p: ref/i64, q: ref/i64) -> i32\n    let x = q\n    let f: (uniq/(ref/i64 during x), uniq/(ref/i64 during p)) -> i32 = eqi\n    return 0\n", "UnprovenOriginContract_Kd@6:72 the 2nd parameter requires the omitted Origin of x == p, which is not proven" },
+        // invalid: `q == p` is not proven. The record names the first failing bound, `p outlives q` (PLAN G913's Revision 2, the
+        // owner's O-348 (a): a conversion's comparison gives the variable a representative and the walk judges the members, as ob2i);
+        // `requires q == p` before it. In the comparison x's slot is its region (PLAN G492-a (ii), O-363 (a)), named as held.
+        { "veqin", "func eqi(w: uniq/(ref/i64 during a), v: uniq/(ref/i64 during c)) -> i32\n    origin a == c\n    return 0\nfunc outer(p: ref/i64, q: ref/i64) -> i32\n    let x = q\n    let f: (uniq/(ref/i64 during x), uniq/(ref/i64 during p)) -> i32 = eqi\n    return 0\n", "UnprovenOriginContract_Kd@6:72 the 2nd parameter requires p outlives the omitted Origin of x, which is not proven" },
 
         // An invariant part the relation meets reversed (`uniq/X` in R's contravariant slot, SPEC 15.3.5): its facts are those of its own
         // walk in the fit's orientation, a Function Type's one oriented comparison included (10.7).
