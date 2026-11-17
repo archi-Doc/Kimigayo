@@ -370,7 +370,7 @@ public partial class KimiLibraryShapeTest
         var served = symbols.Select(static x => x.Definition.Id).Where(static x => x is not (IntrinsicId.None or IntrinsicId.Fail)).ToArray();
         Assert.Equal(served.Distinct(), served);
         Assert.Equal(new IntrinsicDisposition(DispositionKind.Intrinsic, IntrinsicId.Abort), library.Abort.Definition);
-        Assert.True(Enum.GetValues<IntrinsicId>().Length <= 34);
+        Assert.True(Enum.GetValues<IntrinsicId>().Length <= 27);
     }
 
     // R3 decision 5: the MIR builder serves a built-in form (a slicing) by a library function it names by its lang item, which the
