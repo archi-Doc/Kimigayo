@@ -420,11 +420,13 @@ public sealed partial class Binding
     // complete) is settled once per pass.
     private void SettleVirtualOverridePremises()
     {
-        foreach (var (function, implementation) in this.virtualOverrides)
+        // D2b-d's d8 order: the source modules by ordinal, then the library, each by ascending id (the walk's order on a cold compile).
+        for (var rows = this.virtualOverrides.Values.In(this.pass); rows.MoveNext();)
         {
+            var (function, implementation) = ((FunctionKoto)rows.Node, rows.Current);
             var (slot, self) = (implementation.Slot, implementation.ImplementingType);
             if (function.BoundSymbol?.Scope.Owner.BoundSymbol is not { } typeSymbol || IncompleteSignature(slot.Original) is not null ||
-                !this.overrideEntries.TryGetValue((typeSymbol, slot.Original), out var entry) || !ReferenceEquals(entry, function))
+                !OverrideEntryRows.TryGetValue((typeSymbol, slot.Original), out var entry) || !ReferenceEquals(entry, function))
             {
                 continue;
             }
