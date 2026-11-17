@@ -504,7 +504,10 @@ public sealed partial class MirBorrowsTest
     // identifies (`T is V`) both stay kept and fit each other (idAbsBad, rejected before c3-2 too). A raw layer a premise shows
     // steps by its binder's declared inputs (DECISIONS BU-113): under `T is raw/(raw/u8) during a`, p is a layer stating `a`, which
     // x states by `uniq` (idRawStepBad: fr may store v into `*x`) or only by `ref` (idRawStepOk: no write authority, 5.2.1
-    // condition 3). A generic caller whose own premise gives its X the form is read alike (idFormGenBad, idFormGenOk).
+    // condition 3). A generic caller whose own premise gives its X the form is read alike (idFormGenBad, idFormGenOk). A handed
+    // callable's result under `T is U` is a T (retIdWBad: mk's RetW may hold w's address, so dst is used after `y = 5`; F's ruling 52,
+    // fail-before on 5f22c9b6c: accepted), as it is under `mk: (E) -> T` (retPlainWBad); without the premise f cannot store mk's U in
+    // dst (retNoIdWOk).
     [Fact]
     public void AKeptTypeIsReadInItsFunctionsView()
     {
@@ -536,6 +539,17 @@ public sealed partial class MirBorrowsTest
                 return
             func frr<T>(x: ref/(raw/u8) during a, p: uniq/T, v: raw/u8)
                 T is raw/(raw/u8) during a
+                return
+            struct RetW
+                public var q: raw/u8
+                public init(q: raw/u8) => self.q = q
+            func mkRetW(q: raw/u8) -> RetW => RetW.init(q: q)
+            func fmkT<T, E>(dst: uniq/T, p: E, mk: (E) -> T) -> ()
+                return
+            func fmkU<T, U, E>(dst: uniq/T, p: E, mk: (E) -> U) -> ()
+                T is U
+                return
+            func fmkN<T, U, E>(dst: uniq/T, p: E, mk: (E) -> U) -> ()
                 return
             func idFormBad()
                 var kk: u8 = 1
@@ -638,6 +652,27 @@ public sealed partial class MirBorrowsTest
                 var x = m
                 fo(x@uniq, p)
                 inspect(x@ref)
+            func retPlainWBad()
+                var y: i32 = 1
+                let w: ref/i32 = y@ref
+                var dst = RetW.init(q: null)
+                fmkT(dst@uniq, w@raw@raw/u8, mkRetW)
+                y = 5
+                inspect(dst@ref)
+            func retIdWBad()
+                var y: i32 = 1
+                let w: ref/i32 = y@ref
+                var dst = RetW.init(q: null)
+                fmkU(dst@uniq, w@raw@raw/u8, mkRetW)
+                y = 5
+                inspect(dst@ref)
+            func retNoIdWOk()
+                var y: i32 = 1
+                let w: ref/i32 = y@ref
+                var dst = RetW.init(q: null)
+                fmkN(dst@uniq, w@raw@raw/u8, mkRetW)
+                y = 5
+                inspect(dst@ref)
             """);
         Assert.Equal(
             [
@@ -645,7 +680,7 @@ public sealed partial class MirBorrowsTest
                 "idEnclBad: let host = Host.init(r@follow@raw)", "idEnclNoPremBad: z = 5",
                 "idEnclNoPremBad: let host = Host.init(r@follow@raw)", "idRawStepBad: z = 5",
                 "idRawStepBad: var q = u@follow@raw",
-                "idFormGenBad: kk = 2",
+                "idFormGenBad: kk = 2", "retPlainWBad: y = 5", "retIdWBad: y = 5",
             ],
             Problems(c, Analyze(c), [.. LoanCodes, DiagnosticCode.Unsupported_Kd]));
     }

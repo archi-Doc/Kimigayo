@@ -262,7 +262,9 @@ public sealed partial class Binding
         ? this.Holds(part.Part, asked, depth + 1)
         : (asked.Flags & HoldFlags.Repeated) != 0 && part.Part is { } element && this.Fits(element, asked.Part!);
 
-    // Whether a carrier, Origins erased, is a Type or occurs among its components: a walk of the Type's parts, each entered once
+    // Whether a carrier is a Type or occurs among its components, by the one Type test of the retention walks (Identical: Origins
+    // erased, and under the identity premises of the function whose own abstract Type the carrier is; SPEC 8.2.3: under `T is U` a
+    // handed `(E) -> U` returns a T, under `E is D` a parameter D takes an E): a walk of the Type's parts, each entered once
     // (retentionWalked), which ends with the Type (IMPL A.4's height) and has no bound of its own.
     private bool Occurs(BoundType? type, BoundType carrier)
     {
@@ -272,7 +274,7 @@ public sealed partial class Binding
         }
 
         this.termWalks++;
-        var occurs = ReferenceEquals(this.types.Erase(type), this.types.Erase(carrier));
+        var occurs = this.Identical(type, carrier);
         for (var i = 0; !occurs && i < type.Components.Count; i++)
         {
             occurs = this.Occurs(type.Components[i], carrier);

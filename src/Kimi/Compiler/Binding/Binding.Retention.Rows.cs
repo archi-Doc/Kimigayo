@@ -572,9 +572,9 @@ public sealed partial class Binding
     // SPEC 8.2.3 ("identity is closed under replacement inside any Type"), 15.6.4 ("only where the premises make it one"): whether a Type
     // is the Type `hidden`, Origins erased (Fits), or the identity premises of the function whose own abstract Type `hidden` is make it
     // so: a member of its identity class in that function's view (Binding.TypeIdentity's classes, the one judge, as the key walk's View
-    // reads them; rvPremBad: `T is V`). The one Type test of the walks that judge a kept Type, HiddenKind's and the write test's
-    // (WrittenThrough: Filled, Handed, Routes): View keeps two own abstract Types of one class distinct, so erased reference identity
-    // alone does not decide it. A Type that is no such abstract Type is judged by Fits alone.
+    // reads them; rvPremBad: `T is V`). The one Type test of the walks that judge a kept Type: HiddenKind's, the write test's
+    // (WrittenThrough: Filled, Handed, Routes) and Occurs' (Filled's Takes and Returns): View keeps two own abstract Types of one class
+    // distinct, so erased reference identity alone does not decide it. A Type that is no such abstract Type is judged by Fits alone.
     private bool Identical(BoundType declared, BoundType hidden)
     {
         if (this.Fits(declared, hidden))

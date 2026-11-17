@@ -813,6 +813,22 @@ public sealed partial class RetentionTest
     public void AHandedCallableKeepsAnInputByItsResultOrItsWrites(string function, string expected)
         => Assert.Equal(expected, Declared(Bind(function + "\n"), "f"));
 
+    // SPEC 8.2.3 ("identity is closed under replacement inside any Type"), 15.6.4 ("through its result or its writes"; G935's review of
+    // 78e4f9829, F's ruling 52): at a call read in the callee's terms, a handed callable's Types are judged under the callee's identity
+    // premises (Identical, the one Type test of Filled's Takes, Returns and Writes). With `T is U` a handed `mk: (E) -> U` returns a T, so
+    // slot's own storage keeps y (Rb); with `E is D` a writer `set: (uniq/T, D)` takes y (Tb). Without the premise neither keeps y (Rc,
+    // Tc), though the call binds both Types alike. Fail-before on 5f22c9b6c: Rb and Tb kept no `1 Value`.
+    [Theory]
+    [InlineData("func f<T, U, E>(slot: uniq/T, y: E, mk: (E) -> U) -> ()\n    T is U\n    return\nfunc mku(q: u64) -> u64 => q\nfunc g(x: uniq/u64, v: u64)\n    f(x, v, mku)", true)]
+    [InlineData("func f<T, U, E>(slot: uniq/T, y: E, mk: (E) -> U) -> ()\n    return\nfunc mku(q: u64) -> u64 => q\nfunc g(x: uniq/u64, v: u64)\n    f(x, v, mku)", false)]
+    [InlineData("func f<T, E, D>(slot: uniq/T, y: E, set: (uniq/T, D) -> ()) -> ()\n    E is D\n    return\nfunc wru(s: uniq/u64, q: u64) => ()\nfunc g(x: uniq/u64, v: u64)\n    f(x, v, wru)", true)]
+    [InlineData("func f<T, E, D>(slot: uniq/T, y: E, set: (uniq/T, D) -> ()) -> ()\n    return\nfunc wru(s: uniq/u64, q: u64) => ()\nfunc g(x: uniq/u64, v: u64)\n    f(x, v, wru)", false)]
+    public void AHandedCallableIsReadUnderTheCalleesIdentityPremises(string source, bool keepsY)
+    {
+        var call = Calls(Bind(source + "\n"), "f").Single();
+        Assert.True(keepsY == call.Split(", reached")[0].Contains("1 Value", StringComparison.Ordinal), call);
+    }
+
     // SPEC 15.6.4's abstract-storage sentence (the owner's O-360 (a); PLAN G935, the design review's open point 2; class 1 for a binding
     // such as Wn): inside the binding of the callee's kept T the rows are the callee's terms', whatever Type the call binds T to. f's
     // declared record keeps `p` in dst's own storage by `make`'s result (and past T's hidden references by `setQ`, where the contract
