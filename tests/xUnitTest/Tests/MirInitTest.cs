@@ -934,27 +934,18 @@ public sealed class MirInitTest
     [InlineData(false)]
     [InlineData(true)]
     public void NoRuntimeDefinitionKeepsItsState(bool broken)
-    {
-        var c = MirBuildTest.Compile("func use(n: i32) => ()\nfunc f(y: i32, c: bool)\n    let x: i32\n    x = if c => y else => y\n    use(x)\n");
-        var program = new MirBuilder(c).Build(SyntaxTable.LibraryModule + 1); // Unanalyzed: a version's problems are reset only with its bodies.
-        var body = program.Bodies.ToArray().Single(static x => x.Key.Decl?.Name == "f");
-        var statements = body.Statements.ToArray();
-        var take = Array.FindIndex(statements, x => x is { Kind: MirStatementKind.Assign, Rvalue.Kind: MirRvalueKind.Use, Place.Projection: 0 } &&
-            body.Locals[x.Place.Root].Kind == MirLocalKind.Var && body.Operands[x.Rvalue.Start].Place is { Projection: 0, Root: >= 0 } operand &&
-            body.Locals[operand.Root].Kind == MirLocalKind.Temp);
-        Assert.True(take >= 0);
-        var temp = body.Operands[statements[take].Rvalue.Start].Place;
-        var placements = Enumerable.Range(0, statements.Length).Where(x => statements[x].Kind == MirStatementKind.Assign && statements[x].Place == temp).ToArray();
-        Assert.Equal(2, placements.Length);
-        if (broken)
-        {
-            Unsafe.AsRef(in body.Statements[placements[1]]) = statements[placements[1]] with { Kind = MirStatementKind.StorageLive };
-        }
+        => Assert.Equal(broken ? 1 : 0, KeptDefinitions("func f(y: i32, c: bool)\n    let x: i32\n    x = if c => y else => y\n    use(x)\n", broken));
 
-        new MirAnalysis(c.Types).Run(program, c.SourceModules.Length);
-        var internals = program.Problems.All.ToArray().Where(x => x.Code == DiagnosticCode.InternalInvariant_Kd && x.Body == body.Ordinal);
-        Assert.Equal(broken ? 1 : 0, internals.Count());
-    }
+    // MirInit's third invariant (the owner's O-390 (a)): no path, assumed too, reaches an overwrite's Use without its value, the temp
+    // MirBuilder.Replace publishes as MirLocalRole.Assigned, as the builder sends a path without it around the overwrite (SPEC 13.7.1,
+    // 14.10.3). Made to reach it after a return, where only assumed paths run (the else arm's placement of the value temp turned into
+    // a StorageLive of it), the overwrite's Use keeps x's state: one InternalInvariant_Kd; the unmutated body has none. Fail-before:
+    // without the role's check the mutated body records none, as no runtime edge reaches the kept Use.
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void NoPathReachesAnOverwritesUseWithoutItsValue(bool broken)
+        => Assert.Equal(broken ? 1 : 0, KeptDefinitions("func f(y: i32, c: bool)\n    var x: i32 = y\n    return\n    x = if c => y else => y\n    use(x)\n", broken));
 
     // SPEC 15.1.3, 15.1.2, 14.10.3 (the owner's O-319 (a); PLAN G909): an incomplete value (a Tuple, an Array literal, a Case or a
     // Dictionary literal with a part without a value; an aggregate whose operand holds nothing on an assumed path) written where no
@@ -1447,6 +1438,30 @@ public sealed class MirInitTest
         var tuples = paths.Count(x => locals[x.Local] is { Kind: MirLocalKind.Temp, Type.Kind: BoundTypeKind.Tuple });
         var parts = Enumerable.Range(0, body.Statements.Length).Max(i => moves.NeverParts(i).Length);
         return (Of("a"), Of("b"), Of("t"), tuples, parts, moves.MaxCarried);
+    }
+
+    // The InternalInvariant_Kd records of f, whose assignment's value temp two arms place: as built, or with the second placement turned
+    // into a StorageLive of the temp, so that the assignment's Use takes a temp that may hold nothing.
+    private static int KeptDefinitions(string function, bool broken)
+    {
+        var c = MirBuildTest.Compile("func use(n: i32) => ()\n" + function);
+        var program = new MirBuilder(c).Build(SyntaxTable.LibraryModule + 1); // Unanalyzed: a version's problems are reset only with its bodies.
+        var body = program.Bodies.ToArray().Single(static x => x.Key.Decl?.Name == "f");
+        var statements = body.Statements.ToArray();
+        var take = Array.FindIndex(statements, x => x is { Kind: MirStatementKind.Assign, Rvalue.Kind: MirRvalueKind.Use, Place.Projection: 0 } &&
+            body.Locals[x.Place.Root].Kind == MirLocalKind.Var && body.Operands[x.Rvalue.Start].Place is { Projection: 0, Root: >= 0 } operand &&
+            body.Locals[operand.Root].Kind == MirLocalKind.Temp);
+        Assert.True(take >= 0);
+        var temp = body.Operands[statements[take].Rvalue.Start].Place;
+        var placements = Enumerable.Range(0, statements.Length).Where(x => statements[x].Kind == MirStatementKind.Assign && statements[x].Place == temp).ToArray();
+        Assert.Equal(2, placements.Length);
+        if (broken)
+        {
+            Unsafe.AsRef(in body.Statements[placements[1]]) = statements[placements[1]] with { Kind = MirStatementKind.StorageLive };
+        }
+
+        new MirAnalysis(c.Types).Run(program, c.SourceModules.Length);
+        return program.Problems.All.ToArray().Count(x => x.Code == DiagnosticCode.InternalInvariant_Kd && x.Body == body.Ordinal);
     }
 
     private static string[] Problems(Compilation c)

@@ -14,7 +14,8 @@
 // Each placing location's facts (SPEC 14.10.3; DECISIONS R4-M175), which A1 applies: an Assign's Never parts, the components of its
 // destination that its construction leaves unplaced, as their operand is the Never value, and its carries, the paths of a temp it takes
 // whose own state A1 copies onto the destination's counterpart on each path: the temp's tracked parts and, for a whole temp that may hold
-// nothing there (Absent), the temp itself (a Use's counterpart is its destination), a Fill's components being the elements a Place can
+// nothing there (Absent), the temp itself (a Use's counterpart is its destination, of whatever kind: A1 keeps its state, exact for a
+// first placement, and an overwrite's Use takes a MirLocalRole.Assigned temp, placed on every path), a Fill's components being the elements a Place can
 // name alone and, for the others, the destination's Unplaced lane (Elements); a Places Call's, at the construction it inserts into
 // (its entry not inserted, SPEC 12.4.3). Only Move Paths are numbered: a root, a constructor's Field or base, a path a Place of the body
 // resolves to, and on the source side of a carry the counterpart of the destination's nearest Move Path at or below the component
@@ -300,8 +301,8 @@ internal sealed class MirMoveData
     // itself: a form without a value on an assumed path places nothing, into every element of a Fill (SPEC 4.3.3). A Use's component is
     // its destination, whatever it is, which then keeps its state (MirInit): a first placement's, a destination the value's construct
     // cannot touch (a temp, which then may hold nothing too, so the Use does not place it for its chain, a let or var initialization or
-    // binding, the return local), as an overwrite's Use is reached only by the paths that placed its value (MirBuilder.Replace); no
-    // kind of destination is read here. A temp's tracked paths are those its
+    // binding, the return local), as an overwrite's Use is reached only by the paths that placed its value (MirBuilder.Replace,
+    // MirLocalRole.Assigned, which MirInit checks); no kind of destination is read here. A temp's tracked paths are those its
     // Never parts and carries created below it (its runs): structure only; a Closure environment has no component path. An Array
     // literal's element has one, as a fixed array's, which no Place names (an Array's Index ends the path), so a whole use or an indexed
     // one sees it (SPEC 15.1.2, 15.1.3).

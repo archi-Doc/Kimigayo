@@ -305,7 +305,8 @@ internal sealed partial class MirBuilder
     // SPEC 13.7.1: the value secured first, then the target located, its old value dropped where its Type may need it, and the value placed;
     // a target that is not a Place is a Property's, designated through its parentheses, whose setter (its last call, after any getter)
     // takes the value, evaluated first. SPEC 14.10.3 (DECISIONS R4-M62): only a value is delivered, so the paths on which the right
-    // side has no value (AssignApart) go around the old value's Drop and the Use: they locate the target and go on after the Use.
+    // side has no value (AssignApart) go around the old value's Drop and the Use: they locate the target and go on after the Use. The
+    // value's temp is published as the assignment's value in transit (MirLocalRole.Assigned), which every path into the Use placed.
     private void Replace(MirPlace destination, BinaryKoto assignment)
     {
         if (HirTables.PlaceOf(assignment.Left).Kind is HirPlaceKind.Unset or HirPlaceKind.Value)
@@ -325,7 +326,7 @@ internal sealed partial class MirBuilder
 
         // Of the Type it is placed at, or the Never value of a right side of Type Never, which is not placed (Overwrite).
         var source = ReferenceEquals(TypeOf(assignment.Right), BoundType.Never) ? assignment.Right : assignment.Left;
-        var value = this.Hold(TypeOf(source), source);
+        var value = this.Hold(TypeOf(source), source, MirLocalRole.Assigned);
         var aside = this.AssignApart(value, assignment.Right);
         this.Made(value);
         this.Overwrite(this.Place(assignment.Left), value, assignment);
