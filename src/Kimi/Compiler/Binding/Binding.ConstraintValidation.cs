@@ -203,7 +203,7 @@ public sealed partial class Binding
     private bool ValidateConstraintEnvironments(BindingMode mode, bool sourcesOnly = false)
     {
         var changed = false;
-        foreach (var scope in this.scopes.Values)
+        foreach (var scope in this.scopes.Values.In(this.pass))
         {
             if (scope.Constraints is not { } environment || (sourcesOnly && this.IsLibraryDeclaration(scope.Owner)))
             {
