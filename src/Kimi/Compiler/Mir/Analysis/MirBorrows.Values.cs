@@ -127,9 +127,11 @@ internal sealed partial class MirBorrows
     // a holder's or a static's (once Flowing has decided the holders). The Case bound (SPEC 15.6
     // Holders' Case-payload sentence; the owner's O-383 (b)): a Place that is, or lies in, a Case payload whose Type, the Case's in the
     // result's Type as the view instantiates it, holds no Loan (Holds), reached from a local that holds only calls' results
-    // (MirBorrows.Holders' Returned) through Case payloads alone (Payload), a payload of a payload included, carries nothing: the
-    // result holds none through that Case, so a value Moved or Copied out of the payload carries none, whatever the result holds through
-    // another Case; where a call's write source may store in the local, it reads the local's write slot instead (Ends). A read through a local's shared reference reads the Places it refers to (MirBorrows.Loans' Referred), one per
+    // (MirBorrows.Holders' Returned) through Case payloads alone (Payload), a payload of a payload included, carries nothing: a
+    // Loan-free Case payload is bounded by its Case's Type (O-383 (b)): it carries no Loan whatever reached it: a part an input holds by
+    // value, a value read through a borrowed input, or reference bits written through a raw pointer (the rows rvResPartBad, xchgFieldD,
+    // xchgOldD); so a value Moved or Copied out of the payload carries none, whatever the result holds through another Case; where a
+    // call's write source may store in the local, it reads the local's write slot instead (Ends). A read through a local's shared reference reads the Places it refers to (MirBorrows.Loans' Referred), one per
     // referring store: a Ref's Place, or what the local a whole Move or Copy reads refers to; so a Copy out of the payload through a
     // shared match Subject is bounded like a Move, and one through a reference stored more than once where every Place it refers to
     // is. A Field or an element of the result or of a payload, and any other holder's parts, carry what the holder carries (O-364 (a)).

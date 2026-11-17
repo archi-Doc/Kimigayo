@@ -404,10 +404,10 @@ internal sealed partial class MirBorrows
     // each output's record retains an input): the input slots whose input is no constant and whose Type holds no Loan, into
     // sourceSlots, the input at Position (a composed drop's receiver at receiver 0). Each output's record is then asked at these slots
     // alone (Sourced: Writes, WriteSourced, MirBorrows.Calls' Keep). Each input tested counts as Work. An input whose Type holds a Loan
-    // is no write source though the payload may hold a Loan-free part it holds by value (SPEC 15.6.4) or reference bits written
-    // through a raw pointer: the cost the owner's O-383 (b) accepted ("bounds a Case payload by its Case's Type"), as for a call's
-    // result (the rows rvResPartBad, rvwPartBad). Written reaches the output argument's first referent only; a deeper target makes the
-    // program invalid by 15.6.4 already.
+    // is no write source: a Loan-free Case payload is bounded by its Case's Type (the owner's O-383 (b)): it carries no Loan whatever
+    // reached it: a part an input holds by value, a value read through a borrowed input, or reference bits written through a raw
+    // pointer (SPEC 15.6.4), as for a call's result (MirBorrows.Values' Sources; the rows rvResPartBad, rvwPartBad, xchgFieldD,
+    // cpyIntoD). Written reaches the output argument's first referent only; a deeper target makes the program invalid by 15.6.4 already.
     private void SourceSlots(in MirTerminator call, int slots, int receiver)
     {
         this.sourceSlots.Clear();

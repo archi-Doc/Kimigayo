@@ -2531,6 +2531,193 @@ public sealed partial class MirBorrowsTest
                         let k = e
                         return 0
             """,
+        ["xchgFieldD"] = """
+            struct RS {s}
+                public let r: ref/u8 during s
+                public let n: u64
+                public init(r: ref/u8 during s, n: u64)
+                    self.r = r
+                    self.n = n
+            func mk(x: uniq/i32) -> Result<uniq/i32, u64> => .Ok(x)
+            func xchgFieldD() -> u64
+                var kk: u8 = 1
+                let s = RS.init(r: kk@ref, n: 3)
+                var b: i32 = 0
+                var res: Result<uniq/i32, u64> = .Err(s.n)
+                let old = Kimi.Intrinsics.exchange(res@uniq, with: mk(b@uniq))
+                match old@move
+                    .Ok(_) => return 0
+                    .Err(let e)
+                        kk = 2
+                        let k = e
+                        return 0
+            """,
+        ["xchgFieldExpD"] = """
+            struct RS {s}
+                public let r: ref/u8 during s
+                public let n: u64
+                public init(r: ref/u8 during s, n: u64)
+                    self.r = r
+                    self.n = n
+            func mk(x: uniq/i32) -> Result<uniq/i32, u64> => .Ok(x)
+            func xchgFieldExpD() -> u64
+                var kk: u8 = 1
+                let s = RS.init(r: kk@ref, n: 3)
+                var b: i32 = 0
+                var res: Result<uniq/i32, u64> = .Err(s.n)
+                let old = Kimi.Intrinsics.exchange(res@uniq, with: mk(b@uniq))
+                match old@move
+                    .Ok(_) => return 0
+                    .Err(let e)
+                        let pe = e@raw
+                        kk = 2
+                        let k = e
+                        return 0
+            """,
+        ["xchgFieldMixedBad"] = """
+            struct RS {s}
+                public let r: ref/u8 during s
+                public let n: u64
+                public init(r: ref/u8 during s, n: u64)
+                    self.r = r
+                    self.n = n
+            func mk(x: uniq/i32) -> Result<uniq/i32, u64> => .Ok(x)
+            func xchgFieldMixedBad(c: bool) -> u64
+                var kk: u8 = 1
+                let s = RS.init(r: kk@ref, n: 3)
+                var b: i32 = 0
+                var res: Result<uniq/i32, u64> = .Err(s.n)
+                var old = Kimi.Intrinsics.exchange(res@uniq, with: mk(b@uniq))
+                if c => old = .Err(5)
+                match old@move
+                    .Ok(_) => return 0
+                    .Err(let e)
+                        kk = 2
+                        let k = e
+                        return 0
+            """,
+        ["xchgUserD"] = """
+            func keep(slot: raw/(raw/u8), value: raw/u8) => ()
+            func mk(x: uniq/i32) -> Result<uniq/i32, u64> => .Ok(x)
+            func xch(dst: uniq/Result<uniq/i32 during s, u64> during t, v: Result<uniq/i32 during s, u64>) -> Result<uniq/i32 during s, u64> => v@move
+            func xchgUserD() -> u64
+                var kk: u8 = 1
+                let r = kk@uniq
+                var spare: raw/u8 = r@follow@raw
+                var w: u64 = 3
+                keep(w@raw@raw/(raw/u8), spare)
+                var b: i32 = 0
+                var res: Result<uniq/i32, u64> = .Err(w)
+                let old = xch(res@uniq, mk(b@uniq))
+                match old@move
+                    .Ok(_) => return 0
+                    .Err(let e)
+                        kk = 2
+                        let k = e
+                        return 0
+            """,
+        ["xchgUserMixedBad"] = """
+            func keep(slot: raw/(raw/u8), value: raw/u8) => ()
+            func mk(x: uniq/i32) -> Result<uniq/i32, u64> => .Ok(x)
+            func xch(dst: uniq/Result<uniq/i32 during s, u64> during t, v: Result<uniq/i32 during s, u64>) -> Result<uniq/i32 during s, u64> => v@move
+            func xchgUserMixedBad(c: bool) -> u64
+                var kk: u8 = 1
+                let r = kk@uniq
+                var spare: raw/u8 = r@follow@raw
+                var w: u64 = 3
+                keep(w@raw@raw/(raw/u8), spare)
+                var b: i32 = 0
+                var res: Result<uniq/i32, u64> = .Err(w)
+                var old = xch(res@uniq, mk(b@uniq))
+                if c => old = .Err(5)
+                match old@move
+                    .Ok(_) => return 0
+                    .Err(let e)
+                        kk = 2
+                        let k = e
+                        return 0
+            """,
+        ["cpyIntoD"] = """
+            func keep(slot: raw/(raw/u8), value: raw/u8) => ()
+            func mk(x: uniq/i32) -> Result<uniq/i32, u64> => .Ok(x)
+            func put2(dst: uniq/Result<uniq/i32 during s, u64>, src: ref/Result<uniq/i32 during s, u64>) => ()
+            func cpyIntoD() -> u64
+                var kk: u8 = 1
+                let r = kk@uniq
+                var spare: raw/u8 = r@follow@raw
+                var w: u64 = 3
+                keep(w@raw@raw/(raw/u8), spare)
+                var a: i32 = 0
+                var b: i32 = 0
+                var src: Result<uniq/i32, u64> = .Err(w)
+                var res = mk(a@uniq)
+                put2(res@uniq, src@ref)
+                match res@move
+                    .Ok(_) => return 0
+                    .Err(let e)
+                        kk = 2
+                        let k = e
+                        return 0
+            """,
+        ["cpyIntoBuiltBad"] = """
+            func keep(slot: raw/(raw/u8), value: raw/u8) => ()
+            func put2(dst: uniq/Result<uniq/i32 during s, u64>, src: ref/Result<uniq/i32 during s, u64>) => ()
+            func cpyIntoBuiltBad() -> u64
+                var kk: u8 = 1
+                let r = kk@uniq
+                var spare: raw/u8 = r@follow@raw
+                var w: u64 = 3
+                keep(w@raw@raw/(raw/u8), spare)
+                var a: i32 = 0
+                var src: Result<uniq/i32, u64> = .Err(w)
+                var res: Result<uniq/i32, u64> = .Ok(a@uniq)
+                put2(res@uniq, src@ref)
+                match res@move
+                    .Ok(_) => return 0
+                    .Err(let e)
+                        kk = 2
+                        let k = e
+                        return 0
+            """,
+        ["xchgOldD"] = """
+            func keep(slot: raw/(raw/u8), value: raw/u8) => ()
+            func mk(x: uniq/i32) -> Result<uniq/i32, u64> => .Ok(x)
+            func xchgOldD() -> u64
+                var kk: u8 = 1
+                let r = kk@uniq
+                var spare: raw/u8 = r@follow@raw
+                var w: u64 = 3
+                keep(w@raw@raw/(raw/u8), spare)
+                var b: i32 = 0
+                var res: Result<uniq/i32, u64> = .Err(w)
+                let old = Kimi.Intrinsics.exchange(res@uniq, with: mk(b@uniq))
+                match old@move
+                    .Ok(_) => return 0
+                    .Err(let e)
+                        kk = 2
+                        let k = e
+                        return 0
+            """,
+        ["xchgOldMixedBad"] = """
+            func keep(slot: raw/(raw/u8), value: raw/u8) => ()
+            func mk(x: uniq/i32) -> Result<uniq/i32, u64> => .Ok(x)
+            func xchgOldMixedBad(c: bool) -> u64
+                var kk: u8 = 1
+                let r = kk@uniq
+                var spare: raw/u8 = r@follow@raw
+                var w: u64 = 3
+                keep(w@raw@raw/(raw/u8), spare)
+                var b: i32 = 0
+                var res: Result<uniq/i32, u64> = .Err(w)
+                var old = Kimi.Intrinsics.exchange(res@uniq, with: mk(b@uniq))
+                if c => old = .Err(5)
+                match old@move
+                    .Ok(_) => return 0
+                    .Err(let e)
+                        kk = 2
+                        let k = e
+                        return 0
+            """,
         ["rvwRefillOk"] = """
             func keep(slot: raw/(raw/u8), value: raw/u8) => ()
             func mk(x: uniq/i32) -> Result<uniq/i32, u64> => .Ok(x)
@@ -2798,6 +2985,19 @@ public sealed partial class MirBorrowsTest
     [InlineData("rvResTupMixedBad", "")] // I (O-364 (a)); kk = 2 at C-370's landing (G935's retention), the control of rvResTupBad
     [InlineData("rvwPartBad", "")] // V by O-383 (b) and R7, the same part reaching the Err payload through putS's write (an input whose Type holds a Loan is no write source); accepted on every build
     [InlineData("rvwPartBuiltBad", "")] // I (O-364 (a): res a value the body built); kk = 2 at C-370's landing (G935's retention), the control of rvwPartBad
+    // The same bound where the Loan reaches the payload as a value read through a borrowed input (15.6.4, 15.7.1: what a read through
+    // the argument carries): the owner's O-383 (b) bounds a Case payload by its Case's Type, so a Loan-free Case payload carries no Loan
+    // whatever reached it (the Middle's decision on the repeated review's R1). Each beside its control, kk = 2 where the holder is no
+    // call's result only (O-364 (a)), on dev's own retention.
+    [InlineData("xchgFieldD", "")] // V by O-383 (b): e, s.n (which carries s's Loan on kk, O-364 (a)) through exchange's old contents, is used after kk = 2
+    [InlineData("xchgFieldExpD", "")] // V by O-383 (b): the same with e's address taken; kk = 2 on the chain's base, where e is a holder by exposure
+    [InlineData("xchgFieldMixedBad", "xchgFieldMixedBad: kk = 2")] // I (O-364 (a): old also stored by the body), the control of xchgFieldD
+    [InlineData("xchgUserD", "")] // V by O-383 (b): xch's result names s, an Origin inside dst's referent Type, so it may hold what a read through dst carries (w, raw-written)
+    [InlineData("xchgUserMixedBad", "xchgUserMixedBad: kk = 2")] // I (O-364 (a)), the control of xchgUserD
+    [InlineData("cpyIntoD", "")] // V by O-383 (b) and R7: put2 may store what a read through src carries in res's Err payload (src's Type holds a Loan: no write source)
+    [InlineData("cpyIntoBuiltBad", "cpyIntoBuiltBad: kk = 2")] // I (O-364 (a): res a value the body built), the control of cpyIntoD
+    [InlineData("xchgOldD", "")] // V by O-383 (b): exchange's old contents hold w, which a raw store made carry r's Loan, in the Err payload
+    [InlineData("xchgOldMixedBad", "xchgOldMixedBad: kk = 2")] // I (O-364 (a)), the control of xchgOldD
     [InlineData("rvwRefillOk", "")] // V (15.6 Holders: a holder completely replaced no longer carries its old value's Loans): res refilled by a new call's result after put's write clears its write slot (MirBorrows.Holders' Rewrite; the review's B2)
     [InlineData("rvwRefillBad", "")] // I; kk = 2 at C-370's landing (G935's rule R): put writes the refilled res again
     [InlineData("caseWriteR2BindBad", "")] // I; kk = 2 at C-370's landing (G935's rule R), through the same path
