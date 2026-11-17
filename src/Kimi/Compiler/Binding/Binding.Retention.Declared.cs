@@ -20,7 +20,7 @@ namespace Kimi.Compiler;
 // inputs, the result and the handed signatures viewed at every depth (Viewed; DeclareSignature, RetentionPremises), so every
 // counterpart paired below them is in the view; the key walk views each step (OwnParts, Select, Base). Two own abstract Types an
 // identity premise identifies (`T is V`) both stay kept: View chooses no member between them, and the fit of one to the other is
-// Identical's (Binding.Retention.Rows.cs), which HiddenKind and the write test (WrittenThrough) read.
+// Identical's (Binding.Retention.Rows.cs: Binding.TypeIdentity's judge), which HiddenKind, the write test and Occurs read.
 // Inputs: the declared and the instantiated Types, Holdings' entries, the declaring function's identity classes (Binding.TypeIdentity).
 // Outputs: the declared counterpart, or null where the declaration writes none there.
 // Invariants: a function of its inputs and the declaring function's premises; a kept abstract Type gets every reader's null answer (no
@@ -54,6 +54,31 @@ public sealed partial class Binding
 
         return root is { Kind: BoundTypeKind.Parameter or BoundTypeKind.TargetProjection, Symbol.Scope.Owner: FunctionKoto function } &&
             !TryPairLayer(declared!, out _, out _) ? function : null;
+    }
+
+    // The function whose own abstract Types a Type names (Identical's view): the binder of its first Type parameter or pair target a
+    // function declares, in component order; null for a Type that names none.
+    private static FunctionKoto? AbstractOwner(BoundType type)
+    {
+        if (!type.ContainsParameter)
+        {
+            return null;
+        }
+
+        if (type is { Kind: BoundTypeKind.Parameter or BoundTypeKind.TargetProjection, Symbol.Scope.Owner: FunctionKoto function })
+        {
+            return function;
+        }
+
+        for (var i = 0; i < type.Components.Count; i++)
+        {
+            if (AbstractOwner(type.Components[i]) is { } owner)
+            {
+                return owner;
+            }
+        }
+
+        return null;
     }
 
     // Whether a declared counterpart is an abstract Type of its function's own declaration: the binding there is one the declaration does
