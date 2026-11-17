@@ -78,6 +78,11 @@ public partial class KimiLibraryShapeTest
 
             first = first < 0 ? kept.Length : first;
             Assert.Equal(first, kept.Length);
+
+            // Disjointness (v9): a slot is kept only by its declaration's pass, so Binding's own part holds no library slot and the
+            // layer's no program slot (Keep writes the running part without the find).
+            Assert.DoesNotContain(own.Keepers.Keys, x => x.Origin.Binder is { } binder && ReferenceEquals(binder.Kotonoha, c.Library.Kotonoha));
+            Assert.DoesNotContain(layer.Keepers.Keys, x => x.Origin.Binder is { } binder && !ReferenceEquals(binder.Kotonoha, c.Library.Kotonoha));
         }
     }
 
@@ -149,6 +154,39 @@ public partial class KimiLibraryShapeTest
     [Fact]
     public void TheLibraryDeclaresNoBoundedCallableClause()
         => Assert.Empty(KotoTree.Walk(Bound(string.Empty).Library.Kotonoha.RootKoto).OfType<IsKoto>().Where(static x => x.EffectBounds.Count != 0).Select(static x => Line(x)));
+
+    // PLAN G949 S1-r1b (v7; s1r1-design M6): the library binds in one run. The empty program's Final Bind leaves no known base and no
+    // second run, so a restart's second run of the library pass (secondRun true) repeats the library's one run (v2's r1b clause:
+    // TheLibraryLayerAfterARestartIsTheEmptyPrograms). A precondition, true today; a library base clause that names a projection fails
+    // here first.
+    [Fact]
+    public void TheLibraryBindsInOneRun()
+    {
+        var c = Bound(string.Empty);
+        Assert.False((bool)typeof(Binding).GetField("secondRun", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(c.Binding)!);
+        var known = (System.Collections.ICollection?)typeof(Binding).GetField("knownBases", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(c.Binding);
+        Assert.True(known is null or { Count: 0 });
+    }
+
+    // PLAN G949 S1-r1b (r1b plan section 1, step 0; s1r1-design 8.10's first branch): the library declares no shape contract and no
+    // library pair is a parameter-shape conflict, so the shape lists hold no library row a program pass's reset drops, and they stay per
+    // pass (ResetParameterShapes). A tripwire, true today: the unit that gives a library function its first shape contract fails here
+    // and makes 8.10's keyed PassPart store.
+    [Fact]
+    public void TheLibraryDeclaresNoShapeContract()
+    {
+        var c = Bound(string.Empty);
+        var heads = 0;
+        foreach (var head in c.Library.Kotonoha.Syntax.Hir.Families.ShapeContractHeads.Enumerate(c.Binding))
+        {
+            heads += head == 0 ? 0 : 1; // A row is its first shape contract's index + 1.
+        }
+
+        Assert.Equal(0, heads);
+        Assert.Empty((System.Collections.ICollection)typeof(Binding).GetField("shapeContracts", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(c.Binding)!);
+        var conflicts = (System.Collections.IDictionary)typeof(Binding).GetField("parameterShapeConflicts", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(c.Binding)!;
+        Assert.DoesNotContain(conflicts.Keys.Cast<Koto>(), x => ReferenceEquals(x.Kotonoha, c.Library.Kotonoha));
+    }
 
     // G949 D2b-d's d12 (N5-3): the library's explicit specializations (SPEC 8.13: tryResolve's, writer's and format's) are their
     // originals' after a second Bind of a program that runs one (an i128 formatted), as MIR's Implementation reads them through
