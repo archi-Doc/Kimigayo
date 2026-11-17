@@ -19,6 +19,26 @@ public sealed partial class Binding
     private AssociatedInference? collectingAssociated;
     private bool associatedInferenceReady;
 
+    // Symbolic parameter projections are complete public Types; an unresolved projection on a nominal
+    // declaration still needs a Type value. This query never searches bodies or introduces a proof. KimiLibraryShapeTest states with it
+    // that no projection of the library's Type syntax is pending (PLAN G949 S1-r2, rule (c)).
+    internal bool PendingAssociatedType(BoundType type)
+    {
+        if (this.pendingAssociatedTypes.TryGetValue(type, out var pending))
+        {
+            return pending;
+        }
+
+        pending = type.Kind == BoundTypeKind.AssociatedProjection && type.Components[0].Symbol?.Declaration is StructKoto or EnumKoto;
+        for (var i = 0; !pending && i < type.Components.Count; i++)
+        {
+            pending = this.PendingAssociatedType(type.Components[i]);
+        }
+
+        this.pendingAssociatedTypes[type] = pending;
+        return pending;
+    }
+
     private static bool InferenceBinderInScope(Koto binder, BindingSymbol owner)
     {
         // A formed Function Type binds its own per-call Origins; these do not escape its method.
@@ -467,25 +487,6 @@ public sealed partial class Binding
         {
             this.ExtractAssociatedEvidence(batch, path, required.Components[i], actual.Components[i], source);
         }
-    }
-
-    // Symbolic parameter projections are complete public Types; an unresolved projection on a nominal
-    // declaration still needs a Type value. This query never searches bodies or introduces a proof.
-    private bool PendingAssociatedType(BoundType type)
-    {
-        if (this.pendingAssociatedTypes.TryGetValue(type, out var pending))
-        {
-            return pending;
-        }
-
-        pending = type.Kind == BoundTypeKind.AssociatedProjection && type.Components[0].Symbol?.Declaration is StructKoto or EnumKoto;
-        for (var i = 0; !pending && i < type.Components.Count; i++)
-        {
-            pending = this.PendingAssociatedType(type.Components[i]);
-        }
-
-        this.pendingAssociatedTypes[type] = pending;
-        return pending;
     }
 
     private bool InferenceTypeInScope(BoundType type, BindingSymbol owner, AssociatedInference batch, out Koto? invalid)
