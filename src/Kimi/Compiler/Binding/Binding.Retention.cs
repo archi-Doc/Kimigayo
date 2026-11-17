@@ -30,6 +30,12 @@ public sealed partial class Binding
     // reused.
     private readonly List<RetentionAtom> retentionAtoms = new();
     private readonly List<BoundType> retentionCallables = new();
+    private readonly List<BoundType> retentionHanded = new(); // The Callable bounds' and requirements' signatures (RetentionPremises' bounds); Filled reads them with retentionCallables.
+
+    // The same two lists as the callee's declaration states them (ErasedSignature.Declared; the declared inputs' and result's Function
+    // parts), which Filled reads inside the binding of the callee's kept abstract Type (PLAN G935; D1: the walk state's Types).
+    private readonly List<BoundType> retentionOwnHanded = new();
+    private readonly List<BoundType> retentionOwnCallables = new();
     private readonly Dictionary<BoundType, int> retentionCarriers = new(ReferenceEqualityComparer.Instance);
 
     // Each carrier's ReachedNode (DECISIONS R4-M154, Revision 3): the storage a value of it may refer to that the body does not own, reached
@@ -48,11 +54,6 @@ public sealed partial class Binding
     // A binder's declared inputs while BinderStep reads them (TyCtxt.Signature in place), reused.
     private readonly List<BoundType> retentionBinderInputs = new();
 
-    // SPEC 15.6.4's abstract-Type sentence (DECISIONS BU-66): the abstract parts where every raw source's own value may be held, each a
-    // carrier (null: any abstract part of the outputs), by an erased callable the call may run (rule 3: ErasedFills; the computation's own
-    // erased callee, RetainsErased, at any part); the hold walk reads them (HoldsRaw). Reused.
-    private readonly List<BoundType?> retentionFills = new();
-
     // The (subject, Contract) premises whose requirement signatures HandedSignatures has listed, and the Types the contract reaches
     // (Reach), as a set and in the order reached (the walk's list: the signature's first), reused.
     private readonly HashSet<(BoundType Subject, BindingSymbol Contract)> retentionContracts = new();
@@ -68,7 +69,15 @@ public sealed partial class Binding
     private readonly HashSet<(BoundType Type, RetentionAtom At, OriginVariance Variance, bool Callable)> retentionPositions = new();
     private List<BoundType> retentionScope = new();
     private int retentionInputs;
+
+    // SPEC 15.6.4's abstract-Type sentence (DECISIONS BU-66): the computation is an erased callee's own (RetainsErased), whose
+    // implementation may retain any input at any abstract part (Binding.Retention.Rows.cs, Filled); every other fill is per input.
+    private bool retentionErased;
     private bool retentionLimit;
+
+    // Whether the walked declaration's premises identify Types (HasTypeIdentity over its constraint scope): then its declared inputs,
+    // result and handed signatures are taken in its view (Viewed; DeclareSignature, RetentionPremises).
+    private bool retentionViewed;
 
     // SPEC 15.6.4: the retention of a callee's contract whose inputs and result are instantiated (a function, or the closure or item a
     // Value call names), under the premises its body is checked under: its own part, its clauses substituted under the declaring Type,
@@ -135,7 +144,7 @@ public sealed partial class Binding
 
             var nodes = this.RetentionNodes(environment);
             this.AddErasedRelations(environment, 0, binder);
-            this.retentionFills.Add(null);
+            this.retentionErased = true;
             return this.RetentionRows(environment, nodes, inputs, result, null, null);
         }
         finally
@@ -288,10 +297,14 @@ public sealed partial class Binding
     {
         this.retentionAtoms.Clear();
         this.retentionCallables.Clear();
+        this.retentionHanded.Clear();
+        this.retentionOwnHanded.Clear();
+        this.retentionOwnCallables.Clear();
         this.retentionCarriers.Clear();
         this.retentionReachedNodes.Clear();
         this.retentionRawSources.Clear();
-        this.retentionFills.Clear();
+        this.retentionRawStated.Clear();
+        this.retentionErased = false;
         this.retentionScope.Clear();
         this.retentionScope.AddRange(inputs);
         this.retentionInputs = signatureInputs;
@@ -320,10 +333,14 @@ public sealed partial class Binding
         this.ReturnPremises(environment);
         this.retentionAtoms.Clear();
         this.retentionCallables.Clear();
+        this.retentionHanded.Clear();
+        this.retentionOwnHanded.Clear();
+        this.retentionOwnCallables.Clear();
         this.retentionCarriers.Clear();
         this.retentionReachedNodes.Clear();
         this.retentionRawSources.Clear();
-        this.retentionFills.Clear();
+        this.retentionRawStated.Clear();
+        this.retentionErased = false;
         this.retentionInstantiated.Clear();
         this.retentionDeclared.Clear();
     }
@@ -331,10 +348,13 @@ public sealed partial class Binding
     // The walked signature as its declaration writes it (retentionDeclared): its function's parameter Types and result without any
     // substitution (`target`: a call's target, else the callee's own symbol, also for a Value call of a Function Item, whose signature
     // binds the generic's arguments; SPEC 7), or a Closure's own signature, the inputs and result themselves (`target` null); none where
-    // the declaration's parameters are not the inputs. TyCtxt.Signature reads the declaration in place, so this allocates nothing.
+    // the declaration's parameters are not the inputs. Each is taken in the declaring function's view where its premises identify Types
+    // (Viewed; SPEC 8.2.3; Binding.Retention.Declared.cs): `value: T` under `T is Option<V>` is an `Option<V>`. TyCtxt.Signature reads
+    // the declaration in place, so without such a premise this allocates nothing.
     private void DeclareSignature(BindingSymbol? target, ReadOnlySpan<BoundType> inputs, BoundType result)
     {
         this.retentionDeclared.Clear();
+        this.retentionViewed = target is not null && HasTypeIdentity(this.ConstraintScope(target.Declaration));
         if (target is null)
         {
             this.retentionDeclared.AddRange(inputs);
@@ -351,12 +371,12 @@ public sealed partial class Binding
                 return;
             }
 
-            this.retentionDeclared.Add(input);
+            this.retentionDeclared.Add(this.retentionViewed ? this.Viewed(input, 0)! : input);
         }
 
         if (declared is not null && count == inputs.Length)
         {
-            this.retentionDeclared.Add(declared);
+            this.retentionDeclared.Add(this.retentionViewed ? this.Viewed(declared, 0)! : declared);
         }
     }
 
@@ -428,19 +448,28 @@ public sealed partial class Binding
 
         foreach (var input in inputs)
         {
-            this.Handed(input, null);
+            this.Handed(input, null, this.retentionCallables);
         }
 
-        this.Handed(result, null);
+        this.Handed(result, null, this.retentionCallables);
         if (declaring is not null)
         {
-            this.Handed(declaring, null);
+            this.Handed(declaring, null, this.retentionCallables);
+        }
+
+        foreach (var declared in this.retentionDeclared)
+        {
+            this.Handed(declared, null, this.retentionOwnCallables);
         }
 
         foreach (var bound in bounds)
         {
+            this.retentionHanded.Add(bound.Signature);
             this.AddErasedSignature(environment, bound);
-            this.Handed(bound.Signature, bound.Signature);
+            this.Handed(bound.Signature, bound.Signature, this.retentionCallables);
+            var own = this.retentionViewed ? this.Viewed(bound.Declared ?? bound.Signature, 0)! : bound.Declared ?? bound.Signature;
+            this.retentionOwnHanded.Add(own); // As the callee's declaration states it, in its view.
+            this.Handed(own, own, this.retentionOwnCallables);
         }
 
         for (var i = 0; i < this.retentionCallables.Count; i++)
@@ -449,15 +478,16 @@ public sealed partial class Binding
         }
     }
 
-    // The callables a contract's Type hands its body (TyCtxt.HandedCallables) into the computation's erased callables, each once; a Callable
-    // bound (`self`), whose own relations RetentionPremises adds, only for the callables its signature names.
-    private void Handed(BoundType type, BoundType? self)
+    // The callables a contract's Type hands its body (TyCtxt.HandedCallables) into a list of the computation's erased callables
+    // (retentionCallables, or retentionOwnCallables for a declared Type), each once; a Callable bound (`self`), whose own relations
+    // RetentionPremises adds, only for the callables its signature names.
+    private void Handed(BoundType type, BoundType? self, List<BoundType> callables)
     {
         foreach (var callable in this.types.HandedCallables(type))
         {
-            if (!ReferenceEquals(callable, self) && !this.retentionCallables.Contains(callable))
+            if (!ReferenceEquals(callable, self) && !callables.Contains(callable))
             {
-                this.retentionCallables.Add(callable);
+                callables.Add(callable);
             }
         }
     }
@@ -482,7 +512,7 @@ public sealed partial class Binding
     private void AddErasedSignature(OriginPremiseEnvironment environment, ErasedSignature erased)
     {
         var (atoms, signature) = (this.retentionAtoms, erased.Signature);
-        var (start, raws) = (atoms.Count, this.retentionRawSources.Count);
+        var (start, raws, stated) = (atoms.Count, this.retentionRawSources.Count, this.retentionRawStated.Count);
         var inputs = signature.Components[0];
         var (contract, signatureInputs) = (this.retentionScope, this.retentionInputs);
         (this.retentionScope, this.retentionInputs) = (this.retentionErasedScope, 0);
@@ -502,9 +532,9 @@ public sealed partial class Binding
         var result = new RetentionAtom(CallRetention.ResultOutput, RetentionKind.Value, Writable: false, null, null, null);
         this.RetentionWalk(signature.Components[1], result, OriginVariance.Covariant, callable: false); // An erased signature has no declared counterpart.
         this.AddErasedRelations(environment, start, erased.Binder);
-        this.ErasedFills(start, raws);
         atoms.RemoveRange(start, atoms.Count - start);
         this.retentionRawSources.RemoveRange(raws, this.retentionRawSources.Count - raws);
+        this.retentionRawStated.RemoveRange(stated, this.retentionRawStated.Count - stated);
         (this.retentionScope, this.retentionInputs) = (contract, signatureInputs);
     }
 
@@ -536,29 +566,6 @@ public sealed partial class Binding
                 {
                     AddPremiseEdge(environment, longer, this.ReachedNode(environment, carrier), OriginPremiseRule.Input);
                 }
-            }
-        }
-    }
-
-    // SPEC 15.6.4's abstract-Type sentence (rule 3; DECISIONS BU-66): where an erased signature handed to the body (its atoms from `start`,
-    // its raw sources from `raws`) may retain every contract raw source (retentionFills): at each carrier its result holds or it writes (the
-    // atoms AddErasedRelations reads, R4-M154 Revision 3) through one of its raw sources, whatever their pointee Types (a raw cast keeps the
-    // address and provenance, SPEC 5.4; a pointer to a local holding the input is read through), but in that source's input (a pointer is
-    // never part of its own pointee; rows are per input).
-    private void ErasedFills(int start, int raws)
-    {
-        var (atoms, raw) = (this.retentionAtoms, this.retentionRawSources);
-        for (var j = start; j < atoms.Count; j++)
-        {
-            var stored = false;
-            for (var k = raws; !stored && k < raw.Count; k++)
-            {
-                stored = atoms[j] is { Carrier: not null } atom && (atom.Input == CallRetention.ResultOutput || (atom.Writable && atom.Input != raw[k].Input));
-            }
-
-            if (stored)
-            {
-                this.retentionFills.Add(atoms[j].Carrier);
             }
         }
     }
@@ -641,6 +648,8 @@ public sealed partial class Binding
         }
     }
 
-    // An erased signature (the head's contract): the instantiated signature Type and the Binder of its per-call Origins.
-    internal readonly record struct ErasedSignature(BoundType Signature, Koto? Binder);
+    // An erased signature (the head's contract): the instantiated signature Type and the Binder of its per-call Origins; for a callable a
+    // callee's premises hand its body, also that signature as the callee's declaration states it (Declared; null where it is the
+    // instantiated one), which retention reads inside the binding of the callee's kept abstract Type (Filled).
+    internal readonly record struct ErasedSignature(BoundType Signature, Koto? Binder, BoundType? Declared = null);
 }

@@ -10,8 +10,8 @@ namespace Kimi.Compiler;
 // Responsibility: the input fold of the one walk (StorageWalk; DECISIONS R4-M154, r2.3): the Value sources of each input
 // (RetentionSources, Source, Through: a value of its Type, of a part it holds by value, or a borrow formed through it, each named by its
 // layer's node with the layers it is formed through), whether a position can hold one (CanHold, Holds, Borrows, Fits), and whether an
-// abstract part keeps a raw source's own value by rule 3's fills (HoldsRaw, Occurs; DECISIONS BU-66); Binding.Retention.Rows.cs reads
-// them into a storage's Value kinds and pairs, and the hold walk reads HoldsRaw.
+// abstract part may keep an input by a callable's fill (Binding.Retention.Rows.cs, Filled; DECISIONS BU-66, PLAN G935 R1.3);
+// Binding.Retention.Rows.cs reads them into a storage's Value kinds and pairs.
 // Inputs: the contract's instantiated inputs, the walk's visits, the nodes of a Type's own layers and arguments (OwnNodes), the parts a
 // value holds (Holdings) and the pair layers' admitted cases (LayerAdmitted).
 // Outputs: per computation, the sources by node (retentionSources, with their layer paths, retentionPaths); per question, whether a
@@ -82,7 +82,7 @@ public sealed partial class Binding
             if (inputs[i] is not { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Raw })
             {
                 this.storageSeen.Clear();
-                this.StorageWalk(environment, inputs[i], StorageAt.Input(i));
+                this.StorageWalk(environment, inputs[i], StorageAt.Input(i) with { Signature = this.SignatureInput(i) });
             }
         }
     }
@@ -113,8 +113,16 @@ public sealed partial class Binding
             }
 
             var own = at.Source.Held ? type : null;
-            this.retentionSources.Add(new(node, at.Source.Input, own, referent, (start, this.retentionPaths.Count - start)));
+            this.retentionSources.Add(new(node, at.Source.Input, own, referent, at.Signature, (start, this.retentionPaths.Count - start)));
             layer = node;
+        }
+
+        // R (PLAN G935; the owner's O-359 (a)): a part held by value that names no Origin and holds no part by value is a source of its own
+        // value with no node, matched at every position by CanHold alone (Storages); a raw layer is no such source (the hold walk's).
+        if (layer < 0 && at.Source.Held && referent is null && (type.Kind != BoundTypeKind.Semantics || type.Semantics != SemanticsKind.Raw) &&
+            this.Leaf(type, run))
+        {
+            this.retentionSources.Add(new(-1, at.Source.Input, type, null, at.Signature, (this.retentionPaths.Count, 0)));
         }
 
         return referent is null ? -1 : layer;
@@ -254,25 +262,9 @@ public sealed partial class Binding
         ? this.Holds(part.Part, asked, depth + 1)
         : (asked.Flags & HoldFlags.Repeated) != 0 && part.Part is { } element && this.Fits(element, asked.Part!);
 
-    // Whether an abstract part can hold a raw source's own value (SPEC 15.6.4's abstract-Type sentence; DECISIONS BU-66): only where a
-    // callable the call may run may retain it there (rule 3), a fill (retentionFills) at any part or at a carrier that, Origins erased, is
-    // the part or occurs in it (an associated projection's base); no premise makes an abstract part storage that can hold it (rule 2's one
-    // test, Storages: a carrier's closure reaches only the relations of those callables).
-    private bool HoldsRaw(BoundType part)
-    {
-        foreach (var at in this.retentionFills)
-        {
-            this.retentionWalked.Clear();
-            if (at is null || this.Occurs(part, at))
-            {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
-    // Whether a carrier, Origins erased, is a Type or occurs among its components: a walk of the Type's parts, each entered once
+    // Whether a carrier is a Type or occurs among its components, by the one Type test of the retention walks (Identical: Origins
+    // erased, and under the identity premises of the function whose own abstract Type the carrier is; SPEC 8.2.3: under `T is U` a
+    // handed `(E) -> U` returns a T, under `E is D` a parameter D takes an E): a walk of the Type's parts, each entered once
     // (retentionWalked), which ends with the Type (IMPL A.4's height) and has no bound of its own.
     private bool Occurs(BoundType? type, BoundType carrier)
     {
@@ -282,7 +274,7 @@ public sealed partial class Binding
         }
 
         this.termWalks++;
-        var occurs = ReferenceEquals(this.types.Erase(type), this.types.Erase(carrier));
+        var occurs = this.Identical(type, carrier);
         for (var i = 0; !occurs && i < type.Components.Count; i++)
         {
             occurs = this.Occurs(type.Components[i], carrier);
@@ -316,8 +308,9 @@ public sealed partial class Binding
     }
 
     // A Value source of an input (RetentionSources): its node, the part of its own value it is (null: one reached through an exclusive
-    // layer), the referent of the borrow layer it is, through which it forms borrows (null: none), and its path, the nodes every one of
-    // which a position's closure must reach (retentionPaths: the layers it is formed through but those Related to the layer above, its own
-    // last unless Related).
-    private readonly record struct RetentionSource(int Node, int Input, BoundType? Own, BoundType? Through, (int Start, int Count) Path);
+    // layer), the referent of the borrow layer it is, through which it forms borrows (null: none), the walked signature's declared Type
+    // where it was met (StorageAt.Signature, DECISIONS BU-113, BU-202: the input's declared Type at the walk's root; null where none
+    // pairs), and its path, the nodes every one of which a position's closure must reach (retentionPaths: the layers it is formed through
+    // but those Related to the layer above, its own last unless Related).
+    private readonly record struct RetentionSource(int Node, int Input, BoundType? Own, BoundType? Through, BoundType? Signature, (int Start, int Count) Path);
 }

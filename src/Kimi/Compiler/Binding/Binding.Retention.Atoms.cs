@@ -18,6 +18,12 @@ public sealed partial class Binding
     // through the input carries, never the borrow's own Loans), the input's sources joined; reused.
     private readonly List<(int Input, RetentionKind? Kind)> retentionRawSources = new();
 
+    // The Origins the raw sources' layers state (SPEC 5.7 Fits and claims; DECISIONS BU-66 as amended by C-352): per raw layer of an input
+    // in retentionRawSources that states an Origin other than `self` (OwnedOrigin), that Origin, and for one past an exclusive borrow the
+    // borrow's outer Origin, whose storage it lies in (a layer stating that Origin retains as that borrow would, its chain included); a
+    // layer stating none is no further entry, since it fits no layer stating one but by a claim. The hold walk's stated arm reads them (Binding.Retention.Rows.cs, StatedFits); reused.
+    private readonly List<(int Input, BoundOrigin Origin)> retentionRawStated = new();
+
     // Where an atom lies below its input's layers (RetentionAtom.Place, RetentionWalk): past a shared layer or a raw layer whose step is
     // Shared (Shared); in a Closure's environment, whose bindings' Types its body's captures wrote, not the walked signature (Captured,
     // DECISIONS BU-108: no signature cap judges a layer there).
@@ -111,6 +117,7 @@ public sealed partial class Binding
         else if (input is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Raw })
         {
             this.retentionRawSources.Add((index, null));
+            this.RawStated(input, index);
             this.AddRetentionAtom(new(index, Kind: null, Writable: false, OwnedOrigin(input), null, null), callable: false);
             var content = new RetentionAtom(index, RetentionKind.Content, Writable: true, null, null, null, Signature: declared);
             this.RetentionParts(input, content, OriginVariance.Covariant, callable: false);
@@ -206,6 +213,11 @@ public sealed partial class Binding
         if (raw && !inside && !at.Shared && at.Input >= 0)
         {
             this.retentionRawSources.Add((at.Input, at.Kind == RetentionKind.Value ? RetentionKind.Value : RetentionKind.Chain));
+            this.RawStated(type, at.Input);
+            if (at.Kind != RetentionKind.Value && at.Layer is { } borrow)
+            {
+                this.retentionRawStated.Add((at.Input, borrow)); // Past a borrow, in its referent: a layer stating that Origin addresses it.
+            }
         }
 
         var step = raw && !inside ? this.RawStepAt(type, null, null, at.Signature) : HoldStep.Address;
@@ -221,6 +233,15 @@ public sealed partial class Binding
         {
             var component = below with { Signature = Below(at.Signature, DeclaredComponent(at.Signature, type, i)) };
             this.RetentionWalk(type.Components[i], component, ComposeVariance(variance, ComponentVariance(type, i, this)), inside);
+        }
+    }
+
+    // A raw source's layer `type` of input `index`: its stated Origin, where it states one other than `self` (retentionRawStated).
+    private void RawStated(BoundType type, int index)
+    {
+        if (OwnedOrigin(type) is { Kind: not OriginKind.Unstated } origin)
+        {
+            this.retentionRawStated.Add((index, origin));
         }
     }
 
