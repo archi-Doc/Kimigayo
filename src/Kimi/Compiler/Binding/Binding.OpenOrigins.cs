@@ -1,5 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using System.Diagnostics.CodeAnalysis;
 using Kimi.Compiler.Parsing;
 
 namespace Kimi.Compiler;
@@ -14,7 +15,7 @@ public sealed partial class Binding
     private const int UnsolvedKey = int.MinValue / 2;
 
     // One open region per argument and per Origin the argument's known call signature quantifies (Input slot, or -1 - Parameter slot).
-    private readonly Dictionary<(Koto Source, int Key), BoundOrigin> openOrigins = new();
+    private readonly OpenOriginRows openOrigins;
 
     // SPEC 15.3.6: a selected call whose slot only an argument's own per-call Origin would satisfy, with that argument and the slot.
     private Dictionary<Koto, PerCallOriginFact>? perCallOrigins;
@@ -394,5 +395,24 @@ public sealed partial class Binding
 
         static BoundOrigin? Fill(BoundOrigin? origin, BoundOrigin? supplied, bool takeOpen)
             => origin is { Open: true } && supplied is not null && (supplied.Kind != OriginKind.Inference || (takeOpen && supplied.Open)) ? supplied : origin;
+    }
+
+    /// <summary>The `openOrigins` family's one accessor (DECISIONS BU-220): a kept interner, a source's open regions (Inference atoms whose
+    /// slot is the key) in its module's NodeColumns at its SyntaxId, one KeyedRow of them, never reset; a renumbering moves the row with
+    /// its source. Its members keep the names and the tuple key its readers use.</summary>
+    private readonly struct OpenOriginRows(Binding binding)
+    {
+        internal bool TryGetValue((Koto Source, int Key) key, [NotNullWhen(true)] out BoundOrigin? origin)
+            => (origin = key.Source.SyntaxOwner is { } table ? KeyedRow.Find(table.Hir.Families.OpenOrigins.Get(key.Source.SyntaxId), (OriginKind.Inference, key.Key), AtomKey, ref binding.originRowProbes) : null) is not null;
+
+        internal void Add((Koto Source, int Key) key, BoundOrigin origin)
+        {
+            if (this.TryGetValue(key, out _))
+            {
+                throw new ArgumentException($"An open region is already interned at {key}.", nameof(key));
+            }
+
+            KeyedRow.Put(ref HirTables.Of(key.Source).Families.OpenOrigins.Ref(key.Source.SyntaxId), Interned(origin, key.Source, (OriginKind.Inference, key.Key)), AtomKey, ref binding.originRowProbes);
+        }
     }
 }

@@ -411,7 +411,7 @@ public sealed partial class FunctionCodegenTest
         {
             if (bodies[i].Key is { Kind: MirBodyKind.Fn, Decl.Name: "f" })
             {
-                table.Close(0, 0, (DiagnosticCode.OwnershipStorageLimit_Kd, default, -1));
+                table.Close(0, 0, (DiagnosticCode.OwnershipStorageLimit_Kd, default));
                 continue;
             }
 
@@ -443,7 +443,7 @@ public sealed partial class FunctionCodegenTest
     {
         var program = c.BuildMir();
         var body = program.Bodies.ToArray().Single(static x => x.Key is { Kind: MirBodyKind.Fn, Decl: null });
-        var first = program.Bodies.ToArray().Take(body.Ordinal).Sum(x => program.Drops.RowsOf(x.Ordinal).Length);
+        var first = program.ProgramBodies.ToArray().Where(x => x.Ordinal < body.Ordinal).Sum(x => program.Drops.RowsOf(x.Ordinal).Length); // In the program's store.
         var row = Assert.Single(program.Drops.RowsOf(body.Ordinal).ToArray());
         program.Drops.Rows[first] = row with { Block = body.Blocks.Length };
     }
