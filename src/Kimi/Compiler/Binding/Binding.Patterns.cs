@@ -11,14 +11,13 @@ public sealed partial class Binding
 
     // A match keeps its plan object across rebinds, so a retained plan never starts describing another match while its
     // own syntax is still selected; only the plans of removed matches return to the pool.
-    private readonly Dictionary<MatchKoto, BoundMatch> matchPlans = new(ReferenceEqualityComparer.Instance);
+    private readonly MatchPlanRows matchPlans;
     private readonly List<BoundMatch> matchPool = new();
     private readonly HashSet<Koto> patternNodes = new(ReferenceEqualityComparer.Instance);
     private readonly List<Koto> previousPatternNodes = new();
     private readonly HashSet<Koto> candidateScopes = new();
     private readonly List<Koto> previousCandidateScopes = new();
     private readonly List<PatternWarning> patternWarnings = new();
-    private int indexedMatches; // The matches this pass indexed: the plans PruneMatchPlans keeps.
     private PatternMarker? patternMarker;
     private UnsupportedMarker? unsupportedMarker;
 
@@ -72,10 +71,9 @@ public sealed partial class Binding
         // a pass's that threw before PruneMatchPlans; Reset(null) sets fixed values, so the extra resets change nothing.
         foreach (var plan in this.matchPlans.Values)
         {
-            plan.Reset(null);
+            plan!.Reset(null);
         }
 
-        this.indexedMatches = 0;
         foreach (var guard in this.candidateScopes)
         {
             this.previousCandidateScopes.Add(guard);
@@ -138,22 +136,18 @@ public sealed partial class Binding
 
         plan.Reset(match);
         this.matches.Add(match, plan);
-        this.indexedMatches++;
     }
 
+    // A match the pass did not index (removed from its tree, or not selected) returns its plan to the pool.
     private void PruneMatchPlans()
     {
-        if (this.matchPlans.Count == this.indexedMatches)
+        for (var plans = this.matchPlans.Values; plans.MoveNext();)
         {
-            return;
-        }
-
-        foreach (var (match, plan) in this.matchPlans)
-        {
+            var match = (MatchKoto)plans.Node;
             if (!this.matches.ContainsKey(match))
             {
+                this.matchPool.Add(plans.Current!);
                 this.matchPlans.Remove(match);
-                this.matchPool.Add(plan);
             }
         }
     }
@@ -825,5 +819,24 @@ public sealed partial class Binding
 
         internal bool TryGetValue(MatchKoto match, [NotNullWhen(true)] out BoundMatch? plan)
             => (plan = match.SyntaxOwner is { } table ? table.Hir.Families.Matches.Get(match.SyntaxId, binding) : null) is not null;
+    }
+
+    /// <summary>The `matchPlans` family's one accessor (DECISIONS BU-220): a kept family, the plan object a match keeps across rebinds (each
+    /// pass resets it, ResetMatches, and a match the pass did not index returns it to the pool, PruneMatchPlans), in the match's module's
+    /// NodeColumns at its SyntaxId. Its members keep the names its readers use.</summary>
+    private readonly struct MatchPlanRows(Binding binding)
+    {
+        internal FamilyRows<BoundMatch?> Values => new(binding, static (table, _) => table.Hir.Families.MatchPlans.Enumerate());
+
+        internal void Add(MatchKoto match, BoundMatch plan)
+        {
+            ref var row = ref HirTables.Of(match).Families.MatchPlans.Ref(match.SyntaxId);
+            row = row is null ? plan : throw new ArgumentException($"`{match}` already keeps a plan.", nameof(match));
+        }
+
+        internal void Remove(MatchKoto match) => HirTables.Of(match).Families.MatchPlans.Ref(match.SyntaxId) = null;
+
+        internal bool TryGetValue(MatchKoto match, [NotNullWhen(true)] out BoundMatch? plan)
+            => (plan = match.SyntaxOwner is { } table ? table.Hir.Families.MatchPlans.Get(match.SyntaxId) : null) is not null;
     }
 }
