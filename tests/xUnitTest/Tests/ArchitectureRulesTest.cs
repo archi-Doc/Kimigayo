@@ -266,6 +266,12 @@ public class ArchitectureRulesTest
     // fails here until the epoch rule's premise is reviewed again. Binding's own ResetPass calls are this.ResetPass (a member call's
     // spelling); the conformance identities' and paths' ResetPass(ulong) (S1-b1) are other members of the name.
     [InlineData("A pass's start ends the capability epoch", "src/Kimi/Compiler", @"\bResetCapabilities\(|\bthis\.ResetPass\(", "Binding/Binding.Capabilities.cs=1;Binding/Binding.Pass.cs=1;Binding/Binding.Passes.cs=1;Binding/Binding.cs=1")]
+    // PLAN G949 S1-r1b (review-r1a RC1, review-s1r1 Re-check 3 RC-c): the running part's bounded Callable clauses are written by their
+    // owner (Binding.EffectDeclarations.cs) and handed over by the driver (Binding.Passes.cs); every reader reads the pass's view
+    // (selectableEffectClauses), which holds the library layer's clauses too. A read of the running part alone (CollectCallableEffectUses'
+    // guard, AvailableCallableEffects) would skip a library callee's bounded clause in a program that states none, which no program
+    // can show until the library declares one (KimiLibraryShapeTest.TheLibraryDeclaresNoBoundedCallableClause).
+    [InlineData("The running part's Callable effect clauses are read through the pass's view", "src/Kimi/Compiler", @"\bthis\.callableEffectClauses\b", "Binding/Binding.EffectDeclarations.cs=2;Binding/Binding.Passes.cs=1")]
     public void SourcePatternStaysAtItsSites(string rule, string directory, string regex, string sites)
     {
         var expression = new Regex(regex);

@@ -27,6 +27,9 @@ public sealed partial class Binding
     // Binding's own part of the published lists: the program pass's (until PLAN G949 S1-r1b the one pass's, every module's).
     private readonly PassPart programPart = new(KimiLibrarySize.NodeCapacity(KimiLibrarySize.Stated.Nodes));
 
+    // The empty second part of a pass's view when the pass's own part is the library layer's (selectableEffectClauses); never written.
+    private readonly List<IsKoto> noClauses = new();
+
     // The composed views (R1.1; DECISIONS BU-220): each list's program part, then the library layer's (LibraryLayer.Part), built once
     // over the two fixed parts, so a read outside a pass allocates nothing and sees every pass's entries.
     private readonly LayerList<Koto> nodesView;
@@ -36,13 +39,17 @@ public sealed partial class Binding
     private readonly LayerList<LibraryImport> libraryImportsView;
     private readonly LayerList<FunctionKoto> virtualDeclarationsView;
     private readonly LayerList<CallableEffectUse> callableEffectUsesView;
-    private readonly LayerList<IsKoto> callableEffectClausesView;
     private readonly LayerList<BoundContract> contractShapesView;
     private readonly LayerList<BoundEffectBound> boundedRequirementsView;
     private readonly LayerList<BindingSymbol> importDeclarationsView;
 
     // The running pass (EnterPass); between Binds the program pass of the latest Bind, which PublishHir publishes.
     private BindingPass pass;
+
+    // The bounded Callable clauses the running pass may select (SPEC 8.11.4), its view of a list another pass also fills (PassPart's
+    // in-pass rule): its own part's, then the library layer's when its part is another. Between Binds it is the program pass's, so a
+    // reader after a Bind sees every pass's clauses.
+    private LayerList<IsKoto> selectableEffectClauses;
 
     // The program pass: the source modules, with Binding's own part; until PLAN G949 S1-r1b splits the library pass off, also the
     // library (the one pass).
@@ -135,6 +142,8 @@ public sealed partial class Binding
         this.virtualDeclarations = part.VirtualDeclarations;
         this.callableEffectUses = part.CallableEffectUses;
         this.callableEffectClauses = part.CallableEffectClauses;
+        var layer = this.Library.Layer.Part;
+        this.selectableEffectClauses = new(part.CallableEffectClauses, ReferenceEquals(part, layer) ? this.noClauses : layer.CallableEffectClauses);
         this.localRegions = part.Regions;
         this.keepers = part.Keepers;
         this.contractShapes = part.ContractShapes;
@@ -160,7 +169,9 @@ public sealed partial class Binding
     // composed view; a keyed collection (Regions, Keepers) through one find (Find): the layer's part first, then the running pass's, a
     // write going into the row found or, for a key in neither part, into the running pass's, so a key has one row, and a reader then
     // reads the stamp of the part the row was found in (Keepers: RequirementCall); a keyed collection whose values index a per-pass list
-    // keeps that list in its own part. Counts is the pass's contribution to the Bind's Result (ComposeResult), not
+    // keeps that list in its own part. An in-pass read of a list another pass also fills reads the pass's view: the running part, then
+    // the layer's when the running part is not the layer's (R1.1's list order), which the driver hands over with the part
+    // (selectableEffectClauses), so no pass reads another pass's part of the previous Bind. Counts is the pass's contribution to the Bind's Result (ComposeResult), not
     // a tally of the part's nodes, which only the views count: from S1-r1b a program pass's own nodes plus each foreign node's final
     // state less its earlier one.
     internal sealed class PassPart(int nodes)

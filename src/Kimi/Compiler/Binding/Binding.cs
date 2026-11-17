@@ -98,7 +98,6 @@ public sealed partial class Binding
         this.libraryImportsView = new(own.Imports, layer.Imports);
         this.virtualDeclarationsView = new(own.VirtualDeclarations, layer.VirtualDeclarations);
         this.callableEffectUsesView = new(own.CallableEffectUses, layer.CallableEffectUses);
-        this.callableEffectClausesView = new(own.CallableEffectClauses, layer.CallableEffectClauses);
         this.contractShapesView = new(own.ContractShapes, layer.ContractShapes);
         this.boundedRequirementsView = new(own.BoundedRequirements, layer.BoundedRequirements);
         this.importDeclarationsView = new(own.ImportDeclarations, layer.ImportDeclarations);
