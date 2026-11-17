@@ -256,7 +256,7 @@ public partial class KimiLibraryShapeTest
             yield return reference;
             yield return contract;
             yield return (contract.State, contract.EffectState, contract.HasEffectBounds, contract.HasUnresolvedParents);
-            foreach (var list in new IList[] { contract.AncestorStorage, contract.RequirementStorage, contract.AssociatedStorage, contract.ClauseStorage, contract.EffectBoundStorage })
+            foreach (var list in new[] { (IList)contract.Ancestors, (IList)contract.Requirements, (IList)contract.AssociatedTypes, contract.ClauseStorage, (IList)contract.EffectBounds }) // Each a storage List.
             {
                 yield return list;
                 yield return (int)list.GetType().GetField("_version", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(list)!;
