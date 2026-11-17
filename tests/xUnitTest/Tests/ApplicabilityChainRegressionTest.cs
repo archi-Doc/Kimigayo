@@ -314,18 +314,18 @@ public partial class ApplicabilityChainRegressionTest
         Assert.Equal(["UnboundTypeArgument_Kd applyArg(if c => ([\"k\": func [] (v) => v], x) else => (stop(), x))", "UnresolvedBinding_Kd v"], shown);
     }
 
-    // SPEC 10.5.4, 23.1.2 (F's ruling 49): an unselected call's anonymous function is completed on its own: an independent failure in its
-    // body (`missing`) is reported beside the call's own record, while its omitted parameter Type, which the call's slot would supply,
-    // rests on the call's record (rule W), so `v` gives none.
+    // SPEC 10.1, 10.5.4, 23.1.2 (F's ruling 90, which revises ruling 49 (a)): an unselected call's anonymous function stays unbound, so a
+    // later attempt of the call reads what the first read; its omitted parameter Type, which the call's slot would supply, rests on
+    // the call's record (rule W), so `v` gives none. An independent failure in its body (`missing`) is not reported while the call is
+    // unselected (an open issue; it was reported while ruling 49 (a) bound the anonymous function on its own).
     [Theory]
-    [InlineData("keep((func [] (v) => missing, x))", "UnboundTypeArgument_Kd keep((func [] (v) => missing, x))", "UnresolvedBinding_Kd missing")]
-    [InlineData("keep((func [] (v) => v, x))", "UnboundTypeArgument_Kd keep((func [] (v) => v, x))", null)]
-    public void AnUnselectedCallsClosureReportsOnlyItsBodysOwnFailures(string use, string call, string? body)
+    [InlineData("keep((func [] (v) => missing, x))", "UnboundTypeArgument_Kd keep((func [] (v) => missing, x))")]
+    [InlineData("keep((func [] (v) => v, x))", "UnboundTypeArgument_Kd keep((func [] (v) => v, x))")]
+    public void AnUnselectedCallsClosureStaysUnbound(string use, string call)
     {
         var source = ControlFlowDeclarations + use + "\n";
         var shown = DiagnosticCorpus.Check(source).Diagnostics.Select(x => x.Code + " " + source.Substring(x.Span!.Value.Start, x.Span.Value.Length)).Order();
-        string[] expected = body is null ? [call] : [.. new[] { call, body }.Order()];
-        Assert.Equal(expected, shown);
+        Assert.Equal([call], shown);
     }
 
     // SPEC 23.1.2, 10.4 (U1.6h-3'): a join of Tuple results fits `take(i64)` whatever its failed part is, so the call's

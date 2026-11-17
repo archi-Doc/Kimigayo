@@ -230,8 +230,9 @@ public sealed partial class Binding
             return;
         }
 
-        // SPEC 10.5.4, 23.1.2 (F's ruling 49): an anonymous function no candidate completed is bound on its own, so independent failures
-        // in its body are reported; its omitted parameter Types would come from the call's slot and rest on the call's record (rule W).
+        // SPEC 10.1, 10.5.4, 23.1.2 (F's rulings 49 and 90): an anonymous function no candidate completed stays unbound: its call may be
+        // bound again in this pass, and that attempt must read what the first read (a Type published here would be evidence, and its
+        // body would select). Its omitted parameter Types would come from the call's slot and rest on the call's record (rule W).
         if (node is FunctionKoto closure && this.KindOf(node) == PartKind.Function)
         {
             for (var i = 0; i < closure.Parameters.Count; i++)
@@ -242,7 +243,6 @@ public sealed partial class Binding
                 }
             }
 
-            _ = this.BindIndependentArgument(node, scope);
             return;
         }
 

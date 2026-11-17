@@ -84,13 +84,13 @@ public class UnboundCallSlotTest(ITestOutputHelper output)
         Assert.Equal((nameof(DiagnosticCode.UnboundTypeArgument_Kd), "run(func (n) => n + missing)"), (diagnostics[0].Code, Text(source, diagnostics[0].Span)));
         Assert.Equal((nameof(DiagnosticCode.UnresolvedBinding_Kd), "missing"), (diagnostics[1].Code, Text(source, diagnostics[1].Span)));
 
-        // F's ruling 49 (SPEC 23.1.2): the unselected call's closure is completed on its own, `n` resting on the call's record; the lookup of
-        // `missing` reads no failed input, so it is reported (a record move: dev never bound the waiting closure).
+        // SPEC 10.1, 10.5.4 (F's ruling 90, which revises ruling 49 (a)): where S leaves the parameter Type open, the anonymous function of
+        // the unselected call stays unbound, `n` resting on the call's record: a Type published on the argument would be read by a later
+        // attempt of the call. So `missing` is not reported here (an open issue: a body's independent failure under an unselected call).
         var open = "func run<T, F>(action: ref/F) -> i32\n    F is Callable<(T) -> i32>\n    return 7\npublic func main() -> ()\n    let r = run(func (n) => n + missing)\n";
         var openDiagnostics = DiagnosticCorpus.Check(open).Diagnostics;
-        Assert.Equal(2, openDiagnostics.Length);
-        Assert.Equal((nameof(DiagnosticCode.UnboundTypeArgument_Kd), "run(func (n) => n + missing)"), (openDiagnostics[0].Code, Text(open, openDiagnostics[0].Span)));
-        Assert.Equal((nameof(DiagnosticCode.UnresolvedBinding_Kd), "missing"), (openDiagnostics[1].Code, Text(open, openDiagnostics[1].Span)));
+        var openError = Assert.Single(openDiagnostics);
+        Assert.Equal((nameof(DiagnosticCode.UnboundTypeArgument_Kd), "run(func (n) => n + missing)"), (openError.Code, Text(open, openError.Span)));
     }
 
     // SPEC 14.9.2, 23.1.2: the open result is inferred from the body's own sources, so their conflict (the value i32 and a returned bool)
