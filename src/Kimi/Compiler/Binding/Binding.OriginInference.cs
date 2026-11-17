@@ -252,10 +252,13 @@ public sealed partial class Binding
                 !this.HoldsResting(longer, shorter, bound.Condition, new ProofLeaf(this, use, inference.Comparison))))
             {
                 // An end left open holds a variable without a representative, itself or as an operand of a meet: no upper bound, and
-                // lower bounds none of which outlives the others, whose first such pair fails here.
-                inference.Failure = longer is not null && shorter is not null
+                // lower bounds none of which outlives the others, whose first such pair fails here; or no bound that reached a fixed
+                // Origin when the representatives were taken, the located limit (SPEC 15.3.6: a local region in an executable body; or a
+                // bound only through another variable without a principal solution, PLAN G960).
+                var failure = longer is not null && shorter is not null
                     ? BoundFailure(inference.Comparison, bound.Member, bound.Clause, longer, shorter, bound.Equality)
                     : Limits(Open(longer is null ? bound.Longer : bound.Shorter), false).Conflict;
+                inference.Failure = failure.Kind == ComparisonFailureKind.None ? new(ComparisonFailureKind.Limit, null, null, false, inference.Comparison) : failure;
                 return false;
             }
         }
@@ -480,7 +483,8 @@ public sealed partial class Binding
         // The source of the bounds being added, set by their producer around its collection (ContractFits, SolveOriginInference).
         internal (byte Member, Koto? Clause, bool Equality) Source { get; set; }
 
-        // The first bound a failed solve could not satisfy, as the comparison's failure (ContractFits); None when no bound failed.
+        // The first bound a failed solve could not satisfy, as the comparison's failure (ContractFits), or the located limit when a
+        // variable left open had no bound that reached a fixed Origin (SolveOriginInference); None when no bound failed.
         internal ComparisonFailure Failure { get; set; }
 
         // Whether a bound was added with a condition, so a solve folds conditional limits (SolveOriginInference).
