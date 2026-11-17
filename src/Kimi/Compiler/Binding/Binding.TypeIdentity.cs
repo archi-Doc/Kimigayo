@@ -10,7 +10,9 @@ namespace Kimi.Compiler;
 //   Unsupported, Unproven, Cyclic or Conflict from its constructed members' meets, each compared attribute decided by its domain's own
 //   rule (Origins: OriginDeclaration's `==`, then the outlives judgment both ways, SPEC 15.6.5; lengths: the normalized expression;
 //   Function Types: quantified Origins paired by position within the pair; pair heads: the admitted set, SPEC 8.3.4, an application
-//   admitting exactly `owner` being its target from its addition); cycles: the class graph's strongly connected components; the
+//   admitting exactly `owner` being its target from its addition); cycles: the class graph's strongly connected components, its
+//   edges a constructor's components and a projection's Contract arguments (SPEC 8.3.3's expansion), Cyclic only through a
+//   constructor edge (R7-C2c2 c2-4b); a Type that is no node is in the class of the node it is congruent with (ClassOf); the
 //   premise error an error class is (SPEC 8.2.3's table), recorded once per pass at the declaration whose premises first form it;
 //   the identity proposition's Proven (IdentityProven); ContractTypeCore's guard (ProjectionClassFailed); the class key the premise
 //   supply compares by (ClassKey, R7-C2c2 c2-1). Until R7-C2c2 c2-4 replaces it, dev's member substitution (SubstituteIdentity: a
@@ -22,7 +24,7 @@ namespace Kimi.Compiler;
 //   Representative, or the Type over its components' keys; c2-4: a constructed member keys to its class's Representative, so
 //   every member's premise rows are the class's, joined with the Member's closed world by polarity), which relates only what Proven relates (a class in state One with complete meets, whatever the
 //   table's finality) and which only ContractSolver's supply reads: no reader receives a key as a Type; such a class's Member (the
-//   same scan: its constructed member, closed first, R7-C2c2 c2-4), which the atom judges take as their subject (MemberOf) and
+//   same scan: its constructor member as the cycle marking counts it, closed first, R7-C2c2 c2-4, c2-4b), which the atom judges take as their subject (MemberOf) and
 //   IdentityRefuted reads; whether two Types are known to differ at a corresponding position (IdentityRefuted: the classes'
 //   Refuted, SPEC 8.2.3's Refuted read by the one table their premise meets read, Meet; an abstract Type by proper parts, up to
 //   structure; a conformance's instance in the conforming Type's terms, the required side in the scope's), which the Contract

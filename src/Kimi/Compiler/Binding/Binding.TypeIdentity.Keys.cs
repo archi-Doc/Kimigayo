@@ -180,7 +180,8 @@ public sealed partial class Binding
         internal void SetKey(BoundType type, BoundType key) => this.keys[type] = key;
 
         // R7-C2c2: the key of a class in state One whose meets are complete, its least parameter or projection by Order (shallowest
-        // first), for any node of it, constructed ones included (c2-4); null for a Type that is no node, a class with no such member, or
+        // first), for any Type of it (ClassOf: a node, or a Type congruent with one, c2-4b), constructed ones included (c2-4); null for a
+        // Type of no class, a class with no such member, or
         // an erroneous one (an erroneous class keys nothing). The table's finality is not read: it decides only reuse (ContractSolver's
         // kept rows).
         internal BoundType? Representative(BoundType type) => this.Scanned(type).Least;
@@ -191,17 +192,14 @@ public sealed partial class Binding
         // atom judges' subjects) and Refuted.
         internal BoundType? Member(BoundType type) => this.Scanned(type).Member;
 
-        // The one class-validity rule and member scan behind both answers: a node's class (any node, constructed ones included) in
-        // state One whose meets are complete, scanned once per table (its members are fixed after Close), whatever the number asked.
+        // The one class-validity rule and member scan behind both answers: a Type's class (ClassOf: any node, constructed ones included,
+        // or a Type congruent with one) in state One whose meets are complete, scanned once per table (its members are fixed after
+        // Close), whatever the number asked. The Member is a constructor as the cycle marking counts it (Constructs), so every step from
+        // a class into its Member's components is a class graph edge MarkCycleEdges marks (design R4.1).
         private (BoundType? Least, BoundType? Member) Scanned(BoundType type)
         {
-            if (!this.node.TryGetValue(type, out var n))
-            {
-                return default;
-            }
-
-            var root = this.Find(n);
-            if (this.state[root] != One || this.incompleteClass[root])
+            var root = this.ClassOf(type);
+            if (root < 0 || this.state[root] != One || this.incompleteClass[root])
             {
                 return default;
             }
@@ -218,6 +216,10 @@ public sealed partial class Binding
                     if (member.Kind is BoundTypeKind.Parameter or BoundTypeKind.AssociatedProjection)
                     {
                         best = best is null || Order(member, best) < 0 ? member : best;
+                    }
+                    else if (!this.Constructs(m))
+                    {
+                        continue; // a pair target or an owner-only application is never the Member (design R4.1: Form's descents are cycle edges)
                     }
                     else if (!member.ContainsParameter)
                     {
