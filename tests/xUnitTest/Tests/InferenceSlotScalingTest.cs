@@ -99,6 +99,39 @@ public class InferenceSlotScalingTest
         string List(Func<int, string> item) => string.Join(", ", all.Select(item));
     }
 
+    // DECISIONS D3 (G812 ruling 106, C-I2; SPEC 8.15.2; temporary, removed with (R)): the bound's rest. One known form still reaches
+    // it: a value call adapts a Tuple argument as one part, so where the parameter `n: (s0/Box, s1/Box, s2/Box)` holds split layers
+    // of three bindings, the Tag at its third element is blamed on all three, and the search stops beyond the 64 runs of
+    // PairBinder.CaseBound: the call rests on the split, Unsupported_Kd, where dev records NoApplicableOverload_Kd. put9's Tuple of
+    // layers has its own MissingOriginBinding_Kd records; no spelling without them is known.
+    [Fact]
+    public void ASplitCaseSearchBeyondTheCaseBoundRestsOnTheSplit()
+    {
+        var c = MinimalEmissionTest.Analyze(
+            "struct Box\n" +
+            "    public let v: i32\n" +
+            "    public init(v: i32)\n" +
+            "        self.v = v@move\n" +
+            "struct Tag\n" +
+            "    public let v: i32\n" +
+            "    public init(v: i32)\n" +
+            "        self.v = v@move\n" +
+            "func stop() -> Never => $abort(\"stop\")\n" +
+            "func put9<s0/W0, s1/W1, s2/W2>(m0: s0/W0, m1: s1/W1, m2: s2/W2, n: (s0/Box, s1/Box, s2/Box)) -> i32\n" +
+            "    return 0\n" +
+            "func call<t0/U0, t1/U1, t2/U2>(k0: t0/U0, u0: U0, k1: t1/U1, u1: U1, k2: t2/U2, u2: U2) -> i32\n" +
+            "    t0 is owner or ref\n" +
+            "    t1 is owner or ref\n" +
+            "    t2 is owner or ref\n" +
+            "    let f = put9<U0, U1, U2>\n" +
+            "    let g = Tag.init(1)\n" +
+            "    return f(u0@move, u1@move, u2@move, (stop(), stop(), g@move))\n");
+        Assert.False(c.Binding.Result.IsComplete);
+        Assert.Equal(65, c.Binding.SplitCaseRuns);
+        Assert.Contains(c.Binding.Issues, x => x.Failure == BindingFailure.Unsupported);
+        Assert.DoesNotContain(c.Binding.Issues, x => x.Failure == BindingFailure.NoApplicableCandidate);
+    }
+
     // G216 (a) U3a (C-38 B3; DECISIONS BU-104): premise discovery reads the evidence names once per solve, so its reads grow linearly
     // in a literal's elements beside the evidence that names the callee's Origins (`mk([.None x N], q, r)`), not with every leaf.
     [Fact]
