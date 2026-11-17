@@ -104,7 +104,7 @@ public partial class KimiLibraryShapeTest
 
     // PLAN G951 U2, row LM (R8-M32's "library MIR" fact under demand; the design's §1.2): a compilation's check builds the library bodies
     // its program reaches (the source modules' root range, DECISIONS R9-M9), each equal to that body in the library check's build, its
-    // A2 table included, and the empty program builds none. With the library MIR the rows above compare (every library body, the library
+    // A2 table included, at the same ordinal within the same library range (PLAN G951 U2-K), and the empty program builds none. With the library MIR the rows above compare (every library body, the library
     // check's build per program) it is the fact that the library's MIR is the same in every program. Fail-before: Compilation built
     // every library body, so the empty program built them all.
     [Theory]
@@ -118,6 +118,8 @@ public partial class KimiLibraryShapeTest
         var built = own.Bodies.ToArray().Where(static x => x.Source.IsLibrary).ToArray();
         Assert.Equal(program.Length == 0, built.Length == 0);
         Assert.All(built, x => Assert.Equal(MirDumpTest.Unsited(library, library[x.Key]!), MirDumpTest.Unsited(own, x)));
+        Assert.All(built, x => Assert.Equal(library[x.Key]!.Ordinal, x.Ordinal));
+        Assert.Equal(library.LibraryCount, own.LibraryCount);
     }
 
     // M-N4, R2-N5: the library declares no parameter default, for a function or an `init`, so after its Final Bind its published HIR holds

@@ -5,10 +5,13 @@
 // Input: built definitions, findings, records and problems. Output: reusable bodies identified by MirDefKey and numbered in order, the body
 // a callee runs (Callee), the initializer a staticEnsure names (StaticInit) and a record class's rows (Records, which MirDump, tests and
 // benchmarks read; publication reads MirReport.Merged, records included, DECISIONS R5-M185).
-// Owns the ordinal space, numbered in build order here (Begin) and nowhere else. In an eager build, whose root range holds the library,
-// it has a library prefix (R8-L1 M-B1): the library's bodies are 0 to LibraryCount - 1, the program's follow; in a build whose root range
-// is the program's, Compilation's since PLAN G951 U2, LibraryCount counts the library's templates and a demanded body takes the next
-// ordinal (U0; U2-K gives library bodies fixed ordinals, G950 R-4).
+// Owns the ordinal space (R8-L1 M-B1, R8-M33; PLAN G951 U2-K, G950 R-4): [0, LibraryCount) is the library's range in every build, the
+// library's templates and then the library walk's definitions, each at its position in the walk, which MirBuilder numbers through its
+// one node-to-definition filter without building (MirBuilder.Library, Slot; Reserve states the range), so a library body has one
+// ordinal in an eager and a lazy build and in every version of a library segment, and a slot whose definition no lookup demanded is
+// empty; this class numbers every other body from LibraryCount in build order (Begin). A slot is built exactly when the key map holds
+// its definition. LibraryCount's readers are this class (Reserve, ClearProgram: the next ordinal it numbers), the tests' premise rows
+// and the dump; no consumer tests an ordinal against it.
 // Keeps a body's storage by its ordinal (the pool) and the bodies in build order (PLAN G951 U2-K). Body(ordinal), the one read by
 // ordinal, reads the pool and fails for an ordinal no body of the version is built at. Bodies is the build-order list, the compilation's
 // own bodies, which a walker of the whole program iterates. Its walkers: MirAnalysis's step 4, MirOrigins.Findings, MirDump.Write,
@@ -57,6 +60,7 @@ internal sealed class MirProgram
     private MirBody[] order = []; // The bodies built, in build order: the library list, then the version's bodies.
     private int count; // The bodies built, the build-order list's length.
     private int library; // The library list's length: the bodies built when the library segment ended (EndLibrary).
+    private int next; // The next ordinal this class numbers (Begin): past every ordinal built and, once reserved, the library's range.
     private int libraryFindings; // The library segment's findings, the prefix of Findings.
     private MirBuilder? builder; // The builder that opened the version, which a lookup while Open demands a body from.
 
@@ -91,9 +95,9 @@ internal sealed class MirProgram
     /// program's and each library body a lookup of the version demanded.</summary>
     internal ReadOnlySpan<MirBody> VersionBodies => this.order.AsSpan(this.library, this.count - this.library);
 
-    /// <summary>Gets the number of the bodies built before the program's: in an eager build the library's, which hold ordinals 0 to the
-    /// count less one, the program's bodies following (R8-L1 M-B1); in a build whose root range is the program's, the library's templates
-    /// (PLAN G951).</summary>
+    /// <summary>Gets the library's ordinal range, <c>[0, LibraryCount)</c>, the same in every build of a library segment (R8-L1 M-B1,
+    /// R8-M33; PLAN G951 U2-K): the library's templates and the library walk's definitions (<see cref="Reserve"/>), whether or not a
+    /// definition's body is built; every other body's ordinal follows it.</summary>
     internal int LibraryCount { get; private set; }
 
     /// <summary>Gets the library version the library segment was built for (0: none), the stamp a component keeping a library segment's
@@ -186,7 +190,7 @@ internal sealed class MirProgram
         this.bodies.Clear();
         this.Problems.Clear();
         this.Findings.Clear();
-        this.count = this.library = this.LibraryCount = this.libraryFindings = 0;
+        this.count = this.library = this.next = this.LibraryCount = this.libraryFindings = 0;
         this.LibraryVersion = 0;
         this.LayerWalkWork = 0;
     }
@@ -204,19 +208,27 @@ internal sealed class MirProgram
         : phase == Phase.Sealed || (phase == Phase.Judging) == (this.Demands == Phase.Open) ? phase
         : throw new InvalidOperationException($"The demand table has no step from {this.Demands} to {phase} (InternalInvariant).");
 
+    /// <summary>Reserves the library's ordinal range for a library segment, after its templates and its walk (MirBuilder.Library), which
+    /// numbers the walk's definitions: <c>[0, ordinals)</c> is the library's, and the bodies this class numbers next follow it. A range
+    /// below an ordinal already numbered is a broken contract.</summary>
+    /// <param name="ordinals">The range's end (<see cref="LibraryCount"/>).</param>
+    internal void Reserve(int ordinals) => (this.LibraryCount, this.next) = this.next <= ordinals ? (ordinals, ordinals)
+        : throw new InvalidOperationException($"The library's range {ordinals} is below the next ordinal {this.next} (InternalInvariant).");
+
     /// <summary>Ends the library segment, built and validated for a library version (not 0): the bodies built so far are the library
-    /// list (<see cref="LibraryBodies"/>, <see cref="LibraryCount"/>), the findings so far its findings and the records so far its
-    /// records, which <see cref="ClearProgram"/> keeps; it is one more segment (<see cref="LibrarySegment"/>).</summary>
+    /// list (<see cref="LibraryBodies"/>), the findings so far its findings and the records so far its records, which
+    /// <see cref="ClearProgram"/> keeps; it is one more segment (<see cref="LibrarySegment"/>).</summary>
     /// <param name="libraryVersion">The library version (<see cref="LibraryVersion"/>).</param>
     internal void EndLibrary(ulong libraryVersion)
     {
-        (this.library, this.LibraryCount, this.libraryFindings, this.LibraryVersion) = (this.count, this.count, this.Findings.Count, libraryVersion);
+        (this.library, this.libraryFindings, this.LibraryVersion) = (this.count, this.Findings.Count, libraryVersion);
         this.LibrarySegment++;
         this.Problems.Keep(0, this.libraryRecords);
     }
 
     /// <summary>Returns the version's bodies (<see cref="VersionBodies"/>) to the pool, removing their keys, for a new program version over
-    /// the kept library segment: the findings keep the library's prefix, the report starts with the library's records again
+    /// the kept library segment, a library body a lookup demanded included (its slot is empty again): the next ordinal numbered here is
+    /// the first past the library's range, the findings keep the library's prefix, the report starts with the library's records again
     /// (MirReport.Replay) and the work counts the new version's.</summary>
     internal void ClearProgram()
     {
@@ -226,7 +238,7 @@ internal sealed class MirProgram
             body.Ordinal = -1; // Returned: no ordinal reads it (Body).
         }
 
-        this.count = this.library;
+        (this.count, this.next) = (this.library, this.LibraryCount);
         this.Findings.RemoveRange(this.libraryFindings, this.Findings.Count - this.libraryFindings);
         this.Problems.Clear();
         this.Problems.Replay(this.libraryRecords);
@@ -249,14 +261,23 @@ internal sealed class MirProgram
     /// <returns>The rows.</returns>
     internal RecordRows Records(MirRecordClass recordClass) => new(this.Problems, recordClass);
 
-    /// <summary>Begins the body of a definition, of the next ordinal, in its segment's body being built, which <see cref="End"/> stores.</summary>
+    /// <summary>Begins the body of a definition this class numbers, of the next ordinal (a library template's before the library's
+    /// range is reserved, another body's past it), in its segment's body being built, which <see cref="End"/> stores.</summary>
     /// <param name="key">The definition, which has no body yet.</param>
     /// <param name="source">The body's syntax.</param>
     /// <returns>The empty body being built.</returns>
-    internal MirBody Begin(MirDefKey key, SourceRef source)
+    internal MirBody Begin(MirDefKey key, SourceRef source) => this.Begin(key, source, this.next);
+
+    /// <summary>Begins the body of a definition at its ordinal, a library definition's at the slot MirBuilder numbered it
+    /// (MirBuilder.Slot), in its segment's body being built, which <see cref="End"/> stores.</summary>
+    /// <param name="key">The definition, which has no body yet.</param>
+    /// <param name="source">The body's syntax.</param>
+    /// <param name="ordinal">The body's ordinal, at which no body is built.</param>
+    /// <returns>The empty body being built.</returns>
+    internal MirBody Begin(MirDefKey key, SourceRef source, int ordinal)
     {
         var built = this.Building;
-        built.Ordinal = this.count;
+        built.Ordinal = ordinal;
         built.Reset(key, source);
         return built;
     }
@@ -277,6 +298,7 @@ internal sealed class MirProgram
             Array.Resize(ref this.order, Math.Max(16, this.count * 2));
         }
 
+        this.next = Math.Max(this.next, ordinal + 1);
         var body = this.order[this.count++] = this.pool[ordinal] ??= new();
         body.Store(this.Building);
         this.bodies.Add(body.Key, body);

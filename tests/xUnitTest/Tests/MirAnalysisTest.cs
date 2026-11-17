@@ -674,7 +674,7 @@ public sealed class MirAnalysisTest
     {
         var (c, _) = SemanticSnapshotTest.Bind("milestone/Milestone1");
         var program = c.BuildMir();
-        program.Problems.Add(new(DiagnosticCode.MovedPlace_Kd, Moved, program.Body(0).Source, 0, 1));
+        program.Problems.Add(new(DiagnosticCode.MovedPlace_Kd, Moved, program.Bodies[0].Source, 0, 1));
         Assert.Equal(1, c.BuildMir().Problems.All.Length);
         c.Binding.Bind(BindingMode.Final);
         Assert.Equal(0, c.BuildMir().Problems.All.Length);
@@ -903,7 +903,8 @@ public sealed class MirAnalysisTest
     // PLAN G951 U2-H (U1 review N7; the Back's C-378 A2): Compilation.JudgedWithoutProblem, hover's ownership line, requires A2's entry of
     // the body (MirDropTable.Holds): a body a lookup built after the version's steps and nothing stepped has no A1 or A2 facts, so it is not
     // judged without a problem; once the one stepping path steps it, it is. An explicit builder with the program's root range builds X3 and
-    // its analysis runs; a lookup then builds Stopwatch.reset, which X3 never reaches; the premise (a body built after the run, not held)
+    // its analysis runs; a lookup then builds Stopwatch.reset, which X3 never reaches, at its library ordinal (PLAN G951 U2-K) as the
+    // next of the build-order list; the premise (a body built after the run, not held)
     // is asserted before the judgment is read; the program stands for the compilation's latest analysis's, injected as R5-M183's hover rows
     // inject a fact. Fail-before: the judgment read the body's existence, findings, records and problems only, so the unstepped body read
     // as judged. X3 as above.
@@ -916,7 +917,8 @@ public sealed class MirAnalysisTest
         var program = analysis.Run(new MirBuilder(c).Build(c.SourceModules.Length), c.SourceModules.Length);
         var count = program.Bodies.Length;
         var body = program[reset]!;
-        Assert.Equal(count, body.Ordinal);
+        Assert.Same(body, program.Bodies[count]);
+        Assert.InRange(body.Ordinal, 0, program.LibraryCount - 1);
         Assert.False(program.Drops.Holds(body.Ordinal));
         typeof(Compilation).GetField("mir", BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(c, program);
         Assert.False(c.JudgedWithoutProblem(reset.Decl!));

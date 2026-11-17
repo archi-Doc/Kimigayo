@@ -89,12 +89,13 @@ public sealed class G950KeptPathTest
         Assert.Equal(fresh, own);
     }
 
-    // PLAN G951 U2-K (the design review's N1 rows on the product path; their kept-path twins are U2-K-b's): every version of a longer
-    // sequence equals a fresh pipeline: (a) a library body demanded in one version and not in the next ones, then again; (c) the library's
-    // generic instances across versions, and a library generic function refused at one Type and collected at another; (d) an edit that
-    // removes the caller that demanded library bodies. Labels (SPEC, before any output): Hello, X3, the milestones and swap at u8 valid;
-    // swap at 70 nested [1 of ...] valid (SPEC 10.5.3, 7.7.4; no rule bounds a Type's nesting), rejected by the implementation's storage
-    // bound with one located Unsupported_Kd (PLAN G128).
+    // PLAN G951 U2-K (the design review's N1 rows on the product path; their kept-path twins are U2-K-b's): every version of
+    // a longer sequence equals a fresh pipeline, with the library's bodies at their fixed ordinals in each: (a) a library body demanded
+    // in one version and not in the next ones, then again; (c) the library's generic instances across versions, and a library generic
+    // function refused at one Type and collected at another; (d) an edit that removes the caller that demanded library bodies.
+    // Labels (SPEC, before any output): Hello, X3, the milestones and swap at u8 valid; swap at 70 nested [1 of ...] valid
+    // (SPEC 10.5.3, 7.7.4; no rule bounds a Type's nesting), rejected by the implementation's storage bound with one located
+    // Unsupported_Kd (PLAN G128).
     [Theory]
     [InlineData("example/Hello x3 example/Hello warm x3")]
     [InlineData("milestone/Milestone26 milestone/Milestone31 milestone/Milestone26 warm")]
@@ -130,18 +131,18 @@ public sealed class G950KeptPathTest
     // Row K1-K on the product path (the Back's C1 on C-378; U2-K-b's kept twin rests on it): a library body its version built and no
     // step stepped. swap erased at 70 nested [1 of ...u8] is valid (SPEC 10.5.3, 7.7.4) and rejected by the implementation's storage
     // bound (PLAN G128: one located Unsupported_Kd, made where the collector refuses the instance after its lookup built swap's body),
-    // so the version ends with swap built and not held by A2's table: the premise, asserted, and Transitional: it holds until R7 removes
-    // the bound, and the row then needs another refusal. The next version, the same erasure at u8 (valid), equals a fresh pipeline and
-    // steps swap. (Its ordinal is the library check's from U2-K-b's slots on.)
+    // so the version ends with swap built at its library ordinal and not held by A2's table: the premise, asserted, and Transitional:
+    // it holds until R7 removes the bound, and the row then needs another refusal. The next version, the same erasure at u8 (valid),
+    // equals a fresh pipeline and steps swap.
     [Fact]
     public void ARefusedLibraryInstanceLeavesItsBodyBuiltAndUnstepped()
     {
         var c = Compile("swap70");
         _ = c.Analyze();
         Assert.Equal([DiagnosticCode.Unsupported_Kd], c.Problems.Select(static x => x.Code));
-        var program = c.BuildMir();
+        var (program, eager) = (c.BuildMir(), new MirBuilder(c).Build(SyntaxTable.LibraryModule + 1));
         var swap = Assert.Single(program.Bodies.ToArray(), static x => x.Source.IsLibrary);
-        Assert.Equal(("swap", false), (swap.Key.Decl?.Name, program.Drops.Holds(swap.Ordinal)));
+        Assert.Equal(("swap", eager[swap.Key]!.Ordinal, false), (swap.Key.Decl?.Name, swap.Ordinal, program.Drops.Holds(swap.Ordinal)));
         var (own, fresh) = Next(c, "swap");
         Assert.Equal(fresh, own);
         Assert.Empty(c.Problems);
