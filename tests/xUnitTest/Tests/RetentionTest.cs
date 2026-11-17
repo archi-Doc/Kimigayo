@@ -1200,6 +1200,10 @@ public sealed partial class RetentionTest
             "func g<T>(value: uniq/i32 during o, other: T, set: (uniq/T, uniq/i32 during o) -> ()) -> ()\n    var v = value@move\n" +
             "    let child: uniq/i32 during o = v\n    let c = func [other@move] () => ()\n    f(c@move, child@move, set@move)\n");
         Assert.Equal(["store 0: own {}, reached {0 Value, 1 Value, 2 Value}"], Calls(c, "f"));
+        var unwritten = Bind("func f<C, E>(c: C, y: E) -> ()\n    return\n" +
+            "func g<T>(value: uniq/i32 during o, other: T) -> ()\n    var v = value@move\n" +
+            "    let child: uniq/i32 during o = v\n    let c = func [other@move] () => ()\n    f(c@move, child@move)\n");
+        Assert.Equal([string.Empty], Calls(unwritten, "f"));
     }
 
     // The rule above at the raw source (DECISIONS BU-66, the owner's Q11 ruling of 2026-11-04): a raw layer an argument holds by value
