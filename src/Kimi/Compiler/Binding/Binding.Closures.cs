@@ -3,7 +3,8 @@
 // Closure literals (SPEC 7.7, 10.5, 10.8, 15.3.4): an anonymous function bound as a Closure value.
 // - Responsibility: the literal's header against a fixed expected signature (ClosureExpectation restates it over the literal's
 //   binder; ClosureSignatureFits, its structural part only, FailClosureHeader; a written result rebound per fixed context,
-//   ClosureResultType); its capture entries, body and result, and the published Signature and EnvironmentType
+//   ClosureResultType, and formed once per binding, at its commitment or its failed fit, as every nested signature's is,
+//   FormNestedResult); its capture entries, body and result, and the published Signature and EnvironmentType
 //   (BindConcreteClosure, by BindClosureHeader, CaptureEntriesFail, BindClosureBody and PublishClosure); a Closure argument bound under
 //   a consultation (BindClosureArgument); for TryCandidate, the one Closure
 //   argument whose receiver a candidate's Callable Constraint does not permit (ClosureReceiverMismatch, permitClosureReceivers,
@@ -176,7 +177,8 @@ public sealed partial class Binding
                 types[i] = parameter;
             }
 
-            var result = function.ReturnType is not null ? this.ClosureResultType(function, inputs, scope) : restated.Components[1];
+            // The written result is formed although the fit failed: its formation reads only it and the inputs (SPEC 23.1.2).
+            var result = function.ReturnType is not null ? this.FormNestedResult(this.ClosureResultType(function, inputs, scope), function.ReturnType) : restated.Components[1];
             if (result is null)
             {
                 return this.Fail(function, BindingFailure.TypeMismatch);
@@ -330,6 +332,9 @@ public sealed partial class Binding
         {
             this.ParameterSymbol(function, i).Type = function.Parameters[i].Type.BoundType;
         }
+
+        // Formed once the header's inputs and Origin declaration are complete: its proof reads the signature's own inputs.
+        symbol.Type = this.FormNestedResult(symbol.Type, function.ReturnType);
     }
 
     // SPEC 7.7.2: the written capture list's entries; true, with the literal's Type, where an entry ends the binding.
