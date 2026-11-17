@@ -474,14 +474,32 @@ public sealed partial class Binding
         {
             // SPEC 8.1.2: matched as the Type it forms (SourcedLayer): a layer, in the caller's terms, by its target against the actual's
             // part below the same layer; an owner binding's target, in the callee's terms, or a family as the Type it is.
-            // DECISIONS D3 (G812 ruling 104, C-E5): in a structural walk each compared split layer is its own part of a split search.
+            // DECISIONS D3 (G812 rulings 104 C-E5, 106 C-I1): in a structural walk each compared split layer is its own part of a split
+            // search. What lies below it is compared with the part its case formed, so the layers below are handed its reads
+            // (CarrySplitPart) until they fit; a sibling layer is handed nothing.
             var target = pattern.Components[0];
+            var handed = this.splitCarried;
             if (structural)
             {
                 this.EnterSplitPart();
             }
 
-            return this.SourcedLayer(pattern, actual, function, frame, out var formed) && (formed is null || (IsFormedLayer(formed, target)
+            if (!this.SourcedLayer(pattern, actual, function, frame, out var formed))
+            {
+                return false;
+            }
+
+            if (formed is null)
+            {
+                return true;
+            }
+
+            if (structural)
+            {
+                this.CarrySplitPart(this.splitPartStamp);
+            }
+
+            var fits = IsFormedLayer(formed, target)
                 ? LayerTarget(formed, actual) is { } below && this.Infer(
                     target,
                     below,
@@ -494,7 +512,13 @@ public sealed partial class Binding
                     evidence,
                     relateLater,
                     invariant || IsInvariantLayer(formed, this, null, default))
-                : this.Infer(formed, actual, function, frame, inferOrigins, lengths, commonOrigins, structural, evidence, relateLater, invariant)));
+                : this.Infer(formed, actual, function, frame, inferOrigins, lengths, commonOrigins, structural, evidence, relateLater, invariant);
+            if (fits)
+            {
+                this.splitCarried = handed;
+            }
+
+            return fits;
         }
 
         // SPEC 3.1.1: the wrapping Scalar Wrapping<u8> is the instance of the pattern Wrapping<T>, so T is inferred from
