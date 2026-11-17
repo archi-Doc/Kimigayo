@@ -10,7 +10,10 @@ namespace Kimi.Compiler;
 // Responsibility: the declared counterpart one step below a position: a component where the constructors agree (DeclaredComponent,
 // Same), what an entry reaches (SignaturePast), the declared Type's parts in a run's order (DeclaredRun, DeclaredPart), and inside the
 // binding of an abstract Type of the walked function's own declaration that abstract Type itself, kept below (OwnAbstract, Hides,
-// Below; SPEC 15.6.4).
+// Below; SPEC 15.6.4) as far as the Place is storage of that Type: its parts by value and what its safe references refer to. Past a
+// raw layer the binding holds, whether or not the layer states an Origin, the counterpart ends: the holder the layer addresses is
+// one the value carries the address of, reached "hidden or not" and read as the input writes it (SPEC 15.6.4's routes, 5.7 Calls;
+// the owner's O-312 (a); PLAN G935 c3-5), except for an operation whose writes SPEC states (StatesWrites), which writes no such holder.
 // The declared counterpart is read in the declaring function's view (View; SPEC 8.2.3; PLAN G935 c3-2): an abstract Type of the
 // function's own declaration that its identity class gives a constructed form, or identifies with a Type the function does not own,
 // is that form, shown, and is no kept Type. Each carrier's Signature is formed in the view: the retention walks take the declared
@@ -129,12 +132,19 @@ public sealed partial class Binding
 
     // The declared counterpart of what a value's entry other than a part by value reaches (Below of Reach's arms; DECISIONS BU-113): a pair
     // layer's target (whatever the entry), a borrow's referent, a raw layer's pointee or a read-only own step's payload where the
-    // constructors agree.
+    // constructors agree. Inside a kept binding the kept Type itself, except past a raw layer the binding holds, where it ends (null):
+    // the pointee is a holder the value addresses, no storage of the kept Type (the file's contract; an operation whose writes SPEC
+    // states keeps the Type there, since it writes no such holder).
     private BoundType? SignaturePast(BoundType? declared, BoundType type, in Hold entry)
     {
-        if (declared is null || Hides(declared))
+        if (declared is null)
         {
-            return declared;
+            return null;
+        }
+
+        if (OwnAbstract(declared) is { } function)
+        {
+            return (entry.Flags & HoldFlags.Raw) != 0 && !this.StatesWrites(function) ? null : declared;
         }
 
         if (TryPairLayer(type, out _, out _))

@@ -470,9 +470,9 @@ public sealed partial class MirBorrowsTest
     // accepted). viaUntiedBad leaves `x.p` as `Plain.init` made it, which by that contract may address storage the body does not own, so
     // the write may keep y's Loan there (R4-M116 S2's hiddenInit), however `slot` is used; so do three forms that use it before `y = 5`
     // by a constructor's contract: boxUntiedBad boxes x after `x.p = slot@raw`, and `Bx.init`'s result is untied, so the box's `item.p`
-    // may address such storage and writeBP may store w's address there; genUntiedBad's writeG<T> is valid: `x.item` is a T, whose
-    // binding's raw Field adds no reach of its own, and q is no T (SPEC 15.6.4, the owner's O-360 (a), PLAN G935: relabelled V, class 3,
-    // newly accepted); deepUntiedBad hands `Plain.init(q: w..)`
+    // may address such storage and writeBP may store w's address there; genUntiedBad's writeG<T> is a valid program, rejected again since c3-5 as on fcd6a5381 (a known limit of this tree's A5, which maps the key past a hidden layer to storage the body does not own: open issue "A5's Φ_E exclusion past a hidden layer", PLAN G935 c3-5): `x.item` is a T, whose
+    // binding's raw Field adds no reach of its own, and q is no T; slot, the holder that Field addresses, may take q but is used only
+    // before `y = 5` (SPEC 15.6.4, the owner's O-360 (a) and O-312 (a)); deepUntiedBad hands `Plain.init(q: w..)`
     // to `Outer.init`, which may write that chain, y's Loan with it, through `inner.p` as `Plain.init` left it (the reviews' genPOk,
     // boxPlainOk and deepOk). Valid: a Tuple no untied constructor built, used before `y = 5` (tupOk), and arguments whose chain carries
     // no Loan (viaQuietOk, consumeQuietOk).
@@ -481,7 +481,7 @@ public sealed partial class MirBorrowsTest
         => Assert.Equal(
             [
                 "viaBad: y = 5", "via2Bad: y = 5", "viaUntiedBad: y = 5", "consumeWBad: y = 5", "consumeDrop2Bad: y = 5", "arrConsumeBad: y = 5",
-                "optBad: y = 5", "boxPlainBad: y = 5", "arrPlainBad: y = 5", "uBad: y = 5", "boxUntiedBad: y = 5",
+                "optBad: y = 5", "boxPlainBad: y = 5", "arrPlainBad: y = 5", "uBad: y = 5", "genUntiedBad: y = 5", "boxUntiedBad: y = 5",
                 "deepUntiedBad: y = 5",
             ],
             Problems(RawShapes + ReferentShapes + ByValueShapes + """
@@ -806,12 +806,12 @@ public sealed partial class MirBorrowsTest
     // also after the caller rewrote one. A call that writes through such a value stores there every chain its row retains, y's Loan with
     // it: x's own (viaOk, consumeDrop2Ok, arrConsumeOk; viaRefOk through a borrow) or input 1's (via2Ok; deepQOk two Fields deep, enumBOk
     // in an enum's payload, optOk in an Option, boxPLateOk in a box's Field, arrPlainOk in an Array). genPLateOk, the box passed to
-    // `writeG<T>(x: Bx<T>, q: raw/u8)`, is valid: `x.item` is storage of writeG's own T, Plain's raw Field lies in T's binding, which adds
-    // no reach of its own, and q is no T (SPEC 15.6.4; the owner's O-360 (a), PLAN G935: relabelled, newly accepted); its purpose is
+    // `writeG<T>(x: Bx<T>, q: raw/u8)`, is a valid program, rejected again since c3-5 as on fcd6a5381 (the limit genUntiedBad's row names): `x.item` is storage of writeG's own T, Plain's raw Field lies in T's binding, which adds
+    // no reach of its own, and q is no T (SPEC 15.6.4; the owner's O-360 (a)); its purpose is
     // boxPLateOk's, whose callee `writeBP(x: Bx<Plain>, ..)` writes the Type. Each other is a correct error at `y = 5`
     // though `slot` is used before it; arrConsumeOk and arrPlainOk also by `append`'s untied receiver store (5.7, 15.6.4). The function
     // names keep their earlier suffix. The old analysis read no retention and accepted the program; since the MIR decides acceptance
-    // (R6-check H5, DECISIONS R5-M185) check rejects it with these ten records, each at its function's `y = 5` (H3b's 1r).
+    // (R6-check H5, DECISIONS R5-M185) check rejects it with these eleven records, each at its function's `y = 5` (H3b's 1r).
     [Fact]
     public void ARewrittenRawFieldLeavesItsValueReachingStorageTheBodyDoesNotOwn()
     {
@@ -928,12 +928,12 @@ public sealed partial class MirBorrowsTest
         Assert.Equal(
             [
                 "viaOk: y = 5", "viaRefOk: y = 5", "consumeDrop2Ok: y = 5", "arrConsumeOk: y = 5", "via2Ok: y = 5", "deepQOk: y = 5", "enumBOk: y = 5",
-                "optOk: y = 5", "boxPLateOk: y = 5", "arrPlainOk: y = 5",
+                "optOk: y = 5", "genPLateOk: y = 5", "boxPLateOk: y = 5", "arrPlainOk: y = 5",
             ],
             Problems(c, Analyze(c), LoanCodes));
         var analyzed = MinimalEmissionTest.Analyze(Source);
         Assert.False(analyzed.Accepts);
-        Assert.Equal(string.Join(" | ", Enumerable.Repeat("ComparisonLoanConflict_Kd y = 5", 10)), MinimalEmissionTest.Problems(analyzed));
+        Assert.Equal(string.Join(" | ", Enumerable.Repeat("ComparisonLoanConflict_Kd y = 5", 11)), MinimalEmissionTest.Problems(analyzed));
     }
 
     // SPEC 5.7 Reading a Field, 5.2.1 (G184, `during self`): a pointer read from a `during self` Field reaches its holder's own storage, so a

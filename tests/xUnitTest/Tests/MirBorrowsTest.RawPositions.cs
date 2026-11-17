@@ -12,17 +12,20 @@ public sealed partial class MirBorrowsTest
     // (`during source`), c06 (`during self.source`), m02 (`ref/Self`), m03 (a generic method) and m06 (the `ref`-kept slot of two) are
     // valid; each erred at its `var vw`, `var q` and `z = 5` before, where the receiver's `var` slot replaced `source`. a05 (the slot bound
     // to an input Origin) and a07 (a `ref` Type argument stating it too) stay valid. The twins err: a `uniq`-kept slot (i01, and i02's
-    // second slot) lets put store v into `cell`. h01 and a04 pass `h: uniq/Wrap<U>`, put2's own Type parameter: `h.value` is storage of
-    // U, which holds `v` (a `raw/u8`) only where a premise makes it one (SPEC 15.6.4; the owner's O-360 (a), PLAN G935), so put2 stores
-    // nothing there whatever U's binding states, and `z = 5` is valid (relabelled from BU-113's instantiated reading; h01's `cell@ref`
-    // stays: u's exclusive Loan lives until `inspect(u)`). h01s keeps BU-113's point with a shown Type argument: put2s writes
-    // `Wrap<raw/u8>` in its own Type expression, so `h.value` is a raw layer without an Origin the call writes, which may keep v (SPEC
-    // 15.6.4, 5.7 Calls "a Type argument's ... included"), and `z = 5` errs while h is used after.
+    // second slot) lets put store v into `cell`. A Type argument's layer stating the receiver's Origin is the caller's, not the signature's
+    // (h01, `Projection[cell]`; a04, the input `a` its binder states by `uniq`), so the call may store v there and `z = 5` errs. Both pass
+    // `h: uniq/Wrap<U>`, put2's own Type parameter: `h.value`, storage of U, holds no `raw/u8` (SPEC 15.6.4; the owner's O-360 (a)), but
+    // the holder U's layer addresses is reached, hidden or not, and takes what the borrows its Origin belongs to admit (5.7 Calls; the
+    // owner's O-312 (a); PLAN G935 c3-5 reverts c2's relabel of the two to valid; a04's `let vw` record comes back as on fcd6a5381).
+    // h01s is the same with a shown Type argument: put2s
+    // writes `Wrap<raw/u8>` in its own Type expression, so `h.value` is a raw layer without an Origin the call writes, which may keep v
+    // (SPEC 15.6.4, 5.7 Calls "a Type argument's ... included"), and `z = 5` errs while h is used after.
     [Fact]
     public void AMethodsLayerStatingItsSlotReadsItsDeclaredSignature()
         => Assert.Equal(
             [
-                "i01: z = 5", "i01: cell@ref", "i02: z = 5", "i02: cell@ref", "h01: cell@ref", "h01s: z = 5",
+                "i01: z = 5", "i01: cell@ref", "i02: z = 5", "i02: cell@ref", "h01: cell@ref", "h01: z = 5", "h01s: z = 5",
+                "a04: z = 5", "a04: let vw: ViewA04 during a = ViewA04.init(r)",
             ],
             Problems("""
                 func putAny<U, V>(t: uniq/U, v: V) => ()
@@ -186,18 +189,18 @@ public sealed partial class MirBorrowsTest
 
     // SPEC 5.7 Authority, 5.2.1 condition 3 (DECISIONS BU-113, PLAN G493): a Type argument's raw layer is judged where its Origin is bound,
     // by the binder's declared inputs, never by the callee's instantiated ones. Where the caller states `a` by `uniq` as well as `ref`, the
-    // callee may store v through it and `z = 5` (or the scope end, e03) errs: s03 and e03 (methods of `Wrap2S03<E>` and `Wrap2E03<E>`,
-    // whose E the Type shows) err, as on f69d55e12; G148 (1)'s route (BU-108, W-42) accepted them by counting the callee's Type argument
-    // `V = ref/… during a`. Where the layer lies in the binding of the callee's own Type parameter, the callee stores nothing through
-    // it whatever states `a` (PLAN G935, relabelled from the instantiated reading): `w.value` (s04: `*w`; a02: the U part of
-    // `(U, i32)`, whose i32 part cannot hold a `raw/u8`) is storage of the callee's own U, which holds `v`, a `raw/u8`, or `k` only
-    // where a premise makes it one, and U's raw layer stating `a` is hidden in U's binding and adds no reach of its own (SPEC 15.6.4's
-    // abstract-storage sentence and "adds no reach of its own"; the owner's O-360 (a)). So s01, s02, s04, s05, a02, a03 (also its
-    // `let vw` record: k's own value, a borrow of vw, fits no storage that outlives vw), e02 and x04 are valid, and t04i too: a function
-    // reference has its Function Item Type with the bound generic arguments (SPEC 7.7.4), so `f(...)` is a call of gT04i, read in its
-    // own terms. Where the binder states `a` only by `ref`, a pointer stating it has no write authority, so v01, v02, v03 and r20
-    // (`Wrap.put<U>`) are valid (v02 and r20 erred before), and b01's body-formed `uniq` borrow during `a` does not count (5.2.1); e01
-    // is a guard, t04v valid. A Closure environment's layer is judged by its binder as well: `ref` alone keeps t10v and t10w valid (they erred
+    // callee may store v through it and `z = 5` (or the scope end, e02 and e03) errs: s01, s03 (a method), s05 (a nested Type argument),
+    // a02 (a Tuple), a03 (`ref` through a `ref`-kept slot) and x04 (`uniq` through a slot) err, as on f69d55e12; G148 (1)'s route
+    // (BU-108, W-42) accepted s01, s03, s05, a03 and e02/e03 by counting the callee's Type argument `V = ref/… during a`. In s01, s02,
+    // s04, s05, a02, a03, e02 and x04 the layer lies in the binding of the callee's own Type parameter: `w.value` (s04: `*w`), storage
+    // of that U, holds `v` or `k` only where a premise makes it one (SPEC 15.6.4; the owner's O-360 (a)), but the holder the layer
+    // addresses is reached, hidden or not, and takes what the borrows its Origin belongs to admit (5.7 Calls; the owner's O-312 (a);
+    // PLAN G935 c3-5 reverts c2's relabel of these rows to valid). a03's `let vw` record comes back with them as on fcd6a5381, an
+    // over-report on an invalid program (k's own value, a borrow of vw, fits no `raw/u8` holder; the holder past the layer is read as
+    // the input writes it). Where the binder states `a` only by `ref`, a pointer stating it has no write authority, so
+    // v01, v02, v03 and r20 (`Wrap.put<U>`) are valid (v02 and r20 erred before), and b01's body-formed `uniq` borrow during `a` does
+    // not count (5.2.1); e01 is a guard. A generic's Function Item has that generic's declared signature, so s01 through
+    // `let f = g<…>` errs too (t04i; t04v valid). A Closure environment's layer is judged by its binder as well: `ref` alone keeps t10v and t10w valid (they erred
     // before). put's own pair binder `s/T during a` admits `uniq`, so its layer is not capped whatever case the call selects (every
     // admitted Semantics case decides the cap, SPEC 5.2.1, 5.7; the owner's O-36 (a)): t11u, whose pointer comes from `u: uniq`, errs
     // (accepted before), as t11i does (by `z = 5` alone: its former record at `var q` needed p's own value, the exclusive borrow of q,
@@ -207,7 +210,9 @@ public sealed partial class MirBorrowsTest
     public void ATypeArgumentsLayerIsJudgedWhereItsOriginIsBound()
         => Assert.Equal(
             [
-                "s03: z = 5", "e03: var z = 3", "t11u: z = 5", "t11i: z = 5", "t11v: z = 5",
+                "s01: z = 5", "s02: z = 5", "s03: z = 5", "s04: z = 5", "s05: z = 5", "a02: z = 5", "a03: z = 5",
+                "a03: let vw: ViewA03 during a = ViewA03.init(r)", "e02: var z = 3", "e03: var z = 3", "x04: z = 5", "t04i: z = 5",
+                "t11u: z = 5", "t11i: z = 5", "t11v: z = 5",
             ],
             Problems("""
                 func putAny<U, V>(t: uniq/U, v: V) => ()
@@ -411,15 +416,14 @@ public sealed partial class MirBorrowsTest
     // SPEC 5.2.1 condition 3, 15.3.4 (DECISIONS BU-113, PLAN G501): a nested signature's own layer is capped by its declared inputs only.
     // n04's passOn2 states `a` by no input, so its caller's Type argument `U = ref/… during a` does not count, and the call may store v
     // into u's referent (`z = 5` errs; accepted before). Its written `ref` input caps it (n04v, n04g, n01, a06), whatever a Type argument
-    // carries. A Type argument's layer in the binding of a nested function's own Type parameter stores nothing, whatever f's signature
-    // states: n03, a09 and a08 are valid (PLAN G935, n03 and a09 relabelled): `h.value` is storage of g2's or g3's own U, which holds
-    // `v`, a `raw/u8`, only where a premise makes it one (SPEC 15.6.4; the owner's O-360 (a)). n04a, n04b and n04c are guards.
+    // carries. A Type argument's layer stating `a` is judged by f's signature: `uniq` there makes n03 and a09 err, `ref` alone keeps a08
+    // valid. The layer lies in the binding of g2's or g3's own U, whose storage `h.value` holds no `raw/u8`, but the holder it addresses
+    // is reached, hidden or not (the owner's O-312 (a); PLAN G935 c3-5 reverts c2's relabel of n03 and a09). n04a, n04b and n04c are guards.
     [Fact]
     public void ANestedSignatureIsCappedByItsDeclaredInputs()
         => Assert.Equal(
             [
-                "n04: z = 5", "n04a: z = 5", "n04b: z = 5",
-                "n04c: z = 5", "n04c: var x = u@follow@raw",
+                "n03: z = 5", "n04: z = 5", "n04a: z = 5", "n04b: z = 5", "n04c: z = 5", "n04c: var x = u@follow@raw", "a09: z = 5",
             ],
             Problems("""
                 func putAny<U, V>(t: uniq/U, v: V) => ()

@@ -1029,7 +1029,9 @@ public sealed partial class Binding
         var ruled = false; // Rule A's rows are the output's, the same in every storage they reach: formed once.
         for (var s = 0; s < count; s++)
         {
-            var whole = (met[s] & (Holding.Unstated | Holding.Any)) != 0 || (reach & Holding.Unbounded) != 0;
+            // Storage of the callee's kept Type takes no row of rule A: it holds no layer the call may write as one (its rows are
+            // HiddenKinds', the callee's terms; SPEC 15.6.4, the owner's O-360 (a)), whatever the holders its binding addresses reach.
+            var whole = ((met[s] & (Holding.Unstated | Holding.Any)) != 0 || (reach & Holding.Unbounded) != 0) && !(met[s] == Holding.None && this.KeptStorage(s));
             if (writes && (reach & Holding.Unstated) != 0 && (whole || (met[s] & Holding.Loans) != 0))
             {
                 if (!ruled)
@@ -1065,6 +1067,21 @@ public sealed partial class Binding
         }
 
         return untied;
+    }
+
+    // Whether a storage of the output's walk is the root of a binding of the callee's kept Type (storageBound): with no hold of its own
+    // (Hold's `met` is None there), the storage is that Type's and nothing else's.
+    private bool KeptStorage(int storage)
+    {
+        foreach (var (bound, _) in this.storageBound)
+        {
+            if (bound == storage)
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     // SPEC 15.6.4 "with an Origin, as the borrow that Origin belongs to would", 5.7 Fits and claims (the owner's O-329 (a); C-352): at each

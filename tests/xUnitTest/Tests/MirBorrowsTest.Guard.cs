@@ -195,7 +195,7 @@ public sealed partial class MirBorrowsTest
     // of its abstract T that writes the holders x's addresses name (slot), so slot may keep w's address and `y@follow = 5` errs.
     // fMake's contract hands only `make`, whose result may keep p in `*dst` (15.6.4 "through its result"), whatever Type T is bound to:
     // with T = Wk, whose only Field no handed signature names, mkConcBad (x read after `y = 5`) errs and mkConcOk (x read before) is
-    // valid (fail-before on the unit's prototype 16: mkConcOk erred, the row landing past Wk's raw layer). A `ref/Self` receiver writes
+    // valid, though rejected at `y = 5` again since c3-5 as on fcd6a5381 (x.k carries no holder's address; a known limit of this tree's A5, which maps the key past a hidden layer to storage the body does not own: open issue "A5's Φ_E exclusion past a hidden layer", PLAN G935 c3-5). A `ref/Self` receiver writes
     // nothing (15.6.4 "never through a shared Loan"): setQRefParamOk is valid (fail-before on prototype 16: `y = 5`), its `uniq/Self`
     // twin setQUniqParamBad errs.
     [Fact]
@@ -483,11 +483,11 @@ public sealed partial class MirBorrowsTest
             """);
         Assert.Equal(
             [
-                "writerBad: y = 5", "laterWriterBad: y = 5", "laterWriterOk: y = 5", "chainBad: y = 5", "allocBad: y = 5", "alloc2Bad: y = 5",
-                "allocOptBad: y = 5", "allocTupBad: y = 5", "allocViaUBad: y = 5", "paramBad: y = 5", "ownParamBad: y = 5",
-                "ownParamGen: y = 5", "directParamGen: y = 5", "sharedRawGen: y = 5", "exchGen: y = 5", "capGen: y = 5", "nestGen: y = 5",
-                "uniqBad: y = 5", "clearRcOk: y = 5", "clearRcBad: y = 5", "gSetQBad: y@follow = 5", "mkConcBad: y = 5",
-                "setQUniqParamBad: y = 5",
+                "writerBad: y = 5", "laterWriterBad: y = 5", "laterWriterOk: y = 5", "chainBad: y = 5", "allocBad: y = 5",
+                "alloc2Bad: y = 5", "allocOptBad: y = 5", "allocTupBad: y = 5", "allocViaUBad: y = 5", "paramBad: y = 5",
+                "ownParamBad: y = 5", "ownParamGen: y = 5", "directParamGen: y = 5", "sharedRawGen: y = 5", "exchGen: y = 5",
+                "capGen: y = 5", "nestGen: y = 5", "uniqBad: y = 5", "clearRcOk: y = 5", "clearRcBad: y = 5", "gSetQBad: y@follow = 5",
+                "mkConcBad: y = 5", "mkConcOk: y = 5", "setQUniqParamBad: y = 5",
             ],
             Problems(c, Analyze(c), [.. LoanCodes, DiagnosticCode.Unsupported_Kd]));
     }
@@ -499,7 +499,8 @@ public sealed partial class MirBorrowsTest
     // storage of E, which the receiver's instance completes, a `raw/(raw/u8)` the caller states by `uniq` (idEnclBad). Fail-before on
     // fce0d5078: the three were accepted (the storage walk kept T against the key walk's View). Their valid twins: a `raw/u8` input
     // that is no V (idFormOtherOk), the holder read before the write (idFormInOk, idAbsOk), the Origin stated only by `ref`
-    // (idEnclOk) and the callee without the premise, whose own T holds no `raw/u8` (idEnclNoPremOk). Two own abstract Types a premise
+    // (idEnclOk). The callee without the premise (idEnclNoPremBad) errs too since c3-5: its own T holds no `raw/u8`, but the holder
+    // T's layer addresses, `*u`, is reached, hidden or not (the owner's O-312 (a); F's ruling 30). Two own abstract Types a premise
     // identifies (`T is V`) both stay kept and fit each other (idAbsBad, rejected before c3-2 too). A raw layer a premise shows
     // steps by its binder's declared inputs (DECISIONS BU-113): under `T is raw/(raw/u8) during a`, p is a layer stating `a`, which
     // x states by `uniq` (idRawStepBad: fr may store v into `*x`) or only by `ref` (idRawStepOk: no write authority, 5.2.1
@@ -604,7 +605,7 @@ public sealed partial class MirBorrowsTest
                 let host = Host.init(r@follow@raw)
                 host.put3(h@uniq, w@raw@raw/u8)
                 z = 5
-            func idEnclNoPremOk(r: ref/(raw/u8) during a, u: uniq/(raw/u8) during a)
+            func idEnclNoPremBad(r: ref/(raw/u8) during a, u: uniq/(raw/u8) during a)
                 var z = 3
                 let w = z@ref
                 var h = Wrap.init(u@follow@raw)
@@ -641,8 +642,149 @@ public sealed partial class MirBorrowsTest
         Assert.Equal(
             [
                 "idFormBad: kk = 2", "idFormBad: m@ref", "idFormInBad: kk = 2", "idAbsBad: kk = 2", "idEnclBad: z = 5",
-                "idEnclBad: let host = Host.init(r@follow@raw)", "idRawStepBad: z = 5", "idRawStepBad: var q = u@follow@raw",
+                "idEnclBad: let host = Host.init(r@follow@raw)", "idEnclNoPremBad: z = 5",
+                "idEnclNoPremBad: let host = Host.init(r@follow@raw)", "idRawStepBad: z = 5",
+                "idRawStepBad: var q = u@follow@raw",
                 "idFormGenBad: kk = 2",
+            ],
+            Problems(c, Analyze(c), [.. LoanCodes, DiagnosticCode.Unsupported_Kd]));
+    }
+
+    // SPEC 15.6.4 (route 1: "the holders its exclusive Loans and addresses name"; "adds no reach of its own"), 5.7 Calls (a raw layer
+    // in a parameter, "a Type argument's ... included"; with an Origin, what the borrows it belongs to admit), the owner's O-312 (a)
+    // ("the carried addresses are reached, hidden or not"; PLAN G935 c3-5, class 1): storage of the callee's own Type parameter takes
+    // only the callee's terms' rows, but a holder that a raw layer of its binding addresses is reached, and the call may store there
+    // what that holder admits. w, addressed by F's `raw/(raw/u8)` in a Tuple (hidPunUseEntryBad, the Middle's) or by U's in a struct's
+    // Field (hidPunUnstatedWrapBad), may hold spare and is read after `kk = 2`; h, addressed by U's layer, may be replaced by wa, so
+    // `h@follow = spare` stores into storage the body does not own (o312p2Bad, the owner's O-312 program 2); cell, addressed by T's
+    // layer past `raw/T`, is read after the write (keepTCellUsedBad), and so it is where hop, an address of cell, is used after it
+    // (keepTHopUsedBad: SPEC 15.6, a use of an address of a holder uses the holder; invalid by the owner's O-389 (a), which corrects
+    // O-353 (a)'s line for it); w, whose plain address `t.0` carries, may hold z's borrow (hidAddrBad); and a layer stating an Origin
+    // reaches no less: `*u`, which the caller states by `uniq`, may hold v and is read after `z = 5` (hidStatedUseBad). Fail-before
+    // on 4b788f544: all seven were accepted (c2 kept the callee's Type past every layer its binding holds); fcd6a5381 rejected them.
+    // The valid twins: a pointee that admits no pointer (hidPunU8PointeeOk), the holder read only before the write (hidPunEarlyOk,
+    // keepTCellEarlyOk) or not at all (hidPunUnusedOk; keepTUnusedOk, the owner's O-353 (a)).
+    [Fact]
+    public void TheHoldersAKeptBindingAddressesAreReached()
+    {
+        var c = MirBuildTest.Compile(Prelude + """
+            struct WrapH<E>
+                var value: E
+                public init(value: E) => self.value = value@move
+            func usePtrH<T>(p: raw/T) => ()
+            func usePPH(p: raw/(raw/u8)) => ()
+            func touchH<F>(t: uniq/(F, u8), v: raw/u8) => ()
+            func wrapH<U>(w: uniq/WrapH<U>, v: raw/u8) => ()
+            func waH<U>(p: raw/U) => ()
+            func keepTH<T>(slot: raw/T, value: raw/u8) => ()
+            func putAnyH<U, V>(t: uniq/U, v: V) => ()
+            func hidPunUseEntryBad()
+                var kk: u8 = 1
+                let rk = kk@uniq
+                var spare: raw/u8 = rk@follow@raw
+                var w: raw/u8 = null
+                let z8: u8 = 0
+                var t = (w@raw@raw/(raw/u8), z8)
+                touchH(t@uniq, spare)
+                kk = 2
+                usePtrH(w)
+            func hidPunEarlyOk()
+                var kk: u8 = 1
+                let rk = kk@uniq
+                var spare: raw/u8 = rk@follow@raw
+                var w: raw/u8 = null
+                let z8: u8 = 0
+                var t = (w@raw@raw/(raw/u8), z8)
+                touchH(t@uniq, spare)
+                usePtrH(w)
+                kk = 2
+            func hidPunUnusedOk()
+                var kk: u8 = 1
+                let rk = kk@uniq
+                var spare: raw/u8 = rk@follow@raw
+                var w: raw/u8 = null
+                let z8: u8 = 0
+                var t = (w@raw@raw/(raw/u8), z8)
+                touchH(t@uniq, spare)
+                kk = 2
+            func hidPunU8PointeeOk()
+                var kk: u8 = 1
+                let rk = kk@uniq
+                var spare: raw/u8 = rk@follow@raw
+                var b: u8 = 0
+                let z8: u8 = 0
+                var t = (b@raw, z8)
+                touchH(t@uniq, spare)
+                kk = 2
+                usePtrH(b@raw)
+            func hidPunUnstatedWrapBad()
+                var kk: u8 = 1
+                let rk = kk@uniq
+                var spare: raw/u8 = rk@follow@raw
+                var w: raw/u8 = null
+                var h = WrapH.init(w@raw@raw/(raw/u8))
+                wrapH(h@uniq, spare)
+                kk = 2
+                usePtrH(w)
+            func o312p2Bad()
+                var kk: u8 = 1
+                let r = kk@uniq
+                var spare: raw/u8 = r@follow@raw
+                var a: raw/u8 = null
+                var b: raw/u8 = null
+                var m = a@uniq
+                var h = b@uniq
+                var x: (raw/(uniq/(raw/u8)), raw/(raw/(raw/u8))) = (m@raw, h@raw@raw/(raw/(raw/u8)))
+                waH(x@raw)
+                h@follow = spare
+                kk = 2
+            func keepTCellUsedBad(y: uniq/i32)
+                let w = y@follow@ref
+                var cell: raw/u8 = null
+                var hop: raw/(raw/u8) = cell@raw
+                keepTH(hop@raw, w@raw@raw/u8)
+                y@follow = 5
+                usePtrH(cell)
+            func keepTCellEarlyOk(y: uniq/i32)
+                let w = y@follow@ref
+                var cell: raw/u8 = null
+                var hop: raw/(raw/u8) = cell@raw
+                keepTH(hop@raw, w@raw@raw/u8)
+                usePtrH(cell)
+                y@follow = 5
+            func keepTHopUsedBad(y: uniq/i32)
+                let w = y@follow@ref
+                var cell: raw/u8 = null
+                var hop: raw/(raw/u8) = cell@raw
+                keepTH(hop@raw, w@raw@raw/u8)
+                y@follow = 5
+                usePPH(hop)
+            func keepTUnusedOk(y: uniq/i32)
+                let w = y@follow@ref
+                var cell: raw/u8 = null
+                var hop: raw/(raw/u8) = cell@raw
+                keepTH(hop@raw, w@raw@raw/u8)
+                y@follow = 5
+            func hidAddrBad()
+                var x = 1
+                var z = 3
+                var w: ref/i32 = x@ref
+                var t = (w@raw, 0)
+                putAnyH(t@uniq, z@ref)
+                z = 5
+                inspect(w)
+            func hidStatedUseBad(u: uniq/(raw/u8) during a)
+                var z = 3
+                let w = z@ref
+                var h = WrapH.init(u@follow@raw)
+                wrapH(h@uniq, w@raw@raw/u8)
+                z = 5
+                usePtrH(u@follow)
+            """);
+        Assert.Equal(
+            [
+                "hidPunUseEntryBad: kk = 2", "hidPunUnstatedWrapBad: kk = 2", "o312p2Bad: kk = 2", "keepTCellUsedBad: y@follow = 5",
+                "keepTHopUsedBad: y@follow = 5", "hidAddrBad: z = 5", "hidStatedUseBad: z = 5",
             ],
             Problems(c, Analyze(c), [.. LoanCodes, DiagnosticCode.Unsupported_Kd]));
     }
@@ -1187,8 +1329,9 @@ public sealed partial class MirBorrowsTest
     // typed twin errs at `inspect(w)` (an open issue, PLAN G148). Where a call's pair holds (DECISIONS R4-M154, Revision 4), a callee its
     // instantiated signature admits may store z's borrow into w or v through the instance's uniq or raw layers, whose local regions may
     // coincide, so nestedPointee and mixed (methods of Types whose own parameter shows the layer) also err at `z = 5`. tupleTyped's
-    // `putAny<U, V>(t: uniq/U, v: V)` does not: `*t` is storage of putAny's own U, which holds no V, and U's raw layer is hidden in its
-    // binding (SPEC 15.6.4; the owner's O-360 (a), PLAN G935: its `z = 5` record relabelled).
+    // `putAny<U, V>(t: uniq/U, v: V)` errs there too: `*t` is storage of putAny's own U, which holds no V, but `t.0` carries w's address
+    // by a raw layer of U's binding, and that holder is reached, hidden or not (SPEC 15.6.4; the owner's O-312 (a); PLAN G935 c3-5
+    // reverts c2's relabel of its `z = 5` record).
     [Fact]
     public void AStoreTheGuardLeavesUndecidedIsUnsupported()
     {
@@ -1323,10 +1466,11 @@ public sealed partial class MirBorrowsTest
             """);
         Assert.Equal(
             [
-                "flat: h.put(z@ref) Unsupported_Kd", "nested: o.put(z@ref) Unsupported_Kd", "optionNested: putAny(o@uniq, z@ref) Unsupported_Kd",
-                "looped: h.put(z@ref) Unsupported_Kd", "looped: h.touch() Unsupported_Kd", "looped: k = 2", "reachedByStep: G.init(h@uniq) Unsupported_Kd",
+                "flat: h.put(z@ref) Unsupported_Kd", "nested: o.put(z@ref) Unsupported_Kd",
+                "optionNested: putAny(o@uniq, z@ref) Unsupported_Kd", "looped: h.put(z@ref) Unsupported_Kd",
+                "looped: h.touch() Unsupported_Kd", "looped: k = 2", "reachedByStep: G.init(h@uniq) Unsupported_Kd",
                 "reachedByStep: g.put(z@ref) Unsupported_Kd", "sharedSupplied: h.put(z@ref) Unsupported_Kd", "nestedPointee: z = 5",
-                "nestedPointee: inspect(w)", "mixed: z = 5", "mixed: inspect(v)", "tupleTyped: inspect(w)",
+                "nestedPointee: inspect(w)", "mixed: z = 5", "mixed: inspect(v)", "tupleTyped: z = 5", "tupleTyped: inspect(w)",
             ],
             Problems(c, Analyze(c), [.. LoanCodes, DiagnosticCode.Unsupported_Kd]));
     }
@@ -1341,8 +1485,11 @@ public sealed partial class MirBorrowsTest
     // level down through r1cv's callee, r1c), an exclusive Loan past a holder beside a shared one (ss8c) and the holder a second argument
     // reaches exclusively (ss8two); a write while s's Loan lives errs (ss8w). PLAN G935 (the owner's O-360 (a)): `putAny<U, V>(t: uniq/U,
     // v: V)` and `putTwo<U, V, W>(t: U, u: uniq/V, v: W)` store v nowhere in their own terms (`*t`, `*u` are storage of the callee's own
-    // U or V, which holds no V or W), so `z = 5` no longer errs in ss8m, ss8g, ss8a, ss8c, ss8two and r1a (relabelled; ss8a and ss8two
-    // are valid as wholes), and the valid ss8, ss8s and ss8mv are valid before this rule is read. The rule's two directions are kept by
+    // U or V, which holds no V or W), so `z = 5` no longer errs in ss8g, ss8c, ss8two and r1a (relabelled; ss8two is valid as a
+    // whole). ss8a and ss8m err there again since c3-5, as on fcd6a5381: `t.1` of ss8a, w's plain address, names a holder that a raw
+    // layer of U's binding addresses, which putAny may write with z's borrow (the owner's O-312 (a)); ss8m's v, the holder its
+    // exclusive part names, is read after (its row comes from the raw layer beside it, a holder of the same Type; the rule for a safe
+    // reference in the binding is an open issue). c2's relabel of the two is reverted. The valid ss8, ss8s and ss8mv are valid before this rule is read. The rule's two directions are kept by
     // the concrete twins, whose callee writes the Tuple Type in its own signature (putAnyV's by-value rows still read the binding):
     // cs8s (no raw layer in `*t`) and the by-value cs8vr and cs8mvr (stAV and stMV write no layer of the caller's storage, and their
     // t.0 is w's address read through the shared s) are valid; cs8m, cs8g, cs8a, cs8c, cs8two and cr1a err at `z = 5`. A callee taking
@@ -1627,9 +1774,9 @@ public sealed partial class MirBorrowsTest
             """);
         Assert.Equal(
             [
-                "ss8m: inspect(v)", "ss8vb: z = 5", "ss8g: g", "ss8gv: z = 5", "ss8c: inspect(v)", "r1a: g", "r1c: z = 5", "ss8w: w = y@ref",
-                "cs8m: z = 5", "cs8m: inspect(v)", "cs8g: z = 5", "cs8g: g", "cs8a: z = 5", "cs8c: z = 5", "cs8c: inspect(v)", "cs8two: z = 5",
-                "cr1a: z = 5", "cr1a: g",
+                "ss8m: z = 5", "ss8m: inspect(v)", "ss8vb: z = 5", "ss8g: g", "ss8gv: z = 5", "ss8a: z = 5", "ss8c: inspect(v)",
+                "r1a: g", "r1c: z = 5", "ss8w: w = y@ref", "cs8m: z = 5", "cs8m: inspect(v)", "cs8g: z = 5", "cs8g: g", "cs8a: z = 5",
+                "cs8c: z = 5", "cs8c: inspect(v)", "cs8two: z = 5", "cr1a: z = 5", "cr1a: g",
             ],
             Problems(c, Analyze(c), [.. LoanCodes, DiagnosticCode.Unsupported_Kd]));
     }

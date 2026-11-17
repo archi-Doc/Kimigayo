@@ -158,7 +158,9 @@ public sealed partial class TyCtxtTest
         "public func main() => ()\n";
 
     // SPEC 15.6.4, 5.7 Calls, 8.2.3 (PLAN G823): a called function's parameter key marks each part in the binding of the function's own
-    // Type parameter (H; S shown), at the root and at every key past it (Past, nested in braces, four keys deep): G790's rAliasClean
+    // Type parameter (H; S shown), at the root and at every key past it (Past, nested in braces, four keys deep) as far as the Place is
+    // storage of that Type: past a raw layer the binding holds, the Place is a holder the value addresses, read as the input writes it
+    // (shown: wa's t and n below their first hidden layer; the owner's O-312 (a), PLAN G935 c3-5). The rows: G790's rAliasClean
     // three and hPunWriteOk (wa's U, t and n), a nested layer the Type expression writes (wa2's outer raw/U), a Field of U beside a Field
     // the declaration states (wu, wu2), a bare U (wv), a projection (r1, r2), a pair target (r4), Fields of T and V beside a stated one
     // (r6), an Option or enum payload (r7, r15), a fixed-array and an Array element (r8, r10), a method's own U (put2's u); shown: an
@@ -171,8 +173,8 @@ public sealed partial class TyCtxtTest
     // one), a class of two own abstract Types (r30: no form); a generic caller's own V as the input (r18, r17). Labels: F's G823
     // labels.md and its reviews' twins.
     [Theory]
-    [InlineData("wa", "p", "t", "raw/(raw/uniq/u8, raw/raw/raw/u8) S {raw/uniq/u8 H {- H}, raw/raw/raw/u8 H {raw/raw/u8 H {raw/u8 H}}}")]
-    [InlineData("wa", "p", "n", "raw/raw/raw/u8 S {raw/raw/u8 H {raw/u8 H}}")]
+    [InlineData("wa", "p", "t", "raw/(raw/uniq/u8, raw/raw/raw/u8) S {raw/uniq/u8 H {- S}, raw/raw/raw/u8 H {raw/raw/u8 S {raw/u8 S}}}")]
+    [InlineData("wa", "p", "n", "raw/raw/raw/u8 S {raw/raw/u8 H {raw/u8 S}}")]
     [InlineData("wa2", "p", "w2", "raw/raw/raw/u8 S {raw/raw/u8 S {raw/u8 H}}")]
     [InlineData("wu", "p", "wu", "- S {raw/u8 H}")]
     [InlineData("wu2", "p", "wu2", "- S {raw/u8 H, raw/u8 S}")]

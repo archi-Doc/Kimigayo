@@ -820,10 +820,13 @@ public sealed partial class RetentionTest
     // parameters' Types (`p`, `q`) and a `u64` (`n`), as the call with a caller's own X does. The declared record's `0 Content` is dst's
     // own content at T's carrier, which a binding naming no Origin has no row for. Fail-before on prototype 16: `own {}, reached
     // {1 Value}` for `k`, `own {1 Value}, reached {1 Value}` for `p, q`, and no row at all for `n` (fcd6a5381 too: the invalid
-    // mkConcWnBad was accepted with an empty record).
+    // mkConcWnBad was accepted with an empty record). Since c3-5 the holder that a raw Field of W addresses has its own entry past the
+    // Field, with rule A's rows (a raw layer without an Origin the call may write: `0 Chain, 1 Value Chain`, untied; the owner's
+    // O-312 (a)), while dst's own storage keeps the declared rows only (`own {1 Value}`: rule A's rows are not joined into storage of
+    // the kept Type).
     [Theory]
-    [InlineData("", "    public var k: raw/(raw/(raw/u8))\n    public init() => self.k = null\n", "reached {}", "reached {}")]
-    [InlineData("", "    public var p: raw/(raw/u8)\n    public var q: raw/u8\n    public init()\n        self.p = null\n        self.q = null\n", "reached {}", "reached {}")]
+    [InlineData("", "    public var k: raw/(raw/(raw/u8))\n    public init() => self.k = null\n", "reached {}", "reached {0 Chain, 1 Value Chain} untied")]
+    [InlineData("", "    public var p: raw/(raw/u8)\n    public var q: raw/u8\n    public init()\n        self.p = null\n        self.q = null\n", "reached {}", "reached {0 Chain, 1 Value Chain} untied")]
     [InlineData("", "    public var n: u64\n    public init() => self.n = 0\n", "reached {}", "reached {}")]
     [InlineData("    func setQ(self: uniq/Self, q: raw/u8)\n", "    public var n: u64\n    public init() => self.n = 0\n    public func setQ(self: uniq/Self, q: raw/u8) => ()\n", "reached {0 Content, 1 Value}", "reached {1 Value}")]
     public void EveryBindingOfTheKeptTypeGetsTheDeclaredRows(string requirement, string members, string declared, string bound)
@@ -849,6 +852,19 @@ public sealed partial class RetentionTest
     {
         var reached = Calls(Bind(source), "f").Single().Split("reached")[1];
         Assert.Equal(kept, reached.Contains("1 Value", StringComparison.Ordinal));
+    }
+
+    // SPEC 15.6.4 (route 1), 5.7 Calls ("a Type argument's ... included"), the owner's O-312 (a) (PLAN G935 c3-5; class 1): the holder
+    // that a raw layer of the callee's kept binding addresses is reached and has its own entry, read as the input writes it. F's
+    // `raw/(raw/u8)` addresses a `raw/u8` holder, which admits the `raw/u8` input (fail-before on 4b788f544: `reached {}`, the holder
+    // read as storage of F); F's `raw/u8` addresses a `u8`, which admits no pointer.
+    [Theory]
+    [InlineData("var w: raw/u8 = null\n    var t = (w@raw@raw/(raw/u8), z8)", true)]
+    [InlineData("var b: u8 = 0\n    var t = (b@raw, z8)", false)]
+    public void AHolderAKeptBindingAddressesKeepsWhatItAdmits(string tuple, bool kept)
+    {
+        var c = Bind("func f<F>(t: uniq/(F, u8), v: raw/u8) => ()\nfunc g(spare: raw/u8)\n    let z8: u8 = 0\n    " + tuple + "\n    f(t@uniq, spare)\n");
+        Assert.Equal(kept, Calls(c, "f").Single().Split("reached")[1].Contains("1 Value", StringComparison.Ordinal));
     }
 
     // Review r3's B3: an erased callable's carrier output is a fixed Origin its fixed inputs reach, so `mk`'s result `a` retains the
@@ -918,17 +934,18 @@ public sealed partial class RetentionTest
     // layer (`during source`) is capped by `self`'s `ref`-kept slot, a result layer too, whatever the receiver binds the slot to; a
     // `uniq`-kept slot is not. In a Type's own body a Type argument's layer stating its slot is judged by that slot's Loan requirement:
     // `ref` stores nothing past it, `uniq` may: relay's signature writes that layer (ATypeArgumentsLayerAMethodWritesIsReadByItsSlotsLoan).
-    // `Keep.keep<U>`, which relay hands it to, stores nothing in either case: `*w` is storage of keep's own U, which holds `v`, a
-    // `raw/u8`, only where a premise makes it one, and the layer lies in U's binding, which U does not show and which adds no reach of
-    // its own, storage the body does not own included (SPEC 15.6.4; the owner's O-360 (a), PLAN G935: both rows relabelled from the
-    // instantiated reading). Holder's slot is `uniq` in one of its declaration's cases, so its method's layer is read
+    // `Keep.keep<U>`, which relay hands it to, stores nothing in `*w` in either case: `*w` is storage of keep's own U, which holds `v`,
+    // a `raw/u8`, only where a premise makes it one (SPEC 15.6.4; the owner's O-360 (a), PLAN G935: own relabelled from the
+    // instantiated reading). The layer lies in U's binding, and the holder it addresses is reached, hidden or not (the owner's
+    // O-312 (a); PLAN G935 c3-5): under `uniq` the call may store v there (`reached`, the pre-c2 rows of that holder), under `ref`
+    // it has no write authority. Holder's slot is `uniq` in one of its declaration's cases, so its method's layer is read
     // over every case its declaration admits, also under a `ref`-case instance (SPEC 15.3.5).
     [Theory]
     [InlineData(ViewRef + "    public func put(self: uniq/Self, p: uniq/(raw/(raw/u8) during source), v: raw/u8) => ()\n" + ViewCall, "put", "store 0: own {0 Chain, 1 Value Chain, 2 Value Chain}, reached {} untied, store 1: own {0 Value Chain, 1 Chain, 2 Value Chain}, reached {} untied")]
     [InlineData(ViewUniq + "    public func put(self: uniq/Self, p: uniq/(raw/(raw/u8) during source), v: raw/u8) => ()\n" + ViewUniqCall, "put", "store 0: own {0 Chain, 1 Value Chain, 2 Value Chain}, reached {0 Chain, 1 Value Chain, 2 Value Chain} untied, store 1: own {0 Value Chain, 1 Chain, 2 Value Chain}, reached {0 Value Chain, 1 Chain, 2 Value Chain} untied")]
     [InlineData(ViewRef + "    public func get(self: uniq/Self, p: uniq/(raw/(raw/u8) during source), v: raw/u8) -> raw/(raw/u8) during source => null\n" + ViewGet, "get", "result {0 Content, 1 Chain, 2 Value Chain}, store 0: own {0 Chain, 1 Value Chain, 2 Value Chain}, reached {} untied, store 1: own {0 Value Chain, 1 Chain, 2 Value Chain}, reached {} untied")]
     [InlineData(ViewRef + ViewRelay, "keep", "store 0: own {0 Content}, reached {}")]
-    [InlineData(ViewUniq + ViewRelay, "keep", "store 0: own {0 Content}, reached {}")]
+    [InlineData(ViewUniq + ViewRelay, "keep", "store 0: own {0 Content}, reached {0 Chain, 1 Value Chain} untied")]
     [InlineData(
         PairAnnotationBindingTest.HolderRefUniq + "    public func put(self: uniq/Self, p: raw/(ref/i32 during q) during a, v: ref/i32 during q) => ()\n" +
         "func g(r: ref/(ref/i32 during q), h: uniq/(Holder<ref/(ref/i32 during q) during r> during o), p: raw/(ref/i32 during q) during o, v: ref/i32 during q) => h.put(p, v)\n",
