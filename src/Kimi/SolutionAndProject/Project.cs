@@ -341,21 +341,24 @@ public partial class Project
         this.buildMetadata.Clear();
         cancellationToken.ThrowIfCancellationRequested();
         var inputs = context?.Inputs ?? CheckInputSource.Disk;
+
+        // The configuration is read by the lock and the graph's resolution, and Compilation.Prepare's directory-free copy of its rule would
+        // restate it, so a failed one ends the sequence here (a PLAN open issue).
         if (!this.ValidateConfiguration(diagnostics, out var testSources))
         {
             return false;
         }
 
+        // SPEC 23.1.2: every later check reads only its own input and runs whatever another found, each failure its own record; any failure
+        // blocks the front end (SPEC 23.2.2). Only the target selection, which leaves no target to prepare, ends the sequence.
+        var valid = true;
         if (this.FilePath is { } projectPath && this.ProjectFile.Dependencies.Count == 0)
         {
             // Even an empty dependency declaration must validate an existing lock.
             // Nonempty graphs still require the forthcoming semantic integration.
             var root = new DependencyNode("root", new(projectPath, this.ProjectFile, [], []), -1, string.Empty);
             var empty = new DependencyPartition([root]);
-            if (this.Reported(diagnostics, DependencyLock.Validate(DependencyLock.PathForProject(projectPath), new(empty, empty), false, inputs)))
-            {
-                return false;
-            }
+            valid = !this.Reported(diagnostics, DependencyLock.Validate(DependencyLock.PathForProject(projectPath), new(empty, empty), false, inputs));
         }
 
         var targets = this.ProjectFile.Targets;
@@ -379,37 +382,44 @@ public partial class Project
         if ((emit || paths is not null) && (targets.Length != 1 || targets[0] != WindowsProfile.Target))
         {
             this.Fail(diagnostics, "Artifact production currently requires exactly one configured Windows x64 target.");
-            return false;
+            valid = false;
         }
 
         var success = true;
-        var rootConfiguration = this.FilePath is not null && this.ProjectFile.Dependencies.Count != 0 ? TinyhandSerializer.SerializeToUtf8(this.ProjectFile) : null;
         foreach (var x in targets)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            DependencyPartition? graph = null;
-            if (rootConfiguration is not null)
-            {
-                var resolution = DependencyResolver.Resolve(this.FilePath!, x, this.ProjectFile.LangVersion ?? this.SolutionLanguageVersion ?? Compilation.CurrentLanguageVersion, cancellationToken, rootConfiguration, false, inputs);
-                if (this.Reported(diagnostics, DependencyLock.Validate(DependencyLock.PathForProject(this.FilePath!), resolution, false, inputs)))
-                {
-                    success = false;
-                    continue;
-                }
-
-                graph = resolution.Product;
-            }
-
-            success &= this.BuildTarget(x, emit, paths, testSources, graph, null, context);
+            success &= this.BuildTarget(x, valid, emit, paths, testSources, cancellationToken, null, context);
         }
 
         return success;
     }
 
-    private bool BuildTarget(string target, bool emit, ArtifactPaths? paths, HashSet<string>? testSources, DependencyPartition? graph, Action<Compilation>? prepared = null, CheckContext? context = null)
+    // The target's part of the one preparation sequence, for a check, a build and a test build (prepared): the graph's resolution and lock
+    // (IMPL 20.5), then Compilation.Prepare, which checks the root whatever the graph holds and the graph only when it resolved
+    // (SPEC 23.1.2). The target's records are its result's; valid is the project's own checks' verdict, and any failure blocks the front end
+    // (SPEC 23.2.2).
+    private bool BuildTarget(string target, bool valid, bool emit, ArtifactPaths? paths, HashSet<string>? testSources, CancellationToken cancellationToken, Action<Compilation>? prepared = null, CheckContext? context = null)
     {
-        // Create & Prepare Compilation
-        var project = graph is null ? this : new Project(this.kimigayo, graph.Nodes[0].Input.Configuration)
+        // A command's target owns its diagnostics, so no earlier target's diagnostics can leak into it;
+        // a check request shares its caller's owner.
+        var diagnostics = context?.Diagnostics ?? new DiagnosticOwner();
+        if (this.FilePath is { } file)
+        {
+            diagnostics.RegisterPath(file); // SPEC 23.1.2: the project file is consumed before every source.
+        }
+
+        DependencyPartition? graph = null;
+        if (this.FilePath is { } path && (prepared is not null || this.ProjectFile.Dependencies.Count != 0))
+        {
+            var test = prepared is not null;
+            var inputs = context?.Inputs ?? CheckInputSource.Disk;
+            var resolution = DependencyResolver.Resolve(path, target, this.ProjectFile.LangVersion ?? this.SolutionLanguageVersion ?? Compilation.CurrentLanguageVersion, cancellationToken, TinyhandSerializer.SerializeToUtf8(this.ProjectFile), test, inputs);
+            valid &= !this.Reported(diagnostics, DependencyLock.Validate(DependencyLock.PathForProject(path), resolution, test, inputs));
+            graph = test ? resolution.Test : resolution.Product;
+        }
+
+        var project = graph is not { IsResolved: true } ? this : new Project(this.kimigayo, graph.Nodes[0].Input.Configuration)
         {
             Name = this.Name,
             Directory = this.Directory,
@@ -418,25 +428,19 @@ public partial class Project
             FilePath = this.FilePath,
         };
 
-        // A command's target owns its diagnostics, so no earlier target's diagnostics can leak into it;
-        // a check request shares its caller's owner.
-        var compilation = new Compilation(this.kimigayo, project, context?.Diagnostics)
+        var compilation = new Compilation(this.kimigayo, project, diagnostics)
         {
             IsTestBuild = prepared is not null,
             CollectDocumentation = context?.CollectHover == true,
             CollectHover = context?.CollectHover == true,
         };
-        if (this.FilePath is { } file)
-        {
-            compilation.Diagnostics.RegisterPath(file); // SPEC 23.1.2: the project file is consumed before every source.
-        }
 
         var accepted = false;
         var completed = false;
         Exception? fault = null;
         try
         {
-            accepted = this.CheckFrontEnd(compilation, target, testSources, graph, prepared, context);
+            accepted = this.CheckFrontEnd(compilation, target, valid, testSources, graph, prepared, context);
             completed = true;
         }
         catch (Exception ex) when (this.Faults(ex, context))
@@ -445,18 +449,24 @@ public partial class Project
         }
         finally
         {
-            // The one finalization point of the front-end result (SPEC 23.3).
-            this.Publish(compilation.Diagnostics, DiagnosticPartition.Input, DiagnosticPartition.Ownership, context, completed && !accepted, fault);
+            // The one finalization point of the front-end result (SPEC 23.3); a target the project's own checks blocked is rejected by
+            // the project's records, in their own result.
+            this.Publish(compilation.Diagnostics, DiagnosticPartition.Input, DiagnosticPartition.Ownership, context, completed && !accepted && valid, fault);
         }
 
         return accepted && emit ? this.Emit(compilation, paths, context) : accepted;
     }
 
-    private bool CheckFrontEnd(Compilation compilation, string target, HashSet<string>? testSources, DependencyPartition? graph, Action<Compilation>? prepared, CheckContext? context)
+    private bool CheckFrontEnd(Compilation compilation, string target, bool valid, HashSet<string>? testSources, DependencyPartition? graph, Action<Compilation>? prepared, CheckContext? context)
     {
         if (!(graph is null ? compilation.Prepare(target) : compilation.Prepare(target, graph)))
         {
             return this.PreparationFailed(compilation.Diagnostics);
+        }
+
+        if (!valid)
+        {
+            return false;
         }
 
         this.buildMetadata.Add(compilation.BuildMetadata!);

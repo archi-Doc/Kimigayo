@@ -26,7 +26,7 @@ internal sealed partial class InstanceCollector
     /// follow: TyCtxt.Comparison of its function's Contract (TyCtxt.Contract) on its key's Type at the template when that has a parameter,
     /// else on its representative Self, under source operators for an operator mode, else the Contract's mapping; its parts' Types in the
     /// instance are the representative Self's components.</summary>
-    /// <param name="item">The BuiltinEquals or BuiltinCompare item.</param>
+    /// <param name="item">The Builtin item of an Equatable or Comparable shim.</param>
     /// <returns>The node; null for a Self whose storage does not complete (Witness's Limit).</returns>
     internal ComparisonNode? Comparison(int item)
     {
@@ -151,8 +151,9 @@ internal sealed partial class InstanceCollector
         bool Same(BoundType? declared, BoundType? key) => declared is not null && key is not null && ReferenceEquals(this.types.Erase(declared), key);
     }
 
-    // K 4.3: a shim's targets, at its default site: a comparison item's are its direct parts' (Parts); a formatting or arithmetic shim's
-    // scalar Self calls no witness (FormattingTypes.IsBuiltin, ArithmeticContracts.Supports); a setter's property witness drops the Field's
+    // K 4.3: a shim's targets, at its default site, by its function's Contract (TyCtxt.ShimContract; Binding.PrepareBuiltinTargets): a
+    // comparison item's (Equatable, Comparable) are its direct parts' (Parts); an arithmetic shim's scalar Self
+    // calls no witness (ArithmeticContracts.Supports); a setter's property witness drops the Field's
     // old value (its glue), the Field Agrees found in the representative Self at admission, so a Self without it is a broken contract.
     private void Shim(MirProgram program, int item, SourceRef site, in MonoKey key, BoundType self)
     {
@@ -173,15 +174,15 @@ internal sealed partial class InstanceCollector
             return;
         }
 
-        switch (key.Symbol!.CompilerFunction)
+        switch (TyCtxt.ShimContract(key.Symbol!))
         {
-            case CompilerFunctionKind.BuiltinEquals or CompilerFunctionKind.BuiltinCompare:
+            case KimiDeclarationId.Equatable or KimiDeclarationId.Comparable:
                 this.Parts(program, item, site, key, self);
                 return;
-            case CompilerFunctionKind.BuiltinFormat or CompilerFunctionKind.BuiltinArithmetic: // BuiltinFormat: dead until R8-S2d2.
+            case var contract when ArithmeticContracts.IsArithmetic(contract):
                 return;
             default:
-                throw new InvalidOperationException($"The shim {key.Symbol.CompilerFunction} has no target row.");
+                throw new InvalidOperationException($"The shim {key.Symbol!.Name} has no target row.");
         }
     }
 

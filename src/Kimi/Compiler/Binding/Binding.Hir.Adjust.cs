@@ -190,13 +190,7 @@ public sealed partial class Binding
                 break;
             case ForKoto loop:
                 uses.Use(loop.Iterable);
-                var decomposition = BoundMatch.Of(loop);
-                for (var i = 0; decomposition is null && i < loop.Bindings.Count; i++)
-                {
-                    uses.FixAdjust(loop.Bindings[i], new(HirAcquire.Copy, HirAdaptation.None)); // SPEC 4.6.4: a ResolvedRange loop binds isize positions.
-                }
-
-                Bindings(decomposition, ref uses);
+                Bindings(BoundMatch.Of(loop), ref uses);
                 break;
             case MacroKoto { Formatting.Acquisition.BoundCall.ArgumentOperations: [var writer, ..] }:
                 uses.Use(writer.Source, writer); // A $tryWrite acquires its writer operand (SPEC 22.10.4).
@@ -255,7 +249,7 @@ public sealed partial class Binding
     // other than a literal in its temporary.
     private HirAdjust ChildAdjust(Koto child, HirAdaptation adaptation, UseKind kind, bool claimed)
     {
-        var recordedWins = this.adaptations.TryGetValue(child, out var recorded) && !(ElementAccess.IsSynthesizedAccess(child) &&
+        var recordedWins = this.adaptations.TryGetValue(child, out var recorded) && !(ElementAccess.IsSynthesizedAccess(this, child) &&
             (adaptation == HirAdaptation.ExclusiveBorrow || claimed));
         adaptation = recordedWins ? HirAdjust.Of(recorded, child.BoundType)
             : HirTables.ErasedType(child) is not null ? HirAdaptation.Erasure : adaptation;
@@ -301,7 +295,7 @@ public sealed partial class Binding
 
     // A bare Place (SPEC 3.5; a raw Place and its parts included, SPEC 3.4.1, 5.2), a static, or the storage a formatting plan prepared
     // (its buffer, its writer).
-    private bool IsPlace(Koto child) => IsBarePlace(child) || child is FormattingKoto { Operation: FormattingOperation.Storage } ||
+    private bool IsPlace(Koto child) => this.IsBarePlace(child) || child is FormattingKoto { Operation: FormattingOperation.Storage } ||
         IsStatic(KotoHelper.UnwrapParentheses(child).BoundSymbol);
 
     // What a take needs of what it takes, a Place storing the Type, acquired at the node (SPEC 10.2, 4.7.2, 8.14, 7.7.2): a pair-case
@@ -430,7 +424,7 @@ public sealed partial class Binding
         // its path does not decide (SPEC 5.2).
         private bool ExclusiveUse(Koto node, Koto? parent, HirOp parentOp, bool exclusive)
             => this.uses.UseOf(node, parent, parentOp) is PlaceUse.ByCase or PlaceUse.Exclusive ||
-            (exclusive && (parentOp is HirOp.Field or HirOp.Index or HirOp.Deref || parent is ParenthesizedKoto) && !ElementAccess.IsRawRooted(parent!) &&
+            (exclusive && (parentOp is HirOp.Field or HirOp.Index or HirOp.Deref || parent is ParenthesizedKoto) && !ElementAccess.IsRawRooted(binding, parent!) &&
                 ReferenceEquals(Operand(parent), node));
     }
 }

@@ -91,30 +91,6 @@ public sealed partial class Binding
         }
     }
 
-    // An object callee Place the payload lowering reaches only through a reference, an object layer or an element; a binding, an owned
-    // Field path below one, an object view value and a Temporary Value are reached directly.
-    private static bool IndirectObjectCallee(Koto handle)
-    {
-        var node = KotoHelper.UnwrapParentheses(handle);
-        if (node is ConversionKoto { ConversionBinding: ConversionBinding.Borrow, BoundType.Semantics: SemanticsKind.ObjRef or SemanticsKind.ObjUniq } ||
-            (node is not (IdentifierNameKoto or MemberAccessKoto or IndexKoto or ConversionKoto { ConversionBinding: ConversionBinding.Follow or ConversionBinding.PayloadFollow or ConversionBinding.PairFollow }) &&
-                !(node is BinaryKoto element && ElementAccess.IsSyntax(element))))
-        {
-            return false;
-        }
-
-        while (node is MemberAccessKoto member)
-        {
-            node = KotoHelper.UnwrapParentheses(member.Left);
-            if (node.BoundType is not { } layer || (layer.Kind == BoundTypeKind.Semantics && layer.Semantics != SemanticsKind.Owner))
-            {
-                return true;
-            }
-        }
-
-        return node is not IdentifierNameKoto;
-    }
-
     private static bool CallableReceiverFits(SemanticsKind actual, SemanticsMask required)
         => actual == SemanticsKind.Ref || required == SemanticsMask.Owner || (actual == SemanticsKind.Uniq && required == SemanticsMask.Uniq);
 
@@ -125,7 +101,7 @@ public sealed partial class Binding
     // Function Type of the signature, whose own inputs are the only Input atoms it binds at an outer layer.
     private static Koto? CalleeBinder(BoundType? callee, BoundType signature)
     {
-        return callee is not null && SignatureOwner(callee) is { } declaration ? declaration : FunctionTypeBinder(signature);
+        return callee is not null && SignatureOwner(callee) is { } declaration ? declaration : signature.Binder;
     }
 
     // One node's atom (CallAtomsOf); a meet node is none, its operands being nodes of their own.
@@ -148,6 +124,30 @@ public sealed partial class Binding
             CallResultSlot => CallAtoms.Result,
             _ => CallAtoms.None,
         };
+    }
+
+    // An object callee Place the payload lowering reaches only through a reference, an object layer or an element; a binding, an owned
+    // Field path below one, an object view value and a Temporary Value are reached directly.
+    private bool IndirectObjectCallee(Koto handle)
+    {
+        var node = KotoHelper.UnwrapParentheses(handle);
+        if (node is ConversionKoto { ConversionBinding: ConversionBinding.Borrow, BoundType.Semantics: SemanticsKind.ObjRef or SemanticsKind.ObjUniq } ||
+            (node is not (IdentifierNameKoto or MemberAccessKoto or IndexKoto or ConversionKoto { ConversionBinding: ConversionBinding.Follow or ConversionBinding.PayloadFollow or ConversionBinding.PairFollow }) &&
+                !(node is BinaryKoto element && ElementAccess.IsSyntax(this, element))))
+        {
+            return false;
+        }
+
+        while (node is MemberAccessKoto member)
+        {
+            node = KotoHelper.UnwrapParentheses(member.Left);
+            if (node.BoundType is not { } layer || (layer.Kind == BoundTypeKind.Semantics && layer.Semantics != SemanticsKind.Owner))
+            {
+                return true;
+            }
+        }
+
+        return node is not IdentifierNameKoto;
     }
 
     // Whether a declared signature names a per-call input or a universal Origin of `binder`: a test of its Origin summary's Nodes, which
@@ -277,42 +277,39 @@ public sealed partial class Binding
             return this.TryCallable(normalizedOwner, scope, out signature, out receiver, out several);
         }
 
+        // SPEC 8.10, 8.3.2: the Callable Constraints on the callee are the available Callable rows its premises supply, at every
+        // depth and whatever its spelling (ContractSolver's FirstRows).
         signature = null!;
         receiver = SemanticsKind.Owner;
-        for (var current = scope; current is not null; current = current.Parent)
+        var start = this.premiseRows.Count;
+        this.FirstRows(owner, scope, this.premiseRows);
+        for (var i = start; i < this.premiseRows.Count; i++)
         {
-            if (current.Constraints is not { } environment)
+            if (this.premiseRows[i] is not { Available: true, Clause: { Kind: ConstraintKind.Callable } fact })
             {
                 continue;
             }
 
-            foreach (var fact in environment.Facts)
+            var currentSignature = this.CallableContractType(fact.RequiredType!, scope);
+            if (signature is not null && !SameCallableSignature(signature, currentSignature))
             {
-                if (fact.Kind != ConstraintKind.Callable || !ReferenceEquals(this.CallableContractType(fact.Subject!, scope), owner) || !this.AvailableConstraintFact(environment, fact, out _))
-                {
-                    continue;
-                }
+                several = true;
+                break;
+            }
 
-                var currentSignature = this.CallableContractType(fact.RequiredType!, scope);
-                if (signature is not null && !SameCallableSignature(signature, currentSignature))
-                {
-                    several = true;
-                    return false;
-                }
-
-                signature ??= currentSignature;
-                if (fact.Mask == SemanticsMask.Ref)
-                {
-                    receiver = SemanticsKind.Ref;
-                }
-                else if (fact.Mask == SemanticsMask.Uniq && receiver == SemanticsKind.Owner)
-                {
-                    receiver = SemanticsKind.Uniq;
-                }
+            signature ??= currentSignature;
+            if (fact.Mask == SemanticsMask.Ref)
+            {
+                receiver = SemanticsKind.Ref;
+            }
+            else if (fact.Mask == SemanticsMask.Uniq && receiver == SemanticsKind.Owner)
+            {
+                receiver = SemanticsKind.Uniq;
             }
         }
 
-        return signature is not null;
+        this.premiseRows.RemoveRange(start, this.premiseRows.Count - start);
+        return !several && signature is not null;
     }
 
     // SPEC 7.3.3 (object-kind column and check 1), 7.7.3, 13.5.5: a callee reached through an obj/rc/arc handle or an objref/objuniq view,
@@ -328,7 +325,7 @@ public sealed partial class Binding
         var handleType = this.ContractType(handle.BoundType!, scope);
         // The handle's or view's cases (ObjectCases; a pair layer's too) and the authority of its own layer and path (PlaceAuthority).
         var objects = this.ObjectCases(handleType, scope, out var payload);
-        var shared = SharesOwnLayer(handle) || ReachedThroughShared(handle);
+        var shared = this.SharesOwnLayer(handle) || this.ReachedThroughShared(handle);
         var view = (objects & ~SemanticsMask.ObjectBorrow) == 0;
         if (receiver != SemanticsKind.Ref && shared)
         {
@@ -336,13 +333,13 @@ public sealed partial class Binding
             return false;
         }
 
-        if (receiver == SemanticsKind.Owner || (receiver == SemanticsKind.Uniq && !view && IsBarePlace(handle) && !this.LendsPlace(handle, scope, true, out _)))
+        if (receiver == SemanticsKind.Owner || (receiver == SemanticsKind.Uniq && !view && this.IsBarePlace(handle) && !this.LendsPlace(handle, scope, true, out _)))
         {
             this.FailWrite(call, call.Method);
             return false;
         }
 
-        var unsupported = IndirectObjectCallee(handle) || (!view && !this.LendsHandle(handle, scope, receiver == SemanticsKind.Uniq, out _));
+        var unsupported = this.IndirectObjectCallee(handle) || (!view && !this.LendsHandle(handle, scope, receiver == SemanticsKind.Uniq, out _));
         var adapted = (BoundType?)null;
         if (!unsupported && receiver == SemanticsKind.Ref)
         {
@@ -390,7 +387,7 @@ public sealed partial class Binding
 
             // SPEC 7.3, 7.7.3: the callee is a Receiver Expression, acquired exclusively without a spelling when
             // its lending point is exclusively writable; a let-bound closure Place is never Copied instead.
-            if (receiverType.Semantics == SemanticsKind.Owner && IsBarePlace(call.Method) && !this.LendsPlace(call.Method, scope, true, out _))
+            if (receiverType.Semantics == SemanticsKind.Owner && this.IsBarePlace(call.Method) && !this.LendsPlace(call.Method, scope, true, out _))
             {
                 this.FailWrite(call, call.Method);
                 return false;
@@ -407,7 +404,7 @@ public sealed partial class Binding
             }
 
             // SPEC 7.7.3: a Consuming call Copies a Copy closure; a Non-Copy closure Place needs c@move().
-            if (receiverType.Semantics == SemanticsKind.Owner && IsBarePlace(call.Method) && !this.CopiesInEveryCase(receiverType, this.ConstraintScope(call)))
+            if (receiverType.Semantics == SemanticsKind.Owner && this.IsBarePlace(call.Method) && !this.CopiesInEveryCase(receiverType, this.ConstraintScope(call)))
             {
                 this.FailAcquisition(call, BindingFailure.TransferRequired, call.Method);
                 return false;
@@ -499,7 +496,7 @@ public sealed partial class Binding
                     this.SubstituteStoredOrigins(declared, ownBinder, origins.AsSpan(0, originCount), argumentOrigins.AsSpan(0, inputCount));
                 if (operations[i].AdaptedType is null)
                 {
-                    this.AcquireValueCallPart(call, i, parameter, scope, IsUnfittedLiteral(call.ArgumentNodes[i]), operations, instantiated, ref formed);
+                    this.AcquireValueCallPart(call, i, parameter, scope, operations, instantiated, ref formed);
                 }
                 else
                 {
@@ -620,8 +617,7 @@ public sealed partial class Binding
         {
             var source = call.ArgumentNodes[i];
             var parameter = parameters.Components[i];
-            var literal = IsUnfittedLiteral(source);
-            if (!this.PrepareArgument(source, scope, null, callableContext: true))
+            if (!this.PrepareArgument(source, scope, default, callableContext: true))
             {
                 formed = false;
             }
@@ -635,30 +631,30 @@ public sealed partial class Binding
                 }
                 else
                 {
-                    this.AcquireValueCallPart(call, i, parameter, scope, literal, operations, instantiated, ref formed);
+                    this.AcquireValueCallPart(call, i, parameter, scope, operations, instantiated, ref formed);
                 }
             }
         }
     }
 
     // SPEC 15.6.4, 15.1.5: a prepared argument of a value call completed at `parameter` (CompleteValueCallPart) and adapted to it: its
-    // operation and the Type it acquires, which the call's substitution then instantiates; `literal` tells whether it was an unfitted
-    // literal before its preparation. An acquisition is deferred, as a payload's is (CompletePayloads): where the argument fits
-    // structurally, a bare Place without its spelling is recorded at the call (the first, SPEC 15.1.5) with the Type it supplies kept.
-    // A part that fails, or misfits (the call's record), takes no operation (rule W). `formed` turns false unless the part is taken and
-    // acquired.
+    // operation and the Type it acquires, which the call's substitution then instantiates; an unfitted literal, which waits for the
+    // solve (WaitsForValueCallSolve), adapts as a Literal. An acquisition is deferred, as a payload's is (CompletePayloads): where the
+    // argument fits structurally, a bare Place without its spelling is recorded at the call (the first, SPEC 15.1.5) with the Type it
+    // supplies kept. A part that fails, or misfits (the call's record), takes no operation (rule W). `formed` turns false unless the
+    // part is taken and acquired.
     private void AcquireValueCallPart(
         InvocationKoto call,
         int i,
         BoundType parameter,
         BindingScope scope,
-        bool literal,
         Span<BoundArgumentOperation> operations,
         Span<BoundType> instantiated,
         ref bool formed)
     {
         var source = call.ArgumentNodes[i];
         operations[i] = default;
+        var literal = IsUnfittedLiteral(source);
         var actual = this.CompleteValueCallPart(source, parameter, scope);
         if (actual is null || source.BindingState != BindingState.Resolved)
         {

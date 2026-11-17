@@ -51,12 +51,17 @@ internal sealed partial class InstanceCollector
         }
 
         var body = program.Body(set.Items[item].BodyOrdinal);
+        if (this.extent < program.Bodies.Length)
+        {
+            this.Templates(program); // Bodies a lookup built during the run (PLAN G951).
+        }
+
+        this.missed |= !program.Drops.Holds(body.Ordinal); // Round: a body the analyses have not stepped.
         this.LayOutLocals(item, body);
         this.LayOutNeeds(item, body);
-        for (var i = this.starts[body.Ordinal]; i < this.starts[body.Ordinal + 1]; i++)
+        foreach (var site in this.TemplatesOf(body.Ordinal).Sites(body.Ordinal))
         {
             this.Work++;
-            var site = this.sites[i];
             var (at, runtime) = site;
             var block = body.Blocks[at.Block];
             var target = at.Index == block.Count
@@ -200,7 +205,7 @@ internal sealed partial class InstanceCollector
 
     // K 4.5 rows 6, 8 and 9 (DECISIONS R5-M74): the target an intrinsic's row names, for its call or for an Item of its function, from the
     // substitution's Type argument in the item's instance (the one operand form the rows read; its layout need, IntrinsicRow.Need, is its
-    // caller's, LaysOutArguments): an erased writer's reserve witness on its destination (SPEC 22.10.1), a creation's payload
+    // caller's, LaysOutArguments): a reserveDispatch's reserve witness on its Writer (SPEC 22.10.1), a creation's payload
     // descriptor (Descriptor), a DestroyValues' element glue. -1 for a row without a target or a Type not made, whose verdict the caller
     // read (In); a staticEnsure's initializer is its call's operand row (Static), so it never reaches here.
     private int Intrinsic(MirProgram program, int item, SourceRef subject, in IntrinsicRow row, BoundType? argument)
@@ -214,10 +219,6 @@ internal sealed partial class InstanceCollector
         {
             IntrinsicTarget.None => -1,
 
-            // Temporary, removed with LegacyRuntimeHelpers.WriterKind, at R8-W2 (only the owning adapter's arms carry `amount + pending`
-            // and the heap hint): the runtime reserves a FixedBuffer's (kind 0) or a HeapBuffer's (kind 1) writer through its own arms,
-            // never through the reserve body, so that body is no target of the adapter (DECISIONS R8-M16).
-            IntrinsicTarget.Witness when LegacyRuntimeHelpers.WriterKind(argument) is 0 or 1 => -1,
             IntrinsicTarget.Witness => this.Runs(program, item, subject, this.types.OwnRequirement(KimiDeclarationId.BufferWriter)!, argument),
             IntrinsicTarget.Descriptor => this.Descriptor(item, subject, argument),
             IntrinsicTarget.Glue => this.GlueOf(item, subject, argument),

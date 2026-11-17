@@ -28,7 +28,7 @@ public sealed partial class Binding
         // SPEC 13.5.5: exclusive payload access needs exclusive authority along the whole path and through the receiver's own layer, a
         // pair layer's weakest case included: the authority a member write through it reads (PlaceAuthority, ExclusivelyAcquirable).
         var exclusive = pattern.Semantics == SemanticsKind.Uniq;
-        if (exclusive && !ExclusivelyAcquirable(source))
+        if (exclusive && !this.ExclusivelyAcquirable(source))
         {
             return false;
         }

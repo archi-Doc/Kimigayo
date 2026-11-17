@@ -220,7 +220,7 @@ internal sealed partial class MirBorrows
         }
 
         this.Work++;
-        var keep = this.escape[slot] ? origins.Fixed(receiving, this.body.Subject(this.Source(this.planLocation)))
+        var keep = this.escape[slot] ? origins.Fixed(receiving, this.body.Subject(this.Source(this.planLocation)), this.views)
             : whole || (through != 0 && this.WholeTarget(through, slot));
         return keep ? value : marked;
     }

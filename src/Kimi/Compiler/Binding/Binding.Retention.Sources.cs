@@ -19,18 +19,42 @@ namespace Kimi.Compiler;
 // Invariants: a source is identified by its path (Revision 10): the layers it is formed through but those the premise catalog's
 // well-formedness rule relates to the layer above (Related), each of which a fit needs, so a Type is walked once per path; a fit compares
 // Origin-erased Types (TyCtxt.Erase), a pair layer by its admitted cases; an abstract part, a part Binding did not bind and raw storage a
-// value holds (DECISIONS BU-91) hold any; the input fold's walks and the fits stop at the depth bound (StorageBound), Occurs where the Type ends.
+// value holds (DECISIONS BU-91) hold any; the input fold's walks and the fits stop at the depth bound (StorageBound), each entering a
+// state at the shallowest depth it is met at (Enters), Occurs where the Type ends.
 // Must not: judge an Origin relation (the premise closure's), walk a value itself (the walk's), or read the call's arguments.
 public sealed partial class Binding
 {
     // The Value sources of the computation by node, their layer paths (each a run of retentionPaths) and the path being walked, and the
-    // parts Holds has met; reused.
+    // parts Holds has met, each at its shallowest depth (Enters), reused. retentionParts holds two contracts, Holds' depths and
+    // Instantiation's parts (once each, value 0), never in one query: split it if either changes.
     private readonly List<RetentionSource> retentionSources = new();
     private readonly List<int> retentionPaths = new();
     private readonly List<int> retentionPath = new();
     private readonly Dictionary<(int Path, int Layer), int> retentionPathIds = new(); // The paths walked, each by its prefix and last layer.
-    private readonly HashSet<BoundType> retentionParts = new(ReferenceEqualityComparer.Instance);
+    private readonly Dictionary<BoundType, int> retentionParts = new(ReferenceEqualityComparer.Instance);
     private readonly Dictionary<(BoundType Type, BoundType? Written, BoundType? Holder), int> retentionWalked = new(); // Enters' depths, reused.
+
+    // The one visit rule of the walks that stop at a depth bound and key their visits (G416, PLAN G571). A search of every depth bound in
+    // Binding and TyCtxt finds four: three at StorageBound and TyCtxt.Handed at HandedBound. A walk enters a state at the shallowest depth
+    // it is met at, and again where it is met shallower. So what it reaches below a state is a function of the state, not of the route
+    // that met it first: within the bound it is the routes' answer, in at most bound + 1 entries per state (G416: a branching recursion
+    // has 2^(depth/2) routes). `shallowest` is the state's entry in its walk's own table (`met`: it had one), a reference the caller reads
+    // no more once its walk may insert (a resize moves the entry). Each walk keys its own state, all that decides what lies below it: the
+    // borrow fit's (Type, Written, Holder) (Borrows, retentionWalked), the hold fit's storage Type, its asked entry fixed per query and its
+    // run read with neither (Holds, retentionParts), and the handed-callable walk's Type (TyCtxt.Handed, handedSeen). The storage walk's
+    // StorageAt leaves out the layer above, the Written Type and the holder (StorageWalk): meetings that differ only in those count as one
+    // state (the layer above changes no fit, Revision 10; the other two steer raw steps, and a shallower meeting walks below with its own:
+    // PLAN G571's design, N1). Holds runs inside Borrows' walk, so their tables stay apart.
+    internal static bool Enters(ref int shallowest, bool met, int depth)
+    {
+        if (met && shallowest <= depth)
+        {
+            return false;
+        }
+
+        shallowest = depth;
+        return true;
+    }
 
     // Whether an unconditional `Input` premise edge relates a layer's node to the layer above's (`above`, -1: none), or the two are one
     // node: then the layer adds nothing to a fit, being reached whenever the layer above is (DECISIONS R4-M154, Revision 10). Such edges
@@ -72,7 +96,7 @@ public sealed partial class Binding
     // a Type once per path (`at.Source.Path`, an interned id), so one reached through two layers forms the borrows of both.
     private int Source(OriginPremiseEnvironment environment, BoundType type, StorageAt at, HeldRange run)
     {
-        var referent = this.Referent(run, out var exclusive);
+        var referent = this.Referent(run, out var exclusive)?.Part;
         if (!at.Source.Held && !exclusive)
         {
             return -1;
@@ -135,7 +159,8 @@ public sealed partial class Binding
     private bool CanHold(BoundType? position, in RetentionSource source)
     {
         this.retentionParts.Clear();
-        if (position is null || Abstract(position) || (source.Own is { } own && (Abstract(own) || this.Holds(position, own, carried: true, 0))))
+        if (position is null || Abstract(position) ||
+            (source.Own is { } own && (Abstract(own) || this.Holds(position, new(own, HoldStep.Inline, HoldContent.Its, HoldFlags.None, null, null), 0))))
         {
             return true;
         }
@@ -144,26 +169,17 @@ public sealed partial class Binding
         return source.Through is { } referent && this.Borrows(position, null, null, referent, 0);
     }
 
-    // Whether a query's walk enters a part: each (Type, Written, Holder), which alone decide what lies below it, at the shallowest depth it is
-    // met at, again where it is met shallower. So the answer is a function of the part, not of the path to it: within the bound it is the
-    // paths' answer, in work linear in the parts (G416: a branching recursion has 2^(depth/2) paths).
-    private bool Enters(BoundType type, BoundType? written, BoundType? holder, int depth)
-    {
-        ref var shallowest = ref CollectionsMarshal.GetValueRefOrAddDefault(this.retentionWalked, (type, written, holder), out var met);
-        if (met && shallowest <= depth)
-        {
-            return false;
-        }
-
-        shallowest = depth;
-        return true;
-    }
-
     // Whether a position, or a part it carries (Holds), is a borrow of a part a referent holds by value: one formed through a source's
     // layer.
     private bool Borrows(BoundType? position, BoundType? written, BoundType? holder, BoundType referent, int depth)
     {
-        if (position is null || depth > StorageBound || !this.Enters(position, written, holder, depth))
+        if (position is null || depth > StorageBound)
+        {
+            return false;
+        }
+
+        ref var walked = ref CollectionsMarshal.GetValueRefOrAddDefault(this.retentionWalked, (position, written, holder), out var met);
+        if (!Enters(ref walked, met, depth))
         {
             return false;
         }
@@ -173,7 +189,7 @@ public sealed partial class Binding
         if (this.Referent(run, out _) is { } target)
         {
             this.retentionParts.Clear();
-            borrows = this.Holds(referent, target, carried: false, 0);
+            borrows = this.Holds(referent, target, 0); // The layer's entry asks: a Place, or a view's run (Repeated).
         }
         else
         {
@@ -189,39 +205,54 @@ public sealed partial class Binding
         return borrows;
     }
 
-    // Whether a storage holds a value of a Type as itself or a part (its entries; `carried`: also a shared handle's payload, which a new value
-    // built there carries); an abstract part, a part Binding did not bind (Rejected storage keeps the rows that hold whatever it is, BU-36)
-    // and raw storage a value holds (RawStorage; SPEC 5.7, 5.2, DECISIONS BU-91) hold any (a referent an abstract part is may hold any part,
-    // as an implementation of its Contract may), so a borrow formed within raw storage, punned or not, is one formed through its holder.
-    private bool Holds(BoundType? storage, BoundType value, bool carried, int depth)
+    // Whether a storage holds what an entry asks, as itself or a part (its entries): an Inline entry a value of its Part (a value stored
+    // there, also as a shared handle's payload, which a new value built there carries), a dereference (Referent's) a Place of its Part or,
+    // with Repeated, a view's run of it (SPEC 4.8.1: also an empty one); an Empty part answers at its own level (PartHolds). An abstract
+    // part, a part Binding did not bind (Rejected storage keeps the rows that hold whatever it is, BU-36) and raw storage a value holds
+    // (RawStorage; SPEC 5.7, 5.2, DECISIONS BU-91) hold any (a referent an abstract part is may hold any part, as an implementation of its
+    // Contract may), so a borrow formed within raw storage, punned or not, is one formed through its holder.
+    private bool Holds(BoundType? storage, in Hold asked, int depth)
     {
         if (storage is null)
         {
             return true;
         }
 
-        if (depth > StorageBound || !this.retentionParts.Add(storage))
+        if (depth > StorageBound)
         {
             return false;
         }
 
-        if (this.Fits(storage, value))
+        ref var entered = ref CollectionsMarshal.GetValueRefOrAddDefault(this.retentionParts, storage, out var met);
+        if (!Enters(ref entered, met, depth))
+        {
+            return false;
+        }
+
+        if (this.Fits(storage, asked.Part!))
         {
             return true;
         }
 
+        var stored = asked.Step == HoldStep.Inline;
         var run = this.BodyRun(storage, null, null, out _);
         var holds = false;
         for (var i = run.Start; !holds && i < run.End; i++)
         {
             var part = this.retentionHeld[i];
             holds = part.Step == HoldStep.Abstract || RawStorage(part) ||
-                ((this.ByValue(storage, part) || (carried && (part.Flags & HoldFlags.ReadOnly) != 0)) && this.Holds(part.Part, value, carried, depth + 1));
+                ((this.ByValue(storage, part) || (stored && (part.Flags & HoldFlags.ReadOnly) != 0)) && this.PartHolds(part, asked, depth));
         }
 
         this.retentionHeld.RemoveRange(run.Start, run.End - run.Start);
         return holds;
     }
+
+    // Holds at a part held by value: an Empty one (SPEC 4.1: no element) holds no Place and no run below it; a view's run of its own Type
+    // (4.8.1) and, for a stored value, what lies below it (4.3.3: a fill's value keeps its Loans).
+    private bool PartHolds(in Hold part, in Hold asked, int depth) => (part.Flags & HoldFlags.Empty) == 0 || asked.Step == HoldStep.Inline
+        ? this.Holds(part.Part, asked, depth + 1)
+        : (asked.Flags & HoldFlags.Repeated) != 0 && part.Part is { } element && this.Fits(element, asked.Part!);
 
     // Whether an abstract part can hold a raw source's own value (SPEC 15.6.4's abstract-Type sentence; DECISIONS BU-66): only where a
     // callable the call may run may retain it there (rule 3), a fill (retentionFills) at any part or at a carrier that, Origins erased, is

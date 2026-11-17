@@ -1,3 +1,4 @@
+#Lang("Slice")
 public struct Slice<T> {source}
     Self is Iterable
     associate Iterable.IteratorType(handle) is SliceIterator<T> during source
@@ -10,11 +11,13 @@ public struct Slice<T> {source}
     public func slice(self: Self) -> Slice<T> during source
         return self
 
+    #CallerLocation
     public func slice<R>(self: Self, range: R) -> Slice<T> during source
         R is PositionRange
         return self[range]
 
     /// Copies the elements in order into independent storage, retaining only their inner dependencies.
+    #CallerLocation
     public func toArray(self: Self) -> Array<T>
         T is Copy
         var result = Array<T>.init(capacity: self.length)

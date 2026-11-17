@@ -37,6 +37,14 @@ public sealed partial class Binding
     private static Koto CallSlotOwner(Koto binder)
         => binder is FunctionKoto { IsConstructor: true } constructor ? constructor.BoundSymbol!.Scope.Owner : binder;
 
+    // SPEC 10.1 step 5, 10.8.1, 10.9: the Constraint clause lists a candidate is proven under, in order: 0 its own, 1 its owner
+    // structure's, a constructor's, whose slots are the owner's (`slotOwner`, CallSlotOwner); null where it has none. The one
+    // enumeration of StepFiveConjunction, which proves them, and of J2's CollectPositionNames, which reads the variables they name
+    // (the owner's O-368 (a)).
+    private static IReadOnlyList<Koto>? CandidateClauses(Koto binder, Koto? slotOwner, int list)
+        => list == 0 ? (binder as FunctionKoto)?.TypeConstraints
+            : list == 1 && slotOwner is StructKoto owner && !ReferenceEquals(owner, binder) ? owner.ConstraintNodes : null;
+
     private static IReadOnlyList<TypeKoto> CallOwnSlots(FunctionKoto function)
         => function.IsConstructor ? ((StructKoto)CallSlotOwner(function)).GenericParameterNodes : function.GenericArguments;
 
@@ -193,10 +201,12 @@ public sealed partial class Binding
         if (pattern.Kind == BoundTypeKind.TargetProjection && pattern.Symbol is { } projected &&
             ContainerSlot(function, projected) is >= 0 and var projectionSlot)
         {
-            // The target alone does not determine a pair's Semantics. Once another input, an explicit argument or the
-            // result fixes the whole Type, match its direct target; final candidate fitting checks a still-open projection.
+            // The target alone does not determine a pair's Semantics; final candidate fitting checks a still-open projection. Once another
+            // input, an explicit argument or the result fixes the whole Type, its direct target is the target's binding: evidence agrees
+            // with it in structure and Semantics (SPEC 10.8; Origins are judged after selection). A binding is the caller's Type and never a
+            // pattern: in a recursive call or a construction of the enclosing structure its symbols are the callee's own slots.
             return projectionSlot < arguments.Length && (arguments[projectionSlot] is not { } whole ||
-                this.Infer(this.DirectTarget(whole), actual, function, frame, inferOrigins, lengths, commonOrigins, structural, evidence, relateLater, invariant));
+                (this.DirectTarget(whole) is var target && (ReferenceEquals(target, actual) || (FitsStructuralPart(actual, target) && FitsStructuralPart(target, actual)))));
         }
 
         if (pattern.Kind == BoundTypeKind.SemanticsApplication && pattern.Symbol is { } selector &&
@@ -334,7 +344,7 @@ public sealed partial class Binding
         // where Origins are not compared here: a pair layer's outer slot is such an Origin (SPEC 8.1.2, 15.3.6; PLAN G758).
         if (pattern.Kind != actual.Kind || pattern.Symbol != actual.Symbol || pattern.Semantics != actual.Semantics ||
             !(lengths && pattern.Kind == BoundTypeKind.FixedArray ? this.InferLength(pattern, actual, function, frame) : pattern.Length == actual.Length && ReferenceEquals(pattern.LengthExpression, actual.LengthExpression)) ||
-            (!inferOrigins && evidence is null && !ReferenceEquals(pattern.Origin, actual.Origin)) || pattern.OriginArguments.Count != actual.OriginArguments.Count || pattern.Components.Count != actual.Components.Count || pattern.LengthArguments.Length != actual.LengthArguments.Length || (pattern.Components.Count == 0 && pattern.LengthArguments.Length == 0 && pattern.OriginArguments.Count == 0 && (ReferenceEquals(pattern.Origin, actual.Origin) || !ReferenceEquals(pattern.ClosureContext, actual.ClosureContext))))
+            (!inferOrigins && evidence is null && !ReferenceEquals(pattern.Origin, actual.Origin)) || pattern.OriginArguments.Count != actual.OriginArguments.Count || pattern.Components.Count != actual.Components.Count || pattern.LengthArguments.Length != actual.LengthArguments.Length || (pattern.Components.Count == 0 && pattern.LengthArguments.Length == 0 && pattern.OriginArguments.Count == 0 && (ReferenceEquals(pattern.Origin, actual.Origin) || !ReferenceEquals(pattern.InstanceContext, actual.InstanceContext))))
         {
             return false;
         }
@@ -359,7 +369,7 @@ public sealed partial class Binding
 
         for (var i = 0; i < pattern.Components.Count; i++)
         {
-            var below = invariant || IsInvariantLayer(pattern, this) ||
+            var below = invariant || IsInvariantLayer(pattern, this, null, default) ||
                 (pattern.Kind == BoundTypeKind.Constructed && pattern.Symbol?.Schema is { } schema && i < schema.GenericSlots.Count && schema.GenericSlots[i].OriginVariance is OriginVariance.Invariant or OriginVariance.Unused);
             if (!this.Infer(
                 pattern.Components[i],

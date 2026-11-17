@@ -1,6 +1,5 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
-using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using Kimi.Compiler.Lexing;
 using Kimi.Compiler.Parsing;
@@ -94,7 +93,7 @@ public static partial class Parser
         {
             malformed = ParseForTupleBindings(ref reader, bindings, ref mutableSlots);
         }
-        else if (TryParseForBinding(ref reader, out var binding, out var mutable))
+        else if (ParseForSlot(ref reader, out var mutable) is { } binding)
         {
             bindings.Add(binding);
             mutableSlots = mutable ? [true] : null;
@@ -145,7 +144,7 @@ public static partial class Parser
                 // An empty list, a trailing comma or a list cut short: a ForBinding needs a slot here (SPEC F.10).
                 malformed ??= reader.Expect(SyntaxForm.Name);
             }
-            else if (TryParseForBinding(ref reader, out var binding, out var mutable))
+            else if (ParseForSlot(ref reader, out var mutable) is { } binding)
             {
                 if (mutable)
                 {
@@ -187,9 +186,10 @@ public static partial class Parser
         }
     }
 
-    // SPEC 14.6.1: ForSlot := Name | "var" Name | "_"; a bare Name is an immutable let binding.
+    // SPEC 14.6.1, F.10.2: ForSlot := Name | "var" Name | "_"; a bare Name is an immutable let binding. Returns the slot's Name, or
+    // null where no slot stands (nothing is reported for it; a "var" before it is consumed); mutable is whether "var" was written.
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static bool TryParseForBinding(ref TokenReader reader, [NotNullWhen(true)] out IdentifierNameKoto? binding, out bool mutable)
+    private static IdentifierNameKoto? ParseForSlot(ref TokenReader reader, out bool mutable)
     {
         mutable = false;
         if (reader.CurrentTokenKind == TokenKind.Var)
@@ -204,19 +204,17 @@ public static partial class Parser
 
         if (reader.CurrentTokenKind == TokenKind.Underscore)
         {
-            binding = new IdentifierNameKoto(ref reader, reader.Read(), "_");
-            return true;
+            return new IdentifierNameKoto(ref reader, reader.Read(), "_");
         }
 
         if (reader.CurrentTokenKind == TokenKind.In ||
             !reader.CurrentTokenKind.IsIdentifierOrContextualKeyword())
         {
-            binding = default;
-            return false;
+            return null;
         }
 
         var token = reader.Read();
-        return IdentifierNameKoto.TryCreate(ref reader, token, out binding);
+        return IdentifierNameKoto.TryCreate(ref reader, token, out var slot) ? slot : null;
     }
 
     private static MatchKoto ParseMatchExpression(ref TokenReader reader)
@@ -408,6 +406,8 @@ public static partial class Parser
         => reader.IsCurrentIdentifier("label") && reader.PeekKind(1).IsIdentifierOrContextualKeyword() &&
             reader.PeekKind(2) == TokenKind.Colon && reader.SameLine(reader.CurrentTokenRange.End, reader.PeekToken(2).Span.Start);
 
+    // SPEC F.9.1's `LabelPrefix LabelableConstruct`, from the label: the target is a LabelableConstruct on the label's line (F.10.2).
+    // Anything else is reported, and another item on that line is read in the target's place.
     private static Koto ParseLabeledExpression(ref TokenReader reader)
     {
         if (reader.HeaderRegion)
@@ -422,7 +422,7 @@ public static partial class Parser
         var sameLine = reader.CanRead && reader.SameLine(colon.Span.End, reader.CurrentTokenRange.Start);
         DiagnosticKey? recovery = null;
         Koto target;
-        if (!sameLine || reader.CurrentTokenKind is not (TokenKind.For or TokenKind.While or TokenKind.Loop or TokenKind.If or TokenKind.Match or TokenKind.Do))
+        if (!sameLine || !IsLabelableConstruct[(byte)reader.CurrentTokenKind])
         {
             recovery = reader.ReportOnce(sameLine ? reader.CurrentTokenRange : new SourceSpan(colon.Span.End, 0), DiagnosticCode.LabelTargetExpected_Kd);
             target = new ErrorKoto(ref reader, colon.Span) { Cause = recovery };
@@ -433,15 +433,8 @@ public static partial class Parser
         }
         else
         {
-            target = reader.CurrentTokenKind switch
-            {
-                TokenKind.For => ParseForExpression(ref reader),
-                TokenKind.While => ParseWhileExpression(ref reader),
-                TokenKind.Loop => ParseLoopExpression(ref reader),
-                TokenKind.If => ParseIfExpression(ref reader),
-                TokenKind.Match => ParseMatchExpression(ref reader),
-                _ => ParseDoExpression(ref reader),
-            };
+            // Primary reads the construct by its first word (SPEC F.9.1: LabelPrefix? LabelableConstruct).
+            target = ParsePrimaryExpression(ref reader);
         }
 
         var result = new LabeledKoto(ref reader, SourceSpan.FromBounds(introducer.Span.Start, target.Span.End), label ?? string.Empty, target);

@@ -14,10 +14,16 @@ internal sealed partial class InstanceCollector
     // (DropGlue.Destroyed, the walk code generation writes the Drop by, FunctionCodegen.Drops; Destroys), on the runtime paths or the
     // assumed paths of a Drop only the checks reach, so an Elide row, which destroys nothing, requests none; a Drop without a group (one only
     // the checks reach whose Place has no Move Path, or of a body whose verdicts are inexact, MirDropTable.Incomplete) destroys its Type
-    // whole (8.15.3: reachable or not).
+    // whole (8.15.3: reachable or not). A body A2's table does not hold has no group yet: its run missed (Round), and the Drop requests
+    // nothing.
     private void DropTargets(MirProgram program, int item, SourceRef subject, MirBody body, in (MirLocation At, bool Runtime) site, BoundType closed)
     {
         var drops = program.Drops;
+        if (!drops.Holds(body.Ordinal))
+        {
+            return;
+        }
+
         var group = drops.Incomplete(body.Ordinal) is null ? drops.Group(body.Ordinal, site.At.Block, this.Set.Items[item].View) : -1;
         if (group < 0)
         {
@@ -166,10 +172,11 @@ internal sealed partial class InstanceCollector
     }
 
     // R4-M6b, SPEC 16.3.2: the Body of a struct's declared destructor in the struct's instance (TyCtxt.Synthesized), which destroys the
-    // struct's Fields and base itself; a destructor without a body is one Binding rejected, so the edge derives from that error.
+    // struct's Fields and base itself; a destructor without a body is one Binding rejected or whose Body the parser recorded missing
+    // (TyCtxt.Bodyless: Dependent), so the edge derives from that error; any other is a broken contract (Declared).
     private int Destructor(MirProgram program, int item, SourceRef site, BoundType type)
     {
         var destructor = AdtDef.DestructorSymbol(type)!;
-        return program[new(destructor, MirBodyKind.Fn)] is { } body ? this.Admit(item, site, body, this.types.Synthesized(destructor, type, [], [])) : -1;
+        return this.Declared(program, item, site, destructor, this.types.Synthesized(destructor, type, [], []));
     }
 }

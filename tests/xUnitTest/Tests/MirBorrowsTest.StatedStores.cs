@@ -539,7 +539,7 @@ public sealed partial class MirBorrowsTest
     // its declaration as a direct call does (PLAN G584; SPEC 7.7.4, 15.6.4 "for direct and indirect calls alike"): under its Item
     // substitution (genericItem*), its slots in declared order, q first (itemReadBad) or a receiver declared second (methodItem*, 7.3.4).
     // The Ok rows were errors at spare's end (and at m's for methodItemOk). In the Item's own body the call is decided as the direct call
-    // is (ownItemOk, accepted); elsewhere it keeps the Value call's located Unsupported_Kd at its `null`, outside these Loan codes.
+    // is (ownItemOk, accepted), and elsewhere too since PLAN G584 (a Literal waits for the Value call's solve).
     // A stated layer an argument holds by value stores as tupleHeapBad's does wherever it lies (PLAN G583; SPEC 15.6.4 "a Tuple element, an
     // Option payload, a Field or a Type argument included"): an Option payload, a Field of T, an Option in a Tuple, a Field a declaration
     // states with a slot kept by `uniq` (whose Loan of `other` the store keeps too); each Bad row was accepted before. Their Ok twins state

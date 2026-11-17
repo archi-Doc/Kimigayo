@@ -16,6 +16,10 @@ namespace XunitTest;
 /// verifications' comparison records, an Abort's location and an InlineStorage's destructor.</summary>
 public sealed partial class MirBuildTest
 {
+    // A default reading its function's length slot, omitted by a closed and by a generic caller (ALengthSlotsNameIsItsValue).
+    private const string Count = "func count<length N>(values: [N of i32], n: isize = N) -> isize => n\n" +
+        "func outer<length M>(values: [M of i32]) -> isize => count(values)\nlet c = count([1, 2])\n";
+
     // Plan 6.2: a form without a building rule is one record at its location, however many times a body meets it (a defer body, built at
     // each way out of its scope), and an Opaque value naming the locals its syntax touches. A node the lexer or Binding rejected is a derived
     // Opaque without a record (SPEC 23.1.2): Binding's Error, a use of a local whose rejected declaration has no Type (one with a Type is
@@ -53,23 +57,31 @@ public sealed partial class MirBuildTest
     // that do not exist and records nothing, so each body validates: a Field Binding formed no stored Type for (one naming a missing Type,
     // or inferred from a call it rejected) has no Place, so a constructor places no initializer there, nor a base subobject whose base
     // clause Binding formed no Type for, so its base call, written, omitted or with arguments, is not placed (PLAN G320, fail-before: a
-    // Projection finding at the call); and an empty body falling through a non-Unit result, which control flow rejects, leaves no value,
-    // as a body ending in a statement does. (A raw read of a C-layout struct Binding rejected was the derived Opaque's row until
-    // DECISIONS R4-M134 Q8 made such a declaration no Binding error.)
+    // Projection finding at the call). A body falling through a non-Unit result, which control flow rejects (an empty body, one ending
+    // in a statement, one with a return on another path), leaves one derived Opaque value there, without a record or a root
+    // (MirBuilder.Leave): the result temp is then never empty where the runtime edges deliver it, which MirInit's invariant requires
+    // (fail-before: no value, and with the whole-temp carry published for every destination InternalInvariant_Kd at the function of
+    // the last row). (A raw read of a C-layout struct Binding rejected was the derived Opaque's row until DECISIONS R4-M134 Q8 made
+    // such a declaration no Binding error.)
     [Theory]
-    [InlineData("struct S\n    var item: Missing = 7\n    var other: i32 = 1\n", "UnresolvedBinding_Kd")]
-    [InlineData("open struct B<T>\n    public init() => ()\nstruct D : B<Missing>\n    public init() : base() => ()\n", "UnresolvedBinding_Kd")]
-    [InlineData("open struct B<T>\n    public init() => ()\nstruct D : B<Missing>\n    public init() => ()\n", "UnresolvedBinding_Kd")]
-    [InlineData("struct D : Missing\n    public init(k: i32) : base(k + 1) => ()\n", "UnresolvedBinding_Kd")]
-    [InlineData("func f<T>() -> T\n    T is Copy\n", "FunctionFallthrough_Kd")]
-    public void ValuesBindingDidNotFormAreDerived(string source, string code)
+    [InlineData("struct S\n    var item: Missing = 7\n    var other: i32 = 1\n", "UnresolvedBinding_Kd", 0)]
+    [InlineData("open struct B<T>\n    public init() => ()\nstruct D : B<Missing>\n    public init() : base() => ()\n", "UnresolvedBinding_Kd", 0)]
+    [InlineData("open struct B<T>\n    public init() => ()\nstruct D : B<Missing>\n    public init() => ()\n", "UnresolvedBinding_Kd", 0)]
+    [InlineData("struct D : Missing\n    public init(k: i32) : base(k + 1) => ()\n", "UnresolvedBinding_Kd", 0)]
+    [InlineData("func f<T>() -> T\n    T is Copy\n", "FunctionFallthrough_Kd", 1)]
+    [InlineData("func f(a: i32) -> i32\n    let z = 3\n", "FunctionFallthrough_Kd", 1)] // ft1
+    [InlineData("func f(a: i32) -> i32\n    if a == 1 => return 2\n    let z = 3\n", "FunctionFallthrough_Kd", 1)] // ft2
+    public void ValuesBindingDidNotFormAreDerived(string source, string code, int derived)
     {
         var c = Compile(source);
         Assert.Contains(CompilationTestHelper.BindingErrors(c), x => x.Code == code);
         var program = c.BuildMir();
         Assert.Empty(program.Findings);
         Assert.DoesNotContain(program.Records(MirRecordClass.Construction), static x => x.Subject.Module == 0);
-        Assert.Empty(program.Bodies.ToArray().Where(static x => x.Source.Module == 0).SelectMany(static x => x.OpaqueSites.ToArray()));
+        Assert.DoesNotContain(program.Problems.All.ToArray(), static x => x.Code == DiagnosticCode.InternalInvariant_Kd);
+        var sites = program.Bodies.ToArray().Where(static x => x.Source.Module == 0).SelectMany(static x => x.OpaqueSites.ToArray()).ToArray();
+        Assert.Equal(derived, sites.Length);
+        Assert.All(sites, static x => Assert.Equal(0, x.Count));
     }
 
     // SPEC 23.1.2 (DECISIONS R4-M88): an operation Binding left unresolved (a built-in operator, `and`/`or`, a runtime Type test, a
@@ -130,6 +142,33 @@ public sealed partial class MirBuildTest
             Assert.DoesNotContain(statements, x => value.Kind != MirOperandKind.Const && x is { Kind: MirStatementKind.Assign, Rvalue.Kind: MirRvalueKind.Use } &&
                 x.Place == value.Place);
         }
+    }
+
+    // SPEC 4.4.1, 7.2.3, 7.7.2 (R8-W2 c2a): a length slot's Name is its value, one constant form per length (condition (a)): a Length
+    // constant where the body leaves the slot open (a function's body, a Closure's, a default's template, and a default's copy whose call
+    // binds the slot to the caller's own), an Integer where the copy's call closes it; no record, finding or Opaque value (fail-before: an
+    // Unsupported record at each Name).
+    [Theory]
+    [InlineData("func size<length N>(values: [N of i32]) -> isize => N\nlet n = size([1, 2, 3])\n", "Fn", "size", "const length N")]
+    [InlineData("func f<length N>(a: [(N + 1) of u8])\n    let k: isize = N + 1\n    let b: [k of u8] = a\nf<1>([2 of 0])\n", "Fn", "f", "const length N")]
+    [InlineData("func size<length N>(values: [N of i32]) -> isize\n    let read = func () -> isize => N\n    return read()\n", "Closure", null, "const length N")]
+    [InlineData(Count, "DefaultTemplate", "count", "const length N")]
+    [InlineData(Count, "Fn", "outer", "const length M")]
+    [InlineData(Count, "Fn", null, "const 2_isize")]
+    public void ALengthSlotsNameIsItsValue(string source, string bodyKind, string? name, string constant)
+    {
+        var kind = Enum.Parse<MirBodyKind>(bodyKind);
+        var c = Compile(source);
+        Assert.Empty(c.Binding.Issues);
+        var program = c.BuildMir();
+        Assert.Empty(program.Findings);
+        Assert.Empty(program.Records(MirRecordClass.Construction));
+        var body = program.Bodies.ToArray().Single(x => x.Key.Kind == kind && x.Key.Decl?.Name == (kind == MirBodyKind.Closure ? x.Key.Decl?.Name : name) &&
+            x.Source.Module == 0);
+        Assert.False(body.HasOpaque);
+        var text = MirDumpTest.Unsited(program, body);
+        Assert.Contains(constant, text, StringComparison.Ordinal);
+        Assert.Equal(constant.StartsWith("const length", StringComparison.Ordinal), text.Contains("const length", StringComparison.Ordinal));
     }
 
     // SPEC 4.3.1, 4.9.5, 12.2, 12.4.1 (DECISIONS R5-M129): an Array literal is one Array aggregate of its elements in source order, `[]` one
@@ -475,7 +514,8 @@ public sealed partial class MirBuildTest
     // SPEC 23.1.2 (DECISIONS R4-M145, BU-103): a Place whose bare acquisition failed, a Place without a Type (its parameter's Type
     // unresolved), is a derived Opaque with no record, discarded or as an item no consumer took (its Adjust unset, which the container
     // reads as a discard), its plan row Failed, as any consumed child's Failed Adjust is; a complete compilation has no such row
-    // (HirFormsTest.EveryDiscardedPlaceHasItsAcquisition).
+    // (HirFormsTest.EveryDiscardedPlaceHasItsAcquisition). g's fallthrough into i32 rests on that Error (no FunctionFallthrough_Kd), so
+    // its result is a second derived Opaque, without a root (MirBuilder.Leave).
     [Fact]
     public void AFailedDiscardRowIsDerivedFromABindingError()
     {
@@ -488,7 +528,10 @@ public sealed partial class MirBuildTest
         {
             var body = program.Bodies.ToArray().Single(x => x.Key is { Kind: MirBodyKind.Fn } && x.Key.Decl?.Name == name);
             var b = Array.FindIndex(body.Locals.ToArray(), static x => x.Name == "b");
-            Assert.Equal([b], Assert.Single(Opaques(body)).Roots);
+            var opaques = Opaques(body);
+            Assert.Equal([b], opaques[0].Roots);
+            Assert.Equal(name == "g" ? ["()", "i32"] : ["()"], opaques.Select(static x => x.Type));
+            Assert.Equal(name == "g" ? [0] : [], opaques[1..].Select(static x => x.Root + x.Roots.Length));
         }
     }
 

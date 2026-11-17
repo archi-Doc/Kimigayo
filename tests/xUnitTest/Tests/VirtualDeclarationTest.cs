@@ -60,14 +60,9 @@ public class VirtualDeclarationTest(ITestOutputHelper output)
     [InlineData("open struct Base\n    private virtual func read(self: objref/Self) => ()", "Private", "private")]
     [InlineData("open struct Base\n    public virtual func read(self) => ()", "Receiver", "objref/Self")]
     [InlineData("open struct Base\n    public virtual func read() => ()", "Receiver", "objref/Self")]
-    [InlineData("open struct Base\n    public virtual unsafe func read(self: objref/Self) => ()", "Unsafe", "safe")]
-    [InlineData("open struct Base\n    public unsafe virtual func read(self: objref/Self) => ()", "Unsafe", "safe")]
     [InlineData("open struct Base\n    public virtual func read<T>(self: objref/Self) => ()", "OwnGenericParameters", "enclosing Type parameters remain allowed")]
-    [InlineData("open struct Base\n    virtual override func read(self: objref/Self) => ()", "Combined", "combined")]
     [InlineData("open struct Base\n    #LibraryImport(\"codec\", \"touch\")\n    public virtual func read(self: objref/Self) -> i32", "NoBody", "requires a body")]
-    [InlineData("struct Derived\n    public override func read(self: objref/Self) => ()", "RedeclaredHeader", "the named-argument boundary and constraints")]
-    [InlineData("struct Derived\n    override func read(self: objref/Self, n: i32 = 1) => ()", "RedeclaredParameter", "defaults")]
-    [InlineData("struct Derived\n    override func read(self: objref/Self ! n: i32) => ()", "RedeclaredHeader", "inherits")]
+    [InlineData("struct Derived<T>\n    override func read(self: objref/Self)\n        T is Copy\n        ()", "RedeclaredConstraints", "inherits constraints")]
     public void InvalidHeadersExplainTheRuleAtTheModifier(string source, string cause, string fact)
     {
         var c = MinimalEmissionTest.Analyze(source + "\n()");
@@ -87,6 +82,83 @@ public class VirtualDeclarationTest(ITestOutputHelper output)
         Assert.DoesNotContain(c.Binding.Issues, x => x.Code == DiagnosticCode.Unsupported_Kd);
         Assert.False(c.Generate(TextWriter.Null));
         output.WriteLine(record.Message + "\n" + record.Note);
+    }
+
+    // SPEC F.6.3 and 19.4: an OverrideDeclaration takes no Access, other modifier, Type parameters, "!" boundary, parameter default or
+    // parameter attribute; each is a grammar error with the same record in selected and excluded syntax, and Binding judges none again.
+    [Theory]
+    [InlineData("public override func read(self: objref/Self, n: i32) -> i32 => n", "public")]
+    [InlineData("unsafe override func read(self: objref/Self, n: i32) -> i32 => n", "override")]
+    [InlineData("virtual override func read(self: objref/Self, n: i32) -> i32 => n", "override")]
+    [InlineData("override func read<T>(self: objref/Self, n: i32) -> i32 => n", "read<")]
+    [InlineData("override func read(self: objref/Self ! n: i32) -> i32 => n", "read(")]
+    [InlineData("override func read(self: objref/Self, n: i32 = 1) -> i32 => n", "read(")]
+    [InlineData("override func read(self: objref/Self, #Test n: i32) -> i32 => n", "read(")]
+    public void OverrideHeadersAreGrammarInEverySelection(string header, string at)
+    {
+        foreach (var excluded in new[] { false, true })
+        {
+            var source = "open struct Base\n    public virtual func read(self: objref/Self, n: i32) -> i32 => n\nstruct Derived : Base\n" +
+                (excluded ? "    #if false\n        " + header + "\n    override func read(self: objref/Self, n: i32) -> i32 => n\n" : "    " + header + "\n") +
+                "public func main() => ()\n";
+            var c = MinimalEmissionTest.Analyze(source);
+            c.Binding.ReportDiagnostics();
+            var records = c.Diagnostics.Finalize().Diagnostics;
+            var record = Assert.Single(records, x => x.Code == "MisplacedSyntax_Kd");
+            Assert.Equal(source.IndexOf(header, StringComparison.Ordinal) + header.IndexOf(at, StringComparison.Ordinal), record.Span!.Value.Start);
+            Assert.DoesNotContain(records, x => x.Code == "InvalidVirtualDeclaration_Kd");
+        }
+    }
+
+    // SPEC F.3.3 and 19.4: a function header writes its access specification, then at most one of unsafe, virtual and override. A
+    // second modifier is a grammar error at the second word, and an access word after a modifier one at that word (the first of a
+    // compound; the declaration keeps its access): the same record in selected and excluded syntax, and Binding judges the virtual
+    // declaration no further.
+    [Theory]
+    [InlineData("public virtual unsafe func read(self: objref/Self) => ()", "unsafe", "second function modifier")]
+    [InlineData("public unsafe virtual func read(self: objref/Self) => ()", "virtual", "second function modifier")]
+    [InlineData("unsafe override func read(self: objref/Self) => ()", "override", "second function modifier")]
+    [InlineData("unsafe virtual override func read(self: objref/Self) => ()", "virtual", "second function modifier")]
+    [InlineData("virtual public func read(self: objref/Self) => ()", "public", "access word after a modifier")]
+    [InlineData("virtual private protected func read(self: objref/Self) => ()", "private", "access word after a modifier")]
+    [InlineData("virtual protected internal func read(self: objref/Self) => ()", "protected", "access word after a modifier")]
+    [InlineData("unsafe public func read(self: objref/Self) => ()", "public", "access word after a modifier")]
+    [InlineData("unsafe internal func read(self: objref/Self) => ()", "internal", "access word after a modifier")]
+    [InlineData("unsafe private protected func read(self: objref/Self) => ()", "private", "access word after a modifier")]
+    [InlineData("unsafe protected internal func read(self: objref/Self) => ()", "protected", "access word after a modifier")]
+    public void AFunctionHeaderOutsideItsOrderIsGrammarInEverySelection(string header, string at, string phrase)
+    {
+        foreach (var excluded in new[] { false, true })
+        {
+            var source = "open struct Base\n" + (excluded ? "    #if false\n        " : "    ") + header + "\npublic func main() => ()\n";
+            var c = MinimalEmissionTest.Analyze(source);
+            c.Binding.ReportDiagnostics();
+            var records = c.Diagnostics.Finalize().Diagnostics;
+            var record = Assert.Single(records);
+            Assert.Equal("MisplacedSyntax_Kd", record.Code);
+            Assert.Contains(phrase, record.Message, StringComparison.Ordinal);
+            Assert.Equal(source.IndexOf(header, StringComparison.Ordinal) + header.IndexOf(at, StringComparison.Ordinal), record.Span!.Value.Start);
+            Assert.Equal(at.Length, record.Span!.Value.Length);
+        }
+    }
+
+    // The valid twins: each access specification before its one modifier has no record in either selection.
+    [Theory]
+    [InlineData("public virtual")]
+    [InlineData("private protected virtual")]
+    [InlineData("protected internal virtual")]
+    [InlineData("public unsafe")]
+    [InlineData("internal unsafe")]
+    [InlineData("private protected unsafe")]
+    [InlineData("protected internal unsafe")]
+    public void AFunctionHeaderInItsOrderHasNoRecordInEverySelection(string words)
+    {
+        foreach (var excluded in new[] { false, true })
+        {
+            var c = MinimalEmissionTest.Analyze("open struct Base\n" + (excluded ? "    #if false\n        " : "    ") + words + " func read(self: objref/Self) => ()\npublic func main() => ()\n");
+            c.Binding.ReportDiagnostics();
+            Assert.Empty(c.Diagnostics.Finalize().Diagnostics);
+        }
     }
 
     [Fact]

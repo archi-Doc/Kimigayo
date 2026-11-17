@@ -90,6 +90,18 @@ public sealed partial class MirDropTest
         Assert.Contains("drop _3 -> bb9 [open ((_ as case 0) open (.0 flag f0))] [clear f0]", Lines(Decomposed, "f"));
     }
 
+    // SPEC 13.7.1, 14.10.3 (DECISIONS R4-M62; the owner's O-336 (a), O-371 (a)): a path on which an overwrite's value holds nothing goes
+    // around the overwrite and keeps its target's state, so a later check-only Drop sees the old state joined with the placed one: a
+    // Field moved before `return` and overwritten after it by such a value is maybe moved at the scope end (the O-336 unit's row ev3u),
+    // its check-only Flag row read as Keep, where the overwrite's Drop took it before (dev, the redesign's step 5: `[keep]`).
+    [Fact]
+    public void AnOverwriteWhoseValueHoldsNothingKeepsTheOldGroup()
+    {
+        const string Source = "func fail() -> Never => $abort(\"no\")\nfunc takeA(a: Array<i32>) => ()\nfunc f(y: i32, c: bool)\n" +
+            "    var t: (i32, Array<i32>) = (y, [y])\n    takeA(t.1@move)\n    return\n    t.1 = if c => [y] else => fail()\n";
+        Assert.Contains("drop _3 -> bb18 [open (.1 keep)]", Lines(Source, "f"));
+    }
+
     // SPEC 15.1.3, 16.3.2: a layer whose Type declares a drop must be complete wherever that drop runs: a Partial Move not restored on every
     // path to its scope exit or a replacement is MovedPlace_Kd at the Drop, a base layer's own drop included; restored on every path, or
     // without an own drop, the parts are destroyed as they are.
@@ -174,7 +186,9 @@ public sealed partial class MirDropTest
     // SPEC 14.10.3, plan 5.6.3 (R4-M6a): a Drop only the checks reach adds no runtime path and is not judged; its group says what it would
     // destroy (here each value whole, Keep). A layer with its own drop left incomplete in check-only code is no problem (plan Appendix B
     // C3) but a Keep row with no child rows, its whole destruction, drop included (PLAN G641 kind 4; the runtime form is MovedPlace_Kd,
-    // ALayerWithItsOwnDropIsCompleteAtItsDrop); an owning interpolation's buffer keeps its statement-end Drop.
+    // ALayerWithItsOwnDropIsCompleteAtItsDrop); an owning interpolation's buffer, which its end's intoString moves, has an Elide Drop
+    // at the statement's end, and intoString's Result, whose string the destination takes, an Open one that destroys nothing (R8-W2
+    // c3a; before: the buffer's Keep, FormatFinish having emptied it).
     [Fact]
     public void ACheckOnlyDropIsNotJudged()
     {
@@ -184,7 +198,9 @@ public sealed partial class MirDropTest
         const string Partial = Box + "func f() -> i32\n    return 1\n    var box = Box.init(make())\n    consume(box.value@move)\n";
         Assert.Empty(Problems(Partial));
         Assert.Equal(["drop _2 -> bb6 [elide]", "drop _4 -> bb8 [elide]", "drop _1 -> bb9 [keep]"], Lines(Partial, "f", all: true));
-        Assert.Equal(["drop _2 -> bb9 [keep]"], Lines("func label(n: i32) -> string => \"n=\\(n)\"\n", "label"));
+        Assert.Equal(
+            ["drop _15 -> bb12 [open ((_ as case 0) open (.0 elide))]", "drop _2 -> bb13 [elide]"],
+            Lines("func label(n: i32) -> string => \"n=\\(n)\"\n", "label"));
     }
 
     // SPEC 14.10.3, 16.3.2, 8.15.3 (PLAN G641 kind 4): a Drop only the checks reach has the group of what it would destroy on its assumed
@@ -206,16 +222,16 @@ public sealed partial class MirDropTest
     // A1's (a Move's later use, a default template's) and A2's (an incomplete layer with its own drop) alike; a body without one, or with
     // only A5's (a Loan conflict, SPEC 15.6), is exact. The source's problems are given by code.
     [Theory]
-    [InlineData(Indices, "probe", new[] { "DefaultTemplate MovedPlace_Kd a.indices #own", "Fn" }, "MovedPlace_Kd")]
+    [InlineData(Indices, "probe", new[] { "DefaultTemplate MovedPlace_Kd a.indices own", "Fn" }, "MovedPlace_Kd")]
     [InlineData(
         Resource + "func f()\n    let r = make()\n    consume(r@move)\n    consume(r@move)\n",
         "f",
-        new[] { "Fn MovedPlace_Kd r #own" },
+        new[] { "Fn MovedPlace_Kd r own" },
         "MovedPlace_Kd")]
     [InlineData(
         Box + "func f()\n    var box = Box.init(make())\n    consume(box.value@move)\n",
         "f",
-        new[] { "Fn MovedPlace_Kd var box = Box.init(make()) #own" },
+        new[] { "Fn MovedPlace_Kd var box = Box.init(make()) own" },
         "MovedPlace_Kd")]
     [InlineData(Resource + "func f()\n    let r = make()\n", "f", new[] { "Fn" }, "")]
     [InlineData("func f() -> i32\n    var x = 1\n    let r = x@ref\n    x = 2\n    _ = r\n    return x\n", "f", new[] { "Fn" }, "ComparisonLoanConflict_Kd")]
@@ -227,7 +243,7 @@ public sealed partial class MirDropTest
 
     // DECISIONS R4-M102 (SPEC 7.2.3, R4-M69): MirReport drops a problem found in an inline default copy as its template's, but the copy's
     // body is marked too, with the problem's own subject, the template's, so the caller's refusal shares its template's code and subject;
-    // the template's mark names its problem by its index, the copy's by -1, as the report dropped it (R4-M132).
+    // the template's mark is its problem in the report, the copy's none there, as the report dropped it (R4-M69).
     [Fact]
     public void ACopysProblemMarksItsCallerWithItsTemplatesSubject()
     {
@@ -239,14 +255,15 @@ public sealed partial class MirDropTest
         var bodies = program.Bodies.ToArray();
         var f = bodies.Single(static x => x.Key is { Kind: MirBodyKind.Fn, Decl.Name: "f" });
         Assert.Equal((MirBodyKind.DefaultTemplate, "a.indices"), (bodies[problem.Body].Key.Kind, c.SyntaxOf(problem.Subject).ToString()));
-        Assert.Equal((problem.Code, problem.Subject, Array.IndexOf(all, problem)), Mark(program, problem.Body));
-        Assert.Equal((problem.Code, problem.Subject, -1), Mark(program, f.Ordinal));
+        Assert.Equal((problem.Code, problem.Subject), Mark(program, problem.Body));
+        Assert.Equal((problem.Code, problem.Subject), Mark(program, f.Ordinal));
+        Assert.Equal(["own", "copy"], [Owner(program, (problem.Code, problem.Subject, problem.Body)), Owner(program, (problem.Code, problem.Subject, f.Ordinal))]);
     }
 
     // DECISIONS R4-M102, R4-M15a: a body whose A1 arena exceeds the limit judges no view and is marked OwnershipStorageLimit_Kd at its source
     // (N locals live across N branches, MirInitTest's form); A5's own limit (N reference locals, MirAnalysisTest's) leaves it exact.
     [Theory]
-    [InlineData(13_500, "    var v{0} = {0}\n|    if flag => v{0} = 1\n", 0, "Fn OwnershipStorageLimit_Kd func f(flag: bool) -> i32 #own")]
+    [InlineData(13_500, "    var v{0} = {0}\n|    if flag => v{0} = 1\n", 0, "Fn OwnershipStorageLimit_Kd func f(flag: bool) -> i32 own")]
     [InlineData(2_000, "    var r{0} = x@ref\n|    if flag => r{0} = y@ref\n|    inspect(r{0})\n", 1, "Fn")]
     public void OnlyA1sArenaLimitMarksItsBody(int size, string line, long views, string expected)
     {
@@ -295,6 +312,35 @@ public sealed partial class MirDropTest
             var temp = locals[operands[x.Rvalue.Start].Place.Root].Source;
             Assert.Equal((scope, temp), (temp.Scope, x.Source)); // The temp lies in the target's scope; its delivery is at the temp's source.
         });
+    }
+
+    // SPEC 16.2-16.3, 14.10.3 (the owner's O-334 (a), O-342 Q1 (a)): a component no Place names has no path, so A2 has no row for it and
+    // destroys it by its parent's own bit, whether a construction left it unplaced (A1's Unplaced lane, which A2 never reads) or not. Against
+    // dev, whose construction records had rows: a check-only group (a5) and bodies that need a Never value (a1-a4, whose Drops follow
+    // the Never parameter's read, which ends its block: check-only groups too) lose a record's row or flag; a runnable Open group whose record came through a Never-form arm (a8) loses its record's flag, which equalled the parent's on
+    // every runtime path. A Tuple holding a Dictionary literal or a join operand, initialized on some paths and partly moved (ro1, ro5-ro8,
+    // the B1 fix's wrong-code shapes), keeps dev's group: its component follows the own bit, so it is destroyed only where the Tuple was.
+    [Theory]
+    [InlineData("func g1(x: Never) -> i32\n    let t: (ResA, ResB) = (ResA.init(1), x)\n    return 5\n", "g1", "drop _2 -> bb7 [keep]")]
+    [InlineData("func g2(x: Never) -> i32\n    let t: (ResA, ResB, ResA) = (ResA.init(1), x, ResA.init(3))\n    keep(t.0@move)\n    return 5\n", "g2", "drop _2 -> bb11 [open (.0 elide)]")]
+    [InlineData("func g3(x: Never) -> i32\n    let s: Array<ResB> = [ResB.init(1), x]\n    return 5\n", "g3", "drop _2 -> bb7 [keep]")]
+    [InlineData("func g4(x: Never) -> i32\n    let t: (ResA, (ResB, ResB)) = (ResA.init(1), (ResB.init(2), x))\n    keep(t.0@move)\n    return 5\n", "g4", "drop _2 -> bb12 [open (.0 elide)]")]
+    [InlineData("func g5(c: bool) -> i32\n    if c\n        fail()\n        let t: (ResA, ResB, ResA) = (ResA.init(1), fail(), ResA.init(3))\n        keep(t.0@move)\n    return 5\n", "g5", "drop _5 -> bb12 [open (.0 elide)]")]
+    [InlineData("func g6(c: bool) -> i32\n    if c\n        fail()\n        let s: Array<ResB> = [ResB.init(1), fail()]\n    return 5\n", "g6", "drop _5 -> bb8 [keep]")]
+    [InlineData("func g7(c: bool) -> i32\n    let t: (ResA, ResB, ResA) = (ResA.init(1), ResB.init(2), ResA.init(3))\n    keep(t.0@move)\n    return 5\n", "g7", "drop _2 -> bb12 [open (.0 elide)]")]
+    [InlineData("func g8(c: bool, d: bool) -> i32\n    var v: (ResA, ResB)\n    if d\n        v = if c => (ResA.init(1), (return 1)) else => (ResA.init(1), ResB.init(2))\n        keep(v.0@move)\n    return 5\n", "g8", "drop _3 -> bb11 [open f0 (.0 elide)] [clear f0]")]
+    [InlineData("func r1()\n    var i: i32 = 0\n    while i < 2\n        var t: (ResA, Dictionary<i32, ResB>)\n        if i == 0\n            t = (ResA.init(1), [1: ResB.init(2)])\n            keep(t.0@move)\n        i = i + 1\n", "r1", "[open f0 (.0 elide)]")]
+    [InlineData("func r5()\n    var i: i32 = 0\n    while i < 2\n        var t: (ResA, ResB)\n        if i == 0\n            t = (ResA.init(1), ResB.init(2))\n            keep(t.0@move)\n        i = i + 1\n", "r5", "[open f0 (.0 elide)]")]
+    [InlineData("func r7()\n    var i: i32 = 0\n    while i < 2\n        var t: (ResA, ResB)\n        if i == 0\n            t = (ResA.init(1), if i == 0 => ResB.init(2) else => ResB.init(3))\n            keep(t.0@move)\n        i = i + 1\n", "r7", "[open f0 (.0 elide)]")]
+    [InlineData("func r8()\n    var i: i32 = 0\n    while i < 2\n        var t: (ResA, Dictionary<i32, ResB>)\n        if i == 0\n            t = (ResA.init(1), if i == 0 => [1: ResB.init(2)] else => [1: ResB.init(3)])\n            keep(t.0@move)\n        i = i + 1\n", "r8", "[open f0 (.0 elide)]")]
+    public void AComponentNoPlaceNamesHasNoDropRow(string body, string name, string expected)
+    {
+        const string Records = "func fail() -> Never => $abort(\"no\")\nstruct ResA\n    public var v: i32\n    public init(v: i32) => self.v = v\n" +
+            "    drop => Console.writeLine(\"a\")\nstruct ResB\n    public var v: i32\n    public init(v: i32) => self.v = v\n" +
+            "    drop => Console.writeLine(\"b\")\nfunc keep(r: ResA) -> () => ()\n";
+        var lines = Lines(Records + body, name);
+        Assert.Contains(lines, x => x.Contains(expected, StringComparison.Ordinal));
+        Assert.DoesNotContain(lines, static x => x.Contains(".1 ", StringComparison.Ordinal)); // No row for the unnamed component.
     }
 
     // PLAN G702, SPEC 16.3.2, 15.1.3: A2's walk of a group (MirDropTable.Destroyed) states what an Open Drop destroys, in destruction
@@ -378,8 +424,47 @@ public sealed partial class MirDropTest
             c.Binding.Bind(BindingMode.Final);
             c.BuildMir();
         }));
-        Assert.Equal(["Fn MovedPlace_Kd a.indices #-1"], marked);
+        Assert.Equal(["Fn MovedPlace_Kd a.indices copy"], marked);
         Assert.Equal(marked, Incomplete(c, c.BuildMir(), "f"));
+    }
+
+    // PLAN G951 U2-K (row PE-2): a store keeps each closed body's own entry by its ordinal, closed in any ordinal order and with holes:
+    // a body's rows are the ones added since the last body closed in its store, whatever the ordinals; an ordinal no store closed is not
+    // held and reads empty; the program store's entries go with a new program version and the library's stay. The library store holds
+    // exactly the bodies closed in the library step (LibraryHolds, the one fact), whatever their ordinals: a body closed after it with an
+    // ordinal below the library's is the program store's.
+    [Fact]
+    public void AStoreKeepsEachBodysOwnEntryByOrdinal()
+    {
+        var table = new MirDropTable();
+        table.Clear();
+        Close(5, 1, 3);
+        Close(2, 2, 0); // Below the last closed, with holes at 0, 1, 3 and 4.
+        table.EndLibrary();
+        Close(300, 3, 1);
+        Close(7, 0, 2);
+        Close(3, 1, 5); // Below the library store's greatest ordinal, in the program store.
+        Assert.Equal([(5, 1, 3), (2, 2, 0), (300, 3, 1), (7, 0, 2), (3, 1, 5)], new[] { 5, 2, 300, 7, 3 }.Select(Entry));
+        Assert.Equal([5, 2, 2, 300, 300, 300, 3], new[] { 5, 2, 300, 7, 3 }.SelectMany(x => table.RowsOf(x).ToArray().Select(static row => row.Block)));
+        Assert.Equal([true, true, false, false, false], new[] { 5, 2, 300, 7, 3 }.Select(table.LibraryHolds));
+        Assert.All(new[] { 0, 1, 4, 6, 8, 299, 301 }, x => Assert.Equal((false, 0, 0, 0L), (table.Holds(x), table.RowsOf(x).Length, table.FlagsOf(x), table.ViewsOf(x))));
+        table.ClearProgram();
+        Assert.Equal([true, true, false, false, false], new[] { 5, 2, 300, 7, 3 }.Select(table.Holds));
+        Close(7, 1, 4);
+        Assert.Equal([(5, 1, 3), (2, 2, 0), (7, 1, 4)], new[] { 5, 2, 7 }.Select(Entry));
+
+        // Closes a body with a count of rows naming it (their Block) and flags.
+        void Close(int body, int rows, int flags)
+        {
+            for (var i = 0; i < rows; i++)
+            {
+                table.Rows.Add(new(body, 1, MirDropVerdict.Keep, -1, 0, default, 0));
+            }
+
+            table.Close(body, flags, 1, null);
+        }
+
+        (int Body, int Rows, int Flags) Entry(int body) => table.Holds(body) ? (body, table.RowsOf(body).Length, table.FlagsOf(body)) : default;
     }
 
     private static MirProgram Built(string source)
@@ -512,8 +597,9 @@ public sealed partial class MirDropTest
         return MirInitTest.Problems(source);
     }
 
-    // The first A1 or A2 problem of each body named name (DECISIONS R4-M102), by kind: "Kind Code subject #index", the index "own" where it
-    // names that problem in the report (R4-M132), or "Kind" for an exact body; the source has no Binding issue.
+    // The first A1 or A2 problem of each body named name (DECISIONS R4-M102), by kind: "Kind Code subject own" where the report has that
+    // problem in the body, "Kind Code subject copy" where it has only its template's (an inline copy's, which the report drops, R4-M69), or
+    // "Kind" for an exact body; the source has no Binding issue.
     private static string[] Incomplete(string source, string name)
     {
         var c = MirBuildTest.Compile(source);
@@ -524,18 +610,22 @@ public sealed partial class MirDropTest
     }
 
     private static string[] Incomplete(Compilation c, MirProgram program, string name)
-        => [.. program.Bodies.ToArray().Where(x => x.Key.Decl?.Name == name).Select(x => Mark(program, x.Ordinal) is (var code, var subject, var problem)
-            ? $"{x.Key.Kind} {code} {c.SyntaxOf(subject).ToString().Split('\n')[0].Trim()} #{Index(program, (code, subject, x.Ordinal), problem)}"
+        => [.. program.Bodies.ToArray().Where(x => x.Key.Decl?.Name == name).Select(x => Mark(program, x.Ordinal) is (var code, var subject)
+            ? $"{x.Key.Kind} {code} {c.SyntaxOf(subject).ToString().Split('\n')[0].Trim()} {Owner(program, (code, subject, x.Ordinal))}"
             : $"{x.Key.Kind}")];
 
-    // A body's mark (MirDropTable.Incomplete): its code, its subject located in the body and its problem's index; null for an exact body.
-    private static (Kimi.DiagnosticCode Code, SourceRef Subject, int Problem)? Mark(MirProgram program, int body)
-        => program.Drops.Incomplete(body) is { } mark ? (mark.Code, program.Body(body).Subject(mark.Source), mark.Problem) : null;
+    // A body's mark (MirDropTable.Incomplete): its code and its subject located in the body; null for an exact body.
+    private static (Kimi.DiagnosticCode Code, SourceRef Subject)? Mark(MirProgram program, int body)
+        => program.Drops.Incomplete(body) is { } mark ? (mark.Code, program.Body(body).Subject(mark.Source)) : null;
 
-    // A mark's index: "own" where it names the report's problem of the mark's code, subject and body, else the index.
-    private static string Index(MirProgram program, (Kimi.DiagnosticCode Code, SourceRef Subject, int Body) mark, int problem)
-        => problem >= 0 && program.Problems.All[problem] is var found && (found.Code, found.Subject, found.Body) == mark ? "own"
-            : problem.ToString(System.Globalization.CultureInfo.InvariantCulture);
+    // Whose problem a mark is: "own" where the report has the problem of the mark's code, subject and body, "copy" where it has only one of
+    // its code and subject (its template's), else "none".
+    private static string Owner(MirProgram program, (Kimi.DiagnosticCode Code, SourceRef Subject, int Body) mark)
+    {
+        var problems = program.Problems.All.ToArray();
+        return Array.Exists(problems, x => (x.Code, x.Subject, x.Body) == mark) ? "own"
+            : Array.Exists(problems, x => (x.Code, x.Subject) == (mark.Code, mark.Subject)) ? "copy" : "none";
+    }
 
     // The nodes of a source's Binding issues, each ExclusivePathTake_Kd.
     private static string[] Takes(string source)
@@ -590,9 +680,9 @@ public sealed partial class MirDropTest
             });
             for (var i = 0; i < sizes.Length; i++)
             {
-                var (_, sink) = analyses[i];
+                var (body, sink) = analyses[i];
                 Assert.Equal(0, sink.Problems.All.Length);
-                flags[i] = sink.Drops.FlagsOf(0);
+                flags[i] = sink.Drops.FlagsOf(body.Ordinal);
             }
 
             output.WriteLine($"N {string.Join(", ", sizes)}: flags {string.Join(", ", flags)}, cold analysis allocation {string.Join(", ", allocated)}");

@@ -1,7 +1,11 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
-// Owns the Semantics case bound of a definition (SPEC 8.15, 23.1.1), the one place it is decided.
-// Input: a function or Property definition whose signature is bound. Output: CaseLimit on the definition beyond PairBinder.CaseBound.
+// Owns the Semantics case bound of a definition (SPEC 8.15, 23.1.1), the one place it is decided, and its having no case (8.3.4).
+// Input: a function or Property definition whose signature is bound. Output: CaseLimit on the definition beyond PairBinder.CaseBound;
+// with no case (a binder admits none, PairBinder.CaseProduct 0), the definition rests on the environment that emptied the set, as beyond
+// the bound but without a record of its own, so every pair binder of a published part admits a case; a Semantics requirement read from
+// that set (a case adaptation's rows, a follow, a selection through the layer: FollowablePair None) rests on the environment too
+// (RestOnEmptiedSet).
 // Decided once per definition and pass, before its parts (defaults, base initializer, bodies, initializer, accessor bodies) are bound;
 // beyond the bound the definition fails with CaseLimit, only as its first failure. Its parts are still bound, so their independent
 // records stay visible (SPEC 23.1.2), but no case of them is verified: a case adaptation in them depends on the failure, and the HIR
@@ -52,15 +56,56 @@ public sealed partial class Binding
         return null;
     }
 
+    // SPEC 8.3.4, 8.15.2: a binder that admits no case gives the definition no case; it rests on the environment whose premises
+    // emptied the set (its failure is that set's one record), so its parts are bound but none is analyzed. A definition whose own
+    // environment failed has failed itself.
     private void CheckCaseBound(Koto definition)
     {
-        if (HasParts(definition) && this.CaseCount(definition) > PairBinder.CaseBound)
+        if (!HasParts(definition))
+        {
+            return;
+        }
+
+        var count = this.CaseCount(definition);
+        if (count == 0)
+        {
+            if (this.EmptyingEnvironment(this.ConstraintScope(definition)) is not { } failed)
+            {
+                this.Fail(definition, BindingFailure.Internal);
+            }
+            else if (!ReferenceEquals(failed, definition))
+            {
+                this.AddPrerequisite(definition, failed);
+                this.Fail(definition, BindingFailure.InvalidConstraint);
+            }
+        }
+        else if (count > PairBinder.CaseBound)
         {
             this.Fail(definition, BindingFailure.CaseLimit);
         }
     }
 
-    // The Semantics cases of a body: the product of the admitted sets of the resolved binders in its scope.
+    // SPEC 8.3.4: a Semantics requirement read from a set that admits no case (a case adaptation's rows, a pair layer's follow or
+    // selection) is the Error of the environment that emptied it, its one record: the node rests on it, never a record of its own.
+    private BoundType? RestOnEmptiedSet(Koto node, BindingScope scope)
+        => this.EmptyingEnvironment(scope) is { } failed ? this.CompleteDependent(node, failed) : this.Fail(node, BindingFailure.Internal);
+
+    // The owner of the failed environment on a scope chain: a set its premises empty is an Error proof, which fails that environment
+    // (ValidateConstraintEnvironments), so a chain that admits no case has one; null is a broken contract.
+    private Koto? EmptyingEnvironment(BindingScope? scope)
+    {
+        for (var current = scope; current is not null; current = current.Parent)
+        {
+            if (current.Constraints is { Failed: { } failed })
+            {
+                return failed;
+            }
+        }
+
+        return null;
+    }
+
+    // The Semantics cases of a body: the product of the admitted sets of the binders in its scope, 0 when one admits none.
     private long CaseCount(Koto body)
     {
         var binders = this.caseBinders ??= new();

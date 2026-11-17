@@ -24,7 +24,7 @@ public sealed partial class Binding
 
     // SPEC 22.10.5: whether a formatting write writes a literal text (a text segment, or a string literal written as a value), whose bytes
     // are known and which needs no Type argument; the one classification the published formatting facts (HasFacts) and the MIR builder's
-    // capacity estimate read (DECISIONS R5-M79).
+    // interpolation terms read (DECISIONS R5-M79).
     internal static bool WritesText(CallPlan write) => write.ArgumentOperations[1].Source is StringLiteralKoto;
 
     // Returns the pass the published columns describe (0: none), by which the MIR builder caches its program. A Final pass published
@@ -40,17 +40,15 @@ public sealed partial class Binding
         return this.hirVersion;
     }
 
-    // The columns of every module, the library included, from the pass's facts.
+    // The columns of the pass's modules, in their order, from the pass's facts.
     private void PublishPass()
     {
         this.hirVersion = this.storageVersion;
         var publisher = this.hirPublisher ??= new(this);
-        foreach (var module in this.compilation.SourceModules)
+        for (var i = 0; i < this.pass.Count; i++)
         {
-            publisher.Publish(module.Syntax, module.RootKoto);
+            publisher.Publish(this.pass[i].Syntax, this.pass[i].RootKoto);
         }
-
-        publisher.Publish(this.Library.Kotonoha.Syntax, this.Library.Kotonoha.RootKoto);
     }
 
     // One walk of the tree through its child slots; each node's position follows from the slot its parent holds it in.
@@ -120,7 +118,7 @@ public sealed partial class Binding
                 HirTables.PlanFor(node, discardedType is not null).DiscardedType = discardedType;
                 if (node is DiscardKoto discard)
                 {
-                    var inPlace = DestroysInPlace(discard); // SPEC 14.2.4: a raw Place's Take destroyed in place (HirTables.DestroysInPlace).
+                    var inPlace = binding.DestroysInPlace(discard); // SPEC 14.2.4: a raw Place's Take destroyed in place (HirTables.DestroysInPlace).
                     HirTables.PlanFor(node, inPlace).Flag = inPlace;
                 }
             }
@@ -237,8 +235,8 @@ public sealed partial class Binding
             },
             HirOp.Field => HirPlaceKind.Field,
             HirOp.Deref => binding.PairAdmitted(node) == SemanticsMask.None ? HirPlaceKind.Deref : HirPlaceKind.PairLayer,
-            HirOp.Index => ElementAccess.IsSlicing(node) ? HirPlaceKind.Value : ElementAccess.StaticSelector((IndexKoto)node) < 0 ? HirPlaceKind.Index : HirPlaceKind.ConstIndex,
-            HirOp.Call => ElementAccess.IsUserIndex(node) ? HirPlaceKind.CallResult : HirPlaceKind.Value,
+            HirOp.Index => ElementAccess.IsSlicing(binding, node) ? HirPlaceKind.Value : ElementAccess.StaticSelector((IndexKoto)node) < 0 ? HirPlaceKind.Index : HirPlaceKind.ConstIndex,
+            HirOp.Call => ElementAccess.IsUserIndex(binding, node) ? HirPlaceKind.CallResult : HirPlaceKind.Value,
             HirOp.Group when node is ParenthesizedKoto && KotoHelper.UnwrapParentheses(node) is var inner => this.KindOf(inner, binding.OpOf(inner)),
             _ => HirPlaceKind.Value,
         };

@@ -15,7 +15,7 @@ namespace Kimi.Compiler.Mir;
 /// pair binder, static, Opaque site and failure body that must not complete (<c>must not complete bb4 from bb2</c>: its end from its
 /// entry), then each block's statements and terminator. Every line that comes from syntax ends with it, <c>@id</c> (<c>@module:id</c>
 /// outside module 0, <c>@Kimi:id</c> in the library), and its scope (<c>s1</c>) when it is not the body's; <c>*</c> marks where a source
-/// statement starts. Types are spelled as diagnostics spell them (<see cref="TyCtxt.Name"/>). Places: <c>(*p)</c> Deref,
+/// statement starts. Types and lengths are spelled as diagnostics spell them (TyCtxt.Name). Places: <c>(*p)</c> Deref,
 /// <c>p.0</c> Field, <c>p.base1</c> Base, <c>p[_3]</c> Index, <c>p[2]</c> ConstIndex, <c>(p as case 1)</c> Downcast and <c>(p@b0)</c>
 /// PairLayer; borrows <c>&amp;</c>, <c>&amp;uniq</c>, <c>&amp;uniq two-phase</c> and <c>&amp;raw</c>; a view's start <c>storage(_1)</c>, keyed
 /// <c>storage(_1, copy _2, const type R)</c>; an Opaque value <c>opaque 0: T</c>; a case

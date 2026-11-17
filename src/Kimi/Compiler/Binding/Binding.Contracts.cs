@@ -7,7 +7,6 @@ namespace Kimi.Compiler;
 public sealed partial class Binding
 {
     private readonly ScratchBuffers<ConstraintProof> conformanceProofScratch = new();
-    private readonly Dictionary<BoundType, BoundType> associatedIdentityChecks = new(ReferenceEqualityComparer.Instance);
     private readonly List<(Koto Use, BoundType Type, BindingSymbol Contract)> projectionUses = new();
     private readonly List<(ForKoto Loop, BoundType Subject, BoundType Iterator, BindingSymbol Entry)> userIterations = new();
     private bool contractHeadersReady;
@@ -141,9 +140,10 @@ public sealed partial class Binding
 
         this.ResetAssociatedInference();
         this.failedCause = null;
+        this.reentryReads = 0;
         this.contractHeadersReady = false;
         this.bindingConstraintTypes = false;
-        this.impls.Reset();
+        this.impls.Begin(this.storageVersion, this.pass); // Every identity and path is stale (DECISIONS BU-220); the pass view is the pass's.
         this.conformancesRegistered = false;
 
         this.projectionUses.Clear();
@@ -157,21 +157,6 @@ public sealed partial class Binding
         foreach (var group in this.requirementGroups.Values)
         {
             group.Active = false;
-        }
-
-        foreach (var binding in this.associatedBindings.Values)
-        {
-            binding.Candidates.Clear();
-            binding.Result = null;
-            binding.Inferred = null;
-            binding.InferenceSource = null;
-            binding.InferenceConflict = false;
-            binding.Problem = InferenceProblem.None;
-            binding.ProblemSource = null;
-            binding.ProblemDetail = null;
-            binding.EvidenceSources.Clear();
-            binding.State = 0;
-            binding.FormationScope?.Reset();
         }
     }
 
@@ -434,31 +419,14 @@ public sealed partial class Binding
 
     private ConstraintProof ProveConformance(BoundType type, BindingSymbol contract, BindingScope scope)
     {
-        // Refinement assumptions are input evidence, not in-progress registrations.
-        var premise = IsContractSelf(type) && type.Symbol!.SelfOf is { } own && this.AvailableContractPremise(own) && IsRefinement(own, contract);
-
-        // SPEC 8.7.4: a proven PrimitiveInteger supplies the built-in comparison and formatting conformances of the twelve
-        // Types and their conformance to the closed Contract Position; Wrapping<T> over it has the comparison conformances of
-        // its argument but is never a Position (SPEC 3.1.1). Its Utf8Format is the witness table's WrappingFormat row, for an
-        // abstract T too (Binding.WitnessGroup, R8-S2d1), which ResolveConformance below proves.
-        premise |= contract.LibraryDeclaration is KimiDeclarationId.Equatable or KimiDeclarationId.Comparable or KimiDeclarationId.Utf8Format or KimiDeclarationId.Position && this.IsGenericInteger(type, scope);
+        // SPEC 8.7.4: a proven PrimitiveInteger supplies PrimitiveIntegerSupplies; Wrapping<T> over it has the comparison
+        // conformances of its argument but is never a Position (SPEC 3.1.1). Its Utf8Format is the witness table's WrappingFormat
+        // row, for an abstract T too (Binding.WitnessGroup, R8-S2d1), which ResolveConformance below proves.
+        var premise = contract.LibraryDeclaration is { } supplied && Array.IndexOf(PrimitiveIntegerSupplies, supplied) >= 0 && this.IsGenericInteger(type, scope);
         premise |= contract.LibraryDeclaration is KimiDeclarationId.Equatable or KimiDeclarationId.Comparable && this.IsGenericWrapping(type, scope);
-        for (var current = scope; current is not null && !premise; current = current.Parent)
-        {
-            if (current.Constraints is not { Invalid: false } environment)
-            {
-                continue;
-            }
 
-            foreach (var fact in environment.Facts)
-            {
-                if (fact.Kind == ConstraintKind.Contract && AssociatedIdentityMatches(fact.Subject, type) && this.AvailableConstraintFact(environment, fact, out _) && this.AvailableContractPremise(fact.Contract!) && IsRefinement(this.AppliedAssociatedContract(fact, type), contract))
-                {
-                    premise = true;
-                    break;
-                }
-            }
-        }
+        // Refinement assumptions are input evidence, not in-progress registrations (PremiseRefines, the refinement row's one predicate).
+        premise = premise || this.PremiseRefines(type, contract, scope);
 
         // Definition evidence is still resolved so that its errors are never hidden by an assumption.
         var proof = this.ResolveConformance(type, contract, scope, out _);
@@ -484,7 +452,7 @@ public sealed partial class Binding
             => this.ContractType(reference is null ? type : this.SubstituteContractReference(type, reference, out _), scope, self, normalize);
     }
 
-    private bool IsLibraryDeclaration(Koto declaration) => ReferenceEquals(declaration.CodeContext.Kotonoha, this.Library.Kotonoha);
+    private bool IsLibraryDeclaration(Koto declaration) => declaration.Kotonoha.Syntax.IsLibrary;
 
     private void ValidateConformances(BindingMode mode, bool final)
     {
@@ -493,28 +461,22 @@ public sealed partial class Binding
         {
             // Body/header validation may invalidate an earlier declaration-side witness of the sources. The Kimi library's
             // declarations are valid and fixed (a malformed library fails the pass), so a library conformance proven before the
-            // bodies stays proven, and only an unproven one is judged again.
-            foreach (var identity in this.impls.Identities)
+            // bodies stays proven, and only an unproven one is judged again: the sources' are the program part (ImplTable's store rule).
+            foreach (var identity in this.impls.Identities.Program)
             {
-                if (!this.IsLibraryDeclaration(identity.Type.Declaration))
-                {
-                    identity.IsVerified = false;
-                }
+                identity.IsVerified = false;
             }
 
-            for (var i = 0; i < this.impls.Paths.Count; i++)
+            foreach (var path in this.impls.Paths.Program)
             {
-                if (!this.IsLibraryDeclaration(this.impls.Paths[i].Type.Declaration))
-                {
-                    this.impls.Paths[i].IsVerified = false;
-                }
+                path.IsVerified = false;
             }
         }
 
         this.PublishSourceStates();
-        for (var i = 0; i < this.impls.Paths.Count; i++)
+        for (var i = 0; i < this.impls.InPass.Paths.Count; i++)
         {
-            var conformance = this.impls.Paths[i];
+            var conformance = this.impls.InPass.Paths[i];
             this.failedCause = null;
             var frame = this.BeginConsultation(conformance.Use); // The proof's reads of other nodes (RequireConstraintInFrame).
             var proof = this.VerifyConformance(conformance);
@@ -534,7 +496,7 @@ public sealed partial class Binding
         if (final)
         {
             this.InvalidateAssociatedEvidence();
-            foreach (var identity in this.impls.Identities)
+            foreach (var identity in this.impls.InPass.Identities)
             {
                 if (identity.PathStorage.Count != 0)
                 {
@@ -581,28 +543,7 @@ public sealed partial class Binding
             }
 
             var scope = this.scopes[this.nodes[n]];
-            this.ValidateAssociatedOverlapAgreement(scope);
-            if (scope.Constraints is { } environment)
-            {
-                this.associatedIdentityChecks.Clear();
-                foreach (var a in environment.Facts)
-                {
-                    if (a is not { Kind: ConstraintKind.TypeIdentity, Subject.Kind: BoundTypeKind.AssociatedProjection, RequiredType: { } ta } ||
-                        this.DependentType(ta))
-                    {
-                        continue;
-                    }
-
-                    if (this.associatedIdentityChecks.TryGetValue(a.Subject, out var previous) && !this.SameCompleteType(ta, previous))
-                    {
-                        environment.Fail(scope.Owner);
-                        this.Fail(scope.Owner, BindingFailure.InvalidAssociatedType);
-                    }
-
-                    this.associatedIdentityChecks[a.Subject] = ta;
-                }
-            }
-
+            this.ValidateAssociatedOverlapAgreement(scope); // SPEC 8.2.3's premise error is the identity classes' (Binding.TypeIdentity).
             if (scope.Owner is not ContractKoto contract || contract.BoundSymbol!.Contract is not { } shape)
             {
                 continue;

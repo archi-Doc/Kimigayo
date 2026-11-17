@@ -18,6 +18,16 @@ internal sealed partial class MirBuilder
     private static bool IsNeverForm(Koto node)
         => HirTables.CompletionOf(node) == HirCompletion.Diverges && ReferenceEquals(TypeOf(node), BoundType.Never);
 
+    // SPEC 14.9.3, 14.10.3: a node evaluated here does not complete and its form has no terminator of its own (an Opaque value, a
+    // read of a Place of Type Never; a Call or a transfer is one), so the block ends and building continues in a block only the
+    // checks reach.
+    private void Diverge(Koto node)
+    {
+        var next = this.body.AddBlock();
+        this.body.Terminate(this.current, MirTerminator.Unreachable(this.Info(node), next));
+        this.current = next;
+    }
+
     // SPEC 14.7: the conditions in order, the first true clause's body into the destination, else the else body or, omitted, Unit; as a
     // call's input, each body's value as Result places it (input).
     private void If(MirPlace destination, IfKoto conditional, bool input)
@@ -169,12 +179,23 @@ internal sealed partial class MirBuilder
     // a Never value for the checks only (R4-M62); an end arrival that does not complete to the target's Check for the checks only. Where
     // it goes on to no block, it is cleaned up inline: a function's end that completes before a return built its return block (Reach)
     // returns there, and any other is a non-value end its owner ends (Close; a function's, Body). The scopes stay open for the body's
-    // owner to remove (Pop).
+    // owner to remove (Pop). Where the target's consumer takes its value-less paths apart (Target.Wants), a value end whose value has
+    // no value path (TakeLeft) goes on at the target's Apart, not its delivery, which it does not join, and the value-less paths the
+    // value's own form left leave the scopes through the Apart's drop tree, so their cleanups are checked on their own path (SPEC
+    // 14.10.3, 16.1.2).
     private void End(Koto body, bool value)
     {
         var target = this.targets[^1];
+        var rest = this.TakeLeft(body);
+        if (rest.Block >= 0)
+        {
+            this.body.Terminate(rest.Block, MirTerminator.Unreachable(this.Info(body), this.Exit(target.At.Depth, this.Aside(this.targets.Count - 1))));
+        }
+
         var joins = target.Continue < 0 && (Completes(body) || value);
-        var next = target.Continue >= 0 ? target.Continue : joins ? target.Ending.Continuation : target.Check;
+        var valueless = joins && value && target.Wants && rest.Valueless;
+        var delivery = valueless ? this.Aside(this.targets.Count - 1) : target.Ending.Continuation;
+        var next = target.Continue >= 0 ? target.Continue : joins ? delivery : target.Check;
         var entry = this.Inline(target.At.Depth, next);
         if (next < 0 && Completes(body))
         {
@@ -184,7 +205,7 @@ internal sealed partial class MirBuilder
         {
             this.ends.Add((this.current, this.Info(body)));
         }
-        else if (joins)
+        else if (joins && !valueless)
         {
             this.Joins(this.Edge(entry, body));
         }

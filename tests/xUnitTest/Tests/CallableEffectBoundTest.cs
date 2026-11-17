@@ -176,6 +176,25 @@ public class CallableEffectBoundTest
         }
     }
 
+    // S11 (SPEC 8.11.4, 8.11.2; R8-W2 d's coverage table): the library's Console.writeLine itself as a confined Callable's argument is an
+    // environment effect, its record at that argument (its class is its body's summary); a quiet user function of the same Type keeps the
+    // bound.
+    [Theory]
+    [InlineData("func quiet(s: ref/string) => ()\n", "quiet")]
+    [InlineData("", "Console.writeLine")]
+    public void S11TheConsoleFunctionItselfViolatesAConfinedBoundAtItsArgument(string declarations, string argument)
+    {
+        var source = "func run<F>(f: ref/F)\n    F is Callable<(ref/string) -> ()>\n        effect confined\n    f(\"x\")\n" + declarations + $"run({argument})\n";
+        if (declarations.Length != 0)
+        {
+            Assert.Empty(DiagnosticCorpus.Check(source).Diagnostics);
+        }
+        else
+        {
+            AssertA4Record(source, DiagnosticCode.UnsatisfiedEffectBound_Kd, MirTargetSide.At($"run({argument})", argument));
+        }
+    }
+
     // SPEC 8.11.4, 8.11.3 (the adopted proposal Abstract Calls Reach by Paths): a call through a Callable-constrained value reaches by
     // path what its receiver and arguments reach; an earlier result that keeps no Loan of those Places does not conflict with a later
     // call of the same value (CallEffectConflict_Kd and R1g's Unsupported_Kd before the adoption).
@@ -422,6 +441,17 @@ public class CallableEffectBoundTest
     [Fact]
     public void ConfinedCallbacksRunNatively()
         => ScalarEmissionTest.EmitFixture("CallableEffectsConfined", Apply + "let f = func [] () -> i32 => 19\nrequire apply(f@ref) == 19 else => $abort(\"callback\")\n", string.Empty);
+
+    // R7-C2c2 c2-3b (SPEC 8.11.4, 8.3.2): a Contract's Callable clause at an unspelled depth proves the callee's Constraint and
+    // carries no bound list, so the bound alone is unsatisfied, as at depth 1 (kdpc2; before c2-3b the proof failed too).
+    [Fact]
+    public void AContractWideClauseAtDepthProvesTheConstraintWithoutItsBound()
+    {
+        const string Program = Apply + "contract Holder\n    associate Next is Holder\n    associate F\n    Self.(Holder).F is Callable<() -> i32>\n" +
+            "    func deep(self: ref/Self) -> ref/Self.(Holder).Next.(Holder).F\n" +
+            "func probe<T>(t: ref/T) -> i32\n    T is Holder\n    let g = t.deep()\n    return apply(g)\npublic func main() => ()\n";
+        CompilationTestHelper.AssertRecordsAtLines("kdpc2", Program, "UnsatisfiedEffectBound_Kd: return apply(g)");
+    }
 
     // A generic function that takes a first result through a Callable value, then makes a second call.
     internal static string Replacing(string second)

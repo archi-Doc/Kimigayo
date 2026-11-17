@@ -7,7 +7,9 @@ using Xunit;
 namespace XunitTest;
 
 /// <summary>R8-W2 a1 (SPEC 22.10.5, rule L): the interpolation-bound term, a direct interpolation's stack region over its value Types,
-/// which TyCtxt.InterpolationBound interns and folds, and every substitution of a Type or of a substitution folds again.</summary>
+/// which TyCtxt.InterpolationBound interns and folds, and every substitution of a Type or of a substitution folds again; R8-W2 c2t: the
+/// interpolation-hint term, a write position's hint over the later value Types (TyCtxt.InterpolationHint), folded again by its own
+/// operation at both value-Type sites (TyCtxt.Refold).</summary>
 public sealed partial class TyCtxtTest
 {
     private const string BoundSource = "func keep<length N>(a: [N of u8]) -> [N of u8] => a\nfunc g<T, U>(x: T, y: Option<T>, z: U) -> i32 => 0\nlet f = keep<2>\n";
@@ -97,6 +99,107 @@ public sealed partial class TyCtxtTest
         var selfRegion = types.Intern(BoundTypeKind.FixedArray, null, SemanticsKind.Owner, [u8], lengthExpression: selfTerm);
         var contract = types.Identity(nodes.OfType<ContractKoto>().Single()).Target.Type!;
         Assert.Equal(17, types.Apply(selfRegion, types.Synthesized(types.Identity(take).Target, parameters[1], contract))!.Length);
+
+        // A hint over S.Item folds alike through InstanceLength, its instance read: 11 + literal for IntItem, the literal for TextItem.
+        var hint = types.InterpolationHint(types.Tuple([parameters[0]]), 6);
+        (bool, long)[] hints =
+        [
+            .. parameters[1..].Select(x => c.Binding.InstanceLength(hint, types.Synthesized(target, null, [x], []))!)
+                .Select(static x => (x.IsConstant, x.Value)),
+        ];
+        Assert.Equal([(true, 17L), (true, 6L)], hints);
+    }
+
+    // R8-W2 c2t: the interpolation-hint term, the bytes an owning interpolation's later writes may still reserve (SPEC 22.10.5; R3-10):
+    // the later literal bytes plus each later bounded value's widest encoding; an unbounded value counts 0 (where the bound term gives 0),
+    // with no limit, and 0 past the maximum object size (2^63 - 1), even beside an undecided value. A term only beside an undecided value,
+    // interned once per value Types and literal, apart from the bound term over the same ones, and spelled as a hint.
+    [Fact]
+    public void AnInterpolationHintFoldsWhereItsValueTypesDecideIt()
+    {
+        var (c, t, u, option) = BoundTypes();
+        var types = c.Types;
+        long Fold(long literal, params BoundType[] values)
+            => types.InterpolationHint(types.Tuple(values), literal) is { IsConstant: true } hint ? hint.Value : -1;
+        long[] folded =
+        [
+            Fold(6, BoundType.I32, BoundType.Boolean), Fold(6, BoundType.String), Fold(6, BoundType.String, BoundType.I32), Fold(1025, BoundType.I32),
+            Fold(long.MaxValue - 11, BoundType.I32), Fold(long.MaxValue - 10, BoundType.I32), Fold(6, option), Fold(6, option, t),
+            Fold(long.MaxValue - 10, t, BoundType.I32), Fold(0),
+        ];
+        Assert.Equal([6 + 11 + 5, 6, 6 + 11, 1025 + 11, long.MaxValue, 0, 6, -1, 0, 0], folded);
+        var term = types.InterpolationHint(types.Tuple([t, BoundType.I32]), 6);
+        Assert.Equal((LengthOperation.InterpolationHint, 6L, false, true), (term.Operation, term.Value, term.IsConstant, term.HasAbstractPart));
+        Assert.Same(types.Tuple([t, BoundType.I32]), term.Values);
+        Assert.Same(term, types.InterpolationHint(types.Tuple([t, BoundType.I32]), 6));
+        Assert.NotSame(term, types.InterpolationHint(types.Tuple([u, BoundType.I32]), 6));
+        Assert.NotSame(term, types.InterpolationBound(types.Tuple([t, BoundType.I32]), 6));
+        Assert.Equal("(6 + hint(T, i32))", Binding.DiagnosticLengthName(term));
+    }
+
+    // The hint term's substitution oracle at both value-Type sites, Binding.SubstituteLength and Binding.InstanceLength (R3-N4): a hint over
+    // T is 11 + literal at i32 and the literal alone at string; a literal past the maximum object size with i32 gives 0, with string it
+    // stays; an image still undecided (T to U) stays a hint over U, never a bound; the bound term over T keeps a1's 17 at i32.
+    [Fact]
+    public void ASubstitutionFoldsAnInterpolationHint()
+    {
+        var (c, t, u, _) = BoundTypes();
+        var types = c.Types;
+        var g = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(static x => x.Name == "g");
+        var target = types.Identity(g).Target;
+        var hint = types.InterpolationHint(types.Tuple([t]), 6);
+        var wide = types.InterpolationHint(types.Tuple([t]), long.MaxValue - 10);
+        (LengthOperation, long)[] At(BoundLength term, BoundType value)
+        {
+            BoundType?[] slots = [value, BoundType.Boolean];
+            BoundLength[] images =
+                [c.Binding.SubstituteLength(term, g, slots, [])!, c.Binding.InstanceLength(term, types.Synthesized(target, null, slots, []))!];
+            Assert.All(images, x => Assert.True(x.IsConstant || ReferenceEquals(x.Values, types.Tuple([u]))));
+            return [.. images.Select(static x => (x.Operation, x.Value))];
+        }
+
+        (LengthOperation, long)[] folded =
+        [
+            .. At(hint, BoundType.I32), .. At(hint, BoundType.String), .. At(wide, BoundType.I32), .. At(wide, BoundType.String), .. At(hint, u),
+            .. At(types.InterpolationBound(types.Tuple([t]), 6), BoundType.I32),
+        ];
+        const LengthOperation Constant = LengthOperation.Constant;
+        const LengthOperation Hint = LengthOperation.InterpolationHint;
+        (LengthOperation, long)[] expected =
+        [
+            (Constant, 17), (Constant, 17), (Constant, 6), (Constant, 6), (Constant, 0), (Constant, 0), (Constant, long.MaxValue - 10),
+            (Constant, long.MaxValue - 10), (Hint, 6), (Hint, 6), (Constant, 17), (Constant, 17),
+        ];
+        Assert.Equal(expected, folded);
+    }
+
+    // A warm hint and its refolds are the same lengths and allocate nothing (c2b's builder and the collector's instance read): the open and
+    // the closed producer, and both value-Type sites at i32.
+    [Trait("Purpose", "Allocation")]
+    [Fact]
+    public void AWarmInterpolationHintIsTheSameAndAllocatesNothing()
+    {
+        var (c, t, _, _) = BoundTypes();
+        var types = c.Types;
+        var g = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(static x => x.Name == "g");
+        var open = types.Tuple([t, BoundType.I32]);
+        var closed = types.Tuple([BoundType.I32]);
+        BoundType?[] slots = [BoundType.I32, BoundType.Boolean];
+        var subst = types.Synthesized(types.Identity(g).Target, null, slots, []);
+        var hint = types.InterpolationHint(open, 6);
+        BoundLength[] first =
+            [hint, types.InterpolationHint(closed, 6), c.Binding.SubstituteLength(hint, g, slots, [])!, c.Binding.InstanceLength(hint, subst)!];
+        var changed = 0;
+        Assert.Equal(0, AllocationMeasurement.Measure(() =>
+        {
+            changed += ReferenceEquals(types.InterpolationHint(open, 6), first[0]) ? 0 : 1;
+            changed += ReferenceEquals(types.InterpolationHint(closed, 6), first[1]) ? 0 : 1;
+            changed += ReferenceEquals(c.Binding.SubstituteLength(hint, g, slots, []), first[2]) ? 0 : 1;
+            changed += ReferenceEquals(c.Binding.InstanceLength(hint, subst), first[3]) ? 0 : 1;
+        }));
+        Assert.Equal(0, changed);
+        long[] values = [.. first[1..].Select(static x => x.Value)];
+        Assert.Equal([6 + 11, 6 + 11 + 11, 6 + 11 + 11], values);
     }
 
     // CompareLength orders a commutative operation's term operands by a key of their value Types (count, then kind and name), never by

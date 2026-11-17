@@ -52,7 +52,7 @@ public sealed partial class Binding
         }
 
         var builtin = this.CompilerRequirementTarget(requirement, self);
-        if (builtin.CompilerFunction != CompilerFunctionKind.None)
+        if (builtin.Definition.Kind != DispositionKind.Body)
         {
             return new(RequirementWitnessKind.Builtin, builtin);
         }

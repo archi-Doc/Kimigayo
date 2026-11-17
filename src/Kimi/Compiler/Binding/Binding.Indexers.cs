@@ -1,5 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using System.Diagnostics.CodeAnalysis;
 using Kimi.Compiler.Parsing;
 
 namespace Kimi.Compiler;
@@ -10,7 +11,7 @@ public sealed partial class Binding
     // index, and of indexUniq for updates and exclusive borrows. The synthesized calls are ordinary method calls of the
     // conforming Type's implementations, so receiver acquisition, key adaptation, reference results and generic instantiation
     // follow the ordinary rules; the index expression designates the referent of the reference the selected call returns (LentElement).
-    private readonly Dictionary<(IndexKoto Source, bool Exclusive), InvocationKoto> indexerCalls = new();
+    private readonly IndexerCallRows indexerCalls;
 
     // The UniqIndexable side of each user or view index expression, the fact indexUniq's binding and SharedIndexNote read: whether
     // indexUniq is available here, and the receiver's UniqIndexable conformance the check selected by declaration or by the key (none
@@ -37,47 +38,17 @@ public sealed partial class Binding
     internal bool HasExclusiveIndexer(Koto node)
         => KotoHelper.UnwrapParentheses(node) is IndexKoto index && this.uniqIndexing.GetValueOrDefault(index).Exclusive;
 
-    // SPEC 8.4.3: whether the Contract, a bound reference or a declaration, is the declaration or refines it.
-    private static bool RefinesDeclaration(BindingSymbol contract, Koto declaration)
-    {
-        if (ReferenceEquals(contract.Declaration, declaration))
-        {
-            return true;
-        }
-
-        var shape = contract.Contract;
-        for (var i = 0; shape is not null && i < shape.Ancestors.Count; i++)
-        {
-            if (ReferenceEquals(shape.Ancestors[i].Declaration, declaration))
-            {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
     // SPEC 4.7.1: the element a selected index or indexUniq call lends, the referent of the reference its plan returns; the index
     // expression designates it, whatever the call node itself is typed.
     private static BoundType? LentElement(InvocationKoto? call)
         => call?.BoundCall?.ReturnType is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components: [var element] } ? element : null;
 
-    // SPEC 4.7.1: the Type a key selects a conformance by, a borrowed key's referent (the key parameter is ref/Key); null for `null`
+    // SPEC 4.7.1: the written Type of a key that selects a conformance (ConformanceForKey reads it below its layers); null for `null`
     // or an unfitted number literal, which could fit several keys.
     private static BoundType? KeyType(Koto keyNode)
     {
         var key = KotoHelper.UnwrapParentheses(keyNode);
-        if (key is NullLiteralKoto || KotoHelper.SignedNumber(key, out _) is not null || key.BoundType is not { } type)
-        {
-            return null;
-        }
-
-        while (type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 })
-        {
-            type = type.Components[0];
-        }
-
-        return type;
+        return key is NullLiteralKoto || KotoHelper.SignedNumber(key, out _) is not null ? null : key.BoundType;
     }
 
     private bool TryBindIndexer(IndexKoto source, BindingScope scope, BoundType? receiver, out BoundType? result)
@@ -130,11 +101,11 @@ public sealed partial class Binding
 
             exclusiveAvailable = this.ConformsHere(core, uniq, scope);
         }
-        else if (core.Kind == BoundTypeKind.Parameter && this.HasContractFact(core, indexable, scope))
+        else if (core.Kind == BoundTypeKind.Parameter && this.PremiseRefines(core, indexable, scope))
         {
-            // SPEC 4.7.1, 8.4: a constrained Type parameter indexes through its Indexable fact; the synthesized call
+            // SPEC 4.7.1, 8.4, 8.3.2: a constrained Type parameter indexes through its Indexable row; the synthesized call
             // resolves to the requirement, and the instance supplies the conforming Type's implementation.
-            exclusiveAvailable = this.Library.UniqIndexable is { } uniqIndexable && this.HasContractFact(core, uniqIndexable, scope);
+            exclusiveAvailable = this.Library.UniqIndexable is { } uniqIndexable && this.PremiseRefines(core, uniqIndexable, scope);
         }
         else
         {
@@ -159,7 +130,7 @@ public sealed partial class Binding
 
         // SPEC 4.7.1, 15.1.5: indexUniq is selected for updates and exclusive borrows. It is bound when the conformance offers it and
         // the receiver can be exclusively acquired; a use that needs it through another path is diagnosed by that path.
-        if (exclusiveAvailable && ExclusivelyAcquirable(source.Left))
+        if (exclusiveAvailable && this.ExclusivelyAcquirable(source.Left))
         {
             this.BindIndexerCall(source, scope, true);
         }
@@ -194,14 +165,16 @@ public sealed partial class Binding
     }
 
     // SPEC 4.7.1, 8.6.1: the one conformance of the receiver's declaration to a bound reference of `contract` that names the key's
-    // reference (`contract` with the key's Type as its argument) for `core` in `scope` (NamesReference), or null for none or several.
+    // reference (`contract` with the key's Type below its safe value-reference layers as its argument, LayersTerminal; the key parameter
+    // is ref/Key) for `core` in `scope` (NamesReference), or null for none or several.
     private BoundConformance? ConformanceForKey(BoundType core, BindingSymbol contract, Koto keyNode, BindingScope scope)
     {
-        if (KeyType(keyNode) is not { } type || core.Symbol is not { } owner || this.ConformancesOf(owner) is not { } identities)
+        if (KeyType(keyNode) is not { } written || core.Symbol is not { } owner || this.ConformancesOf(owner) is not { } identities)
         {
             return null;
         }
 
+        var type = this.LayersTerminal(written, scope);
         BoundConformance? found = null;
         for (var i = 0; i < identities.Count; i++)
         {
@@ -225,29 +198,6 @@ public sealed partial class Binding
     // a refuted or unproven condition supplies nothing, and the Type stays usable through its other conformances.
     private bool ConformsHere(BoundType type, BoundConformance? conformance, BindingScope scope)
         => conformance is not null && this.ProveConformance(type, conformance.Contract, scope) == ConstraintProof.Proven;
-
-    // SPEC 8.4.3, 8.3: whether an available Constraint fact makes the subject conform to the Contract declaration or a refinement.
-    private bool HasContractFact(BoundType subject, BindingSymbol contract, BindingScope scope)
-    {
-        for (var current = scope; current is not null; current = current.Parent)
-        {
-            if (current.Constraints is not { Invalid: false } environment)
-            {
-                continue;
-            }
-
-            foreach (var fact in environment.Facts)
-            {
-                if (fact.Kind == ConstraintKind.Contract && AssociatedIdentityMatches(fact.Subject, subject) && fact.Contract is { } bound &&
-                    this.AvailableConstraintFact(environment, fact, out _) && RefinesDeclaration(bound, contract.Declaration))
-                {
-                    return true;
-                }
-            }
-        }
-
-        return false;
-    }
 
     private InvocationKoto? BindIndexerCall(IndexKoto source, BindingScope scope, bool exclusive)
     {
@@ -286,4 +236,21 @@ public sealed partial class Binding
 
     // A user or view index expression's UniqIndexable fact (uniqIndexing).
     private readonly record struct UniqIndexing(bool Exclusive, BoundConformance? Conformance);
+
+    /// <summary>The `indexerCalls` family's one accessor (DECISIONS BU-220): a kept family, an index expression's synthesized `index` and
+    /// `indexUniq` calls (SPEC 4.7.1), its composite key (the source node, whether it is exclusive) kept in the source's module's
+    /// NodeColumns at its SyntaxId as a row of two calls indexed directly by whether it is exclusive. Each call is made once and reset in
+    /// place by each pass (ResetSyntheticCalls). Its members keep the names its readers use.</summary>
+    private readonly struct IndexerCallRows(Binding binding)
+    {
+        internal FamilyRows<InvocationKoto?[]?> Values => new(binding, static (table, _) => table.Hir.Families.IndexerCalls.Enumerate());
+
+        internal InvocationKoto this[(IndexKoto Source, bool Exclusive) key]
+        {
+            set => (HirTables.Of(key.Source).Families.IndexerCalls.Ref(key.Source.SyntaxId) ??= new InvocationKoto?[2])[key.Exclusive ? 1 : 0] = value;
+        }
+
+        internal bool TryGetValue((IndexKoto Source, bool Exclusive) key, [NotNullWhen(true)] out InvocationKoto? value)
+            => (value = key.Source.SyntaxOwner is { } table && table.Hir.Families.IndexerCalls.Get(key.Source.SyntaxId) is { } row ? row[key.Exclusive ? 1 : 0] : null) is not null;
+    }
 }

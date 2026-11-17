@@ -1,5 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using System.Reflection;
 using Kimi;
 using Kimi.Compiler;
 using Kimi.Compiler.Parsing;
@@ -129,7 +130,7 @@ public class BaseInputFormationBindingTest
     [Fact]
     public void AWarmBindAfterASecondRunAllocatesNothing()
     {
-        var c = MinimalEmissionTest.Analyze("contract HasBase\n    associate Parent\nstruct Source\n    Self is HasBase\n    associate HasBase.Parent is Middle\nopen struct Middle\n    public func m(self) -> i32 => 1\n    protected func pm(self) -> i32 => 1\n    protected struct N\n        public init() => ()\n    public init() => ()\ncontract K<T>\nstruct D: Source.(HasBase).Parent\n    Self is K<D.N>\n    public init(): base() => ()");
+        var c = MinimalEmissionTest.Analyze(J4);
         Assert.True(c.Bind().IsComplete);
         Assert.Equal(0, AllocationMeasurement.Measure(() =>
         {
@@ -138,6 +139,31 @@ public class BaseInputFormationBindingTest
                 throw new InvalidOperationException("The second run failed.");
             }
         }));
+    }
+
+    // PLAN G949 S1-r1a (s1r1-design 1.3, v2 and v3): j4's Bind after an edit restarts. Its second run has a counter value of its own, one
+    // past the first run's, and runs as a second run (StartRuns once per Bind, so the runs end); the work counters are the last run's,
+    // equal to a warm Bind's one run. A restart that kept the first run's counter, or a work counter zeroed once per Bind, fails here; one
+    // that ran StartRuns again would restart without end (review-r1a N3: a hang, not a failed assertion).
+    [Fact]
+    public void ARestartStartsARunOfItsOwnWithinItsBind()
+    {
+        var c = MinimalEmissionTest.Analyze(J4);
+        c.Binding.Invalidate(); // An edit: the next Bind starts from no known base.
+        var counter = Counter(c);
+        Assert.True(c.Bind().IsComplete);
+        Assert.Equal(counter + 2, Counter(c));
+        Assert.True((bool)typeof(Binding).GetField("secondRun", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(c.Binding)!);
+        var work = Work(c);
+        Assert.True(c.Bind().IsComplete);
+        Assert.Equal(counter + 3, Counter(c));
+        Assert.Equal(work, Work(c));
+
+        static ulong Counter(Compilation c) => (ulong)typeof(Binding).GetField("storageVersion", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(c.Binding)!;
+
+        static (int, int, int, int, int, int, long) Work(Compilation c)
+            => (c.Binding.BaseLayerWork, c.Binding.SignatureWalkWork, c.Binding.MemberWalkWork, c.Binding.InheritedConformanceWork,
+                c.Binding.InheritedPremiseWork, c.Binding.SourceCheckWork, c.Binding.EvidenceNameWork);
     }
 
     // R7-N2d: the invalid twins keep their own records; nt46's second run differs, so its use is outside the implemented subset.
@@ -175,7 +201,46 @@ public class BaseInputFormationBindingTest
         }
     }
 
+    // PLAN G578 rx4 (SPEC 9.5): a value name's lookup that saw a base clause not ready is an early read as a Type name's, so the layer
+    // that stops it is found once the projected base is bound: a length constant in a conformance declaration (rx4; written before
+    // its base's declarations), through `Source.Parent`, in a nested struct (stage 3), in a member's Constraint, in an associated
+    // specification, under a generic base and at the second layer. Each was accepted, selecting G.n; each valid twin (Q declares m)
+    // selects G.n, and a later Bind of the unchanged program reports what the first reported.
+    [Theory]
+    [InlineData(Rx4Contracts + Rx4Source + Rx4Q + Rx4G + Rx4T)]
+    [InlineData(Rx4Contracts + Rx4G + Rx4T + Rx4Q + Rx4Source)]
+    [InlineData(Rx4Contracts + Rx4Source + Rx4Q + Rx4G + "    struct T: Source.Parent\n        Self is K<[n of i32]>\n        public init(): base() => ()\n")]
+    [InlineData(Rx4Contracts + Rx4Source + Rx4Q + Rx4G + "    struct T: Source.(HasBase).Parent\n        public init(): base() => ()\n        struct U\n            Self is K<[n of i32]>\n")]
+    [InlineData(Rx4Contracts + Rx4Source + Rx4Q + Rx4G + "    struct T: Source.(HasBase).Parent\n        public init(): base() => ()\n        func h<X>(self, x: ref/X) -> i32\n            X is K<[n of i32]>\n            return 1\n")]
+    [InlineData("contract HasItem\n    associate Item\n" + Rx4Contracts + Rx4Source + Rx4Q + Rx4G + "    struct T: Source.(HasBase).Parent\n        Self is HasItem\n        associate HasItem.Item is [n of i32]\n        public init(): base() => ()\n")]
+    [InlineData(Rx4Contracts + "struct Source<A>\n    Self is HasBase\n    associate HasBase.Parent is Q\n" + Rx4Q + Rx4G + "    struct T<A>: Source<A>.(HasBase).Parent\n        Self is K<[n of i32]>\n        public init(): base() => ()\n")]
+    [InlineData(Rx4Contracts + "struct Source\n    Self is HasBase\n    associate HasBase.Parent is Mid\nstruct Source2\n    Self is HasBase\n    associate HasBase.Parent is Q\nopen struct Mid: Source2.(HasBase).Parent\n    public init(): base() => ()\n" + Rx4Q + Rx4G + Rx4T)]
+    public void AValueNameStopsAtAProjectedBasesLayer(string source)
+    {
+        var c = MinimalEmissionTest.Analyze(source);
+        Assert.False(c.Binding.Result.IsComplete);
+        Assert.Single(c.Binding.Issues, static x => x.Code == DiagnosticCode.QualificationRequired_Kd);
+        var fresh = Records(c);
+        Assert.False(c.Bind().IsComplete);
+        Assert.Equal(fresh, Records(c));
+        var valid = MinimalEmissionTest.Analyze(source.Replace("public let n: isize = 3", "public let m: isize = 3"));
+        Assert.True(valid.Binding.Result.IsComplete, MinimalEmissionTest.Describe(valid));
+    }
+
+    private const string Rx4Contracts = "contract K<T>\ncontract HasBase\n    associate Parent\n";
+
+    private const string Rx4Source = "struct Source\n    Self is HasBase\n    associate HasBase.Parent is Q\n";
+
+    private const string Rx4Q = "open struct Q\n    public let n: isize = 3\n    public init() => ()\n";
+
+    private const string Rx4G = "group G\n    public let n: isize = 2\n";
+
+    private const string Rx4T = "    struct T: Source.(HasBase).Parent\n        Self is K<[n of i32]>\n        public init(): base() => ()\n";
+
     private const string Paradox = "contract HasBase\n    associate Parent\nopen struct Q: R\n    protected open struct N\n        public init() => ()\n    public init() => ()\nopen struct R\n    private open struct N: Q\n        public init(): base() => ()\n    public init() => ()\n    struct T: T.S.(HasBase).Parent\n        public init(): base() => ()\n        struct S\n            Self is HasBase\n            associate HasBase.Parent is Q.N";
+
+    // R7-N2d: j4, whose first Bind runs its declarations twice.
+    private const string J4 = "contract HasBase\n    associate Parent\nstruct Source\n    Self is HasBase\n    associate HasBase.Parent is Middle\nopen struct Middle\n    public func m(self) -> i32 => 1\n    protected func pm(self) -> i32 => 1\n    protected struct N\n        public init() => ()\n    public init() => ()\ncontract K<T>\nstruct D: Source.(HasBase).Parent\n    Self is K<D.N>\n    public init(): base() => ()";
 
     private const string Prefix = "open struct Base\ncontract Origin\n    associate Item\nstruct Source<T>\n    T is i32\n    Self is Origin\n    associate Origin.Item is Base\n";
 

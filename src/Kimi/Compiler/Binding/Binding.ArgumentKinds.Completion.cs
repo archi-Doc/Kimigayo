@@ -129,12 +129,11 @@ public sealed partial class Binding
 
     // SPEC 10.5.1, 10.5.4, 7.7.4, 15.6.4 step 2 (PLAN G494): whether a value call's prepared part waits for the call's solve, to be completed
     // at its instantiated parameter, as a named call completes its waiting parts and erasures after selection (CompleteWaiting,
-    // CompleteArguments): every part CompleteValueCallPart binds at its parameter or erases there, but a Literal, whose input Type names no
-    // Origin. An aggregate or a join its call classifies waits too: its typed parts are the solve's evidence by its rows (PLAN G504,
-    // SolveValueCallOrigins).
+    // CompleteArguments): every part CompleteValueCallPart binds at its parameter or erases there. A Literal is no Type evidence (SPEC
+    // 10.5.1; `null` takes any Origin, SPEC 5.7, PLAN G584); the temporary's bound is AddTemporaryBound's. An aggregate or a join its call
+    // classifies is the solve's evidence only by its typed parts' rows (PLAN G504, SolveValueCallOrigins).
     private bool WaitsForValueCallSolve(Koto part, BoundType parameter) => this.KindOf(part) switch
     {
-        PartKind.Literal => false,
         PartKind.Typed => part.BoundType is not { } typed ||
             (typed.Kind is BoundTypeKind.Closure or BoundTypeKind.FunctionItem && parameter.Kind == BoundTypeKind.Function),
         _ => true,

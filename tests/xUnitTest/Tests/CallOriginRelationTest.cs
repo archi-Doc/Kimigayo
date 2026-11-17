@@ -14,7 +14,7 @@ namespace XunitTest;
 // fit, so the Origin relations of a call never change its selection. The selected candidate's relations are judged after selection at
 // their own sources: each argument's fit at the argument, a substituted clause at the first input that names its longer Origin, and
 // the result at its destination. A chain between body Origins stays the located Unsupported_Kd limit at the argument.
-public class CallOriginRelationTest(ITestOutputHelper output)
+public partial class CallOriginRelationTest(ITestOutputHelper output)
 {
     private const string Main = "public func main() => ()\n";
 
@@ -105,6 +105,29 @@ public class CallOriginRelationTest(ITestOutputHelper output)
             Assert.Equal([("borrow", origin), ("origin", origin)], error.Related!.Select(x => (x.Role, Text(source, x.Span))));
         }
     }
+
+    // SPEC 8.15.2, 15.6.5 (PLAN G809): a call's solve reads each bound's Semantics cases: `y`'s slot bounds put's `q` only in the `ref`
+    // case, where the caller's `x` proves `p outlives q`, so put's `q` is the caller's `q`, valid in each case (rejected before G809);
+    // without `x` the relation stays unproven.
+    [Theory]
+    [InlineData("x: t/(ref/i32 during p) during q, ", "clean")]
+    [InlineData("", "1*UnprovenOriginRelation_Kd")]
+    public void ACallsBoundOfABorrowCaseIsMetByAPremiseOfThatCase(string premise, string records)
+        => Assert.Equal(records, DiagnosticCorpus.RecordProfile(
+            "func put<t/U>(q: ref/i32, y: t/U during q, r: ref/i32 during q) -> ref/i32 during q\n    t is owner or ref\n    return r\n" +
+            $"func call<t/U>(q: ref/i32, p: ref/i32, {premise}y: t/U during p, r: ref/i32 during q) -> ref/i32 during q\n    t is owner or ref\n    return put(q, y@move, r)\n"));
+
+    // SPEC 8.15.2 (PLAN G809's limit, the open issue "a call in a generic body is solved once for all Semantics cases"): valid in each
+    // Semantics case, as put's `a` there is the meet of the bounds that case has. The call's one solve for every case leaves `l1` in its
+    // candidate where `s` alone is a borrow, and `w` does not hold there: rejected, sound but incomplete. This row pins today's record
+    // (dev's too).
+    [Fact]
+    public void ACallInAGenericBodyIsSolvedOnceForEveryCase()
+        => Assert.Equal("1*UnprovenOriginRelation_Kd", DiagnosticCorpus.RecordProfile(
+            "func put<t/U, s/W>(a: ref/i32, b: t/U during a, c: s/W during a) -> s/W during a\n    t is owner or ref\n    s is owner or ref\n    return c@move\n" +
+            "func call<t/U, s/W>(u: ref/i32, l1: ref/i32, l2: ref/i32, f: ref/i32, w: t/(ref/i32 during l1) during l2, x2: s/(ref/i32 during l2) during f, " +
+            "y2: ref/(ref/i32 during u) during f, a: ref/i32 during u, b: t/U during l1, c: s/W during l2) -> s/W during f\n" +
+            "    t is owner or ref\n    s is owner or ref\n    return put(a, b@move, c@move)\n"));
 
     // SPEC 15.6.1: every failed chain is reported, each at the argument that does not fit.
     [Fact]
@@ -555,6 +578,113 @@ public class CallOriginRelationTest(ITestOutputHelper output)
                 Assert.Equal((nameof(DiagnosticCode.UnprovenOriginRelation_Kd), at), (record.Code, Text(source, record.Span)));
             }
         }
+    }
+
+    // J2 (SPEC 10.5.1, 10.8, 15.3.6, 15.2.2; the owner's O-358 (a) and O-362 (a); PLAN G936): a callee variable that covariant evidence
+    // binds and a waiting argument also names, a Type argument's Origin at a covariant position or a written Origin parameter, is a region
+    // of the call that both bound, T = ref/i32 during (R_a and R_b): over two `var` captures in a Closure (rc3v; rc5v in an array literal,
+    // tp1 in a Tuple literal), the arguments swapped (j2b), two evidence (e2v, e2m) or two waiting arguments (w2v), the result kept (k1v)
+    // or nested as evidence (k2v), two unrelated inputs (j2p), with a second overload (ov1), a written Origin parameter (o2v, o4v), and
+    // the body chain and Loans that the old relation hid (k4v, l1v: Unsupported_Kd before). A Function Type T keeps its contravariant
+    // Origin (fn1v: the contravariant row's candidate p, F's ruling 3), and a slot a Constraint reads keeps the evidence's binding (rv17
+    // `T is Owned`, rv28 `F is Callable<() -> T>`, rv34; O-368 (a)). Rejected (UnprovenOriginRelation_Kd at the waiting part) on dev
+    // 45c9fab40 and G913 7b652b1f3, but fn1v, rv17, rv28 and rv34.
+    [Theory]
+    // rc3v
+    [InlineData("func same3<T>(x: Option<ref/T during c>, y: ref/T during c) => ()\nfunc use(p: ref/i32) -> i32\n    var a = p\n    var b = p\n    let f = func [a, b] () -> ()\n        same3(.Some(a@ref), b@ref)\n    f()\n    return 0\n")]
+    // rc5v
+    [InlineData("func same5<T>(x: [2 of Option<ref/T during c>], y: ref/T during c) => ()\nfunc use(p: ref/i32) -> i32\n    var a = p\n    var b = p\n    let f = func [a, b] () -> ()\n        same5([.Some(a@ref), .None], b@ref)\n    f()\n    return 0\n")]
+    // tp1
+    [InlineData("func tup<T>(x: (Option<ref/T during c>, i32), y: ref/T during c) => ()\nfunc use(p: ref/i32) -> i32\n    var a = p\n    var b = p\n    let f = func [a, b] () -> ()\n        tup((.Some(a@ref), 1), b@ref)\n    f()\n    return 0\n")]
+    // j2b
+    [InlineData("func same3s<T>(y: ref/T during c, x: Option<ref/T during c>) => ()\nfunc use(p: ref/i32) -> i32\n    var a = p\n    var b = p\n    let f = func [a, b] () -> ()\n        same3s(b@ref, .Some(a@ref))\n    f()\n    return 0\n")]
+    // e2v
+    [InlineData("func same3e<T>(x: Option<ref/T during c>, y: ref/T during c, z: ref/T during c) => ()\nfunc use(p: ref/i32) -> i32\n    var a = p\n    var b = p\n    var d = p\n    let f = func [a, b, d] () -> ()\n        same3e(.Some(a@ref), b@ref, d@ref)\n    f()\n    return 0\n")]
+    // e2m
+    [InlineData("func same3m<T>(y: ref/T during c, x: Option<ref/T during c>, z: ref/T during c) => ()\nfunc use(p: ref/i32) -> i32\n    var a = p\n    var b = p\n    var d = p\n    let f = func [a, b, d] () -> ()\n        same3m(b@ref, .Some(a@ref), d@ref)\n    f()\n    return 0\n")]
+    // w2v
+    [InlineData("func same3t<T>(x: Option<ref/T during c>, y: ref/T during c, z: Option<ref/T during c>) => ()\nfunc use(p: ref/i32) -> i32\n    var a = p\n    var b = p\n    var d = p\n    let f = func [a, b, d] () -> ()\n        same3t(.Some(a@ref), b@ref, .Some(d@ref))\n    f()\n    return 0\n")]
+    // k1v
+    [InlineData("func keep<T>(x: Option<ref/T during c>, y: ref/T during c) -> T => $abort(\"no\")\nfunc use(p: ref/i32) -> i32\n    var a = p\n    var b = p\n    let f = func [a, b] () -> ()\n        let r = keep(.Some(a@ref), b@ref)\n    f()\n    return 0\n")]
+    // k2v
+    [InlineData("func keep<T>(x: Option<ref/T during c>, y: ref/T during c) -> T => $abort(\"no\")\nfunc id<V>(v: V) -> V => v@move\nfunc use(p: ref/i32) -> i32\n    var a = p\n    var b = p\n    let f = func [a, b] () -> ()\n        let r = id(keep(.Some(a@ref), b@ref))\n    f()\n    return 0\n")]
+    // j2p
+    [InlineData("func same3<T>(x: Option<ref/T during c>, y: ref/T during c) => ()\nfunc use(p: ref/i32, q: ref/i32) -> i32\n    let a = p\n    let b = q\n    same3(.Some(a@ref), b@ref)\n    return 0\n")]
+    // ov1
+    [InlineData("func pick<T>(x: Option<ref/T during c>, y: ref/T during c) -> i32 => 1\nfunc pick<T>(x: Option<ref/T during c>, y: ref/T during c, z: i32) -> i32 => 2\nfunc use(p: ref/i32) -> i32\n    var a = p\n    var b = p\n    let f = func [a, b] () -> ()\n        let n = pick(.Some(a@ref), b@ref)\n    f()\n    return 0\n")]
+    // o2v
+    [InlineData("func w2(x: Option<ref/(ref/i32 during k) during c>, y: ref/(ref/i32 during k) during c) => ()\nfunc use(p: ref/i32) -> i32\n    var a = p\n    var b = p\n    let f = func [a, b] () -> ()\n        w2(.Some(a@ref), b@ref)\n    f()\n    return 0\n")]
+    // o4v
+    [InlineData("func w4(x: Option<ref/i32 during c>, y: ref/i32 during c) => ()\nfunc use(p: ref/i32) -> i32\n    var a = p\n    var b = p\n    let f = func [a, b] () -> ()\n        w4(.Some(a), b)\n    f()\n    return 0\n")]
+    // k4v
+    [InlineData("func keep<T>(x: Option<ref/T during c>, y: ref/T during c) -> T => $abort(\"no\")\nfunc use(p: ref/i32, q: ref/i32) -> ref/i32 during p\n    let a = p\n    let b = p\n    return keep(.Some(a@ref), b@ref)\n")]
+    // l1v
+    [InlineData("func keep<T>(x: Option<ref/T during c>, y: ref/T during c) -> T => $abort(\"no\")\nfunc use() -> i32\n    var x = 5\n    var y = 6\n    let a = x@ref\n    let b = y@ref\n    let r = keep(.Some(a@ref), b@ref)\n    let s = r\n    y = 7\n    return 0\n")]
+    // fn1v
+    [InlineData("func fun<T>(x: Option<T>, y: T) => ()\nfunc use(p: ref/i32) -> i32\n    let g: (ref/i32 during p) -> () = func (v) => ()\n    let h: (ref/i32 during p) -> () = func (v) => ()\n    fun(.Some(h@move), g@move)\n    return 0\n")]
+    // hole9_ok (MirOriginsTest's, valid, the owner's (i)): `d`, named by the evidence x and the waiting w, is a region of the call
+    [InlineData("func mk(p: Option<ref/(ref/i32 during a) during b>, u: Option<ref/(ref/i32 during e) during a>, w: Option<ref/(ref/i32 during d) during b>, y: ref/i32 during b, z: ref/i32 during e, x: ref/i32 during (a and d), g: (ref/i32 during b) -> i32, f: (ref/i32 during a, bool) -> i32) -> i32 => 0\nfunc k(c: bool, s: ref/i32 during static) -> i32\n    let short = 2\n    let sr = short@ref\n    return mk(if c => .None else => .None, if c => .None else => .None, if c => .None else => .None, s, s, s, func [] (t: ref/i32) => 0, func [s] (v, c2) => mk(if c2 => .None else => .None, if c2 => .None else => .None, if c2 => .None else => .None, s, s, v, func [] (t: ref/i32 during static) => 0, func [] (v2, c3) => 0))\n")]
+    // rv17
+    [InlineData("func keepO<T>(x: Option<T>, y: T) -> i32\n    T is Owned\n    return 0\nfunc one() -> ref/i32 during static => $abort(\"no\")\nfunc use() -> i32\n    return keepO(.Some(one()), one())\n")]
+    // rv28
+    [InlineData("func app4<T, F>(g: ref/F, y: T, x: Option<T>) -> i32\n    F is Callable<() -> T>\n    return 0\nfunc use(q: ref/i32) -> i32\n    return app4(func [q] () => q, q, .Some(q))\n")]
+    // rv34
+    [InlineData("func app4<T, F>(g: ref/F, y: T, x: Option<T>) -> i32\n    F is Callable<() -> T>\n    return 0\nfunc one() -> ref/i32 during static => $abort(\"no\")\nfunc use() -> i32\n    return app4(one, one(), .Some(one()))\n")]
+    public void AWaitingArgumentAlsoBoundsTheVariableItsEvidenceBinds(string body)
+    {
+        var check = DiagnosticCorpus.Check(body + Main);
+        Assert.True(check.Accepted, string.Join("\n", check.Diagnostics.Select(static x => $"{x.Code}: {x.Label}")));
+    }
+
+    // J2's invalid twins keep every other bound of the region: a use it cannot outlive (k3i, k4i, k5i, o2i, o3i, o4i: the record moves
+    // to the call, whose result needs it), an invariant evidence binding (u1i, o2u) or waiting position (w1i, o2w), a Loan of either
+    // operand (l1i, l2i: ComparisonLoanConflict_Kd at the write, Unsupported_Kd before), a Function Type T's contravariant Origin without
+    // a candidate (fn1i), T named by a Callable Constraint, outside the rule (af2), and a slot `T is Owned` reads, which keeps the
+    // evidence's binding (rv18; O-368 (a)). Each record: its code and the source at its span.
+    [Theory]
+    // k3i
+    [InlineData("func keep<T>(x: Option<ref/T during c>, y: ref/T during c) -> T => $abort(\"no\")\nfunc use(p: ref/i32) -> i32\n    var a = p\n    let f = func [a] (q: ref/(ref/i32)) -> ref/i32 during q\n        return keep(.Some(a@ref), q)\n    return 0\n", "UnprovenOriginRelation_Kd@keep(.Some(a@ref), q|UnprovenOriginRelation_Kd@a@ref), q)")]
+    // k4i
+    [InlineData("func keep<T>(x: Option<ref/T during c>, y: ref/T during c) -> T => $abort(\"no\")\nfunc use(p: ref/i32, q: ref/i32) -> ref/i32 during p\n    let a = p\n    let b = q\n    return keep(.Some(a@ref), b@ref)\n", "UnprovenOriginRelation_Kd@keep(.Some(a@ref), b")]
+    // k5i
+    [InlineData("func keep<T>(x: Option<ref/T during c>, y: ref/T during c) -> T => $abort(\"no\")\nfunc use(p: ref/i32, q: ref/i32) -> ref/i32 during p\n    var a = p\n    var b = q\n    let f = func [a, b] () -> ()\n        let r = keep(.Some(a@ref), b@ref)\n    f()\n    return keep(.Some(a@ref), b@ref)\n", "UnprovenOriginRelation_Kd@keep(.Some(a@ref), b")]
+    // o2i
+    [InlineData("func w2r(x: Option<ref/(ref/i32 during k) during c>, y: ref/(ref/i32 during k) during c) -> ref/i32 during k => $abort(\"no\")\nfunc use(p: ref/i32, q: ref/i32) -> ref/i32 during p\n    let a = q\n    let b = p\n    return w2r(.Some(a@ref), b@ref)\n", "UnprovenOriginRelation_Kd@w2r(.Some(a@ref), b@|UnprovenOriginRelation_Kd@a@ref), b@ref)")]
+    // o3i
+    [InlineData("func w2k(x: Option<ref/(ref/i32 during k) during c>, y: ref/(ref/i32 during k) during c) -> ref/i32 during k => $abort(\"no\")\nfunc use(p: ref/i32) -> i32\n    var a = p\n    let f = func [a] (q: ref/(ref/i32)) -> ref/i32 during q\n        return w2k(.Some(a@ref), q)\n    return 0\n", "UnprovenOriginRelation_Kd@w2k(.Some(a@ref), q)|UnprovenOriginRelation_Kd@a@ref), q)")]
+    // o4i
+    [InlineData("func w4r(x: Option<ref/i32 during c>, y: ref/i32 during c) -> ref/i32 during c => $abort(\"no\")\nfunc use(p: ref/i32, q: ref/i32) -> ref/i32 during p\n    let a = q\n    let b = p\n    return w4r(.Some(a), b)\n", "UnprovenOriginRelation_Kd@w4r(.Some(a), b)|UnprovenOriginRelation_Kd@a), b)")]
+    // u1i
+    [InlineData("func same3u<T>(x: Option<ref/T during c>, y: uniq/T during c) => ()\nfunc use(p: ref/i32) -> i32\n    var a = p\n    var b = p\n    var f = func [a, var b] () -> ()\n        same3u(.Some(a@ref), b@uniq)\n    f()\n    return 0\n", "UnprovenOriginRelation_Kd@a@ref), b@uniq)")]
+    // o2u
+    [InlineData("func w2u(x: Option<ref/(ref/i32 during k) during c>, y: uniq/(ref/i32 during k) during c) => ()\nfunc use(p: ref/i32) -> i32\n    var a = p\n    var b = p\n    var f = func [a, var b] () -> ()\n        w2u(.Some(a@ref), b@uniq)\n    f()\n    return 0\n", "UnprovenOriginRelation_Kd@a@ref), b@uniq)")]
+    // w1i
+    [InlineData("func same3w<T>(x: Option<uniq/T during c>, y: ref/T during c) => ()\nfunc use(p: ref/i32) -> i32\n    var a = p\n    var b = p\n    var f = func [var a, b] () -> ()\n        same3w(.Some(a@uniq), b@ref)\n    f()\n    return 0\n", "UnprovenOriginRelation_Kd@a@uniq), b@ref)")]
+    // o2w
+    [InlineData("func w2w(x: Option<uniq/(ref/i32 during k) during c>, y: ref/(ref/i32 during k) during c) => ()\nfunc use(p: ref/i32) -> i32\n    var a = p\n    var b = p\n    var f = func [var a, b] () -> ()\n        w2w(.Some(a@uniq), b@ref)\n    f()\n    return 0\n", "UnprovenOriginRelation_Kd@a@uniq), b@ref)")]
+    // l1i
+    [InlineData("func keep<T>(x: Option<ref/T during c>, y: ref/T during c) -> T => $abort(\"no\")\nfunc use() -> i32\n    var x = 5\n    var y = 6\n    let a = x@ref\n    let b = y@ref\n    let r = keep(.Some(a@ref), b@ref)\n    y = 7\n    let s = r\n    return 0\n", "ComparisonLoanConflict_Kd@y = 7")]
+    // l2i
+    [InlineData("func keep<T>(x: Option<ref/T during c>, y: ref/T during c) -> T => $abort(\"no\")\nfunc use() -> i32\n    var x = 5\n    var y = 6\n    let a = x@ref\n    let b = y@ref\n    let r = keep(.Some(a@ref), b@ref)\n    x = 7\n    let s = r\n    return 0\n", "ComparisonLoanConflict_Kd@x = 7")]
+    // fn1i
+    [InlineData("func fun<T>(x: Option<T>, y: T) => ()\nfunc use(p: ref/i32, q: ref/i32) -> i32\n    let g: (ref/i32 during p) -> () = func (v) => ()\n    let h: (ref/i32 during q) -> () = func (v) => ()\n    fun(.Some(h@move), g@move)\n    return 0\n", "UnprovenOriginContract_Kd@h@move), g@move)")]
+    // af2
+    [InlineData("func app<T, F>(g: F, y: T) -> i32\n    F is Callable<() -> T>\n    return 0\nfunc use(p: ref/i32, q: ref/i32) -> i32\n    let a = p\n    return app(func [a] () => a, q)\n", "UnprovenOriginRelation_Kd@a, q)")]
+    // rv18
+    [InlineData("func keepO<T>(x: Option<T>, y: T) -> i32\n    T is Owned\n    return 0\nfunc one() -> ref/i32 during static => $abort(\"no\")\nfunc use(p: ref/i32) -> i32\n    return keepO(.Some(p), one())\n", "UnprovenOriginRelation_Kd@p), one())")]
+    public void AWaitedVariableKeepsItsOtherBounds(string body, string records)
+    {
+        var source = body + Main;
+        var check = DiagnosticCorpus.Check(source);
+        Assert.Equal(records, string.Join("|", check.Diagnostics.Select(x => x.Code + "@" + At(source, x.Span))));
+    }
+
+    // The source from a span's start to the end of its line, at most 20 characters.
+    private static string At(string source, SourceSpan? span)
+    {
+        var start = span?.Start ?? 0;
+        var end = source.IndexOf('\n', start);
+        return span is null ? string.Empty : source[start..Math.Min(end < 0 ? source.Length : end, start + 20)];
     }
 
     private static string Text(string source, SourceSpan? span) => span is { } value ? source.Substring(value.Start, value.Length) : string.Empty;

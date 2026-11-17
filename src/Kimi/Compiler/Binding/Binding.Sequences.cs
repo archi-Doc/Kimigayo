@@ -4,10 +4,26 @@ using Kimi.Compiler.Parsing;
 
 namespace Kimi.Compiler;
 
+#pragma warning disable SA1402 // The metadata form beside the member binding that produces it.
+
+/// <summary>A sequence's metadata member, which Binding serves without a call: <see cref="Binding.FormOf"/> gives a node's.</summary>
+internal enum BuiltinForm : byte
+{
+    None,
+    Length, // A sequence's length (SPEC 4.7).
+    IsEmpty,
+    Indices, // The ResolvedRange from 0 to the length (SPEC 4.6.2).
+    Capacity, // An Array's or a Dictionary's capacity (SPEC 4.9.5).
+}
+
 public sealed partial class Binding
 {
+    // The built-in form of a published node: a sequence's metadata by its member (SequenceMember), which the MIR builder reads.
+    internal static BuiltinForm FormOf(Koto node)
+        => HirTables.Op(node) == HirOp.PrimitiveOp && node is MemberAccessKoto member ? SequenceMember(member) : BuiltinForm.None;
+
     // SPEC 4.7, 4.6.2, 4.9.5: the metadata member of a sequence a member access names, by its spelling; None for another name.
-    internal static BuiltinForm SequenceMember(MemberAccessKoto source) => (source.Right as IdentifierNameKoto)?.IdentifierName switch
+    private static BuiltinForm SequenceMember(MemberAccessKoto source) => (source.Right as IdentifierNameKoto)?.IdentifierName switch
     {
         "length" => BuiltinForm.Length,
         "isEmpty" => BuiltinForm.IsEmpty,
@@ -72,23 +88,12 @@ public sealed partial class Binding
         source.Iteration?.Decomposition.Reset(null);
         var followed = this.PairSubject(source.Iterable, iterable, scope);
         iterable = followed ?? iterable;
-        source.Mode = SubjectModeOf(source.Iterable, iterable);
-        if (iterable is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components: [{ Kind: BoundTypeKind.Nominal, Symbol.LibraryDeclaration: KimiDeclarationId.ResolvedRange }] })
-        {
-            // SPEC 14.6.2, 3.4.3: the iteration entry is selected through the reference; the Copy interval is the
-            // entry receiver and is read once for the loop.
-            this.adaptations[source.Iterable] = new(ExpectedAdaptationKind.ReferentRead, iterable.Components[0]);
-            iterable = iterable.Components[0];
-        }
+        source.Mode = this.SubjectModeOf(source.Iterable, iterable);
 
-        // Dynamic Array, Dictionary, fixed-array and Slice loops use their Kimigayo entries and iterators (SPEC 14.6.2,
-        // 22.1.2.5). SPEC 4.6.4: a ResolvedRange loop yields the isize positions of its RangeIterator<isize> entries
-        // directly; a validated interval never Aborts, so no iterator value is formed.
-        var view = iterable;
-        var element = view is not null && ReferenceTypes.IsResolvedRange(view) ? BoundType.ISize : null;
-
-        var userEntry = element is null && iterable is not null &&
-            this.BindUserIteration(source, scope, iterable, out element);
+        // Every loop uses its Subject's Kimigayo entry, selected by the Subject mode, and iterator: a Dynamic Array's, Dictionary's,
+        // fixed array's and Slice's (SPEC 14.6.2, 22.1.2.5) and a ResolvedRange's RangeIterator<isize> (SPEC 4.6.4) included.
+        BoundType? element = null;
+        var userEntry = iterable is not null && this.BindUserIteration(source, scope, iterable, out element);
 
         // SPEC 14.6.2, 15.1.6: Some delivers one owned item, independently of the entry mode, which the ordinary match plan
         // decomposes: a parenthesized binding by the item's Tuple position and one Binding position per slot, each selected by the
@@ -115,8 +120,8 @@ public sealed partial class Binding
             var selected = decomposition is not null && source.IsTupleBinding && slot is not null && name.IdentifierName != "_"
                 ? this.SelectLayers(decomposition, slot, structural: false, scope, ref slotReach, out slotLayers) : slot;
             var symbol = name.BoundSymbol!;
-            symbol.Type = selected is null ? null : this.BindingTypeOf(selected, slotReach);
-            symbol.BindsReference = slotReach.Access != PatternAccessMode.Owned || (!userEntry && source.Mode != SubjectMode.ByValue);
+            symbol.Type = selected is null ? null : this.BindingTypeOf(selected, slotReach, name);
+            symbol.BindsReference = slotReach.Access != PatternAccessMode.Owned;
             if (iterable is null)
             {
                 // SPEC 23.1.2: a binding of a failed iterable rests on it, as a local rests on a failed initializer (BindReference).
@@ -160,7 +165,7 @@ public sealed partial class Binding
             return Complete(source, null);
         }
 
-        if (!userEntry && !ReferenceTypes.IsResolvedRange(view))
+        if (!userEntry)
         {
             return this.FailIterationSubject(source, scope, iterable);
         }
@@ -178,7 +183,7 @@ public sealed partial class Binding
     // parameter. A proven conformance whose entry or step did not bind remains an implementation boundary of the loop.
     private BoundType? FailIterationSubject(ForKoto source, BindingScope scope, BoundType subject)
     {
-        var entry = this.IterationEntry(source, ref subject);
+        var entry = this.IterationEntry(source, scope, ref subject, out _);
         var proof = this.ProveConstraint(this.InternConstraint(new(ConstraintKind.Contract, subject, contract: entry)), scope);
         if (proof == ConstraintProof.Proven)
         {
@@ -196,54 +201,51 @@ public sealed partial class Binding
 
     // SPEC 14.6.2, 3.4.3: the Subject mode selects the entry, which a borrowing mode searches at the referent of every
     // reference layer.
-    private BindingSymbol IterationEntry(ForKoto source, ref BoundType subject)
+    private BindingSymbol IterationEntry(ForKoto source, BindingScope scope, ref BoundType subject, out bool crossed)
     {
+        crossed = false;
         if (source.Mode == SubjectMode.ByValue)
         {
             return this.Library.IntoIterable;
         }
 
-        while (subject is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 })
-        {
-            subject = subject.Components[0];
-        }
-
+        // SPEC 14.6.2, 3.4.3: the borrowing entry is selected through the safe value-reference layers (LayerBelow; a pair layer as
+        // member lookup follows it, FollowablePair: no Constraint names a pair's whole Type, so none stops it here).
+        var stored = ComparisonReferent(subject);
+        subject = this.LayersTerminal(subject, scope);
+        crossed = !ReferenceEquals(subject, stored);
         return source.Mode == SubjectMode.Exclusive ? this.Library.UniqIterable : this.Library.Iterable;
     }
 
     private bool BindUserIteration(ForKoto source, BindingScope scope, BoundType subject, out BoundType? item)
     {
         item = null;
-        var entry = this.IterationEntry(source, ref subject);
+        var entry = this.IterationEntry(source, scope, ref subject, out var crossed);
+        if (crossed && source.Mode == SubjectMode.Exclusive)
+        {
+            // SPEC 7.3, 13.5.5: an exclusive receiver selected through a pair layer below a stored layer has no adaptation yet (PLAN
+            // G162's remainder): the loop's located Unsupported_Kd (FailIterationSubject's proven entry), never a candidate failure.
+            // A temporary structure (PLAN G794): removed once that receiver (G162) and the Exclusive `for`'s entry call through stored
+            // layers (G179) adapt.
+            return false;
+        }
+
         var method = source.Mode == SubjectMode.ByValue ? "intoIterator" : source.Mode == SubjectMode.Exclusive ? "iterateUniq" : "iterate";
         // SPEC 8.3.3: a conditional conformance whose condition is refuted supplies no entry; the Subject is then diagnosed.
         // A range's condition is decided at the Subject as well when it is only unproven, so the loop reports it once there
         // (SPEC 4.6.4).
-        var nominal = (subject.Symbol is { Declaration: StructKoto or EnumKoto } owner && this.ConformanceByDeclaration(owner, entry, out _) is not null &&
+        // A built-in Type's entry conformance is the witness table's (SPEC 22.1): it adds no member, so its requirement is the call.
+        var library = WitnessGroup(subject, entry.LibraryDeclaration) is { } group && this.ContractWitness(group, entry) is not null;
+        var nominal = library || (subject.Symbol is { Declaration: StructKoto or EnumKoto } owner && this.ConformanceByDeclaration(owner, entry, out _) is not null &&
                 this.ProveConstraint(this.InternConstraint(new(ConstraintKind.Contract, subject, contract: entry)), scope) is var proof &&
-                (proof == ConstraintProof.Proven || (proof != ConstraintProof.Refuted && !IsRangeShape(subject)))) ||
-            (WitnessGroup(subject, entry.LibraryDeclaration) is { } group && this.ContractWitness(group, entry) is not null);
-        if (!nominal && !this.HasContractFact(subject, entry, scope))
+                (proof == ConstraintProof.Proven || (proof != ConstraintProof.Refuted && !IsRangeShape(subject))));
+        if (!nominal && !this.PremiseRefines(subject, entry, scope))
         {
             return false;
         }
 
-        // SPEC 14.6.2: only the selected entry conformance authorizes enumeration. The ordinary call keeps
-        // receiver acquisition, substitutions and Origins; no method-name fallback grants conformance.
-        if (source.EntryCall is not { } call || ((MemberAccessKoto)call.Method).Right is not IdentifierNameKoto name || name.IdentifierName != method)
-        {
-            var member = new MemberAccessKoto(source, source.Iterable, new IdentifierNameKoto(source, method));
-            source.EntryCall = call = new InvocationKoto(source, member, []);
-        }
-        else
-        {
-            this.ResetSynthetic(call);
-            this.ResetSynthetic(call.Method);
-            this.ResetSynthetic(((MemberAccessKoto)call.Method).Right);
-        }
-
         this.projectionUses.Add((source, subject, entry));
-        if (this.BindSynthesizedCall(source, call, scope) is not { } iterator)
+        if ((library ? this.BindEntryRequirement(source, scope, subject, entry) : this.BindEntryMember(source, scope, method)) is not { } iterator)
         {
             return false;
         }
@@ -257,6 +259,33 @@ public sealed partial class Binding
         item = option.Components[0];
         this.userIterations.Add((source, subject, iterator, entry));
         return true;
+    }
+
+    // SPEC 14.6.2, 22.1: a built-in Type's entry conformance (a witness-table row) adds no member, so its entry is the requirement call at
+    // the Subject, selected and instantiated as an operator's: the row's witness at a closed Self, the requirement at an abstract one.
+    private BoundType? BindEntryRequirement(ForKoto source, BindingScope scope, BoundType subject, BindingSymbol entry)
+    {
+        var call = source.EntryCall = this.BindSelectedRequirement(source, source.EntryCall, [source.Iterable], subject, entry, entry.Contract!.OwnRequirement()!, scope);
+        return call.BindingFailure == BindingFailure.None && call.BoundCall is { } plan ? plan.ReturnType : null;
+    }
+
+    // SPEC 14.6.2: only the selected entry conformance authorizes enumeration. A declared or abstract entry is the ordinary member call,
+    // which keeps receiver acquisition, substitutions and Origins; no method-name fallback grants conformance (ValidateIterationWitnesses).
+    private BoundType? BindEntryMember(ForKoto source, BindingScope scope, string method)
+    {
+        if (source.EntryCall is not { Method: MemberAccessKoto { Right: IdentifierNameKoto name } } call || name.IdentifierName != method)
+        {
+            var member = new MemberAccessKoto(source, source.Iterable, new IdentifierNameKoto(source, method));
+            source.EntryCall = call = new InvocationKoto(source, member, []);
+        }
+        else
+        {
+            this.ResetSynthetic(call);
+            this.ResetSynthetic(call.Method);
+            this.ResetSynthetic(name);
+        }
+
+        return this.BindSynthesizedCall(source, call, scope);
     }
 
     // SPEC 14.6.2: only the selected entry conformance authorizes enumeration. The entry and step are ordinary member calls,
@@ -296,7 +325,7 @@ public sealed partial class Binding
     {
         if (target.Declaration is FunctionKoto { IsRequirement: true })
         {
-            return target.Scope.Owner is ContractKoto owner && RefinesDeclaration(contract, owner);
+            return target.Scope.Owner is ContractKoto { BoundSymbol: { } owner } && IsRefinement(contract, owner);
         }
 
         if (WitnessGroup(self, contract.LibraryDeclaration) is { } group)
@@ -324,7 +353,7 @@ public sealed partial class Binding
                 for (var w = 0; w < path.WitnessStorage.Count; w++)
                 {
                     var witness = path.WitnessStorage[w];
-                    if (ReferenceEquals(witness.Implementation, target) && witness.Requirement.Scope.Owner is ContractKoto declaration && RefinesDeclaration(contract, declaration))
+                    if (ReferenceEquals(witness.Implementation, target) && witness.Requirement.Scope.Owner is ContractKoto { BoundSymbol: { } declaration } && IsRefinement(contract, declaration))
                     {
                         return true;
                     }
@@ -375,7 +404,7 @@ public sealed partial class Binding
         Complete(some, option);
         Complete(plan.Match.Arms[1].Pattern, option);
         var end = source.IsTupleBinding ? source.Bindings.Count + 2 : 2;
-        match.PositionStorage.Add(new(some, option, BoundPatternKind.Case, -1, -1, end, Case: AdtDef.Case(option, 0), OwnedPart: true));
+        match.PositionStorage.Add(new(some, option, BoundPatternKind.Case, -1, -1, end, Case: AdtDef.Case(option, this.Library.OptionSome), OwnedPart: true));
         return match;
     }
 
@@ -391,7 +420,7 @@ public sealed partial class Binding
 
         var plan = source.Iteration!;
         var some = match.PositionStorage[0];
-        var none = AdtDef.Case(some.MatchedType, 1);
+        var none = AdtDef.Case(some.MatchedType, this.Library.OptionNone);
         match.PositionStorage.Add(new(plan.Match.Arms[1].Pattern, some.MatchedType, BoundPatternKind.Case, -1, -1, some.End + 1, Case: none));
         match.ArmStorage.Add(new(plan.Match.Arms[0], 0));
         match.ArmStorage.Add(new(plan.Match.Arms[1], some.End));

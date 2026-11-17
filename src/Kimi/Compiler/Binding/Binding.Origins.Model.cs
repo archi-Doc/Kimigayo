@@ -399,9 +399,17 @@ internal readonly struct CallableInstance
 
     internal ComparisonPremises? Outer => this.outer;
 
+    // SPEC 8.8.2: the scope the comparison is judged in when no syntax gives it, a conformance scope of D, P and the requirement's
+    // premises; null: the scope of the use it is made at (Binding.RelationScope).
+    internal BindingScope? Scope { get; init; }
+
     // The enclosing premises of a comparison nested in this one: this comparison's required signature before its own enclosing ones.
     // A signature that carries no Origin has no well-formedness, so it adds no node.
     internal ComparisonPremises? Enclosing => this.expected is { CarriesOrigin: true } required ? new(required, this.outer) : this.outer;
+
+    // The comparison with its sides exchanged, nested in the same comparisons and judged in the same scope: the second half of an
+    // invariant position's two-way relation (SPEC 3.8, 15.3.5; RelationWalk.Fits).
+    internal CallableInstance Exchanged => new(this.expected, this.expectedBinder, this.actual, this.actualBinder, this.outer) { Scope = this.Scope };
 
     // A direct input whose outer Origin the implementation binds at that input's own position.
     internal bool IsQuantifiedInput(BoundType input, int position)
@@ -518,7 +526,7 @@ internal readonly record struct TypeBindingContext(TypePosition Position, Koto O
 // - Prohibitions: no read member writes or decides; no second copy of a state member; `Forming` outside the formation's files.
 public sealed partial class Binding
 {
-    private sealed class OriginDeclaration(Koto owner)
+    internal sealed class OriginDeclaration(Koto owner)
     {
         private readonly Dictionary<string, TypeSemanticsKoto> sets = new(StringComparer.Ordinal);
         private readonly Dictionary<BoundOrigin, BoundOrigin> replacements = new(ReferenceEqualityComparer.Instance);
@@ -638,7 +646,7 @@ public sealed partial class Binding
         }
     }
 
-    private readonly record struct PendingOriginSlot(Koto Use, BindingScope Scope, TypeBindingContext Context, LoanRequirement Requirement, int Slot, BoundOrigin Origin, BindingSymbol? BorrowCondition);
+    internal readonly record struct PendingOriginSlot(Koto Use, BindingScope Scope, TypeBindingContext Context, LoanRequirement Requirement, int Slot, BoundOrigin Origin, BindingSymbol? BorrowCondition);
 
-    private readonly record struct OriginRelation(BoundOrigin Longer, BoundOrigin Shorter, bool Equality, OriginRelationKoto Syntax);
+    internal readonly record struct OriginRelation(BoundOrigin Longer, BoundOrigin Shorter, bool Equality, OriginRelationKoto Syntax);
 }

@@ -5,11 +5,12 @@ namespace Kimi.Compiler.Mir;
 // Calls (plan 5.4; A3 E14; DECISIONS R5-M38, R5-M71, R5-M166).
 // - Responsibility: a Call's operand range and its callee by kind (Call): a Fn, Requirement or Virtual callee's function (a Requirement
 //   callee's comparison mode, Compares), a Value callee's TypeToken constant, an intrinsic's row (defined, the library declaration of the
-//   compiler function it serves, its arity, no target when it diverges, staticEnsure's static slot by Ensures, MirValidator.Statics' Slot,
-//   testRecordValue's recorded value a Scalar by Records, an owning interpolation's step's constants by Constants); and its destination:
+//   compiler function it serves (none for $abort, TyCtxt.Abort), its arity, no target when it diverges, staticEnsure's static slot by
+//   Ensures, MirValidator.Statics' Slot, testRecordValue's recorded value a Scalar by Records); and its destination:
 //   a diverging Call's, which MirUses does not report, a Place the body names (MirValidator.Tables' Names) with its write bit for G131,
 //   no Never value written by a returning Call; a constant record only as an input of a Fn call that keeps nothing of it
-//   (ConstantRecords); a Places Call's Fn callee and whole-Temp Moves (Placed; PLAN G442).
+//   (ConstantRecords), and nothing else as Utf8Writer.deferLiteral's text (Defers); a Places Call's Fn callee, whole-Temp Moves and
+//   construction borrow, no value the construction's temp (Placed, which MirValidator.Blocks' Terminator calls with the block; PLAN G442).
 // - Inputs: a Call terminator; an intrinsic's arity from its MirDescriptors row. Outputs: OperandRange, Callee, UnknownKind, Arity,
 //   StaticSlot, Type, NeverWrite, Operation, Place and Projection findings; a callee with a signature goes to MirValidator.Signatures
 //   and the Call's inputs to MirValidator.Inputs (G136).
@@ -19,30 +20,8 @@ namespace Kimi.Compiler.Mir;
 //   tier's TypeOf and SPEC 3.1's one Scalar predicate (ScalarTypes.Supports, which the builder's records read too).
 internal sealed partial class MirValidator
 {
-    // R3-10: the constants an estimate carries, its literal bytes and its values' Types (FormatBuffer's from operand 0); a FormatSegment's,
-    // after its adapter, its position's literal text and the later literal bytes and values' Types (MirBuilder.Format's Estimate and Text).
-    private static readonly MirConstKind[] EstimateConstants = [MirConstKind.Integer, MirConstKind.TypeToken];
-    private static readonly MirConstKind[] SegmentConstants = [MirConstKind.String, MirConstKind.Integer, MirConstKind.TypeToken];
-
     // A whole local's index, -1 for another Place.
     private static int Whole(MirPlace place, int locals) => place is { Projection: 0, Root: >= 0 and var root } && root < locals ? root : -1;
-
-    // An owning interpolation's step's first constant operand and the kinds of its constants (above); none for another intrinsic.
-    private static (int First, MirConstKind[] Kinds) Steps(IntrinsicId id) => id switch
-    {
-        IntrinsicId.FormatBuffer => (0, EstimateConstants),
-        IntrinsicId.FormatSegment => (1, SegmentConstants),
-        _ => (0, []),
-    };
-
-    // Whether a step's constant is of its position's kind: its values' Types a token of their Tuple, read element by element; its text a
-    // string.
-    private static bool Fits(in MirConst constant, MirConstKind kind) => constant.Kind == kind && kind switch
-    {
-        MirConstKind.TypeToken => constant.Type.Kind == BoundTypeKind.Tuple,
-        MirConstKind.String => constant.Value is string,
-        _ => true,
-    };
 
     private partial struct Checker
     {
@@ -55,24 +34,6 @@ internal sealed partial class MirValidator
         // never sees, or the Never value, which fits any operand (SPEC 3.8) and which the builder never records.
         private readonly bool Records(in MirTerminator call)
             => this.TypeOf(body.Operands[call.Start + 1]) is not { } type || ScalarTypes.Supports(type);
-
-        // R3-10 (PLAN G157 (37)): an owning interpolation's step's constants (Steps), which code generation
-        // reads without a check, each a constant of its position's kind (Fits); a constant id out of range is the walk's Const finding. True
-        // for another intrinsic; a step's operands are its row's (the Arity row before it).
-        private readonly bool Constants(in MirTerminator call)
-        {
-            var (first, kinds) = Steps((IntrinsicId)call.Callee.Arg);
-            for (var i = 0; i < kinds.Length; i++)
-            {
-                var operand = body.Operands[call.Start + first + i];
-                if (operand.Kind != MirOperandKind.Const || ((uint)operand.Arg < (uint)body.Consts.Length && !Fits(body.Consts[operand.Arg], kinds[i])))
-                {
-                    return false;
-                }
-            }
-
-            return true;
-        }
 
         // DECISIONS R5-M166: a Requirement callee's comparison mode names Equatable's or Comparable's own requirement (Reversed only
         // Comparable's) through its own Contract (Contract null) on a Self whose comparison under source operators TyCtxt.Comparison composes
@@ -105,6 +66,14 @@ internal sealed partial class MirValidator
                 }
             }
         }
+
+        // SPEC 3.1.2, 22.10.5 (DECISIONS R8-M7; R8-W2 c1): Utf8Writer.deferLiteral keeps its text's bytes as static storage, the obligation its
+        // contract leaves to its caller, so its text (operand 1, after the adapter) is a constant record at every call; a constant id out
+        // of range is the walk's Const finding and another operand count the signature's Arity finding. True for another callee.
+        private readonly bool Defers(in MirTerminator call)
+            => call.Callee is not { Kind: MirCalleeKind.Fn, Symbol.LibraryDeclaration: KimiDeclarationId.WriterDeferLiteral } ||
+                call.Count != 2 || (body.Operands[call.Start + 1] is { Kind: MirOperandKind.Const } text &&
+                ((uint)text.Arg >= (uint)body.Consts.Length || body.Consts[text.Arg].IsRecord));
 
         // A Fn call of a declared function, not a default template's (Compared's is one), and the two facts a Loan would otherwise carry: the
         // parameter is not `during static`, an Origin bound that TyCtxt.Retains does not judge, and the call keeps nothing of the input, by that
@@ -141,8 +110,8 @@ internal sealed partial class MirValidator
                     this.Report(MirViolation.UnknownKind);
                     break;
                 case MirCalleeKind.Intrinsic when callee.Symbol is { } declaration &&
-                    (declaration.LibraryDeclaration is null || IntrinsicDisposition.Of(declaration.CompilerFunction).Id != (IntrinsicId)callee.Arg):
-                    this.Report(MirViolation.Callee); // A3 E14: its function is the library declaration of a compiler function it serves.
+                    (ReferenceEquals(declaration, types.Abort) || declaration.Definition.Id != (IntrinsicId)callee.Arg):
+                    this.Report(MirViolation.Callee); // A3 E14: its function is the library declaration of a compiler function it serves, none for $abort (SPEC 17.4).
                     break;
                 case MirCalleeKind.Intrinsic when row.Arity >= 0 && row.Arity != call.Count:
                     this.Report(MirViolation.Arity);
@@ -154,18 +123,17 @@ internal sealed partial class MirValidator
                     this.Report(MirViolation.StaticSlot); // DECISIONS R5-M71.
                     break;
                 case MirCalleeKind.Intrinsic when (IntrinsicId)callee.Arg == IntrinsicId.TestRecordValue && !this.Records(call):
-                case MirCalleeKind.Intrinsic when !this.Constants(call):
                     this.Report(MirViolation.Type);
                     break;
             }
 
-            if (call.Places && !this.Placed(call))
-            {
-                this.Report(MirViolation.Operation); // PLAN G442: a construction's insertion transfers whole temps into it.
-            }
-
             this.Inputs(call);
             this.ConstantRecords(call);
+            if (!this.Defers(call))
+            {
+                this.Report(MirViolation.Operation);
+            }
+
             if (call.Target < 0)
             {
                 // The destination MirUses does not report, which A5 and code generation still read: a Place the body names, and G131's write.
@@ -184,24 +152,28 @@ internal sealed partial class MirValidator
         }
 
         // A Places Call (PLAN G442; the owner's O-97 (a)): a construction's insertion, a Fn callee each of whose operands is a Move of a
-        // whole Temp that the call transfers into the construction.
-        private readonly bool Placed(in MirTerminator call)
+        // whole Temp that the call transfers into the construction, the first the construction's exclusive borrow, which the Call's
+        // block forms (MirBody.Construction, which MirMoveData reads), and no other the construction or a temp holding it (MirMoveData
+        // carries each into it).
+        private readonly bool Placed(int block, in MirTerminator call)
         {
             if (call.Callee.Kind != MirCalleeKind.Fn)
             {
                 return false;
             }
 
-            foreach (ref readonly var operand in body.Operands.Slice(call.Start, call.Count))
+            var construction = body.Construction(block);
+            for (var i = 0; i < call.Count; i++)
             {
+                ref readonly var operand = ref body.Operands[call.Start + i];
                 if (operand.Kind != MirOperandKind.Move || Whole(operand.Place, body.Locals.Length) is not (>= 0 and var root) ||
-                    body.Locals[root].Kind != MirLocalKind.Temp)
+                    body.Locals[root].Kind != MirLocalKind.Temp || (i > 0 && root == construction?.Root))
                 {
                     return false;
                 }
             }
 
-            return true;
+            return construction is not null;
         }
     }
 }

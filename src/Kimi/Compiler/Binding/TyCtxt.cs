@@ -7,7 +7,8 @@
 // Interned identity is equality; values live with the compilation and survive warm rebinds. No instance or Item states a raw Origin on
 // a pair slot's argument: Intern binds each by PairBinding (SPEC 8.1.1; DECISIONS BU-34), but Unstated in kept parts, so there one SPEC
 // Type is two interned Types, a declaration's (`PS<raw/u8 during Unstated>`) and a parameter's (`PS<raw/u8>`) (DECISIONS BU-46).
-// Must not resolve source expressions or let consumers duplicate Type construction.
+// Must not resolve source expressions or let consumers duplicate Type construction: every Type but BoundType's statics is made and
+// numbered here (Intern, Parameter; the dense id, DECISIONS BU-220).
 
 using System.Runtime.CompilerServices;
 using Kimi.Compiler.Parsing;
@@ -21,6 +22,7 @@ namespace Kimi.Compiler;
 internal sealed partial class TyCtxt(Binding binding, KimiLibrary library)
 {
     private readonly Dictionary<int, List<BoundType>> types = new(KimiLibrarySize.KeyedCapacity(KimiLibrarySize.Stated.TypeKeys));
+    private int typeCount = BoundType.StaticCount; // DECISIONS BU-220: the last id this compilation gave a Type (Intern, Parameter).
 
     /// <summary>Gets the number of keys the interned Types take.</summary>
     internal int KeyCount => this.types.Count;
@@ -69,6 +71,9 @@ internal sealed partial class TyCtxt(Binding binding, KimiLibrary library)
     // SPEC 23.1: a Type as diagnostics spell it, which the MIR dump writes.
     internal static string Name(BoundType type) => Binding.DiagnosticTypeName(type);
 
+    // SPEC 23.1: a length as diagnostics spell it, which the MIR dump writes.
+    internal static string Name(BoundLength length) => Binding.DiagnosticLengthName(length);
+
     // SPEC 7.3, 6.3.2: a function's parameter Type at a slot as it declares it (an accessor's self and value included), or at -1 the Type
     // its call gives (a constructor's: its object), under a call's substitution; null past its parameters or where the substitution does
     // not instantiate it. The MIR validator checks calls and bodies by it.
@@ -88,6 +93,17 @@ internal sealed partial class TyCtxt(Binding binding, KimiLibrary library)
         return binding.CallableContractType(type, binding.ConstraintScope(definition.Declaration));
     }
 
+    // SPEC 15.6.4, 5.7 Calls, 8.2.3 (PLAN G823): a called function's parameter key: the root key of `input` (the slot's instantiated Type
+    // as the caller reads it) on the path of the Type the function's declaration writes at `slot` (Signature without the substitution), so
+    // that OwnLayers there, and at every key Select, Base, Leading and OwnLayers give past it, marks as Hidden each part whose declared
+    // counterpart, in the function's view (its identity classes at every part, Binding.TypeIdentity), is an abstract Type of the function's
+    // own declaration (a Type parameter, or a pair target or projection rooted at one). Shown: a part an identity premise gives a form
+    // (`S.Item is raw/u8` inside `HA<S>`), an enclosing Type's parameter, which the receiver's instance completes (DECISIONS BU-50); a Type
+    // the declaration and the input write with different constructors ends the path there, shown (named limit: a pair layer's owner case,
+    // `s/U` read as U itself). Must not decide what a hidden layer reaches (A5's).
+    internal static PlaceKey ParameterKey(BindingSymbol function, int slot, BoundType input)
+        => PlaceKey.Root(input) with { Signature = Signature(function, null, slot, out _) };
+
     // SPEC 8.14, 13.5.3: the operation an explicit adaptation from a complete Type to a complete Type is, Binding's one selection, by which
     // the MIR's case views resolve a case adaptation.
     internal static ConversionBinding Adaptation(BoundType source, BoundType target, bool shorthand)
@@ -97,10 +113,21 @@ internal sealed partial class TyCtxt(Binding binding, KimiLibrary library)
     // over its direct target, which the MIR's case views give every Type by.
     internal BoundType CaseType(BoundType type, ReadOnlySpan<PairCase> cases) => binding.CaseType(type, cases);
 
+    // A Type parameter's own Type, which no interning shares: a generic parameter's whole Type and a pair parameter's target
+    // projection (Binding.Indexing), a Contract's Self (Binding.ContractSelfType); each is made once and kept on its symbol.
+    internal BoundType Parameter(string name, BoundTypeKind kind, BindingSymbol symbol) => new(++this.typeCount, name, kind, symbol);
+
     // A Type by its parts, one instance per parts. `origin` is the layer's stated Origin, whose role the Semantics decides: a raw layer's raw
     // Origin (BoundType.RawOrigin; Pointer and Rebuild write it), any other layer's Origin (DECISIONS BU-24).
-    internal BoundType Intern(BoundTypeKind kind, BindingSymbol? symbol, SemanticsKind semantics, ReadOnlySpan<BoundType> components, long length = 0, BoundOrigin? origin = null, ReadOnlySpan<BoundOrigin> originArguments = default, BoundLength? lengthExpression = null, Subst? closureContext = null, ReadOnlySpan<BoundLength?> lengthArguments = default)
+    internal BoundType Intern(BoundTypeKind kind, BindingSymbol? symbol, SemanticsKind semantics, ReadOnlySpan<BoundType> components, long length = 0, BoundOrigin? origin = null, ReadOnlySpan<BoundOrigin> originArguments = default, BoundLength? lengthExpression = null, Subst? instanceContext = null, ReadOnlySpan<BoundLength?> lengthArguments = default, Koto? binder = null)
     {
+        // SPEC 8.10: a Function Type keeps its per-call binder only while it quantifies one of its direct inputs, so equal Types
+        // intern to one instance whichever path formed them.
+        if (binder is not null && !(kind == BoundTypeKind.Function && components.Length == 2 && QuantifiesInput(components[0], binder)))
+        {
+            binder = null;
+        }
+
         if (kind == BoundTypeKind.SemanticsAdaptation && components.Length > 0)
         {
             var same = true;
@@ -160,7 +187,8 @@ internal sealed partial class TyCtxt(Binding binding, KimiLibrary library)
 
         var hash = default(HashCode);
         hash.Add(kind);
-        hash.Add(closureContext is null ? 0 : RuntimeHelpers.GetHashCode(closureContext));
+        hash.Add(instanceContext is null ? 0 : RuntimeHelpers.GetHashCode(instanceContext));
+        hash.Add(binder is null ? 0 : RuntimeHelpers.GetHashCode(binder));
         hash.Add(symbol is null ? 0 : RuntimeHelpers.GetHashCode(symbol));
         hash.Add(semantics);
         hash.Add(length);
@@ -187,7 +215,7 @@ internal sealed partial class TyCtxt(Binding binding, KimiLibrary library)
             for (var i = 0; i < bucket.Count; i++)
             {
                 var type = bucket[i];
-                if (type.Kind != kind || type.Symbol != symbol || !ReferenceEquals(type.ClosureContext, closureContext) || type.Semantics != semantics || type.Length != length || !ReferenceEquals(type.LengthExpression, lengthExpression) || !lengthArguments.SequenceEqual(type.LengthArguments) || type.Components.Count != components.Length || !ReferenceEquals(type.Origin ?? type.RawOrigin, origin) || type.OriginArguments.Count != originArguments.Length)
+                if (type.Kind != kind || type.Symbol != symbol || !ReferenceEquals(type.InstanceContext, instanceContext) || !ReferenceEquals(type.Binder, binder) || type.Semantics != semantics || type.Length != length || !ReferenceEquals(type.LengthExpression, lengthExpression) || !lengthArguments.SequenceEqual(type.LengthArguments) || type.Components.Count != components.Length || !ReferenceEquals(type.Origin ?? type.RawOrigin, origin) || type.OriginArguments.Count != originArguments.Length)
                 {
                     continue;
                 }
@@ -214,9 +242,22 @@ internal sealed partial class TyCtxt(Binding binding, KimiLibrary library)
             this.types.Add(key, bucket = new(1));
         }
 
-        var created = new BoundType(symbol?.Name ?? kind.ToString(), kind, symbol, semantics, components.ToArray(), length, origin, originArguments.ToArray(), lengthExpression, lengthArguments.ToArray(), closureContext);
+        var created = new BoundType(++this.typeCount, symbol?.Name ?? kind.ToString(), kind, symbol, semantics, components.ToArray(), length, origin, originArguments.ToArray(), lengthExpression, lengthArguments.ToArray(), instanceContext, binder);
         bucket.Add(created);
         return created;
+
+        static bool QuantifiesInput(BoundType inputs, Koto binder)
+        {
+            for (var i = 0; i < inputs.Components.Count; i++)
+            {
+                if (inputs.Components[i].Origin is { Kind: OriginKind.Input, Occurrence: null } origin && ReferenceEquals(origin.Binder, binder) && origin.Slot == i)
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
     }
 
     // SPEC 3.4: the reference of a Semantics kind (ref, uniq, objref, objuniq) to a referent; a null Origin is the ownership analysis's to infer.
@@ -246,17 +287,28 @@ internal sealed partial class TyCtxt(Binding binding, KimiLibrary library)
             origin ?? type.RawOrigin,
             originArguments,
             type.LengthExpression,
-            type.ClosureContext,
-            type.LengthArguments);
+            type.InstanceContext,
+            type.LengthArguments,
+            type.Binder);
 
     internal BoundType Tuple(ReadOnlySpan<BoundType> elements) => this.Intern(BoundTypeKind.Tuple, null, SemanticsKind.Owner, elements);
 
     // SPEC 22.10.5 and rule L (FormattingTypes.StackLimit): the interpolation-bound term of a direct interpolation with these value Types
-    // (a Tuple) and literal bytes, its stack region's size: the constant FormattingTypes.StackBound decides, else the term over the erased
-    // value Types (so Erase keeps it, keyed by them), which a substitution folds again (Binding.SubstituteLength). R8-W2 a2's builder forms it.
-    internal BoundLength InterpolationBound(BoundType values, long literal)
-        => FormattingTypes.StackBound(values, literal) is var bound and >= 0 ? binding.InternLength(LengthOperation.Constant, bound)
-            : binding.InternLength(LengthOperation.InterpolationBound, literal, values: this.Erase(values));
+    // (a Tuple) and literal bytes, its stack region's size: the constant FormattingTypes.StackBound decides, else the term (Term), which a
+    // substitution folds again (Refold). R8-W2 a2's builder forms it.
+    internal BoundLength InterpolationBound(BoundType values, long literal) => this.Term(LengthOperation.InterpolationBound, values, literal);
+
+    // SPEC 22.10.5 (R8-W2 c2t): the interpolation-hint term of an owning interpolation's write position with the later value Types (a
+    // Tuple) and the later literal bytes, the bytes its adapter's later writes may still reserve: the constant FormattingTypes.HintBound
+    // decides, else the term (Term), which a substitution folds again (Refold). R8-W2 c2b's builder forms it; until then nothing does.
+    internal BoundLength InterpolationHint(BoundType values, long literal) => this.Term(LengthOperation.InterpolationHint, values, literal);
+
+    // An interpolation term over its value Types' image, as a substitution or an instance makes them (Binding.SubstituteLength,
+    // Binding.InstanceLength): the term of its own operation and literal bytes, folded again.
+    internal BoundLength Refold(BoundLength term, BoundType values) => this.Term(term.Operation, values, term.Value);
+
+    // SPEC 4.4.1: a length slot's term, the value its Name reads (MirConstKind.Length), as Binding binds the slot in a length.
+    internal BoundLength SlotLength(BindingSymbol slot) => binding.InternLength(LengthOperation.Parameter, parameter: slot);
 
     // R4-M51: every view's memos, which hold across passes with no edit (retentions, instance classes, requirement targets, Copy facts),
     // discarded together at an edit (Binding.Invalidate; DECISIONS R5-M61, BU-88).
@@ -316,5 +368,18 @@ internal sealed partial class TyCtxt(Binding binding, KimiLibrary library)
         }
 
         return bound.IsEmpty ? components : bound;
+    }
+
+    // The one fold and interning of an interpolation term: the constant its operation's FormattingTypes rule gives, else the term over the
+    // erased value Types (so Erase keeps it, keyed by them). Only the two term rows carry value Types.
+    private BoundLength Term(LengthOperation operation, BoundType values, long literal)
+    {
+        var folded = operation switch
+        {
+            LengthOperation.InterpolationBound => FormattingTypes.StackBound(values, literal),
+            LengthOperation.InterpolationHint => FormattingTypes.HintBound(values, literal),
+            _ => throw new ArgumentOutOfRangeException(nameof(operation)),
+        };
+        return folded >= 0 ? binding.InternLength(LengthOperation.Constant, folded) : binding.InternLength(operation, literal, values: this.Erase(values));
     }
 }

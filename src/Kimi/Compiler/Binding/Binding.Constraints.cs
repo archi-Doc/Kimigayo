@@ -8,7 +8,7 @@ public sealed partial class Binding
 {
     private readonly Dictionary<ConstraintKey, BoundConstraint> constraints = new(KimiLibrarySize.KeyedCapacity(KimiLibrarySize.Stated.Constraints));
 
-    private readonly Dictionary<IsKoto, bool> deferredConstraints = new(ReferenceEqualityComparer.Instance);
+    private readonly DeferredConstraintRows deferredConstraints;
     private ConstraintSyntaxVisitor? constraintSyntaxVisitor;
 
     /// <summary>Queries a bound proposition using the lexical input constraints at a syntax node.</summary>
@@ -176,7 +176,7 @@ public sealed partial class Binding
 
         if (proposition.Kind == ConstraintKind.TypeIdentity)
         {
-            if (this.SameCompleteType(proposition.Subject!, proposition.RequiredType!))
+            if (this.IdentityProven(proposition.Subject!, proposition.RequiredType!, scope))
             {
                 return ConstraintProof.Proven;
             }
@@ -215,7 +215,12 @@ public sealed partial class Binding
 
             if (!ReferenceTypes.StorageMatches(proposition.RequiredType, signature) || HasOpenOrigin(proposition.RequiredType!))
             {
-                return ConstraintProof.Refuted;
+                // SPEC 8.3.2, 10.7: only a known difference from the required signature, as compatibility compares it (a Never result
+                // fits any; Origins by subtyping, 15.6.1, never a difference, so both sides with every Origin static), refutes; a
+                // stand-in decides an open region's (PerCallCallables).
+                return ReferenceTypes.StorageMatches(proposition.RequiredType, signature) ||
+                    this.IdentityRefuted(this.types.Erase(this.CompatibleSignature(signature, proposition.RequiredType!)), this.types.Erase(signature), scope, null)
+                    ? ConstraintProof.Refuted : ConstraintProof.Unknown;
             }
 
             this.ScopeReads.Unknown ??= new(subject, proposition.RequiredType!, failure) { Epoch = this.frameEpoch };
@@ -263,7 +268,6 @@ public sealed partial class Binding
     private void BindConstraints()
     {
         this.ResetSourceStates();
-        this.deferredConstraints.Clear();
         this.bindingConstraintTypes = true;
         // Collect ordinary facts, then complete outer Type/Contract constraints, then P.
         // Dependent function constraints may use P only through their declaration scope.
@@ -387,49 +391,41 @@ public sealed partial class Binding
         return false;
     }
 
-    // A later run judges the source environments only: the Kimi library's environments are fixed and valid, and the first run
-    // already judged them.
-    private bool ValidateConstraintEnvironments(BindingMode mode, bool sourcesOnly = false)
+    // SPEC 8.2.1 (PLAN G567-a; the owner's O-249 Q2 (a)): whether the path of a subject that bound to no projection writes Type arguments
+    // (`W<Z>.Inner`, `A.B<i32>.C`, `::W<Z>.Inner`, `(Outer<Z>{o}).Cell`), read from its syntax; no fact is published for it. Such a path
+    // is F.5's ContainerPath in either tree: Names, Type arguments, `::`, `. Name` and `.(C). Name` suffixes and a BoundContainerQualifier's
+    // group, each below its transparent wrappers (UnwrapTransparentType, that rule's owner, as SubjectBase reads them). A Core head (F.5)
+    // is the base of a projection only, so it or any other node here is a broken contract: the clause's InternalInvariant_Kd, its one
+    // record, and no subject, never "writes none".
+    private bool WritesTypeArguments(Koto? syntax, IsKoto clause)
     {
-        var changed = false;
-        foreach (var scope in this.scopes.Values)
+        while (true)
         {
-            if (scope.Constraints is not { } environment || (sourcesOnly && this.IsLibraryDeclaration(scope.Owner)))
+            switch (UnwrapTransparentType(syntax))
             {
-                continue;
-            }
+                case GenericsKoto:
+                    return true;
+                case IdentifierNameKoto or TypeSemanticsKoto { Type: null }:
+                    return false;
+                case SyntaxFormKoto { Akind: KotoKind.RootName } rooted:
+                    syntax = rooted.Operands[0];
+                    break;
+                case ParenthesizedTypeKoto group:
+                    syntax = group.Type;
+                    break;
+                case MemberAccessKoto path:
+                    if (this.WritesTypeArguments(path.Right, clause))
+                    {
+                        return true;
+                    }
 
-            if (!environment.Invalid && !this.ValidateArithmeticDirections(scope, environment))
-            {
-                environment.Fail(scope.Owner); // ValidateArithmeticDirections failed the owner.
-                changed = true;
-                continue;
-            }
-
-            foreach (var fact in environment.Facts)
-            {
-                // The environment's judgment is its owner's, the node its record names: the proof runs in the owner's frame.
-                this.failedCause = null;
-                var frame = this.BeginConsultation(scope.Owner);
-                var proof = this.ProveConstraint(fact, scope);
-                if (proof != ConstraintProof.Error)
-                {
-                    this.DropConsultation(frame);
-                    continue;
-                }
-
-                var previous = scope.Owner.BindingState;
-                changed |= !environment.Invalid;
-                environment.Fail(scope.Owner);
-                // Other input facts can have independent contradictions. Record a
-                // sole missing-name cause only when this is the entire environment.
-                this.RequireConstraintInFrame(scope.Owner, proof, mode, frame, environment.Facts.Count == 1 ? this.FindConformanceDiagnosticCause(scope.Owner, fact) : null);
-                changed |= previous != scope.Owner.BindingState;
-                break;
+                    syntax = path.Left;
+                    break;
+                default:
+                    this.Fail(clause, BindingFailure.Internal);
+                    return true;
             }
         }
-
-        return changed;
     }
 
     private void BindConstraint(IsKoto clause, BindingScope scope)
@@ -511,8 +507,13 @@ public sealed partial class Binding
         input |= scope.Owner is StructKoto or EnumKoto && !IsSelfConstraint(clause) && this.DependentConstraint(requirement);
         input |= contractSelfClause;
         var closedSubject = closedScope && subject is not null && !this.DependentType(subject, unresolvedProjection: false);
+        // SPEC 8.2.1 (PLAN G567-a; the owner's O-249 Q2 (a)): a subject whose path writes Type arguments is one only as an associated-Type
+        // projection (`D<Z>.Item`), never as a nested Type reached through them (`W<Z>.Inner`). It reads the bound subject's kind, a
+        // projection whose value is known included (`D<i32>.Item`): a later normalization of subject projections keeps reading "is a
+        // projection", not the normalized Type.
         var validSubject = subject is not null && (RootedInput(input, root?.Symbol ?? symbol) || closedSubject ||
-            (IsSelfConstraint(clause) && scope.Owner is DeclarationContainerKoto and not (GroupKoto or ContractKoto)));
+            (IsSelfConstraint(clause) && scope.Owner is DeclarationContainerKoto and not (GroupKoto or ContractKoto))) &&
+            (subject.Kind == BoundTypeKind.AssociatedProjection || !this.WritesTypeArguments(clause.Left, clause));
         if (!validSubject && !unresolvedSubject)
         {
             requirement = this.InternConstraint(new(ConstraintKind.Error));
@@ -616,8 +617,33 @@ public sealed partial class Binding
             return ConstraintProof.Unknown;
         }
 
+        // SPEC 8.2.3, 8.3.2 (N9): the proposition's result for the complete constructed Type its subject is identical with is evidence of
+        // the other polarity too. It only detects the contradiction and never joins `positive` or `negative`: as evidence a member's
+        // Proven accepted an invalid program (r2-e3), and that direction is R7-C2c2 c2-4's.
+        if (structural != ConstraintProof.Error && positive != negative && HasTypeIdentity(scope) &&
+            this.MemberVerdict(normalized, scope) == (positive ? ConstraintProof.Refuted : ConstraintProof.Proven))
+        {
+            return ConstraintProof.Error;
+        }
+
         return structural == ConstraintProof.Error || (positive && negative) ? ConstraintProof.Error : positive ? ConstraintProof.Proven : negative ? ConstraintProof.Refuted : ConstraintProof.Unknown;
     }
+
+    // SPEC 8.2.3 ("a Contract fact about a Type is evidence for an identical one"), 8.3.2's rows: the proposition's result with each
+    // atom's subject replaced by the complete constructed member of its identity class (TypeIdentity's CompleteMember), judged by the
+    // atom judge and combined by the rows for `and`, `or` and `not`; an atom whose subject has no such member is Unknown. Premises are
+    // not read for it: a constructed member keys to itself (R7-C2c2 c2-1), so the atom judge answers by the closed world. ProveProposition
+    // is its one reader.
+    private ConstraintProof MemberVerdict(BoundConstraint proposition, BindingScope scope)
+        => proposition.Kind switch
+        {
+            ConstraintKind.Not => NegateProof(this.MemberVerdict(proposition.Left!, scope)),
+            ConstraintKind.And => CombineProof(this.MemberVerdict(proposition.Left!, scope), this.MemberVerdict(proposition.Right!, scope), true),
+            ConstraintKind.Or => CombineProof(this.MemberVerdict(proposition.Left!, scope), this.MemberVerdict(proposition.Right!, scope), false),
+            _ => proposition.Subject is { } subject && this.ClassesOf(scope, out _)?.CompleteMember(subject) is { } member
+                ? this.JudgeConstraintAtom(this.InternConstraint(new(proposition.Kind, member, proposition.RequiredType, proposition.Contract, proposition.Mask)), scope)
+                : ConstraintProof.Unknown,
+        };
 
     // W1 (ContractSolver's Completion): Complete with nothing to normalize, else the meet of the parts'; a Callable fact's required
     // Type (CallableContractType) is Provisional.
@@ -727,6 +753,22 @@ public sealed partial class Binding
             this.Missing |= node.BindingState == BindingState.Unresolved && node.BindingFailure is BindingFailure.MissingType or BindingFailure.MissingName;
             this.Invalid |= node.BindingState == BindingState.Invalid;
             node.VisitChildren(this);
+        }
+    }
+
+    /// <summary>The `deferredConstraints` family's one accessor (DECISIONS BU-220): a pass family, whether a clause waits for the
+    /// conformances (DeferredConstraint), kept in its module's NodeColumns at the clause's SyntaxId as a `bool?` (null, all-zero, is no
+    /// decision). It is decided once per Bind run: every read and write is BindConstraints', which each run's ResetPass precedes, so the
+    /// pass counter empties it where BindConstraints cleared it. Its members keep the names its readers use.</summary>
+    private readonly struct DeferredConstraintRows(Binding binding)
+    {
+        internal void Add(IsKoto clause, bool deferred) => HirTables.Of(clause).Families.DeferredConstraints.Ref(clause.SyntaxId, binding) = deferred;
+
+        internal bool TryGetValue(IsKoto clause, out bool deferred)
+        {
+            var row = clause.SyntaxOwner is { } table ? table.Hir.Families.DeferredConstraints.Get(clause.SyntaxId, binding) : null;
+            deferred = row ?? false;
+            return row.HasValue;
         }
     }
 }

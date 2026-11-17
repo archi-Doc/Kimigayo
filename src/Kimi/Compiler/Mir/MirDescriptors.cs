@@ -176,7 +176,7 @@ internal static class MirDescriptors
         IntrinsicId.RawSlice => Intrinsic(MirEffect.None, 3) with { Retained = 2 }, // The storage, the length and the backing (DECISIONS R4-M40).
         IntrinsicId.MoveBytes => Intrinsic(MirEffect.None, 3),
         IntrinsicId.Stride => Intrinsic(MirEffect.None, 0),
-        IntrinsicId.ErasedWriter => Intrinsic(MirEffect.None, 1),
+        IntrinsicId.ReserveDispatch => Intrinsic(MirEffect.None, 0), // The code address of its Type argument's reserve witness.
         IntrinsicId.Clone => Intrinsic(MirEffect.Abort, 1), // A count at its maximum (KIMI_E_REF_COUNT).
         IntrinsicId.TypeTest => Intrinsic(MirEffect.None, 2), // The payload's shared view and the target Type's token (SPEC 13.6.4).
         IntrinsicId.DestroyValues => Intrinsic(MirEffect.None, 2), // The storage and the count; A4 reads its destruction (MirEffects).
@@ -195,11 +195,6 @@ internal static class MirDescriptors
         IntrinsicId.TestObserve => Intrinsic(MirEffect.Environment, 2), // The condition and the site's id (plan 5.6.7).
         IntrinsicId.TestTempDirectory => Intrinsic(MirEffect.Environment | MirEffect.Allocation, 0), // The path's copy on the heap.
         IntrinsicId.StaticEnsure => Intrinsic(MirEffect.StaticInit | MirEffect.Abort, 1), // The static's slot (plan 5.6.6).
-        IntrinsicId.FormatBuffer => Intrinsic(MirEffect.Allocation | MirEffect.Abort, 2), // The literal bytes and the values' Types' token.
-        // The adapter and the position's literal text ("" at a value's), then the later literal bytes and values' Types' token; the text's write
-        // may reserve and Abort, as FormatFinish's flush (DECISIONS R5-M133).
-        IntrinsicId.FormatSegment => Intrinsic(MirEffect.Allocation | MirEffect.Abort, 4),
-        IntrinsicId.FormatFinish => Intrinsic(MirEffect.Allocation | MirEffect.Abort, 1), // The adapter.
         _ => default,
     };
 

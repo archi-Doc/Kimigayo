@@ -48,8 +48,8 @@ internal sealed partial class MirBuilder
             case HirOp.Literal:
                 this.Use(destination, this.Literal(node), node);
                 break;
-            case HirOp.Name when HirTables.Symbol(node)?.Kind == BindingSymbolKind.Function && HirTables.TypeOf(node) is { } item:
-                this.Use(destination, MirOperand.Const(this.body.Const(new(MirConstKind.FnItem, item))), node); // SPEC 7.7.4: a constant of its Item Type.
+            case HirOp.Name when this.NamedConstant(node) is { } constant:
+                this.Use(destination, constant, node);
                 break;
             case HirOp.Group: // Its operand, which the group acquires as the operand's Adjust says.
                 this.Assign(destination, Child(node), input);
@@ -304,7 +304,10 @@ internal sealed partial class MirBuilder
 
     // SPEC 13.7.1: the value secured first, then the target located, its old value dropped where its Type may need it, and the value placed;
     // a target that is not a Place is a Property's, designated through its parentheses, whose setter (its last call, after any getter)
-    // takes the value, evaluated first.
+    // takes the value, evaluated first. SPEC 14.10.3 (DECISIONS R4-M62): only a value is delivered, so the paths on which the right
+    // side has no value (AssignApart) go around the old value's Drop and the Use: they locate the target and go on after the Use, and a
+    // right side with no value path (a Never form, or a form no value reaches the join of) only locates it. The value's temp is
+    // published as the assignment's value in transit (MirLocalRole.Assigned), which every path into the Use placed.
     private void Replace(MirPlace destination, BinaryKoto assignment)
     {
         if (HirTables.PlaceOf(assignment.Left).Kind is HirPlaceKind.Unset or HirPlaceKind.Value)
@@ -324,10 +327,27 @@ internal sealed partial class MirBuilder
 
         // Of the Type it is placed at, or the Never value of a right side of Type Never, which is not placed (Overwrite).
         var source = ReferenceEquals(TypeOf(assignment.Right), BoundType.Never) ? assignment.Right : assignment.Left;
-        var value = this.Hold(TypeOf(source), source);
-        this.Assign(value, assignment.Right);
+        var value = this.Hold(TypeOf(source), source, MirLocalRole.Assigned);
+        var rest = this.AssignApart(value, assignment.Right);
         this.Made(value);
-        this.Overwrite(this.Place(assignment.Left), value, assignment);
+        var target = this.Place(assignment.Left);
+        if (!rest.Valueless)
+        {
+            this.Overwrite(target, value, assignment);
+        }
+
+        if (rest.Block >= 0)
+        {
+            // SPEC 13.7.1, 14.10.3: a path on which the right side has no value locates the target and neither destroys nor places.
+            var info = this.Info(assignment) with { StatementStart = false };
+            var next = this.body.AddBlock();
+            this.body.Terminate(this.current, MirTerminator.Goto(next, info));
+            this.current = rest.Block;
+            this.Place(assignment.Left);
+            this.body.Terminate(this.current, MirTerminator.Unreachable(info, next));
+            this.current = next;
+        }
+
         this.Unit(destination, assignment);
     }
 
@@ -342,6 +362,20 @@ internal sealed partial class MirBuilder
 
         this.Use(target, MirOperand.Move(value), node);
     }
+
+    // The constant a Name of a constant is, by its symbol: a function's, of its Item Type (SPEC 7.7.4), and a length slot's, its value
+    // (SPEC 4.4.1, LengthOperand); null for another Name.
+    private MirOperand? NamedConstant(Koto node) => HirTables.Symbol(node) switch
+    {
+        { Kind: BindingSymbolKind.Function } when HirTables.TypeOf(node) is { } item => MirOperand.Const(this.body.Const(new(MirConstKind.FnItem, item))),
+        { Kind: BindingSymbolKind.LengthParameter } slot => this.LengthOperand(compilation.Types.SlotLength(slot)),
+        _ => null,
+    };
+
+    // SPEC 4.4.1, 4.2: a length's value, the one canonical form of each: a closed length its Integer, any other a Length constant, whose
+    // instance decides it (TyCtxt.InstanceLength).
+    private MirOperand LengthOperand(BoundLength length)
+        => MirOperand.Const(this.body.Const(length.IsConstant ? new(MirConstKind.Integer, BoundType.ISize, length.Value) : new(MirConstKind.Length, BoundType.ISize, Value: length)));
 
     // SPEC 3.1: a published Literal's constant, a number's being the value Binding fitted (its plan row's Folded); a literal the lexer
     // could not read is published Error (Binding.Rejected). A published Literal without its constant is a broken contract, the one check
@@ -389,10 +423,11 @@ internal sealed partial class MirBuilder
     // only the checks continue (assumed completion, SPEC 14.10.3; DECISIONS R4-M62). Nothing is built that has no value: an rvalue that
     // has an input (an operand, or the Place of a kind that has one, MirDescriptor.HasPlace) whose every input is the Never value (never
     // an Adapt, whose token is a constant), or a value assigned to the Never value, since a node of Type Never makes none (but its Opaque
-    // value, which stands for its syntax, of its Type).
+    // value, which stands for its syntax, of its Type). A construction is a value whatever its operands: it places each component and
+    // nothing into one whose operand is the Never value (MirMoveData's Never parts; SPEC 15.1.2, 14.10.3, DECISIONS R4-M175).
     private void Set(MirPlace destination, in MirRvalue rvalue, Koto node)
     {
-        var never = MirDescriptors.Of(rvalue.Kind).HasPlace ? this.IsNeverValue(rvalue.Place) : rvalue.Count > 0;
+        var never = rvalue.Kind != MirRvalueKind.Aggregate && (MirDescriptors.Of(rvalue.Kind).HasPlace ? this.IsNeverValue(rvalue.Place) : rvalue.Count > 0);
         for (var i = 0; never && i < rvalue.Count; i++)
         {
             never = this.body.Operands[rvalue.Start + i] is { Kind: not MirOperandKind.Const } operand && this.IsNeverValue(operand.Place);

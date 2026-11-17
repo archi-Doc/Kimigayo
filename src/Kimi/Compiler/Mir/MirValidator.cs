@@ -32,8 +32,9 @@ internal enum MirViolation : byte
     EndBorrowLocal, // EndBorrow of a Place other than a reference local.
     Place, // A root or a projection chain out of range.
     Projection, // A projection its base Type does not admit, or a chain out of order.
-    Const, // A constant id out of range, or an Integer constant Holds rejects: of a Type outside its family or not a value of it (G620, G644).
-    Binder, // A PairAcquire of a binder out of range or other than its Place's pair layer, or more cases than PairBinder.CaseBound.
+    Const, // A constant id out of range, or an Integer constant Holds rejects: of a Type outside its family or not a value of it (G620, G644);
+    // or a Length constant not of isize, of a closed term or of a slot or Type parameter outside the body's generic scope (SPEC 4.4.1).
+    Binder, // A PairAcquire of a binder out of range or other than its Place's pair layer, or a case count outside 1 to PairBinder.CaseBound.
     OperandRange,
     Arity, // An rvalue's or a Call's operands disagree with its kind, its Type or its callee.
     Callee, // A Fn, Requirement or Virtual callee without its function, a Value one without its signature, a misdeclared or diverging intrinsic;
@@ -42,14 +43,13 @@ internal enum MirViolation : byte
     Len, // A Len of a Place that is not a sequence.
     Opaque, // An Opaque site or root out of range, or Opaque sites without an Opaque value.
     Type, // An rvalue, an aggregate's operand, a call's argument or result, or _0 at a Return that disagrees with the Type it goes to; a
-    // testRecordValue's value other than a Scalar; an owning interpolation's step's constant other than its position's kind (its values'
-    // Types a Tuple's token, its text a string).
+    // testRecordValue's value other than a Scalar.
     Operation, // An operator's, a Cast's, a SwitchInt's or an Adapt's operand, a Ref's Type or an Adapt's case operation, that its kind does not admit;
     // a PairAcquire other than the operand of a Use assigned to a local's whole Place with the Uniq or TwoPhaseUniq it marks (A3 E13 (4)), a
     // marked Use of another operand, a function item constant other than the operand of an Assign's Use, the collector's site (G154), a
     // constant record other than an input of a Fn call that keeps nothing of it (ConstantRecords), or a Copy, other than a case site's
     // operand, of a Type Binding does not prove Copy under the body definition's premises (BU-88); a Places attribute other than on a Fn
-    // Call each of whose operands is a Move of a whole Temp (PLAN G442).
+    // Call each of whose operands is a Move of a whole Temp, the first the construction's exclusive borrow formed in its block (PLAN G442).
     StaticSlot, // A staticEnsure's operand other than an Integer constant indexing the body's statics, which MirProgram.StaticInit decodes (F10),
     // or, over the program, its static without a StaticInit body (G191).
     Unensured, // A static root of a Place a location accesses, other than an Opaque site's, that no staticEnsure of the body names, or, where a
@@ -75,11 +75,11 @@ internal readonly record struct MirFinding(MirViolation Rule, SourceRef Subject)
 /// staticEnsure names and the body each default template's call and each created Closure names (G191), before any analysis reads it.
 /// It keeps its scratch, so a warm run allocates nothing.</summary>
 /// <remarks>An intrinsic's operands are checked by its row's arity (its declaration's parameters come first, a fact of the table,
-/// MirValidatorTest), staticEnsure's also as its static's slot (DECISIONS R5-M71) and an owning interpolation's steps' as their constants,
-/// a Value callee's against its Type's signature where
-/// that Type is a Function Type, else by its declared signature's arity only, and every Call's whole-local inputs by one write of an input
-/// that reserves and that a Ref or an Adapt writes (DECISIONS R5-M72). A write, an in-place destruction or an exclusive acquisition
-/// passes no shared layer; a Move is A1's (DECISIONS R5-M123, R5-M139).</remarks>
+/// MirValidatorTest), staticEnsure's also as its static's slot (DECISIONS R5-M71) and testRecordValue's recorded value as a Scalar, a Value
+/// callee's against its Type's signature where that Type is a Function Type, else by its declared signature's arity only, and every Call's
+/// whole-local inputs by one write of an input that reserves and that a Ref or an Adapt writes (DECISIONS R5-M72). An owning interpolation's
+/// hint is a store of its writer's Field, an Assign checked by its Type. A write, an in-place destruction or an exclusive acquisition passes
+/// no shared layer; a Move is A1's (DECISIONS R5-M123, R5-M139).</remarks>
 /// <param name="types">The Type context of the bodies, which interns their case Types.</param>
 internal sealed partial class MirValidator(TyCtxt types)
 {
@@ -95,9 +95,9 @@ internal sealed partial class MirValidator(TyCtxt types)
     internal void Validate(MirBody body, List<MirFinding> findings)
     {
         var count = findings.Count;
-        if (MirCases.Count(body) > PairBinder.CaseBound)
+        if (MirCases.Count(body) is < 1 or > PairBinder.CaseBound)
         {
-            findings.Add(new(MirViolation.Binder, body.Source)); // Binding binds no part of a definition beyond the bound.
+            findings.Add(new(MirViolation.Binder, body.Source)); // Binding publishes no part of a definition beyond the bound or with no case.
             body.HasFinding = findings.Count > count;
             return; // Nor are its views resolved.
         }

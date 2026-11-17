@@ -104,7 +104,6 @@ public sealed partial class Binding
     // turns into ρ. A record's Supplier is this, at its use.
     internal BoundOrigin SuppliedAtUse(BoundOrigin origin, Koto use)
     {
-        var initializers = this.initializerOrigins.Count != 0;
         for (var node = use; node is not null; node = node.Parent)
         {
             if (this.originDeclarations.TryGetValue(node, out var declaration) && declaration.Resolves)
@@ -112,7 +111,7 @@ public sealed partial class Binding
                 origin = this.ResolveOrigin(origin, declaration);
             }
 
-            if (initializers && this.initializerOrigins.TryGetValue(node, out var inferred) && inferred.Resolves)
+            if (this.initializerOrigins.TryGetValue(node, out var inferred) && inferred.Resolves)
             {
                 origin = this.ResolveOrigin(origin, inferred);
             }
@@ -434,8 +433,6 @@ public sealed partial class Binding
     // into it would lose its Loans: such a fit is never collected here.
     private bool FitOriginOutlives(BoundOrigin longer, BoundOrigin shorter, Koto use, in CallableInstance comparison, ulong condition = 0)
     {
-        longer = this.OriginAtUse(longer, use);
-        shorter = this.OriginAtUse(shorter, use);
         if (!OriginOutlives(longer, shorter) && shorter is { Kind: OriginKind.Inference, Open: false } && this.OpenInitializerInference(shorter, use) is { } pending)
         {
             this.BoundInitializerOrigin(pending, shorter, longer, use, condition);
@@ -450,8 +447,6 @@ public sealed partial class Binding
     // call's fits are collected (collectingFits) is the value recorded as the Origin's bound; any other requirement is the pure proof.
     private bool FitsOriginOutlives(BoundOrigin longer, BoundOrigin shorter, Koto use, in CallableInstance comparison, ulong condition = 0)
     {
-        longer = this.OriginAtUse(longer, use);
-        shorter = this.OriginAtUse(shorter, use);
         if (!OriginOutlives(longer, shorter) && shorter is { Kind: OriginKind.Inference, Open: false } && this.OpenInitializer(shorter, use) is { } local)
         {
             if (this.collectingFits)
@@ -467,8 +462,32 @@ public sealed partial class Binding
 
     // SPEC 10.1: the Origin part of a fit (RelationWalk). During candidate evaluation and while a selected call's fits are collected
     // it is the pure answer; any other fit records its bounds at once (FitOriginOutlives). `comparison` is the Callable comparison the
-    // fit is part of, whose premises its proof assumes.
+    // fit is part of, whose premises its proof assumes. Both ends are resolved here, once (OriginAtUse).
+    // SPEC 23.1.2 (DECISIONS Q13 rule W; PLAN G739): a conjunct one of whose ends rests on a failed part holds and gives no evidence
+    // (HoldsResting, after the ordinary answer). A recording fit that held so publishes it (fitRested): its entry leaves the fit's
+    // positions as rows of its body (CheckTypeUse), which A5 judges with the atom Dependent (a chain through it between its ends;
+    // DECISIONS R4-M118), or the declaration judge rests (JudgeDeclarationRows). The walks entered through IsSubtypeAt (a callable
+    // contract) and CallableSignatureFits set it too and form no row: no entry reads it there, and the next fit's entry clears it.
     private bool FitOrigin(BoundOrigin longer, BoundOrigin shorter, Koto use, in CallableInstance comparison, ulong condition = 0)
+    {
+        longer = this.OriginAtUse(longer, use);
+        shorter = this.OriginAtUse(shorter, use);
+        if (this.FitConjunct(longer, shorter, use, comparison, condition))
+        {
+            return true;
+        }
+
+        if (!this.HoldsResting(longer, shorter, condition, new FitLeaf(this, use, comparison)))
+        {
+            return false;
+        }
+
+        this.fitRested |= !this.collectingFits && this.candidateTrials == 0;
+        return true;
+    }
+
+    // The ordinary answer of one conjunct, its ends resolved at the use: pure in a candidate trial or a collected fit, recording otherwise.
+    private bool FitConjunct(BoundOrigin longer, BoundOrigin shorter, Koto use, in CallableInstance comparison, ulong condition)
         => this.collectingFits || this.candidateTrials != 0 ? this.FitsOriginOutlives(longer, shorter, use, comparison, condition) :
             this.FitOriginOutlives(longer, shorter, use, comparison, condition);
 
@@ -483,6 +502,9 @@ public sealed partial class Binding
         this.AddObligation(new(BindingObligationKind.OriginOutlives, use, BindingDeadline.BodyOrigins, null, bound, variable, Condition: condition));
     }
 
+    // SPEC 15.3.3, 15.6.1: the declared Origin relations of an instantiated Type, proven from the premises of `scope`; Unknown when one
+    // is not. A relation over a call's region is not this proof's: it is a row of that call (CallRowRelation), which premises can
+    // never decide and which never decides applicability.
     private ConstraintProof CheckTypeOriginRelations(BoundType type, BindingScope scope)
     {
         if (type.Symbol is not { } symbol || !this.originDeclarations.TryGetValue(symbol.Declaration, out var declaration) || !declaration.Completed)
@@ -494,7 +516,8 @@ public sealed partial class Binding
         {
             var a = this.SubstituteStoredOrigin(relation.Longer, symbol.Declaration, (BoundOrigin[])type.OriginArguments);
             var b = this.SubstituteStoredOrigin(relation.Shorter, symbol.Declaration, (BoundOrigin[])type.OriginArguments);
-            if (!this.ProvesOriginOutlives(a, b, scope.Owner) || (relation.Equality && !this.ProvesOriginOutlives(b, a, scope.Owner)))
+            if (!CallRowRelation(a, b) &&
+                (!this.ProvesOriginOutlives(a, b, scope.Owner) || (relation.Equality && !this.ProvesOriginOutlives(b, a, scope.Owner))))
             {
                 return ConstraintProof.Unknown;
             }
@@ -584,5 +607,20 @@ public sealed partial class Binding
                 this.CompleteOriginDeclaration(associatedOrigins);
             }
         }
+    }
+
+    // The fit's leaf of HoldsResting: one conjunct's ordinary answer at the fit's use (FitConjunct).
+    private readonly struct FitLeaf(Binding binding, Koto use, CallableInstance comparison) : IOriginConjunct
+    {
+        public bool Holds(BoundOrigin longer, BoundOrigin shorter, ulong condition)
+            => binding.FitConjunct(longer, shorter, use, comparison, condition);
+    }
+
+    // The proof's leaf of HoldsResting: one conjunct's proof at `use` in `comparison` (ProvesOriginOutlives), for the Origin inference's
+    // bounds (SolveOriginInference) and an implementation's claims (ClaimHolds).
+    private readonly struct ProofLeaf(Binding binding, Koto use, CallableInstance comparison) : IOriginConjunct
+    {
+        public bool Holds(BoundOrigin longer, BoundOrigin shorter, ulong condition)
+            => binding.ProvesOriginOutlives(longer, shorter, use, comparison, condition);
     }
 }

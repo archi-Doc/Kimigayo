@@ -1,27 +1,17 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
-using Kimi.Compiler.Parsing;
-
 namespace Kimi.Compiler;
 
-// The Types the compiler's built-in formatting conformance answers (IsBuiltin), SPEC 22.10.5's bounded ones and rule L's stack limit
-// (STATUS "Text and formatting"; the old utf8-formatting §6.1): the closed tables every phase reads by Type. A bound is the
-// implementation's widest encoding of a bounded Type, which an interpolation's instance sums; a user or library formatter's Type, a
-// string and a view are unbounded (SPEC 22.10.5's list is closed: no declaration adds a row).
+// SPEC 22.10.5's bounded Types and rule L's stack limit (STATUS "Text and formatting"; the old utf8-formatting §6.1): the closed tables
+// read by Type. A bound is the implementation's widest encoding of a bounded Type, which an interpolation's instance sums; a user or
+// library formatter's Type, a string and a view are unbounded (SPEC 22.10.5's list is closed: no declaration adds a row). The two
+// interpolation terms' values read one walk of the value Types (Measure): a direct line's stack region (StackBound) and a write
+// position's hint (HintBound) differ only in their rules over it.
 internal static class FormattingTypes
 {
     /// <summary>Rule L's windows-x64 limit: a direct bounded interpolation whose literal bytes and value bounds sum to at most this many
     /// bytes is formatted on a stack region of exactly that sum, after substitution as before; any other uses the heap buffer.</summary>
     internal const int StackLimit = 1024;
-
-    /// <summary>Gets whether the compiler states a Type's Utf8Format conformance, which no declaration states: the scalars, Unit and
-    /// string. Each is a witness table row (the integers since R8-S2b1 and R8-S2b2), which this proof still answers first (DECISIONS
-    /// R8-M30, temporary 2), until R8-S2d2 deletes this meaning.
-    /// Utf8Slice declares its conformance, so it is not one (R8-S2d1).</summary>
-    /// <param name="type">A Type.</param>
-    /// <returns>Whether the built-in conformance answers it.</returns>
-    internal static bool IsBuiltin(BoundType type) => type.Semantics == SemanticsKind.Owner &&
-        (ScalarTypes.Supports(type) || ReferenceEquals(type, BoundType.Unit) || ReferenceEquals(type, BoundType.String));
 
     internal static bool IsUtf8Slice(BoundType? type) => type?.Symbol?.LibraryDeclaration == KimiDeclarationId.Utf8Slice;
 
@@ -64,39 +54,58 @@ internal static class FormattingTypes
 
     /// <summary>Gets rule L's stack region of a direct interpolation (the interpolation-bound term's value, TyCtxt.InterpolationBound): its
     /// literal bytes plus each value's <see cref="Bound"/> when every value is bounded and the sum is at most <see cref="StackLimit"/>, else
-    /// 0. A value Type with an abstract part is decided where its instance can only be what it is: a construction other than
-    /// <c>Wrapping</c> is unbounded; a Type parameter, a projection, a Semantics term or <c>Wrapping</c> over one is undecided.</summary>
+    /// 0 (the values as <see cref="Measure"/> decides them).</summary>
     /// <param name="values">The Tuple of the interpolation's value Types.</param>
     /// <param name="literal">Its literal bytes.</param>
     /// <returns>The region's bytes, 0 for none, or -1 while an undecided value leaves it open: the closed values and the literal bytes
     /// within the limit and no value unbounded.</returns>
-    internal static long StackBound(BoundType values, long literal)
+    internal static long StackBound(BoundType values, long literal) => Measure(values, literal) switch
+    {
+        { Unbounded: true } or { Sum: < 0 or > StackLimit } => 0,
+        { Open: true } => -1,
+        var (sum, _, _) => sum,
+    };
+
+    /// <summary>Gets the hint of an owning interpolation's write position (the interpolation-hint term's value, TyCtxt.InterpolationHint;
+    /// DECISIONS R3-10): the bytes its adapter's later writes may still reserve, the later literal bytes plus each later bounded value's
+    /// <see cref="Bound"/>, an unbounded value counted 0 (its write reserves its own exact length), with no limit; a sum past the maximum
+    /// object size (2^63 - 1) gives 0. The values as <see cref="Measure"/> decides them.</summary>
+    /// <param name="values">The Tuple of the later value Types.</param>
+    /// <param name="literal">The later literal bytes.</param>
+    /// <returns>The hint's bytes, or -1 while an undecided value leaves it open within the maximum object size.</returns>
+    internal static long HintBound(BoundType values, long literal) => Measure(values, literal) switch
+    {
+        { Sum: < 0 } => 0,
+        { Open: true } => -1,
+        var (sum, _, _) => sum,
+    };
+
+    // SPEC 22.10.5: an interpolation's literal bytes and value Types as an instance can decide them, the one walk both terms read: Sum is
+    // the literal plus each bounded value's Bound (-1 once past the maximum object size), Open whether a value is undecided, Unbounded
+    // whether one is unbounded. A value Type with an abstract part is decided where its instance can only be what it is: a construction
+    // other than Wrapping is unbounded; a Type parameter, a projection, a Semantics term or Wrapping over one is undecided.
+    private static (long Sum, bool Open, bool Unbounded) Measure(BoundType values, long literal)
     {
         var sum = literal;
         var open = false;
+        var unbounded = false;
         for (var i = 0; i < values.Components.Count; i++)
         {
             var value = values.Components[i];
-            if (!value.HasAbstractPart)
+            if (!value.HasAbstractPart && Bound(value) is var bound and >= 0)
             {
-                var bound = Bound(value);
-                if (bound < 0)
-                {
-                    return 0;
-                }
-
-                sum += bound;
+                sum = sum < 0 || sum > long.MaxValue - bound ? -1 : sum + bound;
             }
-            else if (value.IsAbstract || value.Symbol?.LibraryDeclaration == KimiDeclarationId.Wrapping)
+            else if (value.HasAbstractPart && (value.IsAbstract || value.Symbol?.LibraryDeclaration == KimiDeclarationId.Wrapping))
             {
                 open = true;
             }
             else
             {
-                return 0;
+                unbounded = true;
             }
         }
 
-        return sum > StackLimit ? 0 : open ? -1 : sum;
+        return (sum, open, unbounded);
     }
 }

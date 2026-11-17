@@ -36,7 +36,8 @@ public static partial class Parser
         /// <summary>An expression's grouped Type, such as a BoundContainerQualifier: Origin and suffix, no PathSuffix (the expression's).</summary>
         Qualifier,
 
-        /// <summary>An adaptation's OpenTarget (SPEC F.9.4): <c>&lt;</c> takes Type arguments only adjacent; no OriginApplication or BorrowOrigin.</summary>
+        /// <summary>An adaptation's OpenTarget (SPEC F.9.4): <c>&lt;</c> takes Type arguments only adjacent; no OriginApplication or BorrowOrigin;
+        /// a group or a fixed array is a DelimitedTarget, which takes no PathSuffix.</summary>
         Target,
 
         /// <summary>The SemanticsType after <c>Semantics /</c>, whose <c>?</c> and BorrowOrigin belong to the enclosing AnnotatedType.</summary>
@@ -44,12 +45,6 @@ public static partial class Parser
 
         /// <summary>A SemanticsOperand inside a Target.</summary>
         TargetOperand,
-
-        /// <summary>The ContainerPath after <c>::</c>, whose Origin and <c>?</c> belong to the enclosing Type (SPEC 3.2.3, 3.3.2).</summary>
-        RootPath,
-
-        /// <summary>A RootPath inside a Target.</summary>
-        TargetRootPath,
     }
 
     /// <summary>Parses a Type in the grammar context of its position (SPEC F.5: Type := FunctionType | AnnotatedType).</summary>
@@ -101,17 +96,21 @@ public static partial class Parser
     private static Koto ParseAnnotatedType(ref TokenReader reader, TypeContext context, out bool parameterList)
     {
         var start = reader.CurrentTokenRange.Start;
-        var target = context is TypeContext.Target or TypeContext.TargetOperand or TypeContext.TargetRootPath;
+        var target = context is TypeContext.Target or TypeContext.TargetOperand;
         Koto type;
         parameterList = false;
         var grouped = reader.CurrentTokenKind == TokenKind.OpenParenthesis;
+
+        // SPEC F.9.4: in a Target, a group or a fixed array is a DelimitedTarget, whose "." is the adapted value's PostfixSuffix.
+        var delimitedTarget = context is TypeContext.Target or TypeContext.TargetOperand && (grouped || reader.CurrentTokenKind == TokenKind.OpenBracket);
         if (grouped)
         {
             // SPEC F.5: a grouped head takes suffixes only as ContinuesGroupedType allows; an expression continues a Qualifier itself.
-            var qualifier = context != TypeContext.Qualifier && IsBoundContainerQualifier(ref reader, out _);
+            var path = !delimitedTarget && context != TypeContext.Qualifier;
+            var qualifier = path && IsBoundContainerQualifier(ref reader, out _);
             type = ParseBareParenthesizedType(ref reader);
             parameterList = true;
-            if (context != TypeContext.Qualifier && ContinuesGroupedType(ref reader, qualifier))
+            if (path && ContinuesGroupedType(ref reader, type, qualifier))
             {
                 type = ParseTypeSuffixes(ref reader, type, target);
                 parameterList = false;
@@ -119,8 +118,9 @@ public static partial class Parser
         }
         else
         {
+            // A written Type outside its grammar (RecoverWrittenType) read its own suffixes, so the rest is the enclosing construct's.
             type = ParseTypeHead(ref reader, target);
-            if (type is not ErrorKoto)
+            if (!IsRecoveredType(ref reader, type) && !delimitedTarget)
             {
                 type = ParseTypeSuffixes(ref reader, type, target);
             }
@@ -136,11 +136,6 @@ public static partial class Parser
         if (type is not (TypeKoto or ErrorKoto))
         {
             type = new TypeSemanticsKoto(ref reader, SourceSpan.FromBounds(start, type.Span.End), type);
-        }
-
-        if (context is TypeContext.RootPath or TypeContext.TargetRootPath)
-        {
-            return type;
         }
 
         var annotated = ParseTypeOrigin(ref reader, type, reportLegacyBorrow: !target);
@@ -162,9 +157,31 @@ public static partial class Parser
     {
         if (reader.CurrentTokenKind == TokenKind.ColonColon)
         {
-            // A root-qualified Type is the path after '::'; its Origin and '?' belong to the enclosing Type (SPEC 3.2.3, 3.3.2).
+            // SPEC F.5, F.9.4: "::"? TypeSegment PathSuffix*: only a TypeSegment follows '::', never a group, a fixed array, a second
+            // '::' or a Semantics prefix. The path's Origin and '?' belong to the enclosing Type (SPEC 3.2.3, 3.3.2).
             var rootStart = reader.Read().Span.Start;
-            var path = ParseAnnotatedType(ref reader, target ? TypeContext.TargetRootPath : TypeContext.RootPath, out _);
+            var name = reader.CurrentToken;
+            if (!(name.Kind.IsPrimitiveType() || name.Kind.IsIdentifierOrContextualKeyword() || name.Kind == TokenKind.Self))
+            {
+                var cause = reader.Expect(SyntaxForm.Name);
+                if (name.Kind is not (TokenKind.OpenParenthesis or TokenKind.OpenBracket or TokenKind.ColonColon))
+                {
+                    return new ErrorKoto(ref reader, reader.InsertionSpan) { Cause = cause };
+                }
+
+                // A group, a fixed array or a second '::' written there is read as the Type it writes, so nothing of it is left to the
+                // enclosing construct, and that Type is a written Type outside its grammar: '::' roots only a TypeSegment.
+                var written = ParseAnnotatedType(ref reader, target ? TypeContext.TargetOperand : TypeContext.SemanticsOperand, out _);
+                return RecoverRejectedPrefix(ref reader, rootStart, written, cause);
+            }
+
+            reader.Advance();
+            var path = ParseTypeSuffixes(ref reader, new TypeSemanticsKoto(ref reader, name), target);
+            if (path is not (TypeKoto or ErrorKoto))
+            {
+                path = new TypeSemanticsKoto(ref reader, path.Span, path);
+            }
+
             return new SyntaxFormKoto(ref reader, SourceSpan.FromBounds(rootStart, path.Span.End), KotoKind.RootName, "::", [path]);
         }
 
@@ -180,7 +197,7 @@ public static partial class Parser
             // the Type was written and is consumed with the report; any other token is left to end the enclosing construct.
             var cause = reader.Expect(SyntaxForm.Type);
             var span = reader.InsertionSpan;
-            if (token.Kind is TokenKind.NumericLiteral or TokenKind.StringLiteral or TokenKind.CharLiteral or TokenKind.Underscore or TokenKind.Invalid && reader.CanRead)
+            if ((token.Kind.IsLiteralToken() || token.Kind is TokenKind.Underscore or TokenKind.Invalid) && reader.CanRead)
             {
                 reader.Advance();
             }
@@ -199,7 +216,8 @@ public static partial class Parser
             {
                 if (semantics.SequenceEqual(Constants.MoveOperation) || semantics.SequenceEqual(Constants.CopyOperation))
                 {
-                    // @move and @copy are operations, never Semantics prefixes (SPEC §13.5.1); the Type rests on the Error.
+                    // @move and @copy are operations, never Semantics prefixes (SPEC §13.5.1); the Type after the prefix is a written
+                    // Type outside its grammar.
                     cause = reader.Unexpected(SyntaxForm.OperationAsSemanticsPrefix, token.Span);
                 }
 
@@ -210,10 +228,11 @@ public static partial class Parser
             var type = ParseAnnotatedType(ref reader, target ? TypeContext.TargetOperand : TypeContext.SemanticsOperand, out _);
             if (cause is { } operationCause)
             {
-                return new ErrorKoto(ref reader, SourceSpan.FromBounds(token.Span.Start, type.Span.End)) { Cause = operationCause };
+                return RecoverRejectedPrefix(ref reader, token.Span.Start, type, operationCause);
             }
 
-            if (type is TypeSemanticsKoto { IsTransparentWrapper: true, Type: not null, OriginName: null, OriginExpression: null, OriginArguments: null } transparentType)
+            if (type is TypeSemanticsKoto
+                { IsTransparentWrapper: true, Type: not null, OriginName: null, OriginExpression: null, OriginArguments: null } transparentType)
             {
                 type = transparentType.Type;
             }
@@ -351,7 +370,11 @@ public static partial class Parser
         return tuple;
     }
 
-    private static List<TypeKoto>? ParseGenericArguments(ref TokenReader reader, bool allowLength = false, bool specialization = false)
+    /// <summary>Parses a declaration's Type parameters at their <c>&lt;</c> (SPEC F.5 GenericParameters).</summary>
+    /// <param name="reader">The token reader.</param>
+    /// <param name="allowLength">Whether the declaration takes length slots: a function does (SPEC 4.4), a Container does not.</param>
+    /// <returns>The parameters read, or <see langword="null"/> when there is none; a failed parameter is reported and left out.</returns>
+    private static List<TypeKoto>? ParseGenericParameters(ref TokenReader reader, bool allowLength = false)
     {
         Debug.Assert(reader.CurrentTokenKind == TokenKind.LessThan);
         reader.Advance();
@@ -361,80 +384,30 @@ public static partial class Parser
         while (reader.CanRead)
         {
             var itemStart = reader.Position;
-            if (IsTypeClose(reader.CurrentTokenKind))
+            if (TryEndGenericList(ref reader, list is null && !skipped ? SyntaxForm.Name : null))
             {
-                if (list is null && !skipped)
-                {
-                    reader.Expect(specialization ? SyntaxForm.Type : SyntaxForm.Name);
-                }
-
-                reader.TryConsumeTypeClose(out _);
                 return list;
             }
 
-            if (reader.CurrentTokenKind is TokenKind.Separator or TokenKind.StartBlock or TokenKind.EndBlock or TokenKind.Equals or TokenKind.EqualsGreaterThan or TokenKind.Colon ||
-                (reader.CurrentTokenKind is TokenKind.CloseParenthesis or TokenKind.CloseBracket or TokenKind.CloseBrace && !reader.CurrentToken.ClosesNothing))
+            if (ParseGenericParameter(ref reader) is not { } parameter)
             {
-                // The list ends without its closer; the caller consumes nothing more of it.
-                reader.Expect(SyntaxForm.CloseAngleBracket);
-                return list;
-            }
-
-            TypeKoto typeKoto;
-            if (reader.IsCurrentIdentifier("length") && !specialization && reader.PeekKind(1).IsIdentifierOrContextualKeyword())
-            {
-                var start = reader.Read().Span.Start;
-                var name = ParseName(ref reader);
-                typeKoto = new LengthParameterKoto(ref reader, SourceSpan.FromBounds(start, name.Span.End), (name as IdentifierNameKoto)?.IdentifierName ?? string.Empty);
-                if (!allowLength && typeKoto.Unexpected(SyntaxForm.LengthParameter) is { } cause)
-                {
-                    // The slot stays in the list as a recovery: Binding keeps it out of the Type's components and rests on the Error.
-                    reader.CodeContext.RecordRecovery(typeKoto, cause);
-                }
-            }
-            else if (specialization)
-            {
-                var argument = ParseType(ref reader, TypeContext.Argument);
-                typeKoto = argument as TypeKoto ?? new TypeSemanticsKoto(ref reader, argument.Span, argument);
+                // The failed parameter is skipped within the list, which continues after its comma.
+                reader.SkipListItem(typeArguments: true);
+                reader.TryConsume(TokenKind.Comma);
+                skipped = true;
             }
             else
             {
-                string? semantics = null;
-                var nameSpan = reader.CurrentTokenRange;
-                if (reader.TryReadName(out var name, out var first) && reader.TryConsume(TokenKind.Slash))
+                if (!allowLength && parameter is LengthParameterKoto && parameter.Unexpected(SyntaxForm.LengthParameter) is { } cause)
                 {
-                    semantics = name;
-                    nameSpan = reader.CurrentTokenRange;
-                    name = reader.TryReadName(out var semanticsName, out _) ? semanticsName : null;
+                    // The slot stays in the list as a recovery: Binding keeps it out of the Type's components and rests on the Error.
+                    reader.CodeContext.RecordRecovery(parameter, cause);
                 }
 
-                if (name is null)
-                {
-                    // The failed parameter is skipped within the list, which continues after its comma.
-                    reader.SkipListItem(typeArguments: true);
-                    reader.TryConsume(TokenKind.Comma);
-                    skipped = true;
-                    goto Next;
-                }
-
-                typeKoto = new GenericParameterKoto(ref reader, SourceSpan.FromBounds(first.Start, reader.PreviousSyntaxEnd), name, semantics);
-                reader.Hover(typeKoto, nameSpan);
+                (list ??= new(2)).Add(parameter);
+                ContinueGenericList(ref reader);
             }
 
-            (list ??= new(2)).Add(typeKoto);
-
-            if (reader.CurrentTokenKind == TokenKind.Comma)
-            {
-                reader.Advance();
-            }
-            else if (!IsTypeClose(reader.CurrentTokenKind))
-            {
-                reader.Expect(SyntaxForm.Comma);
-                reader.SkipListItem(typeArguments: true);
-                reader.TryConsume(TokenKind.Comma);
-            }
-
-Next:
             if (reader.Position == itemStart)
             {
                 break; // A token that neither starts nor ends a parameter, such as '!'.
@@ -443,6 +416,123 @@ Next:
 
         reader.Expect(SyntaxForm.CloseAngleBracket);
         return list;
+    }
+
+    /// <summary>Parses one Type parameter (SPEC F.5 GenericParameter): a Name, a pair <c>Name / Name</c> or a length slot <c>length Name</c>.</summary>
+    /// <returns>The parameter, or <see langword="null"/> where its Name is missing (reported here, by the Name read); the list skips the item.</returns>
+    private static TypeKoto? ParseGenericParameter(ref TokenReader reader)
+    {
+        if (reader.IsCurrentIdentifier("length") && reader.PeekKind(1).IsIdentifierOrContextualKeyword())
+        {
+            var start = reader.Read().Span.Start;
+            var slot = ParseName(ref reader);
+            var slotName = (slot as IdentifierNameKoto)?.IdentifierName ?? string.Empty;
+            return new LengthParameterKoto(ref reader, SourceSpan.FromBounds(start, slot.Span.End), slotName);
+        }
+
+        string? semantics = null;
+        var nameSpan = reader.CurrentTokenRange;
+        if (reader.TryReadName(out var name, out var first) && reader.TryConsume(TokenKind.Slash))
+        {
+            semantics = name;
+            nameSpan = reader.CurrentTokenRange;
+            name = reader.TryReadName(out var semanticsName, out _) ? semanticsName : null;
+        }
+
+        if (name is null)
+        {
+            return null;
+        }
+
+        var parameter = new GenericParameterKoto(ref reader, SourceSpan.FromBounds(first.Start, reader.PreviousSyntaxEnd), name, semantics);
+        reader.Hover(parameter, nameSpan);
+        return parameter;
+    }
+
+    /// <summary>
+    /// Parses a specialization's Type arguments at their <c>&lt;</c> (SPEC F.6.3 SpecializationDeclaration, F.5 TypeArguments) as the header's
+    /// list: each GenericArgument a <see cref="TypeKoto"/>, an ArrayLength wrapped in one. A Type's own arguments are read by
+    /// <see cref="ParseGenericsPostfix"/>, whose recovery differs, until PLAN G804.
+    /// </summary>
+    private static List<TypeKoto>? ParseSpecializationArguments(ref TokenReader reader)
+    {
+        Debug.Assert(reader.CurrentTokenKind == TokenKind.LessThan);
+        reader.Advance();
+
+        List<TypeKoto>? list = default;
+        while (reader.CanRead)
+        {
+            var itemStart = reader.Position;
+            if (TryEndGenericList(ref reader, list is null ? SyntaxForm.Type : null))
+            {
+                return list;
+            }
+
+            var argument = ParseType(ref reader, TypeContext.Argument);
+            (list ??= new(2)).Add(argument as TypeKoto ?? new TypeSemanticsKoto(ref reader, argument.Span, argument));
+            ContinueGenericList(ref reader);
+            if (reader.Position == itemStart)
+            {
+                break; // A token that neither starts nor ends an argument, such as '!'.
+            }
+        }
+
+        reader.Expect(SyntaxForm.CloseAngleBracket);
+        return list;
+    }
+
+    /// <summary>
+    /// Ends a declaration header's generic list where no item starts: at its closer, which is consumed, or without one at a token of
+    /// the code after the list, where the missing closer is reported and nothing is consumed.
+    /// </summary>
+    /// <param name="reader">The token reader.</param>
+    /// <param name="missingItem">The item's form, reported at the closer of a list with no item read or skipped; otherwise <see langword="null"/>.</param>
+    /// <returns>Whether the list ended.</returns>
+    private static bool TryEndGenericList(ref TokenReader reader, SyntaxForm? missingItem)
+    {
+        if (IsTypeClose(reader.CurrentTokenKind))
+        {
+            if (missingItem is { } form)
+            {
+                reader.Expect(form);
+            }
+
+            reader.TryConsumeTypeClose(out _);
+            return true;
+        }
+
+        var unclosed = reader.CurrentTokenKind switch
+        {
+            TokenKind.Separator or TokenKind.StartBlock or TokenKind.EndBlock => true, // The line or a body ends.
+            TokenKind.Equals or TokenKind.EqualsGreaterThan or TokenKind.Colon => true, // The header goes on after the list.
+            TokenKind.CloseParenthesis or TokenKind.CloseBracket or TokenKind.CloseBrace => !reader.CurrentToken.ClosesNothing, // An enclosing grouping closes.
+            _ => false,
+        };
+        if (unclosed)
+        {
+            // The list ends without its closer; the caller consumes nothing more of it.
+            reader.Expect(SyntaxForm.CloseAngleBracket);
+        }
+
+        return unclosed;
+    }
+
+    /// <summary>
+    /// Reads what follows an item of a declaration header's generic list: its comma, or nothing before the closer; anything else is
+    /// reported and skipped with the next comma.
+    /// </summary>
+    private static void ContinueGenericList(ref TokenReader reader)
+    {
+        if (reader.CurrentTokenKind == TokenKind.Comma)
+        {
+            reader.Advance();
+        }
+        else if (!IsTypeClose(reader.CurrentTokenKind))
+        {
+            reader.Expect(SyntaxForm.Comma);
+            reader.SkipListItem(typeArguments: true);
+            reader.TryConsume(TokenKind.Comma);
+        }
     }
 
     private static bool IsTypeClose(TokenKind kind)

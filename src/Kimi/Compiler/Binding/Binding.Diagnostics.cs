@@ -191,7 +191,7 @@ public sealed partial class Binding
     // SPEC 23.1: an omitted Origin is related at its Type occurrence. Closed annotation atoms and open local-input atoms name
     // such occurrences; open call/evidence atoms do not. A local region is shown by the local's name.
     private static Koto? OmittedAt(BoundOrigin origin)
-        => origin.Occurrence ?? OmittedInput(origin) ?? (origin is { Kind: OriginKind.Inference, Binder: { } occurrence and not VariableKoto } && (!origin.Open || origin.IsLocalInput) ? occurrence : null);
+        => origin.Occurrence ?? OmittedInput(origin) ?? (origin is { Kind: OriginKind.Inference, Binder: { } occurrence } && !IsRegionOwner(occurrence) && (!origin.Open || origin.IsLocalInput) ? occurrence : null);
 
     // SPEC 23.1: the input Type occurrence of a Function Type whose outer Origin is this per-call Origin; it has no name.
     private static Koto? OmittedInput(BoundOrigin origin)
@@ -510,7 +510,7 @@ public sealed partial class Binding
     /// <param name="target">The written target.</param>
     /// <returns><see langword="null"/>.</returns>
     private BoundType? FailWrite(Koto node, Koto target)
-        => this.FailExplained(ref this.writeTargets, node, AccessFailure(target, out _), target);
+        => this.FailExplained(ref this.writeTargets, node, this.AccessFailure(target, out _), target);
 
     private BoundType? FailObjectAuthority(Koto node, Koto target)
         => this.FailExplained(ref this.writeTargets, node, BindingFailure.SharedPathAccess, target);
@@ -533,7 +533,7 @@ public sealed partial class Binding
 
         // SPEC 8.15, 23.1.2 (R6-check H1): a pair-layer Place carries the cases its bare acquisition moves in, as the `case` fact. A
         // default's move of a prepared argument (SPEC 7.2.3) names no target and offers no transfer, since none is valid in a default.
-        var judgment = TakeJudgment(place);
+        var judgment = this.TakeJudgment(place);
         var found = this.AcquisitionCases(place, out var single);
         var prepared = code == DiagnosticCode.DefaultArgumentMove_Kd;
         node.Report(
@@ -584,7 +584,7 @@ public sealed partial class Binding
     // lacks it, the shared layer is the element published by index, and the Note names why indexUniq is absent.
     private string? SharedIndexNote(Koto target)
     {
-        if (KotoHelper.UnwrapParentheses(target) is not IndexKoto index || this.HasExclusiveIndexer(index) || !ElementAccess.IsUserIndex(index) ||
+        if (KotoHelper.UnwrapParentheses(target) is not IndexKoto index || this.HasExclusiveIndexer(index) || !ElementAccess.IsUserIndex(this, index) ||
             this.Library.UniqIndexable is not { } uniqIndexable)
         {
             return null;
@@ -641,7 +641,6 @@ public sealed partial class Binding
         this.originContracts?.Clear();
         this.ownedConversions?.Clear();
         this.objectErasureFailures?.Clear();
-        this.objectErasures?.Clear();
         this.perCallSlots?.Clear();
         this.referenceSlotFacts?.Clear();
         this.erasureOutcomes?.Clear();
@@ -681,26 +680,17 @@ public sealed partial class Binding
     }
 
     // A lookup that misses a Name the language defines but the implementation does not yet provide meets an implementation
-    // limit, not a missing Name (DIAGNOSTICS.md rule 3): a cataloged declaration without source (PLAN G4), or a Property
-    // requirement whose combined identities or access path are not yet supported.
-    private BindingFailure MissingFailure(Koto name, BindingScope scope, BindingFailure missing)
-    {
-        var limit = name switch
-        {
-            MemberAccessKoto member when this.requirementGroups.TryGetValue(member, out var group) && group.PropertyRequirement => true,
-            MemberAccessKoto member => TypeSpelling(member.Right) is { } spelled && KimiLibraryCatalog.IsUnsourced(KimiLibraryContainer.Intrinsics, spelled) &&
-                ReferenceEquals(this.TypeName(member.Left, scope)?.Declaration, this.Library.Intrinsics),
-            _ => TypeSpelling(name) is { } spelled && KimiLibraryCatalog.IsUnsourced(KimiLibraryContainer.Root, spelled),
-        };
-        return limit ? BindingFailure.Unsupported : missing;
-    }
+    // limit, not a missing Name (DIAGNOSTICS.md rule 3): a Property requirement whose combined identities or access path are not yet
+    // supported. A declaration this implementation does not support is written `#Unsupported` and never missed (UnsupportedUses).
+    private BindingFailure MissingFailure(Koto name, BindingFailure missing)
+        => name is MemberAccessKoto member && this.requirementGroups.TryGetValue(member, out var group) && group.PropertyRequirement ? BindingFailure.Unsupported : missing;
 
     // A Name that no lookup selects, at a Type position (MissingType) or as a value member (MissingName): an inaccessible qualifier
     // explains the miss, otherwise the Name is missing.
     private BoundType? FailMissing(Koto name, BindingScope scope, BindingFailure missing)
         => this.ReportUnavailableQualifier(name, scope) is { } qualifier
             ? this.CompleteDependent(name, qualifier)
-            : this.Fail(name, this.MissingFailure(name, scope, missing), true);
+            : this.Fail(name, this.MissingFailure(name, missing), true);
 
     // Called only after both value and Type lookup failed. A tentative Type path must not
     // publish access errors when a valid value path exists in the other namespace.

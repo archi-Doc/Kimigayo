@@ -16,7 +16,8 @@ namespace Kimi.Compiler;
 //   associated specification can be read, so a clause is read by its name; from then on a demand binds it, its demander's consultation
 //   frame suspended. A read of a clause not ready ends the chain and counts in notReadyReads; so does a read of one in progress. A read
 //   that moved the count stores nothing: it is read again at the next demand.
-// - Early reads: a TypeName that saw the count move is noted with what it selected, the last such read of a use, and evaluated again
+// - Early reads: a Type name's or a value name's lookup (NamePath, Lookup) that saw the count move is noted with what it selected, the
+//   last such read of a use (a use read in both rows is no length when its Type read is taken: IsLengthArgument), and evaluated again
 //   after the first ValidateBaseDeclarations (VerifyEarlyReads). An equal answer stands. On a different one the declarations run once more
 //   with knownBases, the final Types of the clauses that name no struct, read as ready and counted (secondRun). A difference in that run is
 //   Unsupported_Kd at the use. Only a first run fills knownBases, and it starts from none, so they are what a cold Bind of the source and
@@ -40,7 +41,8 @@ public sealed partial class Binding
     private Koto? verifiedClause;
     private int baseSteps;
 
-    private readonly record struct EarlyRead(BindingScope Scope, LookupRole Role, int Arity, BindingSymbol? Symbol);
+    // Name: a value name's (Lookup), read again by name; null for a Type name, read again by its syntax (ReadAgain).
+    private readonly record struct EarlyRead(BindingScope Scope, LookupRole Role, int Arity, BindingSymbol? Symbol, string? Name);
 
     /// <summary>Gets the steps the walks over BaseLayers took in the latest pass, read by the scaling tests.</summary>
     internal int BaseLayerWork => this.baseSteps;
@@ -133,7 +135,7 @@ public sealed partial class Binding
             {
                 // A clause's own read is evaluated as it was read: without its struct's layers.
                 this.verifiedClause = read.Scope.Owner is StructKoto { BaseClause: { } own } && IsWithin(use, own) ? own : null;
-                var final = this.ProbePath(use, read.Scope, read.Role, read.Arity);
+                var final = this.ReadAgain(use, read);
                 this.verifiedClause = null;
                 var missing = use.BindingFailure is BindingFailure.MissingName or BindingFailure.MissingType;
                 if (ReferenceEquals(final, read.Symbol) || !(missing || read.Symbol is not null || use.BoundType is not null))

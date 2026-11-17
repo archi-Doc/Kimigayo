@@ -7,39 +7,26 @@ namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
-    private readonly List<FunctionKoto> virtualDeclarations = new();
+    private List<FunctionKoto> virtualDeclarations; // The running pass's part (PassPart, EnterPass).
     private Dictionary<FunctionKoto, VirtualDeclarationCause>? virtualDeclarationFailures;
 
     // SPEC 6.4.1's eligibility and inherited-header rules, in check order; the adapter explains each (DECISIONS BU-111).
     private enum VirtualDeclarationCause : byte
     {
-        Combined,
         NotStructFunction,
-        Unsafe,
         OwnGenericParameters,
         Receiver,
         NoBody,
         NotOpen,
         Private,
-        RedeclaredHeader,
-        RedeclaredParameter,
+        RedeclaredConstraints,
     }
 
     private static VirtualDeclarationCause? VirtualDeclarationFailure(FunctionKoto function, BindingSymbol symbol)
     {
-        if (function.IsVirtual && function.IsOverride)
-        {
-            return VirtualDeclarationCause.Combined;
-        }
-
         if (symbol.Scope.Owner is not StructKoto structure || function.IsConstructor || function.IsDestructor || function.IsRequirement || function.IsAnonymous || function.IsSpecialization)
         {
             return VirtualDeclarationCause.NotStructFunction;
-        }
-
-        if ((function.Modifier & ModifierKind.Unsafe) != 0)
-        {
-            return VirtualDeclarationCause.Unsafe;
         }
 
         if (function.GenericArguments.Count != 0)
@@ -69,22 +56,10 @@ public sealed partial class Binding
                 return VirtualDeclarationCause.Private;
             }
         }
-        else
+        else if (function.TypeConstraints.Count != 0)
         {
-            if (function.Modifier != ModifierKind.Override || function.NameBoundaryIndex >= 0 ||
-                function.TypeConstraints.Count != 0)
-            {
-                return VirtualDeclarationCause.RedeclaredHeader;
-            }
-
-            for (var i = 0; i < function.Parameters.Count; i++)
-            {
-                var parameter = function.Parameters[i];
-                if (parameter.DefaultValue is not null || parameter.AttributeChain is not null)
-                {
-                    return VirtualDeclarationCause.RedeclaredParameter;
-                }
-            }
+            // The parser judged the rest of the override's header (Syntax.OverrideHeader, F.6.3).
+            return VirtualDeclarationCause.RedeclaredConstraints;
         }
 
         return null;
@@ -93,10 +68,12 @@ public sealed partial class Binding
     private void ResetVirtualDeclarations()
     {
         this.virtualDeclarations.Clear();
-        this.virtualEffectBounds.Clear();
         this.virtualDeclarationFailures?.Clear();
-        this.virtualOverrides.Clear();
-        this.overrideEntries.Clear();
+        foreach (var entries in this.overrideEntries.Values.In(this.pass))
+        {
+            entries!.Clear();
+        }
+
         this.overrideFailures?.Clear();
         this.baseCallFailures?.Clear();
     }
@@ -112,7 +89,13 @@ public sealed partial class Binding
             }
 
             this.virtualDeclarations.Add(function);
-            if (VirtualDeclarationFailure(function, symbol) is { } cause)
+            if (IsRecovery(function, out _))
+            {
+                // A rejected header (Syntax.SecondModifier, Syntax.OverrideHeader) rests the declaration and its slot matching, which
+                // read it.
+                this.Fail(function, BindingFailure.VirtualDeclaration);
+            }
+            else if (VirtualDeclarationFailure(function, symbol) is { } cause)
             {
                 (this.virtualDeclarationFailures ??= new(ReferenceEqualityComparer.Instance))[function] = cause;
                 this.Fail(function, BindingFailure.VirtualDeclaration);

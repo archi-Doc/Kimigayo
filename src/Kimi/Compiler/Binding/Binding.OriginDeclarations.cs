@@ -1,5 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using System.Diagnostics.CodeAnalysis;
 using Kimi.Compiler.Parsing;
 
 namespace Kimi.Compiler;
@@ -8,9 +9,9 @@ public sealed partial class Binding
 {
     // Persist declaration storage across provisional/final binding passes. No environment is
     // allocated for declarations with neither written relations nor binding-set names.
-    private readonly Dictionary<Koto, OriginDeclaration> originDeclarations = new(ReferenceEqualityComparer.Instance);
+    private readonly OriginDeclarationRows originDeclarations;
 
-    private readonly Dictionary<Koto, List<string>> discoveredOrigins = new(ReferenceEqualityComparer.Instance);
+    private readonly DiscoveredOriginRows discoveredOrigins;
     private OriginRewriteVisitor? originRewriteVisitor;
 
     private static Koto? OriginOwner(Koto node)
@@ -83,7 +84,7 @@ public sealed partial class Binding
     // layers (IsInvariantLayer).
     private static OriginVariance ComponentVariance(BoundType type, int component, Binding? binding) => type.Kind switch
     {
-        BoundTypeKind.Semantics or BoundTypeKind.SemanticsApplication when IsInvariantLayer(type, binding) => OriginVariance.Invariant,
+        BoundTypeKind.Semantics or BoundTypeKind.SemanticsApplication when IsInvariantLayer(type, binding, null, default) => OriginVariance.Invariant,
         BoundTypeKind.Function when type.Components.Count == 2 && component == 0 => OriginVariance.Contravariant,
         BoundTypeKind.Constructed when type.Symbol?.Schema is { } schema && component < schema.GenericSlots.Count => schema.GenericSlots[component].OriginVariance,
         _ => OriginVariance.Covariant,
@@ -164,19 +165,19 @@ public sealed partial class Binding
 
     private void PrepareOriginDeclarations()
     {
-        foreach (var declaration in this.originDeclarations.Values)
+        foreach (var declaration in this.originDeclarations.Values.In(this.pass))
         {
-            declaration.Reset();
+            declaration!.Reset();
         }
 
-        foreach (var declaration in this.initializerOrigins.Values)
+        foreach (var declaration in this.initializerOrigins.Values.In(this.pass))
         {
-            declaration.Reset();
+            declaration!.Reset();
         }
 
-        foreach (var names in this.discoveredOrigins.Values)
+        foreach (var names in this.discoveredOrigins.Values.In(this.pass))
         {
-            names.Clear();
+            names!.Clear();
             ((OriginNameList)names).Spans.Clear();
         }
 
@@ -648,7 +649,7 @@ public sealed partial class Binding
                 origin = this.ResolveOrigin(raw, declaration);
             }
 
-            return this.types.Intern(type.Kind, type.Symbol, type.Semantics, components.AsSpan(0, type.Components.Count), type.Length, origin, arguments.AsSpan(0, type.OriginArguments.Count), type.LengthExpression, type.ClosureContext, type.LengthArguments);
+            return this.types.Intern(type.Kind, type.Symbol, type.Semantics, components.AsSpan(0, type.Components.Count), type.Length, origin, arguments.AsSpan(0, type.OriginArguments.Count), type.LengthExpression, type.InstanceContext, type.LengthArguments, type.Binder);
         }
         finally
         {
@@ -690,5 +691,44 @@ public sealed partial class Binding
 
             node.VisitChildren(this);
         }
+    }
+
+    /// <summary>The `originDeclarations` family's one accessor (DECISIONS BU-220): a kept family, an owner's declared Origins (SPEC 15.3),
+    /// made once and reset in place by each pass (PrepareOriginDeclarations), kept in its key node's module's NodeColumns at its SyntaxId.
+    /// Its members keep the names its readers use.</summary>
+    private readonly struct OriginDeclarationRows(Binding binding)
+    {
+        internal FamilyRows<OriginDeclaration?> Values => new(binding, static (table, _) => table.Hir.Families.OriginDeclarations.Enumerate());
+
+        internal void Add(Koto node, OriginDeclaration value)
+        {
+            ref var row = ref HirTables.Of(node).Families.OriginDeclarations.Ref(node.SyntaxId);
+            row = row is null ? value : throw new ArgumentException($"`originDeclarations` already holds a row at `{node}`.", nameof(node));
+        }
+
+        internal bool ContainsKey(Koto node) => this.TryGetValue(node, out _);
+
+        internal OriginDeclaration? GetValueOrDefault(Koto node)
+            => node.SyntaxOwner is { } table ? table.Hir.Families.OriginDeclarations.Get(node.SyntaxId) : null;
+
+        internal bool TryGetValue(Koto node, [NotNullWhen(true)] out OriginDeclaration? value)
+            => (value = this.GetValueOrDefault(node)) is not null;
+    }
+
+    /// <summary>The `discoveredOrigins` family's one accessor (DECISIONS BU-220): a kept family, a binder's discovered Origin names, an
+    /// OriginNameList made once and emptied in place by each pass (PrepareOriginDeclarations), kept in its key node's module's NodeColumns
+    /// at its SyntaxId. Its members keep the names its readers use.</summary>
+    private readonly struct DiscoveredOriginRows(Binding binding)
+    {
+        internal FamilyRows<List<string>?> Values => new(binding, static (table, _) => table.Hir.Families.DiscoveredOrigins.Enumerate());
+
+        internal void Add(Koto node, List<string> value)
+        {
+            ref var row = ref HirTables.Of(node).Families.DiscoveredOrigins.Ref(node.SyntaxId);
+            row = row is null ? value : throw new ArgumentException($"`discoveredOrigins` already holds a row at `{node}`.", nameof(node));
+        }
+
+        internal bool TryGetValue(Koto node, [NotNullWhen(true)] out List<string>? value)
+            => (value = node.SyntaxOwner is { } table ? table.Hir.Families.DiscoveredOrigins.Get(node.SyntaxId) : null) is not null;
     }
 }

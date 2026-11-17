@@ -6,7 +6,6 @@ namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
-    private readonly Dictionary<(BoundConformancePath Path, BoundRequirement Associated), AssociatedBinding> associatedBindings = new();
     private readonly HashSet<(BoundType Type, BindingScope Scope)> normalizingAssociated = new();
     private HashSet<BoundRequirement>? ambiguousAssociatedMatches;
     private Dictionary<Koto, (BoundRequirement First, BoundRequirement Second, int Count)>? associatedAmbiguities;
@@ -29,7 +28,7 @@ public sealed partial class Binding
         }
 
         var symbol = new BindingSymbol("Self", BindingSymbolKind.TypeParameter, contract.Declaration, this.scopes.GetValueOrDefault(contract.Declaration) ?? contract.Scope) { SelfOf = contract, Slot = -1 };
-        symbol.WholeType = symbol.Type = new("Self", BoundTypeKind.Parameter, symbol);
+        symbol.WholeType = symbol.Type = this.types.Parameter("Self", BoundTypeKind.Parameter, symbol);
         return contract.ContractSelf = symbol.Type;
     }
 
@@ -125,28 +124,28 @@ public sealed partial class Binding
                 Search(own);
             }
 
-            for (var current = scope; current is not null; current = current.Parent)
+            // SPEC 8.3.2, 8.5.2, 9.6: the Contracts the premises supply for the Type, one per identity class (each non-Alias row of Enumerate's
+            // rows: the use is judged).
+            var start = this.premiseRows.Count;
+            this.PremiseRows(type, scope, this.premiseRows);
+            for (var i = start; i < this.premiseRows.Count; i++)
             {
-                if (current.Constraints is not { Invalid: false } environment)
+                if (this.premiseRows[i] is { Alias: false, Symbol.Contract: { } shape })
                 {
-                    continue;
-                }
-
-                foreach (var fact in environment.Facts)
-                {
-                    if (fact.Kind == ConstraintKind.Contract && AssociatedIdentityMatches(fact.Subject, type) && fact.Contract?.Contract is not null)
-                    {
-                        Search(this.AppliedAssociatedContract(fact, type).Contract!);
-                    }
+                    Search(shape);
                 }
             }
 
+            this.premiseRows.RemoveRange(start, this.premiseRows.Count - start);
+
+            // SPEC 9.7.3: a conformance is a candidate as the receiver sees it, its bound reference at the receiver's arguments, the
+            // terms a premise's reference is in, so one conformance reached both ways is one candidate (PLAN G798).
             if (type.Symbol is { } symbol && this.ConformancesOf(symbol) is { } list)
             {
                 for (var i = 0; i < list.Count; i++)
                 {
                     searching = list[i];
-                    Search(list[i].Contract.Contract!);
+                    Search(this.SubstituteRequirementContract(list[i].Contract, type).Contract!);
                 }
             }
         }
@@ -182,42 +181,44 @@ public sealed partial class Binding
     // SPEC 9.7.3, 8.5.2, 8.8.2: a nested Type named through a Core qualifier also resolves as an associated Type when the qualifier's
     // applied Type has one of that name with conformance evidence: a premise, or a conformance with a declared path without premises,
     // holds for every binding (8.8.1); a conditional one only where its condition is proven for the written arguments ("Refuted: No
-    // conformance from this path"; before the Contract headers are ready every proof is Unknown: PLAN G728's remainder). Judged where the
-    // qualifier is applied (9.7.1 step 3), the one former of every nested Type's reference; the path's selection stands.
+    // conformance from this path"). Judged where the qualifier is applied (9.7.1 step 3), the one former of every nested Type's
+    // reference; the path's selection stands. The evidence is complete once the proofs answer (contractHeadersReady: the declared,
+    // conditional and inherited conformances are registered and a condition can be proven); a judgment that found none before that is
+    // an early read, noted and judged again by VerifyEarlyProjections (G621's list; PLAN G728).
     private bool AlsoAssociated(BoundType qualifier, string name, MemberAccessKoto path, BindingScope scope)
     {
         var search = this.SearchAssociated(qualifier, scope, name, null);
-        if (search.Found is not { } associated)
+        var both = search.Found is { } associated && (search.Alternative is not null || search.Source is not { } source || Unconditional(source) ||
+            this.ProveConstraint(this.InternConstraint(new(ConstraintKind.Contract, qualifier, contract: search.Reference ?? associated.Scope.Owner.BoundSymbol!)), scope) == ConstraintProof.Proven);
+        if (!both && !this.contractHeadersReady)
         {
-            this.NoteEarlyProjection(path, qualifier, scope, name, null);
+            this.earlyProjections.Add((path, PathEnd.Selected, qualifier, scope, name, null));
+        }
+
+        return both;
+
+        static bool Unconditional(BoundConformance source)
+        {
+            for (var i = 0; i < source.Paths.Count; i++)
+            {
+                if (source.Paths[i].Premises is null)
+                {
+                    return true;
+                }
+            }
+
             return false;
         }
-
-        if (search.Alternative is not null || search.Source is not { } source)
-        {
-            return true;
-        }
-
-        for (var i = 0; i < source.Paths.Count; i++)
-        {
-            if (source.Paths[i].Premises is null)
-            {
-                return true;
-            }
-        }
-
-        var evidence = search.Reference ?? associated.Scope.Owner.BoundSymbol!;
-        return this.ProveConstraint(this.InternConstraint(new(ConstraintKind.Contract, qualifier, contract: evidence)), scope) == ConstraintProof.Proven;
     }
 
     // G621: before the conformance declarations register, an unqualified name over a declared Type has no associated candidates yet (they
-    // come from the conformance table; a qualified one searches its Contract): a projection that found none and a nested Type judged
-    // without them are judged again once they register (VerifyEarlyProjections).
+    // come from the conformance table; a qualified one searches its Contract): a projection that found none is judged again once they
+    // register (VerifyEarlyProjections).
     private void NoteEarlyProjection(MemberAccessKoto use, BoundType type, BindingScope scope, string name, BindingSymbol? qualifier)
     {
         if (!this.conformancesRegistered && type.Symbol?.Declaration is StructKoto or EnumKoto)
         {
-            this.earlyProjections.Add((use, type, scope, name, qualifier));
+            this.earlyProjections.Add((use, PathEnd.Projection, type, scope, name, qualifier));
         }
     }
 
@@ -490,9 +491,9 @@ public sealed partial class Binding
 
     private void PrepareAssociatedBindings()
     {
-        for (var i = 0; i < this.impls.Paths.Count; i++)
+        for (var i = 0; i < this.impls.InPass.Paths.Count; i++)
         {
-            var path = this.impls.Paths[i];
+            var path = this.impls.InPass.Paths[i];
             if (!ReferenceEquals(path.RootPath, path) || path.InheritedFrom is not null)
             {
                 continue;
@@ -503,10 +504,9 @@ public sealed partial class Binding
             // separately declared ancestor's conditions or specifications.
             for (var j = 0; j < shape.AssociatedTypes.Count; j++)
             {
-                var key = (path, shape.AssociatedTypes[j]);
-                if (!this.associatedBindings.ContainsKey(key))
+                if (this.AssociatedBindingOf(path, shape.AssociatedTypes[j]) is null)
                 {
-                    this.associatedBindings.Add(key, new());
+                    (path.AssociatedBindings ??= new()).Add((shape.AssociatedTypes[j], new()));
                 }
             }
 
@@ -537,9 +537,9 @@ public sealed partial class Binding
             }
         }
 
-        for (var i = 0; i < this.impls.Paths.Count; i++)
+        for (var i = 0; i < this.impls.InPass.Paths.Count; i++)
         {
-            var path = this.impls.Paths[i];
+            var path = this.impls.InPass.Paths[i];
             var shape = path.Contract.Contract!;
             for (var j = 0; j < shape.AssociatedTypes.Count; j++)
             {
@@ -574,7 +574,7 @@ public sealed partial class Binding
                 Collect(constraint.Right!, path, context);
             }
             else if (constraint is { Kind: ConstraintKind.TypeIdentity, RequiredType: { } required } &&
-                this.AssociatedIdentity(constraint.Subject, context) is { } identity && this.associatedBindings.TryGetValue((path, identity), out var binding))
+                this.AssociatedIdentity(constraint.Subject, context) is { } identity && this.AssociatedBindingOf(path, identity) is { } binding)
             {
                 required = context is null ? required : this.SubstituteContractReference(required, context, out _);
                 if (!binding.Candidates.Contains(required))
@@ -627,7 +627,7 @@ public sealed partial class Binding
         // Refinement paths have exactly the root declaration's D + P environment.
         // Share immutable normalized Types and candidate storage within that root only.
         path = path.RootPath;
-        if (!this.associatedBindings.TryGetValue((path, associated), out var binding))
+        if (this.AssociatedBindingOf(path, associated) is not { } binding)
         {
             return null;
         }
@@ -695,7 +695,25 @@ public sealed partial class Binding
         return found;
     }
 
-    private sealed class AssociatedBinding
+    // A root path's binding of an associated identity, kept with the path (BoundConformancePath.AssociatedBindings); null if none.
+    private AssociatedBinding? AssociatedBindingOf(BoundConformancePath path, BoundRequirement associated)
+    {
+        if (path.AssociatedBindings is { } bindings)
+        {
+            for (var i = 0; i < bindings.Count; i++)
+            {
+                if (bindings[i].Associated == associated)
+                {
+                    return bindings[i].Binding;
+                }
+            }
+        }
+
+        return null;
+    }
+
+    // A root path's binding of an associated identity; its per-pass state is reset in place with the path's (ImplTable).
+    internal sealed class AssociatedBinding
     {
         internal BindingScope? FormationScope { get; set; }
 
@@ -718,5 +736,20 @@ public sealed partial class Binding
         internal List<AssociatedEvidence> EvidenceSources { get; } = new();
 
         internal byte State { get; set; }
+
+        internal void Reset()
+        {
+            this.Candidates.Clear();
+            this.Result = null;
+            this.Inferred = null;
+            this.InferenceSource = null;
+            this.InferenceConflict = false;
+            this.Problem = InferenceProblem.None;
+            this.ProblemSource = null;
+            this.ProblemDetail = null;
+            this.EvidenceSources.Clear();
+            this.State = 0;
+            this.FormationScope?.Reset();
+        }
     }
 }

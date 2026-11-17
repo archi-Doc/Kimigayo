@@ -42,8 +42,8 @@ internal sealed partial class MirBuilder
     // secured before a later argument that builds code or that the operand order puts before it: a named one (SPEC 10.1.1), an unbound
     // reference's receiver supplied after earlier parameters (SPEC 7.3.4), a setter's receiver after its value (SPEC 13.7.1), A3 E13 (2);
     // or in its pending slot), then its omitted defaults (Defaults), passed by parameter slot, the receiver first. A compiler function is its
-    // intrinsic where the table gives one (IntrinsicDisposition), naming its library declaration (A3 E14), with the operands it takes beyond
-    // the written arguments (Extra), $abort's at its macro (SPEC 22.5.1), and a direct base call the implementation the virtual selection
+    // intrinsic where its Definition gives one (its declaration's `#Intrinsic`), naming its library declaration (A3 E14), with the operands
+    // it takes beyond the written arguments (Extra), $abort's at its macro (SPEC 22.5.1), and a direct base call the implementation the virtual selection
     // names. A call of a Never function or a diverging intrinsic has no runtime successor and continues for the checks (SPEC 14.10); a call
     // whose operand does not complete enters no callee at run time (SPEC 15.6.7), but for the checks it continues where that operand's code
     // continues, its later operands, defaults and activation checked there (SPEC 14.10.3), each operand as built: a Never form's is the
@@ -120,13 +120,13 @@ internal sealed partial class MirBuilder
             this.Defaults(call, function!, subst, start, node);
         }
 
-        var disposition = function is null ? default : IntrinsicDisposition.Of(function.CompilerFunction);
+        var disposition = function?.Definition ?? default;
         if (this.Extra(disposition) is { } extra)
         {
             this.arguments.Add(extra);
         }
 
-        var declaration = function?.LibraryDeclaration is null ? null : function; // The compiler-only $abort has none (SPEC 17.4).
+        var declaration = ReferenceEquals(function, compilation.Library.Abort) ? null : function; // The compiler-only $abort has none (SPEC 17.4).
         var callee = disposition.Kind == DispositionKind.Intrinsic ? MirCallee.Intrinsic(disposition.Id, declaration, subst) : call.Kind switch
         {
             CalleeKind.Requirement => new(MirCalleeKind.Requirement, function, subst, Contract: call.RequirementContract),

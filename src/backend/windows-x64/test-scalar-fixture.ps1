@@ -37,9 +37,9 @@ try {
     & {
         try {
             $stem = [IO.Path]::Combine($fixtures, $Fixture.BaseName)
-            $expected = [IO.File]::ReadAllText("$stem.stdout")
+            $expected = [IO.File]::ReadAllBytes("$stem.stdout")
             $exit = [int][IO.File]::ReadAllText("$stem.exit")
-            $expectedError = [IO.File]::ReadAllText("$stem.stderr")
+            $expectedError = [IO.File]::ReadAllBytes("$stem.stderr")
             $observation = if (Test-Path -LiteralPath "$stem.observation") { [int][IO.File]::ReadAllText("$stem.observation") } else { 0 }
         }
         catch {

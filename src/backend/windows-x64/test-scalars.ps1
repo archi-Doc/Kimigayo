@@ -52,7 +52,7 @@ function Get-NativeFileHash([string] $Path) {
     try { [Convert]::ToHexStringLower([Security.Cryptography.SHA256]::HashData($stream)) } finally { $stream.Dispose() }
 }
 $environment = @(foreach ($name in @('opt', 'llc', 'llvm-nm', 'lld-link')) { $tools[$name] }) + @($archive, $kernel.path) +
-    @(foreach ($name in @('test-scalars.ps1', 'test-scalar-fixture.ps1', 'test-scalar-process.ps1', 'toolchain.ps1', 'kernel32.ps1', 'profile.json')) {
+    @(foreach ($name in @('test-scalars.ps1', 'test-scalar-fixture.ps1', 'test-scalar-process.ps1', 'expected-output.ps1', 'toolchain.ps1', 'kernel32.ps1', 'profile.json')) {
         Join-Path $PSScriptRoot $name
     })
 $environmentKey = Get-NativeKey (@($environment | ForEach-Object { Get-NativeFileHash $_ }) +

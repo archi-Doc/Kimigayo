@@ -47,13 +47,12 @@ public sealed partial class MirBorrowsTest
 
     // SPEC 8.15.3, IMPL 21.3.2 (R8-A1d): owning iteration's storage-height bound, one operation per program: the last accepted depth of an Array's
     // and a fixed array's nest, and one deeper the located resource records. An exceeded limit is no invalid program; the bound is where the
-    // compiler-supplied boundary held it.
+    // compiler-supplied boundary held it. A fixed array's owning iterator is its loop's (SPEC 22.1: its entry is no member; PLAN G776-b).
     [Theory]
     [InlineData("    for x in a@move\n        Console.writeLine(\"x\")\n", false, 61, 3)]
     [InlineData("    var it = a@move.intoIterator()\n    _ = it.next()\n", false, 61, 4)]
     [InlineData("    var it = a@move.intoIterator()\n    Console.writeLine(\"x\")\n", false, 62, 3)]
-    [InlineData("    var it = a@move.intoIterator()\n    _ = it.next()\n", true, 60, 4)]
-    [InlineData("    var it = a@move.intoIterator()\n    Console.writeLine(\"x\")\n", true, 61, 3)]
+    [InlineData("    for x in a@move\n        Console.writeLine(\"x\")\n", true, 60, 3)]
     public void OwningIterationsBoundIsLocated(string operation, bool inline, int last, int line)
     {
         Assert.Empty(DiagnosticCorpus.Check(Program(last)).Diagnostics);

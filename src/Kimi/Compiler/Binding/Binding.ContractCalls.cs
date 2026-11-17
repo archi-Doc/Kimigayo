@@ -39,24 +39,23 @@ public sealed partial class Binding
             Add(own);
         }
 
-        for (var current = scope; current is not null; current = current.Parent)
+        // SPEC 8.3.2, 8.5.2, 9.6: the Contracts the premises supply for the Type, one per identity class (each non-Alias row of Enumerate's
+        // rows: the use is judged).
+        var start = this.premiseRows.Count;
+        this.PremiseRows(type, scope, this.premiseRows);
+        for (var i = start; i < this.premiseRows.Count; i++)
         {
-            if (current.Constraints is not { Invalid: false } environment)
+            if (this.premiseRows[i] is { Alias: false, Symbol.Contract: { } shape })
             {
-                continue;
-            }
-
-            foreach (var fact in environment.Facts)
-            {
-                if (fact.Kind == ConstraintKind.Contract && AssociatedIdentityMatches(fact.Subject, type) && fact.Contract?.Contract is not null)
-                {
-                    Add(this.AppliedAssociatedContract(fact, type).Contract!);
-                }
+                Add(shape);
             }
         }
 
+        this.premiseRows.RemoveRange(start, this.premiseRows.Count - start);
+
         // SPEC 8.7.4: PrimitiveInteger implies Position, whose requirement is called through an integer Type parameter;
-        // concrete integers gain no members.
+        // concrete integers gain no members. Temporary: this clause names Position apart from PrimitiveIntegerSupplies until
+        // PLAN G776 decides the member calls an entailed built-in conformance gives; it then reads that list or goes.
         if (this.Library.Position.Contract is { } position && this.IsGenericInteger(type, scope))
         {
             Add(position);
@@ -108,7 +107,7 @@ public sealed partial class Binding
         }
 
         // SPEC 7.4, 9.6: nor may they acquire corresponding parameters of overlapping Types in different modes.
-        if (this.CheckGatheredParameterShapes(member, group.Members, aliasStage: false))
+        if (this.CheckGatheredParameterShapes(member, this.GroupOf(member, null), aliasStage: false))
         {
             group.Active = false;
             return null;
@@ -213,42 +212,5 @@ public sealed partial class Binding
 
         /// <summary>Gets or sets a value indicating whether a Property requirement matched the name.</summary>
         internal bool PropertyRequirement { get; set; }
-    }
-
-    private readonly struct CallCandidates(BindingSymbol first, RequirementGroup? requirements, List<BindingSymbol>? imports)
-    {
-        public Enumerator GetEnumerator() => new(first, requirements, imports);
-
-        internal struct Enumerator(BindingSymbol first, RequirementGroup? requirements, List<BindingSymbol>? imports)
-        {
-            private BindingSymbol? next = first;
-            private int index;
-
-            public BindingSymbol Current { get; private set; } = null!;
-
-            public bool MoveNext()
-            {
-                var members = requirements?.Members ?? (imports is { Count: > 0 } ? imports : null);
-                if (members is not null)
-                {
-                    if (this.index == members.Count)
-                    {
-                        return false;
-                    }
-
-                    this.Current = members[this.index++];
-                    return true;
-                }
-
-                if (this.next is null)
-                {
-                    return false;
-                }
-
-                this.Current = this.next;
-                this.next = this.next.Next;
-                return true;
-            }
-        }
     }
 }

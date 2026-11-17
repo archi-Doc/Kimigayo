@@ -60,7 +60,7 @@ public sealed partial class Binding
 {
     private readonly ScratchBuffers<BoundArgumentOperation> argumentOperationScratch = new();
     private readonly Dictionary<Koto, BoundArgumentOperation> receiverOperations = new(ReferenceEqualityComparer.Instance);
-    private readonly Dictionary<Koto, BoundAdaptation> adaptations = new(ReferenceEqualityComparer.Instance);
+    private readonly AdaptationRows adaptations;
 
     /// <summary>Gets whether an expression of Type <c>ref/T</c> or <c>uniq/T</c> is read as its Copy referent where a <c>T</c> is expected (SPEC 3.5.3).</summary>
     /// <param name="node">The bound expression; its BoundType remains the reference Type.</param>
@@ -86,26 +86,28 @@ public sealed partial class Binding
         => this.types.Rebuild(parameter, [parameter.Components[0]], this.PreparedOrigin(source), []);
 
     /// <summary>
-    /// SPEC 10.2: safe reference layers ending in <paramref name="referent"/> yield one shared reference to it. A <c>ref</c>
-    /// layer is Copied with its own Origin, so it restarts the dependency; each <c>uniq</c> layer below it is shared-Reborrowed
-    /// and meets its Origin into the result.
+    /// SPEC 10.2: safe value-reference layers ending in <paramref name="referent"/> yield one shared reference to it, the layers
+    /// walked as <see cref="LayersTerminal"/> walks them (ref, uniq and qualifying pair layers, SPEC 3.4.3). A <c>ref</c> layer is
+    /// Copied with its own Origin, so it restarts the dependency; each <c>uniq</c> layer below it is shared-Reborrowed and meets its
+    /// Origin into the result; a pair layer does either by its admitted cases (MeetLayers, SPEC 13.5.5).
     /// </summary>
     /// <param name="actual">The complete Type of the value.</param>
     /// <param name="referent">The referent the expected <c>ref</c> Type names.</param>
+    /// <param name="scope">The scope whose premises give a pair layer's admitted set.</param>
     /// <param name="layers">The number of reference layers followed, or zero when the layers do not end in the referent.</param>
     /// <returns>The shared reference Type, or null.</returns>
-    internal BoundType? SharedReferenceThroughLayers(BoundType actual, BoundType referent, out int layers)
+    internal BoundType? SharedReferenceThroughLayers(BoundType actual, BoundType referent, BindingScope scope, out int layers)
     {
         layers = 0;
-        for (var type = actual; type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 }; type = type.Components[0])
+        for (var type = actual; this.LayerBelow(type, scope) is { } below; type = below)
         {
             layers++;
             this.termWalks++;
-            if (ReferenceEquals(type.Components[0], referent))
+            if (ReferenceEquals(below, referent))
             {
-                BoundOrigin? origin = null;
-                this.MeetLayers(actual, layers, ref origin); // SPEC 15.6.3: the layers' Origins, up to the innermost shared one.
-                return this.types.Intern(BoundTypeKind.Semantics, null, SemanticsKind.Ref, [referent], origin: origin);
+                var walk = default(ContainmentWalk);
+                this.MeetLayers(actual, layers, ref walk); // SPEC 15.6.3: the layers' Origins, up to the innermost shared one.
+                return this.types.Intern(BoundTypeKind.Semantics, null, SemanticsKind.Ref, [referent], origin: this.WalkOrigin(walk));
             }
         }
 
@@ -183,7 +185,7 @@ public sealed partial class Binding
         // recorded as the implicit follow of the outer layer, and each instance loads through the layers it has.
         if (TryPairLayer(type, out _, out _))
         {
-            this.implicitPairFollows[node] = this.FollowablePair(type!, this.ConstraintScope(node), out _);
+            this.implicitPairFollows[node] = this.FollowablePair(type!, this.ConstraintScope(node), out _) ?? SemanticsMask.None; // LayersTerminal followed it.
         }
 
         this.adaptations[node] = new(ExpectedAdaptationKind.ReferentRead, read);
@@ -199,7 +201,7 @@ public sealed partial class Binding
     // SPEC 3.5, 10.1: whether a bare input is acquired by value. A bare Place never Moves, so a Place whose bare acquisition of `judged`,
     // the Type it stores, needs a Move is not, unless its acquisition is required on `arriving`, the Type that arrives at the parameter.
     private bool AcquiresBare(Koto source, BoundType judged, BoundType arriving, BoundType pattern, bool deferAcquisition)
-        => judged.Semantics is not (SemanticsKind.Owner or SemanticsKind.Obj or SemanticsKind.Rc or SemanticsKind.Arc) || !IsBarePlace(source) ||
+        => judged.Semantics is not (SemanticsKind.Owner or SemanticsKind.Obj or SemanticsKind.Rc or SemanticsKind.Arc) || !this.IsBarePlace(source) ||
             this.BareAcquire(judged, source, out _) != HirAcquire.Move ||
             this.RequireAcquisition(source, arriving, pattern, BindingFailure.TransferRequired, @object: false, fixedExpectation: false, deferAcquisition);
 
@@ -314,7 +316,7 @@ public sealed partial class Binding
                 quality = ArgumentAdaptation.CrossSemanticsBorrow;
                 kind = ArgumentOperationKind.CopyRead;
             }
-            else if (!receiver && StoresExclusiveReference(source, actual) && this.BareReborrowLayer(actual, source) is { } layer)
+            else if (!receiver && this.StoresExclusiveReference(source, actual) && this.BareReborrowLayer(actual, source) is { } layer)
             {
                 // SPEC 3.5.1, 8.14, 10.1 step 1 (DECISIONS BU-27; PLAN G757): a bare Place whose plan Reborrows, a stored `uniq/T` or
                 // `objuniq/T` or a pair layer in an exclusive case, is Reborrowed in its own Semantics before inference, so a parameter that
@@ -378,7 +380,7 @@ public sealed partial class Binding
             // SPEC 13.5.6: an explicit @ref/@uniq on a slot storing a reference or handle borrows that slot and
             // adds one layer; a temporary reference value is materialized first (SPEC 3.6).
             // A getter result is lent only shared (SPEC 11.5), as every Temporary Value is admitted (BorrowableTemporary).
-            if (!this.BorrowablePlace(source, scope, target == SemanticsKind.Uniq) && !BorrowableTemporary(source, target == SemanticsKind.Uniq, true, fixedExpectation))
+            if (!this.BorrowablePlace(source, scope, target == SemanticsKind.Uniq) && !this.BorrowableTemporary(source, target == SemanticsKind.Uniq, true, fixedExpectation))
             {
                 return false;
             }
@@ -398,7 +400,7 @@ public sealed partial class Binding
             }
 
             if (!explicitBorrow && !projected && target == SemanticsKind.Ref &&
-                this.SharedReferenceThroughLayers(actual, pattern.Components[0], out var layers) is { } shared && (layers > 1 || actual.Semantics == SemanticsKind.Uniq))
+                this.SharedReferenceThroughLayers(actual, pattern.Components[0], scope, out var layers) is { } shared && (layers > 1 || actual.Semantics == SemanticsKind.Uniq))
             {
                 // SPEC 10.2, 15.6.3: several reference layers yield one shared reference to the parameter's referent, contained in the
                 // layers and, unless one is shared, in those that reach the source.
@@ -409,7 +411,7 @@ public sealed partial class Binding
                 return true;
             }
 
-            if (target == SemanticsKind.Uniq && (actual.Semantics != SemanticsKind.Uniq || ReachedThroughShared(source)))
+            if (target == SemanticsKind.Uniq && (actual.Semantics != SemanticsKind.Uniq || this.ReachedThroughShared(source)))
             {
                 // SPEC 3.5.1: a stored uniq reached through a shared path has no Reborrow, so its bare acquisition needs the Move a bare
                 // Place never makes (TransferRequired, DECISIONS BU-45), deferred as every bare acquisition's; a written one is its own.
@@ -450,7 +452,7 @@ public sealed partial class Binding
                     }
                 }
             }
-            else if (!BorrowableTemporary(source, exclusive, explicitBorrow || receiver, fixedExpectation) &&
+            else if (!this.BorrowableTemporary(source, exclusive, explicitBorrow || receiver, fixedExpectation) &&
                 !(target == SemanticsKind.Ref && this.KindOf(source) == PartKind.Literal))
             {
                 return false;
@@ -493,7 +495,7 @@ public sealed partial class Binding
         var exclusive = pattern.Semantics == SemanticsKind.ObjUniq;
         if (receiver && ReferenceTypes.IsStorage(actual) && actual.Components[0].HandleMode is { } stored)
         {
-            if (exclusive && (actual.Semantics != SemanticsKind.Uniq || stored.PayloadAuthority != LoanRequirement.Uniq || ReachedThroughShared(source)))
+            if (exclusive && (actual.Semantics != SemanticsKind.Uniq || stored.PayloadAuthority != LoanRequirement.Uniq || this.ReachedThroughShared(source)))
             {
                 return false;
             }
@@ -507,7 +509,7 @@ public sealed partial class Binding
 
         if (actual.IsObjectBorrow)
         {
-            if (!LendsView(source, actual, exclusive))
+            if (!this.LendsView(source, actual, exclusive))
             {
                 // SPEC 3.5.1: as a stored uniq's (AdaptInput), an objuniq view's bare acquisition through a shared path needs a Move.
                 return actual.Semantics == SemanticsKind.ObjUniq && !explicitOwner && !receiver &&
@@ -524,7 +526,7 @@ public sealed partial class Binding
         }
         else if (actual.HandleMode is { } mode && (!exclusive || mode.PayloadAuthority == LoanRequirement.Uniq) &&
             ((explicitOwner && !receiver ? this.BorrowablePlace(source, scope, exclusive) : this.LendsPlace(source, scope, exclusive, out _)) ||
-            BorrowableTemporary(source, exclusive, explicitOwner || receiver, fixedExpectation)))
+            this.BorrowableTemporary(source, exclusive, explicitOwner || receiver, fixedExpectation)))
         {
             // SPEC 13.5.5, 13.5.6: a handle lends its object from a Place, as Binding lends it to a written Borrow and as SPEC does to an
             // implicit one (BorrowablePlace), or from a Temporary Value.
@@ -549,5 +551,29 @@ public sealed partial class Binding
         var origin = actual.IsObjectBorrow ? this.ReferentOrigin(source, actual)! : this.PlaceOrigin(source);
         adapted = this.types.Intern(BoundTypeKind.Semantics, null, pattern.Semantics, [actual.Components[0]], origin: origin);
         return true;
+    }
+
+    /// <summary>The `adaptations` family's one accessor (DECISIONS BU-220): a pass family, the implicit adaptation selected for an
+    /// expression (SPEC 10.2), kept in its node's module's NodeColumns at its SyntaxId (an adaptation always has its Type, so the column's
+    /// default is none); absent after a pass until the column's first write. Its members keep the names its readers use.</summary>
+    private readonly struct AdaptationRows(Binding binding)
+    {
+        internal BoundAdaptation this[Koto node]
+        {
+            set => HirTables.Of(node).Families.Adaptations.Ref(node.SyntaxId, binding) = value;
+        }
+
+        internal bool ContainsKey(Koto node) => this.TryGetValue(node, out _);
+
+        internal void Remove(Koto node)
+        {
+            if (this.TryGetValue(node, out _))
+            {
+                this[node] = default;
+            }
+        }
+
+        internal bool TryGetValue(Koto node, out BoundAdaptation adaptation)
+            => (adaptation = node.SyntaxOwner is { } table ? table.Hir.Families.Adaptations.Get(node.SyntaxId, binding) : default) != default;
     }
 }

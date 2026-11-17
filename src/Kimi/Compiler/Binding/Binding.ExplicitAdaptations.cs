@@ -101,6 +101,11 @@ public sealed partial class Binding
         }
 
         this.PairBinders(conversion, this.caseBinders ??= new()); // A row selects at most one case of each binder in scope.
+        if (PairBinder.CaseProduct(this.caseBinders) == 0)
+        {
+            return this.RestOnEmptiedSet(conversion, scope); // SPEC 8.3.4: no case, so no row; the binders' definition has none either.
+        }
+
         uint operations = 0;
         BoundType? creationSource = null;
         BoundType? creationTarget = null;
@@ -286,8 +291,8 @@ public sealed partial class Binding
             // SPEC 13.5.6, 15.1.5: a borrowing case, shared or exclusive, Reborrows an object view that lends its object in its mode
             // (LendsView), as the concrete @objref and @objuniq do (AdaptObjectBorrow), and otherwise borrows a Place that lends in its
             // mode or a Temporary Value.
-            if (source.IsObjectBorrow && target.IsObjectBorrow ? !LendsView(conversion.Left, source, exclusive)
-                : !this.BorrowablePlace(conversion.Left, scope, exclusive) && !BorrowableTemporary(conversion.Left, exclusive, true, false))
+            if (source.IsObjectBorrow && target.IsObjectBorrow ? !this.LendsView(conversion.Left, source, exclusive)
+                : !this.BorrowablePlace(conversion.Left, scope, exclusive) && !this.BorrowableTemporary(conversion.Left, exclusive, true, false))
             {
                 var failure = this.BorrowFailure(conversion.Left, scope, exclusive);
                 if (failure == BindingFailure.Unsupported)
@@ -299,7 +304,7 @@ public sealed partial class Binding
                 return false;
             }
         }
-        else if (operation != ConversionBinding.ObjectUpcast && IsBarePlace(conversion.Left) &&
+        else if (operation != ConversionBinding.ObjectUpcast && this.IsBarePlace(conversion.Left) &&
             !this.CopiesInEveryCase(source, this.ConstraintScope(conversion)))
         {
             this.FailAcquisition(conversion, BindingFailure.TransferRequired, conversion.Left);

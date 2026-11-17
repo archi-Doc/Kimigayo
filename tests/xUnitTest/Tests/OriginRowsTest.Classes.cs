@@ -28,7 +28,7 @@ public sealed partial class OriginRowsTest
     // LocalOmissionsRetainFixedVariablesAndInitializerConstraints, which reads Binding's obligation, 2a-4).
     private const string LocalOmission = "func f(x: ref/i32)\n    var local: ref/i32 = x\n";
 
-    // A callee's meet of its own Origins, judged with its Parameter atoms (2a0-D's rv/meet-trans-ok, PLAN G195).
+    // A callee's meet of its own Origins, judged with its Parameter atoms (2a0-D's rv/meet-trans-ok).
     private const string MeetTrans = "func put(slot: uniq/(ref/i32 during (a and b)), v: ref/i32 during (a and b)) -> ()\n    slot@follow = v\n" +
         "func mt(x: ref/i32, y: ref/i32) -> i32\n    var t = x\n    put(t@uniq, y)\n    return 0\n";
 

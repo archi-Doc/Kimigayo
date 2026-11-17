@@ -62,6 +62,18 @@ public class Utf8DeclarationTest
     public void WindowCountsAreNotWritable(string source, string site)
         => this.BufferLengthsAreNotWritable(source, site);
 
+    // SPEC 22.9.1 (R8-W2 b2-1's coverage F7, ctorx): Utf8Writer has no public constructor: its internal init, which Text.writer's bodies
+    // call (PublicBufferSignaturesBind's writer row), is no overload user code can apply, the record a library Type's internal init gives
+    // (WriteWindow's); before R8-W2 b2-1 Utf8Writer had no init, and the call was UnresolvedBinding_Kd.
+    [Fact]
+    public void TheAdaptersInternalInitIsUnreachable()
+    {
+        var c = MinimalEmissionTest.Analyze("var buffer = Text.heap(0)\nlet writer = Utf8Writer.init(null, null, .Heap)\n_ = writer.status()");
+        Assert.Equal(
+            [(DiagnosticCode.NoApplicableOverload_Kd, "Utf8Writer.init(null, null, .Heap)")],
+            c.Binding.Issues.Select(static x => (x.Code, x.Node.ToString())));
+    }
+
     private static string Describe(Compilation c)
         => MinimalEmissionTest.Describe(c) + "\n" + string.Join("\n", TestDiagnostics.Of(c).Select(x => x.ToString())) +
             "\n" + string.Join("\n", c.Binding.Issues.Select(x => x.Code + ": " + x.Node.ToString()));

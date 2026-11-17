@@ -167,7 +167,7 @@ public sealed partial class Binding
     {
         if (path.Checking)
         {
-            return ConstraintProof.Unknown;
+            return this.ReentryRead(path);
         }
 
         if (path.Invalid || path.Identity.Invalid || this.InvalidDeclarationContext(path.Type.Declaration))
@@ -322,7 +322,7 @@ public sealed partial class Binding
         }
         finally
         {
-            path.Checking = false;
+            this.EndChecking(path);
             path.Unsupported &= completed; // An interrupted verification records no limit.
             this.conformanceChecks--;
         }
@@ -330,11 +330,11 @@ public sealed partial class Binding
 
     // SPEC 8.8.2: each inherited path's conformance scope, the heir D and its premises P (Register copies the declared path's) at its
     // declared Self (BoundConformancePath.DeclaredPath), one step per path; none where that Self was refused. Built once per pass after
-    // the table's reset (ImplTable.Reset empties it) and before its readers, the inline layouts' heir nodes and
-    // VerifyInheritedConformance, which read it and never build it.
+    // the pass's registrations (ImplTable resets each path, its scope included, at its first access in the pass) and before its readers,
+    // the inline layouts' heir nodes and VerifyInheritedConformance, which read it and never build it.
     private void PrepareInheritedScopes()
     {
-        foreach (var path in this.impls.Paths)
+        foreach (var path in this.impls.InPass.Paths)
         {
             if (path.InheritedFrom is null)
             {

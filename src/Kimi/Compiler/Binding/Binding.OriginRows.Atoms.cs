@@ -143,7 +143,7 @@ public sealed partial class Binding
                 // DECISIONS BU-100: fixed in every body; its callers prove every choice, so only `static` can carry it into one.
                 return new(atom, OriginAtomKind.Fixed, ProjectionRole.None);
             case OriginKind.Parameter or OriginKind.Input:
-                // Rows 1 and 9: B's contract (its or an enclosing declaration's), or another declaration's universal atom (PLAN G195).
+                // Rows 1 and 9: B's contract (its or an enclosing declaration's), or another declaration's universal atom.
                 return new(atom, this.InContract(atom.Binder, slice.Body) ? OriginAtomKind.Fixed : OriginAtomKind.Unclassed, ProjectionRole.None);
             case OriginKind.Intersection:
                 return this.ClassifyMeet(atom, slice);

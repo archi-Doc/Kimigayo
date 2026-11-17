@@ -159,6 +159,18 @@ public class PairCaseTypeTest
         Assert.Equal("T", binders[1].Target.Name);
     }
 
+    // SPEC 8.3.4, 8.15 (PLAN G750, C-285): a binder that admits no case makes the product 0, read before any division, even after the
+    // product saturated; the product of the others saturates as before.
+    [Fact]
+    public void CaseProductIsZeroWhenABinderAdmitsNoCase()
+    {
+        var none = new PairBinder(null!, SemanticsMask.None);
+        var all = none with { Admitted = SemanticsMask.All };
+        Assert.Equal(0, PairBinder.CaseProduct([all, none, all]));
+        Assert.Equal(0, PairBinder.CaseProduct([.. Enumerable.Repeat(all, 30), none]));
+        Assert.Equal(long.MaxValue, PairBinder.CaseProduct([.. Enumerable.Repeat(all, 30)]));
+    }
+
     // SPEC 8.1.1, 15.6.1: in the admitted borrow cases a pair layer is a borrow of its target within its outer-Origin slot, so the
     // target's Origins outlive that slot by well-formedness; a callee premise `a outlives b` is proven from `v: s/Box<ref/i32 during a> during b`.
     [Fact]

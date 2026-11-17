@@ -18,10 +18,6 @@ public sealed partial class Binding
     // ContractType afresh: a nested query, which can only evict this query's entries, recomputed then (TypeMemo's contract).
     private readonly TypeMemo<BoundType, (BoundType Image, ResolutionHops? Hops, Completion Completion)> contractParts = new();
 
-    // The hop chains, one per path, step and inner chain: kept for the Binding's lifetime, as the paths they name (ImplTable), so
-    // a warm pass allocates none.
-    private readonly Dictionary<(BoundConformancePath Path, BoundType Step, ResolutionHops? Inner), ResolutionHops> hopChains = new();
-
     /// <summary>Substitutes Contract Self and normalizes completed associated identities without performing member selection.</summary>
     /// <remarks>A Type with neither an abstract part nor an Origin is its own image: the environment substitutes slots and Origins, a
     /// Contract's Self is a Parameter and normalization rewrites only abstract kinds, so a shared closed part is never walked
@@ -212,6 +208,9 @@ public sealed partial class Binding
                     }
                 }
 
+                // The first available premise naming the Type completes it, the choice dev's member substitution makes (SubstituteIdentity;
+                // R7-C2c2 replaces both); a Type in a final erroneous identity class stays as written (Binding.TypeIdentity).
+                BoundType? chosen = null;
                 for (var current = scope; current is not null; current = current.Parent)
                 {
                     if (current.Constraints is not { Invalid: false } environment)
@@ -228,11 +227,21 @@ public sealed partial class Binding
 
                         var available = this.AvailableConstraintFact(environment, fact, out var availability);
                         completion = Meet(completion, availability);
-                        if (available && required is not null)
+                        if (available && required is not null && chosen is null)
                         {
-                            var identity = this.ContractTypeAnswer(required, scope, self);
-                            return (identity.Image, null, Meet(completion, identity.Completion));
+                            chosen = required;
                         }
+                    }
+                }
+
+                if (chosen is not null)
+                {
+                    var failed = this.ProjectionClassFailed(result, scope, out var guard);
+                    completion = Meet(completion, guard);
+                    if (!failed)
+                    {
+                        var identity = this.ContractTypeAnswer(chosen, scope, self);
+                        return (identity.Image, null, Meet(completion, identity.Completion));
                     }
                 }
 
@@ -255,7 +264,8 @@ public sealed partial class Binding
     // R8-W2: a fixed array whose length is an interpolation-bound term over abstract value Types, with the term's value Types normalized as
     // this rewrite normalizes the Type, a Contract's Self and a completed projection included, which a substitution leaves
     // (Binding.SubstituteLength), and the term folded again (TyCtxt.InterpolationBound); any other Type itself. A term is only a fixed
-    // array's length or a substitution's length entry (Binding.InstanceLength), never an operand or an Item's length argument (R8-W2 a2).
+    // array's length, a substitution's length entry (Binding.InstanceLength) or a MIR Length constant's value (R8-W2 c2a: the operand of a
+    // length read as an isize value, SPEC 4.4.1), never an Item's length argument (R8-W2 a2).
     private BoundType ContractLength(BoundType type, BindingScope scope, BoundType? self, bool normalize, out Completion completion)
     {
         completion = Completion.Complete;
@@ -269,14 +279,21 @@ public sealed partial class Binding
         return this.types.Intern(BoundTypeKind.FixedArray, null, SemanticsKind.Owner, [type.Components[0]], length.IsConstant ? length.Value : 0, lengthExpression: length.IsConstant ? null : length);
     }
 
-    // The interned chain of a hop resolving step through path before inner.
+    // The interned chain of a hop resolving step through path before inner: one per path, step and inner chain, kept with the path it
+    // names (BoundConformancePath.HopChains), so a warm pass allocates none.
     private ResolutionHops Hop(BoundConformancePath path, BoundType step, ResolutionHops? inner)
     {
-        if (!this.hopChains.TryGetValue((path, step, inner), out var hop))
+        var chains = path.HopChains ??= new();
+        for (var i = 0; i < chains.Count; i++)
         {
-            this.hopChains.Add((path, step, inner), hop = new(path, step, inner));
+            if (ReferenceEquals(chains[i].Step, step) && ReferenceEquals(chains[i].Inner, inner))
+            {
+                return chains[i];
+            }
         }
 
+        var hop = new ResolutionHops(path, step, inner);
+        chains.Add(hop);
         return hop;
     }
 

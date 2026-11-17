@@ -32,6 +32,11 @@ public static partial class Parser
         /// <summary>A word that introduces a declaration.</summary>
         DeclarationIntroducer,
 
+        /// <summary>A contextual Container word (SPEC F.3.2): the introducer of a GroupDeclaration, StructureDeclaration,
+        /// EnumDeclaration or ContractDeclaration (Appendix F.6.1), or the unavailable <c>extension</c>. It introduces a declaration
+        /// where <see cref="IsContainerDeclarationStart"/> holds, and on a modifier header line.</summary>
+        ContainerIntroducer,
+
         /// <summary>A word that introduces an accessor (<c>get</c>, <c>set</c>).</summary>
         AccessorIntroducer,
     }
@@ -61,6 +66,37 @@ public static partial class Parser
         }
 
         reader.AttributeKoto = null;
+    }
+
+    /// <summary>Reports the pending attributes before <c>init</c> that a constructor does not take (SPEC 6.7): it takes only the
+    /// implementation Attributes, whose kinds exist only in the Kimi library's own sources (<see cref="AttributeKoto.Classify"/>), so
+    /// every attribute before a user constructor is reported. Each reported one attaches to nothing; the others stay pending, in
+    /// their order, for the constructor.</summary>
+    /// <param name="reader">The token reader.</param>
+    internal static void ReportConstructorAttributes(ref TokenReader reader)
+    {
+        AttributeKoto? kept = null, last = null;
+        for (var attribute = reader.AttributeKoto; attribute is not null;)
+        {
+            var next = attribute.AttributeChain;
+            attribute.AttributeChain = null;
+            if (!attribute.IsImplementation)
+            {
+                reader.Unexpected(SyntaxForm.Attribute, attribute.Span);
+            }
+            else if (last is null)
+            {
+                kept = last = attribute;
+            }
+            else
+            {
+                last = last.AttributeChain = attribute;
+            }
+
+            attribute = next;
+        }
+
+        reader.AttributeKoto = kept;
     }
 
     /// <summary>Rejects the pending access word before an item whose production has no Access (Appendix F; SPEC 6.1.1, 9.3), such as
@@ -168,6 +204,13 @@ public static partial class Parser
                         reader.DispatchModifierSpan = reader.CurrentTokenRange;
                     }
 
+                    // F.3.3: the word that writes a second function modifier, which the function header reports.
+                    if ((reader.ModifierKind & ~flag & (ModifierKind.Unsafe | ModifierKind.Virtual | ModifierKind.Override)) != 0 &&
+                        reader.SecondModifierSpan == default)
+                    {
+                        reader.SecondModifierSpan = reader.CurrentTokenRange;
+                    }
+
                     ReadModifierFlag(ref reader, flag);
                     continue;
                 }
@@ -260,6 +303,7 @@ public static partial class Parser
             reader.ModifierKind = ModifierKind.NoModifier;
             reader.DispatchModifierSpan = default;
             reader.AccessModifierSpan = default;
+            reader.SecondModifierSpan = default;
         }
 
         reader.Advance();
@@ -290,6 +334,7 @@ public static partial class Parser
             reader.ModifierKind = ModifierKind.NoModifier;
             reader.DispatchModifierSpan = default;
             reader.AccessModifierSpan = default;
+            reader.SecondModifierSpan = default;
         }
 
         if (allowCompileTimeDirectives && reader.PeekKind(1) == TokenKind.If)
@@ -350,6 +395,13 @@ public static partial class Parser
         var acc = reader.ModifierKind.ExtractAccessibilityModifiers();
         if (acc == default)
         {
+            // F.3.3: the access specification precedes the modifier. An access word after unsafe, virtual or override is misplaced where
+            // it stands and kept, so the declaration has the access it wrote; open's order is OpenModifier's, and static is no modifier.
+            if ((reader.ModifierKind & (ModifierKind.Unsafe | ModifierKind.Virtual | ModifierKind.Override)) != 0)
+            {
+                reader.Unexpected(SyntaxForm.AccessAfterModifier);
+            }
+
             reader.ModifierKind |= kind;
             reader.AccessModifierSpan = reader.CurrentTokenRange;
         }
@@ -427,7 +479,8 @@ public static partial class Parser
                 continue;
             }
 
-            if (word != introducer)
+            // On a header line a Container word is a declaration introducer, whatever follows it (SPEC F.3.3).
+            if (word != introducer && (word != HeaderWord.ContainerIntroducer || introducer != HeaderWord.DeclarationIntroducer))
             {
                 return HeaderScan.Ordinary;
             }

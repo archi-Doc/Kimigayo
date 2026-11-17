@@ -14,6 +14,20 @@ namespace XunitTest;
 public class CallableSignatureSelectionTest
 {
     private const string Main = "public func main() -> ()\n    Console.writeLine(\"done\")\n";
+
+    // A Contract whose clause makes `Self.(Holder).F` callable, with requirements whose results are that Type at depth 1, 2 and 3.
+    private const string HolderHead = "contract Holder\n    associate Next is Holder\n    associate F\n";
+
+    private const string HolderResults = "    func near(self: ref/Self) -> ref/Self.(Holder).F\n    func deep(self: ref/Self) -> ref/Self.(Holder).Next.(Holder).F\n" +
+        "    func deep3(self: ref/Self) -> ref/Self.(Holder).Next.(Holder).Next.(Holder).F\n";
+
+    private const string Holder = HolderHead + "    Self.(Holder).F is Callable<(i32) -> i32>\n" + HolderResults;
+
+    private const string HolderWithoutClause = HolderHead + HolderResults;
+
+    private const string Apply = "func apply<F>(f: ref/F) -> i32\n    F is Callable<(i32) -> i32>\n    return f(1)\n";
+
+    private const string NoCall = "func noCall<F>(f: ref/F) -> i32\n    F is not Callable<(i32) -> i32>\n    return 0\n";
     private const string Forward = "func both<T, F>(action: ref/F, value: ref/T) -> i32\n    F is Callable<(ref/T) -> i32>\n    F is Callable<(ref/i32) -> i32>\n    return action(value)\nfunc read(value: ref/i32) -> i32 => value@follow\nlet n: i32 = 42\nrequire both(read, n@ref) == 42 else => $abort(\"selected\")";
 
     [Theory]
@@ -83,8 +97,20 @@ public class CallableSignatureSelectionTest
     [Fact]
     public void TheSelectedSignatureSuppliesAnAnonymousArgumentsContextOnce()
     {
-        var source = "func both<F>(f: ref/F) -> i32\n    F is Callable<((i32) -> i32, i32) -> i32>\n    F is Callable<((i64) -> i64, i64) -> i32>\n    return f(func [] (n) => n, 1@i32)\n" + Main;
+        var source = "func both<F>(f: ref/F) -> i32\n    F is Callable<((i32) -> i32, i32) -> i32>\n    F is Callable<((i64) -> i64, i64) -> i32>\n    F is Owned\n    return f(func [] (n) => n, 1@i32)\n" + Main;
         Assert.Empty(DiagnosticCorpus.Check(source).Diagnostics);
+    }
+
+    // SPEC 3.2.1, 6.1.3, 15.2.3, 7.7.4 (the owner's O-249 Q4 (a); PLAN G846, G856): an anonymous argument erased in `both<F>` holds F in its
+    // instantiation, so without `F is Owned` its erasure is invalid, beside its body's own failure (the two rows around this one until
+    // G856, accepted then).
+    [Theory]
+    [InlineData("n", new[] { nameof(DiagnosticCode.UnprovenConstraint_Kd) })]
+    [InlineData("\"bad\"", new[] { nameof(DiagnosticCode.UnprovenConstraint_Kd), nameof(DiagnosticCode.TypeMismatch_Kd) })]
+    public void AnAnonymousArgumentsErasureNeedsTheEnclosingParameterOwned(string body, string[] codes)
+    {
+        var source = "func both<F>(f: ref/F) -> i32\n    F is Callable<((i32) -> i32, i32) -> i32>\n    F is Callable<((i64) -> i64, i64) -> i32>\n    return f(func [] (n) => " + body + ", 1@i32)\n" + Main;
+        Assert.Equal(codes, DiagnosticCorpus.Check(source).Diagnostics.Select(x => x.Code));
     }
 
     [Fact]
@@ -98,7 +124,7 @@ public class CallableSignatureSelectionTest
     [Fact]
     public void ASelectedAnonymousBodyFailureDoesNotRetryAnotherSignature()
     {
-        var source = "func both<F>(f: ref/F) -> i32\n    F is Callable<((i32) -> i32, i32) -> i32>\n    F is Callable<((i64) -> i64, i64) -> i32>\n    return f(func [] (n) => \"bad\", 1@i32)\n" + Main;
+        var source = "func both<F>(f: ref/F) -> i32\n    F is Callable<((i32) -> i32, i32) -> i32>\n    F is Callable<((i64) -> i64, i64) -> i32>\n    F is Owned\n    return f(func [] (n) => \"bad\", 1@i32)\n" + Main;
         var error = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics);
         Assert.Equal(nameof(DiagnosticCode.TypeMismatch_Kd), error.Code);
         Assert.Equal("\"bad\"", source.Substring(error.Span!.Value.Start, error.Span.Value.Length));
@@ -196,6 +222,30 @@ public class CallableSignatureSelectionTest
             Assert.Equal(record.Display!.Range, sent.Range);
         }
     }
+
+    // R7-C2c2 c2-3b (SPEC 8.3.2, 8.10, 10.5.5): `T is Holder` supplies Holder's Callable clause at every depth of T's chain, whatever
+    // spelling the scope gives the Type. A value whose Type is a requirement's result or a field's Type is called (the call's
+    // candidates, kd, rfa) and passed to a function requiring the Constraint (its proof, kdp) as one spelled in the scope is, also
+    // through a parameter identity (SPEC 8.2.3); without the clause, or for another signature, each is rejected as at depth 1. A
+    // `not Callable` premise at such a depth contradicts the supplied clause (rncp: accepted before c2-3b, class 1). Rows as
+    // CompilationTestHelper.AssertRecordsAtLines reads them.
+    [Theory]
+    [InlineData("kd2", Holder + "func probe<T>(t: ref/T) -> i32\n    T is Holder\n    let g = t.deep()\n    return g(1)\n", "")]
+    [InlineData("kd3", Holder + "func probe<T>(t: ref/T) -> i32\n    T is Holder\n    let g = t.deep3()\n    return g(1)\n", "")]
+    [InlineData("kd2i", Holder + "func probe<T, U>(t: ref/U) -> i32\n    U is T\n    T is Holder\n    let g = t.deep()\n    return g(1)\n", "")]
+    [InlineData("rfa2", Holder + "struct Box<T>\n    T is Holder\n    public var f: T.(Holder).Next.(Holder).F\nfunc probe<T>(b: ref/Box<T>) -> i32\n    T is Holder\n    let g = b.f@ref\n    return g(1)\n", "")]
+    [InlineData("kd2n", HolderWithoutClause + "func probe<T>(t: ref/T) -> i32\n    T is Holder\n    let g = t.deep()\n    return g(1)\n", "NotCallable_Kd: return g(1)")]
+    [InlineData("kdp2", Holder + Apply + "func probe<T>(t: ref/T) -> i32\n    T is Holder\n    let g = t.deep()\n    return apply(g)\n", "")]
+    [InlineData("kdp3", Holder + Apply + "func probe<T>(t: ref/T) -> i32\n    T is Holder\n    let g = t.deep3()\n    return apply(g)\n", "")]
+    [InlineData("kdp2i", Holder + Apply + "func probe<T, U>(t: ref/U) -> i32\n    U is T\n    T is Holder\n    let g = t.deep()\n    return apply(g)\n", "")]
+    [InlineData("kdp2n", HolderWithoutClause + Apply + "func probe<T>(t: ref/T) -> i32\n    T is Holder\n    let g = t.deep()\n    return apply(g)\n", "UnprovenConstraint_Kd: return apply(g)")]
+    [InlineData("kdpb2", Holder + "func applyB<F>(f: ref/F) -> i32\n    F is Callable<(bool) -> bool>\n    return 0\n" + "func probe<T>(t: ref/T) -> i32\n    T is Holder\n    let g = t.deep()\n    return applyB(g)\n", "NoApplicableOverload_Kd: return applyB(g)")]
+    [InlineData("rncp2", Holder + NoCall + "func probe<T, U>(t: ref/T) -> i32\n    T is Holder\n    U is T\n    U.(Holder).Next.(Holder).F is not Callable<(i32) -> i32>\n    let g = t.deep()\n    return noCall(g)\n", "InvalidConstraint_Kd: U.(Holder).Next.(Holder).F is not Callable<(i32) -> i32> | ...")]
+    [InlineData("rncp2o", Holder + NoCall + "func probe<T, U>(t: ref/T) -> i32\n    U.(Holder).Next.(Holder).F is not Callable<(i32) -> i32>\n    U is T\n    T is Holder\n    let g = t.deep()\n    return noCall(g)\n", "InvalidConstraint_Kd: U.(Holder).Next.(Holder).F is not Callable<(i32) -> i32> | ...")]
+    [InlineData("rncp2r", Holder + NoCall + "func probe<T, U>(t: ref/T) -> i32\n    T is Holder\n    T is U\n    U.(Holder).Next.(Holder).F is not Callable<(i32) -> i32>\n    let g = t.deep()\n    return noCall(g)\n", "InvalidConstraint_Kd: U.(Holder).Next.(Holder).F is not Callable<(i32) -> i32> | ...")]
+    [InlineData("rncp2s", Holder + NoCall + "func probe<T>(t: ref/T) -> i32\n    T is Holder\n    T.(Holder).Next.(Holder).F is not Callable<(i32) -> i32>\n    let g = t.deep()\n    return noCall(g)\n", "InvalidConstraint_Kd: T.(Holder).Next.(Holder).F is not Callable<(i32) -> i32> | ...")]
+    public void AContractsCallableClauseIsSuppliedAtEveryDepth(string form, string program, string records)
+        => CompilationTestHelper.AssertRecordsAtLines(form, program + "public func main() => ()\n", records);
 
     // One signature with a shared and an exclusive receiver is one candidate, and forwarding several signatures makes no call.
     [Theory]

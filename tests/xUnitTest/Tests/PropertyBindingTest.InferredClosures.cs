@@ -12,7 +12,8 @@ namespace XunitTest;
 // L2j, L2k, N1, N3, N3c (f4b), N3e (f4c), R2, R3 and h2 were accepted (valid, now Unsupported_Kd), L2g, m2 and the f4m rows were
 // accepted unsoundly, L2i, N1b, N3d, f4d, R1, h1, m1, v1 and v2 had other records. A generic holder's Closure (N4, N4b) is Binding's
 // located limit at the literal (before, the collector's at the whole literal). The guards keep dev's verdicts: a Closure naming no
-// container Origin (O1a, O1c, O3, O4) and an unresolved initializer (x1). Since the MIR decides (R6-check H5; H3b T51, class 4: records
+// container Origin (O1a, O1c; O3 and O4 are the owner's O-262 (a) limit, below) and an unresolved initializer (x1). Since the MIR
+// decides (R6-check H5; H3b T51, class 4: records
 // added on a program Binding rejects, published directly until A6 2g-1, R5-M184), `mir` is the MIR's record beside Binding's: A5's
 // UnprovenOriginRelation_Kd at m1's, v1's and v2's container fit; x1's constructor has none, as its Field has no stored Type (SPEC
 // 23.1.2; PLAN G105, G522; DECISIONS Q13).
@@ -27,6 +28,20 @@ public partial class PropertyBindingTest
     private const string HolderView = "struct Holder<T>\n    public let value: T\n    public init(value: T) => self.value = value@move\n\n" +
         ViewHead + "h = Holder.init(func (y: ref/i32 during source) => ())" + ViewInit;
 
+    private const string OuterInner = "struct Outer {source}\n    public let data: ref/i32 during source\n" +
+        "    public init(data: ref/i32 during source) => self.data = data\n" +
+        "    public struct Inner\n        public let cb = func () -> i32 => 0\n        public init() => ()\n\n";
+
+    private const string PkField = "p = func [] ()\n        func pk(x: ref/i32 during source) -> i32 => 0\n        return pk";
+    private const string PkView = ViewHead + PkField + ViewInit;
+    private const string AtPk = "Unsupported_Kd: pk(x: ref/i32 during source) -> i32";
+    private const string GroupNeed = "group N\n    public func need<T>(x: T) -> i32\n        T is Owned\n        return 0\n";
+
+    // `S<T>` and `Outer<T>.Inner` whose Field Closure names T, and a generic user.
+    private const string SFieldT = GroupNeed + "struct S<T>\n    public let p = func (x: T) -> i32 => 0\n    public init() => ()\n";
+    private const string InnerT = GroupNeed + "struct Outer<T>\n    public struct Inner\n        public let p = func (x: T) -> i32 => 0\n        public init() => ()\n";
+    private const string UseT = "group U\n    public func use<T>(t: T) -> i32\n";
+
     private const string BoxOf = "struct Box<T>\n    public let v: T\n    public let cb = func (x: T) => ()\n    public init(v: T) => self.v = v@move\n\n";
     private const string Local = "func f(r: ref/i32) -> i32\n    let view = View.init(r)\n";
     private const string Static = "func f(r: ref/i32 during static) -> i32\n    let view = View.init(r)\n";
@@ -36,6 +51,8 @@ public partial class PropertyBindingTest
     private const string P2 = "struct P2\n    public let t: ((i32) -> i32, i32)\n    public init(t: ((i32) -> i32, i32)) => self.t = t@move\n";
     private const string E2 = "enum E2\n    A(((i32) -> i32, i32))\n    B\n";
     private const string Holder = "struct Holder\n    public let a: Array<(i32) -> i32>\n    public init(a: Array<(i32) -> i32>) => self.a = a@move\n";
+    private const string P6 = "group Hs\n    public func both(a: uniq/i32, b: ref/i32) -> i32 => 0\nstruct P6\n    public let f: (uniq/i32) -> i32\n    public init(f: (uniq/i32) -> i32) => self.f = f@move\n";
+    private const string P7 = "struct P7\n    public let f: (ref/i32) -> ref/i32 during static\n    public init(f: (ref/i32) -> ref/i32 during static) => self.f = f@move\n";
 
     [Theory]
     [InlineData("L2g", CbView + Local + "    return need(view.cb)", AtLiteral)]
@@ -67,27 +84,91 @@ public partial class PropertyBindingTest
     [InlineData("O5", "struct Outer {source}\n    public let data: ref/i32 during source\n    public init(data: ref/i32 during source) => self.data = data\n    struct Inner\n        public let cb = func (y: ref/i32 during source) => ()\n", AtLiteral)]
     [InlineData("O1a", ViewHead + "t = (func () => 1, Option<ref/i32 during source>.None)" + ViewInit + Static + "    return need(view@move)", null)]
     [InlineData("O1c", ViewHead + "t = Option<ref/i32 during source>.None" + ViewInit + Static + "    return need(view@move)", null)]
-    [InlineData("O3", ViewHead + "cb = func (y: ref/i32 during static) => ()" + ViewInit + Local + "    return need(view.cb)", null)]
-    [InlineData("O4", ViewHead + "cb = func (y: ref/i32) => ()" + ViewInit + Local + "    view.cb(r)\n    return need(view.cb)", null)]
+    [InlineData("C16 s1bcloT", SFieldT + UseT + "        return N.need(S<T>.init())", "UnprovenConstraint_Kd: N.need(S<T>.init())")]
+    [InlineData("C16 s1cowned", SFieldT + UseT + "        T is Owned\n        return N.need(S<T>.init())", null)]
+    [InlineData("C16 s3holder", SFieldT + "struct H\n    public let s: S<i32>\n    public init() => self.s = S<i32>.init()\ngroup U\n    public func use() -> i32\n        return N.need(H.init())", null)]
+    [InlineData("C16 s3bholderT", SFieldT + "struct H<T>\n    public let s: S<T>\n    public init() => self.s = S<T>.init()\n" + UseT + "        return N.need(H<T>.init())", "UnprovenConstraint_Kd: N.need(H<T>.init())")]
+    [InlineData("C16 n1binnerT", InnerT + UseT + "        return N.need(Outer<T>.Inner.init())", "UnprovenConstraint_Kd: N.need(Outer<T>.Inner.init())")]
+    [InlineData("C16 n1cinnerTowned", InnerT + UseT + "        T is Owned\n        return N.need(Outer<T>.Inner.init())", null)]
+    [InlineData("C16 n1dinnerCloT", InnerT + UseT + "        let i = Outer<T>.Inner.init()\n        return N.need(i.p)", "UnprovenConstraint_Kd: N.need(i.p)")]
+    [InlineData("C16 n1einnerUnusedT", GroupNeed + "struct Outer<T>\n    public struct Inner\n        public let p = func () -> i32 => 0\n        public init() => ()\n" + UseT + "        return N.need(Outer<T>.Inner.init())", "UnprovenConstraint_Kd: N.need(Outer<T>.Inner.init())")]
+    [InlineData("O3", ViewHead + "cb = func (y: ref/i32 during static) => ()" + ViewInit + Local + "    return need(view.cb)", "Unsupported_Kd: (y: ref/i32 during static)")]
+    [InlineData("O3static", ViewHead + "cb = func (y: ref/i32 during static) => ()" + ViewInit + Static + "    return need(view.cb)", "Unsupported_Kd: (y: ref/i32 during static)")]
+    [InlineData("O4", ViewHead + "cb = func (y: ref/i32) => ()" + ViewInit + Local + "    view.cb(r)\n    return need(view.cb)", "Unsupported_Kd: (y: ref/i32)")]
+    [InlineData("O4static", ViewHead + "cb = func (y: ref/i32) => ()" + ViewInit + Static + "    view.cb(r)\n    return need(view.cb)", "Unsupported_Kd: (y: ref/i32)")]
+    [InlineData("n2", OuterInner + "func f(r: ref/i32, i: Outer.Inner during r) -> i32\n    return need(i.cb)", "Unsupported_Kd: () -> i32")]
+    [InlineData("n2b", OuterInner + "func f(i: Outer.Inner during static) -> i32\n    return need(i.cb)", "Unsupported_Kd: () -> i32")]
+    [InlineData("n1static", OuterInner + "func f(i: ref/(Outer during static).Inner) -> i32 => need(i.cb)", "Unsupported_Kd: () -> i32")]
+    [InlineData("x1pk", PkView + "func f() -> i32\n    let x: i32 = 1\n    let view = View.init(x@ref)\n    return need(view.p())", AtPk)]
+    [InlineData("x3pk", PkView + "func f(v: ref/(View during a)) -> i32 => need(v.p())", AtPk)]
+    [InlineData("x3bpkstatic", PkView + "func f(v: ref/(View during static)) -> i32 => need(v.p())", AtPk)]
+    [InlineData("x5pk", GroupNeed + ViewHead + PkField + "\n    public func m(self: ref/Self) -> i32 => N.need(self.p())" + ViewInit, AtPk)]
+    [InlineData("x9pk", PkView + "func f(v: ref/(View during a)) -> i32\n    let e: (ref/i32 during a) -> i32 = v.p()\n    return 0", AtPk)]
+    [InlineData("C17 w13fieldItemRaw", GroupNeed + "struct S<T>\n    public let p = func ()\n        func pk() -> i32 => 0\n        return pk\n    public init() => ()\ngroup U\n    public func use(s: ref/S<raw/u8>) -> i32\n        let f = s.p()\n        return N.need(f)", "Unsupported_Kd: pk() -> i32", "Unsupported_Kd: s.p()")]
     [InlineData("x1", ViewHead + "cb = missingName" + ViewInit + Local + "    view.cb(r)\n    return 1", "UnresolvedBinding_Kd: missingName")]
+    // The owner's O-262 (a) (2026-11-14; PLAN G846, G856, removed by G300): O3, O4 and their static twins need a Field Closure of
+    // `View {source}` Owned. Its instantiation holds the instance's `source` (SPEC 3.2.1, 15.2.3), but a held instance is formed modulo
+    // Origins (DECISIONS BU-60), so the Closure's Type cannot say which instance it came from: BU-22's located Unsupported_Kd at the
+    // definition, for the invalid programs (a local view, accepted on dev) and the valid ones (a static view) alike. n2, n2b and
+    // n1static (the Middle's n1_static_need): a Container nested in `Outer {source}` inherits Outer's Origin slot (SPEC 6.1.3), so its
+    // Field Closure is the same limit (n2, a per-call Origin, invalid and accepted on dev; n2b and n1static, `static`, valid). x1pk,
+    // x3pk, x5pk and x9pk (the Middle's x1, x3, x5, x9; invalid: the inherited `source` and pk's signature are not static, SPEC 15.2.3,
+    // 7.7.4): the Item of a function declared in the Field Closure, needed Owned or erased, is the limit at `func pk`, where dev reported
+    // UnprovenConstraint_Kd (x9: UnprovenOriginContract_Kd) at the use: record selection, as the use reads a Type the limited
+    // definition does not form (the owner's O-277 (a)). Their valid twin x3bpkstatic (`View during static`: the inherited `source` and
+    // pk's fixed signature Origin are static) is O-262 (a)'s same limit, where dev's UnprovenConstraint_Kd at the use was false.
+    // The coverage table's rows (PLAN G846, G856; named by row): C16, a Container's summary, where its own Field Closure adds nothing
+    // beyond the Container's arguments, also stored in a holder, and a nested Container's Closure inherits the outer T, used or not
+    // (SPEC 15.2.3, 6.1.3; s1cloT and n1innerT, the concrete twins of s1cowned and n1cinnerTowned under the same summary, are merged
+    // into them). C17 w13fieldItemRaw (PLAN G300): pk's Item read through `S<raw/u8>`, a held instance with an Origin position, is
+    // withheld with its signature, the limit at `func pk` beside the gap at `s.p()` dev reports, never a Language record (the prototype
+    // reported UnprovenConstraint_Kd beside them until a withheld signature's nested definitions were closed under its instance).
     public void AFieldClosureNamingItsContainersOriginIsTheLocatedLimit(string id, string declarations, string? record, string? mir = null)
         => Assert.Equal([id, .. new[] { record, mir }.OfType<string>()], [id, .. RawPointerSyntaxTest.Records(ConcreteClosureTest.NeedOwned + declarations)]);
 
-    // SPEC 11.6, 7.7.4 (DECISIONS BU-107, PLAN G381): an inferred Field's initializer is bound with its header, before the capability
-    // engine judges, so an erasure there (a call argument, a Tuple element of a call argument or payload, an array element; a Case payload
-    // in EnumBindingTest) is one located Unsupported_Kd at the converted value until Owned is judged during header binding (R7); it was
-    // InternalInvariant_Kd, or a TypeMismatch_Kd of the enclosing literal. Its typed and local twins are valid.
+    // SPEC 11.6, 7.7.4 (DECISIONS BU-107, PLAN G381, G826): an inferred Field's initializer is bound with its header, before the capability
+    // engine judges. An erasure there (a call argument, a Tuple element of a call argument or payload, an array element; a Case payload
+    // in EnumBindingTest) whose environment is empty is decided: a Closure there captures nothing (SPEC 7.7.2, 6.1.3), so its environment
+    // is Unit (q3, h1, h2 and h3, and the class's other forms f10use to f23use: an explicit empty list, a generic Container, a signature
+    // naming its T, a nested Closure, per-call or static Origins, the Field read and called, were the located Unsupported_Kd before
+    // G826). One whose environment has parts, an Item's bound Type arguments (q4), is one located Unsupported_Kd at the converted value
+    // until Owned is judged during header binding (R7); it was InternalInvariant_Kd, or a TypeMismatch_Kd of the enclosing literal. Its
+    // typed and local twins are valid. A group's static `let` keeps only its Closure storage limit at the `let` (f9group; it was beside
+    // PLAN G381's false UnprovenConstraint_Kd). An invalid erasure there gets its local twin's Language or A5 record (k1fitbad,
+    // k2a5bad; each was the located Unsupported_Kd).
     [Theory]
-    [InlineData("q3", "struct S\n    public let p = P.init(func (x: i32) -> i32 => x)\n", "Unsupported_Kd: (x: i32) -> i32")]
+    [InlineData("q3", "struct S\n    public let p = P.init(func (x: i32) -> i32 => x)\n", null)]
     [InlineData("q3t", "struct S\n    public let p: P = P.init(func (x: i32) -> i32 => x)\n", null)]
     [InlineData("q3l", "func g() -> i32\n    let p = P.init(func (x: i32) -> i32 => x)\n    return 1\n", null)]
-    [InlineData("h1", P2 + "struct S\n    public let p = P2.init((func (x: i32) -> i32 => x, 1))\n", "Unsupported_Kd: (x: i32) -> i32")]
+    [InlineData("q4", "group K\n    public func idg<T>(x: i32) -> i32 => x\nstruct S\n    public let p = P.init(K.idg<i32>)\n", "Unsupported_Kd: K.idg<i32>")]
+    [InlineData("q4t", "group K\n    public func idg<T>(x: i32) -> i32 => x\nstruct S\n    public let p: P = P.init(K.idg<i32>)\n", null)]
+    [InlineData("h1", P2 + "struct S\n    public let p = P2.init((func (x: i32) -> i32 => x, 1))\n", null)]
     [InlineData("h1t", P2 + "struct S\n    public let p: P2 = P2.init((func (x: i32) -> i32 => x, 1))\n", null)]
-    [InlineData("h2", E2 + "struct S\n    public let e = E2.A((func (x: i32) -> i32 => x, 1))\n", "Unsupported_Kd: (x: i32) -> i32")]
+    [InlineData("h2", E2 + "struct S\n    public let e = E2.A((func (x: i32) -> i32 => x, 1))\n", null)]
     [InlineData("h2t", E2 + "struct S\n    public let e: E2 = E2.A((func (x: i32) -> i32 => x, 1))\n", null)]
-    [InlineData("h3", Holder + "struct S\n    public let h = Holder.init([func (x: i32) -> i32 => x])\n", "Unsupported_Kd: (x: i32) -> i32")]
+    [InlineData("h3", Holder + "struct S\n    public let h = Holder.init([func (x: i32) -> i32 => x])\n", null)]
     [InlineData("h3t", Holder + "struct S\n    public let h: Holder = Holder.init([func (x: i32) -> i32 => x])\n", null)]
-    public void AnErasureInAFieldHeaderIsTheLocatedLimit(string id, string declarations, string? record)
+    [InlineData("f10use", "struct S\n    public let p = P.init(func (x: i32) -> i32 => x)\nfunc use(s: ref/S) -> i32 => s.p.f(1)\n", null)]
+    [InlineData("f11empty", "struct S\n    public let p = P.init(func [] (x: i32) -> i32 => x)\n", null)]
+    [InlineData("f14gen", "struct S<T>\n    var v: T\n    public let p = P.init(func (x: i32) -> i32 => x)\n", "Unsupported_Kd: (x: i32) -> i32")]
+    [InlineData("f14genOwned", "struct S<T>\n    T is Owned\n    var v: T\n    public let p = P.init(func (x: i32) -> i32 => x)\n", "Unsupported_Kd: (x: i32) -> i32")]
+    [InlineData("f15genT", "struct Q<T>\n    public let f: (T) -> i32\n    public init(f: (T) -> i32) => self.f = f@move\nstruct S<T>\n    var v: T\n    public let q = Q<T>.init(func (x: T) -> i32 => 0)\n", "Unsupported_Kd: (x: T) -> i32")]
+    [InlineData("f15genTOwned", "struct Q<T>\n    public let f: (T) -> i32\n    public init(f: (T) -> i32) => self.f = f@move\nstruct S<T>\n    T is Owned\n    var v: T\n    public let q = Q<T>.init(func (x: T) -> i32 => 0)\n", "Unsupported_Kd: (x: T) -> i32")]
+    [InlineData("f16nest", "struct S\n    public let p = P.init(func (x: i32) -> i32 => (func () -> i32 => x)())\n", null)]
+    [InlineData("f18refpar", "struct P3\n    public let f: (ref/u8) -> i32\n    public init(f: (ref/u8) -> i32) => self.f = f@move\nstruct S\n    public let p = P3.init(func (x: ref/u8) -> i32 => 0)\n", null)]
+    [InlineData("f19static", "struct P4\n    public let f: (ref/u8 during static) -> i32\n    public init(f: (ref/u8 during static) -> i32) => self.f = f@move\nstruct S\n    public let p = P4.init(func (x: ref/u8 during static) -> i32 => 0)\n", null)]
+    [InlineData("f23use", "struct S<T>\n    var v: T\n    public let p = P.init(func (x: i32) -> i32 => x)\nfunc use(s: ref/S<i32>) -> i32 => s.p.f(1)\n", "Unsupported_Kd: (x: i32) -> i32")]
+    [InlineData("f23useOwned", "struct S<T>\n    T is Owned\n    var v: T\n    public let p = P.init(func (x: i32) -> i32 => x)\nfunc use(s: ref/S<i32>) -> i32 => s.p.f(1)\n", "Unsupported_Kd: (x: i32) -> i32")]
+    [InlineData("f9group", "group G\n    public let p = P.init(func (x: i32) -> i32 => x)\n", "Unsupported_Kd: let p = P.init(func (x: i32) -> i32 => x)")]
+    [InlineData("k1fitbad", P7 + "struct S\n    public let p = P7.init(func (x: ref/i32) -> ref/i32 => x)\n", "UnprovenOriginContract_Kd: func (x: ref/i32) -> ref/i32 => x")]
+    [InlineData("k1fitlocal", P7 + "func h() -> i32\n    let p = P7.init(func (x: ref/i32) -> ref/i32 => x)\n    return 0\n", "UnprovenOriginContract_Kd: func (x: ref/i32) -> ref/i32 => x")]
+    [InlineData("k2a5bad", P6 + "struct S\n    public let p = P6.init(func (x: uniq/i32) -> i32 => Hs.both(x@follow@uniq, x@follow@ref))\n", "CallActivationConflict_Kd: Hs.both(x@follow@uniq, x@follow@ref)")]
+    [InlineData("k2a5local", P6 + "func h() -> i32\n    let p = P6.init(func (x: uniq/i32) -> i32 => Hs.both(x@follow@uniq, x@follow@ref))\n    return 0\n", "CallActivationConflict_Kd: Hs.both(x@follow@uniq, x@follow@ref)")]
+    // The owner's O-262 (a) (2026-11-14; PLAN G846, G856, removed by G300 and R7-D2 d): in a generic struct the Closure holds the
+    // struct's T (SPEC 3.2.1, 6.1.3), so its environment is not empty before the engine judges and the erasure is BU-107's located
+    // Unsupported_Kd: f14gen, f15genT and f23use, invalid without `T is Owned` (accepted on dev), and their valid twins with it
+    // (accepted on dev: the support boundary STATUS records).
+    public void AnErasureInAFieldHeaderIsDecidedForAnEmptyEnvironment(string id, string declarations, string? record)
         => Assert.Equal(
             [id, .. new[] { record }.OfType<string>()],
             [id, .. RawPointerSyntaxTest.Records("struct P\n    public let f: (i32) -> i32\n    public init(f: (i32) -> i32) => self.f = f@move\n\n" + declarations)]);

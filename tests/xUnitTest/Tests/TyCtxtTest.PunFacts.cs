@@ -50,6 +50,11 @@ public sealed partial class TyCtxtTest
         "struct KNode\n    public var tag: u32\n    public var next: raw/u8\n" +
         "func lead<length N>(la: [2 of u16], lz: [0 of u16], ln: [N of u16], lnn: [2 of [N of raw/u8]], lc: CNode, lca: CArr,\n" +
         "    lk: KNode, lr: raw/CNode) -> ()\n    return ()\n" +
+        "struct OBox\n    public var v: u64\n" +
+        "#Layout(\"C\")\nstruct CLink {a}\n    public var link: Option<ref/u32 during a>\n    public var next: raw/u8\n" +
+        "func leadO<T>(oR: Option<ref/u8 during a>, oU: Option<uniq/u8 during a>, oO: Option<obj/OBox>, oRc: Option<rc/OBox>,\n" +
+        "    oA: Option<arc/OBox>, oOr: Option<objref/OBox during a>, oOu: Option<objuniq/OBox during a>, oRaw: Option<raw/u8>,\n" +
+        "    oOpt: Option<Option<ref/u8 during a>>, oTup: Option<(ref/u8 during a, i32)>, oI: Option<i32>, oT: Option<T>, cl: CLink) -> ()\n    return ()\n" +
         "public func main() => ()\n";
 
     // SPEC 5.7 Origins, Reading a Field, Writing a Field (C-189 B1, B2): a raw layer's step at a Place, by the Place's path from its root.
@@ -123,6 +128,20 @@ public sealed partial class TyCtxtTest
     [InlineData("cell", "", "")] // An enum,
     [InlineData("cell", "0", "")] // and its Case key.
     [InlineData("h", "", "")] // A raw pointer.
+    [InlineData("oR", "", "F ref/u8")] // G808 (IMPL 21.1.3): a nonnull Option's Some payload is its whole word, at its address (the Some Case, component 0),
+    [InlineData("oU", "", "F uniq/u8")] // for each of IMPL's seven layer kinds;
+    [InlineData("oO", "", "F obj/OBox")]
+    [InlineData("oRc", "", "F rc/OBox")]
+    [InlineData("oA", "", "F arc/OBox")]
+    [InlineData("oOr", "", "F objref/OBox")]
+    [InlineData("oOu", "", "F objuniq/OBox")]
+    [InlineData("cl", "", "F Option<ref/u32>; F ref/u32")] // a C struct's first Field, then its payload;
+    [InlineData("oR", "0", "")] // the Some Case key is no step of its own;
+    [InlineData("oRaw", "", "")] // IMPL 21.1.3 excludes raw/T,
+    [InlineData("oOpt", "", "")] // Option<Option<R>>,
+    [InlineData("oTup", "", "")] // a Tuple containing a reference,
+    [InlineData("oI", "", "")] // a Scalar payload,
+    [InlineData("oT", "", "")] // and an abstract one (SPEC 8.15.1: a binding's).
     public void C211TheLeadingStepIsThePartAtAPlacesOwnAddress(string root, string path, string expected)
     {
         var (c, _, p) = PunForms();
@@ -303,7 +322,7 @@ public sealed partial class TyCtxtTest
         var c = MinimalEmissionTest.Analyze(StatedSource);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
         var locals = new Dictionary<(string, string), BoundType>();
-        var parameters = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Where(static x => x.Name is "probe" or "pp" or "lead")
+        var parameters = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Where(static x => x.Name is "probe" or "pp" or "lead" or "leadO")
             .SelectMany(static x => x.Parameters).ToDictionary(static x => x.InternalName, static x => x.Type.TypeOf()!);
         foreach (var body in c.BuildMir().Bodies)
         {

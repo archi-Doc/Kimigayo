@@ -225,6 +225,15 @@ public sealed class HoverProjectionTest
         Assert.DoesNotContain("initRepeating", declaration.Header + string.Concat(declaration.Documentation.Select(static x => x.ToString())), StringComparison.Ordinal);
     }
 
+    // IMPL 21.3.4: a library declaration's header shows its implementation Attributes as written, through the ordinary syntax writers.
+    [Fact]
+    public void ALibraryDeclarationsHeaderShowsItsImplementationAttributes()
+    {
+        const string text = "var xs = Array<i32>.init(capacity: 4)\nxs.append(1)\n";
+        var declaration = Assert.Single(At(Project(text), text.IndexOf("append", StringComparison.Ordinal)).Declarations);
+        Assert.Equal("#Lang(\"ArrayAppend\") #CallerLocation\npublic func append(self: uniq/Self, value: T)", declaration.Header);
+    }
+
     [Fact]
     public void InvalidConstraintsNeverPublishCopyYes()
     {
@@ -249,6 +258,38 @@ public sealed class HoverProjectionTest
         Assert.Contains("Premise: T is Right effect confined", info.Effects);
     }
 
+    // R7-C2c2 c2-3b (SPEC 8.2.3, 8.3.3): two parameters of one identity class each state the Contract; the evidence of a requirement
+    // call names the premise on the conforming Type as written, whatever the order of the premises. The call's conforming Type is T
+    // for a receiver of either parameter (U is read through `U is T`).
+    [Theory]
+    [InlineData("T", "    T is Reader\n    U is Reader\n    U is T\n")]
+    [InlineData("T", "    U is Reader\n    T is Reader\n    U is T\n")]
+    [InlineData("U", "    T is Reader\n    U is Reader\n    U is T\n")]
+    [InlineData("U", "    U is Reader\n    T is Reader\n    U is T\n")]
+    public void ARequirementsEvidenceNamesTheWrittenPremiseInEitherOrder(string receiver, string premises)
+    {
+        var text = $"contract Reader\n    func read(self: ref/Self) -> i32\n        effect confined\nfunc readOne<T, U>(x: ref/{receiver}) -> i32\n{premises}    return x.read()\n";
+        var info = At(Project(text), text.LastIndexOf("read()", StringComparison.Ordinal));
+        Assert.Contains("Available bound: confined", info.Effects);
+        string[] expected = ["Premise: T is Reader effect confined (in readOne)"];
+        Assert.Equal(expected, info.Effects!.Split('\n').Select(static x => x.Trim()).Where(static x => x.StartsWith("Premise:", StringComparison.Ordinal)));
+    }
+
+    // SPEC 8.11.3, 8.7.4, 4.6.1: under `T is PrimitiveInteger` the bound of a format call is the item Position declares, and its evidence
+    // is the PrimitiveInteger premise that supplies Position; `T is Utf8Format` proves no Contract that bounds format, so no evidence.
+    [Theory]
+    [InlineData("PrimitiveInteger", true)]
+    [InlineData("Utf8Format", false)]
+    public void ASuppliedContractsBoundNamesItsPremise(string premise, bool confined)
+    {
+        var text = $"func show<T>(x: ref/T, writer: uniq/Utf8Writer) -> Result<(), BufferFull>\n    T is {premise}\n    return x.format(writer)\n";
+        var info = At(Project(text), text.LastIndexOf("format(writer)", StringComparison.Ordinal));
+        Assert.Contains("Requirement: Kimi.Utf8Format.format", info.Effects);
+        Assert.Contains(confined ? "Available bound: confined" : "Available bound: none", info.Effects);
+        string[] evidence = confined ? ["Declared by: Kimi.Position", "Premise: T is Kimi.PrimitiveInteger effect confined (in show)"] : [];
+        Assert.Equal(evidence, info.Effects!.Split('\n').Select(static x => x.Trim()).Where(static x => x.StartsWith("Declared by:", StringComparison.Ordinal) || x.StartsWith("Premise:", StringComparison.Ordinal)));
+    }
+
     [Fact]
     public void PropertyOperationsAndImplicitResultsAreExplicit()
     {
@@ -271,23 +312,24 @@ public sealed class HoverProjectionTest
     [Fact]
     public void TypeDisplayPreservesGroupingAndBoundsDepthAndRepeatedExpansion()
     {
-        var integer = new BoundType("i32", BoundTypeKind.Primitive);
-        var tuple = new BoundType(string.Empty, BoundTypeKind.Tuple, components: [integer]);
+        var types = CompilationTestHelper.BindSuccess("()").Types;
+        var integer = BoundType.I32;
+        var tuple = types.Tuple([integer]);
         Assert.Equal("(i32,)", Binding.HoverTypeName(tuple));
-        var function = new BoundType(string.Empty, BoundTypeKind.Function, components: [BoundType.Unit, integer]);
-        var reference = new BoundType(string.Empty, BoundTypeKind.Semantics, semantics: SemanticsKind.Ref, components: [function]);
+        var function = types.Intern(BoundTypeKind.Function, null, SemanticsKind.Owner, [BoundType.Unit, integer]);
+        var reference = types.Reference(SemanticsKind.Ref, function);
         Assert.Equal("ref/(() -> i32)", Binding.HoverTypeName(reference));
         var deep = integer;
         for (var i = 0; i < 128; i++)
         {
-            deep = new(string.Empty, BoundTypeKind.Tuple, components: [deep]);
+            deep = types.Tuple([deep]);
         }
 
         Assert.Throws<HoverLimitException>(() => Binding.HoverTypeName(deep));
         var repeated = integer;
         for (var i = 0; i < 24; i++)
         {
-            repeated = new(string.Empty, BoundTypeKind.Tuple, components: [repeated, repeated]);
+            repeated = types.Tuple([repeated, repeated]);
         }
 
         Assert.Throws<HoverLimitException>(() => Binding.HoverTypeName(repeated));

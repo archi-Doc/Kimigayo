@@ -45,7 +45,7 @@ public static partial class KotoHelper
     }
 
     // The node kind of an infix operator token that has no node class of its own.
-    private static KotoKind BinaryOperator(TokenKind token) => token switch
+    internal static KotoKind BinaryOperator(TokenKind token) => token switch
     {
         TokenKind.Asterisk => KotoKind.Asterisk,
         TokenKind.Slash => KotoKind.Slash,

@@ -72,11 +72,16 @@ public sealed partial class Binding
 
         // The stamp of the walk's query: of wellFormedParts, or of storedParts below a borrow layer.
         internal uint Query { get; init; }
+
+        // Below a borrow layer, the Semantics cases in which that layer exists (SPEC 15.6.1, 15.6.5): a pair layer's borrow cases at the
+        // use (WellFormedLayer), 0 for a layer of every case.
+        internal ulong Condition { get; init; }
     }
 
     // SPEC 15.3.7, 10.7: instantiate all of an Item's call Origins together, including named and result-only universals, against the
-    // required contract. Repeated invariant occurrences and declared conditions constrain the same solution. An open evidence region
-    // still uses the known-signature comparison until other evidence fixes it (SPEC 10.8).
+    // required contract, under the use's premises (DECISIONS BU-93), also for an Item without own Origins, whose signature may name a
+    // fixed Origin of an enclosing function (SPEC 15.3.4). Repeated invariant occurrences and declared conditions constrain the same
+    // solution. An open evidence region still uses the known-signature comparison until other evidence fixes it (SPEC 10.8).
     internal bool ItemContractFits(BoundType item, BoundType signature, BoundType required, Koto use, out ComparisonFailure failure)
     {
         failure = default;
@@ -85,10 +90,9 @@ public sealed partial class Binding
             return false;
         }
 
-        signature = this.ContractType(signature, this.ConstraintScope(use));
-        if (function.Origins.Count == 0 || HasOpenOrigin(required, evidenceOnly: true))
+        if (HasOpenOrigin(required, evidenceOnly: true))
         {
-            if (!this.CallableSubtype(signature, required, SignatureOwner(item), out failure))
+            if (!this.CallableSubtype(this.ContractType(signature, this.ConstraintScope(use)), required, SignatureOwner(item), out failure))
             {
                 return false;
             }
@@ -218,11 +222,12 @@ public sealed partial class Binding
     // body-local borrows is bounded by every Origin it holds. Otherwise the call is solved without them and the obligation at the
     // selected call reports the relation; a premise never decides applicability (SPEC 15.6.1). With `select`, candidate applicability,
     // the solve without them judges no bound either (SolveOriginInference).
-    private bool SolveCallOriginInference(FunctionKoto function, OriginInference inference, BoundOrigin[] origins, BoundOrigin[] inputs, Koto use, BoundType? declaringType, bool select = false)
+    private bool SolveCallOriginInference(FunctionKoto function, OriginInference inference, BoundOrigin[] origins, BoundOrigin[] inputs, BoundType? declaringType, bool select = false)
     {
+        var use = inference.Use;
         if (!CarriesResultPremises(function))
         {
-            return this.SolveOriginInference(inference, origins, inputs, use, declaringType, select);
+            return this.SolveOriginInference(inference, origins, inputs, declaringType, select);
         }
 
         var result = function.BoundSymbol!.Type!;
@@ -233,7 +238,7 @@ public sealed partial class Binding
         this.VisitWellFormedPremises(result, result, null, new(WellFormedSubject.NamedResult, function, use, WellFormedAction.Bound, inference, declaringType));
         if (inference.Bounds.Count != count)
         {
-            if (this.SolveOriginInference(inference, origins, inputs, use, declaringType))
+            if (this.SolveOriginInference(inference, origins, inputs, declaringType))
             {
                 return true;
             }
@@ -242,16 +247,19 @@ public sealed partial class Binding
             inference.Variables.RemoveRange(variables, inference.Variables.Count - variables); // The result-only Origins they discovered.
         }
 
-        return this.SolveOriginInference(inference, origins, inputs, use, declaringType, select);
+        return this.SolveOriginInference(inference, origins, inputs, declaringType, select);
     }
 
-    // SPEC 15.3.7: the selected call's obligations for its substituted result.
+    // SPEC 15.3.7: the selected call's obligations for its substituted result; SPEC 15.3.3, 15.6.4 step 3 (J2, PLAN G936): with them
+    // the declared relations over the call's region of the result's Types, down to its slots, as rows of the call (VisitTypeClause),
+    // published with the call's other rows (step 3 has published its own before the result is formed).
     private void RequireResultPremises(FunctionKoto function, BoundType result, Koto use)
     {
         if (CarriesResultPremises(function))
         {
             var visit = new WellFormedVisit(WellFormedSubject.NamedResult, function, use, WellFormedAction.Require);
             this.VisitWellFormedPremises(function.BoundSymbol!.Type!, result, null, visit);
+            this.PublishCallRelations();
         }
     }
 
@@ -265,14 +273,14 @@ public sealed partial class Binding
             this.ChildGroup(solution, i, out var start, out var end);
             this.evidenceNameReads += 1 + end - start;
             if (start == end && solution.Rows[i] is { Contribution: Contribution.Evidence, Pattern: { } pattern } &&
-                MentionsOriginSlot(pattern, solution.Binder, slot))
+                this.MentionsOriginSlot(pattern, solution.Binder, slot))
             {
                 return true;
             }
 
             for (var j = start; j < end; j++)
             {
-                if (this.IsEvidenceLeaf(solution, j, end) && this.childRows[j].Pattern is { } leaf && MentionsOriginSlot(leaf, solution.Binder, slot))
+                if (this.IsEvidenceLeaf(solution, j, end) && this.childRows[j].Pattern is { } leaf && this.MentionsOriginSlot(leaf, solution.Binder, slot))
                 {
                     return true;
                 }
@@ -280,7 +288,7 @@ public sealed partial class Binding
         }
 
         return solution.Binder is FunctionKoto { BoundSymbol.ReceiverIndex: >= 0 and var receiver } function &&
-            function.Parameters[receiver].Type.BoundType is { } receiverPattern && MentionsOriginSlot(receiverPattern, solution.Binder, slot);
+            function.Parameters[receiver].Type.BoundType is { } receiverPattern && this.MentionsOriginSlot(receiverPattern, solution.Binder, slot);
     }
 
     // R2' (SPEC 15.3.6; DECISIONS BU-99): a position that gives no evidence, a Signature leaf row or a default the call uses, makes each
@@ -422,7 +430,7 @@ public sealed partial class Binding
         {
             for (var i = 0; i < longer.Operands.Count; i++)
             {
-                if (!InstanceOutlives(longer.Operands[i], shorter, instance, this, use, 0))
+                if (!InstanceOutlives(longer.Operands[i], shorter, instance, this, use))
                 {
                     longer = longer.Operands[i];
                     break;
@@ -516,8 +524,8 @@ public sealed partial class Binding
 
         var function = binder as FunctionKoto;
         _ = function is not null
-            ? this.SolveCallOriginInference(function, inference, origins, inputs, use, null, select: true)
-            : this.SolveOriginInference(inference, origins, inputs, use, select: true);
+            ? this.SolveCallOriginInference(function, inference, origins, inputs, null, select: true)
+            : this.SolveOriginInference(inference, origins, inputs, select: true);
 
         // SPEC 15.3.6, 15.6.4 step 1: an Origin without a candidate is a local region of the call, direct or indirect: a Function Item's,
         // or a Function Type's per-call inputs, a Callable bound's or an erased value's (PLAN G410). Selected-call clauses are judged at
@@ -528,7 +536,8 @@ public sealed partial class Binding
     // Visits each borrow layer of a well-formed Type pattern beside the same layer of `result`, the pattern itself or its substitution
     // at a use; false only when Prove fails. The visit stops at a nested Function Type, as the premise does (AddResultPremises). An
     // input's visit also covers its Types' own clauses (SPEC 15.3.3), as the input premise does (AddTypePremises); beside `actual`, the
-    // argument's own Type, which is well formed, it covers only the positions that the fit replaced. Each entry call is one query of
+    // argument's own Type, which is well formed, it covers only the positions that the fit replaced; a selected call's result visit
+    // (Require) covers them too, down to its slots (VisitTypeClause keeps the call-region class there). Each entry call is one query of
     // wellFormedParts, each borrow layer's stored visit one of storedParts: a part met again beside the same parts only repeats what its
     // first visit added (each record, obligation and bound is kept once), and a false ends the query. A pattern part is visited at most
     // once per distinct argument part beside it (TypeMemo's pair) and change of its substituted part between consecutive meets of that
@@ -561,7 +570,7 @@ public sealed partial class Binding
             actual = null; // Every position is covered when the shapes differ.
         }
 
-        if (visit.Subject == WellFormedSubject.Input && result.Symbol is { } symbol && result.OriginArguments.Count != 0 &&
+        if ((visit.Subject == WellFormedSubject.Input || visit.Action == WellFormedAction.Require) && result.Symbol is { } symbol && result.OriginArguments.Count != 0 &&
             !SameOriginArguments(result, actual) &&
             this.originDeclarations.TryGetValue(symbol.Declaration, out var declaration) && declaration.Completed)
         {
@@ -576,11 +585,12 @@ public sealed partial class Binding
             }
         }
 
-        if ((IsBorrow(pattern.Semantics) || pattern.Kind == BoundTypeKind.Slice) && pattern.Origin is { } outer && result.Origin is { } substituted &&
-            pattern.Components.Count != 0)
+        // The layer the substituted part forms at the use (WellFormedLayer), its pair layer's slot in the borrow cases its binder has in
+        // the visit's relation (its comparison's scope, else the use's: RelationScope).
+        if (pattern.Components.Count != 0 && pattern.Origin is { } outer && this.WellFormedLayer(result, visit.Use, visit.Comparison) is { } layer)
         {
-            var stored = visit with { Query = this.storedParts.Begin(this.storageVersion) };
-            if (!this.VisitStoredPremises(pattern.Components[0], result.Components[0], actual?.Components[0], outer, substituted, stored))
+            var stored = visit with { Query = this.storedParts.Begin(this.storageVersion), Condition = RequiredCondition(layer.Condition) };
+            if (!this.VisitStoredPremises(pattern.Components[0], layer.Target, actual?.Components[0], outer, layer.Outer, stored))
             {
                 return false;
             }
@@ -637,7 +647,7 @@ public sealed partial class Binding
         // SPEC 8.1.1, 8.1.2, 15.6.5: a pair layer's slot, the implicit `o` of an original `s/T` included, is stored only in its binder's
         // borrow cases. At a use it is the slot its substitution stores: a borrow's Origin, a caller's pair slot in that pair's borrow
         // cases, and none for a value binding, which leaves the relation vacuous.
-        if (this.OuterOrigin(pattern) is { } origin && this.StoredSlot(result, visit.Use, out var slot) is { } value &&
+        if (this.OuterOrigin(pattern) is { } origin && this.StoredSlot(result, visit.Use, out var slot, visit.Comparison) is { } value &&
             !this.VisitWellFormedPremise(origin, outer, result, value, actual is null ? null : this.OuterOrigin(actual), substituted, visit, RequiredCondition(slot)))
         {
             return false;
@@ -673,6 +683,7 @@ public sealed partial class Binding
     // Type is well formed, and the fit, judged on its own, makes its outer Origin outlive the substituted one.
     private bool VisitWellFormedPremise(BoundOrigin longer, BoundOrigin outer, BoundType result, BoundOrigin value, BoundOrigin? kept, BoundOrigin substituted, in WellFormedVisit visit, ulong condition = 0)
     {
+        condition |= visit.Condition;
         if (OriginOutlives(longer, outer) || OriginOutlives(value, substituted) || ReferenceEquals(value, kept))
         {
             return true;
@@ -708,7 +719,7 @@ public sealed partial class Binding
             case WellFormedAction.Detect:
                 return false;
             case WellFormedAction.Instance:
-                if (InstanceOutlives(value, substituted, visit.Comparison, this, visit.Use, 0))
+                if (InstanceOutlives(value, substituted, visit.Comparison, this, visit.Use, condition))
                 {
                     return true;
                 }
@@ -748,12 +759,20 @@ public sealed partial class Binding
     }
 
     // An input Type's own clause, substituted with the Origins of its occurrence: a bound of the call's inference, at a selected call a
-    // `declared` relation at the input, or proven by a whole-contract comparison.
+    // `declared` relation at the input, or proven by a whole-contract comparison. A selected call's result Type's clause (a
+    // constructor's construction Type included, JudgeCallClauses) is a `declared` relation at the call when it is over the call's
+    // region (CallRowRelation: SPEC 15.6.4 step 3, DECISIONS BU-104); every other one stays the formation proof's
+    // (CheckTypeOriginRelations). This is the one judge of such a relation: a Type derived from an input, a slot's solution or the
+    // result holds the call's region only through them.
     private bool VisitTypeClause(BoundOrigin longer, BoundOrigin shorter, bool equality, Koto clause, in WellFormedVisit visit)
     {
         if (visit.Action == WellFormedAction.Require)
         {
-            this.JudgeCallPosition(visit.Use, longer, shorter, equality, null, clause, declared: true);
+            if (visit.Subject == WellFormedSubject.Input || CallRowRelation(longer, shorter))
+            {
+                this.JudgeCallPosition(visit.Use, longer, shorter, equality, null, clause, declared: true);
+            }
+
             return true;
         }
 
@@ -765,8 +784,8 @@ public sealed partial class Binding
 
         if (visit.Action == WellFormedAction.Instance)
         {
-            if (InstanceOutlives(longer, shorter, visit.Comparison, this, visit.Use, 0) &&
-                (!equality || InstanceOutlives(shorter, longer, visit.Comparison, this, visit.Use, 0)))
+            if (InstanceOutlives(longer, shorter, visit.Comparison, this, visit.Use) &&
+                (!equality || InstanceOutlives(shorter, longer, visit.Comparison, this, visit.Use)))
             {
                 return true;
             }

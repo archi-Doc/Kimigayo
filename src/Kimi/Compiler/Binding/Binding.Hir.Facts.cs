@@ -45,8 +45,8 @@ public sealed partial class Binding
     /// tuple operator's with its conforming Type and its two arguments, which its expansion reads, DECISIONS R5-M75), a
     /// key resolution its Evaluated argument, an assignment or update of a Property its accessors' plans (an update's setter with its
     /// Evaluated argument) and, for an update with one standard accessor, the Property's symbol; an interpolation its Type, heap,
-    /// adapter (or a <c>$tryWrite</c>'s status) and writes, each with its two arguments and a value's Type; a for loop its Type and a
-    /// user loop's entry, step, iterator symbol and decomposition (a counted one its bindings' symbols); a match its current plan; a
+    /// adapter (or a <c>$tryWrite</c>'s status) and writes, each with its two arguments and a value's Type; a for loop its Type and
+    /// its entry, step, iterator symbol and decomposition; a match its current plan; a
     /// dictionary literal its lookup; a closure its definition; a conversion its binding (a case adaptation its plan); a Tuple or array
     /// literal its Type and an enum Case construction its plan; a declared local and a name their symbols.</summary>
     /// <param name="node">An evaluated node.</param>
@@ -84,12 +84,8 @@ public sealed partial class Binding
             case HirOp.Interpolation:
                 return HirTables.Meaning(node) is not null && node.Formatting is { Writes.Count: > 0 } format && Formats(node, format);
             case HirOp.For:
-                return HirTables.Meaning(node) is not null && (BoundMatch.Of(node), CallPlan.Of(node), CallPlan.Of(node, 1)) switch
-                {
-                    (null, null, null) => Declared(((ForKoto)node).Bindings),
-                    (not null, { } entry, { Receiver: { } receiver } step) => Complete(entry) && Complete(step) && HirTables.Symbol(receiver) is not null,
-                    _ => false,
-                };
+                return HirTables.Meaning(node) is not null && BoundMatch.Of(node) is not null && CallPlan.Of(node) is { } entry &&
+                    CallPlan.Of(node, 1) is { Receiver: { } receiver } step && Complete(entry) && Complete(step) && HirTables.Symbol(receiver) is not null;
             case HirOp.Match or HirOp.Try:
                 return BoundMatch.Of(node) is { IsCurrent: true };
             case HirOp.DictionaryLiteral:
@@ -138,9 +134,9 @@ public sealed partial class Binding
             return call is null || (plan is not null && Complete(plan));
         }
 
-        // The calls of a formatting plan in CallPlan.Of's order: an interpolation's heap (whose Type alone the builder reads, FormatBuffer
-        // serving it) and adapter (taking the buffer), then its writes; a $tryWrite's writes, then its status. Each write takes the writer
-        // and its text or value, of the value's Type.
+        // The calls of a formatting plan in CallPlan.Of's order: an interpolation's heap (which the builder makes with the capacity 0) and
+        // adapter (taking the buffer), then its writes; a $tryWrite's writes, then its status. Each write takes the writer and its text or
+        // value, of the value's Type.
         static bool Formats(Koto node, BoundFormatting format)
         {
             var first = format.Acquisition is null ? 2 : 0;
@@ -159,19 +155,6 @@ public sealed partial class Binding
             }
 
             return first > 0 || (CallPlan.Of(node, format.Writes.Count) is { } status && Complete(status));
-        }
-
-        static bool Declared(IReadOnlyList<Koto> bindings)
-        {
-            for (var i = 0; i < bindings.Count; i++)
-            {
-                if (HirTables.Symbol(bindings[i]) is null)
-                {
-                    return false;
-                }
-            }
-
-            return true;
         }
     }
 }

@@ -53,11 +53,13 @@ public class ReferenceReadTest
     }
 
     // PLAN G647 (SPEC 10.2, 13.4): layers ending in i32 give one ref/i32 at an argument, and a string is compared through safe
-    // reference layers, past the 64 layers the walks once counted; a bool or i32 terminal is refused as it is through 2 layers.
+    // reference layers, past the 64 layers the walks once counted; a bool or i32 terminal is refused as it is through 2 layers. A member
+    // Borrow below them is named by its innermost layer (PLAN G813), a Q terminal refused.
     [Theory]
     [InlineData("argref", 65)]
     [InlineData("argref", 66)]
     [InlineData("streq", 65)]
+    [InlineData("borrow", 65)]
     public void ReadsThroughEveryReferenceLayer(string form, int layers) => TypeDagScalingTest.AssertLayeredTwins(form, false, layers);
 
     [Fact]

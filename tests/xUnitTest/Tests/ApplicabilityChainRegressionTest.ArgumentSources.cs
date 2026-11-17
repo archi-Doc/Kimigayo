@@ -44,6 +44,10 @@ public partial class ApplicabilityChainRegressionTest
 
     private const string FunctionContracts = "func kg(c: bool, y: i32, s: ref/i32 during j, t: ref/i32 during k, fa: (ref/i32 during j) -> ref/i32 during j, fb: (ref/i32 during k) -> ref/i32 during k) -> i32\n";
 
+    private const string JoinPositions = "func pt(p: (i32, i32)) -> i32 => p.0\nfunc pn(p: ((i32, i32), i32)) -> i32 => p.1\nfunc pr(p: (ref/i32 during a, i32)) -> i32 => p.1\nfunc pu(p: (uniq/i32 during a, i32)) -> i32 => p.1\nfunc gr<T>(p: (ref/T during a, i32)) -> i32 => p.1\nfunc gu<T>(p: (uniq/T during a, i32)) -> i32 => p.1\nfunc p2<T>(x: (T, T)) -> i32 => 0\nfunc fdt(p: (Dictionary<i32, i32>, i32)) -> i32 => p.1\nfunc pick(p: (ref/i32 during a, i32)) -> ref/i32 during a => p.0\nfunc k(c: bool, n: ref/i32, m: ref/i32, v: i32, r: ref/i64, s: ref/i64, u: uniq/i32, w: uniq/i32, o: Option<i32>) -> i32\n";
+
+    private const string HandleJoins = "struct Box\n    public var v: i32\n    public init(v: i32) => self.v = v\n    public func read(self: objref/Self) -> i32 => self.v\nfunc firstO(p: (objref/Box during a, i32)) -> objref/Box during a => p.0\nfunc lookO(p: (objref/Box during a, i32)) -> i32 => p.1\nfunc f(c: bool) -> i32\n";
+
     private const string HeldDeclarations = "func identity<T>(v: T) -> T => v@move\nfunc f(x: i64) -> i32 => 0\nfunc ft(x: (i64, i32)) -> i32 => 0\nfunc fa(x: Array<i64>) -> i32 => 0\nfunc fd(x: Dictionary<string, i64>) -> i32 => 0\nfunc k(c: bool, d: bool) -> i32\n";
 
     // A row is (unit, form, program, records). Its verdict comes from SPEC, never from a build: records is empty for a valid program, which
@@ -73,9 +77,9 @@ public partial class ApplicabilityChainRegressionTest
     // SPEC 14.9.2 step 2: a source holding a literal default or a waiting part supplies no candidate, so the Type is formed part by part, each part as
     // the step finds one, the sentence above included.
     [InlineData("guard", "p46", Sources + SourcesBody + "    let t = identity(if c => (u@ref, 1) else => (y, 2))\n    return r\n", "")]
-    [InlineData("I2", "r18", Sources + SourcesBody + "    let j = if c => (u@ref, 1) else => (1, y)\n    return r\n", "", Explicit = true)]
-    [InlineData("I2", "s07", Sources + SourcesBody + "    let t = identity(if c => (u@ref, 1) else => (1, y))\n    return r\n", "", Explicit = true)]
-    [InlineData("I2", "s08", RefSources + "    return ft(if c => (w, 1) else => (1, 2))\n", "", Explicit = true)]
+    [InlineData("G729", "r18", Sources + SourcesBody + "    let j = if c => (u@ref, 1) else => (1, y)\n    return r\n", "")]
+    [InlineData("G729", "s07", Sources + SourcesBody + "    let t = identity(if c => (u@ref, 1) else => (1, y))\n    return r\n", "")]
+    [InlineData("G729", "s08", RefSources + "    return ft(if c => (w, 1) else => (1, 2))\n", "")]
 
     // SPEC 14.9.2 step 2, 4.3.1 (revision B's B2-B4): an array literal source with every element typed is Array<T> and compared whole, so Array<ref/i32>
     // beside Array<i32> has no common Type and the argument waits; elements of one literal agree (4.3.1).
@@ -97,8 +101,8 @@ public partial class ApplicabilityChainRegressionTest
     [InlineData("guard", "w13", Sources + SourcesBody + "    let j = if c => [(u@ref, 1)] else => [(y, 2)]\n    return r\n", "")]
     [InlineData("guard", "w13a", Sources + SourcesBody + "    let t = identity(if c => [(u@ref, 1)] else => [(y, 2)])\n    return r\n", "")]
     [InlineData("guard", "a01", Sources + SourcesBody + "    let j = if c => [(u@ref, 1), (y, 2)] else => [(y, 3)]\n    return r\n", "")]
-    [InlineData("I2", "x10", Sources + SourcesBody + "    let j = if c => [(u@ref, 1)] else => [(1, 2)]\n    return r\n", "", Explicit = true)]
-    [InlineData("I2", "x10a", Sources + SourcesBody + "    let t = identity(if c => [(u@ref, 1)] else => [(1, 2)])\n    return r\n", "", Explicit = true)]
+    [InlineData("G729", "x10", Sources + SourcesBody + "    let j = if c => [(u@ref, 1)] else => [(1, 2)]\n    return r\n", "")]
+    [InlineData("G729", "x10a", Sources + SourcesBody + "    let t = identity(if c => [(u@ref, 1)] else => [(1, 2)])\n    return r\n", "")]
     [InlineData("guard", "a13", Sources + SourcesBody + "    let j = if c => [u@ref: 1] else => [y: 2]\n    return r\n", "")]
     [InlineData("guard", "a11", Sources + SourcesBody + "    let t = identity(if c => ([2 of (u@ref, 1)], 3) else => ([2 of (y, 2)], 4))\n    return r\n", "")]
     [InlineData("guard", "c12", Sources + SourcesBody + "    let t = identity(if c => (if d => [(u@ref, 1)] else => [(y, 2)]) else => [(y, 3)])\n    return r\n", "")]
@@ -263,6 +267,74 @@ public partial class ApplicabilityChainRegressionTest
     // SPEC 14.9.2 steps 2-4 (PLAN G540): x13o's other order, and its invalid twin, where no source supplies a Type.
     [InlineData("I2", "x13r", "func k(c: bool, w: ref/i32) -> i32\n    let j = if c => Option.None else => Option.Some(w)\n    return 0\n", "", Explicit = true)]
     [InlineData("guard", "x13n", "func k(c: bool) -> i32\n    let j = if c => Option.None else => Option.None\n    return 0\n", "*: let j = if c => Option.None else => Option.None | ...")]
+    // SPEC 10.5.1, 14.9.2 step 2, 10.2 (PLAN G729): a join formed part by part, at a call, is fitted as a Tuple literal argument: each
+    // position's typed parts are one control-flow argument, adapted at the candidate's Type (value reads, borrows, a shared reference
+    // through a uniq slot), and its borrow covers every part's Loan; a waiting Dictionary literal part fits whole (BU-43). Invalid twins:
+    // a part that adapts to no common Type, an exclusive/shared mismatch. j14 (layers value-read into a common i32) passes on dev and
+    // must not regress; j15 needs the position's value adapted once (R7-I2 d's position source). A position whose one value, of a value
+    // Type, is borrowed at a `ref/U` element is an owner temporary at the join's position (SPEC 10.2 row 2, 3.6), which nothing plans yet:
+    // the call's located Unsupported_Kd at the argument until R7-I2 d's position source (G729's interim; F's rulings 11 and 13): Places
+    // (j04, j07, j09 retained, j09n, j18), layers value-read (j17, j26), a value beside a uniq slot (j27), beside an exclusive borrow of a
+    // part (j28), at a join inside a Tuple literal argument (j39), and every other borrowed row off the whitelist, an owning `rc`, `obj`
+    // or `arc` handle's object borrow at `objref/U` among them (j31-j38: bare handle Places, retaining or not, and moved handles used in
+    // the statement). Only a by-value element (j01) and a borrowed element whose common Type is itself a reference (j05, j29; uniq at
+    // uniq, j30) keep their verdicts.
+    [InlineData("G729", "j01", JoinPositions + "    return pt(if c => (n, 1) else => (m, 2))\n", "")]
+    [InlineData("G729", "j02", JoinPositions + "    return pn(if c => ((n, 1), 2) else => ((m, 3), 4))\n", "")]
+    [InlineData("G729", "j03", JoinPositions + "    return pt(match o\n        .Some(_) => (n, 1)\n        .None => (m, 2)\n    )\n", "")]
+    [InlineData("G729", "j04", JoinPositions + "    var x: i32 = 1\n    var y: i32 = 2\n    return pr(if c => (x, 1) else => (y, 2))\n", "Unsupported_Kd: return pr(if c => (x, 1) else => (y, 2))")]
+    [InlineData("G729", "j05", JoinPositions + "    return pr(if c => (u, 1) else => (w, 2))\n", "")]
+    [InlineData("G729", "j06", JoinPositions + "    return pt(if c => (n, 1) else => (m, (return 2)))\n", "")]
+    [InlineData("G729", "j07", JoinPositions + "    var x: i32 = 1\n    var y: i32 = 2\n    return gr(if c => (x, 1) else => (y, 2))\n", "Unsupported_Kd: return gr(if c => (x, 1) else => (y, 2))")]
+    [InlineData("G729", "j08", JoinPositions + "    return pn((if c => (n, 1) else => (m, 2), 3))\n", "")]
+    [InlineData("G729", "j09", JoinPositions + "    var x: i32 = 1\n    var y: i32 = 2\n    let q = pick(if c => (x, 1) else => (y, 2))\n    return q\n", "Unsupported_Kd: let q = pick(if c => (x, 1) else => (y, 2))")]
+    [InlineData("guard", "j14", JoinPositions + "    let nn = m@ref\n    return p2(if c => (n, 1) else => (nn, 2))\n", "")]
+    [InlineData("I2", "j15", JoinPositions + "    let nn = m@ref\n    return gr(if c => (n, 1) else => (nn, 2))\n", "", Explicit = true)]
+    [InlineData("guard", "j10", JoinPositions + "    return fdt(if c => ([1: 2], v) else => ([3: 4], 5))\n", "")]
+    [InlineData("guard", "j11", JoinPositions + "    let d: Dictionary<i32, i32> = [1: 2]\n    return fdt(if c => (d@move, 1) else => ([3: 4], 2))\n", "")]
+    [InlineData("guard", "j12", JoinPositions + "    return fdt(if c => ([1: 2], 1) else => ([3: 4], 2))\n", "")]
+    [InlineData("guard", "j13", JoinPositions + "    return fdt(if c => ([1: v], v) else => ([3: 4], 5))\n", "")]
+    [InlineData("guard", "j01n", JoinPositions + "    return pt(if c => (n, 1) else => (r, 2))\n", "TypeMismatch_Kd: return pt(if c => (n, 1) else => (r, 2))")]
+    [InlineData("guard", "j02n", JoinPositions + "    return pn((if c => (r, 1) else => (s, 2), 3))\n", "NoApplicableOverload_Kd: return pn((if c => (r, 1) else => (s, 2), 3))")]
+    [InlineData("guard", "j03n", JoinPositions + "    return pu(match o\n        .Some(_) => (u, 1)\n        .None => (n, 2)\n    )\n", "NoApplicableOverload_Kd: return pu(match o")]
+    [InlineData("guard", "j07n", JoinPositions + "    return gu(if c => (u, 1) else => (n, 2))\n", "NoApplicableOverload_Kd: return gu(if c => (u, 1) else => (n, 2))")]
+    [InlineData("G729", "j09n", JoinPositions + "    var x: i32 = 1\n    var y: i32 = 2\n    let q = pick(if c => (x, 1) else => (y, 2))\n    y = 3\n    return q\n", "Unsupported_Kd: let q = pick(if c => (x, 1) else => (y, 2))")]
+    [InlineData("G729", "j26", JoinPositions + "    var x: i32 = 1\n    var y: i32 = 2\n    let q = pick(if c => (x@ref, 1) else => (y@uniq, 2))\n    return q\n", "Unsupported_Kd: let q = pick(if c => (x@ref, 1) else => (y@uniq, 2))")]
+    [InlineData("G729", "j27", JoinPositions + "    let q = pick(if c => (v, 1) else => (u, 2))\n    return q\n", "Unsupported_Kd: let q = pick(if c => (v, 1) else => (u, 2))")]
+    [InlineData("G729", "j28", "func both(p: (ref/i32 during a, i32), q: uniq/i32) -> i32 => p.1\n" + JoinPositions + "    var x: i32 = 1\n    var y: i32 = 2\n    return both(if c => (x, 1) else => (y, 2), x@uniq)\n", "Unsupported_Kd: return both(if c => (x, 1) else => (y, 2), x@uniq)")]
+    [InlineData("guard", "j29", JoinPositions + "    let q = pick(if c => (n, 1) else => (m, 2))\n    return q\n", "")]
+    [InlineData("guard", "j30", JoinPositions + "    return pu(if c => (u, 1) else => (w, 2))\n", "")]
+    [InlineData("G729", "j31", HandleJoins + "    let h1 = Box.init(v: 10)@rc\n    let h2 = Box.init(v: 20)@rc\n    let k = firstO(if c => (h1, 1) else => (h2, 2))\n    return k.read()\n", "Unsupported_Kd: let k = firstO(if c => (h1, 1) else => (h2, 2))")]
+    [InlineData("G729", "j32", HandleJoins + "    let h1 = Box.init(v: 10)@obj\n    let h2 = Box.init(v: 20)@obj\n    let k = firstO(if c => (h1, 1) else => (h2, 2))\n    return k.read()\n", "Unsupported_Kd: let k = firstO(if c => (h1, 1) else => (h2, 2))")]
+    [InlineData("G729", "j33", HandleJoins + "    let h1 = Box.init(v: 10)@rc\n    let h2 = Box.init(v: 20)@rc\n    return firstO(if c => (h1@move, 1) else => (h2@move, 2)).read()\n", "Unsupported_Kd: return firstO(if c => (h1@move, 1) else => (h2@move, 2)).read()")]
+    [InlineData("G729", "j34", HandleJoins + "    let h1 = Box.init(v: 10)@obj\n    let h2 = Box.init(v: 20)@obj\n    return firstO(if c => (h1@move, 1) else => (h2@move, 2)).read()\n", "Unsupported_Kd: return firstO(if c => (h1@move, 1) else => (h2@move, 2)).read()")]
+    [InlineData("G729", "j35", HandleJoins + "    let h1 = Box.init(v: 10)@arc\n    let h2 = Box.init(v: 20)@arc\n    let k = firstO(if c => (h1, 1) else => (h2, 2))\n    return k.read()\n", "Unsupported_Kd: let k = firstO(if c => (h1, 1) else => (h2, 2))")]
+    [InlineData("G729", "j36", HandleJoins + "    let h1 = Box.init(v: 10)@arc\n    let h2 = Box.init(v: 20)@arc\n    return lookO(if c => (h1, 1) else => (h2, 2))\n", "Unsupported_Kd: return lookO(if c => (h1, 1) else => (h2, 2))")]
+    [InlineData("G729", "j37", HandleJoins + "    let h1 = Box.init(v: 10)@rc\n    let h2 = Box.init(v: 20)@rc\n    return lookO(if c => (h1, 1) else => (h2, 2))\n", "Unsupported_Kd: return lookO(if c => (h1, 1) else => (h2, 2))")]
+    [InlineData("G729", "j38", HandleJoins + "    let h1 = Box.init(v: 10)@arc\n    let h2 = Box.init(v: 20)@arc\n    return firstO(if c => (h1@move, 1) else => (h2@move, 2)).read()\n", "Unsupported_Kd: return firstO(if c => (h1@move, 1) else => (h2@move, 2)).read()")]
+    [InlineData("G729", "j39", "func fe(p: ((ref/i32 during a, i32), i32)) -> i32 => p.1\n" + JoinPositions + "    var x: i32 = 1\n    var y: i32 = 2\n    return fe((if c => (x, 1) else => (y, 2), 3))\n", "Unsupported_Kd: return fe((if c => (x, 1) else => (y, 2), 3))")]
+    // PLAN G729: the adaptation decides an overload (j16: no numeric conversion to i64); a shared reference beside a uniq slot, value-read
+    // into one i32 (j17, the interim above); an explicit T at a ref/T slot (j18, the interim) and its twin (j18n: an i32 Place has no
+    // ref/i64 row). A typed Tuple or array literal
+    // part is typed whole (BU-43): its Type, not its elements, fits (j19n, j20n: no element adaptation; j19, j20: the same Type, and a
+    // temporary of it borrowed at ref/(...) ranked below Exact).
+    [InlineData("G729", "j16", "func fo(p: (i32, i32)) -> i32 => 0\nfunc fo(p: (i64, i32)) -> i32 => 1\n" + JoinPositions + "    return fo(if c => (n, 1) else => (m, 2))\n", "")]
+    [InlineData("G729", "j17", JoinPositions + "    return pr(if c => (n, 1) else => (u, 2))\n", "Unsupported_Kd: return pr(if c => (n, 1) else => (u, 2))")]
+    [InlineData("G729", "j18", JoinPositions + "    var x: i32 = 1\n    var y: i32 = 2\n    return gr<i32>(if c => (x, 1) else => (y, 2))\n", "Unsupported_Kd: return gr<i32>(if c => (x, 1) else => (y, 2))")]
+    [InlineData("guard", "j18n", JoinPositions + "    var x: i32 = 1\n    var y: i32 = 2\n    return gr<i64>(if c => (x, 1) else => (y, 2))\n", "NoApplicableOverload_Kd: return gr<i64>(if c => (x, 1) else => (y, 2))")]
+    [InlineData("guard", "j19", "func pn2(p: ((ref/i32 during a, ref/i32 during a), i32)) -> i32 => p.1\n" + JoinPositions + "    return pn2(if c => ((n, m), 1) else => ((m, n), 2))\n", "")]
+    [InlineData("guard", "j19n", JoinPositions + "    return pn(if c => ((n, m), 1) else => ((m, n), 2))\n", "NoApplicableOverload_Kd: return pn(if c => ((n, m), 1) else => ((m, n), 2))")]
+    [InlineData("guard", "j20", "func fw(p: ((ref/i32 during a, ref/i32 during a), i32)) -> bool => true\nfunc fw(p: (ref/(ref/i32 during a, ref/i32 during a) during b, i32)) -> i32 => 0\n" + JoinPositions + "    let q2 = (n, m)\n    let q = fw(if c => ((n, m), 1) else => (q2, 2))\n    let z: bool = q\n    return 0\n", "")]
+    [InlineData("guard", "j20n", "func fta(p: (Array<i32>, i32)) -> i32 => p.1\n" + JoinPositions + "    return fta(if c => ([n], 1) else => ([m], 2))\n", "NoApplicableOverload_Kd: return fta(if c => ([n], 1) else => ([m], 2))")]
+    // SPEC 14.9.2 step 2 (PLAN G729, finding I1): a position holding literals beside safe reference layers over a read Type has that Type,
+    // the references value-read, as a join's own sources do (BesideLiterals): no temporary, at a call (j21, j22 the overload it decides, j24
+    // nested, j25 with no Loan after the call) and at a let (j23; j23n its twin, the position's i32 at bool).
+    [InlineData("G729", "j21", JoinPositions + "    return pt(if c => (n, 1) else => (1, 2))\n", "")]
+    [InlineData("G729", "j22", "func fo2(p: (i64, i32)) -> i32 => 0\nfunc fo2(p: (bool, i32)) -> i32 => 1\n" + JoinPositions + "    return fo2(if c => (r, 1) else => (1, 2))\n", "")]
+    [InlineData("G729", "j23", JoinPositions + "    let q = if c => (n, 1) else => (1, 2)\n    return q.0\n", "")]
+    [InlineData("guard", "j23n", JoinPositions + "    let q = if c => (n, 1) else => (1, 2)\n    let z: bool = q.0\n    return 0\n", "TypeMismatch_Kd: let z: bool = q.0")]
+    [InlineData("G729", "j24", JoinPositions + "    return pn(if c => ((n, 1), 2) else => ((1, 2), 3))\n", "")]
+    [InlineData("G729", "j25", JoinPositions + "    var x: i32 = 1\n    let q = pt(if c => (x@ref, 1) else => (1, 2))\n    x = 3\n    return q\n", "")]
     public void ACommonTypeFormationHasItsVerdict(string unit, string form, string program, string records)
         => CompilationTestHelper.AssertRecordsAtLines($"{form} [{unit}]", program + "()", records);
 
@@ -377,9 +449,9 @@ public partial class ApplicabilityChainRegressionTest
     // SPEC 10.4 step 1 (the owner's O-162 (A), PLAN G743): a Tuple or array literal argument is ranked by each element position as an argument
     // there, recursively, beside its own fit (receivers excluded, named arguments by source, before defaults, across the Array and [N of]
     // pair, inside a nested call and an init); a fill stays one argument (e7n) and step 2 is unchanged (e6n). A join formed part by part
-    // ranks each position as one control-flow argument (SPEC 10.5.1; e9 once PLAN G729 lands). e17 selects fq(i32) as its element twin
-    // e16 does, but passes today only because the join leaves the ref candidate inapplicable (PLAN G729's cause); it guards the ranking
-    // once G729 ranks a join's position as one argument. The result Type shows the selected candidate; the n rows tie, oppose or meet an
+    // ranks each position as one control-flow argument, once, by its common Type's class there (SPEC 10.5.1, 10.2.2; PLAN G729): e9
+    // (its only non-Never part), e17 (common i32: Exact beats the borrowed value, as its element twin e16), e18 and e19 (one value, two
+    // i32 Places), never by its parts' classes (they oppose in e17). The result Type shows the selected candidate; the n rows tie, oppose or meet an
     // erasure.
     [Theory]
     [InlineData("guard", "e1", ElementRanks + "    let q = fq((n, 1))\n    let z: i32 = q\n    return z\n", "")]
@@ -390,7 +462,7 @@ public partial class ApplicabilityChainRegressionTest
     [InlineData("guard", "e6", ElementRanks + "    let q = fa([n, m])\n    let z: i32 = q\n    return z\n", "")]
     [InlineData("guard", "e7", ElementRanks + "    let q = ff([n, m])\n    let z: i32 = q\n    return z\n", "")]
     [InlineData("guard", "e8", ElementRanks + "    let q = fq(if c => (n, 1) else => (m, 2))\n    let z: i32 = q\n    return z\n", "")]
-    [InlineData("G729", "e9", ElementRanks + "    let q = fq(if c => (n, 1) else => ((return 0), 2))\n    let z: i32 = q\n    return z\n", "", Explicit = true)]
+    [InlineData("G729", "e9", ElementRanks + "    let q = fq(if c => (n, 1) else => ((return 0), 2))\n    let z: i32 = q\n    return z\n", "")]
     [InlineData("guard", "e10", ElementRanks + "    let s = S.init(1)\n    let q = s.m((n, 1))\n    let z: i32 = q\n    return z\n", "")]
     [InlineData("guard", "e11", ElementRanks + "    let q = fk(x: v, p: (n, 1))\n    let z: i32 = q\n    return z\n", "")]
     [InlineData("guard", "e12", ElementRanks + "    let q = fe((n, 1))\n    let z: i32 = q\n    return z\n", "")]
@@ -399,6 +471,8 @@ public partial class ApplicabilityChainRegressionTest
     [InlineData("guard", "e15", ElementRanks + "    let s = P.init((n, 1))\n    return s.k\n", "")]
     [InlineData("guard", "e16", ElementRanks + "    let q = fq((if c => n else => v, 1))\n    let z: bool = q\n    return 0\n", "")]
     [InlineData("guard", "e17", ElementRanks + "    let q = fq(if c => (n, 1) else => (v, 2))\n    let z: bool = q\n    return 0\n", "")]
+    [InlineData("G729", "e18", ElementRanks + "    let q = fq(if c => (v, 1) else => (v, 2))\n    let z: bool = q\n    return 0\n", "")]
+    [InlineData("G729", "e19", ElementRanks + "    var x: i32 = 1\n    var y: i32 = 2\n    let q = fq(if c => (x, 1) else => (y, 2))\n    let z: bool = q\n    return 0\n", "")]
     [InlineData("guard", "e1n", ElementRanks + "    let q = fb((n, 1))\n    return 0\n", "AmbiguousBinding_Kd: let q = fb((n, 1))")]
     [InlineData("guard", "e4n", ElementRanks + "    let q = fo((n, n))\n    return 0\n", "AmbiguousBinding_Kd: let q = fo((n, n))")]
     [InlineData("guard", "e6n", ElementRanks + "    let q = cc([n, m])\n    return 0\n", "AmbiguousBinding_Kd: let q = cc([n, m])")]

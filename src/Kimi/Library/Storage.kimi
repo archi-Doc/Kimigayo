@@ -63,6 +63,7 @@ internal group Storage
 
     /// Selects a range from an exclusive capability without copying elements or weakening its Loan. The one
     /// displacement of a view's start in the library: the selected start's offset is its stride (SPEC 5.3, 8.15.3).
+    #CallerLocation
     internal func sliceUniq<E, R>(state: UniqRemainder<E> during source, range: R) -> UniqSlice<E> during source
         R is PositionRange
         let selected = match range.tryResolve(state.count)
@@ -150,6 +151,8 @@ internal group Storage
     ///   SPEC 5.6's condition for `Raw.release` without destruction, since it declares no `drop` and its Fields are
     ///   Copy (SPEC 5.6, 16.3.2); and nothing reads, destroys or releases that storage or those entries again
     ///   (SPEC 4.9.7, 16.3).
+    #Lang("StorageDestroyDictionary")
+    #CallerLocation
     internal unsafe func destroyDictionary<K, V>(handle: raw/DictionaryStorage.Handle)
         unsafe
             let storage = (*handle).buffer
@@ -165,10 +168,13 @@ internal group Storage
     /// - safety: `handle` addresses a live Dictionary that nothing reads, destroys or releases again, and
     ///   destroying each of its entries would do nothing, so every Non-Copy value its slot storage holds meets
     ///   SPEC 5.6's condition for `Raw.release` as if destroyed (SPEC 4.9.7, 5.6, 16.3).
+    #Lang("StorageReleaseDictionary")
+    #CallerLocation
     internal unsafe func releaseDictionary(handle: raw/DictionaryStorage.Handle)
         unsafe => Raw.release((*handle).buffer)
 
     /// Destroys a live suffix in reverse insertion order without releasing its storage.
+    #CallerLocation
     internal unsafe func destroyDictionaryEntries<K, V>(storage: raw/u8, stride: isize, tail: isize, count: isize)
         var link = tail
         var remaining = count
@@ -244,6 +250,7 @@ internal group Storage
     /// Inline storage for one complete Type `A`, a fixed array `[N of E]` or a consumed `Array<E>`, placed at offset 0
     /// and never destroyed by the compiler (PLAN G33): its owner destroys what remains of `value` through unsafe
     /// addressing. It takes the stored Type, not `<E, length N>`, because only functions have length slots (SPEC 4.4).
+    #Lang("InlineStorage")
     internal struct InlineStorage<A>
         internal var value: A
 
@@ -309,13 +316,15 @@ internal group Storage
 
     // SPEC 22.1, 22.2.1 (PLAN G32): the members of the built-in fixed array `[N of E]`. A fixed array has no source
     // declaration and Types have no length slots (SPEC 4.4), so its members are these receiver functions, generic over
-    // `E` and `length N`. The compiler looks them up for fixed-array receivers, where they are public, and records the
-    // entry conformances they implement.
+    // `E` and `length N`. The compiler looks them up for fixed-array receivers, where they are public; the entry
+    // conformances' witnesses are FixedArrayEntries, which no lookup exposes.
+    #Lang("FixedArray")
     internal group FixedArray
         /// Borrows the complete contiguous storage without copying elements.
         public func slice<E, length N>(self: ref/[N of E] during source) -> Slice<E> during source
             return self[..]
 
+        #CallerLocation
         public func slice<E, length N, R>(self: ref/[N of E] during source, range: R) -> Slice<E> during source
             R is PositionRange
             return self[range]
@@ -324,23 +333,10 @@ internal group Storage
         public func sliceUniq<E, length N>(self: uniq/[N of E] during source) -> UniqSlice<E> during source
             return UniqSlice<E>.init(Storage.borrowStorageUniq(self))
 
+        #CallerLocation
         public func sliceUniq<E, length N, R>(self: uniq/[N of E] during source, range: R) -> UniqSlice<E> during source
             R is PositionRange
             return Storage.sliceUniq(Storage.borrowStorageUniq(self), range)
-
-        /// Starts a shared enumeration of the elements in index order.
-        public func iterate<E, length N>(self: ref/[N of E] during source) -> ArrayIterator<E> during source
-            return ArrayIterator<E>.init(borrowStorage(self))
-
-        /// Starts an exclusive enumeration of the elements in index order; each element is lent exclusively once.
-        public func iterateUniq<E, length N>(self: uniq/[N of E] during source) -> ArrayUniqIterator<E> during source
-            return ArrayUniqIterator<E>.init(borrowStorageUniq(self))
-
-        /// Starts an owning enumeration: each element is transferred out once, and the unreturned elements are destroyed
-        /// with the iterator in reverse index order (SPEC 4.9.7).
-        public func intoIterator<E, length N>(self: [N of E]) -> FixedArrayOwningIterator<E, [N of E]>
-            return FixedArrayOwningIterator<E, [N of E]>.init(
-                FixedOwnedRemainder<E, [N of E]>.init(self.length, self@move))
 
         /// Returns a shared reference to the element `index` resolves to, or `None` when it resolves to no element.
         public func tryGet<E, length N, P>(self: ref/[N of E] during source, index: P) -> Option<ref/E during source>
@@ -381,8 +377,27 @@ internal group Storage
             Q is Position
             return Storage.tryGetPairUniq(borrowStorageUniq(self), first: first, second: second)
 
+    // SPEC 22.1, 22.2.1, 14.6.2 (PLAN G32, G776): the witnesses of the built-in fixed array's entry conformances (Iterable,
+    // UniqIterable, IntoIterable), which the witness table's FixedArrayEntries row selects; a fixed array gains no members from them.
+    #Lang("FixedArrayEntries")
+    internal group FixedArrayEntries
+        /// Starts a shared enumeration of the elements in index order.
+        public func iterate<E, length N>(self: ref/[N of E] during source) -> ArrayIterator<E> during source
+            return ArrayIterator<E>.init(borrowStorage(self))
+
+        /// Starts an exclusive enumeration of the elements in index order; each element is lent exclusively once.
+        public func iterateUniq<E, length N>(self: uniq/[N of E] during source) -> ArrayUniqIterator<E> during source
+            return ArrayUniqIterator<E>.init(borrowStorageUniq(self))
+
+        /// Starts an owning enumeration: each element is transferred out once, and the unreturned elements are destroyed
+        /// with the iterator in reverse index order (SPEC 4.9.7).
+        public func intoIterator<E, length N>(self: [N of E]) -> FixedArrayOwningIterator<E, [N of E]>
+            return FixedArrayOwningIterator<E, [N of E]>.init(
+                FixedOwnedRemainder<E, [N of E]>.init(self.length, self@move))
+
     /// The one component of an `Array<T>`, under IMPL 21.1.3's Handles, reached by the raw conversion of SPEC 5.4.
     /// `data` states `self` because the Array owns the storage it addresses (SPEC 5.7).
+    #Lang("ArrayRepr")
     #Layout("C")
     internal struct ArrayRepr<T>
         internal var data: raw/T during self
@@ -391,6 +406,7 @@ internal group Storage
 
     /// The one component of a `Slice<T>`, under IMPL 21.1.3's Handles. A Slice owns no elements (SPEC 4.8.1), so `data`
     /// states no `self`.
+    #Lang("SliceRepr")
     #Layout("C")
     internal struct SliceRepr<T>
         internal var data: raw/T
@@ -426,6 +442,8 @@ internal group Storage
     ///
     /// - safety: `handle` addresses a live Array whose elements have `stride` bytes each, and `minimum` exceeds its
     ///   capacity.
+    #Lang("StorageGrowArray")
+    #CallerLocation
     internal unsafe func growArray(handle: raw/ArrayRepr<u8>, stride: isize, minimum: isize)
         unsafe
             let capacity = (*handle).capacity
@@ -465,6 +483,7 @@ internal group Storage
     /// capacity shrinks.
     ///
     /// - safety: `handle` addresses a live Array whose elements have `stride` bytes each.
+    #CallerLocation
     internal unsafe func shrinkArray(handle: raw/ArrayRepr<u8>, stride: isize)
         unsafe
             let length = (*handle).length
@@ -491,6 +510,8 @@ internal group Storage
     /// storage (SPEC 4.9.7, 16.3.2). The handle states no `E`, so an Array as deep as storage allows stays within it.
     ///
     /// - safety: `handle` addresses a live Array of `E` that nothing reads or destroys again.
+    #Lang("StorageDestroyArray")
+    #CallerLocation
     internal unsafe func destroyArray<E>(handle: raw/ArrayRepr<u8>)
         unsafe
             let storage = (*handle).data
@@ -498,5 +519,69 @@ internal group Storage
             Raw.release(storage)
 
     /// Reads an Array's `capacity` (SPEC 4.9.5).
+    #Lang("StorageArrayCapacity")
     internal func arrayCapacity<E>(value: ref/Array<E> during a) -> isize
         unsafe => return (*(value@follow@raw@raw/ArrayRepr<E>)).capacity
+
+    // The operations the compiler implements (#Intrinsic); their comments state their operation contracts (SPEC 5.2).
+    // Fails with the caller location carried by the standard operation's private ABI.
+    #Intrinsic("Fail", "KIMI_E_MISSING_KEY")
+    internal func missingDictionaryKey() -> Never
+    #Intrinsic("Fail", "KIMI_E_INDEX_BOUNDS")
+    internal func indexBounds() -> Never
+    #Intrinsic("Fail", "KIMI_E_ARG_RANGE")
+    internal func argumentOutOfRange() -> Never
+    #Intrinsic("Fail", "KIMI_E_INT_OVERFLOW")
+    internal func countOverflow() -> Never
+    #Intrinsic("Fail", "KIMI_E_ALLOC_SIZE")
+    internal func allocationSizeExceeded() -> Never
+    // The nullable form of Alloc (SPEC 21.4.3): null wherever Alloc would Abort. A nonnull result is the start of an
+    // unreleased allocation of `bytes` bytes that holds no value; that allocation is its provenance, and it is readable and
+    // writable (SPEC 5.2.1). `Raw.release` accepts it as the start of an `allocate` result, never as a zero-byte result
+    // even when `bytes` is 0, so it is released at most once.
+    #Intrinsic("TryAllocateBytes")
+    internal func tryAllocateBytes(bytes: isize) -> raw/u8
+    /// Copies `count` bytes from `source` into the storage at `destination` and runs no user code; it may relocate the
+    /// values in the source range (SPEC 5.2), whatever the initialization state of the bytes.
+    ///
+    /// - safety: `count >= 0`, the two ranges do not overlap and each lies within its pointer's provenance, `source` is
+    ///   readable and `destination` writable for its range.
+    #Lang("StorageTransferBytes")
+    #Intrinsic("MoveBytes")
+    internal unsafe func transferBytes(destination: raw/u8, source: raw/u8, count: isize)
+    /// Destroys the `count` values of `T` at `storage` from the last to the first, leaving their Places holding no value.
+    /// For a `T` whose destruction runs no code it is nothing, so it costs nothing at any optimization level (SPEC 4.9.8).
+    /// `storage` states no `T`, so a `T` as deep as storage allows stays within it.
+    ///
+    /// - safety: `count >= 0`, and each of the `count` strided elements from `storage` is a distinct Place holding a
+    ///   complete value of `T`.
+    #Intrinsic("DestroyValues")
+    internal unsafe func destroyValues<T>(storage: raw/u8, count: isize)
+    /// A user Writer's reservation through the adapter's dispatch word (the ErasedReserve intrinsic): its
+    /// `reserve(minimum)`, then `BufferFull` for a window with `written != 0` or `remaining < minimum`, which it drops
+    /// (SPEC 22.9.4). It records nothing and reads no writer kind. The caller's obligation, which the signature cannot
+    /// state: `writer` is a user Writer's adapter, and its caller commits or drops the window before the next reservation.
+    #Intrinsic("ErasedReserve")
+    internal func erasedReserve(writer: uniq/Utf8Writer, minimum: isize) -> Result<WriteWindow during writer.target, BufferFull>
+    /// The code of `W`'s `reserve` implementation (the ReserveDispatch intrinsic): the word a user Writer's adapter holds
+    /// as its `dispatch`, which `erasedReserve` calls through. Nothing reads or writes through it, and it is no function
+    /// value, which is a pair of words (IMPL 21.1.3).
+    #Intrinsic("ReserveDispatch")
+    internal func reserveDispatch<W>() -> raw/u8 during static
+        W is BufferWriter
+    /// Writes the shortest round-trip text of a float (the FormatFloat intrinsic; SPEC 22.10.2) at the start of
+    /// `destination` and returns its length: fixed notation for `-4 <= e < 16`, else scientific; `NaN`, `Infinity`,
+    /// `-Infinity`, `0` and `-0`. `bits` is an f64's IEEE 754 encoding, or with `narrow` an f32's in its low 32 bits, of
+    /// which only those are read. It writes exactly the returned 1 to 24 bytes (at most 17 with `narrow`) and no other
+    /// byte; the text is ASCII, so valid UTF-8. It allocates nothing and never Aborts.
+    #Intrinsic("FormatFloat")
+    internal func formatFloat(bits: u64 ! narrow: bool, destination: uniq/[24 of u8]) -> isize
+    /// Writes the ASCII decimal digits of `value` (the FormatInteger128 intrinsic; SPEC 22.10.2) at the end of
+    /// `destination` and returns their count, 1 to 39: no sign, no leading zero, `0` for zero. It writes exactly
+    /// those bytes and no other; the text is ASCII, so valid UTF-8. It allocates nothing and never Aborts. Interim by
+    /// RQ16 (a): the backend generates no 128-bit division (IMPL 21.3.3).
+    #Intrinsic("FormatInteger128")
+    internal func formatInteger128(value: u128 ! destination: uniq/[40 of u8]) -> isize
+    /// Returns the stride of `T` (IMPL 21.1.3), the byte distance between adjacent elements.
+    #Intrinsic("Stride")
+    internal func stride<T>() -> isize

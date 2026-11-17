@@ -4,9 +4,10 @@ using Kimi.Compiler.Parsing;
 
 namespace Kimi.Compiler;
 
-// The Types of locals over the local-region graph (SPEC 15.4.4): a mutable local's Type opened into region slots (LocalBorrowType), a
-// result's own body's regions resolved to their sources (ResolveLocalResultOrigins), and the queries on the regions of a Type's parts
-// (HasLocalRegion, which also counts a pending atom, HasRegionBounds, CarrierOf).
+// The Types of locals over the local-region graph (SPEC 15.4.4): a reassignable local's Type opened into region slots, a var local's, a
+// var Pattern binding's and a var for slot's alike (LocalBorrowType), a result's own body's regions resolved to their sources
+// (ResolveLocalResultOrigins), and the queries on the regions of a Type's parts (HasLocalRegion, which also counts a pending atom,
+// HasRegionBounds, CarrierOf).
 public sealed partial class Binding
 {
     // Whether an Origin of the Type's parts, a raw layer's included, is a local region or a pending atom; a Function or Function Item part
@@ -130,8 +131,8 @@ public sealed partial class Binding
         return false;
     }
 
-    // `slot` is the local's next region slot (BindVariableCore).
-    private BoundType LocalBorrowType(BoundType type, VariableKoto owner, Koto value, int slot)
+    // `slot` is the local's next region slot (BindVariableCore; a Pattern binding's or for slot's first, BindingTypeOf).
+    private BoundType LocalBorrowType(BoundType type, Koto owner, Koto value, int slot)
     {
         if (!IsMutableDeclaration(owner) || !type.StoresOrigin)
         {
@@ -211,7 +212,7 @@ public sealed partial class Binding
                 origin = Resolve(raw);
             }
 
-            return this.types.Intern(type.Kind, type.Symbol, type.Semantics, components.AsSpan(0, type.Components.Count), type.Length, origin, arguments.AsSpan(0, type.OriginArguments.Count), type.LengthExpression, type.ClosureContext, type.LengthArguments);
+            return this.types.Intern(type.Kind, type.Symbol, type.Semantics, components.AsSpan(0, type.Components.Count), type.Length, origin, arguments.AsSpan(0, type.OriginArguments.Count), type.LengthExpression, type.InstanceContext, type.LengthArguments, type.Binder);
         }
         finally
         {

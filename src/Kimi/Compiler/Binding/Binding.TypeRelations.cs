@@ -69,75 +69,78 @@ public sealed partial class Binding
     // SPEC 15.3.5: the layers invariant in their target: an exclusive borrow, a writable object handle, a raw pointer, and a pair
     // layer whose binder admits one of them (InvariantAdmitted), since a relation between pair layers must hold for every admitted
     // Semantics. A comparison without a Binding sees only the concrete layers.
-    private static bool IsInvariantLayer(BoundType type, Binding? binding)
-        => type.Semantics is SemanticsKind.Uniq or SemanticsKind.ObjUniq or SemanticsKind.Raw || (binding is not null && binding.InvariantAdmitted(type));
+    private static bool IsInvariantLayer(BoundType type, Binding? binding, Koto? use, in CallableInstance comparison)
+        => type.Semantics is SemanticsKind.Uniq or SemanticsKind.ObjUniq or SemanticsKind.Raw || (binding is not null && binding.InvariantAdmitted(type, use, comparison));
 
     // The Callable comparison of `actual`, whose per-call inputs `own` binds (its own syntax when null), with `expected`, nested in the
     // comparisons `outer` names.
-    private static CallableInstance Comparison(BoundType actual, Koto? own, BoundType expected, ComparisonPremises? outer)
-        => new(actual, own ?? FunctionTypeBinder(actual), expected, FunctionTypeBinder(expected), outer);
-
-    // A signature whose inputs are fresh per-call borrows and whose result has no Origin or one over those inputs alone.
-    private static bool PerCallShape(BoundType signature, Koto? own, bool any = false)
-        => PerCallSignature(signature, own, any) || InputDependentBinder(signature, own, any) is not null;
+    private static CallableInstance Comparison(BoundType actual, Koto? own, BoundType expected, in CallableInstance enclosing)
+        => new(actual, own ?? actual.Binder, expected, expected.Binder, enclosing.Enclosing) { Scope = enclosing.Scope };
 
     // SPEC 10.7: within one Callable comparison, `a` outlives `b` after the implementation's call-time Origins are instantiated. The
     // required per-call Origins are rigid: one outlives another only at the same position or by the own well-formedness of the
     // comparison's required signatures (the owner's (a)), and a fixed Origin outlives one only when it is static, since the call that
     // binds it may come after every point of the enclosing body. A meet outlives an Origin when each operand does, and an Origin
-    // outlives a meet when it outlives one operand.
-    private static bool InstanceOutlives(BoundOrigin a, BoundOrigin b, in CallableInstance instance, Binding? binding, Koto? use, int depth)
+    // outlives a meet when it outlives one operand; nested meets stop at depth 8. `condition` is the Semantics cases the relation is
+    // required in (SPEC 15.6.5), so a premise of those cases proves it.
+    private static bool InstanceOutlives(BoundOrigin a, BoundOrigin b, in CallableInstance instance, Binding? binding, Koto? use, ulong condition = 0)
     {
-        if (depth > 8)
-        {
-            return false;
-        }
+        var comparison = instance;
+        return Outlives(a, b, 0);
 
-        a = instance.Instantiate(a);
-        b = instance.Instantiate(b);
-        if (ReferenceEquals(a, b) || a.Kind == OriginKind.Static)
+        bool Outlives(BoundOrigin longer, BoundOrigin shorter, int depth)
         {
-            return true;
-        }
-
-        if (a.Kind == OriginKind.Intersection)
-        {
-            for (var i = 0; i < a.Operands.Count; i++)
+            if (depth > 8)
             {
-                if (!InstanceOutlives(a.Operands[i], b, instance, binding, use, depth + 1))
-                {
-                    return false;
-                }
+                return false;
             }
 
-            return true;
-        }
-
-        if (b.Kind == OriginKind.Intersection)
-        {
-            for (var i = 0; i < b.Operands.Count; i++)
+            longer = comparison.Instantiate(longer);
+            shorter = comparison.Instantiate(shorter);
+            if (ReferenceEquals(longer, shorter) || longer.Kind == OriginKind.Static)
             {
-                if (InstanceOutlives(a, b.Operands[i], instance, binding, use, depth + 1))
-                {
-                    return true;
-                }
+                return true;
             }
 
-            return false;
-        }
+            if (longer.Kind == OriginKind.Intersection)
+            {
+                for (var i = 0; i < longer.Operands.Count; i++)
+                {
+                    if (!Outlives(longer.Operands[i], shorter, depth + 1))
+                    {
+                        return false;
+                    }
+                }
 
-        if (instance.IsRequiredSlot(a) || instance.IsRequiredSlot(b))
-        {
-            // A required per-call Origin relates to another only through the required signatures' own well-formedness.
-            return binding is not null && binding.ProvesOriginOutlives(a, b, use!, instance);
-        }
+                return true;
+            }
 
-        if (b is { Kind: OriginKind.Inference, Open: true } && instance.IsResultOnlyOrigin(a))
-        {
-            return true;
-        }
+            if (shorter.Kind == OriginKind.Intersection)
+            {
+                for (var i = 0; i < shorter.Operands.Count; i++)
+                {
+                    if (Outlives(longer, shorter.Operands[i], depth + 1))
+                    {
+                        return true;
+                    }
+                }
 
-        return binding is null ? OriginOutlives(a, b) : binding.FitOrigin(a, b, use!, instance);
+                return false;
+            }
+
+            if (comparison.IsRequiredSlot(longer) || comparison.IsRequiredSlot(shorter))
+            {
+                // A required per-call Origin relates to another only through the required signatures' own well-formedness.
+                return binding is not null && binding.ProvesOriginOutlives(longer, shorter, use!, comparison, condition);
+            }
+
+            if (shorter is { Kind: OriginKind.Inference, Open: true } && comparison.IsResultOnlyOrigin(longer))
+            {
+                return true;
+            }
+
+            return binding is null ? OriginOutlives(longer, shorter) : binding.FitOrigin(longer, shorter, use!, comparison, condition);
+        }
     }
 
     // The images of an occurrence's declared Origin slots: its Origin arguments, or a Slice's one slot, its layer Origin, written into the
@@ -315,7 +318,7 @@ public sealed partial class Binding
         }
 
         // DECISIONS BU-60: the Type instance a closure's context holds is a part of the Closure Type.
-        var context = type.ClosureContext;
+        var context = type.InstanceContext;
         if (TyCtxt.HeldType(type) is { } held)
         {
             if (this.SubstitutePart(held, substitution, query) is not { } image)
@@ -353,7 +356,7 @@ public sealed partial class Binding
                 }
             }
 
-            var changed = length != type.Length || !ReferenceEquals(expression, type.LengthExpression) || !ReferenceEquals(context, type.ClosureContext);
+            var changed = length != type.Length || !ReferenceEquals(expression, type.LengthExpression) || !ReferenceEquals(context, type.InstanceContext);
             for (var i = 0; i < type.LengthArguments.Length; i++)
             {
                 var argument = type.LengthArguments[i];
@@ -432,7 +435,7 @@ public sealed partial class Binding
 
             changed |= rebuilt is not null;
             return changed
-                ? this.types.Intern(type.Kind, type.Symbol, type.Semantics, scratch.AsSpan(0, type.Components.Count), length, origin, rebuilt is null ? (BoundOrigin[])type.OriginArguments : rebuilt.AsSpan(0, type.OriginArguments.Count), expression, context, itemLengths.AsSpan(0, type.LengthArguments.Length))
+                ? this.types.Intern(type.Kind, type.Symbol, type.Semantics, scratch.AsSpan(0, type.Components.Count), length, origin, rebuilt is null ? (BoundOrigin[])type.OriginArguments : rebuilt.AsSpan(0, type.OriginArguments.Count), expression, context, itemLengths.AsSpan(0, type.LengthArguments.Length), type.Binder)
                 : type;
         }
         finally

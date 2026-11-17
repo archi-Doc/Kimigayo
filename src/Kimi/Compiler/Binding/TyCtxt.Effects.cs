@@ -13,15 +13,19 @@ internal sealed partial class TyCtxt
     private readonly Dictionary<Koto, CopyFacts> copies = new(ReferenceEqualityComparer.Instance); // By premises node (a view, ResetViews).
     private bool callsRowsChecked; // Whether CheckCallsRows has held: the catalog's Calls rows are checked once, not at each read.
 
-    // SPEC 8.11.2: what a call of a function without a MIR body does: a compiler function's class (IntrinsicDisposition.Effect), a
-    // definition Binding rejected a dependent of that error (R4-M18: its parts are not published), a foreign function (SPEC 22.6) an
-    // environment effect; any other is unclassified.
-    internal static CompilerFunctionEffect Bodyless(BindingSymbol function) => function switch
+    // SPEC 8.11.2, 22.1, 22.6: what a function without a MIR body is, the one decider, from facts fixed when Binding is final: an
+    // intrinsic or a shim by its Definition (the library's `#Intrinsic`, Binding.PrepareBuiltinTargets); a definition Binding rejected
+    // (R4-M18: its parts are not published) or whose Body the parser recorded missing (SPEC 14.2.1; MissingBody is set with its record;
+    // PLAN G890) a dependent of that error; a foreign function (`#LibraryImport`) an import; any other is unclassified. Its readers, A4
+    // (MirEffects, which reads an intrinsic's MirDescriptors row by its Definition's IntrinsicId) and the instance collector
+    // (InstanceCollector.Callees), key on the category; neither reads syntax.
+    internal static BodylessKind Bodyless(BindingSymbol function) => function switch
     {
-        { CompilerFunction: not CompilerFunctionKind.None } => IntrinsicDisposition.Effect(function.CompilerFunction),
-        { Declaration.BindingState: not BindingState.Resolved } => CompilerFunctionEffect.Dependent,
-        { Declaration: FunctionKoto declaration } when declaration.FindAttribute(AttributeKind.LibraryImport) is not null => CompilerFunctionEffect.Environment,
-        _ => CompilerFunctionEffect.Unclassified,
+        { Definition.Kind: DispositionKind.Intrinsic } => BodylessKind.Intrinsic,
+        { Definition.Kind: DispositionKind.Shim } => BodylessKind.Shim,
+        { Declaration.BindingState: not BindingState.Resolved } or { Declaration: FunctionKoto { MissingBody: true } } => BodylessKind.Dependent,
+        { Declaration: FunctionKoto declaration } when declaration.FindAttribute(AttributeKind.LibraryImport) is not null => BodylessKind.Import,
+        _ => BodylessKind.Unclassified,
     };
 
     // SPEC 4.9.6, 12.4.3: an operation's published row in MIR terms (KimiLibraryCatalog.Row): the requirement it runs on the Type below

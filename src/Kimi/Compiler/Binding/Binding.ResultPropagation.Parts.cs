@@ -313,16 +313,18 @@ public sealed partial class Binding
         return true;
     }
 
-    // SPEC 14.9.2 step 2: the common Type of the typed parts of [start, end), literals of it and safe reference layers over it
-    // included; `typed` tells whether there is one; null when there is none or they conflict.
+    // SPEC 14.9.2 step 2: the common Type of the typed parts of [start, end), literals of it (BesideLiterals) and safe reference layers
+    // over it included; `typed` tells whether there is one; null when there is none or they conflict.
     private BoundType? PositionType(int start, int end, BindingScope scope, out bool typed)
     {
         var types = this.partTypes;
         types.Clear();
+        var literal = false;
         for (var i = start; i < end; i++)
         {
             var part = this.positionParts[i];
-            if (!IsUnfittedLiteral(part) && !this.IsAggregatePart(part) && this.SuppliedType(part) is { } type)
+            literal |= IsUnfittedLiteral(part);
+            if (this.TypedPositionPart(part) is { } type)
             {
                 types.Add(type);
             }
@@ -331,8 +333,13 @@ public sealed partial class Binding
         typed = types.Count > 0;
         var common = typed ? this.SelectCommonType(types, scope, out _) : null;
         types.Clear();
-        return common;
+        return literal ? this.BesideLiterals(common, scope) : common;
     }
+
+    // A typed part of a position, PositionType's (neither a literal nor an aggregate, with a supplied Type): its Type, which its
+    // evidence adapts (SlotSolution.InferAdaptedParts) and its fit fits (FitsTypedPart); null for any other part.
+    private BoundType? TypedPositionPart(Koto part)
+        => !IsUnfittedLiteral(part) && !this.IsAggregatePart(part) ? this.SuppliedType(part) : null;
 
     // SPEC 14.9.2 step 2: the common Type at the position [start, end): its typed parts' (PositionType); without one, its aggregate
     // parts' formed by their child positions (Tuples by element, list literals by element as Array<T>, fills by element at their

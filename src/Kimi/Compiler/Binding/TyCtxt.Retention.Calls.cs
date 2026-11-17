@@ -26,7 +26,7 @@ internal sealed partial class TyCtxt
     // HandedCallables' answers per interned Type, kept as the retentions are, and its walk's scratch.
     private readonly Dictionary<BoundType, BoundType[]> handedCallables = new(ReferenceEqualityComparer.Instance);
     private readonly List<BoundType> handedFound = new();
-    private readonly HashSet<BoundType> handedSeen = new(ReferenceEqualityComparer.Instance);
+    private readonly Dictionary<BoundType, int> handedSeen = new(ReferenceEqualityComparer.Instance); // Each part's shallowest depth (Binding.Enters).
 
     // SPEC 15.6.4: a callee's retention under a call's Subst (a Fn, Requirement or Virtual MIR callee, the function the Subst targets, or an
     // Intrinsic one's library declaration; its default templates are A5's), called in `definition`.
@@ -87,7 +87,7 @@ internal sealed partial class TyCtxt
         var use = binding.DefinitionUse(definition);
         (object Callee, Subst? Types, object? Scope, int Regions) key = closure is null
             ? (signature, null, owner ?? (object)binding.ConstraintScope(use), binding.RegionVersion)
-            : (signature, closure.ClosureContext, owner, binding.RegionVersion);
+            : (signature, closure.InstanceContext, owner, binding.RegionVersion);
         if (this.retentions.TryGetValue(key, out var known))
         {
             return known;
@@ -97,7 +97,7 @@ internal sealed partial class TyCtxt
         CallRetention retention;
         if (owner is null)
         {
-            retention = binding.RetainsErased(use, inputs, signature.Components[1], Binding.FunctionTypeBinder(signature));
+            retention = binding.RetainsErased(use, inputs, signature.Components[1], signature.Binder);
         }
         else
         {
@@ -152,7 +152,7 @@ internal sealed partial class TyCtxt
             return closure;
         }
 
-        return ClosureInstance(closure) is { } context ? this.ReadableInstance(environment, context) : environment;
+        return NestedInstance(closure) is { } context ? this.ReadableInstance(environment, context) : environment;
     }
 
     // SPEC 7.7.3 (DECISIONS R4-M128, R4-M148): the call receiver a Closure Type's case admits, given a case Type of a view or the
@@ -390,15 +390,23 @@ internal sealed partial class TyCtxt
         return true;
     }
 
-    // HandedCallables' walk: each part once, to the depth bound past which a growing recursive Type's parts are a Limit Held reports.
+    // HandedCallables' walk, to the depth bound past which a growing recursive Type's parts are a Limit Held reports: each part entered at
+    // the shallowest depth it is met at (Binding.Enters, PLAN G571), so a callable within the bound is found whatever route meets its holder
+    // first; each callable found once.
     private void Handed(BoundType? type, int depth)
     {
-        if (type is null || depth > HandedBound || !this.handedSeen.Add(type))
+        if (type is null || depth > HandedBound)
         {
             return;
         }
 
-        if (type.Kind == BoundTypeKind.Function)
+        ref var shallowest = ref CollectionsMarshal.GetValueRefOrAddDefault(this.handedSeen, type, out var met);
+        if (!Binding.Enters(ref shallowest, met, depth))
+        {
+            return;
+        }
+
+        if (type.Kind == BoundTypeKind.Function && !met)
         {
             this.handedFound.Add(type);
         }

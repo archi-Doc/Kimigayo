@@ -25,8 +25,8 @@ internal static class RuntimeAbi
     internal const int StaticReleaseKind = 0;
 
     /// <summary>The Heap string releaseKind: bytes of a process heap block, which the string's destruction frees. A buffer's string
-    /// takes its kind as `zext i1 %heap to i8` (the formatting runtime's __kimi_buffer_into_string and __kimi_format_take_string), so
-    /// Heap is 1 and Static 0 (Kernel32ImportsTest.TheRuntimeTemplatesUnmarkedFactsHold).</summary>
+    /// takes its kind as the library's HeapBuffer.intoString writes it, 1 for an allocation and 0 for none, so Heap is 1 and Static 0
+    /// (Kernel32ImportsTest.TheRuntimeTemplatesUnmarkedFactsHold).</summary>
     internal const int HeapReleaseKind = 1;
 
     /// <summary>The buffer address of an Array with zero-sized elements (SPEC 4.5): nonnull and page-aligned, so aligned for every
@@ -64,12 +64,6 @@ internal static class RuntimeAbi
         "__kimi_stdout",
         Unit.ComputationType,
         [new("ptr", "data", LogicalIndex: 0), new("i64", "length", LogicalIndex: 1), Location, LocationLength]);
-
-    // SPEC 22.1-22.5.5: writeLine borrows its string handle and releases nothing.
-    internal static readonly FunctionAbi WriteLine = new(
-        "__kimi_write_line",
-        Unit.ComputationType,
-        [new(StringReference.ArgumentType!, "text", AbiParameterKind.SharedReference, 0), Location, LocationLength]);
 
     internal static readonly FunctionAbi DestroyString = new("__kimi_destroy_string", Unit.ComputationType, OwnedStringParameters);
 
@@ -153,7 +147,7 @@ internal static class RuntimeAbi
         [new("i32", "which", AbiParameterKind.Value, 0), new("i16", "kind"), new("i16", "width"), new("i128", "bits")]);
 
     /// <summary>Gets the compiler-facing runtime definitions expanded into WindowsRuntime.ll.in.</summary>
-    internal static readonly FunctionAbi[] RuntimeDefinitions = [Exit, DestroyString, WriteLine, Abort, AbortMessage];
+    internal static readonly FunctionAbi[] RuntimeDefinitions = [Exit, DestroyString, Abort, AbortMessage];
 
     // The constants a runtime template spells through a marker, by the marker's name (Expand).
     private static readonly (string Name, long Value)[] Constants =

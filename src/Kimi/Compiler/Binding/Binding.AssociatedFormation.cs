@@ -53,7 +53,7 @@ public sealed partial class Binding
     private BindingScope AssociatedFormationScope(BoundConformancePath path, BoundRequirement? identity, BindingScope scope)
     {
         if (identity is not { Symbol: { Kind: BindingSymbolKind.AssociatedType } associated } selected || this.AssociatedParameters(associated.Declaration).Length == 0 ||
-            !this.associatedBindings.TryGetValue((path.RootPath, selected), out var binding))
+            this.AssociatedBindingOf(path.RootPath, selected) is not { } binding)
         {
             return scope;
         }
@@ -89,19 +89,13 @@ public sealed partial class Binding
             return false;
         }
 
-        if ((IsBorrow(type.Semantics) || type.Kind == BoundTypeKind.Slice) && type.Origin is { } outer)
+        // SPEC 8.1.2: a pair layer's active slot is a conditional borrow layer whose target's Origins outlive it in its binder's borrow
+        // cases; a static slot under an admitted exclusive borrow is the occurrence's own formation failure (TypeRoleCauses). Formation
+        // is judged at its use, in no comparison (default).
+        if (this.WellFormedLayer(type, use, default) is { } layer &&
+            ((layer.Outer.Kind == OriginKind.Static && IsExclusive(type.Semantics)) ||
+            !this.AssociatedOriginsOutlive(layer.Target, layer.Outer, use, RequiredCondition(layer.Condition))))
         {
-            if ((outer.Kind == OriginKind.Static && IsExclusive(type.Semantics)) ||
-                (type.Components.Count != 0 && !this.AssociatedOriginsOutlive(type.Components[0], outer, use)))
-            {
-                return false;
-            }
-        }
-        else if (TryPairLayer(type, out _, out var target) && this.StoredSlot(type, use, out var condition) is { } slot &&
-            !this.AssociatedOriginsOutlive(target, slot, use, RequiredCondition(condition)))
-        {
-            // SPEC 8.1.2: an active slot is a conditional borrow layer whose target's Origins outlive it in its binder's borrow cases; a
-            // static slot under an admitted exclusive borrow is the occurrence's own formation failure (TypeRoleCauses).
             return false;
         }
 
@@ -124,7 +118,8 @@ public sealed partial class Binding
             return this.ProveOwned(type, use) == ConstraintProof.Proven || this.ProvesAssociatedTypeLifetime(type, outer, use, condition);
         }
 
-        if (this.StoredSlot(type, use, out var slot) is { } origin && !this.ProvesOriginOutlives(origin, outer, use, condition | RequiredCondition(slot)))
+        // Formation's own relation, at its use and in no comparison (default).
+        if (this.StoredSlot(type, use, out var slot, default) is { } origin && !this.ProvesOriginOutlives(origin, outer, use, condition | RequiredCondition(slot)))
         {
             return false;
         }
@@ -209,14 +204,9 @@ public sealed partial class Binding
     // layer's slot is such a borrow only in its binder's borrow cases, so it proves a relation required within them (SPEC 15.6.5).
     private bool ProvesBorrowedTypeLifetime(BoundType premise, BoundType type, BoundOrigin outer, Koto use, ulong condition = 0)
     {
-        if ((IsBorrow(premise.Semantics) || premise.Kind == BoundTypeKind.Slice) && premise.Origin is { } origin && premise.Components.Count != 0 &&
-            StoresTypeArgument(premise.Components[0], type) && this.ProvesOriginOutlives(origin, outer, use, condition))
-        {
-            return true;
-        }
-
-        if (TryPairLayer(premise, out _, out var target) && this.StoredSlot(premise, use, out var slot) is { } pairSlot && slot != ulong.MaxValue &&
-            (condition & slot) == slot && StoresTypeArgument(target, type) && this.ProvesOriginOutlives(pairSlot, outer, use, condition))
+        // A premise of formation at its use, in no comparison (default).
+        if (this.WellFormedLayer(premise, use, default) is { Condition: not ulong.MaxValue } layer && (condition & layer.Condition) == layer.Condition &&
+            StoresTypeArgument(layer.Target, type) && this.ProvesOriginOutlives(layer.Outer, outer, use, condition))
         {
             return true;
         }

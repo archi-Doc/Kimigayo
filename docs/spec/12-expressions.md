@@ -104,7 +104,7 @@ let f = (1.0 + 1.0)@f32                  // Computed in f64, then converted.
 | `(value,)`, `(a, b)` | Tuple. |
 | `[a, b]`, `[]` / `[key: value]`, `[:]` | Array / Dictionary literal. |
 
-An array has one element Type, a Dictionary one key and one value Type. An empty literal needs an expected Type. Array and Dictionary literals use the required Kimi declarations ([§22.1](22-core-execution-and-foreign-functions.md#221-required-kimi-declarations)), except for an expected fixed array ([§4](04-arrays-indexing-and-slices.md#4-arrays-indexing-and-slices)); an unresolved element Type never falls back to a universal object Type.
+An array has one element Type, a Dictionary one key and one value Type. A Dictionary literal's keys without an expected key Type, and its values without an expected value Type, each find their common Type as an independent array literal's elements do ([§4.3.1](04-arrays-indexing-and-slices.md#431-array-literals-and-annotation-holes)): with `n: ref/i32`, `[1: n, 2: 3]` constructs `Dictionary<i32, i32>`. An empty literal needs an expected Type. Array and Dictionary literals use the required Kimi declarations ([§22.1](22-core-execution-and-foreign-functions.md#221-required-kimi-declarations)), except for an expected fixed array ([§4](04-arrays-indexing-and-slices.md#4-arrays-indexing-and-slices)); an unresolved element Type never falls back to a universal object Type.
 
 ```kimi
 let pair = (10, "ten")

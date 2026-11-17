@@ -474,7 +474,10 @@ public partial class ApplicabilityChainRegressionTest
         Assert.False(rejected.Accepted);
         var error = Assert.Single(rejected.Diagnostics);
         Assert.Equal(nameof(DiagnosticCode.UnprovenOriginContract_Kd), error.Code);
-        Assert.Equal("the result requires x == y, which is not proven", error.Label);
+        // The record names the first failing bound, `y outlives x` (PLAN G913's Revision 2, the owner's O-348 (a): a conversion's
+        // comparison gives the variable a representative and the walk judges the members, as LocalOriginClauseTest's veqin);
+        // `requires x == y` before it.
+        Assert.Equal("the result requires y outlives x, which is not proven", error.Label);
         Assert.True(DiagnosticCorpus.Check(Source.Replace("during y", "during x", StringComparison.Ordinal)).Accepted);
     }
 
@@ -548,5 +551,17 @@ public partial class ApplicabilityChainRegressionTest
         Assert.Equal(0, AllocationMeasurement.Measure(() => rejected &= !c.Bind().IsComplete));
         Assert.True(rejected);
         Assert.Equal(code is null ? [] : [code], c.Binding.Issues.Select(static x => x.Code.ToString()));
+    }
+
+    // PLAN G729: a joined position of two references at `ref/i32 during a` (two Origins, one region covering both) allocates nothing in a
+    // warm rebind (the adapted parts' scratch, SlotSolution.InferAdaptedParts).
+    [Trait("Purpose", "Allocation")]
+    [Fact]
+    public void WarmJoinedBorrowPositionAllocatesNothing()
+    {
+        var c = MinimalEmissionTest.Analyze(JoinPositions + "    let q = pick(if c => (n, 1) else => (m, 2))\n    return q\n()");
+        var valid = true;
+        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Bind().IsComplete));
+        Assert.True(valid, MinimalEmissionTest.Describe(c));
     }
 }

@@ -69,9 +69,9 @@ public sealed partial class Binding
     // own clause, which Binding alone judges. Then the declaration's rows, JudgeDeclarationRows.
     private void ValidateOriginRelations()
     {
-        foreach (var declaration in this.originDeclarations.Values)
+        foreach (var declaration in this.originDeclarations.Values.In(this.pass))
         {
-            if (!declaration.Completed || declaration.Owner is FunctionKoto or PropertyAccessorKoto or DeclarationContainerKoto || IsAssociatedRequirement(declaration.Owner))
+            if (!declaration!.Completed || declaration.Owner is FunctionKoto or PropertyAccessorKoto or DeclarationContainerKoto || IsAssociatedRequirement(declaration.Owner))
             {
                 continue;
             }
@@ -124,7 +124,7 @@ public sealed partial class Binding
 
         foreach (var row in this.unboundRows)
         {
-            this.AddPrerequisite(row.Obligation.Use, this.UnboundCause(row.Atom));
+            this.AddPrerequisite(row.Obligation.Use, this.UnboundCause(row.Atom) ?? row.Atom.Binder!);
             this.Fail(row.Obligation.Use, BindingFailure.Unsupported);
         }
 
