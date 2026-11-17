@@ -521,7 +521,7 @@ Elements are taken and destroyed with `@move` on raw Places (`_ = storage[i]@mov
 
 | Function | Guarantee | Specification |
 | --- | --- | --- |
-| `Console.writeLine(text: ref/string) -> ()` | Writes the exact UTF-8 bytes followed by one LF; no newline conversion. Output failure may leave partial output and Aborts. | [Console output](spec/22-core-execution-and-foreign-functions.md#221-required-kimi-declarations) |
+| `Console.writeLine(text: ref/string) -> ()` | Writes the exact UTF-8 bytes followed by one LF; no newline conversion. Output failure may leave partial output and Aborts. | [Console output](spec/22-core-execution-and-foreign-functions.md#227-console-output) |
 | `Console.writeLine(text: Text.Utf8Slice) -> ()` | The same output behavior, borrowing the view's bytes without constructing a string. | [View output](spec/22-core-execution-and-foreign-functions.md#227-console-output) |
 | `Test.tempDirectory() -> string` | Returns an independently owned absolute path to the active test case's directory. Available only in test-only bodies; the directory remains available through case cleanup and is reclaimed by the parent afterward. | [Test profile](impl/20-compilation-configuration.md#2063-case-execution) |
 

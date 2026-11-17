@@ -659,7 +659,7 @@ public sealed partial class Binding
                     plan.IsValid = false;
                     this.Fail(use, BindingFailure.InvalidConstraint);
                 }
-                else if (operation.Kind == ArgumentOperationKind.Value && operation.Source is { } payloadSource && IsBarePlace(payloadSource) &&
+                else if (operation.Kind == ArgumentOperationKind.Value && operation.Source is { } payloadSource && this.IsBarePlace(payloadSource) &&
                     this.BareAcquire(operation.SourceType!, payloadSource, out _) == HirAcquire.Move)
                 {
                     // SPEC 6.5.2, 3.5, 8.14: a payload Place is acquired by its bare acquisition, by case for a pair layer; one without a

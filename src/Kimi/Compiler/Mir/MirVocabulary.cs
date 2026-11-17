@@ -189,6 +189,7 @@ internal enum MirLocalRole : byte
     Subject, // A match subject.
     Result, // The body's result in transit: the temp a transfer delivers whole into _0 after the Scope Exit (SPEC 16.2.2, R5-M50).
     Receiver, // A constructor's _0 or a destructor's _1: its construction or destruction receiver (SPEC 6.3.4, 16.3.1), storage made elsewhere.
+    Assigned, // An assignment's value in transit: the temp its Use moves into the target, which every path into that Use placed (SPEC 13.7.1, 14.10.3).
 }
 
 internal enum MirScopeKind : byte

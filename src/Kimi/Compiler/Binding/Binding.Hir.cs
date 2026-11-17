@@ -139,7 +139,7 @@ public sealed partial class Binding
                 HirTables.PlanFor(node, discardedType is not null).DiscardedType = discardedType;
                 if (node is DiscardKoto discard)
                 {
-                    var inPlace = DestroysInPlace(discard); // SPEC 14.2.4: a raw Place's Take destroyed in place (HirTables.DestroysInPlace).
+                    var inPlace = binding.DestroysInPlace(discard); // SPEC 14.2.4: a raw Place's Take destroyed in place (HirTables.DestroysInPlace).
                     HirTables.PlanFor(node, inPlace).Flag = inPlace;
                 }
             }
@@ -256,8 +256,8 @@ public sealed partial class Binding
             },
             HirOp.Field => HirPlaceKind.Field,
             HirOp.Deref => binding.PairAdmitted(node) == SemanticsMask.None ? HirPlaceKind.Deref : HirPlaceKind.PairLayer,
-            HirOp.Index => ElementAccess.IsSlicing(node) ? HirPlaceKind.Value : ElementAccess.StaticSelector((IndexKoto)node) < 0 ? HirPlaceKind.Index : HirPlaceKind.ConstIndex,
-            HirOp.Call => ElementAccess.IsUserIndex(node) ? HirPlaceKind.CallResult : HirPlaceKind.Value,
+            HirOp.Index => ElementAccess.IsSlicing(binding, node) ? HirPlaceKind.Value : ElementAccess.StaticSelector((IndexKoto)node) < 0 ? HirPlaceKind.Index : HirPlaceKind.ConstIndex,
+            HirOp.Call => ElementAccess.IsUserIndex(binding, node) ? HirPlaceKind.CallResult : HirPlaceKind.Value,
             HirOp.Group when node is ParenthesizedKoto && KotoHelper.UnwrapParentheses(node) is var inner => this.KindOf(inner, binding.OpOf(inner)),
             _ => HirPlaceKind.Value,
         };

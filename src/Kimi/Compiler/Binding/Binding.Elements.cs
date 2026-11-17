@@ -113,7 +113,7 @@ public sealed partial class Binding
 
             if (ReferenceTypes.IsTuple(receiver))
             {
-                return ElementAccess.TryBorrowedTupleElement(source, out var borrowedElement, out _)
+                return ElementAccess.TryBorrowedTupleElement(this, source, out var borrowedElement, out _)
                     ? Complete(source, borrowedElement) : this.Fail(source, BindingFailure.TypeMismatch);
             }
         }

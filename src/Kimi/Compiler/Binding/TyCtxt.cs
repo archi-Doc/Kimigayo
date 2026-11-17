@@ -119,7 +119,7 @@ internal sealed partial class TyCtxt(Binding binding, KimiLibrary library)
 
     // A Type by its parts, one instance per parts. `origin` is the layer's stated Origin, whose role the Semantics decides: a raw layer's raw
     // Origin (BoundType.RawOrigin; Pointer and Rebuild write it), any other layer's Origin (DECISIONS BU-24).
-    internal BoundType Intern(BoundTypeKind kind, BindingSymbol? symbol, SemanticsKind semantics, ReadOnlySpan<BoundType> components, long length = 0, BoundOrigin? origin = null, ReadOnlySpan<BoundOrigin> originArguments = default, BoundLength? lengthExpression = null, Subst? closureContext = null, ReadOnlySpan<BoundLength?> lengthArguments = default, Koto? binder = null)
+    internal BoundType Intern(BoundTypeKind kind, BindingSymbol? symbol, SemanticsKind semantics, ReadOnlySpan<BoundType> components, long length = 0, BoundOrigin? origin = null, ReadOnlySpan<BoundOrigin> originArguments = default, BoundLength? lengthExpression = null, Subst? instanceContext = null, ReadOnlySpan<BoundLength?> lengthArguments = default, Koto? binder = null)
     {
         // SPEC 8.10: a Function Type keeps its per-call binder only while it quantifies one of its direct inputs, so equal Types
         // intern to one instance whichever path formed them.
@@ -187,7 +187,7 @@ internal sealed partial class TyCtxt(Binding binding, KimiLibrary library)
 
         var hash = default(HashCode);
         hash.Add(kind);
-        hash.Add(closureContext is null ? 0 : RuntimeHelpers.GetHashCode(closureContext));
+        hash.Add(instanceContext is null ? 0 : RuntimeHelpers.GetHashCode(instanceContext));
         hash.Add(binder is null ? 0 : RuntimeHelpers.GetHashCode(binder));
         hash.Add(symbol is null ? 0 : RuntimeHelpers.GetHashCode(symbol));
         hash.Add(semantics);
@@ -215,7 +215,7 @@ internal sealed partial class TyCtxt(Binding binding, KimiLibrary library)
             for (var i = 0; i < bucket.Count; i++)
             {
                 var type = bucket[i];
-                if (type.Kind != kind || type.Symbol != symbol || !ReferenceEquals(type.ClosureContext, closureContext) || !ReferenceEquals(type.Binder, binder) || type.Semantics != semantics || type.Length != length || !ReferenceEquals(type.LengthExpression, lengthExpression) || !lengthArguments.SequenceEqual(type.LengthArguments) || type.Components.Count != components.Length || !ReferenceEquals(type.Origin ?? type.RawOrigin, origin) || type.OriginArguments.Count != originArguments.Length)
+                if (type.Kind != kind || type.Symbol != symbol || !ReferenceEquals(type.InstanceContext, instanceContext) || !ReferenceEquals(type.Binder, binder) || type.Semantics != semantics || type.Length != length || !ReferenceEquals(type.LengthExpression, lengthExpression) || !lengthArguments.SequenceEqual(type.LengthArguments) || type.Components.Count != components.Length || !ReferenceEquals(type.Origin ?? type.RawOrigin, origin) || type.OriginArguments.Count != originArguments.Length)
                 {
                     continue;
                 }
@@ -242,7 +242,7 @@ internal sealed partial class TyCtxt(Binding binding, KimiLibrary library)
             this.types.Add(key, bucket = new(1));
         }
 
-        var created = new BoundType(++this.typeCount, symbol?.Name ?? kind.ToString(), kind, symbol, semantics, components.ToArray(), length, origin, originArguments.ToArray(), lengthExpression, lengthArguments.ToArray(), closureContext, binder);
+        var created = new BoundType(++this.typeCount, symbol?.Name ?? kind.ToString(), kind, symbol, semantics, components.ToArray(), length, origin, originArguments.ToArray(), lengthExpression, lengthArguments.ToArray(), instanceContext, binder);
         bucket.Add(created);
         return created;
 
@@ -287,7 +287,7 @@ internal sealed partial class TyCtxt(Binding binding, KimiLibrary library)
             origin ?? type.RawOrigin,
             originArguments,
             type.LengthExpression,
-            type.ClosureContext,
+            type.InstanceContext,
             type.LengthArguments,
             type.Binder);
 
