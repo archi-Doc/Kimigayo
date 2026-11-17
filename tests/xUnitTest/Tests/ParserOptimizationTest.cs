@@ -172,11 +172,128 @@ public class ParserOptimizationTest
     [InlineData("#LibraryImport(\"a\", \"b\") func f()", AttributeKind.LibraryImport)]
     [InlineData("#Other func f() => ()", AttributeKind.Unknown)]
     [InlineData("#Layout(\"C\")(1) struct S", AttributeKind.Unknown)]
+    // SPEC 6.7: the implementation Attributes are recognized only in the Kimi library's own sources (rows A1-A4).
+    [InlineData("#Lang(\"Option\") func f() => ()", AttributeKind.Unknown)]
+    [InlineData("#Intrinsic(\"Abort\") func f() => ()", AttributeKind.Unknown)]
+    [InlineData("#CallerLocation func f() => ()", AttributeKind.Unknown)]
+    [InlineData("#Unsupported func f() => ()", AttributeKind.Unknown)]
     public void ParserClassifiesAnAttributeByItsName(string source, AttributeKind expected)
     {
         var kotonoha = Compilation.CreateForTest().Kotonoha;
         kotonoha.CreateCodeContext().Parse(kotonoha.RootKoto, source);
         Assert.Equal(expected, Assert.Single(KotoTree.Walk(kotonoha.RootKoto).OfType<AttributeKoto>()).Kind);
+    }
+
+    // SPEC 6.7, IMPL 21.3.4: a source parsed into the Kimi library, whose table is the library's from its creation, classifies the
+    // implementation Attributes; every other Name stays as in a user source.
+    [Theory]
+    [InlineData("#Lang(\"Option\") struct S", AttributeKind.Lang)]
+    [InlineData("#Intrinsic(\"Abort\") struct S", AttributeKind.Intrinsic)]
+    [InlineData("#Intrinsic(\"Fail\", \"KIMI_E_INDEX_BOUNDS\") struct S", AttributeKind.Intrinsic)]
+    [InlineData("#CallerLocation struct S", AttributeKind.CallerLocation)]
+    [InlineData("#Unsupported struct S", AttributeKind.Unsupported)]
+    [InlineData("#Layout(\"C\") struct S", AttributeKind.Layout)]
+    [InlineData("#Other struct S", AttributeKind.Unknown)]
+    public void TheLibraryClassifiesTheImplementationAttributes(string source, AttributeKind expected)
+        => Assert.Equal(expected, ParseAttribute(Compilation.CreateForTest().Library.Kotonoha, source).Kind);
+
+    // SPEC 6.7 (R8-G1 row L7 and row L6's rule): a constructor parsed into the Kimi library also takes the implementation Attributes,
+    // in their order; every other Attribute before init is misplaced and attaches to nothing. Before a user init each one is
+    // misplaced (the syntax corpus' attribute-on-constructor, DiagnosticPrecisionTest.UnrecognizedAttributesPublishTheirOwnRecords).
+    [Theory]
+    [InlineData("#Lang(\"ArrayInit\")", "Lang", 0)]
+    [InlineData("#Intrinsic(\"Abort\")", "Intrinsic", 0)]
+    [InlineData("#CallerLocation", "CallerLocation", 0)]
+    [InlineData("#Unsupported", "Unsupported", 0)]
+    [InlineData("#Layout(\"C\")", "", 1)]
+    [InlineData("#Test", "", 1)]
+    [InlineData("#Foo", "", 1)]
+    [InlineData("#LibraryImport(\"k\", \"s\")", "", 1)]
+    [InlineData("#CallerLocation\n    #Test\n    #Lang(\"ArrayInit\")", "CallerLocation Lang", 1)]
+    public void ALibraryConstructorTakesOnlyTheImplementationAttributes(string attributes, string taken, int misplaced)
+    {
+        var c = Compilation.CreateForTest();
+        var library = c.Library.Kotonoha;
+        library.CreateCodeContext().Parse(library.RootKoto, $"public struct Probe\n    public let x: i32\n    {attributes}\n    public init(x: i32)\n        self.x = x\n");
+        var probe = Assert.Single(library.RootKoto.NestedContainers, static x => x is StructKoto { Name: "Probe" });
+        var init = Assert.Single(probe.Members.OfType<FunctionKoto>(), static x => x.IsConstructor);
+        var chain = new List<string>();
+        for (var attribute = init.AttributeChain; attribute is not null; attribute = attribute.AttributeChain)
+        {
+            chain.Insert(0, attribute.Kind.ToString());
+        }
+
+        Assert.Equal(taken, string.Join(' ', chain));
+        ParseTestHelper.VerifyParents(init);
+        Assert.Equal(misplaced, TestDiagnostics.Of(c).Count(static x => x.Code == nameof(Kimi.DiagnosticCode.MisplacedSyntax_Kd)));
+        Assert.Equal(misplaced, TestDiagnostics.Of(c).Length);
+    }
+
+    // SPEC 6.7, 22.1 (R8-G1 row L6): the library's own constructors with Attributes are Array's two linked ones (SPEC 4.9.5; IMPL
+    // 21.3.4), each carrying its `#Lang` alone, and the library parses without a record.
+    [Fact]
+    public void TheLibrarysLinkedConstructorsCarryLang()
+    {
+        var c = Compilation.CreateForTest();
+        var array = Assert.Single(c.Library.Kotonoha.RootKoto.NestedContainers, static x => x is StructKoto { Name: "Array" });
+        var constructors = array.Members.OfType<FunctionKoto>().Where(static x => x.IsConstructor && !x.IsImplicitConstructor).ToArray();
+        Assert.Equal(2, constructors.Length);
+        Assert.All(constructors, static x =>
+        {
+            Assert.Equal(AttributeKind.Lang, Assert.IsType<AttributeKoto>(x.AttributeChain).Kind);
+            Assert.Null(x.AttributeChain!.AttributeChain);
+            ParseTestHelper.VerifyParents(x);
+        });
+        Assert.Empty(TestDiagnostics.Of(c));
+    }
+
+    // SPEC 22.1, IMPL 21.3.4 (R8-G1 G1-5, the Body omission): in the Kimi library a function or constructor carrying `#Intrinsic` or
+    // `#Unsupported`, or a constructor carrying `#Lang` (a linked constructor), may omit its Body without a record, and a block after its
+    // header with only its clauses (SPEC 7.5's leading region) is no Body; a block holding an executable item stays its Body. Every other
+    // declaration needs its Body, and its block is that Body, clauses only or not (SPEC 7.5, 14.2.1): a library declaration that does not
+    // omit, and a user declaration, whose implementation Attributes are unknown, so its missing Body keeps its record. Probe is generic so
+    // that a constructor's clause is rooted in the declaring Type's parameter (SPEC 7.5).
+    [Theory]
+    [InlineData(true, "#Intrinsic(\"Abort\")\n    public func f() -> i32", 0, 0, false)]
+    [InlineData(true, "#Unsupported\n    public func f() -> i32", 0, 0, false)]
+    [InlineData(true, "#Lang(\"ArrayInit\")\n    public init(x: i32)", 0, 0, false)]
+    [InlineData(true, "#Intrinsic(\"Abort\")\n    public init(x: i32)", 0, 0, false)]
+    [InlineData(true, "#Intrinsic(\"MakeObj\")\n    public func f<U>(value: U) -> i32\n        U is Copy", 0, 1, false)]
+    [InlineData(true, "#Lang(\"ArrayInit\")\n    public init(x: i32)\n        T is Copy", 0, 1, false)]
+    [InlineData(true, "#Intrinsic(\"Abort\")\n    public func f() -> i32\n        return 1", 0, 0, true)]
+    [InlineData(true, "#Lang(\"ArrayInit\")\n    public init(x: i32)\n        T is Copy\n        self.x = x", 0, 1, true)]
+    [InlineData(false, "#Intrinsic(\"MakeObj\")\n    public func f<U>(value: U) -> i32\n        U is Copy", 0, 1, true)]
+    [InlineData(true, "#Lang(\"ArrayInit\")\n    public func f<U>(value: U) -> i32\n        U is Copy", 0, 1, true)]
+    [InlineData(true, "#Lang(\"ArrayInit\")\n    public func f() -> i32", 1, 0, false)]
+    [InlineData(true, "#CallerLocation\n    public init(x: i32)", 1, 0, false)]
+    [InlineData(true, "public func f() -> i32", 1, 0, false)]
+    [InlineData(false, "#Intrinsic(\"Abort\")\n    public func f() -> i32", 1, 0, false)]
+    [InlineData(false, "#Unsupported\n    public init(x: i32)", 1, 0, false)]
+    public void OnlyALibraryImplementationKindOmitsTheBody(bool library, string declaration, int missing, int constraints, bool body)
+    {
+        var c = Compilation.CreateForTest();
+        var kotonoha = library ? c.Library.Kotonoha : c.Kotonoha;
+        kotonoha.CreateCodeContext().Parse(kotonoha.RootKoto, $"public struct Probe<T>\n    public let x: i32\n    {declaration}\n");
+        var probe = Assert.Single(kotonoha.RootKoto.NestedContainers, static x => x is StructKoto { Name: "Probe" });
+        var function = Assert.Single(probe.Members.OfType<FunctionKoto>(), static x => !x.IsImplicitConstructor);
+        Assert.Equal(missing, TestDiagnostics.Of(c).Count(static x => x.Code == nameof(Kimi.DiagnosticCode.MissingSyntax_Kd)));
+        Assert.Equal((missing == 1, constraints, body), (function.MissingBody, function.TypeConstraints.Count, function.Body is not null));
+        ParseTestHelper.VerifyParents(function);
+    }
+
+    // The re-classification after an edit (Koto.ReplaceChild) reads the same mark: the node's own Kotonoha.
+    [Fact]
+    public void AReplacedNameIsClassifiedByItsKotonoha()
+    {
+        var c = Compilation.CreateForTest();
+        foreach (var (kotonoha, expected) in new[] { (c.Library.Kotonoha, AttributeKind.Unsupported), (c.Kotonoha, AttributeKind.Unknown) })
+        {
+            var attribute = ParseAttribute(kotonoha, "#Test(1) struct S");
+            Assert.Equal(AttributeKind.Test, attribute.Kind);
+            var call = Assert.IsType<InvocationKoto>(attribute.Operand);
+            Assert.True(KotoHelper.Replace(call, call.Method, new IdentifierNameKoto(call, "Unsupported")));
+            Assert.Equal(expected, attribute.Kind);
+        }
     }
 
     [Fact]
@@ -275,5 +392,13 @@ public class ParserOptimizationTest
         Assert.Equal(span, replacement.Span);
         Assert.Equal(version, tree.Syntax.Version);
         ParseTestHelper.VerifyParents(tree.RootKoto);
+    }
+
+    // The one attribute a parse of the source adds to the Kotonoha's tree.
+    private static AttributeKoto ParseAttribute(Kotonoha kotonoha, string source)
+    {
+        var before = KotoTree.Walk(kotonoha.RootKoto).OfType<AttributeKoto>().ToHashSet();
+        kotonoha.CreateCodeContext().Parse(kotonoha.RootKoto, source);
+        return Assert.Single(KotoTree.Walk(kotonoha.RootKoto).OfType<AttributeKoto>(), x => !before.Contains(x));
     }
 }

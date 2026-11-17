@@ -36,8 +36,10 @@ public sealed partial class Binding
 
         var unbound = this.UnboundMemberReference(use);
         var declaring = this.ReferenceDeclaringType(use);
+        var group = this.GroupOf(use, symbol);
+        var only = group.Single;
         var count = 0;
-        for (var candidate = ReferenceCandidate(symbol); candidate is not null; candidate = ReferenceCandidate(candidate.Next))
+        foreach (var candidate in group)
         {
             count++;
         }
@@ -47,7 +49,7 @@ public sealed partial class Binding
         var operations = this.argumentOperationScratch.Rent(count * stride);
 
         // SPEC 10.5.3: the one candidate's trial binds its slots here, so that its record reads the signature the trial substituted.
-        var slots = count == 1 && ReferenceCandidate(symbol)!.Declaration is FunctionKoto one ? one.GenericArguments.Count : 0;
+        var slots = only?.Declaration is FunctionKoto one ? one.GenericArguments.Count : 0;
         SlotFrame? trial = slots == 0 ? null : this.infer.Rent(slots, use);
         BindingSymbol selected;
         (int Slot, ulong Parameters)? perCall = null;
@@ -61,7 +63,7 @@ public sealed partial class Binding
             Koto? invalid = null;
             var error = false;
             this.failedCause = null;
-            for (var candidate = ReferenceCandidate(symbol); candidate is not null; candidate = ReferenceCandidate(candidate.Next), index++)
+            foreach (var candidate in group)
             {
                 this.BindHeader(candidate);
                 if (candidate.Declaration is not FunctionKoto function || UnsupportedReference(candidate, unbound, declaring))
@@ -81,7 +83,7 @@ public sealed partial class Binding
                     slotFailure = this.referenceSlotFailure;
                 }
 
-                evaluated[index] = new(candidate, state, null, 0, ConstraintFailure: constraint);
+                evaluated[index++] = new(candidate, state, null, 0, ConstraintFailure: constraint);
                 pendingProof |= state == CandidateApplicability.Pending;
                 if (state == CandidateApplicability.Pending)
                 {
@@ -122,10 +124,10 @@ public sealed partial class Binding
                 if (perCall is { } slot)
                 {
                     // SPEC 10.6, 15.3.6: the one candidate's slot is left unsolved by a per-call Origin of S.
-                    return this.FailExplained(ref this.perCallSlots, use, BindingFailure.MissingOrigin, new PerCallSlotFact((FunctionKoto)symbol.Declaration, slot.Slot, slot.Parameters, required));
+                    return this.FailExplained(ref this.perCallSlots, use, BindingFailure.MissingOrigin, new PerCallSlotFact((FunctionKoto)only!.Declaration, slot.Slot, slot.Parameters, required));
                 }
 
-                if (slotFailure.Failure != ReferenceSlotFailure.None && symbol.Declaration is FunctionKoto { GenericArguments.Count: > 0 } generic)
+                if (slotFailure.Failure != ReferenceSlotFailure.None && only?.Declaration is FunctionKoto { GenericArguments.Count: > 0 } generic)
                 {
                     // SPEC 10.5: the Type-mismatch Note names why the one generic candidate's slots did not bind from S.
                     (this.referenceSlotFacts ??= new(ReferenceEqualityComparer.Instance))[use] = new(generic, slotFailure.Slot, slotFailure.Failure, KotoHelper.UnwrapParentheses(use) is GenericsKoto);
@@ -208,7 +210,7 @@ public sealed partial class Binding
                 }
 
                 var item = this.CompleteFunctionItem(use, selected, frame.Types[..target.GenericArguments.Count], this.ReferenceContainer(use, selected), frame.Lengths[..target.GenericArguments.Count]);
-                if (!erase)
+                if (item is null || !erase)
                 {
                     return item;
                 }
@@ -229,7 +231,7 @@ public sealed partial class Binding
 
         // The reference is its Function Item; at a common Function Type that Item is erased (SPEC 7.7.4), whatever syntax names it.
         var concrete = this.CompleteFunctionItem(use, selected, default, this.ReferenceContainer(use, selected));
-        if (!erase)
+        if (concrete is null || !erase)
         {
             return concrete;
         }
@@ -250,7 +252,7 @@ public sealed partial class Binding
     {
         var unbound = this.UnboundMemberReference(use);
         var declaring = this.ReferenceDeclaringType(use);
-        for (var candidate = ReferenceCandidate(symbol); candidate is not null; candidate = ReferenceCandidate(candidate.Next))
+        foreach (var candidate in this.GroupOf(use, symbol))
         {
             this.BindHeader(candidate);
             if (candidate.Declaration is not FunctionKoto function || UnsupportedReference(candidate, unbound, declaring))
@@ -315,7 +317,7 @@ public sealed partial class Binding
 
         proof = this.ReferenceArgumentProof(function, frame.Types, scope, container, frame.Lengths);
         var parameters = required.Components[0];
-        var binder = FunctionTypeBinder(required);
+        var binder = required.Binder;
         for (var i = 0; i < count; i++)
         {
             if (function.GenericArguments[i] is LengthParameterKoto)
@@ -501,7 +503,7 @@ public sealed partial class Binding
     private (int Slot, ulong Parameters)? PerCallReferenceSlot(Koto use, BindingSymbol symbol, FunctionKoto function, BoundType required, BindingScope scope, GenericsKoto? explicitReference, BoundType? container)
     {
         var count = function.GenericArguments.Count;
-        var binder = FunctionTypeBinder(required);
+        var binder = required.Binder;
         if (binder is null)
         {
             return null;

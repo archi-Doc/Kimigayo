@@ -77,8 +77,8 @@ public class IntegerRangeTest
         "var it = (3..=5).iterate()\nvar total = 0\nloop\n    match it.next()\n        .Some(let v) => total += v\n        .None => exit\nmatch it.next()\n    .Some(_) => $abort(\"exhausted\")\n    .None => ()\nrequire total == 12 else => $abort(\"explicit\")\n" +
         "Console.writeLine(\"ok\")";
 
-    // SPEC 4.6.4, 4.8.6: a ResolvedRange loop runs the positions of its RangeIterator<isize> entries without forming an
-    // iterator; both are compared over every interval of a small target.
+    // SPEC 4.6.4, 14.6.2: a ResolvedRange loop (its Shared entry) and an owning adapter over its intoIterator run the same positions
+    // over every interval of a small target.
     private const string ResolvedCursor =
         "var checked = 0\nvar start: isize = 0\nwhile start <= 6\n    var end = start\n    while end <= 6\n" +
         "        let r = (start..end).resolve(6)\n        var cursor: isize = 0\n        var cursorCount = 0\n        for i in r\n            cursor = cursor * 7 + i\n            cursorCount += 1\n" +
@@ -95,10 +95,95 @@ public class IntegerRangeTest
         { "Generic", Generic, "Window refused.\nok\n" },
     };
 
+    // R8-W3's coverage table (labels from SPEC 14.6.1, 14.6.2, 4.6.2-4.6.4, 15.1.5 and 15.1.6, written before any run), by table id: a
+    // ResolvedRange `for` in each Subject mode, place, producer and transfer, and its Range twin (suffix r) on the same Iterable path, with
+    // the same output. Not here: v9x (the parser's), v10y and v10v (the parser's ForBinding, PLAN F1), v14 and its twins (PLAN G416,
+    // AResolvedRangeThroughAGenericIterableIsRefusedPendingG416) and r7 (resolve's abort code, PLAN F2). b4 and b4r are the Middle's
+    // consent rows (C-338): the valid neighbours of the rejected b2x.
+    public static TheoryData<string, string, string> CoverageRows => new()
+    {
+        { "v1", "let values: [5 of i32] = [10, 20, 30, 40, 50]\nvar total: isize = 0\nvar weighted: i32 = 0\nfor i in values.indices\n    total += i\n    weighted += values[i]\nConsole.writeLine(\"\\(total) \\(weighted)\")\n", "10 150\n" }, // valid 14.6.2 ByValue temporary
+        { "v2", "let values: [5 of i32] = [1, 2, 3, 4, 5]\nlet r = (1..4).resolve(values.length)\nvar a: isize = 0\nfor i in r => a += i\nfor i in r => a += i * 10\nConsole.writeLine(\"\\(a) \\(r.start) \\(r.end)\")\n", "66 1 4\n" }, // valid 14.6.2 Shared variable, reused
+        { "v3", "var r = (0..3).resolve(3)\nvar a: isize = 0\nvar s: isize = 0\nfor i in r@uniq\n    a = a * 10 + i\n    s += r.start\nConsole.writeLine(\"\\(a) \\(s)\")\n", "12 0\n" }, // valid 14.6.2 Exclusive @uniq; body reads the Subject
+        { "v3r", "var q = 0..3\nvar a = 0\nvar s = 0\nfor i in q@uniq\n    a = a * 10 + i\n    s += q.start\nConsole.writeLine(\"\\(a) \\(s)\")\n", "12 0\n" }, // valid 14.6.2 Range Exclusive @uniq; body reads the Subject (the Iterable path today)
+        { "v4", "let r = (2..5).resolve(5)\nvar a: isize = 0\nfor i in r@copy => a += i\nfor i in r@move => a += i\nConsole.writeLine(\"\\(a)\")\n", "18\n" }, // valid 14.6.2 ByValue @copy and @move
+        { "v5", "let r = (1..3).resolve(3)\nlet w = r@ref\nvar a: isize = 0\nfor i in w => a += i\nfor i in r@ref => a += i\nConsole.writeLine(\"\\(a)\")\n", "6\n" }, // valid 14.6.2 Shared ref value and @ref
+        { "v5r", "let q = 1..3\nlet w = q@ref\nvar a = 0\nfor i in w => a += i\nfor i in q@ref => a += i\nConsole.writeLine(\"\\(a)\")\n", "6\n" }, // valid 14.6.2 Range: Shared ref value and @ref (the Iterable path today)
+        { "v6", "var r = (1..3).resolve(3)\nlet u = r@uniq\nvar a: isize = 0\nfor i in u => a += i\nConsole.writeLine(\"\\(a)\")\n", "3\n" }, // valid 14.6.2 Exclusive uniq value
+        { "v6r", "var q = 1..3\nlet u = q@uniq\nvar a = 0\nfor i in u => a += i\nConsole.writeLine(\"\\(a)\")\n", "3\n" }, // valid 14.6.2 Range: Exclusive uniq value (the Iterable path today)
+        { "v7", "var n = 0\nfor _ in (2..2).resolve(5) => n += 1\nfor _ in (0..0).resolve(0) => n += 1\nfor _ in (1..4).resolve(4) => n += 1\nConsole.writeLine(\"\\(n)\")\n", "3\n" }, // valid 4.6.4 empty; 14.6.1 `_` slot
+        { "v8", "let r = (0..3).resolve(3)\nvar seen: isize = 0\nfor var i in r\n    i += 100\n    seen += i\nConsole.writeLine(\"\\(seen)\")\n", "303\n" }, // valid 14.6.1 var slot
+        { "v11", "func firstOver(values: ref/[6 of i32], limit: i32) -> isize\n    for i in values.indices\n        if values[i] > limit => return i\n    return -1\nlet values: [6 of i32] = [3, 9, 1, 7, 12, 5]\nvar sum: isize = 0\nfor i in values.indices\n    if i == 1 => continue\n    if i == 4 => exit\n    sum += i\nvar pairs = 0\nlabel outer: for a in values.indices\n    for b in values.indices\n        if b > a => continue to outer\n        if a == 4 => exit to outer\n        pairs += 1\nConsole.writeLine(\"\\(sum) \\(pairs) \\(firstOver(values@ref, 8)) \\(firstOver(values@ref, 100))\")\n", "5 10 1 -1\n" }, // valid 14.6.2 exit/continue/labelled/return
+        { "v13", "struct Holder\n    public let range: ResolvedRange\n    public init(range: ResolvedRange) => self.range = range\nfunc sumOf(h: ref/Holder) -> isize\n    var a: isize = 0\n    for i in h.range => a += i\n    return a\nlet h = Holder.init((1..4).resolve(4))\nvar b: isize = 0\nfor i in h.range => b += i\nConsole.writeLine(\"\\(b) \\(sumOf(h@ref))\")\n", "6 6\n" }, // valid 14.6.2 Field Subject (owned and ref/ paths)
+        { "v15", "var r = (0..3).resolve(3)\nvar a: isize = 0\nfor i in r\n    a = a * 10 + i\n    r = (5..6).resolve(6)\nConsole.writeLine(\"\\(a) \\(r.start)\")\n", "12 5\n" }, // valid 4.6.4 Subject reassigned in the body
+        { "v15r", "var q = 0..3\nvar a = 0\nfor i in q\n    a = a * 10 + i\n    q = 5..6\nConsole.writeLine(\"\\(a) \\(q.start)\")\n", "12 5\n" }, // valid 4.6.4 Range Subject reassigned in the body (the Iterable path today)
+        { "v16", "var values: [4 of i32] = [1, 2, 3, 4]\nfor i in values.indices\n    values[i] = values[i] * 2\nvar list: Array<i32> = [1, 2, 3]\nfor i in list.indices\n    list[i] = list[i] + 1\n    list.append(0)\nConsole.writeLine(\"\\(values[0]) \\(values[3]) \\(list.length) \\(list[0]) \\(list[2])\")\n", "2 8 6 2 4\n" }, // valid 4.6.4 indices loop mutating its sequence
+        { "v17", "let n: isize = 9223372036854775807\nlet r = ((n - 2)..n).resolve(n)\nvar count = 0\nvar last: isize = 0\nfor i in r\n    count += 1\n    last = i\nConsole.writeLine(\"\\(count) \\(last == n - 1)\")\n", "2 true\n" }, // valid 4.6.4 interval ending at the isize maximum
+        { "v18", "let values: [5 of i32] = [4, 8, 15, 16, 23]\nlet copy = values[1..].toArray()\nvar list: Array<i32> = [1]\nlist.appendCopies(values[..2])\nlet target: i32 = 15\nmatch values[..].firstIndex(of: target)\n    .Some(let at) => Console.writeLine(\"\\(copy.length) \\(copy[0]) \\(list.length) \\(list[2]) \\(at)\")\n    .None => $abort(\"none\")\n", "4 8 3 8 2\n" }, // valid library bodies appendCopies/firstIndex
+        { "v19", "let ranges: [2 of ResolvedRange] = [(0..2).resolve(2), (1..3).resolve(3)]\nvar a: isize = 0\nfor r in ranges\n    for i in r => a += i\nConsole.writeLine(\"\\(a)\")\n", "4\n" }, // valid 14.6.2 ref/ResolvedRange items
+        { "r1", "var r = (0..3).resolve(3)\nvar a: isize = 0\nfor i in r@uniq\n    a = a * 10 + i\n    r = (5..6).resolve(6)\nConsole.writeLine(\"\\(a) \\(r.start)\")\n", "12 5\n" }, // valid 14.6.2 Exclusive @uniq; body assigns the Subject (4.6.4 no Loan)
+        { "r1r", "var q: Range<isize, isize> = 0..3\nvar a: isize = 0\nfor i in q@uniq\n    a = a * 10 + i\n    q = 5..6\nConsole.writeLine(\"\\(a) \\(q.start)\")\n", "12 5\n" }, // valid 14.6.2 Range twin of r1
+        { "r1b", "func peek(r: uniq/ResolvedRange) -> isize => r.start\nvar r = (1..3).resolve(3)\nvar a: isize = 0\nfor i in r => a += i + peek(r@uniq)\nConsole.writeLine(\"\\(a)\")\n", "5\n" }, // valid 14.6.2 Shared; body lends the Subject @uniq (4.6.4 no Loan)
+        { "r1br", "func peek(q: uniq/Range<isize, isize>) -> isize => q.start\nvar q: Range<isize, isize> = 1..3\nvar a: isize = 0\nfor i in q => a += i + peek(q@uniq)\nConsole.writeLine(\"\\(a)\")\n", "5\n" }, // valid 14.6.2 Range twin of r1b
+        { "r2", "var r = (1..3).resolve(3)\nlet u = r@uniq\nvar a: isize = 0\nfor i in u => a += i\nfor i in u => a += i\nConsole.writeLine(\"\\(a) \\(u.start)\")\n", "6 1\n" }, // valid 15.1.6/14.6.2 a uniq/ResolvedRange local iterated twice, read after
+        { "r2r", "var q: Range<isize, isize> = 1..3\nlet u = q@uniq\nvar a: isize = 0\nfor i in u => a += i\nfor i in u => a += i\nConsole.writeLine(\"\\(a) \\(u.start)\")\n", "6 1\n" }, // valid Range twin of r2
+        { "r3", "func viaRef(r: ref/ResolvedRange) -> isize\n    var a: isize = 0\n    for i in r => a += i\n    for i in r => a += i\n    return a + r.start\nfunc viaUniq(r: uniq/ResolvedRange) -> isize\n    var a: isize = 0\n    for i in r => a += i\n    for i in r => a += i\n    return a + r.end\nvar r = (1..3).resolve(3)\nConsole.writeLine(\"\\(viaRef(r@ref)) \\(viaUniq(r@uniq))\")\n", "7 9\n" }, // valid 14.6.2 ref/ and uniq/ ResolvedRange parameters iterated twice
+        { "r3r", "func viaRef(r: ref/Range<isize, isize>) -> isize\n    var a: isize = 0\n    for i in r => a += i\n    for i in r => a += i\n    return a + r.start\nfunc viaUniq(r: uniq/Range<isize, isize>) -> isize\n    var a: isize = 0\n    for i in r => a += i\n    for i in r => a += i\n    return a + r.end\nvar r: Range<isize, isize> = 1..3\nConsole.writeLine(\"\\(viaRef(r@ref)) \\(viaUniq(r@uniq))\")\n", "7 9\n" }, // valid Range twin of r3
+        { "r4", "func sumIdx<T>(values: Slice<T>, r: ResolvedRange) -> isize\n    var a: isize = 0\n    for i in values.indices => a += i\n    for i in r => a += i * 10\n    return a\nlet v: [4 of i32] = [1, 2, 3, 4]\nConsole.writeLine(\"\\(sumIdx(v[..], (1..3).resolve(3)))\")\n", "36\n" }, // valid 14.6.2 ResolvedRange loops (indices, a parameter) in a generic body
+        { "r4r", "func sumIdx<T>(values: Slice<T>, r: Range<isize, isize>) -> isize\n    var a: isize = 0\n    for i in 0..values.length => a += i\n    for i in r => a += i * 10\n    return a\nlet v: [4 of i32] = [1, 2, 3, 4]\nConsole.writeLine(\"\\(sumIdx(v[..], 1..3))\")\n", "36\n" }, // valid Range twin of r4
+        { "r5", "let values: [5 of i32] = [1, 2, 3, 4, 5]\nvar a: isize = 0\nfor i in (1..=3).resolve(5) => a += i\nmatch (1..3).tryResolve(5)\n    .Some(let r)\n        for i in r => a += i * 10\n    .None => $abort(\"none\")\nlet o = (0..2).tryResolve(5)\nmatch o\n    .Some(let r)\n        for i in r => a += i * 100\n    .None => $abort(\"none\")\nlet rr = (0..2).resolve(2)\nfor i in rr.resolve(5) => a += i * 1000\nfor i in values[2..].indices => a += i * 10000\nConsole.writeLine(\"\\(a)\")\n", "31136\n" }, // valid 4.6.2/4.6.3 each producer; 15.1.6 a ref/ResolvedRange match binding
+        { "r6", "var arr: [3 of i32] = [1, 2, 3]\nvar us = arr.sliceUniq()\nfor i in us.indices\n    us[i] = us[i] * 2\nConsole.writeLine(\"\\(arr[0]) \\(arr[2])\")\n", "2 6\n" }, // valid 15.1.6 UniqSlice's computed indices (library producer)
+        { "r6r", "var arr: [3 of i32] = [1, 2, 3]\nvar us = arr.sliceUniq()\nfor i in 0..us.length\n    us[i] = us[i] * 2\nConsole.writeLine(\"\\(arr[0]) \\(arr[2])\")\n", "2 6\n" }, // valid Range twin of r6
+        { "b4", "func f(u: uniq/ResolvedRange) -> isize\n    let s = u@follow@ref\n    let e = s.end\n    var a: isize = 0\n    for i in u => a += i + u.start\n    return a + e\nvar r = (1..3).resolve(3)\nConsole.writeLine(\"\\(f(r@uniq))\")\n", "8\n" }, // valid 15.1.6/15.6 b2x's neighbour: the shared Reborrow dead before the Exclusive loop; the body reads u (4.6.4 no Loan)
+        { "b4r", "func f(u: uniq/Range<isize, isize>) -> isize\n    let s = u@follow@ref\n    let e = s.end\n    var a: isize = 0\n    for i in u => a += i + u.start\n    return a + e\nvar r: Range<isize, isize> = 1..3\nConsole.writeLine(\"\\(f(r@uniq))\")\n", "8\n" }, // valid Range twin of b4
+    };
+
+    // The invalid rows of the same table and their Range twins: each record's code and position. The Middle's consent rows (C-338; labels
+    // from SPEC 15.1.6 and 15.6): a3x, an explicit `r@uniq` Subject while a shared Loan of `r` is live, reports as its Range twin does, at
+    // the `for` (on the counted loop: ComparisonLoanConflict_Kd at the `@uniq`); b2x, b5x and b6x, a Subject storing uniq/ResolvedRange
+    // (Exclusive: its entry acquires the referent) while a shared Reborrow of the referent stays live across the loop, which the counted
+    // loop's referent read accepted.
+    public static TheoryData<string, string, string> RejectedCoverageRows => new()
+    {
+        { "v3x", "let r = (0..3).resolve(3)\nfor i in r@uniq => ()\n", "InvalidAssignment_Kd 2:10" }, // invalid 15.1.5 @uniq of a let Subject
+        { "rx3", "let q: Range<isize, isize> = 0..3\nfor i in q@uniq => ()\n", "InvalidAssignment_Kd 2:10" }, // invalid Range twin of v3x (@uniq of a let)
+        { "v8x", "let r = (0..3).resolve(3)\nfor i in r\n    i += 1\n", "InvalidAssignment_Kd 3:5" }, // invalid 14.6.1 immutable slot assigned
+        { "rx8", "let q: Range<isize, isize> = 0..3\nfor i in q\n    i += 1\n", "InvalidAssignment_Kd 3:5" }, // invalid Range twin of v8x (immutable slot assigned)
+        { "v10x", "let r = (0..3).resolve(3)\nfor (a, b) in r => ()\n", "TypeMismatch_Kd 2:1" }, // invalid 14.6.2 pair binding of an isize item
+        { "rx10", "let q: Range<isize, isize> = 0..3\nfor (a, b) in q => ()\n", "TypeMismatch_Kd 2:1" }, // invalid Range twin of v10x (pair binding of an isize item)
+        { "v12x", "let r = (0..2).resolve(2)\nfor i in r\n    let x: i32 = i\n", "TypeMismatch_Kd 3:18" }, // invalid 14.6.2 isize item into i32
+        { "rx12", "let q: Range<isize, isize> = 0..2\nfor i in q\n    let x: i32 = i\n", "TypeMismatch_Kd 3:18" }, // invalid Range twin of v12x (isize item into i32)
+        { "rx13", "var r = (0..3).resolve(3)\nlet u = r@uniq\nfor i in u@uniq => ()\n", "InvalidAssignment_Kd 3:10" }, // invalid 15.1.6 @uniq of a let slot storing uniq/ResolvedRange
+        { "rx13r", "var q: Range<isize, isize> = 0..3\nlet u = q@uniq\nfor i in u@uniq => ()\n", "InvalidAssignment_Kd 3:10" }, // invalid Range twin of rx13
+        { "a3x", "var r = (0..3).resolve(3)\nlet h = r@ref\nvar a: isize = 0\nfor i in r@uniq => a += i\nConsole.writeLine(\"\\(a) \\(h.end)\")\n", "CallActivationConflict_Kd 4:1" }, // invalid 15.6 r@uniq while h's shared Loan is live
+        { "a3xr", "var r: Range<isize, isize> = 0..3\nlet h = r@ref\nvar a: isize = 0\nfor i in r@uniq => a += i\nConsole.writeLine(\"\\(a) \\(h.end)\")\n", "CallActivationConflict_Kd 4:1" }, // invalid Range twin of a3x
+        { "b2x", "func f(u: uniq/ResolvedRange) -> isize\n    let s = u@follow@ref\n    var a: isize = 0\n    for i in u => a += i\n    return a + s.end\nvar r = (0..3).resolve(3)\nConsole.writeLine(\"\\(f(r@uniq))\")\n", "CallActivationConflict_Kd 4:5" }, // invalid 15.1.6/15.6 a uniq/ResolvedRange parameter iterated while s, a shared Reborrow of its referent, is live
+        { "b2xr", "func f(u: uniq/Range<isize, isize>) -> isize\n    let s = u@follow@ref\n    var a: isize = 0\n    for i in u => a += i\n    return a + s.end\nvar r: Range<isize, isize> = 0..3\nConsole.writeLine(\"\\(f(r@uniq))\")\n", "CallActivationConflict_Kd 4:5" }, // invalid Range twin of b2x
+        { "b5x", "var r = (0..3).resolve(3)\nlet u = r@uniq\nlet s = u@follow@ref\nvar a: isize = 0\nfor i in u => a += i\nlet e = s.end\n", "CallActivationConflict_Kd 5:1" }, // invalid 15.1.6/15.6 b2x at top level: a let slot storing uniq/ResolvedRange
+        { "b5xr", "var r: Range<isize, isize> = 0..3\nlet u = r@uniq\nlet s = u@follow@ref\nvar a: isize = 0\nfor i in u => a += i\nlet e = s.end\n", "CallActivationConflict_Kd 5:1" }, // invalid Range twin of b5x
+        { "b6x", "var r = (0..3).resolve(3)\nlet rv = r@uniq\nvar f = func [rv] () -> isize\n    let s = rv@follow@ref\n    var k: isize = 0\n    for i in rv => k += i\n    return k + s.end\nConsole.writeLine(\"\\(f())\")\n", "CallActivationConflict_Kd 6:5" }, // invalid 15.1.6/15.6 b2x in a var Closure capturing the uniq/ResolvedRange (7.7.3)
+        { "b6xr", "var r: Range<isize, isize> = 0..3\nlet rv = r@uniq\nvar f = func [rv] () -> isize\n    let s = rv@follow@ref\n    var k: isize = 0\n    for i in rv => k += i\n    return k + s.end\nConsole.writeLine(\"\\(f())\")\n", "CallActivationConflict_Kd 6:5" }, // invalid Range twin of b6x
+    };
+
     [Theory]
     [MemberData(nameof(Fixtures))]
     public void Executes(string name, string source, string stdout)
         => ScalarEmissionTest.EmitFixture("IntegerRange" + name, source, stdout);
+
+    [Theory]
+    [MemberData(nameof(CoverageRows))]
+    public void CoverageRowsRun(string row, string source, string stdout)
+        => ScalarEmissionTest.EmitFixture("IntegerRangeRow_" + row, source, stdout);
+
+    [Theory]
+    [MemberData(nameof(RejectedCoverageRows))]
+    public void CoverageRowsReject(string row, string source, string records)
+    {
+        var actual = string.Join("; ", DiagnosticCorpus.Check(source).Diagnostics.Select(x => x.Code + " " + Position(x.Span!.Value.Start)));
+        Assert.True(actual == records, row + ": " + actual);
+
+        string Position(int start) => $"{source.AsSpan(0, start).Count('\n') + 1}:{start - source.LastIndexOf('\n', Math.Max(0, start - 1))}";
+    }
 
     // SPEC 15.6.4 (R4-M170): Resolved is valid, but since G264 (S) S2 A5 errs twice at count's `for` (the lent item's composed erased
     // destruction stores next()'s Loan into the iterator, a self-row), and generation refuses it; the old analysis accepted and ran it to

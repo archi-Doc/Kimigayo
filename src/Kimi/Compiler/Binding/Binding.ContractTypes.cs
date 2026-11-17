@@ -18,10 +18,6 @@ public sealed partial class Binding
     // ContractType afresh: a nested query, which can only evict this query's entries, recomputed then (TypeMemo's contract).
     private readonly TypeMemo<BoundType, (BoundType Image, ResolutionHops? Hops, Completion Completion)> contractParts = new();
 
-    // The hop chains, one per path, step and inner chain: kept for the Binding's lifetime, as the paths they name (ImplTable), so
-    // a warm pass allocates none.
-    private readonly Dictionary<(BoundConformancePath Path, BoundType Step, ResolutionHops? Inner), ResolutionHops> hopChains = new();
-
     /// <summary>Substitutes Contract Self and normalizes completed associated identities without performing member selection.</summary>
     /// <remarks>A Type with neither an abstract part nor an Origin is its own image: the environment substitutes slots and Origins, a
     /// Contract's Self is a Parameter and normalization rewrites only abstract kinds, so a shared closed part is never walked
@@ -283,14 +279,21 @@ public sealed partial class Binding
         return this.types.Intern(BoundTypeKind.FixedArray, null, SemanticsKind.Owner, [type.Components[0]], length.IsConstant ? length.Value : 0, lengthExpression: length.IsConstant ? null : length);
     }
 
-    // The interned chain of a hop resolving step through path before inner.
+    // The interned chain of a hop resolving step through path before inner: one per path, step and inner chain, kept with the path it
+    // names (BoundConformancePath.HopChains), so a warm pass allocates none.
     private ResolutionHops Hop(BoundConformancePath path, BoundType step, ResolutionHops? inner)
     {
-        if (!this.hopChains.TryGetValue((path, step, inner), out var hop))
+        var chains = path.HopChains ??= new();
+        for (var i = 0; i < chains.Count; i++)
         {
-            this.hopChains.Add((path, step, inner), hop = new(path, step, inner));
+            if (ReferenceEquals(chains[i].Step, step) && ReferenceEquals(chains[i].Inner, inner))
+            {
+                return chains[i];
+            }
         }
 
+        var hop = new ResolutionHops(path, step, inner);
+        chains.Add(hop);
         return hop;
     }
 

@@ -2833,8 +2833,8 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
     }
 
     // V16 (DECISIONS R4-M140): the holding memo answers for one program version; a rebind's version clears it, and A5's views over the new
-    // version fill it again within the capacity it keeps, so a warm rebind, its MIR build and A5 over a program and the library allocate
-    // nothing.
+    // version fill it again within the capacity it keeps, so a warm rebind, its MIR build and A5 over a program, the library bodies it
+    // reaches included (its compilation's build, PLAN G951 U2), allocate nothing.
     [Trait("Purpose", "Allocation")]
     [Fact]
     public void ARebindRefillsTheHoldingMemoWithoutAllocating()
@@ -3039,7 +3039,18 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
             }
 
             this.version = program.Version;
-            foreach (var body in program.Bodies)
+            this.effects.BeginLibrary();
+            this.Local(program, program.LibraryBodies);
+            this.effects.BeginProgram();
+            this.Local(program, program.ProgramBodies);
+            this.obligations.Clear();
+            Assert.True(this.effects.Run(program, this.obligations, SyntaxTable.LibraryModule + 1));
+        }
+
+        // A segment's bodies' views' local facts.
+        private void Local(MirProgram program, ReadOnlySpan<MirBody> bodies)
+        {
+            foreach (var body in bodies)
             {
                 this.flow.Begin(body);
                 for (var view = 0L; view < MirCases.Count(body); view++)
@@ -3048,9 +3059,6 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
                     this.effects.Local(program, body, view);
                 }
             }
-
-            this.obligations.Clear();
-            this.effects.Run(program, this.obligations);
         }
     }
 }
