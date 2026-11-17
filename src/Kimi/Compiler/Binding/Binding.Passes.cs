@@ -10,9 +10,10 @@ namespace Kimi.Compiler;
 //   phases' facts, StartRuns), per run (BeginRun: the counter every stamp compares, the work counters, the local-region graph's
 //   version) and per pass (ResetPass); the runs, a new one whenever a pass asks for it (VerifyEarlyReads); each pass's steps in order
 //   over its module set (BindingPass); each pass's part of the per-pass collections (PassPart: the published lists, the local-region
-//   graph, the slots' keepers, the Contract shapes, the effect bounds, the import declarations and the prune steps' sets), handed over as the fields every
-//   step writes (EnterPass); R1.1's one composition point per aggregate: the composed views,
-//   the program part then the library layer's, and the Bind's Result (ComposeResult); a keyed collection's one find (PassPart.Find).
+//   graph, the slots' keepers, the Contract shapes, the effect bounds, the import declarations, the prune steps' sets and the contract
+//   solver's Closure(view) entries), handed over as the fields every step writes (EnterPass); R1.1's one composition point per
+//   aggregate: the composed views, the program part then the library layer's, and the Bind's Result (ComposeResult); a keyed
+//   collection's one find (PassPart.Find).
 // - Inputs: the compilation's modules, the mode. Outputs: the parts (Binding's own, programPart; LibraryLayer.Part), the composed
 //   views, the Result.
 // - Invariants: one counter value per run; a restart starts a new run of every pass, never a new Bind (StartRuns runs once per Bind,
@@ -129,6 +130,7 @@ public sealed partial class Binding
     [MemberNotNull(nameof(nodes), nameof(issues), nameof(derivedIssues), nameof(obligations), nameof(obligationSet), nameof(libraryImports))]
     [MemberNotNull(nameof(virtualDeclarations), nameof(callableEffectUses), nameof(callableEffectClauses), nameof(localRegions))]
     [MemberNotNull(nameof(keepers), nameof(contractShapes), nameof(boundedRequirements), nameof(importDeclarations), nameof(foreignFailures))]
+    [MemberNotNull(nameof(enumerateIndex), nameof(enumerateIndexPool))]
     private void EnterPass(BindingPass pass)
     {
         this.pass = pass;
@@ -150,6 +152,8 @@ public sealed partial class Binding
         this.boundedRequirements = part.BoundedRequirements;
         this.importDeclarations = part.ImportDeclarations;
         this.foreignFailures = part.ForeignFailures;
+        this.enumerateIndex = part.EnumerateIndex;
+        this.enumerateIndexPool = part.EnumerateIndexPool;
     }
 
     // R1.1's one composition point of the Bind's summary: the library layer's counts and the program part's, in the program pass's mode.
@@ -173,15 +177,14 @@ public sealed partial class Binding
     // keeps that list in its own part. An in-pass read of a list another pass also fills reads the pass's view: the running part, then
     // the layer's when the running part is not the layer's (R1.1's list order), which the driver hands over with the part
     // (selectableEffectClauses), so no pass reads another pass's part of the previous Bind. Two forms of access, by meaning: a composed
-    // list and a collection found by the find are handed over as the fields their steps write (EnterPass); a per-pass node-keyed table
-    // (a member the "Node-keyed table members in Binding" ratchet counts: PatternNodes and CandidateScopes, with their previous-run
-    // lists) is declared here once and read through the running pass's part (this.pass.Part), so a member that ratchet counts never
-    // returns to Binding (DECISIONS BU-220: node-keyed tables leave Binding batch by batch). ForeignFailures lists the nodes of a module
-    // the pass does not bind that it failed, each with its state before the failure (the recorder, Binding.Diagnostics.Prerequisites.cs):
-    // their records and counts are the failing pass's (CountStates). Counts is the pass's contribution to the Bind's Result (ComposeResult),
-    // not
-    // a tally of the part's nodes, which only the views count: from S1-r1b a program pass's own nodes plus each foreign node's final
-    // state less its earlier one.
+    // list, a collection found by the find and a per-pass memo (EnumerateIndex) are handed over as the fields their steps write or read
+    // (EnterPass); a per-pass node-keyed table (a member the "Node-keyed table members in Binding" ratchet counts: PatternNodes and
+    // CandidateScopes, with their previous-run lists) is declared here once and read through the running pass's part (this.pass.Part),
+    // so a member that ratchet counts never returns to Binding (DECISIONS BU-220: node-keyed tables leave Binding batch by batch).
+    // ForeignFailures lists the nodes of a module the pass does not bind that it failed, each with its state before the failure (the
+    // recorder, Binding.Diagnostics.Prerequisites.cs): their records and counts are the failing pass's (CountStates). Counts is the pass's
+    // contribution to the Bind's Result (ComposeResult), not a tally of the part's nodes, which only the views count: from S1-r1b a
+    // program pass's own nodes plus each foreign node's final state less its earlier one.
     internal sealed class PassPart(int nodes)
     {
         internal List<Koto> Nodes { get; } = new(nodes);
@@ -230,6 +233,15 @@ public sealed partial class Binding
         internal HashSet<Koto> CandidateScopes { get; } = new();
 
         internal List<Koto> PreviousCandidateScopes { get; } = new();
+
+        // The contract solver's Closure(view) entries of the pass and its free entries (Binding.ContractSolver.Rows.cs), a per-pass
+        // memo handed over as the fields the solver reads: an entry lasts its pass (ClearClosure, when the pass runs again) and goes
+        // back to the free entries of the pass that formed it, so a pass reuses its own entries in its own order whichever pass runs
+        // between (each list then settles at the largest view it meets in its pass), and no pass returns an entry to another pass's
+        // part. A reader after the Bind (CheckStartup, Analyze) uses the program pass's, the running pass between Binds.
+        internal Dictionary<(EvidenceView View, BindingSymbol? Requirement), ViewIndex> EnumerateIndex { get; } = new();
+
+        internal Stack<ViewIndex> EnumerateIndexPool { get; } = new();
 
         // The nodes outside the pass's modules that the pass failed, in the order it failed them, each with its earlier state.
         internal List<(Koto Node, BindingState Before)> ForeignFailures { get; } = new();
