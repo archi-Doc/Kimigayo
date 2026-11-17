@@ -69,6 +69,36 @@ public sealed partial class MirBuildTest(ITestOutputHelper output)
         "struct Wrap<V>\n    Self is Equatable\n    public init() => ()\n    public func equals(self: ref/Self, other: ref/Self) -> bool => true\n",
         "(" + string.Concat(Enumerable.Repeat("Wrap<", 80)) + "i32" + new string('>', 80) + ", i32)");
 
+    // PLAN G949 S1-r1b (review-s1r1 Re-check 3, RB1; F's rulings 153, 156 and 158): the library's bodies built after a Provisional Bind
+    // are the ones built after a Final Bind: the MIR builder reads the library's published HIR whatever the Bind's mode, and the HIR is
+    // published from the library's facts as its binding left them. From the split the program pass empties the per-pass tables the
+    // publisher reads for library nodes (receiverOperations among them), so the library's module is published at the end of its own
+    // pass in every mode; a head that publishes it after the program pass (the lazy PublishHir) fails here on the trial split
+    // (25,859 lines against 26,127). SPEC 18: a library body names library bodies only, so the library segment is the same for the
+    // empty program and for Hello.
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void TheLibrarysBodiesAfterAProvisionalBindAreTheFinalBinds(bool hello)
+    {
+        Assert.Equal(LibraryMir(BindingMode.Final), LibraryMir(BindingMode.Provisional));
+
+        string LibraryMir(BindingMode mode)
+        {
+            var c = Compilation.CreateForTest();
+            Assert.True(c.Prepare(WindowsProfile.Target));
+            if (hello)
+            {
+                c.Kotonoha.AddSource(new SourceDocument("Program.kimi", Repository.ReadText("docs/examples/Hello/Hello.kimi".Split('/'))));
+            }
+
+            c.Binding.Bind(mode);
+            var mir = new StringBuilder();
+            MirDump.Write(c.ConstructMir(), SyntaxTable.LibraryModule, mir);
+            return mir.ToString();
+        }
+    }
+
     // V9: builds every body of the corpus and counts the bodies, those with an Opaque value, the records per HirOp and the bodies per number
     // of Semantics case views; with KIMI_MIR_CENSUS naming a file, writes the census there as TSV. Every built body is valid and within the
     // case bound (plan 5.6.1); the bodies one body names, each staticEnsure's initializer, called default template and created Closure, are
