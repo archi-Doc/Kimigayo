@@ -905,6 +905,31 @@ public class ContractBindingTest
         Assert.DoesNotContain(impls.Identities, x => ReferenceEquals(x.Contract, contract));
     }
 
+    // PLAN G949 S1-r2 (s1r1-design 1.4; review-s1r2 C1): ImplTable's pass view lists only the stores of the pass's modules. Begun again
+    // at the run's own value (so no row goes stale) with the source modules alone, it lists the program's paths, identities and Type
+    // lists and no library one; with the library alone, the library's; with both, the composed lists.
+    [Fact]
+    public void ThePassViewListsOnlyThePassModulesStores()
+    {
+        var c = Sources("Self is C");
+        Assert.True(c.Bind().IsComplete, Describe(c));
+        var impls = Impls(c);
+        impls.Begin(impls.Pass, new(c.SourceModules, null, new(0)));
+        Assert.NotEmpty(impls.InPass.Paths);
+        Assert.All(impls.InPass.Paths, static x => Assert.False(Library(x.Type)));
+        Assert.All(impls.InPass.Identities, static x => Assert.False(Library(x.Type)));
+        Assert.All(impls.InPass.ByType, static x => Assert.All(x, static y => Assert.False(Library(y.Type))));
+        impls.Begin(impls.Pass, new([], c.Binding.Library.Kotonoha, new(0)));
+        Assert.NotEmpty(impls.InPass.Paths);
+        Assert.All(impls.InPass.Paths, static x => Assert.True(Library(x.Type)));
+        Assert.All(impls.InPass.Identities, static x => Assert.True(Library(x.Type)));
+        impls.Begin(impls.Pass, new(c.SourceModules, c.Binding.Library.Kotonoha, new(0)));
+        Assert.Equal(impls.Paths.ToList(), impls.InPass.Paths.ToList());
+        Assert.Equal(impls.Identities.ToList(), impls.InPass.Identities.ToList());
+
+        static bool Library(BindingSymbol type) => type.Declaration.Kotonoha.Syntax.IsLibrary;
+    }
+
     // PLAN G949 S1-b1 d8: after an edit that removes one conformance and adds another, Identities lists the pass's registrations in
     // their order, the program's first (before: the removed identity kept its place and the added one followed every other).
     [Fact]

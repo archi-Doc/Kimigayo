@@ -267,6 +267,12 @@ internal struct NodeColumns
     internal PagedColumn<List<Binding.CopyDeclaration>?> CopyByType; // Kept: a container's Copy declarations (Binding.CopyDeclarations.cs).
     internal PagedColumn<BoundEnumConstruction?> EnumConstructions; // Kept: a construction expression's enum construction plan (Binding.Enums.cs).
     internal PagedColumn<BindingScope?> Scopes; // Kept: a node's scope (Binding.Scopes.cs).
+    internal StampedColumn<Binding.VirtualOverride, Binding.PassCounter> VirtualOverrides; // Pass: an override's verified slot (Binding.VirtualOverrides.cs).
+    internal PagedColumn<List<(FunctionKoto Original, FunctionKoto Implementation)>?> OverrideEntries; // Kept: a Type's implementations by original, emptied each pass (Binding.VirtualOverrides.cs).
+    internal StampedColumn<EffectBoundKoto?, Binding.PassCounter> VirtualEffectBounds; // Pass: a virtual function's confining effect bound (Binding.EffectDeclarations.cs).
+    internal StampedColumn<Binding.Specialization?, Binding.PassCounter> Specializations; // Pass: a verified explicit specialization's entry (Binding.Specializations.cs).
+    internal PagedColumn<List<FunctionKoto>?> SpecializationsByOriginal; // Kept: an original's verified specializations, emptied each pass (Binding.Specializations.cs).
+    internal StampedColumn<OmittedBaseSelection?, Binding.PassCounter> ImplicitConstructorDecisions; // Pass: a derived structure's omitted-base decision (Binding.ImplicitConstructors.cs).
     internal PagedColumn<(SourceDocument Document, BindingScope? Scope)[]?> Documents; // Kept: Scopes' composite column, a module root's document scopes.
     internal PagedColumn<Binding.AssociatedInference?> AssociatedInference; // Kept: a conforming Type's inference batch (Binding.AssociatedInference.cs).
     internal PagedColumn<BoundOrigin?[]?> OriginAtoms; // Kept: a binder's Origin atoms, a KeyedRow by kind and slot (Binding.Origins.cs).
@@ -278,6 +284,19 @@ internal struct NodeColumns
     internal StampedColumn<BoundMatch?, Binding.PassCounter> Matches; // Pass: the plan of a match the pass indexed (Binding.Patterns.cs).
     internal StampedColumn<BoundAdaptation, Binding.PassCounter> Adaptations; // Pass: the implicit adaptation selected for an expression (Binding.ArgumentOperations.cs).
     internal StampedColumn<int, Binding.PassCounter> ShapeContractHeads; // Pass: a function's first shape contract as the later of an overload pair, its index + 1 (Binding.ShapeContracts.cs).
+    internal PagedColumn<Binding.OriginDeclaration?> OriginDeclarations; // Kept: an owner's declared Origins (Binding.OriginDeclarations.cs).
+    internal PagedColumn<List<string>?> DiscoveredOrigins; // Kept: a binder's discovered Origin names (Binding.OriginDeclarations.cs).
+    internal PagedColumn<Binding.OriginRequirementWork?> OriginRequirementNodes; // Kept: a declaration's Origin requirement work (Binding.OriginRequirements.cs).
+    internal PagedColumn<Binding.OriginDeclaration?> InitializerOrigins; // Kept: the Origins a local's initializer omits (Binding.LocalOrigins.cs).
+    internal PagedColumn<InvocationKoto?[]?> PropertyCalls; // Kept: a property access's synthesized accessor calls (Binding.PropertyCalls.cs).
+    internal PagedColumn<MemberAccessKoto?> StorageProjections; // Kept: an accessor body's synthesized `self` storage projection (Binding.PropertyCalls.cs).
+    internal PagedColumn<MemberAccessKoto?> PropertyUpdateStorage; // Kept: a property update's synthesized storage access (Binding.PropertyCalls.cs).
+    internal PagedColumn<EvaluatedKoto?> PropertyUpdateInputs; // Kept: a property update's synthesized input (Binding.PropertyCalls.cs).
+    internal PagedColumn<InvocationKoto?[]?> IndexerCalls; // Kept: an index expression's synthesized `index` and `indexUniq` calls (Binding.Indexers.cs).
+    internal PagedColumn<InvocationKoto?> ViewRangeCalls; // Kept: a view's range selection's synthesized `slice` call (Binding.Views.cs).
+    internal PagedColumn<InvocationKoto?> RangeCalls; // Kept: a range or position key's synthesized PositionSyntax call (Binding.Ranges.cs).
+    internal PagedColumn<InvocationKoto?> ResolvedKeys; // Kept: a selection key's synthesized `resolved` call (Binding.Ranges.cs).
+    internal PagedColumn<BoundMatch?> MatchPlans; // Kept: the plan object a match keeps across rebinds (Binding.Patterns.cs).
 
     internal void Resize(int length)
     {
@@ -289,6 +308,12 @@ internal struct NodeColumns
         this.CopyByType.Grow(length);
         this.Scopes.Grow(length);
         this.Documents.Grow(length);
+        this.ImplicitConstructorDecisions.Grow(length);
+        this.SpecializationsByOriginal.Grow(length);
+        this.Specializations.Grow(length);
+        this.VirtualEffectBounds.Grow(length);
+        this.OverrideEntries.Grow(length);
+        this.VirtualOverrides.Grow(length);
         this.AssociatedInference.Grow(length);
         this.OriginAtoms.Grow(length);
         this.OpenOrigins.Grow(length);
@@ -299,6 +324,19 @@ internal struct NodeColumns
         this.Matches.Grow(length);
         this.Adaptations.Grow(length);
         this.ObjectErasures.Grow(length);
+        this.OriginDeclarations.Grow(length);
+        this.DiscoveredOrigins.Grow(length);
+        this.OriginRequirementNodes.Grow(length);
+        this.InitializerOrigins.Grow(length);
+        this.PropertyCalls.Grow(length);
+        this.StorageProjections.Grow(length);
+        this.PropertyUpdateStorage.Grow(length);
+        this.PropertyUpdateInputs.Grow(length);
+        this.IndexerCalls.Grow(length);
+        this.ViewRangeCalls.Grow(length);
+        this.RangeCalls.Grow(length);
+        this.ResolvedKeys.Grow(length);
+        this.MatchPlans.Grow(length);
     }
 
     // The library's columns start at their stated slots (KimiLibrarySize: no program row lands in them).
@@ -314,10 +352,19 @@ internal struct NodeColumns
         this.DeferredConstraints.Reserve(stated.DeferredConstraints);
         this.Matches.Reserve(stated.Matches);
         this.Adaptations.Reserve(stated.Adaptations);
+        this.Specializations.Reserve(stated.Specializations);
+        this.SpecializationsByOriginal.Reserve(stated.SpecializationsByOriginal);
         this.Scopes.Reserve(stated.Scopes);
         this.OriginAtoms.Reserve(stated.OriginAtoms);
         this.OpenOrigins.Reserve(stated.OpenOrigins);
         this.AssociatedOrigins.Reserve(stated.AssociatedOrigins);
+        this.OriginDeclarations.Reserve(stated.OriginDeclarations);
+        this.DiscoveredOrigins.Reserve(stated.DiscoveredOrigins);
+        this.OriginRequirementNodes.Reserve(stated.OriginRequirementNodes);
+        this.PropertyCalls.Reserve(stated.PropertyCalls);
+        this.RangeCalls.Reserve(stated.RangeCalls);
+        this.ResolvedKeys.Reserve(stated.ResolvedKeys);
+        this.MatchPlans.Reserve(stated.MatchPlans);
     }
 
     // A kept family's column gives a renumbering an empty column over its spare arena; a stamped family's is handed over unmoved and
@@ -334,6 +381,12 @@ internal struct NodeColumns
             CopyByType = this.CopyByType.Renumbered(length),
             Scopes = this.Scopes.Renumbered(length),
             Documents = this.Documents.Renumbered(length),
+            ImplicitConstructorDecisions = this.ImplicitConstructorDecisions.Renumbered(length),
+            SpecializationsByOriginal = this.SpecializationsByOriginal.Renumbered(length),
+            Specializations = this.Specializations.Renumbered(length),
+            VirtualEffectBounds = this.VirtualEffectBounds.Renumbered(length),
+            OverrideEntries = this.OverrideEntries.Renumbered(length),
+            VirtualOverrides = this.VirtualOverrides.Renumbered(length),
             AssociatedInference = this.AssociatedInference.Renumbered(length),
             OriginAtoms = this.OriginAtoms.Renumbered(length),
             OpenOrigins = this.OpenOrigins.Renumbered(length),
@@ -344,6 +397,19 @@ internal struct NodeColumns
             Matches = this.Matches.Renumbered(length),
             Adaptations = this.Adaptations.Renumbered(length),
             ObjectErasures = this.ObjectErasures.Renumbered(length),
+            OriginDeclarations = this.OriginDeclarations.Renumbered(length),
+            DiscoveredOrigins = this.DiscoveredOrigins.Renumbered(length),
+            OriginRequirementNodes = this.OriginRequirementNodes.Renumbered(length),
+            InitializerOrigins = this.InitializerOrigins.Renumbered(length),
+            PropertyCalls = this.PropertyCalls.Renumbered(length),
+            StorageProjections = this.StorageProjections.Renumbered(length),
+            PropertyUpdateStorage = this.PropertyUpdateStorage.Renumbered(length),
+            PropertyUpdateInputs = this.PropertyUpdateInputs.Renumbered(length),
+            IndexerCalls = this.IndexerCalls.Renumbered(length),
+            ViewRangeCalls = this.ViewRangeCalls.Renumbered(length),
+            RangeCalls = this.RangeCalls.Renumbered(length),
+            ResolvedKeys = this.ResolvedKeys.Renumbered(length),
+            MatchPlans = this.MatchPlans.Renumbered(length),
         };
         return columns;
     }
@@ -360,9 +426,24 @@ internal struct NodeColumns
         this.CopyByType.Retire();
         this.Scopes.Retire();
         this.Documents.Retire();
+        this.SpecializationsByOriginal.Retire();
+        this.OverrideEntries.Retire();
         this.AssociatedInference.Retire();
         this.OriginAtoms.Retire();
         this.OpenOrigins.Retire();
+        this.OriginDeclarations.Retire();
+        this.DiscoveredOrigins.Retire();
+        this.OriginRequirementNodes.Retire();
+        this.InitializerOrigins.Retire();
+        this.PropertyCalls.Retire();
+        this.StorageProjections.Retire();
+        this.PropertyUpdateStorage.Retire();
+        this.PropertyUpdateInputs.Retire();
+        this.IndexerCalls.Retire();
+        this.ViewRangeCalls.Retire();
+        this.RangeCalls.Retire();
+        this.ResolvedKeys.Retire();
+        this.MatchPlans.Retire();
     }
 
     // A kept family's row moves with its node; a stamped family's rows were handed over (Renumbered).
@@ -376,9 +457,24 @@ internal struct NodeColumns
         this.CopyByType.MoveTo(ref target.CopyByType, from, to);
         this.Scopes.MoveTo(ref target.Scopes, from, to);
         this.Documents.MoveTo(ref target.Documents, from, to);
+        this.SpecializationsByOriginal.MoveTo(ref target.SpecializationsByOriginal, from, to);
+        this.OverrideEntries.MoveTo(ref target.OverrideEntries, from, to);
         this.AssociatedInference.MoveTo(ref target.AssociatedInference, from, to);
         this.OriginAtoms.MoveTo(ref target.OriginAtoms, from, to);
         this.OpenOrigins.MoveTo(ref target.OpenOrigins, from, to);
+        this.OriginDeclarations.MoveTo(ref target.OriginDeclarations, from, to);
+        this.DiscoveredOrigins.MoveTo(ref target.DiscoveredOrigins, from, to);
+        this.OriginRequirementNodes.MoveTo(ref target.OriginRequirementNodes, from, to);
+        this.InitializerOrigins.MoveTo(ref target.InitializerOrigins, from, to);
+        this.PropertyCalls.MoveTo(ref target.PropertyCalls, from, to);
+        this.StorageProjections.MoveTo(ref target.StorageProjections, from, to);
+        this.PropertyUpdateStorage.MoveTo(ref target.PropertyUpdateStorage, from, to);
+        this.PropertyUpdateInputs.MoveTo(ref target.PropertyUpdateInputs, from, to);
+        this.IndexerCalls.MoveTo(ref target.IndexerCalls, from, to);
+        this.ViewRangeCalls.MoveTo(ref target.ViewRangeCalls, from, to);
+        this.RangeCalls.MoveTo(ref target.RangeCalls, from, to);
+        this.ResolvedKeys.MoveTo(ref target.ResolvedKeys, from, to);
+        this.MatchPlans.MoveTo(ref target.MatchPlans, from, to);
     }
 }
 

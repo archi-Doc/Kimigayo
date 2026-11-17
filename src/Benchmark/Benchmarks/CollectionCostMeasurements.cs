@@ -14,11 +14,16 @@ namespace Benchmark;
 
 // The instance collector's cost inside one compilation (PLAN10-P3's collection share; R5 plan §5.3 item 10, §5.4 item 6, §5.5 item 7;
 // DECISIONS R5-M148), without a compiler hook. For each compiler pipeline input, a compilation is bound and its MIR built, validated
-// and analyzed outside timing by the two components Compilation.BuildMir composes (MirBuilder, then MirAnalysis), not by BuildMir, which
-// also collects (since DECISIONS BU-48). Three fresh collectors then run over that program in order, each timed with its
-// construction: cold, the compilation's first collection, with its Layout (the collection-and-layout share, and the check-time cost of
-// collection); freshLayout, a new Layout with the Type context's memos warm; warm, the compilation's Layout again. Layout's first
-// computations are freshLayout - warm and the Type context's first queries cold - freshLayout, both per operation inside one compilation.
+// and analyzed outside timing (but for the bodies cold's missed runs build, below) by the two components Compilation.BuildMir composes (MirBuilder, then MirAnalysis), not by BuildMir, which
+// also collects (since DECISIONS BU-48), in Compilation's configuration: the source modules' root range, a library body built where a
+// lookup demands it (PLAN G951 U2; before U2 every library body, so the workload changed there). Three fresh collectors then run over
+// that program in order, each timed with its construction: cold, the compilation's first collection, with its Layout (the
+// collection-and-layout share, and the check-time cost of collection), Compilation.Collect's loop: its runs timed, the steps between
+// them (MirAnalysis.Step of the bodies a missed run built) not, its run count reported (the Back's C-378 A4); freshLayout, a new Layout
+// with the Type context's memos warm; warm, the compilation's Layout again; each of the last two one clean run over the stepped program. Layout's first
+// computations are freshLayout - warm and the Type context's first queries cold - freshLayout, both per operation inside one compilation;
+// when coldRuns > 1, cold's timed runs include its missed runs and the library bodies their lookups build on demand, so cold -
+// freshLayout (firstQueriesMedianMilliseconds) holds that work too (PLAN G951 U2: a changed workload across the switch).
 // `--collection-cost-check` times nothing: it requires the three collections to equal each other and the compilation's own checked set
 // (its Analyze's) element by element (the items' keys in admission order, the records' codes and locations: a program's collection records,
 // MirProgram.Records, which the later collections over one program must leave as the cold one made them), the comparison to fail on a
@@ -91,7 +96,7 @@ internal static class CollectionCostMeasurements
 
         var ticks = Variants.Select(_ => new long[Samples * Iterations]).ToArray();
         var bytes = Variants.Select(_ => new long[Samples * Iterations]).ToArray();
-        var counts = (Bodies: 0, Items: 0, Records: 0);
+        var counts = (Bodies: 0, Items: 0, Records: 0, Runs: 0);
         for (var i = 0; i < Samples * Iterations; i++)
         {
             var operation = Operation(input.Source);
@@ -100,7 +105,7 @@ internal static class CollectionCostMeasurements
                 (ticks[v][i], bytes[v][i]) = (operation.Ticks[v], operation.Bytes[v]);
             }
 
-            counts = (operation.Program.Bodies.Length, operation.Cold.Items.Length, operation.Records.Length);
+            counts = (operation.Program.Bodies.Length, operation.Cold.Items.Length, operation.Records.Length, operation.ColdRuns);
         }
 
         var variants = Enumerable.Range(0, Variants.Length).Select(v => new
@@ -119,37 +124,53 @@ internal static class CollectionCostMeasurements
             mirBodies = counts.Bodies,
             collectedItems = counts.Items,
             collectorRecords = counts.Records,
+            coldRuns = counts.Runs,
             layoutMedianMilliseconds = Milliseconds(Median(Difference(ticks[1], ticks[2]))),
-            firstQueriesMedianMilliseconds = Milliseconds(Median(Difference(ticks[0], ticks[1]))),
+            firstQueriesMedianMilliseconds = Milliseconds(Median(Difference(ticks[0], ticks[1]))), // The Type context's first queries, and with coldRuns > 1 the missed runs and the bodies they build.
             variants,
         };
     }
 
     // One operation: a checked compilation and its built, validated and analyzed MIR outside timing, then the three collections over
-    // that program, cold first, each timed with its construction; the three must be equal element by element.
+    // that program, cold first, each timed with its construction; the three must be equal element by element. Cold runs
+    // Compilation.Collect's loop, a copy that must stay equal to it so that the steps stay untimed; freshLayout and warm must each be one
+    // clean run (the Back's C-378 A4).
     private static Collections Operation(string source)
     {
         var c = Checked(source);
-        var program = new MirAnalysis(c.Types).Run(new MirBuilder(c).Build(SyntaxTable.LibraryModule + 1), c.SourceModules.Length);
+        var analysis = new MirAnalysis(c.Types);
+        var program = analysis.Run(new MirBuilder(c).Build(c.SourceModules.Length), c.SourceModules.Length);
         Require(!program.Records(MirRecordClass.Construction).Any() && program.Findings.Count == 0, "MIR construction or validation failed.");
         Layout[] layouts = [c.Layout, new Layout(c.Types), c.Layout];
-        var (ticks, bytes) = (new long[layouts.Length], new long[layouts.Length]);
+        var (ticks, bytes, runs) = (new long[layouts.Length], new long[layouts.Length], 0);
         CheckedSet? cold = null;
         Problem[] records = [];
         for (var v = 0; v < layouts.Length; v++)
         {
             var allocated = GC.GetAllocatedBytesForCurrentThread();
             var start = Stopwatch.GetTimestamp();
-            var set = new InstanceCollector(c.Types, layouts[v]).Run(program, c.SourceModules.Length);
+            var collector = new InstanceCollector(c.Types, layouts[v]);
+            var set = collector.Run(program, c.SourceModules.Length);
             ticks[v] = Stopwatch.GetTimestamp() - start;
             bytes[v] = GC.GetAllocatedBytesForCurrentThread() - allocated;
+            while (set.Version != program.Version)
+            {
+                analysis.Step(program, c.SourceModules.Length);
+                (allocated, start) = (GC.GetAllocatedBytesForCurrentThread(), Stopwatch.GetTimestamp());
+                set = collector.Run(program, c.SourceModules.Length);
+                ticks[v] += Stopwatch.GetTimestamp() - start;
+                bytes[v] += GC.GetAllocatedBytesForCurrentThread() - allocated;
+            }
+
+            Require(cold is null || collector.RunCount == 1, $"The {Variants[v]} collection took {collector.RunCount} runs, not one clean run.");
+            runs = cold is null ? collector.RunCount : runs;
             records = cold is null ? [.. program.Records(MirRecordClass.Collection)] : records;
             cold ??= set;
             var difference = Difference(Keys(cold), Keys(set), records, [.. program.Records(MirRecordClass.Collection)]);
             Require(difference is null, $"The {Variants[v]} collection differs from the cold one: {difference}.");
         }
 
-        return new(c, program, cold!, records, ticks, bytes);
+        return new(c, program, cold!, records, ticks, bytes, runs);
     }
 
     // The check of one input: cold is the compilation's first collection (it allocates more than warm), the collections equal the
@@ -170,7 +191,7 @@ internal static class CollectionCostMeasurements
         }
 
         Console.WriteLine($"PASS collection cost: shape={input.Shape}, size={input.Size}, MIR bodies={operation.Program.Bodies.Length}, items={keys.Length}, " +
-            $"records={operation.Records.Length}, cold {operation.Bytes[0]} B > warm {operation.Bytes[2]} B");
+            $"records={operation.Records.Length}, cold runs={operation.ColdRuns}, cold {operation.Bytes[0]} B > warm {operation.Bytes[2]} B");
     }
 
     // The record half of the comparison fails on a changed code and on a changed location (the inputs have no records of their own).
@@ -251,6 +272,7 @@ internal static class CollectionCostMeasurements
         }
     }
 
-    // One operation's compilation, its program's bodies, the cold collection and each variant's ticks and allocated bytes.
-    private sealed record Collections(Compilation Compilation, MirProgram Program, CheckedSet Cold, Problem[] Records, long[] Ticks, long[] Bytes);
+    // One operation's compilation, its program's bodies, the cold collection, each variant's ticks and allocated bytes and the cold
+    // collection's runs.
+    private sealed record Collections(Compilation Compilation, MirProgram Program, CheckedSet Cold, Problem[] Records, long[] Ticks, long[] Bytes, int ColdRuns);
 }

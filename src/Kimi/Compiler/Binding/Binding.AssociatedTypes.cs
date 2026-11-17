@@ -491,9 +491,9 @@ public sealed partial class Binding
 
     private void PrepareAssociatedBindings()
     {
-        for (var i = 0; i < this.impls.Paths.Count; i++)
+        for (var i = 0; i < this.impls.InPass.Paths.Count; i++)
         {
-            var path = this.impls.Paths[i];
+            var path = this.impls.InPass.Paths[i];
             if (!ReferenceEquals(path.RootPath, path) || path.InheritedFrom is not null)
             {
                 continue;
@@ -537,9 +537,9 @@ public sealed partial class Binding
             }
         }
 
-        for (var i = 0; i < this.impls.Paths.Count; i++)
+        for (var i = 0; i < this.impls.InPass.Paths.Count; i++)
         {
-            var path = this.impls.Paths[i];
+            var path = this.impls.InPass.Paths[i];
             var shape = path.Contract.Contract!;
             for (var j = 0; j < shape.AssociatedTypes.Count; j++)
             {
