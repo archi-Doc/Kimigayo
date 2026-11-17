@@ -188,10 +188,11 @@ public sealed partial class Binding
     // SPEC 10.1.1, 10.5.1, 12.5.2: whether a value call fails against a Function Item's signature, probed as against a Callable
     // candidate's (MapValueCallArguments, ProbeValueCall) but formed parameter by parameter: the argument count and labels, each
     // argument at its parameter, the result at `expected`. A search over split cases so reads only the bindings of the parts before
-    // a failure (RestsOnSplitCases). A part that forms no Type fails nothing. An argument that fails at an element of a Tuple
-    // parameter, a Tuple literal's or a typed value's, fails by that element: the fit names it (argumentMisfit), and the declared
-    // element, formed again on its own, is the failing part, so the run blames the bindings its layers read and not its siblings'
-    // (the owner's O-392 (c), G812 ruling 109; the contract fit's member is the same reading, ContractFits).
+    // a failure (RestsOnSplitCases). A part that forms no Type fails nothing. An argument that fails at a component of its
+    // parameter (a Tuple's element, a constructed Type's argument, an array's element), a literal's or a typed value's, fails by
+    // that component: the fit names it (argumentMisfit), and the declared component, formed again on its own, is the failing
+    // part, so the run blames the bindings its layers read and not its siblings' (the owner's O-392 (c), G812 rulings 109, 111;
+    // the contract fit's member is the same reading, ContractFits).
     private bool ItemCallFails(InvocationKoto call, BindingScope scope, BoundType item, BoundType? expected)
     {
         if (item is not { Kind: BoundTypeKind.FunctionItem, Symbol: { Type: { } result, Declaration: FunctionKoto function } })

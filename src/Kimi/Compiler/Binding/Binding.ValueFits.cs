@@ -66,12 +66,12 @@ public sealed partial class Binding
     internal bool FitsStructuralPartAt(BoundType actual, BoundType expected, Koto use)
         => NeverFits(actual) || new RelationWalk(this, use, OriginPart.Everywhere).Fits(actual, expected);
 
-    // The same fit, with the Tuple elements down to its failure where it does not hold (TupleElements; none where it holds).
-    internal bool FitsStructuralPartAt(BoundType actual, BoundType expected, Koto use, out TupleElements failed)
+    // The same fit, with the components down to its failure where it does not hold (ComponentPath; none where it holds).
+    internal bool FitsStructuralPartAt(BoundType actual, BoundType expected, Koto use, out ComponentPath failed)
     {
         var walk = new RelationWalk(this, use, OriginPart.Everywhere);
         var fits = NeverFits(actual) || walk.Fits(actual, expected);
-        failed = fits ? default : walk.Elements;
+        failed = fits ? default : walk.FailedComponents;
         return fits;
     }
 

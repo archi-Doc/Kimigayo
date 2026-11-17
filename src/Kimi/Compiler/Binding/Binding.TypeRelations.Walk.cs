@@ -11,8 +11,8 @@ namespace Kimi.Compiler;
 // - Inputs: the query: the Binding and use whose premises and Origins the Origin part reads (none: the relation as written), and which
 //   Origin bindings count (OriginPart).
 // - Outputs: whether the relation holds and, when it does not, its first failure where the walk found it (ComparisonFailure), which the
-//   reader that records the failure takes from the walk that decided, with the Tuple elements down to the failure that ended it
-//   (TupleElements); a recording root's walk also keeps one fact per failing position
+//   reader that records the failure takes from the walk that decided, with the components down to the failure that ended it
+//   (ComponentPath); a recording root's walk also keeps one fact per failing position
 //   (comparisonFacts, design-r2 Amendment 1 A2), and CheckTypeUse's root one result per part it walks outside every Callable comparison
 //   (FitPart, in walk order), which CheckTypeUse decomposes instead of walking each part again (it walks again only an invariant part
 //   that this walk meets reversed, under a contravariant one).
@@ -91,21 +91,23 @@ public sealed partial class Binding
             this with { Path = this.Path | ((ulong)step << (8 * this.Depth)), Depth = (byte)(this.Depth + 1) };
     }
 
-    // SPEC 3.8: the Tuple elements from a walk's root down to its failure, through nested Tuples only: one byte per element (n + 1),
-    // the outermost lowest. None (0) where the failure is the root's own or the root is no Tuple; the steps end at the first part
-    // that is no Tuple; the path holds the eight outermost steps (a deeper one is shifted out), and an element beyond the 254th
-    // publishes none below it.
-    internal readonly record struct TupleElements(ulong Path)
+    // SPEC 3.8: the components from a walk's root down to its failure, outside Function Types: one byte per component (n + 1), the
+    // outermost lowest: a Tuple's element, a constructed Type's argument, an array's element, a layer's target. None (0) where the
+    // failure is the root's own; a Function Type's comparison publishes none below it (its members are ComparisonFailure.Path's).
+    // The path holds the eight outermost steps (a deeper one is shifted out), and a component beyond the 254th publishes none
+    // below it.
+    internal readonly record struct ComponentPath(ulong Path)
     {
-        // The elements as the enclosing Tuple sees them: within its element `index`.
-        internal TupleElements Within(int index) => index >= 0xFF ? default : new((this.Path << 8) | (uint)(index + 1));
+        // The path as the enclosing part sees it: within its component `index`.
+        internal ComponentPath Within(int index) => index >= 0xFF ? default : new((this.Path << 8) | (uint)(index + 1));
 
-        // The part of `type`, a Type of the compared shape, that the elements name: its Tuple element at each step, as far as it
-        // is a Tuple there; null where they name none.
+        // The part of `type`, a Type whose formation gave the compared shape, that the path names: its component at each step, as
+        // far as formation keeps the components in their positions (a Tuple, a constructed Type, an array, a written layer; not
+        // a pair application, whose case decides whether it is a layer); null where it names none.
         internal BoundType? Member(BoundType type)
         {
             var member = type;
-            for (var path = this.Path; path != 0 && member.Kind == BoundTypeKind.Tuple; path >>= 8)
+            for (var path = this.Path; path != 0 && KeepsComponents(member); path >>= 8)
             {
                 var step = (int)(byte)path;
                 if (step == 0 || step > member.Components.Count)
@@ -118,6 +120,9 @@ public sealed partial class Binding
 
             return ReferenceEquals(member, type) ? null : member;
         }
+
+        private static bool KeepsComponents(BoundType type)
+            => type.Kind is BoundTypeKind.Tuple or BoundTypeKind.Constructed or BoundTypeKind.Array or BoundTypeKind.FixedArray or BoundTypeKind.Semantics;
     }
 
     // SPEC 15.6.1, 23.1.2: one part of CheckTypeUse's walk outside every Callable comparison, as a walk rooted at it would answer it: the
@@ -151,7 +156,7 @@ public sealed partial class Binding
         private ComparisonFailure failure;
         private bool ended;
         private int endedAt;
-        private TupleElements elements;
+        private ComponentPath components;
 
         internal RelationWalk(Binding? binding, Koto? use, OriginPart part)
         {
@@ -179,9 +184,9 @@ public sealed partial class Binding
         // The first failure of the walk's last false answer.
         internal readonly ComparisonFailure Failure => this.facts is { } kept && kept.Count > this.start ? kept[this.start] : this.failure;
 
-        // The Tuple elements down to the failure that ended the walk's last false answer (TupleElements): a failure the walk went on
+        // The components down to the failure that ended the walk's last false answer (ComponentPath): a failure the walk went on
         // past (a recording root's, outside every Callable comparison) adds no step.
-        internal readonly TupleElements Elements => this.elements;
+        internal readonly ComponentPath FailedComponents => this.components;
 
         // SPEC 3.8: the relation; Never relates only to itself. `own` is the declaration whose own per-call inputs the root actual signature
         // names (SPEC 8.10); a nested Function Type's own syntax binds its inputs. `skipOrigin` leaves the outer Origin to an instantiation
@@ -292,7 +297,7 @@ public sealed partial class Binding
                 }
 
                 _ = !this.ended && this.Keep(this.failure, instance);
-                this.elements = default;
+                this.components = default;
                 return false;
             }
 
@@ -309,7 +314,7 @@ public sealed partial class Binding
                         holds = false;
                         if (!this.Goes(instance))
                         {
-                            this.elements = default;
+                            this.components = this.components.Within(i);
                             return false;
                         }
                     }
@@ -322,7 +327,7 @@ public sealed partial class Binding
                     holds = false;
                     if (!this.Goes(instance))
                     {
-                        this.elements = actual.Kind == BoundTypeKind.Tuple ? this.elements.Within(i) : default;
+                        this.components = this.components.Within(i);
                         return false;
                     }
                 }
@@ -356,7 +361,7 @@ public sealed partial class Binding
         private bool Fail(in ComparisonFailure failure)
         {
             this.failure = failure;
-            this.elements = default;
+            this.components = default;
             return false;
         }
 
@@ -369,7 +374,7 @@ public sealed partial class Binding
         private bool Keep(in ComparisonFailure failure, in CallableInstance instance)
         {
             this.failure = failure;
-            this.elements = default;
+            this.components = default;
             if (!this.Goes(instance))
             {
                 return false;
