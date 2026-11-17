@@ -103,7 +103,7 @@ public sealed partial class Binding
         {
             var function = bindings.Function;
             var open = !bindings.Unbound.IsEmpty;
-            var proof = this.CheckConstraints(function.TypeConstraints, bindings.Substitution, scope, bindings.Self, incomplete: incomplete || open, skipUnresolved: open);
+            var proof = this.CheckConstraints(CandidateClauses(function, slotOwner, 0)!, bindings.Substitution, scope, bindings.Self, incomplete: incomplete || open, skipUnresolved: open);
             if (bindings.Owner is { } owner)
             {
                 proof = CombineProof(proof, this.CheckTypeConstraints(owner, scope), true);
@@ -114,7 +114,7 @@ public sealed partial class Binding
                 proof = CombineProof(
                     proof,
                     this.CheckConstraints(
-                        openOwner.ConstraintNodes, new CallSubstitution(openOwner, bindings.Slots), scope, incomplete: true, skipUnresolved: !bindings.Unbound.IsEmpty),
+                        CandidateClauses(function, slotOwner, 1)!, new CallSubstitution(openOwner, bindings.Slots), scope, incomplete: true, skipUnresolved: !bindings.Unbound.IsEmpty),
                     true);
             }
 

@@ -167,8 +167,8 @@ public sealed partial class Binding
         }
 
         return (admitted & SemanticsMask.Ref) == 0 &&
-            ((admitted & SemanticsMask.Uniq) == 0 || !ReachedThroughShared(operand)) &&
-            ((admitted & SemanticsMask.Owner) == 0 || (scope is null ? Writable(operand) || ElementAccess.WritableRoot(operand) is not null : this.BorrowablePlace(operand, scope, true)));
+            ((admitted & SemanticsMask.Uniq) == 0 || !this.ReachedThroughShared(operand)) &&
+            ((admitted & SemanticsMask.Owner) == 0 || (scope is null ? this.Writable(operand) || ElementAccess.WritableRoot(this, operand) is not null : this.BorrowablePlace(operand, scope, true)));
     }
 
     // SPEC 7.3, 13.5.5: a ref/Self or uniq/Self receiver selected through a pair layer is acquired as p@follow@ref or
@@ -231,12 +231,12 @@ public sealed partial class Binding
     private BoundType? PairSubject(Koto node, BoundType? type, BindingScope scope)
     {
         // A layer admitting no case is no Subject layer (stopped: the Subject's consumer would have to rest; PLAN G750).
-        if (type is null || !IsBarePlace(node) || this.FollowablePair(type, scope, out var target) is not { } admitted || admitted == SemanticsMask.None)
+        if (type is null || !this.IsBarePlace(node) || this.FollowablePair(type, scope, out var target) is not { } admitted || admitted == SemanticsMask.None)
         {
             return null;
         }
 
-        var exclusive = admitted == SemanticsMask.Uniq && !ReachedThroughShared(node);
+        var exclusive = admitted == SemanticsMask.Uniq && !this.ReachedThroughShared(node);
         while (this.FollowablePair(target, scope, out var next) is { } inner && inner != SemanticsMask.None)
         {
             this.termWalks++;

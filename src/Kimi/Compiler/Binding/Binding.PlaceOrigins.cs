@@ -132,7 +132,7 @@ public sealed partial class Binding
         var path = KotoHelper.UnwrapParentheses(place);
         for (var depth = 0; depth < 64; depth++)
         {
-            var step = NextPathStep(path, out var next);
+            var step = this.NextPathStep(path, out var next);
             next = KotoHelper.UnwrapParentheses(next);
             if (this.MeetStep(step, path, next, ref walk))
             {
@@ -167,7 +167,7 @@ public sealed partial class Binding
             case PathStep.PairFollow:
                 return this.MeetPair(ref walk, next.BoundType, this.PairAdmitted(path));
             case PathStep.UserIndex:
-                walk.Met = this.MeetWith(walk.Met, ElementAccess.IndexerCall(path, false)?.BoundType?.Origin);
+                walk.Met = this.MeetWith(walk.Met, this.IndexerCall(path, false)?.BoundType?.Origin);
                 return true;
             case PathStep.ArrayElement:
                 walk.Met = this.MeetWith(walk.Met, this.PlaceOrigin(next));
@@ -288,7 +288,7 @@ public sealed partial class Binding
             return this.ReferentOrigin(selected.Left, selected.Left.BoundType) ?? this.PlaceOrigin(selected.Left);
         }
 
-        if (ElementAccess.IndexerCall(source, false) is { BoundType.Origin: { } publishedElement })
+        if (this.IndexerCall(source, false) is { BoundType.Origin: { } publishedElement })
         {
             return publishedElement; // SPEC 4.7.1: the element Place depends on the receiver under its contract.
         }
@@ -313,7 +313,7 @@ public sealed partial class Binding
         // parts, borrowed as a fresh anchor (RawAnchor); a reference read in place is its referent, through an exclusive one also
         // contained in its root's containment (EnvironmentContainment), and a Slice handle that is itself the Place is a Place of its root.
         // A pair layer's Origin is that of the reference it may hold, so the layer itself is its own dependency.
-        var layer = ElementAccess.AccessType(source) is { Origin: not null } type && !TryPairLayer(type, out _, out _) ? type : null;
+        var layer = ElementAccess.AccessType(this, source) is { Origin: not null } type && !TryPairLayer(type, out _, out _) ? type : null;
         return layer is null || !(reachedThrough || layer.Kind == BoundTypeKind.Semantics)
             ? (ElementAccess.IsRawRoot(source) ? this.RawAnchor(place, place) : this.OriginAtom(PlaceOriginBinder(source), OriginKind.Projection, PlaceOriginSlot(source)))
             : reachedThrough ? layer.Origin!
