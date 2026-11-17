@@ -75,7 +75,7 @@ internal sealed partial class MirBuilder
         var rest = (Block: -1, Valueless: operand is not null && IsNeverForm(operand)); // The operand's value-less paths (SPEC 14.10.3).
         if (!continues && operand is not null && this.targets[index].Wants && this.Splits(operand))
         {
-            var held = this.Hold(HirTables.TypeOf(operand) ?? this.body.TypeOf(this.targets[index].Destination)!, operand);
+            var held = this.Held(operand, this.body.TypeOf(this.targets[index].Destination), null);
             rest = this.AssignApart(held, operand);
             value = MirOperand.Move(this.Made(held));
         }
