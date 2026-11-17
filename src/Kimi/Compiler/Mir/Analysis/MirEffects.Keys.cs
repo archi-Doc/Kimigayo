@@ -11,9 +11,6 @@ namespace Kimi.Compiler.Mir;
 internal sealed partial class MirEffects
 {
     private readonly Dictionary<BindingSymbol, int> fieldIds = new(ReferenceEqualityComparer.Instance); // Each mutable static Field's number (P5).
-    private int[] localKeys = []; // A key's bit: 2 × its Field's number, plus 1 for a write.
-    private int[] keyEnds = []; // The end of each node's local keys in localKeys.
-    private int keyCount;
     private ulong[] keys = []; // Each node's static keys, keyWords words of key bits (P5: of Fields, never substituted), after Spread,
     private ulong[] keyScratch = []; // and those of the current query.
     private int keyWords;
@@ -36,13 +33,13 @@ internal sealed partial class MirEffects
     internal ReadOnlySpan<ulong> Keys(MirBody body, long view, int block, out byte classes)
     {
         cases.Select(body, view);
-        var (items, edges) = (this.itemCount, this.edgeCount);
+        var (items, edges) = (this.writing.ItemCount, this.writing.EdgeCount);
         (this.definition, this.reader, this.found, this.scratchCount) = (body.Key.Decl, -1, 0, 0);
         this.glued.Clear();
         this.keyScratch.AsSpan(0, this.keyWords).Clear();
         this.Terminator(this.program, body, block, view, body.Blocks[block].Terminator);
-        this.Inputs(items, this.itemCount, edges, this.edgeCount);
-        (this.itemCount, this.edgeCount) = (items, edges); // The site's inputs are not the body's.
+        this.Inputs(this.writing, items, this.writing.ItemCount, edges, this.writing.EdgeCount);
+        this.writing.Truncate(items, edges); // The site's inputs are not the body's.
         classes = (byte)(this.Found & (Unknown | Limit | Derived | Deep)); // With no reader an atom left abstract is Unknown (AddAtom).
         return this.keyScratch.AsSpan(0, this.keyWords);
     }
@@ -56,7 +53,7 @@ internal sealed partial class MirEffects
     /// <returns>The row, A4's storage, valid until the next <see cref="Run"/>.</returns>
     internal ReadOnlySpan<ulong> Summary(MirBody body, long view, out byte classes)
     {
-        var node = this.bases[body.Ordinal] + (int)view;
+        var node = this.Base(body.Ordinal) + (int)view;
         classes = (byte)(this.classes[node] & (Unknown | Limit | Derived | Deep));
         if (this.atomCounts[node] > 0)
         {
@@ -74,7 +71,7 @@ internal sealed partial class MirEffects
     /// <returns>The atoms, A4's storage, valid until the next <see cref="Run"/>.</returns>
     internal ReadOnlySpan<Atom> Items(MirBody body, long view, out byte classes)
     {
-        var node = this.bases[body.Ordinal] + (int)view;
+        var node = this.Base(body.Ordinal) + (int)view;
         classes = this.classes[node];
         return this.atoms.AsSpan(this.atomStarts[node], this.atomCounts[node]);
     }
@@ -91,10 +88,10 @@ internal sealed partial class MirEffects
         if (!this.fieldIds.TryGetValue(field, out var id))
         {
             this.fieldIds[field] = id = this.fieldIds.Count;
+            this.writing.Fields.Add(field);
         }
 
-        MirDataflow.Grow(ref this.localKeys, this.keyCount + 1);
-        this.localKeys[this.keyCount++] = (2 * id) + (write ? 1 : 0);
+        this.writing.AddKey((2 * id) + (write ? 1 : 0));
     }
 
     // P5's keys after the fixed point (R4-M38), which neither classes nor atoms read: a node's local keys joined with those of every node
@@ -109,9 +106,11 @@ internal sealed partial class MirEffects
         this.visits.AsSpan(0, count).Fill(-1);
         for (var node = 0; node < count; node++)
         {
-            for (var k = node == 0 ? 0 : this.keyEnds[node - 1]; k < this.keyEnds[node]; k++)
+            var store = this.Of(node);
+            var own = store.Keys;
+            for (var k = this.Start(store, node).Keys; k < store[node].Keys; k++)
             {
-                this.keys[(node * this.keyWords) + (this.localKeys[k] >> 6)] |= 1UL << this.localKeys[k];
+                this.keys[(node * this.keyWords) + (own[k] >> 6)] |= 1UL << own[k];
             }
         }
 

@@ -53,7 +53,7 @@ public sealed partial class Binding
     private BindingScope AssociatedFormationScope(BoundConformancePath path, BoundRequirement? identity, BindingScope scope)
     {
         if (identity is not { Symbol: { Kind: BindingSymbolKind.AssociatedType } associated } selected || this.AssociatedParameters(associated.Declaration).Length == 0 ||
-            !this.associatedBindings.TryGetValue((path.RootPath, selected), out var binding))
+            this.AssociatedBindingOf(path.RootPath, selected) is not { } binding)
         {
             return scope;
         }

@@ -28,6 +28,20 @@ internal sealed partial class InstanceCollector
         return Capability.Of(kind, op, target.Subst!.Self!, null);
     }
 
+    // A3b over a root-module body without a finding, in Run's root loop every version (judged work, never kept with a template; PLAN G950):
+    // each statement of each block, in block and statement order.
+    private void CheckOperations(MirBody body)
+    {
+        var blocks = body.Blocks;
+        for (var block = 0; block < blocks.Length; block++)
+        {
+            for (var index = 0; index < blocks[block].Count; index++)
+            {
+                this.CheckOperation(body, body.Statements[blocks[block].Start + index]);
+            }
+        }
+    }
+
     // A3b: an operation of a root-module body whose Types are closed, checked once per definition and location in whichever block it lies
     // (unused and check-only ones included); an open one is checked per instance. An operation Binding refused is an Opaque value, which
     // has no row, so Binding's gate and this check never both report.

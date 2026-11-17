@@ -131,7 +131,7 @@ public sealed partial class Binding
         this.originUnitIndex.Clear();
         this.originSliceIndex.Clear();
         this.originLayers.Clear();
-        foreach (var obligation in this.obligations)
+        foreach (var obligation in this.obligationsView)
         {
             if (obligation is not { Kind: BindingObligationKind.OriginOutlives, Deadline: BindingDeadline.BodyOrigins } ||
                 obligation is not { Longer: { } longer, Shorter: { } shorter })

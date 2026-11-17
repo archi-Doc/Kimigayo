@@ -14,10 +14,16 @@ internal sealed partial class InstanceCollector
     // (DropGlue.Destroyed, the walk code generation writes the Drop by, FunctionCodegen.Drops; Destroys), on the runtime paths or the
     // assumed paths of a Drop only the checks reach, so an Elide row, which destroys nothing, requests none; a Drop without a group (one only
     // the checks reach whose Place has no Move Path, or of a body whose verdicts are inexact, MirDropTable.Incomplete) destroys its Type
-    // whole (8.15.3: reachable or not).
+    // whole (8.15.3: reachable or not). A body A2's table does not hold has no group yet: its run missed (Round), and the Drop requests
+    // nothing.
     private void DropTargets(MirProgram program, int item, SourceRef subject, MirBody body, in (MirLocation At, bool Runtime) site, BoundType closed)
     {
         var drops = program.Drops;
+        if (!drops.Holds(body.Ordinal))
+        {
+            return;
+        }
+
         var group = drops.Incomplete(body.Ordinal) is null ? drops.Group(body.Ordinal, site.At.Block, this.Set.Items[item].View) : -1;
         if (group < 0)
         {

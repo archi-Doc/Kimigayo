@@ -18,7 +18,7 @@ public class ObjectHandleModeTest(ITestOutputHelper output)
     [InlineData(SemanticsKind.Arc, LoanRequirement.Ref, (int)ObjectCountingStep.Atomic)]
     public void StaticModesSeparateAuthorityFromCounting(SemanticsKind semantics, LoanRequirement authority, int counting)
     {
-        var type = new BoundType("handle", BoundTypeKind.Semantics, semantics: semantics, components: [BoundType.I32]);
+        var type = CompilationTestHelper.BindSuccess("()").Types.Reference(semantics, BoundType.I32);
         var mode = type.HandleMode;
         Assert.NotNull(mode);
         Assert.Equal(semantics, mode.Value.Semantics);
@@ -34,7 +34,7 @@ public class ObjectHandleModeTest(ITestOutputHelper output)
     [InlineData(SemanticsKind.ObjUniq)]
     [InlineData(SemanticsKind.Raw)]
     public void OtherSemanticsHaveNoStrongHandleMode(SemanticsKind semantics)
-        => Assert.Null(new BoundType("other", BoundTypeKind.Semantics, semantics: semantics, components: [BoundType.I32]).HandleMode);
+        => Assert.Null(CompilationTestHelper.BindSuccess("()").Types.Reference(semantics, BoundType.I32).HandleMode);
 
     [Theory]
     [InlineData("obj")]

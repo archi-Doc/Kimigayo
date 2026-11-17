@@ -40,17 +40,15 @@ public sealed partial class Binding
         return this.hirVersion;
     }
 
-    // The columns of every module, the library included, from the pass's facts.
+    // The columns of the pass's modules, in their order, from the pass's facts.
     private void PublishPass()
     {
         this.hirVersion = this.storageVersion;
         var publisher = this.hirPublisher ??= new(this);
-        foreach (var module in this.compilation.SourceModules)
+        for (var i = 0; i < this.pass.Count; i++)
         {
-            publisher.Publish(module.Syntax, module.RootKoto);
+            publisher.Publish(this.pass[i].Syntax, this.pass[i].RootKoto);
         }
-
-        publisher.Publish(this.Library.Kotonoha.Syntax, this.Library.Kotonoha.RootKoto);
     }
 
     // One walk of the tree through its child slots; each node's position follows from the slot its parent holds it in.

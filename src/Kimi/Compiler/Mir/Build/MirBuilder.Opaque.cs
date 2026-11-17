@@ -63,9 +63,7 @@ internal sealed partial class MirBuilder
         this.Set(destination, MirRvalue.Opaque(this.body.TypeOf(destination) ?? BoundType.Unit, site), node);
         if (!completes)
         {
-            var next = this.body.AddBlock();
-            this.body.Terminate(this.current, MirTerminator.Unreachable(this.Info(node), next));
-            this.current = next;
+            this.Diverge(node);
         }
     }
 }
