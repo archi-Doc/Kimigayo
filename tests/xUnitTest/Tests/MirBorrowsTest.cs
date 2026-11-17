@@ -2833,8 +2833,8 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
     }
 
     // V16 (DECISIONS R4-M140): the holding memo answers for one program version; a rebind's version clears it, and A5's views over the new
-    // version fill it again within the capacity it keeps, so a warm rebind, its MIR build and A5 over a program and the library allocate
-    // nothing.
+    // version fill it again within the capacity it keeps, so a warm rebind, its MIR build and A5 over a program, the library bodies it
+    // reaches included (its compilation's build, PLAN G951 U2), allocate nothing.
     [Trait("Purpose", "Allocation")]
     [Fact]
     public void ARebindRefillsTheHoldingMemoWithoutAllocating()
