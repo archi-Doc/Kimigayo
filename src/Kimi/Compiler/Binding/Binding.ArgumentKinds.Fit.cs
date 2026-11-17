@@ -6,6 +6,12 @@ namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
+    // DECISIONS D3 (the owner's O-392 (c), G812 ruling 109; temporary, removed with (R)): the Tuple elements down to the part where
+    // the last argument fit failed (FitArgument's Inapplicable): a Tuple literal's element (ProbeAggregateArgument), then, below a
+    // typed part, the elements its structural fit names (FitTyped); none where the failure is the argument's own. A value call on
+    // the split reads it right after the fit and blames the element's bindings (ItemCallFails).
+    private TupleElements argumentMisfit;
+
     // SPEC 10.1, 10.2, 10.5.1: whether an argument part fits a candidate's closed Type at its position, by the part's kind, and the
     // operation that adapts it (unset when it does not fit, but for a literal's range shape). Another part that awaits its call (a
     // Case, a Call) is checked only by the selected candidate; an anonymous function (Function) fits by its signature and a function
@@ -16,6 +22,7 @@ public sealed partial class Binding
     {
         var node = KotoHelper.UnwrapParentheses(part);
         operation = default;
+        this.argumentMisfit = default;
         var kind = this.KindOf(node);
         switch (kind)
         {
@@ -103,6 +110,7 @@ public sealed partial class Binding
                 var result = this.FitElement(tuple.Elements[i], expected.Components[i], scope);
                 if (result != CandidateApplicability.Applicable)
                 {
+                    this.argumentMisfit = this.argumentMisfit.Within(i);
                     return result;
                 }
             }
@@ -390,7 +398,7 @@ public sealed partial class Binding
 
         if (!this.AdaptInput(
                 node, FixedPattern.Open(type), actual, scope, null, null, out var adapted, out var quality, out var kind, recordPair: false, deferAcquisition: true) ||
-            !this.FitsStructuralPartAt(adapted, type, use))
+            !this.FitsStructuralPartAt(adapted, type, use, out this.argumentMisfit))
         {
             return CandidateApplicability.Inapplicable;
         }
