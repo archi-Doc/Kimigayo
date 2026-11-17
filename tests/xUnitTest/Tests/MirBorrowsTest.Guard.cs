@@ -507,7 +507,9 @@ public sealed partial class MirBorrowsTest
     // condition 3). A generic caller whose own premise gives its X the form is read alike (idFormGenBad, idFormGenOk). A handed
     // callable's result under `T is U` is a T (retIdWBad: mk's RetW may hold w's address, so dst is used after `y = 5`; F's ruling 52,
     // fail-before on 5f22c9b6c: accepted), as it is under `mk: (E) -> T` (retPlainWBad); without the premise f cannot store mk's U in
-    // dst (retNoIdWOk).
+    // dst (retNoIdWOk). Identity is closed under replacement inside any Type: under `E is D` a writer `set: (uniq/T, BxI<D>)` takes
+    // `y: BxI<E>` (structIdBad; F's ruling 55, fail-before on a6e0d4be4: accepted), as `set: (uniq/T, BxI<E>)` does with no premise
+    // (structPlainBad); without the premise BxI<E> and BxI<D> are distinct and nothing keeps the pointer in dst (structNoIdOk).
     [Fact]
     public void AKeptTypeIsReadInItsFunctionsView()
     {
@@ -550,6 +552,17 @@ public sealed partial class MirBorrowsTest
                 T is U
                 return
             func fmkN<T, U, E>(dst: uniq/T, p: E, mk: (E) -> U) -> ()
+                return
+            struct BxI<X>
+                public var item: X
+                public init(item: X) => self.item = item@move
+            func setRetW(x: uniq/RetW, b: BxI<raw/u8>) => ()
+            func fsId<T, E, D>(dst: uniq/T, y: BxI<E>, set: (uniq/T, BxI<D>) -> ()) -> ()
+                E is D
+                return
+            func fsPlain<T, E>(dst: uniq/T, y: BxI<E>, set: (uniq/T, BxI<E>) -> ()) -> ()
+                return
+            func fsNo<T, E, D>(dst: uniq/T, y: BxI<E>, set: (uniq/T, BxI<D>) -> ()) -> ()
                 return
             func idFormBad()
                 var kk: u8 = 1
@@ -673,6 +686,27 @@ public sealed partial class MirBorrowsTest
                 fmkN(dst@uniq, w@raw@raw/u8, mkRetW)
                 y = 5
                 inspect(dst@ref)
+            func structIdBad()
+                var y: i32 = 1
+                let w: ref/i32 = y@ref
+                var dst = RetW.init(q: null)
+                fsId(dst@uniq, BxI.init(item: w@raw@raw/u8), setRetW)
+                y = 5
+                inspect(dst@ref)
+            func structPlainBad()
+                var y: i32 = 1
+                let w: ref/i32 = y@ref
+                var dst = RetW.init(q: null)
+                fsPlain(dst@uniq, BxI.init(item: w@raw@raw/u8), setRetW)
+                y = 5
+                inspect(dst@ref)
+            func structNoIdOk()
+                var y: i32 = 1
+                let w: ref/i32 = y@ref
+                var dst = RetW.init(q: null)
+                fsNo(dst@uniq, BxI.init(item: w@raw@raw/u8), setRetW)
+                y = 5
+                inspect(dst@ref)
             """);
         Assert.Equal(
             [
@@ -680,7 +714,7 @@ public sealed partial class MirBorrowsTest
                 "idEnclBad: let host = Host.init(r@follow@raw)", "idEnclNoPremBad: z = 5",
                 "idEnclNoPremBad: let host = Host.init(r@follow@raw)", "idRawStepBad: z = 5",
                 "idRawStepBad: var q = u@follow@raw",
-                "idFormGenBad: kk = 2", "retPlainWBad: y = 5", "retIdWBad: y = 5",
+                "idFormGenBad: kk = 2", "retPlainWBad: y = 5", "retIdWBad: y = 5", "structIdBad: y = 5", "structPlainBad: y = 5",
             ],
             Problems(c, Analyze(c), [.. LoanCodes, DiagnosticCode.Unsupported_Kd]));
     }

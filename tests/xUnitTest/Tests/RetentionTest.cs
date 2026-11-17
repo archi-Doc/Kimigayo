@@ -817,12 +817,16 @@ public sealed partial class RetentionTest
     // 78e4f9829, F's ruling 52): at a call read in the callee's terms, a handed callable's Types are judged under the callee's identity
     // premises (Identical, the one Type test of Filled's Takes, Returns and Writes). With `T is U` a handed `mk: (E) -> U` returns a T, so
     // slot's own storage keeps y (Rb); with `E is D` a writer `set: (uniq/T, D)` takes y (Tb). Without the premise neither keeps y (Rc,
-    // Tc), though the call binds both Types alike. Fail-before on 5f22c9b6c: Rb and Tb kept no `1 Value`.
+    // Tc), though the call binds both Types alike. Fail-before on 5f22c9b6c: Rb and Tb kept no `1 Value`. Identity is closed under
+    // replacement inside any Type, so with `E is D` a writer `set: (uniq/T, B<D>)` takes `y: B<E>` (S1, F's ruling 55; fail-before on
+    // a6e0d4be4: no `1 Value`); without the premise it does not (S1c).
     [Theory]
     [InlineData("func f<T, U, E>(slot: uniq/T, y: E, mk: (E) -> U) -> ()\n    T is U\n    return\nfunc mku(q: u64) -> u64 => q\nfunc g(x: uniq/u64, v: u64)\n    f(x, v, mku)", true)]
     [InlineData("func f<T, U, E>(slot: uniq/T, y: E, mk: (E) -> U) -> ()\n    return\nfunc mku(q: u64) -> u64 => q\nfunc g(x: uniq/u64, v: u64)\n    f(x, v, mku)", false)]
     [InlineData("func f<T, E, D>(slot: uniq/T, y: E, set: (uniq/T, D) -> ()) -> ()\n    E is D\n    return\nfunc wru(s: uniq/u64, q: u64) => ()\nfunc g(x: uniq/u64, v: u64)\n    f(x, v, wru)", true)]
     [InlineData("func f<T, E, D>(slot: uniq/T, y: E, set: (uniq/T, D) -> ()) -> ()\n    return\nfunc wru(s: uniq/u64, q: u64) => ()\nfunc g(x: uniq/u64, v: u64)\n    f(x, v, wru)", false)]
+    [InlineData(Box + "func f<T, E, D>(slot: uniq/T, y: B<E>, set: (uniq/T, B<D>) -> ()) -> ()\n    E is D\n    return\nfunc wrb(s: uniq/u64, b: B<u64>) => ()\nfunc g(x: uniq/u64, v: B<u64>)\n    f(x, v@move, wrb)", true)]
+    [InlineData(Box + "func f<T, E, D>(slot: uniq/T, y: B<E>, set: (uniq/T, B<D>) -> ()) -> ()\n    return\nfunc wrb(s: uniq/u64, b: B<u64>) => ()\nfunc g(x: uniq/u64, v: B<u64>)\n    f(x, v@move, wrb)", false)]
     public void AHandedCallableIsReadUnderTheCalleesIdentityPremises(string source, bool keepsY)
     {
         var call = Calls(Bind(source + "\n"), "f").Single();
