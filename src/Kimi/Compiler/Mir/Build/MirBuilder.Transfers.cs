@@ -116,16 +116,7 @@ internal sealed partial class MirBuilder
 
         var mark = target.At.Mark;
         var entry = this.Exit(target.At.Depth, continues ? target.Continue : join);
-        var runtime = continues ? -1 : this.body.AddBlock(); // The runtime edge's first block: the abandoned borrows end, the result is placed.
-        for (var i = mark; i < this.arguments.Count; i++)
-        {
-            var pending = this.arguments[i].Place;
-            if (this.arguments[i].Kind == MirOperandKind.Move && this.IsTemp(pending) && MirTypes.IsReference(this.body.TypeOf(pending)))
-            {
-                runtime = runtime < 0 ? this.body.AddBlock() : runtime;
-                this.body.Push(runtime, MirStatement.Of(MirStatementKind.EndBorrow, pending, inner));
-            }
-        }
+        var runtime = this.Abandon(continues ? -1 : this.body.AddBlock(), mark, inner); // The runtime edge's first block, which places the result.
 
         if (!continues && assumed && !valueless)
         {
@@ -156,8 +147,17 @@ internal sealed partial class MirBuilder
         this.current = next;
         if (rest.Block >= 0)
         {
-            // The operand's value-less paths: an assumed delivery of nothing through the drop tree to the target's Apart, and on after the transfer.
-            this.body.Terminate(rest.Block, MirTerminator.Goto(this.Exit(target.At.Depth, this.Aside(index)), inner, next));
+            // The operand's value-less paths: an assumed delivery of nothing, which abandons the same calls, through the drop tree to the
+            // target's Apart, and on after the transfer.
+            var aside = this.Exit(target.At.Depth, this.Aside(index));
+            var abandoned = this.Abandon(-1, mark, inner);
+            if (abandoned >= 0)
+            {
+                this.body.Terminate(abandoned, MirTerminator.Goto(aside, inner));
+                aside = abandoned;
+            }
+
+            this.body.Terminate(rest.Block, MirTerminator.Goto(aside, inner, next));
         }
 
         if (secures && value.Kind == MirOperandKind.Move && this.body.Locals[value.Place.Root] is var secured &&
@@ -184,6 +184,23 @@ internal sealed partial class MirBuilder
         var temp = this.Temp(this.TypeOf(value) ?? BoundType.Unit, node);
         this.Use(temp, value, node);
         return MirOperand.Move(temp);
+    }
+
+    // SPEC 16.2.2, 15.6.7: on its way to its target a transfer ends the borrows of the calls it abandons, the reference temps among the
+    // operands pending since its target began (mark), in a block, which is built at the first of them where none is given (-1).
+    private int Abandon(int block, int mark, in SourceInfo info)
+    {
+        for (var i = mark; i < this.arguments.Count; i++)
+        {
+            var pending = this.arguments[i].Place;
+            if (this.arguments[i].Kind == MirOperandKind.Move && this.IsTemp(pending) && MirTypes.IsReference(this.body.TypeOf(pending)))
+            {
+                block = block < 0 ? this.body.AddBlock() : block;
+                this.body.Push(block, MirStatement.Of(MirStatementKind.EndBorrow, pending, info));
+            }
+        }
+
+        return block;
     }
 
     private bool IsTemp(MirPlace place) => place is { Projection: 0, Root: >= 0 } && this.body.Locals[place.Root].Kind == MirLocalKind.Temp;
