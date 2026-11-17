@@ -6,7 +6,7 @@ using Xunit;
 
 namespace XunitTest;
 
-// J2's fix for the Middle's NO CONSENT on C-373 (PLAN G936; design `J2\design-fix.md` revision 2c; the owner's O-358 (a), O-362 (a),
+// J2's fix for the Middle's NO CONSENT on C-373 (PLAN G936; design `J2\design-fix.md` revision 3; the owner's O-358 (a), O-362 (a),
 // O-368 (a); SPEC 10.1, 10.4, 10.8, 10.8.1, 15.3.3, 15.3.6, 15.6.1, 15.6.5, 15.8.2; DECISIONS BU-104). A waited variable's solution
 // is one value for every reader, `(E and region)`: the evidence candidate met with the call's region. Each row is labelled from SPEC
 // before any build's output; its id is the design's.
@@ -131,6 +131,19 @@ public partial class CallOriginRelationTest
     [InlineData("struct T {a}\n    origin a outlives static\n    public let x: ref/i32 during a\n    public init(x: ref/i32 during a) => self.x = x\n\nfunc h<U>(x: Option<ref/U during c>, y: ref/U during c) -> i32 => 0\nfunc h<U>(x: Option<ref/U during c>, y: ref/U during c, n: i32 = 0) -> bool => true\nfunc k(p: ref/i32, t: T during p) -> i32\n    origin p outlives static\n    let r = h(.None, t@ref)\n    let z: i32 = r\n    return z\n")]
     // tr5v
     [InlineData("struct T {a}\n    origin a outlives static\n    public let x: ref/i32 during a\n    public init(x: ref/i32 during a) => self.x = x\n\nfunc g0(x: Option<T during q>) -> i32 => 0\nfunc g0(x: Option<T during q>, n: i32 = 0) -> bool => true\nfunc k() -> i32\n    let r = g0(.None)\n    let z: i32 = r\n    return z\n")]
+    // A call's result Type's declared relation over the call's region (revision 3): the result row at the call, which every derived place (a later call, a pattern, a field, a returned value, a default) rests on.
+    // c3e1v
+    [InlineData("struct T {a}\n    origin a outlives static\n    public let x: ref/i32 during a\n    public init(x: ref/i32 during a) => self.x = x\n\nfunc st() -> ref/i32 during static => $abort(\"no\")\nfunc mk(x: Option<ref/i32 during q>, y: ref/i32 during q) -> T during q => $abort(\"no\")\nfunc k() -> i32\n    let t = mk(.None, st())\n    return 0\n")]
+    // c3e3v
+    [InlineData("struct T {a}\n    origin a outlives static\n    public let x: ref/i32 during a\n    public init(x: ref/i32 during a) => self.x = x\n\nfunc mk(x: Option<ref/i32 during q>, y: ref/i32 during q) -> T during q => $abort(\"no\")\nfunc k(p: ref/i32) -> i32\n    origin p outlives static\n    let t = mk(.None, p)\n    return 0\n")]
+    // c3b3v
+    [InlineData("struct T {a}\n    origin a outlives static\n    public let x: ref/i32 during a\n    public init(x: ref/i32 during a) => self.x = x\n\nfunc mk3(x: Option<ref/i32 during q>) -> T during q => $abort(\"no\")\nfunc k(p: ref/i32) -> i32\n    origin p outlives static\n    let t = mk3(.Some(p))\n    return 0\n")]
+    // d4e3v
+    [InlineData("struct T {a}\n    origin a outlives static\n    public let x: ref/i32 during a\n    public init(x: ref/i32 during a) => self.x = x\n\nfunc gr(x: Option<ref/i32 during q>, y: ref/i32 during q) -> Option<T during q> => $abort(\"no\")\nfunc k(p: ref/i32) -> i32\n    origin p outlives static\n    return match gr(.None, p)\n        .Some(_) => 0\n        .None => 1\n")]
+    // ff2bv
+    [InlineData("struct T {a}\n    origin a outlives static\n    public let x: ref/i32 during a\n    public init(x: ref/i32 during a) => self.x = x\n\nstruct S2 {b}\n    origin b outlives static\n    public let t: Option<T during b>\n    public init(t: Option<T during b>) => self.t = t@move\nfunc mks(x: Option<ref/i32 during q>, y: ref/i32 during q) -> S2 during q => $abort(\"no\")\nfunc st() -> ref/i32 during static => $abort(\"no\")\nfunc k() -> i32\n    let s = mks(.None, st())\n    let o = s.t@ref\n    return 0\n")]
+    // da1v
+    [InlineData("struct T {a}\n    origin a outlives static\n    public let x: ref/i32 during a\n    public init(x: ref/i32 during a) => self.x = x\n\nfunc gd(y: ref/i32 during q, x: Option<T during q> = .None) -> i32\n    return 0\nfunc st() -> ref/i32 during static => $abort(\"no\")\nfunc k() -> i32\n    return gd(st())\n")]
     public void AWaitedVariablesSolutionIsOneValueForEveryReader(string body)
     {
         var check = DiagnosticCorpus.Check(body + Main);
@@ -141,10 +154,10 @@ public partial class CallOriginRelationTest
     // as an Origin relation at its own site; a relation between Origins fixed in the body stays the formation proof's.
     [Theory]
     // A Type's declared relation over the variable (D3a): at a call's input, in a slot's solution, at a result, through a later use, a pattern, a function reference, a conformance or Constraint subject.
-    // rt2i
-    [InlineData("struct T {a}\n    origin a outlives static\n    public let x: ref/i32 during a\n    public init(x: ref/i32 during a) => self.x = x\n\nfunc g2(x: Option<ref/i32 during q>, y: ref/i32 during q) -> Option<T during q>\n    origin q outlives static\n    return .None\nfunc k(p: ref/i32) -> i32\n    let t = g2(.None, p)\n    return 0\n", "UnprovenOriginRelation_Kd@.None, p)")]
-    // rk1i
-    [InlineData("struct T {a}\n    origin a outlives static\n    public let x: ref/i32 during a\n    public init(x: ref/i32 during a) => self.x = x\n\nfunc gr(x: Option<ref/i32 during q>, y: ref/i32 during q) -> Option<T during q>\n    origin q outlives static\n    return .None\nfunc k(p: ref/i32) -> i32\n    return match gr(.None, p)\n        .Some(_) => 0\n        .None => 1\n", "UnprovenOriginRelation_Kd@.None, p)")]
+    // rt2i (two independent declared relations, the callee's clause and its result Type's, coincide after substitution: each its row; F's J2 ruling 27 (i))
+    [InlineData("struct T {a}\n    origin a outlives static\n    public let x: ref/i32 during a\n    public init(x: ref/i32 during a) => self.x = x\n\nfunc g2(x: Option<ref/i32 during q>, y: ref/i32 during q) -> Option<T during q>\n    origin q outlives static\n    return .None\nfunc k(p: ref/i32) -> i32\n    let t = g2(.None, p)\n    return 0\n", "UnprovenOriginRelation_Kd@.None, p)|UnprovenOriginRelation_Kd@g2(.None, p)")]
+    // rk1i (two independent declared relations, the callee's clause and its result Type's, coincide after substitution: each its row; F's J2 ruling 27 (i))
+    [InlineData("struct T {a}\n    origin a outlives static\n    public let x: ref/i32 during a\n    public init(x: ref/i32 during a) => self.x = x\n\nfunc gr(x: Option<ref/i32 during q>, y: ref/i32 during q) -> Option<T during q>\n    origin q outlives static\n    return .None\nfunc k(p: ref/i32) -> i32\n    return match gr(.None, p)\n        .Some(_) => 0\n        .None => 1\n", "UnprovenOriginRelation_Kd@.None, p)|UnprovenOriginRelation_Kd@gr(.None, p)")]
     // dc1i
     [InlineData("func g(x: Option<ref/i32 during q>, y: ref/i32 during q) -> i32\n    origin q outlives static\n    return 0\nfunc k(p: ref/i32) -> i32\n    return g(.None, p)\n", "UnprovenOriginRelation_Kd@.None, p)")]
     // fr1i
@@ -224,6 +237,40 @@ public partial class CallOriginRelationTest
     [InlineData("struct T {a}\n    origin a outlives static\n    public let x: ref/i32 during a\n    public init(x: ref/i32 during a) => self.x = x\n\nfunc g(x: Option<T during q>, y: ref/i32 during q) -> i32 => 0\nfunc g(x: Option<T during q>, y: ref/i32 during q, n: i32 = 0) -> bool => true\nfunc k(p: ref/i32) -> i32\n    let r = g(.None, p)\n    let z: i32 = r\n    return z\n", "UnprovenOriginRelation_Kd@.None, p)")]
     // tr4i
     [InlineData("struct T {a}\n    origin a outlives static\n    public let x: ref/i32 during a\n    public init(x: ref/i32 during a) => self.x = x\n\nfunc g(x: Option<T during q>, y: ref/i32 during q, n: i32 = 0) -> i32 => 0\nfunc g(x: Option<T during q>, y: ref/i32 during q, m: bool = false) -> bool => true\nfunc k(p: ref/i32) -> i32\n    origin p outlives static\n    let r = g(.None, p)\n    let z: i32 = r\n    return z\n", "AmbiguousBinding_Kd@g(.None, p)")]
+    // A call's result Type's declared relation over the call's region (revision 3): the result row at the call, which every derived place (a later call, a pattern, a field, a returned value, a default) rests on.
+    // c3e1
+    [InlineData("struct T {a}\n    origin a outlives static\n    public let x: ref/i32 during a\n    public init(x: ref/i32 during a) => self.x = x\n\nfunc mk(x: Option<ref/i32 during q>, y: ref/i32 during q) -> T during q => $abort(\"no\")\nfunc k() -> i32\n    let v: i32 = 5\n    let t = mk(.None, v@ref)\n    return 0\n", "UnsatisfiedOriginRelation_Kd@mk(.None, v@ref)")]
+    // c3e2
+    [InlineData("struct T {a}\n    origin a outlives static\n    public let x: ref/i32 during a\n    public init(x: ref/i32 during a) => self.x = x\n\nfunc mk(x: Option<ref/i32 during q>, y: ref/i32 during q) -> T during q => $abort(\"no\")\nfunc k(p: ref/i32) -> i32\n    var a = p\n    let t = mk(.None, a)\n    return 0\n", "UnprovenOriginRelation_Kd@mk(.None, a)")]
+    // c3e3
+    [InlineData("struct T {a}\n    origin a outlives static\n    public let x: ref/i32 during a\n    public init(x: ref/i32 during a) => self.x = x\n\nfunc mk(x: Option<ref/i32 during q>, y: ref/i32 during q) -> T during q => $abort(\"no\")\nfunc k(p: ref/i32) -> i32\n    let t = mk(.None, p)\n    return 0\n", "UnprovenOriginRelation_Kd@mk(.None, p)")]
+    // c3e4
+    [InlineData("struct T {a}\n    origin a outlives static\n    public let x: ref/i32 during a\n    public init(x: ref/i32 during a) => self.x = x\n\nfunc keep<V>(x: Option<V>, y: V) -> V => y@move\nfunc mk(x: Option<ref/i32 during q>, y: ref/i32 during q) -> T during q => $abort(\"no\")\nfunc k(p: ref/i32) -> i32\n    let t = mk(.None, keep(.None, p))\n    return 0\n", "UnprovenOriginRelation_Kd@mk(.None, keep(.None")]
+    // c3b3
+    [InlineData("struct T {a}\n    origin a outlives static\n    public let x: ref/i32 during a\n    public init(x: ref/i32 during a) => self.x = x\n\nfunc mk3(x: Option<ref/i32 during q>) -> T during q => $abort(\"no\")\nfunc k(p: ref/i32) -> i32\n    let t = mk3(.Some(p))\n    return 0\n", "UnprovenOriginRelation_Kd@mk3(.Some(p))")]
+    // c3t1
+    [InlineData("struct T {a}\n    origin a outlives static\n    public let x: ref/i32 during a\n    public init(x: ref/i32 during a) => self.x = x\n\nfunc mkt<U>(x: Option<ref/U during q>, y: ref/U during q) -> T during q => $abort(\"no\")\nfunc k() -> i32\n    let v: i32 = 5\n    let t = mkt(.None, v@ref)\n    return 0\n", "UnsatisfiedOriginRelation_Kd@mkt(.None, v@ref)")]
+    // c3p1
+    [InlineData("struct T {a}\n    origin a outlives static\n    public let x: ref/i32 during a\n    public init(x: ref/i32 during a) => self.x = x\n\nfunc mkp(x: Option<ref/i32 during q>, y: ref/i32 during q, t: T during static) -> T during q => t@move\nfunc k(t0: T during static) -> i32\n    let v: i32 = 5\n    let t = mkp(.None, v@ref, t0@move)\n    return 0\n", "UnsatisfiedOriginRelation_Kd@mkp(.None, v@ref, t0")]
+    // c3u1
+    [InlineData("struct T {a}\n    origin a outlives static\n    public let x: ref/i32 during a\n    public init(x: ref/i32 during a) => self.x = x\n\nfunc mk(x: Option<ref/i32 during q>, y: ref/i32 during q) -> T during q => $abort(\"no\")\nfunc use1(t: T during s) -> i32 => 0\nfunc k() -> i32\n    let v: i32 = 5\n    let t = mk(.None, v@ref)\n    return use1(t@move)\n", "UnsatisfiedOriginRelation_Kd@mk(.None, v@ref)")]
+    // d4e1
+    [InlineData("struct T {a}\n    origin a outlives static\n    public let x: ref/i32 during a\n    public init(x: ref/i32 during a) => self.x = x\n\nfunc gr(x: Option<ref/i32 during q>, y: ref/i32 during q) -> Option<T during q> => $abort(\"no\")\nfunc k() -> i32\n    let v: i32 = 5\n    return match gr(.None, v@ref)\n        .Some(_) => 0\n        .None => 1\n", "UnsatisfiedOriginRelation_Kd@gr(.None, v@ref)")]
+    // d4e3
+    [InlineData("struct T {a}\n    origin a outlives static\n    public let x: ref/i32 during a\n    public init(x: ref/i32 during a) => self.x = x\n\nfunc gr(x: Option<ref/i32 during q>, y: ref/i32 during q) -> Option<T during q> => $abort(\"no\")\nfunc k(p: ref/i32) -> i32\n    return match gr(.None, p)\n        .Some(_) => 0\n        .None => 1\n", "UnprovenOriginRelation_Kd@gr(.None, p)")]
+    // ff2b
+    [InlineData("struct T {a}\n    origin a outlives static\n    public let x: ref/i32 during a\n    public init(x: ref/i32 during a) => self.x = x\n\nstruct S2 {b}\n    origin b outlives static\n    public let t: Option<T during b>\n    public init(t: Option<T during b>) => self.t = t@move\nfunc mks(x: Option<ref/i32 during q>, y: ref/i32 during q) -> S2 during q => $abort(\"no\")\nfunc k() -> i32\n    let v: i32 = 5\n    let s = mks(.None, v@ref)\n    let o = s.t@ref\n    return 0\n", "UnsatisfiedOriginRelation_Kd@mks(.None, v@ref)")]
+    // ff1b
+    [InlineData("struct T {a}\n    origin a outlives static\n    public let x: ref/i32 during a\n    public init(x: ref/i32 during a) => self.x = x\n\nstruct S2 {b}\n    public let t: Option<T during b>\n    public init(t: Option<T during b>) => self.t = t@move\nfunc mks(x: Option<ref/i32 during q>, y: ref/i32 during q) -> S2 during q => $abort(\"no\")\nfunc k() -> i32\n    let v: i32 = 5\n    let s = mks(.None, v@ref)\n    let o = s.t@ref\n    return 0\n", "UnprovenConstraint_Kd@let t: Option<T duri")]
+    // cc1
+    [InlineData("struct T {a}\n    origin a outlives static\n    public let x: ref/i32 during a\n    public init(x: ref/i32 during a) => self.x = x\n\nfunc mk(x: Option<ref/i32 during q>, y: ref/i32 during q) -> T during q => $abort(\"no\")\nfunc k() -> i32\n    let v: i32 = 5\n    let r = v@ref\n    let f = func [r] () -> i32\n        let t = mk(.None, r)\n        return 0\n    return f()\n", "UnprovenOriginRelation_Kd@mk(.None, r)")]
+    // da1
+    [InlineData("struct T {a}\n    origin a outlives static\n    public let x: ref/i32 during a\n    public init(x: ref/i32 during a) => self.x = x\n\nfunc gd(y: ref/i32 during q, x: Option<T during q> = .None) -> i32\n    return 0\nfunc k() -> i32\n    let v: i32 = 5\n    return gd(v@ref)\n", "UnsatisfiedOriginRelation_Kd@gd(v@ref)")]
+    // An anonymous callee (outside J2: G913 accepts it too): cl2 is invalid (the call's instantiated result `T during p` needs
+    // `p outlives static`, SPEC 15.6.1, 15.6.4) and accepted, as `CarriesResultPremises` excludes anonymous functions; a named
+    // callee's twin (nf2) is rejected. The row pins today's acceptance until F's class 1 open issue (J2 ruling 28, K2) is fixed.
+    // cl2
+    [InlineData("struct T {a}\n    origin a outlives static\n    public let x: ref/i32 during a\n    public init(x: ref/i32 during a) => self.x = x\n\nfunc k(p: ref/i32) -> i32\n    let c = func [] (x: ref/i32) -> T during x => $abort(\"no\")\n    let t = c(p)\n    return 0\n", "")]
     public void AWaitedVariablesReadersKeepTheirRecords(string body, string records)
     {
         var source = body + Main;

@@ -185,20 +185,18 @@ public sealed partial class Binding
         }
 
         // SPEC 15.3.3, 15.6.4 step 3 (J2, PLAN G936): a constructor proves nothing of its owner Type's clauses, which are premises
-        // inside the Type and obligations of each use, and it carries no result premises (CarriesResultPremises). The owner's declared
-        // relations that are rows of the call (CallRowRelation: over a region of the construction) are formed here, at the
-        // construction; every other one stays the formation proof's (CheckTypeOriginRelations asks the same predicate).
+        // inside the Type and obligations of each use, and it carries no result premises (CarriesResultPremises). Its result is the
+        // construction Type, whose declared relations go to the result's clause judge (VisitTypeClause): a row of the call over a
+        // region of the construction, the formation proof's otherwise.
         if (selected.IsConstructor && declaringType is { Symbol: { } owner } &&
             this.originDeclarations.TryGetValue(owner.Declaration, out var ownerDeclaration) && ownerDeclaration.Completed)
         {
+            var visit = new WellFormedVisit(WellFormedSubject.NamedResult, selected, call, WellFormedAction.Require);
             foreach (var relation in ownerDeclaration.Relations)
             {
                 var longer = this.SubstituteStoredOrigin(relation.Longer, owner.Declaration, (BoundOrigin[])declaringType.OriginArguments);
                 var shorter = this.SubstituteStoredOrigin(relation.Shorter, owner.Declaration, (BoundOrigin[])declaringType.OriginArguments);
-                if (CallRowRelation(longer, shorter))
-                {
-                    this.JudgeCallPosition(call, longer, shorter, relation.Equality, null, relation.Syntax, declared: true);
-                }
+                _ = this.VisitTypeClause(longer, shorter, relation.Equality, relation.Syntax, visit);
             }
         }
 
