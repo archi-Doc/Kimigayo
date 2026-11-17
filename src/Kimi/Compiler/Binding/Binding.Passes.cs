@@ -44,6 +44,10 @@ public sealed partial class Binding
     // library (the one pass).
     private BindingPass ProgramPass => new(this.compilation.SourceModules, this.Library.Kotonoha, this.programPart);
 
+    // Every module of the compilation, the set a reader outside a pass walks (a family's Values; the composed views' modules): the source
+    // modules, then the library, with Binding's own part. Until PLAN G949 S1-r1b it equals the program pass's set.
+    private BindingPass Modules => new(this.compilation.SourceModules, this.Library.Kotonoha, this.programPart);
+
     // Per Bind: the SyntaxIds, the Result and the later phases' facts discarded, the runs started.
     private void BeginBind(BindingMode mode)
     {
@@ -190,8 +194,9 @@ public sealed partial class Binding
 
     // A pass's module set (DECISIONS BU-220's pass driver): its source modules by ordinal, then the library module when the pass binds
     // it (d8's order). A step walks Sources and Library where their walks differ, and the modules in that order (the indexer) where they
-    // do not; which walk a module takes follows from its place in the set, never from which pass runs.
-    private readonly struct BindingPass(Kotonoha[] sources, Kotonoha? library, PassPart part)
+    // do not; which walk a module takes follows from its place in the set, never from which pass runs. One set is not a pass's:
+    // Binding.Modules, every module with Binding's own part, which a family's Values walks for readers outside a pass.
+    internal readonly struct BindingPass(Kotonoha[] sources, Kotonoha? library, PassPart part)
     {
         // The modules: the source modules, then the library module, if any.
         internal int Count => sources.Length + (library is null ? 0 : 1);

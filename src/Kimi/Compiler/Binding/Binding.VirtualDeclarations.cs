@@ -69,7 +69,7 @@ public sealed partial class Binding
     {
         this.virtualDeclarations.Clear();
         this.virtualDeclarationFailures?.Clear();
-        foreach (var entries in this.overrideEntries.Values)
+        foreach (var entries in this.overrideEntries.Values.In(this.pass))
         {
             entries!.Clear();
         }

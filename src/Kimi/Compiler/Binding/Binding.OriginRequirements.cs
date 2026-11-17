@@ -1,5 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using System.Diagnostics.CodeAnalysis;
 using System.Numerics;
 using Kimi.Compiler.Parsing;
 
@@ -7,7 +8,6 @@ namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
-    private readonly Dictionary<Koto, OriginRequirementWork> originRequirementNodes = new(ReferenceEqualityComparer.Instance);
     private readonly List<OriginRequirementWork> activeOriginRequirements = new();
     private readonly Queue<OriginRequirementWork> originRequirementQueue = new();
 
@@ -147,9 +147,9 @@ public sealed partial class Binding
                 schema.GenericSlots[0].OriginVariance = OriginVariance.Covariant;
             }
 
-            if (!this.originRequirementNodes.TryGetValue(node, out var work))
+            if (!OriginRequirementRows.TryGetValue(node, out var work))
             {
-                this.originRequirementNodes.Add(node, work = new(node, schema));
+                OriginRequirementRows.Add(node, work = new(node, schema));
             }
 
             work.Schema = schema;
@@ -287,7 +287,7 @@ public sealed partial class Binding
     // once per consumer (its Consumer mark), so a part met again adds nothing (DECISIONS BU-55, BU-58).
     private void CollectRequirementEdges(BoundType type, OriginRequirementWork consumer, uint query)
     {
-        if (type.Symbol?.Declaration is { } declaration && this.originRequirementNodes.TryGetValue(declaration, out var source) &&
+        if (type.Symbol?.Declaration is { } declaration && OriginRequirementRows.TryGetValue(declaration, out var source) &&
             source.Pass == this.originRequirementPass && source.Consumer != this.originRequirementConsumer)
         {
             source.Consumer = this.originRequirementConsumer;
@@ -434,7 +434,7 @@ public sealed partial class Binding
         return (first, cases.Count - first);
     }
 
-    private sealed class OriginRequirementWork(Koto owner, DeclarationSchema schema)
+    internal sealed class OriginRequirementWork(Koto owner, DeclarationSchema schema)
     {
         internal Koto Owner { get; } = owner;
 
@@ -447,5 +447,20 @@ public sealed partial class Binding
         internal uint Consumer { get; set; }
 
         internal bool Queued { get; set; }
+    }
+
+    /// <summary>The `originRequirementNodes` family's one accessor (DECISIONS BU-220): a kept family, a declaration's Origin requirement
+    /// work, made once and reused by each pass (ComputeOriginRequirements), kept in its key node's module's NodeColumns at its SyntaxId.
+    /// Its members keep the names its readers use.</summary>
+    private readonly struct OriginRequirementRows
+    {
+        internal static void Add(Koto node, OriginRequirementWork value)
+        {
+            ref var row = ref HirTables.Of(node).Families.OriginRequirementNodes.Ref(node.SyntaxId);
+            row = row is null ? value : throw new ArgumentException($"`originRequirementNodes` already holds a row at `{node}`.", nameof(node));
+        }
+
+        internal static bool TryGetValue(Koto node, [NotNullWhen(true)] out OriginRequirementWork? value)
+            => (value = node.SyntaxOwner is { } table ? table.Hir.Families.OriginRequirementNodes.Get(node.SyntaxId) : null) is not null;
     }
 }

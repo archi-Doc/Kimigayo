@@ -5040,7 +5040,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
   - Completed by BU-215 (PLAN G904): Revision 9's "the signature's Binder" is, for a Function Type, its `BoundType.Binder`, the
     syntax that declares it.
 - **R4-M155 A failed comparison's record reads the comparison's one fact, produced once where it is judged (G216 (a) U2.1)**
-  (2026-10-31; superseded in part by R4-M162; amended by R4-M161; design round 2 and design-r2 Amendments 1-5; the owner, verbatim:
+  (2026-10-31; superseded in part by R4-M162; amended by R4-M161; amended in part by BU-221 (PLAN G913: a failed solve's bound names
+  a variable's representative, not only fixed ends); design round 2 and design-r2 Amendments 1-5; the owner, verbatim:
   「すべて推奨の内容でお願いします」 for round 2's design and s4, 「U2.1 の設計を条件つきで実装に進めてよい」, and 「すべて推奨の内容でお願いします」 for the e1a split) SPEC 10.7, 15.3.5,
   15.3.7, 15.6.1, 7.7.4, 8.3, 23.1. Supersedes R4-M137's result half and, in part, BU-26; amends BU-22.
   - One fact: `ComparisonFailure` (Kind, Part, Path, Depth, Clause, ends, CallableInstance), produced once by the judgment that fails:
@@ -7386,8 +7387,9 @@ resumed by R4-M86 (2026-10-20).
   `Comparison`, `RetentionWalk`, `Witnesses.Leaves`, the predicates `DependentType`, `ContainsUnspellableType`,
   `IndependentInputPattern`, `IsConservative`, `HasRuntimeTypeDependency`, `Closed`, `StoresTypeArgument`, `MentionsSlot`,
   `OwnFunctionBinder`, `CollectShapeDependencies`, `CollectRequirementEdges`, `ProveTypeLengths`, the ungated Origin walks
-  (`StaticOnly`, `OverInputs`, `FixedInBody`, `HasUnsubstitutedInput`, `HasEnvironmentOrigin`, `ContainsOrigin`,
-  `ReceiverDependentPart`, `CallLocalOrigin`, `MentionsOrigin`, `FirstUnownedOrigin`), the summary-gated ones over shared
+  (`StaticOnly`, `OverInputs` (both removed by BU-221), `FixedInBody`, `HasUnsubstitutedInput`,
+  `HasEnvironmentOrigin`, `ContainsOrigin`, `ReceiverDependentPart`, `CallLocalOrigin`,
+  `MentionsOrigin`, `FirstUnownedOrigin`), the summary-gated ones over shared
   Origin-carrying or open parts (`SubstituteStoredOrigins`, `SubstituteIdentity` among them) and the pairwise walks; each adopts the
   table or an exact gate in the unit whose reproducer first reaches it. Rejected: new `BoundType` summaries as the fix (a held shared
   representation); a memo across queries (one `Apply` still walks its DAG as a tree); a cap on a Type's tree size (narrows accepted
@@ -7571,8 +7573,9 @@ resumed by R4-M86 (2026-10-20).
   limited); `Pointer(referent, rawOrigin)` and `Rebuild`, the one keep-rebuild, write the raw role. The constructor throws on an Origin
   given to a raw layer until G160-1's formation, then checks kinds per role. Summaries: `CarriesRawOrigin`, included in
   `CarriesOriginOrSlot`; `CarriesAnyOrigin` at every gate that asks whether a use must instantiate, wait for or compare written Origins
-  at all (`CallResultEvidence` and the survey's expected Type, the comparison's right expectation, `PerCallSignature`/`PerCallInputs`,
-  `ClosureExpectation`, `HasUnsubstitutedOrigin`, the setter-input reuse, an accessor witness's input, `FitsVerifiedTypeAt`,
+  at all (`CallResultEvidence` and the survey's expected Type, the comparison's right expectation,
+  `PerCallSignature`/`PerCallInputs` (removed by BU-221), `ClosureExpectation`,
+  `HasUnsubstitutedOrigin`, the setter-input reuse, an accessor witness's input, `FitsVerifiedTypeAt`,
   `MirTypes.Agree` with R4's agreement). The gates of `HasLocalRegion`, `RewriteOrigins`, `SubstituteStoredOrigins` and
   `SubstitutePart`/`SubstituteTypeCore` take the raw bit with G160-1's raw arms; the other 41 summary reads in Binding are the borrow
   role (inference and matching, open Origins, premises, regions, effects, construction premises), and the old analysis never sees a raw
@@ -9539,8 +9542,9 @@ resumed by R4-M86 (2026-10-20).
     (ContractCalls) and HoldsHolder's (RawOrigins.Holder) move to the summary, two sites out and two in (OriginSummaries).
   - Stay walks (the sweep of BU-19's ungated Origin walks): ContainsOrigin's static walk for the old analysis's three calls, marked
     `[Transitional("R6-check")]` (PLAN G309's residue; the Origin-expression overload it calls is Binding's own since G306 and stays);
-    StaticOnly and OverInputs, reached from the static Type relation (`PerCallShape`) without a Binding; OriginInheritance's local
-    MentionsOrigin, which compares whole expressions, not meet operands; FirstUnownedOrigin (a depth bound, a Function stop, components
+    StaticOnly and OverInputs, reached from the static Type relation (`PerCallShape`) without a Binding
+    (the three removed by BU-221, PLAN G913); OriginInheritance's local MentionsOrigin, which compares
+    whole expressions, not meet operands; FirstUnownedOrigin (a depth bound, a Function stop, components
     before arguments); HasLocalRegion, CarrierOf and RegionBoundsPart, which stop at Function and FunctionItem parts (HasLocalRegion takes
     BU-55's table in G309's next unit).
   - Open (2026-10-31; PLAN G309, its unit G309-R): the sweep missed walks that still take 2^n on an Origin-carrying projection-chain
@@ -10704,6 +10708,13 @@ resumed by R4-M86 (2026-10-20).
   - Superseded by BU-124: contract matching reads no signature's formation.
   - A demand under `activeRequirementContract` is outside the query: a requirement's call is proven under its reference, not as its
     declaration (o4a). Removal condition: R7-C2, with the compute.
+  - Amended by PLAN G949 S1-r2: a demand before the first `ValidateConformances` (`contractHeadersReady`) is outside the query, as a
+    demand under `activeRequirementContract` is. It forms the signature in the reader's scope without entering the row, so no
+    Running state is set and no Done is read before the gate, for every subject. It is still counted as a signature walk
+    (`SignatureWalkWork`). The row's "a demand before the first `ValidateConformances` ... abandoned and computed at the next read"
+    is replaced by this rule. A kept Proven therefore answers only from the gate on, which keeps this row's timing once a library's
+    verdicts are finished before a program pass (PLAN G949; the library readiness rule PLAN G949 S1-r1b records). Removal condition:
+    R7-C2, with the compute (as the `activeRequirementContract` bullet).
   - The row has no reader inside verification, which is why `conformanceChecks` cannot change a kept Proven. A row reader inside verification
     would end this reason.
   - A Proven stays read after a later failure, by calls and references. That failure keeps its own record; `ValidateConstraintUses` and
@@ -13815,6 +13826,7 @@ resumed by R4-M86 (2026-10-20).
     per-call Origin for a bound of the call: valid programs are rejected (rows l0v, l1v, n0i, e0v, e1v; b0v and b1v already on dev,
     where the indexes differ) and n3i is accepted. The skip only drops bounds that the walk then judges with the exact binders.
     Removal: PLAN G913's unit, which keeps a nested Function Type's own per-call Origins out of the bounds Origin by Origin.
+    Removed by BU-221 (PLAN G913), its removal condition met.
   - Moves (against G900's landing head, 65 programs labelled from SPEC first): invalid, newly rejected l3i, n2i, n3i, n4i
     (`UnprovenOriginContract_Kd`), x0i (`NoApplicableOverload_Kd`) and 12 of the 13 G900-dependent rows (s0i (f1j), s1j, s2i, s3i,
     s4i, l2i, l4i, a0i, a1i, g0i, g1i, g3i); valid, newly accepted o1v (a generic struct's Function Type field read at an instance,
@@ -13955,6 +13967,70 @@ resumed by R4-M86 (2026-10-20).
     had each store hold a pass and an edit stamp; one stamped form, `StampedColumn<T, TCounter>` in `PagedColumn.cs`, whose lifetime
     is the counter it follows (no lifetime flag, no other stamp check). This ends N5-1's staging of the stamps and the Pass/Edit
     hand-over; N5-5's edit family and N5-1b's and N5-2's pass families take this form.
+  - The per-column directory (PLAN G949 N5-4; the Front, 2026-11-17): a node family's page directory is dense over its module's
+    ids (`PagedColumn<T>`, a `StampedColumn`'s included): the library module's 17,044 ids cost 8.5 KB per family that holds a
+    library row, whatever its row count, 188 KB over the 22 families after N5-4 (measured at N5-3's head after a Bind of the empty
+    program). The per-column dense directory is kept (option A): the cost is per compilation only until Stage 2 shares the frozen
+    library layer per process (C-376: R8-L1's per-process freeze), where it falls away, and G949's total stays inside D-728's
+    stated envelope (+0.15 to +0.34 MB for all of D2b-d's families). The alternatives were rejected: `ushort` entries (C) add a
+    per-module id limit, a new contract; a two-level directory (D) adds a load per read; a sparse layout for few-page columns (E)
+    adds a second layout chosen by a size mode; a directory sized to the highest written id (B) saves 13%, since library rows
+    reach the module's end.
+  - Amended by PLAN G949 S1-r2 (the Front, 2026-11-17): a step reads and resets only its pass's rows.
+    - A node family's accessor enumerates every module's rows (`Values`, for readers outside a pass) or the running pass's
+      (`In(pass)`, the same walk over the pass's modules, in the same order). Every per-pass reset and every step loop over a
+      family uses `In`.
+    - ImplTable's `InPass` lists the paths, identities and Type lists of the stores of the pass's modules. `Begin` sets it by the
+      store rule (the base for the library module, the overlay for a source module), and a store outside the pass lists nothing.
+      Every step's list read in a pass uses it, `ValidateConstraintProjectionAccess` included. The composed `Paths`, `Identities`
+      and `ByType` stay for readers outside a pass.
+    - `matchPlans`, the plan object a match keeps across rebinds, is a kept node family like N5's, so its reset and prune are per
+      pass. It has no pool: a removed match's plan leaves with its row at renumbering.
+    - No reader tests which pass runs. Until S1-r1b one pass binds every module, so each narrowing is the identity.
+- **BU-221 A call's bounds never hold a nested Function Type's own per-call Origin (PLAN G913)** (2026-11-15; Front, Binding;
+  Q17 class 1; Major, an acceptance mover; the owner's O-348 (a) 「両方とも (a)」 and O-350 (a) 「O-350 は推奨の (a) でよいです」;
+  the Middle's C-356 CONSENT WITH CONDITIONS, C1 and C3 met) SPEC 15.3.4, 15.3.6 (its invariant row, revised under O-348 (a) and
+  O-350 (a)), 8.10, 10.7, 15.3.7. Removes BU-215's kept skip; amends R4-M155 in part.
+  - Rule: inside a Function Type pair, the bound collector (`CollectOriginInference`) drops, Origin by Origin, every bound whose
+    callee-side or actual-side Origin is (or is a meet holding) an Input Origin of the `BoundType.Binder` of a Function Type it is
+    inside, on either side (`OriginInference.Quantifiers`, written only by the collector, empty between collections). Those Origins
+    are the nested Type's own quantification, which the Type relation corresponds position by position; every other Origin under
+    the pair (the callee's, a fixed one, the required signature's own per-call Origin) stays a bound.
+  - Representative (Revision 2, the owner's O-348 (a) and O-350 (a)): every Origin solve gives a variable without a principal
+    solution its representative (`SolveOriginInference`, the one owner, through its local `Limits` and `Representative`): its
+    proven equality partner, else the meet of its fixed upper bounds, else its fixed lower bound proven to outlive every other;
+    whatever the bounds' order. One local rule (`Limits`) gives both the fixpoint's candidate and the representative: the meet of
+    the upper bounds with G809's case rule (an upper bound that exists only in some admitted Semantics cases joins unless proven, in
+    those cases, to outlive the every-case meet), and the lower bound proven to outlive every other (also when an incomparable pair
+    comes first). The representatives are read from the solution reached, then set, so neither the bounds' nor the variables'
+    order decides them. A selection judges no bound; a comparison judges every bound against the representative and its walk every
+    member. The meet does not change call selection: SPEC 10.4 step 2 ignores Origins and 15.6.1 keeps Origin relations out of a
+    selection.
+  - A variable with bounds but no representative (no upper bound, no lower bound outliving the others) stays open: in a call in an
+    executable body it is a region of the body (SPEC 15.3.6), elsewhere an annotation is needed; in a comparison the solve fails at
+    its first such pair of lower bounds, a located `BoundFailure`. Such a variable, none of whose lower bounds outlives the others,
+    is never replaced by `static`: rv14u and rv18u (conversions) are invalid by SPEC 15.3.6 and 15.6.1, a comparison being judged
+    from premises alone, and rv17v (a call) is valid (the Middle's N7).
+  - Removed: the pair skip `PerCallShape(.., any: true)` (BU-215's kept interim, whose removal condition is this unit) and what only
+    it reached: `PerCallShape`, `PerCallSignature`, `StaticOnly`, `InputDependentBinder` with `OverInputs`, `PerCallInputs`. No code
+    takes an Input Origin of any binder at its own slot for a per-call one any more. Revision 2: the invariant conflict failure
+    (`ConflictFailure`, with the solve's `Unsolved`) and the first-bound representative (`RepresentativeOrigin`, whose one caller
+    was the solve). R4-M155's "a failed solve names fixed ends only, the unsolved variable eliminated (Amendment 2)" is amended in
+    part: the failing bound names the representative.
+  - Reason: a skip decided from the pair's shape (every input "per call" at its own slot, of any binder) cannot answer for each
+    Origin: with the slot indexes different it let a nested Function Type's own per-call input reach the solver, which solved or
+    bounded the enclosing `b` by it (n3j accepted, n0j, b0v and the s5v/m family rejected); its exact-binder variant failed the same
+    way at slot 0 (G904's exact (b): l0v, l1v, n0i, e0v, e1v rejected, n3i accepted).
+  - Rejected: the slot-index skip (dev); the skip tested by `BoundType.Binder` (G904's (b)); skipping a pair only when both sides
+    are per call (a mixed pair, `(ref/i32, ref/i32 during b) -> i32`, holds both kinds of Origin); a clause for conversions; the
+    first fixed upper bound as the representative (order-dependent: rv1v rejected, rv2v accepted, the Types only swapped; the
+    owner's O-350 (a)).
+  - Moves (G900 and G904 landed -> the head, labels from SPEC first): invalid, newly rejected n3j (the class 1 minimal program),
+    q1i1, rg1j, rg3j, ob2i; valid, newly accepted s5v, m0v-m3v, b0v, b1v, n0j, q6w, q8v, ra2v, rm0w, rg2w, ru4v, ob1v, ob2v, ob2r,
+    ob4v, ob2h, rv12v, t11x, t11v; six invalid rows rejected at the nested position (record text only); none on the corpus
+    (snapshot 0). No valid program newly rejected, no invalid one newly accepted. c0v (PLAN G905, a Closure) is not this cause.
+  - Closes PLAN G913. Open: two variables without a principal solution related by a clause, each read where the other is still
+    open (PLAN G960).
 - **G209-1** (2026-10-24; structural unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source
   aliases their selected container and environment before ordinary lookup merges imports. These responsibilities were embedded in the
   general expression parser and `Binding.Types.Lookup`, with alias resolution beside Type formation. `Parser.RuntimeTypeTests` now
