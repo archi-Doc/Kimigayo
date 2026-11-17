@@ -1,5 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using Kimi.Compiler;
 using Kimi.Compiler.Backend;
 using Kimi.Compiler.Mir;
 using Kimi.Compiler.Parsing;
@@ -27,7 +28,9 @@ public sealed partial class InstanceCollectorTest
     // method's) and a getter's; a constructor after a Field; a getter's body declaring a function; a closed struct's Field initializer with
     // a Closure.
     private const string FieldHead = "struct Box<T>\n    var v: isize = ";
+    private const string ItemBox = "struct Box<T>\n    public var p = func [] ()\n        func size() -> isize => " + Capacity + "\n        return size" + Init;
     private const string GroupStaticHead = "struct Box<T>\n    public init() => ()\n    public group G\n        public let s = ";
+    private const string GroupStaticCall = "\nlet n = Box<i32>.G.s()\n";
     private const string NestedHead = "struct Outer<T>\n    public struct Inner\n        var v: isize = ";
     private const string Plain = "struct Box<T>\n    var v: isize\n    public init() => self.v = ";
     private const string GetterHead = Plain + "0\n    public computed size: isize\n        get() -> isize";
@@ -41,12 +44,14 @@ public sealed partial class InstanceCollectorTest
         { "initializer", $"{FieldHead}({Sized})(){Init}{Built}", 2, string.Empty },
         { "two constructors", $"{FieldHead}({Sized})(){Init}    public init(n: isize) => ()\n{Built}", 2, string.Empty },
         { "two constructors of one instance", $"{FieldHead}({Sized})(){Init}    public init(n: isize) => ()\nlet a = Box<i32>.init()\nlet b = Box<i32>.init(n: 1)\n", 1, string.Empty },
-        { "erased", $"struct Box<T>\n    var f: () -> isize = {Sized}{Init}{Built}", 2, string.Empty },
+        { "erased", $"struct Box<T>\n    T is Owned\n    var f: () -> isize = {Sized}{Init}{Built}", 2, string.Empty },
         { "stored, called in a method", $"struct Box<T>\n    var f = {Sized}{Init}{Stored}", 2, string.Empty },
         { "nested Type", $"{NestedHead}({Sized})()\n        public init() => ()\n{Inner}", 2, string.Empty },
         { "naming no slot", $"{FieldHead}({Four})(){Init}{Built}", 2, string.Empty },
         { "function in the initializer", $"{FieldHead}({Sizer}\n    )(){Init}{Built}", 2, "Unsupported_Kd size()" },
         { "function in a getter", $"{GetterHead}{Make}{Read}", 0, "Unsupported_Kd make()" },
+        { "item of a function in the initializer", $"{ItemBox}let a = Box<i32>.init().p()\nlet b = Box<i64>.init().p()\nlet n = a() + b()\n", 2, string.Empty },
+        { "item of a function in the initializer, erased", $"{ItemBox}let e: () -> isize = Box<i32>.init().p()\nlet n = e()\n", 1, string.Empty },
         { "getter", $"{GetterHead} => ({Sized})()\n{Read}", 2, string.Empty },
         { "constructor", $"{Plain}({Sized})()\n{Built}", 2, string.Empty },
         { "method", $"{Plain}0\n    public func get(self: ref/Self) -> isize => ({Sized})()\n{Got}", 2, string.Empty },
@@ -96,7 +101,14 @@ public sealed partial class InstanceCollectorTest
             "two instances erased",
             $"{SizedBox}func use(y: ref/i32, z: ref/i64) -> isize\n    let a = Box<ref/i32>.init()\n    let b = Box<ref/i64>.init()\n" +
                 "    let ea: () -> isize = a.n\n    let eb: () -> isize = b.n\n    return ea() + eb()\nConsole.writeLine(\"ok\")\n",
-            $"Unsupported_Kd {Sized}; Unsupported_Kd a.n; Unsupported_Kd b.n"
+            "Unsupported_Kd () -> isize"
+        },
+        {
+            "two static instances erased",
+            $"{SizedBox}func use(y: ref/i32 during static, z: ref/i64 during static) -> isize\n    let a = Box<ref/i32 during static>.init()\n" +
+                "    let b = Box<ref/i64 during static>.init()\n" +
+                "    let ea: () -> isize = a.n\n    let eb: () -> isize = b.n\n    return ea() + eb()\nConsole.writeLine(\"ok\")\n",
+            "Unsupported_Kd () -> isize"
         },
     };
 
@@ -127,6 +139,22 @@ public sealed partial class InstanceCollectorTest
         string Text(Koto node) => source.Substring(node.Span.Start, node.Span.Length);
     }
 
+    // SPEC 3.2.1, 6.1.3, 8.13.3 (PLAN G846; DECISIONS R5-M157): the Item of a function declared in a Field initializer's Closure holds its
+    // Container's instance, which its substitution carries as its declaring Type (TyCtxt.SubstOfItem), so a call of the Item value
+    // admits one item of the function per instance (before: the EnclosingInstance gap at `return size`). A direct call of such a
+    // function is still that gap ("function in the initializer", PLAN G149).
+    [Fact]
+    public void AnItemOfAFieldInitializersFunctionHasOneItemPerInstance()
+    {
+        var c = MirBuildTest.Compile(ItemBox + "let a = Box<i32>.init().p()\nlet b = Box<i64>.init().p()\nlet n = a() + b()\n");
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c));
+        var program = c.BuildMir();
+        var set = new InstanceCollector(c.Types, c.Layout).Run(program, 1);
+        Assert.Empty(program.Records(MirRecordClass.Collection));
+        var items = set.Items.ToArray().Where(x => x.BodyOrdinal >= 0 && program.Body(x.BodyOrdinal).Key.Decl?.Declaration is FunctionKoto { IsAnonymous: false, Name: "size" }).ToArray();
+        Assert.Equal(["Box<i32>", "Box<i64>"], items.Select(static x => TyCtxt.Name(x.Representative!.Declaring!)).Order(StringComparer.Ordinal));
+    }
+
     // DECISIONS BU-60 (PLAN G300's gate, the readers' view): whether an owner instance's erased form has an Origin position is one fact for every owner
     // of that instance, a static-only one included, so Box<ref/i32 during static> and Box<ref/i32> both stay the EnclosingInstance gap. The
     // check reports the records dev reports: the gap at the literal, also for a joined or assigned read (before: TypeMismatch_Kd, the
@@ -147,7 +175,19 @@ public sealed partial class InstanceCollectorTest
     public void AGroupStaticsClosureIsTheGap(string closure)
         => Assert.Equal(
             $"Unsupported_Kd let s = {closure}; Unsupported_Kd Box<i32>.G.s; Unsupported_Kd Box<i32>.G.s()",
-            CheckRecords($"struct Box<T>\n    public init() => ()\n    public group G\n        public let s = {closure}\nlet n = Box<i32>.G.s()\n"));
+            CheckRecords($"struct Box<T>\n    T is Owned\n    public init() => ()\n    public group G\n        public let s = {closure}\nlet n = Box<i32>.G.s()\n"));
+
+    // SPEC 3.2.1, 6.1.3, 15.2.3, 7.7.4 (the owner's O-249 Q4 (a); PLAN G846, G856): without `T is Owned` the rows above are invalid: a Closure in
+    // `Box<T>` holds Box's T in its instantiation, so its erasure in a Field (DefinitionsOutsideAFunctionBodyNeedTheirEnclosingInstance's
+    // "erased" until G856) and a static holding it (AGroupStaticsClosureIsTheGap's programs) need T Owned. A static that Binding rejects
+    // publishes no body of a Closure in its initializer, and a call of that Closure through the failed access is checked as a request
+    // and then rests on Binding's record (InstanceCollector.Callee, as ACallOfAClosureBindingDidNotPublishRestsOnBindingsRecord's).
+    [Theory]
+    [InlineData("struct Box<T>\n    var f: () -> isize = " + Sized + Init + Built, "UnprovenConstraint_Kd " + Sized)]
+    [InlineData(GroupStaticHead + Four + GroupStaticCall, "UnprovenConstraint_Kd let s = " + Four + "; Unsupported_Kd Box<i32>.G.s; Unsupported_Kd Box<i32>.G.s()")]
+    [InlineData(GroupStaticHead + Sized + GroupStaticCall, "UnprovenConstraint_Kd let s = " + Sized + "; Unsupported_Kd Box<i32>.G.s; Unsupported_Kd Box<i32>.G.s()")]
+    public void ADefinitionOutsideABodyNeedsItsContainersParametersOwned(string source, string records)
+        => Assert.Equal(records, CheckRecords(source));
 
     // SPEC 11.8, DECISIONS R5-M183: a static that Binding rejects (its Type is not Owned) publishes no body of a Closure in its initializer,
     // and a call of that Closure, through the failed access or through a function reference initialized from it, is checked as a request
@@ -168,8 +208,10 @@ public sealed partial class InstanceCollectorTest
     // collector's gaps at the literal and at the call g() (1x: the old analysis's read-site gap at self.n and its UninitializedPlace_Kd at
     // the join went), and Box's program is accepted (1a, the owner's list of 2026-11-03), its one Closure item closed
     // (DefinitionsOutsideAFunctionBodyNeedTheirEnclosingInstance). Box<ref/i32> and Box<ref/i64> are two instances (SPEC 3's Concrete
-    // Closure Type): TypeMismatch_Kd at the assignment beside the gap (before: none, one shared Type), and each erased read is the gap at its
-    // read.
+    // Closure Type): TypeMismatch_Kd at the assignment beside the gap (before: none, one shared Type). An erased read judges the
+    // Closure's inherited argument (the owner's O-249 Q4 (a); PLAN G856), which an instance with an Origin position withholds (PLAN G300):
+    // the located limit at the definition, for `ref/i32` with a per-call Origin (invalid: not Owned) and for `ref/i32 during static`
+    // (valid) alike (before G856: the collector's gaps at the literal and at each read).
     [Theory]
     [MemberData(nameof(OneInstanceCases))]
     public void OneInstanceModuloOriginsHasOneClosureType(string form, string source, string records)
