@@ -43,7 +43,7 @@ namespace Kimi.Compiler;
 //   a kind. These two are the only reads of a state outside this file. SignatureVerdict's not-ready path and its exclusion of a
 //   requirement's call go at R7-C2, where a failed answer is final (PLAN G375).
 // - Prohibitions: no output, record or message here; no per-symbol reset; no second pass stamp; no mode or bool parameter; no
-//   allocation in a query (the freeze's one domain list per compilation aside); no write of a state outside this file
+//   allocation in a query (the freeze's one domain set per compilation aside); no write of a state outside this file
 //   (BindingSymbol.SetQueryState, and FreezeQueries' stamp).
 
 /// <summary>A declaration query's kind: a fact Binding computes once per pass for one declaration (Binding.DeclQuery).</summary>
@@ -81,7 +81,7 @@ internal enum DeclState : byte
 public sealed partial class Binding
 {
     // The freeze's stamp for DeclQuery: each library symbol's states, as the library pass left them, Frozen.
-    private static void FreezeQueries(List<BindingSymbol> symbols)
+    private static void FreezeQueries(HashSet<BindingSymbol> symbols)
     {
         foreach (var symbol in symbols)
         {
@@ -108,28 +108,64 @@ public sealed partial class Binding
         symbol.SetQueryState(kind, this.storageVersion, DeclState.Done);
     }
 
-    // The library's symbols whose query states the freeze keeps (FreezeLibrary, in the library pass): the `symbols` family's library rows
-    // (declarations and their parameters), each Contract's Self symbol, each accessor's execution function, the bound Contract references
-    // of the layer's part and $abort, which no query reads (s11-design 2.2 s1).
-    private List<BindingSymbol> LibraryQuerySymbols()
+    // The library's symbols whose query states the freeze keeps (FreezeLibrary, in the library pass): every library symbol the layer
+    // reaches (G949 ruling 200; s11-design 2.2 s1), each with its states as the library pass left them (a symbol no query takes keeps
+    // NotStarted, as a kind that does not apply), so no program pass writes one: the `symbols` family's library rows (declarations and
+    // their parameters), each one's Contract Self and its Property's accessor symbols and execution functions; every symbol a library
+    // scope declares (receivers among them); every symbol the library's nodes name (the published Symbols column: iteration variables
+    // among them); the bound Contract references of the layer's part; $abort, which no query reads.
+    private HashSet<BindingSymbol> LibraryQuerySymbols()
     {
-        var symbols = new List<BindingSymbol> { this.Library.Abort };
+        var symbols = new HashSet<BindingSymbol>(ReferenceEqualityComparer.Instance) { this.Library.Abort };
         foreach (var symbol in this.symbols.Values.In(this.pass))
         {
             symbols.Add(symbol);
             AddSymbol(symbols, symbol.ContractSelf?.Symbol);
-            AddSymbol(symbols, symbol.Property?.Getter.ExecutionFunction?.BoundSymbol);
-            AddSymbol(symbols, symbol.Property?.Setter.ExecutionFunction?.BoundSymbol);
+            AddAccessor(symbols, symbol.Property?.Getter);
+            AddAccessor(symbols, symbol.Property?.Setter);
         }
 
-        symbols.AddRange(this.boundContracts.Values);
+        foreach (var scope in this.scopes.Values.In(this.pass))
+        {
+            AddDeclared(symbols, scope.Types);
+            AddDeclared(symbols, scope.Values);
+        }
+
+        foreach (var named in this.Library.Kotonoha.Syntax.Hir.Symbols)
+        {
+            AddSymbol(symbols, named);
+        }
+
+        symbols.UnionWith(this.boundContracts.Values);
         return symbols;
 
-        static void AddSymbol(List<BindingSymbol> symbols, BindingSymbol? symbol)
+        static void AddSymbol(HashSet<BindingSymbol> symbols, BindingSymbol? symbol)
         {
             if (symbol is not null)
             {
                 symbols.Add(symbol);
+            }
+        }
+
+        static void AddAccessor(HashSet<BindingSymbol> symbols, BoundAccessor? accessor)
+        {
+            AddSymbol(symbols, accessor?.SignatureSymbol);
+            AddSymbol(symbols, accessor?.SelfSymbol);
+            AddSymbol(symbols, accessor?.ValueSymbol);
+            AddSymbol(symbols, accessor?.StorageSymbol);
+            AddSymbol(symbols, accessor?.ExecutionFunction?.BoundSymbol);
+        }
+
+        // A scope's declarations by name, each with the symbols it shadows (Next).
+        static void AddDeclared(HashSet<BindingSymbol> symbols, Dictionary<string, BindingSymbol> declared)
+        {
+            foreach (var first in declared.Values)
+            {
+                var symbol = first;
+                while (symbol is not null && symbols.Add(symbol))
+                {
+                    symbol = symbol.Next;
+                }
             }
         }
     }
@@ -138,7 +174,7 @@ public sealed partial class Binding
     // set in an earlier run (a thrown pass's residue, which Frozen would revive), a Running query, a header DeclQuery binds (a Function or
     // Property declared at a node of the pass: the header loop's set, G949 ruling 167 Q5) whose Signature is not Done, or a struct whose
     // InheritedConformances is not Done. Null when every state is complete.
-    private BindingSymbol? LibraryQueryFault(List<BindingSymbol> symbols)
+    private BindingSymbol? LibraryQueryFault(HashSet<BindingSymbol> symbols)
     {
         foreach (var symbol in symbols)
         {

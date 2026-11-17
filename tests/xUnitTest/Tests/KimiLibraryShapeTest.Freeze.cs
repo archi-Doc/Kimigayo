@@ -16,6 +16,43 @@ namespace XunitTest;
 // itself, never on demand by a program pass; these rows read the library's facts after the empty program's Final Bind.
 public partial class KimiLibraryShapeTest
 {
+    // f1's exemptions (s11-design 2.2, n1-n10): a field the walk selects by its width or name that is no stamp, by its declaring Type's
+    // name and its name, with the reason no reader compares it with a per-compilation counter after the freeze; and the library's
+    // stamped columns the library pass never writes, by their family's name (stamp 0 and no row: a column without a library row reads
+    // absent, as before the freeze). An entry naming no field or family fails the row.
+    private static readonly Dictionary<string, string> NotStamps = new(StringComparer.Ordinal)
+    {
+        ["OriginRequirementWork.Consumer"] = "n1: read only behind Pass == the requirement call, never for a frozen work",
+        ["BindingScope.LinkVersion"] = "n2: a change counter of the scope's link, which no pass changes on a library scope",
+        ["ConstraintEnvironment.Version"] = "n2: a change counter of the environment, which no pass changes on a library scope",
+        ["BindingScope.ViewSerial"] = "n3: a change counter SerialOf compares for equality; the library pass settles it (B1)",
+        ["BindingScope.ViewState"] = "n3: the chain state the view serial names",
+        ["ViewIndex.Serial"] = "a Closure(view) entry's view serial at its forming, compared for equality with its scope's (n3's counter, settled by B1)",
+        ["BinderSet.low"] = "a word of a binder bit set, selected by its width",
+        ["BindingObligation.Condition"] = "an obligation's condition mask, selected by its width",
+        ["SyntaxTable.Version"] = "n4: the module's syntax change counter, compared only with its numbering memo",
+        ["SyntaxTable.numberedVersion"] = "n4: the numbering memo",
+        ["BoundContract.State"] = "n5: a completion state, not a counter copy (complete in the layer's part: e3)",
+        ["BoundContract.EffectState"] = "n5: the effect bounds' completion state (complete in the layer's part: k4)",
+        ["ComponentSummary.Epoch"] = "n6: a per-epoch memo of Binding's, the program's, not a library object",
+        ["Binding.comparisonPlans"] = "n7: Binding's per-pass memo keyed by library symbols, refilled by a program pass",
+        ["Binding.requirementCalls"] = "n7: Binding's per-pass memo keyed by library symbols, refilled by a program pass",
+        ["Binding.hirVersion"] = "n8: a per-compilation counter of Binding's, on no library object",
+        ["Binding.originRowsVersion"] = "n8",
+        ["Binding.recursiveVersion"] = "n8",
+        ["Binding.frameEpoch"] = "n8",
+        ["Binding.retentionStamp"] = "n8",
+        ["Binding.summaryEpoch"] = "n8",
+        ["InstanceStorage.Version"] = "n9: the run whose substitution formed an instance (Binding.instances, a Type-keyed memo), never on a library object",
+        ["CheckedSet.Version"] = "n10: MIR's, outside Binding (no MIR freeze, O-381 (b))",
+        ["MirProgram.Version"] = "n10",
+        ["NodeColumns.VirtualOverrides"] = "never written: the library declares no virtual function",
+        ["NodeColumns.VirtualEffectBounds"] = "never written: the library declares no virtual function",
+        ["NodeColumns.ImplicitConstructorDecisions"] = "never written: the library declares no derived structure",
+        ["NodeColumns.ObjectErasures"] = "never written: the library erases no object view",
+        ["NodeColumns.ShapeContractHeads"] = "never written: the library declares no shape contract (TheLibraryDeclaresNoShapeContract)",
+    };
+
     // The empty program's L (EveryLibraryTypeIsInTheLibrarysPrefix).
     private static readonly Lazy<int> EmptyProgramTypeCount = new(() => Bound(string.Empty).Library.Layer.TypeCount);
 
@@ -195,6 +232,41 @@ public partial class KimiLibraryShapeTest
         static int Serial(BindingScope scope) => State(scope) != scope.ViewState ? scope.ViewSerial + 1 : scope.ViewSerial;
     }
 
+    // f1 (C-380 F1; s11-design 2.2 and 6.3): the freeze leaves no counter value on the library. After the first Bind of each of c2's
+    // programs, a second Bind, a Provisional then Final Bind and an edit then a Bind, every object reachable from the library layer's
+    // roots (LibraryObjects) holds Frozen in every field of a stamp's width (ulong, uint) whatever its name, and in every int field named
+    // as a stamp (*Stamp, *Pass, *Version, *Epoch, *Serial), unless NotStamps names it with its reason; so is each library stamped
+    // column's stamp, both counter families' (s4, F2). Before S1-1's freeze every stamp held its run's counter value.
+    [Theory]
+    [MemberData(nameof(ReferencePrograms))]
+    public void TheFreezeLeavesNoCounterOnTheLibrary(string program)
+    {
+        Assert.Empty(NotStamps.Keys.Where(static x => !Declared(x)).ToArray());
+        var c = Bound(program);
+        NoCounter(c, "the first Bind");
+        c.Bind();
+        NoCounter(c, "a second Bind");
+        c.Binding.Bind(BindingMode.Provisional);
+        c.Bind();
+        NoCounter(c, "a Provisional then Final Bind");
+        c.NoteSyntaxEdit(c.Kotonoha.RootKoto);
+        c.Bind();
+        NoCounter(c, "an edit then a Bind");
+
+        static void NoCounter(Compilation c, string step)
+        {
+            var found = Counters(c).ToArray();
+            Assert.True(found.Length == 0, $"After {step}:\n{string.Join('\n', found)}");
+        }
+
+        // A NotStamps entry's Type (by name, nested ones included) declares the field, an auto-property's backing field by its property.
+        static bool Declared(string entry)
+        {
+            var (type, member) = (entry[..entry.IndexOf('.', StringComparison.Ordinal)], entry[(entry.IndexOf('.', StringComparison.Ordinal) + 1)..]);
+            return typeof(Binding).Assembly.GetTypes().Where(x => x.Name == type).SelectMany(FreezeFields).Any(x => FieldName(x) == member);
+        }
+    }
+
     // d6 and its prefix clauses (d2b-d 1.4; s11-design 4, E1 and E2; G949 ruling 167 Q4): L, the last Type id the library pass gave
     // (LibraryLayer.TypeCount, set by the freeze), is the empty program's in every compilation, and every Type a library object holds
     // (each reachable from the layer's roots, the library's ErasedTypes and Meanings columns too) has an id at most L, after the first
@@ -353,7 +425,39 @@ public partial class KimiLibraryShapeTest
         Assert.Empty(paths.Where(static x => x.InferenceConsumers is { Count: not 0 }).Select(static x => $"{x.Type.Name} is {x.Contract.Name}"));
     }
 
-    // The library layer's objects by reachability from its roots (d6, and the stamp walk f1 will read; s11-design 6.3): every present row of the library's node
+    // f1's findings: each selected field off Frozen, by its declaring Type and name, with the first holder and the count.
+    private static IEnumerable<string> Counters(Compilation c)
+    {
+        var found = new List<(string Field, string Holder)>();
+        foreach (var family in LibraryLayer.Families().Where(static x => x.FieldType.Name.StartsWith("StampedColumn", StringComparison.Ordinal)))
+        {
+            var column = family.GetValue(c.Library.Kotonoha.Syntax.Hir.Families)!;
+            var stamp = (ulong)column.GetType().GetField("stamp", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(column)!;
+            var never = NotStamps.ContainsKey("NodeColumns." + FieldName(family));
+            if (never ? stamp != 0 || (int)column.GetType().GetProperty("Used", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(column)! != 0 : stamp != Binding.Frozen)
+            {
+                found.Add(($"NodeColumns.{FieldName(family)}.stamp", stamp.ToString(System.Globalization.CultureInfo.InvariantCulture)));
+            }
+        }
+
+        foreach (var value in LibraryObjects(c))
+        {
+            foreach (var field in FreezeFields(value.GetType()))
+            {
+                var (key, x) = ($"{field.DeclaringType!.Name}.{FieldName(field)}", field.GetValue(value));
+                var stamp = x is ulong or uint || (x is int && FieldName(field) is var name && (name.EndsWith("Stamp", StringComparison.Ordinal) || name.EndsWith("Pass", StringComparison.Ordinal)
+                    || name.EndsWith("Version", StringComparison.Ordinal) || name.EndsWith("Epoch", StringComparison.Ordinal) || name.EndsWith("Serial", StringComparison.Ordinal)));
+                if (stamp && !NotStamps.ContainsKey(key) && x is not (Binding.Frozen or Binding.Frozen32 or Binding.FrozenRegion))
+                {
+                    found.Add(($"{key} = {x}", value is BindingSymbol s ? $"{s.Kind}:{s.Name}" : value.GetType().Name));
+                }
+            }
+        }
+
+        return found.GroupBy(static x => x.Field).Select(static x => $"{x.Key} ({x.Count()}): {string.Join(", ", x.GroupBy(static h => h.Holder).Select(static h => h.Count() == 1 ? h.Key : $"{h.Key} x{h.Count()}"))}");
+    }
+
+    // The library layer's objects by reachability from its roots (f1, d6; s11-design 6.3): every present row of the library's node
     // families (the `symbols` family's library store, the scopes, the library's Origin requirement works among them), the layer (Impls
     // with its identities, paths and satellites; Part with every part collection) and $abort, and the given roots; from each object its
     // fields, a collection's elements, and from a library node its own symbol (an accessor's execution function's). A program node and
@@ -423,4 +527,7 @@ public partial class KimiLibraryShapeTest
 
             return [.. fields];
         });
+
+    // A field's name, an auto-property's backing field by its property.
+    private static string FieldName(FieldInfo field) => field.Name.StartsWith('<') ? field.Name[1..field.Name.IndexOf('>', StringComparison.Ordinal)] : field.Name;
 }
