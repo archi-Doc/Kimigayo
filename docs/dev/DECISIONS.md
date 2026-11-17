@@ -10704,6 +10704,13 @@ resumed by R4-M86 (2026-10-20).
   - Superseded by BU-124: contract matching reads no signature's formation.
   - A demand under `activeRequirementContract` is outside the query: a requirement's call is proven under its reference, not as its
     declaration (o4a). Removal condition: R7-C2, with the compute.
+  - Amended by PLAN G949 S1-r2: a demand before the first `ValidateConformances` (`contractHeadersReady`) is outside the query, as a
+    demand under `activeRequirementContract` is. It forms the signature in the reader's scope without entering the row, so no
+    Running state is set and no Done is read before the gate, for every subject. It is still counted as a signature walk
+    (`SignatureWalkWork`). The row's "a demand before the first `ValidateConformances` ... abandoned and computed at the next
+    read" is replaced by this rule. A kept Proven therefore answers only from the gate on, which keeps this row's timing once a
+    library's verdicts are finished before a program pass (PLAN G949; BU-219's readiness bullet). Removal condition: R7-C2, with
+    the compute (as the `activeRequirementContract` bullet).
   - The row has no reader inside verification, which is why `conformanceChecks` cannot change a kept Proven. A row reader inside verification
     would end this reason.
   - A Proven stays read after a later failure, by calls and references. That failure keeps its own record; `ValidateConstraintUses` and
@@ -13955,6 +13962,26 @@ resumed by R4-M86 (2026-10-20).
     had each store hold a pass and an edit stamp; one stamped form, `StampedColumn<T, TCounter>` in `PagedColumn.cs`, whose lifetime
     is the counter it follows (no lifetime flag, no other stamp check). This ends N5-1's staging of the stamps and the Pass/Edit
     hand-over; N5-5's edit family and N5-1b's and N5-2's pass families take this form.
+  - The per-column directory (PLAN G949 N5-4; the Front, 2026-11-17): a node family's page directory is dense over its module's
+    ids (`PagedColumn<T>`, a `StampedColumn`'s included): the library module's 17,044 ids cost 8.5 KB per family that holds a
+    library row, whatever its row count, 188 KB over the 22 families after N5-4 (measured at N5-3's head after a Bind of the empty
+    program). The per-column dense directory is kept (option A): the cost is per compilation only until Stage 2 shares the frozen
+    library layer per process (C-376: R8-L1's per-process freeze), where it falls away, and G949's total stays inside D-728's
+    stated envelope (+0.15 to +0.34 MB for all of D2b-d's families). The alternatives were rejected: `ushort` entries (C) add a
+    per-module id limit, a new contract; a two-level directory (D) adds a load per read; a sparse layout for few-page columns (E)
+    adds a second layout chosen by a size mode; a directory sized to the highest written id (B) saves 13%, since library rows
+    reach the module's end.
+  - Amended by PLAN G949 S1-r2 (the Front, 2026-11-17): a step reads and resets only its pass's rows.
+    - A node family's accessor enumerates every module's rows (`Values`, for readers outside a pass) or the running pass's
+      (`In(pass)`, the same walk over the pass's modules, in the same order). Every per-pass reset and every step loop over a
+      family uses `In`.
+    - ImplTable's `InPass` lists the paths, identities and Type lists of the stores of the pass's modules. `Begin` sets it by the
+      store rule (the base for the library module, the overlay for a source module), and a store outside the pass lists nothing.
+      Every step's list read in a pass uses it, `ValidateConstraintProjectionAccess` included. The composed `Paths`, `Identities`
+      and `ByType` stay for readers outside a pass.
+    - `matchPlans`, the plan object a match keeps across rebinds, is a kept node family like N5's, so its reset and prune are per
+      pass. It has no pool: a removed match's plan leaves with its row at renumbering.
+    - No reader tests which pass runs. Until S1-r1b one pass binds every module, so each narrowing is the identity.
 - **G209-1** (2026-10-24; structural unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source
   aliases their selected container and environment before ordinary lookup merges imports. These responsibilities were embedded in the
   general expression parser and `Binding.Types.Lookup`, with alias resolution beside Type formation. `Parser.RuntimeTypeTests` now
