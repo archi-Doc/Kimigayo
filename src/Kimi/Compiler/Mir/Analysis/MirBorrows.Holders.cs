@@ -15,6 +15,7 @@ internal sealed partial class MirBorrows
     private readonly List<(int Slot, int Local)> drops = []; // The view's drop slots, each with its holder's local.
     private readonly List<int> flowQueue = []; // Flowing's worklist: the holders whose edges are still to follow.
     private readonly List<int> pointed = []; // Written's worklist: the locals whose referring stores are still to follow.
+    private readonly List<int> sourceSlots = []; // A call's source slots (SourceSlots).
     private int[] flowFirst = []; // By local: its first edge in flowEdges, -1 for none (Flowing).
     private int[] flowEdges = []; // Flowing's edges, two entries each: the local a store gives the value, and its source's next edge.
     private int[] mixFirst = []; // By local: its first edge in mixEdges, -1 for none (Mixing).
@@ -43,6 +44,10 @@ internal sealed partial class MirBorrows
         first[edge.From] = count;
         return count + 1;
     }
+
+    // Whether an output's store may put the input at a source slot (SourceSlots) in a Loan-free Case payload, a write source: the
+    // output's storage may hold it.
+    private static bool Sourced(OutputRetention written, int slot) => written.Own.Holds(slot) || written.All.Holds(slot);
 
     // The holders of the view (A3 3): E in slot 0, then the flow holders, whose states cross heads (MirMoveData's flow roots and the roots a
     // direct Loan or address names, whose states the closure and the Loans' content read anywhere), then the chain-local ones, a holder's
@@ -331,22 +336,24 @@ internal sealed partial class MirBorrows
     }
 
     // A call's write sources into the locals its arguments refer to (SPEC 15.6.4 by its published retention, MirBorrows.CallRows'
-    // Retaining; the Middle's decisions on the review's caseWriteR2Bad): through each output with an input it sources (Sourced) that
-    // may carry a Loan (Carries), the locals the output's argument may refer to are written (Written). Whether a written argument was
-    // lost (Written).
+    // Retaining; the Middle's decisions on the review's caseWriteR2Bad): through each output whose record holds a source slot (Sourced)
+    // whose input may carry a Loan (Carries), the locals the output's argument may refer to are written (Written). Whether a written
+    // argument was lost (Written).
     private bool Writes(in MirTerminator call)
     {
-        if (this.Broken(call) || this.Retaining(call) is not { IsLimit: false } retention)
+        if (this.Broken(call) || this.Retaining(call) is not { IsLimit: false } retention || retention.Writes.IsEmpty)
         {
             return false;
         }
 
         var (receiver, lost) = (this.Receiver(call), false);
+        this.SourceSlots(call, retention.Result.Kinds.Length, receiver);
         foreach (var written in retention.Writes)
         {
-            for (var slot = this.SourcedSlot(call, retention, written, receiver, 0); slot >= 0; slot = this.SourcedSlot(call, retention, written, receiver, slot + 1))
+            foreach (var slot in this.sourceSlots)
             {
-                if (this.Carries(this.Input(call, Position(call.Callee, receiver, slot)).Place.Root))
+                this.Work++;
+                if (Sourced(written, slot) && this.Carries(this.Input(call, Position(call.Callee, receiver, slot)).Place.Root))
                 {
                     lost |= this.Written(this.Input(call, Position(call.Callee, receiver, written.Output)));
                     break;
@@ -357,9 +364,9 @@ internal sealed partial class MirBorrows
         return lost;
     }
 
-    // Whether a call of the view has a write source (an output with an input it sources, SourcedSlot), so Mixing decides the written
-    // locals before the slots are numbered (Holders); a view without one keeps Mixing lazy. Each block, each call's retention lookup
-    // and each input SourcedSlot tests count as Work.
+    // Whether a call of the view has a write source (an output whose record holds a source slot, Sourced), so Mixing decides the written
+    // locals before the slots are numbered (Holders); a view without one keeps Mixing lazy. Each block, each call's retention lookup,
+    // each input SourceSlots tests and each output's source slot count as Work.
     private bool WriteSourced()
     {
         this.Work += this.body.Blocks.Length;
@@ -371,16 +378,21 @@ internal sealed partial class MirBorrows
             }
 
             this.Work++;
-            if (this.Broken(call) || this.Retaining(call) is not { IsLimit: false } retention)
+            if (this.Broken(call) || this.Retaining(call) is not { IsLimit: false } retention || retention.Writes.IsEmpty)
             {
                 continue;
             }
 
+            this.SourceSlots(call, retention.Result.Kinds.Length, this.Receiver(call));
             foreach (var written in retention.Writes)
             {
-                if (this.SourcedSlot(call, retention, written, this.Receiver(call), 0) >= 0)
+                foreach (var slot in this.sourceSlots)
                 {
-                    return true;
+                    this.Work++;
+                    if (Sourced(written, slot))
+                    {
+                        return true;
+                    }
                 }
             }
         }
@@ -388,28 +400,27 @@ internal sealed partial class MirBorrows
         return false;
     }
 
-    // The first input slot from `from` on whose value an output's store may put in a Loan-free Case payload (Sourced), -1 for none.
-    private int SourcedSlot(in MirTerminator call, CallRetention retention, OutputRetention written, int receiver, int from)
+    // A call's source slots, found once per call (the landing hunk's Revision 2: one scan per output was N outputs x N inputs where
+    // each output's record retains an input): the input slots whose input is no constant and whose Type holds no Loan, into
+    // sourceSlots, the input at Position (a composed drop's receiver at receiver 0). Each output's record is then asked at these slots
+    // alone (Sourced: Writes, WriteSourced, MirBorrows.Calls' Keep). Each input tested counts as Work. An input whose Type holds a Loan
+    // is no write source though the payload may hold a Loan-free part it holds by value (SPEC 15.6.4) or reference bits written
+    // through a raw pointer: the cost the owner's O-383 (b) accepted ("bounds a Case payload by its Case's Type"), as for a call's
+    // result (the rows rvResPartBad, rvwPartBad). Written reaches the output argument's first referent only; a deeper target makes the
+    // program invalid by 15.6.4 already.
+    private void SourceSlots(in MirTerminator call, int slots, int receiver)
     {
-        for (var slot = from; slot < retention.Result.Kinds.Length; slot++)
+        this.sourceSlots.Clear();
+        for (var slot = 0; slot < slots; slot++)
         {
             this.Work++;
-            if (this.Sourced(this.Input(call, Position(call.Callee, receiver, slot)), written, slot))
+            var input = this.Input(call, Position(call.Callee, receiver, slot));
+            if (input.Kind != MirOperandKind.Const && !this.Holds(cases.TypeOf(input), out _))
             {
-                return slot;
+                this.sourceSlots.Add(slot);
             }
         }
-
-        return -1;
     }
-
-    // Whether an output's store may put an input's value in a Loan-free Case payload, a write source: the input is no constant, the
-    // output's storage may hold it, and its Type holds no Loan. An input whose Type holds one is no write source though the payload may
-    // hold a Loan-free part it holds by value (SPEC 15.6.4) or reference bits written through a raw pointer: the cost the owner's
-    // O-383 (b) accepted ("bounds a Case payload by its Case's Type"), as for a call's result (the rows rvResPartBad, rvwPartBad).
-    // Written reaches the output argument's first referent only; a deeper target makes the program invalid by 15.6.4 already.
-    private bool Sourced(in MirOperand input, OutputRetention written, int slot)
-        => input.Kind != MirOperandKind.Const && (written.Own.Holds(slot) || written.All.Holds(slot)) && !this.Holds(cases.TypeOf(input), out _);
 
     // Whether a written input's root may carry a Loan: a static's {Φ_E}, a holder (Flowing's least set), and any local before Flowing
     // has decided the holders, which Holders then has Mixing count again (mixedWrites).

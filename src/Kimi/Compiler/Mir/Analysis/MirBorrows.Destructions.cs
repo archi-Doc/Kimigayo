@@ -80,6 +80,11 @@ internal sealed partial class MirBorrows
         {
             var retention = this.dropRows[i];
             this.deep |= checks && retention.IsLimit;
+            if (this.writeCount > 0 && !retention.IsLimit && !retention.Writes.IsEmpty)
+            {
+                this.SourceSlots(call, retention.Result.Kinds.Length, 0); // Its receiver at position 0, for Keep's Sourcing.
+            }
+
             foreach (var written in retention.IsLimit ? default : retention.Writes)
             {
                 this.Keep(state, call, written, checks);

@@ -101,6 +101,11 @@ internal sealed partial class MirBorrows
             result = kind == RetentionKind.None ? result : this.sets.Union(result, this.Retained(state, this.Input(call, p), p, kind));
         }
 
+        if (this.writeCount > 0 && this.planned is { } writing && !writing.Writes.IsEmpty)
+        {
+            this.SourceSlots(call, writing.Result.Kinds.Length, this.Receiver(call)); // Once per call, for Keep's Sourcing.
+        }
+
         foreach (var written in this.planned is null ? default : this.planned.Writes)
         {
             this.Cover(call, written.Output, this.planned!.Result.Kinds.Length);
@@ -158,7 +163,7 @@ internal sealed partial class MirBorrows
         var (limited, deepHolder) = stored ? default : this.Writes(state, this.argValues[position], input, referent, call, position);
         this.limit |= limited && checks;
         this.deep |= deepHolder && checks;
-        var sourced = this.writeCount > 0 ? this.Sourcing(call, written) : 0;
+        var sourced = this.writeCount > 0 ? this.Sourcing(written) : 0;
         for (var t = 0; t < this.targets.Count; t++)
         {
             var target = this.targets[t];
@@ -173,14 +178,15 @@ internal sealed partial class MirBorrows
         }
     }
 
-    // What an output's store may put in a Loan-free Case payload: the values of the inputs it sources (MirBorrows.Holders' Sourced).
-    private int Sourcing(in MirTerminator call, OutputRetention written)
+    // What an output's store may put in a Loan-free Case payload: the values of the inputs at the call's source slots (MirBorrows.Holders'
+    // SourceSlots, found once per call by Call or a drop's Compose; no Mixing runs between, as a view with write slots ran it before
+    // numbering) that its record holds (Sourced).
+    private int Sourcing(OutputRetention written)
     {
         var value = 0;
-        for (var slot = 0; slot < written.All.Kinds.Length; slot++)
+        foreach (var slot in this.sourceSlots)
         {
-            var position = this.slotPositions[slot];
-            value = this.Sourced(this.Input(call, position), written, slot) ? this.sets.Union(value, this.argValues[position]) : value;
+            value = Sourced(written, slot) ? this.sets.Union(value, this.argValues[this.slotPositions[slot]]) : value;
         }
 
         return value;
