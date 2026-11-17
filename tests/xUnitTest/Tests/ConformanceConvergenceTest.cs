@@ -459,6 +459,44 @@ public class ConformanceConvergenceTest(ITestOutputHelper output)
     public void AnEngineCoverageRowKeepsItsLabel(string id, string source, bool valid)
         => Assert.True(valid == (DiagnosticCorpus.RecordProfile(source) == "clean"), id);
 
+    // SPEC 8.3.3 Recursion and Finality (R7-C2e2 e2-3b's coverage rows, `design-e23b.md`): programs whose judgments read an open
+    // obligation's neighbourhood, which the one obligation table leaves as they were: the controls of the projection route's n-forms (a
+    // Box, a condition or a capability bound with no dependence on `S is C`, a second conditional conformance), an obligation opened and
+    // closed inside an answer (iv1), a capability through c2-2's identity extension at depth 1 and 2, a source state read inside the
+    // rounds (dv2, its invalid twins), r1's acyclic control and r1n, the clause subject t3 (rejected today for its subject form, PLAN
+    // G982) and a coinductive Owned with no re-entry.
+    [Theory]
+    [InlineData("n1v", "contract M\ncontract K\n    associate X\ncontract C\n    associate Item is M\nstruct R\n    Self is M\nstruct Box<T>\n    Self is K\n    associate K.X is R\nstruct S\n    Self is C\n    associate C.Item is Box<S>.(K).X\n", true)]
+    [InlineData("n3v", "contract M\ncontract D\ncontract K\n    associate X\ncontract C\n    associate Item is M\nstruct R\n    Self is M\nstruct Box<T>\n    Self is K when T is D\n        associate K.X is R\nstruct S\n    Self is D\n    Self is C\n    associate C.Item is Box<S>.(K).X\n", true)]
+    [InlineData("n5v", "contract K\n    associate X\ncontract C\n    associate Item is Copy\nstruct Box<T>\n    Self is K\n    associate K.X is i32\nstruct S\n    Self is C\n    associate C.Item is Box<S>.(K).X\n", true)]
+    [InlineData("cc1v", "contract M\ncontract D\ncontract K\n    associate X\ncontract C\n    associate Item is M\nstruct R\n    Self is M\nstruct Wrap<T>\n    Self is D when T is M\nstruct Box<T>\n    Self is K when T is D\n        associate K.X is R\nstruct S\n    Self is C\n    Self is M\n    associate C.Item is Box<Wrap<S>>.(K).X\n", true)]
+    [InlineData("iv1", "contract M\ncontract K\n    associate X\ncontract C\n    associate Item is M\nstruct R\n    Self is M\nstruct Q\n    Self is C\n    associate C.Item is R\nstruct Box<T>\n    T is C\n    Self is K\n    associate K.X is R\nstruct S\n    Self is C\n    associate C.Item is Box<Q>.(K).X\n", true)]
+    [InlineData("x1", "contract K\n    associate A\n    associate B is Copy\n    Self.(K).A is Self.(K).B\nfunc dup<V>(v: V) -> (V, V)\n    V is Copy\n    return (v, v)\nfunc f<T>(a: T.(K).A) -> ()\n    T is K\n    let p = dup(a)\n", true)]
+    [InlineData("x2", "contract K\n    associate A\n    associate B is Copy\n    Self.(K).A is Self.(K).B\ncontract L\n    associate Inner is K\nfunc dup<V>(v: V) -> (V, V)\n    V is Copy\n    return (v, v)\nfunc f<T>(a: T.(L).Inner.(K).A) -> ()\n    T is L\n    let p = dup(a)\n", true)]
+    [InlineData("x2n", "contract K\n    associate A\n    associate B\n    Self.(K).A is Self.(K).B\ncontract L\n    associate Inner is K\nfunc dup<V>(v: V) -> (V, V)\n    V is Copy\n    return (v, v)\nfunc f<T>(a: T.(L).Inner.(K).A) -> ()\n    T is L\n    let p = dup(a)\n", false)]
+    [InlineData("dv2", "contract Origin\nstruct Source\n    Self is Origin\ncontract K\n    Source is Origin\n    associate X\n    Self.(K).X is i32\nfunc g<T>(v: T.(K).X) -> (T.(K).X, T.(K).X)\n    T is K\n    return (v, v)\n", true)]
+    [InlineData("dv2n", "contract Origin\nstruct Source\n    Self is Origin\ncontract K\n    Source is Origin\n    associate X\nfunc g<T>(v: T.(K).X) -> (T.(K).X, T.(K).X)\n    T is K\n    return (v, v)\n", false)]
+    [InlineData("dv1n", "contract Origin\nstruct Source\ncontract K\n    Source is Origin\n    associate X\n    Self.(K).X is i32\nfunc f<T>(v: T.(K).X) -> i32\n    T is K\n    return v\n", false)]
+    [InlineData("r1h", "contract P\ncontract Q\nstruct A\n    Self is P\n    B is Q\nstruct B\n    Self is Q\n", true)]
+    [InlineData("r1n", "contract P\ncontract Q\nstruct A\n    B is Q\nstruct B\n    Self is Q\n    A is P\n", false)]
+    [InlineData("t3", "contract D\ncontract C\n    associate X\nstruct Box<A>\n    Self is C when A is D\n        associate C.X is A\nfunc needD<V>(v: ref/V) -> ()\n    V is D\n    ()\nfunc f<U>(u: ref/U) -> ()\n    Box<U>.(C).X is D\n    needD(u)\n", false)]
+    [InlineData("own0", "contract C\n    associate Item is Owned\nstruct Node<T>\n    var next: Option<rc/Node<T>>\nstruct S\n    Self is C\n    associate C.Item is Node<S>\n", true)]
+    public void AnObligationNeighbourKeepsItsLabel(string id, string source, bool valid)
+        => Assert.True(valid == (DiagnosticCorpus.RecordProfile(source) == "clean"), id);
+
+    // SPEC 8.3.3 Finality (R7-C2e2 e2-3b): the capability engine's evaluations of a Copy (cap1) and an Owned (own1) request whose
+    // instance's formation reads the obligation being proven, `S is C`, in a dead operand (`T is C or D`, S both), exact: which works
+    // the engine judges again after the outermost request.
+    [Theory]
+    [InlineData("cap1", "contract D\ncontract C\n    associate Item is Copy\nstruct Box<T>\n    T is C or D\n    Self is Copy\n    var value: i32\nstruct S\n    Self is C\n    Self is D\n    associate C.Item is Box<S>\n", 928)]
+    [InlineData("own1", "contract D\ncontract C\n    associate Item is Owned\nstruct Node<T>\n    T is C or D\n    var next: Option<rc/Node<T>>\nstruct S\n    Self is C\n    Self is D\n    associate C.Item is Node<S>\n", 939)]
+    public void ACapabilityReadingTheObligationIsEvaluated(string id, string source, int evaluations)
+    {
+        var c = CompilationTestHelper.ParseSuccess(source);
+        c.Bind();
+        Assert.True(evaluations == c.Binding.CapabilityEvaluationWork, $"{id}: {c.Binding.CapabilityEvaluationWork} evaluations");
+    }
+
     // B1's ring family (R7-C2e2 e2-5a, design-engine): k declarations' Copy works and Owned works on one cycle, each order, with and without a use.
     public static TheoryData<int, string, bool, int> RingRows
         => [.. from k in new[] { 1, 2, 3, 4, 5 }

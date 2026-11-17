@@ -75,8 +75,11 @@
 //   fresh, also a function of (subject, view). The implementation's limit, not SPEC's rule: a member or an associated Type that only
 //   an identity clause at depth gives its subject is not found (dm1), as on base, until R7-C2e2's Closure(view) holds the view's
 //   identity closure. Under an extension the view's entry is the request's (Closure(view) below). Only depth-1 requests extend: a
-//   reading formed inside a preparation (a nested request) may differ from one formed through Supply, which joins note B's
-//   Completion row (R7-C2e2 e2-3).
+//   nested request reads written facts alone (a1's leaf rule), so its answer can be Unknown where a depth-1 one is Proven, never the
+//   reverse. Its reach (R7-C2e2 e2-3b): no table kept here (no Complete reading reads a judgment), no kept path verdict (only a
+//   Proven one, which a nested request answers alike, or Invalid is kept), but a capability work evaluated inside a nested request
+//   can keep for its epoch an Unknown a depth-1 evaluation would prove (no program shows it; removal: R7-C2c2 c2-4's request by
+//   identity class, which every depth reads alike).
 // - Prohibitions: no judgment, lookup, normalization or inference rule here but the request boundary's normalization of a fact, which
 //   only Reading calls (temporary until R7-C2c2 c2-4 removes its binding completion), and of a Callable row's signature, which only
 //   PremiseCallable calls, as the Callable selection reads it (CallableContractType; its identity normalization is c2-4's row);
@@ -112,9 +115,11 @@
 //   they return a Type), the static gates (ArithmeticContracts.IsArithmetic, WitnessGroup), SubstituteStoredOrigins (declared
 //   Origins), ConformanceByDeclaration (final after the InheritedConformances query, Binding.cs's RegisterInheritedConformances),
 //   and the PrepareTypeStorage memo (per storageVersion).
-// - PremiseRefines' answer reaches its callers unthreaded, as Complete; its walk's Completion decides only what is kept here, and
-//   carrying it to the judgments' answers is R7-C2e2 e2-3b's (after e2-5a). No Provisional table is known to grow after the read
-//   within a publication.
+// - PremiseRefines' answer reaches its callers unthreaded, as Complete; its walk's Completion decides only what is kept here. No
+//   judgment answer carries Completion (R7-C2e2 e2-3b): the kept judgment answers are the capability results, which live one epoch
+//   (BU-59's staging judges a work that read a Pending state again next round), and the paths' verdicts (IsVerified, Invalid), which
+//   keep only decided verdicts and rest on published states that a later publication changes only through a declaration failure, the
+//   failure's own record (Inputs outside the key, below). No Provisional table is known to grow after the read within a publication.
 //
 // Closure(view) (DECISIONS R7-C2e2-1, R7-C2e2-2): a view's index of its facts by kind and subject is one table, an entry per (view
 // scope, requirement Contract) formed at the view's serial and rebuilt in place when the serial moves, its buckets by (chain scope,

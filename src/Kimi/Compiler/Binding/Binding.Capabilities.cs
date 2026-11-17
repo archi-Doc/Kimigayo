@@ -11,7 +11,7 @@ public sealed partial class Binding
 
     private readonly HashSet<(CapabilityWork Source, CapabilityWork Consumer)> capabilityEdges = new();
     private readonly Queue<CapabilityWork> capabilityQueue = new();
-    private readonly List<CapabilityWork> pendingCapabilities = []; // The works left Pending (a temporary carrier; removal: R7-C2e2 e2-5b).
+    private readonly List<CapabilityWork> dependentCapabilities = []; // The works whose answer depends on an open obligation (Depends).
     private readonly List<CapabilityWork> capabilityEvaluated = []; // The outermost request's evaluations: the coinductive step's candidates.
     private readonly Queue<CapabilityWork> assumptionQueue = new();
     private bool assuming; // The coinductive step is evaluating (AssumeResidual).
@@ -249,7 +249,7 @@ public sealed partial class Binding
         this.summaryEpoch++; // Component summaries follow the capability results' lifecycle.
         this.capabilityQueue.Clear();
         this.capabilityEdges.Clear();
-        this.pendingCapabilities.Clear();
+        this.dependentCapabilities.Clear();
         this.capabilityEvaluated.Clear();
         this.assumptionQueue.Clear();
         this.assuming = false;
@@ -369,7 +369,7 @@ public sealed partial class Binding
         this.ScopeReads = default;
         this.ScopeReads.Origin = work.Result == ConstraintProof.Proven ? null : work.Origin;
         var verdict = this.EndProof(this.ReadVerdict(work.Result, work.Cause, work.Fact));
-        this.ForgetPendingCapabilities();
+        this.ForgetDependentCapabilities();
         return verdict;
     }
 
@@ -386,13 +386,13 @@ public sealed partial class Binding
             this.ScopeReads = default;
             next.Parts?.Clear();
             next.Reads.Clear();
-            var reads = this.reentryReads;
+            var mark = this.BeginAnswer();
             this.CapabilityEvaluationWork++;
             var result = this.ComputeCapability(next);
-            next.Pending = this.reentryReads != reads;
-            if (next.Pending)
+            next.Depends = this.EndAnswer(mark);
+            if (next.Depends)
             {
-                this.pendingCapabilities.Add(next);
+                this.dependentCapabilities.Add(next);
             }
 
             next.OwnCause = this.ProofCause(result); // Payload of the final iteration, outside the fixpoint's equality, as Fact.
@@ -410,9 +410,10 @@ public sealed partial class Binding
         this.capabilityConsumer = null;
     }
 
-    // The nominal obligations open (the open set's and the conformance verifications in progress, the two guards of SPEC 8.3.3
-    // Recursion): an assumption is not read through one opened during the evaluation that reads it (AssumeResidual).
-    private int ObligationDepth => this.openObligations.Count + this.conformanceChecks;
+    // The nominal obligations open (SPEC 8.3.3 Recursion's one table): an assumption is not read through one opened during the
+    // evaluation that reads it (AssumeResidual). Its one reader compares two of its values within one evaluation, so the agreement
+    // window conformanceChecks also counts (entered only from ValidateConformances' final loop, never inside an evaluation) is not in it.
+    private int ObligationDepth => this.openObligations.Count;
 
     // SPEC 8.3.3 Limits, 23.1.1 (DECISIONS BU-22): each Unknown or Error work of the request rests on the least Cause by CauseKey among
     // its own (what its last evaluation read from anything but a work) and those of the works it read that settled at its verdict.
@@ -520,7 +521,7 @@ public sealed partial class Binding
         for (var i = 0; i < evaluated.Count; i++)
         {
             var work = evaluated[i];
-            if (work.Coinductive && work.Result == ConstraintProof.Unknown && !work.Pending && !work.Assumed && work.Evaluated)
+            if (work.Coinductive && work.Result == ConstraintProof.Unknown && !work.Depends && !work.Assumed && work.Evaluated)
             {
                 work.Assumed = true;
                 work.Queued = true;
@@ -548,12 +549,12 @@ public sealed partial class Binding
             this.ScopeReads = default;
             next.Parts?.Clear();
             next.Reads.Clear();
-            var reads = this.reentryReads;
+            var mark = this.BeginAnswer();
             this.assumptionDepth = this.ObligationDepth;
             this.CapabilityEvaluationWork++;
             var result = this.ComputeCapability(next);
             this.capabilityConsumer = null;
-            if (result != ConstraintProof.Proven || this.reentryReads != reads)
+            if (this.EndAnswer(mark) || result != ConstraintProof.Proven)
             {
                 next.Assumed = false;
                 for (var i = 0; i < next.Dependents.Count; i++)
@@ -578,7 +579,7 @@ public sealed partial class Binding
         for (var i = 0; i < evaluated.Count; i++)
         {
             var work = evaluated[i];
-            if (!work.Coinductive || work.Result != ConstraintProof.Unknown || work.Pending)
+            if (!work.Coinductive || work.Result != ConstraintProof.Unknown || work.Depends)
             {
                 continue;
             }
@@ -614,19 +615,19 @@ public sealed partial class Binding
         return true;
     }
 
-    // SPEC 8.3.3 Finality (R7-C2e2 e2-5a): an evaluation that read an open obligation (reentryReads) supplied no evidence there, and
-    // that obligation's proof may still hold; so it, and every work that read its verdict, is no fact once that proof ends. None is kept
-    // past the outermost request, which has answered its requester inside that proof: each returns to its initial state and is
-    // evaluated again when next requested. A work whose last evaluation read none stays, unless it read one that did. A forgotten work
-    // stays in its sources' Dependents and edges: a later change of a source evaluates it again with no Parent, which only the growth
-    // guard reads (no verdict depends on it). Temporary carrier with reentryReads; removal: R7-C2e2 e2-5b, with e2-3's Completion.
-    private void ForgetPendingCapabilities()
+    // SPEC 8.3.3 Finality (R7-C2e2 e2-5a, e2-3b): an evaluation whose answer depends on an open obligation (EndAnswer) supplied no
+    // evidence there, and that obligation's proof may still hold; so it, and every work that read its verdict, is no fact once that
+    // proof ends. None is kept past the outermost request, which has answered its requester inside that proof: each returns to its
+    // initial state and is evaluated again when next requested. A work whose last evaluation depends on none stays, unless it read one
+    // that does. A forgotten work stays in its sources' Dependents and edges: a later change of a source evaluates it again with no
+    // Parent, which only the growth guard reads (no verdict depends on it).
+    private void ForgetDependentCapabilities()
     {
-        var pending = this.pendingCapabilities;
-        for (var i = 0; i < pending.Count; i++)
+        var dependents = this.dependentCapabilities;
+        for (var i = 0; i < dependents.Count; i++)
         {
-            var work = pending[i];
-            if (!work.Pending)
+            var work = dependents[i];
+            if (!work.Depends)
             {
                 continue;
             }
@@ -634,17 +635,17 @@ public sealed partial class Binding
             foreach (var dependent in work.Dependents)
             {
                 this.capabilityEdges.Remove((work, dependent));
-                if (dependent.Evaluated && !dependent.Pending)
+                if (dependent.Evaluated && !dependent.Depends)
                 {
-                    dependent.Pending = true;
-                    pending.Add(dependent);
+                    dependent.Depends = true;
+                    dependents.Add(dependent);
                 }
             }
 
             work.Reset();
         }
 
-        pending.Clear();
+        dependents.Clear();
     }
 
     private ConstraintProof ComputeCapability(CapabilityWork work)

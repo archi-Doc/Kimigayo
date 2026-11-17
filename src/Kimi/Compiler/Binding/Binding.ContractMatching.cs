@@ -98,13 +98,13 @@ public sealed partial class Binding
     // Self.
     private BoundType ConformanceSelf(BoundConformancePath path) => this.ContractType(this.SelfType(path.Type), path.Scope);
 
-    // A path keeps Proven (IsVerified) and Invalid only; Unknown and a non-Invalid Error are verified again at each read (Checking
-    // answers Unknown): on-demand verification, staged to C3's scheduler (DECISIONS BU-59). The conforming declaration's own check is
+    // A path keeps Proven (IsVerified) and Invalid only; Unknown and a non-Invalid Error are verified again at each read (its open
+    // obligation answers Unknown): on-demand verification, staged to C3's scheduler (DECISIONS BU-59). The conforming declaration's own check is
     // its published source state.
     private ConstraintProof VerifyConformance(BoundConformancePath conformance, ConstraintProof? inheritedProof = null)
     {
         // A limit is the fact of a completed verification; an early or in-progress answer has none (ResolveConformance).
-        if (!conformance.Checking)
+        if (!this.Verifying(conformance))
         {
             conformance.Unsupported = false;
         }
@@ -151,15 +151,12 @@ public sealed partial class Binding
             return ConstraintProof.Proven;
         }
 
-        // SPEC 8.3.3 Recursion at the declaration's own obligation (any instance of the path): the second guard beside the open set
-        // (ResolveConformance), which keys an instance's obligation by (Type, Contract) and so cannot also key a path being verified
-        // without one answer for both; removal: R7-C2e2 e2-5b, when the obligation table keys both (e2-3's Completion carriers).
-        if (conformance.Checking)
+        // SPEC 8.3.3 Recursion at the declaration's own obligation (any instance of the path), keyed by the path in the one table.
+        if (!this.OpenObligation(new(null, null, conformance)))
         {
-            return this.ReentryRead(conformance);
+            return ConstraintProof.Unknown;
         }
 
-        conformance.Checking = true;
         this.conformanceChecks++;
         conformance.WitnessStorage.Clear();
         conformance.WitnessMap.Clear();
@@ -404,7 +401,7 @@ public sealed partial class Binding
         }
         finally
         {
-            this.EndChecking(conformance);
+            this.openObligations.Remove(new(null, null, conformance));
             conformance.Unsupported &= completed; // An interrupted verification records no limit.
             this.conformanceChecks--;
         }

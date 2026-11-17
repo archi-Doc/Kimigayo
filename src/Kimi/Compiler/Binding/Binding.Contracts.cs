@@ -140,7 +140,7 @@ public sealed partial class Binding
 
         this.ResetAssociatedInference();
         this.failedCause = null;
-        this.reentryReads = 0;
+        this.dependence = int.MaxValue;
         this.contractHeadersReady = false;
         this.bindingConstraintTypes = false;
         this.impls.Begin(this.storageVersion, this.pass); // Every identity and path is stale (DECISIONS BU-220); the pass view is the pass's.
