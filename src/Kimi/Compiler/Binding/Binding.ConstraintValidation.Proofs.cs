@@ -59,11 +59,6 @@ public sealed partial class Binding
     // it (EvaluateCallCandidate).
     private PendingJudgment? trialPending;
 
-    // The refusals by node (RefuseProof): one cause a node, so an answer computed again rests on the same cause (the capability
-    // engine's fixpoint compares causes by reference). A Refusal holds no pass state (its node, its limit), so it is kept across
-    // passes, as the capability works are: a refused request allocates it once and a warm pass reuses it (RP8's warm bytes).
-    private Dictionary<Koto, Refusal>? refusals;
-
     // SPEC 10.1, 8.3.3 (the owner's O-335 (a)): the first refusal a candidate trial read while a selection evaluates its candidates
     // (candidateTrials), held unsettled (Refusal.Settle), so the trial's judgment is the Unknown 10.1 ranks; the trial frame carries it
     // to its selection as its other facts (CloseTrial), which takes it per candidate (TakeTrialRefusal) and settles only the selected
@@ -394,12 +389,12 @@ public sealed partial class Binding
             return;
         }
 
-        this.refusals ??= new(ReferenceEqualityComparer.Instance);
-        if (!this.refusals.TryGetValue(site, out var refusal))
-        {
-            this.refusals[site] = refusal = new(this, site, limit);
-        }
-
+        // The node's refusal, its row of the kept family NodeColumns.Refusals (DECISIONS BU-220), read and written here alone: one cause
+        // a node, so an answer computed again rests on the same cause (the capability engine's fixpoint compares causes by reference).
+        // A Refusal holds no pass state (its node, its limit), so it is kept across passes, as the capability works are: a refused
+        // request allocates it once and a warm pass reuses it (RP8's warm bytes). The library holds no row (no library node is a site).
+        ref var row = ref HirTables.Of(site).Families.Refusals.Ref(site.SyntaxId);
+        var refusal = row ??= new(this, site, limit);
         if (this.proofNesting != 0 || this.capabilityConsumer is not null)
         {
             this.ReadVerdict(ConstraintProof.Unknown, refusal, null);
@@ -488,8 +483,8 @@ public sealed partial class Binding
     }
 
     // What a proof that read a refused analysis rests on (RefuseProof): the node the limit is recorded at, failed where an answer
-    // resting on it is no longer combined within the pass (Settle; its first failure only, Fail).
-    private sealed class Refusal(Binding binding, Koto use, BindingFailure limit) : ICheckCause
+    // resting on it is no longer combined within the pass (Settle; its first failure only, Fail); its node's row of NodeColumns.Refusals.
+    internal sealed class Refusal(Binding binding, Koto use, BindingFailure limit) : ICheckCause
     {
         public Koto Use { get; } = use;
 
