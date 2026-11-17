@@ -2,6 +2,7 @@
 
 using System.Reflection;
 using Kimi.Compiler;
+using Kimi.Compiler.Mir;
 using Kimi.Compiler.Parsing;
 using Xunit;
 using Printer = XunitTest.SemanticSnapshotTest.SemanticPrinter;
@@ -95,9 +96,9 @@ public partial class KimiLibraryShapeTest
     // The empty program's synthesized library nodes after its first Analyze, by id (c17's reference).
     private static readonly Lazy<string[]> EmptyProgramSynthesized = new(() => SynthesizedLines(Analyzed(string.Empty)));
 
-    // c17 (RC1): the library steps number every library node a later phase reads, so the library table after the first Analyze is the
-    // one after the first Bind, and its synthesized nodes are the empty program's, id by id, whatever the program (R8-M32's Temporary 1
-    // removed). Until G949 S1-e the MIR builder's CallPlan.Accessor created and numbered 7 library accessors' execution functions
+    // c17 (RC1): the library steps number every library node a later phase reads, so the library table after the first Analyze and a
+    // build of every library body (PLAN G951 U2: Analyze builds the library bodies the program reaches) is the one after the first Bind,
+    // and its synthesized nodes are the empty program's, id by id, whatever the program (R8-M32's Temporary 1 removed). Until G949 S1-e the MIR builder's CallPlan.Accessor created and numbered 7 library accessors' execution functions
     // (Binding.AccessorFunction) after Bind, 16,120 against 16,134, and a program's uses ordered the ids (Milestones 27 and 30). c2's
     // programs and every milestone here; the library-layer rows' whole corpus (c16's) in the corpus row, valid or not: a check analyzes
     // whatever Binding found (SPEC 23.1.2).
@@ -184,6 +185,7 @@ public partial class KimiLibraryShapeTest
         var c = Bound(program);
         var bound = c.Library.Kotonoha.Syntax.Count;
         c.Analyze();
+        _ = new MirBuilder(c).Build(SyntaxTable.LibraryModule + 1); // Every library body: Analyze builds those the program reaches (PLAN G951 U2).
         Assert.Equal(bound, c.Library.Kotonoha.Syntax.Count);
         Assert.Equal(EmptyProgramSynthesized.Value, SynthesizedLines(c));
     }
