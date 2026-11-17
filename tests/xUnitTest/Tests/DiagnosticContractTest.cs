@@ -430,13 +430,25 @@ public sealed class DiagnosticContractTest(ITestOutputHelper output)
 
         public bool EnableColor { get; set; }
 
+        // A host's console failure: the first line that starts with this text throws InvalidOperationException instead, once.
+        public string? FailingLine { get; set; }
+
         public void Write(string? message, ConsoleColor color = ConsoleColor.Gray) => this.text.Append(message);
 
         public void Write(ReadOnlySpan<char> message, ConsoleColor color = ConsoleColor.Gray) => this.text.Append(message);
 
-        public void WriteLine(string? message, ConsoleColor color = ConsoleColor.Gray) => this.text.Append(message).Append('\n');
+        public void WriteLine(string? message, ConsoleColor color = ConsoleColor.Gray) => this.WriteLine(message.AsSpan(), color);
 
-        public void WriteLine(ReadOnlySpan<char> message, ConsoleColor color = ConsoleColor.Gray) => this.text.Append(message).Append('\n');
+        public void WriteLine(ReadOnlySpan<char> message, ConsoleColor color = ConsoleColor.Gray)
+        {
+            if (this.FailingLine is { } line && message.StartsWith(line, StringComparison.Ordinal))
+            {
+                this.FailingLine = null;
+                throw new InvalidOperationException("The host's console failed.");
+            }
+
+            this.text.Append(message).Append('\n');
+        }
 
         public Task<InputResult> ReadLineAsync(CancellationToken cancellationToken) => throw new NotSupportedException();
 

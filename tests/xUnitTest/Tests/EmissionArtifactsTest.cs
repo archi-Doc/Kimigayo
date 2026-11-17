@@ -322,21 +322,32 @@ public sealed class EmissionArtifactsTest : IDisposable
     // (ArtifactFiles.CheckPath, PublishArtifacts' fault). Code generation's row, a source path with an embedded NUL, left with G346's fix
     // (DECISIONS R5-M175: naming a source never throws); generation runs outside Publish's classifying catches (R5-M169's amendment),
     // and no program makes it throw without a production seam.
+    // The toolchain boundary (R9-B2): the project's own result (BuildTargetsAndPublish) has the same fault path, one CheckFaulted_Kd, in
+    // check and emit alike: its checks read a null target list (it escaped Check and Generate), and the host's console throws
+    // InvalidOperationException at the report of the published pair (it escaped Generate; the pair stays, published before the report).
     [Theory]
-    [InlineData("front end")]
-    [InlineData("publication")]
-    public async Task AnExceptionEndsTheCommandsResultAsFaulted(string phase)
+    [InlineData("check: project checks", 0)]
+    [InlineData("project checks", 0)]
+    [InlineData("front end", 0)]
+    [InlineData("report", 2)]
+    [InlineData("publication", 0)]
+    public async Task AnExceptionEndsTheCommandsResultAsFaulted(string phase, int published)
     {
         var file = Path.Combine(this.directory, "Hello.kimiproj");
         File.WriteAllText(file, $"Targets={{\"{WindowsProfile.Target}\"}} OutputPath=\"out/Hello.ll\"");
-        var console = new DiagnosticContractTest.DiagnosticConsole();
+        File.WriteAllText(Path.Combine(this.directory, "main.kimi"), "::Kimi.Console.writeLine(\"Hello\")");
+        var console = new DiagnosticContractTest.DiagnosticConsole { FailingLine = phase == "report" ? "Generated LLVM inputs" : null };
         Assert.True(Project.TryCreate(new Kimigayo(console), null, file, out var project));
-        if (phase == "front end")
+        if (phase.EndsWith("project checks", StringComparison.Ordinal))
+        {
+            project.ProjectFile.Targets = null!;
+        }
+        else if (phase == "front end")
         {
             project.AddKimiFile(null!);
-            Assert.False(await project.Generate(TestContext.Current.CancellationToken));
         }
-        else
+
+        if (phase == "publication")
         {
             var c = this.Create();
             c.Project.ProjectFile.NativeLibraries[WindowsProfile.Target] = new() { ["unused"] = new() { Kind = "import", Input = null! } };
@@ -344,12 +355,17 @@ public sealed class EmissionArtifactsTest : IDisposable
             Assert.False(project.PublishArtifacts(c, null, null, out var path));
             Assert.Null(path);
         }
+        else
+        {
+            var ct = TestContext.Current.CancellationToken;
+            Assert.False(await (phase.StartsWith("check", StringComparison.Ordinal) ? project.Check(ct) : project.Generate(ct)));
+        }
 
         Assert.Equal(1, console.Text.Split(nameof(DiagnosticCode.CheckFaulted_Kd)).Length - 1);
         Assert.Contains(DiagnosticFaults.Describe(DiagnosticFault.Exception), console.Text, StringComparison.Ordinal);
         Assert.DoesNotContain(nameof(DiagnosticCode.ArtifactPublicationFailed_Kd), console.Text, StringComparison.Ordinal);
         Assert.Contains("Hello.kimiproj", console.Text, StringComparison.Ordinal);
-        Assert.Empty(Directory.EnumerateFiles(this.directory, "*.l*", SearchOption.AllDirectories));
+        Assert.Equal(published, Directory.EnumerateFiles(this.directory, "*.l*", SearchOption.AllDirectories).Count());
     }
 
     // PLAN G346 (DECISIONS R5-M175): a source path with an embedded NUL inside the project is published, its location escaped (IMPL
