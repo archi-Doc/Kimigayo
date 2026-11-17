@@ -289,6 +289,7 @@ $originalManifest = [IO.File]::ReadAllText($manifestPath)
 try {
     [IO.File]::WriteAllText($foreignIr, $originalIr.Replace('@read_total(', '@missing_foreign_symbol('))
     $foreignManifest.irSha256 = (Get-FileHash -LiteralPath $foreignIr).Hash.ToLowerInvariant()
+    ($foreignManifest.externalDeclarations | Where-Object symbol -ceq 'read_total').symbol = 'missing_foreign_symbol' # The pair states its declarations.
     $foreignManifest | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath $manifestPath -Encoding utf8
     $output = Invoke-Kimi @('build', '--Manifest', $manifestPath) 1
     if (-not $output.Contains('missing_foreign_symbol') -or -not $output.Contains('lld-link')) { throw "Expected link failure: $output" }
