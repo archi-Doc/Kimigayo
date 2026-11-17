@@ -602,7 +602,7 @@ public sealed partial class Binding
     private void CompletePatternAcquisitions()
     {
         // D2b-d's d8 order: the source modules by ordinal, then the library, each by ascending id (the walk's order on a cold compile).
-        foreach (var row in this.matches.Values)
+        foreach (var row in this.matches.Values.In(this.pass))
         {
             var plan = row!;
             var scope = this.ConstraintScope(plan.Syntax);

@@ -618,7 +618,7 @@ public sealed partial class Binding
     private void CompleteEnumAcquisitions()
     {
         // D2b-d's d8 order: the source modules by ordinal, then the library, each by ascending id (the walk's order on a cold compile).
-        for (var rows = this.enumConstructions.Values; rows.MoveNext();)
+        for (var rows = this.enumConstructions.Values.In(this.pass); rows.MoveNext();)
         {
             var (use, plan) = (rows.Node, rows.Current!);
             if (!plan.IsValid)

@@ -471,7 +471,7 @@ public sealed partial class Binding
     private void ValidateVirtualOverrideConditions()
     {
         // D2b-d's d8 order: the source modules by ordinal, then the library, each by ascending id (the walk's order on a cold compile).
-        for (var rows = this.virtualOverrides.Values; rows.MoveNext();)
+        for (var rows = this.virtualOverrides.Values.In(this.pass); rows.MoveNext();)
         {
             var (function, implementation) = ((FunctionKoto)rows.Node, rows.Current);
             if (function.BindingFailure != BindingFailure.None || function.BoundSymbol!.ConditionalDeclaration is not { } block)
