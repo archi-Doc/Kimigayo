@@ -275,6 +275,8 @@ public sealed partial class Binding
             row = row is null ? value : throw new ArgumentException($"`initializerOrigins` already holds a row at `{node}`.", nameof(node));
         }
 
+        internal bool ContainsKey(Koto node) => this.TryGetValue(node, out _);
+
         internal bool TryGetValue(Koto node, [NotNullWhen(true)] out OriginDeclaration? value)
             => (value = node.SyntaxOwner is { } table ? table.Hir.Families.InitializerOrigins.Get(node.SyntaxId) : null) is not null;
     }
