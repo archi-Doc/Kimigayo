@@ -279,13 +279,14 @@ Full audit matrices, repairs, measurements and failed/supplemental runs remain a
 ## 12. Recorder interactions
 
 Call ambiguity records the remaining candidates and their declaration locations, with the count retained in the primary
-label/Reason. Waiting anonymous parameters derive their missing context from the failed selection. After selection,
-a Callable receiver failure names the selected declaration and actual/required receiver modes; it never reopens the
-overload set (`CommonAnonymousContextTest`, CLI/LSP and independent body errors). Different complete Callable
-expectations do not prevent ordinary ranking of concrete Closure slots; tied candidates report ambiguity before any
-body check, while a selected body's mismatch remains its own error even when another candidate would accept it.
-Erasure versus concrete acquisition also reports ambiguity, including mixed anonymous contexts: another argument's
-advantage, nongeneric status or fewer defaults cannot break that incomparability (`FunctionErasureRankingTest`).
+label/Reason. An anonymous function's omitted parameter Types, which its call's selection would have supplied, rest on
+the failed selection's record. After selection, a Callable receiver failure names the selected declaration and
+actual/required receiver modes; it never reopens the overload set (`CommonAnonymousContextTest`, CLI/LSP and independent
+body errors). Different complete Callable expectations do not prevent ordinary ranking of concrete Closure slots; tied
+candidates report ambiguity before any body check, while a selected body's mismatch remains its own error even when
+another candidate would accept it. Erasure versus concrete acquisition also reports ambiguity, including mixed anonymous
+contexts: another argument's advantage, nongeneric status or fewer defaults cannot break that incomparability
+(`FunctionErasureRankingTest`).
 Fixed-signature reference selection checks unsafe acquisition only for the selected declaration. A failed overload
 group records every candidate signature and the required signature in `NoApplicableOverload_Kd`; a single reference
 keeps `TypeMismatch_Kd` with actual/expected facts.

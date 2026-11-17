@@ -12544,6 +12544,8 @@ resumed by R4-M86 (2026-10-20).
     a-fill: a narrow subset, AGENTS Diagnostics); the nested temporary's Origin input here (not one path with the root Literal's
     `InferInput`; the value-call path passes only by reading no children: G585); a non-final failure of the call (its re-evaluation
     lost the failed part's evidence: `UnboundTypeArgument_Kd`).
+  - Amended by BU-224 (PLAN G924 AF-1): `ChildPattern` is `ExpectedChild` (`Binding.ArgumentKinds.Positions`), the one table of a
+    part's child positions' Types; the rules above hold there.
 
 - **BU-176 A case that Reborrows an object view lends the object (PLAN G766)** (2026-11-12; Front, Binding; Major; design and
   implementation reviews ACCEPT) SPEC 3.4.2, 13.5.5, 13.5.6, 15.6.2.
@@ -13047,6 +13049,9 @@ resumed by R4-M86 (2026-10-20).
     the Rule's `FitComposite` sentence (the selected call completes a fill or mixed range at `ref/U` itself, as at a let); the
     Input's and the one exception's `ref/(...)` is `ref/U` (a Tuple or array result: `InferComposite` borrows a Join at any `ref/`
     pattern); the one exception names PLAN G910 for a source of such a join that is no temporary of `U`.
+  - Superseded in part by BU-224 (PLAN G924 AF-2): `TemporaryTarget` is `Materialization` (`Binding.Materialization`). K2 and K3
+    go: a fill or mixed range at `ref/U` is the temporary of U and takes U, at a let and at a call; the one exception is
+    Materialization's join row (a join its call classifies, `PartKind.Join`). The Input and Raw rules hold.
 
 - **BU-188 A specialization's placement is judged by the item list that reads it** (2026-11-13; Front, Parsing and Binding; Major,
   an acceptance mover; PLAN G807; design review 3 ACCEPT, implementation review ACCEPT WITH NOTES; the owner approved
@@ -13600,6 +13605,11 @@ resumed by R4-M86 (2026-10-20).
   - **Remainder (R7-I2 d's position source):** adapting the formed value once where no part supplies it, at a `ref/T` pattern (j15);
     a bare slot's evidence beside a literal (q7: `T` bound from the typed part alone; bl10), j15's cause, since the evidence's
     adapted common Type (`InferAdaptedParts`) does not read `BesideLiterals` (F's ruling 9); the interim above.
+  - Superseded in part by BU-224 (PLAN G924 AF-2): the interim is removed (`AdaptsPerSource` and its record in
+    `BindWaitedSources`): a value join at `ref/U` is decided at U and borrowed once, and a typed position at a borrowed element
+    inside the sources is each source's own. The per-position class gives way in part to the one class source
+    (`ExpectedTypeClass`); at a whole's places SPEC 14.9.2 step 2 holds with or without a literal (`WholeEvidence`),
+    `BesideLiterals` keeping the literal half. U1.6g2 stands until PLAN G924 AF-3b.
 - **BU-204 `Infer`'s pattern is always the callee's: at a pair-target position a slot's binding is compared with evidence, never
   matched as a pattern (PLAN G854; a crash patch)** (2026-11-14; Front, Binding inference; Minor, a crash fixed at once under plan
   revision 69 (B); one review by F's reviewer, ACCEPT WITH NOTES; the Middle's C-316 consent; F's D-590 rulings 1-4) SPEC 10.8
@@ -13866,6 +13876,9 @@ resumed by R4-M86 (2026-10-20).
     `s/W` of Nc2s); ranking the open position from the plain candidate's class (a comparison that reads another candidate).
   - **Removal condition:** PLAN G916's one class source for every open arm replaces this expression (and amends BU-164's
     "Representation" parenthetical, whose `Literal` the open composite arm does not give today).
+  - Amended by BU-224 (PLAN G924 AF-2): the class `Literal` is `ExpectedTypeFitting`; the open Literal arm reads `Materialization`
+    at `met` for its class, as `ExpectedTypeClass` would (`TemporaryTarget` is gone), and an open position's whole literal or join
+    reads `ExpectedTypeClass` (PLAN G916 closed).
 - **BU-215 A Function Type carries its per-call binder (`BoundType.Binder`)** (2026-11-15; Front, Binding; PLAN G904, Q17 class 1;
   Major; the Middle's C-349 CONSENT WITH CONDITIONS, C1-C3 met) SPEC 8.10, 10.7, 15.2.3, 15.3.4, 15.3.7, 3.8. Completes R4-M154
   Revision 9's "the signature's Binder" for a Function Type; amends BU-73's `CallSignature` row for a Function Type.
@@ -14229,6 +14242,141 @@ resumed by R4-M86 (2026-10-20).
   - Closes PLAN G936. Open: G942-G944 (above); a Closure's value call never proves its result's clauses, since
     `CarriesResultPremises` excludes anonymous functions (PLAN G962, to reuse this judge); pre-existing on G913 and found by the
     Middle's consent re-check: PLAN G966, G967 and the G710 and G870 additions.
+- **BU-224 The expected Type reaches every part of an argument, and a value at `ref/U` is one temporary borrowed once: principles A
+  and B of argument flow (PLAN G924 AF-1, AF-2)** (2026-11-18; Front, Binding; Major, an acceptance mover (Q-477); the owner's
+  direction of 2026-11-15 answering O-331, verbatim 「提案の方針（原則A：期待型を引数の式に下ろす、原則B：ref/U に渡す値の式は引数の位置で一時値にして1回借用する）でOKです。提案書を作成し、設計、実装を進めて下さい。SPECもそれに合わせて、修正して下さい。」, and its
+  readings O-333 R2 (a), R3 (a), R6 (b), R5 (a), verbatim 「O-333 R2 (a)・R3 (a)・R6 (b)・R5 (a)」, O-339 (a), verbatim 「O-339 (a)」,
+  O-341 (a), verbatim 「質問事項は、すべて推奨どおりでOKです」, O-316 (a), verbatim 「質問の回答は、すべて推奨どおりでお願いします。」,
+  O-346 (a), verbatim 「O-346 a」, O-352 (a), verbatim 「O-352 a」, and O-374 (a), verbatim 「すべて推奨どおりでお願いします」; designs
+  `front\notes\ArgFlow\design.md` revision 1 and `design-bareslot.md`, each ACCEPT WITH NOTES after REVISE; the implementation
+  review, whose last REVISE the owner's O-374 (a) answered, and the reviews of the addendum, fix22, the full suite's rows and ar2,
+  each ending ACCEPT; F's ArgFlow rulings; K's G924 SPEC text, revision 10, which lands with it; the Middle's consent C-375 with its
+  addendum) SPEC 3.4.1, 3.6, 4.3.1, 4.6.2, 6.5.2, 10.1, 10.2, 10.2.2, 10.4, 10.5.1, 10.5.4, 10.8, 10.8.1, 12.3.1, 14.9.2, 23.1.2.
+  Supersedes BU-187's K2, K3 and its one exception, and BU-203's interim; amends BU-165, BU-203 and BU-214.
+  - **The expected Type (rule A; AF-1's restructuring b140f7286, behaviour unchanged, then AF-2's rows).** Its owner is
+    `Binding.ArgumentKinds.Positions`: `ExpectedChild`, the one table of a part's child positions' Types (a Tuple element its
+    component, an array or fill element the element Type, a Dictionary key and value the key and value Types, a range boundary its S
+    or E, a join's results the join's own; any other form is a broken contract), which replaces `ChildPattern` and
+    `PartChildPattern`; and `ExpectedTypeOf`, a value part's expected Type at a position (`ref/U` gives U), which replaces
+    `LiteralInputType` and ShapeEvidence's `Referent`. Readers: the position walks (`AddChildPosition`), the rows
+    (`JudgePositionRows`, `ComposePositionRows`), the waiting callables (`TakeWaiting`), the fit's descent
+    (`ProbeAggregateArgument`), `WholeEvidence`, the shape evidence, the late Types (`LateTupleType`, `LateArrayType`,
+    `LateDictionaryType`), the range binder and the enum binder. A form gains a row, not a reader's case. So the expected Type
+    reaches every part (literal parts, a range's boundaries, join sources, generic call results) at a call and at every fixed
+    expected Type (O-333 R2 (a): a declared Type as a parameter's); a Dictionary literal at a call stays typed whole (BU-43 C1,
+    below).
+  - **Materialization (rule B; SPEC 3.6's word, 10.2 row 2).** `Binding.Materialization` decides, at every position (an argument's
+    fit, `BindAndAdaptNode` at any expected Type, the evidence walk, a value call's solve), whether a part at `ref/U` is the owner
+    temporary of U, materialized once and shared-borrowed: an owner value of a literal form (a Tuple literal with elements, an array
+    literal or fill, a mixed range, a Dictionary literal, an untyped literal, a literal-only expression) or a value join (an unbound
+    selection, `do` or `loop` with such a source at any depth, by its survey, or one its call classifies, `PartKind.Join`), whose
+    value is its selected source's, every source fitted to U, so a misfit is its own record at U. A join of Places and references
+    only is no value (R6 (b): a Non-Copy Place source is not taken by value); a temporary inside a source stays the source's
+    (14.2.1). Readers: `FitComposite`, `FitLiteral`, `BindAndAdaptNode`, `CompleteValueCallPart`, `InferComposite`, `InferLiteral`,
+    `AddTemporaryBound`, `TryCandidateCore` and `WholeEvidence`'s `PlaceType`. It replaces BU-187's `TemporaryTarget`: a fill or
+    mixed range at `ref/U` is the temporary of U and takes U (BU-187's K2, K3 go), and a join its call classifies is its join row
+    (BU-187's one exception). A call or a construction is no row: its own binding lowers its expected result (below), and the common
+    adaptation's row 2 borrows its value.
+  - **The expected result at `ref/U` (SPEC 10.2.2 item 2, 10.8.1, 3.4.1; s-b1 and the addendum d635805a3).** A call's
+    expected-result step (`TryCandidateCore`) matches a returned value, a result that is no borrow value, against U, and a returned
+    `ref/T` against `ref/U`. `OwnerResult` (`Binding.Materialization`) is the one test: the outer Semantics is not `ref`, `uniq`,
+    `objref` or `objuniq`, nor a Semantics parameter's (an `s/T` result is matched against `ref/U`, as K's revision 10 states). A
+    bare slot is tested on what its evidence bound it to; unbound, it is a returned value, filled from U. The earlier inline test (a
+    bare slot or any Semantics pattern kept `ref/U`) is deleted. A Case construction is always an owner value (6.5.2, 3.4.1), so its
+    own reads of its expected Type take U at `ref/U` (`ExpectedTypeOf` in `InferredCase`, `EnumQualifierType` and
+    `BindEnumConstruction`), and the common adaptation's row 2 borrows the one temporary. `Materialization`'s call and Case rows,
+    `OwnerResult`'s second reader, are AF-3b's (PLAN G924).
+  - **A part's own Type after selection (O-341 (a); SPEC 10.2.1, 10.5.1).** A part that no expected Type reaches takes its own Type
+    for the selected candidate (`OwnType`): a literal its default, a waiting nested call its resolution with no expected result, its
+    own literals defaulting. That Type, applied by `DefaultArguments` and read as `DefaultOf`, binds a still-unbound slot; a failure
+    is the part's own record and never reselects. The defaults end Awaits for a nested call they resolved alone (`EndAwait`, the one
+    ender of Awaits), so `PartFailed` is the one query of a failed part there.
+  - **The parts at one place (`WholeEvidence`; SPEC 10.5.1, 10.8 Solving, 4.3.1 Places; O-316 (a), O-346 (a), O-352 (a)).**
+    `Binding.ArgumentKinds.Wholes` is the one meet of every whole at a bare slot (a Tuple, array, fill or Dictionary literal, a mixed
+    range, or a join with such a source, at a position whose pattern is a slot no fixed binding solves) for one candidate's or Case
+    construction's pass: gathered from every argument with the slot's other binding, order-free, then bound (`BindWholes`). At each
+    place (`PlaceType`) the typed parts' common Type is 14.9.2 step 2's (`SelectCommonType`: sources that differ only in safe
+    reference layers over one read Type, or are literals of it, have that read Type and are value-read), with or without a literal
+    beside them. A binding pushed from above (the slot's other evidence, an exact Type at an outer place) is no source of that
+    formation: it must agree with the place's Type in structure and Semantics without adaptation (`SameBinding`; 10.8: conversions
+    never choose a solution), so `put(f, [y@ref, y@ref])` (m5) is rejected and `put3(f, [y, y], [y@ref, y@ref])` is accepted. A
+    place with no Type is a hole: its literals and waiting parts take their own Types in the late pass, an anonymous function or an
+    empty literal's element never, and the slot is bound only where no place is a hole. Deleted: `IndependentPositionType`'s
+    bare-slot role, `InferComposite`'s bare branch and the array binder's `IsCallArgument` limit. BU-203's `BesideLiterals` stays
+    the owner of the literal half; the reading "step 2 only beside a literal" (W5) is withdrawn at places.
+  - **Joins at a call (rule B; R6 (b); F's rulings 46, 48).** A waited value join at `ref/U` is decided at U by its expected Type and
+    borrowed once, and a typed position inside the sources at a borrowed element is each source's own (3.6, 14.2.1). BU-203's
+    interim (the located `Unsupported_Kd` at a call's join argument whose position value was borrowed off its whitelist,
+    `AdaptsPerSource`) is removed. A join under a call's argument probe whose array literal source awaits its position is classified
+    by its call (`WaitsForItsCall` in `Binding.ControlFlow`, through the one classifier `ClassifiedByCall`), no longer decided at its
+    typed sources' Type by 14.9.2 step 3, and a list literal source there waits whatever its elements establish
+    (`BindIndependentArrayLiteral`): 10.5.1's first paragraph and 4.3.1 Places. **Temporary path** (F's ruling 48): a Tuple literal
+    source keeps step 3 at its typed sources' Type (`AwaitingAggregateSource` classifies array literal sources only), since
+    classifying it gives g586h3 `g(if c => (y, u@ref) else => (2, v@ref))` (valid) `NoApplicableOverload_Kd` instead of BU-156's
+    located `Unsupported_Kd`. Removal condition: PLAN G443's landing (R7-I2 d), which classifies Tuple sources too.
+  - **Ranking (SPEC 10.4 step 1; F's rulings 4, 11, 12 (a)).** `ArgumentAdaptation.Literal` is renamed `ExpectedTypeFitting` (SPEC's
+    class "Expected-Type fitting"). One class source, `ExpectedTypeClass` (`Binding.ArgumentKinds.Fit`): a part checked against its
+    expected Type ranks by its Materialization there, `CrossSemanticsBorrow` for the one temporary at `ref/U`, else
+    `ExpectedTypeFitting`; `FitComposite` and an open position's whole literal or join (`TryCandidateCore`) read it, so an open
+    position ranks as its closed fit (PLAN G916 closed). A value join ranks as the one value it is; a join of Places by the least
+    favourable of its sources' operations.
+  - **The late pass and failed parts (fix22).** The late pass reads a whole only for a slot that steps 3 and 4 of SPEC 10.1 left
+    unbound (`SlotSolution.Left`, published by `LeaveUnbound` in `SolveLate` and `SolveConstruction`, read by `InferComposite`); a
+    slot the expected result bound gives the parts at its positions their expected Type. After selection a part whose own binding
+    failed is no misfit: the call rests on it only where every unsolved slot stands at such a part (`RestSlots`; U1.6h-1's sentence
+    kept), and the unbound record's Reason names a slot that does not rest. `RequireType` gives no Type for a node whose fit failed.
+    A range rests on a boundary whose own check failed at every attempt (`IndependentBoundary`), and a literal-only boundary is still
+    fitted at the expected S or E beside a failed one (K's 4.6.2), so the boundary's misfit is one record.
+  - **An unselected call (SPEC 10.1, 10.5.4; F's rulings 87-90, 100).** Completing an unselected call's parts never changes what a
+    later attempt of that call reads: `CompleteUnselectedPart` leaves an anonymous function unbound, as on dev. F's ruling 49 (a),
+    which bound it on its own, is withdrawn: the Closure Type it published was read by the call's next attempt as evidence, and
+    `check` accepted `apply2(f@ref, func (k: i32) -> i32 => k + 1)` past an Unknown clause and 10.5.4's own
+    `run(func () => compute())` with its result used. `MarkOmittedHeaders` keeps dev's text and callers, the failing selections,
+    where every omitted Type rests on the call whatever an earlier check left on it (an operator's operand probe binds the
+    anonymous function before its counterpart exists, 13.3.4). The body's independent record under such a call stays PLAN R1e's.
+  - **Amended entries.** BU-165's rules and BU-187's remaining rules (Input, Raw) hold, owned by `ExpectedChild` (BU-165's
+    `ChildPattern`) and `Materialization` (BU-187's `TemporaryTarget`). BU-203: its interim is removed, its per-position class gives
+    way in part to the one class source, and at a whole's places 14.9.2 step 2 holds with or without a literal; its U1.6g2 (a
+    waiting part takes the position's step-2 Type, with no call) stands until AF-3b. BU-214: its class `Literal` is
+    `ExpectedTypeFitting`, and its open Literal arm reads `Materialization` at `met` for its class, as `ExpectedTypeClass` would.
+    BU-43 C1 (a Dictionary literal typed whole at a call) stays: its deletion lands with or after D-661's "does not complete" rule
+    for a Dictionary literal's parts (PLAN G980; F's ruling 54), since alone it fits each entry at its key or value Type, where Never
+    fits, and accepts `takeD([1: fail()])` (C27i1, invalid).
+  - **Moves** (labels from SPEC first, K's revision 10; census 477 and the Middle's sets against dev; Q13 for records). Valid, newly
+    accepted: the census's 82 rule-A/B forms (among them `kf([2 of idf(1)])`, `kr(idf(1)..3)`, s-u1, s-b1, j-elem-call,
+    tw-ovl-fill); the Case constructions at `ref/U` (`kr1(.Some(idf(1)))`, `kr1(Option.Some(idf(1)))`,
+    `let r: ref/Option<i64> = .Some(idf(1))` and its qualified form); `let r: ref/(i32, i32) = f(42, 0)` with
+    `f<T>(value: T, code: i32) -> (T, i32)`; `takeGeneric(Option.Some(1))` and `let o = Option.Some(identity(1))`. Invalid, newly
+    rejected (accepted on dev): C12u, C12r, C28a16i (`NoApplicableOverload_Kd`); G916's G8, G8g, G8v, G8vg (`AmbiguousBinding_Kd`);
+    tw16-fl-i, tw16-ff-i, L7i, m5 and t-tupm5 (class 1 closed); under 10.2.2 item 2, mk2_bare
+    (`UnsatisfiedOriginRelation_Kd`) and `let h: (ref/i32, ref/i32) -> ref/i32 = func (a, b) => g(a, b)` with
+    `g<T>(a: ref/i32, b: ref/i32) -> T` and its `apply` form; under 4.3.1, 14.9.2 step 2 and 10.8, g038, g038v1, g038v2 and their
+    twins w1, w3, w4, w10 of `af2\fix22\labels.tsv` (`NoApplicableOverload_Kd`). `kb1(idf(1))` at `kb1(x: ref/i64)` instantiates
+    `idf<i64>`, not `idf<ref/i64>`, acceptance unchanged. Records only, on programs both reject: the
+    Middle's census r01 (mrc3), r01r, r07, o09m, o10m (`UnboundTypeArgument_Kd` to `NoApplicableOverload_Kd`); one Loan record per
+    temporary, where each source had its own; n6, n6-r, q1, jw1, jw1-1 and x.i3-gen (valid) from `ComparisonLoanConflict_Kd` and
+    `UnsatisfiedOriginRelation_Kd` to BU-156's located `Unsupported_Kd` at the waiting source (`idf(1)`); rgl, rgl2, rgf and `m..n`
+    add the boundary's independent `TypeMismatch_Kd` (4.6.2, 23.1.2), and `let r: Range<i32, i32> = 1..n` (`n: i64`) reports it at
+    `n`, not at `1..n`; the others as Q-477 names them. As dev, though an intermediate head accepted them: the full suite's rows 4-6
+    (`apply2(f@ref, func (k: i32) -> i32 => k + 1)` beside an Unknown Callable clause, `UnprovenConstraint_Kd`) and amb1, amb2
+    (`AmbiguousBinding_Kd`). No move on the corpus.
+  - **Rejected:** routing the old functions through the new ones (a wrapper without semantics); naming B's owner
+    `ArgumentTemporary` (it also decides lets and element positions); keeping K2/K3 beside B (two answers for one fill); W5 (a
+    second, literal-gated reading of step 2 at places; no SPEC text); a Case row in `Materialization` in this unit (it would know a
+    qualified construction only by a probe-published callee, a second decider for one rule; AF-3b adds it beside the call row); the
+    step-4 fill fixing a position (g038 stays invalid by K's 4.3.1); a predicate on the defaults' Call case (it left the whole-call
+    rest for a nested call); one walk publishing the rested slots from the defaults (a set threaded through six methods for the
+    failure path only); `HasFailureCauses` beside `PartFailed` in `RestSlots` (true for a join or aggregate resting on a failed
+    element: fourteen rows lost their record); binding an unselected call's anonymous function only for a decided call (a decided
+    call is bound again too: amb1, amb2); clearing the first attempt's failure when the second selects (it still selects past the
+    Unknown); an `Unvisited` test in `MarkOmittedHeaders`' writer (it kept an operand probe's `MissingType` as a record: ar2); a
+    test of the call's own record in `CompleteUnselectedPart` (a nested payload rests on the outer call, which has its own record);
+    item (1), a call source with no borrow result as an owner value (b06c7faf3, reverted by 2990aaa95; O-374 (a)): PLAN G443's.
+  - **Open:** PLAN G924's AF-3: AF-3a (behaviour-preserving) and AF-3b, the per-candidate checks of a nested call or construction
+    that awaits its call (R3 (a)) with `Materialization`'s call and Case rows, a construction under two or more candidates at
+    `ref/U` (`AmbiguousBinding_Kd` until then, STATUS) and a join's waiting source completed at the step-1 Type (jw1, jw1-1, n6,
+    n6-r, q1, x.i3-gen); K's R10-N1 (an `s/T` result whose `s` evidence binds to `owner` while `T` stays unbound) has no row yet.
+    PLAN G443 (item (1), the Tuple step-3 path, BU-156's interim), G954, G957, G973, G977-G980 and R1e.
 - **G209-1** (2026-10-24; structural unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source
   aliases their selected container and environment before ordinary lookup merges imports. These responsibilities were embedded in the
   general expression parser and `Binding.Types.Lookup`, with alias resolution beside Type formation. `Parser.RuntimeTypeTests` now
