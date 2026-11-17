@@ -12,7 +12,7 @@ namespace Kimi.Compiler;
 //   Origin bindings count (OriginPart).
 // - Outputs: whether the relation holds and, when it does not, its first failure where the walk found it (ComparisonFailure), which the
 //   reader that records the failure takes from the walk that decided, with the components down to the failure that ended it
-//   (ComponentPath); a recording root's walk also keeps one fact per failing position
+//   and whether it is that part's own shape (ComponentPath); a recording root's walk also keeps one fact per failing position
 //   (comparisonFacts, design-r2 Amendment 1 A2), and CheckTypeUse's root one result per part it walks outside every Callable comparison
 //   (FitPart, in walk order), which CheckTypeUse decomposes instead of walking each part again (it walks again only an invariant part
 //   that this walk meets reversed, under a contravariant one).
@@ -95,30 +95,41 @@ public sealed partial class Binding
     // outermost lowest: a Tuple's element, a constructed Type's argument, an array's element, a layer's target. None (0) where the
     // failure is the root's own; a Function Type's comparison publishes none below it (its members are ComparisonFailure.Path's).
     // The path holds the eight outermost steps (a deeper one is shifted out), and a component beyond the 254th publishes none
-    // below it.
-    internal readonly record struct ComponentPath(ulong Path)
+    // below it. Shape: the failure is the own shape of the part the steps reach (SameShape: its kind, Semantics, symbol, lengths or
+    // arity), not a failure inside it; a path that loses a step loses it (G812 ruling 116).
+    internal readonly record struct ComponentPath(ulong Path, bool Shape)
     {
-        // The path as the enclosing part sees it: within its component `index`.
-        internal ComponentPath Within(int index) => index >= 0xFF ? default : new((this.Path << 8) | (uint)(index + 1));
+        // A failure at the root's own shape.
+        internal static readonly ComponentPath AtShape = new(0, true);
 
-        // The part of `type`, a Type whose formation gave the compared shape, that the path names: its component at each step, as
-        // far as formation keeps the components in their positions (a Tuple, a constructed Type, an array, a written layer; not
-        // a pair application, whose case decides whether it is a layer); null where it names none.
-        internal BoundType? Member(BoundType type)
+        // The path as the enclosing part sees it: within its component `index`.
+        internal ComponentPath Within(int index)
+            => index >= 0xFF ? default : new((this.Path << 8) | (uint)(index + 1), this.Shape && (this.Path >> 56) == 0);
+
+        // The part of `type`, a Type whose formation gave the compared shape, that the path names (false: none): its component at
+        // each step, as far as formation keeps the components in their positions (a Tuple, a constructed Type, an array, a written
+        // layer; not a pair application, whose case decides whether it is a layer). A failure at the shape of a part that formation
+        // keeps is that shape's, which no binding changes (G812 ruling 116): the part forms no Type (`member` null).
+        internal bool Names(BoundType type, out BoundType? member)
         {
-            var member = type;
-            for (var path = this.Path; path != 0 && KeepsComponents(member); path >>= 8)
+            member = type;
+            var path = this.Path;
+            for (; path != 0 && KeepsComponents(member); path >>= 8)
             {
                 var step = (int)(byte)path;
                 if (step == 0 || step > member.Components.Count)
                 {
-                    return null;
+                    member = null;
+                    return false;
                 }
 
                 member = member.Components[step - 1];
             }
 
-            return ReferenceEquals(member, type) ? null : member;
+            var shape = path == 0 && this.Shape && KeepsComponents(member);
+            var named = shape || !ReferenceEquals(member, type);
+            member = shape || !named ? null : member;
+            return named;
         }
 
         private static bool KeepsComponents(BoundType type)
@@ -232,7 +243,9 @@ public sealed partial class Binding
 
             if (actual.Kind == BoundTypeKind.Primitive || expected.Kind == BoundTypeKind.Primitive || !SameShape(actual, expected))
             {
-                return this.End(instance);
+                _ = this.End(instance);
+                this.components = ComponentPath.AtShape; // The failure is this part's own shape.
+                return false;
             }
 
             var structural = this.part is OriginPart.Structural or OriginPart.Everywhere;

@@ -192,7 +192,8 @@ public sealed partial class Binding
     // parameter (a Tuple's element, a constructed Type's argument, an array's element), a literal's or a typed value's, fails by
     // that component: the fit names it (argumentMisfit), and the declared component, formed again on its own, is the failing
     // part, so the run blames the bindings its layers read and not its siblings' (the owner's O-392 (c), G812 rulings 109, 111;
-    // the contract fit's member is the same reading, ContractFits).
+    // the contract fit's member is the same reading, ContractFits). A failure at the own shape of a part that formation keeps
+    // (a Tuple's arity, an array's kind) reads no binding: the failing part forms nothing, so the run blames none (ruling 116).
     private bool ItemCallFails(InvocationKoto call, BindingScope scope, BoundType item, BoundType? expected)
     {
         if (item is not { Kind: BoundTypeKind.FunctionItem, Symbol: { Type: { } result, Declaration: FunctionKoto function } })
@@ -217,7 +218,7 @@ public sealed partial class Binding
             if (this.ItemPart(declared, item, function, scope) is { } parameter &&
                 this.FitArgument(call.ArgumentNodes[i], parameter, scope, call, out _) == CandidateApplicability.Inapplicable)
             {
-                if (this.argumentMisfit.Member(declared!) is { } element)
+                if (this.argumentMisfit.Names(declared!, out var element))
                 {
                     this.EnterSplitPart();
                     _ = this.ItemPart(element, item, function, scope);

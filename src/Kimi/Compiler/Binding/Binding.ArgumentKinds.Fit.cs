@@ -13,6 +13,14 @@ public sealed partial class Binding
     // reads it right after the fit and blames that part's bindings (ItemCallFails).
     private ComponentPath argumentMisfit;
 
+    // SPEC 3.8 (G812 ruling 116): whether a literal's or a join position's own shape fits its Type; a shape that does not is the
+    // position's own failure (ComponentPath.AtShape), as the structural fit's is.
+    private bool ShapeFits(bool fits)
+    {
+        this.argumentMisfit = fits ? this.argumentMisfit : ComponentPath.AtShape;
+        return fits;
+    }
+
     // SPEC 10.1, 10.2, 10.5.1: whether an argument part fits a candidate's closed Type at its position, by the part's kind, and the
     // operation that adapts it (unset when it does not fit, but for a literal's range shape). Another part that awaits its call (a
     // Case, a Call) is checked only by the selected candidate; an anonymous function (Function) fits by its signature and a function
@@ -71,12 +79,13 @@ public sealed partial class Binding
         if (source is ArrayLiteralKoto array)
         {
             // SPEC 4.3: a call-argument literal fits the candidate's fixed array of exactly its length, or its owned Array.
-            if (expected is not { Kind: BoundTypeKind.FixedArray or BoundTypeKind.Array, Semantics: SemanticsKind.Owner } ||
-                (array.FillLength is not null && expected.Kind != BoundTypeKind.FixedArray) ||
-                (expected.Kind == BoundTypeKind.FixedArray && (array.FillLength is null ? expected.Length != array.Elements.Count :
-                    array.FillCount is not { } count || (count.IsConstant
-                        ? expected.LengthExpression is not null || expected.Length != count.Value
-                        : !ReferenceEquals(expected.LengthExpression, count)))))
+            var shaped = expected is { Kind: BoundTypeKind.FixedArray or BoundTypeKind.Array, Semantics: SemanticsKind.Owner } &&
+                (array.FillLength is null || expected.Kind == BoundTypeKind.FixedArray) &&
+                (expected.Kind != BoundTypeKind.FixedArray || (array.FillLength is null ? expected.Length == array.Elements.Count :
+                    array.FillCount is { } count && (count.IsConstant
+                        ? expected.LengthExpression is null && expected.Length == count.Value
+                        : ReferenceEquals(expected.LengthExpression, count))));
+            if (!this.ShapeFits(shaped))
             {
                 return CandidateApplicability.Inapplicable;
             }
@@ -102,7 +111,7 @@ public sealed partial class Binding
 
         if (source is TupleLiteralKoto tuple)
         {
-            if (!TupleShapeAt(tuple, expected))
+            if (!this.ShapeFits(TupleShapeAt(tuple, expected)))
             {
                 return CandidateApplicability.Inapplicable;
             }
@@ -129,8 +138,8 @@ public sealed partial class Binding
         {
             // SPEC 4.6.2: the candidate's range of this shape supplies each literal-only boundary's S or E; a typed boundary
             // must supply exactly its Type argument, through a value read.
-            if (expected is not { Kind: BoundTypeKind.Constructed, Semantics: SemanticsKind.Owner, Components.Count: 2 } ||
-                !ReferenceEquals(expected.Symbol, range.IsInclusive ? this.Library.ClosedRange : this.Library.Range))
+            if (!this.ShapeFits(expected is { Kind: BoundTypeKind.Constructed, Semantics: SemanticsKind.Owner, Components.Count: 2 } &&
+                ReferenceEquals(expected.Symbol, range.IsInclusive ? this.Library.ClosedRange : this.Library.Range)))
             {
                 return CandidateApplicability.Inapplicable;
             }
@@ -205,8 +214,8 @@ public sealed partial class Binding
                 _ when this.PartFailed(part) => true, // SPEC 23.1.2: what only a failed part would cause is dependent.
                 (PartKind.Call, FunctionKoto closure) => !this.AwaitsCall(closure) || this.ClosureSignatureFits(closure, type),
                 (PartKind.Call, _) => true,
-                (PartKind.Aggregate, TupleLiteralKoto tuple) => TupleShapeAt(tuple, type),
-                (PartKind.Aggregate, ArrayLiteralKoto array) => this.ArrayShapeAt(array, type),
+                (PartKind.Aggregate, TupleLiteralKoto tuple) => this.ShapeFits(TupleShapeAt(tuple, type)),
+                (PartKind.Aggregate, ArrayLiteralKoto array) => this.ShapeFits(this.ArrayShapeAt(array, type)),
                 (PartKind.Typed, _) when common is not null && this.TypedPositionPart(part) is { } own =>
                     this.FitsTypedPart(part, own, type, common, ref positionClass),
                 _ => this.LateFits(part, type), // A Dictionary part whole (BU-43), its key and value not walked.
