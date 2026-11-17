@@ -43,30 +43,22 @@ internal static class MarkdownUnicode
             : first;
     }
 
-    // Whether a scalar lies in one of a row's merged inclusive (first, last) ranges, ascending: a binary search.
+    // Whether a scalar lies in one of a row's merged inclusive (first, last) ranges, ascending, at least one: a search with a fixed
+    // number of steps for the row's size and no branch on the data. The last range whose first is at most the scalar (else range 0)
+    // lies in [low, low + count); each step moves low by half exactly when the probed first is at most the scalar, by the sign of
+    // their difference (scalars, so no overflow). The scalar is then in that range when its distance from the first, unsigned, is
+    // at most the range's.
     private static bool InRanges(ReadOnlySpan<byte> row, int scalar)
     {
         var ranges = new IntegerTable<int>(row);
         var low = 0;
-        var high = (ranges.Length / 2) - 1;
-        while (low <= high)
+        for (var count = ranges.Length / 2; count > 1; count -= count >> 1)
         {
-            var middle = (low + high) >> 1;
-            var offset = middle * 2;
-            if (scalar < ranges[offset])
-            {
-                high = middle - 1;
-            }
-            else if (scalar > ranges[offset + 1])
-            {
-                low = middle + 1;
-            }
-            else
-            {
-                return true;
-            }
+            var half = count >> 1;
+            low += half & ((ranges[(low + half) * 2] - scalar - 1) >> 31);
         }
 
-        return false;
+        var first = ranges[low * 2];
+        return (uint)(scalar - first) <= (uint)(ranges[(low * 2) + 1] - first);
     }
 }
