@@ -288,6 +288,8 @@ public partial class KimiLibraryShapeTest
             ["Binding.capabilityEdges"] = (Rule.Epoch, null),
             ["Binding.capabilityQueue"] = (Rule.Epoch, null),
             ["Binding.enumerateIndex"] = (Rule.Epoch, null),
+            ["Binding.programPart.EnumerateIndex"] = (Rule.Epoch, null), // the same index, each pass's part's (PLAN G949 S1-r1b)
+            ["Binding.Library.Layer.Part.EnumerateIndex"] = (Rule.Epoch, null),
             ["Binding.enumerateKept"] = (Rule.Epoch, null),
             ["Binding.enumerateKeptPool"] = (Rule.Epoch, null),
             ["Binding.enumerateHeads"] = (Rule.Epoch, null),
