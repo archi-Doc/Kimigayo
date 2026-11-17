@@ -1,5 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using System.Runtime.CompilerServices;
 using Kimi.Compiler.Helper;
 
 namespace Kimi.Documentation;
@@ -52,7 +53,9 @@ internal static class MarkdownUnicode
     // Whether a scalar in 0..255 is in a class's Latin-1 map: bit (scalar % 64) of word (scalar / 64).
     private static bool InLatin1(ReadOnlySpan<byte> map, int scalar) => ((new IntegerTable<ulong>(map)[scalar >> 6] >> (scalar & 63)) & 1) != 0;
 
-    // Whether a scalar lies in one of a row's merged inclusive (first, last) ranges, ascending: a binary search.
+    // Whether a scalar lies in one of a row's merged inclusive (first, last) ranges, ascending: a binary search, inlined into both
+    // classes, since the call, not the search, was the measured cost for neighbours inside a row's bounds (G818).
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static bool InRanges(ReadOnlySpan<byte> row, int scalar)
     {
         var ranges = new IntegerTable<int>(row);
