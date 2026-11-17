@@ -11,6 +11,11 @@ public sealed partial class Binding
     private readonly Dictionary<Koto, (int Start, int Count, int Position, AcquisitionMode Mode, AcquisitionMode Other)> callableSelectionFailures = new(ReferenceEqualityComparer.Instance);
     private readonly List<CallableCandidate> callableSelectionParties = [];
 
+    // DECISIONS D3 with rule W (G812 rulings 123, 124; temporary with the search): the part awaiting its call whose own selection failed
+    // the last run of a value call's split check (WaitingFails); a call that fails in every combination there rests on it, and only it
+    // of the call's deferred parts is completed as a call (CompleteFailedWaitingCall).
+    private Koto? waitingSelectionFailure;
+
     // SPEC 8.2, 8.4: a Type as a scope's premises make it, its associated projections normalized and its Type-identity premises substituted.
     internal BoundType CallableContractType(BoundType type, BindingScope scope)
         => this.SubstituteIdentityPremises(this.ContractType(type, scope), scope);
@@ -203,6 +208,7 @@ public sealed partial class Binding
     // (WaitingPartFails; rulings 118, 122, 123).
     private bool ItemCallFails(InvocationKoto call, BindingScope scope, BoundType item, BoundType? expected)
     {
+        this.waitingSelectionFailure = null;
         if (item is not { Kind: BoundTypeKind.FunctionItem, Symbol: { Type: { } result, Declaration: FunctionKoto function } })
         {
             return false;
@@ -276,6 +282,7 @@ public sealed partial class Binding
         {
             var fails = node is InvocationKoto nested && this.ProbeSelection(nested, scope, waiting.Type) is CallSelection.NoneApplicable or CallSelection.Ambiguous;
             this.argumentMisfit = waiting.Path; // After the probe, whose own fits clear it.
+            this.waitingSelectionFailure = fails ? node : null;
             return fails;
         }
 

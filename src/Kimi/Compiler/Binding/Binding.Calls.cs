@@ -147,9 +147,10 @@ public sealed partial class Binding
             if (this.UnformedSince(unformedMark))
             {
                 // DECISIONS D3 (temporary, PLAN G886): the callee's signature (a function item's) needed a Type no binding represents.
-                // A call that fails in every case of the split layer fails by itself (ValueCallRestsOnSplit; SPEC 10.1.1, 10.2).
+                // A call that fails in every case of the split layer fails by itself (ValueCallRestsOnSplit; SPEC 10.1.1, 10.2), or rests on
+                // the waiting Call whose own selection failed its run (CompleteFailedWaitingCall).
                 return this.ValueCallRestsOnSplit(call, scope, callableType!, expected, unformedMark) ? this.Fail(call, BindingFailure.Unsupported, true)
-                    : this.Fail(call, BindingFailure.NoApplicableCandidate);
+                    : this.waitingSelectionFailure is { } cause ? this.CompleteFailedWaitingCall(call, cause, scope) : this.Fail(call, BindingFailure.NoApplicableCandidate);
             }
 
             if (callable)
