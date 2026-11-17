@@ -118,7 +118,11 @@ public sealed partial class Binding
         this.originRequirementQueue.Clear();
         // Retained work survives between passes so summaries and lists are reused. A pass
         // stamp keeps declarations that dropped out from accumulating dependents forever.
-        this.originRequirementPass++;
+        if (++this.originRequirementPass == Frozen32)
+        {
+            this.originRequirementPass++; // A part's RequirementCall and its keeper lists copy it: never Frozen32 (Current).
+        }
+
         this.pass.Part.RequirementCall = this.originRequirementPass; // The running part's keepers are current by this call (Keepers).
         for (var i = 0; i < this.nodes.Count; i++)
         {

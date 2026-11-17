@@ -31,10 +31,10 @@ public sealed partial class Binding
             this.instances.Add(type, instance = new());
         }
 
-        if (instance.Version != this.storageVersion || adt?.Version != this.storageVersion)
+        if (adt is null || instance.Version != this.storageVersion || !Current(adt.Version, this.storageVersion))
         {
             this.Substitute(type, adt, instance);
-            instance.Version = adt?.Version ?? 0;
+            instance.Version = this.storageVersion;
         }
 
         return instance;

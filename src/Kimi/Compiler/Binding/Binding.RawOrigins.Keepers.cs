@@ -76,7 +76,7 @@ public sealed partial class Binding
                 this.keepers.Add(schema.Origins[i], list = new());
             }
 
-            if (list.Pass != this.originRequirementPass)
+            if (!Current(list.Pass, this.originRequirementPass))
             {
                 (list.Pass, list.Count) = (this.originRequirementPass, 0);
             }
@@ -92,7 +92,7 @@ public sealed partial class Binding
         var layer = this.Library.Layer.Part;
         var found = PassPart.Find(layer.Keepers, this.keepers, slot, out var list);
         var call = ReferenceEquals(found, layer.Keepers) ? layer.RequirementCall : this.pass.Part.RequirementCall;
-        return found is not null && list!.Pass == call ? list.Items : default;
+        return found is not null && Current(list!.Pass, call) ? list.Items : default;
     }
 
     // The member borrows of each slot of a nominal Type within `type` (scope Type `input`) that `origin` binds: the slot's keepers'

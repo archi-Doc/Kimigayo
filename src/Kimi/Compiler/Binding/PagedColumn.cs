@@ -356,8 +356,8 @@ internal struct StampedColumn<T, TCounter>
         return column;
     }
 
-    // The one comparison of the column's stamp with the current value of its counter (ruling 118; S1-1 adds Frozen here only).
-    private readonly bool Holds(Binding binding, out ulong counter) => this.stamp == (counter = TCounter.Of(binding));
+    // The one comparison of the column's stamp with the current value of its counter (ruling 118), through the one currency rule.
+    private readonly bool Holds(Binding binding, out ulong counter) => Binding.Current(this.stamp, counter = TCounter.Of(binding));
 }
 
 /// <summary>A Binding counter a stamped column follows (StampedColumn): Binding.PassCounter or Binding.EditCounter.</summary>

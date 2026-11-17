@@ -400,7 +400,7 @@ public sealed class BindingSymbol
     /// <param name="kind">The query's kind.</param>
     /// <param name="pass">The pass stamp.</param>
     /// <returns>The state, NotStarted when set in another pass.</returns>
-    internal DeclState QueryState(DeclQueryKind kind, ulong pass) => (uint)pass == this.queryPass ? (DeclState)((this.queries >> ((int)kind * 2)) & 3) : DeclState.NotStarted;
+    internal DeclState QueryState(DeclQueryKind kind, ulong pass) => Binding.Current(this.queryPass, (uint)pass) ? (DeclState)((this.queries >> ((int)kind * 2)) & 3) : DeclState.NotStarted;
 
     /// <summary>Sets a declaration query's state in a pass (Binding.DeclQuery only).</summary>
     /// <param name="kind">The query's kind.</param>
@@ -408,7 +408,7 @@ public sealed class BindingSymbol
     /// <param name="state">The state.</param>
     internal void SetQueryState(DeclQueryKind kind, ulong pass, DeclState state)
     {
-        if ((uint)pass != this.queryPass)
+        if (!Binding.Current(this.queryPass, (uint)pass))
         {
             this.queries = 0;
             this.queryPass = (uint)pass;

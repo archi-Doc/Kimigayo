@@ -494,6 +494,30 @@ public class BindingTest
         Assert.Empty(own.ForeignFailures);
     }
 
+    // PLAN G949 S1-1 (k1; s11-design 2.1, DECISIONS BU-105 as S1-1 amends it): the pass driver's counters skip the Frozen image of the
+    // stamps that copy them, so no run's value reads as a frozen stamp: the run counter's uint image (BindingSymbol's query stamp copies
+    // the low 32 bits) skips uint.MaxValue, and the requirement counter (each pass's call, its part's RequirementCall) skips it too. The
+    // counters start two values before their images; a Bind of Hello advances each past it, and every Bind's Result is the first's.
+    [Fact]
+    public void TheRunCountersSkipTheirFrozenImages()
+    {
+        var c = CompilationTestHelper.Parse(Repository.ReadText("docs/examples/Hello/Hello.kimi".Split('/')));
+        var first = c.Bind();
+        Assert.True(first.IsComplete);
+        var run = typeof(Binding).GetField("storageVersion", BindingFlags.Instance | BindingFlags.NonPublic)!;
+        var call = typeof(Binding).GetField("originRequirementPass", BindingFlags.Instance | BindingFlags.NonPublic)!;
+        var own = (Binding.PassPart)typeof(Binding).GetField("programPart", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(c.Binding)!;
+        run.SetValue(c.Binding, 0x1_FFFF_FFFEUL);
+        call.SetValue(c.Binding, uint.MaxValue - 1);
+        for (var bind = 0; bind < 2; bind++)
+        {
+            Assert.Equal(first, c.Bind());
+            Assert.NotEqual(uint.MaxValue, (uint)(ulong)run.GetValue(c.Binding)!);
+            Assert.NotEqual(uint.MaxValue, c.Library.Layer.Part.RequirementCall);
+            Assert.NotEqual(uint.MaxValue, own.RequirementCall);
+        }
+    }
+
     // PLAN G949 S1-r1b (v5; s1r1-design 3.3, RC2's recorder; review-s1r1b N2): a library node the program pass fails is listed once in
     // the program part's foreign failures, with the state the library pass counted it in. No program fails one today (the census: no
     // program-pass write to a library node over the corpus), so the row fails one through the private Fail after a Final Bind, as a

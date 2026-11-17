@@ -69,7 +69,7 @@ public sealed partial class Binding
             return [];
         }
 
-        if (region.Version != this.regionVersion)
+        if (!Current(region.Version, this.regionVersion))
         {
             region.Sources.Clear();
             this.regionWork.Clear();

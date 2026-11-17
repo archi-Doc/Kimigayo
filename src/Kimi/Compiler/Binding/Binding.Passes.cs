@@ -28,6 +28,15 @@ namespace Kimi.Compiler;
 //   composing parts.
 public sealed partial class Binding
 {
+    // The one currency rule (DECISIONS BU-105 as PLAN G949 S1-1 amends it; Current below): Frozen is the reserved stamp value of each
+    // width (ulong, uint, int), outside its counter's range and every reset or never-set marker of that stamp (int.MaxValue, never -1:
+    // LocalRegion.Version's "never computed").
+    internal const ulong Frozen = ulong.MaxValue;
+
+    internal const uint Frozen32 = uint.MaxValue;
+
+    internal const int FrozenRegion = int.MaxValue;
+
     // Binding's own part of the published lists: the program pass's. Its node list starts at the program's room (the library's nodes
     // are the layer's part's, which starts at the library's stated count: KimiLibrarySize).
     private readonly PassPart programPart = new(KimiLibrarySize.NodeRoom);
@@ -66,6 +75,18 @@ public sealed partial class Binding
     // modules, then the library, with Binding's own part.
     private BindingPass Modules => new(this.compilation.SourceModules, this.Library.Kotonoha, this.programPart);
 
+    // The one currency rule: a stamp is current when it equals its counter's value or is Frozen. A counter that could reach a Frozen
+    // value skips it: the run counter's uint image (BeginRun) and the requirement counter (SolveOriginRequirements); the edit counter
+    // (ulong) and the region version (one run's bounds) stay far below theirs. Every stamp compared with a counter is read here: a
+    // declaration query's (BindingSymbol), a stamped column's (StampedColumn), an instance's ADT (Instance), a VTable (FillVTable), a local
+    // region (LocalRegionSources) and a slot's keepers (Keepers). Not ImplTable's objects, current by their own store's Pass, and not an
+    // Origin requirement work, active only in its own call. Only S1-1's freeze writes Frozen; until then no stamp holds it.
+    internal static bool Current(ulong stamp, ulong counter) => stamp == counter || stamp == Frozen;
+
+    internal static bool Current(uint stamp, uint counter) => stamp == counter || stamp == Frozen32;
+
+    internal static bool Current(int stamp, int counter) => stamp == counter || stamp == FrozenRegion;
+
     // Per Bind: the SyntaxIds, the Result and the later phases' facts discarded, the runs started.
     private void BeginBind(BindingMode mode)
     {
@@ -92,7 +113,11 @@ public sealed partial class Binding
     // bound a run records moves it, whichever part holds the row, so it only rises within a run (n55-design 2.4).
     private void BeginRun()
     {
-        this.storageVersion++;
+        if ((uint)++this.storageVersion == Frozen32)
+        {
+            this.storageVersion++; // Its uint image is BindingSymbol's query stamp: never Frozen32 (Current).
+        }
+
         this.regionVersion = 0;
         this.signatureWalks = 0;
         this.memberWalks = 0;
