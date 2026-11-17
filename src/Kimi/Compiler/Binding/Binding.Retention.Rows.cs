@@ -531,7 +531,7 @@ public sealed partial class Binding
             return RetentionKind.None; // Entered at this depth or shallower: what lies below it is counted there (the bounded walks' rule).
         }
 
-        if (this.Fits(declared, hidden) || this.Identical(declared, hidden))
+        if (this.Identical(declared, hidden))
         {
             return kind;
         }
@@ -567,11 +567,19 @@ public sealed partial class Binding
         return found;
     }
 
-    // SPEC 8.2.3, 15.6.4 ("only where the premises make it one"): whether the callee's identity premises make a declared Type the kept
-    // abstract Type `hidden`: a member of its identity class in the callee's view (Binding.TypeIdentity's classes, as the key walk's View
-    // reads them), Origins erased (rvPremBad: `T is V`).
+    // SPEC 8.2.3 ("identity is closed under replacement inside any Type"), 15.6.4 ("only where the premises make it one"): whether a Type
+    // is the Type `hidden`, Origins erased (Fits), or the identity premises of the function whose own abstract Type `hidden` is make it
+    // so: a member of its identity class in that function's view (Binding.TypeIdentity's classes, the one judge, as the key walk's View
+    // reads them; rvPremBad: `T is V`). The one Type test of the walks that judge a kept Type, HiddenKind's and the write test's
+    // (WrittenThrough: Filled, Handed, Routes): View keeps two own abstract Types of one class distinct, so erased reference identity
+    // alone does not decide it. A Type that is no such abstract Type is judged by Fits alone.
     private bool Identical(BoundType declared, BoundType hidden)
     {
+        if (this.Fits(declared, hidden))
+        {
+            return true;
+        }
+
         if (OwnAbstract(hidden) is not { } function)
         {
             return false;
@@ -701,10 +709,11 @@ public sealed partial class Binding
         return false;
     }
 
-    // Whether a value of a Type is, or reaches through no shared layer, a value of `position`'s Type, Origins erased: by the entries
-    // the hold walk steps through (Holdings): a part held by value, an exclusive layer's referent, a raw layer's pointee where its step is
-    // not Shared; never past a shared borrow or a shared handle's payload, which a call reaches for reads only. Each Type entered at the
-    // shallowest depth it is met at (Enters, retentionWalked).
+    // Whether a value of a Type is, or reaches through no shared layer, a value of `position`'s Type, Origins erased and under the
+    // identity premises of the function `position` is an own abstract Type of (Identical; SPEC 8.2.3: under `T is U` a writer of U
+    // writes T): by the entries the hold walk steps through (Holdings): a part held by value, an exclusive layer's referent, a raw layer's
+    // pointee where its step is not Shared; never past a shared borrow or a shared handle's payload, which a call reaches for reads only.
+    // Each Type entered at the shallowest depth it is met at (Enters, retentionWalked).
     private bool WrittenThrough(BoundType? type, BoundType position, int depth)
     {
         if (type is null || depth > StorageBound)
@@ -718,7 +727,7 @@ public sealed partial class Binding
             return false;
         }
 
-        if (this.Fits(type, position))
+        if (this.Identical(type, position))
         {
             return true;
         }

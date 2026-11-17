@@ -20,7 +20,7 @@ namespace Kimi.Compiler;
 // inputs, the result and the handed signatures viewed at every depth (Viewed; DeclareSignature, RetentionPremises), so every
 // counterpart paired below them is in the view; the key walk views each step (OwnParts, Select, Base). Two own abstract Types an
 // identity premise identifies (`T is V`) both stay kept: View chooses no member between them, and the fit of one to the other is
-// HiddenKind's (Identical, Binding.Retention.Rows.cs).
+// Identical's (Binding.Retention.Rows.cs), which HiddenKind and the write test (WrittenThrough) read.
 // Inputs: the declared and the instantiated Types, Holdings' entries, the declaring function's identity classes (Binding.TypeIdentity).
 // Outputs: the declared counterpart, or null where the declaration writes none there.
 // Invariants: a function of its inputs and the declaring function's premises; a kept abstract Type gets every reader's null answer (no

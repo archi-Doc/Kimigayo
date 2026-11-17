@@ -283,7 +283,9 @@ public sealed partial class TyCtxtTest
     // review C1, twins I and J): a by-value input holding the kept Type (`x: Bx<T>`) meets it at a position the call does not write,
     // listed with a writer and not without one; a writer a Field of an input holds (`Hd<T, E>`, twin L) lists T. One output meeting T and
     // U (the Middle's handedOtherOk, valid, and handedSameBad): a writer of T lists T only, a writer of U lists U only, a writer of the
-    // pair lists both. Fail-before: the per-Type rows do not compile on 52efd20ca (Handed was one bool per output).
+    // pair lists both. Fail-before: the per-Type rows do not compile on 52efd20ca (Handed was one bool per output). Under the callee's
+    // identity premises (SPEC 8.2.3: `T is U` makes them one Type in f, so a writer of U writes T's binding; G935's review H1, twin K9,
+    // idWriterBad's contract): T listed (fail-before on 3a8f2e251: `0 kept: -`); the same contract without the premise lists nothing.
     [Theory]
     [InlineData("func f<T, E>(slot: uniq/T, y: E, set: (uniq/T, E) -> ()) => set(slot, y@move)\n", "x: uniq/(raw/(raw/u8)), v: raw/u8, set: (uniq/(raw/(raw/u8)), raw/u8) -> ()", "x, v, set@move", "0 kept: T")]
     [InlineData("contract Absorb<E>\n    func absorb(self: uniq/Self, r: E) -> ()\nstruct HoldR\n    Self is Absorb<raw/u8>\n    public var held: raw/(raw/u8)\n    public init() => self.held = null\n    public func absorb(self: uniq/Self, r: raw/u8) -> () => ()\nfunc f<T, E>(slot: uniq/T, y: E)\n    T is Absorb<E>\n    slot.absorb(y@move)\n", "x: uniq/HoldR, v: raw/u8", "x, v", "0 kept: T")]
@@ -298,6 +300,8 @@ public sealed partial class TyCtxtTest
     [InlineData("func f<T, U, E>(slot: uniq/(T, U), y: E, set: (uniq/T, E) -> ()) => ()\n", "x: uniq/(u64, raw/(raw/u8)), v: raw/u8, set: (uniq/u64, raw/u8) -> ()", "x, v, set@move", "0 kept: T")]
     [InlineData("func f<T, U, E>(slot: uniq/(T, U), y: E, set: (uniq/U, E) -> ()) => ()\n", "x: uniq/(u64, raw/(raw/u8)), v: raw/u8, set: (uniq/(raw/(raw/u8)), raw/u8) -> ()", "x, v, set@move", "0 kept: U")]
     [InlineData("func f<T, U, E>(slot: uniq/(T, U), y: E, set: (uniq/(T, U), E) -> ()) => ()\n", "x: uniq/(u64, raw/(raw/u8)), v: raw/u8, set: (uniq/(u64, raw/(raw/u8)), raw/u8) -> ()", "x, v, set@move", "0 kept: T, U")]
+    [InlineData("func f<T, U, E>(slot: uniq/T, y: E, set: (uniq/U, E) -> ())\n    T is U\n    return\n", "x: uniq/(raw/(raw/u8)), v: raw/u8, set: (uniq/(raw/(raw/u8)), raw/u8) -> ()", "x, v, set@move", "0 kept: T")]
+    [InlineData("func f<T, U, E>(slot: uniq/T, y: E, set: (uniq/U, E) -> ()) => ()\n", "x: uniq/(raw/(raw/u8)), v: raw/u8, set: (uniq/(raw/(raw/u8)), raw/u8) -> ()", "x, v, set@move", "0 kept: -")]
     public void AnOutputSaysWhetherAHandedCallableWritesItsKeptType(string callee, string parameters, string arguments, string expected)
     {
         var c = MinimalEmissionTest.Analyze(callee + $"func g({parameters})\n    f({arguments})\n");
@@ -316,7 +320,8 @@ public sealed partial class TyCtxtTest
     // output meeting T and U at the key `(T, U)` past slot's layer: the Middle's handedOtherOk (V: the writer writes T, U's raw layer stays
     // hidden), handedSameBad and handedBothBad (I: the writer writes U, or the pair); hidPunOtherOk (V: the writer writes U, T's raw layer
     // stays hidden) and hidPunSameBad (I: the writer writes T). A layer the declaration shows has no kept Type. Fail-before: no Kept member
-    // on 110b7ff24.
+    // on 110b7ff24. Under `T is U` (SPEC 8.2.3; G935's review H1, twin K1) a writer of U writes both layers' kept Types: T listed (fail-
+    // before on 3a8f2e251: `T not listed`).
     [Theory]
     [InlineData("func f<T, U, E>(slot: uniq/(T, U), y: E, set: (uniq/T, E) -> ()) => ()\n", "x: uniq/(u64, raw/(raw/u8)), v: raw/u8, set: (uniq/u64, raw/u8) -> ()", "raw/raw/u8 U not listed")]
     [InlineData("func f<T, U, E>(slot: uniq/(T, U), y: E, set: (uniq/U, E) -> ()) => ()\n", "x: uniq/(u64, raw/(raw/u8)), v: raw/u8, set: (uniq/(raw/(raw/u8)), raw/u8) -> ()", "raw/raw/u8 U listed")]
@@ -324,6 +329,7 @@ public sealed partial class TyCtxtTest
     [InlineData("func f<T, U, E>(slot: uniq/(T, U), y: E, set: (uniq/U, E) -> ()) => ()\n", "x: uniq/(raw/usize, u64), v: usize, set: (uniq/u64, usize) -> ()", "raw/usize T not listed")]
     [InlineData("func f<T, U, E>(slot: uniq/(T, U), y: E, set: (uniq/T, E) -> ()) => ()\n", "x: uniq/(raw/usize, u64), v: usize, set: (uniq/(raw/usize), usize) -> ()", "raw/usize T listed")]
     [InlineData("func f<U, E>(slot: uniq/(raw/(raw/u8), U), y: E, set: (uniq/U, E) -> ()) => ()\n", "x: uniq/(raw/(raw/u8), u64), v: raw/u8, set: (uniq/u64, raw/u8) -> ()", "raw/raw/u8 shown")]
+    [InlineData("func f<T, U, E>(slot: uniq/(T, U), y: E, set: (uniq/U, E) -> ())\n    T is U\n    return\n", "x: uniq/(raw/(raw/u8), raw/(raw/u8)), v: raw/u8, set: (uniq/(raw/(raw/u8)), raw/u8) -> ()", "raw/raw/u8 T listed | raw/raw/u8 U listed")]
     public void AHiddenLayerNamesTheKeptTypeHandedLists(string callee, string parameters, string expected)
     {
         var c = MinimalEmissionTest.Analyze(callee + $"func g({parameters})\n    f(x, v, set@move)\n");
