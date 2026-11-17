@@ -18,7 +18,7 @@ namespace Kimi.Compiler;
 // tests, Reads: a raw layer stating an Origin as the borrows that Origin belongs to; no Type: any value), every Origin occurrence's
 // node (Content targets), and for an input's walk each position with the Type its declaration writes there and the instance holding
 // it (storageHolds: where rule A's hold walk starts, so a by-value input's Fields, payloads and elements reach it as a borrowed
-// input's referent does).
+// input's referent does) and each abstract part whose hidden storage it writes at no position (storageHidden: rule 3's fill alone).
 // Invariants: a position is storage the call may write: a part a value of the storage holds by value (Tuple and fixed-array elements, a
 // struct's Fields and base, an enum's payloads, a Closure's environment bindings, a raw layer's pointee by its own step and what a
 // `during self` layer admits, Admitted), the layer of a borrow, pair or raw layer, an abstract part and a callable. What a part hides
@@ -49,7 +49,7 @@ public sealed partial class Binding
     // The storages of the walk being made (by index: Own, Abstract, the result's, then one per contract Type past an exclusive layer)
     // with each one's contract Type, its index by that Type, the states walked (each with the shallowest depth it was met at and the
     // node its sources go through, Source), the (storage, Type) pairs targeted, the positions (Value tests: a position's node and Type,
-    // null for any value), the Content targets (every Origin occurrence's node) and an input's holds; reused.
+    // null for any value), the Content targets (every Origin occurrence's node), an input's holds and its hidden parts; reused.
     private readonly List<BoundType?> storageTypes = new();
     private readonly Dictionary<BoundType, int> storageOf = new(ReferenceEqualityComparer.Instance);
     private readonly Dictionary<(int Storage, bool Writable, bool Captured, SourceAt Source, BoundType Type, BoundType? Signature), (int Depth, int Layer)> storageSeen = new();
@@ -57,6 +57,7 @@ public sealed partial class Binding
     private readonly List<(int Storage, int Node, BoundType? Type)> storagePositions = new();
     private readonly List<(int Storage, int Node)> storageTargets = new();
     private readonly List<(BoundType Type, BoundType? Written, BoundType? Holder)> storageHolds = new();
+    private readonly List<BoundType> storageHidden = new();
     private readonly List<int> retentionOwnNodes = new();
     private readonly List<int> retentionOccurrences = new();
     private readonly HashSet<(BoundType Type, bool Callable)> retentionOccurred = new();
@@ -92,6 +93,7 @@ public sealed partial class Binding
         this.storagePositions.Clear();
         this.storageTargets.Clear();
         this.storageHolds.Clear();
+        this.storageHidden.Clear();
     }
 
     // The storage walk from input j's value (DECISIONS R4-M154): the value itself is the callee's, not storage; what its first exclusive
@@ -118,7 +120,8 @@ public sealed partial class Binding
 
     // The one walk (DECISIONS R4-M154, r2.3): a Type the walk visits, once per state it is in (StorageAt, the path's reduced prefix
     // included). Each visit emits to the fold its state names: the output fold its position where the call writes it (Position; an input's
-    // also a hold, storageHolds), the input fold its sources (Source), each once, at the state's first meeting. Then what the Type's
+    // also a hold, storageHolds) and what an abstract part hides (AbstractPositions; at no position the part, storageHidden), the input
+    // fold its sources (Source), each once, at the state's first meeting. Then what the Type's
     // entries (Holdings) reach (Reach). An input fold's walk stops at the depth bound, so it enters a state by the bounded walks' rule
     // (Enters: again where it is met shallower; PLAN G571), reusing the node the first meeting's sources go through; an output's walk has
     // no bound, so its state counts depth 0 and is entered once.
@@ -146,16 +149,21 @@ public sealed partial class Binding
 
         // What an abstract part hides is storage the call may write wherever an input's walk meets the part (HiddenWritable), whether the
         // part is a position or the callee's own value (a by-value input's part): its binding may hold an exclusive reference with Origins
-        // of its own (SPEC 15.6.4 route 2; PLAN G963). So the Abstract storage's positions and the hold there.
+        // of its own (SPEC 15.6.4 route 2; PLAN G963). So the Abstract storage's positions; and at a position the hold, whose walk fills
+        // it with what a value stored there brings, elsewhere the part for rule 3's fill alone (storageHidden): its own value is not written.
         var hides = at.HiddenWritable && Abstract(type);
         if (hides)
         {
             this.AbstractPositions(environment, type, type);
         }
 
-        if (hides || (targets >= 0 && at.Storage != ResultStorage))
+        if (targets >= 0 && at.Storage != ResultStorage)
         {
             this.storageHolds.Add((type, at.Written, at.Holder));
+        }
+        else if (hides)
+        {
+            this.storageHidden.Add(type);
         }
 
         var run = this.BodyRun(type, at.Written, at.Holder, out var complete);

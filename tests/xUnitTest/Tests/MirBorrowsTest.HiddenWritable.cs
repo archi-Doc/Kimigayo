@@ -12,7 +12,10 @@ namespace XunitTest;
 // has A5's one record at its later write; each valid twin (a writer through `ref/T` only or past a shared layer, a writer handed
 // nothing of y, none, a holder admitting nothing) has none. Rows: G963's coverage table, labelled from SPEC before any output; the
 // writable `x: uniq/T` controls of writerFn and writerReq are MirBorrowsTest.Wk's. Fails on 0658a2b82: every invalid row but the
-// `x: uniq/T` controls, rawUniqTFnBad and anyUniqBad is accepted.
+// `x: uniq/T` controls, rawUniqTFnBad and anyUniqBad is accepted. What a by-value part hides takes rule 3's fill alone, never a hold
+// walk of the part (C-386's F2): a by-value associated projection whose Contract argument holds a raw layer, with no callable handed,
+// keeps nothing (SPEC 15.6.4: a raw layer the abstract Type does not show adds no reach of its own; the proj*Ok rows, rejected on
+// aefb3194d), and with a writer of the projection handed keeps the child, or the raw pointer by rule 3 (the proj*FnBad twins).
 public sealed partial class MirBorrowsTest
 {
     private static readonly Dictionary<string, string> HiddenWritableRows = new()
@@ -69,6 +72,14 @@ public sealed partial class MirBorrowsTest
         ["byVUniqRefFnOk"] = "func f<T, E>(x: T, y: E, ka: ref/i32 during a, ku: ref/i32 during u, set: (uniq/(ref/T during a) during u, E) -> ()) -> ()\n    return\nfunc byVUniqRefFnOk<T>(value: uniq/i32 during o, other: T, ka: ref/i32 during a, ku: ref/i32 during u, set: (uniq/(ref/T during a) during u, uniq/i32 during o) -> ()) -> ()\n    var v = value@move\n    let child: uniq/i32 during o = v\n    f<T, uniq/i32 during o>(other@move, child@move, ka, ku, set@move)\n    v@follow = 5\n",
         ["byVUniqUniqFnBad"] = "func f<T, E>(x: T, y: E, ka: ref/i32 during a, ku: ref/i32 during u, set: (uniq/(uniq/T during a) during u, E) -> ()) -> ()\n    return\nfunc byVUniqUniqFnBad<T>(value: uniq/i32 during o, other: T, ka: ref/i32 during a, ku: ref/i32 during u, set: (uniq/(uniq/T during a) during u, uniq/i32 during o) -> ()) -> ()\n    var v = value@move\n    let child: uniq/i32 during o = v\n    f<T, uniq/i32 during o>(other@move, child@move, ka, ku, set@move)\n    v@follow = 5\n",
         ["uniqTUniqUniqFnBad"] = "func f<T, E>(x: uniq/T, y: E, ka: ref/i32 during a, ku: ref/i32 during u, set: (uniq/(uniq/T during a) during u, E) -> ()) -> ()\n    return\nfunc uniqTUniqUniqFnBad<T>(value: uniq/i32 during o, other: T, ka: ref/i32 during a, ku: ref/i32 during u, set: (uniq/(uniq/T during a) during u, uniq/i32 during o) -> ()) -> ()\n    var v = value@move\n    var s = other@move\n    let child: uniq/i32 during o = v\n    f<T, uniq/i32 during o>(s@uniq, child@move, ka, ku, set@move)\n    v@follow = 5\n",
+        ["projRawArgOk"] = "contract HoldsR<E>\n    associate Box\nfunc f<T>(x: T.Box, y: uniq/i32 during q) -> ()\n    T is HoldsR<raw/u8>\n    return\nfunc projRawArgOk<T>(value: uniq/i32 during o, other: T.Box) -> ()\n    T is HoldsR<raw/u8>\n    var v = value@move\n    let child: uniq/i32 during o = v\n    f<T>(other@move, child@move)\n    v@follow = 5\n",
+        ["projRawArgRawOk"] = "contract HoldsR<E>\n    associate Box\nfunc f<T>(x: T.Box, y: raw/u8) -> ()\n    T is HoldsR<raw/u8>\n    return\nfunc projRawArgRawOk<T>(y: uniq/i32, other: T.Box) -> ()\n    T is HoldsR<raw/u8>\n    let w = y@follow@ref\n    f<T>(other@move, w@raw@raw/u8)\n    y@follow = 5\n",
+        ["projRawArgCopyOk"] = "contract HoldsR<E>\n    associate Box is Copy\nfunc f<T>(x: T.Box, y: uniq/i32 during q) -> ()\n    T is HoldsR<raw/u8>\n    return\nfunc projRawArgCopyOk<T>(value: uniq/i32 during o, other: T.Box) -> ()\n    T is HoldsR<raw/u8>\n    var v = value@move\n    let child: uniq/i32 during o = v\n    f<T>(other, child@move)\n    v@follow = 5\n",
+        ["projPlainArgOk"] = "struct Plain\n    public var p: raw/u8\n    public init() => self.p = null\ncontract HoldsR<E>\n    associate Box\nfunc f<T>(x: T.Box, y: uniq/i32 during q) -> ()\n    T is HoldsR<Plain>\n    return\nfunc projPlainArgOk<T>(value: uniq/i32 during o, other: T.Box) -> ()\n    T is HoldsR<Plain>\n    var v = value@move\n    let child: uniq/i32 during o = v\n    f<T>(other@move, child@move)\n    v@follow = 5\n",
+        ["projRawArgFnBad"] = "contract HoldsR<E>\n    associate Box\nfunc f<T, E>(x: T.Box, y: E, set: (uniq/T.Box, E) -> ()) -> ()\n    T is HoldsR<raw/u8>\n    return\nfunc projRawArgFnBad<T>(value: uniq/i32 during o, other: T.Box, set: (uniq/T.Box, uniq/i32 during o) -> ()) -> ()\n    T is HoldsR<raw/u8>\n    var v = value@move\n    let child: uniq/i32 during o = v\n    f<T, uniq/i32 during o>(other@move, child@move, set@move)\n    v@follow = 5\n",
+        ["projRawArgRawFnBad"] = "contract HoldsR<E>\n    associate Box\nfunc f<T, E>(x: T.Box, y: E, set: (uniq/T.Box, E) -> ()) -> ()\n    T is HoldsR<raw/u8>\n    return\nfunc projRawArgRawFnBad<T>(y: uniq/i32, other: T.Box, set: (uniq/T.Box, raw/u8) -> ()) -> ()\n    T is HoldsR<raw/u8>\n    let w = y@follow@ref\n    f<T, raw/u8>(other@move, w@raw@raw/u8, set@move)\n    y@follow = 5\n",
+        ["projRawArgCopyFnBad"] = "contract HoldsR<E>\n    associate Box is Copy\nfunc f<T, E>(x: T.Box, y: E, set: (uniq/T.Box, E) -> ()) -> ()\n    T is HoldsR<raw/u8>\n    return\nfunc projRawArgCopyFnBad<T>(value: uniq/i32 during o, other: T.Box, set: (uniq/T.Box, uniq/i32 during o) -> ()) -> ()\n    T is HoldsR<raw/u8>\n    var v = value@move\n    let child: uniq/i32 during o = v\n    f<T, uniq/i32 during o>(other, child@move, set@move)\n    v@follow = 5\n",
+        ["projPlainArgFnBad"] = "struct Plain\n    public var p: raw/u8\n    public init() => self.p = null\ncontract HoldsR<E>\n    associate Box\nfunc f<T, E>(x: T.Box, y: E, set: (uniq/T.Box, E) -> ()) -> ()\n    T is HoldsR<Plain>\n    return\nfunc projPlainArgFnBad<T>(value: uniq/i32 during o, other: T.Box, set: (uniq/T.Box, uniq/i32 during o) -> ()) -> ()\n    T is HoldsR<Plain>\n    var v = value@move\n    let child: uniq/i32 during o = v\n    f<T, uniq/i32 during o>(other@move, child@move, set@move)\n    v@follow = 5\n",
     };
 
     [Theory]
@@ -124,6 +135,14 @@ public sealed partial class MirBorrowsTest
     [InlineData("byVUniqRefFnOk", "")]
     [InlineData("byVUniqUniqFnBad", "ComparisonLoanConflict_Kd v@follow = 5")]
     [InlineData("uniqTUniqUniqFnBad", "ComparisonLoanConflict_Kd v@follow = 5")]
+    [InlineData("projRawArgOk", "")]
+    [InlineData("projRawArgRawOk", "")]
+    [InlineData("projRawArgCopyOk", "")]
+    [InlineData("projPlainArgOk", "")]
+    [InlineData("projRawArgFnBad", "ComparisonLoanConflict_Kd v@follow = 5")]
+    [InlineData("projRawArgRawFnBad", "ComparisonLoanConflict_Kd y@follow = 5")]
+    [InlineData("projRawArgCopyFnBad", "ComparisonLoanConflict_Kd v@follow = 5")]
+    [InlineData("projPlainArgFnBad", "ComparisonLoanConflict_Kd v@follow = 5")]
     public void AWriterOfWhatAPartHidesKeepsTheArgumentThere(string row, string expected)
         => Assert.Equal(expected, Records(HiddenWritableRows[row] + "public func main() => ()\n"));
 }

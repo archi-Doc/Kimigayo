@@ -77,7 +77,9 @@ public sealed partial class RetentionTest
         "contract Absorb<E>\n    func absorb(self: uniq/Self, r: E) -> ()\n" +
         "struct H {a}\n    public var data: raw/i32 during self\n    public var peer: ref/i32 during a\n" +
         "    public init(peer: ref/i32 during a)\n        self.data = null\n        self.peer = peer\n" +
-        "struct H2\n    public var data: raw/i32 during self\n    public var n: i32\n    public init()\n        self.data = null\n        self.n = 0\n";
+        "struct H2\n    public var data: raw/i32 during self\n    public var n: i32\n    public init()\n        self.data = null\n        self.n = 0\n" +
+        "contract HoldsR<E>\n    associate Box\ncontract HoldsRC<E>\n    associate Box is Copy\n" +
+        "struct Plain\n    public var p: raw/u8\n    public init() => self.p = null\n";
 
     private const string View = "struct View<T> {source}\n    let data: ref/T during source\n    public init(data: ref/T during source) => self.data = data\n" +
         "    public func read(self: ref/Self) -> ref/T during self.source => self.data\n    public func whole(self: ref/Self) -> ref/Self during self => self\n";
@@ -1170,7 +1172,10 @@ public sealed partial class RetentionTest
     // through `uniq/T`, one in a Field, a requirement with a `uniq/Self` receiver, one that takes the T by value, one through exclusive
     // layers; one past a shared layer (`ref/T` in its slot) writes none of it (no `store 0`), one handed nothing of y keeps no `1`, and
     // with no callable there is no record. A by-value holder's `during self` layer admitting any value at `o` (Q2 (a)) keeps y in what
-    // such a value may refer to; one admitting nothing has no record. The rows of A5's verdicts are MirBorrowsTest's
+    // such a value may refer to; one admitting nothing has no record. What a by-value part hides takes rule 3's fill alone, never a hold
+    // walk of the part (C-386's F2): a by-value `T.Box` whose Contract argument holds a raw layer (`raw/u8`, a Plain Field), with no
+    // callable, has no record (SPEC 15.6.4: a raw layer the abstract Type does not show adds no reach of its own; rule A's record on
+    // aefb3194d), and with a writer of the Box handed keeps y, a raw `y` by rule 3. The rows of A5's verdicts are MirBorrowsTest's
     // AWriterOfWhatAPartHidesKeepsTheArgumentThere. Fails on 0658a2b82: every row but the two without a record (no callable, H2)
     // has no record there (no position for a by-value part).
     [Theory]
@@ -1188,6 +1193,14 @@ public sealed partial class RetentionTest
     [InlineData("func f<T, E>(x: T, y: E, ka: ref/i32 during a, ku: ref/i32 during u, set: (uniq/(ref/T during a) during u, E) -> ())", "store 1: own {}, reached {0 Value, 1 Value, 2 Value, 3 Value, 4 Value}")]
     [InlineData("func f(h: H during o, y: uniq/i32 during o)", "store 0: own {}, reached {0 Value, 1 Value}")]
     [InlineData("func f(h: H2, y: uniq/i32 during o)", "")]
+    [InlineData("func f<T>(x: T.Box, y: uniq/i32 during q)\n    T is HoldsR<raw/u8>", "")]
+    [InlineData("func f<T>(x: T.Box, y: raw/u8)\n    T is HoldsR<raw/u8>", "")]
+    [InlineData("func f<T>(x: T.Box, y: uniq/i32 during q)\n    T is HoldsRC<raw/u8>", "")]
+    [InlineData("func f<T>(x: T.Box, y: uniq/i32 during q)\n    T is HoldsR<Plain>", "")]
+    [InlineData("func f<T>(x: T.Box, y: uniq/i32 during q, set: (uniq/T.Box, uniq/i32 during q) -> ())\n    T is HoldsR<raw/u8>", "store 0: own {}, reached {0 Value, 1 Value, 2 Value}")]
+    [InlineData("func f<T>(x: T.Box, y: raw/u8, set: (uniq/T.Box, raw/u8) -> ())\n    T is HoldsR<raw/u8>", "store 0: own {1 Value}, reached {0 Value, 1 Value, 2 Content}")]
+    [InlineData("func f<T>(x: T.Box, y: uniq/i32 during q, set: (uniq/T.Box, uniq/i32 during q) -> ())\n    T is HoldsRC<raw/u8>", "store 0: own {}, reached {0 Value, 1 Value, 2 Value}")]
+    [InlineData("func f<T>(x: T.Box, y: uniq/i32 during q, set: (uniq/T.Box, uniq/i32 during q) -> ())\n    T is HoldsR<Plain>", "store 0: own {}, reached {0 Value, 1 Value, 2 Value}")]
     public void WhatAPartHidesIsWrittenWhereverAnInputsWalkMeetsIt(string function, string expected)
         => Assert.Equal(expected, Declared(Bind(HiddenWritableShapes + function + "\n    return\n"), "f"));
 
