@@ -153,7 +153,7 @@ public sealed class G950KeptPathTest
         Finish(c, OutputKind.Application);
         var later = analysis.Run(builder.Build(SyntaxTable.LibraryModule + 1), 1);
         _ = collector.Run(later, c.SourceModules.Length);
-        Assert.Equal(later.ProgramBodies.Length, collector.Templated);
+        Assert.Equal(later.VersionBodies.Length, collector.Templated);
     }
 
     // M2 (design §R1.4; explicit until G950-K, the base's rebuild drops the injection): a kept library row is published in every version:

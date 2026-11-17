@@ -37,7 +37,7 @@ internal sealed partial class MirBuilder(Compilation compilation)
     private readonly HashSet<BoundType> walked = new(ReferenceEqualityComparer.Instance); // A Type walk's scratch (MayNeedDrop, HoldsRaw).
     private MirBody body = null!;
     private Koto declaration = null!;
-    private int named; // The bodies of the version whose program pass ran, in build order (Name).
+    private int named; // The bodies of the version whose program pass ran: a position of the build-order list (Name).
     private SourceInfo entry; // The body's declaration in its own scope: where _0 without a written result Type and the drop tree's edges are.
     private Koto? constructed; // A constructor's body, whose completion requests its exit (SPEC 6.3.5); null in other bodies.
     private int current; // The block being built.
@@ -97,7 +97,7 @@ internal sealed partial class MirBuilder(Compilation compilation)
         {
             this.program.ClearProgram();
             this.ClearProgramOmissions();
-            this.named = this.program.LibraryCount; // The kept library segment's bodies had their program pass.
+            this.named = this.program.LibraryBodies.Length; // The kept library list's bodies had their program pass.
         }
 
         for (var pass = 0; pass < 2; pass++)
@@ -248,7 +248,7 @@ internal sealed partial class MirBuilder(Compilation compilation)
     {
         while (this.named < this.program.Bodies.Length)
         {
-            this.validator.Validate(this.program, this.program.Body(this.named++));
+            this.validator.Validate(this.program, this.program.Bodies[this.named++]);
         }
     }
 

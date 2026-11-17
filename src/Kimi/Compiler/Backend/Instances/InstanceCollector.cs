@@ -19,7 +19,7 @@
 // and a PropertyWitness item's key signature (StorageSignature; DECISIONS R5-M141, the owner's R5-M142); a borrowing callee's owner Value
 // call also targets its operand's glue, after the body (DECISIONS R5-M102).
 // Roots (K 4.4): each body of a root module whose definition does not instantiate, a module's top-level statements included.
-// Edges (K 4.5): one template per body (InstanceCollector.Templates.cs: in the library store, kept while its library version holds, PLAN
+// Edges (K 4.5): one template per body (InstanceCollector.Templates.cs: in the library store, kept while its library segment holds, PLAN
 // G950, for a body A2's library store holds, MirDropTable.LibraryHolds, which is stable within a version; else in the program store)
 // lists its sites that may carry a target (Fn, Requirement and Value calls and the intrinsics the Target column names, a Virtual
 // call none, X5; a Closure environment, an erasure and a function item constant; a Drop), each with its runtime bit from one MirReach

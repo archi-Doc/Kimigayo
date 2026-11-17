@@ -444,7 +444,7 @@ public sealed partial class FunctionCodegenTest
     {
         var program = c.BuildMir();
         var body = program.Bodies.ToArray().Single(static x => x.Key is { Kind: MirBodyKind.Fn, Decl: null });
-        var first = program.ProgramBodies.ToArray().Where(x => x.Ordinal < body.Ordinal).Sum(x => program.Drops.RowsOf(x.Ordinal).Length); // In the program's store.
+        var first = program.VersionBodies.ToArray().Where(x => x.Ordinal < body.Ordinal).Sum(x => program.Drops.RowsOf(x.Ordinal).Length); // In the program's store.
         var row = Assert.Single(program.Drops.RowsOf(body.Ordinal).ToArray());
         program.Drops.Rows[first] = row with { Block = body.Blocks.Length };
     }
