@@ -298,9 +298,10 @@ internal sealed class MirMoveData
     // (Elements). A carry pairs each tracked path below the temp Place an operand or a Use takes (whole or a part) with the same path at
     // the component, so A1 copies the temp's state there on each path, and a whole temp that may hold nothing (Absent) with the component
     // itself: a form without a value on an assumed path places nothing, into every element of a Fill (SPEC 4.3.3). A Use's component is
-    // its destination, which then keeps its state (MirInit): one that takes one placement in its lifetime, a temp, which then may hold
-    // nothing too (so the Use does not place it for its chain), or a let binding; a Place a Use overwrites has its old value's Drop
-    // before the Use (MirBuilder.Overwrite), which that path must not take either (PLAN open issue). A temp's tracked paths are those its
+    // its destination, whatever it is, which then keeps its state (MirInit): a first placement's, a destination the value's construct
+    // cannot touch (a temp, which then may hold nothing too, so the Use does not place it for its chain, a let or var initialization or
+    // binding, the return local), as an overwrite's Use is reached only by the paths that placed its value (MirBuilder.Replace); no
+    // kind of destination is read here. A temp's tracked paths are those its
     // Never parts and carries created below it (its runs): structure only; a Closure environment has no component path. An Array
     // literal's element has one, as a fixed array's, which no Place names (an Array's Index ends the path), so a whole use or an indexed
     // one sees it (SPEC 15.1.2, 15.1.3).
@@ -316,8 +317,6 @@ internal sealed class MirMoveData
 
         var fill = rvalue.Kind == MirRvalueKind.Aggregate && kind == MirAggregateKind.Fill;
         var whole = destination.Projection == 0 && this.body.Locals[destination.Root].Kind == MirLocalKind.Temp;
-        var first = whole || (destination.Projection == 0 && this.once[destination.Root]); // A temp or a let binding: placed once.
-        var takes = rvalue.Kind == MirRvalueKind.Aggregate || first; // Whether a whole temp's own state has a component to go to.
         var copies = fill ? -1 : 1; // A Fill's components, listed where a fact first needs them (Elements).
         var parts = this.Open();
         for (var i = 0; i < rvalue.Count; i++)
@@ -337,7 +336,7 @@ internal sealed class MirMoveData
         {
             var taken = this.Taken(rvalue, i);
             var temp = taken < 0 ? -1 : this.body.Operands[rvalue.Start + i].Place.Root;
-            var absent = temp >= 0 && takes && this.Absent(temp, taken, chain);
+            var absent = temp >= 0 && this.Absent(temp, taken, chain);
             var carried = temp >= 0 && (absent || this.nevers.TryGetValue(~temp, out _));
             copies = carried && copies < 0 ? this.Elements(found >> 2, rvalue) : copies;
             for (var k = 0; carried && k < copies; k++)

@@ -1142,9 +1142,12 @@ public sealed class MirInitTest
     [InlineData("var q: [2 of i32] = [1, 2]\n    q[idx(mkA(y)@ref)] = if c => 3 else => fail()\n    use(q[0])", "")] // q1 tg6r
     [InlineData("var a: Array<i32> = [y]\n    return\n    a = (label w: do\n        unsafe\n            defer => peek(a@ref)\n            exit to w (if c => [y] else => fail())\n    )\n    takeA(a@move)", "")] // q1 us2
     [InlineData("var a: Array<i32> = [y]\n    return\n    a = (label w: do\n        unsafe\n            defer => peek(a@ref)\n            exit to w (if c => [y] else => eat(a@move))\n    )\n    takeA(a@move)", "MovedPlace_Kd a@ref 1 | MovedPlace_Kd a 1")] // q1 us2i
+    [InlineData("return\n    let r: Array<i32> = (match (if c => [y] else => fail())\n        var v => keepA(v@move)\n    )\n    takeA(r@move)", "UninitializedPlace_Kd v 1")] // q1 vb1
     [InlineData("return\n    let r: Array<i32> = (match (if c => [y] else => fail())\n        var v => [y]\n    )\n    takeA(r@move)", "")] // q1 vb1v
     [InlineData("return\n    let r: Array<i32> = (match (if c => [y] else => fail())\n        let v => keepA(v@move)\n    )\n    takeA(r@move)", "UninitializedPlace_Kd v 1")] // q1 vb2
+    [InlineData("return\n    var a: Array<i32> = (label w: do\n        exit to w (if c => [y] else => fail())\n    )\n    takeA(a@move)", "UninitializedPlace_Kd a 1")] // q1 vi1
     [InlineData("return\n    var a: Array<i32> = (label w: do\n        exit to w (if c => [y] else => fail())\n    )\n    a = [y]\n    takeA(a@move)", "")] // q1 vi1v
+    [InlineData("return\n    var b: bool = (if c => true else => fail()) and c\n    useB(b)", "UninitializedPlace_Kd useB(b) 1")] // q1 vi2
     [InlineData("return\n    var b: bool = (if c => true else => fail()) and c\n    b = true\n    useB(b)", "")] // q1 vi2v
     [InlineData("return\n    let b: bool = (if c => true else => fail()) and c\n    useB(b)", "UninitializedPlace_Kd useB(b) 1")] // q1 vi3
     [InlineData("var o: Array<i32>? = .Some([y])\n    var a: Array<i32> = [y]\n    return\n    a = (match o\n        .Some(let v) => keepA(a@move)\n        .None => fail()\n    )\n    takeO(o@move)\n    takeA(a@move)", "")] // q2 mt1b
@@ -1191,10 +1194,12 @@ public sealed class MirInitTest
     [InlineData("return\n    var a: Array<i32> = (match y\n        0 => fail()\n        _ => [y]\n    )\n    takeA(a@move)", "UninitializedPlace_Kd a 1")] // r4 vm1
     [InlineData("return\n    var a: Array<i32> = (match y\n        0 => fail()\n        _ => [y]\n    )\n    a = [y]\n    takeA(a@move)", "")] // r4 vm1v
     [InlineData("takeA(h(true))\nfunc h(c: bool) -> Array<i32>\n    return [1]\n    return (label w: do\n        exit to w (if c => [1] else => fail())\n    )", "")] // r4 vr1
+    [InlineData("return\n    var a: Array<i32> = loop\n        exit (if c => [y] else => fail())\n    takeA(a@move)", "UninitializedPlace_Kd a 1")] // x1 g1a
     [InlineData("return\n    var a: Array<i32> = loop\n        exit (if c => [y] else => fail())\n    a = [y]\n    takeA(a@move)", "")] // x1 g1av
     [InlineData("return\n    var b: bool = c and (if y > 3 => true else => fail())\n    useB(b)", "UninitializedPlace_Kd useB(b) 1")] // x1 g1b
     [InlineData("return\n    var b: bool = c and (if y > 3 => true else => fail())\n    b = true\n    useB(b)", "")] // x1 g1bv
     [InlineData("useB(h(c))\nfunc h(c: bool) -> bool\n    return true\n    (if c => true else => fail()) and c", "")] // x1 g1d
+    [InlineData("return\n    var a: Array<i32> = if c\n        yield (if y > 3 => [y] else => fail())\n    else => [y]\n    takeA(a@move)", "UninitializedPlace_Kd a 1")] // x1 g1e
     [InlineData("return\n    var a: Array<i32> = if c\n        yield (if y > 3 => [y] else => fail())\n    else => [y]\n    a = [y]\n    takeA(a@move)", "")] // x1 g1ev
     [InlineData("var x: i32 = 1\n    return\n    x = (label w: do\n        if c => exit to w 2\n        exit to w fail()\n    )\n    use(x)", "")] // x1 o1
     [InlineData("var b: bool = true\n    return\n    b = (((if c => true else => fail()) and c) or c) and c\n    useB(b)", "")] // x1 o10
@@ -1228,6 +1233,7 @@ public sealed class MirInitTest
     [InlineData("let x: i32 = 1\n    return\n    x = if c => 2 else => fail()\n    use(x)", "ReassignedLet_Kd x = if c => 2 1")] // x3 lt2
     [InlineData("var a: Array<i32> = [y]\n    var b: Array<i32> = [y]\n    return\n    a = (label w: do\n        b = (label v: do\n            if c => exit to w (if y > 3 => keepA(a@move) else => fail())\n            exit to v [y]\n        )\n        exit to w [y]\n    )\n    takeA(a@move)\n    takeA(b@move)", "")] // x3 nw1
     [InlineData("var a: Array<i32> = [y]\n    var b: Array<i32> = [y]\n    return\n    a = (label w: do\n        b = (label v: do\n            if c => exit to w (if y > 3 => keepA(a@move) else => eat(a@move))\n            exit to v [y]\n        )\n        exit to w [y]\n    )\n    takeA(a@move)\n    takeA(b@move)", "MovedPlace_Kd a 1")] // x3 nw1i
+    [InlineData("return\n    var n: i32 = 0\n    loop\n        var t: Array<i32> = (label w: do\n            defer => use(y)\n            if c => exit to w (if y > 3 => [y] else => fail())\n            exit to w [y]\n        )\n        takeA(t@move)\n        n += 1\n        if n > 2 => exit", "UninitializedPlace_Kd t 1")] // x4 rt3
     [InlineData("return\n    var n: i32 = 0\n    loop\n        var t: Array<i32> = (label w: do\n            defer => use(y)\n            if c => exit to w (if y > 3 => [y] else => fail())\n            exit to w [y]\n        )\n        t = [y]\n        takeA(t@move)\n        n += 1\n        if n > 2 => exit", "")] // x4 rt3v
     [InlineData("var a: Array<i32> = [y]\n    return\n    a = (match (if c => [y] else => fail())\n        var v => [y]\n    )\n    takeA(a@move)", "")] // x4 vb3v
     public void AnOverwriteIsReachedOnlyByThePathsThatHoldItsValue(string body, string expected)
