@@ -51,13 +51,13 @@ public sealed partial class Binding
         return ReferenceEquals(type, self);
     }
 
-    // The pass's recursive Contract declarations, found on its first query (stamped with the pass's version, as its other memos are).
+    // The recursive Contract declarations of every pass's shapes (the composed view), found on its first query (stamped with the pass's version, as its other memos are).
     private List<BindingSymbol> RecursiveContracts()
     {
         if (this.recursiveVersion != this.storageVersion)
         {
             this.recursiveContracts.Clear();
-            foreach (var shape in this.contractShapes)
+            foreach (var shape in this.contractShapesView)
             {
                 if (this.IsRecursive(shape))
                 {

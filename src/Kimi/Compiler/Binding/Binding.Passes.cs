@@ -9,8 +9,9 @@ namespace Kimi.Compiler;
 // - Responsibility: the three levels of a Bind's state: per Bind (BeginBind: the SyntaxIds, the Result discarded with the later
 //   phases' facts, StartRuns), per run (BeginRun: the counter every stamp compares, the work counters, the local-region graph's
 //   version) and per pass (ResetPass); the runs, a new one whenever a pass asks for it (VerifyEarlyReads); each pass's steps in order
-//   over its module set (BindingPass); each pass's part of the per-pass collections (PassPart: the published lists and the local-region
-//   graph), handed over as the fields every step writes (EnterPass); R1.1's one composition point per aggregate: the composed views,
+//   over its module set (BindingPass); each pass's part of the per-pass collections (PassPart: the published lists, the local-region
+//   graph, the slots' keepers, the Contract shapes, the effect bounds and the import declarations), handed over as the fields every
+//   step writes (EnterPass); R1.1's one composition point per aggregate: the composed views,
 //   the program part then the library layer's, and the Bind's Result (ComposeResult); a keyed collection's one find (PassPart.Find).
 // - Inputs: the compilation's modules, the mode. Outputs: the parts (Binding's own, programPart; LibraryLayer.Part), the composed
 //   views, the Result.
@@ -36,6 +37,9 @@ public sealed partial class Binding
     private readonly LayerList<FunctionKoto> virtualDeclarationsView;
     private readonly LayerList<CallableEffectUse> callableEffectUsesView;
     private readonly LayerList<IsKoto> callableEffectClausesView;
+    private readonly LayerList<BoundContract> contractShapesView;
+    private readonly LayerList<BoundEffectBound> boundedRequirementsView;
+    private readonly LayerList<BindingSymbol> importDeclarationsView;
 
     // The running pass (EnterPass); between Binds the program pass of the latest Bind, which PublishHir publishes.
     private BindingPass pass;
@@ -117,6 +121,7 @@ public sealed partial class Binding
     // Hands a pass its part: the fields every step writes become the part's lists.
     [MemberNotNull(nameof(nodes), nameof(issues), nameof(derivedIssues), nameof(obligations), nameof(obligationSet), nameof(libraryImports))]
     [MemberNotNull(nameof(virtualDeclarations), nameof(callableEffectUses), nameof(callableEffectClauses), nameof(localRegions))]
+    [MemberNotNull(nameof(keepers), nameof(contractShapes), nameof(boundedRequirements), nameof(importDeclarations))]
     private void EnterPass(BindingPass pass)
     {
         this.pass = pass;
@@ -131,6 +136,10 @@ public sealed partial class Binding
         this.callableEffectUses = part.CallableEffectUses;
         this.callableEffectClauses = part.CallableEffectClauses;
         this.localRegions = part.Regions;
+        this.keepers = part.Keepers;
+        this.contractShapes = part.ContractShapes;
+        this.boundedRequirements = part.BoundedRequirements;
+        this.importDeclarations = part.ImportDeclarations;
     }
 
     // R1.1's one composition point of the Bind's summary: the library layer's counts and the program part's, in the program pass's mode.
@@ -148,9 +157,10 @@ public sealed partial class Binding
     // A pass's part of the per-pass collections (DECISIONS BU-220's pass driver): exactly two for a Binding's life, Binding's own (the
     // program pass's) and LibraryLayer.Part (the library pass's from PLAN G949 S1-r1b, empty until then). Its collections are never
     // replaced, only emptied by its pass's resets and refilled, so a view built over them once stays current. A list is read through its
-    // composed view; a keyed collection (Regions) through one find (Find): the layer's part first, then the running pass's, a write going
-    // into the row found or, for a key in neither part, into the running pass's, so a key has one row; a keyed collection whose values
-    // index a per-pass list keeps that list in its own part. Counts is the pass's contribution to the Bind's Result (ComposeResult), not
+    // composed view; a keyed collection (Regions, Keepers) through one find (Find): the layer's part first, then the running pass's, a
+    // write going into the row found or, for a key in neither part, into the running pass's, so a key has one row, and a reader then
+    // reads the stamp of the part the row was found in (Keepers: RequirementCall); a keyed collection whose values index a per-pass list
+    // keeps that list in its own part. Counts is the pass's contribution to the Bind's Result (ComposeResult), not
     // a tally of the part's nodes, which only the views count: from S1-r1b a program pass's own nodes plus each foreign node's final
     // state less its earlier one.
     internal sealed class PassPart(int nodes)
@@ -175,6 +185,20 @@ public sealed partial class Binding
 
         // The local-region graph's rows by their target Origin (Binding.LocalRegions.cs), keyed by reference.
         internal Dictionary<BoundOrigin, LocalRegion> Regions { get; } = new(ReferenceEqualityComparer.Instance);
+
+        // Each declared slot's keepers (Binding.RawOrigins.Keepers.cs), keyed by reference: a slot is kept only by its declaration's
+        // pass, and a list is current while its Pass is RequirementCall, the requirement counter's value at the pass's latest call.
+        internal Dictionary<OriginParameter, KeeperList> Keepers { get; } = new(ReferenceEqualityComparer.Instance);
+
+        internal uint RequirementCall { get; set; }
+
+        // The pass's Contract shapes and the effect bounds they declare (Binding.EffectDeclarations.cs).
+        internal List<BoundContract> ContractShapes { get; } = new();
+
+        internal List<BoundEffectBound> BoundedRequirements { get; } = new();
+
+        // The pass's import declarations (Binding.Attributes.cs).
+        internal List<BindingSymbol> ImportDeclarations { get; } = new();
 
         internal BindingResult Counts { get; set; }
 

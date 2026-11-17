@@ -12,15 +12,17 @@ public sealed partial class Binding
     // coinductively, so a revisit of a C-layout struct on its own path is eligible and ends the walk, and a finite nest has no limit.
     private const int CLayoutFieldBound = 32;
 
-    private readonly List<BindingSymbol> importDeclarations = new();
     private readonly Dictionary<string, (string Signature, string? Kind)> importSymbols = new(StringComparer.Ordinal);
     private readonly List<string?> importSignatures = new();
 
-    /// <summary>Gets the import declarations of the latest pass (SPEC 22.6): the function of each <c>#LibraryImport</c> declaration whose
+    // The running pass's import declarations: its part (PassPart, EnterPass).
+    private List<BindingSymbol> importDeclarations;
+
+    /// <summary>Gets the import declarations of the latest Bind (SPEC 22.6), the program part's then the library layer's (the composed view): the function of each <c>#LibraryImport</c> declaration whose
     /// signature Binding checks as an import's (ImportAbi), in source order, whatever its verdict; <see cref="LibraryImports"/> are the valid
     /// ones. One whose Attribute fails before (InvalidLibraryImport) is none here, though <c>DirectCallOnly</c>, which reads the Attribute,
     /// still holds it to direct calls.</summary>
-    internal IReadOnlyList<BindingSymbol> ImportDeclarations => this.importDeclarations;
+    internal IReadOnlyList<BindingSymbol> ImportDeclarations { get; }
 
     private static Koto? AttributeTarget(AttributeKoto attribute)
     {

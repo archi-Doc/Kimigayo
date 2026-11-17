@@ -24,14 +24,16 @@ namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
-    // SPEC 8.11.3: every bound declared in this pass, for requirement calls whose conforming Type is concrete.
-    private readonly List<BoundEffectBound> boundedRequirements = [];
-
     // The confined bound each original virtual function declares, or null (virtual-dispatch 6).
     private readonly VirtualEffectBoundRows virtualEffectBounds;
 
-    // The Contracts of this pass, recorded when their shapes are built, so the bound tables need no second scan of the nodes.
-    private readonly List<BoundContract> contractShapes = [];
+    // SPEC 8.11.3: every bound declared in this pass, for requirement calls whose conforming Type is concrete: the running pass's part
+    // (PassPart, EnterPass); a reader outside the pass's own steps reads the composed view.
+    private List<BoundEffectBound> boundedRequirements;
+
+    // The Contracts of this pass, recorded when their shapes are built, so the bound tables need no second scan of the nodes: the
+    // running pass's part (PassPart, EnterPass).
+    private List<BoundContract> contractShapes;
 
     // SPEC 8.11.4: the Constraint clauses of this pass that carry an effect list: the running pass's part (PassPart, EnterPass).
     private List<IsKoto> callableEffectClauses;
@@ -120,9 +122,10 @@ public sealed partial class Binding
         }
 
         var bounded = false;
-        for (var i = 0; !bounded && i < this.boundedRequirements.Count; i++)
+        var bounds = this.boundedRequirementsView; // Every pass's bounds: the requirement may be another pass's (a library Contract's).
+        for (var i = 0; !bounded && i < bounds.Count; i++)
         {
-            bounded = ReferenceEquals(this.boundedRequirements[i].Requirement.Declaration, requirement);
+            bounded = ReferenceEquals(bounds[i].Requirement.Declaration, requirement);
         }
 
         if (!bounded || conforming is null)
