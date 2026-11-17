@@ -4,10 +4,9 @@
 // collector and code generation read by IntrinsicId. Column Target: the item a call of the intrinsic names as its collector target, the
 // whitelist of target-bearing intrinsic sites (X15); every other intrinsic carries none. Column Need: the call's layout need (LayoutNeeds;
 // TypeArguments: its Type argument's layout, a use the collector checks; K 4.8, DECISIONS R5-M44, R5-M149). Columns Writer and Routine:
-// how code generation writes a call (C8a; DECISIONS R5-M65, R5-M92), the runtime routine a routine writer calls; a row no MIR producer
-// makes yet is Unproduced, whose producing unit writes it (DECISIONS R5-M146). Column Requests: the module parts a Requested row's routine
-// needs, which its call requests (DECISIONS R8-M18). Whether a row reads its call's Type argument follows from
-// Need and Target (ReadsTypeArgument), the one rule every reader of it applies (DECISIONS R5-M136).
+// how code generation writes a call (C8a; DECISIONS R5-M65, R5-M92), the runtime routine a routine writer calls. Column Requests: the
+// module parts a Requested row's routine needs, which its call requests (DECISIONS R8-M18). Whether a row reads its call's Type argument
+// follows from Need and Target (ReadsTypeArgument), the one rule every reader of it applies (DECISIONS R5-M136).
 // Input: an IntrinsicId other than None. Output: its row.
 // Invariants: one row per IntrinsicId, in its order, checked once; an id without a row, None included, is a broken MIR contract.
 // Must not: resolve a target's item (the collector's), or restate the descriptor table's columns (MirDescriptors).
@@ -27,7 +26,6 @@ internal enum IntrinsicTarget : byte
 /// <summary>How code generation writes a call of an intrinsic (package C 3.2's writer column; DECISIONS R5-M92).</summary>
 internal enum IntrinsicWriter : byte
 {
-    Unproduced, // No MIR producer makes its call, so a call is a broken contract; the unit that first produces one writes its row.
     Routine, // The row's runtime routine through the one call writer: the call's operands at its parameters, then the call's location.
     Requested, // Routine's, the routine the module defines on request: the module parts the row's Requests column names.
     Allocate, // Raw.allocate: the count, the element's stride and the location to the row's routine.
