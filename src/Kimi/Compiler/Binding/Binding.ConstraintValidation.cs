@@ -203,7 +203,7 @@ public sealed partial class Binding
     private bool ValidateConstraintEnvironments(BindingMode mode, bool sourcesOnly = false)
     {
         var changed = false;
-        foreach (var scope in this.scopes.Values)
+        foreach (var scope in this.scopes.Values.In(this.pass))
         {
             if (scope.Constraints is not { } environment || (sourcesOnly && this.IsLibraryDeclaration(scope.Owner)))
             {
@@ -626,9 +626,9 @@ public sealed partial class Binding
     // Binding.Check's Final prologue, before the summaries' sites (FailNeededSites) and the derived uses resting on either (BU-76).
     private void PublishNeededLimits()
     {
-        for (var i = 0; i < this.impls.Paths.Count; i++)
+        for (var i = 0; i < this.impls.InPass.Paths.Count; i++)
         {
-            if (this.impls.Paths[i] is { Needed: true } path)
+            if (this.impls.InPass.Paths[i] is { Needed: true } path)
             {
                 this.Fail(path.Use, BindingFailure.Unsupported);
             }

@@ -163,7 +163,8 @@ internal readonly record struct MirCallee(MirCalleeKind Kind, BindingSymbol? Sym
 /// Call's arguments are of <see cref="MirBody.Operands"/>. <see cref="Operand"/> is a SwitchInt's operand or a Value callee,
 /// <see cref="Place"/> a Call's destination or the dropped Place, <see cref="CheckTarget"/> the block only the checks reach
 /// (-1: none), and <see cref="Places"/> whether a Call is a construction's insertion, not a call of the program: each operand a Move of
-/// a whole temp it transfers into the construction (a Dictionary literal entry's placeEntry; PLAN G442). A new block's terminator is a
+/// a whole temp it transfers into the construction, the first the construction's exclusive borrow, formed in the Call's block
+/// (<see cref="MirBody.Construction"/>; a Dictionary literal entry's placeEntry; PLAN G442). A new block's terminator is a
 /// Goto without a target until it is terminated.</summary>
 internal readonly record struct MirTerminator(
     MirTerminatorKind Kind,

@@ -18,6 +18,16 @@ internal sealed partial class MirBuilder
     private static bool IsNeverForm(Koto node)
         => HirTables.CompletionOf(node) == HirCompletion.Diverges && ReferenceEquals(TypeOf(node), BoundType.Never);
 
+    // SPEC 14.9.3, 14.10.3: a node evaluated here does not complete and its form has no terminator of its own (an Opaque value, a
+    // read of a Place of Type Never; a Call or a transfer is one), so the block ends and building continues in a block only the
+    // checks reach.
+    private void Diverge(Koto node)
+    {
+        var next = this.body.AddBlock();
+        this.body.Terminate(this.current, MirTerminator.Unreachable(this.Info(node), next));
+        this.current = next;
+    }
+
     // SPEC 14.7: the conditions in order, the first true clause's body into the destination, else the else body or, omitted, Unit; as a
     // call's input, each body's value as Result places it (input).
     private void If(MirPlace destination, IfKoto conditional, bool input)

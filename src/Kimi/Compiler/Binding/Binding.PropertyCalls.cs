@@ -1,22 +1,31 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using System.Diagnostics.CodeAnalysis;
 using Kimi.Compiler.Parsing;
 
 namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
-    private readonly Dictionary<(Koto Source, PropertyAccessorKind Kind), InvocationKoto> propertyCalls = new();
-    private readonly Dictionary<Koto, MemberAccessKoto> storageProjections = new(ReferenceEqualityComparer.Instance);
-    private readonly Dictionary<Koto, MemberAccessKoto> propertyUpdateStorage = new(ReferenceEqualityComparer.Instance);
-    private readonly Dictionary<Koto, EvaluatedKoto> propertyUpdateInputs = new(ReferenceEqualityComparer.Instance);
+    private readonly PropertyCallRows propertyCalls;
+    private readonly StorageProjectionRows storageProjections;
+    private readonly PropertyUpdateStorageRows propertyUpdateStorage;
+    private readonly PropertyUpdateInputRows propertyUpdateInputs;
 
     internal static bool IsGetterResult(Koto node)
         => KotoHelper.UnwrapParentheses(node) is not MemberAccessKoto { IsDirectStorage: true } &&
             KotoHelper.UnwrapParentheses(node).BoundSymbol?.Property is { Getter.IsStandard: false };
 
+    // SPEC 11.3: the function a custom accessor executes. A library accessor's is made once, by the library steps
+    // (MakeLibraryAccessorFunctions) or an earlier use after its header, and read from then on without a write (census §8 item 1): what
+    // it writes is the library's syntax and its header's interned Types, the same in every pass. A program accessor's is refreshed at each use.
     internal FunctionKoto AccessorFunction(BoundAccessor accessor)
     {
+        if (accessor.ExecutionFunction is { } made && ReferenceEquals(made.CodeContext.Kotonoha, this.Library.Kotonoha))
+        {
+            return made;
+        }
+
         var function = accessor.ExecutionFunction ??= new(accessor);
         function.RefreshAccessor();
         function.BoundSymbol ??= new(function.Name, BindingSymbolKind.Function, function, accessor.Property.Symbol.Scope);
@@ -42,6 +51,21 @@ public sealed partial class Binding
 
     internal MemberAccessKoto? StorageProjection(Koto node)
         => node.BoundSymbol?.Kind == BindingSymbolKind.Storage && this.storageProjections.GetValueOrDefault(node) is { BindingState: BindingState.Resolved } projection ? projection : null;
+
+    // PLAN G949 S1-e: every library accessor with a body gets its executing function, numbered, by the last declaration step, after the
+    // headers gave its Types: the set the MIR builder executes (MirBuilder.Module), so no later phase numbers a library node (c17).
+    private void MakeLibraryAccessorFunctions()
+    {
+        var library = this.Library.Kotonoha;
+        for (var i = 0; i < this.nodes.Count; i++)
+        {
+            if (this.nodes[i] is PropertyAccessorKoto { Body: not null } syntax && ReferenceEquals(syntax.CodeContext?.Kotonoha, library) &&
+                syntax.BoundSymbol?.Kind == BindingSymbolKind.PropertyAccessor)
+            {
+                this.AccessorFunction(Accessor(syntax));
+            }
+        }
+    }
 
     private EvaluatedKoto PropertyUpdateInput(Koto target, Koto update)
     {
@@ -329,5 +353,85 @@ public sealed partial class Binding
 
             BoundType? Signature(BoundType type) => this.MemberType(type, declaringType) is { } member ? this.ContractType(member, scope, requirement?.Self) : null;
         }
+    }
+
+    /// <summary>The `propertyCalls` family's one accessor (DECISIONS BU-220): a kept family, a property access's synthesized accessor calls
+    /// (SPEC 13.7), its composite key (the source node, its accessor kind) kept in the source's module's NodeColumns at its SyntaxId as a
+    /// row of two calls indexed directly by its accessor kind. Each call is made once and reset in place by each pass
+    /// (ResetSyntheticCalls). Its members keep the names its readers use.</summary>
+    private readonly struct PropertyCallRows(Binding binding)
+    {
+        internal FamilyRows<InvocationKoto?[]?> Values => new(binding, static (table, _) => table.Hir.Families.PropertyCalls.Enumerate());
+
+        internal InvocationKoto this[(Koto Source, PropertyAccessorKind Kind) key]
+        {
+            get => this.GetValueOrDefault(key) ?? throw new KeyNotFoundException($"No `propertyCalls` row at `{key.Source}`.");
+            set => (HirTables.Of(key.Source).Families.PropertyCalls.Ref(key.Source.SyntaxId) ??= new InvocationKoto?[2])[(int)key.Kind] = value;
+        }
+
+        internal InvocationKoto? GetValueOrDefault((Koto Source, PropertyAccessorKind Kind) key)
+            => key.Source.SyntaxOwner is { } table && table.Hir.Families.PropertyCalls.Get(key.Source.SyntaxId) is { } row ? row[(int)key.Kind] : null;
+
+        internal bool TryGetValue((Koto Source, PropertyAccessorKind Kind) key, [NotNullWhen(true)] out InvocationKoto? value)
+            => (value = this.GetValueOrDefault(key)) is not null;
+    }
+
+    /// <summary>The `storageProjections` family's one accessor (DECISIONS BU-220): a kept family, an accessor body's synthesized `self`
+    /// storage projection (SPEC 13.7.2), made once and reset in place by each pass (ResetSyntheticCalls), kept in its key node's module's
+    /// NodeColumns at its SyntaxId. Its members keep the names its readers use.</summary>
+    private readonly struct StorageProjectionRows(Binding binding)
+    {
+        internal FamilyRows<MemberAccessKoto?> Values => new(binding, static (table, _) => table.Hir.Families.StorageProjections.Enumerate());
+
+        internal void Add(Koto node, MemberAccessKoto value)
+        {
+            ref var row = ref HirTables.Of(node).Families.StorageProjections.Ref(node.SyntaxId);
+            row = row is null ? value : throw new ArgumentException($"`storageProjections` already holds a row at `{node}`.", nameof(node));
+        }
+
+        internal MemberAccessKoto? GetValueOrDefault(Koto node)
+            => node.SyntaxOwner is { } table ? table.Hir.Families.StorageProjections.Get(node.SyntaxId) : null;
+
+        internal bool TryGetValue(Koto node, [NotNullWhen(true)] out MemberAccessKoto? value)
+            => (value = this.GetValueOrDefault(node)) is not null;
+    }
+
+    /// <summary>The `propertyUpdateStorage` family's one accessor (DECISIONS BU-220): a kept family, a property update's synthesized
+    /// storage access (SPEC 13.7.1), made once and reset in place by each pass (ResetSyntheticCalls), kept in its key node's module's
+    /// NodeColumns at its SyntaxId. Its members keep the names its readers use.</summary>
+    private readonly struct PropertyUpdateStorageRows(Binding binding)
+    {
+        internal FamilyRows<MemberAccessKoto?> Values => new(binding, static (table, _) => table.Hir.Families.PropertyUpdateStorage.Enumerate());
+
+        internal void Add(Koto node, MemberAccessKoto value)
+        {
+            ref var row = ref HirTables.Of(node).Families.PropertyUpdateStorage.Ref(node.SyntaxId);
+            row = row is null ? value : throw new ArgumentException($"`propertyUpdateStorage` already holds a row at `{node}`.", nameof(node));
+        }
+
+        internal bool TryGetValue(Koto node, [NotNullWhen(true)] out MemberAccessKoto? value)
+            => (value = node.SyntaxOwner is { } table ? table.Hir.Families.PropertyUpdateStorage.Get(node.SyntaxId) : null) is not null;
+    }
+
+    /// <summary>The `propertyUpdateInputs` family's one accessor (DECISIONS BU-220): a kept family, a property update's synthesized input
+    /// (SPEC 13.7.1), made once and reset in place by each pass (ResetSyntheticCalls), kept in its key node's module's NodeColumns at its
+    /// SyntaxId. Its members keep the names its readers use.</summary>
+    private readonly struct PropertyUpdateInputRows(Binding binding)
+    {
+        internal FamilyRows<EvaluatedKoto?> Values => new(binding, static (table, _) => table.Hir.Families.PropertyUpdateInputs.Enumerate());
+
+        internal EvaluatedKoto this[Koto node] => this.GetValueOrDefault(node) ?? throw new KeyNotFoundException($"No `propertyUpdateInputs` row at `{node}`.");
+
+        internal void Add(Koto node, EvaluatedKoto value)
+        {
+            ref var row = ref HirTables.Of(node).Families.PropertyUpdateInputs.Ref(node.SyntaxId);
+            row = row is null ? value : throw new ArgumentException($"`propertyUpdateInputs` already holds a row at `{node}`.", nameof(node));
+        }
+
+        internal EvaluatedKoto? GetValueOrDefault(Koto node)
+            => node.SyntaxOwner is { } table ? table.Hir.Families.PropertyUpdateInputs.Get(node.SyntaxId) : null;
+
+        internal bool TryGetValue(Koto node, [NotNullWhen(true)] out EvaluatedKoto? value)
+            => (value = this.GetValueOrDefault(node)) is not null;
     }
 }

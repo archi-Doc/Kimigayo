@@ -493,7 +493,7 @@ public partial class LayoutTest
     public void BorrowsAndRawPointersAreOnePointer(SemanticsKind semantics)
     {
         // IMPL 21.1.3: 8 / 8 / 8, whatever the referent.
-        var value = Layout.Row(new BoundType("p", BoundTypeKind.Semantics, semantics: semantics, components: [BoundType.String]));
+        var value = Layout.Row(CompilationTestHelper.BindSuccess("()").Types.Reference(semantics, BoundType.String));
         Assert.Same(RuntimeAbi.StringReference, value);
         Assert.Equal(("ptr", 8, 8, 8, "ptr", "ptr"), Row(value));
     }
@@ -504,17 +504,18 @@ public partial class LayoutTest
     [InlineData(SemanticsKind.Arc)]
     public void ObjectHandlesAreOneWordForEveryPayload(SemanticsKind semantics)
     {
-        var handle = new BoundType("h", BoundTypeKind.Semantics, semantics: semantics, components: [BoundType.I32]);
+        var types = CompilationTestHelper.BindSuccess("()").Types;
+        var handle = types.Reference(semantics, BoundType.I32);
         var value = Layout.Row(handle);
         Assert.Equal(("[8 x i8]", 8, 8, 8, "[8 x i8]", "ptr"), Row(value));
-        Assert.Same(value, Layout.Row(new BoundType("h", BoundTypeKind.Semantics, semantics: semantics, components: [BoundType.String])));
+        Assert.Same(value, Layout.Row(types.Reference(semantics, BoundType.String)));
     }
 
     [Fact]
     public void FunctionValuesAreTwoWords()
     {
         // IMPL 21.1.3: a common function value is 16 bytes with alignment 8: code and environment words.
-        var function = new BoundType("fn", BoundTypeKind.Function, components: [BoundType.I32, BoundType.I32]);
+        var function = CompilationTestHelper.BindSuccess("()").Types.Intern(BoundTypeKind.Function, null, SemanticsKind.Owner, [BoundType.I32, BoundType.I32]);
         var value = Layout.Row(function);
         Assert.Equal(("[16 x i8]", 16, 8, 16, "[16 x i8]", "ptr"), Row(value));
         Assert.Equal(new[] { 0, 8 }, value.Layout.FieldOffsets.ToArray());

@@ -113,7 +113,7 @@ public sealed partial class Binding
 
     private void ValidateSignatures()
     {
-        foreach (var scope in this.scopes.Values)
+        foreach (var scope in this.scopes.Values.In(this.pass))
         {
             foreach (var first in scope.Values.Values)
             {

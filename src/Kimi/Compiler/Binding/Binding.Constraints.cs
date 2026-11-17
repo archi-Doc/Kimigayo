@@ -8,7 +8,7 @@ public sealed partial class Binding
 {
     private readonly Dictionary<ConstraintKey, BoundConstraint> constraints = new(KimiLibrarySize.KeyedCapacity(KimiLibrarySize.Stated.Constraints));
 
-    private readonly Dictionary<IsKoto, bool> deferredConstraints = new(ReferenceEqualityComparer.Instance);
+    private readonly DeferredConstraintRows deferredConstraints;
     private ConstraintSyntaxVisitor? constraintSyntaxVisitor;
 
     /// <summary>Queries a bound proposition using the lexical input constraints at a syntax node.</summary>
@@ -258,7 +258,6 @@ public sealed partial class Binding
     private void BindConstraints()
     {
         this.ResetSourceStates();
-        this.deferredConstraints.Clear();
         this.bindingConstraintTypes = true;
         // Collect ordinary facts, then complete outer Type/Contract constraints, then P.
         // Dependent function constraints may use P only through their declaration scope.
@@ -744,6 +743,22 @@ public sealed partial class Binding
             this.Missing |= node.BindingState == BindingState.Unresolved && node.BindingFailure is BindingFailure.MissingType or BindingFailure.MissingName;
             this.Invalid |= node.BindingState == BindingState.Invalid;
             node.VisitChildren(this);
+        }
+    }
+
+    /// <summary>The `deferredConstraints` family's one accessor (DECISIONS BU-220): a pass family, whether a clause waits for the
+    /// conformances (DeferredConstraint), kept in its module's NodeColumns at the clause's SyntaxId as a `bool?` (null, all-zero, is no
+    /// decision). It is decided once per Bind run: every read and write is BindConstraints', which each run's ResetPass precedes, so the
+    /// pass counter empties it where BindConstraints cleared it. Its members keep the names its readers use.</summary>
+    private readonly struct DeferredConstraintRows(Binding binding)
+    {
+        internal void Add(IsKoto clause, bool deferred) => HirTables.Of(clause).Families.DeferredConstraints.Ref(clause.SyntaxId, binding) = deferred;
+
+        internal bool TryGetValue(IsKoto clause, out bool deferred)
+        {
+            var row = clause.SyntaxOwner is { } table ? table.Hir.Families.DeferredConstraints.Get(clause.SyntaxId, binding) : null;
+            deferred = row ?? false;
+            return row.HasValue;
         }
     }
 }
