@@ -334,7 +334,7 @@ public sealed partial class Binding
     // the inline layouts' heir nodes and VerifyInheritedConformance, which read it and never build it.
     private void PrepareInheritedScopes()
     {
-        foreach (var path in this.impls.Paths)
+        foreach (var path in this.impls.InPass.Paths)
         {
             if (path.InheritedFrom is null)
             {

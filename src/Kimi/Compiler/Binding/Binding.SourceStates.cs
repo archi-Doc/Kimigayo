@@ -54,11 +54,11 @@ public sealed partial class Binding
         return false;
     }
 
-    // Every declaration container's own symbol is Pending before the pass adds any premise (BindConstraints).
+    // Every declaration container's own symbol of the pass's modules is Pending before the pass adds any premise (BindConstraints).
     private void ResetSourceStates()
     {
         this.sourceDeclarations.Clear();
-        foreach (var symbol in this.symbols.Values)
+        foreach (var symbol in this.symbols.Values.In(this.pass))
         {
             if (symbol.Declaration is DeclarationContainerKoto { BoundSymbol: { } own } && ReferenceEquals(own, symbol))
             {

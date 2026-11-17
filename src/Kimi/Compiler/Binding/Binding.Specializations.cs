@@ -183,7 +183,7 @@ public sealed partial class Binding
 
     private void ResetSpecializations()
     {
-        foreach (var siblings in this.specializationsByOriginal.Values)
+        foreach (var siblings in this.specializationsByOriginal.Values.In(this.pass))
         {
             siblings!.Clear();
         }
