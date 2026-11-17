@@ -451,11 +451,13 @@ public partial class OriginRelationDiagnosticTest
         Assert.Equal(nameof(DiagnosticCode.CallActivationConflict_Kd), error.Code);
     }
 
-    // SPEC 7.7.1, 15.6.1: an anonymous function has no origin clauses, so only an Origin written on its input bounds that input.
+    // SPEC 7.7.1, 15.6.1: an anonymous function has no origin clauses, so only an Origin written on its input bounds that input. The
+    // capture's slot is written `during x` (PLAN G492-a (ii)): unwritten it is the `let` local's own region and `start = n` is Unknown
+    // beside this record (InputDependentValueCallTest.AFixedInputIsNoPerCallInput's SwapOmitted rows).
     [Fact]
     public void AnAnonymousInputIsBoundByItsWrittenOrigin()
     {
-        var source = "func use(x: ref/i32) -> ref/i32 during x\n    let start: ref/i32 = x\n    var inner = func [var start] (n: ref/i32 during x) -> ref/i32 during x\n" +
+        var source = "func use(x: ref/i32) -> ref/i32 during x\n    let start: ref/i32 during x = x\n    var inner = func [var start] (n: ref/i32 during x) -> ref/i32 during x\n" +
             "        let old = start\n        start = n\n        return old\n    var outer = func [var inner] (a: ref/i32) -> i32\n        let got = inner(a)\n" +
             "        return got@follow\n    return inner(x)\n" + Main;
         var error = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics);

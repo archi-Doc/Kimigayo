@@ -66,7 +66,7 @@ public partial class CallableOriginForwardingTest
         "    let local: i32 = 5\n    return g(local@ref)@follow\n";
 
     private const string StoringCallable = "func callIt<F>(f: uniq/F, x: ref/i32) -> i32\n    F is Callable<uniq, (ref/i32) -> ref/i32>\n    if x@follow > 0\n" +
-        "        let local: i32 = 5\n        f(local@ref)\n    let r = f(x)\n    return r@follow\nfunc use(x: ref/i32) -> i32\n    let start: ref/i32 = x\n" +
+        "        let local: i32 = 5\n        f(local@ref)\n    let r = f(x)\n    return r@follow\nfunc use(x: ref/i32) -> i32\n    let start: ref/i32 during x = x\n" +
         "    var c = func [var start] (n: ref/i32 during x) -> ref/i32 during x\n        let old = start\n        start = n\n        return old\n    return callIt(c@uniq, x)\n";
 
     private const string ReadingCallable = "func callIt<F>(f: ref/F, x: ref/i32) -> i32\n    F is Callable<(ref/i32) -> i32>\n    let local: i32 = 5\n    return f(local@ref)\n" +

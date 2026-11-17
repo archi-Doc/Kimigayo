@@ -167,11 +167,14 @@ public partial class OriginRelationDiagnosticTest
 
     // B3 (R4's G1b N4): a Closure part of a value call at a Function parameter is erased as at a named call (SPEC 7.7.4, 10.5, 10.7): its
     // signature is applicability, and an environment that is not Owned (pv1) or a receiver that is not Shared (pv2) is the part's own
-    // record after selection, as at the named call (pn1, pn2). R4's ev_env and en_env are pv1 and pn1 renamed.
+    // record after selection, as at the named call (pn1, pn2). R4's ev_env and en_env are pv1 and pn1 renamed. The Closure is a `let`
+    // local's value, and the comparison reads the local's slot as its region (PLAN G492-a (ii), the owner's O-363 (a)), so pv1's and
+    // pn1's record is the Unknown one, as their `var f` twins' on the base (it was UnsatisfiedConstraint_Kd while a `let` slot took its
+    // initializer's Origin).
     [Theory]
-    [InlineData("U1.5", "pv1", RunG2 + EnvClosure + "    return g(f, 1)\n", "UnsatisfiedConstraint_Kd f")]
+    [InlineData("U1.5", "pv1", RunG2 + EnvClosure + "    return g(f, 1)\n", "UnprovenConstraint_Kd f")]
     [InlineData("U1.5", "pv2", RunG2 + VarClosure + "    return g(f, 1)\n", "TypeMismatch_Kd f")]
-    [InlineData("U1.5", "pn1", CallAction + "func run2() -> i32\n" + EnvClosure + "    return call(f, 1)\n", "UnsatisfiedConstraint_Kd f")]
+    [InlineData("U1.5", "pn1", CallAction + "func run2() -> i32\n" + EnvClosure + "    return call(f, 1)\n", "UnprovenConstraint_Kd f")]
     [InlineData("U1.5", "pn2", CallAction + "func run2() -> i32\n" + VarClosure + "    return call(f, 1)\n", "TypeMismatch_Kd f")]
     public void AClosureIsErasedAtAValueCallAsAtANamedCall(string unit, string form, string body, string records)
         => AssertRecords($"{form} [{unit}]", body, records, null);

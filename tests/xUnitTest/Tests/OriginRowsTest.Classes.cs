@@ -69,7 +69,8 @@ public sealed partial class OriginRowsTest
     // binding's own atom, stays a Finite root under `owner/Self` (DECISIONS R4-M126 P5, superseding the interim Finite in every receiver
     // mode); under a borrowed receiver it resolves to ρ, so its relation is fixed-fixed and Binding's, no row (AClosuresValueAndAReceiverAre
     // ClassedByTheirRole reads its class). A local whose failed clause names no bound Origin keeps its Type's Origins (SPEC 15.3.3: a
-    // local's clause assumes nothing, so its failure rests nothing; H11b-0 B1): RepeatedSet's longer end is Fixed, the parameter's set.
+    // local's clause assumes nothing, so its failure rests nothing; H11b-0 B1): RepeatedSet's longer end is the `let` local's own slot
+    // region, Inferred as its `var` twin's (PLAN G492-a (ii); it was Fixed, the parameter's set, while a `let` slot took its initializer's).
     [Theory]
     [InlineData(Destructors, "drop", "self.buffer@ref", "Finite", "Receiver")]
     [InlineData(Destructors, "drop", "whole.buffer@ref", "Finite", "Helper")]
@@ -78,7 +79,7 @@ public sealed partial class OriginRowsTest
     [InlineData(Pick + "func g(n: i32, r: i32 = pick(n@ref, 5@ref)) -> i32 => r\n", "g", "n@ref", "Finite", "Parameter")]
     [InlineData(Pick + "func g(n: i32, r: i32 = pick(n@ref, 5@ref)) -> i32 => r\n", "g", "5@ref", "Finite", "Place")]
     [InlineData("func total(values: Slice<i32>) -> i32\n    var sum = 0\n    for v in values\n        sum = sum + v@follow\n    return sum\n", "total", "$for.iterator", "Finite", "Place")]
-    [InlineData(MirOriginsTest.RepeatedSet, "run", "ref/Holder{x}", "Fixed", "None")]
+    [InlineData(MirOriginsTest.RepeatedSet, "run", "ref/Holder{x}", "Inferred", "None")]
     [InlineData(LocalOmission, "f", "x", "Fixed", "None")]
     public void TheLongerEndOfARowTakesItsClass(string source, string body, string site, string kind, string role)
     {
