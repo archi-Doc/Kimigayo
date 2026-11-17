@@ -277,7 +277,7 @@ internal sealed partial class MirBuilder(Compilation compilation)
         this.registrations.Clear();
         this.trees.Clear();
         var parameters = this.OpenScope(block: true);
-        PairBinder.Collect(declaration, body.Binders);
+        PairBinder.Collect(compilation.Binding, declaration, body.Binders);
         var special = template || function is null ? null : CallPlan.Parameter(function, -1); // A constructor's or destructor's self.
         var self = !template && AdtDef.IsConstructor(function) ? AdtDef.ReceiverType((FunctionKoto)declaration) : null;
         this.entry = this.Info(declaration, local: true);
