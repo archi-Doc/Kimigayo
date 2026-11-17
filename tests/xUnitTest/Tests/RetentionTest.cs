@@ -1436,6 +1436,28 @@ public sealed partial class RetentionTest
         Assert.Equal("result {0 Value}", Declared(c, "lens"));
     }
 
+    // SPEC 15.6.4, 5.7 Calls: a raw layer behind a borrow in the result is lent, not written, also where a Type argument supplies it,
+    // and a Type argument has no Places of its own (SPEC 15.3.5; G416's D'), so the instantiated constructors plan as the concrete ones:
+    // KG<raw/u8>.init's result as K.init's, WriterG<raw/u8>.init's as WriterS.init's, neither untied (the Middle's keeperGenericOk and
+    // statedGenericNoUseOk). A Type argument a Field holds by value is written (PG<raw/u8>.init: untied, rule A).
+    [Fact]
+    public void ATypeArgumentAddsNoLayerTheResultHolds()
+    {
+        const string Writer = "    public var p: raw/{0} during a\n    public var q: raw/u8 during a\n    public init(target: uniq/{0} during a)\n" +
+            "        self.p = target@follow@raw\n        self.loan = Loan.init(target)\n        self.q = null\n";
+        var c = Bind("struct K {s}\n    public var r: uniq/(raw/u8) during s\n    public init(r: uniq/(raw/u8) during s) => self.r = r\n" +
+            "struct KG<T> {s}\n    public var r: uniq/T during s\n    public init(r: uniq/T during s) => self.r = r\n" +
+            "struct WriterS {a}\n    let loan: Loan<uniq/(raw/u8) during a>\n" + string.Format(Writer, "(raw/u8)") +
+            "struct WriterG<T> {a}\n    let loan: Loan<uniq/T during a>\n" + string.Format(Writer, "T") +
+            "struct PG<T>\n    public var p: T\n    public init(p: T) => self.p = p@move\n" +
+            "func make()\n    var a: raw/u8 = null\n    var b: raw/u8 = null\n    var c: raw/u8 = null\n    var d: raw/u8 = null\n" +
+            "    let k = K.init(r: a@uniq)\n    let kg = KG.init(r: b@uniq)\n    let ws = WriterS.init(target: c@uniq)\n    let wg = WriterG.init(target: d@uniq)\n" +
+            "    let pg = PG.init(p: a)\n");
+        const string Lent = "result {0 Value}, store 0: own {0 Chain}, reached {} untied";
+        const string Stated = "result {0 Value Chain}, store 0: own {0 Chain}, reached {} untied";
+        Assert.Equal([Lent, Lent, Stated, Stated, "result {0 Value Chain}, untied"], Calls(c, "init")[2..]); // Past the two Loan.init calls.
+    }
+
     // SPEC 15.6.4, 5.7 (DECISIONS R4-M116 items 2 and 5, R-B2, BU-30; the G160-2c reviews' B1, R2, R4's F1 and B2): a value a call stores
     // at a writable position brings its whole Type (BU-1), so one walk reaches every layer below a hold, in a held struct's stored content
     // as at a position: an exclusive borrow (`S.r`, written as `s.r@follow = p`), a raw layer stepping Unstated or Static (`R.q`, written
@@ -1721,7 +1743,9 @@ public sealed partial class RetentionTest
     // fixed array's (`sliceUniq`, `iterateUniq`, `tryGetPairUniq`). None where the receiver is no exclusive borrow (Array `slice`, a
     // shared one; `intoIterator`, by value, though its elements' pointees are a store) or the callee no such operation (SliceIterator's
     // `next`). Fail-before: no row prints it. A `sliceUniq` receiver holds its raw elements past its exclusive borrow, a raw source whose
-    // chain the result's stated raw layer keeps (DECISIONS BU-66, A2; before `0 Value`).
+    // chain the result's stated raw layer keeps (DECISIONS BU-66, A2; before `0 Value`). An iterator holds its raw elements only lent (a
+    // Slice's elements; UniqRemainder's `raw/E during source` and Loan), so `iterateUniq`'s result is not untied (SPEC 15.6.4; its Type
+    // argument has no Places, PLAN G935's untied trace).
     [Theory]
     [InlineData("var a: Array<ref/i32> = []\nvar x = 1\na.append(x@ref)\n", "append", "store 0: own {0 Content, 1 Value}, reached {}, referent store 0")]
     [InlineData(
@@ -1734,7 +1758,7 @@ public sealed partial class RetentionTest
     [InlineData(
         "let a: Array<raw/u8> = [null]\nvar s = a.slice()\nlet it = s.iterateUniq()\n",
         "iterateUniq",
-        "result {0 Chain}, untied, store 0: own {0 Chain}, reached {} untied, referent store 0")]
+        "result {0 Content}, store 0: own {0 Chain}, reached {} untied, referent store 0")]
     [InlineData(
         "var a: Array<raw/u8> = [null]\nvar s = a.sliceUniq()\nlet t = s.sliceUniq()\n",
         "sliceUniq",
@@ -1748,7 +1772,7 @@ public sealed partial class RetentionTest
     [InlineData(
         "var f: [2 of raw/u8] = [null, null]\nfor _ in f@uniq => _ = 0\n",
         "iterateUniq",
-        "result {0 Value Chain}, untied, store 0: own {0 Chain}, reached {} untied, referent store 0")]
+        "result {0 Value Chain}, store 0: own {0 Chain}, reached {} untied, referent store 0")]
     [InlineData(
         "var f: [2 of raw/u8] = [null, null]\nlet p = f.tryGetPairUniq(first: 0, second: 1)\n",
         "tryGetPairUniq",
