@@ -19,26 +19,24 @@ public partial class KimiLibraryShapeTest
 
     // F2 (the note's readers 13 and 14; review-r2note C1): no projection node of the library's Type syntax is pending, read on the
     // projection itself (the node's Right, written before NormalizedProjection gives the outer node its normalized Type) through the
-    // readers' own predicate (PendingAssociatedType). An `associate` clause's name is not Type syntax (the note §4) and is left out.
+    // readers' own predicate (PendingAssociatedType). An `associate` clause's name is not Type syntax (the note §4) and is left out: the
+    // clause's head, its Left or the head inside its Origin application or transparent Type wrappers, which the associate binder completes
+    // with the projection (BindAssociatedName); every other node under the Left stays checked.
     [Fact]
     public void NoLibraryTypeProjectionIsPending()
     {
         var c = Bound(string.Empty);
-        Assert.Empty(KotoTree.Walk(c.Library.Kotonoha.RootKoto).OfType<MemberAccessKoto>()
-            .Where(x => !InAssociatedName(x) && c.Binding.Semantics.TypeOf(x.Right) is { Kind: BoundTypeKind.AssociatedProjection } projection && c.Binding.PendingAssociatedType(projection))
+        var root = c.Library.Kotonoha.RootKoto;
+        var names = KotoTree.Walk(root).OfType<IsKoto>().Where(static x => x.IsAssociatedConstraint).Select(static x => Head(x.Left)).ToHashSet();
+        Assert.Empty(KotoTree.Walk(root).OfType<MemberAccessKoto>()
+            .Where(x => !names.Contains(x) && c.Binding.Semantics.TypeOf(x.Right) is { Kind: BoundTypeKind.AssociatedProjection } projection && c.Binding.PendingAssociatedType(projection))
             .Select(static x => Line(x)));
 
-        static bool InAssociatedName(Koto node)
+        static Koto Head(Koto node) => node switch
         {
-            for (var child = node; child.Parent is { } parent; child = parent)
-            {
-                if (parent is IsKoto { IsAssociatedConstraint: true } clause)
-                {
-                    return ReferenceEquals(child, clause.Left);
-                }
-            }
-
-            return false;
-        }
+            OriginApplicationKoto applied => Head(applied.Type),
+            TypeSemanticsKoto { IsTransparentWrapper: true, Type: { } inner } => Head(inner),
+            _ => node,
+        };
     }
 }
