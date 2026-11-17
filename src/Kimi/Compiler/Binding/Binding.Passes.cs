@@ -194,7 +194,8 @@ public sealed partial class Binding
 
     // A pass's module set (DECISIONS BU-220's pass driver): its source modules by ordinal, then the library module when the pass binds
     // it (d8's order). A step walks Sources and Library where their walks differ, and the modules in that order (the indexer) where they
-    // do not; which walk a module takes follows from its place in the set, never from which pass runs.
+    // do not; which walk a module takes follows from its place in the set, never from which pass runs. One set is not a pass's:
+    // Binding.Modules, every module with Binding's own part, which a family's Values walks for readers outside a pass.
     internal readonly struct BindingPass(Kotonoha[] sources, Kotonoha? library, PassPart part)
     {
         // The modules: the source modules, then the library module, if any.

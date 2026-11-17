@@ -9,8 +9,9 @@ public sealed partial class Binding
 {
     private readonly MatchRows matches;
 
-    // A match keeps its plan object across rebinds, so a retained plan never starts describing another match while its
-    // own syntax is still selected; only the plans of removed matches return to the pool.
+    // A match keeps its plan object across rebinds, so a retained plan never starts describing another match while its own syntax
+    // is still selected; a removed match's plan leaves with its row at renumbering, and a live match the pass did not index drops its
+    // plan (PruneMatchPlans).
     private readonly MatchPlanRows matchPlans;
     private readonly HashSet<Koto> patternNodes = new(ReferenceEqualityComparer.Instance);
     private readonly List<Koto> previousPatternNodes = new();
@@ -127,7 +128,8 @@ public sealed partial class Binding
         this.matches.Add(match, plan);
     }
 
-    // A match of the pass's modules that the pass did not index (removed from its tree, or not selected) returns its plan to the pool.
+    // A live match of the pass's modules that the pass did not index drops its plan (no corpus program or Binding test has one: PLAN
+    // G949 S1-r2's N3); a removed match's plan already left with its row at renumbering.
     private void PruneMatchPlans()
     {
         for (var plans = this.matchPlans.Values.In(this.pass); plans.MoveNext();)
