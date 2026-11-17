@@ -18,7 +18,19 @@ internal sealed partial class MirBuilder
     private readonly List<int> component = []; // The nodes whose component is open (Tarjan's stack).
     private readonly List<DefaultDecl> edges = []; // The defaults omitted in the defaults being visited, innermost last.
     private ulong prepared; // The prepared parameters the template being built reads (bit i: p_i; past 64, all).
+    private int libraryOmissions; // The library segment's nodes, the prefix of omissions (Build).
     private Edges? walker;
+
+    // The omission graph of the kept library segment, for a new program version: the program's nodes, which follow the library's, removed.
+    private void ClearProgramOmissions()
+    {
+        for (var node = this.libraryOmissions; node < this.omissions.Count; node++)
+        {
+            this.visited.Remove(this.omissions[node].Decl);
+        }
+
+        this.omissions.RemoveRange(this.libraryOmissions, this.omissions.Count - this.libraryOmissions);
+    }
 
     // Tarjan's algorithm over the omission graph: a default, then each default a call in it omits. A component is built where it closes,
     // after every component it reaches, so a copy finds its template built; a default in a component of more nodes than one, or omitted

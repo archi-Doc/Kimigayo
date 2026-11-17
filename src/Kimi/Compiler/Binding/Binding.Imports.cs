@@ -28,7 +28,7 @@ public sealed partial class Binding
 
     private void ValidateDefaultAliases()
     {
-        foreach (var module in this.compilation.SourceModules)
+        foreach (var module in this.pass.Sources)
         {
             foreach (var path in this.compilation.DefaultAliases(module))
             {

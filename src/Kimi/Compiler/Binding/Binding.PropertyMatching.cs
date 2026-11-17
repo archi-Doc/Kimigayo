@@ -6,8 +6,31 @@ namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
-    private readonly Dictionary<(BoundConformancePath Conformance, BoundAccessor Requirement), BoundOrigin[]> propertyWitnessInputs = new();
-    private readonly Dictionary<(BoundConformancePath Conformance, BoundAccessor Requirement), BoundOrigin[]> propertyWitnessOrigins = new();
+    // A non-standard operation's input and Origin binding arrays on its path, kept with the path and reallocated only when a count
+    // changes (BoundConformancePath.PropertyWitnessOrigins).
+    private static (BoundOrigin[] Inputs, BoundOrigin[] Origins) OperationOrigins(BoundConformancePath path, BoundAccessor requirement, int inputCount, int originCount)
+    {
+        var entries = path.PropertyWitnessOrigins ??= new();
+        for (var i = 0; i < entries.Count; i++)
+        {
+            var (key, inputs, origins) = entries[i];
+            if (ReferenceEquals(key, requirement))
+            {
+                if (inputs.Length != inputCount || origins.Length != originCount)
+                {
+                    inputs = inputs.Length == inputCount ? inputs : new BoundOrigin[inputCount];
+                    origins = origins.Length == originCount ? origins : new BoundOrigin[originCount];
+                    entries[i] = (key, inputs, origins);
+                }
+
+                return (inputs, origins);
+            }
+        }
+
+        var entry = (Requirement: requirement, Inputs: new BoundOrigin[inputCount], Origins: new BoundOrigin[originCount]);
+        entries.Add(entry);
+        return (entry.Inputs, entry.Origins);
+    }
 
     private ConstraintProof VerifyPropertyRequirement(BoundConformancePath conformance, BoundProperty requirement, BoundType self, BindingScope scope, MemberSelection? retained = null)
     {
@@ -72,19 +95,7 @@ public sealed partial class Binding
         ConstraintProof proof;
         if (!implementation.IsStandard)
         {
-            var key = (conformance, requirement);
-            var inputCount = InputOriginCount(implementation.Binder);
-            if (!this.propertyWitnessInputs.TryGetValue(key, out inputOrigins!) || inputOrigins.Length != inputCount)
-            {
-                this.propertyWitnessInputs[key] = inputOrigins = new BoundOrigin[inputCount];
-            }
-
-            var originCount = implementation.Declaration?.Origins.Count ?? 0;
-            if (!this.propertyWitnessOrigins.TryGetValue(key, out var origins) || origins.Length != originCount)
-            {
-                this.propertyWitnessOrigins[key] = origins = new BoundOrigin[originCount];
-            }
-
+            (inputOrigins, var origins) = OperationOrigins(conformance, requirement, InputOriginCount(implementation.Binder), implementation.Declaration?.Origins.Count ?? 0);
             Array.Clear(origins);
             originBindings = origins;
             Array.Clear(inputOrigins);

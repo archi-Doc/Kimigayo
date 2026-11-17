@@ -187,6 +187,24 @@ public sealed partial class Binding
         return proof;
     }
 
+    // PLAN G949 S1-e: every library function's SignatureVerdict, formed by the last declaration step, after the gate (contractHeadersReady,
+    // set by ValidateConformances), each in its own proof frame as a call's trial forms it (Solution). A Proven one is kept (Done), so a
+    // program's use reads it and computes nothing; any other answer is abandoned, as at a use. The library's are all Proven in a Final pass
+    // (KimiLibraryShapeTest). An accessor's execution function, made by the step before, is no node here and is not formed.
+    private void FormLibrarySignatures()
+    {
+        var library = this.Library.Kotonoha;
+        for (var i = 0; i < this.nodes.Count; i++)
+        {
+            if (this.nodes[i] is FunctionKoto function && ReferenceEquals(function.CodeContext?.Kotonoha, library) &&
+                function.BoundSymbol is { Kind: BindingSymbolKind.Function } symbol && ReferenceEquals(symbol.Declaration, function))
+            {
+                this.BeginProof();
+                this.EndProof(this.CheckSignatureTypeConstraints(function));
+            }
+        }
+    }
+
     private ConstraintProof FormSignature(FunctionKoto function)
     {
         var scope = this.scopes[function];
