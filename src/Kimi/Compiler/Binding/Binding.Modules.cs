@@ -20,7 +20,7 @@ public sealed partial class Binding
     private void IndexModuleReferences()
     {
         this.moduleSymbols ??= new();
-        foreach (var module in this.compilation.SourceModules)
+        foreach (var module in this.pass.Sources)
         {
             var scope = this.scopes[module.RootKoto];
             if (scope.Types.TryGetValue("Kimi", out var reserved) || scope.Values.TryGetValue("Kimi", out reserved))

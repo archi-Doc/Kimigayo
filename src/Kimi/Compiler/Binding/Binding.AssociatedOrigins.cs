@@ -1,12 +1,13 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using System.Diagnostics.CodeAnalysis;
 using Kimi.Compiler.Parsing;
 
 namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
-    private readonly Dictionary<Koto, BoundOrigin[]> associatedOrigins = new(ReferenceEqualityComparer.Instance);
+    private readonly AssociatedOriginRows associatedOrigins;
     private readonly List<(Koto Use, BoundType Projection)> associatedApplications = new();
 
     // SPEC 8.5.1, 8.5.4: a Contract's associated Type declaration with Origin parameters, read from where the parser placed it
@@ -299,5 +300,19 @@ public sealed partial class Binding
                 this.Fail(use, BindingFailure.InvalidOrigin);
             }
         }
+    }
+
+    /// <summary>The `associatedOrigins` family's one accessor (DECISIONS BU-220): an edit family, an associated Type declaration's Origin
+    /// parameters kept in its module's NodeColumns at its SyntaxId, rewritten in place by each pass (PrepareAssociatedOrigins) and absent
+    /// after an edit until its store's first write (the edit counter, Invalidate). Its members keep the names its readers use.</summary>
+    private readonly struct AssociatedOriginRows(Binding binding)
+    {
+        internal BoundOrigin[] this[Koto declaration]
+        {
+            set => HirTables.Of(declaration).Families.AssociatedOrigins.Ref(declaration.SyntaxId, binding) = value;
+        }
+
+        internal bool TryGetValue(Koto declaration, [NotNullWhen(true)] out BoundOrigin[]? origins)
+            => (origins = declaration.SyntaxOwner is { } table ? table.Hir.Families.AssociatedOrigins.Get(declaration.SyntaxId, binding) : null) is not null;
     }
 }

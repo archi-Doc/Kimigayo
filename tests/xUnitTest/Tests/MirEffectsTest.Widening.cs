@@ -123,7 +123,7 @@ public sealed partial class MirEffectsTest
             Assert.Empty(Problems(c, program));
             var (cases, flow) = (new MirCases(c.Types), new MirDataflow(new MirReach()));
             var effects = new MirEffects(c.Types, cases, flow);
-            Analyze(effects, flow, cases, program, new MirReport());
+            Analyze(effects, flow, cases, program, new MirReport(), All);
             evaluations[i] = effects.Evaluations;
         }
 
