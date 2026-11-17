@@ -115,23 +115,20 @@ public sealed partial class Binding
     }
 
     // The first Borrow in a value whose Origin supplies `supplier`, which the record names and relates (BorrowSource).
-    private static Koto? LocalBorrow(Koto value, BoundOrigin supplier)
+    private static Koto? LocalBorrow(Binding binding, Koto value, BoundOrigin supplier)
     {
-        var finder = new LocalBorrowFinder(supplier);
+        var finder = new LocalBorrowFinder(binding, supplier);
         finder.Visit(value);
         return finder.Found;
     }
 
-    // The Origin a value or Borrow at `at` carries where it is written, read as every reader at a use reads it: a `let` region of its own
-    // body as its value (RegionValueAtUse; SPEC 15.3.6, 15.4.4).
-    private static BoundOrigin OriginAt(Koto at, BoundOrigin origin) => at.CodeContext.Compilation.Binding.RegionValueAtUse(origin, at);
-
     // Whether a Borrow at `at` whose Origin is `borrowed` supplies a record's end that the failing check recorded as `supplier`, before
-    // the receiver resolution (OriginRelationFact.Supplier): one holds the other, by identity, the Borrow's Origin read at `at`;
-    // BorrowSource's one comparison (R4-M133).
-    private static bool Supplies(Koto at, BoundOrigin borrowed, BoundOrigin supplier)
+    // the receiver resolution (OriginRelationFact.Supplier): one holds the other, by identity, the Borrow's Origin read at `at` as every
+    // reader at a use reads it, a `let` region of its own body as its value (RegionValueAtUse; SPEC 15.3.6, 15.4.4); BorrowSource's one
+    // comparison (R4-M133).
+    private static bool Supplies(Binding binding, Koto at, BoundOrigin borrowed, BoundOrigin supplier)
     {
-        borrowed = OriginAt(at, borrowed);
+        borrowed = binding.RegionValueAtUse(borrowed, at);
         return OriginIncludes(borrowed, supplier) || OriginIncludes(supplier, borrowed);
     }
 
@@ -139,12 +136,14 @@ public sealed partial class Binding
     // initializing the local it names, or the first Borrow inside the value or its root local's initializer, explicit or a call's
     // implicit Borrow of an argument. For a meet, it is the Borrow of its first body-local operand, which the meet's display shows (SPEC
     // 23.1). A local region's source is found through the bound that brought it in, by that bound's parent as written; a `let` region
-    // that the value's own body reads as its value is that value, no region (OriginAt).
+    // that the value's own body reads as its value is that value, no region (RegionValueAtUse). The value's Binding is read once here
+    // and passed to every reader below.
     private static Koto? BorrowSource(Koto value, BoundOrigin supplier)
     {
+        var binding = value.CodeContext.Compilation.Binding;
         var unwrapped = KotoHelper.UnwrapParentheses(value);
-        if (unwrapped.BoundType?.Origin is { } written && OriginAt(unwrapped, written) is var region && IsLocalRegion(region) &&
-            value.CodeContext.Compilation.Binding.LocalRegionSourceUse(region, supplier) is { } bound && !ReferenceEquals(bound.Value, value))
+        if (unwrapped.BoundType?.Origin is { } written && binding.RegionValueAtUse(written, unwrapped) is var region && IsLocalRegion(region) &&
+            binding.LocalRegionSourceUse(region, supplier) is { } bound && !ReferenceEquals(bound.Value, value))
         {
             return BorrowSource(bound.Value, bound.Parent);
         }
@@ -153,7 +152,7 @@ public sealed partial class Binding
         {
             // SPEC 23.1: at an inner position of a Borrow, such as the stored `local@ref` of `y@uniq` after `var y = local@ref`, the
             // failing Origin is not the Borrow's own: it is found through the borrowed Place.
-            if (borrowValue.BoundType?.Origin is not { } own || Supplies(borrowValue, own, supplier))
+            if (borrowValue.BoundType?.Origin is not { } own || Supplies(binding, borrowValue, own, supplier))
             {
                 return unwrapped;
             }
@@ -175,7 +174,7 @@ public sealed partial class Binding
         if (supplier.Kind == OriginKind.Projection &&
             unwrapped is IdentifierNameKoto { BoundSymbol: { Kind: BindingSymbolKind.Local, Declaration: VariableKoto { InitializerKoto: { } assigned } } } &&
             KotoHelper.UnwrapParentheses(assigned) is ConversionKoto { ConversionBinding: ConversionBinding.Borrow, BoundType.Origin: { } held } source &&
-            Supplies(source, held, supplier))
+            Supplies(binding, source, held, supplier))
         {
             return source;
         }
@@ -187,7 +186,7 @@ public sealed partial class Binding
             return null;
         }
 
-        return LocalBorrow(value, supplier) ?? (RootLocal(unwrapped) is { InitializerKoto: { } rootValue } ? LocalBorrow(rootValue, supplier) : null);
+        return LocalBorrow(binding, value, supplier) ?? (RootLocal(unwrapped) is { InitializerKoto: { } rootValue } ? LocalBorrow(binding, rootValue, supplier) : null);
 
         static VariableKoto? RootLocal(Koto value)
         {
@@ -512,7 +511,7 @@ public sealed partial class Binding
     // The first Borrow in a value whose Origin supplies an atom (LocalBorrow), in source order: an explicit Borrow, or a call's implicit
     // Borrow of an argument (SPEC 15.6.1: `take(local)`), found as that argument. A call's plan is read as this pass recorded it, also at
     // a value its own record failed afterwards (a pending relation's record is at its value, R4-M133), where BoundCall reads none.
-    private sealed class LocalBorrowFinder(BoundOrigin supplier) : KotoVisitor
+    private sealed class LocalBorrowFinder(Binding binding, BoundOrigin supplier) : KotoVisitor
     {
         internal Koto? Found { get; private set; }
 
@@ -523,7 +522,7 @@ public sealed partial class Binding
                 return;
             }
 
-            if (node is ConversionKoto { ConversionBinding: ConversionBinding.Borrow, BoundType.Origin: { } borrowed } && Supplies(node, borrowed, supplier))
+            if (node is ConversionKoto { ConversionBinding: ConversionBinding.Borrow, BoundType.Origin: { } borrowed } && Supplies(binding, node, borrowed, supplier))
             {
                 this.Found = node;
                 return;
@@ -534,7 +533,7 @@ public sealed partial class Binding
                 foreach (var operation in call.ArgumentOperations)
                 {
                     if (operation is { Kind: ArgumentOperationKind.Borrow, Source: { } argument, AdaptedType.Origin: { } implicitOrigin } &&
-                        Supplies(argument, implicitOrigin, supplier))
+                        Supplies(binding, argument, implicitOrigin, supplier))
                     {
                         this.Found = argument;
                         return;
