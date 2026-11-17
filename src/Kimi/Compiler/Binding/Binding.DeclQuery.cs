@@ -1,6 +1,7 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using System.Diagnostics;
+using Kimi.Compiler.Parsing;
 
 namespace Kimi.Compiler;
 
@@ -26,7 +27,8 @@ namespace Kimi.Compiler;
 //   (SPEC 8.3.3). Not ready: any other answer, or a demand before the first ValidateConformances (contractHeadersReady), is abandoned
 //   and computed again at each read until R7-C2 (PLAN G375). A requirement's call is outside the query, and no reader runs inside
 //   verification, so the answer is the declaration's own. A Proven stays read after a later failure. Frozen, not Done: formed at each
-//   use in the user's scope and abandoned, writing nothing (PLAN G375's per-use form, never a kept "nothing"). DirectBase
+//   use in the user's scope, writing nothing: the per-use path reads a frozen verdict and never completes it (PLAN G375's per-use
+//   form, never a kept "nothing"; G949 ruling 187). DirectBase
 //   (Binding.BaseLayers): output AdtDef.DirectBase, a clean read's name or a failed clause's; a bound clause's Type answers first.
 //   Re-entry: the chain ends there, counted (SPEC 9.5). Not ready: abandoned and counted; a read that moved the count stores nothing
 //   (interim until R7-D2 d3). Frozen: never asked (no library struct has a base clause, so DirectBase returns before its query).
@@ -41,7 +43,8 @@ namespace Kimi.Compiler;
 //   a kind. These two are the only reads of a state outside this file. SignatureVerdict's not-ready path and its exclusion of a
 //   requirement's call go at R7-C2, where a failed answer is final (PLAN G375).
 // - Prohibitions: no output, record or message here; no per-symbol reset; no second pass stamp; no mode or bool parameter; no
-//   allocation; no write of a state outside this file (BindingSymbol.SetQueryState).
+//   allocation in a query (the freeze's one domain list per compilation aside); no write of a state outside this file
+//   (BindingSymbol.SetQueryState, and FreezeQueries' stamp).
 
 /// <summary>A declaration query's kind: a fact Binding computes once per pass for one declaration (Binding.DeclQuery).</summary>
 internal enum DeclQueryKind : byte
@@ -77,6 +80,15 @@ internal enum DeclState : byte
 
 public sealed partial class Binding
 {
+    // The freeze's stamp for DeclQuery: each library symbol's states, as the library pass left them, Frozen.
+    private static void FreezeQueries(List<BindingSymbol> symbols)
+    {
+        foreach (var symbol in symbols)
+        {
+            symbol.FreezeQueries();
+        }
+    }
+
     private DeclState QueryState(BindingSymbol symbol, DeclQueryKind kind) => symbol.QueryState(kind, this.storageVersion);
 
     private DeclState BeginQuery(BindingSymbol symbol, DeclQueryKind kind)
@@ -94,6 +106,62 @@ public sealed partial class Binding
     {
         Debug.Assert(this.QueryState(symbol, kind) == DeclState.Running, "Only a running query completes.");
         symbol.SetQueryState(kind, this.storageVersion, DeclState.Done);
+    }
+
+    // The library's symbols whose query states the freeze keeps (FreezeLibrary, in the library pass): the `symbols` family's library rows
+    // (declarations and their parameters), each Contract's Self symbol, each accessor's execution function, the bound Contract references
+    // of the layer's part and $abort, which no query reads (s11-design 2.2 s1).
+    private List<BindingSymbol> LibraryQuerySymbols()
+    {
+        var symbols = new List<BindingSymbol> { this.Library.Abort };
+        foreach (var symbol in this.symbols.Values.In(this.pass))
+        {
+            symbols.Add(symbol);
+            AddSymbol(symbols, symbol.ContractSelf?.Symbol);
+            AddSymbol(symbols, symbol.Property?.Getter.ExecutionFunction?.BoundSymbol);
+            AddSymbol(symbols, symbol.Property?.Setter.ExecutionFunction?.BoundSymbol);
+        }
+
+        symbols.AddRange(this.boundContracts.Values);
+        return symbols;
+
+        static void AddSymbol(List<BindingSymbol> symbols, BindingSymbol? symbol)
+        {
+            if (symbol is not null)
+            {
+                symbols.Add(symbol);
+            }
+        }
+    }
+
+    // The freeze's verify half for DeclQuery: the first library symbol whose states the freeze would not keep as the library pass's: one
+    // set in an earlier run (a thrown pass's residue, which Frozen would revive), a Running query, a header DeclQuery binds (a Function or
+    // Property declared at a node of the pass: the header loop's set, G949 ruling 167 Q5) whose Signature is not Done, or a struct whose
+    // InheritedConformances is not Done. Null when every state is complete.
+    private BindingSymbol? LibraryQueryFault(List<BindingSymbol> symbols)
+    {
+        foreach (var symbol in symbols)
+        {
+            for (var kind = DeclQueryKind.Signature; kind < DeclQueryKind.Count; kind++)
+            {
+                if (!symbol.QueriesFrom(this.storageVersion) || this.QueryState(symbol, kind) == DeclState.Running)
+                {
+                    return symbol;
+                }
+            }
+        }
+
+        foreach (var node in this.nodes)
+        {
+            var header = node.BoundSymbol is { Kind: BindingSymbolKind.Function or BindingSymbolKind.Property } declared && ReferenceEquals(declared.Declaration, node);
+            if ((header && this.QueryState(node.BoundSymbol!, DeclQueryKind.Signature) != DeclState.Done) ||
+                (node is StructKoto { BoundSymbol: { } structure } && this.QueryState(structure, DeclQueryKind.InheritedConformances) != DeclState.Done))
+            {
+                return node.BoundSymbol;
+            }
+        }
+
+        return null;
     }
 
     private void AbandonQuery(BindingSymbol symbol, DeclQueryKind kind)

@@ -187,6 +187,19 @@ public sealed partial class Binding
         }
     }
 
+    // PLAN G949 S1-1's freeze of the layer's part (FreezeLibrary, after CompleteLocalRegions): each row with its sources for the run
+    // reads current in every later pass (FrozenRegion, never the "never computed" -1).
+    private void FreezeLocalRegions()
+    {
+        foreach (var region in this.localRegions.Values)
+        {
+            if (region.Version == this.regionVersion)
+            {
+                region.Version = FrozenRegion;
+            }
+        }
+    }
+
     // The running pass's rows, emptied in place; the version starts again per run (BeginRun).
     private void ResetLocalRegions()
     {

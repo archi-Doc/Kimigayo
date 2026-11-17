@@ -95,6 +95,22 @@ public sealed partial class Binding
         return found is not null && Current(list!.Pass, call) ? list.Items : default;
     }
 
+    // PLAN G949 S1-1's freeze of the layer's keepers (FreezeLibrary): each list current at the library pass's latest call, and the call
+    // itself, Frozen32, so the lists read current in every later pass whatever the requirement counter.
+    private void FreezeKeepers()
+    {
+        var part = this.pass.Part;
+        foreach (var list in part.Keepers.Values)
+        {
+            if (list.Pass == part.RequirementCall)
+            {
+                list.Pass = Frozen32;
+            }
+        }
+
+        part.RequirementCall = Frozen32;
+    }
+
     // The member borrows of each slot of a nominal Type within `type` (scope Type `input`) that `origin` binds: the slot's keepers'
     // referents under that Type (KeptReferents), exclusive where the slot is `uniq` in some case the Type selects (RequirementAt). False
     // when a walk is incomplete.

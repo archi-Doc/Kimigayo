@@ -137,8 +137,8 @@ internal struct HirTables
     /// <returns>The pass the columns describe, 0 before the first.</returns>
     internal static ulong Publish(Compilation compilation) => compilation.Binding.PublishHir();
 
-    /// <summary>Gets the library module's publication version (C-379 F1; PLAN G949 S1-r1b's RB1): the run whose library pass published
-    /// it, in every mode, 0 before the first. Until S1-1 freezes the library each run's library pass publishes it anew.</summary>
+    /// <summary>Gets the library module's publication version (C-379 F1; PLAN G949 S1-r1b's RB1 and S1-1): the run whose library pass
+    /// published it and froze the library, 0 before; per compilation (its own Binding's run counter) and constant from the freeze.</summary>
     /// <param name="compilation">The compilation.</param>
     /// <returns>The version.</returns>
     internal static ulong LibraryVersion(Compilation compilation) => compilation.Binding.LibraryVersion;
@@ -344,6 +344,23 @@ internal struct NodeColumns
         this.RangeCalls.Grow(length);
         this.ResolvedKeys.Grow(length);
         this.MatchPlans.Grow(length);
+    }
+
+    // PLAN G949 S1-1's freeze of the library's families: every stamped column, both counters' (F2: an edit advances the edit counter,
+    // which would leave the library's edit family stale with no later library pass to rewrite it).
+    internal void Freeze(Binding binding)
+    {
+        this.VirtualOverrides.Freeze(binding);
+        this.VirtualEffectBounds.Freeze(binding);
+        this.Specializations.Freeze(binding);
+        this.ImplicitConstructorDecisions.Freeze(binding);
+        this.AssociatedOrigins.Freeze(binding);
+        this.ObjectErasures.Freeze(binding);
+        this.InheritedOriginTypes.Freeze(binding);
+        this.DeferredConstraints.Freeze(binding);
+        this.Matches.Freeze(binding);
+        this.Adaptations.Freeze(binding);
+        this.ShapeContractHeads.Freeze(binding);
     }
 
     // The library's columns start at their stated slots (KimiLibrarySize: no program row lands in them).

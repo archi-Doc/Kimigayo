@@ -303,6 +303,30 @@ internal sealed class ImplTable
         return result;
     }
 
+    /// <summary>Freezes the base store (PLAN G949 S1-1's freeze, after the library pass): its pass, its lists' pass and every identity and
+    /// path the pass made current turn Frozen, so they read current and untouched in every later pass (no pass begins the base again);
+    /// a row an earlier pass left stale stays stale.</summary>
+    internal void Freeze()
+    {
+        foreach (var identity in this.identities.Values)
+        {
+            if (identity.Current)
+            {
+                identity.Freeze();
+            }
+        }
+
+        foreach (var path in this.paths.Values)
+        {
+            if (path.Current)
+            {
+                path.Freeze();
+            }
+        }
+
+        (this.Pass, this.listPass) = (Binding.Frozen, this.listPass == this.Pass ? Binding.Frozen : this.listPass);
+    }
+
     /// <summary>Ends a Bind in the overlay: every identity and path this pass did not register leaves the table for the pool, so no
     /// conformance an edit removed is kept, and Identities keeps only registered ones.</summary>
     internal void Sweep()

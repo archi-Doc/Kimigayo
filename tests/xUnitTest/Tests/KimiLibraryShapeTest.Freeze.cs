@@ -2,6 +2,7 @@
 
 using System.Reflection;
 using Kimi.Compiler;
+using Kimi.Compiler.Parsing;
 using Xunit;
 
 namespace XunitTest;
@@ -50,6 +51,89 @@ public partial class KimiLibraryShapeTest
         Assert.Equal(Binding.Frozen32, stamp.GetValue(function));
         Assert.Equal(DeclState.NotStarted, function.QueryState(DeclQueryKind.SignatureVerdict, pass));
         Assert.Equal(DeclState.Done, function.QueryState(DeclQueryKind.Signature, pass));
+    }
+
+    // e7 (s11 plan finding F2): the freeze stamps both counter families of the library's columns, so an edit, which advances the edit
+    // counter, keeps the library's edit family (AssociatedOrigins: an associated Type declaration's Origin parameters): its rows are
+    // the same objects right after the edit and after the next Bind. Before B4 the edit left the column stale (no rows) until the next
+    // run's library pass rewrote it; a freeze that skipped the edit family would leave it stale for good.
+    [Fact]
+    public void AnEditKeepsTheLibrarysAssociatedOrigins()
+    {
+        var c = Bound(string.Empty);
+        var rows = Rows(c);
+        Assert.NotEmpty(rows);
+        c.NoteSyntaxEdit(c.Kotonoha.RootKoto);
+        Assert.Equal(rows, Rows(c), ReferenceEqualityComparer.Instance);
+        Assert.True(c.Bind().IsComplete);
+        Assert.Equal(rows, Rows(c), ReferenceEqualityComparer.Instance);
+
+        static object[] Rows(Compilation c)
+            => [.. LibraryLayer.Families().Where(static x => x.Name == "AssociatedOrigins").SelectMany(x => LibraryLayer.RowObjects(x.GetValue(c.Library.Kotonoha.Syntax.Hir.Families)!, c.Binding))];
+    }
+
+    // e2 (s11-design 5, 6.3; G375; G949 ruling 187 (c)): a frozen library verdict is read, never written, so a program's per-use check
+    // over a library function leaves the frozen verdict and the records as the library pass made them; one the freeze left not Done is
+    // formed at each use in the user's scope. None is today (EveryLibrarySignatureVerdictIsProven), so the row clears every library
+    // function's SignatureVerdict by reflection after the first Bind (the stamps stay Frozen): a second Bind of Hello then forms the
+    // verdicts its uses demand (more signature walks than a second Bind without the clearing), keeps its Result and records, and leaves
+    // every cleared state NotStarted and Frozen. Before B4 nothing was Frozen; with the freeze but without the per-use rule, the use's
+    // formation proved the verdict and its completion threw the frozen state's internal invariant.
+    [Fact]
+    public void AFrozenVerdictThatIsNotDoneIsFormedAtEachUse()
+    {
+        var (walks, result, records) = Second(clear: false);
+        var (cleared, clearedResult, clearedRecords) = Second(clear: true);
+        Assert.True(cleared > walks, $"{cleared} signature walks with the verdicts cleared, {walks} without");
+        Assert.Equal(result, clearedResult);
+        Assert.Equal(records, clearedRecords);
+
+        static (int Walks, BindingResult Result, string[] Records) Second(bool clear)
+        {
+            var c = Compilation.CreateForTest();
+            Assert.True(c.Prepare(WindowsProfile.Target));
+            c.Kotonoha.AddSource(new SourceDocument("Program.kimi", Repository.ReadText("docs/examples/Hello/Hello.kimi".Split('/'))));
+            Assert.True(c.Bind().IsComplete);
+            var queries = typeof(BindingSymbol).GetField("queries", BindingFlags.Instance | BindingFlags.NonPublic)!;
+            var functions = DeclaredSymbols(c).Where(x => x.Kind == BindingSymbolKind.Function && ReferenceEquals(x.Declaration.CodeContext?.Kotonoha, c.Library.Kotonoha)).ToArray();
+            Assert.All(functions, static x => Assert.True(x.QueriesFrozen));
+            foreach (var function in clear ? functions : [])
+            {
+                queries.SetValue(function, (ushort)((ushort)queries.GetValue(function)! & ~(3 << ((int)DeclQueryKind.SignatureVerdict * 2))));
+            }
+
+            var result = c.Bind();
+            var pass = (ulong)typeof(Binding).GetField("storageVersion", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(c.Binding)!;
+            Assert.All(functions, x => Assert.True(x.QueriesFrozen && (x.QueryState(DeclQueryKind.SignatureVerdict, pass) == DeclState.NotStarted) == clear));
+            var walks = (int)typeof(Binding).GetField("signatureWalks", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(c.Binding)!;
+            return (walks, result, [.. TestDiagnostics.Of(c).Select(static x => $"{x.Code} {x.Span}")]);
+        }
+    }
+
+    // F-1 and F-3 (s11-design 2.3 and 6.3, RC4, RC7; G949 ruling 167): the library's freeze verifies its query states and refuses a
+    // library with records, so on each target class the library rows cover (probe 1: pointer widths 64 with the default
+    // x86_64-pc-windows-msvc, 32 and 16; eight triples gave no record and identical library MIR) the empty program's Final Bind
+    // completes with no record of any kind, warnings included, and every library header DeclQuery binds and every library struct's
+    // inherited conformances are Done and Frozen.
+    [Theory]
+    [InlineData("x86_64-pc-windows-msvc")]
+    [InlineData("i686-unknown-linux-gnu")]
+    [InlineData("avr-unknown-unknown")]
+    public void TheLibraryPassCompletesEveryQuery(string target)
+    {
+        var c = Compilation.CreateForTest();
+        Assert.True(c.Prepare(target));
+        c.Kotonoha.AddSource(new SourceDocument("Program.kimi", "public func main() => ()\n"));
+        Assert.True(c.Bind().IsComplete);
+        c.Binding.ReportDiagnostics();
+        c.Binding.ReportStartupDiagnostics();
+        Assert.Empty(TestDiagnostics.Of(c).Select(static x => $"{x.Severity} {x.Code} {x.Path} {x.Span}"));
+        var pass = (ulong)typeof(Binding).GetField("storageVersion", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(c.Binding)!;
+        var library = DeclaredSymbols(c).Where(x => ReferenceEquals(x.Declaration.CodeContext?.Kotonoha, c.Library.Kotonoha)).ToArray();
+        Assert.Empty(library.Where(x => !x.QueriesFrozen).Select(static x => x.Name));
+        Assert.Empty(library.Where(x => x.Kind is BindingSymbolKind.Function or BindingSymbolKind.Property && x.Declaration is FunctionKoto or PropertyKoto
+            && x.QueryState(DeclQueryKind.Signature, pass) != DeclState.Done).Select(static x => x.Name));
+        Assert.Empty(library.Where(x => x.Declaration is StructKoto && x.QueryState(DeclQueryKind.InheritedConformances, pass) != DeclState.Done).Select(static x => x.Name));
     }
 
     // k4 (B1: E3's effect bounds, E7, R): the library pass completes the facts a later pass would otherwise form lazily on a library

@@ -206,8 +206,9 @@ public class ArchitectureRulesTest
     [InlineData("Parsing reads of Koto semantic slots", "src/Kimi/Compiler/Parsing", SemanticSlotReads, ParsingSemanticSlotSites)]
     // DECISIONS BU-105: a declaration query's state has one writer, Binding.DeclQuery's transitions, and is read outside the component
     // only at its two interims: BindReference's cycle record (Names, until R7-D2 d2) and BindVariableCore's guard (Variables, until d4).
+    // PLAN G949 S1-1 (B4): the freeze's verify half reads the library's states in the component (LibraryQueryFault, three reads).
     [InlineData("Writes of a declaration query's state", "src/Kimi/Compiler", @"\.SetQueryState\(", "Binding/Binding.DeclQuery.cs=3")]
-    [InlineData("Reads of a declaration query's state", "src/Kimi/Compiler", @"\.QueryState\(", "Binding/Binding.DeclQuery.cs=4;Binding/Binding.Names.cs=1;Binding/Binding.Variables.cs=1")]
+    [InlineData("Reads of a declaration query's state", "src/Kimi/Compiler", @"\.QueryState\(", "Binding/Binding.DeclQuery.cs=7;Binding/Binding.Names.cs=1;Binding/Binding.Variables.cs=1")]
     // R7-V1 (PLAN G375): a declared signature's walk is the row's, computed at the row and outside it, for a requirement's call and (PLAN
     // G949 S1-r2, DECISIONS BU-120's line) a demand before the gate; the walk's declaration is the third count. All three go at R7-C2
     // (PLAN G375). A conformance computes none (the owner's O-44).
@@ -266,8 +267,9 @@ public class ArchitectureRulesTest
     // premise reviewed there: an epoch store a pass reads is its own part's or ends at that pass's start, so after a Bind the program
     // pass's epoch is the one the shared stores hold, and the layer's part's closure index the library pass's). A further caller fails
     // here until the epoch rule's premise is reviewed again. Binding's own ResetPass calls are this.ResetPass (a member call's spelling);
-    // the conformance identities' and paths' ResetPass(ulong) (S1-b1) are other members of the name.
-    [InlineData("A pass's start ends the capability epoch", "src/Kimi/Compiler", @"\bResetCapabilities\(|\bthis\.ResetPass\(", "Binding/Binding.Capabilities.cs=1;Binding/Binding.Pass.cs=1;Binding/Binding.Passes.cs=3")]
+    // the conformance identities' and paths' ResetPass(ulong) (S1-b1) are other members of the name. PLAN G949 S1-1 (B4): an edit's
+    // revocation resets the program pass alone, in Invalidate (Binding.cs), where S1-r1b's ResetPasses reset both passes in the driver.
+    [InlineData("A pass's start ends the capability epoch", "src/Kimi/Compiler", @"\bResetCapabilities\(|\bthis\.ResetPass\(", "Binding/Binding.Capabilities.cs=1;Binding/Binding.Pass.cs=1;Binding/Binding.Passes.cs=1;Binding/Binding.cs=1")]
     // PLAN G949 S1-r1b (review-r1a RC1, review-s1r1 Re-check 3 RC-c): the running part's bounded Callable clauses are written by their
     // owner (Binding.EffectDeclarations.cs) and handed over by the driver (Binding.Passes.cs); every reader reads the pass's view
     // (selectableEffectClauses), which holds the library layer's clauses too. A read of the running part alone (CollectCallableEffectUses'

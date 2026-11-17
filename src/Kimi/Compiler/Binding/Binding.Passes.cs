@@ -5,11 +5,13 @@ using Kimi.Compiler.Parsing;
 
 namespace Kimi.Compiler;
 
-// The pass driver (PLAN G949 S1-r1a and S1-r1b; DECISIONS BU-220): a Bind's runs and, in each run, its passes in order: the library
-// pass (the library module, LibraryLayer.Part), then the program pass (the source modules, Binding's own part).
+// The pass driver (PLAN G949 S1-r1a, S1-r1b and S1-1; DECISIONS BU-220): a Bind's runs and, in each run, its passes in order: the
+// library pass (the library module, LibraryLayer.Part) once per compilation, then frozen (FreezeLibrary), and the program pass (the
+// source modules, Binding's own part).
 // - Responsibility: the three levels of a Bind's state: per Bind (BeginBind: the SyntaxIds, the Result discarded with the later
 //   phases' facts, StartRuns), per run (BeginRun: the counter every stamp compares, the work counters, the local-region graph's
-//   version) and per pass (ResetPass); the runs, a new one whenever a pass asks for it (VerifyEarlyReads); each pass's steps in order
+//   version) and per pass (ResetPass); the runs, a new one whenever the program pass asks for it (VerifyEarlyReads); the library's
+//   freeze (FreezeLibrary: verify, stamp, publish); each pass's steps in order
 //   over its module set (BindingPass); each pass's part of the per-pass collections (PassPart: the published lists, the local-region
 //   graph, the slots' keepers, the Contract shapes, the effect bounds, the import declarations, the prune steps' sets, the contract
 //   solver's Closure(view) entries and the documents' unnamed aliases), handed over as the fields every step writes (EnterPass);
@@ -17,13 +19,17 @@ namespace Kimi.Compiler;
 //   (ComposeResult); a keyed collection's one find (PassPart.Find).
 // - Inputs: the compilation's modules, the mode. Outputs: the parts (Binding's own, programPart; LibraryLayer.Part), the composed
 //   views, the Result.
-// - Invariants: one counter value per run; a restart starts a new run of every pass, never a new Bind (StartRuns runs once per Bind,
-//   so a second run cannot ask again and the runs end); a step walks the running pass's modules, in their order, and writes its part;
+// - Invariants: one counter value per run; a restart starts a new run of the program pass, never a new Bind (StartRuns runs once per
+//   Bind, so a second run cannot ask again and the runs end); the library pass runs only while the library's publication version is 0,
+//   in the first run of a Bind, and its freeze publishes that version last, so a library pass that throws leaves no Frozen stamp and
+//   the next Bind runs it again; after the freeze the library's stamps are Frozen and its facts the library pass's, the same in every
+//   Bind of the compilation, and the library HIR identical in each (C-379, G949 ruling 174); a step walks the running pass's modules,
+//   in their order, and writes its part;
 //   between Binds, and after a throw, the running pass is the program pass with Binding's own part, and a reader outside a pass reads
 //   the views, never a field a pass writes; the library pass runs Final whatever the Bind's mode (PLAN G949 S1-1, B2: no library fact
-//   is a Provisional pass's), so its Check publishes the library module, and its end sets the library's publication version (RB1)
-//   and the library's size (LibraryLayer.Size); a library declaration's Origin requirement work is never an edge source in the
-//   program pass (its Pass is the library pass's requirement call, which CollectRequirementEdges compares with the running pass's).
+//   is a Provisional pass's), so its Check publishes the library module, and its end sets the library's size (LibraryLayer.Size); a
+//   library declaration's Origin requirement work is never an edge source in the program pass (its Pass is Frozen32, never the running
+//   pass's requirement call, which CollectRequirementEdges compares).
 // - Prohibitions: no step body here; no flag or mode steering a step; no second copy of a step for the library; no consumer
 //   composing parts.
 public sealed partial class Binding
@@ -98,7 +104,10 @@ public sealed partial class Binding
             modules[i].Syntax.Number(modules[i].RootKoto, (ushort)i);
         }
 
-        this.Library.Kotonoha.Syntax.Number(this.Library.Kotonoha.RootKoto, SyntaxTable.LibraryModule);
+        if (this.libraryVersion == 0)
+        {
+            this.Library.Kotonoha.Syntax.Number(this.Library.Kotonoha.RootKoto, SyntaxTable.LibraryModule); // Only a Bind that runs the library pass.
+        }
 
         // Every later phase rests on Binding, so its facts are discarded with Binding's; a pass that does not finish
         // leaves no result behind.
@@ -129,26 +138,54 @@ public sealed partial class Binding
         this.ResetInferenceMetrics();
     }
 
-    // The runs: each runs every pass in order, the library pass, Final whatever the Bind's mode (no Provisional answer on a library
-    // object; a Provisional Bind's program pass reads Final library facts), then the program pass; a pass whose declarations ask for a
-    // rerun ends its run, and the next run starts with the library pass again (until S1-1 freezes the library).
+    // The runs: the library pass while the library is not frozen (its publication version 0), Final whatever the Bind's mode (no
+    // Provisional answer on a library object; a Provisional Bind's program pass reads Final library facts), and its freeze; then the
+    // program pass, whose request for a rerun starts a new run of the program pass alone.
     private void Run(BindingMode mode)
     {
         do
         {
             this.BeginRun();
+            if (this.libraryVersion == 0)
+            {
+                this.FreezeLibrary(this.RunPass(this.LibraryPass, BindingMode.Final));
+            }
         }
-        while (!(this.RunPass(this.LibraryPass, BindingMode.Final) && this.RunPass(this.ProgramPass, mode)));
+        while (!this.RunPass(this.ProgramPass, mode));
     }
 
-    // An edit's revocation of the latest Bind (Invalidate): each pass's facts discarded as its next run would discard them, the
-    // library's first, and then the fields hold Binding's own part again (between Binds).
-    private void ResetPasses()
+    // PLAN G949 S1-1 (s11-design 2.3; DECISIONS BU-105 as BU-219 amends it): the library's freeze at the end of its pass, in three phases.
+    // Verify (writes nothing; a failure is a compiler-build defect, thrown as the internal-invariant form before any Frozen is written):
+    // the library pass asked for no rerun (it is the same in every run, so a rerun would ask again), it has no record (a layer record's
+    // explanation tables are the pass's, which the program pass empties), and its query states are complete (LibraryQueryFault). Stamp
+    // (field stores only, each owner its own): every stamp the run made current on a library object or base store turns Frozen, so it
+    // reads current in every later pass; a stamp of an earlier run stays stale and reads absent, as the library pass left it. Publish,
+    // last: L (LibraryLayer.TypeCount, the ids of the Types the library pass made) and the library's publication version, constant
+    // from here for the compilation (HirTables.LibraryVersion), which the driver's skip reads.
+    private void FreezeLibrary(bool completed)
     {
-        this.EnterPass(this.LibraryPass);
-        this.ResetPass(BindingMode.Provisional);
-        this.EnterPass(this.ProgramPass);
-        this.ResetPass(BindingMode.Provisional);
+        var symbols = this.LibraryQuerySymbols();
+        var fault = !completed ? "asked for a rerun"
+            : this.issues.Count + this.derivedIssues.Count != 0 ? "has records"
+            : this.LibraryQueryFault(symbols) is { } incomplete ? $"left the query states of `{incomplete.Name}` incomplete" : null;
+        if (fault is not null)
+        {
+            throw new InvalidOperationException($"The library pass {fault} (InternalInvariant; PLAN G949 S1-1).");
+        }
+
+        FreezeQueries(symbols);
+        foreach (var symbol in this.symbols.Values.In(this.pass))
+        {
+            this.FreezeStorage(symbol.Adt);
+        }
+
+        this.Library.Layer.Impls.Freeze();
+        this.Library.Kotonoha.Syntax.Hir.Families.Freeze(this);
+        this.FreezeLocalRegions();
+        this.FreezeRequirementWorks();
+        this.FreezeKeepers();
+        this.Library.Layer.TypeCount = this.types.TypeCount;
+        this.libraryVersion = this.storageVersion;
     }
 
     // One pass over its modules: its reset, indexing, declarations, bodies, the bound-declaration validations and Check. False: its
@@ -170,13 +207,11 @@ public sealed partial class Binding
         {
             // The library module's place in the pass's set, never which pass runs (RB1): the facts a later pass would otherwise form
             // lazily on a library object completed (PLAN G949 S1-1, B1: the bound references' effect bounds, the scopes' view serials,
-            // the local regions' sources, each its owner's step over the pass's own stores), the version of its publication (its
-            // Check's, Final), and the library's size, the pass's table counts before the program pass empties its per-pass tables
-            // (O8 (a)): the layer's part's nodes, not the composed view's.
+            // the local regions' sources, each its owner's step over the pass's own stores), and the library's size, the pass's table
+            // counts before the program pass empties its per-pass tables (O8 (a)): the layer's part's nodes, not the composed view's.
             this.CompleteBoundEffectBounds();
             this.SettleViewSerials();
             this.CompleteLocalRegions();
-            this.libraryVersion = this.storageVersion;
             this.Library.Layer.Size = this.TableCounts with { Nodes = this.nodes.Count };
         }
 

@@ -912,26 +912,31 @@ public class ContractBindingTest
     }
 
     // PLAN G949 S1-r2 (s1r1-design 1.4; review-s1r2 C1): ImplTable's pass view lists only the stores of the pass's modules. Begun again
-    // at the run's own value (so no row goes stale) with the source modules alone, it lists the program's paths, identities and Type
-    // lists and no library one; with the library alone, the library's; with both, the composed lists.
+    // at each store's own value (so no row goes stale: the run's for the overlay, Frozen for the base after PLAN G949 S1-1's freeze)
+    // with the source modules alone, it lists the program's paths, identities and Type lists and no library one; with the library
+    // alone, the library's; and the composed lists after the Bind are the two views in order, the overlay's then the base's. S1-1: the
+    // composed-lists clause was a view over both modules; since S1-r1b's split no pass holds both, and from the freeze the two stores
+    // stand at different values (the run's, Frozen), so no view begins both current: it compares the composed lists with the two
+    // single-store views instead.
     [Fact]
     public void ThePassViewListsOnlyThePassModulesStores()
     {
         var c = Sources("Self is C");
         Assert.True(c.Bind().IsComplete, Describe(c));
         var impls = Impls(c);
+        var (paths, identities) = (impls.Paths.ToList(), impls.Identities.ToList());
         impls.Begin(impls.Pass, new(c.SourceModules, null, new(0)));
         Assert.NotEmpty(impls.InPass.Paths);
         Assert.All(impls.InPass.Paths, static x => Assert.False(Library(x.Type)));
         Assert.All(impls.InPass.Identities, static x => Assert.False(Library(x.Type)));
         Assert.All(impls.InPass.ByType, static x => Assert.All(x, static y => Assert.False(Library(y.Type))));
-        impls.Begin(impls.Pass, new([], c.Binding.Library.Kotonoha, new(0)));
+        var (programPaths, programIdentities) = (impls.InPass.Paths.ToList(), impls.InPass.Identities.ToList());
+        impls.Begin(Binding.Frozen, new([], c.Binding.Library.Kotonoha, new(0)));
         Assert.NotEmpty(impls.InPass.Paths);
         Assert.All(impls.InPass.Paths, static x => Assert.True(Library(x.Type)));
         Assert.All(impls.InPass.Identities, static x => Assert.True(Library(x.Type)));
-        impls.Begin(impls.Pass, new(c.SourceModules, c.Binding.Library.Kotonoha, new(0)));
-        Assert.Equal(impls.Paths.ToList(), impls.InPass.Paths.ToList());
-        Assert.Equal(impls.Identities.ToList(), impls.InPass.Identities.ToList());
+        Assert.Equal(paths, [.. programPaths, .. impls.InPass.Paths.ToList()]);
+        Assert.Equal(identities, [.. programIdentities, .. impls.InPass.Identities.ToList()]);
 
         static bool Library(BindingSymbol type) => type.Declaration.Kotonoha.Syntax.IsLibrary;
     }

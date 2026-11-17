@@ -178,6 +178,9 @@ public sealed class BoundConformance
 
     public BoundPropertyWitness? GetPropertyWitness(BoundRequirement requirement, PropertyAccessorKind kind) => this.UnconditionalPath?.GetPropertyWitness(requirement, kind);
 
+    // The base store's freeze (ImplTable.Freeze): the identity's state is current in every later pass.
+    internal void Freeze() => this.Stamp = Binding.Frozen;
+
     // The identity's state at the start of a pass, made current for it.
     internal void ResetPass(ulong pass)
     {
@@ -398,6 +401,9 @@ public sealed class BoundConformancePath : ICheckCause
     // The path's state at the start of a pass, made current for it: the verification flags, witnesses and their maps, associated and
     // inference storage, the per-pass satellites (requirement matches, published inference, the associated bindings' state) and the
     // scope; what the registration writes and the kept satellites stay.
+    // The base store's freeze (ImplTable.Freeze): the path's state is current in every later pass.
+    internal void Freeze() => this.Stamp = Binding.Frozen;
+
     internal void ResetPass(ulong pass)
     {
         this.Stamp = pass;

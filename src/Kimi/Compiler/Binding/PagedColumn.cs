@@ -356,6 +356,17 @@ internal struct StampedColumn<T, TCounter>
         return column;
     }
 
+    /// <summary>Freezes the column (PLAN G949 S1-1's freeze of the library's columns): a current column's rows hold from here in every
+    /// later pass and edit; a stale one stays stale.</summary>
+    /// <param name="binding">The Binding whose counter the column follows.</param>
+    internal void Freeze(Binding binding)
+    {
+        if (this.Holds(binding, out _))
+        {
+            this.stamp = Binding.Frozen;
+        }
+    }
+
     // The one comparison of the column's stamp with the current value of its counter (ruling 118), through the one currency rule.
     private readonly bool Holds(Binding binding, out ulong counter) => Binding.Current(this.stamp, counter = TCounter.Of(binding));
 }

@@ -11,24 +11,58 @@ using Printer = XunitTest.SemanticSnapshotTest.SemanticPrinter;
 namespace XunitTest;
 
 // PLAN G949 Stage 1 (the design's coverage rows c13 and c17): the library pass binds the Kimi library once per compilation, and every
-// later Bind is a program pass over the source modules. c13 passes from G949 S1-r1b's split (the library pass binds the library's nodes
-// into the layer's part); c17 passes since S1-e (S1-1's SyntaxTable refusal lands only after it), its corpus row Explicit as the
-// library-layer corpus row is.
+// later Bind is a program pass over the source modules. c13's node half passes from G949 S1-r1b's split (the library pass binds the
+// library's nodes into the layer's part), its version half from S1-1's freeze; c17 passes since S1-e (S1-1's SyntaxTable refusal lands
+// only after it), its corpus row Explicit as the library-layer corpus row is.
 public partial class KimiLibraryShapeTest
 {
     // c13 (bound once): after the first Bind, a second Bind's node table holds the program's nodes only, while its Result keeps the
-    // library layer's counts (design R1.1, c15). S1-1 adds the library's publication version (R1.3), unchanged by the second pass.
+    // library layer's counts (design R1.1, c15). PLAN G949 S1-1 (R1.3, s11-design 1.4): the library's publication version, set by the
+    // first Bind's freeze, is nonzero and unchanged, with the library table's count and the layer's counts, after a second Bind,
+    // Analyze, CheckBound, a Provisional then Final Bind and an edit then a Bind; and it is per compilation (G949 ruling 174, the
+    // Middle's MR-3): a second compilation's comes from its own Binding's runs, whatever the first's. Before S1-1 each run's library
+    // pass published it anew.
     [Fact]
     public void ASecondBindBindsNoLibraryNode()
     {
-        var c = Compilation.CreateForTest();
-        Assert.True(c.Prepare(WindowsProfile.Target));
-        c.Kotonoha.AddSource(new SourceDocument("Program.kimi", Repository.ReadText("docs/examples/Hello/Hello.kimi".Split('/'))));
+        var c = Hello();
         var first = c.Bind();
         Assert.True(first.IsComplete);
+        var (version, count, counts) = (HirTables.LibraryVersion(c), c.Library.Kotonoha.Syntax.Count, c.Library.Layer.Part.Counts);
+        Assert.NotEqual(0ul, version);
         var second = c.Bind();
         Assert.Equal(first, second);
         Assert.DoesNotContain(c.Binding.Semantics.BoundNodes, x => ReferenceEquals(x.Kotonoha, c.Library.Kotonoha));
+        Unchanged();
+        c.Analyze();
+        Unchanged();
+        Assert.True(c.Binding.CheckBound().IsComplete);
+        Unchanged();
+        c.Binding.Bind(BindingMode.Provisional);
+        Assert.True(c.Bind().IsComplete);
+        Unchanged();
+        c.NoteSyntaxEdit(c.Kotonoha.RootKoto);
+        Assert.True(c.Bind().IsComplete);
+        Unchanged();
+        var other = Hello();
+        Assert.True(other.Bind().IsComplete);
+        Assert.Equal(version, HirTables.LibraryVersion(other));
+        Unchanged();
+
+        void Unchanged()
+        {
+            Assert.Equal(version, HirTables.LibraryVersion(c));
+            Assert.Equal(count, c.Library.Kotonoha.Syntax.Count);
+            Assert.Equal(counts, c.Library.Layer.Part.Counts);
+        }
+
+        static Compilation Hello()
+        {
+            var c = Compilation.CreateForTest();
+            Assert.True(c.Prepare(WindowsProfile.Target));
+            c.Kotonoha.AddSource(new SourceDocument("Program.kimi", Repository.ReadText("docs/examples/Hello/Hello.kimi".Split('/'))));
+            return c;
+        }
     }
 
     // c4/c15 (PLAN G949 S1-1, B2; s11-design 1.2 "Mode", E2): the library pass runs Final whatever the Bind's mode, so no library fact S1-1

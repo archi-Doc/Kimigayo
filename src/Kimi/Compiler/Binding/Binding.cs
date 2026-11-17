@@ -269,13 +269,14 @@ public sealed partial class Binding
             return;
         }
 
-        // An edit revokes the whole Bind, every pass of it, exactly as the next Bind discards it, unless no pass has finished since the
-        // last revocation.
+        // An edit revokes the program pass of the latest Bind, exactly as the next Bind discards it, unless no pass has finished since the
+        // last revocation; the frozen library is never revoked (PLAN G949 S1-1: a source edit never reaches it). Between Binds the
+        // fields hold the program pass's part.
         if (this.Result != default)
         {
             this.Result = default;
             this.BeginRun();
-            this.ResetPasses();
+            this.ResetPass(BindingMode.Provisional);
         }
 
         // The facts kept across unchanged passes are revoked by every edit, also after a pass that did not finish (a Bind that throws

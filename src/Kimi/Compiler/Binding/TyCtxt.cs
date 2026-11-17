@@ -24,6 +24,9 @@ internal sealed partial class TyCtxt(Binding binding, KimiLibrary library)
     private readonly Dictionary<int, List<BoundType>> types = new(KimiLibrarySize.KeyedCapacity(KimiLibrarySize.Stated.TypeKeys));
     private int typeCount = BoundType.StaticCount; // DECISIONS BU-220: the last id this compilation gave a Type (Intern, Parameter).
 
+    /// <summary>Gets the last id this compilation gave a Type (Binding's freeze reads it as the library's L).</summary>
+    internal int TypeCount => this.typeCount;
+
     /// <summary>Gets the number of keys the interned Types take.</summary>
     internal int KeyCount => this.types.Count;
 

@@ -498,6 +498,8 @@ public class BindingTest
     // stamps that copy them, so no run's value reads as a frozen stamp: the run counter's uint image (BindingSymbol's query stamp copies
     // the low 32 bits) skips uint.MaxValue, and the requirement counter (each pass's call, its part's RequirementCall) skips it too. The
     // counters start two values before their images; a Bind of Hello advances each past it, and every Bind's Result is the first's.
+    // From S1-1's freeze (B4) the layer's RequirementCall is Frozen32 (s10) and no later pass calls in it, so the counter itself and the
+    // program part's call are read.
     [Fact]
     public void TheRunCountersSkipTheirFrozenImages()
     {
@@ -513,8 +515,9 @@ public class BindingTest
         {
             Assert.Equal(first, c.Bind());
             Assert.NotEqual(uint.MaxValue, (uint)(ulong)run.GetValue(c.Binding)!);
-            Assert.NotEqual(uint.MaxValue, c.Library.Layer.Part.RequirementCall);
+            Assert.NotEqual(uint.MaxValue, (uint)call.GetValue(c.Binding)!);
             Assert.NotEqual(uint.MaxValue, own.RequirementCall);
+            Assert.Equal(Binding.Frozen32, c.Library.Layer.Part.RequirementCall);
         }
     }
 

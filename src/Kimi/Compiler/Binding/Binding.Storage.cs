@@ -103,6 +103,21 @@ public sealed partial class Binding
         return false;
     }
 
+    // PLAN G949 S1-1's freeze of a library Type's storage shape (FreezeLibrary): an ADT, and its dispatch table, that the run refilled
+    // read current in every later pass; a stale one stays stale.
+    private void FreezeStorage(AdtDef? adt)
+    {
+        if (adt is not null && adt.Version == this.storageVersion)
+        {
+            adt.Version = Frozen;
+        }
+
+        if (adt?.VTable is { } table && table.Version == this.storageVersion)
+        {
+            table.Version = Frozen;
+        }
+    }
+
     private void Substitute(BoundType type, AdtDef? adt, AdtDef.InstanceStorage instance)
     {
         if (type.Symbol!.Declaration is StructKoto declaration)

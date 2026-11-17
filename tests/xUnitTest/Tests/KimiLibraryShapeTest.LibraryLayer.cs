@@ -224,6 +224,7 @@ public partial class KimiLibraryShapeTest
         "KeeperList.Pass", // The requirement call that kept a slot's list.
         "BoundConformance.Stamp", // A conformance identity's reset stamp, the run's counter.
         "BoundConformancePath.Stamp", // A conformance path's reset stamp, the run's counter.
+        "InstanceStorage.Version", // The run whose substitution formed an instance (Binding.instances, a Type-keyed memo): from S1-1's freeze a restart reruns the program pass alone, so an instance the library pass formed keeps the first run's.
     ];
 
     private static void SameLayerAsTheEmptyPrograms(string program)

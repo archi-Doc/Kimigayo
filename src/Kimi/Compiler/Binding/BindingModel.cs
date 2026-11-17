@@ -403,8 +403,17 @@ public sealed class BindingSymbol
     internal DeclState QueryState(DeclQueryKind kind, ulong pass) => Binding.Current(this.queryPass, (uint)pass) ? (DeclState)((this.queries >> ((int)kind * 2)) & 3) : DeclState.NotStarted;
 
     /// <summary>Gets a value indicating whether the declaration's query states are its library pass's, stamped Frozen by PLAN G949
-    /// S1-1's freeze (Binding.DeclQuery's Frozen column); read only by Binding.DeclQuery.</summary>
+    /// S1-1's freeze (Binding.DeclQuery's Frozen column); read only by Binding.DeclQuery and SignatureVerdict's per-use path
+    /// (Binding.CheckSignatureTypeConstraints), which never completes a frozen verdict.</summary>
     internal bool QueriesFrozen => this.queryPass == Binding.Frozen32;
+
+    /// <summary>Gets whether the declaration's query states were set in a pass, or never (PLAN G949 S1-1's freeze verifies it).</summary>
+    /// <param name="pass">The pass stamp.</param>
+    /// <returns>Whether no earlier pass set them.</returns>
+    internal bool QueriesFrom(ulong pass) => this.queryPass == 0 || Binding.Current(this.queryPass, (uint)pass);
+
+    /// <summary>Stamps the declaration's query states Frozen, kept as they are (PLAN G949 S1-1's freeze; Binding.DeclQuery only).</summary>
+    internal void FreezeQueries() => this.queryPass = Binding.Frozen32;
 
     /// <summary>Sets a declaration query's state in a pass (Binding.DeclQuery only). Frozen states are never written: a Running or
     /// NotStarted write leaves them, and a Done write is a broken contract (a library fact completed in a program pass).</summary>
