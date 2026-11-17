@@ -192,11 +192,13 @@ public partial class KimiLibraryShapeTest
     }
 
     // k4 (B1: E3's effect bounds, E7, R): the library pass completes the facts a later pass would otherwise form lazily on a library
-    // object, so a program pass reads them and writes none: every bound Contract reference of the layer's part has its effect bounds
-    // (EffectState 2), every library scope, and every scope of a library path (its own, its requirements' premises, its overlaps'),
-    // denotes its current view (SerialOf would write none), and every local region of the layer's part has its sources formed. Before B1,
-    // after the empty program's Bind, 4 of 5 bound references had no effect bounds, 595 of 1,187 library scopes and 123 of 171 path
-    // scopes a view SerialOf would write, and all 19 regions had no sources (Version -1).
+    // object, so a program pass reads them and writes none: every Contract the library declares and every bound Contract reference of the
+    // layer's part has its effect bounds (EffectState 2), every library scope, and every scope of a library path (its own, its
+    // requirements' premises, its overlaps'), denotes its current view (SerialOf would write none), and every local region of the layer's
+    // part has its sources formed. Before B1, after the empty program's Bind, 4 of 5 bound references had no effect bounds, 595 of 1,187
+    // library scopes and 123 of 171 path scopes a view SerialOf would write, and all 19 regions had no sources (Version -1); before w1 (i)
+    // the declared Contracts no node of the library pass holds (the `#Lang` markers Copy, Owned, Sealed, ObjectPayload and
+    // PrimitiveInteger) had none, which Analyze then formed.
     [Fact]
     public void TheLibraryPassLeavesNoLazyFactOnTheLibrary()
     {
@@ -204,6 +206,9 @@ public partial class KimiLibraryShapeTest
         var layer = c.Library.Layer.Part;
         Assert.NotEmpty(layer.BoundContracts);
         Assert.Empty(layer.BoundContracts.Values.Where(static x => x.Contract!.EffectState != 2).Select(static x => x.Type!.ToString()));
+        var declared = DeclaredSymbols(c).Where(x => x.Contract is not null && ReferenceEquals(x.Declaration.CodeContext?.Kotonoha, c.Library.Kotonoha)).ToArray();
+        Assert.NotEmpty(declared);
+        Assert.Empty(declared.Where(static x => x.Contract!.EffectState != 2).Select(static x => x.Name));
         var scopes = new List<BindingScope>();
         foreach (var scope in c.Library.Kotonoha.Syntax.Hir.Families.Scopes.Enumerate())
         {

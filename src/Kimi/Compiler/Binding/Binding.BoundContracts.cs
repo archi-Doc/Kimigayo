@@ -22,7 +22,7 @@ public sealed partial class Binding
 {
     private readonly Dictionary<CollisionTerm, CollisionTerm> collisionSubstitutions = new();
 
-    // CompleteBoundEffectBounds' scratch: the running part's entries, copied before EnsureEffectBounds may add one; empty between uses.
+    // CompleteEffectBounds' scratch: the running part's entries, copied before EnsureEffectBounds may add one; empty between uses.
     private readonly List<BindingSymbol> boundScratch = new();
 
     // The running pass's bound Contract references (PassPart.BoundContracts, EnterPass); a lookup finds the layer's part first.
@@ -252,11 +252,21 @@ public sealed partial class Binding
         return bound;
     }
 
-    // SPEC 8.11.1 (PLAN G949 S1-1, E3): every bound Contract reference of the running part has its effect bounds, the references its
-    // bounds substitute included (EnsureEffectBounds may add one), so no later pass computes the effect bounds of an entry another pass
-    // made (census O5, O15).
-    private void CompleteBoundEffectBounds()
+    // SPEC 8.11.1 (PLAN G949 S1-1, E3 and w1 (i)): every Contract of the running pass has its effect bounds: each Contract its modules
+    // declare (the `symbols` family's rows, those no node of the pass holds included, such as the library's `#Lang` markers, which
+    // PrepareEffectBounds' shapes never reach) and every bound Contract reference of the running part, the references its bounds
+    // substitute included (EnsureEffectBounds may add one), so no later pass computes the effect bounds of a Contract another pass made
+    // (census O5, O15).
+    private void CompleteEffectBounds()
     {
+        foreach (var symbol in this.symbols.Values.In(this.pass))
+        {
+            if (symbol.Contract is { } contract)
+            {
+                this.EnsureEffectBounds(contract);
+            }
+        }
+
         for (var done = -1; done != this.boundContracts.Count;)
         {
             done = this.boundContracts.Count;

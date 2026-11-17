@@ -206,10 +206,11 @@ public sealed partial class Binding
         if (pass.Library is not null)
         {
             // The library module's place in the pass's set, never which pass runs (RB1): the facts a later pass would otherwise form
-            // lazily on a library object completed (PLAN G949 S1-1, B1: the bound references' effect bounds, the scopes' view serials,
-            // the local regions' sources, each its owner's step over the pass's own stores), and the library's size, the pass's table
-            // counts before the program pass empties its per-pass tables (O8 (a)): the layer's part's nodes, not the composed view's.
-            this.CompleteBoundEffectBounds();
+            // lazily on a library object completed (PLAN G949 S1-1, B1: the effect bounds of every Contract the library declares or
+            // references, the scopes' view serials, the local regions' sources, each its owner's step over the pass's own stores), and the
+            // library's size, the pass's table counts before the program pass empties its per-pass tables (O8 (a)): the layer's part's
+            // nodes, not the composed view's.
+            this.CompleteEffectBounds();
             this.SettleViewSerials();
             this.CompleteLocalRegions();
             this.Library.Layer.Size = this.TableCounts with { Nodes = this.nodes.Count };
