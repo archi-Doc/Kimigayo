@@ -16,16 +16,20 @@ public sealed partial class Binding
 
     private (int Slot, ReferenceSlotFailure Failure) referenceSlotFailure;
 
-    // The identity of a frame's first `count` slot bindings, by which a part that bound one is told (InferReferencePart).
-    private static int SlotsIdentity(SlotFrame frame, int count)
+    // DECISIONS D3 (temporary, removed with (R)): a frame's first `count` slot bindings, each slot's Type, length and selector, by
+    // which a part of a split search that bound one is told (InferReferencePart compares the references).
+    private static object?[] SlotBindings(SlotFrame frame, int count)
     {
-        var identity = 0;
-        for (var i = 0; i < count && i < frame.Types.Length; i++)
+        count = Math.Min(count, frame.Types.Length);
+        var bindings = new object?[3 * count];
+        for (var i = 0; i < count; i++)
         {
-            identity = HashCode.Combine(identity, System.Runtime.CompilerServices.RuntimeHelpers.GetHashCode(frame.Types[i]!));
+            bindings[3 * i] = frame.Types[i];
+            bindings[(3 * i) + 1] = frame.Lengths[i];
+            bindings[(3 * i) + 2] = frame.Selectors[i];
         }
 
-        return identity;
+        return bindings;
     }
 
     // Ordinary members of Origin-bearing containers remain limited; constrained requirements use RequirementItems.
@@ -494,9 +498,9 @@ public sealed partial class Binding
     private bool InferReferencePart(BoundType part, BoundType actual, FunctionKoto function, SlotFrame frame, bool commonOrigins)
     {
         var stamp = this.splitPartStamp;
-        var bound = SlotsIdentity(frame, function.GenericArguments.Count);
+        var bound = this.splitOpen ? SlotBindings(frame, function.GenericArguments.Count) : null;
         var matched = this.Infer(part, actual, function, frame, inferOrigins: true, lengths: true, commonOrigins: commonOrigins, structural: true);
-        if (SlotsIdentity(frame, function.GenericArguments.Count) != bound)
+        if (bound is not null && !bound.AsSpan().SequenceEqual(SlotBindings(frame, function.GenericArguments.Count), ReferenceEqualityComparer.Instance))
         {
             this.CarrySplitPart(stamp);
         }
