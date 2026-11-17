@@ -6,12 +6,13 @@
 // ClearProgram reset them, R6-check H3-1), and the version's count of judgments (Judgments), which the library check reads in each version.
 // Runs them once per version, after build and validation: the version alone keys the run because an instance analyzes the programs of
 // one builder (Compilation pairs its analysis with its builder; a test or measurement makes both), which builds a version with one root
-// range (MirBuilder.Build); that build range is the builder's, not Run's rootModules. The steps run in a fixed order, one line per step
+// range and every version with the library on one side of it (MirBuilder.Build), so the program and its library segment alone key the
+// library step: a kept library segment has its builder's shape; that build range is the builder's, not Run's rootModules. The steps run in a fixed order, one line per step
 // (a judged body's steps 1 and 2 together, another body's step 2 only); a step's details are in the comment of the method that runs it
 // or in its analysis's contract:
-// 0. the library step, once per library version (PLAN G950): step 2 of the library segment's bodies (LibraryBodies), whose facts (A2's
+// 0. the library step, once per library segment (PLAN G950): step 2 of the library list's bodies (LibraryBodies), whose facts (A2's
 //    library store, A4's library locals) and problems are a function of the library segment alone; its problems are kept as data and
-//    replayed here in every other version of that library version, so the report equals a rebuild's row for row; then the judged
+//    replayed here in every other version of that library segment, so the report equals a rebuild's row for row; then the judged
 //    library bodies' A3 (the library check's root range only), which is judged work and runs every version;
 // 1. per judged program body, A3;
 // 2. per program body, per view A1, then A2, then A4's local facts;
@@ -19,9 +20,9 @@
 // 4. per judged body, A5: the Origin stratum's judgment, which adds its problems, then the Loan stratum per view; then, once per program,
 //    the rows of layers no constructor body includes (MirOrigins.Findings);
 // 5. A6 inside MirReport.
-// Steps 1 and 2 have one path (Step): the program segment's bodies built since the last step, in build order, a body a lookup builds
-// meanwhile included (MirProgram's demand point, PLAN G951); the library step has stepped the library segment's, whose facts are kept or
-// new, so a version's stepping starts at LibraryCount. A round of a consumer of step-2 facts (A4's here, the collector's) that reads a
+// Steps 1 and 2 have one path (Step): the version's bodies built since the last step, in build order, a body a lookup builds
+// meanwhile included (MirProgram's demand point, PLAN G951); the library step has stepped the library list's, whose facts are kept or
+// new, so a version's stepping starts at the library list's length, a position of the build-order list (MirProgram.Bodies). A round of a consumer of step-2 facts (A4's here, the collector's) that reads a
 // body built since then misses and commits nothing (MirDropTable.Holds); the consumer's driver steps and runs it again until a round is
 // clean. While step 4 judges, the program's demand table is Judging: no lookup may build a body.
 // Input rule (DECISIONS R5-M168, PLAN G951): steps 1 and 4 judge the bodies of the root modules (Judged), step 3 the obligations whose
@@ -33,8 +34,8 @@
 // Owns one instance of each analysis and their shared scratch for the compilation's lifetime, arrays reset by counts; each analysis unit
 // adds its field and its pass row at its step: step 1 in Steps, step 2 in Body, steps 0, 3 and 4 in Run (A5 with its own loop over the
 // bodies after A4's, Borrows per body). A2's table (MirProgram.Drops) is per version, like the problems: its library store per library
-// version. The library state is keyed on the program whose library segment it holds and on that segment's library version, so any other
-// program takes the library step.
+// segment, which only the library step writes (MirDropTable.LibraryHolds). The library state is keyed on the program whose library
+// segment it holds and on that segment (MirProgram.LibrarySegment), so any other program or a segment built again takes the library step.
 // Must not read syntax, HIR or plans, publish, decide acceptance, or read a body with a validator finding (MirBody.HasFinding, DECISIONS
 // R5-M183): steps 1, 2 and 4 skip it (MirDrops.Exclude closes its empty table entry); A4 composes a body with one as Derived
 // (MirEffects.Views); the initialization proof that consults one rests on it (MirBorrows.Unproved).
@@ -56,8 +57,8 @@ internal sealed class MirAnalysis
     private readonly MirOrigins origins;
     private readonly MirReport.Kept libraryProblems = new(); // The library step's problems, replayed in a version that keeps its facts.
     private ulong version; // The program version whose problems the program holds (0: none).
-    private int stepped; // The bodies of the version steps 1 and 2 have run on, in build order, the library step's included.
-    private (MirProgram? Program, ulong Version) library; // The program and library version whose step-2 facts the analyses hold (none yet).
+    private int stepped; // The bodies steps 1 and 2 have run on, the library step's included: a position of the build-order list.
+    private (MirProgram? Program, int Segment) library; // The program and library segment whose step-2 facts the analyses hold (none yet).
 
     /// <summary>Initializes a new instance of the <see cref="MirAnalysis"/> class.</summary>
     /// <param name="types">The Type context of the programs, which the case views read.</param>
@@ -94,9 +95,9 @@ internal sealed class MirAnalysis
         }
 
         (this.version, this.Judgments) = (program.Version, 0);
-        if (this.library != (program, program.LibraryVersion))
+        if (this.library != (program, program.LibrarySegment))
         {
-            this.library = (program, program.LibraryVersion);
+            this.library = (program, program.LibrarySegment);
             program.Drops.Clear();
             this.effects.BeginLibrary();
             var first = program.Problems.All.Length;
@@ -124,7 +125,7 @@ internal sealed class MirAnalysis
             }
         }
 
-        this.stepped = program.LibraryCount; // The library step's bodies are stepped.
+        this.stepped = program.LibraryBodies.Length; // The library step's bodies are stepped.
         this.Steps(program, rootModules); // 1 and 2.
 
         // 3. A4's rounds over the program, until one is clean.
@@ -166,13 +167,13 @@ internal sealed class MirAnalysis
     // Whether steps 1 and 4 judge a body: a root module's (DECISIONS R5-M168).
     private static bool Judged(MirBody body, int rootModules) => body.Source.Module < rootModules;
 
-    // Steps 1 and 2 of each body built since the last step, in build order (the program segment's: the library step steps the library's);
-    // a lookup in step 2 appends a body the loop reaches, so A2's entry of each body is its build position (MirDropTable.Holds).
+    // Steps 1 and 2 of each body built since the last step, in build order (the version's: the library step steps the library list's);
+    // a lookup in step 2 appends a body the loop reaches, so A2's table holds each body the loop has passed (MirDropTable.Holds).
     private void Steps(MirProgram program, int rootModules)
     {
         for (; this.stepped < program.Bodies.Length; this.stepped++)
         {
-            var body = program.Body(this.stepped);
+            var body = program.Bodies[this.stepped];
             if (!body.HasFinding && Judged(body, rootModules))
             {
                 this.lints.Run(body, program.Problems); // 1. A3 per judged body.
@@ -185,12 +186,12 @@ internal sealed class MirAnalysis
 
     // Step 2 of one body: its block order and move paths, then per view A1, then A2, a body whose A1 arena exceeds the analyses' limit
     // stopping those views (R4-M15a), then per view A4's local facts; a body with a validator finding, which no consumer reads (R5-M183), an
-    // empty table entry, which keeps the table's ordinals.
+    // empty table entry.
     private void Body(MirProgram program, MirBody body)
     {
         if (body.HasFinding)
         {
-            this.drops.Exclude(program);
+            this.drops.Exclude(program, body);
             return;
         }
 
