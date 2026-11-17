@@ -17728,6 +17728,8 @@ structure is recorded here by the unit that first implements it.
       source or its successor's Assign (a consumer deciding by shape); writing phases through intrinsic rows with no MIR call.
     - In shared structure: phase routines in `TestRuntime.ll` (a declared legacy `.ll` change for the same meaning); a MIR producer
       (PD22); a builder `replace` mark on Drop (a MIR form change for an implementation-defined label).
+  - Amended by R8-M52 (R8-I1): the limit after R8 is 27, not 28 (plan revision 30), set by R8-I1; the members are 27 since R8-W2 c2b
+    (R8-M44).
 - **R5-M138 The owner confirms C10a's two departures** (owner, 2026-10-27, after C10a's design; verbatim 「C10a の逸脱 2 件（(i)
   テストランタイムが記録値を観測まで保持するための旧生成器 .ll 変更、(ii) ARCH の Backend 依存注記を Testing のカタログのサイト番号・ケース／成果物 ID・ランタイムテキスト・エントリ書き出し・値種別へ広げること）を承認します。」) The
   departures R5-M136 records are confirmed:
@@ -17979,6 +17981,8 @@ structure is recorded here by the unit that first implements it.
     (R8 and PD21 plan them); a capability row for the import Item (more code than its call).
   - Superseded in part by R8-M16: the buffer half of `BodylessWitness` (FixedBuffer's and HeapBuffer's `reserve`) ended; the import half
     stays until G2.
+  - Superseded in part by R8-M52 (R8-I1): the `Unproduced` intrinsic row of its broken-contract list; `IntrinsicWriter.Unproduced` is
+    deleted, every member having a MIR producer and a writer since R8-S2c (R8-M34).
 - **R5-M147 X1's exit sweep, and an address-matched control for O2 corpus A/Bs** (owner, 2026-10-28 and 2026-10-29; extends R5-M135) X1
   (plan §4 row X1, §5.3) ran at dev `17cd554ab`: sel fails exactly the 110 decided P42 rows (R5-M144, R5-M145); the native outcomes of all
   6,089 fixtures are equal, 6 of them under decided deviations; the LLVM verifier passes both generators, and sel's `.ll` is identical to
@@ -22867,10 +22871,12 @@ R8-M* and R9-M* by the stage of the recording unit.
     reader); a MIR-side "library never changes" stamp (a second copy of G949's decision); A3b inline in the program's template walk
     plus a walk over kept root bodies (two paths for one check: C-378 (2) form (ii)).
 - **R8-M51 A reader reads its Binding's facts through its own Binding: the route units and the route row (PLAN G949 Stage 2,
-  R8-L1 U0b)** (Back, 2026-11-17; U0b-T2, Major, behavior-preserving; G949 Stage 2's plan of record, the design
+  R8-L1 U0b)** (Back, 2026-11-17; U0b-T2 and U0b-N5, each Major, behavior-preserving; G949 Stage 2's plan of record, the design
   `back\notes\l1-s2\design.md` §7b (Revision 2b) under the owner's O-381 (b), with C-376's condition 1; U0b-T2's design
   `back\notes\l1-s2\u0b-t2-design.md` Revision 1, its review ACCEPT WITH NOTES, B's rulings `rulings-t2.md` and `rulings-t2b.md`;
-  the Front's implementation review ACCEPT WITH CONDITIONS on C-380 (F5); extends R8-M31).
+  the Front's implementation review ACCEPT WITH CONDITIONS on C-380 (F5); U0b-N5's design `back\notes\l1-s2\u0b-n5-design.md`, its
+  review ACCEPT WITH NOTES, B's rulings `rulings-n5.md` and `rulings-n5b.md`, the Front's review on C-380 (F5) and the Middle's on
+  C-384; extends R8-M31).
   - **Adopted.** A Binding fact is read from the reader's Binding (a Binding member's `this`, the Binding a caller passes, the HIR
     publisher's and `ClosureEffects`' `binding`), never from a node's compilation (`CodeContext.Compilation`,
     `Kotonoha.Compilation`), so that a compilation's MIR builder can read library nodes after the freeze's Binding is dropped
@@ -22889,12 +22895,51 @@ R8-M* and R9-M* by the stage of the recording unit.
     O1's `Binding.OriginDiagnostics.cs:137` (reached from Core's problem publication through `OriginRelationFacts`). C2's guards on
     `IsResolvedSlice`, `PairAdmitted` and `HasExclusiveIndexer` (s23) form U0b-C2 after S1-1, whose `Frozen` states "after the
     library pass".
+  - **U0b-N5's form.** U0b-N5 removes `Binding.Patterns.Model.cs:116`, `BindingModel.cs:122`, `Binding.PlaceOrigins.cs:50`,
+    `Binding.Lints.cs:373` and O1's `Binding.OriginDiagnostics.cs:137` in one behavior-preserving commit (the route row 38 -> 33, in 17
+    files; in `Compiler/Binding` 26 -> 21). A static of another type that MIR or Core reaches takes the reader's Binding as its first
+    parameter (`BoundMatch.Of`, `PairBinder.Collect`; MIR passes its compilation's Binding, Binding `this`); a member of `Binding`
+    that reads Binding becomes an instance member, also when Core reaches it (`PlaceOriginBinder`, `RequiresUnsafe`, `BorrowSource`
+    and the two statics that reach it, `OriginRelationFacts`, which Core's problem publication calls on `this.Binding` as it calls
+    `RestingCauses`, and `ReportOriginRelation`). `PairBinder.Collect` stays although it only forwards to `Binding.PairBinders`: it is
+    the published entry of the canonical Semantics cases component (COMPILER_ARCHITECTURE's Canonical components), not one of the four
+    Binding views Mir/Build's dependency row names.
   - **Rejected.** T2 alone with `PlaceAuthority` fetching the route to pass on (the row would rise: a second copy of the route the
     units remove); U0b-N5 first (symmetric); `ElementAccess` as a Binding partial (DECISIONS BU-166, R4-M194 and two
     `ArchitectureRulesTest` rows name the component and its file; revisited only if a later unit makes `ElementAccess` Binding-only
     by contract); `IndexerCall` and `IsResolvedSlice` kept as forwarders (wrappers without semantics; the second repeated
     `Binding.IsResolvedSlice`'s `IndexKoto` test); C2's guards in U0b-T2 or U0b-N5 (before S1-1's `Frozen` any condition is never
-    true or a temporary pass test S1-1 would replace).
+    true or a temporary pass test S1-1 would replace). U0b-N5: a Binding parameter on Binding's own statics (two receivers;
+    `ReportOriginRelation` would exceed six parameters); deleting `PairBinder.Collect` (Mir/Build would read `Binding.PairBinders`
+    as a fifth Binding view); O1 as a second commit (both parts are behavior-preserving; a second commit needs its own
+    behavior-preserving comparison).
+- **R8-M52 The intrinsic table is closed at 27 (R8-I1)** (Back, 2026-11-17; R8-I1; Major; plan §5.2's I1 row; RQ9, RQ16, RP18;
+  behaviour unchanged apart from the tightened limit).
+  - **Counts (RQ9).** `IntrinsicId` 27 with `None` (unchanged since R8-W2 c2b, R8-M44); `IntrinsicRows` one row per member but `None`,
+    in order (`Complete`); `IntrinsicWriter` 15 -> 14 (`Unproduced` deleted); `LayoutNeed` 4, unchanged (verified: every member read;
+    the rows' Need column gives `TypeArguments` to RawAllocate, Stride and DestroyValues and `None` elsewhere).
+  - **The limit.** COMPILER_ARCHITECTURE's `IntrinsicId` row 34 -> 27, and
+    `KimiLibraryShapeTest.EveryCompilerFunctionHasOneDisposition`'s assertion `<= 34` -> `<= 27`, as its comment states. A reduced
+    bound needs no owner approval (COMPILER_ARCHITECTURE; RP18).
+  - **`IntrinsicWriter.Unproduced` deleted** with its code generation arm (`FunctionCodegen.Intrinsics`' `InternalInvariant_Kd`
+    record) and the contract sentences naming it (`IntrinsicRows`' and `FunctionCodegen.Intrinsics`' headers, `Routine`'s comment).
+    No row carries it since R8-S2c (R8-M34: `FormatFloat` `Unproduced` -> `Requested`, after `WriteStdout` and `FormatInteger128`), so
+    its contract, "the unit that first produces one writes its row", has no subject. The other `IntrinsicWriter` switches keep their
+    arms: `Intrinsic`'s default still throws for Routine, Requested and Allocate (a routine row whose routine is null is a broken
+    table); `Routine`'s default returns null for every non-routine writer; `CopySlots`' default takes the routine's slots.
+    Supersedes in part R5-M146's broken-contract list ("an `Unproduced` intrinsic row ... record at their sites"): the reason, intrinsic
+    rows without a MIR producer, no longer holds (every member has a producer and a writer since R8-S2c).
+  - **RQ16: the "else" branch.** RQ16 removes `formatInteger128` at R9 if R8-W2's Kimigayo formatter reaches i128 within variance,
+    else in a post-reduction unit (the owner's answer (a): "R9 or after, by measurement"). The else branch holds because R8's Kimigayo
+    formatter does not format i128: the S2b2 specializations `format<i128>` and `format<u128>` call `Storage.formatInteger128` (R8-M30).
+    `Storage.formatInteger128` (`IntrinsicId.FormatInteger128`, `FormatInteger128Runtime.ll.in`'s two defines) therefore stays an
+    interim intrinsic, removed in a post-reduction unit, by measurement: that unit writes the Kimigayo body and measures it against the
+    intrinsic in an O2 kernel row. Such a body is expressible today: a base-2^32 limb division over u64 `/` and `%` needs only the
+    128-bit operations IMPL 21.3.3 supports, the method of `__kimi_decimal_div10` itself. So the limb prototype is that unit's
+    measurement, and no other removal condition is added. The u128 division that R8-M30 says "the backend does not generate" is a fact
+    about the backend; it does not make the intrinsic inexpressible in Kimigayo.
+  - **Comment.** `IntrinsicId.FormatFloat`'s group comment (`KimiLibraryKinds.cs:83`) said "i128 until Kimigayo formats it"; it now
+    says "i128 until a Kimigayo body replaces it (RQ16: a post-reduction unit, by measurement)".
 - **R9-M1 A check's phase sequence is `Compilation.Check`** (2026-11-08; R9-F5; Major, behavior-preserving; review 1 REVISE, then
   review 2). SPEC 23.1.2, 23.2.2; IMPL 20.6.1. Supersedes in part R5-M65 (`Project` reads `Accepts`) and R5-M77 (`Project` discovers
   the test catalog after acceptance and owns it).
