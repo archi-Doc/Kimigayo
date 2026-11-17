@@ -199,8 +199,8 @@ public sealed partial class Binding
     // part, so the run blames the bindings its layers read and not its siblings' (the owner's O-392 (c), G812 rulings 109, 111;
     // the contract fit's member is the same reading, ContractFits). A failure at the own shape of a part that formation keeps
     // (a Tuple's arity, an array's kind) reads no binding: the failing part forms nothing, so the run blames none (ruling 116). The
-    // Item is the selected candidate, so a contextual Case met in the fit is judged at the Type the run formed (splitCall,
-    // FitCaseAt; rulings 118, 120).
+    // Item is the selected candidate, so the parts awaiting their call that the fit met are judged at the Types the run formed
+    // (WaitingPartFails; rulings 118, 122, 123).
     private bool ItemCallFails(InvocationKoto call, BindingScope scope, BoundType item, BoundType? expected)
     {
         if (item is not { Kind: BoundTypeKind.FunctionItem, Symbol: { Type: { } result, Declaration: FunctionKoto function } })
@@ -222,12 +222,8 @@ public sealed partial class Binding
                 return true;
             }
 
-            var enclosing = this.splitCall;
-            this.splitCall = call;
-            var fails = this.ItemPart(declared, item, function, scope) is { } parameter &&
-                this.FitArgument(call.ArgumentNodes[i], parameter, scope, call, out _) == CandidateApplicability.Inapplicable;
-            this.splitCall = enclosing;
-            if (fails)
+            if (this.ItemPart(declared, item, function, scope) is { } parameter &&
+                (this.FitArgument(call.ArgumentNodes[i], parameter, scope, call, out _) == CandidateApplicability.Inapplicable || this.WaitingPartFails(scope)))
             {
                 if (this.argumentMisfit.Names(declared!, out var element))
                 {
@@ -242,6 +238,61 @@ public sealed partial class Binding
         this.EnterSplitPart();
         return expected is not null && this.ItemPart(result, item, function, scope) is { } formed && !this.FitsStructuralPartAt(formed, expected, call) &&
             this.ExpectedAdaptation(call, formed, expected, recordPair: false) is null;
+    }
+
+    // SPEC 10.5.1, 23.1.2 (G812 rulings 122, 123): the value call's one candidate checks the parts awaiting their call that its
+    // argument's fit met (waitingParts), each at the Type the run formed for its position, as the selected candidate completes them
+    // (WaitingFails); a part met inside a Case's payload is judged below the Case. The failing part's components from the argument
+    // are argumentMisfit's. The parts are copied first (judgedParts), since a Call's probe fits its own arguments.
+    private bool WaitingPartFails(BindingScope scope)
+    {
+        var first = this.judgedParts.Count;
+        this.judgedParts.AddRange(this.waitingParts);
+        try
+        {
+            for (var i = first; i < this.judgedParts.Count; i++)
+            {
+                if (this.WaitingFails(this.judgedParts[i], scope))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+        finally
+        {
+            this.judgedParts.RemoveRange(first, this.judgedParts.Count - first);
+        }
+    }
+
+    // One waiting part at its position's Type: a contextual Case by FitCaseAt, whose own waiting parts join the judged ones below it;
+    // a named Call by its own selection there (ProbeSelection): no candidate or an ambiguous selection is its failure, at its
+    // position. Any other selection, or another part, waits for its call.
+    private bool WaitingFails(in WaitingPart waiting, BindingScope scope)
+    {
+        var node = KotoHelper.UnwrapParentheses(waiting.Part);
+        if (this.KindOf(node) != PartKind.Case)
+        {
+            var fails = node is InvocationKoto nested && this.ProbeSelection(nested, scope, waiting.Type) is CallSelection.NoneApplicable or CallSelection.Ambiguous;
+            this.argumentMisfit = waiting.Path; // After the probe, whose own fits clear it.
+            return fails;
+        }
+
+        var met = this.waitingParts.Count;
+        if (this.FitCaseAt(node, waiting.Type, scope) == CandidateApplicability.Inapplicable)
+        {
+            this.argumentMisfit = this.argumentMisfit.Within(waiting.Path);
+            return true;
+        }
+
+        for (var k = met; k < this.waitingParts.Count; k++)
+        {
+            this.judgedParts.Add(this.waitingParts[k] with { Path = this.waitingParts[k].Path.Within(waiting.Path) });
+        }
+
+        this.waitingParts.RemoveRange(met, this.waitingParts.Count - met);
+        return false;
     }
 
     // One part of a Function Item's signature as its value call reads it (TryCallable: ItemType, then the scope's contract Type).

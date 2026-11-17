@@ -84,6 +84,55 @@ public sealed partial class Binding
         return this.ClassifySelection(ref evaluation);
     }
 
+    // A named call's evaluation at `expected` over its group's candidates (their requirements and Self; its explicit arguments are
+    // the Generics its method names), and the shape its scratch takes (RentEvaluation).
+    private (CallEvaluation Evaluation, CandidateShape Shape) NewEvaluation(
+        InvocationKoto call, Koto callee, BindingSymbol group, in FunctionGroup candidates, BindingScope scope, BoundType? expected)
+    {
+        var self = candidates.Requirements?.Self ?? (callee as RequirementCalleeKoto)?.Self;
+        var evaluation = new CallEvaluation
+        {
+            Call = call,
+            Callee = callee,
+            Generic = KotoHelper.UnwrapParentheses(call.Method) as GenericsKoto,
+            Scope = scope,
+            Expected = expected,
+            Self = self,
+            Requirements = candidates.Requirements,
+            Winner = -1,
+            PremisesOnly = true,
+        };
+        return (evaluation, MeasureCandidates(candidates, self is not null || group.Scope.Owner is StructKoto or EnumKoto));
+    }
+
+    // SPEC 10.1, 10.4, 10.5.1 (G812 rulings 122, 123): the selection of a named call awaiting its call, at the Type its call gives it,
+    // as a query that does not publish (BeginSelectionQuery): the evaluation BindCall makes (NewEvaluation, RentEvaluation,
+    // BindExplicitArguments, EvaluateSelection). A callee that names no function group, or explicit arguments it does not choose,
+    // select nothing to judge (Unproven).
+    private CallSelection ProbeSelection(InvocationKoto call, BindingScope scope, BoundType expected)
+    {
+        var method = KotoHelper.UnwrapParentheses(call.Method);
+        var callee = method is GenericsKoto { Identifier: { } identifier } ? identifier : method;
+        if (callee.BoundSymbol is not { Kind: BindingSymbolKind.Function } group)
+        {
+            return CallSelection.Unproven;
+        }
+
+        var candidates = this.GroupOf(callee, group);
+        var (evaluation, shape) = this.NewEvaluation(call, callee, group, candidates, scope, expected);
+        var query = this.BeginSelectionQuery();
+        this.RentEvaluation(ref evaluation, shape);
+        try
+        {
+            return this.BindExplicitArguments(ref evaluation, candidates) ? this.EvaluateSelection(ref evaluation, candidates).Kind : CallSelection.Unproven;
+        }
+        finally
+        {
+            this.EndSelectionQuery(query);
+            this.ReturnEvaluation(evaluation);
+        }
+    }
+
     // The state a selection's evaluation touches beside its scratch: the obligations its trials add, the acquisition and cause facts,
     // the active requirement contract and the inference counters; a query that must not publish saves it and restores it after.
     private SelectionQuery BeginSelectionQuery()

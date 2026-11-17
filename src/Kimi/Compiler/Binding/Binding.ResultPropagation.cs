@@ -798,7 +798,7 @@ public sealed partial class Binding
             DictionaryLiteralKoto dictionary => this.LateDictionaryType(dictionary, target),
             _ when IsUnfittedLiteral(node) => this.FitsInputLiteral(node, target, this.ConstraintScope(node)) ? target : null, // A waiting literal.
             _ when kind is PartKind.Function or PartKind.Case => // One waiting for its call, fitted as an argument by its header
-                this.FitArgument(node, target, this.ConstraintScope(node), node, out _) == CandidateApplicability.Inapplicable ? null : target,
+                this.FitArgumentPart(node, target, this.ConstraintScope(node), node, out _) == CandidateApplicability.Inapplicable ? null : target,
             _ when kind is PartKind.Call or PartKind.Reference => target, // Completed by its call at this position's Type (SPEC 10.1).
             _ => DeliversResult(node) ? this.LateResultType(node, target) : null,
         };

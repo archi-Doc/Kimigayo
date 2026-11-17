@@ -106,6 +106,24 @@ public sealed partial class Binding
         internal ComponentPath Within(int index)
             => index >= 0xFF ? default : new((this.Path << 8) | (uint)(index + 1), this.Shape && (this.Path >> 56) == 0);
 
+        // The path as the part `outer` names sees it: within each of `outer`'s steps, its innermost first.
+        internal ComponentPath Within(ComponentPath outer)
+        {
+            var steps = 0;
+            for (var rest = outer.Path; rest != 0; rest >>= 8)
+            {
+                steps++;
+            }
+
+            var path = this;
+            for (var k = steps - 1; k >= 0; k--)
+            {
+                path = path.Within((int)((outer.Path >> (8 * k)) & 0xFF) - 1);
+            }
+
+            return path;
+        }
+
         // The part of `type`, a Type whose formation gave the compared shape, that the path names (false: none): its component at
         // each step, as far as formation keeps the components in their positions (a Tuple, a constructed Type, an array, a written
         // layer; not a pair application, whose case decides whether it is a layer). A failure at the shape of a part that formation

@@ -6,6 +6,15 @@ namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
+    // SPEC 10.5.1 (G812 rulings 122, 123): the parts awaiting their call (a contextual Case, a named Call) that the last argument fit
+    // met, each with the Type at its position and the components down to it from the argument (WaitingPart). The outermost fit
+    // (FitArgument) starts it; a part's fit within it (FitArgumentPart) adds to it, and the arms that add a step add it to these
+    // too. Only a value call on the split reads it (ItemCallFails), right after the fit, as its one candidate's check of them.
+    private readonly List<WaitingPart> waitingParts = new();
+
+    // The waiting parts a value call's split check is judging (WaitingPartFails), each judgment's from its own mark.
+    private readonly List<WaitingPart> judgedParts = new();
+
     // DECISIONS D3 (the owner's O-392 (c), G812 rulings 109, 111; temporary, removed with (R)): the components down to the part
     // where the last argument fit failed (FitArgument's Inapplicable): a Tuple or array literal's element (ProbeAggregateArgument)
     // or a join's child position (FitsPosition), below the layer it is borrowed at (FitComposite), then, below a typed part, the
@@ -13,9 +22,27 @@ public sealed partial class Binding
     // reads it right after the fit and blames that part's bindings (ItemCallFails).
     private ComponentPath argumentMisfit;
 
-    // DECISIONS D3 (G812 rulings 118, 120; temporary, removed with (R)): the value call whose arguments the open split run fits at
-    // the Types it formed (ItemCallFails), its one candidate the selected one; null everywhere else, binding a payload included.
-    private Koto? splitCall;
+    // The waiting parts met below a part's position (from `from` on), as the enclosing position sees them: within its component
+    // `index`; none (the part's own position, -1) where the part is no component of it.
+    private void WaitingWithin(int from, int index)
+    {
+        for (var i = from; i < this.waitingParts.Count; i++)
+        {
+            this.waitingParts[i] = this.waitingParts[i] with { Path = index < 0 ? default : this.waitingParts[i].Path.Within(index) };
+        }
+    }
+
+    // A part of a join's waiting position (FitsPosition): one awaiting its call is met at the position's Type.
+    private bool MetWaiting(Koto part, BoundType type)
+    {
+        var node = KotoHelper.UnwrapParentheses(part);
+        if (this.KindOf(node) is PartKind.Case or PartKind.Call && this.AwaitsCall(node))
+        {
+            this.waitingParts.Add(new(part, type, default));
+        }
+
+        return true;
+    }
 
     // SPEC 3.8 (G812 ruling 116): whether a literal's or a join position's own shape fits its Type; a shape that does not is the
     // position's own failure (ComponentPath.AtShape), as the structural fit's is.
@@ -27,12 +54,18 @@ public sealed partial class Binding
 
     // SPEC 10.1, 10.2, 10.5.1: whether an argument part fits a candidate's closed Type at its position, by the part's kind, and the
     // operation that adapts it (unset when it does not fit, but for a literal's range shape). Another part that awaits its call (a
-    // Case, a Call) is checked only by the selected candidate: a Case where a split run fits its value call (splitCall, FitCaseAt),
-    // otherwise it waits; an anonymous function (Function) fits by its signature and a function
-    // group (Reference) by conversion (SPEC 7.7.4). An Aggregate or Join fits by its shape and parts; a Literal by its Type (SPEC
-    // 12.3), shared-borrowed at ref/T as an owner temporary; a typed part by erasure or the common adaptation, structurally (SPEC
-    // 15.6.1). Fitting publishes nothing.
+    // Case, a Call) is checked only by the selected candidate: it waits, and the fit publishes it (waitingParts); an anonymous
+    // function (Function) fits by its signature and a function group (Reference) by conversion (SPEC 7.7.4). An Aggregate or Join fits
+    // by its shape and parts; a Literal by its Type (SPEC 12.3), shared-borrowed at ref/T as an owner temporary; a typed part by
+    // erasure or the common adaptation, structurally (SPEC 15.6.1). Fitting publishes nothing else.
     private CandidateApplicability FitArgument(Koto part, BoundType type, BindingScope scope, Koto use, out BoundArgumentOperation operation)
+    {
+        this.waitingParts.Clear();
+        return this.FitArgumentPart(part, type, scope, use, out operation);
+    }
+
+    // FitArgument within an enclosing fit: a literal's element, a Case's payload, a join's late part.
+    private CandidateApplicability FitArgumentPart(Koto part, BoundType type, BindingScope scope, Koto use, out BoundArgumentOperation operation)
     {
         var node = KotoHelper.UnwrapParentheses(part);
         operation = default;
@@ -70,19 +103,18 @@ public sealed partial class Binding
                 return this.FitLiteral(part, node, type, scope, out operation);
             case PartKind.Case or PartKind.Call when this.AwaitsCall(node):
                 operation = new(part, null, type, ArgumentOperationKind.Value, ArgumentAdaptation.Exact);
-                return this.splitCall is null ? CandidateApplicability.Waiting : this.FitCaseAt(node, type, scope);
+                this.waitingParts.Add(new(part, type, default));
+                return CandidateApplicability.Waiting;
             default:
                 return this.FitTyped(part, node, type, scope, use, out operation);
         }
     }
 
-    // SPEC 6.5.2, 10.5.1 (G812 rulings 118, 120): the one entry that judges a part awaiting its call where a split run fits its value
-    // call at the Type the run formed for its position (FitArgument's waiting arm), wherever the run meets it: the argument, a
-    // literal's element, a join's result, a Case's payload. A contextual Case resolves in that Type's enum with its payload count (its
-    // own shape, ShapeFits); its payloads are prepared as a call's arguments are (PrepareCallArguments, once per pass; the value call
-    // on the split completes the Case alone in any case) with the run's fit closed, since binding is no fit of the run and a call met
-    // there selects as before; each payload then fits its Type there as an argument, read only, and a payload whose declared Type is
-    // the enum's slot leaves the Type at that argument (ComponentPath), any other none. A Case that fits, and a nested call, wait.
+    // SPEC 6.5.2, 10.5.1 (G812 rulings 118, 122, 123): a contextual Case awaiting its call, judged at the Type its position has, as its
+    // selected call completes it (ItemCallFails' judgment of a waiting part): it resolves in that Type's enum with its payload count
+    // (its own shape, ShapeFits), and each payload, prepared before the search (PrepareWaitingCases), fits its Type there as an
+    // argument, read only; a payload whose declared Type is the enum's slot leaves the Type at that argument (ComponentPath), any other
+    // none, and the waiting parts met in it are published below the Case the same way. A Case that fits waits for its call.
     private CandidateApplicability FitCaseAt(Koto part, BoundType type, BindingScope scope)
     {
         var node = KotoHelper.UnwrapParentheses(part);
@@ -106,21 +138,15 @@ public sealed partial class Binding
             return CandidateApplicability.Inapplicable;
         }
 
-        var fitting = this.splitCall;
-        this.splitCall = null;
-        var prepared = call is null || this.PrepareCallArguments(call, scope, callableContext: true);
-        this.splitCall = fitting;
-        if (!prepared)
-        {
-            return CandidateApplicability.Waiting; // A payload's own failure, on which the Case rests (SPEC 23.1.2).
-        }
-
         for (var i = 0; call is not null && i < call.ArgumentNodes.Count; i++)
         {
-            if (this.FitArgument(call.ArgumentNodes[i], payloads![ordinal]!.Components[i], scope, call, out _) == CandidateApplicability.Inapplicable)
+            var met = this.waitingParts.Count;
+            var fit = this.FitArgumentPart(call.ArgumentNodes[i], payloads![ordinal]!.Components[i], scope, call, out _);
+            var index = found!.Payload[i].BoundType is { Kind: BoundTypeKind.Parameter, Symbol: { } slot } ? ContainerSlot(type.Symbol!.Declaration, slot) : -1;
+            this.WaitingWithin(met, index);
+            if (fit == CandidateApplicability.Inapplicable)
             {
-                this.argumentMisfit = found!.Payload[i].BoundType is { Kind: BoundTypeKind.Parameter, Symbol: { } slot } &&
-                    ContainerSlot(type.Symbol!.Declaration, slot) is var index and >= 0 ? this.argumentMisfit.Within(index) : default;
+                this.argumentMisfit = index >= 0 ? this.argumentMisfit.Within(index) : default;
                 return CandidateApplicability.Inapplicable;
             }
         }
@@ -150,7 +176,9 @@ public sealed partial class Binding
             var first = this.positionClasses.Count;
             for (var i = 0; i < array.Elements.Count; i++)
             {
+                var met = this.waitingParts.Count;
                 var result = this.FitElement(array.Elements[i], expected.Components[0], scope);
+                this.WaitingWithin(met, 0);
                 if (result != CandidateApplicability.Applicable)
                 {
                     this.argumentMisfit = this.argumentMisfit.Within(0);
@@ -175,7 +203,9 @@ public sealed partial class Binding
 
             for (var i = 0; i < tuple.Elements.Count; i++)
             {
+                var met = this.waitingParts.Count;
                 var result = this.FitElement(tuple.Elements[i], expected.Components[i], scope);
+                this.WaitingWithin(met, i);
                 if (result != CandidateApplicability.Applicable)
                 {
                     this.argumentMisfit = this.argumentMisfit.Within(i);
@@ -214,7 +244,7 @@ public sealed partial class Binding
     // is checked by the selected candidate (Applicable here).
     private CandidateApplicability FitElement(Koto part, BoundType type, BindingScope scope)
     {
-        var fit = this.FitArgument(part, type, scope, part, out var operation);
+        var fit = this.FitArgumentPart(part, type, scope, part, out var operation);
         if (fit is CandidateApplicability.Applicable or CandidateApplicability.Waiting)
         {
             this.positionClasses.Add(operation.Adaptation);
@@ -270,7 +300,7 @@ public sealed partial class Binding
             {
                 _ when this.PartFailed(part) => true, // SPEC 23.1.2: what only a failed part would cause is dependent.
                 (PartKind.Call, FunctionKoto closure) => !this.AwaitsCall(closure) || this.ClosureSignatureFits(closure, type),
-                (PartKind.Call, _) => true,
+                (PartKind.Call, _) => this.MetWaiting(part, type),
                 (PartKind.Aggregate, TupleLiteralKoto tuple) => this.ShapeFits(TupleShapeAt(tuple, type)),
                 (PartKind.Aggregate, ArrayLiteralKoto array) => this.ShapeFits(this.ArrayShapeAt(array, type)),
                 (PartKind.Typed, _) when common is not null && this.TypedPositionPart(part) is { } own =>
@@ -296,8 +326,10 @@ public sealed partial class Binding
         for (var i = 0; i < children; i++)
         {
             var child = this.positionParts.Count;
+            var met = this.waitingParts.Count;
             var fits = this.AddChildPosition(start, end, i, type) is { } element && this.FitsPosition(child, element);
             this.ClosePosition(child);
+            this.WaitingWithin(met, type.Kind == BoundTypeKind.Tuple ? i : 0);
             if (!fits)
             {
                 // ComponentPath (G812 rulings 112, 114): the failing child leaves the position at its component, a Tuple's element or
@@ -340,7 +372,12 @@ public sealed partial class Binding
         var borrow = type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref };
         var valueType = borrow ? type.Components[0] : type;
         var first = this.positionClasses.Count;
+        var met = this.waitingParts.Count;
         var result = this.ProbeAggregateArgument(node, valueType, scope);
+        if (borrow)
+        {
+            this.WaitingWithin(met, 0); // The literal is the layer's target.
+        }
 
         // A fill or mixed range at `ref/U` is no temporary of U (K2, K3): the probe only filters a candidate whose own Type is not U, and the
         // selected call binds it at `ref/U` itself (CompleteArguments, no source Type), as a let does, so the binder decides every part.
@@ -478,4 +515,7 @@ public sealed partial class Binding
         operation = new(part, actual, type, kind, quality, AdaptedType: adapted);
         return CandidateApplicability.Applicable;
     }
+
+    // A part awaiting its call that a fit met: the part, the Type at its position and the components down to it.
+    private readonly record struct WaitingPart(Koto Part, BoundType Type, ComponentPath Path);
 }

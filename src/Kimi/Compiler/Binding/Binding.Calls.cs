@@ -190,9 +190,8 @@ public sealed partial class Binding
             return this.BindReference(callee, group, scope) is null ? Complete(call, null) : this.Fail(call, BindingFailure.NotCallable);
         }
 
-        var requirementGroup = candidates.Requirements;
-        var self = requirementGroup?.Self ?? (callee as RequirementCalleeKoto)?.Self;
-        var shape = MeasureCandidates(candidates, self is not null || group.Scope.Owner is StructKoto or EnumKoto);
+        var (evaluation, shape) = this.NewEvaluation(call, callee, group, candidates, scope, expected);
+        var (requirementGroup, self) = (evaluation.Requirements, evaluation.Self);
 
         // SPEC 6.3.4, 7.3.2-7.3.3: a group with a receiver shape acquires the call's Receiver Expression whole, a use that a special
         // receiver's row without Whole never permits (BindReference rejects its other uses). The record is at the receiver, and the
@@ -210,18 +209,6 @@ public sealed partial class Binding
         }
 
         var argumentCount = call.ArgumentNodes.Count;
-        var evaluation = new CallEvaluation
-        {
-            Call = call,
-            Callee = callee,
-            Generic = generic,
-            Scope = scope,
-            Expected = expected,
-            Self = self,
-            Requirements = requirementGroup,
-            Winner = -1,
-            PremisesOnly = true,
-        };
         this.RentEvaluation(ref evaluation, shape);
         var (solveFrame, explicitTypes, explicitLengths, mapping) = (evaluation.Frame, evaluation.ExplicitTypes, evaluation.ExplicitLengths, evaluation.Mapping);
         var (origins, inputs, evaluated, operations) = (evaluation.Origins, evaluation.Inputs, evaluation.Evaluated, evaluation.Operations);
