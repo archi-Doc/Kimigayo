@@ -474,6 +474,26 @@ public class BindingTest
         static int[] OriginRows(Compilation c) => c.Binding.Obligations.Where(static x => x.Body.IsBody).Select(x => c.Types.OriginRows(x.Body).Rows.Count).ToArray();
     }
 
+    // PLAN G949 S1-r1b (s1r1-design 3.3, RC2's recorder): a pass binds the modules of its set, the library's table when it holds the
+    // library module and a source module's when it holds the sources; a node of another module that it fails is a foreign failure,
+    // listed with its earlier state. While one pass binds every module no node is foreign, so the list stays empty after a Bind
+    // that fails nodes.
+    [Fact]
+    public void APassBindsTheModulesOfItsSet()
+    {
+        var c = CompilationTestHelper.Parse("let x: Missing = 1\n");
+        Assert.False(c.Bind().IsComplete);
+        var (library, source, part) = (c.Library.Kotonoha, c.SourceModules[0], c.Library.Layer.Part);
+        var libraryPass = new Binding.BindingPass([], library, part);
+        var programPass = new Binding.BindingPass([source], null, part);
+        Assert.True(libraryPass.Binds(library.Syntax) && !libraryPass.Binds(source.Syntax) && libraryPass.Binds(null));
+        Assert.True(programPass.Binds(source.Syntax) && !programPass.Binds(library.Syntax));
+        Assert.True(new Binding.BindingPass([source], library, part).Binds(library.Syntax));
+        Assert.Empty(part.ForeignFailures);
+        var own = (Binding.PassPart)typeof(Binding).GetField("programPart", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!.GetValue(c.Binding)!;
+        Assert.Empty(own.ForeignFailures);
+    }
+
     // PLAN G949 (s1r1-design 8.9; n55-design 2.3 rule 2): a keyed PassPart collection's one find reads the layer's map first, so a key
     // both parts hold reads the layer's row, and the running pass's map only for a key the layer's lacks; null when neither holds it.
     [Fact]

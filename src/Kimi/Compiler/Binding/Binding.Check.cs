@@ -127,43 +127,54 @@ public sealed partial class Binding
     }
 
     // The pass's part of the summary (PassPart.Counts): each node's state, counted once the failures are decided, and each failed node's
-    // issue, or its derived issue.
+    // issue, or its derived issue: the pass's own nodes, then the nodes of other modules it failed (PassPart.ForeignFailures), in the
+    // order it failed them. Such a node was counted by its own pass in its earlier state, so the pass adds its final state and takes
+    // the earlier one off: the Bind's Result counts every node once, by its final state. A CheckBound rerun keeps the list (its Fail
+    // calls return at the existing failures), so the record is published once again, not twice.
     private void CountStates(BindingMode mode)
     {
-        var resolved = 0;
-        var unresolved = 0;
-        var invalid = 0;
+        Span<int> counts = stackalloc int[3]; // Resolved, Unresolved, Invalid.
         for (var i = 0; i < this.nodes.Count; i++)
         {
-            var node = this.nodes[i];
-            switch (node.BindingState)
-            {
-                case BindingState.Resolved:
-                    resolved++;
-                    break;
-                case BindingState.Invalid:
-                    invalid++;
-                    break;
-                default:
-                    unresolved++;
-                    break;
-            }
-
-            if (mode == BindingMode.Final && node.BindingState != BindingState.Resolved && node.BindingFailure != BindingFailure.None)
-            {
-                if (this.IsDerived(node))
-                {
-                    this.derivedIssues.Add(node);
-                }
-                else
-                {
-                    this.issues.Add(new(node, this.CodeOf(node, node.BindingFailure)) { Failure = node.BindingFailure, Problem = this.SlotProblem(node) });
-                }
-
-                this.CollectProblems(node);
-            }
+            counts[Tally(this.nodes[i].BindingState)]++;
+            this.CollectIssue(this.nodes[i], mode);
         }
 
-        this.pass.Part.Counts = new(mode, resolved, unresolved, invalid);
+        for (var i = 0; i < this.foreignFailures.Count; i++)
+        {
+            var (node, before) = this.foreignFailures[i];
+            counts[Tally(node.BindingState)]++;
+            counts[Tally(before)]--;
+            this.CollectIssue(node, mode);
+        }
+
+        this.pass.Part.Counts = new(mode, counts[0], counts[1], counts[2]);
+
+        static int Tally(BindingState state) => state switch
+        {
+            BindingState.Resolved => 0,
+            BindingState.Invalid => 2,
+            _ => 1,
+        };
+    }
+
+    // A failed node's issue of a Final pass, or its derived issue, with its problems.
+    private void CollectIssue(Koto node, BindingMode mode)
+    {
+        if (mode != BindingMode.Final || node.BindingState == BindingState.Resolved || node.BindingFailure == BindingFailure.None)
+        {
+            return;
+        }
+
+        if (this.IsDerived(node))
+        {
+            this.derivedIssues.Add(node);
+        }
+        else
+        {
+            this.issues.Add(new(node, this.CodeOf(node, node.BindingFailure)) { Failure = node.BindingFailure, Problem = this.SlotProblem(node) });
+        }
+
+        this.CollectProblems(node);
     }
 }

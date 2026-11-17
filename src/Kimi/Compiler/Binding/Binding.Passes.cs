@@ -128,7 +128,7 @@ public sealed partial class Binding
     // Hands a pass its part: the fields every step writes become the part's lists.
     [MemberNotNull(nameof(nodes), nameof(issues), nameof(derivedIssues), nameof(obligations), nameof(obligationSet), nameof(libraryImports))]
     [MemberNotNull(nameof(virtualDeclarations), nameof(callableEffectUses), nameof(callableEffectClauses), nameof(localRegions))]
-    [MemberNotNull(nameof(keepers), nameof(contractShapes), nameof(boundedRequirements), nameof(importDeclarations))]
+    [MemberNotNull(nameof(keepers), nameof(contractShapes), nameof(boundedRequirements), nameof(importDeclarations), nameof(foreignFailures))]
     private void EnterPass(BindingPass pass)
     {
         this.pass = pass;
@@ -149,6 +149,7 @@ public sealed partial class Binding
         this.contractShapes = part.ContractShapes;
         this.boundedRequirements = part.BoundedRequirements;
         this.importDeclarations = part.ImportDeclarations;
+        this.foreignFailures = part.ForeignFailures;
     }
 
     // R1.1's one composition point of the Bind's summary: the library layer's counts and the program part's, in the program pass's mode.
@@ -175,7 +176,10 @@ public sealed partial class Binding
     // list and a collection found by the find are handed over as the fields their steps write (EnterPass); a per-pass node-keyed table
     // (a member the "Node-keyed table members in Binding" ratchet counts: PatternNodes and CandidateScopes, with their previous-run
     // lists) is declared here once and read through the running pass's part (this.pass.Part), so a member that ratchet counts never
-    // returns to Binding (DECISIONS BU-220: node-keyed tables leave Binding batch by batch). Counts is the pass's contribution to the Bind's Result (ComposeResult), not
+    // returns to Binding (DECISIONS BU-220: node-keyed tables leave Binding batch by batch). ForeignFailures lists the nodes of a module
+    // the pass does not bind that it failed, each with its state before the failure (the recorder, Binding.Diagnostics.Prerequisites.cs):
+    // their records and counts are the failing pass's (CountStates). Counts is the pass's contribution to the Bind's Result (ComposeResult),
+    // not
     // a tally of the part's nodes, which only the views count: from S1-r1b a program pass's own nodes plus each foreign node's final
     // state less its earlier one.
     internal sealed class PassPart(int nodes)
@@ -227,6 +231,9 @@ public sealed partial class Binding
 
         internal List<Koto> PreviousCandidateScopes { get; } = new();
 
+        // The nodes outside the pass's modules that the pass failed, in the order it failed them, each with its earlier state.
+        internal List<(Koto Node, BindingState Before)> ForeignFailures { get; } = new();
+
         internal BindingResult Counts { get; set; }
 
         // The one find of a keyed collection: the layer's map, then the running pass's when it is not the layer's (a test of the map,
@@ -259,5 +266,9 @@ public sealed partial class Binding
         internal PassPart Part => part;
 
         internal Kotonoha this[int index] => index < sources.Length ? sources[index] : library!;
+
+        // Whether the pass binds the module of a table: the library's when it holds the library module, a source module's when it holds
+        // the sources (a pass holds every source module or none). A node of no table yet is the running pass's own.
+        internal bool Binds(SyntaxTable? table) => table is null || (table.IsLibrary ? library is not null : sources.Length != 0);
     }
 }

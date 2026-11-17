@@ -38,6 +38,7 @@ public sealed partial class Binding
     private List<LibraryImport> libraryImports;
     private List<BindingObligation> obligations;
     private HashSet<BindingObligation> obligationSet;
+    private List<(Koto Node, BindingState Before)> foreignFailures;
     private bool running;
 
     // The edit counter: Invalidate alone advances it, never a pass, so an edit column (StampedColumn following EditCounter) holds across

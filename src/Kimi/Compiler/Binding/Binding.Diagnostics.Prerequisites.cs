@@ -109,6 +109,14 @@ public sealed partial class Binding
             return null;
         }
 
+        // A failure at a node of a module the running pass does not bind (PLAN G949, DECISIONS BU-220's pass driver): the node is not in
+        // the pass's nodes, so the pass lists it, with the state its own pass counted, and CountStates gives it its record and count.
+        // This is the one place a node's failure is first written, so a node enters the list once per pass.
+        if (!this.pass.Binds(node.SyntaxOwner))
+        {
+            this.foreignFailures.Add((node, node.BindingState));
+        }
+
         if (unresolved)
         {
             this.MarkUnresolved(node);
