@@ -18,7 +18,7 @@ internal sealed partial class MirBuilder
     // places it (input).
     private void Match(MirPlace destination, MatchKoto match, bool input)
     {
-        var plan = BoundMatch.Of(match)!;
+        var plan = BoundMatch.Of(compilation.Binding, match)!;
         if (plan.Invalid || plan.Pending)
         {
             this.Opaque(match, destination); // A Pattern or guard of it failed.

@@ -87,7 +87,7 @@ public sealed class MirModelTest
         Assert.Null(body.TypeOf(body.Project(Local(body, BoundType.I32), MirProjectionKind.PairLayer, 0)));
         var pair = Local(body, types.Pair);
         Assert.Null(body.TypeOf(body.Project(pair, MirProjectionKind.PairLayer, 0)));
-        PairBinder.Collect(types.Generic, body.Binders);
+        PairBinder.Collect(c.Binding, types.Generic, body.Binders);
         _ = TyCtxt.Layer(types.Pair, out var target, out _);
         Assert.Same(target, body.TypeOf(body.Project(pair, MirProjectionKind.PairLayer, 0)));
         Assert.Null(body.TypeOf(body.Project(pair, MirProjectionKind.PairLayer, 1)));
