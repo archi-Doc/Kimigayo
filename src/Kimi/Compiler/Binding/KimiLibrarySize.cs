@@ -16,7 +16,10 @@ namespace Kimi.Compiler;
 //   (cold Bind bytes at 128, 256 and 512 reads, factor 3) measures 1.100 on the capacities before this statement and 3.118 on these
 //   (before the member sides). The RP8 exception
 //   (the owner's O-136 (a) and O-139 (a)) covers this until the removal condition holds.
-// - The library's node columns (Binding's `symbols`, its parameters' composite column and `scopes`, DECISIONS BU-220): the library
+// - The library's node columns (Binding's `symbols`, its parameters' composite column, `scopes`, `originAtoms`, `openOrigins`,
+//   `associatedOrigins`, `specialReceivers`, `enumConstructions`, `copyDeclarations`, `copyByType`, `inheritedOriginTypes`,
+//   `deferredConstraints`, `matches` and `adaptations`,
+//   DECISIONS BU-220): the library
 //   module's own columns, which no program row enters (a program's rows are its modules'), so each starts at its stated slots
 //   (PagedColumn.Reserve) and has no room; its count is the slots the library's pages hold, rounded up to ColumnGranule, and its free
 //   slots are its arena's.
@@ -53,6 +56,17 @@ internal static class KimiLibrarySize
         Declarations: 7680,
         Parameters: 3072,
         Scopes: 8704,
+        OriginAtoms: 3072,
+        OpenOrigins: 2048,
+        AssociatedOrigins: 512,
+        Receivers: 512,
+        EnumConstructions: 1536,
+        CopyDeclarations: 512,
+        CopyByType: 512,
+        InheritedOriginTypes: 512,
+        DeferredConstraints: 1536,
+        Matches: 512,
+        Adaptations: 512,
         TypeKeys: 3072,
         Constraints: 2048,
         AssociatedTypes: 2048,
@@ -77,6 +91,17 @@ internal static class KimiLibrarySize
         int Declarations, // The library's symbols column: the slots its pages hold.
         int Parameters, // The library's parameters column (the symbols' composite column): the slots its pages hold.
         int Scopes, // The library's scopes column: the slots its pages hold.
+        int OriginAtoms, // The library's originAtoms column: the slots its pages hold.
+        int OpenOrigins, // The library's openOrigins column: the slots its pages hold.
+        int AssociatedOrigins, // The library's associatedOrigins column: the slots its pages hold.
+        int Receivers, // The library's specialReceivers column: the slots its pages hold.
+        int EnumConstructions, // The library's enumConstructions column: the slots its pages hold.
+        int CopyDeclarations, // The library's copyDeclarations column: the slots its pages hold.
+        int CopyByType, // The library's copyByType column: the slots its pages hold.
+        int InheritedOriginTypes, // The library's inheritedOriginTypes column: the slots its pages hold.
+        int DeferredConstraints, // The library's deferredConstraints column: the slots its pages hold.
+        int Matches, // The library's matches column: the slots its pages hold.
+        int Adaptations, // The library's adaptations column: the slots its pages hold.
         int TypeKeys, // TyCtxt's keys of the interned Types.
         int Constraints, // Binding's interned constraints.
         int AssociatedTypes, // Binding's associated-Type answers.
@@ -98,6 +123,17 @@ internal static class KimiLibrarySize
                 Round(this.Declarations, ColumnGranule),
                 Round(this.Parameters, ColumnGranule),
                 Round(this.Scopes, ColumnGranule),
+                Round(this.OriginAtoms, ColumnGranule),
+                Round(this.OpenOrigins, ColumnGranule),
+                Round(this.AssociatedOrigins, ColumnGranule),
+                Round(this.Receivers, ColumnGranule),
+                Round(this.EnumConstructions, ColumnGranule),
+                Round(this.CopyDeclarations, ColumnGranule),
+                Round(this.CopyByType, ColumnGranule),
+                Round(this.InheritedOriginTypes, ColumnGranule),
+                Round(this.DeferredConstraints, ColumnGranule),
+                Round(this.Matches, ColumnGranule),
+                Round(this.Adaptations, ColumnGranule),
                 Round(this.TypeKeys, Granule),
                 Round(this.Constraints, Granule),
                 Round(this.AssociatedTypes, Granule),

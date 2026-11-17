@@ -42,7 +42,6 @@ public sealed partial class Binding
         this.ResetSpecializations();
         this.ResetVirtualDeclarations();
         this.receiverOperations.Clear();
-        this.adaptations.Clear();
         this.inferredArrayLengths.Clear();
         this.arrayInferenceShapes.Clear();
         this.arrayInferenceFailures?.Clear();
@@ -52,7 +51,7 @@ public sealed partial class Binding
         this.implicitPairFollows.Clear();
         foreach (var construction in this.enumConstructions.Values)
         {
-            construction.IsValid = false;
+            construction!.IsValid = false;
         }
 
         this.nodes.Clear();
@@ -61,7 +60,6 @@ public sealed partial class Binding
         this.obligations.Clear();
         this.ResetLocalRegions();
         this.obligationSet.Clear();
-        this.inheritedOriginTypes.Clear();
         this.ResetCapabilities(mode);
         this.ResetContracts();
         foreach (var scope in this.scopes.Values)
