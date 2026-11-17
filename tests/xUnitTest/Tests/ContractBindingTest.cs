@@ -995,7 +995,7 @@ public class ContractBindingTest
         Assert.Equal(["S: Self is C get", "Base: public virtual func score(self: objref/Self) -> i32 score", ": f@ref entry"], EffectRows(c).Where(static x => !x.Library).Select(static x => x.Row));
         var (layer, own) = (c.Library.Layer.Part, (Binding.PassPart)typeof(Binding).GetField("programPart", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(c.Binding)!);
         Assert.Equal((0, 0, 0), (layer.VirtualDeclarations.Count, layer.CallableEffectUses.Count, layer.CallableEffectClauses.Count));
-        Assert.Equal("score", Assert.Single(own.VirtualDeclarations).BoundSymbol!.Name);
+        Assert.Equal("score", Assert.Single(own.VirtualDeclarations).Name);
         var clause = Assert.Single(own.CallableEffectClauses);
         var use = Assert.Single(own.CallableEffectUses);
         Assert.Equal("f@ref", use.At.ToString());
