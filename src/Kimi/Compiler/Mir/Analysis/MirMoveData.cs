@@ -147,7 +147,8 @@ internal sealed class MirMoveData
 
             if (AdtDef.Base(self) is not null)
             {
-                this.named[this.Child(0, MirProjectionKind.Base, 1)] = true;
+                var layer = this.Child(0, MirProjectionKind.Base, 1); // Adding grows the arrays first.
+                this.named[layer] = true;
             }
         }
 
