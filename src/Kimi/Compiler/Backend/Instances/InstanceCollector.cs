@@ -88,9 +88,9 @@
 // run of a version a clean run collected is a no-op; a body with a finding (MirBody.HasFinding) is no template, root or item (DECISIONS
 // R5-M183: the Templates walk, the root loop and Admit are the only ways a body enters, so what rests on it has no record); a warm run of a
 // program as large as an earlier one allocates nothing.
-// Must not: read syntax, HIR or plans; depend on the MIR analyses' problems (it reads A2's table only: DropTargets, and Holds for its
-// round) or edit their driver; decide acceptance or publish its records (Compilation does); prove anything on an erased value; add an
-// IntrinsicId or BindingFailure (PD21).
+// Must not: read syntax, HIR or plans; depend on the MIR analyses' problems (it reads A2's table only: DropTargets, Holds for its round
+// and LibraryHolds for a body's template store) or edit their driver; decide acceptance or publish its records (Compilation does); prove
+// anything on an erased value; add an IntrinsicId or BindingFailure (PD21).
 
 using Kimi.Compiler.Mir;
 
