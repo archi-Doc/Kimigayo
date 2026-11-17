@@ -539,6 +539,7 @@ public sealed partial class Binding
                 proof = ConstraintProof.Proven;
             }
 
+            proof = CombineProof(proof, this.ErasedArgumentsOwned(operations), true); // SPEC 10.1 step 5, 15.6.1: an erasure's Owned.
             constraintFailure = proof == ConstraintProof.Unknown ? failure : null; // SPEC 8.3: a Pending candidate's explanation.
 
             if (waitingCallables && proof == ConstraintProof.Unknown &&

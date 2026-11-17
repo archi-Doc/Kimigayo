@@ -8,11 +8,13 @@ namespace Kimi.Compiler;
 // on a failed part (an Error's cause, or the failed operand context of a subject no work judged) is derived from it (SPEC 23.1.2,
 // DECISIONS BU-75), else the record explains the member of the subject's OwnedOrigins through which a non-static Origin enters (an
 // OwnedConversionFact), chosen where the erasure decides (OwnedMember), at the converted value (DECISIONS BU-107). Before the capability
-// engine judges (an inferred Field's header), a subject no work judged is the located limit.
+// engine judges (an inferred Field's header), a subject no work judged is the located limit. A call's applicability reads the same
+// proof for its erased arguments (ErasedArgumentsOwned, SPEC 10.1 step 5).
 // Input: the erasure's Owned proof with its rest (the capability engine's parts that are not Proven, R4-M161); the erasure's outcome for
 // the converted Closure or Function Item and the required Function Type (ErasureOf), the use.
 // Output: the explaining member; the use failed, or false when the erasure failed another part; a derived use, settled in Binding.Check's
-// Final prologue (SettleDerivedUses). Must not prove Owned again or select a conversion.
+// Final prologue (SettleDerivedUses); a candidate's erased arguments' Owned verdict. The record must not prove Owned again or select a
+// conversion.
 public sealed partial class Binding
 {
     // The uses FailDerived failed in this pass, each with its held cause's candidates at failure, its first and the rest (none for an
@@ -150,6 +152,29 @@ public sealed partial class Binding
                 this.Fail(use, BindingFailure.Internal);
             }
         }
+    }
+
+    // SPEC 10.1 step 5, 15.6.1, 15.2.3: an erased argument's Owned environment is a Constraint of the candidate's applicability, judged by
+    // the erasure's one Owned proof (ProveErasedOwned), whose verdict the record reads too (FailOwnedConversion). A part over an Origin the
+    // forming body refutes (SPEC 15.6.5: a finite Origin local to it, OwnedFact.Refuted, which the engine leaves Unknown) makes the
+    // candidate inapplicable; every other verdict keeps its judgment after selection (ErasesToFunction), an Unknown an obligation.
+    private ConstraintProof ErasedArgumentsOwned(ReadOnlySpan<BoundArgumentOperation> operations)
+    {
+        foreach (ref readonly var operation in operations)
+        {
+            if (operation is { Adaptation: ArgumentAdaptation.Erasure, Source: { } source, SourceType: { Kind: BoundTypeKind.Closure or BoundTypeKind.FunctionItem } actual })
+            {
+                var held = this.failedCause;
+                var proof = this.ProveErasedOwned(actual, source, out var owned);
+                this.failedCause = held;
+                if (proof == ConstraintProof.Unknown && owned.Refuted)
+                {
+                    return ConstraintProof.Refuted;
+                }
+            }
+        }
+
+        return ConstraintProof.Proven;
     }
 
     // SPEC 7.7.4, 15.2.3: the erasure's one Owned proof (ErasesToFunction), of its subject (ErasureSubject), the channel cleared before it;

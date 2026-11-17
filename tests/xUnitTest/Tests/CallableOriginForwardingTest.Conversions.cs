@@ -188,9 +188,23 @@ public partial class CallableOriginForwardingTest
     private const string SelK = "func see(p: ref/i32) => ()\nfunc k(a: ref/i32, b: ref/i32)\n    origin a outlives b\n    var z: i32 = 1\n" +
         "    let c = func [] (y: ref/i32 during b) -> i32 => y@follow\n    let v: i32 = 1\n    let r = h(c@move, a, b, z@ref, v)\n    z = 2\n    see(r)\n";
 
-    private const string RunPair = "func run(q: ref/i32, f: (ref/i32 during q) -> i32) -> i32 => 0\nfunc run<F>(q: ref/i32, f: F) -> i32 => 1\n";
+    private const string RunOne = "func run(q: ref/i32, f: (ref/i32 during q) -> i32) -> i32 => 0\n";
+
+    private const string RunF = "func run<F>(q: ref/i32, f: F) -> i32 => 1\n";
+
+    private const string RunPair = RunOne + RunF;
 
     private const string OwnK = "func k(p: ref/i32, q: ref/i32) -> i32\n    var a: i32 = 1\n    let r = a@ref\n";
+
+    private const string OwnS = "func k(p: ref/i32, q: ref/i32, s: ref/i32) -> i32\n";
+
+    private const string OwnStatic = "func k(p: ref/i32, q: ref/i32, s: ref/i32 during static) -> i32\n";
+
+    private const string RcvK = "func k(p: ref/i32, q: ref/i32) -> i32\n    var n: i32 = 0\n";
+
+    private const string RcvP = "    let c = func [var n] (x: ref/i32 during p) -> i32\n        n = n + 1\n        return n\n";
+
+    private const string RcvQ = "    let c = func [var n] (x: ref/i32 during q) -> i32\n        n = n + 1\n        return n\n";
 
     private const string HOsel2 = "func h(f: (ref/i32 during a) -> i32, a: ref/i32, b: ref/i32, n: i32) -> i32 => 0\nfunc h<T>(f: (ref/i32 during b) -> i32, a: ref/i32, b: ref/i32, n: T) -> i32 => 1\n";
 
@@ -503,10 +517,15 @@ public partial class CallableOriginForwardingTest
     // (b)'s: their invalid forms are Explicit until R7-P4 T2 (itsel, frsel, frselctl1n, and G514's t4q, u2, u2g); itselctl1 and G519's
     // Item forms r06n and r06 are accepted already. The Middle's consent rows (C-387): the selected callee's result decides the Loan (d-selI
     // its conflict, d-selR none; dev selected the generic one), an erasure beside a generic `F` candidate is incomparable (e-owu, e-owv;
-    // dev accepted them), and an Origin nested in an input's result or referent is proven by premises (c-nfnv, c-nrefv2). SPEC 10.1 and
-    // 15.6.1 make an erasure's Owned a Constraint of applicability, so a Closure holding a body-local borrow leaves `run<F>` selected
-    // (e-owr, e-owr0); Binding judges that Owned Unknown at selection and Refuted only at finality, so they are Explicit (G379-OW) until
-    // the owner's O-402, and f-cap keeps its record at the argument.
+    // dev accepted them), and an Origin nested in an input's result or referent is proven by premises (c-nfnv, c-nrefv2). G379 (a)
+    // Revision 3 (SPEC 7.7.4, 10.1 step 5, 10.2, 15.6.1, 15.6.5; the owner's O-404): an erasure's receiver and Owned conditions decide its
+    // row. An Exclusive-receiver Closure leaves `run<F>` selected (e-rcv, e-rcv0; dev rejected e-rcv0; e-rcvg the generic one alone), alone
+    // no candidate applies (e-rcvl) and at an initialization it is the Type mismatch (e-rcvi); a Shared one is incomparable (e-rcvsh,
+    // e-rcvsh0). A Closure holding a borrow of a body local is not Owned: `run<F>` is selected (e-owr, e-owr0, e-owra), alone no candidate
+    // applies (e-owr0-lone; f-cap, dev's record) and at an initialization it is the conversion's Constraint record (e-owri). An Owned
+    // Unknown (e-owp, a parameter) or Proven (e-ows, `static`; e-owe, no capture) leaves the erasure incomparable (dev accepted them; e-owe
+    // and e-ows are the Closure form of t_b5 and t_b6, shape from the 11-07 board, sources lost); alone, the Unknown is the obligation's
+    // record (e-owpl) and the Proven valid (e-owsl).
     [Theory]
     [InlineData("sel2", MkC + MkT + CallMk, "AmbiguousBinding_Kd mk(1, a, b, c)")]
     [InlineData("sel1", "struct S {a, b, c}\n" + CB + "    public func p(self: ref/Self) -> i32\n        let r: Option<" + FnB + "> = self.mk(1)\n        return 0\n    public init() => ()\n    public func mk(self: ref/Self, x: i32) -> Option<" + FnC + "> => .None\n    public func mk<T>(self: ref/Self, x: T) -> Option<" + FnB + "> => .None\n", "AmbiguousBinding_Kd self.mk(1)")]
@@ -579,9 +598,24 @@ public partial class CallableOriginForwardingTest
     [InlineData("e-owv", RunPair + "func k(p: ref/i32, q: ref/i32) -> i32\n    origin q outlives p\n    let c = func [] (x: ref/i32 during p) -> i32 => x@follow\n    return run(q, c@move)\n", "AmbiguousBinding_Kd run(q, c@move)")]
     [InlineData("c-nfnv", "func two(p: ref/i32, f: (() -> ref/i32 during p) -> i32) -> i32 => 0\nfunc k(p: ref/i32, q: ref/i32) -> i32\n    origin p outlives q\n    let c = func [] (g: () -> ref/i32 during q) -> i32 => 0\n    return two(p, c@move)\n", "")]
     [InlineData("c-nrefv2", "func use(p: ref/i32, f: (ref/(ref/i32 during p)) -> i32) -> i32 => 0\nfunc k(p: ref/i32, q: ref/i32) -> i32\n    origin p outlives q\n    origin q outlives p\n    let c = func [] (x: ref/(ref/i32 during q)) -> i32 => 0\n    return use(p, c@move)\n", "")]
-    [InlineData("f-cap", "func keep(q: ref/i32, f: (ref/i32 during q) -> i32) -> (ref/i32 during q) -> i32 => f@move\n" + OwnK + "    let c = func [r] (x: ref/i32 during p) -> i32 => r@follow\n    let h = keep(q, c@move)\n    a = 2\n    return h(q)\n", "UnsatisfiedConstraint_Kd c@move")] // the record site pending O-402
-    [InlineData("e-owr [G379-OW]", RunPair + OwnK + "    let c = func [r] (x: ref/i32 during p) -> i32 => r@follow\n    return run(q, c@move)\n", "", Explicit = true)] // until the owner's O-402
-    [InlineData("e-owr0 [G379-OW]", RunPair + OwnK + "    let c = func [r] (x: ref/i32 during q) -> i32 => r@follow\n    return run(q, c@move)\n", "", Explicit = true)] // until the owner's O-402
+    [InlineData("f-cap", "func keep(q: ref/i32, f: (ref/i32 during q) -> i32) -> (ref/i32 during q) -> i32 => f@move\n" + OwnK + "    let c = func [r] (x: ref/i32 during p) -> i32 => r@follow\n    let h = keep(q, c@move)\n    a = 2\n    return h(q)\n", "NoApplicableOverload_Kd keep(q, c@move)")]
+    [InlineData("e-owr", RunPair + OwnK + "    let c = func [r] (x: ref/i32 during p) -> i32 => r@follow\n    return run(q, c@move)\n", "")]
+    [InlineData("e-owr0", RunPair + OwnK + "    let c = func [r] (x: ref/i32 during q) -> i32 => r@follow\n    return run(q, c@move)\n", "")]
+    [InlineData("e-owra", RunPair + "func k(p: ref/i32, q: ref/i32) -> i32\n    var a: i32 = 1\n    let c = func [a@ref] (x: ref/i32 during q) -> i32 => 0\n    return run(q, c@move)\n", "")]
+    [InlineData("e-owr0-lone", RunOne + OwnK + "    let c = func [r] (x: ref/i32 during q) -> i32 => r@follow\n    return run(q, c@move)\n", "NoApplicableOverload_Kd run(q, c@move)")]
+    [InlineData("e-owri", OwnK + "    let c = func [r] (x: ref/i32 during q) -> i32 => r@follow\n    let g: (ref/i32 during q) -> i32 = c@move\n    return 0\n", "UnsatisfiedConstraint_Kd c@move")]
+    [InlineData("e-owp", RunPair + OwnS + "    let c = func [s] (x: ref/i32 during p) -> i32 => s@follow\n    return run(q, c@move)\n", "AmbiguousBinding_Kd run(q, c@move)")]
+    [InlineData("e-owpl", RunOne + OwnS + "    let c = func [s] (x: ref/i32 during q) -> i32 => s@follow\n    return run(q, c@move)\n", "UnprovenConstraint_Kd c@move")]
+    [InlineData("e-ows", RunPair + OwnStatic + "    let c = func [s] (x: ref/i32 during p) -> i32 => s@follow\n    return run(q, c@move)\n", "AmbiguousBinding_Kd run(q, c@move)")] // t_b5/t_b6's Closure form (shape from the 11-07 board, sources lost)
+    [InlineData("e-owsl", RunOne + OwnStatic + "    let c = func [s] (x: ref/i32 during q) -> i32 => s@follow\n    return run(q, c@move)\n", "")]
+    [InlineData("e-owe", RunPair + "func k(p: ref/i32, q: ref/i32) -> i32\n    let c = func [] (x: ref/i32 during p) -> i32 => 0\n    return run(q, c@move)\n", "AmbiguousBinding_Kd run(q, c@move)")] // t_b5/t_b6's Closure form (shape from the 11-07 board, sources lost)
+    [InlineData("e-rcv", RunPair + RcvK + RcvP + "    return run(q, c@move)\n", "")]
+    [InlineData("e-rcv0", RunPair + RcvK + RcvQ + "    return run(q, c@move)\n", "")]
+    [InlineData("e-rcvg", RunF + RcvK + RcvP + "    return run(q, c@move)\n", "")]
+    [InlineData("e-rcvl", RunOne + RcvK + RcvQ + "    return run(q, c@move)\n", "NoApplicableOverload_Kd run(q, c@move)")]
+    [InlineData("e-rcvi", RcvK + RcvQ + "    let g: (ref/i32 during q) -> i32 = c@move\n    return 0\n", "TypeMismatch_Kd c@move")]
+    [InlineData("e-rcvsh", RunPair + RcvK + "    let c = func [n] (x: ref/i32 during p) -> i32 => n\n    return run(q, c@move)\n", "AmbiguousBinding_Kd run(q, c@move)")]
+    [InlineData("e-rcvsh0", RunPair + RcvK + "    let c = func [n] (x: ref/i32 during q) -> i32 => n\n    return run(q, c@move)\n", "AmbiguousBinding_Kd run(q, c@move)")]
     public void ApplicabilityJudgesOnlyTheStructuralPart(string form, string body, string records)
         => OriginRelationDiagnosticTest.AssertRecords(form, body, records, null);
 

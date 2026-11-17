@@ -13,8 +13,9 @@ namespace Kimi.Compiler;
 // - Inputs: the Types compared, the use whose premises the comparison reads, the Type relation (Binding.TypeRelations) and, for a
 //   Closure's erasure, its call's retention (TyCtxt.Retains).
 // - Outputs: the verdicts and, for ContractFits, the solved Origins and argument operations.
-// - Invariants: an erasure's Shared receiver, Owned environment and receiver-free result are judged after selection, never during
-//   applicability.
+// - Invariants: an erasure's Shared receiver (SharedReceiver), the structural part of its signature and its Owned environment over an
+//   Origin the forming body refutes (ErasedArgumentsOwned) decide applicability; its Origin part, its other Owned verdicts and its
+//   receiver-free result are judged after selection.
 // - Prohibitions: the Type relation's walk stays in Binding.TypeRelations.Walk.cs; these judgments call its entries.
 public sealed partial class Binding
 {
@@ -111,6 +112,10 @@ public sealed partial class Binding
         static bool Omitted(BoundOrigin? written, BoundOrigin? binding) => ReferenceEquals(written, binding) || written?.Kind == OriginKind.Inference;
     }
 
+    // SPEC 7.7.4: an erasure's receiver condition, its source's minimum receiver Shared (BoundClosure.Receiver, classified with its body);
+    // an Item, or a Closure with no signature, has none.
+    private static bool SharedReceiver(BoundType actual) => (BoundClosure.Of(actual)?.Receiver ?? SemanticsKind.Ref) == SemanticsKind.Ref;
+
     // SPEC 7.7.4: a concrete Closure or Function Item converts to an expected common Function Type when its minimum receiver is Shared,
     // its signature fits under its conditions (CallableSignatureFits), its complete environment is Owned and its result contract does
     // not depend on its receiver (ResultDependsOnReceiver). Initializations, returns and call arguments share this judgment. A failure
@@ -126,7 +131,7 @@ public sealed partial class Binding
         var fits = this.ErasureFits(actual, expected, node, out failure);
         OwnedFact owned = default;
         var shape = signature is null || !ReferenceTypes.StorageMatches(expected, signature); // A fit may adapt past a storage difference.
-        var part = receiver != SemanticsKind.Ref ? ErasurePart.Receiver
+        var part = !SharedReceiver(actual) ? ErasurePart.Receiver
             : shape && !fits ? ErasurePart.Shape
             : this.ProveErasedOwned(actual, node, out owned) != ConstraintProof.Proven ? (shape ? ErasurePart.Shape : ErasurePart.Owned)
             : fits && this.ResultDependsOnReceiver(node, actual) ? ErasurePart.Dependence
@@ -177,7 +182,7 @@ public sealed partial class Binding
     {
         failure = default;
         return actual.Kind == BoundTypeKind.Closure
-            ? expected.Kind == BoundTypeKind.Function && (BoundClosure.Of(actual)?.Receiver ?? SemanticsKind.Ref) == SemanticsKind.Ref &&
+            ? expected.Kind == BoundTypeKind.Function && SharedReceiver(actual) &&
                 this.ClosureSignature(actual) is { } signature && this.CallableSignatureFits(signature, expected, SignatureOwner(actual), use, out failure)
             : this.ErasureSignatureFits(actual, expected, use, out failure);
     }
@@ -206,17 +211,18 @@ public sealed partial class Binding
     }
 
     // SPEC 7.7.4, 10.5, 10.7, 10.8, 15.6.1: the signature part of an erasure, which a call's applicability uses. A Closure's is the
-    // structural part of its signature's compatibility (FitsStructuralPartAt, every pre-selection fit's one entry, DECISIONS R4-M155):
-    // its Origin part, its Shared receiver and its Owned environment are judged after selection, at the argument (ErasesToFunction),
-    // and a failure there never selects another candidate. A Function Item's Origin conditions still belong to its signature, proven
-    // from the required contract at `use` (SPEC 15.3.7; PLAN G379's Item half).
+    // structural part of its signature's compatibility (FitsStructuralPartAt, every pre-selection fit's one entry, DECISIONS R4-M155)
+    // with its Shared receiver (SharedReceiver, a fact of its bound body); its Owned environment is a Constraint of the candidate
+    // (ErasedArgumentsOwned), and its Origin part is judged after selection, at the argument (ErasesToFunction), where a failure never
+    // selects another candidate. A Function Item's Origin conditions still belong to its signature, proven from the required contract at
+    // `use` (SPEC 15.3.7; PLAN G379's Item half).
     private bool ErasureSignatureFits(BoundType actual, BoundType expected, Koto use, out ComparisonFailure failure)
     {
         failure = default;
         return expected.Kind == BoundTypeKind.Function &&
             ((actual.Kind == BoundTypeKind.FunctionItem && this.FunctionItemSignature(actual) is { } signature &&
             this.ItemContractFits(actual, signature, expected, use, out failure)) ||
-            (actual.Kind == BoundTypeKind.Closure && this.ClosureSignature(actual) is { } closureSignature &&
+            (actual.Kind == BoundTypeKind.Closure && SharedReceiver(actual) && this.ClosureSignature(actual) is { } closureSignature &&
             this.FitsStructuralPartAt(closureSignature, this.CompatibleSignature(closureSignature, expected), use)));
     }
 
