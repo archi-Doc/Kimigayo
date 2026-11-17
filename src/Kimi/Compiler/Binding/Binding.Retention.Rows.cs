@@ -132,6 +132,17 @@ public sealed partial class Binding
         }
     }
 
+    // The k-th callable a contract hands the body, from its two lists (the Callable bounds' and requirements' signatures, then the
+    // Function parts its Types hold; Filled, HandsWriter): false past the last; `callable` null for one that is no Function Type, which
+    // neither takes nor writes an input.
+    private static bool Handed(List<BoundType> handed, List<BoundType> callables, int k, out BoundType? callable)
+    {
+        var listed = k < handed.Count + callables.Count;
+        var found = !listed ? null : k < handed.Count ? handed[k] : callables[k - handed.Count];
+        callable = found is { Kind: BoundTypeKind.Function } ? found : null;
+        return listed;
+    }
+
     // SPEC 15.6.4 (DECISIONS R4-M154): the records of the contract being computed. The result is one storage, every position of its Type
     // (StorageWalk); each input's writable storage is its root (Own) and the storages past its exclusive layers (Reached, by contract Type,
     // and Abstract). A storage retains an input by Content where the premise closure (OriginPremiseClosure, every Semantics case's
@@ -602,10 +613,9 @@ public sealed partial class Binding
         if (!this.retentionFills.TryGetValue((position, input, own), out var fill))
         {
             var (handed, callables) = own ? (this.retentionOwnHanded, this.retentionOwnCallables) : (this.retentionHanded, this.retentionCallables);
-            for (var k = 0; fill != Fill.Writes && k < handed.Count + callables.Count; k++)
+            for (var k = 0; fill != Fill.Writes && Handed(handed, callables, k, out var callable); k++)
             {
-                var callable = k < handed.Count ? handed[k] : callables[k - handed.Count];
-                if (callable.Kind == BoundTypeKind.Function && this.Takes(callable, argument))
+                if (callable is not null && this.Takes(callable, argument))
                 {
                     fill = this.Writes(callable, position) ? Fill.Writes : this.Returns(callable, position) ? Fill.Result : fill;
                 }
@@ -836,13 +846,11 @@ public sealed partial class Binding
     // writes take (Writes); input-agnostic. One Writes walk per (kept Type, callable); none where the contract hands no callable.
     private bool HandsWriter()
     {
-        var (handed, callables) = (this.retentionOwnHanded, this.retentionOwnCallables);
         foreach (var kept in this.storageKept)
         {
-            for (var k = 0; k < handed.Count + callables.Count; k++)
+            for (var k = 0; Handed(this.retentionOwnHanded, this.retentionOwnCallables, k, out var callable); k++)
             {
-                var callable = k < handed.Count ? handed[k] : callables[k - handed.Count];
-                if (callable.Kind == BoundTypeKind.Function && this.Writes(callable, kept))
+                if (callable is not null && this.Writes(callable, kept))
                 {
                     return true;
                 }

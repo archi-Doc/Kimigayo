@@ -178,8 +178,10 @@ internal sealed class OutputRetention(int output, StorageRetention own, (BoundTy
     /// requirement of a Contract premise, a Self receiver's included, or a callable value an input holds; the list Binding's fills read
     /// in a kept binding) has a parameter reaching a value of a kept Type this output's walk meets through no shared layer (Binding's
     /// Writes): a call through such a callable writes past the binding's references by SPEC 15.6.4's routes, so "a raw layer the binding
-    /// holds adds no reach of its own" is not the whole of the call's reach there. False where <see cref="Kept"/> is null.
-    /// Input-agnostic: a writer that takes only the kept Type still writes what the value holds.</summary>
+    /// holds adds no reach of its own" is not the whole of the call's reach there. The walk meets a kept Type at any position it enters,
+    /// also one the call does not write (a by-value input's part, as <c>Bx&lt;T&gt;</c>'s item): this is no claim that the kept Type lies in
+    /// written storage. False where <see cref="Kept"/> is null. Input-agnostic: a writer that takes only the kept Type still writes what
+    /// the value holds.</summary>
     internal bool Handed { get; } = handed;
 
     internal StorageRetention Own { get; } = own;
