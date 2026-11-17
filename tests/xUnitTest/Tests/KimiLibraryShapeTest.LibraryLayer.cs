@@ -118,7 +118,7 @@ public partial class KimiLibraryShapeTest
         work.GetType().GetProperty("Fact", BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(work, fact);
         typeof(Binding).GetMethod("ResetCapabilities", BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(binding, [binding.Result.Mode]);
         var epoch = (int)LibraryLayer.ValueAt(binding, "Binding.summaryEpoch");
-        string[] reset = ["Result", "Assumed", "Evaluated", "Queued", "Pending", "Parent", "Cause", "OwnCause", "Fact", "Origin", "Parts", "Reads", "Dependents"];
+        string[] reset = ["Result", "Assumed", "Evaluated", "Queued", "Depends", "Parent", "Cause", "OwnCause", "Fact", "Origin", "Parts", "Reads", "Dependents"];
         foreach (var store in LibraryLayer.StoresOf(LibraryLayer.Rule.Epoch))
         {
             var value = (IEnumerable)LibraryLayer.ValueAt(binding, store);
