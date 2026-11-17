@@ -24,7 +24,7 @@ A reading aid, sorted alphabetically. The linked section owns each definition.
 | Closure / Capture | A callable body with its environment; each capture entry initializes one environment binding, as `let x = x` or `var x = x` would. | [§7.7.2](../07-functions-and-callable-values.md#772-captures) |
 | Common adaptation | The single operation selected at a position with a fixed expected Type. | [§10.2](../10-overload-resolution-and-inference.md#102-common-adaptation) |
 | Compilation root | Per Kotonoha: its root declarations, the reference names of its direct dependencies, and `Kimi`. | [§18](../18-modules-and-dependencies.md#18-modules-and-dependencies) |
-| Compiler-intrinsic Contract | Copy, Owned, Callable, Sealed, ObjectPayload or PrimitiveInteger. | [§8.7.1](../08-generics-constraints-and-contracts.md#871-compiler-intrinsic-contracts) |
+| Compiler-intrinsic Contract | Copy, Owned, Callable, Sealed, ObjectPayload, PrimitiveInteger or Transferable. | [§8.7.1](../08-generics-constraints-and-contracts.md#871-compiler-intrinsic-contracts) |
 | Complete value | A value with construction completion and current completeness. | [§15.1.2](../15-ownership-and-lifetime-analysis.md#1512-construction-and-completeness) |
 | Composition Root | `$`, the root of `$abort`, `$tryWrite`, `$expect` and `$require`. | [§13.8](../13-operators-and-assignment.md#138-reserved-syntax-and-the-composition-root) |
 | Condition | A `bool` directive expression over built-in Conditions and Project settings. | [§19.2](../19-compile-time-directives.md#192-conditions) |

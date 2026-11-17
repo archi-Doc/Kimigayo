@@ -31,7 +31,7 @@ public sealed partial class Binding
         }
 
         var terminal = actual;
-        var exclusive = !ReachedThroughShared(left);
+        var exclusive = !this.ReachedThroughShared(left);
         while (terminal is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 })
         {
             exclusive &= terminal.Semantics == SemanticsKind.Uniq;
@@ -61,7 +61,7 @@ public sealed partial class Binding
     // element keeps its stored Type; the read is the receiver's adaptation.
     private void ReceiverElement(Koto left, BoundType? element)
     {
-        if (ElementAccess.IsUserIndex(left) && element is not null)
+        if (ElementAccess.IsUserIndex(this, left) && element is not null)
         {
             var origin = this.PlaceOrigin(left);
             var read = this.ElementRead(left, element, origin) ?? this.types.Reference(SemanticsKind.Ref, element, origin);
@@ -73,7 +73,7 @@ public sealed partial class Binding
         // through the stored view.
         // A Non-Copy element published by a user index (SPEC 4.7.1) is likewise read through one shared borrow of its Place.
         if (KotoHelper.UnwrapParentheses(left) is IndexKoto index &&
-            (ElementAccess.IsSharedElement(index) || ElementAccess.IsUserIndex(index) ||
+            (ElementAccess.IsSharedElement(this, index) || ElementAccess.IsUserIndex(this, index) ||
                 (index.Right is not RangeKoto && index.Left.BoundType?.Kind == BoundTypeKind.Array && element?.Semantics is not (null or SemanticsKind.Owner))))
         {
             this.SharedElement(left, element);
@@ -85,7 +85,7 @@ public sealed partial class Binding
     // receiver on its path that is such a selection is borrowed the same way.
     private void CompareInPlace(Koto operand)
     {
-        if (ElementAccess.IsUserIndex(operand) && operand.BoundType is { } published && this.ProveCopy(published, operand) == ConstraintProof.Refuted &&
+        if (ElementAccess.IsUserIndex(this, operand) && operand.BoundType is { } published && this.ProveCopy(published, operand) == ConstraintProof.Refuted &&
             this.SharedBorrowSemantics(published, operand) is { } placeSemantics)
         {
             // SPEC 4.7.1, 13.4: a Non-Copy element of receiver[key] on a user Type is compared in place through the reference
@@ -97,14 +97,14 @@ public sealed partial class Binding
         }
 
         if (KotoHelper.UnwrapParentheses(operand) is not BinaryKoto selection || selection is not (IndexKoto { Right: not RangeKoto } or MemberAccessKoto) ||
-            IsGetterResult(selection) || ElementAccess.OwnedPathRoot(selection) is not null)
+            IsGetterResult(selection) || ElementAccess.OwnedPathRoot(this, selection) is not null)
         {
             return;
         }
 
         // PLAN G59: an owned fixed-array element at a runtime index is compared in place like an element of a borrowed receiver.
         this.CompareInPlace(selection.Left);
-        if (ElementAccess.IsBorrowedReceiver(selection.Left) || ElementAccess.IsRuntimeFixedElement(selection))
+        if (ElementAccess.IsBorrowedReceiver(this, selection.Left) || ElementAccess.IsRuntimeFixedElement(this, selection))
         {
             this.SharedElement(operand, selection.BoundType);
         }
@@ -114,7 +114,7 @@ public sealed partial class Binding
     // the element slot in place, whatever the element's Copy capability, so the view retains the backing source.
     private void SharedElementView(Koto receiver)
     {
-        if (KotoHelper.UnwrapParentheses(receiver) is IndexKoto element && element.BoundType is { Kind: BoundTypeKind.FixedArray, Semantics: SemanticsKind.Owner } array && ElementAccess.IsSharedElement(element))
+        if (KotoHelper.UnwrapParentheses(receiver) is IndexKoto element && element.BoundType is { Kind: BoundTypeKind.FixedArray, Semantics: SemanticsKind.Owner } array && ElementAccess.IsSharedElement(this, element))
         {
             this.adaptations[element] = new(ExpectedAdaptationKind.SharedBorrow, this.types.Intern(BoundTypeKind.Semantics, null, SemanticsKind.Ref, [array], origin: this.PlaceOrigin(element)));
         }

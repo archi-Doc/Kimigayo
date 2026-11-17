@@ -8,7 +8,7 @@ fn init @17
   _1: string arg name @18
   _2: () temp @19
   _3: () temp @20 s1
-  _4: string temp @21 s1
+  _4: string temp (Assigned) @21 s1
   s1: lexical in s0 @19
   bb0:
       StorageLive(_2) @19
@@ -38,7 +38,7 @@ fn init @33
   _3: () temp @41
   _4: string temp @36
   _5: () temp @42 s1
-  _6: i32 temp @43 s1
+  _6: i32 temp (Assigned) @43 s1
   s1: lexical in s0 @41
   bb0:
       StorageLive(_3) @41
@@ -600,9 +600,9 @@ fn wholeReplace @316
   _0: () return @316
   _1: Option<string> var mut x @318 s1
   _2: () temp @327 s1
-  _3: Option<string> temp @328 s1
+  _3: Option<string> temp (Assigned) @328 s1
   _4: () temp @334 s1
-  _5: Option<string> temp @335 s1
+  _5: Option<string> temp (Assigned) @335 s1
   s1: lexical in s0 @317
   bb0:
       StorageLive(_1) @318 s1
@@ -641,9 +641,9 @@ fn conditionalEnum @339
   _3: () temp @348 s1
   _4: bool temp @349 s1
   _5: () temp @351 s2
-  _6: Option<string> temp @352 s2
+  _6: Option<string> temp (Assigned) @352 s2
   _7: () temp @360 s1
-  _8: Option<string> temp @361 s1
+  _8: Option<string> temp (Assigned) @361 s1
   _9: () temp @367 s1
   _10: bool temp @368 s1
   _11: Option<string> var y @370 s3
