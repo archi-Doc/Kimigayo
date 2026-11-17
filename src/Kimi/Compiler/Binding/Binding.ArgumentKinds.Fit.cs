@@ -7,10 +7,10 @@ namespace Kimi.Compiler;
 public sealed partial class Binding
 {
     // DECISIONS D3 (the owner's O-392 (c), G812 rulings 109, 111; temporary, removed with (R)): the components down to the part
-    // where the last argument fit failed (FitArgument's Inapplicable): a Tuple or array literal's element (ProbeAggregateArgument),
-    // below the layer it is borrowed at (FitComposite), then, below a typed part, the components its structural fit names
-    // (FitTyped); none where the failure is the argument's own. A value call on the split reads it right after the fit and
-    // blames that part's bindings (ItemCallFails).
+    // where the last argument fit failed (FitArgument's Inapplicable): a Tuple or array literal's element (ProbeAggregateArgument)
+    // or a join's child position (FitsPosition), below the layer it is borrowed at (FitComposite), then, below a typed part, the
+    // components its structural fit names (FitTyped); none where the failure is the argument's own. A value call on the split
+    // reads it right after the fit and blames that part's bindings (ItemCallFails).
     private ComponentPath argumentMisfit;
 
     // SPEC 10.1, 10.2, 10.5.1: whether an argument part fits a candidate's closed Type at its position, by the part's kind, and the
@@ -234,6 +234,9 @@ public sealed partial class Binding
             this.ClosePosition(child);
             if (!fits)
             {
+                // ComponentPath (G812 rulings 112, 114): the failing child leaves the position at its component, a Tuple's element or
+                // an array's element (ChildPattern), as a literal's element does (ProbeAggregateArgument), so the path is the argument's.
+                this.argumentMisfit = this.argumentMisfit.Within(type.Kind == BoundTypeKind.Tuple ? i : 0);
                 return false;
             }
         }
