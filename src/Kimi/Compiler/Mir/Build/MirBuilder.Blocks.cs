@@ -142,12 +142,18 @@ internal sealed partial class MirBuilder
     }
 
     // SPEC 7.1, 14.2: the Unit a container leaves where it completes into a Unit destination; one completing into another Type falls
-    // through, which Binding or control flow rejects (FunctionFallthrough_Kd), and leaves no value.
+    // through, which Binding or control flow rejects (FunctionFallthrough_Kd) or which rests on a guessed Error: it leaves a derived
+    // Opaque value, without a record (SPEC 23.1.2), so no temp is empty where the runtime edges reach its delivery (MirInit's invariant).
     private void Leave(MirPlace destination, Koto container)
     {
         if (HirTables.CompletionOf(container) == HirCompletion.Completes && ReferenceEquals(this.body.TypeOf(destination), BoundType.Unit))
         {
             this.Unit(destination, container);
+        }
+        else if (HirTables.CompletionOf(container) == HirCompletion.Completes && !this.IsNever(destination))
+        {
+            this.SiteRoots((MirPlace?)null);
+            this.Site(container, destination, completes: true);
         }
     }
 

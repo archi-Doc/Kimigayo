@@ -41,7 +41,7 @@ setter level.Set @19
   _1: uniq/Gauge arg self @19
   _2: i32 arg value @19
   _3: () temp @23 s1
-  _4: i32 temp @24 s1
+  _4: i32 temp (Assigned) @24 s1
   s1: lexical in s0 @22
   bb0:
       StorageLive(_3) @23 s1

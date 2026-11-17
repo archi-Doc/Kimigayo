@@ -9,7 +9,7 @@ setter count.Set @14
   _1: uniq/Counter arg self @14
   _2: i32 arg value @14
   _3: () temp @17
-  _4: i32 temp @18
+  _4: i32 temp (Assigned) @18
   bb0:
       StorageLive(_3) @17
       StorageLive(_4) @18
@@ -151,7 +151,7 @@ setter item.Set @56
   _1: uniq/Box arg self @56
   _2: i32 arg value @56
   _3: () temp @59
-  _4: i32 temp @60
+  _4: i32 temp (Assigned) @60
   bb0:
       StorageLive(_3) @59
       StorageLive(_4) @60

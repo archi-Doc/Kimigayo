@@ -90,6 +90,18 @@ public sealed partial class MirDropTest
         Assert.Contains("drop _3 -> bb9 [open ((_ as case 0) open (.0 flag f0))] [clear f0]", Lines(Decomposed, "f"));
     }
 
+    // SPEC 13.7.1, 14.10.3 (DECISIONS R4-M62; the owner's O-336 (a), O-371 (a)): a path on which an overwrite's value holds nothing goes
+    // around the overwrite and keeps its target's state, so a later check-only Drop sees the old state joined with the placed one: a
+    // Field moved before `return` and overwritten after it by such a value is maybe moved at the scope end (the O-336 unit's row ev3u),
+    // its check-only Flag row read as Keep, where the overwrite's Drop took it before (dev, the redesign's step 5: `[keep]`).
+    [Fact]
+    public void AnOverwriteWhoseValueHoldsNothingKeepsTheOldGroup()
+    {
+        const string Source = "func fail() -> Never => $abort(\"no\")\nfunc takeA(a: Array<i32>) => ()\nfunc f(y: i32, c: bool)\n" +
+            "    var t: (i32, Array<i32>) = (y, [y])\n    takeA(t.1@move)\n    return\n    t.1 = if c => [y] else => fail()\n";
+        Assert.Contains("drop _3 -> bb18 [open (.1 keep)]", Lines(Source, "f"));
+    }
+
     // SPEC 15.1.3, 16.3.2: a layer whose Type declares a drop must be complete wherever that drop runs: a Partial Move not restored on every
     // path to its scope exit or a replacement is MovedPlace_Kd at the Drop, a base layer's own drop included; restored on every path, or
     // without an own drop, the parts are destroyed as they are.
