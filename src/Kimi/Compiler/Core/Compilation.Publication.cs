@@ -203,7 +203,7 @@ public partial class Compilation
         var refuted = problem.Code == DiagnosticCode.UnsatisfiedOriginRelation_Kd;
         if (fact.Value < 0)
         {
-            return Binding.OriginRelationFacts(new(this.SyntaxOf(fact.Site), longer, longer, shorter, equality, null, refuted, WellFormed: true), "wellFormed");
+            return this.Binding.OriginRelationFacts(new(this.SyntaxOf(fact.Site), longer, longer, shorter, equality, null, refuted, WellFormed: true), "wellFormed");
         }
 
         var row = this.Types.OriginRows(program.Body(body).Key.Body).Rows[(int)fact.Value];
@@ -218,7 +218,7 @@ public partial class Compilation
         var at = this.SyntaxOf(row.Site);
         var wellFormed = row.Source == OriginRowSource.WellFormed;
         return source is null ? null
-            : Binding.OriginRelationFacts(new(at, longer, longer, shorter, equality, row.Destination, refuted, row.Clause, WellFormed: wellFormed), source);
+            : this.Binding.OriginRelationFacts(new(at, longer, longer, shorter, equality, row.Destination, refuted, row.Clause, WellFormed: wellFormed), source);
     }
 
     // A code without facts keyed by its subject's location, in the subject's collection (DIAGNOSTICS 4.1; DECISIONS R5-M65, R4-M71).

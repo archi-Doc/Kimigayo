@@ -117,9 +117,11 @@ internal readonly record struct PairBinder(BindingSymbol Target, SemanticsMask A
     /// <summary>Collects the pair binders in scope of a body (SPEC 8.15): those of its own declaration, of its containers and, for a
     /// Closure, an accessor or a static initializer, of the enclosing declarations, outer to inner in slot order, each with its admitted
     /// set; the MIR body's binders, which give its Semantics cases.</summary>
+    /// <remarks>The Semantics cases component's published entry for a body's binders, which Mir/Build reads (COMPILER_ARCHITECTURE).</remarks>
+    /// <param name="binding">The reader's Binding, whose pass bound the body.</param>
     /// <param name="body">The body's declaration.</param>
     /// <param name="binders">The caller-owned list to fill; it is cleared first.</param>
-    internal static void Collect(Koto body, List<PairBinder> binders) => body.CodeContext.Compilation.Binding.PairBinders(body, binders);
+    internal static void Collect(Binding binding, Koto body, List<PairBinder> binders) => binding.PairBinders(body, binders);
 
     /// <summary>Counts the Semantics cases of a body without overflowing the resource counter (SPEC 8.15).</summary>
     /// <param name="binders">The body's pair binders and their admitted sets.</param>
