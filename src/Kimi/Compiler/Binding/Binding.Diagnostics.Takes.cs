@@ -27,7 +27,7 @@ public sealed partial class Binding
 
     // Fails a Take that the target's path does not offer, recording the cases of the layers it passes.
     private BoundType? FailTake(Koto node, Koto target)
-        => this.FailExplained(ref this.takeLayers, node, AccessFailure(target, out var layers, take: true), layers);
+        => this.FailExplained(ref this.takeLayers, node, this.AccessFailure(target, out var layers, take: true), layers);
 
     private void ReportTake(Koto node, SemanticsMask layers, DiagnosticRequirement requirement, DiagnosticCode code)
     {

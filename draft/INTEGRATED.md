@@ -1384,6 +1384,11 @@ on the round's F3, 「以下で決定します。(b) BU-28 を SPEC の読みに
 - Revision 84 (2026-11-15, plan §14; the Front's D-659, with R7-C2c2 c2-3): §5.0's C2 row: e2 also completes name discovery through
   the view's identity closure (dm1); c2-5's and c2-4's completion conditions (c2-3b's staged removal, the Callable rows' identity
   normalization); e2-2c's entry (e2-2's index takes c2-3b's `RowKind`); c2-3's Semantics part is c2-3e. Nothing frozen.
+- Revision 88 (2026-11-17, plan §14; the Back's D-750): R8-SP1 is absorbed with no SPEC or IMPL text. PLAN10 §11's SP1 row went as
+  follows: the layout into IMPL §21.1.3 (DECISIONS R8-M1, O-41 (a)); the private primitives and intrinsics into SPEC §22.1's
+  paragraph and IMPL §21.3.4 (R8-SP2), with no per-section statement since no section claims a supplied definition; `writeLine` a
+  body with no text, §22.7 stating behaviour only. §22.9.1, §22.10.5 and IMPL §21.4.4 already match the bodies; W2 kept §22.10.5's
+  closed list. Nothing frozen; no SPECJ change.
 - Revision 16 (2026-11-07, plan §14; the owner's O-41 and O-43, verbatim 「推奨の内容でOKです。処理を継続してください。」): R1 splits into R1a, R1b and R1c, and the structs' contract is IMPL §21.1.3's (DECISIONS
   R8-M1). Nothing frozen.
 - Revision 17 (2026-11-07, plan §14; the Front's D-64): C1 done; C2 takes G563; G187 closed. Nothing frozen.

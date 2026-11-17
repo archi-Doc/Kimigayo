@@ -65,13 +65,18 @@ public sealed partial class Binding
             return false; // No part failed: the failure rests on no member (the Type mismatch keeps its Note).
         }
 
-        var closure = implementation is { Kind: BoundTypeKind.Closure, Symbol.Declaration: FunctionKoto declaration } ? declaration : null;
-        var captures = BoundClosure.Of(implementation)?.Captures;
         // ErasureSubject's member i, in the callable's own numbering (CapabilityParts): a Closure's capture i; an Item's bound argument,
-        // its Contract reference's Type and Origin arguments being that reference's.
-        var index = CapabilityParts.MemberAt(implementation, i);
-        var member = implementation.Components[index];
-        var name = captures is null ? $"{Ordinal(index + 1)} Type argument" : captures[i].Environment.Name;
+        // its Contract reference's Type and Origin arguments being that reference's; a nested definition's inherited argument (member
+        // Components.Count, SPEC 6.1.3; InheritedArguments, readable since the erasure judged it) named by itself, a bound generic
+        // argument of a Closure too. An inherited Origin has no Type: its member Type is the subject itself, which the report reads as an
+        // Origin that is not static (SPEC 15.2.3).
+        var (part, partOrigin, index) = CapabilityParts.At(implementation, this.InheritedArguments(implementation) ?? BoundType.Unit, i);
+        var inherited = index == implementation.Components.Count;
+        var closure = !inherited && implementation is { Kind: BoundTypeKind.Closure, Symbol.Declaration: FunctionKoto declaration } ? declaration : null;
+        var captures = inherited ? null : BoundClosure.Of(implementation)?.Captures;
+        var member = inherited ? part ?? implementation : implementation.Components[index];
+        var name = captures is not null ? captures[i].Environment.Name
+            : inherited ? (part is null ? $"inherited Origin `{partOrigin!.Name}`" : $"inherited Type argument `{DiagnosticTypeName(part)}`") : $"{Ordinal(index + 1)} Type argument";
 
         // A captured binding initialized by a Borrow shows that Borrow (SPEC 15.6.5).
         var borrow = captures is not null && origin is not null && captures[i].Source.Declaration is VariableKoto { InitializerKoto: { } initializer } &&
@@ -232,24 +237,31 @@ public sealed partial class Binding
 
     // SPEC 7.7.4, 15.2.3 (DECISIONS BU-73): an erasure's subject, its callable's complete environment, its parts (CapabilityParts) as one
     // environment Tuple (EnvironmentTuple): a Closure's captures, whose members are their indices, or a Function Item's bound arguments, a
-    // requirement Item's Contract-reference Origin arguments included. Its call signature, and what a nested function's Item inherits, are
-    // the required Function Type's to state, never a part of the proof. A callable without parts has the empty environment, Unit, which no
-    // work needs to judge, also before the engine judges (an inferred Field's header, SPEC 11.6).
+    // requirement Item's Contract-reference Origin arguments included, then a nested definition's inherited arguments (InheritedArguments,
+    // SPEC 6.1.3). Its call signature, and an enclosing function's Origin that a nested function's signature names (InheritedEnvironment),
+    // are the required Function Type's to state, never a part of the proof. A callable without parts has the empty environment, Unit,
+    // which no work needs to judge, also before the engine judges (an inferred Field's header, SPEC 11.6). A nested definition whose
+    // instance is withheld is its own subject: its Owned proof answers the located limit (StructuralCapability).
     private BoundType ErasureSubject(BoundType callable)
     {
-        if (callable.Kind is not (BoundTypeKind.Closure or BoundTypeKind.FunctionItem))
+        if (callable.Kind is not (BoundTypeKind.Closure or BoundTypeKind.FunctionItem) || this.InheritedArguments(callable) is not { } inherited)
         {
             return callable;
         }
 
-        var reference = RequirementReference(callable);
-        var types = this.RentTypes(callable.Components.Count + (reference?.Components.Count ?? 0));
-        var origins = this.originScratch.Rent(reference?.OriginArguments.Count ?? 0);
+        var t = 0;
+        var o = 0;
+        foreach (var (part, _, _) in new CapabilityParts(callable, inherited))
+        {
+            (t, o) = part is null ? (t, o + 1) : (t + 1, o);
+        }
+
+        var types = this.RentTypes(t);
+        var origins = this.originScratch.Rent(o);
         try
         {
-            var t = 0;
-            var o = 0;
-            foreach (var (part, origin, _) in new CapabilityParts(callable))
+            (t, o) = (0, 0);
+            foreach (var (part, origin, _) in new CapabilityParts(callable, inherited))
             {
                 if (part is not null)
                 {
