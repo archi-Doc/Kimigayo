@@ -7,7 +7,7 @@ namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
-    private readonly List<FunctionKoto> virtualDeclarations = new();
+    private List<FunctionKoto> virtualDeclarations; // The running pass's part (PassPart, EnterPass).
     private Dictionary<FunctionKoto, VirtualDeclarationCause>? virtualDeclarationFailures;
 
     // SPEC 6.4.1's eligibility and inherited-header rules, in check order; the adapter explains each (DECISIONS BU-111).
@@ -68,10 +68,12 @@ public sealed partial class Binding
     private void ResetVirtualDeclarations()
     {
         this.virtualDeclarations.Clear();
-        this.virtualEffectBounds.Clear();
         this.virtualDeclarationFailures?.Clear();
-        this.virtualOverrides.Clear();
-        this.overrideEntries.Clear();
+        foreach (var entries in this.overrideEntries.Values.In(this.pass))
+        {
+            entries!.Clear();
+        }
+
         this.overrideFailures?.Clear();
         this.baseCallFailures?.Clear();
     }

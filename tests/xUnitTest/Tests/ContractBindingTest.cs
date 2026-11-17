@@ -911,6 +911,31 @@ public class ContractBindingTest
         Assert.DoesNotContain(impls.Identities, x => ReferenceEquals(x.Contract, contract));
     }
 
+    // PLAN G949 S1-r2 (s1r1-design 1.4; review-s1r2 C1): ImplTable's pass view lists only the stores of the pass's modules. Begun again
+    // at the run's own value (so no row goes stale) with the source modules alone, it lists the program's paths, identities and Type
+    // lists and no library one; with the library alone, the library's; with both, the composed lists.
+    [Fact]
+    public void ThePassViewListsOnlyThePassModulesStores()
+    {
+        var c = Sources("Self is C");
+        Assert.True(c.Bind().IsComplete, Describe(c));
+        var impls = Impls(c);
+        impls.Begin(impls.Pass, new(c.SourceModules, null, new(0)));
+        Assert.NotEmpty(impls.InPass.Paths);
+        Assert.All(impls.InPass.Paths, static x => Assert.False(Library(x.Type)));
+        Assert.All(impls.InPass.Identities, static x => Assert.False(Library(x.Type)));
+        Assert.All(impls.InPass.ByType, static x => Assert.All(x, static y => Assert.False(Library(y.Type))));
+        impls.Begin(impls.Pass, new([], c.Binding.Library.Kotonoha, new(0)));
+        Assert.NotEmpty(impls.InPass.Paths);
+        Assert.All(impls.InPass.Paths, static x => Assert.True(Library(x.Type)));
+        Assert.All(impls.InPass.Identities, static x => Assert.True(Library(x.Type)));
+        impls.Begin(impls.Pass, new(c.SourceModules, c.Binding.Library.Kotonoha, new(0)));
+        Assert.Equal(impls.Paths.ToList(), impls.InPass.Paths.ToList());
+        Assert.Equal(impls.Identities.ToList(), impls.InPass.Identities.ToList());
+
+        static bool Library(BindingSymbol type) => type.Declaration.Kotonoha.Syntax.IsLibrary;
+    }
+
     // PLAN G949 S1-b1 d8: after an edit that removes one conformance and adds another, Identities lists the pass's registrations in
     // their order, the program's first (before: the removed identity kept its place and the added one followed every other).
     [Fact]
@@ -1050,8 +1075,9 @@ public class ContractBindingTest
 
     private static bool IsCollection(Type type) => type.IsGenericType && type.GetGenericTypeDefinition() is var definition && (definition == typeof(List<>) || definition == typeof(Dictionary<,>));
 
-    // Gives each list of PassState one more entry and each other settable property a value other than its default: true, 1, the first
-    // of `values` its type accepts, else an instance of a concrete type.
+    // Gives each list and map of PassState one more entry (a map's key the first of `values` its type accepts, else a default or an
+    // uninitialized instance) and each other settable property a value other than its default: true, 1, the first of `values` its type
+    // accepts, else an instance of a concrete type.
     private static void Spoil(object model, object?[] values)
     {
         foreach (var property in PassState(model))
@@ -1063,6 +1089,14 @@ public class ContractBindingTest
                 var entry = type.GetGenericArguments()[0];
                 list.Add(entry.IsValueType ? Activator.CreateInstance(entry) : null);
                 property.GetSetMethod(true)?.Invoke(model, [list]);
+            }
+            else if (type.IsGenericType && type.GetGenericTypeDefinition() == typeof(Dictionary<,>))
+            {
+                var map = (IDictionary)(property.GetValue(model) ?? Activator.CreateInstance(type)!);
+                var (key, value) = (type.GetGenericArguments()[0], type.GetGenericArguments()[1]);
+                map[key.IsValueType ? Activator.CreateInstance(key)! : values.FirstOrDefault(key.IsInstanceOfType) ?? RuntimeHelpers.GetUninitializedObject(key)] =
+                    value.IsValueType ? Activator.CreateInstance(value) : null;
+                property.GetSetMethod(true)?.Invoke(model, [map]);
             }
             else if (property.GetSetMethod(true) is { } setter)
             {

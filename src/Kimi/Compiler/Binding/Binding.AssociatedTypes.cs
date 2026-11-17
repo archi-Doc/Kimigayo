@@ -28,7 +28,7 @@ public sealed partial class Binding
         }
 
         var symbol = new BindingSymbol("Self", BindingSymbolKind.TypeParameter, contract.Declaration, this.scopes.GetValueOrDefault(contract.Declaration) ?? contract.Scope) { SelfOf = contract, Slot = -1 };
-        symbol.WholeType = symbol.Type = new("Self", BoundTypeKind.Parameter, symbol);
+        symbol.WholeType = symbol.Type = this.types.Parameter("Self", BoundTypeKind.Parameter, symbol);
         return contract.ContractSelf = symbol.Type;
     }
 
@@ -491,9 +491,9 @@ public sealed partial class Binding
 
     private void PrepareAssociatedBindings()
     {
-        for (var i = 0; i < this.impls.Paths.Count; i++)
+        for (var i = 0; i < this.impls.InPass.Paths.Count; i++)
         {
-            var path = this.impls.Paths[i];
+            var path = this.impls.InPass.Paths[i];
             if (!ReferenceEquals(path.RootPath, path) || path.InheritedFrom is not null)
             {
                 continue;
@@ -537,9 +537,9 @@ public sealed partial class Binding
             }
         }
 
-        for (var i = 0; i < this.impls.Paths.Count; i++)
+        for (var i = 0; i < this.impls.InPass.Paths.Count; i++)
         {
-            var path = this.impls.Paths[i];
+            var path = this.impls.InPass.Paths[i];
             var shape = path.Contract.Contract!;
             for (var j = 0; j < shape.AssociatedTypes.Count; j++)
             {

@@ -281,7 +281,7 @@ public sealed partial class Binding
         for (var i = 1; i <= count; i++)
         {
             var p = i % count; // Source order: the parameters, then the result, whose code comes first.
-            if ((p == 0 ? function.BoundSymbol!.Type : this.symbols[function.Parameters[p - 1]].Type) is not { } type)
+            if ((p == 0 ? function.BoundSymbol!.Type : this.ParameterSymbol(function, p - 1).Type) is not { } type)
             {
                 complete = false;
             }
