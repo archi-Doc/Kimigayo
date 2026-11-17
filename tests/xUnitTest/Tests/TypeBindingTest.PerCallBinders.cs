@@ -10,7 +10,10 @@ namespace XunitTest;
 // `(ref/i32 during b) -> i32` (FX(b)) is not `(ref/i32) -> i32` (PC). The rows are the unit's coverage table by id (slot indexes,
 // layers, entries, generic forms, Closures; the o rows are the Owned judgment of a Function Type, SPEC 15.2.3, whose call signature is
 // its own at every instance). Each invalid row has one record at the converted function or the call. The rows under an invariant
-// layer (`uniq/`, `raw/`) also need PLAN G900's two-way comparison and join this table when both rules are on one base.
+// layer (`uniq/`, `raw/`) also need PLAN G900's two-way comparison and join this table when both rules are on one base. The rows
+// marked PLAN G913 (SPEC 15.3.4) cover the call's bounds: a nested Function Type's own per-call Origins are never a bound of the
+// call's Origins, with `b` or the caller's Origin at slot 0 or 1, at depths 0 to 3, in both orders, at a local, a call and a generic,
+// in a mixed nested Type, a result meet and with an Origin introduced by the result.
 public partial class TypeBindingTest
 {
     public static TheoryData<string, string, string> PerCallBinderRows => new()
@@ -854,6 +857,763 @@ public partial class TypeBindingTest
                 return 1
 
             func f(k: (ref/i32, ref/i32 during static) -> i32) -> i32 => need((k@move, 1))
+            """,
+            string.Empty
+        },
+        // n3j (invalid, SPEC 10.7, 8.10, 3.8; PLAN G913): n3i with the outer per-call Origin at slot 1 (no slot coincidence: the collector descends).
+        {
+            "n3j",
+            """
+            func h(x: i32, b: ref/i32, u: ((((ref/i32 during b) -> i32) -> i32) -> i32) -> i32) -> i32 => 0
+
+            func f() -> i32
+                let k: (i32, ref/i32, ((((ref/i32) -> i32) -> i32) -> i32) -> i32) -> i32 = h
+                return 0
+            """,
+            "UnprovenOriginContract_Kd h"
+        },
+        // n0j (valid, SPEC 10.7, 8.10, 3.8; PLAN G913): n0i with the outer per-call Origin at slot 1.
+        {
+            "n0j",
+            """
+            func h(x: i32, b: ref/i32, u: (((ref/i32 during b) -> i32) -> i32) -> i32) -> i32 => 0
+
+            func f() -> i32
+                let k: (i32, ref/i32, (((ref/i32) -> i32) -> i32) -> i32) -> i32 = h
+                return 0
+            """,
+            string.Empty
+        },
+        // t02i (invalid, SPEC 10.7, 3.8; PLAN G913): the input (ref/i32, ref/i32 during b) -> i32 holds against (ref/i32, ref/i32) -> i32, the same result does not, b at slot 0 (the record names the result's 2nd parameter).
+        {
+            "t02i",
+            """
+            func h(b: ref/i32, u: (ref/i32, ref/i32 during b) -> i32) -> (ref/i32, ref/i32 during b) -> i32 => u@move
+
+            func f() -> i32
+                let k: (ref/i32, (ref/i32, ref/i32) -> i32) -> (ref/i32, ref/i32) -> i32 = h
+                return 0
+            """,
+            "UnprovenOriginContract_Kd h"
+        },
+        // t03i (invalid, SPEC 10.7, 3.8; PLAN G913): t02i with (ref/i32 during b, ref/i32) -> i32 and b at slot 1 (the record names the result's 1st parameter).
+        {
+            "t03i",
+            """
+            func h(x: ref/i32, b: ref/i32, u: (ref/i32 during b, ref/i32) -> i32) -> (ref/i32 during b, ref/i32) -> i32 => u@move
+
+            func f() -> i32
+                let k: (ref/i32, ref/i32, (ref/i32, ref/i32) -> i32) -> (ref/i32, ref/i32) -> i32 = h
+                return 0
+            """,
+            "UnprovenOriginContract_Kd h"
+        },
+        // t12v (valid, SPEC 10.7, 3.8, 15.2.3; PLAN G913): the required ((ref/i32 during static, ref/i32) -> i32) -> i32 against ((ref/i32 during b, ref/i32) -> i32) -> i32, b at slot 0: `static` outlives b's Origin.
+        {
+            "t12v",
+            """
+            func h(b: ref/i32, u: ((ref/i32 during b, ref/i32) -> i32) -> i32) -> i32 => 0
+
+            func f() -> i32
+                let k: (ref/i32, ((ref/i32 during static, ref/i32) -> i32) -> i32) -> i32 = h
+                return 0
+            """,
+            string.Empty
+        },
+        // ob2v (valid, SPEC 10.7, 3.8, 15.3.7; the owner's O-348 (a)): b between d and c (`d outlives b`, `b outlives c`) under `origin d outlives c`: a choice exists, so the conversion holds.
+        {
+            "ob2v",
+            """
+            func h(b: ref/i32, u: (ref/i32 during b) -> i32) -> i32 => 0
+
+            func f(c: ref/i32, d: ref/i32) -> i32
+                origin d outlives c
+                let k: (ref/i32 during d, (ref/i32 during c) -> i32) -> i32 = h
+                return 0
+            """,
+            string.Empty
+        },
+        // ob1v (valid, SPEC 10.7, 3.8, 15.3.7): ob2v with the result `ref/i32 during b` at `ref/i32 during c`.
+        {
+            "ob1v",
+            """
+            func h(b: ref/i32, u: (ref/i32 during b) -> i32) -> ref/i32 during b => b
+
+            func f(c: ref/i32, d: ref/i32) -> i32
+                origin d outlives c
+                let k: (ref/i32 during d, (ref/i32 during c) -> i32) -> ref/i32 during c = h
+                return 0
+            """,
+            string.Empty
+        },
+        // ob2r (valid, SPEC 7.7.4, 10.7, 15.3.7): ob2v's h returned as f's result.
+        {
+            "ob2r",
+            """
+            func h(b: ref/i32, u: (ref/i32 during b) -> i32) -> i32 => 0
+
+            func f(c: ref/i32, d: ref/i32) -> (ref/i32 during d, (ref/i32 during c) -> i32) -> i32
+                origin d outlives c
+                return h
+            """,
+            string.Empty
+        },
+        // ob4v (valid, SPEC 10.7, 3.8, 15.3.7): ob2v with the nested input three Function levels deep.
+        {
+            "ob4v",
+            """
+            func h(b: ref/i32, u: (((ref/i32 during b) -> i32) -> i32) -> i32) -> i32 => 0
+
+            func f(c: ref/i32, d: ref/i32) -> i32
+                origin d outlives c
+                let k: (ref/i32 during d, (((ref/i32 during c) -> i32) -> i32) -> i32) -> i32 = h
+                return 0
+            """,
+            string.Empty
+        },
+        // ob2h (valid, SPEC 10.7, 3.8, 15.3.7): ob2v with b at h's slot 1 and c at f's slot 1.
+        {
+            "ob2h",
+            """
+            func h(x: i32, b: ref/i32, u: (ref/i32 during b) -> i32) -> i32 => 0
+
+            func f(d: ref/i32, c: ref/i32) -> i32
+                origin d outlives c
+                let k: (i32, ref/i32 during d, (ref/i32 during c) -> i32) -> i32 = h
+                return 0
+            """,
+            string.Empty
+        },
+        // ob2a (valid, SPEC 7.7.4, 10.7, 15.3.7): ob2v's h passed as an argument of that Function Type.
+        {
+            "ob2a",
+            """
+            func h(b: ref/i32, u: (ref/i32 during b) -> i32) -> i32 => 0
+
+            func take(c: ref/i32, d: ref/i32, k: (ref/i32 during d, (ref/i32 during c) -> i32) -> i32) -> i32
+                origin d outlives c
+                return 0
+
+            func f(c: ref/i32, d: ref/i32) -> i32
+                origin d outlives c
+                return take(c, d, h)
+            """,
+            string.Empty
+        },
+        // ob2c (valid, SPEC 15.6.4, 10.7): ob2v as a direct call: b := d.
+        {
+            "ob2c",
+            """
+            func h(b: ref/i32, u: (ref/i32 during b) -> i32) -> i32 => 0
+
+            func f(c: ref/i32, d: ref/i32, g: (ref/i32 during c) -> i32) -> i32
+                origin d outlives c
+                return h(d, g@move)
+            """,
+            string.Empty
+        },
+        // ob2i (invalid, SPEC 10.7, 3.8): ob2v without `origin d outlives c` (the record: the 2nd parameter requires d outlives c).
+        {
+            "ob2i",
+            """
+            func h(b: ref/i32, u: (ref/i32 during b) -> i32) -> i32 => 0
+
+            func f(c: ref/i32, d: ref/i32) -> i32
+                let k: (ref/i32 during d, (ref/i32 during c) -> i32) -> i32 = h
+                return 0
+            """,
+            "UnprovenOriginContract_Kd h"
+        },
+        // t11x (valid, SPEC 10.7, 3.8): a result Function Type's input at `static`: both of b's bounds are upper bounds, so b takes the first input's Origin (PLAN G913's t11v).
+        {
+            "t11x",
+            """
+            func h(b: ref/i32, u: i32) -> (ref/i32 during b) -> i32 => $abort("no")
+
+            func f() -> i32
+                let k: (ref/i32, i32) -> (ref/i32 during static) -> i32 = h
+                return 0
+            """,
+            string.Empty
+        },
+        // t11v (valid, SPEC 10.7, 3.8, 15.2.3): t02i's shape with (ref/i32 during b, ref/i32) -> i32 and the required result (ref/i32 during static, ref/i32) -> i32.
+        {
+            "t11v",
+            """
+            func h(b: ref/i32, u: (ref/i32 during b, ref/i32) -> i32) -> (ref/i32 during b, ref/i32) -> i32 => u@move
+
+            func f() -> i32
+                let k: (ref/i32, (ref/i32, ref/i32) -> i32) -> (ref/i32 during static, ref/i32) -> i32 = h
+                return 0
+            """,
+            string.Empty
+        },
+        // rv1v (valid, SPEC 10.7, 3.8, 15.3.7; the owner's O-348 (a), O-350 (a)): upper bounds d and e (`d outlives e`), lower bound c (`e outlives c`): the meet of the upper bounds is a choice.
+        {
+            "rv1v",
+            """
+            func h(b: ref/i32, x: ref/i32 during b, u: (ref/i32 during b) -> i32) -> i32 => 0
+
+            func f(c: ref/i32, d: ref/i32, e: ref/i32) -> i32
+                origin d outlives e
+                origin e outlives c
+                let k: (ref/i32 during d, ref/i32 during e, (ref/i32 during c) -> i32) -> i32 = h
+                return 0
+            """,
+            string.Empty
+        },
+        // rv2v (valid, SPEC 10.7, 3.8, 15.3.7): rv1v with k's first two inputs swapped: the same verdict, whatever the order.
+        {
+            "rv2v",
+            """
+            func h(b: ref/i32, x: ref/i32 during b, u: (ref/i32 during b) -> i32) -> i32 => 0
+
+            func f(c: ref/i32, d: ref/i32, e: ref/i32) -> i32
+                origin d outlives e
+                origin e outlives c
+                let k: (ref/i32 during e, ref/i32 during d, (ref/i32 during c) -> i32) -> i32 = h
+                return 0
+            """,
+            string.Empty
+        },
+        // rv3v (valid, SPEC 10.7, 3.8, 15.3.7): incomparable upper bounds d and e, both outliving the lower bound c.
+        {
+            "rv3v",
+            """
+            func h(b: ref/i32, x: ref/i32 during b, u: (ref/i32 during b) -> i32) -> i32 => 0
+
+            func f(c: ref/i32, d: ref/i32, e: ref/i32) -> i32
+                origin d outlives c
+                origin e outlives c
+                let k: (ref/i32 during d, ref/i32 during e, (ref/i32 during c) -> i32) -> i32 = h
+                return 0
+            """,
+            string.Empty
+        },
+        // rv5i (invalid, SPEC 10.7, 3.8, 15.3.6): rv3v without `origin e outlives c`: no Origin under d and e and over c (the record: the 3rd parameter's bound).
+        {
+            "rv5i",
+            """
+            func h(b: ref/i32, x: ref/i32 during b, u: (ref/i32 during b) -> i32) -> i32 => 0
+
+            func f(c: ref/i32, d: ref/i32, e: ref/i32) -> i32
+                origin d outlives c
+                let k: (ref/i32 during d, ref/i32 during e, (ref/i32 during c) -> i32) -> i32 = h
+                return 0
+            """,
+            "UnprovenOriginContract_Kd h"
+        },
+        // rv10v (valid, SPEC 10.8, 10.5.2, 10.7, 15.3.7): rv1v's Types at a generic call's argument.
+        {
+            "rv10v",
+            """
+            func h(b: ref/i32, x: ref/i32 during b, u: (ref/i32 during b) -> i32) -> i32 => 0
+
+            func take<T>(c: ref/i32, d: ref/i32, e: ref/i32, k: (ref/i32 during d, ref/i32 during e, (ref/i32 during c) -> i32) -> T) -> i32
+                origin d outlives e
+                origin e outlives c
+                return 0
+
+            func f(c: ref/i32, d: ref/i32, e: ref/i32) -> i32
+                origin d outlives e
+                origin e outlives c
+                return take(c, d, e, h)
+            """,
+            string.Empty
+        },
+        // rv18v (valid, SPEC 10.7, 3.8, 15.3.7): two lower bounds, c (u's input) and d (the result), no upper bound, `d outlives c`: the strongest lower bound d.
+        {
+            "rv18v",
+            """
+            func h(u: (ref/i32 during b) -> i32) -> ref/i32 during b => $abort("no")
+
+            func f(c: ref/i32, d: ref/i32) -> i32
+                origin d outlives c
+                let k: ((ref/i32 during c) -> i32) -> ref/i32 during d = h
+                return 0
+            """,
+            string.Empty
+        },
+        // rv18u (unsettled: SPEC 15.3.6 "no candidate" against 15.3.7 with b := static): rv18v without the clause: no lower bound outlives the other, so b has no representative; the row pins the failing pair's record.
+        {
+            "rv18u",
+            """
+            func h(u: (ref/i32 during b) -> i32) -> ref/i32 during b => $abort("no")
+
+            func f(c: ref/i32, d: ref/i32) -> i32
+                let k: ((ref/i32 during c) -> i32) -> ref/i32 during d = h
+                return 0
+            """,
+            "UnprovenOriginContract_Kd h"
+        },
+        // rv14u (unsettled, as rv18u): an Origin named only by the result at two incomparable Origins.
+        {
+            "rv14u",
+            """
+            func h(x: i32) -> (ref/i32 during b, ref/i32 during b) => $abort("no")
+
+            func f(c: ref/i32, d: ref/i32) -> i32
+                let k: (i32) -> (ref/i32 during c, ref/i32 during d) = h
+                return 0
+            """,
+            "UnprovenOriginContract_Kd h"
+        },
+        // rv17v (valid, SPEC 15.3.6, 15.6.5): rv14u's h called: b has no candidate, so in a body it is a local region whose chains are not Refuted.
+        {
+            "rv17v",
+            """
+            func h(x: i32) -> (ref/i32 during b, ref/i32 during b) => $abort("no")
+
+            func f(c: ref/i32, d: ref/i32) -> i32
+                let r: (ref/i32 during c, ref/i32 during d) = h(1)
+                return 0
+            """,
+            string.Empty
+        },
+        // mo3a (valid, SPEC 15.3.7, 15.2.2; O-350 (a)): three incomparable upper bounds d, e, g, each outliving the lower bound c: their meet.
+        {
+            "mo3a",
+            """
+            func h(b: ref/i32, x: ref/i32 during b, y: ref/i32 during b, u: (ref/i32 during b) -> i32) -> i32 => 0
+
+            func f(c: ref/i32, d: ref/i32, e: ref/i32, g: ref/i32) -> i32
+                origin d outlives c
+                origin e outlives c
+                origin g outlives c
+                let k: (ref/i32 during d, ref/i32 during e, ref/i32 during g, (ref/i32 during c) -> i32) -> i32 = h
+                return 0
+            """,
+            string.Empty
+        },
+        // mo3b (valid, SPEC 15.3.7): mo3a with k's inputs written g, d, e.
+        {
+            "mo3b",
+            """
+            func h(b: ref/i32, x: ref/i32 during b, y: ref/i32 during b, u: (ref/i32 during b) -> i32) -> i32 => 0
+
+            func f(c: ref/i32, d: ref/i32, e: ref/i32, g: ref/i32) -> i32
+                origin d outlives c
+                origin e outlives c
+                origin g outlives c
+                let k: (ref/i32 during g, ref/i32 during d, ref/i32 during e, (ref/i32 during c) -> i32) -> i32 = h
+                return 0
+            """,
+            string.Empty
+        },
+        // mo3c (valid, SPEC 15.3.7): mo3a with the nested input first in h and k.
+        {
+            "mo3c",
+            """
+            func h(u: (ref/i32 during b) -> i32, b: ref/i32, x: ref/i32 during b, y: ref/i32 during b) -> i32 => 0
+
+            func f(c: ref/i32, d: ref/i32, e: ref/i32, g: ref/i32) -> i32
+                origin d outlives c
+                origin e outlives c
+                origin g outlives c
+                let k: ((ref/i32 during c) -> i32, ref/i32 during d, ref/i32 during e, ref/i32 during g) -> i32 = h
+                return 0
+            """,
+            string.Empty
+        },
+        // mo3i (invalid, SPEC 15.3.7): mo3a without `origin g outlives c` (the record: the 4th parameter requires (d and e and g) outlives c).
+        {
+            "mo3i",
+            """
+            func h(b: ref/i32, x: ref/i32 during b, y: ref/i32 during b, u: (ref/i32 during b) -> i32) -> i32 => 0
+
+            func f(c: ref/i32, d: ref/i32, e: ref/i32, g: ref/i32) -> i32
+                origin d outlives c
+                origin e outlives c
+                let k: (ref/i32 during d, ref/i32 during e, ref/i32 during g, (ref/i32 during c) -> i32) -> i32 = h
+                return 0
+            """,
+            "UnprovenOriginContract_Kd h"
+        },
+        // mo2s (valid, SPEC 15.3.7): rv3v with h's inputs swapped.
+        {
+            "mo2s",
+            """
+            func h(x: ref/i32 during b, b: ref/i32, u: (ref/i32 during b) -> i32) -> i32 => 0
+
+            func f(c: ref/i32, d: ref/i32, e: ref/i32) -> i32
+                origin d outlives c
+                origin e outlives c
+                let k: (ref/i32 during d, ref/i32 during e, (ref/i32 during c) -> i32) -> i32 = h
+                return 0
+            """,
+            string.Empty
+        },
+        // meq1 (valid, SPEC 15.3.7, 15.3.5): an equality partner c (`uniq/`) beside the upper bounds d and e, each outliving c.
+        {
+            "meq1",
+            """
+            func h(b: ref/i32, x: ref/i32 during b, u: uniq/((ref/i32 during b) -> i32)) -> i32 => 0
+
+            func f(c: ref/i32, d: ref/i32, e: ref/i32) -> i32
+                origin d outlives c
+                origin e outlives c
+                let k: (ref/i32 during d, ref/i32 during e, uniq/((ref/i32 during c) -> i32)) -> i32 = h
+                return 0
+            """,
+            string.Empty
+        },
+        // meq2 (valid, SPEC 15.3.7): meq1 with the `uniq/` input first.
+        {
+            "meq2",
+            """
+            func h(u: uniq/((ref/i32 during b) -> i32), b: ref/i32, x: ref/i32 during b) -> i32 => 0
+
+            func f(c: ref/i32, d: ref/i32, e: ref/i32) -> i32
+                origin d outlives c
+                origin e outlives c
+                let k: (uniq/((ref/i32 during c) -> i32), ref/i32 during d, ref/i32 during e) -> i32 = h
+                return 0
+            """,
+            string.Empty
+        },
+        // meqi (invalid, SPEC 15.3.7): meq1 without `origin e outlives c` (the record: the 2nd parameter requires e outlives c).
+        {
+            "meqi",
+            """
+            func h(b: ref/i32, x: ref/i32 during b, u: uniq/((ref/i32 during b) -> i32)) -> i32 => 0
+
+            func f(c: ref/i32, d: ref/i32, e: ref/i32) -> i32
+                origin d outlives c
+                let k: (ref/i32 during d, ref/i32 during e, uniq/((ref/i32 during c) -> i32)) -> i32 = h
+                return 0
+            """,
+            "UnprovenOriginContract_Kd h"
+        },
+        // rv19v (valid, SPEC 10.7, 3.8, 15.3.7; O-348 (a)): b introduced in x's meet `(b and e)`, lower bounds c (u) and d (w), `d outlives c`: the strongest lower bound d.
+        {
+            "rv19v",
+            """
+            func h(e: ref/i32, x: ref/i32 during (b and e), u: (ref/i32 during b) -> i32, w: (ref/i32 during b) -> i32) -> i32 => 0
+
+            func f(c: ref/i32, d: ref/i32, g: ref/i32) -> i32
+                origin d outlives c
+                let k: (ref/i32 during g, ref/i32 during g, (ref/i32 during c) -> i32, (ref/i32 during d) -> i32) -> i32 = h
+                return 0
+            """,
+            string.Empty
+        },
+        // rv19u (unsettled: SPEC 15.3.6 "no candidate" against 15.3.7 with b := static): rv19v without the clause: b, open inside the meet, fails at its incomparable lower pair (never InternalInvariant_Kd).
+        {
+            "rv19u",
+            """
+            func h(e: ref/i32, x: ref/i32 during (b and e), u: (ref/i32 during b) -> i32, w: (ref/i32 during b) -> i32) -> i32 => 0
+
+            func f(c: ref/i32, d: ref/i32, g: ref/i32) -> i32
+                let k: (ref/i32 during g, ref/i32 during g, (ref/i32 during c) -> i32, (ref/i32 during d) -> i32) -> i32 = h
+                return 0
+            """,
+            "UnprovenOriginContract_Kd h"
+        },
+        // n4j (invalid, SPEC 10.7, 8.10, 3.8; PLAN G913): n4i with b at slot 1.
+        {
+            "n4j",
+            """
+            func h(x: i32, b: ref/i32, u: (((ref/i32 during b) -> i32) -> i32) -> i32) -> (((ref/i32 during b) -> i32) -> i32) -> i32 => u@move
+
+            func f() -> i32
+                let k: (i32, ref/i32, (((ref/i32) -> i32) -> i32) -> i32) -> (((ref/i32) -> i32) -> i32) -> i32 = h
+                return 0
+            """,
+            "UnprovenOriginContract_Kd h"
+        },
+        // b0v (valid, SPEC 10.7, 3.8, 8.10; PLAN G913): l0v with the outer per-call Origin at slot 1 (the nested fixed input at index 0: no slot coincidence).
+        {
+            "b0v",
+            """
+            func h(x: i32, b: ref/i32, u: (ref/i32 during b) -> i32) -> i32 => 0
+
+            func f() -> i32
+                let k: (i32, ref/i32, (ref/i32) -> i32) -> i32 = h
+                return 0
+            """,
+            string.Empty
+        },
+        // b1v (valid, SPEC 10.7, 3.8, 8.10; PLAN G913): b0v under ref/.
+        {
+            "b1v",
+            """
+            func h(x: i32, b: ref/i32, u: ref/((ref/i32 during b) -> i32)) -> i32 => 0
+
+            func f() -> i32
+                let k: (i32, ref/i32, ref/((ref/i32) -> i32)) -> i32 = h
+                return 0
+            """,
+            string.Empty
+        },
+        // m0v (valid, SPEC 10.7, 15.3.5, 8.10; PLAN G913): a nested Function Type with its own per-call input AND a fixed during b input, uniq/, b fixed at c.
+        {
+            "m0v",
+            """
+            func h(x: ref/i32, b: ref/i32, u: uniq/((ref/i32, ref/i32 during b) -> i32)) -> i32 => 0
+
+            func f(c: ref/i32) -> i32
+                let k: (ref/i32, ref/i32 during c, uniq/((ref/i32, ref/i32 during c) -> i32)) -> i32 = h
+                return 0
+            """,
+            string.Empty
+        },
+        // m1v (valid, SPEC 10.7, 8.10; PLAN G913): MX(b) as the result, no invariant layer, b fixed at c.
+        {
+            "m1v",
+            """
+            func h(x: ref/i32, b: ref/i32, u: (ref/i32, ref/i32 during b) -> i32) -> (ref/i32, ref/i32 during b) -> i32 => u@move
+
+            func f(c: ref/i32) -> i32
+                let k: (ref/i32, ref/i32 during c, (ref/i32, ref/i32 during c) -> i32) -> (ref/i32, ref/i32 during c) -> i32 = h
+                return 0
+            """,
+            string.Empty
+        },
+        // m2v (valid, SPEC 10.7, 8.10; PLAN G913): MX-like nested Type, own input at 0, fixed during b at 1, b at the outer slot 0 (index mismatch), b fixed at c, no invariant layer.
+        {
+            "m2v",
+            """
+            func h(b: ref/i32, x: ref/i32, u: (ref/i32, ref/i32 during b) -> i32) -> i32 => 0
+
+            func f(c: ref/i32) -> i32
+                let k: (ref/i32 during c, ref/i32, (ref/i32, ref/i32 during c) -> i32) -> i32 = h
+                return 0
+            """,
+            string.Empty
+        },
+        // m3v (valid, SPEC 10.7, 8.10; PLAN G913): nested (ref/i32 during b, ref/i32) -> i32 (fixed at 0, own at 1), b at the outer slot 1, b fixed at c.
+        {
+            "m3v",
+            """
+            func h(x: ref/i32, b: ref/i32, u: (ref/i32 during b, ref/i32) -> i32) -> i32 => 0
+
+            func f(c: ref/i32) -> i32
+                let k: (ref/i32, ref/i32 during c, (ref/i32 during c, ref/i32) -> i32) -> i32 = h
+                return 0
+            """,
+            string.Empty
+        },
+        // s5v (valid, SPEC 10.7, 15.3.5; PLAN G913): two levels, the valid twin at c.
+        {
+            "s5v",
+            """
+            func h(b: ref/i32, u: uniq/((uniq/((ref/i32 during b) -> i32)) -> i32)) -> i32 => 0
+
+            func f(c: ref/i32) -> i32
+                let k: (ref/i32 during c, uniq/((uniq/((ref/i32 during c) -> i32)) -> i32)) -> i32 = h
+                return 0
+            """,
+            string.Empty
+        },
+        // q1i0 (invalid, SPEC 10.7, 8.10, 3.8; PLAN G913): parameter, d = 1, b at slot 0: u: (FX(b)) -> i32 against (PC) -> i32.
+        {
+            "q1i0",
+            """
+            func h(b: ref/i32, u: ((ref/i32 during b) -> i32) -> i32) -> i32 => 0
+
+            func f() -> i32
+                let k: (ref/i32, ((ref/i32) -> i32) -> i32) -> i32 = h
+                return 0
+            """,
+            "UnprovenOriginContract_Kd h"
+        },
+        // q1i1 (invalid, SPEC 10.7, 8.10, 3.8; PLAN G913): q1i0 with b at slot 1.
+        {
+            "q1i1",
+            """
+            func h(x: i32, b: ref/i32, u: ((ref/i32 during b) -> i32) -> i32) -> i32 => 0
+
+            func f() -> i32
+                let k: (i32, ref/i32, ((ref/i32) -> i32) -> i32) -> i32 = h
+                return 0
+            """,
+            "UnprovenOriginContract_Kd h"
+        },
+        // q1v1 (valid, SPEC 10.7, 3.8; PLAN G913): q1i1 with both sides fixed at c (b := c).
+        {
+            "q1v1",
+            """
+            func h(x: i32, b: ref/i32, u: ((ref/i32 during b) -> i32) -> i32) -> i32 => 0
+
+            func f(c: ref/i32) -> i32
+                let k: (i32, ref/i32 during c, ((ref/i32 during c) -> i32) -> i32) -> i32 = h
+                return 0
+            """,
+            string.Empty
+        },
+        // q3v1 (valid, SPEC 10.7, 3.8; PLAN G913): n3j with both sides fixed at c.
+        {
+            "q3v1",
+            """
+            func h(x: i32, b: ref/i32, u: ((((ref/i32 during b) -> i32) -> i32) -> i32) -> i32) -> i32 => 0
+
+            func f(c: ref/i32) -> i32
+                let k: (i32, ref/i32 during c, ((((ref/i32 during c) -> i32) -> i32) -> i32) -> i32) -> i32 = h
+                return 0
+            """,
+            string.Empty
+        },
+        // q4v1 (valid, SPEC 10.7, 3.8; PLAN G913): n4j (result d = 2, parameter d = 2) with both sides fixed at c.
+        {
+            "q4v1",
+            """
+            func h(x: i32, b: ref/i32, u: (((ref/i32 during b) -> i32) -> i32) -> i32) -> (((ref/i32 during b) -> i32) -> i32) -> i32 => u@move
+
+            func f(c: ref/i32) -> i32
+                let k: (i32, ref/i32 during c, (((ref/i32 during c) -> i32) -> i32) -> i32) -> (((ref/i32 during c) -> i32) -> i32) -> i32 = h
+                return 0
+            """,
+            string.Empty
+        },
+        // q6i (invalid, SPEC 10.7, 3.8, 8.10; PLAN G913): the reverse order: h's nested input is its own (u: PC), O's fixed (FX(c)), d = 0, c at f's slot 0.
+        {
+            "q6i",
+            """
+            func h(b: ref/i32, u: (ref/i32) -> i32) -> i32 => 0
+
+            func f(c: ref/i32) -> i32
+                let k: (ref/i32 during c, (ref/i32 during c) -> i32) -> i32 = h
+                return 0
+            """,
+            "UnprovenOriginContract_Kd h"
+        },
+        // q6j (invalid, SPEC 10.7, 3.8, 8.10; PLAN G913): q6i with c at f's slot 1.
+        {
+            "q6j",
+            """
+            func h(b: ref/i32, u: (ref/i32) -> i32) -> i32 => 0
+
+            func f(x: i32, c: ref/i32) -> i32
+                let k: (ref/i32 during c, (ref/i32 during c) -> i32) -> i32 = h
+                return 0
+            """,
+            "UnprovenOriginContract_Kd h"
+        },
+        // q6v (valid, SPEC 10.7, 3.8, 8.10; PLAN G913): the reverse order at d = 1: u: (PC) -> i32 against (FX(c)) -> i32, c at f's slot 0.
+        {
+            "q6v",
+            """
+            func h(b: ref/i32, u: ((ref/i32) -> i32) -> i32) -> i32 => 0
+
+            func f(c: ref/i32) -> i32
+                let k: (ref/i32 during c, ((ref/i32 during c) -> i32) -> i32) -> i32 = h
+                return 0
+            """,
+            string.Empty
+        },
+        // q6w (valid, SPEC 10.7, 3.8, 8.10; PLAN G913): q6v with c at f's slot 1.
+        {
+            "q6w",
+            """
+            func h(b: ref/i32, u: ((ref/i32) -> i32) -> i32) -> i32 => 0
+
+            func f(x: i32, c: ref/i32) -> i32
+                let k: (ref/i32 during c, ((ref/i32 during c) -> i32) -> i32) -> i32 = h
+                return 0
+            """,
+            string.Empty
+        },
+        // q7i (invalid, SPEC 15.6.4, 10.7, 3.8; PLAN G913): a direct call h(1, c, k@move), h's u at d = 3 with b at slot 1, k's Type the PC form.
+        {
+            "q7i",
+            """
+            func h(x: i32, b: ref/i32, u: ((((ref/i32 during b) -> i32) -> i32) -> i32) -> i32) -> i32 => 0
+
+            func f(c: ref/i32, k: ((((ref/i32) -> i32) -> i32) -> i32) -> i32) -> i32 => h(1, c, k@move)
+            """,
+            "UnprovenOriginContract_Kd k@move"
+        },
+        // q7v (valid, SPEC 15.6.4, 10.7, 3.8; PLAN G913): the same call at d = 2.
+        {
+            "q7v",
+            """
+            func h(x: i32, b: ref/i32, u: (((ref/i32 during b) -> i32) -> i32) -> i32) -> i32 => 0
+
+            func f(c: ref/i32, k: (((ref/i32) -> i32) -> i32) -> i32) -> i32 => h(1, c, k@move)
+            """,
+            string.Empty
+        },
+        // q8v (valid, SPEC 10.8, 10.7, 3.8; PLAN G913): generic g<T>(k: (i32, ref/i32, T) -> i32), T written PC, given h with u: FX(b), b at slot 1 (e0v at slot 1).
+        {
+            "q8v",
+            """
+            func g<T>(k: (i32, ref/i32, T) -> i32) -> i32 => 0
+
+            func h(x: i32, b: ref/i32, u: (ref/i32 during b) -> i32) -> i32 => 0
+
+            func f() -> i32 => g<(ref/i32) -> i32>(h)
+            """,
+            string.Empty
+        },
+        // ra2v (valid, SPEC 10.7, 3.8, 8.10; PLAN G913): a mixed nested Type MX(b) = (ref/i32, ref/i32 during b) -> i32 at d = 2, b at slot 0: its own per-call input beside the solved Origin.
+        {
+            "ra2v",
+            """
+            func h(b: ref/i32, u: (((ref/i32, ref/i32 during b) -> i32) -> i32) -> i32) -> i32 => 0
+
+            func f() -> i32
+                let k: (ref/i32, (((ref/i32, ref/i32) -> i32) -> i32) -> i32) -> i32 = h
+                return 0
+            """,
+            string.Empty
+        },
+        // rm0w (valid, SPEC 15.4, 10.7, 3.8; PLAN G913): a result meet holding a nested own per-call Origin and the solved one: u: (ref/i32, ref/i32 during b) -> ref/i32, b at slot 1.
+        {
+            "rm0w",
+            """
+            func h(x: i32, b: ref/i32, u: (ref/i32, ref/i32 during b) -> ref/i32) -> i32 => 0
+
+            func f() -> i32
+                let k: (i32, ref/i32, (ref/i32, ref/i32) -> ref/i32) -> i32 = h
+                return 0
+            """,
+            string.Empty
+        },
+        // rg1j (invalid, SPEC 10.7, 8.10, 3.8, 10.8; PLAN G913): q1i1 as a generic implementation h<T>(x: T, ...) (T := i32).
+        {
+            "rg1j",
+            """
+            func h<T>(x: T, b: ref/i32, u: ((ref/i32 during b) -> i32) -> i32) -> i32 => 0
+
+            func f() -> i32
+                let k: (i32, ref/i32, ((ref/i32) -> i32) -> i32) -> i32 = h
+                return 0
+            """,
+            "UnprovenOriginContract_Kd h"
+        },
+        // rg2w (valid, SPEC 10.7, 8.10, 3.8, 10.8; PLAN G913): rg1j at d = 2.
+        {
+            "rg2w",
+            """
+            func h<T>(x: T, b: ref/i32, u: (((ref/i32 during b) -> i32) -> i32) -> i32) -> i32 => 0
+
+            func f() -> i32
+                let k: (i32, ref/i32, (((ref/i32) -> i32) -> i32) -> i32) -> i32 = h
+                return 0
+            """,
+            string.Empty
+        },
+        // rg3j (invalid, SPEC 10.7, 8.10, 3.8, 10.8; PLAN G913): n3j as a generic implementation, the nested Type over ref/T (T := i32).
+        {
+            "rg3j",
+            """
+            func h<T>(x: i32, b: ref/T, u: ((((ref/T during b) -> i32) -> i32) -> i32) -> i32) -> i32 => 0
+
+            func f() -> i32
+                let k: (i32, ref/i32, ((((ref/i32) -> i32) -> i32) -> i32) -> i32) -> i32 = h
+                return 0
+            """,
+            "UnprovenOriginContract_Kd h"
+        },
+        // ru4v (valid, SPEC 15.3.4, 10.7, 3.8; PLAN G913): o introduced by the result and named inside a nested Type at d = 2: bounded only at the result (o := c).
+        {
+            "ru4v",
+            """
+            func h(u: (((ref/i32 during o) -> i32) -> i32) -> i32) -> ref/i32 during o => $abort("no")
+
+            func f(c: ref/i32) -> i32
+                let k: ((((ref/i32) -> i32) -> i32) -> i32) -> ref/i32 during c = h
+                return 0
             """,
             string.Empty
         },

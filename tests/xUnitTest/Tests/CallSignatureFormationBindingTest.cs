@@ -95,6 +95,26 @@ public class CallSignatureFormationBindingTest
         }));
     }
 
+    // G949 S1-r2's rule (b) (the S1-r2 note's g6; DECISIONS BU-120): a SignatureVerdict demand before the gate (contractHeadersReady)
+    // forms the signature outside the query and counts its walk. An unannotated struct Field takes its initializer's Type (SPEC 6.6,
+    // 11.6), so the initializer's calls demand their callees' verdicts before the gate: `(1..^1).resolve(5)` those of `between`,
+    // `fromEnd` and `resolve`; `(1..4).tryResolve(10)` those of `between` and `tryResolve`. Both programs are valid (no record), and each
+    // makes one walk per pre-gate demand more than the control (`var r = 0`), today's walk count too.
+    [Theory]
+    [InlineData("var r = (1..^1).resolve(5)", 3)]
+    [InlineData("var o = (1..4).tryResolve(10)", 2)]
+    public void APreGateVerdictDemandFormsTheSignatureOutsideTheQuery(string field, int demands)
+    {
+        Assert.Equal(demands, Walks(field) - Walks("var r = 0"));
+
+        static int Walks(string field)
+        {
+            var c = MinimalEmissionTest.Analyze("struct S\n    " + field + "\n    public init() => ()\npublic func main() => ()\n");
+            Assert.True(c.Bind().IsComplete);
+            return c.Binding.SignatureWalkWork;
+        }
+    }
+
     private static InvocationKoto Call(Compilation c)
         => Assert.IsType<InvocationKoto>(c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "Consumer").Members.OfType<FunctionKoto>().Single(x => x.Name == "call").ExpressionBody);
 }
