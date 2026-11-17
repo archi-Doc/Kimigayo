@@ -144,6 +144,8 @@ public class DocumentationMarkdownParserTest
         Assert.False(MarkdownUnicode.IsPunctuation(0x1FAE9)); // Unassigned in 15.0.
         Assert.True(MarkdownUnicode.IsPunctuation(0x1FBCA)); // The Punctuation row's last scalar, and the one after it.
         Assert.False(MarkdownUnicode.IsPunctuation(0x1FBCB));
+        Assert.True(MarkdownUnicode.IsPunctuation(0x00F7)); // The Latin-1 map's last punctuation, and its last scalar.
+        Assert.False(MarkdownUnicode.IsPunctuation(0x00FF));
         Assert.True(MarkdownUnicode.IsWhitespace(0x2007));
         Assert.True(MarkdownUnicode.IsWhitespace(0x00A0)); // The Whitespace row's first range above ASCII, and its last.
         Assert.True(MarkdownUnicode.IsWhitespace(0x3000));
