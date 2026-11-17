@@ -176,6 +176,11 @@ public sealed partial class Binding
             return true;
         }
 
+        for (var i = 0; i < call.ArgumentNodes.Count; i++)
+        {
+            this.PrepareWaitingCases(call.ArgumentNodes[i], scope); // A run binds nothing (G812 ruling 123).
+        }
+
         var classBase = this.positionClasses.Count;
         var rests = this.RestsOnSplitCases(
             mark,
