@@ -142,9 +142,9 @@ public sealed partial class Binding
             return null;
         }
 
-        if (OwnAbstract(declared) is { } function)
+        if (Hides(declared))
         {
-            return (entry.Flags & HoldFlags.Raw) != 0 && !this.StatesWrites(function) ? null : declared;
+            return this.HiddenLayer(declared, entry) ? null : declared;
         }
 
         if (TryPairLayer(type, out _, out _))
@@ -155,6 +155,12 @@ public sealed partial class Binding
         return entry.Step is HoldStep.Shared or HoldStep.Exclusive && (entry.Flags & HoldFlags.Raw) == 0 ? this.BorrowReferent(declared, out _, out _)
             : DeclaredComponent(declared, type, 0);
     }
+
+    // SPEC 15.6.4, 5.7 Calls' last sentence: whether an entry is a raw layer the binding of an abstract Type of the walked function's
+    // own declaration holds, where the declared counterpart ends (SignaturePast): the holder it addresses is one the value carries the
+    // address of (the file's contract). An operation whose writes SPEC states keeps the Type there (StatesWrites).
+    private bool HiddenLayer(BoundType? declared, in Hold entry)
+        => (entry.Flags & HoldFlags.Raw) != 0 && OwnAbstract(declared) is { } function && !this.StatesWrites(function);
 
     // The declared counterparts of a run's parts by value, the one pairing (Parts, OwnParts; DECISIONS BU-113): the declared Type's entries
     // (Holdings) on retentionHeld after the run, in the run's order, where the declared Type has the instantiated one's constructor (Same)

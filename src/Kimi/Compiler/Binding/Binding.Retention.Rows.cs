@@ -783,8 +783,8 @@ public sealed partial class Binding
     // An output's record from the storages' kinds and pairs (Storages): its root's, the storages past it joined by Origin-erased Type, each
     // storage in one entry (an Origin-only difference between them is in their pairs, DECISIONS R4-M154, Revision 2), the Abstract one
     // where the walk met an abstract part or a handed callable's write keeps a row there (retentionFilled), and All, their join with every one of their pairs; every one untied where the output is; null
-    // where the call keeps nothing there. Read in the callee's terms, it names the callee (Kept) and whether a handed callable writes a
-    // kept Type the walk met (Handed, HandedTypes).
+    // where the call keeps nothing there. Read in the callee's terms, it names the callee (Kept) and which kept Types the walk met a
+    // handed callable writes (Handed, HandedTypes).
     private OutputRetention? Written(int output, bool untied)
     {
         var kinds = this.retentionKinds;
@@ -852,17 +852,28 @@ public sealed partial class Binding
         written.Clear();
         foreach (var kept in this.storageKept)
         {
-            for (var k = 0; HandedAt(this.retentionOwnHanded, this.retentionOwnCallables, k, out var callable); k++)
+            if (this.HandWrites(kept))
             {
-                if (callable is not null && this.Writes(callable, kept))
-                {
-                    written.Add(this.types.Erase(kept));
-                    break;
-                }
+                written.Add(this.types.Erase(kept));
             }
         }
 
         return written.Count == 0 ? [] : [.. written];
+    }
+
+    // Whether a callable the callee's declaration hands its body (retentionOwnHanded, retentionOwnCallables) writes a kept Type (Writes):
+    // OutputRetention.Handed's one test (HandedTypes).
+    private bool HandWrites(BoundType kept)
+    {
+        for (var k = 0; HandedAt(this.retentionOwnHanded, this.retentionOwnCallables, k, out var callable); k++)
+        {
+            if (callable is not null && this.Writes(callable, kept))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     // Whether a position's closure (marked `stamp`) reaches every layer of a source's path (RetentionSource.Path: the layers the premise
