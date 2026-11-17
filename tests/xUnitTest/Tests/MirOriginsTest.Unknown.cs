@@ -230,16 +230,16 @@ public sealed partial class MirOriginsTest
         Assert.DoesNotContain(parts, static x => x.StartsWith("(6@ref", StringComparison.Ordinal) && x.EndsWith("True", StringComparison.Ordinal));
     }
 
-    // D20 (R4-M15a): the arena's words are admitted by the analyses' one byte limit, 64 MiB; at the counts of the smallest body over it
-    // (65,536 inner components and 8,192 fixed sources) the stratum would skip the body with OwnershipStorageLimit_Kd. The largest test body
+    // D20 (R4-M15a): the arena's words are admitted by the analyses' one byte limit, 6/5 of 64 MiB (A1's sixth lane, the owner's O-342
+    // Q2 (a)); at the counts of the smallest body over it (78,643 inner components and 8,192 fixed sources) the stratum would skip the body with OwnershipStorageLimit_Kd. The largest test body
     // here needs about a thousand words (V16 (9) at N = 128), so no body binds within the test budget (2a0-D §10's shortfall).
     [Fact]
     public void TheArenaIsAdmittedByTheAnalysesLimit()
     {
-        Assert.True(MirDataflow.Within(8L * 1024 * 1024));
-        Assert.False(MirDataflow.Within((8L * 1024 * 1024) + 1));
-        Assert.True(MirDataflow.Within(TyCtxt.OriginChains.ArenaWords(65_535, 0, 8_192)));
-        Assert.False(MirDataflow.Within(TyCtxt.OriginChains.ArenaWords(65_536, 0, 8_192)));
+        Assert.True(MirDataflow.Within(64L * 1024 * 1024 * 6 / 5 / 8));
+        Assert.False(MirDataflow.Within((64L * 1024 * 1024 * 6 / 5 / 8) + 1));
+        Assert.True(MirDataflow.Within(TyCtxt.OriginChains.ArenaWords(78_642, 0, 8_192)));
+        Assert.False(MirDataflow.Within(TyCtxt.OriginChains.ArenaWords(78_643, 0, 8_192)));
         Assert.Equal(4, TyCtxt.OriginChains.ArenaWords(1, 3, 70));
     }
 

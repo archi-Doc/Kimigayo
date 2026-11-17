@@ -302,6 +302,35 @@ public sealed partial class MirDropTest
         });
     }
 
+    // SPEC 16.2-16.3, 14.10.3 (the owner's O-334 (a), O-342 Q1 (a)): a component no Place names has no path, so A2 has no row for it and
+    // destroys it by its parent's own bit, whether a construction left it unplaced (A1's Unplaced lane, which A2 never reads) or not. Against
+    // dev, whose construction records had rows: a check-only group (a5) and bodies that need a Never value (a1-a4, whose Drops follow
+    // the Never parameter's read, which ends its block: check-only groups too) lose a record's row or flag; a runnable Open group whose record came through a Never-form arm (a8) loses its record's flag, which equalled the parent's on
+    // every runtime path. A Tuple holding a Dictionary literal or a join operand, initialized on some paths and partly moved (ro1, ro5-ro8,
+    // the B1 fix's wrong-code shapes), keeps dev's group: its component follows the own bit, so it is destroyed only where the Tuple was.
+    [Theory]
+    [InlineData("func g1(x: Never) -> i32\n    let t: (ResA, ResB) = (ResA.init(1), x)\n    return 5\n", "g1", "drop _2 -> bb7 [keep]")]
+    [InlineData("func g2(x: Never) -> i32\n    let t: (ResA, ResB, ResA) = (ResA.init(1), x, ResA.init(3))\n    keep(t.0@move)\n    return 5\n", "g2", "drop _2 -> bb11 [open (.0 elide)]")]
+    [InlineData("func g3(x: Never) -> i32\n    let s: Array<ResB> = [ResB.init(1), x]\n    return 5\n", "g3", "drop _2 -> bb7 [keep]")]
+    [InlineData("func g4(x: Never) -> i32\n    let t: (ResA, (ResB, ResB)) = (ResA.init(1), (ResB.init(2), x))\n    keep(t.0@move)\n    return 5\n", "g4", "drop _2 -> bb12 [open (.0 elide)]")]
+    [InlineData("func g5(c: bool) -> i32\n    if c\n        fail()\n        let t: (ResA, ResB, ResA) = (ResA.init(1), fail(), ResA.init(3))\n        keep(t.0@move)\n    return 5\n", "g5", "drop _5 -> bb12 [open (.0 elide)]")]
+    [InlineData("func g6(c: bool) -> i32\n    if c\n        fail()\n        let s: Array<ResB> = [ResB.init(1), fail()]\n    return 5\n", "g6", "drop _5 -> bb8 [keep]")]
+    [InlineData("func g7(c: bool) -> i32\n    let t: (ResA, ResB, ResA) = (ResA.init(1), ResB.init(2), ResA.init(3))\n    keep(t.0@move)\n    return 5\n", "g7", "drop _2 -> bb12 [open (.0 elide)]")]
+    [InlineData("func g8(c: bool, d: bool) -> i32\n    var v: (ResA, ResB)\n    if d\n        v = if c => (ResA.init(1), (return 1)) else => (ResA.init(1), ResB.init(2))\n        keep(v.0@move)\n    return 5\n", "g8", "drop _3 -> bb11 [open f0 (.0 elide)] [clear f0]")]
+    [InlineData("func r1()\n    var i: i32 = 0\n    while i < 2\n        var t: (ResA, Dictionary<i32, ResB>)\n        if i == 0\n            t = (ResA.init(1), [1: ResB.init(2)])\n            keep(t.0@move)\n        i = i + 1\n", "r1", "[open f0 (.0 elide)]")]
+    [InlineData("func r5()\n    var i: i32 = 0\n    while i < 2\n        var t: (ResA, ResB)\n        if i == 0\n            t = (ResA.init(1), ResB.init(2))\n            keep(t.0@move)\n        i = i + 1\n", "r5", "[open f0 (.0 elide)]")]
+    [InlineData("func r7()\n    var i: i32 = 0\n    while i < 2\n        var t: (ResA, ResB)\n        if i == 0\n            t = (ResA.init(1), if i == 0 => ResB.init(2) else => ResB.init(3))\n            keep(t.0@move)\n        i = i + 1\n", "r7", "[open f0 (.0 elide)]")]
+    [InlineData("func r8()\n    var i: i32 = 0\n    while i < 2\n        var t: (ResA, Dictionary<i32, ResB>)\n        if i == 0\n            t = (ResA.init(1), if i == 0 => [1: ResB.init(2)] else => [1: ResB.init(3)])\n            keep(t.0@move)\n        i = i + 1\n", "r8", "[open f0 (.0 elide)]")]
+    public void AComponentNoPlaceNamesHasNoDropRow(string body, string name, string expected)
+    {
+        const string Records = "func fail() -> Never => $abort(\"no\")\nstruct ResA\n    public var v: i32\n    public init(v: i32) => self.v = v\n" +
+            "    drop => Console.writeLine(\"a\")\nstruct ResB\n    public var v: i32\n    public init(v: i32) => self.v = v\n" +
+            "    drop => Console.writeLine(\"b\")\nfunc keep(r: ResA) -> () => ()\n";
+        var lines = Lines(Records + body, name);
+        Assert.Contains(lines, x => x.Contains(expected, StringComparison.Ordinal));
+        Assert.DoesNotContain(lines, static x => x.Contains(".1 ", StringComparison.Ordinal)); // No row for the unnamed component.
+    }
+
     // PLAN G702, SPEC 16.3.2, 15.1.3: A2's walk of a group (MirDropTable.Destroyed) states what an Open Drop destroys, in destruction
     // order: a struct's Fields from the last, each by its child row (an Open Field its own level, a Flag Field whole, an Elide one no
     // step), a part without a row whole under the level's own bit, then the base; a fixed array's elements from the last, no Run above an

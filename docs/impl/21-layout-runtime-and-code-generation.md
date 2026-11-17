@@ -108,7 +108,7 @@ The names `_fltused`, `__chkstk`, `memcmp`, `memcpy`, `memmove` and `memset`, an
 ```kimi
 group Native
     #LibraryImport("observer", "inspect")
-    public func inspect(value: Option<ref/i64>, mode: i16) -> i32
+    public func inspect(value: Option<ref/i64 during a>, mode: i16) -> i32
 // C: int32_t inspect(const int64_t *value, int16_t mode);
 // Native.inspect(.None, 1) passes NULL.
 ```
