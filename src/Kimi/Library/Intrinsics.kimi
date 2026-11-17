@@ -4,8 +4,9 @@
 /// Loan lives, and `swap`'s two targets are disjoint (SPEC 15.7.2), so every take and placement meets the raw access
 /// conditions and the placement rule (SPEC 5.2, 5.2.1, 5.2.3). Callers are checked against SPEC 15.7, never these bodies.
 public group Intrinsics
-    /// Destroys the target's value in place, then moves `value` into it (SPEC 15.7.1). The destruction is the moved-out
-    /// value's: the discarded Take acts on the target's Place itself (SPEC 5.2.3).
+    /// Destroys the target's value in place, then moves `value` into it (SPEC 15.7.1).
+    ///
+    /// The discarded Take destroys the value on the target's Place itself (SPEC 5.2.3).
     #Lang("Replace")
     #CallerLocation
     public func replace<T>(target: uniq/T ! with => value: T) -> ()
