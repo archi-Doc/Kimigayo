@@ -64,6 +64,23 @@ public partial class ResultPremiseTest
     [InlineData("pc1", StaticClause + "func k(p: ref/i32) -> i32\n    origin p outlives static\n    let c = func [] (x: ref/i32) -> T during x => $abort(\"no\")\n    let t = c(p)\n    return 0\n", "Unsupported_Kd T during x")] // F-a
     [InlineData("esc1", StaticClause + "func k(p: ref/i32) -> i32\n    let v: i32 = 1\n    let r = v@ref\n    let c = func [] () -> T during r => $abort(\"no\")\n    return 0\n", "UnsatisfiedOriginRelation_Kd T during r")]
     [InlineData("r10l", AllClause + "func k(p: ref/i32) -> i32\n    let g: Option<(ref/i32) -> Q> = .None\n    return 0\n", "")]
+    // PLAN G962 C1 (SPEC 15.6.1, 15.3.3): a definition assumes its result Type well formed, its Types' own clauses included (each call
+    // proves them), so every reader of k's premises sees `p outlives static` from `T during p`: an anonymous function's written result
+    // (kr1; generic, passed to a call, in a method: kr1g, kr1n, kr1m; beside a returned `.None`: kr1b), a local and a Function Type
+    // annotation (kr1l, kr1f), the body's own fit and a call in it (kr1s, kr1q: PLAN G967's result half). A clause the result Type does
+    // not give stays the literal's record (kr1x, kr1y), and a call proves the clause (kr1i: the call's record alone).
+    [InlineData("kr1", StaticClause + "func k(p: ref/i32) -> T during p\n    let c = func [] () -> T during p => $abort(\"no\")\n    return $abort(\"no\")\n", "")]
+    [InlineData("kr1g", StaticClause + "func k<U>(p: ref/U) -> T during p\n    let c = func [] () -> T during p => $abort(\"no\")\n    return $abort(\"no\")\n", "")]
+    [InlineData("kr1n", StaticClause + "func keep<V>(v: V) -> i32 => 0\nfunc k(p: ref/i32) -> T during p\n    let n = keep(func [] () -> T during p => $abort(\"no\"))\n    return $abort(\"no\")\n", "")]
+    [InlineData("kr1m", StaticClause + "struct H\n    public func mk(self: ref/Self, p: ref/i32) -> T during p\n        let c = func [] () -> T during p => $abort(\"no\")\n        return $abort(\"no\")\n", "")]
+    [InlineData("kr1b", StaticClause + "func k(p: ref/i32) -> Option<T during p>\n    let c = func [] () -> T during p => $abort(\"no\")\n    return .None\n", "")]
+    [InlineData("kr1l", StaticClause + "func k(p: ref/i32) -> T during p\n    let o: Option<T during p> = .None\n    return $abort(\"no\")\n", "")]
+    [InlineData("kr1f", StaticClause + "func k(p: ref/i32) -> T during p\n    let g: Option<() -> T during p> = .None\n    return $abort(\"no\")\n", "")]
+    [InlineData("kr1s", StaticClause + "func k(p: ref/i32) -> T during p\n    let s: ref/i32 during static = p\n    return $abort(\"no\")\n", "")]
+    [InlineData("kr1q", StaticClause + "func mk(x: Option<ref/i32 during q>, y: ref/i32 during q) -> T during q => $abort(\"no\")\nfunc k(p: ref/i32) -> T during p\n    let t = mk(.None, p)\n    return t@move\n", "")]
+    [InlineData("kr1x", StaticClause + "func k(p: ref/i32, q: ref/i32) -> T during p\n    let c = func [] () -> T during q => $abort(\"no\")\n    return $abort(\"no\")\n", "UnprovenOriginRelation_Kd T during q")]
+    [InlineData("kr1y", StaticClause + AllClause + "func k(p: ref/i32) -> Q during p\n    let c = func [] () -> T during p => $abort(\"no\")\n    return $abort(\"no\")\n", "UnprovenOriginRelation_Kd T during p")]
+    [InlineData("kr1i", StaticClause + "func k(p: ref/i32) -> T during p\n    let c = func [] () -> T during p => $abort(\"no\")\n    return $abort(\"no\")\nfunc m(q: ref/i32) -> i32\n    let t = k(q)\n    return 0\n", "UnprovenConstraint_Kd k(q)")]
     public void ANestedResultIsJudgedWhereItIsWritten(string form, string body, string records)
         => OriginRelationDiagnosticTest.AssertRecords(form, body, records, null);
 
