@@ -117,7 +117,7 @@ internal sealed partial class MirBuilder
     // A local's value created, dropped with the scope at an index, before what the scope registered earlier, where its Type may need drop.
     private void Created(int local, int index)
     {
-        if (MirTypes.MayNeedDrop(this.body.Locals[local].Type, this.walked))
+        if (MirTypes.MayNeedDrop(compilation.Types, this.body.Locals[local].Type, this.walked))
         {
             this.Register(Cleanup.Drop, local, null, index);
         }
@@ -222,12 +222,12 @@ internal sealed partial class MirBuilder
     private void FieldCleanup(int local, in SourceInfo source)
     {
         var type = this.body.Locals[local].Type;
-        for (long rank = 0, count = MirTypes.LevelCount(type); rank < count; rank++)
+        for (long rank = 0, count = MirTypes.LevelCount(compilation.Types, type); rank < count; rank++)
         {
-            var (step, arg) = MirTypes.LevelPart(type, rank);
-            if (MirTypes.MayNeedDrop(MirBody.PartType(type, step, (int)arg), this.walked))
+            var (step, arg) = MirTypes.LevelPart(compilation.Types, type, rank);
+            if (MirTypes.MayNeedDrop(compilation.Types, MirBody.PartType(compilation.Types, type, step, (int)arg), this.walked))
             {
-                this.DropAt(this.body.Project(new(local), step, (int)arg), source);
+                this.DropAt(this.body.Project(compilation.Types, new(local), step, (int)arg), source);
             }
         }
     }

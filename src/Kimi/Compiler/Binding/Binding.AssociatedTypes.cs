@@ -399,7 +399,7 @@ public sealed partial class Binding
 
         var parameters = this.AssociatedParameters(associated.Declaration);
         var requirement = this.BindRequirement(clause.Right, projection, false, this.NodeScope(clause, scope));
-        if (parameters.Length != 0 && HasUnsupportedAssociatedIdentity(requirement))
+        if (parameters.Length != 0 && this.HasUnsupportedAssociatedIdentity(requirement))
         {
             this.Fail(clause, BindingFailure.Unsupported, true);
             return null;

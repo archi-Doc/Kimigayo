@@ -207,7 +207,7 @@ public sealed partial class Binding
                 formatting.Active = false;
             }
 
-            if (node is FunctionKoto test && TestDefinition.Marker(test) is { } marker && !TestDefinition.IsIncluded(test))
+            if (node is FunctionKoto test && TestDefinition.Marker(test) is { } marker && !TestDefinition.IsIncluded(binding.compilation, test))
             {
                 // Product lookup and analysis never visit the test's signature names or body.
                 test.BoundType = BoundType.Unit;
@@ -251,7 +251,7 @@ public sealed partial class Binding
 
             if (node is AttributeKoto { Kind: AttributeKind.Test } invalidTest)
             {
-                if (invalidTest.Parent is FunctionKoto testOwner && TestDefinition.IsIncluded(testOwner) && TestDefinition.IsValidSyntax(testOwner))
+                if (invalidTest.Parent is FunctionKoto testOwner && TestDefinition.IsIncluded(binding.compilation, testOwner) && TestDefinition.IsValidSyntax(testOwner))
                 {
                     invalidTest.BoundType = BoundType.Unit;
                     invalidTest.BindingState = BindingState.Resolved;

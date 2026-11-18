@@ -342,10 +342,10 @@ public sealed partial class Binding
             return;
         }
 
-        var declared = TyCtxt.Signature(target, null, -1, out var count);
+        var declared = this.types.Signature(target, null, -1, out var count);
         for (var i = 0; declared is not null && count == inputs.Length && i < count; i++)
         {
-            if (TyCtxt.Signature(target, null, i, out _) is not { } input)
+            if (this.types.Signature(target, null, i, out _) is not { } input)
             {
                 this.retentionDeclared.Clear();
                 return;

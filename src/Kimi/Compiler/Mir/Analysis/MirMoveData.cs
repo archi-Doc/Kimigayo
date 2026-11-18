@@ -1,7 +1,8 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 // Owns the move paths of one MIR body (SPEC 15.1.3; DECISIONS R4-M21).
-// Input: a validated body, its dataflow order (MirDataflow.Begin) and whether the body constructs its object (AdtDef.IsConstructor). Output:
+// Input: a validated body, its dataflow order (MirDataflow.Begin) and whether the body constructs its object (AdtDef.IsConstructor); the
+// programs' TyCtxt (MirAnalysis's), whose instances' stored Types the paths read. Output:
 // the paths numbered in pre-order, so a subtree is the range [path, End), each with its step from its parent, and the path of each Place.
 // A path is a local or a step from a path: Field, Base (one depth at a time), ConstIndex or Downcast, keyed by its parent, kind and
 // argument; a constructor's _0 has a child per Field with a stored Type, the Fields it places (MirBuilder.Stored; SPEC 23.1.2), and its
@@ -48,7 +49,8 @@ internal readonly record struct MirMovePath(int Local, int Parent, int End, bool
 /// <summary>The move paths of one body (SPEC 15.1.3, DECISIONS R4-M21), view-independent: <see cref="Build"/> collects them in one walk of
 /// the body's uses, and <see cref="Find"/> gives a Place's path and whether the Place is the path itself, a raw Place below it or a Place
 /// without a Move Path below it.</summary>
-internal sealed class MirMoveData
+/// <param name="types">The Type context of the programs, whose instances' stored Types the paths read.</param>
+internal sealed class MirMoveData(TyCtxt types)
 {
     /// <summary>The Place is its path.</summary>
     internal const int Direct = 0;
@@ -138,14 +140,14 @@ internal sealed class MirMoveData
             var self = body.Locals[0].Type;
             for (var i = 0; i < AdtDef.Count(self); i++)
             {
-                if (AdtDef.FieldType(self, i) is not null)
+                if (AdtDef.FieldType(types, self, i) is not null)
                 {
                     var field = this.Child(0, MirProjectionKind.Field, i);
                     (this.once[field], this.named[field]) = (AdtDef.PlacedOnce(self, i), true);
                 }
             }
 
-            if (AdtDef.Base(self) is not null)
+            if (AdtDef.Base(types, self) is not null)
             {
                 var layer = this.Child(0, MirProjectionKind.Base, 1); // Adding grows the arrays first.
                 this.named[layer] = true;
@@ -581,7 +583,7 @@ internal sealed class MirMoveData
         MirAggregateKind.Tuple => this.Child(path, MirProjectionKind.Field, i),
         MirAggregateKind.FixedArray or MirAggregateKind.Array => this.Child(path, MirProjectionKind.ConstIndex, i),
         _ when AdtDef.IsEnum(aggregate.Type) => this.Child(this.Child(path, MirProjectionKind.Downcast, aggregate.Arg), MirProjectionKind.Field, i),
-        _ when AdtDef.Base(aggregate.Type!) is not null => this.Child(path, i == 0 ? MirProjectionKind.Base : MirProjectionKind.Field, i == 0 ? 1 : i - 1),
+        _ when AdtDef.Base(types, aggregate.Type!) is not null => this.Child(path, i == 0 ? MirProjectionKind.Base : MirProjectionKind.Field, i == 0 ? 1 : i - 1),
         _ => this.Child(path, MirProjectionKind.Field, i),
     };
 

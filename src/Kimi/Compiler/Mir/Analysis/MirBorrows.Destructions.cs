@@ -103,7 +103,7 @@ internal sealed partial class MirBorrows
             var start = this.dropRows.Count;
             this.entered.Clear();
             var composer = new Composer(this);
-            MirTypes.Destruction(type, ref composer);
+            MirTypes.Destruction(types, type, ref composer);
             range = (start, this.dropRows.Count - start);
         }
 
@@ -126,7 +126,7 @@ internal sealed partial class MirBorrows
         {
             if (MirTypes.SealedPayload(type, types, definition) is { } payload)
             {
-                return MirTypes.Destruction(payload, ref composer, depth + 1);
+                return MirTypes.Destruction(types, payload, ref composer, depth + 1);
             }
 
             erased = type.Components[0];
@@ -135,7 +135,7 @@ internal sealed partial class MirBorrows
         {
             this.Work++;
             this.dropRows.Add(types.Retains(destructor, types.Synthesized(destructor, type, [], []), definition));
-            return MirTypes.Parts(type, ref composer, depth);
+            return MirTypes.Parts(types, type, ref composer, depth);
         }
 
         if (erased is not null)

@@ -280,7 +280,7 @@ public sealed partial class Binding
             case MemberAccessKoto member when !IsGetterResult(member):
                 next = member.Left;
                 return PathStep.Member;
-            case BinaryKoto part when ElementAccess.IsSyntax(this, part) && ElementAccess.TryType(part, out _, out _):
+            case BinaryKoto part when ElementAccess.IsSyntax(this, part) && ElementAccess.TryType(this, part, out _, out _):
                 next = part.Left;
                 return PathStep.InlinePart;
             case IdentifierNameKoto root when Receiver(root) is not null:
@@ -348,7 +348,7 @@ public sealed partial class Binding
         // static's `State.pair.0` as its `State.point.x`.
         if (node is MemberAccessKoto { Right: NumberLiteralKoto } or IndexKoto && node is BinaryKoto inline && ElementAccess.IsSyntax(this, inline) &&
             inline.Left.BoundType?.Kind is BoundTypeKind.Tuple or BoundTypeKind.FixedArray or BoundTypeKind.Array &&
-            ElementAccess.TryType(inline, out _, out _))
+            ElementAccess.TryType(this, inline, out _, out _))
         {
             return this.Writable(inline.Left) || ElementAccess.WritableRoot(this, inline.Left) is not null;
         }
@@ -518,7 +518,7 @@ public sealed partial class Binding
     {
         var unwrapped = KotoHelper.UnwrapParentheses(source);
         var root = unwrapped;
-        while (root is BinaryKoto part && !IsGetterResult(part) && ElementAccess.IsSyntax(this, part) && ElementAccess.TryType(part, out _, out _))
+        while (root is BinaryKoto part && !IsGetterResult(part) && ElementAccess.IsSyntax(this, part) && ElementAccess.TryType(this, part, out _, out _))
         {
             root = KotoHelper.UnwrapParentheses(part.Left);
         }
@@ -685,7 +685,7 @@ public sealed partial class Binding
             return true;
         }
 
-        if (source is BinaryKoto part && ElementAccess.IsSyntax(this, part) && ElementAccess.TryType(part, out _, out _))
+        if (source is BinaryKoto part && ElementAccess.IsSyntax(this, part) && ElementAccess.TryType(this, part, out _, out _))
         {
             return this.LendsPlace(part.Left, scope, exclusive, out staticRoot);
         }

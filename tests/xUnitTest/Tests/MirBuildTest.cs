@@ -143,7 +143,7 @@ public sealed partial class MirBuildTest(ITestOutputHelper output)
         {
             foreach (var body in new MirBuilder(c).Build(SyntaxTable.LibraryModule + 1).Bodies)
             {
-                var unmade = Unmade(body);
+                var unmade = Unmade(c.Types, body);
                 Assert.True(unmade is null, $"{name}: {body.Key.Decl?.Name}'s _{unmade} is never dropped");
             }
         }
@@ -721,7 +721,7 @@ public sealed partial class MirBuildTest(ITestOutputHelper output)
     }
 
     // The first temp of a body with storage of its own, of a Type that may need drop, written whole and never dropped, or null.
-    private static int? Unmade(MirBody body)
+    private static int? Unmade(TyCtxt types, MirBody body)
     {
         var (live, written, dropped) = (new HashSet<int>(), new HashSet<int>(), new HashSet<int>());
         foreach (var statement in body.Statements)
@@ -747,7 +747,7 @@ public sealed partial class MirBuildTest(ITestOutputHelper output)
         for (var local = 0; local < body.Locals.Length; local++)
         {
             if (body.Locals[local].Kind == MirLocalKind.Temp && live.Contains(local) && written.Contains(local) && !dropped.Contains(local) &&
-                MirTypes.MayNeedDrop(body.Locals[local].Type, []))
+                MirTypes.MayNeedDrop(types, body.Locals[local].Type, []))
             {
                 return local;
             }
@@ -841,7 +841,7 @@ public sealed partial class MirBuildTest(ITestOutputHelper output)
                 var (program, body) = (programs[i], bodies[i]);
                 work[i] = body.Blocks.Length + body.Statements.Length;
                 Assert.True(!body.HasOpaque && program.Records(MirRecordClass.Construction).Count() == 0 && program.Findings.Count == 0, $"{sizes[i]} groups");
-                var (flow, moves) = (new MirDataflow(new MirReach()), new MirMoveData());
+                var (flow, moves) = (new MirDataflow(new MirReach()), new MirMoveData(compilations[i].Types));
                 flow.Begin(body);
                 moves.Build(body, flow);
                 arena[i] = MirInitTest.ArenaWords(body, flow, moves);

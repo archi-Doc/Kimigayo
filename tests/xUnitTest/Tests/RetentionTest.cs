@@ -1461,7 +1461,7 @@ public sealed partial class RetentionTest
         var c = Bind(source);
         var drop = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(static x => x.IsDestructor).SymbolOf()!;
         var at = Function(c, "at").SymbolOf()!;
-        var layer = TyCtxt.Signature(at, null, 0, out _)!.Components[0];
+        var layer = c.Types.Signature(at, null, 0, out _)!.Components[0];
         Assert.Equal((declared, declared), (Show(c.Types.Retains(drop, null, null)), Declared(c, "flush")));
         Assert.Equal((instance, instance), (Show(c.Types.Retains(drop, c.Types.Synthesized(drop, layer, [], []), at)), Calls(c, "flush").Single()));
     }
@@ -1491,7 +1491,7 @@ public sealed partial class RetentionTest
         string[] expected = ["store 0: own {0 Chain}, reached {0 Chain} untied", "store 0: own {0 Chain}, reached {0 Chain} untied", "store 0: own {0 Content}, reached {0 Content}", string.Empty];
         Assert.Equal(expected, ValueCalls(c));
         var parts = new[] { "callWB", "callOWB", "callT", "callFn" }.Select(x => Function(c, x).SymbolOf()!)
-            .Select(static x => (Part: TyCtxt.Signature(x, null, 0, out _)!.Components[0], Definition: x)).ToArray();
+            .Select(x => (Part: c.Types.Signature(x, null, 0, out _)!.Components[0], Definition: x)).ToArray();
         Assert.Equal(expected, parts.Select(x => Show(c.Types.RetainsErasedDestruction(x.Part, x.Definition))));
         Assert.Same(c.Types.RetainsErasedDestruction(parts[2].Part, parts[2].Definition), c.Types.RetainsErasedDestruction(parts[2].Part, parts[2].Definition));
     }
@@ -1609,7 +1609,7 @@ public sealed partial class RetentionTest
 
                 var retention = value ? c.Types.Retains(call.CalleeType, call.DeclaredSignature, Definition(node))
                     : c.Types.Retains(callee, c.Types.SubstOf(call), Definition(node));
-                var count = value ? call.DeclaredSignature.Components[0].Components.Count : Slots(callee);
+                var count = value ? call.DeclaredSignature.Components[0].Components.Count : Slots(c.Types, callee);
                 Assert.True(
                     retention.IsLimit || (retention.Result.Kinds.Length == count &&
                         retention.Writes.ToArray().All(x => x.Output >= 0 && x.Output < count && x.Own.Kinds.Length == count && x.All.Kinds.Length == count)),
@@ -1685,9 +1685,9 @@ public sealed partial class RetentionTest
         Assert.True(calls.Length >= 4);
         var destructor = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(static x => x.IsDestructor);
         var drop = destructor.SymbolOf()!;
-        var writer = AdtDef.ReceiverType(destructor)!;
+        var writer = AdtDef.ReceiverType(c.Binding, destructor)!;
         var gen = Function(c, "gen").SymbolOf()!;
-        var part = TyCtxt.Signature(gen, null, 0, out _)!.Components[0];
+        var part = c.Types.Signature(gen, null, 0, out _)!.Components[0];
         Assert.Equal(0, AllocationMeasurement.Measure(() =>
         {
             c.Binding.Bind(BindingMode.Final);
@@ -1782,9 +1782,9 @@ public sealed partial class RetentionTest
     private static FunctionKoto Function(Compilation c, string name)
         => KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(x => x.Name == name);
 
-    private static int Slots(BindingSymbol function)
+    private static int Slots(TyCtxt types, BindingSymbol function)
     {
-        _ = TyCtxt.Signature(function, null, -1, out var count);
+        _ = types.Signature(function, null, -1, out var count);
         return count;
     }
 

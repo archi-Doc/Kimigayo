@@ -181,7 +181,7 @@ public sealed partial class Binding
         for (var i = start; !supplied && i < this.premiseRows.Count; i++)
         {
             supplied = this.premiseRows[i] is { Available: true, Clause: { Kind: ConstraintKind.Callable } clause } && clause.Mask == atom.Mask &&
-                SameCallableSignature(this.CallableContractType(clause.RequiredType!, scope), atom.RequiredType!);
+                this.SameCallableSignature(this.CallableContractType(clause.RequiredType!, scope), atom.RequiredType!);
         }
 
         this.premiseRows.RemoveRange(start, this.premiseRows.Count - start);

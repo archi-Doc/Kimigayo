@@ -35,7 +35,7 @@ public sealed partial class Binding
         for (var r = start; r < this.premiseRows.Count; r++)
         {
             if (this.premiseRows[r] is not { Available: true, Clause: { Kind: ConstraintKind.Callable } fact, Raw: { } raw, Stated: { } stated } ||
-                !SameCallableSignature(this.CallableContractType(fact.RequiredType!, scope), required) || !ReceiverCovers(fact.Mask, receiver))
+                !this.SameCallableSignature(this.CallableContractType(fact.RequiredType!, scope), required) || !ReceiverCovers(fact.Mask, receiver))
             {
                 continue;
             }

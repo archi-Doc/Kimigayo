@@ -65,11 +65,11 @@ internal sealed partial class ModuleCodegen
         }
 
         var function = this.imports[index].Decl;
-        var result = TyCtxt.Signature(function, null, -1, out var count)!;
+        var result = this.types.Signature(function, null, -1, out var count)!;
         this.Reserve(count);
         for (var slot = 0; slot < count; slot++)
         {
-            this.parameters[slot] = TyCtxt.Signature(function, null, slot, out _)!;
+            this.parameters[slot] = this.types.Signature(function, null, slot, out _)!;
         }
 
         var types = this.parameters.AsSpan(0, count);
