@@ -6,7 +6,8 @@ namespace Kimi.Compiler;
 
 // Function Types and their conversions (SPEC 7.7.4, 8.10, 10.7, 15.3.7, 15.6.4).
 // - Responsibility: a Function Type's syntax (BindFunctionType), which gives the Type its per-call binder (BoundType.Binder, the one
-//   answer to whose per-call inputs a Function Type's are); the shape of a signature's per-call inputs (SignatureOwner,
+//   answer to whose per-call inputs a Function Type's are); a nested signature's written result's formation, a Function Type's and an
+//   anonymous function's (FormNestedResult; SPEC 15.3.4, DECISIONS R4-M162); the shape of a signature's per-call inputs (SignatureOwner,
 //   InputOrigins); the erasure of a Closure or Function Item to a common
 //   Function Type (ErasesToFunction, and ErasureSignatureFits, its signature part that applicability reads); and the solved
 //   comparison of a named function's contract with a required signature (ContractFits).
@@ -355,6 +356,24 @@ public sealed partial class Binding
                 ? null : this.SubstituteStoredOrigins(type, function, origins.AsSpan(0, function.Origins.Count), inputs.AsSpan(0, inputCount));
     }
 
+    // SPEC 15.3.3, 15.3.4, 15.6.1 (DECISIONS R4-M162; the owner's O-397 (A), PLAN G962): a nested signature's written result, a Function
+    // Type's or an anonymous function's, is a Type of the declaration that contains it, formed where it is written: its Types' own clauses
+    // are obligations at that occurrence, under that declaration's premises and the signature's own well-formed inputs, for every choice
+    // of its per-call Origins (AddTypeClauseObligations forms a row only for a clause those premises do not entail). It is never a premise
+    // of a body and never proven by a call. The one entry of both: BindFunctionType, wherever a Function Type is bound (a Closure header's
+    // probe included; the obligation set keeps one), and an anonymous function's own written result once per binding of its header, at
+    // its commitment (BindClosureHeader) or at its failed fit (FailClosureHeader), never by a header probe (ClosureSignatureFits). The
+    // bound result passes through, also when there is no written result (`written` null) or its binding failed (null).
+    private BoundType? FormNestedResult(BoundType? result, Koto? written)
+    {
+        if (result is not null && written is not null)
+        {
+            this.AddTypeClauseObligations(result, written);
+        }
+
+        return result;
+    }
+
     private BoundType? BindFunctionType(FunctionTypeKoto function, BindingScope scope)
     {
         var tuple = function.Parameters as TupleTypeKoto;
@@ -379,15 +398,13 @@ public sealed partial class Binding
                 Complete(tuple, parameters);
             }
 
-            // SPEC 15.3.4, 15.6.1 (DECISIONS R4-M162): the result is a written Type of the enclosing declaration, so its Types' own
-            // clauses are obligations where it is written, under the enclosing premises and this signature's inputs; inputs add none.
-            var result = this.BindType(function.ReturnType, scope, new(TypePosition.Result, function));
+            // The result is formed where it is written (FormNestedResult); the inputs add no obligation here (R4-M137).
+            var result = this.FormNestedResult(this.BindType(function.ReturnType, scope, new(TypePosition.Result, function)), function.ReturnType);
             if (result is null)
             {
                 return null;
             }
 
-            this.AddTypeClauseObligations(result, function.ReturnType);
             return this.types.Intern(BoundTypeKind.Function, null, SemanticsKind.Owner, [parameters, result], binder: function);
         }
         finally

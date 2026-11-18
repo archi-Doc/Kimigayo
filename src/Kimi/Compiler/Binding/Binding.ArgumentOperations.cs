@@ -79,8 +79,12 @@ public sealed partial class Binding
     /// selects no candidate no other table holds it (a resolved call's is CallPlan.ReceiverOperation).</summary>
     /// <param name="use">The call or member access in the current binding pass.</param>
     /// <param name="operation">The selected operation; an Unknown proof is not permission to execute.</param>
-    /// <returns>Whether this pass selected an operation for the use.</returns>
-    public bool TryGetReceiverOperation(Koto use, out BoundArgumentOperation operation) => this.receiverOperations.TryGetValue(use, out operation);
+    /// <returns>Whether this pass selected an operation for the use; a node of the frozen library is refused (EnsurePassNode).</returns>
+    public bool TryGetReceiverOperation(Koto use, out BoundArgumentOperation operation)
+    {
+        EnsurePassNode(use, nameof(this.TryGetReceiverOperation));
+        return this.receiverOperations.TryGetValue(use, out operation);
+    }
 
     internal BoundType PreparedBorrowType(Koto source, BoundType parameter)
         => this.types.Rebuild(parameter, [parameter.Components[0]], this.PreparedOrigin(source), []);

@@ -130,6 +130,20 @@ public partial class DocumentationIntegrationTest(ITestOutputHelper output)
         Assert.Same(comment, Assert.Single(tree.Compilation.Binding.GetDocumentation(comment.Declaration!)));
     }
 
+    // GetDocumentation documents a declaration of its own compilation, whose module the compilation holds; another compilation's
+    // declaration, even of the same source, is rejected.
+    [Fact]
+    public void AnotherCompilationsDeclarationIsRejected()
+    {
+        const string Source = "/// d\npublic struct S";
+        var (tree, other) = (DocumentationCommentTest.Parse(Source), DocumentationCommentTest.Parse(Source));
+        Assert.True(tree.Compilation.Bind().IsComplete);
+        Assert.True(other.Compilation.Bind().IsComplete);
+        var comment = Assert.Single(Assert.Single(other.DocumentationSources).Comments);
+        Assert.Same(comment, Assert.Single(other.Compilation.Binding.GetDocumentation(comment.Declaration!, true)));
+        Assert.Throws<ArgumentException>(() => tree.Compilation.Binding.GetDocumentation(comment.Declaration!, true));
+    }
+
     [Fact]
     public void DocumentationDoesNotChangeBindingAnalysisLoweringOrEmission()
     {

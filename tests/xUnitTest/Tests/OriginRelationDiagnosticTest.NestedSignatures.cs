@@ -106,14 +106,16 @@ public partial class OriginRelationDiagnosticTest
     // G216 (a) T2: PLAN G277's (3) and (4) (e1c, G277 (2), is CallableOriginForwardingTest's U2.1 row). s4, decided by the owner
     // (2026-10-31, 「すべて推奨の内容でお願いします」, PLAN 7f3e61b1b): a written result Type's own clause is a body obligation (SPEC 15.6.1,
     // 15.3.2, 15.6.4 step 3), as n4u's, and G277 (3) is no defect; so the Closure body's `.None` keeps dev's record (s4u), and a call of it
-    // adds none (s4c; DECISIONS R4-M162: a nested signature's result is judged where it is written). h4: a call whose contextual `E.init()` needs q outlives r is valid
+    // adds none (s4c; DECISIONS R4-M162: a nested signature's result is judged where it is written). Since the owner's O-397 (A)
+    // (2026-11-17, PLAN G962) the written result `Option<T during q>` is also formed where it is written, as a Function Type's is
+    // (FormNestedResult), so each gains that record beside the body's: two checks of two occurrences (SPEC 23.1.2). h4: a call whose contextual `E.init()` needs q outlives r is valid
     // when the result is read while `long` lives (dev no longer reports G277 (4)'s Loan conflict). Its twin h4_n reads the result after
     // `short` ends: the call proves q outlives r for its instantiated Origins (SPEC 15.6.1, 15.6.4), so `short`'s Borrow must reach the
     // `return` through `keep`, which no choice of regions allows: the Loan conflict at `short` (SPEC 15.6.6; rejected since R6-check H5,
     // when the MIR decides acceptance). h6 declares the relation with `origin q outlives r`, and h9 assigns the result to another local.
     [Theory]
-    [InlineData("U2.1", "s4u", ClauseStruct + "func k(q: ref/i32) -> i32\n    let c = func [] () -> Option<T during q> => .None\n    return 0\n", "UnprovenConstraint_Kd .None")]
-    [InlineData("U2.3", "s4c", ClauseStruct + "func k(q: ref/i32) -> i32\n    let c = func [] () -> Option<T during q> => .None\n    let o = c()\n    return 0\n", "UnprovenConstraint_Kd .None")]
+    [InlineData("U2.1", "s4u", ClauseStruct + "func k(q: ref/i32) -> i32\n    let c = func [] () -> Option<T during q> => .None\n    return 0\n", "UnprovenConstraint_Kd .None; UnprovenOriginRelation_Kd Option<T during q>")]
+    [InlineData("U2.3", "s4c", ClauseStruct + "func k(q: ref/i32) -> i32\n    let c = func [] () -> Option<T during q> => .None\n    let o = c()\n    return 0\n", "UnprovenConstraint_Kd .None; UnprovenOriginRelation_Kd Option<T during q>")]
     [InlineData("U2.2", "h4", H4Head + "func ok(b: ref/i32) -> i32\n    let long = 1\n    let x = h4(long@ref, b, E.init())\n    return x@follow\n", "")]
     [InlineData("U2.2", "h4_n", H4Head + "func bad() -> i32\n    let long = 1\n    var keep = long@ref\n    if true\n        let short = 2\n        keep = h4(short@ref, keep, E.init())\n    return keep@follow\n", "ComparisonLoanConflict_Kd let short = 2")]
     [InlineData("U2.2", "h6", PickHead + "func bad() -> i32\n    let long = 1\n    var keep = long@ref\n    if true\n        let short = 2\n        keep = pick(short@ref, keep)\n    return keep@follow\n", "ComparisonLoanConflict_Kd let short = 2")]

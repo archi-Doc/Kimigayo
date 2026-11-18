@@ -11,7 +11,8 @@ namespace Kimi.Compiler;
 // OwnedConversionFact), chosen where the erasure decides (OwnedMember), at the converted value (DECISIONS BU-107). Before the capability
 // engine judges (an inferred Field's header), a subject no work judged is the located limit. A call's applicability reads the same
 // fact for its erased arguments at every argument position, a Tuple or array literal's elements included (ErasedArgumentsEnvironment,
-// SPEC 10.1 step 5, 10.5.1).
+// SPEC 10.1 step 5, 10.5.1). Limit (SPEC 10.5.1's last paragraph): a join formed part by part ranks one class per typed position, a
+// source-less operation, so step 5 sees none of its parts' erasures; each part's erasure is judged after selection, at its value.
 // Input: the erasure's Owned proof with its rest (the subject's work, whose parts the capability engine records at every path,
 // CapabilityWork.Part; R4-M161), each leaf Origin judged by the relation judge at the use (JudgeOriginRelation with `static` as the
 // shorter end, SPEC 15.6.5); the call's retention for the result's independence of the receiver (ReceiverIndependence); the erasure's
@@ -181,7 +182,9 @@ public sealed partial class Binding
     // argument position: each argument, then the element positions each fit recorded (Positions: each element of a Tuple or array literal
     // argument, recursively, is an argument at its position), each verdict computed once (ErasedArgumentEnvironment): a refuted one makes
     // the candidate inapplicable whatever another's limit says; else a limited one is the located limit at its source
-    // (LimitErasedArgument); else every verdict is judged after selection, an Unknown an obligation.
+    // (LimitErasedArgument); else every verdict is judged after selection, an Unknown an obligation. A join formed part by part has one
+    // source-less operation at its typed position (FitsPosition), so none of its parts' erasures is read here (SPEC 10.5.1's last
+    // paragraph): the limit the file header names.
     private ConstraintProof ErasedArgumentsEnvironment(ReadOnlySpan<BoundArgumentOperation> arguments)
     {
         var positions = CollectionsMarshal.AsSpan(this.positionOperations);

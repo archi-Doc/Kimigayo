@@ -390,7 +390,7 @@ The Abort contract is [§17.4.3](17-failure-handling.md#1743-termination-and-cle
 
 An Abort reports one source location, the same at every optimization level and instantiation:
 
-- a failure inside a Kimi operation (a public function, accessor or member of the Kimi Kotonoha) that user code invokes by a call or by syntax (indexing, slicing, literals), including the operation's internal code, allocations, static-storage accesses and `$abort`: the start of the invoking user expression; for a call through a function value, that call, not where the value was formed; for a Dictionary literal entry's insertion, its allocation and a duplicate key included, the start of that entry's key expression, so a duplicate reports the later key expression;
+- a failure inside a Kimi operation (a public function, accessor or member of the Kimi Kotonoha, or the destruction work of one of its Types, its `drop` and releases included) that user code invokes by a call, by syntax (indexing, slicing, literals) or by a destruction it runs implicitly, including the operation's internal code, allocations, static-storage accesses and `$abort`: the start of the invoking user expression; for a call through a function value, that call, not where the value was formed; for a Dictionary literal entry's insertion, its allocation and a duplicate key included, the start of that entry's key expression, so a duplicate reports the later key expression; for such a destruction, the start of the declaration of the binding whose Scope Exit ([§16.2](16-scope-exit-and-destruction.md#162-scope-exit)) destroys the value (for an implicit binding, of the construct that places it), of the expression that made the destroyed temporary or of the assignment that replaces the value, and for a value destroyed as part of another's destruction ([§16.3.2](16-scope-exit-and-destruction.md#1632-component-destruction), [§16.3.3](16-scope-exit-and-destruction.md#1633-handles-and-object-release), [§16.4](16-scope-exit-and-destruction.md#164-closure-environments-and-objects-under-destruction)), the other's;
 - user code that a Kimi operation calls, such as `equals` or `drop`: that code's own location;
 - an implicit iteration entry or `next` call of `for`: the start of the `for` expression;
 - an arithmetic, shift or conversion check in user code: the start of the failing expression; for compound assignment and `++`/`--`, the whole update expression;
@@ -408,6 +408,17 @@ let value = Values.first
 ```kimi
 let items: Array<i32> = [1]
 let x = items[5]          // KIMI_E_INDEX_BOUNDS at the start of items[5], not inside Kimi code.
+```
+
+```kimi
+func build() -> isize
+    let buffer = Text.heap(16)
+    return buffer.capacity      // If releasing buffer's storage at this Scope Exit fails: KIMI_E_FREE, reported at `let buffer`.
+```
+
+```kimi
+let values: Array<i32> = [1, 2]
+for _ in values@move => exit    // Leaving by exit destroys the `for`'s iterator, which holds the array's storage; if releasing it fails: KIMI_E_FREE, reported at `for`.
 ```
 
 ### 22.5.2. Abort codes

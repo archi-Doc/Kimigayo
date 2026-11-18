@@ -17,7 +17,7 @@ public sealed partial class Binding
     internal bool TryGetObjectErasure(Koto use, out ObjectErasureEvidence evidence)
     {
         evidence = default;
-        return HirTables.HasCurrentBinding(use) && this.objectErasures.TryGetValue(use, out evidence);
+        return this.IsCurrent(use) && this.objectErasures.TryGetValue(use, out evidence);
     }
 
     // SPEC 3.4.3: a field access lends the handle's payload in the access mode already checked by Binding.

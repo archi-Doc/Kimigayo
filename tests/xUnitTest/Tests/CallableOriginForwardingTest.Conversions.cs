@@ -219,6 +219,9 @@ public partial class CallableOriginForwardingTest
 
     private const string RunArray = "func run(q: ref/i32, t: Array<(ref/i32 during q) -> i32>) -> i32 => 0\nfunc run<T>(q: ref/i32, t: Array<T>) -> i32 => 1\n";
 
+    // B's reviewer's C3 delta check (x-order-*): a direct Function argument beside a Tuple literal whose element is one.
+    private const string RunOrder = "func run(q: ref/i32, f: (ref/i32 during q) -> i32, t: ((ref/i32 during q) -> i32, ref/i32 during q)) -> i32 => 0\nfunc run<A, T>(q: ref/i32, f: A, t: T) -> i32 => 1\n";
+
     private const string OwnCp = "    let c = func [r] (x: ref/i32 during p) -> i32 => 0\n";
 
     private const string OwnCq = "    let c = func [r] (x: ref/i32 during q) -> i32 => 0\n";
@@ -782,6 +785,11 @@ public partial class CallableOriginForwardingTest
     [InlineData("n-tupF-q", RunTuple + "func k(p: ref/i32, q: ref/i32) -> i32\n    var a: i32 = 1\n    var r = p\n" + OwnCq + "    return run(q, (c@move, q))\n", "Unsupported_Kd c@move")]
     [InlineData("n-tup-lone", RunTupleOne + OwnK + OwnCq + "    return run(q, (c@move, q))\n", "NoApplicableOverload_Kd run(q, (c@move, q))")]
     [InlineData("c-ntup", "func two(t: (() -> ref/i32 during static, i32)) => ()\nfunc t(x: ref/i32 during static)\n    var s = x\n    let c = func [s] () => s\n    two((c@move, 1))\n", "Unsupported_Kd c@move")]
+    // One ordering across positions (B's reviewer's C3 delta check, C1): a refuted element makes the first run inapplicable whatever the
+    // limited direct argument says (x-order-q; cdb04ab61 gave the limit, Unsupported_Kd at e@move), and with no refuted position each
+    // limited position is its own located limit, the element's as a direct argument's (x-order-i; cdb04ab61 located only e@move).
+    [InlineData("x-order-q", RunOrder + OwnK + OwnCq + "    var r2 = p\n    let e = func [r2] (x: ref/i32 during q) -> i32 => 0\n    return run(q, e@move, (c@move, q))\n", "")]
+    [InlineData("x-order-i", RunOrder + "func k(p: ref/i32, q: ref/i32) -> i32\n    var r2 = p\n    let e = func [r2] (x: ref/i32 during q) -> i32 => 0\n    var r3 = p\n    let e2 = func [r3] (x: ref/i32 during q) -> i32 => 0\n    return run(q, e@move, (e2@move, q))\n", "Unsupported_Kd e@move; Unsupported_Kd e2@move")]
     public void ApplicabilityJudgesTheErasureRowsConditions(string form, string body, string records)
         => OriginRelationDiagnosticTest.AssertRecords(form, body, records, null);
 
