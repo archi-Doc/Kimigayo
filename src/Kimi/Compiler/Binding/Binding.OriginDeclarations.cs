@@ -741,6 +741,7 @@ public sealed partial class Binding
                 return;
             }
 
+            binding.OriginProofMetrics?.NamingVisit();
             if (ReferenceEquals(node.BoundOrigin, this.perCall) && binding.RecordedFailure(node) == BindingFailure.InvalidOrigin)
             {
                 this.found = true;

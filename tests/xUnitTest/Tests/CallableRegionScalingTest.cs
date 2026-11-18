@@ -65,6 +65,25 @@ public class CallableRegionScalingTest(ITestOutputHelper output)
         Assert.True(work[1] <= 12 * work[0] && work[2] <= 12 * work[0] && work[3] <= 96 * work[0], $"premise work {string.Join(", ", work)}");
     }
 
+    // Board C-400 (the Front's condition (1); PLAN G492-a (iii)): the reader of G972's fact (LeavesBodyRows, NamedInItsInputs) on a
+    // literal with N quantified inputs `ref/U` converted to N inputs `ref/U`, each input's well-formedness reaching it with the literal's
+    // per-call Origin at the shorter end (n8w over N inputs; valid): the naming search's syntax visits at N = 32, 64, 128. Each queried end
+    // walks the signature's inputs, which a valid signature never stops early, so the visits are quadratic in one signature's inputs
+    // (2N^2: 2048, 8192, 32768 when written), bounded here at 4.5 times per doubling; a linear form needs a per-signature verdict.
+    [Fact]
+    public void TheNamingSearchOverManyInputsScales()
+    {
+        long[] work = [.. new[] { 32, 64, 128 }.Select(static n => NamingWork(ManyInputs(n)))];
+        output.WriteLine($"naming visits {string.Join(", ", work)}");
+        Assert.True(work[0] > 0 && work[1] <= 4.5 * work[0] && work[2] <= 4.5 * work[1], $"naming visits {string.Join(", ", work)}");
+    }
+
+    // The valid workload of TheNamingSearchOverManyInputsScales.
+    internal static string ManyInputs(int n)
+        => "struct U {a}\n    public let x: ref/i32 during a\n    public init(x: ref/i32 during a) => self.x = x\n\nfunc k(p: ref/i32) -> i32\n" +
+            $"    let c: ({string.Join(", ", Enumerable.Repeat("ref/U", n))}) -> i32 = func [] ({string.Join(", ", Enumerable.Range(1, n).Select(static i => $"y{i}: ref/U"))}) -> i32 => 0\n" +
+            "    return 0\npublic func main() => ()\n";
+
     // A5's work and Loan-set bytes on three sizes of a workload, each double the one before, without a Loan problem
     // (MirBorrowsTest.Measured): the work grows within the factor, the bytes linearly (MirBorrowsTest.Grows).
     internal static void WorkScales(ITestOutputHelper output, string[] sources, double factor)
@@ -112,6 +131,19 @@ public class CallableRegionScalingTest(ITestOutputHelper output)
         c.Bind();
         Assert.Empty(c.Binding.Issues);
         return metrics.Nodes + metrics.Edges + metrics.Insertions;
+    }
+
+    // The nested-signature naming search's syntax visits of one binding of a valid source (OriginProofMetrics.NamingVisits).
+    private static long NamingWork(string source)
+    {
+        var c = Compilation.CreateForTest();
+        Assert.True(c.Prepare(WindowsProfile.Target));
+        c.Kotonoha.AddSource(new SourceDocument("Program.kimi", source));
+        var metrics = new OriginProofMetrics();
+        c.Binding.OriginProofMetrics = metrics;
+        c.Bind();
+        Assert.Empty(c.Binding.Issues);
+        return metrics.NamingVisits;
     }
 
     [Collection<AllocationIsolationCollection>]

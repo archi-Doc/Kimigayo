@@ -497,11 +497,23 @@ public sealed partial class Binding
     // included) and the condition fails with it; a region operand's conjunct the premises do not prove is a row. The comparison forms
     // no row: it publishes each to its query's row sink (CallableInstance.Rows), whose reader forms or drops them; a query without one
     // (a Constraint's proof, conformance, specialization, a contract match) reads the conjunct as not proven: premises alone.
+    // A row's every end is one A5 judges in the body (the Middle's option (b), board C-400), so two ends keep the comparison's own record
+    // (SPEC 15.6.1, premises alone): an end that, as written, is the compared implementation's own per-call Origin and that its signature
+    // names in its inputs (NamedInItsInputs, G972's verdict: no per-call binding of SPEC 15.3.7 there; false for every valid signature),
+    // and a shorter end that is another declaration's atom (the view's row 9, ForeignDeclarationAtom), except a required per-call Origin,
+    // which the L1 lift below bounds by the body's Origins (its fallback, the slot itself, keeps A5's located limit). The ends arrive as
+    // written; the comparison instantiates them here.
     private bool LeavesBodyRows(BoundOrigin longer, BoundOrigin shorter, Koto use, in CallableInstance comparison, ulong condition, Koto? clause)
     {
-        longer = this.OriginAtUse(longer, use);
-        shorter = this.OriginAtUse(shorter, use);
-        if (comparison.Rows is not { } rows || !RegionChain(longer, shorter, false, this.formingBody))
+        if (comparison.Rows is not { } rows || (comparison.IsImplementationSlot(longer) && this.NamedInItsInputs(longer)) ||
+            (comparison.IsImplementationSlot(shorter) && this.NamedInItsInputs(shorter)))
+        {
+            return false;
+        }
+
+        longer = this.OriginAtUse(comparison.Instantiate(longer), use);
+        shorter = this.OriginAtUse(comparison.Instantiate(shorter), use);
+        if (!RegionChain(longer, shorter, false, this.formingBody) || (this.ForeignDeclarationAtom(shorter, this.formingBody) && !comparison.IsRequiredSlot(shorter)))
         {
             return false;
         }

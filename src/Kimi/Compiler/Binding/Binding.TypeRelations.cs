@@ -89,15 +89,17 @@ public sealed partial class Binding
         var comparison = instance;
         return Outlives(a, b, 0);
 
-        bool Outlives(BoundOrigin longer, BoundOrigin shorter, int depth)
+        // The ends as written, before the implementation's per-call Origins are instantiated: the comparison's one decision for a region
+        // conjunct reads them so (LeavesBodyRows).
+        bool Outlives(BoundOrigin writtenLonger, BoundOrigin writtenShorter, int depth)
         {
             if (depth > 8)
             {
                 return false;
             }
 
-            longer = comparison.Instantiate(longer);
-            shorter = comparison.Instantiate(shorter);
+            var longer = comparison.Instantiate(writtenLonger);
+            var shorter = comparison.Instantiate(writtenShorter);
             if (ReferenceEquals(longer, shorter) || longer.Kind == OriginKind.Static)
             {
                 return true;
@@ -107,7 +109,7 @@ public sealed partial class Binding
             {
                 for (var i = 0; i < longer.Operands.Count; i++)
                 {
-                    if (!Outlives(longer.Operands[i], shorter, depth + 1))
+                    if (!Outlives(longer.Operands[i], writtenShorter, depth + 1))
                     {
                         return false;
                     }
@@ -120,7 +122,7 @@ public sealed partial class Binding
             {
                 for (var i = 0; i < shorter.Operands.Count; i++)
                 {
-                    if (Outlives(longer, shorter.Operands[i], depth + 1))
+                    if (Outlives(writtenLonger, shorter.Operands[i], depth + 1))
                     {
                         return true;
                     }
@@ -132,9 +134,9 @@ public sealed partial class Binding
             if (comparison.IsRequiredSlot(longer) || comparison.IsRequiredSlot(shorter))
             {
                 // A required per-call Origin relates to another only through the required signatures' own well-formedness; a local
-                // region at the longer end is the comparison's one decision's (LeavesBodyRows, the L1 lift).
+                // region at the longer end is the comparison's one decision's (LeavesBodyRows, the L1 lift), on the written ends.
                 return binding is not null && (binding.ProvesOriginOutlives(longer, shorter, use!, comparison, condition) ||
-                    binding.LeavesBodyRows(longer, shorter, use!, comparison, condition, null));
+                    binding.LeavesBodyRows(writtenLonger, writtenShorter, use!, comparison, condition, null));
             }
 
             if (shorter is { Kind: OriginKind.Inference, Open: true } && comparison.IsResultOnlyOrigin(longer))
