@@ -7,13 +7,16 @@ namespace Kimi.Compiler;
 // The verdict a capability work records (SPEC 8.3.3, 15.2.3; DECISIONS BU-22, R4-M155, R4-M161), a part of the capability engine.
 // - Responsibility: a work's state in the fixpoint (CapabilityWork: its proposition's Type, intrinsic and scope, its Result and Cause,
 //   its queue state, its dependents) and the payload its verdict carries: the U fact, and for Owned the first Origin it rests on and each
-//   part that is not Proven with its member and Origin (CapabilityPart); the judgment of one OwnedOrigins Origin against `static`
-//   (StaticOrigin); the payload's one reader, an Owned query's rest (ProveOwned with OwnedRest, read by the erasure).
+//   part that is not Proven with its member, Origin and Type (CapabilityPart, recorded through CapabilityWork.Part on every path that
+//   combines an Owned verdict); the judgment of one OwnedOrigins Origin against `static` (StaticOrigin); the payload's one reader, an
+//   Owned query's rest (ProveOwned with OwnedRest: the subject's work, whose parts the erasure walks through each part's own work,
+//   OwnedWork).
 // - Inputs: the engine's evaluations (Binding.Capabilities: RequestCapability's dequeue loop writes a work's verdict and payload; the
 //   Origin slot of the proof scope in progress, ProofReads.Origin of the channel-owned stack through ScopeReads,
 //   Binding.ConstraintValidation.Proofs).
 // - Outputs: a work's Result, which the fixpoint compares, its Cause, settled after the verdicts as a function of them, and its payload,
-//   which no decision reads (the selection of a record reads it). A part's Origin is kept only when the part is not Proven, so premises
+//   which the fixpoint never compares: the erasure's Owned owner reads it, for a call's applicability (SPEC 10.1 step 5,
+//   ErasedArgumentsEnvironment) and for the conversion's record (OwnedMember). A part is kept only when it is not Proven, so premises
 //   that prove a part leave none.
 // - Determinism: a dependent is queued again whenever a part's Result changes, so the final evaluation sees each part's final
 //   verdict; a part's Origin can still change without a re-queue, and a Result only rises in the information order (every work starts
@@ -22,7 +25,7 @@ namespace Kimi.Compiler;
 // - Invariants: a payload is the final evaluation's, written beside the Result and outside the fixpoint's equality; Reset returns a work
 //   to its initial verdict for a new pass; an OwnedOrigins Origin that is null or not proven to outlive `static` is Unknown, and each
 //   caller keeps its own absence rule (a missing outer Origin is Proven).
-// - Prohibitions: no proof decision reads a payload; nothing here schedules or evaluates a work (Binding.Capabilities).
+// - Prohibitions: no proof of the engine reads a payload; nothing here schedules or evaluates a work (Binding.Capabilities).
 public sealed partial class Binding
 {
     // The first local region of an Origin or of its meet's operands.
