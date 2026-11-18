@@ -61,7 +61,7 @@ public partial class KimiLibraryShapeTest
 
         var once = named.Where(static x => x != IntrinsicId.Fail).ToArray();
         Assert.Equal(once.Distinct(), once);
-        Assert.Equal((18, 5), (once.Length, named.Count - once.Length));
+        Assert.Equal((18, 6), (once.Length, named.Count - once.Length)); // Fail: the Time unit's Storage.clockFailure is the sixth.
         Assert.Equal(
             [
                 IntrinsicId.None, IntrinsicId.Abort, IntrinsicId.TypeTest, IntrinsicId.TestObserve, IntrinsicId.TestMessage, IntrinsicId.TestRequireAbort,

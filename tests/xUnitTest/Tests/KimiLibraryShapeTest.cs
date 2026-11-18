@@ -72,6 +72,7 @@ public partial class KimiLibraryShapeTest
         ("Storage.missingDictionaryKey", "internal func missingDictionaryKey() -> Never"),
         ("Storage.countOverflow", "internal func countOverflow() -> Never"),
         ("Storage.allocationSizeExceeded", "internal func allocationSizeExceeded() -> Never"),
+        ("Storage.clockFailure", "internal func clockFailure() -> Never"),
         ("Storage.tryAllocateBytes", "internal func tryAllocateBytes(bytes: isize) -> raw/u8"),
         ("Storage.stride", "internal func stride<T>() -> isize"),
         ("Storage.destroyValues", "internal unsafe func destroyValues<T>(storage: raw/u8, count: isize)"),
@@ -135,9 +136,10 @@ public partial class KimiLibraryShapeTest
         // Text.fixed and FixedBuffer.text, a direct line's (R8-W2 a2); Never (G704); bool, char, Unit format (R8-S2a); f32, f64 format,
         // formatFloat (R8-S2c); string, view and Wrapping<T> format (R8-S2d1); the integers' format (R8-S2b1); formatInteger128 (R8-S2b2);
         // Utf8Writer.deferLiteral, an owning interpolation's literal before a value (R8-W2 c1); Utf8Writer.finish, its end (R8-W2 c3a).
-        // R8-G1 G1-6 (the owner's O-307 (a)): only the lang items a C# reader identifies are cataloged; 79 other declarations carry
+        // R8-G1 G1-6 (the owner's O-307 (a)): only the lang items a C# reader identifies are cataloged; 80 other declarations carry
         // `#Intrinsic` or `#CallerLocation` and are registered unnamed (Storage.reserveDispatch, R8-W2 b2-1, among them; PLAN G71's
-        // three `splitAt`, four position and range `format` bodies, Array `index` and `indexUniq`, and seven Time functions).
+        // three `splitAt`, four position and range `format` bodies, Array `index` and `indexUniq`, and seven Time functions; the Time unit's
+        // `Storage.clockFailure`).
         // G1-3b-2: every entry is sourced, the Weak family written `#Unsupported`.
         Assert.Equal(120, KimiLibraryCatalog.Entries.Length);
         foreach (var entry in KimiLibraryCatalog.Entries)
@@ -152,7 +154,7 @@ public partial class KimiLibraryShapeTest
             Assert.Equal(BindingState.Resolved, symbol.Declaration.StateOf());
         }
 
-        Assert.Equal((120, 79), (registered.Count(static x => x.LibraryDeclaration is not null), registered.Count(static x => x.LibraryDeclaration is null)));
+        Assert.Equal((120, 80), (registered.Count(static x => x.LibraryDeclaration is not null), registered.Count(static x => x.LibraryDeclaration is null)));
     }
 
     // KimiLibrarySize's statement: the library's size is what a Bind of the empty program fills, each count rounded up to the Granule.
@@ -250,7 +252,7 @@ public partial class KimiLibraryShapeTest
     {
         var c = Library.Value;
         var unnamed = c.Library.RegisteredSymbols.ToArray().Where(static x => x.LibraryDeclaration is null).ToArray();
-        Assert.Equal(79, unnamed.Length);
+        Assert.Equal(80, unnamed.Length);
         foreach (var symbol in unnamed)
         {
             var function = Assert.IsType<FunctionKoto>(symbol.Declaration);
@@ -346,7 +348,7 @@ public partial class KimiLibraryShapeTest
             .. CompilerFunctionShapes.Select(x => library.GetSymbol(x.Id)!.Declaration),
             .. UnnamedCompilerFunctionShapes.Select(x => LibrarySource.Declaration(library, x.Path)),
         ];
-        Assert.Equal((25, 25), (expected.Count, shaped.Length));
+        Assert.Equal((26, 26), (expected.Count, shaped.Length));
         Assert.True(expected.SetEquals(shaped));
     }
 

@@ -5,19 +5,18 @@ public group Time
     #CallerLocation
     func readCounter() -> i64
         var value: i64 = 0
-        require Windows.queryPerformanceCounter(value@uniq) != 0 else => $abort("Performance counter query failed")
-        require value >= 0 else => $abort("Negative performance counter")
+        require Windows.queryPerformanceCounter(value@uniq) != 0 and value >= 0 else => Storage.clockFailure()
         return value
 
     func readCounterFrequency() -> i64
         var value: i64 = 0
-        require Windows.queryPerformanceFrequency(value@uniq) != 0 else => $abort("Performance counter frequency query failed")
-        require value > 0 else => $abort("Invalid performance counter frequency")
+        require Windows.queryPerformanceFrequency(value@uniq) != 0 else => Storage.clockFailure()
+        require value > 0 else => Storage.clockFailure()
         return value
 
     #CallerLocation
     func intervalMicroseconds(start: i64, end: i64) -> u64
-        require end >= start else => $abort("Performance counter moved backwards")
+        require end >= start else => Storage.clockFailure()
         return counterMicroseconds((end - start)@u64, counterFrequency@u64)
 
     // The adapter supplies 0 < frequency <= i64.MaxValue. All arithmetic stays within 64 bits.
