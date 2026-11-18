@@ -20,9 +20,6 @@ This document owns who plans, designs, reviews, implements and lands a change. P
   owner reports. A unit across areas is planned by the session owning the component where the cause lies; the others consent to and
   review their hunks; a disagreement goes to the owner. The Coordinator decides no design and plans only its own script and
   benchmark-infrastructure units.
-- **Context handoff.** A planning session whose context reaches 40% (the Coordinator's hourly check) starts no new agent, lets its
-  running agents end their current step, writes its handoff and posts it; the Coordinator starts a fresh session from it
-  (DECISIONS Q20).
 
 ## Documents
 
