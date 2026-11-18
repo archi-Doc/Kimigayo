@@ -13,17 +13,21 @@ namespace Kimi.Compiler;
 // - Responsibility: the library's identities (the catalog's symbols, its scope and module) over its parsed embedded sources; the
 //   process's frozen library per target (Of, the one store, KimiLibrary.Process.cs), made by the freeze (Unfrozen, Freeze: a compilation
 //   over an empty program whose Binding binds the library by the one driver), and its refusal (LibraryLayer.Refusal, which Binding's
-//   FreezeLibrary decides).
+//   FreezeLibrary decides); and the detachment (KimiLibrary.Process.cs, Detach): the frozen library names no compilation.
 // - Inputs: the embedded sources; the compilation the library is parsed in (its target's conditions, its documentation flags); for the
 //   freeze, the target and the preparation (a Kimigayo and its Project).
-// - Outputs: Of(target); the library's Kotonoha, symbols, Scope and Layer (LibraryLayer, with the refusal).
+// - Outputs: Of(target); the library's Kotonoha, symbols, Scope and Layer (LibraryLayer, with the refusal); the frozen library's
+//   DocumentationFailures, HoverAnchors and SyntaxRecords (data its freeze compilation recorded).
 // - Invariants: one library per target per process, a frozen library or a refused one, cached by the store; only a compiler defect is
 //   cached as an exception (ExecutionAndPublication: one freeze per target; the build constant reproduces it). After Freeze no step
-//   writes a frozen object (S1-1's refusals; the eager steps run in the library pass); every stamp a frozen object holds is Frozen. A
-//   refused library exposes only its refusal; a compilation given one (U3) runs no program pass and publishes the refusal. Each library
-//   record has one owner: a Binding-side one the refusal (published as InternalInvariant_Kd at its library location), a syntax one the
-//   library module's syntax list (published under its own code by the DiagnosticOwner that holds the list); the refusal refers to that
-//   list, never copies it.
+//   writes a frozen object (S1-1's refusals; the eager steps run in the library pass); every stamp a frozen object holds is Frozen.
+//   After Freeze no frozen object names a compilation: a read of a detached module's or code context's compilation or collection is the
+//   internal-invariant form; the module's syntax list moves with the frozen library (SyntaxRecords) and its freeze compilation's owner
+//   no longer holds it. A refused library exposes only its refusal; a compilation given one (U3) runs no program pass and publishes the
+//   refusal. Each library record has one owner: a Binding-side one the refusal (published as InternalInvariant_Kd at its library
+//   location), a syntax one the library module's syntax list (moved with the frozen library as SyntaxRecords; from U3 the reading
+//   compilation's DiagnosticOwner registers it read-only and publishes it under its own code); the refusal refers to that list, never
+//   copies it.
 // - Prohibitions: no second constructor or freeze path; no mode or flag deciding the library pass; no second check of the library's
 //   records beside FreezeLibrary's; no compilation reads Of before U3.
 
