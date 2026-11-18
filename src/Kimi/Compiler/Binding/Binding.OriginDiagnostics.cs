@@ -126,82 +126,6 @@ public sealed partial class Binding
     // receiver resolution (OriginRelationFact.Supplier): one holds the other, by identity; BorrowSource's one comparison (R4-M133).
     private static bool Supplies(BoundOrigin borrowed, BoundOrigin supplier) => OriginIncludes(borrowed, supplier) || OriginIncludes(supplier, borrowed);
 
-    // The Borrow that supplies a record's end, by the atom `supplier` the failing check recorded for it: the value itself, the Borrow
-    // initializing the local it names, or the first Borrow inside the value or its root local's initializer, explicit or a call's
-    // implicit Borrow of an argument. For a meet, it is the Borrow of its first body-local operand, which the meet's display shows (SPEC
-    // 23.1). A local region's source is found through the bound that brought it in, by that bound's parent as written.
-    private static Koto? BorrowSource(Koto value, BoundOrigin supplier)
-    {
-        var unwrapped = KotoHelper.UnwrapParentheses(value);
-        if (unwrapped.BoundType?.Origin is { } region && IsLocalRegion(region) &&
-            value.CodeContext.Compilation.Binding.LocalRegionSourceUse(region, supplier) is { } bound && !ReferenceEquals(bound.Value, value))
-        {
-            return BorrowSource(bound.Value, bound.Parent);
-        }
-
-        if (unwrapped is ConversionKoto { ConversionBinding: ConversionBinding.Borrow } borrowValue)
-        {
-            // SPEC 23.1: at an inner position of a Borrow, such as the stored `local@ref` of `y@uniq` after `var y = local@ref`, the
-            // failing Origin is not the Borrow's own: it is found through the borrowed Place.
-            if (borrowValue.BoundType?.Origin is not { } own || Supplies(own, supplier))
-            {
-                return unwrapped;
-            }
-        }
-
-        if (supplier.Kind == OriginKind.Intersection)
-        {
-            for (var i = 0; i < supplier.Operands.Count; i++)
-            {
-                if (supplier.Operands[i].Kind is OriginKind.Projection or OriginKind.Anchor && BorrowSource(value, supplier.Operands[i]) is { } operand)
-                {
-                    return operand;
-                }
-            }
-
-            return null;
-        }
-
-        if (supplier.Kind == OriginKind.Projection &&
-            unwrapped is IdentifierNameKoto { BoundSymbol: { Kind: BindingSymbolKind.Local, Declaration: VariableKoto { InitializerKoto: { } assigned } } } &&
-            KotoHelper.UnwrapParentheses(assigned) is ConversionKoto { ConversionBinding: ConversionBinding.Borrow, BoundType.Origin: { } held } source &&
-            Supplies(held, supplier))
-        {
-            return source;
-        }
-
-        // A value that contains the Borrow, such as a call or Tuple over it, names that Borrow; so does the initializer of the local
-        // whose Place the value reads or moves, such as `h0@move` or `h0.item` after `let h0 = H.init(a@ref)`.
-        if (supplier.Kind is not (OriginKind.Projection or OriginKind.Anchor))
-        {
-            return null;
-        }
-
-        return LocalBorrow(value, supplier) ?? (RootLocal(unwrapped) is { InitializerKoto: { } rootValue } ? LocalBorrow(rootValue, supplier) : null);
-
-        static VariableKoto? RootLocal(Koto value)
-        {
-            for (var depth = 0; depth < 64; depth++)
-            {
-                switch (value)
-                {
-                    case ConversionKoto { ConversionBinding: ConversionBinding.Transfer or ConversionBinding.Borrow } transfer:
-                        value = KotoHelper.UnwrapParentheses(transfer.Left);
-                        continue;
-                    case MemberAccessKoto access:
-                        value = KotoHelper.UnwrapParentheses(access.Left);
-                        continue;
-                    case IdentifierNameKoto { BoundSymbol: { Kind: BindingSymbolKind.Local, Declaration: VariableKoto local } }:
-                        return local;
-                    default:
-                        return null;
-                }
-            }
-
-            return null;
-        }
-    }
-
     // SPEC 15.2.1: the omitted slot `slot` of a function parameter's Type, written directly or under one borrow layer, is the projection
     // `p.slot`, whether a named function's input or an anonymous function's body inference variable (SPEC 15.3.4); any other omitted
     // slot has no name.
@@ -337,6 +261,82 @@ public sealed partial class Binding
         }
 
         return cases.Length == 0 ? string.Empty : (several ? " in the Semantics cases " : " in the Semantics case ") + text;
+    }
+
+    // The Borrow that supplies a record's end, by the atom `supplier` the failing check recorded for it: the value itself, the Borrow
+    // initializing the local it names, or the first Borrow inside the value or its root local's initializer, explicit or a call's
+    // implicit Borrow of an argument. For a meet, it is the Borrow of its first body-local operand, which the meet's display shows (SPEC
+    // 23.1). A local region's source is found through the bound that brought it in, by that bound's parent as written.
+    private Koto? BorrowSource(Koto value, BoundOrigin supplier)
+    {
+        var unwrapped = KotoHelper.UnwrapParentheses(value);
+        if (unwrapped.BoundType?.Origin is { } region && IsLocalRegion(region) &&
+            this.LocalRegionSourceUse(region, supplier) is { } bound && !ReferenceEquals(bound.Value, value))
+        {
+            return this.BorrowSource(bound.Value, bound.Parent);
+        }
+
+        if (unwrapped is ConversionKoto { ConversionBinding: ConversionBinding.Borrow } borrowValue)
+        {
+            // SPEC 23.1: at an inner position of a Borrow, such as the stored `local@ref` of `y@uniq` after `var y = local@ref`, the
+            // failing Origin is not the Borrow's own: it is found through the borrowed Place.
+            if (borrowValue.BoundType?.Origin is not { } own || Supplies(own, supplier))
+            {
+                return unwrapped;
+            }
+        }
+
+        if (supplier.Kind == OriginKind.Intersection)
+        {
+            for (var i = 0; i < supplier.Operands.Count; i++)
+            {
+                if (supplier.Operands[i].Kind is OriginKind.Projection or OriginKind.Anchor && this.BorrowSource(value, supplier.Operands[i]) is { } operand)
+                {
+                    return operand;
+                }
+            }
+
+            return null;
+        }
+
+        if (supplier.Kind == OriginKind.Projection &&
+            unwrapped is IdentifierNameKoto { BoundSymbol: { Kind: BindingSymbolKind.Local, Declaration: VariableKoto { InitializerKoto: { } assigned } } } &&
+            KotoHelper.UnwrapParentheses(assigned) is ConversionKoto { ConversionBinding: ConversionBinding.Borrow, BoundType.Origin: { } held } source &&
+            Supplies(held, supplier))
+        {
+            return source;
+        }
+
+        // A value that contains the Borrow, such as a call or Tuple over it, names that Borrow; so does the initializer of the local
+        // whose Place the value reads or moves, such as `h0@move` or `h0.item` after `let h0 = H.init(a@ref)`.
+        if (supplier.Kind is not (OriginKind.Projection or OriginKind.Anchor))
+        {
+            return null;
+        }
+
+        return LocalBorrow(value, supplier) ?? (RootLocal(unwrapped) is { InitializerKoto: { } rootValue } ? LocalBorrow(rootValue, supplier) : null);
+
+        static VariableKoto? RootLocal(Koto value)
+        {
+            for (var depth = 0; depth < 64; depth++)
+            {
+                switch (value)
+                {
+                    case ConversionKoto { ConversionBinding: ConversionBinding.Transfer or ConversionBinding.Borrow } transfer:
+                        value = KotoHelper.UnwrapParentheses(transfer.Left);
+                        continue;
+                    case MemberAccessKoto access:
+                        value = KotoHelper.UnwrapParentheses(access.Left);
+                        continue;
+                    case IdentifierNameKoto { BoundSymbol: { Kind: BindingSymbolKind.Local, Declaration: VariableKoto local } }:
+                        return local;
+                    default:
+                        return null;
+                }
+            }
+
+            return null;
+        }
     }
 
     // SPEC 15.4.3, 15.6.1: a result fitting or Origin failure whose omitted result Origin defaulted to static because the only

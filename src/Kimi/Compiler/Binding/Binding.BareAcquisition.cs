@@ -62,11 +62,12 @@ public sealed partial class Binding
 
     // SPEC 3.5.1, 10.2.2, 8.14: whether a node is a bare Place whose bare acquisition may Reborrow in its own Semantics, at a bare
     // acquisition position (StoredReborrow) and at a fixed expected Type it fits alike: one storing `uniq/T` or `objuniq/T`, or a pair layer
-    // of any form (TryAdaptationSelector), whose per-case plan the adaptation reads once (BareReborrowLayer).
-    private static bool StoresExclusiveReference(Koto node, BoundType actual)
-        => node.ErasedFunctionType is null && IsBarePlace(node) &&
-            (actual is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Uniq or SemanticsKind.ObjUniq, Components.Count: 1 } ||
-                TryAdaptationSelector(actual, out _));
+    // of any form (TryAdaptationSelector), whose per-case plan the adaptation reads once (BareReborrowLayer). The Type is tested before the
+    // Place: every bound node asks, and few store either.
+    private bool StoresExclusiveReference(Koto node, BoundType actual)
+        => (actual is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Uniq or SemanticsKind.ObjUniq, Components.Count: 1 } ||
+                TryAdaptationSelector(actual, out _)) &&
+            node.ErasedFunctionType is null && this.IsBarePlace(node);
 
     // SPEC 15.6.3, 15.8.2: the meet of the safe borrow layers that reach a Place, `static` when none (PathReborrowOrigin's walk, ρ for a
     // root reached in a Closure body included).
@@ -95,7 +96,7 @@ public sealed partial class Binding
     // Type takes from each such source. Returns that Type, null when the node is acquired otherwise.
     private BoundType? StoredReborrow(Koto node, BoundType? actual)
     {
-        if (actual is not null && StoresExclusiveReference(node, actual) && IsBareAcquisitionPosition(node) &&
+        if (actual is not null && this.StoresExclusiveReference(node, actual) && IsBareAcquisitionPosition(node) &&
             this.ExpectedAdaptation(node, actual, actual) is { } reborrow)
         {
             this.adaptations[node] = reborrow;

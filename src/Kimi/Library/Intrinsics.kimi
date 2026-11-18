@@ -1,18 +1,22 @@
 /// Object creation, cloning and the whole-value updates (SPEC 13.6.2, 15.7). The compiler implements the operations
-/// `IntrinsicOperations.kimi` declares. `replace`, `exchange` and `swap` take, destroy and place through raw Places of their
+/// marked `#Intrinsic`. `replace`, `exchange` and `swap` take, destroy and place through raw Places of their
 /// targets: each target is the complete, Initialized referent of a live exclusive borrow, readable and writable while its
 /// Loan lives, and `swap`'s two targets are disjoint (SPEC 15.7.2), so every take and placement meets the raw access
 /// conditions and the placement rule (SPEC 5.2, 5.2.1, 5.2.3). Callers are checked against SPEC 15.7, never these bodies.
 public group Intrinsics
-    /// Destroys the target's value in place, then moves `value` into it (SPEC 15.7.1). The destruction is `destroyValues`',
-    /// which acts on the target's Place itself.
+    /// Destroys the target's value in place, then moves `value` into it (SPEC 15.7.1).
+    ///
+    /// The discarded Take destroys the value on the target's Place itself (SPEC 5.2.3).
+    #Lang("Replace")
+    #CallerLocation
     public func replace<T>(target: uniq/T ! with => value: T) -> ()
         let place = target@follow@raw
         unsafe
-            Storage.destroyValues<T>(place@raw/u8, 1)
+            _ = (*place)@move
             Raw.initialize(place, value@move)
 
     /// Moves `value` into the target and returns the old value (SPEC 15.7.1).
+    #Lang("Exchange")
     public func exchange<T>(target: uniq/T ! with => value: T) -> T
         let place = target@follow@raw
         unsafe
@@ -21,6 +25,7 @@ public group Intrinsics
             return old@move
 
     /// Exchanges the two targets' values (SPEC 15.7.1).
+    #Lang("Swap")
     public func swap<T>(first: uniq/T, second: uniq/T) -> ()
         let one = first@follow@raw
         let other = second@follow@raw
@@ -28,3 +33,36 @@ public group Intrinsics
             let held = (*one)@move
             Raw.initialize(one, (*other)@move)
             Raw.initialize(other, held@move)
+
+    #Lang("MakeObj")
+    #Intrinsic("MakeObj")
+    public func makeObj<T>(value: T) -> obj/T
+        T is ObjectPayload
+    #Lang("MakeRc")
+    #Intrinsic("MakeRc")
+    public func makeRc<T>(value: T) -> rc/T
+        T is ObjectPayload
+    #Lang("MakeArc")
+    #Intrinsic("MakeArc")
+    public func makeArc<T>(value: T) -> arc/T
+        T is ObjectPayload
+    #Lang("Clone")
+    #Intrinsic("Clone")
+    public func clone<s/T>(value: ref/(s/T)) -> s/T
+        s is rc or arc
+    #Unsupported
+    public func downgrade<s/T>(value: ref/(s/T)) -> Weak<s/T>
+        s is rc or arc
+    #Unsupported
+    public func upgrade<s/T>(value: ref/Weak<s/T>) -> Option<s/T>
+        s is rc or arc
+    #Unsupported
+    public func makeRcCyclic<T, F>(build: F) -> rc/T
+        T is ObjectPayload
+        T is Owned
+        F is Callable<owner, (Weak<rc/T>) -> T>
+    #Unsupported
+    public func makeArcCyclic<T, F>(build: F) -> arc/T
+        T is ObjectPayload
+        T is Owned
+        F is Callable<owner, (Weak<arc/T>) -> T>

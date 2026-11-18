@@ -36,7 +36,7 @@ internal readonly record struct OmittedBaseSelection(OmittedBaseOutcome Outcome,
 
 public sealed partial class Binding
 {
-    private readonly Dictionary<StructKoto, OmittedBaseSelection> implicitConstructorDecisions = new(ReferenceEqualityComparer.Instance);
+    private readonly ImplicitConstructorDecisionRows implicitConstructorDecisions;
     private readonly List<FunctionKoto> judgedConstructors = new();
     private readonly List<FunctionKoto> withdrawnConstructors = new();
     private Dictionary<FunctionKoto, OmittedBaseSelection>? omittedBaseQueries;
@@ -60,7 +60,7 @@ public sealed partial class Binding
             return new(OmittedBaseOutcome.NoBaseConstructor);
         }
 
-        var candidates = new CallCandidates(group, null, null);
+        var candidates = FunctionGroup.Of(group);
         var shape = MeasureCandidates(candidates, true);
         var obligationCount = this.obligations.Count;
         var acquisition = this.acquisitionFailure;
@@ -151,7 +151,6 @@ public sealed partial class Binding
     // A selected base constructor makes it a member of the structure's `init` group; any other outcome withdraws it from the pass.
     private void CompleteImplicitConstructors()
     {
-        this.implicitConstructorDecisions.Clear();
         this.judgedConstructors.Clear();
         this.withdrawnConstructors.Clear();
         for (var i = 0; i < this.nodes.Count; i++)
@@ -294,6 +293,34 @@ public sealed partial class Binding
             {
                 (this.omittedBaseQueries ??= new(ReferenceEqualityComparer.Instance))[constructor] = this.SelectOmittedBaseConstructor(constructor);
             }
+        }
+    }
+
+    /// <summary>The `implicitConstructorDecisions` family's one accessor (DECISIONS BU-220): a pass family, a derived structure's omitted-base
+    /// decision (SPEC 6.3.6), kept in its module's NodeColumns at its SyntaxId as a nullable (Selected is outcome 0, so the flag keeps every
+    /// decision distinct from absent). CompleteImplicitConstructors, the last step of each run, cleared it; no read observes a difference
+    /// from the pass counter (G949\n53\o1), which empties it at its first write. Its members keep the names its readers use.</summary>
+    private readonly struct ImplicitConstructorDecisionRows(Binding binding)
+    {
+        internal OmittedBaseSelection this[StructKoto structure]
+        {
+            get => this.TryGetValue(structure, out var decision) ? decision : throw new KeyNotFoundException($"`{structure}` has no decision in this pass.");
+            set => HirTables.Of(structure).Families.ImplicitConstructorDecisions.Ref(structure.SyntaxId, binding) = value;
+        }
+
+        internal void Add(StructKoto structure, OmittedBaseSelection decision)
+        {
+            ref var row = ref HirTables.Of(structure).Families.ImplicitConstructorDecisions.Ref(structure.SyntaxId, binding);
+            row = row is null ? decision : throw new ArgumentException($"`{structure}` was already decided in this pass.", nameof(structure));
+        }
+
+        internal bool ContainsKey(StructKoto structure) => this.TryGetValue(structure, out _);
+
+        internal bool TryGetValue(StructKoto structure, out OmittedBaseSelection decision)
+        {
+            var row = structure.SyntaxOwner is { } table ? table.Hir.Families.ImplicitConstructorDecisions.Get(structure.SyntaxId, binding) : null;
+            decision = row ?? default;
+            return row.HasValue;
         }
     }
 }

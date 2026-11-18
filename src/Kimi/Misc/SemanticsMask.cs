@@ -179,6 +179,11 @@ public static class SemanticsMaskHelper
         return kindMask != SemanticsMask.None && (mask & kindMask) != 0;
     }
 
+    /// <summary>Determines whether a mask holds exactly one semantics kind (SPEC 8.2.3: such an admitted set is a pair's head).</summary>
+    /// <param name="mask">The semantics set.</param>
+    /// <returns><see langword="true"/> when the mask has one member.</returns>
+    public static bool IsSingle(this SemanticsMask mask) => System.Numerics.BitOperations.IsPow2((uint)mask);
+
     /// <summary>
     /// Determines whether a concrete semantics kind satisfies a mask constraint.
     /// </summary>

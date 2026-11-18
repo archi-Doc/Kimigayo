@@ -15,7 +15,7 @@ public class DictionaryIndexableTest
         var c = MinimalEmissionTest.Analyze(Source);
         Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c));
         var (sel, generated) = FunctionCodegenTest.GeneratedDefinitions(Source);
-        Assert.Contains(sel.Library.GetSymbol(KimiDeclarationId.DictionaryIndex)!.Declaration, generated);
+        Assert.Contains(LibrarySource.Declaration(sel.Library, "Dictionary.index"), generated);
         Assert.Contains(sel.Library.GetSymbol(KimiDeclarationId.DictionaryIndexUniq)!.Declaration, generated);
         ScalarEmissionTest.WriteFixture("DictionaryIndexableSubscript", CompilationTestHelper.WriteIr(c), string.Empty);
     }

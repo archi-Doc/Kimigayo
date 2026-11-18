@@ -474,7 +474,10 @@ public partial class ApplicabilityChainRegressionTest
         Assert.False(rejected.Accepted);
         var error = Assert.Single(rejected.Diagnostics);
         Assert.Equal(nameof(DiagnosticCode.UnprovenOriginContract_Kd), error.Code);
-        Assert.Equal("the result requires x == y, which is not proven", error.Label);
+        // The record names the first failing bound, `y outlives x` (PLAN G913's Revision 2, the owner's O-348 (a): a conversion's
+        // comparison gives the variable a representative and the walk judges the members, as LocalOriginClauseTest's veqin);
+        // `requires x == y` before it.
+        Assert.Equal("the result requires y outlives x, which is not proven", error.Label);
         Assert.True(DiagnosticCorpus.Check(Source.Replace("during y", "during x", StringComparison.Ordinal)).Accepted);
     }
 

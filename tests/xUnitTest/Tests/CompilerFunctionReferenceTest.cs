@@ -36,9 +36,17 @@ public class CompilerFunctionReferenceTest
     [InlineData("Item", "let f = Raw.allocate<u8>\nlet p = f(-1)", "Hello.kimi:2:9")]
     [InlineData("Erased", "let f: (isize) -> raw/u8 = Raw.allocate\nlet p = f(-1)", "Hello.kimi:2:9")]
     [InlineData("Helper", "func make(f: ref/((isize) -> raw/u8)) -> raw/u8 => f(-1)\nlet f: (isize) -> raw/u8 = Raw.allocate\nlet p = make(f)", "Hello.kimi:1:52")]
-    [InlineData("FromEnd", "let f: (FromEnd<i32>, isize) -> isize = FromEnd<i32>.resolve\nlet n = f(^5, 2)", "Hello.kimi:2:9")] // A caller-location body's erased entry.
     public void ReportsTheActualInvocation(string name, string source, string location)
         => ScalarEmissionTest.EmitFixture("CompilerReferenceAbort" + name, source, string.Empty, 1, location + ": abort KIMI_E_ARG_RANGE: Argument out of range\n");
+
+    // A caller-location source body reached through its erased entry or its item reports the call of the function value (SPEC 22.5.1);
+    // a failed `resolve` is KIMI_E_INDEX_BOUNDS (SPEC 4.6.3).
+    [Theory]
+    [InlineData("AbortFromEnd", "let f: (FromEnd<i32>, isize) -> isize = FromEnd<i32>.resolve\nlet n = f(^5, 2)", "Hello.kimi:2:9")]
+    [InlineData("SourceItem", "let f = FromEnd<i32>.resolve\nlet p: FromEnd<i32> = ^4\nlet n = f(p, 3)", "Hello.kimi:3:9")]
+    [InlineData("SourceErased", "let f: (FromEnd<i32>, isize) -> isize = FromEnd<i32>.resolve\nlet p: FromEnd<i32> = ^4\nlet n = f(p, 3)", "Hello.kimi:3:9")]
+    public void SourceEntriesReportTheInvocation(string name, string source, string location)
+        => ScalarEmissionTest.EmitFixture("CompilerReference" + name, source, string.Empty, 1, location + ": abort KIMI_E_INDEX_BOUNDS: Index out of bounds\n");
 
     [Theory]
     [InlineData("let f: (ref/string) -> () = Console.writeLine\nf(\"ok\")")]
@@ -112,10 +120,8 @@ public class CompilerFunctionReferenceTest
         => ScalarEmissionTest.EmitFixture("CompilerReferenceUtf8", "let convert = Text.utf8\nlet text = \"ok\"\nlet view = convert(text@ref)\nConsole.writeLine(view)", "ok\n");
 
     [Theory]
-    [InlineData("SourceItem", "let f = FromEnd<i32>.resolve\nlet p: FromEnd<i32> = ^4\nlet n = f(p, 3)", "Hello.kimi:3:9")]
-    [InlineData("SourceErased", "let f: (FromEnd<i32>, isize) -> isize = FromEnd<i32>.resolve\nlet p: FromEnd<i32> = ^4\nlet n = f(p, 3)", "Hello.kimi:3:9")]
     [InlineData("SecondCall", "let f: (isize) -> raw/u8 = Raw.allocate\nlet p = f(0)\nunsafe => Raw.release(p)\nlet q = f(-1)", "Hello.kimi:4:9")]
-    public void ReusedAndSourceEntriesKeepTheInvocation(string name, string source, string location)
+    public void AReusedEntryKeepsTheInvocation(string name, string source, string location)
         => ScalarEmissionTest.EmitFixture("CompilerReference" + name, source, string.Empty, 1, location + ": abort KIMI_E_ARG_RANGE: Argument out of range\n");
 
     [Fact]

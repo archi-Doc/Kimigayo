@@ -223,7 +223,9 @@ public sealed partial class Binding
         }
         else
         {
-            note = $"Common Function conversion requires Owned bound generic arguments (SPEC 7.7.4, 15.2.3); the {owned.Member} is not proven Owned";
+            // An inherited Origin, whose member Type is the subject itself (FailOwnedConversion), is an Origin that is not static.
+            note = $"Common Function conversion requires Owned bound generic arguments (SPEC 7.7.4, 15.2.3); the {owned.Member} " +
+                (ReferenceEquals(owned.MemberType, owned.Subject) ? "is not static" : "is not proven Owned");
         }
 
         object[] evidence = origin is { } fact ? [subject, owned.Member, fact] : [subject, owned.Member];

@@ -16,16 +16,10 @@ internal sealed partial class MirBuilder
 
     // SPEC 14.6.2: the Subject acquired by the entry call into the iterator once, then each next() result decomposed as its plan's Some/None
     // match: Some binds the item for the body, None completes the loop with Unit. The body end and a continue clean the iteration up and call
-    // next() again; an exit or a transfer out cleans it up, then the iterator and the Subject. SPEC 4.6.4: a ResolvedRange loop counts
-    // its isize positions from start to end instead, checked, without an iterator value.
+    // next() again; an exit or a transfer out cleans it up, then the iterator and the Subject.
     private void For(MirPlace destination, ForKoto loop)
     {
-        if (BoundMatch.Of(loop) is not { } plan)
-        {
-            this.Count(destination, loop);
-            return;
-        }
-
+        var plan = BoundMatch.Of(compilation.Binding, loop)!;
         var entry = CallPlan.Of(loop)!;
         var step = CallPlan.Of(loop, 1)!;
         var iterator = this.Hold(entry.ReturnType, loop);
@@ -44,7 +38,7 @@ internal sealed partial class MirBuilder
         this.Made(subject);
         CollectionsMarshal.SetCount(this.selected, start + plan.Positions.Count);
         this.Pattern(plan, plan.Arms[0].Pattern, subject, start, none);
-        this.Iteration(loop, plan, start, default);
+        this.Iteration(loop, plan, start);
         this.current = none;
         this.Pattern(plan, plan.Arms[1].Pattern, subject, start, tail);
         this.Unit(destination, loop);
@@ -55,66 +49,14 @@ internal sealed partial class MirBuilder
         this.Close(after);
     }
 
-    // SPEC 4.6.4: a ResolvedRange loop: the interval copied once, its position compared with its end before each iteration and advanced
-    // after it (where a continue goes), checked.
-    private void Count(MirPlace destination, ForKoto loop)
-    {
-        var type = TypeOf(loop.Iterable);
-        var range = this.Hold(MirTypes.IsReference(type) ? type.Components[0] : type, loop.Iterable);
-        this.Assign(range, loop.Iterable);
-        this.Made(range);
-        var position = this.Temp(BoundType.ISize, loop);
-        var end = this.Temp(BoundType.ISize, loop);
-        var test = this.Temp(BoundType.Boolean, loop);
-        this.Use(position, MirOperand.Copy(this.Bound(range, "start")), loop);
-        this.Use(end, MirOperand.Copy(this.Bound(range, "end")), loop);
-        var head = this.body.AddBlock();
-        var step = this.body.AddBlock();
-        var done = this.body.AddBlock();
-        this.body.Terminate(this.current, MirTerminator.Goto(head, this.Info(loop)));
-        var after = this.Open(loop, destination, step);
-        this.current = head;
-        this.Compare(test, MirBinaryOp.Lt, MirOperand.Copy(position), MirOperand.Copy(end), done, loop);
-        this.Iteration(loop, null, 0, position);
-        this.current = step;
-        var operands = this.body.AddOperand(MirOperand.Copy(position));
-        this.body.AddOperand(MirOperand.Const(this.body.Const(new(MirConstKind.Integer, BoundType.ISize, 1))));
-        this.Set(position, MirRvalue.Binary(MirBinaryOp.Add, operands, proven: false), loop);
-        this.body.Terminate(step, MirTerminator.Goto(head, this.Info(loop)));
-        this.current = done;
-        this.Unit(destination, loop);
-        this.Joins(MirTerminator.Goto(after, this.Info(loop)));
-        this.Close(after);
-    }
-
-    // SPEC 14.6.1: one iteration, its bindings in a scope of their own (the item's by the plan, or the counted position), then the body,
-    // whose end goes to the next iteration through the iteration's cleanup.
-    private void Iteration(ForKoto loop, BoundMatch? plan, int start, MirPlace position)
+    // SPEC 14.6.1: one iteration, the item's bindings by the plan in a scope of their own, then the body, whose end goes to the next
+    // iteration through the iteration's cleanup.
+    private void Iteration(ForKoto loop, BoundMatch plan, int start)
     {
         var outer = this.scope;
         this.scope = this.body.AddScope(outer, MirScopeKind.Lexical, SourceRef.Of(loop));
         var bindings = this.OpenScope(block: true);
-        if (plan is not null)
-        {
-            this.Bind(plan, plan.Arms[0].Pattern, start);
-        }
-
-        for (var i = 0; plan is null && i < loop.Bindings.Count; i++)
-        {
-            var name = loop.Bindings[i];
-            var symbol = HirTables.Symbol(loop.Bindings[i])!;
-            this.locals[symbol] = this.Live(
-                this.body.AddLocal(
-                    new(
-                    BoundType.ISize,
-                    MirLocalKind.Var,
-                    this.Info(name, local: true),
-                    Binding.Reassignable(symbol),
-                    symbol.Name)),
-                this.lexical);
-            this.Use(new(this.locals[symbol]), MirOperand.Copy(position), name);
-        }
-
+        this.Bind(plan, plan.Arms[0].Pattern, start);
         this.Iterate(loop.Body);
         this.CloseScope(bindings, clean: false);
         this.scope = outer;

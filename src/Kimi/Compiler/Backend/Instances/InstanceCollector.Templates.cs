@@ -1,20 +1,30 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
-// Owns the site templates of the checked set (R5 package K 4.5, 4.7 and 4.8): one per body and program version, the body's sites in
-// location order, each with whether a runtime path from the body's entry reaches it, which replaying an item's template resolves.
-// Input: a built, validated MirProgram; the root range (the bodies whose Source.Module is below it are roots); the Target and Need columns
-// of the intrinsic rows; LayoutNeeds and Layout.Indirect (DECISIONS R5-M149).
-// Output: each body's sites (none for a body with a finding, MirBody.HasFinding, whose operations take no A3b check; a static's
-// declaration row reads no body and stays), `sites` from `starts[body.Ordinal]` to `starts[body.Ordinal + 1]`, which Replay reads;
-// and its layout needs past its Places' roots' storage (InstanceCollector.Layouts.cs' ListNeeds), which LayOutNeeds reads.
+// Owns the site templates of the checked set (R5 package K 4.5, 4.7 and 4.8): one per body, the body's sites in location order, each with
+// whether a runtime path from the body's entry reaches it, which replaying an item's template resolves; the library store's kept while
+// its program's library segment holds, the program store's built per program version (PLAN G950) and kept across its runs (PLAN G951).
+// Input: a built, validated and stepped MirProgram, its build-order list (Bodies), its library segment (LibrarySegment) and A2's fact
+// (MirDropTable.LibraryHolds); the Target
+// and Need columns of the intrinsic rows; LayoutNeeds and Layout.Indirect (DECISIONS R5-M149).
+// Output: each body's sites (none for a body with a finding, MirBody.HasFinding), which Replay reads, and its layout needs past its
+// Places' roots' storage (InstanceCollector.Layouts.cs' ListNeeds), which LayOutNeeds reads, in its TemplateStore: the library store
+// (keyed on the program and the library segment it was built for) for a body A2's library store holds (MirDropTable.LibraryHolds, the one
+// per-ordinal fact, read through TemplatesOf; PLAN G951 U2-K), the program store for another, each by the body's ordinal itself (the
+// Back's C-378).
 // Sites: a call whose callee may carry a target (a Fn, Requirement or Value callee, an intrinsic whose row names one; a Virtual call none,
 // X5) or whose intrinsic lays out its Type argument; a Drop; a case adaptation (an instance's creation, DECISIONS R5-M111); an aggregate;
 // an erasure to a Function Type; a function item constant; a cast or binary operation whose Types depend on slots (K 4.7, checked per
-// instance); a binary operation whose operator row has a layout need (a raw pointer's displacement, K 4.8). A root-module body's
-// operations take the definition-stage capability check on the way (A3b, InstanceCollector.Capabilities.cs).
-// Invariants: built once per version, before any item is replayed; the runtime bit is one MirReach walk without CheckTarget edges; a
-// template holds locations and the body's Places only, no substitution or target.
-// Must not: resolve a target, read TyCtxt or an item, or record anything but A3b's capability gaps.
+// instance); a binary operation whose operator row has a layout need (a raw pointer's displacement, K 4.8).
+// Invariants: built before any item is replayed, in one walk in build order over the bodies built since the version's last walk, which
+// a replay extends to the bodies a lookup built during the run (PLAN G951): a body its store holds is not templated again, so the
+// library store's templates are built once per library segment of a program (Run compares the program and its LibrarySegment, so
+// another program's or a rebuilt segment's templates are never kept) and the program store's once per program version. MirDropTable.LibraryHolds is stable within a
+// version from the analyses' library step, which Run's input (a stepped program) has passed, so a body's store is the same in every
+// run of the version; a template is a function of its
+// body alone: the runtime bit is one MirReach walk without CheckTarget edges, and a template holds locations and the body's Places only,
+// no substitution or target.
+// Must not: resolve a target, read TyCtxt, an item or the root range, or record anything: the definition-stage capability check (A3b) is
+// judged work, run in every run's root loop (InstanceCollector.Capabilities.cs).
 
 using Kimi.Compiler.Mir;
 
@@ -23,8 +33,10 @@ namespace Kimi.Compiler.Backend;
 internal sealed partial class InstanceCollector
 {
     private readonly MirReach reach = new();
-    private (MirLocation At, bool Runtime)[] sites = []; // The templates: each body's sites, in body order.
-    private int[] starts = []; // By body ordinal, its first site; the entry after the last body ends the sites.
+    private readonly TemplateStore libraryTemplates = new(); // The library store: kept while its key holds.
+    private readonly TemplateStore programTemplates = new(); // The program store: built per program version, kept across its runs.
+    private (MirProgram? Program, int Segment) libraryKey; // The program and library segment the library store's templates are of.
+    private int extent; // The build position up to which the version's walks have visited the bodies (PLAN G951).
 
     // K 4.5 rows 1-9: a call carries a target by its callee: a Fn, Requirement or Value callee, or an intrinsic whose row names one; a
     // Virtual call none, its receiver's VTable holding the entries (X5).
@@ -76,37 +88,48 @@ internal sealed partial class InstanceCollector
         return false;
     }
 
-    // Each body's sites, once per version, in location order, with whether a runtime path from its entry reaches each; a body with a
-    // finding, which no consumer reads (DECISIONS R5-M183), has an empty range and is not read. A root-module static's declaration row
-    // (A3b, CheckStatic) reads no body content, so every body takes it first.
+    // The templates of the bodies without one, the one walk: the bodies built since the version's last walk, in build order (Run starts
+    // a version at position 0; Replay calls it when a lookup built bodies during the run, PLAN G951), each appended to its store
+    // (TemplatesOf) unless the store holds it: the library store keeps its templates while its key is the program and its library
+    // segment (MirProgram.LibrarySegment). A body with a finding, which no consumer reads (DECISIONS R5-M183), has an empty range and is
+    // not read.
     private void Templates(MirProgram program)
     {
-        var bodies = program.Bodies;
-        if (this.starts.Length <= bodies.Length)
+        if (this.libraryKey != (program, program.LibrarySegment))
         {
-            this.starts = new int[Math.Max(bodies.Length + 1, this.starts.Length * 2)];
-            this.needStarts = new int[this.starts.Length];
+            this.libraryTemplates.Clear();
+            this.libraryKey = (program, program.LibrarySegment);
         }
 
-        var count = 0;
-        this.needCount = 0;
-        foreach (var body in bodies)
+        for (; this.extent < program.Bodies.Length; this.extent++)
         {
-            (this.starts[body.Ordinal], this.needStarts[body.Ordinal]) = (count, this.needCount);
-            this.CheckStatic(body);
-            count = body.HasFinding ? count : this.Template(body, count);
-        }
+            var body = program.Bodies[this.extent];
+            var store = this.TemplatesOf(body.Ordinal);
+            if (store.Has(body.Ordinal))
+            {
+                continue;
+            }
 
-        (this.starts[bodies.Length], this.needStarts[bodies.Length]) = (count, this.needCount);
+            store.Begin(body.Ordinal);
+            this.Templated++;
+            if (!body.HasFinding)
+            {
+                this.Template(store, body);
+            }
+
+            store.End(body.Ordinal);
+        }
     }
 
-    // A body's sites, appended from `count` in location order with their runtime bits; a root-module body's operations are checked against
-    // the capability table on the way (A3b), and the layout needs of its Places past their roots' storage are listed (K 4.8, ListNeeds)
-    // where a step may leave it. Returns the new count.
-    private int Template(MirBody body, int count)
+    // The store of a body's template: the library's where A2's library store holds the body (MirDropTable.LibraryHolds, the one fact,
+    // stable within a version), else the program's.
+    private TemplateStore TemplatesOf(int body) => this.program!.Drops.LibraryHolds(body) ? this.libraryTemplates : this.programTemplates;
+
+    // A body's sites, appended to its store in location order with their runtime bits, and the layout needs of its Places past their
+    // roots' storage (K 4.8, ListNeeds) where a step may leave it.
+    private void Template(TemplateStore store, MirBody body)
     {
         var blocks = body.Blocks;
-        var root = body.Source.Module < this.rootModules;
         var leaves = MayLeave(body);
         this.reach.Clear(blocks.Length);
         this.reach.Walk(body, 0, checks: false);
@@ -116,34 +139,82 @@ internal sealed partial class InstanceCollector
             var end = blocks[block].Count;
             for (var index = 0; index <= end; index++)
             {
-                if (index < end && root)
-                {
-                    this.CheckOperation(body, body.Statements[start + index]);
-                }
-
                 if (index < end ? IsSite(body, body.Statements[start + index]) : IsSite(blocks[block].Terminator))
                 {
-                    count = this.AddSite(count, new(block, index), this.reach[block]);
+                    store.AddSite(new(block, index), this.reach[block]);
                 }
 
                 if (leaves)
                 {
-                    this.ListNeeds(body, new(block, index));
+                    this.ListNeeds(store, body, new(block, index));
                 }
             }
         }
-
-        return count;
     }
 
-    private int AddSite(int count, MirLocation at, bool runtime)
+    // A store's site templates and layout needs (PLAN G950; the Back's C-378), data only, so the library store's are kept across its
+    // compilation's versions while its key holds: its bodies' sites and needs in the order they were templated, each body's own sites
+    // and own needs by the body's ordinal itself (no offset; the ordinals may have holes, PLAN G951 U2-K), and whether it holds a
+    // body's template (its mark is the store's generation, which Clear advances).
+    private sealed class TemplateStore
     {
-        if (count == this.sites.Length)
+        private (MirLocation At, bool Runtime)[] sites = [];
+        private (MirLocation At, MirPlace Step, int Pair)[] needs = [];
+        private (int Start, int End)[] siteRanges = []; // By ordinal, a body's own sites.
+        private (int Start, int End)[] needRanges = []; // By ordinal, a body's own needs.
+        private int[] marks = []; // By ordinal, the generation the body's template was ended in.
+        private int generation = 1;
+        private int siteCount;
+        private int needCount;
+
+        // A body's sites.
+        internal ReadOnlySpan<(MirLocation At, bool Runtime)> Sites(int body) => this.sites.AsSpan(this.siteRanges[body].Start..this.siteRanges[body].End);
+
+        // A body's layout needs: the location, the step's Place and the PairLayer step whose case decides it (0: none).
+        internal ReadOnlySpan<(MirLocation At, MirPlace Step, int Pair)> Needs(int body) => this.needs.AsSpan(this.needRanges[body].Start..this.needRanges[body].End);
+
+        // Whether the store holds a body's template.
+        internal bool Has(int body) => (uint)body < (uint)this.marks.Length && this.marks[body] == this.generation;
+
+        // Begins a body: its sites and needs are the ones added until its End.
+        internal void Begin(int body)
         {
-            Array.Resize(ref this.sites, Math.Max(256, count * 2));
+            MirDataflow.Grow(ref this.siteRanges, body + 1);
+            MirDataflow.Grow(ref this.needRanges, body + 1);
+            MirDataflow.Grow(ref this.marks, body + 1);
+            (this.siteRanges[body], this.needRanges[body]) = ((this.siteCount, this.siteCount), (this.needCount, this.needCount));
         }
 
-        this.sites[count] = (at, runtime);
-        return count + 1;
+        // Ends the body begun: the store holds its template.
+        internal void End(int body) => (this.siteRanges[body].End, this.needRanges[body].End, this.marks[body]) = (this.siteCount, this.needCount, this.generation);
+
+        internal void AddSite(MirLocation at, bool runtime)
+        {
+            if (this.siteCount == this.sites.Length)
+            {
+                Array.Resize(ref this.sites, Math.Max(256, this.siteCount * 2));
+            }
+
+            this.sites[this.siteCount++] = (at, runtime);
+        }
+
+        // A need of the body begun, once per location and step.
+        internal void AddNeed(int body, MirLocation at, MirPlace step, int pair)
+        {
+            if (this.needCount > this.needRanges[body].Start && this.needs[this.needCount - 1] is var last && last.At == at && last.Step == step)
+            {
+                return;
+            }
+
+            if (this.needCount == this.needs.Length)
+            {
+                Array.Resize(ref this.needs, Math.Max(256, 2 * this.needCount));
+            }
+
+            this.needs[this.needCount++] = (at, step, pair);
+        }
+
+        // Removes every body's template, keeping the storage.
+        internal void Clear() => (this.siteCount, this.needCount, this.generation) = (0, 0, this.generation + 1);
     }
 }

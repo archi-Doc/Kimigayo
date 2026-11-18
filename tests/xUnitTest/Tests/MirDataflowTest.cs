@@ -12,19 +12,23 @@ namespace XunitTest;
 /// locals, which <see cref="MirDataflow.Backward"/> solves and <see cref="MirDataflow.ReplayBackward"/> reads.</summary>
 public sealed class MirDataflowTest
 {
-    // R4-M158: over every body of the MIR goldens' sources, each block's entry state after the backward solve is the least fixed point of
-    // the blocks themselves, a block joining the state of each successor its state flows into forward: a P1 block its runtime successors'
-    // and a successor's only the checks reach, any other block its successors' only the checks reach (SPEC 14.10.3).
+    // R4-M158: over every body of the MIR goldens' sources, as each compilation builds them, and of the library (MirBuildTest.LibraryBuild,
+    // PLAN G951 U2), each block's entry state after the backward solve is the least fixed point of the blocks themselves, a block joining
+    // the state of each successor its state flows into forward: a P1 block its runtime successors' and a successor's only the checks
+    // reach, any other block its successors' only the checks reach (SPEC 14.10.3).
     [Fact]
     public void BackwardSolvesTheLeastFixedPoint()
     {
         var bodies = 0;
-        foreach (var path in Directory.GetFiles(DiagnosticCorpus.RepositoryPath("tests", "mir"), "*.kimi"))
+        var programs = Directory.GetFiles(DiagnosticCorpus.RepositoryPath("tests", "mir"), "*.kimi")
+            .Select(static x => (Name: Path.GetFileName(x), Program: MirDumpTest.Compile(Path.GetFileNameWithoutExtension(x)).BuildMir()))
+            .Append(("library", MirBuildTest.LibraryBuild()));
+        foreach (var (name, program) in programs)
         {
-            foreach (var body in MirDumpTest.Compile(Path.GetFileNameWithoutExtension(path)).BuildMir().Bodies)
+            foreach (var body in program.Bodies)
             {
                 var (_, entries) = Solve(body);
-                Assert.True(entries.SequenceEqual(FixedPoint(body)), $"{Path.GetFileName(path)}: {body.Key}");
+                Assert.True(entries.SequenceEqual(FixedPoint(body)), $"{name}: {body.Key}");
                 bodies++;
             }
         }
@@ -62,14 +66,14 @@ public sealed class MirDataflowTest
         var body = MirBuildTest.Compile("func f() => ()\n").BuildMir().Bodies.ToArray().Single(static x => x.Key.Decl?.Name == "f");
         var report = new MirReport();
         report.Add(new(DiagnosticCode.Unsupported_Kd, DiagnosticRequirement.Ownership(OwnershipRequirement.Unsupported), body.Source, body.Ordinal, 1));
-        var words = (8L * 1024 * 1024) + 1;
+        var words = (64L * 1024 * 1024 * 6 / 5 / 8) + 1; // Above the limit, 6/5 of 64 MiB (A1's sixth lane; the owner's O-342 Q2 (a)).
         Assert.False(MirDataflow.Within(words));
         Assert.Equal(1, MirDataflow.StorageLimit(report, body, 0b11, MirStorageTable.Origins, words));
         var requirement = DiagnosticRequirement.Ownership(OwnershipRequirement.StorageLimit);
         Assert.Equal(new MirProblem(DiagnosticCode.OwnershipStorageLimit_Kd, requirement, body.Source, body.Ordinal, 0b11), report.All[1]);
         Assert.Equal(
             [
-                new ProblemFact(ProblemFactKind.Required, body.Source, words * 8), new(ProblemFactKind.Limit, body.Source, 64L * 1024 * 1024),
+                new ProblemFact(ProblemFactKind.Required, body.Source, words * 8), new(ProblemFactKind.Limit, body.Source, 64L * 1024 * 1024 * 6 / 5),
                 new(ProblemFactKind.Table, body.Source, (long)MirStorageTable.Origins),
             ],
             report.Facts(1).ToArray());

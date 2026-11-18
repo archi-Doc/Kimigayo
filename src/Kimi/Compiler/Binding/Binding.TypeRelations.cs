@@ -75,11 +75,7 @@ public sealed partial class Binding
     // The Callable comparison of `actual`, whose per-call inputs `own` binds (its own syntax when null), with `expected`, nested in the
     // comparisons `outer` names.
     private static CallableInstance Comparison(BoundType actual, Koto? own, BoundType expected, in CallableInstance enclosing)
-        => new(actual, own ?? FunctionTypeBinder(actual), expected, FunctionTypeBinder(expected), enclosing.Enclosing) { Scope = enclosing.Scope };
-
-    // A signature whose inputs are fresh per-call borrows and whose result has no Origin or one over those inputs alone.
-    private static bool PerCallShape(BoundType signature, Koto? own, bool any = false)
-        => PerCallSignature(signature, own, any) || InputDependentBinder(signature, own, any) is not null;
+        => new(actual, own ?? actual.Binder, expected, expected.Binder, enclosing.Enclosing) { Scope = enclosing.Scope };
 
     // SPEC 10.7: within one Callable comparison, `a` outlives `b` after the implementation's call-time Origins are instantiated. The
     // required per-call Origins are rigid: one outlives another only at the same position or by the own well-formedness of the
@@ -322,7 +318,7 @@ public sealed partial class Binding
         }
 
         // DECISIONS BU-60: the Type instance a closure's context holds is a part of the Closure Type.
-        var context = type.ClosureContext;
+        var context = type.InstanceContext;
         if (TyCtxt.HeldType(type) is { } held)
         {
             if (this.SubstitutePart(held, substitution, query) is not { } image)
@@ -360,7 +356,7 @@ public sealed partial class Binding
                 }
             }
 
-            var changed = length != type.Length || !ReferenceEquals(expression, type.LengthExpression) || !ReferenceEquals(context, type.ClosureContext);
+            var changed = length != type.Length || !ReferenceEquals(expression, type.LengthExpression) || !ReferenceEquals(context, type.InstanceContext);
             for (var i = 0; i < type.LengthArguments.Length; i++)
             {
                 var argument = type.LengthArguments[i];
@@ -439,7 +435,7 @@ public sealed partial class Binding
 
             changed |= rebuilt is not null;
             return changed
-                ? this.types.Intern(type.Kind, type.Symbol, type.Semantics, scratch.AsSpan(0, type.Components.Count), length, origin, rebuilt is null ? (BoundOrigin[])type.OriginArguments : rebuilt.AsSpan(0, type.OriginArguments.Count), expression, context, itemLengths.AsSpan(0, type.LengthArguments.Length))
+                ? this.types.Intern(type.Kind, type.Symbol, type.Semantics, scratch.AsSpan(0, type.Components.Count), length, origin, rebuilt is null ? (BoundOrigin[])type.OriginArguments : rebuilt.AsSpan(0, type.OriginArguments.Count), expression, context, itemLengths.AsSpan(0, type.LengthArguments.Length), type.Binder)
                 : type;
         }
         finally
