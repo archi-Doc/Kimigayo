@@ -492,7 +492,7 @@ public class ArchitectureRulesTest
         string[] allowed =
         [
             "Add", "AddRow", "Applied", "AppliedAssociatedContract", "AsSpan", "AssociatedIdentityMatches", "AvailableConstraintFact", "AvailableContractPremise", "ClassKey",
-            "ClauseHeads", "Clear", "CongruentKey", "Contains", "ContractConstraint", "DependentConstraint", "Enumerate", "EnumerateLink", "EnumerateMates", "FactStates", "GetValueOrDefault",
+            "ClauseHeads", "CongruentKey", "Contains", "ContractConstraint", "DependentConstraint", "Enumerate", "EnumerateLink", "EnumerateMates", "FactStates", "GetValueOrDefault",
             "HeadDepth", "Heads", "HoldsOpenLink", "InstantiatedAncestor", "InstantiatedContract", "InvalidDeclarationContext", "IsContractSelf", "KeyOf", "Max",
             "ProjectionMembers", "ReadSourceState", "Rebuild", "ReferenceEquals", "RemoveAt", "RemoveRange", "RentTypes", "Representative", "Return", "RowContract", "RowKind", "RowWeight",
             "SameClass", "SetKey", "SubjectKey", "TryGetValue", "UnresolvedTypeDeclarationContext",
