@@ -777,7 +777,7 @@ public partial class CallableOriginForwardingTest
     // limited direct argument says (x-order-q; cdb04ab61 gave the limit, Unsupported_Kd at e@move), and with no refuted position each
     // limited position is its own located limit, the element's as a direct argument's (x-order-i; cdb04ab61 located only e@move).
     [InlineData("x-order-q", RunOrder + OwnK + OwnCq + "    var r2 = p\n    let e = func [r2] (x: ref/i32 during q) -> i32 => 0\n    return run(q, e@move, (c@move, q))\n", "")]
-    [InlineData("x-order-i", RunOrder + "func k(p: ref/i32, q: ref/i32) -> i32\n    var r2 = p\n    let e = func [r2] (x: ref/i32 during q) -> i32 => 0\n    var r3 = p\n    let e2 = func [r3] (x: ref/i32 during q) -> i32 => 0\n    return run(q, e@move, (e2@move, q))\n", "Unsupported_Kd e@move; Unsupported_Kd e2@move")]
+    [InlineData("x-order-i", RunOrder + "func k(p: ref/i32, q: ref/i32) -> i32\n    var r2 = p\n    let e = func [r2] (x: ref/i32 during q) -> i32 => 0\n    var r3 = p\n    let e2 = func [r3] (x: ref/i32 during q) -> i32 => 0\n    return run(q, e@move, (e2@move, q))\n", "Unsupported_Kd e2@move; Unsupported_Kd e@move")]
     public void ApplicabilityJudgesTheErasureRowsConditions(string form, string body, string records)
         => OriginRelationDiagnosticTest.AssertRecords(form, body, records, null);
 
