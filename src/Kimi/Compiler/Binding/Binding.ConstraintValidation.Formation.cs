@@ -9,7 +9,8 @@ namespace Kimi.Compiler;
 //   context, its Origin clauses and a constructed part's clauses with every enclosing container's under its arguments. The per-use
 //   walk (CheckTypeConstraints) judges an instantiated Type and enters every component; the declaration walk
 //   (CheckDeclaredTypeConstraints) judges a callee's declared signature in its own scope (FormSignature; CheckSignatureTypeConstraints
-//   keeps its Proven as the declaration query SignatureVerdict) and enters no Function Type's components at any depth.
+//   keeps its Proven as the declaration query SignatureVerdict) and enters no Function Type's components at any depth. An instance's
+//   evidence (InstanceFormation, SPEC 8.6.3) reads the step alone: its declaration's Constraints at its arguments.
 // - Inputs: a Type and the scope whose premises apply; the declaration contexts, Origin declarations and constraint clauses bound so far.
 // - Outputs: the proof, combined as P < U < L < R < E, with the cause it rests on read into the enclosing proof scope; in the per-use
 //   walk, also the clause fact at the part's verdict, handed on as a clause list hands its own (LeaveClause; PLAN G354 (2)).

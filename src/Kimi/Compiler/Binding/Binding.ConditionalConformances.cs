@@ -505,12 +505,14 @@ public sealed partial class Binding
     // Whether a declaration path is being verified (its obligation open).
     private bool Verifying(BoundConformancePath path) => this.openObligations.ContainsKey(new(null, null, path));
 
-    // SPEC 8.6.1, 8.3.1: evidence about an instance of a generic declaration (a conformance or a capability) holds only for
-    // the bindings the declaration's Constraints allow, so it rests on the instance's formation, which proves each Constraint with
-    // SPEC 8.3.3's re-entry rule: a Constraint whose obligation is open supplies none.
+    // SPEC 8.6.1, 8.6.3, 8.3.1: evidence about an instance of a generic declaration (a conformance, a capability, a stored instance)
+    // holds only for the bindings the declaration's Constraints allow, so it rests on those Constraints at the instance's arguments (the
+    // formation step alone, BeginTypeFormation and EndTypeFormation; R7-C2e2 e2-3b R2.5), each proven with SPEC 8.3.3's re-entry rule: a
+    // Constraint whose obligation is open supplies none. An argument's own formation is its written site's, judged there.
     private ConstraintProof InstanceFormation(BoundType type, BindingScope scope)
         => type.Symbol is not { Declaration: DeclarationContainerKoto, Schema.GenericSlots.Count: > 0 } symbol ? ConstraintProof.Proven
-            : type.Components.Count == symbol.Schema.GenericSlots.Count ? this.CheckTypeConstraints(type, scope) : ConstraintProof.Unknown;
+            : type.Components.Count != symbol.Schema.GenericSlots.Count ? ConstraintProof.Unknown
+            : this.BeginTypeFormation(type, scope) is { } proof ? this.EndProof(this.EndTypeFormation(type, scope, proof)) : ConstraintProof.Error;
 
     // SPEC 8.3.2's closed world before ResolveConformance refutes: a conformance to the required reference's Contract declaration is a
     // path not ruled out unless its reference, in the conforming Type's terms, is known to differ from the required one, in the

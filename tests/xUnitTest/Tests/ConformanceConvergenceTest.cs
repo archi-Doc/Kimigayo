@@ -477,6 +477,18 @@ public class ConformanceConvergenceTest(ITestOutputHelper output)
     public void ADecidedAnswerReadingTheObligationIsEvidence(string id, string source, bool valid)
         => Assert.True(valid == (DiagnosticCorpus.RecordProfile(source) == "clean"), id);
 
+    // SPEC 8.6.1, 8.6.3 (R7-C2e2 e2-3b R2.5): evidence about an instance rests on its declaration's Constraints at its arguments, not
+    // on the arguments' own formation, which is their written site's: Box<Box2<S>> is Copy (deepc), Box<Box2<S>> is M (deepr) and the
+    // projection route through Box<Box2<S>> (deepv) hold while S is C is verified, though Box2<S> needs S is C; with Box's Constraint
+    // `T is D` and Box2 is D when T is C, Box<Box2<S>> is Copy rests on S is C (deepcn).
+    [Theory]
+    [InlineData("deepc", "contract C\n    associate Item is Copy\nstruct Box2<T>\n    T is C\nstruct Box<T>\n    Self is Copy\n    var value: i32\nstruct S\n    Self is C\n    associate C.Item is Box<Box2<S>>\n", true)]
+    [InlineData("deepcn", "contract D\ncontract C\n    associate Item is Copy\nstruct Box2<T>\n    Self is D when T is C\nstruct Box<T>\n    T is D\n    Self is Copy\n    var value: i32\nstruct S\n    Self is C\n    associate C.Item is Box<Box2<S>>\n", false)]
+    [InlineData("deepr", "contract M\ncontract C\n    associate Item is M\nstruct Box2<T>\n    T is C\nstruct Box<T>\n    Self is M\nstruct S\n    Self is C\n    associate C.Item is Box<Box2<S>>\n", true)]
+    [InlineData("deepv", "contract M\ncontract K\n    associate X\ncontract C\n    associate Item is M\nstruct R\n    Self is M\nstruct Box2<T>\n    T is C\nstruct Box<T>\n    Self is K\n    associate K.X is R\nstruct S\n    Self is C\n    associate C.Item is Box<Box2<S>>.(K).X\n", true)]
+    public void AnInstanceRestsOnItsDeclarationsConstraintsAtItsArguments(string id, string source, bool valid)
+        => Assert.True(valid == (DiagnosticCorpus.RecordProfile(source) == "clean"), id);
+
     // SPEC 8.3.3 Recursion and Finality (R7-C2e2 e2-3b's coverage rows, `design-e23b.md`): programs whose judgments read an open
     // obligation's neighbourhood, which the one obligation table leaves as they were: the controls of the projection route's n-forms (a
     // Box, a condition or a capability bound with no dependence on `S is C`, a second conditional conformance), an obligation opened and
