@@ -46,7 +46,7 @@ public sealed partial class Binding
 
         var originDeclaration = this.BeginOriginDeclaration(variable, scope);
         var declared = symbol.Property is not null ? symbol.Type : variable.TypeKoto is { } type ? this.BindType(type, scope) : null;
-        if (symbol.Kind == BindingSymbolKind.Local && declared is { ContainsParameter: true })
+        if (symbol.Kind == BindingSymbolKind.Local && declared is not null)
         {
             declared = this.ClassForm(declared, scope, out _); // SPEC 8.2.3: one Type in the premise's scope.
         }

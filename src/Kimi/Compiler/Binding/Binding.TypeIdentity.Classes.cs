@@ -34,6 +34,10 @@ public sealed partial class Binding
         private readonly List<int> next = new();
         private readonly List<int> signatureNext = new();
         private readonly Dictionary<BoundType, int> congruent = new(ReferenceEqualityComparer.Instance); // ClassOf's answers for Types that are no node
+        private readonly Dictionary<int, int> families = new(); // R7-C3 R1: Close's family entries, FamilyKey -> first family node (chained by familyNext)
+        private readonly List<int> familyNext = new();
+        private readonly Dictionary<int, BoundType?> familyMembers = new(); // per class root: FamilyMember's answer
+        private readonly Dictionary<BoundType, BoundType> applied = new(ReferenceEqualityComparer.Instance); // Applied's answers
         private readonly List<int> order = new(); // the class graph's strongly connected components (MarkCycles)
         private readonly List<int> low = new();
         private readonly List<int> component = new();
@@ -86,6 +90,10 @@ public sealed partial class Binding
             this.next.Clear();
             this.signatureNext.Clear();
             this.congruent.Clear();
+            this.families.Clear();
+            this.familyNext.Clear();
+            this.familyMembers.Clear();
+            this.applied.Clear();
             this.closed = false;
             this.order.Clear();
             this.low.Clear();
@@ -175,7 +183,7 @@ public sealed partial class Binding
         // Verdict's Proven: one final class in state One, or one head and agreeing attributes over Proven parts.
         internal bool Same(BoundType a, BoundType b)
         {
-            (a, b) = (this.Target(a), this.Target(b));
+            (a, b) = (this.Applied(this.Target(a)), this.Applied(this.Target(b))); // R7-C3: a family application reads as its instance
             if (ReferenceEquals(a, b))
             {
                 return true;
@@ -228,7 +236,7 @@ public sealed partial class Binding
         // node in premise meets, and SameHead reads no length arguments.
         internal bool Refuted(BoundType a, BoundType b)
         {
-            (a, b) = (this.Target(a), this.Target(b));
+            (a, b) = (this.Applied(this.Target(a)), this.Applied(this.Target(b))); // R7-C3: a family application reads as its instance
             (a, b) = (this.Member(a) ?? a, this.Member(b) ?? b); // R7-C2c2 c2-4 (design R1.2): Member, with parameters too
             if (ReferenceEquals(a, b) || (this.ClassOf(a) is var x && x >= 0 && x == this.ClassOf(b)))
             {
@@ -308,8 +316,71 @@ public sealed partial class Binding
                 }
             }
 
+            for (var n = 0; n < this.types.Count; n++)
+            {
+                this.familyNext.Add(-1);
+                if (IsFamily(this.types[n]))
+                {
+                    var key = this.FamilyKey(this.types[n]);
+                    if (this.families.TryGetValue(key, out var first))
+                    {
+                        this.familyNext[n] = this.familyNext[first];
+                        this.familyNext[first] = n;
+                    }
+                    else
+                    {
+                        this.families[key] = n;
+                    }
+                }
+            }
+
             this.closed = true;
         }
+
+        // R7-C3 (design §3 R1; SPEC 8.2.3 Projections, 8.5.4): a Contract binds a family "for every a" (Iterator's `LentItem(step) is
+        // Item`). Close publishes each family node at its own binder parameters (the clause a `T is C` premise supplies; IsFamily) by its
+        // FamilyKey (the head and its components' classes, no Origin arguments). Once closed, an application with Origin arguments of no
+        // node of its own whose FamilyKey has an entry in a final One class reads as that class's least non-family member by Order
+        // (else, a class of families only, its least family member: H) instanced at the application's Origin arguments; every other
+        // Type reads as itself. Every answer reads it (ClassOf, Same, Refuted; Binding's ClassForm and ClassKey); no class joins
+        // after Close; kept per table.
+        internal BoundType Applied(BoundType type)
+        {
+            if (!this.closed || type.Kind != BoundTypeKind.AssociatedProjection || type.OriginArguments.Count == 0 || this.node.ContainsKey(type))
+            {
+                return type;
+            }
+
+            if (this.applied.TryGetValue(type, out var known))
+            {
+                return known;
+            }
+
+            var answer = type;
+            if (this.families.TryGetValue(this.FamilyKey(type), out var first))
+            {
+                for (var m = first; m >= 0; m = this.familyNext[m])
+                {
+                    if (this.SameFamily(this.types[m], type))
+                    {
+                        var root = this.Find(m);
+                        if (this.state[root] == One && !this.incompleteClass[root] && this.FamilyMember(root) is { } member)
+                        {
+                            answer = binding.SubstituteStoredOrigins(member, type.Symbol!.Declaration, (BoundOrigin[])type.OriginArguments);
+                        }
+
+                        break;
+                    }
+                }
+            }
+
+            this.applied[type] = answer;
+            return answer;
+        }
+
+        // A family node: an associated projection applied at its own declaration's Origin parameters, in order (a clause's subject).
+        private static bool IsFamily(BoundType type)
+            => type is { Kind: BoundTypeKind.AssociatedProjection, OriginArguments.Count: > 0 } && UniversalAssociatedArguments(type);
 
         private static bool IsConstructor(BoundType type)
             => type.Kind is not (BoundTypeKind.Parameter or BoundTypeKind.AssociatedProjection or BoundTypeKind.TargetProjection);
@@ -437,6 +508,33 @@ public sealed partial class Binding
             return true;
         }
 
+        // The class's least non-family member by Order, else its least family member (H: a class of families bound to each other answers
+        // the family of least Order; that family's own entry is this class again, by congruence, so no second hop reads anything new).
+        private BoundType? FamilyMember(int root)
+        {
+            if (!this.familyMembers.TryGetValue(root, out var answer))
+            {
+                BoundType? own = null;
+                BoundType? family = null;
+                for (var m = this.head[root]; m >= 0; m = this.next[m])
+                {
+                    var member = this.types[m];
+                    if (IsFamily(member))
+                    {
+                        family = family is null || Order(member, family) < 0 ? member : family;
+                    }
+                    else
+                    {
+                        own = own is null || Order(member, own) < 0 ? member : own;
+                    }
+                }
+
+                this.familyMembers[root] = answer = own ?? family;
+            }
+
+            return answer;
+        }
+
         // A node that is a constructor of its class (R7-C2c2 c2-4b, design R4.1): a constructed Type that is no application admitting
         // exactly `owner` (that one is its target). The one classification the class graph's edges and cycles (Walk, MarkCycleEdges), the
         // meets (MeetMembers), the binding grounds and the Member (Scanned) read.
@@ -459,9 +557,10 @@ public sealed partial class Binding
         // The one class lookup (R7-C2c2 c2-4b, design R4.2): the class of a Type's target (SPEC 8.2.3's pair row), a node's root, else, once
         // the table is closed, the root of the node it is congruent with (the table's own congruence: Signature and Congruent over its
         // components' classes, the index the last Congruence round left), else -1. Answers for Types that are no node are kept per table.
+        // R7-C3: a family application reads as its entry's instance (Applied).
         private int ClassOf(BoundType type)
         {
-            type = this.Target(type);
+            type = this.Applied(this.Target(type));
             if (this.node.TryGetValue(type, out var n))
             {
                 return this.Find(n);
@@ -530,12 +629,19 @@ public sealed partial class Binding
         // The head with its components' class ids and its compared attributes by reference: equal keys are one Type (SPEC 8.2.3 replacement).
         private int Signature(BoundType type)
         {
-            var hash = HashCode.Combine(type.Kind, type.Symbol, type.Semantics, type.Length, type.LengthExpression, type.Origin, type.InstanceContext);
+            var hash = this.FamilyKey(type);
             for (var i = 0; i < type.OriginArguments.Count; i++)
             {
                 hash = HashCode.Combine(hash, type.OriginArguments[i]);
             }
 
+            return hash;
+        }
+
+        // Signature without the Origin arguments (R7-C3 R1: a family's key, SameFamily's hash).
+        private int FamilyKey(BoundType type)
+        {
+            var hash = HashCode.Combine(type.Kind, type.Symbol, type.Semantics, type.Length, type.LengthExpression, type.Origin, type.InstanceContext);
             for (var i = 0; i < type.Components.Count; i++)
             {
                 hash = HashCode.Combine(hash, this.ComponentClass(type.Components[i]));
@@ -782,9 +888,7 @@ public sealed partial class Binding
 
         private bool Congruent(BoundType x, BoundType y)
         {
-            if (x.Kind != y.Kind || !ReferenceEquals(x.Symbol, y.Symbol) || x.Components.Count != y.Components.Count || !ReferenceEquals(x.Origin, y.Origin) ||
-                !ReferenceEquals(x.LengthExpression, y.LengthExpression) || x.Length != y.Length || x.Semantics != y.Semantics ||
-                !ReferenceEquals(x.InstanceContext, y.InstanceContext) || x.OriginArguments.Count != y.OriginArguments.Count)
+            if (!this.SameFamily(x, y))
             {
                 return false;
             }
@@ -795,6 +899,19 @@ public sealed partial class Binding
                 {
                     return false;
                 }
+            }
+
+            return true;
+        }
+
+        // Congruent but for the Origin arguments' references (their number agrees): one family's applications (R7-C3 R1, FamilyKey).
+        private bool SameFamily(BoundType x, BoundType y)
+        {
+            if (x.Kind != y.Kind || !ReferenceEquals(x.Symbol, y.Symbol) || x.Components.Count != y.Components.Count || !ReferenceEquals(x.Origin, y.Origin) ||
+                !ReferenceEquals(x.LengthExpression, y.LengthExpression) || x.Length != y.Length || x.Semantics != y.Semantics ||
+                !ReferenceEquals(x.InstanceContext, y.InstanceContext) || x.OriginArguments.Count != y.OriginArguments.Count)
+            {
+                return false;
             }
 
             for (var i = 0; i < x.Components.Count; i++)

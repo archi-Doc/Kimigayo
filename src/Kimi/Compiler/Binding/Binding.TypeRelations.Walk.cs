@@ -162,10 +162,9 @@ public sealed partial class Binding
             if (!this.formed)
             {
                 this.formed = true;
-                if (this.binding is { } judge && this.use is { } at && (actual.ContainsParameter || expected.ContainsParameter))
+                if (this.binding is { } judge && this.use is { } at)
                 {
-                    var scope = judge.ConstraintScope(at);
-                    (actual, expected) = (judge.ClassForm(actual, scope, out _), judge.ClassForm(expected, scope, out _));
+                    (actual, expected) = (judge.ClassForm(actual, at), judge.ClassForm(expected, at)); // R7-C3: the judge decides its domain
                 }
             }
 

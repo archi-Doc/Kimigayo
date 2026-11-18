@@ -236,7 +236,7 @@ public sealed partial class Binding
 
     private BoundType? BindAndAdaptNode(Koto node, BindingScope scope, BoundType? expected)
     {
-        if (expected is { ContainsParameter: true })
+        if (expected is not null)
         {
             expected = this.ClassForm(expected, scope, out _); // SPEC 8.2.3: the binding input's form (a literal at T under `T is i32` is i32)
         }
@@ -268,7 +268,7 @@ public sealed partial class Binding
             expected = this.CompleteArrayExpectation(expected, actual);
         }
 
-        if (actual is { ContainsParameter: true } && this.ClassForm(actual, scope, out _) is var substituted && !ReferenceEquals(substituted, actual))
+        if (actual is not null && this.ClassForm(actual, scope, out _) is var substituted && !ReferenceEquals(substituted, actual))
         {
             // SPEC 8.2: the expression has the one Type that the identity premises of its scope make of its Types.
             if (ReferenceEquals(node.BoundType, actual))

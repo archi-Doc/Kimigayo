@@ -1,6 +1,7 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using System.Runtime.InteropServices;
+using Kimi.Compiler.Parsing;
 
 namespace Kimi.Compiler;
 
@@ -76,7 +77,7 @@ public sealed partial class Binding
         if (classes.KeyOf(type) is not { } key)
         {
             this.IdentityKeyWork++;
-            key = classes.Representative(type) ?? this.CongruentKey(type, classes);
+            key = classes.Representative(type) ?? this.CongruentKey(classes.Applied(type), classes); // R7-C3: a family application keys as its instance
             classes.SetKey(type, key);
         }
 
@@ -145,7 +146,7 @@ public sealed partial class Binding
     private BoundType ClassForm(BoundType type, BindingScope scope, out Completion completion)
     {
         completion = Completion.Complete;
-        if (!type.ContainsParameter || !HasTypeIdentity(scope))
+        if (!type.HasAbstractPart || !HasTypeIdentity(scope))
         {
             return type;
         }
@@ -153,12 +154,16 @@ public sealed partial class Binding
         return this.ClassesOf(scope, out completion) is { } classes ? this.ClassForm(type, classes) : type;
     }
 
+    // J3's intake at a use (RelationWalk.Fits' root): the judge decides its domain (R7-C3, C-b: SPEC 8.2.3's abstract Types,
+    // HasAbstractPart) before it reads the use's scope.
+    private BoundType ClassForm(BoundType type, Koto use) => type.HasAbstractPart ? this.ClassForm(type, this.ConstraintScope(use), out _) : type;
+
     // Terminates on every table (design R4.1): from a Type of a class ClassForm descends only into its Member's components, each a class
     // graph edge the cycle marking marks, so a descent that met its class again would be a marked class, which has no Member; a class
     // met again within one formation is the table's broken contract (InternalInvariant_Kd).
     private BoundType ClassForm(BoundType type, IdentityClasses classes)
     {
-        if (!type.ContainsParameter)
+        if (!type.HasAbstractPart)
         {
             return type;
         }
@@ -185,7 +190,7 @@ public sealed partial class Binding
         }
         else
         {
-            formed = root >= 0 ? least ?? type : this.FormParts(type, classes);
+            formed = root >= 0 ? least ?? type : this.FormParts(classes.Applied(type), classes); // R7-C3: a family application of no class forms as its instance
         }
 
         classes.SetForm(type, formed);
