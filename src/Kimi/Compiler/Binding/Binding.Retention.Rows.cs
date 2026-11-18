@@ -542,7 +542,7 @@ public sealed partial class Binding
             return RetentionKind.None; // Entered at this depth or shallower: what lies below it is counted there (the bounded walks' rule).
         }
 
-        if (this.Identical(declared, hidden))
+        if (this.Identical(declared, hidden, this.retentionViews.Kept))
         {
             return kind;
         }
@@ -580,22 +580,16 @@ public sealed partial class Binding
 
     // SPEC 8.2.3 ("identity is closed under replacement inside any Type"), 15.6.4 ("only where the premises make it one"): whether a Type
     // is the Type `hidden`: one Type with Origins erased (Fits, a pair layer by one of its admitted cases), or one by Binding.TypeIdentity's
-    // judge (IdentityProven: the view's classes, decomposition and replacement included) over the erased Types, in the view of the
-    // function whose own abstract Types they name (AbstractOwner: the callee's in the kept reading, the calling definition's in the
-    // instantiated one; rvPremBad `T is V`, structIdBad `Bx<E>` and `Bx<D>` under `E is D`). The one Type test of the walks that judge a
+    // judge (IdentityProven: the view's classes, decomposition and replacement included) over the erased Types, in `view`, the body the
+    // comparison stands in (retentionViews): the callee's in its kept reading, whose own premises hold there also for Types naming an
+    // enclosing function's parameters (nestIdBad: `(T, E)` and `(T, D)` under g's `E is D`, T outer's), the calling definition's in the
+    // instantiated one; rvPremBad `T is V`, structIdBad `Bx<E>` and `Bx<D>` under `E is D`. The one Type test of the walks that judge a
     // kept Type: HiddenKind's, the write test's (WrittenThrough: Filled, Handed, Routes) and Occurs' (Filled's Takes and Returns). View
     // keeps two own abstract Types of one class distinct, so erased reference identity alone does not decide it; a view without an
     // identity premise is decided by Fits alone (IdentityProven's own guard, read first).
-    private bool Identical(BoundType declared, BoundType hidden)
-    {
-        if (this.Fits(declared, hidden))
-        {
-            return true;
-        }
-
-        var scope = (AbstractOwner(hidden) ?? AbstractOwner(declared)) is { } function ? this.ConstraintScope(function) : null;
-        return scope is not null && HasTypeIdentity(scope) && this.IdentityProven(this.types.Erase(declared), this.types.Erase(hidden), scope);
-    }
+    private bool Identical(BoundType declared, BoundType hidden, BindingScope? view)
+        => this.Fits(declared, hidden) ||
+            (view is not null && HasTypeIdentity(view) && this.IdentityProven(this.types.Erase(declared), this.types.Erase(hidden), view));
 
     // SPEC 15.6.4 ("or where a callable the instantiated contract hands the callee's body ... may retain the argument there by this section
     // applied to that callable's signature, through its result or its writes"; Revision 1's R1.3, per input): how a callable the contract
@@ -603,7 +597,8 @@ public sealed partial class Binding
     // retain it at a position. The Types read are the walk state's (D1): at a position in the binding of the callee's kept Type
     // (`signature`, Parametric) that Type, the input's declared Type and the callables as the callee's declaration states them
     // (retentionOwnHanded, retentionOwnCallables), so the answer is the declared record's for every binding of the Type; elsewhere the
-    // instantiated position `type`, input and callables (retentionHanded, retentionCallables). Each (position, input) once per computation.
+    // instantiated position `type`, input and callables (retentionHanded, retentionCallables); each compared in its reading's view
+    // (retentionViews, Identical). Each (position, input) once per computation.
     private Fill Filled(BoundType? type, BoundType? signature, int input)
     {
         if (this.retentionErased)
@@ -612,7 +607,8 @@ public sealed partial class Binding
         }
 
         var own = this.Parametric(signature);
-        var (position, argument) = own ? (signature, this.SignatureInput(input)) : (type, this.retentionArguments[input]);
+        var (position, argument, view) = own ? (signature, this.SignatureInput(input), this.retentionViews.Kept)
+            : (type, this.retentionArguments[input], this.retentionViews.Instantiated);
         if (position is null || argument is null)
         {
             return Fill.None;
@@ -623,9 +619,9 @@ public sealed partial class Binding
             var (handed, callables) = own ? (this.retentionOwnHanded, this.retentionOwnCallables) : (this.retentionHanded, this.retentionCallables);
             for (var k = 0; fill != Fill.Writes && HandedAt(handed, callables, k, out var callable); k++)
             {
-                if (callable is not null && this.Takes(callable, argument))
+                if (callable is not null && this.Takes(callable, argument, view))
                 {
-                    fill = this.Writes(callable, position) ? Fill.Writes : this.Returns(callable, position) ? Fill.Result : fill;
+                    fill = this.Writes(callable, position, view) ? Fill.Writes : this.Returns(callable, position, view) ? Fill.Result : fill;
                 }
             }
 
@@ -638,7 +634,7 @@ public sealed partial class Binding
     // Whether a handed callable takes an input of Type `argument` (Filled): the input holds the callable itself (what its environment keeps,
     // its result or writes may keep), or names Origins (the closure decides it: the handed signature's relations, R4-M52, Revision 3), or
     // one of the callable's parameters holds the input's Type, Origins erased, or is a raw pointer as the input is (BU-66).
-    private bool Takes(BoundType callable, BoundType argument)
+    private bool Takes(BoundType callable, BoundType argument, BindingScope? view)
     {
         var pointer = argument is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Raw };
         if (this.Hands(argument, callable) || (argument.CarriesAnyOrigin && !pointer))
@@ -651,7 +647,7 @@ public sealed partial class Binding
         {
             var parameter = parameters.Components[j];
             this.retentionWalked.Clear();
-            if ((pointer && parameter is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Raw }) || this.Occurs(parameter, argument))
+            if ((pointer && parameter is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Raw }) || this.Occurs(parameter, argument, view))
             {
                 return true;
             }
@@ -679,27 +675,27 @@ public sealed partial class Binding
 
     // Whether a handed callable's result holds a position's Type (Fill.Result): the position occurs in it, or it occurs in the position
     // (an associated projection's base: BU-66's fill at a carrier that occurs in the part).
-    private bool Returns(BoundType callable, BoundType position)
+    private bool Returns(BoundType callable, BoundType position, BindingScope? view)
     {
         this.retentionWalked.Clear();
-        if (this.Occurs(callable.Components[1], position))
+        if (this.Occurs(callable.Components[1], position, view))
         {
             return true;
         }
 
         this.retentionWalked.Clear();
-        return this.Occurs(position, callable.Components[1]);
+        return this.Occurs(position, callable.Components[1], view);
     }
 
     // Whether a handed callable may write a value of a position's Type (Fill.Writes; SPEC 15.6.4 "never through a shared Loan", 5.2.1
     // condition 3): one of its parameters reaches such a value through no shared layer (WrittenThrough).
-    private bool Writes(BoundType callable, BoundType position)
+    private bool Writes(BoundType callable, BoundType position, BindingScope? view)
     {
         var parameters = callable.Components[0];
         this.retentionWalked.Clear();
         for (var j = 0; !ReferenceEquals(parameters, BoundType.Unit) && j < parameters.Components.Count; j++)
         {
-            if (this.WrittenThrough(parameters.Components[j], position, 0))
+            if (this.WrittenThrough(parameters.Components[j], position, 0, view))
             {
                 return true;
             }
@@ -709,11 +705,11 @@ public sealed partial class Binding
     }
 
     // Whether a value of a Type is, or reaches through no shared layer, a value of `position`'s Type, Origins erased and under the
-    // identity premises of the function `position` is an own abstract Type of (Identical; SPEC 8.2.3: under `T is U` a writer of U
-    // writes T): by the entries the hold walk steps through (Holdings): a part held by value, an exclusive layer's referent, a raw layer's
-    // pointee where its step is not Shared; never past a shared borrow or a shared handle's payload, which a call reaches for reads only.
+    // identity premises of the reading's view (Identical; SPEC 8.2.3: under `T is U` a writer of U writes T): by the entries the hold
+    // walk steps through (Holdings): a part held by value, an exclusive layer's referent, a raw layer's pointee where its step is not
+    // Shared; never past a shared borrow or a shared handle's payload, which a call reaches for reads only.
     // Each Type entered at the shallowest depth it is met at (Enters, retentionWalked).
-    private bool WrittenThrough(BoundType? type, BoundType position, int depth)
+    private bool WrittenThrough(BoundType? type, BoundType position, int depth, BindingScope? view)
     {
         if (type is null || depth > StorageBound)
         {
@@ -726,7 +722,7 @@ public sealed partial class Binding
             return false;
         }
 
-        if (this.Identical(type, position))
+        if (this.Identical(type, position, view))
         {
             return true;
         }
@@ -740,7 +736,7 @@ public sealed partial class Binding
                 var entry = this.retentionHeld[i];
                 var shared = entry.Step == HoldStep.Shared || (entry.Flags & HoldFlags.ReadOnly) != 0;
                 var through = this.ByValue(type, entry) || entry.Step == HoldStep.Exclusive || (entry.Flags & HoldFlags.Raw) != 0;
-                found = !shared && through && this.WrittenThrough(entry.Part, position, depth + 1);
+                found = !shared && through && this.WrittenThrough(entry.Part, position, depth + 1, view);
             }
         }
 
@@ -875,7 +871,7 @@ public sealed partial class Binding
     {
         for (var k = 0; HandedAt(this.retentionOwnHanded, this.retentionOwnCallables, k, out var callable); k++)
         {
-            if (callable is not null && this.Writes(callable, kept))
+            if (callable is not null && this.Writes(callable, kept, this.retentionViews.Kept))
             {
                 return true;
             }

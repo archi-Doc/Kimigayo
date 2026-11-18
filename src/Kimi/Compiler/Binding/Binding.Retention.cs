@@ -79,6 +79,14 @@ public sealed partial class Binding
     // result and handed signatures are taken in its view (Viewed; DeclareSignature, RetentionPremises).
     private bool retentionViewed;
 
+    // The views Identical judges in (SPEC 8.2.3: identity in the body the comparison stands in), set once per computation: the callee's
+    // constraint scope for its kept reading (its declared Types: Parametric, OutputRetention.Handed), and for the instantiated one the
+    // calling definition's premise scope TyCtxt read the instance under. An instance read under none names no abstract Type the call
+    // brings, only those of the callee's declaration environment (an enclosing function's Type parameters, a Closure's), which a calling
+    // definition reads through that environment as the callee does (TyCtxt keys no definition there), so it is read in the callee's view.
+    // None for an erased signature, which reads no declaration's premises.
+    private (BindingScope? Kept, BindingScope? Instantiated) retentionViews;
+
     // SPEC 15.6.4: the retention of a callee's contract whose inputs and result are instantiated (a function, or the closure or item a
     // Value call names), under the premises its body is checked under: its own part, its clauses substituted under the declaring Type,
     // and the catalog's walk from its binder's parent outward. An output retains an input when the premises entail that an atom of the
@@ -97,6 +105,8 @@ public sealed partial class Binding
     {
         var use = callee.OriginBinder;
         var declaring = types?.Declaring;
+        var own = this.ConstraintScope(callee);
+        this.retentionViews = (own, premises ?? own);
         this.DeclareSignature(types?.Target ?? (callee.ClosureDefinition is null ? callee.BoundSymbol : null), inputs, result);
         var environment = this.BeginRetention(use, inputs, result, declaring, inputs.Length);
         try
@@ -133,6 +143,7 @@ public sealed partial class Binding
     internal CallRetention RetainsErased(Koto use, ReadOnlySpan<BoundType> inputs, BoundType result, Koto? binder)
     {
         this.retentionDeclared.Clear();
+        this.retentionViews = default;
         var environment = this.BeginRetention(use, inputs, result, null, 0);
         try
         {
@@ -354,7 +365,7 @@ public sealed partial class Binding
     private void DeclareSignature(BindingSymbol? target, ReadOnlySpan<BoundType> inputs, BoundType result)
     {
         this.retentionDeclared.Clear();
-        this.retentionViewed = target is not null && HasTypeIdentity(this.ConstraintScope(target.Declaration));
+        this.retentionViewed = target is not null && HasTypeIdentity(this.retentionViews.Kept!); // The callee's scope: target declares it.
         if (target is null)
         {
             this.retentionDeclared.AddRange(inputs);

@@ -509,7 +509,13 @@ public sealed partial class MirBorrowsTest
     // fail-before on 5f22c9b6c: accepted), as it is under `mk: (E) -> T` (retPlainWBad); without the premise f cannot store mk's U in
     // dst (retNoIdWOk). Identity is closed under replacement inside any Type: under `E is D` a writer `set: (uniq/T, BxI<D>)` takes
     // `y: BxI<E>` (structIdBad; F's ruling 55, fail-before on a6e0d4be4: accepted), as `set: (uniq/T, BxI<E>)` does with no premise
-    // (structPlainBad); without the premise BxI<E> and BxI<D> are distinct and nothing keeps the pointer in dst (structNoIdOk).
+    // (structPlainBad); without the premise BxI<E> and BxI<D> are distinct and nothing keeps the pointer in dst (structNoIdOk). The view
+    // is the body the comparison stands in (F's ruling 57): in nested g's kept reading g's own `E is D` makes `(T, E)` `(T, D)` though T
+    // is the outer function's (nestIdBad; fail-before on b826b8c05: accepted), the components swapped alike (nestId2Bad), as with no
+    // premise (nestPlainBad), not without it (nestNoIdOk); outer's `T is U` holds in g's view, its instantiated reading at outer's S
+    // included (nestOuterIdBad, nestOuterNoIdOk). U's requirement setQ, handed to fReq's body, may store q through PlainR's own raw
+    // layer in storage the body does not own, so `y = 5` conflicts (rvNoIdReqOk, G964's twin, I by SPEC 15.6.4; its `var o` record
+    // is dev's and b826b8c05's too, not judged here).
     [Fact]
     public void AKeptTypeIsReadInItsFunctionsView()
     {
@@ -707,6 +713,94 @@ public sealed partial class MirBorrowsTest
                 fsNo(dst@uniq, BxI.init(item: w@raw@raw/u8), setRetW)
                 y = 5
                 inspect(dst@ref)
+            func nestIdBad<T>(t: T, wr: (uniq/RetW, (T, raw/u8)) -> ())
+                func gId<S, E, D>(slot: uniq/S, y: (T, E), set: (uniq/S, (T, D)) -> ()) -> ()
+                    E is D
+                    return
+                var y0: i32 = 1
+                let w: ref/i32 = y0@ref
+                var dst = RetW.init(q: null)
+                let p: raw/u8 = w@raw@raw/u8
+                gId<RetW, raw/u8, raw/u8>(dst@uniq, (t@move, p), wr@move)
+                y0 = 5
+                inspect(dst@ref)
+            func nestId2Bad<T>(t: T, wr: (uniq/RetW, (raw/u8, T)) -> ())
+                func gId2<S, E, D>(slot: uniq/S, y: (E, T), set: (uniq/S, (D, T)) -> ()) -> ()
+                    E is D
+                    return
+                var y0: i32 = 1
+                let w: ref/i32 = y0@ref
+                var dst = RetW.init(q: null)
+                let p: raw/u8 = w@raw@raw/u8
+                gId2<RetW, raw/u8, raw/u8>(dst@uniq, (p, t@move), wr@move)
+                y0 = 5
+                inspect(dst@ref)
+            func nestPlainBad<T>(t: T, wr: (uniq/RetW, (T, raw/u8)) -> ())
+                func gPlain<S, E>(slot: uniq/S, y: (T, E), set: (uniq/S, (T, E)) -> ()) -> ()
+                    return
+                var y0: i32 = 1
+                let w: ref/i32 = y0@ref
+                var dst = RetW.init(q: null)
+                let p: raw/u8 = w@raw@raw/u8
+                gPlain<RetW, raw/u8>(dst@uniq, (t@move, p), wr@move)
+                y0 = 5
+                inspect(dst@ref)
+            func nestNoIdOk<T>(t: T, wr: (uniq/RetW, (T, raw/u8)) -> ())
+                func gNo<S, E, D>(slot: uniq/S, y: (T, E), set: (uniq/S, (T, D)) -> ()) -> ()
+                    return
+                var y0: i32 = 1
+                let w: ref/i32 = y0@ref
+                var dst = RetW.init(q: null)
+                let p: raw/u8 = w@raw@raw/u8
+                gNo<RetW, raw/u8, raw/u8>(dst@uniq, (t@move, p), wr@move)
+                y0 = 5
+                inspect(dst@ref)
+            func nestOuterIdBad<T, U, S>(t: T, d: S, wr: (uniq/S, (U, raw/u8)) -> ())
+                T is U
+                func gOuter(slot: uniq/S, y: (T, raw/u8), set: (uniq/S, (U, raw/u8)) -> ()) -> ()
+                    return
+                var y0: i32 = 1
+                let w: ref/i32 = y0@ref
+                var dst = d@move
+                let p: raw/u8 = w@raw@raw/u8
+                gOuter(dst@uniq, (t@move, p), wr@move)
+                y0 = 5
+                inspect(dst@ref)
+            func nestOuterNoIdOk<T, U, S>(t: T, d: S, wr: (uniq/S, (U, raw/u8)) -> ())
+                func gOuterNo(slot: uniq/S, y: (T, raw/u8), set: (uniq/S, (U, raw/u8)) -> ()) -> ()
+                    return
+                var y0: i32 = 1
+                let w: ref/i32 = y0@ref
+                var dst = d@move
+                let p: raw/u8 = w@raw@raw/u8
+                gOuterNo(dst@uniq, (t@move, p), wr@move)
+                y0 = 5
+                inspect(dst@ref)
+            contract SetQ
+                func setQ(self: uniq/Self, q: raw/u8)
+            struct PlainR
+                Self is SetQ
+                public var p: raw/(raw/u8)
+                public init() => self.p = null
+                public func setQ(self: uniq/Self, q: raw/u8)
+                    unsafe => *((*self.p)@raw/(raw/u8)) = q
+            struct Bx<T>
+                public var item: T
+                public init(item: T) => self.item = item@move
+            func usep<T>(p: raw/T) => ()
+            func fReq<T, U>(x: Bx<T>, u: uniq/U, q: raw/u8) -> ()
+                U is SetQ
+                return
+            func rvNoIdReqOk()
+                var y: i32 = 1
+                var w: ref/i32 = y@ref
+                var slot: raw/u8 = null
+                var x = PlainR.init()
+                x.p = slot@raw
+                var o = PlainR.init()
+                fReq(Bx.init(item: x@move), o@uniq, w@raw@raw/u8)
+                usep(slot)
+                y = 5
             """);
         Assert.Equal(
             [
@@ -715,6 +809,8 @@ public sealed partial class MirBorrowsTest
                 "idEnclNoPremBad: let host = Host.init(r@follow@raw)", "idRawStepBad: z = 5",
                 "idRawStepBad: var q = u@follow@raw",
                 "idFormGenBad: kk = 2", "retPlainWBad: y = 5", "retIdWBad: y = 5", "structIdBad: y = 5", "structPlainBad: y = 5",
+                "nestIdBad: y0 = 5", "nestId2Bad: y0 = 5", "nestPlainBad: y0 = 5", "nestOuterIdBad: y0 = 5",
+                "rvNoIdReqOk: y = 5", "rvNoIdReqOk: var o = PlainR.init()",
             ],
             Problems(c, Analyze(c), [.. LoanCodes, DiagnosticCode.Unsupported_Kd]));
     }
