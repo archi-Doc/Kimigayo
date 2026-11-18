@@ -76,7 +76,7 @@ public sealed partial class Binding
             return;
         }
 
-        if (this.BindType(syntax, scope) is { } type && !HasSupportedAssociatedFormation(type))
+        if (this.BindType(syntax, scope) is { } type && !this.HasSupportedAssociatedFormation(type))
         {
             this.Fail(declaration, BindingFailure.Unsupported);
         }

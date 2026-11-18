@@ -357,6 +357,7 @@ internal group Storage
         /// Splits the elements at the boundary `index` resolves to, `p`, into the Slices `[0, p)` and `[p, N)`.
         ///
         /// - abort: `index` does not resolve against the length.
+        #CallerLocation
         public func splitAt<E, length N, P>(self: ref/[N of E] during source, index: P) -> (Slice<E> during source, Slice<E> during source)
             P is Position
             let position = PositionSyntax.resolved(index, self.length)
