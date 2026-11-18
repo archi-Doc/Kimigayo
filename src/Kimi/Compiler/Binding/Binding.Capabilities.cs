@@ -395,8 +395,8 @@ public sealed partial class Binding
 
     // SPEC 8.3.3 Finality: the reads of a verdict not settled yet that the obligation table does not record, the running coinductive
     // step's assumptions, each valid only at the obligation depth its evaluation began (an open obligation's re-entry reads are the
-    // answer's dependence: BeginAnswer, EndRead). An answer computed while the count grows, or that read an open obligation, rests on
-    // one of them; any other rests on settled verdicts alone and holds at any deeper obligation (Formation's nested reads). A whole
+    // answer's dependence: BeginAnswer, EndAnswer). An answer computed while the count grows, or that depends on an open obligation,
+    // rests on one of them; any other rests on settled verdicts alone and holds at any deeper obligation (Formation's nested reads). A whole
     // request inside the computation leaves it unchanged: its step's reads end with the step. Temporary carrier with assumedReads;
     // removal: R7-C2e2 e2-5b, with e2-3's Completion on the answer, which then says whether an answer rests on a provisional verdict
     // (Formation's Settled and unsettledReads go with it).
