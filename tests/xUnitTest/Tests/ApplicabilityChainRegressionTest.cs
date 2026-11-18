@@ -194,11 +194,11 @@ public partial class ApplicabilityChainRegressionTest
     // checked at the Type the defaults or an own Type fixed is completed there; completion skips only a part that failed.
     [Fact]
     public void ANestedPartCheckedAtTheFixedTypeGenerates()
-        => ScalarEmissionTest.EmitFixture(
-            "ApplicabilityChainOwnTypes",
-            OwnTypeDeclarations + "func mkT2<T>(x: T, w: (Option<T>, i32)) -> i32 => 0\nlet w = W.Make(1, mkNone())\n" +
-                "require mkT(1, mkNone()) + mkT(identity(1), .None) + mkT2(1, (mkNone(), 2)) == 0 else => $abort(\"own\")",
-            string.Empty);
+    {
+        const string Source = OwnTypeDeclarations + "func mkT2<T>(x: T, w: (Option<T>, i32)) -> i32 => 0\nlet w = W.Make(1, mkNone())\n" +
+            "require mkT(1, mkNone()) + mkT(identity(1), .None) + mkT2(1, (mkNone(), 2)) == 0 else => $abort(\"own\")";
+        ScalarEmissionTest.EmitFixture("ApplicabilityChainOwnTypes", Source, string.Empty);
+    }
 
     // SPEC 10.5.1, 14.9.2 (owner decision (1)): a control-flow argument that is no Literal is bound under the argument probe, which
     // reaches its result sources: literals beside only Never or waiting sources, or a waiting source call, make it Waiting, checked
