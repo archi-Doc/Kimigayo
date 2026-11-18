@@ -250,8 +250,11 @@ public sealed partial class Binding
                 Reset(syntax);
                 var actual = this.BindType(syntax, scope);
                 this.ParameterSymbol(function, i).Type = actual;
-                // SPEC 5.7, 15.3.7: an input whose raw Origins differ must accept the required one.
-                var fits = ReferenceEquals(pattern, actual) || (actual is not null && SameExceptRawOrigins(pattern, actual) && IsSubtype(pattern, actual));
+                // SPEC 5.7, 15.3.7: an input whose raw Origins differ must accept the required one. R7-C3 (design §3, J3; C-f2's third
+                // comparison): the two are compared in the implementation's view, each in its form there (8.2.3); the parameter keeps
+                // its Type as bound and a record names the Types as written.
+                var (required, bound) = (this.ClassForm(pattern, scope, out _), actual is null ? null : this.ClassForm(actual, scope, out _));
+                var fits = ReferenceEquals(required, bound) || (bound is not null && SameExceptRawOrigins(required, bound) && IsSubtype(required, bound));
                 valid &= fits;
                 if (actual is not null && !fits)
                 {
@@ -273,8 +276,9 @@ public sealed partial class Binding
             }
 
             function.BoundSymbol!.Type = actualResult;
-            var resultFits = ReferenceEquals(result, actualResult) ||
-                (actualResult is not null && SameExceptRawOrigins(result, actualResult) && IsSubtype(actualResult, result));
+            var (requiredResult, boundResult) = (this.ClassForm(result, scope, out _), actualResult is null ? null : this.ClassForm(actualResult, scope, out _));
+            var resultFits = ReferenceEquals(requiredResult, boundResult) ||
+                (boundResult is not null && SameExceptRawOrigins(requiredResult, boundResult) && IsSubtype(boundResult, requiredResult));
             if (actualResult is not null && !resultFits)
             {
                 incompatible ??= ImplementationOriginMismatch(function.ReturnType ?? function, definition, result, actualResult, "the result");
