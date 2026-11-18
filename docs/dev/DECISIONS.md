@@ -2163,6 +2163,7 @@ and migration obligations remain in force; no numeric cap changes are authorized
     `MirBuilder.Rejected`'s "a value without a Type" and "a name of an Error local" terms, whose removal 9cf3bf26 staged for this rule:
     `x = 1` with `x: Missing`, a name Binding left unresolved, still needs the first; their removal needs a published fact for such a
     name (PLAN G103) (the "name of an Error local" term: removed by R4-M125).
+  - Its first Kept clause amended by R4-M109's PLAN G1022 line (2026-11-19): the derived write evaluates its right side first.
   - Cost: one predicate test and one Type read per published node and one form Op per Error node; no allocation.
   - Residual R1 (PLAN G103): a discard of a construct Binding left untyped (`_ = if c => 1 else => missing`) is held at `()`, a
     validator finding where a source has a Type, as on dev. A construct under an unresolved operation, also in parentheses or
@@ -2938,6 +2939,16 @@ and migration obligations remain in force; no numeric cap changes are authorized
     temp's Type reads as unknown), no Loan; no censused failure site produces such a consumer over an Error. Both in PLAN G103.
   - Amended by R4-M149 (PLAN G247, 2026-10-27): (a)'s Ref, Reborrow, reservation and Loan prohibition holds for every Place formed in an
     Opaque temp, which no rvalue lends, and L1 extends to every in-place step on one.
+  - Amended by PLAN G1022 (Q-513; D-799, D-811; 2026-11-19): an assignment or update whose target Binding rejected is derived after its
+    right side is evaluated as Operand evaluates it, its value where its published Acquire is Temporary, else its Place located, never
+    acquired or adapted (SPEC 13.7.1 step 1: the evaluation, not the securing at the destination Type the failed target does not give;
+    rule W; R4-M145 C2), the site naming the result as a part located already (R5-M63, R5-M84) and the target's syntax roots
+    (`MirBuilder.DerivedWrite`). R4-M109's 'the builder derives the whole assignment and never reads it' holds for the target and for
+    the write's own taking. DerivedWrite is an L2 consumer (no expected Type, reached over an Error: a write whose target Binding
+    rejected), so a folded Error or an untyped right side is held at its own Type (`tests/mir/rejected.mir`: `value += 1`'s literal at
+    `()`); L2's list adds 'a derived write's right side', and its 'no censused failure site produces such a consumer over an Error' no
+    longer holds for it (validator-clean, no Loan, as L2 states). A Copy right side under a live exclusive Loan reports no conflict:
+    the Copy is the securing, which rests on the failed target (a record selection, Q13).
   - Deleted: `MirBuilder.Expansions.cs`' copy of the getter's Adjust (`HirAdjust.Of(argument)` and its ByCase/None choice).
   - Rejected: design A's `(Unset, …)` (the column's default, which `Blocks.Result` reads as not consumed); A5 ignoring Loans on Opaque
     stand-ins (suppressing a derived report afterwards); failing the call (hides its independent records); locating the receiver at the
