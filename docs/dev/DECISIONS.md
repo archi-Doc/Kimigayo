@@ -20549,6 +20549,13 @@ R8-M* and R9-M* by the stage of the recording unit.
     admitting exactly `owner` is its target from its addition (never a constructor or a cycle edge), one disjoint from the other's
     outer Semantics Refuted, any other admitted set the Proof row. Cycles: the class graph's strongly connected components
     (iterative Tarjan); a cycle only through owner-admitting pair applications is the Proof row, any other Cyclic.
+    - Amended by PLAN G925 (the Front, 2026-11-18): the meets read every pair layer, the original `s/T` included, through
+      `TryPairLayer` (its one component is its target: `Arity`/`Component`) and its slot through `Slot` (`OuterOrigin` in its
+      admitted borrow cases only); `IsAbstractType` is the meets' only abstract-Type test (`IsConstructor` is deleted; the key
+      candidates of `Binding.TypeIdentity.Keys.cs` keep their own Kind list, R7-M25); a pair layer that may be its target (`owner`
+      admitted) is one predicate, `MayBeItsTarget`, for the pair row's head, proper parts and the cycle mark; an empty admitted set
+      (8.3.4's Error) is contradictory evidence at every reader: `PairHead` decides an empty set on either side (Conflict: disjoint
+      from every set, 8.2.3) before the shared head and the "may be its target" test, and it is never its target.
   - Readers: the identity proposition's Proven (`IdentityProven`, JudgeConstraintAtom's arm; through it `SameConformanceType` and
     `NamesReference`), ContractTypeCore's guard (a Type in a final erroneous class is completed by no premise), the pair receiver's
     target (`ReceiverTarget`, PLAN G772), the premise-error record (`RecordIdentityPremiseError`) and the producer channel (a Type
@@ -20842,7 +20849,8 @@ R8-M* and R9-M* by the stage of the recording unit.
   - Rejected: a second refutation walk beside the table (each round missed one more row: Self, lengths, conditions, admitted sets,
     proper parts, components under a varying head, quantification structures); refuting by assuming the identity; a reader mode on
     the table; comparing a pair layer's slot by the Origin domain at a Function position (two rules for one slot).
-  - Limits: a pair's own `s/T` is no constructor node in premise meets; `SameHead` reads no length arguments.
+  - Limits: `SameHead` reads no length arguments. The first limit, a pair's own `s/T` as no constructor node in premise meets, is
+    removed by PLAN G925 (R7-M24's G925 line: the original `s/T` is the application of `s` to its target).
 - **R7-M35 Evidence for a proposition against its result for the complete constructed Type identical with its subject is
   contradictory evidence** (Front, 2026-11-15; R7-C2c2 N9, PLAN G851; design-n9.md R3.6). SPEC 8.2.3, 8.3.2.
   - `Binding.TypeIdentity` publishes a class's complete constructed member from its key's scan (`CompleteMember`, `Representative`:
