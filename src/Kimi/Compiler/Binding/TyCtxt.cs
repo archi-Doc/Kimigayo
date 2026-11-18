@@ -23,12 +23,14 @@ internal sealed partial class TyCtxt(Binding binding, KimiLibrary library)
 {
     private readonly Dictionary<int, List<BoundType>> types = new(KimiLibrarySize.KeyedCapacity(KimiLibrarySize.Stated.TypeKeys));
     private int typeCount = BoundType.StaticCount; // DECISIONS BU-220: the last id this compilation gave a Type (Intern, Parameter).
+    private int interned; // The Types Intern made: the table's entries.
 
-    /// <summary>Gets the number of keys the interned Types take.</summary>
-    internal int KeyCount => this.types.Count;
+    /// <summary>Gets the number of interned Types, the entries of their table. Not its keys: a key is a hash of the parts' identity
+    /// hashes, which a thread's earlier objects move, so two Types share one at random (PLAN G949's flaky TableCounts row).</summary>
+    internal int KeyCount => this.interned;
 
-    /// <summary>Gets the free slots of the interned Types' table.</summary>
-    internal int KeyFree => this.types.Capacity - this.types.Count;
+    /// <summary>Gets the free slots of the interned Types' table: its capacity less its entries, at most its free keys.</summary>
+    internal int KeyFree => this.types.Capacity - this.interned;
 
     // The Components PairBindings binds, reused by every Intern (nothing interned while it is filled reaches PairBindings).
     private BoundType[] pairScratch = [];
@@ -244,6 +246,7 @@ internal sealed partial class TyCtxt(Binding binding, KimiLibrary library)
 
         var created = new BoundType(++this.typeCount, symbol?.Name ?? kind.ToString(), kind, symbol, semantics, components.ToArray(), length, origin, originArguments.ToArray(), lengthExpression, lengthArguments.ToArray(), instanceContext, binder);
         bucket.Add(created);
+        this.interned++;
         return created;
 
         static bool QuantifiesInput(BoundType inputs, Koto binder)
