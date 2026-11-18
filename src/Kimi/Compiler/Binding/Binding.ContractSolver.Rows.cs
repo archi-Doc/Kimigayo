@@ -595,7 +595,7 @@ public sealed partial class Binding
                 foreach (var fact in environment.Facts)
                 {
                     if (fact is { Kind: ConstraintKind.Contract, Subject: not null, Contract: not null } &&
-                        this.Reading(fact, view.Premises, ref after) is { Subject: not null } normalized && !ReferenceEquals(normalized, fact))
+                        this.Reading(fact, view.Premises, ref after) is { Subject.HasAbstractPart: true } normalized && !ReferenceEquals(normalized, fact)) // R7-M25 (D): a concrete subject's conformance is ResolveConformance's
                     {
                         this.enumerateNormalized.Add((scope, fact, normalized));
                     }

@@ -40,12 +40,18 @@ public sealed partial class Binding
         return scope;
     }
 
-    // R7-C3 (B2; SPEC 8.9.1 steps 3-4, 8.9.2): an input rules the intersection out only when the judge refutes it under the collision
-    // substitution: each input is judged in the overlap's own identities alone (CollisionScope), never with the inputs as their own
-    // premises, alike for every input kind.
+    // R7-C3 (B2'; SPEC 8.9.1 step 1, 8.9.2): the collision conditions are the collision substitution together with all the Type's inputs,
+    // never the specifications (CollisionScope). The inputs rule the intersection out when the judge finds that view contradictory: an
+    // identity class in Conflict, or an input the view's closed world refutes (Refuted, or Error: a premise against its closed world),
+    // alike for every input kind.
     private bool RefutedOverlapInputs(BindingScope original, BindingScope overlap)
     {
-        var collision = this.CollisionScope(overlap);
+        var collision = this.CollisionScope(original, overlap);
+        if (this.ClassesOf(collision, out _) is { Worst: IdentityClasses.Conflict })
+        {
+            return true;
+        }
+
         for (var scope = original; scope is not null; scope = scope.Parent)
         {
             if (scope.Constraints is not { Invalid: false } environment)
@@ -59,7 +65,7 @@ public sealed partial class Binding
                 // the overlap. Only independently valid generic inputs can rule the intersection out.
                 var subject = fact.Kind == ConstraintKind.Not ? fact.Left?.Subject : fact.Subject;
                 if (subject is { Kind: BoundTypeKind.Parameter or BoundTypeKind.TargetProjection } && !IsContractSelf(subject) &&
-                    this.ProveConstraint(this.ContractConstraint(fact, collision, null), collision) == ConstraintProof.Refuted)
+                    this.ProveConstraint(this.ContractConstraint(fact, collision, null), collision) is ConstraintProof.Refuted or ConstraintProof.Error)
                 {
                     return true;
                 }
@@ -69,8 +75,9 @@ public sealed partial class Binding
         return false;
     }
 
-    // The overlap's own identities (the collision substitution and the two references made one) in a view of their own, no parent.
-    private BindingScope CollisionScope(BindingScope overlap)
+    // The collision conditions in a view of their own, no parent: the overlap's own identities (the collision substitution and the two
+    // references made one) and the Type's inputs, the facts RefutedOverlapInputs reads (a generic input's, never a specification).
+    private BindingScope CollisionScope(BindingScope original, BindingScope overlap)
     {
         if (!this.collisionScopes.TryGetValue(overlap, out var scope))
         {
@@ -83,6 +90,23 @@ public sealed partial class Binding
         foreach (var fact in overlap.Constraints!.DirectFacts)
         {
             this.AddConstraintFact(environment, fact);
+        }
+
+        for (var current = original; current is not null; current = current.Parent)
+        {
+            if (current.Constraints is not { Invalid: false } inputs)
+            {
+                continue;
+            }
+
+            foreach (var fact in inputs.DirectFacts)
+            {
+                if ((fact.Kind == ConstraintKind.Not ? fact.Left?.Subject : fact.Subject) is { Kind: BoundTypeKind.Parameter or BoundTypeKind.TargetProjection } subject &&
+                    !IsContractSelf(subject))
+                {
+                    this.AddConstraintFact(environment, fact);
+                }
+            }
         }
 
         return scope;

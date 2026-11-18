@@ -517,7 +517,7 @@ public sealed partial class Binding
         // the family of least Order; that family's own entry is this class again, by congruence, so no second hop reads anything new).
         private BoundType? FamilyMember(int root)
         {
-            if (!this.familyMembers.TryGetValue(root, out var answer))
+            if (!this.closed || !this.familyMembers.TryGetValue(root, out var answer)) // inside Close's rounds the classes still join: no cache
             {
                 var own = this.OwnMember(root);
                 BoundType? family = null;
@@ -526,7 +526,11 @@ public sealed partial class Binding
                     family = family is null || Order(this.types[m], family) < 0 ? this.types[m] : family; // a class of families only
                 }
 
-                this.familyMembers[root] = answer = own ?? family;
+                answer = own ?? family;
+                if (this.closed)
+                {
+                    this.familyMembers[root] = answer;
+                }
             }
 
             return answer;
@@ -702,7 +706,8 @@ public sealed partial class Binding
         // R7-C3 (B4; SPEC 8.2.3 Projections, 8.5.4): a family application that is a node of its own (a premise's side, `U.(L).Lent(b)`)
         // is its family's instance at its Origin arguments, as Applied reads one of no node: once per node it joins that instance (the
         // family class's least non-family member instanced at its Origin arguments) inside the rounds, as a binding ground does; no class
-        // joins after Close. A class of families only grounds nothing (H, one hop).
+        // joins after Close. It reads FamilyMember, the one instance rule Applied reads (a class of families only answers its least
+        // family member), and skips only the node itself; each node is grounded once, so the rounds end.
         private void FamilyGrounds()
         {
             var count = this.types.Count;
@@ -735,10 +740,11 @@ public sealed partial class Binding
                         continue;
                     }
 
-                    if (this.Find(m) != this.Find(n) && this.OwnMember(this.Find(m)) is { } member)
+                    if (this.Find(m) != this.Find(n) && this.FamilyMember(this.Find(m)) is { } member &&
+                        binding.SubstituteStoredOrigins(member, type.Symbol!.Declaration, (BoundOrigin[])type.OriginArguments) is var instance && !ReferenceEquals(instance, type))
                     {
                         this.familyGrounded.Add(n);
-                        this.pending.Add((n, this.Add(binding.SubstituteStoredOrigins(member, type.Symbol!.Declaration, (BoundOrigin[])type.OriginArguments))));
+                        this.pending.Add((n, this.Add(instance)));
                     }
 
                     break;

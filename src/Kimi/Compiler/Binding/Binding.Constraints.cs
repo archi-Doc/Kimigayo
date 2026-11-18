@@ -614,7 +614,9 @@ public sealed partial class Binding
             ConstraintKind.Not => NegateProof(this.ProveConstraint(proposition.Left!, scope)),
             ConstraintKind.And => CombineProof(this.ProveConstraint(proposition.Left!, scope), this.ProveConstraint(proposition.Right!, scope), true),
             ConstraintKind.Or => CombineProof(this.ProveConstraint(proposition.Left!, scope), this.ProveConstraint(proposition.Right!, scope), false),
-            _ => !ReferenceEquals(proposition, normalized) && this.JudgeConstraintAtom(proposition, scope) == ConstraintProof.Error ? ConstraintProof.Error : this.JudgeConstraintAtom(normalized, scope),
+            // R7-C3 (C7; J1): the written atom is checked for its operands' contexts only (the judge forms at its own intake, so judging it
+            // again is the normalized judgment twice: two requests per proof).
+            _ => !ReferenceEquals(proposition, normalized) && this.OperandContexts(proposition).Invalid ? ConstraintProof.Error : this.JudgeConstraintAtom(normalized, scope),
         };
         if (structural != ConstraintProof.Error && normalized.Kind is ConstraintKind.And or ConstraintKind.Or or ConstraintKind.Not &&
             ClauseSubject(normalized) is { } whole && SemanticsPremise(normalized, whole))
