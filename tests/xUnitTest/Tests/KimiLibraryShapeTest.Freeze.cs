@@ -268,8 +268,8 @@ public partial class KimiLibraryShapeTest
         }
     }
 
-    // F-1 and F-3 (s11-design 2.3 and 6.3, RC4, RC7; G949 ruling 167): the library's freeze verifies its query states and refuses a
-    // library with records, so on each target class the library rows cover (probe 1: pointer widths 64 with the default
+    // F-1 and F-3 (s11-design 2.3 and 6.3, RC4, RC7; G949 rulings 167, 205 C1): the library's freeze verifies its query states and
+    // refuses a library with records of any kind (issues, derived issues, non-failing records: lints and warnings), so on each target class the library rows cover (probe 1: pointer widths 64 with the default
     // x86_64-pc-windows-msvc, 32 and 16; eight triples gave no record and identical library MIR) the empty program's Final Bind
     // completes with no record of any kind, warnings included, and every library header DeclQuery binds and every library struct's
     // inherited conformances are Done and Frozen.
