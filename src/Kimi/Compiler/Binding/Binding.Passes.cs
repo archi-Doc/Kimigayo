@@ -244,6 +244,7 @@ public sealed partial class Binding
             this.CompleteEffectBounds();
             this.SettleViewSerials();
             this.CompleteLocalRegions();
+            this.CompleteNegations(); // D-4 (PLAN G949 Stage 2 U2b): every library constraint's negation.
             this.Library.Layer.Size = this.TableCounts with { Nodes = this.nodes.Count };
         }
 

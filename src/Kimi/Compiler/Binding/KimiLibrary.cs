@@ -523,6 +523,7 @@ public sealed partial class KimiLibrary
         // Build ordinary declaration syntax once. Its implementation identity, not a fake
         // executable body or a spelling check at calls, supplies the later lowering hook.
         var source = new SourceDocument("compiler://builtins/abort", "string");
+        _ = this.Kotonoha.LogicalName(source); // D-C1 (PLAN G949 Stage 2 U2b), as LoadSources forms each source's.
         var context = new CodeContext(this.Kotonoha, sourceDocument: source);
         var tokenizer = new Tokenizer(context.DiagnosticCollection, source);
         try
