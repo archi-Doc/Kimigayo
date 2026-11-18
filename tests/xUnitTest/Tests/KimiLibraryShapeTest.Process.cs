@@ -106,7 +106,7 @@ public partial class KimiLibraryShapeTest
         var calls = 0;
         foreach (var node in library.Kotonoha.Syntax.Nodes)
         {
-            if (node is InvocationKoto { CallStorage: { } plan })
+            if (node is InvocationKoto call && call.CallOf() is { } plan)
             {
                 calls++;
                 Assert.DoesNotContain(plan.Target, shims);

@@ -152,9 +152,8 @@ public sealed partial class Binding
             this.BeginRun();
             if (this.libraryVersion == 0 && !this.FreezeLibrary(this.RunPass(this.LibraryPass, BindingMode.Final)))
             {
-                this.ResetPass(BindingMode.Final); // The refused library part emptied, so no reader sees a partial layer (C2 (2)).
-                this.EnterPass(this.ProgramPass);
-                this.ResetPass(mode);
+                this.StartPass(this.LibraryPass, BindingMode.Final); // The refused library part emptied: no reader sees a partial layer (C2).
+                this.StartPass(this.ProgramPass, mode); // Binding's own part, empty; no program is bound over a refused library.
                 return false;
             }
         }
@@ -225,8 +224,7 @@ public sealed partial class Binding
     // declarations asked for a rerun (VerifyEarlyReads).
     private bool RunPass(BindingPass pass, BindingMode mode)
     {
-        this.EnterPass(pass);
-        this.ResetPass(mode);
+        this.StartPass(pass, mode);
         this.Index();
         if (!this.BindDeclarations(mode))
         {
@@ -250,6 +248,14 @@ public sealed partial class Binding
         }
 
         return true;
+    }
+
+    // A pass's start: its part handed over and every per-pass fact of the latest pass over its modules discarded (the one reset site, which
+    // ends the capability epoch): each pass's start, and a refused library pass's end, which leaves both parts empty (PLAN G949 Stage 2 U2a).
+    private void StartPass(BindingPass pass, BindingMode mode)
+    {
+        this.EnterPass(pass);
+        this.ResetPass(mode);
     }
 
     // Hands a pass its part: the fields every step writes become the part's lists.
