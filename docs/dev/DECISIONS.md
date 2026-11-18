@@ -9104,6 +9104,22 @@ resumed by R4-M86 (2026-10-20).
     by another argument) stays. This half is a failed argument that kept its Type; an unbound failed part is U1.6h's (FailedFit from
     the evidence walk, BU-77). (FailedFit and BU-77 superseded by BU-79, rule W; the row is rule W at the argument's top and still
     takes only a typed part.)
+  - Amended by BU-224 (PLAN G924 AF-2, F's rulings 113 and 115, 2026-11-18): FitArgument's rule-W row takes a failed argument whose
+    failure is final (BindingState Invalid and PartFailed): one that kept its Type (as before) and a nested call the defaults resolved
+    alone whose failure is reported, its own record or one it rests on, transitively (a part's below it at any depth), which EndAwait,
+    the one writer, makes final (SPEC 10.5.1 'a failure is an error and never reselects'; 23.1.2: a check reading a failed input whose
+    record is reported keeps none of its own). 'Reported' is the record walk publication uses for a derived failure
+    (PrerequisiteKeys; FailureReported reads it). The typed-only row (C19, the half above) left that leaf to FitTyped's Pending, and
+    the selected candidate's re-check reported a dependent UnprovenConstraint_Kd or TypeMismatch_Kd beside the leaf's own record
+    (`mkT(identity(1), mkNone())`, `mkT(identity(1), Option.None)`, `W.Make(identity(1), mkNone())`; one call deeper,
+    `mkT(identity(1), wrapOpt(mkNone()))`, whose `wrapOpt(...)` fails only by resting on `mkNone()`'s record). C19's reason still
+    holds for a provisional failure: one resting only on parts without a record (Unresolved), such as an operator's anonymous
+    function whose omitted header rests on its call (ar2, ar2m keep `NoApplicableOverload_Kd` at the operator): it stays FitTyped's.
+    Since the failure is final, no completion binds the part again at the Type its call fixed, at any depth. Rejected: every failed
+    part in the row (moved ar2 and ar2m to `TypeMismatch_Kd` at the closure, C19's original moves); only a part with its own record
+    (left a nested call resting on one to FitTyped: ruling 115 B2); a PartFailed reader in CompleteArguments and CompletePayloads (a
+    leaf inside a Tuple argument was rebound by the Tuple's own binder: `mkT2(identity(1), (mkNone(), 2))` checked clean and failed
+    to emit).
   - Amended by BU-203 (PLAN G729): a call's typed position: evidence at its typed parts' adapted common Type, fit by the typed row.
 - **BU-47 A destruction retains as a call of its drops: a `drop`'s receiver at input 0, `TyCtxt.RetainsErasedDestruction`**
   (2026-10-27; PLAN G264, its unit U0, BU's, unit bu51; the owner's 「はい、G86 の後に (推奨)」 of 2026-10-26, R4-M150 (G264's R4 side)) SPEC
@@ -10221,6 +10237,9 @@ resumed by R4-M86 (2026-10-20).
     rule; G494's unit 2 replaces them with `MapValueCallArguments` judged up front. Rejected: judging every candidate with the part a
     wildcard (option A): later checks read the missing evidence as a rejection (until PLAN G463, `ConstructorType`'s construction-target Origin), and an
     Unsupported part's dependent UnboundTypeArgument_Kd is a Language error on a valid program (Milestone 41).
+  - Amended by BU-224 (PLAN G924 AF-2, F's rulings 113 and 115, 2026-11-18): FitArgument's rule-W row takes a failed argument whose
+    failure is final (BindingState Invalid and PartFailed), not only one that kept its Type; BU-43's U2.1 r2-3 amendment states the
+    rule, its reason and its rejected options.
 
 - **BU-81 HIR publication is eager at the end of each Final pass; R7 writes inline** (2026-11-02; R6-check H1a, behavior-preserving;
   the owner's Q8 approval 「Q8を承認」, R5-M23, design `draft/Sketches/R5 Step 0/Q8-design-2.md` D9 and `Q8-package.md` §3.7; H0's
@@ -14609,12 +14628,14 @@ resumed by R4-M86 (2026-10-20).
   direction of 2026-11-15 answering O-331, verbatim 「提案の方針（原則A：期待型を引数の式に下ろす、原則B：ref/U に渡す値の式は引数の位置で一時値にして1回借用する）でOKです。提案書を作成し、設計、実装を進めて下さい。SPECもそれに合わせて、修正して下さい。」, and its
   readings O-333 R2 (a), R3 (a), R6 (b), R5 (a), verbatim 「O-333 R2 (a)・R3 (a)・R6 (b)・R5 (a)」, O-339 (a), verbatim 「O-339 (a)」,
   O-341 (a), verbatim 「質問事項は、すべて推奨どおりでOKです」, O-316 (a), verbatim 「質問の回答は、すべて推奨どおりでお願いします。」,
-  O-346 (a), verbatim 「O-346 a」, O-352 (a), verbatim 「O-352 a」, and O-374 (a), verbatim 「すべて推奨どおりでお願いします」; designs
+  O-346 (a), verbatim 「O-346 a」, O-352 (a), verbatim 「O-352 a」, O-374 (a), verbatim 「すべて推奨どおりでお願いします」, O-407 (a) and
+  O-408 (a), verbatim 「すべて推奨通りでお願いします」, and O-416 (b), verbatim 「O-416 b」; designs
   `front\notes\ArgFlow\design.md` revision 1 and `design-bareslot.md`, each ACCEPT WITH NOTES after REVISE; the implementation
   review, whose last REVISE the owner's O-374 (a) answered, and the reviews of the addendum, fix22, the full suite's rows and ar2,
-  each ending ACCEPT; F's ArgFlow rulings; K's G924 SPEC text, revision 10, which lands with it; the Middle's consent C-375 with its
-  addendum) SPEC 3.4.1, 3.6, 4.3.1, 4.6.2, 6.5.2, 10.1, 10.2, 10.2.2, 10.4, 10.5.1, 10.5.4, 10.8, 10.8.1, 12.3.1, 14.9.2, 23.1.2.
-  Supersedes BU-187's K2, K3 and its one exception, and BU-203's interim; amends BU-165, BU-203 and BU-214.
+  each ending ACCEPT, and of the fix rounds under O-407 (a), O-408 (a) and O-416 (b) (B1, B2), ending ACCEPT; F's ArgFlow rulings;
+  K's G924 SPEC text, revisions 10-12, which land with it; the Middle's consent C-375 with its addendum) SPEC 3.4.1, 3.6, 4.3.1,
+  4.6.2, 6.5.2, 8.3.4, 10.1, 10.2, 10.2.2, 10.4, 10.5.1, 10.5.4, 10.8, 10.8.1, 12.3.1, 14.9.2, 23.1.2. Supersedes BU-187's K2, K3 and
+  its one exception, and BU-203's interim; amends BU-43's U2.1 r2-3, BU-79's G455 amendment, BU-165, BU-203 and BU-214.
   - **The expected Type (rule A; AF-1's restructuring b140f7286, behaviour unchanged, then AF-2's rows).** Its owner is
     `Binding.ArgumentKinds.Positions`: `ExpectedChild`, the one table of a part's child positions' Types (a Tuple element its
     component, an array or fill element the element Type, a Dictionary key and value the key and value Types, a range boundary its S
@@ -14640,8 +14661,12 @@ resumed by R4-M86 (2026-10-20).
     (BU-187's one exception). A call or a construction is no row: its own binding lowers its expected result (below), and the common
     adaptation's row 2 borrows its value.
   - **The expected result at `ref/U` (SPEC 10.2.2 item 2, 10.8.1, 3.4.1; s-b1 and the addendum d635805a3).** A call's
-    expected-result step (`TryCandidateCore`) matches a returned value, a result that is no borrow value, against U, and a returned
-    `ref/T` against `ref/U`. `OwnerResult` (`Binding.Materialization`) is the one test: the outer Semantics is not `ref`, `uniq`,
+    expected-result step (`TryCandidateCore`) matches a returned value, a result that is no borrow value, against U where U has no
+    borrow value's outer Semantics (O-407 (a); `ExpectedTypeOf`, the one owner of the owner temporary's Type, which
+    `Materialization`'s guard reads), otherwise, like a returned `ref/T`, against `ref/U` by structure. A U that is a pair `s/X` has a
+    borrow value's outer Semantics exactly when its binder's admitted set lies within `borrow` (`HasBorrowSemantics`, reading
+    `LayerAdmitted`, SPEC 8.3.4; the owner's O-416 (b), K's revision 12); a Type parameter reads its declared outer Semantics.
+    `OwnerResult` (`Binding.Materialization`) is the one test of the result: the outer Semantics is not `ref`, `uniq`,
     `objref` or `objuniq`, nor a Semantics parameter's (an `s/T` result is matched against `ref/U`, as K's revision 10 states). A
     bare slot is tested on what its evidence bound it to; unbound, it is a returned value, filled from U. The earlier inline test (a
     bare slot or any Semantics pattern kept `ref/U`) is deleted. A Case construction is always an owner value (6.5.2, 3.4.1), so its
@@ -14652,7 +14677,11 @@ resumed by R4-M86 (2026-10-20).
     for the selected candidate (`OwnType`): a literal its default, a waiting nested call its resolution with no expected result, its
     own literals defaulting. That Type, applied by `DefaultArguments` and read as `DefaultOf`, binds a still-unbound slot; a failure
     is the part's own record and never reselects. The defaults end Awaits for a nested call they resolved alone (`EndAwait`, the one
-    ender of Awaits), so `PartFailed` is the one query of a failed part there.
+    ender of Awaits), so `PartFailed` is the one query of a failed part there. The own Types after selection are taken in
+    `OwnTypeSteps`' order (O-408 (a)): literal defaults, then waiting nested calls over the slots still unsolved; one rule for calls
+    and Case constructions. A position's literals take its first literal's default in the literal step, at a Literal position and at
+    one that waits for its call beside its literals alike (one join rule; acceptance unchanged). A failed nested call is final when
+    its failure is reported (this entry's amendment of BU-43's U2.1 r2-3).
   - **The parts at one place (`WholeEvidence`; SPEC 10.5.1, 10.8 Solving, 4.3.1 Places; O-316 (a), O-346 (a), O-352 (a)).**
     `Binding.ArgumentKinds.Wholes` is the one meet of every whole at a bare slot (a Tuple, array, fill or Dictionary literal, a mixed
     range, or a join with such a source, at a position whose pattern is a slot no fixed binding solves) for one candidate's or Case
@@ -14701,6 +14730,8 @@ resumed by R4-M86 (2026-10-20).
     way in part to the one class source, and at a whole's places 14.9.2 step 2 holds with or without a literal; its U1.6g2 (a
     waiting part takes the position's step-2 Type, with no call) stands until AF-3b. BU-214: its class `Literal` is
     `ExpectedTypeFitting`, and its open Literal arm reads `Materialization` at `met` for its class, as `ExpectedTypeClass` would.
+    BU-43's U2.1 r2-3 and BU-79's G455 amendment (C19: the rule-W row took only a failed part that kept its Type): the row takes a
+    failed argument whose failure is final (their amendment lines).
     BU-43 C1 (a Dictionary literal typed whole at a call) stays: its deletion lands with or after D-661's "does not complete" rule
     for a Dictionary literal's parts (PLAN G980; F's ruling 54), since alone it fits each entry at its key or value Type, where Never
     fits, and accepts `takeD([1: fail()])` (C27i1, invalid).
@@ -14721,7 +14752,20 @@ resumed by R4-M86 (2026-10-20).
     add the boundary's independent `TypeMismatch_Kd` (4.6.2, 23.1.2), and `let r: Range<i32, i32> = 1..n` (`n: i64`) reports it at
     `n`, not at `1..n`; the others as Q-477 names them. As dev, though an intermediate head accepted them: the full suite's rows 4-6
     (`apply2(f@ref, func (k: i32) -> i32 => k + 1)` beside an Unknown Callable clause, `UnprovenConstraint_Kd`) and amb1, amb2
-    (`AmbiguousBinding_Kd`). No move on the corpus.
+    (`AmbiguousBinding_Kd`). Under O-407 (a) and O-408 (a): s3p's 24 and s11r's 8 programs that dev accepts are newly rejected (one
+    `UnsatisfiedOriginRelation_Kd` at the `let`; item 2, a leading-dot Case is no evidence), and their 32 invalid twins' records move
+    to the `let`; s9/s9l (66) and s5/s8 (32) keep dev's records. Records only (B1, B2): `mkT(identity(1), mkNone())`,
+    `mkT(identity(1), Option.None)`, `W.Make(identity(1), mkNone())` and the deeper `mkT(identity(1), wrapOpt(mkNone()))` give the
+    leaf's one record, where dev gives one at the call. No move on the corpus.
+  - **Exposure and readings (N5).** Exposure: O-407 (a)'s commit 67a6ff5c7 exposes `q1_jelem`
+    (`run(func [] (p: (ref/(ref/i32 during a), i32)) -> i32 => 0, (if c => mkAny() else => mkAny(), 1))`), which the base rejected
+    only through BU-156's `Unsupported_Kd` (two, at the Tuple element) and now accepts and generates; no other form reaches a new
+    limit, and the second fix round exposes none. Readings: a U that is a Type parameter (or an associated projection, 8.5.2) reads
+    its declared outer Semantics, a pair `s/X` its binder's admitted set (O-416 (b)); an unbound slot never reaches item 2 (its own
+    Type after the defaults; once bound, the bound Type is read). O-408 (a): "a leading-dot Case is not a nested call" and
+    "`Option.None` is" (revision 11's words); one snapshot ("nested calls do not feed each other") from "at a position whose expected
+    Type contains a slot the candidate still leaves unbound after those defaults"; one join rule for literals (N2). B1: the leaf's own
+    record is the independent failure (10.5.1 "A failure is an error"); the call's re-check over it is dependent (23.1.2).
   - **Rejected:** routing the old functions through the new ones (a wrapper without semantics); naming B's owner
     `ArgumentTemporary` (it also decides lets and element positions); keeping K2/K3 beside B (two answers for one fill); W5 (a
     second, literal-gated reading of step 2 at places; no SPEC text); a Case row in `Materialization` in this unit (it would know a
