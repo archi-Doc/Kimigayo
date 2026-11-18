@@ -973,7 +973,7 @@ public sealed partial class MirBorrowsTest
                 }
 
                 var step = built.Projections[id];
-                return body.Project(new(root, Chain(root, step.Prefix)), step.Kind, step.Arg).Projection;
+                return body.Project(c.Types, new(root, Chain(root, step.Prefix)), step.Kind, step.Arg).Projection;
             }
 
             return place =>

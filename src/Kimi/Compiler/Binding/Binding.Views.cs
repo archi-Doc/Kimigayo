@@ -53,7 +53,7 @@ public sealed partial class Binding
             }
         }
 
-        result = Complete(source, range ? shared?.BoundType : LentElement(shared));
+        result = Complete(source, range ? shared?.BoundType : this.LentElement(shared));
         return true;
     }
 

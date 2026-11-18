@@ -30,16 +30,16 @@ internal sealed class SemanticQuery(Compilation compilation, Binding binding, Li
 
     internal BindingSymbol? SymbolOf(Koto node) => HirTables.Symbol(node);
 
-    internal CallPlan? CallOf(InvocationKoto node) => node.BoundCall;
+    internal CallPlan? CallOf(InvocationKoto node) => binding.CallOf(node);
 
-    internal CallPlan? ValueCallOf(InvocationKoto node) => node.BoundValueCall;
+    internal CallPlan? ValueCallOf(InvocationKoto node) => binding.ValueCallOf(node);
 
     internal BindingState StateOf(Koto node) => HirTables.State(node);
 
     internal BindingFailure FailureOf(Koto node) => HirTables.Failure(node);
 
     // Resolved by the running or the last completed pass, not by an earlier one.
-    internal bool IsCurrent(Koto node) => HirTables.HasCurrentBinding(node);
+    internal bool IsCurrent(Koto node) => binding.IsCurrent(node);
 
     internal BoundConstraint? ConstraintOf(IsKoto node) => node.BoundConstraint;
 
@@ -49,7 +49,7 @@ internal sealed class SemanticQuery(Compilation compilation, Binding binding, Li
 
     // The kind and the folded constant are the conversion's plan row; the creation and the adaptation count only for their kind.
     internal (ConversionBinding Kind, InvocationKoto? Creation, ExplicitAdaptationPlan? Adaptation, Int128? Folded) ConversionOf(ConversionKoto node)
-        => (HirTables.PlanOf(node).Conversion, node.CreationCall, node.Adaptation, HirTables.PlanOf(node).Folded);
+        => (HirTables.PlanOf(node).Conversion, binding.CreationOf(node), binding.AdaptationOf(node), HirTables.PlanOf(node).Folded);
 
     internal (InvocationKoto? Entry, BoundIteration? Plan) IterationOf(ForKoto node)
     {

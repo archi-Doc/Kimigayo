@@ -28,7 +28,7 @@ public sealed partial class Binding
     /// <summary>H, the greatest height a Type may have (IMPL A.4).</summary>
     internal const int TypeHeightLimit = 8192;
 
-    // A refusal without a site in this pass (a broken contract, reported by ReportDiagnostics).
+    // A refusal without a site in this pass (a broken contract, reported by ReportDiagnostics; the library's freeze counts it as a record).
     [Transitional("G651 a1", Reason = "A refusal during the run has no site only in a pass not yet framed; a1 makes the site SubstituteType's input (the C# build as the census) and a4 removes the last unframed path; U2 gives the after-run queries their outcome.")]
     private bool sitelessHeightRefusal;
 

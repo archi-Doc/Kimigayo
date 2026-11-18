@@ -6,9 +6,12 @@
 // A module's ordinal is its position among the source modules; the Kimi library's is LibraryModule in every compilation, above them all,
 // given when its table is created (ForLibrary), so its sources parse under the library mark (IsLibrary).
 // A compilation has at most LibraryModule source modules (IMPL A.4): Compilation.PrepareModules refuses more before one is numbered.
+// A frozen table (the library's from its freeze, PLAN G949 S1-1: Frozen) is never written again: every writer of its ids, numbering
+// and HIR rows checks EnsureWritable at its entry and throws the internal-invariant form (InternalInvariant_Kd).
 // Must not decide Binding facts or let consumers assign independent ids.
 
 using System.Buffers;
+using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 
 #pragma warning disable SA1401 // Fields should be private: the HIR columns are indexed in place.
@@ -63,6 +66,10 @@ public sealed class SyntaxTable
     /// (SPEC 6.7: the implementation Attributes are recognized only there). A source module's table never is.</summary>
     internal bool IsLibrary => this.Module == LibraryModule;
 
+    /// <summary>Gets a value indicating whether the table is frozen: the library's from its freeze (PLAN G949 S1-1, FreezeLibrary), after
+    /// which no step writes it; a fact a later pass makes at one of its nodes is that pass's (Binding's OriginAtomRows).</summary>
+    internal bool Frozen { get; private set; }
+
     /// <summary>Creates the Kimi library's table, numbered <see cref="LibraryModule"/> before its sources are parsed
     /// (<see cref="Kotonoha.ForKimiLibrary"/>).</summary>
     /// <returns>The table.</returns>
@@ -82,13 +89,35 @@ public sealed class SyntaxTable
         return node.SyntaxId;
     }
 
-    /// <summary>Records that the module's syntax changed, so the next pass renumbers it.</summary>
-    internal void Edit() => this.Version++;
+    /// <summary>Freezes the table (PLAN G949 S1-1: the library's, at its freeze).</summary>
+    internal void Freeze() => this.Frozen = true;
+
+    /// <summary>Refuses a write to a frozen table (PLAN G949 S1-1, s11-design 3.1): every writer of the table, its ids, its numbering
+    /// and its HIR rows, checks it at its entry, so a write after the freeze is the internal-invariant form, which the compilation reports
+    /// as InternalInvariant_Kd; no recovery.</summary>
+    /// <param name="writer">The writer, which the message names.</param>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal void EnsureWritable(string writer)
+    {
+        if (this.Frozen)
+        {
+            Refuse(writer);
+        }
+    }
+
+    /// <summary>Records that the module's syntax changed, so the next pass renumbers it. A frozen table refuses it, so it is never
+    /// renumbered again (<see cref="Number"/> returns at its unchanged version).</summary>
+    internal void Edit()
+    {
+        this.EnsureWritable(nameof(this.Edit));
+        this.Version++;
+    }
 
     /// <summary>Gives a node the next id.</summary>
     /// <param name="node">A node without an id, or one the current numbering has not reached.</param>
     internal void Allocate(Koto node)
     {
+        this.EnsureWritable(nameof(this.Allocate));
         var id = ++this.Count;
         if (id == this.nodes.Length)
         {
@@ -143,6 +172,10 @@ public sealed class SyntaxTable
 
         this.Hir.Retire();
     }
+
+    [DoesNotReturn]
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static void Refuse(string writer) => throw new InvalidOperationException($"{writer} wrote the frozen library table (InternalInvariant; PLAN G949 S1-1).");
 
     private readonly record struct Walked(Koto Node, SyntaxTable? Owner, int Id);
 

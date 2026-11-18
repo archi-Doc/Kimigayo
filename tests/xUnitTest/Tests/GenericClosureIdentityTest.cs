@@ -167,8 +167,8 @@ public class GenericClosureIdentityTest
         var different = c.Binding.InstantiateStorageType(closure, calls[2])!;
         Assert.Same(first, same);
         Assert.NotSame(first, different);
-        Assert.False(Binding.FitsType(first, different));
-        Assert.False(Binding.FitsType(different, first));
+        Assert.False(c.Binding.FitsType(first, different));
+        Assert.False(c.Binding.FitsType(different, first));
         Assert.Empty(first.Components);
     }
 

@@ -342,10 +342,10 @@ public sealed partial class Binding
             return;
         }
 
-        var declared = TyCtxt.Signature(target, null, -1, out var count);
+        var declared = this.types.Signature(target, null, -1, out var count);
         for (var i = 0; declared is not null && count == inputs.Length && i < count; i++)
         {
-            if (TyCtxt.Signature(target, null, i, out _) is not { } input)
+            if (this.types.Signature(target, null, i, out _) is not { } input)
             {
                 this.retentionDeclared.Clear();
                 return;
@@ -629,8 +629,7 @@ public sealed partial class Binding
             return;
         }
 
-        var owner = origin.Body.Definition?.Declaration?.CodeContext.Compilation.Binding ?? this;
-        if (owner.LocalRegionSources(origin) is { IsEmpty: false } sources)
+        if (this.LocalRegionSources(origin) is { IsEmpty: false } sources)
         {
             var meet = sources[0];
             for (var i = 1; i < sources.Length; i++)

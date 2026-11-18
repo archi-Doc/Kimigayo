@@ -141,6 +141,8 @@ public sealed partial class Binding
 
         // The one class-validity rule and member scan behind both answers: a parameter's or projection's class in state One whose
         // meets are complete, scanned once per table (its members are fixed after Close), whatever the number of its members asked.
+        // Its Kind list names the members that may key a class (R7-M25: a Type parameter, the original `s/T` among them, or an
+        // associated projection), not SPEC 8.2.3's abstract Type, which the meets test by IsAbstractType.
         private (BoundType? Least, BoundType? Complete) Scanned(BoundType type)
         {
             if (type.Kind is not (BoundTypeKind.Parameter or BoundTypeKind.AssociatedProjection) || !this.node.TryGetValue(type, out var n))

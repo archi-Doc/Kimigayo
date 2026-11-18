@@ -3081,7 +3081,7 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
     private sealed class Stratum
     {
         private readonly MirDataflow flow = new(new MirReach());
-        private readonly MirMoveData moves = new();
+        private readonly MirMoveData moves;
         private readonly MirReport obligations = new(); // A4's obligation problems, which A5 does not read.
         private readonly MirCases cases;
         private readonly MirEffects effects;
@@ -3090,6 +3090,7 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
 
         internal Stratum(TyCtxt types)
         {
+            this.moves = new(types);
             this.cases = new(types);
             this.effects = new(types, this.cases, this.flow);
             this.origins = new(types, this.cases);
