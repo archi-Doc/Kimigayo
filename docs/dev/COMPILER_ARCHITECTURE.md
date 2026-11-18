@@ -256,7 +256,8 @@ is restricted to Parsing/Binding. IntrinsicId's limit is 27 since R8-I1 (DECISIO
   difference ledger that recorded them ended at R6-check H10a (the last is W-17's `shared-base/382126932/mir-diff/`). The owner is
   consulted after two consecutive working sessions on the A5 plan that land no unit.
 - **Temporary structures**, with the stage that removes them; Transitional attributes identify these declarations (CR-A7):
-  - the Koto semantic forwarding properties and `BaseReferenceKoto.BasePath` (R7; R6-check H14
+  - the Koto semantic forwarding properties (32 after PLAN G949's U0b-P3, which deleted the four call and conversion currency
+    getters and `Koto.HasCurrentBinding`) and `BaseReferenceKoto.BasePath` (R7; R6-check H14
     ended their reads outside Binding except the tests', until R7, and the old control-flow analysis', which H10b-2 deleted; DECISIONS
     R5-M9, R5-M190, R5-M193);
   - `Binding.IsTwinRecord`, the test MIR side's twin filter (R7's Problem records unit, with the twins; the owner, 2026-11-06,
