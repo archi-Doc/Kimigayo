@@ -23012,6 +23012,11 @@ R8-M* and R9-M* by the stage of the recording unit.
     lowered check inside a `#CallerLocation` body already reports the received location (`FunctionCodegen.Location`), so no
     forwarded-location operand is needed. `KimiLibraryShapeTest`: `#CallerLocation` declarations 82 -> 105, unnamed registrations 63
     -> 79.
+  - Extended by PLAN G71 (1) (W-260, the Back, 2026-11-18; O-405, O-412 (1)): every destructor of the Kimi Kotonoha is
+    caller-location by kind (`KimiLibraryCatalog.RequiresCallerLocation`), not by `#CallerLocation`, which SPEC 6.7 does not place on
+    `drop`; its sites report the location its drop glue receives, the Drop's (SPEC 22.5.1). `Array.sort(by:)`, which destroys its
+    by-value `by` inside the operation, carries `#CallerLocation` (the search by ownership found no other library body destroying a
+    possibly destructor-bearing value without it). No glue or MIR change.
   - **Supersedes in part:** BU-118's "one enum member" sentence (four facts, one read of the Name); R4-M23's and R8-M42's `Bodyless`
     facts (`BodylessKind`, read from `Definition`); R8-M22's producer kind `ConsoleWriteStdout` and its signature-only
     `Console.kimi`; R8-M30's `FindDeclaration`; R8-M46's `StorageReserveDispatch` member; R8-M48's `None` row of the Body
