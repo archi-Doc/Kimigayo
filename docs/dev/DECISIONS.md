@@ -4105,7 +4105,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
   - Superseded in part by R5-M188 (2026-11-05, R6-check H10a): the MIR target side is `MirTargetSide.MirSide`, the publisher's
     rows.
 - **R4-M137 G216: a nested signature's input well-formedness forms no row of the body it is written in (2c-9)** (superseded in part by
-  R4-M155: its result half, the owner's (A), and R4-M162) (2026-10-26, under R4-M126 §2.15 (P10) and D-11; supersedes R4-M101 O1)
+  R4-M155: its result half, the owner's (A), and R4-M162; superseded in part by R4-M212 (PLAN G972): the Effect list's inputs related
+  by a written Origin) (2026-10-26, under R4-M126 §2.15 (P10) and D-11; supersedes R4-M101 O1)
   - Rule (SPEC 15.3.4 "Nested signatures", which names Function Types, Callable and anonymous functions together as nested signatures
     with per-call direct-input quantification; SPEC 15.6.1: a definition assumes its signature's Types well-formed and each call proves
     it): an input's well-formedness is a premise of its signature (R2, `ExtractOriginPremises` for a `FunctionKoto` or `FunctionTypeKoto`),
@@ -6700,6 +6701,25 @@ and migration obligations remain in force; no numeric cap changes are authorized
     operand's value-less paths sent straight to the operation's aside, with no test of their own; (k) sharing a cleanup's blocks
     between the value and the value-less routes (it joins the two kinds of path R2.1 keeps apart); (l) a clause for `and`/`or` or a
     Type test at the consumers (the Middle's decision on F1).
+- **R4-M212 A nested signature's input never names that signature's per-call Origin (PLAN G972; the owner's O-403 (b))**
+  (2026-11-18; Front, Binding; the owner, verbatim 「O-403 b」, 2026-11-18; supersedes in part R4-M137) SPEC 15.3.4, 8.10, 3.2.1.
+  - Rule (SPEC 15.3.4 "Nested signatures": "Each nested aggregate input slot is fixed by a complete Type or an outer Origin
+    expression" and "Inner per-call Origins cannot escape their binder"; 8.10: "nested and capture Origins stay fixed"; 3.2.1: "A
+    written input Origin names an existing Origin and is fixed"): no written Origin in a nested signature's input names that
+    signature's per-call Origin, in an aggregate slot or a borrow layer (nested or direct) alike; the per-call Origin is visible in
+    the signature's result and body only. One record, `InvalidOriginBinding_Kd` (Language) at the written Origin (a meet at its
+    per-call operand); the Origin stays bound, so independent records stay (a conversion's `UnprovenOriginContract_Kd`).
+  - Code: `Binding.OriginVisible` (`Binding.OriginDeclarations.cs`), the one judge of where a written Origin may stand, read by
+    `BindOrigin` for every written Origin and by the declaration rewrite: its binder set grows from Function Types to an anonymous
+    function's per-call `Input` atoms, and its region from "inside the binder" to "inside, outside the binder's inputs" (`InputType`,
+    `IsWithin`). No new path, flag, column or vocabulary entry; `FormNestedResult` is untouched.
+  - Supersedes in part R4-M137's Effect list ("inputs related by a written Origin" form no row: that form is invalid; the other forms
+    stand) and G962's design reviewer's reading A (a nested borrow layer may name a sibling's per-call Origin); closes PLAN G905's
+    label (f2v is invalid at u's `b`).
+  - Rejected: (a) aggregate slots only (a second, position-keyed condition in the judge; it makes a nested borrow layer per call,
+    which 8.10 says stays fixed: the owner chose (b)); the check in `FormNestedResult`'s inputs' half (a second walk of the inputs and
+    a second judge for 15.3.4's one scope rule); a clause in `OriginCandidate`'s input-name branch (a consumer deciding by syntax:
+    `x.a` with `x: ref/U` names a fixed body variable, valid); `BindOrigin` returning no Origin (it would hide independent records).
 - **Owner decisions, only when triggered:** O1 a MIR vocabulary member or `IntrinsicId`; O2 a total cap above 142,000;
   O3 an acceptance change outside plan Appendix B (C1–C6 and X1–X3 with a SPEC clause; T1–T4 belong to R7), any rejection
   of a milestone or library program, or a row reopening a SETTLED entry; O4 a general SPEC rule left Unsupported at the R4
