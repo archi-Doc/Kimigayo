@@ -38,7 +38,7 @@ public sealed partial class Binding
 
         foreach (var node in this.derivedIssuesView)
         {
-            node.ReportDerived(DiagnosticRequirement.Binding(node.BindingFailure), this.PrerequisiteKeys(node));
+            node.ReportDerived(DiagnosticRequirement.Binding(this.RecordedFailure(node)), this.PrerequisiteKeys(node));
         }
 
         if (this.Result.Mode == BindingMode.Final)

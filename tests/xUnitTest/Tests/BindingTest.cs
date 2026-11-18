@@ -521,12 +521,14 @@ public class BindingTest
         }
     }
 
-    // PLAN G949 S1-r1b (v5; s1r1-design 3.3, RC2's recorder; review-s1r1b N2): a library node the program pass fails is listed once in
-    // the program part's foreign failures, with the state the library pass counted it in. No program fails one today (the census: no
-    // program-pass write to a library node over the corpus), so the row fails one through the private Fail after a Final Bind, as a
-    // check of the program pass would: CheckBound then records it after the program's issues, the Bind's Result counts it once by its
-    // final state (Resolved - 1 and Invalid + 1 against the Bind's), a second CheckBound publishes the one record again, not twice, and
-    // a second failure of the node adds no listing, also after a check cleared its failure (N2: the recorder skips a listed node).
+    // PLAN G949 S1-r1b (v5; s1r1-design 3.3, RC2's recorder; review-s1r1b N2), as S1-1 completes it (s11-design 3.3): a library node the
+    // program pass fails is the program part's entry, listed once with the state the library pass counted it in and the state and
+    // failure the program pass recorded, and its columns keep the library's final state: the recorder writes no library column. No
+    // program fails one today (the census: no program-pass write to a library node over the corpus), so the row fails one through the
+    // private Fail after a Final Bind, as a check of the program pass would: CheckBound then records it after the program's issues, the
+    // Bind's Result counts it once by its recorded state (Resolved - 1 and Invalid + 1 against the Bind's), ReportDiagnostics publishes
+    // one record of it, a second CheckBound publishes the one record again, not twice, and a second failure of the node adds no listing,
+    // also after a check cleared its failure (N2: the recorder reads the entry, so a node is listed once per pass).
     [Fact]
     public void ALibraryNodeTheProgramPassFailsIsRecordedOnce()
     {
@@ -535,19 +537,25 @@ public class BindingTest
         Assert.False(bound.IsComplete);
         var program = c.Binding.Issues.Select(static x => x.Node).ToArray();
         Assert.NotEmpty(program);
+        Assert.DoesNotContain(c.Diagnostics.Finalize().Diagnostics, static x => x.Code == nameof(DiagnosticCode.TypeMismatch_Kd));
         Koto node = KotoTree.Walk(c.Library.Kotonoha.RootKoto).OfType<NumberLiteralKoto>().First(static x => x.StateOf() == BindingState.Resolved);
         var fail = typeof(Binding).GetMethod("Fail", BindingFlags.Instance | BindingFlags.NonPublic)!;
         fail.Invoke(c.Binding, [node, BindingFailure.TypeMismatch, false]);
+        Assert.Equal((BindingState.Resolved, BindingFailure.None), (node.StateOf(), node.FailureOf()));
         fail.Invoke(c.Binding, [node, BindingFailure.TypeMismatch, false]);
         c.Binding.ClearFailure(node); // A check's retry (ClearFailure), then the node failed again in the same pass.
+        Assert.Equal((BindingState.Resolved, BindingFailure.None), (node.StateOf(), node.FailureOf()));
         fail.Invoke(c.Binding, [node, BindingFailure.TypeMismatch, false]);
         var own = (Binding.PassPart)typeof(Binding).GetField("programPart", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(c.Binding)!;
-        Assert.Equal((node, BindingState.Resolved), Assert.Single(own.ForeignFailures));
+        Assert.Equal((node, BindingState.Resolved, BindingState.Invalid, BindingFailure.TypeMismatch), Assert.Single(own.ForeignFailures));
         Assert.Empty(c.Library.Layer.Part.ForeignFailures);
         for (var check = 0; check < 2; check++)
         {
             Assert.Equal(bound with { ResolvedCount = bound.ResolvedCount - 1, InvalidCount = bound.InvalidCount + 1 }, c.Binding.CheckBound());
             Assert.Equal(program.Append(node), c.Binding.Issues.Select(static x => x.Node));
+            c.Binding.ReportDiagnostics();
+            Assert.Single(c.Diagnostics.Finalize().Diagnostics, static x => x.Code == nameof(DiagnosticCode.TypeMismatch_Kd));
+            Assert.Equal((BindingState.Resolved, BindingFailure.None), (node.StateOf(), node.FailureOf()));
         }
     }
 

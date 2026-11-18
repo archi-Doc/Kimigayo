@@ -497,7 +497,7 @@ public sealed partial class Binding
     // failure's code.
     private BoundType? FailExplained<T>(ref Dictionary<Koto, T>? facts, Koto node, BindingFailure failure, T fact, bool unresolved = false)
     {
-        if (node.BindingFailure == BindingFailure.None)
+        if (this.RecordedFailure(node) == BindingFailure.None)
         {
             (facts ??= new(ReferenceEqualityComparer.Instance))[node] = fact;
         }

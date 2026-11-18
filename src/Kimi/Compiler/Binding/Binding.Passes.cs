@@ -276,8 +276,9 @@ public sealed partial class Binding
     // (EnterPass); a per-pass node-keyed table (a member the "Node-keyed table members in Binding" ratchet counts: PatternNodes and
     // CandidateScopes, with their previous-run lists) is declared here once and read through the running pass's part (this.pass.Part),
     // so a member that ratchet counts never returns to Binding (DECISIONS BU-220: node-keyed tables leave Binding batch by batch).
-    // ForeignFailures lists the nodes of a module the pass does not bind that it failed, each with its state before the failure (the
-    // recorder, Binding.Diagnostics.Prerequisites.cs): their records and counts are the failing pass's (CountStates). Counts is the pass's
+    // ForeignFailures lists the nodes of a module the pass does not bind that it wrote, each with its state before and the state and
+    // failure the pass recorded in place of the node's columns (the recorder, Binding.Diagnostics.Prerequisites.cs): their records and
+    // counts are the failing pass's (CountStates). Counts is the pass's
     // contribution to the Bind's Result (ComposeResult), not a tally of the part's nodes, which only the views count: a program pass's
     // own nodes plus each foreign node's final state less its earlier one.
     internal sealed class PassPart(int nodes)
@@ -348,8 +349,9 @@ public sealed partial class Binding
         // declares no alias, never removes a program document's entry that the program pass would then make again.
         internal Dictionary<SourceDocument, List<AliasImport>> AliasesByDocument { get; } = new();
 
-        // The nodes outside the pass's modules that the pass failed, in the order it failed them, each with its earlier state.
-        internal List<(Koto Node, BindingState Before)> ForeignFailures { get; } = new();
+        // The nodes outside the pass's modules that the pass wrote, in the order it first wrote them: each with its state before (its own
+        // pass's), and the state and failure the pass recorded, which the recorder reads in place of its columns (RecordedState).
+        internal List<(Koto Node, BindingState Before, BindingState State, BindingFailure Failure)> ForeignFailures { get; } = new();
 
         internal BindingResult Counts { get; set; }
 
