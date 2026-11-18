@@ -6,7 +6,8 @@ using Kimi.Compiler.Target;
 namespace Kimi.Compiler;
 
 // The process's library per target (PLAN G949 Stage 2 U2a; design u2-design 2.1-2.3; DECISIONS R8-M?? on landing): KimiLibrary's
-// store (Of), its freeze (Freeze) and the seam that makes an unfrozen library in its freeze compilation (Unfrozen). Read by no
+// store (Of), its freeze (Freeze) and the seam that makes the freeze compilation an unfrozen library is parsed in (Unfrozen; B's ruling
+// 37: the freeze's input is its compilation, so no step reaches a compilation through a library node). Read by no
 // compilation before U3.
 public sealed partial class KimiLibrary
 {
@@ -23,15 +24,15 @@ public sealed partial class KimiLibrary
     internal static KimiLibrary Of(TargetTriple target)
         => Process.GetOrAdd(target, static key => new(() => FreezeDefault(key), LazyThreadSafetyMode.ExecutionAndPublication)).Value;
 
-    /// <summary>Makes an unfrozen library: the freeze's compilation, over an empty program, prepared with the target (none for
-    /// <see cref="TargetTriple.Invalid"/>) and the project, with documentation and hover collection on, then the library its Binding makes
-    /// by the one constructor, parsed in that compilation (its conditions, documentation flags, identifier table and collection). A test
-    /// edits or extends it before <see cref="Freeze"/>.</summary>
+    /// <summary>Makes the freeze compilation of an unfrozen library: over an empty program, prepared with the target (none for
+    /// <see cref="TargetTriple.Invalid"/>) and the project, with documentation and hover collection on. Its Binding makes the library by the
+    /// one constructor, parsed in that compilation (its conditions, documentation flags, identifier table and collection); a test edits or
+    /// extends <see cref="Compilation.Library"/> before <see cref="Freeze"/>.</summary>
     /// <param name="target">The target.</param>
     /// <param name="kimigayo">The compiler service the compilation takes.</param>
     /// <param name="project">The preparation: the project's Debug and compile-time settings.</param>
-    /// <returns>The unfrozen library.</returns>
-    internal static KimiLibrary Unfrozen(TargetTriple target, Kimigayo kimigayo, Project project)
+    /// <returns>The prepared freeze compilation.</returns>
+    internal static Compilation Unfrozen(TargetTriple target, Kimigayo kimigayo, Project project)
     {
         var compilation = new Compilation(kimigayo, project) { CollectDocumentation = true, CollectHover = true };
         if (target != TargetTriple.Invalid && !compilation.Prepare(target.Value))
@@ -39,17 +40,17 @@ public sealed partial class KimiLibrary
             throw new InvalidOperationException($"The library's target `{target.Value}` does not prepare (InternalInvariant; PLAN G949 Stage 2).");
         }
 
-        return compilation.Library;
+        return compilation;
     }
 
-    /// <summary>Freezes an unfrozen library: its compilation binds Final by the one driver, whose library pass either freezes the library
+    /// <summary>Freezes the library of a freeze compilation: it binds Final by the one driver, whose library pass either freezes the library
     /// or refuses it (its refusal kept in <see cref="Layer"/>). Never calls <see cref="Of"/>.</summary>
-    /// <param name="library">A library from <see cref="Unfrozen"/>.</param>
-    /// <returns>The library, frozen or refused.</returns>
-    internal static KimiLibrary Freeze(KimiLibrary library)
+    /// <param name="freeze">A compilation from <see cref="Unfrozen"/>.</param>
+    /// <returns>Its library, frozen or refused.</returns>
+    internal static KimiLibrary Freeze(Compilation freeze)
     {
-        library.Kotonoha.Compilation.Bind();
-        return library;
+        freeze.Bind();
+        return freeze.Library;
     }
 
     // Of's freeze: the default preparation, an empty project of a console-less compiler service (Debug off, no settings).

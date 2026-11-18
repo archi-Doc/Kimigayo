@@ -13,7 +13,7 @@ namespace XunitTest;
 
 // PLAN G949 Stage 2 U2a (design u2-design 2.1-2.3, 2.6; rows s2a, s2b, s6a, s6d, s16, s19, s21a, s21b, P-b; labels in
 // back\notes\l1-s2\u2a-impl\labels.md): the process's library per target, KimiLibrary.Of, frozen once by Freeze over an unfrozen library
-// that Unfrozen makes in its own freeze compilation; read by no compilation before U3, so these rows read the frozen library alone.
+// whose freeze compilation Unfrozen makes (B's ruling 37); read by no compilation before U3, so these rows read the frozen library alone.
 public partial class KimiLibraryShapeTest
 {
     // s19: parallel readers of one target get one object, frozen, not refused (s16's windows-x64 row too).
@@ -47,9 +47,10 @@ public partial class KimiLibraryShapeTest
     public void ADirectFreezeIsNotCachedAndHoldsItsOwnLibrary()
     {
         var target = TargetTriple.Parse("x86_64-unknown-linux-gnu");
-        var library = Unfrozen(target, debug: false);
-        Assert.Same(library, library.Kotonoha.Compilation.Binding.Library);
-        Assert.Same(library, KimiLibrary.Freeze(library));
+        var freeze = Unfrozen(target, debug: false);
+        var library = KimiLibrary.Freeze(freeze);
+        Assert.Same(freeze.Library, library);
+        Assert.Same(library, freeze.Binding.Library);
         Assert.True(library.Kotonoha.Syntax.Frozen);
         var store = (ConcurrentDictionary<TargetTriple, Lazy<KimiLibrary>>)typeof(KimiLibrary).GetField("Process", BindingFlags.NonPublic | BindingFlags.Static)!.GetValue(null)!;
         Assert.False(store.ContainsKey(target));
@@ -70,9 +71,9 @@ public partial class KimiLibraryShapeTest
     [Fact]
     public void AFreezeOfADefectiveLibraryIsARefusal()
     {
-        var library = Unfrozen(TargetTriple.Parse(WindowsProfile.Target), debug: false);
-        library.Kotonoha.CreateCodeContext().Parse(library.Kotonoha.RootKoto, ZUnsupportedProbe + "public group ZUses\n    public func zuse(v: ref/::ZProbe.Inner) => ()\n    public func zuse2(v: ref/::ZProbe) => ()\n");
-        Assert.Same(library, KimiLibrary.Freeze(library));
+        var freeze = Unfrozen(TargetTriple.Parse(WindowsProfile.Target), debug: false);
+        freeze.Library.Kotonoha.CreateCodeContext().Parse(freeze.Library.Kotonoha.RootKoto, ZUnsupportedProbe + "public group ZUses\n    public func zuse(v: ref/::ZProbe.Inner) => ()\n    public func zuse2(v: ref/::ZProbe) => ()\n");
+        var library = KimiLibrary.Freeze(freeze);
         var refusal = Assert.IsType<Kimi.Compiler.LibraryLayer.Refused>(library.Layer.Refusal);
         Assert.Equal(2, refusal.Records.Length);
         Assert.All(refusal.Records, static x => Assert.NotNull(x.Document));
@@ -116,8 +117,8 @@ public partial class KimiLibraryShapeTest
         Assert.NotEqual(0, calls);
     }
 
-    // An unfrozen library over the seam's preparation: an empty project, with Debug on where the row asks.
-    private static KimiLibrary Unfrozen(TargetTriple target, bool debug)
+    // A freeze compilation over the seam's preparation: an empty project, with Debug on where the row asks.
+    private static Compilation Unfrozen(TargetTriple target, bool debug)
     {
         var kimigayo = Compilation.CreateForTest().Kimigayo; // A console-less compiler service, as Of's default preparation has.
         var project = new Project(kimigayo);
