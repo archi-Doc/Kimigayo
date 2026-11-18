@@ -945,8 +945,8 @@ public sealed class MirAnalysisTest
     // Row H2-K (PLAN G951 U2-K-b; M-K1's Q1, HOVER's ownership line): a library function an earlier version of the compilation reached and
     // the latest does not stays judged without a problem, since the kept library list keeps its body, stepped by the library step of
     // every later version of the segment (a fresh pipeline would have no body: pending). X3 (valid, SPEC 10.5.3, 7.7.4) reaches
-    // Stopwatch.start; the edit into Hello (valid, SPEC 22.7) does not. Explicit until G950-K makes the kept path the product's.
-    [Fact(Explicit = true)]
+    // Stopwatch.start; the edit into Hello (valid, SPEC 22.7) does not.
+    [Fact]
     public void ALibraryFunctionAnEarlierVersionReachedStaysJudged()
     {
         var c = MirBuildTest.Compile(LazySource("X3"));
@@ -1025,7 +1025,7 @@ public sealed class MirAnalysisTest
     // PLAN G950 (design §R1.1 (b), the implementation review's M1): the library step's problems (step 2's A1 and A2) are kept as data and
     // replayed at the library step in a version that keeps the library segment: one analysis over two versions of one compilation reports
     // an A1 problem seeded into a library body after each build (a copy of a new Var no path initializes, in a new block the entry block
-    // enters first) in each version, at its location, once. Every version takes the library step until G950-K, so the row pins the replay
+    // enters first) in each version, at its location, once. With G950-K the second version keeps the segment, so the row pins the replay
     // on the kept path (as InstanceCollectorTest.TheLibraryRangeChecksALibraryBodyInEveryVersion pins A3b there).
     [Fact]
     public void ALibraryStepProblemIsInEveryVersion()

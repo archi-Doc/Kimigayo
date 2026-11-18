@@ -346,28 +346,38 @@ public sealed partial class MirBuildTest(ITestOutputHelper output)
     // LibraryCount, which is the library check's; the program's bodies take the ordinals from LibraryCount; the library list holds the
     // library's templates only (none: KimiLibraryShapeTest.TheLibraryDeclaresNoParameterDefault) and the build-order list the
     // program's bodies before the demanded ones; a read by ordinal gives each built body and fails for an empty slot, which A2's table
-    // does not hold (row PE-2 through Compilation); in the first build and after a rebind. X3 as below. The row replaces U2's
-    // ACompilationsLibraryBodiesFollowItsProgramsBodies, whose expectation (a demanded library body takes the next program ordinal) was
-    // R9-M9's Staged state before the fixed ordinals. Fail-before: the demanded bodies followed the program's, LibraryCount 0.
+    // does not hold (row PE-2 through Compilation); in the first build and after a rebind. After the rebind the version keeps its library
+    // segment (N6 of U2-K-b's design review; DECISIONS R9-M9, PLAN G951 U2-K-b with G950-K): the first build's demanded library bodies are
+    // the library list, the same bodies in build order at their slots, and the version's own bodies are the program's, at least one
+    // (in the first build they precede the demanded ones: the third design review's N-a). X3 as below. The
+    // row replaces U2's ACompilationsLibraryBodiesFollowItsProgramsBodies, whose expectation (a demanded library body takes the next
+    // program ordinal) was R9-M9's Staged state before the fixed ordinals. Fail-before: the demanded bodies followed the program's,
+    // LibraryCount 0; before G950-K the rebuilt segment's (the second build's layout was the first's).
     [Fact]
     public void ACompilationsLibraryBodiesTakeTheLibraryChecksOrdinals()
     {
         var c = Compile(StopwatchAction);
+        MirBody[] demanded = [];
         for (var build = 0; build < 2; build++)
         {
             _ = c.Analyze();
             var (program, eager) = (c.BuildMir(), new MirBuilder(c).Build(SyntaxTable.LibraryModule + 1));
             var bodies = program.Bodies.ToArray();
-            var first = Array.FindIndex(bodies, static x => x.Source.IsLibrary);
-            Assert.InRange(first, 1, bodies.Length - 1);
-            Assert.All(bodies[first..], x => Assert.Equal((true, eager[x.Key]!.Ordinal), (x.Source.IsLibrary, x.Ordinal)));
-            Assert.Equal((eager.LibraryCount, 0), (program.LibraryCount, program.LibraryBodies.Length));
+            MirBody[] library = [.. bodies.Where(static x => x.Source.IsLibrary)];
+            Assert.NotEmpty(library);
+            Assert.All(library, x => Assert.Equal(eager[x.Key]!.Ordinal, x.Ordinal));
+            Assert.Equal(demanded, program.LibraryBodies.ToArray());
+            Assert.Equal(eager.LibraryCount, program.LibraryCount);
+            var own = program.VersionBodies.ToArray()[..(bodies.Length - library.Length)];
+            Assert.NotEmpty(own);
+            Assert.All(own, static x => Assert.False(x.Source.IsLibrary));
             Assert.All(bodies, x => Assert.Equal(x.Source.IsLibrary, x.Ordinal < program.LibraryCount));
             Assert.All(bodies, x => Assert.Equal((x, true), (program.Body(x.Ordinal), program.Drops.Holds(x.Ordinal))));
             var empty = eager.LibraryBodies.ToArray().Where(x => program[x.Key] is null).Select(static x => x.Ordinal).ToArray();
-            Assert.Equal(eager.LibraryCount - (bodies.Length - first), empty.Length);
+            Assert.Equal(eager.LibraryCount - library.Length, empty.Length);
             Assert.All(empty, x => Assert.False(program.Drops.Holds(x) || program.Drops.RowsOf(x).Length > 0));
             Assert.All(empty, x => Assert.Throws<InvalidOperationException>(() => program.Body(x)));
+            demanded = library;
             c.Binding.Bind(BindingMode.Final);
         }
     }

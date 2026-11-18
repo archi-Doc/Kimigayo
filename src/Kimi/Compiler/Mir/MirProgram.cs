@@ -104,8 +104,10 @@ internal sealed class MirProgram
     /// definition's body is built; every other body's ordinal follows it.</summary>
     internal int LibraryCount { get; private set; }
 
-    /// <summary>Gets the library version the library segment was built for (0: none), the stamp a component keeping a library segment's
-    /// facts compares (PLAN G950): the Binding pass until G949's library publication version replaces it (G950-K).</summary>
+    /// <summary>Gets the library version the library segment was built for (0: none), which <see cref="MirBuilder.Build"/> stamps
+    /// (<see cref="EndLibrary"/>) and compares to keep the segment (PLAN G950-K): Binding's library publication version
+    /// (<see cref="HirTables.LibraryVersion"/>), per compilation and written once at the library's freeze (G949 S1-1, ruling 174), so
+    /// the same in every version of a compilation.</summary>
     internal ulong LibraryVersion { get; private set; }
 
     /// <summary>Gets the count of the library segments this program has built, which <see cref="EndLibrary"/> advances and nothing

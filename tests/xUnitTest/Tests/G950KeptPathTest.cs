@@ -13,8 +13,7 @@ namespace XunitTest;
 
 /// <summary>PLAN G950's kept path (design §R1, coverage rows g7, g8, M1, M2 and the focused re-review's M4): a later version of one compilation gives what a fresh
 /// MIR pipeline gives over the same compilation state, and the code its first version generated, whether the library's MIR segment is
-/// built again (the base) or kept (G950-K). g8 and M2 are explicit until G950-K keeps the segment; the base fails them, and M2's premise
-/// (a library body in Compilation's library segment) waits for G951 U2-K too. The fresh pipeline
+/// built again (a version that ends its segment, R-K2'') or kept (G950-K with G951 U2-K-b). The fresh pipeline
 /// is built in Compilation's configuration (PLAN G951 U2: the source modules' root range, collected through Compilation.Collect's loop). M3, the library
 /// check over two versions, is <see cref="MirAnalysisTest.TheLibraryHasNoAnalysisProblem"/> and, for the collector's A3b with a record,
 /// <see cref="InstanceCollectorTest.TheLibraryRangeChecksALibraryBodyInEveryVersion"/>; the analysis's replay of the library step's
@@ -131,28 +130,6 @@ public sealed class G950KeptPathTest
         }
     }
 
-    // Row K1-K on the product path (the Back's C1 on C-378; U2-K-b's kept twin rests on it): a library body its version built and no
-    // step stepped. swap erased at 70 nested [1 of ...u8] is valid (SPEC 10.5.3, 7.7.4) and rejected by the implementation's storage
-    // bound (PLAN G128: one located Unsupported_Kd, made where the collector refuses the instance after its lookup built swap's body),
-    // so the version ends with swap built at its library ordinal and not held by A2's table: the premise, asserted, and Transitional:
-    // it holds until R7 removes the bound, and the row then needs another refusal. The next version, the same erasure at u8 (valid),
-    // equals a fresh pipeline and steps swap.
-    [Fact]
-    public void ARefusedLibraryInstanceLeavesItsBodyBuiltAndUnstepped()
-    {
-        var c = Compile("swap70");
-        _ = c.Analyze();
-        Assert.Equal([DiagnosticCode.Unsupported_Kd], c.Problems.Select(static x => x.Code));
-        var (program, eager) = (c.BuildMir(), new MirBuilder(c).Build(SyntaxTable.LibraryModule + 1));
-        var swap = Assert.Single(program.Bodies.ToArray(), static x => x.Source.IsLibrary);
-        Assert.Equal(("swap", eager[swap.Key]!.Ordinal, false), (swap.Key.Decl?.Name, swap.Ordinal, program.Drops.Holds(swap.Ordinal)));
-        var (own, fresh) = Next(c, "swap");
-        Assert.Equal(fresh, own);
-        Assert.Empty(c.Problems);
-        var later = c.BuildMir();
-        Assert.True(later.Drops.Holds(Assert.Single(later.Bodies.ToArray(), static x => x.Source.IsLibrary).Ordinal));
-    }
-
     // g7 (a) over every case of the diagnostic snapshot (N11), a warm rebind each, in parallel as SemanticSnapshotTest's corpus run, so
     // the class stays short: a failure gives the count and each case whose later version differs from the fresh pipeline, with its first
     // differing line (fresh -> own, as the semantic snapshot reports one), or throws.
@@ -193,13 +170,13 @@ public sealed class G950KeptPathTest
         Assert.Equal(first, Generate(c));
     }
 
-    // g8 (design §4; explicit until G950-K, the base builds the segment again): a later version keeps the library's bodies, the same objects
+    // g8 (design §4): a later version keeps the library's bodies, the same objects
     // at the same ordinals, none begun again, so a body's validator verdict set after the first version (the seam
     // MirAnalysisTest.ABodyWithAFindingLeavesOtherBodiesProblems uses) stays. A builder with the library check's root range, whose library
     // segment holds every library body (PLAN G951 U2; the review's N5): Compilation's build holds the library's templates only until
     // U2-K, so its row (a later version keeps the library bodies the compilation demanded) is U2-K's completion row and G950-K's
     // prerequisite.
-    [Fact(Explicit = true)]
+    [Fact]
     public void ALaterVersionKeepsTheLibrarysBodies()
     {
         var c = Compile("milestone/Milestone27");
@@ -213,9 +190,9 @@ public sealed class G950KeptPathTest
         Assert.True(library[0].HasFinding);
     }
 
-    // g8 for the collector (the Back's C-378 (2); explicit until G950-K, the base templates every body again): a later version walks only
+    // g8 for the collector (the Back's C-378 (2)): a later version walks only
     // the program segment's bodies into templates, the library segment's template store kept.
-    [Fact(Explicit = true)]
+    [Fact]
     public void ALaterVersionKeepsTheLibrarysTemplates()
     {
         var c = Compile("milestone/Milestone27");
@@ -227,33 +204,33 @@ public sealed class G950KeptPathTest
         Assert.Equal(later.VersionBodies.Length, collector.Templated);
     }
 
-    // M2 (design §R1.4; explicit until G950-K, the base's rebuild drops the injection): a kept library row is published in every version:
-    // a validator finding of a library body in Compilation's library segment (the seam MirAnalysisTest.ABodyWithAFindingLeavesOtherBodiesProblems
-    // uses; G950-K gives it at the validator's library step) is published by the second version again, at the same index. Its premise,
-    // asserted first, waits for U2-K as g8's Compilation form does (PLAN G951 U2): until then Compilation's library segment holds the
-    // library's templates only, and the library body Hello reaches (Console.writeLine's) takes a program ordinal, built again in every
-    // version; publication is Compilation's, so no explicit builder can carry the row.
-    [Fact(Explicit = true)]
-    public void AKeptLibraryRowIsPublishedInEveryVersion()
+    // M2 as row K2-a (M-K3; R-K2'' with a record; its expectation changed with G950-K, M-B5: an injected finding is not
+    // republished under R-K2'', its version's library segment is built again): a validator finding set on a library body Hello reaches,
+    // in the version that builds it (the seam MirAnalysisTest.ABodyWithAFindingLeavesOtherBodiesProblems uses), is published by that
+    // version; the next version takes a new library segment and its report equals a fresh pipeline's, which has none. K2-b: the same on
+    // utf8, a callee of writeLine. Hello valid (SPEC 22.7).
+    [Theory]
+    [InlineData("writeLine")]
+    [InlineData("utf8")]
+    public void ALibraryBodyWithAFindingEndsTheKeptSegment(string name)
     {
         var c = Compile("example/Hello");
         _ = c.Analyze();
         var program = c.BuildMir();
-        var body = program.Bodies.ToArray().First(static x => x.Source.IsLibrary); // The first library body Hello reaches.
-        Assert.True(body.Ordinal < program.LibraryCount, $"{body.Key.Kind} {body.Key.Decl?.Name} is at ordinal {body.Ordinal}, after the library segment's {program.LibraryCount}");
+        var body = program.Bodies.ToArray().First(x => x.Source.IsLibrary && x.Key.Decl?.Name == name);
         program.Findings.Add(new(MirViolation.Callee, body.Source));
         body.HasFinding = true;
-        Problem[] first = [.. c.Problems];
-        Assert.Contains(new Problem(DiagnosticCode.InternalInvariant_Kd, body.Source), first);
-        Finish(c, OutputKind.Application);
-        _ = c.Analyze();
-        Assert.Equal(first, c.Problems);
+        Assert.Contains(new Problem(DiagnosticCode.InternalInvariant_Kd, body.Source), c.Problems);
+        var segment = program.LibrarySegment;
+        var (own, fresh) = Next(c, "warm");
+        Assert.Equal(fresh, own);
+        Assert.Equal(segment + 1, c.BuildMir().LibrarySegment);
     }
 
     // Row M2-e (G950-R's M2 on the library check's root range; M-B6): a finding of a library walk body in the library segment's
     // findings is published by every kept version again, at the same index. The seam puts the finding in the library prefix as the
-    // validator's library pass would (MirProgram's libraryFindings). Explicit until G950-K. Milestone27 valid.
-    [Fact(Explicit = true)]
+    // validator's library pass would (MirProgram's libraryFindings). Milestone27 valid.
+    [Fact]
     public void ALibraryFindingIsPublishedByEveryKeptVersion()
     {
         var c = Compile("milestone/Milestone27");
@@ -273,8 +250,8 @@ public sealed class G950KeptPathTest
 
     // Row KV-1 (PLAN G951 U2-K-b; K-A, the Back's C1): a library body first demanded in a version is stepped into A2's program store there,
     // joins the library list at the next version, whose library step steps it into the library store, and is not built again; every
-    // version equals a fresh pipeline. Explicit until G950-K. Hello and X3 valid.
-    [Fact(Explicit = true)]
+    // version equals a fresh pipeline. Hello and X3 valid.
+    [Fact]
     public void ALibraryBodyFirstDemandedInAVersionJoinsTheLibraryList()
     {
         var c = Compile("example/Hello");
@@ -296,8 +273,8 @@ public sealed class G950KeptPathTest
     // Row KV-4 (M-B3, F20): a kept library step builds nothing: each body it steps was stepped, its lookups made, in the version that first
     // built it. Milestones 26, 31, 26 and a warm version over an explicit pipeline in Compilation's configuration: the third version's
     // library step steps the second's demanded library bodies (the library list grew), and in the third and fourth versions the analysis
-    // and the collector build no body. Explicit until G950-K. Valid (SPEC).
-    [Fact(Explicit = true)]
+    // and the collector build no body. Valid (SPEC).
+    [Fact]
     public void AKeptLibraryStepBuildsNothing()
     {
         var c = Compile("milestone/Milestone26");
@@ -323,14 +300,16 @@ public sealed class G950KeptPathTest
         }
     }
 
-    // Row K1-K on the kept path (R-K2'': A2 does not hold a demanded library body; the Back's C4: the product row
-    // ARefusedLibraryInstanceLeavesItsBodyBuiltAndUnstepped merges into this one when G950-K takes Explicit off): swap70's version ends
-    // with swap built at its library ordinal and not held (the premise, asserted as the product row does), so the next version (swap at
+    // Row K1-K (R-K2'': A2 does not hold a demanded library body; the Back's C1 on C-378, with C4: the product row
+    // ARefusedLibraryInstanceLeavesItsBodyBuiltAndUnstepped merged into this one at G950-K): swap70's version ends
+    // with swap built at its library ordinal and not held (the premise, asserted; the collector refuses the instance after its lookup
+    // built swap's body), so the next version (swap at
     // u8) takes a new library segment, steps swap and equals a fresh pipeline; the one after it (warm) keeps that segment, and swap70
     // again keeps it too, swap held by the library store while the fresh pipeline builds swap and steps nothing: the case Snapshot's
     // rule compares with an eager step of the body (the Back's C3 (a)), asserted to arise here. Transitional: it holds until R7 removes
-    // the bound, and the row then needs another refusal. Explicit until G950-K. Labels as K1-K's product row.
-    [Fact(Explicit = true)]
+    // the bound, and the row then needs another refusal. swap erased at 70 nested [1 of ...u8] is valid (SPEC 10.5.3, 7.7.4) and rejected
+    // by the implementation's storage bound (PLAN G128: one located Unsupported_Kd); swap at u8 is valid.
+    [Fact]
     public void ARefusedLibraryInstanceEndsTheKeptSegment()
     {
         var c = Compile("swap70");
@@ -361,9 +340,9 @@ public sealed class G950KeptPathTest
     // Row B1-S (the review's B1; R-K2''): a library body its version built and no step stepped ends the kept segment. Hello over an
     // explicit pipeline in Compilation's configuration; after its collection a lookup while the version is Open builds Stopwatch.start
     // (U2-H's seam), which no step steps; the next version (warm) takes a new library segment, throws nothing and equals a fresh pipeline.
-    // The seeded twin (g951Broken, a step-2 record) is the prototype's probe: the shipped library has no defect. Explicit until G950-K.
+    // The seeded twin (g951Broken, a step-2 record) is the prototype's probe: the shipped library has no defect.
     // Hello valid.
-    [Fact(Explicit = true)]
+    [Fact]
     public void ALibraryBodyNoStepSteppedEndsTheKeptSegment()
     {
         var c = Compile("example/Hello");
@@ -467,11 +446,47 @@ public sealed class G950KeptPathTest
         }
     }
 
-    // Row MR-3 (the design review's N5 and 6.2 (4); the Front's C-379 (1): HirTables.LibraryVersion is per compilation): two compilations
-    // interleaved, each warm and edited into the other's program, each keep their own library segment in every version, and every
-    // version equals a fresh pipeline: no compilation's stamp moves another's. Until G950-K the probe's stamp (the program's first library
-    // version) stands in for HirTables.LibraryVersion. Explicit until G950-K. Hello and X3 valid.
-    [Fact(Explicit = true)]
+    // Row NUM (K-4 kept with the segment, F19; G950-K): every warm version of a compilation keeps the library segment its first version
+    // built, so the library's slots are numbered once (MirBuilder.Library runs only where a version builds a new segment), and each
+    // version equals a fresh pipeline. Hello valid (SPEC 22.7).
+    [Fact]
+    public void AWarmVersionKeepsTheLibrarySegment()
+    {
+        var c = Compile("example/Hello");
+        _ = c.Analyze();
+        var segment = c.BuildMir().LibrarySegment;
+        for (var version = 1; version <= 3; version++)
+        {
+            var (own, fresh) = Next(c, "warm");
+            Assert.Equal(fresh, own);
+            Assert.Equal(segment, c.BuildMir().LibrarySegment);
+        }
+    }
+
+    // Row LV (G950-K's stamp; G949 ruling 174, S1-1's B4): MirBuilder.Build stamps a version's library segment with Binding's library
+    // publication version, written once at the library's freeze, so the stamp is the same in every version of a compilation: after its
+    // first Bind, a second Bind, and an edit then a Bind, which keeps the segment. Hello and X3 valid.
+    [Fact]
+    public void ALibraryVersionStampsEveryVersionOfACompilation()
+    {
+        var c = Compile("example/Hello");
+        _ = c.Analyze();
+        var (stamp, segment) = (HirTables.LibraryVersion(c), c.BuildMir().LibrarySegment);
+        Assert.NotEqual(0ul, stamp);
+        Assert.Equal(stamp, c.BuildMir().LibraryVersion);
+        foreach (var then in new[] { "warm", "x3" })
+        {
+            Edit(c, then);
+            _ = c.Analyze();
+            Assert.Equal((stamp, stamp, segment), (HirTables.LibraryVersion(c), c.BuildMir().LibraryVersion, c.BuildMir().LibrarySegment));
+        }
+    }
+
+    // Row MR-3 (the design review's N5 and 6.2 (4); the Front's C-379 (1): HirTables.LibraryVersion is per compilation, S1-1's c13
+    // two-compilation clause in KimiLibraryShapeTest.ASecondBindBindsNoLibraryNode): two compilations interleaved, each warm and edited
+    // into the other's program, each keep their own library segment in every version, and every version equals a fresh pipeline: no
+    // compilation's stamp moves another's. Hello and X3 valid.
+    [Fact]
     public void EachCompilationKeepsItsOwnLibrarySegment()
     {
         var (first, second) = (Compile("example/Hello"), Compile("x3"));
@@ -513,8 +528,8 @@ public sealed class G950KeptPathTest
     // Stopwatch.reset to apply, whose Callable bound declares confined; X2 passes Stopwatch.start (invalid: UnsatisfiedEffectBound_Kd at the
     // argument, SPEC 8.11.2, 8.11.4). X1's version steps reset into A2's program store; the next version's library step holds it in the
     // library store, and the last version keeps it, the same body; X2's record is in its version only; each version equals a fresh
-    // pipeline. Explicit until G950-K. Hello valid (SPEC 22.7).
-    [Fact(Explicit = true)]
+    // pipeline. Hello valid (SPEC 22.7).
+    [Fact]
     public void TwoReachingVersionsKeepTheirLibraryBodiesAndRecords()
     {
         var c = Compile("example/Hello");
@@ -537,8 +552,8 @@ public sealed class G950KeptPathTest
 
     // Row g8-C in Compilation's configuration (the design review's N5): a later version keeps the library bodies the compilation demanded,
     // the same bodies at the same ordinals, as its library list, and builds none of them again (its own bodies are the program's).
-    // Explicit until G950-K. Milestone27 valid.
-    [Fact(Explicit = true)]
+    // Milestone27 valid.
+    [Fact]
     public void ALaterVersionKeepsTheLibraryBodiesItsProgramDemanded()
     {
         var c = Compile("milestone/Milestone27");
@@ -558,8 +573,8 @@ public sealed class G950KeptPathTest
     // explicit pipeline: the second templates its own bodies and the library bodies its library step newly holds (the first's demanded
     // ones, templated again into the library store: the double templating, unit M), the third its own bodies only; the demanded library
     // bodies are built out of ordinal order (the premise), so both template stores are read at entries closed out of ordinal order with
-    // holes, and each version's checked set, with every target, equals a fresh pipeline's. Explicit until G950-K. Milestone27 valid.
-    [Fact(Explicit = true)]
+    // holes, and each version's checked set, with every target, equals a fresh pipeline's. Milestone27 valid.
+    [Fact]
     public void ALaterVersionTemplatesTheLibraryBodiesItsProgramDemandedOnce()
     {
         var c = Compile("milestone/Milestone27");
