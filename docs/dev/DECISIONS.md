@@ -23289,6 +23289,24 @@ R8-M* and R9-M* by the stage of the recording unit.
     module (`declaration.CodeContext.Kotonoha`) through Core's published module-set read `Compilation.HoldsModule(Kotonoha)` (the
     source modules and this compilation's library module, until U3). With U0b-P3 the route row reaches its 12 sites outside Binding,
     R7's (U3's end state).
+  - **U0b-C2's form (PLAN G949 Stage 2, the Back, 2026-11-18; W-260).** A reader of a per-pass table that the pass reset empties,
+    reachable outside a pass (`IsResolvedSlice`, `PairAdmitted`, `ImplicitPairAdmitted`, `HasExclusiveIndexer`,
+    `TryGetReceiverOperation`), given a node of a frozen table (`SyntaxTable.Frozen`, S1-1's one test of a frozen library node) throws
+    the internal-invariant form (`Binding.EnsurePassNode`, `Binding.Pass.cs`): its row was the library pass's and is gone, so "none"
+    would be silent. During the library pass the table is not frozen and the readers answer. Beyond C2's three (s23),
+    `ImplicitPairAdmitted` likewise (the Back's ruling 2) and the search's one addition, `TryGetReceiverOperation` (public; read after
+    the Bind). The search (ruling 2) closed the family: of the 138 fields `ResetPass` empties, 60 are node-keyed; every other keyed
+    reader is named: the latest pass's issue facts, read only by that pass's Check and report for its own issue nodes (a library
+    node's issue in a program pass is that pass's own foreign failure, whose rows it wrote: a guard would refuse a valid read); Core's
+    problem publication (`RestingCauses`), which reads the prerequisite tables only for a node not `Resolved` (every library node is
+    `Resolved` after a library pass without failure; a broken library is U2a's refusal); the binder's working state, which no library
+    node reaches after the freeze (a bound node's result stands, DeclQuery's frozen states answer, a Contract's effect bounds are
+    complete, and a binder write to a library node is refused: S1-1 r1); `IsTwinRecord`, a test reader of the latest pass's issue
+    nodes until R7. Rejected: `IsLibrary` with `LibraryVersion != 0` (a second copy of S1-1's test); a caller-side test (several
+    callers, one rule); keeping the library pass's rows for later readers (at Stage 2 they are dropped with the freeze's Binding).
+    **Removal:** R7-D2 b's generation-stamped tables (`Binding.Pass.cs`'s header, which replace the Clears) absorb `EnsurePassNode`
+    into the stamped table's reader. R7-D2 b also covers `requirementGroups`, whose reset touches library rows too (the Front's
+    review N2).
   - **Rejected.** T2 alone with `PlaceAuthority` fetching the route to pass on (the row would rise: a second copy of the route the
     units remove); U0b-N5 first (symmetric); `ElementAccess` as a Binding partial (DECISIONS BU-166, R4-M194 and two
     `ArchitectureRulesTest` rows name the component and its file; revisited only if a later unit makes `ElementAccess` Binding-only
