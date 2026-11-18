@@ -12,16 +12,20 @@ public partial class Compilation
     private Dictionary<SourceDocument, string>? documentationFailures;
     private string? documentationFailure;
 
-    // The detached library's documentation failures and hover anchors (PLAN G949 Stage 2 U3; design 4.5): kept by ReadLibrary for a
-    // compilation given a frozen or refused library; unset for one that made its library, whose own data hold them. The readers below
-    // compose the compilation's data with the library's.
+    // The detached library's documentation failures, its first failure and its hover anchors (PLAN G949 Stage 2 U3; design 4.5): read once
+    // by ReadLibrary (ReadHoverData) for a compilation given a frozen or refused library; unset for one that made its library, whose own
+    // data hold them. The readers below compose the compilation's data with the library's.
     private IReadOnlyDictionary<SourceDocument, string>? libraryFailures;
+    private string? libraryFailure;
     private IReadOnlyList<HoverAnchor>? libraryAnchors;
+
+    // The compilation's anchors, then its detached library's (the implementation review's N5): composed by index once, and again only
+    // after RecordHover adds an anchor of the compilation's, so a warm read allocates nothing.
+    private List<HoverAnchor>? composedAnchors;
 
     internal string? HoverFailure { get; private set; }
 
-    internal string? DocumentationFailure
-        => this.documentationFailure ?? (this.libraryFailures?.FirstOrDefault() is { Key: { } source } first ? source.Path + ": " + first.Value : null);
+    internal string? DocumentationFailure => this.documentationFailure ?? this.libraryFailure;
 
     internal IEnumerable<SourceDocument> DocumentationFailureSources
         => this.libraryFailures is not { Count: > 0 } library
@@ -34,7 +38,7 @@ public partial class Compilation
     /// <summary>Gets parser-established positions, including every split declaration fragment: the compilation's, then its detached
     /// library's.</summary>
     internal IReadOnlyList<HoverAnchor> HoverAnchors
-        => this.libraryAnchors is not { Count: > 0 } library ? this.OwnHoverAnchors : [.. this.OwnHoverAnchors, .. library];
+        => this.libraryAnchors is not { Count: > 0 } library ? this.OwnHoverAnchors : this.composedAnchors ??= Compose(this.OwnHoverAnchors, library);
 
     private IReadOnlyList<HoverAnchor> OwnHoverAnchors => this.hoverAnchors ?? (IReadOnlyList<HoverAnchor>)Array.Empty<HoverAnchor>();
 
@@ -52,11 +56,12 @@ public partial class Compilation
                 }
 
                 (this.hoverAnchors ??= []).Add(new(syntax, source, token));
+                this.composedAnchors = null;
             }
             catch (Exception ex) when (OptionalHoverFailure(ex))
             {
                 this.HoverFailure = ex.Message;
-                this.hoverAnchors = null;
+                (this.hoverAnchors, this.composedAnchors) = (null, null);
             }
         }
     }
@@ -94,6 +99,38 @@ public partial class Compilation
             }
 
             this.documentationFailure ??= (source?.Path ?? "Generated source") + ": " + failure;
+        }
+    }
+
+    // The two anchor lists, the compilation's first, read by index (no interface enumeration).
+    private static List<HoverAnchor> Compose(IReadOnlyList<HoverAnchor> own, IReadOnlyList<HoverAnchor> library)
+    {
+        var all = new List<HoverAnchor>(own.Count + library.Count);
+        for (var i = 0; i < own.Count; i++)
+        {
+            all.Add(own[i]);
+        }
+
+        for (var i = 0; i < library.Count; i++)
+        {
+            all.Add(library[i]);
+        }
+
+        return all;
+    }
+
+    // ReadLibrary's hover half: the library's failures and anchors, and its first failure in its documentation sources' order (the order
+    // its freeze recorded them, as a compilation's first failure is its first recorded), formed once.
+    private void ReadHoverData(KimiLibrary library)
+    {
+        (this.libraryFailures, this.libraryAnchors) = (library.DocumentationFailures, library.HoverAnchors);
+        var documentation = library.Kotonoha.DocumentationSources;
+        for (var i = 0; i < documentation.Count && this.libraryFailure is null; i++)
+        {
+            if (this.libraryFailures.TryGetValue(documentation[i].Source, out var failure))
+            {
+                this.libraryFailure = documentation[i].Source.Path + ": " + failure;
+            }
         }
     }
 

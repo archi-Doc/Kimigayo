@@ -149,7 +149,7 @@ public partial class Compilation
     internal void ReadLibrary(KimiLibrary library)
     {
         this.Diagnostics.AddLibrary(library.Kotonoha, library.SyntaxRecords);
-        (this.libraryFailures, this.libraryAnchors) = (library.DocumentationFailures, library.HoverAnchors);
+        this.ReadHoverData(library);
     }
 
     /// <summary>Gets the process's current directory, captured once before the root module is created: the base of a project

@@ -149,7 +149,10 @@ public partial class Compilation
     /// <summary>Gets Core's one store decision for a record of a node (PLAN G949 Stage 2 U2a; design 5.3, M-R2-B1; U3-3): a library node's
     /// record goes to this compilation's root collection, at the node's own span and document (the library's collections are the freeze's,
     /// detached at U2b); any other node's to its own collection. Publish, Locate, KeyOf and Binding's per-record steps (ReportIssue, the
-    /// derived records and their prerequisite keys) go through it; PublishRefusal publishes into the root collection directly.</summary>
+    /// derived records and their prerequisite keys) go through it; PublishRefusal publishes into the root collection directly. The other
+    /// direct Report and ReportDerived callers (duplicate declarations, lints, startup, non-failing records, callable proofs, ...) report on
+    /// program subjects only because a library with any record is refused (FreezeLibrary); a later caller whose subject may be a library
+    /// node reports through this decision.</summary>
     /// <param name="node">The record's subject.</param>
     /// <returns>The collection, or <see langword="null"/> when the node records nowhere.</returns>
     internal DiagnosticCollection? StoreOf(Koto node)

@@ -24,7 +24,7 @@ public class LibraryAbortContextTest
         var c = MinimalEmissionTest.Analyze("struct Guard\n    public init() => ()\n    drop => ()\nlet guard = Guard.init()");
         var library = KotoTree.Walk(c.Library.Kotonoha.RootKoto).OfType<FunctionKoto>().Where(static x => x.IsDestructor).ToArray();
         Assert.Equal(4, library.Length); // HeapBuffer, ArrayOwningIterator, DictionaryOwnedRemainder, FixedOwnedRemainder.
-        Assert.All(library, static x => Assert.True(KimiLibraryCatalog.RequiresCallerLocation(x.SymbolOf())));
+        Assert.All(library, x => Assert.True(KimiLibraryCatalog.RequiresCallerLocation(x.SymbolOf(c))));
         var user = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(static x => x.IsDestructor);
         Assert.False(KimiLibraryCatalog.RequiresCallerLocation(user.SymbolOf()));
     }
