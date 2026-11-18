@@ -92,7 +92,7 @@ public sealed partial class Binding
 
         if (HasOpenOrigin(required, evidenceOnly: true))
         {
-            if (!this.CallableSubtype(this.CallableContractType(signature, this.ConstraintScope(use)), required, SignatureOwner(item), out failure)) // R7-C3 C-f1
+            if (!this.CallableSubtype(this.ContractType(signature, this.ConstraintScope(use)), required, SignatureOwner(item), out failure))
             {
                 return false;
             }
