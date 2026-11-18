@@ -274,10 +274,17 @@ public sealed partial class Binding
         {
             this.NoteEarlyProjection(syntax, type, scope, name, qualifier);
 
-            // F3 (PLAN G724): a Name after a projection that names a member Type of the projection's normal form (SPEC 9.6) is a selection
-            // not implemented yet: a located Unsupported_Kd, never a missing name. One the normal form does not declare stays missing.
-            return receiverPath.End == PathEnd.Projection && this.LookupMember(type, name, scope, LookupRole.Qualifier).Member is not null
-                ? this.Fail(syntax, BindingFailure.Unsupported, true) : null;
+            // SPEC 9.6, 8.5.2 (PLAN G724 (b)): a Name after a projection that names a member Type of the projection's normal form selects
+            // it, formed in that normal form (BindContainerReference reads the projection qualifier's formed Type as its environment).
+            // One the normal form does not declare stays missing.
+            if (receiverPath.End != PathEnd.Projection || this.LookupMember(type, name, scope, LookupRole.Qualifier).Member is not { } nested)
+            {
+                return null;
+            }
+
+            syntax.BoundSymbol = nested;
+            syntax.Right.BoundSymbol = nested;
+            return this.BindContainerReference(syntax, nested, scope, this.TypeContext(syntax, scope), []) is { } nestedType ? Complete(syntax.Right, nestedType) : null;
         }
 
         if (this.UnappliedFamily(associated.Declaration, applyingOrigins))

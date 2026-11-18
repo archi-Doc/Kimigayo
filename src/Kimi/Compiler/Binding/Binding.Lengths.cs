@@ -723,12 +723,20 @@ public sealed partial class Binding
     private BindingSymbol? LengthArgumentSymbol(MemberAccessKoto member, BindingScope scope)
     {
         if (this.TypeName(member.Left, scope) is not { Declaration: GroupKoto } qualifier ||
-            !this.scopes.TryGetValue(qualifier.Declaration, out var members) || TypeSpelling(member.Right) is not { } name)
+            !this.scopes.ContainsKey(qualifier.Declaration) || TypeSpelling(member.Right) is not { } name)
         {
             return null;
         }
 
+        // SPEC 9.6, 9.4: the group's member in the Value role, accessible from the use (LookupMember); an inaccessible one is its record.
         PublishQualifier(member.Left, qualifier);
-        return members.Values.GetValueOrDefault(name);
+        var selection = this.LookupMember(this.OwnType(qualifier)!, name, scope, LookupRole.Value);
+        if (selection.Member is null && selection.Hidden is { } hidden)
+        {
+            member.BoundSymbol = hidden;
+            this.Fail(member, BindingFailure.Access);
+        }
+
+        return selection.Member;
     }
 }

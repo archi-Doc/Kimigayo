@@ -277,16 +277,15 @@ public class InheritedReceiverBindingTest
         Assert.Contains(c.Binding.Issues, x => x.Code == DiagnosticCode.NotCallable_Kd);
     }
 
-    // SPEC 9.6 makes this ambiguous: the arguments never select a path. Deciding it needs both namespaces' complete paths before either
-    // publishes (PLAN G488, R7 N1), so until then the shared qualifier is one located Unsupported_Kd, never a verdict from one path (the
-    // owner's decision O-32 (a), 2026-11-07; it was AmbiguousBinding_Kd only because the value path read the Type path's S).
+    // SPEC 9.6 makes this ambiguous: the arguments never select a path. Both namespaces' complete paths are evaluated before either
+    // publishes (R7-N1 c-b; BU-117's Unsupported_Kd removed under its removal condition), and both succeed: AmbiguousBinding_Kd at the access.
     [Fact]
     public void CallArgumentsCannotDisambiguateTypeAndValuePaths()
     {
         var c = CompilationTestHelper.ParseSuccess("struct S\n    public func f(x: i32) -> i32 => x\nstruct Other\n    public func f(self: ref/Self, x: string) -> i32 => 1\nfunc use(S: ref/Other) -> i32 => S.f(1)");
         Assert.False(c.Bind().IsComplete);
         var issue = Assert.Single(c.Binding.Issues);
-        Assert.Equal((DiagnosticCode.Unsupported_Kd, "S"), (issue.Code, issue.Node.ToString()));
+        Assert.Equal((DiagnosticCode.AmbiguousBinding_Kd, "S.f"), (issue.Code, issue.Node.ToString()));
     }
 
     [Theory]

@@ -73,6 +73,16 @@ public sealed partial class Binding
         MemberAccess,
     }
 
+    // ReadLeft's verdict: the reading of a member access's left that selects its member (SPEC 9.6).
+    private enum LeftReading : byte
+    {
+        Type,
+        Value,
+        Ambiguous,
+        Unsupported,
+        ValueFailure, // No path succeeds; the value path failed at its own stage (a stop or a conflict), whose record the access rests on.
+    }
+
     // One step of a path, with what its publication writes (PublishPath's table). A Head's role names the namespace whose stop it clears.
     // A Qualifier is a path's left use, published with its end (End). An Unsupported step is a component the use verdict refused
     // (Supported), its Use the component's Name. A MemberAccess is a selected member of a member access (SPEC 9.6): its role names the
@@ -424,6 +434,142 @@ public sealed partial class Binding
         var path = this.ResolvePath(syntax, scope, role, arity);
         this.nameSteps.RemoveRange(mark, this.nameSteps.Count - mark);
         return path.Symbol;
+    }
+
+    // SPEC 9.6: the reading of a member access's left that selects its member, decided before either reading publishes. The left's
+    // Type walk (its use's lookup in its row) and its head's value lookup are evaluated unpublished. A left that reads one way takes
+    // that reading (a Type walk that did not select is a failed path, so a value reading beside it takes the left). A Name left of both
+    // readings takes its sole successful path (PickReading). A member-access left of both readings is Unsupported: its value is its own
+    // access's selection, which publishes as it selects. The Type reading's lookup is published here, the value reading's by its
+    // former (BindNode).
+    private LeftReading ReadLeft(MemberAccessKoto member, string name, BindingScope scope, out ResolvedPath qualifierPath)
+    {
+        var mark = this.nameSteps.Count;
+        qualifierPath = this.EvaluateUse(member.Left, scope, 0, out var early);
+        var typed = qualifierPath.End is PathEnd.Selected or PathEnd.Projection;
+        var reading = !this.ReadsAsValue(member.Left, scope, mark, out var valuePath) ? LeftReading.Type
+            : member.Left is not (IdentifierNameKoto or GenericsKoto { Identifier: IdentifierNameKoto }) ? (typed ? LeftReading.Unsupported : LeftReading.Value)
+            : typed || qualifierPath.End is PathEnd.Ambiguous or PathEnd.QualificationStop ? this.PickReading(member, qualifierPath, valuePath, name, scope)
+            : LeftReading.Value;
+        if (reading is LeftReading.Value or LeftReading.ValueFailure)
+        {
+            this.nameSteps.RemoveRange(mark, this.nameSteps.Count - mark);
+            if (reading == LeftReading.ValueFailure && member.Left is IdentifierNameKoto left)
+            {
+                this.Lookup(left.IdentifierName, scope, left); // Publishes the value path's stop or conflict, the access's record.
+            }
+
+            return reading;
+        }
+
+        qualifierPath = this.PublishLookup(member.Left, qualifierPath, mark, early, scope, 0);
+        return reading;
+    }
+
+    // SPEC 9.6: a Name left of both readings: each namespace's path, evaluated without publishing; the sole successful one is selected,
+    // and paths to one Symbol that the value access uses with no receiver count once (the Type reading). A path fails at its own stage
+    // (a 9.5 stop or a conflict), at a missing, inaccessible or ambiguous member, and the Type path at a member that needs a receiver and
+    // is no function (its static use; a Type-qualified instance function takes its receiver as an argument, 9.6.1). The Type path's
+    // member is looked up over the qualifier declaration's own Type (arguments never change the selection), the value path's over the
+    // value's declared Type (QueryValueType); a value named with Type arguments is a function, whose value has no members. When no
+    // path succeeds, a path that failed at its own stage keeps its record (the value reading's when only it did), else the Type path's.
+    private LeftReading PickReading(MemberAccessKoto member, in ResolvedPath qualifierPath, in ResolvedPath valuePath, string name, BindingScope scope)
+    {
+        BindingSymbol? valueMember = null;
+        if (member.Left is IdentifierNameKoto && valuePath is { End: PathEnd.Selected, Symbol: { Kind: not BindingSymbolKind.Function } value } &&
+            this.QueryValueType(value) && value.Property?.Refusal is null && value.Type is { } receiver)
+        {
+            var valueSide = this.ReceiverMember(member, name, scope, receiver, out _);
+            valueMember = valueSide.Selection.Ambiguous ? null : valueSide.Member;
+        }
+
+        BindingSymbol? typeMember = null;
+        if (qualifierPath.End is PathEnd.Selected or PathEnd.Projection && qualifierPath.Symbol is { } qualifier)
+        {
+            var typeSide = this.QualifierSelection(member, qualifier, name, scope, this.OwnType(qualifier));
+            typeMember = typeSide.Selection.Ambiguous || typeSide.Member is not { } found || (IsInstanceMember(found) && found.Kind != BindingSymbolKind.Function) ||
+                (found.Kind != BindingSymbolKind.Function && !this.Accessible(found, scope)) ? null : found;
+        }
+
+        if (typeMember is not null && valueMember is not null)
+        {
+            return ReferenceEquals(typeMember, valueMember) && !IsInstanceMember(valueMember) ? LeftReading.Type : LeftReading.Ambiguous;
+        }
+
+        return typeMember is not null ? LeftReading.Type : valueMember is not null ? LeftReading.Value
+            : valuePath.End is PathEnd.Ambiguous or PathEnd.QualificationStop && qualifierPath.End is not (PathEnd.Ambiguous or PathEnd.QualificationStop)
+            ? LeftReading.ValueFailure : LeftReading.Type;
+    }
+
+    // A qualifier declaration's own Type, whose members lookup reads (arguments and Origins never change a selection): a Type's
+    // SelfType, a group's nominal Type; none for another qualifier.
+    private BoundType? OwnType(BindingSymbol qualifier) => qualifier.Type is not null ? this.SelfType(qualifier)
+        : qualifier.Declaration is GroupKoto { IsRoot: false } ? this.types.Intern(BoundTypeKind.Nominal, qualifier, SemanticsKind.Owner, []) : null;
+
+    // Whether a member access's left reads as a value (SPEC 9.6): its head's value lookup committed a stage (`headPath`, evaluated
+    // unpublished), its head is a value expression, or one of its member steps names a value member of the Type its prefix selected,
+    // read from the left's Type walk above `mark` (its Qualifier steps) or its published lookup: one pass, no prefix evaluated again.
+    private bool ReadsAsValue(Koto left, BindingScope scope, int mark, out ResolvedPath headPath)
+    {
+        headPath = default;
+        var step = this.nameSteps.Count;
+        var node = left;
+        while (true)
+        {
+            if (node is GenericsKoto generic)
+            {
+                node = generic.Identifier!;
+            }
+
+            if (node is not MemberAccessKoto member)
+            {
+                break;
+            }
+
+            var prefix = UseNode(member.Left);
+            var type = HirTables.LookupOf(prefix) == PathEnd.Selected ? prefix.BoundSymbol : this.WalkQualifier(prefix, mark, ref step);
+            if (type is not null && member.Right is IdentifierNameKoto right && this.scopes.TryGetValue(type.Declaration, out var members) &&
+                members.Values.ContainsKey(right.IdentifierName))
+            {
+                return true;
+            }
+
+            node = member.Left;
+        }
+
+        if (node is IdentifierNameKoto name)
+        {
+            headPath = this.EvaluateName(name.IdentifierName, scope, node, LookupRole.Value);
+            return headPath.End != PathEnd.Unresolved;
+        }
+
+        return node is not (TypeKoto or SyntaxFormKoto { Akind: KotoKind.RootName });
+    }
+
+    // The symbol the Type walk above `mark` selected for a path's left `prefix` (its Qualifier step), searched below `step`, which moves to
+    // it: a chain's prefixes are met outermost first and their steps stand innermost first, so the search is one pass.
+    private BindingSymbol? WalkQualifier(Koto prefix, int mark, ref int step)
+    {
+        for (var i = step - 1; i >= mark; i--)
+        {
+            if (this.nameSteps[i] is { Kind: NameStepKind.Qualifier } found && ReferenceEquals(found.Use, prefix))
+            {
+                step = i;
+                return found.End == PathEnd.Selected ? found.Symbol : null;
+            }
+        }
+
+        return null;
+    }
+
+    // ResultSurvey's question before a call binds: whether a member access's left reads as a value, publishing nothing.
+    private bool MayBeValueQualifier(Koto left, BindingScope scope)
+    {
+        var mark = this.nameSteps.Count;
+        this.EvaluateUse(left, scope, 0, out _);
+        var value = this.ReadsAsValue(left, scope, mark, out _);
+        this.nameSteps.RemoveRange(mark, this.nameSteps.Count - mark);
+        return value;
     }
 
     // An early read (BaseLayers) evaluated again as it was read, judged as it was and publishing nothing: a value name by its name (Lookup's

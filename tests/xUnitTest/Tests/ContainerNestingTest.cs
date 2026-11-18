@@ -240,23 +240,24 @@ public class ContainerNestingTest
         Assert.Same(member.Parent!.TypeOf(), member.Left.TypeOf());
     }
 
-    // SPEC 9.6 (PLAN G488): a qualifier naming both a Type and a parameter or local needs both namespaces' complete paths before either
-    // publishes (R7 N1). The value path read the Type path's binding, so where neither path or both found the member, the form is one
-    // located Unsupported_Kd at the qualifier (the owner's decision O-32 (a)), never a Language error from one path: the valid Type-only
-    // (`group T`, `T.one()`) and value-only (`T: T`) forms among them. A group qualifier is never taken as a value (that ended the check
-    // in Layout). The valid form without the Type binds.
+    // SPEC 9.6 (PLAN G488, R7-N1 c-b): a Name qualifier naming both a Type and a parameter or local has both namespaces' complete paths
+    // evaluated before either publishes, and the sole successful one is selected: the Type path alone (`group T`, `T.n`; `T.one()`), the
+    // value path alone (`T: T`, `T.n`: an instance Field through the Type fails its static use; a private group fails on access), both
+    // (AmbiguousBinding_Kd at the access) or a record of the form's own (moving `T.G` out of a parameter, TransferRequired_Kd). A
+    // member-access qualifier of both readings (`T.G` with a public group `G` and V's Field `G`) stays the located Unsupported_Kd at it:
+    // its value is its own access's selection, which publishes as it selects (BU-117's remainder). The valid form without the Type binds.
     [Theory]
     [InlineData("struct T\n    public group G\n        public let value: i32 = 1\n", "func f(T: V) -> i32 => T.G.n\n", "Unsupported_Kd T.G")]
     [InlineData("struct T\n    public group G\n        public let n: i32 = 1\n", "func f(T: V) -> i32 => T.G.n\n", "Unsupported_Kd T.G")]
-    [InlineData("struct T\n    group G\n        public let value: i32 = 1\n", "func f(T: V) -> i32 => T.G.n\n", "Unsupported_Kd T")]
-    [InlineData("struct T\n    group G\n        public let value: i32 = 1\n", "func f() -> i32\n    let T = V.init()\n    return T.G.n\n", "Unsupported_Kd T")]
-    [InlineData("struct T\n    public let k: i32 = 1\n", "func f(T: V) -> W => T.G\n", "Unsupported_Kd T")]
-    [InlineData("group T\n    public let G: i32 = 1\n", "func f(T: V) -> W => T.G\n", "Unsupported_Kd T")]
-    [InlineData("group T\n    public let n: i32 = 1\n", "func f(T: V) -> i32 => T.n\n", "Unsupported_Kd T")]
-    [InlineData("struct T\n    public func one() -> i32 => 1\n", "func f(T: V) -> i32 => T.one()\n", "Unsupported_Kd T")]
-    [InlineData("struct T\n    public let n: i32\n    public init() => self.n = 1\n", "func f(T: T) -> i32 => T.n\n", "Unsupported_Kd T")]
+    [InlineData("struct T\n    group G\n        public let value: i32 = 1\n", "func f(T: V) -> i32 => T.G.n\n", "")]
+    [InlineData("struct T\n    group G\n        public let value: i32 = 1\n", "func f() -> i32\n    let T = V.init()\n    return T.G.n\n", "")]
+    [InlineData("struct T\n    public let k: i32 = 1\n", "func f(T: V) -> W => T.G\n", "TransferRequired_Kd T.G")]
+    [InlineData("group T\n    public let G: i32 = 1\n", "func f(T: V) -> W => T.G\n", "AmbiguousBinding_Kd T.G")]
+    [InlineData("group T\n    public let n: i32 = 1\n", "func f(T: V) -> i32 => T.n\n", "")]
+    [InlineData("struct T\n    public func one() -> i32 => 1\n", "func f(T: V) -> i32 => T.one()\n", "")]
+    [InlineData("struct T\n    public let n: i32\n    public init() => self.n = 1\n", "func f(T: T) -> i32 => T.n\n", "")]
     [InlineData("", "func f(T: V) -> i32 => T.G.n\n", "")]
-    public void AQualifierOfBothNamespacesIsUnsupported(string type, string use, string records)
+    public void AQualifierOfBothNamespacesSelectsItsSolePath(string type, string use, string records)
     {
         var c = CompilationTestHelper.Parse(type + "struct W\n    public let n: i32\n    public init() => self.n = 1\nstruct V\n    public let G: W\n    public init() => self.G = W.init()\n" + use);
         Assert.Equal(records.Length == 0, c.Bind().IsComplete);
@@ -264,19 +265,18 @@ public class ContainerNestingTest
         c.Analyze();
     }
 
-    // SPEC 9.6, 18.2.1 (R7-N1b): a Type `N` opened from `Box<i32>` and a value `N` opened from `Other<i64>` qualify one member. The value
-    // path compares only its own sources' environments, never the Type path's import of the node, so the qualifier is the located
-    // Unsupported_Kd of its class (BU-117, the owner's decision O-32 (a)), never AmbiguousBinding_Kd: where the Type path finds the
-    // member (valid) and where neither path does (invalid).
+    // SPEC 9.6, 18.2.1 (R7-N1b, c-b): a Type `N` opened from `Box<i32>` and a value `N` opened from `Other<i64>` qualify one member.
+    // Each path is evaluated before either publishes, so the Type path's import of the node is its own: where only the Type path finds
+    // the member it is selected (valid), and where neither does the access's member is missing (invalid).
     [Theory]
-    [InlineData("N.m()")]
-    [InlineData("N.k()")]
-    public void AQualifierOpenedFromTwoInstantiationsIsUnsupported(string use)
+    [InlineData("N.m()", "")]
+    [InlineData("N.k()", "UnresolvedBinding_Kd N.k")]
+    public void AQualifierOpenedFromTwoInstantiationsSelectsItsSolePath(string use, string records)
     {
         var c = CompilationTestHelper.Parse("alias Box<i32>\nalias Other<i64>\nstruct Box<T>\n    public struct N\n        public func m() -> i32 => 1\n" +
             "struct Other<T>\n    public func N() -> i32 => 2\nfunc g() -> i32 => " + use + "\n");
-        Assert.False(c.Bind().IsComplete);
-        Assert.Equal("Unsupported_Kd N", string.Join('|', c.Binding.Issues.Select(static x => $"{x.Code} {x.Node}")));
+        Assert.Equal(records.Length == 0, c.Bind().IsComplete);
+        Assert.Equal(records, string.Join('|', c.Binding.Issues.Select(static x => $"{x.Code} {x.Node}")));
     }
 
     // SPEC 9.6, 6.1 (PLAN G481 (3)): a group qualifier that failed selects no member, as a failed struct qualifier does; the scope lookup

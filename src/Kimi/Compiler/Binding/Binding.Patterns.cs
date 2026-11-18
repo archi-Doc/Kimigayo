@@ -528,15 +528,15 @@ public sealed partial class Binding
             }
         }
 
-        var symbol = this.LookupMember(expected, name, scope, LookupRole.EnumCase).Member;
-        if (symbol is null)
+        var selection = this.LookupMember(expected, name, scope, LookupRole.EnumCase);
+        if (selection.Member is not { } symbol)
         {
             return null;
         }
 
-        // Written here until R7-N1 c3 makes it the member step's (PublishPath's MemberAccess step would mark the Name Resolved before the
-        // pattern's completion gives it its Type, a HIR change).
-        member.BoundSymbol = member.Right.BoundSymbol = symbol;
+        // SPEC 9.6, 14.8.1: the Case is the member access's selection, published by PublishPath's MemberAccess step (the Type side, the
+        // enum qualifier); the pattern then completes the Name with its Type.
+        this.PublishMemberAccess(member, symbol, definition, LookupRole.Qualifier, selection);
         return symbol.EnumCase;
     }
 
