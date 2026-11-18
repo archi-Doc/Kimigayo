@@ -53,7 +53,16 @@ public sealed partial class Binding
         if (this.TakeClauseFact(use) is not { Limit: false } held || ClauseFailure(held, declaration) is not { } clause || clause.Proof != proof ||
             proof is not (ConstraintProof.Refuted or ConstraintProof.Unknown) || (proof == ConstraintProof.Unknown && mode != BindingMode.Final))
         {
-            this.RequireConstraint(use, proof, mode);
+            // R7-C3 (B1; SPEC 8.2.3 "never again at uses", 23.1.2): the use's requirement check reads a failed context through the reported
+            // failure's producer channel: an Error resting on another failed node (its declaration, an Invalid environment's use) makes
+            // the use's record derived.
+            var cause = proof == ConstraintProof.Error ? this.TakeFailedCause().Use : null;
+            if (cause is { BindingState: BindingState.Invalid } && !ReferenceEquals(cause, use))
+            {
+                this.AddPrerequisite(use, cause);
+            }
+
+            this.RequireConstraint(use, proof, mode, cause);
             return;
         }
 

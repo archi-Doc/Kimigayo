@@ -27,6 +27,9 @@ public sealed partial class Binding
         private readonly List<(BoundOrigin A, BoundOrigin B)> correspondence = new(); // one Function pair's quantified Origins, by position
         private readonly List<(BoundType A, BoundType B)> parts = new(); // a meet's decomposition, read by its consumer and removed
         private readonly HashSet<int> grounded = new(); // projection nodes joined with a binding ground (BindingGrounds, R7-C2c2 c2-4)
+        private readonly HashSet<int> familyGrounded = new(); // R7-C3 B4: family applications with a node joined with their instance (FamilyGrounds)
+        private readonly Dictionary<int, int> roundFamilies = new(); // FamilyGrounds' round index: FamilyKey -> first family node (chained by roundNext)
+        private readonly List<int> roundNext = new();
         private readonly Dictionary<int, (BindingSymbol Owner, BindingSymbol Associated, int From)> groundOrigin = new(); // a ground's new nodes: the binding and the node it grounded
         private readonly List<int> unbounded = new(); // projection nodes whose ground passes the closure limit (SPEC 8.3.3 Limits)
         private readonly List<byte> state = new();
@@ -83,6 +86,7 @@ public sealed partial class Binding
             this.correspondence.Clear();
             this.parts.Clear();
             this.grounded.Clear();
+            this.familyGrounded.Clear();
             this.groundOrigin.Clear();
             this.unbounded.Clear();
             this.state.Clear();
@@ -287,6 +291,7 @@ public sealed partial class Binding
                 this.Congruence();
                 this.Members();
                 this.BindingGrounds();
+                this.FamilyGrounds();
                 this.state.Clear();
                 for (var n = 0; n < this.types.Count; n++)
                 {
@@ -514,19 +519,11 @@ public sealed partial class Binding
         {
             if (!this.familyMembers.TryGetValue(root, out var answer))
             {
-                BoundType? own = null;
+                var own = this.OwnMember(root);
                 BoundType? family = null;
-                for (var m = this.head[root]; m >= 0; m = this.next[m])
+                for (var m = this.head[root]; own is null && m >= 0; m = this.next[m])
                 {
-                    var member = this.types[m];
-                    if (IsFamily(member))
-                    {
-                        family = family is null || Order(member, family) < 0 ? member : family;
-                    }
-                    else
-                    {
-                        own = own is null || Order(member, own) < 0 ? member : own;
-                    }
+                    family = family is null || Order(this.types[m], family) < 0 ? this.types[m] : family; // a class of families only
                 }
 
                 this.familyMembers[root] = answer = own ?? family;
@@ -702,6 +699,73 @@ public sealed partial class Binding
         // ground past it is not taken and its class is in state Limit, recorded once at the declaration as PremiseClosureLimit_Kd
         // (a Resource record); a growing expansion (`associate C.X is Option<G<Option<A>>.(C).X>`) and a descent deeper than the limit
         // (ground-deep) reach it alike. Finite: each binding is used a bounded number of times along any chain.
+        // R7-C3 (B4; SPEC 8.2.3 Projections, 8.5.4): a family application that is a node of its own (a premise's side, `U.(L).Lent(b)`)
+        // is its family's instance at its Origin arguments, as Applied reads one of no node: once per node it joins that instance (the
+        // family class's least non-family member instanced at its Origin arguments) inside the rounds, as a binding ground does; no class
+        // joins after Close. A class of families only grounds nothing (H, one hop).
+        private void FamilyGrounds()
+        {
+            var count = this.types.Count;
+            this.roundFamilies.Clear();
+            this.roundNext.Clear();
+            for (var m = 0; m < count; m++)
+            {
+                this.roundNext.Add(-1);
+                if (IsFamily(this.types[m]))
+                {
+                    var key = this.FamilyKey(this.types[m]);
+                    this.roundNext[m] = this.roundFamilies.TryGetValue(key, out var first) ? first : -1;
+                    this.roundFamilies[key] = m;
+                }
+            }
+
+            for (var n = 0; n < count && this.roundFamilies.Count != 0; n++)
+            {
+                var type = this.types[n];
+                if (type.Kind != BoundTypeKind.AssociatedProjection || type.OriginArguments.Count == 0 || IsFamily(type) || this.familyGrounded.Contains(n) ||
+                    !this.roundFamilies.TryGetValue(this.FamilyKey(type), out var first))
+                {
+                    continue;
+                }
+
+                for (var m = first; m >= 0; m = this.roundNext[m])
+                {
+                    if (!this.SameFamily(this.types[m], type))
+                    {
+                        continue;
+                    }
+
+                    if (this.Find(m) != this.Find(n) && this.OwnMember(this.Find(m)) is { } member)
+                    {
+                        this.familyGrounded.Add(n);
+                        this.pending.Add((n, this.Add(binding.SubstituteStoredOrigins(member, type.Symbol!.Declaration, (BoundOrigin[])type.OriginArguments))));
+                    }
+
+                    break;
+                }
+            }
+
+            if (this.types.Count != count)
+            {
+                this.Members(); // the instances' new nodes are classes of their own until the next round joins them
+            }
+        }
+
+        // A class's least non-family member by Order (FamilyGrounds; FamilyMember answers this once closed).
+        private BoundType? OwnMember(int root)
+        {
+            BoundType? own = null;
+            for (var m = this.head[root]; m >= 0; m = this.next[m])
+            {
+                if (!IsFamily(this.types[m]) && (own is null || Order(this.types[m], own) < 0))
+                {
+                    own = this.types[m];
+                }
+            }
+
+            return own;
+        }
+
         private void BindingGrounds()
         {
             var count = this.types.Count;

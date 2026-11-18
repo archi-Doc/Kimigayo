@@ -419,6 +419,11 @@ public sealed partial class Binding
             this.enumerateMemo.Clear();
             this.enumerateSeed.Clear();
             this.DropOwnedEntries();
+            for (var i = 0; i < this.enumeratePoolNext; i++)
+            {
+                this.enumeratePool[i].Clear(); // R7-C3 (B3): the pool takes its lists back empty, so no request's rows outlive it
+            }
+
             this.enumeratePoolNext = 0;
             if (!this.KeepsAcrossRequests)
             {

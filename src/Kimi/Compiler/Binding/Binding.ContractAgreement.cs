@@ -7,6 +7,7 @@ namespace Kimi.Compiler;
 public sealed partial class Binding
 {
     private readonly Dictionary<(BindingScope Parent, BindingSymbol Left, BindingSymbol Right), BindingScope> contractOverlapScopes = new();
+    private readonly Dictionary<BindingScope, BindingScope> collisionScopes = new(ReferenceEqualityComparer.Instance); // CollisionScope's, per overlap scope
     private readonly List<(BoundConstraint A, BoundConstraint B)> associatedOverlapPairs = new();
     private Dictionary<Koto, ContractAgreementFailure>? contractAgreementFailures;
 
@@ -39,8 +40,12 @@ public sealed partial class Binding
         return scope;
     }
 
+    // R7-C3 (B2; SPEC 8.9.1 steps 3-4, 8.9.2): an input rules the intersection out only when the judge refutes it under the collision
+    // substitution: each input is judged in the overlap's own identities alone (CollisionScope), never with the inputs as their own
+    // premises, alike for every input kind.
     private bool RefutedOverlapInputs(BindingScope original, BindingScope overlap)
     {
+        var collision = this.CollisionScope(overlap);
         for (var scope = original; scope is not null; scope = scope.Parent)
         {
             if (scope.Constraints is not { Invalid: false } environment)
@@ -53,12 +58,8 @@ public sealed partial class Binding
                 // Associated specifications are the obligations being compared, so their contradiction cannot excuse
                 // the overlap. Only independently valid generic inputs can rule the intersection out.
                 var subject = fact.Kind == ConstraintKind.Not ? fact.Left?.Subject : fact.Subject;
-                // R7-C3 (C-f3b; SPEC 8.9.2, 8.2.3): an input is itself a premise in the overlap view, so the judge refutes an identity input
-                // there by its class: one the overlap's identity puts in an erroneous class the input's own view does not hold.
                 if (subject is { Kind: BoundTypeKind.Parameter or BoundTypeKind.TargetProjection } && !IsContractSelf(subject) &&
-                    (this.ProveConstraint(this.ContractConstraint(fact, overlap, null), overlap) == ConstraintProof.Refuted ||
-                    (fact.Kind == ConstraintKind.TypeIdentity && this.ClassesOf(overlap, out _) is { } classes && classes.Holds(subject) &&
-                    this.ClassesOf(scope, out _)?.Holds(subject) != true)))
+                    this.ProveConstraint(this.ContractConstraint(fact, collision, null), collision) == ConstraintProof.Refuted)
                 {
                     return true;
                 }
@@ -66,6 +67,25 @@ public sealed partial class Binding
         }
 
         return false;
+    }
+
+    // The overlap's own identities (the collision substitution and the two references made one) in a view of their own, no parent.
+    private BindingScope CollisionScope(BindingScope overlap)
+    {
+        if (!this.collisionScopes.TryGetValue(overlap, out var scope))
+        {
+            this.collisionScopes.Add(overlap, scope = new(overlap.Owner));
+        }
+
+        scope.Reset();
+        scope.Parent = null;
+        var environment = scope.Constraints ??= new();
+        foreach (var fact in overlap.Constraints!.DirectFacts)
+        {
+            this.AddConstraintFact(environment, fact);
+        }
+
+        return scope;
     }
 
     private void AddOverlapFacts(BindingScope target, BindingScope source)
