@@ -638,7 +638,7 @@ public sealed partial class Binding
             {
                 this.InferAssociatedTypes(batch);
                 return batch.State != 2 || ReferenceEquals(batch, this.collectingAssociated) || binding.InferenceConflict || binding.Inferred is null ? null
-                    : this.FormationRead ? binding.Inferred : this.InferredEvidence(binding, associated, out pending);
+                    : this.FormationRead ? binding.Inferred : this.InferredEvidence(binding, out pending);
             }
 
             return null; // Pending declaration evidence is not a cached negative result (`pending`); once complete, nothing specifies it.
@@ -653,8 +653,14 @@ public sealed partial class Binding
         {
             // SPEC 8.6.3: the binding is formed where written, so the cached image is a formation's, whatever the reader.
             var held = this.BeginFormation();
-            this.FormBinding(path, binding);
-            this.EndFormation(held);
+            try
+            {
+                this.FormBinding(path, binding);
+            }
+            finally
+            {
+                this.EndFormation(held);
+            }
         }
 
         // SPEC 8.6.3, 8.3.3 Finality (R7-C2e2 e2-3b Revision 4): a requirement's evidence reads the binding as its first candidate formed in

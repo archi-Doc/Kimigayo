@@ -100,6 +100,66 @@ public sealed partial class Binding
         return InferenceLengthInScope(length.Left, owner, out invalid) && InferenceLengthInScope(length.Right, owner, out invalid);
     }
 
+    // An associated projection as written: a projection's own bound node (BindAssociatedProjection's `Right`), or an Origin application's
+    // applied projection (BindAssociatedApplication's target).
+    private static BoundType? ProjectionAsWritten(Koto syntax) => syntax switch
+    {
+        MemberAccessKoto { Right.BoundType: { Kind: BoundTypeKind.AssociatedProjection } written } => written,
+        OriginApplicationKoto application when UnwrapTransparentType(application.Type)?.BoundType is { Kind: BoundTypeKind.AssociatedProjection } applied => applied,
+        _ => null,
+    };
+
+    // A Type syntax node below the wrappers that bind to the Type they wrap (TransparentInner, a RootName), but a Function Type's one-input
+    // list, whose group is that list (BindFunctionType).
+    private static Koto WrittenSyntax(Koto syntax)
+    {
+        while (true)
+        {
+            if (syntax is SyntaxFormKoto { Akind: KotoKind.RootName, Operands.Length: 1 } root)
+            {
+                syntax = root.Operands[0];
+            }
+            else if (TransparentInner(syntax) is { } inner && !InputList(syntax))
+            {
+                syntax = inner;
+            }
+            else
+            {
+                return syntax;
+            }
+        }
+    }
+
+    private static bool InputList(Koto syntax) => syntax is ParenthesizedTypeKoto && syntax.Parent is FunctionTypeKoto function && ReferenceEquals(function.Parameters, syntax);
+
+    // SPEC 8.5.5, F.5 (one row per Type syntax form): how many of the bound Type's components a Type syntax node (WrittenSyntax's) writes, in
+    // order: a Constructed Type's own Type arguments, then its qualifier's (BindContainerReference's environment); an Optional's,
+    // a fixed array's and a Semantics layer's one; a Tuple's elements; a Function Type's input list (a Tuple, one input in a group) and
+    // result. A name writes none.
+    private static int WrittenPositions(Koto syntax) => syntax switch
+    {
+        ParenthesizedTypeKoto or OptionalTypeKoto or FixedArrayTypeKoto or TypeSemanticsKoto { Type: not null } => 1,
+        GenericsKoto generic => generic.TypeArguments.Count + WrittenPositions(generic.Identifier!),
+        MemberAccessKoto member => WrittenPositions(member.Left),
+        TupleTypeKoto tuple => tuple.ElementNodes.Count,
+        FunctionTypeKoto => 2,
+        _ => 0,
+    };
+
+    // The syntax of the bound Type's component `index` (WrittenPositions' row).
+    private static Koto WrittenPosition(Koto syntax, int index) => syntax switch
+    {
+        ParenthesizedTypeKoto input => input.Type,
+        OptionalTypeKoto optional => optional.Type,
+        FixedArrayTypeKoto array => array.ElementType,
+        TypeSemanticsKoto semantics => semantics.Type!,
+        GenericsKoto generic => index < generic.TypeArguments.Count ? generic.TypeArguments[index] : WrittenPosition(generic.Identifier!, index - generic.TypeArguments.Count),
+        MemberAccessKoto member => WrittenPosition(member.Left, index),
+        TupleTypeKoto tuple => tuple.ElementNodes[index],
+        FunctionTypeKoto function => index == 0 ? function.Parameters : function.ReturnType,
+        _ => throw new ArgumentOutOfRangeException(nameof(index)),
+    };
+
     private void ResetAssociatedInference()
     {
         this.associatedInferenceReady = false;
@@ -325,10 +385,9 @@ public sealed partial class Binding
                     }
 
                     required = this.ContractType(required, path.Scope, self);
-                    var written = this.MemberType(implementation.ReturnType is { } resultSyntax ? this.WrittenType(resultSyntax, actual) : actual, match.Selection.DeclaringType)!;
                     actual = this.ContractType(this.MemberType(actual, match.Selection.DeclaringType)!, path.Scope);
                     batch.Pairs.Clear();
-                    batch.Signature = (required, written);
+                    batch.Signature = (required, match.Selection.DeclaringType);
                     this.ExtractAssociatedEvidence(batch, path, required, actual, implementation);
                 }
             }
@@ -475,7 +534,7 @@ public sealed partial class Binding
                 batch.Evidence.Add(identity.Symbol, evidence = new());
             }
 
-            evidence.Add(new(path, identity, actual, source, batch.Signature.Required, batch.Signature.Written));
+            evidence.Add(new(path, identity, actual, source, batch.Signature.Required, batch.Signature.DeclaringType));
             return;
         }
 
@@ -493,102 +552,148 @@ public sealed partial class Binding
         }
     }
 
-    // SPEC 8.5.5, 8.6.3 (R7-C2e2 e2-3b Revision 4): an inferred binding read by a requirement's evidence is the same contract as the equal
-    // explicit specification: the hole's part of its first source's implementation signature, formed in that evidence, so each part rests
-    // on its own route there (HeldPending). None, pending, when the hole lies inside a projection the evidence holds pending.
-    private BoundType? InferredEvidence(AssociatedBinding binding, BoundRequirement identity, out bool pending)
+    // SPEC 8.5.5, 8.6.3 (R7-C2e2 e2-3b Revision 4, R4.9): an inferred binding read by a requirement's evidence is the same contract as the
+    // equal explicit specification, read from every source's implementation signature as written (HolePart): the one complete Type all
+    // usable evidence gives, a part left pending (HeldPending) only where every source's written form leaves it so (JoinEvidence), so the
+    // order of sources never matters. None, pending, when every source's hole lies inside a projection the evidence holds pending.
+    private BoundType? InferredEvidence(AssociatedBinding binding, out bool pending)
     {
-        var source = binding.EvidenceSources[0];
-        var part = this.HolePart(source.Path, identity, source.Required, this.ContractType(source.Written, source.Path.Scope));
-        pending = part is null;
-        return part is null ? null : this.ContractType(part, source.Path.Scope);
-    }
-
-    // SPEC 8.5.5: an implementation's result as written: `image`, the Type `syntax` bound to, with each associated projection written in
-    // it in place of the Type it was normalized to (the projection's own bound node, BindAssociatedProjection's `Right`). The syntax's Type
-    // positions (Koto.TypeComponent, an over-approximation of the bound Type's components) are placed on the image's components in order:
-    // a position bound to the next component (but for the Origins it omits, SPEC 15.4.4; a projection not yet bound, the component
-    // itself) is that component as written; any other position is searched through its own positions. A component no position is bound
-    // to holds no written projection (a name's meaning, such as Self), so it is the image's; a written projection placed on no component
-    // is a broken contract (InternalInvariant_Kd), never read as its normal form.
-    private BoundType WrittenType(Koto syntax, BoundType image)
-    {
-        syntax = UnwrapTypeSyntax(syntax is ParenthesizedTypeKoto { Type: { } inner } ? inner : syntax);
-        if (Projection(syntax) is { } projection)
+        BoundType? image = null;
+        foreach (var source in binding.EvidenceSources)
         {
-            return projection;
-        }
-
-        var count = image.Components.Count;
-        if (syntax.TypeComponentCount == 0)
-        {
-            return image;
-        }
-
-        var components = this.RentTypes(count);
-        try
-        {
-            var (next, changed) = (0, false);
-            ((BoundType[])image.Components).CopyTo(components, 0);
-            for (var i = 0; i < syntax.TypeComponentCount; i++)
+            if (this.HolePart(source.Path, source.Identity, source.Required, source.Source.BoundSymbol!.Type!, source.Source.ReturnType, source.DeclaringType) is { } part)
             {
-                Place(syntax.TypeComponent(i));
-            }
-
-            return changed ? this.types.Rebuild(image, components.AsSpan(0, count), image.Origin, (BoundOrigin[])image.OriginArguments) : image;
-
-            void Place(Koto position)
-            {
-                var part = UnwrapTypeSyntax(position);
-                if (next < count && (part.BoundType is { } bound ? SameExceptOmittedOrigins(bound, image.Components[next]) : ReferenceEquals(Projection(part), image.Components[next])))
-                {
-                    components[next] = this.WrittenType(position, image.Components[next]);
-                    changed |= !ReferenceEquals(components[next], image.Components[next++]);
-                    return;
-                }
-
-                if (Projection(part) is not null)
-                {
-                    throw new InvalidOperationException($"A projection written in `{image}` is placed on none of its parts (InternalInvariant; SPEC 8.5.5).");
-                }
-
-                for (var i = 0; i < part.TypeComponentCount; i++)
-                {
-                    Place(part.TypeComponent(i));
-                }
+                image = image is null ? part : this.JoinEvidence(image, part, binding.Inferred!);
             }
         }
-        finally
-        {
-            this.typeScratch.Return(components, clearArray: true);
-        }
 
-        static BoundType? Projection(Koto node) => node is MemberAccessKoto { Right.BoundType: { Kind: BoundTypeKind.AssociatedProjection } written } ? written : null;
+        pending = image is null;
+        return image;
     }
 
-    // The part of `actual` at the position of the hole `identity` in `required` (ExtractAssociatedEvidence's pairing), or null.
-    private BoundType? HolePart(BoundConformancePath path, BoundRequirement identity, BoundType required, BoundType actual)
+    // SPEC 8.5.5: the part at the hole `identity` of `required` (ExtractAssociatedEvidence's pairing) in an implementation's result, formed in
+    // the reading evidence: `image` as bound with `syntax` its written form (FormedResult substitutes and forms it), or with no syntax `image`
+    // formed already. The walk follows the extraction's structure (Function Types are not entered) and places the written form at the
+    // hole only (WrittenType); a hole inside a written projection, or inside a part the conformance's scope forms into another shape, is
+    // reached through that part's formed image, where a projection the evidence holds pending names no Type: none, as for no hole.
+    private BoundType? HolePart(BoundConformancePath path, BoundRequirement identity, BoundType required, BoundType image, Koto? syntax, BoundType? declaringType)
     {
         if (required.Kind == BoundTypeKind.AssociatedProjection && ReferenceEquals(required.Components[0].Symbol, path.Type) &&
             this.AssociatedInPath(path.RootPath, required.Components[0], required.Symbol!, required.Components.Count == 2 ? required.Components[1] : null, path.Scope) == identity)
         {
-            return actual;
+            return syntax is null ? image : this.FormedResult(this.WrittenType(syntax, image), path, declaringType);
         }
 
-        if (required.Kind != actual.Kind || required.Symbol != actual.Symbol || required.Components.Count != actual.Components.Count)
+        syntax = syntax is null ? null : WrittenSyntax(syntax);
+        var shaped = required.Kind == image.Kind && required.Symbol == image.Symbol && required.Components.Count == image.Components.Count &&
+            (syntax is null || WrittenPositions(syntax) == image.Components.Count);
+        if (shaped && required.Kind is not (BoundTypeKind.Constructed or BoundTypeKind.Tuple or BoundTypeKind.FixedArray or BoundTypeKind.Semantics or BoundTypeKind.Array or BoundTypeKind.Dictionary or BoundTypeKind.Slice))
         {
             return null;
         }
 
-        for (var i = 0; i < required.Components.Count; i++)
+        if (syntax is not null && (!shaped || ProjectionAsWritten(syntax) is not null))
         {
-            if (this.HolePart(path, identity, required.Components[i], actual.Components[i]) is { } part)
+            return this.HolePart(path, identity, required, this.FormedResult(this.WrittenType(syntax, image), path, declaringType), null, null);
+        }
+
+        for (var i = 0; shaped && i < required.Components.Count; i++)
+        {
+            if (this.HolePart(path, identity, required.Components[i], image.Components[i], syntax is null ? null : WrittenPosition(syntax, i), declaringType) is { } part)
             {
                 return part;
             }
         }
 
         return null;
+    }
+
+    // An implementation's Type as bound, in the conformance's terms and formed in the reading answer.
+    private BoundType FormedResult(BoundType type, BoundConformancePath path, BoundType? declaringType)
+        => this.ContractType(this.MemberType(type, declaringType)!, path.Scope);
+
+    // SPEC 8.5.5: an implementation result's part as written: `image`, the Type `syntax` bound to, with each associated projection written in
+    // it in place of the Type it was normalized to (ProjectionAsWritten). Each Type syntax form places its Type positions on the image's
+    // components by its own row (WrittenPositions, WrittenPosition), never by Koto.TypeComponent; a name holds none (Self, a parameter). A
+    // written projection the rows place on no component is a broken contract (InternalInvariant_Kd), never read as its normal form.
+    private BoundType WrittenType(Koto syntax, BoundType image)
+    {
+        syntax = WrittenSyntax(syntax);
+        if (ProjectionAsWritten(syntax) is { } projection)
+        {
+            return projection;
+        }
+
+        var count = image.Components.Count;
+        if (WrittenPositions(syntax) != count)
+        {
+            return !WritesProjection(syntax) ? image
+                : throw new InvalidOperationException($"A projection written in `{image}` is placed on none of its parts (InternalInvariant; SPEC 8.5.5).");
+        }
+
+        var components = this.RentTypes(count);
+        try
+        {
+            var changed = false;
+            for (var i = 0; i < count; i++)
+            {
+                components[i] = this.WrittenType(WrittenPosition(syntax, i), image.Components[i]);
+                changed |= !ReferenceEquals(components[i], image.Components[i]);
+            }
+
+            return changed ? this.types.Rebuild(image, components.AsSpan(0, count), image.Origin, (BoundOrigin[])image.OriginArguments) : image;
+        }
+        finally
+        {
+            this.typeScratch.Return(components, clearArray: true);
+        }
+
+        static bool WritesProjection(Koto syntax)
+        {
+            syntax = WrittenSyntax(syntax);
+            var writes = ProjectionAsWritten(syntax) is not null;
+            for (var i = 0; !writes && i < WrittenPositions(syntax); i++)
+            {
+                writes = WritesProjection(WrittenPosition(syntax, i));
+            }
+
+            return writes;
+        }
+    }
+
+    // SPEC 8.5.5 (R4.9): two sources' images of one inferred binding (`normal`, the binding) together: a part stays as written, pending, only
+    // where both leave it so; every other part is the binding's.
+    private BoundType JoinEvidence(BoundType left, BoundType right, BoundType normal)
+    {
+        if (ReferenceEquals(left, right) || ReferenceEquals(right, normal) || !Shaped(left))
+        {
+            return right;
+        }
+
+        if (ReferenceEquals(left, normal) || !Shaped(right))
+        {
+            return left;
+        }
+
+        var count = normal.Components.Count;
+        var components = this.RentTypes(count);
+        try
+        {
+            for (var i = 0; i < count; i++)
+            {
+                components[i] = this.JoinEvidence(left.Components[i], right.Components[i], normal.Components[i]);
+            }
+
+            return this.types.Rebuild(left, components.AsSpan(0, count), left.Origin, (BoundOrigin[])left.OriginArguments);
+        }
+        finally
+        {
+            this.typeScratch.Return(components, clearArray: true);
+        }
+
+        // A part of the binding's shape (a projection left as written is none, unless it is the binding's own part).
+        bool Shaped(BoundType part)
+            => part.Kind == normal.Kind && part.Kind != BoundTypeKind.AssociatedProjection && part.Symbol == normal.Symbol && part.Components.Count == normal.Components.Count;
     }
 
     private bool InferenceTypeInScope(BoundType type, BindingSymbol owner, AssociatedInference batch, out Koto? invalid)
@@ -867,8 +972,9 @@ public sealed partial class Binding
     internal readonly record struct RequirementMatch(RequirementMatchState State, BindingSymbol? Member, MemberSelection Selection);
 
     // An inference source: the hole's part (Type) of the implementation's signature, with the requirement's signature it was paired with
-    // (Required, the hole unresolved in it) and the implementation's as written (Written), from which an evidence forms it (InferredEvidence).
-    internal readonly record struct AssociatedEvidence(BoundConformancePath Path, BoundRequirement Identity, BoundType Type, FunctionKoto Source, BoundType Required, BoundType Written);
+    // (Required, the hole unresolved in it) and the implementation's declaring Type (DeclaringType, MemberType's), from which an evidence
+    // forms the part as written in Source's result (InferredEvidence).
+    internal readonly record struct AssociatedEvidence(BoundConformancePath Path, BoundRequirement Identity, BoundType Type, FunctionKoto Source, BoundType Required, BoundType? DeclaringType);
 
     // The `associatedInference` family's one accessor (DECISIONS BU-220): a conforming Type's batch is kept in its Type's declaration's
     // module at the declaration's SyntaxId (SPEC 8.6.1: a conformance is declared in its Type's declaration, ImplTable's store rule),
@@ -930,8 +1036,8 @@ public sealed partial class Binding
 
         internal HashSet<(BoundType Required, BoundType Actual)> Pairs { get; } = new();
 
-        // The requirement's and the implementation's signatures the extraction in progress pairs (AssociatedEvidence).
-        internal (BoundType Required, BoundType Written) Signature { get; set; }
+        // The requirement's signature and the implementation's declaring Type of the extraction in progress (AssociatedEvidence).
+        internal (BoundType Required, BoundType? DeclaringType) Signature { get; set; }
 
         internal HashSet<BoundType> CheckedTypes { get; } = new(ReferenceEqualityComparer.Instance);
 

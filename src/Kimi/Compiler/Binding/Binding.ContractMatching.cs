@@ -432,7 +432,17 @@ public sealed partial class Binding
     private ConstraintProof ProveRequirement(BoundConstraint written, BindingScope scope, BoundType self)
     {
         var mark = this.BeginEvidence();
-        return this.EndEvidence(mark, this.ProveConstraint(this.ContractConstraint(written, scope, self), scope));
+        var verdict = ConstraintProof.Unknown;
+        try
+        {
+            verdict = this.ProveConstraint(this.ContractConstraint(written, scope, self), scope);
+        }
+        finally
+        {
+            verdict = this.EndEvidence(mark, verdict);
+        }
+
+        return verdict;
     }
 
     // SPEC 8.5.1, 8.6.3: a conforming Type's specification clause, by conjunction elimination (8.3.2). The identity atom the binding is
