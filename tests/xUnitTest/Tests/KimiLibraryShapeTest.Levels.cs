@@ -46,16 +46,15 @@ public partial class KimiLibraryShapeTest
             or Subst or BoundOrigin { Kind: OriginKind.Intersection } or BoundLength or BoundConstraint;
     }
 
-    // C-380 F3 (a) and (b), and the frozen bound references (U4): a constraint a program pass interns with a frozen one's content is that
-    // object; no frozen non-`Not` constraint lacks its negation (O-U2-4's reading, U2b's eager step asserted here); every frozen bound
-    // Contract reference is complete (State 2) after the program pass's ResetContracts and a second Bind.
+    // C-380 F3 (a) and the frozen bound references (U4): a constraint a program pass interns with a frozen one's content is that object;
+    // every frozen bound Contract reference is complete (State 2) after the program pass's ResetContracts and a second Bind. F3 (b) (no
+    // frozen non-`Not` constraint lacks its negation) is U2b's row e1 over the same constraints (B's ruling 13).
     [Fact]
     public void AProgramsConstraintEqualToAFrozenOneIsThatObject()
     {
         var c = Bound(string.Empty);
         var layer = c.Library.Layer;
         Assert.NotEmpty(layer.Constraints);
-        Assert.Empty(layer.Constraints.Values.Where(static x => x.Kind != ConstraintKind.Not && x.Negation is null).Select(static x => x.ToString()));
         var intern = typeof(Binding).GetMethod("InternConstraint", BindingFlags.Instance | BindingFlags.NonPublic)!;
         foreach (var (key, constraint) in layer.Constraints.Take(64))
         {
