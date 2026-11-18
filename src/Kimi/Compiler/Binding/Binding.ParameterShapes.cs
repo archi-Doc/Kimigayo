@@ -486,7 +486,7 @@ public sealed partial class Binding
 
     // SPEC 7.4: one record per conflicting parameter, located at its Type (or at the use), with both modes, the ground of
     // correspondence and the unified key as facts and the overlapping earlier parameters as related locations.
-    private void ReportParameterShapes(Koto node, DiagnosticRequirement requirement, (int Start, int Count) range)
+    private void ReportParameterShapes(Koto node, DiagnosticCollection? store, DiagnosticRequirement requirement, (int Start, int Count) range)
     {
         for (var k = 0; k < range.Count; k++)
         {
@@ -508,7 +508,8 @@ public sealed partial class Binding
                 _ => $"Value({target})",
             };
             var first = this.parameterShapePartyStore[conflict.PartyStart];
-            node.Report(
+            node.ReportIn(
+                store,
                 requirement,
                 DiagnosticCode.ParameterShapeMismatch_Kd,
                 conflict.Mode,

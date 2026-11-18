@@ -165,7 +165,7 @@ public sealed partial class Binding
     // SPEC 15.2.3, 23.1: an Owned failure of a common Function conversion is a Constraint record whose Reason names the subject, the
     // member through which the Origin enters OwnedOrigins and, when one is displayable, that Origin; a capture borrow is shown by its
     // entry and related there.
-    private void ReportOwnedConversion(Koto node, OwnedConversionFact owned, DiagnosticRequirement requirement, DiagnosticCode code)
+    private void ReportOwnedConversion(Koto node, DiagnosticCollection? store, OwnedConversionFact owned, DiagnosticRequirement requirement, DiagnosticCode code)
     {
         var subject = DiagnosticTypeName(owned.Subject);
         var entry = owned.Entry is { Operation: not null and not Constants.MoveOperation } borrowEntry ? borrowEntry : (CaptureKoto?)null;
@@ -229,7 +229,7 @@ public sealed partial class Binding
         }
 
         object[] evidence = origin is { } fact ? [subject, owned.Member, fact] : [subject, owned.Member];
-        node.Report(requirement, code, note: note, evidence: evidence, related: related, relatedSpans: spans, at: owned.At);
+        node.ReportIn(store, requirement, code, note: note, evidence: evidence, related: related, relatedSpans: spans, at: owned.At);
 
         static string OriginText(DiagnosticOrigin origin) => origin.Kind switch
         {

@@ -521,13 +521,13 @@ public sealed partial class Binding
 
     // SPEC 3.5, 15.1.5, 23.1.3: the acquisition a bare Place needs spelled, located at the Place with the candidate that writes it:
     // an exclusive borrow is verified exclusively writable (BorrowablePlace held), a transfer has Take judged from the Place's path.
-    private void ReportAcquisition(Koto node, Koto place, bool @object, DiagnosticRequirement requirement, DiagnosticCode code)
+    private void ReportAcquisition(Koto node, DiagnosticCollection? store, Koto place, bool @object, DiagnosticRequirement requirement, DiagnosticCode code)
     {
         var text = place.ToString();
         if (code == DiagnosticCode.ExclusiveBorrowRequired_Kd)
         {
             var spelling = @object ? "@objuniq" : "@uniq";
-            node.Report(requirement, code, at: place, evidence: [text], repairs: [new(RepairKind.BorrowExclusively, [text, spelling], [node.Edit(new(place.Span.End, 0), spelling)], RepairConditionSet.ExclusiveAccess, RepairConditionSet.UsageLegality)]);
+            node.ReportIn(store, requirement, code, at: place, evidence: [text], repairs: [new(RepairKind.BorrowExclusively, [text, spelling], [node.Edit(new(place.Span.End, 0), spelling)], RepairConditionSet.ExclusiveAccess, RepairConditionSet.UsageLegality)]);
             return;
         }
 
@@ -536,7 +536,8 @@ public sealed partial class Binding
         var judgment = this.TakeJudgment(place);
         var found = this.AcquisitionCases(place, out var single);
         var prepared = code == DiagnosticCode.DefaultArgumentMove_Kd;
-        node.Report(
+        node.ReportIn(
+            store,
             requirement,
             code,
             note: CaseNote(null, found, single),
@@ -548,7 +549,7 @@ public sealed partial class Binding
 
     // Reports a write failure at its target; an assignment names the target. An
     // Exclusive call of a closure (SPEC 7.7.3) borrows the callee exclusively, so the callee is the written target.
-    private void ReportWrite(Koto node, Koto target, DiagnosticRequirement requirement, DiagnosticCode code)
+    private void ReportWrite(Koto node, DiagnosticCollection? store, Koto target, DiagnosticRequirement requirement, DiagnosticCode code)
     {
         var call = node is InvocationKoto invocation && ReferenceEquals(invocation.Method, target);
         var callee = target.BoundType is { Kind: BoundTypeKind.Semantics, Components.Count: 1 } reference ? reference.Components[0] : target.BoundType;
@@ -567,7 +568,7 @@ public sealed partial class Binding
             var handle = KotoHelper.UnwrapParentheses(target) is ConversionKoto { ConversionBinding: ConversionBinding.PayloadFollow } followed ? followed.Left.BoundType : target.BoundType;
             var authority = handle?.HandleMode is { PayloadAuthority: LoanRequirement.Ref } ? SharedObjectAuthorityNote : null;
             var note = code != DiagnosticCode.SharedPathAccess_Kd ? null : objectCallee ? authority is null ? callNote : $"{callNote}. {authority}" : authority ?? this.SharedIndexNote(target);
-            node.Report(requirement, code, note: note, at: target, evidence: code == DiagnosticCode.SharedPathAccess_Kd ? [target.ToString()] : null);
+            node.ReportIn(store, requirement, code, note: note, at: target, evidence: code == DiagnosticCode.SharedPathAccess_Kd ? [target.ToString()] : null);
             return;
         }
 
@@ -577,7 +578,7 @@ public sealed partial class Binding
             root = KotoHelper.UnwrapParentheses(root is MemberAccessKoto member ? member.Left : ((IndexKoto)root).Left);
         }
 
-        node.Report(requirement, code, note: callNote, at: target, evidence: [target.ToString()]);
+        node.ReportIn(store, requirement, code, note: callNote, at: target, evidence: [target.ToString()]);
     }
 
     // SPEC 4.7.1, 8.3.3: a user index publishes its element exclusively only through indexUniq. When the receiver's Type
@@ -612,11 +613,12 @@ public sealed partial class Binding
 
     // SPEC 11.3: an accessor receiver has the shape of its operation. The report is located at the written receiver Type and
     // relates the Property header; the written Type is a bounded display value, as the message argument of a transfer is.
-    private void ReportAccessorReceiverShape(PropertyAccessorKoto accessor, Koto written, DiagnosticRequirement requirement)
+    private void ReportAccessorReceiverShape(PropertyAccessorKoto accessor, DiagnosticCollection? store, Koto written, DiagnosticRequirement requirement)
     {
         var property = (PropertyKoto)accessor.Parent!;
         var getter = accessor.AccessorKind == PropertyAccessorKind.Get;
-        accessor.Report(
+        accessor.ReportIn(
+            store,
             requirement,
             DiagnosticCode.AccessorReceiverShape_Kd,
             accessor.AccessorText,

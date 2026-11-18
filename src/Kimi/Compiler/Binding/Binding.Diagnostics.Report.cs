@@ -106,7 +106,7 @@ public sealed partial class Binding
         }
         else if (issue.Failure == BindingFailure.ArithmeticSelection && this.arithmeticSelectionFailures?.TryGetValue(issue.Node, out var selection) == true)
         {
-            this.ReportArithmeticSelection(issue.Node, requirement, selection);
+            this.ReportArithmeticSelection(issue.Node, store, requirement, selection);
         }
         else if (issue.Failure == BindingFailure.ArithmeticDirection && this.arithmeticDirectionFailures?.TryGetValue(issue.Node, out var direction) == true)
         {
@@ -120,7 +120,7 @@ public sealed partial class Binding
         }
         else if (issue.Failure == BindingFailure.CaseLimit)
         {
-            this.ReportCaseLimit(issue.Node, requirement);
+            this.ReportCaseLimit(issue.Node, store, requirement);
         }
         else if (issue.Failure == BindingFailure.TypeHeightLimit)
         {
@@ -128,7 +128,7 @@ public sealed partial class Binding
         }
         else if (issue.Failure == BindingFailure.QualificationRequired)
         {
-            this.ReportQualification(issue.Node, requirement);
+            this.ReportQualification(issue.Node, store, requirement);
         }
         else if (issue.Code == DiagnosticCode.InvalidConstraint_Kd &&
             this.constraintDiagnosticCauses?.TryGetValue(issue.Node, out var cause) == true && IsMissingInformation(cause))
@@ -173,7 +173,7 @@ public sealed partial class Binding
         }
         else if (issue.Code == DiagnosticCode.NonExhaustiveMatch_Kd)
         {
-            this.ReportMatchCoverage((MatchKoto)issue.Node, requirement);
+            this.ReportMatchCoverage((MatchKoto)issue.Node, store, requirement);
         }
         else if (issue.Code == DiagnosticCode.InvalidNumericLiteral_Kd && LiteralConversionTarget(issue.Node) is { } literalTarget)
         {
@@ -200,7 +200,7 @@ public sealed partial class Binding
             // FailObjectPayload records the declaring Type before it fails the use.
             issue.Node.ReportIn(store, requirement, issue.Code, this.objectPayloadCauses![issue.Node].Name);
         }
-        else if (this.ReportCallableSelection(issue.Node, requirement, issue.Code))
+        else if (this.ReportCallableSelection(issue.Node, store, requirement, issue.Code))
         {
         }
         else if (issue.Code == DiagnosticCode.AmbiguousBinding_Kd && this.associatedAmbiguities?.TryGetValue(issue.Node, out var associated) == true)
@@ -315,7 +315,7 @@ public sealed partial class Binding
         }
         else if (this.callInferenceFailures?.TryGetValue(issue.Node, out var callInference) == true)
         {
-            this.ReportCallInferenceFailure(issue.Node, requirement, issue.Code, callInference);
+            this.ReportCallInferenceFailure(issue.Node, store, requirement, issue.Code, callInference);
         }
         else if (issue.Code == DiagnosticCode.UnboundTypeArgument_Kd && this.unboundSlots?.TryGetValue(issue.Node, out var unboundSlot) == true)
         {
@@ -336,23 +336,23 @@ public sealed partial class Binding
         }
         else if (issue.Code == DiagnosticCode.ParameterShapeMismatch_Kd && this.parameterShapeConflicts.TryGetValue(issue.Node, out var shapes))
         {
-            this.ReportParameterShapes(issue.Node, requirement, shapes);
+            this.ReportParameterShapes(issue.Node, store, requirement, shapes);
         }
         else if (issue.Code == DiagnosticCode.AccessorReceiverShape_Kd && issue.Node is PropertyAccessorKoto { ReceiverType: { } writtenReceiver } shapedAccessor)
         {
-            this.ReportAccessorReceiverShape(shapedAccessor, writtenReceiver, requirement);
+            this.ReportAccessorReceiverShape(shapedAccessor, store, writtenReceiver, requirement);
         }
         else if (issue.Code is DiagnosticCode.MissingOverrideTarget_Kd or DiagnosticCode.AmbiguousOverrideTarget_Kd or DiagnosticCode.OverrideContractMismatch_Kd or DiagnosticCode.DuplicateOverride_Kd or DiagnosticCode.UnprovenOverrideCondition_Kd && issue.Node is FunctionKoto overrideFunction)
         {
-            this.ReportOverrideFailure(overrideFunction, requirement, issue.Code);
+            this.ReportOverrideFailure(overrideFunction, store, requirement, issue.Code);
         }
         else if (issue.Code == DiagnosticCode.InvalidVirtualDeclaration_Kd && issue.Node is FunctionKoto virtualFunction)
         {
-            this.ReportVirtualDeclarationFailure(virtualFunction, requirement, issue.Code);
+            this.ReportVirtualDeclarationFailure(virtualFunction, store, requirement, issue.Code);
         }
         else if (issue.Code == DiagnosticCode.InvalidBaseCall_Kd && issue.Node is BaseReferenceKoto baseReference)
         {
-            this.ReportBaseCallFailure(baseReference, requirement, issue.Code);
+            this.ReportBaseCallFailure(baseReference, store, requirement, issue.Code);
         }
         else if (issue.Code == DiagnosticCode.ProtectedPlacement_Kd)
         {
@@ -360,9 +360,9 @@ public sealed partial class Binding
         }
         else if (issue.Code == DiagnosticCode.InvalidEffectBound_Kd && issue.Node is EffectBoundKoto effect)
         {
-            this.ReportEffectBound(effect, requirement);
+            this.ReportEffectBound(effect, store, requirement);
         }
-        else if (issue.Code == DiagnosticCode.AssociatedTypeInferenceFailed_Kd && this.ReportAssociatedInference(issue.Node, requirement))
+        else if (issue.Code == DiagnosticCode.AssociatedTypeInferenceFailed_Kd && this.ReportAssociatedInference(issue.Node, store, requirement))
         {
             // Declaration evidence is retained by the common binder, independent of the adapter.
         }
@@ -381,11 +381,11 @@ public sealed partial class Binding
                 related: [("contract", agreement.Left.Declaration, first), ("contract", agreement.Right.Declaration, second)],
                 note: "Associated Types and effective implementation mappings must agree for every overlapping binding allowed by the declaration and conformance conditions (SPEC 8.9.2)");
         }
-        else if (issue.Code == DiagnosticCode.IncompatibleContractImplementation_Kd && this.ReportCallablePremiseFailure(issue.Node, requirement))
+        else if (issue.Code == DiagnosticCode.IncompatibleContractImplementation_Kd && this.ReportCallablePremiseFailure(issue.Node, store, requirement))
         {
             // SPEC 8.11.4: an implementation cannot add an unrequired Callable bound.
         }
-        else if (issue.Code is DiagnosticCode.MissingOriginBinding_Kd or DiagnosticCode.InvalidOriginBinding_Kd && this.ReportFormationCause(issue.Node, requirement, issue.Code))
+        else if (issue.Code is DiagnosticCode.MissingOriginBinding_Kd or DiagnosticCode.InvalidOriginBinding_Kd && this.ReportFormationCause(issue.Node, store, requirement, issue.Code))
         {
             // SPEC 8.1.2: a pair occurrence's Language cause, at the occurrence.
         }
@@ -397,22 +397,22 @@ public sealed partial class Binding
         {
             ReportPerCallOrigin(issue.Node, perCallOrigin, requirement, issue.Code);
         }
-        else if (issue.Code == DiagnosticCode.MissingOriginBinding_Kd && this.ReportUndeclaredStorageOrigin(issue.Node, requirement, issue.Code))
+        else if (issue.Code == DiagnosticCode.MissingOriginBinding_Kd && this.ReportUndeclaredStorageOrigin(issue.Node, store, requirement, issue.Code))
         {
             // SPEC 15.3.2: an undeclared storage name, at the name.
         }
-        else if (issue.Code == DiagnosticCode.InvalidOriginBinding_Kd && this.ReportAbsentSlot(issue.Node, requirement, issue.Code))
+        else if (issue.Code == DiagnosticCode.InvalidOriginBinding_Kd && this.ReportAbsentSlot(issue.Node, store, requirement, issue.Code))
         {
             // SPEC 15.3.2: a projection of a slot its Type does not declare, at the slot name.
         }
         else if (issue.Code is DiagnosticCode.TransferRequired_Kd or DiagnosticCode.ExclusiveBorrowRequired_Kd or DiagnosticCode.DefaultArgumentMove_Kd &&
             this.acquisitionPlaces?.TryGetValue(issue.Node, out var acquisition) == true)
         {
-            this.ReportAcquisition(issue.Node, acquisition.Place, acquisition.Object, requirement, issue.Code);
+            this.ReportAcquisition(issue.Node, store, acquisition.Place, acquisition.Object, requirement, issue.Code);
         }
         else if (issue.Code == DiagnosticCode.InvalidCaptureBinding_Kd && issue.Node is IdentifierNameKoto { BoundSymbol: { } contextual } && IsContextualBinding(contextual))
         {
-            this.ReportContextualCapture(issue.Node, contextual, requirement, issue.Code);
+            this.ReportContextualCapture(issue.Node, store, contextual, requirement, issue.Code);
         }
         else if (this.ReportOriginRecords(issue.Node, issue.Code, requirement))
         {
@@ -422,29 +422,29 @@ public sealed partial class Binding
         {
             ReportArity(issue.Node, arity, requirement, issue.Code);
         }
-        else if (issue.Code == DiagnosticCode.InvalidOriginBinding_Kd && this.ReportInvalidOriginSlot(issue.Node, requirement, issue.Code))
+        else if (issue.Code == DiagnosticCode.InvalidOriginBinding_Kd && this.ReportInvalidOriginSlot(issue.Node, store, requirement, issue.Code))
         {
             // SPEC 15.2.3, 5.7: an Origin slot the written binding cannot supply, at the annotation.
         }
         else if (issue.Code == DiagnosticCode.DuplicateBinding_Kd && issue.Node is TypeSemanticsKoto { BindingSetName: { } reusedSet } bindingSet)
         {
-            this.ReportDuplicateBindingSet(bindingSet, reusedSet, requirement, issue.Code);
+            this.ReportDuplicateBindingSet(bindingSet, store, reusedSet, requirement, issue.Code);
         }
         else if (issue.Code == DiagnosticCode.DuplicateBinding_Kd && this.captureRepeats?.TryGetValue(issue.Node, out var repeats) == true)
         {
-            this.ReportCaptureRepeats(issue.Node, repeats, requirement, issue.Code);
+            this.ReportCaptureRepeats(issue.Node, store, repeats, requirement, issue.Code);
         }
         else if (this.captureFailures?.TryGetValue(issue.Node, out var entry) == true)
         {
-            this.ReportCaptureEntry(issue.Node, entry, requirement, issue.Code);
+            this.ReportCaptureEntry(issue.Node, store, entry, requirement, issue.Code);
         }
         else if (this.writeTargets?.TryGetValue(issue.Node, out var target) == true)
         {
-            this.ReportWrite(issue.Node, target, requirement, issue.Code);
+            this.ReportWrite(issue.Node, store, target, requirement, issue.Code);
         }
         else if (this.takeLayers?.TryGetValue(issue.Node, out var takeCases) == true)
         {
-            this.ReportTake(issue.Node, takeCases, requirement, issue.Code);
+            this.ReportTake(issue.Node, store, takeCases, requirement, issue.Code);
         }
         else if (issue.Code == DiagnosticCode.TypeMismatch_Kd && issue.Problem >= 0)
         {
@@ -457,7 +457,7 @@ public sealed partial class Binding
         }
         else if (issue.Code is DiagnosticCode.UnsatisfiedConstraint_Kd or DiagnosticCode.UnprovenConstraint_Kd && this.clauseConstraints?.TryGetValue(issue.Node, out var reference) == true)
         {
-            this.ReportClauseConstraint(issue.Node, reference, requirement, issue.Code);
+            this.ReportClauseConstraint(issue.Node, store, reference, requirement, issue.Code);
         }
         else if (issue.Code is DiagnosticCode.UnsatisfiedConstraint_Kd or DiagnosticCode.UnprovenConstraint_Kd && this.objectErasureFailures?.TryGetValue(issue.Node, out var erasure) == true)
         {
@@ -467,7 +467,7 @@ public sealed partial class Binding
         }
         else if (issue.Code is DiagnosticCode.UnsatisfiedConstraint_Kd or DiagnosticCode.UnprovenConstraint_Kd && this.ownedConversions?.TryGetValue(issue.Node, out var owned) == true)
         {
-            this.ReportOwnedConversion(issue.Node, owned, requirement, issue.Code);
+            this.ReportOwnedConversion(issue.Node, store, owned, requirement, issue.Code);
         }
         else if (issue.Code == DiagnosticCode.UnprovenConstraint_Kd && this.pendingJudgments?.TryGetValue(issue.Node, out var pending) == true)
         {
@@ -492,7 +492,7 @@ public sealed partial class Binding
         }
         else if (issue.Code is DiagnosticCode.UnresolvedBinding_Kd or DiagnosticCode.UnprovenConstraint_Kd && this.constructorAbsences?.TryGetValue(issue.Node, out var absent) == true)
         {
-            this.ReportConstructorAbsence(issue.Node, absent, requirement, issue.Code);
+            this.ReportConstructorAbsence(issue.Node, store, absent, requirement, issue.Code);
         }
         else if (issue.Code == DiagnosticCode.InaccessibleBinding_Kd && issue.Node is MemberAccessKoto { BoundSymbol: { } inaccessible })
         {
