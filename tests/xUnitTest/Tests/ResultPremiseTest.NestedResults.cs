@@ -45,10 +45,12 @@ public partial class ResultPremiseTest
     // written as a Function Type's is (FormNestedResult), each clause under the enclosing premises and the signature's own inputs, for
     // every choice of its per-call Origins: whether or not the literal is called (cl2, cl2n), in a component (cl2o), over an enclosing
     // Origin (cl2e, cl2e_c), a nested Closure's (cl2r), a generic body's (cl2g, once), at a failed header fit (cl2m) and over a value
-    // call's region (cl2v, J2's cl1); a premise of k gives no per-call Origin (pc1); a body-local Borrow's Origin (esc1) is the walk's
-    // body-chain side; a clause every per-call Origin satisfies (cl2q, `static outlives a`; r10l on the Function Type side, newly
-    // accepted) or one the signature's inputs entail (cl2y) forms no row. F-a (the owner's O-2): cl2, cl2n, cl2o, cl2g, cl2m, cl2v and pc1
-    // are A5's located Unsupported_Kd at the written result until U-O3 / R7-O3 restores the Language record at the same site.
+    // call's region (cl2v, J2's cl1, its input `Option<ref/i32>` a body variable); a premise of k gives no per-call Origin (pc1); a
+    // body-local Borrow's Origin (esc1) is the walk's body-chain side; a clause every per-call Origin satisfies (cl2q, `static outlives
+    // a`; r10l on the Function Type side, newly accepted) or one the signature's inputs entail (cl2yr, over k's p) forms no row. No input
+    // names the signature's own per-call Origin (PLAN G972, the owner's O-403 (b)), so a per-call clause the inputs entail has no such
+    // spelling: cl2y's input is invalid at `x`. F-a (the owner's O-2): cl2, cl2n, cl2o, cl2g, cl2m, cl2v and pc1 are A5's located
+    // Unsupported_Kd at the written result until U-O3 / R7-O3 restores the Language record at the same site.
     [InlineData("cl2", StaticClause + "func k(p: ref/i32) -> i32\n    let c = func [] (x: ref/i32) -> T during x => $abort(\"no\")\n    let t = c(p)\n    return 0\n", "Unsupported_Kd T during x")] // F-a
     [InlineData("cl2n", StaticClause + "func k(p: ref/i32) -> i32\n    let c = func [] (x: ref/i32) -> T during x => $abort(\"no\")\n    return 0\n", "Unsupported_Kd T during x")] // F-a
     [InlineData("cl2o", StaticClause + "func k(p: ref/i32) -> i32\n    let c = func [] (x: ref/i32) -> Option<T during x> => $abort(\"no\")\n    let t = c(p)\n    return 0\n", "Unsupported_Kd Option<T during x>")] // F-a
@@ -56,11 +58,12 @@ public partial class ResultPremiseTest
     [InlineData("cl2e_c", StaticClause + "func k(p: ref/i32) -> i32\n    origin p outlives static\n    let c = func [] () -> T during p => $abort(\"no\")\n    let t = c()\n    return 0\n", "")]
     [InlineData("cl2s", StaticClause + "func k(p: ref/i32) -> i32\n    let c = func [] (x: ref/i32) -> T during static => $abort(\"no\")\n    let t = c(p)\n    return 0\n", "")]
     [InlineData("cl2q", AllClause + "func k(p: ref/i32) -> i32\n    let c = func [] (x: ref/i32) -> Q during x => $abort(\"no\")\n    return 0\n", "")]
-    [InlineData("cl2y", StaticClause + "func k(p: ref/i32) -> i32\n    let c = func [] (x: ref/i32, y: ref/(ref/i32 during x) during static) -> T during x => $abort(\"no\")\n    return 0\n", "")]
+    [InlineData("cl2y", StaticClause + "func k(p: ref/i32) -> i32\n    let c = func [] (x: ref/i32, y: ref/(ref/i32 during x) during static) -> T during x => $abort(\"no\")\n    return 0\n", "InvalidOriginBinding_Kd x")]
+    [InlineData("cl2yr", StaticClause + "func k(p: ref/i32) -> i32\n    let c = func [] (y: ref/(ref/i32 during p) during static) -> T during p => $abort(\"no\")\n    return 0\n", "")]
     [InlineData("cl2r", StaticClause + "func k(p: ref/i32) -> i32\n    let c = func [] (y: ref/i32) -> i32\n        let d = func [] () -> T during y => $abort(\"no\")\n        return 0\n    let n = c(p)\n    return 0\n", "UnprovenOriginRelation_Kd T during y")]
     [InlineData("cl2g", StaticClause + "func mk2<U>(u: ref/U) -> i32\n    let c = func [] (x: ref/U) -> T during x => $abort(\"no\")\n    return 0\n" + "func k(p: ref/i32) -> i32\n    let a = mk2(p)\n    let bv: bool = true\n    let b = mk2(bv@ref)\n    return 0\n", "Unsupported_Kd T during x")] // F-a
     [InlineData("cl2m", StaticClause + "func k(p: ref/i32) -> i32\n    let g: (ref/i32) -> i32 = func [] (x: ref/i32) -> T during x => $abort(\"no\")\n    return 0\n", "TypeMismatch_Kd func [] (x: ref/i32) -> T during x => $abort(\"no\"); Unsupported_Kd T during x")] // F-a
-    [InlineData("cl2v", StaticClause + "func k() -> i32\n    let v: i32 = 5\n    let c = func [] (x: ref/i32, y: Option<ref/i32 during x>) -> T during x => $abort(\"no\")\n    let t = c($abort(\"n\"), .Some(v@ref))\n    return 0\n", "Unsupported_Kd T during x")] // F-a
+    [InlineData("cl2v", StaticClause + "func k() -> i32\n    let v: i32 = 5\n    let c = func [] (x: ref/i32, y: Option<ref/i32>) -> T during x => $abort(\"no\")\n    let t = c($abort(\"n\"), .Some(v@ref))\n    return 0\n", "Unsupported_Kd T during x")] // F-a
     [InlineData("pc1", StaticClause + "func k(p: ref/i32) -> i32\n    origin p outlives static\n    let c = func [] (x: ref/i32) -> T during x => $abort(\"no\")\n    let t = c(p)\n    return 0\n", "Unsupported_Kd T during x")] // F-a
     [InlineData("esc1", StaticClause + "func k(p: ref/i32) -> i32\n    let v: i32 = 1\n    let r = v@ref\n    let c = func [] () -> T during r => $abort(\"no\")\n    return 0\n", "UnsatisfiedOriginRelation_Kd T during r")]
     [InlineData("r10l", AllClause + "func k(p: ref/i32) -> i32\n    let g: Option<(ref/i32) -> Q> = .None\n    return 0\n", "")]
