@@ -44,7 +44,7 @@ public sealed partial class Binding
             return scope;
         }
 
-        var selection = this.LookupTypeMember(baseType, function.Name, scope, self);
+        var selection = this.LookupMember(baseType, function.Name, scope, LookupRole.Value, self);
         if (selection.Pending || selection.DeclaringType?.Symbol is null)
         {
             return scope;
@@ -265,7 +265,7 @@ public sealed partial class Binding
                 continue;
             }
 
-            var selection = baseType is null ? default : this.LookupTypeMember(baseType, function.Name, this.scopes[function], self, this.MemberPath(null, structure.BaseClause!, baseType));
+            var selection = baseType is null ? default : this.LookupMember(baseType, function.Name, this.scopes[function], LookupRole.Value, self, this.MemberPath(null, structure.BaseClause!, baseType));
             FunctionKoto? first = null;
             FunctionKoto? second = null;
             var count = 0;

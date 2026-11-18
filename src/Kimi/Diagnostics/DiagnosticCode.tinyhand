@@ -13,7 +13,7 @@
     Arguments="name:Text,container:Text"
     Evidence="namespace:Enumeration,cause:Enumeration,instance:Boolean|namespace:Enumeration,cause:Enumeration,instance:Boolean,base:Text"
     Label="qualify {0} explicitly"
-    Note="An unqualified Name supplies no receiver and cannot select an inherited declaration; lookup stops at this Container"
+    Note="An unqualified Name never selects an enum Case, supplies no receiver and cannot select an inherited declaration; lookup stops at this Container"
 
   + Name="BorrowOriginKeyword_Kd"
     Category="Language"
