@@ -444,6 +444,17 @@ Entries were compacted under G420 (the owner's 「規則 A」, 2026-11-05); the 
     breaks above); a consent seat (close to the latency proposals the owner withdrew on 2026-11-18); emitting only the used Abort
     reasons (a design unit of the Back's, not a process rule).
 
+- **Q21 Units of one window may share a source file when their hunks are apart** (2026-11-19, the owner in K's dialog, verbatim
+  「質問の回答は、全て推奨通りでお願いします。」 to the Coordinator's O-430, option (a); [WORKFLOW](WORKFLOW.md) "Windows").
+  - Rule: units of one window may share a source file when `git merge-tree` merges them cleanly and no two units' hunks in it
+    overlap or lie within 3 lines of each other, measured in the pair's common base (`k-tools/plan_window.py`); textual conflicts
+    still wait for the next window; the area and mover limits (Q15, Q18) stay; the window's build and Session check the merged
+    file, and a failure that names no unit splits the window in halves.
+  - Reason: on 2026-11-19 the Ready Binding units (G949 U4 and S1-1c, G379, G778, G800, G881b, sa-*) shared `Binding.Constraints.cs`
+    or `Binding.Calls.cs` with disjoint hunks, and the file rule alone spread them over about five windows.
+  - Rejected: keeping the rule (option (b): the windows the disjoint hunks cost); allowing any clean merge (adjacent hunks are where
+    one unit's edit changes the other's context).
+
 ## Code rules (2026-10-12)
 
 CR-R1 supersedes only the analyzer enforcement, Report and approval requirements in CR-A0–CR-A9b below.
@@ -20793,6 +20804,10 @@ R8-M* and R9-M* by the stage of the recording unit.
   - **Rejected:** frames as exposed arrays with a ratchet (missed two sites); an undo log inside `SlotSolution` (the other frame
     owners have none); variables beyond frames in the core (each lands with its consumer).
   - **Temporary:** none.
+  - Superseded in part by R7-M40 (R7-I2 c, W-266): part c's "its rollback before `CloseTrial`" (a candidate's trial owns its frame
+    instead), the store's input "the selected candidate's restore" and `CopyLengths` (deleted), and "the RP6 trial-copy row stays at
+    1 until part c" (it stays at 1 until PLAN G988). The reason that no longer holds: comparison never reads the candidates' saved
+    Types or lengths, so a rollback per candidate would discard the solution selection keeps until ranking.
 - **R7-M19 ClosureEffects' store is by the nodes met** (Middle, 2026-11-10; PLAN G622 U1b; Major, behavior-preserving; the Front's
   implementation review ACCEPT and consent C-209; the owner's O-81 (a)).
   - **Rule.** What a Classify knows of a node (its Op, its children's takes recorded, its own takes: `Facts`) is one row of one
@@ -21297,6 +21312,52 @@ R8-M* and R9-M* by the stage of the recording unit.
   `ArgumentMapping.AllowsPositionalArgument`'s receiver read) with R7-P3 (its row normalizes each form to `FnSig`), the other 25 (with
   AssociatedInference.cs:309's read through a Type-node local) by R7-Y4 (the Koto forwarding's deletion, after N5, T2 and E move the
   Binding reads; Y4's zero-reference row finds any left).
+- **R7-M40 A candidate's trial owns its frame, and a solve's invariant marks are its frame's** (Front, 2026-11-18; R7-I2 c, plan
+  §5.0's I2 part c, revision 95; design `front\notes\I2\design-c.md` phases 1-2: design review REVISE (B1-B3), the re-check REVISE
+  (R1), the delta check ACCEPT; implementation review ACCEPT WITH CONDITIONS, C1 met; F's I2 ruling-c 1-9; Major: commit 1
+  behaviour-preserving, commit 2 a defect fix and an acceptance mover, the Middle's RP17 consent C-399) SPEC 6.5.2, 10.4, 10.8,
+  15.3.6, 15.6.1. Supersedes in part R7-M18: part c's "its rollback before `CloseTrial`" (the plan's "c: candidate evaluation through
+  snapshot and rollback"), the store's input "the selected candidate's restore", and "the RP6 trial-copy row stays at 1 until part
+  c". The reason that no longer holds: comparison never reads the candidates' saved Types or lengths (`AllTypes` and `AllLengths`
+  were read only by the winner's restore; ranking reads `Evaluated`, `Operations` and `AllMaps`), so a rollback per candidate would
+  discard exactly the solution selection keeps until ranking picks a winner, and would need a second copy of every candidate's
+  solution.
+  - **Representation.** A selection rents one frame per candidate (`RentFrames`/`ReturnFrames` over `frameScratch`, LIFO, returned
+    in reverse); a candidate's trial and re-trials write only its own frame (the waiting re-trial, `CheckDefaulted`, and
+    `ValidateFixedConstruction`'s re-trial i on `frames[i]`, `frames[selected]` re-seeded); a rejected or ranked-out candidate's
+    frame is returned; the winner's frame is the call's solution. Deleted: `AllTypes`, `AllLengths`, the per-candidate
+    `ClearTypes`, the winner's Types and lengths restore, `CallEvaluation.MaxGenerics` and the store's `CopyLengths` (no caller
+    left); `CopyTypes` stays (`PerCallCallables`' two-phase copy). `SlotFrame` gains a third column, the invariant marks (SPEC 10.8,
+    15.3.6: the slot's binding in this solve comes from an invariant position; `IsInvariant`, `SetInvariant`; logged like the other
+    columns; cleared with the Types and at Return); `Binding.invariantSlots` and `TryCandidate`'s save, rent and restore of it are
+    deleted.
+  - **Rule.** Each solve that infers through `SlotSolution` (`InferFrom` with `relateLater`: a candidate's trial and re-trials, a
+    Case construction) owns its frame's marks for the frame's lifetime, and a re-trial starts without its trial's marks; a function
+    reference's solve reads and writes none; a nested solve rents its own frame. Snapshot/Rollback serves a step tried inside one
+    solve (`FitsLiteralShape`); no `Commit` (no caller). `PerCallCallables` keeps its two-phase copy.
+  - **Fixed (commit 2): a Case construction's slots are no longer marked invariant by an earlier solve.** A Case construction read
+    and wrote the Binding's field (outside any trial, never reset), so an earlier construction's invariant binding at a slot index
+    made a later construction, in the same body or any body bound later, take its first binding of that slot as invariant. The class:
+    a Case construction whose own slot its expected Type leaves open (a let initializer, an independently typable argument, a closure
+    body). Every valid form is now accepted: `Two.Both(x, y)` after `One.Mark(slot@uniq)` kept `x` and rejected `y` ("requires y
+    outlives x"), in one body, in another, as `consume(Two.Both(x, y))`, as an argument of a two-candidate call and in a closure
+    body. An invalid form keeps a record where SPEC's solution fails: `Four.Last(y, slot2@uniq)` moves from "requires x == y" at
+    `slot2@uniq` to "requires y outlives x" at `y` (the invariant binding is the solution in either payload order; `y`'s covariant
+    fit is judged after selection), and the meet returned as `Two<ref/i32 during a>` from `y` to the return. SPEC 10.8, 6.5.2 step
+    2, 15.6.1. Rows: `TypeArgumentOriginEvidenceTest.ACaseConstructionSolvesItsOwnSlots` (I1, I2, A1, K1 valid; I3, V1, V1c invalid;
+    I1, I2, A1, K1, V1 fail before) and `ARetrialStartsWithoutItsTrialsMarks` (the re-trial rule's guard: its first row fails where
+    `ClearTypes` keeps the marks).
+  - **Rejected:** a snapshot per candidate trial with `All*` on every path (option A: a second copy of every candidate's solution, a
+    logged write per trial write, frame lifetimes under snapshots; deletes one `ClearTypes`); A' (a mode by candidate count); Origins
+    and Inputs as frame columns now (option C: the store keeps them out of frames; a later part); `PerCallCallables` in place (moves
+    constructor acceptance: PLAN G988); the invariant set kept in the trial's bracket, or a set per solve beside its frame (the first
+    leaves the mark without an owner outside a trial; the second is a second per-solve lifecycle with the frame's lifetime).
+  - **Temporary:** `SavedCandidates` remains a mode for Mapping, Origins and Inputs (the winner's solution has two representations:
+    its frame and the restored `AllMaps`, `AllOrigins` and `AllInputs` copies); removed by option C or P3's "prepare arguments once",
+    whichever first owns the evaluation's arrays. The RP6 row "SlotSolution's trial copies of a frame" stays at 1; removed by PLAN
+    G988.
+  - **Cost named:** an N-candidate call rents N frames (N-1 more) and a `frameScratch` array on every call; drops N clears, the
+    saves and the restore; warm Bind 0 B at N = 10/20/40. RP8 in c's window (design-c P2.4 N1).
 - **R8-M1 The representation structs and their Place contract** (owner, 2026-11-07, verbatim 「推奨の内容でOKです。処理を継続してください。」,
   on O-41 (a) and O-43 (A); R8-R1a; prototype R8-L0p; supersedes the two plan rows below) IMPL 21.1.3, SPEC 5.2, 5.5, 5.7.
   - Adopted: `Storage.ArrayRepr<T>`, `Storage.SliceRepr<T>` and `Storage.StringRepr`, internal `#Layout("C")` structs of the Kimi
@@ -24234,6 +24295,14 @@ R8-M* and R9-M* by the stage of the recording unit.
     `Project.Build` passes) and R5-M169 (the results with a fault path: the project's own and the build's, beside the front end's
     and the Emission result; DIAGNOSTICS §7).
   - Amended by R9-M12 (PLAN G984): known limit (3) closes.
+  - Amended by PLAN G983 (Q-515, 2026-11-19): the toolchain files' readers (the build record, the installation and kernel32 records)
+    compare `ArtifactFiles`' total reads (`Member`, `Text`, `Number`) with what they expect and fail as their
+    `InvalidDataException`, and `IsToolchainFailure` drops `KeyNotFoundException` and `InvalidOperationException`. Known limit (1)
+    **narrows**: inside the toolchain's calls the set still classifies by type whatever raised the exception, so one of its
+    remaining kinds (publication's, R5-M165; `Win32Exception`; `JsonException`) raised by the host's report or a `Kimi.Build` defect
+    prints as the toolchain's failure; any other type is the build's or the command's fault. The embedded catalog
+    (`ToolchainIdentity`) keeps its reads: its static constructor's exceptions reach callers as `TypeInitializationException`, never
+    a listed type.
 - **R9-M11 The generation result carries the link facts; the link manifest is one table with its readers (R9-B1)** (Middle,
   2026-11-18; the R7-R9 plan's §5.3 unit B1, parts 1 and 2; Major; under R9-M6 and R9-M10; design review REVISE then ACCEPT WITH
   NOTES; the Back's consent on its codegen half, C-389; W-256)

@@ -637,6 +637,7 @@ public sealed partial class Binding
 
     private void ResetPrerequisites()
     {
+        this.invalidations = 0;
         this.caseBinders?.Clear();
         this.report.Clear();
         this.nameSteps.Clear();

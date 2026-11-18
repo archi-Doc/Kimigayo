@@ -11,8 +11,6 @@ public sealed partial class Binding
 {
     private readonly ScratchBuffers<PendingJudgment?> environmentScratch = new();
 
-    // SPEC 10.8, 15.3.6: the Type slots of the candidate being evaluated whose binding comes from an invariant position.
-    private SlotSet invariantSlots;
     private FunctionKoto? activeInferenceFunction;
 
     // DECISIONS BU-86: per slot of the candidate being evaluated, the judgment that a known call signature's result over its closure's
@@ -20,9 +18,9 @@ public sealed partial class Binding
     // Callable proof or the conversion (SPEC 8.10, 7.7.4). TryCandidateCore publishes one only for a slot no evidence binds.
     private PendingJudgment?[] environmentJudgments = [];
 
-    // The invariant slot bindings belong to one candidate; a nested call bound while it is evaluated keeps its own.
-    // `unsolved` holds the required structural slots that no evidence binds (SPEC 10.8); an Applicable or Waiting candidate with such
-    // slots stays rankable, and its selection is the inference-boundary record (FailUnboundSlots).
+    // The environment judgments belong to one candidate; a nested call bound while it is evaluated keeps its own (its invariant marks
+    // are its own frame's, SlotFrame.IsInvariant). `unsolved` holds the required structural slots that no evidence binds (SPEC 10.8); an
+    // Applicable or Waiting candidate with such slots stays rankable, and its selection is the inference-boundary record (FailUnboundSlots).
     private CandidateApplicability TryCandidate(
         SlotSolution solution,
         int[] mapping,
@@ -41,13 +39,11 @@ public sealed partial class Binding
             this.inferenceCandidateChecks++;
         }
 
-        var saved = this.invariantSlots;
         var savedInferenceFunction = this.activeInferenceFunction;
         this.activeInferenceFunction = solution.Function;
         var savedEnvironment = this.environmentJudgments;
         var savedAcquisition = this.acquisitionFailure;
         this.acquisitionFailure = null;
-        this.invariantSlots = this.RentSlotSet(CallSlotCount(solution.Function));
         this.environmentJudgments = this.environmentScratch.Rent(CallSlotCount(solution.Function));
         var enclosing = this.OpenTrial(); // A candidate trial is a frame (design-r2 Amendment 5; r2-6).
         var wholesMark = this.wholes.Count;
@@ -85,8 +81,6 @@ public sealed partial class Binding
         {
             this.wholes.RemoveRange(wholesMark, this.wholes.Count - wholesMark);
             this.CloseTrial(enclosing);
-            this.ReturnSlotSet(this.invariantSlots);
-            this.invariantSlots = saved;
             this.activeInferenceFunction = savedInferenceFunction;
             this.environmentScratch.Return(this.environmentJudgments, clearArray: true);
             this.environmentJudgments = savedEnvironment;
