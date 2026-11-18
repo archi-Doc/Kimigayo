@@ -3,7 +3,8 @@
 // Owns drop elaboration (A2; SPEC 16.2, 16.3.2, 15.1.3; DECISIONS R4-M6, R4-M6a) of one body per Semantics case view.
 // Input: the state MirInit's checks replay holds before each Drop (the lanes MaybeUninit, MaybeInit and MaybePartial
 // over MirMoveData's paths), each state event there and the paths A1's entry initializes (the arguments'; a constructing _0's own bit has
-// no subtree event, so no point); the selected view (MirCases). Output: MirProgram.Drops, per Drop its verdict groups (a group equal but
+// no subtree event, so no point); the selected view (MirCases); the programs' TyCtxt (MirAnalysis's).
+// Output: MirProgram.Drops, per Drop its verdict groups (a group equal but
 // for its views to the Drop's previous group is merged into it; lookups are by view), the body's flags and their set and clear points,
 // the views judged (A1 and A2 completed them), whether the table holds a body (Holds: the driver's one stepping path closed its entry in
 // this version, a kept library body's in its library version, which a round of A4 or the collector reads, PLAN G951), whether its
@@ -262,9 +263,10 @@ internal sealed partial class MirDropTable
 /// each Drop's state tree and reach (<see cref="Record"/>) and each runtime state event
 /// (<see cref="Event"/>), <see cref="Judge"/> applies a view's
 /// Types to the trees, and <see cref="End"/> numbers the flags and writes the points.</summary>
+/// <param name="typeContext">The Type context of the programs, whose instances' stored Types the state trees read.</param>
 /// <param name="moves">The move paths, built for the body.</param>
 /// <param name="cases">The Semantics case views, the judged view selected.</param>
-internal sealed class MirDrops(MirMoveData moves, MirCases cases)
+internal sealed class MirDrops(TyCtxt typeContext, MirMoveData moves, MirCases cases)
 {
     private readonly List<Node> trees = []; // The state trees of the Drops recorded in the current solve, each in pre-order.
     private readonly List<StateEvent> events = [];
@@ -449,9 +451,9 @@ internal sealed class MirDrops(MirMoveData moves, MirCases cases)
             var step = node.Path < 0 ? default : moves.Paths[node.Path];
             MirDataflow.Grow(ref this.types, node.Depth + 1);
             var type = this.types[node.Depth] = node.Depth == 0 ? cases.TypeOf(drop.Terminator.Place)
-                : this.body.ProjectedType(this.types[node.Depth - 1], step.Kind, step.Arg);
+                : this.body.ProjectedType(typeContext, this.types[node.Depth - 1], step.Kind, step.Arg);
             var state = node.State == MirDropVerdict.Flag && !runtime ? MirDropVerdict.Keep : node.State;
-            var verdict = MirTypes.MayNeedDrop(type, this.walked) ? state : MirDropVerdict.Elide;
+            var verdict = MirTypes.MayNeedDrop(typeContext, type, this.walked) ? state : MirDropVerdict.Elide;
             if (verdict == MirDropVerdict.Open && AdtDef.Destructor(type!) is not null)
             {
                 if (runtime)

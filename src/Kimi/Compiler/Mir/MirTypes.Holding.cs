@@ -70,13 +70,14 @@ internal static partial class MirTypes
     /// immutable static obtains authority from the environment (SPEC 8.11.2); a referent reached through the value counts too. A Field or
     /// an enum's Case Binding did not substitute (null; <see cref="AdtDef.CaseTypes"/>) holds nothing, a dependent of Binding's rejection.
     /// Each Type is walked once per query, as HoldsLoans' are, so a repeating recursive Type ends exactly; past depth 32 the answer is yes.</summary>
+    /// <param name="types">The Type context, whose instances' stored Types the walk reads.</param>
     /// <param name="type">The Type.</param>
     /// <param name="seen">Scratch for the Types walked, cleared first.</param>
     /// <returns>Whether the value holds raw authority.</returns>
-    internal static bool HoldsRaw(BoundType? type, HashSet<BoundType> seen)
+    internal static bool HoldsRaw(TyCtxt types, BoundType? type, HashSet<BoundType> seen)
     {
         seen.Clear();
-        return Raw(type, seen, 0);
+        return Raw(types, type, seen, 0);
     }
 
     /// <summary>Gets whether a value of a Type may hold a Loan (SPEC 15.6), so that A5 tracks it, and what a call may write past it (A3 E16),
@@ -179,7 +180,7 @@ internal static partial class MirTypes
     }
 
     // HoldsRaw's walk: a Type seen before adds nothing; its components, a struct's Fields and base and an enum's payload Tuples.
-    private static bool Raw(BoundType? type, HashSet<BoundType> seen, int depth)
+    private static bool Raw(TyCtxt types, BoundType? type, HashSet<BoundType> seen, int depth)
     {
         if (type is null || !seen.Add(type))
         {
@@ -193,7 +194,7 @@ internal static partial class MirTypes
 
         for (var i = 0; i < type.Components.Count; i++)
         {
-            if (Raw(type.Components[i], seen, depth + 1))
+            if (Raw(types, type.Components[i], seen, depth + 1))
             {
                 return true;
             }
@@ -201,21 +202,21 @@ internal static partial class MirTypes
 
         for (var i = 0; AdtDef.IsStruct(type) && i < AdtDef.Count(type); i++)
         {
-            if (Raw(AdtDef.FieldType(type, i), seen, depth + 1))
+            if (Raw(types, AdtDef.FieldType(types, type, i), seen, depth + 1))
             {
                 return true;
             }
         }
 
-        foreach (var payload in AdtDef.CaseTypes(type) ?? [])
+        foreach (var payload in AdtDef.CaseTypes(types, type) ?? [])
         {
-            if (Raw(payload, seen, depth + 1))
+            if (Raw(types, payload, seen, depth + 1))
             {
                 return true;
             }
         }
 
-        return Raw(AdtDef.Base(type), seen, depth + 1);
+        return Raw(types, AdtDef.Base(types, type), seen, depth + 1);
     }
 
     // HoldsLoans' walk over what a value holds (TyCtxt.Holdings, SPEC 3.3.4), one level at a time, each entry read on with its Part. A part

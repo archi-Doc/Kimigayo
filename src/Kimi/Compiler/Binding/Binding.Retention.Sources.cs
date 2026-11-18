@@ -33,6 +33,7 @@ public sealed partial class Binding
     private readonly Dictionary<(int Path, int Layer), int> retentionPathIds = new(); // The paths walked, each by its prefix and last layer.
     private readonly Dictionary<BoundType, int> retentionParts = new(ReferenceEqualityComparer.Instance);
     private readonly Dictionary<(BoundType Type, BoundType? Written, BoundType? Holder), int> retentionWalked = new(); // Enters' depths, reused.
+    private readonly Dictionary<(BoundType Type, HoldStep Reach), int> retentionReaches = new(); // WrittenThrough's (Type, reach) depths, reused.
 
     // The one visit rule of the walks that stop at a depth bound and key their visits (G416, PLAN G571). A search of every depth bound in
     // Binding and TyCtxt finds four: three at StorageBound and TyCtxt.Handed at HandedBound. A walk enters a state at the shallowest depth

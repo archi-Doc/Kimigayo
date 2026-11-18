@@ -111,7 +111,7 @@ internal sealed partial class MirBorrows
     // for any other callee (a value, an intrinsic).
     private PlaceKey InputKey(in MirTerminator call, int position, BoundType input)
         => call.Callee is { Kind: MirCalleeKind.Fn, Symbol: { Declaration: Parsing.FunctionKoto } function } && position < call.Count
-            ? TyCtxt.ParameterKey(function, MirCallee.Slot(function, position), input) : PlaceKey.Root(input);
+            ? types.ParameterKey(function, MirCallee.Slot(function, position), input) : PlaceKey.Root(input);
 
     // A key's facts, folded from TyCtxt.OwnLayers once per program version: whether a raw layer (or an abstract part) is at the Place's own
     // address; whether every raw layer there states an Origin other than `static` (Own, Shared, Exclusive); whether any states an Origin,

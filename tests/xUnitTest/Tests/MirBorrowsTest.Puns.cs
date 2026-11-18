@@ -1725,7 +1725,7 @@ public sealed partial class MirBorrowsTest
         var program = c.BuildMir();
         program.Problems.Clear();
         var built = Body(program, form);
-        new Stratum(c.Types).Run(program, Validated(c, InPlace(built, Binding(built).Rvalue.Place.Root)));
+        new Stratum(c.Types).Run(program, Validated(c, InPlace(c.Types, built, Binding(built).Rvalue.Place.Root)));
         var problems = Problems(c, Sound(program), [.. LoanCodes, DiagnosticCode.Unsupported_Kd]).Order(StringComparer.Ordinal);
         Assert.Equal($"{form}: [{expected}]", $"{form}: [{string.Join("; ", problems)}]");
     }
@@ -1745,8 +1745,8 @@ public sealed partial class MirBorrowsTest
         var program = c.BuildMir();
         program.Problems.Clear();
         var built = Body(program, form);
-        var subject = InPlace(built, Binding(built).Rvalue.Place.Root);
-        new Stratum(c.Types).Run(program, Validated(c, InPlace(subject, Binding(subject).Place.Root)));
+        var subject = InPlace(c.Types, built, Binding(built).Rvalue.Place.Root);
+        new Stratum(c.Types).Run(program, Validated(c, InPlace(c.Types, subject, Binding(subject).Place.Root)));
         var problems = Problems(c, Sound(program), [.. LoanCodes, DiagnosticCode.Unsupported_Kd]).Order(StringComparer.Ordinal);
         Assert.Equal($"{form}: [{expected}]", $"{form}: [{string.Join("; ", problems)}]");
     }
@@ -1790,7 +1790,7 @@ public sealed partial class MirBorrowsTest
 
     // A copy of a body with each Place `(*_x)...` of the local `_x` rebased onto the Place X its Ref `_x = &X` borrows (Copied), every other
     // row as built: a match Subject's (its bindings, discriminant and reads), or a binding's (its stores).
-    private static MirBody InPlace(MirBody built, int local)
+    private static MirBody InPlace(TyCtxt types, MirBody built, int local)
     {
         var borrowed = built.Statements.ToArray().Single(x => x.Place == new MirPlace(local) && x.Rvalue.Kind == MirRvalueKind.Ref).Rvalue.Place;
         return Copied(built, body => place => Map(body, place));
@@ -1808,7 +1808,7 @@ public sealed partial class MirBorrowsTest
             var at = rebased ? Map(body, borrowed) : new MirPlace(place.Root);
             foreach (var id in chain.Skip(rebased ? 1 : 0))
             {
-                at = body.Project(at, built.Projections[id].Kind, built.Projections[id].Arg);
+                at = body.Project(types, at, built.Projections[id].Kind, built.Projections[id].Arg);
             }
 
             return at;

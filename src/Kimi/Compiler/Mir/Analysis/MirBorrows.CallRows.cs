@@ -188,7 +188,7 @@ internal sealed partial class MirBorrows
     // A contract slot's declared Type under the call's substitution (Cover); null where it does not substitute.
     private BoundType? CoverInput(BindingSymbol symbol, Subst? subst, int slot)
     {
-        var declared = TyCtxt.Signature(symbol, null, slot, out _);
+        var declared = types.Signature(symbol, null, slot, out _);
         return declared is null || subst is null ? declared : types.ReadableInstance(declared, subst);
     }
 

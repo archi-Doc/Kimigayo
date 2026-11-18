@@ -109,11 +109,11 @@ internal sealed partial class MirBuilder
         // it: a shared borrow of it, retyped by a copy into a reference to the premised Type (MirTypes.Agrees admits it), whose referent the
         // walk then follows, since MIR Types keep the parameter (DECISIONS BU-72).
         var place = operand.Place;
-        if (this.body.TypeOf(place) is { } actual && MirTypes.Premised(this.body, actual) is var premised && !MirTypes.Agree(actual, premised))
+        if (this.body.TypeOf(place) is { } actual && MirTypes.Premised(compilation.Types, this.body, actual) is var premised && !MirTypes.Agree(actual, premised))
         {
             var view = this.Temp(compilation.Types.Reference(SemanticsKind.Ref, premised), node);
             this.Set(view, MirRvalue.Use(this.body.AddOperand(this.Borrow(SemanticsKind.Ref, place, node))), node);
-            place = this.body.Project(view, MirProjectionKind.Deref, 0);
+            place = this.body.Project(compilation.Types, view, MirProjectionKind.Deref, 0);
         }
 
         return this.Inspected(this.FollowTo(place, type), node);

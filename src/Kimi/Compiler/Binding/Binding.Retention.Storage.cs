@@ -18,12 +18,15 @@ namespace Kimi.Compiler;
 // tests, Reads: a raw layer stating an Origin as the borrows that Origin belongs to; no Type: any value), every Origin occurrence's
 // node (Content targets), and for an input's walk each position with the Type its declaration writes there, the instance holding
 // it and its storage (storageHolds: where rule A's hold walk starts, in that storage, so a by-value input's Fields, payloads and
-// elements reach it as a borrowed input's referent does).
+// elements reach it as a borrowed input's referent does) and each abstract part whose hidden storage it writes at no position
+// (storageHidden: rule 3's fill alone).
 // Invariants: a position is storage the call may write: a part a value of the storage holds by value (Tuple and fixed-array elements, a
 // struct's Fields and base, an enum's payloads, a Closure's environment bindings, a raw layer's pointee by its own step and what a
-// `during self` layer admits, Admitted), the layer of a borrow, pair or raw layer, an abstract part (whose hidden storage is the
-// Abstract one) and a callable; past an exclusive borrow, pair layer admitting one, UniqSlice or raw layer the call may write lies
-// another storage; past a shared one, what a stored value brings (Content targets) but no position. Each state emits once and is walked
+// `during self` layer admits, Admitted), the layer of a borrow, pair or raw layer, an abstract part and a callable. What a part hides
+// (an abstract part's storage; what a value a `during self` layer's AnyOf content holds may refer to) is the Abstract storage, written
+// wherever an input's walk meets the part (StorageAt.HiddenWritable), whether or not the part is a position (PLAN G963). Past an
+// exclusive borrow, pair layer admitting one, UniqSlice or raw layer the call may write lies another storage; past a shared one, what a
+// stored value brings (Content targets) but no position. Each state emits once and is walked
 // from the shallowest depth it is met at (Enters), so the walk names every storage past the root within the bound, whatever route meets
 // a state first; a Type whose storage is past Binding's limits (a growing recursive Type) is the Limit. A state is StorageAt less the
 // layer above (BU-108): that layer decides only whether the next one joins a path (Related), and a layer left out is one the premise
@@ -47,7 +50,7 @@ public sealed partial class Binding
     // The storages of the walk being made (by index: Own, Abstract, the result's, then one per contract Type past an exclusive layer)
     // with each one's contract Type, its index by that Type, the states walked (each with the shallowest depth it was met at and the
     // node its sources go through, Source), the (storage, Type) pairs targeted, the positions (Value tests: a position's node and Type,
-    // null for any value), the Content targets (every Origin occurrence's node) and an input's holds; reused.
+    // null for any value), the Content targets (every Origin occurrence's node), an input's holds and its hidden parts; reused.
     private readonly List<BoundType?> storageTypes = new();
     private readonly Dictionary<BoundType, int> storageOf = new(ReferenceEqualityComparer.Instance);
     private readonly Dictionary<(int Storage, bool Writable, bool Captured, bool Routed, bool Dropped, SourceAt Source, BoundType Type, BoundType? Signature), (int Depth, int Layer)> storageSeen = new();
@@ -60,6 +63,7 @@ public sealed partial class Binding
     private readonly HashSet<BoundType> storageKept = new(ReferenceEqualityComparer.Instance); // The kept abstract Types the output's walk met (Written's Handed).
     private readonly Dictionary<BoundType, int> storageResultSeen = new(ReferenceEqualityComparer.Instance); // ResultLeaves' walk: Enters' depths.
     private readonly List<(HoldAt At, int Storage)> storageHolds = new();
+    private readonly List<BoundType> storageHidden = new();
     private readonly List<int> retentionOwnNodes = new();
     private readonly List<int> retentionOccurrences = new();
     private readonly HashSet<(BoundType Type, bool Callable)> retentionOccurred = new();
@@ -102,6 +106,7 @@ public sealed partial class Binding
         this.storageBound.Clear();
         this.storageKept.Clear();
         this.storageHolds.Clear();
+        this.storageHidden.Clear();
     }
 
     // The storage walk from input j's value (DECISIONS R4-M154): the value itself is the callee's, not storage; what its first exclusive
@@ -128,7 +133,8 @@ public sealed partial class Binding
 
     // The one walk (DECISIONS R4-M154, r2.3): a Type the walk visits, once per state it is in (StorageAt, the path's reduced prefix
     // included). Each visit emits to the fold its state names: the output fold its position where the call writes it (Position; an input's
-    // also a hold, storageHolds), the input fold its sources (Source), each once, at the state's first meeting. Then what the Type's
+    // also a hold, storageHolds) and what an abstract part hides (AbstractPositions; at no position the part, storageHidden), the input
+    // fold its sources (Source), each once, at the state's first meeting. Then what the Type's
     // entries (Holdings) reach (Reach). An input fold's walk stops at the depth bound, so it enters a state by the bounded walks' rule
     // (Enters: again where it is met shallower; PLAN G571), reusing the node the first meeting's sources go through; an output's walk has
     // no bound, so its state counts depth 0 and is entered once.
@@ -164,6 +170,22 @@ public sealed partial class Binding
             {
                 this.storageBound.Add((at.Storage, at.Signature!));
             }
+        }
+
+        // What an abstract part hides is storage the call may write wherever an input's walk meets the part (HiddenWritable), whether the
+        // part is a position or the callee's own value (a by-value input's part): its binding may hold an exclusive reference with Origins
+        // of its own (SPEC 15.6.4 route 2; PLAN G963, DECISIONS BU-225). So the Abstract storage's positions; at a position the hold above
+        // fills it with what a value stored there brings, elsewhere the part takes rule 3's fill alone (storageHidden): its own value is
+        // not written.
+        var hides = at.HiddenWritable && Abstract(type);
+        if (hides)
+        {
+            this.AbstractPositions(environment, type, type);
+        }
+
+        if (hides && targets < 0)
+        {
+            this.storageHidden.Add(type);
         }
 
         if (bound && !at.Bound)
@@ -279,7 +301,8 @@ public sealed partial class Binding
 
     // What a `during self` layer of a stored part admits (row 13's entries, SPEC 5.7 Calls), for the output fold: its pointee and each Type it
     // states in the same storage; an AnyOf entry, the write fact: any value at each Origin argument's node (a position of no Type), in the
-    // same storage and in the Abstract one, what such a value may refer to. The input fold reads that content among the holder's parts by
+    // Abstract storage, what such a value may refer to, wherever the walk meets the layer (HiddenWritable), and in the same storage where
+    // the walk writes it (a by-value holder's own content is the callee's; PLAN G963). The input fold reads that content among the holder's parts by
     // value (SelfContent) and goes through the layer to its pointee.
     private void Admitted(OriginPremiseEnvironment environment, HeldRange run, StorageAt at)
     {
@@ -291,13 +314,17 @@ public sealed partial class Binding
                 continue;
             }
 
-            var arguments = at.Writable && at.Storage >= 0 && at.Storage != ResultStorage ? AnyOfOrigins(this.retentionHeld[i].Holder!) : [];
+            var arguments = at.HiddenWritable ? AnyOfOrigins(this.retentionHeld[i].Holder!) : [];
             for (var j = 0; j < arguments.Count; j++)
             {
-                var argument = arguments[j];
-                var node = this.PremiseNode(environment, argument);
-                this.storagePositions.AddRange([(at.Storage, node, null, null), (AbstractStorage, node, null, null)]);
-                this.storageTargets.AddRange([(at.Storage, node, at.Signature), (AbstractStorage, node, null)]);
+                var node = this.PremiseNode(environment, arguments[j]);
+                this.storagePositions.Add((AbstractStorage, node, null, null));
+                this.storageTargets.Add((AbstractStorage, node, null));
+                if (at.Writable && at.Storage >= 0)
+                {
+                    this.storagePositions.Add((at.Storage, node, null, null)); // The holder's own content: the callee's own where it is (PLAN G963).
+                    this.storageTargets.Add((at.Storage, node, at.Signature));
+                }
             }
         }
     }
@@ -401,10 +428,11 @@ public sealed partial class Binding
         this.retentionHeld.RemoveRange(run.Start, run.End - run.Start);
     }
 
-    // A position: its Value tests, one per node naming the Type's own layer or its Origin arguments (an abstract part's carrier node, also
-    // for the Abstract storage it hides) and per Type its fit reads (Reads), each with the walked signature's declared Type there, and its
-    // own Origins as targets; whether a node names it. A position in the binding of the callee's kept abstract Type (Hides) is tested in
-    // the callee's terms (Binding.Retention.Rows.cs, Storages), so it has no target: the binding's Origins are the caller's.
+    // A position: its Value tests, one per node naming the Type's own layer or its Origin arguments (an abstract part's carrier node) and
+    // per Type its fit reads (Reads), each with the walked signature's declared Type there, and its own Origins as targets; whether a node
+    // names it. The storage an abstract part hides is the visit's (StorageWalk). A position in the binding of the callee's kept abstract
+    // Type (Hides) is tested in the callee's terms (Binding.Retention.Rows.cs, Storages), so it has no target: the binding's Origins are
+    // the caller's.
     private bool Position(OriginPremiseEnvironment environment, BoundType type, int storage, BoundType? signature)
     {
         var (start, end) = this.Reads(type);
@@ -421,12 +449,6 @@ public sealed partial class Binding
         }
 
         this.retentionReads.RemoveRange(start, end - start);
-
-        if (Abstract(type) && storage != ResultStorage)
-        {
-            this.AbstractPositions(environment, type, type);
-        }
-
         this.Targets(environment, type, storage, signature);
         return named;
     }
@@ -808,6 +830,13 @@ public sealed partial class Binding
         int Storage, bool Writable, BoundType? Written, BoundType? Holder, int Depth, SourceAt Source, bool Captured = false, BoundType? Signature = null,
         bool Bound = false, bool Routed = false, bool Dropped = false)
     {
+        // Whether what a part hides (an abstract part's storage, what a value an AnyOf content holds may refer to) is storage the call may
+        // write: in every state of an output's walk from a storage the call writes (an input's, or the result's read as an output,
+        // ResultWrites), which meets none past a shared layer, whether or not the part is a position (SPEC 15.6.4 route 2; PLAN G963,
+        // DECISIONS BU-225); never in the result's own walk (ResultStorage) or an input fold's. The atom walk states the same condition
+        // (RetentionAtom.HiddenWritable), and a handed callable's write test reads it per layer (HiddenWritableBelow, WrittenThrough).
+        internal bool HiddenWritable => this.Storage is not (NoStorage or ResultStorage);
+
         // An output's walk from a storage.
         internal static StorageAt Output(int storage, bool writable) => new(storage, writable, null, null, 0, new(-1, Held: false, -1, 0));
 

@@ -512,7 +512,9 @@ public sealed partial class MirBorrowsTest
     // (structPlainBad); without the premise BxI<E> and BxI<D> are distinct and nothing keeps the pointer in dst (structNoIdOk). The view
     // is the body the comparison stands in (F's ruling 57): in nested g's kept reading g's own `E is D` makes `(T, E)` `(T, D)` though T
     // is the outer function's (nestIdBad; fail-before on b826b8c05: accepted), the components swapped alike (nestId2Bad), as with no
-    // premise (nestPlainBad), not without it (nestNoIdOk); outer's `T is U` holds in g's view, its instantiated reading at outer's S
+    // premise (nestPlainBad), and without it too (nestNoIdBad; the owner's O-423 (i), 15.6.4 "decided per argument, never per Origin":
+    // set takes a T, which g may take from y, and writes what T hides, so T's hidden storage may keep y's Loans, p's included, as a part
+    // y holds by value; formerly nestNoIdOk); outer's `T is U` holds in g's view, its instantiated reading at outer's S
     // included (nestOuterIdBad, nestOuterNoIdOk). U's requirement setQ, handed to fReq's body, may store q through PlainR's own raw
     // layer in storage the body does not own, so `y = 5` conflicts (rvNoIdReqOk, G964's twin, I by SPEC 15.6.4). Its `var o` record is
     // a known pre-existing over-retention, dev's and b826b8c05's too (open issue PLAN G989): o is recorded as retaining its own `o@uniq`
@@ -747,7 +749,7 @@ public sealed partial class MirBorrowsTest
                 gPlain<RetW, raw/u8>(dst@uniq, (t@move, p), wr@move)
                 y0 = 5
                 inspect(dst@ref)
-            func nestNoIdOk<T>(t: T, wr: (uniq/RetW, (T, raw/u8)) -> ())
+            func nestNoIdBad<T>(t: T, wr: (uniq/RetW, (T, raw/u8)) -> ())
                 func gNo<S, E, D>(slot: uniq/S, y: (T, E), set: (uniq/S, (T, D)) -> ()) -> ()
                     return
                 var y0: i32 = 1
@@ -811,7 +813,7 @@ public sealed partial class MirBorrowsTest
                 "idEnclNoPremBad: let host = Host.init(r@follow@raw)", "idRawStepBad: z = 5",
                 "idRawStepBad: var q = u@follow@raw",
                 "idFormGenBad: kk = 2", "retPlainWBad: y = 5", "retIdWBad: y = 5", "structIdBad: y = 5", "structPlainBad: y = 5",
-                "nestIdBad: y0 = 5", "nestId2Bad: y0 = 5", "nestPlainBad: y0 = 5", "nestOuterIdBad: y0 = 5",
+                "nestIdBad: y0 = 5", "nestId2Bad: y0 = 5", "nestPlainBad: y0 = 5", "nestNoIdBad: y0 = 5", "nestOuterIdBad: y0 = 5",
                 "rvNoIdReqOk: y = 5", "rvNoIdReqOk: var o = PlainR.init()",
             ],
             Problems(c, Analyze(c), [.. LoanCodes, DiagnosticCode.Unsupported_Kd]));

@@ -101,7 +101,7 @@ internal sealed partial class TyCtxt
                 case FunctionKoto { IsAnonymous: false } function:
                     return function.BoundSymbol;
                 case PropertyAccessorKoto accessor:
-                    return CallPlan.Accessor(accessor);
+                    return CallPlan.Accessor(binding, accessor);
                 case DeclarationContainerKoto container:
                     return container.BoundSymbol;
             }

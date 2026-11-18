@@ -136,15 +136,15 @@ internal sealed partial class MirBorrows
     // Whether a function's signature bound (a failed one has no contract) and an input of the body may hold a raw layer.
     private bool ReadsRaw(BindingSymbol function)
     {
-        var complete = TyCtxt.Signature(function, null, -1, out var count) is not null;
+        var complete = types.Signature(function, null, -1, out var count) is not null;
         for (var slot = 0; complete && slot < count; slot++)
         {
-            complete = TyCtxt.Signature(function, null, slot, out _) is not null;
+            complete = types.Signature(function, null, slot, out _) is not null;
         }
 
         for (var i = 1; complete && i < this.body.Locals.Length && this.body.Locals[i].Kind == MirLocalKind.Arg; i++)
         {
-            if (MirTypes.HoldsRaw(cases.Type(this.body.Locals[i].Type), this.seen))
+            if (MirTypes.HoldsRaw(types, cases.Type(this.body.Locals[i].Type), this.seen))
             {
                 return true;
             }

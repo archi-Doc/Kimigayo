@@ -10,9 +10,9 @@ internal sealed partial class MirBuilder
 {
     // SPEC 7.3: the parameters a function's signature declares, an accessor's self and value included (TyCtxt.Signature's count; a slot
     // past them asks for no Type).
-    private static int Arity(BindingSymbol function)
+    private int Arity(BindingSymbol function)
     {
-        _ = TyCtxt.Signature(function, null, int.MaxValue, out var count);
+        _ = compilation.Types.Signature(function, null, int.MaxValue, out var count);
         return count;
     }
 
@@ -20,8 +20,8 @@ internal sealed partial class MirBuilder
     // object in the destination (SPEC 6.3.2); a comparison operator's is Compare's (SPEC 13.4, 13.4.1); a direct line's is Line's (SPEC 22.7).
     private void Call(MirPlace destination, Koto node)
     {
-        var call = (ExpansionPlan.Of(node) is { } plan ? plan.Second : CallPlan.Of(node))!;
-        if (call.ArgumentOperations is [{ Source: { } text }] && HirTables.Op(text) == HirOp.Interpolation && ExpansionPlan.Of(text) is { Direct: true })
+        var call = (ExpansionPlan.Of(compilation.Binding, node) is { } plan ? plan.Second : CallPlan.Of(compilation.Binding, node))!;
+        if (call.ArgumentOperations is [{ Source: { } text }] && HirTables.Op(text) == HirOp.Interpolation && ExpansionPlan.Of(compilation.Binding, text) is { Direct: true })
         {
             this.Line(destination, call, node, text);
             return;
@@ -52,7 +52,7 @@ internal sealed partial class MirBuilder
     {
         var function = call.Kind == CalleeKind.Value ? null : call.Target;
         var receiver = function is null ? null : call.Receiver;
-        var count = function is null ? call.Signature.Components[0].Components.Count : Arity(function);
+        var count = function is null ? call.Signature.Components[0].Components.Count : this.Arity(function);
         var direct = call is { Kind: CalleeKind.Virtual, VirtualIsDirect: true } ? HirTables.Symbol(call.VirtualImplementation!) : function;
         if (call.ArgumentOperations.Length + call.DefaultArguments.Length + (receiver is null ? 0 : 1) != count ||
             (receiver is not null && function!.ReceiverIndex < 0))
@@ -80,7 +80,7 @@ internal sealed partial class MirBuilder
         if (receiver is not null)
         {
             // A direct base call's receiver is its implementation's (the selection adapted it to the slot's declaring Type).
-            var parameter = ReferenceEquals(direct, function) ? call.ReceiverOperation.ParameterType : TyCtxt.Signature(
+            var parameter = ReferenceEquals(direct, function) ? call.ReceiverOperation.ParameterType : compilation.Types.Signature(
                 direct!,
                 subst,
                 direct!.ReceiverIndex,
@@ -140,7 +140,7 @@ internal sealed partial class MirBuilder
             callee,
             start,
             node,
-            MirTypes.IsNever(this.body, call.ReturnType) || MirDescriptors.Of(disposition.Id).Diverges,
+            MirTypes.IsNever(compilation.Types, this.body, call.ReturnType) || MirDescriptors.Of(disposition.Id).Diverges,
             function is null ? this.arguments[pending] : default);
         this.arguments.RemoveRange(pending, start - pending);
     }

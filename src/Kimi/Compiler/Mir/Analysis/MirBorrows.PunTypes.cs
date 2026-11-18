@@ -154,16 +154,16 @@ internal sealed partial class MirBorrows
 
         for (var i = 0; most != full && i < AdtDef.Count(type); i++)
         {
-            most = Most(most, AdtDef.FieldType(type, i) is { } field ? this.PlaceBytes(cases.Type(field)) : open);
+            most = Most(most, AdtDef.FieldType(types, type, i) is { } field ? this.PlaceBytes(cases.Type(field)) : open);
         }
 
-        var payloads = AdtDef.CaseTypes(type);
+        var payloads = AdtDef.CaseTypes(types, type);
         for (var i = 0; most != full && payloads is not null && i < payloads.Length; i++)
         {
             most = Most(most, payloads[i] is { } payload ? this.PlaceBytes(cases.Type(payload)) : open);
         }
 
-        most = most != full && AdtDef.Base(type) is { } parent ? Most(most, this.PlaceBytes(cases.Type(parent))) : most;
+        most = most != full && AdtDef.Base(types, type) is { } parent ? Most(most, this.PlaceBytes(cases.Type(parent))) : most;
         return AdtDef.IsEnum(type) ? Most(most, (Extent.None, Extent.Open)) : most;
     }
 

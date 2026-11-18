@@ -129,12 +129,12 @@ internal sealed partial class MirValidator
                 ReferenceEquals(type, BoundType.String);
 
         // The operands an rvalue has: one or two, a keyed Storage's two, or an aggregate's by its shape (Shape); none for the other kinds.
-        private static int Arity(in MirRvalue rvalue) => rvalue.Kind switch
+        private int Arity(in MirRvalue rvalue) => rvalue.Kind switch
         {
             MirRvalueKind.Use or MirRvalueKind.UnaryOp or MirRvalueKind.Cast => 1,
             MirRvalueKind.BinaryOp or MirRvalueKind.Adapt => 2,
             MirRvalueKind.Storage when rvalue.Count != 0 => 2, // A key selection's: the start and the key's Type token (G597).
-            MirRvalueKind.Aggregate => Shape(rvalue).Count,
+            MirRvalueKind.Aggregate => this.Shape(rvalue).Count,
             _ => 0,
         };
 
@@ -143,7 +143,7 @@ internal sealed partial class MirValidator
         // from no operand stores no element (SPEC 4.3.4 noinit), the only count at a generic length, and a Fill has its one value (SPEC
         // 4.3.3, DECISIONS R4-M81); an Array has any number of elements, none for `[]`, and a Dictionary is built from none, the empty
         // collection (SPEC 4.3.1, 12.4.1; DECISIONS R5-M129).
-        private static AggregateShape Shape(in MirRvalue rvalue)
+        private AggregateShape Shape(in MirRvalue rvalue)
         {
             var type = rvalue.Type;
             return (MirAggregateKind)rvalue.Op switch
@@ -156,11 +156,11 @@ internal sealed partial class MirValidator
                 MirAggregateKind.FixedArray when type?.Kind == BoundTypeKind.Dictionary => new(0),
                 MirAggregateKind.Array when type?.Kind == BoundTypeKind.Array => new(rvalue.Count, type.Components[0]),
                 MirAggregateKind.Fill when type?.Kind == BoundTypeKind.FixedArray => new(1, type.Components[0]),
-                MirAggregateKind.Adt when AdtDef.IsStruct(type) && AdtDef.Base(type!) is var parent => new(
+                MirAggregateKind.Adt when AdtDef.IsStruct(type) && AdtDef.Base(types, type!) is var parent => new(
                     AdtDef.Count(type!) + (parent is null ? 0 : 1),
                     Base: parent,
                     Parts: type),
-                MirAggregateKind.Adt when type is not null && AdtDef.CaseTypes(type) is { } cases => (uint)rvalue.Arg < (uint)cases.Length &&
+                MirAggregateKind.Adt when type is not null && AdtDef.CaseTypes(types, type) is { } cases => (uint)rvalue.Arg < (uint)cases.Length &&
                     cases[rvalue.Arg] is { } payload ? new(payload.Components.Count, Parts: payload) : new(-1),
                 _ => new(-1),
             };
@@ -195,7 +195,7 @@ internal sealed partial class MirValidator
             }
 
             this.opaqueValues += rvalue.Kind == MirRvalueKind.Opaque ? 1 : 0;
-            if (Arity(rvalue) != rvalue.Count)
+            if (this.Arity(rvalue) != rvalue.Count)
             {
                 this.Report(MirViolation.Arity);
             }
