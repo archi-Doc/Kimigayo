@@ -79,28 +79,6 @@ public sealed class CommandExecutionTest : IDisposable
         }
     }
 
-    // kimi test's selection (IMPL 20.6.4: "2: invalid options, settings or selection"): a missing input and a solution file nested deeper
-    // than the configuration reader reads (the file's failure, never the runner's 3).
-    [Theory]
-    [InlineData("missing input")]
-    [InlineData("deep solution")]
-    public async Task ATestSelectionFailureReturns2(string origin)
-    {
-        var kimigayo = new Kimigayo(new DiagnosticContractTest.DiagnosticConsole());
-        var input = Path.Combine(this.directory, "missing.kimi");
-        if (origin == "deep solution")
-        {
-            input = Path.Combine(this.directory, "Deep.kimisln");
-            File.WriteAllText(input, "Projects = " + new string('{', 200) + new string('}', 200));
-        }
-
-        Environment.ExitCode = 0;
-        await new TestCommand(kimigayo, new Solution(kimigayo)).Execute([input], TestContext.Current.CancellationToken);
-        var exit = Environment.ExitCode;
-        Environment.ExitCode = 0;
-        Assert.Equal(2, exit);
-    }
-
     [Fact]
     public async Task ACancelledCommandReturns130()
     {
@@ -220,5 +198,38 @@ public sealed class CommandExecutionTest : IDisposable
         File.WriteAllText(file, $"Targets={{\"{WindowsProfile.Target}\"}} OutputPath=\"out/{name}.ll\"");
         File.WriteAllText(Path.Combine(this.directory, name + ".kimi"), "::Kimi.Console.writeLine(\"Hello\")");
         return file;
+    }
+
+    // kimi test runs in process and redirects the process-global Console.Out while it runs, so its rows run alone (ConsoleIsolationCollection).
+    [Collection<ConsoleIsolationCollection>]
+    public sealed class ConsoleTests : IDisposable
+    {
+        private readonly string directory = Path.Combine(Path.GetTempPath(), "kimi-command-" + Guid.NewGuid().ToString("N"));
+
+        public ConsoleTests() => Directory.CreateDirectory(this.directory);
+
+        public void Dispose() => Directory.Delete(this.directory, true);
+
+        // kimi test's selection (IMPL 20.6.4: "2: invalid options, settings or selection"): a missing input and a solution file nested
+        // deeper than the configuration reader reads (the file's failure, never the runner's 3).
+        [Theory]
+        [InlineData("missing input")]
+        [InlineData("deep solution")]
+        public async Task ATestSelectionFailureReturns2(string origin)
+        {
+            var kimigayo = new Kimigayo(new DiagnosticContractTest.DiagnosticConsole());
+            var input = Path.Combine(this.directory, "missing.kimi");
+            if (origin == "deep solution")
+            {
+                input = Path.Combine(this.directory, "Deep.kimisln");
+                File.WriteAllText(input, "Projects = " + new string('{', 200) + new string('}', 200));
+            }
+
+            Environment.ExitCode = 0;
+            await new TestCommand(kimigayo, new Solution(kimigayo)).Execute([input], TestContext.Current.CancellationToken);
+            var exit = Environment.ExitCode;
+            Environment.ExitCode = 0;
+            Assert.Equal(2, exit);
+        }
     }
 }
