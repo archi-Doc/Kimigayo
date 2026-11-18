@@ -61,14 +61,14 @@ public sealed partial class Binding
             {
                 this.CompleteDependent(node, invalidTarget);
             }
-            else if (node is InvocationKoto { BoundCall: { } } synthesized &&
+            else if (node is InvocationKoto synthesized && this.CallOf(synthesized) is not null &&
                 this.synthesizedCalls?.GetValueOrDefault(synthesized) is { BindingFailure: not BindingFailure.None } consumer)
             {
                 // SPEC 23.1.2: a synthesized call is its consumer's witness call (an iteration's entry or step, an index, a view, a range, a
                 // requirement, a write); a consumer that has already failed leaves the call resting on it.
                 this.CompleteDependent(synthesized, consumer);
             }
-            else if (node is InvocationKoto { BoundCall: { } call })
+            else if (node is InvocationKoto invocation && this.CallOf(invocation) is { } call)
             {
                 this.RequireClauses(node, this.CheckCallTypeConstraints(call, this.ConstraintScope(node)), mode, this.Library.PresentedTarget(call.Target));
             }
@@ -128,9 +128,9 @@ public sealed partial class Binding
 
     // The pass's part of the summary (PassPart.Counts): each node's state, counted once the failures are decided, and each failed node's
     // issue, or its derived issue: the pass's own nodes, then the nodes of other modules it failed (PassPart.ForeignFailures), in the
-    // order it failed them. Such a node was counted by its own pass in its earlier state, so the pass adds its final state and takes
-    // the earlier one off: the Bind's Result counts every node once, by its final state. A CheckBound rerun keeps the list (its Fail
-    // calls return at the existing failures), so the record is published once again, not twice.
+    // order it failed them. Such a node was counted by its own pass in its earlier state, so the pass adds the state it recorded and
+    // takes the earlier one off: the Bind's Result counts every node once, by its final state. A CheckBound rerun keeps the list (its
+    // Fail calls return at the recorded failures), so the record is published once again, not twice.
     private void CountStates(BindingMode mode)
     {
         Span<int> counts = stackalloc int[3]; // Resolved, Unresolved, Invalid.
@@ -142,8 +142,8 @@ public sealed partial class Binding
 
         for (var i = 0; i < this.foreignFailures.Count; i++)
         {
-            var (node, before) = this.foreignFailures[i];
-            counts[Tally(node.BindingState)]++;
+            var (node, before, state, _) = this.foreignFailures[i];
+            counts[Tally(state)]++;
             counts[Tally(before)]--;
             this.CollectIssue(node, mode);
         }
@@ -161,7 +161,8 @@ public sealed partial class Binding
     // A failed node's issue of a Final pass, or its derived issue, with its problems.
     private void CollectIssue(Koto node, BindingMode mode)
     {
-        if (mode != BindingMode.Final || node.BindingState == BindingState.Resolved || node.BindingFailure == BindingFailure.None)
+        var failure = mode == BindingMode.Final && this.RecordedState(node) != BindingState.Resolved ? this.RecordedFailure(node) : BindingFailure.None;
+        if (failure == BindingFailure.None)
         {
             return;
         }
@@ -172,7 +173,7 @@ public sealed partial class Binding
         }
         else
         {
-            this.issues.Add(new(node, this.CodeOf(node, node.BindingFailure)) { Failure = node.BindingFailure, Problem = this.SlotProblem(node) });
+            this.issues.Add(new(node, this.CodeOf(node, failure)) { Failure = failure, Problem = this.SlotProblem(node) });
         }
 
         this.CollectProblems(node);

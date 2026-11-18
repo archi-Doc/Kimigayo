@@ -111,7 +111,7 @@ public sealed partial class Binding
 
         var call = this.BindSelectedRequirement(binary, binary.ComparisonStorage, [binary.Left, binary.Right], self, members[0].Contract, members[0].Symbol, scope, tupleOperator);
         binary.ComparisonStorage = call;
-        binary.ComparisonActive = call?.BoundCall is not null;
+        binary.ComparisonActive = call is not null && this.CallOf(call) is not null;
         return Complete(binary, binary.ComparisonActive ? BoundType.Boolean : null);
     }
 }

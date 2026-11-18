@@ -129,7 +129,7 @@ public sealed partial class Binding
                 operations[i] = new(function.Parameters[i].Type, parameter, parameter, ArgumentOperationKind.Value, ArgumentAdaptation.Exact, ParameterIndex: i);
             }
 
-            created.Set(type.Symbol, boundResult, null, [], own.AsSpan(0, function.GenericArguments.Count), declaringType: ItemDeclaringType(type, function), operations: operations, lengthArguments: type.LengthArguments);
+            created.Set(this, type.Symbol, boundResult, null, [], own.AsSpan(0, function.GenericArguments.Count), declaringType: ItemDeclaringType(type, function), operations: operations, lengthArguments: type.LengthArguments);
         }
         finally
         {

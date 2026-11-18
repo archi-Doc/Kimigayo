@@ -31,7 +31,7 @@ internal sealed partial class MirBuilder
 
         sequence = Builds(index.Right) ? this.Handle(sequence, index.Left) : sequence;
         var guard = MirTypes.SelectsByValue(this.body.TypeOf(sequence)) ? (MirPlace?)null : this.Borrow(SemanticsKind.Ref, sequence, index).Place;
-        var key = ExpansionPlan.Of(index)?.First;
+        var key = ExpansionPlan.Of(compilation.Binding, index)?.First;
         MirPlace position;
         if (key is not null || HirTables.Op(index.Right) == HirOp.Range)
         {
@@ -170,7 +170,7 @@ internal sealed partial class MirBuilder
         }
         else
         {
-            var resolved = this.FollowTo(ExpansionPlan.Of(index)?.First is { } by ? this.Resolve(by, index, sequence) : this.Place(index.Right), null);
+            var resolved = this.FollowTo(ExpansionPlan.Of(compilation.Binding, index)?.First is { } by ? this.Resolve(by, index, sequence) : this.Place(index.Right), null);
             (start, last) = (this.Position(MirOperand.Copy(this.Bound(resolved, "start")), index, index),
                 this.Position(MirOperand.Copy(this.Bound(resolved, "end")), index, index));
         }
@@ -285,7 +285,7 @@ internal sealed partial class MirBuilder
     {
         var length = this.Length(sequence, index);
         var result = this.Hold(key.ReturnType, index);
-        this.Call(result, key, index, null, key.ArgumentOperations[ExpansionPlan.Of(index)!.Value.Evaluated].Source, MirOperand.Copy(length));
+        this.Call(result, key, index, null, key.ArgumentOperations[ExpansionPlan.Of(compilation.Binding, index)!.Value.Evaluated].Source, MirOperand.Copy(length));
         return this.Made(result);
     }
 

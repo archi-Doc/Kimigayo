@@ -3,7 +3,7 @@
 #pragma warning disable SA1402 // The walks' outcome belongs to the Type facts.
 
 // Owns the Type facts needed by MIR construction and analyses.
-// Input: published Types, their stored shapes, a body's identity premises (TyCtxt.Premised, read through Premised), Binding's Copy and
+// Input: published Types, their stored shapes, a body's identity premises (the compilation's TyCtxt.Premised, read through Premised), Binding's Copy and
 // Sealed proofs and the root Type statements the operator domain composes (ArithmeticContracts.Supports, ComparisonTypes.OperatorCompares,
 // ReferenceTypes.IsPointer). Output: the destruction walk and the drop, observation, Loan-holding with what a call may write past a value
 // (its guard), raw, exclusivity, shared-layer, selection, view-start, agreement, Never (IsNever), borrow-kind, pointer-cast, integer and
@@ -222,20 +222,20 @@ internal static partial class MirTypes
 
     // SPEC 8.2, 8.2.3: a Type as the body's identity premises make it (TyCtxt.Premised; itself in a body without a definition), since MIR Types
     // keep a premised parameter (DECISIONS BU-72); Agrees and the builder's walk to a compared Place read it.
-    internal static BoundType Premised(MirBody body, BoundType type) => body.Key.Decl is { } definition ? TyCtxt.Premised(definition, type) : type;
+    internal static BoundType Premised(TyCtxt types, MirBody body, BoundType type) => body.Key.Decl is { } definition ? types.Premised(definition, type) : type;
 
     // SPEC 3.1.3, 8.2.3: whether a Type is Never in the body: Never itself, or an abstract Type the body's identity premises make Never (T
     // under `T is Never`; only an abstract Type takes another's head, so a concrete Type is answered by the reference test alone and costs
     // no premising), since MIR Types keep a premised parameter (DECISIONS BU-72). The one statement the Never value's rules read, the
     // builder's and the validator's (DECISIONS R4-M62, R5-M38). PLAN G355's interim (G704): removed when MIR Types are the identical Types
     // (R7-Y5), where this is the reference test again.
-    internal static bool IsNever(MirBody body, BoundType? type)
-        => ReferenceEquals(type, BoundType.Never) || (type is { IsAbstract: true } && ReferenceEquals(Premised(body, type), BoundType.Never));
+    internal static bool IsNever(TyCtxt types, MirBody body, BoundType? type)
+        => ReferenceEquals(type, BoundType.Never) || (type is { IsAbstract: true } && ReferenceEquals(Premised(types, body, type), BoundType.Never));
 
     // SPEC 8.2: the one agreement under premises: Types agree as they are (Agree) or as the body's premises make them (E and S under
     // `E is S`), which the validator checks every Type by.
-    internal static bool Agrees(MirBody body, BoundType? expected, BoundType? actual)
-        => Agree(expected, actual) || (expected is not null && actual is not null && Agree(Premised(body, expected), Premised(body, actual)));
+    internal static bool Agrees(TyCtxt types, MirBody body, BoundType? expected, BoundType? actual)
+        => Agree(expected, actual) || (expected is not null && actual is not null && Agree(Premised(types, body, expected), Premised(types, body, actual)));
 
     /// <summary>Gets whether two Types agree, the one Type agreement of MIR: equal but for the Origins and Origin arguments of either Type
     /// and its components, which an assignment or a call relates instead of equating (SPEC 15.3) and the ownership analysis checks (R4).
