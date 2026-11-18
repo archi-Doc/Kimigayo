@@ -80,7 +80,7 @@ public partial class KimiLibraryShapeTest
         Assert.Equal(2, refusal.Records.Length);
         Assert.All(refusal.Records, static x => Assert.NotNull(x.Document));
         Assert.Equal(2, refusal.Records.Select(static x => x.Span).Distinct().Count());
-        Assert.False(refusal.Syntax);
+        Assert.Equal(refusal.Records[0], refusal.First); // No syntax record: the first counted record is the first Binding-side one.
         Assert.False(library.Kotonoha.Syntax.Frozen);
     }
 

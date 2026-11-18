@@ -33,6 +33,9 @@ public partial class Compilation
     // The requirement of the publisher's broken-contract records, as of MirReport's (Ownership.Internal).
     private static readonly DiagnosticRequirement Defect = DiagnosticRequirement.Ownership(OwnershipRequirement.Internal);
 
+    // The requirement of a refused library's own record (B's ruling 40 (i)): a broken build, Binding's internal failure.
+    private static readonly DiagnosticRequirement RefusedLibrary = DiagnosticRequirement.Binding(BindingFailure.Internal);
+
     private readonly List<PairBinder> caseBinders = []; // The binders the first member's case text names.
     private readonly List<PairBinder> memberBinders = []; // Another member's.
 
@@ -126,24 +129,20 @@ public partial class Compilation
             condition: (ushort)problem.Ordinal);
     }
 
-    /// <summary>Publishes a refused library's records (PLAN G949 Stage 2 U2a; design 5.3, R3; C2 (4)): each as InternalInvariant_Kd at its
-    /// library location in this compilation's store for a library subject (StoreOf), under its own requirement; one about an input
-    /// without a document at the project file, as Binding reports it. A syntax record is never here: it stays the library module's
-    /// syntax list's, which that list's owner publishes (form (R)).</summary>
-    /// <param name="records">The refusal's records (LibraryLayer.Refusal).</param>
-    internal void PublishRefusal(LocatedRecord[] records)
+    /// <summary>Publishes a refused library (PLAN G949 Stage 2 U2a; design 5.3, R3; C2 (4); B's ruling 40 (i)): each Binding-side record as
+    /// InternalInvariant_Kd at its library location in this compilation's store for a library subject (StoreOf), under its own
+    /// requirement, and the refusal's own InternalInvariant_Kd at the first counted record's location, so a refused library always
+    /// publishes an Error, a syntax Warning alone included. A record without a document is at the project file, as Binding reports it. A
+    /// syntax record is never here: it stays the library module's syntax list's, which that list's owner publishes (form (R)).</summary>
+    /// <param name="refusal">The refusal (LibraryLayer.Refusal).</param>
+    internal void PublishRefusal(LibraryLayer.Refused refusal)
     {
-        foreach (var record in records)
+        foreach (var record in refusal.Records)
         {
-            if (record is { Document: { } document, Span: { } span })
-            {
-                this.LibraryStore.ReportLocation(record.Requirement, span, DiagnosticCode.InternalInvariant_Kd, document);
-            }
-            else
-            {
-                this.Diagnostics.Report(DiagnosticPartition.Binding, DiagnosticCode.InternalInvariant_Kd, this.Project.FilePath);
-            }
+            this.PublishLocated(record.Requirement, record);
         }
+
+        this.PublishLocated(RefusedLibrary, refusal.First);
     }
 
     // The related location of a fact naming a site (design 3.3; DIAGNOSTICS' A6 fact tables): its role and wording.
@@ -252,6 +251,19 @@ public partial class Compilation
     {
         var node = this.SyntaxOf(subject);
         this.StoreOf(subject)?.ReportLocation(requirement, node.Span, code, node.CodeContext.SourceDocument);
+    }
+
+    // An InternalInvariant_Kd at a located record's place: its library location in the library store, or the project file without one.
+    private void PublishLocated(DiagnosticRequirement requirement, LocatedRecord at)
+    {
+        if (at is { Document: { } document, Span: { } span })
+        {
+            this.LibraryStore.ReportLocation(requirement, span, DiagnosticCode.InternalInvariant_Kd, document);
+        }
+        else
+        {
+            this.Diagnostics.Report(DiagnosticPartition.Binding, DiagnosticCode.InternalInvariant_Kd, this.Project.FilePath);
+        }
     }
 
     // Core's one store decision for a record (PLAN G949 Stage 2 U2a; design 5.3, M-R2-B1): a library subject's record goes to this

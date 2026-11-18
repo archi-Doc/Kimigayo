@@ -191,7 +191,8 @@ public sealed partial class Binding
             this.ReportFailures(this.issues, this.derivedIssues);
             this.ReportDuplicateDeclarations();
             this.ReportNonFailingRecords();
-            this.Library.Layer.Refusal = new(diagnostics.TakeLocated(DiagnosticPartition.Binding), syntax);
+            var records = diagnostics.TakeLocated(DiagnosticPartition.Binding);
+            this.Library.Layer.Refusal = new(records, diagnostics.FirstSyntaxRecord(this.Library.Kotonoha) ?? records[0]);
             return false;
         }
 

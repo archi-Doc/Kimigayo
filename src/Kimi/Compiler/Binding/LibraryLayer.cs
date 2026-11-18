@@ -13,13 +13,14 @@ namespace Kimi.Compiler;
 //   pass's writes to the part Binding's pass driver hands it.
 // - Outputs: Impls, which only the compilation's ImplTable reads and composes (its one composition point); Part, which only Binding's
 //   pass driver hands to a pass and only Binding's composed views and its keyed collections' one find (PassPart.Find) read; Refusal:
-//   the refused library pass's Binding-side records as located facts, which Core publishes, and whether the library module's syntax
-//   list held a record (that list stays its own records' owner, the module's DiagnosticOwner's: form (R)).
+//   the refused library pass's Binding-side records as located facts, which Core publishes, and the first record the freeze counted,
+//   where Core publishes the refusal's own record (the syntax list stays its own records' owner, the module's DiagnosticOwner's: form (R)).
 // - Invariants: never a region of an overlay store and never copied into one; its stores fill and reset with each library pass, one
 //   per compilation: the library pass fills them once and S1-1's freeze stamps them Frozen (Binding.FreezeLibrary); written only by
 //   the library's registrations and the library pass. The library version is per compilation (HirTables.LibraryVersion, the run of
 //   the compilation's own Binding that froze the library), and the library HIR is identical in every Bind of a compilation after the
-//   freeze (G949 ruling 174). A refused layer holds only its refusal: its part is reset and nothing in it is Frozen (Binding's
+//   freeze (G949 ruling 174). A refused layer holds its refusal: its part is reset, nothing in it is Frozen and its Size is the refused
+//   pass's measure (Binding's
 //   FreezeLibrary refuses; the next Bind runs the library pass again); the refusal owns its Binding-side records and refers to the syntax
 //   list it does not own.
 // - Prohibitions: no field holds a Compilation, Binding, TyCtxt, DiagnosticOwner or diagnostic collection (C-376 condition 3); no
@@ -47,9 +48,10 @@ internal sealed class LibraryLayer
     internal Refused? Refusal { get; set; }
 
     /// <summary>A refused library pass's records (PLAN G949 Stage 2 U2a, C2): the Binding-side ones as located facts, which the reading
-    /// compilation publishes as InternalInvariant_Kd at their library locations, and whether the clause counted the library module's
-    /// syntax list, whose records stay that list's (form (R)).</summary>
+    /// compilation publishes as InternalInvariant_Kd at their library locations, and the first record the freeze counted (the library
+    /// module's syntax list's first, else the first Binding-side one), where the refusal's own InternalInvariant_Kd is published (B's
+    /// ruling 40 (i)), so a refused library always publishes an Error; syntax records stay that list's (form (R)).</summary>
     /// <param name="Records">The Binding-side records.</param>
-    /// <param name="Syntax">Whether the library module's syntax list held a record.</param>
-    internal sealed record Refused(Kimi.Diagnostics.LocatedRecord[] Records, bool Syntax);
+    /// <param name="First">The first counted record's location.</param>
+    internal sealed record Refused(Kimi.Diagnostics.LocatedRecord[] Records, Kimi.Diagnostics.LocatedRecord First);
 }

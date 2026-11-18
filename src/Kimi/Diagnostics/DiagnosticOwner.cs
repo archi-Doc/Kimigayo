@@ -390,6 +390,22 @@ public sealed partial class DiagnosticOwner
     internal bool HasSyntaxRecords(Kotonoha module)
         => this.modules.TryGetValue(module, out var index) && index < this.syntax.Count && this.syntax[index].Facts.Count != 0;
 
+    /// <summary>Gets the first record of a module's syntax list as a located fact (PLAN G949 Stage 2 U2a, B's ruling 40: a refused library's
+    /// own record is published at the first record its freeze counted, the syntax list's first).</summary>
+    /// <param name="module">The module.</param>
+    /// <returns>The record, or null for an empty list.</returns>
+    internal LocatedRecord? FirstSyntaxRecord(Kotonoha module)
+    {
+        if (!this.modules.TryGetValue(module, out var index) || index >= this.syntax.Count || this.syntax[index].Facts.Count == 0)
+        {
+            return null;
+        }
+
+        var fact = this.syntax[index].Facts[0];
+        var document = fact.Source >= 0 ? this.sources[fact.Source].Document : null;
+        return new(fact.Code, fact.Key.Requirement, document, document is null ? null : new SourceSpan(fact.Start, fact.Length));
+    }
+
     /// <summary>Takes a partition's records out as located facts (code, requirement, document and span; none for a record about an input
     /// without a document) and discards the partition (PLAN G949 Stage 2 U2a: a refused library pass's records become its refusal's). The
     /// records are those <see cref="Finalize"/> would publish: a derived one whose prerequisites all lead to published direct Errors, in this

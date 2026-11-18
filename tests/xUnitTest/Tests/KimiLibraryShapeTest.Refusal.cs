@@ -2,6 +2,7 @@
 
 using System.Reflection;
 using Kimi.Compiler;
+using Kimi.Diagnostics;
 using Xunit;
 
 namespace XunitTest;
@@ -24,7 +25,7 @@ public partial class KimiLibraryShapeTest
         var c = RefusedLibrary(ZUnsupportedProbe + "public group ZUses\n    public func zuse(v: ref/::ZProbe.Inner) => ()\n");
         var first = c.Library.Layer.Refusal!;
         Assert.Single(first.Records);
-        Assert.False(first.Syntax);
+        Assert.Equal(first.Records[0], first.First); // The first counted record: no syntax record here.
         Assert.Empty(c.Binding.Issues);
         Assert.Empty(c.Library.Layer.Part.Issues);
         Assert.Empty(c.Library.Layer.Part.Nodes);
@@ -42,15 +43,14 @@ public partial class KimiLibraryShapeTest
         Assert.Equal(2, c.Library.Layer.Refusal!.Records.Length);
         Assert.False(c.Check());
         var published = TestDiagnostics.Of(c);
-        Assert.Equal(2, published.Length);
+        Assert.Equal(3, published.Length); // Each record, and the refusal's own at the first (ruling 40 (i)).
         Assert.All(published, x =>
         {
             Assert.Equal(nameof(Kimi.DiagnosticCode.InternalInvariant_Kd), x.Code);
-            Assert.Equal(c.Library.Kotonoha.Name, x.Path); // The library's document.
-            Assert.Equal("ZProbe", x.Text);
+            Assert.Equal(c.Library.Kotonoha.Name, x.Path); // The probe's library document.
         });
-        int[] uses = [library.IndexOf("ref/::ZProbe.Inner", StringComparison.Ordinal) + "ref/::".Length, library.IndexOf("ref/::ZProbe)", StringComparison.Ordinal) + "ref/::".Length];
-        Assert.Equal(uses, published.Select(static x => x.Span.Start).Order().ToArray());
+        SourceSpan[] uses = [new(library.IndexOf("::ZProbe.Inner", StringComparison.Ordinal) + 2, 6), new(library.IndexOf("::ZProbe)", StringComparison.Ordinal) + 2, 6)];
+        Assert.Equal(uses, published.Select(static x => x.Span).Distinct().Order().ToArray());
     }
 
     // s6b and s6p (C1 (x); form (R)): a library whose only defect is a syntax error (here a parameter list without its `)`, which the parser
@@ -59,15 +59,20 @@ public partial class KimiLibraryShapeTest
     [Fact]
     public void ASyntaxOnlyLibraryDefectIsRefusedAndItsRecordStaysTheParsers()
     {
-        var c = RefusedLibrary("public group ZSyntax\n    public func f(x: i32 -> i32 => x\n");
-        Assert.True(c.Library.Layer.Refusal!.Syntax);
+        var library = "public group ZSyntax\n    public func f(x: i32 -> i32 => x\n";
+        var c = RefusedLibrary(library);
+        var refusal = c.Library.Layer.Refusal!;
         Assert.False(c.Check());
         var published = TestDiagnostics.Of(c);
         var parsers = published.Where(static x => x.Code is nameof(Kimi.DiagnosticCode.ExpectedSyntax_Kd) or nameof(Kimi.DiagnosticCode.MissingSyntax_Kd)).ToArray();
-        Assert.NotEmpty(parsers);
+        Assert.Equal(3, parsers.Length);
         Assert.Equal(parsers.Length, parsers.Select(static x => (x.Code, x.Span)).Distinct().Count());
-        Assert.Equal(published.Length, parsers.Length + c.Library.Layer.Refusal!.Records.Length);
-        Assert.DoesNotContain(published, x => x.Code == nameof(Kimi.DiagnosticCode.InternalInvariant_Kd) && parsers.Any(p => p.Span == x.Span));
+        Assert.Equal(library.Length - 1, Assert.Single(parsers, static x => x.Code == nameof(Kimi.DiagnosticCode.MissingSyntax_Kd)).Span.Start); // Missing `)`.
+        // Beside them only InternalInvariant_Kd: the refusal's own at the first parser record (ruling 40 (i)) and any Binding-side record.
+        var internals = published.Where(static x => x.Code == nameof(Kimi.DiagnosticCode.InternalInvariant_Kd)).ToArray();
+        Assert.Equal(published.Length, parsers.Length + internals.Length);
+        Assert.Contains(internals, x => x.Span == refusal.First.Span);
+        Assert.Contains(parsers, x => x.Span == refusal.First.Span);
     }
 
     // Ruling 33 (F2): the check of a compilation over a refused library publishes only the refusal and builds no MIR.
@@ -77,7 +82,24 @@ public partial class KimiLibraryShapeTest
         var c = RefusedLibrary(ZUnsupportedProbe + "public group ZUses\n    public func zuse(v: ref/::ZProbe.Inner) => ()\n");
         Assert.False(c.Check());
         Assert.Null(typeof(Compilation).GetField("mir", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(c));
-        Assert.Equal(nameof(Kimi.DiagnosticCode.InternalInvariant_Kd), Assert.Single(TestDiagnostics.Of(c)).Code);
+        Assert.All(TestDiagnostics.Of(c), static x => Assert.Equal(nameof(Kimi.DiagnosticCode.InternalInvariant_Kd), x.Code));
+    }
+
+    // P4 (the Front's C1; B's ruling 40 (i)): a library whose only record is a syntax Warning (a style rule; labelled in
+    // back\notes\l1-s2\u2a-impl\labels.md) is refused, and its rejected check is explained: the Warning under its own code beside the
+    // refusal's own InternalInvariant_Kd at its location. Before ruling 40 the check published the Warning alone, and finalizing the
+    // rejected result threw UnexplainedRejection.
+    [Fact]
+    public void ALibraryWhoseOnlyRecordIsAWarningIsRefusedWithAnError()
+    {
+        var c = RefusedLibrary("public struct ZOrder\n    public func f() => ()\n    public let x: i32\n");
+        Assert.Empty(c.Library.Layer.Refusal!.Records);
+        Assert.False(c.Check());
+        var published = c.Diagnostics.Finalize(rejected: true).Diagnostics;
+        var warning = Assert.Single(published, static x => x.Code == nameof(Kimi.DiagnosticCode.DeclarationOrderWarning_Kd));
+        var error = Assert.Single(published, static x => x.Code == nameof(Kimi.DiagnosticCode.InternalInvariant_Kd));
+        Assert.Equal(warning.Span, error.Span);
+        Assert.Equal(2, published.Length);
     }
 
     // A compilation whose library holds a probe source and whose program is valid, bound once: its Bind is refused (no result).

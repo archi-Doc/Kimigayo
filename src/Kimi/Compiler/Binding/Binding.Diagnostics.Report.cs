@@ -25,7 +25,7 @@ public sealed partial class Binding
         this.ReportFailures(this.issuesView, this.derivedIssuesView);
         if (this.Library.Layer.Refusal is { } refusal)
         {
-            this.compilation.PublishRefusal(refusal.Records); // A refused library's records (PLAN G949 Stage 2 U2a, C2 (4)).
+            this.compilation.PublishRefusal(refusal); // A refused library's records (PLAN G949 Stage 2 U2a, C2 (4); ruling 40).
         }
 
         if (this.Result.Mode == BindingMode.Final)

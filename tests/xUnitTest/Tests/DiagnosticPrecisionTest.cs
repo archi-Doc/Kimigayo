@@ -1,6 +1,7 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using Kimi.Compiler;
+using Kimi.Diagnostics;
 using Xunit;
 
 namespace XunitTest;
@@ -563,7 +564,8 @@ public class DiagnosticPrecisionTest
     // DECISIONS BU-219 (PLAN G949 S1-1's freeze): the Kimi library is a compiler-build constant, so a library whose pass has a record is a
     // broken build, refused before anything is frozen. From PLAN G949 Stage 2 U2a the refusal is a value, not a thrown fault (B's ruling 6;
     // the Front's C-380 16:55 consent, (d)): the Bind leaves no result and binds no program, and the check publishes the library's record
-    // as InternalInvariant_Kd at its library location, `zuse`'s `::ZProbe.Inner`, and nothing else.
+    // as InternalInvariant_Kd at its library location, `ZProbe` in `zuse`'s `::ZProbe.Inner`, beside the refusal's own InternalInvariant_Kd
+    // at the same place, the first record the freeze counted (B's ruling 40 (i)), and nothing else.
     // The former rows z07x, z08x, t23x and u09x (a library declaration naming an `#Unsupported` library declaration, "L Unsupported_Kd")
     // are this row, z07x's library; the same uses in a program keep their located records (z01x-z05x, t01x-t19x and the u rows).
     [Fact]
@@ -575,12 +577,16 @@ public class DiagnosticPrecisionTest
         c.Kotonoha.CreateCodeContext().Parse(c.Kotonoha.RootKoto, "func f(v: ref/i32) => ()\n");
         Assert.Equal(default, c.Bind());
         Assert.False(c.Check());
-        var record = Assert.Single(TestDiagnostics.Of(c));
-        Assert.Equal(nameof(Kimi.DiagnosticCode.InternalInvariant_Kd), record.Code);
-        Assert.Equal(c.Library.Kotonoha.Name, record.Path); // The library's document, not the program's.
         var library = UnsupportedProbe + "public group ZUses\n    public func zuse(v: ref/::ZProbe.Inner) => ()\n";
-        Assert.Equal(new(library.IndexOf("ref/::ZProbe.Inner", StringComparison.Ordinal) + "ref/::".Length, "ZProbe".Length), record.Span);
-        Assert.Equal("ZProbe", record.Text); // The use's location, as the program rows' Unsupported_Kd (z01x-z05x) has it.
+        var use = new SourceSpan(library.IndexOf("::ZProbe.Inner", StringComparison.Ordinal) + 2, "ZProbe".Length);
+        var records = TestDiagnostics.Of(c);
+        Assert.Equal(2, records.Length);
+        Assert.All(records, x =>
+        {
+            Assert.Equal(nameof(Kimi.DiagnosticCode.InternalInvariant_Kd), x.Code);
+            Assert.Equal(c.Library.Kotonoha.Name, x.Path); // The probe's library document, not the program's.
+            Assert.Equal(use, x.Span); // The use's location, as the program rows' Unsupported_Kd (z01x-z05x) has it.
+        });
     }
 
     // SPEC 6.7, 19.4 (R8-G1 row A6): excluded syntax is checked syntactically only, so an implementation Attribute there is not
