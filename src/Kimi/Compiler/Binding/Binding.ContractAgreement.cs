@@ -41,6 +41,14 @@ public sealed partial class Binding
 
     private bool RefutedOverlapInputs(BindingScope original, BindingScope overlap)
     {
+        // R7-C3 (C-f3b; SPEC 8.9.2, 8.2.3): the overlap's own identity (the two references made one) in Conflict with an input's identity
+        // is the judge's verdict on the overlap view: the inputs refute the intersection. The loop below proves the other inputs.
+        if (this.ClassesOf(overlap, out _) is { Worst: IdentityClasses.Conflict } classes &&
+            classes.OwnError(overlap.Parent is { } parent ? this.ClassesOf(parent, out _) : null).Worst == IdentityClasses.Conflict)
+        {
+            return true;
+        }
+
         for (var scope = original; scope is not null; scope = scope.Parent)
         {
             if (scope.Constraints is not { Invalid: false } environment)

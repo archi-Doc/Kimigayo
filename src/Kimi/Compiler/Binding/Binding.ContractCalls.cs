@@ -142,7 +142,7 @@ public sealed partial class Binding
                 // is one candidate per reference; a refinement reaches the same reference as its ancestor.
                 var identity = members[i];
                 var requirement = identity.Symbol;
-                if (requirement.Declaration is FunctionKoto && group.Seen.Add(identity))
+                if (requirement.Declaration is FunctionKoto && group.Seen.Add(identity) && !Identified(group.Members, group.Contracts, identity))
                 {
                     group.Members.Add(requirement);
                     group.Contracts.Add(identity.Contract);
@@ -150,13 +150,29 @@ public sealed partial class Binding
                 else if (requirement.Kind == BindingSymbolKind.Property)
                 {
                     group.PropertyRequirement = true;
-                    if (group.Seen.Add(identity))
+                    if (group.Seen.Add(identity) && !Identified(group.Properties, group.PropertyContracts, identity))
                     {
                         group.Properties.Add(requirement);
                         group.PropertyContracts.Add(identity.Contract);
                     }
                 }
             }
+        }
+
+        // R7-C3 (C-f3a; SPEC 8.2.3, 8.6.1): a requirement reached through two references the judge identifies in the use's view
+        // (`P<U.(HasItem).Item>` and `P<i32>` under `U.(HasItem).Item is i32`) is one candidate.
+        bool Identified(List<BindingSymbol> requirements, List<BindingSymbol> contracts, BoundRequirement identity)
+        {
+            for (var j = 0; j < requirements.Count; j++)
+            {
+                if (ReferenceEquals(requirements[j], identity.Symbol) && contracts[j].Type is { } kept && identity.Contract.Type is { } reached &&
+                    this.IdentityProven(kept, reached, scope))
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
     }
 

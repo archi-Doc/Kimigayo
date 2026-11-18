@@ -335,7 +335,11 @@ public sealed partial class Binding
 
         // SPEC 6.3.2, 8.5.2: a projection qualifier constructs its normal form.
         var type = projected is not null ? Complete(member.Left, projected) : this.ConstructorQualifierType(member.Left, path.Symbol!, scope);
-        if (type is not { Semantics: SemanticsKind.Owner, Symbol.Declaration: StructKoto declaration } ||
+
+        // R7-C3 (F's C2 ruling 226, C-i; SPEC 6.3.2, 8.5.2, 8.2.3): the construction's declaring Type is the qualifier's class form in the
+        // use's view, published once by this selection (memberSelections); the qualifier keeps its Type as written, and a record names it.
+        var declaring = type is null ? null : this.ClassForm(type, scope, out _);
+        if (declaring is not { Semantics: SemanticsKind.Owner, Symbol.Declaration: StructKoto declaration } ||
             !this.scopes[declaration].Values.TryGetValue("init", out var constructor))
         {
             // DECISIONS BU-61, BU-184 (SPEC 23.1.2): a projection that stays one names no structure; its absence rests on the projection's
@@ -352,6 +356,7 @@ public sealed partial class Binding
         member.Right.BindingState = BindingState.Resolved;
         member.Right.BoundSymbol = constructor;
         member.BoundSymbol = constructor;
+        this.memberSelections[member] = new(constructor, declaring, null);
         this.memberSides[member] = MemberSide.Type; // SPEC 6.3.2: a constructor is never called on a receiver.
         return constructor;
     }
@@ -497,7 +502,7 @@ public sealed partial class Binding
         var baseInitializer = call.Parent is FunctionKoto { IsConstructor: true } constructor && ReferenceEquals(constructor.BaseInitializer, call);
         var type = baseInitializer
             ? AdtDef.Base(this.SelfType(((FunctionKoto)call.Parent!).BoundSymbol!.Scope.Owner.BoundSymbol!))!
-            : ((MemberAccessKoto)call.Method).Left.BoundType!;
+            : this.memberSelections[(MemberAccessKoto)call.Method].DeclaringType!; // ConstructorMember's published declaring Type (C-i)
         var count = owner.BoundSymbol!.Schema!.Origins.Count;
         if (count == 0)
         {
