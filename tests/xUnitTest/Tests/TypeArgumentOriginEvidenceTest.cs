@@ -86,6 +86,22 @@ public class TypeArgumentOriginEvidenceTest
         Assert.Equal(expected, DiagnosticCorpus.Check(source).Diagnostics.Select(x => (x.Code, Text(source, x.Span), x.Label)));
     }
 
+    // SPEC 10.8 Solving, 15.6.1, 10.2.1: the selected candidate's re-trial (CheckDefaulted's, after U takes its default) starts without
+    // its trial's invariant marks (ClearTypes clears them with the Types), so the invariant binding `slot@uniq` is T's solution in either
+    // argument order and only the covariant `y` fails. The guard of the re-trial rule: were ClearTypes to keep the marks, `put2`'s re-trial
+    // would keep y's covariant binding and report "requires x == y" at `slot@uniq`.
+    [Theory]
+    [InlineData("put2(y, slot@uniq, 1)", "y")]
+    [InlineData("put3(slot@uniq, y, 1)", "y")]
+    [InlineData("put2(x, slot@uniq, 1)", null)]
+    public void ARetrialStartsWithoutItsTrialsMarks(string call, string? failed)
+    {
+        var source = "func put2<T, U>(v: T, s: uniq/T, n: U) -> () => ()\nfunc put3<T, U>(s: uniq/T, v: T, n: U) -> () => ()\n" +
+            "func use(x: ref/i32, y: ref/i32) -> ()\n    var slot: ref/i32 during x = x\n    " + call + "\n" + Main;
+        (string Code, string At, string? Label)[] expected = failed is null ? [] : [(nameof(DiagnosticCode.UnprovenOriginRelation_Kd), failed, "requires y outlives x, which is not proven")];
+        Assert.Equal(expected, DiagnosticCorpus.Check(source).Diagnostics.Select(x => (x.Code, Text(source, x.Span), x.Label)));
+    }
+
     // q20: either argument order stores the new Borrow into the same local region.
     [Theory]
     [InlineData(Put, "put(slot@uniq, b@ref)")]
