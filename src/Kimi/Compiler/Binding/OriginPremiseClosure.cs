@@ -23,7 +23,7 @@ internal enum OriginPremiseRule : byte
     /// <summary>R2: input well-formedness: a Type's own relations and its stored Origins outliving an outer borrow.</summary>
     Input,
 
-    /// <summary>R3: result well-formedness of the enclosing named function.</summary>
+    /// <summary>R3: result well-formedness of the enclosing named function: its Types' own relations and its stored Origins outliving an outer borrow.</summary>
     Result,
 
     /// <summary>R4: associated formation and requirement relations.</summary>

@@ -446,7 +446,7 @@ public sealed partial class Binding
             this.AddTypePremises(environment, declaring, OriginPremiseRule.Input);
         }
 
-        this.AddResultPremises(environment, result);
+        this.AddDefinitionResultPremises(environment, result);
         if (callee is not null && this.originDeclarations.TryGetValue(callee.OriginBinder, out var declaration) && declaration.Completed)
         {
             foreach (var relation in declaration.Relations)

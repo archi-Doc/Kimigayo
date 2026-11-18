@@ -34,9 +34,12 @@ public sealed partial class Binding
 
     /// <summary>Gets a value indicating whether the receiver of a user index expression conforms to UniqIndexable, whatever its path permits.</summary>
     /// <param name="node">The index expression.</param>
-    /// <returns>Whether indexUniq exists for the receiver.</returns>
+    /// <returns>Whether indexUniq exists for the receiver; a node of the frozen library is refused (EnsurePassNode).</returns>
     internal bool HasExclusiveIndexer(Koto node)
-        => KotoHelper.UnwrapParentheses(node) is IndexKoto index && this.uniqIndexing.GetValueOrDefault(index).Exclusive;
+    {
+        EnsurePassNode(node, nameof(this.HasExclusiveIndexer));
+        return KotoHelper.UnwrapParentheses(node) is IndexKoto index && this.uniqIndexing.GetValueOrDefault(index).Exclusive;
+    }
 
     // SPEC 4.7.1: the written Type of a key that selects a conformance (ConformanceForKey reads it below its layers); null for `null`
     // or an unfitted number literal, which could fit several keys.
