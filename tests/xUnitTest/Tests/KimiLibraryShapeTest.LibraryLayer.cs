@@ -388,12 +388,11 @@ public partial class KimiLibraryShapeTest
             ["Binding.identityClasses"] = Rule.Epoch, // A view's identity tables (ResetIdentityClasses, from ResetCapabilities).
             ["Binding.identityLent"] = Rule.Epoch, // The tables lent to them, returned to identityPool at the epoch's end.
 
-            // Numbers: Tarjan's visit order, the Origin requirement walk's consumer mark, a scope's view serial and the chain state it names.
+            // Numbers: Tarjan's visit order. A scope's view serial and the chain state it names, and an Origin requirement work's
+            // Consumer mark, compare by value (PLAN G949 S1-1, ruling 205 C2): the library pass settles every library scope's serial
+            // (SettleViewSerials) and a frozen work is never active, so a later step's write to a library one is a difference.
             ["InlineSummary.Index"] = Rule.Number,
             ["InlineSummary.Low"] = Rule.Number,
-            ["OriginRequirementWork.Consumer"] = Rule.Number,
-            ["BindingScope.ViewSerial"] = Rule.Number,
-            ["BindingScope.ViewState"] = Rule.Number,
 
             // A per-pass scratch, pool or cache both passes use (G949 S1-r1b; O9, rulings 152 and 178): the program pass's after a Bind.
             ["Binding.enumeratePool"] = Rule.Program, // Enumerate's lists of one outermost request, lent by position, all free at its end.

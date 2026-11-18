@@ -249,15 +249,18 @@ public class ArchitectureRulesTest
     // OriginDeclaration's read members, so the readers of a declaration, a failed one included, are those members' callers.
     [InlineData("Formation of an Origin declaration", "src/Kimi/Compiler", @"\bForming\b", "Binding/Binding.LocalOrigins.cs=27;Binding/Binding.OriginDeclarations.Failures.cs=5;Binding/Binding.OriginDeclarations.cs=29;Binding/Binding.OriginInheritance.cs=6;Binding/Binding.Origins.Model.cs=4")]
     // PLAN G949 S1-0b r2 and r3 (the library-layer dump's number rule, KimiLibraryShapeTest.LibraryLayer): a number naming a walk's or
-    // memo's order is read only by the walk or memo that assigns it, so the dump prints it as # and compares the rest of its row. Each row
-    // counts every name through which the number is reached, its holder and a member returning it included:
+    // memo's order, or a change counter, is read only by the walk or memo that assigns it. Each row counts every name through which the
+    // number is reached, its holder and a member returning it included:
     // - a scope's view serial and the chain state it names: declared in BindingModel and read by ContractSolver's SerialOf, whose callers
-    //   compare the serial for equality only (ContractSolver, its Rows and TypeIdentity's memo);
-    // - an Origin requirement work's Consumer mark: read by OriginRequirements' edge collection;
+    //   compare the serial for equality only (ContractSolver, its Rows and TypeIdentity's memo). From PLAN G949 S1-1 the library pass
+    //   settles every library scope's serial before the freeze (SettleViewSerials) and the dump compares it by value, so w1 sees a later
+    //   step's write to a library scope's (G949 ruling 205 C2);
+    // - an Origin requirement work's Consumer mark: read by OriginRequirements' edge collection; compared by value from S1-1 too, since a
+    //   frozen library work is never active, so no later call marks it;
     // - an inline summary's Tarjan Index and Low: read in InlineLayouts, the one file that names the summary, its stores or Summary, the
-    //   member returning one (ComponentSummaries' own Summary shares the name and is counted too). All are Binding's private members, so
-    //   only Binding's partial files, in its directory, reach them.
-    // A further reader fails here until the dump's rule is reviewed.
+    //   member returning one (ComponentSummaries' own Summary shares the name and is counted too); the dump prints them as # and compares
+    //   the rest of their row. All are Binding's private members, so only Binding's partial files, in its directory, reach them.
+    // A further reader fails here until its use is reviewed (equality only for a serial or a mark; the dump's # rule for a Tarjan number).
     [InlineData("Readers of a scope's view serial and state", "src/Kimi/Compiler", @"\bView(?:Serial|State)\b|\bSerialOf\b", "Binding/Binding.ContractSolver.Rows.cs=3;Binding/Binding.ContractSolver.cs=12;Binding/Binding.TypeIdentity.cs=3;Binding/BindingModel.cs=3")]
     [InlineData("Readers of an Origin requirement work's Consumer mark", "src/Kimi/Compiler", @"\.Consumer\b|\bConsumer:", "Binding/Binding.OriginRequirements.cs=2")]
     [InlineData("Holders of an inline summary's Tarjan numbers", "src/Kimi/Compiler/Binding", @"\b(?:InlineSummary|inlineSummaries|inlineSummaryPool|inlineComponents|Summary)\b", "Binding.ComponentSummaries.cs=7;Binding.InlineLayouts.cs=43")]

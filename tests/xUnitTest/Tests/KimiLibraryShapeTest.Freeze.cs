@@ -269,10 +269,10 @@ public partial class KimiLibraryShapeTest
     }
 
     // F-1 and F-3 (s11-design 2.3 and 6.3, RC4, RC7; G949 rulings 167, 205 C1): the library's freeze verifies its query states and
-    // refuses a library with records of any kind (issues, derived issues, non-failing records: lints and warnings), so on each target class the library rows cover (probe 1: pointer widths 64 with the default
-    // x86_64-pc-windows-msvc, 32 and 16; eight triples gave no record and identical library MIR) the empty program's Final Bind
-    // completes with no record of any kind, warnings included, and every library header DeclQuery binds and every library struct's
-    // inherited conformances are Done and Frozen.
+    // refuses a library with records of any kind (issues, derived issues, non-failing records: lints and warnings), so on each target
+    // class the library rows cover (probe 1: pointer widths 64 with the default x86_64-pc-windows-msvc, 32 and 16; eight triples gave
+    // no record and identical library MIR) the empty program's Final Bind completes with no record of any kind, warnings included, and
+    // every library header DeclQuery binds and every library struct's inherited conformances are Done and Frozen.
     [Theory]
     [InlineData("x86_64-pc-windows-msvc")]
     [InlineData("i686-unknown-linux-gnu")]
@@ -405,9 +405,10 @@ public partial class KimiLibraryShapeTest
     // w1 (the write guard; design R1.4, c2's new rows; G949 ruling 199): the library layer's dump after the empty program's first Bind is
     // the dump after each later step of a compilation of each of c2's programs: Analyze, a second Bind, a Provisional Bind and an edit then
     // a Bind (the first Bind's is TheLibraryLayerIsIndependentOfTheProgram's), each store by its disposition: a fact equal, a memo a
-    // superset with every earlier row unchanged (MemoStamps), an epoch or program store not compared. Before S1-1 every run's library
-    // pass rewrote the layer; before w1 (i) Analyze formed the effect bounds of the library's `#Lang` marker Contracts (Copy's EffectState
-    // 0 -> 2), and before ruling 199's dispositions the rows MIR's reads add to Binding's memos and scratch read as facts.
+    // superset with every earlier row unchanged (MemoStamps), an epoch or program store not compared, and a library scope's view serial
+    // and state and a library Origin requirement work's Consumer by value (ruling 205 C2, the row below). Before S1-1 every run's
+    // library pass rewrote the layer; before w1 (i) Analyze formed the effect bounds of the library's `#Lang` marker Contracts (Copy's
+    // EffectState 0 -> 2), and before ruling 199's dispositions the rows MIR's reads add to Binding's memos and scratch read as facts.
     [Theory]
     [MemberData(nameof(ReferencePrograms))]
     public void NoLaterStepWritesTheLibraryLayer(string program) => SameLayerAfterEachStep(program);
@@ -415,6 +416,52 @@ public partial class KimiLibraryShapeTest
     [Theory(Explicit = true)] // Its length (PLAN G949 S1-0b): run with the library-layer corpus row.
     [MemberData(nameof(LayerCorpus))]
     public void NoLaterStepWritesTheLibraryLayerOfTheCorpus(string program) => SameLayerAfterEachStep(program);
+
+    // w1's reach (G949 ruling 205 C2; s11-design 3.2 O28, 4 E7, 6.3 w1; plan F6): a library scope's view serial and the chain state it
+    // names, and a library Origin requirement work's Consumer mark, compare by value, so a later step's write to one is a difference:
+    // each written here after the empty program's Bind changes w1's dump. Before ruling 205 the dump printed the three as # (the number
+    // rule), and such a write passed w1.
+    [Theory]
+    [InlineData("ViewSerial")]
+    [InlineData("ViewState")]
+    [InlineData("Consumer")]
+    public void W1ComparesTheLibrarysViewSerialsAndConsumersByValue(string field)
+    {
+        var c = Bound(string.Empty);
+        var families = c.Library.Kotonoha.Syntax.Hir.Families;
+        var dump = LibraryLayer.Dump(c, MemoStamps);
+        var scope = First(families.Scopes.Enumerate());
+        var work = First(families.OriginRequirementNodes.Enumerate());
+        switch (field)
+        {
+            case "ViewSerial":
+                scope.ViewSerial++;
+                break;
+            case "ViewState":
+                var (environment, link, parent) = scope.ViewState;
+                scope.ViewState = (environment + 1, link, parent);
+                break;
+            default:
+                work.Consumer++;
+                break;
+        }
+
+        Assert.NotEqual(dump, LibraryLayer.Dump(c, MemoStamps));
+
+        static T First<T>(PagedColumn<T?>.Enumerator rows)
+            where T : class
+        {
+            foreach (var row in rows)
+            {
+                if (row is not null)
+                {
+                    return row;
+                }
+            }
+
+            throw new InvalidOperationException("The library has no row of the family.");
+        }
+    }
 
     // e3 (O15; s11-design E3 and 6.3): the library's bound Contract references are the layer part's, complete when the freeze stamps the
     // library: every entry's State 2 with its effect bounds built (EffectState 2), and every reference an entry's Contract holds (its
