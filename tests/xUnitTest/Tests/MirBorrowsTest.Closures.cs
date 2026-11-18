@@ -723,9 +723,9 @@ public sealed partial class MirBorrowsTest
         => Assert.Equal(
             ["holderReadBad: holder@follow 1", "methodAbstract: slot 1", "methodAbstract: var slot = other 1",
                 "pairCellBad: cell.item@follow 3", "pairCellBad: v@follow = x 2", "pairCellBad: var cell = Cell2c3.init(item: other@move) 3",
-                "pairCellRead: cell.item@follow 3", "pairCellRead: var cell = Cell2c3.init(item: other@move) 3",
+                "pairCellRead: cell.item@follow 3", "pairCellRead: v@follow = x 2", "pairCellRead: var cell = Cell2c3.init(item: other@move) 3",
                 "pairStoreBad: slot@follow 3", "pairStoreBad: v@follow = x 2", "pairStoreBad: var slot = other@move 3",
-                "pairStoreRead: slot@follow 3", "pairStoreRead: var slot = other@move 3",
+                "pairStoreRead: slot@follow 3", "pairStoreRead: v@follow = x 2", "pairStoreRead: var slot = other@move 3",
                 "selfPair: slot@follow 3", "selfPair: var slot = other@move 3",
                 "selfPairChild: slot@follow 3", "selfPairChild: var slot = other@move 3"],
             ViewProblems("""
