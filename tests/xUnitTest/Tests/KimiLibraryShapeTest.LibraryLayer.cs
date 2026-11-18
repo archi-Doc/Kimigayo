@@ -422,10 +422,17 @@ public partial class KimiLibraryShapeTest
             ["Binding.retentionSources"] = Rule.Program, // The retention sources' walk.
             ["Binding.retentionWalked"] = Rule.Program,
             ["Binding.retentionMet"] = Rule.Program, // The retention rows' walk.
+            ["Binding.retentionArguments"] = Rule.Program, // Filled's instantiated inputs, per computation (PLAN G935).
+            ["Binding.retentionHiddenSeen"] = Rule.Program, // HiddenKind's walk, per input.
+            ["Binding.retentionReaches"] = Rule.Program, // Writes' walk (WrittenThrough), per handed callable.
+            ["Binding.retentionHandedTypes"] = Rule.Program, // HandedTypes' answer for the output written last.
+            ["Binding.retentionWrites"] = Rule.Program, // The computation's OutputRetentions (a kept one names its library callee: PLAN G935).
             ["Binding.ownSeen"] = Rule.Program, // OwnLayers' walk.
             ["Binding.storageSeen"] = Rule.Program, // The storage walk (BeginStorages).
             ["Binding.storageHolds"] = Rule.Program,
             ["Binding.storageTargeted"] = Rule.Program,
+            ["Binding.storageResultLeaves"] = Rule.Program, // ResultLeaves' walk and its answer, per computation (PLAN G935).
+            ["Binding.storageResultSeen"] = Rule.Program,
             ["Binding.retentionOccurred"] = Rule.Program,
             ["Binding.types.handedFound"] = Rule.Program, // HandedCallables' walk.
             ["Binding.types.handedSeen"] = Rule.Program,
