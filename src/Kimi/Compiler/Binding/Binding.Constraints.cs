@@ -41,12 +41,7 @@ public sealed partial class Binding
                 return bridge; // SPEC 11.9.2: a standard witness bridge's premises are its conformance path's (PropertyWitnessFunction).
             }
 
-            if ((current is MatchKoto match && child is not null ? this.ArmScope(match, child) : null) is { } armScope)
-            {
-                return this.NodeScope(node, armScope);
-            }
-
-            if (this.scopes.TryGetValue(current, out var scope))
+            if (this.ScopeStop(current, child) is { } scope)
             {
                 return this.NodeScope(node, scope);
             }
