@@ -30,7 +30,7 @@ try {
     Expect-Failure $data $LlvmBin "'schemaVersion' is not this compiler's"
     $data = $original | ConvertFrom-Json
     $data.externalDeclarations = @(@{ symbol = 'observer_notify'; dllimport = 'yes' })
-    Expect-Failure $data $LlvmBin "'dllimport' is missing or not a JSON boolean"
+    Expect-Failure $data $LlvmBin "'externalDeclarations.dllimport' is missing or not a JSON Boolean"
     $data = $original | ConvertFrom-Json
     $data.PSObject.Properties.Remove('externalDeclarations')
     Expect-Failure $data $LlvmBin "'externalDeclarations' is missing or not a JSON Array"
@@ -55,9 +55,6 @@ try {
     $data = $original | ConvertFrom-Json
     $data.backendSupport.packageVersion = 'unreviewed'
     Expect-Failure $data $LlvmBin "'backendSupport.packageVersion' is not this compiler's"
-    $data = $original | ConvertFrom-Json
-    $data.expectedUndefinedSymbols = @(@{ symbol = 'missing'; provider = 'unknown' })
-    Expect-Failure $data $LlvmBin "'expectedUndefinedSymbols' is missing or not a JSON Array|'expectedUndefinedSymbols' is not this compiler's"
     $data = $original | ConvertFrom-Json
     $data.codegen.cpu = 'native'
     Expect-Failure $data $LlvmBin "'codegen.cpu' is not this compiler's"

@@ -65,7 +65,7 @@ public sealed class NativeToolchainTest : IDisposable
     [InlineData("schemaVersion", "\"4\"", "'schemaVersion' is missing or not a JSON Number")]
     [InlineData("backendSupport.abiVersion", "2.5", "'backendSupport.abiVersion' is not this compiler's")]
     [InlineData("codegen.cpu", "\"native\"", "'codegen.cpu' is not this compiler's")]
-    [InlineData("codegen.features", "\"+sse2\"", "'features' is missing or not a JSON Array")]
+    [InlineData("codegen.features", "\"+sse2\"", "'codegen.features' is missing or not a JSON Array")]
     [InlineData("codegen", null, "'codegen' is missing or not a JSON Object")]
     [InlineData("externalDeclarations", null, "'externalDeclarations' is missing or not a JSON Array")]
     [InlineData("irFile", "7", "'irFile' is missing or not a JSON String")]

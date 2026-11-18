@@ -357,6 +357,7 @@ internal group Storage
         /// Splits the elements at the boundary `index` resolves to, `p`, into the Slices `[0, p)` and `[p, N)`.
         ///
         /// - abort: `index` does not resolve against the length.
+        #CallerLocation
         public func splitAt<E, length N, P>(self: ref/[N of E] during source, index: P) -> (Slice<E> during source, Slice<E> during source)
             P is Position
             let position = PositionSyntax.resolved(index, self.length)
@@ -579,7 +580,7 @@ internal group Storage
     /// Writes the ASCII decimal digits of `value` (the FormatInteger128 intrinsic; SPEC 22.10.2) at the end of
     /// `destination` and returns their count, 1 to 39: no sign, no leading zero, `0` for zero. It writes exactly
     /// those bytes and no other; the text is ASCII, so valid UTF-8. It allocates nothing and never Aborts. Interim by
-    /// RQ16 (a): the backend generates no 128-bit division (IMPL 21.3.3).
+    /// RQ16 (a): R8's Kimigayo formatter does not format i128; removed in a post-reduction unit by measurement.
     #Intrinsic("FormatInteger128")
     internal func formatInteger128(value: u128 ! destination: uniq/[40 of u8]) -> isize
     /// Returns the stride of `T` (IMPL 21.1.3), the byte distance between adjacent elements.

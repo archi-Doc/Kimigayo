@@ -24,7 +24,7 @@
 // (ArchitectureRulesTest.ComponentIsReadOnlyByItsReaders).
 // Must not: check source semantics, or read compiler state outside the list above.
 // The enum OutputKind stays: RunProject compares ProjectFile.OutputKind with it and the manifest's output section takes it.
-// The link manifest's format and readers are LinkManifest's: no manifest read raises an accessor's exception (R9-B1).
+// The link manifest's fixed fields (one table) and its readers are LinkManifest's: no manifest read raises an accessor's exception (R9-B1).
 // Temporary: IsToolchainFailure's KeyNotFoundException and InvalidOperationException (JsonElement's accessors over the build record and
 // the installation and kernel32 records) end when those readers turn their accessors' failures into InvalidDataException (PLAN G983);
 // until then a listed type raised inside a toolchain call, by the host's report or a defect here, prints as the toolchain's

@@ -36,7 +36,7 @@ public sealed partial class Binding
         if (code is DiagnosticCode.UnsatisfiedOriginRelation_Kd or DiagnosticCode.UnprovenOriginRelation_Kd &&
             this.originRelations?.TryGetValue(node, out var relation) == true)
         {
-            ReportOriginRelation(node, relation, requirement, code, this.OmittedResultNote(node));
+            this.ReportOriginRelation(node, relation, requirement, code, this.OmittedResultNote(node));
         }
         else if (code == DiagnosticCode.UnprovenOriginContract_Kd && this.originContracts?.TryGetValue(node, out var contract) == true)
         {
@@ -64,7 +64,7 @@ public sealed partial class Binding
             var problem = this.report.Problem(i);
             if (this.report.Origin(fact).Relation is { } relation)
             {
-                ReportOriginRelation(node, relation, requirement, problem.Code, this.OmittedResultNote(node), problem.Condition);
+                this.ReportOriginRelation(node, relation, requirement, problem.Code, this.OmittedResultNote(node), problem.Condition);
             }
             else
             {

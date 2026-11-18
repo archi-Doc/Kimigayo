@@ -3,8 +3,10 @@
 // Owns the one generation entry of a compilation and its gate (R5 plan C0a, C0b1, package C 3.8, S2-S4 X17; DECISIONS R5-M64, R5-M65).
 // Input: the latest analysis; callers generate an accepted program version (Project and the test command, after check).
 // Output: the module text, written to the caller's writer only when generation succeeds, never in part, with what it states for its link
-// (Generated: the output kind, the required libraries and the external declarations; R9-B1); otherwise the generation
-// records in the Emission partition: ModuleCodegen's (a form the backend does not generate is the capability table's gap at check) and
+// (Generated: the output kind at the write, the required libraries and the external declarations; R9-B1), which exists only for the
+// request that wrote the module, until the next generation request or analysis: a request that writes nothing leaves none, so code
+// generation's lists of a failed write (a partial or the previous module's) are never readable, and a read without one is a broken
+// contract; otherwise the generation records in the Emission partition: ModuleCodegen's (a form the backend does not generate is the capability table's gap at check) and
 // InternalInvariant_Kd at a broken input contract, an inexact body reaching FunctionCodegen.Write among them (IC's contract: every such
 // body has a kept Error, so check rejects its program; DECISIONS R5-M96, R5-M185), each keyed by its location (Locate; a record carries
 // no fact; DECISIONS R5-M65),
@@ -38,6 +40,7 @@ public partial class Compilation
 {
     private readonly List<int> outputRoots = []; // The output roots of the latest MIR code generation (R5 K11).
     private Backend.ModuleCodegen? moduleCodegen; // MIR code generation's pooled storage (R5 C0b1).
+    private GeneratedModule? generated; // The written module's link facts (Generated): set by the request that wrote it, else none.
 
     /// <summary>Gets a value indicating whether the latest check accepted the program (SPEC 23.2.2): final Binding, the startup selection
     /// and the analysis complete without errors, and no Error in any front-end partition (their error state, never the displayed list).</summary>
@@ -48,10 +51,13 @@ public partial class Compilation
     /// (TestCatalog.Version) and MIR code generation requires of it.</summary>
     internal ulong ProgramVersion => this.mir?.Version ?? 0;
 
-    /// <summary>Gets what the latest written module states for its link (R9-B1): its output kind, the startup selection's, which chose
-    /// its output roots (a test build's is an Application), and code generation's required libraries and external declarations. Valid
-    /// after <see cref="Generate"/> returned true, until the next generation request; the toolchain's publication is its reader.</summary>
-    internal GeneratedModule Generated => new(this.Binding.Startup.OutputKind, this.moduleCodegen!.Libraries, this.moduleCodegen.Externals);
+    /// <summary>Gets what the module the latest generation request wrote states for its link (R9-B1): its output kind, the startup
+    /// selection's at the write, which chose its output roots (a test build's is an Application), and code generation's required
+    /// libraries and external declarations. It exists only after <see cref="Generate"/> returned true, until the next generation request
+    /// or analysis; the toolchain's publication is its reader.</summary>
+    /// <exception cref="InvalidOperationException">No module was written since the latest generation request or analysis (a broken
+    /// contract, never a stale or partial list).</exception>
+    internal GeneratedModule Generated => this.generated ?? throw new InvalidOperationException("The latest generation request wrote no module.");
 
     /// <summary>Generates the module of the latest analysis: the gate, then MIR code generation (R5 C0b1, K11; DECISIONS R5-M65, R5-M77)
     /// of an accepted program, ModuleCodegen over the Generated items of its checked set, which writes the complete module or records why
@@ -71,6 +77,7 @@ public partial class Compilation
         }
 
         this.Diagnostics.Invalidate(DiagnosticPartition.Emission); // The partition is the latest request's (DECISIONS R5-M165).
+        this.generated = null; // So is the written module's result (Generated).
         if (!this.Accepts)
         {
             return false;
@@ -92,6 +99,7 @@ public partial class Compilation
         var generator = this.moduleCodegen ??= new(this.Layout, this.Locations, this.Types, this.Binding.LibraryImports, this.Tests);
         if (generator.Write(program, collector, this.Binding.Startup, roots, writer))
         {
+            this.generated = new(this.Binding.Startup.OutputKind, generator.Libraries, generator.Externals); // The lists by reference.
             return true;
         }
 
