@@ -221,7 +221,7 @@ public sealed partial class Binding
     /// <param name="at">The call.</param>
     /// <returns>Whether confined is available.</returns>
     internal bool AvailableEffectBounds(FunctionKoto requirement, BoundType? conforming, Koto at)
-        => this.AvailableEffectBounds(requirement, conforming, this.ConstraintScope(at), reference: (at as InvocationKoto)?.BoundCall?.RequirementContract);
+        => this.AvailableEffectBounds(requirement, conforming, this.ConstraintScope(at), reference: at is InvocationKoto invocation ? this.CallOf(invocation)?.RequirementContract : null);
 
     private static EffectBoundKoto? OwnEffectBound(BoundContract shape, BoundRequirement requirement)
     {

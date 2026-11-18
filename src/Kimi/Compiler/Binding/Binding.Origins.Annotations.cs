@@ -258,7 +258,7 @@ public sealed partial class Binding
 
         return result;
 
-        static Koto? FailedOperand(Koto operand) => IsUnresolvedPrerequisite(operand) ? operand : null;
+        Koto? FailedOperand(Koto operand) => this.IsUnresolvedPrerequisite(operand) ? operand : null;
     }
 
     // A name that resolves to a binding set that failed as a repeat yields that set as repeated (RestOnRepeatedSet) beside its Type.

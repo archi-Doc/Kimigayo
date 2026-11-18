@@ -400,7 +400,7 @@ public sealed class MirValidatorTest(ITestOutputHelper output)
         var same = Function("same");
         var (s, e) = (c.Types.Signature(same, null, 0, out _)!, c.Types.Signature(same, null, 1, out _)!);
         Assert.False(MirTypes.Agree(s, e));
-        Assert.Same(TyCtxt.Premised(same, s), TyCtxt.Premised(same, e));
+        Assert.Same(c.Types.Premised(same, s), c.Types.Premised(same, e));
     }
 
     // G131 (DECISIONS R5-M33): only check-only blocks read a Temp whose only writes are diverging Calls' destinations, an argument's here;

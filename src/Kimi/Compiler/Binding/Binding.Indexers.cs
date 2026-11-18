@@ -38,11 +38,6 @@ public sealed partial class Binding
     internal bool HasExclusiveIndexer(Koto node)
         => KotoHelper.UnwrapParentheses(node) is IndexKoto index && this.uniqIndexing.GetValueOrDefault(index).Exclusive;
 
-    // SPEC 4.7.1: the element a selected index or indexUniq call lends, the referent of the reference its plan returns; the index
-    // expression designates it, whatever the call node itself is typed.
-    private static BoundType? LentElement(InvocationKoto? call)
-        => call?.BoundCall?.ReturnType is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components: [var element] } ? element : null;
-
     // SPEC 4.7.1: the written Type of a key that selects a conformance (ConformanceForKey reads it below its layers); null for `null`
     // or an unfitted number literal, which could fit several keys.
     private static BoundType? KeyType(Koto keyNode)
@@ -50,6 +45,11 @@ public sealed partial class Binding
         var key = KotoHelper.UnwrapParentheses(keyNode);
         return key is NullLiteralKoto || KotoHelper.SignedNumber(key, out _) is not null ? null : key.BoundType;
     }
+
+    // SPEC 4.7.1: the element a selected index or indexUniq call lends, the referent of the reference its plan returns; the index
+    // expression designates it, whatever the call node itself is typed.
+    private BoundType? LentElement(InvocationKoto? call)
+        => call is not null && this.CallOf(call)?.ReturnType is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components: [var element] } ? element : null;
 
     private bool TryBindIndexer(IndexKoto source, BindingScope scope, BoundType? receiver, out BoundType? result)
     {
@@ -122,7 +122,7 @@ public sealed partial class Binding
 
         this.uniqIndexing[source] = new(exclusiveAvailable, uniq);
         var shared = this.BindIndexerCall(source, scope, false);
-        if (LentElement(shared) is not { } element)
+        if (this.LentElement(shared) is not { } element)
         {
             result = Complete(source, null);
             return true;

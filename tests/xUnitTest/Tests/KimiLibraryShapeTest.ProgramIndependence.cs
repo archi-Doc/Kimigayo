@@ -174,6 +174,7 @@ public partial class KimiLibraryShapeTest
         var library = c.Library;
         var table = library.Kotonoha.Syntax;
         var printer = new Printer(true);
+        printer.Attach(c);
         printer.Visit(library.Kotonoha.RootKoto);
         var symbols = new List<string>();
         var scopes = new HashSet<BindingScope>(ReferenceEqualityComparer.Instance);
@@ -206,7 +207,7 @@ public partial class KimiLibraryShapeTest
             ("library MIR", mir.ToString().Split('\n')),
             ("library obligations", [.. obligations.Where(static x => x.Subject.IsLibrary).Select(x => $"{x.Code} {x.Requirement} at " +
                 $"{Where(c.SyntaxOf(x.Subject))} owes {Where(x.Definition)} callable={x.Callable is not null}").Order(StringComparer.Ordinal)]),
-            ("synthesized nodes", Synthesized(table, printer)),
+            ("synthesized nodes", Synthesized(c, table, printer)),
         ];
     }
 
@@ -232,14 +233,15 @@ public partial class KimiLibraryShapeTest
 
     private static string Where(Koto? node) => node is null ? "-" : $"{CompilationTestHelper.Location(node)}+{node.Span.Length}";
 
-    // Each synthesized node by id: its line, its HIR row and its own symbol's state.
-    private static string[] Synthesized(SyntaxTable table, Printer types)
+    // Each synthesized node by id: its line, its HIR row (of the compilation's Binding) and its own symbol's state.
+    private static string[] Synthesized(Compilation c, SyntaxTable table, Printer types)
     {
         var facts = new List<string>();
         for (var id = table.ParsedCount + 1; id <= table.Count; id++)
         {
             var (line, row, node) = (new Printer(false), new Printer(true), table.Nodes[id]!);
             line.Node(node);
+            row.Attach(c);
             row.Node(node);
             var own = node.SymbolOf() is { } symbol && ReferenceEquals(symbol.Declaration, node) ? State(symbol, types) : "-";
             facts.Add($"{line.ToString().TrimEnd('\n')} | {row.Hir.TrimEnd('\n')} | {own}");
