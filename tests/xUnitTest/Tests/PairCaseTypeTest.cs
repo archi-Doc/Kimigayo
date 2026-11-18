@@ -181,6 +181,17 @@ public class PairCaseTypeTest
         Assert.True(c.Bind().IsComplete, Describe(c));
     }
 
+    // SPEC 8.15.2, 8.14, 3.2.1 (the owner's O-417 (a)): a Constraint `U is Copy` over a pair application is judged once over every case
+    // its binder admits: Copy in every case is proven (cp-or, cp-r; cp-or was Unknown before the engine judged the cases), a
+    // case that does not Copy leaves the requirement unproven (cp-ou, cases that differ) or refuted (cp-u, the one case).
+    [Theory]
+    [InlineData("cp-or", "func needCopy<U>(x: U) -> i32\n    U is Copy\n    return 0\nfunc k<s/T>(marker: s/T) -> i32\n    s is owner or ref\n    var a: i32 = 1\n    let t = a@s\n    return needCopy(t)\n", "")]
+    [InlineData("cp-r", "func needCopy<U>(x: U) -> i32\n    U is Copy\n    return 0\nfunc k<s/T>(marker: s/T) -> i32\n    s is ref\n    var a: i32 = 1\n    let t = a@s\n    return needCopy(t)\n", "")]
+    [InlineData("cp-ou", "func needCopy<U>(x: U) -> i32\n    U is Copy\n    return 0\nfunc k<s/T>(marker: s/T) -> i32\n    s is owner or uniq\n    var a: i32 = 1\n    let t = a@s\n    return needCopy(t)\n", "UnprovenConstraint_Kd needCopy(t)")]
+    [InlineData("cp-u", "func needCopy<U>(x: U) -> i32\n    U is Copy\n    return 0\nfunc k<s/T>(marker: s/T) -> i32\n    s is uniq\n    var a: i32 = 1\n    let t = a@s\n    return needCopy(t)\n", "NoApplicableOverload_Kd needCopy(t)")]
+    public void ACopyRequirementOnAPairIsJudgedOverEveryCase(string form, string body, string records)
+        => OriginRelationDiagnosticTest.AssertRecords(form, body, records, null);
+
     private static Compilation Parse(string source)
         => CompilationTestHelper.ParseSuccess(source, "cases.kimi");
 

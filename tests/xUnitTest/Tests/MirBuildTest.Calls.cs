@@ -178,12 +178,13 @@ public sealed partial class MirBuildTest
     }
 
     // SPEC 12.2 (R4-M37's Open): a pair-layer argument is acquired by case where it is evaluated, before a later argument's code, not at its
-    // Call.
+    // Call. Its cases differ (`owner or uniq`: a Copy and a Reborrow); a pair layer whose every case Copies is a plain Copy, no case site
+    // (SPEC 8.15.2, 8.14: Copy in every case is the engine's Proven, the owner's O-417 (a)).
     [Fact]
     public void APairLayerArgumentIsAcquiredWhereItIsEvaluated()
     {
-        const string Source = "func pass<s/T>(a: s/T, b: i32)\n    s is owner or ref\n    T is Copy\n    _ = b\nfunc one() -> i32 => 1\n" +
-            "func pending<s/T>(x: s/T)\n    s is owner or ref\n    T is Copy\n    pass(x, one())\n";
+        const string Source = "func pass<s/T>(a: s/T, b: i32)\n    s is owner or uniq\n    T is Copy\n    _ = b\nfunc one() -> i32 => 1\n" +
+            "func pending<s/T>(x: s/T)\n    s is owner or uniq\n    T is Copy\n    pass(x, one())\n";
         var body = Body(Source, "pending");
         var path = RuntimePath(body).ToArray();
         var one = Array.FindIndex(path, at => at.Index == body.Blocks[at.Block].Count && body.Blocks[at.Block].Terminator.Callee.Symbol?.Name == "one");

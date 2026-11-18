@@ -81,8 +81,9 @@ public sealed partial class Binding
         return null;
     }
 
-    // SPEC 8.15.2, 8.14: the verdict of a family judged once over its cases (an adaptation family's members): the verdict common to every
-    // case so far, else Unknown, as cases that differ decide nothing (Unknown Copy is never Non-Copy); null before the first case.
+    // SPEC 8.15.2, 8.14: the verdict of a family judged once over its cases (an adaptation family's members, a pair layer's admitted cases,
+    // SymbolicCapability): the verdict common to every case so far, else Unknown, as cases that differ decide nothing (Unknown Copy is
+    // never Non-Copy); null before the first case.
     private static ConstraintProof CommonVerdict(ConstraintProof? common, ConstraintProof next)
         => common is null || common == next ? next : ConstraintProof.Unknown;
 
@@ -949,6 +950,39 @@ public sealed partial class Binding
         var parameterIdentity = HasParameterIdentity(work.Scope);
         var subject = parameterIdentity ? this.SubstituteIdentity(work.Type, work.Scope, parametersOnly: true, out _) : work.Type;
         var positive = this.PremiseRefines(subject, work.Intrinsic, work.Scope); // SPEC 8.3.2's refinement row (ContractSolver).
+        if (TryPairLayer(work.Type, out var pair, out _) && this.AdmittedSemantics(pair, work.Scope) is not SemanticsMask.None and var admitted)
+        {
+            // SPEC 8.15.2, 8.3.4, 15.6.1 (the owner's O-417 (a)): a pair layer is judged once over every case its binder admits here,
+            // each case's complete Type (CaseType) a part, member its Semantics' order (read by no explanation: a pair layer's work is
+            // never an erasure's subject). The verdict common to every case (CommonVerdict, a family's rule) is evidence beside the
+            // premises'; cases that differ give none: Unknown Copy is never Non-Copy (SPEC 8.14), and Owned's refuted case reaches the
+            // erasure through its part (OwnedMember). So Copy in every case is the engine's Proven.
+            ConstraintProof? cases = null;
+            for (var i = 0; i < SemanticsOrder.Length; i++)
+            {
+                if ((admitted & SemanticsOrder[i].ToMask()) == 0)
+                {
+                    continue;
+                }
+
+                var single = new PairCase(work.Type.Symbol!, SemanticsOrder[i]);
+                var type = this.CaseType(work.Type, new ReadOnlySpan<PairCase>(in single));
+                var saved = this.ScopeReads.Origin;
+                this.ScopeReads.Origin = null;
+                var proof = this.RequestCapability(type, work.Intrinsic, work.Scope);
+                this.ScopeReads.Origin = work.Part(i, proof, this.ScopeReads.Origin, saved, type);
+                if (proof == ConstraintProof.Error)
+                {
+                    return proof;
+                }
+
+                cases = CommonVerdict(cases, proof);
+            }
+
+            positive |= cases == ConstraintProof.Proven;
+            negative |= cases == ConstraintProof.Refuted;
+        }
+
         for (var scope = work.Scope; scope is not null; scope = scope.Parent)
         {
             if (scope.Constraints is not { } environment)
