@@ -877,10 +877,17 @@ public sealed partial class RetentionTest
     // SPEC 15.6.4 (route 1), 5.7 Calls ("a Type argument's ... included"), the owner's O-312 (a) (PLAN G935 c3-5; class 1): the holder
     // that a raw layer of the callee's kept binding addresses is reached and has its own entry, read as the input writes it. F's
     // `raw/(raw/u8)` addresses a `raw/u8` holder, which admits the `raw/u8` input (fail-before on 4b788f544: `reached {}`, the holder
-    // read as storage of F); F's `raw/u8` addresses a `u8`, which admits no pointer.
+    // read as storage of F); F's `raw/u8` addresses a `u8`, which admits no pointer. So is the holder an exclusive reference of the
+    // binding refers to, also through another (SPEC 15.6.4: "a safe reference the binding holds is no such layer, and the routes above
+    // apply to it"; PLAN G935 B2; fail-before on 768d6899d: `reached {}`, the referent read as storage of F), never one only a shared
+    // Loan names (route 1), and a `u8` referent admits no pointer.
     [Theory]
     [InlineData("var w: raw/u8 = null\n    var t = (w@raw@raw/(raw/u8), z8)", true)]
     [InlineData("var b: u8 = 0\n    var t = (b@raw, z8)", false)]
+    [InlineData("var w: raw/u8 = null\n    var t = (w@uniq, z8)", true)]
+    [InlineData("var w: raw/u8 = null\n    var w2 = w@uniq\n    var t = (w2@uniq, z8)", true)]
+    [InlineData("var w: raw/u8 = null\n    var t = (w@ref, z8)", false)]
+    [InlineData("var b: u8 = 0\n    var t = (b@uniq, z8)", false)]
     public void AHolderAKeptBindingAddressesKeepsWhatItAdmits(string tuple, bool kept)
     {
         var c = Bind("func f<F>(t: uniq/(F, u8), v: raw/u8) => ()\nfunc g(spare: raw/u8)\n    let z8: u8 = 0\n    " + tuple + "\n    f(t@uniq, spare)\n");
