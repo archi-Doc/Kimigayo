@@ -1,9 +1,11 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 // Owns construction and validation of one MIR body per definition or closure.
-// Input: syntax children, published HIR/plans, declaration views, TyCtxt and one Binding view, the guessed completion nodes of a require's
-// failure body (Binding.GuessedCompletionNodes, DECISIONS R5-M186). Output: a validated MirProgram: the bodies of a root range built
-// eagerly, and any other body a lookup of the open version demands (Demand, PLAN G951), each with its program pass where it is built.
+// Input: syntax children, published HIR/plans, declaration views, TyCtxt; the compilation's Binding as the reader the plan entries take
+// (CallPlan.Of, ExpansionPlan.Of, BoundMatch.Of, BoundEnumConstruction.Of, PairBinder.Collect, AdtDef.ReceiverType), and one Binding view,
+// the guessed completion nodes of a require's failure body (Binding.GuessedCompletionNodes, DECISIONS R5-M186). Output: a validated
+// MirProgram: the bodies of a root range built eagerly, and any other body a lookup of the open version demands (Demand, PLAN G951), each
+// with its program pass where it is built.
 // Numbers the library's ordinals (PLAN G951 U2-K, G950 R-4): the library's templates, then the library walk's definitions in id order
 // (Library), each through the one node-to-definition filter (Walked) without building, so a library definition's body has the same
 // ordinal (Slot) in an eager and a lazy build; MirProgram numbers every other body.
@@ -139,7 +141,7 @@ internal sealed partial class MirBuilder(Compilation compilation)
     internal MirBody? Demand(MirDefKey key)
     {
         var node = (Koto?)(key.Decl?.Declaration as FunctionKoto)?.Accessor?.Declaration ?? key.Decl?.Declaration; // An accessor's executing function's.
-        if (node?.SyntaxOwner is not { } table || table.Module < this.program.RootModules || Walked(table, node) is not { } definition || definition.Key != key)
+        if (node?.SyntaxOwner is not { } table || table.Module < this.program.RootModules || this.Walked(table, node) is not { } definition || definition.Key != key)
         {
             return null;
         }
@@ -176,7 +178,7 @@ internal sealed partial class MirBuilder(Compilation compilation)
     // function's Fn body, a #Test function's Test body, a Closure's keyed by its own symbol, a module's top-level statements by the module's
     // ordinal; an accessor's Getter or Setter keyed by the function its calls target (SPEC 11.3); a static's initializer; null for another
     // node.
-    private static (MirDefKey Key, BindingSymbol? Function, BoundType Result, Koto Value)? Definition(Koto node, SyntaxTable table)
+    private (MirDefKey Key, BindingSymbol? Function, BoundType Result, Koto Value)? Definition(Koto node, SyntaxTable table)
     {
         var symbol = HirTables.Symbol(node);
         switch (symbol?.Kind)
@@ -198,7 +200,7 @@ internal sealed partial class MirBuilder(Compilation compilation)
                 return (new(symbol, kind, symbol is null ? table.Module : 0), symbol, result, (Koto?)function.Body ?? function.ExpressionBody!);
             case BindingSymbolKind.PropertyAccessor:
                 var accessor = (PropertyAccessorKoto)node;
-                var executing = CallPlan.Accessor(accessor); // SPEC 11.3: the function its calls target.
+                var executing = CallPlan.Accessor(compilation.Binding, accessor); // SPEC 11.3: the function its calls target.
                 kind = accessor.AccessorKind == PropertyAccessorKind.Get ? MirBodyKind.Getter : MirBodyKind.Setter;
                 return (new(executing, kind), executing, executing.Type ?? BoundType.Unit, accessor.Body!);
             case BindingSymbolKind.Property when HirTables.ResOf(node) == HirRes.Static:
@@ -211,8 +213,8 @@ internal sealed partial class MirBuilder(Compilation compilation)
     // A module walk's definition at a node: its body's key and Body's arguments (Definition) where the node is the table's own and the
     // HIR publishes it with a value (Published), null for another node. The one filter of the module walk, the library's numbering and
     // Demand, so every library body a build or a lookup builds has a slot.
-    private static (MirDefKey Key, BindingSymbol? Function, BoundType Result, Koto Value)? Walked(SyntaxTable table, Koto? node)
-        => node is not null && ReferenceEquals(node.SyntaxOwner, table) && Published(node) ? Definition(node, table) : null;
+    private (MirDefKey Key, BindingSymbol? Function, BoundType Result, Koto Value)? Walked(SyntaxTable table, Koto? node)
+        => node is not null && ReferenceEquals(node.SyntaxOwner, table) && Published(node) ? this.Definition(node, table) : null;
 
     // The syntax of a node, its scope and whether it starts a source statement, which the first statement or terminator built for the
     // source statement takes; a local does not take it.
@@ -250,7 +252,7 @@ internal sealed partial class MirBuilder(Compilation compilation)
         var nodes = table.Nodes;
         for (var id = 1; id < nodes.Length; id++)
         {
-            if (Walked(table, nodes[id]) is { } definition)
+            if (this.Walked(table, nodes[id]) is { } definition)
             {
                 this.Body(definition.Key, nodes[id]!, definition.Function, definition.Result, definition.Value);
             }
@@ -267,7 +269,7 @@ internal sealed partial class MirBuilder(Compilation compilation)
         (this.slotCount, this.templates) = (0, this.program.Bodies.Length);
         for (var id = 1; id < nodes.Length; id++)
         {
-            if (Walked(table, nodes[id]) is { } definition)
+            if (this.Walked(table, nodes[id]) is { } definition)
             {
                 if (this.slotCount == this.slots.Length)
                 {
@@ -332,7 +334,7 @@ internal sealed partial class MirBuilder(Compilation compilation)
         this.trees.Clear();
         var parameters = this.OpenScope(block: true);
         PairBinder.Collect(compilation.Binding, declaration, body.Binders);
-        var special = template || function is null ? null : CallPlan.Parameter(function, -1); // A constructor's or destructor's self.
+        var special = template || function is null ? null : CallPlan.Parameter(compilation.Binding, function, -1); // A constructor's or destructor's self.
         var self = !template && AdtDef.IsConstructor(function) ? AdtDef.ReceiverType(compilation.Binding, (FunctionKoto)declaration) : null;
         this.entry = this.Info(declaration, local: true);
         body.AddLocal(self is null
@@ -357,7 +359,7 @@ internal sealed partial class MirBuilder(Compilation compilation)
 
         for (var i = 0; template && i < key.Index; i++)
         {
-            var parameter = CallPlan.Parameter(function!, i)!;
+            var parameter = CallPlan.Parameter(compilation.Binding, function!, i)!;
             this.locals[parameter] = this.Argument(
                 compilation.Types.Reference(SemanticsKind.Ref, parameter.Type ?? BoundType.Unit),
                 parameter.Name,
@@ -390,7 +392,7 @@ internal sealed partial class MirBuilder(Compilation compilation)
         for (var position = 0; !template && function is not null && position < this.Arity(function); position++)
         {
             var slot = special is null ? MirCallee.Slot(function, position) : position;
-            var parameter = CallPlan.Parameter(function, slot)!;
+            var parameter = CallPlan.Parameter(compilation.Binding, function, slot)!;
             this.locals[parameter] = this.Argument(parameter.Type ?? BoundType.Unit, parameter.Name, TyCtxt.SignatureSite(declaration, slot), parameters);
         }
 
