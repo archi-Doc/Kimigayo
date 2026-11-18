@@ -472,6 +472,21 @@ public sealed class EmissionArtifactsTest : IDisposable
         NativeToolchain.ValidateManifest(root);
     }
 
+    // R9-B1: a dependency module's called import (Kimi.Time's Windows counter functions, SPEC 22.8.3) is one of the generation result's
+    // external declarations and the manifest's, so the object inspection allows its __imp_ reference.
+    [Fact]
+    public void ADependencysCalledImportIsDeclared()
+    {
+        var c = this.Create("var watch = Kimi.Time.Stopwatch.init()\nwatch.start()\nwatch.stop()");
+        Assert.True(EmissionArtifacts.Publish(c, null, out var path), MinimalEmissionTest.Describe(c));
+        using var manifest = JsonDocument.Parse(File.ReadAllBytes(Path.ChangeExtension(path!, ".link.json")));
+        var declared = manifest.RootElement.GetProperty("externalDeclarations").EnumerateArray()
+            .Select(static x => (x.GetProperty("symbol").GetString()!, x.GetProperty("dllimport").GetBoolean())).ToArray();
+        Assert.Equal(c.Generated.Externals.Select(static x => (x.Symbol, x.DllImport)), declared);
+        Assert.Contains(("QueryPerformanceCounter", true), declared);
+        Assert.Contains(("QueryPerformanceFrequency", true), declared);
+    }
+
     // R9-B1: a manifest whose external declaration is not a nonempty symbol with a boolean dllimport form is rejected before any tool.
     [Theory]
     [InlineData("[{\"symbol\": \"\", \"dllimport\": true}]", "Invalid external declaration")]

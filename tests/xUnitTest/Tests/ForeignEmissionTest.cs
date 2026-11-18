@@ -155,6 +155,47 @@ public class ForeignEmissionTest
         Assert.Contains(("kernel32", "import"), module.Libraries);
     }
 
+    // R9-B1: a symbol outside LLVM identifiers is published unspelled through a whole generation (SPEC 22.6: "the exact external symbol"),
+    // each declared under its spelling (LlvmModuleText.ExternalName), one per symbol in the order the calls request them.
+    [Fact]
+    public void EscapedSymbolsArePublishedUnspelled()
+    {
+        (string Literal, string Symbol)[] imports =
+            [("plain_name.$-1", "plain_name.$-1"), ("1digit", "1digit"), ("a\\\"b\\\\c d", "a\"b\\c d"), ("é\\t", "é\t"), ("\\u(1F600)", "\U0001F600")];
+        var source = "group Native\n" +
+            string.Concat(imports.Select(static (x, i) => $"    #LibraryImport(\"codec\", \"{x.Literal}\")\n    public unsafe func f{i}() -> i32\n")) +
+            "public func main()\n    var v: i32 = 0\n" + string.Concat(imports.Select(static (_, i) => $"    unsafe => v = Native.f{i}()\n"));
+        var c = Analyze(source, "import");
+        using var writer = new StringWriter();
+        Assert.True(c.Generate(writer), MinimalEmissionTest.Describe(c));
+        Assert.Equal(imports.Select(static x => x.Symbol), c.Generated.Externals.Select(static x => x.Symbol));
+        foreach (var external in c.Generated.Externals)
+        {
+            Assert.True(external.DllImport);
+            Assert.Equal(LlvmModuleText.ExternalName(external.Symbol), external.Abi.Name);
+            Assert.Contains("declare dllimport i32 @" + external.Abi.Name + "()\n", writer.ToString());
+        }
+    }
+
+    // R9-B1: a test build's module is an Application whatever the project's output kind (Binding.Testing: the test runtime's entry), and
+    // it declares the imports its tests call.
+    [Fact]
+    public void ALibraryTestBuildPublishesAnApplication()
+    {
+        var c = Compilation.CreateForTest();
+        c.IsTestBuild = true;
+        c.Project.ProjectFile.OutputKind = OutputKind.Library;
+        c.Project.ProjectFile.NativeRequirements[WindowsProfile.Target] = new(StringComparer.Ordinal) { ["codec"] = new() { Kind = "import" } };
+        Assert.True(c.Prepare(WindowsProfile.Target));
+        var source = "group Native\n    #LibraryImport(\"codec\", \"encode\")\n    public unsafe func encode(value: i32) -> i32\n" +
+            "#Test\nfunc encodes()\n    var v: i32 = 0\n    unsafe => v = Native.encode(1)\n";
+        c.Kotonoha.AddSource(new SourceDocument("Hello.kimi", source));
+        Assert.True(c.Check(), MinimalEmissionTest.Describe(c));
+        Assert.True(c.Generate(TextWriter.Null), MinimalEmissionTest.Describe(c));
+        Assert.Equal(OutputKind.Application, c.Generated.OutputKind);
+        Assert.Equal([("encode", true)], c.Generated.Externals.Select(static x => (x.Symbol, x.DllImport)));
+    }
+
     // R9-B1 (the generation entry's contract): the result exists only for the generation request that wrote the module, until the next
     // generation request or analysis; a read without one is a broken contract, never a stale or partial list.
     [Fact]
