@@ -135,9 +135,11 @@ public partial class KimiLibraryShapeTest
     }
 
     // Ruling 203 (4) (B6): an Item of a library requirement member (`P.tryResolve`, in two bodies) gets its call context at MIR time
-    // (RequirementItemContext), which interns the member's Input atoms; from the freeze such an atom is a row of the program pass's
-    // (programAtoms, reset with the pass), never one of the library's OriginAtoms column, which gained the member's row at Analyze
-    // before. SPEC 8.11.3, 7.7.4: the program is valid (MirEffectsTest's atItem row), without records.
+    // (RequirementItemContext), which interns the member's Input atoms; from the freeze such an atom is a row of the program's
+    // (programAtoms), never one of the library's OriginAtoms column, which gained the member's row at Analyze before. The store lives
+    // as the item contexts whose plans hold its atoms (ruling 205 N4): a second Bind and Analyze keep the same atom objects, and an edit
+    // empties both (before N4 it was emptied per pass, so after a second Bind the memoized plans held atoms the store no longer had).
+    // SPEC 8.11.3, 7.7.4: the program is valid (MirEffectsTest's atItem row), without records.
     [Fact]
     public void ARequirementItemsAtomsAreTheProgramPasss()
     {
@@ -154,9 +156,12 @@ public partial class KimiLibraryShapeTest
         Assert.Equal(2, program.Count); // tryResolve's two inputs, interned once for both bodies.
         Assert.All(program, x => Assert.Same(c.Library.Kotonoha.Syntax, x.Binder!.SyntaxOwner));
         Assert.True(c.Bind().IsComplete);
-        Assert.Empty(ProgramAtoms(c));
+        Assert.Equal<object>(program, ProgramAtoms(c), ReferenceEqualityComparer.Instance);
         c.Analyze();
         Assert.Equal(atoms, LibraryAtoms(c));
+        Assert.Equal<object>(program, ProgramAtoms(c), ReferenceEqualityComparer.Instance);
+        c.NoteSyntaxEdit(c.Kotonoha.RootKoto);
+        Assert.Empty(ProgramAtoms(c));
 
         static List<BoundOrigin> LibraryAtoms(Compilation c) => Atoms(c, c.Library.Kotonoha.Syntax.Hir.Families.OriginAtoms);
 

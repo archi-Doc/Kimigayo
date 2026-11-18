@@ -371,6 +371,7 @@ public partial class KimiLibraryShapeTest
             ["Binding.types.erasedTypes"] = Rule.Memo, // A Type's erased form, structural.
             ["Binding.types.erasedSubsts"] = Rule.Memo, // A substitution's erased form, structural.
             ["Binding.types.substs"] = Rule.Memo, // The substitution interner: a row is its own key, keyed by no Type (constraints' class).
+            ["Binding.programAtoms"] = Rule.Memo, // The program's atoms at library binders (ruling 203 (4)): a function of the binder, kind and slot, kept as the item contexts holding them are, until an edit (ruling 205 N4).
 
             // Memos of one capability epoch (ClearCapabilityResults): component summaries, capability works and Enumerate's kept rows,
             // whose pool lends its lists to enumerateKept alone (C1).
@@ -407,7 +408,6 @@ public partial class KimiLibraryShapeTest
             // A run's view, a per-run cache and a walk's reused scratch the reads after a Bind (MIR's) use too (PLAN G949 S1-1, ruling 199 w1
             // (ii)): rebuilt at the run's first read, current in one run, or cleared at the walk's start, so after a step it holds what the
             // program's last read left.
-            ["Binding.programAtoms"] = Rule.Program, // Atoms a step after the freeze interns at library binders (ruling 203 (4)), reset with the pass.
             ["Binding.originUnitIndex"] = Rule.Program, // The C1-F4 view's units of the run's obligations, rebuilt at its first read (PrepareOriginRows).
             ["Binding.originUnits"] = Rule.Program, // Their rows, in the units' reused lists.
             ["Binding.comparisonPlans"] = Rule.Program, // The legacy comparison plans, each current in the run that formed it (n7).
@@ -520,11 +520,20 @@ public partial class KimiLibraryShapeTest
             return [.. layer.rows.Order(StringComparer.Ordinal)];
         }
 
-        // A row's rule, by its store (a number-keyed table's rows are its elements, "[]").
+        // A row's rule, by its store (a number-keyed table's rows are its elements, "[]") or the nearest store the walk listed it inside
+        // (programAtoms' column lists its arena as Binding.programAtoms.arena).
         internal static Rule RuleOf(string row)
         {
             var store = row[..(row.IndexOf(' ', StringComparison.Ordinal) is var i && i < 0 ? row.Length : i)];
-            return Disposition.GetValueOrDefault(store.EndsWith("[]", StringComparison.Ordinal) ? store[..^2] : store);
+            for (store = store.EndsWith("[]", StringComparison.Ordinal) ? store[..^2] : store; !Disposition.ContainsKey(store); store = store[..store.LastIndexOf('.')])
+            {
+                if (!store.Contains('.', StringComparison.Ordinal))
+                {
+                    return Rule.Fact;
+                }
+            }
+
+            return Disposition[store];
         }
 
         // The live-prefix rule of a pool both passes use (F's ruling 178): after a Bind its live prefix is its live store's values in

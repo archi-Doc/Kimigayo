@@ -281,11 +281,13 @@ public sealed partial class Binding
 
         // The facts kept across unchanged passes are revoked by every edit, also after a pass that did not finish (a Bind that throws
         // leaves no result): associated Origin parameters of the edited trees (the edit families: the edit counter's advance leaves every
-        // module's edit columns stale, StampedColumn), local regions, item contexts and the Type context's view memos.
+        // module's edit columns stale, StampedColumn), local regions, item contexts with the atoms their plans hold at library binders
+        // (programAtoms, G949 ruling 205 N4) and the Type context's view memos.
         this.edit++;
         this.knownBases?.Clear();
         this.localRegions.Clear();
         this.functionItemContexts.Clear();
+        this.programAtoms.Empty();
         this.types.ResetViews();
     }
 
