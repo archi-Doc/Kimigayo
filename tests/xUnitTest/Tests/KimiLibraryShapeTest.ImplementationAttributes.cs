@@ -112,7 +112,9 @@ public partial class KimiLibraryShapeTest
 
         var flagged = registered.Where(static x => KimiLibraryCatalog.RequiresCallerLocation(x)).ToArray();
         Assert.True(declared.SetEquals(flagged));
-        Assert.Equal((105, 105), (declared.Count, flagged.Length)); // PLAN G71: 23 declarations (its commits' messages list them).
+        // PLAN G71: 23 declarations (its commits' messages list them); O-412 (1): Array.sort(by:), which destroys `by`, a Kimi
+        // destructor's owner, inside the operation (SPEC 22.5.1).
+        Assert.Equal((106, 106), (declared.Count, flagged.Length));
     }
 
     // The library's Attributes of one kind, each with the declaration it is written on, in source order.

@@ -72,7 +72,8 @@ public class LibraryAbortContextTest
     // SPEC 22.5.1 (O-405 (a)): a release failure inside a Kimi destructor run implicitly (SPEC 16.2, 16.3.2, 16.4, 22.2.2) reports the
     // destruction point in user code, the location the Drop carries, whatever reaches the destructor: a local at a return, a block's
     // end or a reassignment, a temporary, an unconsumed remainder, a Field, an element, a generic body, a Closure's environment or an
-    // object's payload. The first release fails, so each program's first release is the destructor's.
+    // object's payload; inside a Kimi operation (removeAll, clear, replace, and sort(by:)'s `by`), its call. The first release fails,
+    // so each program's first release is the destructor's.
     [Theory]
     [InlineData("HeapReturn", "func build() -> isize\n    let buffer = Text.heap(16)\n    return buffer.capacity\nlet n = build()", "Hello.kimi:2:5")]
     [InlineData("HeapBlockEnd", "func build()\n    let buffer = Text.heap(16)\n    require buffer.capacity == 16 else => $abort(\"capacity\")\nbuild()", "Hello.kimi:2:5")]
@@ -94,6 +95,7 @@ public class LibraryAbortContextTest
     [InlineData("HeapRemoveAll", "var buffers: Array<Text.HeapBuffer> = [Text.heap(16)]\nbuffers.removeAll(matching: func (b) => b@follow.capacity > 0)", "Hello.kimi:2:1")]
     [InlineData("HeapDictionaryClear", "var entries: Dictionary<i32, Text.HeapBuffer> = [:]\n_ = entries.tryInsert(1, Text.heap(16))\nentries.clear()", "Hello.kimi:3:1")]
     [InlineData("HeapReplace", "var buffer = Text.heap(16)\nKimi.Intrinsics.replace(buffer@uniq, with: Text.heap(8))", "Hello.kimi:2:1")]
+    [InlineData("SortClosure", "var values: Array<i32> = [2, 1]\nlet buffer = Text.heap(16)\nvalues.sort(by: func [buffer@move] (a, b) => 0)", "Hello.kimi:3:1")]
     [InlineData("ArrayControl", "func run() -> i32\n    let values: Array<i32> = [1, 2]\n    return 0\nlet n = run()", "Hello.kimi:2:5")]
     public void ImplicitDestructionReportsTheDestructionPoint(string name, string source, string location)
         => ReleaseFails("LibraryAbortContextDestruction" + name, source, location);
