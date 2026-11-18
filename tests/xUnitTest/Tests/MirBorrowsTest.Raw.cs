@@ -807,7 +807,8 @@ public sealed partial class MirBorrowsTest
     // it: x's own (viaOk, consumeDrop2Ok, arrConsumeOk; viaRefOk through a borrow) or input 1's (via2Ok; deepQOk two Fields deep, enumBOk
     // in an enum's payload, optOk in an Option, boxPLateOk in a box's Field, arrPlainOk in an Array). genPLateOk, the box passed to
     // `writeG<T>(x: Bx<T>, q: raw/u8)`, is a valid program, rejected again since c3-5 as on fcd6a5381 (the limit genUntiedBad's row names): `x.item` is storage of writeG's own T, Plain's raw Field lies in T's binding, which adds
-    // no reach of its own, and q is no T (SPEC 15.6.4; the owner's O-360 (a)); its purpose is
+    // no reach of its own beyond the address it carries, and q is no T; slot, the holder that Field addresses, may take q (route 1, the
+    // owner's O-312 (a)) but is used only before `y = 5` (SPEC 15.6.4; the owner's O-360 (a)); its purpose is
     // boxPLateOk's, whose callee `writeBP(x: Bx<Plain>, ..)` writes the Type. Each other is a correct error at `y = 5`
     // though `slot` is used before it; arrConsumeOk and arrPlainOk also by `append`'s untied receiver store (5.7, 15.6.4). The function
     // names keep their earlier suffix. The old analysis read no retention and accepted the program; since the MIR decides acceptance

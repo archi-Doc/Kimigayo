@@ -1657,11 +1657,15 @@ public sealed partial class MirBorrowsTest
     // carries, so the storage ends of the holders it names conflict (r1c's and r1cv's; SPEC 23.1.2).
     // PLAN G935 (the owner's O-360 (a)): `putAny<U, V>(t: uniq/U,
     // v: V)` and `putTwo<U, V, W>(t: U, u: uniq/V, v: W)` store v nowhere in their own terms (`*t`, `*u` are storage of the callee's own
-    // U or V, which holds no V or W), so `z = 5` no longer errs in ss8g, ss8c, ss8two and r1a (relabelled; ss8two is valid as a
-    // whole). ss8a and ss8m err there again since c3-5, as on fcd6a5381: `t.1` of ss8a, w's plain address, names a holder that a raw
-    // layer of U's binding addresses, which putAny may write with z's borrow (the owner's O-312 (a)); ss8m's v, the holder its
-    // exclusive part names, is read after (its row comes from the raw layer beside it, a holder of the same Type; the rule for a safe
-    // reference in the binding is an open issue). c2's relabel of the two is reverted. The valid ss8, ss8s and ss8mv are valid before this rule is read. The rule's two directions are kept by
+    // U or V, which holds no V or W), so `z = 5` no longer errs in ss8two (valid as a whole: `*u` is putTwo's own V). But a holder that
+    // U's binding names by an exclusive Loan or addresses is no storage of U: "a safe reference the binding holds is no such layer, and
+    // the routes above apply to it" (SPEC 15.6.4 route 1, PLAN G935 B2), and so is a raw layer's (the owner's O-312 (a), c3-5). putAny
+    // may write it with z's borrow, so `z = 5` errs again, as on fcd6a5381, where that holder is read after: ss8m (v), ss8g (g.1), ss8c
+    // (v, reached through r's exclusive layer), r1a (g.1 through h), ss8a (w's plain address, t.1), and hidRefBad (w), the same through
+    // a reference to a reference (hidRefNestBad) and with U the reference itself (hidRefDirectBad). FAIL-FIRST on 768d6899d: ss8g, ss8c,
+    // r1a and the three hidRef rows lost their `z = 5` (c2 kept the referent as storage of U). The `inspect(w)` records of the hidRef
+    // rows are a known false record (D-776, the safe reference in a kept binding): hidRefEarlyOk, valid (w read before `z = 5`, t not
+    // used after), has only it. The valid ss8, ss8s and ss8mv are valid before this rule is read. The rule's two directions are kept by
     // the concrete twins, whose callee writes the Tuple Type in its own signature (putAnyV's by-value rows still read the binding):
     // cs8s (no raw layer in `*t`) and the by-value cs8vr and cs8mvr (stAV and stMV write no layer of the caller's storage, and their
     // t.0 is w's address read through the shared s) are valid; cs8m, cs8g, cs8a, cs8c, cs8two and cr1a err at `z = 5`. A callee taking
@@ -1943,14 +1947,48 @@ public sealed partial class MirBorrowsTest
                 stC(t@uniq, z@ref)
                 z = 5
                 inspect(g)
+            func hidRefBad()
+                var x = 1
+                var z = 3
+                var w: ref/i32 = x@ref
+                var t = (w@uniq, 0)
+                putAny(t@uniq, z@ref)
+                z = 5
+                inspect(w)
+            func hidRefEarlyOk()
+                var x = 1
+                var z = 3
+                var w: ref/i32 = x@ref
+                var t = (w@uniq, 0)
+                putAny(t@uniq, z@ref)
+                inspect(w)
+                z = 5
+            func hidRefNestBad()
+                var x = 1
+                var z = 3
+                var w: ref/i32 = x@ref
+                var w2 = w@uniq
+                var t = (w2@uniq, 0)
+                putAny(t@uniq, z@ref)
+                z = 5
+                inspect(w)
+            func hidRefDirectBad()
+                var x = 1
+                var z = 3
+                var w: ref/i32 = x@ref
+                var u = w@uniq
+                putAny(u@uniq, z@ref)
+                z = 5
+                inspect(w)
             """);
         Assert.Equal(
             [
-                "ss8m: z = 5", "ss8m: inspect(v)", "ss8vb: z = 5", "ss8g: g", "ss8gv: z = 5", "ss8a: z = 5", "ss8c: inspect(v)", "r1a: g",
-                "r1c: z = 5", "r1c: var q: (raw/(ref/i32), i32) = (w@raw, 0)", "r1c: var w: ref/i32 = x@ref", "r1c: var x = 1",
-                "r1cv: z = 5", "r1cv: var q: (raw/(ref/i32), i32) = (u@raw, 0)", "r1cv: var w: ref/i32 = x@ref", "r1cv: var y = 2",
-                "r1cv: var x = 1", "ss8w: w = y@ref", "cs8m: z = 5", "cs8m: inspect(v)", "cs8g: z = 5", "cs8g: g", "cs8a: z = 5",
-                "cs8c: z = 5", "cs8c: inspect(v)", "cs8two: z = 5", "cr1a: z = 5", "cr1a: g",
+                "ss8m: z = 5", "ss8m: inspect(v)", "ss8vb: z = 5", "ss8g: z = 5", "ss8g: g", "ss8gv: z = 5", "ss8a: z = 5", "ss8c: z = 5",
+                "ss8c: inspect(v)", "r1a: z = 5", "r1a: g", "r1c: z = 5", "r1c: var q: (raw/(ref/i32), i32) = (w@raw, 0)", "r1c: var w: ref/i32 = x@ref",
+                "r1c: var x = 1", "r1cv: z = 5", "r1cv: var q: (raw/(ref/i32), i32) = (u@raw, 0)", "r1cv: var w: ref/i32 = x@ref", "r1cv: var y = 2",
+                "r1cv: var x = 1", "ss8w: w = y@ref", "cs8m: z = 5", "cs8m: inspect(v)", "cs8g: z = 5", "cs8g: g", "cs8a: z = 5", "cs8c: z = 5",
+                "cs8c: inspect(v)", "cs8two: z = 5", "cr1a: z = 5", "cr1a: g", "hidRefBad: z = 5", "hidRefBad: inspect(w)", "hidRefEarlyOk: inspect(w)",
+                "hidRefNestBad: z = 5", "hidRefNestBad: inspect(w)", "hidRefDirectBad: z = 5", "hidRefDirectBad: inspect(w)",
             ],
             Problems(c, Analyze(c), [.. LoanCodes, DiagnosticCode.Unsupported_Kd]));
     }
