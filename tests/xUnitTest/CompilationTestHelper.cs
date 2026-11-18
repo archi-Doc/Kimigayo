@@ -15,12 +15,14 @@ internal static class CompilationTestHelper
 
     // The seam for a test that edits the Kimi library (PLAN G949 Stage 2 U3, design 4.1, x1): the edit runs on a library of the test's own,
     // before any Binding reads it, and the test compilation is given that library (Compilation.UseLibrary), so no test writes a library
-    // another compilation reads. Until U3-4 the library is made in the test compilation (its own library, as before); from U3-4 it is
-    // frozen through the seam (KimiLibrary.Unfrozen for the compilation's target, the edit, KimiLibrary.Freeze), frozen or refused.
+    // another compilation reads: the library is frozen through the seam (KimiLibrary.Unfrozen for the compilation's target, the edit,
+    // KimiLibrary.Freeze), frozen or refused, and the test compilation reads it as it reads the process's.
     internal static KimiLibrary UseEditedLibrary(Compilation c, Action<KimiLibrary> edit)
     {
-        var library = new KimiLibrary(c);
-        edit(library);
+        var kimigayo = Compilation.CreateForTest().Kimigayo; // A console-less compiler service, as Of's default preparation has.
+        var freeze = KimiLibrary.Unfrozen(c.TargetTriple, kimigayo, new Project(kimigayo));
+        edit(freeze.Library);
+        var library = KimiLibrary.Freeze(freeze);
         c.UseLibrary(library);
         return library;
     }

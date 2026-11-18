@@ -437,6 +437,7 @@ public class BindingTest
         twin.Bind();
         twin.Binding.ReportDiagnostics();
         var c = CompilationTestHelper.Parse(source);
+        CompilationTestHelper.UseEditedLibrary(c, static _ => { }); // It writes the library layer's part: on a library of its own (x1, X11).
         c.Bind();
         var (issues, derived, obligations) = (c.Binding.Issues.ToArray(), c.Binding.DerivedIssues.ToArray(), c.Binding.Obligations.ToArray());
         Assert.NotEmpty(issues);
@@ -528,7 +529,9 @@ public class BindingTest
     // private Fail after a Final Bind, as a check of the program pass would: CheckBound then records it after the program's issues, the
     // Bind's Result counts it once by its recorded state (Resolved - 1 and Invalid + 1 against the Bind's), ReportDiagnostics publishes
     // one record of it, a second CheckBound publishes the one record again, not twice, and a second failure of the node adds no listing,
-    // also after a check cleared its failure (N2: the recorder reads the entry, so a node is listed once per pass).
+    // also after a check cleared its failure (N2: the recorder reads the entry, so a node is listed once per pass). From PLAN G949 Stage 2
+    // U3 (h7b) the node is the shared frozen library's: its record is the reading compilation's (Core's StoreOf), and another compilation
+    // over the same library holds none.
     [Fact]
     public void ALibraryNodeTheProgramPassFailsIsRecordedOnce()
     {
@@ -557,6 +560,11 @@ public class BindingTest
             Assert.Single(c.Diagnostics.Finalize().Diagnostics, static x => x.Code == nameof(DiagnosticCode.TypeMismatch_Kd));
             Assert.Equal((BindingState.Resolved, BindingFailure.None), (node.StateOf(c), node.FailureOf(c)));
         }
+
+        var other = CompilationTestHelper.Parse("let y = 1\n");
+        Assert.True(other.Bind().IsComplete);
+        Assert.Same(c.Library, other.Library);
+        Assert.DoesNotContain(other.Diagnostics.Finalize().Diagnostics, static x => x.Code == nameof(DiagnosticCode.TypeMismatch_Kd));
     }
 
     // PLAN G949 S1-r1b (v4; s1r1-design 1.3): CheckBound reruns the program pass's Check only, on Binding's own part, and composes the
@@ -629,6 +637,7 @@ public class BindingTest
         // 15.6.5): valid.
         var c = CompilationTestHelper.Parse("let a = 1\nlet b = 2\nvar view = a@ref\nview = b@ref\nvar held = view\nheld = a@ref\n" +
             "require view@follow == 2 and held@follow == 1 else => $abort(\"view\")\n");
+        CompilationTestHelper.UseEditedLibrary(c, static _ => { }); // It writes the library layer's part: on a library of its own (x1, X11).
         c.Bind();
         Assert.True(c.Binding.Result.IsComplete);
         var layer = c.Binding.Library.Layer.Part.Regions;

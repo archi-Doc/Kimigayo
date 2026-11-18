@@ -7,7 +7,8 @@ using Xunit;
 namespace XunitTest;
 
 // PLAN G949 Stage 2 U4 (design §4, 5.7, 7b.3; u4-design): the interners' two levels inside one compilation, the library layer's
-// frozen level (filled until the seal, the library table's freeze) and the compilation's own.
+// frozen level (filled until the seal, the library table's freeze) and the compilation's own; from U3 (rows s8x, r3a) across the
+// compilations that read one frozen library.
 public partial class KimiLibraryShapeTest
 {
     // s8 within one compilation (U4; C-380 F3 (a)): after the first Bind of each of c2's programs, a second Bind and Analyze, every
@@ -89,7 +90,7 @@ public partial class KimiLibraryShapeTest
     [Fact]
     public void TheSealRefusesAWriteIntoAFrozenObject()
     {
-        var c = Bound(string.Empty);
+        var c = BoundOverItsOwnLibrary(string.Empty); // It writes frozen library objects: on a library of its own (x1, X11).
         var layer = c.Library.Layer;
         var constraint = layer.Constraints.Values.First(static x => x.Kind != ConstraintKind.Not);
         constraint.Negation = null;
@@ -103,6 +104,57 @@ public partial class KimiLibraryShapeTest
         var form = typeof(Binding).GetMethod("BoundContractReference", BindingFlags.Instance | BindingFlags.NonPublic)!;
         thrown = Assert.Throws<TargetInvocationException>(() => form.Invoke(c.Binding, [reference]));
         Assert.Contains("InternalInvariant", thrown.InnerException!.Message);
+    }
+
+    // s8x (F-B3, D-4; PLAN G949 Stage 2 U3): two reading compilations hold one frozen level. The objects reachable from the library's are
+    // the same objects from both (the reference objects; a struct is a copy), and a frozen Type re-interned by its parts in either
+    // compilation is that object.
+    [Fact]
+    public void TwoCompilationsShareTheFrozenLevel()
+    {
+        var (hello, milestone) = (Bound("example/Hello"), Bound("milestone/Milestone26"));
+        _ = hello.Analyze();
+        _ = milestone.Analyze();
+        var hir = hello.Library.Kotonoha.Syntax.Hir;
+        var objects = new HashSet<object>(LibraryObjects(hello, hir.ErasedTypes, hir.Meanings).Where(static x => !x.GetType().IsValueType), ReferenceEqualityComparer.Instance);
+        Assert.NotEmpty(objects);
+        Assert.True(objects.SetEquals(LibraryObjects(milestone, hir.ErasedTypes, hir.Meanings).Where(static x => !x.GetType().IsValueType)));
+        var types = hello.Library.Layer.Types.Values.SelectMany(static x => x).Where(static x => x.Kind is not (BoundTypeKind.Parameter or BoundTypeKind.TargetProjection)).ToArray();
+        Assert.NotEmpty(types);
+        foreach (var type in types)
+        {
+            Assert.Same(type, hello.Types.Rebuild(type, [.. type.Components], type.Origin, [.. type.OriginArguments]));
+            Assert.Same(type, milestone.Types.Rebuild(type, [.. type.Components], type.Origin, [.. type.OriginArguments]));
+        }
+    }
+
+    // r3a (PLAN G949 Stage 2 U3, Revision 3; B's ruling 36): no compilation writes a frozen library object. Two reading compilations of a
+    // program whose `step` resolves `I.(LendingIterator).LentItem(s)` for OwningIterator<Counter> and BorrowingIterator<Counter> (the
+    // census's finding 4; TyCtxtTest.ProvenPathsBindTheirCommonType's shape; valid, SPEC 8.9.2) form hop chains through the library's
+    // frozen paths, each its own (Binding.frozenPathHops), and no frozen path's chains hold a step above L (a program's Type). Before
+    // Revision 3 the chains were appended to the frozen paths. Hello and Milestone26 form none after the seal.
+    [Fact]
+    public void NoCompilationExtendsAFrozenPathsHopChains()
+    {
+        const string Step = "struct Counter\n    Self is Iterator\n    associate Iterator.Item is i32\n    public init() => ()\n" +
+            "    public func next(self: uniq/Self) -> Option<i32> => .None\n" +
+            "func step<I>(it: uniq/I during s) -> Option<I.(LendingIterator).LentItem(s)>\n    I is LendingIterator\n    return it.next()\n" +
+            "var i1 = Kimi.Iteration.owning(Counter.init())\nlet x1 = step(i1@uniq)\nvar counter = Counter.init()\n" +
+            "var i2 = Kimi.Iteration.borrowing(counter@uniq)\nlet x2 = step(i2@uniq)\n";
+        var (first, second) = (MinimalEmissionTest.Analyze(Step), MinimalEmissionTest.Analyze(Step));
+        Assert.True(first.Binding.Result.IsComplete && second.Binding.Result.IsComplete, MinimalEmissionTest.Describe(first));
+        var layer = first.Library.Layer;
+        var paths = ((System.Collections.IDictionary)typeof(ImplTable).GetField("paths", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(layer.Impls)!).Values.Cast<BoundConformancePath>();
+        var frozen = paths.SelectMany(static x => x.HopChains ?? []).ToHashSet<Binding.ResolutionHops>(ReferenceEqualityComparer.Instance);
+        Assert.Empty(frozen.Where(x => x.Step.Id > layer.TypeCount).Select(static x => $"{x.Path.Type.Name} is {x.Path.Contract.Name}: {x.Step}"));
+        var own = HopsOf(first).Concat(HopsOf(second)).ToArray();
+        Assert.NotEmpty(HopsOf(first));
+        Assert.NotEmpty(HopsOf(second));
+        Assert.DoesNotContain(own, frozen.Contains);
+        Assert.Empty(HopsOf(first).Intersect(HopsOf(second), ReferenceEqualityComparer.Instance));
+
+        static IEnumerable<Binding.ResolutionHops> HopsOf(Compilation c)
+            => ((System.Collections.IDictionary)typeof(Binding).GetField("frozenPathHops", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(c.Binding)!).Values.Cast<Binding.ResolutionHops>();
     }
 
     private static HashSet<object> FrozenLevel(Kimi.Compiler.LibraryLayer layer)

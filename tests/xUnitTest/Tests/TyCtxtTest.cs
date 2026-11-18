@@ -265,7 +265,8 @@ public sealed partial class TyCtxtTest
     // PLAN G949 S1-b2 (DECISIONS BU-220): the statics hold the ids 1..StaticCount from one fixed list, the same objects in every
     // compilation; a compilation's TyCtxt numbers every Type it makes after them, the interned ones and the parameter Types (a generic
     // parameter's whole Type and target projection, a Contract's Self), each id once and with no gap, in the order it makes them, so two
-    // compilations of one program number alike.
+    // compilations of one program number alike. From PLAN G949 Stage 2 U3 (u13) the compilation reads the frozen library, whose layer
+    // holds the ids up to its L, so the compilation's own ids number on from L + 1 with no gap.
     [Fact]
     public void TypeIdsAreDenseAndUnique()
     {

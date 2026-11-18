@@ -44,6 +44,7 @@ public partial class Compilation
 
     internal bool Prepare(string target, DependencyPartition graph)
     {
+        this.EnsureNoBinding();
         if (this.hasParsedSource)
         {
             throw new InvalidOperationException("Create a new Compilation to change inputs after parsing source.");

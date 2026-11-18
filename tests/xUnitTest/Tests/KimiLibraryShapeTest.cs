@@ -168,6 +168,10 @@ public partial class KimiLibraryShapeTest
         Assert.True(c.Bind().IsComplete);
         var counts = c.Binding.Library.Layer.Size;
         Assert.True(counts.Rounded() == KimiLibrarySize.Stated, $"stated {KimiLibrarySize.Stated}, counted {counts}");
+
+        // h8 (PLAN G949 Stage 2 U3, design R2.3): the freeze's TypeKeys is its frozen level's Types, from which a reading compilation's
+        // count goes on (TyCtxt.KeyCount), so TableCounts.TypeKeys counts every Type key of the compilation.
+        Assert.Equal(c.Library.Layer.Types.Values.Sum(static x => x.Count), counts.TypeKeys);
     }
 
     // KimiLibrarySize's room contract: after a Bind of the library alone, each sized table with a room keeps at least its kind's room

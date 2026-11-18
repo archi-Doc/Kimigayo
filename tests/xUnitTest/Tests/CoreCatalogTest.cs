@@ -9,8 +9,11 @@ namespace XunitTest;
 
 public class CoreCatalogTest
 {
+    // PLAN G949 Stage 2 U3 (changed by decision, X8): compilations made at once read the process's one frozen library for their
+    // target, so its identities are the same objects in each. Stage 1's row (ConcurrentCompilationsKeepSeparateLibraryState) gave each
+    // compilation a library of its own.
     [Fact]
-    public void ConcurrentCompilationsKeepSeparateLibraryState()
+    public void ConcurrentCompilationsShareTheFrozenLibraryState()
     {
         var libraries = new KimiLibrary[16];
         Parallel.For(0, libraries.Length, i =>
@@ -21,8 +24,8 @@ public class CoreCatalogTest
         });
         for (var i = 1; i < libraries.Length; i++)
         {
-            Assert.NotSame(libraries[0].Option, libraries[i].Option);
-            Assert.NotSame(libraries[0].Option.Declaration, libraries[i].Option.Declaration);
+            Assert.Same(libraries[0].Option, libraries[i].Option);
+            Assert.Same(libraries[0].Option.Declaration, libraries[i].Option.Declaration);
         }
     }
 
@@ -40,8 +43,11 @@ public class CoreCatalogTest
         Assert.False(c.Kotonoha.Syntax.IsLibrary);
     }
 
+    // PLAN G949 Stage 2 U3 (changed by decision, X8): the embedded sources keep their file locations, and two compilations read the one
+    // frozen library, so its symbols, declarations and documents are the same objects. Stage 1's row
+    // (EmbeddedSourcesKeepFileLocationsAndShareOnlyText) parsed them per compilation and shared only the text.
     [Fact]
-    public void EmbeddedSourcesKeepFileLocationsAndShareOnlyText()
+    public void EmbeddedSourcesKeepFileLocationsAndAreShared()
     {
         var first = Compilation.CreateForTest();
         var second = Compilation.CreateForTest();
@@ -52,10 +58,9 @@ public class CoreCatalogTest
             var source = a.Declaration.CodeContext.SourceDocument!;
             Assert.StartsWith("compiler://Kimi/" + Compilation.CurrentLanguageVersion + "/", source.Path);
             Assert.EndsWith(".kimi", source.Path);
-            Assert.NotSame(a, b);
-            Assert.NotSame(a.Declaration, b.Declaration);
-            Assert.NotSame(source, b.Declaration.CodeContext.SourceDocument);
-            Assert.Same(source.SourceText, b.Declaration.CodeContext.SourceDocument!.SourceText);
+            Assert.Same(a, b);
+            Assert.Same(a.Declaration, b.Declaration);
+            Assert.Same(source, b.Declaration.CodeContext.SourceDocument);
         }
 
         Assert.True(first.Bind().IsComplete);

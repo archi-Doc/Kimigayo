@@ -150,10 +150,15 @@ public partial class KimiLibraryShapeTest
     // of its last Unknown, is payload no fixpoint compares (design-r2 Amendment 4), and a consumer that requests the work while it waits
     // in the queue reads it beside the reset Unknown (RequestCapability's read of the queued work), for record selection only; Reset
     // empties it since G949 S1-e, so that read never hands out a previous epoch's Fact (S1-0b r2's review, Finding 3).
+    // PLAN G949 Stage 2 U3 (changed by decision): only the freeze compilation binds its library, so the row starts both passes on one,
+    // with Hello as its program; a reading compilation runs no library pass, whose reset would find no work.
     [Fact]
     public void TheCapabilityMemosEndWithTheirEpoch()
     {
-        var binding = BoundOverItsOwnLibrary("example/Hello").Binding;
+        var c = Unfrozen(Kimi.Compiler.Target.TargetTriple.Parse(WindowsProfile.Target), debugAndSetting: false);
+        c.Kotonoha.AddSource(new SourceDocument("Program.kimi", Repository.ReadText("docs", "examples", "Hello", "Hello.kimi")));
+        c.Bind();
+        var binding = c.Binding;
 
         // Hello's works end with no U fact, so one work keeps one as an earlier epoch's Unknown leaves it: without Reset's clear the
         // Fact check below fails.
@@ -346,7 +351,7 @@ public partial class KimiLibraryShapeTest
     }
 
     /// <summary>The library layer of a bound compilation as sorted rows (store, key, value).</summary>
-    private sealed class LibraryLayer
+    internal sealed class LibraryLayer
     {
         private const int Depth = 3; // Nesting printed inside a row.
         private const int Nesting = 3; // Objects whose fields are listed as stores below Binding (ImplTable, TyCtxt, their parts).

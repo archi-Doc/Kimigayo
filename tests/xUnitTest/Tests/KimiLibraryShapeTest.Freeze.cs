@@ -74,15 +74,22 @@ public partial class KimiLibraryShapeTest
         => [string.Empty, "example/Hello", "milestone/Milestone26", "milestone/Milestone27", "milestone/Milestone30", "milestone/Milestone31",
             "milestone/Milestone32", "milestone/Milestone35", "example/Ranges", "example/Utf8Formatting"];
 
-    // k3 (E4's tripwire; F's ruling 167, Q3): no library conformance path has a standard Property witness (SPEC 11.9.2: a stored Field
-    // witnessing a Property requirement, which a bridge accessor executes), so no program can make a witness bridge on a library path
-    // (PropertyWitnessFunction makes one per path and witness) and S1-1 needs no eager bridge step: every library path's Property
-    // witnesses are accessor calls (95 verified paths today). The unit that gives a library Type the first standard witness removes this
-    // Fact and adds the eager step over the base paths, returning a library bridge without its refresh (s11-design section 4, E4).
+    // k3 (E4's tripwire; F's ruling 167, Q3), strengthened as t3 (PLAN G949 Stage 2 U3, design R3.7 C2): no library contract declares a
+    // Property requirement, so no library conformance path has a Property witness, and so none a standard one (SPEC 11.9.2: a stored Field
+    // witnessing a Property requirement, which a bridge accessor executes): no program makes or refreshes a witness bridge on a frozen
+    // path (PropertyWitnessFunction makes one per path and witness) and S1-1 needs no eager bridge step. The unit that gives a library
+    // contract the first Property requirement routes those writes by U4's two levels, adds the eager step over the base paths (s11-design
+    // section 4, E4) and removes this Fact.
     [Fact]
     public void TheLibraryDeclaresNoStandardPropertyWitness()
     {
         var c = Bound(string.Empty);
+        var requirements = KotoTree.Walk(c.Library.Kotonoha.RootKoto).OfType<PropertyKoto>().Where(static x => x.DeclarationKind == PropertyDeclarationKind.Requirement).Select(static x => Line(x)).ToArray();
+        var removal = "A library contract declares a Property requirement, so PropertyWitnessFunction (through InstantiatePropertyRequirementCall) " +
+            "creates or refreshes in place a bridge on a frozen path (PropertyBridges; the bridge's receiver, Type, accessor and body) and " +
+            "OperationOrigins extends its PropertyWitnessOrigins: route them by U4's two levels, as Binding.Hop's (PLAN G949 Stage 2 U3), with " +
+            "k3's E4 eager step, then remove this row: ";
+        Assert.True(requirements.Length == 0, removal + string.Join(", ", requirements));
         var paths = DeclaredSymbols(c)
             .Where(x => x.Kind == BindingSymbolKind.Type && ReferenceEquals(x.Declaration.CodeContext?.Kotonoha, c.Library.Kotonoha))
             .SelectMany(x => c.Binding.Semantics.Conformances(x) ?? [])
@@ -478,7 +485,7 @@ public partial class KimiLibraryShapeTest
     [InlineData("Consumer")]
     public void W1ComparesTheLibrarysViewSerialsAndConsumersByValue(string field)
     {
-        var c = Bound(string.Empty);
+        var c = BoundOverItsOwnLibrary(string.Empty); // It writes frozen library objects: on a library of its own (x1, X11).
         var families = c.Library.Kotonoha.Syntax.Hir.Families;
         var dump = LibraryLayer.Dump(c, MemoStamps);
         var scope = First(families.Scopes.Enumerate());
@@ -643,6 +650,50 @@ public partial class KimiLibraryShapeTest
             .SelectMany(x => c.Binding.Semantics.Conformances(x) ?? []).SelectMany(static x => x.Paths).ToArray();
         Assert.NotEmpty(paths);
         Assert.Empty(paths.Where(static x => x.InferenceConsumers is { Count: not 0 }).Select(static x => $"{x.Type.Name} is {x.Contract.Name}"));
+    }
+
+    // t2 (PLAN G949 Stage 2 U3, design R3.7 C2; F-2's program side): a tripwire, true today. No library struct is `open`, so no program
+    // struct inherits a library base (SPEC 6: a sealed structure cannot be a base) and no frozen path is an inherited path's source.
+    [Fact]
+    public void TheLibraryDeclaresNoOpenStruct()
+    {
+        var open = KotoTree.Walk(Bound(string.Empty).Library.Kotonoha.RootKoto).OfType<StructKoto>().Where(static x => (x.Modifier & ModifierKind.Open) != 0).Select(static x => Line(x)).ToArray();
+        var removal = "A library struct is open, so a library base makes a frozen path an inherited path's source, which a program pass " +
+            "writes (PublishInheritedInference's AddInferenceConsumer; VerifyConformance of an inherited source): route those writes by U4's " +
+            "two levels, as Binding.Hop's (PLAN G949 Stage 2 U3), then remove this row and F-2: ";
+        Assert.True(open.Length == 0, removal + string.Join(", ", open));
+    }
+
+    // c1 (PLAN G949 Stage 2 U3, design R3.7 C1): the freeze leaves every base conformance path verified, none Checking or at its OCC-X
+    // limit, for every key, so verification stops at every frozen path (VerifyConformance's IsVerified return) and no reading compilation
+    // verifies one on the shared object.
+    [Theory]
+    [InlineData("x86_64-pc-windows-msvc")]
+    [InlineData("i686-pc-windows-msvc")]
+    [InlineData("avr-unknown-unknown")]
+    [InlineData("")]
+    public void EveryBaseConformancePathIsVerified(string target)
+    {
+        var library = KimiLibrary.Of(target.Length == 0 ? Kimi.Compiler.Target.TargetTriple.Invalid : Kimi.Compiler.Target.TargetTriple.Parse(target));
+        var paths = ((IDictionary)typeof(ImplTable).GetField("paths", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(library.Layer.Impls)!)
+            .Values.Cast<BoundConformancePath>().Where(static x => x.Current).ToArray();
+        Assert.NotEmpty(paths);
+        Assert.Empty(paths.Where(static x => !x.IsVerified || x.Checking || x.Unsupported).Select(static x => $"{x.Type.Name} is {x.Contract.Name}"));
+    }
+
+    // c1's twin (invalid use: an internal contract; SPEC 12.7, OCC-X): a library whose inherited conformance (an exclusive witness reached
+    // through its base) no check needs is left unverified at its limit with no record, so its freeze is the internal-invariant form and
+    // the library stays unfrozen. Before c1 it froze with that path unverified, which every reading compilation would verify again.
+    [Fact]
+    public void AFreezeRefusesAnUnverifiedConformancePath()
+    {
+        var freeze = Unfrozen(Kimi.Compiler.Target.TargetTriple.Parse(WindowsProfile.Target), debugAndSetting: false);
+        freeze.Library.Kotonoha.CreateCodeContext().Parse(
+            freeze.Library.Kotonoha.RootKoto,
+            "contract ZBumps\n    func bump(self: uniq/Self) -> ()\nopen struct ZBase\n    Self is ZBumps\n    public var count: i32 = 1\n    public init() => ()\n    public func bump(self: uniq/Self) -> () => self.count += 1\nstruct ZLeaf: ZBase\n    public init() => ()\n");
+        var refused = Assert.Throws<InvalidOperationException>(() => KimiLibrary.Freeze(freeze));
+        Assert.Contains("unverified (InternalInvariant; PLAN G949 Stage 2 U3)", refused.Message, StringComparison.Ordinal);
+        Assert.False(freeze.Library.Kotonoha.Syntax.Frozen);
     }
 
     // w1's comparison after each later step.

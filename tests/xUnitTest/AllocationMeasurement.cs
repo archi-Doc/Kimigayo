@@ -6,6 +6,7 @@ using System.Globalization;
 using System.Reflection.Emit;
 using System.Runtime;
 using Kimi.Compiler;
+using Kimi.Compiler.Target;
 using Xunit;
 
 namespace XunitTest;
@@ -48,6 +49,7 @@ internal static class AllocationMeasurement
     internal static long Measure(Action operation)
     {
         ArgumentNullException.ThrowIfNull(operation);
+        FreezeLibraries();
         return OnNewThread(() =>
         {
             Pool.RecordCurrentThread();
@@ -99,6 +101,7 @@ internal static class AllocationMeasurement
     internal static long MeasureOnce(Action operation)
     {
         ArgumentNullException.ThrowIfNull(operation);
+        FreezeLibraries();
         if (!CompilerThread.IsCurrent)
         {
             return CompilerThread.Run(operation, static operation => MeasureOnce(operation));
@@ -137,6 +140,7 @@ internal static class AllocationMeasurement
             throw new InvalidOperationException("A cold series runs in AllocationIsolationCollection: put its test in a nested AllocationTests class.");
         }
 
+        FreezeLibraries();
         if (!CompilerThread.IsCurrent)
         {
             return CompilerThread.Run((count, fresh), static series => MeasureSeries(series.count, series.fresh));
@@ -186,6 +190,15 @@ internal static class AllocationMeasurement
         }
 
         return allocated;
+    }
+
+    // PLAN G949 Stage 2 U3 (design 8, s10): a compilation reads the process's frozen library for its target (KimiLibrary.Of), which
+    // the target's first reader freezes. Each measurement forces it first for the targets tests use (the test profile's, and none),
+    // so no window or run measures the freeze, only the program's share.
+    private static void FreezeLibraries()
+    {
+        _ = KimiLibrary.Of(TargetTriple.Parse(WindowsProfile.Target));
+        _ = KimiLibrary.Of(TargetTriple.Invalid);
     }
 
     private static (long Caller, long Worker) Hops()

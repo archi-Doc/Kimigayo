@@ -31,7 +31,7 @@ namespace Kimi.Compiler;
 //   module's syntax list (moved with the frozen library as SyntaxRecords; from U3 the reading compilation's DiagnosticOwner registers it
 //   read-only and publishes it under its own code); the refusal refers to that list, never copies it.
 // - Prohibitions: no second constructor or freeze path; no mode or flag deciding the library pass; no second check of the library's
-//   records beside FreezeLibrary's; no compilation reads Of before U3.
+//   records beside FreezeLibrary's.
 
 /// <summary>Owns the Kimi library's identities over its embedded sources, per compilation and, frozen, per process (<see cref="Of"/>).</summary>
 public sealed partial class KimiLibrary
