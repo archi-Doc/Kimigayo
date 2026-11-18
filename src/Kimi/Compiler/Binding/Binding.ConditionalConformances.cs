@@ -477,10 +477,16 @@ public sealed partial class Binding
     // (Error absorbs, but a failed obligation has its own record: record selection, Q13), so it depends on none. The enclosing answers
     // keep what it read.
     private bool EndAnswer((int Depth, int Enclosing) mark, ConstraintProof verdict)
+        => this.EndRead(mark) && verdict == ConstraintProof.Unknown;
+
+    // Whether the computation begun at `mark` read an obligation open before it began, whatever it answered (an obligation opened and
+    // closed inside it reads at or above its depth): the base walk's settled part (FormedPart) reads none. The enclosing answers keep what
+    // it read.
+    private bool EndRead((int Depth, int Enclosing) mark)
     {
         var read = this.dependence < mark.Depth;
         this.dependence = Math.Min(mark.Enclosing, this.dependence);
-        return read && verdict == ConstraintProof.Unknown;
+        return read;
     }
 
     // SPEC 8.6.3: the start of a requirement's evidence, an answer holding pending every obligation open when it began (heldObligations).

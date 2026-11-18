@@ -18,10 +18,10 @@ namespace Kimi.Compiler;
 //   clauses; each walk then closes the part's proof scope; each distinct part with components is decided once per query, and each walk
 //   call begins its own query, so the two walks never share an entry; a per-use walk call made while a per-use walk of the same scope
 //   runs (a conformance's instance formation inside a part's clauses) first reads a part that walk has decided on settled verdicts
-//   alone (no provisional read, ProvisionalReads, and no part read that was not), which holds at the call's deeper obligation, and
-//   stores nothing in that walk's query, so the walk is linear in the distinct parts however deep its instances nest, and an answer
-//   formed while an obligation or a capability request is pending is never read past it. A cached part and a computed one leave the
-//   same facts.
+//   alone (no open obligation read, EndRead, no provisional read, ProvisionalReads, and no part read that was not), which holds at the
+//   call's deeper obligation, and stores nothing in that walk's query, so the walk is linear in the distinct parts however deep its
+//   instances nest, and an answer formed while an obligation or a capability request is pending is never read past it. A cached part
+//   and a computed one leave the same facts.
 // - Prohibitions: no record and no failure is written here; a nested signature's result is judged where it is written
 //   (BindFunctionType, R4-M162) and its inputs at its value calls (R4-M137), never by the declaration walk; the declaration walk hands
 //   no clause fact on while PLAN G375's sigref1 stays open.
@@ -29,8 +29,8 @@ public sealed partial class Binding
 {
     // CheckTypeConstraints' and CheckDeclaredTypeConstraints' proofs of a Type's parts in one query, each with the cause it rests on
     // (DECISIONS BU-55), the clause fact it hands on (G354 (2); none in the declaration walk) and whether its computation read only
-    // settled verdicts (a nested per-use call's condition; the declaration walk's entries are read by their own walk only): neither
-    // ProvisionalReads nor unsettledReads grew over its computation. Settled goes with ProvisionalReads (removal: R7-C2e2 e2-5b, the
+    // settled verdicts (a nested per-use call's condition; the declaration walk's entries are read by their own walk only): it read no
+    // obligation open before it began (EndRead), and neither ProvisionalReads nor unsettledReads grew over it. Settled goes with ProvisionalReads (removal: R7-C2e2 e2-5b, the
     // answer's Completion).
     private readonly TypeMemo<BoundType, (ConstraintProof Proof, ICheckCause? Cause, CallableUnknown? Fact, ClauseFact? Clause, bool Settled)> formedParts = new();
 
@@ -161,9 +161,10 @@ public sealed partial class Binding
         this.BeginProof();
         if (!this.formedParts.TryGet(part, query, out var known))
         {
-            var reads = this.ProvisionalReads + this.unsettledReads;
+            var (mark, reads) = (this.BeginAnswer(), this.ProvisionalReads + this.unsettledReads);
             var proof = this.CheckTypeConstraints(part, scope, query);
-            known = (proof, this.ProofCause(proof), this.ProofFact(proof), this.ProofClause(proof), this.ProvisionalReads + this.unsettledReads == reads);
+            var settled = !this.EndRead(mark) && this.ProvisionalReads + this.unsettledReads == reads;
+            known = (proof, this.ProofCause(proof), this.ProofFact(proof), this.ProofClause(proof), settled);
             this.formedParts.Set(part, query, known);
         }
 
