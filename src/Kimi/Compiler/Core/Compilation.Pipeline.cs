@@ -138,6 +138,11 @@ public partial class Compilation
     {
         this.Bind();
         this.Binding.ReportDiagnostics();
+        if (this.Binding.Result == default)
+        {
+            return false; // A refused library (PLAN G949 Stage 2 U2a, ruling 33): only its refusal is published; no startup check, no MIR.
+        }
+
         _ = this.IsTestBuild ? this.Binding.CheckTestStartup() : this.Binding.CheckStartup(this.Project.ProjectFile.OutputKind);
         this.Binding.ReportStartupDiagnostics();
         this.Analyze();

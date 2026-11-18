@@ -10,7 +10,9 @@ namespace Kimi.Compiler;
 // - Responsibility: each direct issue reported with the facts its check recorded (ReportProblem or ReportIssue; at most one explanation
 //   table answers for a node's first failure), each derived issue with its prerequisite keys, the duplicate declaration groups, the
 //   non-failing records and SPEC 23.2.2's fallback for an incomplete pass without an Error.
-// - Inputs: the latest pass's issues, derived issues and explanation tables. Outputs: the Binding partition's records.
+// - Inputs: the latest pass's issues, derived issues and explanation tables; a refused library's refusal (LibraryLayer.Refusal), which
+//   Core publishes. Outputs: the Binding partition's records. The library's freeze reports a refused library pass's records through
+//   the same per-record steps (ReportFailures, ReportDuplicateDeclarations, ReportNonFailingRecords) while its tables stand.
 // - Invariants: invoked after final analysis, not between Mods; each call replaces the partition's records. R7-E5 deletes ReportIssue's chain.
 // - Prohibitions: no failure is decided and no node's binding state is written here.
 public sealed partial class Binding
@@ -20,25 +22,10 @@ public sealed partial class Binding
     {
         var diagnostics = this.compilation.Diagnostics;
         diagnostics.Invalidate(DiagnosticPartition.Binding);
-        if (this.sitelessHeightRefusal)
+        this.ReportFailures(this.issuesView, this.derivedIssuesView);
+        if (this.Library.Layer.Refusal is { } refusal)
         {
-            diagnostics.Report(DiagnosticPartition.Binding, DiagnosticCode.InternalInvariant_Kd, this.compilation.Project.FilePath); // Binding.TypeHeight.cs
-        }
-
-        for (var i = 0; i < this.issuesView.Count; i++)
-        {
-            var issue = this.issuesView[i];
-            if (issue.Failure == BindingFailure.Duplicate && this.duplicateDeclarations?.ContainsKey(issue.Node) == true)
-            {
-                continue; // Pairwise declaration failures are normalized as one group below.
-            }
-
-            this.ReportIssue(issue);
-        }
-
-        foreach (var node in this.derivedIssuesView)
-        {
-            node.ReportDerived(DiagnosticRequirement.Binding(this.RecordedFailure(node)), this.PrerequisiteKeys(node));
+            this.compilation.PublishRefusal(refusal.Records); // A refused library's records (PLAN G949 Stage 2 U2a, C2 (4)).
         }
 
         if (this.Result.Mode == BindingMode.Final)
@@ -507,6 +494,36 @@ public sealed partial class Binding
         else
         {
             issue.Node.Report(requirement, issue.Code, note: this.OmittedResultNote(issue.Node), evidence: issue.Code is DiagnosticCode.SharedPathAccess_Kd or DiagnosticCode.TransferRequired_Kd ? [issue.Node.ToString()] : null);
+        }
+    }
+
+    // Each failure record of a pass's lists through its per-record step (ReportIssue, ReportDerived), and the pass's siteless height
+    // refusal: ReportDiagnostics over the composed views, and the library's freeze over a refused library pass's own lists while its
+    // explanation tables stand (PLAN G949 Stage 2 U2a, C1). Generic, so a composed view is read without boxing.
+    private void ReportFailures<TIssues, TDerived>(TIssues issues, TDerived derivedIssues)
+        where TIssues : IReadOnlyList<BindingIssue>
+        where TDerived : IReadOnlyList<Koto>
+    {
+        if (this.sitelessHeightRefusal)
+        {
+            this.compilation.Diagnostics.Report(DiagnosticPartition.Binding, DiagnosticCode.InternalInvariant_Kd, this.compilation.Project.FilePath); // Binding.TypeHeight.cs
+        }
+
+        for (var i = 0; i < issues.Count; i++)
+        {
+            var issue = issues[i];
+            if (issue.Failure == BindingFailure.Duplicate && this.duplicateDeclarations?.ContainsKey(issue.Node) == true)
+            {
+                continue; // Pairwise declaration failures are normalized as one group (ReportDuplicateDeclarations).
+            }
+
+            this.ReportIssue(issue);
+        }
+
+        for (var i = 0; i < derivedIssues.Count; i++)
+        {
+            var node = derivedIssues[i];
+            node.ReportDerived(DiagnosticRequirement.Binding(this.RecordedFailure(node)), this.PrerequisiteKeys(node));
         }
     }
 }

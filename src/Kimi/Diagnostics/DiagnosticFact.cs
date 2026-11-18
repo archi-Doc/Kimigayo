@@ -3,6 +3,7 @@
 #pragma warning disable SA1402 // The fact and its keys are one unit.
 
 using System.Runtime.CompilerServices;
+using Kimi.Compiler;
 using Kimi.Compiler.Parsing;
 
 namespace Kimi.Diagnostics;
@@ -140,6 +141,14 @@ internal readonly struct DiagnosticKey : IEquatable<DiagnosticKey>
 internal readonly record struct DiagnosticFact(
     DiagnosticCode Code, DiagnosticKey Key, int Source, int Start, int Length, object? First, object? Second, string? Note, DiagnosticKey[]? DerivedFrom,
     object?[]? Evidence = null, DiagnosticRelatedFact[]? Related = null, DiagnosticRepairFact[]? Repairs = null);
+
+/// <summary>A record taken out of its collection as a location and its code (PLAN G949 Stage 2 U2a: a refused library's records, which a
+/// reading compilation publishes at their locations): no message argument, no fact beyond its requirement and location.</summary>
+/// <param name="Code">The record's code.</param>
+/// <param name="Requirement">The record's requirement.</param>
+/// <param name="Document">The location's document, or null for a record about an input without a document.</param>
+/// <param name="Span">The location, or null with no document.</param>
+internal readonly record struct LocatedRecord(DiagnosticCode Code, DiagnosticRequirement Requirement, SourceDocument? Document, SourceSpan? Span);
 
 /// <summary>One edit of a repair candidate as recorded: a span of a recorded input and its replacement (SPEC 23.1.3).</summary>
 /// <param name="Source">The source table index of the recorded input.</param>
