@@ -28,6 +28,9 @@ public sealed partial class Binding
     private (int Part, Koto? Waiting, BoundType? Type) runFailure;
     private (int Part, Koto? Waiting, BoundType? Type, bool Same)? splitFailure;
 
+    // DECISIONS D3 (G812 ruling 139): the first run's selection of a named call's split check (SelectionOnSplit; null before it).
+    private (CallSelection Kind, int Winner)? canonicalSelection;
+
     // SPEC 8.2, 8.4: a Type as a scope's premises make it, its associated projections normalized and its Type-identity premises substituted.
     internal BoundType CallableContractType(BoundType type, BindingScope scope)
         => this.SubstituteIdentityPremises(this.ContractType(type, scope), scope);
@@ -396,7 +399,7 @@ public sealed partial class Binding
     }
 
     // One waiting part at its position's Type: a contextual Case by FitCaseAt, whose own waiting parts join the judged ones below it;
-    // a named Call by its own selection there, judged in full (ProbeSelectionFails: no candidate, an ambiguity or an unproven premise
+    // a named Call by its own selection there, judged in full (ProbeSelection, SelectionFails: no candidate, an ambiguity or an unproven premise
     // is its failure, at its position). Any other selection, or another part, waits for its call. A failing one is the run's
     // (runWaiting), with that Type.
     private bool WaitingFails(in WaitingPart waiting, BindingScope scope)
@@ -404,7 +407,7 @@ public sealed partial class Binding
         var node = KotoHelper.UnwrapParentheses(waiting.Part);
         if (this.KindOf(node) != PartKind.Case)
         {
-            var fails = node is InvocationKoto nested && this.ProbeSelectionFails(nested, scope, waiting.Type);
+            var fails = node is InvocationKoto nested && SelectionFails(this.ProbeSelection(nested, scope, waiting.Type).Kind);
             this.argumentMisfit = waiting.Path; // After the probe, whose own fits clear it.
             this.runWaiting = fails ? (node, waiting.Type) : default;
             return fails;

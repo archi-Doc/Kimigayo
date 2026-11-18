@@ -127,6 +127,37 @@ public class InferenceSlotScalingTest
         }
     }
 
+    // DECISIONS D3 (G812 ruling 139): a named call's selection on the split is judged in each combination of split cases, each run one
+    // query over the group (SelectionOnSplit): with n split parameters (`b: s0/Box during c`) and a candidate `k: Tag` beside one at
+    // `k: s0/Box during c`, the canonical run selects and the search ends there, so the split runs grow linearly in n (n = 10, 20, 40),
+    // and the Closure is completed at the selected candidate's `(s0/Box) -> i32` with its body's record; with the second candidate at
+    // `n: (s0/Box) -> i64` the call is ambiguous wherever a candidate applies and keeps its AmbiguousBinding_Kd (e5ed671be:
+    // Unsupported_Kd alone in both).
+    [Theory]
+    [InlineData(false, "1*TypeMismatch_Kd 1*UnprovenConstraint_Kd")]
+    [InlineData(true, "1*AmbiguousBinding_Kd")]
+    public void ANamedCallsSelectionOnTheSplitTakesRunsLinearInItsSplitParameters(bool ambiguous, string records)
+    {
+        var runs = new[] { 10, 20, 40 }.Select(Runs).ToArray();
+        Assert.True(MirBorrowsTest.Grows(runs, 2), $"runs {string.Join(", ", runs)}");
+
+        long Runs(int count)
+        {
+            var all = Enumerable.Range(0, count).ToArray();
+            var parameters = string.Join(", ", all.Select(i => $"b{i}: s0/Box during c"));
+            var second = ambiguous ? "n: (s0/Box) -> i64, k: s0/Box during c" : "n: (s0/Box) -> i32, k: Tag";
+            var source = "struct Box\n    public let v: i32\n    public init(v: i32)\n        self.v = v@move\n" +
+                "struct Tag\n    public let v: i32\n    public init(v: i32)\n        self.v = v@move\nfunc stop() -> Never => $abort(\"stop\")\n" +
+                $"func put<s0/W0>(m0: s0/W0, {parameters}, n: (s0/Box) -> i32, k: s0/Box during c) -> i32\n    return 0\n" +
+                $"func put<s0/W0>(m0: s0/W0, {parameters}, {second}) -> i32\n    return 0\n" +
+                "func call<t0/U0>(k0: t0/U0, u0: U0) -> i32\n    t0 is owner or ref\n    U0 is Owned\n    let g = Tag.init(2)\n" +
+                string.Concat(all.Select(i => $"    let b{i} = Box.init({i})\n")) +
+                $"    return put<U0>(u0@move, {string.Join(", ", all.Select(i => $"b{i}@move"))}, func (x) => true, {(ambiguous ? "stop()" : "g@move")})\n";
+            Assert.Equal(records, DiagnosticCorpus.RecordProfile(source));
+            return MinimalEmissionTest.Analyze(source).Binding.SplitCaseRuns;
+        }
+    }
+
     // G216 (a) U3a (C-38 B3; DECISIONS BU-104): premise discovery reads the evidence names once per solve, so its reads grow linearly
     // in a literal's elements beside the evidence that names the callee's Origins (`mk([.None x N], q, r)`), not with every leaf.
     [Fact]
