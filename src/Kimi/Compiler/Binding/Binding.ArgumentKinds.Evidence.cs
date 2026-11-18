@@ -23,8 +23,9 @@ public sealed partial class Binding
         Signature,
     }
 
-    // SPEC 10.8 (PLAN G492-a (ii) revision 2): an argument part's Type as its call's evidence reads it, read at the part: a `let` region
-    // of the part's body as its value (RegionValuesAt).
+    // SPEC 10.8 (PLAN G492-a (ii)): an argument part's Type as its call reads it, once per call: its evidence and the operation the
+    // selected call forms from it (FitArgument, the completion), so the operation's later readers (BU-99's replaced test, step 5's
+    // formation proof, MIR) read the Origins the solve read; a `let` region of the part's body is read as its value (RegionValuesAt).
     private BoundType? ArgumentTypeAt(Koto part) => part.BoundType is { } type ? this.RegionValuesAt(type, part) : null;
 
     // The contribution of a part by its producer's record (RecordPart), which its completion keeps, unlike KindOf: a typed part is

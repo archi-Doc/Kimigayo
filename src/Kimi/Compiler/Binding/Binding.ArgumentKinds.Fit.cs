@@ -25,7 +25,7 @@ public sealed partial class Binding
                 // on it. Rule W (DECISIONS BU-79) at the argument's top, one rule with FitsPosition's failed-part row; it takes only a
                 // part that kept its Type (C19).
                 var erases = node.BoundType is { Kind: BoundTypeKind.Closure or BoundTypeKind.FunctionItem } && type.Kind == BoundTypeKind.Function;
-                operation = new(part, node.BoundType, type, ArgumentOperationKind.Value, erases ? ArgumentAdaptation.Erasure : ArgumentAdaptation.Exact);
+                operation = new(part, this.ArgumentTypeAt(node), type, ArgumentOperationKind.Value, erases ? ArgumentAdaptation.Erasure : ArgumentAdaptation.Exact);
                 return CandidateApplicability.Applicable;
             case PartKind.Function when this.AwaitsCall(node) && node is FunctionKoto closure:
                 if (!this.ClosureSignatureFits(closure, type))
@@ -369,7 +369,7 @@ public sealed partial class Binding
     private CandidateApplicability FitTyped(Koto part, Koto node, BoundType type, BindingScope scope, Koto use, out BoundArgumentOperation operation)
     {
         operation = default;
-        if (node.BoundType is not { } actual)
+        if (this.ArgumentTypeAt(node) is not { } actual)
         {
             return CandidateApplicability.Pending;
         }
