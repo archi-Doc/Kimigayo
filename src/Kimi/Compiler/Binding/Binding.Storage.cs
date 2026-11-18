@@ -31,10 +31,12 @@ public sealed partial class Binding
             this.instances.Add(type, instance = new());
         }
 
-        if (instance.Version != this.storageVersion || adt?.Version != this.storageVersion)
+        if (adt is null || instance.Version != this.storageVersion || !Current(adt.Version, this.storageVersion))
         {
+            // An instance is current exactly when the ADT it was formed from is: one formed from a stale ADT (before PrepareStorage
+            // refreshes it in this run) is never current, so the refreshed ADT forms it again.
             this.Substitute(type, adt, instance);
-            instance.Version = adt?.Version ?? 0;
+            instance.Version = adt is not null && Current(adt.Version, this.storageVersion) ? this.storageVersion : 0;
         }
 
         return instance;
@@ -99,6 +101,21 @@ public sealed partial class Binding
 
         payload = null!;
         return false;
+    }
+
+    // PLAN G949 S1-1's freeze of a library Type's storage shape (FreezeLibrary): an ADT, and its dispatch table, that the run refilled
+    // read current in every later pass; a stale one stays stale.
+    private void FreezeStorage(AdtDef? adt)
+    {
+        if (adt is not null && adt.Version == this.storageVersion)
+        {
+            adt.Version = Frozen;
+        }
+
+        if (adt?.VTable is { } table && table.Version == this.storageVersion)
+        {
+            table.Version = Frozen;
+        }
     }
 
     private void Substitute(BoundType type, AdtDef? adt, AdtDef.InstanceStorage instance)

@@ -9,13 +9,16 @@ namespace XunitTest;
 
 public class TimeLibraryTest
 {
+    // SPEC 22.5.1 (PLAN G71): a counter failure inside start or stop reports the user's call. The frequency rows Abort in the counter
+    // frequency's static initializer, whose body does not receive the access's location (a library line; G71's remainder), and every
+    // row reports KIMI_E_ABORT where SPEC 22.8.2 gives KIMI_E_CLOCK (the runtime has no clock reason; its own open issue).
     [Theory]
-    [InlineData(0, 3, 1, 10, "FrequencyFailure", 13, "Performance counter frequency query failed")]
-    [InlineData(1, 0, 1, 10, "FrequencyZero", 14, "Invalid performance counter frequency")]
-    [InlineData(1, 3, 0, 10, "CounterFailure", 7, "Performance counter query failed")]
-    [InlineData(1, 3, 1, -1, "CounterNegative", 8, "Negative performance counter")]
-    [InlineData(1, 3, 1, 10, "CounterBackwards", 18, "Performance counter moved backwards")]
-    public void InvalidClockAborts(int frequencyResult, long frequency, int counterResult, long counter, string name, int line, string message)
+    [InlineData(0, 3, 1, 10, "FrequencyFailure", "Time.kimi:14:76", "Performance counter frequency query failed")]
+    [InlineData(1, 0, 1, 10, "FrequencyZero", "Time.kimi:15:35", "Invalid performance counter frequency")]
+    [InlineData(1, 3, 0, 10, "CounterFailure", "Hello.kimi:2:1", "Performance counter query failed")]
+    [InlineData(1, 3, 1, -1, "CounterNegative", "Hello.kimi:2:1", "Negative performance counter")]
+    [InlineData(1, 3, 1, 10, "CounterBackwards", "Hello.kimi:3:1", "Performance counter moved backwards")]
+    public void InvalidClockAborts(int frequencyResult, long frequency, int counterResult, long counter, string name, string location, string message)
     {
         var c = MinimalEmissionTest.Analyze("var watch = Kimi.Time.Stopwatch.init()\nwatch.start()\nwatch.stop()");
         var ir = CompilationTestHelper.WriteIr(c);
@@ -23,8 +26,8 @@ public class TimeLibraryTest
         var nativeFrequency = "define i32 @QueryPerformanceFrequency(ptr %out) { store i64 " + frequency + ", ptr %out ret i32 " + frequencyResult + " }";
         ir = ir.Replace("declare dllimport i32 @QueryPerformanceCounter(ptr)", nativeCounter, StringComparison.Ordinal)
             .Replace("declare dllimport i32 @QueryPerformanceFrequency(ptr)", nativeFrequency, StringComparison.Ordinal);
-        var column = line switch { 7 => 74, 13 => 76, 18 => 38, 14 => 35, _ => 36 };
-        var stderr = "compiler://Kimi/" + Compilation.CurrentLanguageVersion + "/Time.kimi:" + line + ":" + column + ": abort KIMI_E_ABORT: " + message + "\n";
+        var library = location.StartsWith("Time.kimi", StringComparison.Ordinal) ? "compiler://Kimi/" + Compilation.CurrentLanguageVersion + "/" : string.Empty;
+        var stderr = library + location + ": abort KIMI_E_ABORT: " + message + "\n";
         ScalarEmissionTest.WriteFixture("TimeLibrary" + name, ir, string.Empty, 1, stderr);
     }
 

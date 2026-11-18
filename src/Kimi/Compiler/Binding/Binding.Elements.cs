@@ -48,7 +48,7 @@ public sealed partial class Binding
                 // SPEC 5.3: p[n] is *(p + n), with a signed offset and no range/from-end form; a zero stride makes it *p.
                 // A key that is not an isize, including a range or `^x`, is reported at the key; the access rests on it.
                 var offset = this.RequireType(source.Right, scope, BoundType.ISize);
-                return offset is not null && FitsType(offset, BoundType.ISize) &&
+                return offset is not null && this.FitsType(offset, BoundType.ISize) &&
                     KotoHelper.UnwrapParentheses(source.Right) is not (RangeKoto or FromEndIndexKoto)
                     ? Complete(source, receiver!.Components[0]) : this.CompleteDependent(source, source.Right);
             }
@@ -125,7 +125,7 @@ public sealed partial class Binding
             return Complete(source, BoundType.Never);
         }
 
-        if (!ElementAccess.TryType(source, out var element, out _))
+        if (!ElementAccess.TryType(this, source, out var element, out _))
         {
             // SPEC 3.4.3, 12.5.1: only a Tuple or a fixed array has these elements; one reached through further layers is not implemented.
             var core = receiver is null ? null : this.OperandTerminal(source.Left, receiver);
@@ -141,14 +141,14 @@ public sealed partial class Binding
     // existing ref/K Reborrowed, more layers by the shared-reference row); null for a key of Type K or one whose layers never reach it.
     private BoundType? KeyBelowLayers(BoundType? written, BoundType key, BindingScope scope)
     {
-        if (written is null || IsSubtype(written, key))
+        if (written is null || this.IsSubtype(written, key))
         {
             return null;
         }
 
         for (var type = written; this.LayerBelow(type, scope) is { } below; type = below)
         {
-            if (IsSubtype(below, key))
+            if (this.IsSubtype(below, key))
             {
                 return below;
             }

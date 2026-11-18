@@ -126,7 +126,7 @@ public sealed partial class Binding
             }
 
             var context = new CallPlan();
-            context.Set(item.Symbol!, result, null, [], [], conformingType: self, inputOrigins: inputs.AsSpan(0, InputOriginCount(function)), operations: operations);
+            context.Set(this, item.Symbol!, result, null, [], [], conformingType: self, inputOrigins: inputs.AsSpan(0, InputOriginCount(function)), operations: operations);
             context.RequirementContract = contract;
             return item.ContainsParameter ? context : this.InstantiateRequirementCall(context, context);
         }

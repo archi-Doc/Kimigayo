@@ -69,8 +69,8 @@ internal sealed partial class MirBuilder
     // One layer of a Place: a Deref (of a reference, an object handle or, explicitly, a raw pointer), or the PairLayer of the binder its
     // pair layer names (TyCtxt.Layer).
     private MirPlace Layer(MirPlace place, HirPlaceKind kind)
-        => kind == HirPlaceKind.PairLayer ? this.body.Project(place, MirProjectionKind.PairLayer, MirCases.Binder(this.body, this.body.TypeOf(place)))
-            : this.body.Project(place, MirProjectionKind.Deref, 0);
+        => kind == HirPlaceKind.PairLayer ? this.body.Project(compilation.Types, place, MirProjectionKind.PairLayer, MirCases.Binder(this.body, this.body.TypeOf(place)))
+            : this.body.Project(compilation.Types, place, MirProjectionKind.Deref, 0);
 
     // SPEC 3.4.3, 13.5.5: the Place below the layers Binding counted for a consumer (a PlaceShape's Layers, a Pattern position's
     // ImplicitFollows, an adaptation's one).
@@ -124,7 +124,7 @@ internal sealed partial class MirBuilder
         }
 
         this.program.LayerWalkWork += type.Height + 1;
-        return MirTypes.Premised(this.body, type);
+        return MirTypes.Premised(compilation.Types, this.body, type);
     }
 
     // A name by its Res: a local, parameter, prepared parameter or environment binding, a static after its first-access check, or the
@@ -167,7 +167,7 @@ internal sealed partial class MirBuilder
         {
             var prepared = this.body.Locals[local].Role == MirLocalRole.PreparedInput;
             this.prepared |= prepared ? 1UL << Math.Min(local - 1, 63) : 0;
-            return prepared ? this.body.Project(new(local), MirProjectionKind.Deref, 0) : new(local);
+            return prepared ? this.body.Project(compilation.Types, new(local), MirProjectionKind.Deref, 0) : new(local);
         }
 
         var captures = this.receiver > 0 && this.body.Key.Kind == MirBodyKind.Closure ? BoundClosure.Of((FunctionKoto)this.declaration)?.Captures : null;
@@ -177,7 +177,7 @@ internal sealed partial class MirBuilder
             index--;
         }
 
-        return index < 0 ? null : this.body.Project(this.FollowTo(new MirPlace(this.receiver), null), MirProjectionKind.Field, index);
+        return index < 0 ? null : this.body.Project(compilation.Types, this.FollowTo(new MirPlace(this.receiver), null), MirProjectionKind.Field, index);
     }
 
     // SPEC 22.4.3, plan 5.6.6: a static's Place, after the check of its state that initializes it at its first access, staticEnsure of its
@@ -200,7 +200,7 @@ internal sealed partial class MirBuilder
     private MirPlace StaticRoot(BindingSymbol symbol)
     {
         var type = symbol.Type ?? BoundType.Unit;
-        return this.body.Static(new(symbol, type, Binding.Reassignable(symbol), MirTypes.HoldsRaw(type, this.walked)));
+        return this.body.Static(new(symbol, type, Binding.Reassignable(symbol), MirTypes.HoldsRaw(compilation.Types, type, this.walked)));
     }
 
     // SPEC 6.2.2, 3.2: a stored Field or a Tuple element of the receiver's Place, which the receiver's Layers follow; a Tuple element at
@@ -215,7 +215,7 @@ internal sealed partial class MirBuilder
     // A projection of a receiver's Place a node selects, or the identity premise's Unsupported where Binding selected on the premise's Type
     // (Identical).
     private MirPlace Selected(MirPlace receiver, Koto receiverNode, MirProjectionKind kind, int arg, Koto node)
-        => this.Identical(receiver, receiverNode, node) ? this.Unidentified(receiver, node) : this.body.Project(receiver, kind, arg);
+        => this.Identical(receiver, receiverNode, node) ? this.Unidentified(receiver, node) : this.body.Project(compilation.Types, receiver, kind, arg);
 
     // SPEC 8.2.3 (DECISIONS BU-72): whether Binding resolved a selection through an identity premise whose subject is the Type parameter the
     // receiver's Place has, on exactly the premise's Type: the receiver node's published Type through its Layers (TyCtxt.Layer, as FollowLayers).
@@ -256,7 +256,7 @@ internal sealed partial class MirBuilder
     // or the value derived from the error of a Field Binding formed no stored Type for (Stored; SPEC 23.1.2).
     private MirPlace Field(MirPlace receiver, BindingSymbol? field, Koto node)
     {
-        var owner = this.body.TypeOf(receiver) is { } type ? AdtDef.FieldOwner(type, field) : null;
+        var owner = this.body.TypeOf(receiver) is { } type ? AdtDef.FieldOwner(compilation.Types, type, field) : null;
         if (owner is { } found && this.Stored(receiver, found.Layer, found.Depth, found.Index) is { } place)
         {
             return place;
@@ -280,18 +280,19 @@ internal sealed partial class MirBuilder
     // The Place of the stored Field at an own index of the layer `depth` Base steps up from a struct Place (the receiver's
     // StorageProjection); none for a Field Binding formed no stored Type for, a value derived from that error (SPEC 23.1.2).
     private MirPlace? Stored(MirPlace receiver, BoundType layer, int depth, int index)
-        => AdtDef.FieldType(layer, index) is null ? null : this.body.Project(
-            depth == 0 ? receiver : this.body.Project(receiver, MirProjectionKind.Base, depth),
+        => AdtDef.FieldType(compilation.Types, layer, index) is null ? null : this.body.Project(
+            compilation.Types,
+            depth == 0 ? receiver : this.body.Project(compilation.Types, receiver, MirProjectionKind.Base, depth),
             MirProjectionKind.Field,
             index);
 
     // SPEC 4.7.1: the referent of the reference that a subscript's selected call returns, which the selection's published expansion names.
     private MirPlace Referent(Koto node)
     {
-        var call = ExpansionPlan.Of(node)!.Value.Second!;
+        var call = ExpansionPlan.Of(compilation.Binding, node)!.Value.Second!;
         var result = this.Hold(call.ReturnType, node);
         this.Call(result, call, node, first: null);
-        return this.body.Project(this.Made(result), MirProjectionKind.Deref, 0);
+        return this.body.Project(compilation.Types, this.Made(result), MirProjectionKind.Deref, 0);
     }
 
     // A value held in a temp of its Type where its consumer needs a Place, or in the place given where that has its Type, unless an expansion

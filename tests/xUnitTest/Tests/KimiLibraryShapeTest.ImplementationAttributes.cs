@@ -112,7 +112,7 @@ public partial class KimiLibraryShapeTest
 
         var flagged = registered.Where(static x => KimiLibraryCatalog.RequiresCallerLocation(x)).ToArray();
         Assert.True(declared.SetEquals(flagged));
-        Assert.Equal((82, 82), (declared.Count, flagged.Length));
+        Assert.Equal((105, 105), (declared.Count, flagged.Length)); // PLAN G71: 23 declarations (its commits' messages list them).
     }
 
     // The library's Attributes of one kind, each with the declaration it is written on, in source order.

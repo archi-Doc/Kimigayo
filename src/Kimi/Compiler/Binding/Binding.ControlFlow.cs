@@ -56,7 +56,7 @@ public sealed partial class Binding
             var fitsAll = true;
             for (var j = 0; j < types.Count && fitsAll; j++)
             {
-                fitsAll = IsSubtype(types[j], candidate);
+                fitsAll = this.IsSubtype(types[j], candidate);
             }
 
             if (fitsAll)
@@ -214,7 +214,7 @@ public sealed partial class Binding
     // bound Type, or during a conversion probe the operand's signature (ResultNeverEvidence), whichever check asks first.
     private StructuralCompletion ResultStructure()
     {
-        var structural = this.resultStructure ??= new(this.ResultNeverEvidence);
+        var structural = this.resultStructure ??= new(this, this.ResultNeverEvidence);
         structural.Clear();
         return structural;
     }

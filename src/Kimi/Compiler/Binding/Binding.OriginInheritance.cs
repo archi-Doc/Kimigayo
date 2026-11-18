@@ -251,7 +251,7 @@ public sealed partial class Binding
                 var actual = this.BindType(syntax, scope);
                 this.ParameterSymbol(function, i).Type = actual;
                 // SPEC 5.7, 15.3.7: an input whose raw Origins differ must accept the required one.
-                var fits = ReferenceEquals(pattern, actual) || (actual is not null && SameExceptRawOrigins(pattern, actual) && IsSubtype(pattern, actual));
+                var fits = ReferenceEquals(pattern, actual) || (actual is not null && SameExceptRawOrigins(pattern, actual) && this.IsSubtype(pattern, actual));
                 valid &= fits;
                 if (actual is not null && !fits)
                 {
@@ -274,7 +274,7 @@ public sealed partial class Binding
 
             function.BoundSymbol!.Type = actualResult;
             var resultFits = ReferenceEquals(result, actualResult) ||
-                (actualResult is not null && SameExceptRawOrigins(result, actualResult) && IsSubtype(actualResult, result));
+                (actualResult is not null && SameExceptRawOrigins(result, actualResult) && this.IsSubtype(actualResult, result));
             if (actualResult is not null && !resultFits)
             {
                 incompatible ??= ImplementationOriginMismatch(function.ReturnType ?? function, definition, result, actualResult, "the result");
