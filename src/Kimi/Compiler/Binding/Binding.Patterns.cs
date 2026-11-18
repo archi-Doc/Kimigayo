@@ -528,12 +528,14 @@ public sealed partial class Binding
             }
         }
 
-        var symbol = this.LookupTypeMember(expected, name, scope).Member;
-        if (symbol?.EnumCase is null)
+        var symbol = this.LookupMember(expected, name, scope, LookupRole.EnumCase).Member;
+        if (symbol is null)
         {
             return null;
         }
 
+        // Written here until R7-N1 c3 makes it the member step's (PublishPath's MemberAccess step would mark the Name Resolved before the
+        // pattern's completion gives it its Type, a HIR change).
         member.BoundSymbol = member.Right.BoundSymbol = symbol;
         return symbol.EnumCase;
     }

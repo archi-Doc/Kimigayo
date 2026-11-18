@@ -99,37 +99,48 @@ public sealed partial class Binding
     // SPEC 8.2.3 ("identity is closed under replacement inside any Type"; PLAN G935 c3-2): a declared Type as its declaring function's
     // body sees it at every depth: View at the Type and at each component of what it gives, again inside each replacement, never
     // inside a projection, whose class View reads whole. A valid premise set gives every Type a finite expansion (SPEC 8.3); the depth
-    // bound stops an erroneous one. A Type that names no Type parameter is itself.
-    private BoundType? Viewed(BoundType? declared, int depth)
+    // bound stops an erroneous one. A Type that names no Type parameter is itself. Each (part, depth) once per call (viewedParts, DECISIONS
+    // BU-64's per-query rule: the view's identity classes are fixed while it runs), so a premised DAG costs its distinct parts, at most
+    // StorageBound + 1 entries each, not its paths.
+    private BoundType? Viewed(BoundType? declared) => this.Viewed(declared, 0, this.viewedParts.Begin(this.storageVersion));
+
+    private BoundType? Viewed(BoundType? declared, int depth, uint query)
     {
         if (declared is null || !declared.ContainsParameter || depth > StorageBound)
         {
             return declared;
         }
 
+        if (this.viewedParts.TryGet((declared, depth), query, out var known))
+        {
+            return known;
+        }
+
         var shown = this.View(declared)!;
         var count = shown.Kind is BoundTypeKind.AssociatedProjection or BoundTypeKind.TargetProjection ? 0 : shown.Components.Count;
-        if (count == 0)
+        var viewed = shown;
+        if (count > 0)
         {
-            return shown;
-        }
-
-        var components = this.RentTypes(count);
-        try
-        {
-            var changed = false;
-            for (var i = 0; i < count; i++)
+            var components = this.RentTypes(count);
+            try
             {
-                components[i] = this.Viewed(shown.Components[i], depth + 1)!;
-                changed |= !ReferenceEquals(components[i], shown.Components[i]);
-            }
+                var changed = false;
+                for (var i = 0; i < count; i++)
+                {
+                    components[i] = this.Viewed(shown.Components[i], depth + 1, query)!;
+                    changed |= !ReferenceEquals(components[i], shown.Components[i]);
+                }
 
-            return changed ? this.types.Rebuild(shown, components.AsSpan(0, count), shown.Origin, (BoundOrigin[])shown.OriginArguments) : shown;
+                viewed = changed ? this.types.Rebuild(shown, components.AsSpan(0, count), shown.Origin, (BoundOrigin[])shown.OriginArguments) : shown;
+            }
+            finally
+            {
+                this.typeScratch.Return(components, clearArray: true);
+            }
         }
-        finally
-        {
-            this.typeScratch.Return(components, clearArray: true);
-        }
+
+        this.viewedParts.Set((declared, depth), query, viewed);
+        return viewed;
     }
 
     // The declared counterpart of what a value's entry other than a part by value reaches (Below of Reach's arms; DECISIONS BU-113): a pair
