@@ -15,6 +15,8 @@ public class PairCaseTypeTest
 
     private const string Node = "struct Node\n    public var n: i32\n    public init(n: i32) => self.n = n\n";
 
+    private const string NeedInt = "func needInt<U>(x: U) -> i32\n    U is PrimitiveInteger\n    return 0\n";
+
     [Fact]
     public void CaseTypeFormsTheCompleteTypeOfEachCase()
     {
@@ -183,13 +185,22 @@ public class PairCaseTypeTest
 
     // SPEC 8.15.2, 8.14, 3.2.1 (the owner's O-417 (a)): a Constraint `U is Copy` over a pair application is judged once over every case
     // its binder admits: Copy in every case is proven (cp-or, cp-r; cp-or was Unknown before the engine judged the cases), a
-    // case that does not Copy leaves the requirement unproven (cp-ou, cases that differ) or refuted (cp-u, the one case).
+    // case that does not Copy leaves the requirement unproven (cp-ou, cases that differ) or refuted (cp-u, the one case). SPEC 8.7.2-
+    // 8.7.4, 8.3.4, 10.1: the same for PrimitiveInteger, Sealed and ObjectPayload, refuted in every case where no case is an `owner`
+    // integer (rv-prim, rv-prim-r), and where the owner case's target is an open struct (pz-sl-or) or opts out (pz-op-or), so the lone
+    // candidate is inapplicable (each was Unknown before the engine judged the cases: UnprovenConstraint_Kd); cases that differ stay
+    // unproven (pz-pi-or).
     [Theory]
     [InlineData("cp-or", "func needCopy<U>(x: U) -> i32\n    U is Copy\n    return 0\nfunc k<s/T>(marker: s/T) -> i32\n    s is owner or ref\n    var a: i32 = 1\n    let t = a@s\n    return needCopy(t)\n", "")]
     [InlineData("cp-r", "func needCopy<U>(x: U) -> i32\n    U is Copy\n    return 0\nfunc k<s/T>(marker: s/T) -> i32\n    s is ref\n    var a: i32 = 1\n    let t = a@s\n    return needCopy(t)\n", "")]
     [InlineData("cp-ou", "func needCopy<U>(x: U) -> i32\n    U is Copy\n    return 0\nfunc k<s/T>(marker: s/T) -> i32\n    s is owner or uniq\n    var a: i32 = 1\n    let t = a@s\n    return needCopy(t)\n", "UnprovenConstraint_Kd needCopy(t)")]
     [InlineData("cp-u", "func needCopy<U>(x: U) -> i32\n    U is Copy\n    return 0\nfunc k<s/T>(marker: s/T) -> i32\n    s is uniq\n    var a: i32 = 1\n    let t = a@s\n    return needCopy(t)\n", "NoApplicableOverload_Kd needCopy(t)")]
-    public void ACopyRequirementOnAPairIsJudgedOverEveryCase(string form, string body, string records)
+    [InlineData("rv-prim", NeedInt + "func k<s/T>(marker: s/T) -> i32\n    s is ref or uniq\n    var a: i32 = 1\n    let t = a@s\n    return needInt(t)\n", "NoApplicableOverload_Kd needInt(t)")]
+    [InlineData("rv-prim-r", NeedInt + "func k<s/T>(marker: s/T) -> i32\n    s is ref\n    var a: i32 = 1\n    let t = a@s\n    return needInt(t)\n", "NoApplicableOverload_Kd needInt(t)")]
+    [InlineData("pz-pi-or", NeedInt + "func k<s/T>(marker: s/T) -> i32\n    s is owner or ref\n    var a: i32 = 1\n    let t = a@s\n    return needInt(t)\n", "UnprovenConstraint_Kd needInt(t)")]
+    [InlineData("pz-sl-or", "open struct Base\n    Self is Copy\n    public let number: i32 = 7\n    public init() => ()\nfunc needSealed<U>(x: U) -> i32\n    U is Sealed\n    return 0\nfunc k<s/T>(marker: s/T) -> i32\n    s is owner or ref\n    var a = Base.init()\n    let t = a@s\n    return needSealed(t)\n", "NoApplicableOverload_Kd needSealed(t)")]
+    [InlineData("pz-op-or", "struct Parser\n    Self is not ObjectPayload\n    Self is Copy\n    public let number: i32 = 7\n    public init() => ()\nfunc needPayload<U>(x: U) -> i32\n    U is ObjectPayload\n    return 0\nfunc k<s/T>(marker: s/T) -> i32\n    s is owner or ref\n    var a = Parser.init()\n    let t = a@s\n    return needPayload(t)\n", "NoApplicableOverload_Kd needPayload(t)")]
+    public void AnIntrinsicRequirementOnAPairIsJudgedOverEveryCase(string form, string body, string records)
         => OriginRelationDiagnosticTest.AssertRecords(form, body, records, null);
 
     private static Compilation Parse(string source)
