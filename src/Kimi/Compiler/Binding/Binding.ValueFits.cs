@@ -33,13 +33,13 @@ public sealed partial class Binding
     /// <param name="actual">The supplied complete type.</param>
     /// <param name="expected">The required complete type.</param>
     /// <returns>Whether the implemented rules prove the relation.</returns>
-    public static bool FitsType(BoundType actual, BoundType expected) => NeverFits(actual) || IsSubtype(actual, expected);
+    public bool FitsType(BoundType actual, BoundType expected) => NeverFits(actual) || this.IsSubtype(actual, expected);
 
     internal bool FitsTypeAt(BoundType actual, BoundType expected, Koto use, out ComparisonFailure failure)
     {
         this.comparisonFacts.Clear();
         this.fitRested = false;
-        var walk = new RelationWalk(this, use, this.comparisonFacts); // No reader of region conjuncts: FitsValueAt's CheckTypeUse is.
+        var walk = new RelationWalk(this, this, use, this.comparisonFacts); // No reader of region conjuncts: FitsValueAt's CheckTypeUse is.
         var fits = NeverFits(actual) || walk.Fits(actual, expected);
         failure = walk.Failure;
 
@@ -57,20 +57,20 @@ public sealed partial class Binding
     // SPEC 15.6.1: the structural part of a fit at the use, with all Origin bindings treated as equal; only its failure is a Type
     // mismatch. The Origin part of a Function Type, a comparison of whole contracts, is still judged here (SPEC 10.7).
     internal bool FitsStructurallyAt(BoundType actual, BoundType expected, Koto use)
-        => NeverFits(actual) || new RelationWalk(this, use, OriginPart.Structural).Fits(actual, expected);
+        => NeverFits(actual) || new RelationWalk(this, this, use, OriginPart.Structural).Fits(actual, expected);
 
     // SPEC 10.1, 10.3, 10.4 step 2, 15.6.1: the one entry of every pre-selection fit (a candidate's result, argument, receiver, its
     // acquisition and adaptation): the structural part alone, every Origin binding equal inside Function Types too, so no Origin relation
     // and no implementation well-formedness (FailedSignatureWellFormedness) drops a candidate for another to win; the selected candidate's
     // own fit judges them (DECISIONS R4-M155, landing review B1).
     internal bool FitsStructuralPartAt(BoundType actual, BoundType expected, Koto use)
-        => NeverFits(actual) || new RelationWalk(this, use, OriginPart.Everywhere).Fits(actual, expected);
+        => NeverFits(actual) || new RelationWalk(this, this, use, OriginPart.Everywhere).Fits(actual, expected);
 
     // SPEC 5.2, 3.8, 15.6.1 (C-189): normalized Type identity with Origins treated as equal: the structural part alone, no Never
     // root rule, so it is symmetric. It reads no premise; with no use scope the walk reads `use` only in InactiveOuterOrigin, which then
     // reads an adaptation selector's own scope: a use scope only narrows what it admits, so its absence can only turn "same" into
     // "different" (review N2). A reference-equal pair is Discharged by the walk itself.
-    internal bool SameStructure(BoundType a, BoundType b) => new RelationWalk(this, null, OriginPart.Everywhere).Fits(a, b);
+    internal bool SameStructure(BoundType a, BoundType b) => new RelationWalk(this, this, null, OriginPart.Everywhere).Fits(a, b);
 
     // SPEC 3.8: an expression of Type Never fits any expected value Type, at the root of a value position only.
     private static bool NeverFits(BoundType actual) => ReferenceEquals(actual, BoundType.Never);
@@ -131,7 +131,7 @@ public sealed partial class Binding
     {
         var parts = this.fitParts;
         var start = parts.Count;
-        _ = new RelationWalk(this, use, this.comparisonFacts, parts) { Rows = this.comparisonRows }.Fits(actual, expected, polarity == OriginVariance.Invariant);
+        _ = new RelationWalk(this, this, use, this.comparisonFacts, parts) { Rows = this.comparisonRows }.Fits(actual, expected, polarity == OriginVariance.Invariant);
         cursor.Next = start;
         var fits = this.CheckTypeUseCore(actual, expected, use, polarity, ref cursor);
         parts.RemoveRange(start, parts.Count - start);
@@ -205,7 +205,7 @@ public sealed partial class Binding
             return rested; // SPEC 10.7, 15.6.1: a conversion compares whole contracts, so its failure is one record (RecordMismatch).
         }
 
-        switch (FitOuterOrigins(actual, expected, this, use, out var longer, out var shorter))
+        switch (this.FitOuterOrigins(actual, expected, this, use, out var longer, out var shorter))
         {
             case OuterOriginFit.Mismatch:
                 return rested;
@@ -220,7 +220,7 @@ public sealed partial class Binding
             var b = expected.OriginArguments[i];
             if (!ReferenceEquals(a, b))
             {
-                this.AddOriginFit(a, b, expected, use, ComposeVariance(polarity, OriginArgumentVariance(expected, i, this)));
+                this.AddOriginFit(a, b, expected, use, ComposeVariance(polarity, this.OriginArgumentVariance(expected, i, this)));
             }
         }
 

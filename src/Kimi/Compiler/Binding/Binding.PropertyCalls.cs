@@ -157,7 +157,7 @@ public sealed partial class Binding
     // `get`'s result (the read Type).
     private BoundType? AccessorUseType(Koto node, BoundAccessor accessor)
         => accessor.Kind != PropertyAccessorKind.Set ? this.propertyCalls[(node, accessor.Kind)].BoundType
-            : this.propertyCalls.GetValueOrDefault((node, accessor.Kind))?.BoundCall is { ArgumentOperations.Length: > 0 } call
+            : this.propertyCalls.GetValueOrDefault((node, accessor.Kind)) is { } setter && this.CallOf(setter) is { ArgumentOperations.Length: > 0 } call
                 ? call.ArgumentOperations[0].ParameterType : null;
 
     private void BindStorageProjection(Koto node, BoundAccessor accessor)
@@ -263,6 +263,9 @@ public sealed partial class Binding
                 receiverOperation = new(receiver, actual, adapted, kind, quality, selection.Path, 0, proof);
             }
 
+            // SPEC 13.7.1: the input the update at `node` computed (its propertyUpdateInputs row) stands for an operand the expansion
+            // already evaluated, the call's Evaluated argument; a write's input is its source operand.
+            var evaluated = input is not null && ReferenceEquals(input, this.propertyUpdateInputs.GetValueOrDefault(node));
             if (!this.propertyCalls.TryGetValue((node, accessor.Kind), out var call) ||
                 call.ArgumentNodes.Count != (input is null ? 0 : 1) + (receiver is null ? 0 : 1) ||
                 (input is not null && !ReferenceEquals(call.ArgumentNodes[0], input)) ||
@@ -270,7 +273,7 @@ public sealed partial class Binding
             {
                 var method = new IdentifierNameKoto(node, accessor.Property.Symbol.Name + "." + accessor.Kind);
                 Koto[] arguments = input is null ? receiver is null ? [] : [receiver] : receiver is null ? [input] : [input, receiver];
-                call = new(node, method, arguments) { CallStorage = new() { Evaluated = input is EvaluatedKoto ? 0 : -1 } };
+                call = new(node, method, arguments) { CallStorage = new() { Evaluated = evaluated ? 0 : -1 } };
                 this.propertyCalls[(node, accessor.Kind)] = call;
             }
 
@@ -283,7 +286,7 @@ public sealed partial class Binding
             var count = 0;
             if (input is not null)
             {
-                if (input is EvaluatedKoto)
+                if (evaluated)
                 {
                     Complete(input, inputType); // The update supplies its checked Output, never the original RHS.
                 }
@@ -327,7 +330,7 @@ public sealed partial class Binding
 
                 result = this.SubstituteStoredOrigins(result, accessor.Binder, origins.AsSpan(0, originCount), inputs.AsSpan(0, inputCount));
 
-                call.CallStorage!.Set(function.BoundSymbol!, result, null, mapping[..count], [], conformingType: requirement?.Self, declaringType: declaringType, origins: origins.AsSpan(0, originCount), inputOrigins: inputs.AsSpan(0, inputCount), operations: operations.AsSpan(0, count));
+                call.CallStorage!.Set(this, function.BoundSymbol!, result, null, mapping[..count], [], conformingType: requirement?.Self, declaringType: declaringType, origins: origins.AsSpan(0, originCount), inputOrigins: inputs.AsSpan(0, inputCount), operations: operations.AsSpan(0, count));
                 call.CallStorage.RequirementContract = requirement?.PropertyContracts[0];
                 for (var i = 0; i < count; i++)
                 {

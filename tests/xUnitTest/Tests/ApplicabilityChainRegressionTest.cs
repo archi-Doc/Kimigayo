@@ -27,6 +27,15 @@ public partial class ApplicabilityChainRegressionTest
         "func process<length N>(values: [N of i64]) -> () => ()\nlet r = x@ref\n" +
         "func takeD<T>(value: Dictionary<string, T>) -> () => ()\nfunc takeA<T>(value: Array<T>) -> () => ()\nfunc takeCI(value: (char, i64)) -> () => ()\n";
 
+    // PLAN G924 (the owner's O-408 (a)): the declarations of the rows on the order of the own Types after selection.
+    private const string OwnTypeDeclarations =
+        "func identity<T>(value: T) -> T => value@move\nfunc mkNone<T>() -> Option<T> => .None\nfunc mkT<T>(x: T, w: Option<T>) -> i32 => 0\n" +
+        "func mkZero<T>() -> T => $abort(\"zero\")\nfunc consume<T>(x: Array<T>) -> i32 => 0\nfunc h<T>(x: T, f: (T) -> i32) -> i32 => 0\n" +
+        "func show(x: i32) -> i32 => 0\nfunc show(x: string) -> i32 => 1\nfunc f<T>(a: T, b: Array<T>) -> i32 => 0\n" +
+        "func stop() -> Never => $abort(\"stop\")\nfunc make<T>(action: () -> T) -> T => action()\nenum W<T>\n    Make(T, Option<T>)\n    Empty\n";
+
+    private const string WrapOpt = "func wrapOpt<T>(o: Option<T>) -> Option<T> => o@move\n";
+
     [Theory]
     [InlineData(false, false, false)]
     [InlineData(false, true, false)]
@@ -113,14 +122,33 @@ public partial class ApplicabilityChainRegressionTest
     // nested call whose result only a literal default would type, or with another applicable candidate, waits.
     [Theory]
     [InlineData("func make<T>() -> Option<T> => .None\nlet value = make()", nameof(DiagnosticCode.UnboundTypeArgument_Kd), "make()")]
-    [InlineData("func make<T>() -> Option<T> => .None\nfunc keep<T>(o: Option<T>) => ()\nkeep(make())", nameof(DiagnosticCode.UnboundTypeArgument_Kd), "keep(make())")]
+    [InlineData("func make<T>() -> Option<T> => .None\nfunc keep<T>(o: Option<T>) => ()\nkeep(make())", nameof(DiagnosticCode.UnboundTypeArgument_Kd), "make()")]
     [InlineData("func make<T>() -> Option<T> => .None\nfunc keep(o: Option<i32>) => ()\nfunc keep(o: Option<i64>) => ()\nkeep(make())", nameof(DiagnosticCode.AmbiguousBinding_Kd), "keep(make())")]
     [InlineData("func make<T>() -> Option<T>\n    T is PrimitiveInteger\n    return .None\nfunc keep(o: Option<string>, tag: i32) => ()\nfunc keep(o: Option<i32>, tag: i64) => ()\nkeep(make(), 1@i32)", nameof(DiagnosticCode.NoApplicableOverload_Kd), "make()")]
     [InlineData("func make<T>(value: i32) -> Option<T> => .None\nfunc keep(o: Option<i32>) => ()\nkeep(make(missing))", nameof(DiagnosticCode.UnresolvedBinding_Kd), "missing")]
-    [InlineData("func identity<T>(value: T) -> T => value@move\nlet x = identity(identity(1))", nameof(DiagnosticCode.UnboundTypeArgument_Kd), "identity(identity(1))")]
-    [InlineData("struct Box<T>\n    public let value: T\n    public init(value: T) => self.value = value@move\nfunc makeBox<T>(value: T) -> Box<T> => Box.init(value@move)\nfunc outer<T>(value: Box<T>) => ()\nouter(makeBox(1))", nameof(DiagnosticCode.UnboundTypeArgument_Kd), "outer(makeBox(1))")]
-    [InlineData("struct Box<T>\n    public let value: T\n    public init(value: T) => self.value = value@move\nfunc mk() -> Box<i32> => Box.init(1@i32)\nfunc mk(seed: i32 = 0) -> Box<i64> => Box.init(2@i64)\nfunc outer<T>(value: Box<T>) => ()\nouter(mk())", nameof(DiagnosticCode.UnboundTypeArgument_Kd), "outer(mk())")]
-    [InlineData("struct Box<T>\n    public let value: T\n    public init(value: T) => self.value = value@move\nlet a = Box.init(Box.init(42))", nameof(DiagnosticCode.UnboundTypeArgument_Kd), "Box.init(Box.init(42))")]
+
+    // SPEC 10.5.1, 4.3.1, 10.8 (PLAN G924, the owner's O-408 (a); K's G924 SPEC revision 11): the invalid twins of
+    // LiteralDefaultsBindBeforeANestedCallTakesItsOwnType. A whole a slot takes holds its parts' own Types (`mkZero()` alone fails; the
+    // slot rests on it, SPEC 23.1.2), so does a literal with no selection waiting; conflicting evidence; a Never part and an anonymous
+    // function's body are no evidence (10.5.2's own example).
+    [InlineData(OwnTypeDeclarations + "let a = identity([1, mkZero()])", nameof(DiagnosticCode.UnboundTypeArgument_Kd), "mkZero()")]
+    [InlineData(OwnTypeDeclarations + "let a = [1, mkZero()]", nameof(DiagnosticCode.UnboundTypeArgument_Kd), "mkZero()")]
+    [InlineData(OwnTypeDeclarations + "let r = mkT(1@i32, mkNone<i64>())", nameof(DiagnosticCode.NoApplicableOverload_Kd), "mkT(1@i32, mkNone<i64>())")]
+    [InlineData(OwnTypeDeclarations + "let s = identity(stop())", nameof(DiagnosticCode.UnboundTypeArgument_Kd), "identity(stop())")]
+    [InlineData(OwnTypeDeclarations + "let o = make(func () => 2)", nameof(DiagnosticCode.UnboundTypeArgument_Kd), "make(func () => 2)")]
+
+    // SPEC 10.5.1, 23.1.2 (PLAN G924, ruling 113 B1): nested calls take their own Types in one step, and the one that fails records the
+    // error; the selected candidate's re-check and completion read that failed leaf (PartFailed: rule W) and add no record of their own.
+    [InlineData(OwnTypeDeclarations + "let r = mkT(identity(1), mkNone())", nameof(DiagnosticCode.UnboundTypeArgument_Kd), "mkNone()")]
+    [InlineData(OwnTypeDeclarations + "let r = mkT(identity(1), Option.None)", nameof(DiagnosticCode.UnresolvedBinding_Kd), "Option.None")]
+    [InlineData(OwnTypeDeclarations + "let w = W.Make(identity(1), mkNone())", nameof(DiagnosticCode.UnboundTypeArgument_Kd), "mkNone()")]
+    [InlineData(OwnTypeDeclarations + "func mkT2<T>(x: T, w: (Option<T>, i32)) -> i32 => 0\nlet r = mkT2(identity(1), (mkNone(), 2))", nameof(DiagnosticCode.UnboundTypeArgument_Kd), "mkNone()")]
+
+    // SPEC 10.5.1, 23.1.2 (PLAN G924, ruling 115 B2): a nested call whose own Type fails only because a part below it failed rests on
+    // that part's record at any depth, inside a Tuple too; its failure is final, and the re-check adds no record.
+    [InlineData(OwnTypeDeclarations + WrapOpt + "let r = mkT(identity(1), wrapOpt(mkNone()))", nameof(DiagnosticCode.UnboundTypeArgument_Kd), "mkNone()")]
+    [InlineData(OwnTypeDeclarations + WrapOpt + "let r = mkT(identity(1), wrapOpt(wrapOpt(mkNone())))", nameof(DiagnosticCode.UnboundTypeArgument_Kd), "mkNone()")]
+    [InlineData(OwnTypeDeclarations + WrapOpt + "func mkT2<T>(x: T, w: (Option<T>, i32)) -> i32 => 0\nlet r = mkT2(identity(1), (wrapOpt(mkNone()), 2))", nameof(DiagnosticCode.UnboundTypeArgument_Kd), "mkNone()")]
     public void NestedInferenceHasOneBoundary(string source, string code, string at)
     {
         var check = DiagnosticCorpus.Check(source);
@@ -132,6 +160,52 @@ public partial class ApplicabilityChainRegressionTest
             Assert.Equal("Generic parameter 'T' is not bound", error.Label);
             Assert.Contains("No explicit Type argument or evidence binds T", error.Note, StringComparison.Ordinal);
         }
+    }
+
+    // SPEC 10.2.1, 10.5.1 (PLAN G924, the owner's O-341 (a)): after selection a nested call at a slot no evidence binds takes its own
+    // Type, resolved with no expected result (its own literals defaulting), and that Type binds the slot, as a literal's default does;
+    // a failed resolution is its own record, on which the outer call rests (keep(make()) above).
+    [Theory]
+    [InlineData("func identity<T>(value: T) -> T => value@move\nlet x = identity(identity(1))")]
+    [InlineData("struct Box<T>\n    public let value: T\n    public init(value: T) => self.value = value@move\nfunc makeBox<T>(value: T) -> Box<T> => Box.init(value@move)\nfunc outer<T>(value: Box<T>) => ()\nouter(makeBox(1))")]
+    [InlineData("struct Box<T>\n    public let value: T\n    public init(value: T) => self.value = value@move\nfunc mk() -> Box<i32> => Box.init(1@i32)\nfunc mk(seed: i32 = 0) -> Box<i64> => Box.init(2@i64)\nfunc outer<T>(value: Box<T>) => ()\nouter(mk())")]
+    [InlineData("struct Box<T>\n    public let value: T\n    public init(value: T) => self.value = value@move\nlet a = Box.init(Box.init(42))")]
+    public void ANestedCallAtAnUnboundSlotTakesItsOwnType(string source)
+        => Assert.True(DiagnosticCorpus.Check(source).Accepted);
+
+    // SPEC 10.5.1 (PLAN G924, the owner's O-408 (a); K's G924 SPEC revision 11): after selection the untyped literals and literal-only
+    // expressions at positions that hold an unbound slot take their defaults first, also inside an array literal that no slot takes
+    // whole (`consume([1, mkZero()])`); then each waiting nested call, a construction included, at a position whose slot is still
+    // unbound takes its own Type (`identity(1)`), and every other part (an anonymous function, a function reference that needs S, a
+    // leading-dot Case, an empty literal) is checked at the Type now fixed. `mkT(1, .None)` and `mkT(n, mkNone())` are controls; the
+    // five rows `h(1, func (p) => 0)`, `h(identity(1), func (p) => 0)`, `h(identity(1), show)`, `mkT(identity(1), .None)` and
+    // `f(identity(1), [])` held before O-408 (a) too: coverage of "every other part is checked at the Type now fixed", not failing rows.
+    // The invalid twins are NestedInferenceHasOneBoundary's O-408 rows.
+    [Theory]
+    [InlineData(OwnTypeDeclarations + "let r = mkT(1, mkNone())")]
+    [InlineData(OwnTypeDeclarations + "let r = mkT(1, Option.None)")]
+    [InlineData(OwnTypeDeclarations + "let w = W.Make(1, mkNone())")]
+    [InlineData(OwnTypeDeclarations + "let r = mkT(1, .None)")]
+    [InlineData(OwnTypeDeclarations + "let n: i64 = 2\nlet r = mkT(n, mkNone())")]
+    [InlineData(OwnTypeDeclarations + "let r = mkT(1 + 1, mkNone())")]
+    [InlineData(OwnTypeDeclarations + "let r = mkT(-(1), mkNone())")]
+    [InlineData(OwnTypeDeclarations + "let r = consume([1, mkZero()])")]
+    [InlineData(OwnTypeDeclarations + "let r = h(1, func (p) => 0)")]
+    [InlineData(OwnTypeDeclarations + "let r = h(identity(1), func (p) => 0)")]
+    [InlineData(OwnTypeDeclarations + "let r = h(identity(1), show)")]
+    [InlineData(OwnTypeDeclarations + "let r = mkT(identity(1), .None)")]
+    [InlineData(OwnTypeDeclarations + "let r = f(identity(1), [])")]
+    public void LiteralDefaultsBindBeforeANestedCallTakesItsOwnType(string source)
+        => Assert.True(DiagnosticCorpus.Check(source).Accepted);
+
+    // SPEC 10.5.1 (PLAN G924, rulings 113 B1 and 115 B2): the valid twins of NestedInferenceHasOneBoundary's B1 and B2 rows generate: a
+    // nested call or Case checked at the Type the defaults or an own Type fixed is completed there; completion skips only a part that failed.
+    [Fact]
+    public void ANestedPartCheckedAtTheFixedTypeGenerates()
+    {
+        const string Source = OwnTypeDeclarations + WrapOpt + "func mkT2<T>(x: T, w: (Option<T>, i32)) -> i32 => 0\nlet w = W.Make(1, mkNone())\n" +
+            "require mkT(1, mkNone()) + mkT(identity(1), .None) + mkT2(1, (mkNone(), 2)) + mkT(1, wrapOpt(mkNone())) == 0 else => $abort(\"own\")";
+        ScalarEmissionTest.EmitFixture("ApplicabilityChainOwnTypes", Source, string.Empty);
     }
 
     // SPEC 10.5.1, 14.9.2 (owner decision (1)): a control-flow argument that is no Literal is bound under the argument probe, which
@@ -186,6 +260,21 @@ public partial class ApplicabilityChainRegressionTest
         Assert.Empty(c.Binding.Issues);
         var join = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<IfKoto>().Last();
         Assert.Equal(type, TyCtxt.Name(join.TypeOf()!));
+    }
+
+    // SPEC 10.2.2 item 2 (PLAN G924 addendum): at an expected `ref/U` a returned value that is no borrow value is matched against U,
+    // a returned `ref/T` against `ref/U`. A bare slot that no evidence binds is a returned value: `identity(1)` at `ref/i64` is
+    // `identity<i64>`, its result the one temporary; an argument's Type stays established (`n: ref/i64` binds T = ref/i64).
+    [Theory]
+    [InlineData("kb1(identity(1))", "i64")]
+    [InlineData("kb1(identity(m))", "i64")]
+    [InlineData("kb1(identity(n))", "ref/i64")]
+    public void ABareSlotResultAtAReferenceIsMatchedAgainstItsReferent(string use, string type)
+    {
+        var c = MinimalEmissionTest.Analyze("func identity<T>(value: T) -> T => value@move\nfunc kb1(x: ref/i64) -> i32 => 0\nfunc w(n: ref/i64, m: i64) -> i32 => " + use + "\n()");
+        Assert.Empty(c.Binding.Issues);
+        var call = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>().Single(x => x.Method is IdentifierNameKoto { IdentifierName: "identity" });
+        Assert.Equal(type, TyCtxt.Name(call.CallOf()!.TypeArguments[0]!));
     }
 
     // SPEC 10.5.1, 10.5.4 (DECISIONS BU-43): an anonymous function among a control-flow argument's results waits for the call, which
@@ -290,6 +379,20 @@ public partial class ApplicabilityChainRegressionTest
         var source = ControlFlowDeclarations + "applyArg(if c => ([\"k\": func [] (v) => v], x) else => (stop(), x))\n";
         var shown = DiagnosticCorpus.Check(source).Diagnostics.Select(x => x.Code + " " + source.Substring(x.Span!.Value.Start, x.Span.Value.Length)).Order();
         Assert.Equal(["UnboundTypeArgument_Kd applyArg(if c => ([\"k\": func [] (v) => v], x) else => (stop(), x))", "UnresolvedBinding_Kd v"], shown);
+    }
+
+    // SPEC 10.1, 10.5.4, 23.1.2 (F's ruling 90, which revises ruling 49 (a)): an unselected call's anonymous function stays unbound, so a
+    // later attempt of the call reads what the first read; its omitted parameter Type, which the call's slot would supply, rests on
+    // the call's record (rule W), so `v` gives none. An independent failure in its body (`missing`) is not reported while the call is
+    // unselected (an open issue; it was reported while ruling 49 (a) bound the anonymous function on its own).
+    [Theory]
+    [InlineData("keep((func [] (v) => missing, x))", "UnboundTypeArgument_Kd keep((func [] (v) => missing, x))")]
+    [InlineData("keep((func [] (v) => v, x))", "UnboundTypeArgument_Kd keep((func [] (v) => v, x))")]
+    public void AnUnselectedCallsClosureStaysUnbound(string use, string call)
+    {
+        var source = ControlFlowDeclarations + use + "\n";
+        var shown = DiagnosticCorpus.Check(source).Diagnostics.Select(x => x.Code + " " + source.Substring(x.Span!.Value.Start, x.Span.Value.Length)).Order();
+        Assert.Equal([call], shown);
     }
 
     // SPEC 23.1.2, 10.4 (U1.6h-3'): a join of Tuple results fits `take(i64)` whatever its failed part is, so the call's
@@ -551,6 +654,21 @@ public partial class ApplicabilityChainRegressionTest
         Assert.Equal(0, AllocationMeasurement.Measure(() => rejected &= !c.Bind().IsComplete));
         Assert.True(rejected);
         Assert.Equal(code is null ? [] : [code], c.Binding.Issues.Select(static x => x.Code.ToString()));
+    }
+
+    // PLAN G924 (the owner's O-408 (a); the review's N4): the own Types after selection, step by step (OwnTypeSteps: the literals'
+    // defaults, then a waiting nested call's own Type), and the completion at the Type they fix allocate nothing in a warm rebind.
+    [Trait("Purpose", "Allocation")]
+    [Theory]
+    [InlineData("let r = mkT(1, mkNone())")]
+    [InlineData("let w = W.Make(1, mkNone())")]
+    [InlineData("let r = mkT(identity(1), .None)")]
+    public void WarmOwnTypeStepsAllocateNothing(string body)
+    {
+        var c = MinimalEmissionTest.Analyze(OwnTypeDeclarations + body);
+        var valid = true;
+        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Bind().IsComplete));
+        Assert.True(valid, MinimalEmissionTest.Describe(c));
     }
 
     // PLAN G729: a joined position of two references at `ref/i32 during a` (two Origins, one region covering both) allocates nothing in a

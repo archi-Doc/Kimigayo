@@ -265,6 +265,17 @@ public sealed partial class Binding
     private BoundConstraint NegateConstraint(BoundConstraint value)
         => value.Kind == ConstraintKind.Not ? value.Left! : value.Negation ??= this.InternConstraint(new(ConstraintKind.Not, left: value));
 
+    // D-4 (PLAN G949 Stage 2 U2b; C-380 F3 (b) as O-U2-4 narrows it): the library pass forms the negation of every constraint it interned,
+    // so no later pass writes a library constraint's Negation (a Not constraint's negation is its operand, never stored). The library's
+    // constraints are the interner's at the library pass's end, the first pass of a compilation's first run.
+    private void CompleteNegations()
+    {
+        foreach (var constraint in this.constraints.Values.ToArray())
+        {
+            _ = this.NegateConstraint(constraint);
+        }
+    }
+
     private void BindConstraints()
     {
         this.ResetSourceStates();
@@ -316,6 +327,7 @@ public sealed partial class Binding
                 this.RegisterConformances();
                 this.BindCopyDeclarations();
                 this.BindConditionalDeclarations(false);
+                this.impls.Advance(ImplTable.AdmissionPoint.ConditionalClauses); // Point 2 (rule (a)).
                 this.RegisterInheritedConformances();
             }
         }
@@ -341,12 +353,13 @@ public sealed partial class Binding
         this.ExpandContractPremises();
         this.PublishSourceStates();
         this.PrepareAssociatedBindings();
+        this.impls.Advance(ImplTable.AdmissionPoint.AssociatedBindings); // Point 3 (rule (a)).
         this.bindingConstraintTypes = false;
         this.ValidateConstraintProjectionAccess();
     }
 
     // A clause waits for the conformances when it names an associated projection (SPEC 8.5, 15.3.1), except a conformance declaration
-    // (DeclaresConformance): RegisterConformances registers it after pass 0, so it binds in pass 0 (conformancesRegistered). Each clause is
+    // (DeclaresConformance): RegisterConformances registers it after pass 0, so it binds in pass 0 (point 1, ImplTable.Reached). Each clause is
     // decided once per Bind run, before any Constraint binds: the query's TypeName lookups publish import and qualifier facts as every
     // lookup does, and a lookup through a base clause not ready yet is an early read (TypeName's note) that VerifyEarlyReads evaluates
     // again, running the declarations once more on a different answer, so the decision cannot disagree with the final names
@@ -461,7 +474,7 @@ public sealed partial class Binding
         // SPEC 23.1.2: a subject that formed no Type because of a failure in it, its own or a part's (the published HasFailureCauses),
         // supplies none: the requirement binds against no subject, and a rejecting verdict rests on the subject.
         var failedSubject = subject is null &&
-            (clause.BindingFailure != BindingFailure.None || clause.Left.BindingState == BindingState.Invalid || this.HasFailureCauses(clause.Left));
+            (this.RecordedFailure(clause) != BindingFailure.None || this.RecordedState(clause.Left) == BindingState.Invalid || this.HasFailureCauses(clause.Left));
         // Closed subjects are valid in a struct's, an enum's and, Self apart, a Contract's region.
         var closedScope = scope.Owner is StructKoto or EnumKoto || (scope.Owner is ContractKoto && !IsSelfConstraint(clause));
         // A subject that formed nothing for a missing name is pending when a later source can complete it into a subject valid here,
@@ -474,7 +487,7 @@ public sealed partial class Binding
         // A failed selector supplies no subject. Check the independent requirement syntax, then discard the provisional
         // proposition; its valid Type or Contract must not become another failure merely because the selector failed.
         var requirement = this.BindRequirement(clause.Right, unresolvedSubject || failedSubject ? BoundType.Unit : subject, semantics, bindingScope);
-        if (AssociatedHead(clause) is OriginApplicationKoto && HasUnsupportedAssociatedIdentity(requirement))
+        if (AssociatedHead(clause) is OriginApplicationKoto && this.HasUnsupportedAssociatedIdentity(requirement))
         {
             this.Fail(clause, BindingFailure.Unsupported, true);
             return;
@@ -544,7 +557,7 @@ public sealed partial class Binding
                 environment.Fail(clause); // The clause failed, or holds a recovery.
             }
 
-            if (requirement.Kind == ConstraintKind.Error && clause.BindingFailure != BindingFailure.None)
+            if (requirement.Kind == ConstraintKind.Error && this.RecordedFailure(clause) != BindingFailure.None)
             {
                 this.AddPrerequisite(scope.Owner, clause);
             }

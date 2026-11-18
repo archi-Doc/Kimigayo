@@ -4,7 +4,9 @@ using System.Text.Json;
 using System.Xml.Linq;
 using Kimi;
 using Kimi.Build;
+using Kimi.Command;
 using Kimi.Compiler;
+using Kimi.Diagnostics;
 using Xunit;
 
 namespace XunitTest;
@@ -12,6 +14,9 @@ namespace XunitTest;
 public sealed class NativeToolchainTest : IDisposable
 {
     private readonly string directory = Path.Combine(Path.GetTempPath(), "kimi-native-" + Guid.NewGuid().ToString("N"));
+
+    // The host's console of the test's projects, which reads a refusal's message.
+    private readonly DiagnosticContractTest.DiagnosticConsole console = new();
 
     public NativeToolchainTest() => Directory.CreateDirectory(this.directory);
 
@@ -49,6 +54,44 @@ public sealed class NativeToolchainTest : IDisposable
         using var record = JsonDocument.Parse(File.ReadAllText(paths.Record));
         Assert.Equal("incomplete", record.RootElement.GetProperty("status").GetString());
         Assert.Equal("previous executable", File.ReadAllText(paths.Executable));
+    }
+
+    // R9-B1 part 2 (form J, PLAN G983's manifest share): a manifest field that is missing, of another JSON kind or, for an Int32 row,
+    // another number fails at its read with InvalidDataException naming the field, before any tool and with the record left
+    // incomplete; a fixed field with another value is not this compiler's. Each row edits one field of an emitted Application's
+    // manifest (a JSON value, or null to remove it). The libraries are read after the tools are found, so their rows need a toolchain.
+    [Theory]
+    [InlineData("schemaVersion", "3.5", "'schemaVersion' is not this compiler's")]
+    [InlineData("schemaVersion", "\"4\"", "'schemaVersion' is missing or not a JSON Number")]
+    [InlineData("backendSupport.abiVersion", "2.5", "'backendSupport.abiVersion' is not this compiler's")]
+    [InlineData("codegen.cpu", "\"native\"", "'codegen.cpu' is not this compiler's")]
+    [InlineData("codegen.features", "\"+sse2\"", "'codegen.features' is missing or not a JSON Array")]
+    [InlineData("codegen", null, "'codegen' is missing or not a JSON Object")]
+    [InlineData("externalDeclarations", null, "'externalDeclarations' is missing or not a JSON Array")]
+    [InlineData("irFile", "7", "'irFile' is missing or not a JSON String")]
+    [InlineData("optimization", null, "'optimization' is missing or not a JSON String")]
+    [InlineData("irSha256", "1", "'irSha256' is missing or not a JSON String")]
+    public async Task AManifestFieldFailsAtItsRead(string field, string? value, string failure)
+    {
+        var project = this.Create();
+        Assert.True(await project.Generate(TestContext.Current.CancellationToken));
+        var paths = ArtifactPaths.Create(project);
+        var manifest = System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllText(paths.Manifest))!.AsObject();
+        var (section, name) = field.Contains('.') ? (manifest[field[..field.IndexOf('.')]]!.AsObject(), field[(field.IndexOf('.') + 1)..]) : (manifest, field);
+        if (value is null)
+        {
+            Assert.True(section.Remove(name));
+        }
+        else
+        {
+            section[name] = System.Text.Json.Nodes.JsonNode.Parse(value);
+        }
+
+        File.WriteAllText(paths.Manifest, manifest.ToJsonString());
+        var error = await Assert.ThrowsAsync<InvalidDataException>(() => NativeToolchain.BuildManifest(paths.Manifest, this.directory, null, (_, _) => { }, TestContext.Current.CancellationToken));
+        Assert.Contains(failure, error.Message);
+        using var record = JsonDocument.Parse(File.ReadAllText(paths.Record));
+        Assert.Equal("incomplete", record.RootElement.GetProperty("status").GetString());
     }
 
     [Theory]
@@ -107,7 +150,7 @@ public sealed class NativeToolchainTest : IDisposable
         using var record = JsonDocument.Parse(File.ReadAllText(paths.Record));
         Assert.Equal("incomplete", record.RootElement.GetProperty("status").GetString());
         Assert.Equal("previous executable", File.ReadAllText(paths.Executable));
-        await Assert.ThrowsAsync<InvalidDataException>(() => project.Run(TestContext.Current.CancellationToken));
+        await this.AssertRunRefused(project, "The latest build failed or the binary was changed. Run 'kimi build' first.");
     }
 
     [Fact]
@@ -117,7 +160,7 @@ public sealed class NativeToolchainTest : IDisposable
         File.WriteAllText(file, "Targets = { \"x86_64-pc-windows-msvc\" }\nOutputKind = \"Library\"\nTestSources = { \"tests.kimi\" }");
         File.WriteAllText(Path.Combine(this.directory, "product.kimi"), "public group Example");
         File.WriteAllText(Path.Combine(this.directory, "tests.kimi"), "let broken =");
-        Assert.True(Project.TryCreate(Compilation.CreateForTest().Kimigayo, null, file, out var project));
+        Assert.True(Project.TryCreate(new Kimigayo(this.console), null, file, out var project));
         project.ProjectFile.LlvmBin = "missing LLVM directory";
         project.KimiOptions.Debug = true;
         Assert.True(await project.Build(TestContext.Current.CancellationToken));
@@ -134,7 +177,7 @@ public sealed class NativeToolchainTest : IDisposable
         Assert.False(File.Exists(paths.Ir));
         Assert.False(File.Exists(paths.Manifest));
         Assert.False(File.Exists(paths.Executable));
-        await Assert.ThrowsAsync<InvalidDataException>(() => project.Run(TestContext.Current.CancellationToken));
+        await this.AssertRunRefused(project, "No built Application is available. Run 'kimi build' first.");
     }
 
     [Theory]
@@ -212,12 +255,12 @@ public sealed class NativeToolchainTest : IDisposable
     {
         var project = this.Create();
         var paths = ArtifactPaths.Create(project);
-        await Assert.ThrowsAsync<InvalidDataException>(() => project.Run(TestContext.Current.CancellationToken));
+        await this.AssertRunRefused(project, "No built Application is available. Run 'kimi build' first.");
         Assert.False(File.Exists(paths.Ir));
         Directory.CreateDirectory(Path.GetDirectoryName(paths.Record)!);
         File.WriteAllText(paths.Executable, "changed executable");
         File.WriteAllText(paths.Record, "{\"status\":\"linked\",\"optimization\":\"O2\",\"executableSha256\":\"wrong\"}");
-        await Assert.ThrowsAsync<InvalidDataException>(() => project.Run(TestContext.Current.CancellationToken));
+        await this.AssertRunRefused(project, "The latest build failed or the binary was changed. Run 'kimi build' first.");
         Assert.False(File.Exists(paths.Ir));
     }
 
@@ -227,7 +270,7 @@ public sealed class NativeToolchainTest : IDisposable
         var solution = new Solution(Compilation.CreateForTest().Kimigayo);
         Assert.False(await solution.Generate(TestContext.Current.CancellationToken));
         Assert.False(await solution.Build(TestContext.Current.CancellationToken));
-        await Assert.ThrowsAsync<InvalidDataException>(() => solution.Run(TestContext.Current.CancellationToken));
+        await Assert.ThrowsAsync<CommandInputException>(() => solution.Run(TestContext.Current.CancellationToken));
     }
 
     [Theory]
@@ -247,9 +290,82 @@ public sealed class NativeToolchainTest : IDisposable
         Assert.Equal("incomplete", record.RootElement.GetProperty("status").GetString());
     }
 
+    // The toolchain boundary (R9-B2): under Project.Build the toolchain's classification applies only around the toolchain's own calls,
+    // whose failures fail the build with their message (IMPL 20.3; SPEC 23.2.2: a toolchain, output or configuration failure); any other
+    // exception, a compiler step's outside generation among them, ends its result as Faulted: one CheckFaulted_Kd (Exception) at the
+    // project file (DIAGNOSTICS rule 9). Rows, the expected record first:
+    // - CheckFaulted_Kd, the project's own result (BuildTargetsAndPublish): "project checks", which read a null target list, a caller
+    //   contract no command input reaches (it escaped the build); "report", the host's console throwing InvalidOperationException, a type
+    //   the toolchain's JSON reads throw, at the report of the published pair, after generation and before the toolchain (it printed as a
+    //   toolchain failure).
+    // - CheckFaulted_Kd, the build's own result (Build's outer catch): "toolchain's message", the host's console throwing at the line that
+    //   renders a toolchain failure, outside the toolchain's call (it escaped the build).
+    // - The toolchain's message and no code: a missing tool, a tool that does not start, a configuration value the artifact paths read.
+    // No production seam: the console is the host's, and the project file's values are the caller's.
+    [Theory]
+    [InlineData("project checks", null, null)]
+    [InlineData("report", "Generated LLVM inputs", null)]
+    [InlineData("toolchain's message", "Toolchain file not found", null)]
+    [InlineData("toolchain", null, "Toolchain file not found")]
+    [InlineData("tool start", null, "not a valid")]
+    [InlineData("configuration", null, "Optimization must be O0 or O2.")]
+    public async Task ABuildFailsByTheToolchainBoundarysRule(string origin, string? failingLine, string? toolchainFailure)
+    {
+        var file = Path.Combine(this.directory, "Hello.kimiproj");
+        File.WriteAllText(file, $"Targets={{\"{WindowsProfile.Target}\"}} OutputPath=\"out/Hello.ll\"");
+        File.WriteAllText(Path.Combine(this.directory, "main.kimi"), "::Kimi.Console.writeLine(\"Hello\")");
+        var console = new DiagnosticContractTest.DiagnosticConsole { FailingLine = failingLine };
+        Assert.True(Project.TryCreate(new Kimigayo(console), null, file, out var project));
+        project.ProjectFile.LlvmBin = "missing LLVM directory";
+        if (origin == "project checks")
+        {
+            project.ProjectFile.Targets = null!;
+        }
+        else if (origin == "configuration")
+        {
+            project.ProjectFile.Optimization = "O3";
+        }
+        else if (origin == "tool start")
+        {
+            // Every file the native build resolves exists, and opt.exe is not an executable.
+            var root = Path.Combine(this.directory, "toolchain");
+            Directory.CreateDirectory(Path.Combine(root, "windows_x64"));
+            File.WriteAllText(Path.Combine(root, "windows_x64", "kernel32.lib"), "not a library");
+            File.WriteAllText(Path.Combine(root, "windows_x64", ToolchainIdentity.BackendFile), "not an archive");
+            foreach (var tool in new[] { "opt", "llc", "lld-link", "llvm-nm", "llvm-readobj" })
+            {
+                File.WriteAllText(Path.Combine(root, tool + ".exe"), "not an executable");
+            }
+
+            project.KimiOptions.ToolchainRoot = root;
+            project.ProjectFile.LlvmBin = null;
+        }
+
+        Assert.False(await project.Build(TestContext.Current.CancellationToken), console.Text);
+        Assert.Equal(toolchainFailure is null ? 1 : 0, console.Text.Split(nameof(DiagnosticCode.CheckFaulted_Kd)).Length - 1);
+        if (toolchainFailure is null)
+        {
+            Assert.Contains(DiagnosticFaults.Describe(DiagnosticFault.Exception), console.Text, StringComparison.Ordinal);
+            Assert.Contains("Hello.kimiproj", console.Text, StringComparison.Ordinal);
+        }
+        else
+        {
+            Assert.Contains(toolchainFailure, console.Text, StringComparison.Ordinal);
+        }
+
+        Assert.False(File.Exists(Path.Combine(this.directory, "out", "Hello.O2.exe")));
+    }
+
+    // The toolchain refuses the run before launch with this reason (IMPL 20.3, 20.3.2): exit 1, and the refusal, not another failure.
+    private async Task AssertRunRefused(Project project, string reason)
+    {
+        Assert.Equal(1, await project.Run(TestContext.Current.CancellationToken));
+        Assert.Contains(reason, this.console.Text, StringComparison.Ordinal);
+    }
+
     private Project Create(string source = "::Kimi.Console.writeLine(\"Hello\")")
     {
-        var project = Compilation.CreateForTest().Project;
+        var project = new Project(new Kimigayo(this.console));
         project.Name = "Native test";
         project.Directory = this.directory;
         project.AddSource("main.kimi", source);

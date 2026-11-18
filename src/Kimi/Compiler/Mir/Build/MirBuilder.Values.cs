@@ -212,7 +212,7 @@ internal sealed partial class MirBuilder
     // (Fill, DECISIONS R4-M81); an Array's elements moved into the one buffer its aggregate allocates (DECISIONS R5-M129).
     private void Aggregate(MirPlace destination, Koto node, BoundType type)
     {
-        var construction = BoundEnumConstruction.Of(node);
+        var construction = BoundEnumConstruction.Of(compilation.Binding, node);
         var elements = node switch
         {
             TupleLiteralKoto tuple => tuple.Elements,
@@ -313,7 +313,7 @@ internal sealed partial class MirBuilder
         if (HirTables.PlaceOf(assignment.Left).Kind is HirPlaceKind.Unset or HirPlaceKind.Value)
         {
             var property = KotoHelper.UnwrapParentheses(assignment.Left);
-            if ((CallPlan.Of(property, 1) ?? CallPlan.Of(property)) is { } setter)
+            if ((CallPlan.Of(compilation.Binding, property, 1) ?? CallPlan.Of(compilation.Binding, property)) is { } setter)
             {
                 this.Call(destination, setter, assignment, assignment.Right);
             }
@@ -355,7 +355,7 @@ internal sealed partial class MirBuilder
     // Never value is neither, so the target keeps its old value (DECISIONS R4-M62).
     private void Overwrite(MirPlace target, MirPlace value, Koto node)
     {
-        if (!this.IsNever(value) && MirTypes.MayNeedDrop(this.body.TypeOf(target), this.walked))
+        if (!this.IsNever(value) && MirTypes.MayNeedDrop(compilation.Types, this.body.TypeOf(target), this.walked))
         {
             this.DropAt(target, this.Info(node));
         }
@@ -446,7 +446,7 @@ internal sealed partial class MirBuilder
     private bool IsNeverValue(MirPlace place) => this.IsTemp(place) && ReferenceEquals(this.body.TypeOf(place), BoundType.Never);
 
     // Whether a Place is of Type Never: the Never value or a named Place, neither of which has a referent to borrow or view.
-    private bool IsNever(MirPlace place) => MirTypes.IsNever(this.body, this.body.TypeOf(place));
+    private bool IsNever(MirPlace place) => MirTypes.IsNever(compilation.Types, this.body, this.body.TypeOf(place));
 
     // The destination takes an operand, unless the operand is the destination's own value moved (an acquisition formed it there).
     private void Use(MirPlace destination, in MirOperand operand, Koto node)

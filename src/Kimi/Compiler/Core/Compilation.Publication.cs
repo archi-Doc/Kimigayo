@@ -33,8 +33,14 @@ public partial class Compilation
     // The requirement of the publisher's broken-contract records, as of MirReport's (Ownership.Internal).
     private static readonly DiagnosticRequirement Defect = DiagnosticRequirement.Ownership(OwnershipRequirement.Internal);
 
+    // The requirement of a refused library's own record (B's ruling 40 (i)): a broken build, Binding's internal failure.
+    private static readonly DiagnosticRequirement RefusedLibrary = DiagnosticRequirement.Binding(BindingFailure.Internal);
+
     private readonly List<PairBinder> caseBinders = []; // The binders the first member's case text names.
     private readonly List<PairBinder> memberBinders = []; // Another member's.
+
+    // The store of a library subject's record (Core's store decision, StoreOf; PLAN G949 Stage 2 U2a): this compilation's root collection.
+    private DiagnosticCollection LibraryStore => this.Kotonoha.DiagnosticCollection;
 
     /// <summary>Publishes one merged problem of a program's report (R6-check H3-2, design 3.1-3.4): a located problem by its location, any
     /// other at its subject with its Ordinal as the condition, a derived one as <c>PrerequisiteUnavailable_Kd</c> naming its causes' keys;
@@ -101,6 +107,9 @@ public partial class Compilation
             }
         }
 
+        // Reported through the node, into its collection: Core's store decision (StoreOf) takes these over in U3's first commit (PLAN
+        // G949 Stage 2, B's ruling 32: routing Koto.Report needs a larger parameter exception); until then no MIR record has a library
+        // subject in any program the suite checks.
         var node = this.SyntaxOf(problem.Subject);
         if (causes is not null)
         {
@@ -118,6 +127,22 @@ public partial class Compilation
             evidence: evidence ?? Binding.CaseEvidence(problem.Code, null, found),
             related: Binding.WithCaseDeclarations(related?.ToArray(), this.caseBinders, found),
             condition: (ushort)problem.Ordinal);
+    }
+
+    /// <summary>Publishes a refused library (PLAN G949 Stage 2 U2a; design 5.3, R3; C2 (4); B's ruling 40 (i)): each Binding-side record as
+    /// InternalInvariant_Kd at its library location in this compilation's store for a library subject (StoreOf), under its own
+    /// requirement, and the refusal's own InternalInvariant_Kd at the first counted record's location, so a refused library always
+    /// publishes an Error, a syntax Warning alone included. A record without a document is at the project file, as Binding reports it. A
+    /// syntax record is never here: it stays the library module's syntax list's, which that list's owner publishes (form (R)).</summary>
+    /// <param name="refusal">The refusal (LibraryLayer.Refusal).</param>
+    internal void PublishRefusal(LibraryLayer.Refused refusal)
+    {
+        foreach (var record in refusal.Records)
+        {
+            this.PublishLocated(record.Requirement, record);
+        }
+
+        this.PublishLocated(RefusedLibrary, refusal.First);
     }
 
     // The related location of a fact naming a site (design 3.3; DIAGNOSTICS' A6 fact tables): its role and wording.
@@ -203,7 +228,7 @@ public partial class Compilation
         var refuted = problem.Code == DiagnosticCode.UnsatisfiedOriginRelation_Kd;
         if (fact.Value < 0)
         {
-            return Binding.OriginRelationFacts(new(this.SyntaxOf(fact.Site), longer, longer, shorter, equality, null, refuted, WellFormed: true), "wellFormed");
+            return this.Binding.OriginRelationFacts(new(this.SyntaxOf(fact.Site), longer, longer, shorter, equality, null, refuted, WellFormed: true), "wellFormed");
         }
 
         var row = this.Types.OriginRows(program.Body(body).Key.Body).Rows[(int)fact.Value];
@@ -218,15 +243,35 @@ public partial class Compilation
         var at = this.SyntaxOf(row.Site);
         var wellFormed = row.Source == OriginRowSource.WellFormed;
         return source is null ? null
-            : Binding.OriginRelationFacts(new(at, longer, longer, shorter, equality, row.Destination, refuted, row.Clause, WellFormed: wellFormed), source);
+            : this.Binding.OriginRelationFacts(new(at, longer, longer, shorter, equality, row.Destination, refuted, row.Clause, WellFormed: wellFormed), source);
     }
 
     // A code without facts keyed by its subject's location, in the subject's collection (DIAGNOSTICS 4.1; DECISIONS R5-M65, R4-M71).
     private void Locate(DiagnosticRequirement requirement, DiagnosticCode code, SourceRef subject)
     {
         var node = this.SyntaxOf(subject);
-        node.DiagnosticCollection?.ReportLocation(requirement, node.Span, code, node.CodeContext.SourceDocument);
+        this.StoreOf(subject)?.ReportLocation(requirement, node.Span, code, node.CodeContext.SourceDocument);
     }
+
+    // An InternalInvariant_Kd at a located record's place: its library location in the library store, or the project file without one.
+    private void PublishLocated(DiagnosticRequirement requirement, LocatedRecord at)
+    {
+        if (at is { Document: { } document, Span: { } span })
+        {
+            this.LibraryStore.ReportLocation(requirement, span, DiagnosticCode.InternalInvariant_Kd, document);
+        }
+        else
+        {
+            this.Diagnostics.Report(DiagnosticPartition.Binding, DiagnosticCode.InternalInvariant_Kd, this.Project.FilePath);
+        }
+    }
+
+    // Core's one store decision for a record (PLAN G949 Stage 2 U2a; design 5.3, M-R2-B1): a library subject's record goes to this
+    // compilation's root collection, at the subject's own span and document (the library's collections are the freeze's, detached at
+    // U2b); any other subject's to its node's collection. Locate and PublishRefusal go through it; Publish still reports through the
+    // node until U3's first commit (B's ruling 32: routing Koto.Report would need a larger parameter exception).
+    private DiagnosticCollection? StoreOf(SourceRef subject)
+        => subject.IsLibrary ? this.LibraryStore : this.SyntaxOf(subject).DiagnosticCollection;
 
     // The key a merged problem is published under, by Publish's form, so a derived problem names it as its cause (design 3.2).
     private DiagnosticKey KeyOf(Mir.MirProgram program, int merged)

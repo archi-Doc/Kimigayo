@@ -2,29 +2,56 @@
 
 using System.Diagnostics.CodeAnalysis;
 using Kimi.Compiler.Parsing;
+using Kimi.Diagnostics;
 
 namespace Kimi.Compiler;
 
-// The pass driver (PLAN G949 S1-r1a; DECISIONS BU-220): a Bind's runs and, in each run, its passes in order.
+// The pass driver (PLAN G949 S1-r1a, S1-r1b and S1-1; DECISIONS BU-220): a Bind's runs and, in each run, its passes in order: the
+// library pass (the library module, LibraryLayer.Part) once per compilation, then frozen (FreezeLibrary), and the program pass (the
+// source modules, Binding's own part).
 // - Responsibility: the three levels of a Bind's state: per Bind (BeginBind: the SyntaxIds, the Result discarded with the later
 //   phases' facts, StartRuns), per run (BeginRun: the counter every stamp compares, the work counters, the local-region graph's
-//   version) and per pass (ResetPass); the runs, a new one whenever a pass asks for it (VerifyEarlyReads); each pass's steps in order
-//   over its module set (BindingPass); each pass's part of the per-pass collections (PassPart: the published lists and the local-region
-//   graph), handed over as the fields every step writes (EnterPass); R1.1's one composition point per aggregate: the composed views,
-//   the program part then the library layer's, and the Bind's Result (ComposeResult); a keyed collection's one find (PassPart.Find).
+//   version) and per pass (ResetPass); the runs, a new one whenever the program pass asks for it (VerifyEarlyReads); the library's
+//   freeze (FreezeLibrary: verify, stamp, publish); each pass's steps in order
+//   over its module set (BindingPass); each pass's part of the per-pass collections (PassPart: the published lists, the local-region
+//   graph, the slots' keepers, the Contract shapes, the effect bounds, the import declarations, the prune steps' sets, the contract
+//   solver's Closure(view) entries and the documents' unnamed aliases), handed over as the fields every step writes (EnterPass);
+//   R1.1's one composition point per aggregate: the composed views, the program part then the library layer's, and the Bind's Result
+//   (ComposeResult); a keyed collection's one find (PassPart.Find).
 // - Inputs: the compilation's modules, the mode. Outputs: the parts (Binding's own, programPart; LibraryLayer.Part), the composed
 //   views, the Result.
-// - Invariants: one counter value per run; a restart starts a new run of every pass, never a new Bind (StartRuns runs once per Bind,
-//   so a second run cannot ask again and the runs end); a step walks the running pass's modules, in their order, and writes its part;
+// - Invariants: one counter value per run; a restart starts a new run of the program pass, never a new Bind (StartRuns runs once per
+//   Bind, so a second run cannot ask again and the runs end); the library pass runs only while the library's publication version is 0,
+//   in the first run of a Bind, and its freeze publishes that version last, so a library pass that throws leaves no Frozen stamp and
+//   the next Bind runs it again; after the freeze the library's stamps are Frozen and its facts the library pass's, the same in every
+//   Bind of the compilation, and the library HIR identical in each (C-379, G949 ruling 174); a step walks the running pass's modules,
+//   in their order, and writes its part; a library pass with a record of any kind is refused, not frozen (PLAN G949 Stage 2 U2a; design
+//   u2-design 2.4, C2): its records are kept as the layer's refusal while its tables stand, the library part and Binding's own part are
+//   reset, no program pass runs and the Bind leaves no Result, so the next Bind runs the library pass again and refuses identically;
 //   between Binds, and after a throw, the running pass is the program pass with Binding's own part, and a reader outside a pass reads
-//   the views, never a field a pass writes; until PLAN G949 S1-r1b one pass binds every module (ProgramPass) and the layer's part is
-//   empty.
+//   the views, never a field a pass writes; the library pass runs Final whatever the Bind's mode (PLAN G949 S1-1, B2: no library fact
+//   is a Provisional pass's), so its Check publishes the library module, and its end sets the library's size (LibraryLayer.Size); a
+//   library declaration's Origin requirement work is never an edge source in the program pass (its Pass is Frozen32, never the running
+//   pass's requirement call, which CollectRequirementEdges compares).
 // - Prohibitions: no step body here; no flag or mode steering a step; no second copy of a step for the library; no consumer
 //   composing parts.
 public sealed partial class Binding
 {
-    // Binding's own part of the published lists: the program pass's (until PLAN G949 S1-r1b the one pass's, every module's).
-    private readonly PassPart programPart = new(KimiLibrarySize.NodeCapacity(KimiLibrarySize.Stated.Nodes));
+    // The one currency rule (DECISIONS BU-105 as PLAN G949 S1-1 amends it; Current below): Frozen is the reserved stamp value of each
+    // width (ulong, uint, int), outside its counter's range and every reset or never-set marker of that stamp (int.MaxValue, never -1:
+    // LocalRegion.Version's "never computed").
+    internal const ulong Frozen = ulong.MaxValue;
+
+    internal const uint Frozen32 = uint.MaxValue;
+
+    internal const int FrozenRegion = int.MaxValue;
+
+    // Binding's own part of the published lists: the program pass's. Its node list starts at the program's room (the library's nodes
+    // are the layer's part's, which starts at the library's stated count: KimiLibrarySize).
+    private readonly PassPart programPart = new(KimiLibrarySize.NodeRoom);
+
+    // The empty second part of a pass's view when the pass's own part is the library layer's (selectableEffectClauses); never written.
+    private readonly List<IsKoto> noClauses = new();
 
     // The composed views (R1.1; DECISIONS BU-220): each list's program part, then the library layer's (LibraryLayer.Part), built once
     // over the two fixed parts, so a read outside a pass allocates nothing and sees every pass's entries.
@@ -35,18 +62,39 @@ public sealed partial class Binding
     private readonly LayerList<LibraryImport> libraryImportsView;
     private readonly LayerList<FunctionKoto> virtualDeclarationsView;
     private readonly LayerList<CallableEffectUse> callableEffectUsesView;
-    private readonly LayerList<IsKoto> callableEffectClausesView;
+    private readonly LayerList<BoundContract> contractShapesView;
+    private readonly LayerList<BoundEffectBound> boundedRequirementsView;
+    private readonly LayerList<BindingSymbol> importDeclarationsView;
 
     // The running pass (EnterPass); between Binds the program pass of the latest Bind, which PublishHir publishes.
     private BindingPass pass;
 
-    // The program pass: the source modules, with Binding's own part; until PLAN G949 S1-r1b splits the library pass off, also the
-    // library (the one pass).
-    private BindingPass ProgramPass => new(this.compilation.SourceModules, this.Library.Kotonoha, this.programPart);
+    // The bounded Callable clauses the running pass may select (SPEC 8.11.4), its view of a list another pass also fills (PassPart's
+    // in-pass rule): its own part's, then the library layer's when its part is another. Between Binds it is the program pass's, so a
+    // reader after a Bind sees every pass's clauses.
+    private LayerList<IsKoto> selectableEffectClauses;
+
+    // The library pass (PLAN G949 S1-r1b): the library module, with the library layer's part; first in every run.
+    private BindingPass LibraryPass => new([], this.Library.Kotonoha, this.Library.Layer.Part);
+
+    // The program pass: the source modules, with Binding's own part.
+    private BindingPass ProgramPass => new(this.compilation.SourceModules, null, this.programPart);
 
     // Every module of the compilation, the set a reader outside a pass walks (a family's Values; the composed views' modules): the source
-    // modules, then the library, with Binding's own part. Until PLAN G949 S1-r1b it equals the program pass's set.
+    // modules, then the library, with Binding's own part.
     private BindingPass Modules => new(this.compilation.SourceModules, this.Library.Kotonoha, this.programPart);
+
+    // The one currency rule: a stamp is current when it equals its counter's value or is Frozen. A counter that could reach a Frozen
+    // value skips it: the run counter's uint image (BeginRun) and the requirement counter (SolveOriginRequirements); the edit counter
+    // (ulong) and the region version (one run's bounds) stay far below theirs. Every stamp compared with a counter is read here: a
+    // declaration query's (BindingSymbol), a stamped column's (StampedColumn), an instance's ADT (Instance), a VTable (FillVTable), a local
+    // region (LocalRegionSources) and a slot's keepers (Keepers). Not ImplTable's objects, current by their own store's Pass, and not an
+    // Origin requirement work, active only in its own call. Only S1-1's freeze writes Frozen; until then no stamp holds it.
+    internal static bool Current(ulong stamp, ulong counter) => stamp == counter || stamp == Frozen;
+
+    internal static bool Current(uint stamp, uint counter) => stamp == counter || stamp == Frozen32;
+
+    internal static bool Current(int stamp, int counter) => stamp == counter || stamp == FrozenRegion;
 
     // Per Bind: the SyntaxIds, the Result and the later phases' facts discarded, the runs started.
     private void BeginBind(BindingMode mode)
@@ -59,7 +107,10 @@ public sealed partial class Binding
             modules[i].Syntax.Number(modules[i].RootKoto, (ushort)i);
         }
 
-        this.Library.Kotonoha.Syntax.Number(this.Library.Kotonoha.RootKoto, SyntaxTable.LibraryModule);
+        if (this.libraryVersion == 0)
+        {
+            this.Library.Kotonoha.Syntax.Number(this.Library.Kotonoha.RootKoto, SyntaxTable.LibraryModule); // Only a Bind that runs the library pass.
+        }
 
         // Every later phase rests on Binding, so its facts are discarded with Binding's; a pass that does not finish
         // leaves no result behind.
@@ -74,7 +125,11 @@ public sealed partial class Binding
     // bound a run records moves it, whichever part holds the row, so it only rises within a run (n55-design 2.4).
     private void BeginRun()
     {
-        this.storageVersion++;
+        if ((uint)++this.storageVersion == Frozen32)
+        {
+            this.storageVersion++; // Its uint image is BindingSymbol's query stamp: never Frozen32 (Current).
+        }
+
         this.regionVersion = 0;
         this.signatureWalks = 0;
         this.memberWalks = 0;
@@ -86,22 +141,91 @@ public sealed partial class Binding
         this.ResetInferenceMetrics();
     }
 
-    // The runs: each runs every pass in order; a pass whose declarations ask for a rerun ends its run, and the next run starts.
-    private void Run(BindingMode mode)
+    // The runs: the library pass while the library is not frozen (its publication version 0), Final whatever the Bind's mode (no
+    // Provisional answer on a library object; a Provisional Bind's program pass reads Final library facts), and its freeze; then the
+    // program pass, whose request for a rerun starts a new run of the program pass alone. False: the library pass was refused (its
+    // refusal kept, FreezeLibrary), so the library part is reset, Binding's own part entered and reset, and no program pass runs.
+    private bool Run(BindingMode mode)
     {
         do
         {
             this.BeginRun();
+            if (this.libraryVersion == 0 && !this.FreezeLibrary(this.RunPass(this.LibraryPass, BindingMode.Final)))
+            {
+                this.StartPass(this.LibraryPass, BindingMode.Final); // The refused library part emptied: no reader sees a partial layer (C2).
+                this.StartPass(this.ProgramPass, mode); // Binding's own part, empty; no program is bound over a refused library.
+                return false;
+            }
         }
         while (!this.RunPass(this.ProgramPass, mode));
+        return true;
+    }
+
+    // PLAN G949 S1-1 (s11-design 2.3; DECISIONS BU-105 as BU-219 amends it): the library's freeze at the end of its pass, in three phases.
+    // Verify (writes nothing; a failure is a compiler-build defect, thrown as the internal-invariant form before any Frozen is written):
+    // the library pass asked for no rerun (it is the same in every run, so a rerun would ask again), it has no record of any kind (its
+    // issues, derived issues and non-failing records, warnings and lints included: each list is the pass's, which the program pass's
+    // reset empties, so a layer record would be dropped or explained by another pass's tables; a siteless height refusal too: its
+    // at-once report does not survive ReportDiagnostics, which invalidates the Binding partition and re-reports it only while the flag
+    // holds, and the program pass's ResetPass clears the flag, so a library one would be dropped silently; the term goes with the flag's
+    // Transitional, G651 a1. A startup record is never the library pass's: CheckStartup runs after a Final Bind, outside every pass,
+    // over the source modules only; and, from PLAN G949 Stage 2 U2a (C1 (x)), no record in the library module's syntax list), else it
+    // is refused: its records are reported by the per-record steps while its tables stand and kept as typed facts in the layer's
+    // refusal (LibraryLayer.Refusal; a syntax record stays its module's list's, which the refusal only notes: form (R)), false
+    // returned and nothing stamped; and its query states are complete (LibraryQueryFault). Stamp (field stores only, each owner its own): every stamp the run made current on a library object or base store turns Frozen, so it
+    // reads current in every later pass; a stamp of an earlier run stays stale and reads absent, as the library pass left it. Publish,
+    // last: L (LibraryLayer.TypeCount, the ids of the Types the library pass made) and the library's publication version, constant
+    // from here for the compilation (HirTables.LibraryVersion), which the driver's skip reads.
+    private bool FreezeLibrary(bool completed)
+    {
+        if (!completed)
+        {
+            throw new InvalidOperationException("The library pass asked for a rerun (InternalInvariant; PLAN G949 S1-1).");
+        }
+
+        var diagnostics = this.compilation.Diagnostics;
+        var syntax = diagnostics.HasSyntaxRecords(this.Library.Kotonoha);
+        if (this.issues.Count + this.derivedIssues.Count != 0 || this.HasNonFailingRecords || this.sitelessHeightRefusal || syntax)
+        {
+            // The Binding partition holds only this pass's records (BeginBind discarded the semantic ones), so it is the refusal.
+            this.ReportFailures(this.issues, this.derivedIssues);
+            this.ReportDuplicateDeclarations();
+            this.ReportNonFailingRecords();
+            var records = diagnostics.TakeLocated(DiagnosticPartition.Binding);
+            this.Library.Layer.Refusal = new(records, diagnostics.FirstSyntaxRecord(this.Library.Kotonoha) ?? records[0]);
+            return false;
+        }
+
+        var symbols = this.LibraryQuerySymbols();
+        if (this.LibraryQueryFault(symbols) is { } incomplete)
+        {
+            throw new InvalidOperationException($"The library pass left the query states of `{incomplete.Name}` incomplete (InternalInvariant; PLAN G949 S1-1).");
+        }
+
+        this.Library.Layer.Refusal = null;
+
+        FreezeQueries(symbols);
+        foreach (var symbol in this.symbols.Values.In(this.pass))
+        {
+            this.FreezeStorage(symbol.Adt);
+        }
+
+        this.Library.Layer.Impls.Freeze();
+        this.Library.Kotonoha.Syntax.Hir.Families.Freeze(this);
+        this.Library.Kotonoha.Syntax.Freeze();
+        this.FreezeLocalRegions();
+        this.FreezeRequirementWorks();
+        this.FreezeKeepers();
+        this.Library.Layer.TypeCount = this.types.TypeCount;
+        this.libraryVersion = this.storageVersion;
+        return true;
     }
 
     // One pass over its modules: its reset, indexing, declarations, bodies, the bound-declaration validations and Check. False: its
     // declarations asked for a rerun (VerifyEarlyReads).
     private bool RunPass(BindingPass pass, BindingMode mode)
     {
-        this.EnterPass(pass);
-        this.ResetPass(mode);
+        this.StartPass(pass, mode);
         this.Index();
         if (!this.BindDeclarations(mode))
         {
@@ -111,12 +235,36 @@ public sealed partial class Binding
         this.BindBodies();
         this.ValidateBoundDeclarations(mode);
         this.Check(mode);
+        if (pass.Library is not null)
+        {
+            // The library module's place in the pass's set, never which pass runs (RB1): the facts a later pass would otherwise form
+            // lazily on a library object completed (PLAN G949 S1-1, B1: the effect bounds of every Contract the library declares or
+            // references, the scopes' view serials, the local regions' sources, each its owner's step over the pass's own stores), and the
+            // library's size, the pass's table counts before the program pass empties its per-pass tables (O8 (a)): the layer's part's
+            // nodes, not the composed view's.
+            this.CompleteEffectBounds();
+            this.SettleViewSerials();
+            this.CompleteLocalRegions();
+            this.CompleteNegations(); // D-4 (PLAN G949 Stage 2 U2b): every library constraint's negation.
+            this.Library.Layer.Size = this.TableCounts with { Nodes = this.nodes.Count };
+        }
+
         return true;
+    }
+
+    // A pass's start: its part handed over and every per-pass fact of the latest pass over its modules discarded (the one reset site, which
+    // ends the capability epoch): each pass's start, and a refused library pass's end, which leaves both parts empty (PLAN G949 Stage 2 U2a).
+    private void StartPass(BindingPass pass, BindingMode mode)
+    {
+        this.EnterPass(pass);
+        this.ResetPass(mode);
     }
 
     // Hands a pass its part: the fields every step writes become the part's lists.
     [MemberNotNull(nameof(nodes), nameof(issues), nameof(derivedIssues), nameof(obligations), nameof(obligationSet), nameof(libraryImports))]
     [MemberNotNull(nameof(virtualDeclarations), nameof(callableEffectUses), nameof(callableEffectClauses), nameof(localRegions))]
+    [MemberNotNull(nameof(keepers), nameof(contractShapes), nameof(boundedRequirements), nameof(importDeclarations), nameof(foreignFailures))]
+    [MemberNotNull(nameof(enumerateIndex), nameof(enumerateIndexPool), nameof(aliasesByDocument), nameof(boundContracts))]
     private void EnterPass(BindingPass pass)
     {
         this.pass = pass;
@@ -130,7 +278,18 @@ public sealed partial class Binding
         this.virtualDeclarations = part.VirtualDeclarations;
         this.callableEffectUses = part.CallableEffectUses;
         this.callableEffectClauses = part.CallableEffectClauses;
+        var layer = this.Library.Layer.Part;
+        this.selectableEffectClauses = new(part.CallableEffectClauses, ReferenceEquals(part, layer) ? this.noClauses : layer.CallableEffectClauses);
         this.localRegions = part.Regions;
+        this.keepers = part.Keepers;
+        this.contractShapes = part.ContractShapes;
+        this.boundedRequirements = part.BoundedRequirements;
+        this.importDeclarations = part.ImportDeclarations;
+        this.foreignFailures = part.ForeignFailures;
+        this.enumerateIndex = part.EnumerateIndex;
+        this.enumerateIndexPool = part.EnumerateIndexPool;
+        this.aliasesByDocument = part.AliasesByDocument;
+        this.boundContracts = part.BoundContracts;
     }
 
     // R1.1's one composition point of the Bind's summary: the library layer's counts and the program part's, in the program pass's mode.
@@ -146,13 +305,23 @@ public sealed partial class Binding
     }
 
     // A pass's part of the per-pass collections (DECISIONS BU-220's pass driver): exactly two for a Binding's life, Binding's own (the
-    // program pass's) and LibraryLayer.Part (the library pass's from PLAN G949 S1-r1b, empty until then). Its collections are never
+    // program pass's) and LibraryLayer.Part (the library pass's, PLAN G949 S1-r1b). Its collections are never
     // replaced, only emptied by its pass's resets and refilled, so a view built over them once stays current. A list is read through its
-    // composed view; a keyed collection (Regions) through one find (Find): the layer's part first, then the running pass's, a write going
-    // into the row found or, for a key in neither part, into the running pass's, so a key has one row; a keyed collection whose values
-    // index a per-pass list keeps that list in its own part. Counts is the pass's contribution to the Bind's Result (ComposeResult), not
-    // a tally of the part's nodes, which only the views count: from S1-r1b a program pass's own nodes plus each foreign node's final
-    // state less its earlier one.
+    // composed view; a keyed collection (Regions, Keepers, BoundContracts) through one find (Find): the layer's part first, then the running pass's, a
+    // write going into the row found or, for a key in neither part, into the running pass's, so a key has one row, and a reader then
+    // reads the stamp of the part the row was found in (Keepers: RequirementCall); a keyed collection whose values index a per-pass list
+    // keeps that list in its own part. An in-pass read of a list another pass also fills reads the pass's view: the running part, then
+    // the layer's when the running part is not the layer's (R1.1's list order), which the driver hands over with the part
+    // (selectableEffectClauses), so no pass reads another pass's part of the previous Bind. Two forms of access, by meaning: a composed
+    // list, a collection found by the find and a per-pass memo (EnumerateIndex) are handed over as the fields their steps write or read
+    // (EnterPass); a per-pass node-keyed table (a member the "Node-keyed table members in Binding" ratchet counts: PatternNodes and
+    // CandidateScopes, with their previous-run lists) is declared here once and read through the running pass's part (this.pass.Part),
+    // so a member that ratchet counts never returns to Binding (DECISIONS BU-220: node-keyed tables leave Binding batch by batch).
+    // ForeignFailures lists the nodes of a module the pass does not bind that it wrote, each with its state before and the state and
+    // failure the pass recorded in place of the node's columns (the recorder, Binding.Diagnostics.Prerequisites.cs): their records and
+    // counts are the failing pass's (CountStates). Counts is the pass's
+    // contribution to the Bind's Result (ComposeResult), not a tally of the part's nodes, which only the views count: a program pass's
+    // own nodes plus each foreign node's final state less its earlier one.
     internal sealed class PassPart(int nodes)
     {
         internal List<Koto> Nodes { get; } = new(nodes);
@@ -175,6 +344,55 @@ public sealed partial class Binding
 
         // The local-region graph's rows by their target Origin (Binding.LocalRegions.cs), keyed by reference.
         internal Dictionary<BoundOrigin, LocalRegion> Regions { get; } = new(ReferenceEqualityComparer.Instance);
+
+        // Each declared slot's keepers (Binding.RawOrigins.Keepers.cs), keyed by reference: a slot is kept only by its declaration's
+        // pass, and a list is current while its Pass is RequirementCall, the requirement counter's value at the pass's latest call.
+        internal Dictionary<OriginParameter, KeeperList> Keepers { get; } = new(ReferenceEqualityComparer.Instance);
+
+        internal uint RequirementCall { get; set; }
+
+        // The bound Contract references by their reference Type (Binding.BoundContracts.cs): each made and reset (ResetContracts) by its
+        // pass, so the layer's part holds exactly the entries the library pass made, each filled from entries found first in the layer's
+        // part, and a program pass makes, resets and rebuilds its own (PLAN G949 S1-1, E3; census O15).
+        internal Dictionary<BoundType, BindingSymbol> BoundContracts { get; } = new(ReferenceEqualityComparer.Instance);
+
+        // The pass's Contract shapes and the effect bounds they declare (Binding.EffectDeclarations.cs).
+        internal List<BoundContract> ContractShapes { get; } = new();
+
+        internal List<BoundEffectBound> BoundedRequirements { get; } = new();
+
+        // The pass's import declarations (Binding.Attributes.cs).
+        internal List<BindingSymbol> ImportDeclarations { get; } = new();
+
+        // The pattern nodes and guard scopes the pass indexed, and those of its previous run, which its prune steps compare
+        // (Binding.Patterns.cs: PruneCandidateScopes, PrunePatternScopes): each pass's own, so a pass prunes against its own previous
+        // run and never removes a scope or symbol another pass indexed. Their one declaration is here (a node-keyed table is counted
+        // once, DECISIONS BU-220's ratchet), so their steps read them through the running pass's part.
+        internal HashSet<Koto> PatternNodes { get; } = new(ReferenceEqualityComparer.Instance);
+
+        internal List<Koto> PreviousPatternNodes { get; } = new();
+
+        internal HashSet<Koto> CandidateScopes { get; } = new();
+
+        internal List<Koto> PreviousCandidateScopes { get; } = new();
+
+        // The contract solver's Closure(view) entries of the pass and its free entries (Binding.ContractSolver.Rows.cs), a per-pass
+        // memo handed over as the fields the solver reads: an entry lasts its pass (ClearClosure, when the pass runs again) and goes
+        // back to the free entries of the pass that formed it, so a pass reuses its own entries in its own order whichever pass runs
+        // between (each list then settles at the largest view it meets in its pass), and no pass returns an entry to another pass's
+        // part. A reader after the Bind (CheckStartup, Analyze) uses the program pass's, the running pass between Binds.
+        internal Dictionary<(EvidenceView View, BindingSymbol? Requirement), ViewIndex> EnumerateIndex { get; } = new();
+
+        internal Stack<ViewIndex> EnumerateIndexPool { get; } = new();
+
+        // The unnamed aliases of each source document of the pass (Binding.Aliases.cs: PrepareAliases, read by the name lookups): each
+        // pass's own, emptied by its reset and pruned of its emptied documents by its own PrepareAliases, so the library pass, which
+        // declares no alias, never removes a program document's entry that the program pass would then make again.
+        internal Dictionary<SourceDocument, List<AliasImport>> AliasesByDocument { get; } = new();
+
+        // The nodes outside the pass's modules that the pass wrote, in the order it first wrote them: each with its state before (its own
+        // pass's), and the state and failure the pass recorded, which the recorder reads in place of its columns (RecordedState).
+        internal List<(Koto Node, BindingState Before, BindingState State, BindingFailure Failure)> ForeignFailures { get; } = new();
 
         internal BindingResult Counts { get; set; }
 
@@ -208,5 +426,9 @@ public sealed partial class Binding
         internal PassPart Part => part;
 
         internal Kotonoha this[int index] => index < sources.Length ? sources[index] : library!;
+
+        // Whether the pass binds the module of a table: the library's when it holds the library module, a source module's when it holds
+        // the sources (a pass holds every source module or none). A node of no table yet is the running pass's own.
+        internal bool Binds(SyntaxTable? table) => table is null || (table.IsLibrary ? library is not null : sources.Length != 0);
     }
 }

@@ -6,7 +6,7 @@ namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
-    private ConstraintProof CompareCallableContracts(CallableContract requirement, CallableContract implementation, BindingScope scope, BoundType self, BoundType? declaringType, BoundType?[] arguments, BoundOrigin[] origins, BoundOrigin[] inputs, BoundMemberPath? path = null)
+    private ConstraintProof CompareCallableContracts(FnSig requirement, FnSig implementation, BindingScope scope, BoundType self, BoundType? declaringType, BoundType?[] arguments, BoundOrigin[] origins, BoundOrigin[] inputs, BoundMemberPath? path = null)
     {
         if (requirement.InputCount != implementation.InputCount)
         {
@@ -155,29 +155,4 @@ public sealed partial class Binding
 
     private BoundType? ProjectCallableType(BoundType type, BoundType? declaringType)
         => declaringType is null ? type : this.StoredType(type, declaringType);
-
-    // A view over existing declarations: no temporary FunctionKoto or copied parameter lists.
-    private readonly struct CallableContract
-    {
-        private readonly FunctionKoto? function;
-        private readonly BoundAccessor? accessor;
-
-        internal CallableContract(FunctionKoto function) => this.function = function;
-
-        internal CallableContract(BoundAccessor accessor) => this.accessor = accessor;
-
-        internal Koto Binder => (Koto?)this.function ?? this.accessor!.Binder;
-
-        internal int GenericCount => this.function?.GenericArguments.Count ?? 0;
-
-        internal int OriginCount => this.function?.Origins.Count ?? this.accessor?.Declaration?.Origins.Count ?? 0;
-
-        internal int InputCount => this.function?.Parameters.Count ?? 2;
-
-        internal int ReceiverIndex => this.function is { } f ? f.BoundSymbol!.ReceiverIndex : this.accessor!.Receiver is null ? -1 : 0;
-
-        internal BoundType? Result => this.function is { } f ? f.BoundSymbol?.Type : this.accessor!.Result;
-
-        internal BoundType? Input(int index) => this.function is { } f ? f.Parameters[index].Type.BoundType : index == 0 ? this.accessor!.Receiver : this.accessor!.Input;
-    }
 }

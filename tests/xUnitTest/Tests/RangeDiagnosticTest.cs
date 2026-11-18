@@ -66,7 +66,11 @@ public class RangeDiagnosticTest(ITestOutputHelper output)
     [InlineData("struct End\nlet r = 1..\nlet p: End = r.end", "r.end", "Kimi.End", "End")]
     [InlineData("struct FromEnd<T>\nlet p: FromEnd<i32> = ^1", "^1", "Kimi.FromEnd<i32>", "FromEnd<i32>")]
     [InlineData("let r: Range<i32, i32> = 1..=3", "1..=3", "Kimi.ClosedRange<i32, i32>", "Kimi.Range<i32, i32>")]
-    [InlineData("let n: i64 = 3\nlet r: Range<i32, i32> = 1..n", "1..n", "Kimi.Range<i32, i64>", "Kimi.Range<i32, i32>")]
+
+    // SPEC 4.6.2 (PLAN G924, K's revision): a boundary that is not literal-only is checked against the E of the range's expected Type,
+    // so the record is the boundary's; the range rests on it and adds none (it was the range's own, `1..n` against
+    // Kimi.Range<i32, i32>, before G924).
+    [InlineData("let n: i64 = 3\nlet r: Range<i32, i32> = 1..n", "n", "i64", "i32")]
     public void MismatchKeepsCompleteTypesAndTheValueLocation(string source, string text, string actual, string expected)
     {
         var error = Assert.Single(Errors(Analyze(source)));
@@ -78,6 +82,14 @@ public class RangeDiagnosticTest(ITestOutputHelper output)
     [Theory]
     [InlineData("for i in missing..3 => ()", "UnresolvedBinding_Kd")]
     [InlineData("for i in 1..^1 => ()\nlet wrong: i32 = true", "UnsatisfiedConstraint_Kd,TypeMismatch_Kd")]
+
+    // SPEC 4.6.2, 23.1.2 (PLAN G924): each boundary that misfits the expected S or E is its own record; the range adds none.
+    [InlineData("let n: i64 = 3\nlet m: i64 = 4\nlet r: Range<i32, i32> = m..n", "TypeMismatch_Kd,TypeMismatch_Kd")]
+
+    // SPEC 4.6.2, 23.1.2 (PLAN G924): a literal-only boundary takes the S or E of the range's expected Type, so its misfit is its own
+    // record beside the other boundary's, in either order.
+    [InlineData("let n: i64 = 3\nlet r: Range<i32, i32> = n..3000000000", "InvalidNumericLiteral_Kd,TypeMismatch_Kd")]
+    [InlineData("let n: i64 = 3\nlet r: Range<i32, i32> = 3000000000..n", "InvalidNumericLiteral_Kd,TypeMismatch_Kd")]
     public void PrerequisitesAndIndependentErrorsRemainExplained(string source, string codes)
         => Assert.Equal(codes.Split(',').Order(StringComparer.Ordinal), Errors(Analyze(source)).Select(static x => x.Code).Order(StringComparer.Ordinal));
 

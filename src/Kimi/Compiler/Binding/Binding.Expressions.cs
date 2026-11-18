@@ -16,8 +16,6 @@ public sealed partial class Binding
                 (symbol.BindsReference || symbol.Declaration is IdentifierNameKoto { Parent: ForKoto { Mode: not SubjectMode.ByValue } })
             ? type.Semantics == SemanticsKind.Uniq ? BindingFailure.ExclusiveBindingAssignment : BindingFailure.SharedBindingAssignment : null;
 
-    private static bool Compatible(BoundType actual, BoundType expected) => FitsType(actual, expected);
-
     // SPEC 7.6, 22.6: the functions that support direct calls only: an unsafe function and a #LibraryImport function, the latter by
     // its Attribute whatever the Attribute's verdict. A requirement is never an import, so a requirement's Item is a value whatever
     // its witness.
@@ -131,22 +129,21 @@ public sealed partial class Binding
         return literal.TryGetIntegerMagnitude(out var magnitude) && ScalarTypes.TryLiteral(type, magnitude, negative, out _);
     }
 
-    // SPEC 8.7.4: a symbolic Type proven PrimitiveInteger has the built-in integer operators; each instance uses the
-    // operations of its concrete Type.
-    // A shared literal argument constructs an owner temporary before acquiring its borrow.
-    private static BoundType LiteralInputType(BoundType parameter)
-        => parameter is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref, Components: [var referent] } ? referent : parameter;
-
     private static BoundType? Complete(Koto node, BoundType? type)
     {
         node.BoundType = type;
         if (node.BindingState != BindingState.Invalid)
         {
-            node.BindingState = type is null ? BindingState.Unresolved : BindingState.Resolved;
+            node.BindingState = CompletedState(node.BindingState, type);
         }
 
         return type;
     }
+
+    // The state Complete gives: an invalid node stays invalid, any other is resolved with a Type and unresolved without one; the
+    // recorder gives it to a dependent of a module the pass does not bind in its entry (CompleteDependent).
+    private static BindingState CompletedState(BindingState state, BoundType? type)
+        => state == BindingState.Invalid ? state : type is null ? BindingState.Unresolved : BindingState.Resolved;
 
     // A symbolic Type whose literals are the generic 0 through 127 (SPEC 8.7.4).
     private bool TakesGenericLiterals(BoundType? type, BindingScope scope) => this.IsGenericInteger(type, scope) || this.IsGenericWrapping(type, scope);
@@ -242,15 +239,17 @@ public sealed partial class Binding
         }
 
         // SPEC 14.9.2: a result target that waited for its position takes the Type that position supplies, or the outcome its root gave it.
-        // SPEC 10.2 row 2: a literal at ref/U is bound as its owner temporary at U, which the common adaptation below borrows. Its Type is
-        // U also where it rests on a failed part (a join, SPEC 23.1.2: no record of its own), so the value its kept sources build still
-        // takes the borrow its position needs.
+        // SPEC 10.2 row 2, 14.9.2 step 3 (PLAN G924 rule B): a value at ref/U (Materialization: a literal, or a value join waited or not)
+        // is bound as its owner temporary at U, which the common adaptation below borrows once. Its Type is U also where it rests on a
+        // failed part (a join, SPEC 23.1.2: no record of its own), so the value its kept sources build still takes the borrow its
+        // position needs.
         BoundType? actual;
+        var temporary = this.Materialization(node, expected, scope);
         if (this.WaitedResult(node) is { } waited)
         {
-            actual = this.DecideWaiting(node, waited, expected);
+            actual = this.DecideWaiting(node, waited, temporary ?? expected);
         }
-        else if (this.TemporaryTarget(node, expected, scope) is { } temporary)
+        else if (temporary is not null)
         {
             actual = this.BindNodeCore(node, scope, temporary);
             if (actual is null && node.BindingFailure == BindingFailure.None && this.prerequisites.ContainsKey(node))
@@ -311,7 +310,7 @@ public sealed partial class Binding
         // SPEC 10.2: one implicit operation of the common adaptation, recorded once for every later stage; a fitting stored exclusive
         // reference is Reborrowed (SPEC 3.5.1, 10.2.2), as at a bare acquisition position.
         if (expected is not null && actual is not null && node.ErasedFunctionType is null &&
-            (!Compatible(actual, expected) || this.StoresExclusiveReference(node, actual)) &&
+            (!this.FitsType(actual, expected) || this.StoresExclusiveReference(node, actual)) &&
             this.ExpectedAdaptation(node, actual, expected) is { } adaptation)
         {
             this.adaptations[node] = adaptation;
@@ -329,7 +328,7 @@ public sealed partial class Binding
 
     private BoundType? BindNodeCore(Koto node, BindingScope scope, BoundType? expected)
     {
-        if (this.patternNodes.Contains(node))
+        if (this.pass.Part.PatternNodes.Contains(node))
         {
             throw new InvalidOperationException("Pattern syntax must be handled by the positional Pattern binder.");
         }
@@ -359,7 +358,7 @@ public sealed partial class Binding
             return node.BoundType;
         }
 
-        if (node is FunctionKoto testDefinition && TestDefinition.Marker(testDefinition) is not null && !TestDefinition.IsIncluded(testDefinition))
+        if (node is FunctionKoto testDefinition && TestDefinition.Marker(testDefinition) is not null && !TestDefinition.IsIncluded(this.compilation, testDefinition))
         {
             return testDefinition.BoundType;
         }
@@ -627,7 +626,7 @@ public sealed partial class Binding
                 return this.CompleteDependent(array, holeCause);
             case ArrayLiteralKoto { Elements.Count: 0 } array when expected is null && this.MissingExpectationCause(array) is { } arrayCause:
                 return this.CompleteDependent(array, arrayCause);
-            case ArrayLiteralKoto array when expected is null && array.Elements.Count != 0 && !IsCallArgument(array):
+            case ArrayLiteralKoto array when expected is null && array.Elements.Count != 0:
                 return this.BindIndependentArrayLiteral(array, scope);
             case PropertyAccessorKoto accessor:
                 return this.BindAccessorBody(accessor, scope);
@@ -640,12 +639,15 @@ public sealed partial class Binding
         return this.Fail(node, BindingFailure.Unsupported, true);
     }
 
+    // The node bound at `expected` and fitted to it. SPEC 23.1.2: a node whose fit failed supplies no Type: its record is its own, and
+    // what reads the result rests on it instead of judging the misfitting Type once more.
     private BoundType? RequireType(Koto node, BindingScope scope, BoundType? expected)
     {
         var actual = this.BindNode(node, scope, expected);
         if (expected is not null && actual is not null && !this.FitsValueAt(actual, expected, node, node, out var failure))
         {
             this.FailMismatch(node, node, actual, expected, failure);
+            return null;
         }
 
         return actual;

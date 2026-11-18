@@ -1,5 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using Kimi.Build;
 using Kimi.Compiler;
 using Kimi.Diagnostics;
 using SimpleCommandLine;
@@ -19,18 +20,28 @@ public sealed class RestoreCommand : ISimpleCommand<KimiOptions>
         {
             if (args.Length != 1)
             {
-                throw new InvalidDataException("Restore requires one .kimiproj input.");
+                throw new CommandInputException("Restore requires one .kimiproj input.");
             }
 
             var path = Solution.ResolveInputPath(args[0]);
             if (!path.EndsWith(Constants.KimiProjectExtension, StringComparison.OrdinalIgnoreCase))
             {
-                throw new InvalidDataException("Restore requires a .kimiproj input.");
+                throw new CommandInputException("Restore requires a .kimiproj input.");
             }
 
             var resolution = DependencyResolver.Resolve(path, options.Target, Compilation.CurrentLanguageVersion, cancellationToken);
             var lockPath = DependencyLock.PathForProject(path);
-            var changed = DependencyLock.Update(lockPath, resolution, cancellationToken);
+            bool changed;
+            try
+            {
+                changed = DependencyLock.Update(lockPath, resolution, cancellationToken);
+            }
+            catch (Exception ex) when (ArtifactFiles.IsOutputFailure(ex))
+            {
+                // The lock is restore's output: its failure fails the command with its message (IMPL 20.3).
+                this.kimigayo.WriteLine(DiagnosticSeverity.Error, ex.Message);
+                return Task.FromResult(1);
+            }
 
             // IMPL 20.5: a product failure fails restore; a test-only failure is reported. Each failure is its own line (SPEC 23.1.2).
             foreach (var failure in resolution.Product.Failures ?? [])

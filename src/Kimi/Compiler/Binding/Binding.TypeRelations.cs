@@ -18,13 +18,13 @@ public sealed partial class Binding
     public static bool SameType(BoundType left, BoundType right) => ReferenceEquals(left, right);
 
     // SPEC 3.8: whether `actual` is a subtype of `expected`; `own` is the declaration whose per-call inputs `actual` names.
-    internal static bool IsSubtype(BoundType actual, BoundType expected, Koto? own = null)
-        => new RelationWalk(null, null, OriginPart.Judged).Fits(actual, expected, own: own);
+    internal bool IsSubtype(BoundType actual, BoundType expected, Koto? own = null)
+        => new RelationWalk(this, null, null, OriginPart.Judged).Fits(actual, expected, own: own);
 
     // IsSubtype with the walk's first failure, for a comparison that records its mismatch (FailMismatch).
-    internal static bool IsSubtype(BoundType actual, BoundType expected, out ComparisonFailure failure)
+    internal bool IsSubtype(BoundType actual, BoundType expected, out ComparisonFailure failure)
     {
-        var walk = new RelationWalk(null, null, OriginPart.Judged);
+        var walk = new RelationWalk(this, null, null, OriginPart.Judged);
         var fits = walk.Fits(actual, expected);
         failure = walk.Failure;
         return fits;
@@ -32,15 +32,15 @@ public sealed partial class Binding
 
     // SPEC 10.4 step 2, 15.6.1: the structural part with every Origin binding treated as equal, inside Function Types too, since Origin
     // bindings never rank candidates.
-    internal static bool FitsStructuralPart(BoundType actual, BoundType expected)
-        => new RelationWalk(null, null, OriginPart.Everywhere).Fits(actual, expected);
+    internal bool FitsStructuralPart(BoundType actual, BoundType expected)
+        => new RelationWalk(this, null, null, OriginPart.Everywhere).Fits(actual, expected);
 
     // SPEC 10.7, 15.6.1: the part of callable compatibility that applicability reads: subtyping against the required signature, its
     // result Never when the implementation's is (CompatibleResult), judged without recording a bound and without premises; `own` is the
     // declaration whose per-call inputs the implementation's signature names. A Function Item's conditions are ItemContractFits'.
     internal bool CallableSubtype(BoundType actual, BoundType expected, Koto? own, out ComparisonFailure failure)
     {
-        var walk = new RelationWalk(null, null, OriginPart.Contract);
+        var walk = new RelationWalk(this, null, null, OriginPart.Contract);
         var fits = walk.Fits(actual, this.CompatibleSignature(actual, expected), own: own);
         failure = walk.Failure;
         return fits;
@@ -52,7 +52,7 @@ public sealed partial class Binding
     // region conjuncts the premises leave unproven taken by `rows` (CallableInstance.Rows; null: not proven).
     internal bool CallableSignatureFits(BoundType actual, BoundType expected, Koto? own, Koto use, List<BindingObligation>? rows, out ComparisonFailure failure)
     {
-        var walk = new RelationWalk(this, use, OriginPart.Contract) { Rows = rows };
+        var walk = new RelationWalk(this, this, use, OriginPart.Contract) { Rows = rows };
         var fits = walk.Fits(actual, this.CompatibleSignature(actual, expected), own: own);
         failure = walk.Failure;
         return fits;
@@ -61,7 +61,7 @@ public sealed partial class Binding
     // SPEC 3.8 at a use whose premises and Origins the relation reads, in the whole-contract comparison `comparison` (SPEC 15.3.7), whose
     // required signature's own well-formedness its proofs assume.
     internal bool IsSubtypeAt(BoundType actual, BoundType expected, Koto use, in CallableInstance comparison)
-        => new RelationWalk(this, use, OriginPart.Judged).Fits(actual, expected, instance: comparison);
+        => new RelationWalk(this, this, use, OriginPart.Judged).Fits(actual, expected, instance: comparison);
 
     // SPEC 10.7: an implementation's result R fits a required result Q when R <: Q or R is Never, at the result's top level only: the
     // required result it is compared against.

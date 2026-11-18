@@ -117,9 +117,11 @@ internal readonly record struct PairBinder(BindingSymbol Target, SemanticsMask A
     /// <summary>Collects the pair binders in scope of a body (SPEC 8.15): those of its own declaration, of its containers and, for a
     /// Closure, an accessor or a static initializer, of the enclosing declarations, outer to inner in slot order, each with its admitted
     /// set; the MIR body's binders, which give its Semantics cases.</summary>
+    /// <remarks>The Semantics cases component's published entry for a body's binders, which Mir/Build reads (COMPILER_ARCHITECTURE).</remarks>
+    /// <param name="binding">The reader's Binding, whose pass bound the body.</param>
     /// <param name="body">The body's declaration.</param>
     /// <param name="binders">The caller-owned list to fill; it is cleared first.</param>
-    internal static void Collect(Koto body, List<PairBinder> binders) => body.CodeContext.Compilation.Binding.PairBinders(body, binders);
+    internal static void Collect(Binding binding, Koto body, List<PairBinder> binders) => binding.PairBinders(body, binders);
 
     /// <summary>Counts the Semantics cases of a body without overflowing the resource counter (SPEC 8.15).</summary>
     /// <param name="binders">The body's pair binders and their admitted sets.</param>
@@ -400,15 +402,40 @@ public sealed class BindingSymbol
     /// <param name="kind">The query's kind.</param>
     /// <param name="pass">The pass stamp.</param>
     /// <returns>The state, NotStarted when set in another pass.</returns>
-    internal DeclState QueryState(DeclQueryKind kind, ulong pass) => (uint)pass == this.queryPass ? (DeclState)((this.queries >> ((int)kind * 2)) & 3) : DeclState.NotStarted;
+    internal DeclState QueryState(DeclQueryKind kind, ulong pass) => Binding.Current(this.queryPass, (uint)pass) ? (DeclState)((this.queries >> ((int)kind * 2)) & 3) : DeclState.NotStarted;
 
-    /// <summary>Sets a declaration query's state in a pass (Binding.DeclQuery only).</summary>
+    /// <summary>Gets a value indicating whether the declaration's query states are its library pass's, stamped Frozen by PLAN G949
+    /// S1-1's freeze (Binding.DeclQuery's Frozen column); read only by Binding.DeclQuery and SignatureVerdict's per-use path
+    /// (Binding.CheckSignatureTypeConstraints), which never completes a frozen verdict.</summary>
+    internal bool QueriesFrozen => this.queryPass == Binding.Frozen32;
+
+    /// <summary>Gets whether the declaration's query states were set in a pass, or never (PLAN G949 S1-1's freeze verifies it).</summary>
+    /// <param name="pass">The pass stamp.</param>
+    /// <returns>Whether no earlier pass set them.</returns>
+    internal bool QueriesFrom(ulong pass) => this.queryPass == 0 || Binding.Current(this.queryPass, (uint)pass);
+
+    /// <summary>Stamps the declaration's query states Frozen, kept as they are (PLAN G949 S1-1's freeze; Binding.DeclQuery only).</summary>
+    internal void FreezeQueries() => this.queryPass = Binding.Frozen32;
+
+    /// <summary>Sets a declaration query's state in a pass (Binding.DeclQuery only). A declaration of a frozen table (the library's,
+    /// PLAN G949 S1-1) is never written: a Running or NotStarted write leaves its states, and a Done write is a broken contract (a library
+    /// fact completed in a program pass), whether or not the freeze stamped the symbol (s11-design 3.1, rev. 1 N2).</summary>
     /// <param name="kind">The query's kind.</param>
     /// <param name="pass">The pass stamp.</param>
     /// <param name="state">The state.</param>
     internal void SetQueryState(DeclQueryKind kind, ulong pass, DeclState state)
     {
-        if ((uint)pass != this.queryPass)
+        if (this.Declaration.SyntaxOwner is { Frozen: true })
+        {
+            if (state == DeclState.Done)
+            {
+                throw new InvalidOperationException($"A program pass completed the {kind} query of the frozen library declaration `{this.Name}` (InternalInvariant; PLAN G949 S1-1).");
+            }
+
+            return;
+        }
+
+        if (!Binding.Current(this.queryPass, (uint)pass))
         {
             this.queries = 0;
             this.queryPass = (uint)pass;

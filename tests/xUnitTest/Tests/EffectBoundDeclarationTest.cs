@@ -85,12 +85,6 @@ public class EffectBoundDeclarationTest
     [InlineData("contract Bounded: Source\n    func own(self: ref/Self) -> ()\n    effect Bounded.own confined\n", "effect Bounded.own confined", "Bounded is this Contract", "effect clause")]
     [InlineData("struct Plain\ncontract Bounded: Source\n    effect Plain.take confined\n", "effect Plain.take confined", "Plain names no Contract", null)]
 
-    // A ContractSelector's group holds a NamedReference (SPEC F.6.2), so a group inside it names no Contract, as in an associate
-    // selector and a `.(C).` suffix (WrittenReference; PLAN G740).
-    [InlineData("contract Bounded: Source\n    effect ((Source)).take confined\n", "effect ((Source)).take confined", "((Source)) names no Contract", null)]
-    [InlineData("contract Bounded: Source\n    effect (((::Source))).take confined\n", "effect (((::Source))).take confined", "(((::Source))) names no Contract", null)]
-    [InlineData(Generic + "contract Bounded: P<i32>\n    effect ((P<i32>)).value confined\n", "effect ((P<i32>)).value confined", "((P<i32>)) names no Contract", null)]
-
     // A selector without the Type arguments of a generic Contract or Container on its path names no bound ancestor, whether one or two
     // are available (SPEC 8.4.3, 8.11.1, 9.7.1; the owner's O-145 (a); PLAN G705).
     [InlineData(Generic + "contract Bounded: P<i32>\n    effect P.value confined\n", "effect P.value confined", "P is not a reference to P", "This does not form a reference to P" + NotReference)]
@@ -133,9 +127,6 @@ public class EffectBoundDeclarationTest
     // with a valid selector keeps one record (RejectsInvalidEffectItems). A syntax Error among the selector's Type arguments is the
     // parser's record; the item's misplacement never rests on it in any position, and the selector's judgment reads it (a dependent).
     [Theory]
-    [InlineData("struct S\n    effect ((Source)).take confined\n", "an effect item outside a Contract, original virtual function or Callable Constraint", "((Source)) names no Contract")]
-    [InlineData("contract Bounded: Source\n    func own(self: ref/Self) -> ()\n        effect ((Source)).take confined\n", Misplaced, "((Source)) names no Contract")]
-    [InlineData("func check<F>(f: F) -> ()\n    F is Callable<() -> i32>\n        effect (ref/Source).take confined\n    return\n", Misplaced, "(ref/Source) names no Contract")]
     [InlineData("struct Plain\nenum E\n    A\n    effect (Plain).take confined\n", "an effect item outside a Contract, original virtual function or Callable Constraint", "(Plain) names no Contract")]
     [InlineData(Override + "effect Missing.take confined\n        return 2\n", "an effect item outside a Contract, original virtual function or Callable Constraint", "Missing names no Contract")]
     [InlineData(Generic + "struct S\n    effect (P).value confined\n", "an effect item outside a Contract, original virtual function or Callable Constraint", "(P) is not a reference to P")]
@@ -152,6 +143,29 @@ public class EffectBoundDeclarationTest
         Assert.Equal([position, selector], errors.Where(static x => x.Code == nameof(DiagnosticCode.InvalidEffectBound_Kd)).Select(static x => x.Label).ToArray());
         string[] parser = syntaxError ? [nameof(DiagnosticCode.ExpectedSyntax_Kd)] : [];
         Assert.Equal(parser, errors.Where(static x => x.Code != nameof(DiagnosticCode.InvalidEffectBound_Kd)).Select(static x => x.Code).ToArray());
+    }
+
+    // SPEC F.6.2 (PB3, F's ruling 16): a ContractSelector's group holds a ContractReference, a NamedReference, so a group or a Semantics
+    // prefix inside it is Parsing's record at the reference (ContractReference), in a Contract and in a misplaced item alike; no reader of
+    // the selector judges it again (Binding's "names no Contract" on base), and a misplaced item keeps its own misplacement record.
+    [Theory]
+    [InlineData("contract Bounded: Source\n    effect ((Source)).take confined\n", "(Source)", null)]
+    [InlineData("contract Bounded: Source\n    effect (((::Source))).take confined\n", "((::Source))", null)]
+    [InlineData(Generic + "contract Bounded: P<i32>\n    effect ((P<i32>)).value confined\n", "(P<i32>)", null)]
+    [InlineData("struct S\n    effect ((Source)).take confined\n", "(Source)", "an effect item outside a Contract, original virtual function or Callable Constraint")]
+    [InlineData("contract Bounded: Source\n    func own(self: ref/Self) -> ()\n        effect ((Source)).take confined\n", "(Source)", Misplaced)]
+    [InlineData("func check<F>(f: F) -> ()\n    F is Callable<() -> i32>\n        effect (ref/Source).take confined\n    return\n", "ref/Source", Misplaced)]
+    public void ASelectorGroupHoldingNoContractReferenceIsParsingsRecord(string declarations, string reference, string? position)
+    {
+        var c = MinimalEmissionTest.Analyze(Source + declarations + Main);
+        c.Binding.ReportDiagnostics();
+        var errors = TestDiagnostics.Of(c).Where(static x => x.Severity == Kimi.Diagnostics.DiagnosticSeverity.Error).ToArray();
+        string[] positions = position is null ? [] : [position];
+        Assert.Equal(positions, errors.Where(static x => x.Code == nameof(DiagnosticCode.InvalidEffectBound_Kd)).Select(static x => x.Label).ToArray());
+        var record = Assert.Single(errors, static x => x.Code != nameof(DiagnosticCode.InvalidEffectBound_Kd));
+        Assert.Equal(nameof(DiagnosticCode.ExpectedSyntax_Kd), record.Code);
+        Assert.Contains("Expected contract reference", record.Message, StringComparison.Ordinal);
+        Assert.Equal(reference, record.Text);
     }
 
     // SPEC 8.11.1, 9.5: a selector's names are looked up in every pass, so an ancestor or a Type argument declared in a source appended

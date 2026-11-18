@@ -111,7 +111,7 @@ internal sealed partial class InstanceCollector
     {
         var set = access == PropertyWitnessKind.StorageSet;
         count = set ? 2 : 1;
-        if (!AdtDef.FindField(self, field, out var stored, out _))
+        if (!AdtDef.FindField(this.types, self, field, out var stored, out _))
         {
             return null;
         }
@@ -139,11 +139,11 @@ internal sealed partial class InstanceCollector
         var subst = target.Subst!;
         var field = target.Target;
         var access = target.Access;
-        var agrees = Same(TyCtxt.Signature(requirement, subst, -1, out var count), this.StorageSignature(subst.Self!, field, access, -1, out var slots)) &&
+        var agrees = Same(this.types.Signature(requirement, subst, -1, out var count), this.StorageSignature(subst.Self!, field, access, -1, out var slots)) &&
             count == slots;
         for (var slot = 0; agrees && slot < count; slot++)
         {
-            agrees = Same(TyCtxt.Signature(requirement, subst, slot, out _), this.StorageSignature(subst.Self!, field, access, slot, out _));
+            agrees = Same(this.types.Signature(requirement, subst, slot, out _), this.StorageSignature(subst.Self!, field, access, slot, out _));
         }
 
         return agrees;
@@ -164,7 +164,7 @@ internal sealed partial class InstanceCollector
                 return;
             }
 
-            if (!AdtDef.FindField(self, key.Symbol, out var field, out _))
+            if (!AdtDef.FindField(this.types, self, key.Symbol, out var field, out _))
             {
                 this.Report(DiagnosticCode.InternalInvariant_Kd, site);
                 return;

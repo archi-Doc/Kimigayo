@@ -63,7 +63,7 @@ public sealed class Kernel32ImportsTest
     [Theory]
     [InlineData("{{__kimi_exit}}\r\n  unreachable\n}\n", "  unreachable\n}\n")]
     [InlineData("{{__kimi_exit}}\n  ret\r void\r\r\n}\r", "  ret\r void\r\n}\r")]
-    [InlineData("{{__kimi_exit}}\n{{abort_reason_count}}{{reason_size}}{{reason_heap}}\n", "1812\n")]
+    [InlineData("{{__kimi_exit}}\n{{abort_reason_count}}{{reason_size}}{{reason_heap}}\n", "1912\n")]
     [InlineData("{{__kimi_exit}}\n  ret ptr inttoptr (i64 {{zero_sized_buffer}} to ptr)\n", "  ret ptr inttoptr (i64 4096 to ptr)\n")]
     [InlineData("{{__kimi_exit}}\n  [ i8 {{static_release_kind}}, i8 {{heap_release_kind}} ] {{unmapped_bound}}\n", "  [ i8 0, i8 1 ] 65536\n")]
     public void RuntimeTemplateSplicesEachDefinitionOnce(string template, string body)
