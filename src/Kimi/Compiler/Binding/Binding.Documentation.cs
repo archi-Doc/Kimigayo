@@ -14,9 +14,13 @@ public sealed partial class Binding
     public IReadOnlyList<DocumentationComment> GetDocumentation(Koto declaration, bool publicOnly = false, bool implementationNote = false)
     {
         ArgumentNullException.ThrowIfNull(declaration);
+
+        // Only a declaration this Binding binds is documented: one in a module this compilation holds (Compilation.HoldsModule). That
+        // rejects another compilation's declaration, and also one in a module no pass binds, such as a free module a test makes with
+        // `new Kotonoha(compilation, ...)` (nothing in src makes one).
         if (!this.compilation.HoldsModule(declaration.CodeContext.Kotonoha))
         {
-            throw new ArgumentException("The declaration belongs to another compilation.", nameof(declaration));
+            throw new ArgumentException("The declaration is in no module this compilation binds (another compilation's or an unbound one).", nameof(declaration));
         }
 
         var target = declaration;

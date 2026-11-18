@@ -3,7 +3,7 @@
 // Owns constructed Type interning and pure Type operations, among them a built-in Core's stored content (CoreContent), and the lifetime
 // of TyCtxt's views (ResetViews); substitutions are TyCtxt.Substitutions.cs's, the raw-layer views TyCtxt.Raw.cs's, and R4-M118's chain
 // judgment of one Origin graph, a pure function family A5 and the declaration judge read (OriginChains), TyCtxt.OriginChains.cs's.
-// Input: immutable Type shapes and the compilation's Binding, whose declaration facts Signature, ParameterKey, Declared and Premised read. Output: canonical Types and derived views.
+// Input: immutable Type shapes and the compilation's Binding, whose facts its members read. Output: canonical Types and derived views.
 // Interned identity is equality; values live with the compilation and survive warm rebinds. No instance or Item states a raw Origin on
 // a pair slot's argument: Intern binds each by PairBinding (SPEC 8.1.1; DECISIONS BU-34), but Unstated in kept parts, so there one SPEC
 // Type is two interned Types, a declaration's (`PS<raw/u8 during Unstated>`) and a parameter's (`PS<raw/u8>`) (DECISIONS BU-46).
