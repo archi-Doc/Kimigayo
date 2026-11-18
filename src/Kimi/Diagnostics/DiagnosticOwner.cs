@@ -432,10 +432,13 @@ public sealed partial class DiagnosticOwner
     }
 
     /// <summary>Takes a module's syntax records out of this owner as detached data (PLAN G949 Stage 2 U2b; form (R)): the frozen library
-    /// carries its own syntax list, which its freeze compilation's owner no longer holds (moved, never copied). Each record keeps its
-    /// document, since a later owner numbers its sources itself.</summary>
+    /// carries its own syntax list, which its freeze compilation's owner no longer holds (moved, never copied). Each record is about one
+    /// document, its own (<see cref="DiagnosticFact.IsAboutOneDocument"/>; PLAN G949 Stage 2 U3), checked here as the internal-invariant
+    /// form, and keeps that document, so a later owner moves every source index it holds by the fact's one renumbering
+    /// (<see cref="DiagnosticFact.WithSource"/>) with the document's index there; its indices here are this owner's.</summary>
     /// <param name="module">The module.</param>
     /// <returns>The module's syntax records.</returns>
+    /// <exception cref="InvalidOperationException">A record names a document other than its own (InternalInvariant).</exception>
     internal DetachedSyntax TakeSyntax(Kotonoha module)
     {
         if (!this.modules.TryGetValue(module, out var index) || index >= this.syntax.Count)
@@ -447,6 +450,11 @@ public sealed partial class DiagnosticOwner
         var documents = new SourceDocument?[facts.Count];
         for (var i = 0; i < documents.Length; i++)
         {
+            if (!facts[i].IsAboutOneDocument)
+            {
+                throw new InvalidOperationException($"The syntax record {facts[i].Code} names a document other than its own (InternalInvariant; PLAN G949 Stage 2 U3).");
+            }
+
             documents[i] = facts[i].Source >= 0 ? this.sources[facts[i].Source].Document : null;
         }
 
