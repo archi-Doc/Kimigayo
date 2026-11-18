@@ -636,9 +636,9 @@ public sealed partial class Binding
         {
             if (this.associatedInferenceReady && this.associatedInference.TryGetValue(path.Type, out var batch))
             {
+                // Every reader reads an inferred binding as its normal form; a requirement's evidence image of it is open (PLAN G1001).
                 this.InferAssociatedTypes(batch);
-                return batch.State != 2 || ReferenceEquals(batch, this.collectingAssociated) || binding.InferenceConflict || binding.Inferred is null ? null
-                    : this.FormationRead ? binding.Inferred : this.InferredEvidence(binding, out pending);
+                return batch.State == 2 && !ReferenceEquals(batch, this.collectingAssociated) && !binding.InferenceConflict ? binding.Inferred : null;
             }
 
             return null; // Pending declaration evidence is not a cached negative result (`pending`); once complete, nothing specifies it.
