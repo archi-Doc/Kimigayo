@@ -81,6 +81,11 @@ public sealed partial class Binding
         return null;
     }
 
+    // SPEC 8.15.2, 8.14: the verdict of a family judged once over its cases (an adaptation family's members): the verdict common to every
+    // case so far, else Unknown, as cases that differ decide nothing (Unknown Copy is never Non-Copy); null before the first case.
+    private static ConstraintProof CommonVerdict(ConstraintProof? common, ConstraintProof next)
+        => common is null || common == next ? next : ConstraintProof.Unknown;
+
     // SPEC 15.2.3, 15.3.4 (DECISIONS BU-73): a callable's call signature as an Owned part, with the binder of its own per-call Origins: a
     // Function Type that quantifies an input is its own, under its binder (BoundType.Binder), at every instance; a Closure's is its value's (ClosureSignature), under its literal,
     // which every Closure Type names (ClosureType); a Function Item's, for a function nested in a body, root functions included
@@ -641,7 +646,7 @@ public sealed partial class Binding
 
         if (type.Kind == BoundTypeKind.SemanticsAdaptation)
         {
-            var result = ConstraintProof.Unknown;
+            ConstraintProof? result = null;
             for (var i = 0; i < type.Components.Count; i++)
             {
                 var saved = this.ScopeReads.Origin;
@@ -653,10 +658,10 @@ public sealed partial class Binding
                     return child;
                 }
 
-                result = i == 0 || result == child ? child : ConstraintProof.Unknown;
+                result = CommonVerdict(result, child);
             }
 
-            return result;
+            return result ?? ConstraintProof.Unknown;
         }
 
         if (type.IsAbstract)
