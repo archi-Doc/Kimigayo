@@ -54,13 +54,21 @@ public sealed partial class Binding
 
     /// <summary>Gets the admitted set of the pair layer a <c>@follow</c> node follows, or None for any other node.</summary>
     /// <param name="node">A <c>@follow</c> conversion.</param>
-    /// <returns>The admitted Semantics, a subset of owner, ref and uniq.</returns>
-    internal SemanticsMask PairAdmitted(Koto node) => this.pairFollows.GetValueOrDefault(node);
+    /// <returns>The admitted Semantics, a subset of owner, ref and uniq; a node of the frozen library is refused (EnsurePassNode).</returns>
+    internal SemanticsMask PairAdmitted(Koto node)
+    {
+        EnsurePassNode(node, nameof(this.PairAdmitted));
+        return this.pairFollows.GetValueOrDefault(node);
+    }
 
     /// <summary>Gets the admitted set of a pair layer that selection follows implicitly at a receiver (SPEC 3.4.3, 7.3), or None.</summary>
     /// <param name="node">The receiver operand whose stored pair layer is followed.</param>
-    /// <returns>The admitted Semantics, a subset of owner, ref and uniq.</returns>
-    internal SemanticsMask ImplicitPairAdmitted(Koto node) => this.implicitPairFollows.GetValueOrDefault(node);
+    /// <returns>The admitted Semantics, a subset of owner, ref and uniq; a node of the frozen library is refused (EnsurePassNode).</returns>
+    internal SemanticsMask ImplicitPairAdmitted(Koto node)
+    {
+        EnsurePassNode(node, nameof(this.ImplicitPairAdmitted));
+        return this.implicitPairFollows.GetValueOrDefault(node);
+    }
 
     /// <summary>Gets the terminal target below every qualifying pair layer of a node's Type (SPEC 13.5.5), or null when
     /// its Type is no qualifying pair layer.</summary>
