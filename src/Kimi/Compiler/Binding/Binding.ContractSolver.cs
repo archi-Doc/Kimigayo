@@ -493,8 +493,7 @@ public sealed partial class Binding
         List<PremiseRow> rows;
         if (this.enumeratePoolNext < this.enumeratePool.Count)
         {
-            rows = this.enumeratePool[this.enumeratePoolNext++];
-            rows.Clear();
+            rows = this.enumeratePool[this.enumeratePoolNext++]; // empty: the pool's lists are emptied when their request returns (LeaveRows)
         }
         else
         {

@@ -31,7 +31,8 @@ public sealed partial class Binding
 
     // Enumerate's request tables, owned by one outermost request (emptied, capacity kept, when it returns) and keyed by the view value:
     // the rows of a link of the subject's chain in a view (null while the link is open), each link's rows of the request's last round
-    // (EnumerateClosed's seed; the two tables change places between rounds) and, above, the pooled lists.
+    // (EnumerateClosed's seed; the two tables change places between rounds) and, above, the pooled lists, which belong to the tables:
+    // each is emptied with them when the request returns (LeaveRows), so between requests the pool holds empty lists only.
     private Dictionary<(BoundType, EvidenceView, int), List<PremiseRow>?> enumerateMemo = new();
     private Dictionary<(BoundType, EvidenceView, int), List<PremiseRow>?> enumerateSeed = new();
     private int enumeratePoolNext;
@@ -421,7 +422,7 @@ public sealed partial class Binding
             this.DropOwnedEntries();
             for (var i = 0; i < this.enumeratePoolNext; i++)
             {
-                this.enumeratePool[i].Clear(); // R7-C3 (B3): the pool takes its lists back empty, so no request's rows outlive it
+                this.enumeratePool[i].Clear(); // the tables' contract above: a request's rows do not outlive it
             }
 
             this.enumeratePoolNext = 0;
