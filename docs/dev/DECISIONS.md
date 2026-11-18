@@ -5314,7 +5314,7 @@ and migration obligations remain in force; no numeric cap changes are authorized
     arm's (SPEC 23.1.2). The Type keying stays for its readers (`FailsFunctionConversion`, `FailOwnedConversion`,
     `ClosureConversionNote`), each reading the outcome the erasure of the same value just published.
 - **R4-M162 A nested signature's result is judged where it is written (G216 (a) U2.3s, the strict form)** (2026-11-02; superseded in
-  part by R4-M163; the owner, verbatim 「(1) 厳格案を採る」, 2026-11-02; supersedes the result half of the owner's (A) of 2026-10-26, an R3
+  part by R4-M163; amended by the owner's O-397 (A) (2026-11-17, PLAN G962); the owner, verbatim 「(1) 厳格案を採る」, 2026-11-02; supersedes the result half of the owner's (A) of 2026-10-26, an R3
   premise for nested signatures and a value-call result obligation; R4-M137, the input half, stays) SPEC 15.3.4, 15.6.1.
   - Rule: a nested signature's result is a written Type of the declaration that contains it, well-formed where it is written under that
     declaration's premises and the nested signature's own inputs, for every choice of its per-call Origins, and never a premise of the
@@ -5323,8 +5323,12 @@ and migration obligations remain in force; no numeric cap changes are authorized
   - Code: `AddTypePremises` returns at a Function Type, so the result's borrow-layer obligation (`RetainInnerOutlives`) is no longer
     discharged by its own premise (the circular discharge); `ExtractOriginPremises` reads a `FunctionTypeKoto` as a signature, so its
     inputs remain premises there. `AddReceiverPremises` and associated formations reach it through `AddTypePremises`.
-    `BindFunctionType` adds the result's Types' own clauses (SPEC 15.3.3, `AddTypeClauseObligations`) at the result's occurrence, in a
-    parameter, receiver, Type argument, Closure parameter, local annotation or Field at any depth; inputs add none. A call does not
+    `FormNestedResult` forms a nested signature's written result, a Function Type's (`BindFunctionType`) and an anonymous function's
+    (`BindClosureHeader` at its commitment, `FailClosureHeader` at its failed fit; never a header probe), with its Types' own clauses
+    (SPEC 15.3.3, `AddTypeClauseObligations`) at the result's occurrence, in a parameter, receiver, Type argument, Closure parameter,
+    local annotation or Field at any depth; inputs add none. A fixed-fixed clause the premises there entail (the enclosing
+    declaration's and the signature's own inputs', its per-call Origins fixed: 15.3.4's "for every choice of its per-call Origins") is
+    Binding's direct proof and forms no row (2a0-D D1), at a local annotation too; a body chain stays a row. A call does not
     re-prove a nested signature's result: the callee's signature formation at a call (`CheckSignatureTypeConstraints`) does not enter
     it, since the clauses the call proves make the instantiated result well-formed (SPEC 15.6.4 step 3); one owner, the declaration.
     That skip is a local patch, a parameter of the formation walk (`calleeDeclaration`), since the call's own check of the instantiated
@@ -5335,6 +5339,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
     during q)>`); the outlives-outer direction is written with a fixed input (lpfix, `(ref/i32 during static) -> …`).
   - Rejected: the limited form (per-call relations kept as an implementation premise and a value-call obligation; keeps r3 writable and
     U2.1's value-call result proof).
+  - PLAN G962 (O-397 (A)): D-739's value-call judge (a Closure's value call carrying its result premises) is not built: it is the
+    rejected limited form; `CarriesResultPremises` keeps excluding anonymous functions (c1d7b0eea).
   - Known: a Field's Function Type result also keeps the Field formation's `UnprovenConstraint_Kd` (that check enters Function Types,
     their inputs included), a dependent record on a program dev rejects (DECISIONS Q13). z1c stays accepted by G269 (A). Open,
     pre-existing since R4-M137 (b2in): a nested signature's input clause still fails the call's signature formation, so the call
