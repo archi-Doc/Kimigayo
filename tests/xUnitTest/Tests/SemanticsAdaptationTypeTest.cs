@@ -237,7 +237,7 @@ public class SemanticsAdaptationTypeTest
         var view = c.Binding.AdaptedType(SemanticsKind.ObjRef, BoundType.I32, c.Binding.PairOuterOrigin(pair), pair.Scope);
         var type = c.Binding.SemanticsAdaptation(pair, view, BoundOrigin.Static, pair.Scope);
         var call = new CallPlan();
-        call.Set(callee.SymbolOf()!, BoundType.Unit, null, [0], [type], origins: [BoundOrigin.Static], inputOrigins: [BoundOrigin.Static]);
+        call.Set(c.Binding, callee.SymbolOf()!, BoundType.Unit, null, [0], [type], origins: [BoundOrigin.Static], inputOrigins: [BoundOrigin.Static]);
         var substituted = c.Binding.InstantiateStorageType(callee.Parameters[0].Type.TypeOf()!, call);
         Assert.NotNull(substituted);
         ReadOnlySpan<PairCase> owner = [new(pair, SemanticsKind.Owner)];
@@ -255,7 +255,7 @@ public class SemanticsAdaptationTypeTest
         var view = c.Binding.AdaptedType(SemanticsKind.ObjRef, BoundType.I32, c.Binding.PairOuterOrigin(pair), pair.Scope);
         var type = c.Binding.SemanticsAdaptation(pair, view, BoundOrigin.Static, pair.Scope);
         var call = new CallPlan();
-        call.Set(callee.SymbolOf()!, BoundType.Unit, null, [0], [type], origins: [BoundOrigin.Static], inputOrigins: [BoundOrigin.Static]);
+        call.Set(c.Binding, callee.SymbolOf()!, BoundType.Unit, null, [0], [type], origins: [BoundOrigin.Static], inputOrigins: [BoundOrigin.Static]);
         var original = callee.Parameters[0].Type.TypeOf()!;
         var written = c.Types.Intern(original.Kind, original.Symbol, original.Semantics, [], origin: BoundOrigin.Static);
         var substituted = c.Binding.InstantiateStorageType(written, call);

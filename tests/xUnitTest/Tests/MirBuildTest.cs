@@ -138,7 +138,7 @@ public sealed partial class MirBuildTest(ITestOutputHelper output)
             foreach (var record in program.Records(MirRecordClass.Construction).Where(x => x.Subject.Module == module.Syntax.Module))
             {
                 counts[2]++;
-                var key = Key(c.SyntaxOf(record.Subject));
+                var key = Key(c.Binding, c.SyntaxOf(record.Subject));
                 sites[key] = sites.GetValueOrDefault(key) + 1;
             }
 
@@ -729,7 +729,7 @@ public sealed partial class MirBuildTest(ITestOutputHelper output)
 
     // The census key of a record: its Op, a Name's Res, a call's callee kind or the part of the call not built yet, and an Adjust the
     // builder does not take yet.
-    private static string Key(Koto node)
+    private static string Key(Binding binding, Koto node)
     {
         var op = HirTables.Op(node);
         var key = op.ToString();
@@ -737,11 +737,11 @@ public sealed partial class MirBuildTest(ITestOutputHelper output)
         {
             key += "." + HirTables.ResOf(node);
         }
-        else if (op == HirOp.Call && CallPlan.Of(node) is { } call)
+        else if (op == HirOp.Call && CallPlan.Of(binding, node) is { } call)
         {
             var disposition = call.Kind == CalleeKind.Value ? default : call.Target.Definition;
             key += "." + (call.Kind != CalleeKind.Function ? call.Kind.ToString() : disposition.Kind != DispositionKind.Body ? disposition.Kind.ToString()
-                : CallPlan.Of(node, 1) is not null ? "Expansion" : !call.DefaultArguments.IsEmpty ? "Default" : CallPlan.Parameter(call.Target, -1) is not null ? "Constructor" : "Receiver");
+                : CallPlan.Of(binding, node, 1) is not null ? "Expansion" : !call.DefaultArguments.IsEmpty ? "Default" : CallPlan.Parameter(binding, call.Target, -1) is not null ? "Constructor" : "Receiver");
         }
 
         var adjust = HirTables.AdjustOf(node);

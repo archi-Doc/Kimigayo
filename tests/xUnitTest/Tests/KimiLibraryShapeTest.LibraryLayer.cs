@@ -506,6 +506,7 @@ public partial class KimiLibraryShapeTest
             // The library's nodes as R8-M32's printer prints them (review C5), the parsed tree's, then each synthesized node's: a node's line
             // (its binding state, failure, Type or Origin, symbol and call facts, by location) and its HIR row (headed by its node's id).
             var (hir, table) = (new Printer(true), c.Library.Kotonoha.Syntax);
+            hir.Attach(c);
             hir.Visit(c.Library.Kotonoha.RootKoto);
             for (var id = table.ParsedCount + 1; id <= table.Count; id++)
             {

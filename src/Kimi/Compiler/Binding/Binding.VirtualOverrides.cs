@@ -191,7 +191,8 @@ public sealed partial class Binding
             true);
     }
 
-    // Called by the common call-plan setter, including instantiated calls and Function Item contexts.
+    // Called by the common call-plan setter (CallPlan.Set) on the Binding its writer passes, including instantiated calls and Function Item
+    // contexts.
     // Target and its defaults always remain the original public contract.
     internal void SelectVirtualCall(CallPlan call, FunctionKoto original)
     {
