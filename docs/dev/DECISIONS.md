@@ -5314,7 +5314,7 @@ and migration obligations remain in force; no numeric cap changes are authorized
     arm's (SPEC 23.1.2). The Type keying stays for its readers (`FailsFunctionConversion`, `FailOwnedConversion`,
     `ClosureConversionNote`), each reading the outcome the erasure of the same value just published.
 - **R4-M162 A nested signature's result is judged where it is written (G216 (a) U2.3s, the strict form)** (2026-11-02; superseded in
-  part by R4-M163; the owner, verbatim 「(1) 厳格案を採る」, 2026-11-02; supersedes the result half of the owner's (A) of 2026-10-26, an R3
+  part by R4-M163; amended by the owner's O-397 (A) (2026-11-17, PLAN G962); the owner, verbatim 「(1) 厳格案を採る」, 2026-11-02; supersedes the result half of the owner's (A) of 2026-10-26, an R3
   premise for nested signatures and a value-call result obligation; R4-M137, the input half, stays) SPEC 15.3.4, 15.6.1.
   - Rule: a nested signature's result is a written Type of the declaration that contains it, well-formed where it is written under that
     declaration's premises and the nested signature's own inputs, for every choice of its per-call Origins, and never a premise of the
@@ -5323,8 +5323,12 @@ and migration obligations remain in force; no numeric cap changes are authorized
   - Code: `AddTypePremises` returns at a Function Type, so the result's borrow-layer obligation (`RetainInnerOutlives`) is no longer
     discharged by its own premise (the circular discharge); `ExtractOriginPremises` reads a `FunctionTypeKoto` as a signature, so its
     inputs remain premises there. `AddReceiverPremises` and associated formations reach it through `AddTypePremises`.
-    `BindFunctionType` adds the result's Types' own clauses (SPEC 15.3.3, `AddTypeClauseObligations`) at the result's occurrence, in a
-    parameter, receiver, Type argument, Closure parameter, local annotation or Field at any depth; inputs add none. A call does not
+    `FormNestedResult` forms a nested signature's written result, a Function Type's (`BindFunctionType`) and an anonymous function's
+    (`BindClosureHeader` at its commitment, `FailClosureHeader` at its failed fit; never a header probe), with its Types' own clauses
+    (SPEC 15.3.3, `AddTypeClauseObligations`) at the result's occurrence, in a parameter, receiver, Type argument, Closure parameter,
+    local annotation or Field at any depth; inputs add none. A fixed-fixed clause the premises there entail (the enclosing
+    declaration's and the signature's own inputs', its per-call Origins fixed: 15.3.4's "for every choice of its per-call Origins") is
+    Binding's direct proof and forms no row (2a0-D D1), at a local annotation too; a body chain stays a row. A call does not
     re-prove a nested signature's result: the callee's signature formation at a call (`CheckSignatureTypeConstraints`) does not enter
     it, since the clauses the call proves make the instantiated result well-formed (SPEC 15.6.4 step 3); one owner, the declaration.
     That skip is a local patch, a parameter of the formation walk (`calleeDeclaration`), since the call's own check of the instantiated
@@ -5335,6 +5339,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
     during q)>`); the outlives-outer direction is written with a fixed input (lpfix, `(ref/i32 during static) -> …`).
   - Rejected: the limited form (per-call relations kept as an implementation premise and a value-call obligation; keeps r3 writable and
     U2.1's value-call result proof).
+  - PLAN G962 (O-397 (A)): D-739's value-call judge (a Closure's value call carrying its result premises) is not built: it is the
+    rejected limited form; `CarriesResultPremises` keeps excluding anonymous functions (c1d7b0eea).
   - Known: a Field's Function Type result also keeps the Field formation's `UnprovenConstraint_Kd` (that check enters Function Types,
     their inputs included), a dependent record on a program dev rejects (DECISIONS Q13). z1c stays accepted by G269 (A). Open,
     pre-existing since R4-M137 (b2in): a nested signature's input clause still fails the call's signature formation, so the call
@@ -23012,6 +23018,11 @@ R8-M* and R9-M* by the stage of the recording unit.
     lowered check inside a `#CallerLocation` body already reports the received location (`FunctionCodegen.Location`), so no
     forwarded-location operand is needed. `KimiLibraryShapeTest`: `#CallerLocation` declarations 82 -> 105, unnamed registrations 63
     -> 79.
+  - Extended by PLAN G71 (1) (W-260, the Back, 2026-11-18; O-405, O-412 (1)): every destructor of the Kimi Kotonoha is
+    caller-location by kind (`KimiLibraryCatalog.RequiresCallerLocation`), not by `#CallerLocation`, which SPEC 6.7 does not place on
+    `drop`; its sites report the location its drop glue receives, the Drop's (SPEC 22.5.1). `Array.sort(by:)`, which destroys its
+    by-value `by` inside the operation, carries `#CallerLocation` (the search by ownership found no other library body destroying a
+    possibly destructor-bearing value without it). No glue or MIR change.
   - **Supersedes in part:** BU-118's "one enum member" sentence (four facts, one read of the Name); R4-M23's and R8-M42's `Bodyless`
     facts (`BodylessKind`, read from `Definition`); R8-M22's producer kind `ConsoleWriteStdout` and its signature-only
     `Console.kimi`; R8-M30's `FindDeclaration`; R8-M46's `StorageReserveDispatch` member; R8-M48's `None` row of the Body
@@ -23284,6 +23295,24 @@ R8-M* and R9-M* by the stage of the recording unit.
     module (`declaration.CodeContext.Kotonoha`) through Core's published module-set read `Compilation.HoldsModule(Kotonoha)` (the
     source modules and this compilation's library module, until U3). With U0b-P3 the route row reaches its 12 sites outside Binding,
     R7's (U3's end state).
+  - **U0b-C2's form (PLAN G949 Stage 2, the Back, 2026-11-18; W-260).** A reader of a per-pass table that the pass reset empties,
+    reachable outside a pass (`IsResolvedSlice`, `PairAdmitted`, `ImplicitPairAdmitted`, `HasExclusiveIndexer`,
+    `TryGetReceiverOperation`), given a node of a frozen table (`SyntaxTable.Frozen`, S1-1's one test of a frozen library node) throws
+    the internal-invariant form (`Binding.EnsurePassNode`, `Binding.Pass.cs`): its row was the library pass's and is gone, so "none"
+    would be silent. During the library pass the table is not frozen and the readers answer. Beyond C2's three (s23),
+    `ImplicitPairAdmitted` likewise (the Back's ruling 2) and the search's one addition, `TryGetReceiverOperation` (public; read after
+    the Bind). The search (ruling 2) closed the family: of the 138 fields `ResetPass` empties, 60 are node-keyed; every other keyed
+    reader is named: the latest pass's issue facts, read only by that pass's Check and report for its own issue nodes (a library
+    node's issue in a program pass is that pass's own foreign failure, whose rows it wrote: a guard would refuse a valid read); Core's
+    problem publication (`RestingCauses`), which reads the prerequisite tables only for a node not `Resolved` (every library node is
+    `Resolved` after a library pass without failure; a broken library is U2a's refusal); the binder's working state, which no library
+    node reaches after the freeze (a bound node's result stands, DeclQuery's frozen states answer, a Contract's effect bounds are
+    complete, and a binder write to a library node is refused: S1-1 r1); `IsTwinRecord`, a test reader of the latest pass's issue
+    nodes until R7. Rejected: `IsLibrary` with `LibraryVersion != 0` (a second copy of S1-1's test); a caller-side test (several
+    callers, one rule); keeping the library pass's rows for later readers (at Stage 2 they are dropped with the freeze's Binding).
+    **Removal:** R7-D2 b's generation-stamped tables (`Binding.Pass.cs`'s header, which replace the Clears) absorb `EnsurePassNode`
+    into the stamped table's reader. R7-D2 b also covers `requirementGroups`, whose reset touches library rows too (the Front's
+    review N2).
   - **Rejected.** T2 alone with `PlaceAuthority` fetching the route to pass on (the row would rise: a second copy of the route the
     units remove); U0b-N5 first (symmetric); `ElementAccess` as a Binding partial (DECISIONS BU-166, R4-M194 and two
     `ArchitectureRulesTest` rows name the component and its file; revisited only if a later unit makes `ElementAccess` Binding-only
