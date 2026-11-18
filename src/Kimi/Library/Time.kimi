@@ -1,6 +1,8 @@
 /// Monotonic elapsed-time measurement; independent of civil time and time zones.
 public group Time
-    let counterFrequency: i64 = readCounterFrequency()
+    // The frequency query's raw result, made once on first use (IMPL 21.4.5): the counts per second, or 0 when the query fails.
+    // readCounterFrequency raises a failure at the user's operation (SPEC 22.5.1).
+    let counterFrequency: i64 = queryCounterFrequency()
 
     #CallerLocation
     func readCounter() -> i64
@@ -8,16 +10,22 @@ public group Time
         require Windows.queryPerformanceCounter(value@uniq) != 0 and value >= 0 else => Storage.clockFailure()
         return value
 
-    func readCounterFrequency() -> i64
+    func queryCounterFrequency() -> i64
         var value: i64 = 0
-        require Windows.queryPerformanceFrequency(value@uniq) != 0 else => Storage.clockFailure()
+        if Windows.queryPerformanceFrequency(value@uniq) == 0
+            return 0
+        return value
+
+    #CallerLocation
+    func readCounterFrequency() -> i64
+        let value = counterFrequency
         require value > 0 else => Storage.clockFailure()
         return value
 
     #CallerLocation
     func intervalMicroseconds(start: i64, end: i64) -> u64
         require end >= start else => Storage.clockFailure()
-        return counterMicroseconds((end - start)@u64, counterFrequency@u64)
+        return counterMicroseconds((end - start)@u64, readCounterFrequency()@u64)
 
     // The adapter supplies 0 < frequency <= i64.MaxValue. All arithmetic stays within 64 bits.
     #CallerLocation
@@ -97,7 +105,7 @@ public group Time
         public func start(self: uniq/Self)
             if self.isRunning
                 return
-            _ = counterFrequency
+            _ = readCounterFrequency()
             let now = readCounter()
             self.startedAt = .Some(now)
 
@@ -122,7 +130,7 @@ public group Time
         /// - abort: The platform clock is unavailable or returns an invalid value.
         #CallerLocation
         public func restart(self: uniq/Self)
-            _ = counterFrequency
+            _ = readCounterFrequency()
             let now = readCounter()
             self.accumulated = 0
             self.startedAt = .Some(now)

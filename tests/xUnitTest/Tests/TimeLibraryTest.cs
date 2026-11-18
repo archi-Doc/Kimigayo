@@ -12,29 +12,40 @@ public class TimeLibraryTest
     private const string Started = "var watch = Kimi.Time.Stopwatch.init()\nwatch.start()\nwatch.stop()";
     private const string Restarted = "var watch = Kimi.Time.Stopwatch.init()\nwatch.restart()";
     private const string Snapshot = "var watch = Kimi.Time.Stopwatch.init()\nwatch.start()\n_ = watch.elapsed()";
+    private const string Twice = "var watch = Kimi.Time.Stopwatch.init()\nwatch.start()\nwatch.stop()\nwatch.start()\nwatch.stop()";
+    private const string TwiceSnapshot = "var watch = Kimi.Time.Stopwatch.init()\nwatch.start()\nwatch.stop()\nwatch.start()\n_ = watch.elapsed()";
     private const string Clock = ": abort KIMI_E_CLOCK: Elapsed-time counter failed\n";
+    private const string Overflow = ": abort KIMI_E_INT_OVERFLOW: Integer overflow\n";
+    private const string Largest = "0,18446744073709,18446744073709,18446744073710";
 
     // SPEC 22.8.2, 22.5.2 and IMPL 21.4.5: a failed counter or frequency query, a nonpositive frequency, a negative counter and a counter
-    // going backward Abort with KIMI_E_CLOCK. SPEC 22.5.1 (PLAN G71): each reports the start of the user's Stopwatch call, except the
-    // frequency rows: they Abort in the counter frequency's static initializer, whose body receives no location (a library line). The
-    // fake counter returns its values in order and fails once they run out.
+    // going backward Abort with KIMI_E_CLOCK, an accumulation beyond u64 (frequency 1: 18446744073709 ticks fit, one more does not) with
+    // KIMI_E_INT_OVERFLOW. SPEC 22.5.1: each reports the start of the user's Stopwatch call, the frequency's static-storage access
+    // included, and through a function value that call (MirBuildTest.StopwatchAction). The fake counter returns its values in order and
+    // fails once they run out.
     [Theory]
-    [InlineData("FrequencyFailure", Started, 0, 3, "10,20", "Time.kimi:13:76" + Clock)]
-    [InlineData("FrequencyZero", Started, 1, 0, "10,20", "Time.kimi:14:35" + Clock)]
+    [InlineData("FrequencyFailure", Started, 0, 3, "10,20", "Hello.kimi:2:1" + Clock)]
+    [InlineData("FrequencyZero", Started, 1, 0, "10,20", "Hello.kimi:2:1" + Clock)]
+    [InlineData("FrequencyNegative", Started, 1, -1, "10,20", "Hello.kimi:2:1" + Clock)]
     [InlineData("CounterFailure", Started, 1, 3, "", "Hello.kimi:2:1" + Clock)]
     [InlineData("CounterNegative", Started, 1, 3, "-1", "Hello.kimi:2:1" + Clock)]
     [InlineData("CounterBackwards", Started, 1, 3, "10,9", "Hello.kimi:3:1" + Clock)]
     [InlineData("RestartFailure", Restarted, 1, 3, "", "Hello.kimi:2:1" + Clock)]
+    [InlineData("RestartFrequency", Restarted, 0, 3, "10", "Hello.kimi:2:1" + Clock)]
     [InlineData("ElapsedFailure", Snapshot, 1, 3, "10", "Hello.kimi:3:5" + Clock)]
     [InlineData("ElapsedBackwards", Snapshot, 1, 3, "10,9", "Hello.kimi:3:5" + Clock)]
+    [InlineData("ConversionOverflow", Started, 1, 1, "0,18446744073710", "Hello.kimi:3:1" + Overflow)]
+    [InlineData("StopOverflow", Twice, 1, 1, Largest, "Hello.kimi:5:1" + Overflow)]
+    [InlineData("ElapsedOverflow", TwiceSnapshot, 1, 1, Largest, "Hello.kimi:5:5" + Overflow)]
+    [InlineData("ErasedFrequency", MirBuildTest.StopwatchAction, 0, 3, "10", "Hello.kimi:3:1" + Clock)]
+    [InlineData("ErasedFailure", MirBuildTest.StopwatchAction, 1, 3, "", "Hello.kimi:3:1" + Clock)]
     public void InvalidClockAborts(string name, string source, int frequencyResult, long frequency, string counter, string stderr)
     {
         var ir = CompilationTestHelper.WriteIr(MinimalEmissionTest.Analyze(source));
         var nativeFrequency = "define i32 @QueryPerformanceFrequency(ptr %out) { store i64 " + frequency + ", ptr %out ret i32 " + frequencyResult + " }";
         ir = ir.Replace("declare dllimport i32 @QueryPerformanceCounter(ptr)", Counter(counter), StringComparison.Ordinal)
             .Replace("declare dllimport i32 @QueryPerformanceFrequency(ptr)", nativeFrequency, StringComparison.Ordinal);
-        var library = stderr.StartsWith("Time.kimi", StringComparison.Ordinal) ? "compiler://Kimi/" + Compilation.CurrentLanguageVersion + "/" : string.Empty;
-        ScalarEmissionTest.WriteFixture("TimeLibrary" + name, ir, string.Empty, 1, library + stderr);
+        ScalarEmissionTest.WriteFixture("TimeLibrary" + name, ir, string.Empty, 1, stderr);
     }
 
     [Fact]
