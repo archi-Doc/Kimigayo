@@ -376,6 +376,13 @@ public sealed partial class Binding
                 return this.CompleteAmbiguous(evaluation);
             }
 
+            if (this.SettleSelected(evaluated[winnerIndex].HeldRefusal) is { } refused)
+            {
+                // SPEC 10.1, 8.3.3: an Unknown judgment of the selected candidate is its obligation; resting on a refused analysis, it is
+                // a resource failure, on which the call rests (a losing candidate's held refusal is never settled).
+                return this.CompleteDependent(call, refused);
+            }
+
             var winner = evaluated[winnerIndex].Symbol!;
             var selected = (FunctionKoto)winner.Declaration;
             this.activeRequirementContract = requirementGroup?.Contracts[winnerIndex] ?? (callee as RequirementCalleeKoto)?.Contract; // Reset by the finally block.

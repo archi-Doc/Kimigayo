@@ -36,10 +36,13 @@ public sealed partial class Binding
     private BindingScope DocumentScope(SourceDocument document, BindingScope parent, Koto owner)
         => this.KeptScope(ref KeptScopes.DocumentSlot(owner.Kotonoha.RootKoto, document), owner, parent);
 
-    // The kept slot is read and written first: a later column write may carve a page and move the arena it points into.
+    // The kept slot is read and written first: a later column write may carve a page and move the arena it points into. A scope of a
+    // constrained declaration, one with a Constraint region of its own (SPEC 8.2.1, 7.5, 8.8.1), is formed for its premises
+    // (BindingScope.Declaration).
     private BindingScope KeptScope(ref BindingScope? kept, Koto owner, BindingScope? parent)
     {
-        var scope = kept ??= new(owner);
+        var scope = kept ??= owner is FunctionKoto { IsAnonymous: false } or PropertyAccessorKoto or DeclarationContainerKoto or
+            SyntaxFormKoto { Akind: KotoKind.ConditionalConformance } ? new(owner, owner) : new(owner);
         scope.Parent = parent;
         scope.Function = scope.Owner is FunctionKoto function ? function : parent?.Function;
         return scope;

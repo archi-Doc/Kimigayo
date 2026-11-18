@@ -20,11 +20,11 @@ namespace Kimi.Compiler;
 //   Completion); the Origin declarations' relations and completion; the pairs' admitted sets.
 // - Outputs: per view and pass, the classes (ClassesOf) and their Completion (DECISIONS R7-M20's W7); Proven; the premise error; a
 //   Type's key in a table (ClassKey: a parameter's or projection's class's least parameter or projection by a total structural order,
-//   Representative, or the Type over its components' keys; a constructed member keys to itself, its conformance being
-//   ResolveConformance's alone), which relates only what Proven relates (a class in state One with complete meets, whatever the
-//   table's finality) and which only ContractSolver's supply reads: no reader receives a key as a Type; such a class's complete
-//   constructed member (CompleteMember, the same scan), which IdentityRefuted (a parameter bound by a premise) and ProveProposition's
-//   contradiction check (N9) read; whether two Types are known to differ at a corresponding position (IdentityRefuted: the classes'
+//   Representative, or the Type over its components' keys; c2-4: a constructed member keys to its class's Representative, so
+//   every member's premise rows are the class's, joined with the Member's closed world by polarity), which relates only what Proven relates (a class in state One with complete meets, whatever the
+//   table's finality) and which only ContractSolver's supply reads: no reader receives a key as a Type; such a class's Member (the
+//   same scan: its constructed member, closed first, R7-C2c2 c2-4), which the atom judges take as their subject (MemberOf) and
+//   IdentityRefuted reads; whether two Types are known to differ at a corresponding position (IdentityRefuted: the classes'
 //   Refuted, SPEC 8.2.3's Refuted read by the one table their premise meets read, Meet; an abstract Type by proper parts, up to
 //   structure; a conformance's instance in the conforming Type's terms, the required side in the scope's), which the Contract
 //   judge's paths and the Callable judge's signature read before they refute (PLAN G866).
@@ -258,6 +258,7 @@ public sealed partial class Binding
             IdentityClasses.One => BindingFailure.None,
             IdentityClasses.Unproven => BindingFailure.UnprovenConstraint,
             IdentityClasses.Unsupported => BindingFailure.Unsupported,
+            IdentityClasses.Limit => BindingFailure.PremiseClosureLimit, // R7-C2c2 c2-4: the binding grounds' closure limit (SPEC 8.3.3)
             _ => BindingFailure.InvalidConstraint,
         };
 

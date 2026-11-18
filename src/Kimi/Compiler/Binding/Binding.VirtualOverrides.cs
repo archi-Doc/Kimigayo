@@ -26,26 +26,32 @@ public sealed partial class Binding
     private Dictionary<FunctionKoto, OverrideFailure>? overrideFailures;
 
     // Header names must be independent of slot selection. Only premises common to the accessible
-    // virtual group can supply an unqualified associated name; a qualified name needs no guess.
-    private void PrepareVirtualHeaderPremises(FunctionKoto function, BindingScope scope)
+    // virtual group can supply an unqualified associated name; a qualified name needs no guess. The scope the header binds in: an
+    // override's header layer holding those premises (SPEC 6.4.2 step 2), else the function's scope. The layer serves the header only:
+    // the body's premises are the selected slot's, decided once at SettleVirtualOverridePremises, so a condition Refuted for the
+    // instance is the override's one declaration error however it is spelled (SPEC 6.4.3; R7-C2c2 c2-4a; C2 ruling 164).
+    private BindingScope PrepareVirtualHeaderPremises(FunctionKoto function, BindingScope scope)
     {
         if (!function.IsOverride || function.BoundSymbol?.Scope.Owner is not StructKoto { BaseClause: { } clause, BoundSymbol: { } symbol } structure ||
             this.BindType(clause, this.scopes[structure]) is null)
         {
-            return;
+            return scope;
         }
 
         var self = this.SelfType(symbol);
         if (AdtDef.Base(this.types, self) is not { } baseType)
         {
-            return;
+            return scope;
         }
 
         var selection = this.LookupMember(baseType, function.Name, scope, LookupRole.Value, self);
         if (selection.Pending || selection.DeclaringType?.Symbol is null)
         {
-            return;
+            return scope;
         }
+
+        var header = scope.HeaderPremises ??= new(function) { Parent = scope, Function = function };
+        (header.Constraints ??= new()).Reset(); // Bound again when a pending associated Type reopens the header.
 
         // Lookup and base binding are complete before these buffers are used. Collecting the
         // finite declared facts performs substitution only: no header/body recursion.
@@ -95,11 +101,11 @@ public sealed partial class Binding
                     // Judge against the derived declaration, before assuming any slot premise.
                     if (this.ProveConstraint(facts[i], function.BoundSymbol.Scope) is ConstraintProof.Proven or ConstraintProof.Unknown)
                     {
-                        this.AddConstraintFact(scope.Constraints ??= new(), facts[i]);
+                        this.AddConstraintFact(header.Constraints!, facts[i]);
                     }
                 }
 
-                this.ExpandScopeContractPremises(scope);
+                this.ExpandScopeContractPremises(header);
             }
             finally
             {
@@ -111,6 +117,8 @@ public sealed partial class Binding
             common.Clear();
             current.Clear();
         }
+
+        return header;
 
         void Collect(BindingScope source)
         {
@@ -318,28 +326,9 @@ public sealed partial class Binding
             OverrideEntryRows.Add(key, function);
             if (IncompleteSignature(slot.Original) is { } prerequisite)
             {
-                this.CompleteDependent(function, prerequisite);
-                continue;
-            }
-
-            var frame = this.BeginConsultation(function); // A site frame: the override's premises are its facts.
-            this.PrepareVirtualOverridePremises(function, slot);
-            this.DropConsultation(frame);
-            this.CheckVirtualOverrideSignature(function, slot);
-            if (function.BindingFailure == BindingFailure.None && !this.CompleteImplementationOrigins(function, slot.Original, [], [], out var incompatible, slot.DeclaringType, self))
-            {
-                if (incompatible is { } contract)
-                {
-                    this.FailExplained(ref this.originContracts, function, BindingFailure.OriginContract, contract);
-                }
-                else
-                {
-                    this.FailOverride(function, BindingFailure.OverrideContractMismatch, new(OverrideFailureCause.OriginBinders, slot.Original));
-                }
+                this.CompleteDependent(function, prerequisite); // The settle point skips it (SettleVirtualOverridePremises).
             }
         }
-
-        this.FillVTables();
     }
 
     // SPEC 6.4.1-6.4.3, 6.2.1: every struct's dispatch shape once slot selection is complete (VTableDef, DECISIONS R5-M62).
@@ -423,10 +412,50 @@ public sealed partial class Binding
         }
     }
 
+    // The overrides' inherited conditions are decided once, when the proofs answer (after VerifyEarlyProjections; before it every
+    // conformance proof is Unknown): a condition Refuted or Error for the slot's instance is a declaration error at the override,
+    // since the slot never exists for that instance (SPEC 6.4.3), and no premise; a Proven or Unknown one is the body's
+    // premise. The override's signature check reads those premises (its result names complete through them:
+    // `U.Element` under the slot's `T is First`), so it and the Origin completion run here, after them, and the dispatch tables,
+    // which read the overrides' failures, are filled last. Each override that selected its slot (not a duplicate, its signature
+    // complete) is settled once per pass.
+    private void SettleVirtualOverridePremises()
+    {
+        // D2b-d's d8 order: the source modules by ordinal, then the library, each by ascending id (the walk's order on a cold compile).
+        for (var rows = this.virtualOverrides.Values.In(this.pass); rows.MoveNext();)
+        {
+            var (function, implementation) = ((FunctionKoto)rows.Node, rows.Current);
+            var (slot, self) = (implementation.Slot, implementation.ImplementingType);
+            if (function.BoundSymbol?.Scope.Owner.BoundSymbol is not { } typeSymbol || IncompleteSignature(slot.Original) is not null ||
+                !OverrideEntryRows.TryGetValue((typeSymbol, slot.Original), out var entry) || !ReferenceEquals(entry, function))
+            {
+                continue;
+            }
+
+            var frame = this.BeginConsultation(function); // A site frame: the override's premises are its facts.
+            this.PrepareVirtualOverridePremises(function, slot);
+            this.DropConsultation(frame);
+            this.CheckVirtualOverrideSignature(function, slot);
+            if (function.BindingFailure == BindingFailure.None && !this.CompleteImplementationOrigins(function, slot.Original, [], [], out var incompatible, slot.DeclaringType, self))
+            {
+                if (incompatible is { } contract)
+                {
+                    this.FailExplained(ref this.originContracts, function, BindingFailure.OriginContract, contract);
+                }
+                else
+                {
+                    this.FailOverride(function, BindingFailure.OverrideContractMismatch, new(OverrideFailureCause.OriginBinders, slot.Original));
+                }
+            }
+        }
+
+        this.FillVTables();
+    }
+
     private void PrepareVirtualOverridePremises(FunctionKoto function, VirtualSlot slot)
     {
         var bodyScope = this.scopes[function];
-        var premises = bodyScope.ImplementationPremises ??= new(function);
+        var premises = bodyScope.ImplementationPremises ??= new(function, function);
         premises.Parent = function.BoundSymbol!.Scope;
         premises.Function = function;
         // ResetPass owns this shared environment. Resetting premises would also erase the body's facts.
@@ -450,16 +479,11 @@ public sealed partial class Binding
         foreach (var fact in environment.DirectFacts)
         {
             var bound = this.StoredConstraint(fact, slot.DeclaringType);
-            // Applicability belongs to the public slot. A refuted substituted premise supplies no
-            // body evidence; ordinary definition checks still run (SPEC 8.3.3). Generation keeps
-            // the inapplicable slot's position without requesting its body.
+            // SPEC 6.4.3: a substituted premise Refuted or Error for the derived Type makes the override one declaration error at the
+            // override (the slot never exists for that Type; the owner's O-370); it supplies no evidence. The body's Binding-time records
+            // stand (SPEC 23.1.2); a rejected definition publishes no body (DECISIONS R4-M18).
             var proof = this.ProveConstraint(bound, premises);
-            if (proof == ConstraintProof.Refuted)
-            {
-                continue;
-            }
-
-            if (proof == ConstraintProof.Error)
+            if (proof is ConstraintProof.Refuted or ConstraintProof.Error)
             {
                 this.FailConstraint(function, this.FindConformanceDiagnosticCause(source.Owner, fact));
                 continue;

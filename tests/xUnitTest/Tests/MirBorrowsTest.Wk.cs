@@ -393,6 +393,18 @@ public sealed partial class MirBorrowsTest
             WkForm("i3oBad", "<T>(x: T.(Outer).Next) -> ()\n    T is Outer\n", WkRawFill("filli3o<T, T.(Outer).Next>") + "y = 5\nconsume(t@move)") +
             WkForm("i4Bad", "<T>(x: T.(Outer).Next, src: ref/T) -> ()\n    T is Outer\n", WkRawFill("filli4<T, T.(Outer).Next>", "u8", ", src") + "y = 5\nconsume(t@move)") +
             WkDepth("h3Bare", "<T>", "T.(Outer0).Next", "T is Outer0"),
+        ["rawIdentity"] = "contract Inner\n    associate F\n    Self.(Inner).F is Callable<(raw/u8) -> Self>\n    func get(self: ref/Self) -> ref/Self.(Inner).F\n" +
+            "contract Inner0\n    associate F\n    func get(self: ref/Self) -> ref/Self.(Inner0).F\n" +
+            "contract Mid\n    associate Next is Inner\ncontract Outer3\n    associate Next is Mid\ncontract Top\n    associate Next is Outer3\n" +
+            "contract Mid0\n    associate Next is Inner0\ncontract Outer30\n    associate Next is Mid0\n" +
+            "contract W\n    func absorb(self: uniq/Self, p: raw/u8)\ncontract MidW\n    associate Next is W\ncontract OuterW\n    associate Next is MidW\n" +
+            WkIdentity("j2", "<T, U>", "T is Outer3\nU is T.(Outer3).Next.(Mid).Next", "T, T.(Outer3).Next.(Mid).Next") +
+            WkIdentity("j2r", "<T, U>", "T is Outer3\nT.(Outer3).Next.(Mid).Next is U", "T, T.(Outer3).Next.(Mid).Next") +
+            WkIdentity("j2o", "<T, U>", "U is T.(Outer3).Next.(Mid).Next\nT is Outer3", "T, T.(Outer3).Next.(Mid).Next") +
+            WkIdentity("j3", "<T, U>", "T is Top\nU is T.(Top).Next.(Outer3).Next.(Mid).Next", "T, T.(Top).Next.(Outer3).Next.(Mid).Next") +
+            WkIdentity("ch", "<T, V, U>", "T is Outer3\nV is T.(Outer3).Next\nU is V.(Mid).Next", "T, T.(Outer3).Next, T.(Outer3).Next.(Mid).Next") +
+            WkIdentity("w2", "<T, U>", "T is OuterW\nU is T.(OuterW).Next.(MidW).Next", "T, T.(OuterW).Next.(MidW).Next") +
+            WkIdentity("j2Bare", "<T, U>", "T is Outer30\nU is T.(Outer30).Next.(Mid0).Next", "T, T.(Outer30).Next.(Mid0).Next"),
         ["rawCast"] = "func usep(p: raw/u8) => ()\n" + WkCastHolder("S8", "u8") + WkCastHolder("S32", "i32") +
             WkCastTwins("cast8", "S8", "u8", "raw/i32", "p@raw/u8") + WkCastTwins("same8", "S8", "u8", "raw/u8", "p") +
             WkCastTwins("cast32", "S32", "i32", "raw/i32", "p@raw/u8") + WkCastTwins("same32", "S32", "i32", "raw/u8", "p"),
@@ -577,6 +589,11 @@ public sealed partial class MirBorrowsTest
     // the rows of the Types the contract reaches (its signature's and its handed signatures'), behind an identity in either premise order;
     // the bare twins are handed nothing with a raw input. Fails on 570e37947 (c2-3b): d3Bad, h3Bad, h4Bad, i3Bad, i3oBad and i4Bad valid.
     [InlineData("rawDepth", "d1Bad: y = 5 1|d3Bad: y = 5 1|h3Bad: y = 5 1|h3sBad: y = 5 1|h4Bad: y = 5 1|i3Bad: y = 5 1|i3oBad: y = 5 1|i4Bad: y = 5 1|rBad: y = 5 1")]
+    // PLAN G881 (SPEC 8.2.3, 8.3.2): U identified with a projection two or three links deep, or through a chain of one-link identities,
+    // is one Type with it, so the supply along the projection's chain is U's (ContractSolver's row (5)): the callee is handed get and
+    // F's callable (or W's writer), in either premise order and direction. Fails on 0d79855e3 (c2-3c): j2Bad, j2rBad, j2oBad, j3Bad,
+    // chBad and w2Bad valid. j2BareBad (no Callable clause) is handed nothing with a raw input.
+    [InlineData("rawIdentity", "chBad: y = 5 1|j2Bad: y = 5 1|j2oBad: y = 5 1|j2rBad: y = 5 1|j3Bad: y = 5 1|w2Bad: y = 5 1")]
     public void ACallableTheContractHandsTheBodyLetsAnAbstractTypeHoldTheArgument(string row, string expected)
         => Assert.Equal(WkExpected(expected), WkRecords(row));
 
@@ -634,6 +651,17 @@ public sealed partial class MirBorrowsTest
     private static string WkDepth(string name, string parameters, string target, string premises, string more = "", string pass = "", string body = "return")
         => WkForm($"fill{name}", $"{parameters}(dst: uniq/{target}, p: raw/u8{more})\n    {premises}\n", body) +
             WkForm($"{name}Bad", $"{parameters}(x: {target}{more}) -> ()\n    {premises}\n", WkRawFill($"fill{name}{parameters}", "u8", pass) + "y = 5\nconsume(t@move)");
+
+    // PLAN G881's forms: fill{name} takes `dst: uniq/U` under its premises (one per `\n`; U identified with a projection), and
+    // {name}Bad fills `t`, of that projection (the last argument), under the premise on T.
+    private static string WkIdentity(string name, string parameters, string premises, string arguments)
+    {
+        var lines = premises.Split('\n');
+        var root = lines.First(static x => x.StartsWith("T is ", StringComparison.Ordinal));
+        var fill = WkRawFill($"fill{name}<{arguments}>") + "y = 5\nconsume(t@move)";
+        return WkForm($"fill{name}", $"{parameters}(dst: uniq/U, p: raw/u8)\n" + string.Concat(lines.Select(static x => $"    {x}\n")), "return") +
+            WkForm($"{name}Bad", $"<T>(x: {arguments.Split(", ")[^1]}) -> ()\n    {root}\n", fill);
+    }
 
     private static string WkRawFill(string callee, string pointee = "u8", string more = "")
         => $"var t = x@move\nvar y: i32 = 1\nvar w: ref/i32 = y@ref\n{callee}(t@uniq, w@raw@raw/{pointee}{more})\n";

@@ -226,6 +226,7 @@ public sealed partial class Binding
     private bool RunPass(BindingPass pass, BindingMode mode)
     {
         this.StartPass(pass, mode);
+        this.producing = true; // Each pass produces its failures from its start until its Check has counted them (Binding.Check.cs).
         this.Index();
         if (!this.BindDeclarations(mode))
         {
