@@ -24234,6 +24234,14 @@ R8-M* and R9-M* by the stage of the recording unit.
     `Project.Build` passes) and R5-M169 (the results with a fault path: the project's own and the build's, beside the front end's
     and the Emission result; DIAGNOSTICS §7).
   - Amended by R9-M12 (PLAN G984): known limit (3) closes.
+  - Amended by PLAN G983 (Q-515, 2026-11-19): the toolchain files' readers (the build record, the installation and kernel32 records)
+    compare `ArtifactFiles`' total reads (`Member`, `Text`, `Number`) with what they expect and fail as their
+    `InvalidDataException`, and `IsToolchainFailure` drops `KeyNotFoundException` and `InvalidOperationException`. Known limit (1)
+    **narrows**: inside the toolchain's calls the set still classifies by type whatever raised the exception, so one of its
+    remaining kinds (publication's, R5-M165; `Win32Exception`; `JsonException`) raised by the host's report or a `Kimi.Build` defect
+    prints as the toolchain's failure; any other type is the build's or the command's fault. The embedded catalog
+    (`ToolchainIdentity`) keeps its reads: its static constructor's exceptions reach callers as `TypeInitializationException`, never
+    a listed type.
 - **R9-M11 The generation result carries the link facts; the link manifest is one table with its readers (R9-B1)** (Middle,
   2026-11-18; the R7-R9 plan's §5.3 unit B1, parts 1 and 2; Major; under R9-M6 and R9-M10; design review REVISE then ACCEPT WITH
   NOTES; the Back's consent on its codegen half, C-389; W-256)
