@@ -8,8 +8,9 @@
 // storage verdict (Instance; Compose with the part deciding it; DECISIONS BU-36, BU-38, R4-M139), Apply the instance when Prepared;
 // Binding's completeness, the premise of a Rejected verdict's contract (BindingComplete); whether a reader may read a verdict, guarded by
 // it (Readable), and the instance a reader of an instance reads (ReadableInstance: Instance, then Readable; R4-M139).
-// Invariants: one Subst per (target, Self, declaring Type, Types, lengths, Origins, inputs), with one length entry per slot; the scratch
-// arrays Fit grows are reused.
+// Invariants: one Subst per (target, Self, declaring Type, Types, lengths, Origins, inputs) over the library layer's frozen level and the
+// compilation's (PLAN G949 Stage 2 U4: the one find, Binding.PassPart.Levels), with one length entry per slot; the scratch arrays Fit
+// grows are reused.
 // Must not: clear its interning, resolve source expressions, or construct a Subst outside Intern.
 
 using System.Runtime.CompilerServices;
@@ -284,9 +285,16 @@ internal sealed partial class TyCtxt
             hash.Add(RuntimeHelpers.GetHashCode(input));
         }
 
+        // The one find over the two levels (Binding.PassPart.Levels; PLAN G949 Stage 2 U4).
         var key = hash.ToHashCode();
-        if (this.substs.TryGetValue(key, out var bucket))
+        var levels = Binding.PassPart.Interned(library, library.Layer.Substs, this.substs);
+        foreach (var level in levels)
         {
+            if (!level.TryGetValue(key, out var bucket))
+            {
+                continue;
+            }
+
             for (var i = 0; i < bucket.Count; i++)
             {
                 var subst = bucket[i];
@@ -297,13 +305,15 @@ internal sealed partial class TyCtxt
                 }
             }
         }
-        else
+
+        var open = levels.Open;
+        if (!open.TryGetValue(key, out var into))
         {
-            this.substs.Add(key, bucket = new(1));
+            open.Add(key, into = new(1));
         }
 
         var created = new Subst(target, self, declaring, types.ToArray(), lengths.ToArray(), origins.ToArray(), inputs.ToArray());
-        bucket.Add(created);
+        into.Add(created);
         return created;
     }
 }

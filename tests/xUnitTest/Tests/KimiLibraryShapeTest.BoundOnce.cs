@@ -142,7 +142,7 @@ public partial class KimiLibraryShapeTest
             Assert.NotEmpty(kept);
             foreach (var (slot, list) in kept)
             {
-                var holder = Binding.PassPart.Find(layer.Keepers, own.Keepers, slot, out var found);
+                var holder = Binding.PassPart.Find(Binding.PassPart.Parts(layer.Keepers, own.Keepers), slot, out var found);
                 Assert.Same(list, found);
                 Assert.Equal(ReferenceEquals(holder, layer.Keepers) ? layer.RequirementCall : own.RequirementCall, list.Pass);
             }
