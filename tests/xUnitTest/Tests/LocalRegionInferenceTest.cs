@@ -167,10 +167,12 @@ public partial class LocalRegionInferenceTest(ITestOutputHelper output)
     // bound as the comparison read it, the slot, and its readers take a parent as stored. Two comparisons give `w outlives z` and `z
     // outlives x` over three `let` regions, so x's region reaches w's source, the Borrow n@ref, through z's region: sib2 (Exclusive
     // layers, which also need the Middle's O-375 Q2 (a) solve) and its one-direction form over `idf`. Each read the stored slot of z
-    // back as z's value `p`, so x's sources were `p` alone.
+    // back as z's value `p`, so x's sources were `p` alone. The rows are the `var` forms (sib2v, chainv): under the owner's O-400 (b)
+    // the `let` forms' comparisons are the located limit (only the region reading decides them), which leaves no Compared row and so
+    // stores no bound (OriginPremiseCatalogTest's sib2 row).
     [Theory]
-    [InlineData("sib2", null)]
-    [InlineData("chain", "func idf(w: ref/i64 during a) -> ref/i64 during a => w\nfunc outer(p: ref/i64) -> i32\n    let n: i64 = 1\n    let w = n@ref\n    let z = p\n    let x = p\n    let f1: (ref/i64 during w) -> ref/i64 during z = idf\n    let f2: (ref/i64 during z) -> ref/i64 during x = idf\n    return 0\n")]
+    [InlineData("sib2v", null)]
+    [InlineData("chainv", "func idf(w: ref/i64 during a) -> ref/i64 during a => w\nfunc outer(p: ref/i64) -> i32\n    let n: i64 = 1\n    var w = n@ref\n    var z = p\n    var x = p\n    let f1: (ref/i64 during w) -> ref/i64 during z = idf\n    let f2: (ref/i64 during z) -> ref/i64 during x = idf\n    return 0\n")]
     public void AComparedRegionsSourcesReachThroughTheStoredSlot(string row, string? body)
     {
         var c = MirBuildTest.Compile((body ?? OriginPremiseCatalogTest.StoredReadingRows.Single(x => x.Data.Item1 == row).Data.Item2) + MainDeclaration);

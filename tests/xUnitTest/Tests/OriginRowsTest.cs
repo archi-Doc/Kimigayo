@@ -450,11 +450,12 @@ public sealed partial class OriginRowsTest
     // PLAN G492-a (ii) with (iii) (the owner's O-363 (a), O-375 Q1 (a)): a Callable comparison's row names a `let` region of its body as
     // the region, an Inferred atom, and the view forms that region's bound beside it, `value outlives region`, at the row's site and
     // under its case mask; a MIR read of the local at a MIR site resolves to the value's atom, never the region's. r5n: `h`'s clause
-    // leaves `z outlives x` over two `let` regions, x's value being `p` and z's the Borrow of x.
+    // leaves `z outlives x` over two `let` regions; r5nq (`let z = x`): both values are `p`, so the row is left (the owner's O-400 (b): a
+    // comparison leaves a row only where its ends' values prove it; r5n, z's value the Borrow of x, is the located limit there).
     [Fact]
     public void AComparedLetRegionIsAnAtomBoundedByItsValue()
     {
-        var (c, outer, slice) = ComparedSlice("r5n");
+        var (c, outer, slice) = ComparedSlice("r5nq");
         var (x, z) = (Slot(c, outer, slice, "x"), Slot(c, outer, slice, "z"));
         Assert.Equal((OriginAtomKind.Inferred, OriginAtomKind.Inferred, OriginAtomKind.Fixed), (slice.Atoms[x.Region].Kind, slice.Atoms[z.Region].Kind, slice.Atoms[x.Value].Kind));
         var compared = Assert.Single(slice.Rows, r => r.Longer == z.Region && r.Shorter == x.Region);
@@ -464,13 +465,14 @@ public sealed partial class OriginRowsTest
     }
 
     // SPEC 15.3.6 (PLAN G492-a (ii), design §13.13; TyCtxt.MeetOperand): an operand of a table meet is named as the meet holds it, never
-    // resolved again at the asking site. veqz: the meet a comparison's row names holds x's region, and its operand is that region's
+    // resolved again at the asking site. veqzq (veqz with `let z = x`, whose values prove the row; O-400 (b)): the meet a comparison's
+    // row names holds x's region, and its operand is that region's
     // atom, the one the value row `p outlives region` bounds, whatever site asks; resolved at a site it was the value's atom, `p`'s, so
     // the region's bound never reached the meet.
     [Fact]
     public void ATableMeetsOperandIsNamedAsTheMeetHoldsIt()
     {
-        var (c, outer, slice) = ComparedSlice("veqz");
+        var (c, outer, slice) = ComparedSlice("veqzq");
         var x = Slot(c, outer, slice, "x");
         var meet = Assert.Single(Enumerable.Range(0, slice.Atoms.Count), i => slice.Atoms[i].Atom is { Kind: OriginKind.Intersection } atom &&
             atom.Operands.Any(o => ReferenceEquals(o, slice.Atoms[x.Region].Atom)));

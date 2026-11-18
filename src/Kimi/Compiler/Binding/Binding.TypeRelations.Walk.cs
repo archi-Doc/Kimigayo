@@ -341,13 +341,15 @@ public sealed partial class Binding
 
         // An Origin position's failure: a member's inside a Callable comparison, a plain position outside every one. A member's that the
         // relation judge does not refute or leave Unknown from the premises alone (it holds, or is Unrepresentable, only through an
-        // inferred or body-local region) is the located limit, except in a whole-contract comparison (Contract), which no region decides.
+        // inferred or body-local region) is the located limit, except in a whole-contract comparison (Contract), which no region decides
+        // but a `let` region the comparison reads as the region (ComparedRegionLimit, O-400 (b)).
         private readonly ComparisonFailure OriginFailure(BoundOrigin longer, BoundOrigin shorter, bool equality, in CallableInstance instance)
         {
             var kind = instance.Expected is null ? ComparisonFailureKind.Position : ComparisonFailureKind.Origin;
             var (a, b) = instance.Actual is null ? (longer, shorter) : (instance.Instantiate(longer), instance.Instantiate(shorter));
-            if (kind == ComparisonFailureKind.Origin && this.part != OriginPart.Contract && this.binding is { } judge && this.use is { } at &&
-                judge.JudgeOriginRelation(a, b, at, judge.formingBody) is not (OriginJudgment.Refuted or OriginJudgment.Unknown))
+            if (kind == ComparisonFailureKind.Origin && this.binding is { } judge && this.use is { } at &&
+                ((this.part != OriginPart.Contract && judge.JudgeOriginRelation(a, b, at, judge.formingBody) is not (OriginJudgment.Refuted or OriginJudgment.Unknown)) ||
+                judge.ComparedRegionLimit(a, b, equality, at)))
             {
                 kind = ComparisonFailureKind.Limit;
             }

@@ -335,7 +335,12 @@ public sealed partial class Binding
         if (!this.CheckCallOriginRelations(function, origins, inputs, use, null, comparison))
         {
             this.contractFailure = this.failedCallClause is { } clause
-                ? new ComparisonFailure(ComparisonFailureKind.Clause, clause.Longer, clause.Shorter, clause.Equality, comparison) { Clause = clause.Syntax }
+                ? new ComparisonFailure(
+                    this.ComparedRegionLimit(clause.Longer, clause.Shorter, clause.Equality, use) ? ComparisonFailureKind.Limit : ComparisonFailureKind.Clause,
+                    clause.Longer,
+                    clause.Shorter,
+                    clause.Equality,
+                    comparison) { Clause = clause.Syntax }
                 : default;
             return false;
         }

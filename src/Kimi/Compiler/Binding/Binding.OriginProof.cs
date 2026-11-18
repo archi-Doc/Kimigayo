@@ -109,6 +109,26 @@ public sealed partial class Binding
     // its own body (RegionValueAtUse; PLAN G492-a (ii)).
     internal BoundOrigin SuppliedAtUse(BoundOrigin origin, Koto use) => this.RegionValueAtUse(this.DeclaredAtUse(origin, use), use);
 
+    // O-400 (b) (PLAN G492-a (ii) Revision 5): a failed condition of a Callable comparison is the located limit where a direction its
+    // ends' values do not prove has a `let` region of the use's body at its shorter end: the comparison reads that end as the region
+    // (O-363 (a)), which may lie inside its value, so only the region reading decides the condition, and the uses of the compared Type
+    // read values (LeavesBodyRows leaves no row their values do not prove), until (a) or (a') designs the region reading at uses. A
+    // direction with a fixed shorter end keeps its record: a `let` region outlives nothing its value does not, so the readings agree.
+    // Valid and invalid programs alike, since none differs before the uses of the compared Type (us2n, us2): the invalid us family is
+    // rejected at the comparison, as O-400 (b) decides, by this limit at dev's UnprovenOriginContract_Kd site, not by that record
+    // (the text's "dev's record" described it; record selection, Q13).
+    internal bool ComparedRegionLimit(BoundOrigin longer, BoundOrigin shorter, bool equality, Koto use)
+    {
+        return Shrinks(longer, shorter) && (!equality || Shrinks(shorter, longer)) &&
+            (this.ReadsLetValue(shorter, use) || (equality && this.ReadsLetValue(longer, use)));
+
+        bool Shrinks(BoundOrigin a, BoundOrigin b)
+            => this.ReadsLetValue(b, use) || this.JudgeOriginRelation(a, b, use, this.formingBody) == OriginJudgment.Proven;
+    }
+
+    // Whether `end` holds a `let` region of the use's body, which a use reads as its value (RegionValueAtUse changes it; O-400 (b)).
+    internal bool ReadsLetValue(BoundOrigin end, Koto use) => !ReferenceEquals(this.RegionValueAtUse(end, use), end);
+
     // The order in which a judgment fails a relation: Refuted before Unknown before Unrepresentable.
     private static int Severity(OriginJudgment judgment) => judgment switch
     {
@@ -557,6 +577,14 @@ public sealed partial class Binding
             var operand = conjuncts == 1 ? longer : longer.Operands[i];
             if (HasLocalRegion(operand) && (conjuncts == 1 || !this.ProvesOriginOutlives(operand, shorter, use, comparison, condition)))
             {
+                // O-400 (b): a row over a `let` region of the use's body only where its ends' values prove it too, as every use of the
+                // compared Type reads them; otherwise the condition fails (ComparedRegionLimit classes it). A row over `var` regions alone
+                // is as before.
+                if ((this.ReadsLetValue(operand, use) || this.ReadsLetValue(bound, use)) && this.JudgeOriginRelation(this.OriginAtUse(operand, use), this.OriginAtUse(bound, use), use, this.formingBody, condition) != OriginJudgment.Proven)
+                {
+                    return false;
+                }
+
                 rows.Add(new(BindingObligationKind.OriginOutlives, use, BindingDeadline.BodyOrigins, null, operand, bound, Clause: clause, Condition: condition) { Compared = true });
             }
         }
