@@ -310,7 +310,7 @@ public sealed partial class Binding
     {
         for (var i = 0; i < this.userIterations.Count; i++)
         {
-            var plan = BoundMatch.Of(this.userIterations[i].Loop);
+            var plan = BoundMatch.Of(this, this.userIterations[i].Loop);
             for (var p = 0; plan is not null && p < plan.PositionStorage.Count; p++)
             {
                 if (plan.PositionStorage[p].Kind == BoundPatternKind.Binding)
@@ -341,9 +341,9 @@ public sealed partial class Binding
         var unverified = false;
         for (var i = 0; i < identities.Count; i++)
         {
-            for (var p = 0; p < identities[i].PathStorage.Count; p++)
+            for (var p = 0; p < this.impls.PathsOf(identities[i]).Count; p++)
             {
-                var path = identities[i].PathStorage[p];
+                var path = this.impls.PathsOf(identities[i])[p];
                 if (!path.IsVerified)
                 {
                     unverified = true; // The conformance reports its own failure.

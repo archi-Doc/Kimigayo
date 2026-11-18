@@ -154,15 +154,16 @@ public partial class KimiLibraryShapeTest
         Assert.Equal((120, 63), (registered.Count(static x => x.LibraryDeclaration is not null), registered.Count(static x => x.LibraryDeclaration is null)));
     }
 
-    // KimiLibrarySize's statement: the library's size is what a Bind of the empty program fills, each count rounded up to the Granule.
-    // A library change that moves a count past its Granule restates KimiLibrarySize.Stated: the message gives the counts.
+    // KimiLibrarySize's statement: the library's size is what the library pass fills (LibraryLayer.Size, its table counts at its end:
+    // the program pass empties the per-pass tables it filled, O8 (a)), each count rounded up to the Granule. A library change that moves
+    // a count past its Granule restates KimiLibrarySize.Stated: the message gives the counts.
     [Fact]
     public void TheStatedSizeIsTheLibrarys()
     {
         // A Bind of the empty program: the shared Library compilation has run later stages, which intern further Types.
         var c = CompilationTestHelper.Parse(string.Empty);
         Assert.True(c.Bind().IsComplete);
-        var counts = c.Binding.TableCounts;
+        var counts = c.Binding.Library.Layer.Size;
         Assert.True(counts.Rounded() == KimiLibrarySize.Stated, $"stated {KimiLibrarySize.Stated}, counted {counts}");
     }
 
@@ -370,7 +371,7 @@ public partial class KimiLibraryShapeTest
         var served = symbols.Select(static x => x.Definition.Id).Where(static x => x is not (IntrinsicId.None or IntrinsicId.Fail)).ToArray();
         Assert.Equal(served.Distinct(), served);
         Assert.Equal(new IntrinsicDisposition(DispositionKind.Intrinsic, IntrinsicId.Abort), library.Abort.Definition);
-        Assert.True(Enum.GetValues<IntrinsicId>().Length <= 34);
+        Assert.True(Enum.GetValues<IntrinsicId>().Length <= 27);
     }
 
     // R3 decision 5: the MIR builder serves a built-in form (a slicing) by a library function it names by its lang item, which the

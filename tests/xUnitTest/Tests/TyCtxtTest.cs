@@ -294,6 +294,34 @@ public sealed partial class TyCtxtTest
         }
     }
 
+    // PLAN G949 (the flaky TableCounts row of BindingTest.AnEntryOfTheLayersPartReachesEveryReaderOutsideAPass): Binding.TableCounts'
+    // TypeKeys is the Types the compilation interned, whatever the hashes of their parts. A part's hash is its identity hash, which the
+    // thread's earlier objects move: two Tuples over two Types whose identity hashes are equal share one key of the interned Types' table
+    // and are still two Types (a count of the keys counted them as one, so a twin compilation counted one Type fewer).
+    [Fact]
+    public void TypesWhosePartsShareAnIdentityHashAreCountedApart()
+    {
+        var c = CompilationTestHelper.BindSuccess("()");
+        var symbol = c.Binding.Library.DynamicArray;
+        var made = new Dictionary<int, BoundType>();
+        BoundType? first = null;
+        BoundType? second = null;
+        while (second is null && made.Count < 1_000_000)
+        {
+            // An identity hash has 26 bits: two of about 10,000 fresh Types share one at even odds, two of 1,000,000 at certainty.
+            var type = c.Types.Parameter("T", BoundTypeKind.Parameter, symbol);
+            if (!made.TryAdd(System.Runtime.CompilerServices.RuntimeHelpers.GetHashCode(type), type))
+            {
+                (first, second) = (made[System.Runtime.CompilerServices.RuntimeHelpers.GetHashCode(type)], type);
+            }
+        }
+
+        Assert.NotNull(second);
+        var before = c.Binding.TableCounts.TypeKeys;
+        Assert.NotSame(c.Types.Tuple([first!]), c.Types.Tuple([second]));
+        Assert.Equal(before + 2, c.Binding.TableCounts.TypeKeys);
+    }
+
     // SPEC 6.1.3, 8.1.3: a closure an instance closed is in that instance's substitution and has its signature; a closure no instance closed is
     // in the identity of the function enclosing it, which keeps every Type.
     [Fact]
@@ -389,7 +417,7 @@ public sealed partial class TyCtxtTest
         var pair = function.Parameters[0].Type.TypeOf()!;
         var application = function.Parameters[1].Type.TypeOf()!;
         var binders = new List<PairBinder>();
-        PairBinder.Collect(function, binders);
+        PairBinder.Collect(c.Binding, function, binders);
         Assert.Equal(HirPlaceKind.Deref, TyCtxt.Layer(types.Reference(SemanticsKind.Uniq, BoundType.I32), out var below, out var binder));
         Assert.Same(BoundType.I32, below);
         Assert.Null(binder);
@@ -553,6 +581,29 @@ public sealed partial class TyCtxtTest
         Assert.Empty(members);
         Assert.True(MembersAt(c.Types, p[2], 1, [], members) && MembersAt(c.Types, p[3], 1, [], members));
         Assert.Equal([new(0, BoundType.I32, false), new(0, BoundType.I32, true)], members);
+    }
+
+    // PLAN G949 S1-r1b (review-s1r1b C1: v9 through the reader MIR's holding walk uses): a library slot's keepers reach a program's raw
+    // layer through TyCtxt.RawMembers. X's `at` belongs to the borrows X's slot `s` is kept by: `it`, a BorrowingIterator<Counter> during
+    // s, keeps it through the library slot `source`, which the library pass keeps by its `iterator: uniq/I during source` Field, so the
+    // member is Counter's exclusive Loan, after a first and a second Bind. A library slot's list is current by its part's requirement
+    // call, the library pass's; read against the program pass's call instead, it answers no keepers and the member is lost. Labelled from
+    // SPEC first (5.7 Origins, 15.3.5; Counter is an Iterator, so a LendingIterator, as BorrowingIterator requires): valid.
+    [Fact]
+    public void ALibrarySlotsKeepersAreARawLayersMembersAfterEachBind()
+    {
+        var c = MinimalEmissionTest.Analyze("struct Counter\n    Self is Iterator\n    associate Iterator.Item is i32\n    public init() => ()\n" +
+            "    public func next(self: uniq/Self) -> Option<i32> => .None\nstruct X {s}\n    internal let at: raw/u8 during s\n" +
+            "    internal let it: Kimi.Iteration.BorrowingIterator<Counter> during s\nfunc probe(y: uniq/Counter, x: X during y) => ()\n" +
+            "public func main() => ()\n");
+        for (var bind = 0; bind < 2; bind++)
+        {
+            Assert.True((bind == 0 ? c.Binding.Result : c.Bind()).IsComplete, MinimalEmissionTest.Describe(c));
+            var holder = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(static x => x.Name == "probe").Parameters[1].Type.TypeOf()!;
+            var members = new List<RawMember>();
+            Assert.True(MembersAt(c.Types, holder, 0, [], members));
+            Assert.Equal(["0 Counter True"], members.Select(static x => $"{x.Input} {TyCtxt.Name(x.Referent)} {x.Exclusive}"));
+        }
     }
 
     // SPEC 5.7 (the final review's R3; DECISIONS BU-24, U2): a keeper reached on many paths is walked once per slot, owner Type, input and
