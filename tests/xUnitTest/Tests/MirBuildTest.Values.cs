@@ -402,10 +402,10 @@ public sealed partial class MirBuildTest
         HirTables.Of(loop.Iteration!.Receiver).Symbols[loop.Iteration.Receiver.SyntaxId] = null;
         HirTables.PlanFor(text.Formatting!.Writes[1], written: false).Plan = null;
         var order = nodes.OfType<BinaryKoto>().Single(static x => x.ToString() == "a < b");
-        var tuple = CallPlan.Of(order)!;
+        var tuple = CallPlan.Of(c.Binding, order)!;
         Assert.True(tuple.TupleOperator);
         var (mapping, types, operations) = (tuple.ArgumentToParameter.ToArray(), tuple.TypeArguments.ToArray(), tuple.ArgumentOperations.ToArray());
-        tuple.Set(tuple.Target, tuple.ReturnType, tuple.Receiver, mapping, types, operations: operations);
+        tuple.Set(c.Binding, tuple.Target, tuple.ReturnType, tuple.Receiver, mapping, types, operations: operations);
         tuple.TupleOperator = true; // Its conforming Type is gone.
         c.Binding.CheckBound(); // A Final pass publishes in its Check (DECISIONS BU-81), so the end of the pass runs again over the gaps.
         var program = c.BuildMir();

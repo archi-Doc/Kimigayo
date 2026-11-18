@@ -5,7 +5,8 @@
 // Input: the pass's hidden named aliases, unreachable patterns and positions that always fail, each decided by its owner, and
 // the HIR lints' records (Binding.Lints).
 // Output: records in the Binding partition under the requirement Binding with BindingFailure.None; a lint's condition is its row.
-// ReportDiagnostics calls it at a Final pass only. Must not fail a node or decide a record.
+// ReportDiagnostics calls it at a Final pass only; the library's freeze reads whether the library pass left one (HasNonFailingRecords).
+// Must not fail a node or decide a record.
 
 using Kimi.Diagnostics;
 
@@ -13,6 +14,10 @@ namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
+    // Whether the latest pass left a non-failing record: one of the lists ReportNonFailingRecords publishes, each emptied by the next
+    // pass's reset (ResetAliases, ResetMatches, ResetSyntheticCalls, ResetPass's lints).
+    private bool HasNonFailingRecords => this.aliasWarnings.Count + this.patternWarnings.Count + this.positionWarnings.Count + this.lints.Count != 0;
+
     private void ReportNonFailingRecords()
     {
         var warning = DiagnosticRequirement.Binding(BindingFailure.None);

@@ -106,7 +106,7 @@ internal sealed partial class FunctionCodegen
         }
         else
         {
-            DropGlue.Destroyed(this.program.Drops, this.body.Ordinal, row, type, this.walk, steps);
+            DropGlue.Destroyed(this.typeContext, this.program.Drops, this.body.Ordinal, row, type, this.walk, steps);
         }
 
         _ = this.Step(start, null, null, address, site);
@@ -134,7 +134,7 @@ internal sealed partial class FunctionCodegen
             return index + 1;
         }
 
-        if (!MirTypes.MayNeedDrop(type, this.seen))
+        if (!MirTypes.MayNeedDrop(this.typeContext, type, this.seen))
         {
             return this.After(index);
         }
@@ -195,7 +195,7 @@ internal sealed partial class FunctionCodegen
         while (this.steps[i].Kind != MirDropStepKind.End)
         {
             var part = this.steps[i].Part;
-            if (id >= 0 && part.Ordinal != open && MirTypes.MayNeedDrop(part.Type, this.seen))
+            if (id >= 0 && part.Ordinal != open && MirTypes.MayNeedDrop(this.typeContext, part.Type, this.seen))
             {
                 this.Leave(open, id);
                 open = part.Ordinal;
@@ -229,7 +229,7 @@ internal sealed partial class FunctionCodegen
         output.Write(" [");
         for (int i = index + 1, last = -1; this.steps[i].Kind != MirDropStepKind.End; i = this.After(i))
         {
-            if (this.steps[i].Part is var part && part.Ordinal != last && MirTypes.MayNeedDrop(part.Type, this.seen))
+            if (this.steps[i].Part is var part && part.Ordinal != last && MirTypes.MayNeedDrop(this.typeContext, part.Type, this.seen))
             {
                 last = part.Ordinal;
                 output.Write(" i32 ");

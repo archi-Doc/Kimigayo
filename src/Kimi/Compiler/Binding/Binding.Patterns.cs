@@ -211,7 +211,7 @@ public sealed partial class Binding
             {
                 var guardType = this.BindNode(guard, this.scopes[guard], BoundType.Boolean);
                 pendingBody |= guardType is null;
-                if (guardType is not null && !Compatible(guardType, BoundType.Boolean))
+                if (guardType is not null && !this.FitsType(guardType, BoundType.Boolean))
                 {
                     this.Fail(guard, BindingFailure.TypeMismatch);
                     plan.Invalid = true;

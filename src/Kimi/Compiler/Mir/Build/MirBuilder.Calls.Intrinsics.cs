@@ -53,7 +53,7 @@ internal sealed partial class MirBuilder
         if (!this.IsNever(handle))
         {
             var start = this.arguments.Count;
-            this.arguments.Add(this.Borrow(SemanticsKind.ObjRef, this.body.Project(handle, MirProjectionKind.Deref, 0), test));
+            this.arguments.Add(this.Borrow(SemanticsKind.ObjRef, this.body.Project(compilation.Types, handle, MirProjectionKind.Deref, 0), test));
             this.arguments.Add(MirOperand.Const(this.body.Const(new(MirConstKind.TypeToken, TypeOf(test.Right)))));
             var result = test.IsNegated ? this.Temp(BoundType.Boolean, test) : destination;
             this.Invoke(result, MirCallee.Intrinsic(IntrinsicId.TypeTest), start, test);

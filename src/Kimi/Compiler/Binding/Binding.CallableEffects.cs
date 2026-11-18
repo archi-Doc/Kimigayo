@@ -35,7 +35,7 @@ public sealed partial class Binding
         for (var r = start; r < this.premiseRows.Count; r++)
         {
             if (this.premiseRows[r] is not { Available: true, Clause: { Kind: ConstraintKind.Callable } fact, Raw: { } raw, Stated: { } stated } ||
-                !SameCallableSignature(this.CallableContractType(fact.RequiredType!, scope), required) || !ReceiverCovers(fact.Mask, receiver))
+                !this.SameCallableSignature(this.CallableContractType(fact.RequiredType!, scope), required) || !ReceiverCovers(fact.Mask, receiver))
             {
                 continue;
             }
@@ -97,7 +97,7 @@ public sealed partial class Binding
         for (var i = 0; i < this.nodes.Count && this.selectableEffectClauses.Count != 0; i++)
         {
             var node = this.nodes[i];
-            if (node is InvocationKoto { BoundCall: { } call } && this.Library.PresentedTarget(call.Target).Declaration is FunctionKoto function)
+            if (node is InvocationKoto invocation && this.CallOf(invocation) is { } call && this.Library.PresentedTarget(call.Target).Declaration is FunctionKoto function)
             {
                 this.CheckCallableEffectUses(node, function.TypeConstraints, SubstitutionOf(function, call), call);
             }
