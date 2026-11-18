@@ -462,13 +462,17 @@ public sealed partial class Binding
         return mark;
     }
 
-    // SPEC 8.3.3 Finality: whether the answer begun at `mark` read an obligation open before it began (an obligation opened and closed
-    // inside it reads at or above its depth); the enclosing answers keep what it read.
-    private bool EndAnswer((int Depth, int Enclosing) mark)
+    // SPEC 8.3.3 Finality ("a fact depends on a judgment when it does not hold with that judgment's result held pending"): whether the
+    // answer begun at `mark`, with `verdict`, depends on an obligation open before it began: it read one (an obligation opened and closed
+    // inside it reads at or above its depth) and is Unknown. A re-entry reads Unknown, so the answer already holds the obligation pending,
+    // and the proof rules are monotone in an Unknown operand: a Proven or Refuted answer stays decided whatever the obligation settles to
+    // (Error absorbs, but a failed obligation has its own record: record selection, Q13), so it depends on none. The enclosing answers
+    // keep what it read.
+    private bool EndAnswer((int Depth, int Enclosing) mark, ConstraintProof verdict)
     {
         var read = this.dependence < mark.Depth;
         this.dependence = Math.Min(mark.Enclosing, this.dependence);
-        return read;
+        return read && verdict == ConstraintProof.Unknown;
     }
 
     // Opens an obligation at the next depth; when it is open already, the request reads no evidence there: false, and the answers in

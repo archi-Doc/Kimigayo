@@ -389,7 +389,7 @@ public sealed partial class Binding
             var mark = this.BeginAnswer();
             this.CapabilityEvaluationWork++;
             var result = this.ComputeCapability(next);
-            next.Depends = this.EndAnswer(mark);
+            next.Depends = this.EndAnswer(mark, result);
             if (next.Depends)
             {
                 this.dependentCapabilities.Add(next);
@@ -554,7 +554,8 @@ public sealed partial class Binding
             this.CapabilityEvaluationWork++;
             var result = this.ComputeCapability(next);
             this.capabilityConsumer = null;
-            if (this.EndAnswer(mark) || result != ConstraintProof.Proven)
+            _ = this.EndAnswer(mark, result); // Restores the enclosing dependence; a dependent answer is Unknown, so not Proven either.
+            if (result != ConstraintProof.Proven)
             {
                 next.Assumed = false;
                 for (var i = 0; i < next.Dependents.Count; i++)
@@ -619,7 +620,8 @@ public sealed partial class Binding
     // evidence there, and that obligation's proof may still hold; so it, and every work that read its verdict, is no fact once that
     // proof ends. None is kept past the outermost request, which has answered its requester inside that proof: each returns to its
     // initial state and is evaluated again when next requested. A work whose last evaluation depends on none stays, unless it read one
-    // that does. A forgotten work stays in its sources' Dependents and edges: a later change of a source evaluates it again with no
+    // that does (a decided reader holds whatever that one settles to, EndAnswer, so evaluating it again changes no verdict: one spread for
+    // every reader). A forgotten work stays in its sources' Dependents and edges: a later change of a source evaluates it again with no
     // Parent, which only the growth guard reads (no verdict depends on it).
     private void ForgetDependentCapabilities()
     {

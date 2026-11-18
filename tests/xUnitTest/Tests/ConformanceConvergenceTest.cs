@@ -459,6 +459,24 @@ public class ConformanceConvergenceTest(ITestOutputHelper output)
     public void AnEngineCoverageRowKeepsItsLabel(string id, string source, bool valid)
         => Assert.True(valid == (DiagnosticCorpus.RecordProfile(source) == "clean"), id);
 
+    // SPEC 8.3.3 Finality ("a fact depends on a judgment when it does not hold with that judgment's result held pending"), 8.3.2
+    // Disjunction (R7-C2e2 e2-3b): an answer that read the obligation being proven and is still Proven holds with it pending, so it is
+    // evidence: a formation `T is C or D` with S both (either order), a second conditional path through `S is M`, a path beside a
+    // dependent one, and a capability (Copy, Owned) of an instance whose formation reads `S is C` in a dead operand; with the other
+    // operand refuted the answer is Unknown and the program invalid.
+    [Theory]
+    [InlineData("q2f", "contract M\ncontract D\ncontract K\n    associate X\ncontract C\n    associate Item is M\nstruct R\n    Self is M\nstruct Box<T>\n    T is C or D\n    Self is K\n    associate K.X is R\nstruct S\n    Self is C\n    Self is D\n    associate C.Item is Box<S>.(K).X\n", true)]
+    [InlineData("q2fr", "contract M\ncontract D\ncontract K\n    associate X\ncontract C\n    associate Item is M\nstruct R\n    Self is M\nstruct Box<T>\n    T is D or C\n    Self is K\n    associate K.X is R\nstruct S\n    Self is C\n    Self is D\n    associate C.Item is Box<S>.(K).X\n", true)]
+    [InlineData("q2p", "contract M\ncontract D\ncontract D2: D\ncontract K\n    associate X\ncontract C\n    associate Item is M\nstruct R\n    Self is M\nstruct Wrap<T>\n    Self is D when T is C\n    Self is D2 when T is M\nstruct Box<T>\n    Self is K when T is D\n        associate K.X is R\nstruct S\n    Self is C\n    Self is M\n    associate C.Item is Box<Wrap<S>>.(K).X\n", true)]
+    [InlineData("q3a", "contract M\ncontract K\n    associate X\ncontract K2: K\ncontract C\n    associate Item is M\nstruct R\n    Self is M\nstruct Box<T>\n    Self is K when T is C\n        associate K.X is R\n    Self is K2 when T is M\n        associate K.X is R\nstruct S\n    Self is C\n    Self is M\n    associate C.Item is Box<S>.(K).X\n", true)]
+    [InlineData("cap1", "contract D\ncontract C\n    associate Item is Copy\nstruct Box<T>\n    T is C or D\n    Self is Copy\n    var value: i32\nstruct S\n    Self is C\n    Self is D\n    associate C.Item is Box<S>\n", true)]
+    [InlineData("own1", "contract D\ncontract C\n    associate Item is Owned\nstruct Node<T>\n    T is C or D\n    var next: Option<rc/Node<T>>\nstruct S\n    Self is C\n    Self is D\n    associate C.Item is Node<S>\n", true)]
+    [InlineData("own1r", "contract D\ncontract C\n    associate Item is Owned\nstruct Node<T>\n    T is D or C\n    var next: Option<rc/Node<T>>\nstruct S\n    Self is C\n    Self is D\n    associate C.Item is Node<S>\n", true)]
+    [InlineData("cap1n", "contract D\ncontract E\ncontract C\n    associate Item is Copy\nstruct Box<T>\n    T is C or E\n    Self is Copy\n    var value: i32\nstruct S\n    Self is C\n    Self is D\n    associate C.Item is Box<S>\n", false)]
+    [InlineData("own1n", "contract D\ncontract E\ncontract C\n    associate Item is Owned\nstruct Node<T>\n    T is C or E\n    var next: Option<rc/Node<T>>\nstruct S\n    Self is C\n    Self is D\n    associate C.Item is Node<S>\n", false)]
+    public void ADecidedAnswerReadingTheObligationIsEvidence(string id, string source, bool valid)
+        => Assert.True(valid == (DiagnosticCorpus.RecordProfile(source) == "clean"), id);
+
     // SPEC 8.3.3 Recursion and Finality (R7-C2e2 e2-3b's coverage rows, `design-e23b.md`): programs whose judgments read an open
     // obligation's neighbourhood, which the one obligation table leaves as they were: the controls of the projection route's n-forms (a
     // Box, a condition or a capability bound with no dependence on `S is C`, a second conditional conformance), an obligation opened and
@@ -484,17 +502,25 @@ public class ConformanceConvergenceTest(ITestOutputHelper output)
     public void AnObligationNeighbourKeepsItsLabel(string id, string source, bool valid)
         => Assert.True(valid == (DiagnosticCorpus.RecordProfile(source) == "clean"), id);
 
-    // SPEC 8.3.3 Finality (R7-C2e2 e2-3b): the capability engine's evaluations of a Copy (cap1) and an Owned (own1) request whose
-    // instance's formation reads the obligation being proven, `S is C`, in a dead operand (`T is C or D`, S both), exact: which works
-    // the engine judges again after the outermost request.
+    // SPEC 8.3.3 Finality (R7-C2e2 e2-3b): the capability engine's evaluations where one conformance requests a Copy (cap2) or an Owned
+    // (own2) instance twice (two associates) and the instance's formation reads the obligation being proven, `S is C`, in a dead operand
+    // (`T is C or D`, S both): the work is decided, so it holds with that obligation pending and is kept for its epoch, and the second
+    // request reads it; with the other operand refuted (`T is C or E`, the Unknown twin) it depends and is judged again. The difference
+    // between the twins cancels the library's fixed evaluations.
     [Theory]
-    [InlineData("cap1", "contract D\ncontract C\n    associate Item is Copy\nstruct Box<T>\n    T is C or D\n    Self is Copy\n    var value: i32\nstruct S\n    Self is C\n    Self is D\n    associate C.Item is Box<S>\n", 928)]
-    [InlineData("own1", "contract D\ncontract C\n    associate Item is Owned\nstruct Node<T>\n    T is C or D\n    var next: Option<rc/Node<T>>\nstruct S\n    Self is C\n    Self is D\n    associate C.Item is Node<S>\n", 939)]
-    public void ACapabilityReadingTheObligationIsEvaluated(string id, string source, int evaluations)
+    [InlineData("cap2", "contract D\ncontract C\n    associate Item is Copy\n    associate Other is Copy\nstruct Box<T>\n    T is C or D\n    Self is Copy\n    var value: i32\nstruct S\n    Self is C\n    Self is D\n    associate C.Item is Box<S>\n    associate C.Other is Box<S>\n", "contract D\ncontract E\ncontract C\n    associate Item is Copy\n    associate Other is Copy\nstruct Box<T>\n    T is C or E\n    Self is Copy\n    var value: i32\nstruct S\n    Self is C\n    Self is D\n    associate C.Item is Box<S>\n    associate C.Other is Box<S>\n", 2)]
+    [InlineData("own2", "contract D\ncontract C\n    associate Item is Owned\n    associate Other is Owned\nstruct Node<T>\n    T is C or D\n    var next: Option<rc/Node<T>>\nstruct S\n    Self is C\n    Self is D\n    associate C.Item is Node<S>\n    associate C.Other is Node<S>\n", "contract D\ncontract E\ncontract C\n    associate Item is Owned\n    associate Other is Owned\nstruct Node<T>\n    T is C or E\n    var next: Option<rc/Node<T>>\nstruct S\n    Self is C\n    Self is D\n    associate C.Item is Node<S>\n    associate C.Other is Node<S>\n", 2)]
+    public void ACapabilityReadingTheObligationIsEvaluated(string id, string decided, string unknown, int extra)
     {
-        var c = CompilationTestHelper.ParseSuccess(source);
-        c.Bind();
-        Assert.True(evaluations == c.Binding.CapabilityEvaluationWork, $"{id}: {c.Binding.CapabilityEvaluationWork} evaluations");
+        var (kept, judged) = (Evaluations(decided), Evaluations(unknown));
+        Assert.True(extra == judged - kept, $"{id}: {judged} - {kept} evaluations");
+
+        static int Evaluations(string source)
+        {
+            var c = CompilationTestHelper.ParseSuccess(source);
+            c.Bind();
+            return c.Binding.CapabilityEvaluationWork;
+        }
     }
 
     // B1's ring family (R7-C2e2 e2-5a, design-engine): k declarations' Copy works and Owned works on one cycle, each order, with and without a use.
