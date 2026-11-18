@@ -231,7 +231,7 @@ public sealed partial class Binding
     // The followed target is the declared receiver Type: a subtype of it, or one Type with it in the view (SPEC 8.2.3, Verdict's Proven;
     // PLAN G772's premised pair target).
     private bool ReceiverTarget(BoundType target, BoundType declared, BindingScope scope)
-        => IsSubtype(target, declared) || this.IdentityProven(target, declared, scope);
+        => this.IsSubtype(target, declared) || this.IdentityProven(target, declared, scope);
 
     // SPEC 15.1.6, 14.6.2: a bare Subject Place that is a qualifying pair layer is followed like a borrow value, through
     // every further qualifying layer (s/(t/U)). The Subject is a reference to the terminal target in the weakest mode over

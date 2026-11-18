@@ -192,7 +192,7 @@ public sealed partial class Binding
                         var context = contextPattern is null ? null : this.CallType(contextPattern, function, frame.Types, scope, null, origins, inputs, construction, frame.Lengths);
                         var usedContext = waitingContexts[a];
                         if (!ReferenceEquals(context, usedContext) &&
-                            (context is null || usedContext is null || !IsSubtype(context, usedContext) || !IsSubtype(usedContext, context)))
+                            (context is null || usedContext is null || !this.IsSubtype(context, usedContext) || !this.IsSubtype(usedContext, context)))
                         {
                             return Reject(function, ConstructionCheck.WaitingContext);
                         }

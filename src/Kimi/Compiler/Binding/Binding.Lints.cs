@@ -712,7 +712,7 @@ public sealed partial class Binding
 
         private void VisitFunction(FunctionKoto function)
         {
-            if (TestDefinition.Marker(function) is not null && !TestDefinition.IsIncluded(function))
+            if (TestDefinition.Marker(function) is not null && !TestDefinition.IsIncluded(binding.compilation, function))
             {
                 return;
             }

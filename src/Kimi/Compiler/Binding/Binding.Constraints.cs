@@ -476,7 +476,7 @@ public sealed partial class Binding
         // A failed selector supplies no subject. Check the independent requirement syntax, then discard the provisional
         // proposition; its valid Type or Contract must not become another failure merely because the selector failed.
         var requirement = this.BindRequirement(clause.Right, unresolvedSubject || failedSubject ? BoundType.Unit : subject, semantics, bindingScope);
-        if (AssociatedHead(clause) is OriginApplicationKoto && HasUnsupportedAssociatedIdentity(requirement))
+        if (AssociatedHead(clause) is OriginApplicationKoto && this.HasUnsupportedAssociatedIdentity(requirement))
         {
             this.Fail(clause, BindingFailure.Unsupported, true);
             return;
