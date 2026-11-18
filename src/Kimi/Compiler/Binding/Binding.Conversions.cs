@@ -6,25 +6,6 @@ namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
-    // An independent array literal defaults differently from a contextual call argument.
-    private static bool IsCallArgument(Koto node)
-    {
-        for (var parent = node.Parent; parent is not null; parent = parent.Parent)
-        {
-            if (parent is InvocationKoto)
-            {
-                return true;
-            }
-
-            if (parent is not (LabeledKoto or ParenthesizedKoto))
-            {
-                return false;
-            }
-        }
-
-        return false;
-    }
-
     private BindingScope? conversionEvidenceScope;
     private NumberLiteralKoto? floatingIntegerLiteral;
 

@@ -109,6 +109,7 @@ public sealed partial class KimiLibrary
         foreach (var source in Sources.All)
         {
             var document = new SourceDocument(source.Path, source.Text);
+            _ = this.Kotonoha.LogicalName(document); // D-C1 (PLAN G949 Stage 2 U2b): the name memo is formed here, never by a later reader.
             var context = new CodeContext(this.Kotonoha, sourceDocument: document);
             var reader = new TokenReader(context, document.AsSpan(), source.GetTokens(context));
             this.Kotonoha.RootKoto.Parse(ref reader);

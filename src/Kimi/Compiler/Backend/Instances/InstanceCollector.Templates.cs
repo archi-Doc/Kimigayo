@@ -10,7 +10,9 @@
 // Places' roots' storage (InstanceCollector.Layouts.cs' ListNeeds), which LayOutNeeds reads, in its TemplateStore: the library store
 // (keyed on the program and the library segment it was built for) for a body A2's library store holds (MirDropTable.LibraryHolds, the one
 // per-ordinal fact, read through TemplatesOf; PLAN G951 U2-K), the program store for another, each by the body's ordinal itself (the
-// Back's C-378).
+// Back's C-378). The library store holds the templates of the bodies A2's library store holds in the key's segment, the library
+// list's, and grows within the segment as the list does: a body first demanded in a version is templated into the program store
+// there and into the library store at the next version, whose library step holds it, once per segment (PLAN G951 U2-K-b).
 // Sites: a call whose callee may carry a target (a Fn, Requirement or Value callee, an intrinsic whose row names one; a Virtual call none,
 // X5) or whose intrinsic lays out its Type argument; a Drop; a case adaptation (an instance's creation, DECISIONS R5-M111); an aggregate;
 // an erasure to a Function Type; a function item constant; a cast or binary operation whose Types depend on slots (K 4.7, checked per

@@ -273,6 +273,17 @@ public sealed partial class Binding
     private BoundConstraint NegateConstraint(BoundConstraint value)
         => value.Kind == ConstraintKind.Not ? value.Left! : value.Negation ??= this.InternConstraint(new(ConstraintKind.Not, left: value));
 
+    // D-4 (PLAN G949 Stage 2 U2b; C-380 F3 (b) as O-U2-4 narrows it): the library pass forms the negation of every constraint it interned,
+    // so no later pass writes a library constraint's Negation (a Not constraint's negation is its operand, never stored). The library's
+    // constraints are the interner's at the library pass's end, the first pass of a compilation's first run.
+    private void CompleteNegations()
+    {
+        foreach (var constraint in this.constraints.Values.ToArray())
+        {
+            _ = this.NegateConstraint(constraint);
+        }
+    }
+
     private void BindConstraints()
     {
         this.ResetSourceStates();

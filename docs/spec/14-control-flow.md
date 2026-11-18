@@ -40,7 +40,7 @@ Every executable body is a **Body** (grammar: [§F.10](appendices/F-syntax-summa
 - A **single-item body**, `=> item`, holds one expression or statement starting on the header's line; it may continue by ordinary expression continuation or a match arm list.
 - An **indented body** holds declarations, expressions, statements and permitted directives, run in order. It needs at least one complete source item (blank lines and comments do not count); write `()` to do nothing. A missing body is an error and does not absorb the next item.
 
-Selection clauses and arms, iterations, `do`, `unsafe`, `defer`, `require` failure bodies, functions, anonymous functions, Closures, specializations, accessors, `init` and `drop` have Bodies, except an import ([§22.6](22-core-execution-and-foreign-functions.md#226-foreign-function-imports)) and a Kimi function or constructor without a Kimigayo definition ([§22.1](22-core-execution-and-foreign-functions.md#221-required-kimi-declarations)), which may omit its Body. Container bodies and match arm lists are layout bodies ([§F.4.2](appendices/F-syntax-summary.md#f42-layout-events)) but not Bodies. Each Body is its own scope. Declarations and directives need the indented form, and each position keeps its declaration restrictions ([§7.5](07-functions-and-callable-values.md#75-function-constraints)).
+Selection clauses and arms, iterations, `do`, `unsafe`, `defer`, `require` failure bodies, functions, anonymous functions, Closures, specializations, accessors, `init` and `drop` have Bodies, except an import ([§22.6](22-core-execution-and-foreign-functions.md#226-foreign-function-imports)) and a Kimi function or constructor without a Kimigayo definition ([§22.1](22-core-execution-and-foreign-functions.md#221-required-kimi-declarations)), which may omit its Body. Container bodies and match arm lists are layout bodies ([§F.4.2](appendices/F-syntax-summary.md#f42-layout-events)) but not Bodies. Each Body is its own scope. The value a Body supplies to a selection, `do` or `loop` leaves the Body as that expression's value, while the temporaries the Body creates do not ([§3.6](03-types-and-values.md#36-temporaries)). Declarations and directives need the indented form, and each position keeps its declaration restrictions ([§7.5](07-functions-and-callable-values.md#75-function-constraints)).
 
 Nonemptiness is checked before directive selection, so a complete directive counts even when it selects nothing. After selection the ordinary Type, transfer and result checks apply.
 
@@ -52,6 +52,12 @@ defer
 defer
     // Error: no source item.
 nextOperation()
+```
+
+```kimi
+// identity<T>(value: T) -> T; takeWide(value: i64); inspectWide(value: ref/i64); passWide(value: ref/i64) -> ref/i64; wideRef: ref/i64.
+takeWide(if ready => passWide(identity(1)) else => wideRef)       // The i64 read in the first source leaves it.
+// inspectWide(if ready => passWide(identity(1)) else => wideRef) // Error: the first source's value borrows its own temporary.
 ```
 
 ### 14.2.2. Evaluation contexts and body results
@@ -420,12 +426,12 @@ let conflict = loop
 
 The **Target Result Type** is found independently of source order:
 
-1. Use the declared Type, the Type fixed by [§14.2.2](#1422-evaluation-contexts-and-body-results) or a fixed outer expectation.
-2. Otherwise find one common Type of the independently typable sources ([§10.5](10-overload-resolution-and-inference.md#105-inference-boundaries)). Source Types are compared by their structural part only ([§15.6.1](15-ownership-and-lifetime-analysis.md#1561-origin-relations-and-well-formedness)): the common Type's Origins are local regions, and each source's fit to it yields ordinary Origin relations, never a Type mismatch. Never supplies no candidate. Neither does a Tuple, array or Dictionary literal or a fill ([§4.3.3](04-arrays-indexing-and-slices.md#433-fill-construction)) that holds a part of Type Never, also within such a literal or fill part, nor a selection, `do` or `loop` none of whose sources supplies one. When no source supplies a candidate, the common Type is formed part by part over those sources other than Never: Tuples of one length by element, arrays by element (an array literal source constructs `Array<T>` here, [§4.3.1](04-arrays-indexing-and-slices.md#431-array-literals-and-annotation-holes); fills of one length construct `[N of T]`, and a fill beside an array literal source has none, their Types differing, [§4.3.3](04-arrays-indexing-and-slices.md#433-fill-construction)), Dictionaries by key and value, and a selection, `do` or `loop` through its own sources; each part's common Type is found as this step finds one, from the parts in that position that are not Never, and a part that is Never in every source is Never. Sources that differ only in safe reference layers over one read Type, or are literals of it ([§12.3](12-expressions.md#123-literal-typing)), have that common Type and are value-read ([§3.5.3](03-types-and-values.md#353-value-read)). A control-flow expression used as a call argument is classified by the Argument kinds rule of [§10.5](10-overload-resolution-and-inference.md#105-inference-boundaries).
-3. Propagate the Type to sources checkable against it (such as `0..3` beside `0..n`); literal defaults apply as [§10.2](10-overload-resolution-and-inference.md#102-common-adaptation) states. At a Target Result Type `ref/U`, a selection, `do` or `loop` with a source that is an untyped literal or a literal-only expression ([§12.3](12-expressions.md#123-literal-typing)), directly or through a nested selection, `do` or `loop`, propagates `U` instead: every source is checked against `U`, and the expression's value is one owner `U` temporary at the expression's position, shared-borrowed once ([§10.2](10-overload-resolution-and-inference.md#102-common-adaptation)).
+1. Use the declared Type, the Type fixed by [§14.2.2](#1422-evaluation-contexts-and-body-results) or another fixed expected Type of the position ([§12.3.1](12-expressions.md#1231-expected-types-and-defaults)), at a call argument the parameter Type under each remaining candidate ([§10.5.1](10-overload-resolution-and-inference.md#1051-argument-kinds)).
+2. Otherwise find one common Type of the independently typable sources ([§10.5](10-overload-resolution-and-inference.md#105-inference-boundaries)). Source Types are compared by their structural part only ([§15.6.1](15-ownership-and-lifetime-analysis.md#1561-origin-relations-and-well-formedness)): the common Type's Origins are local regions, and each source's fit to it yields ordinary Origin relations, never a Type mismatch. Never supplies no candidate, nor does a selection, `do` or `loop` none of whose sources supplies one. A selection, `do` or `loop` with a Tuple, array, fill or Dictionary literal source ([§4.3.3](04-arrays-indexing-and-slices.md#433-fill-construction)), directly or through a nested selection, `do` or `loop`, takes the Type its sources other than Never form as one whole, a fill or a source of fixed-array Type fixing the kind at a place, as [§4.3.1](04-arrays-indexing-and-slices.md#431-array-literals-and-annotation-holes) states. Sources that differ only in safe reference layers over one read Type, or are literals of it ([§12.3](12-expressions.md#123-literal-typing)), have that common Type and are value-read ([§3.5.3](03-types-and-values.md#353-value-read)). A selection, `do` or `loop` used as a call argument is classified through its sources ([§10.5.1](10-overload-resolution-and-inference.md#1051-argument-kinds)).
+3. Propagate the Type to sources checkable against it (such as `0..3` beside `0..n`); literal defaults apply as [§10.2](10-overload-resolution-and-inference.md#102-common-adaptation) states. A selection, `do` or `loop` with a source not of Type Never that is an owner value (neither a Place nor a borrow value, [§3.4.1](03-types-and-values.md#341-access-paths-and-value-kinds)), directly or through a nested selection, `do` or `loop`, is one value, the selected source's. At a Target Result Type `ref/U` whose `U` has no borrow value's outer Semantics ([§10.2.2](10-overload-resolution-and-inference.md#1022-inference-and-adaptation-classes) item 2) it propagates `U` instead: every source is checked against `U` as at an expected `U` ([§10.2](10-overload-resolution-and-inference.md#102-common-adaptation)), so a reference to a read Type is value-read ([§3.5.3](03-types-and-values.md#353-value-read)), a bare Non-Copy Place is not acquired by value (write `@move`), and a reference to a referent not of a read Type does not fit (`@follow@copy` copies a Copy referent). At `objref/U` its Type is the common Type of its sources, found as step 2 finds one, each source taken by bare acquisition ([§3.5](03-types-and-values.md#35-copy-and-move)). At either, the value is moved into one owner temporary at the expression's position, borrowed once ([§10.2](10-overload-resolution-and-inference.md#102-common-adaptation); its lifetime, [§3.6](03-types-and-values.md#36-temporaries)). A selection, `do` or `loop` whose sources other than Never are all Places or borrow values is no such value: it fits `ref/U` or `objref/U` source by source.
 4. Check every source. A call, anonymous function or empty literal that still lacks a Type needs an annotation.
 
-Nested results propagate the same way, and a literal result is not fixed before outer constraints. A typed binding is never reinferred from later uses. Inference never searches combinations by rechecking bodies ([§10.8](10-overload-resolution-and-inference.md#108-generic-argument-inference)).
+Nested results propagate the same way, and a literal result is not fixed before outer constraints. A typed binding is never reinferred from later uses. Inference never searches combinations by rechecking bodies ([§10.8](10-overload-resolution-and-inference.md#108-generic-argument-inference)). Checking a source at each remaining candidate's expected Type ([§10.5.1](10-overload-resolution-and-inference.md#1051-argument-kinds)) is not such a search.
 
 The **Expression Type** is the Target Result Type, or Never when every source (if any) is Never and Structural Completion has no normal candidate. Never does not excuse a mismatch or missing result, and Runtime Reachability never makes a Type Never. An anonymous function without a declared or expected result infers its return Type by these rules.
 
@@ -441,6 +447,39 @@ let a = loop => continue                   // Never
 let b = loop
     continue
     exit 1                                 // i32: an unreachable source still counts.
+```
+
+```kimi
+// keep<T>(value: T); item: i32; itemRef: ref/i32; fixed: [2 of i32].
+let joined = if ready => [2 of item] else => [item, item]       // [2 of i32]: the fill fixes the kind at the place.
+keep(if ready => [2 of item] else => [item, item])              // T = [2 of i32], as for joined.
+let typed = if ready => [item, item] else => fixed              // [2 of i32]: fixed fixes it.
+let grown = if ready => [item] else => [item, item]             // Array<i32>: nothing fixes the kind.
+// let bad = if ready => [2 of item] else => [item, item, item] // Error: the place is [2 of i32]; one source has 3 elements.
+let tuple = if ready => (itemRef, 1) else => (2, 3)             // (i32, i32): 2 beside itemRef takes its read Type; itemRef is value-read.
+```
+
+```kimi
+struct Counter
+    public var count: i32
+    public init(count: i32) => self.count = count
+
+// identity<T>(value: T) -> T; inspectWide(value: ref/i64); inspectPair(values: ref/[2 of i32]);
+// inspectTable(table: ref/Dictionary<string, i32>); inspectCounter(counter: objref/Counter); wideRef: ref/i64;
+// pair: [2 of i32]; pairRef: ref/[2 of i32]; table: Dictionary<string, i32>; tableRef: ref/Dictionary<string, i32>;
+// first, second: obj/Counter.
+inspectWide(if ready => identity(1) else => identity(2))                    // One i64 temporary at the argument: T = i64 in both sources.
+inspectPair(if ready => [identity(1), 2] else => [2 of identity(3)])        // Each source is checked against [2 of i32], in either order.
+inspectWide(if ready => wideRef else => identity(1))                        // One value: wideRef is value-read into the temporary.
+inspectPair(if ready => pair else => pair)                                  // Places only: the selected source is borrowed.
+inspectPair(if ready => pairRef@follow@copy else => [2 of identity(1)])     // One value: pairRef's referent is copied explicitly.
+inspectCounter(if ready => Counter.init(1)@obj else => Counter.init(2)@obj) // One obj/Counter temporary, its object borrowed once.
+inspectCounter(if ready => first else => second)                            // Places only: the selected source's object is borrowed.
+// inspectPair(if ready => pairRef else => [2 of identity(1)])              // Error: [2 of i32] is not a read Type, so pairRef does not fit.
+// inspectTable(if ready => table else => ["b": 2])                         // Error: table is not acquired by value; write table@move.
+// inspectTable(if ready => tableRef else => ["b": 2])                      // Error: a Dictionary is not of a read Type, so tableRef does not fit.
+// inspectCounter(if ready => Counter.init(1)@obj else => first)            // Error: first is not acquired by value.
+// inspectCounter(if ready => Counter.init(1)@obj else => Counter.init(2)@rc) // Error: no common Type of obj/Counter and rc/Counter.
 ```
 
 ```kimi

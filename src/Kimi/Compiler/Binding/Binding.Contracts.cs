@@ -567,14 +567,15 @@ public sealed partial class Binding
                     }
 
                     var declaringContract = members[i].Contract;
-                    if (a.BoundSymbol!.Type is { } result && !this.TypeAccessCovers(result, declaringContract, declaringContract))
+                    var sa = new FnSig(a);
+                    if (sa.Result is { } result && !this.TypeAccessCovers(result, declaringContract, declaringContract))
                     {
                         this.Fail(a, BindingFailure.Access);
                     }
 
-                    for (var p = 0; p < a.Parameters.Count; p++)
+                    for (var p = 0; p < sa.InputCount; p++)
                     {
-                        if (a.Parameters[p].Type.BoundType is { } parameter && !this.TypeAccessCovers(parameter, declaringContract, declaringContract))
+                        if (sa.Input(p) is { } parameter && !this.TypeAccessCovers(parameter, declaringContract, declaringContract))
                         {
                             this.Fail(a, BindingFailure.Access);
                         }
@@ -590,22 +591,28 @@ public sealed partial class Binding
 
                     for (var j = 0; j < i; j++)
                     {
-                        if (members[j].Symbol.Declaration is not FunctionKoto b || a.GenericArguments.Count != b.GenericArguments.Count || a.Parameters.Count != b.Parameters.Count)
+                        if (members[j].Symbol.Declaration is not FunctionKoto b)
+                        {
+                            continue;
+                        }
+
+                        var sb = new FnSig(b);
+                        if (sa.GenericCount != sb.GenericCount || sa.InputCount != sb.InputCount)
                         {
                             continue;
                         }
 
                         var sameSignature = true;
                         var differentLabels = false;
-                        for (var p = 0; p < a.Parameters.Count; p++)
+                        for (var p = 0; p < sa.InputCount; p++)
                         {
-                            if (a.Parameters[p].Type.BoundType is not { } ta || b.Parameters[p].Type.BoundType is not { } tb)
+                            if (sa.Input(p) is not { } ta || sb.Input(p) is not { } tb)
                             {
                                 sameSignature = false;
                                 break;
                             }
 
-                            sameSignature &= SignatureEquals(this.ContractType(this.SubstituteContractReference(ta, members[i].Contract, out _), scope), this.ContractType(this.SubstituteContractReference(tb, members[j].Contract, out _), scope), a, b);
+                            sameSignature &= SignatureEquals(this.ContractType(this.SubstituteContractReference(ta, members[i].Contract, out _), scope), this.ContractType(this.SubstituteContractReference(tb, members[j].Contract, out _), scope), sa.Binder, sb.Binder);
                             differentLabels |= a.Parameters[p].ExternalName != b.Parameters[p].ExternalName;
                         }
 
