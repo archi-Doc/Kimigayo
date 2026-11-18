@@ -13,7 +13,8 @@ namespace Kimi.Compiler;
 // rule (Dereferenced over Reached, Binding.PlaceAuthority.Raw.cs), a `during self` layer read as ReadHolder reads it (ReplaceHolder); the
 // declaring function's identity classes (Binding.TypeIdentity, the one judge: View).
 // Outputs: a key per Place (Types only), and per key its layers with their steps, their kept Type (Kept) and the key past each; rows are listed
-// once per (Type, Written, Holder, Signature), so a parameter key may list a part a root key of the same Type lists once.
+// once per walked key (Type, Written, Holder, Signature and the Loan mark: a part reached both through a Loan's Type argument and directly
+// is listed both ways), so a parameter key may list a part a root key of the same Type lists once.
 // Invariants: a function of the key (and of the selected part); every producer of a key (Select, Base, Leading, a Past key) steps the
 // Signature by the one rule (View, then Binding.Retention.Declared.cs's pairing and Below); Hidden only where the declared counterpart, in the declaring
 // function's view, is an abstract Type of that function itself; total over what Binding accepts (an unbound part: Type null, one
@@ -83,7 +84,7 @@ internal readonly record struct OwnLayer(BoundType? Layer, HoldStep Step, PlaceK
 
     /// <summary>Gets a value indicating whether the part lies past a Loan's Type argument, which has no address and grants no access
     /// (SPEC 15.3.5; MirTypes' holding walk never steps there, HoldStep.Loan): the key walk lists it only because ByValue walks a
-    /// Loan's Type argument by value until U3a (G416 D4), so a reader takes no write Type and no key past it. Removal: U3a, when ByValue
+    /// Loan's Type argument by value until G416 U3a (D4), so a reader takes no write Type and no key past it. Removal: G416 U3a, when ByValue
     /// stops walking a Loan's Type argument and no such part is listed.</summary>
     internal bool Loan { get; init; }
 }
@@ -91,7 +92,7 @@ internal readonly record struct OwnLayer(BoundType? Layer, HoldStep Step, PlaceK
 public sealed partial class Binding
 {
     private readonly HashSet<(BoundType Type, BoundType? Written, BoundType? Holder, BoundType? Signature, bool Loan)> ownSeen = new(); // OwnLayers' walked keys, reused.
-    private int ownLoans; // OwnParts' depth past a Loan's Type argument (OwnLayer.Loan; until U3a).
+    private int ownLoans; // OwnParts' depth past a Loan's Type argument (OwnLayer.Loan; until G416 U3a).
 
     // SPEC 5.2.1 Retained dependencies, 5.7 Calls, 15.6.4 (PLAN G583, G598, C-189; contract in TyCtxt.Raw.cs): the parts the value at a
     // Place's key holds at its own address, by ByValue at any holder, each part as the body sees it (BodySees, as the storage walk's
@@ -196,7 +197,7 @@ public sealed partial class Binding
     // OwnLayers from a part (Type, Written, Holder) and the Type the called function's declaration writes there (Signature, read in the
     // function's view, View; paired by the storage walk's rule, DeclaredRun and SignaturePast; kept inside a hidden binding, Below), each
     // (Type, Written, Holder, Signature) once per call and per whether it lies past a Loan's Type argument (OwnLayer.Loan, marked on
-    // every part listed there: ByValue's Loan row, until U3a); retentionHeld is read as a stack (each run removed). It reads Holdings
+    // every part listed there: ByValue's Loan row, until G416 U3a); retentionHeld is read as a stack (each run removed). It reads Holdings
     // only, never HeldRun, so it sets no storage-walk state (retentionLimit).
     private bool OwnParts(BoundType type, BoundType? written, BoundType? holder, BoundType? signature, in PlaceKey at, List<OwnLayer> into)
     {
@@ -223,7 +224,7 @@ public sealed partial class Binding
             var entry = this.retentionHeld[i];
             if (this.ByValue(type, entry) && entry.Part is { } part)
             {
-                var loan = entry.Step == HoldStep.Loan ? 1 : 0; // A Loan's Type argument, walked by value until U3a (ByValue).
+                var loan = entry.Step == HoldStep.Loan ? 1 : 0; // A Loan's Type argument, walked by value until G416 U3a (ByValue).
                 this.ownLoans += loan;
                 complete = this.OwnParts(part, entry.Written, entry.Holder, this.DeclaredPart(signature, declared, run, i), at, into);
                 this.ownLoans -= loan;

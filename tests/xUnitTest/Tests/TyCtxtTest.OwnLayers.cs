@@ -21,7 +21,8 @@ public sealed partial class TyCtxtTest
         "    nested: Option<Outer<raw/u8 during a>>, array: Array<raw/u8 during a>, selfHeld: SelfHeld, borrow: (uniq/u8 during a, raw/u8 during static),\n" +
         "    loan: Loan<uniq/u8 during a>, empty: Empty<raw/u8 during a>, scalar: i32, bare: raw/u8, rc: rc/Wrap<raw/u8 during a>,\n" +
         "    abstract: (T, raw/u8 during a), slot: Slot<raw/u8 during a>, derived: Derived, object: obj/Wrap<raw/u8 during a>,\n" +
-        "    loanPair: (Loan<uniq/u8 during a>, raw/u8 during a), loanRaw: Loan<uniq/(raw/u8) during a>) -> ()\n    return ()\n" +
+        "    loanPair: (Loan<uniq/u8 during a>, raw/u8 during a), loanRaw: Loan<uniq/(raw/u8) during a>,\n" +
+        "    loanBorrow: (Loan<uniq/u8 during a>, uniq/u8 during a), borrowLoan: (uniq/u8 during a, Loan<uniq/u8 during a>)) -> ()\n    return ()\n" +
         "func pairs<b/B>(x: uniq/u8 during a, pair: b/(raw/u8 during a)) -> ()\n    b is owner or uniq\n    return ()\n" +
         "public func main() => ()\n";
 
@@ -57,15 +58,19 @@ public sealed partial class TyCtxtTest
     }
 
     // SPEC 15.3.5 (a Type argument has no address; the Middle's C-370, its landing hunk's R2 (b2')): a part the key walk lists past a
-    // Loan's Type argument, which it walks by value until U3a, is marked Loan (L), so a reader takes no write Type and no key past it:
-    // the Loan's exclusive borrow, alone, beside a raw layer the Tuple states (not marked) and over a raw pointee; an exclusive borrow
-    // that is no Loan's argument, and the layers beside it, are not marked. Fail-before: no Loan mark on 4d510bf64.
+    // Loan's Type argument, which it walks by value until G416 U3a, is marked Loan (L), so a reader takes no write Type and no key past
+    // it: the Loan's exclusive borrow, alone, beside a raw layer the Tuple states (not marked) and over a raw pointee; an exclusive borrow
+    // that is no Loan's argument, and the layers beside it, are not marked. A part reached both through a Loan's Type argument and
+    // directly is listed both ways, in either order (loanBorrow, borrowLoan: the direct borrow keeps its key; G935 review 2c's C1, these
+    // two fail with the walked key's Loan bit removed). Fail-before: no Loan mark on 4d510bf64.
     [Theory]
     [InlineData("loan", "- Exclusive L")]
     [InlineData("loanPair", "- Exclusive L; raw/u8 Exclusive")]
     [InlineData("loanRaw", "- Exclusive L")]
     [InlineData("x", "- Exclusive")]
     [InlineData("borrow", "- Exclusive; raw/u8 Static")]
+    [InlineData("loanBorrow", "- Exclusive L; - Exclusive")]
+    [InlineData("borrowLoan", "- Exclusive; - Exclusive L")]
     public void APartPastALoansTypeArgumentIsMarked(string parameter, string expected)
     {
         var (c, p) = OwnLayersForms();
@@ -245,15 +250,17 @@ public sealed partial class TyCtxtTest
     // SPEC 15.6.4's abstract-storage sentence (PLAN G935; the Middle's C-370, its N5): TyCtxt.EntryType names a storage's entry and
     // says whether the name is the callee's kept Type, one answer of one rule. Kept: past slot's two layers, storage of f's T (the
     // output read in f's terms). Not kept: the same storage of a callee that writes the Type itself; past a raw layer T's binding
-    // holds (T = `raw/(raw/u8)`: the holder it addresses, read as the input writes it, c3-5); and a wholly hidden key of an output
-    // not read in the callee's terms (a by-value input that is the kept Type itself, T = `uniq/(raw/u8)`), whose answer stays the
-    // instantiated Type. Fail-before: no Kept answer on 53dee7570.
+    // holds (T = `raw/(raw/u8)`: the holder it addresses, read as the input writes it, c3-5) or a safe reference it holds (T =
+    // `uniq/(raw/u8)`: the holder its Loan names, B2); and a wholly hidden key of an output not read in the callee's terms (the root
+    // of a by-value input that is the kept Type itself), whose answer stays the instantiated Type. Fail-before: no Kept answer on
+    // 53dee7570.
     [Theory]
     [InlineData("func f<T>(slot: uniq/(uniq/T during a), value: T) => ()\n", "uniq/(uniq/(raw/u8) during a)", 2, "T kept")]
     [InlineData("func f(slot: uniq/(uniq/(raw/u8) during a), value: raw/u8) => ()\n", "uniq/(uniq/(raw/u8) during a)", 2, "raw/u8 instantiated")]
     [InlineData("func f<T>(slot: uniq/(uniq/T during a), value: raw/u8) => ()\n", "uniq/(uniq/(raw/(raw/u8)) during a)", 2, "T kept")]
     [InlineData("func f<T>(slot: uniq/(uniq/T during a), value: raw/u8) => ()\n", "uniq/(uniq/(raw/(raw/u8)) during a)", 3, "raw/u8 instantiated")]
     [InlineData("func f<T>(slot: T, value: raw/u8) => ()\n", "uniq/(raw/u8)", 1, "raw/u8 instantiated")]
+    [InlineData("func f<T>(slot: T, value: raw/u8) => ()\n", "uniq/(raw/u8)", 0, "uniq/raw/u8 instantiated")]
     public void AnEntryTypeSaysWhetherItIsTheKeptType(string callee, string input, int steps, string expected)
     {
         var c = MinimalEmissionTest.Analyze(callee + $"func g(x: {input}, v: raw/u8)\n    f(x, v)\n");
